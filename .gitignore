@@ -5,3 +5,9 @@
 
 # CI build files
 /ros-ws
+
+# Python ignorables
+.idea
+.mypy_cache
+.tox
+__pycache__

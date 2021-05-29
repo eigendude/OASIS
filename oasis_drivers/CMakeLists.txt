@@ -31,6 +31,15 @@ endif()
 find_package(ament_cmake REQUIRED)
 
 #
+# Install files
+#
+
+install(DIRECTORY
+  launch
+  DESTINATION share/${PROJECT_NAME}/
+)
+
+#
 # Testing
 #
 
