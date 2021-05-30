@@ -11,3 +11,8 @@
 .mypy_cache
 .tox
 __pycache__
+
+# Eclipse ignorables
+.cproject
+.project
+.settings

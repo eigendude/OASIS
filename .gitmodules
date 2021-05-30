@@ -1,0 +1,3 @@
+[submodule "oasis_perception/lib/bgslibrary"]
+	path = oasis_perception/lib/bgslibrary
+	url = https://github.com/andrewssobral/bgslibrary.git

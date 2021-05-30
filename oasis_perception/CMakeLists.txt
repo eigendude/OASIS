@@ -29,6 +29,80 @@ endif()
 #
 
 find_package(ament_cmake REQUIRED)
+find_package(cv_bridge REQUIRED)
+find_package(Git)
+find_package(image_transport REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(sensor_msgs REQUIRED)
+
+#
+# Update submodules
+#
+
+if(GIT_FOUND AND EXISTS "${PROJECT_SOURCE_DIR}/../.git")
+  # Update submodules as needed
+  option(GIT_SUBMODULE "Check submodules during build" ON)
+
+  if(GIT_SUBMODULE)
+    message(STATUS "Submodule update")
+    execute_process(COMMAND ${GIT_EXECUTABLE} submodule update --init --recursive
+                    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                    RESULT_VARIABLE GIT_SUBMOD_RESULT)
+    if(NOT GIT_SUBMOD_RESULT EQUAL "0")
+      message(FATAL_ERROR "git submodule update --init failed with ${GIT_SUBMOD_RESULT}, please checkout submodules")
+    endif()
+  endif()
+endif()
+
+if(NOT EXISTS "${PROJECT_SOURCE_DIR}/lib/bgslibrary/CMakeLists.txt")
+  message(FATAL_ERROR "The submodules were not downloaded! GIT_SUBMODULE was turned off or failed. Please update submodules and try again.")
+endif()
+
+#
+# Add submodiles
+#
+
+add_subdirectory(lib/bgslibrary)
+
+#
+# Includes
+#
+
+include_directories(
+  lib/bgslibrary/src
+  ${cv_bridge_INCLUDE_DIRS}
+  ${image_transport_INCLUDE_DIRS}
+)
+
+#
+# Executables
+#
+
+add_executable(background_subtractor src/bgsnode.cpp)
+
+ament_target_dependencies(background_subtractor
+  cv_bridge
+  image_transport
+  rclcpp
+  sensor_msgs
+)
+
+target_link_libraries(background_subtractor
+  bgslibrary_core
+  ${cv_bridge_LIBRARIES}
+  ${image_transport_LIBRARIES}
+)
+
+#
+# Install
+#
+
+install(
+  TARGETS
+    background_subtractor
+  DESTINATION
+    lib/${PROJECT_NAME}
+)
 
 #
 # Testing

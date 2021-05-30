@@ -1,0 +1,31 @@
+Books:
+ * Handbook on "Background Modeling and Foreground Detection for Video Surveillance"
+    - http://www.crcpress.com/product/isbn/9781482205374
+    - Hardback: ISBN 9781482205374
+    - eBook:    ISBN 9781482205381
+    - html:     https://sites.google.com/site/backgroundmodeling/
+
+Papers:
+ * Adaptive Median of McFarlane and Schofield (1995)
+    - http://link.springer.com/article/10.1007%2FBF01215814
+ * Temporal Median of Cucchiara et al (2003) and Calderara et al (2006)
+    - http://ieeexplore.ieee.org/iel5/34/27651/01233909.pdf?tp=a&amp;arnumber=1233909&amp;authDecision=-203
+    - http://dl.acm.org/citation.cfm?id=1178814
+ * Fuzzy Sugeno Integral (with Adaptive-Selective Update) of Hongxun Zhang and De Xu (2006)
+    - http://link.springer.com/chapter/10.1007%2F11881599_110
+ * Gaussian Average of Wren (1997)
+    - http://www.cvmt.dk/education/teaching/e06/CVG9/CV/CVG9ExercisePapers/pfinder.pdf
+ * Simple Gaussian of Benezeth et al (2008)
+    - http://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&amp;arnumber=4760998
+ * Type-2 Fuzzy GMM-UM with MRF of Zhao et al (2012)
+    - http://link.springer.com/chapter/10.1007%2F978-3-642-35286-7_23
+ * Texture BGS of Heikkila et al. (2006)
+    - http://ieeexplore.ieee.org/xpls/abs_all.jsp?arnumber=1597122&tag=1
+ * MultiCue BGS of SeungJong Noh and Moongu Jeon (2012)
+    - http://link.springer.com/chapter/10.1007%2F978-3-642-37431-9_38
+ * VuMeter of Goyat et al (2006)
+    - http://ieeexplore.ieee.org/xpls/abs_all.jsp?arnumber=1706852
+ * Adaptive SOM of Maddalena and Petrosino (2008)
+    - http://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&amp;arnumber=4527178
+ * Fuzzy Adaptive SOM of Maddalena and Petrosino (2010)
+    - http://www.springerlink.com/content/112681k31222013n/
