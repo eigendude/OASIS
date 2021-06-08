@@ -82,13 +82,13 @@ jobs:
         if: steps.restore-ros2-desktop.outputs.cache-hit != 'true'
         run: ./oasis_tooling/scripts/build_ros_desktop.sh
 
-      - name: Build ROS 2 Desktop
-        if: steps.restore-ros2-desktop.outputs.cache-hit != 'true'
-        run: ./oasis_tooling/scripts/build_ros_desktop.sh
+      - name: Install dependency rosdeps
+        if: steps.restore-ros2-depends.outputs.cache-hit != 'true'
+        run: ./oasis_tooling/scripts/build_ros_deps.sh install
 
       - name: Build dependencies
         if: steps.restore-ros2-depends.outputs.cache-hit != 'true'
-        run: ./oasis_tooling/scripts/build_ros_deps.sh
+        run: ./oasis_tooling/scripts/build_ros_deps.sh build
 
       - name: Install rosdeps
         run: ./oasis_tooling/scripts/run_ci.sh install

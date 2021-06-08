@@ -14,6 +14,12 @@
 #
 # Dependencies are automatically installed by the script.
 #
+# Call via:
+#
+#   build_ros_deps.sh <task>
+#
+# See the function dispatch() for the available tasks that can be run.
+#
 
 # Enable strict mode
 set -o errexit
@@ -96,32 +102,58 @@ vcs import "${SOURCE_DIRECTORY}" < "${PACKAGE_DIRECTORY}/config/depends.repos"
 # Install dependency rosdeps
 #
 
-# Install rosdep
-[ -f "/etc/ros/rosdep/sources.list.d/20-default.list" ] || sudo rosdep init
+function install() {
+  # Install rosdep
+  [ -f "/etc/ros/rosdep/sources.list.d/20-default.list" ] || sudo rosdep init
 
-# Update rosdep
-rosdep update
+  # Update rosdep
+  rosdep update
 
-# Download dependencies
-echo "Downloading dependency source code..."
+  # Download dependencies
+  echo "Downloading dependency source code..."
 
-# Install dependency rosdeps
-rosdep install \
-  --from-paths "${SOURCE_DIRECTORY}" \
-  --ignore-src \
-  --rosdistro ${ROS2_DISTRO} \
-  -y
+  # Install dependency rosdeps
+  rosdep install \
+    --from-paths "${SOURCE_DIRECTORY}" \
+    --ignore-src \
+    --rosdistro ${ROS2_DISTRO} \
+    -y
 
-# TODO: image_transport needs libtinyxml2-dev indirectly
-dpkg -s libtinyxml2-dev >/dev/null || sudo apt install -y libtinyxml2-dev
+  # TODO: image_transport needs libtinyxml2-dev indirectly
+  dpkg -s libtinyxml2-dev >/dev/null || sudo apt install -y libtinyxml2-dev
+}
 
 #
 # Build dependencies with colcon
 #
 
-(
+function build() {
   cd "${ROS2_DEPEND_DIRECTORY}"
   PATH="${CMAKE_BIN_DIRECTORY}:${PATH}" \
     `#MAKEFLAGS="-j1 -l1"` \
     colcon build `#--executor sequential`
-)
+}
+
+#
+# Dispatch function
+#
+# This function contains the available tasks. The first argument identifies
+# which task to jump to.
+#
+function dispatch() {
+  case $1 in
+  install)
+    install
+    ;;
+  build)
+    build
+    ;;
+  *)
+    echo "Invalid task: $1"
+    exit 1
+    ;;
+  esac
+}
+
+# Perform the dispatch
+dispatch $1
