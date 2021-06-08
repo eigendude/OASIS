@@ -7,10 +7,6 @@ repositories:
     type: git
     url: https://github.com/ros-perception/image_transport_plugins.git
     version: ros2
-#  ros-perception/opencv_cam:
-#    type: git
-#    url: https://github.com/clydemcqueen/opencv_cam.git
-#    version: master
   ros-perception/ros2-v4l2-camera:
     type: git
     url: https://gitlab.com/boldhearts/ros2_v4l2_camera.git
@@ -23,7 +19,3 @@ repositories:
     type: git
     url: https://github.com/ros-visualization/rqt_image_view.git
     version: foxy-devel
-#  ros2/ros2_shared:
-#    type: git
-#    url: https://github.com/ptrmu/ros2_shared.git
-#    version: master
