@@ -1,4 +1,12 @@
 repositories:
+  depends/libcec:
+    type: git
+    url: https://github.com/garbear/libcec.git
+    version: ament
+  depends/p8-platform:
+    type: git
+    url: https://github.com/garbear/p8-platform.git
+    version: ament
   ros-perception/image_common:
     type: git
     url: https://github.com/ros-perception/image_common.git
