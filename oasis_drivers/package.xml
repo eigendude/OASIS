@@ -10,6 +10,7 @@
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <build_depend>libcec</build_depend>
+  <build_depend>libudev-dev</build_depend>
 
   <exec_depend>v4l2_camera</exec_depend>
 

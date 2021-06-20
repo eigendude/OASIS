@@ -33,6 +33,7 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
 find_package(ament_cmake REQUIRED)
 find_package(CEC REQUIRED)
+find_package(UDEV REQUIRED)
 
 #
 # Install files
