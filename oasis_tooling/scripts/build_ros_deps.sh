@@ -141,7 +141,7 @@ function build() {
 # which task to jump to.
 #
 function dispatch() {
-  case $1 in
+  case ${1:-} in
   install)
     install
     ;;
@@ -149,11 +149,11 @@ function dispatch() {
     build
     ;;
   *)
-    echo "Invalid task: $1"
+    echo "Invalid task: ${1:-}"
     exit 1
     ;;
   esac
 }
 
 # Perform the dispatch
-dispatch $1
+dispatch ${1:-}
