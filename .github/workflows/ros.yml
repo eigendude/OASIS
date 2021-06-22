@@ -69,6 +69,11 @@ jobs:
           sudo apt update
           sudo apt install -y build-essential cmake git python3-colcon-common-extensions python3-colcon-ros python3-rosdep python3-vcstool
 
+      # Sometimes this is missing on Ubuntu 18.04
+      - name: Install Python dependencies
+        run: |
+          python3 -m pip install --upgrade lark-parser
+
       - name: Install ROS 2
         if: matrix.os == 'ubuntu-20.04'
         run: |
