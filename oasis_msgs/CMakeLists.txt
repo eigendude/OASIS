@@ -16,6 +16,20 @@ project(oasis_msgs)
 #
 
 find_package(rosidl_default_generators REQUIRED)
+find_package(std_msgs REQUIRED)
+
+#
+# Message definitions
+#
+
+rosidl_generate_interfaces(
+  ${PROJECT_NAME}
+    "msg/PowerEvent.msg"
+    "msg/PowerMode.msg"
+    "srv/PowerControl.srv"
+  DEPENDENCIES
+    std_msgs
+)
 
 #
 # Declare an ament Package

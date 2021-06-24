@@ -1,0 +1,11 @@
+################################################################################
+### Control power for a device
+################################################################################
+
+# Path to the device being powered
+string device
+
+# The new power state of type PowerMode
+string power_mode
+
+---
