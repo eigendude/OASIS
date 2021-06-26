@@ -4,7 +4,7 @@
 # https://help.github.com/actions/language-and-framework-guides/using-python-with-github-actions
 ################################################################################
 
-name: Oasis Python
+name: OASIS Python
 
 # Controls when the action will run. Triggers the workflow on push or pull
 # request events

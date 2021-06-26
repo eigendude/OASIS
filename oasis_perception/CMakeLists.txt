@@ -1,7 +1,7 @@
 ################################################################################
 #
 #  Copyright (C) 2021 Garrett Brown
-#  This file is part of Oasis - https://github.com/eigendude/oasis
+#  This file is part of OASIS - https://github.com/eigendude/OASIS
 #
 #  SPDX-License-Identifier: Apache-2.0
 #  See the file LICENSE.txt for more information.

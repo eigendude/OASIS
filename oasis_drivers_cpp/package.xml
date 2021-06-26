@@ -3,7 +3,7 @@
 <package format="3">
   <name>oasis_drivers_cpp</name>
   <version>0.0.1</version>
-  <description>C++ drivers for Oasis</description>
+  <description>C++ drivers for OASIS</description>
   <maintainer email="eigendebugger@gmail.com">Garrett Brown</maintainer>
   <license>Apache-2.0</license>
 

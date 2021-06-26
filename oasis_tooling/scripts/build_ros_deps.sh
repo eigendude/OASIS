@@ -2,7 +2,7 @@
 ################################################################################
 #
 #  Copyright (C) 2021 Garrett Brown
-#  This file is part of Oasis - https://github.com/eigendude/oasis
+#  This file is part of OASIS - https://github.com/eigendude/OASIS
 #
 #  SPDX-License-Identifier: Apache-2.0
 #  See the file LICENSE.txt for more information.
@@ -10,7 +10,7 @@
 ################################################################################
 
 #
-# Integration script to build ROS packages that Oasis depends on
+# Integration script to build ROS packages that OASIS depends on
 #
 # Dependencies are automatically installed by the script.
 #
@@ -46,7 +46,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # Directory of the ROS 2 package
 PACKAGE_DIRECTORY=${SCRIPT_DIR}/..
 
-# Directory of the Oasis repo
+# Directory of the OASIS repo
 REPO_DIRECTORY=${PACKAGE_DIRECTORY}/..
 
 # Subdirectory for ROS build files

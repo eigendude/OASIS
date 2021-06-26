@@ -3,7 +3,7 @@
 <package format="3">
   <name>oasis_visualization</name>
   <version>0.0.1</version>
-  <description>Visualization systems for Oasis</description>
+  <description>Visualization systems for OASIS</description>
   <maintainer email="eigendebugger@gmail.com">Garrett Brown</maintainer>
   <license>Apache-2.0</license>
 
