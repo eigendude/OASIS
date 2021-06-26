@@ -9,11 +9,14 @@
 ################################################################################
 
 #
-# Power modes
+# Telemetry about a network address
 #
 
-# Power is off
-string OFF=OFF
+# The adress family, e.g. IPv4, IPV6, etc.
+string family
 
-# Power is on
-string ON=ON
+# The network address
+string address
+
+# The netmask (used to mask the address for logical subnets)
+string netmask

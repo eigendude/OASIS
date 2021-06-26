@@ -24,9 +24,16 @@ find_package(std_msgs REQUIRED)
 
 rosidl_generate_interfaces(
   ${PROJECT_NAME}
-    "msg/PowerEvent.msg"
-    "msg/PowerMode.msg"
-    "srv/PowerControl.srv"
+    msg/DiskPartition.msg
+    msg/NetworkAddress.msg
+    msg/NetworkInterface.msg
+    msg/PowerEvent.msg
+    msg/PowerMode.msg
+    msg/SerialDevice.msg
+    msg/SerialDeviceScan.msg
+    msg/SystemTelemetry.msg
+    msg/UsbDevice.msg
+    srv/PowerControl.srv
   DEPENDENCIES
     std_msgs
 )

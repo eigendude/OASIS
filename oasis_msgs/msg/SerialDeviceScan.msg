@@ -9,11 +9,11 @@
 ################################################################################
 
 #
-# Power modes
+# Information about known serial port devices
 #
 
-# Power is off
-string OFF=OFF
+# The timestamp of the scan
+std_msgs/Header header
 
-# Power is on
-string ON=ON
+# The detected serial port devices
+SerialDevice[] serial_devices
