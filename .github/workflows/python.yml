@@ -36,6 +36,14 @@ jobs:
         uses: actions/checkout@v2
 
       # Required on self-hosted workers: sudo apt install python3.9-dev
+      #
+      # Furthermore, on Ubuntu 18.04, Python 3.9 backports don't exist yet, so
+      # you can use the deadsnakes repository:
+      #
+      #   sudo add-apt-repository ppa:deadsnakes/ppa
+      #   sudo apt update
+      #   sudo apt install python3.9-dev
+      #
       - name: Set up Python 3.9
         uses: actions/setup-python@v2
         with:
