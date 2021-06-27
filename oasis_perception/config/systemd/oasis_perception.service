@@ -11,7 +11,7 @@ After=network.target
 # TODO: Better way to define this
 #
 
-User=garrett
+User=ubuntu
 
 #
 # ROS 2 configuration

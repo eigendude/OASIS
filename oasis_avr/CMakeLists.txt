@@ -42,7 +42,7 @@ cmake_minimum_required(VERSION 3.11)
 cmake_host_system_information(RESULT HOST_NAME QUERY HOSTNAME)
 message(STATUS "Configuring for hostname: ${HOST_NAME}")
 
-if (HOST_NAME STREQUAL station)
+if (HOST_NAME STREQUAL station OR HOST_NAME STREQUAL ups)
   # Building conductor
   set(ARDUINO_VARIANT uno)
 
