@@ -38,20 +38,29 @@ class CecServerNode : public rclcpp::Node, public CEC::ICecCallback
 {
 public:
   CecServerNode();
+  ~CecServerNode() override;
 
+  // Getters
+  const std::string& GetSystemName() const { return m_systemName; }
+
+  // Lifecycle functions
   void RegisterServer(CEC::CecServer& cecServer);
   void UnregisterServer();
 
+  // Implementation of ICecCallback
   void OnPowerOn(const CEC::ICecAdapter& adapter) override;
   void OnPowerOff(const CEC::ICecAdapter& adapter) override;
 
 private:
+  // ROS interface
   void OnPowerControl(const std::shared_ptr<oasis_msgs::srv::PowerControl::Request> request,
       std::shared_ptr<oasis_msgs::srv::PowerControl::Response>);
 
+  // Internal details
   void PublishPowerEvent(const std::string& devicePath, bool bPowerOn);
 
   // ROS parameters
+  const std::string m_systemName;
   std::shared_ptr<rclcpp::Publisher<oasis_msgs::msg::PowerEvent>> m_publisher;
   rclcpp::Service<oasis_msgs::srv::PowerControl>::SharedPtr m_service; // TODO
 
