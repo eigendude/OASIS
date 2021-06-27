@@ -312,8 +312,7 @@ void CecAdapter::CecLogMessage(const ::CEC::cec_log_message* message)
     RCLCPP_INFO(m_logger, "[%s] %s", m_deviceNode.c_str(), message->message);
     break;
   case ::CEC::CEC_LOG_TRAFFIC:
-    // TODO: Ignore
-    RCLCPP_DEBUG(m_logger, "[%s] %s", m_deviceNode.c_str(), message->message);
+    // Ignored
     break;
   case ::CEC::CEC_LOG_DEBUG:
     RCLCPP_DEBUG(m_logger, "[%s] %s", m_deviceNode.c_str(), message->message);
