@@ -12,7 +12,7 @@ Wants=network-online.target
 # TODO: Better way to define this
 #
 
-User=garrett
+User=ubuntu
 Environment=XDG_RUNTIME_DIR=/run/user/1000
 
 #
