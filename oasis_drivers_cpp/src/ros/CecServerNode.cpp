@@ -21,7 +21,7 @@ namespace
 {
 constexpr const char* NODE_NAME = "cec_server";
 
-constexpr const char* MACHINE_NAME = "zotac"; // TODO
+constexpr const char* MACHINE_NAME = "patio"; // TODO
 
 constexpr const char* POWER_EVENT_TOPIC = "power_event";
 constexpr const char* POWER_CONTROL_SERVICE = "power_control";
