@@ -24,7 +24,7 @@ Environment=RMW_IMPLEMENTATION=rmw_fastrtps_dynamic_cpp
 # Path configuration
 #
 
-Environment=OASIS_ENV=/opt/ros/${ROS2_DISTRO}/setup.bash
+Environment=OASIS_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/oasis-${ROS2_DISTRO}/install/setup.bash
 
 #
 # Service definition
