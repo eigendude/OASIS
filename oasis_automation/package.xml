@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>oasis_automation</name>
+  <version>0.0.1</version>
+  <description>Automation systems for OASIS</description>
+  <author email="eigendebugger@gmail.com">Garrett Brown</author>
+  <maintainer email="eigendebugger@gmail.com">Garrett Brown</maintainer>
+  <license>Apache-2.0</license>
+  <url type="website">https://github.com/eigendude/OASIS</url>
+  <url type="bugtracker">https://github.com/eigendude/OASIS/issues</url>
+  <url type="repository">https://github.com/eigendude/OASIS.git</url>
+
+  <exec_depend>oasis_msgs</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+  <!-- TODO: Tox depends
+  <test_depend></test_depend>
+  -->
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
