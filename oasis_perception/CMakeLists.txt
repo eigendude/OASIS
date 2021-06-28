@@ -78,7 +78,11 @@ include_directories(
 # Executables
 #
 
-add_executable(background_subtractor src/bgsnode.cpp)
+add_executable(background_subtractor
+  src/image/BackgroundModeler.cpp
+  src/ros/BackgroundModelerNode.cpp
+  src/background_subtractor.cpp
+)
 
 ament_target_dependencies(background_subtractor
   cv_bridge
@@ -119,6 +123,17 @@ if(BUILD_TESTING)
 
   ament_lint_auto_find_test_dependencies()
 endif()
+
+#
+# Launch files
+#
+
+install(
+  FILES
+    launch/perception_launch.py
+  DESTINATION
+    share/${PROJECT_NAME}
+)
 
 #
 # Declare an ament Package
