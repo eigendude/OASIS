@@ -136,6 +136,17 @@ install(
 )
 
 #
+# Systemd services
+#
+
+install(
+  FILES
+    config/systemd/oasis_perception.service
+  DESTINATION
+    share/${PROJECT_NAME}/systemd
+)
+
+#
 # Declare an ament Package
 #
 
