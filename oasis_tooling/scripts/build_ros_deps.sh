@@ -141,6 +141,15 @@ function install() {
   ; do
     dpkg -s ${package} >/dev/null || sudo apt install -y ${package}
   done
+
+  # Needed for libfreenect2
+  for package in \
+      libturbojpeg0-dev \
+      libusb-1.0-0-dev \
+      ocl-icd-opencl-dev \
+  ; do
+    dpkg -s ${package} >/dev/null || sudo apt install -y ${package}
+  done
 }
 
 #
