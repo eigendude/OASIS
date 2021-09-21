@@ -31,7 +31,7 @@ set -o nounset
 #
 
 # Define the ROS distro to use
-ROS2_DISTRO=foxy
+ROS2_DISTRO=galactic
 
 #
 # Environment paths
@@ -66,6 +66,9 @@ ROS2_DEPEND_DIRECTORY=${BUILD_DIRECTORY}/ros2-depends-${ROS2_DISTRO}
 
 # Directory for ROS 2 sources
 SOURCE_DIRECTORY="${ROS2_DEPEND_DIRECTORY}/src"
+
+# Directory for ROS 2 dependency rep;os
+IMAGE_TRANSPORT_PLUGINS_REPO_DIR="${SOURCE_DIRECTORY}/ros-perception/image_transport_plugins"
 
 # Ensure directory exists
 mkdir -p "${SOURCE_DIRECTORY}"
@@ -128,6 +131,11 @@ function install() {
 #
 
 function build() {
+  # Patch packages
+  # TODO: This revert is only needed for OpenCV < 3.4 (Ubuntu 18.04 ships with 3.2)
+  cd "${IMAGE_TRANSPORT_PLUGINS_REPO_DIR}"
+  git revert --no-commit 7ca907277eda51ec2fbb71409bda33d1395d6127
+
   cd "${ROS2_DEPEND_DIRECTORY}"
   PATH="${CMAKE_BIN_DIRECTORY}:${PATH}" \
     `#MAKEFLAGS="-j1 -l1"` \

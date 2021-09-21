@@ -28,7 +28,7 @@ set -o nounset
 #
 
 # Define the ROS distro to use
-ROS2_DISTRO=foxy
+ROS2_DISTRO=galactic
 
 #
 # Environment paths
@@ -143,7 +143,7 @@ sudo apt install -y --no-install-recommends libcunit1-dev
 echo "Downloading ROS 2 source code..."
 (
   cd "${SOURCE_DIRECTORY}"
-  wget --timestamping "https://raw.githubusercontent.com/ros2/ros2/foxy/ros2.repos"
+  wget --timestamping "https://raw.githubusercontent.com/ros2/ros2/${ROS2_DISTRO}/ros2.repos"
   vcs import "${SOURCE_DIRECTORY}" < ros2.repos
 )
 

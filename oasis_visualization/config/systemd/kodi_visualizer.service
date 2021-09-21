@@ -7,7 +7,7 @@ Type=simple
 User=garrett
 #EnvironmentFile=/etc/default/sundstrom_env
 Environment=DISPLAY=:0
-Environment=ROS2_DISTRO=foxy
+Environment=ROS2_DISTRO=galactic
 Environment=ROS2_SYSTEM_ENV=/opt/ros/${ROS2_DISTRO}/setup.bash
 Environment=ROS2_DESKTOP_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/ros2-desktop-${ROS2_DISTRO}/install/setup.bash
 Environment=ROS2_DEPENDS_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/ros2-depends-${ROS2_DISTRO}/install/setup.bash

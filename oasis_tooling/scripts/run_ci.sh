@@ -29,7 +29,7 @@ set -o nounset
 #
 
 # Define the ROS distro to use
-ROS2_DISTRO=foxy
+ROS2_DISTRO=galactic
 
 #
 # Environment paths
