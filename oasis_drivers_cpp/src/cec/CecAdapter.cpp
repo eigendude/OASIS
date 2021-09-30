@@ -361,6 +361,13 @@ void CecAdapter::CecCommand(const ::CEC::cec_command* command)
 
     break;
   }
+  case ::CEC::CEC_OPCODE_ROUTING_CHANGE:
+  {
+    // This seems to be emitted when CEC-compliant TVs are powered on
+    OnPowerOn();
+
+    break;
+  }
   case ::CEC::CEC_OPCODE_DEVICE_VENDOR_ID:
   {
     if (command->parameters.size != 3)
