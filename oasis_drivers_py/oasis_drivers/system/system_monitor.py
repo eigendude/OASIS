@@ -60,8 +60,21 @@ class SystemMonitor:
         cpu_percent = float(psutil.cpu_percent())
         cpu_temperature = cls._read_cpu_temperature()
         cpu_frequency_ghz = cls._read_cpu_frequency_ghz()
-        cpu_physical_core_count = int(psutil.cpu_count(logical=False))
         cpu_logical_core_count = int(psutil.cpu_count(logical=True))
+
+        #
+        # psutil.cpu_count() can return None on RPi because /proc/cpuinfo has a
+        # different format and psutil doesn't want to play guessing games.
+        #
+        # See:
+        #
+        #   https://github.com/giampaolo/psutil/issues/1078
+        #
+        try:
+            cpu_physical_core_count = int(psutil.cpu_count(logical=False))
+        except TypeError:
+            cpu_physical_core_count = cpu_logical_core_count
+
         memory_percent = float(psutil.virtual_memory().percent)
         disk_partitions = cls._get_disk_partitions()
         network_interfaces = cls._get_network_interfaces()
