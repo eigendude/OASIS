@@ -18,5 +18,9 @@ Restart=always
 [Install]
 WantedBy=multi-user.target
 
+
+# To install:
+# sudo cp kodi_visualizer.service /etc/systemd/system/
+
 # To enable at startup:
-#sudo ln -s /etc/systemd/system/kodi_visualizer.service /etc/systemd/system/multi-user.target.wants/kodi_visualizer.service
+# sudo ln -s /etc/systemd/system/kodi_visualizer.service /etc/systemd/system/multi-user.target.wants/kodi_visualizer.service
