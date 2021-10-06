@@ -28,6 +28,7 @@ def generate_launch_description() -> LaunchDescription:
         remappings=[
             # TODO: Hardware configuration
             ("power_event", "zotac/power_event"),
+            ("power_control_asus", "asus/power_control"),
             ("power_control_lenovo", "lenovo/power_control"),
             ("power_control_netbook", "netbook/power_control"),
         ],

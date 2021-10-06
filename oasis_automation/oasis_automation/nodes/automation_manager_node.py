@@ -40,7 +40,7 @@ NODE_NAME = "automation_manager"
 POWER_EVENT_TOPIC = "power_event"
 
 POWER_CONTROL_SERVICES = [
-    "power_control_lenovo",
+    "power_control_asus",
     "power_control_netbook",
 ]
 
