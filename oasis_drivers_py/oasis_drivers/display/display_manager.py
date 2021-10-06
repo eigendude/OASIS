@@ -37,6 +37,11 @@ class DisplayManager:
                 logger.error(
                     f'vbetool returned {retcode}, try running "sudo chmod u+s /usr/sbin/vbetool"'
                 )
+                # Could also be an LRMI permissions error, see:
+                #   https://bugs.launchpad.net/ubuntu/+source/vbetool/+bug/1875240
+                logger.error(
+                    'If that doesn\'t work, try "sudo mount -o remount,exec /dev" on every boot',
+                )
             else:
                 logger.info(f"Power {power_mode_string} success")
         except FileNotFoundError:
