@@ -41,6 +41,7 @@ POWER_EVENT_TOPIC = "power_event"
 
 POWER_CONTROL_SERVICES = [
     "power_control_asus",
+    "power_control_lenovo",
     "power_control_netbook",
 ]
 
@@ -102,6 +103,8 @@ class AutomationManagerNode(rclpy.node.Node):
             # Cancel previous service call if one is in-flight
             in_flight: Optional[rclpy.task.Future] = self._in_flight_calls.get(service)
             if in_flight is not None:
+                self.get_logger().debug(f"Cancelling power {power_mode} for {service}")
                 in_flight.cancel()
 
+            self.get_logger().debug(f"Sending power {power_mode} for {service}")
             self._in_flight_calls[service] = service_client.call_async(request)
