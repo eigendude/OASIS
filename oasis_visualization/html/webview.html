@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html
+  xmlns="http://www.w3.org/1999/xhtml"
+  lang="en-US"
+  xml:lang="en-US"
+>
+  <head>
+    <title>NOT VERY GOOD PERSON TRACKER</title>
+    <script type="module">
+      // Go full-screen
+      function enterFullscreen() {
+        const canvas = document.getElementById('renderCanvas');
+
+        if (canvas.requestFullscreen) {
+          canvas.requestFullscreen();
+        } else if (canvas.webkitRequestFullscreen) {
+          canvas.webkitRequestFullscreen();
+        } else if (canvas.mozRequestFullScreen) {
+          canvas.mozRequestFullScreen();
+        } else if (canvas.msRequestFullscreen) {
+          canvas.msRequestFullscreen();
+        }
+      }
+
+      // Exit full-screen
+      function leaveFullscreen() {
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+          document.webkitExitFullscreen();
+        } else if (document.mozCancelFullScreen) {
+          document.mozCancelFullScreen();
+        } else if (document.msExitFullscreen) {
+          document.msExitFullscreen();
+        }
+      }
+
+      // Handle full-screen selection
+      window.onFullscreenSelect = function () {
+        // Are we full-screen?
+        const inFullscreen =
+          document.fullscreenElement ||
+          document.webkitFullscreenElement ||
+          document.mozFullScreenElement ||
+          document.msFullscreenElement;
+
+        if (inFullscreen) {
+          leaveFullscreen();
+        } else {
+          enterFullscreen();
+        }
+      }
+    </script>
+    <style>
+      #mainBody {
+        position: absolute;
+        width: 100%;
+        margin-top: 20px;
+        font-size: 30px;
+        text-align: center;
+      }
+
+      #renderCanvas {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="mainBody" onclick="window.onFullscreenSelect()">
+      <h1>NOT VERY GOOD PERSON TRACKER</h1>
+    </div>
+    <canvas id="renderCanvas"></canvas>
+  </body>
+</html>
