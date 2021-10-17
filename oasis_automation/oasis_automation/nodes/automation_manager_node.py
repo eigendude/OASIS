@@ -13,8 +13,7 @@
 # Automation manager
 #
 
-from typing import Dict
-from typing import List
+import random  # TODO: Remove me
 from typing import Optional
 
 import rclpy.client
@@ -35,15 +34,13 @@ from oasis_msgs.srv import PowerControl as PowerControlSvc
 
 ROS_NAMESPACE = "oasis"
 
-NODE_NAME = "automation_manager"
+NODE_NAME = (
+    f"automation_manager_{random.randrange(1000, 9999)}"  # TODO: Better node naming
+)
 
 POWER_EVENT_TOPIC = "power_event"
 
-POWER_CONTROL_SERVICES = [
-    "power_control_asus",
-    "power_control_lenovo",
-    "power_control_netbook",
-]
+POWER_CONTROL_SERVICE = "power_control"
 
 ################################################################################
 # ROS node
@@ -80,11 +77,10 @@ class AutomationManagerNode(rclpy.node.Node):
         )
 
         # Service clients
-        self._power_control_clients: List[rclpy.client.Client] = [
-            self.create_client(srv_type=PowerControlSvc, srv_name=service)
-            for service in POWER_CONTROL_SERVICES
-        ]
-        self._in_flight_calls: Dict[str, rclpy.task.Future] = {}
+        self._power_control_client: rclpy.client.Client = self.create_client(
+            srv_type=PowerControlSvc, srv_name=POWER_CONTROL_SERVICE
+        )
+        self._in_flight_call: Optional[rclpy.task.Future] = None
 
         self.get_logger().info("Automation manager initialized")
 
@@ -95,16 +91,16 @@ class AutomationManagerNode(rclpy.node.Node):
         request.device = ""  # TODO
         request.power_mode = power_mode
 
-        self.get_logger().debug(f"Received power {power_mode} event")
+        self.get_logger().debug(
+            f'Received power {power_mode} event for device "{power_event_msg.device}"'
+        )
 
-        for service_client in self._power_control_clients:
-            service: str = service_client.srv_name
+        service: str = self._power_control_client.srv_name
 
-            # Cancel previous service call if one is in-flight
-            in_flight: Optional[rclpy.task.Future] = self._in_flight_calls.get(service)
-            if in_flight is not None:
-                self.get_logger().debug(f"Cancelling power {power_mode} for {service}")
-                in_flight.cancel()
+        # Cancel previous service call if one is in-flight
+        if self._in_flight_call is not None:
+            self.get_logger().debug(f"Cancelling previous power command for {service}")
+            self._in_flight_call.cancel()
 
-            self.get_logger().debug(f"Sending power {power_mode} for {service}")
-            self._in_flight_calls[service] = service_client.call_async(request)
+        self.get_logger().debug(f"Sending power {power_mode} for {service}")
+        self._in_flight_call = self._power_control_client.call_async(request)

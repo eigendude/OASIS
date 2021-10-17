@@ -20,7 +20,7 @@ PACKAGE_NAME = "oasis_automation"
 def generate_launch_description() -> LaunchDescription:
     ld = LaunchDescription()
 
-    manager_node = Node(
+    asus_manager_node = Node(
         namespace=ROS_NAMESPACE,
         package=PACKAGE_NAME,
         executable="automation_manager",
@@ -28,11 +28,48 @@ def generate_launch_description() -> LaunchDescription:
         remappings=[
             # TODO: Hardware configuration
             ("power_event", "zotac/power_event"),
-            ("power_control_asus", "asus/power_control"),
-            ("power_control_lenovo", "lenovo/power_control"),
-            ("power_control_netbook", "netbook/power_control"),
+            ("power_control", "asus/power_control"),
         ],
     )
-    ld.add_action(manager_node)
+    ld.add_action(asus_manager_node)
+
+    lenovo_manager_node = Node(
+        namespace=ROS_NAMESPACE,
+        package=PACKAGE_NAME,
+        executable="automation_manager",
+        output="screen",
+        remappings=[
+            # TODO: Hardware configuration
+            ("power_event", "zotac/power_event"),
+            ("power_control", "lenovo/power_control"),
+        ],
+    )
+    ld.add_action(lenovo_manager_node)
+
+    netbook_manager_node = Node(
+        namespace=ROS_NAMESPACE,
+        package=PACKAGE_NAME,
+        executable="automation_manager",
+        output="screen",
+        remappings=[
+            # TODO: Hardware configuration
+            ("power_event", "zotac/power_event"),
+            ("power_control", "netbook/power_control"),
+        ],
+    )
+    ld.add_action(netbook_manager_node)
+
+    hue_manager_node = Node(
+        namespace=ROS_NAMESPACE,
+        package=PACKAGE_NAME,
+        executable="automation_manager",
+        output="screen",
+        remappings=[
+            # TODO: Hardware configuration
+            ("power_event", "rpi/power_event"),
+            ("power_control", "hue/power_control"),
+        ],
+    )
+    ld.add_action(hue_manager_node)
 
     return ld
