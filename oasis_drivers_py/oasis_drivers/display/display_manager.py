@@ -19,6 +19,11 @@ class DisplayManager:
     Dependencies:
 
       * vbetool - Needs setuid, run "sudo chmod u+s /usr/sbin/vbetool"
+
+    Starting with Ubuntu 20.04, you need to run this command after startup:
+
+      sudo mount -o remount,exec /dev
+
     """
 
     @staticmethod
