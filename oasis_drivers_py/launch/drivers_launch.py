@@ -26,6 +26,7 @@ ENABLE_DISPLAY = True
 ENABLE_VIDEO = True
 VIDEO_DEVICE = "/dev/video0"
 IMAGE_SIZE = [640, 480]
+ENABLE_KINECT_V2 = False
 
 # TODO: Temporary
 print(f"Launching on {MACHINE}")
@@ -110,5 +111,14 @@ def generate_launch_description() -> LaunchDescription:
             ],
         )
         ld.add_action(v4l2_node)
+
+    if ENABLE_KINECT_V2:
+        kinect_v2_node = Node(
+            namespace=ROS_NAMESPACE,
+            package="kinect2_bridge",
+            executable="kinect2_bridge",
+            output="screen",
+        )
+        ld.add_action(kinect_v2_node)
 
     return ld
