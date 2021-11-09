@@ -30,6 +30,14 @@ set -o nounset
 # Define the ROS distro to use
 ROS2_DISTRO=galactic
 
+# Default values
+MAKE_FLAGS=
+COLCON_FLAGS="--merge-install"
+
+# Uncomment these to force building in serial
+#MAKE_FLAGS+="-j1 -l1"
+#COLCON_FLAGS+=" --executor sequential"
+
 #
 # Environment paths
 #
@@ -142,6 +150,7 @@ echo "Building ROS 2..."
 (
   cd "${ROS2_DESKTOP_DIRECTORY}"
   PATH="${CMAKE_BIN_DIRECTORY}:${PATH}" \
-    `#MAKEFLAGS="-j1 -l1"` \
-    colcon build `#--executor sequential`
+    MAKE_FLAGS="${MAKE_FLAGS}" \
+    colcon build \
+      ${COLCON_FLAGS}
 )
