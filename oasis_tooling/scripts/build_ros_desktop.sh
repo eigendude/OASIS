@@ -68,46 +68,6 @@ touch "${BUILD_DIRECTORY}/CATKIN_IGNORE"
 touch "${BUILD_DIRECTORY}/COLCON_IGNORE"
 
 #
-# Build configuration
-#
-
-# Get current OS distro
-DISTRO=$(lsb_release -cs)
-
-# Decide if ROS 2 needs to be compiled
-case ${DISTRO} in
-  # Ubuntu 18.04
-  bionic)
-    BUILD_ROS2_DESKTOP=1
-    ;;
-  # Ubuntu 20.04
-  focal)
-    BUILD_ROS2_DESKTOP=0
-    ;;
-  # Ubuntu 21.04
-  hirsute)
-    BUILD_ROS2_DESKTOP=1
-    ;;
-  *)
-    echo "Unknown distro: ${DISTRO}"
-    BUILD_ROS2_DESKTOP=1
-    ;;
-esac
-
-#
-# Check for system ROS 2
-#
-
-# If we don't need to build ROS 2, exit now
-if [ ${BUILD_ROS2_DESKTOP} -eq 0 ]; then
-  echo "Using system ROS 2"
-  exit 0
-else
-  echo "Building ROS 2"
-  echo
-fi
-
-#
 # If ROS 2 is not available from the system, we need to install dependencies
 # required to build it.
 #

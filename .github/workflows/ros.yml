@@ -84,11 +84,6 @@ jobs:
         run: |
           python3 -m pip install --upgrade numpy
 
-      - name: Install ROS 2
-        if: matrix.os == 'ubuntu-20.04'
-        run: |
-          sudo apt install -y ros-${{ matrix.ros2_distro }}-ros-base
-
       - name: Build CMake
         if: steps.restore-cmake.outputs.cache-hit != 'true'
         run: ./oasis_tooling/scripts/build_cmake.sh
