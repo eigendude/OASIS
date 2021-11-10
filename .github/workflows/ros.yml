@@ -82,6 +82,11 @@ jobs:
         run: |
           python3 -m pip install --upgrade numpy
 
+      # This was needed to link after caching something weird
+      - name: Install libspdlog-dev
+        run: |
+          sudo apt install libspdlog-dev
+
       - name: Build CMake
         if: steps.restore-cmake.outputs.cache-hit != 'true'
         run: ./oasis_tooling/scripts/build_cmake.sh
