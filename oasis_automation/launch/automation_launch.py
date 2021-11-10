@@ -33,6 +33,19 @@ def generate_launch_description() -> LaunchDescription:
     )
     ld.add_action(asus_manager_node)
 
+    inspiron_manager_node = Node(
+        namespace=ROS_NAMESPACE,
+        package=PACKAGE_NAME,
+        executable="automation_manager",
+        output="screen",
+        remappings=[
+            # TODO: Hardware configuration
+            ("power_event", "zotac/power_event"),
+            ("power_control", "inspiron/power_control"),
+        ],
+    )
+    ld.add_action(inspiron_manager_node)
+
     lenovo_manager_node = Node(
         namespace=ROS_NAMESPACE,
         package=PACKAGE_NAME,
