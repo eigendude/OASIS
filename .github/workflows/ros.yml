@@ -85,7 +85,7 @@ jobs:
       # This was needed to link after caching something weird
       - name: Install libspdlog-dev
         run: |
-          sudo apt install libspdlog-dev
+          sudo apt install -y libspdlog-dev
 
       - name: Build CMake
         if: steps.restore-cmake.outputs.cache-hit != 'true'
