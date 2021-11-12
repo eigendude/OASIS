@@ -51,7 +51,7 @@ jobs:
         with:
           path: |
             ros-ws/ros2-desktop-${{ matrix.ros2_distro }}/install
-          key: build-ros2-desktop-${{ matrix.os }}-${{ matrix.ros2_distro }}-${{ hashFiles('oasis_tooling/scripts/build_ros_desktop.sh') }}
+          key: build-ros2-desktop-${{ matrix.os }}-${{ matrix.ros2_distro }}-${{ hashFiles('oasis_tooling/config/0001-Change-rcpputils-to-master-branch.patch', 'oasis_tooling/scripts/build_ros_desktop.sh') }}
 
       - name: Restore ROS 2 dependencies
         id: restore-ros2-depends

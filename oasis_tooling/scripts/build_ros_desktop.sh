@@ -104,6 +104,14 @@ echo "Downloading ROS 2 source code..."
 (
   cd "${SOURCE_DIRECTORY}"
   wget --timestamping "https://raw.githubusercontent.com/ros2/ros2/${ROS2_DISTRO}/ros2.repos"
+
+  patch \
+    -p1 \
+    --forward \
+    --reject-file="/dev/null" \
+    --no-backup-if-mismatch \
+    < "${PACKAGE_DIRECTORY}/config/0001-Change-rcpputils-to-master-branch.patch"
+
   vcs import "${SOURCE_DIRECTORY}" < ros2.repos
 )
 
