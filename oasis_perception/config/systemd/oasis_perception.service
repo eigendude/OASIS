@@ -13,7 +13,7 @@ Environment=ROS2_PROJECT_DIR=/home/${USER}/Documents/ros-ws/src/oasis
 Environment=DISPLAY=:0
 ExecStart=/bin/bash -c '( [ ! -f `eval echo "${ROS2_SYSTEM_ENV}"` ] || . `eval echo "${ROS2_SYSTEM_ENV}"` ) && ( [ ! -f `eval echo "${ROS2_DESKTOP_ENV}"` ] || . `eval echo "${ROS2_DESKTOP_ENV}"` ) && . `eval echo "${ROS2_DEPENDS_ENV}"` && . `eval echo "${ROS2_PROJECT_ENV}"` && cd `eval echo "${ROS2_PROJECT_DIR}/oasis_perception"` && ros2 launch --debug oasis_perception perception_launch.py'
 Restart=on-failure
-RuntimeMaxSec=600
+RuntimeMaxSec=60
 
 [Install]
 WantedBy=multi-user.target
