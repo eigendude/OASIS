@@ -132,6 +132,15 @@ function install() {
 
   # TODO: image_transport needs libtinyxml2-dev indirectly
   dpkg -s libtinyxml2-dev >/dev/null || sudo apt install -y libtinyxml2-dev
+
+  # Needed for OpenNI
+  for package in \
+      default-jdk \
+      libudev-dev \
+      libusb-1.0-0-dev \
+  ; do
+    dpkg -s ${package} >/dev/null || sudo apt install -y ${package}
+  done
 }
 
 #

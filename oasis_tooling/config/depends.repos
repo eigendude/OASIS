@@ -3,6 +3,11 @@ repositories:
     type: git
     url: https://github.com/garbear/libcec.git
     version: ament
+  # Requires: default-jdk libudev-dev libusb-1.0-0-dev
+  depends/OpenNI2:
+    type: git
+    url: https://github.com/eigendude/OpenNI2.git
+    version: ament
   depends/p8-platform:
     type: git
     url: https://github.com/garbear/p8-platform.git
