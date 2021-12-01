@@ -37,6 +37,9 @@ ROS2_DISTRO=galactic
 MAKE_FLAGS=
 COLCON_FLAGS="--merge-install"
 
+# Add ccache support
+COLCON_FLAGS+=" --cmake-args -DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
+
 # Uncomment these to force building in serial
 #MAKE_FLAGS+="-j1 -l1"
 #COLCON_FLAGS+=" --executor sequential"
@@ -129,6 +132,9 @@ function install() {
     --ignore-src \
     --rosdistro ${ROS2_DISTRO} \
     -y
+
+  # Add ccache support
+  dpkg -s ccache >/dev/null || sudo apt install -y ccache
 
   # TODO: image_transport needs libtinyxml2-dev indirectly
   dpkg -s libtinyxml2-dev >/dev/null || sudo apt install -y libtinyxml2-dev

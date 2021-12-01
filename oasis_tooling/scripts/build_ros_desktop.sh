@@ -34,6 +34,9 @@ ROS2_DISTRO=galactic
 MAKE_FLAGS=
 COLCON_FLAGS="--merge-install"
 
+# Add ccache support
+COLCON_FLAGS+=" --cmake-args -DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
+
 # Uncomment these to force building in serial
 #MAKE_FLAGS+="-j1 -l1"
 #COLCON_FLAGS+=" --executor sequential"
@@ -93,7 +96,7 @@ sudo sh -c 'echo "deb [arch=$(dpkg --print-architecture)] http://packages.ros.or
 sudo apt update
 
 # Install development tools and ROS tools
-sudo apt install -y build-essential cmake git gfortran libbullet-dev python3-colcon-common-extensions python3-flake8 python3-pip python3-pytest-cov python3-rosdep python3-setuptools python3-vcstool wget
+sudo apt install -y build-essential ccache cmake git gfortran libbullet-dev python3-colcon-common-extensions python3-flake8 python3-pip python3-pytest-cov python3-rosdep python3-setuptools python3-vcstool wget
 
 # Install some pip packages needed for testing
 python3 -m pip install -U argcomplete flake8-blind-except flake8-builtins flake8-class-newline flake8-comprehensions flake8-deprecated flake8-docstrings flake8-import-order flake8-quotes pytest-repeat pytest-rerunfailures pytest
