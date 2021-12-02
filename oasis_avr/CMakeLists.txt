@@ -106,11 +106,140 @@ project(oasis_avr)
 
 ################################################################################
 #
+# Build configuration
+#
+################################################################################
+
+# Default to C++20
+if(NOT CMAKE_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD 20)
+endif()
+
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+################################################################################
+#
 # Dependencies
 #
 ################################################################################
 
 find_package(ament_cmake REQUIRED)
+
+################################################################################
+#
+# C++ libraries
+#
+################################################################################
+
+#
+# Firmata
+#
+
+add_library(oasis_avr_firmata
+  src/firmata/firmata_analog.cpp
+  src/firmata/firmata_callbacks.cpp
+  src/firmata/firmata_digital.cpp
+  src/firmata/firmata_thread.cpp
+  src/firmata/firmata_utils.cpp
+)
+
+target_link_arduino_libraries(oasis_avr_firmata PRIVATE
+  core
+  FirmataExpress
+  Scheduler
+)
+
+#
+# LEDs
+#
+
+add_library(oasis_avr_leds
+  src/leds/heartbeat_thread.cpp
+)
+
+target_link_arduino_libraries(oasis_avr_leds PRIVATE
+  core
+  Scheduler
+)
+
+#
+# Utils
+#
+
+add_library(oasis_avr_utils
+  src/utils/delete.cpp
+  src/utils/timer.cpp
+)
+
+target_link_arduino_libraries(oasis_avr_utils PRIVATE
+  core
+)
+
+################################################################################
+#
+# C++ nodes
+#
+################################################################################
+
+#
+# regulator_node
+#
+
+add_executable(regulator_node
+  src/ros/regulator_node.cpp
+)
+
+target_link_libraries(regulator_node PRIVATE
+  oasis_avr_firmata
+  oasis_avr_leds
+  oasis_avr_utils
+)
+
+target_link_arduino_libraries(regulator_node PRIVATE
+  core
+  FirmataExpress
+  Scheduler
+)
+
+# This is needed for the generation of HEX binary and uploading it
+target_enable_arduino_upload(regulator_node)
+
+install(
+  TARGETS
+    regulator_node
+  DESTINATION
+    share/${PROJECT_NAME}
+)
+
+#
+# station_node
+#
+
+add_executable(station_node
+  src/ros/station_node.cpp
+)
+
+target_link_libraries(station_node PRIVATE
+  oasis_avr_firmata
+  oasis_avr_leds
+  oasis_avr_utils
+)
+
+target_link_arduino_libraries(station_node PRIVATE
+  core
+  FirmataExpress
+  Scheduler
+)
+
+# This is needed for the generation of HEX binary and uploading it
+target_enable_arduino_upload(station_node)
+
+install(
+  TARGETS
+    station_node
+  DESTINATION
+    share/${PROJECT_NAME}
+)
 
 ################################################################################
 #
