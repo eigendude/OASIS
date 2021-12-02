@@ -33,34 +33,6 @@ CMAKE_VERSION="3.21.4"
 CMAKE_URL="https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}.tar.gz"
 
 #
-# Check for system CMake with sufficient version
-#
-
-# We only need to build CMake if the system version is too old
-CMAKE_MIN_REQUIRED=16
-
-# Read system CMake version
-EXISTING_CMAKE_VERSION=$(cmake --version | head -n 1 | awk '{print $$3}')
-EXISTING_CMAKE_VERSION_MAJOR=$(echo ${EXISTING_CMAKE_VERSION} | cut -f1 -d.)
-EXISTING_CMAKE_VERSION_MINOR=$(echo ${EXISTING_CMAKE_VERSION} | cut -f2 -d.)
-
-# Decide if we should build CMake
-if [ ${EXISTING_CMAKE_VERSION_MINOR} -lt ${CMAKE_MIN_REQUIRED} ]; then
-  BUILD_CMAKE=1
-else
-  BUILD_CMAKE=0
-fi
-
-# If we don't need to build CMake, exit now
-if [ ${BUILD_CMAKE} -eq 0 ]; then
-  echo "Using system CMake version ${EXISTING_CMAKE_VERSION_MAJOR}.${EXISTING_CMAKE_VERSION_MINOR}"
-  exit 0
-else
-  echo "Building CMake ${CMAKE_VERSION}"
-  echo
-fi
-
-#
 # Directory and path definitions
 #
 
