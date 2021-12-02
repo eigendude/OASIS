@@ -23,8 +23,10 @@ jobs:
         include:
           - os: ubuntu-18.04
             ros2_distro: galactic
+            arduino_ide: 1.8.16
           - os: ubuntu-20.04
             ros2_distro: galactic
+            arduino_ide: 1.8.16
 
     # Steps represent a sequence of tasks that will be executed as part of the
     # job
@@ -71,6 +73,14 @@ jobs:
             ros-ws/ros2-depends-${{ matrix.ros2_distro }}/install
           key: build-ros2-depends-${{ matrix.os }}-${{ matrix.ros2_distro }}-${{ hashFiles('oasis_tooling/config/depends.repos', 'oasis_tooling/scripts/build_ros_deps.sh') }}
 
+      - name: Restore Arduino IDE
+        id: restore-arduino-ide
+        uses: actions/cache@v2
+        with:
+          path: |
+            oasis_avr/arduino-${{ matrix.arduino_ide }}
+          key: restore-arduino-ide-${{ matrix.arduino_ide }}
+
       - name: Add ROS 2 repo
         run: |
           curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | sudo apt-key add -
@@ -115,6 +125,10 @@ jobs:
 
       - name: Install rosdeps
         run: ./oasis_tooling/scripts/run_ci.sh install
+
+      - name: Bootstrap AVR toolchain
+        run: |
+          ./oasis_avr/bootstrap.sh
 
       - name: colcon build
         run: ./oasis_tooling/scripts/run_ci.sh build

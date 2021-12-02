@@ -1,3 +1,6 @@
 [submodule "oasis_perception/lib/bgslibrary"]
 	path = oasis_perception/lib/bgslibrary
 	url = https://github.com/andrewssobral/bgslibrary.git
+[submodule "oasis_avr/cmake/Arduino-CMake-Toolchain"]
+	path = oasis_avr/cmake/Arduino-CMake-Toolchain
+	url = https://github.com/a9183756-gh/Arduino-CMake-Toolchain.git
