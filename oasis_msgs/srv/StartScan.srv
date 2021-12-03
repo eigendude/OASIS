@@ -1,0 +1,5 @@
+string interface
+bool passive
+uint32[] channels
+string[] ssids
+---

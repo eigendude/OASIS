@@ -52,10 +52,14 @@ rosidl_generate_interfaces(
     msg/Throttle.msg
     msg/UsbDevice.msg
     msg/Wheel.msg
+    msg/WiFiScanData.msg
+    msg/WiFiStationData.msg
     srv/AnalogRead.srv
     srv/CaptureInput.srv
+    srv/CheckIsWireless.srv
     srv/DigitalRead.srv
     srv/DigitalWrite.srv
+    srv/EndScan.srv
     srv/PowerControl.srv
     srv/PWMWrite.srv
     srv/ReportMCUMemory.srv
@@ -63,6 +67,7 @@ rosidl_generate_interfaces(
     srv/SetAnalogMode.srv
     srv/SetDigitalMode.srv
     srv/SetSamplingInterval.srv
+    srv/StartScan.srv
   DEPENDENCIES
     std_msgs
 )
