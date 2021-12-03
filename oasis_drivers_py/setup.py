@@ -81,6 +81,7 @@ setuptools.setup(
             "serial_scanner = oasis_drivers.cli.serial_scanner:main",
             "system_monitor = oasis_drivers.cli.system_monitor:main",
             "telemetrix_bridge = oasis_drivers.cli.telemetrix_bridge:main",
+            "wifi_manager = oasis_drivers.cli.wifi_manager:main",
         ],
     },
 )

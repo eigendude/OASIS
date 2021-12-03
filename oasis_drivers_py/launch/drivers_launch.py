@@ -44,6 +44,7 @@ ENABLE_DISPLAY = False
 ENABLE_FIRMATA = False
 ENABLE_KINECT_V2 = False
 ENABLE_VIDEO = False
+ENABLE_WIFI = False
 
 # Video parameters
 VIDEO_DEVICE = "/dev/video0"
@@ -236,5 +237,20 @@ def generate_launch_description() -> LaunchDescription:
         mcu_node = "leonardo"
         leonardo_bridge_node: Node = get_firmata_bridge(HOSTNAME, mcu_node)
         ld.add_action(leonardo_bridge_node)
+
+    if ENABLE_WIFI:
+        wifi_node = Node(
+            namespace=ROS_NAMESPACE,
+            package=PYTHON_PACKAGE_NAME,
+            executable="wifi_manager",
+            output="screen",
+            remappings=[
+                ("check_is_wireless", f"{MACHINE}/check_is_wireless"),
+                ("end_wifi_scan", f"{MACHINE}/end_wifi_scan"),
+                ("start_wifi_scan", f"{MACHINE}/start_wifi_scan"),
+                ("wifi_status", f"{MACHINE}/wifi_status"),
+            ],
+        )
+        ld.add_action(wifi_node)
 
     return ld
