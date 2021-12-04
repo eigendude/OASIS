@@ -37,6 +37,16 @@ jobs:
       - name: Checkout main repo
         uses: actions/checkout@v2
 
+      - name: Restore ccache
+        id: restore-ccache
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.ccache
+          key: restore-ccache-${{ matrix.os }}-initial
+          restore-keys: |
+            restore-ccache-${{ matrix.os }}-
+
       - name: Restore CMake
         id: restore-cmake
         uses: actions/cache@v2
@@ -60,14 +70,6 @@ jobs:
           path: |
             ros-ws/ros2-depends-${{ matrix.ros2_distro }}/install
           key: build-ros2-depends-${{ matrix.os }}-${{ matrix.ros2_distro }}-${{ hashFiles('oasis_tooling/config/depends.repos', 'oasis_tooling/scripts/build_ros_deps.sh') }}
-
-      - name: Restore ccache
-        id: restore-ccache
-        uses: actions/cache@v2
-        with:
-          path: |
-            ~/.ccache
-          key: restore-ccache-${{ matrix.os }}
 
       - name: Add ROS 2 repo
         run: |
