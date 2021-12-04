@@ -45,7 +45,7 @@ jobs:
         with:
           path: |
             ros-ws/cmake/install
-          key: build-cmake-${{ matrix.os }}-${{ hashFiles('oasis_tooling/scripts/build_cmake.sh') }}
+          key: restore-cmake-${{ matrix.os }}-${{ hashFiles('oasis_tooling/scripts/*cmake.sh') }}
 
       - name: Restore ROS 2 Desktop
         id: restore-ros2-desktop
@@ -53,15 +53,15 @@ jobs:
         with:
           path: |
             ros-ws/ros2-desktop-${{ matrix.ros2_distro }}/install
-          key: build-ros2-desktop-${{ matrix.os }}-${{ matrix.ros2_distro }}-${{ hashFiles('oasis_tooling/config/0001-Change-rcpputils-to-master-branch.patch', 'oasis_tooling/scripts/build_ros_desktop.sh') }}
+          key: restore-ros2-desktop-${{ matrix.os }}-${{ matrix.ros2_distro }}-${{ hashFiles('oasis_tooling/config/ros2_desktop/**', 'oasis_tooling/scripts/*ros2_desktop.sh') }}
 
-      - name: Restore ROS 2 dependencies
-        id: restore-ros2-depends
+      - name: Restore OASIS dependencies
+        id: restore-oasis-depends
         uses: actions/cache@v2
         with:
           path: |
-            ros-ws/ros2-depends-${{ matrix.ros2_distro }}/install
-          key: build-ros2-depends-${{ matrix.os }}-${{ matrix.ros2_distro }}-${{ hashFiles('oasis_tooling/config/depends.repos', 'oasis_tooling/scripts/build_ros_deps.sh') }}
+            ros-ws/oasis-depends-${{ matrix.ros2_distro }}/install
+          key: restore-oasis-depends-${{ matrix.os }}-${{ matrix.ros2_distro }}-${{ hashFiles('oasis_tooling/config/depends.repos', 'oasis_tooling/scripts/*oasis_deps.sh') }}
 
       - name: Restore Arduino IDE
         id: restore-arduino-ide
@@ -83,42 +83,51 @@ jobs:
           python3 -m pip install --upgrade pip setuptools
 
       # Sometimes lark-parser is missing
-      - name: Install Python dependencies
+      - name: Install missing Python dependencies
         run: |
           python3 -m pip install --upgrade importlib-resources lark-parser
 
-      # TODO: This is needed by rosidl_generator_py
+      # This is needed by rosidl_generator_py
       - name: Install rosidl_generator_py dependencies
         run: |
           python3 -m pip install --upgrade numpy
 
-      # This was needed to link after caching something weird
+      # This was needed to link oasis_drivers_cpp
       - name: Install libspdlog-dev
+        if: matrix.os == 'ubuntu-20.04'
         run: |
           sudo apt install -y libspdlog-dev
+
+      - name: Install CMake dependencies
+        if: steps.restore-cmake.outputs.cache-hit != 'true'
+        run: ./oasis_tooling/scripts/depinstall_cmake.sh
 
       - name: Build CMake
         if: steps.restore-cmake.outputs.cache-hit != 'true'
         run: ./oasis_tooling/scripts/build_cmake.sh
 
+      - name: Install ROS 2 Desktop dependencies
+        if: steps.restore-ros2-desktop.outputs.cache-hit != 'true'
+        run: ./oasis_tooling/scripts/depinstall_ros2_desktop.sh
+
       - name: Build ROS 2 Desktop
         if: steps.restore-ros2-desktop.outputs.cache-hit != 'true'
-        run: ./oasis_tooling/scripts/build_ros_desktop.sh
+        run: ./oasis_tooling/scripts/build_ros2_desktop.sh
 
-      - name: Install dependency rosdeps
-        if: steps.restore-ros2-depends.outputs.cache-hit != 'true'
-        run: ./oasis_tooling/scripts/build_ros_deps.sh install
+      - name: Install OASIS dependency rosdeps
+        if: steps.restore-oasis-depends.outputs.cache-hit != 'true'
+        run: ./oasis_tooling/scripts/depinstall_oasis_deps.sh
 
-      - name: Build dependencies
-        if: steps.restore-ros2-depends.outputs.cache-hit != 'true'
-        run: ./oasis_tooling/scripts/build_ros_deps.sh build
+      - name: Build OASIS dependencies
+        if: steps.restore-oasis-depends.outputs.cache-hit != 'true'
+        run: ./oasis_tooling/scripts/build_oasis_deps.sh
 
-      - name: Install rosdeps
-        run: ./oasis_tooling/scripts/run_ci.sh install
+      - name: Install OASIS rosdeps
+        run: ./oasis_tooling/scripts/depinstall_oasis.sh
 
       - name: Bootstrap AVR toolchain
         run: |
           ./oasis_avr/bootstrap.sh
 
       - name: colcon build
-        run: ./oasis_tooling/scripts/run_ci.sh build
+        run: ./oasis_tooling/scripts/build_oasis.sh

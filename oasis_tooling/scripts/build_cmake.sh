@@ -15,78 +15,14 @@ set -o pipefail
 set -o nounset
 
 #
-# Integration script to build CMake
-#
-# A check is made to see if the system CMake can be used to compile a ROS 2
-# desktop install, and this script exits if so.
-#
-# This script is included because ROS 2 requires a newer version of CMake, and
-# Ubuntu 18.04 has an older version (3.10) in its package manager.
-#
-# Dependencies are automatically installed by the script.
-#
-
-# Version
-CMAKE_VERSION="3.22.0"
-
-# URL
-CMAKE_URL="https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}.tar.gz"
-
-#
-# Directory and path definitions
+# Environment paths and configuration
 #
 
 # Get the absolute path to this script
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-# Directory of the ROS 2 package
-PACKAGE_DIRECTORY=${SCRIPT_DIR}/..
-
-# Directory of the OASIS repo
-REPO_DIRECTORY=${PACKAGE_DIRECTORY}/..
-
-# Subdirectory for ROS build files
-BUILD_DIRECTORY=${REPO_DIRECTORY}/ros-ws
-
-# Subdirectory for CMAKE build files
-CMAKE_DIRECTORY=${BUILD_DIRECTORY}/cmake
-
-# Define directories
-DOWNLOAD_DIR="${CMAKE_DIRECTORY}/downloads"
-EXTRACT_DIR="${CMAKE_DIRECTORY}/src"
-BUILD_DIR="${CMAKE_DIRECTORY}/build"
-INSTALL_DIR="${CMAKE_DIRECTORY}/install"
-
-# Define paths
-CMAKE_ARCHIVE_PATH="${DOWNLOAD_DIR}/cmake-${CMAKE_VERSION}.tar.gz"
-CMAKE_SOURCE_DIR="${EXTRACT_DIR}/cmake-${CMAKE_VERSION}"
-CMAKE_LISTS_PATH="${CMAKE_SOURCE_DIR}/CMakeLists.txt"
-CMAKE_BUILD_DIR="${BUILD_DIR}/cmake-${CMAKE_VERSION}"
-CMAKE_MAKEFILE_PATH="${CMAKE_BUILD_DIR}/Makefile"
-
-# Create directories
-mkdir -p "${DOWNLOAD_DIR}"
-mkdir -p "${EXTRACT_DIR}"
-mkdir -p "${BUILD_DIR}"
-
-# Exclude build directory from rosdep installs
-touch "${BUILD_DIRECTORY}/CATKIN_IGNORE"
-
-# Exclude build directory from Colcon builds
-touch "${BUILD_DIRECTORY}/COLCON_IGNORE"
-
-#
-# Install dependencies
-#
-
-sudo apt update
-sudo apt install -y \
-  ccache \
-  cmake \
-  libssl-dev \
-  make \
-  tar \
-  wget \
+# Import environment
+source "${SCRIPT_DIR}/env_cmake.sh"
 
 #
 # Download CMake
@@ -103,7 +39,7 @@ fi
 
 if [ ! -f "${CMAKE_LISTS_PATH}" ]; then
   echo "Extracting CMake..."
-  tar -zxf "${CMAKE_ARCHIVE_PATH}" --directory="${EXTRACT_DIR}"
+  tar -zxf "${CMAKE_ARCHIVE_PATH}" --directory="${CMAKE_EXTRACT_DIR}"
 fi
 
 #
@@ -119,7 +55,7 @@ if [ ! -f "${CMAKE_MAKEFILE_PATH}" ]; then
     cd "${CMAKE_BUILD_DIR}"
     cmake \
       "${CMAKE_SOURCE_DIR}" \
-      -DCMAKE_INSTALL_PREFIX="${INSTALL_DIR}" \
+      -DCMAKE_INSTALL_PREFIX="${CMAKE_INSTALL_DIR}" \
       -DCMAKE_BUILD_PARALLEL_LEVEL="$(getconf _NPROCESSORS_ONLN)" \
       $(! command -v ccache &> /dev/null || echo "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache")
   )
