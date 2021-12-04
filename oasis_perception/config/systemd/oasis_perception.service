@@ -7,11 +7,11 @@ User=garrett
 Environment=ROS2_DISTRO=galactic
 Environment=ROS2_SYSTEM_ENV=/opt/ros/${ROS2_DISTRO}/setup.bash
 Environment=ROS2_DESKTOP_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/ros2-desktop-${ROS2_DISTRO}/install/setup.bash
-Environment=ROS2_DEPENDS_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/ros2-depends-${ROS2_DISTRO}/install/setup.bash
+Environment=OASIS_DEPENDS_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/oasis-depends-${ROS2_DISTRO}/install/setup.bash
 Environment=ROS2_PROJECT_ENV=/home/${USER}/Documents/ros-ws/install/setup.bash
 Environment=ROS2_PROJECT_DIR=/home/${USER}/Documents/ros-ws/src/oasis
 Environment=DISPLAY=:0
-ExecStart=/bin/bash -c '( [ ! -f `eval echo "${ROS2_SYSTEM_ENV}"` ] || . `eval echo "${ROS2_SYSTEM_ENV}"` ) && ( [ ! -f `eval echo "${ROS2_DESKTOP_ENV}"` ] || . `eval echo "${ROS2_DESKTOP_ENV}"` ) && . `eval echo "${ROS2_DEPENDS_ENV}"` && . `eval echo "${ROS2_PROJECT_ENV}"` && cd `eval echo "${ROS2_PROJECT_DIR}/oasis_perception"` && ros2 launch --debug oasis_perception perception_launch.py'
+ExecStart=/bin/bash -c '( [ ! -f `eval echo "${ROS2_SYSTEM_ENV}"` ] || . `eval echo "${ROS2_SYSTEM_ENV}"` ) && ( [ ! -f `eval echo "${ROS2_DESKTOP_ENV}"` ] || . `eval echo "${ROS2_DESKTOP_ENV}"` ) && . `eval echo "${OASIS_DEPENDS_ENV}"` && . `eval echo "${ROS2_PROJECT_ENV}"` && cd `eval echo "${ROS2_PROJECT_DIR}/oasis_perception"` && ros2 launch --debug oasis_perception perception_launch.py'
 Restart=on-failure
 RuntimeMaxSec=60
 
