@@ -1,0 +1,34 @@
+name: clang-format Check
+
+# Controls when the action will run. Triggers the workflow on push or pull
+# request events
+on: [push, pull_request]
+
+# A workflow run is made up of one or more jobs that can run sequentially or in
+# parallel
+jobs:
+  formatting-check:
+    # The type of runner that the job will run on
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-20.04
+            clang-format-version: 13
+
+    # Steps represent a sequence of tasks that will be executed as part of the
+    # job
+    steps:
+      # Check-out the repository under $GITHUB_WORKSPACE, so the job can
+      # access it
+      - name: Checkout main repo
+        uses: actions/checkout@v2
+
+      # Install llvm from https://apt.llvm.org/
+      - name: Run clang-format-${{ matrix.clang-format-version }} style check for C/C++/Protobuf programs
+        uses: jidicula/clang-format-action@v4.4.0
+        with:
+          clang-format-version: ${{ matrix.clang-format-version }}
+          check-path: '.'
