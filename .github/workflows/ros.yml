@@ -22,9 +22,11 @@ jobs:
       matrix:
         include:
           - os: ubuntu-18.04
+            ros1_distro: noetic
             ros2_distro: galactic
             arduino_ide: 1.8.16
           - os: ubuntu-20.04
+            ros1_distro: noetic
             ros2_distro: galactic
             arduino_ide: 1.8.16
 
@@ -46,6 +48,16 @@ jobs:
           path: |
             ros-ws/cmake/install
           key: restore-cmake-${{ matrix.os }}-${{ hashFiles('oasis_tooling/scripts/*cmake.sh') }}
+
+      # Skip ROS 1 on ubuntu-18.04
+      - name: Restore ROS 1 Desktop
+        id: restore-ros1-desktop
+        if: matrix.os != 'ubuntu-18.04'
+        uses: actions/cache@v2
+        with:
+          path: |
+            ros-ws/ros1-desktop-${{ matrix.ros1_distro }}/install
+          key: restore-ros1-desktop-${{ matrix.os }}-${{ matrix.ros1_distro }}-${{ hashFiles('oasis_tooling/config/cv_bridge/**', 'oasis_tooling/scripts/*ros1_desktop.sh') }}
 
       - name: Restore ROS 2 Desktop
         id: restore-ros2-desktop
@@ -105,6 +117,14 @@ jobs:
       - name: Build CMake
         if: steps.restore-cmake.outputs.cache-hit != 'true'
         run: ./oasis_tooling/scripts/build_cmake.sh
+
+      - name: Install ROS 1 Desktop dependencies
+        if: matrix.os != 'ubuntu-18.04' && steps.restore-ros1-desktop.outputs.cache-hit != 'true'
+        run: ./oasis_tooling/scripts/depinstall_ros1_desktop.sh
+
+      - name: Build ROS 1 Desktop
+        if: matrix.os != 'ubuntu-18.04' && steps.restore-ros1-desktop.outputs.cache-hit != 'true'
+        run: ./oasis_tooling/scripts/build_ros1_desktop.sh
 
       - name: Install ROS 2 Desktop dependencies
         if: steps.restore-ros2-desktop.outputs.cache-hit != 'true'

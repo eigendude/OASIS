@@ -1,0 +1,32 @@
+From a25c070a3edcf43a7d83ea301ec9c5b0897ee152 Mon Sep 17 00:00:00 2001
+From: Garrett Brown <eigendebugger@gmail.com>
+Date: Fri, 3 Dec 2021 18:10:22 -0800
+Subject: [PATCH] Fix Boost Python not located on Ubuntu Bionic
+
+---
+ CMakeLists.txt | 9 +--------
+ 1 file changed, 1 insertion(+), 8 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index ef804b9..61e36d9 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -5,14 +5,7 @@ find_package(catkin REQUIRED COMPONENTS rosconsole sensor_msgs)
+ 
+ if(NOT ANDROID)
+   find_package(PythonLibs)
+-
+-  if(PYTHONLIBS_VERSION_STRING VERSION_LESS "3.8")
+-    # Debian Buster
+-    find_package(Boost REQUIRED python37)
+-  else()
+-    # Ubuntu Focal
+-    find_package(Boost REQUIRED python)
+-  endif()
++  find_package(Boost REQUIRED python)
+ else()
+ find_package(Boost REQUIRED)
+ endif()
+-- 
+2.17.1
+
