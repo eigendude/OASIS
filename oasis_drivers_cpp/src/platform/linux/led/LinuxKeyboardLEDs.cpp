@@ -7,6 +7,7 @@
  */
 
 #include "LinuxKeyboardLEDs.h"
+
 #include "LinuxLED.h"
 
 #include <string>
@@ -21,27 +22,21 @@ LED::LedVector LinuxKeyboardLEDs::GetLEDs(rclcpp::Logger& logger)
 
   const std::vector<std::string> sysfsNodes = {
       // Ubuntu VM on macOS VirtualBox host
-      "input2::capslock",
-      "input2::numlock",
-      "input2::scrolllock",
+      "input2::capslock", "input2::numlock", "input2::scrolllock",
 
       // Raspberry Pi 3
       "input8::capslock",
 
       // Lenovo laptop
-      "input4::capslock",
-      "input4::numlock",
-      "input4::scrolllock",
+      "input4::capslock", "input4::numlock", "input4::scrolllock",
 
       // Dell netbook
-      "input3::capslock",
-      "input3::numlock",
-      "input3::scrolllock",
+      "input3::capslock", "input3::numlock", "input3::scrolllock",
 
       // TODO: Iterate over input:: nodes
   };
 
-  for (const std::string &sysfsNode : sysfsNodes)
+  for (const std::string& sysfsNode : sysfsNodes)
   {
     LED::LedPtr led(new LinuxLED(sysfsNode, logger));
     if (led->Open())

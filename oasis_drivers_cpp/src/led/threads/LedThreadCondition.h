@@ -45,5 +45,5 @@ private:
   std::atomic<bool> m_valueSet = false;
 };
 
-}
-}
+} // namespace LED
+} // namespace OASIS

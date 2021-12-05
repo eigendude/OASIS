@@ -13,7 +13,7 @@
 
 namespace rclcpp
 {
-  class Logger;
+class Logger;
 }
 
 namespace OASIS
@@ -27,7 +27,7 @@ namespace LINUX
 class LinuxLED : public LED::ILed
 {
 public:
-  LinuxLED(const std::string &sysfsNode, rclcpp::Logger& logger);
+  LinuxLED(const std::string& sysfsNode, rclcpp::Logger& logger);
   ~LinuxLED() override;
 
   // Implementation of ILed
@@ -48,5 +48,5 @@ private:
   bool m_enabled = false;
 };
 
-}
-}
+} // namespace LINUX
+} // namespace OASIS

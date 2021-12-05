@@ -10,8 +10,9 @@
 
 #include "utils/StringUtils.h"
 
-#include <libcec/cectypes.h>
 #include <sstream>
+
+#include <libcec/cectypes.h>
 
 using namespace OASIS;
 using namespace OASIS::CEC;

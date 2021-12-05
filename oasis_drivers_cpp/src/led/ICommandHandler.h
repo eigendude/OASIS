@@ -29,8 +29,8 @@ public:
    *
    * \param command An opaque string of tokens representing a command
    */
-  virtual void ProcessCommand(const std::string &command) = 0;
+  virtual void ProcessCommand(const std::string& command) = 0;
 };
 
-}
-}
+} // namespace LED
+} // namespace OASIS

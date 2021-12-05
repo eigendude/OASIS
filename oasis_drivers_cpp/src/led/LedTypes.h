@@ -44,5 +44,5 @@ enum class LedCommandType
   PROGRESS_BAR,
 };
 
-}
-}
+} // namespace LED
+} // namespace OASIS

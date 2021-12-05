@@ -37,5 +37,5 @@ public:
   virtual void OnPowerOff(const ICecAdapter& adapter) = 0;
 };
 
-}
-}
+} // namespace CEC
+} // namespace OASIS

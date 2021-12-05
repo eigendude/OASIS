@@ -21,7 +21,7 @@ struct udev_monitor;
 
 namespace rclcpp
 {
-  class Logger;
+class Logger;
 }
 
 namespace OASIS
@@ -58,8 +58,8 @@ private:
   rclcpp::Logger& m_logger;
 
   // udev parameters
-  struct udev *m_udev = nullptr;
-  struct udev_monitor *m_udevMon = nullptr;
+  struct udev* m_udev = nullptr;
+  struct udev_monitor* m_udevMon = nullptr;
   UdevDeviceMap m_devices;
 
   // Threading parameters
@@ -67,5 +67,5 @@ private:
   std::atomic<bool> m_bStop = false;
 };
 
-}
-}
+} // namespace UDEV
+} // namespace OASIS

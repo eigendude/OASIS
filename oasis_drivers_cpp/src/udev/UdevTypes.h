@@ -41,5 +41,5 @@ struct UdevDeviceInfo
   std::string devicePath;
 };
 
-}
-}
+} // namespace UDEV
+} // namespace OASIS

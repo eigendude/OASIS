@@ -66,5 +66,5 @@ protected:
   float m_brightness = 0.0f;
 };
 
-}
-}
+} // namespace LED
+} // namespace OASIS

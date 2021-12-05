@@ -40,5 +40,5 @@ public:
   virtual void OnDevicesChanged() = 0;
 };
 
-}
-}
+} // namespace UDEV
+} // namespace OASIS

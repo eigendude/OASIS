@@ -37,5 +37,5 @@ public:
   static std::string UdevDeviceClassToHexString(int udevDeviceClass);
 };
 
-}
-}
+} // namespace UDEV
+} // namespace OASIS

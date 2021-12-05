@@ -16,20 +16,21 @@
 
 #include <cstdio>
 #include <ctime>
-#include <libcec/cec.h>
-#include <rclcpp/logging.hpp>
-#include <rclcpp/node.hpp>
 #include <set>
 #include <stdint.h>
 #include <vector>
 
+#include <libcec/cec.h>
+#include <rclcpp/logging.hpp>
+#include <rclcpp/node.hpp>
+
 using namespace OASIS;
 using namespace OASIS::CEC;
 
-CecServer::CecServer(ICecCallback& callback, std::shared_ptr<rclcpp::Node> node, rclcpp::Logger& logger)
-  : m_callback(callback),
-    m_node(std::move(node)),
-    m_logger(logger)
+CecServer::CecServer(ICecCallback& callback,
+                     std::shared_ptr<rclcpp::Node> node,
+                     rclcpp::Logger& logger)
+  : m_callback(callback), m_node(std::move(node)), m_logger(logger)
 {
 }
 
@@ -75,11 +76,11 @@ void CecServer::OnDeviceAdded(const UDEV::UdevDeviceInfo& deviceInfo)
 {
   RCLCPP_DEBUG(m_logger, "Device added");
   RCLCPP_DEBUG(m_logger, "  VID: %s, PID: %s",
-      UDEV::UdevUtils::UsbIdToHexString(deviceInfo.vendorId).c_str(),
-      UDEV::UdevUtils::UsbIdToHexString(deviceInfo.productId).c_str());
+               UDEV::UdevUtils::UsbIdToHexString(deviceInfo.vendorId).c_str(),
+               UDEV::UdevUtils::UsbIdToHexString(deviceInfo.productId).c_str());
   RCLCPP_DEBUG(m_logger, "  Class: %s (%s)",
-      UDEV::UdevTranslator::TypeToString(deviceInfo.deviceType),
-      UDEV::UdevUtils::UdevDeviceClassToHexString(deviceInfo.udevDeviceType).c_str());
+               UDEV::UdevTranslator::TypeToString(deviceInfo.deviceType),
+               UDEV::UdevUtils::UdevDeviceClassToHexString(deviceInfo.udevDeviceType).c_str());
   RCLCPP_DEBUG(m_logger, "  Path:  %s", deviceInfo.devicePath.c_str());
 }
 
@@ -87,11 +88,11 @@ void CecServer::OnDeviceRemoved(const UDEV::UdevDeviceInfo& deviceInfo)
 {
   RCLCPP_DEBUG(m_logger, "Device removed");
   RCLCPP_DEBUG(m_logger, "  VID: %s, PID: %s",
-      UDEV::UdevUtils::UsbIdToHexString(deviceInfo.vendorId).c_str(),
-      UDEV::UdevUtils::UsbIdToHexString(deviceInfo.productId).c_str());
+               UDEV::UdevUtils::UsbIdToHexString(deviceInfo.vendorId).c_str(),
+               UDEV::UdevUtils::UsbIdToHexString(deviceInfo.productId).c_str());
   RCLCPP_DEBUG(m_logger, "  Class: %s (%s)",
-      UDEV::UdevTranslator::TypeToString(deviceInfo.deviceType),
-      UDEV::UdevUtils::UdevDeviceClassToHexString(deviceInfo.udevDeviceType).c_str());
+               UDEV::UdevTranslator::TypeToString(deviceInfo.deviceType),
+               UDEV::UdevUtils::UdevDeviceClassToHexString(deviceInfo.udevDeviceType).c_str());
   RCLCPP_DEBUG(m_logger, "  Path:  %s", deviceInfo.devicePath.c_str());
 }
 
@@ -105,15 +106,11 @@ void CecServer::OnDevicesChanged()
   std::set<std::string> currentPaths;
 
   std::transform(m_adapters.begin(), m_adapters.end(), std::back_inserter(oldPaths),
-    [](const CecAdapterMap::value_type &pair)
-    {
-      return pair.first;
-    }
-  );
+                 [](const CecAdapterMap::value_type& pair) { return pair.first; });
 
   ::CEC::cec_adapter_descriptor deviceList[10]{};
-  const int8_t iFound = m_cecAdapter->DetectAdapters(deviceList,
-      sizeof(deviceList) / sizeof(*deviceList), nullptr, true);
+  const int8_t iFound = m_cecAdapter->DetectAdapters(
+      deviceList, sizeof(deviceList) / sizeof(*deviceList), nullptr, true);
 
   for (uint8_t iDevicePtr = 0; iDevicePtr < iFound; iDevicePtr++)
   {
@@ -129,12 +126,13 @@ void CecServer::OnDevicesChanged()
       // Log adapter info
       RCLCPP_INFO(m_logger, "CEC adapter connected");
       RCLCPP_INFO(m_logger, "  VID: %s, PID: %s",
-          UDEV::UdevUtils::UsbIdToHexString(vendorId).c_str(),
-          UDEV::UdevUtils::UsbIdToHexString(productId).c_str());
+                  UDEV::UdevUtils::UsbIdToHexString(vendorId).c_str(),
+                  UDEV::UdevUtils::UsbIdToHexString(productId).c_str());
       RCLCPP_INFO(m_logger, "  Node: %s", deviceNode.c_str());
       RCLCPP_INFO(m_logger, "  Path: %s", devicePath.c_str());
 
-      std::unique_ptr<CecAdapter> adapter = std::make_unique<CecAdapter>(m_callback, devicePath, std::move(deviceNode), m_logger);
+      std::unique_ptr<CecAdapter> adapter =
+          std::make_unique<CecAdapter>(m_callback, devicePath, std::move(deviceNode), m_logger);
       if (adapter->Initialize())
         m_adapters.insert(std::make_pair(std::move(devicePath), std::move(adapter)));
     }

@@ -15,21 +15,22 @@
 
 #include <algorithm>
 #include <errno.h>
-#include <poll.h>
-#include <rclcpp/logging.hpp>
 #include <utility>
 #include <vector>
 
-extern "C" {
+#include <poll.h>
+#include <rclcpp/logging.hpp>
+
+extern "C"
+{
 #include <libudev.h>
 }
 
 using namespace OASIS;
 using namespace UDEV;
 
-UdevScanner::UdevScanner(IUdevCallback& callback, rclcpp::Logger& logger) :
-  m_callback(callback),
-  m_logger(logger)
+UdevScanner::UdevScanner(IUdevCallback& callback, rclcpp::Logger& logger)
+  : m_callback(callback), m_logger(logger)
 {
 }
 
@@ -111,7 +112,7 @@ bool UdevScanner::ScanForDevices()
 {
   std::map<std::string, UdevDeviceInfo> newDevices;
 
-  struct udev_enumerate *enumerate = udev_enumerate_new(m_udev);
+  struct udev_enumerate* enumerate = udev_enumerate_new(m_udev);
   if (enumerate == nullptr)
   {
     RCLCPP_ERROR(m_logger, "Failed to enumerate udev devices");
@@ -125,36 +126,39 @@ bool UdevScanner::ScanForDevices()
     return false;
   }
 
-  struct udev_list_entry *devices = udev_enumerate_get_list_entry(enumerate);
+  struct udev_list_entry* devices = udev_enumerate_get_list_entry(enumerate);
   if (devices == nullptr)
   {
     RCLCPP_ERROR(m_logger, "Failed to list udev devices");
     return false;
   }
 
-  struct udev_list_entry *dev_list_entry = nullptr;
+  struct udev_list_entry* dev_list_entry = nullptr;
   udev_list_entry_foreach(dev_list_entry, devices)
   {
     bool bContinue = true;
-    struct udev_device *parent = nullptr;
-    struct udev_device *dev = nullptr;
+    struct udev_device* parent = nullptr;
+    struct udev_device* dev = nullptr;
     std::string strClass;
 
     std::string strPath = udev_list_entry_get_name(dev_list_entry);
     if (strPath.empty())
-      bContinue = false;;
+      bContinue = false;
+    ;
 
     if (bContinue)
     {
       parent = udev_device_new_from_syspath(m_udev, strPath.c_str());
       if (parent == nullptr)
-        bContinue = false;;
+        bContinue = false;
+      ;
     }
 
     if (bContinue)
     {
       dev = udev_device_get_parent(udev_device_get_parent(parent));
-      if (dev == nullptr || !udev_device_get_sysattr_value(dev,"idVendor") || !udev_device_get_sysattr_value(dev, "idProduct"))
+      if (dev == nullptr || !udev_device_get_sysattr_value(dev, "idVendor") ||
+          !udev_device_get_sysattr_value(dev, "idProduct"))
         bContinue = false;
     }
 
@@ -174,8 +178,10 @@ bool UdevScanner::ScanForDevices()
       {
         int iClass = UTILS::StringUtils::HexStringToInt(strClass);
         UdevDeviceType deviceType = UdevTranslator::GetDeviceType(iClass);
-        uint16_t vendorId = static_cast<uint16_t>(UTILS::StringUtils::HexStringToInt(udev_device_get_sysattr_value(dev, "idVendor")));
-        uint16_t productId = static_cast<uint16_t>(UTILS::StringUtils::HexStringToInt(udev_device_get_sysattr_value(dev, "idProduct")));
+        uint16_t vendorId = static_cast<uint16_t>(
+            UTILS::StringUtils::HexStringToInt(udev_device_get_sysattr_value(dev, "idVendor")));
+        uint16_t productId = static_cast<uint16_t>(
+            UTILS::StringUtils::HexStringToInt(udev_device_get_sysattr_value(dev, "idProduct")));
 
         // Record device
         UdevDeviceInfo deviceInfo{deviceType, iClass, vendorId, productId, devicePath};
@@ -229,7 +235,7 @@ bool UdevScanner::WaitForUpdate()
 
   // We have to read the message from the queue, even though we're not
   // actually using it
-  struct udev_device *dev = udev_monitor_receive_device(m_udevMon);
+  struct udev_device* dev = udev_monitor_receive_device(m_udevMon);
   if (dev != nullptr)
     udev_device_unref(dev);
   else
@@ -241,7 +247,8 @@ bool UdevScanner::WaitForUpdate()
   return true;
 }
 
-void UdevScanner::HandleScanResults(const UdevDeviceMap& oldDevices, const UdevDeviceMap& newDevices)
+void UdevScanner::HandleScanResults(const UdevDeviceMap& oldDevices,
+                                    const UdevDeviceMap& newDevices)
 {
   using UdevDeviceMapPair = std::pair<std::string, UdevDeviceInfo>;
 
@@ -249,12 +256,12 @@ void UdevScanner::HandleScanResults(const UdevDeviceMap& oldDevices, const UdevD
   std::vector<UdevDeviceMapPair> removed;
 
   auto cmp = [](const UdevDeviceMapPair& a, const UdevDeviceMapPair& b)
-    {
-      return a.first < b.first;
-    };
+  { return a.first < b.first; };
 
-  std::set_difference(newDevices.begin(), newDevices.end(), oldDevices.begin(), oldDevices.end(), std::back_inserter(added), cmp);
-  std::set_difference(oldDevices.begin(), oldDevices.end(), newDevices.begin(), newDevices.end(), std::back_inserter(removed), cmp);
+  std::set_difference(newDevices.begin(), newDevices.end(), oldDevices.begin(), oldDevices.end(),
+                      std::back_inserter(added), cmp);
+  std::set_difference(oldDevices.begin(), oldDevices.end(), newDevices.begin(), newDevices.end(),
+                      std::back_inserter(removed), cmp);
 
   for (const UdevDeviceMapPair& addedDevice : added)
     m_callback.OnDeviceAdded(addedDevice.second);

@@ -7,6 +7,7 @@
  */
 
 #include "LedScanner.h"
+
 #include "platform/linux/led/BeagleBoneArray.h"
 #include "platform/linux/led/LinuxKeyboardLEDs.h"
 #include "platform/linux/led/RaspberryPiArray.h"

@@ -15,6 +15,7 @@
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+
 #include <libcec/cec.h>
 #include <rclcpp/logging.hpp>
 
@@ -25,14 +26,17 @@ using namespace OASIS::CEC;
 
 namespace
 {
-  constexpr const char *CEC_DEVICE_NAME = "OASIS";
+constexpr const char* CEC_DEVICE_NAME = "OASIS";
 }
 
-CecAdapter::CecAdapter(ICecCallback& callback, std::string devicePath, std::string deviceNode, rclcpp::Logger& logger) :
-  m_callback(callback),
-  m_devicePath(std::move(devicePath)),
-  m_deviceNode(std::move(deviceNode)),
-  m_logger(logger)
+CecAdapter::CecAdapter(ICecCallback& callback,
+                       std::string devicePath,
+                       std::string deviceNode,
+                       rclcpp::Logger& logger)
+  : m_callback(callback),
+    m_devicePath(std::move(devicePath)),
+    m_deviceNode(std::move(deviceNode)),
+    m_logger(logger)
 {
 }
 
@@ -53,7 +57,7 @@ bool CecAdapter::Initialize()
 
   // Log libCEC version
   RCLCPP_INFO(m_logger, "[%s] Using libCEC server v%s", m_deviceNode.c_str(),
-      m_cecAdapter->VersionToString(m_configuration.serverVersion).c_str());
+              m_cecAdapter->VersionToString(m_configuration.serverVersion).c_str());
 
   // Open adapter
   return OpenAdapter();
@@ -65,8 +69,8 @@ void CecAdapter::InitializeConfiguration()
 
   // Device name
   std::snprintf(m_configuration.strDeviceName,
-      sizeof(m_configuration.strDeviceName) / sizeof(*m_configuration.strDeviceName),
-      "%s", CEC_DEVICE_NAME);
+                sizeof(m_configuration.strDeviceName) / sizeof(*m_configuration.strDeviceName),
+                "%s", CEC_DEVICE_NAME);
 
   // Set the primary device type
   m_configuration.deviceTypes.Clear();
@@ -113,15 +117,14 @@ bool CecAdapter::OpenAdapter()
   {
     // Display warning: couldn't initialize libCEC
     RCLCPP_ERROR(m_logger, "[%s] Could not opening a connection to the CEC adapter",
-        m_deviceNode.c_str());
+                 m_deviceNode.c_str());
   }
 
   if (bIsOpen)
   {
     std::lock_guard<std::mutex> lock(m_mutex);
 
-    RCLCPP_INFO(m_logger, "[%s] Connection to the CEC adapter opened",
-        m_deviceNode.c_str());
+    RCLCPP_INFO(m_logger, "[%s] Connection to the CEC adapter opened", m_deviceNode.c_str());
 
     // Read the configuration
     ::CEC::libcec_configuration config;
@@ -133,7 +136,7 @@ bool CecAdapter::OpenAdapter()
     else
     {
       RCLCPP_ERROR(m_logger, "[%s] Failed to read current configuration from CEC adapter",
-          m_deviceNode.c_str());
+                   m_deviceNode.c_str());
     }
   }
 
@@ -197,61 +200,61 @@ void CecAdapter::SetConfigurationFromLibCEC(const ::CEC::libcec_configuration& c
 
   // Set the connected device
   m_configuration.baseDevice = config.baseDevice;
-  RCLCPP_DEBUG(m_logger, "[%s]   Connected_device: %s", m_deviceNode.c_str(),
+  RCLCPP_DEBUG(
+      m_logger, "[%s]   Connected_device: %s", m_deviceNode.c_str(),
       (config.baseDevice == ::CEC::CECDEVICE_AUDIOSYSTEM ? "Amplifier / AVR device" : "TV"));
 
   // Set the HDMI port number
   m_configuration.iHDMIPort = config.iHDMIPort;
   RCLCPP_DEBUG(m_logger, "[%s]   CEC HDMI port: %d", m_deviceNode.c_str(),
-      static_cast<int>(config.iHDMIPort));
+               static_cast<int>(config.iHDMIPort));
 
   RCLCPP_DEBUG(m_logger, "[%s]   Physical address: %s", m_deviceNode.c_str(),
-      CecUtils::PhysicalAdressToHexString(config.iPhysicalAddress).c_str());
+               CecUtils::PhysicalAdressToHexString(config.iPhysicalAddress).c_str());
 
   // set the devices to wake when starting
   m_configuration.wakeDevices = config.wakeDevices;
   RCLCPP_DEBUG(m_logger, "[%s]   Wake devices: %s", m_deviceNode.c_str(),
-      CecTranslator::TranslateLogicalAddresses(m_configuration.wakeDevices).c_str());
+               CecTranslator::TranslateLogicalAddresses(m_configuration.wakeDevices).c_str());
 
   m_configuration.powerOffDevices = config.powerOffDevices;
   RCLCPP_DEBUG(m_logger, "[%s]   Power off devices: %s", m_deviceNode.c_str(),
-      CecTranslator::TranslateLogicalAddresses(m_configuration.powerOffDevices).c_str());
+               CecTranslator::TranslateLogicalAddresses(m_configuration.powerOffDevices).c_str());
 
   // Set the boolean settings
   m_configuration.bActivateSource = config.bActivateSource;
   RCLCPP_DEBUG(m_logger, "[%s]   Activate source: %s", m_deviceNode.c_str(),
-      (m_configuration.bActivateSource == 1 ? "true" : "false"));
+               (m_configuration.bActivateSource == 1 ? "true" : "false"));
 
   m_configuration.iDoubleTapTimeoutMs = config.iDoubleTapTimeoutMs;
   RCLCPP_DEBUG(m_logger, "[%s]   Double tap timeout (ms): %u", m_deviceNode.c_str(),
-      m_configuration.iDoubleTapTimeoutMs);
+               m_configuration.iDoubleTapTimeoutMs);
 
   m_configuration.iButtonRepeatRateMs = config.iButtonRepeatRateMs;
   RCLCPP_DEBUG(m_logger, "[%s]   Button repeat rate (ms): %u", m_deviceNode.c_str(),
-      m_configuration.iButtonRepeatRateMs);
+               m_configuration.iButtonRepeatRateMs);
 
   m_configuration.iButtonReleaseDelayMs = config.iButtonReleaseDelayMs;
   RCLCPP_DEBUG(m_logger, "[%s]   Button repeat delay (ms): %u", m_deviceNode.c_str(),
-      m_configuration.iButtonReleaseDelayMs);
+               m_configuration.iButtonReleaseDelayMs);
 
   m_configuration.bPowerOffOnStandby = config.bPowerOffOnStandby;
   RCLCPP_DEBUG(m_logger, "[%s]   Power off on standby: %s", m_deviceNode.c_str(),
-      (m_configuration.bPowerOffOnStandby == 1 ? "true" : "false"));
+               (m_configuration.bPowerOffOnStandby == 1 ? "true" : "false"));
 
   m_configuration.iFirmwareVersion = config.iFirmwareVersion;
   RCLCPP_DEBUG(m_logger, "[%s]   Firmware version: %u", m_deviceNode.c_str(),
-      m_configuration.iFirmwareVersion);
+               m_configuration.iFirmwareVersion);
 
   std::memcpy(m_configuration.strDeviceLanguage, config.strDeviceLanguage, 3);
   RCLCPP_DEBUG(m_logger, "[%s]   Device language: %c%c%c", m_deviceNode.c_str(),
-      m_configuration.strDeviceLanguage[0],
-      m_configuration.strDeviceLanguage[1],
-      m_configuration.strDeviceLanguage[2]);
+               m_configuration.strDeviceLanguage[0], m_configuration.strDeviceLanguage[1],
+               m_configuration.strDeviceLanguage[2]);
 
   m_configuration.iFirmwareBuildDate = config.iFirmwareBuildDate;
   const std::time_t buildDate = static_cast<std::time_t>(m_configuration.iFirmwareBuildDate);
   RCLCPP_DEBUG(m_logger, "[%s]   Firmware build date: %s", m_deviceNode.c_str(),
-      CecTranslator::TranslateBuildDate(buildDate).c_str());
+               CecTranslator::TranslateBuildDate(buildDate).c_str());
 
   RCLCPP_DEBUG(m_logger, "[%s] Configuration updated by libCEC", m_deviceNode.c_str());
 }
@@ -278,13 +281,12 @@ void CecAdapter::OnStandby()
 void CecAdapter::ReopenConnection(bool bAsync)
 {
   RCLCPP_INFO(m_logger, "[%s] Restarting connection (%s)", m_deviceNode.c_str(),
-        (bAsync ? "async" : "sync"));
+              (bAsync ? "async" : "sync"));
 
   if (bAsync)
   {
     // TODO: Async reopen not implemented
-    RCLCPP_ERROR(m_logger, "[%s] Restart async not implemented",
-        m_deviceNode.c_str());
+    RCLCPP_ERROR(m_logger, "[%s] Restart async not implemented", m_deviceNode.c_str());
 
     return;
   }
@@ -302,25 +304,25 @@ void CecAdapter::CecLogMessage(const ::CEC::cec_log_message* message)
 
   switch (message->level)
   {
-  case ::CEC::CEC_LOG_ERROR:
-    RCLCPP_DEBUG(m_logger, "[%s] %s", m_deviceNode.c_str(), message->message);
-    break;
-  case ::CEC::CEC_LOG_WARNING:
-    RCLCPP_WARN(m_logger, "[%s] %s", m_deviceNode.c_str(), message->message);
-    break;
-  case ::CEC::CEC_LOG_NOTICE:
-    RCLCPP_INFO(m_logger, "[%s] %s", m_deviceNode.c_str(), message->message);
-    break;
-  case ::CEC::CEC_LOG_TRAFFIC:
-    // Ignored
-    break;
-  case ::CEC::CEC_LOG_DEBUG:
-    RCLCPP_DEBUG(m_logger, "[%s] %s", m_deviceNode.c_str(), message->message);
-    break;
-  case ::CEC::CEC_LOG_ALL:
-  default:
-    RCLCPP_INFO(m_logger, "[%s] %s", m_deviceNode.c_str(), message->message);
-    break;
+    case ::CEC::CEC_LOG_ERROR:
+      RCLCPP_DEBUG(m_logger, "[%s] %s", m_deviceNode.c_str(), message->message);
+      break;
+    case ::CEC::CEC_LOG_WARNING:
+      RCLCPP_WARN(m_logger, "[%s] %s", m_deviceNode.c_str(), message->message);
+      break;
+    case ::CEC::CEC_LOG_NOTICE:
+      RCLCPP_INFO(m_logger, "[%s] %s", m_deviceNode.c_str(), message->message);
+      break;
+    case ::CEC::CEC_LOG_TRAFFIC:
+      // Ignored
+      break;
+    case ::CEC::CEC_LOG_DEBUG:
+      RCLCPP_DEBUG(m_logger, "[%s] %s", m_deviceNode.c_str(), message->message);
+      break;
+    case ::CEC::CEC_LOG_ALL:
+    default:
+      RCLCPP_INFO(m_logger, "[%s] %s", m_deviceNode.c_str(), message->message);
+      break;
   }
 }
 
@@ -329,7 +331,7 @@ void CecAdapter::CecKeyPress(const ::CEC::cec_keypress* key)
   std::lock_guard<std::mutex> lock(m_mutex);
 
   RCLCPP_INFO(m_logger, "[%s] Received key press: %s (%u ms)", m_deviceNode.c_str(),
-      CecTranslator::TranslateKeyCode(key->keycode).c_str(), key->duration);
+              CecTranslator::TranslateKeyCode(key->keycode).c_str(), key->duration);
 }
 
 void CecAdapter::CecCommand(const ::CEC::cec_command* command)
@@ -337,70 +339,67 @@ void CecAdapter::CecCommand(const ::CEC::cec_command* command)
   std::lock_guard<std::mutex> lock(m_mutex);
 
   RCLCPP_INFO(m_logger, "[%s] Received command: %s", m_deviceNode.c_str(),
-      CecTranslator::TranslateOpcode(command->opcode).c_str());
+              CecTranslator::TranslateOpcode(command->opcode).c_str());
   RCLCPP_INFO(m_logger, "[%s]   Initiator: %s", m_deviceNode.c_str(),
-      CecTranslator::TranslateLogicalAddress(command->initiator).c_str());
+              CecTranslator::TranslateLogicalAddress(command->initiator).c_str());
   RCLCPP_INFO(m_logger, "[%s]   Destination: %s", m_deviceNode.c_str(),
-      CecTranslator::TranslateLogicalAddress(command->destination).c_str());
+              CecTranslator::TranslateLogicalAddress(command->destination).c_str());
   RCLCPP_INFO(m_logger, "[%s]   Parameters: %s", m_deviceNode.c_str(),
-      CecUtils::ParametersToHexArray(command->parameters).c_str());
+              CecUtils::ParametersToHexArray(command->parameters).c_str());
 
   switch (command->opcode)
   {
-  case ::CEC::CEC_OPCODE_REPORT_PHYSICAL_ADDRESS:
-  {
-    // This seems to be emitted when Vizio TVs are powered on
-    OnPowerOn();
-
-    break;
-  }
-  case ::CEC::CEC_OPCODE_SET_MENU_LANGUAGE:
-  {
-    // This seems to be emitted when Toshiba TVs are powered on
-    OnPowerOn();
-
-    break;
-  }
-  case ::CEC::CEC_OPCODE_ROUTING_CHANGE:
-  {
-    // This seems to be emitted when CEC-compliant TVs are powered on
-    OnPowerOn();
-
-    break;
-  }
-  case ::CEC::CEC_OPCODE_DEVICE_VENDOR_ID:
-  {
-    if (command->parameters.size != 3)
+    case ::CEC::CEC_OPCODE_REPORT_PHYSICAL_ADDRESS:
     {
-      RCLCPP_ERROR(m_logger, "[%s] Expected 3 parameters", m_deviceNode.c_str());
+      // This seems to be emitted when Vizio TVs are powered on
+      OnPowerOn();
+
+      break;
     }
-    else
+    case ::CEC::CEC_OPCODE_SET_MENU_LANGUAGE:
     {
-      const ::CEC::cec_vendor_id vendorId = static_cast<::CEC::cec_vendor_id>(
-        command->parameters[0] << 16 |
-        command->parameters[1] << 8 |
-        command->parameters[2]
-      );
+      // This seems to be emitted when Toshiba TVs are powered on
+      OnPowerOn();
 
-      const std::string vendorName = CecTranslator::TranslateVendorID(vendorId);
-
-      RCLCPP_INFO(m_logger, "[%s]   Vendor: %s", m_deviceNode.c_str(),
-          !vendorName.empty() ? vendorName.c_str() : "unknown");
-
-      SetVendorFromCEC(vendorName);
+      break;
     }
+    case ::CEC::CEC_OPCODE_ROUTING_CHANGE:
+    {
+      // This seems to be emitted when CEC-compliant TVs are powered on
+      OnPowerOn();
 
-    break;
-  }
-  case ::CEC::CEC_OPCODE_STANDBY:
-  {
-    // TV turned off
-    OnStandby();
+      break;
+    }
+    case ::CEC::CEC_OPCODE_DEVICE_VENDOR_ID:
+    {
+      if (command->parameters.size != 3)
+      {
+        RCLCPP_ERROR(m_logger, "[%s] Expected 3 parameters", m_deviceNode.c_str());
+      }
+      else
+      {
+        const ::CEC::cec_vendor_id vendorId = static_cast<::CEC::cec_vendor_id>(
+            command->parameters[0] << 16 | command->parameters[1] << 8 | command->parameters[2]);
 
-    break;
-  }
-  default:
-    break;
+        const std::string vendorName = CecTranslator::TranslateVendorID(vendorId);
+
+        RCLCPP_INFO(m_logger, "[%s]   Vendor: %s", m_deviceNode.c_str(),
+                    !vendorName.empty() ? vendorName.c_str() : "unknown");
+
+        SetVendorFromCEC(vendorName);
+      }
+
+      break;
+    }
+    case ::CEC::CEC_OPCODE_STANDBY:
+    {
+      // TV turned off
+      OnStandby();
+
+      break;
+    }
+    default:
+      break;
   }
 }
 
@@ -420,7 +419,7 @@ void CecAdapter::CecAlert(const ::CEC::libcec_alert alert, const ::CEC::libcec_p
   std::lock_guard<std::mutex> lock(m_mutex);
 
   RCLCPP_ERROR(m_logger, "[%s] CEC alert: %s", m_deviceNode.c_str(),
-      CecTranslator::TranslateAlert(alert).c_str());
+               CecTranslator::TranslateAlert(alert).c_str());
 
   bool bReopenConnection = false;
   std::string alertString;
@@ -471,18 +470,19 @@ int CecAdapter::CecMenuStateChanged(const ::CEC::cec_menu_state state)
   std::lock_guard<std::mutex> lock(m_mutex);
 
   RCLCPP_INFO(m_logger, "[%s] CEC menu state changed: %s", m_deviceNode.c_str(),
-      (state == ::CEC::CEC_MENU_STATE_ACTIVATED ? "activated" : "deactivated"));
+              (state == ::CEC::CEC_MENU_STATE_ACTIVATED ? "activated" : "deactivated"));
 
   return 1;
 }
 
-void CecAdapter::CecSourceActivated(const ::CEC::cec_logical_address address, const uint8_t activated)
+void CecAdapter::CecSourceActivated(const ::CEC::cec_logical_address address,
+                                    const uint8_t activated)
 {
   std::lock_guard<std::mutex> lock(m_mutex);
 
   RCLCPP_INFO(m_logger, "[%s] Source %s: %s", m_deviceNode.c_str(),
-      (activated == 1 ? "activated" : "deactivated"),
-      CecTranslator::TranslateLogicalAddress(address).c_str());
+              (activated == 1 ? "activated" : "deactivated"),
+              CecTranslator::TranslateLogicalAddress(address).c_str());
 }
 
 void CecAdapter::CecLogMessage(void* cbParam, const ::CEC::cec_log_message* message)

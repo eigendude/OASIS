@@ -37,5 +37,5 @@ public:
   virtual void Shutdown() = 0;
 };
 
-}
-}
+} // namespace LED
+} // namespace OASIS

@@ -13,11 +13,12 @@
 #include "utils/LogUtils.h"
 
 #include <memory>
+
 #include <rclcpp/rclcpp.hpp>
 
 using namespace OASIS;
 
-int main(int argc, char **argv)
+int main(int argc, char** argv)
 {
   // Initialize ROS
   rclcpp::init(argc, argv);

@@ -30,5 +30,5 @@ private:
   LedVector m_leds;
 };
 
-}
-}
+} // namespace LED
+} // namespace OASIS

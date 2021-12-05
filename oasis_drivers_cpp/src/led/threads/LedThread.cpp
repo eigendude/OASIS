@@ -7,6 +7,7 @@
  */
 
 #include "LedThread.h"
+
 #include "LedThreadCondition.h"
 #include "led/LedServer.h"
 
@@ -15,11 +16,10 @@ using namespace LED;
 
 namespace
 {
-  constexpr unsigned int PWM_UPDATE_HZ = 4;
+constexpr unsigned int PWM_UPDATE_HZ = 4;
 }
 
-LedThread::LedThread(LedServer &server) :
-  m_server(server)
+LedThread::LedThread(LedServer& server) : m_server(server)
 {
 }
 

@@ -7,6 +7,7 @@
  */
 
 #include "RaspberryPiArray.h"
+
 #include "LinuxLED.h"
 
 #include <string>
@@ -29,7 +30,7 @@ LED::LedVector RaspberryPiArray::GetLEDs(rclcpp::Logger& logger)
       "led1",
   };
 
-  for (const std::string &sysfsNode : sysfsNodes)
+  for (const std::string& sysfsNode : sysfsNodes)
   {
     LED::LedPtr led(new LinuxLED(sysfsNode, logger));
     if (led->Open())

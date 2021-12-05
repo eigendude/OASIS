@@ -13,7 +13,7 @@
 
 namespace CEC
 {
-  struct cec_datapacket;
+struct cec_datapacket;
 }
 
 namespace OASIS
@@ -52,5 +52,5 @@ public:
   static std::string ParametersToHexArray(const ::CEC::cec_datapacket& parameters);
 };
 
-}
-}
+} // namespace CEC
+} // namespace OASIS

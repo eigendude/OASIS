@@ -13,12 +13,12 @@
 using namespace OASIS;
 using namespace LED;
 
-LedCommand::LedCommand(const std::string &line)
+LedCommand::LedCommand(const std::string& line)
 {
   ParseLine(line);
 }
 
-void LedCommand::ParseLine(const std::string &line)
+void LedCommand::ParseLine(const std::string& line)
 {
   std::istringstream lineStr(line);
 
@@ -29,7 +29,7 @@ void LedCommand::ParseLine(const std::string &line)
   lineStr >> m_progressPercent;
 }
 
-LedCommandType LedCommand::TranslateType(const std::string &commandType)
+LedCommandType LedCommand::TranslateType(const std::string& commandType)
 {
   if (commandType == "busy")
     return LedCommandType::BUSY_SIGNAL;

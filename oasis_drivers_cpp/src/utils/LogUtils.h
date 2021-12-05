@@ -9,11 +9,12 @@
 #pragma once
 
 #include <memory>
+
 #include <rclcpp/logger.hpp>
 
 namespace rclcpp
 {
-  class Node;
+class Node;
 }
 
 namespace OASIS
@@ -27,5 +28,5 @@ public:
   static rclcpp::Logger InitializeLogging(const std::shared_ptr<rclcpp::Node>& node);
 };
 
-}
-}
+} // namespace UTILS
+} // namespace OASIS

@@ -25,7 +25,7 @@ public:
    *
    * \return The translated int, or 0 if invalid hex string
    */
-  static unsigned int HexStringToInt(const std::string &strHex);
+  static unsigned int HexStringToInt(const std::string& strHex);
 
   /*!
    * \dev Convert an integral value to a hex string
@@ -38,5 +38,5 @@ public:
   static std::string ToHexString(ValueType value);
 };
 
-}
-}
+} // namespace UTILS
+} // namespace OASIS

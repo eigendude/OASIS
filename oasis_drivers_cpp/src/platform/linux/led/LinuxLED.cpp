@@ -9,18 +9,19 @@
 #include "LinuxLED.h"
 
 #include <errno.h>
+#include <string.h>
+
 #include <fcntl.h>
 #include <rclcpp/logging.hpp>
-#include <string.h>
 #include <unistd.h>
 
 using namespace OASIS;
 using namespace LINUX;
 
-LinuxLED::LinuxLED(const std::string &sysfsNode, rclcpp::Logger& logger) :
-  m_sysfsNode(sysfsNode),
-  m_sysfsPath("/sys/class/leds/" + sysfsNode + "/brightness"),
-  m_logger(logger)
+LinuxLED::LinuxLED(const std::string& sysfsNode, rclcpp::Logger& logger)
+  : m_sysfsNode(sysfsNode),
+    m_sysfsPath("/sys/class/leds/" + sysfsNode + "/brightness"),
+    m_logger(logger)
 {
 }
 

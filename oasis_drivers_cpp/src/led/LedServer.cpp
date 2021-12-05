@@ -7,6 +7,7 @@
  */
 
 #include "LedServer.h"
+
 #include "ILedBehavior.h"
 #include "LedCommand.h"
 #include "led/behaviors/BusySignal.h"
@@ -22,9 +23,9 @@ using namespace LED;
 LedServer::LedServer(LedVector leds)
 {
   LedCommandMap behaviors = {
-      { LedCommandType::BUSY_SIGNAL, LedBehaviorPtr(new BusySignal(leds)) },
-      { LedCommandType::FULL_BRIGHTNESS, LedBehaviorPtr(new FullBrightness(leds)) },
-      { LedCommandType::PROGRESS_BAR, LedBehaviorPtr(new ProgressBar(leds)) },
+      {LedCommandType::BUSY_SIGNAL, LedBehaviorPtr(new BusySignal(leds))},
+      {LedCommandType::FULL_BRIGHTNESS, LedBehaviorPtr(new FullBrightness(leds))},
+      {LedCommandType::PROGRESS_BAR, LedBehaviorPtr(new ProgressBar(leds))},
   };
 
   m_behaviors = std::move(behaviors);
@@ -58,11 +59,11 @@ void LedServer::Deinitialize()
   }
 }
 
-void LedServer::ProcessCommand(const std::string &command)
+void LedServer::ProcessCommand(const std::string& command)
 {
   LedCommand ledCommand(command);
-  std::cout << "LedServer: Command " << static_cast<int>(ledCommand.Type()) <<
-      ", progress: " << ledCommand.Progress() << std::endl;
+  std::cout << "LedServer: Command " << static_cast<int>(ledCommand.Type())
+            << ", progress: " << ledCommand.Progress() << std::endl;
 
   m_currentType = ledCommand.Type();
   m_progressPercent = ledCommand.Progress();

@@ -22,7 +22,7 @@ public:
   /*!
    * \brief Construct an LED command from a line of text
    */
-  LedCommand(const std::string &line);
+  LedCommand(const std::string& line);
 
   /*!
    * \brief Get the type of LED command
@@ -38,13 +38,13 @@ public:
 
 private:
   // Utility functions
-  void ParseLine(const std::string &line);
-  static LedCommandType TranslateType(const std::string &commandType);
+  void ParseLine(const std::string& line);
+  static LedCommandType TranslateType(const std::string& commandType);
 
   // Command parameters
   LedCommandType m_type = LedCommandType::FULL_BRIGHTNESS;
   unsigned int m_progressPercent = 0;
 };
 
-}
-}
+} // namespace LED
+} // namespace OASIS

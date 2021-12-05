@@ -34,8 +34,8 @@ public:
    * \return A string representation of the type suitable for logging, or
    * "unknown" if the type is unknown
    */
-  static const char *TypeToString(UdevDeviceType deviceType);
+  static const char* TypeToString(UdevDeviceType deviceType);
 };
 
-}
-}
+} // namespace UDEV
+} // namespace OASIS

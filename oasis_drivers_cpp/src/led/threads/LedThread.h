@@ -29,7 +29,7 @@ class LedThreadCondition;
 class LedThread
 {
 public:
-  LedThread(LedServer &server);
+  LedThread(LedServer& server);
   ~LedThread();
 
   /*!
@@ -59,7 +59,7 @@ private:
   void RunOnce();
 
   // Construction parameters
-  LedServer &m_server;
+  LedServer& m_server;
 
   // State parameters
   uint64_t m_elapsedMs = 0;
@@ -69,5 +69,5 @@ private:
   std::unique_ptr<LedThreadCondition> m_condition;
 };
 
-}
-}
+} // namespace LED
+} // namespace OASIS

@@ -8,8 +8,8 @@
 
 #include "StringUtils.h"
 
-#include <cstdio>
 #include <cstdint>
+#include <cstdio>
 #include <iomanip>
 #include <sstream>
 #include <type_traits>
@@ -17,7 +17,7 @@
 using namespace OASIS;
 using namespace UTILS;
 
-unsigned int StringUtils::HexStringToInt(const std::string &strHex)
+unsigned int StringUtils::HexStringToInt(const std::string& strHex)
 {
   unsigned int iVal = 0;
 
@@ -30,14 +30,15 @@ template<typename ValueType>
 std::string StringUtils::ToHexString(ValueType value)
 {
   // Ensure this function is called with a template parameter that makes sense
-  static_assert(std::is_integral<ValueType>::value,
+  static_assert(
+      std::is_integral<ValueType>::value,
       "Template argument 'ValueType' must be a fundamental integer type (e.g. int, short, etc..).");
 
   std::ostringstream stream;
 
   // Handle 8-bit integers properly.
   // See https://stackoverflow.com/questions/5100718/integer-to-hex-string-in-c
-  stream << "0x" << std::setfill ('0') << std::setw(sizeof(ValueType) * 2) << std::hex;
+  stream << "0x" << std::setfill('0') << std::setw(sizeof(ValueType) * 2) << std::hex;
 
   // If ValueType is an 8-bit integer type (e.g. uint8_t or int8_t) it will be
   // treated as an ASCII code, giving the wrong result. So we use C++17's
@@ -60,8 +61,8 @@ std::string StringUtils::ToHexString(ValueType value)
   }
   else
   {
-      // No cast needed for ints wider than 8 bits.
-      stream << value;
+    // No cast needed for ints wider than 8 bits.
+    stream << value;
   }
 
   return stream.str();

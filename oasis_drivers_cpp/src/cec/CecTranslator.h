@@ -9,8 +9,9 @@
 #pragma once
 
 #include <ctime>
-#include <libcec/cectypes.h>
 #include <string>
+
+#include <libcec/cectypes.h>
 
 namespace OASIS
 {
@@ -85,5 +86,5 @@ public:
   static std::string TranslateBuildDate(std::time_t buildDate);
 };
 
-}
-}
+} // namespace CEC
+} // namespace OASIS

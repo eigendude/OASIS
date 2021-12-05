@@ -34,5 +34,5 @@ private:
   bool m_active = false;
 };
 
-}
-}
+} // namespace LED
+} // namespace OASIS

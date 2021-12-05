@@ -10,25 +10,25 @@
 
 #include "cec/ICecCallback.h"
 
+#include <memory>
+#include <string>
+
 #include <oasis_msgs/msg/power_event.hpp>
 #include <oasis_msgs/srv/power_control.hpp>
-
-#include <memory>
 #include <rclcpp/node.hpp>
 #include <rclcpp/publisher.hpp>
 #include <rclcpp/service.hpp>
-#include <string>
 
 namespace rclcpp
 {
-  class Node;
+class Node;
 }
 
 namespace OASIS
 {
 namespace CEC
 {
-  class CecServer;
+class CecServer;
 }
 
 namespace ROS
@@ -54,7 +54,7 @@ public:
 private:
   // ROS interface
   void OnPowerControl(const std::shared_ptr<oasis_msgs::srv::PowerControl::Request> request,
-      std::shared_ptr<oasis_msgs::srv::PowerControl::Response>);
+                      std::shared_ptr<oasis_msgs::srv::PowerControl::Response>);
 
   // Internal details
   void PublishPowerEvent(const std::string& devicePath, bool bPowerOn);
@@ -68,5 +68,5 @@ private:
   CEC::CecServer* m_cecServer = nullptr;
 };
 
-}
-}
+} // namespace ROS
+} // namespace OASIS

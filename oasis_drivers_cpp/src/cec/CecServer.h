@@ -10,27 +10,28 @@
 
 #include "udev/IUdevCallback.h"
 
-#include <libcec/cectypes.h>
 #include <map>
 #include <memory>
 #include <string>
 
+#include <libcec/cectypes.h>
+
 namespace CEC
 {
-  class ICECAdapter;
+class ICECAdapter;
 }
 
 namespace rclcpp
 {
-  class Logger;
-  class Node;
-}
+class Logger;
+class Node;
+} // namespace rclcpp
 
 namespace OASIS
 {
 namespace UDEV
 {
-  class UdevScanner;
+class UdevScanner;
 }
 
 namespace CEC
@@ -72,9 +73,9 @@ private:
 
   // CEC parameters
   CecAdapterMap m_adapters;
-  ::CEC::ICECAdapter *m_cecAdapter = nullptr;
+  ::CEC::ICECAdapter* m_cecAdapter = nullptr;
   ::CEC::libcec_configuration m_configuration{};
 };
 
-}
-}
+} // namespace CEC
+} // namespace OASIS

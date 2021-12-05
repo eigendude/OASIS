@@ -12,25 +12,26 @@
 #include "cec/ICecAdapter.h"
 
 #include <functional>
+
 #include <oasis_msgs/msg/power_mode.hpp>
 #include <rclcpp/node.hpp>
 #include <std_msgs/msg/header.hpp>
 
 namespace
 {
-  constexpr const char* NODE_NAME = "cec_server";
+constexpr const char* NODE_NAME = "cec_server";
 
-  constexpr const char* MACHINE_NAME = "zotac"; // TODO
+constexpr const char* MACHINE_NAME = "zotac"; // TODO
 
-  constexpr const char* POWER_EVENT_TOPIC = "power_event";
-  constexpr const char* POWER_CONTROL_SERVICE = "power_control";
+constexpr const char* POWER_EVENT_TOPIC = "power_event";
+constexpr const char* POWER_CONTROL_SERVICE = "power_control";
 
-  // TODO: Hardware config
-  constexpr const char* HDMI_CEC_ADAPTER = "/sys/devices/pci0000:00/0000:00:14.0/usb2/2-6";
-  constexpr const char* DISPLAY_PORT_CEC_ADAPTER = "/sys/devices/pci0000:00/0000:00:14.0/usb2/2-5";
-  constexpr const char* LEFT_TV = HDMI_CEC_ADAPTER;
-  constexpr const char* RIGHT_TV = DISPLAY_PORT_CEC_ADAPTER;
-}
+// TODO: Hardware config
+constexpr const char* HDMI_CEC_ADAPTER = "/sys/devices/pci0000:00/0000:00:14.0/usb2/2-6";
+constexpr const char* DISPLAY_PORT_CEC_ADAPTER = "/sys/devices/pci0000:00/0000:00:14.0/usb2/2-5";
+constexpr const char* LEFT_TV = HDMI_CEC_ADAPTER;
+constexpr const char* RIGHT_TV = DISPLAY_PORT_CEC_ADAPTER;
+} // namespace
 
 using namespace OASIS;
 using namespace ROS;
@@ -38,9 +39,7 @@ using namespace ROS;
 using std::placeholders::_1;
 using std::placeholders::_2;
 
-CecServerNode::CecServerNode() :
-    rclcpp::Node(NODE_NAME),
-    m_systemName(MACHINE_NAME)
+CecServerNode::CecServerNode() : rclcpp::Node(NODE_NAME), m_systemName(MACHINE_NAME)
 {
   using PowerControl = oasis_msgs::srv::PowerControl;
   using PowerEvent = oasis_msgs::msg::PowerEvent;
@@ -50,7 +49,7 @@ CecServerNode::CecServerNode() :
 
   // Create service
   m_service = create_service<PowerControl>(POWER_CONTROL_SERVICE,
-      std::bind(&CecServerNode::OnPowerControl, this, _1, _2));
+                                           std::bind(&CecServerNode::OnPowerControl, this, _1, _2));
 }
 
 CecServerNode::~CecServerNode() = default;
@@ -75,7 +74,8 @@ void CecServerNode::OnPowerOff(const OASIS::CEC::ICecAdapter& adapter)
   PublishPowerEvent(adapter.GetDevicePath(), false);
 }
 
-void CecServerNode::OnPowerControl(const std::shared_ptr<oasis_msgs::srv::PowerControl::Request> request,
+void CecServerNode::OnPowerControl(
+    const std::shared_ptr<oasis_msgs::srv::PowerControl::Request> request,
     std::shared_ptr<oasis_msgs::srv::PowerControl::Response>)
 {
   using PowerMode = oasis_msgs::msg::PowerMode;

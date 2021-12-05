@@ -10,7 +10,7 @@
 
 namespace rclcpp
 {
-  class Logger;
+class Logger;
 }
 
 namespace OASIS
@@ -33,5 +33,5 @@ public:
   static LedVector GetLEDs(rclcpp::Logger& logger);
 };
 
-}
-}
+} // namespace LED
+} // namespace OASIS

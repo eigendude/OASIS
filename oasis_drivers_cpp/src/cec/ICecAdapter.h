@@ -25,5 +25,5 @@ public:
   virtual const std::string& GetDeviceNode() const = 0;
 };
 
-}
-}
+} // namespace CEC
+} // namespace OASIS

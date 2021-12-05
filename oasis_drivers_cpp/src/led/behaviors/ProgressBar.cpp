@@ -7,6 +7,7 @@
  */
 
 #include "ProgressBar.h"
+
 #include "led/ILed.h"
 
 using namespace OASIS;
@@ -14,11 +15,10 @@ using namespace LED;
 
 namespace
 {
-  constexpr unsigned int FORCE_TIMEOUT_MS = 5000;
+constexpr unsigned int FORCE_TIMEOUT_MS = 5000;
 }
 
-ProgressBar::ProgressBar(LedVector leds) :
-  m_leds(std::move(leds))
+ProgressBar::ProgressBar(LedVector leds) : m_leds(std::move(leds))
 {
 }
 
@@ -28,7 +28,7 @@ void ProgressBar::Update(uint64_t runtimeMs, float progressRatio)
 {
   for (unsigned int i = 0; i < m_leds.size(); i++)
   {
-    LedPtr &led = m_leds[i];
+    LedPtr& led = m_leds[i];
 
     if (1.0f * i / m_leds.size() < progressRatio)
       led->Enable();
@@ -41,7 +41,7 @@ void ProgressBar::Update(uint64_t runtimeMs, float progressRatio)
 
 void ProgressBar::Shutdown()
 {
-  for (LedPtr &led : m_leds)
+  for (LedPtr& led : m_leds)
   {
     led->Disable();
     led->Update(false);

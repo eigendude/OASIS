@@ -7,6 +7,7 @@
  */
 
 #include "FullBrightness.h"
+
 #include "led/ILed.h"
 
 using namespace OASIS;
@@ -14,11 +15,10 @@ using namespace LED;
 
 namespace
 {
-  constexpr unsigned int FORCE_TIMEOUT_MS = 5000;
+constexpr unsigned int FORCE_TIMEOUT_MS = 5000;
 }
 
-FullBrightness::FullBrightness(LedVector leds) :
-  m_leds(std::move(leds))
+FullBrightness::FullBrightness(LedVector leds) : m_leds(std::move(leds))
 {
 }
 
@@ -26,7 +26,7 @@ FullBrightness::~FullBrightness() = default;
 
 void FullBrightness::Update(uint64_t runtimeMs, float progressRatio)
 {
-  for (LedPtr &led : m_leds)
+  for (LedPtr& led : m_leds)
   {
     led->Enable();
     led->Update(runtimeMs < FORCE_TIMEOUT_MS);
@@ -35,7 +35,7 @@ void FullBrightness::Update(uint64_t runtimeMs, float progressRatio)
 
 void FullBrightness::Shutdown()
 {
-  for (LedPtr &led : m_leds)
+  for (LedPtr& led : m_leds)
   {
     led->Disable();
     led->Update(false);

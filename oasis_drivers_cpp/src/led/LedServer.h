@@ -47,7 +47,7 @@ public:
   void Deinitialize();
 
   // Implementation of ICommandHandler
-  void ProcessCommand(const std::string &command) override;
+  void ProcessCommand(const std::string& command) override;
 
   /*!
    * \brief Update the resources of this class
@@ -70,5 +70,5 @@ private:
   std::unique_ptr<LedThread> m_thread;
 };
 
-}
-}
+} // namespace LED
+} // namespace OASIS

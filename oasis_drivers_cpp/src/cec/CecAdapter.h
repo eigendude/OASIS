@@ -10,21 +10,22 @@
 
 #include "ICecAdapter.h"
 
-#include <libcec/cectypes.h>
 #include <memory>
 #include <mutex>
 #include <string>
 
+#include <libcec/cectypes.h>
+
 namespace CEC
 {
-  class ICECAdapter;
-  struct ICECCallbacks;
-  struct libcec_configuration;
-}
+class ICECAdapter;
+struct ICECCallbacks;
+struct libcec_configuration;
+} // namespace CEC
 
 namespace rclcpp
 {
-  class Logger;
+class Logger;
 }
 
 namespace OASIS
@@ -96,7 +97,7 @@ private:
   rclcpp::Logger& m_logger;
 
   // CEC parameters
-  ::CEC::ICECAdapter *m_cecAdapter = nullptr;
+  ::CEC::ICECAdapter* m_cecAdapter = nullptr;
   ::CEC::libcec_configuration m_configuration{};
   ::CEC::ICECCallbacks m_callbacks{};
   std::string m_vendorName;
@@ -105,5 +106,5 @@ private:
   std::mutex m_mutex;
 };
 
-}
-}
+} // namespace CEC
+} // namespace OASIS

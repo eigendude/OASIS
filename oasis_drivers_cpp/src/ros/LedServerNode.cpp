@@ -10,7 +10,7 @@
 
 namespace
 {
-  constexpr const char* NODE_NAME = "led_server";
+constexpr const char* NODE_NAME = "led_server";
 }
 
 using namespace OASIS;
