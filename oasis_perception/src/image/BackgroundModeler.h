@@ -9,6 +9,7 @@
 #pragma once
 
 #include <memory>
+
 #include <rclcpp/logger.hpp>
 #include <sensor_msgs/msg/image.hpp>
 
@@ -16,20 +17,20 @@ namespace bgslibrary
 {
 namespace algorithms
 {
-  class IBGS;
+class IBGS;
 }
-}
+} // namespace bgslibrary
 
 namespace image_transport
 {
-  class ImageTransport;
-  class Publisher;
-  class Subscriber;
-}
+class ImageTransport;
+class Publisher;
+class Subscriber;
+} // namespace image_transport
 
 namespace rclcpp
 {
-  class Node;
+class Node;
 }
 
 namespace OASIS
@@ -44,7 +45,7 @@ public:
   ~BackgroundModeler();
 
   // ROS interface
-  void ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr &msg);
+  void ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg);
 
 private:
   // Logging parameters
@@ -58,5 +59,5 @@ private:
   std::unique_ptr<bgslibrary::algorithms::IBGS> m_bgsPackage;
 };
 
-}
-}
+} // namespace IMAGE
+} // namespace OASIS

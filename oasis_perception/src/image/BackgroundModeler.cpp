@@ -23,26 +23,26 @@ using namespace IMAGE;
 
 namespace
 {
-  constexpr const char* ROS_NAMESPACE = "oasis"; // TODO
+constexpr const char* ROS_NAMESPACE = "oasis"; // TODO
 
-  // TODO: Hardware configuration
-  constexpr const char* VIDEO_MACHINE = "netbook";
+// TODO: Hardware configuration
+constexpr const char* VIDEO_MACHINE = "netbook";
 
-  // Subscribed topics
-  constexpr const char *IMAGE_TOPIC = "image_raw";
+// Subscribed topics
+constexpr const char* IMAGE_TOPIC = "image_raw";
 
-  // Published topics
-  constexpr const char *FOREGROUND_TOPIC = "foreground";
-  constexpr const char *BACKGROUND_TOPIC = "background";
-}
+// Published topics
+constexpr const char* FOREGROUND_TOPIC = "foreground";
+constexpr const char* BACKGROUND_TOPIC = "background";
+} // namespace
 
-BackgroundModeler::BackgroundModeler(std::shared_ptr<rclcpp::Node> node) :
-  m_logger(node->get_logger()),
-  m_imgTransport(std::make_unique<image_transport::ImageTransport>(node)),
-  m_imgPublisherForeground(std::make_unique<image_transport::Publisher>()),
-  m_imgPublisherBackground(std::make_unique<image_transport::Publisher>()),
-  m_imgSubscriber(std::make_unique<image_transport::Subscriber>()),
-  m_bgsPackage(std::make_unique<bgslibrary::algorithms::AdaptiveSelectiveBackgroundLearning>())
+BackgroundModeler::BackgroundModeler(std::shared_ptr<rclcpp::Node> node)
+  : m_logger(node->get_logger()),
+    m_imgTransport(std::make_unique<image_transport::ImageTransport>(node)),
+    m_imgPublisherForeground(std::make_unique<image_transport::Publisher>()),
+    m_imgPublisherBackground(std::make_unique<image_transport::Publisher>()),
+    m_imgSubscriber(std::make_unique<image_transport::Subscriber>()),
+    m_bgsPackage(std::make_unique<bgslibrary::algorithms::AdaptiveSelectiveBackgroundLearning>())
 {
   // Create topics
   const std::string topicBase = std::string("/") + ROS_NAMESPACE + "/" + VIDEO_MACHINE + "/";
@@ -57,13 +57,8 @@ BackgroundModeler::BackgroundModeler(std::shared_ptr<rclcpp::Node> node) :
 
   auto transportHints = image_transport::TransportHints(node.get(), "compressed");
 
-  *m_imgSubscriber = m_imgTransport->subscribe(
-    imageTopic,
-    1,
-    &BackgroundModeler::ReceiveImage,
-    this,
-    &transportHints
-  );
+  *m_imgSubscriber = m_imgTransport->subscribe(imageTopic, 1, &BackgroundModeler::ReceiveImage,
+                                               this, &transportHints);
 
   *m_imgPublisherForeground = m_imgTransport->advertise(foregroundTopic, 10);
   *m_imgPublisherBackground = m_imgTransport->advertise(backgroundTopic, 10);
@@ -73,7 +68,7 @@ BackgroundModeler::BackgroundModeler(std::shared_ptr<rclcpp::Node> node) :
 
 BackgroundModeler::~BackgroundModeler() = default;
 
-void BackgroundModeler::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr &msg)
+void BackgroundModeler::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg)
 {
   cv_bridge::CvImagePtr cv_ptr;
   try

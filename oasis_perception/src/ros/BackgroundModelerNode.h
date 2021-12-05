@@ -22,5 +22,5 @@ public:
   ~BackgroundModelerNode() override;
 };
 
-}
-}
+} // namespace ROS
+} // namespace OASIS

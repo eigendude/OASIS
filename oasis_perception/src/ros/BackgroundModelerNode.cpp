@@ -10,7 +10,7 @@
 
 namespace
 {
-  constexpr const char* NODE_NAME = "background_substractor";
+constexpr const char* NODE_NAME = "background_substractor";
 }
 
 using namespace OASIS;
