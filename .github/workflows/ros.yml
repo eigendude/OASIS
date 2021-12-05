@@ -39,16 +39,6 @@ jobs:
       - name: Checkout main repo
         uses: actions/checkout@v2
 
-      - name: Restore ccache
-        id: restore-ccache
-        uses: actions/cache@v2
-        with:
-          path: |
-            ~/.ccache
-          key: restore-ccache-${{ matrix.os }}-initial
-          restore-keys: |
-            restore-ccache-${{ matrix.os }}-
-
       - name: Restore CMake
         id: restore-cmake
         uses: actions/cache@v2
