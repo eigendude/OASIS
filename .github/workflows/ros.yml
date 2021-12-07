@@ -122,6 +122,20 @@ jobs:
         if: matrix.os != 'ubuntu-18.04' && steps.restore-ros1-desktop.outputs.cache-hit != 'true'
         run: ./oasis_tooling/scripts/depinstall_ros1_desktop.sh
 
+      - name: Fix empy install for ROS 1
+        if: matrix.os != 'ubuntu-18.04' && steps.restore-ros1-desktop.outputs.cache-hit != 'true'
+        run: |
+          sudo apt install -y python3-empy
+          sudo ln -s -f /usr/bin/empy3 /usr/bin/empy
+
+      - name: Fix missing Python 2 packages for ROS 1
+        if: matrix.os != 'ubuntu-18.04' && steps.restore-ros1-desktop.outputs.cache-hit != 'true'
+        run: |
+          sudo apt install python2
+          curl https://bootstrap.pypa.io/pip/2.7/get-pip.py --output get-pip.py
+          sudo python2 get-pip.py
+          python2 -m pip install --upgrade catkin_pkg empy pip PyYAML setuptools
+
       - name: Build ROS 1 Desktop
         if: matrix.os != 'ubuntu-18.04' && steps.restore-ros1-desktop.outputs.cache-hit != 'true'
         run: ./oasis_tooling/scripts/build_ros1_desktop.sh
