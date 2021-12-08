@@ -60,8 +60,8 @@ class RosTranslator(object):
         msg.vendor_id = usb_device.vendor_id
         msg.product_id = usb_device.product_id
         msg.serial_number = usb_device.serial_number if usb_device.serial_number else ""
-        msg.location = usb_device.location
-        msg.manufacturer = usb_device.manufacturer
-        msg.product = usb_device.product
+        msg.location = usb_device.location if usb_device.location else ""
+        msg.manufacturer = usb_device.manufacturer if usb_device.manufacturer else ""
+        msg.product = usb_device.product if usb_device.product else ""
 
         return msg
