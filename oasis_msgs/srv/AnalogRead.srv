@@ -1,0 +1,28 @@
+################################################################################
+#
+#  Copyright (C) 2021 Garrett Brown
+#  This file is part of OASIS - https://github.com/eigendude/OASIS
+#
+#  SPDX-License-Identifier: Apache-2.0 AND BSD-3-Clause
+#  See DOCS/LICENSING.md for more information.
+#
+################################################################################
+
+#
+# Read a value from an analog IO pin on an Arduino or any board with an ADC.
+#
+
+# Analog pin number (ex. A2 on the Arduino is specified as 2)
+uint32 analog_pin
+
+---
+
+# Two-integer timestamp, expressed as seconds and nanoseconds, of when the
+# analog value was last read
+builtin_interfaces/Time stamp
+
+# The reference voltage, in Volts
+float64 reference_voltage
+
+# The analog value, in a range from 0.0 to 1.0
+float64 analog_value

@@ -1,0 +1,22 @@
+################################################################################
+#
+#  Copyright (C) 2021 Garrett Brown
+#  This file is part of OASIS - https://github.com/eigendude/OASIS
+#
+#  SPDX-License-Identifier: Apache-2.0 AND BSD-3-Clause
+#  See DOCS/LICENSING.md for more information.
+#
+################################################################################
+
+#
+# Write a value to a PWM IO pin on an Arduino or any board with a pin that
+# supports PWM.
+#
+
+# The digital pin number
+uint32 digital_pin
+
+# The PWM duty cycle, from 0.0 to 1.0
+float64 duty_cycle
+
+---

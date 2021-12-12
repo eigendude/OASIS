@@ -1,0 +1,21 @@
+################################################################################
+#
+#  Copyright (C) 2021 Garrett Brown
+#  This file is part of OASIS - https://github.com/eigendude/OASIS
+#
+#  SPDX-License-Identifier: Apache-2.0 AND BSD-3-Clause
+#  See DOCS/LICENSING.md for more information.
+#
+################################################################################
+
+#
+# Set the mode of a digital pin.
+#
+
+# The digital pin number
+uint32 digital_pin
+
+# The mode, as specified by a constant in AVRConstants.msg
+uint8 digital_mode
+
+---

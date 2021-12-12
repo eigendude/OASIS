@@ -24,6 +24,9 @@ find_package(std_msgs REQUIRED)
 
 rosidl_generate_interfaces(
   ${PROJECT_NAME}
+    msg/AnalogReading.msg
+    msg/AVRConstants.msg
+    msg/DigitalReading.msg
     msg/DiskPartition.msg
     msg/NetworkAddress.msg
     msg/NetworkInterface.msg
@@ -33,7 +36,14 @@ rosidl_generate_interfaces(
     msg/SerialDeviceScan.msg
     msg/SystemTelemetry.msg
     msg/UsbDevice.msg
+    srv/AnalogRead.srv
+    srv/DigitalRead.srv
+    srv/DigitalWrite.srv
     srv/PowerControl.srv
+    srv/PWMWrite.srv
+    srv/ServoWrite.srv
+    srv/SetAnalogMode.srv
+    srv/SetDigitalMode.srv
   DEPENDENCIES
     std_msgs
 )
