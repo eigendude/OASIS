@@ -62,3 +62,6 @@ dpkg -s ccache >/dev/null || sudo apt install -y ccache
 
 # TODO: image_transport needs libtinyxml2-dev indirectly
 dpkg -s libtinyxml2-dev >/dev/null || sudo apt install -y libtinyxml2-dev
+
+# Install Python dependencies
+python3 -m pip install --upgrade --requirement "${STACK_DIRECTORY}/oasis_drivers_py/requirements.txt"

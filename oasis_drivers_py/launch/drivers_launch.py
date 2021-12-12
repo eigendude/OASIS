@@ -27,6 +27,7 @@ ENABLE_VIDEO = True
 VIDEO_DEVICE = "/dev/video0"
 IMAGE_SIZE = [640, 480]
 ENABLE_KINECT_V2 = False
+ENABLE_FIRMATA = False
 
 # TODO: Temporary
 print(f"Launching on {MACHINE}")
@@ -120,5 +121,26 @@ def generate_launch_description() -> LaunchDescription:
             output="screen",
         )
         ld.add_action(kinect_v2_node)
+
+    if ENABLE_FIRMATA:
+        firmata_bridge_node = Node(
+            namespace=ROS_NAMESPACE,
+            package=PYTHON_PACKAGE_NAME,
+            executable="firmata_bridge",
+            output="screen",
+            emulate_tty=True,
+            remappings=[
+                ("analog_read", f"{MACHINE}/analog_read"),
+                ("analog_reading", f"{MACHINE}/analog_reading"),
+                ("digital_read", f"{MACHINE}/digital_read"),
+                ("digital_reading", f"{MACHINE}/digital_reading"),
+                ("digital_write", f"{MACHINE}/digital_write"),
+                ("pwm_write", f"{MACHINE}/pwm_write"),
+                ("servo_write", f"{MACHINE}/servo_write"),
+                ("set_analog_mode", f"{MACHINE}/set_analog_mode"),
+                ("set_digital_mode", f"{MACHINE}/set_digital_mode"),
+            ],
+        )
+        ld.add_action(firmata_bridge_node)
 
     return ld
