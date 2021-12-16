@@ -17,7 +17,7 @@
 #
 #   * bash
 #   * curl
-#   * git (requires credentials set via `git config`)
+#   * git
 #   * tar
 #
 
@@ -51,7 +51,7 @@ source "${SCRIPT_DIR}/scripts/get_arduino_platform.sh"
 # TODO: Move dependency mangement to CMake
 #
 
-ARDUINO_IDE_VERSION="1.8.16"
+ARDUINO_IDE_VERSION="1.8.18"
 ARDUINO_IDE_PLATFORM="$(get_arduino_platform)"
 ARDUINO_IDE_URL="https://downloads.arduino.cc/arduino-${ARDUINO_IDE_VERSION}-${ARDUINO_IDE_PLATFORM}.tar.xz"
 

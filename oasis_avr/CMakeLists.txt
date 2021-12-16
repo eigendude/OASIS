@@ -16,17 +16,17 @@ endif()
 #
 # Arduino IDE download links
 #
-#   Linux 32 - https://downloads.arduino.cc/arduino-1.8.16-linux32.tar.xz
-#   Linux 64 - https://downloads.arduino.cc/arduino-1.8.16-linux64.tar.xz
-#   Linux ARM 32 - https://downloads.arduino.cc/arduino-1.8.16-linuxarm.tar.xz
-#   Linux ARM 64 - https://downloads.arduino.cc/arduino-1.8.16-linuxaarch64.tar.xz
-#   MacOS - https://downloads.arduino.cc/arduino-1.8.16-macosx.zip
-#   Windows - https://downloads.arduino.cc/arduino-1.8.16-windows.zip
+#   Linux 32 - https://downloads.arduino.cc/arduino-1.8.18-linux32.tar.xz
+#   Linux 64 - https://downloads.arduino.cc/arduino-1.8.18-linux64.tar.xz
+#   Linux ARM 32 - https://downloads.arduino.cc/arduino-1.8.18-linuxarm.tar.xz
+#   Linux ARM 64 - https://downloads.arduino.cc/arduino-1.8.18-linuxaarch64.tar.xz
+#   MacOS - https://downloads.arduino.cc/arduino-1.8.18-macosx.zip
+#   Windows - https://downloads.arduino.cc/arduino-1.8.18-windows.zip
 #
 # TODO: Search /opt if not set on command line
 #
 if (NOT ARDUINO_INSTALL_PATH)
-  set(ARDUINO_INSTALL_PATH "${CMAKE_CURRENT_SOURCE_DIR}/arduino-1.8.16")
+  set(ARDUINO_INSTALL_PATH "${CMAKE_CURRENT_SOURCE_DIR}/arduino-1.8.18")
 endif()
 
 #

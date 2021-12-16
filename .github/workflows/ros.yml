@@ -24,11 +24,11 @@ jobs:
           - os: ubuntu-18.04
             ros1_distro: noetic
             ros2_distro: galactic
-            arduino_ide: 1.8.16
+            arduino_ide: 1.8.18
           - os: ubuntu-20.04
             ros1_distro: noetic
             ros2_distro: galactic
-            arduino_ide: 1.8.16
+            arduino_ide: 1.8.18
 
     # Steps represent a sequence of tasks that will be executed as part of the
     # job
