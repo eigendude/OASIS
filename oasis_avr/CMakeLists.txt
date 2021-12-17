@@ -8,6 +8,23 @@
 #
 ################################################################################
 
+cmake_minimum_required(VERSION 3.11)
+
+#
+# Arduino CMake toolchain configuration
+#
+# The advantage of using the Arduino CMake toolchain is that it provides wide
+# board support and allows us to use first-party and third-party Arduino
+# libraries.
+#
+# However, passing the toolchain file to Colcon would cause all packages to be
+# built for AVR instead of just this one. Instead, we specify the toolchain file
+# here. Critically, it must be specified before the first call to project().
+#
+# An external script, bootstrap.sh, is therefore need to put all Arduino
+# dependencies in place. This script should be called before invoking Colcon.
+#
+
 # Board configuration
 if (NOT ARDUINO_BOARD_OPTIONS_FILE)
   set(ARDUINO_BOARD_OPTIONS_FILE "${CMAKE_CURRENT_SOURCE_DIR}/config/BoardOptions.cmake")
@@ -29,25 +46,22 @@ if (NOT ARDUINO_INSTALL_PATH)
   set(ARDUINO_INSTALL_PATH "${CMAKE_CURRENT_SOURCE_DIR}/arduino-1.8.18")
 endif()
 
-#
-# Load Arduino toolchain, requires git submodule:
-#
-#   git submodule init
-#   git submodule update
-#
+# Load Arduino toolchain
 set(CMAKE_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/cmake/Arduino-CMake-Toolchain/Arduino-toolchain.cmake")
 
 #
-# Declare project
+# End Arduino CMake toolchain configuration
 #
-# This must be done after setting the CMake toolchain file
+# Declare the project here. This must be done after setting the CMake toolchain
+# file.
 #
-cmake_minimum_required(VERSION 3.10)
 project(oasis_avr)
 
+################################################################################
 #
 # Dependencies
 #
+################################################################################
 
 include(ExternalProject)
 
@@ -62,8 +76,10 @@ ExternalProject_Add(protothreads
   INSTALL_COMMAND ""
 )
 
+################################################################################
 #
 # Declare an ament Package
 #
+################################################################################
 
 ament_package()
