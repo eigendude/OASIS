@@ -10,3 +10,6 @@
 [submodule "oasis_avr/libraries/Ultrasonic"]
 	path = oasis_avr/libraries/Ultrasonic
 	url = https://github.com/ErickSimoes/Ultrasonic.git
+[submodule "oasis_avr/libraries/DHTStable"]
+	path = oasis_avr/libraries/DHTStable
+	url = https://github.com/RobTillaart/DHTstable.git
