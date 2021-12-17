@@ -46,6 +46,19 @@ if (NOT ARDUINO_INSTALL_PATH)
   set(ARDUINO_INSTALL_PATH "${CMAKE_CURRENT_SOURCE_DIR}/arduino-1.8.18")
 endif()
 
+#
+# We can't add Arduino libraries the same way as normal dependencies. Arduino
+# libraries have no CMakeLists.txt, and are defined with a "library.properties"
+# file.
+#
+# Arduino libraries are found with the toolchain file, so the library search
+# path needs to be set here.
+#
+
+list(APPEND ARDUINO_LIBRARIES_SEARCH_PATHS_EXTRA
+  "${CMAKE_CURRENT_SOURCE_DIR}/libraries"
+)
+
 # Load Arduino toolchain
 set(CMAKE_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/cmake/Arduino-CMake-Toolchain/Arduino-toolchain.cmake")
 

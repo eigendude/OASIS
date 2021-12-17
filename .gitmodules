@@ -4,3 +4,6 @@
 [submodule "oasis_avr/cmake/Arduino-CMake-Toolchain"]
 	path = oasis_avr/cmake/Arduino-CMake-Toolchain
 	url = https://github.com/a9183756-gh/Arduino-CMake-Toolchain.git
+[submodule "oasis_avr/libraries/FirmataExpress"]
+	path = oasis_avr/libraries/FirmataExpress
+	url = https://github.com/MrYsLab/FirmataExpress.git

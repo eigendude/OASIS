@@ -58,6 +58,12 @@ ARDUINO_IDE_URL="https://downloads.arduino.cc/arduino-${ARDUINO_IDE_VERSION}-${A
 # Location of the extracted Arduino IDE and toolchain
 ARDUINO_IDE_DIR="${SCRIPT_DIR}/arduino-${ARDUINO_IDE_VERSION}"
 
+# Location of the Firmata library included in the Arduino IDE
+FIRMATA_DIR="${ARDUINO_IDE_DIR}/libraries/Firmata"
+
+# Location of the Adafruit Circuit Playground library included in the Arduino IDE
+ADAFRUIT_CP_DIR="${ARDUINO_IDE_DIR}/libraries/Adafruit_Circuit_Playground"
+
 #
 # Toolchain setup
 #
@@ -71,4 +77,17 @@ git submodule update --init --recursive --force -- "${SCRIPT_DIR}"
 if [ ! -d "${ARDUINO_IDE_DIR}" ]; then
   echo "Downloading Arduino IDE..."
   curl "${ARDUINO_IDE_URL}" | tar -xJ --directory "${SCRIPT_DIR}"
+fi
+
+# Because we use FirmataExpress instead of Firmata, remove the Firmata library
+# to avoid confusing IDEs
+if [ -d "${FIRMATA_DIR}" ]; then
+  echo "Removing ${FIRMATA_DIR}"
+  rm -rf "${FIRMATA_DIR}"
+fi
+
+# Similarly, Adafruit Circuit Playground bundles a modified Firmata
+if [ -d "${ADAFRUIT_CP_DIR}" ]; then
+  echo "Removing ${ADAFRUIT_CP_DIR}"
+  rm -rf "${ADAFRUIT_CP_DIR}"
 fi

@@ -81,7 +81,7 @@ jobs:
         with:
           path: |
             oasis_avr/arduino-${{ matrix.arduino_ide }}
-          key: restore-arduino-ide-${{ matrix.arduino_ide }}
+          key: restore-arduino-ide-${{ matrix.arduino_ide }}-${{ hashFiles('oasis_avr/bootstrap.sh') }}
 
       - name: Add ROS 2 repo
         run: |
