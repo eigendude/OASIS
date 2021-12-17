@@ -7,3 +7,6 @@
 [submodule "oasis_avr/libraries/FirmataExpress"]
 	path = oasis_avr/libraries/FirmataExpress
 	url = https://github.com/MrYsLab/FirmataExpress.git
+[submodule "oasis_avr/libraries/Ultrasonic"]
+	path = oasis_avr/libraries/Ultrasonic
+	url = https://github.com/ErickSimoes/Ultrasonic.git
