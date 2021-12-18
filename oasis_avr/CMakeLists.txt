@@ -63,18 +63,7 @@ project(oasis_avr)
 #
 ################################################################################
 
-include(ExternalProject)
-
 find_package(ament_cmake REQUIRED)
-
-# External projects
-ExternalProject_Add(protothreads
-  URL http://dunkels.com/adam/download/pt-1.4.tar.gz
-  URL_HASH SHA256=eab53f3715a10b0d1eea70f4c456724095b64b89630aba26867a7c982723daa7
-  CONFIGURE_COMMAND ""
-  BUILD_COMMAND ""
-  INSTALL_COMMAND ""
-)
 
 ################################################################################
 #
