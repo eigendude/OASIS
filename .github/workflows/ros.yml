@@ -165,3 +165,16 @@ jobs:
 
       - name: colcon build
         run: ./oasis_tooling/scripts/build_oasis.sh
+
+      - name: Upload Ardino hex to /dev/ttyACM0
+        if: matrix.os == 'cinder'
+        run: |
+          ./oasis_avr/scripts/reset_leonardo.py /dev/ttyACM0
+          sleep 2
+          source oasis_tooling/scripts/env_ros2_desktop.sh && cmake --build "build/oasis_avr" --target upload -- TARGET=station_node SERIAL_PORT=/dev/ttyACM0
+          sleep 2
+
+      - name: Test Ardino
+        if: matrix.os == 'cinder'
+        run: |
+          source install/setup.bash && ros2 run oasis_drivers_py firmata_test

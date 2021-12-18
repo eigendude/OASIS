@@ -10,6 +10,7 @@
 
 cmake_minimum_required(VERSION 3.11)
 
+################################################################################
 #
 # Arduino CMake toolchain configuration
 #
@@ -24,10 +25,36 @@ cmake_minimum_required(VERSION 3.11)
 # An external script, bootstrap.sh, is therefore need to put all Arduino
 # dependencies in place. This script should be called before invoking Colcon.
 #
+################################################################################
 
-# Board configuration
+#
+# Board selection
+#
+# Current options are:
+#
+#   - uno
+#   - leonardo
+#
+
+# TODO: Currently board selection is done by scanning the hostname, but is
+# specific to my computer constellation. How to make this more generic?
+cmake_host_system_information(RESULT HOST_NAME QUERY HOSTNAME)
+message(STATUS "Configuring for hostname: ${HOST_NAME}")
+
+if (HOST_NAME STREQUAL cinder)
+  set(ARDUINO_VARIANT leonardo)
+else()
+  set(ARDUINO_VARIANT uno)
+endif()
+
+message(STATUS "Building for: ${ARDUINO_VARIANT}")
+
+#
+# Board configuration file
+#
+
 if (NOT ARDUINO_BOARD_OPTIONS_FILE)
-  set(ARDUINO_BOARD_OPTIONS_FILE "${CMAKE_CURRENT_SOURCE_DIR}/config/BoardOptions.cmake")
+  set(ARDUINO_BOARD_OPTIONS_FILE "${CMAKE_CURRENT_SOURCE_DIR}/config/BoardOptions-${ARDUINO_VARIANT}.cmake")
 endif()
 
 #
@@ -42,6 +69,7 @@ endif()
 #
 # TODO: Search /opt if not set on command line
 #
+
 if (NOT ARDUINO_INSTALL_PATH)
   set(ARDUINO_INSTALL_PATH "${CMAKE_CURRENT_SOURCE_DIR}/arduino-1.8.18")
 endif()
@@ -59,15 +87,21 @@ list(APPEND ARDUINO_LIBRARIES_SEARCH_PATHS_EXTRA
   "${CMAKE_CURRENT_SOURCE_DIR}/libraries"
 )
 
+#
 # Load Arduino toolchain
+#
+
 set(CMAKE_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/cmake/Arduino-CMake-Toolchain/Arduino-toolchain.cmake")
 
+################################################################################
 #
 # End Arduino CMake toolchain configuration
 #
 # Declare the project here. This must be done after setting the CMake toolchain
 # file.
 #
+################################################################################
+
 project(oasis_avr)
 
 ################################################################################
