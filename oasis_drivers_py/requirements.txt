@@ -1,1 +1,2 @@
 pymata-express==1.21
+pyudev==0.22.0
