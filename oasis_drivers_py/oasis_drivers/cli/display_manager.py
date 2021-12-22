@@ -31,11 +31,12 @@ def main(args=None) -> None:
     rclpy.init(args=args)
 
     manager = DisplayManagerNode()
-    rclpy.spin(manager)
 
-    # Destroy the node explicitly. Problems can occur when the garbage
-    # collector automatically destroys the node object after ROS has
-    # shut down.
-    manager.destroy_node()
+    try:
+        rclpy.spin(manager)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        manager.stop()
 
     rclpy.shutdown()

@@ -48,6 +48,14 @@ class DisplayManagerNode(rclpy.node.Node):
 
         self.get_logger().info("Display manager initialized")
 
+    def stop(self) -> None:
+        self.get_logger().info("Display manager deinitialized")
+
+        # Destroy the node explicitly. Problems can occur when the garbage
+        # collector automatically destroys the node object after ROS has
+        # shut down.
+        self.destroy_node()
+
     def _handle_power_control(self, request, response) -> None:
         power_mode: bool = request.power_mode == PowerModeMsg.ON
 

@@ -66,6 +66,14 @@ class SerialScannerNode(rclpy.node.Node):
 
         self.get_logger().info("Serial scanner initialized")
 
+    def stop(self) -> None:
+        self.get_logger().info("Serial scanner deinitialized")
+
+        # Destroy the node explicitly. Problems can occur when the garbage
+        # collector automatically destroys the node object after ROS has
+        # shut down.
+        self.destroy_node()
+
     def _do_scan(self) -> None:
         """
         Scan for serial ports.

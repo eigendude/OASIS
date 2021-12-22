@@ -45,11 +45,12 @@ def main(args=None) -> None:
     rclpy.init(args=args)
 
     monitor = SystemMonitorNode()
-    rclpy.spin(monitor)
 
-    # Destroy the node explicitly. Problems can occur when the garbage
-    # collector automatically destroys the node object after ROS has
-    # shut down.
-    monitor.destroy_node()
+    try:
+        rclpy.spin(monitor)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        monitor.stop()
 
     rclpy.shutdown()

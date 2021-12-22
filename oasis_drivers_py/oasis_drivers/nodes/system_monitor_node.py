@@ -62,6 +62,14 @@ class SystemMonitorNode(rclpy.node.Node):
 
         self.get_logger().info("System monitor initialized")
 
+    def stop(self) -> None:
+        self.get_logger().info("System monitor deinitialized")
+
+        # Destroy the node explicitly. Problems can occur when the garbage
+        # collector automatically destroys the node object after ROS has
+        # shut down.
+        self.destroy_node()
+
     def _read_psutil(self) -> None:
         timestamp: TimeMsg = self.get_clock().now().to_msg()
         frame_id: str = NODE_NAME  # TODO

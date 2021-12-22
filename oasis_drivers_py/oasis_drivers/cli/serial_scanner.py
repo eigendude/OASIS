@@ -27,11 +27,12 @@ def main(args=None) -> None:
     rclpy.init(args=args)
 
     scanner = SerialScannerNode()
-    rclpy.spin(scanner)
 
-    # Destroy the node explicitly. Problems can occur when the garbage
-    # collector automatically destroys the node object after ROS has
-    # shut down.
-    scanner.destroy_node()
+    try:
+        rclpy.spin(scanner)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        scanner.stop()
 
     rclpy.shutdown()
