@@ -33,7 +33,7 @@ static constexpr uint32_t SERIAL_BAUD_RATE = 115200;
 static constexpr uint8_t MINIMUM_SAMPLING_INTERVAL = 1;
 
 // Threading constants
-constexpr size_t FIRMATA_STACK_SIZE = 64; // Default is 128
+constexpr size_t FIRMATA_STACK_SIZE = 96; // Default is 128
 
 } // namespace OASIS
 

@@ -17,7 +17,7 @@ namespace OASIS
 {
 
 // Threading constants
-constexpr size_t HEARTBEAT_STACK_SIZE = 64; // Default is 128
+constexpr size_t HEARTBEAT_STACK_SIZE = 96; // Default is 128
 
 } // namespace OASIS
 
