@@ -40,7 +40,7 @@ uint8 DIGITAL_INPUT_PULLUP=2
 uint8 DIGITAL_OUTPUT=3
 
 # A digital pin is in PWM output mode
-uint8 PWM_OUTPUT=4
+uint8 DIGITAL_PWM=4
 
 # A digital pin is in servo output mode
-uint8 SERVO_OUTPUT=5
+uint8 DIGITAL_SERVO=5
