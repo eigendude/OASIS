@@ -18,7 +18,8 @@
 #   * bash
 #   * curl
 #   * git
-#   * tar
+#   * tar (except on macOS)
+#   * unzip (only on macOS)
 #
 
 # Enable strict mode
@@ -53,7 +54,12 @@ source "${SCRIPT_DIR}/scripts/get_arduino_platform.sh"
 
 ARDUINO_IDE_VERSION="1.8.18"
 ARDUINO_IDE_PLATFORM="$(get_arduino_platform)"
-ARDUINO_IDE_URL="https://downloads.arduino.cc/arduino-${ARDUINO_IDE_VERSION}-${ARDUINO_IDE_PLATFORM}.tar.xz"
+
+if [[ "${OSTYPE}" != "darwin"* ]]; then
+  ARDUINO_IDE_URL="https://downloads.arduino.cc/arduino-${ARDUINO_IDE_VERSION}-${ARDUINO_IDE_PLATFORM}.tar.xz"
+else
+  ARDUINO_IDE_URL="https://downloads.arduino.cc/arduino-${ARDUINO_IDE_VERSION}-${ARDUINO_IDE_PLATFORM}.zip"
+fi
 
 # Location of the extracted Arduino IDE and toolchain
 ARDUINO_IDE_DIR="${SCRIPT_DIR}/arduino-${ARDUINO_IDE_VERSION}"
@@ -76,7 +82,18 @@ git submodule update --init --recursive --force -- "${SCRIPT_DIR}"
 
 if [ ! -d "${ARDUINO_IDE_DIR}" ]; then
   echo "Downloading Arduino IDE..."
-  curl "${ARDUINO_IDE_URL}" | tar -xJ --directory "${SCRIPT_DIR}"
+
+  if [[ "${OSTYPE}" != "darwin"* ]]; then
+    curl "${ARDUINO_IDE_URL}" | tar -xJ --directory "${SCRIPT_DIR}"
+  else
+    # Not as graceful as piping to tar...
+    # TODO: Add gnu-tar brew package to dependencies and use "gtar"
+    ARDUINO_IDE_ARCHIVE="${SCRIPT_DIR}/arduino-${ARDUINO_IDE_VERSION}-${ARDUINO_IDE_PLATFORM}.zip"
+    curl "${ARDUINO_IDE_URL}" > "${ARDUINO_IDE_ARCHIVE}"
+    unzip -o "${ARDUINO_IDE_ARCHIVE}"
+    mv "${SCRIPT_DIR}/Arduino.app/Contents/Java" "${ARDUINO_IDE_DIR}"
+    rm -rf "${ARDUINO_IDE_ARCHIVE}" "${SCRIPT_DIR}/Arduino.app"
+  fi
 fi
 
 # Because we use FirmataExpress instead of Firmata, remove the Firmata library

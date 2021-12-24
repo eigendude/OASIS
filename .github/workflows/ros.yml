@@ -24,11 +24,9 @@ jobs:
           - os: ubuntu-18.04
             ros1_distro: noetic
             ros2_distro: galactic
-            arduino_ide: 1.8.18
           - os: ubuntu-20.04
             ros1_distro: noetic
             ros2_distro: galactic
-            arduino_ide: 1.8.18
 
     # Steps represent a sequence of tasks that will be executed as part of the
     # job
@@ -80,8 +78,8 @@ jobs:
         uses: actions/cache@v2
         with:
           path: |
-            oasis_avr/arduino-${{ matrix.arduino_ide }}
-          key: restore-arduino-ide-${{ matrix.arduino_ide }}-${{ hashFiles('oasis_avr/bootstrap.sh') }}
+            oasis_avr/arduino-*
+          key: restore-arduino-ide-${{ matrix.os }}-${{ hashFiles('oasis_avr/bootstrap.sh') }}
 
       - name: Add ROS 2 repo
         run: |
