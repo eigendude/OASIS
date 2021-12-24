@@ -47,6 +47,11 @@ set -o nounset
 MAKE_FLAGS=
 COLCON_FLAGS="--merge-install"
 
+# macOS flags
+if [[ "${OSTYPE}" == "darwin"* ]]; then
+  COLCON_FLAGS+=" --packages-skip-by-dep v4l2_camera"
+fi
+
 # Add ccache support
 COLCON_FLAGS+=" --cmake-args -DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
 

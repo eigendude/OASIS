@@ -65,7 +65,7 @@ jobs:
         with:
           path: |
             ros-ws/ros2-desktop-${{ matrix.ros2_distro }}/install
-          key: restore-ros2-desktop-${{ matrix.os }}-${{ matrix.ros2_distro }}-${{ hashFiles('oasis_tooling/config/ros2_desktop/**', 'oasis_tooling/scripts/*ros2_desktop.sh') }}
+          key: restore-ros2-desktop-${{ matrix.os }}-${{ matrix.ros2_distro }}-${{ hashFiles('oasis_tooling/config/ros2_desktop/**', 'oasis_tooling/config/rviz/**', 'oasis_tooling/scripts/*ros2_desktop.sh') }}
 
       - name: Restore OASIS dependencies
         id: restore-oasis-depends
@@ -147,6 +147,9 @@ jobs:
       - name: Build ROS 2 Desktop
         if: steps.restore-ros2-desktop.outputs.cache-hit != 'true'
         run: ./oasis_tooling/scripts/build_ros2_desktop.sh
+        # Needed for building on macOS
+        env:
+          CMAKE_PREFIX_PATH: /usr/local/Cellar/qt@5/5.15.2_1
 
       - name: Install OASIS dependency rosdeps
         if: steps.restore-oasis-depends.outputs.cache-hit != 'true'

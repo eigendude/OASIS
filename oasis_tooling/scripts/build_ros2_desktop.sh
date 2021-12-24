@@ -35,6 +35,11 @@ source "${SCRIPT_DIR}/env_cmake.sh"
 MAKE_FLAGS=
 COLCON_FLAGS="--merge-install"
 
+# macOS flags
+if [[ "${OSTYPE}" == "darwin"* ]]; then
+  COLCON_FLAGS+=" --packages-skip-by-dep python_qt_binding"
+fi
+
 # Add ccache support
 COLCON_FLAGS+=" --cmake-args -DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
 
