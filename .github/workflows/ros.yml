@@ -27,6 +27,9 @@ jobs:
           - os: ubuntu-20.04
             ros1_distro: noetic
             ros2_distro: galactic
+          #- os: macbook
+          #  ros1_distro: noetic
+          #  ros2_distro: galactic
 
     # Steps represent a sequence of tasks that will be executed as part of the
     # job
@@ -41,16 +44,17 @@ jobs:
 
       - name: Restore CMake
         id: restore-cmake
+        if: matrix.os != 'macbook'
         uses: actions/cache@v2
         with:
           path: |
             ros-ws/cmake/install
           key: restore-cmake-${{ matrix.os }}-${{ hashFiles('oasis_tooling/scripts/*cmake.sh') }}
 
-      # Skip ROS 1 on ubuntu-18.04
+      # Skip ROS 1 on ubuntu-18.04 and macbook
       - name: Restore ROS 1 Desktop
         id: restore-ros1-desktop
-        if: matrix.os != 'ubuntu-18.04'
+        if: matrix.os != 'ubuntu-18.04' && matrix.os != 'macbook'
         uses: actions/cache@v2
         with:
           path: |
@@ -82,11 +86,13 @@ jobs:
           key: restore-arduino-ide-${{ matrix.os }}-${{ hashFiles('oasis_avr/bootstrap.sh') }}
 
       - name: Add ROS 2 repo
+        if: matrix.os != 'macbook'
         run: |
           curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | sudo apt-key add -
           sudo sh -c 'echo "deb [arch=$(dpkg --print-architecture)] http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" > /etc/apt/sources.list.d/ros2-latest.list'
 
       - name: Install system dependencies
+        if: matrix.os != 'starship' && matrix.os != 'cinder' && matrix.os != 'macbook'
         run: |
           sudo apt update
           sudo apt install -y build-essential cmake git python3-colcon-common-extensions python3-colcon-ros python3-rosdep python3-vcstool
@@ -96,11 +102,13 @@ jobs:
 
       # Sometimes lark-parser is missing
       - name: Install missing Python dependencies
+        if: matrix.os != 'macbook'
         run: |
           python3 -m pip install --upgrade importlib-resources lark-parser
 
       # This is needed by rosidl_generator_py
       - name: Install rosidl_generator_py dependencies
+        if: matrix.os != 'macbook'
         run: |
           python3 -m pip install --upgrade numpy
 
@@ -123,25 +131,25 @@ jobs:
           sudo apt install -y libomp5
 
       - name: Install CMake dependencies
-        if: steps.restore-cmake.outputs.cache-hit != 'true'
+        if: matrix.os != 'macbook' && steps.restore-cmake.outputs.cache-hit != 'true'
         run: ./oasis_tooling/scripts/depinstall_cmake.sh
 
       - name: Build CMake
-        if: steps.restore-cmake.outputs.cache-hit != 'true'
+        if: matrix.os != 'macbook' && steps.restore-cmake.outputs.cache-hit != 'true'
         run: ./oasis_tooling/scripts/build_cmake.sh
 
       - name: Install ROS 1 Desktop dependencies
-        if: matrix.os != 'ubuntu-18.04' && steps.restore-ros1-desktop.outputs.cache-hit != 'true'
+        if: matrix.os != 'ubuntu-18.04' && matrix.os != 'macbook' && steps.restore-ros1-desktop.outputs.cache-hit != 'true'
         run: ./oasis_tooling/scripts/depinstall_ros1_desktop.sh
 
       - name: Fix empy install for ROS 1
-        if: matrix.os != 'ubuntu-18.04' && steps.restore-ros1-desktop.outputs.cache-hit != 'true'
+        if: matrix.os != 'ubuntu-18.04' && matrix.os != 'macbook' && steps.restore-ros1-desktop.outputs.cache-hit != 'true'
         run: |
           sudo apt install -y python3-empy
           sudo ln -s -f /usr/bin/empy3 /usr/bin/empy
 
       - name: Fix missing Python 2 packages for ROS 1
-        if: matrix.os != 'ubuntu-18.04' && steps.restore-ros1-desktop.outputs.cache-hit != 'true'
+        if: matrix.os != 'ubuntu-18.04' && matrix.os != 'macbook' && steps.restore-ros1-desktop.outputs.cache-hit != 'true'
         run: |
           sudo apt install python2
           curl https://bootstrap.pypa.io/pip/2.7/get-pip.py --output get-pip.py
@@ -149,7 +157,7 @@ jobs:
           python2 -m pip install --upgrade catkin_pkg empy pip PyYAML setuptools
 
       - name: Build ROS 1 Desktop
-        if: matrix.os != 'ubuntu-18.04' && steps.restore-ros1-desktop.outputs.cache-hit != 'true'
+        if: matrix.os != 'ubuntu-18.04' && matrix.os != 'macbook' && steps.restore-ros1-desktop.outputs.cache-hit != 'true'
         run: ./oasis_tooling/scripts/build_ros1_desktop.sh
 
       - name: Install ROS 2 Desktop dependencies
@@ -177,6 +185,17 @@ jobs:
       - name: Bootstrap AVR toolchain
         run: |
           ./oasis_avr/bootstrap.sh
+
+      # TODO: Fix locating bgslibrary
+      #
+      # Error was:
+      #
+      #   CMake Error at FindPackageHandleStandardArgs.cmake:230 (message):
+      #     Could NOT find bgslibrary (missing: BGSLIBRARY_INCLUDE_DIR)
+      #
+      - name: Workaround locating bgslibrary
+        if: matrix.os == 'macbook'
+        run: touch oasis_perception/COLCON_IGNORE
 
       - name: colcon build
         run: ./oasis_tooling/scripts/build_oasis.sh
