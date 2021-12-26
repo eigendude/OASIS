@@ -207,6 +207,7 @@ void FirmataCallbacks::SetPinModeCallback(uint8_t pin, int mode)
         pinMode(PIN_TO_DIGITAL(pin), INPUT);
 
         Firmata.setPinMode(pin, PIN_MODE_INPUT);
+        Firmata.setPinState(pin, 0);
       }
       break;
     }
