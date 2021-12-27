@@ -348,12 +348,6 @@ void FirmataCallbacks::SysexCallback(uint8_t command, uint8_t argc, uint8_t* arg
           Firmata.write(1);
           Firmata.write(static_cast<uint8_t>(PIN_MODE_OUTPUT));
           Firmata.write(1);
-          Firmata.write(static_cast<uint8_t>(PIN_MODE_STEPPER));
-          Firmata.write(1);
-          Firmata.write(static_cast<uint8_t>(PIN_MODE_SONAR));
-          Firmata.write(1);
-          Firmata.write(static_cast<uint8_t>(PIN_MODE_DHT));
-          Firmata.write(1);
         }
 
         if (IS_PIN_ANALOG(pin))
