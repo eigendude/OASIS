@@ -67,11 +67,14 @@ fi
 # Location of the extracted Arduino IDE and toolchain
 ARDUINO_IDE_DIR="${SCRIPT_DIR}/arduino-${ARDUINO_IDE_VERSION}"
 
-# Location of the Firmata library included in the Arduino IDE
-FIRMATA_DIR="${ARDUINO_IDE_DIR}/libraries/Firmata"
+# Location of the Adafruit BluefruitLE nRF15 library
+ADAFRUIT_BLE_DIR="${LIBRARY_DIR}/Adafruit_BluefruitLE_nRF51"
 
 # Location of the Adafruit Circuit Playground library included in the Arduino IDE
 ADAFRUIT_CP_DIR="${ARDUINO_IDE_DIR}/libraries/Adafruit_Circuit_Playground"
+
+# Location of the Firmata library included in the Arduino IDE
+FIRMATA_DIR="${ARDUINO_IDE_DIR}/libraries/Firmata"
 
 #
 # Toolchain setup
@@ -111,6 +114,15 @@ patch \
   --no-backup-if-mismatch \
   --directory="${TOOLCHAIN_DIR}" \
   < "${PATCH_DIR}/Arduino-CMake-Toolchain/0001-Add-variable-ARDUINO_BOARD_RAM_SIZE.patch"
+
+# Patch Adafruit BluefruitLE_nRF51 library
+patch \
+  -p1 \
+  --forward \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${ADAFRUIT_BLE_DIR}" \
+  < "${PATCH_DIR}/Adafruit_BluefruitLE_nRF51/0001-Fix-library-not-located-by-Arduino-CMake-Toolchain.patch"
 
 # Because we use FirmataExpress instead of Firmata, remove the Firmata library
 # to avoid confusing IDEs

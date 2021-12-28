@@ -1,0 +1,26 @@
+From a76140eca6c9d3a773534621684f98e1b3e8e9f5 Mon Sep 17 00:00:00 2001
+From: Garrett Brown <eigendebugger@gmail.com>
+Date: Wed, 29 Dec 2021 14:37:04 -0800
+Subject: [PATCH] Fix library not located by Arduino-CMake-Toolchain
+
+Error was:
+
+  CMake Error at Arduino/System/BoardBuildTargets.cmake:494 (message):
+    Arduino library Adafruit_BluefruitLE_nRF51 could not be found in
+---
+ library.properties | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/library.properties b/library.properties
+index 5d029d3..3cf7ef6 100644
+--- a/library.properties
++++ b/library.properties
+@@ -1,4 +1,4 @@
+-name=Adafruit BluefruitLE nRF51
++name=Adafruit_BluefruitLE_nRF51
+ version=1.10.0
+ author=Adafruit
+ maintainer=Adafruit <info@adafruit.com>
+-- 
+2.30.2
+

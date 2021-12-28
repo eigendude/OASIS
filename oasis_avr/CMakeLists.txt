@@ -214,6 +214,7 @@ set(FIRMATA_SOURCES
 set(FIRMATA_DEFINITIONS)
 
 set(FIRMATA_LIBRARIES
+  Adafruit_BluefruitLE_nRF51
   core
   FirmataExpress
   Scheduler

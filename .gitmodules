@@ -13,3 +13,6 @@
 [submodule "oasis_avr/libraries/Scheduler"]
 	path = oasis_avr/libraries/Scheduler
 	url = https://github.com/mikaelpatel/Arduino-Scheduler.git
+[submodule "oasis_avr/libraries/Adafruit_BluefruitLE_nRF51"]
+	path = oasis_avr/libraries/Adafruit_BluefruitLE_nRF51
+	url = https://github.com/adafruit/Adafruit_BluefruitLE_nRF51.git
