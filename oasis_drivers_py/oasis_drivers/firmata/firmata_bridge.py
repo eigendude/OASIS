@@ -18,6 +18,7 @@ from typing import List
 from typing import Tuple
 
 from pymata_express import pymata_express
+from pymata_express.private_constants import PrivateConstants
 
 from oasis_drivers.firmata.firmata_callback import FirmataCallback
 from oasis_drivers.firmata.firmata_types import AnalogMode
@@ -65,6 +66,11 @@ class FirmataBridge:
             shutdown_on_exception=True,
             close_loop_on_shutdown=False,
         )
+
+        # Patch string-handling (pymata-express prints to stdout)
+        self._board.command_dictionary[
+            PrivateConstants.STRING_DATA
+        ] = self._on_string_data
 
     def initialize(self) -> None:
         """Initialize the bridge and start communicating via Firmata"""
@@ -306,8 +312,26 @@ class FirmataBridge:
 
         self._callback.on_digital_reading(timestamp, digital_pin, digital_value)
 
+    async def _on_string_data(self, data: List[int]) -> None:
+        """
+        Handle string messages
+
+        This is the message handler for String data messages.
+
+        :param data: The message
+        """
+        reply: str = ""
+
+        data = data[1:-1]
+        for x in data:
+            reply_data: int = x
+            if reply_data:
+                reply += chr(reply_data)
+
+        self._callback.on_string_data(reply)
+
     @staticmethod
-    def _get_timestamp(unix_time: int):
+    def _get_timestamp(unix_time: int) -> datetime:
         if unix_time == 0:
             # A timestamp of 0 means that no reading has been reported yet
             return datetime.fromtimestamp(unix_time)

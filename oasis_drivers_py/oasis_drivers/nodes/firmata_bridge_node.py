@@ -16,6 +16,7 @@ import rclpy.service
 import rclpy.time
 from builtin_interfaces.msg import Time as TimeMsg
 from std_msgs.msg import Header as HeaderMsg
+from std_msgs.msg import String as StringMsg
 
 from oasis_drivers.firmata.firmata_bridge import FirmataBridge
 from oasis_drivers.firmata.firmata_callback import FirmataCallback
@@ -43,6 +44,7 @@ NODE_NAME = "firmata_bridge"
 # ROS topics
 ANALOG_READING_TOPIC = "analog_reading"
 DIGITAL_READING_TOPIC = "digital_reading"
+STRING_MESSAGE_TOPIC = "string_message"
 
 # ROS services
 ANALOG_READ_SERVICE = "analog_read"
@@ -83,6 +85,13 @@ class FirmataBridgeNode(rclpy.node.Node, FirmataCallback):
         self._digital_reading_pub: rclpy.publisher.Publisher = self.create_publisher(
             msg_type=DigitalReadingMsg,
             topic=DIGITAL_READING_TOPIC,
+            qos_profile=qos_profile,
+        )
+        # TODO: the String message was deprecated in Foxy. We should switch to
+        # an application-specific message.
+        self._string_message_pub: rclpy.publisher.Publisher = self.create_publisher(
+            msg_type=StringMsg,
+            topic=STRING_MESSAGE_TOPIC,
             qos_profile=qos_profile,
         )
 
@@ -179,6 +188,17 @@ class FirmataBridgeNode(rclpy.node.Node, FirmataCallback):
         )
 
         self._digital_reading_pub.publish(msg)
+
+    def on_string_data(self, data: str) -> None:
+        """Implement FirmataCallback"""
+        msg: StringMsg = StringMsg()
+
+        msg.data = data
+
+        self._string_message_pub.publish(msg)
+
+        # Debug logging
+        self.get_logger().info(data)
 
     def _handle_analog_read(
         self, request: AnalogReadSvc.Request, response: AnalogReadSvc.Response

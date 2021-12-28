@@ -28,3 +28,7 @@ class FirmataCallback:
         self, timestamp: datetime, digital_pin: int, digital_value: bool
     ) -> None:
         pass
+
+    @abc.abstractmethod
+    def on_string_data(self, data: str) -> None:
+        pass
