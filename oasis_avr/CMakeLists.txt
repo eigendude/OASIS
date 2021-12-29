@@ -66,6 +66,7 @@ if (HOST_NAME STREQUAL station)
   # Heap: 1020, stack: 615, free: 396 (19%)
   #
   set(ENABLE_ANALOG ON)
+  set(ENABLE_BLUEFRUIT OFF)
   set(ENABLE_CPU_FAN ON)
   set(ENABLE_DHT OFF)
   set(ENABLE_DIAGNOSTICS ON)
@@ -95,8 +96,25 @@ elseif (HOST_NAME STREQUAL jetson)
   # 12410 flash (38%), 773 data (37%)
   # Heap: 1031, stack: 305, free: 695 (66%)
   #
+  # With Bluefruit then enabled:
+  # 17322 flash (53%), 1054 data (51%)
+  # Heap: 1312, stack: 305, free: 414 (80%)
+  #
+  # With CPU fan and digital disabled:
+  # 13736 flash (42%), 975 data (47%)
+  # Heap: 1233, stack: 305, free: 493 (76%)
+  #
+  # With digital disabled:
+  # 15913 flash (49%), 1013 data (49%)
+  # Heap: 1271, stack: 305, free: 455 (78%)
+  #
+  # With CPU fan disabled:
+  # 15288 flash (47%), 1016 data (49%)
+  # Heap: 1274, stack: 305, free: 452 (78%)
+  #
   set(ENABLE_ANALOG ON)
-  set(ENABLE_CPU_FAN ON)
+  set(ENABLE_BLUEFRUIT ON)
+  set(ENABLE_CPU_FAN OFF)
   set(ENABLE_DHT OFF)
   set(ENABLE_DIAGNOSTICS ON)
   set(ENABLE_DIGITAL ON)
@@ -134,6 +152,7 @@ elseif (HOSTNAME STREQUAL cinder)
   # 25624 flash (89%), 1810 data (70%)
   #
   set(ENABLE_ANALOG ON)
+  set(ENABLE_BLUEFRUIT OFF)
   set(ENABLE_CPU_FAN OFF)
   set(ENABLE_DHT OFF)
   set(ENABLE_DIAGNOSTICS ON)
@@ -148,6 +167,7 @@ else()
   set(ARDUINO_VARIANT uno)
 
   set(ENABLE_ANALOG ON)
+  set(ENABLE_BLUEFRUIT ON)
   set(ENABLE_CPU_FAN ON)
   set(ENABLE_DHT OFF)
   set(ENABLE_DIAGNOSTICS ON)
@@ -260,7 +280,6 @@ set(FIRMATA_SOURCES
 set(FIRMATA_DEFINITIONS)
 
 set(FIRMATA_LIBRARIES
-  Adafruit_BluefruitLE_nRF51
   core
   FirmataExpress
   Scheduler
@@ -272,6 +291,19 @@ if (ENABLE_ANALOG)
   )
   list(APPEND FIRMATA_DEFINITIONS
     -DENABLE_ANALOG
+  )
+endif()
+
+if (ENABLE_BLUEFRUIT)
+  list(APPEND FIRMATA_SOURCES
+    src/firmata/firmata_bluefruit.cpp
+  )
+  list(APPEND FIRMATA_DEFINITIONS
+    -DENABLE_BLUEFRUIT
+  )
+  list(APPEND FIRMATA_LIBRARIES
+    Adafruit_BluefruitLE_nRF51
+    SPI
   )
 endif()
 

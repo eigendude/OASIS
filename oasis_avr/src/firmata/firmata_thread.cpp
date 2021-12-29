@@ -20,6 +20,10 @@
 #include "firmata_analog.hpp"
 #endif
 
+#if defined(ENABLE_BLUEFRUIT)
+#include "firmata_bluefruit.hpp"
+#endif
+
 #if defined(ENABLE_CPU_FAN)
 #include "firmata_cpu_fan.hpp"
 #endif
@@ -68,7 +72,7 @@ namespace OASIS
 constexpr uint32_t SERIAL_BAUD_RATE = 115200;
 
 // Threading constants
-constexpr size_t FIRMATA_MESSAGING_STACK_SIZE = 96; // Default is 128
+constexpr size_t FIRMATA_MESSAGING_STACK_SIZE = 256; // Default is 128
 constexpr size_t FIRMATA_SAMPLING_STACK_SIZE = 96; // Default is 128
 
 } // namespace OASIS
@@ -78,6 +82,11 @@ FirmataThread::FirmataThread()
 #if defined(ENABLE_ANALOG)
   static FirmataAnalog analog;
   m_subsystems[SubsystemID::ANALOG] = m_analog = &analog;
+#endif
+
+#if defined(ENABLE_BLUEFRUIT)
+  static FirmataBluefruit bluefruit;
+  m_subsystems[SubsystemID::BLUEFRUIT] = m_bluefruit = &bluefruit;
 #endif
 
 #if defined(ENABLE_DHT)

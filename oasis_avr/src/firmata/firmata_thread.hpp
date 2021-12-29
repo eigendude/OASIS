@@ -23,6 +23,7 @@ namespace OASIS
 
 // Forward-declare subsystems
 class FirmataAnalog;
+class FirmataBluefruit;
 class FirmataCPUFan;
 class FirmataDHT;
 class FirmataDiagnostics;
@@ -51,6 +52,7 @@ public:
 
   // Subsystems (const)
   const FirmataAnalog* GetAnalog() const { return m_analog; }
+  const FirmataBluefruit* GetBluefruit() const { return m_bluefruit; }
   const FirmataCPUFan* GetCPUFan() const { return m_cpuFan; }
   const FirmataDHT* GetDHT() const { return m_dht; }
   const FirmataDiagnostics* GetDiagnostics() const { return m_diagnostics; }
@@ -63,6 +65,7 @@ public:
 
   // Subsystems (mutable)
   FirmataAnalog* GetAnalog() { return m_analog; }
+  FirmataBluefruit* GetBluefruit() { return m_bluefruit; }
   FirmataCPUFan* GetCPUFan() { return m_cpuFan; }
   FirmataDHT* GetDHT() { return m_dht; }
   FirmataDiagnostics* GetDiagnostics() { return m_diagnostics; }
@@ -83,6 +86,7 @@ private:
   enum SubsystemID
   {
     ANALOG,
+    BLUEFRUIT,
     CPU_FAN,
     DHT,
     DIAGNOSTICS,
@@ -107,6 +111,7 @@ private:
 
   // Subsystems
   FirmataAnalog* m_analog{nullptr};
+  FirmataBluefruit* m_bluefruit{nullptr};
   FirmataCPUFan* m_cpuFan{nullptr};
   FirmataDHT* m_dht{nullptr};
   FirmataDiagnostics* m_diagnostics{nullptr};
