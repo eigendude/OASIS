@@ -52,7 +52,7 @@ source "${SCRIPT_DIR}/scripts/get_arduino_platform.sh"
 # TODO: Move dependency mangement to CMake
 #
 
-ARDUINO_IDE_VERSION="1.8.18"
+ARDUINO_IDE_VERSION="1.8.19"
 ARDUINO_IDE_PLATFORM="$(get_arduino_platform)"
 
 if [[ "${OSTYPE}" != "darwin"* ]]; then
