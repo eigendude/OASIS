@@ -22,6 +22,7 @@ namespace OASIS
 // Forward-declare subsystems
 class FirmataAnalog;
 class FirmataDigital;
+class FirmataDiagnostics;
 
 class FirmataThread
 {
@@ -29,7 +30,7 @@ private:
   /*!
    * \brief Create the thread with references to external storage
    */
-  FirmataThread(FirmataAnalog& analog, FirmataDigital& digital);
+  FirmataThread(FirmataAnalog& analog, FirmataDigital& digital, FirmataDiagnostics& diagnostics);
 
 public:
   static FirmataThread& GetInstance();
@@ -42,10 +43,12 @@ public:
   // Subsystems (const)
   const FirmataAnalog& GetAnalog() const { return m_analog; }
   const FirmataDigital& GetDigital() const { return m_digital; }
+  const FirmataDiagnostics& GetDiagnostics() const { return m_diagnostics; }
 
   // Subsystems (mutable)
   FirmataAnalog& GetAnalog() { return m_analog; }
   FirmataDigital& GetDigital() { return m_digital; }
+  FirmataDiagnostics& GetDiagnostics() { return m_diagnostics; }
 
   // Timer functions
   void SetSamplingInterval(uint8_t samplingIntervalMs);
@@ -60,10 +63,12 @@ private:
   // Subsystem static access
   static void AnalogLoop();
   static void DigitalLoop();
+  static void DiagnosticsLoop();
 
   // Subsystems
   FirmataAnalog& m_analog;
   FirmataDigital& m_digital;
+  FirmataDiagnostics& m_diagnostics;
 
   // Lifecycle state
   bool m_isResetting = false;

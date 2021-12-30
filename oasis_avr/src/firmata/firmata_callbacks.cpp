@@ -14,7 +14,9 @@
 #include "firmata_callbacks.hpp"
 
 #include "firmata_analog.hpp"
+#include "firmata_diagnostics.hpp"
 #include "firmata_digital.hpp"
+#include "firmata_extra.hpp"
 #include "firmata_thread.hpp"
 #include "firmata_utils.hpp"
 
@@ -410,6 +412,27 @@ void FirmataCallbacks::SysexCallback(uint8_t command, uint8_t argc, uint8_t* arg
         Firmata.write(IS_PIN_ANALOG(pin) ? PIN_TO_ANALOG(pin) : 127);
 
       Firmata.write(END_SYSEX);
+
+      break;
+    }
+
+    case FIRMATA_MEMORY_CONFIG:
+    {
+      if (argc > 0)
+      {
+        uint32_t memoryPeriodMs = argv[0];
+
+        if (argc > 1)
+          memoryPeriodMs |= (argv[1] << 7);
+
+        if (argc > 2)
+          memoryPeriodMs |= (argv[2] << 14);
+
+        if (argc > 3)
+          memoryPeriodMs |= (argv[3] << 21);
+
+        m_thread->GetDiagnostics().ConfigureMemoryReporting(memoryPeriodMs);
+      }
 
       break;
     }

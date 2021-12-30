@@ -142,6 +142,7 @@ find_package(ament_cmake REQUIRED)
 add_library(oasis_avr_firmata
   src/firmata/firmata_analog.cpp
   src/firmata/firmata_callbacks.cpp
+  src/firmata/firmata_diagnostics.cpp
   src/firmata/firmata_digital.cpp
   src/firmata/firmata_thread.cpp
   src/firmata/firmata_utils.cpp
@@ -172,6 +173,7 @@ target_link_arduino_libraries(oasis_avr_leds PRIVATE
 
 add_library(oasis_avr_utils
   src/utils/delete.cpp
+  src/utils/memory_utils.cpp
   src/utils/timer.cpp
 )
 
