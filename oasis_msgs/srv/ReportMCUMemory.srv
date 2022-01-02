@@ -1,0 +1,19 @@
+################################################################################
+#
+#  Copyright (C) 2021 Garrett Brown
+#  This file is part of OASIS - https://github.com/eigendude/OASIS
+#
+#  SPDX-License-Identifier: Apache-2.0 AND BSD-3-Clause
+#  See DOCS/LICENSING.md for more information.
+#
+################################################################################
+
+#
+# Enable or disable reporting of memory statistics from the microcontroller
+#
+
+# Set to the reporting period, in milliseconds, or set to 0 to disable memory
+# reporting
+uint32 reporting_period_ms
+
+---

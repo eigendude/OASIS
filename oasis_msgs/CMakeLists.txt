@@ -28,6 +28,7 @@ rosidl_generate_interfaces(
     msg/AVRConstants.msg
     msg/DigitalReading.msg
     msg/DiskPartition.msg
+    msg/MCUMemory.msg
     msg/NetworkAddress.msg
     msg/NetworkInterface.msg
     msg/PowerEvent.msg
@@ -41,6 +42,7 @@ rosidl_generate_interfaces(
     srv/DigitalWrite.srv
     srv/PowerControl.srv
     srv/PWMWrite.srv
+    srv/ReportMCUMemory.srv
     srv/ServoWrite.srv
     srv/SetAnalogMode.srv
     srv/SetDigitalMode.srv
