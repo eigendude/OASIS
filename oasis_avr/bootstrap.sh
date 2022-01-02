@@ -34,6 +34,9 @@ set -o nounset
 # Get the absolute path to this script
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
+# Location of the Arduino CMake toolchain
+TOOLCHAIN_DIR="${SCRIPT_DIR}/cmake/Arduino-CMake-Toolchain"
+
 # Location of dependency source code
 LIBRARY_DIR="${SCRIPT_DIR}/libraries"
 
@@ -95,6 +98,19 @@ if [ ! -d "${ARDUINO_IDE_DIR}" ]; then
     rm -rf "${ARDUINO_IDE_ARCHIVE}" "${SCRIPT_DIR}/Arduino.app"
   fi
 fi
+
+#
+# Patch dependencies
+#
+
+# Patch Arduino-CMake-Toolchain
+patch \
+  -p1 \
+  --forward \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${TOOLCHAIN_DIR}" \
+  < "${PATCH_DIR}/Arduino-CMake-Toolchain/0001-Add-variable-ARDUINO_BOARD_RAM_SIZE.patch"
 
 # Because we use FirmataExpress instead of Firmata, remove the Firmata library
 # to avoid confusing IDEs

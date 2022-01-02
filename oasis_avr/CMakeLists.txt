@@ -117,6 +117,10 @@ endif()
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 
+add_compile_definitions(
+  ARDUINO_BOARD_RAM_SIZE=${ARDUINO_BOARD_RAM_SIZE}
+)
+
 ################################################################################
 #
 # Dependencies
