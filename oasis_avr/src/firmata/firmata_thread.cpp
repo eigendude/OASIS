@@ -131,13 +131,6 @@ void FirmataThread::SetSamplingInterval(uint8_t samplingIntervalMs)
   m_samplingIntervalMs = samplingIntervalMs;
 }
 
-void FirmataThread::KeepAlive(unsigned int newKeepAliveIntervalSecs)
-{
-  // Update state
-  m_keepAliveIntervalSecs = newKeepAliveIntervalSecs;
-  m_previousKeepAliveMs = millis();
-}
-
 void FirmataThread::FirmataLoop()
 {
   GetInstance().Loop();

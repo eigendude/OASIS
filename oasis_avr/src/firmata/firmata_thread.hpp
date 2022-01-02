@@ -49,7 +49,6 @@ public:
 
   // Timer functions
   void SetSamplingInterval(uint8_t samplingIntervalMs);
-  void KeepAlive(unsigned int newKeepAliveIntervalSecs);
 
 private:
   // Threading functions
@@ -71,8 +70,6 @@ private:
 
   // Timer variables
   unsigned int m_samplingIntervalMs = 19; // How often to run the main loop (in ms)
-  unsigned int m_keepAliveIntervalSecs = 0;
-  unsigned long m_previousKeepAliveMs = 0;
 };
 
 } // namespace OASIS

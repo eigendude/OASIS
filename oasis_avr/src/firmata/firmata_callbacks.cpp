@@ -291,15 +291,6 @@ void FirmataCallbacks::SysexCallback(uint8_t command, uint8_t argc, uint8_t* arg
       break;
     }
 
-    case KEEP_ALIVE:
-    {
-      const unsigned int newKeepAliveIntervalSecs = argv[0] + (argv[1] << 7);
-
-      m_thread->KeepAlive(newKeepAliveIntervalSecs);
-
-      break;
-    }
-
     case SAMPLING_INTERVAL:
     {
       if (argc > 1)
