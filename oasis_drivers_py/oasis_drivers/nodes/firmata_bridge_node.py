@@ -25,10 +25,12 @@ from oasis_drivers.firmata.firmata_types import DigitalMode
 from oasis_msgs.msg import AnalogReading as AnalogReadingMsg
 from oasis_msgs.msg import AVRConstants as AVRConstantsMsg
 from oasis_msgs.msg import DigitalReading as DigitalReadingMsg
+from oasis_msgs.msg import MCUMemory as MCUMemoryMsg
 from oasis_msgs.srv import AnalogRead as AnalogReadSvc
 from oasis_msgs.srv import DigitalRead as DigitalReadSvc
 from oasis_msgs.srv import DigitalWrite as DigitalWriteSvc
 from oasis_msgs.srv import PWMWrite as PWMWriteSvc
+from oasis_msgs.srv import ReportMCUMemory as ReportMCUMemorySvc
 from oasis_msgs.srv import ServoWrite as ServoWriteSvc
 from oasis_msgs.srv import SetAnalogMode as SetAnalogModeSvc
 from oasis_msgs.srv import SetDigitalMode as SetDigitalModeSvc
@@ -44,6 +46,7 @@ NODE_NAME = "firmata_bridge"
 # ROS topics
 ANALOG_READING_TOPIC = "analog_reading"
 DIGITAL_READING_TOPIC = "digital_reading"
+MCU_MEMORY_TOPIC = "mcu_memory"
 STRING_MESSAGE_TOPIC = "string_message"
 
 # ROS services
@@ -51,6 +54,7 @@ ANALOG_READ_SERVICE = "analog_read"
 DIGITAL_READ_SERVICE = "digital_read"
 DIGITAL_WRITE_SERVICE = "digital_write"
 PWM_WRITE_SERVICE = "pwm_write"
+REPORT_MCU_MEMORY_SERVICE = "report_mcu_memory"
 SERVO_WRITE_SERVICE = "servo_write"
 SET_ANALOG_MODE_SERVICE = "set_analog_mode"
 SET_DIGITAL_MODE_SERVICE = "set_digital_mode"
@@ -87,6 +91,11 @@ class FirmataBridgeNode(rclpy.node.Node, FirmataCallback):
             topic=DIGITAL_READING_TOPIC,
             qos_profile=qos_profile,
         )
+        self._mcu_memory_pub: rclpy.publisher.Publisher = self.create_publisher(
+            msg_type=MCUMemoryMsg,
+            topic=MCU_MEMORY_TOPIC,
+            qos_profile=qos_profile,
+        )
         # TODO: the String message was deprecated in Foxy. We should switch to
         # an application-specific message.
         self._string_message_pub: rclpy.publisher.Publisher = self.create_publisher(
@@ -118,6 +127,11 @@ class FirmataBridgeNode(rclpy.node.Node, FirmataCallback):
             srv_type=PWMWriteSvc,
             srv_name=PWM_WRITE_SERVICE,
             callback=self._handle_pwm_write,
+        )
+        self._report_mcu_memory_service: rclpy.service.Service = self.create_service(
+            srv_type=ReportMCUMemorySvc,
+            srv_name=REPORT_MCU_MEMORY_SERVICE,
+            callback=self._handle_report_mcu_memory,
         )
         self._servo_write_service: rclpy.service.Service = self.create_service(
             srv_type=ServoWriteSvc,
@@ -189,6 +203,33 @@ class FirmataBridgeNode(rclpy.node.Node, FirmataCallback):
 
         self._digital_reading_pub.publish(msg)
 
+    def on_memory_data(
+        self,
+        total_ram: int,
+        static_data_size: int,
+        heap_size: int,
+        stack_size: int,
+        free_ram: int,
+        free_heap: int,
+    ) -> None:
+        """Implement FirmataCallback"""
+        msg: MCUMemoryMsg = MCUMemoryMsg()
+
+        # Timestamp in ROS header
+        header = HeaderMsg()
+        header.stamp = self._get_timestamp()
+        header.frame_id = ""  # TODO
+
+        msg.header = header
+        msg.total_ram = total_ram
+        msg.static_data_size = static_data_size
+        msg.heap_size = heap_size
+        msg.stack_size = stack_size
+        msg.free_ram = free_ram
+        msg.free_heap = free_heap
+
+        self._mcu_memory_pub.publish(msg)
+
     def on_string_data(self, data: str) -> None:
         """Implement FirmataCallback"""
         msg: StringMsg = StringMsg()
@@ -256,6 +297,18 @@ class FirmataBridgeNode(rclpy.node.Node, FirmataCallback):
 
         # Perform service
         self._bridge.pwm_write(digital_pin, duty_cycle)
+
+        return response
+
+    def _handle_report_mcu_memory(
+        self, request: ReportMCUMemorySvc.Request, response: ReportMCUMemorySvc.Response
+    ) -> ReportMCUMemorySvc.Response:
+        """Handle request to enable/disable MCU memory reporting"""
+        # Translate parameters
+        reporting_period_ms: int = request.reporting_period_ms
+
+        # Perform service
+        self._bridge.report_mcu_memory(reporting_period_ms)
 
         return response
 
@@ -335,3 +388,6 @@ class FirmataBridgeNode(rclpy.node.Node, FirmataCallback):
             seconds=int(timestamp.timestamp()),
             nanoseconds=timestamp.microsecond * 1000,
         ).to_msg()
+
+    def _get_timestamp(self) -> TimeMsg:
+        return self.get_clock().now().to_msg()

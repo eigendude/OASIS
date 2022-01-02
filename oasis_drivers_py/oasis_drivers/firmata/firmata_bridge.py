@@ -21,6 +21,7 @@ from pymata_express import pymata_express
 from pymata_express.private_constants import PrivateConstants
 
 from oasis_drivers.firmata.firmata_callback import FirmataCallback
+from oasis_drivers.firmata.firmata_constants import FirmataConstants
 from oasis_drivers.firmata.firmata_types import AnalogMode
 from oasis_drivers.firmata.firmata_types import DigitalMode
 
@@ -66,6 +67,11 @@ class FirmataBridge:
             shutdown_on_exception=True,
             close_loop_on_shutdown=False,
         )
+
+        # Install custom sysex handlers
+        self._board.command_dictionary[
+            FirmataConstants.MEMORY_DATA
+        ] = self._on_memory_data
 
         # Patch string-handling (pymata-express prints to stdout)
         self._board.command_dictionary[
@@ -247,6 +253,33 @@ class FirmataBridge:
         # Wait for completion
         future.result()
 
+    def report_mcu_memory(self, reporting_period_ms: int) -> None:
+        """
+        Enable or disable memory reporting mode.
+
+        :param reporting_period_ms: The reporting period, in milliseconds, or
+        0 to disable memory reporting entirely. Maximum reporting period is
+        2^28ms or about 3 days.
+        """
+        # Construct sysex data for custom sysex command
+        sysex_data = [
+            reporting_period_ms & 0x7F,
+            (reporting_period_ms >> 7) & 0x7F,
+            (reporting_period_ms >> 14) & 0x7F,
+            (reporting_period_ms >> 21) & 0x7F,
+        ]
+
+        # Create coroutine
+        coroutine: Awaitable[None] = self._board._send_sysex(
+            FirmataConstants.MEMORY_CONFIG, sysex_data
+        )
+
+        # Dispatch to asyncio
+        future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
+
+        # Wait for completion
+        future.result()
+
     def servo_write(self, digital_pin: int, position: float) -> None:
         """
         Retrieve the last data update for the specified PWM pin.
@@ -311,6 +344,44 @@ class FirmataBridge:
         )
 
         self._callback.on_digital_reading(timestamp, digital_pin, digital_value)
+
+    async def _on_memory_data(self, data: List[int]) -> None:
+        """
+        Handle reports on memory statistics
+
+        :param data: The memory report message
+        """
+        try:
+            # Translate parameters
+            data = data[1:]
+            total_ram: int = data[0] | (data[1] << 7) | (data[2] << 14)
+
+            data = data[3:]
+            static_data_size: int = data[0] | (data[1] << 7) | (data[2] << 14)
+
+            data = data[3:]
+            heap_size: int = data[0] | (data[1] << 7) | (data[2] << 14)
+
+            data = data[3:]
+            stack_size: int = data[0] | (data[1] << 7) | (data[2] << 14)
+
+            data = data[3:]
+            free_ram: int = data[0] | (data[1] << 7) | (data[2] << 14)
+
+            data = data[3:]
+            free_heap: int = data[0] | (data[1] << 7) | (data[2] << 14)
+        except IndexError:
+            return
+
+        # Dispatch callback
+        self._callback.on_memory_data(
+            total_ram,
+            static_data_size,
+            heap_size,
+            stack_size,
+            free_ram,
+            free_heap,
+        )
 
     async def _on_string_data(self, data: List[int]) -> None:
         """

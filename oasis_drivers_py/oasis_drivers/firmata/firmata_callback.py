@@ -30,5 +30,17 @@ class FirmataCallback:
         pass
 
     @abc.abstractmethod
+    def on_memory_data(
+        self,
+        total_ram: int,
+        static_data_size: int,
+        heap_size: int,
+        stack_size: int,
+        free_ram: int,
+        free_heap: int,
+    ) -> None:
+        pass
+
+    @abc.abstractmethod
     def on_string_data(self, data: str) -> None:
         pass
