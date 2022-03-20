@@ -18,7 +18,7 @@ set -o nounset
 # Environment configuration
 #
 
-PLATFORM_ARCH="$(uname -i)"
+PLATFORM_ARCH="$(uname -p)"
 
 #
 # Directory and path definitions
