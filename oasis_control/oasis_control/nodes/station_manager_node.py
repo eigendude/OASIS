@@ -134,7 +134,6 @@ class StationManagerNode(rclpy.node.Node):
 
         # Initialize hardware state
         self._supply_voltage: float = 0.0
-        self._motor_duty_cycle: float = 0.0
         self._motor_voltage: float = 0.0
         self._motor_current: float = 0.0
         self._motor_ff1_state: bool = False
@@ -148,11 +147,9 @@ class StationManagerNode(rclpy.node.Node):
         # Initialize peripheral state
         self._joysticks: Dict[str, str] = {}
 
-        # Input magnitude
+        # Initialize input state
         self._magnitude: float = 0.0
-
-        # Magnitude is in reverse (high DIR pin)
-        self._reverse: bool = False
+        self._reverse: bool = False  # True if magnitude is in reverse (high DIR pin)
 
         # Reliable listener QOS profile for subscribers
         qos_profile: rclpy.qos.QoSPresetProfile = (
@@ -395,7 +392,9 @@ class StationManagerNode(rclpy.node.Node):
             supply_voltage: float = analog_voltage * (VSS_R1 + VSS_R2) / VSS_R2
 
             # Calculate motor voltage
-            motor_voltage = supply_voltage * self._motor_duty_cycle
+            motor_voltage = (
+                supply_voltage * self._magnitude * (-1 if self._reverse else 1)
+            )
 
             # Record state
             self._supply_voltage = supply_voltage
@@ -528,6 +527,11 @@ class StationManagerNode(rclpy.node.Node):
 
                 # Call service
                 future_pwm = self._pwm_write_client.call_async(pwm_write_svc)
+
+            # Update state
+            self._motor_voltage = (
+                self._supply_voltage * magnitude * (-1 if reverse else 1)
+            )
 
             # Wait for results
             if future_pwm is not None:
