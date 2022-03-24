@@ -90,40 +90,6 @@ if (UDEV_FOUND)
   )
 endif()
 
-add_executable(led_server
-  src/led/behaviors/BusySignal.cpp
-  src/led/behaviors/FullBrightness.cpp
-  src/led/behaviors/ProgressBar.cpp
-  src/led/threads/LedThread.cpp
-  src/led/threads/LedThreadCondition.cpp
-  src/led/LedCommand.cpp
-  src/led/LedScanner.cpp
-  src/led/LedServer.cpp
-  src/platform/linux/led/BeagleBoneArray.cpp
-  src/platform/linux/led/LinuxKeyboardLEDs.cpp
-  src/platform/linux/led/LinuxLED.cpp
-  src/platform/linux/led/RaspberryPiArray.cpp
-  src/ros/LedServerNode.cpp
-  src/utils/LogUtils.cpp
-  src/led_server.cpp
-)
-
-ament_target_dependencies(led_server
-  rclcpp
-  rcutils
-)
-
-target_link_libraries(led_server
-  pthread
-)
-
-install(
-  TARGETS
-    led_server
-  DESTINATION
-    lib/${PROJECT_NAME}
-)
-
 #
 # Testing
 #

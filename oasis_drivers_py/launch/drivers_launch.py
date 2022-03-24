@@ -99,15 +99,6 @@ def generate_launch_description() -> LaunchDescription:
         )
         ld.add_action(display_manager_node)
 
-    led_server_node = Node(
-        namespace=ROS_NAMESPACE,
-        package=CPP_PACKAGE_NAME,
-        executable="led_server",
-        name=f"led_server_{HOSTNAME}",
-        output="screen",
-    )
-    ld.add_action(led_server_node)
-
     serial_port_node = Node(
         namespace=ROS_NAMESPACE,
         package=PYTHON_PACKAGE_NAME,
