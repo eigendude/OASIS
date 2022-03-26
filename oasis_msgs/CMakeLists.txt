@@ -26,6 +26,7 @@ rosidl_generate_interfaces(
   ${PROJECT_NAME}
     msg/AnalogReading.msg
     msg/AVRConstants.msg
+    msg/CPUFanSpeed.msg
     msg/DigitalReading.msg
     msg/DiskPartition.msg
     msg/MCUMemory.msg

@@ -44,3 +44,9 @@ uint8 DIGITAL_PWM=4
 
 # A digital pin is in servo output mode
 uint8 DIGITAL_SERVO=5
+
+# A digital pin is in CPU fan control mode
+uint8 DIGITAL_CPU_FAN_PWM=6
+
+# A digital pin is in CPU fan speed sensing mode
+uint8 DIGITAL_CPU_FAN_TACHOMETER=7
