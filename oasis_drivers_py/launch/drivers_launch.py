@@ -143,10 +143,13 @@ def generate_launch_description() -> LaunchDescription:
                 ("digital_read", f"{MACHINE}/digital_read"),
                 ("digital_reading", f"{MACHINE}/digital_reading"),
                 ("digital_write", f"{MACHINE}/digital_write"),
+                ("mcu_memory", f"{MACHINE}/mcu_memory"),
                 ("pwm_write", f"{MACHINE}/pwm_write"),
+                ("report_mcu_memory", f"{MACHINE}/report_mcu_memory"),
                 ("servo_write", f"{MACHINE}/servo_write"),
                 ("set_analog_mode", f"{MACHINE}/set_analog_mode"),
                 ("set_digital_mode", f"{MACHINE}/set_digital_mode"),
+                ("string_message", f"{MACHINE}/string_message"),
             ],
         )
         ld.add_action(firmata_bridge_node)
