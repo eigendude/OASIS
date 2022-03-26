@@ -86,15 +86,6 @@ def generate_launch_description() -> LaunchDescription:
         )
         ld.add_action(cec_server_node)
 
-    device_manager_node = Node(
-        namespace=ROS_NAMESPACE,
-        package=PYTHON_PACKAGE_NAME,
-        executable="device_manager",
-        name=f"device_manager_{HOSTNAME}",
-        output="screen",
-    )
-    ld.add_action(device_manager_node)
-
     if ENABLE_DISPLAY:
         display_manager_node = Node(
             namespace=ROS_NAMESPACE,

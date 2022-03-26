@@ -1,2 +1,1 @@
 git+https://github.com/eigendude/pymata-express@master#egg=pymata-express
-pyudev==0.23.2
