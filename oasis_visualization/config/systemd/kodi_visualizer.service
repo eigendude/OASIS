@@ -11,7 +11,7 @@ Environment=ROS2_DISTRO=galactic
 Environment=ROS2_SYSTEM_ENV=/opt/ros/${ROS2_DISTRO}/setup.bash
 Environment=ROS2_DESKTOP_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/ros2-desktop-${ROS2_DISTRO}/install/setup.bash
 Environment=OASIS_DEPENDS_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/oasis-depends-${ROS2_DISTRO}/install/setup.bash
-Environment=KODI_BINARY=/home/${USER}/Documents/kodi/build/kodi-x11
+Environment=KODI_BINARY=/home/${USER}/kodi/bin/kodi
 ExecStart=/bin/bash -c '( [ ! -f `eval echo "${ROS2_SYSTEM_ENV}"` ] || . `eval echo "${ROS2_SYSTEM_ENV}"` ) && ( [ ! -f `eval echo "${ROS2_DESKTOP_ENV}"` ] || . `eval echo "${ROS2_DESKTOP_ENV}"` ) && . `eval echo "${OASIS_DEPENDS_ENV}"` && `eval echo "${KODI_BINARY}"`'
 Restart=always
 
