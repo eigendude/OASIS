@@ -69,6 +69,14 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     --directory="${OASIS_SOURCE_DIRECTORY}/ros-perception/bgslibrary" \
     < "${CONFIG_DIRECTORY}/bgslibrary/0001-CMake-Add-missing-header-install-target.patch" \
     || :
+  patch \
+    -p1 \
+    --forward \
+    --reject-file="/dev/null" \
+    --no-backup-if-mismatch \
+    --directory="${OASIS_SOURCE_DIRECTORY}/ros-perception/image_transport_plugins" \
+    < "${CONFIG_DIRECTORY}/image_transport_plugins/0001-Revert-Add-tiff-compression-support.-75.patch" \
+    || :
 
   # Add ccache support
   dpkg -s ccache >/dev/null || sudo apt install -y ccache
