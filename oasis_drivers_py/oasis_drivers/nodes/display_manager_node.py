@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 ################################################################################
 #
 #  Copyright (C) 2021 Garrett Brown
@@ -56,7 +55,9 @@ class DisplayManagerNode(rclpy.node.Node):
         # shut down.
         self.destroy_node()
 
-    def _handle_power_control(self, request, response) -> None:
+    def _handle_power_control(
+        self, request: PowerControlSvc.Request, response: PowerControlSvc.Response
+    ) -> PowerControlSvc.Response:
         power_mode: bool = request.power_mode == PowerModeMsg.ON
 
         DisplayManager.call_vbetool(power_mode, self.get_logger())
