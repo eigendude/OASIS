@@ -27,7 +27,7 @@ def generate_launch_description() -> LaunchDescription:
         output="screen",
         remappings=[
             # TODO: Hardware configuration
-            ("power_event", "zotac/power_event"),
+            ("power_event", "nuc/power_event"),
             ("power_control", "asus/power_control"),
         ],
     )
@@ -40,7 +40,7 @@ def generate_launch_description() -> LaunchDescription:
         output="screen",
         remappings=[
             # TODO: Hardware configuration
-            ("power_event", "zotac/power_event"),
+            ("power_event", "nuc/power_event"),
             ("power_control", "inspiron/power_control"),
         ],
     )
@@ -53,7 +53,7 @@ def generate_launch_description() -> LaunchDescription:
         output="screen",
         remappings=[
             # TODO: Hardware configuration
-            ("power_event", "zotac/power_event"),
+            ("power_event", "nuc/power_event"),
             ("power_control", "lenovo/power_control"),
         ],
     )
@@ -66,23 +66,10 @@ def generate_launch_description() -> LaunchDescription:
         output="screen",
         remappings=[
             # TODO: Hardware configuration
-            ("power_event", "zotac/power_event"),
+            ("power_event", "nuc/power_event"),
             ("power_control", "netbook/power_control"),
         ],
     )
     ld.add_action(netbook_manager_node)
-
-    hue_manager_node = Node(
-        namespace=ROS_NAMESPACE,
-        package=PACKAGE_NAME,
-        executable="automation_manager",
-        output="screen",
-        remappings=[
-            # TODO: Hardware configuration
-            ("power_event", "rpi/power_event"),
-            ("power_control", "hue/power_control"),
-        ],
-    )
-    ld.add_action(hue_manager_node)
 
     return ld
