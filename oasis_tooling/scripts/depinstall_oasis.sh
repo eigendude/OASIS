@@ -57,6 +57,12 @@ rosdep install \
   --rosdistro ${ROS2_DISTRO} \
   -y
 
+# Install vbetool
+arch=$(uname -i)
+if [[ $arch == i*86 ]] || [[ $arch == x86_64 ]]; then
+  dpkg -s vbetool >/dev/null || sudo apt install -y vbetool
+fi
+
 # Add ccache support
 dpkg -s ccache >/dev/null || sudo apt install -y ccache
 
