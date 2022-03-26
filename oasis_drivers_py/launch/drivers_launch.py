@@ -55,6 +55,7 @@ elif HOSTNAME == "inspiron":
     ENABLE_DISPLAY = True
 elif HOSTNAME == "lenovo":
     ENABLE_DISPLAY = True
+    ENABLE_VIDEO = True
 elif HOSTNAME == "netbook":
     ENABLE_DISPLAY = True
     ENABLE_VIDEO = True
