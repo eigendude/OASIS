@@ -150,6 +150,10 @@ class StationManagerNode(rclpy.node.Node):
         # Initialize input state
         self._magnitude: float = 0.0
         self._reverse: bool = False  # True if magnitude is in reverse (high DIR pin)
+        self._last_y_button: bool = False  # Set to the last value of the Y button
+        self._hold_speed: bool = (
+            False  # True to hold a steady speed, toggled with Y button
+        )
 
         # Reliable listener QOS profile for subscribers
         qos_profile: rclpy.qos.QoSPresetProfile = (
@@ -459,6 +463,7 @@ class StationManagerNode(rclpy.node.Node):
             # Look for button states
             a_button: bool = False
             b_button: bool = False
+            y_button: bool = False
             left_trigger: float = 0.0
             right_trigger: float = 0.0
 
@@ -470,6 +475,8 @@ class StationManagerNode(rclpy.node.Node):
                     a_button = pressed
                 if button_name == "b":
                     b_button = pressed
+                if button_name == "y":
+                    y_button = pressed
 
             for analog_button in peripheral_input_msg.analog_buttons:
                 button_name = analog_button.name
@@ -487,8 +494,22 @@ class StationManagerNode(rclpy.node.Node):
             if not a_button and not b_button:
                 throttle = 0.0
 
-            # Reduce throttle if A button is pressed
+            # Toggle hold speed when Y button is pressed
+            if self._last_y_button != y_button:
+                self._last_y_button = y_button
+                if y_button:
+                    self._hold_speed = not self._hold_speed
+
+            # Disable hold speed if A is pressed
             if a_button:
+                self._hold_speed = False
+
+            # Max thottle if hold speed is enabled
+            if self._hold_speed:
+                throttle = 1.0
+
+            # Reduce throttle if B button is not pressed
+            if not b_button:
                 throttle *= 0.75  # Step 12V down to 9V
 
             magnitude: float = abs(throttle)
