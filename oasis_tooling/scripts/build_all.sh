@@ -28,6 +28,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 "${SCRIPT_DIR}/depinstall_cmake.sh"
 "${SCRIPT_DIR}/depinstall_ros1_desktop.sh"
 "${SCRIPT_DIR}/depinstall_ros2_desktop.sh"
+"${SCRIPT_DIR}/depinstall_kodi.sh"
 
 #
 # Build CMake
@@ -60,3 +61,9 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 "${SCRIPT_DIR}/depinstall_oasis.sh"
 "${SCRIPT_DIR}/build_oasis.sh"
+
+#
+# Build Kodi
+#
+
+"${SCRIPT_DIR}/build_kodi.sh"
