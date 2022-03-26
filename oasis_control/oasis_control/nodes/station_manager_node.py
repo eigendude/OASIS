@@ -88,7 +88,7 @@ ROS_NAMESPACE = "oasis"
 
 NODE_NAME = "station_manager"
 
-PUBLISH_STATE_PERIOD_SECS = 0.5
+PUBLISH_STATE_PERIOD_SECS = 0.1
 
 # Publisher
 PUBLISH_STATION_STATE = "station_state"
