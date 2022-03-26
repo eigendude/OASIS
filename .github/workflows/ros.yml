@@ -63,7 +63,7 @@ jobs:
         with:
           path: |
             ros-ws/ros2-desktop-${{ matrix.ros2_distro }}/install
-          key: restore-ros2-desktop-${{ matrix.os }}-${{ matrix.ros2_distro }}-${{ hashFiles('oasis_tooling/config/ros2_desktop/**', 'oasis_tooling/config/rviz/**', 'oasis_tooling/scripts/*ros2_desktop.sh') }}
+          key: restore-ros2-desktop-${{ matrix.os }}-${{ matrix.ros2_distro }}-${{ hashFiles('oasis_tooling/config/iceoryx/**', 'oasis_tooling/config/ros2_desktop/**', 'oasis_tooling/config/rviz/**', 'oasis_tooling/scripts/*ros2_desktop.sh') }}
 
       - name: Restore OASIS dependencies
         id: restore-oasis-depends
@@ -71,7 +71,7 @@ jobs:
         with:
           path: |
             ros-ws/oasis-depends-${{ matrix.ros2_distro }}/install
-          key: restore-oasis-depends-${{ matrix.os }}-${{ matrix.ros2_distro }}-${{ hashFiles('oasis_tooling/config/ros2_desktop/**', 'oasis_tooling/config/rviz/**', 'oasis_tooling/scripts/*ros2_desktop.sh') }}-${{ hashFiles('oasis_tooling/config/depends.repos', 'oasis_tooling/scripts/*oasis_deps.sh') }}
+          key: restore-oasis-depends-${{ matrix.os }}-${{ matrix.ros2_distro }}-${{ hashFiles('oasis_tooling/config/iceoryx/**', 'oasis_tooling/config/ros2_desktop/**', 'oasis_tooling/config/rviz/**', 'oasis_tooling/scripts/*ros2_desktop.sh') }}-${{ hashFiles('oasis_tooling/config/depends.repos', 'oasis_tooling/scripts/*oasis_deps.sh') }}
 
       - name: Restore Arduino IDE
         id: restore-arduino-ide
