@@ -30,7 +30,7 @@ elseif(CEC_INCLUDE_DIR AND EXISTS "${CEC_INCLUDE_DIR}/libcec/version.h")
 endif()
 
 if(NOT CEC_FIND_VERSION)
-  set(CEC_FIND_VERSION 4.0.0)
+  set(CEC_FIND_VERSION 6.0.0)
 endif()
 
 find_library(CEC_LIBRARY NAMES cec

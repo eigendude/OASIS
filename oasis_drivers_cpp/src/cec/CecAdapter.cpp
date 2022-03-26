@@ -19,7 +19,7 @@
 #include <libcec/cec.h>
 #include <rclcpp/logging.hpp>
 
-#define CEC_LIB_SUPPORTED_VERSION LIBCEC_VERSION_TO_UINT(4, 0, 0)
+#define CEC_LIB_SUPPORTED_VERSION LIBCEC_VERSION_TO_UINT(6, 0, 0)
 
 using namespace OASIS;
 using namespace OASIS::CEC;
