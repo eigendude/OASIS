@@ -26,13 +26,14 @@ rosidl_generate_interfaces(
   ${PROJECT_NAME}
     msg/Accelerometer.msg
     msg/AnalogButton.msg
-    msg/AnalogStick.msg
     msg/AnalogReading.msg
+    msg/AnalogStick.msg
     msg/AVRConstants.msg
     msg/CPUFanSpeed.msg
     msg/DigitalButton.msg
     msg/DigitalReading.msg
     msg/DiskPartition.msg
+    msg/LeonardoState.msg
     msg/MCUMemory.msg
     msg/NetworkAddress.msg
     msg/NetworkInterface.msg
