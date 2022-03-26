@@ -32,6 +32,9 @@ rosidl_generate_interfaces(
     msg/MCUMemory.msg
     msg/NetworkAddress.msg
     msg/NetworkInterface.msg
+    msg/PeripheralConstants.msg
+    msg/PeripheralInfo.msg
+    msg/PeripheralScan.msg
     msg/PowerEvent.msg
     msg/PowerMode.msg
     msg/SerialDevice.msg
