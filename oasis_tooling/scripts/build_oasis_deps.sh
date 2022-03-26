@@ -69,3 +69,14 @@ PATH="${CMAKE_BIN_DIRECTORY}:${PATH}" \
   MAKE_FLAGS="${MAKE_FLAGS}" \
   colcon build \
     ${COLCON_FLAGS}
+
+#
+# Install symlimk to fix link error at runtime
+#
+
+if [ ! -f "${OASIS_DEPENDS_DIRECTORY}/install/lib/libkinect2_registration.so" ]; then
+  (
+    cd "${OASIS_DEPENDS_DIRECTORY}/install/lib"
+    ln -s kinect2_registration/libkinect2_registration.so
+  )
+fi
