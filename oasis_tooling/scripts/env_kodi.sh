@@ -19,10 +19,16 @@ set -o nounset
 #
 
 # Version
-KODI_VERSION="91a1268eb4c0044e8e9c67d13fc896fc2e9543a5"
+KODI_VERSION="d06be02fe2e0783cdda71f25b265cc994c78f069"
 
 # URL
 KODI_URL="https://github.com/garbear/xbmc/archive/${KODI_VERSION}.tar.gz"
+
+#
+# Build environment
+#
+
+APP_RENDER_SYSTEM=gles
 
 #
 # Directory and path definitions
