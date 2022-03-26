@@ -25,9 +25,6 @@ namespace
 {
 constexpr const char* ROS_NAMESPACE = "oasis"; // TODO
 
-// TODO: Hardware configuration
-constexpr const char* VIDEO_MACHINE = "netbook";
-
 // Subscribed topics
 constexpr const char* IMAGE_TOPIC = "image_raw";
 
@@ -36,7 +33,8 @@ constexpr const char* FOREGROUND_TOPIC = "foreground";
 constexpr const char* BACKGROUND_TOPIC = "background";
 } // namespace
 
-BackgroundModeler::BackgroundModeler(std::shared_ptr<rclcpp::Node> node)
+BackgroundModeler::BackgroundModeler(std::shared_ptr<rclcpp::Node> node,
+                                     const std::string& videoMachine)
   : m_logger(node->get_logger()),
     m_imgTransport(std::make_unique<image_transport::ImageTransport>(node)),
     m_imgPublisherForeground(std::make_unique<image_transport::Publisher>()),
@@ -45,7 +43,7 @@ BackgroundModeler::BackgroundModeler(std::shared_ptr<rclcpp::Node> node)
     m_bgsPackage(std::make_unique<bgslibrary::algorithms::AdaptiveSelectiveBackgroundLearning>())
 {
   // Create topics
-  const std::string topicBase = std::string("/") + ROS_NAMESPACE + "/" + VIDEO_MACHINE + "/";
+  const std::string topicBase = std::string("/") + ROS_NAMESPACE + "/" + videoMachine + "/";
 
   const std::string imageTopic = topicBase + IMAGE_TOPIC;
   const std::string foregroundTopic = topicBase + FOREGROUND_TOPIC;

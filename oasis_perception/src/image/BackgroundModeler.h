@@ -9,6 +9,7 @@
 #pragma once
 
 #include <memory>
+#include <string>
 
 #include <rclcpp/logger.hpp>
 #include <sensor_msgs/msg/image.hpp>
@@ -41,7 +42,7 @@ namespace IMAGE
 class BackgroundModeler
 {
 public:
-  BackgroundModeler(std::shared_ptr<rclcpp::Node> node);
+  BackgroundModeler(std::shared_ptr<rclcpp::Node> node, const std::string& videoMachine);
   ~BackgroundModeler();
 
   // ROS interface
