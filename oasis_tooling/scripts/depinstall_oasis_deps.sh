@@ -80,14 +80,21 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
   # Needed for package camera_calibration_parsers
   dpkg -s libyaml-cpp-dev >/dev/null || sudo apt install -y libyaml-cpp-dev
 
-  # Needed for OpenNI
-  for package in \
-      default-jdk \
-      libudev-dev \
-      libusb-1.0-0-dev \
-  ; do
-    dpkg -s ${package} >/dev/null || sudo apt install -y ${package}
-  done
+  # Disable OpenNI on ARM and x86
+  arch=$(uname -i)
+  if [[ $arch == i*86 ]] || [[ $arch == arm* ]] || [[ $arch == aarch* ]]; then
+    echo "Disabling OpenNI on ${arch}"
+    touch "${OASIS_SOURCE_DIRECTORY}/depends/OpenNI2/COLCON_IGNORE"
+  else
+    # Needed for OpenNI
+    for package in \
+        default-jdk \
+        libudev-dev \
+        libusb-1.0-0-dev \
+    ; do
+      dpkg -s ${package} >/dev/null || sudo apt install -y ${package}
+    done
+  fi
 
   # Needed for libfreenect2
   for package in \
