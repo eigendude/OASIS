@@ -28,48 +28,21 @@ endif()
 # Dependencies
 #
 
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+
 find_package(ament_cmake REQUIRED)
+find_package(bgslibrary REQUIRED)
 find_package(cv_bridge REQUIRED)
-find_package(Git)
 find_package(image_transport REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
-
-#
-# Update submodules
-#
-
-if(GIT_FOUND AND EXISTS "${PROJECT_SOURCE_DIR}/../.git")
-  # Update submodules as needed
-  option(GIT_SUBMODULE "Check submodules during build" ON)
-
-  if(GIT_SUBMODULE)
-    message(STATUS "Submodule update")
-    execute_process(COMMAND ${GIT_EXECUTABLE} submodule update --init --recursive
-                    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-                    RESULT_VARIABLE GIT_SUBMOD_RESULT)
-    if(NOT GIT_SUBMOD_RESULT EQUAL "0")
-      message(FATAL_ERROR "git submodule update --init failed with ${GIT_SUBMOD_RESULT}, please checkout submodules")
-    endif()
-  endif()
-endif()
-
-if(NOT EXISTS "${PROJECT_SOURCE_DIR}/lib/bgslibrary/CMakeLists.txt")
-  message(FATAL_ERROR "The submodules were not downloaded! GIT_SUBMODULE was turned off or failed. Please update submodules and try again.")
-endif()
-
-#
-# Add submodiles
-#
-
-add_subdirectory(lib/bgslibrary)
 
 #
 # Includes
 #
 
 include_directories(
-  lib/bgslibrary/src
+  ${BGSLIBRARY_INCLUDE_DIRS}
   ${cv_bridge_INCLUDE_DIRS}
   ${image_transport_INCLUDE_DIRS}
 )
@@ -92,7 +65,7 @@ ament_target_dependencies(background_subtractor
 )
 
 target_link_libraries(background_subtractor
-  bgslibrary_core
+  ${BGSLIBRARY_LIBRARIES}
   ${cv_bridge_LIBRARIES}
   ${image_transport_LIBRARIES}
 )
