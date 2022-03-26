@@ -97,6 +97,7 @@ sudo apt install -y \
   libxrandr-dev \
   libxslt1-dev \
   libxt-dev \
+  lld \
   lsb-release \
   meson \
   nasm \
