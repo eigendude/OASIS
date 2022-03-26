@@ -248,6 +248,9 @@ class FirmataBridgeNode(rclpy.node.Node, FirmataCallback):
         # Translate parameters
         analog_pin: int = request.analog_pin
 
+        # Debug logging
+        self.get_logger().info(f"Reading value for analog pin {analog_pin}")
+
         # Perform service
         result: Tuple[float, float, datetime] = self._bridge.analog_read(analog_pin)
 
@@ -264,6 +267,9 @@ class FirmataBridgeNode(rclpy.node.Node, FirmataCallback):
         """Handle ROS 2 digital pin reads"""
         # Translate parameters
         digital_pin: int = request.digital_pin
+
+        # Debug logging
+        self.get_logger().info(f"Reading value for digital pin {digital_pin}")
 
         # Perform service
         result: Tuple[bool, datetime] = self._bridge.digital_read(digital_pin)
@@ -282,6 +288,11 @@ class FirmataBridgeNode(rclpy.node.Node, FirmataCallback):
         digital_pin: int = request.digital_pin
         digital_value: bool = request.digital_value == AVRConstantsMsg.HIGH
 
+        # Debug logging
+        self.get_logger().info(
+            f"Setting digital pin {digital_pin} value to {'HIGH' if digital_value else 'LOW'}"
+        )
+
         # Perform service
         self._bridge.digital_write(digital_pin, digital_value)
 
@@ -295,6 +306,11 @@ class FirmataBridgeNode(rclpy.node.Node, FirmataCallback):
         digital_pin: int = request.digital_pin
         duty_cycle: float = request.duty_cycle
 
+        # Debug logging
+        self.get_logger().info(
+            f"Setting PWM on pin {digital_pin} to duty cycle {duty_cycle}"
+        )
+
         # Perform service
         self._bridge.pwm_write(digital_pin, duty_cycle)
 
@@ -306,6 +322,12 @@ class FirmataBridgeNode(rclpy.node.Node, FirmataCallback):
         """Handle request to enable/disable MCU memory reporting"""
         # Translate parameters
         reporting_period_ms: int = request.reporting_period_ms
+
+        # Debug logging
+        if reporting_period_ms != 0:
+            self.get_logger().info(f"Reporting MCU memory at {reporting_period_ms}ms")
+        else:
+            self.get_logger().info("Disabling MCU memory reporting")
 
         # Perform service
         self._bridge.report_mcu_memory(reporting_period_ms)
@@ -320,6 +342,11 @@ class FirmataBridgeNode(rclpy.node.Node, FirmataCallback):
         digital_pin: int = request.digital_pin
         position: float = request.position
 
+        # Debug logging
+        self.get_logger().info(
+            f"Setting servo on pin {digital_pin} to position {position}"
+        )
+
         # Perform service
         self._bridge.servo_write(digital_pin, position)
 
@@ -333,6 +360,9 @@ class FirmataBridgeNode(rclpy.node.Node, FirmataCallback):
         analog_pin: int = request.analog_pin
         analog_mode: AnalogMode = self._translate_analog_mode(request.analog_mode)
 
+        # Debug logging
+        self.get_logger().info(f"Setting analog pin {analog_pin} to mode {analog_mode}")
+
         # Perform service
         self._bridge.set_analog_mode(analog_pin, analog_mode)
 
@@ -345,6 +375,11 @@ class FirmataBridgeNode(rclpy.node.Node, FirmataCallback):
         # Translate parameters
         digital_pin: int = request.digital_pin
         digital_mode: DigitalMode = self._translate_digital_mode(request.digital_mode)
+
+        # Debug logging
+        self.get_logger().info(
+            f"Setting digital pin {digital_pin} to mode {digital_mode}"
+        )
 
         # Perform service
         self._bridge.set_digital_mode(digital_pin, digital_mode)
