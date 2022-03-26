@@ -61,6 +61,7 @@ elif HOSTNAME == "netbook":
     ENABLE_VIDEO = True
 elif HOSTNAME == "nuc":
     ENABLE_CEC = True
+    ENABLE_FIRMATA = True
 elif HOSTNAME == "station":
     ENABLE_FIRMATA = True
 
