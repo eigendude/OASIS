@@ -11,7 +11,7 @@
 
 import rclpy
 
-from oasis_automation.nodes.automation_manager_node import AutomationManagerNode
+from oasis_control.nodes.automation_manager_node import AutomationManagerNode
 
 
 ################################################################################

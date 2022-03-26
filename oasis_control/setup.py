@@ -55,11 +55,11 @@ setuptools.setup(
             ["resource/" + PACKAGE_NAME],
         ),
         # Launch files
-        (os.path.join("share", PACKAGE_NAME), ["launch/automation_launch.py"]),
+        (os.path.join("share", PACKAGE_NAME), ["launch/control_launch.py"]),
         # Systemd services
         (
             os.path.join("share", PACKAGE_NAME, "systemd"),
-            ["config/systemd/oasis_automation.service"],
+            ["config/systemd/oasis_control.service"],
         ),
     ],
     install_requires=[
@@ -70,7 +70,7 @@ setuptools.setup(
     ],
     entry_points={
         "console_scripts": [
-            "automation_manager = oasis_automation.cli.automation_manager:main",
+            "automation_manager = oasis_control.cli.automation_manager:main",
         ],
     },
 )

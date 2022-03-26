@@ -14,7 +14,7 @@ from launch_ros.actions import Node
 
 ROS_NAMESPACE = "oasis"
 
-PACKAGE_NAME = "oasis_automation"
+PACKAGE_NAME = "oasis_control"
 
 
 def generate_launch_description() -> LaunchDescription:
