@@ -68,6 +68,10 @@ COLCON_FLAGS+=" --cmake-args -DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
 cd "${IMAGE_TRANSPORT_PLUGINS_REPO_DIR}"
 git revert --no-commit 7ca907277eda51ec2fbb71409bda33d1395d6127
 
+# This is needed to fix a build error
+cd "${IMAGE_TRANSPORT_PLUGINS_REPO_DIR}"
+git revert --no-commit 8320679be1c753e120dda211198a7d64db852cdc
+
 cd "${OASIS_DEPENDS_DIRECTORY}"
 
 PATH="${CMAKE_BIN_DIRECTORY}:${PATH}" \
