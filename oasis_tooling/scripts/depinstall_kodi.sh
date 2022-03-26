@@ -79,6 +79,7 @@ sudo apt install -y \
   libpng-dev \
   libpulse-dev \
   libsmbclient-dev \
+  libsndio-dev \
   libspdlog-dev \
   libsqlite3-dev \
   libssl-dev \
