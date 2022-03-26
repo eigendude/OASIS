@@ -30,6 +30,7 @@ public:
   void Loop();
 
   // Sonar functions
+  void SetSonarMode(uint8_t digitalPin);
   uint8_t GetActiveSonarCount() const { return m_numActiveSonars; }
   void AddSonar(uint8_t sonarTriggerPin, uint8_t sonarEchoPin, unsigned long timeout);
 

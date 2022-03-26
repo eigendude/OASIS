@@ -27,6 +27,7 @@ public:
   void Loop();
 
   // DHT functions
+  void EnableDHT(uint8_t digitalPin);
   void ConfigureDHT(int DHT_pin, int DHT_type);
   void SetSamplingInterval(uint8_t samplingIntervalMs);
 

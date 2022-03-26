@@ -28,7 +28,9 @@ public:
   void Loop();
 
   // Analog pin functions
+  void SetAnalogMode(uint8_t pin);
   void EnableAnalogInput(uint8_t analogPin, bool enable);
+  void ReportAnalog(uint8_t analogPin, bool enableReporting);
 
 private:
   // Analog pin state

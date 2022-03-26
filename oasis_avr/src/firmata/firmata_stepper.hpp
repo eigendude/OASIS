@@ -33,6 +33,7 @@ public:
   void Loop();
 
   // Stepper motor functions
+  void SetStepperPin(uint8_t digitalPin);
   void SendStepperLibraryVersion();
   void CreateStepper(int numSteps, int pin1, int pin2);
   void CreateStepper(int numSteps, int pin1, int pin2, int pin3, int pin4);

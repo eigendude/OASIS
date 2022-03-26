@@ -31,8 +31,11 @@ public:
 
   // Digital pin functions
   void SetDigitalPinMode(uint8_t digitalPin, int pinMode);
+  void DisableDigitalReporting(uint8_t digitalPin);
   void EnableDigitalInput(uint8_t digitalPort, bool enable);
   void SendPort(uint8_t digitalPort);
+  void DigitalWrite(uint8_t digitalPort, int portValue);
+  void PWMWrite(uint8_t digitalPin, int analogValue);
 
 private:
   // Digital pin functions

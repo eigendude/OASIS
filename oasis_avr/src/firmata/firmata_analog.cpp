@@ -59,14 +59,34 @@ void FirmataAnalog::Loop()
   delay(m_reportTimer.TimeLeft());
 }
 
+void FirmataAnalog::SetAnalogMode(uint8_t pin)
+{
+  if (IS_PIN_ANALOG(pin))
+  {
+    Firmata.setPinMode(pin, PIN_MODE_ANALOG);
+    EnableAnalogInput(PIN_TO_ANALOG(pin), true);
+  }
+}
+
 void FirmataAnalog::EnableAnalogInput(uint8_t analogPin, bool enable)
 {
-  if (enable)
+  if (analogPin < TOTAL_ANALOG_PINS)
   {
-    m_analogInputsToReport |= (1 << analogPin);
-  }
-  else
-  {
-    m_analogInputsToReport &= ~(1 << analogPin);
+    if (enable)
+    {
+      m_analogInputsToReport |= (1 << analogPin);
+    }
+    else
+    {
+      m_analogInputsToReport &= ~(1 << analogPin);
+    }
+
+    if (enable)
+    {
+      // Send pin value immediately. This is helpful when connected via
+      // ethernet, WiFi or Bluetooth so pin states can be known upon
+      // reconnecting.
+      Firmata.sendAnalog(analogPin, analogRead(analogPin));
+    }
   }
 }

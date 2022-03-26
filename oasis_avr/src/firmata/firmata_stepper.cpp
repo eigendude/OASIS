@@ -32,6 +32,10 @@ void FirmataStepper::Loop()
 {
   // Stepper motor has no loop
 }
+void FirmataStepper::SetStepperPin(uint8_t digitalPin)
+{
+  Firmata.setPinMode(digitalPin, PIN_MODE_STEPPER);
+}
 
 void FirmataStepper::SendStepperLibraryVersion()
 {

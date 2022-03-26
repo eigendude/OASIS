@@ -52,6 +52,16 @@ void FirmataI2C::Loop()
   }
 }
 
+void FirmataI2C::SetI2CMode(uint8_t digitalPin)
+{
+  if (IS_PIN_I2C(digitalPin))
+  {
+    // Mark the pin as I2C. The user must call I2C_CONFIG to enable I2C for
+    // a device
+    Firmata.setPinMode(digitalPin, PIN_MODE_I2C);
+  }
+}
+
 void FirmataI2C::EnableI2CPins()
 {
   // Is there a faster way to do this? Would probably require importing

@@ -89,86 +89,37 @@ void FirmataCallbacks::InitializeCallbacks(FirmataThread& thread)
 
 void FirmataCallbacks::PWMWriteCallback(uint8_t pin, int analogValue)
 {
-  if (pin < TOTAL_PINS)
+  switch (Firmata.getPinMode(pin))
   {
-    switch (Firmata.getPinMode(pin))
+    case PIN_MODE_PWM:
     {
-      case PIN_MODE_PWM:
-      {
 #if defined(ENABLE_DIGITAL)
-        if (IS_PIN_PWM(pin))
-          analogWrite(PIN_TO_PWM(pin), analogValue);
-
-        Firmata.setPinState(pin, analogValue);
+      m_thread->GetDigital()->PWMWrite(pin, analogValue);
 #else
-        Firmata.sendString("Digital not enabled");
+      Firmata.sendString("Digital not enabled");
 #endif
-        break;
-      }
-
-      case PIN_MODE_SERVO:
-      {
-#if defined(ENABLE_SERVO)
-        m_thread->GetServo()->WriteServo(pin, analogValue);
-
-        Firmata.setPinState(pin, analogValue);
-#else
-        Firmata.sendString("Servo not enabled");
-#endif
-
-        break;
-      }
-
-      default:
-        break;
+      break;
     }
+
+    case PIN_MODE_SERVO:
+    {
+#if defined(ENABLE_SERVO)
+      m_thread->GetServo()->WriteServo(pin, analogValue);
+#else
+      Firmata.sendString("Servo not enabled");
+#endif
+      break;
+    }
+
+    default:
+      break;
   }
 }
 
 void FirmataCallbacks::DigitalWriteCallback(uint8_t digitalPort, int portValue)
 {
 #if defined(ENABLE_DIGITAL)
-  uint8_t mask = 1;
-  uint8_t pinWriteMask = 0;
-
-  if (digitalPort < TOTAL_PORTS)
-  {
-    // Create a mask of the pins on this port that are writable.
-    uint8_t lastPin = digitalPort * 8 + 8;
-
-    if (lastPin > TOTAL_PINS)
-      lastPin = TOTAL_PINS;
-
-    for (uint8_t pin = digitalPort * 8; pin < lastPin; ++pin)
-    {
-      // Do not disturb non-digital pins (eg, Rx & Tx)
-      if (IS_PIN_DIGITAL(pin))
-      {
-        // Do not touch pins in PWM, ANALOG, SERVO or other modes
-        if (Firmata.getPinMode(pin) == PIN_MODE_OUTPUT || Firmata.getPinMode(pin) == PIN_MODE_INPUT)
-        {
-          uint8_t pinValue = (static_cast<uint8_t>(portValue) & mask) ? 1 : 0;
-
-          if (Firmata.getPinMode(pin) == PIN_MODE_OUTPUT)
-          {
-            pinWriteMask |= mask;
-          }
-          else if (Firmata.getPinMode(pin) == PIN_MODE_INPUT && pinValue == 1 &&
-                   Firmata.getPinState(pin) != 1)
-          {
-            // Only handle INPUT here for backwards compatibility
-            pinMode(pin, INPUT_PULLUP);
-          }
-
-          Firmata.setPinState(pin, pinValue);
-        }
-      }
-
-      mask = mask << 1;
-    }
-
-    writePort(digitalPort, static_cast<uint8_t>(portValue), pinWriteMask);
-  }
+  m_thread->GetDigital()->DigitalWrite(digitalPort, portValue);
 #else
   Firmata.sendString("Digital not enabled");
 #endif
@@ -177,25 +128,7 @@ void FirmataCallbacks::DigitalWriteCallback(uint8_t digitalPort, int portValue)
 void FirmataCallbacks::ReportAnalogCallback(uint8_t analogPin, int enableReporting)
 {
 #if defined(ENABLE_ANALOG)
-  if (analogPin < TOTAL_ANALOG_PINS)
-  {
-    m_thread->GetAnalog()->EnableAnalogInput(analogPin, enableReporting != 0);
-
-    if (enableReporting != 0)
-    {
-      // Prevent during system reset or all analog pin values will be reported
-      // which may report noise for unconnected analog pins
-      if (!m_thread->IsResetting())
-      {
-        // Send pin value immediately. This is helpful when connected via
-        // ethernet, WiFi or Bluetooth so pin states can be known upon
-        // reconnecting.
-        Firmata.sendAnalog(analogPin, analogRead(analogPin));
-      }
-    }
-  }
-
-  // TODO: Save status to EEPROM here, if changed
+  m_thread->GetAnalog()->EnableAnalogInput(analogPin, enableReporting != 0);
 #else
   Firmata.sendString("Analog not enabled");
 #endif
@@ -204,15 +137,10 @@ void FirmataCallbacks::ReportAnalogCallback(uint8_t analogPin, int enableReporti
 void FirmataCallbacks::ReportDigitalCallback(uint8_t digitalPort, int enableReporting)
 {
 #if defined(ENABLE_DIGITAL)
-  if (digitalPort < TOTAL_PORTS)
-  {
-    m_thread->GetDigital()->EnableDigitalInput(digitalPort, enableReporting != 0);
-
-    // Send port value immediately. This is helpful when connected via ethernet,
-    // WiFi or Bluetooth so pin states can be known upon reconnecting.
-    if (enableReporting != 0)
-      m_thread->GetDigital()->SendPort(digitalPort);
-  }
+  m_thread->GetDigital()->EnableDigitalInput(digitalPort, enableReporting != 0);
+#else
+  Firmata.sendString("Digital not enabled");
+#endif
 
   // Do not disable analog reporting on these 8 pins, to allow some pins to be
   // used for digital, others analog.
@@ -222,9 +150,6 @@ void FirmataCallbacks::ReportDigitalCallback(uint8_t digitalPort, int enableRepo
   //
   // Likewise, while scanning digital pins, portConfigInputs will mask off
   // values from any pins configured as analog.
-#else
-  Firmata.sendString("Digital not enabled");
-#endif
 }
 
 void FirmataCallbacks::SetPinModeCallback(uint8_t pin, int mode)
@@ -232,51 +157,67 @@ void FirmataCallbacks::SetPinModeCallback(uint8_t pin, int mode)
   if (Firmata.getPinMode(pin) == PIN_MODE_IGNORE)
     return;
 
-#if defined(ENABLE_ANALOG)
-  if (IS_PIN_ANALOG(pin))
+  // Disable existing subsystem on mode changes
+  if (Firmata.getPinMode(pin) != mode)
   {
-    // Turn on/off reporting
-    ReportAnalogCallback(PIN_TO_ANALOG(pin), mode == PIN_MODE_ANALOG ? 1 : 0);
-  }
-#endif
-
-#if defined(ENABLE_DIGITAL)
-  if (IS_PIN_DIGITAL(pin))
-  {
-    m_thread->GetDigital()->SetDigitalPinMode(pin, mode);
-  }
-#endif
-
-#if defined(ENABLE_I2C)
-  // Prepare for new pin mode
-  if (Firmata.getPinMode(pin) == PIN_MODE_I2C && m_thread->GetI2C()->IsI2CEnabled() &&
-      mode != PIN_MODE_I2C)
-  {
-    // Disable I2C so pins can be used for other functions
-    // the following if statements should reconfigure the pins properly
-    m_thread->GetI2C()->DisableI2CPins();
-  }
-#endif
-
-#if defined(ENABLE_SERVO)
-  if (IS_PIN_DIGITAL(pin) && mode != PIN_MODE_SERVO)
-  {
-    m_thread->GetServo()->PrepareServoPin(pin);
-  }
-#endif
-
-#if defined(ENABLE_SPI)
-  if (IS_PIN_SPI(pin))
-  {
-    if (mode != PIN_MODE_SPI && m_thread->GetSPI()->IsSpiEnabled())
+    switch (Firmata.getPinMode(pin))
     {
-      // Disable SPI so pins can be used for other functions. The following if
-      // statements should reconfigure the pins properly
-      if (Firmata.getPinMode(pin) == PIN_MODE_SPI)
-        m_thread->GetSPI()->DisableSpiPins();
+      case PIN_MODE_ANALOG:
+      {
+#if defined(ENABLE_ANALOG)
+        // Turn off reporting
+        m_thread->GetAnalog()->EnableAnalogInput(PIN_TO_ANALOG(pin), false);
+#endif
+        break;
+      }
+
+      case PIN_MODE_INPUT:
+      case PIN_MODE_PULLUP:
+      {
+#if defined(ENABLE_DIGITAL)
+        // Turn off reporting
+        m_thread->GetDigital()->DisableDigitalReporting(PIN_TO_DIGITAL(pin));
+#endif
+        break;
+      }
+
+      case PIN_MODE_I2C:
+      {
+#if defined(ENABLE_I2C)
+        if (m_thread->GetI2C()->IsI2CEnabled())
+        {
+          // Disable I2C so pins can be used for other functions
+          // the following if statements should reconfigure the pins properly
+          m_thread->GetI2C()->DisableI2CPins();
+        }
+#endif
+        break;
+      }
+
+      case PIN_MODE_SERVO:
+      {
+#if defined(ENABLE_SERVO)
+        if (IS_PIN_DIGITAL(pin))
+          m_thread->GetServo()->PrepareServoPin(PIN_TO_DIGITAL(pin));
+#endif
+        break;
+      }
+
+      case PIN_MODE_SPI:
+      {
+#if defined(ENABLE_SPI)
+        if (IS_PIN_SPI(pin) && m_thread->GetSPI()->IsSpiEnabled())
+        {
+          // Disable SPI so pins can be used for other functions. The following if
+          // statements should reconfigure the pins properly
+          if (Firmata.getPinMode(pin) == PIN_MODE_SPI)
+            m_thread->GetSPI()->DisableSpiPins();
+        }
+#endif
+        break;
+      }
     }
   }
-#endif
 
   // Update Firmata state
   Firmata.setPinState(pin, 0);
@@ -287,16 +228,7 @@ void FirmataCallbacks::SetPinModeCallback(uint8_t pin, int mode)
     case PIN_MODE_ANALOG:
     {
 #if defined(ENABLE_ANALOG)
-      if (IS_PIN_ANALOG(pin))
-      {
-        if (IS_PIN_DIGITAL(pin))
-        {
-          // Disable output driver
-          pinMode(PIN_TO_DIGITAL(pin), INPUT);
-        }
-
-        Firmata.setPinMode(pin, PIN_MODE_ANALOG);
-      }
+      m_thread->GetAnalog()->SetAnalogMode(pin);
 #else
       Firmata.sendString("Analog not enabled");
 #endif
@@ -306,7 +238,8 @@ void FirmataCallbacks::SetPinModeCallback(uint8_t pin, int mode)
     case PIN_MODE_DHT:
     {
 #if defined(ENABLE_DHT)
-      Firmata.setPinMode(pin, PIN_MODE_DHT);
+      if (IS_PIN_DIGITAL(pin))
+        m_thread->GetDHT()->EnableDHT(PIN_TO_DIGITAL(pin));
 #else
       Firmata.sendString("DHT not enabled");
 #endif
@@ -314,70 +247,13 @@ void FirmataCallbacks::SetPinModeCallback(uint8_t pin, int mode)
     }
 
     case PIN_MODE_INPUT:
-    {
-#if defined(ENABLE_DIGITAL)
-      if (IS_PIN_DIGITAL(pin))
-      {
-        // Disable output driver
-        pinMode(PIN_TO_DIGITAL(pin), INPUT);
-
-        Firmata.setPinMode(pin, PIN_MODE_INPUT);
-        Firmata.setPinState(pin, 0);
-      }
-#else
-      Firmata.sendString("Digital not enabled");
-#endif
-      break;
-    }
-
     case PIN_MODE_PULLUP:
-    {
-#if defined(ENABLE_DIGITAL)
-      if (IS_PIN_DIGITAL(pin))
-      {
-        pinMode(PIN_TO_DIGITAL(pin), INPUT_PULLUP);
-
-        Firmata.setPinMode(pin, PIN_MODE_PULLUP);
-        Firmata.setPinState(pin, 1);
-      }
-#else
-      Firmata.sendString("Digital not enabled");
-#endif
-      break;
-    }
-
     case PIN_MODE_OUTPUT:
-    {
-#if defined(ENABLE_DIGITAL)
-      if (IS_PIN_DIGITAL(pin))
-      {
-        if (Firmata.getPinMode(pin) == PIN_MODE_PWM)
-        {
-          // Disable PWM if pin mode was previously set to PWM.
-          digitalWrite(PIN_TO_DIGITAL(pin), LOW);
-        }
-
-        pinMode(PIN_TO_DIGITAL(pin), OUTPUT);
-
-        Firmata.setPinMode(pin, PIN_MODE_OUTPUT);
-      }
-#else
-      Firmata.sendString("Digital not enabled");
-#endif
-      break;
-    }
-
     case PIN_MODE_PWM:
     {
 #if defined(ENABLE_DIGITAL)
-      if (IS_PIN_PWM(pin))
-      {
-        pinMode(PIN_TO_PWM(pin), OUTPUT);
-
-        analogWrite(PIN_TO_PWM(pin), 0);
-
-        Firmata.setPinMode(pin, PIN_MODE_PWM);
-      }
+      if (IS_PIN_DIGITAL(pin))
+        m_thread->GetDigital()->SetDigitalPinMode(PIN_TO_DIGITAL(pin), mode);
 #else
       Firmata.sendString("Digital not enabled");
 #endif
@@ -387,12 +263,8 @@ void FirmataCallbacks::SetPinModeCallback(uint8_t pin, int mode)
     case PIN_MODE_I2C:
     {
 #if defined(ENABLE_I2C)
-      if (IS_PIN_I2C(pin))
-      {
-        // Mark the pin as I2C. The user must call I2C_CONFIG to enable I2C for
-        // a device
-        Firmata.setPinMode(pin, PIN_MODE_I2C);
-      }
+      if (IS_PIN_DIGITAL(pin))
+        m_thread->GetI2C()->SetI2CMode(PIN_TO_DIGITAL(pin));
 #else
       Firmata.sendString("I2C not enabled");
 #endif
@@ -403,12 +275,7 @@ void FirmataCallbacks::SetPinModeCallback(uint8_t pin, int mode)
     {
 #if defined(ENABLE_SERVO)
       if (IS_PIN_DIGITAL(pin))
-      {
-        Firmata.setPinMode(pin, PIN_MODE_SERVO);
-
-        if (m_thread->GetServo() != nullptr)
-          m_thread->GetServo()->SetServoPin(pin);
-      }
+        m_thread->GetServo()->SetServoMode(PIN_TO_DIGITAL(pin));
 #else
       Firmata.sendString("Servo not enabled");
 #endif
@@ -418,7 +285,8 @@ void FirmataCallbacks::SetPinModeCallback(uint8_t pin, int mode)
     case PIN_MODE_SONAR:
     {
 #if defined(ENABLE_SONAR)
-      Firmata.setPinMode(pin, PIN_MODE_SONAR);
+      if (IS_PIN_DIGITAL(pin))
+        m_thread->GetSonar()->SetSonarMode(PIN_TO_DIGITAL(pin));
 #else
       Firmata.sendString("Sonar not enabled");
 #endif
@@ -438,7 +306,8 @@ void FirmataCallbacks::SetPinModeCallback(uint8_t pin, int mode)
     case PIN_MODE_STEPPER:
     {
 #if defined(ENABLE_STEPPER)
-      Firmata.setPinMode(pin, PIN_MODE_STEPPER);
+      if (IS_PIN_DIGITAL(pin))
+        m_thread->GetStepper()->SetStepperPin(PIN_TO_DIGITAL(pin));
 #else
       Firmata.sendString("Stepper not enabled");
 #endif
@@ -537,6 +406,22 @@ void FirmataCallbacks::SysexCallback(uint8_t command, uint8_t argc, uint8_t* arg
       Firmata.write(CAPABILITY_RESPONSE);
       for (uint8_t pin = 0; pin < TOTAL_PINS; ++pin)
       {
+#if defined(ENABLE_ANALOG)
+        if (IS_PIN_ANALOG(pin))
+        {
+          Firmata.write(PIN_MODE_ANALOG);
+          Firmata.write(10); // 10 = 10-bit resolution
+        }
+#endif
+
+#if defined(ENABLE_DHT)
+        if (IS_PIN_DIGITAL(pin))
+        {
+          Firmata.write(static_cast<uint8_t>(PIN_MODE_DHT));
+          Firmata.write(1);
+        }
+#endif
+
 #if defined(ENABLE_DIGITAL)
         if (IS_PIN_DIGITAL(pin))
         {
@@ -545,12 +430,6 @@ void FirmataCallbacks::SysexCallback(uint8_t command, uint8_t argc, uint8_t* arg
           Firmata.write(static_cast<uint8_t>(PIN_MODE_PULLUP));
           Firmata.write(1);
           Firmata.write(static_cast<uint8_t>(PIN_MODE_OUTPUT));
-          Firmata.write(1);
-          Firmata.write(static_cast<uint8_t>(PIN_MODE_STEPPER));
-          Firmata.write(1);
-          Firmata.write(static_cast<uint8_t>(PIN_MODE_SONAR));
-          Firmata.write(1);
-          Firmata.write(static_cast<uint8_t>(PIN_MODE_DHT));
           Firmata.write(1);
         }
 
@@ -561,11 +440,11 @@ void FirmataCallbacks::SysexCallback(uint8_t command, uint8_t argc, uint8_t* arg
         }
 #endif
 
-#if defined(ENABLE_ANALOG)
-        if (IS_PIN_ANALOG(pin))
+#if defined(ENABLE_SONAR)
+        if (IS_PIN_DIGITAL(pin))
         {
-          Firmata.write(PIN_MODE_ANALOG);
-          Firmata.write(10); // 10 = 10-bit resolution
+          Firmata.write(static_cast<uint8_t>(PIN_MODE_SONAR));
+          Firmata.write(1);
         }
 #endif
 
@@ -574,6 +453,14 @@ void FirmataCallbacks::SysexCallback(uint8_t command, uint8_t argc, uint8_t* arg
         {
           Firmata.write(PIN_MODE_SPI);
           Firmata.write(1); // TODO: Could assign a number to map SPI pins
+        }
+#endif
+
+#if defined(ENABLE_STEPPER)
+        if (IS_PIN_DIGITAL(pin))
+        {
+          Firmata.write(static_cast<uint8_t>(PIN_MODE_STEPPER));
+          Firmata.write(1);
         }
 #endif
 
@@ -647,6 +534,7 @@ void FirmataCallbacks::SysexCallback(uint8_t command, uint8_t argc, uint8_t* arg
 #else
       Firmata.sendString("Diagnostics not enabled");
 #endif
+
       break;
     }
 
@@ -671,7 +559,7 @@ void FirmataCallbacks::SysexCallback(uint8_t command, uint8_t argc, uint8_t* arg
       if (argv[1] & I2C_10BIT_ADDRESS_MODE_MASK)
       {
         Firmata.sendString("10-bit addressing not supported");
-        return;
+        break;
       }
       else
       {
@@ -840,23 +728,15 @@ void FirmataCallbacks::SysexCallback(uint8_t command, uint8_t argc, uint8_t* arg
     case SERVO_CONFIG:
     {
 #if defined(ENABLE_SERVO)
-      if (argc > 4)
+      if (argc > 4 && IS_PIN_DIGITAL(pin))
       {
         // These vars are here for clarity, they'll optimized away by the compiler
         uint8_t pin = argv[0];
         int minPulse = argv[1] + (argv[2] << 7);
         int maxPulse = argv[3] + (argv[4] << 7);
 
-        if (IS_PIN_DIGITAL(pin))
-        {
-          if (m_thread->GetServo()->GetServoPin(pin) < MAX_SERVOS &&
-              m_thread->GetServo()->IsServoAttached(pin))
-            m_thread->GetServo()->DetachServo(pin);
-
-          m_thread->GetServo()->AttachServo(pin, minPulse, maxPulse);
-
+        if (m_thread->GetServo()->AttachServo(PIN_TO_DIGITAL(pin), minPulse, maxPulse))
           SetPinModeCallback(pin, PIN_MODE_SERVO);
-        }
       }
 #else
       Firmata.sendString("Servo not enabled");

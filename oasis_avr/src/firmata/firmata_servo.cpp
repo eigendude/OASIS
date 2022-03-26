@@ -81,8 +81,11 @@ bool FirmataServo::IsServoAttached(uint8_t digitalPin) const
   return servo.attached();
 }
 
-void FirmataServo::AttachServo(uint8_t digitalPin, int minPulse, int maxPulse)
+bool FirmataServo::AttachServo(uint8_t digitalPin, int minPulse, int maxPulse)
 {
+  if (GetServoPin(digitalPin) < MAX_SERVOS && IsServoAttached(digitalPin))
+    DetachServo(digitalPin);
+
   if (m_servoCount < MAX_SERVOS)
   {
     // Reuse indexes of detached servos until all have been reallocated
@@ -106,7 +109,10 @@ void FirmataServo::AttachServo(uint8_t digitalPin, int minPulse, int maxPulse)
   else
   {
     Firmata.sendString("Max servos attached");
+    return false;
   }
+
+  return true;
 }
 
 void FirmataServo::DetachServo(uint8_t digitalPin)
@@ -130,17 +136,21 @@ void FirmataServo::DetachServo(uint8_t digitalPin)
   m_servoPinMap[digitalPin] = 255;
 }
 
-void FirmataServo::SetServoPin(uint8_t digitalPin)
+void FirmataServo::SetServoMode(uint8_t digitalPin)
 {
   if (m_servoPinMap[digitalPin] == 255 || !m_servos[m_servoPinMap[digitalPin]].attached())
   {
     // Pass -1 for min and max pulse values to use default values set by
     // Servo library
     AttachServo(digitalPin, -1, -1);
+
+    Firmata.setPinMode(digitalPin, PIN_MODE_SERVO);
   }
 }
 
-void FirmataServo::WriteServo(uint8_t pin, int value)
+void FirmataServo::WriteServo(uint8_t pin, int analogValue)
 {
-  m_servos[m_servoPinMap[pin]].write(value);
+  m_servos[m_servoPinMap[pin]].write(analogValue);
+
+  Firmata.setPinState(pin, analogValue);
 }

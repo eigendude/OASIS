@@ -79,6 +79,11 @@ void FirmataSonar::Loop()
   delay(1000);
 }
 
+void FirmataSonar::SetSonarMode(uint8_t digitalPin)
+{
+  Firmata.setPinMode(digitalPin, PIN_MODE_SONAR);
+}
+
 void FirmataSonar::AddSonar(uint8_t sonarTriggerPin, uint8_t sonarEchoPin, unsigned long timeout)
 {
   m_sonarTriggerPin = sonarTriggerPin;

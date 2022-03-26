@@ -112,6 +112,11 @@ void FirmataDHT::Loop()
   delay(1000);
 }
 
+void FirmataDHT::EnableDHT(uint8_t digitalPin)
+{
+  Firmata.setPinMode(digitalPin, PIN_MODE_DHT);
+}
+
 void FirmataDHT::ConfigureDHT(int DHT_pin, int DHT_type)
 {
   if (m_numActiveDHTs < MAX_DHTS)

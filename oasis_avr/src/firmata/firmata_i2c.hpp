@@ -43,6 +43,7 @@ public:
   void Loop();
 
   // I2C functions
+  void SetI2CMode(uint8_t digitalPin);
   void EnableI2CPins();
   /*!
    * \brief Disable the I2C pins so they can be used for other functions

@@ -13,6 +13,7 @@
 
 #include "firmata_digital.hpp"
 
+#include <Arduino.h>
 #include <FirmataExpress.h>
 #include <Scheduler.h>
 
@@ -71,12 +72,12 @@ void FirmataDigital::Loop()
   yield();
 }
 
-void FirmataDigital::SetDigitalPinMode(uint8_t digitalPin, int pinMode)
+void FirmataDigital::SetDigitalPinMode(uint8_t digitalPin, int mode)
 {
   const uint8_t digitalPort = digitalPin / 8;
   const uint8_t portBit = digitalPin & 7;
 
-  if (pinMode == PIN_MODE_INPUT || pinMode == PIN_MODE_PULLUP)
+  if (mode == PIN_MODE_INPUT || mode == PIN_MODE_PULLUP)
   {
     m_portConfigInputs[digitalPort] |= (1 << portBit);
   }
@@ -84,16 +85,95 @@ void FirmataDigital::SetDigitalPinMode(uint8_t digitalPin, int pinMode)
   {
     m_portConfigInputs[digitalPort] &= ~(1 << portBit);
   }
+
+  if (mode == PIN_MODE_INPUT)
+    pinMode(digitalPin, INPUT);
+  else if (mode == PIN_MODE_PULLUP)
+    pinMode(digitalPin, INPUT_PULLUP);
+  else if (mode == PIN_MODE_OUTPUT || mode == PIN_MODE_PWM)
+    pinMode(digitalPin, OUTPUT);
+
+  Firmata.setPinMode(digitalPin, mode);
+  Firmata.setPinState(digitalPin, 0);
+}
+
+void FirmataDigital::DisableDigitalReporting(uint8_t digitalPin)
+{
+  const uint8_t digitalPort = digitalPin / 8;
+  const uint8_t portBit = digitalPin & 7;
+
+  m_portConfigInputs[digitalPort] &= ~(1 << portBit);
 }
 
 void FirmataDigital::EnableDigitalInput(uint8_t digitalPort, bool enable)
 {
-  m_reportPINs[digitalPort] = enable ? 1 : 0;
+  if (digitalPort < TOTAL_PORTS)
+  {
+    m_reportPINs[digitalPort] = enable ? 1 : 0;
+
+    // Send port value immediately. This is helpful when connected via ethernet,
+    // WiFi or Bluetooth so pin states can be known upon reconnecting.
+    if (enable)
+      SendPort(digitalPort);
+  }
 }
 
 void FirmataDigital::SendPort(uint8_t digitalPort)
 {
   OutputPort(digitalPort, readPort(digitalPort, m_portConfigInputs[digitalPort]), true);
+}
+
+void FirmataDigital::DigitalWrite(uint8_t digitalPort, int portValue)
+{
+  uint8_t mask = 1;
+  uint8_t pinWriteMask = 0;
+
+  // Create a mask of the pins on this port that are writable.
+  uint8_t lastPin = digitalPort * 8 + 8;
+
+  if (lastPin > TOTAL_PINS)
+    lastPin = TOTAL_PINS;
+
+  for (uint8_t pin = digitalPort * 8; pin < lastPin; ++pin)
+  {
+    // Do not disturb non-digital pins (eg, Rx & Tx)
+    if (IS_PIN_DIGITAL(pin))
+    {
+      // Do not touch pins in PWM, ANALOG, SERVO or other modes
+      if (Firmata.getPinMode(pin) == PIN_MODE_OUTPUT || Firmata.getPinMode(pin) == PIN_MODE_INPUT)
+      {
+        uint8_t pinValue = (static_cast<uint8_t>(portValue) & mask) ? 1 : 0;
+
+        if (Firmata.getPinMode(pin) == PIN_MODE_OUTPUT)
+        {
+          pinWriteMask |= mask;
+        }
+        else if (Firmata.getPinMode(pin) == PIN_MODE_INPUT && pinValue == 1 &&
+                 Firmata.getPinState(pin) != 1)
+        {
+          // Only handle INPUT here for backwards compatibility
+          pinMode(pin, INPUT_PULLUP);
+        }
+
+        Firmata.setPinState(pin, pinValue);
+      }
+    }
+
+    mask = mask << 1;
+  }
+
+  writePort(digitalPort, static_cast<uint8_t>(portValue), pinWriteMask);
+}
+
+void FirmataDigital::PWMWrite(uint8_t digitalPin, int analogValue)
+{
+  if (digitalPin < TOTAL_PINS)
+  {
+    if (IS_PIN_PWM(digitalPin))
+      analogWrite(PIN_TO_PWM(digitalPin), analogValue);
+
+    Firmata.setPinState(digitalPin, analogValue);
+  }
 }
 
 void FirmataDigital::OutputPort(uint8_t digitalPort, uint8_t portValue, bool forceSend)

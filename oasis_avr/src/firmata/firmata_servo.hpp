@@ -32,10 +32,10 @@ public:
   uint8_t GetServoPin(uint8_t digitalPin) const;
   void PrepareServoPin(uint8_t digitalPin);
   bool IsServoAttached(uint8_t digitalPin) const;
-  void AttachServo(uint8_t digitalPin, int minPulse, int maxPulse);
+  bool AttachServo(uint8_t digitalPin, int minPulse, int maxPulse);
   void DetachServo(uint8_t digitalPin);
-  void SetServoPin(uint8_t digitalPin);
-  void WriteServo(uint8_t digitalPin, int value);
+  void SetServoMode(uint8_t digitalPin);
+  void WriteServo(uint8_t digitalPin, int analogValue);
 
 private:
   // Servo state
