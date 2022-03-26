@@ -19,12 +19,36 @@
 #include "firmata_analog.hpp"
 #endif
 
+#if defined(ENABLE_DHT)
+#include "firmata_dht.hpp"
+#endif
+
 #if defined(ENABLE_DIAGNOSTICS)
 #include "firmata_diagnostics.hpp"
 #endif
 
 #if defined(ENABLE_DIGITAL)
 #include "firmata_digital.hpp"
+#endif
+
+#if defined(ENABLE_I2C)
+#include "firmata_i2c.hpp"
+#endif
+
+#if defined(ENABLE_SERVO)
+#include "firmata_servo.hpp"
+#endif
+
+#if defined(ENABLE_SONAR)
+#include "firmata_sonar.hpp"
+#endif
+
+#if defined(ENABLE_SPI)
+#include "firmata_spi.hpp"
+#endif
+
+#if defined(ENABLE_STEPPER)
+#include "firmata_stepper.hpp"
 #endif
 
 #include <FirmataExpress.h>
@@ -43,7 +67,7 @@ static constexpr uint32_t SERIAL_BAUD_RATE = 115200;
 static constexpr uint8_t MINIMUM_SAMPLING_INTERVAL = 1;
 
 // Threading constants
-constexpr size_t FIRMATA_STACK_SIZE = 96; // Default is 128
+constexpr size_t FIRMATA_STACK_SIZE = 160; // Default is 128
 
 } // namespace OASIS
 
@@ -54,6 +78,10 @@ FirmataThread::FirmataThread()
   m_analog = &analog;
 #endif
 
+#if defined(ENABLE_DHT)
+  m_dht->Setup(DHTLoop);
+#endif
+
 #if defined(ENABLE_DIAGNOSTICS)
   static FirmataDiagnostics diagnostics;
   m_diagnostics = &diagnostics;
@@ -62,6 +90,31 @@ FirmataThread::FirmataThread()
 #if defined(ENABLE_DIGITAL)
   static FirmataDigital digital;
   m_digital = &digital;
+#endif
+
+#if defined(ENABLE_I2C)
+  static FirmataI2C i2c;
+  m_i2c = &i2c;
+#endif
+
+#if defined(ENABLE_SERVO)
+  static FirmataServo servo;
+  m_servo = &servo;
+#endif
+
+#if defined(ENABLE_SONAR)
+  static FirmataSonar sonar;
+  m_sonar = &sonar;
+#endif
+
+#if defined(ENABLE_SPI)
+  static FirmataSPI spi;
+  m_spi = &spi;
+#endif
+
+#if defined(ENABLE_STEPPER)
+  static FirmataStepper stepper;
+  m_stepper = &stepper;
 #endif
 }
 
@@ -93,12 +146,36 @@ void FirmataThread::Setup()
   m_analog->Setup(AnalogLoop);
 #endif
 
+#if defined(ENABLE_DHT)
+  m_dht->Setup(DHTLoop);
+#endif
+
 #if defined(ENABLE_DIAGNOSTICS)
   m_diagnostics->Setup(DiagnosticsLoop);
 #endif
 
 #if defined(ENABLE_DIGITAL)
   m_digital->Setup(DigitalLoop);
+#endif
+
+#if defined(ENABLE_I2C)
+  m_i2c->Setup(I2CLoop);
+#endif
+
+#if defined(ENABLE_SERVO)
+  m_servo->Setup(ServoLoop);
+#endif
+
+#if defined(ENABLE_SONAR)
+  m_sonar->Setup(SonarLoop);
+#endif
+
+#if defined(ENABLE_SPI)
+  m_spi->Setup(SPILoop);
+#endif
+
+#if defined(ENABLE_STEPPER)
+  m_stepper->Setup(StepperLoop);
 #endif
 }
 
@@ -114,12 +191,36 @@ void FirmataThread::Reset()
   m_analog->Reset();
 #endif
 
+#if defined(ENABLE_DHT)
+  m_dht->Reset();
+#endif
+
 #if defined(ENABLE_DIAGNOSTICS)
   m_diagnostics->Reset();
 #endif
 
 #if defined(ENABLE_DIGITAL)
   m_digital->Reset();
+#endif
+
+#if defined(ENABLE_I2C)
+  m_i2c->Reset();
+#endif
+
+#if defined(ENABLE_SERVO)
+  m_servo->Reset();
+#endif
+
+#if defined(ENABLE_SONAR)
+  m_sonar->Reset();
+#endif
+
+#if defined(ENABLE_SPI)
+  m_spi->Reset();
+#endif
+
+#if defined(ENABLE_STEPPER)
+  m_stepper->Reset();
 #endif
 
   /* TODO
@@ -164,6 +265,10 @@ void FirmataThread::SetSamplingInterval(uint8_t samplingIntervalMs)
 
   // Update state
   m_samplingIntervalMs = samplingIntervalMs;
+
+#if defined(ENABLE_DHT)
+  GetDHT()->SetSamplingInterval(samplingIntervalMs);
+#endif
 }
 
 void FirmataThread::FirmataLoop()
@@ -178,6 +283,13 @@ void FirmataThread::AnalogLoop()
 #endif
 }
 
+void FirmataThread::DHTLoop()
+{
+#if defined(ENABLE_DHT)
+  GetInstance().GetDHT()->Loop();
+#endif
+}
+
 void FirmataThread::DiagnosticsLoop()
 {
 #if defined(ENABLE_DIAGNOSTICS)
@@ -189,5 +301,40 @@ void FirmataThread::DigitalLoop()
 {
 #if defined(ENABLE_DIGITAL)
   GetInstance().GetDigital()->Loop();
+#endif
+}
+
+void FirmataThread::I2CLoop()
+{
+#if defined(ENABLE_I2C)
+  GetInstance().GetI2C()->Loop();
+#endif
+}
+
+void FirmataThread::ServoLoop()
+{
+#if defined(ENABLE_SERVO)
+  GetInstance().GetServo()->Loop();
+#endif
+}
+
+void FirmataThread::SonarLoop()
+{
+#if defined(ENABLE_SONAR)
+  GetInstance().GetSonar()->Loop();
+#endif
+}
+
+void FirmataThread::SPILoop()
+{
+#if defined(ENABLE_SPI)
+  GetInstance().GetSPI()->Loop();
+#endif
+}
+
+void FirmataThread::StepperLoop()
+{
+#if defined(ENABLE_STEPPER)
+  GetInstance().GetStepper()->Loop();
 #endif
 }

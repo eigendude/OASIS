@@ -43,9 +43,36 @@ message(STATUS "Configuring for hostname: ${HOST_NAME}")
 
 if (HOST_NAME STREQUAL cinder)
   set(ARDUINO_VARIANT leonardo)
+
+  #
+  # With external libraries disabled:
+  # 13178 flash (45%), 744 data (29%)
+  # Heap: 1002, stack: 490, free: 1051 (41%)
+  #
+  # With Servo enabled:
+  # 15146 flash (52%), 783 data (30%)
+  # Heap: 1041, stack: 490, free: 1012 (39%)
+  #
+  # With SPI enabled:
+  # 14728 flash (51%), 1147 data (44%)
+  # Heap: 1405, stack: 490, free: 648 (25%)
+  #
+  # With Stepper enabled:
+  # 15738 flash (54%), 924 data (36%)
+  # Heap: 1182, stack: 490, free: 871 (34%)
+  #
+  # With everything enabled:
+  # 25624 flash (89%), 1810 data (70%)
+  #
   set(ENABLE_ANALOG ON)
+  set(ENABLE_DHT OFF)
   set(ENABLE_DIAGNOSTICS ON)
   set(ENABLE_DIGITAL ON)
+  set(ENABLE_I2C OFF)
+  set(ENABLE_SERVO OFF)
+  set(ENABLE_SONAR OFF)
+  set(ENABLE_SPI OFF)
+  set(ENABLE_STEPPER OFF)
 else()
   set(ARDUINO_VARIANT uno)
 
@@ -61,13 +88,19 @@ else()
   # 8628 flash (26%), 625 data (30%)
   # Heap: 883, stack: 426, free: 772
   #
-  # With everything enabled:
+  # With everything but external libraries enabled:
   # 9869 flash (30%), 630 data (30%)
   # Heap: 888, stack: 426, free: 777
   #
   set(ENABLE_ANALOG ON)
+  set(ENABLE_DHT OFF)
   set(ENABLE_DIAGNOSTICS ON)
   set(ENABLE_DIGITAL ON)
+  set(ENABLE_I2C OFF)
+  set(ENABLE_SERVO OFF)
+  set(ENABLE_SONAR OFF)
+  set(ENABLE_SPI OFF)
+  set(ENABLE_STEPPER OFF)
 endif()
 
 message(STATUS "Building for: ${ARDUINO_VARIANT}")
@@ -185,6 +218,18 @@ if (ENABLE_ANALOG)
   )
 endif()
 
+if (ENABLE_DHT)
+  list(APPEND FIRMATA_SOURCES
+    src/firmata/firmata_dht.cpp
+  )
+  list(APPEND FIRMATA_DEFINITIONS
+    -DENABLE_DHT
+  )
+  list(APPEND FIRMATA_LIBRARIES
+    DHTStable
+  )
+endif()
+
 if (ENABLE_DIAGNOSTICS)
   list(APPEND FIRMATA_SOURCES
     src/firmata/firmata_diagnostics.cpp
@@ -200,6 +245,66 @@ if (ENABLE_DIGITAL)
   )
   list(APPEND FIRMATA_DEFINITIONS
     -DENABLE_DIGITAL
+  )
+endif()
+
+if (ENABLE_I2C)
+  list(APPEND FIRMATA_SOURCES
+    src/firmata/firmata_i2c.cpp
+  )
+  list(APPEND FIRMATA_DEFINITIONS
+    -DENABLE_I2C
+  )
+  list(APPEND FIRMATA_LIBRARIES
+    Wire
+  )
+endif()
+
+if (ENABLE_SERVO)
+  list(APPEND FIRMATA_SOURCES
+    src/firmata/firmata_servo.cpp
+  )
+  list(APPEND FIRMATA_DEFINITIONS
+    -DENABLE_SERVO
+  )
+  list(APPEND FIRMATA_LIBRARIES
+    Servo
+  )
+endif()
+
+if (ENABLE_SONAR)
+  list(APPEND FIRMATA_SOURCES
+    src/firmata/firmata_sonar.cpp
+  )
+  list(APPEND FIRMATA_DEFINITIONS
+    -DENABLE_SONAR
+  )
+  list(APPEND FIRMATA_LIBRARIES
+    Ultrasonic
+  )
+endif()
+
+if (ENABLE_SPI)
+  list(APPEND FIRMATA_SOURCES
+    src/firmata/firmata_spi.cpp
+  )
+  list(APPEND FIRMATA_DEFINITIONS
+    -DENABLE_SPI
+  )
+  list(APPEND FIRMATA_LIBRARIES
+    SPI
+  )
+endif()
+
+if (ENABLE_STEPPER)
+  list(APPEND FIRMATA_SOURCES
+    src/firmata/firmata_stepper.cpp
+  )
+  list(APPEND FIRMATA_DEFINITIONS
+    -DENABLE_STEPPER
+  )
+  list(APPEND FIRMATA_LIBRARIES
+    Stepper
   )
 endif()
 
