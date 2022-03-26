@@ -44,6 +44,7 @@ rosidl_generate_interfaces(
     msg/PowerMode.msg
     msg/SerialDevice.msg
     msg/SerialDeviceScan.msg
+    msg/StationState.msg
     msg/SystemTelemetry.msg
     msg/Throttle.msg
     msg/UsbDevice.msg
