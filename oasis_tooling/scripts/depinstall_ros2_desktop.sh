@@ -177,7 +177,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     --ignore-src \
     --rosdistro ${ROS2_DISTRO} \
     -y \
-    --skip-keys "console_bridge fastcdr fastrtps rti-connext-dds-5.3.1 urdfdom_headers"
+    --skip-keys "console_bridge fastcdr fastrtps python3-ifcfg rti-connext-dds-5.3.1 urdfdom_headers"
 
   # Add ccache support
   dpkg -s ccache >/dev/null || sudo apt install -y ccache
