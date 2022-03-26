@@ -39,9 +39,9 @@ constexpr size_t FIRMATA_STACK_SIZE = 96; // Default is 128
 } // namespace OASIS
 
 FirmataThread::FirmataThread(FirmataAnalog& analog,
-                             FirmataDigital& digital,
-                             FirmataDiagnostics& diagnostics)
-  : m_analog(analog), m_digital(digital), m_diagnostics(diagnostics)
+                             FirmataDiagnostics& diagnostics,
+                             FirmataDigital& digital)
+  : m_analog(analog), m_diagnostics(diagnostics), m_digital(digital)
 {
 }
 
@@ -49,11 +49,11 @@ FirmataThread& FirmataThread::GetInstance()
 {
   // Subsystem storage
   static FirmataAnalog analog;
-  static FirmataDigital digital;
   static FirmataDiagnostics diagnostics;
+  static FirmataDigital digital;
 
   // Instance storage
-  static FirmataThread instance(analog, digital, diagnostics);
+  static FirmataThread instance(analog, diagnostics, digital);
 
   return instance;
 }
@@ -77,8 +77,8 @@ void FirmataThread::Setup()
 
   // Configure subsystems
   m_analog.Setup(AnalogLoop);
-  //m_digital.Setup(DigitalLoop);
   m_diagnostics.Setup(DiagnosticsLoop);
+  //m_digital.Setup(DigitalLoop);
 }
 
 void FirmataThread::Reset()
@@ -90,8 +90,8 @@ void FirmataThread::Reset()
 
   // Reset subsystems
   m_analog.Reset();
-  m_digital.Reset();
   m_diagnostics.Reset();
+  m_digital.Reset();
 
   /* TODO
   for (uint8_t i = 0; i < TOTAL_PINS; + i)
@@ -147,12 +147,12 @@ void FirmataThread::AnalogLoop()
   GetInstance().GetAnalog().Loop();
 }
 
-void FirmataThread::DigitalLoop()
-{
-  GetInstance().GetDigital().Loop();
-}
-
 void FirmataThread::DiagnosticsLoop()
 {
   GetInstance().GetDiagnostics().Loop();
+}
+
+void FirmataThread::DigitalLoop()
+{
+  GetInstance().GetDigital().Loop();
 }
