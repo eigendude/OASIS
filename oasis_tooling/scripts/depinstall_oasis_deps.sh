@@ -66,6 +66,10 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
   # TODO: image_transport needs libtinyxml2-dev indirectly
   dpkg -s libtinyxml2-dev >/dev/null || sudo apt install -y libtinyxml2-dev
 
+  # Observed on Ubuntu 20.04 that yaml-cpp wasn't installed
+  # Needed for package camera_calibration_parsers
+  dpkg -s libyaml-cpp-dev >/dev/null || sudo apt install -y libyaml-cpp-dev
+
   # Needed for OpenNI
   for package in \
       default-jdk \
