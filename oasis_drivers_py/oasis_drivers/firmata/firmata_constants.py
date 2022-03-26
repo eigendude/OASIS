@@ -15,5 +15,5 @@ class FirmataConstants:
     """
 
     # Extended command set using sysex (0-127/0x00-0x7F)
-    MEMORY_CONFIG = 0x64  # Enable/disable reporting of memory statistics
-    MEMORY_DATA = 0x65  # Receive a memory statistics report
+    MEMORY_CONFIG = 0x66  # Enable/disable reporting of memory statistics
+    MEMORY_DATA = 0x67  # Receive a memory statistics report
