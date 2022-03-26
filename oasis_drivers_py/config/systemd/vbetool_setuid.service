@@ -1,0 +1,15 @@
+[Unit]
+Description=Give setuid permission to /usr/bin/vbetool
+
+[Service]
+Type=oneshot
+ExecStart=chmod u+s /usr/sbin/vbetool
+
+[Install]
+WantedBy=basic.target
+
+# To install:
+# sudo cp vbetool_setuid.service /etc/systemd/system/
+
+# To enable at startup:
+# sudo ln -s /etc/systemd/system/vbetool_setuid.service /etc/systemd/system/multi-user.target.wants/vbetool_setuid.service

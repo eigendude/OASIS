@@ -1,0 +1,15 @@
+[Unit]
+Description=Remount /dev for executable permission
+
+[Service]
+Type=oneshot
+ExecStart=mount -o remount,exec /dev
+
+[Install]
+WantedBy=basic.target
+
+# To install:
+# sudo cp remount_dev.service /etc/systemd/system/
+
+# To enable at startup:
+# sudo ln -s /etc/systemd/system/remount_dev.service /etc/systemd/system/multi-user.target.wants/remount_dev.service
