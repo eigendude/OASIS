@@ -326,12 +326,6 @@ class FirmataBridge:
         reference_voltage: float = self.ANALOG_REFERENCE
         timestamp: datetime = self._get_timestamp(data[self.CB_TIME])
 
-        # TODO: Log local time
-        timestamp_str: str = timestamp.strftime("%Y-%m-%d %H:%M:%S")
-        print(
-            f"Analog pin: {analog_pin}, value: {analog_value}, reference: {reference_voltage}V, timestamp: {timestamp_str}"
-        )
-
         self._callback.on_analog_reading(
             timestamp, analog_pin, analog_value, reference_voltage
         )
@@ -348,12 +342,6 @@ class FirmataBridge:
         digital_pin: int = data[self.CB_PIN]
         digital_value: bool = True if data[self.CB_VALUE] else False
         timestamp: datetime = self._get_timestamp(data[self.CB_TIME])
-
-        # TODO: Log local time
-        timestamp_str: str = timestamp.strftime("%Y-%m-%d %H:%M:%S")
-        print(
-            f"Digital pin: {digital_pin}, value: {digital_value}, timestamp: {timestamp_str}"
-        )
 
         self._callback.on_digital_reading(timestamp, digital_pin, digital_value)
 
