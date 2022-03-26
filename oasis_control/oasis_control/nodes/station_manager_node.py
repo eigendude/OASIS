@@ -537,6 +537,8 @@ class StationManagerNode(rclpy.node.Node):
 
     def _on_peripheral_scan(self, peripheral_scan_msg: PeripheralScanMsg) -> None:
         peripheral: PeripheralInfoMsg
+
+        # Check for newly connected joysticks
         for peripheral in peripheral_scan_msg.peripherals:
             # Translate parameters
             peripheral_address: str = peripheral.address
@@ -555,6 +557,17 @@ class StationManagerNode(rclpy.node.Node):
 
             # Open the joystick to capture input
             self._open_joystick(peripheral_address, controller_profile)
+
+        # Check for disconnected joysticks
+        joysticks_copy = self._joysticks.copy()
+        for address, profile in joysticks_copy.items():
+            found: bool = any(
+                peripheral.address == address
+                for peripheral in peripheral_scan_msg.peripherals
+            )
+            if not found:
+                self.get_logger().debug(f"Closing joystick {address} of type {profile}")
+                del self._joysticks[address]
 
     def _open_joystick(self, peripheral_address: str, controller_profile: str) -> None:
         self.get_logger().debug(
