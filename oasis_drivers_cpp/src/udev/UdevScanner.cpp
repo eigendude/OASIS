@@ -172,7 +172,6 @@ bool UdevScanner::ScanForDevices()
     if (bContinue)
     {
       // Translate parameters
-      //std::string devicePath = udev_device_get_syspath(dev);
       std::string devicePath = udev_device_get_syspath(dev);
       if (newDevices.find(devicePath) == newDevices.end())
       {
