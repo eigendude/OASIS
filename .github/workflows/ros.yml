@@ -110,6 +110,18 @@ jobs:
         run: |
           sudo apt install -y libspdlog-dev
 
+      #
+      # This is needed because rosdep fails with error:
+      #
+      # The following packages have unmet dependencies:
+      #   libomp-dev : Depends: libomp5 (= 5.0.1-1)
+      # E: Unable to correct problems, you have held broken packages.
+      #
+      - name: Install oasis_kinect2 dependencies
+        if: matrix.os == 'ubuntu-18.04'
+        run: |
+          sudo apt install -y libomp5
+
       - name: Install CMake dependencies
         if: steps.restore-cmake.outputs.cache-hit != 'true'
         run: ./oasis_tooling/scripts/depinstall_cmake.sh

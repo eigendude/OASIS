@@ -29,6 +29,10 @@ repositories:
     type: git
     url: https://github.com/ros-perception/image_transport_plugins.git
     version: ros2
+  ros-perception/oasis_kinect2:
+    type: git
+    url: https://github.com/eigendude/oasis_kinect2.git
+    version: ros2
   ros-perception/ros2-v4l2-camera:
     type: git
     url: https://gitlab.com/boldhearts/ros2_v4l2_camera.git
