@@ -8,8 +8,23 @@
 #
 ################################################################################
 
+import socket
+
 from launch import LaunchDescription
 from launch_ros.actions import Node
+
+
+################################################################################
+# System parameters
+################################################################################
+
+
+HOSTNAME = socket.gethostname()
+
+
+################################################################################
+# ROS parameters
+################################################################################
 
 
 ROS_NAMESPACE = "oasis"
@@ -17,20 +32,39 @@ ROS_NAMESPACE = "oasis"
 CPP_PACKAGE_NAME = "oasis_drivers_cpp"
 PYTHON_PACKAGE_NAME = "oasis_drivers_py"
 
-# TODO: Hardware parameters
-MACHINE = "lenovo"
 
-# TODO: Hardware/video parameters
+################################################################################
+# Hardware/video parameters
+################################################################################
+
+
 ENABLE_CEC = False
-ENABLE_DISPLAY = True
-ENABLE_VIDEO = True
+ENABLE_DISPLAY = False
+ENABLE_FIRMATA = False
+ENABLE_KINECT_V2 = False
+ENABLE_VIDEO = False
 VIDEO_DEVICE = "/dev/video0"
 IMAGE_SIZE = [640, 480]
-ENABLE_KINECT_V2 = False
-ENABLE_FIRMATA = False
 
-# TODO: Temporary
-print(f"Launching on {MACHINE}")
+
+if HOSTNAME == "asus":
+    ENABLE_DISPLAY = True
+elif HOSTNAME == "cinder":
+    ENABLE_FIRMATA = True
+elif HOSTNAME == "inspiron":
+    ENABLE_DISPLAY = True
+elif HOSTNAME == "lenovo":
+    ENABLE_DISPLAY = True
+elif HOSTNAME == "netbook":
+    ENABLE_DISPLAY = True
+    ENABLE_VIDEO = True
+elif HOSTNAME == "nuc":
+    ENABLE_CEC = True
+elif HOSTNAME == "station":
+    ENABLE_FIRMATA = True
+
+
+print(f"Launching on {HOSTNAME}")
 
 
 def generate_launch_description() -> LaunchDescription:
@@ -41,10 +75,11 @@ def generate_launch_description() -> LaunchDescription:
             namespace=ROS_NAMESPACE,
             package=CPP_PACKAGE_NAME,
             executable="cec_server",
+            name=f"cec_server_{HOSTNAME}",
             output="screen",
             remappings=[
-                ("power_control", f"{MACHINE}/power_control"),
-                ("power_event", f"{MACHINE}/power_event"),
+                ("power_control", f"{HOSTNAME}/power_control"),
+                ("power_event", f"{HOSTNAME}/power_event"),
             ],
         )
         ld.add_action(cec_server_node)
@@ -53,6 +88,7 @@ def generate_launch_description() -> LaunchDescription:
         namespace=ROS_NAMESPACE,
         package=PYTHON_PACKAGE_NAME,
         executable="device_manager",
+        name=f"device_manager_{HOSTNAME}",
         output="screen",
     )
     ld.add_action(device_manager_node)
@@ -62,9 +98,10 @@ def generate_launch_description() -> LaunchDescription:
             namespace=ROS_NAMESPACE,
             package=PYTHON_PACKAGE_NAME,
             executable="display_manager",
+            name=f"display_manager_{HOSTNAME}",
             output="screen",
             remappings=[
-                ("power_control", f"{MACHINE}/power_control"),
+                ("power_control", f"{HOSTNAME}/power_control"),
             ],
         )
         ld.add_action(display_manager_node)
@@ -73,6 +110,7 @@ def generate_launch_description() -> LaunchDescription:
         namespace=ROS_NAMESPACE,
         package=CPP_PACKAGE_NAME,
         executable="led_server",
+        name=f"led_server_{HOSTNAME}",
         output="screen",
     )
     ld.add_action(led_server_node)
@@ -81,9 +119,10 @@ def generate_launch_description() -> LaunchDescription:
         namespace=ROS_NAMESPACE,
         package=PYTHON_PACKAGE_NAME,
         executable="serial_scanner",
+        name=f"serial_scanner_{HOSTNAME}",
         output="screen",
         remappings=[
-            ("serial_ports", f"{MACHINE}/serial_ports"),
+            ("serial_ports", f"{HOSTNAME}/serial_ports"),
         ],
     )
     ld.add_action(serial_port_node)
@@ -92,9 +131,10 @@ def generate_launch_description() -> LaunchDescription:
         namespace=ROS_NAMESPACE,
         package=PYTHON_PACKAGE_NAME,
         executable="system_monitor",
+        name=f"system_monitor_{HOSTNAME}",
         output="screen",
         remappings=[
-            ("system_telemetry", f"{MACHINE}/system_telemetry"),
+            ("system_telemetry", f"{HOSTNAME}/system_telemetry"),
         ],
     )
     ld.add_action(system_monitor_node)
@@ -104,6 +144,7 @@ def generate_launch_description() -> LaunchDescription:
             namespace=ROS_NAMESPACE,
             package="v4l2_camera",
             executable="v4l2_camera_node",
+            name=f"v4l2_camera_{HOSTNAME}",
             output="screen",
             parameters=[
                 {
@@ -112,11 +153,11 @@ def generate_launch_description() -> LaunchDescription:
                 },
             ],
             remappings=[
-                ("camera_info", f"{MACHINE}/camera_info"),
-                ("image_raw", f"{MACHINE}/image_raw"),
-                ("image_raw/compressed", f"{MACHINE}/image_raw/compressed"),
-                ("image_raw/compressedDepth", f"{MACHINE}/image_raw/compressedDepth"),
-                ("image_raw/theora", f"{MACHINE}/image_raw/theora"),
+                ("camera_info", f"{HOSTNAME}/camera_info"),
+                ("image_raw", f"{HOSTNAME}/image_raw"),
+                ("image_raw/compressed", f"{HOSTNAME}/image_raw/compressed"),
+                ("image_raw/compressedDepth", f"{HOSTNAME}/image_raw/compressedDepth"),
+                ("image_raw/theora", f"{HOSTNAME}/image_raw/theora"),
             ],
         )
         ld.add_action(v4l2_node)
@@ -126,6 +167,7 @@ def generate_launch_description() -> LaunchDescription:
             namespace=ROS_NAMESPACE,
             package="kinect2_bridge",
             executable="kinect2_bridge",
+            name=f"kinect2_bridge_{HOSTNAME}",
             output="screen",
         )
         ld.add_action(kinect_v2_node)
@@ -135,22 +177,23 @@ def generate_launch_description() -> LaunchDescription:
             namespace=ROS_NAMESPACE,
             package=PYTHON_PACKAGE_NAME,
             executable="firmata_bridge",
+            name=f"firmata_bridge_{HOSTNAME}",
             output="screen",
             emulate_tty=True,
             remappings=[
-                ("analog_read", f"{MACHINE}/analog_read"),
-                ("analog_reading", f"{MACHINE}/analog_reading"),
-                ("cpu_fan_speed", f"{MACHINE}/cpu_fan_speed"),
-                ("digital_read", f"{MACHINE}/digital_read"),
-                ("digital_reading", f"{MACHINE}/digital_reading"),
-                ("digital_write", f"{MACHINE}/digital_write"),
-                ("mcu_memory", f"{MACHINE}/mcu_memory"),
-                ("pwm_write", f"{MACHINE}/pwm_write"),
-                ("report_mcu_memory", f"{MACHINE}/report_mcu_memory"),
-                ("servo_write", f"{MACHINE}/servo_write"),
-                ("set_analog_mode", f"{MACHINE}/set_analog_mode"),
-                ("set_digital_mode", f"{MACHINE}/set_digital_mode"),
-                ("string_message", f"{MACHINE}/string_message"),
+                ("analog_read", f"{HOSTNAME}/analog_read"),
+                ("analog_reading", f"{HOSTNAME}/analog_reading"),
+                ("cpu_fan_speed", f"{HOSTNAME}/cpu_fan_speed"),
+                ("digital_read", f"{HOSTNAME}/digital_read"),
+                ("digital_reading", f"{HOSTNAME}/digital_reading"),
+                ("digital_write", f"{HOSTNAME}/digital_write"),
+                ("mcu_memory", f"{HOSTNAME}/mcu_memory"),
+                ("pwm_write", f"{HOSTNAME}/pwm_write"),
+                ("report_mcu_memory", f"{HOSTNAME}/report_mcu_memory"),
+                ("servo_write", f"{HOSTNAME}/servo_write"),
+                ("set_analog_mode", f"{HOSTNAME}/set_analog_mode"),
+                ("set_digital_mode", f"{HOSTNAME}/set_digital_mode"),
+                ("string_message", f"{HOSTNAME}/string_message"),
             ],
         )
         ld.add_action(firmata_bridge_node)

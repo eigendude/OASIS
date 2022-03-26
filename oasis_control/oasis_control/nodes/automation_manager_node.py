@@ -13,7 +13,6 @@
 # Automation manager
 #
 
-import random  # TODO: Remove me
 from typing import Optional
 
 import rclpy.client
@@ -34,13 +33,12 @@ from oasis_msgs.srv import PowerControl as PowerControlSvc
 
 ROS_NAMESPACE = "oasis"
 
-NODE_NAME = (
-    f"automation_manager_{random.randrange(1000, 9999)}"  # TODO: Better node naming
-)
+NODE_NAME = "automation_manager"
 
 POWER_EVENT_TOPIC = "power_event"
 
 POWER_CONTROL_SERVICE = "power_control"
+
 
 ################################################################################
 # ROS node

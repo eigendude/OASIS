@@ -8,8 +8,24 @@
 #
 ################################################################################
 
+import socket
+
 from launch import LaunchDescription
 from launch_ros.actions import Node
+
+
+################################################################################
+# System parameters
+################################################################################
+
+
+# Get the hostname
+HOSTNAME = socket.gethostname()
+
+
+################################################################################
+# ROS parameters
+################################################################################
 
 
 ROS_NAMESPACE = "oasis"
@@ -24,6 +40,7 @@ def generate_launch_description() -> LaunchDescription:
         namespace=ROS_NAMESPACE,
         package=PACKAGE_NAME,
         executable="background_subtractor",
+        name=f"background_subtractor_{HOSTNAME}",
         output="screen",
     )
     ld.add_action(manager_node)
