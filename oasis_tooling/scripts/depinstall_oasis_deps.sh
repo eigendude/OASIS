@@ -60,6 +60,16 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     --rosdistro ${ROS2_DISTRO} \
     -y
 
+  # Patch dependency sources
+  patch \
+    -p1 \
+    --forward \
+    --reject-file="/dev/null" \
+    --no-backup-if-mismatch \
+    --directory="${OASIS_SOURCE_DIRECTORY}/ros-perception/bgslibrary" \
+    < "${CONFIG_DIRECTORY}/bgslibrary/0001-CMake-Add-missing-header-install-target.patch" \
+    || :
+
   # Add ccache support
   dpkg -s ccache >/dev/null || sudo apt install -y ccache
 

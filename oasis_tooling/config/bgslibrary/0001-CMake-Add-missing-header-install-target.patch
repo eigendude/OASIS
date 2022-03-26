@@ -1,0 +1,30 @@
+From 6b9519d65160335cbb4dda52af8fcd11ce822dad Mon Sep 17 00:00:00 2001
+From: Garrett Brown <eigendebugger@gmail.com>
+Date: Fri, 4 Mar 2022 15:55:13 -0800
+Subject: [PATCH] CMake: Add missing header install target
+
+---
+ CMakeLists.txt | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 209c02b..1d6c95b 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -305,6 +305,13 @@ if(NOT BGS_PYTHON_ONLY)
+     FRAMEWORK DESTINATION "/Library/Frameworks"
+   )
+ 
++  install(DIRECTORY src/
++    DESTINATION "include/${PROJECT_NAME}"
++    FILES_MATCHING
++      PATTERN "*.h"
++      PATTERN "*.hpp"
++  )
++
+   if(UNIX)
+     # to avoid: error while loading shared libraries: libbgslibrary_core.so
+     message(STATUS "You might need to run:")
+-- 
+2.25.1
+
