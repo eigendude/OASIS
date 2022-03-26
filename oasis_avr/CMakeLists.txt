@@ -348,32 +348,6 @@ target_link_arduino_libraries(oasis_avr_utils PRIVATE
 ################################################################################
 
 #
-# regulator_node
-#
-
-add_executable(regulator_node
-  src/ros/regulator_node.cpp
-)
-
-target_link_libraries(regulator_node PRIVATE
-  oasis_avr_firmata
-  oasis_avr_leds
-  oasis_avr_utils
-)
-
-target_link_arduino_libraries(regulator_node PRIVATE ${FIRMATA_LIBRARIES})
-
-# This is needed for the generation of HEX binary and uploading it
-target_enable_arduino_upload(regulator_node)
-
-install(
-  TARGETS
-    regulator_node
-  DESTINATION
-    share/${PROJECT_NAME}
-)
-
-#
 # station_node
 #
 
