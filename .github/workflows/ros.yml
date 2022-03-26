@@ -90,7 +90,9 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y build-essential cmake git python3-colcon-common-extensions python3-colcon-ros python3-rosdep python3-vcstool
-          python3 -m pip install --upgrade pip setuptools
+          # Setuptools 45.2.0 is needed to fix build error with ROS Neotic on Ubuntu 20.04. See:
+          # https://github.com/ros/catkin/issues/863#issuecomment-1000446018
+          python3 -m pip install --upgrade pip setuptools==45.2.0
 
       # Sometimes lark-parser is missing
       - name: Install missing Python dependencies
