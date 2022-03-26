@@ -42,7 +42,6 @@ def generate_launch_description() -> LaunchDescription:
         "inspiron",
         "lenovo",
         "netbook",
-        "nuc",
         "station",
     ]:
         automation_manager_node = Node(
@@ -60,7 +59,6 @@ def generate_launch_description() -> LaunchDescription:
         ld.add_action(automation_manager_node)
 
     if HOSTNAME in [
-        "cinder",
         "nuc",
         "station",
     ]:
@@ -88,5 +86,26 @@ def generate_launch_description() -> LaunchDescription:
             ],
         )
         ld.add_action(station_manager_node)
+
+    if HOSTNAME == "cinder":
+        leonardo_manager_node = Node(
+            namespace=ROS_NAMESPACE,
+            package=PACKAGE_NAME,
+            executable="leonardo_manager",
+            name=f"leonardo_manager_{HOSTNAME}",
+            output="screen",
+            remappings=[
+                ("analog_reading", f"{HOSTNAME}/analog_reading"),
+                ("digital_reading", f"{HOSTNAME}/digital_reading"),
+                ("digital_write", f"{HOSTNAME}/digital_write"),
+                ("mcu_memory", f"{HOSTNAME}/mcu_memory"),
+                ("pwm_write", f"{HOSTNAME}/pwm_write"),
+                ("report_mcu_memory", f"{HOSTNAME}/report_mcu_memory"),
+                ("set_analog_mode", f"{HOSTNAME}/set_analog_mode"),
+                ("set_digital_mode", f"{HOSTNAME}/set_digital_mode"),
+                ("leonardo_state", f"{HOSTNAME}/leonardo_state"),
+            ],
+        )
+        ld.add_action(leonardo_manager_node)
 
     return ld
