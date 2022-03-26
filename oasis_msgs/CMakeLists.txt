@@ -24,9 +24,13 @@ find_package(std_msgs REQUIRED)
 
 rosidl_generate_interfaces(
   ${PROJECT_NAME}
+    msg/Accelerometer.msg
+    msg/AnalogButton.msg
+    msg/AnalogStick.msg
     msg/AnalogReading.msg
     msg/AVRConstants.msg
     msg/CPUFanSpeed.msg
+    msg/DigitalButton.msg
     msg/DigitalReading.msg
     msg/DiskPartition.msg
     msg/MCUMemory.msg
@@ -34,14 +38,18 @@ rosidl_generate_interfaces(
     msg/NetworkInterface.msg
     msg/PeripheralConstants.msg
     msg/PeripheralInfo.msg
+    msg/PeripheralInput.msg
     msg/PeripheralScan.msg
     msg/PowerEvent.msg
     msg/PowerMode.msg
     msg/SerialDevice.msg
     msg/SerialDeviceScan.msg
     msg/SystemTelemetry.msg
+    msg/Throttle.msg
     msg/UsbDevice.msg
+    msg/Wheel.msg
     srv/AnalogRead.srv
+    srv/CaptureInput.srv
     srv/DigitalRead.srv
     srv/DigitalWrite.srv
     srv/PowerControl.srv

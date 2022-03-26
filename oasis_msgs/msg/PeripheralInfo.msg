@@ -18,7 +18,8 @@ uint8 type
 # The name of the peripheral as reported by the driver
 string name
 
-# Logic address of the peripheral in the system, used to open/close peripherals
+# Logical address of the peripheral in the system, used to open/close
+# peripherals
 string address
 
 # USB Vendor ID (integer, 0...65535), or 0 if unknown

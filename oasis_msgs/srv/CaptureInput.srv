@@ -1,0 +1,26 @@
+################################################################################
+#
+#  Copyright (C) 2022 Garrett Brown
+#  This file is part of OASIS - https://github.com/eigendude/OASIS
+#
+#  SPDX-License-Identifier: Apache-2.0 AND BSD-3-Clause
+#  See DOCS/LICENSING.md for more information.
+#
+################################################################################
+
+#
+# Service that allows the caller to capture joystick input
+#
+
+# Set to 1 to enable input capture for the peripheral, or 0 to disable capture
+uint8 capture
+
+# Address of the peripheral whose input is being captured
+string peripheral_address
+
+# Type of controller input desired, or empty if capture is being disabled
+string controller_profile
+
+---
+
+# TODO: Add field for capture result/error
