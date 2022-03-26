@@ -58,8 +58,7 @@ rosdep install \
   -y
 
 # Install vbetool
-arch=$(uname -i)
-if [[ $arch == i*86 ]] || [[ $arch == x86_64 ]]; then
+if [[ ${PLATFORM_ARCH} == i*86 ]] || [[ ${PLATFORM_ARCH} == x86_64 ]]; then
   dpkg -s vbetool >/dev/null || sudo apt install -y vbetool
 fi
 

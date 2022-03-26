@@ -15,6 +15,12 @@ set -o pipefail
 set -o nounset
 
 #
+# Environment configuration
+#
+
+PLATFORM_ARCH="$(uname -i)"
+
+#
 # Directory and path definitions
 #
 

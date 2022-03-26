@@ -89,8 +89,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
   dpkg -s libyaml-cpp-dev >/dev/null || sudo apt install -y libyaml-cpp-dev
 
   # Only enable OpenNI on x86_64
-  arch=$(uname -i)
-  if [[ $arch == x86_64 ]]; then
+  if [[ ${PLATFORM_ARCH} == x86_64 ]]; then
     # Needed for OpenNI
     for package in \
         default-jdk \
@@ -100,7 +99,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
       dpkg -s ${package} >/dev/null || sudo apt install -y ${package}
     done
   else
-    echo "Disabling OpenNI on ${arch}"
+    echo "Disabling OpenNI on ${PLATFORM_ARCH}"
     touch "${OASIS_SOURCE_DIRECTORY}/depends/OpenNI2/COLCON_IGNORE"
   fi
 
