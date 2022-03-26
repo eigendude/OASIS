@@ -21,20 +21,10 @@
 using namespace OASIS;
 using namespace IMAGE;
 
-namespace
-{
-constexpr const char* ROS_NAMESPACE = "oasis"; // TODO
-
-// Subscribed topics
-constexpr const char* IMAGE_TOPIC = "image_raw";
-
-// Published topics
-constexpr const char* FOREGROUND_TOPIC = "foreground";
-constexpr const char* BACKGROUND_TOPIC = "background";
-} // namespace
-
 BackgroundModeler::BackgroundModeler(std::shared_ptr<rclcpp::Node> node,
-                                     const std::string& videoMachine)
+                                     const std::string& imageTopic,
+                                     const std::string& foregroundTopic,
+                                     const std::string& backgroundTopic)
   : m_logger(node->get_logger()),
     m_imgTransport(std::make_unique<image_transport::ImageTransport>(node)),
     m_imgPublisherForeground(std::make_unique<image_transport::Publisher>()),
@@ -42,13 +32,6 @@ BackgroundModeler::BackgroundModeler(std::shared_ptr<rclcpp::Node> node,
     m_imgSubscriber(std::make_unique<image_transport::Subscriber>()),
     m_bgsPackage(std::make_unique<bgslibrary::algorithms::AdaptiveSelectiveBackgroundLearning>())
 {
-  // Create topics
-  const std::string topicBase = std::string("/") + ROS_NAMESPACE + "/" + videoMachine + "/";
-
-  const std::string imageTopic = topicBase + IMAGE_TOPIC;
-  const std::string foregroundTopic = topicBase + FOREGROUND_TOPIC;
-  const std::string backgroundTopic = topicBase + BACKGROUND_TOPIC;
-
   RCLCPP_INFO(m_logger, "Image topic: %s", imageTopic.c_str());
   RCLCPP_INFO(m_logger, "Foreground topic: %s", foregroundTopic.c_str());
   RCLCPP_INFO(m_logger, "Background topic: %s", backgroundTopic.c_str());

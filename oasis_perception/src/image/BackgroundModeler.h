@@ -42,7 +42,10 @@ namespace IMAGE
 class BackgroundModeler
 {
 public:
-  BackgroundModeler(std::shared_ptr<rclcpp::Node> node, const std::string& videoMachine);
+  BackgroundModeler(std::shared_ptr<rclcpp::Node> node,
+                    const std::string& imageTopic,
+                    const std::string& foregroundTopic,
+                    const std::string& backgroundTopic);
   ~BackgroundModeler();
 
   // ROS interface
