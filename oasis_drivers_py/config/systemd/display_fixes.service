@@ -1,0 +1,19 @@
+# This systemd unit gives setuid permission to /usr/bin/vbetool, then remounts
+# /dev with executable permission so that vbetool can control display power on
+# newer versions of Ubuntu.
+
+[Unit]
+Description=Apply display fixes
+
+[Service]
+Type=oneshot
+ExecStart=bash -c "[ ! -f /usr/sbin/vbetool ] || (/bin/chmod u+s /usr/sbin/vbetool && /bin/mount -o remount,exec /dev)"
+
+[Install]
+WantedBy=basic.target
+
+# To install:
+# sudo cp display_fixes.service /etc/systemd/system/
+
+# To enable at startup:
+# sudo ln -s /etc/systemd/system/display_fixes.service /etc/systemd/system/multi-user.target.wants/display_fixes.service
