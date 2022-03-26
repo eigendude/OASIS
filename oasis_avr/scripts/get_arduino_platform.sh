@@ -45,7 +45,7 @@ function get_arduino_platform() {
       amd64 | x86_64)
         ARDUINO_PLATFORM="linux64"
         ;;
-      arm)
+      arm | armv7l)
         ARDUINO_PLATFORM="linuxarm"
         ;;
       arm64 | aarch64)
