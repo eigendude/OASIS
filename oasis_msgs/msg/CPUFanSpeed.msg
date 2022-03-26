@@ -19,4 +19,4 @@ std_msgs/Header header
 uint32 digital_pin
 
 # The speed of the CPU fan, in RPM
-uint32 rpm
+uint32 fan_speed_rpm
