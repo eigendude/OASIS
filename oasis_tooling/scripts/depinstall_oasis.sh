@@ -65,3 +65,6 @@ dpkg -s libtinyxml2-dev >/dev/null || sudo apt install -y libtinyxml2-dev
 
 # Install Python dependencies
 python3 -m pip install --upgrade --requirement "${STACK_DIRECTORY}/oasis_drivers_py/requirements.txt"
+
+# Bootstrap the Arduino toolchain
+"${STACK_DIRECTORY}/oasis_avr/bootstrap.sh"
