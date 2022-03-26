@@ -13,10 +13,19 @@
 
 #include "firmata_thread.hpp"
 
-#include "firmata_analog.hpp"
 #include "firmata_callbacks.hpp"
+
+#if defined(ENABLE_ANALOG)
+#include "firmata_analog.hpp"
+#endif
+
+#if defined(ENABLE_DIAGNOSTICS)
 #include "firmata_diagnostics.hpp"
+#endif
+
+#if defined(ENABLE_DIGITAL)
 #include "firmata_digital.hpp"
+#endif
 
 #include <FirmataExpress.h>
 #include <Scheduler.h>
@@ -38,23 +47,27 @@ constexpr size_t FIRMATA_STACK_SIZE = 96; // Default is 128
 
 } // namespace OASIS
 
-FirmataThread::FirmataThread(FirmataAnalog& analog,
-                             FirmataDiagnostics& diagnostics,
-                             FirmataDigital& digital)
-  : m_analog(analog), m_diagnostics(diagnostics), m_digital(digital)
+FirmataThread::FirmataThread()
 {
+#if defined(ENABLE_ANALOG)
+  static FirmataAnalog analog;
+  m_analog = &analog;
+#endif
+
+#if defined(ENABLE_DIAGNOSTICS)
+  static FirmataDiagnostics diagnostics;
+  m_diagnostics = &diagnostics;
+#endif
+
+#if defined(ENABLE_DIGITAL)
+  static FirmataDigital digital;
+  m_digital = &digital;
+#endif
 }
 
 FirmataThread& FirmataThread::GetInstance()
 {
-  // Subsystem storage
-  static FirmataAnalog analog;
-  static FirmataDiagnostics diagnostics;
-  static FirmataDigital digital;
-
-  // Instance storage
-  static FirmataThread instance(analog, diagnostics, digital);
-
+  static FirmataThread instance;
   return instance;
 }
 
@@ -76,9 +89,17 @@ void FirmataThread::Setup()
   Scheduler.startLoop(FirmataLoop, FIRMATA_STACK_SIZE);
 
   // Configure subsystems
-  m_analog.Setup(AnalogLoop);
-  m_diagnostics.Setup(DiagnosticsLoop);
-  //m_digital.Setup(DigitalLoop);
+#if defined(ENABLE_ANALOG)
+  m_analog->Setup(AnalogLoop);
+#endif
+
+#if defined(ENABLE_DIAGNOSTICS)
+  m_diagnostics->Setup(DiagnosticsLoop);
+#endif
+
+#if defined(ENABLE_DIGITAL)
+  m_digital->Setup(DigitalLoop);
+#endif
 }
 
 void FirmataThread::Reset()
@@ -89,9 +110,17 @@ void FirmataThread::Reset()
   // TODO: Option to load config from EEPROM instead of default
 
   // Reset subsystems
-  m_analog.Reset();
-  m_diagnostics.Reset();
-  m_digital.Reset();
+#if defined(ENABLE_ANALOG)
+  m_analog->Reset();
+#endif
+
+#if defined(ENABLE_DIAGNOSTICS)
+  m_diagnostics->Reset();
+#endif
+
+#if defined(ENABLE_DIGITAL)
+  m_digital->Reset();
+#endif
 
   /* TODO
   for (uint8_t i = 0; i < TOTAL_PINS; + i)
@@ -144,15 +173,21 @@ void FirmataThread::FirmataLoop()
 
 void FirmataThread::AnalogLoop()
 {
-  GetInstance().GetAnalog().Loop();
+#if defined(ENABLE_ANALOG)
+  GetInstance().GetAnalog()->Loop();
+#endif
 }
 
 void FirmataThread::DiagnosticsLoop()
 {
-  GetInstance().GetDiagnostics().Loop();
+#if defined(ENABLE_DIAGNOSTICS)
+  GetInstance().GetDiagnostics()->Loop();
+#endif
 }
 
 void FirmataThread::DigitalLoop()
 {
-  GetInstance().GetDigital().Loop();
+#if defined(ENABLE_DIGITAL)
+  GetInstance().GetDigital()->Loop();
+#endif
 }

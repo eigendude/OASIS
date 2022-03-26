@@ -28,9 +28,9 @@ class FirmataThread
 {
 private:
   /*!
-   * \brief Create the thread with references to external storage
+   * \brief Create the thread
    */
-  FirmataThread(FirmataAnalog& analog, FirmataDiagnostics& diagnostics, FirmataDigital& digital);
+  FirmataThread();
 
 public:
   static FirmataThread& GetInstance();
@@ -41,14 +41,14 @@ public:
   bool IsResetting() const { return m_isResetting; }
 
   // Subsystems (const)
-  const FirmataAnalog& GetAnalog() const { return m_analog; }
-  const FirmataDiagnostics& GetDiagnostics() const { return m_diagnostics; }
-  const FirmataDigital& GetDigital() const { return m_digital; }
+  const FirmataAnalog* GetAnalog() const { return m_analog; }
+  const FirmataDiagnostics* GetDiagnostics() const { return m_diagnostics; }
+  const FirmataDigital* GetDigital() const { return m_digital; }
 
   // Subsystems (mutable)
-  FirmataAnalog& GetAnalog() { return m_analog; }
-  FirmataDiagnostics& GetDiagnostics() { return m_diagnostics; }
-  FirmataDigital& GetDigital() { return m_digital; }
+  FirmataAnalog* GetAnalog() { return m_analog; }
+  FirmataDiagnostics* GetDiagnostics() { return m_diagnostics; }
+  FirmataDigital* GetDigital() { return m_digital; }
 
   // Timer functions
   void SetSamplingInterval(uint8_t samplingIntervalMs);
@@ -66,9 +66,9 @@ private:
   static void DigitalLoop();
 
   // Subsystems
-  FirmataAnalog& m_analog;
-  FirmataDiagnostics& m_diagnostics;
-  FirmataDigital& m_digital;
+  FirmataAnalog* m_analog{nullptr};
+  FirmataDiagnostics* m_diagnostics{nullptr};
+  FirmataDigital* m_digital{nullptr};
 
   // Lifecycle state
   bool m_isResetting = false;

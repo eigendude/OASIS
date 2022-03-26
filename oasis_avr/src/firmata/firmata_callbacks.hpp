@@ -27,7 +27,7 @@ public:
    */
   static void InitializeCallbacks(FirmataThread& thread);
 
-  static void AnalogWriteCallback(uint8_t analogPin, int analogValue);
+  static void PWMWriteCallback(uint8_t analogPin, int analogValue);
 
   static void DigitalWriteCallback(uint8_t digitalPort, int portValue);
 

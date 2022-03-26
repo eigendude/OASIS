@@ -13,12 +13,21 @@
 
 #include "firmata_callbacks.hpp"
 
-#include "firmata_analog.hpp"
-#include "firmata_diagnostics.hpp"
-#include "firmata_digital.hpp"
 #include "firmata_extra.hpp"
 #include "firmata_thread.hpp"
 #include "firmata_utils.hpp"
+
+#if defined(ENABLE_ANALOG)
+#include "firmata_analog.hpp"
+#endif
+
+#if defined(ENABLE_DIAGNOSTICS)
+#include "firmata_diagnostics.hpp"
+#endif
+
+#if defined(ENABLE_DIGITAL)
+#include "firmata_digital.hpp"
+#endif
 
 #include <Arduino.h>
 #include <Boards.h>
@@ -42,7 +51,7 @@ void FirmataCallbacks::InitializeCallbacks(FirmataThread& thread)
   m_thread = &thread;
 
   // Initialize Firmata
-  Firmata.attach(ANALOG_MESSAGE, AnalogWriteCallback);
+  Firmata.attach(ANALOG_MESSAGE, PWMWriteCallback);
   Firmata.attach(DIGITAL_MESSAGE, DigitalWriteCallback);
   Firmata.attach(REPORT_ANALOG, ReportAnalogCallback);
   Firmata.attach(REPORT_DIGITAL, ReportDigitalCallback);
@@ -52,7 +61,7 @@ void FirmataCallbacks::InitializeCallbacks(FirmataThread& thread)
   Firmata.attach(SYSTEM_RESET, SystemResetCallback);
 }
 
-void FirmataCallbacks::AnalogWriteCallback(uint8_t pin, int analogValue)
+void FirmataCallbacks::PWMWriteCallback(uint8_t pin, int analogValue)
 {
   if (pin < TOTAL_PINS)
   {
@@ -60,11 +69,14 @@ void FirmataCallbacks::AnalogWriteCallback(uint8_t pin, int analogValue)
     {
       case PIN_MODE_PWM:
       {
+#if defined(ENABLE_DIGITAL)
         if (IS_PIN_PWM(pin))
           analogWrite(PIN_TO_PWM(pin), analogValue);
 
         Firmata.setPinState(pin, analogValue);
-
+#else
+        Firmata.sendString("Digital not enabled");
+#endif
         break;
       }
 
@@ -76,6 +88,7 @@ void FirmataCallbacks::AnalogWriteCallback(uint8_t pin, int analogValue)
 
 void FirmataCallbacks::DigitalWriteCallback(uint8_t digitalPort, int portValue)
 {
+#if defined(ENABLE_DIGITAL)
   uint8_t mask = 1;
   uint8_t pinWriteMask = 0;
 
@@ -117,13 +130,17 @@ void FirmataCallbacks::DigitalWriteCallback(uint8_t digitalPort, int portValue)
 
     writePort(digitalPort, static_cast<uint8_t>(portValue), pinWriteMask);
   }
+#else
+  Firmata.sendString("Digital not enabled");
+#endif
 }
 
 void FirmataCallbacks::ReportAnalogCallback(uint8_t analogPin, int enableReporting)
 {
+#if defined(ENABLE_ANALOG)
   if (analogPin < TOTAL_ANALOG_PINS)
   {
-    m_thread->GetAnalog().EnableAnalogInput(analogPin, enableReporting != 0);
+    m_thread->GetAnalog()->EnableAnalogInput(analogPin, enableReporting != 0);
 
     if (enableReporting != 0)
     {
@@ -140,18 +157,22 @@ void FirmataCallbacks::ReportAnalogCallback(uint8_t analogPin, int enableReporti
   }
 
   // TODO: Save status to EEPROM here, if changed
+#else
+  Firmata.sendString("Analog not enabled");
+#endif
 }
 
 void FirmataCallbacks::ReportDigitalCallback(uint8_t digitalPort, int enableReporting)
 {
+#if defined(ENABLE_DIGITAL)
   if (digitalPort < TOTAL_PORTS)
   {
-    m_thread->GetDigital().EnableDigitalInput(digitalPort, enableReporting != 0);
+    m_thread->GetDigital()->EnableDigitalInput(digitalPort, enableReporting != 0);
 
     // Send port value immediately. This is helpful when connected via ethernet,
     // WiFi or Bluetooth so pin states can be known upon reconnecting.
     if (enableReporting != 0)
-      m_thread->GetDigital().SendPort(digitalPort);
+      m_thread->GetDigital()->SendPort(digitalPort);
   }
 
   // Do not disable analog reporting on these 8 pins, to allow some pins to be
@@ -162,6 +183,9 @@ void FirmataCallbacks::ReportDigitalCallback(uint8_t digitalPort, int enableRepo
   //
   // Likewise, while scanning digital pins, portConfigInputs will mask off
   // values from any pins configured as analog.
+#else
+  Firmata.sendString("Digital not enabled");
+#endif
 }
 
 void FirmataCallbacks::SetPinModeCallback(uint8_t pin, int mode)
@@ -169,16 +193,20 @@ void FirmataCallbacks::SetPinModeCallback(uint8_t pin, int mode)
   if (Firmata.getPinMode(pin) == PIN_MODE_IGNORE)
     return;
 
+#if defined(ENABLE_ANALOG)
   if (IS_PIN_ANALOG(pin))
   {
     // Turn on/off reporting
     ReportAnalogCallback(PIN_TO_ANALOG(pin), mode == PIN_MODE_ANALOG ? 1 : 0);
   }
+#endif
 
+#if defined(ENABLE_DIGITAL)
   if (IS_PIN_DIGITAL(pin))
   {
-    m_thread->GetDigital().SetDigitalPinMode(pin, mode);
+    m_thread->GetDigital()->SetDigitalPinMode(pin, mode);
   }
+#endif
 
   // Update Firmata state
   Firmata.setPinState(pin, 0);
@@ -188,6 +216,7 @@ void FirmataCallbacks::SetPinModeCallback(uint8_t pin, int mode)
   {
     case PIN_MODE_ANALOG:
     {
+#if defined(ENABLE_ANALOG)
       if (IS_PIN_ANALOG(pin))
       {
         if (IS_PIN_DIGITAL(pin))
@@ -198,11 +227,15 @@ void FirmataCallbacks::SetPinModeCallback(uint8_t pin, int mode)
 
         Firmata.setPinMode(pin, PIN_MODE_ANALOG);
       }
+#else
+      Firmata.sendString("Analog not enabled");
+#endif
       break;
     }
 
     case PIN_MODE_INPUT:
     {
+#if defined(ENABLE_DIGITAL)
       if (IS_PIN_DIGITAL(pin))
       {
         // Disable output driver
@@ -211,11 +244,15 @@ void FirmataCallbacks::SetPinModeCallback(uint8_t pin, int mode)
         Firmata.setPinMode(pin, PIN_MODE_INPUT);
         Firmata.setPinState(pin, 0);
       }
+#else
+      Firmata.sendString("Digital not enabled");
+#endif
       break;
     }
 
     case PIN_MODE_PULLUP:
     {
+#if defined(ENABLE_DIGITAL)
       if (IS_PIN_DIGITAL(pin))
       {
         pinMode(PIN_TO_DIGITAL(pin), INPUT_PULLUP);
@@ -223,11 +260,15 @@ void FirmataCallbacks::SetPinModeCallback(uint8_t pin, int mode)
         Firmata.setPinMode(pin, PIN_MODE_PULLUP);
         Firmata.setPinState(pin, 1);
       }
+#else
+      Firmata.sendString("Digital not enabled");
+#endif
       break;
     }
 
     case PIN_MODE_OUTPUT:
     {
+#if defined(ENABLE_DIGITAL)
       if (IS_PIN_DIGITAL(pin))
       {
         if (Firmata.getPinMode(pin) == PIN_MODE_PWM)
@@ -240,11 +281,15 @@ void FirmataCallbacks::SetPinModeCallback(uint8_t pin, int mode)
 
         Firmata.setPinMode(pin, PIN_MODE_OUTPUT);
       }
+#else
+      Firmata.sendString("Digital not enabled");
+#endif
       break;
     }
 
     case PIN_MODE_PWM:
     {
+#if defined(ENABLE_DIGITAL)
       if (IS_PIN_PWM(pin))
       {
         pinMode(PIN_TO_PWM(pin), OUTPUT);
@@ -254,6 +299,9 @@ void FirmataCallbacks::SetPinModeCallback(uint8_t pin, int mode)
         Firmata.setPinMode(pin, PIN_MODE_PWM);
       }
       break;
+#else
+      Firmata.sendString("Digital not enabled");
+#endif
     }
 
     default:
@@ -269,6 +317,7 @@ void FirmataCallbacks::SetPinModeCallback(uint8_t pin, int mode)
 
 void FirmataCallbacks::SetPinValueCallback(uint8_t pin, int value)
 {
+#if defined(ENABLE_DIGITAL)
   if (pin < TOTAL_PINS && IS_PIN_DIGITAL(pin))
   {
     if (Firmata.getPinMode(pin) == PIN_MODE_OUTPUT)
@@ -277,6 +326,9 @@ void FirmataCallbacks::SetPinValueCallback(uint8_t pin, int value)
       digitalWrite(PIN_TO_DIGITAL(pin), value);
     }
   }
+#else
+  Firmata.sendString("Digital not enabled");
+#endif
 }
 
 void FirmataCallbacks::SysexCallback(uint8_t command, uint8_t argc, uint8_t* argv)
@@ -321,7 +373,7 @@ void FirmataCallbacks::SysexCallback(uint8_t command, uint8_t argc, uint8_t* arg
         if (argc > 3)
           val |= (argv[3] << 14);
 
-        AnalogWriteCallback(argv[0], val);
+        PWMWriteCallback(argv[0], val);
       }
 
       break;
@@ -333,6 +385,7 @@ void FirmataCallbacks::SysexCallback(uint8_t command, uint8_t argc, uint8_t* arg
       Firmata.write(CAPABILITY_RESPONSE);
       for (uint8_t pin = 0; pin < TOTAL_PINS; ++pin)
       {
+#if defined(ENABLE_DIGITAL)
         if (IS_PIN_DIGITAL(pin))
         {
           Firmata.write(static_cast<uint8_t>(PIN_MODE_INPUT));
@@ -343,31 +396,20 @@ void FirmataCallbacks::SysexCallback(uint8_t command, uint8_t argc, uint8_t* arg
           Firmata.write(1);
         }
 
-        if (IS_PIN_ANALOG(pin))
-        {
-          Firmata.write(PIN_MODE_ANALOG);
-          Firmata.write(10); // 10 = 10-bit resolution
-        }
-
         if (IS_PIN_PWM(pin))
         {
           Firmata.write(PIN_MODE_PWM);
           Firmata.write(DEFAULT_PWM_RESOLUTION);
         }
+#endif
 
-        if (IS_PIN_DIGITAL(pin))
+#if defined(ENABLE_ANALOG)
+        if (IS_PIN_ANALOG(pin))
         {
-          Firmata.write(PIN_MODE_SERVO);
-          Firmata.write(14);
+          Firmata.write(PIN_MODE_ANALOG);
+          Firmata.write(10); // 10 = 10-bit resolution
         }
-
-        if (IS_PIN_I2C(pin))
-        {
-          Firmata.write(PIN_MODE_I2C);
-          Firmata.write(1); // TODO: Could assign a number to map to SCL or SDA
-        }
-
-        Firmata.write(127);
+#endif
       }
 
       Firmata.write(END_SYSEX);
@@ -418,6 +460,7 @@ void FirmataCallbacks::SysexCallback(uint8_t command, uint8_t argc, uint8_t* arg
 
     case FIRMATA_MEMORY_CONFIG:
     {
+#if defined(ENABLE_DIAGNOSTICS)
       if (argc > 0)
       {
         uint32_t memoryPeriodMs = argv[0];
@@ -431,14 +474,20 @@ void FirmataCallbacks::SysexCallback(uint8_t command, uint8_t argc, uint8_t* arg
         if (argc > 3)
           memoryPeriodMs |= (argv[3] << 21);
 
-        m_thread->GetDiagnostics().ConfigureMemoryReporting(memoryPeriodMs);
+        m_thread->GetDiagnostics()->ConfigureMemoryReporting(memoryPeriodMs);
       }
+#else
+      Firmata.sendString("Diagnostics not enabled");
+#endif
 
       break;
     }
 
     default:
+    {
+      Firmata.sendString("Unknown sysex callback");
       break;
+    }
   }
 }
 

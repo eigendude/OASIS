@@ -43,8 +43,31 @@ message(STATUS "Configuring for hostname: ${HOST_NAME}")
 
 if (HOST_NAME STREQUAL cinder)
   set(ARDUINO_VARIANT leonardo)
+  set(ENABLE_ANALOG ON)
+  set(ENABLE_DIAGNOSTICS ON)
+  set(ENABLE_DIGITAL ON)
 else()
   set(ARDUINO_VARIANT uno)
+
+  #
+  # With everything disabled:
+  # 6562 flash (20%), 647 data (31%)
+  #
+  # With diagnostics enabled:
+  # 7104 flash (22%), 627 data (30%)
+  # Heap: 885, stack: 301, free: 845
+  #
+  # With analog enabled:
+  # 8628 flash (26%), 625 data (30%)
+  # Heap: 883, stack: 426, free: 772
+  #
+  # With everything enabled:
+  # 9869 flash (30%), 630 data (30%)
+  # Heap: 888, stack: 426, free: 777
+  #
+  set(ENABLE_ANALOG ON)
+  set(ENABLE_DIAGNOSTICS ON)
+  set(ENABLE_DIGITAL ON)
 endif()
 
 message(STATUS "Building for: ${ARDUINO_VARIANT}")
@@ -139,20 +162,52 @@ find_package(ament_cmake REQUIRED)
 # Firmata
 #
 
-add_library(oasis_avr_firmata
-  src/firmata/firmata_analog.cpp
+set(FIRMATA_SOURCES
   src/firmata/firmata_callbacks.cpp
-  src/firmata/firmata_diagnostics.cpp
-  src/firmata/firmata_digital.cpp
   src/firmata/firmata_thread.cpp
   src/firmata/firmata_utils.cpp
 )
 
-target_link_arduino_libraries(oasis_avr_firmata PRIVATE
+set(FIRMATA_DEFINITIONS)
+
+set(FIRMATA_LIBRARIES
   core
   FirmataExpress
   Scheduler
 )
+
+if (ENABLE_ANALOG)
+  list(APPEND FIRMATA_SOURCES
+    src/firmata/firmata_analog.cpp
+  )
+  list(APPEND FIRMATA_DEFINITIONS
+    -DENABLE_ANALOG
+  )
+endif()
+
+if (ENABLE_DIAGNOSTICS)
+  list(APPEND FIRMATA_SOURCES
+    src/firmata/firmata_diagnostics.cpp
+  )
+  list(APPEND FIRMATA_DEFINITIONS
+    -DENABLE_DIAGNOSTICS
+  )
+endif()
+
+if (ENABLE_DIGITAL)
+  list(APPEND FIRMATA_SOURCES
+    src/firmata/firmata_digital.cpp
+  )
+  list(APPEND FIRMATA_DEFINITIONS
+    -DENABLE_DIGITAL
+  )
+endif()
+
+add_library(oasis_avr_firmata ${FIRMATA_SOURCES})
+
+target_compile_definitions(oasis_avr_firmata PRIVATE ${FIRMATA_DEFINITIONS})
+
+target_link_arduino_libraries(oasis_avr_firmata PRIVATE ${FIRMATA_LIBRARIES})
 
 #
 # LEDs
@@ -201,11 +256,7 @@ target_link_libraries(regulator_node PRIVATE
   oasis_avr_utils
 )
 
-target_link_arduino_libraries(regulator_node PRIVATE
-  core
-  FirmataExpress
-  Scheduler
-)
+target_link_arduino_libraries(regulator_node PRIVATE ${FIRMATA_LIBRARIES})
 
 # This is needed for the generation of HEX binary and uploading it
 target_enable_arduino_upload(regulator_node)
@@ -231,11 +282,7 @@ target_link_libraries(station_node PRIVATE
   oasis_avr_utils
 )
 
-target_link_arduino_libraries(station_node PRIVATE
-  core
-  FirmataExpress
-  Scheduler
-)
+target_link_arduino_libraries(station_node PRIVATE ${FIRMATA_LIBRARIES})
 
 # This is needed for the generation of HEX binary and uploading it
 target_enable_arduino_upload(station_node)
