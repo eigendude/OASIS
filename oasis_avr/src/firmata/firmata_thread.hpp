@@ -21,6 +21,7 @@ namespace OASIS
 
 // Forward-declare subsystems
 class FirmataAnalog;
+class FirmataCPUFan;
 class FirmataDHT;
 class FirmataDiagnostics;
 class FirmataDigital;
@@ -48,6 +49,7 @@ public:
 
   // Subsystems (const)
   const FirmataAnalog* GetAnalog() const { return m_analog; }
+  const FirmataCPUFan* GetCPUFan() const { return m_cpuFan; }
   const FirmataDHT* GetDHT() const { return m_dht; }
   const FirmataDiagnostics* GetDiagnostics() const { return m_diagnostics; }
   const FirmataDigital* GetDigital() const { return m_digital; }
@@ -59,6 +61,7 @@ public:
 
   // Subsystems (mutable)
   FirmataAnalog* GetAnalog() { return m_analog; }
+  FirmataCPUFan* GetCPUFan() { return m_cpuFan; }
   FirmataDHT* GetDHT() { return m_dht; }
   FirmataDiagnostics* GetDiagnostics() { return m_diagnostics; }
   FirmataDigital* GetDigital() { return m_digital; }
@@ -80,6 +83,7 @@ private:
 
   // Subsystem static access
   static void AnalogLoop();
+  static void CPUFanLoop();
   static void DHTLoop();
   static void DiagnosticsLoop();
   static void DigitalLoop();
@@ -91,6 +95,7 @@ private:
 
   // Subsystems
   FirmataAnalog* m_analog{nullptr};
+  FirmataCPUFan* m_cpuFan{nullptr};
   FirmataDHT* m_dht{nullptr};
   FirmataDiagnostics* m_diagnostics{nullptr};
   FirmataDigital* m_digital{nullptr};

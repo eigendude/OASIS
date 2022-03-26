@@ -24,6 +24,10 @@ class FirmataCallback:
         pass
 
     @abc.abstractmethod
+    def on_cpu_fan_rpm(self, timestamp: datetime, digital_pin: int, rpm: int) -> None:
+        pass
+
+    @abc.abstractmethod
     def on_digital_reading(
         self, timestamp: datetime, digital_pin: int, digital_value: bool
     ) -> None:

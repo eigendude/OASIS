@@ -21,6 +21,10 @@
 #include "firmata_analog.hpp"
 #endif
 
+#if defined(ENABLE_CPU_FAN)
+#include "firmata_cpu_fan.hpp"
+#endif
+
 #if defined(ENABLE_DHT)
 #include "firmata_dht.hpp"
 #endif
@@ -91,6 +95,16 @@ void FirmataCallbacks::PWMWriteCallback(uint8_t pin, int analogValue)
 {
   switch (Firmata.getPinMode(pin))
   {
+    case PIN_MODE_CPU_FAN_PWM:
+    {
+#if defined(ENABLE_CPU_FAN)
+      m_thread->GetCPUFan()->PWMWrite(pin, analogValue);
+#else
+      Firmata.sendString("CPU fan not enabled");
+#endif
+      break;
+    }
+
     case PIN_MODE_PWM:
     {
 #if defined(ENABLE_DIGITAL)
@@ -171,6 +185,22 @@ void FirmataCallbacks::SetPinModeCallback(uint8_t pin, int mode)
         break;
       }
 
+      case PIN_MODE_CPU_FAN_PWM:
+      {
+#if defined(ENABLE_CPU_FAN)
+        m_thread->GetCPUFan()->SetPinModePWM(PIN_TO_DIGITAL(pin), false);
+#endif
+        break;
+      }
+
+      case PIN_MODE_CPU_FAN_TACH:
+      {
+#if defined(ENABLE_CPU_FAN)
+        m_thread->GetCPUFan()->SetPinModeTach(PIN_TO_DIGITAL(pin), false);
+#endif
+        break;
+      }
+
       case PIN_MODE_INPUT:
       case PIN_MODE_PULLUP:
       {
@@ -231,6 +261,28 @@ void FirmataCallbacks::SetPinModeCallback(uint8_t pin, int mode)
       m_thread->GetAnalog()->SetAnalogMode(pin);
 #else
       Firmata.sendString("Analog not enabled");
+#endif
+      break;
+    }
+
+    case PIN_MODE_CPU_FAN_PWM:
+    {
+#if defined(ENABLE_CPU_FAN)
+      if (IS_PIN_DIGITAL(pin))
+        m_thread->GetCPUFan()->SetPinModePWM(PIN_TO_DIGITAL(pin), true);
+#else
+      Firmata.sendString("CPU fan not enabled");
+#endif
+      break;
+    }
+
+    case PIN_MODE_CPU_FAN_TACH:
+    {
+#if defined(ENABLE_CPU_FAN)
+      if (IS_PIN_DIGITAL(pin))
+        m_thread->GetCPUFan()->SetPinModeTach(PIN_TO_DIGITAL(pin), true);
+#else
+      Firmata.sendString("CPU fan not enabled");
 #endif
       break;
     }
@@ -411,6 +463,20 @@ void FirmataCallbacks::SysexCallback(uint8_t command, uint8_t argc, uint8_t* arg
         {
           Firmata.write(PIN_MODE_ANALOG);
           Firmata.write(10); // 10 = 10-bit resolution
+        }
+#endif
+
+#if defined(ENABLE_CPU_FAN)
+        if (m_thread->GetCPUFan()->SupportsPWM(pin))
+        {
+          Firmata.write(PIN_MODE_CPU_FAN_PWM);
+          Firmata.write(DEFAULT_PWM_RESOLUTION);
+        }
+
+        if (m_thread->GetCPUFan()->SupportsTachometer(pin))
+        {
+          Firmata.write(static_cast<uint8_t>(PIN_MODE_CPU_FAN_TACH));
+          Firmata.write(1);
         }
 #endif
 

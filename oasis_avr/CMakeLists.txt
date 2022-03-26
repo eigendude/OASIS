@@ -49,6 +49,10 @@ if (HOST_NAME STREQUAL cinder)
   # 13178 flash (45%), 744 data (29%)
   # Heap: 1002, stack: 490, free: 1051 (41%)
   #
+  # With CPU fan enabled:
+  # 14304 flash (49%), 746 data (29%)
+  # Heap: 1004, stack: 615, free: 924 (36%)
+  #
   # With Servo enabled:
   # 15146 flash (52%), 783 data (30%)
   # Heap: 1041, stack: 490, free: 1012 (39%)
@@ -65,6 +69,7 @@ if (HOST_NAME STREQUAL cinder)
   # 25624 flash (89%), 1810 data (70%)
   #
   set(ENABLE_ANALOG ON)
+  set(ENABLE_CPU_FAN ON)
   set(ENABLE_DHT OFF)
   set(ENABLE_DIAGNOSTICS ON)
   set(ENABLE_DIGITAL ON)
@@ -92,7 +97,12 @@ else()
   # 9869 flash (30%), 630 data (30%)
   # Heap: 888, stack: 426, free: 777
   #
+  # With CPU fan enabled:
+  # 12232 flash (37%), 762 data (37%)
+  # Heap: 1020, stack: 615, free: 396 (19%)
+  #
   set(ENABLE_ANALOG ON)
+  set(ENABLE_CPU_FAN ON)
   set(ENABLE_DHT OFF)
   set(ENABLE_DIAGNOSTICS ON)
   set(ENABLE_DIGITAL ON)
@@ -215,6 +225,15 @@ if (ENABLE_ANALOG)
   )
   list(APPEND FIRMATA_DEFINITIONS
     -DENABLE_ANALOG
+  )
+endif()
+
+if (ENABLE_CPU_FAN)
+  list(APPEND FIRMATA_SOURCES
+    src/firmata/firmata_cpu_fan.cpp
+  )
+  list(APPEND FIRMATA_DEFINITIONS
+    -DENABLE_CPU_FAN
   )
 endif()
 

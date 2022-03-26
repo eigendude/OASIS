@@ -140,6 +140,7 @@ def generate_launch_description() -> LaunchDescription:
             remappings=[
                 ("analog_read", f"{MACHINE}/analog_read"),
                 ("analog_reading", f"{MACHINE}/analog_reading"),
+                ("cpu_fan_speed", f"{MACHINE}/cpu_fan_speed"),
                 ("digital_read", f"{MACHINE}/digital_read"),
                 ("digital_reading", f"{MACHINE}/digital_reading"),
                 ("digital_write", f"{MACHINE}/digital_write"),

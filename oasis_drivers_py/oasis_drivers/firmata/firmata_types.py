@@ -23,3 +23,5 @@ class DigitalMode(enum.Enum):
     OUTPUT = 3
     PWM = 4
     SERVO = 5
+    CPU_FAN_PWM = 6
+    CPU_FAN_TACHOMETER = 7

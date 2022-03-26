@@ -12,6 +12,7 @@ import asyncio
 import threading
 from concurrent.futures import Future
 from datetime import datetime
+from datetime import timezone
 from typing import Any
 from typing import Awaitable
 from typing import List
@@ -69,6 +70,9 @@ class FirmataBridge:
         )
 
         # Install custom sysex handlers
+        self._board.command_dictionary[
+            FirmataConstants.CPU_FAN_RPM
+        ] = self._on_cpu_fan_rpm
         self._board.command_dictionary[
             FirmataConstants.MEMORY_DATA
         ] = self._on_memory_data
@@ -183,6 +187,14 @@ class FirmataBridge:
         elif digital_mode == DigitalMode.SERVO:
             # TODO: Expose min_pulse and max_pulse parameters
             coroutine = self._board.set_pin_mode_servo(digital_pin)
+        elif digital_mode == DigitalMode.CPU_FAN_PWM:
+            coroutine = self._board.set_pin_mode_custom(
+                digital_pin, FirmataConstants.CPU_FAN_PWM
+            )
+        elif digital_mode == DigitalMode.CPU_FAN_TACHOMETER:
+            coroutine = self._board.set_pin_mode_custom(
+                digital_pin, FirmataConstants.CPU_FAN_TACH
+            )
         else:
             raise ValueError(f"Invalid digital mode: {digital_mode}")
 
@@ -344,6 +356,25 @@ class FirmataBridge:
         )
 
         self._callback.on_digital_reading(timestamp, digital_pin, digital_value)
+
+    async def _on_cpu_fan_rpm(self, data: List[int]) -> None:
+        """
+        Handle reports on the speed of CPU fans.
+
+        :param data: The CPU fan speed message
+        """
+        timestamp: datetime = datetime.now(timezone.utc)
+
+        try:
+            # Translate parameters
+            data = data[1:]
+            digital_pin: int = data[0]
+            fan_rpm: int = data[1] | (data[2] << 7) | (data[3] << 14)
+        except IndexError:
+            return
+
+        # Dispatch callback
+        self._callback.on_cpu_fan_rpm(timestamp, digital_pin, fan_rpm)
 
     async def _on_memory_data(self, data: List[int]) -> None:
         """

@@ -24,6 +24,7 @@ from oasis_drivers.firmata.firmata_types import AnalogMode
 from oasis_drivers.firmata.firmata_types import DigitalMode
 from oasis_msgs.msg import AnalogReading as AnalogReadingMsg
 from oasis_msgs.msg import AVRConstants as AVRConstantsMsg
+from oasis_msgs.msg import CPUFanSpeed as CPUFanSpeedMsg
 from oasis_msgs.msg import DigitalReading as DigitalReadingMsg
 from oasis_msgs.msg import MCUMemory as MCUMemoryMsg
 from oasis_msgs.srv import AnalogRead as AnalogReadSvc
@@ -45,6 +46,7 @@ NODE_NAME = "firmata_bridge"
 
 # ROS topics
 ANALOG_READING_TOPIC = "analog_reading"
+CPU_FAN_SPEED_TOPIC = "cpu_fan_speed"
 DIGITAL_READING_TOPIC = "digital_reading"
 MCU_MEMORY_TOPIC = "mcu_memory"
 STRING_MESSAGE_TOPIC = "string_message"
@@ -84,6 +86,11 @@ class FirmataBridgeNode(rclpy.node.Node, FirmataCallback):
         self._analog_reading_pub: rclpy.publisher.Publisher = self.create_publisher(
             msg_type=AnalogReadingMsg,
             topic=ANALOG_READING_TOPIC,
+            qos_profile=qos_profile,
+        )
+        self._cpu_fan_speed_pub: rclpy.publisher.Publisher = self.create_publisher(
+            msg_type=CPUFanSpeedMsg,
+            topic=CPU_FAN_SPEED_TOPIC,
             qos_profile=qos_profile,
         )
         self._digital_reading_pub: rclpy.publisher.Publisher = self.create_publisher(
@@ -183,6 +190,21 @@ class FirmataBridgeNode(rclpy.node.Node, FirmataCallback):
         msg.analog_value = analog_value
 
         self._analog_reading_pub.publish(msg)
+
+    def on_cpu_fan_rpm(self, timestamp: datetime, digital_pin: int, rpm: int) -> None:
+        """Implement FirmataCallback"""
+        msg: CPUFanSpeedMsg = CPUFanSpeedMsg()
+
+        # Timestamp in ROS header
+        header = HeaderMsg()
+        header.stamp = self._convert_timestamp(timestamp)
+        header.frame_id = ""  # TODO
+
+        msg.header = header
+        msg.digital_pin = digital_pin
+        msg.rpm = rpm
+
+        self._cpu_fan_speed_pub.publish(msg)
 
     def on_digital_reading(
         self, timestamp: datetime, digital_pin: int, digital_value: bool
@@ -409,6 +431,8 @@ class FirmataBridgeNode(rclpy.node.Node, FirmataCallback):
                 AVRConstantsMsg.DIGITAL_OUTPUT: DigitalMode.OUTPUT,
                 AVRConstantsMsg.DIGITAL_PWM: DigitalMode.PWM,
                 AVRConstantsMsg.DIGITAL_SERVO: DigitalMode.SERVO,
+                AVRConstantsMsg.DIGITAL_CPU_FAN_PWM: DigitalMode.CPU_FAN_PWM,
+                AVRConstantsMsg.DIGITAL_CPU_FAN_TACHOMETER: DigitalMode.CPU_FAN_TACHOMETER,
             }[ros2_digital_mode]
         except KeyError:
             self.get_logger().error(

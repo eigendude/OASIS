@@ -16,13 +16,18 @@
 
 //
 // This file is for functionality found in Firmata forks but not present in
-// FirmataExpress.
+// FirmataExpress, as well as new functionality added specifically in this
+// project.
 //
 
 #include <stdint.h>
 
 namespace OASIS
 {
+
+//
+// Diagnostics functionality
+//
 
 // Extended command set using sysex (0-127/0x00-0x7F)
 constexpr int FIRMATA_MEMORY_CONFIG = 0x66; // Enable/disable reporting of memory statistics
@@ -38,5 +43,19 @@ constexpr uint8_t PIN_MODE_SPI = 0x10;
 
 // SPI Commands start with this byte
 constexpr uint8_t SPI_DATA = 0x68;
+
+//
+// CPU fan support
+//
+
+// Pin configured to drive a CPU fan with a PWM signal. Control is done via
+// the standard analog write message.
+constexpr uint8_t PIN_MODE_CPU_FAN_PWM = 0x11;
+
+// Pin configured to sense the speed of a CPU fan using the tachometer signal
+constexpr uint8_t PIN_MODE_CPU_FAN_TACH = 0x12;
+
+// Sysex command to report CPU fan speeds
+constexpr uint8_t FIRMATA_CPU_FAN_RPM = 0x53;
 
 } // namespace OASIS

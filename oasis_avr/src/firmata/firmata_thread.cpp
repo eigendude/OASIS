@@ -19,6 +19,10 @@
 #include "firmata_analog.hpp"
 #endif
 
+#if defined(ENABLE_CPU_FAN)
+#include "firmata_cpu_fan.hpp"
+#endif
+
 #if defined(ENABLE_DHT)
 #include "firmata_dht.hpp"
 #endif
@@ -146,6 +150,10 @@ void FirmataThread::Setup()
   m_analog->Setup(AnalogLoop);
 #endif
 
+#if defined(ENABLE_CPU_FAN)
+  m_cpuFan->Setup(CPUFanLoop);
+#endif
+
 #if defined(ENABLE_DHT)
   m_dht->Setup(DHTLoop);
 #endif
@@ -189,6 +197,10 @@ void FirmataThread::Reset()
   // Reset subsystems
 #if defined(ENABLE_ANALOG)
   m_analog->Reset();
+#endif
+
+#if defined(ENABLE_CPU_FAN)
+  m_cpuFan->Reset();
 #endif
 
 #if defined(ENABLE_DHT)
@@ -280,6 +292,13 @@ void FirmataThread::AnalogLoop()
 {
 #if defined(ENABLE_ANALOG)
   GetInstance().GetAnalog()->Loop();
+#endif
+}
+
+void FirmataThread::CPUFanLoop()
+{
+#if defined(ENABLE_CPU_FAN)
+  GetInstance().GetCPUFan()->Loop();
 #endif
 }
 
