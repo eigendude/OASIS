@@ -157,14 +157,6 @@ echo "Downloading ROS 2 source code..."
     --directory="${ROS2_SOURCE_DIRECTORY}/eclipse-iceoryx/iceoryx" \
     < "${CONFIG_DIRECTORY}/iceoryx/0001-Fix-static_asserts-causing-build-to-fail.patch" \
     || :
-  patch \
-    -p1 \
-    --forward \
-    --reject-file="/dev/null" \
-    --no-backup-if-mismatch \
-    --directory="${ROS2_SOURCE_DIRECTORY}/ros2/rviz" \
-    < "${CONFIG_DIRECTORY}/rviz/0001-Fix-build-error-on-macOS.patch" \
-    || :
 )
 
 #
