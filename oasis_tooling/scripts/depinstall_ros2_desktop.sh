@@ -117,13 +117,19 @@ if [[ "${OSTYPE}" == "darwin"* ]]; then
     psutil \
     pydocstyle \
     pydot \
-    pygraphviz \
     pyparsing \
     pytest-mock \
     rosdep \
     rosdistro \
     setuptools \
     vcstool
+
+  GRAPHVIZ_VERSION=$(brew list --version | grep graphviz | cut -d " " -f 2)
+  python3 -m pip install --upgrade \
+    --global-option=build_ext \
+    --global-option="-I/usr/local/Cellar/graphviz/${GRAPHVIZ_VERSION}/include" \
+    --global-option="-L/usr/local/Cellar/graphviz/${GRAPHVIZ_VERSION}/lib" \
+    pygraphviz
 fi
 
 #
