@@ -34,10 +34,12 @@ source "${SCRIPT_DIR}/env_cmake.sh"
 # Default values
 MAKE_FLAGS=
 COLCON_FLAGS="--merge-install"
+CMAKE_PREFIX_PATH=
 
 # macOS flags
 if [[ "${OSTYPE}" == "darwin"* ]]; then
   COLCON_FLAGS+=" --packages-skip-by-dep python_qt_binding"
+  CMAKE_PREFIX_PATH="$(brew --prefix qt@5)/lib/cmake/Qt5"
 fi
 
 # Add ccache support
@@ -57,5 +59,6 @@ cd "${ROS2_DESKTOP_DIRECTORY}"
 
 PATH="${CMAKE_BIN_DIRECTORY}:${PATH}" \
   MAKE_FLAGS="${MAKE_FLAGS}" \
+  CMAKE_PREFIX_PATH="${CMAKE_PREFIX_PATH}" \
   colcon build \
     ${COLCON_FLAGS}
