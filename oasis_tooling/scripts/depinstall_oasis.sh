@@ -44,29 +44,31 @@ set -o nounset
 # Install OASIS rosdeps
 #
 
-# Install rosdep
-[ -f "/etc/ros/rosdep/sources.list.d/20-default.list" ] || sudo rosdep init
+if [[ "${OSTYPE}" != "darwin"* ]]; then
+  # Install rosdep
+  [ -f "/etc/ros/rosdep/sources.list.d/20-default.list" ] || sudo rosdep init
 
-# Update rosdep
-rosdep update
+  # Update rosdep
+  rosdep update
 
-# Install OASIS rosdeps
-rosdep install \
-  --from-paths "${STACK_DIRECTORY}" \
-  --ignore-src \
-  --rosdistro ${ROS2_DISTRO} \
-  -y
+  # Install OASIS rosdeps
+  rosdep install \
+    --from-paths "${STACK_DIRECTORY}" \
+    --ignore-src \
+    --rosdistro ${ROS2_DISTRO} \
+    -y
 
-# Install vbetool
-if [[ ${PLATFORM_ARCH} == i*86 ]] || [[ ${PLATFORM_ARCH} == x86_64 ]]; then
-  dpkg -s vbetool >/dev/null || sudo apt install -y vbetool
+  # Install vbetool
+  if [[ ${PLATFORM_ARCH} == i*86 ]] || [[ ${PLATFORM_ARCH} == x86_64 ]]; then
+    dpkg -s vbetool >/dev/null || sudo apt install -y vbetool
+  fi
+
+  # Add ccache support
+  dpkg -s ccache >/dev/null || sudo apt install -y ccache
+
+  # TODO: image_transport needs libtinyxml2-dev indirectly
+  dpkg -s libtinyxml2-dev >/dev/null || sudo apt install -y libtinyxml2-dev
 fi
-
-# Add ccache support
-dpkg -s ccache >/dev/null || sudo apt install -y ccache
-
-# TODO: image_transport needs libtinyxml2-dev indirectly
-dpkg -s libtinyxml2-dev >/dev/null || sudo apt install -y libtinyxml2-dev
 
 # Install Python dependencies
 python3 -m pip install --upgrade --requirement "${STACK_DIRECTORY}/oasis_drivers_py/requirements.txt"
