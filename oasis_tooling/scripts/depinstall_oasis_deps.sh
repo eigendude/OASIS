@@ -111,6 +111,11 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
   ; do
     dpkg -s ${package} >/dev/null || sudo apt install -y ${package}
   done
+else
+  echo "Disabling perception dependencies on macOS"
+  touch "${OASIS_SOURCE_DIRECTORY}/depends/OpenNI2/COLCON_IGNORE"
+  touch "${OASIS_SOURCE_DIRECTORY}/ros-perception/oasis_kinect2/COLCON_IGNORE"
+  touch "${OASIS_SOURCE_DIRECTORY}/ros-perception/ros2-v4l2-camera/COLCON_IGNORE"
 fi
 
 #
