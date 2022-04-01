@@ -13,6 +13,11 @@
 __pycache__
 
 # Eclipse ignorables
+.classpath
 .cproject
 .project
-.settings
+.settings/
+
+# macOS ignorables
+.DS_Store
+._*
