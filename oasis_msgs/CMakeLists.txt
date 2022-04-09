@@ -34,6 +34,7 @@ rosidl_generate_interfaces(
     msg/DigitalButton.msg
     msg/DigitalReading.msg
     msg/DiskPartition.msg
+    msg/EngineState.msg
     msg/LeonardoState.msg
     msg/MCUMemory.msg
     msg/MCUString.msg
