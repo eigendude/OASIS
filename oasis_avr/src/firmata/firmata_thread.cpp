@@ -83,7 +83,8 @@ FirmataThread::FirmataThread()
 #endif
 
 #if defined(ENABLE_DHT)
-  m_dht->Setup(DHTLoop);
+  static FirmataDHT dht;
+  m_dht = &dht;
 #endif
 
 #if defined(ENABLE_DIAGNOSTICS)
