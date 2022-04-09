@@ -1,0 +1,27 @@
+From 4bb06faf3a0d49d359831bb8651cc7440a477c2c Mon Sep 17 00:00:00 2001
+From: Garrett Brown <eigendebugger@gmail.com>
+Date: Sat, 9 Apr 2022 10:02:07 -0700
+Subject: [PATCH] Fix hang
+
+---
+ Adafruit_BluefruitLE_SPI.cpp | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/Adafruit_BluefruitLE_SPI.cpp b/Adafruit_BluefruitLE_SPI.cpp
+index 39f261d..9e11807 100644
+--- a/Adafruit_BluefruitLE_SPI.cpp
++++ b/Adafruit_BluefruitLE_SPI.cpp
+@@ -159,7 +159,9 @@ bool Adafruit_BluefruitLE_SPI::begin(boolean v, boolean blocking)
+     isOK= true;
+   }
+ 
+-  _reset_started_timestamp = millis();
++  // TODO: Why does everything break when millis() is called after disabling
++  // interupts via SPI.begin()?
++  //_reset_started_timestamp = millis();
+ 
+   // Bluefruit takes 1 second to reboot
+   if (blocking)
+-- 
+2.17.1
+

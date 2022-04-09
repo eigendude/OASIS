@@ -139,6 +139,13 @@ patch \
   --no-backup-if-mismatch \
   --directory="${ADAFRUIT_BLE_DIR}" \
   < "${PATCH_DIR}/Adafruit_BluefruitLE_nRF51/0001-Add-function-to-get-Bluefruit-info.patch"
+patch \
+  -p1 \
+  --forward \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${ADAFRUIT_BLE_DIR}" \
+  < "${PATCH_DIR}/Adafruit_BluefruitLE_nRF51/0001-Fix-hang.patch"
 
 # Patch FirmataExpress
 patch \
