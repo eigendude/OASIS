@@ -38,15 +38,21 @@ PYTHON_PACKAGE_NAME = "oasis_drivers_py"
 ################################################################################
 
 
+# Hardware options
 ENABLE_CEC = False
 ENABLE_DISPLAY = False
 ENABLE_FIRMATA = False
 ENABLE_KINECT_V2 = False
 ENABLE_VIDEO = False
+
+# Video parameters
 VIDEO_DEVICE = "/dev/video0"
 IMAGE_SIZE = [640, 480]
 
+# Firmata parameters
+AVR_COM_PORT = "/dev/ttyACM0"
 
+# TODO: Hardware configuration
 if HOSTNAME == "asus":
     ENABLE_DISPLAY = True
 elif HOSTNAME == "cinder":
@@ -165,6 +171,11 @@ def generate_launch_description() -> LaunchDescription:
             name=f"firmata_bridge_{HOSTNAME}",
             output="screen",
             emulate_tty=True,
+            parameters=[
+                {
+                    "com_port": AVR_COM_PORT,
+                },
+            ],
             remappings=[
                 ("analog_read", f"{HOSTNAME}/analog_read"),
                 ("analog_reading", f"{HOSTNAME}/analog_reading"),

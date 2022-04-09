@@ -33,7 +33,6 @@ class FirmataBridge:
     """
 
     # AVR parameters
-    COM_PORT = "/dev/ttyACM0"  # TODO
     BAUD_RATE = 115200
     ARDUINO_INSTANCE_ID = 1  # TODO
     ARDUINO_WAIT_SECS = 2  # TODO
@@ -49,7 +48,7 @@ class FirmataBridge:
     ANALOG_REFERENCE: float = 5.0  # Volts (TODO: Where to get this number?)
     PWM_MAX: int = 255  # TODO: Max PWM value?
 
-    def __init__(self, callback: FirmataCallback) -> None:
+    def __init__(self, callback: FirmataCallback, com_port: str) -> None:
         # Construction parameters
         self._callback = callback
 
@@ -59,7 +58,7 @@ class FirmataBridge:
 
         # Instantiate pymata-express
         self._board = pymata_express.PymataExpress(
-            com_port=self.COM_PORT,
+            com_port=com_port,
             baud_rate=self.BAUD_RATE,
             arduino_instance_id=self.ARDUINO_INSTANCE_ID,
             arduino_wait=self.ARDUINO_WAIT_SECS,

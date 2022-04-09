@@ -44,6 +44,9 @@ from oasis_msgs.srv import SetDigitalMode as SetDigitalModeSvc
 
 NODE_NAME = "firmata_bridge"
 
+# ROS parameters
+PARAM_COM_PORT = "com_port"
+
 # ROS topics
 ANALOG_READING_TOPIC = "analog_reading"
 CPU_FAN_SPEED_TOPIC = "cpu_fan_speed"
@@ -63,6 +66,14 @@ SET_DIGITAL_MODE_SERVICE = "set_digital_mode"
 
 
 ################################################################################
+# Firmata parameters
+################################################################################
+
+
+DEFAULT_COM_PORT = "/dev/ttyACM0"
+
+
+################################################################################
 # ROS node
 ################################################################################
 
@@ -72,10 +83,13 @@ class FirmataBridgeNode(rclpy.node.Node, FirmataCallback):
         """
         Initialize resources.
         """
+        # Initialize rclpy.node.NODE
         super().__init__(NODE_NAME)
+        self.declare_parameter(PARAM_COM_PORT, DEFAULT_COM_PORT)
 
         # Initialize members
-        self._bridge = FirmataBridge(self)
+        com_port: str = str(self.get_parameter(PARAM_COM_PORT).value)
+        self._bridge = FirmataBridge(self, com_port)
 
         # Reliable listener QOS profile for subscribers
         qos_profile: rclpy.qos.QoSPresetProfile = (
