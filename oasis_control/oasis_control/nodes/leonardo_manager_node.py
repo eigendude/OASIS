@@ -24,17 +24,12 @@ from rclpy.logging import LoggingSeverity
 from std_msgs.msg import Header as HeaderMsg
 
 from oasis_drivers.firmata.firmata_types import AnalogMode
-from oasis_drivers.firmata.firmata_types import DigitalMode
 from oasis_msgs.msg import AnalogReading as AnalogReadingMsg
 from oasis_msgs.msg import AVRConstants as AVRConstantsMsg
-from oasis_msgs.msg import DigitalReading as DigitalReadingMsg
 from oasis_msgs.msg import LeonardoState as LeonardoStateMsg
 from oasis_msgs.msg import MCUMemory as MCUMemoryMsg
-from oasis_msgs.srv import DigitalWrite as DigitalWriteSvc
-from oasis_msgs.srv import PWMWrite as PWMWriteSvc
 from oasis_msgs.srv import ReportMCUMemory as ReportMCUMemorySvc
 from oasis_msgs.srv import SetAnalogMode as SetAnalogModeSvc
-from oasis_msgs.srv import SetDigitalMode as SetDigitalModeSvc
 
 
 ################################################################################
@@ -68,15 +63,11 @@ PUBLISH_LEONARDO_STATE = "leonardo_state"
 
 # Subscribers
 SUBSCRIBE_ANALOG_READING = "analog_reading"
-SUBSCRIBE_DIGITAL_READING = "digital_reading"
 SUBSCRIBE_MCU_MEMORY = "mcu_memory"
 
 # Service clients
-CLIENT_DIGITAL_WRITE = "digital_write"
-CLIENT_PWM_WRITE = "pwm_write"
 CLIENT_REPORT_MCU_MEMORY = "report_mcu_memory"
 CLIENT_SET_ANALOG_MODE = "set_analog_mode"
-CLIENT_SET_DIGITAL_MODE = "set_digital_mode"
 
 
 ################################################################################
@@ -124,14 +115,6 @@ class LeonardoManagerNode(rclpy.node.Node):
                 qos_profile=qos_profile,
             )
         )
-        self._digital_reading_sub: rclpy.subscription.Subscription = (
-            self.create_subscription(
-                msg_type=DigitalReadingMsg,
-                topic=SUBSCRIBE_DIGITAL_READING,
-                callback=self._on_digital_reading,
-                qos_profile=qos_profile,
-            )
-        )
         self._mcu_memory_sub: rclpy.subscription.Subscription = (
             self.create_subscription(
                 msg_type=MCUMemoryMsg,
@@ -142,20 +125,11 @@ class LeonardoManagerNode(rclpy.node.Node):
         )
 
         # Service clients
-        self._digital_write_client: rclpy.client.Client = self.create_client(
-            srv_type=DigitalWriteSvc, srv_name=CLIENT_DIGITAL_WRITE
-        )
-        self._pwm_write_client: rclpy.client.Client = self.create_client(
-            srv_type=PWMWriteSvc, srv_name=CLIENT_PWM_WRITE
-        )
         self._report_mcu_memory_client: rclpy.client.Client = self.create_client(
             srv_type=ReportMCUMemorySvc, srv_name=CLIENT_REPORT_MCU_MEMORY
         )
         self._set_analog_mode_client: rclpy.client.Client = self.create_client(
             srv_type=SetAnalogModeSvc, srv_name=CLIENT_SET_ANALOG_MODE
-        )
-        self._set_digital_mode_client: rclpy.client.Client = self.create_client(
-            srv_type=SetDigitalModeSvc, srv_name=CLIENT_SET_DIGITAL_MODE
         )
 
         # Timer parameters
@@ -164,11 +138,8 @@ class LeonardoManagerNode(rclpy.node.Node):
     def initialize(self) -> bool:
         self.get_logger().debug("Waiting for Firmata services...")
 
-        self._digital_write_client.wait_for_service()
-        self._pwm_write_client.wait_for_service()
         self._report_mcu_memory_client.wait_for_service()
         self._set_analog_mode_client.wait_for_service()
-        self._set_digital_mode_client.wait_for_service()
 
         self.get_logger().debug("Starting configuration")
 
@@ -234,25 +205,6 @@ class LeonardoManagerNode(rclpy.node.Node):
 
         return True
 
-    def _set_digital_mode(self, digital_pin: int, digital_mode: DigitalMode) -> bool:
-        # Create message
-        motor_pwm_svc = SetDigitalModeSvc.Request()
-        motor_pwm_svc.digital_pin = digital_pin
-        motor_pwm_svc.digital_mode = self._translate_digital_mode(digital_mode)
-
-        # Call service
-        future: asyncio.Future = self._set_digital_mode_client.call_async(motor_pwm_svc)
-
-        # Wait for result
-        rclpy.spin_until_future_complete(self, future)
-        if future.result() is None:
-            self.get_logger().error(
-                f"Exception while calling service: {future.exception()}"
-            )
-            return False
-
-        return True
-
     def _on_analog_reading(self, analog_reading_msg: AnalogReadingMsg) -> None:
         analog_pin: int = analog_reading_msg.analog_pin
         reference_voltage: float = analog_reading_msg.reference_voltage
@@ -264,10 +216,6 @@ class LeonardoManagerNode(rclpy.node.Node):
         if analog_pin == POTENTIOMETER_PIN:
             # Record state
             self._potentiometer = analog_voltage
-
-    def _on_digital_reading(self, digital_reading_msg: DigitalReadingMsg) -> None:
-        # TODO
-        pass
 
     def _on_mcu_memory(self, mcu_memory_msg: MCUMemoryMsg) -> None:
         # Translate parameters
@@ -302,16 +250,3 @@ class LeonardoManagerNode(rclpy.node.Node):
             AnalogMode.DISABLED: AVRConstantsMsg.ANALOG_DISABLED,
             AnalogMode.INPUT: AVRConstantsMsg.ANALOG_INPUT,
         }[analog_mode]
-
-    @staticmethod
-    def _translate_digital_mode(digital_mode: DigitalMode) -> int:
-        return {
-            DigitalMode.DISABLED: AVRConstantsMsg.DIGITAL_DISABLED,
-            DigitalMode.INPUT: AVRConstantsMsg.DIGITAL_INPUT,
-            DigitalMode.INPUT_PULLUP: AVRConstantsMsg.DIGITAL_INPUT_PULLUP,
-            DigitalMode.OUTPUT: AVRConstantsMsg.DIGITAL_OUTPUT,
-            DigitalMode.PWM: AVRConstantsMsg.DIGITAL_PWM,
-            DigitalMode.SERVO: AVRConstantsMsg.DIGITAL_SERVO,
-            DigitalMode.CPU_FAN_PWM: AVRConstantsMsg.DIGITAL_CPU_FAN_PWM,
-            DigitalMode.CPU_FAN_TACHOMETER: AVRConstantsMsg.DIGITAL_CPU_FAN_TACHOMETER,
-        }[digital_mode]

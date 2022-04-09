@@ -96,14 +96,10 @@ def generate_launch_description() -> LaunchDescription:
             output="screen",
             remappings=[
                 ("analog_reading", f"{HOSTNAME}/analog_reading"),
-                ("digital_reading", f"{HOSTNAME}/digital_reading"),
-                ("digital_write", f"{HOSTNAME}/digital_write"),
+                ("leonardo_state", f"{HOSTNAME}/leonardo_state"),
                 ("mcu_memory", f"{HOSTNAME}/mcu_memory"),
-                ("pwm_write", f"{HOSTNAME}/pwm_write"),
                 ("report_mcu_memory", f"{HOSTNAME}/report_mcu_memory"),
                 ("set_analog_mode", f"{HOSTNAME}/set_analog_mode"),
-                ("set_digital_mode", f"{HOSTNAME}/set_digital_mode"),
-                ("leonardo_state", f"{HOSTNAME}/leonardo_state"),
             ],
         )
         ld.add_action(leonardo_manager_node)
