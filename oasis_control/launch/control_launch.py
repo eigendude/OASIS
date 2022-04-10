@@ -38,7 +38,6 @@ def generate_launch_description() -> LaunchDescription:
 
     if HOSTNAME in [
         "asus",
-        "cinder",
         "inspiron",
         "lenovo",
         "netbook",
