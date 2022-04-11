@@ -22,3 +22,6 @@
 [submodule "oasis_avr/libraries/AccelStepper"]
 	path = oasis_avr/libraries/AccelStepper
 	url = https://github.com/waspinator/AccelStepper.git
+[submodule "oasis_avr/libraries/i2cdevlib"]
+	path = oasis_avr/libraries/i2cdevlib
+	url = https://github.com/jrowberg/i2cdevlib.git

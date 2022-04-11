@@ -79,6 +79,9 @@ FIRMATA_DIR="${ARDUINO_IDE_DIR}/libraries/Firmata"
 # Location of the FirmataExpress library
 FIRMATA_EXPRESS_DIR="${LIBRARY_DIR}/FirmataExpress"
 
+# Location of the i2cdevlib repo
+I2CDEVLIB_DIR="${LIBRARY_DIR}/i2cdevlib"
+
 #
 # Toolchain setup
 #
@@ -158,3 +161,19 @@ if [ -d "${ADAFRUIT_CP_DIR}" ]; then
   echo "Removing ${ADAFRUIT_CP_DIR}"
   rm -rf "${ADAFRUIT_CP_DIR}"
 fi
+
+# Patch i2cdevlib
+patch \
+  -p1 \
+  --forward \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${I2CDEVLIB_DIR}" \
+  < "${PATCH_DIR}/i2cdevlib/0001-Fix-build-error.patch"
+patch \
+  -p1 \
+  --forward \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${I2CDEVLIB_DIR}" \
+  < "${PATCH_DIR}/i2cdevlib/0002-Fix-build-error.patch"

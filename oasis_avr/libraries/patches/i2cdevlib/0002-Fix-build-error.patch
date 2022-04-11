@@ -1,0 +1,34 @@
+From 8c3404e95e143eff247bbc896beb528e4953b8ee Mon Sep 17 00:00:00 2001
+From: Garrett Brown <eigendebugger@gmail.com>
+Date: Mon, 11 Apr 2022 12:11:57 -0700
+Subject: [PATCH 2/2] Fix build error
+
+Error was:
+
+  MPU6050.cpp:3374:11: error: prototype for 'int16_t* MPU6050_Base::GetActiveOffsets()' does not match any in class 'MPU6050_Base'
+   int16_t * MPU6050_Base::GetActiveOffsets() {
+             ^~~~~~~~~~~~
+
+  MPU6050.h:835:11: error: candidate is: int16_t MPU6050_Base::GetActiveOffsets()
+     int16_t GetActiveOffsets();
+             ^~~~~~~~~~~~~~~~
+---
+ Arduino/MPU6050/MPU6050.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/Arduino/MPU6050/MPU6050.h b/Arduino/MPU6050/MPU6050.h
+index 82d1f1e..56e13e7 100644
+--- a/Arduino/MPU6050/MPU6050.h
++++ b/Arduino/MPU6050/MPU6050.h
+@@ -832,7 +832,7 @@ class MPU6050_Base {
+ 		void CalibrateAccel(uint8_t Loops = 15);// Fine tune after setting offsets with less Loops.
+ 		void PID(uint8_t ReadAddress, float kP,float kI, uint8_t Loops);  // Does the math
+ 		void PrintActiveOffsets(); // See the results of the Calibration
+-		int16_t GetActiveOffsets();
++		int16_t *GetActiveOffsets();
+ 
+     protected:
+         uint8_t devAddr;
+-- 
+2.17.1
+
