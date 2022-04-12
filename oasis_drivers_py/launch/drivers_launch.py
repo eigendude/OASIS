@@ -196,6 +196,10 @@ def generate_launch_description() -> LaunchDescription:
         mcu_node = "conductor"
         conductor_bridge_node: Node = get_firmata_bridge(HOSTNAME, mcu_node)
         ld.add_action(conductor_bridge_node)
+    elif HOSTNAME == "jetson":
+        mcu_node = "engine"
+        engine_bridge_node: Node = get_firmata_bridge(HOSTNAME, mcu_node)
+        ld.add_action(engine_bridge_node)
     elif HOSTNAME == "cinder":
         mcu_node = "leonardo"
         leonardo_bridge_node: Node = get_firmata_bridge(HOSTNAME, mcu_node)

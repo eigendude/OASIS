@@ -103,6 +103,25 @@ def generate_launch_description() -> LaunchDescription:
             ],
         )
         ld.add_action(conductor_node)
+    elif HOSTNAME == "jetson":
+        MCU_NODE = "engine"
+        engine_node = Node(
+            namespace=ROS_NAMESPACE,
+            package=PACKAGE_NAME,
+            executable=f"{MCU_NODE}_manager",
+            name=f"{MCU_NODE}_manager_{HOSTNAME}",
+            output="screen",
+            remappings=[
+                (f"{MCU_NODE}_state", f"{HOSTNAME}/{MCU_NODE}_state"),
+                ("analog_reading", f"{MCU_NODE}/analog_reading"),
+                ("mcu_memory", f"{MCU_NODE}/mcu_memory"),
+                ("mcu_string", f"{MCU_NODE}/mcu_string"),
+                ("report_mcu_memory", f"{MCU_NODE}/report_mcu_memory"),
+                ("set_analog_mode", f"{MCU_NODE}/set_analog_mode"),
+                ("set_sampling_interval", f"{MCU_NODE}/set_sampling_interval"),
+            ],
+        )
+        ld.add_action(engine_node)
     elif HOSTNAME == "cinder":
         MCU_NODE = "leonardo"
         leonardo_node = Node(

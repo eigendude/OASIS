@@ -72,6 +72,7 @@ setuptools.setup(
         "console_scripts": [
             "automation_manager = oasis_control.cli.automation_manager:main",
             "conductor_manager = oasis_control.cli.conductor_manager:main",
+            "engine_manager = oasis_control.cli.engine_manager:main",
             "leonardo_manager = oasis_control.cli.leonardo_manager:main",
         ],
     },
