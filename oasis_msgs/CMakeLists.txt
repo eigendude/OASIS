@@ -30,6 +30,7 @@ rosidl_generate_interfaces(
     msg/AnalogStick.msg
     msg/AVRConstants.msg
     msg/CPUFanSpeed.msg
+    msg/ConductorState.msg
     msg/DigitalButton.msg
     msg/DigitalReading.msg
     msg/DiskPartition.msg
@@ -45,7 +46,6 @@ rosidl_generate_interfaces(
     msg/PowerMode.msg
     msg/SerialDevice.msg
     msg/SerialDeviceScan.msg
-    msg/StationState.msg
     msg/SystemTelemetry.msg
     msg/Throttle.msg
     msg/UsbDevice.msg

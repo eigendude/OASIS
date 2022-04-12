@@ -24,6 +24,18 @@ HOSTNAME = socket.gethostname()
 
 
 ################################################################################
+# TODO: Hardware configuration
+################################################################################
+
+
+# Machine that broadcasts power on/off commands
+POWER_CONTROLLER = "nuc"
+
+# Machine that broadcasts peripheral input
+INPUT_PROVIDER = "cinder"
+
+
+################################################################################
 # ROS parameters
 ################################################################################
 
@@ -33,9 +45,15 @@ ROS_NAMESPACE = "oasis"
 PACKAGE_NAME = "oasis_control"
 
 
+################################################################################
+# Launch description
+################################################################################
+
+
 def generate_launch_description() -> LaunchDescription:
     ld = LaunchDescription()
 
+    # Machines with power actuation (laptop displays, LED artwork, etc)
     if HOSTNAME in [
         "asus",
         "inspiron",
@@ -50,57 +68,55 @@ def generate_launch_description() -> LaunchDescription:
             name=f"automation_manager_{HOSTNAME}",
             output="screen",
             remappings=[
-                # TODO: Hardware configuration
-                ("power_event", "nuc/power_event"),
+                ("power_event", f"{POWER_CONTROLLER}/power_event"),
                 ("power_control", f"{HOSTNAME}/power_control"),
             ],
         )
         ld.add_action(automation_manager_node)
 
-    if HOSTNAME in [
-        "nuc",
-        "station",
-    ]:
-        station_manager_node = Node(
+    # Microcontroller nodes
+    if HOSTNAME == "station":
+        MCU_NODE = "conductor"
+        conductor_node = Node(
             namespace=ROS_NAMESPACE,
             package=PACKAGE_NAME,
-            executable="station_manager",
-            name=f"station_manager_{HOSTNAME}",
+            executable=f"{MCU_NODE}_manager",
+            name=f"{MCU_NODE}_manager_{HOSTNAME}",
             output="screen",
             remappings=[
-                ("analog_reading", f"{HOSTNAME}/analog_reading"),
-                ("capture_input", "cinder/capture_input"),
-                ("cpu_fan_speed", f"{HOSTNAME}/cpu_fan_speed"),
-                ("digital_reading", f"{HOSTNAME}/digital_reading"),
-                ("digital_write", f"{HOSTNAME}/digital_write"),
-                ("input", "cinder/input"),
-                ("mcu_memory", f"{HOSTNAME}/mcu_memory"),
-                ("peripherals", "cinder/peripherals"),
+                (f"{MCU_NODE}_state", f"{HOSTNAME}/{MCU_NODE}_state"),
+                ("analog_reading", f"{MCU_NODE}/analog_reading"),
+                ("capture_input", f"{INPUT_PROVIDER}/capture_input"),
+                ("cpu_fan_speed", f"{MCU_NODE}/cpu_fan_speed"),
+                ("digital_reading", f"{MCU_NODE}/digital_reading"),
+                ("digital_write", f"{MCU_NODE}/digital_write"),
+                ("input", f"{INPUT_PROVIDER}/input"),
+                ("mcu_memory", f"{MCU_NODE}/mcu_memory"),
+                ("peripherals", f"{INPUT_PROVIDER}/peripherals"),
                 ("power_control", f"{HOSTNAME}/power_control"),
-                ("pwm_write", f"{HOSTNAME}/pwm_write"),
-                ("report_mcu_memory", f"{HOSTNAME}/report_mcu_memory"),
-                ("set_analog_mode", f"{HOSTNAME}/set_analog_mode"),
-                ("set_digital_mode", f"{HOSTNAME}/set_digital_mode"),
-                ("station_state", f"{HOSTNAME}/station_state"),
+                ("pwm_write", f"{MCU_NODE}/pwm_write"),
+                ("report_mcu_memory", f"{MCU_NODE}/report_mcu_memory"),
+                ("set_analog_mode", f"{MCU_NODE}/set_analog_mode"),
+                ("set_digital_mode", f"{MCU_NODE}/set_digital_mode"),
             ],
         )
-        ld.add_action(station_manager_node)
-
-    if HOSTNAME == "cinder":
-        leonardo_manager_node = Node(
+        ld.add_action(conductor_node)
+    elif HOSTNAME == "cinder":
+        MCU_NODE = "leonardo"
+        leonardo_node = Node(
             namespace=ROS_NAMESPACE,
             package=PACKAGE_NAME,
-            executable="leonardo_manager",
-            name=f"leonardo_manager_{HOSTNAME}",
+            executable=f"{MCU_NODE}_manager",
+            name=f"{MCU_NODE}_manager_{HOSTNAME}",
             output="screen",
             remappings=[
-                ("analog_reading", f"{HOSTNAME}/analog_reading"),
-                ("leonardo_state", f"{HOSTNAME}/leonardo_state"),
-                ("mcu_memory", f"{HOSTNAME}/mcu_memory"),
-                ("report_mcu_memory", f"{HOSTNAME}/report_mcu_memory"),
-                ("set_analog_mode", f"{HOSTNAME}/set_analog_mode"),
+                (f"{MCU_NODE}_state", f"{HOSTNAME}/{MCU_NODE}_state"),
+                ("analog_reading", f"{MCU_NODE}/analog_reading"),
+                ("mcu_memory", f"{MCU_NODE}/mcu_memory"),
+                ("report_mcu_memory", f"{MCU_NODE}/report_mcu_memory"),
+                ("set_analog_mode", f"{MCU_NODE}/set_analog_mode"),
             ],
         )
-        ld.add_action(leonardo_manager_node)
+        ld.add_action(leonardo_node)
 
     return ld

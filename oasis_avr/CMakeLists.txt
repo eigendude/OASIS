@@ -41,7 +41,42 @@ cmake_minimum_required(VERSION 3.11)
 cmake_host_system_information(RESULT HOST_NAME QUERY HOSTNAME)
 message(STATUS "Configuring for hostname: ${HOST_NAME}")
 
-if (HOST_NAME STREQUAL cinder)
+if (HOST_NAME STREQUAL station)
+  # Building conductor
+  set(ARDUINO_VARIANT uno)
+
+  #
+  # With everything disabled:
+  # 6562 flash (20%), 647 data (31%)
+  #
+  # With diagnostics enabled:
+  # 7104 flash (22%), 627 data (30%)
+  # Heap: 885, stack: 301, free: 845
+  #
+  # With analog enabled:
+  # 8628 flash (26%), 625 data (30%)
+  # Heap: 883, stack: 426, free: 772
+  #
+  # With everything but external libraries enabled:
+  # 9869 flash (30%), 630 data (30%)
+  # Heap: 888, stack: 426, free: 777
+  #
+  # With CPU fan enabled:
+  # 12232 flash (37%), 762 data (37%)
+  # Heap: 1020, stack: 615, free: 396 (19%)
+  #
+  set(ENABLE_ANALOG ON)
+  set(ENABLE_CPU_FAN ON)
+  set(ENABLE_DHT OFF)
+  set(ENABLE_DIAGNOSTICS ON)
+  set(ENABLE_DIGITAL ON)
+  set(ENABLE_I2C OFF)
+  set(ENABLE_SERVO OFF)
+  set(ENABLE_SONAR OFF)
+  set(ENABLE_SPI OFF)
+  set(ENABLE_STEPPER OFF)
+elseif (HOSTNAME STREQUAL cinder)
+  # Building leonardo
   set(ARDUINO_VARIANT leonardo)
 
   #
@@ -79,28 +114,9 @@ if (HOST_NAME STREQUAL cinder)
   set(ENABLE_SPI OFF)
   set(ENABLE_STEPPER OFF)
 else()
+  # Building generic
   set(ARDUINO_VARIANT uno)
 
-  #
-  # With everything disabled:
-  # 6562 flash (20%), 647 data (31%)
-  #
-  # With diagnostics enabled:
-  # 7104 flash (22%), 627 data (30%)
-  # Heap: 885, stack: 301, free: 845
-  #
-  # With analog enabled:
-  # 8628 flash (26%), 625 data (30%)
-  # Heap: 883, stack: 426, free: 772
-  #
-  # With everything but external libraries enabled:
-  # 9869 flash (30%), 630 data (30%)
-  # Heap: 888, stack: 426, free: 777
-  #
-  # With CPU fan enabled:
-  # 12232 flash (37%), 762 data (37%)
-  # Heap: 1020, stack: 615, free: 396 (19%)
-  #
   set(ENABLE_ANALOG ON)
   set(ENABLE_CPU_FAN ON)
   set(ENABLE_DHT OFF)
@@ -368,27 +384,27 @@ target_link_arduino_libraries(oasis_avr_utils PRIVATE
 ################################################################################
 
 #
-# station_node
+# firmata_node
 #
 
-add_executable(station_node
-  src/ros/station_node.cpp
+add_executable(firmata_node
+  src/ros/firmata_node.cpp
 )
 
-target_link_libraries(station_node PRIVATE
+target_link_libraries(firmata_node PRIVATE
   oasis_avr_firmata
   oasis_avr_leds
   oasis_avr_utils
 )
 
-target_link_arduino_libraries(station_node PRIVATE ${FIRMATA_LIBRARIES})
+target_link_arduino_libraries(firmata_node PRIVATE ${FIRMATA_LIBRARIES})
 
 # This is needed for the generation of HEX binary and uploading it
-target_enable_arduino_upload(station_node)
+target_enable_arduino_upload(firmata_node)
 
 install(
   TARGETS
-    station_node
+    firmata_node
   DESTINATION
     share/${PROJECT_NAME}
 )

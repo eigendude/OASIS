@@ -21,13 +21,13 @@ from oasis_control.nodes.leonardo_manager_node import LeonardoManagerNode
 def main(args=None) -> None:
     rclpy.init(args=args)
 
-    manager = LeonardoManagerNode()
-    if manager.initialize():
-        rclpy.spin(manager)
+    node = LeonardoManagerNode()
+    if node.initialize():
+        rclpy.spin(node)
 
         # Destroy the node explicitly. Problems can occur when the garbage
         # collector automatically destroys the node object after ROS has
         # shut down.
-        manager.destroy_node()
+        node.destroy_node()
 
     rclpy.shutdown()

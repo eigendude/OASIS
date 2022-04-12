@@ -205,7 +205,7 @@ jobs:
         run: |
           ./oasis_avr/scripts/reset_leonardo.py /dev/ttyACM0
           sleep 2
-          source oasis_tooling/scripts/env_ros2_desktop.sh && cmake --build "build/oasis_avr" --target upload -- TARGET=station_node SERIAL_PORT=/dev/ttyACM0
+          source oasis_tooling/scripts/env_ros2_desktop.sh && cmake --build "build/oasis_avr" --target upload -- TARGET=firmata_node SERIAL_PORT=/dev/ttyACM0
           sleep 2
 
       - name: Test Ardino

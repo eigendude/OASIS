@@ -71,8 +71,8 @@ setuptools.setup(
     entry_points={
         "console_scripts": [
             "automation_manager = oasis_control.cli.automation_manager:main",
+            "conductor_manager = oasis_control.cli.conductor_manager:main",
             "leonardo_manager = oasis_control.cli.leonardo_manager:main",
-            "station_manager = oasis_control.cli.station_manager:main",
         ],
     },
 )

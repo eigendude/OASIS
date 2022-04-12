@@ -46,10 +46,6 @@ POWER_CONTROL_SERVICE = "power_control"
 
 
 class AutomationManagerNode(rclpy.node.Node):
-    """
-    A ROS node that monitors process and sensor information using psutil.
-    """
-
     def __init__(self) -> None:
         """
         Initialize resources.

@@ -9,7 +9,7 @@
 ################################################################################
 
 #
-# Station manager for train power station
+# Manager for a LEGO train power station's microcontroller
 #
 
 import asyncio
@@ -28,6 +28,7 @@ from oasis_drivers.firmata.firmata_types import AnalogMode
 from oasis_drivers.firmata.firmata_types import DigitalMode
 from oasis_msgs.msg import AnalogReading as AnalogReadingMsg
 from oasis_msgs.msg import AVRConstants as AVRConstantsMsg
+from oasis_msgs.msg import ConductorState as ConductorStateMsg
 from oasis_msgs.msg import CPUFanSpeed as CPUFanSpeedMsg
 from oasis_msgs.msg import DigitalReading as DigitalReadingMsg
 from oasis_msgs.msg import MCUMemory as MCUMemoryMsg
@@ -36,7 +37,6 @@ from oasis_msgs.msg import PeripheralInfo as PeripheralInfoMsg
 from oasis_msgs.msg import PeripheralInput as PeripheralInputMsg
 from oasis_msgs.msg import PeripheralScan as PeripheralScanMsg
 from oasis_msgs.msg import PowerMode as PowerModeMsg
-from oasis_msgs.msg import StationState as StationStateMsg
 from oasis_msgs.srv import CaptureInput as CaptureInputSvc
 from oasis_msgs.srv import DigitalWrite as DigitalWriteSvc
 from oasis_msgs.srv import PowerControl as PowerControlSvc
@@ -86,12 +86,12 @@ CONTROLLER_PROFILE = "game.controller.default"
 
 ROS_NAMESPACE = "oasis"
 
-NODE_NAME = "station_manager"
+NODE_NAME = "conductor_manager"
 
 PUBLISH_STATE_PERIOD_SECS = 0.1
 
 # Publisher
-PUBLISH_STATION_STATE = "station_state"
+PUBLISH_CONDUCTOR_STATE = "conductor_state"
 
 # Subscribers
 SUBSCRIBE_ANALOG_READING = "analog_reading"
@@ -118,9 +118,9 @@ CLIENT_SET_DIGITAL_MODE = "set_digital_mode"
 ################################################################################
 
 
-class StationManagerNode(rclpy.node.Node):
+class ConductorManagerNode(rclpy.node.Node):
     """
-    A ROS node that manages the train power station.
+    A ROS node that manages a LEGO train power conductor's conductor.
     """
 
     def __init__(self) -> None:
@@ -161,9 +161,9 @@ class StationManagerNode(rclpy.node.Node):
         )
 
         # Publishers
-        self._station_state_pub: rclpy.publisher.Publisher = self.create_publisher(
-            msg_type=StationStateMsg,
-            topic=PUBLISH_STATION_STATE,
+        self._conductor_state_pub: rclpy.publisher.Publisher = self.create_publisher(
+            msg_type=ConductorStateMsg,
+            topic=PUBLISH_CONDUCTOR_STATE,
             qos_profile=qos_profile,
         )
 
@@ -321,7 +321,7 @@ class StationManagerNode(rclpy.node.Node):
             timer_period_sec=PUBLISH_STATE_PERIOD_SECS, callback=self._publish_state
         )
 
-        self.get_logger().info("Station manager initialized successfully")
+        self.get_logger().info("Conductor manager initialized successfully")
 
         return True
 
@@ -632,7 +632,7 @@ class StationManagerNode(rclpy.node.Node):
         header.stamp = self.get_clock().now().to_msg()
         header.frame_id = NODE_NAME  # TODO
 
-        msg: StationStateMsg = StationStateMsg()
+        msg: ConductorStateMsg = ConductorStateMsg()
         msg.header = header
         msg.supply_voltage = self._supply_voltage
         msg.motor_voltage = self._motor_voltage
@@ -643,7 +643,7 @@ class StationManagerNode(rclpy.node.Node):
         msg.total_ram = self._total_ram
         msg.ram_utilization = self._ram_utilization
 
-        self._station_state_pub.publish(msg)
+        self._conductor_state_pub.publish(msg)
 
     @staticmethod
     def _translate_analog_mode(analog_mode: AnalogMode) -> int:
