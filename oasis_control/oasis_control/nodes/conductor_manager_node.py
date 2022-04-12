@@ -45,6 +45,7 @@ from oasis_msgs.srv import PWMWrite as PWMWriteSvc
 from oasis_msgs.srv import ReportMCUMemory as ReportMCUMemorySvc
 from oasis_msgs.srv import SetAnalogMode as SetAnalogModeSvc
 from oasis_msgs.srv import SetDigitalMode as SetDigitalModeSvc
+from oasis_msgs.srv import SetSamplingInterval as SetSamplingIntervalSvc
 
 
 ################################################################################
@@ -54,6 +55,9 @@ from oasis_msgs.srv import SetDigitalMode as SetDigitalModeSvc
 
 # Timing parameters
 REPORT_MCU_MEMORY_PERIOD_SECS: float = 10.0  # RAM utilization doesn't change
+
+# Sampling interval, in ms
+SAMPLING_INTERVAL_MS = 100
 
 # Pins
 VSS_PIN: int = 0  # A0
@@ -113,6 +117,7 @@ CLIENT_PWM_WRITE = "pwm_write"
 CLIENT_REPORT_MCU_MEMORY = "report_mcu_memory"
 CLIENT_SET_ANALOG_MODE = "set_analog_mode"
 CLIENT_SET_DIGITAL_MODE = "set_digital_mode"
+CLIENT_SET_SAMPLING_INTERVAL = "set_sampling_interval"
 
 
 ################################################################################
@@ -254,6 +259,9 @@ class ConductorManagerNode(rclpy.node.Node):
         self._set_digital_mode_client: rclpy.client.Client = self.create_client(
             srv_type=SetDigitalModeSvc, srv_name=CLIENT_SET_DIGITAL_MODE
         )
+        self._set_sampling_interval_client: rclpy.client.Client = self.create_client(
+            srv_type=SetSamplingIntervalSvc, srv_name=CLIENT_SET_SAMPLING_INTERVAL
+        )
 
         # Timer parameters
         self._publish_timer: Optional[rclpy.node.Timer] = None
@@ -265,8 +273,16 @@ class ConductorManagerNode(rclpy.node.Node):
         self._report_mcu_memory_client.wait_for_service()
         self._set_analog_mode_client.wait_for_service()
         self._set_digital_mode_client.wait_for_service()
+        self._set_sampling_interval_client.wait_for_service()
 
         self.get_logger().debug("Starting configuration")
+
+        # Sampling interval
+        self.get_logger().debug(
+            f"Setting sampling interval to {SAMPLING_INTERVAL_MS} ms"
+        )
+        if not self._set_sampling_interval(SAMPLING_INTERVAL_MS):
+            return False
 
         # Memory reporting
         self.get_logger().debug("Enabling MCU memory reporting")
@@ -383,6 +399,26 @@ class ConductorManagerNode(rclpy.node.Node):
 
         # Call service
         future: asyncio.Future = self._set_digital_mode_client.call_async(motor_pwm_svc)
+
+        # Wait for result
+        rclpy.spin_until_future_complete(self, future)
+        if future.result() is None:
+            self.get_logger().error(
+                f"Exception while calling service: {future.exception()}"
+            )
+            return False
+
+        return True
+
+    def _set_sampling_interval(self, sampling_interval_ms: int) -> bool:
+        # Create message
+        set_sampling_interval_svc = SetSamplingIntervalSvc.Request()
+        set_sampling_interval_svc.sampling_interval_ms = sampling_interval_ms
+
+        # Call service
+        future: asyncio.Future = self._set_sampling_interval_client.call_async(
+            set_sampling_interval_svc
+        )
 
         # Wait for result
         rclpy.spin_until_future_complete(self, future)

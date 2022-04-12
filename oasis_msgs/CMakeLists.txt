@@ -61,6 +61,7 @@ rosidl_generate_interfaces(
     srv/ServoWrite.srv
     srv/SetAnalogMode.srv
     srv/SetDigitalMode.srv
+    srv/SetSamplingInterval.srv
   DEPENDENCIES
     std_msgs
 )

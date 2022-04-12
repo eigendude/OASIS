@@ -35,6 +35,7 @@ from oasis_msgs.srv import ReportMCUMemory as ReportMCUMemorySvc
 from oasis_msgs.srv import ServoWrite as ServoWriteSvc
 from oasis_msgs.srv import SetAnalogMode as SetAnalogModeSvc
 from oasis_msgs.srv import SetDigitalMode as SetDigitalModeSvc
+from oasis_msgs.srv import SetSamplingInterval as SetSamplingIntervalSvc
 
 
 ################################################################################
@@ -63,6 +64,7 @@ REPORT_MCU_MEMORY_SERVICE = "report_mcu_memory"
 SERVO_WRITE_SERVICE = "servo_write"
 SET_ANALOG_MODE_SERVICE = "set_analog_mode"
 SET_DIGITAL_MODE_SERVICE = "set_digital_mode"
+SET_SAMPLING_INTERVAL_SERVICE = "set_sampling_interval"
 
 
 ################################################################################
@@ -166,6 +168,13 @@ class FirmataBridgeNode(rclpy.node.Node, FirmataCallback):
             srv_type=SetDigitalModeSvc,
             srv_name=SET_DIGITAL_MODE_SERVICE,
             callback=self._handle_set_digital_mode,
+        )
+        self._set_sampling_interval_service: rclpy.service.Service = (
+            self.create_service(
+                srv_type=SetSamplingIntervalSvc,
+                srv_name=SET_SAMPLING_INTERVAL_SERVICE,
+                callback=self._handle_set_sampling_interval,
+            )
         )
 
         self.get_logger().info("Firmata bridge initialized")
@@ -423,6 +432,25 @@ class FirmataBridgeNode(rclpy.node.Node, FirmataCallback):
 
         # Perform service
         self._bridge.set_digital_mode(digital_pin, digital_mode)
+
+        return response
+
+    def _handle_set_sampling_interval(
+        self,
+        request: SetSamplingIntervalSvc.Request,
+        response: SetSamplingIntervalSvc.Response,
+    ) -> SetSamplingIntervalSvc.Response:
+        """Handle ROS 2 digital pin mode changes"""
+        # Translate parameters
+        sampling_interval_ms: int = request.sampling_interval_ms
+
+        # Debug logging
+        self.get_logger().info(
+            f"Setting sampling interval to {sampling_interval_ms} ms"
+        )
+
+        # Perform service
+        self._bridge.set_sampling_interval(sampling_interval_ms)
 
         return response
 

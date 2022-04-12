@@ -264,6 +264,23 @@ class FirmataBridge:
         # Wait for completion
         future.result()
 
+    def set_sampling_interval(self, sampling_interval_ms: int) -> None:
+        """
+        Set the sampling interval of the microcontroller.
+
+        :param sampling_interval_ms: The sampling interval, in ms
+        """
+        coroutine: Awaitable[None]
+
+        # Create coroutine
+        coroutine = self._board.set_sampling_interval(sampling_interval_ms)
+
+        # Dispatch to asyncio
+        future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
+
+        # Wait for completion
+        future.result()
+
     def report_mcu_memory(self, reporting_period_ms: int) -> None:
         """
         Enable or disable memory reporting mode.

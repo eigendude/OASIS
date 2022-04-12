@@ -187,6 +187,7 @@ def generate_launch_description() -> LaunchDescription:
                 ("servo_write", f"{mcu_name}/servo_write"),
                 ("set_analog_mode", f"{mcu_name}/set_analog_mode"),
                 ("set_digital_mode", f"{mcu_name}/set_digital_mode"),
+                ("set_sampling_interval", f"{mcu_name}/set_sampling_interval"),
             ],
         )
 

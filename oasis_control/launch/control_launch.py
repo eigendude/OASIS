@@ -99,6 +99,7 @@ def generate_launch_description() -> LaunchDescription:
                 ("report_mcu_memory", f"{MCU_NODE}/report_mcu_memory"),
                 ("set_analog_mode", f"{MCU_NODE}/set_analog_mode"),
                 ("set_digital_mode", f"{MCU_NODE}/set_digital_mode"),
+                ("set_sampling_interval", f"{MCU_NODE}/set_sampling_interval"),
             ],
         )
         ld.add_action(conductor_node)
