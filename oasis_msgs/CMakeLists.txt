@@ -36,6 +36,7 @@ rosidl_generate_interfaces(
     msg/DiskPartition.msg
     msg/LeonardoState.msg
     msg/MCUMemory.msg
+    msg/MCUString.msg
     msg/NetworkAddress.msg
     msg/NetworkInterface.msg
     msg/PeripheralConstants.msg

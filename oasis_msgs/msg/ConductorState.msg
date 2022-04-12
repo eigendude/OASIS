@@ -38,3 +38,7 @@ uint32 total_ram
 
 # Percent of RAM occupied by the system
 float32 ram_utilization
+
+# The last message logged from the microcontroller, or empty if a message
+# hasn't been logged yet
+string message
