@@ -159,68 +159,45 @@ def generate_launch_description() -> LaunchDescription:
         )
         ld.add_action(kinect_v2_node)
 
+    # Template for Firmata bridges
+    def get_firmata_bridge(hostname: str, mcu_name: str) -> Node:
+        return Node(
+            namespace=ROS_NAMESPACE,
+            package=PYTHON_PACKAGE_NAME,
+            executable="firmata_bridge",
+            name=f"{mcu_name}_bridge_{hostname}",
+            output="screen",
+            emulate_tty=True,
+            parameters=[
+                {
+                    "com_port": AVR_COM_PORT,
+                },
+            ],
+            remappings=[
+                ("analog_read", f"{mcu_name}/analog_read"),
+                ("analog_reading", f"{mcu_name}/analog_reading"),
+                ("cpu_fan_speed", f"{mcu_name}/cpu_fan_speed"),
+                ("digital_read", f"{mcu_name}/digital_read"),
+                ("digital_reading", f"{mcu_name}/digital_reading"),
+                ("digital_write", f"{mcu_name}/digital_write"),
+                ("mcu_memory", f"{mcu_name}/mcu_memory"),
+                ("mcu_string", f"{mcu_name}/mcu_string"),
+                ("pwm_write", f"{mcu_name}/pwm_write"),
+                ("report_mcu_memory", f"{mcu_name}/report_mcu_memory"),
+                ("servo_write", f"{mcu_name}/servo_write"),
+                ("set_analog_mode", f"{mcu_name}/set_analog_mode"),
+                ("set_digital_mode", f"{mcu_name}/set_digital_mode"),
+            ],
+        )
+
     # Microcontroller interfaces
     if HOSTNAME == "station":
-        MCU_NODE = "conductor"
-        conductor_bridge_node = Node(
-            namespace=ROS_NAMESPACE,
-            package=PYTHON_PACKAGE_NAME,
-            executable="firmata_bridge",
-            name=f"{MCU_NODE}_bridge_{HOSTNAME}",
-            output="screen",
-            emulate_tty=True,
-            parameters=[
-                {
-                    "com_port": AVR_COM_PORT,
-                },
-            ],
-            remappings=[
-                ("analog_read", f"{MCU_NODE}/analog_read"),
-                ("analog_reading", f"{MCU_NODE}/analog_reading"),
-                ("cpu_fan_speed", f"{MCU_NODE}/cpu_fan_speed"),
-                ("digital_read", f"{MCU_NODE}/digital_read"),
-                ("digital_reading", f"{MCU_NODE}/digital_reading"),
-                ("digital_write", f"{MCU_NODE}/digital_write"),
-                ("mcu_memory", f"{MCU_NODE}/mcu_memory"),
-                ("mcu_string", f"{MCU_NODE}/mcu_string"),
-                ("pwm_write", f"{MCU_NODE}/pwm_write"),
-                ("report_mcu_memory", f"{MCU_NODE}/report_mcu_memory"),
-                ("servo_write", f"{MCU_NODE}/servo_write"),
-                ("set_analog_mode", f"{MCU_NODE}/set_analog_mode"),
-                ("set_digital_mode", f"{MCU_NODE}/set_digital_mode"),
-            ],
-        )
+        mcu_node = "conductor"
+        conductor_bridge_node: Node = get_firmata_bridge(HOSTNAME, mcu_node)
         ld.add_action(conductor_bridge_node)
     elif HOSTNAME == "cinder":
-        MCU_NODE = "leonardo"
-        leonardo_bridge_node = Node(
-            namespace=ROS_NAMESPACE,
-            package=PYTHON_PACKAGE_NAME,
-            executable="firmata_bridge",
-            name=f"{MCU_NODE}_bridge_{HOSTNAME}",
-            output="screen",
-            emulate_tty=True,
-            parameters=[
-                {
-                    "com_port": AVR_COM_PORT,
-                },
-            ],
-            remappings=[
-                ("analog_read", f"{MCU_NODE}/analog_read"),
-                ("analog_reading", f"{MCU_NODE}/analog_reading"),
-                ("cpu_fan_speed", f"{MCU_NODE}/cpu_fan_speed"),
-                ("digital_read", f"{MCU_NODE}/digital_read"),
-                ("digital_reading", f"{MCU_NODE}/digital_reading"),
-                ("digital_write", f"{MCU_NODE}/digital_write"),
-                ("mcu_memory", f"{MCU_NODE}/mcu_memory"),
-                ("mcu_string", f"{MCU_NODE}/mcu_string"),
-                ("pwm_write", f"{MCU_NODE}/pwm_write"),
-                ("report_mcu_memory", f"{MCU_NODE}/report_mcu_memory"),
-                ("servo_write", f"{MCU_NODE}/servo_write"),
-                ("set_analog_mode", f"{MCU_NODE}/set_analog_mode"),
-                ("set_digital_mode", f"{MCU_NODE}/set_digital_mode"),
-            ],
-        )
+        mcu_node = "leonardo"
+        leonardo_bridge_node: Node = get_firmata_bridge(HOSTNAME, mcu_node)
         ld.add_action(leonardo_bridge_node)
 
     return ld
