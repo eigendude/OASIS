@@ -182,12 +182,12 @@ def generate_launch_description() -> LaunchDescription:
                 ("digital_reading", f"{MCU_NODE}/digital_reading"),
                 ("digital_write", f"{MCU_NODE}/digital_write"),
                 ("mcu_memory", f"{MCU_NODE}/mcu_memory"),
+                ("mcu_string", f"{MCU_NODE}/mcu_string"),
                 ("pwm_write", f"{MCU_NODE}/pwm_write"),
                 ("report_mcu_memory", f"{MCU_NODE}/report_mcu_memory"),
                 ("servo_write", f"{MCU_NODE}/servo_write"),
                 ("set_analog_mode", f"{MCU_NODE}/set_analog_mode"),
                 ("set_digital_mode", f"{MCU_NODE}/set_digital_mode"),
-                ("string_message", f"{MCU_NODE}/string_message"),
             ],
         )
         ld.add_action(conductor_bridge_node)
@@ -213,12 +213,12 @@ def generate_launch_description() -> LaunchDescription:
                 ("digital_reading", f"{MCU_NODE}/digital_reading"),
                 ("digital_write", f"{MCU_NODE}/digital_write"),
                 ("mcu_memory", f"{MCU_NODE}/mcu_memory"),
+                ("mcu_string", f"{MCU_NODE}/mcu_string"),
                 ("pwm_write", f"{MCU_NODE}/pwm_write"),
                 ("report_mcu_memory", f"{MCU_NODE}/report_mcu_memory"),
                 ("servo_write", f"{MCU_NODE}/servo_write"),
                 ("set_analog_mode", f"{MCU_NODE}/set_analog_mode"),
                 ("set_digital_mode", f"{MCU_NODE}/set_digital_mode"),
-                ("string_message", f"{MCU_NODE}/string_message"),
             ],
         )
         ld.add_action(leonardo_bridge_node)

@@ -16,7 +16,6 @@ import rclpy.service
 import rclpy.time
 from builtin_interfaces.msg import Time as TimeMsg
 from std_msgs.msg import Header as HeaderMsg
-from std_msgs.msg import String as StringMsg
 
 from oasis_drivers.firmata.firmata_bridge import FirmataBridge
 from oasis_drivers.firmata.firmata_callback import FirmataCallback
@@ -27,6 +26,7 @@ from oasis_msgs.msg import AVRConstants as AVRConstantsMsg
 from oasis_msgs.msg import CPUFanSpeed as CPUFanSpeedMsg
 from oasis_msgs.msg import DigitalReading as DigitalReadingMsg
 from oasis_msgs.msg import MCUMemory as MCUMemoryMsg
+from oasis_msgs.msg import MCUString as MCUStringMsg
 from oasis_msgs.srv import AnalogRead as AnalogReadSvc
 from oasis_msgs.srv import DigitalRead as DigitalReadSvc
 from oasis_msgs.srv import DigitalWrite as DigitalWriteSvc
@@ -52,7 +52,7 @@ ANALOG_READING_TOPIC = "analog_reading"
 CPU_FAN_SPEED_TOPIC = "cpu_fan_speed"
 DIGITAL_READING_TOPIC = "digital_reading"
 MCU_MEMORY_TOPIC = "mcu_memory"
-STRING_MESSAGE_TOPIC = "string_message"
+MCU_STRING_TOPIC = "mcu_string"
 
 # ROS services
 ANALOG_READ_SERVICE = "analog_read"
@@ -117,11 +117,9 @@ class FirmataBridgeNode(rclpy.node.Node, FirmataCallback):
             topic=MCU_MEMORY_TOPIC,
             qos_profile=qos_profile,
         )
-        # TODO: the String message was deprecated in Foxy. We should switch to
-        # an application-specific message.
-        self._string_message_pub: rclpy.publisher.Publisher = self.create_publisher(
-            msg_type=StringMsg,
-            topic=STRING_MESSAGE_TOPIC,
+        self._mcu_string_pub: rclpy.publisher.Publisher = self.create_publisher(
+            msg_type=MCUStringMsg,
+            topic=MCU_STRING_TOPIC,
             qos_profile=qos_profile,
         )
 
@@ -268,11 +266,17 @@ class FirmataBridgeNode(rclpy.node.Node, FirmataCallback):
 
     def on_string_data(self, data: str) -> None:
         """Implement FirmataCallback"""
-        msg: StringMsg = StringMsg()
+        msg: MCUStringMsg = MCUStringMsg()
 
-        msg.data = data
+        # Timestamp in ROS header
+        header = HeaderMsg()
+        header.stamp = self._get_timestamp()
+        header.frame_id = ""  # TODO
 
-        self._string_message_pub.publish(msg)
+        msg.header = header
+        msg.message = data
+
+        self._mcu_string_pub.publish(msg)
 
         # Debug logging
         self.get_logger().info(data)

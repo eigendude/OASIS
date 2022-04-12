@@ -92,6 +92,7 @@ def generate_launch_description() -> LaunchDescription:
                 ("digital_write", f"{MCU_NODE}/digital_write"),
                 ("input", f"{INPUT_PROVIDER}/input"),
                 ("mcu_memory", f"{MCU_NODE}/mcu_memory"),
+                ("mcu_string", f"{MCU_NODE}/mcu_string"),
                 ("peripherals", f"{INPUT_PROVIDER}/peripherals"),
                 ("power_control", f"{HOSTNAME}/power_control"),
                 ("pwm_write", f"{MCU_NODE}/pwm_write"),

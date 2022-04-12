@@ -32,6 +32,7 @@ from oasis_msgs.msg import ConductorState as ConductorStateMsg
 from oasis_msgs.msg import CPUFanSpeed as CPUFanSpeedMsg
 from oasis_msgs.msg import DigitalReading as DigitalReadingMsg
 from oasis_msgs.msg import MCUMemory as MCUMemoryMsg
+from oasis_msgs.msg import MCUString as MCUStringMsg
 from oasis_msgs.msg import PeripheralConstants as PeripheralConstantsMsg
 from oasis_msgs.msg import PeripheralInfo as PeripheralInfoMsg
 from oasis_msgs.msg import PeripheralInput as PeripheralInputMsg
@@ -98,6 +99,7 @@ SUBSCRIBE_ANALOG_READING = "analog_reading"
 SUBSCRIBE_CPU_FAN_SPEED = "cpu_fan_speed"
 SUBSCRIBE_DIGITAL_READING = "digital_reading"
 SUBSCRIBE_MCU_MEMORY = "mcu_memory"
+SUBSCRIBE_MCU_STRING = "mcu_string"
 SUBSCRIBE_PERIPHERAL_INPUT = "input"
 SUBSCRIBE_PERIPHERALS = "peripherals"
 
@@ -143,6 +145,7 @@ class ConductorManagerNode(rclpy.node.Node):
         self._cpu_fan_speed_rpm: int = 0
         self._total_ram: int = 0
         self._ram_utilization: float = 0.0
+        self._message: Optional[str] = None
 
         # Initialize peripheral state
         self._joysticks: Dict[str, str] = {}
@@ -197,6 +200,14 @@ class ConductorManagerNode(rclpy.node.Node):
                 msg_type=MCUMemoryMsg,
                 topic=SUBSCRIBE_MCU_MEMORY,
                 callback=self._on_mcu_memory,
+                qos_profile=qos_profile,
+            )
+        )
+        self._mcu_string_sub: rclpy.subscription.Subscription = (
+            self.create_subscription(
+                msg_type=MCUStringMsg,
+                topic=SUBSCRIBE_MCU_STRING,
+                callback=self._on_mcu_string,
                 qos_profile=qos_profile,
             )
         )
@@ -455,6 +466,16 @@ class ConductorManagerNode(rclpy.node.Node):
         self._total_ram = total_ram
         self._ram_utilization = ram_utilization
 
+    def _on_mcu_string(self, mcu_string_msg: MCUStringMsg) -> None:
+        # Translate parameters
+        message: str = mcu_string_msg.message
+
+        # Log message
+        self.get_logger().debug(f"MCU: {message}")
+
+        # Record state
+        self._message = message
+
     def _on_peripheral_input(self, peripheral_input_msg: PeripheralInputMsg) -> None:
         # Translate parameters
         peripheral_address: str = peripheral_input_msg.address
@@ -642,6 +663,7 @@ class ConductorManagerNode(rclpy.node.Node):
         msg.cpu_fan_speed_rpm = self._cpu_fan_speed_rpm
         msg.total_ram = self._total_ram
         msg.ram_utilization = self._ram_utilization
+        msg.message = self._message if self._message else ""
 
         self._conductor_state_pub.publish(msg)
 
