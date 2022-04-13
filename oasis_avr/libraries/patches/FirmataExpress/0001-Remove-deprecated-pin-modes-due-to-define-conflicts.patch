@@ -1,0 +1,37 @@
+From adad1826a872a6c0303aa07efae9251e3e8ba66c Mon Sep 17 00:00:00 2001
+From: Garrett Brown <eigendebugger@gmail.com>
+Date: Wed, 13 Apr 2022 06:05:23 -0700
+Subject: [PATCH] Remove deprecated pin modes due to #define conflicts
+
+---
+ FirmataExpress.h | 14 --------------
+ 1 file changed, 14 deletions(-)
+
+diff --git a/FirmataExpress.h b/FirmataExpress.h
+index b7fbbf1..2ccacb3 100644
+--- a/FirmataExpress.h
++++ b/FirmataExpress.h
+@@ -43,20 +43,6 @@
+ #define SYSEX_I2C_REPLY         0x77 // same as I2C_REPLY
+ #define SYSEX_SAMPLING_INTERVAL 0x7A // same as SAMPLING_INTERVAL
+ 
+-// pin modes
+-//#define INPUT                 0x00 // defined in Arduino.h
+-//#define OUTPUT                0x01 // defined in Arduino.h
+-// DEPRECATED as of Firmata v2.5
+-#define ANALOG                  0x02 // same as PIN_MODE_ANALOG
+-#define PWM                     0x03 // same as PIN_MODE_PWM
+-#define SERVO                   0x04 // same as PIN_MODE_SERVO
+-#define SHIFT                   0x05 // same as PIN_MODE_SHIFT
+-#define I2C                     0x06 // same as PIN_MODE_I2C
+-#define ONEWIRE                 0x07 // same as PIN_MODE_ONEWIRE
+-#define STEPPER                 0x08 // same as PIN_MODE_STEPPER
+-#define ENCODER                 0x09 // same as PIN_MODE_ENCODER
+-#define IGNORE                  0x7F // same as PIN_MODE_IGNORE
+-
+ namespace firmata {
+ 
+ // TODO make it a subclass of a generic Serial/Stream base class
+-- 
+2.30.2
+

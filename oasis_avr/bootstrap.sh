@@ -76,6 +76,9 @@ ADAFRUIT_CP_DIR="${ARDUINO_IDE_DIR}/libraries/Adafruit_Circuit_Playground"
 # Location of the Firmata library included in the Arduino IDE
 FIRMATA_DIR="${ARDUINO_IDE_DIR}/libraries/Firmata"
 
+# Location of the FirmataExpress library
+FIRMATA_EXPRESS_DIR="${LIBRARY_DIR}/FirmataExpress"
+
 #
 # Toolchain setup
 #
@@ -123,6 +126,15 @@ patch \
   --no-backup-if-mismatch \
   --directory="${ADAFRUIT_BLE_DIR}" \
   < "${PATCH_DIR}/Adafruit_BluefruitLE_nRF51/0001-Fix-library-not-located-by-Arduino-CMake-Toolchain.patch"
+
+# Patch FirmataExpress
+patch \
+  -p1 \
+  --forward \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${FIRMATA_EXPRESS_DIR}" \
+  < "${PATCH_DIR}/FirmataExpress/0001-Remove-deprecated-pin-modes-due-to-define-conflicts.patch"
 
 # Because we use FirmataExpress instead of Firmata, remove the Firmata library
 # to avoid confusing IDEs
