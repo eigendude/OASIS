@@ -388,7 +388,7 @@ void FirmataCallbacks::SysexCallback(uint8_t command, uint8_t argc, uint8_t* arg
     {
       if (argc > 1)
       {
-        const uint8_t samplingIntervalMs = argv[0] + (argv[1] << 7);
+        const uint32_t samplingIntervalMs = argv[0] + (argv[1] << 7);
         m_thread->SetSamplingInterval(samplingIntervalMs);
       }
       else

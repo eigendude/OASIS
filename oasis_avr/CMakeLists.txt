@@ -79,11 +79,27 @@ elseif (HOST_NAME STREQUAL jetson)
   # Building engine
   set(ARDUINO_VARIANT uno)
 
+  #
+  # With everything disabled:
+  # 6944 flash (21%), 632 data (30%)
+  #
+  # With diagnostics enabled:
+  # 7802 flash (24%), 668 data (32%)
+  # Heap: 926, stack: 305, free: 800
+  #
+  # With analog enabled:
+  # 8750 flash (27%), 694 data (33%)
+  # Heap: 952, stack: 305, free: 774 (62%)
+  #
+  # With everything enabled except for subsystems with external libraries:
+  # 12410 flash (38%), 773 data (37%)
+  # Heap: 1031, stack: 305, free: 695 (66%)
+  #
   set(ENABLE_ANALOG ON)
-  set(ENABLE_CPU_FAN OFF)
+  set(ENABLE_CPU_FAN ON)
   set(ENABLE_DHT OFF)
   set(ENABLE_DIAGNOSTICS ON)
-  set(ENABLE_DIGITAL OFF)
+  set(ENABLE_DIGITAL ON)
   set(ENABLE_I2C OFF)
   set(ENABLE_SERVO OFF)
   set(ENABLE_SONAR OFF)

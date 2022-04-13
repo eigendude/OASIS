@@ -12,6 +12,9 @@
  */
 #pragma once
 
+#include "firmata_subsystem.hpp"
+#include "utils/timer.hpp"
+
 #include <stdint.h>
 
 #include <Boards.h>
@@ -21,13 +24,11 @@ class Ultrasonic;
 namespace OASIS
 {
 
-class FirmataSonar
+class FirmataSonar : public FirmataSubsystem
 {
 public:
-  // Lifecycle functions
-  void Setup(void (*loopFunc)());
-  void Reset();
-  void Loop();
+  // Implementation of FirmataSubsystem
+  void Sample() override;
 
   // Sonar functions
   void SetSonarMode(uint8_t digitalPin);

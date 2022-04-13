@@ -18,51 +18,6 @@
 
 using namespace OASIS;
 
-namespace OASIS
-{
-
-// Threading constants
-constexpr size_t SERVO_STACK_SIZE = 64; // Default is 128
-
-} // namespace OASIS
-
-void FirmataServo::Setup(void (*loopFunc)())
-{
-  Scheduler.startLoop(loopFunc, SERVO_STACK_SIZE);
-}
-
-void FirmataServo::Reset()
-{
-  /* TODO
-  for (uint8_t i = 0; i < TOTAL_PINS; + i)
-  {
-    // Pins with analog capability default to analog input. Otherwise, pins
-    // default to digital output
-    if (IS_PIN_ANALOG(i))
-    {
-      // Turns off pullup, configures everything
-      FirmataCallbacks::SetPinModeCallback(i, PIN_MODE_ANALOG); // TODO
-    }
-    else
-    {
-      // Sets the output to 0, configures portConfigInputs
-      FirmataCallbacks::SetPinModeCallback(i, OUTPUT); // TODO
-    }
-
-    m_servoPinMap[i] = 255;
-  }
-  */
-
-  m_detachedServoCount = 0;
-  m_servoCount = 0;
-}
-
-void FirmataServo::Loop()
-{
-  // TODO
-  delay(1000);
-}
-
 uint8_t FirmataServo::GetServoPin(uint8_t digitalPin) const
 {
   return m_servoPinMap[digitalPin];

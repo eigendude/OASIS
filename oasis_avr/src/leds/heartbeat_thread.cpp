@@ -19,6 +19,8 @@ namespace OASIS
 // Threading constants
 constexpr size_t HEARTBEAT_STACK_SIZE = 96; // Default is 128
 
+constexpr unsigned int HEARTBEAT_LED = LED_BUILTIN;
+
 } // namespace OASIS
 
 HeartbeatThread& HeartbeatThread::GetInstance()
@@ -32,7 +34,7 @@ HeartbeatThread& HeartbeatThread::GetInstance()
 void HeartbeatThread::Setup()
 {
   // Setup to blink the inbuilt LED
-  pinMode(LED_BUILTIN, OUTPUT);
+  pinMode(HEARTBEAT_LED, OUTPUT);
 
   // Start heartbeat thread
   Scheduler.startLoop(HeartbeatLoop, HEARTBEAT_STACK_SIZE);
@@ -40,19 +42,19 @@ void HeartbeatThread::Setup()
 
 void HeartbeatThread::Loop()
 {
-  digitalWrite(LED_BUILTIN, HIGH);
+  digitalWrite(HEARTBEAT_LED, HIGH);
 
   delay(100);
 
-  digitalWrite(LED_BUILTIN, LOW);
+  digitalWrite(HEARTBEAT_LED, LOW);
 
   delay(150);
 
-  digitalWrite(LED_BUILTIN, HIGH);
+  digitalWrite(HEARTBEAT_LED, HIGH);
 
   delay(100);
 
-  digitalWrite(LED_BUILTIN, LOW);
+  digitalWrite(HEARTBEAT_LED, LOW);
 
   delay(800);
 }

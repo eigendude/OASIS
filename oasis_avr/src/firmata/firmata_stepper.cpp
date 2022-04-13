@@ -18,20 +18,6 @@
 
 using namespace OASIS;
 
-void FirmataStepper::Setup(void (*loopFunc)())
-{
-  // Stepper motor has no loop
-}
-
-void FirmataStepper::Reset()
-{
-  // TODO: Clean up m_stepper
-}
-
-void FirmataStepper::Loop()
-{
-  // Stepper motor has no loop
-}
 void FirmataStepper::SetStepperPin(uint8_t digitalPin)
 {
   Firmata.setPinMode(digitalPin, PIN_MODE_STEPPER);

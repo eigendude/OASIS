@@ -14,6 +14,7 @@
 #include "firmata_thread.hpp"
 
 #include "firmata_callbacks.hpp"
+#include "firmata_subsystem.hpp"
 
 #if defined(ENABLE_ANALOG)
 #include "firmata_analog.hpp"
@@ -64,14 +65,11 @@ namespace OASIS
 {
 
 // Serial constants
-static constexpr uint32_t SERIAL_BAUD_RATE = 115200;
-
-// Timing constants
-// The minimum interval for sampling analog input
-static constexpr uint8_t MINIMUM_SAMPLING_INTERVAL = 1;
+constexpr uint32_t SERIAL_BAUD_RATE = 115200;
 
 // Threading constants
-constexpr size_t FIRMATA_STACK_SIZE = 160; // Default is 128
+constexpr size_t FIRMATA_MESSAGING_STACK_SIZE = 96; // Default is 128
+constexpr size_t FIRMATA_SAMPLING_STACK_SIZE = 96; // Default is 128
 
 } // namespace OASIS
 
@@ -79,47 +77,47 @@ FirmataThread::FirmataThread()
 {
 #if defined(ENABLE_ANALOG)
   static FirmataAnalog analog;
-  m_analog = &analog;
+  m_subsystems[SubsystemID::ANALOG] = m_analog = &analog;
 #endif
 
 #if defined(ENABLE_DHT)
   static FirmataDHT dht;
-  m_dht = &dht;
+  m_subsystems[SubsystemID::DHT] = m_dht = &dht;
 #endif
 
 #if defined(ENABLE_DIAGNOSTICS)
   static FirmataDiagnostics diagnostics;
-  m_diagnostics = &diagnostics;
+  m_subsystems[SubsystemID::DIAGNOSTICS] = m_diagnostics = &diagnostics;
 #endif
 
 #if defined(ENABLE_DIGITAL)
   static FirmataDigital digital;
-  m_digital = &digital;
+  m_subsystems[SubsystemID::DIGITAL] = m_digital = &digital;
 #endif
 
 #if defined(ENABLE_I2C)
   static FirmataI2C i2c;
-  m_i2c = &i2c;
+  m_subsystems[SubsystemID::I2C] = m_i2c = &i2c;
 #endif
 
 #if defined(ENABLE_SERVO)
   static FirmataServo servo;
-  m_servo = &servo;
+  m_subsystems[SubsystemID::SERVO] = m_servo = &servo;
 #endif
 
 #if defined(ENABLE_SONAR)
   static FirmataSonar sonar;
-  m_sonar = &sonar;
+  m_subsystems[SubsystemID::SONAR] = m_sonar = &sonar;
 #endif
 
 #if defined(ENABLE_SPI)
   static FirmataSPI spi;
-  m_spi = &spi;
+  m_subsystems[SubsystemID::SPI] = m_spi = &spi;
 #endif
 
 #if defined(ENABLE_STEPPER)
   static FirmataStepper stepper;
-  m_stepper = &stepper;
+  m_subsystems[SubsystemID::STEPPER] = m_stepper = &stepper;
 #endif
 }
 
@@ -143,218 +141,67 @@ void FirmataThread::Setup()
   // Initialize the default Serial transport and override the default baud
   Firmata.begin(SERIAL_BAUD_RATE);
 
-  // Start Firmata thread
-  Scheduler.startLoop(FirmataLoop, FIRMATA_STACK_SIZE);
+  // Start Firmata messaging thread
+  Scheduler.startLoop(FirmataMessageLoop, FIRMATA_MESSAGING_STACK_SIZE);
 
   // Configure subsystems
-#if defined(ENABLE_ANALOG)
-  m_analog->Setup(AnalogLoop);
-#endif
-
-#if defined(ENABLE_CPU_FAN)
-  m_cpuFan->Setup(CPUFanLoop);
-#endif
-
-#if defined(ENABLE_DHT)
-  m_dht->Setup(DHTLoop);
-#endif
-
-#if defined(ENABLE_DIAGNOSTICS)
-  m_diagnostics->Setup(DiagnosticsLoop);
-#endif
-
-#if defined(ENABLE_DIGITAL)
-  m_digital->Setup(DigitalLoop);
-#endif
-
-#if defined(ENABLE_I2C)
-  m_i2c->Setup(I2CLoop);
-#endif
-
-#if defined(ENABLE_SERVO)
-  m_servo->Setup(ServoLoop);
-#endif
-
-#if defined(ENABLE_SONAR)
-  m_sonar->Setup(SonarLoop);
-#endif
-
-#if defined(ENABLE_SPI)
-  m_spi->Setup(SPILoop);
-#endif
-
-#if defined(ENABLE_STEPPER)
-  m_stepper->Setup(StepperLoop);
-#endif
-}
-
-void FirmataThread::Reset()
-{
-  m_isResetting = true;
-
-  // Initialize a default state
-  // TODO: Option to load config from EEPROM instead of default
-
-  // Reset subsystems
-#if defined(ENABLE_ANALOG)
-  m_analog->Reset();
-#endif
-
-#if defined(ENABLE_CPU_FAN)
-  m_cpuFan->Reset();
-#endif
-
-#if defined(ENABLE_DHT)
-  m_dht->Reset();
-#endif
-
-#if defined(ENABLE_DIAGNOSTICS)
-  m_diagnostics->Reset();
-#endif
-
-#if defined(ENABLE_DIGITAL)
-  m_digital->Reset();
-#endif
-
-#if defined(ENABLE_I2C)
-  m_i2c->Reset();
-#endif
-
-#if defined(ENABLE_SERVO)
-  m_servo->Reset();
-#endif
-
-#if defined(ENABLE_SONAR)
-  m_sonar->Reset();
-#endif
-
-#if defined(ENABLE_SPI)
-  m_spi->Reset();
-#endif
-
-#if defined(ENABLE_STEPPER)
-  m_stepper->Reset();
-#endif
-
-  /* TODO
-  for (uint8_t i = 0; i < TOTAL_PINS; + i)
+  for (unsigned int i = 0; i < SubsystemID::SUBSYSTEM_COUNT; ++i)
   {
-    // Pins with analog capability default to analog input. Otherwise, pins
-    // default to digital output
-    if (IS_PIN_ANALOG(i))
-    {
-      // Turns off pullup, configures everything
-      FirmataCallbacks::SetPinModeCallback(i, PIN_MODE_ANALOG); // TODO
-    }
-    else
-    {
-      // Sets the output to 0, configures portConfigInputs
-      FirmataCallbacks::SetPinModeCallback(i, OUTPUT); // TODO
-    }
-
-    m_servoPinMap[i] = 255;
+    if (m_subsystems[i] != nullptr)
+      m_subsystems[i]->Setup();
   }
-  */
 
-  // Done resetting
-  m_isResetting = false;
+  // Start Firmata sampling thread
+  Scheduler.startLoop(FirmataSamplingLoop, FIRMATA_SAMPLING_STACK_SIZE);
 }
 
-void FirmataThread::Loop()
+void FirmataThread::MessageLoop()
 {
   // Processing incoming message as soon as possible
   while (Firmata.available())
     Firmata.processInput();
 
+  // Loop subsystems
+  for (unsigned int i = 0; i < SubsystemID::SUBSYSTEM_COUNT; ++i)
+  {
+    if (m_subsystems[i] != nullptr)
+      m_subsystems[i]->Loop();
+  }
+
   // TODO: Ensure that Stream buffer doesn't go over 60 bytes
   yield();
 }
 
-void FirmataThread::SetSamplingInterval(uint8_t samplingIntervalMs)
+void FirmataThread::SamplingLoop()
 {
-  // Validate parameters
-  if (samplingIntervalMs < MINIMUM_SAMPLING_INTERVAL)
-    samplingIntervalMs = MINIMUM_SAMPLING_INTERVAL;
+  if (m_samplingIntervalMs > 0)
+  {
+    m_samplingTimer.SetTimeout(m_samplingIntervalMs);
 
-  // Update state
-  m_samplingIntervalMs = samplingIntervalMs;
+    // Sample subsystems
+    for (unsigned int i = 0; i < SubsystemID::SUBSYSTEM_COUNT; ++i)
+    {
+      if (m_subsystems[i] != nullptr)
+      {
+        m_subsystems[i]->Sample();
+        yield();
+      }
+    }
 
-#if defined(ENABLE_DHT)
-  GetDHT()->SetSamplingInterval(samplingIntervalMs);
-#endif
+    delay(m_samplingTimer.TimeLeft());
+  }
+  else
+  {
+    yield();
+  }
 }
 
-void FirmataThread::FirmataLoop()
+void FirmataThread::FirmataMessageLoop()
 {
-  GetInstance().Loop();
+  GetInstance().MessageLoop();
 }
 
-void FirmataThread::AnalogLoop()
+void FirmataThread::FirmataSamplingLoop()
 {
-#if defined(ENABLE_ANALOG)
-  GetInstance().GetAnalog()->Loop();
-#endif
-}
-
-void FirmataThread::CPUFanLoop()
-{
-#if defined(ENABLE_CPU_FAN)
-  GetInstance().GetCPUFan()->Loop();
-#endif
-}
-
-void FirmataThread::DHTLoop()
-{
-#if defined(ENABLE_DHT)
-  GetInstance().GetDHT()->Loop();
-#endif
-}
-
-void FirmataThread::DiagnosticsLoop()
-{
-#if defined(ENABLE_DIAGNOSTICS)
-  GetInstance().GetDiagnostics()->Loop();
-#endif
-}
-
-void FirmataThread::DigitalLoop()
-{
-#if defined(ENABLE_DIGITAL)
-  GetInstance().GetDigital()->Loop();
-#endif
-}
-
-void FirmataThread::I2CLoop()
-{
-#if defined(ENABLE_I2C)
-  GetInstance().GetI2C()->Loop();
-#endif
-}
-
-void FirmataThread::ServoLoop()
-{
-#if defined(ENABLE_SERVO)
-  GetInstance().GetServo()->Loop();
-#endif
-}
-
-void FirmataThread::SonarLoop()
-{
-#if defined(ENABLE_SONAR)
-  GetInstance().GetSonar()->Loop();
-#endif
-}
-
-void FirmataThread::SPILoop()
-{
-#if defined(ENABLE_SPI)
-  GetInstance().GetSPI()->Loop();
-#endif
-}
-
-void FirmataThread::StepperLoop()
-{
-#if defined(ENABLE_STEPPER)
-  GetInstance().GetStepper()->Loop();
-#endif
+  GetInstance().SamplingLoop();
 }

@@ -18,44 +18,11 @@
 
 #include <Arduino.h>
 #include <FirmataExpress.h>
-#include <Scheduler.h>
 #include <Ultrasonic.h>
 
 using namespace OASIS;
 
-namespace OASIS
-{
-
-// Threading constants
-constexpr size_t SONAR_STACK_SIZE = 64; // Default is 128
-
-} // namespace OASIS
-
-void FirmataSonar::Setup(void (*loopFunc)())
-{
-  Scheduler.startLoop(loopFunc, SONAR_STACK_SIZE);
-}
-
-void FirmataSonar::Reset()
-{
-  // Stop pinging
-  m_numActiveSonars = 0;
-
-  for (int i = 0; i < MAX_SONARS; i++)
-  {
-    m_sonarPinNumbers[i] = PIN_MODE_IGNORE;
-    Ultrasonic*& sonar = m_sonars[i];
-    if (sonar != nullptr)
-    {
-      delete sonar;
-      sonar = nullptr;
-    }
-  }
-
-  m_numActiveSonars = 0;
-}
-
-void FirmataSonar::Loop()
+void FirmataSonar::Sample()
 {
   if (m_numActiveSonars)
   {
@@ -74,9 +41,6 @@ void FirmataSonar::Loop()
     Firmata.write(m_sonarMSB);
     Firmata.write(END_SYSEX);
   }
-
-  // TODO
-  delay(1000);
 }
 
 void FirmataSonar::SetSonarMode(uint8_t digitalPin)

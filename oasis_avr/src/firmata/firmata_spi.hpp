@@ -14,21 +14,16 @@
  */
 #pragma once
 
+#include "firmata_subsystem.hpp"
+
 #include <stdint.h>
 
 namespace OASIS
 {
 
-class FirmataSPI
+class FirmataSPI : public FirmataSubsystem
 {
 public:
-  FirmataSPI();
-
-  // Lifecycle functions
-  void Setup(void (*loopFunc)());
-  void Reset();
-  void Loop();
-
   // SPI functions
   bool EnableSpiPins();
   /*!

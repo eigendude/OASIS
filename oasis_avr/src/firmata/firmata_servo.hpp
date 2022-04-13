@@ -12,6 +12,8 @@
  */
 #pragma once
 
+#include "firmata_subsystem.hpp"
+
 #include <stdint.h>
 
 #include <Boards.h>
@@ -20,14 +22,9 @@
 namespace OASIS
 {
 
-class FirmataServo
+class FirmataServo : public FirmataSubsystem
 {
 public:
-  // Lifecycle functions
-  void Setup(void (*loopFunc)());
-  void Reset();
-  void Loop();
-
   // Servo functions
   uint8_t GetServoPin(uint8_t digitalPin) const;
   void PrepareServoPin(uint8_t digitalPin);
@@ -42,8 +39,8 @@ private:
   Servo m_servos[MAX_SERVOS]{};
   uint8_t m_servoPinMap[TOTAL_PINS]{};
   uint8_t m_detachedServos[MAX_SERVOS]{};
-  uint8_t m_detachedServoCount = 0;
-  uint8_t m_servoCount = 0;
+  uint8_t m_detachedServoCount{0};
+  uint8_t m_servoCount{0};
 };
 
 } // namespace OASIS

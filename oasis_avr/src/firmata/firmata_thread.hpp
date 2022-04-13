@@ -12,6 +12,8 @@
  */
 #pragma once
 
+#include "utils/timer.hpp"
+
 #include <stdint.h>
 
 #include <Boards.h>
@@ -30,6 +32,7 @@ class FirmataServo;
 class FirmataSonar;
 class FirmataSPI;
 class FirmataStepper;
+class FirmataSubsystem;
 
 class FirmataThread
 {
@@ -44,8 +47,7 @@ public:
 
   // Lifecycle functions
   void Setup();
-  void Reset();
-  bool IsResetting() const { return m_isResetting; }
+  void Reset() {} // TODO
 
   // Subsystems (const)
   const FirmataAnalog* GetAnalog() const { return m_analog; }
@@ -72,26 +74,36 @@ public:
   FirmataStepper* GetStepper() { return m_stepper; }
 
   // Timer functions
-  void SetSamplingInterval(uint8_t samplingIntervalMs);
+  void SetSamplingInterval(uint32_t samplingIntervalMs)
+  {
+    m_samplingIntervalMs = samplingIntervalMs;
+  }
 
 private:
+  enum SubsystemID
+  {
+    ANALOG,
+    CPU_FAN,
+    DHT,
+    DIAGNOSTICS,
+    DIGITAL,
+    I2C,
+    SERVO,
+    SONAR,
+    SPI,
+    STEPPER,
+
+    // Leave this last to get a count of subsystems
+    SUBSYSTEM_COUNT
+  };
+
   // Threading functions
-  void Loop();
+  void MessageLoop();
+  void SamplingLoop();
 
   // Static threading functions
-  static void FirmataLoop();
-
-  // Subsystem static access
-  static void AnalogLoop();
-  static void CPUFanLoop();
-  static void DHTLoop();
-  static void DiagnosticsLoop();
-  static void DigitalLoop();
-  static void I2CLoop();
-  static void ServoLoop();
-  static void SonarLoop();
-  static void SPILoop();
-  static void StepperLoop();
+  static void FirmataMessageLoop();
+  static void FirmataSamplingLoop();
 
   // Subsystems
   FirmataAnalog* m_analog{nullptr};
@@ -105,11 +117,11 @@ private:
   FirmataSPI* m_spi{nullptr};
   FirmataStepper* m_stepper{nullptr};
 
-  // Lifecycle state
-  bool m_isResetting = false;
+  FirmataSubsystem* m_subsystems[SubsystemID::SUBSYSTEM_COUNT]{};
 
-  // Timer variables
-  unsigned int m_samplingIntervalMs = 19; // How often to run the main loop (in ms)
+  // Timing parameters
+  Timer m_samplingTimer;
+  uint32_t m_samplingIntervalMs{0};
 };
 
 } // namespace OASIS

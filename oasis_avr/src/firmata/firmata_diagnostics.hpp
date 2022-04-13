@@ -7,23 +7,26 @@
  */
 #pragma once
 
+#include "firmata_subsystem.hpp"
+#include "utils/timer.hpp"
+
 #include <stdint.h>
 
 namespace OASIS
 {
 
-class FirmataDiagnostics
+class FirmataDiagnostics : public FirmataSubsystem
 {
 public:
-  // Lifecycle functions
-  void Setup(void (*loopFunc)());
-  void Reset();
-  void Loop();
+  // Implementation of FirmataSubsystem
+  void Sample() override;
 
   void ConfigureMemoryReporting(uint32_t reportPeriodMs) { m_reportPeriodMs = reportPeriodMs; }
 
 private:
-  uint32_t m_reportPeriodMs = 0;
+  // Timing parameters
+  Timer m_reportTimer;
+  uint32_t m_reportPeriodMs{0};
 };
 
 } // namespace OASIS

@@ -23,25 +23,6 @@
 
 using namespace OASIS;
 
-namespace OASIS
-{
-
-// Threading constants
-constexpr size_t I2C_STACK_SIZE = 64; // Default is 128
-
-} // namespace OASIS
-
-void FirmataI2C::Setup(void (*loopFunc)())
-{
-  Scheduler.startLoop(loopFunc, I2C_STACK_SIZE);
-}
-
-void FirmataI2C::Reset()
-{
-  if (m_isI2CEnabled)
-    DisableI2CPins();
-}
-
 void FirmataI2C::Loop()
 {
   // Report I2C data for all device with read continuous mode enabled

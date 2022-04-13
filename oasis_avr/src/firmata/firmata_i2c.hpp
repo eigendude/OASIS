@@ -12,6 +12,8 @@
  */
 #pragma once
 
+#include "firmata_subsystem.hpp"
+
 #include <stdint.h>
 
 #include <binary.h>
@@ -34,13 +36,11 @@ static constexpr uint8_t I2C_MAX_QUERIES =             8;
 static constexpr uint8_t I2C_REGISTER_NOT_SPECIFIED =  -1;
 // clang-format on
 
-class FirmataI2C
+class FirmataI2C : public FirmataSubsystem
 {
 public:
-  // Lifecycle functions
-  void Setup(void (*loopFunc)());
-  void Reset();
-  void Loop();
+  // Implementation of FirmataSubsystem
+  void Loop() override;
 
   // I2C functions
   void SetI2CMode(uint8_t digitalPin);

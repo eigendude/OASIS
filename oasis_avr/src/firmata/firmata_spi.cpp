@@ -27,9 +27,6 @@ using namespace OASIS;
 namespace OASIS
 {
 
-// Threading constants
-constexpr size_t SPI_STACK_SIZE = 96; // Default is 128
-
 // SPI constants
 constexpr uint8_t SPI_BEGIN = 0x00; // Initialize the SPI bus for the given channel
 constexpr uint8_t SPI_DEVICE_CONFIG = 0x01;
@@ -42,39 +39,6 @@ constexpr uint8_t SPI_END = 0x06;
 constexpr uint8_t MAX_SPI_BUF_SIZE = 32;
 
 } // namespace OASIS
-
-FirmataSPI::FirmataSPI()
-{
-  Reset();
-}
-
-void FirmataSPI::Setup(void (*loopFunc)())
-{
-  Scheduler.startLoop(loopFunc, SPI_STACK_SIZE);
-}
-
-void FirmataSPI::Reset()
-{
-  // Reset SPI
-  if (m_isSpiEnabled)
-    SPI.end();
-
-  // Reset state
-  m_isSpiEnabled = false;
-
-  for (uint8_t i = 0; i < SPI_MAX_DEVICES; ++i)
-  {
-    m_config[i].deviceIdChannel = static_cast<uint8_t>(-1);
-    m_config[i].csPin = static_cast<uint8_t>(-1);
-    m_config[i].used = false;
-  }
-}
-
-void FirmataSPI::Loop()
-{
-  // TODO
-  delay(1000);
-}
 
 bool FirmataSPI::EnableSpiPins()
 {

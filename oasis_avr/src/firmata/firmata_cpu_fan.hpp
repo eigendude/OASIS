@@ -7,6 +7,8 @@
  */
 #pragma once
 
+#include "firmata_subsystem.hpp"
+
 #include <stdint.h>
 
 namespace OASIS
@@ -34,13 +36,11 @@ namespace OASIS
  *
  * TODO: Support multiple tachometers
  */
-class FirmataCPUFan
+class FirmataCPUFan : public FirmataSubsystem
 {
 public:
-  // Lifecycle functions
-  void Setup(void (*loopFunc)());
-  void Reset();
-  void Loop();
+  // Implementation of FirmataSubsystem
+  void Sample() override;
 
   // CPU fan functions
   bool SupportsPWM(uint8_t digitalPin);
@@ -50,6 +50,9 @@ public:
   void PWMWrite(uint8_t digitalPin, float dutyCycle);
 
 private:
+  // TODO: Support multiple tachometers
+  static FirmataCPUFan& GetInstance();
+
   // Configure Timer 1 (pins 9, 10) to output 25kHz PWM
   void SetupTimer1();
 
@@ -68,16 +71,16 @@ private:
 
   // Interrupt handler. Stores the timestamps of the last 2 interrupts and
   // handles debouncing.
-  static void TachometerISR();
+  static void StaticTachometerISR();
+  void TachometerISR();
 
   // Calculates the RPM based on the timestamps of the last 2 interrupts. Can
   // be called at any time.
-  static unsigned long CalcRPM();
+  unsigned long CalcRPM();
 
-  // TODO: Support multiple tachometers
-  static int m_tachometerPin; // -1 if no tachometer is enabled
-  static unsigned long volatile m_timestamp1;
-  static unsigned long volatile m_timestamp2;
+  int m_tachometerPin{-1}; // -1 if no tachometer is enabled
+  unsigned long volatile m_timestamp1{0};
+  unsigned long volatile m_timestamp2{0};
 };
 
 } // namespace OASIS

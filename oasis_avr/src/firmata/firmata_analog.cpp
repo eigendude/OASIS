@@ -19,29 +19,8 @@
 
 using namespace OASIS;
 
-namespace OASIS
+void FirmataAnalog::Sample()
 {
-
-// Threading constants
-constexpr size_t ANALOG_STACK_SIZE = 96; // Default is 128
-
-} // namespace OASIS
-
-void FirmataAnalog::Setup(void (*loopFunc)())
-{
-  Scheduler.startLoop(loopFunc, ANALOG_STACK_SIZE);
-}
-
-void FirmataAnalog::Reset()
-{
-  // By default, do not report any analog inputs
-  m_analogInputsToReport = 0;
-}
-
-void FirmataAnalog::Loop()
-{
-  m_reportTimer.SetTimeout(1000);
-
   for (uint8_t pin = 0; pin < TOTAL_PINS; ++pin)
   {
     if (IS_PIN_ANALOG(pin) && Firmata.getPinMode(pin) == PIN_MODE_ANALOG)
@@ -55,8 +34,6 @@ void FirmataAnalog::Loop()
       }
     }
   }
-
-  delay(m_reportTimer.TimeLeft());
 }
 
 void FirmataAnalog::SetAnalogMode(uint8_t pin)
@@ -75,18 +52,15 @@ void FirmataAnalog::EnableAnalogInput(uint8_t analogPin, bool enable)
     if (enable)
     {
       m_analogInputsToReport |= (1 << analogPin);
-    }
-    else
-    {
-      m_analogInputsToReport &= ~(1 << analogPin);
-    }
 
-    if (enable)
-    {
       // Send pin value immediately. This is helpful when connected via
       // ethernet, WiFi or Bluetooth so pin states can be known upon
       // reconnecting.
       Firmata.sendAnalog(analogPin, analogRead(analogPin));
+    }
+    else
+    {
+      m_analogInputsToReport &= ~(1 << analogPin);
     }
   }
 }

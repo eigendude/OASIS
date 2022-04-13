@@ -22,23 +22,9 @@ namespace OASIS
 static constexpr uint8_t DHT_INTER_PING_INTERVAL_MS = 2200;
 static constexpr uint8_t DHTLIB_OK = 0;
 
-// Threading constants
-constexpr size_t DHT_STACK_SIZE = 64; // Default is 128
-
 } // namespace OASIS
 
-void FirmataDHT::Setup(void (*loopFunc)())
-{
-  Scheduler.startLoop(loopFunc, DHT_STACK_SIZE);
-}
-
-void FirmataDHT::Reset()
-{
-  // Stop pinging DHT
-  m_numActiveDHTs = 0;
-}
-
-void FirmataDHT::Loop()
+void FirmataDHT::Sample()
 {
   if (m_numActiveDHTs != 0)
   {
@@ -107,9 +93,6 @@ void FirmataDHT::Loop()
 
     Firmata.write(END_SYSEX);
   }
-
-  // TODO
-  delay(1000);
 }
 
 void FirmataDHT::EnableDHT(uint8_t digitalPin)

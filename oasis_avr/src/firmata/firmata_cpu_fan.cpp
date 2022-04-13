@@ -19,9 +19,6 @@ using namespace OASIS;
 namespace OASIS
 {
 
-// Threading constants
-constexpr size_t CPU_FAN_STACK_SIZE = 96; // Default is 128
-
 // Fan constants
 // 0 is fine for most fans, crappy fans may require 10 or 20 to filter out noise
 constexpr unsigned int DEBOUNCE_MS = 0;
@@ -38,26 +35,16 @@ float Clamp(float value, float min, float max)
     value = max;
   return value;
 }
+
 } // namespace OASIS
 
-int FirmataCPUFan::m_tachometerPin{-1};
-unsigned long volatile FirmataCPUFan::m_timestamp1{0};
-unsigned long volatile FirmataCPUFan::m_timestamp2{0};
-
-void FirmataCPUFan::Setup(void (*loopFunc)())
+FirmataCPUFan& FirmataCPUFan::GetInstance()
 {
-  Scheduler.startLoop(loopFunc, CPU_FAN_STACK_SIZE);
+  static FirmataCPUFan instance;
+  return instance;
 }
 
-void FirmataCPUFan::Reset()
-{
-  // TODO
-  m_tachometerPin = -1;
-  m_timestamp1 = 0;
-  m_timestamp2 = 0;
-}
-
-void FirmataCPUFan::Loop()
+void FirmataCPUFan::Sample()
 {
   if (m_tachometerPin != -1)
   {
@@ -73,12 +60,6 @@ void FirmataCPUFan::Loop()
     Firmata.write(static_cast<uint8_t>((rpm >> 14) & 0x7F));
 
     Firmata.write(END_SYSEX);
-
-    delay(1000);
-  }
-  else
-  {
-    yield();
   }
 }
 
@@ -150,7 +131,7 @@ void FirmataCPUFan::SetPinModeTach(uint8_t digitalPin, bool enable)
     pinMode(digitalPin, INPUT_PULLUP);
 
     // Set tachISR to be triggered when the signal on the sense pin goes low
-    attachInterrupt(digitalPinToInterrupt(digitalPin), TachometerISR, FALLING);
+    attachInterrupt(digitalPinToInterrupt(digitalPin), StaticTachometerISR, FALLING);
 
     Firmata.setPinMode(digitalPin, PIN_MODE_CPU_FAN_TACH);
     Firmata.setPinState(digitalPin, 0);
@@ -232,6 +213,11 @@ void FirmataCPUFan::SetPWM2(float dutyCycle)
   dutyCycle = Clamp(dutyCycle, 0.0f, 1.0f);
   OCR2B = static_cast<uint16_t>(79 * dutyCycle);
 #endif
+}
+
+void FirmataCPUFan::StaticTachometerISR()
+{
+  return GetInstance().TachometerISR();
 }
 
 void FirmataCPUFan::TachometerISR()

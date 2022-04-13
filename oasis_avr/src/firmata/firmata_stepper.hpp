@@ -12,6 +12,8 @@
  */
 #pragma once
 
+#include "firmata_subsystem.hpp"
+
 #include <stdint.h>
 
 class Stepper;
@@ -24,14 +26,9 @@ static constexpr uint8_t STEPPER_COMMAND_CONFIGURE = 0;
 static constexpr uint8_t STEPPER_COMMAND_STEP = 1;
 static constexpr uint8_t STEPPER_COMMAND_LIBRARY_VERSION = 2;
 
-class FirmataStepper
+class FirmataStepper : public FirmataSubsystem
 {
 public:
-  // Lifecycle functions
-  void Setup(void (*loopFunc)());
-  void Reset();
-  void Loop();
-
   // Stepper motor functions
   void SetStepperPin(uint8_t digitalPin);
   void SendStepperLibraryVersion();

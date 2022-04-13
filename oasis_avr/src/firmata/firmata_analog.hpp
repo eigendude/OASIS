@@ -12,20 +12,18 @@
  */
 #pragma once
 
-#include "utils/timer.hpp"
+#include "firmata/firmata_subsystem.hpp"
 
 #include <stdint.h>
 
 namespace OASIS
 {
 
-class FirmataAnalog
+class FirmataAnalog : public FirmataSubsystem
 {
 public:
-  // Lifecycle functions
-  void Setup(void (*loopFunc)());
-  void Reset();
-  void Loop();
+  // Implementation of FirmataSubsystem
+  void Sample() override;
 
   // Analog pin functions
   void SetAnalogMode(uint8_t pin);
@@ -33,10 +31,7 @@ public:
 
 private:
   // Analog pin state
-  uint16_t m_analogInputsToReport = 0; // Bitwise array to store pin reporting
-
-  // Timing parameters
-  Timer m_reportTimer;
+  uint16_t m_analogInputsToReport{0}; // Bitwise array to store pin reporting
 };
 
 } // namespace OASIS

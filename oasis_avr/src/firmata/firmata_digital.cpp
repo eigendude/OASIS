@@ -19,41 +19,13 @@
 
 using namespace OASIS;
 
-namespace OASIS
+namespace
 {
 
-// Threading constants
-constexpr size_t DIGITAL_STACK_SIZE = 96; // Default is 128
+// Timing parameters
+constexpr unsigned int FORCE_SEND_INTERVAL_MS = 1000;
 
-} // namespace OASIS
-
-void FirmataDigital::Setup(void (*loopFunc)())
-{
-  Scheduler.startLoop(loopFunc, DIGITAL_STACK_SIZE);
-}
-
-void FirmataDigital::Reset()
-{
-  for (uint8_t i = 0; i < TOTAL_PORTS; ++i)
-  {
-    // By default, reporting off
-    m_reportPINs[i] = 0;
-    m_portConfigInputs[i] = 0; // Until activated
-    m_previousPINs[i] = 0;
-  }
-
-  // Send digital inputs to set the initial state on the host computer, since
-  // once in the loop(), this firmware will only send on change
-  //
-  // TODO: This can never execute, since no pins default to digital input
-  // but it will be needed when/if we support EEPROM stored config
-  /*
-  for (uint8_t i = 0; i < TOTAL_PORTS; ++i)
-  {
-    OutputPort(i, readPort(i, m_portConfigInputs[i]), true);
-  }
-  */
-}
+} // namespace
 
 void FirmataDigital::Loop()
 {
@@ -62,14 +34,12 @@ void FirmataDigital::Loop()
   if (m_reportTimer.IsExpired())
   {
     forceSend = true;
-    m_reportTimer.SetTimeout(1000);
+    m_reportTimer.SetTimeout(FORCE_SEND_INTERVAL_MS);
   }
 
   // Read as fast as possible, check for changes and output them to the FTDI
   // buffer
   CheckDigitalInputs(forceSend);
-
-  yield();
 }
 
 void FirmataDigital::SetDigitalPinMode(uint8_t digitalPin, int mode)

@@ -12,6 +12,7 @@
  */
 #pragma once
 
+#include "firmata_subsystem.hpp"
 #include "utils/timer.hpp"
 
 #include <stdint.h>
@@ -21,13 +22,11 @@
 namespace OASIS
 {
 
-class FirmataDigital
+class FirmataDigital : public FirmataSubsystem
 {
 public:
-  // Lifecycle functions
-  void Setup(void (*loopFunc)());
-  void Reset();
-  void Loop();
+  // Implementation of FirmataSubsystem
+  void Loop() override;
 
   // Digital pin functions
   void SetDigitalPinMode(uint8_t digitalPin, int pinMode);
