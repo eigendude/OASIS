@@ -99,8 +99,6 @@ void FirmataCallbacks::PWMWriteCallback(uint8_t pin, int analogValue)
     {
 #if defined(ENABLE_CPU_FAN)
       m_thread->GetCPUFan()->PWMWrite(pin, analogValue);
-#else
-      Firmata.sendString("CPU fan not enabled");
 #endif
       break;
     }
@@ -109,8 +107,6 @@ void FirmataCallbacks::PWMWriteCallback(uint8_t pin, int analogValue)
     {
 #if defined(ENABLE_DIGITAL)
       m_thread->GetDigital()->PWMWrite(pin, analogValue);
-#else
-      Firmata.sendString("Digital not enabled");
 #endif
       break;
     }
@@ -119,8 +115,6 @@ void FirmataCallbacks::PWMWriteCallback(uint8_t pin, int analogValue)
     {
 #if defined(ENABLE_SERVO)
       m_thread->GetServo()->WriteServo(pin, analogValue);
-#else
-      Firmata.sendString("Servo not enabled");
 #endif
       break;
     }
@@ -134,8 +128,6 @@ void FirmataCallbacks::DigitalWriteCallback(uint8_t digitalPort, int portValue)
 {
 #if defined(ENABLE_DIGITAL)
   m_thread->GetDigital()->DigitalWrite(digitalPort, portValue);
-#else
-  Firmata.sendString("Digital not enabled");
 #endif
 }
 
@@ -143,8 +135,6 @@ void FirmataCallbacks::ReportAnalogCallback(uint8_t analogPin, int enableReporti
 {
 #if defined(ENABLE_ANALOG)
   m_thread->GetAnalog()->EnableAnalogInput(analogPin, enableReporting != 0);
-#else
-  Firmata.sendString("Analog not enabled");
 #endif
 }
 
@@ -152,8 +142,6 @@ void FirmataCallbacks::ReportDigitalCallback(uint8_t digitalPort, int enableRepo
 {
 #if defined(ENABLE_DIGITAL)
   m_thread->GetDigital()->EnableDigitalInput(digitalPort, enableReporting != 0);
-#else
-  Firmata.sendString("Digital not enabled");
 #endif
 
   // Do not disable analog reporting on these 8 pins, to allow some pins to be
@@ -259,8 +247,6 @@ void FirmataCallbacks::SetPinModeCallback(uint8_t pin, int mode)
     {
 #if defined(ENABLE_ANALOG)
       m_thread->GetAnalog()->SetAnalogMode(pin);
-#else
-      Firmata.sendString("Analog not enabled");
 #endif
       break;
     }
@@ -270,8 +256,6 @@ void FirmataCallbacks::SetPinModeCallback(uint8_t pin, int mode)
 #if defined(ENABLE_CPU_FAN)
       if (IS_PIN_DIGITAL(pin))
         m_thread->GetCPUFan()->SetPinModePWM(PIN_TO_DIGITAL(pin), true);
-#else
-      Firmata.sendString("CPU fan not enabled");
 #endif
       break;
     }
@@ -281,8 +265,6 @@ void FirmataCallbacks::SetPinModeCallback(uint8_t pin, int mode)
 #if defined(ENABLE_CPU_FAN)
       if (IS_PIN_DIGITAL(pin))
         m_thread->GetCPUFan()->SetPinModeTach(PIN_TO_DIGITAL(pin), true);
-#else
-      Firmata.sendString("CPU fan not enabled");
 #endif
       break;
     }
@@ -292,8 +274,6 @@ void FirmataCallbacks::SetPinModeCallback(uint8_t pin, int mode)
 #if defined(ENABLE_DHT)
       if (IS_PIN_DIGITAL(pin))
         m_thread->GetDHT()->EnableDHT(PIN_TO_DIGITAL(pin));
-#else
-      Firmata.sendString("DHT not enabled");
 #endif
       break;
     }
@@ -306,8 +286,6 @@ void FirmataCallbacks::SetPinModeCallback(uint8_t pin, int mode)
 #if defined(ENABLE_DIGITAL)
       if (IS_PIN_DIGITAL(pin))
         m_thread->GetDigital()->SetDigitalPinMode(PIN_TO_DIGITAL(pin), mode);
-#else
-      Firmata.sendString("Digital not enabled");
 #endif
       break;
     }
@@ -317,8 +295,6 @@ void FirmataCallbacks::SetPinModeCallback(uint8_t pin, int mode)
 #if defined(ENABLE_I2C)
       if (IS_PIN_DIGITAL(pin))
         m_thread->GetI2C()->SetI2CMode(PIN_TO_DIGITAL(pin));
-#else
-      Firmata.sendString("I2C not enabled");
 #endif
       break;
     }
@@ -328,8 +304,6 @@ void FirmataCallbacks::SetPinModeCallback(uint8_t pin, int mode)
 #if defined(ENABLE_SERVO)
       if (IS_PIN_DIGITAL(pin))
         m_thread->GetServo()->SetServoMode(PIN_TO_DIGITAL(pin));
-#else
-      Firmata.sendString("Servo not enabled");
 #endif
       break;
     }
@@ -339,8 +313,6 @@ void FirmataCallbacks::SetPinModeCallback(uint8_t pin, int mode)
 #if defined(ENABLE_SONAR)
       if (IS_PIN_DIGITAL(pin))
         m_thread->GetSonar()->SetSonarMode(PIN_TO_DIGITAL(pin));
-#else
-      Firmata.sendString("Sonar not enabled");
 #endif
       break;
     }
@@ -349,8 +321,6 @@ void FirmataCallbacks::SetPinModeCallback(uint8_t pin, int mode)
     {
 #if defined(ENABLE_SPI)
       // SPI is enabled when the SPI_DATA sysex command is sent
-#else
-      Firmata.sendString("SPI not enabled");
 #endif
       break;
     }
@@ -360,8 +330,6 @@ void FirmataCallbacks::SetPinModeCallback(uint8_t pin, int mode)
 #if defined(ENABLE_STEPPER)
       if (IS_PIN_DIGITAL(pin))
         m_thread->GetStepper()->SetStepperPin(PIN_TO_DIGITAL(pin));
-#else
-      Firmata.sendString("Stepper not enabled");
 #endif
       break;
     }
@@ -388,8 +356,6 @@ void FirmataCallbacks::SetPinValueCallback(uint8_t pin, int value)
       digitalWrite(PIN_TO_DIGITAL(pin), value);
     }
   }
-#else
-  Firmata.sendString("Digital not enabled");
 #endif
 }
 
@@ -597,8 +563,6 @@ void FirmataCallbacks::SysexCallback(uint8_t command, uint8_t argc, uint8_t* arg
 
         m_thread->GetDiagnostics()->ConfigureMemoryReporting(memoryPeriodMs);
       }
-#else
-      Firmata.sendString("Diagnostics not enabled");
 #endif
 
       break;
@@ -611,8 +575,6 @@ void FirmataCallbacks::SysexCallback(uint8_t command, uint8_t argc, uint8_t* arg
       const int DHT_type = argv[1];
 
       m_thread->GetDHT()->ConfigureDHT(DHT_pin, DHT_type);
-#else
-      Firmata.sendString("DHT not enabled");
 #endif
 
       break;
@@ -767,8 +729,6 @@ void FirmataCallbacks::SysexCallback(uint8_t command, uint8_t argc, uint8_t* arg
         default:
           break;
       }
-#else
-      Firmata.sendString("I2C not enabled");
 #endif
 
       break;
@@ -784,8 +744,6 @@ void FirmataCallbacks::SysexCallback(uint8_t command, uint8_t argc, uint8_t* arg
 
       if (!m_thread->GetI2C()->IsI2CEnabled())
         m_thread->GetI2C()->EnableI2CPins();
-#else
-      Firmata.sendString("I2C not enabled");
 #endif
 
       break;
@@ -804,8 +762,6 @@ void FirmataCallbacks::SysexCallback(uint8_t command, uint8_t argc, uint8_t* arg
         if (m_thread->GetServo()->AttachServo(PIN_TO_DIGITAL(pin), minPulse, maxPulse))
           SetPinModeCallback(pin, PIN_MODE_SERVO);
       }
-#else
-      Firmata.sendString("Servo not enabled");
 #endif
 
       break;
@@ -832,8 +788,6 @@ void FirmataCallbacks::SysexCallback(uint8_t command, uint8_t argc, uint8_t* arg
       {
         Firmata.sendString("PING_CONFIG Error: Exceeded number of supported ping devices");
       }
-#else
-      Firmata.sendString("Sonar not enabled");
 #endif
 
       break;
@@ -902,8 +856,6 @@ void FirmataCallbacks::SysexCallback(uint8_t command, uint8_t argc, uint8_t* arg
       {
         Firmata.sendString("STEPPER CONFIG Error: UNKNOWN STEPPER COMMAND");
       }
-#else
-      Firmata.sendString("Stepper not enabled");
 #endif
 
       break;
