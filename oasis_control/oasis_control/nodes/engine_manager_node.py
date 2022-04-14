@@ -9,7 +9,7 @@
 ################################################################################
 
 #
-# Manager for a LEGO engine engine
+# Manager for a LEGO train's engine
 #
 
 import asyncio
