@@ -16,3 +16,9 @@
 [submodule "oasis_avr/libraries/Adafruit_BluefruitLE_nRF51"]
 	path = oasis_avr/libraries/Adafruit_BluefruitLE_nRF51
 	url = https://github.com/adafruit/Adafruit_BluefruitLE_nRF51.git
+[submodule "oasis_avr/libraries/OneWire"]
+	path = oasis_avr/libraries/OneWire
+	url = https://github.com/PaulStoffregen/OneWire.git
+[submodule "oasis_avr/libraries/AccelStepper"]
+	path = oasis_avr/libraries/AccelStepper
+	url = https://github.com/waspinator/AccelStepper.git
