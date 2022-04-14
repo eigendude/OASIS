@@ -8,7 +8,6 @@ name: OASIS ROS
 # Controls when the action will run. Triggers the workflow on push or pull
 # request events
 on:
-  push:
   pull_request:
   schedule:
     # Schedule the workflow to run at midnight on Sunday (UTC time)
