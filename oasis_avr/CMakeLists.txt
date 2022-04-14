@@ -65,6 +65,9 @@ if (HOST_NAME STREQUAL station)
   # 12232 flash (37%), 762 data (37%)
   # Heap: 1020, stack: 615, free: 396 (19%)
   #
+  # Telemetrix with no external libraries enabled:
+  # 12380 flash (13%), 1036 data (50%)
+  #
   set(ENABLE_ANALOG ON)
   set(ENABLE_BLUEFRUIT OFF)
   set(ENABLE_CPU_FAN ON)
@@ -72,6 +75,7 @@ if (HOST_NAME STREQUAL station)
   set(ENABLE_DIAGNOSTICS ON)
   set(ENABLE_DIGITAL ON)
   set(ENABLE_I2C OFF)
+  set(ENABLE_ONE_WIRE OFF)
   set(ENABLE_SERVO OFF)
   set(ENABLE_SONAR OFF)
   set(ENABLE_SPI OFF)
@@ -112,17 +116,39 @@ elseif (HOST_NAME STREQUAL jetson)
   # 15288 flash (47%), 1016 data (49%)
   # Heap: 1274, stack: 305, free: 452 (78%)
   #
+  # Telemetrix
+  # 18868 flash (58%), 1579 data (77%)
+  #
+  # Telemetrix with only I2C disabled:
+  # 16176 flash (60%), 1297 data (63%)
+  #
+  # Telemetrix with only steppers disabled:
+  # 13320 flash (41%), 1541 data (65%)
+  #
+  # Telemetrix with only 1-Wire disabled:
+  # 17480 flash (41%), 1565 data (65%)
+  #
+  # Telemetrix with all optional features disabled:
+  # 3848 flash (11%), 992 data (48%)
+  #
+  # Telemetrix with LED heartbeat thread
+  # 19494 flash (60%), 1611 data (78%)
+  #
+  # Telemetrix with LED heartbeat thread but not DHT
+  # 18036 flash (55%), 1558 data (76%)
+  #
   set(ENABLE_ANALOG ON)
   set(ENABLE_BLUEFRUIT ON)
-  set(ENABLE_CPU_FAN OFF)
-  set(ENABLE_DHT OFF)
+  set(ENABLE_CPU_FAN ON)
+  set(ENABLE_DHT OFF) # TODO
   set(ENABLE_DIAGNOSTICS ON)
   set(ENABLE_DIGITAL ON)
-  set(ENABLE_I2C OFF)
-  set(ENABLE_SERVO OFF)
-  set(ENABLE_SONAR OFF)
-  set(ENABLE_SPI OFF)
-  set(ENABLE_STEPPER OFF)
+  set(ENABLE_I2C ON)
+  set(ENABLE_ONE_WIRE ON)
+  set(ENABLE_SERVO ON)
+  set(ENABLE_SONAR ON)
+  set(ENABLE_SPI ON)
+  set(ENABLE_STEPPER ON)
 elseif (HOSTNAME STREQUAL cinder)
   # Building leonardo
   set(ARDUINO_VARIANT leonardo)
@@ -158,6 +184,7 @@ elseif (HOSTNAME STREQUAL cinder)
   set(ENABLE_DIAGNOSTICS ON)
   set(ENABLE_DIGITAL OFF)
   set(ENABLE_I2C OFF)
+  set(ENABLE_ONE_WIRE OFF)
   set(ENABLE_SERVO OFF)
   set(ENABLE_SONAR OFF)
   set(ENABLE_SPI OFF)
@@ -173,6 +200,7 @@ else()
   set(ENABLE_DIAGNOSTICS ON)
   set(ENABLE_DIGITAL ON)
   set(ENABLE_I2C OFF)
+  set(ENABLE_ONE_WIRE OFF)
   set(ENABLE_SERVO OFF)
   set(ENABLE_SONAR OFF)
   set(ENABLE_SPI OFF)
@@ -413,6 +441,142 @@ target_compile_definitions(oasis_avr_firmata PRIVATE ${FIRMATA_DEFINITIONS})
 target_link_arduino_libraries(oasis_avr_firmata PRIVATE ${FIRMATA_LIBRARIES})
 
 #
+# Telemetrix
+#
+
+set(TELEMETRIX_SOURCES
+  src/telemetrix/telemetrix_server.cpp
+)
+
+set(TELEMETRIX_DEFINITIONS)
+
+set(TELEMETRIX_LIBRARIES
+  core
+  Scheduler
+)
+
+if (ENABLE_ANALOG)
+  list(APPEND TELEMETRIX_DEFINITIONS
+    -DANALOG_ENABLED=1
+  )
+endif()
+
+if (ENABLE_BLUEFRUIT)
+  list(APPEND TELEMETRIX_DEFINITIONS
+    -DBLUEFRUIT_ENABLED=1
+  )
+  list(APPEND TELEMETRIX_LIBRARIES
+    Adafruit_BluefruitLE_nRF51
+    SPI
+  )
+endif()
+
+if (ENABLE_CPU_FAN)
+  list(APPEND TELEMETRIX_DEFINITIONS
+    -DCPU_FAN_ENABLED=1
+  )
+endif()
+
+if (ENABLE_DHT)
+  list(APPEND TELEMETRIX_DEFINITIONS
+    -DDHT_ENABLED=1
+  )
+  list(APPEND TELEMETRIX_LIBRARIES
+    DHTStable
+  )
+endif()
+
+if (ENABLE_DIAGNOSTICS)
+  list(APPEND TELEMETRIX_DEFINITIONS
+    -DDIAGNOSTICS_ENABLED=1
+  )
+endif()
+
+if (ENABLE_DIGITAL)
+  list(APPEND TELEMETRIX_DEFINITIONS
+    -DDIGITAL_ENABLED=1
+  )
+endif()
+
+if (ENABLE_I2C)
+  list(APPEND TELEMETRIX_DEFINITIONS
+    -DI2C_ENABLED=1
+  )
+  list(APPEND TELEMETRIX_LIBRARIES
+    Wire
+  )
+endif()
+
+if (ENABLE_ONE_WIRE)
+  list(APPEND TELEMETRIX_DEFINITIONS
+    -DONE_WIRE_ENABLED=1
+  )
+  list(APPEND TELEMETRIX_LIBRARIES
+    OneWire
+  )
+endif()
+
+#if (ENABLE_MPU6050)
+#  include_directories(
+#    libraries/i2cdevlib/Arduino/I2Cdev
+#    libraries/i2cdevlib/Arduino/MPU6050
+#  )
+#  list(APPEND TELEMETRIX_SOURCES
+#    src/telemetrix/telemetrix_mpu6050.cpp
+#    libraries/i2cdevlib/Arduino/I2Cdev/I2Cdev.cpp
+#    libraries/i2cdevlib/Arduino/MPU6050/MPU6050.cpp
+#  )
+#  list(APPEND TELEMETRIX_DEFINITIONS
+#    -DENABLE_MPU6050
+#  )
+#  list(APPEND TELEMETRIX_LIBRARIES
+#    Wire
+#  )
+#endif()
+
+if (ENABLE_SERVO)
+  list(APPEND TELEMETRIX_DEFINITIONS
+    -DSERVO_ENABLED=1
+  )
+  list(APPEND TELEMETRIX_LIBRARIES
+    Servo
+  )
+endif()
+
+if (ENABLE_SONAR)
+  list(APPEND TELEMETRIX_DEFINITIONS
+    -DSONAR_ENABLED=1
+  )
+  list(APPEND TELEMETRIX_LIBRARIES
+    Ultrasonic
+  )
+endif()
+
+if (ENABLE_SPI)
+  list(APPEND TELEMETRIX_DEFINITIONS
+    -DSPI_ENABLED=1
+  )
+  list(APPEND TELEMETRIX_LIBRARIES
+    SPI
+  )
+endif()
+
+if (ENABLE_STEPPER)
+  list(APPEND TELEMETRIX_DEFINITIONS
+    -DSTEPPERS_ENABLED=1
+  )
+  list(APPEND TELEMETRIX_LIBRARIES
+    AccelStepper
+  )
+endif()
+
+add_library(oasis_avr_telemetrix ${TELEMETRIX_SOURCES})
+
+target_compile_definitions(oasis_avr_telemetrix PRIVATE ${TELEMETRIX_DEFINITIONS})
+
+target_link_arduino_libraries(oasis_avr_telemetrix PRIVATE ${TELEMETRIX_LIBRARIES})
+
+#
 # LEDs
 #
 
@@ -449,24 +613,56 @@ target_link_arduino_libraries(oasis_avr_utils PRIVATE
 # firmata_node
 #
 
-add_executable(firmata_node
-  src/ros/firmata_node.cpp
+# Firmata is being replaced by Telemetrix, so only build the conductor firmware
+if (HOST_NAME STREQUAL station)
+  add_executable(firmata_node
+    src/ros/firmata_node.cpp
+  )
+
+  target_link_libraries(firmata_node PRIVATE
+    oasis_avr_firmata
+    oasis_avr_leds
+    oasis_avr_utils
+  )
+
+  target_link_arduino_libraries(firmata_node PRIVATE
+    ${FIRMATA_LIBRARIES}
+  )
+
+  # This is needed for the generation of HEX binary and uploading it
+  target_enable_arduino_upload(firmata_node)
+
+  install(
+    TARGETS
+      firmata_node
+    DESTINATION
+      share/${PROJECT_NAME}
+  )
+endif()
+
+#
+# telemetrix_node
+#
+
+add_executable(telemetrix_node
+  src/ros/telemetrix_node.cpp
 )
 
-target_link_libraries(firmata_node PRIVATE
-  oasis_avr_firmata
+target_link_libraries(telemetrix_node PRIVATE
+  oasis_avr_telemetrix
   oasis_avr_leds
-  oasis_avr_utils
 )
 
-target_link_arduino_libraries(firmata_node PRIVATE ${FIRMATA_LIBRARIES})
+target_link_arduino_libraries(telemetrix_node PRIVATE
+  ${TELEMETRIX_LIBRARIES}
+)
 
 # This is needed for the generation of HEX binary and uploading it
-target_enable_arduino_upload(firmata_node)
+target_enable_arduino_upload(telemetrix_node)
 
 install(
   TARGETS
-    firmata_node
+    telemetrix_node
   DESTINATION
     share/${PROJECT_NAME}
 )
