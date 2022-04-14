@@ -191,6 +191,38 @@ def generate_launch_description() -> LaunchDescription:
             ],
         )
 
+    # Template for Telemetrix bridges
+    def get_telemetrix_bridge(hostname: str, mcu_name: str) -> Node:
+        return Node(
+            namespace=ROS_NAMESPACE,
+            package=PYTHON_PACKAGE_NAME,
+            executable="telemetrix_bridge",
+            name=f"{mcu_name}_bridge_{hostname}",
+            output="screen",
+            emulate_tty=True,
+            parameters=[
+                {
+                    "com_port": AVR_COM_PORT,
+                },
+            ],
+            remappings=[
+                ("analog_read", f"{mcu_name}/analog_read"),
+                ("analog_reading", f"{mcu_name}/analog_reading"),
+                ("cpu_fan_speed", f"{mcu_name}/cpu_fan_speed"),
+                ("digital_read", f"{mcu_name}/digital_read"),
+                ("digital_reading", f"{mcu_name}/digital_reading"),
+                ("digital_write", f"{mcu_name}/digital_write"),
+                ("mcu_memory", f"{mcu_name}/mcu_memory"),
+                ("mcu_string", f"{mcu_name}/mcu_string"),
+                ("pwm_write", f"{mcu_name}/pwm_write"),
+                ("report_mcu_memory", f"{mcu_name}/report_mcu_memory"),
+                ("servo_write", f"{mcu_name}/servo_write"),
+                ("set_analog_mode", f"{mcu_name}/set_analog_mode"),
+                ("set_digital_mode", f"{mcu_name}/set_digital_mode"),
+                ("set_sampling_interval", f"{mcu_name}/set_sampling_interval"),
+            ],
+        )
+
     # Microcontroller interfaces
     if HOSTNAME == "station":
         mcu_node = "conductor"
@@ -198,7 +230,7 @@ def generate_launch_description() -> LaunchDescription:
         ld.add_action(conductor_bridge_node)
     elif HOSTNAME == "jetson":
         mcu_node = "engine"
-        engine_bridge_node: Node = get_firmata_bridge(HOSTNAME, mcu_node)
+        engine_bridge_node: Node = get_telemetrix_bridge(HOSTNAME, mcu_node)
         ld.add_action(engine_bridge_node)
     elif HOSTNAME == "cinder":
         mcu_node = "leonardo"
