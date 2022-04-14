@@ -19,7 +19,7 @@ set -o nounset
 #
 
 # Version
-CMAKE_VERSION="3.22.2"
+CMAKE_VERSION="3.23.1"
 
 # URL
 CMAKE_URL="https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}.tar.gz"
