@@ -18,8 +18,6 @@ public:
   void Setup();
 
 private:
-  HeartbeatThread() = default;
-
   // Threading functions
   void Loop();
 

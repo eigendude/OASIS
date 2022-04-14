@@ -19,15 +19,16 @@ namespace OASIS
 // Threading constants
 constexpr size_t HEARTBEAT_STACK_SIZE = 64; // Default is 128
 
+// LED parameters
 constexpr unsigned int HEARTBEAT_LED = LED_BUILTIN;
+
+// Instance storage
+HeartbeatThread instance;
 
 } // namespace OASIS
 
 HeartbeatThread& HeartbeatThread::GetInstance()
 {
-  // Instance storage
-  static HeartbeatThread instance;
-
   return instance;
 }
 
