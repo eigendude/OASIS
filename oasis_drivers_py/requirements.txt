@@ -1,1 +1,3 @@
+psutil
 git+https://github.com/eigendude/pymata-express@master#egg=pymata-express
+pyserial
