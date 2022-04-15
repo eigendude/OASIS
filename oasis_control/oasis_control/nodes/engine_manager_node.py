@@ -23,7 +23,7 @@ import rclpy.task
 from rclpy.logging import LoggingSeverity
 from std_msgs.msg import Header as HeaderMsg
 
-from oasis_drivers.firmata.firmata_types import AnalogMode
+from oasis_drivers.telemetrix.telemetrix_types import AnalogMode
 from oasis_msgs.msg import AnalogReading as AnalogReadingMsg
 from oasis_msgs.msg import AVRConstants as AVRConstantsMsg
 from oasis_msgs.msg import EngineState as EngineStateMsg
@@ -81,7 +81,7 @@ CLIENT_SET_SAMPLING_INTERVAL = "set_sampling_interval"
 
 class EngineManagerNode(rclpy.node.Node):
     """
-    A ROS node that manages a LEGO engine.
+    A ROS node that manages a LEGO train engine.
     """
 
     def __init__(self) -> None:
@@ -152,7 +152,7 @@ class EngineManagerNode(rclpy.node.Node):
         self._publish_state_timer: Optional[rclpy.node.Timer] = None
 
     def initialize(self) -> bool:
-        self.get_logger().debug("Waiting for Firmata services...")
+        self.get_logger().debug("Waiting for Telemetrix services...")
         self._report_mcu_memory_client.wait_for_service()
         self._set_analog_mode_client.wait_for_service()
         self._set_sampling_interval_client.wait_for_service()
