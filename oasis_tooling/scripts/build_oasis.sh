@@ -24,6 +24,9 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # Import environment
 source "${SCRIPT_DIR}/env_ros2_desktop.sh"
 
+# Import Python paths
+source "${SCRIPT_DIR}/env_python.sh"
+
 # Import CMake paths
 source "${SCRIPT_DIR}/env_cmake.sh"
 
@@ -51,8 +54,14 @@ set -o nounset
 MAKE_FLAGS=
 COLCON_FLAGS="--merge-install"
 
-# Add ccache support
-COLCON_FLAGS+=" --cmake-args -DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
+# Add ccache support and fix locating Python
+COLCON_FLAGS+=" \
+  --cmake-args \
+    -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+    -DPYTHON_EXECUTABLE:FILEPATH=${PYTHON_EXECUTABLE} \
+    -DPYTHON_INCLUDE_DIR=${PYTHON_INCLUDE_DIR} \
+    $([ ! -f "${PYTHON_LIBRARY_PATH}" ] || echo "-DPYTHON_LIBRARY=${PYTHON_LIBRARY_PATH}") \
+"
 
 # Uncomment these to force building in serial
 #MAKE_FLAGS+=" -j1 -l1"
@@ -64,7 +73,6 @@ COLCON_FLAGS+=" --cmake-args -DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
 
 cd "${STACK_DIRECTORY}"
 
-PATH="${CMAKE_BIN_DIRECTORY}:${PATH}" \
-  MAKE_FLAGS="${MAKE_FLAGS}" \
+MAKE_FLAGS="${MAKE_FLAGS}" \
   colcon build \
     ${COLCON_FLAGS}

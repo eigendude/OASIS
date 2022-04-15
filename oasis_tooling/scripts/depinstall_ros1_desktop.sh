@@ -24,6 +24,9 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # Import environment
 source "${SCRIPT_DIR}/env_ros1_desktop.sh"
 
+# Import Python paths
+source "${SCRIPT_DIR}/env_python.sh"
+
 #
 # Install dependencies
 #
@@ -40,7 +43,24 @@ sudo sh -c 'echo "deb [arch=$(dpkg --print-architecture)] http://packages.ros.or
 sudo apt update
 
 # Install development tools and ROS tools
-sudo apt install -y build-essential cmake python3-colcon-common-extensions python3-rosdep python3-rosinstall-generator python3-vcstool
+sudo apt install -y \
+  build-essential
+python3 -m pip install --upgrade \
+  colcon-common-extensions \
+  colcon-ros \
+  pip \
+  rosdep \
+  rosinstall-generator \
+  setuptools==45.2.0 \
+  vcstool \
+
+# Install missing Python packages
+python3 -m pip install --upgrade \
+  empy \
+  importlib-metadata \
+  importlib-resources \
+  lark-parser \
+  typing-extensions \
 
 #
 # Download the ROS 1 source code
@@ -83,6 +103,7 @@ rosdep install \
   --from-paths "${ROS1_SOURCE_DIRECTORY}" \
   --ignore-src \
   --rosdistro ${ROS1_DISTRO} \
+  --as-root=pip:false \
   -y \
   --skip-keys "python3-pykdl"
 

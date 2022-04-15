@@ -10,7 +10,9 @@ Environment=ROS2_DESKTOP_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/ros
 Environment=OASIS_DEPENDS_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/oasis-depends-${ROS2_DISTRO}/install/setup.bash
 Environment=ROS2_PROJECT_ENV=/home/${USER}/Documents/ros-ws/install/setup.bash
 ExecStartPre=/bin/sleep 10
-ExecStart=/bin/bash -c '( [ ! -f `eval echo "${ROS2_SYSTEM_ENV}"` ] || . `eval echo "${ROS2_SYSTEM_ENV}"` ) && ( [ ! -f `eval echo "${ROS2_DESKTOP_ENV}"` ] || . `eval echo "${ROS2_DESKTOP_ENV}"` ) && . `eval echo "${OASIS_DEPENDS_ENV}"` && . `eval echo "${ROS2_PROJECT_ENV}"` && ros2 launch oasis_control control_launch.py'
+Environment=PYTHON_BIN_DIR=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/python/install/bin
+Environment=PYTHON_LIB_DIR=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/python/install/lib
+ExecStart=/bin/bash -c 'export PATH="${PYTHON_DIR}:${PATH}" && export LD_LIBRARY_PATH="${PYTHON_LIB_DIR}" && ( [ ! -f `eval echo "${ROS2_SYSTEM_ENV}"` ] || . `eval echo "${ROS2_SYSTEM_ENV}"` ) && ( [ ! -f `eval echo "${ROS2_DESKTOP_ENV}"` ] || . `eval echo "${ROS2_DESKTOP_ENV}"` ) && . `eval echo "${OASIS_DEPENDS_ENV}"` && . `eval echo "${ROS2_PROJECT_ENV}"` && ros2 launch oasis_control control_launch.py'
 Restart=on-failure
 
 [Install]

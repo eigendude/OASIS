@@ -24,34 +24,80 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # Import environment
 source "${SCRIPT_DIR}/env_ros2_desktop.sh"
 
+# Import Python paths
+source "${SCRIPT_DIR}/env_python.sh"
+
 #
 # Install dependencies (everything but macOS)
 #
 
 if [[ "${OSTYPE}" != "darwin"* ]]; then
   # Install required dependencies
-  sudo apt install -y curl gnupg2 lsb-release make python3-pip
+  sudo apt install -y curl gnupg2 lsb-release make python3-rosdep
 
   # Add the ROS 2 apt repository
   curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | sudo apt-key add -
 
   # Add the ROS 2 repository to our sources list
   # NOTE: hersute packages not currently available
-  sudo sh -c 'echo "deb [arch=$(dpkg --print-architecture)] http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" > /etc/apt/sources.list.d/ros2.list'
+  echo "deb [arch=$(dpkg --print-architecture)] http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" | \
+    sudo tee /etc/apt/sources.list.d/ros2.list
 
   sudo apt update
 
   # Install development tools and ROS tools
-  sudo apt install -y build-essential cmake git gfortran libbullet-dev python3-colcon-common-extensions python3-flake8 python3-pip python3-pytest-cov python3-rosdep python3-setuptools python3-vcstool wget
+  sudo apt install -y \
+    build-essential \
+    git \
+    gfortran \
+    libbullet-dev \
+    wget
+  # Upgraded setuptools may be required for other tools
+  python3 -m pip install --upgrade \
+    pip \
+    setuptools
+  python3 -m pip install --upgrade \
+    colcon-common-extensions \
+    flake8 \
+    pytest-cov \
+    vcstool
 
   # Install some pip packages needed for testing
-  python3 -m pip install -U argcomplete flake8-blind-except flake8-builtins flake8-class-newline flake8-comprehensions flake8-deprecated flake8-docstrings flake8-import-order flake8-quotes pytest-repeat pytest-rerunfailures pytest
+  python3 -m pip install --upgrade \
+    argcomplete \
+    flake8-blind-except \
+    flake8-builtins \
+    flake8-class-newline \
+    flake8-comprehensions \
+    flake8-deprecated \
+    flake8-docstrings \
+    flake8-import-order \
+    flake8-quotes \
+    pytest \
+    pytest-repeat \
+    pytest-rerunfailures
 
   # Install Fast-RTPS dependencies
-  sudo apt install -y --no-install-recommends libasio-dev libtinyxml2-dev
+  sudo apt install -y --no-install-recommends \
+    libasio-dev \
+    libtinyxml2-dev
 
   # Install Cyclone DDS dependencies
-  sudo apt install -y --no-install-recommends libcunit1-dev
+  sudo apt install -y --no-install-recommends \
+    libcunit1-dev
+
+  # Sometimes lark is missing
+  python3 -m pip install --upgrade \
+    importlib-resources \
+    lark-parser
+
+  # This is needed by rosidl_generator_py
+  python3 -m pip install --upgrade \
+    numpy
+
+  # ROS 2 runtime dependencies
+  python3 -m pip install --upgrade \
+    netifaces
 fi
 
 #
@@ -90,6 +136,8 @@ if [[ "${OSTYPE}" == "darwin"* ]]; then
     wget
 
   python3 -m pip install --upgrade \
+    setuptools
+  python3 -m pip install --upgrade \
     argcomplete \
     catkin_pkg \
     colcon-common-extensions \
@@ -122,7 +170,6 @@ if [[ "${OSTYPE}" == "darwin"* ]]; then
     pytest-mock \
     rosdep \
     rosdistro \
-    setuptools \
     vcstool
 
   GRAPHVIZ_VERSION=$(brew list --version | grep graphviz | cut -d " " -f 2)
@@ -191,6 +238,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     --from-paths "${ROS2_SOURCE_DIRECTORY}" \
     --ignore-src \
     --rosdistro ${ROS2_DISTRO} \
+    --as-root=pip:false \
     -y \
     --skip-keys "console_bridge fastcdr fastrtps python3-ifcfg rti-connext-dds-5.3.1 urdfdom_headers"
 

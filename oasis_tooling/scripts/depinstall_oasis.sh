@@ -24,6 +24,9 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # Import environment
 source "${SCRIPT_DIR}/env_ros2_desktop.sh"
 
+# Import Python paths
+source "${SCRIPT_DIR}/env_python.sh"
+
 #
 # Load ROS 2 Desktop environment
 #
@@ -39,6 +42,13 @@ set -o nounset
 set +o nounset
 source "${OASIS_DEPENDS_DIRECTORY}/install/setup.bash"
 set -o nounset
+
+# Install development tools and ROS tools
+sudo apt install -y \
+  python3-rosdep
+python3 -m pip install --upgrade \
+  colcon-common-extensions \
+  vcstool
 
 #
 # Install OASIS rosdeps
@@ -56,6 +66,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     --from-paths "${STACK_DIRECTORY}" \
     --ignore-src \
     --rosdistro ${ROS2_DISTRO} \
+    --as-root=pip:false \
     -y
 
   # Install vbetool
@@ -68,6 +79,11 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
 
   # TODO: image_transport needs libtinyxml2-dev indirectly
   dpkg -s libtinyxml2-dev >/dev/null || sudo apt install -y libtinyxml2-dev
+
+  # Sometimes lark is missing
+  python3 -m pip install --upgrade \
+    importlib-resources \
+    lark-parser
 fi
 
 # Install Python dependencies

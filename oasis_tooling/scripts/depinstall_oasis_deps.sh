@@ -24,6 +24,9 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # Import environment
 source "${SCRIPT_DIR}/env_ros2_desktop.sh"
 
+# Import Python paths
+source "${SCRIPT_DIR}/env_python.sh"
+
 #
 # Load ROS 2 environment
 #
@@ -32,6 +35,13 @@ source "${SCRIPT_DIR}/env_ros2_desktop.sh"
 set +o nounset
 source "${ROS2_DESKTOP_DIRECTORY}/install/setup.bash"
 set -o nounset
+
+# Install development tools and ROS tools
+sudo apt install -y \
+  python3-rosdep
+python3 -m pip install --upgrade \
+  colcon-common-extensions \
+  vcstool
 
 #
 # Download OASIS dependency source code
@@ -68,6 +78,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     --from-paths "${OASIS_SOURCE_DIRECTORY}" \
     --ignore-src \
     --rosdistro ${ROS2_DISTRO} \
+    --as-root=pip:false \
     -y
 
   # Patch dependency sources
@@ -139,3 +150,9 @@ if [[ "${OSTYPE}" == "darwin"* ]]; then
     boost-python3 \
     libusb
 fi
+
+#
+# Install required Python packages
+
+python3 -m pip install --upgrade \
+  numpy

@@ -52,6 +52,9 @@ CMAKE_ARCHIVE_PATH="${CMAKE_DOWNLOAD_DIR}/cmake-${CMAKE_VERSION}.tar.gz"
 CMAKE_LISTS_PATH="${CMAKE_SOURCE_DIR}/CMakeLists.txt"
 CMAKE_MAKEFILE_PATH="${CMAKE_BUILD_DIR}/Makefile"
 
+# Add CMake to system path
+export PATH="${CMAKE_BIN_DIRECTORY}:${PATH}"
+
 # Create directories
 mkdir -p "${CMAKE_DOWNLOAD_DIR}"
 mkdir -p "${CMAKE_EXTRACT_DIR}"

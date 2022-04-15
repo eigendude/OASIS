@@ -27,6 +27,15 @@ source "${SCRIPT_DIR}/env_ros1_desktop.sh"
 # Import CMake paths
 source "${SCRIPT_DIR}/env_cmake.sh"
 
+# Add CMake to PATH
+export PATH="${CMAKE_BIN_DIRECTORY}:${PATH}"
+
+# Import Python paths
+source "${SCRIPT_DIR}/env_python.sh"
+
+# Add Python to PATH
+export PATH="${PYTHON_BIN_DIRECTORY}:${PATH}"
+
 #
 # Build configuration
 #
@@ -50,7 +59,6 @@ echo "Building ROS 1..."
 
 cd "${ROS1_DESKTOP_DIRECTORY}"
 
-PATH="${CMAKE_BIN_DIRECTORY}:${PATH}" \
-  MAKE_FLAGS="${MAKE_FLAGS}" \
+MAKE_FLAGS="${MAKE_FLAGS}" \
   colcon build \
     ${COLCON_FLAGS}
