@@ -12,7 +12,6 @@
   <url type="repository">https://github.com/eigendude/OASIS.git</url>
 
   <exec_depend>builtin_interfaces</exec_depend>
-  <exec_depend>oasis_avr</exec_depend>
   <exec_depend>oasis_msgs</exec_depend>
   <exec_depend>python3-psutil</exec_depend>
   <exec_depend>python3-serial</exec_depend>
