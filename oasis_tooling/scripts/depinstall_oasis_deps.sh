@@ -39,6 +39,16 @@ set -o nounset
 
 vcs import "${OASIS_SOURCE_DIRECTORY}" < "${PACKAGE_DIRECTORY}/config/depends.repos"
 
+# Patch dependency sources
+patch \
+  -p1 \
+  --forward \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${OASIS_SOURCE_DIRECTORY}/ros-perception/image_transport_plugins" \
+  < "${CONFIG_DIRECTORY}/image_transport_plugins/0001-Revert-Cleanup-the-cmake-code-to-be-more-modern-96.patch" \
+  || :
+
 #
 # Install rosdeps packages (except on macOS)
 #

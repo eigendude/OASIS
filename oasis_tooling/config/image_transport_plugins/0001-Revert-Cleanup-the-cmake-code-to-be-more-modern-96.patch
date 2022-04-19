@@ -1,0 +1,212 @@
+From aab5a82a4146cae04c22a9952a80b3b43efcf822 Mon Sep 17 00:00:00 2001
+From: Garrett Brown <eigendebugger@gmail.com>
+Date: Mon, 18 Apr 2022 19:41:33 -0700
+Subject: [PATCH] Revert "Cleanup the cmake code to be more modern (#96)"
+
+This reverts commit 339fb35d20a58c2d18e1d36bc029647614497841.
+---
+ theora_image_transport/CMakeLists.txt | 122 +++++++++++++-------------
+ theora_image_transport/package.xml    |  13 +--
+ 2 files changed, 69 insertions(+), 66 deletions(-)
+
+diff --git a/theora_image_transport/CMakeLists.txt b/theora_image_transport/CMakeLists.txt
+index 67612f0..0f961d9 100644
+--- a/theora_image_transport/CMakeLists.txt
++++ b/theora_image_transport/CMakeLists.txt
+@@ -16,7 +16,7 @@ find_package(image_transport REQUIRED)
+ find_package(cv_bridge REQUIRED)
+ find_package(pluginlib REQUIRED)
+ find_package(rclcpp REQUIRED)
+-find_package(rcutils REQUIRED)
++find_package(builtin_interfaces REQUIRED)
+ find_package(rosidl_default_generators REQUIRED)
+ find_package(sensor_msgs REQUIRED)
+ find_package(std_msgs REQUIRED)
+@@ -28,16 +28,17 @@ pkg_check_modules(PC_THEORA REQUIRED theora)
+ pkg_check_modules(PC_THEORAENC REQUIRED theoraenc)
+ pkg_check_modules(PC_THEORADEC REQUIRED theoradec)
+ 
+-rosidl_generate_interfaces(${PROJECT_NAME}
+-  "msg/Packet.msg"
+-  DEPENDENCIES
+-    std_msgs
+-   ADD_LINTER_TESTS
++link_directories(${PC_OGG_LIBRARY_DIRS} 
++                 ${PC_THEORA_LIBRARY_DIRS}
++                 ${PC_THEORAENC_LIBRARY_DIRS}
++                 ${PC_THEORADEC_LIBRARY_DIRS})
++add_definitions(${PC_OGG_CFLAGS_OTHER} 
++                ${PC_THEORA_CFLAGS_OTHER}
++                ${PC_THEORAENC_CFLAGS_OTHER}
++                ${PC_THEORADEC_CFLAGS_OTHER}
+ )
+ 
+-rosidl_get_typesupport_target(cpp_typesupport_target "${PROJECT_NAME}" "rosidl_typesupport_cpp")
+-
+-set(LIBRARY_NAME ${PROJECT_NAME}_component)
++set (LIBRARY_NAME ${PROJECT_NAME}_component)
+ 
+ add_library(
+   ${LIBRARY_NAME}
+@@ -46,74 +47,75 @@ add_library(
+   src/theora_subscriber.cpp
+   src/manifest.cpp
+ )
+-target_compile_definitions(${LIBRARY_NAME} PRIVATE
+-  ${PC_OGG_CFLAGS_OTHER}
+-  ${PC_THEORA_CFLAGS_OTHER}
+-  ${PC_THEORAENC_CFLAGS_OTHER}
+-  ${PC_THEORADEC_CFLAGS_OTHER}
+-)
+-target_include_directories(${LIBRARY_NAME} PRIVATE
+-  "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+-  "$<INSTALL_INTERFACE:include/${PROJECT_NAME}>"
+-)
++
++include_directories(include
++  ${OpenCV_INCLUDE_DIRS}
++  ${PC_OGG_INCLUDE_DIRS}
++  ${PC_THEORA_INCLUDE_DIRS}
++  ${PC_THEORAENC_INCLUDE_DIRS}
++  ${PC_THEORADEC_INCLUDE_DIRS})
++
+ target_link_libraries(${LIBRARY_NAME}
+-  opencv_imgproc
++  ${OpenCV_LIBRARIES}
+   ${PC_OGG_LIBRARIES}
+   ${PC_THEORA_LIBRARIES}
+   ${PC_THEORAENC_LIBRARIES}
+   ${PC_THEORADEC_LIBRARIES}
+-  "${cpp_typesupport_target}"
+-  ${sensor_msgs_TARGETS}
+-  cv_bridge::cv_bridge
+-  image_transport::image_transport
+-  pluginlib::pluginlib
+-  rclcpp::rclcpp
+ )
+ 
+-add_executable(ogg_saver src/ogg_saver.cpp)
+-target_compile_definitions(ogg_saver PRIVATE
+-  ${PC_OGG_CFLAGS_OTHER}
+-  ${PC_THEORA_CFLAGS_OTHER}
+-  ${PC_THEORAENC_CFLAGS_OTHER}
+-  ${PC_THEORADEC_CFLAGS_OTHER}
+-)
+-target_link_libraries(ogg_saver
+-  ${PC_THEORA_LIBRARY}
+-  ${PC_OGG_LIBRARY}
+-  ${PC_THEORAENC_LIBRARIES}
+-  ${PC_THEORADEC_LIBRARIES}
+-  "${cpp_typesupport_target}"
+-  rclcpp::rclcpp
+-  rcutils::rcutils
++ament_target_dependencies(${LIBRARY_NAME}
++  "image_transport"
++  "cv_bridge"
++  "rclcpp"
++  "pluginlib"
++  "sensor_msgs"
+ )
+ 
+-ament_export_dependencies(
+-  rosidl_default_runtime
+-  OpenCV
+-  cv_bridge
+-  image_transport
+-  pluginlib
+-  rclcpp
+-  rcutils
+-  sensor_msgs
+-  std_msgs
++add_definitions(${PC_OGG_CFLAGS_OTHER}
++                ${PC_THEORA_CFLAGS_OTHER}
++                ${PC_THEORAENC_CFLAGS_OTHER}
++                ${PC_THEORADEC_CFLAGS_OTHER})
++
++add_executable(ogg_saver src/ogg_saver.cpp)
++target_link_libraries(ogg_saver ${PC_THEORA_LIBRARY} 
++                                ${PC_OGG_LIBRARY} 
++                                ${OpenCV_LIBRARIES} 
++                                ${PC_THEORAENC_LIBRARIES}
++                                ${PC_THEORADEC_LIBRARIES})
++
++ament_target_dependencies(ogg_saver
++  "rclcpp"
++  "rcutils"
+ )
+ 
+-install(TARGETS ${LIBRARY_NAME} EXPORT export_${LIBRARY_NAME}
+-  ARCHIVE DESTINATION lib
+-  LIBRARY DESTINATION lib
+-  RUNTIME DESTINATION bin
++rosidl_generate_interfaces(${PROJECT_NAME}
++  "msg/Packet.msg"
++  DEPENDENCIES
++    builtin_interfaces
++    std_msgs
++    sensor_msgs
++   ADD_LINTER_TESTS
+ )
+ 
+-ament_export_targets(export_${LIBRARY_NAME})
++rosidl_target_interfaces(${LIBRARY_NAME}
++  ${PROJECT_NAME} "rosidl_typesupport_cpp") 
++
++rosidl_target_interfaces(ogg_saver
++  ${PROJECT_NAME} "rosidl_typesupport_cpp") 
+ 
+-install(TARGETS ogg_saver
+-  DESTINATION lib/${PROJECT_NAME}
++ament_export_dependencies(rosidl_default_runtime
++  OpenCV
++  PkgConfig)
++
++install(TARGETS ${LIBRARY_NAME} ogg_saver
++  ARCHIVE DESTINATION lib/${PROJECT_NAME}
++  LIBRARY DESTINATION lib/${PROJECT_NAME}
++  RUNTIME DESTINATION bin
+ )
+ 
+ install(
+-  DIRECTORY include/
+-  DESTINATION include/${PROJECT_NAME}
++  DIRECTORY "include/"
++  DESTINATION include
+ )
+ 
+ pluginlib_export_plugin_description_file(image_transport theora_plugins.xml)
+diff --git a/theora_image_transport/package.xml b/theora_image_transport/package.xml
+index 389d00c..df1fb29 100644
+--- a/theora_image_transport/package.xml
++++ b/theora_image_transport/package.xml
+@@ -16,20 +16,21 @@
+ 
+   <buildtool_depend>ament_cmake</buildtool_depend>
+   <buildtool_depend>rosidl_default_generators</buildtool_depend>
+-  <buildtool_depend>pkg-config</buildtool_depend>
+ 
++  <build_depend>builtin_interfaces</build_depend>
++  <build_depend>std_msgs</build_depend>
++
++  <exec_depend>builtin_interfaces</exec_depend>
+   <exec_depend>rosidl_default_runtime</exec_depend>
++  <exec_depend>std_msgs</exec_depend>
+ 
++  <depend>rclcpp</depend>
+   <depend>cv_bridge</depend>
+   <depend>image_transport</depend>
+   <depend>libogg</depend>
+-  <depend>libopencv-imgproc-dev</depend>
+   <depend>libtheora</depend>
+   <depend>pluginlib</depend>
+-  <depend>rclcpp</depend>
+-  <depend>rcutils</depend>
+-  <depend>sensor_msgs</depend>
+-  <depend>std_msgs</depend>
++  <!--  <build_depend>rosbag</build_depend> -->
+ 
+   <test_depend>ament_lint_common</test_depend>
+ 
+-- 
+2.30.2
+
