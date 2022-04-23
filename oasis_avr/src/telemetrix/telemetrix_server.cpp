@@ -9,8 +9,17 @@
  *  See DOCS/LICENSING.md for more information.
  */
 
+#if defined(BLUEFRUIT_ENABLED)
+#include "drivers/bluefruit.hpp"
+#endif
+
 #include <Arduino.h>
 #include <HardwareSerial.h>
+
+namespace OASIS
+{
+class Bluefruit;
+}
 
 // Arduino types
 using byte = uint8_t;
@@ -1670,6 +1679,43 @@ void get_next_command()
   command_entry.command_func();
 }
 
+// retrieve the next command from the Bluefruit link
+void get_next_command(OASIS::Bluefruit& bluefruit)
+{
+#if defined(BLUEFRUIT_ENABLED)
+  byte command;
+  byte packet_length;
+  command_descriptor command_entry;
+
+  // clear the command buffer
+  memset(command_buffer, 0, sizeof(command_buffer));
+
+  // get the packet length
+  if (!bluefruit.ReadUart(packet_length))
+    return;
+
+  // get the command byte
+  for (;;)
+  {
+    if (bluefruit.ReadUart(command))
+      break;
+  }
+
+  command_entry = command_table[command];
+
+  if (packet_length > 1)
+  {
+    // get the data for that command
+    for (int i = 0; i < packet_length - 1; )
+    {
+      if (bluefruit.ReadUart(command_buffer[i]))
+        ++i;
+    }
+  }
+  command_entry.command_func();
+#endif
+}
+
 // reset the internal data structures to a known state
 void reset_data() {
   // reset the data structures
@@ -2047,10 +2093,13 @@ void telemetrix_setup()
   Serial.begin(115200);
 }
 
-void telemetrix_loop()
+void telemetrix_loop(OASIS::Bluefruit* bluefruit)
 {
   // keep processing incoming commands
-  get_next_command();
+  if (bluefruit != nullptr)
+    get_next_command(*bluefruit);
+  else
+    get_next_command();
 
   if (!stop_reports)
   { // stop reporting

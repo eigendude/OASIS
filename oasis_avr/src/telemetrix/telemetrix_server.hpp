@@ -11,5 +11,10 @@
 
 #pragma once
 
+namespace OASIS
+{
+class Bluefruit;
+}
+
 void telemetrix_setup();
-void telemetrix_loop();
+void telemetrix_loop(OASIS::Bluefruit* bluefruit);

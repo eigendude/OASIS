@@ -9,17 +9,36 @@
 #include "leds/heartbeat_thread.hpp"
 #include "telemetrix/telemetrix_server.hpp"
 
+#if defined(BLUEFRUIT_ENABLED)
+#include "drivers/bluefruit.hpp"
+#endif
+
+#include <stdint.h>
+
 #include <Arduino.h>
 #include <Scheduler.h>
 
 using namespace OASIS;
+
+namespace
+{
+
+#if defined(BLUEFRUIT_ENABLED)
+// Bluetooth parameters
+Bluefruit bluefruit;
+#endif
+
+} // namespace
 
 void setup()
 {
   // Initialize LEDs
   HeartbeatThread::GetInstance().Setup();
 
-  // TODO: Initialize Bluetooth
+#if defined(BLUEFRUIT_ENABLED)
+  // Initialize Bluetooth
+  bluefruit.Setup();
+#endif
 
   // Initialize Telemetrix (also initializes serial)
   telemetrix_setup();
@@ -27,8 +46,17 @@ void setup()
 
 void loop()
 {
+#if defined(BLUEFRUIT_ENABLED)
+  // Loop Bluetooth
+  bluefruit.Loop();
+#endif
+
   // Loop telemetrix
-  telemetrix_loop();
+#if defined(BLUEFRUIT_ENABLED)
+  telemetrix_loop(&bluefruit);
+#else
+  telemetrix_loop(nullptr);
+#endif
 
   // Run queued off-thread tasks
   yield();

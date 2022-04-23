@@ -462,6 +462,9 @@ if (ENABLE_ANALOG)
 endif()
 
 if (ENABLE_BLUEFRUIT)
+  list(APPEND TELEMETRIX_SOURCES
+    src/drivers/bluefruit.cpp
+  )
   list(APPEND TELEMETRIX_DEFINITIONS
     -DBLUEFRUIT_ENABLED=1
   )
@@ -646,6 +649,10 @@ endif()
 
 add_executable(telemetrix_node
   src/ros/telemetrix_node.cpp
+)
+
+target_compile_definitions(telemetrix_node PRIVATE
+  ${TELEMETRIX_DEFINITIONS}
 )
 
 target_link_libraries(telemetrix_node PRIVATE
