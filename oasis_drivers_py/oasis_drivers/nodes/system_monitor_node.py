@@ -26,7 +26,7 @@ NODE_NAME = "system_monitor"
 
 PUBLISH_TELEMETRY_TOPIC = "system_telemetry"
 
-READ_PERIOD_SECS = 1.0
+READ_PERIOD_SECS = 0.5
 
 
 ################################################################################
