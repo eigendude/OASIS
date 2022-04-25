@@ -38,7 +38,7 @@ class TelemetrixBridge:
     # Telemetrix parameters
     BAUD_RATE = 115200
     ARDUINO_INSTANCE_ID = 1
-    ARDUINO_WAIT_SECS = 2  # TODO: Changed to 4 in Telemetrix
+    ARDUINO_WAIT_SECS = 4  # Wait time changed from 2s in Firmata to 4s in Telemetrix
 
     # Telemetrix callback data indices
     CB_PIN_MODE = 0
