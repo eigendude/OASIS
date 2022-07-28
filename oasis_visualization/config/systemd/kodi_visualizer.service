@@ -8,7 +8,7 @@ After=network.target
 # ROS 2 configuration
 #
 
-Environment=ROS2_DISTRO=galactic
+Environment=ROS2_DISTRO=humble
 
 #
 # Kodi configuration
