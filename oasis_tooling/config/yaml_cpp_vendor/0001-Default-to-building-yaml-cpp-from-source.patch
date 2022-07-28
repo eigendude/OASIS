@@ -1,0 +1,34 @@
+From 71f276779492035d5104458fc7f65e342c927b03 Mon Sep 17 00:00:00 2001
+From: Garrett Brown <eigendebugger@gmail.com>
+Date: Mon, 15 Aug 2022 03:39:32 -0700
+Subject: [PATCH] Default to building yaml-cpp from source
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Needed to fix build error on Ubuntu 18.04:
+
+  metadata_io.cpp: In function ‘T YAML::decode_for_version(const YAML::Node&, int)’:
+  metadata_io.cpp:43:38: error: ‘const class YAML::Node’ has no member named ‘Mark’
+       throw TypedBadConversion<T>(node.Mark());
+                                        ^~~~
+---
+ CMakeLists.txt | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 1d8d85e..b9fe107 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -4,7 +4,7 @@ project(yaml_cpp_vendor)
+ 
+ option(FORCE_BUILD_VENDOR_PKG
+   "Build yaml-cpp from source, even if system-installed package is available"
+-  OFF)
++  ON)
+ 
+ find_package(ament_cmake REQUIRED)
+ 
+-- 
+2.17.1
+

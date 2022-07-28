@@ -81,6 +81,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
   # Install development tools and ROS tools
   sudo apt install -y \
     build-essential \
+    ccache \
     git \
     python3-pip \
 
@@ -91,9 +92,6 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
   if [[ ${PLATFORM_ARCH} == i*86 ]] || [[ ${PLATFORM_ARCH} == x86_64 ]]; then
     sudo apt install -y vbetool
   fi
-
-  # Add ccache support
-  sudo apt install -y ccache
 
   # TODO: image_transport needs libtinyxml2-dev indirectly
   sudo apt install -y libtinyxml2-dev

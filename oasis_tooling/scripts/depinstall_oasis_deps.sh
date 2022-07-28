@@ -74,6 +74,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
   # Install development tools and ROS tools
   sudo apt install -y \
     build-essential \
+    ccache \
     git \
     python3-pip \
 
@@ -104,9 +105,6 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     libturbojpeg0-dev \
     libusb-1.0-0-dev \
     ocl-icd-opencl-dev \
-
-  # Add ccache support
-  sudo apt install -y ccache
 
   # Install libcec dependencies
   sudo apt install -y \

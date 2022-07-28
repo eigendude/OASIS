@@ -1,0 +1,25 @@
+From 03f773060c3eb69f6e9ee48c32772c2291754fd3 Mon Sep 17 00:00:00 2001
+From: Garrett Brown <eigendebugger@gmail.com>
+Date: Fri, 12 Aug 2022 17:02:45 -0700
+Subject: [PATCH] humble: Update image_common to rolling branch
+
+---
+ ros2.repos | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/ros2.repos b/ros2.repos
+index 856bbe5..4e99e30 100644
+--- a/ros2.repos
++++ b/ros2.repos
+@@ -66,7 +66,7 @@ repositories:
+   ros-perception/image_common:
+     type: git
+     url: https://github.com/ros-perception/image_common.git
+-    version: humble
++    version: rolling
+   ros-perception/laser_geometry:
+     type: git
+     url: https://github.com/ros-perception/laser_geometry.git
+-- 
+2.34.1
+

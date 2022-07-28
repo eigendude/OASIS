@@ -45,11 +45,12 @@ sudo apt update
 
 # Install development tools and ROS tools
 sudo apt install -y \
-  build-essential
+  build-essential \
+  ccache \
 
 # python3-rosdep is no longer an Ubuntu package, so install via pip
 sudo python3 -m pip install --upgrade \
-  rosdep
+  rosdep \
 
 # An older version of setuptools is required
 python3 -m pip install --user --upgrade \
@@ -72,9 +73,6 @@ python3 -m pip install --user --upgrade \
   lark-parser \
   numpy \
   typing-extensions \
-
-# Add ccache support
-dpkg -s ccache >/dev/null || sudo apt install -y ccache
 
 #
 # Directory setup

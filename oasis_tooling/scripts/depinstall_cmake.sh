@@ -27,4 +27,4 @@ sudo apt install -y \
   wget \
 
 # Add ccache support
-dpkg -s ccache >/dev/null || sudo apt install -y ccache
+sudo apt install -y ccache

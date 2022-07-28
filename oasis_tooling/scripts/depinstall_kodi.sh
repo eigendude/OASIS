@@ -34,6 +34,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     automake \
     autopoint \
     autotools-dev \
+    ccache \
     cmake \
     curl \
     debhelper \

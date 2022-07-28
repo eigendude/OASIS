@@ -24,6 +24,30 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # Import ROS 2 paths and config
 source "${SCRIPT_DIR}/env_ros2_desktop.sh"
 
+# rosdep keys to ignore
+if [ "${ROS2_DISTRO}" = "galactic" ]; then
+  ROSDEP_IGNORE_KEYS=" \
+    console_bridge \
+    fastcdr \
+    fastrtps \
+    python3-ifcfg \
+    rti-connext-dds-5.3.1 \
+    urdfdom_headers \
+  "
+elif [ "${ROS2_DISTRO}" = "humble" ]; then
+  ROSDEP_IGNORE_KEYS=" \
+    fastcdr \
+    ignition-cmake2 \
+    ignition-math6 \
+    python-catkin-pkg \
+    python3-pykdl \
+    rti-connext-dds-6.0.1 \
+    urdfdom_headers \
+  "
+else
+  ROSDEP_IGNORE_KEYS=
+fi
+
 #
 # Setup ROS 2 sources
 #
@@ -53,6 +77,8 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
 
     sudo apt update
   fi
+else
+  CODENAME=
 fi
 
 #
@@ -63,11 +89,19 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
   # Install development tools and ROS tools
   sudo apt install -y \
     build-essential \
+    ccache \
     git \
     gfortran \
     libbullet-dev \
     python3-pip \
     wget \
+
+  # On Ubuntu 18.04, GCC 7 cannot build rclcpp
+  if [ "${CODENAME}" = "bionic" ]; then
+    sudo apt install -y g++-8
+    sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-7 700 --slave /usr/bin/g++ g++ /usr/bin/g++-7
+    sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-8 800 --slave /usr/bin/g++ g++ /usr/bin/g++-8
+  fi
 
   # python3-rosdep is no longer an Ubuntu package, so install via pip
   sudo python3 -m pip install --upgrade rosdep
@@ -127,6 +161,13 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
   # ROS 2 runtime dependencies
   python3 -m pip install --user --upgrade \
     netifaces
+
+  if [ "${ROS2_DISTRO}" = "humble" ]; then
+    # Needed by python_orocos_kdl_vendor
+    python3 -m pip install --user --upgrade \
+      pybind11 \
+      pybind11-global
+  fi
 fi
 
 #
@@ -263,6 +304,13 @@ echo "Downloading ROS 2 source code..."
       --reject-file="/dev/null" \
       --no-backup-if-mismatch \
       < "${CONFIG_DIRECTORY}/ros2_desktop/0001-galactic-Update-image_common-to-rolling-branch.patch"
+  elif [ "${ROS2_DISTRO}" = "humble" ]; then
+    patch \
+      -p1 \
+      --forward \
+      --reject-file="/dev/null" \
+      --no-backup-if-mismatch \
+      < "${CONFIG_DIRECTORY}/ros2_desktop/0001-humble-Update-image_common-to-rolling-branch.patch"
   fi
 
   # Import ROS 2 sources
@@ -307,6 +355,34 @@ echo "Downloading ROS 2 source code..."
     # OGRE fails to build on Ubuntu 22.04 arm64 due to newer glibc, fixed in humble
     echo "Disabling rviz"
     touch "${ROS2_SOURCE_DIRECTORY}/ros2/rviz/COLCON_IGNORE"
+  elif [ "${ROS2_DISTRO}" = "humble" ]; then
+    patch \
+      -p1 \
+      --forward \
+      --reject-file="/dev/null" \
+      --no-backup-if-mismatch \
+      --directory="${ROS2_SOURCE_DIRECTORY}/eclipse-iceoryx/iceoryx" \
+      < "${CONFIG_DIRECTORY}/iceoryx/0001-humble-Fix-static_asserts-causing-build-to-fail.patch" \
+      || :
+
+    if [ "${CODENAME}" = "bionic" ]; then
+      # Bionic version of yaml-cpp (0.5) is too old
+      patch \
+        -p1 \
+        --forward \
+        --reject-file="/dev/null" \
+        --no-backup-if-mismatch \
+        --directory="${ROS2_SOURCE_DIRECTORY}/ros2/yaml_cpp_vendor" \
+        < "${CONFIG_DIRECTORY}/yaml_cpp_vendor/0001-Default-to-building-yaml-cpp-from-source.patch" \
+        || :
+
+      # On Ubuntu 18.04, intra_process_demo fails to link against libopencv_imgproc.so.3.2
+      touch "${ROS2_SOURCE_DIRECTORY}/ros2/demos/intra_process_demo/COLCON_IGNORE"
+    fi
+
+    # TODO: Disabled to increase build speed
+    echo "Disabling rviz"
+    touch "${ROS2_SOURCE_DIRECTORY}/ros2/rviz/COLCON_IGNORE"
   fi
 )
 
@@ -329,15 +405,10 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     --rosdistro ${ROS2_DISTRO} \
     --as-root=pip:false \
     -y \
-    --skip-keys " \
-      console_bridge \
-      fastcdr \
-      fastrtps \
-      python3-ifcfg \
-      rti-connext-dds-5.3.1 \
-      urdfdom_headers \
-    "
+    --skip-keys "${ROSDEP_IGNORE_KEYS}" \
 
-  # Add ccache support
-  dpkg -s ccache >/dev/null || sudo apt install -y ccache
+  # Package provided by Ubuntu 18.04 is too old
+  if [ "${ROS2_DISTRO}" = "humble" ] && [ "${CODENAME}" = "bionic" ]; then
+    sudo apt remove -y libyaml-cpp0.5v5
+  fi
 fi

@@ -45,15 +45,6 @@ jobs:
       - name: Checkout main repo
         uses: actions/checkout@v2
 
-      - name: Restore CMake
-        id: restore-cmake
-        if: matrix.os != 'macbook'
-        uses: actions/cache@v2
-        with:
-          path: |
-            ros-ws/cmake/install
-          key: restore-cmake-${{ matrix.os }}-${{ hashFiles('oasis_tooling/scripts/*cmake.sh') }}
-
       - name: Restore Python
         id: restore-python
         if: matrix.os != 'macbook'
@@ -62,6 +53,15 @@ jobs:
           path: |
             ros-ws/python/install
           key: restore-python-${{ matrix.os }}-${{ hashFiles('oasis_tooling/scripts/*python.sh') }}
+
+      - name: Restore CMake
+        id: restore-cmake
+        if: matrix.os != 'macbook'
+        uses: actions/cache@v2
+        with:
+          path: |
+            ros-ws/cmake/install
+          key: restore-cmake-${{ matrix.os }}-${{ hashFiles('oasis_tooling/scripts/*cmake.sh') }}
 
       # Skip ROS 1 on ubuntu-18.04, ubuntu-20.04 and macbook
       #- name: Restore ROS 1 Desktop
@@ -79,7 +79,7 @@ jobs:
         with:
           path: |
             ros-ws/ros2-desktop-${{ matrix.ros2_distro }}/install
-          key: restore-ros2-desktop-${{ matrix.os }}-${{ matrix.ros2_distro }}-${{ hashFiles('oasis_tooling/config/demos/**', 'oasis_tooling/config/iceoryx/**', 'oasis_tooling/config/realtime_support/**', 'oasis_tooling/config/ros2_desktop/**', 'oasis_tooling/config/rviz/**', 'oasis_tooling/scripts/*ros2_desktop.sh') }}
+          key: restore-ros2-desktop-${{ matrix.os }}-${{ matrix.ros2_distro }}-${{ hashFiles('oasis_tooling/config/demos/**', 'oasis_tooling/config/iceoryx/**', 'oasis_tooling/config/realtime_support/**', 'oasis_tooling/config/ros2_desktop/**', 'oasis_tooling/config/rviz/**', 'oasis_tooling/config/yaml_cpp_vendor/**', 'oasis_tooling/scripts/*ros2_desktop.sh') }}
 
       - name: Restore OASIS dependencies
         id: restore-oasis-depends
@@ -87,7 +87,7 @@ jobs:
         with:
           path: |
             ros-ws/oasis-depends-${{ matrix.ros2_distro }}/install
-          key: restore-oasis-depends-${{ matrix.os }}-${{ matrix.ros2_distro }}-${{ hashFiles('oasis_tooling/config/demos/**', 'oasis_tooling/config/iceoryx/**', 'oasis_tooling/config/realtime_support/**', 'oasis_tooling/config/ros2_desktop/**', 'oasis_tooling/config/rviz/**', 'oasis_tooling/scripts/*ros2_desktop.sh') }}-${{ hashFiles('oasis_tooling/config/bgslibrary/**', 'oasis_tooling/config/depends.repos', 'oasis_tooling/config/image_transport_plugins/**', 'oasis_tooling/config/vision_opencv/**', 'oasis_tooling/scripts/*oasis_deps.sh') }}
+          key: restore-oasis-depends-${{ matrix.os }}-${{ matrix.ros2_distro }}-${{ hashFiles('oasis_tooling/config/demos/**', 'oasis_tooling/config/iceoryx/**', 'oasis_tooling/config/realtime_support/**', 'oasis_tooling/config/ros2_desktop/**', 'oasis_tooling/config/rviz/**', 'oasis_tooling/config/yaml_cpp_vendor/**', 'oasis_tooling/scripts/*ros2_desktop.sh') }}-${{ hashFiles('oasis_tooling/config/bgslibrary/**', 'oasis_tooling/config/depends.repos', 'oasis_tooling/config/image_transport_plugins/**', 'oasis_tooling/config/vision_opencv/**', 'oasis_tooling/scripts/*oasis_deps.sh') }}
 
       - name: Restore Arduino IDE
         id: restore-arduino-ide
