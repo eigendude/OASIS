@@ -19,10 +19,10 @@ set -o nounset
 #
 
 # Version
-CMAKE_VERSION="3.23.1"
+CMAKE_VERSION="3.23.3"
 
 # URL
-CMAKE_URL="https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}.tar.gz"
+CMAKE_URL="https://codeload.github.com/Kitware/CMake/tar.gz/refs/tags/v${CMAKE_VERSION}"
 
 #
 # Environment paths and config
@@ -44,7 +44,7 @@ CMAKE_DIRECTORY="${BUILD_DIRECTORY}/cmake"
 # Define top-level directories for CMake
 CMAKE_DOWNLOAD_DIR="${CMAKE_DIRECTORY}/downloads"
 CMAKE_EXTRACT_DIR="${CMAKE_DIRECTORY}/src"
-CMAKE_SOURCE_DIR="${CMAKE_DIRECTORY}/src/cmake-${CMAKE_VERSION}"
+CMAKE_SOURCE_DIR="${CMAKE_DIRECTORY}/src/CMake-${CMAKE_VERSION}"
 CMAKE_BUILD_DIR="${CMAKE_DIRECTORY}/build/cmake-${CMAKE_VERSION}"
 CMAKE_INSTALL_DIR="${CMAKE_DIRECTORY}/install"
 
