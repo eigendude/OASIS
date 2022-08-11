@@ -30,6 +30,12 @@ KODI_URL="https://github.com/garbear/xbmc/archive/${KODI_VERSION}.tar.gz"
 
 APP_RENDER_SYSTEM=gles
 
+# Enable LLD if available
+ENABLE_LLD="$([ -n "$(apt-cache search --names-only '^lld$')" ] && echo "ON" || echo "OFF")"
+
+# Enable Wayland if the waylandpp-dev package is found
+ENABLE_WAYLAND="$([ -n "$(apt-cache search --names-only '^waylandpp-dev$')" ] && echo "ON" || echo "OFF")"
+
 #
 # Environment paths and config
 #
@@ -59,8 +65,8 @@ source "${SCRIPT_DIR}/env_oasis.sh"
 # Directory and path definitions
 #
 
-# Subdirectory for KODI build files
-KODI_DIRECTORY="${BUILD_DIRECTORY}/kodi"
+# Subdirectory for Kodi build files
+KODI_DIRECTORY="${BUILD_DIRECTORY}/kodi-${ROS2_DISTRO}"
 
 # Define top-level directories for Kodi
 KODI_DOWNLOAD_DIR="${KODI_DIRECTORY}/downloads"
