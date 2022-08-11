@@ -27,6 +27,9 @@ jobs:
           - os: ubuntu-20.04
             ros1_distro: noetic
             ros2_distro: galactic
+          - os: ubuntu-22.04
+            ros1_distro: noetic
+            ros2_distro: galactic
           #- os: macbook
           #  ros1_distro: noetic
           #  ros2_distro: galactic
@@ -76,7 +79,7 @@ jobs:
         with:
           path: |
             ros-ws/ros2-desktop-${{ matrix.ros2_distro }}/install
-          key: restore-ros2-desktop-${{ matrix.os }}-${{ matrix.ros2_distro }}-${{ hashFiles('oasis_tooling/config/iceoryx/**', 'oasis_tooling/config/ros2_desktop/**', 'oasis_tooling/config/rviz/**', 'oasis_tooling/scripts/*ros2_desktop.sh') }}
+          key: restore-ros2-desktop-${{ matrix.os }}-${{ matrix.ros2_distro }}-${{ hashFiles('oasis_tooling/config/demos/**', 'oasis_tooling/config/iceoryx/**', 'oasis_tooling/config/realtime_support/**', 'oasis_tooling/config/ros2_desktop/**', 'oasis_tooling/config/rviz/**', 'oasis_tooling/scripts/*ros2_desktop.sh') }}
 
       - name: Restore OASIS dependencies
         id: restore-oasis-depends
@@ -84,7 +87,7 @@ jobs:
         with:
           path: |
             ros-ws/oasis-depends-${{ matrix.ros2_distro }}/install
-          key: restore-oasis-depends-${{ matrix.os }}-${{ matrix.ros2_distro }}-${{ hashFiles('oasis_tooling/config/iceoryx/**', 'oasis_tooling/config/ros2_desktop/**', 'oasis_tooling/config/rviz/**', 'oasis_tooling/scripts/*ros2_desktop.sh') }}-${{ hashFiles('oasis_tooling/config/depends.repos', 'oasis_tooling/scripts/*oasis_deps.sh') }}
+          key: restore-oasis-depends-${{ matrix.os }}-${{ matrix.ros2_distro }}-${{ hashFiles('oasis_tooling/config/demos/**', 'oasis_tooling/config/iceoryx/**', 'oasis_tooling/config/realtime_support/**', 'oasis_tooling/config/ros2_desktop/**', 'oasis_tooling/config/rviz/**', 'oasis_tooling/scripts/*ros2_desktop.sh') }}-${{ hashFiles('oasis_tooling/config/bgslibrary/**', 'oasis_tooling/config/depends.repos', 'oasis_tooling/config/image_transport_plugins/**', 'oasis_tooling/config/vision_opencv/**', 'oasis_tooling/scripts/*oasis_deps.sh') }}
 
       - name: Restore Arduino IDE
         id: restore-arduino-ide
@@ -94,12 +97,6 @@ jobs:
             oasis_avr/arduino-*
           key: restore-arduino-ide-${{ matrix.os }}-${{ hashFiles('oasis_avr/bootstrap.sh') }}
 
-      - name: Add ROS 2 repo
-        if: matrix.os != 'macbook'
-        run: |
-          curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | sudo apt-key add -
-          sudo sh -c 'echo "deb [arch=$(dpkg --print-architecture)] http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" > /etc/apt/sources.list.d/ros2-latest.list'
-
       - name: Install system dependencies
         if: matrix.os != 'starship' && matrix.os != 'cinder' && matrix.os != 'macbook'
         run: |
@@ -108,7 +105,7 @@ jobs:
 
       # TODO: This was needed to link oasis_drivers_cpp
       - name: Install libspdlog-dev
-        if: matrix.os == 'ubuntu-20.04'
+        if: matrix.os != 'ubuntu-18.04'
         run: |
           sudo apt install -y libspdlog-dev
 
@@ -174,35 +171,12 @@ jobs:
         if: steps.restore-oasis-depends.outputs.cache-hit != 'true'
         run: ./oasis_tooling/scripts/depinstall_oasis_deps.sh
 
-      # TODO
-      - name: Disable deps using boost_python
-        if: steps.restore-oasis-depends.outputs.cache-hit != 'true'
-        run: |
-          touch ./ros-ws/oasis-depends-galactic/src/ros-perception/vision_opencv/cv_bridge/COLCON_IGNORE
-          touch ./ros-ws/oasis-depends-galactic/src/ros-perception/image_transport_plugins/COLCON_IGNORE
-          touch ./ros-ws/oasis-depends-galactic/src/ros-perception/oasis_kinect2/COLCON_IGNORE
-
       - name: Build OASIS dependencies
         if: steps.restore-oasis-depends.outputs.cache-hit != 'true'
         run: ./oasis_tooling/scripts/build_oasis_deps.sh
 
-      # TODO
-      - name: Disable packages with dependencies that require boost_python
-        run: touch ./oasis_perception/COLCON_IGNORE
-
       - name: Install OASIS rosdeps
         run: ./oasis_tooling/scripts/depinstall_oasis.sh
-
-      # TODO: Fix locating bgslibrary
-      #
-      # Error was:
-      #
-      #   CMake Error at FindPackageHandleStandardArgs.cmake:230 (message):
-      #     Could NOT find bgslibrary (missing: BGSLIBRARY_INCLUDE_DIR)
-      #
-      - name: Workaround locating bgslibrary
-        if: matrix.os == 'macbook'
-        run: touch oasis_perception/COLCON_IGNORE
 
       - name: colcon build
         run: ./oasis_tooling/scripts/build_oasis.sh

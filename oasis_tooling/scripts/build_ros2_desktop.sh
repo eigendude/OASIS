@@ -1,7 +1,7 @@
 #!/bin/bash
 ################################################################################
 #
-#  Copyright (C) 2021 Garrett Brown
+#  Copyright (C) 2021-2022 Garrett Brown
 #  This file is part of OASIS - https://github.com/eigendude/OASIS
 #
 #  SPDX-License-Identifier: Apache-2.0
@@ -21,14 +21,8 @@ set -o nounset
 # Get the absolute path to this script
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-# Import environment
+# Import ROS 2 paths and config
 source "${SCRIPT_DIR}/env_ros2_desktop.sh"
-
-# Import Python paths
-source "${SCRIPT_DIR}/env_python.sh"
-
-# Import CMake paths
-source "${SCRIPT_DIR}/env_cmake.sh"
 
 #
 # Build configuration
@@ -51,8 +45,8 @@ COLCON_FLAGS+=" \
     -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
     -DPYTHON_EXECUTABLE:FILEPATH=${PYTHON_EXECUTABLE} \
     -DPYTHON_INCLUDE_DIR=${PYTHON_INCLUDE_DIR} \
-    $([ ! -f "${PYTHON_LIBRARY_PATH}" ] || echo "-DPYTHON_LIBRARY=${PYTHON_LIBRARY_PATH}") \
-    $([ ! -f "${PYTHON_PKG_DIRECTORY}" ] || echo "-DPYTHON_PACKAGES_PATH=${PYTHON_PKG_DIRECTORY}") \
+    `#-DPYTHON_LIBRARY=${PYTHON_LIBRARY_PATH}` \
+    `#-DPYTHON_PACKAGES_PATH=${PYTHON_PKG_DIRECTORY}` \
 "
 
 # Skip Qt dependencies, Shiboken is too old on Ubuntu 18.04
@@ -64,7 +58,7 @@ COLCON_FLAGS+=" \
 
 # Uncomment these to force building in serial
 #MAKE_FLAGS+=" -j1 -l1"
-#COLCON_FLAGS+=" --executor sequential"
+#COLCON_FLAGS+=" --executor sequential --event-handlers console_direct+"
 
 #
 # Build ROS 2 with colcon
@@ -72,9 +66,11 @@ COLCON_FLAGS+=" \
 
 echo "Building ROS 2..."
 
-cd "${ROS2_DESKTOP_DIRECTORY}"
+(
+  cd "${ROS2_DESKTOP_DIRECTORY}"
 
-MAKE_FLAGS="${MAKE_FLAGS}" \
-  CMAKE_PREFIX_PATH="${CMAKE_PREFIX_PATH}" \
-  colcon build \
-    ${COLCON_FLAGS}
+  MAKE_FLAGS="${MAKE_FLAGS}" \
+    CMAKE_PREFIX_PATH="${CMAKE_PREFIX_PATH}" \
+    colcon build \
+      ${COLCON_FLAGS}
+)

@@ -21,14 +21,11 @@ set -o nounset
 # Get the absolute path to this script
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-# Import environment
+# Import ROS 1 paths and configuration
 source "${SCRIPT_DIR}/env_ros1_desktop.sh"
 
-# Import Python paths
-source "${SCRIPT_DIR}/env_python.sh"
-
 #
-# Install dependencies
+# Setup ROS sources
 #
 
 # Install required dependencies
@@ -37,30 +34,54 @@ sudo apt install -y curl
 # Add the ROS apt repository key
 curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | sudo apt-key add -
 
-# Add the ROS 2 repository to our sources list
-sudo sh -c 'echo "deb [arch=$(dpkg --print-architecture)] http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" > /etc/apt/sources.list.d/ros2.list'
+# Add the ROS repository to our sources list
+sudo sh -c 'echo "deb http://packages.ros.org/ros/ubuntu $(lsb_release -sc) main" > /etc/apt/sources.list.d/ros-latest.list'
 
 sudo apt update
+
+#
+# Install dependencies
+#
 
 # Install development tools and ROS tools
 sudo apt install -y \
   build-essential
-python3 -m pip install --upgrade \
+
+# python3-rosdep is no longer an Ubuntu package, so install via pip
+sudo python3 -m pip install --upgrade \
+  rosdep
+
+# An older version of setuptools is required
+python3 -m pip install --user --upgrade \
+  pip \
+  setuptools==45.2.0 \
+
+# Install development tools and ROS tools
+python3 -m pip install --user --upgrade \
   colcon-common-extensions \
   colcon-ros \
-  pip \
   rosdep \
   rosinstall-generator \
-  setuptools==45.2.0 \
   vcstool \
 
 # Install missing Python packages
-python3 -m pip install --upgrade \
+python3 -m pip install --user --upgrade \
   empy \
   importlib-metadata \
   importlib-resources \
   lark-parser \
+  numpy \
   typing-extensions \
+
+# Add ccache support
+dpkg -s ccache >/dev/null || sudo apt install -y ccache
+
+#
+# Directory setup
+#
+
+# Ensure directory exists
+mkdir -p "${ROS1_SOURCE_DIRECTORY}"
 
 #
 # Download the ROS 1 source code
@@ -83,7 +104,7 @@ echo "Downloading ROS 1 source code..."
     --reject-file="/dev/null" \
     --no-backup-if-mismatch \
     --directory="${ROS1_SOURCE_DIRECTORY}/vision_opencv/cv_bridge" \
-    < "${CONFIG_DIRECTORY}/cv_bridge/0001-Fix-Boost-Python-not-located-on-Ubuntu-Bionic.patch"
+    < "${CONFIG_DIRECTORY}/vision_opencv/0001-Fix-Boost-Python-not-located-on-Ubuntu-Bionic.patch"
 )
 
 #
@@ -105,7 +126,5 @@ rosdep install \
   --rosdistro ${ROS1_DISTRO} \
   --as-root=pip:false \
   -y \
-  --skip-keys "python3-pykdl"
-
-# Add ccache support
-dpkg -s ccache >/dev/null || sudo apt install -y ccache
+  --skip-keys "python3-pykdl \
+"

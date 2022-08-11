@@ -1,7 +1,7 @@
 #!/bin/bash
 ################################################################################
 #
-#  Copyright (C) 2021-2022 Garrett Brown
+#  Copyright (C) 2022 Garrett Brown
 #  This file is part of OASIS - https://github.com/eigendude/OASIS
 #
 #  SPDX-License-Identifier: Apache-2.0
@@ -15,14 +15,7 @@ set -o pipefail
 set -o nounset
 
 #
-# ROS 1 configuration
-#
-
-# Define the ROS distro to use
-ROS1_DISTRO=noetic
-
-#
-# Environment paths and config
+# Environment paths and configuration
 #
 
 # Get the absolute path to this script
@@ -37,12 +30,21 @@ source "${SCRIPT_DIR}/env_python.sh"
 # Import CMake paths and config
 source "${SCRIPT_DIR}/env_cmake.sh"
 
+# Import ROS 2 paths and config
+source "${SCRIPT_DIR}/env_ros2_desktop.sh"
+
 #
 # Directory definitions
 #
 
-# Directory for ROS 1 Desktop build files
-ROS1_DESKTOP_DIRECTORY="${BUILD_DIRECTORY}/ros1-desktop-${ROS1_DISTRO}"
+# Directory for OASIS dependency build files
+OASIS_DEPENDS_DIRECTORY="${BUILD_DIRECTORY}/oasis-depends-${ROS2_DISTRO}"
 
-# Directory for ROS 1 sources
-ROS1_SOURCE_DIRECTORY="${ROS1_DESKTOP_DIRECTORY}/src"
+# Directory for OASIS dependency sources
+OASIS_DEPENDS_SOURCE_DIRECTORY="${OASIS_DEPENDS_DIRECTORY}/src"
+
+# Directory for OASIS dependency installed files
+OASIS_DEPENDS_INSTALL_DIRECTORY="${OASIS_DEPENDS_DIRECTORY}/install"
+
+# Directory for OASIS dependency installed libraries
+OASIS_DEPENDS_LIB_DIRECTORY="${OASIS_DEPENDS_INSTALL_DIRECTORY}/lib"

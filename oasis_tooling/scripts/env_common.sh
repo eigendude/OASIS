@@ -1,7 +1,7 @@
 #!/bin/bash
 ################################################################################
 #
-#  Copyright (C) 2021 Garrett Brown
+#  Copyright (C) 2021-2022 Garrett Brown
 #  This file is part of OASIS - https://github.com/eigendude/OASIS
 #
 #  SPDX-License-Identifier: Apache-2.0
@@ -38,6 +38,10 @@ STACK_DIRECTORY="${PACKAGE_DIRECTORY}/.."
 
 # Subdirectory for ROS build files
 BUILD_DIRECTORY="${STACK_DIRECTORY}/ros-ws"
+
+#
+# Directory setup
+#
 
 # Create directories
 mkdir -p "${BUILD_DIRECTORY}"

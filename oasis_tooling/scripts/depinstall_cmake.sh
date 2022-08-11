@@ -1,7 +1,7 @@
 #!/bin/bash
 ################################################################################
 #
-#  Copyright (C) 2021 Garrett Brown
+#  Copyright (C) 2021-2022 Garrett Brown
 #  This file is part of OASIS - https://github.com/eigendude/OASIS
 #
 #  SPDX-License-Identifier: Apache-2.0
@@ -15,21 +15,11 @@ set -o pipefail
 set -o nounset
 
 #
-# Environment paths and configuration
-#
-
-# Get the absolute path to this script
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-
-# Import environment
-source "${SCRIPT_DIR}/env_cmake.sh"
-
-#
 # Install dependencies
 #
 
-sudo apt update
 sudo apt install -y \
+  build-essential \
   cmake \
   libssl-dev \
   make \

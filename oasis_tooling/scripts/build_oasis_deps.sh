@@ -1,7 +1,7 @@
 #!/bin/bash
 ################################################################################
 #
-#  Copyright (C) 2021 Garrett Brown
+#  Copyright (C) 2021-2022 Garrett Brown
 #  This file is part of OASIS - https://github.com/eigendude/OASIS
 #
 #  SPDX-License-Identifier: Apache-2.0
@@ -21,17 +21,8 @@ set -o nounset
 # Get the absolute path to this script
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-# Import environment
-source "${SCRIPT_DIR}/env_ros2_desktop.sh"
-
-# Import Python paths
-source "${SCRIPT_DIR}/env_python.sh"
-
-# Import CMake paths
-source "${SCRIPT_DIR}/env_cmake.sh"
-
-# Directory for image_transport_plugins repo
-IMAGE_TRANSPORT_PLUGINS_REPO_DIR="${OASIS_SOURCE_DIRECTORY}/ros-perception/image_transport_plugins"
+# Import OASIS dependency paths and config
+source "${SCRIPT_DIR}/env_oasis_deps.sh"
 
 #
 # Load ROS 2 environment
@@ -39,7 +30,7 @@ IMAGE_TRANSPORT_PLUGINS_REPO_DIR="${OASIS_SOURCE_DIRECTORY}/ros-perception/image
 
 # Load ROS 2 Desktop
 set +o nounset
-source "${ROS2_DESKTOP_DIRECTORY}/install/setup.bash"
+source "${ROS2_INSTALL_DIRECTORY}/setup.bash"
 set -o nounset
 
 #
@@ -61,30 +52,35 @@ COLCON_FLAGS+=" \
     -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
     -DPYTHON_EXECUTABLE:FILEPATH=${PYTHON_EXECUTABLE} \
     -DPYTHON_INCLUDE_DIR=${PYTHON_INCLUDE_DIR} \
-    $([ ! -f "${PYTHON_LIBRARY_PATH}" ] || echo "-DPYTHON_LIBRARY=${PYTHON_LIBRARY_PATH}") \
+    `#-DPYTHON_LIBRARY=${PYTHON_LIBRARY_PATH}` \
 "
 
 # Uncomment these to force building in serial
 #MAKE_FLAGS+=" -j1 -l1"
-#COLCON_FLAGS+=" --executor sequential"
+#COLCON_FLAGS+=" --executor sequential --event-handlers console_direct+"
 
 #
 # Build dependencies with colcon
 #
 
-cd "${OASIS_DEPENDS_DIRECTORY}"
+(
+  cd "${OASIS_DEPENDS_DIRECTORY}"
 
-MAKE_FLAGS="${MAKE_FLAGS}" \
-  colcon build \
-    ${COLCON_FLAGS}
+  MAKE_FLAGS="${MAKE_FLAGS}" \
+    colcon build \
+      ${COLCON_FLAGS}
+)
 
 #
 # Install symlimk to fix link error at runtime
 #
 
-if [ ! -f "${OASIS_DEPENDS_DIRECTORY}/install/lib/libkinect2_registration.so" ]; then
-  (
-    cd "${OASIS_DEPENDS_DIRECTORY}/install/lib"
-    ln -s kinect2_registration/libkinect2_registration.so
-  )
+if \
+  [ ! -L "${OASIS_DEPENDS_LIB_DIRECTORY}/libkinect2_registration.so" ] && \
+  [ -f "${OASIS_DEPENDS_LIB_DIRECTORY}/kinect2_registration/libkinect2_registration.so" ] \
+; then
+  rm -rf "${OASIS_DEPENDS_LIB_DIRECTORY}/libkinect2_registration.so"
+  ln -s \
+    "${OASIS_DEPENDS_LIB_DIRECTORY}/kinect2_registration/libkinect2_registration.so" \
+    "${OASIS_DEPENDS_LIB_DIRECTORY}/libkinect2_registration.so"
 fi

@@ -21,19 +21,15 @@ set -o nounset
 # Get the absolute path to this script
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-# Import environment
-source "${SCRIPT_DIR}/env_ros2_desktop.sh"
+# Import Kodi paths and config
 source "${SCRIPT_DIR}/env_kodi.sh"
-
-# Import CMake paths
-source "${SCRIPT_DIR}/env_cmake.sh"
 
 #
 # Load ROS 2 Desktop environment
 #
 
 set +o nounset
-source "${ROS2_DESKTOP_DIRECTORY}/install/setup.bash"
+source "${ROS2_INSTALL_DIRECTORY}/setup.bash"
 set -o nounset
 
 #
@@ -41,7 +37,7 @@ set -o nounset
 #
 
 set +o nounset
-source "${OASIS_DEPENDS_DIRECTORY}/install/setup.bash"
+source "${OASIS_DEPENDS_INSTALL_DIRECTORY}/setup.bash"
 set -o nounset
 
 #
@@ -49,8 +45,17 @@ set -o nounset
 #
 
 set +o nounset
-source "${STACK_DIRECTORY}/install/setup.bash"
+source "${OASIS_INSTALL_DIRECTORY}/setup.bash"
 set -o nounset
+
+#
+# Directory setup
+#
+
+# Create directories
+mkdir -p "${KODI_DOWNLOAD_DIR}"
+mkdir -p "${KODI_EXTRACT_DIR}"
+mkdir -p "${KODI_BUILD_DIR}"
 
 #
 # Download Kodi

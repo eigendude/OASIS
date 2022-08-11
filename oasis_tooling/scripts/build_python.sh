@@ -21,8 +21,16 @@ set -o nounset
 # Get the absolute path to this script
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-# Import environment
+# Import Python environment and config
 source "${SCRIPT_DIR}/env_python.sh"
+
+#
+# Directory setup
+#
+
+# Create directories
+mkdir -p "${PYTHON_DOWNLOAD_DIR}"
+mkdir -p "${PYTHON_EXTRACT_DIR}"
 
 #
 # Download Python

@@ -1,7 +1,7 @@
 #!/bin/bash
 ################################################################################
 #
-#  Copyright (C) 2021 Garrett Brown
+#  Copyright (C) 2021-2022 Garrett Brown
 #  This file is part of OASIS - https://github.com/eigendude/OASIS
 #
 #  SPDX-License-Identifier: Apache-2.0
@@ -87,7 +87,10 @@ FIRMATA_EXPRESS_DIR="${LIBRARY_DIR}/FirmataExpress"
 cd "${SCRIPT_DIR}"
 
 echo "Updating git submodules..."
-git submodule update --init --recursive --force -- "${SCRIPT_DIR}"
+(
+  cd "${SCRIPT_DIR}"
+  git submodule update --init --recursive --force .
+)
 
 if [ ! -d "${ARDUINO_IDE_DIR}" ]; then
   echo "Downloading Arduino IDE..."

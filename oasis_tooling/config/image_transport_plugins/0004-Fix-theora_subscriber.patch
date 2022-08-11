@@ -1,0 +1,62 @@
+From b5b7a5ee9cee9ae728f2ba57382c34276c3456b8 Mon Sep 17 00:00:00 2001
+From: Ivan Santiago Paunovic <ivanpauno@ekumenlabs.com>
+Date: Wed, 10 Aug 2022 15:18:58 -0300
+Subject: [PATCH 4/4] Fix theora_subscriber
+
+Signed-off-by: Ivan Santiago Paunovic <ivanpauno@ekumenlabs.com>
+---
+ .../theora_image_transport/theora_subscriber.h      |  6 +++---
+ theora_image_transport/src/theora_subscriber.cpp    | 13 +++----------
+ 2 files changed, 6 insertions(+), 13 deletions(-)
+
+diff --git a/theora_image_transport/include/theora_image_transport/theora_subscriber.h b/theora_image_transport/include/theora_image_transport/theora_subscriber.h
+index edc8ed1..40d8b59 100644
+--- a/theora_image_transport/include/theora_image_transport/theora_subscriber.h
++++ b/theora_image_transport/include/theora_image_transport/theora_subscriber.h
+@@ -51,12 +51,12 @@ public:
+ 
+ protected:
+   // Overridden to bump queue_size, otherwise we might lose headers
+-  virtual void subscribeImpl(
++  void subscribeImpl(
+     rclcpp::Node* node,
+     const std::string &base_topic,
+     const Callback & callback,
+-    uint32_t queue_size,
+-    rmw_qos_profile_t custom_qos);
++    rmw_qos_profile_t custom_qos,
++    rclcpp::SubscriptionOptions options) override;
+ 
+   // The function that does the actual decompression and calls a user supplied
+   // callback with the resulting image
+diff --git a/theora_image_transport/src/theora_subscriber.cpp b/theora_image_transport/src/theora_subscriber.cpp
+index a3265eb..0605e42 100644
+--- a/theora_image_transport/src/theora_subscriber.cpp
++++ b/theora_image_transport/src/theora_subscriber.cpp
+@@ -69,20 +69,13 @@ void TheoraSubscriber::subscribeImpl(
+   rclcpp::Node * node,
+   const std::string &base_topic,
+   const Callback & callback,
+-  uint32_t queue_size,
+-  rmw_qos_profile_t custom_qos)
++  rmw_qos_profile_t custom_qos,
++  rclcpp::SubscriptionOptions options)
+ {
+   logger_ = node->get_logger();
+-  // queue_size doesn't account for the 3 header packets, so we correct (with a little extra) here.
+-  // ported this to ROS2 using the history policy that  determines how messages
+-  // are saved until the message is taken by the reader.  KEEP_ALL saves all
+-  // messages until they are taken.  KEEP_LAST enforces a limit on the number of
+-  // messages that are saved, specified by the "depth" parameter.
+-  custom_qos.history = rmw_qos_profile_default.history;
+-  custom_qos.depth = queue_size + 4;
+ 
+   typedef image_transport::SimpleSubscriberPlugin<theora_image_transport::msg::Packet> Base;
+-  Base::subscribeImpl(node, base_topic, callback, custom_qos);
++  Base::subscribeImpl(node, base_topic, callback, custom_qos, options);
+ }
+ 
+ // TODO: port this check to ROS2 user events
+-- 
+2.34.1
+

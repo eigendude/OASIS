@@ -21,14 +21,10 @@ repositories:
     type: git
     url: https://github.com/andrewssobral/bgslibrary.git
     version: master
-  ros-perception/image_common:
-    type: git
-    url: https://github.com/ros-perception/image_common.git
-    version: ros2
   ros-perception/image_transport_plugins:
     type: git
     url: https://github.com/ros-perception/image_transport_plugins.git
-    version: ros2
+    version: humble
   ros-perception/oasis_kinect2:
     type: git
     url: https://github.com/eigendude/oasis_kinect2.git
@@ -36,7 +32,7 @@ repositories:
   ros-perception/ros2-v4l2-camera:
     type: git
     url: https://gitlab.com/boldhearts/ros2_v4l2_camera.git
-    version: foxy
+    version: rolling
   ros-perception/vision_opencv:
     type: git
     url: https://github.com/ros-perception/vision_opencv.git

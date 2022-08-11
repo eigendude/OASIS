@@ -18,23 +18,23 @@ set -o nounset
 # Environment paths and configuration
 #
 
-# Get the absolute path to this script
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-
-# Import environment
-source "${SCRIPT_DIR}/env_cmake.sh"
+SOURCES_LIST="/etc/apt/sources.list.d/debian-sources.list"
+CODENAME="$(lsb_release --codename | cut -f2)"
+PKG_URL="http://archive.ubuntu.com/ubuntu/"
 
 #
 # Install dependencies
 #
 
 # Enable the sources package in the sources list
-# TODO: Sed out the comment in /etc/apt/sources.list
-echo "deb-src http://archive.ubuntu.com/ubuntu/ $(lsb_release --codename | cut -f2) main" | \
-  sudo tee /etc/apt/sources.list.d/debian-sources.list
+if [ ! -f "${SOURCES_LIST}" ]; then
+  # TODO: Sed out the comment in /etc/apt/sources.list
+  echo "deb-src ${PKG_URL} ${CODENAME} main" | \
+    sudo tee "${SOURCES_LIST}"
 
-# Update the packages index
-sudo apt update
+  # Update the packages index
+  sudo apt update
+fi
 
 # Install build dependencies via apt:
 sudo apt build-dep -y python3

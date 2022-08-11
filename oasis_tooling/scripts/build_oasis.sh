@@ -21,21 +21,15 @@ set -o nounset
 # Get the absolute path to this script
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-# Import environment
-source "${SCRIPT_DIR}/env_ros2_desktop.sh"
-
-# Import Python paths
-source "${SCRIPT_DIR}/env_python.sh"
-
-# Import CMake paths
-source "${SCRIPT_DIR}/env_cmake.sh"
+# Import OASIS dependency paths and config
+source "${SCRIPT_DIR}/env_oasis.sh"
 
 #
 # Load ROS 2 Desktop environment
 #
 
 set +o nounset
-source "${ROS2_DESKTOP_DIRECTORY}/install/setup.bash"
+source "${ROS2_INSTALL_DIRECTORY}/setup.bash"
 set -o nounset
 
 #
@@ -43,7 +37,7 @@ set -o nounset
 #
 
 set +o nounset
-source "${OASIS_DEPENDS_DIRECTORY}/install/setup.bash"
+source "${OASIS_DEPENDS_INSTALL_DIRECTORY}/setup.bash"
 set -o nounset
 
 #
@@ -60,19 +54,21 @@ COLCON_FLAGS+=" \
     -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
     -DPYTHON_EXECUTABLE:FILEPATH=${PYTHON_EXECUTABLE} \
     -DPYTHON_INCLUDE_DIR=${PYTHON_INCLUDE_DIR} \
-    $([ ! -f "${PYTHON_LIBRARY_PATH}" ] || echo "-DPYTHON_LIBRARY=${PYTHON_LIBRARY_PATH}") \
+    `#-DPYTHON_LIBRARY=${PYTHON_LIBRARY_PATH}` \
 "
 
 # Uncomment these to force building in serial
 #MAKE_FLAGS+=" -j1 -l1"
-#COLCON_FLAGS+=" --executor sequential"
+#COLCON_FLAGS+=" --executor sequential --event-handlers console_direct+"
 
 #
 # Build OASIS with colcon
 #
 
-cd "${STACK_DIRECTORY}"
+(
+  cd "${OASIS_DIRECTORY}"
 
-MAKE_FLAGS="${MAKE_FLAGS}" \
-  colcon build \
-    ${COLCON_FLAGS}
+  MAKE_FLAGS="${MAKE_FLAGS}" \
+    colcon build \
+      ${COLCON_FLAGS}
+)

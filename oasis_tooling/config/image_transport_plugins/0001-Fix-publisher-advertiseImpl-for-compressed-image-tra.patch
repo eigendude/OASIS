@@ -1,0 +1,116 @@
+From 3cd6fb5485594a5650c734c84c7f00c91cdc10c4 Mon Sep 17 00:00:00 2001
+From: Ivan Santiago Paunovic <ivanpauno@ekumenlabs.com>
+Date: Tue, 2 Aug 2022 18:10:10 -0300
+Subject: [PATCH 1/4] Fix publisher advertiseImpl() for compressed image
+ transport and theora image transport
+
+Signed-off-by: Ivan Santiago Paunovic <ivanpauno@ekumenlabs.com>
+---
+ .../compressed_publisher.h                          |  7 ++++---
+ .../src/compressed_publisher.cpp                    |  5 +++--
+ .../theora_image_transport/theora_publisher.h       | 10 +++++-----
+ theora_image_transport/src/theora_publisher.cpp     | 13 +++----------
+ 4 files changed, 15 insertions(+), 20 deletions(-)
+
+diff --git a/compressed_image_transport/include/compressed_image_transport/compressed_publisher.h b/compressed_image_transport/include/compressed_image_transport/compressed_publisher.h
+index 32da028..77363dc 100644
+--- a/compressed_image_transport/include/compressed_image_transport/compressed_publisher.h
++++ b/compressed_image_transport/include/compressed_image_transport/compressed_publisher.h
+@@ -48,9 +48,9 @@ class CompressedPublisher : public image_transport::SimplePublisherPlugin<Compre
+ {
+ public:
+   CompressedPublisher(): logger_(rclcpp::get_logger("CompressedPublisher")) {}
+-  virtual ~CompressedPublisher() = default;
++  ~CompressedPublisher() override = default;
+ 
+-  virtual std::string getTransportName() const
++  std::string getTransportName() const override
+   {
+     return "compressed";
+   }
+@@ -60,7 +60,8 @@ protected:
+   void advertiseImpl(
+       rclcpp::Node* node,
+       const std::string& base_topic,
+-      rmw_qos_profile_t custom_qos) override;
++      rmw_qos_profile_t custom_qos,
++      rclcpp::PublisherOptions options) override;
+ 
+   void publish(const sensor_msgs::msg::Image& message,
+                const PublishFn& publish_fn) const;
+diff --git a/compressed_image_transport/src/compressed_publisher.cpp b/compressed_image_transport/src/compressed_publisher.cpp
+index ff9d38e..b4604ca 100644
+--- a/compressed_image_transport/src/compressed_publisher.cpp
++++ b/compressed_image_transport/src/compressed_publisher.cpp
+@@ -61,10 +61,11 @@ namespace compressed_image_transport
+ void CompressedPublisher::advertiseImpl(
+   rclcpp::Node* node,
+   const std::string& base_topic,
+-  rmw_qos_profile_t custom_qos)
++  rmw_qos_profile_t custom_qos,
++  rclcpp::PublisherOptions options)
+ {
+   typedef image_transport::SimplePublisherPlugin<sensor_msgs::msg::CompressedImage> Base;
+-  Base::advertiseImpl(node, base_topic, custom_qos);
++  Base::advertiseImpl(node, base_topic, custom_qos, options);
+ 
+   uint ns_len = node->get_effective_namespace().length();
+   std::string param_base_name = base_topic.substr(ns_len);
+diff --git a/theora_image_transport/include/theora_image_transport/theora_publisher.h b/theora_image_transport/include/theora_image_transport/theora_publisher.h
+index f316a4e..81daa4a 100644
+--- a/theora_image_transport/include/theora_image_transport/theora_publisher.h
++++ b/theora_image_transport/include/theora_image_transport/theora_publisher.h
+@@ -50,17 +50,17 @@ class TheoraPublisher : public image_transport::SimplePublisherPlugin<theora_ima
+ {
+ public:
+   TheoraPublisher();
+-  virtual ~TheoraPublisher();
++  ~TheoraPublisher() override;
+ 
+   // Return the system unique string representing the theora transport type
+-  virtual std::string getTransportName() const { return "theora"; }
++  std::string getTransportName() const override { return "theora"; }
+ 
+ protected:
+-  virtual void advertiseImpl(
++  void advertiseImpl(
+     rclcpp::Node* node,
+     const std::string &base_topic,
+-    uint32_t queue_size,
+-    rmw_qos_profile_t custom_qos);
++    rmw_qos_profile_t custom_qos,
++    rclcpp::PublisherOptions options) override;
+ 
+   // TODO: Callback to send header packets to new clients
+   // virtual void connectCallback(const ros::SingleSubscriberPublisher& pub);
+diff --git a/theora_image_transport/src/theora_publisher.cpp b/theora_image_transport/src/theora_publisher.cpp
+index 65be97b..df349c4 100644
+--- a/theora_image_transport/src/theora_publisher.cpp
++++ b/theora_image_transport/src/theora_publisher.cpp
+@@ -74,20 +74,13 @@ TheoraPublisher::~TheoraPublisher()
+ void TheoraPublisher::advertiseImpl(
+   rclcpp::Node *node,
+   const std::string &base_topic,
+-  uint32_t queue_size,
+-  rmw_qos_profile_t custom_qos)
++  rmw_qos_profile_t custom_qos,
++  rclcpp::PublisherOptions options)
+ {
+   logger_ = node->get_logger();
+-  // queue_size doesn't account for the 3 header packets, so we correct (with a little extra) here.
+-  // ported this to ROS2 using the history policy that  determines how messages
+-  // are saved until the message is taken by the reader.  KEEP_ALL saves all
+-  // messages until they are taken.  KEEP_LAST enforces a limit on the number of
+-  // messages that are saved, specified by the "depth" parameter.
+-  custom_qos.history = rmw_qos_profile_default.history;
+-  custom_qos.depth = queue_size + 4;
+ 
+   typedef image_transport::SimplePublisherPlugin<theora_image_transport::msg::Packet> Base;
+-  Base::advertiseImpl(node, base_topic, custom_qos);
++  Base::advertiseImpl(node, base_topic, custom_qos, options);
+ }
+ 
+   // TODO(ros2): this method should be called when configuration change through
+-- 
+2.34.1
+

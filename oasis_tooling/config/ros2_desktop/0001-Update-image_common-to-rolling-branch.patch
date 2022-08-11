@@ -1,0 +1,25 @@
+From a6ac57ca943538e65048a0a496eb3e6cfa424d21 Mon Sep 17 00:00:00 2001
+From: Garrett Brown <garrett.brown@aclima.io>
+Date: Tue, 9 Aug 2022 21:54:52 -0700
+Subject: [PATCH] Update image_common to "rolling" branch
+
+---
+ ros2.repos | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/ros2.repos b/ros2.repos
+index e80d864..8380c72 100644
+--- a/ros2.repos
++++ b/ros2.repos
+@@ -58,7 +58,7 @@ repositories:
+   ros-perception/image_common:
+     type: git
+     url: https://github.com/ros-perception/image_common.git
+-    version: galactic
++    version: rolling
+   ros-perception/laser_geometry:
+     type: git
+     url: https://github.com/ros-perception/laser_geometry.git
+-- 
+2.34.1
+

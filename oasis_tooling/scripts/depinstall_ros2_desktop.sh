@@ -1,7 +1,7 @@
 #!/bin/bash
 ################################################################################
 #
-#  Copyright (C) 2021 Garrett Brown
+#  Copyright (C) 2021-2022 Garrett Brown
 #  This file is part of OASIS - https://github.com/eigendude/OASIS
 #
 #  SPDX-License-Identifier: Apache-2.0
@@ -21,50 +21,84 @@ set -o nounset
 # Get the absolute path to this script
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-# Import environment
+# Import ROS 2 paths and config
 source "${SCRIPT_DIR}/env_ros2_desktop.sh"
 
-# Import Python paths
-source "${SCRIPT_DIR}/env_python.sh"
-
 #
-# Install dependencies (everything but macOS)
+# Setup ROS 2 sources
 #
 
 if [[ "${OSTYPE}" != "darwin"* ]]; then
+  # Add the ROS 2 repository
+  ARCH="$(dpkg --print-architecture)"
+  CODENAME="$(source "/etc/os-release" && echo "${UBUNTU_CODENAME}")"
+  KEY_URL="https://raw.githubusercontent.com/ros/rosdistro/master/ros.key"
+  PKG_URL="http://packages.ros.org/ros2/ubuntu"
+  SIGNED_BY="/usr/share/keyrings/ros-archive-keyring.gpg"
+  SOURCES_LIST="/etc/apt/sources.list.d/ros2.list"
+
+  if [ ! -f "${SIGNED_BY}" ] || [ ! -f ${SOURCES_LIST} ]; then
   # Install required dependencies
-  sudo apt install -y curl gnupg2 lsb-release make python3-rosdep
+    sudo apt install -y \
+      curl \
+      gnupg2 \
+      lsb-release
 
-  # Add the ROS 2 apt repository
-  curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | sudo apt-key add -
+    # Authorize the ROS 2 GPG key with apt
+    sudo curl -sSL "${KEY_URL}" -o "${SIGNED_BY}"
 
-  # Add the ROS 2 repository to our sources list
-  # NOTE: hersute packages not currently available
-  echo "deb [arch=$(dpkg --print-architecture)] http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" | \
-    sudo tee /etc/apt/sources.list.d/ros2.list
+    # Add the ROS 2 repository to our sources list
+    echo "deb [arch=${ARCH} signed-by=${SIGNED_BY}] ${PKG_URL} ${CODENAME} main" | \
+      sudo tee "${SOURCES_LIST}"
 
-  sudo apt update
+    sudo apt update
+  fi
+fi
 
+#
+# Install build dependencies (everything but macOS)
+#
+
+if [[ "${OSTYPE}" != "darwin"* ]]; then
   # Install development tools and ROS tools
   sudo apt install -y \
     build-essential \
     git \
     gfortran \
     libbullet-dev \
-    wget
+    python3-pip \
+    wget \
+
+  # python3-rosdep is no longer an Ubuntu package, so install via pip
+  sudo python3 -m pip install --upgrade rosdep
+
+  # Install Fast-RTPS dependencies
+  sudo apt install -y --no-install-recommends \
+    libasio-dev \
+    libtinyxml2-dev \
+
+  # Install Cyclone DDS dependencies
+  sudo apt install -y --no-install-recommends \
+    libcunit1-dev \
+
   # Upgraded setuptools may be required for other tools
-  python3 -m pip install --upgrade \
+  python3 -m pip install --user --upgrade \
     pip \
-    setuptools
-  python3 -m pip install --upgrade \
+    setuptools \
+
+  # Install development tools and ROS tools
+  python3 -m pip install --user --upgrade \
     colcon-common-extensions \
-    flake8 \
-    pytest-cov \
-    vcstool
+    rosdep \
+    vcstool \
 
   # Install some pip packages needed for testing
-  python3 -m pip install --upgrade \
+  python3 -m pip install --user --upgrade \
     argcomplete \
+    black \
+    click \
+    distro \
+    flake8 \
     flake8-blind-except \
     flake8-builtins \
     flake8-class-newline \
@@ -73,35 +107,30 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     flake8-docstrings \
     flake8-import-order \
     flake8-quotes \
+    mypy \
+    mypy-extensions \
     pytest \
+    pytest-cov \
     pytest-repeat \
-    pytest-rerunfailures
-
-  # Install Fast-RTPS dependencies
-  sudo apt install -y --no-install-recommends \
-    libasio-dev \
-    libtinyxml2-dev
-
-  # Install Cyclone DDS dependencies
-  sudo apt install -y --no-install-recommends \
-    libcunit1-dev
+    pytest-rerunfailures \
+    tox \
 
   # Sometimes lark is missing
-  python3 -m pip install --upgrade \
+  python3 -m pip install --user --upgrade \
     importlib-resources \
-    lark-parser
+    lark-parser \
 
   # This is needed by rosidl_generator_py
-  python3 -m pip install --upgrade \
-    numpy
+  python3 -m pip install --user --upgrade \
+    numpy \
 
   # ROS 2 runtime dependencies
-  python3 -m pip install --upgrade \
+  python3 -m pip install --user --upgrade \
     netifaces
 fi
 
 #
-# Install dependencies (macOS)
+# Install build dependencies (macOS)
 #
 
 if [[ "${OSTYPE}" == "darwin"* ]]; then
@@ -133,10 +162,12 @@ if [[ "${OSTYPE}" == "darwin"* ]]; then
     spdlog \
     tinyxml \
     tinyxml2 \
-    wget
+    wget \
 
   python3 -m pip install --upgrade \
-    setuptools
+    pip \
+    setuptools \
+
   python3 -m pip install --upgrade \
     argcomplete \
     catkin_pkg \
@@ -170,7 +201,7 @@ if [[ "${OSTYPE}" == "darwin"* ]]; then
     pytest-mock \
     rosdep \
     rosdistro \
-    vcstool
+    vcstool \
 
   GRAPHVIZ_VERSION=$(brew list --version | grep graphviz | cut -d " " -f 2)
   python3 -m pip install --upgrade \
@@ -178,6 +209,27 @@ if [[ "${OSTYPE}" == "darwin"* ]]; then
     --global-option="-I/usr/local/Cellar/graphviz/${GRAPHVIZ_VERSION}/include" \
     --global-option="-L/usr/local/Cellar/graphviz/${GRAPHVIZ_VERSION}/lib" \
     pygraphviz
+fi
+
+#
+# Directory setup
+#
+
+# Ensure directories exist
+mkdir -p "${ROS2_SOURCE_DIRECTORY}"
+mkdir -p "${ROS2_INSTALL_DIRECTORY}"
+mkdir -p "${ROS2_PYTHON_PKG_DIRECTORY}"
+
+# After updating to Ubuntu 22.04, ament packages couldn't be found becaues
+# they were installed to a different directory
+if [ ! -L "${AMENT_INSTALL_DIRECTORY}" ]; then
+  rm -rf "${AMENT_INSTALL_DIRECTORY}"
+  ln -s "${ROS2_INSTALL_DIRECTORY}" "${AMENT_INSTALL_DIRECTORY}"
+fi
+
+if [ ! -L "${AMENT_PYTHON_PKG_DIRECTORY}" ]; then
+  rm -rf "${AMENT_PYTHON_PKG_DIRECTORY}"
+  ln -s "${ROS2_PYTHON_PKG_DIRECTORY}" "${AMENT_PYTHON_PKG_DIRECTORY}"
 fi
 
 #
@@ -198,11 +250,31 @@ echo "Downloading ROS 2 source code..."
     --reject-file="/dev/null" \
     --no-backup-if-mismatch \
     < "${CONFIG_DIRECTORY}/ros2_desktop/0001-Change-rcpputils-to-master-branch.patch"
+  patch \
+    -p1 \
+    --forward \
+    --reject-file="/dev/null" \
+    --no-backup-if-mismatch \
+    < "${CONFIG_DIRECTORY}/ros2_desktop/0001-Update-ament-to-humble-branches.patch"
+  patch \
+    -p1 \
+    --forward \
+    --reject-file="/dev/null" \
+    --no-backup-if-mismatch \
+    < "${CONFIG_DIRECTORY}/ros2_desktop/0001-Update-image_common-to-rolling-branch.patch"
 
   # Import ROS 2 sources
   vcs import "${ROS2_SOURCE_DIRECTORY}" < ros2.repos
 
   # Patch ROS 2 packages
+  patch \
+    -p1 \
+    --forward \
+    --reject-file="/dev/null" \
+    --no-backup-if-mismatch \
+    --directory="${ROS2_SOURCE_DIRECTORY}/ros2/demos" \
+    < "${CONFIG_DIRECTORY}/demos/0001-Remove-the-malloc_hook-from-the-pendulum_demo.patch" \
+    || :
   patch \
     -p1 \
     --forward \
@@ -216,9 +288,23 @@ echo "Downloading ROS 2 source code..."
     --forward \
     --reject-file="/dev/null" \
     --no-backup-if-mismatch \
+    --directory="${ROS2_SOURCE_DIRECTORY}/ros2/realtime_support" \
+    < "${CONFIG_DIRECTORY}/realtime_support/0001-Remove-the-use-of-malloc-hooks-from-the-tlsf_cpp-tes.patch" \
+    || :
+  patch \
+    -p1 \
+    --forward \
+    --reject-file="/dev/null" \
+    --no-backup-if-mismatch \
     --directory="${ROS2_SOURCE_DIRECTORY}/ros2/rviz" \
     < "${CONFIG_DIRECTORY}/rviz/0001-Update-to-C-17.patch" \
     || :
+
+  # OGRE fails to build on Ubuntu 22.04 arm64 due to newer glibc, fixed in humble
+  if [ "${ROS2_DISTRO}" = "galactic" ]; then
+    echo "Disabling rviz"
+    touch "${ROS2_SOURCE_DIRECTORY}/ros2/rviz/COLCON_IGNORE"
+  fi
 )
 
 #
@@ -240,7 +326,14 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     --rosdistro ${ROS2_DISTRO} \
     --as-root=pip:false \
     -y \
-    --skip-keys "console_bridge fastcdr fastrtps python3-ifcfg rti-connext-dds-5.3.1 urdfdom_headers"
+    --skip-keys " \
+      console_bridge \
+      fastcdr \
+      fastrtps \
+      python3-ifcfg \
+      rti-connext-dds-5.3.1 \
+      urdfdom_headers \
+    "
 
   # Add ccache support
   dpkg -s ccache >/dev/null || sudo apt install -y ccache

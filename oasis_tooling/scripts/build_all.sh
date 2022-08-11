@@ -36,22 +36,17 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 "${SCRIPT_DIR}/build_cmake.sh"
 
 #
-# Install ROS dependencies
-#
-
-#"${SCRIPT_DIR}/depinstall_ros1_desktop.sh"
-"${SCRIPT_DIR}/depinstall_ros2_desktop.sh"
-
-#
 # Build ROS 1
 #
 
+#"${SCRIPT_DIR}/depinstall_ros1_desktop.sh"
 #"${SCRIPT_DIR}/build_ros1_desktop.sh"
 
 #
 # Build ROS 2
 #
 
+"${SCRIPT_DIR}/depinstall_ros2_desktop.sh"
 "${SCRIPT_DIR}/build_ros2_desktop.sh"
 
 #

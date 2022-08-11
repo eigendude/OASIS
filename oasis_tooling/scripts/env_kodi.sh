@@ -1,7 +1,7 @@
 #!/bin/bash
 ################################################################################
 #
-#  Copyright (C) 2021 Garrett Brown
+#  Copyright (C) 2021-2022 Garrett Brown
 #  This file is part of OASIS - https://github.com/eigendude/OASIS
 #
 #  SPDX-License-Identifier: Apache-2.0
@@ -31,7 +31,7 @@ KODI_URL="https://github.com/garbear/xbmc/archive/${KODI_VERSION}.tar.gz"
 APP_RENDER_SYSTEM=gles
 
 #
-# Directory and path definitions
+# Environment paths and config
 #
 
 # Get the absolute path to this script
@@ -39,6 +39,25 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Import common paths and config
 source "${SCRIPT_DIR}/env_common.sh"
+
+# Import Python paths and config
+source "${SCRIPT_DIR}/env_python.sh"
+
+# Import CMake paths and config
+source "${SCRIPT_DIR}/env_cmake.sh"
+
+# Import ROS 2 paths and config
+source "${SCRIPT_DIR}/env_ros2_desktop.sh"
+
+# Import OASIS dependency paths and config
+source "${SCRIPT_DIR}/env_oasis_deps.sh"
+
+# Import OASIS paths and config
+source "${SCRIPT_DIR}/env_oasis.sh"
+
+#
+# Directory and path definitions
+#
 
 # Subdirectory for KODI build files
 KODI_DIRECTORY="${BUILD_DIRECTORY}/kodi"
@@ -55,8 +74,3 @@ KODI_BIN_DIRECTORY="${KODI_INSTALL_DIR}/bin"
 
 # Define paths
 KODI_ARCHIVE_PATH="${KODI_DOWNLOAD_DIR}/kodi-${KODI_VERSION}.tar.gz"
-
-# Create directories
-mkdir -p "${KODI_DOWNLOAD_DIR}"
-mkdir -p "${KODI_EXTRACT_DIR}"
-mkdir -p "${KODI_BUILD_DIR}"

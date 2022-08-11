@@ -21,8 +21,17 @@ set -o nounset
 # Get the absolute path to this script
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-# Import environment
+# Import CMake environment and config
 source "${SCRIPT_DIR}/env_cmake.sh"
+
+#
+# Directory setup
+#
+
+# Create directories
+mkdir -p "${CMAKE_DOWNLOAD_DIR}"
+mkdir -p "${CMAKE_EXTRACT_DIR}"
+mkdir -p "${CMAKE_BUILD_DIR}"
 
 #
 # Download CMake
