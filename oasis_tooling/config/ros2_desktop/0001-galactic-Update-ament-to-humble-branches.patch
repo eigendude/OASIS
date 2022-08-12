@@ -1,14 +1,14 @@
-From 7baa0411acc255d42c1c3bec02ec028ee6d06f28 Mon Sep 17 00:00:00 2001
-From: Garrett Brown <garrett.brown@aclima.io>
-Date: Tue, 9 Aug 2022 18:14:22 -0700
-Subject: [PATCH] Update ament to "humble" branches
+From 0b2f9e118cf1c17a71b2097154f3802942107b9a Mon Sep 17 00:00:00 2001
+From: Garrett Brown <eigendebugger@gmail.com>
+Date: Fri, 12 Aug 2022 16:48:39 -0700
+Subject: [PATCH] galactic: Update ament to "humble" branches
 
 ---
  ros2.repos | 14 +++++++-------
  1 file changed, 7 insertions(+), 7 deletions(-)
 
 diff --git a/ros2.repos b/ros2.repos
-index 7df52b7..e80d864 100644
+index 442622e..707ed7a 100644
 --- a/ros2.repos
 +++ b/ros2.repos
 @@ -2,31 +2,31 @@ repositories:

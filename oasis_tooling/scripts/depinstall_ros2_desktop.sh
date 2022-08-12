@@ -42,7 +42,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     sudo apt install -y \
       curl \
       gnupg2 \
-      lsb-release
+      lsb-release \
 
     # Authorize the ROS 2 GPG key with apt
     sudo curl -sSL "${KEY_URL}" -o "${SIGNED_BY}"
@@ -244,24 +244,26 @@ echo "Downloading ROS 2 source code..."
   wget --timestamping "https://raw.githubusercontent.com/ros2/ros2/${ROS2_DISTRO}/ros2.repos"
 
   # Patch ROS 2 sources
-  patch \
-    -p1 \
-    --forward \
-    --reject-file="/dev/null" \
-    --no-backup-if-mismatch \
-    < "${CONFIG_DIRECTORY}/ros2_desktop/0001-Change-rcpputils-to-master-branch.patch"
-  patch \
-    -p1 \
-    --forward \
-    --reject-file="/dev/null" \
-    --no-backup-if-mismatch \
-    < "${CONFIG_DIRECTORY}/ros2_desktop/0001-Update-ament-to-humble-branches.patch"
-  patch \
-    -p1 \
-    --forward \
-    --reject-file="/dev/null" \
-    --no-backup-if-mismatch \
-    < "${CONFIG_DIRECTORY}/ros2_desktop/0001-Update-image_common-to-rolling-branch.patch"
+  if [ "${ROS2_DISTRO}" = "galactic" ]; then
+    patch \
+      -p1 \
+      --forward \
+      --reject-file="/dev/null" \
+      --no-backup-if-mismatch \
+      < "${CONFIG_DIRECTORY}/ros2_desktop/0001-galactic-Change-rcpputils-to-master-branch.patch"
+    patch \
+      -p1 \
+      --forward \
+      --reject-file="/dev/null" \
+      --no-backup-if-mismatch \
+      < "${CONFIG_DIRECTORY}/ros2_desktop/0001-galactic-Update-ament-to-humble-branches.patch"
+    patch \
+      -p1 \
+      --forward \
+      --reject-file="/dev/null" \
+      --no-backup-if-mismatch \
+      < "${CONFIG_DIRECTORY}/ros2_desktop/0001-galactic-Update-image_common-to-rolling-branch.patch"
+  fi
 
   # Import ROS 2 sources
   vcs import "${ROS2_SOURCE_DIRECTORY}" < ros2.repos
@@ -272,36 +274,37 @@ echo "Downloading ROS 2 source code..."
     --forward \
     --reject-file="/dev/null" \
     --no-backup-if-mismatch \
-    --directory="${ROS2_SOURCE_DIRECTORY}/ros2/demos" \
-    < "${CONFIG_DIRECTORY}/demos/0001-Remove-the-malloc_hook-from-the-pendulum_demo.patch" \
-    || :
-  patch \
-    -p1 \
-    --forward \
-    --reject-file="/dev/null" \
-    --no-backup-if-mismatch \
-    --directory="${ROS2_SOURCE_DIRECTORY}/eclipse-iceoryx/iceoryx" \
-    < "${CONFIG_DIRECTORY}/iceoryx/0001-Fix-static_asserts-causing-build-to-fail.patch" \
-    || :
-  patch \
-    -p1 \
-    --forward \
-    --reject-file="/dev/null" \
-    --no-backup-if-mismatch \
-    --directory="${ROS2_SOURCE_DIRECTORY}/ros2/realtime_support" \
-    < "${CONFIG_DIRECTORY}/realtime_support/0001-Remove-the-use-of-malloc-hooks-from-the-tlsf_cpp-tes.patch" \
-    || :
-  patch \
-    -p1 \
-    --forward \
-    --reject-file="/dev/null" \
-    --no-backup-if-mismatch \
     --directory="${ROS2_SOURCE_DIRECTORY}/ros2/rviz" \
     < "${CONFIG_DIRECTORY}/rviz/0001-Update-to-C-17.patch" \
     || :
 
-  # OGRE fails to build on Ubuntu 22.04 arm64 due to newer glibc, fixed in humble
   if [ "${ROS2_DISTRO}" = "galactic" ]; then
+    patch \
+      -p1 \
+      --forward \
+      --reject-file="/dev/null" \
+      --no-backup-if-mismatch \
+      --directory="${ROS2_SOURCE_DIRECTORY}/eclipse-iceoryx/iceoryx" \
+      < "${CONFIG_DIRECTORY}/iceoryx/0001-Fix-static_asserts-causing-build-to-fail.patch" \
+      || :
+    patch \
+      -p1 \
+      --forward \
+      --reject-file="/dev/null" \
+      --no-backup-if-mismatch \
+      --directory="${ROS2_SOURCE_DIRECTORY}/ros2/demos" \
+      < "${CONFIG_DIRECTORY}/demos/0001-Remove-the-malloc_hook-from-the-pendulum_demo.patch" \
+      || :
+    patch \
+      -p1 \
+      --forward \
+      --reject-file="/dev/null" \
+      --no-backup-if-mismatch \
+      --directory="${ROS2_SOURCE_DIRECTORY}/ros2/realtime_support" \
+      < "${CONFIG_DIRECTORY}/realtime_support/0001-Remove-the-use-of-malloc-hooks-from-the-tlsf_cpp-tes.patch" \
+      || :
+
+    # OGRE fails to build on Ubuntu 22.04 arm64 due to newer glibc, fixed in humble
     echo "Disabling rviz"
     touch "${ROS2_SOURCE_DIRECTORY}/ros2/rviz/COLCON_IGNORE"
   fi

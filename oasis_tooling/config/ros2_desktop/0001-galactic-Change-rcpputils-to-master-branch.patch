@@ -1,7 +1,7 @@
-From 51656a9021096d791f6bf32905b98a8a0b9a2d7e Mon Sep 17 00:00:00 2001
+From 7b369824021f2895ecc24bc514ae8632dcf15640 Mon Sep 17 00:00:00 2001
 From: Garrett Brown <eigendebugger@gmail.com>
-Date: Fri, 12 Nov 2021 22:00:37 +0000
-Subject: [PATCH] Change rcpputils to "master" branch
+Date: Fri, 12 Aug 2022 16:48:38 -0700
+Subject: [PATCH] galactic: Change rcpputils to "master" branch
 
 Needed to fix error:
 
@@ -13,10 +13,10 @@ Needed to fix error:
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/ros2.repos b/ros2.repos
-index e9643c6..8c9e162 100644
+index d348370..442622e 100644
 --- a/ros2.repos
 +++ b/ros2.repos
-@@ -278,7 +278,7 @@ repositories:
+@@ -274,7 +274,7 @@ repositories:
    ros2/rcpputils:
      type: git
      url: https://github.com/ros2/rcpputils.git
@@ -26,5 +26,5 @@ index e9643c6..8c9e162 100644
      type: git
      url: https://github.com/ros2/rcutils.git
 -- 
-2.25.1
+2.34.1
 

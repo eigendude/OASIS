@@ -1,14 +1,14 @@
-From a6ac57ca943538e65048a0a496eb3e6cfa424d21 Mon Sep 17 00:00:00 2001
-From: Garrett Brown <garrett.brown@aclima.io>
-Date: Tue, 9 Aug 2022 21:54:52 -0700
-Subject: [PATCH] Update image_common to "rolling" branch
+From 748a74fd6480998807607284f93ac534cab9d627 Mon Sep 17 00:00:00 2001
+From: Garrett Brown <eigendebugger@gmail.com>
+Date: Fri, 12 Aug 2022 16:48:41 -0700
+Subject: [PATCH] galactic: Update image_common to "rolling" branch
 
 ---
  ros2.repos | 2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/ros2.repos b/ros2.repos
-index e80d864..8380c72 100644
+index 707ed7a..42add9f 100644
 --- a/ros2.repos
 +++ b/ros2.repos
 @@ -58,7 +58,7 @@ repositories:
