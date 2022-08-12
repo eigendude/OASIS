@@ -76,7 +76,6 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     build-essential \
     git \
     python3-pip \
-    wget \
 
   # python3-rosdep is no longer an Ubuntu package, so install via pip
   sudo python3 -m pip install --upgrade rosdep
@@ -108,6 +107,18 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
 
   # Add ccache support
   sudo apt install -y ccache
+
+  # Install libcec dependencies
+  sudo apt install -y \
+    cmake \
+    libudev-dev \
+    libxrandr-dev \
+    swig
+
+  # Needed for libcec on the Raspberry Pi
+  if [ "$(cat /proc/cpuinfo | grep "^Model" | awk '{print $3}')" = "Raspberry" ]; then
+    sudo apt install -y libraspberrypi-dev
+  fi
 fi
 
 #
@@ -249,7 +260,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
   rosdep update
 
   # Download dependencies
-  echo "Downloading dependency source code..."
+  echo "Downloading dependency rosdeps..."
 
   # Install dependency rosdeps
   rosdep install \
