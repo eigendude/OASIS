@@ -85,3 +85,9 @@ make -C "${PYTHON_SOURCE_DIR}" install
 if [ ! -f "${PYTHON_PKG_DIRECTORY}/lsb_release.py" ]; then
   ln -s "/usr/share/pyshared/lsb_release.py" "${PYTHON_PKG_DIRECTORY}/lsb_release.py"
 fi
+
+# Now that Python is installed, make sure it's on the path
+source "${SCRIPT_DIR}/env_python.sh"
+
+# Ensure pip is installed
+"${PYTHON_EXECUTABLE}" -m ensurepip

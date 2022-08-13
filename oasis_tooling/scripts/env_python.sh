@@ -37,6 +37,9 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # Import common paths and config
 source "${SCRIPT_DIR}/env_common.sh"
 
+# Installed executable name
+PYTHON_EXECUTABLE_NAME="python${PYTHON_VERSION_MAJOR}.${PYTHON_VERSION_MINOR}"
+
 # Installed library name
 PYTHON_LIBRARY_NAME="libpython${PYTHON_VERSION_MAJOR}.${PYTHON_VERSION_MINOR}d.so"
 
@@ -56,30 +59,27 @@ PYTHON_EXTRACT_DIR="${PYTHON_DIRECTORY}/src"
 PYTHON_SOURCE_DIR="${PYTHON_DIRECTORY}/src/Python-${PYTHON_VERSION}"
 PYTHON_INSTALL_DIR="${PYTHON_DIRECTORY}/install"
 
+# Define build paths
+PYTHON_ARCHIVE_PATH="${PYTHON_DOWNLOAD_DIR}/Python-${PYTHON_VERSION}.tgz"
+PYTHON_MAKEFILE_PATH="${PYTHON_SOURCE_DIR}/Makefile"
+
 # Installed Python binaries (for external use of Python)
 PYTHON_BIN_DIRECTORY="${PYTHON_INSTALL_DIR}/bin"
 PYTHON_LIB_DIRECTORY="${PYTHON_INSTALL_DIR}/lib"
 
+# Installed Python executable
+PYTHON_EXECUTABLE="${PYTHON_BIN_DIRECTORY}/${PYTHON_EXECUTABLE_NAME}"
+
 # Installed Python site-packages
 PYTHON_PKG_DIRECTORY="${PYTHON_INSTALL_DIR}/${PYTHON_PKG_PREFIX}"
 
-# Define paths
-PYTHON_ARCHIVE_PATH="${PYTHON_DOWNLOAD_DIR}/Python-${PYTHON_VERSION}.tgz"
-PYTHON_MAKEFILE_PATH="${PYTHON_SOURCE_DIR}/Makefile"
+if [ -e "${PYTHON_EXECUTABLE}" ]; then
+  # Add Python to system paths
+  export PATH="${PYTHON_BIN_DIRECTORY}:${PATH}"
+  export LD_LIBRARY_PATH="${PYTHON_LIB_DIRECTORY}"
+  export PYTHONUSERBASE="${PYTHON_INSTALL_DIR}"
 
-# Locate Python paths
-PYTHON_EXECUTABLE="$(which python3)"
-PYTHON_INCLUDE_DIR="$(python3 -c "from distutils.sysconfig import get_python_inc; print(get_python_inc())")"
-PYTHON_LIBRARY_DIR="$(python3 -c "import distutils.sysconfig as sysconfig; print(sysconfig.get_config_var('LIBDIR'))")"
-PYTHON_LIBRARY_PATH="${PYTHON_LIBRARY_DIR}/${PYTHON_LIBRARY_NAME}"
-
-#
-# System path setup
-#
-
-# Add Python binaries to system paths
-export PATH="${PYTHON_BIN_DIRECTORY}:${PATH}"
-export LD_LIBRARY_PATH="${PYTHON_LIB_DIRECTORY}"
-
-# Configure Python paths
-export PYTHONUSERBASE="${PYTHON_INSTALL_DIR}"
+  PYTHON_INCLUDE_DIR="$("${PYTHON_EXECUTABLE}" -c "from distutils.sysconfig import get_python_inc; print(get_python_inc())")"
+  PYTHON_LIBRARY_DIR="$("${PYTHON_EXECUTABLE}" -c "import distutils.sysconfig as sysconfig; print(sysconfig.get_config_var('LIBDIR'))")"
+  PYTHON_LIBRARY_PATH="${PYTHON_LIBRARY_DIR}/${PYTHON_LIBRARY_NAME}"
+fi
