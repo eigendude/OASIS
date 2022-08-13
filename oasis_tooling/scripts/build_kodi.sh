@@ -88,6 +88,7 @@ tar -zxf "${KODI_ARCHIVE_PATH}" --directory="${KODI_EXTRACT_DIR}"
       -DCORE_PLATFORM_NAME="x11 gbm$([ "${ENABLE_WAYLAND}" = "OFF" ] || echo " wayland")" \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_INSTALL_PREFIX="${KODI_INSTALL_DIR}" \
+      -DENABLE_CEC=OFF \
       -DENABLE_INTERNAL_FLATBUFFERS=ON \
       -DENABLE_INTERNAL_SPDLOG=ON \
       -DENABLE_LLD=${ENABLE_LLD} \
