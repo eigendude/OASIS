@@ -3,21 +3,43 @@ Description=Kodi Visualizer
 After=network.target
 
 [Service]
-Type=simple
-User=garrett
-#EnvironmentFile=/etc/default/sundstrom_env
-Environment=DISPLAY=:0
+
+#
+# ROS 2 configuration
+#
+
 Environment=ROS2_DISTRO=galactic
-Environment=ROS2_SYSTEM_ENV=/opt/ros/${ROS2_DISTRO}/setup.bash
+
+#
+# Kodi configuration
+#
+
+Environment=DISPLAY=:0
+
+#
+# Path configuraiton
+#
+
 Environment=ROS2_DESKTOP_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/ros2-desktop-${ROS2_DISTRO}/install/setup.bash
 Environment=OASIS_DEPENDS_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/oasis-depends-${ROS2_DISTRO}/install/setup.bash
-Environment=KODI_BINARY=/home/${USER}/kodi/bin/kodi
-ExecStart=/bin/bash -c '( [ ! -f `eval echo "${ROS2_SYSTEM_ENV}"` ] || . `eval echo "${ROS2_SYSTEM_ENV}"` ) && ( [ ! -f `eval echo "${ROS2_DESKTOP_ENV}"` ] || . `eval echo "${ROS2_DESKTOP_ENV}"` ) && . `eval echo "${OASIS_DEPENDS_ENV}"` && `eval echo "${KODI_BINARY}"`'
+Environment=OASIS_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/oasis-${ROS2_DISTRO}/install/setup.bash
+
+Environment=PYTHON_BIN_DIR=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/python/install/bin
+Environment=PYTHON_LIB_DIR=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/python/install/lib
+
+Environment=KODI_BINARY=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/kodi-${ROS2_DISTRO}/install/bin/kodi
+
+#
+# Service definition
+#
+
+User=garrett
+ExecStartPre=/bin/sleep 10
+ExecStart=/bin/bash -c 'export PATH="${PYTHON_BIN_DIR}:${PATH}" && export LD_LIBRARY_PATH="${PYTHON_LIB_DIR}" && source `eval echo "${ROS2_DESKTOP_ENV}"` && source `eval echo "${OASIS_DEPENDS_ENV}"` && source `eval echo "${OASIS_ENV}"` && `eval echo "${KODI_BINARY}"`'
 Restart=always
 
 [Install]
 WantedBy=multi-user.target
-
 
 # To install:
 # sudo cp kodi_visualizer.service /etc/systemd/system/
