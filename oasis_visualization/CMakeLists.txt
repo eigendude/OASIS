@@ -31,6 +31,17 @@ endif()
 find_package(ament_cmake REQUIRED)
 
 #
+# Configuration files
+#
+
+install(
+  FILES
+    config/systemd/kodi_visualizer.service
+  DESTINATION
+    share/${PROJECT_NAME}/systemd
+)
+
+#
 # Testing
 #
 
