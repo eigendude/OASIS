@@ -21,16 +21,11 @@ set -o nounset
 # Get the absolute path to this script
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-# Import OASIS dependency paths and config
+# Import CMake paths and config
+source "${SCRIPT_DIR}/env_cmake.sh"
+
+# Import OASIS paths and config
 source "${SCRIPT_DIR}/env_oasis.sh"
-
-#
-# Load ROS 2 Desktop environment
-#
-
-set +o nounset
-source "${ROS2_INSTALL_DIRECTORY}/setup.bash"
-set -o nounset
 
 #
 # Load OASIS dependency environment
