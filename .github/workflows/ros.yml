@@ -181,6 +181,9 @@ jobs:
       - name: colcon build
         run: ./oasis_tooling/scripts/build_oasis.sh
 
+      - name: Install OASIS files
+        run: ./oasis_tooling/scripts/install_oasis.sh
+
       #- name: Upload Ardino hex to /dev/ttyACM0
       #  if: matrix.os == 'cinder'
       #  run: |

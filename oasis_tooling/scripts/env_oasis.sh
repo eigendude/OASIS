@@ -34,5 +34,8 @@ OASIS_DIRECTORY="${BUILD_DIRECTORY}/oasis-${ROS2_DISTRO}"
 # Directory for OASIS sources
 OASIS_SOURCE_DIRECTORY="${OASIS_DIRECTORY}/src"
 
-# Directory for OASIS dependency installed files
+# Directory for OASIS installed files
 OASIS_INSTALL_DIRECTORY="${OASIS_DIRECTORY}/install"
+
+# Directory for OASIS installed data files
+OASIS_DATA_DIRECTORY="${OASIS_INSTALL_DIRECTORY}/share"

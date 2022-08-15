@@ -65,3 +65,6 @@ KODI_BIN_DIRECTORY="${KODI_INSTALL_DIR}/bin"
 
 # Define paths
 KODI_ARCHIVE_PATH="${KODI_DOWNLOAD_DIR}/kodi-${KODI_VERSION}.tar.gz"
+
+# Installed Kodi executable
+KODI_BINARY="${KODI_BIN_DIRECTORY}/kodi"
