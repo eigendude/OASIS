@@ -81,11 +81,6 @@ make -C "${PYTHON_SOURCE_DIR}" -j$(getconf _NPROCESSORS_ONLN)
 echo "Installing Python..."
 make -C "${PYTHON_SOURCE_DIR}" install
 
-# Add symlink so that lsb_release works with our custom Python version
-if [ ! -f "${PYTHON_PKG_DIRECTORY}/lsb_release.py" ]; then
-  ln -s "/usr/share/pyshared/lsb_release.py" "${PYTHON_PKG_DIRECTORY}/lsb_release.py"
-fi
-
 # Now that Python is installed, make sure it's on the path
 source "${SCRIPT_DIR}/env_python.sh"
 

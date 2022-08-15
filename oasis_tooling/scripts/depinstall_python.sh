@@ -61,8 +61,5 @@ sudo apt install -y \
   uuid-dev \
   zlib1g-dev
 
-# We'll need to hack in a fix for lsb_release
-sudo apt install -y lsb-release
-
 # Add ccache support
-dpkg -s ccache >/dev/null || sudo apt install -y ccache
+sudo apt install -y ccache

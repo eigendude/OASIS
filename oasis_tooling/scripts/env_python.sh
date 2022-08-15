@@ -79,6 +79,7 @@ if [ -e "${PYTHON_EXECUTABLE}" ]; then
   export LD_LIBRARY_PATH="${PYTHON_LIB_DIRECTORY}"
   export PYTHONUSERBASE="${PYTHON_INSTALL_DIR}"
 
+  # Get build information
   PYTHON_INCLUDE_DIR="$("${PYTHON_EXECUTABLE}" -c "from distutils.sysconfig import get_python_inc; print(get_python_inc())")"
   PYTHON_LIBRARY_DIR="$("${PYTHON_EXECUTABLE}" -c "import distutils.sysconfig as sysconfig; print(sysconfig.get_config_var('LIBDIR'))")"
   PYTHON_LIBRARY_PATH="${PYTHON_LIBRARY_DIR}/${PYTHON_LIBRARY_NAME}"
