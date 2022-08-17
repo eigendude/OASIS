@@ -199,6 +199,14 @@ patch \
   --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
+  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/ros2_v4l2_camera" \
+  < "${CONFIG_DIRECTORY}/ros2_v4l2_camera/0001-Disable-Werror.patch" \
+  || :
+patch \
+  -p1 \
+  --forward \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/vision_opencv" \
   < "${CONFIG_DIRECTORY}/vision_opencv/0001-Remove-boost-python-dependency.patch" \
   || :
