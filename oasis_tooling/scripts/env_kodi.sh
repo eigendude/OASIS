@@ -63,6 +63,9 @@ KODI_INSTALL_DIR="${KODI_DIRECTORY}/install"
 # Installed Kodi binaries (for external use of Kodi)
 KODI_BIN_DIRECTORY="${KODI_INSTALL_DIR}/bin"
 
+# Kodi depends directory
+KODI_DEPENDS="${KODI_SOURCE_DIR}/tools/depends"
+
 # Define paths
 KODI_ARCHIVE_PATH="${KODI_DOWNLOAD_DIR}/kodi-${KODI_VERSION}.tar.gz"
 

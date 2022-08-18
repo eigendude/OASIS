@@ -77,6 +77,20 @@ echo "Extracting Kodi..."
 tar -zxf "${KODI_ARCHIVE_PATH}" --directory="${KODI_EXTRACT_DIR}"
 
 #
+# Patch Kodi
+#
+
+echo "Patching Kodi..."
+patch \
+  -p1 \
+  --forward \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${KODI_SOURCE_DIR}" \
+  < "${CONFIG_DIRECTORY}/kodi/0001-depends-Remove-git-dependency.patch" \
+  || :
+
+#
 # Configure Kodi
 #
 
@@ -103,7 +117,9 @@ tar -zxf "${KODI_ARCHIVE_PATH}" --directory="${KODI_EXTRACT_DIR}"
 #
 
 echo "Building Kodi..."
-make -C "${KODI_BUILD_DIR}" -j$(getconf _NPROCESSORS_ONLN)
+make \
+  -C "${KODI_BUILD_DIR}" \
+  -j$(getconf _NPROCESSORS_ONLN) \
 
 #
 # Install Kodi
@@ -111,3 +127,14 @@ make -C "${KODI_BUILD_DIR}" -j$(getconf _NPROCESSORS_ONLN)
 
 echo "Installing Kodi..."
 make -C "${KODI_BUILD_DIR}" install
+
+#
+# Build add-ons
+#
+
+echo "Building add-ons..."
+make \
+  -C "${KODI_DEPENDS}/target/binary-addons" \
+  -j$(getconf _NPROCESSORS_ONLN) \
+  ADDONS="peripheral.joystick" \
+  PREFIX="${KODI_INSTALL_DIR}" \
