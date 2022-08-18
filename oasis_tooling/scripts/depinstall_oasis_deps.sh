@@ -243,6 +243,11 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     --rosdistro ${ROS2_DISTRO} \
     --as-root=pip:false \
     -y
+
+  # Package provided by Ubuntu 18.04 is too old
+  if [ "${ROS2_DISTRO}" = "humble" ] && [ "${CODENAME}" = "bionic" ]; then
+    sudo apt remove -y libyaml-cpp0.5v5
+  fi
 else
   echo "Disabling perception dependencies on macOS"
   touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/OpenNI2/COLCON_IGNORE"
