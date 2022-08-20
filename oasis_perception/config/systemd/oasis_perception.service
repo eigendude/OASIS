@@ -28,7 +28,6 @@ Environment=PYTHON_LIB_DIR=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/pytho
 #
 
 User=garrett
-ExecStartPre=/bin/sleep 10
 ExecStart=/bin/bash -c 'export PATH="${PYTHON_BIN_DIR}:${PATH}" && export LD_LIBRARY_PATH="${PYTHON_LIB_DIR}" && source `eval echo "${ROS2_DESKTOP_ENV}"` && source `eval echo "${OASIS_DEPENDS_ENV}"` && source `eval echo "${OASIS_ENV}"` && cd `eval echo "${OASIS_SRC}/oasis_perception"` && ros2 launch oasis_perception perception_launch.py'
 Restart=on-failure
 RuntimeMaxSec=60
