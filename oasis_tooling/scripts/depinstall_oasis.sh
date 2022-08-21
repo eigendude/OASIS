@@ -125,24 +125,6 @@ python3 -m pip install --user --upgrade \
   --requirement "${STACK_DIRECTORY}/oasis_drivers_py/requirements.txt"
 
 #
-# Directory setup
-#
-
-# Ensure directories exist
-mkdir -p "${OASIS_DIRECTORY}"
-
-# Symlink the source directory
-if [ ! -L "${OASIS_SOURCE_DIRECTORY}" ]; then
-  rm -rf "${OASIS_SOURCE_DIRECTORY}"
-  ln -s "${STACK_DIRECTORY}" "${OASIS_SOURCE_DIRECTORY}"
-fi
-
-# Disable oasis_perception on Ubuntu 18.04 (OpenCV is too old for bgslibrary now)
-if [ "${CODENAME}" = "bionic" ]; then
-  touch "${OASIS_SOURCE_DIRECTORY}/oasis_perception/COLCON_IGNORE"
-fi
-
-#
 # Install OASIS rosdeps
 #
 
@@ -155,7 +137,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
 
   # Install OASIS rosdeps
   rosdep install \
-    --from-paths "${OASIS_SOURCE_DIRECTORY}" \
+    --from-paths "${STACK_DIRECTORY}" \
     --ignore-src \
     --rosdistro ${ROS2_DISTRO} \
     --as-root=pip:false \
@@ -163,4 +145,4 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
 fi
 
 # Bootstrap the Arduino toolchain
-"${OASIS_SOURCE_DIRECTORY}/oasis_avr/bootstrap.sh"
+"${STACK_DIRECTORY}/oasis_avr/bootstrap.sh"
