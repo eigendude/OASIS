@@ -35,7 +35,6 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
   for OASIS_PACKAGE in \
     oasis_control \
     oasis_drivers_py \
-    oasis_perception \
     oasis_visualization \
   ; do
     # Skip packages that weren't build
