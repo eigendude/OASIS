@@ -19,7 +19,7 @@ set -o nounset
 #
 
 # Version
-KODI_VERSION="9c489418960581f0aa499d5a21953d39bd862dbb"
+KODI_VERSION="0969ccc63541e09962ff00e9232b15ce6cac8737"
 
 # URL
 KODI_URL="https://github.com/garbear/xbmc/archive/${KODI_VERSION}.tar.gz"
