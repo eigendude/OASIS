@@ -28,6 +28,7 @@ constexpr const char* IMAGE_TOPIC_NETBOOK = "image_raw";
 // Published topics
 constexpr const char* FOREGROUND_TOPIC = "foreground";
 constexpr const char* BACKGROUND_TOPIC = "background";
+constexpr const char* SUBTRACTED_TOPIC = "subtracted";
 } // namespace OASIS
 
 int main(int argc, char* argv[])
@@ -44,7 +45,7 @@ int main(int argc, char* argv[])
   {
     OASIS::IMAGE::BackgroundModeler backgroundModelerKinect2(
         node, kinectTopicBase + IMAGE_TOPIC_KINECT2, kinectTopicBase + FOREGROUND_TOPIC,
-        kinectTopicBase + BACKGROUND_TOPIC);
+        kinectTopicBase + BACKGROUND_TOPIC, kinectTopicBase + SUBTRACTED_TOPIC);
 
     rclcpp::spin(node);
   }

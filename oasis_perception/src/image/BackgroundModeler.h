@@ -45,7 +45,8 @@ public:
   BackgroundModeler(std::shared_ptr<rclcpp::Node> node,
                     const std::string& imageTopic,
                     const std::string& foregroundTopic,
-                    const std::string& backgroundTopic);
+                    const std::string& backgroundTopic,
+                    const std::string& subtractedTopic);
   ~BackgroundModeler();
 
   // ROS interface
@@ -59,6 +60,7 @@ private:
   std::unique_ptr<image_transport::ImageTransport> m_imgTransport;
   std::unique_ptr<image_transport::Publisher> m_imgPublisherForeground;
   std::unique_ptr<image_transport::Publisher> m_imgPublisherBackground;
+  std::unique_ptr<image_transport::Publisher> m_imgPublisherSubtracted;
   std::unique_ptr<image_transport::Subscriber> m_imgSubscriber;
   std::unique_ptr<bgslibrary::algorithms::IBGS> m_bgsPackage;
 };
