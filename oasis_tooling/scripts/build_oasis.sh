@@ -27,6 +27,13 @@ source "${SCRIPT_DIR}/env_cmake.sh"
 # Import OASIS paths and config
 source "${SCRIPT_DIR}/env_oasis.sh"
 
+# Get the Ubuntu codename if running on Ubuntu
+if [[ "${OSTYPE}" != "darwin"* ]]; then
+  CODENAME="$(source "/etc/os-release" && echo "${UBUNTU_CODENAME}")"
+else
+  CODENAME=
+fi
+
 #
 # Load OASIS dependency environment
 #
@@ -55,6 +62,24 @@ COLCON_FLAGS+=" \
 # Uncomment these to force building in serial
 #MAKE_FLAGS+=" -j1 -l1"
 #COLCON_FLAGS+=" --executor sequential --event-handlers console_direct+"
+
+#
+# Directory setup
+#
+
+# Ensure directories exist
+mkdir -p "${OASIS_DIRECTORY}"
+
+# Symlink the source directory
+if [ ! -L "${OASIS_SOURCE_DIRECTORY}" ]; then
+  rm -rf "${OASIS_SOURCE_DIRECTORY}"
+  ln -s "${STACK_DIRECTORY}" "${OASIS_SOURCE_DIRECTORY}"
+fi
+
+# Disable oasis_perception on Ubuntu 18.04 (OpenCV is too old for bgslibrary now)
+if [ "${CODENAME}" = "bionic" ]; then
+  touch "${OASIS_SOURCE_DIRECTORY}/oasis_perception/COLCON_IGNORE"
+fi
 
 #
 # Build OASIS with colcon
