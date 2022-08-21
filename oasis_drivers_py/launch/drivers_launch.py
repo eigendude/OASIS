@@ -61,10 +61,10 @@ elif HOSTNAME == "inspiron":
     ENABLE_DISPLAY = True
 elif HOSTNAME == "lenovo":
     ENABLE_DISPLAY = True
-    ENABLE_VIDEO = True
+    ENABLE_VIDEO = False
 elif HOSTNAME == "netbook":
     ENABLE_DISPLAY = True
-    ENABLE_VIDEO = True
+    ENABLE_VIDEO = False
 elif HOSTNAME == "nuc":
     ENABLE_CEC = True
 
