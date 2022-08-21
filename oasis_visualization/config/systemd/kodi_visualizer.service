@@ -20,8 +20,6 @@ Environment=DISPLAY=:0
 # Path configuraiton
 #
 
-Environment=ROS2_DESKTOP_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/ros2-desktop-${ROS2_DISTRO}/install/setup.bash
-Environment=OASIS_DEPENDS_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/oasis-depends-${ROS2_DISTRO}/install/setup.bash
 Environment=OASIS_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/oasis-${ROS2_DISTRO}/install/setup.bash
 
 Environment=PYTHON_BIN_DIR=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/python/install/bin
@@ -35,7 +33,7 @@ Environment=KODI_BINARY=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/kodi-${R
 
 User=garrett
 ExecStartPre=/bin/sleep 10
-ExecStart=/bin/bash -c 'export PATH="${PYTHON_BIN_DIR}:${PATH}" && export LD_LIBRARY_PATH="${PYTHON_LIB_DIR}" && source `eval echo "${ROS2_DESKTOP_ENV}"` && source `eval echo "${OASIS_DEPENDS_ENV}"` && source `eval echo "${OASIS_ENV}"` && `eval echo "${KODI_BINARY}"`'
+ExecStart=/bin/bash -c 'export PATH="${PYTHON_BIN_DIR}:${PATH}" && export LD_LIBRARY_PATH="${PYTHON_LIB_DIR}" && source `eval echo "${OASIS_ENV}"` && `eval echo "${KODI_BINARY}"`'
 Restart=always
 
 [Install]

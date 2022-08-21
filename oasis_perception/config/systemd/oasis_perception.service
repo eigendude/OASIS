@@ -15,9 +15,6 @@ Environment=ROS2_DISTRO=galactic
 #
 
 Environment=OASIS_SRC=/home/${USER}/Documents/ros-ws/src/oasis
-
-Environment=ROS2_DESKTOP_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/ros2-desktop-${ROS2_DISTRO}/install/setup.bash
-Environment=OASIS_DEPENDS_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/oasis-depends-${ROS2_DISTRO}/install/setup.bash
 Environment=OASIS_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/oasis-${ROS2_DISTRO}/install/setup.bash
 
 Environment=PYTHON_BIN_DIR=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/python/install/bin
@@ -28,7 +25,7 @@ Environment=PYTHON_LIB_DIR=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/pytho
 #
 
 User=garrett
-ExecStart=/bin/bash -c 'export PATH="${PYTHON_BIN_DIR}:${PATH}" && export LD_LIBRARY_PATH="${PYTHON_LIB_DIR}" && source `eval echo "${ROS2_DESKTOP_ENV}"` && source `eval echo "${OASIS_DEPENDS_ENV}"` && source `eval echo "${OASIS_ENV}"` && cd `eval echo "${OASIS_SRC}/oasis_perception"` && ros2 launch oasis_perception perception_launch.py'
+ExecStart=/bin/bash -c 'export PATH="${PYTHON_BIN_DIR}:${PATH}" && export LD_LIBRARY_PATH="${PYTHON_LIB_DIR}" && source `eval echo "${OASIS_ENV}"` && cd `eval echo "${OASIS_SRC}/oasis_perception"` && ros2 launch oasis_perception perception_launch.py'
 Restart=on-failure
 RuntimeMaxSec=60
 
