@@ -281,10 +281,10 @@ echo "Downloading ROS 2 source code..."
 (
   cd "${ROS2_SOURCE_DIRECTORY}"
 
-  # Get ROS 2 sources
+  # Get ROS 2 source defintions
   wget --timestamping "https://raw.githubusercontent.com/ros2/ros2/${ROS2_DISTRO}/ros2.repos"
 
-  # Patch ROS 2 sources
+  # Patch ROS 2 source definitions
   if [ "${ROS2_DISTRO}" = "galactic" ]; then
     patch \
       -p1 \
