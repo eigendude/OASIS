@@ -39,3 +39,13 @@ OASIS_DEPENDS_INSTALL_DIRECTORY="${OASIS_DEPENDS_DIRECTORY}/install"
 
 # Directory for OASIS dependency installed libraries
 OASIS_DEPENDS_LIB_DIRECTORY="${OASIS_DEPENDS_INSTALL_DIRECTORY}/lib"
+
+#
+# Package definitions
+#
+
+# libfreenect2 source directory
+LIBFREENECT2_SOURCE_DIRECTORY="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/libfreenect2"
+
+# udev fules for libfreenect2
+LIBFREENECT2_UDEV_DIRECTORY="${LIBFREENECT2_SOURCE_DIRECTORY}/platform/linux/udev"
