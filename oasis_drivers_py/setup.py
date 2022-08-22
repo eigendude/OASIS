@@ -59,7 +59,10 @@ setuptools.setup(
         # Systemd services
         (
             os.path.join("share", PACKAGE_NAME, "systemd"),
-            ["config/systemd/oasis_drivers.service"],
+            [
+                "config/systemd/display_fixes.service",
+                "config/systemd/oasis_drivers.service",
+            ],
         ),
     ],
     install_requires=[
