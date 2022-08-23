@@ -28,22 +28,6 @@ source "${SCRIPT_DIR}/env_cmake.sh"
 source "${SCRIPT_DIR}/env_kodi.sh"
 
 #
-# Load ROS 2 Desktop environment
-#
-
-set +o nounset
-source "${ROS2_INSTALL_DIRECTORY}/setup.bash"
-set -o nounset
-
-#
-# Load OASIS dependency environment
-#
-
-set +o nounset
-source "${OASIS_DEPENDS_INSTALL_DIRECTORY}/setup.bash"
-set -o nounset
-
-#
 # Load OASIS environment
 #
 

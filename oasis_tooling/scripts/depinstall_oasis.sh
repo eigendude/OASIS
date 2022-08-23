@@ -25,14 +25,6 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 source "${SCRIPT_DIR}/env_oasis.sh"
 
 #
-# Load ROS 2 environment
-#
-
-set +o nounset
-source "${ROS2_INSTALL_DIRECTORY}/setup.bash"
-set -o nounset
-
-#
 # Load OASIS dependency environment
 #
 
