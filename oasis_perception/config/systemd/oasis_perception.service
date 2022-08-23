@@ -11,6 +11,12 @@ After=network.target
 Environment=ROS2_DISTRO=humble
 
 #
+# OpenCV configuration
+#
+
+Environment=DISPLAY=:0
+
+#
 # Path configuraiton
 #
 
