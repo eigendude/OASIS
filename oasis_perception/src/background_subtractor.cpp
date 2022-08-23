@@ -7,7 +7,11 @@
  */
 
 #include "image/BackgroundModeler.h"
+#include "image/MultiModeler.h"
 #include "ros/BackgroundModelerNode.h"
+#include "utils/NetworkUtils.h"
+
+#include <memory>
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -35,6 +39,9 @@ int main(int argc, char* argv[])
 {
   rclcpp::init(argc, argv);
 
+  // Get the hostname
+  const std::string hostName = OASIS::UTILS::NetworkUtils::GetHostName();
+
   // Create node
   std::shared_ptr<rclcpp::Node> node = std::make_shared<OASIS::ROS::BackgroundModelerNode>();
 
@@ -43,9 +50,22 @@ int main(int argc, char* argv[])
       std::string("/") + ROS_NAMESPACE + "/" + VIDEO_MACHINE_KINECT2 + "/";
 
   {
-    OASIS::IMAGE::BackgroundModeler backgroundModelerKinect2(
-        node, kinectTopicBase + IMAGE_TOPIC_KINECT2, kinectTopicBase + FOREGROUND_TOPIC,
-        kinectTopicBase + BACKGROUND_TOPIC, kinectTopicBase + SUBTRACTED_TOPIC);
+    std::unique_ptr<OASIS::IMAGE::BackgroundModeler> backgroundModelerKinect2;
+    std::unique_ptr<OASIS::IMAGE::MultiModeler> multiModelerKinect2;
+
+    // TODO: Hardware configuration
+    if (hostName == "cinder")
+    {
+      backgroundModelerKinect2 = std::make_unique<OASIS::IMAGE::BackgroundModeler>(
+          node, kinectTopicBase + IMAGE_TOPIC_KINECT2, kinectTopicBase + FOREGROUND_TOPIC,
+          kinectTopicBase + BACKGROUND_TOPIC, kinectTopicBase + SUBTRACTED_TOPIC);
+    }
+    else
+    {
+      multiModelerKinect2 = std::make_unique<OASIS::IMAGE::MultiModeler>(
+          node, kinectTopicBase + IMAGE_TOPIC_KINECT2, kinectTopicBase + FOREGROUND_TOPIC,
+          kinectTopicBase + BACKGROUND_TOPIC, kinectTopicBase + SUBTRACTED_TOPIC);
+    }
 
     rclcpp::spin(node);
   }

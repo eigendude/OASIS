@@ -3,5 +3,5 @@
 <ampFactor>1</ampFactor>
 <minVar>15</minVar>
 <maxVar>255</maxVar>
-<showOutput>0</showOutput>
+<showOutput>1</showOutput>
 </opencv_storage>

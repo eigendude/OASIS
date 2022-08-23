@@ -53,7 +53,9 @@ include_directories(
 
 add_executable(background_subtractor
   src/image/BackgroundModeler.cpp
+  src/image/MultiModeler.cpp
   src/ros/BackgroundModelerNode.cpp
+  src/utils/NetworkUtils.cpp
   src/background_subtractor.cpp
 )
 
