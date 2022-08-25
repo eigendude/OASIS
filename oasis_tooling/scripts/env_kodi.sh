@@ -15,11 +15,27 @@ set -o pipefail
 set -o nounset
 
 #
+# Hardware configurations
+#
+
+# Machines with dual displays
+ENABLE_DUAL_DISPLAYS=0
+if \
+  [ "${HOSTNAME}" = "nuc" ] \
+; then
+  ENABLE_DUAL_DISPLAYS=1
+fi
+
+#
 # Kodi configuration
 #
 
 # Version
-KODI_VERSION="99622a599bbef704e0c6444705e811e17c58b95f"
+if [ "${ENABLE_DUAL_DISPLAYS}" = "1" ]; then
+  KODI_VERSION="7d7c190662c0d7b18bc99c5055ce0357c4a53ef7"
+else
+  KODI_VERSION="99622a599bbef704e0c6444705e811e17c58b95f"
+fi
 
 # URL
 KODI_URL="https://github.com/garbear/xbmc/archive/${KODI_VERSION}.tar.gz"
