@@ -15,6 +15,7 @@ Environment=ROS2_DISTRO=humble
 #
 
 Environment=DISPLAY=:0
+Environment=WAYLAND_DISPLAY=wayland-0
 
 #
 # Path configuraiton
