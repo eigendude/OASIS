@@ -77,6 +77,7 @@ if [ -e "${PYTHON_EXECUTABLE}" ]; then
   # Add Python to system paths
   export PATH="${PYTHON_BIN_DIRECTORY}:${PATH}"
   export LD_LIBRARY_PATH="${PYTHON_LIB_DIRECTORY}"
+  export PYTHONHOME="${PYTHON_INSTALL_DIR}"
   export PYTHONUSERBASE="${PYTHON_INSTALL_DIR}"
 
   # Get build information
