@@ -1,8 +1,19 @@
 [Unit]
+
 Description=Kodi Visualizer
-After=network.target
+After=network.target dbus.service polkit.service upower.service udisks.service
+Wants=network-online.target
 
 [Service]
+
+#
+# User configuration
+#
+# TODO: Better way to define this
+#
+
+User=garrett
+Environment=XDG_RUNTIME_DIR=/run/user/1000
 
 #
 # ROS 2 configuration
@@ -15,28 +26,26 @@ Environment=ROS2_DISTRO=humble
 #
 
 Environment=DISPLAY=:0
+Environment=WAYLAND_DISPLAY=wayland-0
 
 #
 # Path configuraiton
 #
 
+Environment=PYTHON_ENV=/home/${USER}/Documents/ros-ws/src/oasis/oasis_tooling/scripts/env_python.sh
 Environment=OASIS_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/oasis-${ROS2_DISTRO}/install/setup.bash
-
-Environment=PYTHON_BIN_DIR=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/python/install/bin
-Environment=PYTHON_LIB_DIR=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/python/install/lib
-
 Environment=KODI_BINARY=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/kodi-${ROS2_DISTRO}/install/bin/kodi
 
 #
 # Service definition
 #
 
-User=garrett
-ExecStartPre=/bin/sleep 10
-ExecStart=/bin/bash -c 'export PATH="${PYTHON_BIN_DIR}:${PATH}" && export LD_LIBRARY_PATH="${PYTHON_LIB_DIR}" && source `eval echo "${OASIS_ENV}"` && `eval echo "${KODI_BINARY}"`'
+ExecStart=/bin/bash -c 'source `eval echo "${PYTHON_ENV}"` && set +o nounset && source `eval echo "${OASIS_ENV}"` && `eval echo "${KODI_BINARY}"`'
 Restart=always
+RestartSec=1
 
 [Install]
+
 WantedBy=multi-user.target
 
 # To install:
