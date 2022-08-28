@@ -20,6 +20,7 @@ Environment=XDG_RUNTIME_DIR=/run/user/1000
 #
 
 Environment=ROS2_DISTRO=humble
+Environment=RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 
 #
 # Kodi configuration
@@ -40,9 +41,8 @@ Environment=KODI_BINARY=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/kodi-${R
 # Service definition
 #
 
-ExecStart=/bin/bash -c 'source `eval echo "${PYTHON_ENV}"` && set +o nounset && source `eval echo "${OASIS_ENV}"` && `eval echo "${KODI_BINARY}"`'
+ExecStart=/bin/bash -c 'source `eval echo "${PYTHON_ENV}"` && export PYTHONHOME="${PYTHONUSERBASE}" && set +o nounset && source `eval echo "${OASIS_ENV}"` && `eval echo "${KODI_BINARY}"`'
 Restart=always
-RestartSec=1
 
 [Install]
 

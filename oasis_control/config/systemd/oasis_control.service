@@ -1,34 +1,41 @@
 [Unit]
+
 Description=OASIS control
 After=network.target
 
 [Service]
 
 #
+# User configuration
+#
+# TODO: Better way to define this
+#
+
+User=garrett
+
+#
 # ROS 2 configuration
 #
 
-Environment=ROS2_DISTRO=galactic
+Environment=ROS2_DISTRO=humble
+Environment=RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 
 #
 # Path configuraiton
 #
 
+Environment=PYTHON_ENV=/home/${USER}/Documents/ros-ws/src/oasis/oasis_tooling/scripts/env_python.sh
 Environment=OASIS_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/oasis-${ROS2_DISTRO}/install/setup.bash
-
-Environment=PYTHON_BIN_DIR=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/python/install/bin
-Environment=PYTHON_LIB_DIR=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/python/install/lib
 
 #
 # Service definition
 #
 
-User=garrett
-ExecStartPre=/bin/sleep 10
-ExecStart=/bin/bash -c 'export PATH="${PYTHON_BIN_DIR}:${PATH}" && export LD_LIBRARY_PATH="${PYTHON_LIB_DIR}" && source `eval echo "${OASIS_ENV}"` && ros2 launch oasis_control control_launch.py'
+ExecStart=/bin/bash -c 'source `eval echo "${PYTHON_ENV}"` && set +o nounset && source `eval echo "${OASIS_ENV}"` && ros2 launch oasis_control control_launch.py'
 Restart=on-failure
 
 [Install]
+
 WantedBy=multi-user.target
 
 # To install:

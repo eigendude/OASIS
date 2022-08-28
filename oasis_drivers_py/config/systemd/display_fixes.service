@@ -3,13 +3,16 @@
 # newer versions of Ubuntu.
 
 [Unit]
+
 Description=Apply display fixes
 
 [Service]
+
 Type=oneshot
 ExecStart=bash -c "[ ! -f /usr/sbin/vbetool ] || (/bin/chmod u+s /usr/sbin/vbetool && /bin/mount -o remount,exec /dev)"
 
 [Install]
+
 WantedBy=basic.target
 
 # To install:
