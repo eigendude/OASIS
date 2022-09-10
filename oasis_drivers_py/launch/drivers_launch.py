@@ -232,9 +232,5 @@ def generate_launch_description() -> LaunchDescription:
         mcu_node = "engine"
         engine_bridge_node: Node = get_telemetrix_bridge(HOSTNAME, mcu_node)
         ld.add_action(engine_bridge_node)
-    elif HOSTNAME == "cinder":
-        mcu_node = "leonardo"
-        leonardo_bridge_node: Node = get_firmata_bridge(HOSTNAME, mcu_node)
-        ld.add_action(leonardo_bridge_node)
 
     return ld
