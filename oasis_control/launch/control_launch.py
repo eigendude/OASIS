@@ -32,7 +32,7 @@ HOSTNAME = socket.gethostname()
 POWER_CONTROLLER = "nuc"
 
 # Machine that broadcasts peripheral input
-INPUT_PROVIDER = "cinder"
+INPUT_PROVIDER = "nuc"
 
 
 ################################################################################
