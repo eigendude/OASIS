@@ -19,7 +19,7 @@ set -o nounset
 #
 
 # Version
-PYTHON_VERSION="3.10.6"
+PYTHON_VERSION="3.11.0"
 
 PYTHON_VERSION_MAJOR="$(echo "${PYTHON_VERSION}" | cut -d "." -f1)"
 PYTHON_VERSION_MINOR="$(echo "${PYTHON_VERSION}" | cut -d "." -f2)"
