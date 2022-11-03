@@ -216,7 +216,7 @@ patch \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/vision_opencv" \
-  < "${CONFIG_DIRECTORY}/vision_opencv/0001-Remove-boost-python-dependency.patch" \
+  < "${CONFIG_DIRECTORY}/vision_opencv/0001-Disable-Python-bindings-by-default.patch" \
   || :
 
 # Disable OpenNI on everything but x86_64
