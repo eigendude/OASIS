@@ -41,10 +41,10 @@ AMENT_PYTHON_PKG_PREFIX="${PYTHON_PKG_PREFIX/site-packages/dist-packages}"
 # Directory for ROS 2 Desktop build files
 ROS2_DESKTOP_DIRECTORY="${BUILD_DIRECTORY}/ros2-desktop-${ROS2_DISTRO}"
 
-# Directory for ROS 2 sources
+# Directory for ROS 2 Desktop sources
 ROS2_SOURCE_DIRECTORY="${ROS2_DESKTOP_DIRECTORY}/src"
 
-# Directory for ROS 2 installed files
+# Directory for ROS 2 Desktop installed files
 ROS2_INSTALL_DIRECTORY="${ROS2_DESKTOP_DIRECTORY}/install"
 
 # Directory for ROS 2 Python packages
