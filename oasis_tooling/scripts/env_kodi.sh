@@ -15,7 +15,13 @@ set -o pipefail
 set -o nounset
 
 #
-# Hardware configurations
+# Environment configuration
+#
+
+CODENAME="$(lsb_release --codename | cut -f2)"
+
+#
+# Hardware configuration
 #
 
 # Machines with dual displays
@@ -32,9 +38,9 @@ fi
 
 # Version
 if [ "${ENABLE_DUAL_DISPLAYS}" = "1" ]; then
-  KODI_VERSION="cd548903ca643c45eefd58904e6b1962f9c0102a"
+  KODI_VERSION="183cb248b9a27a3798aee550195148cc849f197a"
 else
-  KODI_VERSION="f66b2be63f45043c2ee06d4361977512a40f2fd2"
+  KODI_VERSION="fe9ac58b9fc22d02888f953f8e9df00a5ab84eca"
 fi
 
 # URL
@@ -51,6 +57,15 @@ ENABLE_LLD="$([ -n "$(apt-cache search --names-only '^lld$')" ] && echo "ON" || 
 
 # Enable Wayland if the waylandpp-dev package is found
 ENABLE_WAYLAND="$([ -n "$(apt-cache search --names-only '^waylandpp-dev$')" ] && echo "ON" || echo "OFF")"
+
+# Enable internal spdlog on Ubuntu 18.04
+if [ "${CODENAME}" = "bionic" ]; then
+  ENABLE_INTERNAL_FMT=ON
+  ENABLE_INTERNAL_SPDLOG=ON
+else
+  ENABLE_INTERNAL_FMT=OFF
+  ENABLE_INTERNAL_SPDLOG=OFF
+fi
 
 #
 # Environment paths and config

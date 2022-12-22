@@ -73,6 +73,16 @@ patch \
   --directory="${KODI_SOURCE_DIR}" \
   < "${CONFIG_DIRECTORY}/kodi/0001-depends-Remove-git-dependency.patch" \
   || :
+if [ "${CODENAME}" = "bionic" ]; then
+  patch \
+    -p1 \
+    --forward \
+    --reject-file="/dev/null" \
+    --no-backup-if-mismatch \
+    --directory="${KODI_SOURCE_DIR}" \
+    < "${CONFIG_DIRECTORY}/kodi/0002-Fix-build-error-on-Ubuntu-18.04-due-to-libnfs-2.0.patch" \
+    || :
+fi
 
 #
 # Configure Kodi
@@ -91,7 +101,8 @@ patch \
       -DCMAKE_INSTALL_PREFIX="${KODI_INSTALL_DIR}" \
       -DENABLE_CEC=OFF \
       -DENABLE_INTERNAL_FLATBUFFERS=ON \
-      -DENABLE_INTERNAL_SPDLOG=ON \
+      -DENABLE_INTERNAL_FMT=${ENABLE_INTERNAL_FMT} \
+      -DENABLE_INTERNAL_SPDLOG=${ENABLE_INTERNAL_SPDLOG} \
       -DENABLE_LLD=${ENABLE_LLD} \
       -DENABLE_TESTING=OFF \
 )

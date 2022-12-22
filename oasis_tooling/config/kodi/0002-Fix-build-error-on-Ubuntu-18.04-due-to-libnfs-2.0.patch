@@ -1,0 +1,48 @@
+From 48f76c510d002dcf36000250feb19f22795424bd Mon Sep 17 00:00:00 2001
+From: Garrett Brown <themagnificentmrb@gmail.com>
+Date: Thu, 22 Dec 2022 06:16:46 -0800
+Subject: [PATCH 2/2] Fix build error on Ubuntu 18.04 due to libnfs 2.0
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Error was:
+
+  NFSFile.cpp: In static member function ‘static void CNfsConnection::setOptions(nfs_context*)’:
+  NFSFile.cpp:524:13: error: ‘nfs_set_version’ was not declared in this scope
+     int ret = nfs_set_version(context, nfsVersion);
+               ^~~~~~~~~~~~~~~
+---
+ xbmc/filesystem/NFSFile.cpp | 16 ----------------
+ 1 file changed, 16 deletions(-)
+
+diff --git a/xbmc/filesystem/NFSFile.cpp b/xbmc/filesystem/NFSFile.cpp
+index 0c758f2ec3..35d3e91cbf 100644
+--- a/xbmc/filesystem/NFSFile.cpp
++++ b/xbmc/filesystem/NFSFile.cpp
+@@ -514,22 +514,6 @@ void CNfsConnection::setOptions(struct nfs_context* context)
+ #endif
+   int retries = advancedSettings->m_nfsRetries;
+   nfs_set_autoreconnect(context, retries);
+-
+-  const auto settings = settingsComponent->GetSettings();
+-  if (!settings)
+-    return;
+-
+-  const int nfsVersion = settings->GetInt(SETTING_NFS_VERSION);
+-
+-  int ret = nfs_set_version(context, nfsVersion);
+-  if (ret != 0)
+-  {
+-    CLog::Log(LOGERROR, "NFS: Failed to set nfs version: {} ({})", nfsVersion,
+-              nfs_get_error(context));
+-    return;
+-  }
+-
+-  CLog::Log(LOGDEBUG, "NFS: version: {}", nfsVersion);
+ }
+ 
+ CNfsConnection gNfsConnection;
+-- 
+2.34.1
+
