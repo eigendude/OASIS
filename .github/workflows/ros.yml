@@ -87,7 +87,8 @@ jobs:
         with:
           path: |
             ros-ws/oasis-depends-${{ matrix.ros2_distro }}/install
-          key: restore-oasis-depends-${{ matrix.os }}-${{ matrix.ros2_distro }}-${{ hashFiles('oasis_tooling/config/iceoryx/**', 'oasis_tooling/config/ros2_desktop/**', 'oasis_tooling/config/rviz/**', 'oasis_tooling/config/yaml_cpp_vendor/**', 'oasis_tooling/scripts/*ros2_desktop.sh') }}-${{ hashFiles('oasis_tooling/config/depends.repos', 'oasis_tooling/config/image_transport_plugins/**', 'oasis_tooling/config/libcec/**', 'oasis_tooling/config/libfreenect2/**', 'oasis_tooling/config/OpenNI/**', 'oasis_tooling/config/p8-platform/**', 'oasis_tooling/config/vision_opencv/**', 'oasis_tooling/scripts/*oasis_deps.sh') }}
+          key: restore-oasis-depends-${{ matrix.os }}-${{ matrix.ros2_distro }}-${{ hashFiles('oasis_tooling/config/iceoryx/**', 'oasis_tooling/config/ros2_desktop/**', 'oasis_tooling/config/rviz/**', 'oasis_tooling/config/yaml_cpp_vendor/**', 'oasis_tooling/scripts/*ros2_desktop.sh') }}-${{ hashFiles('oasis_tooling/config/depends.repos', 'oasis_tooling/config/image_transport_plugins/**', 'oasis_tooling/config/libcec/**', 'oasis_tooling/config/libfreenect2/**', 'oasis_tooling/config/OpenNI/**', 'oasis_tooling/config/p8-platform/**', 'oasis_tooling/config/pangolin/**', 'oasis_tooling/config/vision_opencv/**', 'oasis_tooling/scripts/*oasis_deps.sh') }}
+
       - name: Restore Arduino IDE
         id: restore-arduino-ide
         uses: actions/cache@v2

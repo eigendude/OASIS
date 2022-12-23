@@ -279,6 +279,16 @@ patch \
   < "${CONFIG_DIRECTORY}/p8-platform/0001-CMake-Default-to-C-20-to-fix-building-with-newer-cla.patch" \
   || :
 
+# Pangolin
+patch \
+  -p1 \
+  --forward \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/pangolin" \
+  < "${CONFIG_DIRECTORY}/pangolin/0001-Remove-Eigen3-Eigen-target-from-linked-libraries.patch" \
+  || :
+
 # ros2_v4l2_camera
 patch \
   -p1 \

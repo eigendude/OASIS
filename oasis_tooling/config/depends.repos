@@ -17,6 +17,10 @@ repositories:
     type: git
     url: https://github.com/Pulse-Eight/platform.git
     version: master
+  depends/pangolin:
+    type: git
+    url: https://github.com/stevenlovegrove/Pangolin.git
+    version: master
   ros-perception/bgslibrary:
     type: git
     url: https://github.com/andrewssobral/bgslibrary.git
