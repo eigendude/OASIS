@@ -6,8 +6,8 @@ repositories:
   # Requires: libturbojpeg0-dev libusb-1.0-0-dev ocl-icd-opencl-dev
   depends/libfreenect2:
     type: git
-    url: https://github.com/eigendude/libfreenect2.git
-    version: ament
+    url: https://github.com/OpenKinect/libfreenect2.git
+    version: master
   # Requires: default-jdk libudev-dev libusb-1.0-0-dev
   depends/OpenNI2:
     type: git

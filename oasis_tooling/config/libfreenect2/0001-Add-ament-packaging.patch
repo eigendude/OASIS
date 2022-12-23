@@ -1,0 +1,28 @@
+From 254a054d72082180508929bd608c9ccbe3c6474d Mon Sep 17 00:00:00 2001
+From: Garrett Brown <eigendebugger@gmail.com>
+Date: Tue, 22 Mar 2022 20:04:23 -0700
+Subject: [PATCH 1/4] Add ament packaging
+
+---
+ CMakeLists.txt | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index d8ef047..66db707 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -496,3 +496,11 @@ FOREACH(var ${vars})
+     MESSAGE(STATUS "  ${feature}    ${${var}}")
+   ENDIF()
+ ENDFOREACH()
++
++#
++# Declare an ament package
++#
++
++CMAKE_POLICY(SET CMP0057 NEW)
++FIND_PACKAGE(ament_cmake REQUIRED)
++ament_package()
+-- 
+2.34.1
+

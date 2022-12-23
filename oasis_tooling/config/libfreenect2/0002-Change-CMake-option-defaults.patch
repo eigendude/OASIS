@@ -1,0 +1,40 @@
+From 23c67d08904a301090563245e3b5b6c124a783d6 Mon Sep 17 00:00:00 2001
+From: Garrett Brown <eigendebugger@gmail.com>
+Date: Sun, 27 Jun 2021 23:23:28 -0700
+Subject: [PATCH 2/4] Change CMake option defaults
+
+---
+ CMakeLists.txt | 16 ++++++++--------
+ 1 file changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 66db707..e40790d 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -31,15 +31,15 @@ ENDIF()
+ SET(MY_DIR ${libfreenect2_SOURCE_DIR})
+ SET(DEPENDS_DIR "${MY_DIR}/depends" CACHE STRING "dependency directory must be set to 'false' if external deps are used")
+ 
+-OPTION(BUILD_SHARED_LIBS "Build shared (ON) or static (OFF) libraries" ON)
+-OPTION(BUILD_EXAMPLES "Build examples" ON)
++OPTION(BUILD_SHARED_LIBS "Build shared (ON) or static (OFF) libraries" OFF)
++OPTION(BUILD_EXAMPLES "Build examples" OFF)
+ OPTION(BUILD_OPENNI2_DRIVER "Build OpenNI2 driver" ON)
+-OPTION(ENABLE_CXX11 "Enable C++11 support" OFF)
+-OPTION(ENABLE_OPENCL "Enable OpenCL support" ON)
+-OPTION(ENABLE_CUDA "Enable CUDA support" ON)
+-OPTION(ENABLE_OPENGL "Enable OpenGL support" ON)
+-OPTION(ENABLE_VAAPI "Enable VA-API support" ON)
+-OPTION(ENABLE_TEGRAJPEG "Enable Tegra HW JPEG support" ON)
++OPTION(ENABLE_CXX11 "Enable C++11 support" ON)
++OPTION(ENABLE_OPENCL "Enable OpenCL support" OFF)
++OPTION(ENABLE_CUDA "Enable CUDA support" OFF)
++OPTION(ENABLE_OPENGL "Enable OpenGL support" OFF) # TODO
++OPTION(ENABLE_VAAPI "Enable VA-API support" OFF)
++OPTION(ENABLE_TEGRAJPEG "Enable Tegra HW JPEG support" OFF)
+ OPTION(ENABLE_PROFILING "Collect profiling stats (memory consuming)" OFF)
+ 
+ IF(ENABLE_PROFILING)
+-- 
+2.34.1
+

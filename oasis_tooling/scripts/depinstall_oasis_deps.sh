@@ -227,6 +227,43 @@ patch \
   < "${CONFIG_DIRECTORY}/libcec/0001-Ament-Add-packaging-for-ROS-2-compatibility.patch" \
   || :
 
+# libfreenect2
+cp -v \
+  "${CONFIG_DIRECTORY}/libfreenect2/package.xml" \
+  "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/libfreenect2"
+patch \
+  -p1 \
+  --forward \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/libfreenect2" \
+  < "${CONFIG_DIRECTORY}/libfreenect2/0001-Add-ament-packaging.patch" \
+  || :
+patch \
+  -p1 \
+  --forward \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/libfreenect2" \
+  < "${CONFIG_DIRECTORY}/libfreenect2/0002-Change-CMake-option-defaults.patch" \
+  || :
+patch \
+  -p1 \
+  --forward \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/libfreenect2" \
+  < "${CONFIG_DIRECTORY}/libfreenect2/0003-Enable-PIC.patch" \
+  || :
+patch \
+  -p1 \
+  --forward \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/libfreenect2" \
+  < "${CONFIG_DIRECTORY}/libfreenect2/0004-Force-disable-components.patch" \
+  || :
+
 # OpenNI
 cp -v \
   "${CONFIG_DIRECTORY}/OpenNI2/CMakeLists.txt" \

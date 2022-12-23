@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>libfreenect2</name>
+  <version>0.2.0</version>
+  <description>Open source drivers for the Kinect for Windows v2 device</description>
+  <maintainer email="joshblake@gmail.com">Joshua Blake</maintainer>
+  <license>Apache-2.0</license>
+
+  <url type="website">https://github.com/OpenKinect/libfreenect2</url>
+  <url type="bugtracker">https://github.com/OpenKinect/libfreenect2/issues</url>
+  <url type="repository">https://github.com/OpenKinect/libfreenect2.git</url>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

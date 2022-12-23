@@ -1,0 +1,25 @@
+From 7290dcf840208d51bd391bb93a47231ccf1dc438 Mon Sep 17 00:00:00 2001
+From: Garrett Brown <eigendebugger@gmail.com>
+Date: Wed, 30 Jun 2021 02:43:36 -0700
+Subject: [PATCH 3/4] Enable PIC
+
+---
+ CMakeLists.txt | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index e40790d..2ee6542 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -22,6 +22,8 @@ IF(NOT DEFINED CMAKE_BUILD_TYPE)
+   SET(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Choose: RelWithDebInfo Release Debug MinSizeRel None")
+ ENDIF()
+ 
++set(CMAKE_POSITION_INDEPENDENT_CODE ON)
++
+ PROJECT(libfreenect2)
+ 
+ IF(POLICY CMP0042)
+-- 
+2.34.1
+
