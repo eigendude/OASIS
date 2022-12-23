@@ -214,6 +214,19 @@ patch \
   < "${CONFIG_DIRECTORY}/image_transport_plugins/0001-Revert-Add-tiff-compression-support.-75.patch" \
   || :
 
+# libcec
+cp -v \
+  "${CONFIG_DIRECTORY}/libcec/package.xml" \
+  "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/libcec"
+patch \
+  -p1 \
+  --forward \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/libcec" \
+  < "${CONFIG_DIRECTORY}/libcec/0001-Ament-Add-packaging-for-ROS-2-compatibility.patch" \
+  || :
+
 # OpenNI
 cp -v \
   "${CONFIG_DIRECTORY}/OpenNI2/CMakeLists.txt" \

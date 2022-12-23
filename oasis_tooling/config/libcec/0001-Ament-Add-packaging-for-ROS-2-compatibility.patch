@@ -1,0 +1,25 @@
+From 1c2e255cf653ad065e9cdfaec2917610bf0ef3d7 Mon Sep 17 00:00:00 2001
+From: Garrett Brown <themagnificentmrb@gmail.com>
+Date: Mon, 7 Jun 2021 22:37:02 -0700
+Subject: [PATCH] Ament: Add packaging for ROS 2 compatibility
+
+---
+ CMakeLists.txt | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index abd42db..efcf1e5 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -44,3 +44,8 @@ if(WIN32)
+   configure_file(${CMAKE_CURRENT_SOURCE_DIR}/src/dotnet/src/CecSharpTester/netfx/Properties/AssemblyInfo.cs.in
+                  ${CMAKE_CURRENT_SOURCE_DIR}/src/dotnet/src/CecSharpTester/netfx/Properties/AssemblyInfo.cs)
+ endif()
++
++# Declare an ament package
++cmake_policy(SET CMP0057 NEW)
++find_package(ament_cmake REQUIRED)
++ament_package()
+-- 
+2.34.1
+

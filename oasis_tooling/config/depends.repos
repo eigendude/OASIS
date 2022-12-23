@@ -1,8 +1,8 @@
 repositories:
   depends/libcec:
     type: git
-    url: https://github.com/garbear/libcec.git
-    version: ament
+    url: https://github.com/Pulse-Eight/libcec.git
+    version: master
   # Requires: libturbojpeg0-dev libusb-1.0-0-dev ocl-icd-opencl-dev
   depends/libfreenect2:
     type: git
