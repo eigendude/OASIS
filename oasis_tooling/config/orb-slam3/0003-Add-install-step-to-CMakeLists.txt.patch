@@ -1,0 +1,77 @@
+From 37fdab1b72209fa332d2074cb6e6569f2a694ef7 Mon Sep 17 00:00:00 2001
+From: Garrett Brown <eigendebugger@gmail.com>
+Date: Fri, 23 Dec 2022 15:17:15 -0800
+Subject: [PATCH 3/3] Add install step to CMakeLists.txt
+
+---
+ CMakeLists.txt                  | 21 +++++++++++++++++++++
+ Thirdparty/DBoW2/CMakeLists.txt |  7 +++++++
+ Thirdparty/g2o/CMakeLists.txt   |  8 ++++++++
+ 3 files changed, 36 insertions(+)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 63d7056..25a2ad8 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -134,6 +134,27 @@ if(realsense2_FOUND)
+     )
+ endif()
+ 
++# Install headers and library
++install(
++  DIRECTORY
++    include/
++  DESTINATION
++    include
++)
++install(
++  DIRECTORY
++    Thirdparty
++  DESTINATION
++    include
++  FILES_MATCHING PATTERN
++    "*.h*"
++)
++install(
++  TARGETS
++    ${PROJECT_NAME}
++  RUNTIME DESTINATION
++    lib
++)
+ 
+ # Build examples
+ 
+diff --git a/Thirdparty/DBoW2/CMakeLists.txt b/Thirdparty/DBoW2/CMakeLists.txt
+index c312b25..0556989 100644
+--- a/Thirdparty/DBoW2/CMakeLists.txt
++++ b/Thirdparty/DBoW2/CMakeLists.txt
+@@ -43,3 +43,10 @@ include_directories(${OpenCV_INCLUDE_DIRS})
+ add_library(DBoW2 SHARED ${SRCS_DBOW2} ${SRCS_DUTILS})
+ target_link_libraries(DBoW2 ${OpenCV_LIBS})
+ 
++# Install the library
++install(
++  TARGETS
++    DBoW2
++  RUNTIME DESTINATION
++    lib
++)
+diff --git a/Thirdparty/g2o/CMakeLists.txt b/Thirdparty/g2o/CMakeLists.txt
+index 1a32ff9..9fec4e3 100644
+--- a/Thirdparty/g2o/CMakeLists.txt
++++ b/Thirdparty/g2o/CMakeLists.txt
+@@ -176,3 +176,11 @@ g2o/stuff/string_tools.cpp
+ g2o/stuff/property.cpp       
+ g2o/stuff/property.h       
+ )
++
++# Install the library
++install(
++  TARGETS
++    g2o
++  RUNTIME DESTINATION
++    lib
++)
+-- 
+2.34.1
+

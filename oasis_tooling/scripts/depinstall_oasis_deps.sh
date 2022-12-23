@@ -266,6 +266,41 @@ if [[ ${PLATFORM_ARCH} != x86_64 ]]; then
   touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/OpenNI2/COLCON_IGNORE"
 fi
 
+# ORB-SLAM3
+cp -v \
+  "${CONFIG_DIRECTORY}/orb-slam3/package.xml" \
+  "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/orb-slam3"
+patch \
+  -p1 \
+  --forward \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/orb-slam3" \
+  < "${CONFIG_DIRECTORY}/orb-slam3/0001-Update-CMAKEList.txt-to-use-C-14.patch" \
+  || :
+patch \
+  -p1 \
+  --forward \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/orb-slam3" \
+  < "${CONFIG_DIRECTORY}/orb-slam3/0002-Add-missing-DBoW2-directory-to-CMakeLists.txt.patch" \
+  || :
+patch \
+  -p1 \
+  --forward \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/orb-slam3" \
+  < "${CONFIG_DIRECTORY}/orb-slam3/0003-Add-install-step-to-CMakeLists.txt.patch" \
+  || :
+
+# Disable ORB-SLAM3 on Ubuntu 18.04 and Ubuntu 20.04
+if [ "${CODENAME}" = "bionic" ] || [ "${CODENAME}" = "focal" ]; then
+  echo "Disabling ORB-SLAM3 on ${CODENAME}"
+  touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/orb-slam3/COLCON_IGNORE"
+fi
+
 # p8-platform
 cp -v \
   "${CONFIG_DIRECTORY}/p8-platform/package.xml" \
