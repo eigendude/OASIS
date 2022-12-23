@@ -15,8 +15,8 @@ repositories:
     version: master
   depends/p8-platform:
     type: git
-    url: https://github.com/garbear/p8-platform.git
-    version: ament
+    url: https://github.com/Pulse-Eight/platform.git
+    version: master
   ros-perception/bgslibrary:
     type: git
     url: https://github.com/andrewssobral/bgslibrary.git

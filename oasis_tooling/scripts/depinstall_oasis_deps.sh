@@ -226,6 +226,19 @@ if [[ ${PLATFORM_ARCH} != x86_64 ]]; then
   touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/OpenNI2/COLCON_IGNORE"
 fi
 
+# p8-platform
+cp -v \
+  "${CONFIG_DIRECTORY}/p8-platform/package.xml" \
+  "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/p8-platform"
+patch \
+  -p1 \
+  --forward \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/p8-platform" \
+  < "${CONFIG_DIRECTORY}/p8-platform/0001-CMake-Default-to-C-20-to-fix-building-with-newer-cla.patch" \
+  || :
+
 # ros2_v4l2_camera
 patch \
   -p1 \

@@ -1,0 +1,35 @@
+From 4814aa0a5c14f99149ef7f2d53f58eccc0e1beb9 Mon Sep 17 00:00:00 2001
+From: Garrett Brown <themagnificentmrb@gmail.com>
+Date: Fri, 24 Dec 2021 03:23:28 -0800
+Subject: [PATCH] CMake: Default to C++20 to fix building with newer clang
+
+Error was:
+
+  StringUtils.cpp:456:60: error: expected expression
+    str.erase(str.begin(), ::find_if(str.begin(), str.end(), [](char s) { return isspace_c(s) == 0; }));
+
+  StringUtils.cpp:469:49: error: expected expression
+    str.erase(::find_if(str.rbegin(), str.rend(), [](char s) { return isspace_c(s) == 0; }).base(), str.end());
+---
+ CMakeLists.txt | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index f5b2ff8..fff7234 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -3,6 +3,11 @@ project(p8-platform)
+ cmake_minimum_required(VERSION 2.8.9)
+ enable_language(CXX)
+ 
++# Default to C++20
++if(NOT CMAKE_CXX_STANDARD)
++  set(CMAKE_CXX_STANDARD 20)
++endif()
++
+ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${PROJECT_SOURCE_DIR})
+ 
+ find_package(Threads REQUIRED)
+-- 
+2.34.1
+

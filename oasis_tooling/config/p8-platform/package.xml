@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>p8-platform</name>
+  <version>2.1.0</version>
+  <description>Platform support library used by libCEC and binary add-ons for Kodi</description>
+  <maintainer email="opdenkamp@users.noreply.github.com">Lars Op den Kamp</maintainer>
+  <license>GPL-2.0-or-later</license>
+
+  <url type="website">http://libcec.pulse-eight.com</url>
+  <url type="bugtracker">https://github.com/Pulse-Eight/platform/issues</url>
+  <url type="repository">https://github.com/Pulse-Eight/platform</url>
+</package>
