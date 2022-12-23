@@ -169,8 +169,11 @@ mkdir -p "${OASIS_DEPENDS_LIB_DIRECTORY}"
 
 vcs import "${OASIS_DEPENDS_SOURCE_DIRECTORY}" < "${PACKAGE_DIRECTORY}/config/depends.repos"
 
+#
 # Patch dependency sources
-cp -v "${CONFIG_DIRECTORY}/OpenNI2/"* "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/OpenNI2"
+#
+
+# bgslibrary
 patch \
   -p1 \
   --forward \
@@ -179,6 +182,13 @@ patch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/bgslibrary" \
   < "${CONFIG_DIRECTORY}/bgslibrary/0001-CMake-Add-missing-header-install-target.patch" \
   || :
+
+# Disable bgslibrary on 18.04 due to older OpenCV version
+if [ "${CODENAME}" = "bionic" ]; then
+  touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/bgslibrary/COLCON_IGNORE"
+fi
+
+# image_transport_plugins
 patch \
   -p1 \
   --forward \
@@ -203,6 +213,20 @@ patch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/image_transport_plugins" \
   < "${CONFIG_DIRECTORY}/image_transport_plugins/0001-Revert-Add-tiff-compression-support.-75.patch" \
   || :
+
+# OpenNI
+cp -v \
+  "${CONFIG_DIRECTORY}/OpenNI2/CMakeLists.txt" \
+  "${CONFIG_DIRECTORY}/OpenNI2/package.xml" \
+  "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/OpenNI2"
+
+# Disable OpenNI on everything but x86_64
+if [[ ${PLATFORM_ARCH} != x86_64 ]]; then
+  echo "Disabling OpenNI on ${PLATFORM_ARCH}"
+  touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/OpenNI2/COLCON_IGNORE"
+fi
+
+# ros2_v4l2_camera
 patch \
   -p1 \
   --forward \
@@ -211,6 +235,8 @@ patch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/ros2_v4l2_camera" \
   < "${CONFIG_DIRECTORY}/ros2_v4l2_camera/0001-Disable-Werror.patch" \
   || :
+
+# vision_opencv
 patch \
   -p1 \
   --forward \
@@ -219,17 +245,6 @@ patch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/vision_opencv" \
   < "${CONFIG_DIRECTORY}/vision_opencv/0001-Disable-Python-bindings-by-default.patch" \
   || :
-
-# Disable OpenNI on everything but x86_64
-if [[ ${PLATFORM_ARCH} != x86_64 ]]; then
-  echo "Disabling OpenNI on ${PLATFORM_ARCH}"
-  touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/OpenNI2/COLCON_IGNORE"
-fi
-
-# Disable bgslibrary on 18.04 due to older OpenCV version
-if [ "${CODENAME}" = "bionic" ]; then
-  touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/bgslibrary/COLCON_IGNORE"
-fi
 
 #
 # Install rosdeps packages (except on macOS)
