@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>openni2</name>
+  <version>2.2.0</version>
+  <description>Open source drivers for the Kinect for Windows v2 device</description>
+  <maintainer email="noone@nowhere.com">Occipital, Inc.</maintainer>
+  <license>Apache-2.0</license>
+
+  <!--
+    Build dependencies:
+      * libudev-dev
+      * libusb-1.0-0-dev
+  -->
+
+  <url type="website">https://structure.io/openni</url>
+  <url type="bugtracker">https://github.com/occipital/OpenNI2/issues</url>
+  <url type="repository">https://github.com/occipital/OpenNI2.git</url>
+</package>

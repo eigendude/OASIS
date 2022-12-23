@@ -170,6 +170,7 @@ mkdir -p "${OASIS_DEPENDS_LIB_DIRECTORY}"
 vcs import "${OASIS_DEPENDS_SOURCE_DIRECTORY}" < "${PACKAGE_DIRECTORY}/config/depends.repos"
 
 # Patch dependency sources
+cp -v "${CONFIG_DIRECTORY}/OpenNI2/"* "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/OpenNI2"
 patch \
   -p1 \
   --forward \
