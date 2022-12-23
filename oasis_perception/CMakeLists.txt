@@ -51,22 +51,61 @@ include_directories(
 # Executables
 #
 
-add_executable(background_subtractor
-  src/image/BackgroundModeler.cpp
-  src/image/MultiModeler.cpp
+add_executable(background_subtractor_abl
+  src/image/BackgroundModelerABL.cpp
   src/ros/BackgroundModelerNode.cpp
   src/utils/NetworkUtils.cpp
-  src/background_subtractor.cpp
+  src/background_subtractor_abl.cpp
 )
 
-ament_target_dependencies(background_subtractor
+ament_target_dependencies(background_subtractor_abl
   cv_bridge
   image_transport
   rclcpp
   sensor_msgs
 )
 
-target_link_libraries(background_subtractor
+target_link_libraries(background_subtractor_abl
+  ${BGSLIBRARY_LIBRARIES}
+  ${cv_bridge_LIBRARIES}
+  ${image_transport_LIBRARIES}
+)
+
+add_executable(background_subtractor_asbl
+  src/image/BackgroundModelerASBL.cpp
+  src/ros/BackgroundModelerNode.cpp
+  src/utils/NetworkUtils.cpp
+  src/background_subtractor_asbl.cpp
+)
+
+ament_target_dependencies(background_subtractor_asbl
+  cv_bridge
+  image_transport
+  rclcpp
+  sensor_msgs
+)
+
+target_link_libraries(background_subtractor_asbl
+  ${BGSLIBRARY_LIBRARIES}
+  ${cv_bridge_LIBRARIES}
+  ${image_transport_LIBRARIES}
+)
+
+add_executable(multi_modeler
+  src/image/MultiModeler.cpp
+  src/ros/BackgroundModelerNode.cpp
+  src/utils/NetworkUtils.cpp
+  src/multi_modeler.cpp
+)
+
+ament_target_dependencies(multi_modeler
+  cv_bridge
+  image_transport
+  rclcpp
+  sensor_msgs
+)
+
+target_link_libraries(multi_modeler
   ${BGSLIBRARY_LIBRARIES}
   ${cv_bridge_LIBRARIES}
   ${image_transport_LIBRARIES}
@@ -78,7 +117,9 @@ target_link_libraries(background_subtractor
 
 install(
   TARGETS
-    background_subtractor
+    background_subtractor_abl
+    background_subtractor_asbl
+    multi_modeler
   DESTINATION
     lib/${PROJECT_NAME}
 )

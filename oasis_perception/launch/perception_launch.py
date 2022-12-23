@@ -36,13 +36,33 @@ PACKAGE_NAME = "oasis_perception"
 def generate_launch_description() -> LaunchDescription:
     ld = LaunchDescription()
 
-    manager_node = Node(
-        namespace=ROS_NAMESPACE,
-        package=PACKAGE_NAME,
-        executable="background_subtractor",
-        name=f"background_subtractor_{HOSTNAME}",
-        output="screen",
-    )
-    ld.add_action(manager_node)
+    if HOSTNAME == "cinder":
+        bgs_abl_node = Node(
+            namespace=ROS_NAMESPACE,
+            package=PACKAGE_NAME,
+            executable="background_subtractor_abl",
+            name=f"background_subtractor_abl_{HOSTNAME}",
+            output="screen",
+        )
+        ld.add_action(bgs_abl_node)
+
+        bgs_asbl_node = Node(
+            namespace=ROS_NAMESPACE,
+            package=PACKAGE_NAME,
+            executable="background_subtractor_asbl",
+            name=f"background_subtractor_asbl_{HOSTNAME}",
+            output="screen",
+        )
+        ld.add_action(bgs_asbl_node)
+
+    elif HOSTNAME == "starship":
+        multi_modeler_node = Node(
+            namespace=ROS_NAMESPACE,
+            package=PACKAGE_NAME,
+            executable="multi_modeler",
+            name=f"multi_modeler_{HOSTNAME}",
+            output="screen",
+        )
+        ld.add_action(multi_modeler_node)
 
     return ld

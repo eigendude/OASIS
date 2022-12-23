@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <string>
+
 #include <rclcpp/node.hpp>
 
 namespace OASIS
@@ -18,7 +20,7 @@ namespace ROS
 class BackgroundModelerNode : public rclcpp::Node
 {
 public:
-  BackgroundModelerNode();
+  BackgroundModelerNode(const std::string& nodeName);
   ~BackgroundModelerNode() override;
 };
 

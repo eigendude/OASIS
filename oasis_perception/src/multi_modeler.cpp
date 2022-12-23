@@ -6,7 +6,6 @@
  *  See the file LICENSE.txt for more information.
  */
 
-#include "image/BackgroundModeler.h"
 #include "image/MultiModeler.h"
 #include "ros/BackgroundModelerNode.h"
 #include "utils/NetworkUtils.h"
@@ -21,13 +20,13 @@ namespace OASIS
 {
 constexpr const char* ROS_NAMESPACE = "oasis"; // TODO
 
+constexpr const char* MULTI_MODELER_NODE_NAME = "multi_modeler";
+
 // TODO: Hardware configuration
 constexpr const char* VIDEO_MACHINE_KINECT2 = "kinect2";
 
 // Subscribed topics
 constexpr const char* IMAGE_TOPIC_KINECT2 = "hd/image_color";
-constexpr const char* IMAGE_TOPIC_LENOVO = "image_raw";
-constexpr const char* IMAGE_TOPIC_NETBOOK = "image_raw";
 
 // Published topics
 constexpr const char* FOREGROUND_TOPIC = "foreground";
@@ -40,32 +39,20 @@ int main(int argc, char* argv[])
   rclcpp::init(argc, argv);
 
   // Get the hostname
-  const std::string hostName = OASIS::UTILS::NetworkUtils::GetHostName();
+  const std::string appendHostname = "_" + OASIS::UTILS::NetworkUtils::GetHostName();
 
   // Create node
-  std::shared_ptr<rclcpp::Node> node = std::make_shared<OASIS::ROS::BackgroundModelerNode>();
+  std::shared_ptr<rclcpp::Node> node =
+      std::make_shared<OASIS::ROS::BackgroundModelerNode>(MULTI_MODELER_NODE_NAME + appendHostname);
 
   // Create topics
   const std::string kinectTopicBase =
       std::string("/") + ROS_NAMESPACE + "/" + VIDEO_MACHINE_KINECT2 + "/";
 
   {
-    std::unique_ptr<OASIS::IMAGE::BackgroundModeler> backgroundModelerKinect2;
-    std::unique_ptr<OASIS::IMAGE::MultiModeler> multiModelerKinect2;
-
-    // TODO: Hardware configuration
-    if (hostName == "cinder")
-    {
-      backgroundModelerKinect2 = std::make_unique<OASIS::IMAGE::BackgroundModeler>(
-          node, kinectTopicBase + IMAGE_TOPIC_KINECT2, kinectTopicBase + FOREGROUND_TOPIC,
-          kinectTopicBase + BACKGROUND_TOPIC, kinectTopicBase + SUBTRACTED_TOPIC);
-    }
-    else
-    {
-      multiModelerKinect2 = std::make_unique<OASIS::IMAGE::MultiModeler>(
-          node, kinectTopicBase + IMAGE_TOPIC_KINECT2, kinectTopicBase + FOREGROUND_TOPIC,
-          kinectTopicBase + BACKGROUND_TOPIC, kinectTopicBase + SUBTRACTED_TOPIC);
-    }
+    OASIS::IMAGE::MultiModeler multiModelerKinect2(
+        node, kinectTopicBase + IMAGE_TOPIC_KINECT2, kinectTopicBase + FOREGROUND_TOPIC,
+        kinectTopicBase + BACKGROUND_TOPIC, kinectTopicBase + SUBTRACTED_TOPIC);
 
     rclcpp::spin(node);
   }

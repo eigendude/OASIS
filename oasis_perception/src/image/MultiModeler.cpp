@@ -12,7 +12,7 @@
 #include <bgslibrary/algorithms/AdaptiveSelectiveBackgroundLearning.h>
 #include <bgslibrary/algorithms/KNN.h>
 #include <bgslibrary/algorithms/SigmaDelta.h>
-#include <cv_bridge/cv_bridge.h>
+#include <cv_bridge/cv_bridge.hpp>
 #include <image_transport/image_transport.hpp>
 #include <image_transport/transport_hints.hpp>
 #include <opencv2/imgproc/imgproc.hpp>

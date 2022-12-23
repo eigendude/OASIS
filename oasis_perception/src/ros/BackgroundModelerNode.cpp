@@ -8,15 +8,10 @@
 
 #include "BackgroundModelerNode.h"
 
-namespace
-{
-constexpr const char* NODE_NAME = "background_substractor";
-}
-
 using namespace OASIS;
 using namespace ROS;
 
-BackgroundModelerNode::BackgroundModelerNode() : rclcpp::Node(NODE_NAME)
+BackgroundModelerNode::BackgroundModelerNode(const std::string& nodeName) : rclcpp::Node(nodeName)
 {
 }
 
