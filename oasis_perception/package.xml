@@ -9,6 +9,10 @@
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
+  <build_depend>eigen</build_depend>
+  <build_depend>libboost-serialization-dev</build_depend>
+  <build_depend>libglew-dev</build_depend>
+
   <depend>cv_bridge</depend>
   <depend>image_transport</depend>
   <depend>libopencv-dev</depend>

@@ -65,4 +65,15 @@ def generate_launch_description() -> LaunchDescription:
         )
         ld.add_action(multi_modeler_node)
 
+        """
+        monocular_slam_node = Node(
+            namespace=ROS_NAMESPACE,
+            package=PACKAGE_NAME,
+            executable="monocular_slam",
+            name=f"monocular_slam_{HOSTNAME}",
+            output="screen",
+        )
+        ld.add_action(monocular_slam_node)
+        """
+
     return ld

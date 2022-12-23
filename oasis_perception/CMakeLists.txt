@@ -24,6 +24,10 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
+if (_LINUX_)
+  set(OpenGL_GL_PREFERENCE "GLVND")
+endif()
+
 #
 # Dependencies
 #
@@ -34,6 +38,7 @@ find_package(ament_cmake REQUIRED)
 find_package(bgslibrary REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(image_transport REQUIRED)
+find_package(ORB_SLAM3)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 
@@ -108,6 +113,66 @@ install(
   DESTINATION
     lib/${PROJECT_NAME}
 )
+
+#
+# monocular_slam
+#
+
+if (ORB_SLAM3_FOUND)
+  find_package(DBoW2 REQUIRED)
+  find_package(Eigen3 REQUIRED)
+  find_package(g2o REQUIRED)
+  find_package(GLEW REQUIRED)
+  find_package(OpenGL REQUIRED)
+  find_package(Pangolin REQUIRED)
+  find_package(Sophus REQUIRED)
+
+  add_executable(monocular_slam
+    src/slam/MonocularSlam.cpp
+    src/utils/NetworkUtils.cpp
+    src/monocular_slam.cpp
+  )
+
+  ament_target_dependencies(monocular_slam
+    cv_bridge
+    image_transport
+    rclcpp
+    sensor_msgs
+  )
+
+  target_compile_definitions(monocular_slam PUBLIC
+    HAVE_EIGEN
+    HAVE_GLEW
+  )
+
+  target_include_directories(monocular_slam PUBLIC
+    $<BUILD_INTERFACE:${OPENGL_INCLUDE_DIR}>
+    $<BUILD_INTERFACE:${GLEW_INCLUDE_DIR}>
+    ${EIGEN3_INCLUDE_DIRS}
+    ${cv_bridge_INCLUDE_DIRS}
+    ${image_transport_INCLUDE_DIRS}
+    ${ORB_SLAM3_INCLUDE_DIRS}
+    ${SOPHUS_INCLUDE_DIRS}
+  )
+
+  target_link_libraries(monocular_slam
+    ${cv_bridge_LIBRARIES}
+    ${DBoW2_LIBRARIES}
+    ${g2o_LIBRARIES}
+    ${GLEW_LIBRARY}
+    ${image_transport_LIBRARIES}
+    ${ORB_SLAM3_LIBRARIES}
+    ${OPENGL_LIBRARIES}
+    ${Pangolin_LIBRARIES}
+  )
+
+  install(
+    TARGETS
+      monocular_slam
+    DESTINATION
+      lib/${PROJECT_NAME}
+  )
+endif()
 
 #
 # multi_modeler
