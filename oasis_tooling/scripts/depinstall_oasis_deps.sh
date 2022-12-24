@@ -203,7 +203,7 @@ patch \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/image_transport_plugins" \
-  < "${CONFIG_DIRECTORY}/image_transport_plugins/0001-Revert-Cleanup-the-cmake-code-to-be-more-modern-96.patch" \
+  < "${CONFIG_DIRECTORY}/image_transport_plugins/0002-Revert-Cleanup-the-cmake-code-to-be-more-modern-96.patch" \
   || :
 patch \
   -p1 \
@@ -211,7 +211,7 @@ patch \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/image_transport_plugins" \
-  < "${CONFIG_DIRECTORY}/image_transport_plugins/0001-Revert-Add-tiff-compression-support.-75.patch" \
+  < "${CONFIG_DIRECTORY}/image_transport_plugins/0003-Revert-Add-tiff-compression-support.-75.patch" \
   || :
 
 # libcec

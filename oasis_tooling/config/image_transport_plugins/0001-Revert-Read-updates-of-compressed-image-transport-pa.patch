@@ -1,8 +1,8 @@
-From f0d3e2c0edfde199d9a982a87259a9ec34a3a4e4 Mon Sep 17 00:00:00 2001
+From 266098ae6216ca974502ee787148d87c5e3bdf97 Mon Sep 17 00:00:00 2001
 From: Garrett Brown <eigendebugger@gmail.com>
 Date: Thu, 18 Aug 2022 17:51:50 -0700
-Subject: [PATCH] Revert "Read updates of compressed image transport parameters
- when the node is running (#108)"
+Subject: [PATCH 1/3] Revert "Read updates of compressed image transport
+ parameters when the node is running (#108)"
 
 This reverts commit 942199ccc906067ba7ed4ffed19e2fcd6933af0e.
 ---
@@ -42,7 +42,7 @@ index 7df0c7d..77363dc 100644
  
  } //namespace compressed_image_transport
 diff --git a/compressed_image_transport/src/compressed_publisher.cpp b/compressed_image_transport/src/compressed_publisher.cpp
-index 52732c9..b4604ca 100644
+index 13a7cca..82f7cdd 100644
 --- a/compressed_image_transport/src/compressed_publisher.cpp
 +++ b/compressed_image_transport/src/compressed_publisher.cpp
 @@ -64,15 +64,13 @@ void CompressedPublisher::advertiseImpl(
@@ -257,5 +257,5 @@ index 52732c9..b4604ca 100644
    }
  }
 -- 
-2.17.1
+2.34.1
 
