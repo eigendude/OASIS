@@ -8,8 +8,7 @@
 
 #include "BackgroundModelerABL.h"
 
-#include <bgslibrary/algorithms/AdaptiveBackgroundLearning.h>
-#include <bgslibrary/algorithms/IBGS.h>
+#include <algorithms/AdaptiveBackgroundLearning.h>
 #include <cv_bridge/cv_bridge.hpp>
 #include <image_transport/image_transport.hpp>
 #include <image_transport/transport_hints.hpp>

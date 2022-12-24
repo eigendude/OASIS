@@ -18,7 +18,7 @@ include(FindPackageHandleStandardArgs)
 
 find_path(
   BGSLIBRARY_INCLUDE_DIR
-  NAMES "bgslibrary/FrameProcessor.h"
+  NAMES "FrameProcessor.h"
   PATH_SUFFIXES "include"
 )
 
