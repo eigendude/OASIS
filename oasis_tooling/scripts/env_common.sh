@@ -21,6 +21,18 @@ set -o nounset
 PLATFORM_ARCH="$(uname -p)"
 
 #
+# Disable interactive mode for apt
+#
+# In a normal install, this variable as no effect, because sudo doesn't keep
+# environment variables by default. In order to pass this variable to sudo,
+# add the following to your sudoers file (i.e. sudo visudo):
+#
+#   Defaults        env_keep += "NEEDRESTART_MODE"
+#
+
+export NEEDRESTART_MODE="a"
+
+#
 # Directory and path definitions
 #
 
