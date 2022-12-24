@@ -38,22 +38,11 @@ find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 
 #
-# Includes
-#
-
-include_directories(
-  ${BGSLIBRARY_INCLUDE_DIRS}
-  ${cv_bridge_INCLUDE_DIRS}
-  ${image_transport_INCLUDE_DIRS}
-)
-
-#
-# Executables
+# background_subtractor_abl
 #
 
 add_executable(background_subtractor_abl
   src/image/BackgroundModelerABL.cpp
-  src/ros/BackgroundModelerNode.cpp
   src/utils/NetworkUtils.cpp
   src/background_subtractor_abl.cpp
 )
@@ -65,15 +54,31 @@ ament_target_dependencies(background_subtractor_abl
   sensor_msgs
 )
 
+target_include_directories(background_subtractor_abl PUBLIC
+  ${BGSLIBRARY_INCLUDE_DIRS}
+  ${cv_bridge_INCLUDE_DIRS}
+  ${image_transport_INCLUDE_DIRS}
+)
+
 target_link_libraries(background_subtractor_abl
   ${BGSLIBRARY_LIBRARIES}
   ${cv_bridge_LIBRARIES}
   ${image_transport_LIBRARIES}
 )
 
+install(
+  TARGETS
+    background_subtractor_abl
+  DESTINATION
+    lib/${PROJECT_NAME}
+)
+
+#
+# background_subtractor_asbl
+#
+
 add_executable(background_subtractor_asbl
   src/image/BackgroundModelerASBL.cpp
-  src/ros/BackgroundModelerNode.cpp
   src/utils/NetworkUtils.cpp
   src/background_subtractor_asbl.cpp
 )
@@ -85,15 +90,31 @@ ament_target_dependencies(background_subtractor_asbl
   sensor_msgs
 )
 
+target_include_directories(background_subtractor_asbl PUBLIC
+  ${BGSLIBRARY_INCLUDE_DIRS}
+  ${cv_bridge_INCLUDE_DIRS}
+  ${image_transport_INCLUDE_DIRS}
+)
+
 target_link_libraries(background_subtractor_asbl
   ${BGSLIBRARY_LIBRARIES}
   ${cv_bridge_LIBRARIES}
   ${image_transport_LIBRARIES}
 )
 
+install(
+  TARGETS
+    background_subtractor_asbl
+  DESTINATION
+    lib/${PROJECT_NAME}
+)
+
+#
+# multi_modeler
+#
+
 add_executable(multi_modeler
   src/image/MultiModeler.cpp
-  src/ros/BackgroundModelerNode.cpp
   src/utils/NetworkUtils.cpp
   src/multi_modeler.cpp
 )
@@ -105,20 +126,20 @@ ament_target_dependencies(multi_modeler
   sensor_msgs
 )
 
+target_include_directories(multi_modeler PUBLIC
+  ${BGSLIBRARY_INCLUDE_DIRS}
+  ${cv_bridge_INCLUDE_DIRS}
+  ${image_transport_INCLUDE_DIRS}
+)
+
 target_link_libraries(multi_modeler
   ${BGSLIBRARY_LIBRARIES}
   ${cv_bridge_LIBRARIES}
   ${image_transport_LIBRARIES}
 )
 
-#
-# Install
-#
-
 install(
   TARGETS
-    background_subtractor_abl
-    background_subtractor_asbl
     multi_modeler
   DESTINATION
     lib/${PROJECT_NAME}

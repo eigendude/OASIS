@@ -8,7 +8,6 @@
 
 #include "image/BackgroundModelerABL.h"
 #include "image/MultiModeler.h"
-#include "ros/BackgroundModelerNode.h"
 #include "utils/NetworkUtils.h"
 
 #include <memory>
@@ -42,7 +41,7 @@ int main(int argc, char* argv[])
 
   // Create node
   std::shared_ptr<rclcpp::Node> node =
-      std::make_shared<OASIS::ROS::BackgroundModelerNode>(BGS_ABL_NODE_NAME + appendHostname);
+      std::make_shared<rclcpp::Node>(BGS_ABL_NODE_NAME + appendHostname);
 
   // Create topics
   const std::string kinectTopicBase =
