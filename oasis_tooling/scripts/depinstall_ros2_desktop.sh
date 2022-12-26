@@ -25,16 +25,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 source "${SCRIPT_DIR}/env_ros2_desktop.sh"
 
 # rosdep keys to ignore
-if [ "${ROS2_DISTRO}" = "galactic" ]; then
-  ROSDEP_IGNORE_KEYS=" \
-    console_bridge \
-    fastcdr \
-    fastrtps \
-    python3-ifcfg \
-    rti-connext-dds-5.3.1 \
-    urdfdom_headers \
-  "
-elif [ "${ROS2_DISTRO}" = "humble" ]; then
+if [ "${ROS2_DISTRO}" = "humble" ]; then
   ROSDEP_IGNORE_KEYS=" \
     fastcdr \
     ignition-cmake2 \
@@ -48,14 +39,20 @@ else
   ROSDEP_IGNORE_KEYS=
 fi
 
+if [[ "${OSTYPE}" != "darwin"* ]]; then
+  ARCH="$(dpkg --print-architecture)"
+  CODENAME="$(source "/etc/os-release" && echo "${UBUNTU_CODENAME}")"
+else
+  ARCH=
+  CODENAME=
+fi
+
 #
 # Setup ROS 2 sources
 #
 
 if [[ "${OSTYPE}" != "darwin"* ]]; then
   # Add the ROS 2 repository
-  ARCH="$(dpkg --print-architecture)"
-  CODENAME="$(source "/etc/os-release" && echo "${UBUNTU_CODENAME}")"
   KEY_URL="https://raw.githubusercontent.com/ros/rosdistro/master/ros.key"
   PKG_URL="http://packages.ros.org/ros2/ubuntu"
   SIGNED_BY="/usr/share/keyrings/ros-archive-keyring.gpg"
@@ -77,8 +74,6 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
 
     sudo apt update
   fi
-else
-  CODENAME=
 fi
 
 #
@@ -285,26 +280,7 @@ echo "Downloading ROS 2 source code..."
   wget --timestamping "https://raw.githubusercontent.com/ros2/ros2/${ROS2_DISTRO}/ros2.repos"
 
   # Patch ROS 2 source definitions
-  if [ "${ROS2_DISTRO}" = "galactic" ]; then
-    patch \
-      -p1 \
-      --forward \
-      --reject-file="/dev/null" \
-      --no-backup-if-mismatch \
-      < "${CONFIG_DIRECTORY}/ros2_desktop/0001-galactic-Change-rcpputils-to-master-branch.patch"
-    patch \
-      -p1 \
-      --forward \
-      --reject-file="/dev/null" \
-      --no-backup-if-mismatch \
-      < "${CONFIG_DIRECTORY}/ros2_desktop/0001-galactic-Update-ament-to-humble-branches.patch"
-    patch \
-      -p1 \
-      --forward \
-      --reject-file="/dev/null" \
-      --no-backup-if-mismatch \
-      < "${CONFIG_DIRECTORY}/ros2_desktop/0001-galactic-Update-image_common-to-rolling-branch.patch"
-  elif [ "${ROS2_DISTRO}" = "humble" ]; then
+  if [ "${ROS2_DISTRO}" = "humble" ]; then
     patch \
       -p1 \
       --forward \
@@ -326,36 +302,7 @@ echo "Downloading ROS 2 source code..."
     < "${CONFIG_DIRECTORY}/rviz/0001-Update-to-C-17.patch" \
     || :
 
-  if [ "${ROS2_DISTRO}" = "galactic" ]; then
-    patch \
-      -p1 \
-      --forward \
-      --reject-file="/dev/null" \
-      --no-backup-if-mismatch \
-      --directory="${ROS2_SOURCE_DIRECTORY}/eclipse-iceoryx/iceoryx" \
-      < "${CONFIG_DIRECTORY}/iceoryx/0001-Fix-static_asserts-causing-build-to-fail.patch" \
-      || :
-    patch \
-      -p1 \
-      --forward \
-      --reject-file="/dev/null" \
-      --no-backup-if-mismatch \
-      --directory="${ROS2_SOURCE_DIRECTORY}/ros2/demos" \
-      < "${CONFIG_DIRECTORY}/demos/0001-Remove-the-malloc_hook-from-the-pendulum_demo.patch" \
-      || :
-    patch \
-      -p1 \
-      --forward \
-      --reject-file="/dev/null" \
-      --no-backup-if-mismatch \
-      --directory="${ROS2_SOURCE_DIRECTORY}/ros2/realtime_support" \
-      < "${CONFIG_DIRECTORY}/realtime_support/0001-Remove-the-use-of-malloc-hooks-from-the-tlsf_cpp-tes.patch" \
-      || :
-
-    # OGRE fails to build on Ubuntu 22.04 arm64 due to newer glibc, fixed in humble
-    echo "Disabling rviz"
-    touch "${ROS2_SOURCE_DIRECTORY}/ros2/rviz/COLCON_IGNORE"
-  elif [ "${ROS2_DISTRO}" = "humble" ]; then
+  if [ "${ROS2_DISTRO}" = "humble" ]; then
     patch \
       -p1 \
       --forward \
