@@ -237,5 +237,9 @@ def generate_launch_description() -> LaunchDescription:
         mcu_node = "engine"
         engine_bridge_node: Node = get_telemetrix_bridge(HOSTNAME, mcu_node)
         ld.add_action(engine_bridge_node)
+    elif HOSTNAME == "starship":
+        mcu_node = "lab"
+        lab_bridge_node: Node = get_telemetrix_bridge(HOSTNAME, mcu_node)
+        ld.add_action(lab_bridge_node)
 
     return ld
