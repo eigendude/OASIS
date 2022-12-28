@@ -34,6 +34,7 @@ cmake_minimum_required(VERSION 3.11)
 #
 #   - uno
 #   - leonardo
+#   - mega
 #
 
 # TODO: Currently board selection is done by scanning the hostname, but is
@@ -82,7 +83,7 @@ if (HOST_NAME STREQUAL station)
   set(ENABLE_STEPPER OFF)
 elseif (HOST_NAME STREQUAL jetson)
   # Building engine
-  set(ARDUINO_VARIANT uno)
+  set(ARDUINO_VARIANT mega)
 
   #
   # With everything disabled:
@@ -138,17 +139,17 @@ elseif (HOST_NAME STREQUAL jetson)
   # 18036 flash (55%), 1558 data (76%)
   #
   set(ENABLE_ANALOG ON)
-  set(ENABLE_BLUEFRUIT ON)
-  set(ENABLE_CPU_FAN ON)
+  set(ENABLE_BLUEFRUIT OFF)
+  set(ENABLE_CPU_FAN OFF)
   set(ENABLE_DHT OFF) # TODO
   set(ENABLE_DIAGNOSTICS ON)
   set(ENABLE_DIGITAL ON)
   set(ENABLE_I2C ON)
-  set(ENABLE_ONE_WIRE ON)
-  set(ENABLE_SERVO ON)
-  set(ENABLE_SONAR ON)
-  set(ENABLE_SPI ON)
-  set(ENABLE_STEPPER ON)
+  set(ENABLE_ONE_WIRE OFF)
+  set(ENABLE_SERVO OFF)
+  set(ENABLE_SONAR OFF)
+  set(ENABLE_SPI OFF)
+  set(ENABLE_STEPPER OFF)
 elseif (HOST_NAME STREQUAL cinder)
   # Building leonardo
   set(ARDUINO_VARIANT leonardo)
