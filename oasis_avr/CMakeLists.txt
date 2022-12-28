@@ -149,7 +149,7 @@ elseif (HOST_NAME STREQUAL jetson)
   set(ENABLE_SONAR ON)
   set(ENABLE_SPI ON)
   set(ENABLE_STEPPER ON)
-elseif (HOSTNAME STREQUAL cinder)
+elseif (HOST_NAME STREQUAL cinder)
   # Building leonardo
   set(ARDUINO_VARIANT leonardo)
 
