@@ -41,6 +41,7 @@ rosidl_generate_interfaces(
     msg/I2CDevice.msg
     msg/I2CDeviceType.msg
     msg/I2CImu.msg
+    msg/LabState.msg
     msg/LeonardoState.msg
     msg/MCUMemory.msg
     msg/MCUString.msg
