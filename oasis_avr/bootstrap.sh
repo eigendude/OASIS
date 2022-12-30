@@ -168,19 +168,3 @@ if [ -d "${ADAFRUIT_CP_DIR}" ]; then
   echo "Removing ${ADAFRUIT_CP_DIR}"
   rm -rf "${ADAFRUIT_CP_DIR}"
 fi
-
-# Patch i2cdevlib
-patch \
-  -p1 \
-  --forward \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${I2CDEVLIB_DIR}" \
-  < "${PATCH_DIR}/i2cdevlib/0001-Fix-build-error.patch"
-patch \
-  -p1 \
-  --forward \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${I2CDEVLIB_DIR}" \
-  < "${PATCH_DIR}/i2cdevlib/0002-Fix-build-error.patch"
