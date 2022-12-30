@@ -71,8 +71,8 @@ CPU_FAN_SPEED_PIN: int = 2  # D2
 
 # Voltage dividers
 # R1 is the input-side resistor, R2 is the ground-side resistor
-VSS_R1: float = 1.514  # MΩ
-VSS_R2: float = 0.988  # MΩ
+VSS_R1: float = 147.9  # KΩ
+VSS_R2: float = 102.5  # KΩ
 
 
 ################################################################################
