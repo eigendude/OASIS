@@ -190,6 +190,68 @@ elseif (HOST_NAME STREQUAL cinder)
   set(ENABLE_SONAR OFF)
   set(ENABLE_SPI OFF)
   set(ENABLE_STEPPER OFF)
+elseif (HOST_NAME STREQUAL nuc OR HOST_NAME STREQUAL starship)
+  # Building lab with refactored Telemetrix
+  set(ARDUINO_VARIANT uno)
+
+  #
+  # With external libraries disabled:
+  # Program Size: 4632 of 32256 bytes (14%)
+  # Data Size: 1062 of 2048 bytes (51%)
+  # RAM: 54%
+  #
+  # With DHT:
+  # Program Size: 7650 of 32256 bytes (23%)
+  # Data Size: 1125 of 2048 bytes (54%)
+  # RAM: 58%
+  #
+  # With I2C:
+  # Program Size: 7382 of 32256 bytes (22%)
+  # Data Size: 1354 of 2048 bytes (66%)
+  # RAM: 68%
+  #
+  # With OneWire:
+  # Program Size: 6724 of 32256 bytes (20%)
+  # Data Size: 1076 of 2048 bytes (52%)
+  # RAM: 54%
+  #
+  # With Servo:
+  # Program Size: 6264 of 32256 bytes (19%)
+  # Data Size: 1160 of 2048 bytes (56%)
+  # RAM: 59%
+  #
+  # With Sonar:
+  # Program Size: 5912 of 32256 bytes (18%)
+  # Data Size: 1107 of 2048 bytes (54%)
+  # RAM: 56%
+  #
+  # With SPI:
+  # Program Size: 5020 of 32256 bytes (15%)
+  # Data Size: 1127 of 2048 bytes (55%)
+  # RAM: 57%
+  #
+  # With Stepper:
+  # Program Size: 12238 of 32256 bytes (37%)
+  # Data Size: 1100 of 2048 bytes (53%)
+  # RAM: 56%
+  #
+  # With everything:
+  # Program Size: 20986 of 32256 bytes (65%)
+  # Data Size: 1707 of 2048 bytes (83%)
+  # RAM: 85%
+  #
+  set(ENABLE_ANALOG ON)
+  set(ENABLE_BLUEFRUIT OFF)
+  set(ENABLE_CPU_FAN OFF)
+  set(ENABLE_DHT ON)
+  set(ENABLE_DIAGNOSTICS ON)
+  set(ENABLE_DIGITAL ON)
+  set(ENABLE_I2C ON)
+  set(ENABLE_ONE_WIRE ON)
+  set(ENABLE_SERVO ON)
+  set(ENABLE_SONAR ON)
+  set(ENABLE_SPI ON)
+  set(ENABLE_STEPPER ON)
 else()
   # Building generic
   set(ARDUINO_VARIANT uno)
@@ -197,15 +259,15 @@ else()
   set(ENABLE_ANALOG ON)
   set(ENABLE_BLUEFRUIT ON)
   set(ENABLE_CPU_FAN ON)
-  set(ENABLE_DHT OFF)
+  set(ENABLE_DHT ON)
   set(ENABLE_DIAGNOSTICS ON)
   set(ENABLE_DIGITAL ON)
-  set(ENABLE_I2C OFF)
-  set(ENABLE_ONE_WIRE OFF)
-  set(ENABLE_SERVO OFF)
-  set(ENABLE_SONAR OFF)
-  set(ENABLE_SPI OFF)
-  set(ENABLE_STEPPER OFF)
+  set(ENABLE_I2C ON)
+  set(ENABLE_ONE_WIRE ON)
+  set(ENABLE_SERVO ON)
+  set(ENABLE_SONAR ON)
+  set(ENABLE_SPI ON)
+  set(ENABLE_STEPPER ON)
 endif()
 
 message(STATUS "Building for: ${ARDUINO_VARIANT}")
@@ -446,6 +508,8 @@ target_link_arduino_libraries(oasis_avr_firmata PRIVATE ${FIRMATA_LIBRARIES})
 #
 
 set(TELEMETRIX_SOURCES
+  src/telemetrix/telemetrix_commands.cpp
+  src/telemetrix/telemetrix_pins.cpp
   src/telemetrix/telemetrix_server.cpp
 )
 
@@ -456,55 +520,24 @@ set(TELEMETRIX_LIBRARIES
   Scheduler
 )
 
-if (ENABLE_ANALOG)
-  list(APPEND TELEMETRIX_DEFINITIONS
-    -DANALOG_ENABLED=1
-  )
-endif()
-
-if (ENABLE_BLUEFRUIT)
-  list(APPEND TELEMETRIX_SOURCES
-    src/drivers/bluefruit.cpp
-  )
-  list(APPEND TELEMETRIX_DEFINITIONS
-    -DBLUEFRUIT_ENABLED=1
-  )
-  list(APPEND TELEMETRIX_LIBRARIES
-    Adafruit_BluefruitLE_nRF51
-    SPI
-  )
-endif()
-
-if (ENABLE_CPU_FAN)
-  list(APPEND TELEMETRIX_DEFINITIONS
-    -DCPU_FAN_ENABLED=1
-  )
-endif()
-
 if (ENABLE_DHT)
+  list(APPEND TELEMETRIX_SOURCES
+    src/telemetrix/telemetrix_dht.cpp
+  )
   list(APPEND TELEMETRIX_DEFINITIONS
-    -DDHT_ENABLED=1
+    -DENABLE_DHT=1
   )
   list(APPEND TELEMETRIX_LIBRARIES
     DHTStable
   )
 endif()
 
-if (ENABLE_DIAGNOSTICS)
-  list(APPEND TELEMETRIX_DEFINITIONS
-    -DDIAGNOSTICS_ENABLED=1
-  )
-endif()
-
-if (ENABLE_DIGITAL)
-  list(APPEND TELEMETRIX_DEFINITIONS
-    -DDIGITAL_ENABLED=1
-  )
-endif()
-
 if (ENABLE_I2C)
+  list(APPEND TELEMETRIX_SOURCES
+    src/telemetrix/telemetrix_i2c.cpp
+  )
   list(APPEND TELEMETRIX_DEFINITIONS
-    -DI2C_ENABLED=1
+    -DENABLE_I2C=1
   )
   list(APPEND TELEMETRIX_LIBRARIES
     Wire
@@ -512,35 +545,23 @@ if (ENABLE_I2C)
 endif()
 
 if (ENABLE_ONE_WIRE)
+  list(APPEND TELEMETRIX_SOURCES
+    src/telemetrix/telemetrix_one_wire.cpp
+  )
   list(APPEND TELEMETRIX_DEFINITIONS
-    -DONE_WIRE_ENABLED=1
+    -DENABLE_ONE_WIRE=1
   )
   list(APPEND TELEMETRIX_LIBRARIES
     OneWire
   )
 endif()
 
-#if (ENABLE_MPU6050)
-#  include_directories(
-#    libraries/i2cdevlib/Arduino/I2Cdev
-#    libraries/i2cdevlib/Arduino/MPU6050
-#  )
-#  list(APPEND TELEMETRIX_SOURCES
-#    src/telemetrix/telemetrix_mpu6050.cpp
-#    libraries/i2cdevlib/Arduino/I2Cdev/I2Cdev.cpp
-#    libraries/i2cdevlib/Arduino/MPU6050/MPU6050.cpp
-#  )
-#  list(APPEND TELEMETRIX_DEFINITIONS
-#    -DENABLE_MPU6050
-#  )
-#  list(APPEND TELEMETRIX_LIBRARIES
-#    Wire
-#  )
-#endif()
-
 if (ENABLE_SERVO)
+  list(APPEND TELEMETRIX_SOURCES
+    src/telemetrix/telemetrix_servo.cpp
+  )
   list(APPEND TELEMETRIX_DEFINITIONS
-    -DSERVO_ENABLED=1
+    -DENABLE_SERVO=1
   )
   list(APPEND TELEMETRIX_LIBRARIES
     Servo
@@ -548,8 +569,11 @@ if (ENABLE_SERVO)
 endif()
 
 if (ENABLE_SONAR)
+  list(APPEND TELEMETRIX_SOURCES
+    src/telemetrix/telemetrix_sonar.cpp
+  )
   list(APPEND TELEMETRIX_DEFINITIONS
-    -DSONAR_ENABLED=1
+    -DENABLE_SONAR=1
   )
   list(APPEND TELEMETRIX_LIBRARIES
     Ultrasonic
@@ -557,8 +581,11 @@ if (ENABLE_SONAR)
 endif()
 
 if (ENABLE_SPI)
+  list(APPEND TELEMETRIX_SOURCES
+    src/telemetrix/telemetrix_spi.cpp
+  )
   list(APPEND TELEMETRIX_DEFINITIONS
-    -DSPI_ENABLED=1
+    -DENABLE_SPI=1
   )
   list(APPEND TELEMETRIX_LIBRARIES
     SPI
@@ -566,8 +593,11 @@ if (ENABLE_SPI)
 endif()
 
 if (ENABLE_STEPPER)
+  list(APPEND TELEMETRIX_SOURCES
+    src/telemetrix/telemetrix_stepper.cpp
+  )
   list(APPEND TELEMETRIX_DEFINITIONS
-    -DSTEPPERS_ENABLED=1
+    -DENABLE_STEPPER=1
   )
   list(APPEND TELEMETRIX_LIBRARIES
     AccelStepper
