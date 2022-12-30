@@ -379,7 +379,7 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
             self.get_logger().info("Disabling MCU memory reporting")
 
         # Perform service
-        self._bridge.report_mcu_memory(reporting_period_ms)
+        self._bridge.set_memory_reporting_interval(reporting_period_ms)
 
         return response
 

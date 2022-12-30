@@ -22,6 +22,7 @@ from telemetrix_aio import private_constants
 from telemetrix_aio import telemetrix_aio
 
 from oasis_drivers.telemetrix.telemetrix_callback import TelemetrixCallback
+from oasis_drivers.telemetrix.telemetrix_constants import TelemetrixConstants
 from oasis_drivers.telemetrix.telemetrix_types import AnalogMode
 from oasis_drivers.telemetrix.telemetrix_types import DigitalMode
 
@@ -70,7 +71,10 @@ class TelemetrixBridge:
             close_loop_on_shutdown=False,
         )
 
-        # TODO: Patch string-handling (does telemetrix-aio print to stdout?)
+        # Install custom report handlers
+        self._board.report_dispatch.update(
+            {TelemetrixConstants.MEMORY_REPORT: self._memory_report}
+        )
 
     def initialize(self) -> bool:
         """Initialize the bridge and start communicating via Telemetrix"""
@@ -317,36 +321,28 @@ class TelemetrixBridge:
         # Wait for completion
         future.result()
 
-    def report_mcu_memory(self, reporting_period_ms: int) -> None:
+    def set_memory_reporting_interval(self, reporting_interval_ms: int) -> None:
         """
-        Enable or disable memory reporting mode.
+        Set the memory reporting interval.
 
-        :param reporting_period_ms: The reporting period, in milliseconds, or
-        0 to disable memory reporting entirely. Maximum reporting period is
-        2^28ms or about 3 days.
+        :param reporting_interval_ms: value of 0 - 0xffffffff milliseconds
         """
-
-        # TODO
-        """
-        # Construct sysex data for custom sysex command
-        sysex_data = [
-            reporting_period_ms & 0x7F,
-            (reporting_period_ms >> 7) & 0x7F,
-            (reporting_period_ms >> 14) & 0x7F,
-            (reporting_period_ms >> 21) & 0x7F,
+        command = [
+            TelemetrixConstants.SET_MEMORY_REPORTING_INTERVAL,
+            (reporting_interval_ms >> 24) & 0xFF,
+            (reporting_interval_ms >> 16) & 0xFF,
+            (reporting_interval_ms >> 8) & 0xFF,
+            reporting_interval_ms & 0xFF,
         ]
 
         # Create coroutine
-        coroutine: Awaitable[None] = self._board._send_sysex(
-            TelemetrixConstants.MEMORY_CONFIG, sysex_data
-        )
+        coroutine: Awaitable[None] = self._board._send_command(command)
 
         # Dispatch to asyncio
         future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
 
         # Wait for completion
         future.result()
-        """
 
     def servo_write(self, digital_pin: int, position: float) -> None:
         """
@@ -420,7 +416,7 @@ class TelemetrixBridge:
         # Dispatch callback
         self._callback.on_cpu_fan_rpm(timestamp, digital_pin, fan_rpm)
 
-    async def _on_memory_data(self, data: List[int]) -> None:
+    async def _memory_report(self, data: List[int]) -> None:
         """
         Handle reports on memory statistics
 
@@ -428,23 +424,22 @@ class TelemetrixBridge:
         """
         try:
             # Translate parameters
-            data = data[1:]
-            total_ram: int = data[0] | (data[1] << 7) | (data[2] << 14)
+            total_ram: int = (data[0] << 16) | (data[1] << 8) | data[2]
 
             data = data[3:]
-            static_data_size: int = data[0] | (data[1] << 7) | (data[2] << 14)
+            static_data_size: int = (data[0] << 16) | (data[1] << 8) | data[2]
 
             data = data[3:]
-            heap_size: int = data[0] | (data[1] << 7) | (data[2] << 14)
+            heap_size: int = (data[0] << 16) | (data[1] << 8) | data[2]
 
             data = data[3:]
-            stack_size: int = data[0] | (data[1] << 7) | (data[2] << 14)
+            stack_size: int = (data[0] << 16) | (data[1] << 8) | data[2]
 
             data = data[3:]
-            free_ram: int = data[0] | (data[1] << 7) | (data[2] << 14)
+            free_ram: int = (data[0] << 16) | (data[1] << 8) | data[2]
 
             data = data[3:]
-            free_heap: int = data[0] | (data[1] << 7) | (data[2] << 14)
+            free_heap: int = (data[0] << 16) | (data[1] << 8) | data[2]
         except IndexError:
             return
 
