@@ -509,8 +509,11 @@ target_link_arduino_libraries(oasis_avr_firmata PRIVATE ${FIRMATA_LIBRARIES})
 
 set(TELEMETRIX_SOURCES
   src/telemetrix/telemetrix_commands.cpp
+  src/telemetrix/telemetrix_memory.cpp
   src/telemetrix/telemetrix_pins.cpp
   src/telemetrix/telemetrix_server.cpp
+  src/utils/memory_utils.cpp
+  src/utils/timer.cpp
 )
 
 set(TELEMETRIX_DEFINITIONS)

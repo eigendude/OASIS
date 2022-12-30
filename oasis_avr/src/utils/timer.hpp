@@ -18,6 +18,7 @@ public:
 
   bool IsExpired();
   void SetTimeout(uint32_t intervalMs);
+  void Reset();
   uint32_t TimeLeft() const;
 
 private:

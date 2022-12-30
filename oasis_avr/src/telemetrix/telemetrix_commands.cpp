@@ -13,6 +13,7 @@
 
 #include "telemetrix_dht.hpp"
 #include "telemetrix_i2c.hpp"
+#include "telemetrix_memory.hpp"
 #include "telemetrix_one_wire.hpp"
 #include "telemetrix_pins.hpp"
 #include "telemetrix_reports.hpp"
@@ -113,6 +114,7 @@ static const command_descriptor commandTable[] = {
     {&TelemetrixCommands::stepper_get_distance_to_go},
     (&TelemetrixCommands::stepper_get_target_position),
     (&TelemetrixCommands::get_features),
+    (&TelemetrixCommands::set_memory_reporting_interval),
 };
 
 } // namespace
@@ -352,6 +354,9 @@ void TelemetrixCommands::reset_data()
 {
   // Fist stop all reporting
   stop_all_reports();
+
+  TelemetrixMemory* memory = m_server->GetMemory();
+  memory->ResetData();
 
   TelemetrixPins* pins = m_server->GetPins();
   pins->reset_data();
@@ -774,4 +779,13 @@ void TelemetrixCommands::get_features()
 {
   uint8_t report_message[3] = {2, FEATURES, m_server->Features()};
   Serial.write(report_message, 3);
+}
+
+void TelemetrixCommands::set_memory_reporting_interval()
+{
+  const uint32_t intervalMs = (commandBuffer[0] << 24) + (commandBuffer[1] << 16) +
+                              (commandBuffer[2] << 8) + commandBuffer[3];
+
+  TelemetrixMemory* memory = m_server->GetMemory();
+  memory->SetReportingInterval(intervalMs);
 }

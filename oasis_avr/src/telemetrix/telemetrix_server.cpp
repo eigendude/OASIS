@@ -15,6 +15,7 @@
 #include "telemetrix_dht.hpp"
 #include "telemetrix_features.hpp"
 #include "telemetrix_i2c.hpp"
+#include "telemetrix_memory.hpp"
 #include "telemetrix_one_wire.hpp"
 #include "telemetrix_pins.hpp"
 #include "telemetrix_servo.hpp"
@@ -33,6 +34,9 @@ void TelemetrixServer::Setup()
 
   static TelemetrixPins pins;
   m_pins = &pins;
+
+  static TelemetrixMemory memory;
+  m_memory = &memory;
 
   // Set up features for enabled features
 #if defined(ENABLE_DHT)
@@ -89,6 +93,7 @@ void TelemetrixServer::Loop()
   {
     ScanDigitalInputs();
     ScanAnalogInputs();
+    ScanMemory();
     ScanSonars();
     ScanDHTs();
     RunSteppers();
@@ -103,6 +108,11 @@ void TelemetrixServer::ScanDigitalInputs()
 void TelemetrixServer::ScanAnalogInputs()
 {
   m_pins->scan_analog_inputs();
+}
+
+void TelemetrixServer::ScanMemory()
+{
+  m_memory->ScanMemory();
 }
 
 void TelemetrixServer::ScanSonars()

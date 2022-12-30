@@ -32,6 +32,7 @@
 #define STEPPER_RUNNING_REPORT 18
 #define STEPPER_RUN_COMPLETE_REPORT 19
 #define FEATURES 20
+#define MEMORY_REPORT 21
 #define DEBUG_PRINT 99
 
 // Input pin reporting control sub commands (modify_reporting)

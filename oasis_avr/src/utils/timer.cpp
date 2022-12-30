@@ -14,7 +14,7 @@ using namespace OASIS;
 
 Timer::Timer()
 {
-  SetTimeout(0);
+  Reset();
 }
 
 bool Timer::IsExpired()
@@ -27,6 +27,11 @@ void Timer::SetTimeout(uint32_t intervalMs)
 {
   m_intervalMs = intervalMs;
   m_startMs = millis();
+}
+
+void Timer::Reset()
+{
+  SetTimeout(0);
 }
 
 uint32_t Timer::TimeLeft() const

@@ -74,6 +74,7 @@
 #define STEPPER_GET_DISTANCE_TO_GO 52
 #define STEPPER_GET_TARGET_POSITION 53
 #define GET_FEATURES 54
+#define SET_MEMORY_REPORTING_INTERVAL 55
 
 // Maximum length of a command in bytes
 #define MAX_COMMAND_LENGTH 30
@@ -262,6 +263,12 @@ public:
 
   // Retrieve the features byte
   static void get_features();
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Diagnostics
+  //////////////////////////////////////////////////////////////////////////////
+
+  static void set_memory_reporting_interval();
 
 private:
   // Registered server. Caller must call RegisterServer().

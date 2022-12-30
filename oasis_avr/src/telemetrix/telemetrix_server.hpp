@@ -17,6 +17,7 @@ namespace OASIS
 {
 class TelemetrixDHT;
 class TelemetrixI2C;
+class TelemetrixMemory;
 class TelemetrixOneWire;
 class TelemetrixPins;
 class TelemetrixServo;
@@ -37,6 +38,7 @@ public:
   // Subsystems
   TelemetrixDHT* GetDHT() const { return m_dht; }
   TelemetrixI2C* GetI2C() const { return m_i2c; }
+  TelemetrixMemory* GetMemory() const { return m_memory; }
   TelemetrixOneWire* GetOneWire() const { return m_oneWire; }
   TelemetrixPins* GetPins() const { return m_pins; }
   TelemetrixServo* GetServo() const { return m_servo; }
@@ -51,6 +53,9 @@ private:
   // Scan the analog input pins for changes
   void ScanAnalogInputs();
 
+  // Scan memory statistics
+  void ScanMemory();
+
   // Scan the sonar devices for changes
   void ScanSonars();
 
@@ -63,6 +68,7 @@ private:
   // Subsystems
   TelemetrixDHT* m_dht{nullptr};
   TelemetrixI2C* m_i2c{nullptr};
+  TelemetrixMemory* m_memory{nullptr};
   TelemetrixOneWire* m_oneWire{nullptr};
   TelemetrixPins* m_pins{nullptr};
   TelemetrixServo* m_servo{nullptr};
