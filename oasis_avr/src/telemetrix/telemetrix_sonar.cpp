@@ -11,6 +11,7 @@
 
 #include "telemetrix_sonar.hpp"
 
+#include "drivers/sonar.hpp"
 #include "telemetrix_reports.hpp"
 
 #include <string.h>
@@ -20,51 +21,60 @@
 
 using namespace OASIS;
 
-void TelemetrixSonar::sonar_new(uint8_t triggerPin, uint8_t echoPin)
+void TelemetrixSonar::AttachSonar(uint8_t triggerPin, uint8_t echoPin)
 {
-  sonars[sonars_index].usonic = new Ultrasonic(triggerPin, echoPin, 80000UL);
-  sonars[sonars_index].trigger_pin = triggerPin;
-  sonars_index++;
+  const int sonarIndex = GetSonarIndex();
+  if (sonarIndex >= 0)
+    m_sonars[sonarIndex] = new Sonar{triggerPin, echoPin};
 }
 
-void TelemetrixSonar::scan_sonars()
+void TelemetrixSonar::ScanSonars()
 {
-  if (sonars_index)
+  for (unsigned int i = 0; i < MAX_SONARS; ++i)
   {
-    const unsigned long sonar_current_millis = millis();
-    if (sonar_current_millis - sonar_previous_millis > sonar_scan_interval)
+    if (m_sonars[i] == nullptr)
+      continue;
+
+    // Dereference iterator
+    Sonar& sonar = *m_sonars[i];
+
+    // Scan sonar
+    sonar.Scan(
+        [](uint8_t triggerPin, unsigned int distance)
+        {
+          // byte 0 = packet length
+          // byte 1 = report type
+          // byte 2 = trigger pin number
+          // byte 3 = distance high order byte
+          // byte 4 = distance low order byte
+          const uint8_t reportMessage[5] = {4, SONAR_DISTANCE, triggerPin,
+                                            static_cast<uint8_t>(distance >> 8),
+                                            static_cast<uint8_t>(distance & 0xff)};
+
+          Serial.write(reportMessage, 5);
+        });
+  }
+}
+
+void TelemetrixSonar::ResetData()
+{
+  for (unsigned int i = 0; i < MAX_SONARS; ++i)
+  {
+    if (m_sonars[i] != nullptr)
     {
-      sonar_previous_millis += sonar_scan_interval;
-
-      const unsigned int distance = sonars[last_sonar_visited].usonic->read();
-      if (distance != sonars[last_sonar_visited].last_value)
-      {
-        sonars[last_sonar_visited].last_value = distance;
-
-        // byte 0 = packet length
-        // byte 1 = report type
-        // byte 2 = trigger pin number
-        // byte 3 = distance high order byte
-        // byte 4 = distance low order byte
-        const uint8_t reportMessage[5] = {4, SONAR_DISTANCE, sonars[last_sonar_visited].trigger_pin,
-                                          static_cast<uint8_t>(distance >> 8),
-                                          static_cast<uint8_t>(distance & 0xff)};
-
-        Serial.write(reportMessage, 5);
-      }
-
-      last_sonar_visited++;
-      if (last_sonar_visited == sonars_index)
-        last_sonar_visited = 0;
+      delete m_sonars[i];
+      m_sonars[i] = nullptr;
     }
   }
 }
 
-void TelemetrixSonar::reset_data()
+int TelemetrixSonar::GetSonarIndex() const
 {
-  memset(sonars, 0, sizeof(sonars));
+  for (unsigned int i = 0; i < MAX_SONARS; ++i)
+  {
+    if (m_sonars[i] == nullptr)
+      return i;
+  }
 
-  sonars_index = 0;
-  sonar_scan_interval = 33;
-  sonar_previous_millis = 0;
+  return -1;
 }

@@ -316,7 +316,7 @@ void TelemetrixCommands::sonar_new()
   const uint8_t echoPin = commandBuffer[1];
 
   TelemetrixSonar* sonar = m_server->GetSonar();
-  sonar->sonar_new(triggerPin, echoPin);
+  sonar->AttachSonar(triggerPin, echoPin);
 #endif
 }
 
@@ -368,7 +368,7 @@ void TelemetrixCommands::reset_data()
 
 #if defined(ENABLE_SONAR)
   TelemetrixSonar* sonar = m_server->GetSonar();
-  sonar->reset_data();
+  sonar->ResetData();
 #endif
 
 #if defined(ENABLE_DHT)

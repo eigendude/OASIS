@@ -512,6 +512,7 @@ set(TELEMETRIX_SOURCES
   src/telemetrix/telemetrix_memory.cpp
   src/telemetrix/telemetrix_pins.cpp
   src/telemetrix/telemetrix_server.cpp
+  src/utils/delete.cpp
   src/utils/memory_utils.cpp
   src/utils/timer.cpp
 )
@@ -573,6 +574,7 @@ endif()
 
 if (ENABLE_SONAR)
   list(APPEND TELEMETRIX_SOURCES
+    src/drivers/sonar.cpp
     src/telemetrix/telemetrix_sonar.cpp
   )
   list(APPEND TELEMETRIX_DEFINITIONS

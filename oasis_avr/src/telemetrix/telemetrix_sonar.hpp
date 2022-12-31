@@ -13,43 +13,26 @@
 
 #include <stdint.h>
 
-// HC-SR04 Sonar Management
 #define MAX_SONARS 6
-
-class Ultrasonic;
 
 namespace OASIS
 {
+class Sonar;
+
 class TelemetrixSonar
 {
 public:
-  void sonar_new(uint8_t triggerPin, uint8_t echoPin);
+  void AttachSonar(uint8_t triggerPin, uint8_t echoPin);
 
-  void scan_sonars();
+  void ScanSonars();
 
-  void reset_data();
+  void ResetData();
 
 private:
-  struct Sonar
-  {
-    uint8_t trigger_pin;
-    unsigned int last_value;
-    Ultrasonic* usonic;
-  };
+  // Get the next available sonar index
+  int GetSonarIndex() const;
 
   // An array of sonar objects
-  Sonar sonars[MAX_SONARS];
-
-  // Index into sonars struct
-  uint8_t sonars_index{0};
-
-  // Used for scanning the sonar devices.
-  uint8_t last_sonar_visited{0};
-
-  // Milliseconds between sensor pings (29ms is about the min)
-  uint8_t sonar_scan_interval{33};
-
-  // For analog input loop
-  unsigned long sonar_previous_millis{0};
+  Sonar* m_sonars[MAX_SONARS]{};
 };
 } // namespace OASIS

@@ -118,7 +118,7 @@ void TelemetrixServer::ScanMemory()
 void TelemetrixServer::ScanSonars()
 {
 #if defined(ENABLE_SONAR)
-  m_sonar->scan_sonars();
+  m_sonar->ScanSonars();
 #endif
 }
 
