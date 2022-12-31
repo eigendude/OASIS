@@ -242,7 +242,7 @@ elseif (HOST_NAME STREQUAL nuc OR HOST_NAME STREQUAL starship)
   #
   set(ENABLE_ANALOG ON)
   set(ENABLE_BLUEFRUIT OFF)
-  set(ENABLE_CPU_FAN OFF)
+  set(ENABLE_CPU_FAN ON)
   set(ENABLE_DHT ON)
   set(ENABLE_DIAGNOSTICS ON)
   set(ENABLE_DIGITAL ON)
@@ -508,11 +508,15 @@ target_link_arduino_libraries(oasis_avr_firmata PRIVATE ${FIRMATA_LIBRARIES})
 #
 
 set(TELEMETRIX_SOURCES
+  src/drivers/cpu_fan_pwm.cpp
+  src/drivers/cpu_fan_tach.cpp
   src/telemetrix/telemetrix_commands.cpp
+  src/telemetrix/telemetrix_cpu_fan.cpp
   src/telemetrix/telemetrix_memory.cpp
   src/telemetrix/telemetrix_pins.cpp
   src/telemetrix/telemetrix_server.cpp
   src/utils/delete.cpp
+  src/utils/math_utils.cpp
   src/utils/memory_utils.cpp
   src/utils/timer.cpp
 )

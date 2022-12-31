@@ -32,8 +32,11 @@
 #define STEPPER_RUNNING_REPORT 18
 #define STEPPER_RUN_COMPLETE_REPORT 19
 #define FEATURES 20
-#define MEMORY_REPORT 21
 #define DEBUG_PRINT 99
+
+// OASIS extensions to Telemetrix protocol
+#define MEMORY_REPORT 21
+#define CPU_FAN_TACH_REPORT 22
 
 // Input pin reporting control sub commands (modify_reporting)
 #define REPORTING_DISABLE_ALL 0

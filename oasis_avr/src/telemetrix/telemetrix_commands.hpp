@@ -74,7 +74,15 @@
 #define STEPPER_GET_DISTANCE_TO_GO 52
 #define STEPPER_GET_TARGET_POSITION 53
 #define GET_FEATURES 54
+
+// OASIS extensions to Telemetrix protocol
 #define SET_MEMORY_REPORTING_INTERVAL 55
+#define CPU_FAN_PWM_ATTACH 56
+#define CPU_FAN_PWM_DETACH 57
+#define CPU_FAN_TACH_ATTACH 58
+#define CPU_FAN_TACH_DETACH 59
+#define SET_TACH_SAMPLING_INTERVAL 60
+#define CPU_FAN_WRITE 61
 
 // Maximum length of a command in bytes
 #define MAX_COMMAND_LENGTH 30
@@ -269,6 +277,28 @@ public:
   //////////////////////////////////////////////////////////////////////////////
 
   static void set_memory_reporting_interval();
+
+  //////////////////////////////////////////////////////////////////////////////
+  // CPU fan commands
+  //////////////////////////////////////////////////////////////////////////////
+
+  // Associate a PWM pin for a 4-wire CPU fan
+  static void cpu_fan_pwm_attach();
+
+  // Disassociate a PWM pin for a 4-wire CPU fan
+  static void cpu_fan_pwm_detach();
+
+  // Associate a tachometer pin for a 4-wire CPU fan
+  static void cpu_fan_tach_attach();
+
+  // Disassociate a tachometer pin for a 4-wire CPU fan
+  static void cpu_fan_tach_detach();
+
+  // Set the tachometer sampling interval
+  static void set_tach_sampling_interval();
+
+  // Write a PWM value to a pin controlling a fan
+  static void cpu_fan_write();
 
 private:
   // Registered server. Caller must call RegisterServer().

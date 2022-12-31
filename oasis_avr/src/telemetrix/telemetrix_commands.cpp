@@ -11,6 +11,7 @@
 
 #include "telemetrix_commands.hpp"
 
+#include "telemetrix_cpu_fan.hpp"
 #include "telemetrix_dht.hpp"
 #include "telemetrix_i2c.hpp"
 #include "telemetrix_memory.hpp"
@@ -115,6 +116,12 @@ static const command_descriptor commandTable[] = {
     (&TelemetrixCommands::stepper_get_target_position),
     (&TelemetrixCommands::get_features),
     (&TelemetrixCommands::set_memory_reporting_interval),
+    (&TelemetrixCommands::cpu_fan_pwm_attach),
+    (&TelemetrixCommands::cpu_fan_pwm_detach),
+    (&TelemetrixCommands::cpu_fan_tach_attach),
+    (&TelemetrixCommands::cpu_fan_tach_detach),
+    (&TelemetrixCommands::set_tach_sampling_interval),
+    (&TelemetrixCommands::cpu_fan_write),
 };
 
 } // namespace
@@ -791,4 +798,57 @@ void TelemetrixCommands::set_memory_reporting_interval()
 
   TelemetrixMemory* memory = m_server->GetMemory();
   memory->SetReportingInterval(intervalMs);
+}
+
+void TelemetrixCommands::cpu_fan_pwm_attach()
+{
+  const uint8_t pwmPin = commandBuffer[0];
+
+  TelemetrixCPUFan* cpuFan = m_server->GetCPUFan();
+  cpuFan->AttachPWM(pwmPin);
+}
+
+void TelemetrixCommands::cpu_fan_pwm_detach()
+{
+  const uint8_t pwmPin = commandBuffer[0];
+
+  TelemetrixCPUFan* cpuFan = m_server->GetCPUFan();
+  cpuFan->DetachPWM(pwmPin);
+}
+
+void TelemetrixCommands::cpu_fan_tach_attach()
+{
+  const uint8_t tachometerPin = commandBuffer[0];
+
+  TelemetrixCPUFan* cpuFan = m_server->GetCPUFan();
+  cpuFan->AttachTachometer(tachometerPin);
+}
+
+void TelemetrixCommands::cpu_fan_tach_detach()
+{
+  const uint8_t tachometerPin = commandBuffer[0];
+
+  TelemetrixCPUFan* cpuFan = m_server->GetCPUFan();
+  cpuFan->DetachTachometer(tachometerPin);
+}
+
+void TelemetrixCommands::set_tach_sampling_interval()
+{
+  const uint32_t intervalMs = (commandBuffer[0] << 24) + (commandBuffer[1] << 16) +
+                              (commandBuffer[2] << 8) + commandBuffer[3];
+
+  TelemetrixCPUFan* cpuFan = m_server->GetCPUFan();
+  cpuFan->SetTachSamplingInterval(intervalMs);
+}
+
+void TelemetrixCommands::cpu_fan_write()
+{
+  const uint8_t pwmPin = commandBuffer[0];
+  const uint16_t value = (commandBuffer[1] << 8) + commandBuffer[2];
+
+  // Normalize value
+  const float floatVal = static_cast<float>(value) / 0xFFFF;
+
+  TelemetrixCPUFan* cpuFan = m_server->GetCPUFan();
+  cpuFan->PWMWrite(pwmPin, floatVal);
 }

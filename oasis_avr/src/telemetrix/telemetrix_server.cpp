@@ -12,6 +12,7 @@
 #include "telemetrix_server.hpp"
 
 #include "telemetrix_commands.hpp"
+#include "telemetrix_cpu_fan.hpp"
 #include "telemetrix_dht.hpp"
 #include "telemetrix_features.hpp"
 #include "telemetrix_i2c.hpp"
@@ -32,11 +33,14 @@ void TelemetrixServer::Setup()
 {
   Serial.begin(115200);
 
-  static TelemetrixPins pins;
-  m_pins = &pins;
+  static TelemetrixCPUFan cpuFan;
+  m_cpuFan = &cpuFan;
 
   static TelemetrixMemory memory;
   m_memory = &memory;
+
+  static TelemetrixPins pins;
+  m_pins = &pins;
 
   // Set up features for enabled features
 #if defined(ENABLE_DHT)
@@ -91,6 +95,7 @@ void TelemetrixServer::Loop()
 
   if (!m_stopReports)
   {
+    ScanCPUFans();
     ScanDigitalInputs();
     ScanAnalogInputs();
     ScanMemory();
@@ -113,6 +118,11 @@ void TelemetrixServer::ScanAnalogInputs()
 void TelemetrixServer::ScanMemory()
 {
   m_memory->ScanMemory();
+}
+
+void TelemetrixServer::ScanCPUFans()
+{
+  m_cpuFan->ScanTachometers();
 }
 
 void TelemetrixServer::ScanSonars()

@@ -15,6 +15,7 @@
 
 namespace OASIS
 {
+class TelemetrixCPUFan;
 class TelemetrixDHT;
 class TelemetrixI2C;
 class TelemetrixMemory;
@@ -36,6 +37,7 @@ public:
   void SetReporting(bool reporting) { m_stopReports = !reporting; }
 
   // Subsystems
+  TelemetrixCPUFan* GetCPUFan() const { return m_cpuFan; }
   TelemetrixDHT* GetDHT() const { return m_dht; }
   TelemetrixI2C* GetI2C() const { return m_i2c; }
   TelemetrixMemory* GetMemory() const { return m_memory; }
@@ -50,11 +52,13 @@ private:
   void ScanDigitalInputs();
   void ScanAnalogInputs();
   void ScanMemory();
+  void ScanCPUFans();
   void ScanSonars();
   void ScanDHTs();
   void RunSteppers();
 
   // Subsystems
+  TelemetrixCPUFan* m_cpuFan{nullptr};
   TelemetrixDHT* m_dht{nullptr};
   TelemetrixI2C* m_i2c{nullptr};
   TelemetrixMemory* m_memory{nullptr};
