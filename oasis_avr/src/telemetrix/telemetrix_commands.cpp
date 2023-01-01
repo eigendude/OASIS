@@ -248,7 +248,7 @@ void TelemetrixCommands::servo_attach()
   const int maxpulse = (commandBuffer[3] << 8) + commandBuffer[4];
 
   TelemetrixServo* servo = m_server->GetServo();
-  servo->servo_attach(pin, minpulse, maxpulse);
+  servo->ServoAttach(pin, minpulse, maxpulse);
 #endif
 }
 
@@ -259,7 +259,7 @@ void TelemetrixCommands::servo_write()
   const int angle = commandBuffer[1];
 
   TelemetrixServo* servo = m_server->GetServo();
-  servo->servo_write(pin, angle);
+  servo->ServoWrite(pin, angle);
 #endif
 }
 
@@ -267,7 +267,7 @@ void TelemetrixCommands::servo_detach()
 {
 #if defined(ENABLE_SERVO)
   TelemetrixServo* servo = m_server->GetServo();
-  servo->servo_detach(commandBuffer[0]);
+  servo->ServoDetach(commandBuffer[0]);
 #endif
 }
 
@@ -363,7 +363,7 @@ void TelemetrixCommands::reset_data()
 
 #if defined(ENABLE_SERVO)
   TelemetrixServo* servo = m_server->GetServo();
-  servo->reset_data();
+  servo->ResetData();
 #endif
 
 #if defined(ENABLE_SONAR)

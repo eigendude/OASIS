@@ -11,31 +11,27 @@
 
 #include "telemetrix_servo.hpp"
 
+#include "drivers/servomotor.hpp"
 #include "telemetrix_reports.hpp"
 
 #include <HardwareSerial.h>
-#include <Servo.h>
 
 using namespace OASIS;
 
-namespace
+void TelemetrixServo::ServoAttach(uint8_t pin, int minpulse, int maxpulse)
 {
-static Servo servos[MAX_SERVOS];
-static uint8_t pinToServoIndexMap[MAX_SERVOS];
-} // namespace
+  if (m_servos == nullptr)
+    m_servos = new Servomotor[MAX_SERVOS];
 
-TelemetrixServo::TelemetrixServo() : m_servos(servos), m_pinToServoIndexMap(pinToServoIndexMap)
-{
-}
+  if (m_pinToServoIndexMap == nullptr)
+    m_pinToServoIndexMap = new uint8_t[MAX_SERVOS];
 
-void TelemetrixServo::servo_attach(uint8_t pin, int minpulse, int maxpulse)
-{
   // Find the first available open servo
-  const int servoFound = find_first_servo();
+  const int servoFound = FindFirstServo();
   if (servoFound != -1)
   {
     m_pinToServoIndexMap[servoFound] = pin;
-    m_servos[servoFound].attach(pin, minpulse, maxpulse);
+    m_servos[servoFound].Attach(pin, minpulse, maxpulse);
   }
   else
   {
@@ -45,20 +41,20 @@ void TelemetrixServo::servo_attach(uint8_t pin, int minpulse, int maxpulse)
   }
 }
 
-void TelemetrixServo::servo_write(uint8_t pin, int angle)
+void TelemetrixServo::ServoWrite(uint8_t pin, int angle)
 {
   // Find the servo object for the pin
   for (unsigned int i = 0; i < MAX_SERVOS; ++i)
   {
     if (m_pinToServoIndexMap[i] == pin)
     {
-      m_servos[i].write(angle);
+      m_servos[i].Write(angle);
       return;
     }
   }
 }
 
-void TelemetrixServo::servo_detach(uint8_t pin)
+void TelemetrixServo::ServoDetach(uint8_t pin)
 {
   // Find the servo object for the pin
   for (unsigned int i = 0; i < MAX_SERVOS; ++i)
@@ -66,28 +62,28 @@ void TelemetrixServo::servo_detach(uint8_t pin)
     if (m_pinToServoIndexMap[i] == pin)
     {
       m_pinToServoIndexMap[i] = -1;
-      m_servos[i].detach();
+      m_servos[i].Detach();
     }
   }
 }
 
-void TelemetrixServo::reset_data()
+void TelemetrixServo::ResetData()
 {
   // Detach any attached servos
   for (unsigned int i = 0; i < MAX_SERVOS; ++i)
   {
-    if (m_servos[i].attached())
-      m_servos[i].detach();
+    if (m_servos[i].Attached())
+      m_servos[i].Detach();
   }
 }
 
-int TelemetrixServo::find_first_servo()
+int TelemetrixServo::FindFirstServo()
 {
   int index = -1;
 
   for (unsigned int i = 0; i < MAX_SERVOS; ++i)
   {
-    if (!m_servos[i].attached())
+    if (!m_servos[i].Attached())
     {
       index = i;
       break;

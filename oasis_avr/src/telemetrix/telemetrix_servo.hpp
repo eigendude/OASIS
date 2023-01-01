@@ -11,34 +11,32 @@
 
 #pragma once
 
-#include <stddef.h>
 #include <stdint.h>
-
-class Servo;
 
 namespace OASIS
 {
+class Servomotor;
+
 class TelemetrixServo
 {
 public:
-  TelemetrixServo();
+  void ServoAttach(uint8_t pin, int minpulse, int maxpulse);
+  void ServoDetach(uint8_t pin);
 
-  void servo_attach(uint8_t pin, int minpulse, int maxpulse);
-  void servo_write(uint8_t pin, int angle);
-  void servo_detach(uint8_t pin);
+  void ServoWrite(uint8_t pin, int angle);
 
-  void reset_data();
+  void ResetData();
 
 private:
   // Find the first servo that is not attached to a pin. This is a helper
   // function not called directly via the API.
-  int find_first_servo();
+  int FindFirstServo();
 
   // Servo management, array of size MAX_SERVOS
-  Servo* const m_servos;
+  Servomotor* m_servos{nullptr};
 
   // This array of size MAX_SERVOS allows us to retrieve the servo object
   // associated with a specific pin number
-  uint8_t* const m_pinToServoIndexMap;
+  uint8_t* m_pinToServoIndexMap{nullptr};
 };
 } // namespace OASIS

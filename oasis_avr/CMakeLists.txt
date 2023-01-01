@@ -562,6 +562,7 @@ endif()
 
 if (ENABLE_SERVO)
   list(APPEND TELEMETRIX_SOURCES
+    src/drivers/servomotor.cpp
     src/telemetrix/telemetrix_servo.cpp
   )
   list(APPEND TELEMETRIX_DEFINITIONS
