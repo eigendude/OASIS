@@ -323,8 +323,11 @@ void TelemetrixCommands::sonar_new()
 void TelemetrixCommands::dht_new()
 {
 #if defined(ENABLE_DHT)
+  const uint8_t pin = commandBuffer[0];
+  const uint8_t dhtType = commandBuffer[1];
+
   TelemetrixDHT* dht = m_server->GetDHT();
-  dht->dht_new(commandBuffer[0], commandBuffer[1]);
+  dht->NewDHT(pin, dhtType);
 #endif
 }
 
@@ -373,7 +376,7 @@ void TelemetrixCommands::reset_data()
 
 #if defined(ENABLE_DHT)
   TelemetrixDHT* dht = m_server->GetDHT();
-  dht->reset_data();
+  dht->ResetData();
 #endif
 
   enable_all_reports();

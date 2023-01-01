@@ -526,6 +526,7 @@ set(TELEMETRIX_LIBRARIES
 
 if (ENABLE_DHT)
   list(APPEND TELEMETRIX_SOURCES
+    src/drivers/dht.cpp
     src/telemetrix/telemetrix_dht.cpp
   )
   list(APPEND TELEMETRIX_DEFINITIONS

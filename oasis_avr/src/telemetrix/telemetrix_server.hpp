@@ -47,22 +47,11 @@ public:
   TelemetrixStepper* GetStepper() const { return m_stepper; }
 
 private:
-  // Scan the digital input pins for changes
   void ScanDigitalInputs();
-
-  // Scan the analog input pins for changes
   void ScanAnalogInputs();
-
-  // Scan memory statistics
   void ScanMemory();
-
-  // Scan the sonar devices for changes
   void ScanSonars();
-
-  // Scan dht devices for changes
   void ScanDHTs();
-
-  // Run stepper motors
   void RunSteppers();
 
   // Subsystems

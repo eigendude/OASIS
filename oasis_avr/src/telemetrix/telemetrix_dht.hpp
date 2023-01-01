@@ -11,46 +11,32 @@
 
 #include <stdint.h>
 
-// Max number of devices
-#define MAX_DHTS 6
-
 // DHT Report sub-types
 #define DHT_DATA 0
 #define DHT_READ_ERROR 1
 
-class DHTStable;
-
 namespace OASIS
 {
+class DHT;
+
 class TelemetrixDHT
 {
 public:
   // Associate a pin with a DHT device
-  void dht_new(uint8_t pin, uint8_t dhtType);
+  void NewDHT(uint8_t pin, uint8_t dhtType);
 
-  void scan_dhts();
+  void ScanDHTs();
 
-  void reset_data();
+  void ResetData();
 
 private:
-  struct DHT
-  {
-    uint8_t pin;
-    uint8_t dht_type;
-    unsigned int last_value;
-    DHTStable* dht_sensor;
-  };
+  // Max number of devices
+  static constexpr unsigned int MAX_DHTS = 6;
+
+  // Get the next unused index in the DHT array, or -1 if the array is full
+  int GetNextIndex() const;
 
   // An array of DHT objects
-  DHT dhts[MAX_DHTS];
-
-  // Index into DHT struct
-  uint8_t dht_index{0};
-
-  // Scan DHT's every 2 seconds
-  unsigned int dht_scan_interval{2000};
-
-  // For analog input loop
-  unsigned long dht_previous_millis{0};
+  DHT* m_dhts[MAX_DHTS]{};
 };
 } // namespace OASIS

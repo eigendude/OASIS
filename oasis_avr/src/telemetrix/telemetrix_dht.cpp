@@ -11,111 +11,103 @@
 
 #include "telemetrix_dht.hpp"
 
+#include "drivers/dht.hpp"
 #include "telemetrix_reports.hpp"
 
 #include <string.h>
 
-#include <DHTStable.h>
 #include <HardwareSerial.h>
 
 using namespace OASIS;
 
-void TelemetrixDHT::dht_new(uint8_t pin, uint8_t dhtType)
+void TelemetrixDHT::NewDHT(uint8_t pin, uint8_t dhtType)
 {
-  if (dht_index < MAX_DHTS)
-  {
-    dhts[dht_index].dht_sensor = new DHTStable();
+  const int dhtIndex = GetNextIndex();
+  if (dhtIndex >= 0)
+    m_dhts[dhtIndex] = new DHT{pin, dhtType};
+}
 
-    dhts[dht_index].pin = pin;
-    dhts[dht_index].dht_type = dhtType;
-    dht_index++;
+void TelemetrixDHT::ScanDHTs()
+{
+  // Read and report all the dht sensors
+  for (unsigned int i = 0; i < MAX_DHTS; ++i)
+  {
+    if (m_dhts[i] == nullptr)
+      continue;
+
+    m_dhts[i]->Scan(
+        [](uint8_t pin, uint8_t dhtType, bool success, float humidity, float temperature)
+        {
+          // Data returned is in floating point form - 4 bytes
+          // Each for humidity and temperature
+
+          // byte 0 = packet length
+          // byte 1 = report type
+          // byte 2 = report sub type - DHT_DATA or DHT_ERROR
+          // byte 3 = pin number
+          // byte 4 = DHT type
+          // byte 5 = humidity positivity flag 0=positive, 1= negative
+          // byte 6 = temperature positivity flag 0=positive, 1= negative
+          // byte 7 = humidity integer portion
+          // byte 8 = humidity fractional portion
+          // byte 9 = temperature integer portion
+          // byte 10 = temperature fractional portion
+
+          uint8_t report_message[11] = {
+              10, DHT_REPORT, success ? DHT_DATA : DHT_READ_ERROR, pin, dhtType, 0, 0, 0, 0, 0, 0};
+
+          // If success is false, this is an error report
+          if (!success)
+          {
+            Serial.write(report_message, 11);
+            return;
+          }
+          else
+          {
+            if (humidity >= 0.0)
+              report_message[5] = 0;
+            else
+              report_message[5] = 1;
+
+            float j;
+            float f = modff(humidity, &j);
+            report_message[7] = static_cast<uint8_t>(j);
+            report_message[8] = static_cast<uint8_t>(f * 100);
+
+            if (temperature >= 0.0)
+              report_message[6] = 0;
+            else
+              report_message[6] = 1;
+
+            f = modff(temperature, &j);
+            report_message[9] = static_cast<uint8_t>(j);
+            report_message[10] = static_cast<uint8_t>(f * 100);
+
+            Serial.write(report_message, 11);
+          }
+        });
   }
 }
 
-void TelemetrixDHT::scan_dhts()
+void TelemetrixDHT::ResetData()
 {
-  // Prebuild report for valid data
-  // Reuse the report if a read command fails
-
-  // Data returned is in floating point form - 4 bytes
-  // Each for humidity and temperature
-
-  // byte 0 = packet length
-  // byte 1 = report type
-  // byte 2 = report sub type - DHT_DATA or DHT_ERROR
-  // byte 3 = pin number
-  // byte 4 = dht type
-  // byte 5 = humidity positivity flag 0=positive, 1= negative
-  // byte 6 = temperature positivity flag 0=positive, 1= negative
-  // byte 7 = humidity integer portion
-  // byte 8 = humidity fractional portion
-  // byte 9 = temperature integer portion
-  // byte 10= temperature fractional portion
-
-  uint8_t report_message[11] = {10, DHT_REPORT, DHT_DATA, 0, 0, 0, 0, 0, 0, 0, 0};
-
-  // Are there any dhts to read?
-  if (dht_index)
+  for (unsigned int i = 0; i < MAX_DHTS; ++i)
   {
-    // Is it time to do the read? This should occur every 2 seconds
-    const unsigned long dht_current_millis = millis();
-    if (dht_current_millis - dht_previous_millis > dht_scan_interval)
+    if (m_dhts[i] != nullptr)
     {
-      // Update for the next scan
-      dht_previous_millis = dht_current_millis;
-
-      // Read and report all the dht sensors
-      for (unsigned int i = 0; i < dht_index; ++i)
-      {
-        // Error type in report_message[2] will be set further down
-        report_message[3] = dhts[i].pin;
-        report_message[4] = dhts[i].dht_type;
-
-        // Read the device
-        const int retVal = dhts[i].dht_type == 22 ? dhts[i].dht_sensor->read22(dhts[i].pin)
-                                                  : dhts[i].dht_sensor->read11(dhts[i].pin);
-        report_message[2] = static_cast<uint8_t>(retVal);
-
-        // If retVal is not zero, this is an error report
-        if (retVal != 0)
-        {
-          Serial.write(report_message, 11);
-          return;
-        }
-        else
-        {
-          float humidity = dhts[i].dht_sensor->getHumidity();
-          if (humidity >= 0.0)
-            report_message[5] = 0;
-          else
-            report_message[5] = 1;
-
-          float j;
-          float f = modff(humidity, &j);
-          report_message[7] = static_cast<uint8_t>(j);
-          report_message[8] = static_cast<uint8_t>(f * 100);
-
-          float temperature = dhts[i].dht_sensor->getTemperature();
-          if (temperature >= 0.0)
-            report_message[6] = 0;
-          else
-            report_message[6] = 1;
-
-          f = modff(temperature, &j);
-          report_message[9] = static_cast<uint8_t>(j);
-          report_message[10] = static_cast<uint8_t>(f * 100);
-          Serial.write(report_message, 11);
-        }
-      }
+      delete m_dhts[i];
+      m_dhts[i] = nullptr;
     }
   }
 }
 
-void TelemetrixDHT::reset_data()
+int TelemetrixDHT::GetNextIndex() const
 {
-  memset(dhts, 0, sizeof(dhts));
+  for (unsigned int i = 0; i < MAX_DHTS; ++i)
+  {
+    if (m_dhts[i] == nullptr)
+      return i;
+  }
 
-  dht_index = 0;
-  dht_scan_interval = 2000;
-  dht_previous_millis = 0;
+  return -1;
 }

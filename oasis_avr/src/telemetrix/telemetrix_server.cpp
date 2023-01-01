@@ -125,7 +125,7 @@ void TelemetrixServer::ScanSonars()
 void TelemetrixServer::ScanDHTs()
 {
 #if defined(ENABLE_DHT)
-  m_dht->scan_dhts();
+  m_dht->ScanDHTs();
 #endif
 }
 
