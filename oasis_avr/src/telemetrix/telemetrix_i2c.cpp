@@ -27,9 +27,12 @@ TelemetrixI2C::TelemetrixI2C()
 #endif
 }
 
-void TelemetrixI2C::i2c_begin(uint8_t i2c_port)
+void TelemetrixI2C::I2CBegin(uint8_t i2cPort)
 {
-  if (i2c_port == 0)
+  if (m_i2cReportMessage == nullptr)
+    m_i2cReportMessage = new uint8_t[64];
+
+  if (i2cPort == 0)
     Wire.begin();
 
 #ifdef SECOND_I2C_PORT
@@ -38,12 +41,12 @@ void TelemetrixI2C::i2c_begin(uint8_t i2c_port)
 #endif
 }
 
-void TelemetrixI2C::i2c_read(uint8_t address,
-                             uint8_t theRegister,
-                             uint8_t byteCount,
-                             bool stopTransmitting,
-                             uint8_t i2cPort,
-                             bool writeByte)
+void TelemetrixI2C::I2CRead(uint8_t address,
+                            uint8_t theRegister,
+                            uint8_t byteCount,
+                            bool stopTransmitting,
+                            uint8_t i2cPort,
+                            bool writeByte)
 {
   // Data in the incoming message:
   // address, [0]
@@ -55,31 +58,31 @@ void TelemetrixI2C::i2c_read(uint8_t address,
 
   // Set the current i2c port if this is for the primary i2c
   if (i2cPort == 0)
-    current_i2c_port = &Wire;
+    m_currentI2CPort = &Wire;
 
 #ifdef SECOND_I2C_PORT
   // This is for port 2
   if (i2cPort == 1)
-    current_i2c_port = m_wire2;
+    m_currentI2CPort = m_wire2;
 #endif
 
   // Write byte is true, then write the register
   if (writeByte)
   {
-    current_i2c_port->beginTransmission(address);
-    current_i2c_port->write(theRegister);
-    current_i2c_port->endTransmission(stopTransmitting ? 1 : 0); // default = true
+    m_currentI2CPort->beginTransmission(address);
+    m_currentI2CPort->write(theRegister);
+    m_currentI2CPort->endTransmission(stopTransmitting ? 1 : 0); // default = true
   }
-  current_i2c_port->requestFrom(address, byteCount); // All bytes are returned in requestFrom
+  m_currentI2CPort->requestFrom(address, byteCount); // All bytes are returned in requestFrom
 
   // Check to be sure correct number of bytes were returned by slave
-  if (byteCount < current_i2c_port->available())
+  if (byteCount < m_currentI2CPort->available())
   {
     const uint8_t report_message[4] = {3, I2C_TOO_FEW_BYTES_RCVD, 1, address};
     Serial.write(report_message, 4);
     return;
   }
-  else if (byteCount > current_i2c_port->available())
+  else if (byteCount > m_currentI2CPort->available())
   {
     const uint8_t report_message[4] = {3, I2C_TOO_MANY_BYTES_RCVD, 1, address};
     Serial.write(report_message, 4);
@@ -87,54 +90,54 @@ void TelemetrixI2C::i2c_read(uint8_t address,
   }
 
   // Packet length
-  i2c_report_message[0] = byteCount + 5;
+  m_i2cReportMessage[0] = byteCount + 5;
 
   // Report type
-  i2c_report_message[1] = I2C_READ_REPORT;
+  m_i2cReportMessage[1] = I2C_READ_REPORT;
 
   // I2C_port
-  i2c_report_message[2] = i2cPort;
+  m_i2cReportMessage[2] = i2cPort;
 
   // Number of bytes read
-  i2c_report_message[3] = byteCount; // number of bytes
+  m_i2cReportMessage[3] = byteCount; // number of bytes
 
   // Device address
-  i2c_report_message[4] = address;
+  m_i2cReportMessage[4] = address;
 
   // Device register
-  i2c_report_message[5] = theRegister;
+  m_i2cReportMessage[5] = theRegister;
 
   // Append the data that was read
   unsigned int message_size = 0;
-  for (; message_size < byteCount && current_i2c_port->available(); ++message_size)
-    i2c_report_message[6 + message_size] = current_i2c_port->read();
+  for (; message_size < byteCount && m_currentI2CPort->available(); ++message_size)
+    m_i2cReportMessage[6 + message_size] = m_currentI2CPort->read();
 
   // Send slave address, register and received bytes
   for (unsigned int i = 0; i < message_size + 6; ++i)
-    Serial.write(i2c_report_message[i]);
+    Serial.write(m_i2cReportMessage[i]);
 }
 
-void TelemetrixI2C::i2c_write(uint8_t byteCount,
-                              uint8_t deviceAddress,
-                              uint8_t i2cPort,
-                              const uint8_t* data)
+void TelemetrixI2C::I2CWrite(uint8_t byteCount,
+                             uint8_t deviceAddress,
+                             uint8_t i2cPort,
+                             const uint8_t* data)
 {
   // Set the current i2c port if this is for the primary i2c
   if (i2cPort == 0)
-    current_i2c_port = &Wire;
+    m_currentI2CPort = &Wire;
 
 #ifdef SECOND_I2C_PORT
   // This is for port 2
   if (i2cPort == 1)
-    current_i2c_port = m_wire2;
+    m_currentI2CPort = m_wire2;
 #endif
 
-  current_i2c_port->beginTransmission(deviceAddress);
+  m_currentI2CPort->beginTransmission(deviceAddress);
 
   // Write the data to the device
   for (unsigned int i = 0; i < byteCount; ++i)
-    current_i2c_port->write(data[i]);
+    m_currentI2CPort->write(data[i]);
 
-  current_i2c_port->endTransmission();
+  m_currentI2CPort->endTransmission();
   delayMicroseconds(70);
 }

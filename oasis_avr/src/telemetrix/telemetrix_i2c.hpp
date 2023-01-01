@@ -31,23 +31,23 @@ class TelemetrixI2C
 public:
   TelemetrixI2C();
 
-  void i2c_begin(uint8_t i2c_port);
-  void i2c_read(uint8_t address,
-                uint8_t theRegister,
-                uint8_t byteCount,
-                bool stopTransmitting,
-                uint8_t i2cPort,
-                bool writeByte);
-  void i2c_write(uint8_t byteCount, uint8_t deviceAddress, uint8_t i2cPort, const uint8_t* data);
+  void I2CBegin(uint8_t i2cPort);
+  void I2CRead(uint8_t address,
+               uint8_t theRegister,
+               uint8_t byteCount,
+               bool stopTransmitting,
+               uint8_t i2cPort,
+               bool writeByte);
+  void I2CWrite(uint8_t byteCount, uint8_t deviceAddress, uint8_t i2cPort, const uint8_t* data);
 
 private:
   // A buffer to hold i2c report data
-  uint8_t i2c_report_message[64];
+  uint8_t* m_i2cReportMessage{nullptr};
 
   // Optional second I2C port
   TwoWire* m_wire2{nullptr};
 
   // A pointer to an active TwoWire object
-  TwoWire* current_i2c_port{nullptr};
+  TwoWire* m_currentI2CPort{nullptr};
 };
 } // namespace OASIS

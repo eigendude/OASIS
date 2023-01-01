@@ -277,7 +277,7 @@ void TelemetrixCommands::i2c_begin()
   const uint8_t i2cPort = commandBuffer[0];
 
   TelemetrixI2C* i2c = m_server->GetI2C();
-  i2c->i2c_begin(i2cPort);
+  i2c->I2CBegin(i2cPort);
 #endif
 }
 
@@ -292,7 +292,7 @@ void TelemetrixCommands::i2c_read()
   const bool writeFlag = (commandBuffer[5] != 0);
 
   TelemetrixI2C* i2c = m_server->GetI2C();
-  i2c->i2c_read(address, theRegister, byteCount, stopTransmitting, i2cPort, writeFlag);
+  i2c->I2CRead(address, theRegister, byteCount, stopTransmitting, i2cPort, writeFlag);
 #endif
 }
 
@@ -305,7 +305,7 @@ void TelemetrixCommands::i2c_write()
   const uint8_t* data = commandBuffer + 3;
 
   TelemetrixI2C* i2c = m_server->GetI2C();
-  i2c->i2c_write(byteCount, deviceAddress, i2cPort, data);
+  i2c->I2CWrite(byteCount, deviceAddress, i2cPort, data);
 #endif
 }
 
