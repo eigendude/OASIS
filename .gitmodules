@@ -25,3 +25,6 @@
 [submodule "oasis_avr/libraries/i2cdevlib"]
 	path = oasis_avr/libraries/i2cdevlib
 	url = https://github.com/jrowberg/i2cdevlib.git
+[submodule "oasis_avr/libraries/SparkFunCCS811"]
+	path = oasis_avr/libraries/SparkFunCCS811
+	url = https://github.com/sparkfun/SparkFun_CCS811_Arduino_Library.git
