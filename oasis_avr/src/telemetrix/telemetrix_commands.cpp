@@ -392,7 +392,7 @@ void TelemetrixCommands::init_spi()
   const uint8_t* pins = commandBuffer + 1;
 
   TelemetrixSPI* spi = m_server->GetSPI();
-  spi->init_spi(pinCount, pins);
+  spi->InitSPI(pinCount, pins);
 #endif
 }
 
@@ -403,7 +403,7 @@ void TelemetrixCommands::write_blocking_spi()
   const uint8_t* data = commandBuffer + 1;
 
   TelemetrixSPI* spi = m_server->GetSPI();
-  spi->write_blocking_spi(byteCount, data);
+  spi->WriteBlockingSPI(byteCount, data);
 #endif
 }
 
@@ -414,7 +414,7 @@ void TelemetrixCommands::read_blocking_spi()
   const uint8_t readRegister = commandBuffer[1];
 
   TelemetrixSPI* spi = m_server->GetSPI();
-  spi->read_blocking_spi(byteCount, readRegister);
+  spi->ReadBlockingSPI(byteCount, readRegister);
 #endif
 }
 
@@ -426,7 +426,7 @@ void TelemetrixCommands::set_format_spi()
   const uint8_t dataMode = (commandBuffer[2] != 0 ? MSBFIRST : LSBFIRST);
 
   TelemetrixSPI* spi = m_server->GetSPI();
-  spi->set_format_spi(clock, bitOrder, dataMode);
+  spi->SetFormatSPI(clock, bitOrder, dataMode);
 #endif
 }
 
@@ -437,7 +437,7 @@ void TelemetrixCommands::spi_cs_control()
   const uint8_t csState = commandBuffer[1];
 
   TelemetrixSPI* spi = m_server->GetSPI();
-  spi->spi_cs_control(csPin, csState);
+  spi->SPICSControl(csPin, csState);
 #endif
 }
 

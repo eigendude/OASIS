@@ -18,8 +18,11 @@
 
 using namespace OASIS;
 
-void TelemetrixSPI::init_spi(uint8_t pinCount, const uint8_t* pins)
+void TelemetrixSPI::InitSPI(uint8_t pinCount, const uint8_t* pins)
 {
+  if (m_spiReportMessage == nullptr)
+    m_spiReportMessage = new uint8_t[64];
+
   // Initialize chip select GPIO pins
   for (unsigned int i = 0; i < pinCount; ++i)
   {
@@ -33,43 +36,43 @@ void TelemetrixSPI::init_spi(uint8_t pinCount, const uint8_t* pins)
   SPI.begin();
 }
 
-void TelemetrixSPI::write_blocking_spi(uint8_t byteCount, const uint8_t* data)
+void TelemetrixSPI::WriteBlockingSPI(uint8_t byteCount, const uint8_t* data)
 {
   for (unsigned int i = 0; i < byteCount; ++i)
     SPI.transfer(data[i]);
 }
 
-void TelemetrixSPI::read_blocking_spi(uint8_t byteCount, uint8_t readRegister)
+void TelemetrixSPI::ReadBlockingSPI(uint8_t byteCount, uint8_t readRegister)
 {
-  // spi_report_message[0] = length of message including this element
-  // spi_report_message[1] = SPI_REPORT
-  // spi_report_message[2] = register used for the read
-  // spi_report_message[3] = number of bytes returned
-  // spi_report_message[4..] = data read
+  // m_spiReportMessage[0] = length of message including this element
+  // m_spiReportMessage[1] = SPI_REPORT
+  // m_spiReportMessage[2] = register used for the read
+  // m_spiReportMessage[3] = number of bytes returned
+  // m_spiReportMessage[4..] = data read
 
   // Configure the report message
   // Calculate the packet length
-  spi_report_message[0] = byteCount + 3; // Packet length
-  spi_report_message[1] = SPI_REPORT;
-  spi_report_message[2] = readRegister; // Register
-  spi_report_message[3] = byteCount; // Number of bytes read
+  m_spiReportMessage[0] = byteCount + 3; // Packet length
+  m_spiReportMessage[1] = SPI_REPORT;
+  m_spiReportMessage[2] = readRegister; // Register
+  m_spiReportMessage[3] = byteCount; // Number of bytes read
 
   // Write the register out. OR it with 0x80 to indicate a read
   SPI.transfer(readRegister | 0x80);
 
   // Now read the specified number of bytes and place them in the report buffer
   for (unsigned int i = 0; i < byteCount; ++i)
-    spi_report_message[i + 4] = SPI.transfer(0x00);
+    m_spiReportMessage[i + 4] = SPI.transfer(0x00);
 
-  Serial.write(spi_report_message, byteCount + 4);
+  Serial.write(m_spiReportMessage, byteCount + 4);
 }
 
-void TelemetrixSPI::set_format_spi(uint32_t clock, uint8_t bitOrder, uint8_t dataMode)
+void TelemetrixSPI::SetFormatSPI(uint32_t clock, uint8_t bitOrder, uint8_t dataMode)
 {
   SPISettings(clock, bitOrder, dataMode);
 }
 
-void TelemetrixSPI::spi_cs_control(uint8_t csPin, uint8_t csState)
+void TelemetrixSPI::SPICSControl(uint8_t csPin, uint8_t csState)
 {
   digitalWrite(csPin, csState);
 }

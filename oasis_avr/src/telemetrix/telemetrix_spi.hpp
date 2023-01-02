@@ -18,14 +18,14 @@ namespace OASIS
 class TelemetrixSPI
 {
 public:
-  void init_spi(uint8_t pinCount, const uint8_t* pins);
-  void write_blocking_spi(uint8_t byteCount, const uint8_t* data);
-  void read_blocking_spi(uint8_t byteCount, uint8_t readRegister);
-  void set_format_spi(uint32_t clock, uint8_t bitOrder, uint8_t dataMode);
-  void spi_cs_control(uint8_t csPin, uint8_t csState);
+  void InitSPI(uint8_t pinCount, const uint8_t* pins);
+  void WriteBlockingSPI(uint8_t byteCount, const uint8_t* data);
+  void ReadBlockingSPI(uint8_t byteCount, uint8_t readRegister);
+  void SetFormatSPI(uint32_t clock, uint8_t bitOrder, uint8_t dataMode);
+  void SPICSControl(uint8_t csPin, uint8_t csState);
 
 private:
   // A buffer to hold spi report data
-  uint8_t spi_report_message[64];
+  uint8_t* m_spiReportMessage{nullptr};
 };
 } // namespace OASIS
