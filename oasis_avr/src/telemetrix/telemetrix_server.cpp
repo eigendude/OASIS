@@ -42,7 +42,6 @@ void TelemetrixServer::Setup()
   static TelemetrixPins pins;
   m_pins = &pins;
 
-  // Set up features for enabled features
 #if defined(ENABLE_DHT)
   static TelemetrixDHT dht;
   m_dht = &dht;
@@ -97,6 +96,7 @@ void TelemetrixServer::Loop()
   {
     ScanCPUFans();
     ScanDHTs();
+    ScanI2C();
     ScanMemory();
     ScanPins();
     ScanSonars();
@@ -113,6 +113,13 @@ void TelemetrixServer::ScanDHTs()
 {
 #if defined(ENABLE_DHT)
   m_dht->ScanDHTs();
+#endif
+}
+
+void TelemetrixServer::ScanI2C()
+{
+#if defined(ENABLE_I2C)
+  m_i2c->ScanSensors();
 #endif
 }
 

@@ -122,6 +122,10 @@ static const command_descriptor commandTable[] = {
     (&TelemetrixCommands::cpu_fan_tach_detach),
     (&TelemetrixCommands::set_cpu_fan_sampling_interval),
     (&TelemetrixCommands::cpu_fan_write),
+    (&TelemetrixCommands::i2c_ccs811_begin),
+    (&TelemetrixCommands::i2c_ccs811_end),
+    (&TelemetrixCommands::i2c_mpu6050_begin),
+    (&TelemetrixCommands::i2c_mpu6050_end),
 };
 
 } // namespace
@@ -851,4 +855,48 @@ void TelemetrixCommands::cpu_fan_write()
 
   TelemetrixCPUFan* cpuFan = m_server->GetCPUFan();
   cpuFan->PWMWrite(pwmPin, floatVal);
+}
+
+void TelemetrixCommands::i2c_ccs811_begin()
+{
+#if defined(ENABLE_I2C)
+  const uint8_t i2cPort = commandBuffer[0];
+  const uint8_t i2cAddress = commandBuffer[1];
+
+  TelemetrixI2C* i2c = m_server->GetI2C();
+  i2c->BeginCCS811(i2cPort, i2cAddress);
+#endif
+}
+
+void TelemetrixCommands::i2c_ccs811_end()
+{
+#if defined(ENABLE_I2C)
+  const uint8_t i2cPort = commandBuffer[0];
+  const uint8_t i2cAddress = commandBuffer[1];
+
+  TelemetrixI2C* i2c = m_server->GetI2C();
+  i2c->EndCCS811(i2cPort, i2cAddress);
+#endif
+}
+
+void TelemetrixCommands::i2c_mpu6050_begin()
+{
+#if defined(ENABLE_I2C)
+  const uint8_t i2cPort = commandBuffer[0];
+  const uint8_t i2cAddress = commandBuffer[1];
+
+  TelemetrixI2C* i2c = m_server->GetI2C();
+  i2c->BeginMPU6050(i2cPort, i2cAddress);
+#endif
+}
+
+void TelemetrixCommands::i2c_mpu6050_end()
+{
+#if defined(ENABLE_I2C)
+  const uint8_t i2cPort = commandBuffer[0];
+  const uint8_t i2cAddress = commandBuffer[1];
+
+  TelemetrixI2C* i2c = m_server->GetI2C();
+  i2c->EndMPU6050(i2cPort, i2cAddress);
+#endif
 }
