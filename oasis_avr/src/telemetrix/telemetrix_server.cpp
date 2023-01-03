@@ -96,40 +96,17 @@ void TelemetrixServer::Loop()
   if (!m_stopReports)
   {
     ScanCPUFans();
-    ScanDigitalInputs();
-    ScanAnalogInputs();
-    ScanMemory();
-    ScanSonars();
     ScanDHTs();
-    RunSteppers();
+    ScanMemory();
+    ScanPins();
+    ScanSonars();
+    ScanSteppers();
   }
-}
-
-void TelemetrixServer::ScanDigitalInputs()
-{
-  m_pins->scan_digital_inputs();
-}
-
-void TelemetrixServer::ScanAnalogInputs()
-{
-  m_pins->scan_analog_inputs();
-}
-
-void TelemetrixServer::ScanMemory()
-{
-  m_memory->ScanMemory();
 }
 
 void TelemetrixServer::ScanCPUFans()
 {
   m_cpuFan->ScanTachometers();
-}
-
-void TelemetrixServer::ScanSonars()
-{
-#if defined(ENABLE_SONAR)
-  m_sonar->ScanSonars();
-#endif
 }
 
 void TelemetrixServer::ScanDHTs()
@@ -139,7 +116,25 @@ void TelemetrixServer::ScanDHTs()
 #endif
 }
 
-void TelemetrixServer::RunSteppers()
+void TelemetrixServer::ScanMemory()
+{
+  m_memory->ScanMemory();
+}
+
+void TelemetrixServer::ScanPins()
+{
+  m_pins->scan_digital_inputs();
+  m_pins->scan_analog_inputs();
+}
+
+void TelemetrixServer::ScanSonars()
+{
+#if defined(ENABLE_SONAR)
+  m_sonar->ScanSonars();
+#endif
+}
+
+void TelemetrixServer::ScanSteppers()
 {
 #if defined(ENABLE_STEPPER)
   m_stepper->RunSteppers();

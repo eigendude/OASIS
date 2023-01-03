@@ -49,13 +49,12 @@ public:
   TelemetrixStepper* GetStepper() const { return m_stepper; }
 
 private:
-  void ScanDigitalInputs();
-  void ScanAnalogInputs();
-  void ScanMemory();
   void ScanCPUFans();
-  void ScanSonars();
   void ScanDHTs();
-  void RunSteppers();
+  void ScanMemory();
+  void ScanPins();
+  void ScanSonars();
+  void ScanSteppers();
 
   // Subsystems
   TelemetrixCPUFan* m_cpuFan{nullptr};
