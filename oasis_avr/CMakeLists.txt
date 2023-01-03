@@ -69,6 +69,7 @@ if (HOST_NAME STREQUAL station)
   # Telemetrix with no external libraries enabled:
   # 12380 flash (13%), 1036 data (50%)
   #
+  set(ENABLE_AIR_QUALITY ON)
   set(ENABLE_ANALOG ON)
   set(ENABLE_BLUEFRUIT OFF)
   set(ENABLE_CPU_FAN ON)
@@ -76,6 +77,7 @@ if (HOST_NAME STREQUAL station)
   set(ENABLE_DIAGNOSTICS ON)
   set(ENABLE_DIGITAL ON)
   set(ENABLE_I2C OFF)
+  set(ENABLE_IMU ON)
   set(ENABLE_ONE_WIRE OFF)
   set(ENABLE_SERVO OFF)
   set(ENABLE_SONAR OFF)
@@ -138,6 +140,7 @@ elseif (HOST_NAME STREQUAL jetson)
   # Telemetrix with LED heartbeat thread but not DHT
   # 18036 flash (55%), 1558 data (76%)
   #
+  set(ENABLE_AIR_QUALITY ON)
   set(ENABLE_ANALOG ON)
   set(ENABLE_BLUEFRUIT OFF)
   set(ENABLE_CPU_FAN OFF)
@@ -145,6 +148,7 @@ elseif (HOST_NAME STREQUAL jetson)
   set(ENABLE_DIAGNOSTICS ON)
   set(ENABLE_DIGITAL ON)
   set(ENABLE_I2C ON)
+  set(ENABLE_IMU ON)
   set(ENABLE_ONE_WIRE OFF)
   set(ENABLE_SERVO OFF)
   set(ENABLE_SONAR OFF)
@@ -178,6 +182,7 @@ elseif (HOST_NAME STREQUAL cinder)
   # With everything enabled:
   # 25624 flash (89%), 1810 data (70%)
   #
+  set(ENABLE_AIR_QUALITY ON)
   set(ENABLE_ANALOG ON)
   set(ENABLE_BLUEFRUIT OFF)
   set(ENABLE_CPU_FAN OFF)
@@ -185,6 +190,7 @@ elseif (HOST_NAME STREQUAL cinder)
   set(ENABLE_DIAGNOSTICS ON)
   set(ENABLE_DIGITAL OFF)
   set(ENABLE_I2C OFF)
+  set(ENABLE_IMU ON)
   set(ENABLE_ONE_WIRE OFF)
   set(ENABLE_SERVO OFF)
   set(ENABLE_SONAR OFF)
@@ -240,6 +246,7 @@ elseif (HOST_NAME STREQUAL nuc OR HOST_NAME STREQUAL starship)
   # Data Size: 1707 of 2048 bytes (83%)
   # RAM: 85%
   #
+  set(ENABLE_AIR_QUALITY ON)
   set(ENABLE_ANALOG ON)
   set(ENABLE_BLUEFRUIT OFF)
   set(ENABLE_CPU_FAN ON)
@@ -247,6 +254,7 @@ elseif (HOST_NAME STREQUAL nuc OR HOST_NAME STREQUAL starship)
   set(ENABLE_DIAGNOSTICS ON)
   set(ENABLE_DIGITAL ON)
   set(ENABLE_I2C ON)
+  set(ENABLE_IMU ON)
   set(ENABLE_ONE_WIRE ON)
   set(ENABLE_SERVO ON)
   set(ENABLE_SONAR ON)
@@ -256,6 +264,7 @@ else()
   # Building generic
   set(ARDUINO_VARIANT uno)
 
+  set(ENABLE_AIR_QUALITY ON)
   set(ENABLE_ANALOG ON)
   set(ENABLE_BLUEFRUIT ON)
   set(ENABLE_CPU_FAN ON)
@@ -263,6 +272,7 @@ else()
   set(ENABLE_DIAGNOSTICS ON)
   set(ENABLE_DIGITAL ON)
   set(ENABLE_I2C ON)
+  set(ENABLE_IMU ON)
   set(ENABLE_ONE_WIRE ON)
   set(ENABLE_SERVO ON)
   set(ENABLE_SONAR ON)
@@ -528,6 +538,16 @@ set(TELEMETRIX_LIBRARIES
   Scheduler
 )
 
+if (ENABLE_AIR_QUALITY)
+  list(APPEND TELEMETRIX_DEFINITIONS
+    -DENABLE_AIR_QUALITY=1
+  )
+  list(APPEND TELEMETRIX_LIBRARIES
+    SparkFunCCS811
+    Wire
+  )
+endif()
+
 if (ENABLE_DHT)
   list(APPEND TELEMETRIX_SOURCES
     src/drivers/dht.cpp
@@ -543,10 +563,28 @@ endif()
 
 if (ENABLE_I2C)
   list(APPEND TELEMETRIX_SOURCES
+    src/drivers/i2c_port.cpp
     src/telemetrix/telemetrix_i2c.cpp
   )
   list(APPEND TELEMETRIX_DEFINITIONS
     -DENABLE_I2C=1
+  )
+  list(APPEND TELEMETRIX_LIBRARIES
+    Wire
+  )
+endif()
+
+if (ENABLE_IMU)
+  include_directories(
+    libraries/i2cdevlib/Arduino/I2Cdev
+    libraries/i2cdevlib/Arduino/MPU6050
+  )
+  list(APPEND TELEMETRIX_SOURCES
+    libraries/i2cdevlib/Arduino/I2Cdev/I2Cdev.cpp
+    libraries/i2cdevlib/Arduino/MPU6050/MPU6050.cpp
+  )
+  list(APPEND TELEMETRIX_DEFINITIONS
+    -DENABLE_IMU
   )
   list(APPEND TELEMETRIX_LIBRARIES
     Wire

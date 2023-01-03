@@ -51,6 +51,7 @@ public:
 private:
   void ScanCPUFans();
   void ScanDHTs();
+  void ScanI2C();
   void ScanMemory();
   void ScanPins();
   void ScanSonars();

@@ -83,6 +83,10 @@
 #define CPU_FAN_TACH_DETACH 59
 #define SET_CPU_FAN_SAMPLING_INTERVAL 60
 #define CPU_FAN_WRITE 61
+#define I2C_CCS811_BEGIN 62
+#define I2C_CCS811_END 63
+#define I2C_MPU6050_BEGIN 64
+#define I2C_MPU6050_END 65
 
 // Maximum length of a command in bytes
 #define MAX_COMMAND_LENGTH 30
@@ -299,6 +303,22 @@ public:
 
   // Write a PWM value to a pin controlling a fan
   static void cpu_fan_write();
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Air quality commands
+  //////////////////////////////////////////////////////////////////////////////
+
+  static void i2c_ccs811_begin();
+
+  static void i2c_ccs811_end();
+
+  //////////////////////////////////////////////////////////////////////////////
+  // IMU commands
+  //////////////////////////////////////////////////////////////////////////////
+
+  static void i2c_mpu6050_begin();
+
+  static void i2c_mpu6050_end();
 
 private:
   // Registered server. Caller must call RegisterServer().
