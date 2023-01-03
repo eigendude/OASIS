@@ -299,7 +299,7 @@ void TelemetrixCommands::i2c_read()
   const bool writeFlag = (commandBuffer[5] != 0);
 
   TelemetrixI2C* i2c = m_server->GetI2C();
-  i2c->I2CRead(address, theRegister, byteCount, stopTransmitting, i2cPort, writeFlag);
+  i2c->I2CRead(i2cPort, address, theRegister, byteCount, stopTransmitting, writeFlag);
 #endif
 }
 
