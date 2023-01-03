@@ -76,4 +76,18 @@ def generate_launch_description() -> LaunchDescription:
         ld.add_action(monocular_slam_node)
         """
 
+    elif HOSTNAME == "jetson":
+        MCU_NODE = "engine"
+        monocular_inertial_slam_node = Node(
+            namespace=ROS_NAMESPACE,
+            package=PACKAGE_NAME,
+            executable="monocular_inertial_slam",
+            name=f"monocular_inertial_slam_{HOSTNAME}",
+            output="screen",
+            remappings=[
+                ("imu", f"{MCU_NODE}/imu"),
+            ],
+        )
+        ld.add_action(monocular_inertial_slam_node)
+
     return ld

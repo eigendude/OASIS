@@ -6,7 +6,7 @@
  *  See the file LICENSE.txt for more information.
  */
 
-#include "slam/MonocularSlam.h"
+#include "slam/MonocularInertialSlam.h"
 #include "utils/NetworkUtils.h"
 
 #include <memory>
@@ -21,13 +21,14 @@ namespace OASIS
 {
 constexpr const char* ROS_NAMESPACE = "oasis"; // TODO
 
-constexpr const char* MONOCULAR_SLAM_NODE_NAME = "monocular_slam";
+constexpr const char* MONOCULAR_INERTIAL_SLAM_NODE_NAME = "monocular_inertial_slam";
 
 // TODO: Hardware configuration
 constexpr const char* VIDEO_MACHINE_KINECT2 = "kinect2";
 
 // Subscribed topics
 constexpr const char* IMAGE_TOPIC_KINECT2 = "hd/image_color";
+constexpr const char* IMU_TOPIC = "imu";
 } // namespace OASIS
 
 int main(int argc, char* argv[])
@@ -39,14 +40,15 @@ int main(int argc, char* argv[])
 
   // Create node
   std::shared_ptr<rclcpp::Node> node =
-      std::make_shared<rclcpp::Node>(MONOCULAR_SLAM_NODE_NAME + appendHostname);
+      std::make_shared<rclcpp::Node>(MONOCULAR_INERTIAL_SLAM_NODE_NAME + appendHostname);
 
   // Create topics
   const std::string kinectTopicBase =
       std::string("/") + ROS_NAMESPACE + "/" + VIDEO_MACHINE_KINECT2 + "/";
 
   {
-    OASIS::SLAM::MonocularSlam monocularSlam(node, kinectTopicBase + IMAGE_TOPIC_KINECT2);
+    OASIS::SLAM::MonocularInertialSlam monocularInertialSlam(
+        node, kinectTopicBase + IMAGE_TOPIC_KINECT2, IMU_TOPIC);
 
     rclcpp::spin(node);
   }

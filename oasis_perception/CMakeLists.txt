@@ -40,6 +40,16 @@ find_package(ORB_SLAM3)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 
+if (ORB_SLAM3_FOUND)
+  find_package(DBoW2 REQUIRED)
+  find_package(Eigen3 REQUIRED)
+  find_package(g2o REQUIRED)
+  find_package(GLEW REQUIRED)
+  find_package(OpenGL REQUIRED)
+  find_package(Pangolin REQUIRED)
+  find_package(Sophus REQUIRED)
+endif()
+
 #
 # background_subtractor_abl
 #
@@ -59,14 +69,10 @@ ament_target_dependencies(background_subtractor_abl
 
 target_include_directories(background_subtractor_abl PUBLIC
   ${BGSLIBRARY_INCLUDE_DIRS}
-  ${cv_bridge_INCLUDE_DIRS}
-  ${image_transport_INCLUDE_DIRS}
 )
 
 target_link_libraries(background_subtractor_abl
   ${BGSLIBRARY_LIBRARIES}
-  ${cv_bridge_LIBRARIES}
-  ${image_transport_LIBRARIES}
 )
 
 install(
@@ -95,14 +101,10 @@ ament_target_dependencies(background_subtractor_asbl
 
 target_include_directories(background_subtractor_asbl PUBLIC
   ${BGSLIBRARY_INCLUDE_DIRS}
-  ${cv_bridge_INCLUDE_DIRS}
-  ${image_transport_INCLUDE_DIRS}
 )
 
 target_link_libraries(background_subtractor_asbl
   ${BGSLIBRARY_LIBRARIES}
-  ${cv_bridge_LIBRARIES}
-  ${image_transport_LIBRARIES}
 )
 
 install(
@@ -117,14 +119,6 @@ install(
 #
 
 if (ORB_SLAM3_FOUND)
-  find_package(DBoW2 REQUIRED)
-  find_package(Eigen3 REQUIRED)
-  find_package(g2o REQUIRED)
-  find_package(GLEW REQUIRED)
-  find_package(OpenGL REQUIRED)
-  find_package(Pangolin REQUIRED)
-  find_package(Sophus REQUIRED)
-
   add_executable(monocular_slam
     src/slam/MonocularSlam.cpp
     src/utils/NetworkUtils.cpp
@@ -147,18 +141,14 @@ if (ORB_SLAM3_FOUND)
     $<BUILD_INTERFACE:${OPENGL_INCLUDE_DIR}>
     $<BUILD_INTERFACE:${GLEW_INCLUDE_DIR}>
     ${EIGEN3_INCLUDE_DIRS}
-    ${cv_bridge_INCLUDE_DIRS}
-    ${image_transport_INCLUDE_DIRS}
     ${ORB_SLAM3_INCLUDE_DIRS}
     ${SOPHUS_INCLUDE_DIRS}
   )
 
   target_link_libraries(monocular_slam
-    ${cv_bridge_LIBRARIES}
     ${DBoW2_LIBRARIES}
     ${g2o_LIBRARIES}
     ${GLEW_LIBRARY}
-    ${image_transport_LIBRARIES}
     ${ORB_SLAM3_LIBRARIES}
     ${OPENGL_LIBRARIES}
     ${Pangolin_LIBRARIES}
@@ -167,6 +157,55 @@ if (ORB_SLAM3_FOUND)
   install(
     TARGETS
       monocular_slam
+    DESTINATION
+      lib/${PROJECT_NAME}
+  )
+endif()
+
+#
+# monocular_inertial_slam
+#
+
+if (ORB_SLAM3_FOUND)
+  add_executable(monocular_inertial_slam
+    src/slam/MonocularInertialSlam.cpp
+    src/utils/NetworkUtils.cpp
+    src/monocular_inertial_slam.cpp
+  )
+
+  ament_target_dependencies(monocular_inertial_slam
+    cv_bridge
+    geometry_msgs
+    image_transport
+    rclcpp
+    sensor_msgs
+  )
+
+  target_compile_definitions(monocular_inertial_slam PUBLIC
+    HAVE_EIGEN
+    HAVE_GLEW
+  )
+
+  target_include_directories(monocular_inertial_slam PUBLIC
+    $<BUILD_INTERFACE:${OPENGL_INCLUDE_DIR}>
+    $<BUILD_INTERFACE:${GLEW_INCLUDE_DIR}>
+    ${EIGEN3_INCLUDE_DIRS}
+    ${ORB_SLAM3_INCLUDE_DIRS}
+    ${SOPHUS_INCLUDE_DIRS}
+  )
+
+  target_link_libraries(monocular_inertial_slam
+    ${DBoW2_LIBRARIES}
+    ${g2o_LIBRARIES}
+    ${GLEW_LIBRARY}
+    ${ORB_SLAM3_LIBRARIES}
+    ${OPENGL_LIBRARIES}
+    ${Pangolin_LIBRARIES}
+  )
+
+  install(
+    TARGETS
+      monocular_inertial_slam
     DESTINATION
       lib/${PROJECT_NAME}
   )
@@ -191,14 +230,10 @@ ament_target_dependencies(multi_modeler
 
 target_include_directories(multi_modeler PUBLIC
   ${BGSLIBRARY_INCLUDE_DIRS}
-  ${cv_bridge_INCLUDE_DIRS}
-  ${image_transport_INCLUDE_DIRS}
 )
 
 target_link_libraries(multi_modeler
   ${BGSLIBRARY_LIBRARIES}
-  ${cv_bridge_LIBRARIES}
-  ${image_transport_LIBRARIES}
 )
 
 install(
