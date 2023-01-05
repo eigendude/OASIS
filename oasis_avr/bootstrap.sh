@@ -168,3 +168,24 @@ if [ -d "${ADAFRUIT_CP_DIR}" ]; then
   echo "Removing ${ADAFRUIT_CP_DIR}"
   rm -rf "${ADAFRUIT_CP_DIR}"
 fi
+
+# Remove unused platforms that can confuse IDEs
+for dir in \
+  "${I2CDEVLIB_DIR}/BeagleBoneBlack/" \
+  "${I2CDEVLIB_DIR}/dsPIC30F" \
+  "${I2CDEVLIB_DIR}/EFM32" \
+  "${I2CDEVLIB_DIR}/ESP32_ESP-IDF" \
+  "${I2CDEVLIB_DIR}/Jennic" \
+  "${I2CDEVLIB_DIR}/MSP430" \
+  "${I2CDEVLIB_DIR}/nRF51" \
+  "${I2CDEVLIB_DIR}/PIC18" \
+  "${I2CDEVLIB_DIR}/RaspberryPi_bcm2835" \
+  "${I2CDEVLIB_DIR}/RP2040" \
+  "${I2CDEVLIB_DIR}/STM32" \
+  "${I2CDEVLIB_DIR}/STM32HAL" \
+; do
+  if [ -d "${dir}" ]; then
+    echo "Removing ${dir}"
+    rm -rf "${dir}"
+  fi
+done
