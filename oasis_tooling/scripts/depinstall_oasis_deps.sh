@@ -301,6 +301,14 @@ if [ "${CODENAME}" = "bionic" ] || [ "${CODENAME}" = "focal" ]; then
   touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/orb-slam3/COLCON_IGNORE"
 fi
 
+# Disable ORB_SLAM3 on systems with < 4GiB memory
+PHYSICAL_MEMORY_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+PHYSICAL_MEMORY_GB=$(echo "scale=4; ${PHYSICAL_MEMORY_KB}/1024^2" | bc)
+if (( $(echo "${PHYSICAL_MEMORY_GB} < 4" | bc -l) )); then
+  echo "Disabling ORB-SLAM3 with ${PHYSICAL_MEMORY_GB} GiB of RAM"
+  touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/orb-slam3/COLCON_IGNORE"
+fi
+
 # p8-platform
 cp -v \
   "${CONFIG_DIRECTORY}/p8-platform/package.xml" \
