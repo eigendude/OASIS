@@ -24,15 +24,15 @@ import rclpy.task
 from rclpy.logging import LoggingSeverity
 from std_msgs.msg import Header as HeaderMsg
 
-from oasis_drivers.firmata.firmata_types import AnalogMode
-from oasis_drivers.firmata.firmata_types import DigitalMode
+from oasis_control.managers.cpu_fan_manager import CPUFanManager
+from oasis_control.managers.mcu_memory_manager import McuMemoryManager
+from oasis_control.managers.sampling_manager import SamplingManager
+from oasis_drivers.ros.ros_translator import RosTranslator
+from oasis_drivers.telemetrix.telemetrix_types import AnalogMode
+from oasis_drivers.telemetrix.telemetrix_types import DigitalMode
 from oasis_msgs.msg import AnalogReading as AnalogReadingMsg
-from oasis_msgs.msg import AVRConstants as AVRConstantsMsg
 from oasis_msgs.msg import ConductorState as ConductorStateMsg
-from oasis_msgs.msg import CPUFanSpeed as CPUFanSpeedMsg
 from oasis_msgs.msg import DigitalReading as DigitalReadingMsg
-from oasis_msgs.msg import MCUMemory as MCUMemoryMsg
-from oasis_msgs.msg import MCUString as MCUStringMsg
 from oasis_msgs.msg import PeripheralConstants as PeripheralConstantsMsg
 from oasis_msgs.msg import PeripheralInfo as PeripheralInfoMsg
 from oasis_msgs.msg import PeripheralInput as PeripheralInputMsg
@@ -42,10 +42,8 @@ from oasis_msgs.srv import CaptureInput as CaptureInputSvc
 from oasis_msgs.srv import DigitalWrite as DigitalWriteSvc
 from oasis_msgs.srv import PowerControl as PowerControlSvc
 from oasis_msgs.srv import PWMWrite as PWMWriteSvc
-from oasis_msgs.srv import ReportMCUMemory as ReportMCUMemorySvc
 from oasis_msgs.srv import SetAnalogMode as SetAnalogModeSvc
 from oasis_msgs.srv import SetDigitalMode as SetDigitalModeSvc
-from oasis_msgs.srv import SetSamplingInterval as SetSamplingIntervalSvc
 
 
 ################################################################################
@@ -53,8 +51,11 @@ from oasis_msgs.srv import SetSamplingInterval as SetSamplingIntervalSvc
 ################################################################################
 
 
-# Timing parameters
-REPORT_MCU_MEMORY_PERIOD_SECS: float = 10.0  # RAM utilization doesn't change
+# CPU fan sampling interval, in ms
+CPU_FAN_SAMPLING_INTERVAL_MS = 100
+
+# Memory reporting interval, in seconds
+REPORT_MCU_MEMORY_PERIOD_SECS: float = 1.0
 
 # Sampling interval, in ms
 SAMPLING_INTERVAL_MS = 100
@@ -117,7 +118,6 @@ CLIENT_PWM_WRITE = "pwm_write"
 CLIENT_REPORT_MCU_MEMORY = "report_mcu_memory"
 CLIENT_SET_ANALOG_MODE = "set_analog_mode"
 CLIENT_SET_DIGITAL_MODE = "set_digital_mode"
-CLIENT_SET_SAMPLING_INTERVAL = "set_sampling_interval"
 
 
 ################################################################################
@@ -138,6 +138,13 @@ class ConductorManagerNode(rclpy.node.Node):
 
         # Enable debug logging
         self.get_logger().set_level(LoggingSeverity.DEBUG)
+
+        # Subsystems
+        self._cpu_fan_manager: CPUFanManager = CPUFanManager(
+            self, CPU_FAN_PWM_PIN, CPU_FAN_SPEED_PIN
+        )
+        self._mcu_memory_manager: McuMemoryManager = McuMemoryManager(self)
+        self._sampling_manager: SamplingManager = SamplingManager(self)
 
         # Initialize hardware state
         self._supply_voltage: float = 0.0
@@ -184,35 +191,11 @@ class ConductorManagerNode(rclpy.node.Node):
                 qos_profile=qos_profile,
             )
         )
-        self._cpu_fan_speed_sub: rclpy.subscription.Subscription = (
-            self.create_subscription(
-                msg_type=CPUFanSpeedMsg,
-                topic=SUBSCRIBE_CPU_FAN_SPEED,
-                callback=self._on_cpu_fan_speed,
-                qos_profile=qos_profile,
-            )
-        )
         self._digital_reading_sub: rclpy.subscription.Subscription = (
             self.create_subscription(
                 msg_type=DigitalReadingMsg,
                 topic=SUBSCRIBE_DIGITAL_READING,
                 callback=self._on_digital_reading,
-                qos_profile=qos_profile,
-            )
-        )
-        self._mcu_memory_sub: rclpy.subscription.Subscription = (
-            self.create_subscription(
-                msg_type=MCUMemoryMsg,
-                topic=SUBSCRIBE_MCU_MEMORY,
-                callback=self._on_mcu_memory,
-                qos_profile=qos_profile,
-            )
-        )
-        self._mcu_string_sub: rclpy.subscription.Subscription = (
-            self.create_subscription(
-                msg_type=MCUStringMsg,
-                topic=SUBSCRIBE_MCU_STRING,
-                callback=self._on_mcu_string,
                 qos_profile=qos_profile,
             )
         )
@@ -250,43 +233,35 @@ class ConductorManagerNode(rclpy.node.Node):
         self._pwm_write_client: rclpy.client.Client = self.create_client(
             srv_type=PWMWriteSvc, srv_name=CLIENT_PWM_WRITE
         )
-        self._report_mcu_memory_client: rclpy.client.Client = self.create_client(
-            srv_type=ReportMCUMemorySvc, srv_name=CLIENT_REPORT_MCU_MEMORY
-        )
         self._set_analog_mode_client: rclpy.client.Client = self.create_client(
             srv_type=SetAnalogModeSvc, srv_name=CLIENT_SET_ANALOG_MODE
         )
         self._set_digital_mode_client: rclpy.client.Client = self.create_client(
             srv_type=SetDigitalModeSvc, srv_name=CLIENT_SET_DIGITAL_MODE
         )
-        self._set_sampling_interval_client: rclpy.client.Client = self.create_client(
-            srv_type=SetSamplingIntervalSvc, srv_name=CLIENT_SET_SAMPLING_INTERVAL
-        )
 
         # Timer parameters
         self._publish_timer: Optional[rclpy.node.Timer] = None
 
     def initialize(self) -> bool:
-        self.get_logger().debug("Waiting for Firmata services...")
+        self.get_logger().debug("Waiting for conductor services...")
         self._digital_write_client.wait_for_service()
         self._pwm_write_client.wait_for_service()
-        self._report_mcu_memory_client.wait_for_service()
         self._set_analog_mode_client.wait_for_service()
         self._set_digital_mode_client.wait_for_service()
-        self._set_sampling_interval_client.wait_for_service()
 
-        self.get_logger().debug("Starting configuration")
+        self.get_logger().debug("Starting conductor configuration")
 
-        # Sampling interval
-        self.get_logger().debug(
-            f"Setting sampling interval to {SAMPLING_INTERVAL_MS} ms"
-        )
-        if not self._set_sampling_interval(SAMPLING_INTERVAL_MS):
+        # CPU fan
+        if not self._cpu_fan_manager.initialize(CPU_FAN_SAMPLING_INTERVAL_MS):
             return False
 
         # Memory reporting
-        self.get_logger().debug("Enabling MCU memory reporting")
-        if not self._report_mcu_memory(REPORT_MCU_MEMORY_PERIOD_SECS):
+        if not self._mcu_memory_manager.initialize(REPORT_MCU_MEMORY_PERIOD_SECS):
+            return False
+
+        # Sampling interval
+        if not self._sampling_manager.initialize(SAMPLING_INTERVAL_MS):
             return False
 
         # Voltage supply source (VSS)
@@ -327,22 +302,6 @@ class ConductorManagerNode(rclpy.node.Node):
         if not self._set_analog_mode(MOTOR_CURRENT_PIN, AnalogMode.INPUT):
             return False
 
-        #
-        # CPU fan
-        #
-
-        # CPU fan PWM
-        self.get_logger().debug(f"Enabling CPU fan PWM on D{CPU_FAN_PWM_PIN}")
-        if not self._set_digital_mode(CPU_FAN_PWM_PIN, DigitalMode.CPU_FAN_PWM):
-            return False
-
-        # Fan tachometer on D2
-        self.get_logger().debug(f"Enabling CPU fan tachometer on D{CPU_FAN_SPEED_PIN}")
-        if not self._set_digital_mode(
-            CPU_FAN_SPEED_PIN, DigitalMode.CPU_FAN_TACHOMETER
-        ):
-            return False
-
         # Now that the manager is initialized, start the publishing timer
         self._publish_timer = self.create_timer(
             timer_period_sec=PUBLISH_STATE_PERIOD_SECS, callback=self._publish_state
@@ -352,31 +311,11 @@ class ConductorManagerNode(rclpy.node.Node):
 
         return True
 
-    def _report_mcu_memory(self, reporting_period_secs: float) -> bool:
-        # Create message
-        report_memory_svc = ReportMCUMemorySvc.Request()
-        report_memory_svc.reporting_period_ms = int(reporting_period_secs * 1000)
-
-        # Call service
-        future: asyncio.Future = self._report_mcu_memory_client.call_async(
-            report_memory_svc
-        )
-
-        # Wait for result
-        rclpy.spin_until_future_complete(self, future)
-        if future.result() is None:
-            self.get_logger().error(
-                f"Exception while calling service: {future.exception()}"
-            )
-            return False
-
-        return True
-
     def _set_analog_mode(self, analog_pin: int, analog_mode: AnalogMode) -> bool:
         # Create message
         vss_analog_svc = SetAnalogModeSvc.Request()
         vss_analog_svc.analog_pin = analog_pin
-        vss_analog_svc.analog_mode = self._translate_analog_mode(analog_mode)
+        vss_analog_svc.analog_mode = RosTranslator.analog_mode_to_ros(analog_mode)
 
         # Call service
         future: asyncio.Future = self._set_analog_mode_client.call_async(vss_analog_svc)
@@ -395,30 +334,10 @@ class ConductorManagerNode(rclpy.node.Node):
         # Create message
         motor_pwm_svc = SetDigitalModeSvc.Request()
         motor_pwm_svc.digital_pin = digital_pin
-        motor_pwm_svc.digital_mode = self._translate_digital_mode(digital_mode)
+        motor_pwm_svc.digital_mode = RosTranslator.digital_mode_to_ros(digital_mode)
 
         # Call service
         future: asyncio.Future = self._set_digital_mode_client.call_async(motor_pwm_svc)
-
-        # Wait for result
-        rclpy.spin_until_future_complete(self, future)
-        if future.result() is None:
-            self.get_logger().error(
-                f"Exception while calling service: {future.exception()}"
-            )
-            return False
-
-        return True
-
-    def _set_sampling_interval(self, sampling_interval_ms: int) -> bool:
-        # Create message
-        set_sampling_interval_svc = SetSamplingIntervalSvc.Request()
-        set_sampling_interval_svc.sampling_interval_ms = sampling_interval_ms
-
-        # Call service
-        future: asyncio.Future = self._set_sampling_interval_client.call_async(
-            set_sampling_interval_svc
-        )
 
         # Wait for result
         rclpy.spin_until_future_complete(self, future)
@@ -458,15 +377,6 @@ class ConductorManagerNode(rclpy.node.Node):
             # Record state
             self._motor_current = motor_current
 
-    def _on_cpu_fan_speed(self, cpu_fan_speed_msg: CPUFanSpeedMsg) -> None:
-        # Translate parameters
-        digital_pin: int = cpu_fan_speed_msg.digital_pin
-        fan_speed_rpm: float = cpu_fan_speed_msg.fan_speed_rpm
-
-        if digital_pin == CPU_FAN_SPEED_PIN:
-            # Record state
-            self._cpu_fan_speed_rpm = fan_speed_rpm
-
     def _on_digital_reading(self, digital_reading_msg: DigitalReadingMsg) -> None:
         # Translate parameters
         digital_pin: int = digital_reading_msg.digital_pin
@@ -488,29 +398,6 @@ class ConductorManagerNode(rclpy.node.Node):
 
                 # Record state
                 self._motor_ff2_state = digital_value
-
-    def _on_mcu_memory(self, mcu_memory_msg: MCUMemoryMsg) -> None:
-        # Translate parameters
-        total_ram: int = mcu_memory_msg.total_ram
-        free_ram: int = mcu_memory_msg.free_ram
-
-        # Calculate utilization percent
-        used_ram: int = total_ram - free_ram
-        ram_utilization: float = 100.0 * used_ram / total_ram
-
-        # Record state
-        self._total_ram = total_ram
-        self._ram_utilization = ram_utilization
-
-    def _on_mcu_string(self, mcu_string_msg: MCUStringMsg) -> None:
-        # Translate parameters
-        message: str = mcu_string_msg.message
-
-        # Log message
-        self.get_logger().debug(f"MCU: {message}")
-
-        # Record state
-        self._message = message
 
     def _on_peripheral_input(self, peripheral_input_msg: PeripheralInputMsg) -> None:
         # Translate parameters
@@ -696,29 +583,8 @@ class ConductorManagerNode(rclpy.node.Node):
         msg.motor_current = self._motor_current
         msg.motor_ff1_count = self._motor_ff1_count
         msg.motor_ff2_count = self._motor_ff2_count
-        msg.cpu_fan_speed_rpm = self._cpu_fan_speed_rpm
-        msg.total_ram = self._total_ram
-        msg.ram_utilization = self._ram_utilization
-        msg.message = self._message if self._message else ""
+        msg.cpu_fan_speed_rpm = self._cpu_fan_manager.cpu_fan_rpm
+        msg.total_ram = self._mcu_memory_manager.total_ram
+        msg.ram_utilization = self._mcu_memory_manager.ram_utilization
 
         self._conductor_state_pub.publish(msg)
-
-    @staticmethod
-    def _translate_analog_mode(analog_mode: AnalogMode) -> int:
-        return {
-            AnalogMode.DISABLED: AVRConstantsMsg.ANALOG_DISABLED,
-            AnalogMode.INPUT: AVRConstantsMsg.ANALOG_INPUT,
-        }[analog_mode]
-
-    @staticmethod
-    def _translate_digital_mode(digital_mode: DigitalMode) -> int:
-        return {
-            DigitalMode.DISABLED: AVRConstantsMsg.DIGITAL_DISABLED,
-            DigitalMode.INPUT: AVRConstantsMsg.DIGITAL_INPUT,
-            DigitalMode.INPUT_PULLUP: AVRConstantsMsg.DIGITAL_INPUT_PULLUP,
-            DigitalMode.OUTPUT: AVRConstantsMsg.DIGITAL_OUTPUT,
-            DigitalMode.PWM: AVRConstantsMsg.DIGITAL_PWM,
-            DigitalMode.SERVO: AVRConstantsMsg.DIGITAL_SERVO,
-            DigitalMode.CPU_FAN_PWM: AVRConstantsMsg.DIGITAL_CPU_FAN_PWM,
-            DigitalMode.CPU_FAN_TACHOMETER: AVRConstantsMsg.DIGITAL_CPU_FAN_TACHOMETER,
-        }[digital_mode]
