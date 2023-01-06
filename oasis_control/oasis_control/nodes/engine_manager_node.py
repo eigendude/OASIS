@@ -23,9 +23,9 @@ import rclpy.task
 from rclpy.logging import LoggingSeverity
 from std_msgs.msg import Header as HeaderMsg
 
+from oasis_drivers.ros.ros_translator import RosTranslator
 from oasis_drivers.telemetrix.telemetrix_types import AnalogMode
 from oasis_msgs.msg import AnalogReading as AnalogReadingMsg
-from oasis_msgs.msg import AVRConstants as AVRConstantsMsg
 from oasis_msgs.msg import EngineState as EngineStateMsg
 from oasis_msgs.msg import MCUMemory as MCUMemoryMsg
 from oasis_msgs.msg import MCUString as MCUStringMsg
@@ -209,7 +209,7 @@ class EngineManagerNode(rclpy.node.Node):
         # Create message
         vss_analog_svc = SetAnalogModeSvc.Request()
         vss_analog_svc.analog_pin = analog_pin
-        vss_analog_svc.analog_mode = self._translate_analog_mode(analog_mode)
+        vss_analog_svc.analog_mode = RosTranslator.analog_mode_to_ros(analog_mode)
 
         # Call service
         future: asyncio.Future = self._set_analog_mode_client.call_async(vss_analog_svc)
@@ -293,10 +293,3 @@ class EngineManagerNode(rclpy.node.Node):
         msg.message = self._message if self._message else ""
 
         self._engine_state_pub.publish(msg)
-
-    @staticmethod
-    def _translate_analog_mode(analog_mode: AnalogMode) -> int:
-        return {
-            AnalogMode.DISABLED: AVRConstantsMsg.ANALOG_DISABLED,
-            AnalogMode.INPUT: AVRConstantsMsg.ANALOG_INPUT,
-        }[analog_mode]

@@ -8,13 +8,18 @@
 #
 ################################################################################
 
+from datetime import datetime
 from typing import List
 
+import rclpy.time
 from builtin_interfaces.msg import Time as TimeMsg
 from std_msgs.msg import Header as HeaderMsg
 
 from oasis_drivers.serial.serial_types import SerialPort
 from oasis_drivers.serial.serial_types import UsbDevice
+from oasis_drivers.telemetrix.telemetrix_types import AnalogMode
+from oasis_drivers.telemetrix.telemetrix_types import DigitalMode
+from oasis_msgs.msg import AVRConstants as AVRConstantsMsg
 from oasis_msgs.msg import SerialDevice as SerialDeviceMsg
 from oasis_msgs.msg import SerialDeviceScan as SerialDeviceScanMsg
 from oasis_msgs.msg import UsbDevice as UsbDeviceMsg
@@ -65,3 +70,53 @@ class RosTranslator(object):
         msg.product = usb_device.product if usb_device.product else ""
 
         return msg
+
+    @staticmethod
+    def analog_mode_to_ros(analog_mode: AnalogMode) -> int:
+        return {
+            AnalogMode.DISABLED: AVRConstantsMsg.ANALOG_DISABLED,
+            AnalogMode.INPUT: AVRConstantsMsg.ANALOG_INPUT,
+        }[analog_mode]
+
+    @staticmethod
+    def digital_mode_to_ros(digital_mode: DigitalMode) -> int:
+        return {
+            DigitalMode.DISABLED: AVRConstantsMsg.DIGITAL_DISABLED,
+            DigitalMode.INPUT: AVRConstantsMsg.DIGITAL_INPUT,
+            DigitalMode.INPUT_PULLUP: AVRConstantsMsg.DIGITAL_INPUT_PULLUP,
+            DigitalMode.OUTPUT: AVRConstantsMsg.DIGITAL_OUTPUT,
+            DigitalMode.PWM: AVRConstantsMsg.DIGITAL_PWM,
+            DigitalMode.SERVO: AVRConstantsMsg.DIGITAL_SERVO,
+            DigitalMode.CPU_FAN_PWM: AVRConstantsMsg.DIGITAL_CPU_FAN_PWM,
+            DigitalMode.CPU_FAN_TACHOMETER: AVRConstantsMsg.DIGITAL_CPU_FAN_TACHOMETER,
+        }[digital_mode]
+
+    @staticmethod
+    def analog_mode_to_telemetrix(ros2_analog_mode: int) -> AnalogMode:
+        """Translate an analog pin mode from ROS 2 API to Telemetrix API"""
+        return {
+            AVRConstantsMsg.ANALOG_DISABLED: AnalogMode.DISABLED,
+            AVRConstantsMsg.ANALOG_INPUT: AnalogMode.INPUT,
+        }[ros2_analog_mode]
+
+    @staticmethod
+    def digital_mode_to_telemetrix(ros2_digital_mode: int) -> DigitalMode:
+        """Translate a digital pin mode from ROS 2 API to Telemetrix API"""
+        return {
+            AVRConstantsMsg.DIGITAL_DISABLED: DigitalMode.DISABLED,
+            AVRConstantsMsg.DIGITAL_INPUT: DigitalMode.INPUT,
+            AVRConstantsMsg.DIGITAL_INPUT_PULLUP: DigitalMode.INPUT_PULLUP,
+            AVRConstantsMsg.DIGITAL_OUTPUT: DigitalMode.OUTPUT,
+            AVRConstantsMsg.DIGITAL_PWM: DigitalMode.PWM,
+            AVRConstantsMsg.DIGITAL_SERVO: DigitalMode.SERVO,
+            AVRConstantsMsg.DIGITAL_CPU_FAN_PWM: DigitalMode.CPU_FAN_PWM,
+            AVRConstantsMsg.DIGITAL_CPU_FAN_TACHOMETER: DigitalMode.CPU_FAN_TACHOMETER,
+        }[ros2_digital_mode]
+
+    @staticmethod
+    def convert_timestamp(timestamp: datetime) -> TimeMsg:
+        """Convert datetime to ROS 2 time message"""
+        return rclpy.time.Time(
+            seconds=int(timestamp.timestamp()),
+            nanoseconds=timestamp.microsecond * 1000,
+        ).to_msg()

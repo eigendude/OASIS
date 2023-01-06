@@ -17,6 +17,7 @@ import rclpy.time
 from builtin_interfaces.msg import Time as TimeMsg
 from std_msgs.msg import Header as HeaderMsg
 
+from oasis_drivers.ros.ros_translator import RosTranslator
 from oasis_drivers.telemetrix.telemetrix_bridge import TelemetrixBridge
 from oasis_drivers.telemetrix.telemetrix_callback import TelemetrixCallback
 from oasis_drivers.telemetrix.telemetrix_types import AnalogMode
@@ -202,7 +203,7 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
 
         # Timestamp in ROS header
         header = HeaderMsg()
-        header.stamp = self._convert_timestamp(timestamp)
+        header.stamp = RosTranslator.convert_timestamp(timestamp)
         header.frame_id = ""  # TODO
 
         msg.header = header
@@ -218,7 +219,7 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
 
         # Timestamp in ROS header
         header = HeaderMsg()
-        header.stamp = self._convert_timestamp(timestamp)
+        header.stamp = RosTranslator.convert_timestamp(timestamp)
         header.frame_id = ""  # TODO
 
         msg.header = header
@@ -235,7 +236,7 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
 
         # Timestamp in ROS header
         header = HeaderMsg()
-        header.stamp = self._convert_timestamp(timestamp)
+        header.stamp = RosTranslator.convert_timestamp(timestamp)
         header.frame_id = ""  # TODO
 
         msg.header = header
@@ -304,7 +305,7 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         result: Tuple[float, float, datetime] = self._bridge.analog_read(analog_pin)
 
         # Translate result
-        response.stamp = self._convert_timestamp(result[2])
+        response.stamp = RosTranslator.convert_timestamp(result[2])
         response.reference_voltage = float(result[1])
         response.analog_value = float(result[0])
 
@@ -324,7 +325,7 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         result: Tuple[bool, datetime] = self._bridge.digital_read(digital_pin)
 
         # Translate result
-        response.stamp = self._convert_timestamp(result[1])
+        response.stamp = RosTranslator.convert_timestamp(result[1])
         response.value = AVRConstantsMsg.HIGH if result[0] else AVRConstantsMsg.LOW
 
         return response
@@ -407,7 +408,15 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         """Handle ROS 2 analog pin mode changes"""
         # Translate parameters
         analog_pin: int = request.analog_pin
-        analog_mode: AnalogMode = self._translate_analog_mode(request.analog_mode)
+        analog_mode: AnalogMode
+
+        try:
+            analog_mode = RosTranslator.analog_mode_to_telemetrix(request.analog_mode)
+        except KeyError:
+            self.get_logger().error(
+                f"Invalid analog mode ({request.analog_mode}), disabling pin"
+            )
+            analog_mode = AnalogMode.DISABLED
 
         # Debug logging
         self.get_logger().info(f"Setting analog pin {analog_pin} to mode {analog_mode}")
@@ -423,7 +432,17 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         """Handle ROS 2 digital pin mode changes"""
         # Translate parameters
         digital_pin: int = request.digital_pin
-        digital_mode: DigitalMode = self._translate_digital_mode(request.digital_mode)
+        digital_mode: DigitalMode
+
+        try:
+            digital_mode = RosTranslator.digital_mode_to_telemetrix(
+                request.digital_mode
+            )
+        except KeyError:
+            self.get_logger().error(
+                f"Invalid digital mode ({request.digital_mode}), disabling pin"
+            )
+            digital_mode = DigitalMode.DISABLED
 
         # Debug logging
         self.get_logger().info(
@@ -453,46 +472,6 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         self._bridge.set_sampling_interval(sampling_interval_ms)
 
         return response
-
-    def _translate_analog_mode(self, ros2_analog_mode: int) -> AnalogMode:
-        """Translate an analog pin mode from ROS 2 API to Telemetrix API"""
-        try:
-            return {
-                AVRConstantsMsg.ANALOG_DISABLED: AnalogMode.DISABLED,
-                AVRConstantsMsg.ANALOG_INPUT: AnalogMode.INPUT,
-            }[ros2_analog_mode]
-        except KeyError:
-            self.get_logger().error(
-                f"Invalid analog mode ({ros2_analog_mode}), disabling pin"
-            )
-            return AnalogMode.DISABLED
-
-    def _translate_digital_mode(self, ros2_digital_mode: int) -> DigitalMode:
-        """Translate a digital pin mode from ROS 2 API to Telemetrix API"""
-        try:
-            return {
-                AVRConstantsMsg.DIGITAL_DISABLED: DigitalMode.DISABLED,
-                AVRConstantsMsg.DIGITAL_INPUT: DigitalMode.INPUT,
-                AVRConstantsMsg.DIGITAL_INPUT_PULLUP: DigitalMode.INPUT_PULLUP,
-                AVRConstantsMsg.DIGITAL_OUTPUT: DigitalMode.OUTPUT,
-                AVRConstantsMsg.DIGITAL_PWM: DigitalMode.PWM,
-                AVRConstantsMsg.DIGITAL_SERVO: DigitalMode.SERVO,
-                AVRConstantsMsg.DIGITAL_CPU_FAN_PWM: DigitalMode.CPU_FAN_PWM,
-                AVRConstantsMsg.DIGITAL_CPU_FAN_TACHOMETER: DigitalMode.CPU_FAN_TACHOMETER,
-            }[ros2_digital_mode]
-        except KeyError:
-            self.get_logger().error(
-                f"Invalid digital mode ({ros2_digital_mode}), disabling pin"
-            )
-            return DigitalMode.DISABLED
-
-    @staticmethod
-    def _convert_timestamp(timestamp: datetime) -> TimeMsg:
-        """Convert datetime to ROS 2 time message"""
-        return rclpy.time.Time(
-            seconds=int(timestamp.timestamp()),
-            nanoseconds=timestamp.microsecond * 1000,
-        ).to_msg()
 
     def _get_timestamp(self) -> TimeMsg:
         return self.get_clock().now().to_msg()
