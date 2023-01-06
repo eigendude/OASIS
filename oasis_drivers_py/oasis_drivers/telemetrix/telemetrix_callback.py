@@ -14,6 +14,20 @@ from datetime import datetime
 
 class TelemetrixCallback:
     @abc.abstractmethod
+    def on_air_quality(
+        self,
+        timestamp: datetime,
+        i2c_port: int,
+        i2c_address: int,
+        co2_ppb: int,
+        tvoc_ppb: int,
+    ) -> None:
+        """
+        Handle reports of an air quality sensor with CO2 and TVOC modalities.
+        """
+        pass
+
+    @abc.abstractmethod
     def on_analog_reading(
         self,
         timestamp: datetime,
@@ -31,6 +45,24 @@ class TelemetrixCallback:
     def on_digital_reading(
         self, timestamp: datetime, digital_pin: int, digital_value: bool
     ) -> None:
+        pass
+
+    @abc.abstractmethod
+    def on_imu_6_axis(
+        self,
+        timestamp: datetime,
+        i2c_port: int,
+        i2c_address: int,
+        ax: int,
+        ay: int,
+        az: int,
+        gx: int,
+        gy: int,
+        gz: int,
+    ) -> None:
+        """
+        Handle reports of a 6-axis IMU.
+        """
         pass
 
     @abc.abstractmethod

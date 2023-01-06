@@ -9,12 +9,15 @@
 ################################################################################
 
 from datetime import datetime
+from typing import List
 from typing import Tuple
 
 import rclpy.node
 import rclpy.service
 import rclpy.time
 from builtin_interfaces.msg import Time as TimeMsg
+from geometry_msgs.msg import Vector3 as Vector3Msg
+from sensor_msgs.msg import Imu as ImuMsg
 from std_msgs.msg import Header as HeaderMsg
 
 from oasis_drivers.ros.ros_translator import RosTranslator
@@ -22,15 +25,20 @@ from oasis_drivers.telemetrix.telemetrix_bridge import TelemetrixBridge
 from oasis_drivers.telemetrix.telemetrix_callback import TelemetrixCallback
 from oasis_drivers.telemetrix.telemetrix_types import AnalogMode
 from oasis_drivers.telemetrix.telemetrix_types import DigitalMode
+from oasis_msgs.msg import AirQuality as AirQualityMsg
 from oasis_msgs.msg import AnalogReading as AnalogReadingMsg
 from oasis_msgs.msg import AVRConstants as AVRConstantsMsg
 from oasis_msgs.msg import CPUFanSpeed as CPUFanSpeedMsg
 from oasis_msgs.msg import DigitalReading as DigitalReadingMsg
+from oasis_msgs.msg import I2CDevice as I2CDeviceMsg
+from oasis_msgs.msg import I2CDeviceType as I2CDeviceTypeMsg
+from oasis_msgs.msg import I2CImu as I2CImuMsg
 from oasis_msgs.msg import MCUMemory as MCUMemoryMsg
 from oasis_msgs.msg import MCUString as MCUStringMsg
 from oasis_msgs.srv import AnalogRead as AnalogReadSvc
 from oasis_msgs.srv import DigitalRead as DigitalReadSvc
 from oasis_msgs.srv import DigitalWrite as DigitalWriteSvc
+from oasis_msgs.srv import I2CBegin as I2CBeginSvc
 from oasis_msgs.srv import PWMWrite as PWMWriteSvc
 from oasis_msgs.srv import ReportMCUMemory as ReportMCUMemorySvc
 from oasis_msgs.srv import ServoWrite as ServoWriteSvc
@@ -50,9 +58,11 @@ NODE_NAME = "telemetrix_bridge"
 PARAM_COM_PORT = "com_port"
 
 # ROS topics
+AIR_QUALITY_TOPIC = "air_quality"
 ANALOG_READING_TOPIC = "analog_reading"
 CPU_FAN_SPEED_TOPIC = "cpu_fan_speed"
 DIGITAL_READING_TOPIC = "digital_reading"
+IMU_TOPIC = "i2c_imu"
 MCU_MEMORY_TOPIC = "mcu_memory"
 MCU_STRING_TOPIC = "mcu_string"
 
@@ -61,6 +71,7 @@ ANALOG_READ_SERVICE = "analog_read"
 CPU_FAN_WRITE_SERVICE = "cpu_fan_write"
 DIGITAL_READ_SERVICE = "digital_read"
 DIGITAL_WRITE_SERVICE = "digital_write"
+I2C_BEGIN_SERVICE = "i2c_begin"
 PWM_WRITE_SERVICE = "pwm_write"
 REPORT_MCU_MEMORY_SERVICE = "report_mcu_memory"
 SERVO_WRITE_SERVICE = "servo_write"
@@ -102,6 +113,11 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         )
 
         # Publishers
+        self._air_quality_pub: rclpy.publisher.Publisher = self.create_publisher(
+            msg_type=AirQualityMsg,
+            topic=AIR_QUALITY_TOPIC,
+            qos_profile=qos_profile,
+        )
         self._analog_reading_pub: rclpy.publisher.Publisher = self.create_publisher(
             msg_type=AnalogReadingMsg,
             topic=ANALOG_READING_TOPIC,
@@ -115,6 +131,11 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         self._digital_reading_pub: rclpy.publisher.Publisher = self.create_publisher(
             msg_type=DigitalReadingMsg,
             topic=DIGITAL_READING_TOPIC,
+            qos_profile=qos_profile,
+        )
+        self._imu_pub: rclpy.publisher.Publisher = self.create_publisher(
+            msg_type=ImuMsg,
+            topic=IMU_TOPIC,
             qos_profile=qos_profile,
         )
         self._mcu_memory_pub: rclpy.publisher.Publisher = self.create_publisher(
@@ -151,6 +172,11 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
             srv_type=DigitalWriteSvc,
             srv_name=DIGITAL_WRITE_SERVICE,
             callback=self._handle_digital_write,
+        )
+        self._i2c_begin_service: rclpy.service.Service = self.create_service(
+            srv_type=I2CBeginSvc,
+            srv_name=I2C_BEGIN_SERVICE,
+            callback=self._handle_i2c_begin,
         )
         self._pwm_write_service: rclpy.service.Service = self.create_service(
             srv_type=PWMWriteSvc,
@@ -204,6 +230,34 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         # collector automatically destroys the node object after ROS has
         # shut down.
         self.destroy_node()
+
+    def on_air_quality(
+        self,
+        timestamp: datetime,
+        i2c_port: int,
+        i2c_address: int,
+        co2_ppb: int,
+        tvoc_ppb: int,
+    ) -> None:
+        """Implement TelemetrixCallback"""
+        msg: AirQualityMsg = AirQualityMsg()
+
+        # Timestamp in ROS header
+        header: HeaderMsg = HeaderMsg()
+        header.stamp = RosTranslator.convert_timestamp(timestamp)
+        header.frame_id = ""  # TODO
+
+        msg.header = header
+        msg.co2_ppb = float(co2_ppb)
+        msg.tvoc_ppb = float(tvoc_ppb)
+
+        i2c_device: I2CDeviceMsg = I2CDeviceMsg
+        i2c_device.i2c_device_type = I2CDeviceTypeMsg.CCS811
+        i2c_device.i2c_port = i2c_port
+        i2c_device.i2c_address = i2c_address
+        msg.i2c_device.append(i2c_device)
+
+        self._air_quality_pub.publish(msg)
 
     def on_analog_reading(
         self,
@@ -260,6 +314,43 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         )
 
         self._digital_reading_pub.publish(msg)
+
+    def on_imu_6_axis(
+        self,
+        timestamp: datetime,
+        i2c_port: int,
+        i2c_address: int,
+        ax: int,
+        ay: int,
+        az: int,
+        gx: int,
+        gy: int,
+        gz: int,
+    ) -> None:
+        imu_msg: ImuMsg = ImuMsg()
+        # Timestamp in ROS header
+        imu_msg.header.stamp = RosTranslator.convert_timestamp(timestamp)
+        imu_msg.header.frame_id = ""  # TODO
+
+        imu_msg.angular_velocity = Vector3Msg()
+        imu_msg.angular_velocity.x = gx
+        imu_msg.angular_velocity.x = gy
+        imu_msg.angular_velocity.x = gz
+
+        imu_msg.linear_acceleration = Vector3Msg()
+        imu_msg.linear_acceleration.x = ax
+        imu_msg.linear_acceleration.y = ay
+        imu_msg.linear_acceleration.z = az
+
+        # TODO: Covariance matrices
+
+        i2c_imu_msg: I2CImuMsg = I2CImuMsg()
+        i2c_imu_msg.i2c_device.i2c_device_type = I2CDeviceTypeMsg.MPU6050
+        i2c_imu_msg.i2c_device.i2c_port = i2c_port
+        i2c_imu_msg.i2c_device.i2c_address = i2c_address
+        i2c_imu_msg.imu = imu_msg
+
+        self._imu_publish_pub.publish(i2c_imu_msg)
 
     def on_memory_data(
         self,
@@ -377,6 +468,35 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
 
         # Perform service
         self._bridge.digital_write(digital_pin, digital_value)
+
+        return response
+
+    def _handle_i2c_begin(
+        self, request: I2CBeginSvc.Request, response: I2CBeginSvc.Response
+    ) -> I2CBeginSvc.Response:
+        """Handle ROS 2 PWM pin writes"""
+        # Translate parameters
+        i2c_port: int = request.i2c_port
+        i2c_devices: List[I2CDeviceMsg] = request.i2c_devices
+
+        # Debug logging
+        self.get_logger().info(f"Beginning I2C on port {i2c_port}")
+
+        # Perform service for port
+        self._bridge.i2c_begin(i2c_port)
+
+        # Perform services for devices
+        for i2c_device in i2c_devices:
+            i2c_device_type: int = i2c_device.i2c_device_type
+            i2c_address: int = i2c_device.i2c_address
+
+            self.get_logger().info(
+                f"Beginning I2C device of type {i2c_device_type} with address {hex(i2c_address)}"
+            )
+            if i2c_device_type == I2CDeviceTypeMsg.CCS811:
+                self._bridge.i2c_ccs811_begin(i2c_port, i2c_address)
+            elif i2c_device_type == I2CDeviceTypeMsg.MPU6050:
+                self._bridge.i2c_mpu6050_begin(i2c_port, i2c_address)
 
         return response
 

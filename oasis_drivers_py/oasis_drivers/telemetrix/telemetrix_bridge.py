@@ -79,6 +79,12 @@ class TelemetrixBridge:
         self._board.report_dispatch.update(
             {TelemetrixConstants.CPU_FAN_TACH_REPORT: self._on_cpu_fan_rpm}
         )
+        self._board.report_dispatch.update(
+            {TelemetrixConstants.AQ_CO2_TVOC_REPORT: self._on_air_quality}
+        )
+        self._board.report_dispatch.update(
+            {TelemetrixConstants.IMU_6_AXIS_REPORT: self._on_imu_6_axis}
+        )
 
     def initialize(self) -> bool:
         """Initialize the bridge and start communicating via Telemetrix"""
@@ -317,6 +323,67 @@ class TelemetrixBridge:
         # Wait for completion
         future.result()
 
+    def i2c_begin(self, i2c_port: int) -> None:
+        """
+        Establish the specified I2C port for utilization.
+
+        :param i2c_port: The I2C port index of the microcontroller (0 = i2c1, 1 = i2c2)
+        """
+        # Create coroutine
+        coroutine: Awaitable[None] = self._board.set_pin_mode_i2c(i2c_port)
+
+        # Dispatch to asyncio
+        future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
+
+        # Wait for completion
+        future.result()
+
+    def i2c_ccs811_begin(self, i2c_port: int, i2c_address: int) -> None:
+        """
+        Establish a CCS811 air quality sensor for utilization.
+
+        :param i2c_port: The I2C port index of the microcontroller (0 = i2c1, 1 = i2c2)
+        :param i2c_address: The I2C address of the device
+        """
+        # Create command
+        command: List[int] = [
+            TelemetrixConstants.I2C_CCS811_BEGIN,
+            i2c_port,
+            i2c_address,
+        ]
+
+        # Create coroutine
+        coroutine: Awaitable[None] = self._board._send_command(command)
+
+        # Dispatch to asyncio
+        future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
+
+        # Wait for completion
+        future.result()
+
+    def i2c_mpu6050_begin(self, i2c_port: int, i2c_address: int) -> None:
+        """
+        Establish an MPU6050 IMU sensor for utilization.
+
+        :param i2c_port: The I2C port index of the microcontroller (0 = i2c1, 1 = i2c2)
+        :param i2c_address: The I2C address of the device
+        """
+        # Create command
+        command: List[int] = [
+            TelemetrixConstants.I2C_MPU6050_BEGIN,
+            i2c_port,
+            i2c_address,
+        ]
+
+        # Create coroutine
+        coroutine: Awaitable[None] = self._board._send_command(command)
+
+        # Dispatch to asyncio
+        future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
+
+        # Wait for completion
+        future.result()
+
     def pwm_write(self, digital_pin: int, duty_cycle: float) -> None:
         """
         Set the specified PWM pin to the specified value.
@@ -470,6 +537,54 @@ class TelemetrixBridge:
 
         # Dispatch callback
         self._callback.on_cpu_fan_rpm(timestamp, digital_pin, fan_rpm)
+
+    async def _on_air_quality(self, data: List[int]) -> None:
+        """
+        Handle reports of an air quality sensor with CO2 and TVOC modalities.
+
+        :param data: The report message
+        """
+        timestamp: datetime = datetime.now(timezone.utc)
+
+        try:
+            # Translate parameters
+            i2c_port: int = data[0]
+            i2c_address: int = data[1]
+            co2_ppb: int = int.from_bytes(data[2:4], byteorder="big", signed=False)
+            tvoc_ppb: int = int.from_bytes(data[4:6], byteorder="big", signed=False)
+        except IndexError:
+            return
+
+        # Dispatch callback
+        self._callback.on_air_quality(
+            timestamp, i2c_port, i2c_address, co2_ppb, tvoc_ppb
+        )
+
+    async def _on_imu_6_axis(self, data: List[int]) -> None:
+        """
+        Handle reports of a 6-axis IMU.
+
+        :param data: The report message
+        """
+        timestamp: datetime = datetime.now(timezone.utc)
+
+        try:
+            # Translate parameters
+            i2c_port: int = data[0]
+            i2c_address: int = data[1]
+            ax: int = int.from_bytes(data[2:4], byteorder="big", signed=True)
+            ay: int = int.from_bytes(data[4:6], byteorder="big", signed=True)
+            az: int = int.from_bytes(data[6:8], byteorder="big", signed=True)
+            gx: int = int.from_bytes(data[8:10], byteorder="big", signed=True)
+            gy: int = int.from_bytes(data[10:12], byteorder="big", signed=True)
+            gz: int = int.from_bytes(data[12:14], byteorder="big", signed=True)
+        except IndexError:
+            return
+
+        # Dispatch callback
+        self._callback.on_imu_6_axis(
+            timestamp, i2c_port, i2c_address, ax, ay, az, gx, gy, gz
+        )
 
     async def _memory_report(self, data: List[int]) -> None:
         """
