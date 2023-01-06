@@ -15,7 +15,9 @@ project(oasis_msgs)
 # Dependencies
 #
 
+find_package(geometry_msgs REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
+find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 
 #
@@ -25,6 +27,7 @@ find_package(std_msgs REQUIRED)
 rosidl_generate_interfaces(
   ${PROJECT_NAME}
     msg/Accelerometer.msg
+    msg/AirQuality.msg
     msg/AnalogButton.msg
     msg/AnalogReading.msg
     msg/AnalogStick.msg
@@ -35,6 +38,9 @@ rosidl_generate_interfaces(
     msg/DigitalReading.msg
     msg/DiskPartition.msg
     msg/EngineState.msg
+    msg/I2CDevice.msg
+    msg/I2CDeviceType.msg
+    msg/I2CImu.msg
     msg/LeonardoState.msg
     msg/MCUMemory.msg
     msg/MCUString.msg
@@ -56,6 +62,7 @@ rosidl_generate_interfaces(
     srv/CaptureInput.srv
     srv/DigitalRead.srv
     srv/DigitalWrite.srv
+    srv/I2CBegin.srv
     srv/PowerControl.srv
     srv/PWMWrite.srv
     srv/ReportMCUMemory.srv
@@ -64,6 +71,8 @@ rosidl_generate_interfaces(
     srv/SetDigitalMode.srv
     srv/SetSamplingInterval.srv
   DEPENDENCIES
+    geometry_msgs
+    sensor_msgs
     std_msgs
 )
 
