@@ -217,7 +217,7 @@ void TelemetrixCommands::digital_write()
 void TelemetrixCommands::analog_write()
 {
   const uint8_t pin = commandBuffer[0];
-  const unsigned int value = (commandBuffer[1] << 8) + commandBuffer[2];
+  const uint16_t value = (commandBuffer[1] << 8) + commandBuffer[2];
 
   TelemetrixPins* pins = m_server->GetPins();
   pins->AnalogWrite(pin, value);
