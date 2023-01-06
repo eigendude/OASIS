@@ -147,7 +147,7 @@ class ConductorManagerNode(rclpy.node.Node):
         self._motor_ff1_count: int = 0
         self._motor_ff2_state: bool = False
         self._motor_ff2_count: int = 0
-        self._cpu_fan_speed_rpm: int = 0
+        self._cpu_fan_speed_rpm: float = 0.0
         self._total_ram: int = 0
         self._ram_utilization: float = 0.0
         self._message: Optional[str] = None
@@ -461,7 +461,7 @@ class ConductorManagerNode(rclpy.node.Node):
     def _on_cpu_fan_speed(self, cpu_fan_speed_msg: CPUFanSpeedMsg) -> None:
         # Translate parameters
         digital_pin: int = cpu_fan_speed_msg.digital_pin
-        fan_speed_rpm: int = cpu_fan_speed_msg.fan_speed_rpm
+        fan_speed_rpm: float = cpu_fan_speed_msg.fan_speed_rpm
 
         if digital_pin == CPU_FAN_SPEED_PIN:
             # Record state

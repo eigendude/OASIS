@@ -223,7 +223,7 @@ class FirmataBridgeNode(rclpy.node.Node, FirmataCallback):
 
         msg.header = header
         msg.digital_pin = digital_pin
-        msg.fan_speed_rpm = rpm
+        msg.fan_speed_rpm = float(rpm)
 
         self._cpu_fan_speed_pub.publish(msg)
 

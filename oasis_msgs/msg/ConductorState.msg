@@ -31,7 +31,7 @@ uint32 motor_ff1_count
 uint32 motor_ff2_count
 
 # CPU fan speed (RPM)
-uint32 cpu_fan_speed_rpm
+float32 cpu_fan_speed_rpm
 
 # Total RAM size of the MCU, in bytes
 uint32 total_ram
