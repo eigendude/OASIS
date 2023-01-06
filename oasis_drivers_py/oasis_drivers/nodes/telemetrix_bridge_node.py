@@ -459,7 +459,7 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         request: SetSamplingIntervalSvc.Request,
         response: SetSamplingIntervalSvc.Response,
     ) -> SetSamplingIntervalSvc.Response:
-        """Handle ROS 2 digital pin mode changes"""
+        """Handle ROS 2 sampling interval changes"""
         # Translate parameters
         sampling_interval_ms: int = request.sampling_interval_ms
 

@@ -287,7 +287,7 @@ class TelemetrixBridge:
 
     def pwm_write(self, digital_pin: int, duty_cycle: float) -> None:
         """
-        Retrieve the last data update for the specified PWM pin.
+        Set the specified PWM pin to the specified value.
 
         :param digital_pin: Digital pin number
         :param duty_cycle: PWM duty cycle (0.0 - 1.0)
@@ -296,7 +296,7 @@ class TelemetrixBridge:
         value_int: int = int(duty_cycle * self.PWM_MAX)
 
         # Create coroutine
-        coroutine: Awaitable[None] = self._board.pwm_write(digital_pin, value_int)
+        coroutine: Awaitable[None] = self._board.analog_write(digital_pin, value_int)
 
         # Dispatch to asyncio
         future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
