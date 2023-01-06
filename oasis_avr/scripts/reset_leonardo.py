@@ -10,7 +10,9 @@
 ################################################################################
 
 import sys
+
 import serial
+
 
 # Environment parameters
 SERIAL_PORT = sys.argv[1]
