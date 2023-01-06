@@ -58,12 +58,14 @@ MCU_STRING_TOPIC = "mcu_string"
 
 # ROS services
 ANALOG_READ_SERVICE = "analog_read"
+CPU_FAN_WRITE_SERVICE = "cpu_fan_write"
 DIGITAL_READ_SERVICE = "digital_read"
 DIGITAL_WRITE_SERVICE = "digital_write"
 PWM_WRITE_SERVICE = "pwm_write"
 REPORT_MCU_MEMORY_SERVICE = "report_mcu_memory"
 SERVO_WRITE_SERVICE = "servo_write"
 SET_ANALOG_MODE_SERVICE = "set_analog_mode"
+SET_CPU_FAN_SAMPLING_INTERVAL_SERVICE = "set_cpu_fan_sampling_interval"
 SET_DIGITAL_MODE_SERVICE = "set_digital_mode"
 SET_SAMPLING_INTERVAL_SERVICE = "set_sampling_interval"
 
@@ -135,6 +137,11 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
             srv_name=ANALOG_READ_SERVICE,
             callback=self._handle_analog_read,
         )
+        self._cpu_fan_write_service: rclpy.service.Service = self.create_service(
+            srv_type=PWMWriteSvc,
+            srv_name=CPU_FAN_WRITE_SERVICE,
+            callback=self._handle_cpu_fan_write,
+        )
         self._digital_read_service: rclpy.service.Service = self.create_service(
             srv_type=DigitalReadSvc,
             srv_name=DIGITAL_READ_SERVICE,
@@ -164,6 +171,13 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
             srv_type=SetAnalogModeSvc,
             srv_name=SET_ANALOG_MODE_SERVICE,
             callback=self._handle_set_analog_mode,
+        )
+        self._set_cpu_fan_sampling_interval_service: rclpy.service.Service = (
+            self.create_service(
+                srv_type=SetSamplingIntervalSvc,
+                srv_name=SET_CPU_FAN_SAMPLING_INTERVAL_SERVICE,
+                callback=self._handle_set_cpu_fan_sampling_interval,
+            )
         )
         self._set_digital_mode_service: rclpy.service.Service = self.create_service(
             srv_type=SetDigitalModeSvc,
@@ -311,6 +325,24 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
 
         return response
 
+    def _handle_cpu_fan_write(
+        self, request: PWMWriteSvc.Request, response: PWMWriteSvc.Response
+    ) -> PWMWriteSvc.Response:
+        """Handle ROS 2 CPU fan PWM writes"""
+        # Translate parameters
+        digital_pin: int = request.digital_pin
+        duty_cycle: float = request.duty_cycle
+
+        # Debug logging
+        self.get_logger().info(
+            f"Setting CPU fan on pin {digital_pin} to duty cycle {duty_cycle}"
+        )
+
+        # Perform service
+        self._bridge.cpu_fan_write(digital_pin, duty_cycle)
+
+        return response
+
     def _handle_digital_read(
         self, request: DigitalReadSvc.Request, response: DigitalReadSvc.Response
     ) -> DigitalReadSvc.Response:
@@ -423,6 +455,25 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
 
         # Perform service
         self._bridge.set_analog_mode(analog_pin, analog_mode)
+
+        return response
+
+    def _handle_set_cpu_fan_sampling_interval(
+        self,
+        request: SetSamplingIntervalSvc.Request,
+        response: SetSamplingIntervalSvc.Response,
+    ) -> SetSamplingIntervalSvc.Response:
+        """Handle ROS 2 CPU fan sampling interval changes"""
+        # Translate parameters
+        sampling_interval_ms: int = request.sampling_interval_ms
+
+        # Debug logging
+        self.get_logger().info(
+            f"Setting CPU fan sampling interval to {sampling_interval_ms} ms"
+        )
+
+        # Perform service
+        self._bridge.set_cpu_fan_sampling_interval(sampling_interval_ms)
 
         return response
 

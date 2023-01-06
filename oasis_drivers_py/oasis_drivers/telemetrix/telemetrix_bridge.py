@@ -50,7 +50,8 @@ class TelemetrixBridge:
     # ADC parameters
     ANALOG_MAX: int = (1 << 10) - 1  # Max 10-bit analog reading is 1023
     ANALOG_REFERENCE: float = 5.0  # Volts (TODO: Where to get this number?)
-    PWM_MAX: int = 255  # TODO: Max PWM value?
+    PWM_MAX: int = (1 << 10) - 1  # Max 10-bit value is 1023
+    CPU_FAN_MAX: int = 0xFFFF  # CPU fan PWM uses 2-byte duty cycle
 
     def __init__(self, callback: TelemetrixCallback, com_port: str) -> None:
         # Construction parameters
@@ -74,6 +75,9 @@ class TelemetrixBridge:
         # Install custom report handlers
         self._board.report_dispatch.update(
             {TelemetrixConstants.MEMORY_REPORT: self._memory_report}
+        )
+        self._board.report_dispatch.update(
+            {TelemetrixConstants.CPU_FAN_TACH_REPORT: self._on_cpu_fan_rpm}
         )
 
     def initialize(self) -> bool:
@@ -206,6 +210,9 @@ class TelemetrixBridge:
         """
         coroutine: Awaitable[None]
 
+        # Used for custom Telemetrix commands
+        command: List[int]
+
         # Create coroutine
         if digital_mode == DigitalMode.DISABLED:
             coroutine = self._board.disable_digital_reporting(digital_pin)
@@ -224,16 +231,12 @@ class TelemetrixBridge:
         elif digital_mode == DigitalMode.SERVO:
             # TODO: Expose min_pulse and max_pulse parameters
             coroutine = self._board.set_pin_mode_servo(digital_pin)
-            """
         elif digital_mode == DigitalMode.CPU_FAN_PWM:
-            coroutine = self._board.set_pin_mode_custom(
-                digital_pin, TelemetrixConstants.CPU_FAN_PWM
-            )
+            command = [TelemetrixConstants.CPU_FAN_PWM_ATTACH, digital_pin]
+            coroutine = self._board._send_command(command)
         elif digital_mode == DigitalMode.CPU_FAN_TACHOMETER:
-            coroutine = self._board.set_pin_mode_custom(
-                digital_pin, TelemetrixConstants.CPU_FAN_TACH
-            )
-            """
+            command = [TelemetrixConstants.CPU_FAN_TACH_ATTACH, digital_pin]
+            coroutine = self._board._send_command(command)
         else:
             raise ValueError(f"Invalid digital mode: {digital_mode}")
 
@@ -265,6 +268,35 @@ class TelemetrixBridge:
         timestamp: datetime = self._get_timestamp(result[1])
 
         return digital_value, timestamp
+
+    def cpu_fan_write(self, digital_pin: int, duty_cycle: float) -> None:
+        """
+        Set the duty cycle of a CPU fan.
+
+        :param digital_pin: Digital pin number
+        :param duty_cycle: CPU fan duty cycle (0.0 - 1.0)
+        """
+        # Scale value to integer expected by Telemetrix
+        value_int: int = int(duty_cycle * self.CPU_FAN_MAX)
+
+        # Create command
+        value_msb: int = (value_int >> 8) & 0xFF
+        value_lsb: int = value_int & 0xFF
+        command: List[int] = [
+            TelemetrixConstants.CPU_FAN_WRITE,
+            digital_pin,
+            value_msb,
+            value_lsb,
+        ]
+
+        # Create coroutine
+        coroutine: Awaitable[None] = self._board._send_command(command)
+
+        # Dispatch to asyncio
+        future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
+
+        # Wait for completion
+        future.result()
 
     def digital_write(self, digital_pin: int, digital_value: bool) -> None:
         """
@@ -314,6 +346,30 @@ class TelemetrixBridge:
 
         # Create coroutine
         coroutine = self._board.set_analog_scan_interval(sampling_interval_ms)
+
+        # Dispatch to asyncio
+        future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
+
+        # Wait for completion
+        future.result()
+
+    def set_cpu_fan_sampling_interval(self, sampling_interval_ms: int) -> None:
+        """
+        Set the CPU fan tachometer scanning interval.
+
+        :param sampling_interval_ms: sampling interval between 0 - 2^32-1, in milliseconds
+        """
+        # Generate command
+        command = [
+            TelemetrixConstants.SET_CPU_FAN_SAMPLING_INTERVAL,
+            (sampling_interval_ms >> 24) & 0xFF,
+            (sampling_interval_ms >> 16) & 0xFF,
+            (sampling_interval_ms >> 8) & 0xFF,
+            sampling_interval_ms & 0xFF,
+        ]
+
+        # Create coroutine
+        coroutine: Awaitable[None] = self._board._send_command(command)
 
         # Dispatch to asyncio
         future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
@@ -407,9 +463,8 @@ class TelemetrixBridge:
 
         try:
             # Translate parameters
-            data = data[1:]
             digital_pin: int = data[0]
-            fan_rpm: int = data[1] | (data[2] << 7) | (data[3] << 14)
+            fan_rpm: int = (data[1] << 24) | (data[2] << 16) | (data[3] << 8) | data[4]
         except IndexError:
             return
 

@@ -209,6 +209,7 @@ def generate_launch_description() -> LaunchDescription:
                 ("analog_read", f"{mcu_name}/analog_read"),
                 ("analog_reading", f"{mcu_name}/analog_reading"),
                 ("cpu_fan_speed", f"{mcu_name}/cpu_fan_speed"),
+                ("cpu_fan_write", f"{mcu_name}/cpu_fan_write"),
                 ("digital_read", f"{mcu_name}/digital_read"),
                 ("digital_reading", f"{mcu_name}/digital_reading"),
                 ("digital_write", f"{mcu_name}/digital_write"),
@@ -218,6 +219,10 @@ def generate_launch_description() -> LaunchDescription:
                 ("report_mcu_memory", f"{mcu_name}/report_mcu_memory"),
                 ("servo_write", f"{mcu_name}/servo_write"),
                 ("set_analog_mode", f"{mcu_name}/set_analog_mode"),
+                (
+                    "set_cpu_fan_sampling_interval",
+                    f"{mcu_name}/set_cpu_fan_sampling_interval",
+                ),
                 ("set_digital_mode", f"{mcu_name}/set_digital_mode"),
                 ("set_sampling_interval", f"{mcu_name}/set_sampling_interval"),
             ],
