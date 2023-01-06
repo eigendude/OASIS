@@ -120,7 +120,7 @@ static const command_descriptor commandTable[] = {
     (&TelemetrixCommands::cpu_fan_pwm_detach),
     (&TelemetrixCommands::cpu_fan_tach_attach),
     (&TelemetrixCommands::cpu_fan_tach_detach),
-    (&TelemetrixCommands::set_tach_sampling_interval),
+    (&TelemetrixCommands::set_cpu_fan_sampling_interval),
     (&TelemetrixCommands::cpu_fan_write),
 };
 
@@ -832,7 +832,7 @@ void TelemetrixCommands::cpu_fan_tach_detach()
   cpuFan->DetachTachometer(tachometerPin);
 }
 
-void TelemetrixCommands::set_tach_sampling_interval()
+void TelemetrixCommands::set_cpu_fan_sampling_interval()
 {
   const uint32_t intervalMs = (commandBuffer[0] << 24) + (commandBuffer[1] << 16) +
                               (commandBuffer[2] << 8) + commandBuffer[3];

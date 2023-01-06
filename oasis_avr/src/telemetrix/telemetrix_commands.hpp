@@ -81,7 +81,7 @@
 #define CPU_FAN_PWM_DETACH 57
 #define CPU_FAN_TACH_ATTACH 58
 #define CPU_FAN_TACH_DETACH 59
-#define SET_TACH_SAMPLING_INTERVAL 60
+#define SET_CPU_FAN_SAMPLING_INTERVAL 60
 #define CPU_FAN_WRITE 61
 
 // Maximum length of a command in bytes
@@ -295,7 +295,7 @@ public:
   static void cpu_fan_tach_detach();
 
   // Set the tachometer sampling interval
-  static void set_tach_sampling_interval();
+  static void set_cpu_fan_sampling_interval();
 
   // Write a PWM value to a pin controlling a fan
   static void cpu_fan_write();
