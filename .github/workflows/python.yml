@@ -35,19 +35,19 @@ jobs:
       - name: Checkout main repo
         uses: actions/checkout@v2
 
-      # Required on self-hosted workers: sudo apt install python3.9-dev
+      # Required on self-hosted workers: sudo apt install python3.10-dev
       #
-      # Furthermore, on Ubuntu 18.04, Python 3.9 backports don't exist yet, so
+      # Furthermore, on Ubuntu 18.04, Python 3.10 backports don't exist yet, so
       # you can use the deadsnakes repository:
       #
       #   sudo add-apt-repository ppa:deadsnakes/ppa
       #   sudo apt update
-      #   sudo apt install python3.9-dev
+      #   sudo apt install python3.10-dev
       #
-      - name: Set up Python 3.9
+      - name: Set up Python 3.10
         uses: actions/setup-python@v2
         with:
-          python-version: 3.9
+          python-version: "3.10"
 
       - name: Install dependencies
         run: |
