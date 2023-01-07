@@ -74,6 +74,7 @@ setuptools.setup(
             "conductor_manager_firmata = oasis_control.cli.conductor_manager_firmata:main",
             "conductor_manager_telemetrix = oasis_control.cli.conductor_manager_telemetrix:main",
             "engine_manager = oasis_control.cli.engine_manager:main",
+            "lab_manager = oasis_control.cli.lab_manager:main",
             "leonardo_manager = oasis_control.cli.leonardo_manager:main",
         ],
     },
