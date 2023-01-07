@@ -12,10 +12,10 @@
 #include <string>
 #include <vector>
 
+#include <oasis_msgs/msg/i2_c_imu.hpp>
 #include <rclcpp/logger.hpp>
 #include <rclcpp/subscription.hpp>
 #include <sensor_msgs/msg/image.hpp>
-#include <sensor_msgs/msg/imu.hpp>
 
 namespace image_transport
 {
@@ -54,7 +54,7 @@ public:
 
   // ROS interface
   void ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg);
-  void ImuCallback(const sensor_msgs::msg::Imu::ConstSharedPtr& msg);
+  void ImuCallback(const oasis_msgs::msg::I2CImu::ConstSharedPtr& msg);
 
 private:
   // Logging parameters
@@ -63,7 +63,7 @@ private:
   // ROS parameters
   std::unique_ptr<image_transport::ImageTransport> m_imgTransport;
   std::unique_ptr<image_transport::Subscriber> m_imgSubscriber;
-  std::shared_ptr<rclcpp::Subscription<sensor_msgs::msg::Imu>> m_imuSubscriber;
+  std::shared_ptr<rclcpp::Subscription<oasis_msgs::msg::I2CImu>> m_imuSubscriber;
 
   // ORB-SLAM3 system
   std::unique_ptr<ORB_SLAM3::System> m_slam;
