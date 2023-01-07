@@ -73,6 +73,7 @@ setuptools.setup(
             "automation_manager = oasis_control.cli.automation_manager:main",
             "conductor_manager = oasis_control.cli.conductor_manager:main",
             "engine_manager = oasis_control.cli.engine_manager:main",
+            "lab_manager = oasis_control.cli.lab_manager:main",
             "leonardo_manager = oasis_control.cli.leonardo_manager:main",
         ],
     },
