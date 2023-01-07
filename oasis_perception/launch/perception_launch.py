@@ -85,7 +85,7 @@ def generate_launch_description() -> LaunchDescription:
             name=f"monocular_inertial_slam_{HOSTNAME}",
             output="screen",
             remappings=[
-                ("imu", f"{MCU_NODE}/imu"),
+                ("i2c_imu", f"{MCU_NODE}/i2c_imu"),
             ],
         )
         ld.add_action(monocular_inertial_slam_node)

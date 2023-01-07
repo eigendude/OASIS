@@ -36,6 +36,7 @@ find_package(ament_cmake REQUIRED)
 find_package(bgslibrary REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(image_transport REQUIRED)
+find_package(oasis_msgs REQUIRED)
 find_package(ORB_SLAM3)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
@@ -177,6 +178,7 @@ if (ORB_SLAM3_FOUND)
     cv_bridge
     geometry_msgs
     image_transport
+    oasis_msgs
     rclcpp
     sensor_msgs
   )

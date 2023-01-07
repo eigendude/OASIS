@@ -28,7 +28,7 @@ constexpr const char* VIDEO_MACHINE_KINECT2 = "kinect2";
 
 // Subscribed topics
 constexpr const char* IMAGE_TOPIC_KINECT2 = "hd/image_color";
-constexpr const char* IMU_TOPIC = "imu";
+constexpr const char* IMU_TOPIC = "i2c_imu";
 } // namespace OASIS
 
 int main(int argc, char* argv[])

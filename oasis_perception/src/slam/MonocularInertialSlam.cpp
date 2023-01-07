@@ -15,6 +15,7 @@
 #include <geometry_msgs/msg/vector3.hpp>
 #include <image_transport/image_transport.hpp>
 #include <image_transport/transport_hints.hpp>
+#include <oasis_msgs/msg/i2_c_imu.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <rclcpp/node.hpp>
 #include <rcutils/logging_macros.h>
@@ -54,7 +55,7 @@ MonocularInertialSlam::MonocularInertialSlam(std::shared_ptr<rclcpp::Node> node,
 
   *m_imgSubscriber = m_imgTransport->subscribe(imageTopic, 1, &MonocularInertialSlam::ReceiveImage,
                                                this, &transportHints);
-  m_imuSubscriber = node->create_subscription<sensor_msgs::msg::Imu>(
+  m_imuSubscriber = node->create_subscription<oasis_msgs::msg::I2CImu>(
       imuTopic, qos, std::bind(&MonocularInertialSlam::ImuCallback, this, _1));
 
   RCLCPP_INFO(m_logger, "Started monocular inertial SLAM");
@@ -93,14 +94,16 @@ void MonocularInertialSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSha
   m_imuMeasurements.clear();
 }
 
-void MonocularInertialSlam::ImuCallback(const sensor_msgs::msg::Imu::ConstSharedPtr& msg)
+void MonocularInertialSlam::ImuCallback(const oasis_msgs::msg::I2CImu::ConstSharedPtr& msg)
 {
-  const std_msgs::msg::Header& header = msg->header;
+  const sensor_msgs::msg::Imu& imuMsg = msg->imu;
+
+  const std_msgs::msg::Header& header = imuMsg.header;
   const double timestamp =
       static_cast<double>(header.stamp.sec) + static_cast<double>(header.stamp.nanosec) * 1E9;
 
-  const geometry_msgs::msg::Vector3& angularVelocity = msg->angular_velocity;
-  const geometry_msgs::msg::Vector3& linearAceleration = msg->linear_acceleration;
+  const geometry_msgs::msg::Vector3& angularVelocity = imuMsg.angular_velocity;
+  const geometry_msgs::msg::Vector3& linearAceleration = imuMsg.linear_acceleration;
 
   const double ax = linearAceleration.x;
   const double ay = linearAceleration.y;
