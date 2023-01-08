@@ -41,7 +41,6 @@ Environment=OASIS_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/oasis-${RO
 
 ExecStart=/bin/bash -c 'source `eval echo "${PYTHON_ENV}"` && set +o nounset && source `eval echo "${OASIS_ENV}"` && cd `eval echo "${OASIS_SRC}/oasis_perception"` && ros2 launch oasis_perception perception_launch.py'
 Restart=on-failure
-RuntimeMaxSec=60
 
 [Install]
 
