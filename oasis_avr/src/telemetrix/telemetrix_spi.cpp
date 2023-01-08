@@ -20,9 +20,6 @@ using namespace OASIS;
 
 void TelemetrixSPI::InitSPI(uint8_t pinCount, const uint8_t* pins)
 {
-  if (m_spiReportMessage == nullptr)
-    m_spiReportMessage = new uint8_t[64];
-
   // Initialize chip select GPIO pins
   for (unsigned int i = 0; i < pinCount; ++i)
   {
@@ -44,27 +41,28 @@ void TelemetrixSPI::WriteBlockingSPI(uint8_t byteCount, const uint8_t* data)
 
 void TelemetrixSPI::ReadBlockingSPI(uint8_t byteCount, uint8_t readRegister)
 {
-  // m_spiReportMessage[0] = length of message including this element
-  // m_spiReportMessage[1] = SPI_REPORT
-  // m_spiReportMessage[2] = register used for the read
-  // m_spiReportMessage[3] = number of bytes returned
-  // m_spiReportMessage[4..] = data read
+  uint8_t spiReportMessage[64];
+  // spiReportMessage[0] = length of message including this element
+  // spiReportMessage[1] = SPI_REPORT
+  // spiReportMessage[2] = register used for the read
+  // spiReportMessage[3] = number of bytes returned
+  // spiReportMessage[4..] = data read
 
   // Configure the report message
   // Calculate the packet length
-  m_spiReportMessage[0] = byteCount + 3; // Packet length
-  m_spiReportMessage[1] = SPI_REPORT;
-  m_spiReportMessage[2] = readRegister; // Register
-  m_spiReportMessage[3] = byteCount; // Number of bytes read
+  spiReportMessage[0] = byteCount + 3; // Packet length
+  spiReportMessage[1] = SPI_REPORT;
+  spiReportMessage[2] = readRegister; // Register
+  spiReportMessage[3] = byteCount; // Number of bytes read
 
   // Write the register out. OR it with 0x80 to indicate a read
   SPI.transfer(readRegister | 0x80);
 
   // Now read the specified number of bytes and place them in the report buffer
   for (unsigned int i = 0; i < byteCount; ++i)
-    m_spiReportMessage[i + 4] = SPI.transfer(0x00);
+    spiReportMessage[i + 4] = SPI.transfer(0x00);
 
-  Serial.write(m_spiReportMessage, byteCount + 4);
+  Serial.write(spiReportMessage, byteCount + 4);
 }
 
 void TelemetrixSPI::SetFormatSPI(uint32_t clock, uint8_t bitOrder, uint8_t dataMode)
