@@ -25,6 +25,13 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 source "${SCRIPT_DIR}/env_python.sh"
 
 #
+# Build configuration
+#
+
+CC="ccache gcc"
+CXX="ccache g++"
+
+#
 # Directory setup
 #
 
@@ -72,14 +79,14 @@ fi
 #
 
 echo "Building Python..."
-make -C "${PYTHON_SOURCE_DIR}" -j$(getconf _NPROCESSORS_ONLN)
+make -C "${PYTHON_SOURCE_DIR}" -j$(getconf _NPROCESSORS_ONLN) CC="${CC}" CXX="${CXX}"
 
 #
 # Install Python
 #
 
 echo "Installing Python..."
-make -C "${PYTHON_SOURCE_DIR}" install
+make -C "${PYTHON_SOURCE_DIR}" install CC="${CC}" CXX="${CXX}"
 
 # Now that Python is installed, make sure it's on the path
 source "${SCRIPT_DIR}/env_python.sh"
