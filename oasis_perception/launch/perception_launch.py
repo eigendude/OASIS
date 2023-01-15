@@ -90,4 +90,23 @@ def generate_launch_description() -> LaunchDescription:
         )
         ld.add_action(monocular_inertial_slam_node)
 
+    elif HOSTNAME == "lenovo":
+        bgs_abl_node = Node(
+            namespace=ROS_NAMESPACE,
+            package=PACKAGE_NAME,
+            executable="background_subtractor_abl",
+            name=f"background_subtractor_abl_{HOSTNAME}",
+            output="screen",
+        )
+        ld.add_action(bgs_abl_node)
+
+        bgs_asbl_node = Node(
+            namespace=ROS_NAMESPACE,
+            package=PACKAGE_NAME,
+            executable="background_subtractor_asbl",
+            name=f"background_subtractor_asbl_{HOSTNAME}",
+            output="screen",
+        )
+        ld.add_action(bgs_asbl_node)
+
     return ld

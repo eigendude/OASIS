@@ -24,9 +24,11 @@ constexpr const char* BGS_ABL_NODE_NAME = "background_substractor_abl";
 
 // TODO: Hardware configuration
 constexpr const char* VIDEO_MACHINE_KINECT2 = "kinect2";
+constexpr const char* VIDEO_MACHINE_LENOVO = "lenovo";
 
 // Subscribed topics
 constexpr const char* IMAGE_TOPIC_KINECT2 = "hd/image_color";
+constexpr const char* IMAGE_TOPIC_LENOVO = "image_raw";
 
 // Published topics
 constexpr const char* BACKGROUND_TOPIC = "background";
@@ -44,12 +46,11 @@ int main(int argc, char* argv[])
       std::make_shared<rclcpp::Node>(BGS_ABL_NODE_NAME + appendHostname);
 
   // Create topics
-  const std::string kinectTopicBase =
-      std::string("/") + ROS_NAMESPACE + "/" + VIDEO_MACHINE_KINECT2 + "/";
+  const std::string topicBase = std::string("/") + ROS_NAMESPACE + "/" + VIDEO_MACHINE_LENOVO + "/";
 
   {
-    OASIS::IMAGE::BackgroundModelerABL backgroundModelerKinect2(
-        node, kinectTopicBase + IMAGE_TOPIC_KINECT2, kinectTopicBase + BACKGROUND_TOPIC);
+    OASIS::IMAGE::BackgroundModelerABL backgroundModeler(node, topicBase + IMAGE_TOPIC_LENOVO,
+                                                         topicBase + BACKGROUND_TOPIC);
 
     rclcpp::spin(node);
   }
