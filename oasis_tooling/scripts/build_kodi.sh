@@ -170,5 +170,6 @@ echo "Building add-ons..."
 make \
   -C "${KODI_DEPENDS_SRC}/target/binary-addons" \
   -j$(getconf _NPROCESSORS_ONLN) \
-  ADDONS="peripheral.joystick" \
+  ADDONS="^(peripheral.joystick|screensaver.matrixtrails)$" \
+  EXTRA_CMAKE_ARGS="-DAPP_RENDER_SYSTEM=gl" \
   PREFIX="${KODI_INSTALL_DIR}" \

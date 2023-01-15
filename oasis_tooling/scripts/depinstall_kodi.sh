@@ -125,6 +125,10 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     zip \
     zlib1g-dev \
 
+  # Install screensaver.matrix dependencies
+  sudo apt install -y \
+    libgl1-mesa-dev \
+
   if [ "${ENABLE_LLD}" = "ON" ]; then
     sudo apt install -y lld
   fi
