@@ -25,7 +25,8 @@ ENABLE_DRIVERS=1
 # Machines for image processing
 ENABLE_PERCEPTION=0
 if \
-  [ "${HOSTNAME}" = "cinder" ] \
+  [ "${HOSTNAME}" = "cinder" ] || \
+  [ "${HOSTNAME}" = "lenovo" ] \
 ; then
   ENABLE_PERCEPTION=1
 fi
