@@ -12,7 +12,7 @@
 import subprocess
 
 
-class DisplayManager:
+class DisplayServer:
     """
     Control power to displays. Currently only works for laptops.
 

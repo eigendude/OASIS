@@ -89,17 +89,17 @@ def generate_launch_description() -> LaunchDescription:
         ld.add_action(cec_server_node)
 
     if ENABLE_DISPLAY:
-        display_manager_node = Node(
+        display_server_node = Node(
             namespace=ROS_NAMESPACE,
             package=PYTHON_PACKAGE_NAME,
-            executable="display_manager",
-            name=f"display_manager_{HOSTNAME}",
+            executable="display_server",
+            name=f"display_server_{HOSTNAME}",
             output="screen",
             remappings=[
                 ("power_control", f"{HOSTNAME}/power_control"),
             ],
         )
-        ld.add_action(display_manager_node)
+        ld.add_action(display_server_node)
 
     serial_port_node = Node(
         namespace=ROS_NAMESPACE,
