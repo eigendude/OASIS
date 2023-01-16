@@ -57,7 +57,6 @@ def generate_launch_description() -> LaunchDescription:
     if HOSTNAME in [
         "asus",
         "inspiron",
-        "lenovo",
         "netbook",
         "station",
     ]:
@@ -73,6 +72,20 @@ def generate_launch_description() -> LaunchDescription:
             ],
         )
         ld.add_action(automation_manager_node)
+
+    if HOSTNAME == "lenovo":
+        # Launch a display manager to handle laptops with external displays
+        display_manager_node = Node(
+            namespace=ROS_NAMESPACE,
+            package=PACKAGE_NAME,
+            executable="display_manager",
+            name=f"display_manager_{HOSTNAME}",
+            output="screen",
+            remappings=[
+                ("power_control", f"{HOSTNAME}/power_control"),
+            ],
+        )
+        ld.add_action(display_manager_node)
 
     # Microcontroller nodes
     if HOSTNAME == "station":

@@ -48,6 +48,9 @@ class DisplayServerNode(rclpy.node.Node):
         self.get_logger().info("Display server initialized")
 
     def stop(self) -> None:
+        # TODO: Pause for a small while to allow other services to power on/off
+        #  displays as they deinitialize
+
         self.get_logger().info("Display server deinitialized")
 
         # Destroy the node explicitly. Problems can occur when the garbage
