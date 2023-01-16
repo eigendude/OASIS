@@ -11,7 +11,7 @@
 import rclpy.node
 import rclpy.service
 
-from oasis_drivers.display.display_manager import DisplayManager
+from oasis_drivers.display.display_server import DisplayServer
 from oasis_msgs.msg import PowerMode as PowerModeMsg
 from oasis_msgs.srv import PowerControl as PowerControlSvc
 
@@ -21,7 +21,7 @@ from oasis_msgs.srv import PowerControl as PowerControlSvc
 ################################################################################
 
 
-NODE_NAME = "display_manager"
+NODE_NAME = "display_server"
 
 POWER_CONTROL_SERVICE = "power_control"
 
@@ -31,7 +31,7 @@ POWER_CONTROL_SERVICE = "power_control"
 ################################################################################
 
 
-class DisplayManagerNode(rclpy.node.Node):
+class DisplayServerNode(rclpy.node.Node):
     def __init__(self) -> None:
         """
         Initialize resources.
@@ -45,10 +45,10 @@ class DisplayManagerNode(rclpy.node.Node):
             callback=self._handle_power_control,
         )
 
-        self.get_logger().info("Display manager initialized")
+        self.get_logger().info("Display server initialized")
 
     def stop(self) -> None:
-        self.get_logger().info("Display manager deinitialized")
+        self.get_logger().info("Display server deinitialized")
 
         # Destroy the node explicitly. Problems can occur when the garbage
         # collector automatically destroys the node object after ROS has
@@ -60,6 +60,6 @@ class DisplayManagerNode(rclpy.node.Node):
     ) -> PowerControlSvc.Response:
         power_mode: bool = request.power_mode == PowerModeMsg.ON
 
-        DisplayManager.call_vbetool(power_mode, self.get_logger())
+        DisplayServer.call_vbetool(power_mode, self.get_logger())
 
         return response
