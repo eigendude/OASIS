@@ -76,7 +76,7 @@ setuptools.setup(
     ],
     entry_points={
         "console_scripts": [
-            "display_manager = oasis_drivers.cli.display_manager:main",
+            "display_server = oasis_drivers.cli.display_server:main",
             "firmata_bridge = oasis_drivers.cli.firmata_bridge:main",
             "serial_scanner = oasis_drivers.cli.serial_scanner:main",
             "system_monitor = oasis_drivers.cli.system_monitor:main",

@@ -18,7 +18,7 @@
 
 import rclpy
 
-from oasis_drivers.nodes.display_manager_node import DisplayManagerNode
+from oasis_drivers.nodes.display_server_node import DisplayServerNode
 
 
 ################################################################################
@@ -29,11 +29,13 @@ from oasis_drivers.nodes.display_manager_node import DisplayManagerNode
 def main(args=None) -> None:
     rclpy.init(args=args)
 
-    manager = DisplayManagerNode()
+    node = DisplayServerNode()
 
     try:
-        rclpy.spin(manager)
+        rclpy.spin(node)
     except KeyboardInterrupt:
         pass
     finally:
-        manager.stop()
+        node.stop()
+
+    rclpy.shutdown()
