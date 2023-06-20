@@ -8,7 +8,7 @@
 
 #include "BackgroundModelerASBL.h"
 
-#include <algorithms/AdaptiveSelectiveBackgroundLearning.h>
+#include <bgslibrary/algorithms/AdaptiveSelectiveBackgroundLearning.h>
 #include <cv_bridge/cv_bridge.hpp>
 #include <image_transport/image_transport.hpp>
 #include <image_transport/transport_hints.hpp>
