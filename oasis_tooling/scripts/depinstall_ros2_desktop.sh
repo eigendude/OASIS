@@ -35,6 +35,12 @@ if [ "${ROS2_DISTRO}" = "humble" ]; then
     rti-connext-dds-6.0.1 \
     urdfdom_headers \
   "
+elif [ "${ROS2_DISTRO}" = "iron" ]; then
+  ROSDEP_IGNORE_KEYS=" \
+    fastcdr \
+    rti-connext-dds-6.0.1 \
+    urdfdom_headers \
+  "
 else
   ROSDEP_IGNORE_KEYS=
 fi
@@ -293,16 +299,16 @@ echo "Downloading ROS 2 source code..."
   vcs import "${ROS2_SOURCE_DIRECTORY}" < ros2.repos
 
   # Patch ROS 2 packages
-  patch \
-    -p1 \
-    --forward \
-    --reject-file="/dev/null" \
-    --no-backup-if-mismatch \
-    --directory="${ROS2_SOURCE_DIRECTORY}/ros2/rviz" \
-    < "${CONFIG_DIRECTORY}/rviz/0001-Update-to-C-17.patch" \
-    || :
-
   if [ "${ROS2_DISTRO}" = "humble" ]; then
+    patch \
+      -p1 \
+      --forward \
+      --reject-file="/dev/null" \
+      --no-backup-if-mismatch \
+      --directory="${ROS2_SOURCE_DIRECTORY}/ros2/rviz" \
+      < "${CONFIG_DIRECTORY}/rviz/0001-Update-to-C-17.patch" \
+      || :
+
     patch \
       -p1 \
       --forward \

@@ -17,7 +17,7 @@ User=garrett
 # ROS 2 configuration
 #
 
-Environment=ROS2_DISTRO=humble
+Environment=ROS2_DISTRO=iron
 Environment=RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 
 #

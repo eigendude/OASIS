@@ -19,7 +19,7 @@ set -o nounset
 #
 
 # Define the ROS distro to use
-ROS2_DISTRO=humble
+ROS2_DISTRO=iron
 
 #
 # Environment paths and config

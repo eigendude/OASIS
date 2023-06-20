@@ -24,7 +24,7 @@ namespace
 {
 // TODO
 constexpr const char* VOCABULARY_FILE =
-    "/home/garrett/Documents/ros-ws/src/oasis/ros-ws/oasis-depends-humble/src/depends/orb-slam3/"
+    "/home/garrett/Documents/ros-ws/src/oasis/ros-ws/oasis-depends-iron/src/depends/orb-slam3/"
     "Vocabulary/ORBvoc.txt"; // TODO
 constexpr const char* SETTINGS_FILE =
     "/home/garrett/Documents/ros-ws/src/oasis/oasis_perception/config/Webcam.yaml"; // TODO

@@ -21,15 +21,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-18.04
-            ros1_distro: noetic
-            ros2_distro: humble
-          - os: ubuntu-20.04
-            ros1_distro: noetic
-            ros2_distro: humble
           - os: ubuntu-22.04
             ros1_distro: noetic
-            ros2_distro: humble
+            ros2_distro: iron
           #- os: macbook
           #  ros1_distro: noetic
           #  ros2_distro: galactic

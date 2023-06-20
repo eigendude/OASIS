@@ -179,30 +179,32 @@ if [ "${CODENAME}" = "bionic" ]; then
 fi
 
 # image_transport_plugins
-patch \
-  -p1 \
-  --forward \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/image_transport_plugins" \
-  < "${CONFIG_DIRECTORY}/image_transport_plugins/0001-Revert-Read-updates-of-compressed-image-transport-pa.patch" \
-  || :
-patch \
-  -p1 \
-  --forward \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/image_transport_plugins" \
-  < "${CONFIG_DIRECTORY}/image_transport_plugins/0002-Revert-Cleanup-the-cmake-code-to-be-more-modern-96.patch" \
-  || :
-patch \
-  -p1 \
-  --forward \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/image_transport_plugins" \
-  < "${CONFIG_DIRECTORY}/image_transport_plugins/0003-Revert-Add-tiff-compression-support.-75.patch" \
-  || :
+if [ "${ROS2_DISTRO}" = "humble" ]; then
+  patch \
+    -p1 \
+    --forward \
+    --reject-file="/dev/null" \
+    --no-backup-if-mismatch \
+    --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/image_transport_plugins" \
+    < "${CONFIG_DIRECTORY}/image_transport_plugins/0001-Revert-Read-updates-of-compressed-image-transport-pa.patch" \
+    || :
+  patch \
+    -p1 \
+    --forward \
+    --reject-file="/dev/null" \
+    --no-backup-if-mismatch \
+    --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/image_transport_plugins" \
+    < "${CONFIG_DIRECTORY}/image_transport_plugins/0002-Revert-Cleanup-the-cmake-code-to-be-more-modern-96.patch" \
+    || :
+  patch \
+    -p1 \
+    --forward \
+    --reject-file="/dev/null" \
+    --no-backup-if-mismatch \
+    --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/image_transport_plugins" \
+    < "${CONFIG_DIRECTORY}/image_transport_plugins/0003-Revert-Add-tiff-compression-support.-75.patch" \
+    || :
+fi
 
 # libcec
 cp -v \
@@ -333,24 +335,28 @@ patch \
   || :
 
 # ros2_v4l2_camera
-patch \
-  -p1 \
-  --forward \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/ros2_v4l2_camera" \
-  < "${CONFIG_DIRECTORY}/ros2_v4l2_camera/0001-Disable-Werror.patch" \
-  || :
+if [ "${ROS2_DISTRO}" = "humble" ]; then
+  patch \
+    -p1 \
+    --forward \
+    --reject-file="/dev/null" \
+    --no-backup-if-mismatch \
+    --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/ros2_v4l2_camera" \
+    < "${CONFIG_DIRECTORY}/ros2_v4l2_camera/0001-Disable-Werror.patch" \
+    || :
+fi
 
 # vision_opencv
-patch \
-  -p1 \
-  --forward \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/vision_opencv" \
-  < "${CONFIG_DIRECTORY}/vision_opencv/0001-Disable-Python-bindings-by-default.patch" \
-  || :
+if [ "${ROS2_DISTRO}" = "humble" ]; then
+  patch \
+    -p1 \
+    --forward \
+    --reject-file="/dev/null" \
+    --no-backup-if-mismatch \
+    --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/vision_opencv" \
+    < "${CONFIG_DIRECTORY}/vision_opencv/0001-Disable-Python-bindings-by-default.patch" \
+    || :
+fi
 
 #
 # Install rosdeps packages (except on macOS)
