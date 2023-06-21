@@ -38,13 +38,16 @@ fi
 
 # Version
 if [ "${ENABLE_DUAL_DISPLAYS}" = "1" ]; then
-  KODI_VERSION="8dfb37f08a81cb29462b922a7ca67287211e71a3"
+  KODI_VERSION="5c9e34c4d3fa56dab27193b4dee671f4b7608c6e"
 else
-  KODI_VERSION="197ef177d9eeaf13c4949c9338793bf7002409d2"
+  KODI_VERSION="19cfde8b41e249011a290adb2943d6a1d9d11c73"
 fi
 
 # URL
 KODI_URL="https://github.com/garbear/xbmc/archive/${KODI_VERSION}.tar.gz"
+
+# TODO: Detect this
+KODI_DEPENDS_TARGET=x86_64-linux-gnu-release
 
 #
 # Build environment
@@ -58,8 +61,8 @@ ENABLE_LLD="$([ -n "$(apt-cache search --names-only '^lld$')" ] && echo "ON" || 
 # Enable Wayland if the waylandpp-dev package is found
 ENABLE_WAYLAND="$([ -n "$(apt-cache search --names-only '^waylandpp-dev$')" ] && echo "ON" || echo "OFF")"
 
-# Enable internal spdlog on Ubuntu 18.04
-if [ "${CODENAME}" = "bionic" ]; then
+# Enable internal spdlog on Ubuntu 18.04 and Ubuntu 22.04
+if [ "${CODENAME}" = "bionic" ] || [ "${CODENAME}" = "jammy" ]; then
   ENABLE_INTERNAL_FMT=ON
   ENABLE_INTERNAL_SPDLOG=ON
 else
@@ -88,6 +91,7 @@ KODI_DIRECTORY="${BUILD_DIRECTORY}/kodi-${ROS2_DISTRO}"
 KODI_DOWNLOAD_DIR="${KODI_DIRECTORY}/downloads"
 KODI_EXTRACT_DIR="${KODI_DIRECTORY}/src"
 KODI_SOURCE_DIR="${KODI_DIRECTORY}/src/xbmc-${KODI_VERSION}"
+KODI_DEPENDS_DIR="${KODI_DIRECTORY}/depends/kodi-${KODI_VERSION}"
 KODI_BUILD_DIR="${KODI_DIRECTORY}/build/kodi-${KODI_VERSION}"
 KODI_INSTALL_DIR="${KODI_DIRECTORY}/install"
 

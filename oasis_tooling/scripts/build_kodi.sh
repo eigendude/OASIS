@@ -44,6 +44,10 @@ mkdir -p "${KODI_DOWNLOAD_DIR}"
 mkdir -p "${KODI_EXTRACT_DIR}"
 mkdir -p "${KODI_BUILD_DIR}"
 
+if [ "${CODENAME}" = "jammy" ]; then
+  mkdir -p "${KODI_DEPENDS_DIR}"
+fi
+
 #
 # Download Kodi
 #
@@ -85,6 +89,24 @@ if [ "${CODENAME}" = "bionic" ]; then
 fi
 
 #
+# Build libdisplay-info (not available in < Ubuntu 23.04)
+#
+
+if [ "${CODENAME}" == "jammy" ]; then
+  (
+    cd "${KODI_SOURCE_DIR}/tools/depends"
+    ./bootstrap
+    ./configure \
+      --prefix="${KODI_DEPENDS_DIR}" \
+      --disable-debug \
+      --with-rendersystem=gl
+    make -C "native/meson" NATIVEPREFIX="${PYTHON_INSTALL_DIR}"
+    make -C "native/ninja" NATIVEPREFIX="${PYTHON_INSTALL_DIR}"
+    make -C "target/libdisplay-info" NATIVEPREFIX="${PYTHON_INSTALL_DIR}"
+  )
+fi
+
+#
 # Configure Kodi
 #
 
@@ -93,6 +115,7 @@ fi
   mkdir -p "${KODI_BUILD_DIR}"
   cd "${KODI_BUILD_DIR}"
   PATH="${CMAKE_BIN_DIRECTORY}:${PATH}" \
+  PKG_CONFIG_PATH="${KODI_DEPENDS_DIR}/${KODI_DEPENDS_TARGET}/lib/pkgconfig" \
     cmake \
       "${KODI_SOURCE_DIR}" \
       -DAPP_RENDER_SYSTEM=${APP_RENDER_SYSTEM} \
