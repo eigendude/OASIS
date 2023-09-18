@@ -15,8 +15,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-20.04
-            clang-format-version: 13
+          - os: ubuntu-22.04
+            clang-format-version: 16
 
     # Steps represent a sequence of tasks that will be executed as part of the
     # job
