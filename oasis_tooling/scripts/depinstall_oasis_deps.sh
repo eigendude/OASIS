@@ -348,6 +348,16 @@ if [ "${ROS2_DISTRO}" = "humble" ]; then
     < "${CONFIG_DIRECTORY}/ros2_v4l2_camera/0001-Disable-Werror.patch" \
     || :
 fi
+if [ "${ROS2_DISTRO}" = "iron" ]; then
+  patch \
+    -p1 \
+    --forward \
+    --reject-file="/dev/null" \
+    --no-backup-if-mismatch \
+    --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/ros2_v4l2_camera" \
+    < "${CONFIG_DIRECTORY}/ros2_v4l2_camera/0001-Fix-include-path.patch" \
+    || :
+fi
 
 # vision_opencv
 if [ "${ROS2_DISTRO}" = "humble" ]; then

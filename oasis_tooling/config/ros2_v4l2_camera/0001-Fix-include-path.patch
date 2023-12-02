@@ -1,0 +1,30 @@
+From 7524a550d726a39609346e56acf91646f1d6d728 Mon Sep 17 00:00:00 2001
+From: Garrett Brown <themagnificentmrb@gmail.com>
+Date: Fri, 1 Dec 2023 20:48:15 -0800
+Subject: [PATCH] Fix include path
+
+Error was:
+
+  v4l2_camera.cpp:17:10: fatal error: cv_bridge/cv_bridge.h: No such file or directory
+     17 | #include <cv_bridge/cv_bridge.h>
+        |          ^~~~~~~~~~~~~~~~~~~~~~~
+---
+ src/v4l2_camera.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/v4l2_camera.cpp b/src/v4l2_camera.cpp
+index a09767d..e507c39 100644
+--- a/src/v4l2_camera.cpp
++++ b/src/v4l2_camera.cpp
+@@ -14,7 +14,7 @@
+ 
+ #include "v4l2_camera/v4l2_camera.hpp"
+ 
+-#include <cv_bridge/cv_bridge.h>
++#include <cv_bridge/cv_bridge.hpp>
+ 
+ #include <algorithm>
+ #include <memory>
+-- 
+2.34.1
+
