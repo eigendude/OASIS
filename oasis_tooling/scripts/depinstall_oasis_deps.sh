@@ -117,6 +117,9 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
   if [ "$(cat /proc/cpuinfo | grep "^Model" | awk '{print $3}')" = "Raspberry" ]; then
     sudo apt install -y libraspberrypi-dev
   fi
+
+  # Needed by cv_bridge, dev dependency of tracetools package in ros2_tracing stack
+  sudo apt install -y liblttng-ust-dev
 fi
 
 #
