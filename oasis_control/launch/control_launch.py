@@ -80,8 +80,8 @@ def generate_launch_description() -> LaunchDescription:
         conductor_node = Node(
             namespace=ROS_NAMESPACE,
             package=PACKAGE_NAME,
-            executable=f"{MCU_NODE}_manager_firmata",
-            name=f"{MCU_NODE}_manager_firmata_{HOSTNAME}",
+            executable=f"{MCU_NODE}_manager_telemetrix",
+            name=f"{MCU_NODE}_manager_telemetrix_{HOSTNAME}",
             output="screen",
             remappings=[
                 (f"{MCU_NODE}_state", f"{HOSTNAME}/{MCU_NODE}_state"),

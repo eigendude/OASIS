@@ -231,7 +231,7 @@ def generate_launch_description() -> LaunchDescription:
     # Microcontroller interfaces
     if HOSTNAME == "station":
         mcu_node = "conductor"
-        conductor_bridge_node: Node = get_firmata_bridge(HOSTNAME, mcu_node)
+        conductor_bridge_node: Node = get_telemetrix_bridge(HOSTNAME, mcu_node)
         ld.add_action(conductor_bridge_node)
     elif HOSTNAME == "jetson":
         mcu_node = "engine"
