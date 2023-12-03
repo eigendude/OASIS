@@ -91,7 +91,7 @@ CONTROLLER_PROFILE = "game.controller.default"
 
 ROS_NAMESPACE = "oasis"
 
-NODE_NAME = "conductor_manager"
+NODE_NAME = "conductor_manager_firmata"
 
 PUBLISH_STATE_PERIOD_SECS = 0.1
 

@@ -10,7 +10,7 @@
 
 import rclpy
 
-from oasis_control.nodes.conductor_manager_node import ConductorManagerNode
+from oasis_control.nodes.conductor_manager_node_firmata import ConductorManagerNode
 
 
 ################################################################################
