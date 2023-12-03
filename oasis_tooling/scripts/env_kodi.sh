@@ -21,6 +21,16 @@ set -o nounset
 CODENAME="$(lsb_release --codename | cut -f2)"
 
 #
+# Environment paths and config
+#
+
+# Get the absolute path to this script
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+# Import OASIS paths and config
+source "${SCRIPT_DIR}/env_oasis.sh"
+
+#
 # Hardware configuration
 #
 
@@ -38,22 +48,27 @@ fi
 
 # Version
 if [ "${ENABLE_DUAL_DISPLAYS}" = "1" ]; then
-  KODI_VERSION="5c9e34c4d3fa56dab27193b4dee671f4b7608c6e"
+  KODI_VERSION="fe36f6bfe68d9dec87c19849aadc6295a475113f"
 else
-  KODI_VERSION="19cfde8b41e249011a290adb2943d6a1d9d11c73"
+  KODI_VERSION="535748556d659f0d7e385f83dc79bfff199a82c2"
 fi
 
 # URL
 KODI_URL="https://github.com/garbear/xbmc/archive/${KODI_VERSION}.tar.gz"
 
-# TODO: Detect this
-KODI_DEPENDS_TARGET=x86_64-linux-gnu-release
+# Target architecture and build config
+KODI_DEPENDS_TARGET=${PLATFORM_ARCH}-linux-gnu-release
 
 #
 # Build environment
 #
 
-APP_RENDER_SYSTEM=gles
+# Render system
+if [[ ${PLATFORM_ARCH} == x86_64 ]]; then
+  APP_RENDER_SYSTEM=gl
+else
+  APP_RENDER_SYSTEM=gles
+fi
 
 # Enable LLD if available
 ENABLE_LLD="$([ -n "$(apt-cache search --names-only '^lld$')" ] && echo "ON" || echo "OFF")"
@@ -69,16 +84,6 @@ else
   ENABLE_INTERNAL_FMT=OFF
   ENABLE_INTERNAL_SPDLOG=OFF
 fi
-
-#
-# Environment paths and config
-#
-
-# Get the absolute path to this script
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-
-# Import OASIS paths and config
-source "${SCRIPT_DIR}/env_oasis.sh"
 
 #
 # Directory and path definitions
@@ -99,7 +104,7 @@ KODI_INSTALL_DIR="${KODI_DIRECTORY}/install"
 KODI_BIN_DIRECTORY="${KODI_INSTALL_DIR}/bin"
 
 # Kodi depends directory
-KODI_DEPENDS="${KODI_SOURCE_DIR}/tools/depends"
+KODI_DEPENDS_SRC="${KODI_SOURCE_DIR}/tools/depends"
 
 # Define paths
 KODI_ARCHIVE_PATH="${KODI_DOWNLOAD_DIR}/kodi-${KODI_VERSION}.tar.gz"

@@ -89,21 +89,36 @@ if [ "${CODENAME}" = "bionic" ]; then
 fi
 
 #
-# Build libdisplay-info (not available in < Ubuntu 23.04)
+# Configure native depends
 #
 
-if [ "${CODENAME}" == "jammy" ]; then
+if [ ! -f "${KODI_DEPENDS_SRC}/Makefile.include" ]; then
   (
-    cd "${KODI_SOURCE_DIR}/tools/depends"
+    cd "${KODI_DEPENDS_SRC}"
     ./bootstrap
     ./configure \
       --prefix="${KODI_DEPENDS_DIR}" \
       --disable-debug \
-      --with-rendersystem=gl
-    make -C "native/meson" NATIVEPREFIX="${PYTHON_INSTALL_DIR}"
-    make -C "native/ninja" NATIVEPREFIX="${PYTHON_INSTALL_DIR}"
-    make -C "target/libdisplay-info" NATIVEPREFIX="${PYTHON_INSTALL_DIR}"
+      --with-rendersystem=${APP_RENDER_SYSTEM}
   )
+fi
+
+#
+# Build native depends
+#
+
+make \
+  -C "${KODI_DEPENDS_SRC}/native" \
+  -j$(getconf _NPROCESSORS_ONLN)
+
+#
+# Build libdisplay-info (not available in < Ubuntu 23.04)
+#
+
+if [ "${CODENAME}" == "jammy" ]; then
+  make \
+    -C "${KODI_DEPENDS_SRC}/target/libdisplay-info" \
+    -j$(getconf _NPROCESSORS_ONLN)
 fi
 
 #
@@ -123,6 +138,7 @@ fi
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_INSTALL_PREFIX="${KODI_INSTALL_DIR}" \
       -DENABLE_CEC=OFF \
+      -DENABLE_INTERNAL_FFMPEG=ON \
       -DENABLE_INTERNAL_FLATBUFFERS=ON \
       -DENABLE_INTERNAL_FMT=${ENABLE_INTERNAL_FMT} \
       -DENABLE_INTERNAL_SPDLOG=${ENABLE_INTERNAL_SPDLOG} \
@@ -152,7 +168,7 @@ make -C "${KODI_BUILD_DIR}" install
 
 echo "Building add-ons..."
 make \
-  -C "${KODI_DEPENDS}/target/binary-addons" \
+  -C "${KODI_DEPENDS_SRC}/target/binary-addons" \
   -j$(getconf _NPROCESSORS_ONLN) \
   ADDONS="peripheral.joystick" \
   PREFIX="${KODI_INSTALL_DIR}" \
