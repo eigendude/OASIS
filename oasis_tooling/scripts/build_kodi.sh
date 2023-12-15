@@ -104,12 +104,15 @@ if [ ! -f "${KODI_DEPENDS_SRC}/Makefile.include" ]; then
 fi
 
 #
-# Build native depends
+# Build native depends for target depends
 #
 
 make \
   -C "${KODI_DEPENDS_SRC}/native" \
-  -j$(getconf _NPROCESSORS_ONLN)
+  -j$(getconf _NPROCESSORS_ONLN) \
+  meson \
+  ninja \
+  python3 \
 
 #
 # Build libdisplay-info (not available in < Ubuntu 23.04)
@@ -161,6 +164,17 @@ make \
 
 echo "Installing Kodi..."
 make -C "${KODI_BUILD_DIR}" install
+
+#
+# Build native depends for add-ons
+#
+
+make \
+  -C "${KODI_DEPENDS_SRC}/native" \
+  -j$(getconf _NPROCESSORS_ONLN) \
+  automake \
+  cmake \
+  libtool \
 
 #
 # Build add-ons
