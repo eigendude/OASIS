@@ -196,9 +196,8 @@ elseif (HOST_NAME STREQUAL cinder)
   set(ENABLE_SONAR OFF)
   set(ENABLE_SPI OFF)
   set(ENABLE_STEPPER OFF)
-elseif (HOST_NAME STREQUAL nuc OR HOST_NAME STREQUAL starship)
-  # Building lab with refactored Telemetrix
-  set(ARDUINO_VARIANT uno)
+else()
+  set(ARDUINO_VARIANT mega)
 
   #
   # With external libraries disabled:
@@ -246,24 +245,6 @@ elseif (HOST_NAME STREQUAL nuc OR HOST_NAME STREQUAL starship)
   # Data Size: 1707 of 2048 bytes (83%)
   # RAM: 85%
   #
-  set(ENABLE_AIR_QUALITY ON)
-  set(ENABLE_ANALOG ON)
-  set(ENABLE_BLUEFRUIT OFF)
-  set(ENABLE_CPU_FAN ON)
-  set(ENABLE_DHT ON)
-  set(ENABLE_DIAGNOSTICS ON)
-  set(ENABLE_DIGITAL ON)
-  set(ENABLE_I2C ON)
-  set(ENABLE_IMU ON)
-  set(ENABLE_ONE_WIRE ON)
-  set(ENABLE_SERVO ON)
-  set(ENABLE_SONAR ON)
-  set(ENABLE_SPI ON)
-  set(ENABLE_STEPPER ON)
-else()
-  # Building generic
-  set(ARDUINO_VARIANT uno)
-
   set(ENABLE_AIR_QUALITY ON)
   set(ENABLE_ANALOG ON)
   set(ENABLE_BLUEFRUIT ON)
@@ -696,32 +677,29 @@ target_link_arduino_libraries(oasis_avr_utils PRIVATE
 # firmata_node
 #
 
-# Firmata is being replaced by Telemetrix, so only build the conductor firmware
-if (HOST_NAME STREQUAL station)
-  add_executable(firmata_node
-    src/ros/firmata_node.cpp
-  )
+add_executable(firmata_node
+  src/ros/firmata_node.cpp
+)
 
-  target_link_libraries(firmata_node PRIVATE
-    oasis_avr_firmata
-    oasis_avr_leds
-    oasis_avr_utils
-  )
+target_link_libraries(firmata_node PRIVATE
+  oasis_avr_firmata
+  oasis_avr_leds
+  oasis_avr_utils
+)
 
-  target_link_arduino_libraries(firmata_node PRIVATE
-    ${FIRMATA_LIBRARIES}
-  )
+target_link_arduino_libraries(firmata_node PRIVATE
+  ${FIRMATA_LIBRARIES}
+)
 
-  # This is needed for the generation of HEX binary and uploading it
-  target_enable_arduino_upload(firmata_node)
+# This is needed for the generation of HEX binary and uploading it
+target_enable_arduino_upload(firmata_node)
 
-  install(
-    TARGETS
-      firmata_node
-    DESTINATION
-      share/${PROJECT_NAME}
-  )
-endif()
+install(
+  TARGETS
+    firmata_node
+  DESTINATION
+    share/${PROJECT_NAME}
+)
 
 #
 # telemetrix_node
