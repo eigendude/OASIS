@@ -181,34 +181,6 @@ if [ "${CODENAME}" = "bionic" ]; then
   touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/bgslibrary/COLCON_IGNORE"
 fi
 
-# image_transport_plugins
-if [ "${ROS2_DISTRO}" = "humble" ]; then
-  patch \
-    -p1 \
-    --forward \
-    --reject-file="/dev/null" \
-    --no-backup-if-mismatch \
-    --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/image_transport_plugins" \
-    < "${CONFIG_DIRECTORY}/image_transport_plugins/0001-Revert-Read-updates-of-compressed-image-transport-pa.patch" \
-    || :
-  patch \
-    -p1 \
-    --forward \
-    --reject-file="/dev/null" \
-    --no-backup-if-mismatch \
-    --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/image_transport_plugins" \
-    < "${CONFIG_DIRECTORY}/image_transport_plugins/0002-Revert-Cleanup-the-cmake-code-to-be-more-modern-96.patch" \
-    || :
-  patch \
-    -p1 \
-    --forward \
-    --reject-file="/dev/null" \
-    --no-backup-if-mismatch \
-    --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/image_transport_plugins" \
-    < "${CONFIG_DIRECTORY}/image_transport_plugins/0003-Revert-Add-tiff-compression-support.-75.patch" \
-    || :
-fi
-
 # libcec
 cp -v \
   "${CONFIG_DIRECTORY}/libcec/package.xml" \
@@ -338,16 +310,6 @@ patch \
   || :
 
 # ros2_v4l2_camera
-if [ "${ROS2_DISTRO}" = "humble" ]; then
-  patch \
-    -p1 \
-    --forward \
-    --reject-file="/dev/null" \
-    --no-backup-if-mismatch \
-    --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/ros2_v4l2_camera" \
-    < "${CONFIG_DIRECTORY}/ros2_v4l2_camera/0001-Disable-Werror.patch" \
-    || :
-fi
 if [ "${ROS2_DISTRO}" = "iron" ]; then
   patch \
     -p1 \
@@ -356,18 +318,6 @@ if [ "${ROS2_DISTRO}" = "iron" ]; then
     --no-backup-if-mismatch \
     --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/ros2_v4l2_camera" \
     < "${CONFIG_DIRECTORY}/ros2_v4l2_camera/0001-Fix-include-path.patch" \
-    || :
-fi
-
-# vision_opencv
-if [ "${ROS2_DISTRO}" = "humble" ]; then
-  patch \
-    -p1 \
-    --forward \
-    --reject-file="/dev/null" \
-    --no-backup-if-mismatch \
-    --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/vision_opencv" \
-    < "${CONFIG_DIRECTORY}/vision_opencv/0001-Disable-Python-bindings-by-default.patch" \
     || :
 fi
 
@@ -392,11 +342,6 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     --rosdistro ${ROS2_DISTRO} \
     --as-root=pip:false \
     -y
-
-  # Package provided by Ubuntu 18.04 is too old
-  if [ "${ROS2_DISTRO}" = "humble" ] && [ "${CODENAME}" = "bionic" ]; then
-    sudo apt remove -y libyaml-cpp0.5v5
-  fi
 else
   echo "Disabling perception dependencies on macOS"
   touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/OpenNI2/COLCON_IGNORE"
