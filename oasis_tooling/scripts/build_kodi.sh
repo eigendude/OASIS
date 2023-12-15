@@ -184,5 +184,5 @@ echo "Building add-ons..."
 make \
   -C "${KODI_DEPENDS_SRC}/target/binary-addons" \
   -j$(getconf _NPROCESSORS_ONLN) \
-  ADDONS="^(peripheral.joystick|screensaver.matrixtrails)$" \
+  ADDONS="peripheral.joystick" \
   PREFIX="${KODI_INSTALL_DIR}" \
