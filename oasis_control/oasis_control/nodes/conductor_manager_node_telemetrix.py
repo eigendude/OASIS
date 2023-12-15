@@ -25,7 +25,7 @@ from rclpy.logging import LoggingSeverity
 from std_msgs.msg import Header as HeaderMsg
 
 from oasis_control.managers.cpu_fan_manager import CPUFanManager
-from oasis_control.managers.mcu_memory_manager import McuMemoryManager
+from oasis_control.managers.mcu_memory_manager_telemetrix import McuMemoryManager
 from oasis_control.managers.sampling_manager import SamplingManager
 from oasis_drivers.ros.ros_translator import RosTranslator
 from oasis_drivers.telemetrix.telemetrix_types import AnalogMode
