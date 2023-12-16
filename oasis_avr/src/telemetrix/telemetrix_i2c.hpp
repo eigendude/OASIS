@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2022 Garrett Brown
+ *  Copyright (C) 2022-2023 Garrett Brown
  *  This file is part of OASIS - https://github.com/eigendude/OASIS
  *
  *  This file is derived from Telemetrix4Arduino under the AGPL 3.0 License
