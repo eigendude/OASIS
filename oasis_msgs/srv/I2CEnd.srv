@@ -1,0 +1,21 @@
+################################################################################
+#
+#  Copyright (C) 2023 Garrett Brown
+#  This file is part of OASIS - https://github.com/eigendude/OASIS
+#
+#  SPDX-License-Identifier: Apache-2.0
+#  See DOCS/LICENSING.md for more information.
+#
+################################################################################
+
+#
+# Stop a microcontroller's I2C port and I2C devices
+#
+
+# The I2C port index to deactivate
+uint8 i2c_port
+
+# I2C devices to deactivate, if any
+I2CDevice[] i2c_devices
+
+---

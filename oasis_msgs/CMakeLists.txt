@@ -64,6 +64,7 @@ rosidl_generate_interfaces(
     srv/DigitalRead.srv
     srv/DigitalWrite.srv
     srv/I2CBegin.srv
+    srv/I2CEnd.srv
     srv/PowerControl.srv
     srv/PWMWrite.srv
     srv/ReportMCUMemory.srv
