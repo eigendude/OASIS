@@ -37,6 +37,7 @@ if \
   [ "${HOSTNAME}" = "cinder" ] || \
   [ "${HOSTNAME}" = "lenovo" ] || \
   [ "${HOSTNAME}" = "nuc" ] || \
+  [ "${HOSTNAME}" = "substation" ] || \
   [ "${HOSTNAME}" = "zotac" ] \
 ; then
   ENABLE_VISUALIZATION=1

@@ -122,7 +122,7 @@ def generate_launch_description() -> LaunchDescription:
             ],
         )
         ld.add_action(engine_node)
-    elif HOSTNAME == "starship":
+    elif HOSTNAME == "substation":
         MCU_NODE = "lab"
         lab_node = Node(
             namespace=ROS_NAMESPACE,
