@@ -75,7 +75,7 @@ void TelemetrixPins::scan_digital_inputs()
     {
       if (the_digital_pins[i].reporting_enabled)
       {
-        // if the value changed since last read
+        // If the value changed since last read
         const uint8_t value = static_cast<uint8_t>(digitalRead(the_digital_pins[i].pin_number));
         if (value != the_digital_pins[i].last_value)
         {
