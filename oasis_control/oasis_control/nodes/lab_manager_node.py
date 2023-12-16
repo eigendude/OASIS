@@ -66,6 +66,7 @@ I2C_PORT: int = 0
 I2C_CCS811_ADDRESS: int = 0x5B
 I2C_MPU6050_ADDRESS: int = 0x68
 
+
 ################################################################################
 # ROS parameters
 ################################################################################
@@ -96,7 +97,7 @@ CLIENT_SET_DIGITAL_MODE = "set_digital_mode"
 
 class LabManagerNode(rclpy.node.Node):
     """
-    A ROS node that manages a LEGO train lab.
+    A ROS node that manages a LEGO air quality lab.
     """
 
     def __init__(self) -> None:
@@ -297,6 +298,7 @@ class LabManagerNode(rclpy.node.Node):
                         future_write.result()
                 if self._red_led_2_on:
                     self._red_led_2_on = False
+
                     digital_write_svc.digital_pin = RED_LED_2_PIN
                     digital_write_svc.digital_value = 0
 
@@ -326,6 +328,7 @@ class LabManagerNode(rclpy.node.Node):
                         future_write.result()
                 if not self._red_led_2_on:
                     self._red_led_2_on = True
+
                     digital_write_svc.digital_pin = RED_LED_2_PIN
                     digital_write_svc.digital_value = 1
 

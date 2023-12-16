@@ -132,8 +132,12 @@ def generate_launch_description() -> LaunchDescription:
             output="screen",
             remappings=[
                 (f"{MCU_NODE}_state", f"{HOSTNAME}/{MCU_NODE}_state"),
+                ("air_quality", f"{MCU_NODE}/air_quality"),
                 ("analog_reading", f"{MCU_NODE}/analog_reading"),
                 ("digital_write", f"{MCU_NODE}/digital_write"),
+                ("i2c_begin", f"{MCU_NODE}/i2c_begin"),
+                ("i2c_end", f"{MCU_NODE}/i2c_end"),
+                ("i2c_imu", f"{MCU_NODE}/i2c_imu"),
                 ("mcu_memory", f"{MCU_NODE}/mcu_memory"),
                 ("report_mcu_memory", f"{MCU_NODE}/report_mcu_memory"),
                 ("set_analog_mode", f"{MCU_NODE}/set_analog_mode"),

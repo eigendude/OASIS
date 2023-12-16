@@ -19,6 +19,7 @@ import rclpy.node
 
 from oasis_msgs.msg import I2CDevice as I2CDeviceMsg
 from oasis_msgs.srv import I2CBegin as I2CBeginSvc
+from oasis_msgs.srv import I2CEnd as I2CEndSvc
 
 
 ################################################################################
@@ -28,6 +29,7 @@ from oasis_msgs.srv import I2CBegin as I2CBeginSvc
 
 # Service clients
 CLIENT_I2C_BEGIN = "i2c_begin"
+CLIENT_I2C_END = "i2c_end"
 
 
 ################################################################################
@@ -55,6 +57,9 @@ class I2CDeviceManager:
         # Service clients
         self._i2c_begin_client: rclpy.client.Client = self._node.create_client(
             srv_type=I2CBeginSvc, srv_name=CLIENT_I2C_BEGIN
+        )
+        self._i2c_end_client: rclpy.client.Client = self._node.create_client(
+            srv_type=I2CEndSvc, srv_name=CLIENT_I2C_END
         )
 
     @property
@@ -86,6 +91,31 @@ class I2CDeviceManager:
 
         # Call service
         future: asyncio.Future = self._i2c_begin_client.call_async(i2c_begin_svc)
+
+        # Wait for result
+        rclpy.spin_until_future_complete(self._node, future)
+        if future.result() is None:
+            self._logger.error(f"Exception while calling service: {future.exception()}")
+            return False
+
+        return True
+
+    def i2c_end_device(
+        self, i2c_device_type: int, i2c_port: int, i2c_address: int
+    ) -> bool:
+        # Create message
+        i2c_end_svc = I2CEndSvc.Request()
+        i2c_end_svc.i2c_port = i2c_port
+
+        i2c_device = I2CDeviceMsg()
+        i2c_device.i2c_device_type = i2c_device_type
+        i2c_device.i2c_port = i2c_port
+        i2c_device.i2c_address = i2c_address
+
+        i2c_end_svc.i2c_devices.append(i2c_device)
+
+        # Call service
+        future: asyncio.Future = self._i2c_end_client.call_async(i2c_end_svc)
 
         # Wait for result
         rclpy.spin_until_future_complete(self._node, future)
