@@ -692,6 +692,12 @@ target_link_arduino_libraries(firmata_node PRIVATE
 )
 
 # This is needed for the generation of HEX binary and uploading it
+#
+# Upload with:
+#   make upload TARGET=firmata_node SERIAL_PORT=<serial port, e.g. /dev/ttyACM0>
+# e.g.
+#   make -C "build/oasis_avr" upload TARGET=firmata_node SERIAL_PORT=/dev/ttyACM0
+#
 target_enable_arduino_upload(firmata_node)
 
 install(
@@ -723,6 +729,12 @@ target_link_arduino_libraries(telemetrix_node PRIVATE
 )
 
 # This is needed for the generation of HEX binary and uploading it
+#
+# Upload with:
+#   make upload TARGET=telemetrix_node SERIAL_PORT=<serial port, e.g. /dev/ttyACM0>
+# e.g.
+#   make -C "build/oasis_avr" upload TARGET=telemetrix_node SERIAL_PORT=/dev/ttyACM0
+#
 target_enable_arduino_upload(telemetrix_node)
 
 install(
