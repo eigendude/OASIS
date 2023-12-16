@@ -1,4 +1,4 @@
-psutil
+psutil==5.9.6
 git+https://github.com/eigendude/pymata-express@master#egg=pymata-express
-pyserial
-telemetrix-aio
+pyserial==3.5
+telemetrix-aio==1.22
