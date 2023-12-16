@@ -39,6 +39,7 @@ from oasis_msgs.srv import AnalogRead as AnalogReadSvc
 from oasis_msgs.srv import DigitalRead as DigitalReadSvc
 from oasis_msgs.srv import DigitalWrite as DigitalWriteSvc
 from oasis_msgs.srv import I2CBegin as I2CBeginSvc
+from oasis_msgs.srv import I2CEnd as I2CEndSvc
 from oasis_msgs.srv import PWMWrite as PWMWriteSvc
 from oasis_msgs.srv import ReportMCUMemory as ReportMCUMemorySvc
 from oasis_msgs.srv import ServoWrite as ServoWriteSvc
@@ -72,6 +73,7 @@ CPU_FAN_WRITE_SERVICE = "cpu_fan_write"
 DIGITAL_READ_SERVICE = "digital_read"
 DIGITAL_WRITE_SERVICE = "digital_write"
 I2C_BEGIN_SERVICE = "i2c_begin"
+I2C_END_SERVICE = "i2c_end"
 PWM_WRITE_SERVICE = "pwm_write"
 REPORT_MCU_MEMORY_SERVICE = "report_mcu_memory"
 SERVO_WRITE_SERVICE = "servo_write"
@@ -177,6 +179,11 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
             srv_type=I2CBeginSvc,
             srv_name=I2C_BEGIN_SERVICE,
             callback=self._handle_i2c_begin,
+        )
+        self._i2c_end_service: rclpy.service.Service = self.create_service(
+            srv_type=I2CEndSvc,
+            srv_name=I2C_END_SERVICE,
+            callback=self._handle_i2c_end,
         )
         self._pwm_write_service: rclpy.service.Service = self.create_service(
             srv_type=PWMWriteSvc,
@@ -474,7 +481,7 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
     def _handle_i2c_begin(
         self, request: I2CBeginSvc.Request, response: I2CBeginSvc.Response
     ) -> I2CBeginSvc.Response:
-        """Handle ROS 2 PWM pin writes"""
+        """Begin I2C communication on a port and for devices"""
         # Translate parameters
         i2c_port: int = request.i2c_port
         i2c_devices: List[I2CDeviceMsg] = request.i2c_devices
@@ -497,6 +504,32 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
                 self._bridge.i2c_ccs811_begin(i2c_port, i2c_address)
             elif i2c_device_type == I2CDeviceTypeMsg.MPU6050:
                 self._bridge.i2c_mpu6050_begin(i2c_port, i2c_address)
+
+        return response
+
+    def _handle_i2c_end(
+        self, request: I2CEndSvc.Request, response: I2CEndSvc.Response
+    ) -> I2CEndSvc.Response:
+        """End I2C communication on a port and for devices"""
+        # Translate parameters
+        i2c_port: int = request.i2c_port
+        i2c_devices: List[I2CDeviceMsg] = request.i2c_devices
+
+        # Debug logging
+        self.get_logger().info(f"Ending I2C on port {i2c_port}")
+
+        # Perform services for devices
+        for i2c_device in i2c_devices:
+            i2c_device_type: int = i2c_device.i2c_device_type
+            i2c_address: int = i2c_device.i2c_address
+
+            self.get_logger().info(
+                f"Ending I2C device of type {i2c_device_type} with address {hex(i2c_address)}"
+            )
+            if i2c_device_type == I2CDeviceTypeMsg.CCS811:
+                self._bridge.i2c_ccs811_end(i2c_port, i2c_address)
+            elif i2c_device_type == I2CDeviceTypeMsg.MPU6050:
+                self._bridge.i2c_mpu6050_end(i2c_port, i2c_address)
 
         return response
 

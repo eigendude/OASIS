@@ -206,6 +206,7 @@ def generate_launch_description() -> LaunchDescription:
                 },
             ],
             remappings=[
+                ("air_quality", f"{mcu_name}/air_quality"),
                 ("analog_read", f"{mcu_name}/analog_read"),
                 ("analog_reading", f"{mcu_name}/analog_reading"),
                 ("cpu_fan_speed", f"{mcu_name}/cpu_fan_speed"),
@@ -213,6 +214,9 @@ def generate_launch_description() -> LaunchDescription:
                 ("digital_read", f"{mcu_name}/digital_read"),
                 ("digital_reading", f"{mcu_name}/digital_reading"),
                 ("digital_write", f"{mcu_name}/digital_write"),
+                ("i2c_begin", f"{mcu_name}/i2c_begin"),
+                ("i2c_end", f"{mcu_name}/i2c_end"),
+                ("i2c_imu", f"{mcu_name}/i2c_imu"),
                 ("mcu_memory", f"{mcu_name}/mcu_memory"),
                 ("mcu_string", f"{mcu_name}/mcu_string"),
                 ("pwm_write", f"{mcu_name}/pwm_write"),

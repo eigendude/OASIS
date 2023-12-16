@@ -361,6 +361,29 @@ class TelemetrixBridge:
         # Wait for completion
         future.result()
 
+    def i2c_ccs811_end(self, i2c_port: int, i2c_address: int) -> None:
+        """
+        End utilization of a CCS811 air quality sensor.
+
+        :param i2c_port: The I2C port index of the microcontroller (0 = i2c1, 1 = i2c2)
+        :param i2c_address: The I2C address of the device
+        """
+        # Create command
+        command: List[int] = [
+            TelemetrixConstants.I2C_CCS811_END,
+            i2c_port,
+            i2c_address,
+        ]
+
+        # Create coroutine
+        coroutine: Awaitable[None] = self._board._send_command(command)
+
+        # Dispatch to asyncio
+        future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
+
+        # Wait for completion
+        future.result()
+
     def i2c_mpu6050_begin(self, i2c_port: int, i2c_address: int) -> None:
         """
         Establish an MPU6050 IMU sensor for utilization.
@@ -371,6 +394,29 @@ class TelemetrixBridge:
         # Create command
         command: List[int] = [
             TelemetrixConstants.I2C_MPU6050_BEGIN,
+            i2c_port,
+            i2c_address,
+        ]
+
+        # Create coroutine
+        coroutine: Awaitable[None] = self._board._send_command(command)
+
+        # Dispatch to asyncio
+        future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
+
+        # Wait for completion
+        future.result()
+
+    def i2c_mpu6050_end(self, i2c_port: int, i2c_address: int) -> None:
+        """
+        End utilization of an MPU6050 IMU sensor.
+
+        :param i2c_port: The I2C port index of the microcontroller (0 = i2c1, 1 = i2c2)
+        :param i2c_address: The I2C address of the device
+        """
+        # Create command
+        command: List[int] = [
+            TelemetrixConstants.I2C_MPU6050_END,
             i2c_port,
             i2c_address,
         ]
