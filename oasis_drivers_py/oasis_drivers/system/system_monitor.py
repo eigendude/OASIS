@@ -204,7 +204,7 @@ class SystemMonitor:
                         address=str(snicaddr.address),
                         netmask=str(snicaddr.netmask) if snicaddr.netmask else "",
                     )
-                    for snicaddr in net_addresses[interface]
+                    for snicaddr in net_addresses.get(interface, [])
                 ],
             )
             for interface, netio in net_io_counters.items()
