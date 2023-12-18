@@ -14,6 +14,7 @@
 #include "telemetrix_reports.hpp"
 #include "utils/memory_utils.hpp"
 
+#include <Arduino.h>
 #include <HardwareSerial.h>
 
 using namespace OASIS;
