@@ -233,7 +233,7 @@ class TelemetrixBridge:
         elif digital_mode == DigitalMode.OUTPUT:
             coroutine = self._board.set_pin_mode_digital_output(digital_pin)
         elif digital_mode == DigitalMode.PWM:
-            coroutine = self._board.set_pin_mode_pwm_output(digital_pin)
+            coroutine = self._board.set_pin_mode_analog_output(digital_pin)
         elif digital_mode == DigitalMode.SERVO:
             # TODO: Expose min_pulse and max_pulse parameters
             coroutine = self._board.set_pin_mode_servo(digital_pin)
