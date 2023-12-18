@@ -154,10 +154,6 @@ class ConductorManagerNode(rclpy.node.Node):
         self._motor_ff1_count: int = 0
         self._motor_ff2_state: bool = False
         self._motor_ff2_count: int = 0
-        self._cpu_fan_speed_rpm: float = 0.0
-        self._total_ram: int = 0
-        self._ram_utilization: float = 0.0
-        self._message: Optional[str] = None
 
         # Initialize peripheral state
         self._joysticks: Dict[str, str] = {}
