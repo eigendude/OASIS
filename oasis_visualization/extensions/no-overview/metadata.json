@@ -1,0 +1,8 @@
+{
+  "name": "no-overview",
+  "description": "No overview at start-up. Nothing more.",
+  "original-authors": ["eigendude"],
+  "url": "https://github.com/eigendude/OASIS",
+  "uuid": "no-overview@eigendude.github.io",
+  "shell-version": ["42"]
+}
