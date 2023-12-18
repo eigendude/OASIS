@@ -88,6 +88,7 @@ def generate_launch_description() -> LaunchDescription:
                 ("analog_reading", f"{MCU_NODE}/analog_reading"),
                 ("capture_input", f"{INPUT_PROVIDER}/capture_input"),
                 ("cpu_fan_speed", f"{MCU_NODE}/cpu_fan_speed"),
+                ("cpu_fan_write", f"{MCU_NODE}/cpu_fan_write"),
                 ("digital_reading", f"{MCU_NODE}/digital_reading"),
                 ("digital_write", f"{MCU_NODE}/digital_write"),
                 ("input", f"{INPUT_PROVIDER}/input"),
@@ -98,6 +99,10 @@ def generate_launch_description() -> LaunchDescription:
                 ("pwm_write", f"{MCU_NODE}/pwm_write"),
                 ("report_mcu_memory", f"{MCU_NODE}/report_mcu_memory"),
                 ("set_analog_mode", f"{MCU_NODE}/set_analog_mode"),
+                (
+                    "set_cpu_fan_sampling_interval",
+                    f"{MCU_NODE}/set_cpu_fan_sampling_interval",
+                ),
                 ("set_digital_mode", f"{MCU_NODE}/set_digital_mode"),
                 ("set_sampling_interval", f"{MCU_NODE}/set_sampling_interval"),
             ],
