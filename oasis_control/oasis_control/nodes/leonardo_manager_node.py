@@ -136,9 +136,10 @@ class LeonardoManagerNode(rclpy.node.Node):
         self._publish_state_timer: Optional[rclpy.node.Timer] = None
 
     def initialize(self) -> bool:
-        self.get_logger().debug("Waiting for Firmata services...")
-
+        self.get_logger().debug("Waiting for Firmata services")
+        self.get_logger().debug("  - Waiting for report_mcu_memory...")
         self._report_mcu_memory_client.wait_for_service()
+        self.get_logger().debug("  - Waiting for set_analog_mode...")
         self._set_analog_mode_client.wait_for_service()
 
         self.get_logger().debug("Starting configuration")

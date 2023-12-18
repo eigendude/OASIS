@@ -55,7 +55,8 @@ class SamplingManager:
         )
 
     def initialize(self, sampling_interval_ms: int) -> bool:
-        self._logger.debug("Waiting for sampling service...")
+        self._logger.debug("Waiting for sampling services")
+        self._logger.debug("  - Waiting for set_sampling_interval...")
         self._set_sampling_interval_client.wait_for_service()
 
         self._logger.debug("Starting sampling configuration")

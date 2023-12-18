@@ -96,9 +96,12 @@ class CPUFanManager:
         )
 
     def initialize(self, sampling_interval_ms: int) -> bool:
-        self._logger.debug("Waiting for CPU fan services...")
+        self._logger.debug("Waiting for CPU fan services")
+        self._logger.debug("  - Waiting for cpu_fan_write...")
         self._cpu_fan_write_client.wait_for_service()
+        self._logger.debug("  - Waiting for set_cpu_fan_sampling_interval...")
         self._set_cpu_fan_sampling_interval_client.wait_for_service()
+        self._logger.debug("  - Waiting for set_digital_mode...")
         self._set_digital_mode_client.wait_for_service()
 
         self._logger.debug("Starting CPU fan configuration")

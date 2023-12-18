@@ -244,10 +244,14 @@ class ConductorManagerNode(rclpy.node.Node):
         self._publish_timer: Optional[rclpy.node.Timer] = None
 
     def initialize(self) -> bool:
-        self.get_logger().debug("Waiting for conductor services...")
+        self.get_logger().debug("Waiting for conductor services")
+        self.get_logger().debug("  - Waiting for digital_write...")
         self._digital_write_client.wait_for_service()
+        self.get_logger().debug("  - Waiting for pwm_write...")
         self._pwm_write_client.wait_for_service()
+        self.get_logger().debug("  - Waiting for set_analog_mode...")
         self._set_analog_mode_client.wait_for_service()
+        self.get_logger().debug("  - Waiting for set_digital_mode...")
         self._set_digital_mode_client.wait_for_service()
 
         self.get_logger().debug("Starting conductor configuration")

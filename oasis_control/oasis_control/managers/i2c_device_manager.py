@@ -71,8 +71,11 @@ class I2CDeviceManager:
         return self._i2c_address
 
     def initialize(self) -> bool:
-        self._logger.debug("Waiting for I2C services...")
+        self._logger.debug("Waiting for I2C services")
+        self._logger.debug("  - Waiting for i2c_begin...")
         self._i2c_begin_client.wait_for_service()
+        self._logger.debug("  - Waiting for i2c_end...")
+        self._i2c_end_client.wait_for_service()
         return True
 
     def i2c_begin_device(

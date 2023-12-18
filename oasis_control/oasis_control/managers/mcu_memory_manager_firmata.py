@@ -97,7 +97,8 @@ class McuMemoryManager:
         return self._ram_utilization
 
     def initialize(self) -> bool:
-        self._node.get_logger().debug("Waiting for MCU memory service...")
+        self._node.get_logger().debug("Waiting for MCU memory services")
+        self._node.get_logger().debug("  - Waiting for report_mcu_memory...")
         self._report_mcu_memory_client.wait_for_service()
 
         self._node.get_logger().debug("Starting MCU memory configuration")
