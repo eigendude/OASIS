@@ -170,7 +170,7 @@ class CPUFanManager:
         set_sampling_interval_svc.sampling_interval_ms = sampling_interval_ms
 
         # Call service
-        future: asyncio.Future = self._set_digital_mode_client.call_async(
+        future: asyncio.Future = self._set_cpu_fan_sampling_interval_client.call_async(
             set_sampling_interval_svc
         )
 
