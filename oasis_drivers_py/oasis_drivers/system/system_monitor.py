@@ -137,7 +137,11 @@ class SystemMonitor:
     @staticmethod
     def _read_cpu_temperature() -> Optional[float]:
         for sensor, shwtemps in psutil.sensors_temperatures().items():
-            # We only care about the core temperature for now
+            # Check for Raspberry Pi CPU temperature sensor
+            if sensor == "cpu_thermal":
+                return float(shwtemps[0].current)
+
+            # Otherwise, we only care about the core temperature for now
             if sensor != "coretemp":
                 continue
 
