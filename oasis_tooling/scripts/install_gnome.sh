@@ -62,3 +62,15 @@ for extenion_dir in "${VISUALIZATION_DIR}/extensions/"*; do
   echo "Enabling ${EXTENSION_UUID}"
   gnome-extensions enable "${EXTENSION_UUID}"
 done
+
+#
+# Configure Gnome
+#
+
+# Disable screen lock
+echo "Disabling screen lock"
+gsettings set org.gnome.desktop.session idle-delay 0
+
+# Disable system suspend
+echo "Disabling system suspend"
+sudo systemctl mask suspend.target
