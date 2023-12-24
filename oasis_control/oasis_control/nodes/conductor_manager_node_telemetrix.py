@@ -38,6 +38,7 @@ from oasis_msgs.msg import PeripheralInfo as PeripheralInfoMsg
 from oasis_msgs.msg import PeripheralInput as PeripheralInputMsg
 from oasis_msgs.msg import PeripheralScan as PeripheralScanMsg
 from oasis_msgs.msg import PowerMode as PowerModeMsg
+from oasis_msgs.msg import SystemTelemetry as SystemTelemetryMsg
 from oasis_msgs.srv import CaptureInput as CaptureInputSvc
 from oasis_msgs.srv import DigitalWrite as DigitalWriteSvc
 from oasis_msgs.srv import PowerControl as PowerControlSvc
@@ -107,6 +108,7 @@ SUBSCRIBE_MCU_MEMORY = "mcu_memory"
 SUBSCRIBE_MCU_STRING = "mcu_string"
 SUBSCRIBE_PERIPHERAL_INPUT = "input"
 SUBSCRIBE_PERIPHERALS = "peripherals"
+SUBSCRIBE_SUBSTATION_TELEMETRY = "substation_telemetry"
 
 # Services
 SERVICE_POWER_CONTROL = "power_control"
@@ -208,6 +210,14 @@ class ConductorManagerNode(rclpy.node.Node):
                 msg_type=PeripheralScanMsg,
                 topic=SUBSCRIBE_PERIPHERALS,
                 callback=self._on_peripheral_scan,
+                qos_profile=qos_profile,
+            )
+        )
+        self._substation_telemetry_sub: rclpy.subscription.Subscription = (
+            self.create_subscription(
+                msg_type=SystemTelemetryMsg,
+                topic=SUBSCRIBE_SUBSTATION_TELEMETRY,
+                callback=self._on_substation_telemetry,
                 qos_profile=qos_profile,
             )
         )
@@ -537,6 +547,17 @@ class ConductorManagerNode(rclpy.node.Node):
             if not found:
                 self.get_logger().debug(f"Closing joystick {address} of type {profile}")
                 del self._joysticks[address]
+
+    def _on_substation_telemetry(
+        self, substation_telemetry_msg: SystemTelemetryMsg
+    ) -> None:
+        # Get substation CPU temperature
+        cpu_temperature: float = substation_telemetry_msg.cpu_temperature
+
+        # Compare CPU temperature against threshold
+        if cpu_temperature >= SUBSTATION_TEMP_THRESHOLD:
+            # Enable CPU fan
+            self._cpu_fan_manager.set
 
     def _open_joystick(self, peripheral_address: str, controller_profile: str) -> None:
         self.get_logger().debug(

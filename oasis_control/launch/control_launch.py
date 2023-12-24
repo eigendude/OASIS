@@ -105,6 +105,7 @@ def generate_launch_description() -> LaunchDescription:
                 ),
                 ("set_digital_mode", f"{MCU_NODE}/set_digital_mode"),
                 ("set_sampling_interval", f"{MCU_NODE}/set_sampling_interval"),
+                ("substation_system_telemetry", "substation/system_telemetry"),
             ],
         )
         ld.add_action(conductor_node)
