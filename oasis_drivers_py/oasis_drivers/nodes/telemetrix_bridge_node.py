@@ -8,6 +8,7 @@
 #
 ################################################################################
 
+import time
 from datetime import datetime
 from typing import List
 from typing import Tuple
@@ -108,6 +109,7 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         # Initialize members
         com_port: str = str(self.get_parameter(PARAM_COM_PORT).value)
         self._bridge = TelemetrixBridge(self, com_port)
+        self._initialized: bool = True
 
         # Reliable listener QOS profile for subscribers
         qos_profile: rclpy.qos.QoSPresetProfile = (
@@ -229,7 +231,11 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
 
     def stop(self) -> None:
         """Stop the bridge and cleanup ROS resources"""
+        self._initialized = False
         self._bridge.deinitialize()
+
+        # Wait for outstanding tasks to complete
+        time.sleep(1)
 
         self.get_logger().info("Telemetrix bridge deinitialized")
 
@@ -247,6 +253,9 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         tvoc_ppb: int,
     ) -> None:
         """Implement TelemetrixCallback"""
+        if not self._initialized:
+            return
+
         msg: AirQualityMsg = AirQualityMsg()
 
         # Timestamp in ROS header
@@ -274,6 +283,9 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         reference_voltage: float,
     ) -> None:
         """Implement TelemetrixCallback"""
+        if not self._initialized:
+            return
+
         msg: AnalogReadingMsg = AnalogReadingMsg()
 
         # Timestamp in ROS header
@@ -290,6 +302,9 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
 
     def on_cpu_fan_rpm(self, timestamp: datetime, digital_pin: int, rpm: int) -> None:
         """Implement TelemetrixCallback"""
+        if not self._initialized:
+            return
+
         msg: CPUFanSpeedMsg = CPUFanSpeedMsg()
 
         # Timestamp in ROS header
@@ -307,6 +322,9 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         self, timestamp: datetime, digital_pin: int, digital_value: bool
     ) -> None:
         """Implement TelemetrixCallback"""
+        if not self._initialized:
+            return
+
         msg: DigitalReadingMsg = DigitalReadingMsg()
 
         # Timestamp in ROS header
@@ -334,6 +352,10 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         gy: int,
         gz: int,
     ) -> None:
+        """Implement TelemetrixCallback"""
+        if not self._initialized:
+            return
+
         imu_msg: ImuMsg = ImuMsg()
         # Timestamp in ROS header
         imu_msg.header.stamp = RosTranslator.convert_timestamp(timestamp)
@@ -369,6 +391,9 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         free_heap: int,
     ) -> None:
         """Implement TelemetrixCallback"""
+        if not self._initialized:
+            return
+
         msg: MCUMemoryMsg = MCUMemoryMsg()
 
         # Timestamp in ROS header
@@ -388,6 +413,9 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
 
     def on_string_data(self, data: str) -> None:
         """Implement TelemetrixCallback"""
+        if not self._initialized:
+            return
+
         msg: MCUStringMsg = MCUStringMsg()
 
         # Timestamp in ROS header
