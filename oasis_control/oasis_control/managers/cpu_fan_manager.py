@@ -64,7 +64,7 @@ class CPUFanManager:
         self._speed_pin: int = speed_pin
 
         # Initialize hardware state
-        self._cpu_fan_speed_rpm: float = 0
+        self._cpu_fan_speed_rpm: float = 0.0
 
         # Reliable listener QOS profile for subscribers
         qos_profile: rclpy.qos.QoSPresetProfile = (
