@@ -23,13 +23,13 @@ constexpr size_t HEARTBEAT_STACK_SIZE = 8; // Default is 128
 constexpr unsigned int HEARTBEAT_LED = LED_BUILTIN;
 
 // Instance storage
-HeartbeatThread instance;
+HeartbeatThread heartbeatInstance;
 
 } // namespace OASIS
 
 HeartbeatThread& HeartbeatThread::GetInstance()
 {
-  return instance;
+  return heartbeatInstance;
 }
 
 void HeartbeatThread::Setup()
