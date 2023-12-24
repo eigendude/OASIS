@@ -29,5 +29,3 @@ def main(args=None) -> None:
         # collector automatically destroys the node object after ROS has
         # shut down.
         node.destroy_node()
-
-    rclpy.shutdown()
