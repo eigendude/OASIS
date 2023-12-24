@@ -51,5 +51,3 @@ def main(args=None) -> None:
         pass
     finally:
         monitor.stop()
-
-    rclpy.shutdown()

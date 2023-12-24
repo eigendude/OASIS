@@ -33,5 +33,3 @@ def main(args=None) -> None:
         pass
     finally:
         scanner.stop()
-
-    rclpy.shutdown()

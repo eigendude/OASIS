@@ -37,5 +37,3 @@ def main(args=None) -> None:
         pass
     finally:
         node.stop()
-
-    rclpy.shutdown()
