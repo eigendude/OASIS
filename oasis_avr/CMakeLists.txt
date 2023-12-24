@@ -197,6 +197,7 @@ elseif (HOST_NAME STREQUAL cinder)
   set(ENABLE_SPI OFF)
   set(ENABLE_STEPPER OFF)
 elseif (HOST_NAME STREQUAL substation)
+  # Building lab
   set(ARDUINO_VARIANT uno)
 
   set(ENABLE_AIR_QUALITY ON)
