@@ -87,6 +87,8 @@
 #define I2C_CCS811_END 63
 #define I2C_MPU6050_BEGIN 64
 #define I2C_MPU6050_END 65
+#define ENABLE_LOGGING 66
+#define DISABLE_LOGGING 67
 
 // Maximum length of a command in bytes
 #define MAX_COMMAND_LENGTH 30
@@ -319,6 +321,14 @@ public:
   static void i2c_mpu6050_begin();
 
   static void i2c_mpu6050_end();
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Logging commands
+  //////////////////////////////////////////////////////////////////////////////
+
+  static void enable_logging();
+
+  static void disable_logging();
 
 private:
   // Registered server. Caller must call RegisterServer().
