@@ -21,3 +21,6 @@ __pycache__
 # macOS ignorables
 .DS_Store
 ._*
+
+# VSCode ignorables
+.vscode
