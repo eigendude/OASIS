@@ -129,6 +129,7 @@ def generate_launch_description() -> LaunchDescription:
         ld.add_action(engine_node)
     elif HOSTNAME == "substation":
         MCU_NODE = "lab"
+        CPU_FAN_HOST = "conductor"
         lab_node = Node(
             namespace=ROS_NAMESPACE,
             package=PACKAGE_NAME,
@@ -137,6 +138,17 @@ def generate_launch_description() -> LaunchDescription:
             output="screen",
             remappings=[
                 (f"{MCU_NODE}_state", f"{HOSTNAME}/{MCU_NODE}_state"),
+                (f"cpu_fan_speed_{CPU_FAN_HOST}", f"{CPU_FAN_HOST}/cpu_fan_speed"),
+                (f"cpu_fan_write_{CPU_FAN_HOST}", f"{CPU_FAN_HOST}/cpu_fan_write"),
+                (f"digital_write_{CPU_FAN_HOST}", f"{CPU_FAN_HOST}/digital_write"),
+                (
+                    f"set_cpu_fan_sampling_interval_{CPU_FAN_HOST}",
+                    f"{CPU_FAN_HOST}/set_cpu_fan_sampling_interval",
+                ),
+                (
+                    f"set_digital_mode_{CPU_FAN_HOST}",
+                    f"{CPU_FAN_HOST}/set_digital_mode",
+                ),
                 ("air_quality", f"{MCU_NODE}/air_quality"),
                 ("analog_reading", f"{MCU_NODE}/analog_reading"),
                 ("digital_write", f"{MCU_NODE}/digital_write"),

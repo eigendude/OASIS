@@ -13,6 +13,7 @@
 #
 
 import asyncio
+from typing import Optional
 
 import rclpy.client
 import rclpy.node
@@ -51,7 +52,13 @@ class CPUFanManager:
     A manager for 4-wire CPU fans.
     """
 
-    def __init__(self, node: rclpy.node.Node, pwm_pin: int, speed_pin: int) -> None:
+    def __init__(
+        self,
+        node: rclpy.node.Node,
+        pwm_pin: int,
+        speed_pin: int,
+        cpu_fan_host: Optional[str] = None,
+    ) -> None:
         """
         Initialize resources.
         """
@@ -75,24 +82,39 @@ class CPUFanManager:
         self._cpu_fan_speed_sub: rclpy.subscription.Subscription = (
             self._node.create_subscription(
                 msg_type=CPUFanSpeedMsg,
-                topic=SUBSCRIBE_CPU_FAN_SPEED,
+                topic=SUBSCRIBE_CPU_FAN_SPEED
+                if cpu_fan_host is None
+                else f"{SUBSCRIBE_CPU_FAN_SPEED}_{cpu_fan_host}",
                 callback=self._on_cpu_fan_speed,
                 qos_profile=qos_profile,
             )
         )
 
+        self._logger.error(
+            CLIENT_CPU_FAN_WRITE
+            if cpu_fan_host is None
+            else f"{CLIENT_CPU_FAN_WRITE}_{cpu_fan_host}"
+        )
         # Service clients
         self._cpu_fan_write_client: rclpy.client.Client = self._node.create_client(
-            srv_type=PWMWriteSvc, srv_name=CLIENT_CPU_FAN_WRITE
+            srv_type=PWMWriteSvc,
+            srv_name=CLIENT_CPU_FAN_WRITE
+            if cpu_fan_host is None
+            else f"{CLIENT_CPU_FAN_WRITE}_{cpu_fan_host}",
         )
         self._set_cpu_fan_sampling_interval_client: rclpy.client.Client = (
             self._node.create_client(
                 srv_type=SetSamplingIntervalSvc,
-                srv_name=CLIENT_SET_CPU_FAN_SAMPLING_INTERVAL,
+                srv_name=CLIENT_SET_CPU_FAN_SAMPLING_INTERVAL
+                if cpu_fan_host is None
+                else f"{CLIENT_SET_CPU_FAN_SAMPLING_INTERVAL}_{cpu_fan_host}",
             )
         )
         self._set_digital_mode_client: rclpy.client.Client = self._node.create_client(
-            srv_type=SetDigitalModeSvc, srv_name=CLIENT_SET_DIGITAL_MODE
+            srv_type=SetDigitalModeSvc,
+            srv_name=CLIENT_SET_DIGITAL_MODE
+            if cpu_fan_host is None
+            else f"{CLIENT_SET_DIGITAL_MODE}_{cpu_fan_host}",
         )
 
     def initialize(self, sampling_interval_ms: int) -> bool:
