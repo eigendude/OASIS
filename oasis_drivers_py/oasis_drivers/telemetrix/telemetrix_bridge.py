@@ -85,9 +85,6 @@ class TelemetrixBridge:
         self._board.report_dispatch.update(
             {TelemetrixConstants.IMU_6_AXIS_REPORT: self._on_imu_6_axis}
         )
-        self._board.report_dispatch.update(
-            {TelemetrixConstants.STRING_DATA: self._on_string_data}
-        )
 
     def initialize(self) -> bool:
         """Initialize the bridge and start communicating via Telemetrix"""
@@ -158,38 +155,6 @@ class TelemetrixBridge:
         """Run the asyncio event loop in a thread to process Telemetrix coroutines"""
         asyncio.set_event_loop(self._loop)
         self._loop.run_forever()
-
-    def enable_logging(self) -> None:
-        """
-        Enable logging from the microcontroller.
-        """
-        coroutine: Awaitable[None]
-
-        # Create coroutine
-        command = [TelemetrixConstants.ENABLE_LOGGING]
-        coroutine = self._board._send_command(command)
-
-        # Dispatch to asyncio
-        future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
-
-        # Wait for completion
-        future.result()
-
-    def disable_logging(self) -> None:
-        """
-        Disable logging from the microcontroller.
-        """
-        coroutine: Awaitable[None]
-
-        # Create coroutine
-        command = [TelemetrixConstants.DISABLE_LOGGING]
-        coroutine = self._board._send_command(command)
-
-        # Dispatch to asyncio
-        future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
-
-        # Wait for completion
-        future.result()
 
     def set_analog_mode(self, analog_pin: int, analog_mode: AnalogMode) -> None:
         """
@@ -714,14 +679,11 @@ class TelemetrixBridge:
         """
         reply: str = ""
 
-        for c in data:
-            # If we log too fast, we may get a 0 byte. Unforuntately, this
-            # will break the protocol and require a reset. So, we'll just
-            # log an error and ignore the byte.
-            if c == 0:
-                print("WARNING: Received 0 byte in string data, MCU requires a reset")
-                break
-            reply += chr(c)
+        data = data[1:-1]
+        for x in data:
+            reply_data: int = x
+            if reply_data:
+                reply += chr(reply_data)
 
         self._callback.on_string_data(reply)
 
