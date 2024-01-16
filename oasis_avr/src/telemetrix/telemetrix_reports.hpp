@@ -39,7 +39,6 @@
 #define CPU_FAN_TACH_REPORT 22
 #define AQ_CO2_TVOC_REPORT 23
 #define IMU_6_AXIS_REPORT 24
-#define STRING_DATA 25
 
 // Input pin reporting control sub commands (modify_reporting)
 #define REPORTING_DISABLE_ALL 0

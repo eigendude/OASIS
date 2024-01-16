@@ -521,7 +521,6 @@ set(TELEMETRIX_SOURCES
   src/drivers/cpu_fan_tach.cpp
   src/telemetrix/telemetrix_commands.cpp
   src/telemetrix/telemetrix_cpu_fan.cpp
-  src/telemetrix/telemetrix_logging.cpp
   src/telemetrix/telemetrix_memory.cpp
   src/telemetrix/telemetrix_pins.cpp
   src/telemetrix/telemetrix_server.cpp

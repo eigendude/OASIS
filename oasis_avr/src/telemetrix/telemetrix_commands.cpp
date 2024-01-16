@@ -14,7 +14,6 @@
 #include "telemetrix_cpu_fan.hpp"
 #include "telemetrix_dht.hpp"
 #include "telemetrix_i2c.hpp"
-#include "telemetrix_logging.hpp"
 #include "telemetrix_memory.hpp"
 #include "telemetrix_one_wire.hpp"
 #include "telemetrix_pins.hpp"
@@ -127,8 +126,6 @@ static const command_descriptor commandTable[] = {
     (&TelemetrixCommands::i2c_ccs811_end),
     (&TelemetrixCommands::i2c_mpu6050_begin),
     (&TelemetrixCommands::i2c_mpu6050_end),
-    (&TelemetrixCommands::enable_logging),
-    (&TelemetrixCommands::disable_logging),
 };
 
 } // namespace
@@ -902,14 +899,4 @@ void TelemetrixCommands::i2c_mpu6050_end()
   TelemetrixI2C* i2c = m_server->GetI2C();
   i2c->EndMPU6050(i2cPort, i2cAddress);
 #endif
-}
-
-void TelemetrixCommands::enable_logging()
-{
-  TelemetrixLogging::EnableLogging();
-}
-
-void TelemetrixCommands::disable_logging()
-{
-  TelemetrixLogging::DisableLogging();
 }
