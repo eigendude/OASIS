@@ -230,9 +230,8 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         self.get_logger().info("Telemetrix bridge initialized")
 
         # Enable logging
-        # TODO: Logging seems to break the Telemetrix protocol
-        # self.get_logger().info("Enabling logging")
-        # self._bridge.enable_logging()
+        self.get_logger().info("Enabling logging")
+        self._bridge.enable_logging()
 
     def stop(self) -> None:
         """Stop the bridge and cleanup ROS resources"""
