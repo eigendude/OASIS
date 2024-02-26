@@ -245,7 +245,7 @@ mkdir -p "${ROS2_SOURCE_DIRECTORY}"
 mkdir -p "${ROS2_INSTALL_DIRECTORY}"
 mkdir -p "${ROS2_PYTHON_PKG_DIRECTORY}"
 
-# After updating to Ubuntu 22.04, ament packages couldn't be found becaues
+# After updating to Ubuntu 22.04, ament packages couldn't be found because
 # they were installed to a different directory
 if [ ! -L "${AMENT_INSTALL_DIRECTORY}" ]; then
   rm -rf "${AMENT_INSTALL_DIRECTORY}"
