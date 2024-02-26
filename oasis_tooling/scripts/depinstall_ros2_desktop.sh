@@ -290,6 +290,6 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     --ignore-src \
     --rosdistro ${ROS2_DISTRO} \
     --as-root=pip:false \
-    -y \
+    --default-yes \
     --skip-keys "${ROSDEP_IGNORE_KEYS}"
 fi
