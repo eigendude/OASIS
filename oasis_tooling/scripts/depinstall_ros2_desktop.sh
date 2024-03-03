@@ -38,6 +38,11 @@ fi
 if [[ "${OSTYPE}" != "darwin"* ]]; then
   ARCH="$(dpkg --print-architecture)"
   CODENAME="$(source "/etc/os-release" && echo "${UBUNTU_CODENAME}")"
+
+  # TODO: For Ubuntu 23.10 (mantic), use Ubuntu 22.04 (jammy) depends
+  if [[ "${CODENAME}" == "mantic" ]]; then
+    CODENAME=jammy
+  fi
 else
   ARCH=
   CODENAME=
@@ -95,7 +100,8 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
   fi
 
   # python3-rosdep is no longer an Ubuntu package, so install via pip
-  sudo python3 -m pip install --upgrade rosdep
+  sudo python3 -m pip install --upgrade pip 2>/dev/null || :
+  sudo python3 -m pip install --upgrade --break-system-packages rosdep
 
   # Install Fast-RTPS dependencies
   sudo apt install -y --no-install-recommends \
@@ -286,6 +292,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
   # Install rosdep packages
   echo "Installing rosdep packages..."
   rosdep install \
+    --os=ubuntu:${CODENAME} \
     --from-paths "${ROS2_SOURCE_DIRECTORY}" \
     --ignore-src \
     --rosdistro ${ROS2_DISTRO} \
