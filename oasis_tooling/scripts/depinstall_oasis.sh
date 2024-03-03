@@ -133,7 +133,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     --ignore-src \
     --rosdistro ${ROS2_DISTRO} \
     --as-root=pip:false \
-    -y
+    --default-yes
 fi
 
 # Bootstrap the Arduino toolchain

@@ -341,7 +341,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     --ignore-src \
     --rosdistro ${ROS2_DISTRO} \
     --as-root=pip:false \
-    -y
+    --default-yes
 else
   echo "Disabling perception dependencies on macOS"
   touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/OpenNI2/COLCON_IGNORE"
