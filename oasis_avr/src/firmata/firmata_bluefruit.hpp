@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021-2023 Garrett Brown
+ *  Copyright (C) 2021-2024 Garrett Brown
  *  This file is part of OASIS - https://github.com/eigendude/OASIS
  *
  *  This file is derived from Adafruit_BluefruitLE_nRF51 under the

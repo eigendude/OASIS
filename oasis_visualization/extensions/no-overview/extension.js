@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2023 Garrett Brown
+ *  Copyright (C) 2023-2024 Garrett Brown
  *  This file is part of OASIS - https://github.com/eigendude/OASIS
  *
  *  This file is derived from no-overview under the GPL v3 license.
