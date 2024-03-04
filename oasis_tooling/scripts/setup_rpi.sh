@@ -76,6 +76,11 @@ fi
 
 sudo bash -c "echo 'Defaults    env_keep += \"NEEDRESTART_MODE\"' >/etc/sudoers.d/oasis-users"
 
+echo
+echo "Add the following line to your ~/.bashrc file:"
+echo 'export NEEDRESTART_MODE="a"'
+echo
+
 #
 # Disable the wait-online service to prevent the system from waiting on a
 # network connection and prevent the service from starting if requested by
