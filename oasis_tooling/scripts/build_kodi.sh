@@ -43,10 +43,7 @@ set -o nounset
 mkdir -p "${KODI_DOWNLOAD_DIR}"
 mkdir -p "${KODI_EXTRACT_DIR}"
 mkdir -p "${KODI_BUILD_DIR}"
-
-if [ "${CODENAME}" = "jammy" ]; then
-  mkdir -p "${KODI_DEPENDS_DIR}"
-fi
+mkdir -p "${KODI_DEPENDS_DIR}"
 
 #
 # Download Kodi
@@ -115,14 +112,12 @@ make \
   python3 \
 
 #
-# Build libdisplay-info (not available in < Ubuntu 23.04)
+# Build libdisplay-info
 #
 
-if [ "${CODENAME}" == "jammy" ]; then
-  make \
-    -C "${KODI_DEPENDS_SRC}/target/libdisplay-info" \
-    -j$(getconf _NPROCESSORS_ONLN)
-fi
+make \
+  -C "${KODI_DEPENDS_SRC}/target/libdisplay-info" \
+  -j$(getconf _NPROCESSORS_ONLN)
 
 #
 # Configure Kodi

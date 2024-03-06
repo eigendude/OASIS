@@ -134,10 +134,4 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
       wayland-protocols \
       waylandpp-dev
   fi
-
-  # Only available in >= 23.04
-  if [ "${CODENAME}" != "jammy" ]; then
-    sudo apt install -y \
-      libdisplay-info
-  fi
 fi
