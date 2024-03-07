@@ -21,9 +21,6 @@ set -o nounset
 # Get the absolute path to this script
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-# Import CMake paths and config
-source "${SCRIPT_DIR}/env_cmake.sh"
-
 # Import Kodi paths and config
 source "${SCRIPT_DIR}/env_kodi.sh"
 
@@ -74,16 +71,6 @@ patch \
   --directory="${KODI_SOURCE_DIR}" \
   < "${CONFIG_DIRECTORY}/kodi/0001-depends-Remove-git-dependency.patch" \
   || :
-if [ "${CODENAME}" = "bionic" ]; then
-  patch \
-    -p1 \
-    --forward \
-    --reject-file="/dev/null" \
-    --no-backup-if-mismatch \
-    --directory="${KODI_SOURCE_DIR}" \
-    < "${CONFIG_DIRECTORY}/kodi/0002-Fix-build-error-on-Ubuntu-18.04-due-to-libnfs-2.0.patch" \
-    || :
-fi
 
 #
 # Configure native depends
@@ -127,7 +114,6 @@ make \
   echo "Configuring Kodi..."
   mkdir -p "${KODI_BUILD_DIR}"
   cd "${KODI_BUILD_DIR}"
-  PATH="${CMAKE_BIN_DIRECTORY}:${PATH}" \
   PKG_CONFIG_PATH="${KODI_DEPENDS_DIR}/${KODI_DEPENDS_TARGET}/lib/pkgconfig" \
     cmake \
       "${KODI_SOURCE_DIR}" \

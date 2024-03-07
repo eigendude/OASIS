@@ -27,10 +27,8 @@ jobs:
       matrix:
         include:
           - os: ubuntu-22.04
-            ros1_distro: noetic
             ros2_distro: iron
           #- os: macbook
-          #  ros1_distro: noetic
           #  ros2_distro: galactic
 
     # Steps represent a sequence of tasks that will be executed as part of the
@@ -43,34 +41,6 @@ jobs:
       # access it
       - name: Checkout main repo
         uses: actions/checkout@v2
-
-      - name: Restore Python
-        id: restore-python
-        if: matrix.os != 'macbook'
-        uses: actions/cache@v2
-        with:
-          path: |
-            ros-ws/python/install
-          key: restore-python-${{ matrix.os }}-${{ hashFiles('oasis_tooling/scripts/*python.sh') }}
-
-      - name: Restore CMake
-        id: restore-cmake
-        if: matrix.os != 'macbook'
-        uses: actions/cache@v2
-        with:
-          path: |
-            ros-ws/cmake/install
-          key: restore-cmake-${{ matrix.os }}-${{ hashFiles('oasis_tooling/scripts/*cmake.sh') }}
-
-      # Skip ROS 1 on ubuntu-18.04, ubuntu-20.04 and macbook
-      #- name: Restore ROS 1 Desktop
-      #  id: restore-ros1-desktop
-      #  if: matrix.os != 'ubuntu-18.04' && matrix.os != 'ubuntu-20.04' && matrix.os != 'macbook'
-      #  uses: actions/cache@v2
-      #  with:
-      #    path: |
-      #      ros-ws/ros1-desktop-${{ matrix.ros1_distro }}/install
-      #    key: restore-ros1-desktop-${{ matrix.os }}-${{ matrix.ros1_distro }}-${{ hashFiles('oasis_tooling/config/vision_opencv/**', 'oasis_tooling/scripts/*ros1_desktop.sh') }}
 
       - name: Restore ROS 2 Desktop
         id: restore-ros2-desktop
@@ -102,61 +72,16 @@ jobs:
           sudo apt update
           sudo apt install -y build-essential cmake git
 
+      # TODO: This was needed to build theora_image_transport
+      - name: Install python3-lark
+        run: |
+          sudo apt install -y python3-lark
+
       # TODO: This was needed to link oasis_drivers_cpp
       - name: Install libspdlog-dev
         if: matrix.os != 'ubuntu-18.04'
         run: |
           sudo apt install -y libspdlog-dev
-
-      #
-      # TODO: This is needed because rosdep fails with error:
-      #
-      # The following packages have unmet dependencies:
-      #   libomp-dev : Depends: libomp5 (= 5.0.1-1)
-      # E: Unable to correct problems, you have held broken packages.
-      #
-      - name: Install oasis_kinect2 dependencies
-        if: matrix.os == 'ubuntu-18.04'
-        run: |
-          sudo apt install -y libomp5
-
-      - name: Install Python dependencies
-        if: matrix.os != 'macbook' && steps.restore-python.outputs.cache-hit != 'true'
-        run: ./oasis_tooling/scripts/depinstall_python.sh
-
-      - name: Build Python
-        if: matrix.os != 'macbook' && steps.restore-python.outputs.cache-hit != 'true'
-        run: ./oasis_tooling/scripts/build_python.sh
-
-      - name: Install CMake dependencies
-        if: matrix.os != 'macbook' && steps.restore-cmake.outputs.cache-hit != 'true'
-        run: ./oasis_tooling/scripts/depinstall_cmake.sh
-
-      - name: Build CMake
-        if: matrix.os != 'macbook' && steps.restore-cmake.outputs.cache-hit != 'true'
-        run: ./oasis_tooling/scripts/build_cmake.sh
-
-      #- name: Install ROS 1 Desktop dependencies
-      #  if: matrix.os != 'ubuntu-18.04' && matrix.os != 'ubuntu-20.04' && matrix.os != 'macbook' && steps.restore-ros1-desktop.outputs.cache-hit != 'true'
-      #  run: ./oasis_tooling/scripts/depinstall_ros1_desktop.sh
-
-      #- name: Fix empy install for ROS 1
-      #  if: matrix.os != 'ubuntu-18.04' && matrix.os != 'ubuntu-20.04' && matrix.os != 'macbook' && steps.restore-ros1-desktop.outputs.cache-hit != 'true'
-      #  run: |
-      #    sudo apt install -y python3-empy
-      #    sudo ln -s -f /usr/bin/empy3 /usr/bin/empy
-
-      #- name: Fix missing Python 2 packages for ROS 1
-      #  if: matrix.os != 'ubuntu-18.04' && matrix.os != 'ubuntu-20.04' && matrix.os != 'macbook' && steps.restore-ros1-desktop.outputs.cache-hit != 'true'
-      #  run: |
-      #    sudo apt install python2
-      #    curl https://bootstrap.pypa.io/pip/2.7/get-pip.py --output get-pip.py
-      #    sudo python2 get-pip.py
-      #    python2 -m pip install --upgrade catkin_pkg empy pip PyYAML setuptools
-
-      #- name: Build ROS 1 Desktop
-      #  if: matrix.os != 'ubuntu-18.04' && matrix.os != 'ubuntu-20.04' && matrix.os != 'macbook' && steps.restore-ros1-desktop.outputs.cache-hit != 'true'
-      #  run: ./oasis_tooling/scripts/build_ros1_desktop.sh
 
       - name: Install ROS 2 Desktop dependencies
         if: steps.restore-ros2-desktop.outputs.cache-hit != 'true'

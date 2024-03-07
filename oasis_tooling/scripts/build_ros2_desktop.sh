@@ -21,9 +21,6 @@ set -o nounset
 # Get the absolute path to this script
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-# Import CMake paths and config
-source "${SCRIPT_DIR}/env_cmake.sh"
-
 # Import ROS 2 paths and config
 source "${SCRIPT_DIR}/env_ros2_desktop.sh"
 
@@ -42,14 +39,10 @@ if [[ "${OSTYPE}" == "darwin"* ]]; then
   CMAKE_PREFIX_PATH="$(brew --prefix qt@5)/lib/cmake/Qt5"
 fi
 
-# Add ccache support and fix locating Python
+# Add ccache support
 COLCON_FLAGS+=" \
   --cmake-args \
     -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-    -DPYTHON_EXECUTABLE:FILEPATH=${PYTHON_EXECUTABLE} \
-    -DPYTHON_INCLUDE_DIR=${PYTHON_INCLUDE_DIR} \
-    -DPYTHON_LIBRARY=${PYTHON_LIBRARY_PATH} \
-    `#-DPYTHON_PACKAGES_PATH=${PYTHON_PKG_DIRECTORY}` \
 "
 
 # Skip Qt dependencies, Shiboken is too old on Ubuntu 18.04

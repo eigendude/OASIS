@@ -21,18 +21,8 @@ set -o nounset
 # Get the absolute path to this script
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-# Import CMake paths and config
-source "${SCRIPT_DIR}/env_cmake.sh"
-
 # Import OASIS paths and config
 source "${SCRIPT_DIR}/env_oasis.sh"
-
-# Get the Ubuntu codename if running on Ubuntu
-if [[ "${OSTYPE}" != "darwin"* ]]; then
-  CODENAME="$(source "/etc/os-release" && echo "${UBUNTU_CODENAME}")"
-else
-  CODENAME=
-fi
 
 #
 # Load OASIS dependency environment
@@ -54,9 +44,6 @@ COLCON_FLAGS="--merge-install"
 COLCON_FLAGS+=" \
   --cmake-args \
     -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-    -DPYTHON_EXECUTABLE:FILEPATH=${PYTHON_EXECUTABLE} \
-    -DPYTHON_INCLUDE_DIR=${PYTHON_INCLUDE_DIR} \
-    -DPYTHON_LIBRARY=${PYTHON_LIBRARY_PATH} \
 "
 
 # Uncomment these to force building in serial
@@ -74,11 +61,6 @@ mkdir -p "${OASIS_DIRECTORY}"
 if [ ! -L "${OASIS_SOURCE_DIRECTORY}" ]; then
   rm -rf "${OASIS_SOURCE_DIRECTORY}"
   ln -s "${STACK_DIRECTORY}" "${OASIS_SOURCE_DIRECTORY}"
-fi
-
-# Disable oasis_perception on Ubuntu 18.04 (OpenCV is too old for bgslibrary now)
-if [ "${CODENAME}" = "bionic" ]; then
-  touch "${OASIS_SOURCE_DIRECTORY}/oasis_perception/COLCON_IGNORE"
 fi
 
 #

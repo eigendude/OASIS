@@ -24,14 +24,13 @@ Environment=RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 # Path configuraiton
 #
 
-Environment=PYTHON_ENV=/home/${USER}/Documents/ros-ws/src/oasis/oasis_tooling/scripts/env_python.sh
 Environment=OASIS_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/oasis-${ROS2_DISTRO}/install/setup.bash
 
 #
 # Service definition
 #
 
-ExecStart=/bin/bash -c 'source `eval echo "${PYTHON_ENV}"` && set +o nounset && source `eval echo "${OASIS_ENV}"` && ros2 launch oasis_control control_launch.py'
+ExecStart=/bin/bash -c 'set +o nounset && source `eval echo "${OASIS_ENV}"` && ros2 launch oasis_control control_launch.py'
 Restart=on-failure
 
 [Install]

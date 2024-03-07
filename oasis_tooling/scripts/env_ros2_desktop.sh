@@ -28,11 +28,8 @@ ROS2_DISTRO=iron
 # Get the absolute path to this script
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-# Import Python paths and config
-source "${SCRIPT_DIR}/env_python.sh"
-
-# Ament Python package install prefix
-AMENT_PYTHON_PKG_PREFIX="${PYTHON_PKG_PREFIX/site-packages/dist-packages}"
+# Import common paths and config
+source "${SCRIPT_DIR}/env_common.sh"
 
 #
 # Directory definitions
@@ -47,11 +44,5 @@ ROS2_SOURCE_DIRECTORY="${ROS2_DESKTOP_DIRECTORY}/src"
 # Directory for ROS 2 Desktop installed files
 ROS2_INSTALL_DIRECTORY="${ROS2_DESKTOP_DIRECTORY}/install"
 
-# Directory for ROS 2 Python packages
-ROS2_PYTHON_PKG_DIRECTORY="${ROS2_INSTALL_DIRECTORY}/${PYTHON_PKG_PREFIX}"
-
 # Ament installs into "local" subdirectory
 AMENT_INSTALL_DIRECTORY="${ROS2_INSTALL_DIRECTORY}/local"
-
-# Directory for Ament Python packages
-AMENT_PYTHON_PKG_DIRECTORY="${ROS2_INSTALL_DIRECTORY}/${AMENT_PYTHON_PKG_PREFIX}"

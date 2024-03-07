@@ -87,11 +87,6 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     build-essential \
     ccache \
     git \
-    python3-pip \
-
-  # python3-rosdep is no longer an Ubuntu package, so install via pip
-  sudo python3 -m pip install --upgrade pip 2>/dev/null || :
-  sudo python3 -m pip install --upgrade --break-system-packages rosdep
 
   # TODO: image_transport needs libtinyxml2-dev indirectly
   sudo apt install -y libtinyxml2-dev
@@ -132,6 +127,10 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
 
   # Needed by cv_bridge, dev dependency of tracetools package in ros2_tracing stack
   sudo apt install -y liblttng-ust-dev
+
+  # Install development tools
+  sudo apt install -y --no-install-recommends \
+    ros-dev-tools
 fi
 
 #
@@ -145,30 +144,6 @@ if [[ "${OSTYPE}" == "darwin"* ]]; then
     boost-python3 \
     libusb
 fi
-
-#
-# Install Python packages
-#
-
-# Upgraded setuptools may be required for other tools
-python3 -m pip install --user --upgrade \
-  pip \
-  setuptools \
-
-# Install development tools and ROS tools
-python3 -m pip install --user --upgrade \
-  colcon-common-extensions \
-  rosdep \
-  vcstool \
-
-# numpy is also required
-python3 -m pip install --user --upgrade \
-  numpy \
-
-# Sometimes lark is missing
-python3 -m pip install --user --upgrade \
-  importlib-resources \
-  lark-parser \
 
 #
 # Directory setup
@@ -187,11 +162,6 @@ vcs import "${OASIS_DEPENDS_SOURCE_DIRECTORY}" < "${PACKAGE_DIRECTORY}/config/de
 #
 # Patch dependency sources
 #
-
-# Disable bgslibrary on 18.04 due to older OpenCV version
-if [ "${CODENAME}" = "bionic" ]; then
-  touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/bgslibrary/COLCON_IGNORE"
-fi
 
 # libcec
 cp -v \
@@ -283,12 +253,6 @@ patch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/orb-slam3" \
   < "${CONFIG_DIRECTORY}/orb-slam3/0003-Add-install-step-to-CMakeLists.txt.patch" \
   || :
-
-# Disable ORB-SLAM3 on Ubuntu 18.04 and Ubuntu 20.04
-if [ "${CODENAME}" = "bionic" ] || [ "${CODENAME}" = "focal" ]; then
-  echo "Disabling ORB-SLAM3 on ${CODENAME}"
-  touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/orb-slam3/COLCON_IGNORE"
-fi
 
 # Disable ORB_SLAM3 on systems with < 4GiB memory
 PHYSICAL_MEMORY_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')

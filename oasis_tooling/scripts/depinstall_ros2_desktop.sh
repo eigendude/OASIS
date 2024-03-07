@@ -92,17 +92,6 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     python3-pip \
     wget \
 
-  # On Ubuntu 18.04, GCC 7 cannot build rclcpp
-  if [ "${CODENAME}" = "bionic" ]; then
-    sudo apt install -y g++-8
-    sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-7 700 --slave /usr/bin/g++ g++ /usr/bin/g++-7
-    sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-8 800 --slave /usr/bin/g++ g++ /usr/bin/g++-8
-  fi
-
-  # python3-rosdep is no longer an Ubuntu package, so install via pip
-  sudo python3 -m pip install --upgrade pip 2>/dev/null || :
-  sudo python3 -m pip install --upgrade --break-system-packages rosdep
-
   # Install Fast-RTPS dependencies
   sudo apt install -y --no-install-recommends \
     libasio-dev \
@@ -112,52 +101,21 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
   sudo apt install -y --no-install-recommends \
     libcunit1-dev \
 
-  # Upgraded setuptools may be required for other tools
-  python3 -m pip install --user --upgrade \
-    pip \
-    setuptools \
-
-  # Install development tools and ROS tools
-  python3 -m pip install --user --upgrade \
-    colcon-common-extensions \
-    rosdep \
-    vcstool \
-
-  # Install some pip packages needed for testing
-  python3 -m pip install --user --upgrade \
-    argcomplete \
-    black \
-    click \
-    distro \
-    flake8 \
-    flake8-blind-except \
-    flake8-builtins \
-    flake8-class-newline \
-    flake8-comprehensions \
-    flake8-deprecated \
-    flake8-docstrings \
-    flake8-import-order \
-    flake8-quotes \
-    mypy \
-    mypy-extensions \
-    pytest \
-    pytest-cov \
-    pytest-repeat \
-    pytest-rerunfailures \
-    tox \
-
-  # Sometimes lark is missing
-  python3 -m pip install --user --upgrade \
-    importlib-resources \
-    lark-parser \
-
-  # This is needed by rosidl_generator_py
-  python3 -m pip install --user --upgrade \
-    numpy \
-
-  # ROS 2 runtime dependencies
-  python3 -m pip install --user --upgrade \
-    netifaces
+  # Install development tools
+  sudo apt install -y --no-install-recommends \
+    python3-flake8-docstrings \
+    python3-pip \
+    python3-pytest-cov \
+    python3-flake8-blind-except \
+    python3-flake8-builtins \
+    python3-flake8-class-newline \
+    python3-flake8-comprehensions \
+    python3-flake8-deprecated \
+    python3-flake8-import-order \
+    python3-flake8-quotes \
+    python3-pytest-repeat \
+    python3-pytest-rerunfailures \
+    ros-dev-tools
 fi
 
 #
@@ -249,18 +207,12 @@ fi
 # Ensure directories exist
 mkdir -p "${ROS2_SOURCE_DIRECTORY}"
 mkdir -p "${ROS2_INSTALL_DIRECTORY}"
-mkdir -p "${ROS2_PYTHON_PKG_DIRECTORY}"
 
 # After updating to Ubuntu 22.04, ament packages couldn't be found because
 # they were installed to a different directory
 if [ ! -L "${AMENT_INSTALL_DIRECTORY}" ]; then
   rm -rf "${AMENT_INSTALL_DIRECTORY}"
   ln -s "${ROS2_INSTALL_DIRECTORY}" "${AMENT_INSTALL_DIRECTORY}"
-fi
-
-if [ ! -L "${AMENT_PYTHON_PKG_DIRECTORY}" ]; then
-  rm -rf "${AMENT_PYTHON_PKG_DIRECTORY}"
-  ln -s "${ROS2_PYTHON_PKG_DIRECTORY}" "${AMENT_PYTHON_PKG_DIRECTORY}"
 fi
 
 #

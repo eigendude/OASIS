@@ -86,11 +86,6 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     build-essential \
     ccache \
     git \
-    python3-pip \
-
-  # python3-rosdep is no longer an Ubuntu package, so install via pip
-  sudo python3 -m pip install --upgrade pip 2>/dev/null || :
-  sudo python3 -m pip install --upgrade --break-system-packages rosdep
 
   # Install vbetool
   if [[ ${PLATFORM_ARCH} == i*86 ]] || [[ ${PLATFORM_ARCH} == x86_64 ]]; then
@@ -102,31 +97,15 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
 
   # Observed on Ubuntu 22.04 that console_bridge wasn't located by CMake
   sudo apt install -y libconsole-bridge-dev
+
+  # Install development tools
+  sudo apt install -y --no-install-recommends \
+    ros-dev-tools
+
+  # Install numpy
+  sudo apt install -y --no-install-recommends \
+    python3-numpy
 fi
-
-# Upgraded setuptools may be required for other tools
-python3 -m pip install --user --upgrade \
-  pip \
-  setuptools \
-
-# Install development tools and ROS tools
-python3 -m pip install --user --upgrade \
-  colcon-common-extensions \
-  rosdep \
-  vcstool \
-
-# numpy is required for building messages
-python3 -m pip install --user --upgrade \
-  numpy
-
-# Sometimes lark is missing
-python3 -m pip install --user --upgrade \
-  importlib-resources \
-  lark-parser \
-
-# Install OASIS dependencies
-python3 -m pip install --user --upgrade \
-  --requirement "${STACK_DIRECTORY}/oasis_drivers_py/requirements.txt"
 
 #
 # Install OASIS rosdeps

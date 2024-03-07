@@ -31,7 +31,6 @@ Environment=WAYLAND_DISPLAY=wayland-0
 # Path configuraiton
 #
 
-Environment=PYTHON_ENV=/home/${USER}/Documents/ros-ws/src/oasis/oasis_tooling/scripts/env_python.sh
 Environment=OASIS_SRC=/home/${USER}/Documents/ros-ws/src/oasis
 Environment=OASIS_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/oasis-${ROS2_DISTRO}/install/setup.bash
 
@@ -39,7 +38,7 @@ Environment=OASIS_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/oasis-${RO
 # Service definition
 #
 
-ExecStart=/bin/bash -c 'source `eval echo "${PYTHON_ENV}"` && set +o nounset && source `eval echo "${OASIS_ENV}"` && cd `eval echo "${OASIS_SRC}/oasis_perception"` && ros2 launch oasis_perception perception_launch.py'
+ExecStart=/bin/bash -c 'set +o nounset && source `eval echo "${OASIS_ENV}"` && cd `eval echo "${OASIS_SRC}/oasis_perception"` && ros2 launch oasis_perception perception_launch.py'
 Restart=on-failure
 
 [Install]

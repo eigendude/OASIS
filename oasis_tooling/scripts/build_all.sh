@@ -22,27 +22,6 @@ set -o nounset
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 #
-# Build Python
-#
-
-"${SCRIPT_DIR}/depinstall_python.sh"
-"${SCRIPT_DIR}/build_python.sh"
-
-#
-# Build CMake
-#
-
-"${SCRIPT_DIR}/depinstall_cmake.sh"
-"${SCRIPT_DIR}/build_cmake.sh"
-
-#
-# Build ROS 1
-#
-
-#"${SCRIPT_DIR}/depinstall_ros1_desktop.sh"
-#"${SCRIPT_DIR}/build_ros1_desktop.sh"
-
-#
 # Build ROS 2
 #
 

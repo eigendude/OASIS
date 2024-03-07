@@ -33,7 +33,6 @@ Environment=WAYLAND_DISPLAY=wayland-0
 # Path configuraiton
 #
 
-Environment=PYTHON_ENV=/home/${USER}/Documents/ros-ws/src/oasis/oasis_tooling/scripts/env_python.sh
 Environment=OASIS_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/oasis-${ROS2_DISTRO}/install/setup.bash
 Environment=KODI_BINARY=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/kodi-${ROS2_DISTRO}/install/bin/kodi
 
@@ -41,7 +40,7 @@ Environment=KODI_BINARY=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/kodi-${R
 # Service definition
 #
 
-ExecStart=/bin/bash -c 'source `eval echo "${PYTHON_ENV}"` && export PYTHONHOME="${PYTHONUSERBASE}" && set +o nounset && source `eval echo "${OASIS_ENV}"` && `eval echo "${KODI_BINARY}"`'
+ExecStart=/bin/bash -c 'set +o nounset && source `eval echo "${OASIS_ENV}"` && `eval echo "${KODI_BINARY}"`'
 Restart=always
 
 [Install]
