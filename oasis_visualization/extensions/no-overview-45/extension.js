@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2023-2024 Garrett Brown
+ *  Copyright (C) 2024 Garrett Brown
  *  This file is part of OASIS - https://github.com/eigendude/OASIS
  *
  *  This file is derived from no-overview under the GPL v3 license.
@@ -9,9 +9,10 @@
  *  See the file LICENSE.txt for more information.
  */
 
-const Main = imports.ui.main;
+import { Extension } from "resource:///org/gnome/shell/extensions/extension.js";
+import * as Main from "resource:///org/gnome/shell/ui/main.js";
 
-class NoOverviewExtension {
+export default class NoOverviewExtension extends Extension {
   enable() {
     if (!Main.layoutManager._startingUp) {
       return;
@@ -27,9 +28,4 @@ class NoOverviewExtension {
   disable() {
     Main.layoutManager.disconnectObject(this);
   }
-}
-
-// eslint-disable-next-line no-unused-vars
-function init() {
-  return new NoOverviewExtension();
 }
