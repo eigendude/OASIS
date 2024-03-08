@@ -14,9 +14,9 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
-#
+################################################################################
 # Environment paths and configuration
-#
+################################################################################
 
 # Get the absolute path to this script
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -27,9 +27,20 @@ VISUALIZATION_DIR="${SCRIPT_DIR}/../../oasis_visualization"
 # Path to Gnome extensions directory
 GNOME_EXTENSIONS_DIR="${HOME}/.local/share/gnome-shell/extensions"
 
-#
+# Path to Gnome configuration file
+GNOME_CONF_FILE="/etc/gdm3/custom.conf"
+
+# Print Gnome version
+GNOME_VERSION="$(gnome-shell --version 2>/dev/null || :)"
+if [ -n "${GNOME_VERSION}" ]; then
+  echo "Detected Gnome version: ${GNOME_VERSION}"
+else
+  echo "Gnome is not currently installed"
+fi
+
+################################################################################
 # Install Gnome and accessories
-#
+################################################################################
 
 sudo apt update
 sudo apt install -y \
@@ -38,15 +49,15 @@ sudo apt install -y \
   gnome-system-monitor \
   gnome-terminal \
 
-#
+################################################################################
 # Create directories
-#
+################################################################################
 
 mkdir -p "${GNOME_EXTENSIONS_DIR}"
 
-#
+################################################################################
 # Install Gnome extensions
-#
+################################################################################
 
 for extenion_dir in "${VISUALIZATION_DIR}/extensions/"*; do
   echo
@@ -67,12 +78,16 @@ for extenion_dir in "${VISUALIZATION_DIR}/extensions/"*; do
   gnome-extensions enable "${EXTENSION_UUID}"
 done
 
-#
+################################################################################
 # Configure Gnome
-#
+################################################################################
 
 echo
 echo "Configuring Gnome"
+
+#
+# Screen lock idle delay
+#
 
 # Get the screen lock idle delay
 IDLE_DELAY=$(gsettings get org.gnome.desktop.session idle-delay)
@@ -88,6 +103,10 @@ if [ "${IDLE_DELAY}" != "0" ]; then
   gsettings set org.gnome.desktop.session idle-delay 0
 fi
 
+#
+# Sleep settings
+#
+
 # Get the current sleep settings
 SLEEP_TYPE="$(gsettings get org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type)"
 echo "The current sleep-inactive-ac-type is: ${SLEEP_TYPE}"
@@ -97,6 +116,10 @@ if [ "${SLEEP_TYPE}" != "'nothing'" ]; then
   echo " - Setting sleep-inactive-ac-type to 'nothing'"
   gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type 'nothing'
 fi
+
+#
+# Gnome theme
+#
 
 # Check which theme Gnome is using
 THEME="$(gsettings get org.gnome.desktop.interface gtk-theme)"
@@ -109,11 +132,71 @@ if [ "${THEME}" != "'Adwaita-dark'" ]; then
 fi
 
 #
-# Configure systemd
+# Screensaver settings
 #
 
+# Disable screen saver
+echo "Disabling screen saver"
+gsettings set org.gnome.desktop.screensaver lock-enabled false
+gsettings set org.gnome.desktop.screensaver idle-activation-enabled false
+
+#
+# Desktop background settings
+#
+
+# Set background properties
+echo "Setting background properties"
+gsettings set org.gnome.desktop.background picture-options 'zoom'
+
+#
+# Display settings
+#
+
+# Prevent display from turning off
+echo "Preventing display from turning off"
+# Disable screensaver's idle activation
+gsettings set org.gnome.desktop.screensaver idle-activation-enabled false
+# Prevent the display from dimming
+gsettings set org.gnome.settings-daemon.plugins.power idle-dim false
+# Prevent the system from automatically going to sleep when on AC power
+gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type 'nothing'
+# Prevent the system from automatically going to sleep when on battery power
+gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-battery-type 'nothing'
+
+#
+# Auto-login
+#
+
+# Set auto login configuration
+LINE1="AutomaticLoginEnable=True"
+LINE2="AutomaticLogin=$(whoami)"
+
+# Check if any line appears in ${GNOME_CONF_FILE} and print autologin enabled if so
+if grep -qx "${LINE1}" "${GNOME_CONF_FILE}" && \
+   grep -qx "${LINE2}" ${GNOME_CONF_FILE}; then
+  echo "Autologin is enabled"
+else
+  echo "Enabling autologin"
+fi
+
+for LINE in "${LINE2}" "${LINE1}"; do
+  # Check if line is not in the file and then add it
+  if ! grep -qx "${LINE}" "${GNOME_CONF_FILE}"; then
+    echo " - Adding ${LINE}"
+    sudo sed -i "/^\[daemon\]/a ${LINE}" "${GNOME_CONF_FILE}"
+  fi
+done
+
+################################################################################
+# Configure system
+################################################################################
+
 echo
-echo "Configuring systemd"
+echo "Configuring system"
+
+#
+# Systemd suspend
+#
 
 # Check if systemd suspend is enabled
 SUSPEND_ENABLED="$(systemctl is-enabled sleep.target || :)"
@@ -124,3 +207,10 @@ if [ "${SUSPEND_ENABLED}" != "masked" ]; then
   echo " - Disabling systemd suspend"
   sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
 fi
+
+################################################################################
+# Done
+################################################################################
+
+echo
+echo "Gnome \"$(gnome-shell --version)\" has been installed and configured"
