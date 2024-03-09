@@ -14,9 +14,9 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
-#
+################################################################################
 # Environment configuration
-#
+################################################################################
 
 # Location of the swap storage
 SWAP_FILE="/swapfile"
@@ -24,23 +24,23 @@ SWAP_FILE="/swapfile"
 # Size of swap storage (get a big SD card)
 SWAP_SIZE="16G"
 
-#
+################################################################################
 # Directory and path definitions
-#
+################################################################################
 
 # Get the absolute path to this script
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-#
+################################################################################
 # Environment setup
-#
+################################################################################
 
 # Import RPi environment variables
 source "${SCRIPT_DIR}/env_rpi.sh"
 
-#
+################################################################################
 # Create swap storage
-#
+################################################################################
 
 if ! grep -q "swap" "/etc/fstab"; then
   if ! [ -f "${SWAP_FILE}" ]; then
@@ -70,9 +70,9 @@ else
   echo "${SWAP_SIZE}"
 fi
 
-#
+################################################################################
 # Disable interactive mode for apt
-#
+################################################################################
 
 sudo bash -c "echo 'Defaults    env_keep += \"NEEDRESTART_MODE\"' >/etc/sudoers.d/oasis-users"
 
@@ -81,11 +81,28 @@ echo "Add the following line to your ~/.bashrc file:"
 echo 'export NEEDRESTART_MODE="a"'
 echo
 
-#
+################################################################################
 # Disable the wait-online service to prevent the system from waiting on a
 # network connection and prevent the service from starting if requested by
 # another service
-#
+################################################################################
 
 sudo systemctl disable systemd-networkd-wait-online.service
 sudo systemctl mask systemd-networkd-wait-online.service
+
+################################################################################
+# Enable 3D driver
+################################################################################
+
+CONFIG_FILE="/boot/firmware/config.txt"
+DRIVER_CONFIG="dtoverlay=vc4-fkms-v3d"
+
+if ! grep -q "^${DRIVER_CONFIG}" "${CONFIG_FILE}"; then
+  echo "Enabling 3D driver..."
+  echo "${DRIVER_CONFIG}" | sudo tee --append "${CONFIG_FILE}" > /dev/null
+
+  # Inform the user that a reboot is required to apply changes
+  echo "3D driver enabled. Please reboot your system to apply changes."
+else
+  echo "3D driver is already enabled."
+fi
