@@ -81,13 +81,18 @@ fi
 if [[ "${OSTYPE}" == "darwin"* ]]; then
   brew update
 
+  # Install build utilities
+  brew install \
+    ccache \
+    wget \
+
+  # Install ROS dependencies
   # Note: qt@6 causes problems with rviz_rendering, make sure qt@6 isn't installed
   brew install \
     asio \
     assimp \
     bison \
     bullet \
-    ccache \
     cmake \
     console_bridge \
     cppcheck \
@@ -95,9 +100,9 @@ if [[ "${OSTYPE}" == "darwin"* ]]; then
     eigen \
     freetype \
     graphviz \
-    log4cxx \
     opencv \
     openssl \
+    orocos-kdl \
     pcre \
     poco \
     pyqt5 \
@@ -107,12 +112,13 @@ if [[ "${OSTYPE}" == "darwin"* ]]; then
     spdlog \
     tinyxml \
     tinyxml2 \
-    wget \
 
+  # Update Python utilities
   python3 -m pip install --upgrade \
     pip \
     setuptools \
 
+  # Install ROS Python dependencies
   python3 -m pip install --upgrade \
     argcomplete \
     catkin_pkg \
@@ -121,7 +127,7 @@ if [[ "${OSTYPE}" == "darwin"* ]]; then
     cryptography \
     empy \
     flake8 \
-    flake8-blind-except \
+    flake8-blind-except==0.1.1 \
     flake8-builtins \
     flake8-class-newline \
     flake8-comprehensions \
@@ -129,30 +135,31 @@ if [[ "${OSTYPE}" == "darwin"* ]]; then
     flake8-docstrings \
     flake8-import-order \
     flake8-quotes \
-    ifcfg \
     importlib-metadata \
-    lark-parser \
+    jsonschema \
+    lark==1.1.1 \
     lxml \
     matplotlib \
     mock \
-    mypy==0.761 \
+    mypy==0.931 \
     netifaces \
     nose \
     pep8 \
     psutil \
     pydocstyle \
     pydot \
-    pyparsing \
+    pyparsing==2.4.7 \
     pytest-mock \
     rosdep \
     rosdistro \
+    setuptools==59.6.0 \
     vcstool \
 
   GRAPHVIZ_VERSION=$(brew list --version | grep graphviz | cut -d " " -f 2)
   python3 -m pip install --upgrade \
     --global-option=build_ext \
-    --global-option="-I/usr/local/Cellar/graphviz/${GRAPHVIZ_VERSION}/include" \
-    --global-option="-L/usr/local/Cellar/graphviz/${GRAPHVIZ_VERSION}/lib" \
+    --global-option="-I$(brew --prefix)/Cellar/graphviz/${GRAPHVIZ_VERSION}/include" \
+    --global-option="-L$(brew --prefix)/Cellar/graphviz/${GRAPHVIZ_VERSION}/lib" \
     pygraphviz
 fi
 
@@ -164,11 +171,13 @@ fi
 mkdir -p "${ROS2_SOURCE_DIRECTORY}"
 mkdir -p "${ROS2_INSTALL_DIRECTORY}"
 
-# After updating to Ubuntu 22.04, ament packages couldn't be found because
-# they were installed to a different directory
-if [ ! -L "${AMENT_INSTALL_DIRECTORY}" ]; then
-  rm -rf "${AMENT_INSTALL_DIRECTORY}"
-  ln -s "${ROS2_INSTALL_DIRECTORY}" "${AMENT_INSTALL_DIRECTORY}"
+if [[ "${OSTYPE}" != "darwin"* ]]; then
+  # After updating to Ubuntu 22.04, ament packages couldn't be found because
+  # they were installed to a different directory
+  if [ ! -L "${AMENT_INSTALL_DIRECTORY}" ]; then
+    rm -rf "${AMENT_INSTALL_DIRECTORY}"
+    ln -s "${ROS2_INSTALL_DIRECTORY}" "${AMENT_INSTALL_DIRECTORY}"
+  fi
 fi
 
 #

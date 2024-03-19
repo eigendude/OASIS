@@ -37,20 +37,20 @@ CMAKE_PREFIX_PATH=
 if [[ "${OSTYPE}" == "darwin"* ]]; then
   COLCON_FLAGS+=" --packages-skip-by-dep python_qt_binding"
   CMAKE_PREFIX_PATH="$(brew --prefix qt@5)/lib/cmake/Qt5"
+else
+  # Add ccache support and fix locating Python
+  COLCON_FLAGS+=" \
+    --cmake-args \
+      -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+  "
+
+  # Skip Qt dependencies, Shiboken is too old on Ubuntu 18.04
+  COLCON_FLAGS+=" \
+    --packages-ignore \
+      qt_gui_cpp \
+      rqt_gui_cpp \
+  "
 fi
-
-# Add ccache support
-COLCON_FLAGS+=" \
-  --cmake-args \
-    -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-"
-
-# Skip Qt dependencies, Shiboken is too old on Ubuntu 18.04
-COLCON_FLAGS+=" \
-  --packages-ignore \
-    qt_gui_cpp \
-    rqt_gui_cpp \
-"
 
 # Uncomment these to force building in serial
 #MAKE_FLAGS+=" -j1 -l1"
