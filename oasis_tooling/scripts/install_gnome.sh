@@ -48,6 +48,7 @@ sudo apt install -y \
   gnome-shell-extensions \
   gnome-system-monitor \
   gnome-terminal \
+  nautilus \
 
 ################################################################################
 # Create directories
