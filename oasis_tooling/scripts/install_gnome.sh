@@ -46,8 +46,10 @@ sudo apt update
 sudo apt install -y \
   gnome-shell \
   gnome-shell-extensions \
+  gnome-software \
   gnome-system-monitor \
   gnome-terminal \
+  gnome-tweaks \
   nautilus \
 
 ################################################################################
