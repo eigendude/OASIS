@@ -5,5 +5,5 @@
   "version": "1.0.0",
   "original-authors": ["eigendude"],
   "url": "https://github.com/eigendude/OASIS",
-  "shell-version": ["45"]
+  "shell-version": ["45", "46"]
 }
