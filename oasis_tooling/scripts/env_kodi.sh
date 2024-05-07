@@ -36,11 +36,6 @@ source "${SCRIPT_DIR}/env_oasis.sh"
 
 # Machines with dual displays
 ENABLE_DUAL_DISPLAYS=0
-if \
-  [ "${HOSTNAME}" = "nuc" ] \
-; then
-  ENABLE_DUAL_DISPLAYS=1
-fi
 
 #
 # Kodi configuration
