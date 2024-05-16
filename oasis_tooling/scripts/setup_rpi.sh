@@ -89,20 +89,3 @@ echo
 
 sudo systemctl disable systemd-networkd-wait-online.service
 sudo systemctl mask systemd-networkd-wait-online.service
-
-################################################################################
-# Enable 3D driver
-################################################################################
-
-CONFIG_FILE="/boot/firmware/config.txt"
-DRIVER_CONFIG="dtoverlay=vc4-fkms-v3d"
-
-if ! grep -q "^${DRIVER_CONFIG}" "${CONFIG_FILE}"; then
-  echo "Enabling 3D driver..."
-  echo "${DRIVER_CONFIG}" | sudo tee --append "${CONFIG_FILE}" > /dev/null
-
-  # Inform the user that a reboot is required to apply changes
-  echo "3D driver enabled. Please reboot your system to apply changes."
-else
-  echo "3D driver is already enabled."
-fi
