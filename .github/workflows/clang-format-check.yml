@@ -15,8 +15,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-22.04
-            clang-format-version: 16
+          - os: ubuntu-24.04
+            clang-format-version: 15
 
     # Steps represent a sequence of tasks that will be executed as part of the
     # job
@@ -24,11 +24,11 @@ jobs:
       # Check-out the repository under $GITHUB_WORKSPACE, so the job can
       # access it
       - name: Checkout main repo
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       # Install llvm from https://apt.llvm.org/
       - name: Run clang-format-${{ matrix.clang-format-version }} style check for C/C++/Protobuf programs
-        uses: jidicula/clang-format-action@v4.4.0
+        uses: jidicula/clang-format-action@v4.13.0
         with:
           clang-format-version: ${{ matrix.clang-format-version }}
           check-path: '.'

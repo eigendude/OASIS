@@ -12,8 +12,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-22.04
-            node_version: 20
+          - os: ubuntu-24.04
+            node_version: 22
 
     steps:
       - name: Check out code

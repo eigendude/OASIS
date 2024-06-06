@@ -33,7 +33,7 @@ jobs:
       # Check-out the repository under $GITHUB_WORKSPACE, so the job can
       # access it
       - name: Checkout main repo
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       # Required on self-hosted workers: sudo apt install python3.10-dev
       #
@@ -56,7 +56,7 @@ jobs:
 
       - name: Restore tox environment
         id: restore-tox
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         with:
           path: |
             .tox
