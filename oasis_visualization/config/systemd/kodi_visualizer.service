@@ -19,7 +19,7 @@ Environment=XDG_RUNTIME_DIR=/run/user/1000
 # ROS 2 configuration
 #
 
-Environment=ROS2_DISTRO=iron
+Environment=ROS2_DISTRO=jazzy
 Environment=RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 
 #

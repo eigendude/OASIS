@@ -19,7 +19,7 @@ set -o nounset
 #
 
 # Define the ROS distro to use
-ROS2_DISTRO=iron
+ROS2_DISTRO=jazzy
 
 #
 # Environment paths and config

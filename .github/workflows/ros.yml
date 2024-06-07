@@ -27,7 +27,9 @@ jobs:
       matrix:
         include:
           - os: ubuntu-22.04
-            ros2_distro: iron
+            ros2_distro: jazzy
+          - os: ubuntu-24.04
+            ros2_distro: jazzy
           #- os: macbook
           #  ros2_distro: galactic
 
@@ -40,11 +42,11 @@ jobs:
       # Check-out the repository under $GITHUB_WORKSPACE, so the job can
       # access it
       - name: Checkout main repo
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Restore ROS 2 Desktop
         id: restore-ros2-desktop
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         with:
           path: |
             ros-ws/ros2-desktop-${{ matrix.ros2_distro }}/install
@@ -52,7 +54,7 @@ jobs:
 
       - name: Restore OASIS dependencies
         id: restore-oasis-depends
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         with:
           path: |
             ros-ws/oasis-depends-${{ matrix.ros2_distro }}/install
@@ -60,7 +62,7 @@ jobs:
 
       - name: Restore Arduino IDE
         id: restore-arduino-ide
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         with:
           path: |
             oasis_avr/arduino-*

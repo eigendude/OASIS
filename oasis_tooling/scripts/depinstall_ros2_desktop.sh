@@ -25,7 +25,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 source "${SCRIPT_DIR}/env_ros2_desktop.sh"
 
 # rosdep keys to ignore
-if [ "${ROS2_DISTRO}" = "iron" ]; then
+if [ "${ROS2_DISTRO}" = "iron" ] || [ "${ROS2_DISTRO}" = "jazzy" ]; then
   ROSDEP_IGNORE_KEYS=" \
     fastcdr \
     rti-connext-dds-6.0.1 \
@@ -38,11 +38,6 @@ fi
 if [[ "${OSTYPE}" != "darwin"* ]]; then
   ARCH="$(dpkg --print-architecture)"
   CODENAME="$(source "/etc/os-release" && echo "${UBUNTU_CODENAME}")"
-
-  # TODO: For Ubuntu 23.10 (mantic), use Ubuntu 22.04 (jammy) depends
-  if [[ "${CODENAME}" == "mantic" ]]; then
-    CODENAME=jammy
-  fi
 else
   ARCH=
   CODENAME=
@@ -103,18 +98,18 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
 
   # Install development tools
   sudo apt install -y --no-install-recommends \
-    python3-flake8-docstrings \
-    python3-pip \
-    python3-pytest-cov \
     python3-flake8-blind-except \
-    python3-flake8-builtins \
     python3-flake8-class-newline \
-    python3-flake8-comprehensions \
     python3-flake8-deprecated \
-    python3-flake8-import-order \
-    python3-flake8-quotes \
+    python3-mypy \
+    python3-pip \
+    python3-pytest \
+    python3-pytest-cov \
+    python3-pytest-mock \
     python3-pytest-repeat \
     python3-pytest-rerunfailures \
+    python3-pytest-runner \
+    python3-pytest-timeout \
     ros-dev-tools
 fi
 

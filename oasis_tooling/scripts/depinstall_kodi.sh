@@ -134,4 +134,8 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
       wayland-protocols \
       waylandpp-dev
   fi
+
+  if [ "${CODENAME}" != "jammy" ]; then
+    sudo apt install -y libdisplay-info-dev
+  fi
 fi
