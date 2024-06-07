@@ -1,7 +1,7 @@
-From d30a08f6425f8c10f79a83571aeb7e3a8247d760 Mon Sep 17 00:00:00 2001
+From 7b27110ebc224e3017d073958eadfb37e8dd2b80 Mon Sep 17 00:00:00 2001
 From: Garrett Brown <eigendebugger@gmail.com>
 Date: Fri, 23 Dec 2022 13:43:38 -0800
-Subject: [PATCH 2/3] Add missing DBoW2 directory to CMakeLists.txt
+Subject: [PATCH 2/4] Add missing DBoW2 directory to CMakeLists.txt
 
 ---
  CMakeLists.txt | 3 +--

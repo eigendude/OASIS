@@ -77,6 +77,9 @@ jobs:
         run: |
           sudo apt install -y python3-lark
 
+      - name: Install ORB_SLAM3 dependencies
+        run: sudo apt install -y libegl1-mesa-dev
+
       # TODO: This was needed to link oasis_drivers_cpp
       - name: Install libspdlog-dev
         if: matrix.os != 'ubuntu-18.04'
