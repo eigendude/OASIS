@@ -24,7 +24,7 @@ repositories:
   depends/pangolin:
     type: git
     url: https://github.com/stevenlovegrove/Pangolin.git
-    version: master
+    version: c49c7c3217b32a796e17134ec129aaf576753c05
   ros-perception/bgslibrary:
     type: git
     url: https://github.com/andrewssobral/bgslibrary.git

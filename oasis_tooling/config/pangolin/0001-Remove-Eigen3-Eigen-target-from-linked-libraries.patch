@@ -1,4 +1,4 @@
-From 07604e813bf152c66865694ed49e25b2cf40247c Mon Sep 17 00:00:00 2001
+From bbe4b7bce98093ae4af2284e3f85f5f869ee6c10 Mon Sep 17 00:00:00 2001
 From: Garrett Brown <eigendebugger@gmail.com>
 Date: Fri, 23 Dec 2022 17:19:50 -0800
 Subject: [PATCH] Remove Eigen3::Eigen target from linked libraries
@@ -10,11 +10,11 @@ Subject: [PATCH] Remove Eigen3::Eigen target from linked libraries
  3 files changed, 6 insertions(+), 3 deletions(-)
 
 diff --git a/components/pango_geometry/CMakeLists.txt b/components/pango_geometry/CMakeLists.txt
-index 598de5bc..287024c5 100644
+index 281209fa..a8e2ef7c 100644
 --- a/components/pango_geometry/CMakeLists.txt
 +++ b/components/pango_geometry/CMakeLists.txt
-@@ -10,10 +10,11 @@ PRIVATE
-     ${CMAKE_CURRENT_LIST_DIR}/src/geometry_ply.cpp
+@@ -14,10 +14,11 @@ set_target_properties(
+     ${COMPONENT} PROPERTIES VERSION ${PANGOLIN_VERSION} SOVERSION ${PANGOLIN_VERSION_MAJOR}
  )
  
 -target_link_libraries(${COMPONENT} pango_core pango_image tinyobj Eigen3::Eigen)
@@ -27,11 +27,11 @@ index 598de5bc..287024c5 100644
  install(DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/include"
    DESTINATION ${CMAKE_INSTALL_PREFIX}
 diff --git a/components/pango_image/CMakeLists.txt b/components/pango_image/CMakeLists.txt
-index 6835fbb1..95548873 100644
+index b82e7c3f..15a23919 100644
 --- a/components/pango_image/CMakeLists.txt
 +++ b/components/pango_image/CMakeLists.txt
-@@ -105,10 +105,11 @@ PRIVATE
-     ${CMAKE_CURRENT_LIST_DIR}/src/image_io_tiff.cpp
+@@ -109,10 +109,11 @@ set_target_properties(
+     ${COMPONENT} PROPERTIES VERSION ${PANGOLIN_VERSION} SOVERSION ${PANGOLIN_VERSION_MAJOR}
  )
  
 -target_link_libraries(${COMPONENT} PUBLIC pango_core Eigen3::Eigen)
@@ -44,19 +44,19 @@ index 6835fbb1..95548873 100644
  install(DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/include"
    DESTINATION ${CMAKE_INSTALL_PREFIX}
 diff --git a/components/pango_opengl/CMakeLists.txt b/components/pango_opengl/CMakeLists.txt
-index 24dc07ed..f1d6a55e 100644
+index e48e1d17..3f3fdf58 100644
 --- a/components/pango_opengl/CMakeLists.txt
 +++ b/components/pango_opengl/CMakeLists.txt
-@@ -26,7 +26,7 @@ find_package (Eigen3 REQUIRED QUIET)
- message(STATUS "Found Eigen: '${EIGEN3_INCLUDE_DIRS}'")
- target_compile_definitions(${COMPONENT} PUBLIC HAVE_EIGEN HAVE_GLEW)
+@@ -30,7 +30,7 @@ set_target_properties(
+     ${COMPONENT} PROPERTIES VERSION ${PANGOLIN_VERSION} SOVERSION ${PANGOLIN_VERSION_MAJOR}
+ )
  
 -target_link_libraries(${COMPONENT} PUBLIC pango_core pango_image Eigen3::Eigen)
 +target_link_libraries(${COMPONENT} PUBLIC pango_core pango_image)
  target_include_directories(${COMPONENT} PUBLIC
      $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/include>
      $<INSTALL_INTERFACE:include>
-@@ -47,6 +47,7 @@ else()
+@@ -51,6 +51,7 @@ else()
      target_include_directories( ${COMPONENT} PUBLIC
          $<BUILD_INTERFACE:${OPENGL_INCLUDE_DIR}>
          $<BUILD_INTERFACE:${GLEW_INCLUDE_DIR}>
