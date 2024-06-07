@@ -62,6 +62,9 @@ mkdir -p "${GNOME_EXTENSIONS_DIR}"
 # Install Gnome extensions
 ################################################################################
 
+# On Ubuntu Desktop, gnome needs to be restarted in order to install extensions
+sudo systemctl restart gdm
+
 for extenion_dir in "${VISUALIZATION_DIR}/extensions/"*; do
   echo
 
