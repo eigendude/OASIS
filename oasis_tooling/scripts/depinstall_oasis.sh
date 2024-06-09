@@ -102,9 +102,18 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
   sudo apt install -y --no-install-recommends \
     ros-dev-tools
 
-  # Install numpy
+  # Install Python dependencies
   sudo apt install -y --no-install-recommends \
-    python3-numpy
+    python3-numpy \
+    python3-psutil \
+    python3-serial
+  if [ "${CODENAME}" == "jammy" ]; then
+    python3 -m pip install --upgrade \
+      telemetrix-aio
+  else
+    sudo python3 -m pip install --upgrade --break-system-packages \
+      telemetrix-aio
+  fi
 fi
 
 #
