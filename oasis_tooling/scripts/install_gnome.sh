@@ -84,6 +84,9 @@ for extenion_dir in "${VISUALIZATION_DIR}/extensions/"*; do
   gnome-extensions enable "${EXTENSION_UUID}"
 done
 
+# Disable window list extension
+gnome-extensions disable window-list@gnome-shell-extensions.gcampax.github.com
+
 ################################################################################
 # Configure Gnome
 ################################################################################
