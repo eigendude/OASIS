@@ -1,0 +1,9 @@
+{
+  "uuid": "hide-panel-lite-45@eigendude.github.io",
+  "name": "hide-panel-lite-45",
+  "description": "Hide top panel except in overview for Gnome 45. Very very light extension. No options, no bugs.",
+  "version": "1.0.0",
+  "original-authors": ["eigendude"],
+  "url": "https://github.com/eigendude/OASIS",
+  "shell-version": ["45", "46"]
+}
