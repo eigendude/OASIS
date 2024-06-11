@@ -35,7 +35,7 @@ DiskPartition = collections.namedtuple(
         "disk_total",
         "disk_used",
         "disk_free",
-        "disk_percent",
+        "disk_utilization",
     ],
 )
 

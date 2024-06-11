@@ -18,8 +18,8 @@ std_msgs/Header header
 # The time when the system was booted (Unix timestamp)
 float64 bootstrap_time
 
-# CPU percent
-float32 cpu_percent
+# CPU utilization, as a percent
+float32 cpu_utilization
 
 # CPU temperature (C)
 float64 cpu_temperature
@@ -33,8 +33,8 @@ uint32 cpu_physical_core_count
 # CPU core count (logical cores)
 uint32 cpu_logical_core_count
 
-# RAM utilization
-float32 memory_percent
+# RAM utilization, as a percent
+float32 memory_utilization
 
 # Disk partitions
 DiskPartition[] disk_partitions

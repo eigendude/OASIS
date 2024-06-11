@@ -33,5 +33,5 @@ uint64 disk_used
 # Free space of the partition, in bytes
 uint64 disk_free
 
-# Percent utilization of the partition (used / total)
-float32 disk_percent
+# Percent utilization of the partition (used / total), as a percent
+float32 disk_utilization

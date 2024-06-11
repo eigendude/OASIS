@@ -35,7 +35,7 @@ class SystemMonitor:
 
     Reports the following data:
 
-      - CPU percent
+      - CPU utilization
       - CPU frequency
       - CPU temperature
       - Memory utilization
@@ -57,7 +57,7 @@ class SystemMonitor:
     ) -> None:
         # Read information from psutil
         bootstrap_time = float(psutil.boot_time())
-        cpu_percent = float(psutil.cpu_percent())
+        cpu_utilization = float(psutil.cpu_percent())
         cpu_temperature = cls._read_cpu_temperature()
         cpu_frequency_ghz = cls._read_cpu_frequency_ghz()
         cpu_logical_core_count = int(psutil.cpu_count(logical=True))
@@ -75,7 +75,7 @@ class SystemMonitor:
         except TypeError:
             cpu_physical_core_count = cpu_logical_core_count
 
-        memory_percent = float(psutil.virtual_memory().percent)
+        memory_utilization = float(psutil.virtual_memory().percent)
         disk_partitions = cls._get_disk_partitions()
         network_interfaces = cls._get_network_interfaces()
         battery = cls._get_battery()
@@ -91,14 +91,14 @@ class SystemMonitor:
         # Populate the message
         telemetry_msg.header = header
         telemetry_msg.bootstrap_time = bootstrap_time
-        telemetry_msg.cpu_percent = cpu_percent
+        telemetry_msg.cpu_utilization = cpu_utilization
         if cpu_temperature is not None:
             telemetry_msg.cpu_temperature = cpu_temperature
         if cpu_frequency_ghz is not None:
             telemetry_msg.cpu_frequency_ghz = cpu_frequency_ghz
         telemetry_msg.cpu_physical_core_count = cpu_physical_core_count
         telemetry_msg.cpu_logical_core_count = cpu_logical_core_count
-        telemetry_msg.memory_percent = memory_percent
+        telemetry_msg.memory_utilization = memory_utilization
         for partition in disk_partitions:
             disk_partition_msg = DiskPartitionMsg()
             disk_partition_msg.device_name = partition.device_name
@@ -108,7 +108,7 @@ class SystemMonitor:
             disk_partition_msg.disk_total = partition.disk_total
             disk_partition_msg.disk_used = partition.disk_used
             disk_partition_msg.disk_free = partition.disk_free
-            disk_partition_msg.disk_percent = partition.disk_percent
+            disk_partition_msg.disk_utilization = partition.disk_utilization
             telemetry_msg.disk_partitions.append(disk_partition_msg)
         for interface in network_interfaces:
             network_interface_msg = NetworkInterfaceMsg()
@@ -185,7 +185,7 @@ class SystemMonitor:
                     disk_total=int(disk_usage.total),
                     disk_used=int(disk_usage.used),
                     disk_free=int(disk_usage.free),
-                    disk_percent=float(disk_usage.percent),
+                    disk_utilization=float(disk_usage.percent),
                 )
             )
 
