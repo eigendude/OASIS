@@ -150,7 +150,7 @@ class SystemMonitor:
                 temperature = float(shwtemp.current)
 
                 # TODO
-                if label == "Package id 0":
+                if label == "Package id 0" or "Core" in label:
                     return temperature
 
         return None
