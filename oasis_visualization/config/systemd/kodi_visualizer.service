@@ -20,7 +20,7 @@ Environment=XDG_RUNTIME_DIR=/run/user/1000
 #
 
 Environment=ROS2_DISTRO=jazzy
-Environment=RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+Environment=RMW_IMPLEMENTATION=rmw_fastrtps_dynamic_cpp
 
 #
 # Kodi configuration
