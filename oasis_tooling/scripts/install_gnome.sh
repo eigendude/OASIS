@@ -173,6 +173,13 @@ gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type 'no
 gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-battery-type 'nothing'
 
 #
+# Notification settings
+#
+
+# Turn on do-not-dusturb
+gsettings set org.gnome.desktop.notifications show-banners false
+
+#
 # Auto-login
 #
 
