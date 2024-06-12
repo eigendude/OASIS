@@ -28,7 +28,7 @@ Environment=DISPLAY=:0
 Environment=WAYLAND_DISPLAY=wayland-0
 
 #
-# Path configuraiton
+# Path configuration
 #
 
 Environment=OASIS_SRC=/home/${USER}/Documents/ros-ws/src/oasis

@@ -21,7 +21,7 @@ Environment=ROS2_DISTRO=jazzy
 Environment=RMW_IMPLEMENTATION=rmw_fastrtps_dynamic_cpp
 
 #
-# Path configuraiton
+# Path configuration
 #
 
 Environment=OASIS_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/oasis-${ROS2_DISTRO}/install/setup.bash
