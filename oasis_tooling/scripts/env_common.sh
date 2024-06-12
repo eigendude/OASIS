@@ -20,6 +20,14 @@ set -o nounset
 
 PLATFORM_ARCH="$(uname -p)"
 
+if [[ "${OSTYPE}" != "darwin"* ]]; then
+  ARCH="$(dpkg --print-architecture)"
+  CODENAME="$(source "/etc/os-release" && echo "${UBUNTU_CODENAME}")"
+else
+  ARCH=
+  CODENAME=
+fi
+
 #
 # Directory and path definitions
 #
@@ -38,7 +46,6 @@ STACK_DIRECTORY="${PACKAGE_DIRECTORY}/.."
 
 # Subdirectory for ROS build files
 BUILD_DIRECTORY="${STACK_DIRECTORY}/ros-ws"
-
 
 #
 # Environment setup

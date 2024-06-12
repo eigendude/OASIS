@@ -30,8 +30,6 @@ jobs:
             ros2_distro: jazzy
           - os: ubuntu-24.04
             ros2_distro: jazzy
-          #- os: macbook
-          #  ros2_distro: galactic
 
     # Steps represent a sequence of tasks that will be executed as part of the
     # job
@@ -67,26 +65,6 @@ jobs:
           path: |
             oasis_avr/arduino-*
           key: restore-arduino-ide-${{ matrix.os }}-${{ hashFiles('oasis_avr/bootstrap.sh') }}
-
-      - name: Install system dependencies
-        if: matrix.os != 'starship' && matrix.os != 'cinder' && matrix.os != 'macbook'
-        run: |
-          sudo apt update
-          sudo apt install -y build-essential cmake git
-
-      # TODO: This was needed to build theora_image_transport
-      - name: Install python3-lark
-        run: |
-          sudo apt install -y python3-lark
-
-      - name: Install ORB_SLAM3 dependencies
-        run: sudo apt install -y libegl1-mesa-dev
-
-      # TODO: This was needed to link oasis_drivers_cpp
-      - name: Install libspdlog-dev
-        if: matrix.os != 'ubuntu-18.04'
-        run: |
-          sudo apt install -y libspdlog-dev
 
       - name: Install ROS 2 Desktop dependencies
         if: steps.restore-ros2-desktop.outputs.cache-hit != 'true'

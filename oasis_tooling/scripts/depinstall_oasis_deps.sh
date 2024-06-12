@@ -24,19 +24,6 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # Import OASIS depends paths and config
 source "${SCRIPT_DIR}/env_oasis_deps.sh"
 
-if [[ "${OSTYPE}" != "darwin"* ]]; then
-  ARCH="$(dpkg --print-architecture)"
-  CODENAME="$(source "/etc/os-release" && echo "${UBUNTU_CODENAME}")"
-
-  # TODO: For Ubuntu 23.10 (mantic), use Ubuntu 22.04 (jammy) depends
-  if [[ "${CODENAME}" == "mantic" ]]; then
-    CODENAME=jammy
-  fi
-else
-  ARCH=
-  CODENAME=
-fi
-
 #
 # Load ROS 2 environment
 #
@@ -51,30 +38,7 @@ set -o nounset
 #
 
 if [[ "${OSTYPE}" != "darwin"* ]]; then
-  # Add the ROS 2 repository
-  KEY_URL="https://raw.githubusercontent.com/ros/rosdistro/master/ros.key"
-  PKG_URL="http://packages.ros.org/ros2/ubuntu"
-  SIGNED_BY="/usr/share/keyrings/ros-archive-keyring.gpg"
-  SOURCES_LIST="/etc/apt/sources.list.d/ros2.list"
-
-  if [ ! -f "${SIGNED_BY}" ] || [ ! -f ${SOURCES_LIST} ]; then
-    # Install required dependencies
-    sudo apt install -y \
-      curl \
-      gnupg2 \
-      lsb-release
-
-    # Authorize the ROS 2 GPG key with apt
-    sudo curl -sSL "${KEY_URL}" -o "${SIGNED_BY}"
-
-    # Add the ROS 2 repository to our sources list
-    echo "deb [arch=${ARCH} signed-by=${SIGNED_BY}] ${PKG_URL} ${CODENAME} main" | \
-      sudo tee "${SOURCES_LIST}"
-
-    sudo apt update
-  fi
-else
-  CODENAME=
+  "${SCRIPT_DIR}/setup_ros2_desktop.sh"
 fi
 
 #
@@ -83,54 +47,56 @@ fi
 
 if [[ "${OSTYPE}" != "darwin"* ]]; then
   # Install development tools and ROS tools
-  sudo apt install -y \
+  sudo apt install -y --no-install-recommends \
     build-essential \
     ccache \
+    cmake \
     git \
+    ros-dev-tools \
 
-  # TODO: image_transport needs libtinyxml2-dev indirectly
-  sudo apt install -y libtinyxml2-dev
+  # Needed for ROS message generation
+  sudo apt install -y --no-install-recommends \
+    python3-lark \
 
-  # Observed on Ubuntu 20.04 that yaml-cpp wasn't installed
-  # Needed for package camera_calibration_parsers
-  sudo apt install -y libyaml-cpp-dev
+  # Needed by cv_bridge, dev dependency of tracetools package in ros2_tracing stack
+  sudo apt install -y --no-install-recommends \
+    liblttng-ust-dev \
 
-  # Observed on Ubuntu 22.04 that console_bridge wasn't located by CMake
-  sudo apt install -y libconsole-bridge-dev
+  # Needed by image_transport and plugins
+  sudo apt install -y --no-install-recommends \
+    libconsole-bridge-dev \
+    libspdlog-dev \
+    libtinyxml2-dev \
 
-  # Only enable OpenNI on x86_64
+  # Needed for v4l2_camera
+  sudo apt install -y --no-install-recommends \
+    libyaml-cpp-dev \
+
+  # Needed for OpenNI (only enabled on x86_64)
   if [[ ${PLATFORM_ARCH} == x86_64 ]]; then
-    # Needed for OpenNI
-    sudo apt install -y \
+    sudo apt install -y --no-install-recommends \
       default-jdk \
       libudev-dev \
       libusb-1.0-0-dev
   fi
 
   # Needed for libfreenect2
-  sudo apt install -y \
+  sudo apt install -y --no-install-recommends \
     libturbojpeg0-dev \
     libusb-1.0-0-dev \
     ocl-icd-opencl-dev \
 
   # Install libcec dependencies
-  sudo apt install -y \
-    cmake \
+  sudo apt install -y --no-install-recommends \
     libudev-dev \
     libxrandr-dev \
-    swig
+    swig \
 
   # Needed for libcec on the Raspberry Pi
   if [ "$(cat /proc/cpuinfo | grep "^Model" | awk '{print $3}')" = "Raspberry" ]; then
-    sudo apt install -y libraspberrypi-dev
+    sudo apt install -y --no-install-recommends \
+      libraspberrypi-dev
   fi
-
-  # Needed by cv_bridge, dev dependency of tracetools package in ros2_tracing stack
-  sudo apt install -y liblttng-ust-dev
-
-  # Install development tools
-  sudo apt install -y --no-install-recommends \
-    ros-dev-tools
 fi
 
 #

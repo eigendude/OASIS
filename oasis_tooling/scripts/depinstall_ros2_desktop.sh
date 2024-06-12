@@ -35,41 +35,12 @@ else
   ROSDEP_IGNORE_KEYS=
 fi
 
-if [[ "${OSTYPE}" != "darwin"* ]]; then
-  ARCH="$(dpkg --print-architecture)"
-  CODENAME="$(source "/etc/os-release" && echo "${UBUNTU_CODENAME}")"
-else
-  ARCH=
-  CODENAME=
-fi
-
 #
 # Setup ROS 2 sources
 #
 
 if [[ "${OSTYPE}" != "darwin"* ]]; then
-  # Add the ROS 2 repository
-  KEY_URL="https://raw.githubusercontent.com/ros/rosdistro/master/ros.key"
-  PKG_URL="http://packages.ros.org/ros2/ubuntu"
-  SIGNED_BY="/usr/share/keyrings/ros-archive-keyring.gpg"
-  SOURCES_LIST="/etc/apt/sources.list.d/ros2.list"
-
-  if [ ! -f "${SIGNED_BY}" ] || [ ! -f ${SOURCES_LIST} ]; then
-  # Install required dependencies
-    sudo apt install -y \
-      curl \
-      gnupg2 \
-      lsb-release \
-
-    # Authorize the ROS 2 GPG key with apt
-    sudo curl -sSL "${KEY_URL}" -o "${SIGNED_BY}"
-
-    # Add the ROS 2 repository to our sources list
-    echo "deb [arch=${ARCH} signed-by=${SIGNED_BY}] ${PKG_URL} ${CODENAME} main" | \
-      sudo tee "${SOURCES_LIST}"
-
-    sudo apt update
-  fi
+  "${SCRIPT_DIR}/setup_ros2_desktop.sh"
 fi
 
 #
@@ -77,30 +48,21 @@ fi
 #
 
 if [[ "${OSTYPE}" != "darwin"* ]]; then
-  # Install development tools and ROS tools
-  sudo apt install -y \
+  # Install general development tools
+  sudo apt install -y --no-install-recommends \
     build-essential \
     ccache \
+    cmake \
     git \
-    gfortran \
-    libbullet-dev \
-    python3-pip \
+    `#gfortran` \
     wget \
 
-  # Install Fast-RTPS dependencies
-  sudo apt install -y --no-install-recommends \
-    libasio-dev \
-    libtinyxml2-dev \
-
-  # Install Cyclone DDS dependencies
-  sudo apt install -y --no-install-recommends \
-    libcunit1-dev \
-
-  # Install development tools
+  # Install ROS development tools
   sudo apt install -y --no-install-recommends \
     python3-flake8-blind-except \
     python3-flake8-class-newline \
     python3-flake8-deprecated \
+    python3-lark \
     python3-mypy \
     python3-pip \
     python3-pytest \
@@ -110,7 +72,18 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     python3-pytest-rerunfailures \
     python3-pytest-runner \
     python3-pytest-timeout \
-    ros-dev-tools
+    ros-dev-tools \
+
+  : '
+  # Install Fast-RTPS dependencies
+  sudo apt install -y --no-install-recommends \
+    libasio-dev \
+    libtinyxml2-dev \
+
+  # Install Cyclone DDS dependencies
+  sudo apt install -y --no-install-recommends \
+    libcunit1-dev
+  '
 fi
 
 #
@@ -224,6 +197,18 @@ echo "Downloading ROS 2 source code..."
   # Import ROS 2 sources
   vcs import "${ROS2_SOURCE_DIRECTORY}" < ros2.repos
 )
+
+#
+# Disable examples, demos and some tests
+#
+
+touch "${ROS2_SOURCE_DIRECTORY}/ros2/demos/COLCON_IGNORE"
+touch "${ROS2_SOURCE_DIRECTORY}/ros2/example_interfaces/COLCON_IGNORE"
+touch "${ROS2_SOURCE_DIRECTORY}/ros2/examples/COLCON_IGNORE"
+touch "${ROS2_SOURCE_DIRECTORY}/ros2/geometry2/examples_tf2_py/COLCON_IGNORE"
+touch "${ROS2_SOURCE_DIRECTORY}/ros2/launch_ros/test_launch_ros/COLCON_IGNORE"
+touch "${ROS2_SOURCE_DIRECTORY}/ros2/rosbag2/rosbag2_examples/COLCON_IGNORE"
+touch "${ROS2_SOURCE_DIRECTORY}/ros2/system_tests/COLCON_IGNORE"
 
 #
 # Install rosdep packages
