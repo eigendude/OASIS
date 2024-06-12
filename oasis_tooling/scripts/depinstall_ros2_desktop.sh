@@ -54,7 +54,6 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     ccache \
     cmake \
     git \
-    `#gfortran` \
     wget \
 
   # Install ROS development tools
@@ -72,18 +71,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     python3-pytest-rerunfailures \
     python3-pytest-runner \
     python3-pytest-timeout \
-    ros-dev-tools \
-
-  : '
-  # Install Fast-RTPS dependencies
-  sudo apt install -y --no-install-recommends \
-    libasio-dev \
-    libtinyxml2-dev \
-
-  # Install Cyclone DDS dependencies
-  sudo apt install -y --no-install-recommends \
-    libcunit1-dev
-  '
+    ros-dev-tools
 fi
 
 #
