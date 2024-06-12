@@ -30,7 +30,7 @@ Environment=OASIS_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/oasis-${RO
 # Service definition
 #
 
-ExecStart=/bin/bash -c 'set +o nounset && source `eval echo "${OASIS_ENV}"` && ros2 launch oasis_drivers_py drivers_launch.py'
+ExecStart=/bin/bash -c 'if [ $(awk "{print int(\$1)}" /proc/uptime) -lt 30 ]; then sleep 5; fi; set +o nounset && source `eval echo "${OASIS_ENV}"` && ros2 launch oasis_drivers_py drivers_launch.py'
 Restart=on-failure
 
 [Install]
