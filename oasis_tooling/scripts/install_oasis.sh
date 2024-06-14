@@ -35,6 +35,7 @@ ENABLE_VISUALIZATION=0
 if \
   [ "${HOSTNAME}" = "asus" ] || \
   [ "${HOSTNAME}" = "cinder" ] || \
+  [ "${HOSTNAME}" = "kodibox" ] || \
   [ "${HOSTNAME}" = "lenovo" ] || \
   [ "${HOSTNAME}" = "nuc" ] || \
   [ "${HOSTNAME}" = "rpi5" ] || \

@@ -37,13 +37,17 @@ source "${SCRIPT_DIR}/env_oasis.sh"
 # Machines with dual displays
 ENABLE_DUAL_DISPLAYS=0
 
+if [ "${HOSTNAME}" == "kodibox" ]; then
+  ENABLE_DUAL_DISPLAYS=1
+fi
+
 #
 # Kodi configuration
 #
 
 # Version
 if [ "${ENABLE_DUAL_DISPLAYS}" = "1" ]; then
-  KODI_VERSION="3f886dbcea47edee6c3a7c836b6d72bf9d162099"
+  KODI_VERSION="21ca6f739c504268b768e67e6d69634f0ba54ba8"
 else
   KODI_VERSION="c79e4840f7288ae09ea1a9ed6315e6de662bac90"
 fi
