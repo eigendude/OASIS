@@ -31,21 +31,16 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 source "${SCRIPT_DIR}/env_oasis.sh"
 
 #
-# Hardware configuration
-#
-
-# Machines with dual displays
-ENABLE_DUAL_DISPLAYS=0
-
-#
 # Kodi configuration
 #
 
 # Version
-if [ "${ENABLE_DUAL_DISPLAYS}" = "1" ]; then
-  KODI_VERSION="3f886dbcea47edee6c3a7c836b6d72bf9d162099"
+if [ "${HOSTNAME}" == "lenovo" ]; then
+  KODI_VERSION="e875a95ddebf9827825a882d6ec71d3079c8027e"
+elif [ "${HOSTNAME}" == "patio" ]; then
+  KODI_VERSION="2b38de81dc32f03f57e1838dd71b40a4a364993e"
 else
-  KODI_VERSION="c79e4840f7288ae09ea1a9ed6315e6de662bac90"
+  KODI_VERSION="aaed7e09a50e1034ffd13417db2f8e322d68311d"
 fi
 
 # URL

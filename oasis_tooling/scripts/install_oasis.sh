@@ -37,7 +37,7 @@ if \
   [ "${HOSTNAME}" = "cinder" ] || \
   [ "${HOSTNAME}" = "lenovo" ] || \
   [ "${HOSTNAME}" = "nuc" ] || \
-  [ "${HOSTNAME}" = "rpi5" ] || \
+  [ "${HOSTNAME}" = "patio" ] || \
   [ "${HOSTNAME}" = "substation" ] || \
   [ "${HOSTNAME}" = "zotac" ] \
 ; then
