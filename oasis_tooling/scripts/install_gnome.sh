@@ -59,32 +59,6 @@ sudo apt install -y \
 mkdir -p "${GNOME_EXTENSIONS_DIR}"
 
 ################################################################################
-# Install Gnome extensions
-################################################################################
-
-for extenion_dir in "${VISUALIZATION_DIR}/extensions/"*; do
-  echo
-
-  # Get extension UUID
-  EXTENSION_UUID="$(grep -oP '(?<="uuid": ")[^"]*' "${extenion_dir}/metadata.json")"
-
-  echo "Installing ${EXTENSION_UUID}"
-
-  # Create extension directory
-  mkdir -p "${GNOME_EXTENSIONS_DIR}/${EXTENSION_UUID}"
-
-  # Copy all files to extension directory
-  cp -r "${extenion_dir}/"* "${GNOME_EXTENSIONS_DIR}/${EXTENSION_UUID}"
-
-  # Enable extension with gnome-extensions utility
-  echo "Enabling ${EXTENSION_UUID}"
-  gnome-extensions enable "${EXTENSION_UUID}"
-done
-
-# Disable window list extension
-gnome-extensions disable window-list@gnome-shell-extensions.gcampax.github.com
-
-################################################################################
 # Configure Gnome
 ################################################################################
 
@@ -220,6 +194,32 @@ if [ "${SUSPEND_ENABLED}" != "masked" ]; then
   echo " - Disabling systemd suspend"
   sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
 fi
+
+################################################################################
+# Install Gnome extensions
+################################################################################
+
+# Disable window list extension
+gnome-extensions disable window-list@gnome-shell-extensions.gcampax.github.com
+
+for extenion_dir in "${VISUALIZATION_DIR}/extensions/"*; do
+  echo
+
+  # Get extension UUID
+  EXTENSION_UUID="$(grep -oP '(?<="uuid": ")[^"]*' "${extenion_dir}/metadata.json")"
+
+  echo "Installing ${EXTENSION_UUID}"
+
+  # Create extension directory
+  mkdir -p "${GNOME_EXTENSIONS_DIR}/${EXTENSION_UUID}"
+
+  # Copy all files to extension directory
+  cp -r "${extenion_dir}/"* "${GNOME_EXTENSIONS_DIR}/${EXTENSION_UUID}"
+
+  # Enable extension with gnome-extensions utility
+  echo "Enabling ${EXTENSION_UUID}"
+  gnome-extensions enable "${EXTENSION_UUID}"
+done
 
 ################################################################################
 # Done
