@@ -292,12 +292,12 @@ endif()
 #
 # Arduino IDE download links
 #
-#   Linux 32 - https://downloads.arduino.cc/arduino-1.8.18-linux32.tar.xz
-#   Linux 64 - https://downloads.arduino.cc/arduino-1.8.18-linux64.tar.xz
-#   Linux ARM 32 - https://downloads.arduino.cc/arduino-1.8.18-linuxarm.tar.xz
-#   Linux ARM 64 - https://downloads.arduino.cc/arduino-1.8.18-linuxaarch64.tar.xz
-#   MacOS - https://downloads.arduino.cc/arduino-1.8.18-macosx.zip
-#   Windows - https://downloads.arduino.cc/arduino-1.8.18-windows.zip
+#   Linux 32 - https://downloads.arduino.cc/arduino-1.8.19-linux32.tar.xz
+#   Linux 64 - https://downloads.arduino.cc/arduino-1.8.19-linux64.tar.xz
+#   Linux ARM 32 - https://downloads.arduino.cc/arduino-1.8.19-linuxarm.tar.xz
+#   Linux ARM 64 - https://downloads.arduino.cc/arduino-1.8.19-linuxaarch64.tar.xz
+#   MacOS - https://downloads.arduino.cc/arduino-1.8.19-macosx.zip
+#   Windows - https://downloads.arduino.cc/arduino-1.8.19-windows.zip
 #
 # TODO: Search /opt if not set on command line
 #
