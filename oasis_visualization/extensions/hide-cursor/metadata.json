@@ -1,0 +1,15 @@
+{
+  "uuid": "hide-cursor@eigendude.github.io",
+  "name": "Hide Cursor (OASIS edition)",
+  "description": "Hide the mouse cursor on inactivity.\n\nFor use on Wayland, since unclutter, unclutter-xfixes and xbanish only work on X11.\n\nNote: This initial version has a hardcoded 5 second timeout.\n\nAdapted from the original version by elcste for my OASIS smarthome OS (https://github.com/eigendude/OASIS).",
+  "version": 1,
+  "version-name": "1.0.0",
+  "shell-version": ["45", "46"],
+  "original-authors": ["Alexander Browne", "Evan Welsh", "Jeff Channell"],
+  "adapted-by": ["eigendude"],
+  "url": "https://github.com/eigendude/OASIS",
+  "donations": {
+    "github": "eigendude",
+    "custom": ["https://app.ens.domains/eigendude.eth"]
+  }
+}

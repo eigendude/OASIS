@@ -11,9 +11,20 @@ module.exports = {
     browser: true,
     es2021: true,
   },
-  extends: "eslint:recommended",
+  extends: ["eslint:recommended", "plugin:prettier/recommended"],
+  parserOptions: {
+    ecmaVersion: "latest",
+    sourceType: "module",
+  },
   globals: {
+    global: "readonly",
     imports: "readonly",
+  },
+  rules: {
+    indent: ["error", 2],
+    "linebreak-style": ["error", "unix"],
+    quotes: ["error", "double"],
+    semi: ["error", "always"],
   },
   overrides: [
     {
@@ -26,14 +37,4 @@ module.exports = {
       },
     },
   ],
-  parserOptions: {
-    ecmaVersion: "latest",
-    sourceType: "module",
-  },
-  rules: {
-    indent: ["error", 2],
-    "linebreak-style": ["error", "unix"],
-    quotes: ["error", "double"],
-    semi: ["error", "always"],
-  },
 };
