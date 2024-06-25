@@ -199,6 +199,13 @@ fi
 # Install Gnome extensions
 ################################################################################
 
+# Need to restart Gnome so that extensions can be enabled
+echo
+echo "Restarting gdm..."
+sleep 1
+sudo systemctl restart gdm
+sleep 1
+
 # Disable window list extension
 gnome-extensions disable window-list@gnome-shell-extensions.gcampax.github.com
 
