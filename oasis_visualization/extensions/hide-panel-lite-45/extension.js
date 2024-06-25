@@ -3,9 +3,10 @@
  *  This file is part of OASIS - https://github.com/eigendude/OASIS
  *
  *  This file is derived from Hide Panel Lite under the GPL v3 license.
- *  https://github.com/fthx/hide-panel-lite
+ *  Copyright (C) 2021 fthx
+ *  https://extensions.gnome.org/extension/4496/hide-panel-light-version-without-hot-corner/
  *
- *  SPDX-License-Identifier: GPL-3.0-or-later
+ *  SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-or-later
  *  See the file LICENSE.txt for more information.
  */
 
