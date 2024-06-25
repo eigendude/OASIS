@@ -137,21 +137,23 @@ class SystemMonitor:
     @staticmethod
     def _read_cpu_temperature() -> Optional[float]:
         for sensor, shwtemps in psutil.sensors_temperatures().items():
+            max_temp: float = float(
+                max([float(shwtemp.current) for shwtemp in shwtemps])
+            )
+
+            # Check Intel digital thermal sensor
+            if sensor == "coretemp":
+                # Return the max temp
+                return max_temp
+
             # Check for Raspberry Pi CPU temperature sensor
             if sensor == "cpu_thermal":
-                return float(shwtemps[0].current)
+                return max_temp
 
-            # Otherwise, we only care about the core temperature for now
-            if sensor != "coretemp":
-                continue
-
-            for shwtemp in shwtemps:
-                label = str(shwtemp.label)
-                temperature = float(shwtemp.current)
-
-                # TODO
-                if label == "Package id 0" or "Core" in label:
-                    return temperature
+            # Check AMD K8 thermal sensor
+            if sensor == "k8temp":
+                # Return the max temp
+                return max_temp
 
         return None
 
