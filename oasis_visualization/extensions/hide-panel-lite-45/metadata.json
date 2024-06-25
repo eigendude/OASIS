@@ -1,9 +1,15 @@
 {
   "uuid": "hide-panel-lite-45@eigendude.github.io",
-  "name": "hide-panel-lite-45",
-  "description": "Hide top panel except in overview for Gnome 45. Very very light extension. No options, no bugs.",
-  "version": "1.0.0",
-  "original-authors": ["eigendude"],
-  "url": "https://github.com/eigendude/OASIS",
-  "shell-version": ["45", "46"]
+  "name": "Hide Panel Lite (Gnome 45+)",
+  "description": "Hide top panel except in overview, for Gnome 45+.\n\nAdapted for Gnome 45+ from the original extension by fthx for my OASIS smarthome OS (https://github.com/eigendude/OASIS).",
+  "version": 2,
+  "version-name": "1.0.1",
+  "shell-version": ["45", "46"],
+  "original-authors": ["fthx"],
+  "adapted-by": ["eigendude"],
+  "url": "https://github.com/eigendude/OASIS/tree/main/oasis_visualization/extensions/hide-panel-lite-45",
+  "donations": {
+    "github": "eigendude",
+    "custom": ["https://app.ens.domains/eigendude.eth"]
+  }
 }
