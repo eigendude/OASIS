@@ -21,22 +21,8 @@ set -o nounset
 # Get the absolute path to this script
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-# Path to visuaiization package
-VISUALIZATION_DIR="${SCRIPT_DIR}/../../oasis_visualization"
-
-# Path to Gnome extensions directory
-GNOME_EXTENSIONS_DIR="${HOME}/.local/share/gnome-shell/extensions"
-
-# Path to Gnome configuration file
-GNOME_CONF_FILE="/etc/gdm3/custom.conf"
-
-# Print Gnome version
-GNOME_VERSION="$(gnome-shell --version 2>/dev/null || :)"
-if [ -n "${GNOME_VERSION}" ]; then
-  echo "Detected Gnome version: ${GNOME_VERSION}"
-else
-  echo "Gnome is not currently installed"
-fi
+# Import Gnome paths and config
+source "${SCRIPT_DIR}/env_gnome.sh"
 
 ################################################################################
 # Install Gnome and accessories
@@ -51,12 +37,6 @@ sudo apt install -y \
   gnome-terminal \
   gnome-tweaks \
   nautilus \
-
-################################################################################
-# Create directories
-################################################################################
-
-mkdir -p "${GNOME_EXTENSIONS_DIR}"
 
 ################################################################################
 # Configure Gnome
@@ -163,7 +143,8 @@ if grep -qx "${LINE1}" "${GNOME_CONF_FILE}" && \
    grep -qx "${LINE2}" ${GNOME_CONF_FILE}; then
   echo "Autologin is enabled"
 else
-  echo "Enabling autologin"
+  echo "Autologin is disabled"
+  echo " - Enabling autologin"
 fi
 
 for LINE in "${LINE2}" "${LINE1}"; do
@@ -199,34 +180,35 @@ fi
 # Install Gnome extensions
 ################################################################################
 
-# Need to restart Gnome so that extensions can be enabled
-echo
-echo "Restarting gdm..."
-sleep 1
-sudo systemctl restart gdm
-sleep 1
-
-# Disable window list extension
-gnome-extensions disable window-list@gnome-shell-extensions.gcampax.github.com
-
-for extenion_dir in "${VISUALIZATION_DIR}/extensions/"*; do
+# Check if extensions are configured
+if [ "${ENABLE_EXTENSIONS}" -eq 1 ]; then
   echo
 
-  # Get extension UUID
-  EXTENSION_UUID="$(grep -oP '(?<="uuid": ")[^"]*' "${extenion_dir}/metadata.json")"
+  # Need to restart Gnome so that new extensions can be enabled
+  echo "Restarting gdm..."
+  sleep 1 # Give Gnome a moment to finish up
+  sudo systemctl restart gdm
 
-  echo "Installing ${EXTENSION_UUID}"
+  # Disable window list extension
+  gnome-extensions disable window-list@gnome-shell-extensions.gcampax.github.com
 
-  # Create extension directory
-  mkdir -p "${GNOME_EXTENSIONS_DIR}/${EXTENSION_UUID}"
+  for extenion_dir in "${VISUALIZATION_DIR}/extensions/"*; do
+    # Get extension UUID
+    EXTENSION_UUID="$(grep -oP '(?<="uuid": ")[^"]*' "${extenion_dir}/metadata.json")"
 
-  # Copy all files to extension directory
-  cp -r "${extenion_dir}/"* "${GNOME_EXTENSIONS_DIR}/${EXTENSION_UUID}"
+    echo "Installing ${EXTENSION_UUID}"
 
-  # Enable extension with gnome-extensions utility
-  echo "Enabling ${EXTENSION_UUID}"
-  gnome-extensions enable "${EXTENSION_UUID}"
-done
+    # Create extension directory
+    mkdir -p "${GNOME_EXTENSIONS_DIR}/${EXTENSION_UUID}"
+
+    # Copy all files to extension directory
+    cp -r "${extenion_dir}/"* "${GNOME_EXTENSIONS_DIR}/${EXTENSION_UUID}"
+
+    # Enable extension with gnome-extensions utility
+    echo " - Enabling ${EXTENSION_UUID}"
+    gnome-extensions enable "${EXTENSION_UUID}"
+  done
+fi
 
 ################################################################################
 # Done
