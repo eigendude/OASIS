@@ -3,7 +3,8 @@
  *  This file is part of OASIS - https://github.com/eigendude/OASIS
  *
  *  This file is derived from no-overview under the GPL v3 license.
- *  https://github.com/fthx/no-overview
+ *  Copyright (C) fthx
+ *  https://extensions.gnome.org/extension/4099/no-overview/
  *
  *  SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-or-later
  *  See the file LICENSE.txt for more information.
