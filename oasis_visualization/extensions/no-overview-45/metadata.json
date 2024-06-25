@@ -1,9 +1,15 @@
 {
   "uuid": "no-overview-45@eigendude.github.io",
-  "name": "no-overview-45",
-  "description": "No overview at start-up for Gnome 45. Nothing more.",
-  "version": "1.0.0",
-  "original-authors": ["eigendude"],
-  "url": "https://github.com/eigendude/OASIS",
-  "shell-version": ["45", "46"]
+  "name": "No overview at start-up (Gnome 45+)",
+  "description": "No overview at start-up for Gnome 45+. Nothing more.\n\nAdapted for Gnome 45+ from the original extension by fthx for my OASIS smarthome OS (https://github.com/eigendude/OASIS).",
+  "version": 2,
+  "version-name": "1.0.1",
+  "shell-version": ["45", "46"],
+  "original-authors": ["fthx"],
+  "adapted-by": ["eigendude"],
+  "url": "https://github.com/eigendude/OASIS/tree/main/oasis_visualization/extensions/no-overview-45",
+  "donations": {
+    "github": "eigendude",
+    "custom": ["https://app.ens.domains/eigendude.eth"]
+  }
 }
