@@ -36,9 +36,15 @@ set -o nounset
 # Directory setup
 #
 
+# Remove existing src directory if it exists
+if [ -d "${KODI_SOURCE_DIR}" ]; then
+  echo "Removing existing src directory..."
+  rm -rf "${KODI_SOURCE_DIR}"
+fi
+
 # Create directories
 mkdir -p "${KODI_DOWNLOAD_DIR}"
-mkdir -p "${KODI_EXTRACT_DIR}"
+mkdir -p "${KODI_SOURCE_DIR}"
 mkdir -p "${KODI_BUILD_DIR}"
 mkdir -p "${KODI_DEPENDS_DIR}"
 
@@ -56,7 +62,7 @@ fi
 #
 
 echo "Extracting Kodi..."
-tar -zxf "${KODI_ARCHIVE_PATH}" --directory="${KODI_EXTRACT_DIR}"
+tar -zxf "${KODI_ARCHIVE_PATH}" --strip-components=1 --directory="${KODI_SOURCE_DIR}"
 
 #
 # Patch Kodi
