@@ -176,6 +176,27 @@ if [ "${SUSPEND_ENABLED}" != "masked" ]; then
   sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
 fi
 
+#
+# Disable Apport crash reporting service
+#
+
+# Check the current status of Apport
+apport_status=$(grep 'enabled=' /etc/default/apport)
+
+if [[ $apport_status == "enabled=1" ]]; then
+  echo "Apport is currently: enabled"
+  echo " - Disabling Apport"
+
+  # Disable Apport in the configuration file
+  sudo sed -i 's/enabled=1/enabled=0/' /etc/default/apport
+
+  # Stop and disable the Apport service
+  sudo systemctl stop apport.service
+  sudo systemctl disable apport.service
+else
+  echo "Apport is currently: disabled"
+fi
+
 ################################################################################
 # Install Gnome extensions
 ################################################################################
