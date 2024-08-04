@@ -66,8 +66,6 @@ elif HOSTNAME == "lenovo":
 elif HOSTNAME == "netbook":
     ENABLE_DISPLAY = True
     ENABLE_VIDEO = False
-elif HOSTNAME == "nuc":
-    ENABLE_CEC = True
 
 
 print(f"Launching on {HOSTNAME}")
