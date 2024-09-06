@@ -30,6 +30,7 @@ source "${SCRIPT_DIR}/env_gnome.sh"
 
 sudo apt update
 sudo apt install -y \
+  gnome-disk-utility \
   gnome-shell \
   gnome-shell-extensions \
   gnome-software \
