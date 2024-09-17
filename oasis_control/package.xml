@@ -2,8 +2,8 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>oasis_control</name>
-  <version>1.0.0</version>
   <description>Control and automation systems for OASIS</description>
+  <version>1.0.0</version>
   <author email="eigendebugger@gmail.com">Garrett Brown</author>
   <maintainer email="eigendebugger@gmail.com">Garrett Brown</maintainer>
   <license>Apache-2.0</license>

@@ -3,9 +3,13 @@
 <package format="3">
   <name>oasis_tooling</name>
   <version>1.0.0</version>
-  <description>Tooling for OASIS</description>
+  <description>Visualization systems for OASIS</description>
+  <author email="eigendebugger@gmail.com">Garrett Brown</author>
   <maintainer email="eigendebugger@gmail.com">Garrett Brown</maintainer>
   <license>Apache-2.0</license>
+  <url type="website">https://github.com/eigendude/OASIS</url>
+  <url type="bugtracker">https://github.com/eigendude/OASIS/issues</url>
+  <url type="repository">https://github.com/eigendude/OASIS.git</url>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
