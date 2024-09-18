@@ -51,6 +51,23 @@ if (ORB_SLAM3_FOUND)
   find_package(Sophus REQUIRED)
 endif()
 
+# Common dependencies for executables
+set(AMENT_COMMON_DEPENDENCIES
+  cv_bridge
+  image_transport
+  rclcpp
+  sensor_msgs
+)
+
+# bgslibrary dependencies to link in
+set(BGS_LIBRARIES
+  ${BGSLIBRARY_LIBRARIES}
+)
+
+# TODO: Required by bgslibrary
+find_package(OpenCV REQUIRED)
+list(APPEND BGS_LIBRARIES ${OpenCV_LIBS})
+
 #
 # background_subtractor_abl
 #
@@ -62,10 +79,7 @@ add_executable(background_subtractor_abl
 )
 
 ament_target_dependencies(background_subtractor_abl
-  cv_bridge
-  image_transport
-  rclcpp
-  sensor_msgs
+  ${AMENT_COMMON_DEPENDENCIES}
 )
 
 target_include_directories(background_subtractor_abl PUBLIC
@@ -73,7 +87,7 @@ target_include_directories(background_subtractor_abl PUBLIC
 )
 
 target_link_libraries(background_subtractor_abl
-  ${BGSLIBRARY_LIBRARIES}
+  ${BGS_LIBRARIES}
 )
 
 install(
@@ -94,10 +108,7 @@ add_executable(background_subtractor_asbl
 )
 
 ament_target_dependencies(background_subtractor_asbl
-  cv_bridge
-  image_transport
-  rclcpp
-  sensor_msgs
+  ${AMENT_COMMON_DEPENDENCIES}
 )
 
 target_include_directories(background_subtractor_asbl PUBLIC
@@ -105,7 +116,7 @@ target_include_directories(background_subtractor_asbl PUBLIC
 )
 
 target_link_libraries(background_subtractor_asbl
-  ${BGSLIBRARY_LIBRARIES}
+  ${BGS_LIBRARIES}
 )
 
 install(
@@ -223,19 +234,14 @@ add_executable(multi_modeler
   src/multi_modeler.cpp
 )
 
-ament_target_dependencies(multi_modeler
-  cv_bridge
-  image_transport
-  rclcpp
-  sensor_msgs
-)
+ament_target_dependencies(multi_modeler ${AMENT_COMMON_DEPENDENCIES})
 
 target_include_directories(multi_modeler PUBLIC
   ${BGSLIBRARY_INCLUDE_DIRS}
 )
 
 target_link_libraries(multi_modeler
-  ${BGSLIBRARY_LIBRARIES}
+  ${BGS_LIBRARIES}
 )
 
 install(
