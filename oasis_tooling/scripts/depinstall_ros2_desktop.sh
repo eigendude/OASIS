@@ -195,6 +195,7 @@ touch "${ROS2_SOURCE_DIRECTORY}/ros2/example_interfaces/COLCON_IGNORE"
 touch "${ROS2_SOURCE_DIRECTORY}/ros2/examples/COLCON_IGNORE"
 touch "${ROS2_SOURCE_DIRECTORY}/ros2/geometry2/examples_tf2_py/COLCON_IGNORE"
 touch "${ROS2_SOURCE_DIRECTORY}/ros2/launch_ros/test_launch_ros/COLCON_IGNORE"
+touch "${ROS2_SOURCE_DIRECTORY}/ros2/ros2_tracing/COLCON_IGNORE"
 touch "${ROS2_SOURCE_DIRECTORY}/ros2/rosbag2/rosbag2_examples/COLCON_IGNORE"
 touch "${ROS2_SOURCE_DIRECTORY}/ros2/system_tests/COLCON_IGNORE"
 
