@@ -45,6 +45,7 @@ rosidl_generate_interfaces(
     msg/LeonardoState.msg
     msg/MCUMemory.msg
     msg/MCUString.msg
+    msg/MediaItem.msg
     msg/NetworkAddress.msg
     msg/NetworkInterface.msg
     msg/PeripheralConstants.msg
