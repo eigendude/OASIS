@@ -36,11 +36,11 @@ source "${SCRIPT_DIR}/env_oasis.sh"
 
 # Version
 if [ "${HOSTNAME}" == "lenovo" ]; then
-  KODI_VERSION="a9d80bb62169e05d60d13be6f86d1fbf911e0863"
+  KODI_VERSION="385c2688336a609be5a822d2043405508d41e8ce"
 elif [ "${HOSTNAME}" == "patio" ]; then
-  KODI_VERSION="a417d40e3db00fc6796c2323792b8e0ab4ebd2de"
+  KODI_VERSION="79494ee8546e370fdd3663d3b93942baa54b7b82"
 else
-  KODI_VERSION="112f34776d346664602b6fc5dd6d0a516c318eaf"
+  KODI_VERSION="7e004b4011203af97cdf3d6bfcc587d2b8382184"
 fi
 
 # URL
