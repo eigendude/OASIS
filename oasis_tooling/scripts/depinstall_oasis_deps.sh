@@ -48,6 +48,7 @@ fi
 if [[ "${OSTYPE}" != "darwin"* ]]; then
   # Install development tools and ROS tools
   sudo apt install -y --no-install-recommends \
+    bc \
     build-essential \
     ccache \
     cmake \
