@@ -227,6 +227,14 @@ patch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/orb-slam3" \
   < "${CONFIG_DIRECTORY}/orb-slam3/0004-Don-t-build-examples.patch" \
   || :
+patch \
+  -p1 \
+  --forward \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/orb-slam3" \
+  < "${CONFIG_DIRECTORY}/orb-slam3/0005-Fix-parallel-make.patch" \
+  || :
 
 # Disable ORB_SLAM3 on systems with < 4GiB memory
 PHYSICAL_MEMORY_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')

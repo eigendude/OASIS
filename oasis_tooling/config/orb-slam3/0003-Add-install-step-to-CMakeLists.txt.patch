@@ -1,7 +1,7 @@
 From 0f7c4581cf190a363bfd3a887440a120824954bb Mon Sep 17 00:00:00 2001
 From: Garrett Brown <eigendebugger@gmail.com>
 Date: Fri, 23 Dec 2022 15:17:15 -0800
-Subject: [PATCH 3/4] Add install step to CMakeLists.txt
+Subject: [PATCH 3/5] Add install step to CMakeLists.txt
 
 ---
  CMakeLists.txt                  | 21 +++++++++++++++++++++
