@@ -93,8 +93,10 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     libxrandr-dev \
     swig \
 
-  # Needed for libcec on the Raspberry Pi
-  if [ "$(cat /proc/cpuinfo | grep "^Model" | awk '{print $3}')" = "Raspberry" ]; then
+  # Needed for libcec on ARM
+  if [[ "$(uname -m)" == "aarch64" ]] ||
+     [[ "$(uname -m)" == "armv7l" ]] ||
+     [[ "$(uname -m)" == "armv6l" ]]; then
     sudo apt install -y --no-install-recommends \
       libraspberrypi-dev
   fi
