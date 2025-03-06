@@ -15,10 +15,13 @@ project(oasis_msgs)
 # Dependencies
 #
 
+find_package(ament_cmake REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
+
+ament_export_dependencies(rosidl_default_runtime)
 
 #
 # Message definitions
