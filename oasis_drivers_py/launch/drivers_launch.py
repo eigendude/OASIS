@@ -19,7 +19,7 @@ from launch_ros.actions import Node
 ################################################################################
 
 
-HOSTNAME = socket.gethostname()
+HOSTNAME = socket.gethostname().replace("-", "_")
 
 
 ################################################################################
