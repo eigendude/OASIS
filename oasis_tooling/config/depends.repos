@@ -2,7 +2,7 @@ repositories:
   depends/libcec:
     type: git
     url: https://github.com/Pulse-Eight/libcec.git
-    version: master
+    version: libcec-6.0.2
   # Requires: libturbojpeg0-dev libusb-1.0-0-dev ocl-icd-opencl-dev
   depends/libfreenect2:
     type: git
