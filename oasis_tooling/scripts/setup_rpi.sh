@@ -96,3 +96,6 @@ sudo systemctl mask systemd-networkd-wait-online.service
 
 # Grant the user permission to open serial devices
 sudo usermod -a -G dialout ${USER}
+
+# Grant the user permission to use camera
+sudo usermod -a -G video ${USER}
