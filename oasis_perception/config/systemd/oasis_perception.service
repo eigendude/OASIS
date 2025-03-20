@@ -26,6 +26,7 @@ Environment=RMW_IMPLEMENTATION=rmw_fastrtps_dynamic_cpp
 
 Environment=DISPLAY=:0
 Environment=WAYLAND_DISPLAY=wayland-0
+Environment=QT_QPA_PLATFORM=offscreen
 
 #
 # Path configuration
