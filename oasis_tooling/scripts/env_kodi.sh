@@ -35,13 +35,7 @@ source "${SCRIPT_DIR}/env_oasis.sh"
 #
 
 # Version
-if [ "${HOSTNAME}" == "lenovo" ]; then
-  KODI_VERSION="385c2688336a609be5a822d2043405508d41e8ce"
-elif [ "${HOSTNAME}" == "patio" ]; then
-  KODI_VERSION="79494ee8546e370fdd3663d3b93942baa54b7b82"
-else
-  KODI_VERSION="7e004b4011203af97cdf3d6bfcc587d2b8382184"
-fi
+KODI_VERSION="b8466f841ffc103f49f0d91b8cc223e154dcc4e1"
 
 # URL
 KODI_URL="https://github.com/garbear/xbmc/archive/${KODI_VERSION}.tar.gz"
