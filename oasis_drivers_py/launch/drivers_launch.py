@@ -44,6 +44,7 @@ ENABLE_DISPLAY = False
 ENABLE_FIRMATA = False
 ENABLE_KINECT_V2 = False
 ENABLE_VIDEO = False
+ENABLE_CAMERA = False
 
 # Video parameters
 VIDEO_DEVICE = "/dev/video0"
@@ -66,6 +67,8 @@ elif HOSTNAME == "lenovo":
 elif HOSTNAME == "netbook":
     ENABLE_DISPLAY = True
     ENABLE_VIDEO = False
+elif HOSTNAME == "station":
+    ENABLE_CAMERA = True
 
 
 print(f"Launching on {HOSTNAME}")
@@ -147,6 +150,32 @@ def generate_launch_description() -> LaunchDescription:
             ],
         )
         ld.add_action(v4l2_node)
+
+    if ENABLE_CAMERA:
+        camera_node = Node(
+            namespace=ROS_NAMESPACE,
+            package="camera_ros",
+            executable="camera_node",
+            name=f"camera_ros_{HOSTNAME}",
+            output="screen",
+            parameters=[
+                {
+                    "format": "RGB888",
+                    "width": IMAGE_SIZE[0],
+                    "height": IMAGE_SIZE[1],
+                    "sensor_mode": "3280:2464",  # V2 camera full sensor resolution
+                },
+            ],
+            remappings=[
+                (f"camera_ros_{HOSTNAME}/camera_info", f"{HOSTNAME}/camera_info"),
+                (f"camera_ros_{HOSTNAME}/image_raw", f"{HOSTNAME}/image_raw"),
+                (
+                    f"camera_ros_{HOSTNAME}/image_raw/compressed",
+                    f"{HOSTNAME}/image_raw/compressed",
+                ),
+            ],
+        )
+        ld.add_action(camera_node)
 
     if ENABLE_KINECT_V2:
         kinect_v2_node = Node(
