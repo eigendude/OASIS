@@ -100,6 +100,31 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     sudo apt install -y --no-install-recommends \
       libraspberrypi-dev
   fi
+
+  # Needed for libcamera according to https://github.com/christian-nils/libcamera_cmake
+  sudo apt install -y --no-install-recommends \
+    cmake \
+    git \
+    libboost-dev \
+    libevent-dev \
+    libglib2.0-dev \
+    libgnutls28-dev \
+    libgstreamer-plugins-base1.0-dev \
+    libqt5core5a \
+    libqt5gui5 \
+    libqt5widgets5 \
+    libtiff5-dev \
+    meson \
+    ninja-build \
+    openssl \
+    pybind11-dev \
+    python3 \
+    python3-jinja2 \
+    python3-pip \
+    python3-ply \
+    python3-yaml \
+    qtbase5-dev \
+    v4l-utils
 fi
 
 #
@@ -303,7 +328,8 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     --ignore-src \
     --rosdistro ${ROS2_DISTRO} \
     --as-root=pip:false \
-    --default-yes
+    --default-yes \
+    --skip-keys="image_view"
 else
   echo "Disabling perception dependencies on macOS"
   touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/OpenNI2/COLCON_IGNORE"

@@ -1,4 +1,9 @@
 repositories:
+  # See https://github.com/christian-nils/libcamera_cmake for dependencies
+  depends/libcamera_cmake:
+    type: git
+    url: https://github.com/eigendude/libcamera_cmake.git
+    version: main
   depends/libcec:
     type: git
     url: https://github.com/Pulse-Eight/libcec.git
@@ -29,6 +34,10 @@ repositories:
     type: git
     url: https://github.com/andrewssobral/bgslibrary.git
     version: master
+  ros-perception/camera_ros:
+    type: git
+    url: https://github.com/christianrauch/camera_ros.git
+    version: main
   ros-perception/image_transport_plugins:
     type: git
     url: https://github.com/ros-perception/image_transport_plugins.git
