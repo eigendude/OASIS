@@ -147,6 +147,7 @@ def generate_launch_description() -> LaunchDescription:
                 ("image_raw/compressed", f"{HOSTNAME}/image_raw/compressed"),
                 ("image_raw/compressedDepth", f"{HOSTNAME}/image_raw/compressedDepth"),
                 ("image_raw/theora", f"{HOSTNAME}/image_raw/theora"),
+                ("image_raw/zstd", f"{HOSTNAME}/image_raw/zstd"),
             ],
         )
         ld.add_action(v4l2_node)
