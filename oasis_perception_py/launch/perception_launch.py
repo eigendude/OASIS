@@ -42,7 +42,10 @@ PYTHON_PACKAGE_NAME = "oasis_perception_py"
 # Hardware options
 ENABLE_CAMERA_BACKGROUND = False
 ENABLE_KINECT_V2_BACKGROUND = False
+ENABLE_POSE_LANDMARKER = False
+
 PERCEPTION_SERVER_BACKGROUND = []
+PERCEPTION_SERVER_POSE_LANDMARKS = []
 
 # TODO: Hardware configuration
 # if HOSTNAME == "asus":
@@ -56,6 +59,7 @@ PERCEPTION_SERVER_BACKGROUND = []
 
 if HOSTNAME == "cinder":
     PERCEPTION_SERVER_BACKGROUND = ["asus", "kinect2", "lenovo", "station"]
+    PERCEPTION_SERVER_POSE_LANDMARKS = ["asus", "kinect2", "lenovo", "station"]
 
 
 print(f"Launching on {HOSTNAME}")
@@ -95,6 +99,20 @@ def generate_launch_description() -> LaunchDescription:
         )
         ld.add_action(background_modeler_node)
 
+    if ENABLE_POSE_LANDMARKER:
+        pose_landmarker_node = Node(
+            namespace=ROS_NAMESPACE,
+            package=PYTHON_PACKAGE_NAME,
+            executable="pose_landmarker",
+            name=f"pose_landmarker_{HOSTNAME}",
+            output="screen",
+            remappings=[
+                ("image_raw", f"{HOSTNAME}/image_raw"),
+                ("pose_landmarks", f"{HOSTNAME}/pose_landmarks"),
+            ],
+        )
+        ld.add_action(pose_landmarker_node)
+
     if PERCEPTION_SERVER_BACKGROUND:
         for host in PERCEPTION_SERVER_BACKGROUND:
             # Use different remappings if host is "kinect2"
@@ -116,6 +134,30 @@ def generate_launch_description() -> LaunchDescription:
                 package=CPP_PACKAGE_NAME,
                 executable="background_modeler",
                 name=f"background_modeler_{host}",
+                output="screen",
+                remappings=remappings,
+            )
+            ld.add_action(node)
+
+    if PERCEPTION_SERVER_POSE_LANDMARKS:
+        for host in PERCEPTION_SERVER_POSE_LANDMARKS:
+            # Use different remappings if host is "kinect2"
+            if host == "kinect2":
+                remappings = [
+                    ("image_raw", f"{host}/hd/image_color"),
+                    ("pose_landmarks", f"{host}/pose_landmarks"),
+                ]
+            else:
+                remappings = [
+                    ("image_raw", f"{host}/image_raw"),
+                    ("pose_landmarks", f"{host}/pose_landmarks"),
+                ]
+
+            node = Node(
+                namespace=ROS_NAMESPACE,
+                package=PYTHON_PACKAGE_NAME,
+                executable="pose_landmarker",
+                name=f"pose_landmarker_{host}",
                 output="screen",
                 remappings=remappings,
             )
