@@ -77,4 +77,9 @@ setuptools.setup(
     tests_require=[
         "pytest",
     ],
+    entry_points={
+        "console_scripts": [
+            "pose_landmarker = oasis_perception.cli.pose_landmarker:main",
+        ],
+    },
 )
