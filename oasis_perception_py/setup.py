@@ -63,6 +63,13 @@ setuptools.setup(
                 "config/systemd/oasis_perception.service",
             ],
         ),
+        # MediaPipe files
+        (
+            os.path.join("share", PACKAGE_NAME, "mediapipe"),
+            [
+                "mediapipe/pose_landmarker.task",
+            ],
+        ),
     ],
     install_requires=[
         "mediapipe",
@@ -70,4 +77,9 @@ setuptools.setup(
     tests_require=[
         "pytest",
     ],
+    entry_points={
+        "console_scripts": [
+            "pose_landmarker = oasis_perception.cli.pose_landmarker:main",
+        ],
+    },
 )
