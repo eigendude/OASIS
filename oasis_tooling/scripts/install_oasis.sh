@@ -25,7 +25,8 @@ ENABLE_DRIVERS=1
 # Machines for image processing
 ENABLE_PERCEPTION=0
 if \
-  [ "${HOSTNAME}" = "cinder" ] \
+  [ "${HOSTNAME}" = "cinder" ] || \
+  [ "${HOSTNAME}" = "macbook-vm" ] \
 ; then
   ENABLE_PERCEPTION=1
 fi
@@ -36,6 +37,7 @@ if \
   [ "${HOSTNAME}" = "asus" ] || \
   [ "${HOSTNAME}" = "cinder" ] || \
   [ "${HOSTNAME}" = "lenovo" ] || \
+  [ "${HOSTNAME}" = "macbook-vm" ] || \
   [ "${HOSTNAME}" = "nuc" ] || \
   [ "${HOSTNAME}" = "patio" ] || \
   [ "${HOSTNAME}" = "substation" ] || \
