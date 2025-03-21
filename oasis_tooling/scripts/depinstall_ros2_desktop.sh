@@ -191,6 +191,15 @@ echo "Downloading ROS 2 source code..."
   # Get ROS 2 source defintions
   wget --timestamping "https://raw.githubusercontent.com/ros2/ros2/${ROS2_DISTRO}/ros2.repos"
 
+  # Update image_common branch
+  patch \
+    -p1 \
+    --forward \
+    --reject-file="/dev/null" \
+    --no-backup-if-mismatch \
+    --directory="${ROS2_SOURCE_DIRECTORY}" \
+    < "${CONFIG_DIRECTORY}/ros2-desktop/0001-Change-image_common-to-rolling-branch.patch"
+
   # Import ROS 2 sources
   vcs import "${ROS2_SOURCE_DIRECTORY}" < ros2.repos
 )

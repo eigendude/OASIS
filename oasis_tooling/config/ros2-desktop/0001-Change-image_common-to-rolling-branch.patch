@@ -1,0 +1,34 @@
+From 4b82c0e603ecb5d093caae9408c6d67feeaa687b Mon Sep 17 00:00:00 2001
+From: Garrett Brown <garrett.brown@aclima.earth>
+Date: Fri, 21 Mar 2025 15:53:48 -0700
+Subject: [PATCH] Change image_common to "rolling" branch
+
+---
+ ros2.repos | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/ros2.repos b/ros2.repos
+index 78c67e7..15024a4 100644
+--- a/ros2.repos
++++ b/ros2.repos
+@@ -70,7 +70,7 @@ repositories:
+   ros-perception/image_common:
+     type: git
+     url: https://github.com/ros-perception/image_common.git
+-    version: jazzy
++    version: rolling
+   ros-perception/laser_geometry:
+     type: git
+     url: https://github.com/ros-perception/laser_geometry.git
+@@ -246,7 +246,7 @@ repositories:
+   ros2/message_filters:
+     type: git
+     url: https://github.com/ros2/message_filters.git
+-    version: jazzy
++    version: rolling
+   ros2/mimick_vendor:
+     type: git
+     url: https://github.com/ros2/mimick_vendor.git
+-- 
+2.43.0
+
