@@ -68,7 +68,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
   for OASIS_PACKAGE in \
     $([ "${ENABLE_CONTROL}" = "0" ] || echo "oasis_control") \
     $([ "${ENABLE_DRIVERS}" = "0" ] || echo "oasis_drivers_py") \
-    $([ "${ENABLE_PERCEPTION}" = "0" ] || echo "oasis_perception") \
+    $([ "${ENABLE_PERCEPTION}" = "0" ] || echo "oasis_perception_py") \
     $([ "${ENABLE_VISUALIZATION}" = "0" ] || echo "oasis_visualization") \
   ; do
     # Skip packages that weren't build

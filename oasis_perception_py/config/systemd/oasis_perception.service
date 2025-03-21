@@ -39,7 +39,8 @@ Environment=OASIS_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/oasis-${RO
 # Service definition
 #
 
-ExecStart=/bin/bash -c 'set +o nounset && source `eval echo "${OASIS_ENV}"` && cd `eval echo "${OASIS_SRC}/oasis_perception"` && ros2 launch oasis_perception perception_launch.py'
+# Need to run from oasis_perception_cpp for background subtractor to find configs
+ExecStart=/bin/bash -c 'set +o nounset && source `eval echo "${OASIS_ENV}"` && cd `eval echo "${OASIS_SRC}/oasis_perception_cpp"` && ros2 launch oasis_perception_py perception_launch.py'
 Restart=on-failure
 
 [Install]

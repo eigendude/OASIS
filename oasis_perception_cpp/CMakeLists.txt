@@ -9,7 +9,7 @@
 ################################################################################
 
 cmake_minimum_required(VERSION 3.5)
-project(oasis_perception)
+project(oasis_perception_cpp)
 
 #
 # Build configuration
@@ -266,28 +266,6 @@ if(BUILD_TESTING)
 
   ament_lint_auto_find_test_dependencies()
 endif()
-
-#
-# Launch files
-#
-
-install(
-  FILES
-    launch/perception_launch.py
-  DESTINATION
-    share/${PROJECT_NAME}
-)
-
-#
-# Systemd services
-#
-
-install(
-  FILES
-    config/systemd/oasis_perception.service
-  DESTINATION
-    share/${PROJECT_NAME}/systemd
-)
 
 #
 # Declare an ament Package

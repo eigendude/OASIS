@@ -20,7 +20,7 @@ from launch_ros.actions import Node
 
 
 # Get the hostname
-HOSTNAME = socket.gethostname()
+HOSTNAME = socket.gethostname().replace("-", "_")
 
 
 ################################################################################
@@ -30,7 +30,11 @@ HOSTNAME = socket.gethostname()
 
 ROS_NAMESPACE = "oasis"
 
-PACKAGE_NAME = "oasis_perception"
+CPP_PACKAGE_NAME = "oasis_perception_cpp"
+PYTHON_PACKAGE_NAME = "oasis_perception_py"
+
+
+print(f"Launching on {HOSTNAME}")
 
 
 def generate_launch_description() -> LaunchDescription:
@@ -39,7 +43,7 @@ def generate_launch_description() -> LaunchDescription:
     if HOSTNAME == "cinder":
         bgs_abl_node = Node(
             namespace=ROS_NAMESPACE,
-            package=PACKAGE_NAME,
+            package=CPP_PACKAGE_NAME,
             executable="background_subtractor_abl",
             name=f"background_subtractor_abl_{HOSTNAME}",
             output="screen",
@@ -48,7 +52,7 @@ def generate_launch_description() -> LaunchDescription:
 
         bgs_asbl_node = Node(
             namespace=ROS_NAMESPACE,
-            package=PACKAGE_NAME,
+            package=CPP_PACKAGE_NAME,
             executable="background_subtractor_asbl",
             name=f"background_subtractor_asbl_{HOSTNAME}",
             output="screen",
@@ -58,7 +62,7 @@ def generate_launch_description() -> LaunchDescription:
     elif HOSTNAME == "starship":
         multi_modeler_node = Node(
             namespace=ROS_NAMESPACE,
-            package=PACKAGE_NAME,
+            package=CPP_PACKAGE_NAME,
             executable="multi_modeler",
             name=f"multi_modeler_{HOSTNAME}",
             output="screen",
@@ -68,7 +72,7 @@ def generate_launch_description() -> LaunchDescription:
         """
         monocular_slam_node = Node(
             namespace=ROS_NAMESPACE,
-            package=PACKAGE_NAME,
+            package=CPP_PACKAGE_NAME,
             executable="monocular_slam",
             name=f"monocular_slam_{HOSTNAME}",
             output="screen",
@@ -80,7 +84,7 @@ def generate_launch_description() -> LaunchDescription:
         MCU_NODE = "engine"
         monocular_inertial_slam_node = Node(
             namespace=ROS_NAMESPACE,
-            package=PACKAGE_NAME,
+            package=CPP_PACKAGE_NAME,
             executable="monocular_inertial_slam",
             name=f"monocular_inertial_slam_{HOSTNAME}",
             output="screen",

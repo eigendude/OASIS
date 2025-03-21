@@ -38,10 +38,10 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
   for OASIS_PACKAGE in \
     oasis_control \
     oasis_drivers_py \
-    oasis_perception \
+    oasis_perception_py \
     oasis_visualization \
   ; do
-    # Skip packages that weren't build
+    # Skip packages that weren't built
     if [ ! -d "${OASIS_DATA_DIRECTORY}/${OASIS_PACKAGE}/systemd" ]; then
       echo "Skipping package ${OASIS_PACKAGE}"
       continue
