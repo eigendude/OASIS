@@ -60,15 +60,6 @@ ENABLE_LLD="$([ -n "$(apt-cache search --names-only '^lld$')" ] && echo "ON" || 
 # Enable Wayland if the waylandpp-dev package is found
 ENABLE_WAYLAND="$([ -n "$(apt-cache search --names-only '^waylandpp-dev$')" ] && echo "ON" || echo "OFF")"
 
-# Enable internal spdlog on Ubuntu 18.04 and Ubuntu 22.04
-if [ "${CODENAME}" = "bionic" ] || [ "${CODENAME}" = "jammy" ]; then
-  ENABLE_INTERNAL_FMT=ON
-  ENABLE_INTERNAL_SPDLOG=ON
-else
-  ENABLE_INTERNAL_FMT=OFF
-  ENABLE_INTERNAL_SPDLOG=OFF
-fi
-
 #
 # Directory and path definitions
 #

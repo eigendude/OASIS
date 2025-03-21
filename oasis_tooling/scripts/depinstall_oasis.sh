@@ -73,13 +73,8 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     python3-numpy \
     python3-psutil \
     python3-serial
-  if [ "${CODENAME}" == "jammy" ]; then
-    python3 -m pip install --upgrade \
-      telemetrix-aio
-  else
-    sudo python3 -m pip install --upgrade --break-system-packages \
-      telemetrix-aio
-  fi
+  sudo python3 -m pip install --upgrade --break-system-packages \
+    telemetrix-aio
 fi
 
 #

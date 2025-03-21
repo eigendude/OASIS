@@ -96,42 +96,6 @@ if [ -f "${CONFIG_DIRECTORY}/kodi/0003-temp-Force-${HOSTNAME}-dimensions.patch" 
     || :
 fi
 
-if [ "${CODENAME}" = "jammy" ]; then
-  #
-  # Configure native depends
-  #
-
-  if [ ! -f "${KODI_DEPENDS_SRC}/Makefile.include" ]; then
-    (
-      cd "${KODI_DEPENDS_SRC}"
-      ./bootstrap
-      ./configure \
-        --prefix="${KODI_DEPENDS_DIR}" \
-        --disable-debug \
-        --with-rendersystem=${APP_RENDER_SYSTEM}
-    )
-  fi
-
-  #
-  # Build native depends for target depends
-  #
-
-  make \
-    -C "${KODI_DEPENDS_SRC}/native" \
-    -j$(getconf _NPROCESSORS_ONLN) \
-    meson \
-    ninja \
-    python3 \
-
-  #
-  # Build libdisplay-info
-  #
-
-  make \
-    -C "${KODI_DEPENDS_SRC}/target/libdisplay-info" \
-    -j$(getconf _NPROCESSORS_ONLN)
-fi
-
 #
 # Configure Kodi
 #
@@ -149,8 +113,6 @@ fi
       -DCMAKE_INSTALL_PREFIX="${KODI_INSTALL_DIR}" \
       -DENABLE_INTERNAL_CEC=OFF \
       -DENABLE_INTERNAL_FLATBUFFERS=ON \
-      -DENABLE_INTERNAL_FMT=${ENABLE_INTERNAL_FMT} \
-      -DENABLE_INTERNAL_SPDLOG=${ENABLE_INTERNAL_SPDLOG} \
       -DENABLE_LLD=${ENABLE_LLD} \
       -DENABLE_ROS2=ON \
       -DENABLE_TESTING=OFF \
@@ -171,20 +133,6 @@ make \
 
 echo "Installing Kodi..."
 make -C "${KODI_BUILD_DIR}" install
-
-
-if [ "${CODENAME}" = "jammy" ]; then
-  #
-  # Build native depends for add-ons
-  #
-
-  make \
-    -C "${KODI_DEPENDS_SRC}/native" \
-    -j$(getconf _NPROCESSORS_ONLN) \
-    automake \
-    cmake \
-    libtool
-fi
 
 #
 # Build add-ons
