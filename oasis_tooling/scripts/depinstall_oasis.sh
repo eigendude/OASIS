@@ -74,6 +74,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     python3-psutil \
     python3-serial
   sudo python3 -m pip install --upgrade --break-system-packages \
+    mediapipe \
     telemetrix-aio
 fi
 
