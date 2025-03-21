@@ -15,9 +15,9 @@ project(oasis_drivers_cpp)
 # Build configuration
 #
 
-# Default to C++17
+# Default to C++20
 if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 17)
+  set(CMAKE_CXX_STANDARD 20)
 endif()
 
 # TODO: -Wpedantic causes warnings due to libcec
