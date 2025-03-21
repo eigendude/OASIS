@@ -125,5 +125,15 @@ def generate_launch_description() -> LaunchDescription:
         )
         ld.add_action(background_modeler_node)
 
+    elif HOSTNAME == "station" or HOSTNAME == "macbook_vm":
+        pose_landmarker_node = Node(
+            namespace=ROS_NAMESPACE,
+            package=PYTHON_PACKAGE_NAME,
+            executable="pose_landmarker",
+            name=f"pose_landmarker_{HOSTNAME}",
+            output="screen",
+            remappings=[],
+        )
+        ld.add_action(pose_landmarker_node)
 
     return ld
