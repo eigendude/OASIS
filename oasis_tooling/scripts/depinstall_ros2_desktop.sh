@@ -201,8 +201,20 @@ echo "Downloading ROS 2 source code..."
     < "${CONFIG_DIRECTORY}/ros2-desktop/0001-Change-image_common-to-rolling-branch.patch"
 
   # Import ROS 2 sources
-  vcs import "${ROS2_SOURCE_DIRECTORY}" < ros2.repos
+  vcs import --force "${ROS2_SOURCE_DIRECTORY}" < ros2.repos
 )
+
+#
+# Patch ROS 2 sources
+#
+patch \
+  -p1 \
+  --forward \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${ROS2_SOURCE_DIRECTORY}/ros-perception/image_common" \
+  < "${CONFIG_DIRECTORY}/image_common/0001-Add-python-bindings-for-image_transport-QoS.patch" \
+  || :
 
 #
 # Disable examples, demos and some tests

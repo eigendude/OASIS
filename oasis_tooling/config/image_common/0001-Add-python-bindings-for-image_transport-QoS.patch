@@ -1,0 +1,100 @@
+From 487f54810336281332fc87efa96c0e9da906ddc7 Mon Sep 17 00:00:00 2001
+From: Garrett Brown <garrett.brown@aclima.earth>
+Date: Sat, 22 Mar 2025 16:22:57 -0700
+Subject: [PATCH] Add python bindings for image_transport QoS
+
+---
+ .../pybind_image_transport.cpp                | 63 ++++++++++++++++++-
+ 1 file changed, 62 insertions(+), 1 deletion(-)
+
+diff --git a/image_transport_py/src/image_transport_py/pybind_image_transport.cpp b/image_transport_py/src/image_transport_py/pybind_image_transport.cpp
+index 0c0b4cd..8506a35 100644
+--- a/image_transport_py/src/image_transport_py/pybind_image_transport.cpp
++++ b/image_transport_py/src/image_transport_py/pybind_image_transport.cpp
+@@ -16,6 +16,7 @@
+ #include <memory>
+ #include <string>
+ #include <thread>
++#include <unordered_map>
+ 
+ #include "./pybind11.hpp"
+ #include "image_transport_py/cast_image.hpp"
+@@ -35,6 +36,31 @@ namespace image_transport_python
+ template<typename SubscriberType>
+ using SubscriberMap = std::unordered_map<SubscriberType *, std::shared_ptr<SubscriberType>>;
+ 
++// Helper function: convert a Python dict to an rmw_qos_profile_t.
++// We look for keys "history", "depth", "reliability", and "durability".
++// Any missing keys leave the default value from rmw_qos_profile_default.
++rmw_qos_profile_t convert_qos_dict(const pybind11::dict & qos_dict)
++{
++  rmw_qos_profile_t qos = rmw_qos_profile_default;
++  if (qos_dict.contains("history")) {
++    int history = qos_dict["history"].cast<int>();
++    qos.history = static_cast<rmw_qos_history_policy_t>(history);
++  }
++  if (qos_dict.contains("depth")) {
++    qos.depth = qos_dict["depth"].cast<size_t>();
++  }
++  if (qos_dict.contains("reliability")) {
++    int reliability = qos_dict["reliability"].cast<int>();
++    qos.reliability = static_cast<rmw_qos_reliability_policy_t>(reliability);
++  }
++  if (qos_dict.contains("durability")) {
++    int durability = qos_dict["durability"].cast<int>();
++    qos.durability = static_cast<rmw_qos_durability_policy_t>(durability);
++  }
++  // Extend here for additional parameters if needed.
++  return qos;
++}
++
+ // Bindings for the image_transport classes
+ PYBIND11_MODULE(_image_transport, m)
+ {
+@@ -165,7 +191,42 @@ PYBIND11_MODULE(_image_transport, m)
+       return subscription;
+     },
+     pybind11::arg("base_topic"), pybind11::arg("queue_size"), pybind11::arg("callback"),
+-    "Subscribe to an image topic with camera info.");
++    "Subscribe to an image topic with camera info.")
++  .def(
++    "subscribe_qos",
++    [](image_transport::ImageTransport & image_transport,
++    const std::string & base_topic,
++    const pybind11::dict & qos_dict,
++    //const image_transport::Subscriber::Callback & callback,
++    pybind11::function callback) {
++      rmw_qos_profile_t qos = convert_qos_dict(qos_dict);
++
++      // Wrap the Python callback in a lambda with the expected signature
++      image_transport::Subscriber::Callback cb =
++      [callback](const sensor_msgs::msg::Image::ConstSharedPtr & msg) -> void {
++        callback(msg);
++      };
++
++      // Static vector to keep the subscriptions alive
++      thread_local auto vec = std::vector<std::shared_ptr<image_transport::Subscriber>>();
++      auto subscription =
++      std::make_shared<image_transport::Subscriber>(
++        image_transport.subscribe(
++          base_topic,
++          qos,
++          cb,
++          std::shared_ptr<void>(),
++          nullptr,
++          rclcpp::SubscriptionOptions()));
++      vec.push_back(subscription);
++
++      return subscription;
++    },
++    pybind11::arg("base_topic"),
++    pybind11::arg("qos_dict"),
++    pybind11::arg("callback"),
++    "Subscribe to an image topic using a custom QoS profile provided as a dictionary."
++  );
+ 
+   pybind11::class_<image_transport::Subscriber, std::shared_ptr<image_transport::Subscriber>>(
+     m,
+-- 
+2.43.0
+
