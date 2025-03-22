@@ -56,15 +56,10 @@ AVR_COM_PORT = "/dev/ttyACM0"
 # TODO: Hardware configuration
 if HOSTNAME == "asus":
     ENABLE_DISPLAY = True
-    ENABLE_VIDEO = True
+    ENABLE_VIDEO = False
 elif HOSTNAME == "cinder":
     ENABLE_KINECT_V2 = True
-elif HOSTNAME == "inspiron":
-    ENABLE_DISPLAY = True
 elif HOSTNAME == "lenovo":
-    ENABLE_DISPLAY = True
-    ENABLE_VIDEO = False
-elif HOSTNAME == "netbook":
     ENABLE_DISPLAY = True
     ENABLE_VIDEO = False
 elif HOSTNAME == "station":
