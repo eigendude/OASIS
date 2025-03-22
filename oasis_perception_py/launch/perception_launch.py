@@ -41,6 +41,7 @@ def generate_launch_description() -> LaunchDescription:
     ld = LaunchDescription()
 
     if HOSTNAME == "cinder":
+        """
         bgs_abl_node = Node(
             namespace=ROS_NAMESPACE,
             package=CPP_PACKAGE_NAME,
@@ -58,6 +59,22 @@ def generate_launch_description() -> LaunchDescription:
             output="screen",
         )
         ld.add_action(bgs_asbl_node)
+        """
+
+        CAMERA_NODE = "kinect2"
+        background_modeler_node = Node(
+            namespace=ROS_NAMESPACE,
+            package=CPP_PACKAGE_NAME,
+            executable="background_modeler",
+            name=f"background_modeler_{CAMERA_NODE}",
+            output="screen",
+            remappings=[
+                ("image_raw", f"{CAMERA_NODE}/hd/image_color"),
+                ("image_raw/compressed", f"{CAMERA_NODE}/hd/image_color/compressed"),
+                ("background", f"{CAMERA_NODE}/background"),
+            ],
+        )
+        ld.add_action(background_modeler_node)
 
     elif HOSTNAME == "starship":
         multi_modeler_node = Node(
@@ -93,5 +110,21 @@ def generate_launch_description() -> LaunchDescription:
             ],
         )
         ld.add_action(monocular_inertial_slam_node)
+
+    elif HOSTNAME == "station":
+        background_modeler_node = Node(
+            namespace=ROS_NAMESPACE,
+            package=CPP_PACKAGE_NAME,
+            executable="background_modeler",
+            name=f"background_modeler_{HOSTNAME}",
+            output="screen",
+            remappings=[
+                ("image_raw", f"{HOSTNAME}/image_raw"),
+                ("image_raw/compressed", f"{HOSTNAME}/image_raw/compressed"),
+                ("background", f"{HOSTNAME}/background"),
+            ],
+        )
+        ld.add_action(background_modeler_node)
+
 
     return ld
