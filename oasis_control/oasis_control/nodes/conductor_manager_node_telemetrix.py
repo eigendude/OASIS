@@ -256,6 +256,9 @@ class ConductorManagerNode(rclpy.node.Node):
         if not self._cpu_fan_manager.initialize(CPU_FAN_SAMPLING_INTERVAL_MS):
             return False
 
+        # Turn on fan
+        self._cpu_fan_manager.write(CPU_FAN_PWM_PIN, 1.0)
+
         # Memory reporting
         if not self._mcu_memory_manager.initialize(REPORT_MCU_MEMORY_PERIOD_SECS):
             return False
