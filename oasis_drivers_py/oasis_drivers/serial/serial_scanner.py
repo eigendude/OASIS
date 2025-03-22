@@ -25,9 +25,9 @@ class SerialScanner(object):
 
     @classmethod
     def do_scan(cls) -> List[serial.tools.list_ports_common.ListPortInfo]:
-        ports: List[
-            serial.tools.list_ports_common.ListPortInfo
-        ] = serial.tools.list_ports.comports(include_links=False)
+        ports: List[serial.tools.list_ports_common.ListPortInfo] = (
+            serial.tools.list_ports.comports(include_links=False)
+        )
         return [cls._get_serial_port(port) for port in ports]
 
     @classmethod
@@ -51,9 +51,9 @@ class SerialScanner(object):
             usb_device = UsbDevice(
                 vendor_id=port_info.vid,
                 product_id=port_info.pid,
-                serial_number=port_info.serial_number
-                if port_info.serial_number
-                else "",
+                serial_number=(
+                    port_info.serial_number if port_info.serial_number else ""
+                ),
                 location=port_info.location,
                 manufacturer=port_info.manufacturer,
                 product=port_info.product,

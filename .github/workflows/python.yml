@@ -22,7 +22,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-20.04
+          - os: ubuntu-24.04
 
     # Steps represent a sequence of tasks that will be executed as part of the
     # job
@@ -35,19 +35,10 @@ jobs:
       - name: Checkout main repo
         uses: actions/checkout@v4
 
-      # Required on self-hosted workers: sudo apt install python3.10-dev
-      #
-      # Furthermore, on Ubuntu 18.04, Python 3.10 backports don't exist yet, so
-      # you can use the deadsnakes repository:
-      #
-      #   sudo add-apt-repository ppa:deadsnakes/ppa
-      #   sudo apt update
-      #   sudo apt install python3.10-dev
-      #
-      - name: Set up Python 3.10
-        uses: actions/setup-python@v2
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.12"
 
       - name: Install dependencies
         run: |

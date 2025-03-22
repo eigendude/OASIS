@@ -69,17 +69,17 @@ class FirmataBridge:
         )
 
         # Install custom sysex handlers
-        self._board.command_dictionary[
-            FirmataConstants.CPU_FAN_RPM
-        ] = self._on_cpu_fan_rpm
-        self._board.command_dictionary[
-            FirmataConstants.MEMORY_DATA
-        ] = self._on_memory_data
+        self._board.command_dictionary[FirmataConstants.CPU_FAN_RPM] = (
+            self._on_cpu_fan_rpm
+        )
+        self._board.command_dictionary[FirmataConstants.MEMORY_DATA] = (
+            self._on_memory_data
+        )
 
         # Patch string-handling (pymata-express prints to stdout)
-        self._board.command_dictionary[
-            PrivateConstants.STRING_DATA
-        ] = self._on_string_data
+        self._board.command_dictionary[PrivateConstants.STRING_DATA] = (
+            self._on_string_data
+        )
 
     def initialize(self) -> None:
         """Initialize the bridge and start communicating via Firmata"""
