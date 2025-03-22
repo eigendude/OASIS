@@ -157,6 +157,16 @@ vcs import "${OASIS_DEPENDS_SOURCE_DIRECTORY}" < "${PACKAGE_DIRECTORY}/config/de
 # Patch dependency sources
 #
 
+# bgslibrary
+patch \
+  -p1 \
+  --forward \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/bgslibrary" \
+  < "${CONFIG_DIRECTORY}/bgslibrary/0001-Disable-imshow-calls.patch" \
+  || :
+
 # libcec
 cp -v \
   "${CONFIG_DIRECTORY}/libcec/package.xml" \

@@ -1,0 +1,122 @@
+From 3e52fcd6988d3508e628552900c09249589497fc Mon Sep 17 00:00:00 2001
+From: Garrett Brown <eigendebugger@gmail.com>
+Date: Fri, 21 Mar 2025 21:38:12 -0700
+Subject: [PATCH] Disable imshow() calls
+
+---
+ CMakeLists.txt                        |  3 ++
+ bgslibrary/tools/PerformanceUtils.cpp | 49 ---------------------------
+ 2 files changed, 3 insertions(+), 49 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 4d635ff..fc2b51d 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -67,6 +67,9 @@ foreach(OUTPUTCONFIG ${CMAKE_CONFIGURATION_TYPES})
+   set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${bgs_out_dir})
+ endforeach(OUTPUTCONFIG CMAKE_CONFIGURATION_TYPES)
+ 
++# Hack to patch out imshow() calls
++add_definitions(-DMEX_COMPILE_FLAG)
++
+ if(UNIX)
+   # add some standard warnings
+   ADD_DEFINITIONS(-Wno-variadic-macros -Wno-long-long -Wall -Wextra -Winit-self -Woverloaded-virtual -Wsign-promo -Wno-unused-parameter -pedantic -Woverloaded-virtual -Wno-unknown-pragmas)
+diff --git a/bgslibrary/tools/PerformanceUtils.cpp b/bgslibrary/tools/PerformanceUtils.cpp
+index c81702a..fa3b3ac 100644
+--- a/bgslibrary/tools/PerformanceUtils.cpp
++++ b/bgslibrary/tools/PerformanceUtils.cpp
+@@ -68,15 +68,6 @@ float PerformanceUtils::NrTruePositives(IplImage *image, IplImage *ground_truth,
+     }
+   }
+ 
+-  if (debug) {
+-    cvNamedWindow("TPImage", 0);
+-    cvShowImage("TPImage", TPimage);
+-    //std::cout << "True Positives: " << nTP << std::endl;
+-    //<< " press ENTER to continue" << std::endl;
+-    //cvWaitKey(0);
+-    cvReleaseImage(&TPimage);
+-  }
+-
+   free(pixelGT);
+   free(pixelI);
+ 
+@@ -113,15 +104,6 @@ float PerformanceUtils::NrTrueNegatives(IplImage* image, IplImage* ground_truth,
+     }
+   }
+ 
+-  if (debug) {
+-    cvNamedWindow("TNImage", 0);
+-    cvShowImage("TNImage", TNimage);
+-    //std::cout << "True Negatives: " << nTN << std::endl;
+-    //<< " press ENTER to continue" << std::endl;
+-    //cvWaitKey(0);
+-    cvReleaseImage(&TNimage);
+-  }
+-
+   free(pixelGT);
+   free(pixelI);
+ 
+@@ -157,15 +139,6 @@ float PerformanceUtils::NrFalsePositives(IplImage *image, IplImage *ground_truth
+     }
+   }
+ 
+-  if (debug) {
+-    cvNamedWindow("FPImage", 0);
+-    cvShowImage("FPImage", FPimage);
+-    //std::cout << "False Positives: " << nFP << std::endl;
+-    //<< " press ENTER to continue" << std::endl;
+-    //cvWaitKey(0);
+-    cvReleaseImage(&FPimage);
+-  }
+-
+   free(pixelGT);
+   free(pixelI);
+ 
+@@ -201,15 +174,6 @@ float PerformanceUtils::NrFalseNegatives(IplImage * image, IplImage *ground_trut
+     }
+   }
+ 
+-  if (debug) {
+-    cvNamedWindow("FNImage", 0);
+-    cvShowImage("FNImage", FNimage);
+-    //std::cout << "False Negatives: " << nFN << std::endl;
+-    //<< " press ENTER to continue" << std::endl;
+-    //cvWaitKey(0);
+-    cvReleaseImage(&FNimage);
+-  }
+-
+   free(pixelGT);
+   free(pixelI);
+ 
+@@ -239,16 +203,6 @@ float PerformanceUtils::SimilarityMeasure(IplImage *image, IplImage *ground_trut
+ 
+   double s = (((double)in) / ((double)un));
+ 
+-  if (debug) {
+-    cv::imshow("A^B", i);
+-    cv::imshow("AvB", u);
+-
+-    //std::cout << "Similarity Measure: " << s  << std::endl;
+-
+-    //<< " press ENTER to continue" << std::endl;
+-    //cv::waitKey(0);
+-  }
+-
+   return s;
+ }
+ 
+@@ -289,9 +243,6 @@ void PerformanceUtils::ImageROC(IplImage *image, IplImage* ground_truth, bool sa
+     }
+   }
+ 
+-  cvNamedWindow("ROC image", 0);
+-  cvShowImage("ROC image", ROCimage);
+-
+   if (saveResults) {
+     unsigned char *pixelOI = (unsigned char*)malloc(1 * sizeof(unsigned char));
+     unsigned char *pixelROC = (unsigned char*)malloc(1 * sizeof(unsigned char));
+-- 
+2.43.0
+
