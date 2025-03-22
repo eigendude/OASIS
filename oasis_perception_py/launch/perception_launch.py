@@ -52,14 +52,15 @@ PERCEPTION_SERVER_POSE_LANDMARKS = []
 #    ENABLE_CAMERA_BACKGROUND = True
 # elif HOSTNAME == "cinder":
 #    ENABLE_KINECT_V2_BACKGROUND = True
-# elif HOSTNAME == "lenovo":
-#    ENABLE_CAMERA_BACKGROUND = True
+if HOSTNAME == "lenovo":
+  ENABLE_CAMERA_BACKGROUND = True
+  ENABLE_POSE_LANDMARKER = True
 # elif HOSTNAME == "station":
 #    ENABLE_CAMERA_BACKGROUND = True
 
 if HOSTNAME == "cinder":
-    PERCEPTION_SERVER_BACKGROUND = ["asus", "kinect2", "lenovo", "station"]
-    PERCEPTION_SERVER_POSE_LANDMARKS = ["asus", "kinect2", "lenovo", "station"]
+    PERCEPTION_SERVER_BACKGROUND = ["asus", "kinect2", "station"]
+    PERCEPTION_SERVER_POSE_LANDMARKS = ["asus", "kinect2", "station"]
 
 
 print(f"Launching on {HOSTNAME}")
