@@ -34,12 +34,64 @@ CPP_PACKAGE_NAME = "oasis_perception_cpp"
 PYTHON_PACKAGE_NAME = "oasis_perception_py"
 
 
+################################################################################
+# Hardware/video parameters
+################################################################################
+
+
+# Hardware options
+ENABLE_KINECT_V2 = False
+ENABLE_CAMERA = False
+
+# TODO: Hardware configuration
+if HOSTNAME == "asus":
+    ENABLE_CAMERA = True
+elif HOSTNAME == "cinder":
+    ENABLE_KINECT_V2 = True
+elif HOSTNAME == "lenovo":
+    ENABLE_CAMERA = True
+elif HOSTNAME == "station":
+    ENABLE_CAMERA = True
+
+
 print(f"Launching on {HOSTNAME}")
 
 
 def generate_launch_description() -> LaunchDescription:
     ld = LaunchDescription()
 
+    if ENABLE_CAMERA:
+        background_modeler_node = Node(
+            namespace=ROS_NAMESPACE,
+            package=CPP_PACKAGE_NAME,
+            executable="background_modeler",
+            name=f"background_modeler_{HOSTNAME}",
+            output="screen",
+            remappings=[
+                ("image_raw", f"{HOSTNAME}/image_raw"),
+                ("image_raw/compressed", f"{HOSTNAME}/image_raw/compressed"),
+                ("background", f"{HOSTNAME}/background"),
+            ],
+        )
+        ld.add_action(background_modeler_node)
+
+    if ENABLE_KINECT_V2:
+        CAMERA_NODE = "kinect2"
+        background_modeler_node = Node(
+            namespace=ROS_NAMESPACE,
+            package=CPP_PACKAGE_NAME,
+            executable="background_modeler",
+            name=f"background_modeler_{CAMERA_NODE}",
+            output="screen",
+            remappings=[
+                ("image_raw", f"{CAMERA_NODE}/hd/image_color"),
+                ("image_raw/compressed", f"{CAMERA_NODE}/hd/image_color/compressed"),
+                ("background", f"{CAMERA_NODE}/background"),
+            ],
+        )
+        ld.add_action(background_modeler_node)
+
+    """
     if HOSTNAME == "cinder":
         bgs_abl_node = Node(
             namespace=ROS_NAMESPACE,
@@ -69,7 +121,6 @@ def generate_launch_description() -> LaunchDescription:
         )
         ld.add_action(multi_modeler_node)
 
-        """
         monocular_slam_node = Node(
             namespace=ROS_NAMESPACE,
             package=CPP_PACKAGE_NAME,
@@ -78,7 +129,6 @@ def generate_launch_description() -> LaunchDescription:
             output="screen",
         )
         ld.add_action(monocular_slam_node)
-        """
 
     elif HOSTNAME == "jetson":
         MCU_NODE = "engine"
@@ -93,5 +143,6 @@ def generate_launch_description() -> LaunchDescription:
             ],
         )
         ld.add_action(monocular_inertial_slam_node)
+    """
 
     return ld
