@@ -63,6 +63,13 @@ setuptools.setup(
                 "config/systemd/oasis_perception.service",
             ],
         ),
+        # MediaPipe files
+        (
+            os.path.join("share", PACKAGE_NAME, "mediapipe"),
+            [
+                "mediapipe/pose_landmarker.task",
+            ],
+        ),
     ],
     install_requires=[
         "mediapipe",
