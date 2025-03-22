@@ -34,12 +34,94 @@ CPP_PACKAGE_NAME = "oasis_perception_cpp"
 PYTHON_PACKAGE_NAME = "oasis_perception_py"
 
 
+################################################################################
+# Hardware/video parameters
+################################################################################
+
+
+# Hardware options
+ENABLE_CAMERA_BACKGROUND = False
+ENABLE_KINECT_V2_BACKGROUND = False
+PERCEPTION_SERVER_BACKGROUND = []
+
+# TODO: Hardware configuration
+# if HOSTNAME == "asus":
+#    ENABLE_CAMERA_BACKGROUND = True
+# elif HOSTNAME == "cinder":
+#    ENABLE_KINECT_V2_BACKGROUND = True
+# elif HOSTNAME == "lenovo":
+#    ENABLE_CAMERA_BACKGROUND = True
+# elif HOSTNAME == "station":
+#    ENABLE_CAMERA_BACKGROUND = True
+
+if HOSTNAME == "cinder":
+    PERCEPTION_SERVER_BACKGROUND = ["asus", "kinect2", "lenovo", "station"]
+
+
 print(f"Launching on {HOSTNAME}")
 
 
 def generate_launch_description() -> LaunchDescription:
     ld = LaunchDescription()
 
+    if ENABLE_CAMERA_BACKGROUND:
+        background_modeler_node = Node(
+            namespace=ROS_NAMESPACE,
+            package=CPP_PACKAGE_NAME,
+            executable="background_modeler",
+            name=f"background_modeler_{HOSTNAME}",
+            output="screen",
+            remappings=[
+                ("image_raw", f"{HOSTNAME}/image_raw"),
+                ("image_raw/compressed", f"{HOSTNAME}/image_raw/compressed"),
+                ("background", f"{HOSTNAME}/background"),
+            ],
+        )
+        ld.add_action(background_modeler_node)
+
+    if ENABLE_KINECT_V2_BACKGROUND:
+        CAMERA_NODE = "kinect2"
+        background_modeler_node = Node(
+            namespace=ROS_NAMESPACE,
+            package=CPP_PACKAGE_NAME,
+            executable="background_modeler",
+            name=f"background_modeler_{CAMERA_NODE}",
+            output="screen",
+            remappings=[
+                ("image_raw", f"{CAMERA_NODE}/hd/image_color"),
+                ("image_raw/compressed", f"{CAMERA_NODE}/hd/image_color/compressed"),
+                ("background", f"{CAMERA_NODE}/background"),
+            ],
+        )
+        ld.add_action(background_modeler_node)
+
+    if PERCEPTION_SERVER_BACKGROUND:
+        for host in PERCEPTION_SERVER_BACKGROUND:
+            # Use different remappings if host is "kinect2"
+            if host == "kinect2":
+                remappings = [
+                    ("image_raw", f"{host}/hd/image_color"),
+                    ("image_raw/compressed", f"{host}/hd/image_color/compressed"),
+                    ("background", f"{host}/background"),
+                ]
+            else:
+                remappings = [
+                    ("image_raw", f"{host}/image_raw"),
+                    ("image_raw/compressed", f"{host}/image_raw/compressed"),
+                    ("background", f"{host}/background"),
+                ]
+
+            node = Node(
+                namespace=ROS_NAMESPACE,
+                package=CPP_PACKAGE_NAME,
+                executable="background_modeler",
+                name=f"background_modeler_{host}",
+                output="screen",
+                remappings=remappings,
+            )
+            ld.add_action(node)
+
+    """
     if HOSTNAME == "cinder":
         bgs_abl_node = Node(
             namespace=ROS_NAMESPACE,
@@ -69,7 +151,6 @@ def generate_launch_description() -> LaunchDescription:
         )
         ld.add_action(multi_modeler_node)
 
-        """
         monocular_slam_node = Node(
             namespace=ROS_NAMESPACE,
             package=CPP_PACKAGE_NAME,
@@ -78,7 +159,6 @@ def generate_launch_description() -> LaunchDescription:
             output="screen",
         )
         ld.add_action(monocular_slam_node)
-        """
 
     elif HOSTNAME == "jetson":
         MCU_NODE = "engine"
@@ -93,5 +173,6 @@ def generate_launch_description() -> LaunchDescription:
             ],
         )
         ld.add_action(monocular_inertial_slam_node)
+    """
 
     return ld

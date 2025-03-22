@@ -26,6 +26,8 @@ endif()
 
 set(OpenGL_GL_PREFERENCE GLVND)
 
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
+
 #
 # Dependencies
 #
@@ -122,6 +124,34 @@ target_link_libraries(background_subtractor_asbl
 install(
   TARGETS
     background_subtractor_asbl
+  DESTINATION
+    lib/${PROJECT_NAME}
+)
+
+#
+# background_modeler
+#
+
+add_executable(background_modeler
+  src/cli/background_modeler.cpp
+  src/nodes/BackgroundModelerNode.cpp
+)
+
+ament_target_dependencies(background_modeler
+  ${AMENT_COMMON_DEPENDENCIES}
+)
+
+target_include_directories(background_modeler PUBLIC
+  ${BGSLIBRARY_INCLUDE_DIRS}
+)
+
+target_link_libraries(background_modeler
+  ${BGS_LIBRARIES}
+)
+
+install(
+  TARGETS
+    background_modeler
   DESTINATION
     lib/${PROJECT_NAME}
 )
