@@ -38,6 +38,10 @@ repositories:
     type: git
     url: https://github.com/christianrauch/camera_ros.git
     version: main
+  ros-perception/image_pipeline:
+    type: git
+    url: https://github.com/ros-perception/image_pipeline.git
+    version: rolling
   ros-perception/image_transport_plugins:
     type: git
     url: https://github.com/ros-perception/image_transport_plugins.git

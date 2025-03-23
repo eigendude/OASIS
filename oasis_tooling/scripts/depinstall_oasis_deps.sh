@@ -63,6 +63,10 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
   sudo apt install -y --no-install-recommends \
     liblttng-ust-dev \
 
+  # Needed by image_pipeline
+  sudo apt install -y --no-install-recommends \
+    liborocos-kdl-dev
+
   # Needed by image_transport and plugins
   sudo apt install -y --no-install-recommends \
     libconsole-bridge-dev \
