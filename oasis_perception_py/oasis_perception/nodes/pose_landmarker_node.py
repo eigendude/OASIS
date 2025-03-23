@@ -82,10 +82,10 @@ class PoseLandmarkerNode(rclpy.node.Node):
         options = vision.PoseLandmarkerOptions(
             base_options=base_options,
             running_mode=vision.RunningMode.LIVE_STREAM,
-            num_poses=1,
-            min_pose_detection_confidence=0.5,
-            min_pose_presence_confidence=0.5,
-            min_tracking_confidence=0.5,
+            num_poses=3,
+            min_pose_detection_confidence=0.75,
+            min_pose_presence_confidence=0.4,
+            min_tracking_confidence=0.4,
             result_callback=self._result_callback,
         )
         return vision.PoseLandmarker.create_from_options(options)
