@@ -180,6 +180,9 @@ def generate_launch_description() -> LaunchDescription:
             executable="kinect2_bridge",
             name=f"kinect2_bridge_{HOSTNAME}",
             output="screen",
+            parameters=[
+                {"reg_method": "opencl"},
+            ],
         )
         ld.add_action(kinect_v2_node)
 
