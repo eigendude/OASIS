@@ -129,6 +129,19 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     python3-yaml \
     qtbase5-dev \
     v4l-utils
+
+  # Needed for OpenCL support for oasis_kinect2
+  sudo apt install -y --no-install-recommends \
+    clinfo \
+    ocl-icd-opencl-dev \
+    opencl-clhpp-headers
+  if [[ ${PLATFORM_ARCH} == i*86 ]] || [[ ${PLATFORM_ARCH} == x86_64 ]]; then
+    sudo apt install -y --no-install-recommends \
+      intel-opencl-icd
+  else
+    sudo apt install -y --no-install-recommends \
+      pocl-opencl-icd
+  fi
 fi
 
 #
