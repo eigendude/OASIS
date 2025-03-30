@@ -11,7 +11,9 @@
 import socket
 
 from launch import LaunchDescription
+from launch_ros.actions import ComposableNodeContainer
 from launch_ros.actions import Node
+from launch_ros.descriptions import ComposableNode
 
 
 ################################################################################
@@ -174,7 +176,8 @@ def generate_launch_description() -> LaunchDescription:
         ld.add_action(camera_node)
 
     if ENABLE_KINECT_V2:
-        kinect_v2_node = Node(
+        # TODO: For now use a separate node for the main Kinect V2 bridge
+        kinect2_bridge_node = Node(
             namespace=ROS_NAMESPACE,
             package="kinect2_bridge",
             executable="kinect2_bridge",
@@ -184,7 +187,29 @@ def generate_launch_description() -> LaunchDescription:
                 {"reg_method": "opencl"},
             ],
         )
-        ld.add_action(kinect_v2_node)
+        ld.add_action(kinect2_bridge_node)
+
+        kinect2_container = ComposableNodeContainer(
+            namespace=ROS_NAMESPACE,
+            name=f"kinect2_container_{HOSTNAME}",
+            package="rclcpp_components",
+            executable="component_container_mt",
+            output="screen",
+            composable_node_descriptions=[
+                # TODO: Composable nodes seem to break when not using the modern image_transport API
+                # ComposableNode(
+                #     package="kinect2_bridge",
+                #     plugin="kinect2_bridge::Kinect2BridgeComponent",
+                #     name=f"kinect2_bridge_{HOSTNAME}",
+                # ),
+                ComposableNode(
+                    package="kinect2_bridge",
+                    plugin="kinect2_bridge::Kinect2DownscalerComponent",
+                    name=f"kinect2_downscaler_{HOSTNAME}",
+                ),
+            ],
+        )
+        ld.add_action(kinect2_container)
 
     # Template for Firmata bridges
     def get_firmata_bridge(hostname: str, mcu_name: str) -> Node:
