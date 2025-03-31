@@ -234,6 +234,9 @@ patch \
   < "${CONFIG_DIRECTORY}/libfreenect2/0004-Force-disable-components.patch" \
   || :
 
+# OpenCV
+touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/vision_opencv/opencv_tests/COLCON_IGNORE"
+
 # OpenNI
 cp -v \
   "${CONFIG_DIRECTORY}/OpenNI2/CMakeLists.txt" \
