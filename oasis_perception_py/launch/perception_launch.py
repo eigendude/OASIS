@@ -92,8 +92,8 @@ def generate_launch_description() -> LaunchDescription:
             name=f"background_modeler_{CAMERA_NODE}",
             output="screen",
             remappings=[
-                ("image_raw", f"{CAMERA_NODE}/hd/image_color"),
-                ("image_raw/compressed", f"{CAMERA_NODE}/hd/image_color/compressed"),
+                ("image_raw", f"{CAMERA_NODE}/sd/image_color"),
+                ("image_raw/compressed", f"{CAMERA_NODE}/sd/image_color/compressed"),
                 ("background", f"{CAMERA_NODE}/background"),
             ],
         )
@@ -118,8 +118,8 @@ def generate_launch_description() -> LaunchDescription:
             # Use different remappings if host is "kinect2"
             if host == "kinect2":
                 remappings = [
-                    ("image_raw", f"{host}/hd/image_color"),
-                    ("image_raw/compressed", f"{host}/hd/image_color/compressed"),
+                    ("image_raw", f"{host}/sd/image_color"),
+                    ("image_raw/compressed", f"{host}/sd/image_color/compressed"),
                     ("background", f"{host}/background"),
                 ]
             else:
@@ -144,7 +144,7 @@ def generate_launch_description() -> LaunchDescription:
             # Use different remappings if host is "kinect2"
             if host == "kinect2":
                 remappings = [
-                    ("image_raw", f"{host}/hd/image_color"),
+                    ("image_raw", f"{host}/sd/image_color"),
                     ("pose_landmarks", f"{host}/pose_landmarks"),
                 ]
             else:
