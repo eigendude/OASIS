@@ -69,7 +69,7 @@ COLCON_FLAGS+=" \
 )
 
 #
-# Install symlimk to fix link error at runtime
+# Install symlimks to fix link error at runtime
 #
 
 if \
@@ -81,3 +81,11 @@ if \
     "${OASIS_DEPENDS_LIB_DIRECTORY}/kinect2_registration/libkinect2_registration.so" \
     "${OASIS_DEPENDS_LIB_DIRECTORY}/libkinect2_registration.so"
 fi
+
+for so_file in "${OASIS_DEPENDS_LIB_DIRECTORY}/kinect2_bridge/"*.so; do
+  target="${OASIS_DEPENDS_LIB_DIRECTORY}/$(basename "$so_file")"
+  if [ ! -L "$target" ] && [ -f "$so_file" ]; then
+    rm -rf "$target"
+    ln -s "$so_file" "$target"
+  fi
+done
