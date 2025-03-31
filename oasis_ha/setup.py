@@ -54,5 +54,12 @@ setuptools.setup(
             os.path.join("share", "ament_index", "resource_index", "packages"),
             ["resource/" + PACKAGE_NAME],
         ),
+        # Systemd services
+        (
+            os.path.join("share", PACKAGE_NAME, "systemd"),
+            [
+                "config/systemd/home-assistant.service",
+            ],
+        ),
     ],
 )
