@@ -38,6 +38,18 @@ repositories:
     type: git
     url: https://github.com/christianrauch/camera_ros.git
     version: main
+  ros-perception/ffmpeg_encoder_decoder:
+    type: git
+    url: https://github.com/ros-misc-utilities/ffmpeg_encoder_decoder.git
+    version: master
+  ros-perception/ffmpeg_image_transport:
+    type: git
+    url: https://github.com/ros-misc-utilities/ffmpeg_image_transport.git
+    version: master
+  ros-perception/ffmpeg_image_transport_msgs:
+    type: git
+    url: https://github.com/ros-misc-utilities/ffmpeg_image_transport_msgs.git
+    version: master
   ros-perception/image_pipeline:
     type: git
     url: https://github.com/ros-perception/image_pipeline.git
