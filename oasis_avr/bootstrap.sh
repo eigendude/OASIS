@@ -123,6 +123,13 @@ patch \
   --no-backup-if-mismatch \
   --directory="${TOOLCHAIN_DIR}" \
   < "${PATCH_DIR}/Arduino-CMake-Toolchain/0001-Add-variable-ARDUINO_BOARD_RAM_SIZE.patch"
+patch \
+  -p1 \
+  --forward \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${TOOLCHAIN_DIR}" \
+  < "${PATCH_DIR}/Arduino-CMake-Toolchain/0002-Fix-Arduino-toolchain-compatibility-with-CMake-4.0.patch"
 
 # Patch Adafruit BluefruitLE_nRF51 library
 patch \
