@@ -22,6 +22,13 @@ set -o nounset
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 #
+# Build CMake
+#
+
+"${SCRIPT_DIR}/depinstall_cmake.sh"
+"${SCRIPT_DIR}/build_cmake.sh"
+
+#
 # Build ROS 2
 #
 

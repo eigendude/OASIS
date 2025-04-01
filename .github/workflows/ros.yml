@@ -40,6 +40,15 @@ jobs:
       - name: Checkout main repo
         uses: actions/checkout@v4
 
+      - name: Restore CMake
+        id: restore-cmake
+        if: matrix.os != 'macbook'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ros-ws/cmake/install
+          key: restore-cmake-${{ matrix.os }}-${{ hashFiles('oasis_tooling/scripts/*cmake.sh') }}
+
       - name: Restore ROS 2 Desktop
         id: restore-ros2-desktop
         uses: actions/cache@v4
@@ -63,6 +72,14 @@ jobs:
           path: |
             oasis_avr/arduino-*
           key: restore-arduino-ide-${{ matrix.os }}-${{ hashFiles('oasis_avr/bootstrap.sh') }}
+
+      - name: Install CMake dependencies
+        if: steps.restore-cmake.outputs.cache-hit != 'true'
+        run: ./oasis_tooling/scripts/depinstall_cmake.sh
+
+      - name: Build CMake
+        if: steps.restore-cmake.outputs.cache-hit != 'true'
+        run: ./oasis_tooling/scripts/build_cmake.sh
 
       - name: Install ROS 2 Desktop dependencies
         if: steps.restore-ros2-desktop.outputs.cache-hit != 'true'

@@ -21,6 +21,9 @@ set -o nounset
 # Get the absolute path to this script
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
+# Import CMake paths and config
+source "${SCRIPT_DIR}/env_cmake.sh"
+
 # Import Kodi paths and config
 source "${SCRIPT_DIR}/env_kodi.sh"
 
@@ -104,6 +107,7 @@ fi
   echo "Configuring Kodi..."
   mkdir -p "${KODI_BUILD_DIR}"
   cd "${KODI_BUILD_DIR}"
+  PATH="${CMAKE_BIN_DIRECTORY}:${PATH}" \
   PKG_CONFIG_PATH="${KODI_DEPENDS_DIR}/${KODI_DEPENDS_TARGET}/lib/pkgconfig" \
     cmake \
       "${KODI_SOURCE_DIR}" \
