@@ -1,9 +1,5 @@
 repositories:
   # See https://github.com/christian-nils/libcamera_cmake for dependencies
-  depends/libcamera_cmake:
-    type: git
-    url: https://github.com/eigendude/libcamera_cmake.git
-    version: main
   depends/libcec:
     type: git
     url: https://github.com/Pulse-Eight/libcec.git
@@ -58,6 +54,10 @@ repositories:
     type: git
     url: https://github.com/ros-perception/image_transport_plugins.git
     version: rolling
+  ros-perception/libcamera_cmake:
+    type: git
+    url: https://github.com/christianrauch/libcamera_cmake.git
+    version: main
   ros-perception/oasis_kinect2:
     type: git
     url: https://github.com/eigendude/oasis_kinect2.git
