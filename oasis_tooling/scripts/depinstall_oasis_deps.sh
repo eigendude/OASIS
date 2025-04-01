@@ -175,6 +175,7 @@ vcs import "${OASIS_DEPENDS_SOURCE_DIRECTORY}" < "${PACKAGE_DIRECTORY}/config/de
 #
 
 # bgslibrary
+echo "Patching bgslibrary..."
 patch \
   -p1 \
   --forward \
@@ -185,6 +186,7 @@ patch \
   || :
 
 # libcec
+echo "Patching libcec..."
 cp -v \
   "${CONFIG_DIRECTORY}/libcec/package.xml" \
   "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/libcec"
@@ -198,6 +200,7 @@ patch \
   || :
 
 # libfreenect2
+echo "Patching libfreenect2..."
 cp -v \
   "${CONFIG_DIRECTORY}/libfreenect2/package.xml" \
   "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/libfreenect2"
@@ -234,10 +237,8 @@ patch \
   < "${CONFIG_DIRECTORY}/libfreenect2/0004-Force-disable-components.patch" \
   || :
 
-# OpenCV
-touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/vision_opencv/opencv_tests/COLCON_IGNORE"
-
 # OpenNI
+echo "Patching OpenNI2..."
 cp -v \
   "${CONFIG_DIRECTORY}/OpenNI2/CMakeLists.txt" \
   "${CONFIG_DIRECTORY}/OpenNI2/package.xml" \
@@ -250,6 +251,7 @@ if [[ ${PLATFORM_ARCH} != x86_64 ]]; then
 fi
 
 # ORB-SLAM3
+echo "Patching ORB-SLAM3..."
 cp -v \
   "${CONFIG_DIRECTORY}/orb-slam3/package.xml" \
   "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/orb-slam3"
@@ -303,6 +305,7 @@ if (( $(echo "${PHYSICAL_MEMORY_GB} < 4" | bc -l) )); then
 fi
 
 # p8-platform
+echo "Patching p8-platform..."
 cp -v \
   "${CONFIG_DIRECTORY}/p8-platform/package.xml" \
   "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/p8-platform"
@@ -316,6 +319,7 @@ patch \
   || :
 
 # Pangolin
+echo "Patching Pangolin..."
 patch \
   -p1 \
   --forward \
@@ -326,6 +330,7 @@ patch \
   || :
 
 # ros2_v4l2_camera
+echo "Patching ros2_v4l2_camera..."
 if [ "${ROS2_DISTRO}" = "iron" ]; then
   patch \
     -p1 \
@@ -336,6 +341,10 @@ if [ "${ROS2_DISTRO}" = "iron" ]; then
     < "${CONFIG_DIRECTORY}/ros2_v4l2_camera/0001-Fix-include-path.patch" \
     || :
 fi
+
+# vision_opencv
+echo "Patching vision_opencv..."
+touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/vision_opencv/opencv_tests/COLCON_IGNORE"
 
 #
 # Install rosdeps packages (except on macOS)
