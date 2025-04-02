@@ -205,9 +205,10 @@ echo "Downloading ROS 2 source code..."
 )
 
 #
-# Disable examples, demos and some tests
+# Disable examples, demos, tutorials and some tests
 #
 
+touch "${ROS2_SOURCE_DIRECTORY}/ros/ros_tutorials/COLCON_IGNORE"
 touch "${ROS2_SOURCE_DIRECTORY}/ros2/demos/COLCON_IGNORE"
 touch "${ROS2_SOURCE_DIRECTORY}/ros2/example_interfaces/COLCON_IGNORE"
 touch "${ROS2_SOURCE_DIRECTORY}/ros2/examples/COLCON_IGNORE"
