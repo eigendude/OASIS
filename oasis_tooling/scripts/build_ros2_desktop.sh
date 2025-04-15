@@ -44,6 +44,7 @@ else
   # Add ccache support and fix locating Python
   COLCON_FLAGS+=" \
     --cmake-args \
+      -DBUILD_TESTING=OFF \
       -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
   "
 

@@ -31,6 +31,22 @@ if [ "${ROS2_DISTRO}" = "iron" ] || [ "${ROS2_DISTRO}" = "jazzy" ]; then
     rti-connext-dds-6.0.1 \
     urdfdom_headers \
   "
+  # Testing ignorables
+  ROSDEP_IGNORE_KEYS+=" \
+    launch_testing \
+    launch_testing_ament_cmake \
+    launch_testing_ros \
+    performance_test_fixture \
+    ros2cli_test_interfaces \
+    ros2lifecycle_test_fixtures \
+    ros_testing \
+    rosbag2_test_common \
+    rosbag2_test_msgdefs \
+    rosbag2_tests \
+    rviz_rendering_tests \
+    rviz_visual_testing_framework \
+    test_msgs \
+  "
 else
   ROSDEP_IGNORE_KEYS=
 fi
@@ -205,7 +221,7 @@ echo "Downloading ROS 2 source code..."
 )
 
 #
-# Disable examples, demos, tutorials and some tests
+# Disable examples, demos, tutorials, benchmarks and tests
 #
 
 touch "${ROS2_SOURCE_DIRECTORY}/ros/ros_tutorials/COLCON_IGNORE"
@@ -213,12 +229,34 @@ touch "${ROS2_SOURCE_DIRECTORY}/ros2/demos/COLCON_IGNORE"
 touch "${ROS2_SOURCE_DIRECTORY}/ros2/example_interfaces/COLCON_IGNORE"
 touch "${ROS2_SOURCE_DIRECTORY}/ros2/examples/COLCON_IGNORE"
 touch "${ROS2_SOURCE_DIRECTORY}/ros2/geometry2/examples_tf2_py/COLCON_IGNORE"
+touch "${ROS2_SOURCE_DIRECTORY}/ros2/geometry2/test_tf2/COLCON_IGNORE"
+touch "${ROS2_SOURCE_DIRECTORY}/ros2/launch/launch_pytest/COLCON_IGNORE"
+touch "${ROS2_SOURCE_DIRECTORY}/ros2/launch/launch_testing/COLCON_IGNORE"
+touch "${ROS2_SOURCE_DIRECTORY}/ros2/launch/launch_testing_ament_cmake/COLCON_IGNORE"
+touch "${ROS2_SOURCE_DIRECTORY}/ros2/launch/test_launch_testing/COLCON_IGNORE"
+touch "${ROS2_SOURCE_DIRECTORY}/ros2/launch_ros/launch_testing_ros/COLCON_IGNORE"
 touch "${ROS2_SOURCE_DIRECTORY}/ros2/launch_ros/test_launch_ros/COLCON_IGNORE"
+touch "${ROS2_SOURCE_DIRECTORY}/ros2/performance_test_fixture/COLCON_IGNORE"
+touch "${ROS2_SOURCE_DIRECTORY}/ros2/rcl_interfaces/test_msgs/COLCON_IGNORE"
+touch "${ROS2_SOURCE_DIRECTORY}/ros2/realtime_support/rttest/COLCON_IGNORE"
+touch "${ROS2_SOURCE_DIRECTORY}/ros2/rmw_implementation/test_rmw_implementation/COLCON_IGNORE"
 touch "${ROS2_SOURCE_DIRECTORY}/ros2/ros2_tracing/test_ros2trace/COLCON_IGNORE"
 touch "${ROS2_SOURCE_DIRECTORY}/ros2/ros2_tracing/test_tracetools/COLCON_IGNORE"
 touch "${ROS2_SOURCE_DIRECTORY}/ros2/ros2_tracing/test_tracetools_launch/COLCON_IGNORE"
 touch "${ROS2_SOURCE_DIRECTORY}/ros2/ros2_tracing/tracetools_test/COLCON_IGNORE"
+touch "${ROS2_SOURCE_DIRECTORY}/ros2/ros2cli/ros2cli_test_interfaces/COLCON_IGNORE"
+touch "${ROS2_SOURCE_DIRECTORY}/ros2/ros2cli/ros2lifecycle_test_fixtures/COLCON_IGNORE"
+touch "${ROS2_SOURCE_DIRECTORY}/ros2/ros_testing/COLCON_IGNORE"
 touch "${ROS2_SOURCE_DIRECTORY}/ros2/rosbag2/rosbag2_examples/COLCON_IGNORE"
+touch "${ROS2_SOURCE_DIRECTORY}/ros2/rosbag2/rosbag2_performance/COLCON_IGNORE"
+touch "${ROS2_SOURCE_DIRECTORY}/ros2/rosbag2/rosbag2_test_common/COLCON_IGNORE"
+touch "${ROS2_SOURCE_DIRECTORY}/ros2/rosbag2/rosbag2_test_msgdefs/COLCON_IGNORE"
+touch "${ROS2_SOURCE_DIRECTORY}/ros2/rosbag2/rosbag2_tests/COLCON_IGNORE"
+touch "${ROS2_SOURCE_DIRECTORY}/ros2/rosidl/rosidl_generator_tests/COLCON_IGNORE"
+touch "${ROS2_SOURCE_DIRECTORY}/ros2/rosidl/rosidl_typesupport_introspection_tests/COLCON_IGNORE"
+touch "${ROS2_SOURCE_DIRECTORY}/ros2/rosidl_typesupport/rosidl_typesupport_tests/COLCON_IGNORE"
+touch "${ROS2_SOURCE_DIRECTORY}/ros2/rviz/rviz_rendering_tests/COLCON_IGNORE"
+touch "${ROS2_SOURCE_DIRECTORY}/ros2/rviz/rviz_visual_testing_framework/COLCON_IGNORE"
 touch "${ROS2_SOURCE_DIRECTORY}/ros2/system_tests/COLCON_IGNORE"
 
 #
