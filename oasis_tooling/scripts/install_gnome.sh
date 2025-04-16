@@ -198,6 +198,26 @@ else
   echo "Apport is currently: disabled"
 fi
 
+#
+# Disable "Updated software" dialog
+#
+
+# Disables the Ubuntu auto-update dialog by setting the update values to "0"
+UPDATE_CONFIG="/etc/apt/apt.conf.d/20auto-upgrades"
+if [ -f "${UPDATE_CONFIG}" ]; then
+  # Check if both settings are already set to "0"
+  if grep -q 'APT::Periodic::Update-Package-Lists "0"' "${UPDATE_CONFIG}" && \
+     grep -q 'APT::Periodic::Unattended-Upgrade "0"' "${UPDATE_CONFIG}"; then
+    echo "Auto-update config in ${UPDATE_CONFIG} is already disabled"
+  else
+    echo "Disabling auto-updates in ${UPDATE_CONFIG}..."
+    sudo sed -i -e 's/APT::Periodic::Update-Package-Lists "1"/APT::Periodic::Update-Package-Lists "0"/' \
+                -e 's/APT::Periodic::Unattended-Upgrade "1"/APT::Periodic::Unattended-Upgrade "0"/' \
+                "${UPDATE_CONFIG}"
+    echo "Auto-update dialog has been disabled"
+  fi
+fi
+
 ################################################################################
 # Install Gnome extensions
 ################################################################################
