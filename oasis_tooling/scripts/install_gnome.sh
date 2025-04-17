@@ -234,9 +234,14 @@ if [ "${ENABLE_EXTENSIONS}" -eq 1 ]; then
   # Disable window list extension
   gnome-extensions disable window-list@gnome-shell-extensions.gcampax.github.com
 
-  for extenion_dir in "${VISUALIZATION_DIR}/extensions/"*; do
+  for extension_dir in "${VISUALIZATION_DIR}/extensions/"*; do
+    # Skip non-directories (e.g. README.md)
+    if [ ! -d "${extension_dir}" ]; then
+      continue
+    fi
+
     # Get extension UUID
-    EXTENSION_UUID="$(grep -oP '(?<="uuid": ")[^"]*' "${extenion_dir}/metadata.json")"
+    EXTENSION_UUID="$(grep -oP '(?<="uuid": ")[^"]*' "${extension_dir}/metadata.json")"
 
     echo "Installing ${EXTENSION_UUID}"
 
@@ -244,7 +249,7 @@ if [ "${ENABLE_EXTENSIONS}" -eq 1 ]; then
     mkdir -p "${GNOME_EXTENSIONS_DIR}/${EXTENSION_UUID}"
 
     # Copy all files to extension directory
-    cp -r "${extenion_dir}/"* "${GNOME_EXTENSIONS_DIR}/${EXTENSION_UUID}"
+    cp -r "${extension_dir}/"* "${GNOME_EXTENSIONS_DIR}/${EXTENSION_UUID}"
 
     # Enable extension with gnome-extensions utility
     echo " - Enabling ${EXTENSION_UUID}"
