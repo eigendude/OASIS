@@ -66,3 +66,13 @@ touch "${BUILD_DIRECTORY}/CATKIN_IGNORE"
 
 # Exclude build directory from Colcon builds
 touch "${BUILD_DIRECTORY}/COLCON_IGNORE"
+
+#
+# Hardware config
+#
+
+# The physical memory in KiB
+PHYSICAL_MEMORY_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+
+# The physical memory in GiB
+PHYSICAL_MEMORY_GB=$(echo "scale=4; ${PHYSICAL_MEMORY_KB}/1024^2" | bc)

@@ -315,10 +315,8 @@ patch \
   < "${CONFIG_DIRECTORY}/orb-slam3/0005-Fix-parallel-make.patch" \
   || :
 
-# Disable ORB_SLAM3 on systems with < 4GiB memory
-PHYSICAL_MEMORY_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
-PHYSICAL_MEMORY_GB=$(echo "scale=4; ${PHYSICAL_MEMORY_KB}/1024^2" | bc)
-if (( $(echo "${PHYSICAL_MEMORY_GB} < 4" | bc -l) )); then
+# Disable ORB_SLAM3 on systems with <= 4GiB memory
+if (( $(echo "${PHYSICAL_MEMORY_GB} <= 4" | bc -l) )); then
   echo "Disabling ORB-SLAM3 with ${PHYSICAL_MEMORY_GB} GiB of RAM"
   touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/orb-slam3/COLCON_IGNORE"
 fi
@@ -347,6 +345,12 @@ patch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/pangolin" \
   < "${CONFIG_DIRECTORY}/pangolin/0001-Remove-Eigen3-Eigen-target-from-linked-libraries.patch" \
   || :
+
+# Disable pangolin on systems with <= 4GiB memory
+if (( $(echo "${PHYSICAL_MEMORY_GB} <= 4" | bc -l) )); then
+  echo "Disabling pangolin with ${PHYSICAL_MEMORY_GB} GiB of RAM"
+  touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/pangolin/COLCON_IGNORE"
+fi
 
 # ros2_v4l2_camera
 echo "Patching ros2_v4l2_camera..."
