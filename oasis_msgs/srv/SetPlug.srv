@@ -1,0 +1,17 @@
+################################################################################
+#
+#  Copyright (C) 2025 Garrett Brown
+#  This file is part of OASIS - https://github.com/eigendude/OASIS
+#
+#  SPDX-License-Identifier: Apache-2.0
+#  See DOCS/LICENSING.md for more information.
+#
+################################################################################
+
+# Unique identifier for the smart plug
+string plug_id
+
+# New on/off state: true = on, false = off
+bool state
+
+---

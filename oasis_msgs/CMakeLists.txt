@@ -35,8 +35,8 @@ rosidl_generate_interfaces(
     msg/AnalogReading.msg
     msg/AnalogStick.msg
     msg/AVRConstants.msg
-    msg/CPUFanSpeed.msg
     msg/ConductorState.msg
+    msg/CPUFanSpeed.msg
     msg/DigitalButton.msg
     msg/DigitalReading.msg
     msg/DiskPartition.msg
@@ -57,6 +57,7 @@ rosidl_generate_interfaces(
     msg/PeripheralScan.msg
     msg/PowerEvent.msg
     msg/PowerMode.msg
+    msg/RGB.msg
     msg/SerialDevice.msg
     msg/SerialDeviceScan.msg
     msg/SystemTelemetry.msg
@@ -75,6 +76,8 @@ rosidl_generate_interfaces(
     srv/ServoWrite.srv
     srv/SetAnalogMode.srv
     srv/SetDigitalMode.srv
+    srv/SetPlug.srv
+    srv/SetRGB.srv
     srv/SetSamplingInterval.srv
   DEPENDENCIES
     geometry_msgs
