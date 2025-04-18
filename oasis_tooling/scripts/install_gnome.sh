@@ -156,6 +156,13 @@ for LINE in "${LINE2}" "${LINE1}"; do
   fi
 done
 
+#
+# Enable extensions
+#
+
+echo "Enabling extensions"
+gsettings set org.gnome.shell disable-user-extensions false
+
 ################################################################################
 # Configure system
 ################################################################################
