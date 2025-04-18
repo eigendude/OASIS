@@ -23,10 +23,10 @@ set -o nounset
 ################################################################################
 
 # The account for Home Assistant Core is called `homeassistant`
-HA_USERNAME="homeassistant"
+HASS_USERNAME="homeassistant"
 
-# The name of the homeassistant package
-HA_PACKAGE="oasis_ha"
+# The name of the Home Assistant package
+HASS_PACKAGE="oasis_hass"
 
 ################################################################################
 # Environment paths
@@ -36,10 +36,10 @@ HA_PACKAGE="oasis_ha"
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Get path to the package directory
-HA_PAKCAGE_DIR="${SCRIPT_DIR}/../../${HA_PACKAGE}"
+HASS_PAKCAGE_DIR="${SCRIPT_DIR}/../../${HASS_PACKAGE}"
 
 # The path to the virtual environment for Home Assistant Core
-HA_VENV_PATH="/srv/homeassistant"
+HASS_VENV_PATH="/srv/homeassistant"
 
 # Directory where systemd services are installed
 SYSTEMD_SERVICE_DIRECTORY="/etc/systemd/system/"
@@ -77,8 +77,8 @@ sudo apt-get install -y \
 # Add an account for Home Assistant Core called `homeassistant`. Since this
 # account is only for running Home Assistant Core the extra arguments of `-rm`
 # is added to create a system account and create a home directory.
-if ! id -u "${HA_USERNAME}" >/dev/null 2>&1; then
-  sudo useradd -rm "${HA_USERNAME}"
+if ! id -u "${HASS_USERNAME}" >/dev/null 2>&1; then
+  sudo useradd -rm "${HASS_USERNAME}"
 fi
 
 ################################################################################
@@ -87,13 +87,13 @@ fi
 
 # Create a directory for the installation of Home Assistant Core and change the
 # owner to the `homeassistant` account
-sudo mkdir -p "${HA_VENV_PATH}"
-sudo chown "${HA_USERNAME}:${HA_USERNAME}" "${HA_VENV_PATH}"
+sudo mkdir -p "${HASS_VENV_PATH}"
+sudo chown "${HASS_USERNAME}:${HASS_USERNAME}" "${HASS_VENV_PATH}"
 
 # Create the virtual environment for Home Assistant Core. This is done as the
 # `homeassistant` account.
-sudo -u "${HA_USERNAME}" -H bash <<EOF
-cd "${HA_VENV_PATH}"
+sudo -u "${HASS_USERNAME}" -H bash <<EOF
+cd "${HASS_VENV_PATH}"
 
 # Create a virtual environment for Home Assistant Core if one doesn't exist
 if [ ! -d "bin" ]; then
@@ -149,7 +149,7 @@ sudo systemctl restart mosquitto
 ################################################################################
 
 # Process systemd services
-for SYSTEMD_SERVICE in "${HA_PAKCAGE_DIR}/config/systemd/"*.service; do
+for SYSTEMD_SERVICE in "${HASS_PAKCAGE_DIR}/config/systemd/"*.service; do
   # Get filename
   FILE_NAME="$(basename -- "${SYSTEMD_SERVICE}")"
 
