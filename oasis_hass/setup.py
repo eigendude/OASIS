@@ -15,9 +15,9 @@ import setuptools
 
 
 # Colcon symlinks setup.py to an out-of-source build directory
-SCRIPT_PATH = os.path.realpath(__file__)
-SCRIPT_DIRECTORY = os.path.abspath(os.path.dirname(SCRIPT_PATH))
-PACKAGE_MANIFEST = os.path.join(SCRIPT_DIRECTORY, "package.xml")
+SCRIPT_PATH: str = os.path.realpath(__file__)
+SCRIPT_DIRECTORY: str = os.path.abspath(os.path.dirname(SCRIPT_PATH))
+PACKAGE_MANIFEST: str = os.path.join(SCRIPT_DIRECTORY, "package.xml")
 
 tree = xml.etree.ElementTree.parse(PACKAGE_MANIFEST)
 root = tree.getroot()
@@ -54,6 +54,8 @@ setuptools.setup(
             os.path.join("share", "ament_index", "resource_index", "packages"),
             ["resource/" + PACKAGE_NAME],
         ),
+        # Launch files
+        (os.path.join("share", PACKAGE_NAME), ["launch/hass_launch.py"]),
         # Systemd services
         (
             os.path.join("share", PACKAGE_NAME, "systemd"),
@@ -62,4 +64,14 @@ setuptools.setup(
             ],
         ),
     ],
+    install_requires=[
+        "oasis_msgs",
+        "paho-mqtt",
+        "rclpy",
+    ],
+    entry_points={
+        "console_scripts": [
+            "hass_bridge = oasis_hass.cli.hass_bridge:main",
+        ],
+    },
 )

@@ -33,6 +33,7 @@ ROS_NAMESPACE = "oasis"
 
 CPP_PACKAGE_NAME = "oasis_drivers_cpp"
 PYTHON_PACKAGE_NAME = "oasis_drivers_py"
+HASS_PACKAGE_NAME = "oasis_hass"
 
 
 ################################################################################
@@ -44,6 +45,7 @@ PYTHON_PACKAGE_NAME = "oasis_drivers_py"
 ENABLE_CEC = False
 ENABLE_DISPLAY = False
 ENABLE_FIRMATA = False
+ENABLE_HOME_ASSISTANT = False
 ENABLE_KINECT_V2 = False
 ENABLE_VIDEO = False
 ENABLE_CAMERA = False
@@ -61,6 +63,8 @@ if HOSTNAME == "asus":
     ENABLE_VIDEO = False
 elif HOSTNAME == "cinder":
     ENABLE_KINECT_V2 = True
+elif HOSTNAME == "homeassistant":
+    ENABLE_HOME_ASSISTANT = True
 elif HOSTNAME == "lenovo":
     ENABLE_DISPLAY = True
     ENABLE_VIDEO = False
@@ -297,5 +301,21 @@ def generate_launch_description() -> LaunchDescription:
         mcu_node = "lab"
         lab_bridge_node: Node = get_telemetrix_bridge(HOSTNAME, mcu_node)
         ld.add_action(lab_bridge_node)
+
+    if ENABLE_HOME_ASSISTANT:
+        hass_bridge_node = Node(
+            namespace=ROS_NAMESPACE,
+            package=HASS_PACKAGE_NAME,
+            executable="hass_bridge",
+            name=f"hass_bridge_{HOSTNAME}",
+            output="screen",
+            remappings=[
+                ("plug", f"{HOSTNAME}/plug"),
+                ("rgb", f"{HOSTNAME}/rgb"),
+                ("set_plug", f"{HOSTNAME}/set_plug"),
+                ("set_rgb", f"{HOSTNAME}/set_rgb"),
+            ],
+        )
+        ld.add_action(hass_bridge_node)
 
     return ld
