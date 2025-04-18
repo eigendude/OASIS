@@ -25,12 +25,24 @@ set -o nounset
 # The account for Home Assistant Core is called `homeassistant`
 HA_USERNAME="homeassistant"
 
+# The name of the homeassistant package
+HA_PACKAGE="oasis_ha"
+
 ################################################################################
 # Environment paths
 ################################################################################
 
+# Get the absolute path to this script
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+# Get path to the package directory
+HA_PAKCAGE_DIR="${SCRIPT_DIR}/../../${HA_PACKAGE}"
+
 # The path to the virtual environment for Home Assistant Core
 HA_VENV_PATH="/srv/homeassistant"
+
+# Directory where systemd services are installed
+SYSTEMD_SERVICE_DIRECTORY="/etc/systemd/system/"
 
 ################################################################################
 # Install dependencies
@@ -100,6 +112,35 @@ python3 -m pip install --upgrade \
 # Install Home Assistant Core
 pip3 install --upgrade homeassistant
 EOF
+
+################################################################################
+# Install systemd services
+################################################################################
+
+# Process systemd services
+for SYSTEMD_SERVICE in "${HA_PAKCAGE_DIR}/config/systemd/"*.service; do
+  # Get filename
+  FILE_NAME="$(basename -- "${SYSTEMD_SERVICE}")"
+
+  # Install systemd service
+  echo "Installing ${FILE_NAME}..."
+  sudo install -m 0644 "${SYSTEMD_SERVICE}" "${SYSTEMD_SERVICE_DIRECTORY}"
+
+  # Enable systemd servcie
+  if [ ! -L "${SYSTEMD_SERVICE_DIRECTORY}/multi-user.target.wants/${FILE_NAME}" ]; then
+    sudo ln -s \
+      "${SYSTEMD_SERVICE_DIRECTORY}/${FILE_NAME}" \
+      "${SYSTEMD_SERVICE_DIRECTORY}/multi-user.target.wants/${FILE_NAME}"
+  fi
+
+  # Make updated service files take effect
+  echo "Reloading systemd daemon..."
+  sudo systemctl daemon-reload
+
+  # Start systemd service
+  echo "Starting ${FILE_NAME}..."
+  sudo systemctl start "${FILE_NAME}"
+done
 
 ################################################################################
 # Done
