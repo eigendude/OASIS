@@ -185,6 +185,12 @@ patch \
   < "${CONFIG_DIRECTORY}/bgslibrary/0001-Disable-imshow-calls.patch" \
   || :
 
+# Disable image_view on systems with <= 4GiB memory
+if (( $(echo "${PHYSICAL_MEMORY_GB} <= 4" | bc -l) )); then
+  echo "Disabling image_view with ${PHYSICAL_MEMORY_GB} GiB of RAM"
+  touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/image_pipeline/image_view/COLCON_IGNORE"
+fi
+
 # libcamera_cmake
 echo "Patching libcamera_cmake..."
 patch \
