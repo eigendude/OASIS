@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>oasis_ha</name>
+  <name>oasis_hass</name>
   <description>Home Assistant integration for OASIS</description>
   <version>1.0.0</version>
   <author email="eigendebugger@gmail.com">Garrett Brown</author>
