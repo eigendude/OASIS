@@ -62,4 +62,14 @@ setuptools.setup(
             ],
         ),
     ],
+    install_requires=[
+        "oasis_msgs",
+        "paho-mqtt",
+        "rclpy",
+    ],
+    entry_points={
+        "console_scripts": [
+            "hass_bridge = oasis_hass.cli.hass_bridge:main",
+        ],
+    },
 )
