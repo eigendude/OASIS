@@ -259,6 +259,12 @@ touch "${ROS2_SOURCE_DIRECTORY}/ros2/rviz/rviz_rendering_tests/COLCON_IGNORE"
 touch "${ROS2_SOURCE_DIRECTORY}/ros2/rviz/rviz_visual_testing_framework/COLCON_IGNORE"
 touch "${ROS2_SOURCE_DIRECTORY}/ros2/system_tests/COLCON_IGNORE"
 
+# Disable rviz on systems with <= 4GiB memory
+if (( $(echo "${PHYSICAL_MEMORY_GB} <= 4" | bc -l) )); then
+  echo "Disabling rviz with ${PHYSICAL_MEMORY_GB} GiB of RAM"
+  touch "${ROS2_SOURCE_DIRECTORY}/ros2/rviz/COLCON_IGNORE"
+fi
+
 #
 # Install rosdep packages
 #
