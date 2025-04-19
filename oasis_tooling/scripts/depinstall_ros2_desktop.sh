@@ -36,6 +36,7 @@ if [ "${ROS2_DISTRO}" = "iron" ] || [ "${ROS2_DISTRO}" = "jazzy" ]; then
     launch_testing \
     launch_testing_ament_cmake \
     launch_testing_ros \
+    osrf_testing_tools_cpp \
     performance_test_fixture \
     ros2cli_test_interfaces \
     ros2lifecycle_test_fixtures \
@@ -224,6 +225,7 @@ echo "Downloading ROS 2 source code..."
 # Disable examples, demos, tutorials, benchmarks and tests
 #
 
+touch "${ROS2_SOURCE_DIRECTORY}/osrf/osrf_testing_tools_cpp/COLCON_IGNORE"
 touch "${ROS2_SOURCE_DIRECTORY}/ros/ros_tutorials/COLCON_IGNORE"
 touch "${ROS2_SOURCE_DIRECTORY}/ros2/demos/COLCON_IGNORE"
 touch "${ROS2_SOURCE_DIRECTORY}/ros2/example_interfaces/COLCON_IGNORE"
