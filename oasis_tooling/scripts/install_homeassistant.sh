@@ -114,6 +114,37 @@ pip3 install --upgrade homeassistant
 EOF
 
 ################################################################################
+# Install MQTT broker
+################################################################################
+
+# Install the Mosquitto MQTT broker
+sudo apt-get install -y \
+  mosquitto \
+  mosquitto-clients
+
+# Path to custom Mosquitto configuration
+MOSQ_CONF_D="/etc/mosquitto/conf.d"
+MOSQ_CUSTOM="${MOSQ_CONF_D}/50-oasis.conf"
+
+# Ensure the conf.d directory exists
+sudo mkdir -p "${MOSQ_CONF_D}"
+
+# Write our custom listener file to listen on all interfaces
+sudo tee "${MOSQ_CUSTOM}" > /dev/null <<EOF
+# Listen on all addresses, default port 1883
+listener 1883 0.0.0.0
+
+# Allow anonymous clients
+allow_anonymous true
+EOF
+
+# Enable the Mosquitto service to start on boot
+sudo systemctl enable --now mosquitto
+
+# Reload Mosquitto so it picks up the new config
+sudo systemctl restart mosquitto
+
+################################################################################
 # Install systemd services
 ################################################################################
 
@@ -139,7 +170,7 @@ for SYSTEMD_SERVICE in "${HA_PAKCAGE_DIR}/config/systemd/"*.service; do
 
   # Start systemd service
   echo "Starting ${FILE_NAME}..."
-  sudo systemctl start "${FILE_NAME}"
+  sudo systemctl restart "${FILE_NAME}"
 done
 
 ################################################################################
