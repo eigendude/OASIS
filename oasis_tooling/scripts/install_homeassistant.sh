@@ -36,7 +36,7 @@ HASS_PACKAGE="oasis_hass"
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Get path to the package directory
-HASS_PAKCAGE_DIR="${SCRIPT_DIR}/../../${HASS_PACKAGE}"
+HASS_PACKAGE_DIR="${SCRIPT_DIR}/../../${HASS_PACKAGE}"
 
 # The path to the virtual environment for Home Assistant Core
 HASS_VENV_PATH="/srv/homeassistant"
@@ -145,11 +145,103 @@ sudo systemctl enable --now mosquitto
 sudo systemctl restart mosquitto
 
 ################################################################################
+# Configure Home Assistant → MQTT + Statestream
+################################################################################
+
+HASS_CFG_DIR="/home/${HASS_USERNAME}/.homeassistant"
+HASS_CFG_FILE="${HASS_CFG_DIR}/configuration.yaml"
+
+# Ensure the config dir exists
+sudo -u "${HASS_USERNAME}" mkdir -p "${HASS_CFG_DIR}"
+
+# Ensure config files exist
+sudo -u "${HASS_USERNAME}" touch "${HASS_CFG_DIR}/automations.yaml"
+sudo -u "${HASS_USERNAME}" touch "${HASS_CFG_DIR}/scripts.yaml"
+sudo -u "${HASS_USERNAME}" touch "${HASS_CFG_DIR}/scenes.yaml"
+
+#
+# Append a YAML block only if the top‑level key is absent
+#   $1 = key pattern, e.g. "mqtt:"
+#   STDIN = YAML to append verbatim
+#
+insert_block() {
+  local key="$1" # Pattern, e.g. "mqtt_statestream:"
+
+  if sudo -u "${HASS_USERNAME}" grep -qE "^${key}" "${HASS_CFG_FILE}" 2>/dev/null; then
+    echo "${key} block already present – skipping"
+  else
+    echo "Adding ${key} block to configuration.yaml"
+
+    # Prepend a single newline, then the block we get on stdin
+    { printf '\n'; cat -; } \
+      | sudo -u "${HASS_USERNAME}" tee -a "${HASS_CFG_FILE}" >/dev/null
+  fi
+}
+
+# Create the configuration.yaml file if it doesn't exist and write the default
+# config
+insert_block "default_config:" <<'YAML'
+# Loads default set of integrations. Do not remove.
+default_config:
+YAML
+
+# Include themes
+insert_block "frontend:" <<'YAML'
+frontend:
+  themes: !include_dir_merge_named themes
+YAML
+
+# Include automations.yaml
+insert_block "automation:" <<'YAML'
+automation: !include automations.yaml
+YAML
+
+# Include scripts.yaml
+insert_block "script:" <<'YAML'
+script: !include scripts.yaml
+YAML
+
+# Include scenes.yaml
+insert_block "scene:" <<'YAML'
+scene: !include scenes.yaml
+YAML
+
+# Set default logging level
+insert_block "logger:" <<'YAML'
+logger:
+  default: info
+YAML
+
+# MQTT Statestream for lights and switches
+insert_block "mqtt_statestream:" <<'YAML'
+mqtt_statestream:
+  base_topic: homeassistant/statestream
+  publish_timestamps: true
+  publish_attributes: true
+  include:
+    domains:
+      - light
+      - switch
+YAML
+
+#
+# Write automations.yaml with our MQTT→Hue and MQTT→RGB automations
+#
+# TODO: Append automations instead of overwrite
+#
+
+TEMPLATE_AUTOMATIONS="${HASS_PACKAGE_DIR}/config/homeassistant/automations.yaml"
+HA_AUTOMATIONS="${HASS_CFG_DIR}/automations.yaml"
+
+echo "Writing Home Assistant automations.yaml..."
+sudo -u "${HASS_USERNAME}" tee "${HA_AUTOMATIONS}" > /dev/null < "${TEMPLATE_AUTOMATIONS}"
+
+################################################################################
 # Install systemd services
 ################################################################################
 
 # Process systemd services
-for SYSTEMD_SERVICE in "${HASS_PAKCAGE_DIR}/config/systemd/"*.service; do
+for SYSTEMD_SERVICE in "${HASS_PACKAGE_DIR}/config/systemd/"*.service; do
   # Get filename
   FILE_NAME="$(basename -- "${SYSTEMD_SERVICE}")"
 

@@ -1,0 +1,70 @@
+###############################################################################
+# MQTT -> Hue smart‑plug bridge (Hue exposes the plug as light.<id>)
+###############################################################################
+
+- id: mqtt_cmd_hue_smart_plug
+  alias: MQTT -> Hue smart‑plug (light.<id>) command
+  mode: parallel
+
+  trigger:
+    - platform: mqtt
+      topic: "homeassistant/switch/+/set"
+
+  variables:
+    plug_id: "{{ trigger.topic.split('/')[-2] }}"
+    entity_id: "light.{{ plug_id }}"
+    desired: >-
+      {%- set pj = trigger.payload_json if trigger.payload_json is defined else none -%}
+      {%- set raw = pj.state if pj is mapping and pj.state is not none else trigger.payload -%}
+      {{ 'ON' if raw | bool else 'OFF' }}
+
+  action:
+    # 1) Control the plug via the Hue light entity
+    - service: "light.turn_{{ 'on' if desired == 'ON' else 'off' }}"
+      target:
+        entity_id: "{{ entity_id }}"
+
+    # 2) Mirror to the light topic so any other bridges stay in sync
+    - service: mqtt.publish
+      data:
+        topic: "homeassistant/light/{{ plug_id }}/set"
+        payload: "{{ trigger.payload }}"
+        qos: 0
+        retain: false
+
+###############################################################################
+# MQTT -> RGB light command (handles OFF when all zeros)
+###############################################################################
+
+- id: mqtt_to_light_rgb_command
+  alias: MQTT -> RGB light command
+  mode: queued
+
+  trigger:
+    platform: mqtt
+    topic: "homeassistant/light/+/set"
+
+  action:
+    - choose:
+        # If we got JSON r/g/b all zero -> turn_off
+        - conditions:
+            - "{{ trigger.payload_json is mapping }}"
+            - "{{ trigger.payload_json.r == 0 }}"
+            - "{{ trigger.payload_json.g == 0 }}"
+            - "{{ trigger.payload_json.b == 0 }}"
+          sequence:
+            - service: light.turn_off
+              target:
+                entity_id: >-
+                  light.{{ trigger.topic.split('/')[-2] }}
+      default:
+        # Otherwise, turn_on with the requested RGB
+        - service: light.turn_on
+          target:
+            entity_id: >-
+              light.{{ trigger.topic.split('/')[-2] }}
+          data:
+            rgb_color:
+              - "{{ trigger.payload_json.r | int }}"
+              - "{{ trigger.payload_json.g | int }}"
+              - "{{ trigger.payload_json.b | int }}"
