@@ -10,7 +10,12 @@
 ################################################################################
 
 #
-# Home Assistant Bridge
+# Home Assistant Bridge (MQTT Statestream -> ROS 2 and ROS 2 -> MQTT)
+#
+# Note: If you have mosquitto-clients installed, you can use the following
+# command to echo all MQTT topics:
+#
+#   mosquitto_sub -h homeassistant.local -p 1883 -t '#' -v
 #
 
 import json
