@@ -63,6 +63,7 @@ rosidl_generate_interfaces(
     msg/SerialDeviceScan.msg
     msg/SystemTelemetry.msg
     msg/Throttle.msg
+    msg/UPSStatus.msg
     msg/UsbDevice.msg
     msg/Wheel.msg
     srv/AnalogRead.srv
@@ -80,6 +81,7 @@ rosidl_generate_interfaces(
     srv/SetPlug.srv
     srv/SetRGB.srv
     srv/SetSamplingInterval.srv
+    srv/UPSCommand.srv
   DEPENDENCIES
     geometry_msgs
     sensor_msgs
