@@ -339,4 +339,18 @@ def generate_launch_description() -> LaunchDescription:
         )
         ld.add_action(mqtt_client_node)
 
+    # UPS server
+    ups_server_node = Node(
+        namespace=ROS_NAMESPACE,
+        package=PYTHON_PACKAGE_NAME,
+        executable="ups_server",
+        name=f"ups_server_{HOSTNAME}",
+        output="screen",
+        remappings=[
+            ("ups_command", f"{HOSTNAME}/ups_command"),
+            ("ups_status", f"{HOSTNAME}/ups_status"),
+        ],
+    )
+    ld.add_action(ups_server_node)
+
     return ld
