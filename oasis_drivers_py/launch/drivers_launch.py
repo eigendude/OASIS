@@ -67,7 +67,7 @@ if HOSTNAME == "asus":
     ENABLE_VIDEO = False
 elif HOSTNAME == "cinder":
     ENABLE_KINECT_V2 = True
-elif HOSTNAME == "homeassistant":
+elif HOSTNAME == "nuc":
     ENABLE_HOME_ASSISTANT = True
 elif HOSTNAME == "lenovo":
     ENABLE_DISPLAY = True
