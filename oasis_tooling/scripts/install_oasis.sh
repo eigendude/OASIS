@@ -96,6 +96,10 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
       # Install systemd service
       sudo install -m 0644 "${SYSTEMD_SERVICE}" "${SYSTEMD_SERVICE_DIRECTORY}"
 
+      # Now rewrite User= to the current user
+      sudo sed -i "s|^User=.*|User=$(id -un)|" \
+        "${SYSTEMD_SERVICE_DIRECTORY}/${FILE_NAME}"
+
       # Enable systemd servcie
       if [ ! -L "${SYSTEMD_SERVICE_DIRECTORY}/multi-user.target.wants/${FILE_NAME}" ]; then
         sudo ln -s \
