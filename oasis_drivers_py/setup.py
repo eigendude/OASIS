@@ -64,6 +64,13 @@ setuptools.setup(
                 "config/systemd/oasis_drivers.service",
             ],
         ),
+        # udev rules
+        (
+            os.path.join("share", PACKAGE_NAME, "udev"),
+            [
+                "config/udev/60-nut-ups.rules",
+            ],
+        ),
     ],
     install_requires=[
         "psutil",

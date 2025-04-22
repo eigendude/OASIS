@@ -120,6 +120,7 @@ fi
 if [[ "${OSTYPE}" != "darwin"* ]]; then
   for DIRECTORY in \
     "${LIBFREENECT2_UDEV_DIRECTORY}" \
+    "${OASIS_DATA_DIRECTORY}/oasis_drivers_py/udev" \
   ; do
     # Skip directories that don't exist
     if [ ! -d "${DIRECTORY}" ]; then
@@ -137,4 +138,8 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
       sudo cp "${UDEV_RULE}" "${UDEV_RULE_DIRECTORY}"
     done
   done
+
+  # Reload udev rules
+  sudo udevadm control --reload-rules
+  sudo udevadm trigger
 fi
