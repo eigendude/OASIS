@@ -1,0 +1,11 @@
+broker:
+  host: homeassistant.local
+  port: 1883
+
+bridge:
+  mqtt2ros:
+    mqtt_topics:
+      # subscribe to EVERY statestream attr for all lights
+      - mqtt_topic: "homeassistant/statestream/+/+/+"
+        ros_topic: "statestream"
+        ros_type: "topic_tools/ShapeShifter"

@@ -63,6 +63,13 @@ setuptools.setup(
                 "config/systemd/home-assistant.service",
             ],
         ),
+        # mqtt_client configuration
+        (
+            os.path.join("share", PACKAGE_NAME, "mqtt_client"),
+            [
+                "config/mqtt_client/mqtt_client_params.yaml",
+            ],
+        ),
     ],
     install_requires=[
         "oasis_msgs",
