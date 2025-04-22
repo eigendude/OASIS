@@ -145,7 +145,7 @@ sudo systemctl enable --now mosquitto
 sudo systemctl restart mosquitto
 
 ################################################################################
-# Configure Home Assistant → MQTT + Statestream
+# Configure Home Assistant
 ################################################################################
 
 HASS_CFG_DIR="/home/${HASS_USERNAME}/.homeassistant"
@@ -212,6 +212,10 @@ logger:
   default: info
 YAML
 
+################################################################################
+# Configure MQTT Statestream (Home Assistant -> MQTT)
+################################################################################
+
 # MQTT Statestream for lights and switches
 insert_block "mqtt_statestream:" <<'YAML'
 mqtt_statestream:
@@ -224,15 +228,15 @@ mqtt_statestream:
       - switch
 YAML
 
-#
-# Write automations.yaml with our MQTT→Hue and MQTT→RGB automations
-#
-# TODO: Append automations instead of overwrite
-#
+################################################################################
+# Configure automations (MQTT -> Home Assistant)
+################################################################################
 
 TEMPLATE_AUTOMATIONS="${HASS_PACKAGE_DIR}/config/homeassistant/automations.yaml"
 HA_AUTOMATIONS="${HASS_CFG_DIR}/automations.yaml"
 
+# Write automations.yaml with our MQTT automations
+# TODO: Preserve existing automations.yaml content
 echo "Writing Home Assistant automations.yaml..."
 sudo -u "${HASS_USERNAME}" tee "${HA_AUTOMATIONS}" > /dev/null < "${TEMPLATE_AUTOMATIONS}"
 
