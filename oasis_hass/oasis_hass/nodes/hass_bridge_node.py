@@ -210,8 +210,15 @@ class HassBridgeNode(rclpy.node.Node):
         b8: int = max(0, min(255, int(round(request.b * 255))))
 
         # Construct the MQTT message
-        topic = f"{CMD_PREFIX}/light/{request.light_id}/set"
-        payload = json.dumps({"r": r8, "g": g8, "b": b8})
+        topic: str = f"{CMD_PREFIX}/light/{request.light_id}/set"
+        msg: dict[str, int] = {"r": r8, "g": g8, "b": b8}
+
+        # Include transition, if provided
+        if hasattr(request, "transition"):
+            # Round to integer seconds
+            msg["transition"] = int(round(request.transition))
+
+        payload = json.dumps(msg)
 
         self.get_logger().debug(
             f"{SET_RGB_SERVICE}: {request.light_id} -> [{r8},{g8},{b8}]"

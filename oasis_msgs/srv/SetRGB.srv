@@ -20,4 +20,7 @@ float32 g
 # Blue value, in the range [0, 1]
 float32 b
 
+# Fade time, in seconds
+float32 transition
+
 ---

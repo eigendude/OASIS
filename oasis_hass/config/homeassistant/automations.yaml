@@ -68,3 +68,4 @@
               - "{{ trigger.payload_json.r | int }}"
               - "{{ trigger.payload_json.g | int }}"
               - "{{ trigger.payload_json.b | int }}"
+            transition: "{{ trigger.payload_json.transition | int(default=3) }}"
