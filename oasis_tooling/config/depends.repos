@@ -26,6 +26,10 @@ repositories:
     type: git
     url: https://github.com/stevenlovegrove/Pangolin.git
     version: c49c7c3217b32a796e17134ec129aaf576753c05
+  ros/mqtt_client:
+    type: git
+    url: https://github.com/ika-rwth-aachen/mqtt_client.git
+    version: v2.3.0
   ros-perception/bgslibrary:
     type: git
     url: https://github.com/andrewssobral/bgslibrary.git
