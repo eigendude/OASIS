@@ -8,8 +8,10 @@
 #
 ################################################################################
 
+import os
 import socket
 
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch_ros.actions import ComposableNodeContainer
 from launch_ros.actions import Node
@@ -21,7 +23,7 @@ from launch_ros.descriptions import ComposableNode
 ################################################################################
 
 
-HOSTNAME = socket.gethostname().replace("-", "_")
+HOSTNAME: str = socket.gethostname().replace("-", "_")
 
 
 ################################################################################
@@ -29,11 +31,11 @@ HOSTNAME = socket.gethostname().replace("-", "_")
 ################################################################################
 
 
-ROS_NAMESPACE = "oasis"
+ROS_NAMESPACE: str = "oasis"
 
-CPP_PACKAGE_NAME = "oasis_drivers_cpp"
-PYTHON_PACKAGE_NAME = "oasis_drivers_py"
-HASS_PACKAGE_NAME = "oasis_hass"
+CPP_PACKAGE_NAME: str = "oasis_drivers_cpp"
+PYTHON_PACKAGE_NAME: str = "oasis_drivers_py"
+HASS_PACKAGE_NAME: str = "oasis_hass"
 
 
 ################################################################################
@@ -317,5 +319,24 @@ def generate_launch_description() -> LaunchDescription:
             ],
         )
         ld.add_action(hass_bridge_node)
+
+        # Start the generic MQTT -> ROS bridge
+        params_file: str = os.path.join(
+            get_package_share_directory(HASS_PACKAGE_NAME),
+            "mqtt_client",
+            "mqtt_client_params.yaml",
+        )
+        mqtt_client_node: Node = Node(
+            namespace=ROS_NAMESPACE,
+            package="mqtt_client",
+            executable="mqtt_client",
+            name=f"mqtt_client_{HOSTNAME}",
+            output="screen",
+            parameters=[params_file],
+            remappings=[
+                ("statestream", f"{HOSTNAME}/statestream"),
+            ],
+        )
+        ld.add_action(mqtt_client_node)
 
     return ld

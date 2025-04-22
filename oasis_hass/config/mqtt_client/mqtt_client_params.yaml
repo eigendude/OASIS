@@ -1,0 +1,12 @@
+/**/*:
+  ros__parameters:
+    broker:
+      host: homeassistant.local
+      port: 1883
+
+    bridge:
+      mqtt2ros:
+        mqtt_topics:
+          - "homeassistant/statestream/#"
+        "homeassistant/statestream/#":
+          ros_topic: statestream
