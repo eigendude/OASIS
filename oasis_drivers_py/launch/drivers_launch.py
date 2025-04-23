@@ -62,14 +62,14 @@ AVR_COM_PORT = "/dev/ttyACM0"
 # TODO: Hardware configuration
 if HOSTNAME == "asus":
     ENABLE_DISPLAY = True
-    ENABLE_VIDEO = False
+    ENABLE_VIDEO = True
 elif HOSTNAME == "cinder":
     ENABLE_KINECT_V2 = True
 elif HOSTNAME == "homeassistant":
     ENABLE_HOME_ASSISTANT = True
 elif HOSTNAME == "lenovo":
     ENABLE_DISPLAY = True
-    ENABLE_VIDEO = False
+    ENABLE_VIDEO = True
 elif HOSTNAME == "station":
     ENABLE_CAMERA = True
 
