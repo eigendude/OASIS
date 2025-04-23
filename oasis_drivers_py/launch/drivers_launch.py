@@ -102,7 +102,7 @@ def generate_launch_description() -> LaunchDescription:
             name=f"display_server_{HOSTNAME}",
             output="screen",
             remappings=[
-                ("power_control", f"{HOSTNAME}/power_control"),
+                ("set_display", f"{HOSTNAME}/set_display"),
             ],
         )
         ld.add_action(display_server_node)

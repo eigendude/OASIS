@@ -8,29 +8,78 @@
 #
 ################################################################################
 
+import os
+import re
+import shutil
+import stat
 import subprocess
 
 
 class DisplayServer:
     """
-    Control power to displays. Currently only works for laptops.
+    Server to control displays. Uses the following technologies:
+
+      * DPMS (Display Power Management Signaling)
+      * DDC/CI (Display Data Channel Command Interface)
 
     Dependencies:
 
+      * ddcutil
+
+    Optional dependencies:
+
       * vbetool - Needs setuid, run "sudo chmod u+s /usr/sbin/vbetool"
 
-    Starting with Ubuntu 20.04, you need to run this command after startup:
+    For vbetool, starting with Ubuntu 20.04, you need to run this command
+    after startup:
 
       sudo mount -o remount,exec /dev
 
     """
 
     @staticmethod
-    def call_vbetool(power_mode: bool, logger) -> None:  # TODO: logger type
+    def ensure_dpms() -> None:
+        """
+        Check whether DPMS control via vbetool is available, and raise an
+        exception if not.
+
+        Verifies that the 'vbetool' binary is installed and has its setuid bit
+        set.
+
+        :param logger: logger for info/warning/error messages
+
+        :return: True if vbetool is present (and warns if not setuid), False if missing
+        """
+        # 1) Locate the binary
+        vbetool_path: str | None = shutil.which("vbetool")
+        if vbetool_path is None:
+            raise Exception('Missing "vbetool". Install with: sudo apt install vbetool')
+
+        # 2) Check for the setuid bit
+        try:
+            st_mode: int = os.stat(vbetool_path).st_mode
+        except OSError as err:
+            raise Exception(f'Cannot stat "{vbetool_path}": {err}')
+
+        if not (st_mode & stat.S_ISUID):
+            raise Exception(
+                f'"{vbetool_path}" exists but is not setuid. '
+                f"Grant permissions with: sudo chmod u+s {vbetool_path}"
+            )
+
+    @staticmethod
+    def set_dpms(power_mode: bool) -> None:
+        """
+        Turn DPMS on or off via vbetool.
+
+        :param power_mode: True to power ON, False to power OFF.
+
+        :raises Exception: if vbetool fails or is not installed.
+        """
         power_mode_string: str = "on" if power_mode else "off"
 
         try:
-            vbetool_proc: subprocess.CompletedProcess = subprocess.run(
+            vbetool_proc: subprocess.CompletedProcess[bytes] = subprocess.run(
                 ["vbetool", "dpms", power_mode_string],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -38,15 +87,112 @@ class DisplayServer:
             retcode: int = vbetool_proc.returncode
             if retcode != 0:
                 # Likely missing setuid
-                logger.error(
-                    f'vbetool returned {retcode}, try running "sudo chmod u+s /usr/sbin/vbetool"'
+                raise Exception(
+                    f'vbetool returned {retcode}, try running "sudo chmod u+s /usr/sbin/vbetool". '
+                    # Could also be an LRMI permissions error, see:
+                    #   https://bugs.launchpad.net/ubuntu/+source/vbetool/+bug/1875240
+                    'If that doesn\'t work, try "sudo mount -o remount,exec /dev" on every boot'
                 )
-                # Could also be an LRMI permissions error, see:
-                #   https://bugs.launchpad.net/ubuntu/+source/vbetool/+bug/1875240
-                logger.error(
-                    'If that doesn\'t work, try "sudo mount -o remount,exec /dev" on every boot',
-                )
-            else:
-                logger.info(f"Power {power_mode_string} success")
         except FileNotFoundError:
-            logger.error('Missing vbetool, run "sudo apt install vbetool"')
+            raise Exception('Missing vbetool, run "sudo apt install vbetool"')
+
+    @staticmethod
+    def detect_displays() -> str:
+        """
+        Detect attached displays via DDC/CI and return a report.
+
+        Runs `ddcutil detect`, then summarizes each display's I²C bus,
+        DRM connector name, and model.
+
+        :returns: Multi-line string report
+
+        :raises Exception: if ddcutil is missing or `ddcutil detect` fails
+        """
+        # 1) Run `ddcutil detect`
+        try:
+            proc: subprocess.CompletedProcess[str] = subprocess.run(
+                ["ddcutil", "detect"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        except FileNotFoundError:
+            raise Exception("Missing ddcutil; install with: sudo apt install ddcutil")
+
+        # 2) Handle non-zero exit
+        if proc.returncode != 0:
+            err = proc.stderr.strip() or proc.stdout.strip()
+            raise Exception(f"ddcutil detect failed (code {proc.returncode}):\n{err}")
+
+        out: str = proc.stdout
+
+        # 3) Build report lines
+        report_lines: list[str] = ["ddcutil detect output:"]
+        report_lines += [f"  {line}" for line in out.splitlines()]
+
+        # 4) Parse key fields
+        buses: list[str] = re.findall(r"I2C bus:\s*(/dev/i2c-\d+)", out)
+        connectors: list[str] = re.findall(r"DRM connector:\s*(\S+)", out)
+        models: list[str] = re.findall(r"Model:\s*(.+)", out)
+
+        # 5) Summarize each display
+        count: int = max(len(buses), len(connectors), len(models))
+        for i in range(count):
+            bus = buses[i] if i < len(buses) else "Unknown"
+            connector = connectors[i] if i < len(connectors) else "Unknown"
+            model = models[i] if i < len(models) else "Unknown"
+            report_lines.append(
+                f"Display {i + 1}: bus={bus}, connector={connector}, model={model}"
+            )
+
+        return "\n".join(report_lines)
+
+    @staticmethod
+    def set_brightness(brightness: int) -> None:
+        """
+        Set the panel brightness via DDC/CI using ddcutil.
+
+        :param brightness: Desired brightness percentage (0–100)
+
+        :raises Exception: if ddcutil is missing or ddcutil fails
+        """
+        # 1) Clamp input
+        if brightness < 0:
+            brightness = 0
+        elif brightness > 100:
+            brightness = 100
+
+        # 2) Detect I²C bus
+        try:
+            detect: subprocess.CompletedProcess[str] = subprocess.run(
+                ["ddcutil", "detect"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+                text=True,
+            )
+        except FileNotFoundError:
+            raise Exception('Missing ddcutil, install with "sudo apt install ddcutil"')
+
+        out: str = detect.stdout + detect.stderr
+        match: re.Match[str] | None = re.search(r"I2C bus:\s*/dev/i2c-(\d+)", out)
+        if not match:
+            raise Exception(
+                "Unable to determine I2C bus from ddcutil detect output:\n"
+                + out.splitlines()[0]
+            )
+
+        bus: str = match.group(1)
+
+        # 3) Set brightness
+        cmd: list[str] = ["ddcutil", "--bus", bus, "setvcp", "0x10", str(brightness)]
+        proc: subprocess.CompletedProcess[str] = subprocess.run(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        )
+
+        if proc.returncode != 0:
+            raise Exception(
+                f"ddcutil failed (code {proc.returncode})\n"
+                f"STDOUT: {proc.stdout.strip()}\n"
+                f"STDERR: {proc.stderr.strip()}"
+            )
