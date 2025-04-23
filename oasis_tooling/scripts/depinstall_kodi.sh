@@ -45,7 +45,6 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     gdc \
     gettext \
     gperf \
-    hwdata \
     libasound2-dev \
     libass-dev \
     libavahi-client-dev \
@@ -54,6 +53,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     libbluray-dev \
     libbz2-dev \
     libcdio-dev \
+    libcec-dev \
     libcrossguid-dev \
     libcurl4-openssl-dev \
     libcwiid-dev \
@@ -62,13 +62,14 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     libdrm-dev \
     libegl1-mesa-dev \
     libenca-dev \
+    libexiv2-dev \
     libflac-dev \
+    libflatbuffers-dev \
     libfmt-dev \
     libfontconfig-dev \
     libfreetype6-dev \
     libfribidi-dev \
     libfstrcmp-dev \
-    libgbm-dev \
     libgcrypt-dev \
     libgif-dev \
     libgl1-mesa-dev \
@@ -81,6 +82,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     libiso9660-dev \
     libjpeg-dev \
     liblcms2-dev \
+    liblirc-dev \
     libltdl-dev \
     liblzo2-dev \
     libmicrohttpd-dev \
@@ -92,21 +94,21 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     libplist-dev \
     libpng-dev \
     libpulse-dev \
+    libshairplay-dev \
     libsmbclient-dev \
-    libsndio-dev \
     libspdlog-dev \
     libsqlite3-dev \
     libssl-dev \
     libtag1-dev \
     libtiff5-dev \
     libtinyxml-dev \
+    libtinyxml2-dev \
     libtool \
     libudev-dev \
     libunistring-dev \
     libva-dev \
     libvdpau-dev \
     libvorbis-dev \
-    libxkbcommon-dev \
     libxmu-dev \
     libxrandr-dev \
     libxslt1-dev \
@@ -122,13 +124,8 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     swig \
     unzip \
     uuid-dev \
-    yasm \
     zip \
     zlib1g-dev \
-
-  # Install screensaver.matrix dependencies
-  sudo apt install -y \
-    libgl1-mesa-dev \
 
   if [ "${ENABLE_LLD}" = "ON" ]; then
     sudo apt install -y lld
@@ -136,6 +133,9 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
 
   if [ "${ENABLE_WAYLAND}" = "ON" ]; then
     sudo apt install -y \
+      libglew-dev \
+      libwayland-dev \
+      libxkbcommon-dev \
       wayland-protocols \
       waylandpp-dev
   fi

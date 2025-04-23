@@ -18,7 +18,11 @@ set -o nounset
 # Environment configuration
 #
 
-CODENAME="$(lsb_release --codename | cut -f2)"
+# Shell-source the key/value pairs defined in /etc/os-release
+source "/etc/os-release"
+
+# Debian/Ubuntu expose the codename as VERSION_CODENAME
+CODENAME="${VERSION_CODENAME}"
 
 #
 # Environment paths and config
@@ -54,11 +58,11 @@ else
   APP_RENDER_SYSTEM=gles
 fi
 
-# Enable LLD if available
-ENABLE_LLD="$([ -n "$(apt-cache search --names-only '^lld$')" ] && echo "ON" || echo "OFF")"
+# Enable LLD
+ENABLE_LLD="ON"
 
-# Enable Wayland if the waylandpp-dev package is found
-ENABLE_WAYLAND="$([ -n "$(apt-cache search --names-only '^waylandpp-dev$')" ] && echo "ON" || echo "OFF")"
+# Enable Wayland
+ENABLE_WAYLAND="ON"
 
 #
 # Directory and path definitions
