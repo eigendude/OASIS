@@ -78,6 +78,7 @@ rosidl_generate_interfaces(
     srv/ServoWrite.srv
     srv/SetAnalogMode.srv
     srv/SetDigitalMode.srv
+    srv/SetDisplay.srv
     srv/SetPlug.srv
     srv/SetRGB.srv
     srv/SetSamplingInterval.srv

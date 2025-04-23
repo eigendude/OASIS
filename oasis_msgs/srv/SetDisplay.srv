@@ -1,0 +1,18 @@
+################################################################################
+# Service for controlling attached displays
+################################################################################
+
+#
+# The desired DPMS power mode, of type PowerMode:
+#
+#   * "OFF" = put the display into its low-power/off state
+#   * "ON" = bring the display to full-power
+#
+# If DPMS isn't available (such as for Raspberry Pis) then this has no effect.
+#
+string dpms_mode
+
+# Backlight intensity as a percentage (0–100). Ignored if dpms_mode is OFF.
+uint8 brightness
+
+---
