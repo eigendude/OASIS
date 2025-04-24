@@ -1,0 +1,17 @@
+################################################################################
+#
+#  Copyright (C) 2025 Garrett Brown
+#  This file is part of OASIS - https://github.com/eigendude/OASIS
+#
+#  SPDX-License-Identifier: Apache-2.0
+#  See DOCS/LICENSING.md for more information.
+#
+################################################################################
+
+# Request: hostname or IP to look up, e.g. "homeassistant.local" or "192.168.1.42"
+string hostname
+
+---
+
+# MAC address (lower-case, colon-separated) or "" if not found
+string mac_address

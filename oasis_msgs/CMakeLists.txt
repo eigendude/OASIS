@@ -70,6 +70,7 @@ rosidl_generate_interfaces(
     srv/CaptureInput.srv
     srv/DigitalRead.srv
     srv/DigitalWrite.srv
+    srv/GetMACAddress.srv
     srv/I2CBegin.srv
     srv/I2CEnd.srv
     srv/PowerControl.srv
@@ -83,6 +84,7 @@ rosidl_generate_interfaces(
     srv/SetRGB.srv
     srv/SetSamplingInterval.srv
     srv/UPSCommand.srv
+    srv/WoLCommand.srv
   DEPENDENCIES
     geometry_msgs
     sensor_msgs
