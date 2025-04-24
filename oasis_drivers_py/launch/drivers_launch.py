@@ -339,6 +339,20 @@ def generate_launch_description() -> LaunchDescription:
         )
         ld.add_action(mqtt_client_node)
 
+        # Also run the WoL server
+        wol_server_node = Node(
+            namespace=ROS_NAMESPACE,
+            package=PYTHON_PACKAGE_NAME,
+            executable="wol_server",
+            name=f"wol_server_{HOSTNAME}",
+            output="screen",
+            remappings=[
+                ("get_mac_address", f"{HOSTNAME}/get_mac_address"),
+                ("wol", f"{HOSTNAME}/wol"),
+            ],
+        )
+        ld.add_action(wol_server_node)
+
     # UPS server
     ups_server_node = Node(
         namespace=ROS_NAMESPACE,
