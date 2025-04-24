@@ -68,6 +68,9 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     sudo apt install -y vbetool
   fi
 
+  # Install ddcutil
+  sudo apt install -y ddcutil
+
   # Install Python dependencies
   sudo apt install -y --no-install-recommends \
     python3-numpy \
