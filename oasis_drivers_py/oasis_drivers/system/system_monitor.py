@@ -16,7 +16,7 @@ import rclpy.publisher
 import std_msgs.msg
 from builtin_interfaces.msg import Time as TimeMsg
 
-from oasis_drivers.system.network_utils import NetworkUtils
+from oasis_drivers.network.network_utils import NetworkUtils
 from oasis_drivers.system.system_types import Battery
 from oasis_drivers.system.system_types import DiskPartition
 from oasis_drivers.system.system_types import NetworkAddress
