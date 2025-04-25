@@ -55,11 +55,12 @@ def generate_launch_description() -> LaunchDescription:
 
     # Machines with power actuation (laptop displays, LED artwork, etc)
     if HOSTNAME in [
-        "asus",
-        "inspiron",
-        "lenovo",
-        "netbook",
-        "station",
+        "bar",
+        "cinder",
+        "door",
+        "kitchen",
+        "megapegasus",
+        "nuc",
     ]:
         automation_manager_node = Node(
             namespace=ROS_NAMESPACE,

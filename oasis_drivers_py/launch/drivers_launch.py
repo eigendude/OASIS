@@ -46,7 +46,6 @@ HASS_PACKAGE_NAME: str = "oasis_hass"
 # Hardware options
 ENABLE_CEC = False
 ENABLE_DISPLAY = False
-ENABLE_FIRMATA = False
 ENABLE_HOME_ASSISTANT = False
 ENABLE_KINECT_V2 = False
 ENABLE_VIDEO = False
@@ -60,17 +59,22 @@ IMAGE_SIZE = [640, 480]
 AVR_COM_PORT = "/dev/ttyACM0"
 
 # TODO: Hardware configuration
-if HOSTNAME == "asus":
+if HOSTNAME == "bar":
     ENABLE_DISPLAY = True
     ENABLE_VIDEO = True
-elif HOSTNAME == "cinder":
+elif HOSTNAME == "cinder":  # Perception server
     ENABLE_KINECT_V2 = True
+if HOSTNAME == "door":
+    ENABLE_DISPLAY = True
+    ENABLE_CAMERA = True
 elif HOSTNAME == "homeassistant":
     ENABLE_HOME_ASSISTANT = True
-elif HOSTNAME == "lenovo":
+elif HOSTNAME == "kitchen":
     ENABLE_DISPLAY = True
     ENABLE_VIDEO = True
-elif HOSTNAME == "station":
+elif HOSTNAME == "nuc":  # Hallway HUD
+    ENABLE_DISPLAY = True
+elif HOSTNAME == "station":  # LEGO Train Station
     ENABLE_CAMERA = True
 
 # Machine that broadcasts power on/off commands
@@ -185,7 +189,8 @@ def generate_launch_description() -> LaunchDescription:
         ld.add_action(camera_node)
 
     if ENABLE_KINECT_V2:
-        # TODO: For now use a separate node for the main Kinect V2 bridge
+        # TODO: For now use a separate node for the main Kinect V2 bridge.
+        # Running as a component breaks the legacy image transport code.
         kinect2_bridge_node = Node(
             namespace=ROS_NAMESPACE,
             package="kinect2_bridge",

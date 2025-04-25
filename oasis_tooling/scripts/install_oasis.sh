@@ -25,9 +25,10 @@ ENABLE_DRIVERS=1
 # Machines for image processing
 ENABLE_PERCEPTION=0
 if \
-  [ "${HOSTNAME}" = "asus" ] || \
+  [ "${HOSTNAME}" = "bar" ] || \
   [ "${HOSTNAME}" = "cinder" ] || \
-  [ "${HOSTNAME}" = "lenovo" ] || \
+  [ "${HOSTNAME}" = "door" ] || \
+  [ "${HOSTNAME}" = "kitchen" ] || \
   [ "${HOSTNAME}" = "station" ] \
 ; then
   ENABLE_PERCEPTION=1
@@ -36,13 +37,13 @@ fi
 # Machines with a display
 ENABLE_VISUALIZATION=0
 if \
-  [ "${HOSTNAME}" = "asus" ] || \
+  [ "${HOSTNAME}" = "bar" ] || \
   [ "${HOSTNAME}" = "cinder" ] || \
-  [ "${HOSTNAME}" = "lenovo" ] || \
+  [ "${HOSTNAME}" = "door" ] || \
+  [ "${HOSTNAME}" = "kitchen" ] || \
+  [ "${HOSTNAME}" = "megapegasus" ] || \
   [ "${HOSTNAME}" = "nuc" ] || \
-  [ "${HOSTNAME}" = "patio" ] || \
-  [ "${HOSTNAME}" = "substation" ] || \
-  [ "${HOSTNAME}" = "zotac" ] \
+  [ "${HOSTNAME}" = "patio" ] \
 ; then
   ENABLE_VISUALIZATION=1
 fi
