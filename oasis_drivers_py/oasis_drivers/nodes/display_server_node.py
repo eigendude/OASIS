@@ -41,6 +41,7 @@ class DisplayServerNode(rclpy.node.Node):
         # Node state
         self._has_dpms: bool = False
         self._has_brightness: bool = False
+        self._has_cec: bool = False
 
         # Services
         self._set_display_service: rclpy.service.Service = self.create_service(
@@ -64,6 +65,12 @@ class DisplayServerNode(rclpy.node.Node):
         except Exception as err:
             self.get_logger().error(f"DDC/CI check failed: {err}")
 
+        try:
+            DisplayServer.ensure_cec()
+            self._has_cec = True
+        except Exception as err:
+            self.get_logger().error(f"CEC check failed: {err}")
+
     def stop(self) -> None:
         self.get_logger().info("Display server deinitialized")
 
@@ -85,14 +92,25 @@ class DisplayServerNode(rclpy.node.Node):
             f"Received set display request. mode: {request.dpms_mode}, brightness: {request.brightness}"
         )
 
-        try:
-            if self._has_dpms:
-                self.get_logger().debug(f"Setting DPMS to {request.dpms_mode}")
+        if self._has_dpms:
+            self.get_logger().info(f"Setting DPMS to {request.dpms_mode}")
+            try:
                 DisplayServer.set_dpms(power_mode)
-            if self._has_brightness:
-                self.get_logger().debug(f"Setting brightness to {request.brightness}")
+            except Exception as err:
+                self.get_logger().error(f"Display server DPMS error: {err}")
+
+        if self._has_brightness:
+            self.get_logger().info(f"Setting brightness to {request.brightness}")
+            try:
                 DisplayServer.set_brightness(request.brightness)
-        except Exception as err:
-            self.get_logger().error(f"Display server error: {err}")
+            except Exception as err:
+                self.get_logger().error(f"Display server brightness error: {err}")
+
+        if self._has_cec:
+            self.get_logger().info(f"Setting CEC to {request.dpms_mode}")
+            try:
+                DisplayServer.set_cec_power(power_mode)
+            except Exception as err:
+                self.get_logger().error(f"Display server CEC error: {err}")
 
         return response

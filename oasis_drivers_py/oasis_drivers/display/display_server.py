@@ -21,13 +21,12 @@ class DisplayServer:
 
       * DPMS (Display Power Management Signaling)
       * DDC/CI (Display Data Channel Command Interface)
-
-    Dependencies:
-
-      * ddcutil
+      * CEC (Consumer Electronics Control)
 
     Optional dependencies:
 
+      * cec-client
+      * ddcutil
       * vbetool - Needs setuid, run "sudo chmod u+s /usr/sbin/vbetool"
 
     For vbetool, starting with Ubuntu 20.04, you need to run this command
@@ -36,6 +35,9 @@ class DisplayServer:
       sudo mount -o remount,exec /dev
 
     """
+
+    # Class variable to hold all detected CEC adapters
+    _cec_adapters: list[int] = []
 
     @staticmethod
     def ensure_dpms() -> None:
@@ -46,9 +48,8 @@ class DisplayServer:
         Verifies that the 'vbetool' binary is installed and has its setuid bit
         set.
 
-        :param logger: logger for info/warning/error messages
-
-        :return: True if vbetool is present (and warns if not setuid), False if missing
+        :return: True if vbetool is present (and warns if not setuid), False if
+                 missing
         """
         # 1) Locate the binary
         vbetool_path: str | None = shutil.which("vbetool")
@@ -196,3 +197,71 @@ class DisplayServer:
                 f"STDOUT: {proc.stdout.strip()}\n"
                 f"STDERR: {proc.stderr.strip()}"
             )
+
+    @staticmethod
+    def ensure_cec() -> None:
+        """
+        Check whether CEC control via cec-client is available and a CEC device
+        is present, and raise an exception if not.
+
+        :raises Exception: if cec-client is missing or no CEC device is found
+        """
+        # 1) Ensure cec-client binary exists
+        if shutil.which("cec-client") is None:
+            raise Exception(
+                'Missing "cec-client". Install with: sudo apt install cec-utils'
+            )
+
+        # 2) Run `cec-client -l` to list adapters
+        try:
+            proc = subprocess.run(
+                ["cec-client", "-l"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=False,
+            )
+        except FileNotFoundError:
+            raise Exception(
+                "cec-client not found; install with: sudo apt install cec-utils"
+            )
+
+        output = proc.stdout + proc.stderr
+
+        # 3) Parse adapter indices (lines like 'device:              1')
+        adapters = [int(idx) for idx in re.findall(r"device:\s+(\d+)", output)]
+        if not adapters:
+            raise Exception(f"No CEC adapters found:\n{output.strip()}")
+
+        DisplayServer._cec_adapters = adapters
+
+    @staticmethod
+    def set_cec_power(power_mode: bool) -> None:
+        """
+        Send CEC power command on every detected adapter.
+
+        :param power_mode: True to power ON, False to power OFF
+        """
+        if not DisplayServer._cec_adapters:
+            # Auto-detect if not already done
+            DisplayServer.ensure_cec()
+
+        # Determine CEC command
+        cec_cmd: str
+        if power_mode:
+            # TVs often ignore “on”, so use “activate-source”
+            cec_cmd = "as"
+        else:
+            cec_cmd = "standby 0"
+
+        # Send to all adapters
+        for adapter in DisplayServer._cec_adapters:
+            try:
+                subprocess.run(
+                    ["cec-client", "-s", "-d", str(adapter)],
+                    input=(cec_cmd + "\n").encode(),
+                    check=True,
+                )
+            except subprocess.CalledProcessError as err:
+                # Log and continue on failure for other adapters
+                raise Exception(f"CEC adapter {adapter} failed: {err}")
