@@ -81,11 +81,15 @@ class DisplayServerNode(rclpy.node.Node):
         # Translate parameters
         power_mode: bool = request.dpms_mode == PowerModeMsg.ON
 
+        self.get_logger().debug(
+            f"Received set display request. mode: {request.dpms_mode}, brightness: {request.brightness}"
+        )
+
         try:
             if self._has_dpms:
                 self.get_logger().debug(f"Setting DPMS to {request.dpms_mode}")
                 DisplayServer.set_dpms(power_mode)
-            if power_mode and self._has_brightness:
+            if self._has_brightness:
                 self.get_logger().debug(f"Setting brightness to {request.brightness}")
                 DisplayServer.set_brightness(request.brightness)
         except Exception as err:
