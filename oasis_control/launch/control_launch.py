@@ -71,6 +71,7 @@ def generate_launch_description() -> LaunchDescription:
             remappings=[
                 ("power_event", f"{POWER_CONTROLLER}/power_event"),
                 ("power_control", f"{HOSTNAME}/power_control"),
+                ("set_display", f"{HOSTNAME}/set_display"),
             ],
         )
         ld.add_action(automation_manager_node)

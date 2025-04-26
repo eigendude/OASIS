@@ -83,8 +83,10 @@ class DisplayServerNode(rclpy.node.Node):
 
         try:
             if self._has_dpms:
+                self.get_logger().debug(f"Setting DPMS to {request.dpms_mode}")
                 DisplayServer.set_dpms(power_mode)
             if power_mode and self._has_brightness:
+                self.get_logger().debug(f"Setting brightness to {request.brightness}")
                 DisplayServer.set_brightness(request.brightness)
         except Exception as err:
             self.get_logger().error(f"Display server error: {err}")
