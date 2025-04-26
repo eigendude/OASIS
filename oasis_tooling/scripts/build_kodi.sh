@@ -112,9 +112,10 @@ fi
     cmake \
       "${KODI_SOURCE_DIR}" \
       -DAPP_RENDER_SYSTEM=${APP_RENDER_SYSTEM} \
-      -DCORE_PLATFORM_NAME="x11 gbm$([ "${ENABLE_WAYLAND}" = "OFF" ] || echo " wayland")" \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_INSTALL_PREFIX="${KODI_INSTALL_DIR}" \
+      -DCORE_PLATFORM_NAME="x11 gbm$([ "${ENABLE_WAYLAND}" = "OFF" ] || echo " wayland")" \
+      -DENABLE_CEC=OFF \
       -DENABLE_LLD=${ENABLE_LLD} \
       -DENABLE_ROS2=ON \
       -DENABLE_TESTING=OFF \
