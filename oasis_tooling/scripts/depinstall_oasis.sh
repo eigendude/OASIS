@@ -63,13 +63,13 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     libspdlog-dev \
     libtinyxml2-dev \
 
-  # Install vbetool
+  # Install display controllers
   if [[ ${PLATFORM_ARCH} == i*86 ]] || [[ ${PLATFORM_ARCH} == x86_64 ]]; then
-    sudo apt install -y vbetool
+    sudo apt install -y --no-install-recommends \
+      cec-utils \
+      ddcutil \
+      vbetool
   fi
-
-  # Install ddcutil
-  sudo apt install -y ddcutil
 
   # Install Python dependencies
   sudo apt install -y --no-install-recommends \
