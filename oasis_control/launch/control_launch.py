@@ -29,7 +29,7 @@ HOSTNAME = socket.gethostname()
 
 
 # Machine that broadcasts power on/off commands
-POWER_CONTROLLER = "nuc"
+POWER_CONTROLLER = "homeassistant"
 
 # Machine that broadcasts peripheral input
 INPUT_PROVIDER = "nuc"

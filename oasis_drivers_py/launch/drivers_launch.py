@@ -73,6 +73,9 @@ elif HOSTNAME == "lenovo":
 elif HOSTNAME == "station":
     ENABLE_CAMERA = True
 
+# Machine that broadcasts power on/off commands
+POWER_CONTROLLER = "homeassistant"
+
 
 print(f"Launching on {HOSTNAME}")
 
@@ -313,6 +316,7 @@ def generate_launch_description() -> LaunchDescription:
             output="screen",
             remappings=[
                 ("plug", f"{HOSTNAME}/plug"),
+                ("power_event", f"{POWER_CONTROLLER}/power_event"),
                 ("rgb", f"{HOSTNAME}/rgb"),
                 ("set_plug", f"{HOSTNAME}/set_plug"),
                 ("set_rgb", f"{HOSTNAME}/set_rgb"),
