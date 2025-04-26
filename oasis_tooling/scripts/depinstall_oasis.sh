@@ -108,9 +108,9 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
 EOF
   fi
 
-  # Enable basic local loopback in upsd.conf
-  if ! sudo grep -q "^LISTEN 127.0.0.1" "$UPSD_CONF" 2>/dev/null; then
-    echo "LISTEN 127.0.0.1" | sudo tee -a "$UPSD_CONF" > /dev/null
+  # Enable network access for Home Assistant in upsd.conf
+  if ! sudo grep -q "^LISTEN 0.0.0.0 3493" "$UPSD_CONF" 2>/dev/null; then
+    echo "LISTEN 0.0.0.0 3493" | sudo tee -a "$UPSD_CONF" > /dev/null
   fi
 
   # Create local NUT user
