@@ -33,6 +33,7 @@ from builtin_interfaces.msg import Time as TimeMsg
 
 from oasis_msgs.msg import RGB as RGBMsg
 from oasis_msgs.msg import Plug as PlugMsg
+from oasis_msgs.msg import PowerMode as PowerModeMsg
 from oasis_msgs.srv import SetPlug as SetPlugSrv
 from oasis_msgs.srv import SetRGB as SetRGBSrv
 
@@ -237,15 +238,19 @@ class HassBridgeNode(rclpy.node.Node):
         """
         Publish the plug state.
         """
+        # Decode parameters
         device_state: bool = attrs.get("state", "off").lower() == "on"
+
+        # Translate parameters
+        power_mode: str = PowerModeMsg.ON if device_state else PowerModeMsg.OFF
 
         msg: PlugMsg = PlugMsg()
         msg.header.stamp = self._get_timestamp(attrs)
         msg.header.frame_id = entity_id
-        msg.state = device_state
+        msg.power_mode = power_mode
         self._plug_pub.publish(msg)
 
-        self.get_logger().debug(f"{entity_id}: {'ON' if device_state else 'OFF'}")
+        self.get_logger().debug(f"{entity_id}: {power_mode}")
 
     def _publish_rgb(self, entity_id: str, attrs: dict[str, Any]) -> None:
         """

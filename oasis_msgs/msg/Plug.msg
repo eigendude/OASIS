@@ -11,5 +11,5 @@
 # Timestamp and frame_id
 std_msgs/Header header
 
-# Current on/off state: true = on, false = off
-bool state
+# Current on/off state of type PowerMode
+string power_mode
