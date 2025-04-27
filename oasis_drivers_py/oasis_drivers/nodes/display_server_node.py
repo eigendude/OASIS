@@ -50,26 +50,33 @@ class DisplayServerNode(rclpy.node.Node):
             callback=self._handle_set_display,
         )
 
-        self.get_logger().info("Display server initialized")
-
+    def initialize(self) -> None:
+        """
+        Initialize the display server.
+        """
         # Do initial detection
         try:
             DisplayServer.ensure_dpms()
             self._has_dpms = True
+            self.get_logger().info("DisplayServer: Using DPMS via vbetool")
         except Exception as err:
-            self.get_logger().error(f"DPMS check failed: {err}")
+            self.get_logger().warn(f"DisplayServer: DPMS check failed: {err}")
 
         try:
             self.get_logger().info(DisplayServer.detect_displays())
             self._has_brightness = True
+            self.get_logger().info("DisplayServer: Using DDC/CI via ddcutil")
         except Exception as err:
-            self.get_logger().error(f"DDC/CI check failed: {err}")
+            self.get_logger().warn(f"DisplayServer: DDC/CI check failed: {err}")
 
         try:
             DisplayServer.ensure_cec()
             self._has_cec = True
+            self.get_logger().info("DisplayServer: Using CEC via cec-client")
         except Exception as err:
-            self.get_logger().error(f"CEC check failed: {err}")
+            self.get_logger().warn(f"DisplayServer: CEC check failed: {err}")
+
+        self.get_logger().info("Display server initialized")
 
     def stop(self) -> None:
         self.get_logger().info("Display server deinitialized")

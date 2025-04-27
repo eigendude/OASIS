@@ -214,7 +214,7 @@ class DisplayServer:
 
         # 2) Run `cec-client -l` to list adapters
         try:
-            proc = subprocess.run(
+            proc: subprocess.CompletedProcess[str] = subprocess.run(
                 ["cec-client", "-l"],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -226,7 +226,7 @@ class DisplayServer:
                 "cec-client not found; install with: sudo apt install cec-utils"
             )
 
-        output = proc.stdout + proc.stderr
+        output: str = proc.stdout + proc.stderr
 
         # 3) Parse adapter indices (lines like 'device:              1')
         adapters = [int(idx) for idx in re.findall(r"device:\s+(\d+)", output)]
@@ -238,13 +238,12 @@ class DisplayServer:
     @staticmethod
     def set_cec_power(power_mode: bool) -> None:
         """
-        Send CEC power command on every detected adapter.
+        Send CEC power command on every adapter detected on initialization.
 
         :param power_mode: True to power ON, False to power OFF
         """
         if not DisplayServer._cec_adapters:
-            # Auto-detect if not already done
-            DisplayServer.ensure_cec()
+            return
 
         # Determine CEC command
         cec_cmd: str

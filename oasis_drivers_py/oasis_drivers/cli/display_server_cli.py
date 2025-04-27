@@ -32,6 +32,7 @@ def main(args=None) -> None:
     node = DisplayServerNode()
 
     try:
+        node.initialize()
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
