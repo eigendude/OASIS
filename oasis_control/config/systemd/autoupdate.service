@@ -1,0 +1,10 @@
+[Unit]
+Description=PackageKit automatic updater
+After=network-online.target packagekit.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/pkcon update -y
+
+# PackageKit and pkcon treat "no updates" as a "special exit code" (5)
+SuccessExitStatus=5

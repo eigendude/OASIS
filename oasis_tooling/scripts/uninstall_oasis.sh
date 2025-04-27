@@ -41,29 +41,30 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     oasis_perception_py \
     oasis_visualization \
   ; do
-    # Skip packages that weren't built
-    if [ ! -d "${OASIS_DATA_DIRECTORY}/${OASIS_PACKAGE}/systemd" ]; then
-      echo "Skipping package ${OASIS_PACKAGE}"
-      continue
-    fi
-
     for SYSTEMD_SERVICE in "${OASIS_DATA_DIRECTORY}/${OASIS_PACKAGE}/systemd/"*.service; do
-      # Get filename
-      FILE_NAME="$(basename -- ${SYSTEMD_SERVICE})"
+      SYSTEMD_TIMER="${SYSTEMD_SERVICE%.service}.timer"
 
-      # Skip services that weren't installed
-      if [ ! -f "${SYSTEMD_SERVICE_DIRECTORY}/${FILE_NAME}" ]; then
-        echo "Not installed: ${FILE_NAME}"
+      # Get service filename
+      SERVICE_FILE="$(basename -- "${SYSTEMD_SERVICE}")"
+
+      # Get timer filename
+      TIMER_FILE="$(basename -- "${SYSTEMD_TIMER}")"
+
+      # Skip files that weren't installed
+      if [ ! -f "${SYSTEMD_SERVICE_DIRECTORY}/${SERVICE_FILE}" ]; then
+        echo "Not installed: ${SERVICE_FILE}"
         continue
       fi
 
-      echo "Uninstalling ${FILE_NAME}"
+      echo "Uninstalling ${SERVICE_FILE}"
 
-      # Disable systemd servcie
-      sudo rm -f "${SYSTEMD_SERVICE_DIRECTORY}/multi-user.target.wants/${FILE_NAME}"
+      # Disable systemd service/timer
+      sudo rm -f "${SYSTEMD_SERVICE_DIRECTORY}/multi-user.target.wants/${SERVICE_FILE}"
+      sudo rm -f "${SYSTEMD_SERVICE_DIRECTORY}/timers.target.wants/${TIMER_FILE}"
 
-      # Remove systemd service
-      sudo rm -f "${SYSTEMD_SERVICE_DIRECTORY}/${FILE_NAME}"
+      # Remove systemd service/timer
+      sudo rm -f "${SYSTEMD_SERVICE_DIRECTORY}/${SERVICE_FILE}"
+      sudo rm -f "${SYSTEMD_SERVICE_DIRECTORY}/${TIMER_FILE}"
     done
   done
 

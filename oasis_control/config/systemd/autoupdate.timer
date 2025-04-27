@@ -1,0 +1,9 @@
+[Unit]
+Description=Run PackageKit update daily at 3 AM
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+Persistent=False
+
+[Install]
+WantedBy=timers.target

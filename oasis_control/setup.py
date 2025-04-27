@@ -59,7 +59,16 @@ setuptools.setup(
         # Systemd services
         (
             os.path.join("share", PACKAGE_NAME, "systemd"),
+            ["config/systemd/autoupdate.service"],
+        ),
+        (
+            os.path.join("share", PACKAGE_NAME, "systemd"),
             ["config/systemd/oasis_control.service"],
+        ),
+        # Systemd timers
+        (
+            os.path.join("share", PACKAGE_NAME, "systemd"),
+            ["config/systemd/autoupdate.timer"],
         ),
     ],
     install_requires=[
