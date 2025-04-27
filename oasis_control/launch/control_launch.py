@@ -31,6 +31,9 @@ HOSTNAME = socket.gethostname()
 # Machine that broadcasts peripheral input
 INPUT_PROVIDER = "nuc"
 
+# Machines with a smart display that can be controlled
+SMART_DISPLAYS = ["bar", "door", "kitchen", "nuc"]
+
 
 ################################################################################
 # ROS parameters
@@ -49,6 +52,26 @@ PACKAGE_NAME = "oasis_control"
 
 def generate_launch_description() -> LaunchDescription:
     ld = LaunchDescription()
+
+    if HOSTNAME == "homeassistant":
+        # Lighting controller node
+        lighting_node = Node(
+            namespace=ROS_NAMESPACE,
+            package=PACKAGE_NAME,
+            executable="lighting_manager",
+            name="lighting_manager",
+            output="screen",
+            remappings=[
+                ("plug", f"{HOSTNAME}/plug"),
+                ("rgb", f"{HOSTNAME}/rgb"),
+                *[
+                    (f"set_display_{display_host}", f"{display_host}/set_display")
+                    for display_host in SMART_DISPLAYS
+                ],
+                ("set_rgb", f"{HOSTNAME}/set_rgb"),
+            ],
+        )
+        ld.add_action(lighting_node)
 
     # Microcontroller nodes
     if HOSTNAME == "station":

@@ -84,6 +84,7 @@ setuptools.setup(
             "engine_manager = oasis_control.cli.engine_manager_cli:main",
             "lab_manager = oasis_control.cli.lab_manager_cli:main",
             "leonardo_manager = oasis_control.cli.leonardo_manager_cli:main",
+            "lighting_manager = oasis_control.cli.lighting_manager_cli:main",
         ],
     },
 )
