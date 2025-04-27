@@ -18,7 +18,6 @@
 #
 
 import json
-import socket
 from datetime import datetime
 from datetime import timezone
 from typing import Any
@@ -34,8 +33,6 @@ from builtin_interfaces.msg import Time as TimeMsg
 
 from oasis_msgs.msg import RGB as RGBMsg
 from oasis_msgs.msg import Plug as PlugMsg
-from oasis_msgs.msg import PowerEvent as PowerEventMsg
-from oasis_msgs.msg import PowerMode as PowerModeMsg
 from oasis_msgs.srv import SetPlug as SetPlugSrv
 from oasis_msgs.srv import SetRGB as SetRGBSrv
 
@@ -47,7 +44,6 @@ from oasis_msgs.srv import SetRGB as SetRGBSrv
 NODE_NAME: str = "hass_bridge"
 
 PLUG_TOPIC: str = "plug"
-POWER_EVENT_TOPIC: str = "power_event"
 RGB_TOPIC: str = "rgb"
 
 SET_PLUG_SERVICE: str = "set_plug"
@@ -103,9 +99,6 @@ class HassBridgeNode(rclpy.node.Node):
 
         self._plug_pub: rclpy.publisher.Publisher = self.create_publisher(
             PlugMsg, PLUG_TOPIC, 10
-        )
-        self._power_event_pub: rclpy.publisher.Publisher = self.create_publisher(
-            PowerEventMsg, POWER_EVENT_TOPIC, 10
         )
         self._rgb_pub: rclpy.publisher.Publisher = self.create_publisher(
             RGBMsg, RGB_TOPIC, 10
@@ -246,19 +239,11 @@ class HassBridgeNode(rclpy.node.Node):
         """
         device_state: bool = attrs.get("state", "off").lower() == "on"
 
-        plug_msg: PlugMsg = PlugMsg()
-        plug_msg.header.stamp = self._get_timestamp(attrs)
-        plug_msg.header.frame_id = entity_id
-        plug_msg.state = device_state
-        self._plug_pub.publish(plug_msg)
-
-        # Also publish a power event
-        power_msg: PowerEventMsg = PowerEventMsg()
-        power_msg.header.stamp = plug_msg.header.stamp
-        power_msg.header.frame_id = entity_id
-        power_msg.system = socket.gethostname()
-        power_msg.power_mode = PowerModeMsg.ON if device_state else PowerModeMsg.OFF
-        self._power_event_pub.publish(power_msg)
+        msg: PlugMsg = PlugMsg()
+        msg.header.stamp = self._get_timestamp(attrs)
+        msg.header.frame_id = entity_id
+        msg.state = device_state
+        self._plug_pub.publish(msg)
 
         self.get_logger().debug(f"{entity_id}: {'ON' if device_state else 'OFF'}")
 
