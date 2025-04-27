@@ -14,7 +14,6 @@
 
 from typing import List
 
-import rclpy.client
 import rclpy.node
 import rclpy.qos
 import rclpy.subscription

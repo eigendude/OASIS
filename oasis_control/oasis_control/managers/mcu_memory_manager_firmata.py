@@ -23,9 +23,6 @@ from oasis_msgs.msg import MCUMemory as MCUMemoryMsg
 from oasis_msgs.srv import ReportMCUMemory as ReportMCUMemorySvc
 
 
-# from std_msgs.msg import Header as HeaderMsg
-
-
 ################################################################################
 # Hardware configuration
 ################################################################################

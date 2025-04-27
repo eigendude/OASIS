@@ -14,7 +14,6 @@
 
 from typing import Optional
 
-import rclpy.client
 import rclpy.node
 import rclpy.qos
 import rclpy.subscription

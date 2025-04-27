@@ -12,7 +12,6 @@
 # Manager for a mcu that controls an MPU-6050 IMU sensor over I2C
 #
 
-import rclpy.client
 import rclpy.node
 import rclpy.qos
 import rclpy.subscription

@@ -20,7 +20,6 @@ import rclpy.client
 import rclpy.node
 import rclpy.qos
 import rclpy.subscription
-import rclpy.task
 from rclpy.logging import LoggingSeverity
 from std_msgs.msg import Header as HeaderMsg
 
