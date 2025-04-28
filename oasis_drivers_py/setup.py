@@ -83,13 +83,13 @@ setuptools.setup(
     ],
     entry_points={
         "console_scripts": [
-            "display_server = oasis_drivers.cli.display_server:main",
-            "firmata_bridge = oasis_drivers.cli.firmata_bridge:main",
-            "serial_scanner = oasis_drivers.cli.serial_scanner:main",
-            "system_monitor = oasis_drivers.cli.system_monitor:main",
-            "telemetrix_bridge = oasis_drivers.cli.telemetrix_bridge:main",
-            "ups_server = oasis_drivers.cli.ups_server:main",
-            "wol_server = oasis_drivers.cli.wol_server:main",
+            "display_server = oasis_drivers.cli.display_server_cli:main",
+            "firmata_bridge = oasis_drivers.cli.firmata_bridge_cli:main",
+            "serial_scanner = oasis_drivers.cli.serial_scanner_cli:main",
+            "system_monitor = oasis_drivers.cli.system_monitor_cli:main",
+            "telemetrix_bridge = oasis_drivers.cli.telemetrix_bridge_cli:main",
+            "ups_server = oasis_drivers.cli.ups_server_cli:main",
+            "wol_server = oasis_drivers.cli.wol_server_cli:main",
         ],
     },
 )

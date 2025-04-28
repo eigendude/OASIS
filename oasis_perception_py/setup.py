@@ -79,7 +79,7 @@ setuptools.setup(
     ],
     entry_points={
         "console_scripts": [
-            "pose_landmarker = oasis_perception.cli.pose_landmarker:main",
+            "pose_landmarker = oasis_perception.cli.pose_landmarker_cli:main",
         ],
     },
 )

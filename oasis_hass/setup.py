@@ -78,7 +78,7 @@ setuptools.setup(
     ],
     entry_points={
         "console_scripts": [
-            "hass_bridge = oasis_hass.cli.hass_bridge:main",
+            "hass_bridge = oasis_hass.cli.hass_bridge_cli:main",
         ],
     },
 )
