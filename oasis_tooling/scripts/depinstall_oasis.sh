@@ -99,12 +99,12 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
   fi
 
   # Basic UPS config (CyberPower via USB)
-  if ! sudo grep -q "^\[ups\]" "$UPS_CONF" 2>/dev/null; then
+  if ! sudo grep -q "^\#[ups\]" "$UPS_CONF" 2>/dev/null; then
     cat <<EOF | sudo tee "$UPS_CONF" > /dev/null
-[ups]
-  driver = usbhid-ups
-  port = auto
-  desc = "Generic USB UPS"
+#[ups]
+#  driver = usbhid-ups
+#  port = auto
+#  desc = "Generic USB UPS"
 EOF
   fi
 
