@@ -24,6 +24,14 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # Import OASIS depends paths and config
 source "${SCRIPT_DIR}/env_oasis_deps.sh"
 
+# rosdep keys to ignore
+ROSDEP_IGNORE_KEYS=" \
+  launch_testing \
+  launch_testing_ament_cmake \
+  python_cmake_module \
+  ros_testing \
+"
+
 #
 # Load ROS 2 environment
 #
@@ -397,7 +405,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     --rosdistro ${ROS2_DISTRO} \
     --as-root=pip:false \
     --default-yes \
-    --skip-keys="image_view"
+    --skip-keys="${ROSDEP_IGNORE_KEYS=}"
 else
   echo "Disabling perception dependencies on macOS"
   touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/OpenNI2/COLCON_IGNORE"

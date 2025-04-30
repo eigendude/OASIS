@@ -31,26 +31,30 @@ if [ "${ROS2_DISTRO}" = "iron" ] || [ "${ROS2_DISTRO}" = "jazzy" ]; then
     rti-connext-dds-6.0.1 \
     urdfdom_headers \
   "
-  # Testing ignorables
-  ROSDEP_IGNORE_KEYS+=" \
-    launch_testing \
-    launch_testing_ament_cmake \
-    launch_testing_ros \
-    osrf_testing_tools_cpp \
-    performance_test_fixture \
-    ros2cli_test_interfaces \
-    ros2lifecycle_test_fixtures \
-    ros_testing \
-    rosbag2_test_common \
-    rosbag2_test_msgdefs \
-    rosbag2_tests \
-    rviz_rendering_tests \
-    rviz_visual_testing_framework \
-    test_msgs \
+elif [ "${ROS2_DISTRO}" = "kilted" ]; then
+  ROSDEP_IGNORE_KEYS=" \
+    fastcdr \
+    rti-connext-dds-7.3.0 \
+    urdfdom_headers \
   "
-else
-  ROSDEP_IGNORE_KEYS=
 fi
+# Testing ignorables
+ROSDEP_IGNORE_KEYS+=" \
+  launch_testing \
+  launch_testing_ament_cmake \
+  launch_testing_ros \
+  osrf_testing_tools_cpp \
+  performance_test_fixture \
+  ros2cli_test_interfaces \
+  ros2lifecycle_test_fixtures \
+  ros_testing \
+  rosbag2_test_common \
+  rosbag2_test_msgdefs \
+  rosbag2_tests \
+  rviz_rendering_tests \
+  rviz_visual_testing_framework \
+  test_msgs \
+"
 
 #
 # Setup ROS 2 sources
@@ -208,14 +212,16 @@ echo "Downloading ROS 2 source code..."
   # Get ROS 2 source defintions
   wget --timestamping "https://raw.githubusercontent.com/ros2/ros2/${ROS2_DISTRO}/ros2.repos"
 
-  # Update image_common branch
-  patch \
-    -p1 \
-    --forward \
-    --reject-file="/dev/null" \
-    --no-backup-if-mismatch \
-    --directory="${ROS2_SOURCE_DIRECTORY}" \
-    < "${CONFIG_DIRECTORY}/ros2-desktop/0001-Change-image_common-to-rolling-branch.patch"
+  if [ "${ROS2_DISTRO}" = "jazzy" ]; then
+    # Update image_common branch
+    patch \
+      -p1 \
+      --forward \
+      --reject-file="/dev/null" \
+      --no-backup-if-mismatch \
+      --directory="${ROS2_SOURCE_DIRECTORY}" \
+      < "${CONFIG_DIRECTORY}/ros2-desktop/0001-Change-image_common-to-rolling-branch.patch"
+  fi
 
   # Import ROS 2 sources
   vcs import "${ROS2_SOURCE_DIRECTORY}" < ros2.repos
