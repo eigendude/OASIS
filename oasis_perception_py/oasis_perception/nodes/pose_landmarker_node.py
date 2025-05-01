@@ -12,10 +12,12 @@ import cv_bridge
 import mediapipe
 import rclpy.node
 import sensor_msgs.msg
+from builtin_interfaces.msg import Time as TimeMsg
 from image_transport_py import ImageTransport
 from mediapipe.framework.formats import landmark_pb2
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
+from std_msgs.msg import Header as HeaderMsg
 
 
 ################################################################################
@@ -43,6 +45,9 @@ class PoseLandmarkerNode(rclpy.node.Node):
         super().__init__(NODE_NAME)
 
         self.get_logger().info("Pose Landmarker Node Initialized")
+
+        # Map from timestamp_ms → original header stamp
+        self._stamp_map: dict[int, HeaderMsg] = {}
 
         # Initialize cv_bridge to convert between ROS and OpenCV images
         self._cv_bridge = cv_bridge.CvBridge()
@@ -95,6 +100,19 @@ class PoseLandmarkerNode(rclpy.node.Node):
             self.get_logger().error("Received empty image message")
             return
 
+        # Grab the header stamp
+        header_stamp = msg.header.stamp
+        if header_stamp.sec != 0 or header_stamp.nanosec != 0:
+            # Use camera driver’s timestamp
+            timestamp_ms = header_stamp.sec * 1000 + (header_stamp.nanosec // 1_000_000)
+        else:
+            # Fall back to now()
+            now_ns = self.get_clock().now().nanoseconds
+            timestamp_ms = int(now_ns // 1e6)
+
+        # Store for later use in the result callback
+        self._stamp_map[timestamp_ms] = msg.header
+
         try:
             # Convert the raw ROS image to an OpenCV image with rgb8 encoding
             rgb_image = self._cv_bridge.imgmsg_to_cv2(msg, desired_encoding="rgb8")
@@ -106,9 +124,6 @@ class PoseLandmarkerNode(rclpy.node.Node):
         mp_image = mediapipe.Image(
             image_format=mediapipe.ImageFormat.SRGB, data=rgb_image
         )
-
-        # TODO: Use timestamp from header if available
-        timestamp_ms = int(self.get_clock().now().nanoseconds // 1e6)
 
         # Submit the frame for asynchronous processing
         self._detector.detect_async(mp_image, timestamp_ms)
@@ -155,7 +170,16 @@ class PoseLandmarkerNode(rclpy.node.Node):
 
         # Convert the annotated image back to a ROS Image message
         ros_image_msg = self._cv_bridge.cv2_to_imgmsg(annotated_image, encoding="rgb8")
-        ros_image_msg.header.stamp = self.get_clock().now().to_msg()
+
+        # Lookup the original header
+        original_header: HeaderMsg | None = self._stamp_map.pop(timestamp_ms, None)
+        if original_header is not None:
+            ros_image_msg.header = original_header
+        else:
+            # If it wasn't stored (unlikely), reconstruct from timestamp_ms
+            secs = timestamp_ms // 1000
+            nsecs = int((timestamp_ms % 1000) * 1e6)
+            ros_image_msg.header.stamp = TimeMsg(sec=secs, nanosec=nsecs)
 
         # Publish the annotated image
         self._pub.publish(ros_image_msg)
