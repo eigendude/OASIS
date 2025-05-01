@@ -136,54 +136,99 @@ def generate_launch_description() -> LaunchDescription:
     ld.add_action(system_monitor_node)
 
     if ENABLE_VIDEO:
-        v4l2_node = Node(
+        video_container: ComposableNodeContainer = ComposableNodeContainer(
             namespace=ROS_NAMESPACE,
-            package="v4l2_camera",
-            executable="v4l2_camera_node",
-            name=f"v4l2_camera_{HOSTNAME}",
+            name=f"video_container_{HOSTNAME}",
+            package="rclcpp_components",
+            executable="component_container_mt",
             output="screen",
-            parameters=[
-                {
-                    "image_size": IMAGE_SIZE,
-                    "video_device": VIDEO_DEVICE,
-                },
-            ],
-            remappings=[
-                ("camera_info", f"{HOSTNAME}/camera_info"),
-                ("image_raw", f"{HOSTNAME}/image_raw"),
-                ("image_raw/compressed", f"{HOSTNAME}/image_raw/compressed"),
-                ("image_raw/compressedDepth", f"{HOSTNAME}/image_raw/compressedDepth"),
-                ("image_raw/theora", f"{HOSTNAME}/image_raw/theora"),
-                ("image_raw/zstd", f"{HOSTNAME}/image_raw/zstd"),
-            ],
-        )
-        ld.add_action(v4l2_node)
-
-    if ENABLE_CAMERA:
-        camera_node = Node(
-            namespace=ROS_NAMESPACE,
-            package="camera_ros",
-            executable="camera_node",
-            name=f"camera_ros_{HOSTNAME}",
-            output="screen",
-            parameters=[
-                {
-                    "format": "RGB888",
-                    "width": IMAGE_SIZE[0],
-                    "height": IMAGE_SIZE[1],
-                    "sensor_mode": "3280:2464",  # V2 camera full sensor resolution
-                },
-            ],
-            remappings=[
-                (f"camera_ros_{HOSTNAME}/camera_info", f"{HOSTNAME}/camera_info"),
-                (f"camera_ros_{HOSTNAME}/image_raw", f"{HOSTNAME}/image_raw"),
-                (
-                    f"camera_ros_{HOSTNAME}/image_raw/compressed",
-                    f"{HOSTNAME}/image_raw/compressed",
+            composable_node_descriptions=[
+                ComposableNode(
+                    namespace=ROS_NAMESPACE,
+                    package="v4l2_camera",
+                    plugin="v4l2_camera::V4L2Camera",
+                    name=f"v4l2_camera_{HOSTNAME}",
+                    parameters=[
+                        {
+                            "image_size": IMAGE_SIZE,
+                            "video_device": VIDEO_DEVICE,
+                        },
+                    ],
+                    remappings=[
+                        ("camera_info", f"{HOSTNAME}/camera_info"),
+                        ("image_raw", f"{HOSTNAME}/image_raw"),
+                    ],
+                ),
+                ComposableNode(
+                    namespace=ROS_NAMESPACE,
+                    package="image_proc",
+                    plugin="image_proc::RectifyNode",
+                    name=f"rectify_node_{HOSTNAME}",
+                    remappings=[
+                        ("image", f"{HOSTNAME}/image_raw"),
+                        ("camera_info", f"{HOSTNAME}/camera_info"),
+                        ("image_rect", f"{HOSTNAME}/image_rect"),
+                    ],
+                    parameters=[
+                        {"image_transport": "compressed"},
+                        {"interpolation": 1},  # Linear
+                    ],
                 ),
             ],
         )
-        ld.add_action(camera_node)
+        ld.add_action(video_container)
+
+    if ENABLE_CAMERA:
+        camera_container: ComposableNodeContainer = ComposableNodeContainer(
+            namespace=ROS_NAMESPACE,
+            package="rclcpp_components",
+            executable="component_container_mt",
+            name=f"camera_container_{HOSTNAME}",
+            output="screen",
+            composable_node_descriptions=[
+                ComposableNode(
+                    namespace=ROS_NAMESPACE,
+                    package="camera_ros",
+                    plugin="camera::CameraNode",
+                    name=f"camera_ros_{HOSTNAME}",
+                    parameters=[
+                        {
+                            "format": "RGB888",
+                            "width": IMAGE_SIZE[0],
+                            "height": IMAGE_SIZE[1],
+                            "sensor_mode": "3280:2464",  # V2 camera full sensor resolution
+                        },
+                    ],
+                    remappings=[
+                        (
+                            f"camera_ros_{HOSTNAME}/camera_info",
+                            f"{HOSTNAME}/camera_info",
+                        ),
+                        (f"camera_ros_{HOSTNAME}/image_raw", f"{HOSTNAME}/image_raw"),
+                        (
+                            f"camera_ros_{HOSTNAME}/image_raw/compressed",
+                            f"{HOSTNAME}/image_raw/compressed",
+                        ),
+                    ],
+                ),
+                ComposableNode(
+                    namespace=ROS_NAMESPACE,
+                    package="image_proc",
+                    plugin="image_proc::RectifyNode",
+                    name=f"rectify_node_{HOSTNAME}",
+                    remappings=[
+                        ("image", f"{HOSTNAME}/image_raw"),
+                        ("camera_info", f"{HOSTNAME}/camera_info"),
+                        ("image_rect", f"{HOSTNAME}/image_rect"),
+                    ],
+                    parameters=[
+                        {"image_transport": "compressed"},
+                        {"interpolation": 1},  # Linear
+                    ],
+                ),
+            ],
+        )
+        ld.add_action(camera_container)
 
     if ENABLE_KINECT_V2:
         # TODO: For now use a separate node for the main Kinect V2 bridge.
