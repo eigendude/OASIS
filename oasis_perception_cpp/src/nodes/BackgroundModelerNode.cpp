@@ -25,7 +25,7 @@ namespace OASIS
 constexpr const char* NODE_NAME = "background_modeler";
 
 // Subscribed topics
-constexpr const char* IMAGE_TOPIC = "image_raw";
+constexpr const char* IMAGE_TOPIC = "image";
 
 // Published topics
 constexpr const char* BACKGROUND_TOPIC = "background";

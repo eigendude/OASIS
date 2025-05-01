@@ -29,7 +29,7 @@ from std_msgs.msg import Header as HeaderMsg
 NODE_NAME = "pose_landmarker"
 
 # Subscribers
-IMAGE_SUB_TOPIC = "image_raw"
+IMAGE_SUB_TOPIC = "image"
 
 # Publishers
 IMAGE_PUB_TOPIC = "pose_landmarks"

@@ -78,8 +78,7 @@ def generate_launch_description() -> LaunchDescription:
             name=f"background_modeler_{HOSTNAME}",
             output="screen",
             remappings=[
-                ("image_raw", f"{HOSTNAME}/image_raw"),
-                ("image_raw/compressed", f"{HOSTNAME}/image_raw/compressed"),
+                ("image", f"{HOSTNAME}/image_rect"),
                 ("background", f"{HOSTNAME}/background"),
             ],
         )
@@ -94,8 +93,7 @@ def generate_launch_description() -> LaunchDescription:
             name=f"background_modeler_{CAMERA_NODE}",
             output="screen",
             remappings=[
-                ("image_raw", f"{CAMERA_NODE}/sd/image_color"),
-                ("image_raw/compressed", f"{CAMERA_NODE}/sd/image_color/compressed"),
+                ("image", f"{CAMERA_NODE}/sd/image_color"),
                 ("background", f"{CAMERA_NODE}/background"),
             ],
         )
@@ -109,7 +107,7 @@ def generate_launch_description() -> LaunchDescription:
             name=f"pose_landmarker_{HOSTNAME}",
             output="screen",
             remappings=[
-                ("image_raw", f"{HOSTNAME}/image_raw"),
+                ("image", f"{HOSTNAME}/image_rect"),
                 ("pose_landmarks", f"{HOSTNAME}/pose_landmarks"),
             ],
         )
@@ -120,14 +118,12 @@ def generate_launch_description() -> LaunchDescription:
             # Use different remappings if host is "kinect2"
             if host == "kinect2":
                 remappings = [
-                    ("image_raw", f"{host}/sd/image_color"),
-                    ("image_raw/compressed", f"{host}/sd/image_color/compressed"),
+                    ("image", f"{host}/sd/image_color"),
                     ("background", f"{host}/background"),
                 ]
             else:
                 remappings = [
-                    ("image_raw", f"{host}/image_raw"),
-                    ("image_raw/compressed", f"{host}/image_raw/compressed"),
+                    ("image", f"{host}/image_rect"),
                     ("background", f"{host}/background"),
                 ]
 
@@ -146,12 +142,12 @@ def generate_launch_description() -> LaunchDescription:
             # Use different remappings if host is "kinect2"
             if host == "kinect2":
                 remappings = [
-                    ("image_raw", f"{host}/sd/image_color"),
+                    ("image", f"{host}/sd/image_color"),
                     ("pose_landmarks", f"{host}/pose_landmarks"),
                 ]
             else:
                 remappings = [
-                    ("image_raw", f"{host}/image_raw"),
+                    ("image", f"{host}/image_rect"),
                     ("pose_landmarks", f"{host}/pose_landmarks"),
                 ]
 
