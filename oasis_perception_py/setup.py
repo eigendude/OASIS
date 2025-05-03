@@ -55,7 +55,13 @@ setuptools.setup(
             ["resource/" + PACKAGE_NAME],
         ),
         # Launch files
-        (os.path.join("share", PACKAGE_NAME), ["launch/perception_launch.py"]),
+        (
+            os.path.join("share", PACKAGE_NAME),
+            [
+                "launch/calibration_launch.py",
+                "launch/perception_launch.py",
+            ],
+        ),
         # Systemd services
         (
             os.path.join("share", PACKAGE_NAME, "systemd"),
@@ -79,6 +85,7 @@ setuptools.setup(
     ],
     entry_points={
         "console_scripts": [
+            "camera_calibrator = oasis_perception.cli.camera_calibrator_cli:main",
             "pose_landmarker = oasis_perception.cli.pose_landmarker_cli:main",
         ],
     },

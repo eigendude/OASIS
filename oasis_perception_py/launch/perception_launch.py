@@ -46,6 +46,7 @@ ENABLE_POSE_LANDMARKER = False
 
 PERCEPTION_SERVER_BACKGROUND = []
 PERCEPTION_SERVER_POSE_LANDMARKS = []
+PERCEPTION_SERVER_CALIBRATION = []
 
 # TODO: Hardware configuration
 # if HOSTNAME == "asus":
@@ -60,6 +61,7 @@ PERCEPTION_SERVER_POSE_LANDMARKS = []
 if HOSTNAME == "cinder":
     PERCEPTION_SERVER_BACKGROUND = ["bar", "door", "kinect2", "kitchen", "station"]
     PERCEPTION_SERVER_POSE_LANDMARKS = ["bar", "door", "kinect2", "kitchen", "station"]
+    PERCEPTION_SERVER_CALIBRATION = ["bar", "door", "kinect2", "kitchen", "station"]
 
 
 print(f"Launching on {HOSTNAME}")
@@ -160,6 +162,32 @@ def generate_launch_description() -> LaunchDescription:
                 name=f"pose_landmarker_{host}",
                 output="screen",
                 remappings=remappings,
+            )
+            ld.add_action(node)
+
+    if PERCEPTION_SERVER_CALIBRATION:
+        for host in PERCEPTION_SERVER_CALIBRATION:
+            # TODO: Hardware configuration
+            if host in ["bar", "kitchen"]:
+                camera_node = f"v4l2_camera_{host}"
+            elif host in ["door", "station"]:
+                camera_node = f"camera_ros_{host}"
+            elif host in ["kinect2"]:
+                # TODO
+                continue
+            else:
+                continue
+            node = Node(
+                namespace=ROS_NAMESPACE,
+                package=PYTHON_PACKAGE_NAME,
+                executable="camera_calibrator",
+                name=f"camera_calibrator_{host}",
+                output="screen",
+                remappings=[
+                    ("calibration", f"{host}/calibration"),
+                    ("camera/set_camera_info", f"{camera_node}/set_camera_info"),
+                    ("image", f"{host}/image_raw"),
+                ],
             )
             ld.add_action(node)
 
