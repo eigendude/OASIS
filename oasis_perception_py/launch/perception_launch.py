@@ -61,7 +61,7 @@ PERCEPTION_SERVER_CALIBRATION = []
 if HOSTNAME == "cinder":
     PERCEPTION_SERVER_BACKGROUND = ["bar", "door", "kinect2", "kitchen", "station"]
     PERCEPTION_SERVER_POSE_LANDMARKS = ["bar", "door", "kinect2", "kitchen", "station"]
-    PERCEPTION_SERVER_CALIBRATION = ["bar", "door", "kinect2", "kitchen", "station"]
+    # PERCEPTION_SERVER_CALIBRATION = ["bar", "door", "kinect2", "kitchen", "station"]
 
 
 print(f"Launching on {HOSTNAME}")
