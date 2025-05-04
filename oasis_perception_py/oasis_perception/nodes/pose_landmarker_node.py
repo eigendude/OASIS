@@ -172,7 +172,10 @@ class PoseLandmarkerNode(rclpy.node.Node):
             BoundingBoxSmoother() for _ in range(NUM_POSES)
         ]
 
-        # Map from timestamp_ms → original header stamp
+        # Last timestamp passed to MediaPipe. Must be strictly increasing.
+        self._last_timestamp_ms: int = 0
+
+        # Map from timestamp_ms -> original header stamp
         self._stamp_map: dict[int, HeaderMsg] = {}
 
         # Initialize cv_bridge to convert between ROS and OpenCV images
@@ -243,6 +246,14 @@ class PoseLandmarkerNode(rclpy.node.Node):
             # Fall back to now()
             now_ns = self.get_clock().now().nanoseconds
             timestamp_ms = int(now_ns // 1e6)
+
+        # Enforce strictly monotonic increase
+        if timestamp_ms <= self._last_timestamp_ms:
+            self.get_logger().error(
+                f"Timestamp {timestamp_ms} is not strictly increasing from last {self._last_timestamp_ms}"
+            )
+            return
+        self._last_timestamp_ms = timestamp_ms
 
         # Store for later use in the result callback
         self._stamp_map[timestamp_ms] = msg.header
