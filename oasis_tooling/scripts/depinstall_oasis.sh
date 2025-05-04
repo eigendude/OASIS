@@ -100,7 +100,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
 
   # Basic UPS config (CyberPower via USB)
   if ! sudo grep -q "^\#[ups\]" "$UPS_CONF" 2>/dev/null; then
-    cat <<EOF | sudo tee "$UPS_CONF" > /dev/null
+    cat <<EOF | sudo tee -a "$UPS_CONF" > /dev/null
 #[ups]
 #  driver = usbhid-ups
 #  port = auto
@@ -115,7 +115,7 @@ EOF
 
   # Create local NUT user
   if ! sudo grep -q "^\[admin\]" "$UPSD_USERS" 2>/dev/null; then
-    cat <<EOF | sudo tee "$UPSD_USERS" > /dev/null
+    cat <<EOF | sudo tee -a "$UPSD_USERS" > /dev/null
 [admin]
   password = adminpass
   actions = SET
