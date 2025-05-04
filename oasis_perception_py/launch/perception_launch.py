@@ -107,6 +107,7 @@ def generate_launch_description() -> LaunchDescription:
             name=f"pose_landmarker_{HOSTNAME}",
             output="screen",
             remappings=[
+                ("camera_scene", f"{HOSTNAME}/camera_scene"),
                 ("image", f"{HOSTNAME}/image_rect"),
                 ("pose_landmarks", f"{HOSTNAME}/pose_landmarks"),
             ],
@@ -142,11 +143,13 @@ def generate_launch_description() -> LaunchDescription:
             # Use different remappings if host is "kinect2"
             if host == "kinect2":
                 remappings = [
+                    ("camera_scene", f"{host}/camera_scene"),
                     ("image", f"{host}/sd/image_color"),
                     ("pose_landmarks", f"{host}/pose_landmarks"),
                 ]
             else:
                 remappings = [
+                    ("camera_scene", f"{host}/camera_scene"),
                     ("image", f"{host}/image_rect"),
                     ("pose_landmarks", f"{host}/pose_landmarks"),
                 ]
