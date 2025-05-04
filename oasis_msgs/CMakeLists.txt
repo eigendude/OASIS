@@ -35,6 +35,8 @@ rosidl_generate_interfaces(
     msg/AnalogReading.msg
     msg/AnalogStick.msg
     msg/AVRConstants.msg
+    msg/BoundingBox.msg
+    msg/CameraScene.msg
     msg/ConductorState.msg
     msg/CPUFanSpeed.msg
     msg/DigitalButton.msg
