@@ -24,9 +24,11 @@ from oasis_control.lighting.lighting_manager import LightingManager
 ################################################################################
 
 
+# ROS namespace
 ROS_NAMESPACE = "oasis"
 
-NODE_NAME = "lighting_manager"
+# Default node name
+NODE_NAME = "home_manager"
 
 
 ################################################################################
@@ -34,7 +36,7 @@ NODE_NAME = "lighting_manager"
 ################################################################################
 
 
-class LightingManagerNode(rclpy.node.Node):
+class HomeManagerNode(rclpy.node.Node):
     def __init__(self) -> None:
         """
         Initialize resources.
@@ -44,8 +46,10 @@ class LightingManagerNode(rclpy.node.Node):
         # Enable debug logging
         self.get_logger().set_level(LoggingSeverity.DEBUG)
 
+        self.get_logger().info("Home manager initializing...")
+
         # Subsystems
         self._display_manager: DisplayManager = DisplayManager(self)
         self._lighting_manager: LightingManager = LightingManager(self)
 
-        self.get_logger().info("Lighting manager initialized")
+        self.get_logger().info("Home manager initialized")

@@ -10,7 +10,7 @@
 
 import rclpy
 
-from oasis_control.nodes.lighting_manager_node import LightingManagerNode
+from oasis_control.nodes.home_manager_node import HomeManagerNode
 
 
 ################################################################################
@@ -21,7 +21,7 @@ from oasis_control.nodes.lighting_manager_node import LightingManagerNode
 def main(args=None) -> None:
     rclpy.init(args=args)
 
-    node = LightingManagerNode()
+    node = HomeManagerNode()
     rclpy.spin(node)
 
     # Destroy the node explicitly. Problems can occur when the garbage

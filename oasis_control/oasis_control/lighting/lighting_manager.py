@@ -85,11 +85,6 @@ class LightingManager:
         # Record when we started the rainbow cycle
         self._start_time: datetime = datetime.now()
 
-        # Publisher for setting RGB status
-        self._rgb_pub = self._node.create_publisher(
-            msg_type=RGBMsg, topic=RGB_TOPIC, qos_profile=10
-        )
-
         # Service clients
         self._set_rgb_client: rclpy.client.Client = self._node.create_client(
             srv_type=SetRGBSvc,

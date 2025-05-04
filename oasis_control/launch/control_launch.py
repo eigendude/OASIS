@@ -54,12 +54,12 @@ def generate_launch_description() -> LaunchDescription:
     ld = LaunchDescription()
 
     if HOSTNAME == "homeassistant":
-        # Lighting controller node
-        lighting_node = Node(
+        # Home controller node
+        home_node = Node(
             namespace=ROS_NAMESPACE,
             package=PACKAGE_NAME,
-            executable="lighting_manager",
-            name="lighting_manager",
+            executable="home_manager",
+            name="home_manager",
             output="screen",
             remappings=[
                 ("plug", f"{HOSTNAME}/plug"),
@@ -71,7 +71,7 @@ def generate_launch_description() -> LaunchDescription:
                 ("set_rgb", f"{HOSTNAME}/set_rgb"),
             ],
         )
-        ld.add_action(lighting_node)
+        ld.add_action(home_node)
 
     # Microcontroller nodes
     if HOSTNAME == "station":
