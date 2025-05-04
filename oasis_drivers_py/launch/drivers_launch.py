@@ -77,6 +77,9 @@ elif HOSTNAME == "nuc":  # Hallway HUD
 elif HOSTNAME == "station":  # LEGO Train Station
     ENABLE_CAMERA = True
 
+# The base name for the Kinect V2 bridge
+KINECT_V2_BASE_NAME: str = "hallway"
+
 
 print(f"Launching on {HOSTNAME}")
 
@@ -240,6 +243,7 @@ def generate_launch_description() -> LaunchDescription:
             name=f"kinect2_bridge_{HOSTNAME}",
             output="screen",
             parameters=[
+                {"base_name": KINECT_V2_BASE_NAME},
                 {"reg_method": "opencl"},
             ],
         )
@@ -259,9 +263,21 @@ def generate_launch_description() -> LaunchDescription:
                 #     name=f"kinect2_bridge_{HOSTNAME}",
                 # ),
                 ComposableNode(
+                    namespace=ROS_NAMESPACE,
                     package="kinect2_bridge",
                     plugin="kinect2_bridge::Kinect2DownscalerComponent",
                     name=f"kinect2_downscaler_{HOSTNAME}",
+                    # TODO: Modify downscaler to not hardcode the base name
+                    remappings=[
+                        (
+                            "kinect2/qhd/image_color",
+                            f"{KINECT_V2_BASE_NAME}/qhd/image_color",
+                        ),
+                        (
+                            "kinect2/sd/image_color",
+                            f"{KINECT_V2_BASE_NAME}/sd/image_color",
+                        ),
+                    ],
                 ),
             ],
         )

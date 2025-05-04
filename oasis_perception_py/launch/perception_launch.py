@@ -59,9 +59,12 @@ PERCEPTION_SERVER_CALIBRATION = []
 #    ENABLE_CAMERA_BACKGROUND = True
 
 if HOSTNAME == "cinder":
-    PERCEPTION_SERVER_BACKGROUND = ["bar", "door", "kinect2", "kitchen", "station"]
-    PERCEPTION_SERVER_POSE_LANDMARKS = ["bar", "door", "kinect2", "kitchen", "station"]
-    # PERCEPTION_SERVER_CALIBRATION = ["bar", "door", "kinect2", "kitchen", "station"]
+    PERCEPTION_SERVER_BACKGROUND = ["bar", "door", "hallway", "kitchen", "station"]
+    PERCEPTION_SERVER_POSE_LANDMARKS = ["bar", "door", "hallway", "kitchen", "station"]
+    # PERCEPTION_SERVER_CALIBRATION = ["bar", "door", "hallway", "kitchen", "station"]
+
+# The base name for the Kinect V2 bridge
+KINECT_V2_BASE_NAME: str = "hallway"
 
 
 print(f"Launching on {HOSTNAME}")
@@ -85,7 +88,7 @@ def generate_launch_description() -> LaunchDescription:
         ld.add_action(background_modeler_node)
 
     if ENABLE_KINECT_V2_BACKGROUND:
-        CAMERA_NODE = "kinect2"
+        CAMERA_NODE = KINECT_V2_BASE_NAME
         background_modeler_node = Node(
             namespace=ROS_NAMESPACE,
             package=CPP_PACKAGE_NAME,
@@ -116,17 +119,18 @@ def generate_launch_description() -> LaunchDescription:
 
     if PERCEPTION_SERVER_BACKGROUND:
         for host in PERCEPTION_SERVER_BACKGROUND:
-            # Use different remappings if host is "kinect2"
-            if host == "kinect2":
-                remappings = [
-                    ("image", f"{host}/sd/image_color"),
-                    ("background", f"{host}/background"),
-                ]
-            else:
-                remappings = [
-                    ("image", f"{host}/image_rect"),
-                    ("background", f"{host}/background"),
-                ]
+            remappings = [
+                (
+                    "image",
+                    (
+                        # Use different remappings for Kinect V2
+                        f"{host}/sd/image_color"
+                        if host == KINECT_V2_BASE_NAME
+                        else f"{host}/image_rect"
+                    ),
+                ),
+                ("background", f"{host}/background"),
+            ]
 
             node = Node(
                 namespace=ROS_NAMESPACE,
@@ -140,19 +144,20 @@ def generate_launch_description() -> LaunchDescription:
 
     if PERCEPTION_SERVER_POSE_LANDMARKS:
         for host in PERCEPTION_SERVER_POSE_LANDMARKS:
-            # Use different remappings if host is "kinect2"
-            if host == "kinect2":
-                remappings = [
-                    ("camera_scene", f"{host}/camera_scene"),
-                    ("image", f"{host}/sd/image_color"),
-                    ("pose_landmarks", f"{host}/pose_landmarks"),
-                ]
-            else:
-                remappings = [
-                    ("camera_scene", f"{host}/camera_scene"),
-                    ("image", f"{host}/image_rect"),
-                    ("pose_landmarks", f"{host}/pose_landmarks"),
-                ]
+            # Use different remappings for Kinect V2
+            remappings = [
+                ("camera_scene", f"{host}/camera_scene"),
+                (
+                    "image",
+                    (
+                        # Use different remappings for Kinect V2
+                        f"{host}/sd/image_color"
+                        if host == KINECT_V2_BASE_NAME
+                        else f"{host}/image_rect"
+                    ),
+                ),
+                ("pose_landmarks", f"{host}/pose_landmarks"),
+            ]
 
             node = Node(
                 namespace=ROS_NAMESPACE,
@@ -171,7 +176,7 @@ def generate_launch_description() -> LaunchDescription:
                 camera_node = f"v4l2_camera_{host}"
             elif host in ["door", "station"]:
                 camera_node = f"camera_ros_{host}"
-            elif host in ["kinect2"]:
+            elif host in [KINECT_V2_BASE_NAME]:
                 # TODO
                 continue
             else:
