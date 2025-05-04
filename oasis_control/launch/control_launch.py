@@ -62,6 +62,8 @@ def generate_launch_description() -> LaunchDescription:
             name="home_manager",
             output="screen",
             remappings=[
+                # TODO: Hardware configuration
+                ("camera_scene_kitchen", "kitchen/camera_scene"),
                 ("plug", f"{HOSTNAME}/plug"),
                 ("rgb", f"{HOSTNAME}/rgb"),
                 *[
