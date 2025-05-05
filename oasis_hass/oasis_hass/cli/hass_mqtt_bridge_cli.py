@@ -10,7 +10,7 @@
 
 import rclpy
 
-from oasis_hass.nodes.hass_bridge_node import HassBridgeNode
+from oasis_hass.nodes.hass_mqtt_bridge_node import HassMqttBridgeNode
 
 
 ################################################################################
@@ -21,7 +21,7 @@ from oasis_hass.nodes.hass_bridge_node import HassBridgeNode
 def main(args=None) -> None:
     rclpy.init(args=args)
 
-    node = HassBridgeNode()
+    node = HassMqttBridgeNode()
     rclpy.spin(node)
 
     # Destroy the node explicitly. Problems can occur when the garbage

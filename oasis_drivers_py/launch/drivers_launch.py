@@ -371,11 +371,11 @@ def generate_launch_description() -> LaunchDescription:
         ld.add_action(lab_bridge_node)
 
     if ENABLE_HOME_ASSISTANT:
-        hass_bridge_node = Node(
+        hass_mqtt_bridge_node = Node(
             namespace=ROS_NAMESPACE,
             package=HASS_PACKAGE_NAME,
-            executable="hass_bridge",
-            name=f"hass_bridge_{HOSTNAME}",
+            executable="hass_mqtt_bridge",
+            name=f"hass_mqtt_bridge_{HOSTNAME}",
             output="screen",
             remappings=[
                 ("plug", f"{HOSTNAME}/plug"),
@@ -384,7 +384,7 @@ def generate_launch_description() -> LaunchDescription:
                 ("set_rgb", f"{HOSTNAME}/set_rgb"),
             ],
         )
-        ld.add_action(hass_bridge_node)
+        ld.add_action(hass_mqtt_bridge_node)
 
         # Start the generic MQTT -> ROS bridge
         params_file: str = os.path.join(

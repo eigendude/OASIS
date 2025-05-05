@@ -42,7 +42,7 @@ from oasis_msgs.srv import SetRGB as SetRGBSrv
 # ROS parameters
 ################################################################################
 
-NODE_NAME: str = "hass_bridge"
+NODE_NAME: str = "hass_mqtt_bridge"
 
 PLUG_TOPIC: str = "plug"
 RGB_TOPIC: str = "rgb"
@@ -68,7 +68,7 @@ CMD_PREFIX: str = "homeassistant"
 ################################################################################
 
 
-class HassBridgeNode(rclpy.node.Node):
+class HassMqttBridgeNode(rclpy.node.Node):
     def __init__(self) -> None:
         """
         Initialize resources.
