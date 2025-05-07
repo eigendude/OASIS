@@ -68,6 +68,13 @@ setuptools.setup(
                 "config/mqtt_client/mqtt_client_params.yaml",
             ],
         ),
+        # Smarthome configuration
+        (
+            os.path.join("share", PACKAGE_NAME, "config"),
+            [
+                "config/smarthome.yaml",
+            ],
+        ),
     ],
     install_requires=[
         "oasis_msgs",

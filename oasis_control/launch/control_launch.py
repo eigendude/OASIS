@@ -8,31 +8,41 @@
 #
 ################################################################################
 
-import socket
-
 from launch import LaunchDescription
 from launch_ros.actions import Node
 
+from oasis_hass.utils.smarthome_config import SmarthomeConfig
+
 
 ################################################################################
-# System parameters
+# Smarthome parameters
 ################################################################################
 
+
+CONFIG: SmarthomeConfig = SmarthomeConfig()
 
 # Get the hostname
-HOSTNAME = socket.gethostname()
+HOSTNAME: str = CONFIG.HOSTNAME
 
+# Host aliases
+HOST_ID: str = CONFIG.HOST_ID
 
-################################################################################
-# TODO: Hardware configuration
-################################################################################
+# Zone configuration
+ZONE_ID: str = CONFIG.ZONE_ID
 
+# Zones with a smart display that can be controlled
+SMART_DISPLAY_ZONES: list[str] = CONFIG.SMART_DISPLAY_ZONES
+
+# Zones with a camera feed
+CAMERA_ZONES: list[str] = CONFIG.CAMERA_ZONES
+
+# The host and zone IDs used for Home Assistant
+HOME_ASSISTANT_ID: str = CONFIG.HOME_ASSISTANT_ID
 
 # Machine that broadcasts peripheral input
-INPUT_PROVIDER = "nuc"
+INPUT_PROVIDER: str = "nuc"  # TODO
 
-# Machines with a smart display that can be controlled
-SMART_DISPLAYS = ["bar", "door", "kitchen", "nuc"]
+print(f"Launching on {HOSTNAME} in zone {ZONE_ID}")
 
 
 ################################################################################
@@ -40,9 +50,44 @@ SMART_DISPLAYS = ["bar", "door", "kitchen", "nuc"]
 ################################################################################
 
 
-ROS_NAMESPACE = "oasis"
+ROS_NAMESPACE: str = "oasis"
 
-PACKAGE_NAME = "oasis_control"
+CONTROL_PACKAGE_NAME: str = "oasis_control"
+
+
+################################################################################
+# Node definitions
+################################################################################
+
+
+#
+# Home manager
+#
+
+
+def add_home_manager(ld: LaunchDescription) -> None:
+    home_manager_node: Node = Node(
+        namespace=ROS_NAMESPACE,
+        package=CONTROL_PACKAGE_NAME,
+        executable="home_manager",
+        name="home_manager",
+        output="screen",
+        remappings=[
+            *[
+                (f"camera_scene_{zone_id}", f"{zone_id}/camera_scene")
+                for zone_id in CAMERA_ZONES
+            ],
+            ("plug", f"{HOME_ASSISTANT_ID}/plug"),
+            ("rgb", f"{HOME_ASSISTANT_ID}/rgb"),
+            *[
+                (f"set_display_{zone_id}", f"{zone_id}/set_display")
+                for zone_id in SMART_DISPLAY_ZONES
+            ],
+            ("set_plug", f"{HOME_ASSISTANT_ID}/set_plug"),
+            ("set_rgb", f"{HOME_ASSISTANT_ID}/set_rgb"),
+        ],
+    )
+    ld.add_action(home_manager_node)
 
 
 ################################################################################
@@ -51,94 +96,75 @@ PACKAGE_NAME = "oasis_control"
 
 
 def generate_launch_description() -> LaunchDescription:
-    ld = LaunchDescription()
+    ld: LaunchDescription = LaunchDescription()
 
-    if HOSTNAME == "homeassistant":
-        # Home controller node
-        home_node = Node(
-            namespace=ROS_NAMESPACE,
-            package=PACKAGE_NAME,
-            executable="home_manager",
-            name="home_manager",
-            output="screen",
-            remappings=[
-                # TODO: Hardware configuration
-                ("camera_scene_kitchen", "kitchen/camera_scene"),
-                ("plug", f"{HOSTNAME}/plug"),
-                ("rgb", f"{HOSTNAME}/rgb"),
-                *[
-                    (f"set_display_{display_host}", f"{display_host}/set_display")
-                    for display_host in SMART_DISPLAYS
-                ],
-                ("set_rgb", f"{HOSTNAME}/set_rgb"),
-            ],
-        )
-        ld.add_action(home_node)
+    if HOST_ID == HOME_ASSISTANT_ID:
+        add_home_manager(ld)
 
     # Microcontroller nodes
-    if HOSTNAME == "station":
-        MCU_NODE = "conductor"
-        conductor_node = Node(
+    if HOST_ID == "station":
+        mcu_node = "conductor"
+        conductor_node: Node = Node(
             namespace=ROS_NAMESPACE,
-            package=PACKAGE_NAME,
-            executable=f"{MCU_NODE}_manager_telemetrix",
-            name=f"{MCU_NODE}_manager_telemetrix_{HOSTNAME}",
+            package=CONTROL_PACKAGE_NAME,
+            executable=f"{mcu_node}_manager_telemetrix",
+            name=f"{mcu_node}_manager_telemetrix_{HOST_ID}",
             output="screen",
             remappings=[
-                (f"{MCU_NODE}_state", f"{HOSTNAME}/{MCU_NODE}_state"),
-                ("analog_reading", f"{MCU_NODE}/analog_reading"),
+                (f"{mcu_node}_state", f"{HOST_ID}/{mcu_node}_state"),
+                ("analog_reading", f"{mcu_node}/analog_reading"),
                 ("capture_input", f"{INPUT_PROVIDER}/capture_input"),
-                ("cpu_fan_speed", f"{MCU_NODE}/cpu_fan_speed"),
-                ("cpu_fan_write", f"{MCU_NODE}/cpu_fan_write"),
-                ("digital_reading", f"{MCU_NODE}/digital_reading"),
-                ("digital_write", f"{MCU_NODE}/digital_write"),
+                ("cpu_fan_speed", f"{mcu_node}/cpu_fan_speed"),
+                ("cpu_fan_write", f"{mcu_node}/cpu_fan_write"),
+                ("digital_reading", f"{mcu_node}/digital_reading"),
+                ("digital_write", f"{mcu_node}/digital_write"),
                 ("input", f"{INPUT_PROVIDER}/input"),
-                ("mcu_memory", f"{MCU_NODE}/mcu_memory"),
-                ("mcu_string", f"{MCU_NODE}/mcu_string"),
+                ("mcu_memory", f"{mcu_node}/mcu_memory"),
+                ("mcu_string", f"{mcu_node}/mcu_string"),
                 ("peripherals", f"{INPUT_PROVIDER}/peripherals"),
-                ("power_control", f"{HOSTNAME}/power_control"),
-                ("pwm_write", f"{MCU_NODE}/pwm_write"),
-                ("report_mcu_memory", f"{MCU_NODE}/report_mcu_memory"),
-                ("set_analog_mode", f"{MCU_NODE}/set_analog_mode"),
+                ("power_control", f"{HOST_ID}/power_control"),
+                ("pwm_write", f"{mcu_node}/pwm_write"),
+                ("report_mcu_memory", f"{mcu_node}/report_mcu_memory"),
+                ("set_analog_mode", f"{mcu_node}/set_analog_mode"),
                 (
                     "set_cpu_fan_sampling_interval",
-                    f"{MCU_NODE}/set_cpu_fan_sampling_interval",
+                    f"{mcu_node}/set_cpu_fan_sampling_interval",
                 ),
-                ("set_digital_mode", f"{MCU_NODE}/set_digital_mode"),
-                ("set_sampling_interval", f"{MCU_NODE}/set_sampling_interval"),
+                ("set_digital_mode", f"{mcu_node}/set_digital_mode"),
+                ("set_sampling_interval", f"{mcu_node}/set_sampling_interval"),
             ],
         )
         ld.add_action(conductor_node)
-    elif HOSTNAME == "jetson":
-        MCU_NODE = "engine"
-        engine_node = Node(
+    elif HOST_ID == "jetson":
+        mcu_node = "engine"
+        engine_node: Node = Node(
             namespace=ROS_NAMESPACE,
-            package=PACKAGE_NAME,
-            executable=f"{MCU_NODE}_manager",
-            name=f"{MCU_NODE}_manager_{HOSTNAME}",
+            package=CONTROL_PACKAGE_NAME,
+            executable=f"{mcu_node}_manager",
+            name=f"{mcu_node}_manager_{HOST_ID}",
             output="screen",
             remappings=[
-                (f"{MCU_NODE}_state", f"{HOSTNAME}/{MCU_NODE}_state"),
-                ("analog_reading", f"{MCU_NODE}/analog_reading"),
-                ("mcu_memory", f"{MCU_NODE}/mcu_memory"),
-                ("mcu_string", f"{MCU_NODE}/mcu_string"),
-                ("report_mcu_memory", f"{MCU_NODE}/report_mcu_memory"),
-                ("set_analog_mode", f"{MCU_NODE}/set_analog_mode"),
-                ("set_sampling_interval", f"{MCU_NODE}/set_sampling_interval"),
+                (f"{mcu_node}_state", f"{HOST_ID}/{mcu_node}_state"),
+                ("analog_reading", f"{mcu_node}/analog_reading"),
+                ("mcu_memory", f"{mcu_node}/mcu_memory"),
+                ("mcu_string", f"{mcu_node}/mcu_string"),
+                ("report_mcu_memory", f"{mcu_node}/report_mcu_memory"),
+                ("set_analog_mode", f"{mcu_node}/set_analog_mode"),
+                ("set_sampling_interval", f"{mcu_node}/set_sampling_interval"),
             ],
         )
         ld.add_action(engine_node)
-    elif HOSTNAME == "substation":
-        MCU_NODE = "lab"
-        CPU_FAN_HOST = "conductor"
-        lab_node = Node(
+    elif HOST_ID == "substation":
+        mcu_node = "lab"
+        CPU_FAN_HOST: str = "conductor"
+        lab_node: Node = Node(
             namespace=ROS_NAMESPACE,
-            package=PACKAGE_NAME,
-            executable=f"{MCU_NODE}_manager",
-            name=f"{MCU_NODE}_manager_{HOSTNAME}",
+            package=CONTROL_PACKAGE_NAME,
+            executable=f"{mcu_node}_manager",
+            name=f"{mcu_node}_manager_{HOST_ID}",
             output="screen",
             remappings=[
-                (f"{MCU_NODE}_state", f"{HOSTNAME}/{MCU_NODE}_state"),
+                (f"{mcu_node}_state", f"{HOST_ID}/{mcu_node}_state"),
                 (f"cpu_fan_speed_{CPU_FAN_HOST}", f"{CPU_FAN_HOST}/cpu_fan_speed"),
                 (f"cpu_fan_write_{CPU_FAN_HOST}", f"{CPU_FAN_HOST}/cpu_fan_write"),
                 (f"digital_write_{CPU_FAN_HOST}", f"{CPU_FAN_HOST}/digital_write"),
@@ -150,17 +176,17 @@ def generate_launch_description() -> LaunchDescription:
                     f"set_digital_mode_{CPU_FAN_HOST}",
                     f"{CPU_FAN_HOST}/set_digital_mode",
                 ),
-                ("air_quality", f"{MCU_NODE}/air_quality"),
-                ("analog_reading", f"{MCU_NODE}/analog_reading"),
-                ("digital_write", f"{MCU_NODE}/digital_write"),
-                ("i2c_begin", f"{MCU_NODE}/i2c_begin"),
-                ("i2c_end", f"{MCU_NODE}/i2c_end"),
-                ("i2c_imu", f"{MCU_NODE}/i2c_imu"),
-                ("mcu_memory", f"{MCU_NODE}/mcu_memory"),
-                ("report_mcu_memory", f"{MCU_NODE}/report_mcu_memory"),
-                ("set_analog_mode", f"{MCU_NODE}/set_analog_mode"),
-                ("set_digital_mode", f"{MCU_NODE}/set_digital_mode"),
-                ("set_sampling_interval", f"{MCU_NODE}/set_sampling_interval"),
+                ("air_quality", f"{mcu_node}/air_quality"),
+                ("analog_reading", f"{mcu_node}/analog_reading"),
+                ("digital_write", f"{mcu_node}/digital_write"),
+                ("i2c_begin", f"{mcu_node}/i2c_begin"),
+                ("i2c_end", f"{mcu_node}/i2c_end"),
+                ("i2c_imu", f"{mcu_node}/i2c_imu"),
+                ("mcu_memory", f"{mcu_node}/mcu_memory"),
+                ("report_mcu_memory", f"{mcu_node}/report_mcu_memory"),
+                ("set_analog_mode", f"{mcu_node}/set_analog_mode"),
+                ("set_digital_mode", f"{mcu_node}/set_digital_mode"),
+                ("set_sampling_interval", f"{mcu_node}/set_sampling_interval"),
             ],
         )
         ld.add_action(lab_node)

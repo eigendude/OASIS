@@ -45,7 +45,7 @@ if \
   [ "${HOSTNAME}" = "cinder" ] || \
   [ "${HOSTNAME}" = "door" ] || \
   [ "${HOSTNAME}" = "kitchen" ] || \
-  [ "${HOSTNAME}" = "nuc" ] || \
+  [ "${HOSTNAME}" = "hallway" ] || \
   [ "${HOSTNAME}" = "station" ] \
 ; then
   ENABLE_PERCEPTION=1
@@ -56,10 +56,11 @@ ENABLE_VISUALIZATION=0
 if \
   [ "${HOSTNAME}" = "bar" ] || \
   [ "${HOSTNAME}" = "cinder" ] || \
+  [ "${HOSTNAME}" = "desk" ] || \
   [ "${HOSTNAME}" = "door" ] || \
+  [ "${HOSTNAME}" = "hallway" ] || \
   [ "${HOSTNAME}" = "kitchen" ] || \
   [ "${HOSTNAME}" = "megapegasus" ] || \
-  [ "${HOSTNAME}" = "nuc" ] || \
   [ "${HOSTNAME}" = "patio" ] || \
   [ "${HOSTNAME}" = "substation" ] \
 ; then

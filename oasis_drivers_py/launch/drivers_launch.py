@@ -8,22 +8,43 @@
 #
 ################################################################################
 
-import os
-import socket
-
-from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch_ros.actions import ComposableNodeContainer
 from launch_ros.actions import Node
 from launch_ros.descriptions import ComposableNode
 
+from oasis_hass.utils.smarthome_config import SmarthomeConfig
+
 
 ################################################################################
-# System parameters
+# Smarthome parameters
 ################################################################################
 
 
-HOSTNAME: str = socket.gethostname().replace("-", "_")
+CONFIG: SmarthomeConfig = SmarthomeConfig()
+
+# Get the hostname
+HOSTNAME: str = CONFIG.HOSTNAME
+
+# Host aliases
+HOST_ID: str = CONFIG.HOST_ID
+
+# Zone configuration
+ZONE_ID: str = CONFIG.ZONE_ID
+
+# The host and zone IDs used for Home Assistant
+HOME_ASSISTANT_ID: str = CONFIG.HOME_ASSISTANT_ID
+
+# The zone ID used for the Kinect V2 camera
+KINECT_V2_ZONE_ID: str = CONFIG.KINECT_V2_ZONE_ID
+
+# Zones with a smart display that can be controlled
+SMART_DISPLAY_ZONES: list[str] = CONFIG.SMART_DISPLAY_ZONES
+
+# Path to the MQTT parameters file for Home Assistant
+MQTT_PARAMS_FILE: str = CONFIG.MQTT_PARAMS_FILE
+
+print(f"Launching on {HOSTNAME} in zone {ZONE_ID}")
 
 
 ################################################################################
@@ -35,7 +56,7 @@ ROS_NAMESPACE: str = "oasis"
 
 CPP_PACKAGE_NAME: str = "oasis_drivers_cpp"
 PYTHON_PACKAGE_NAME: str = "oasis_drivers_py"
-HASS_PACKAGE_NAME: str = "oasis_hass"
+HASS_PACKAGE_NAME: str = CONFIG.HASS_PACKAGE_NAME
 
 
 ################################################################################
@@ -43,246 +64,359 @@ HASS_PACKAGE_NAME: str = "oasis_hass"
 ################################################################################
 
 
-# Hardware options
-ENABLE_CEC = False
-ENABLE_DISPLAY = False
-ENABLE_HOME_ASSISTANT = False
-ENABLE_KINECT_V2 = False
-ENABLE_VIDEO = False
-ENABLE_CAMERA = False
-
 # Video parameters
-VIDEO_DEVICE = "/dev/video0"
-IMAGE_SIZE = [640, 480]
+VIDEO_DEVICE: str = "/dev/video0"
+IMAGE_SIZE: list[int] = [640, 480]
 
 # Firmata parameters
-AVR_COM_PORT = "/dev/ttyACM0"
-
-# TODO: Hardware configuration
-if HOSTNAME == "bar":
-    ENABLE_DISPLAY = True
-    ENABLE_VIDEO = True
-elif HOSTNAME == "cinder":  # Perception server
-    ENABLE_KINECT_V2 = True
-if HOSTNAME == "door":
-    ENABLE_DISPLAY = True
-    ENABLE_CAMERA = True
-elif HOSTNAME == "homeassistant":
-    ENABLE_HOME_ASSISTANT = True
-elif HOSTNAME == "kitchen":
-    ENABLE_DISPLAY = True
-    ENABLE_VIDEO = True
-elif HOSTNAME == "nuc":  # Hallway HUD
-    ENABLE_DISPLAY = True
-elif HOSTNAME == "station":  # LEGO Train Station
-    ENABLE_CAMERA = True
-
-# The base name for the Kinect V2 bridge
-KINECT_V2_BASE_NAME: str = "hallway"
+AVR_COM_PORT: str = "/dev/ttyACM0"
 
 
-print(f"Launching on {HOSTNAME}")
+################################################################################
+# Node definitions
+################################################################################
 
 
-def generate_launch_description() -> LaunchDescription:
-    ld = LaunchDescription()
+#
+# Display server
+#
 
-    if ENABLE_CEC:
-        cec_server_node = Node(
-            namespace=ROS_NAMESPACE,
-            package=CPP_PACKAGE_NAME,
-            executable="cec_server",
-            name=f"cec_server_{HOSTNAME}",
-            output="screen",
-            remappings=[
-                ("power_control", f"{HOSTNAME}/power_control"),
-                ("power_event", f"{HOSTNAME}/power_event"),
-            ],
-        )
-        ld.add_action(cec_server_node)
 
-    if ENABLE_DISPLAY:
-        display_server_node = Node(
-            namespace=ROS_NAMESPACE,
-            package=PYTHON_PACKAGE_NAME,
-            executable="display_server",
-            name=f"display_server_{HOSTNAME}",
-            output="screen",
-            remappings=[
-                ("set_display", f"{HOSTNAME}/set_display"),
-            ],
-        )
-        ld.add_action(display_server_node)
+def add_display_server(ld: LaunchDescription, zone_id: str) -> None:
+    display_server_node: Node = Node(
+        namespace=ROS_NAMESPACE,
+        package=PYTHON_PACKAGE_NAME,
+        executable="display_server",
+        name=f"display_server_{zone_id}",
+        output="screen",
+        remappings=[
+            # Topics
+            ("set_display", f"{zone_id}/set_display"),
+        ],
+    )
+    ld.add_action(display_server_node)
 
-    serial_port_node = Node(
+
+#
+# Home Assistant nodes
+#
+
+
+def add_home_assistant(ld: LaunchDescription) -> None:
+    hass_mqtt_bridge_node: Node = Node(
+        namespace=ROS_NAMESPACE,
+        package=HASS_PACKAGE_NAME,
+        executable="hass_mqtt_bridge",
+        name="hass_mqtt_bridge",
+        output="screen",
+        remappings=[
+            # Topics
+            ("plug", f"{HOME_ASSISTANT_ID}/plug"),
+            ("rgb", f"{HOME_ASSISTANT_ID}/rgb"),
+            # Services
+            ("set_plug", f"{HOME_ASSISTANT_ID}/set_plug"),
+            ("set_rgb", f"{HOME_ASSISTANT_ID}/set_rgb"),
+        ],
+    )
+    ld.add_action(hass_mqtt_bridge_node)
+
+    # Start the generic MQTT -> ROS bridge
+    mqtt_client_node: Node = Node(
+        namespace=ROS_NAMESPACE,
+        package="mqtt_client",
+        executable="mqtt_client",
+        name="mqtt_client",
+        output="screen",
+        parameters=[MQTT_PARAMS_FILE],
+        remappings=[
+            # Topics
+            ("statestream", f"{HOME_ASSISTANT_ID}/statestream"),
+        ],
+    )
+    ld.add_action(mqtt_client_node)
+
+    # Also run the WoL server
+    wol_server_node: Node = Node(
+        namespace=ROS_NAMESPACE,
+        package=PYTHON_PACKAGE_NAME,
+        executable="wol_server",
+        name="wol_server",
+        output="screen",
+        remappings=[
+            # Services
+            ("get_mac_address", f"{HOME_ASSISTANT_ID}/get_mac_address"),
+            ("wol", f"{HOME_ASSISTANT_ID}/wol"),
+        ],
+    )
+    ld.add_action(wol_server_node)
+
+
+#
+# Kinect V2 camera
+#
+
+
+def add_kinect_v2(ld: LaunchDescription, zone_id: str) -> None:
+    # TODO: For now use a separate node for the main Kinect V2 bridge.
+    # Running as a component breaks the legacy image transport code.
+    kinect2_bridge_node: Node = Node(
+        namespace=ROS_NAMESPACE,
+        package="kinect2_bridge",
+        executable="kinect2_bridge",
+        name=f"kinect2_bridge_{zone_id}",
+        output="screen",
+        parameters=[
+            {"base_name": zone_id, "reg_method": "opencl"},
+        ],
+    )
+    ld.add_action(kinect2_bridge_node)
+
+    kinect2_container: ComposableNodeContainer = ComposableNodeContainer(
+        namespace=ROS_NAMESPACE,
+        name=f"kinect2_container_{zone_id}",
+        package="rclcpp_components",
+        executable="component_container_mt",
+        output="screen",
+        composable_node_descriptions=[
+            # TODO: Composable nodes seem to break when not using the modern image_transport API
+            # ComposableNode(
+            #     package="kinect2_bridge",
+            #     plugin="kinect2_bridge::Kinect2BridgeComponent",
+            #     name=f"kinect2_bridge_{zone_id}",
+            # ),
+            ComposableNode(
+                namespace=ROS_NAMESPACE,
+                package="kinect2_bridge",
+                plugin="kinect2_bridge::Kinect2DownscalerComponent",
+                name=f"kinect2_downscaler_{zone_id}",
+                parameters=[
+                    {
+                        "base_name": zone_id,
+                    },
+                ],
+            ),
+        ],
+    )
+    ld.add_action(kinect2_container)
+
+
+#
+# ROS2 (libcamera) camera
+#
+
+
+def add_ros2_camera(ld: LaunchDescription, zone_id: str) -> None:
+    camera_container: ComposableNodeContainer = ComposableNodeContainer(
+        namespace=ROS_NAMESPACE,
+        package="rclcpp_components",
+        executable="component_container_mt",
+        name=f"camera_container_{zone_id}",
+        output="screen",
+        composable_node_descriptions=[
+            ComposableNode(
+                namespace=ROS_NAMESPACE,
+                package="camera_ros",
+                plugin="camera::CameraNode",
+                name=f"camera_ros_{zone_id}",
+                parameters=[
+                    {
+                        "format": "RGB888",
+                        "width": IMAGE_SIZE[0],
+                        "height": IMAGE_SIZE[1],
+                        "sensor_mode": "3280:2464",  # V2 camera full sensor resolution
+                    },
+                ],
+                remappings=[
+                    # Topics
+                    (
+                        f"camera_ros_{zone_id}/camera_info",
+                        f"{zone_id}/camera_info",
+                    ),
+                    (
+                        f"camera_ros_{zone_id}/image_raw",
+                        f"{zone_id}/image_raw",
+                    ),
+                    # TODO: Need to remap compressed image topic?
+                    (
+                        f"camera_ros_{zone_id}/image_raw/compressed",
+                        f"{zone_id}/image_raw/compressed",
+                    ),
+                ],
+            ),
+            ComposableNode(
+                namespace=ROS_NAMESPACE,
+                package="image_proc",
+                plugin="image_proc::RectifyNode",
+                name=f"rectify_node_{zone_id}",
+                parameters=[
+                    {"image_transport": "compressed", "interpolation": 1},  # Linear
+                ],
+                remappings=[
+                    # Topics
+                    ("camera_info", f"{zone_id}/camera_info"),
+                    ("image_rect", f"{zone_id}/image_rect"),
+                    ("image", f"{zone_id}/image_raw"),
+                ],
+            ),
+        ],
+    )
+    ld.add_action(camera_container)
+
+
+#
+# Serial port scanner
+#
+
+
+def add_serial_port_scanner(ld: LaunchDescription, host_id: str) -> None:
+    serial_port_node: Node = Node(
         namespace=ROS_NAMESPACE,
         package=PYTHON_PACKAGE_NAME,
         executable="serial_scanner",
-        name=f"serial_scanner_{HOSTNAME}",
+        name=f"serial_scanner_{host_id}",
         output="screen",
         remappings=[
-            ("serial_ports", f"{HOSTNAME}/serial_ports"),
+            # Topics
+            ("serial_ports", f"{host_id}/serial_ports"),
         ],
     )
     ld.add_action(serial_port_node)
 
-    system_monitor_node = Node(
+
+#
+# System monitor
+#
+
+
+def add_system_monitor(ld: LaunchDescription, host_id: str) -> None:
+    system_monitor_node: Node = Node(
         namespace=ROS_NAMESPACE,
         package=PYTHON_PACKAGE_NAME,
         executable="system_monitor",
-        name=f"system_monitor_{HOSTNAME}",
+        name=f"system_monitor_{host_id}",
         output="screen",
         remappings=[
-            ("system_telemetry", f"{HOSTNAME}/system_telemetry"),
+            # Topics
+            ("system_telemetry", f"{host_id}/system_telemetry"),
         ],
     )
     ld.add_action(system_monitor_node)
 
-    if ENABLE_VIDEO:
-        video_container: ComposableNodeContainer = ComposableNodeContainer(
-            namespace=ROS_NAMESPACE,
-            name=f"video_container_{HOSTNAME}",
-            package="rclcpp_components",
-            executable="component_container_mt",
-            output="screen",
-            composable_node_descriptions=[
-                ComposableNode(
-                    namespace=ROS_NAMESPACE,
-                    package="v4l2_camera",
-                    plugin="v4l2_camera::V4L2Camera",
-                    name=f"v4l2_camera_{HOSTNAME}",
-                    parameters=[
-                        {
-                            "image_size": IMAGE_SIZE,
-                            "video_device": VIDEO_DEVICE,
-                        },
-                    ],
-                    remappings=[
-                        ("camera_info", f"{HOSTNAME}/camera_info"),
-                        ("image_raw", f"{HOSTNAME}/image_raw"),
-                    ],
-                ),
-                ComposableNode(
-                    namespace=ROS_NAMESPACE,
-                    package="image_proc",
-                    plugin="image_proc::RectifyNode",
-                    name=f"rectify_node_{HOSTNAME}",
-                    remappings=[
-                        ("image", f"{HOSTNAME}/image_raw"),
-                        ("camera_info", f"{HOSTNAME}/camera_info"),
-                        ("image_rect", f"{HOSTNAME}/image_rect"),
-                    ],
-                    parameters=[
-                        {"image_transport": "compressed"},
-                        {"interpolation": 1},  # Linear
-                    ],
-                ),
-            ],
-        )
-        ld.add_action(video_container)
 
-    if ENABLE_CAMERA:
-        camera_container: ComposableNodeContainer = ComposableNodeContainer(
-            namespace=ROS_NAMESPACE,
-            package="rclcpp_components",
-            executable="component_container_mt",
-            name=f"camera_container_{HOSTNAME}",
-            output="screen",
-            composable_node_descriptions=[
-                ComposableNode(
-                    namespace=ROS_NAMESPACE,
-                    package="camera_ros",
-                    plugin="camera::CameraNode",
-                    name=f"camera_ros_{HOSTNAME}",
-                    parameters=[
-                        {
-                            "format": "RGB888",
-                            "width": IMAGE_SIZE[0],
-                            "height": IMAGE_SIZE[1],
-                            "sensor_mode": "3280:2464",  # V2 camera full sensor resolution
-                        },
-                    ],
-                    remappings=[
-                        (
-                            f"camera_ros_{HOSTNAME}/camera_info",
-                            f"{HOSTNAME}/camera_info",
-                        ),
-                        (f"camera_ros_{HOSTNAME}/image_raw", f"{HOSTNAME}/image_raw"),
-                        (
-                            f"camera_ros_{HOSTNAME}/image_raw/compressed",
-                            f"{HOSTNAME}/image_raw/compressed",
-                        ),
-                    ],
-                ),
-                ComposableNode(
-                    namespace=ROS_NAMESPACE,
-                    package="image_proc",
-                    plugin="image_proc::RectifyNode",
-                    name=f"rectify_node_{HOSTNAME}",
-                    remappings=[
-                        ("image", f"{HOSTNAME}/image_raw"),
-                        ("camera_info", f"{HOSTNAME}/camera_info"),
-                        ("image_rect", f"{HOSTNAME}/image_rect"),
-                    ],
-                    parameters=[
-                        {"image_transport": "compressed"},
-                        {"interpolation": 1},  # Linear
-                    ],
-                ),
-            ],
-        )
-        ld.add_action(camera_container)
+#
+# UPS server
+#
 
-    if ENABLE_KINECT_V2:
-        # TODO: For now use a separate node for the main Kinect V2 bridge.
-        # Running as a component breaks the legacy image transport code.
-        kinect2_bridge_node = Node(
-            namespace=ROS_NAMESPACE,
-            package="kinect2_bridge",
-            executable="kinect2_bridge",
-            name=f"kinect2_bridge_{HOSTNAME}",
-            output="screen",
-            parameters=[
-                {"base_name": KINECT_V2_BASE_NAME},
-                {"reg_method": "opencl"},
-            ],
-        )
-        ld.add_action(kinect2_bridge_node)
 
-        kinect2_container = ComposableNodeContainer(
-            namespace=ROS_NAMESPACE,
-            name=f"kinect2_container_{HOSTNAME}",
-            package="rclcpp_components",
-            executable="component_container_mt",
-            output="screen",
-            composable_node_descriptions=[
-                # TODO: Composable nodes seem to break when not using the modern image_transport API
-                # ComposableNode(
-                #     package="kinect2_bridge",
-                #     plugin="kinect2_bridge::Kinect2BridgeComponent",
-                #     name=f"kinect2_bridge_{HOSTNAME}",
-                # ),
-                ComposableNode(
-                    namespace=ROS_NAMESPACE,
-                    package="kinect2_bridge",
-                    plugin="kinect2_bridge::Kinect2DownscalerComponent",
-                    name=f"kinect2_downscaler_{HOSTNAME}",
-                    # TODO: Modify downscaler to not hardcode the base name
-                    remappings=[
-                        (
-                            "kinect2/qhd/image_color",
-                            f"{KINECT_V2_BASE_NAME}/qhd/image_color",
-                        ),
-                        (
-                            "kinect2/sd/image_color",
-                            f"{KINECT_V2_BASE_NAME}/sd/image_color",
-                        ),
-                    ],
-                ),
-            ],
-        )
-        ld.add_action(kinect2_container)
+def add_ups_server(ld: LaunchDescription, zone_id: str) -> None:
+    ups_server_node = Node(
+        namespace=ROS_NAMESPACE,
+        package=PYTHON_PACKAGE_NAME,
+        executable="ups_server",
+        name=f"ups_server_{zone_id}",
+        output="screen",
+        remappings=[
+            # Topics
+            ("ups_status", f"{zone_id}/ups_status"),
+            # Services
+            ("ups_command", f"{zone_id}/ups_command"),
+        ],
+    )
+    ld.add_action(ups_server_node)
 
+
+#
+# V4L2 camera
+#
+
+
+def add_v4l2_camera(ld: LaunchDescription, zone_id: str) -> None:
+    video_container: ComposableNodeContainer = ComposableNodeContainer(
+        namespace=ROS_NAMESPACE,
+        name=f"video_container_{zone_id}",
+        package="rclcpp_components",
+        executable="component_container_mt",
+        output="screen",
+        composable_node_descriptions=[
+            ComposableNode(
+                namespace=ROS_NAMESPACE,
+                package="v4l2_camera",
+                plugin="v4l2_camera::V4L2Camera",
+                name=f"v4l2_camera_{zone_id}",
+                parameters=[
+                    {
+                        "image_size": IMAGE_SIZE,
+                        "video_device": VIDEO_DEVICE,
+                    },
+                ],
+                remappings=[
+                    # Topics
+                    ("camera_info", f"{zone_id}/camera_info"),
+                    ("image_raw", f"{zone_id}/image_raw"),
+                    ("image_rect", f"{zone_id}/image_rect"),
+                    # Services
+                    (
+                        f"v4l2_camera_{zone_id}/set_camera_info",
+                        f"{zone_id}/set_camera_info",
+                    ),
+                ],
+            ),
+            ComposableNode(
+                namespace=ROS_NAMESPACE,
+                package="image_proc",
+                plugin="image_proc::RectifyNode",
+                name=f"rectify_node_{zone_id}",
+                parameters=[
+                    {"image_transport": "compressed", "interpolation": 1},  # Linear
+                ],
+                remappings=[
+                    # Topics
+                    ("camera_info", f"{zone_id}/camera_info"),
+                    ("image_rect", f"{zone_id}/image_rect"),
+                    ("image", f"{zone_id}/image_raw"),
+                ],
+            ),
+        ],
+    )
+    ld.add_action(video_container)
+
+
+################################################################################
+# Launch description
+################################################################################
+
+
+def generate_launch_description() -> LaunchDescription:
+    ld: LaunchDescription = LaunchDescription()
+
+    add_serial_port_scanner(ld, HOST_ID)
+    add_system_monitor(ld, HOST_ID)
+
+    # Smarthome hosts
+    if HOST_ID in SMART_DISPLAY_ZONES:
+        add_display_server(ld, ZONE_ID)
+
+    if HOST_ID == "bar":
+        add_v4l2_camera(ld, ZONE_ID)
+    elif HOST_ID == "door":
+        add_ros2_camera(ld, "doorbell")
+        add_ros2_camera(ld, "entryway")
+    elif HOST_ID == HOME_ASSISTANT_ID:
+        add_home_assistant(ld)
+        add_ups_server(ld, ZONE_ID)
+    elif HOST_ID == "kitchen":
+        add_v4l2_camera(ld, ZONE_ID)
+    elif HOST_ID == "nas":
+        add_kinect_v2(ld, KINECT_V2_ZONE_ID)
+        add_ups_server(ld, ZONE_ID)
+
+    # LEGO hosts
+    if HOST_ID == "station":
+        add_ros2_camera(ld, ZONE_ID)
+        add_ups_server(ld, ZONE_ID)
+
+    # TODO: Microcontroller drivers
+    """
     # Template for Firmata bridges
     def get_firmata_bridge(hostname: str, mcu_name: str) -> Node:
         return Node(
@@ -357,80 +491,18 @@ def generate_launch_description() -> LaunchDescription:
         )
 
     # Microcontroller interfaces
-    if HOSTNAME == "station":
+    if HOST_ID == "station":
         mcu_node = "conductor"
-        conductor_bridge_node: Node = get_telemetrix_bridge(HOSTNAME, mcu_node)
+        conductor_bridge_node: Node = get_telemetrix_bridge(HOST_ID, mcu_node)
         ld.add_action(conductor_bridge_node)
-    elif HOSTNAME == "jetson":
+    elif HOST_ID == "jetson":
         mcu_node = "engine"
-        engine_bridge_node: Node = get_telemetrix_bridge(HOSTNAME, mcu_node)
+        engine_bridge_node: Node = get_telemetrix_bridge(HOST_ID, mcu_node)
         ld.add_action(engine_bridge_node)
-    elif HOSTNAME == "substation":
+    elif HOST_ID == "substation":
         mcu_node = "lab"
-        lab_bridge_node: Node = get_telemetrix_bridge(HOSTNAME, mcu_node)
+        lab_bridge_node: Node = get_telemetrix_bridge(HOST_ID, mcu_node)
         ld.add_action(lab_bridge_node)
-
-    if ENABLE_HOME_ASSISTANT:
-        hass_mqtt_bridge_node = Node(
-            namespace=ROS_NAMESPACE,
-            package=HASS_PACKAGE_NAME,
-            executable="hass_mqtt_bridge",
-            name=f"hass_mqtt_bridge_{HOSTNAME}",
-            output="screen",
-            remappings=[
-                ("plug", f"{HOSTNAME}/plug"),
-                ("rgb", f"{HOSTNAME}/rgb"),
-                ("set_plug", f"{HOSTNAME}/set_plug"),
-                ("set_rgb", f"{HOSTNAME}/set_rgb"),
-            ],
-        )
-        ld.add_action(hass_mqtt_bridge_node)
-
-        # Start the generic MQTT -> ROS bridge
-        params_file: str = os.path.join(
-            get_package_share_directory(HASS_PACKAGE_NAME),
-            "mqtt_client",
-            "mqtt_client_params.yaml",
-        )
-        mqtt_client_node: Node = Node(
-            namespace=ROS_NAMESPACE,
-            package="mqtt_client",
-            executable="mqtt_client",
-            name=f"mqtt_client_{HOSTNAME}",
-            output="screen",
-            parameters=[params_file],
-            remappings=[
-                ("statestream", f"{HOSTNAME}/statestream"),
-            ],
-        )
-        ld.add_action(mqtt_client_node)
-
-        # Also run the WoL server
-        wol_server_node = Node(
-            namespace=ROS_NAMESPACE,
-            package=PYTHON_PACKAGE_NAME,
-            executable="wol_server",
-            name=f"wol_server_{HOSTNAME}",
-            output="screen",
-            remappings=[
-                ("get_mac_address", f"{HOSTNAME}/get_mac_address"),
-                ("wol", f"{HOSTNAME}/wol"),
-            ],
-        )
-        ld.add_action(wol_server_node)
-
-    # UPS server
-    ups_server_node = Node(
-        namespace=ROS_NAMESPACE,
-        package=PYTHON_PACKAGE_NAME,
-        executable="ups_server",
-        name=f"ups_server_{HOSTNAME}",
-        output="screen",
-        remappings=[
-            ("ups_command", f"{HOSTNAME}/ups_command"),
-            ("ups_status", f"{HOSTNAME}/ups_status"),
-        ],
-    )
-    ld.add_action(ups_server_node)
+    """
 
     return ld

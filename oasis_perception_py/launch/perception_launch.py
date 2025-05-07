@@ -8,19 +8,41 @@
 #
 ################################################################################
 
-import socket
-
 from launch import LaunchDescription
 from launch_ros.actions import Node
 
+from oasis_hass.utils.smarthome_config import SmarthomeConfig
+
 
 ################################################################################
-# System parameters
+# Smarthome parameters
 ################################################################################
 
+
+CONFIG: SmarthomeConfig = SmarthomeConfig()
 
 # Get the hostname
-HOSTNAME = socket.gethostname().replace("-", "_")
+HOSTNAME: str = CONFIG.HOSTNAME
+
+# Host aliases
+HOST_ID: str = CONFIG.HOST_ID
+
+# Zone configuration
+ZONE_ID: str = CONFIG.ZONE_ID
+
+# Zones with a smart display that can be controlled
+SMART_DISPLAY_ZONES: list[str] = CONFIG.SMART_DISPLAY_ZONES
+
+# Zones with a camera feed
+CAMERA_ZONES: list[str] = CONFIG.CAMERA_ZONES
+
+# The host and zone IDs used for Home Assistant
+HOME_ASSISTANT_ID: str = CONFIG.HOME_ASSISTANT_ID
+
+# The zone ID used for the Kinect V2 camera
+KINECT_V2_ZONE_ID: str = CONFIG.KINECT_V2_ZONE_ID
+
+print(f"Launching on {HOSTNAME} in zone {ZONE_ID}")
 
 
 ################################################################################
@@ -28,180 +50,155 @@ HOSTNAME = socket.gethostname().replace("-", "_")
 ################################################################################
 
 
-ROS_NAMESPACE = "oasis"
+ROS_NAMESPACE: str = "oasis"
 
-CPP_PACKAGE_NAME = "oasis_perception_cpp"
-PYTHON_PACKAGE_NAME = "oasis_perception_py"
+CPP_PACKAGE_NAME: str = "oasis_perception_cpp"
+PYTHON_PACKAGE_NAME: str = "oasis_perception_py"
+
+
+# The host ID used for perception
+PERCEPTION_HOST_ID: str = "nas"
+
+PERCEPTION_SERVER_BACKGROUND: list[str] = []
+PERCEPTION_SERVER_POSE_LANDMARKS: list[str] = []
+PERCEPTION_SERVER_CALIBRATION: list[str] = []
+
+if HOST_ID == PERCEPTION_HOST_ID:
+    PERCEPTION_SERVER_BACKGROUND.extend(
+        ["bar", "doorbell", "entryway", "hallway", "kitchen", "livingroom"]
+    )
+    PERCEPTION_SERVER_POSE_LANDMARKS.extend(
+        ["bar", "doorbell", "entryway", "hallway", "kitchen", "livingroom"]
+    )
+    # PERCEPTION_SERVER_CALIBRATION.extend(
+    #     ["bar", "doorbell", "entryway", "hallway", "kitchen", "livingroom"]
+    # )
+
+print(f"Launching on {HOSTNAME} in zone {ZONE_ID}")
 
 
 ################################################################################
-# Hardware/video parameters
+# Node definitions
 ################################################################################
 
 
-# Hardware options
-ENABLE_CAMERA_BACKGROUND = False
-ENABLE_KINECT_V2_BACKGROUND = False
-ENABLE_POSE_LANDMARKER = False
-
-PERCEPTION_SERVER_BACKGROUND = []
-PERCEPTION_SERVER_POSE_LANDMARKS = []
-PERCEPTION_SERVER_CALIBRATION = []
-
-# TODO: Hardware configuration
-# if HOSTNAME == "asus":
-#    ENABLE_CAMERA_BACKGROUND = True
-# elif HOSTNAME == "cinder":
-#    ENABLE_KINECT_V2_BACKGROUND = True
-# elif HOSTNAME == "lenovo":
-#    ENABLE_CAMERA_BACKGROUND = True
-# elif HOSTNAME == "station":
-#    ENABLE_CAMERA_BACKGROUND = True
-
-if HOSTNAME == "cinder":
-    PERCEPTION_SERVER_BACKGROUND = ["bar", "door", "hallway", "kitchen", "station"]
-    PERCEPTION_SERVER_POSE_LANDMARKS = ["bar", "door", "hallway", "kitchen", "station"]
-    # PERCEPTION_SERVER_CALIBRATION = ["bar", "door", "hallway", "kitchen", "station"]
-
-# The base name for the Kinect V2 bridge
-KINECT_V2_BASE_NAME: str = "hallway"
+#
+# Background modeler
+#
 
 
-print(f"Launching on {HOSTNAME}")
+def add_background_modeler(ld: LaunchDescription, zone_id: str) -> None:
+    node: Node = Node(
+        namespace=ROS_NAMESPACE,
+        package=CPP_PACKAGE_NAME,
+        executable="background_modeler",
+        name=f"background_modeler_{zone_id}",
+        output="screen",
+        remappings=[
+            (
+                "image",
+                (
+                    # Use different remappings for Kinect V2
+                    f"{zone_id}/sd/image_color"
+                    if zone_id == KINECT_V2_ZONE_ID
+                    else f"{zone_id}/image_rect"
+                ),
+            ),
+            ("background", f"{zone_id}/background"),
+        ],
+    )
+    ld.add_action(node)
+
+
+#
+# Calibration node
+#
+
+
+def add_calibration(ld: LaunchDescription, zone_id: str) -> None:
+    # TODO: Smarthome configuration
+    camera_node: str
+    if zone_id in ["bar", "kitchen"]:
+        camera_node = f"v4l2_camera_{zone_id}"
+    elif zone_id in ["door", "station"]:
+        camera_node = f"camera_ros_{zone_id}"
+    elif zone_id in [KINECT_V2_ZONE_ID]:
+        # TODO
+        return
+    else:
+        return
+
+    node: Node = Node(
+        namespace=ROS_NAMESPACE,
+        package=PYTHON_PACKAGE_NAME,
+        executable="camera_calibrator",
+        name=f"camera_calibrator_{zone_id}",
+        output="screen",
+        remappings=[
+            ("calibration", f"{zone_id}/calibration"),
+            ("camera/set_camera_info", f"{camera_node}/set_camera_info"),
+            ("image", f"{zone_id}/image_raw"),
+        ],
+    )
+    ld.add_action(node)
+
+
+#
+# Pose landmarker
+#
+
+
+def add_pose_landmarker(ld: LaunchDescription, zone_id: str) -> None:
+    node: Node = Node(
+        namespace=ROS_NAMESPACE,
+        package=PYTHON_PACKAGE_NAME,
+        executable="pose_landmarker",
+        name=f"pose_landmarker_{zone_id}",
+        output="screen",
+        remappings=[
+            ("camera_scene", f"{zone_id}/camera_scene"),
+            (
+                "image",
+                (
+                    # Use different remappings for Kinect V2
+                    f"{zone_id}/sd/image_color"
+                    if zone_id == KINECT_V2_ZONE_ID
+                    else f"{zone_id}/image_rect"
+                ),
+            ),
+            ("pose_landmarks", f"{zone_id}/pose_landmarks"),
+        ],
+    )
+    ld.add_action(node)
+
+
+################################################################################
+# Launch description
+################################################################################
 
 
 def generate_launch_description() -> LaunchDescription:
     ld = LaunchDescription()
 
-    if ENABLE_CAMERA_BACKGROUND:
-        background_modeler_node = Node(
-            namespace=ROS_NAMESPACE,
-            package=CPP_PACKAGE_NAME,
-            executable="background_modeler",
-            name=f"background_modeler_{HOSTNAME}",
-            output="screen",
-            remappings=[
-                ("image", f"{HOSTNAME}/image_rect"),
-                ("background", f"{HOSTNAME}/background"),
-            ],
-        )
-        ld.add_action(background_modeler_node)
-
-    if ENABLE_KINECT_V2_BACKGROUND:
-        CAMERA_NODE = KINECT_V2_BASE_NAME
-        background_modeler_node = Node(
-            namespace=ROS_NAMESPACE,
-            package=CPP_PACKAGE_NAME,
-            executable="background_modeler",
-            name=f"background_modeler_{CAMERA_NODE}",
-            output="screen",
-            remappings=[
-                ("image", f"{CAMERA_NODE}/sd/image_color"),
-                ("background", f"{CAMERA_NODE}/background"),
-            ],
-        )
-        ld.add_action(background_modeler_node)
-
-    if ENABLE_POSE_LANDMARKER:
-        pose_landmarker_node = Node(
-            namespace=ROS_NAMESPACE,
-            package=PYTHON_PACKAGE_NAME,
-            executable="pose_landmarker",
-            name=f"pose_landmarker_{HOSTNAME}",
-            output="screen",
-            remappings=[
-                ("camera_scene", f"{HOSTNAME}/camera_scene"),
-                ("image", f"{HOSTNAME}/image_rect"),
-                ("pose_landmarks", f"{HOSTNAME}/pose_landmarks"),
-            ],
-        )
-        ld.add_action(pose_landmarker_node)
-
     if PERCEPTION_SERVER_BACKGROUND:
         for host in PERCEPTION_SERVER_BACKGROUND:
-            remappings = [
-                (
-                    "image",
-                    (
-                        # Use different remappings for Kinect V2
-                        f"{host}/sd/image_color"
-                        if host == KINECT_V2_BASE_NAME
-                        else f"{host}/image_rect"
-                    ),
-                ),
-                ("background", f"{host}/background"),
-            ]
-
-            node = Node(
-                namespace=ROS_NAMESPACE,
-                package=CPP_PACKAGE_NAME,
-                executable="background_modeler",
-                name=f"background_modeler_{host}",
-                output="screen",
-                remappings=remappings,
-            )
-            ld.add_action(node)
+            add_background_modeler(ld, host)
 
     if PERCEPTION_SERVER_POSE_LANDMARKS:
         for host in PERCEPTION_SERVER_POSE_LANDMARKS:
-            # Use different remappings for Kinect V2
-            remappings = [
-                ("camera_scene", f"{host}/camera_scene"),
-                (
-                    "image",
-                    (
-                        # Use different remappings for Kinect V2
-                        f"{host}/sd/image_color"
-                        if host == KINECT_V2_BASE_NAME
-                        else f"{host}/image_rect"
-                    ),
-                ),
-                ("pose_landmarks", f"{host}/pose_landmarks"),
-            ]
-
-            node = Node(
-                namespace=ROS_NAMESPACE,
-                package=PYTHON_PACKAGE_NAME,
-                executable="pose_landmarker",
-                name=f"pose_landmarker_{host}",
-                output="screen",
-                remappings=remappings,
-            )
-            ld.add_action(node)
+            add_pose_landmarker(ld, host)
 
     if PERCEPTION_SERVER_CALIBRATION:
         for host in PERCEPTION_SERVER_CALIBRATION:
-            # TODO: Hardware configuration
-            if host in ["bar", "kitchen"]:
-                camera_node = f"v4l2_camera_{host}"
-            elif host in ["door", "station"]:
-                camera_node = f"camera_ros_{host}"
-            elif host in [KINECT_V2_BASE_NAME]:
-                # TODO
-                continue
-            else:
-                continue
-            node = Node(
-                namespace=ROS_NAMESPACE,
-                package=PYTHON_PACKAGE_NAME,
-                executable="camera_calibrator",
-                name=f"camera_calibrator_{host}",
-                output="screen",
-                remappings=[
-                    ("calibration", f"{host}/calibration"),
-                    ("camera/set_camera_info", f"{camera_node}/set_camera_info"),
-                    ("image", f"{host}/image_raw"),
-                ],
-            )
-            ld.add_action(node)
+            add_calibration(ld, host)
 
     """
-    if HOSTNAME == "cinder":
+    if HOST_ID == "cinder":
         bgs_abl_node = Node(
             namespace=ROS_NAMESPACE,
             package=CPP_PACKAGE_NAME,
             executable="background_subtractor_abl",
-            name=f"background_subtractor_abl_{HOSTNAME}",
+            name=f"background_subtractor_abl_{HOST_ID}",
             output="screen",
         )
         ld.add_action(bgs_abl_node)
@@ -210,17 +207,17 @@ def generate_launch_description() -> LaunchDescription:
             namespace=ROS_NAMESPACE,
             package=CPP_PACKAGE_NAME,
             executable="background_subtractor_asbl",
-            name=f"background_subtractor_asbl_{HOSTNAME}",
+            name=f"background_subtractor_asbl_{HOST_ID}",
             output="screen",
         )
         ld.add_action(bgs_asbl_node)
 
-    elif HOSTNAME == "starship":
+    elif HOST_ID == "starship":
         multi_modeler_node = Node(
             namespace=ROS_NAMESPACE,
             package=CPP_PACKAGE_NAME,
             executable="multi_modeler",
-            name=f"multi_modeler_{HOSTNAME}",
+            name=f"multi_modeler_{HOST_ID}",
             output="screen",
         )
         ld.add_action(multi_modeler_node)
@@ -229,18 +226,18 @@ def generate_launch_description() -> LaunchDescription:
             namespace=ROS_NAMESPACE,
             package=CPP_PACKAGE_NAME,
             executable="monocular_slam",
-            name=f"monocular_slam_{HOSTNAME}",
+            name=f"monocular_slam_{HOST_ID}",
             output="screen",
         )
         ld.add_action(monocular_slam_node)
 
-    elif HOSTNAME == "jetson":
+    elif HOST_ID == "jetson":
         MCU_NODE = "engine"
         monocular_inertial_slam_node = Node(
             namespace=ROS_NAMESPACE,
             package=CPP_PACKAGE_NAME,
             executable="monocular_inertial_slam",
-            name=f"monocular_inertial_slam_{HOSTNAME}",
+            name=f"monocular_inertial_slam_{HOST_ID}",
             output="screen",
             remappings=[
                 ("i2c_imu", f"{MCU_NODE}/i2c_imu"),

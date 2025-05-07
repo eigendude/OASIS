@@ -1,0 +1,23 @@
+# Remap raw hostnames to logical HOST_ID
+host_id_map:
+  cinder: nas
+  megapegasus: oceanplatform
+
+# Remap HOST_ID to zone names
+zone_id_map:
+  nas: hallway
+  station: livingroom
+  oceanplatform: livingroom
+
+# Zones with smart displays that can be controlled
+smart_display_zones:
+  - bar
+  - hallway
+  - kitchen
+
+# Zones with camera feeds
+camera_zones:
+  - bar
+  - hallway
+  - kitchen
+  - livingroom

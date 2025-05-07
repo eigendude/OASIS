@@ -11,6 +11,8 @@
   <url type="bugtracker">https://github.com/eigendude/OASIS/issues</url>
   <url type="repository">https://github.com/eigendude/OASIS.git</url>
 
+  <exec_depend>oasis_hass</exec_depend>
+
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
   <test_depend>ament_pep257</test_depend>
