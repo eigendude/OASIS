@@ -27,7 +27,7 @@ jobs:
       matrix:
         include:
           - os: ubuntu-24.04
-            ros2_distro: jazzy
+            ros2_distro: kilted
 
     # Steps represent a sequence of tasks that will be executed as part of the
     # job

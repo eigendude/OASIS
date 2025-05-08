@@ -69,7 +69,7 @@ repositories:
   ros-perception/ros2_v4l2_camera:
     type: git
     url: https://gitlab.com/boldhearts/ros2_v4l2_camera.git
-    version: jazzy
+    version: rolling
   ros-perception/vision_opencv:
     type: git
     url: https://github.com/ros-perception/vision_opencv.git
