@@ -29,6 +29,9 @@ from std_msgs.msg import Header as HeaderMsg
 
 from oasis_msgs.msg import BoundingBox as BoundingBoxMsg
 from oasis_msgs.msg import CameraScene as CameraSceneMsg
+from oasis_msgs.msg import Landmark as LandmarkMsg
+from oasis_msgs.msg import PoseLandmarks as PoseLandmarksMsg
+from oasis_msgs.msg import PoseLandmarksArray as PoseLandmarksArrayMsg
 
 
 ################################################################################
@@ -47,7 +50,8 @@ IMAGE_SUB_TOPIC = "image"
 
 # Publishers
 CAMERA_SCENE_TOPIC = "camera_scene"
-IMAGE_PUB_TOPIC = "pose_landmarks"
+POSE_IMAGE_TOPIC = "pose_image"
+POSE_LANDMARKS_TOPIC = "pose"
 
 ################################################################################
 # Pose landmarker parameters
@@ -181,27 +185,25 @@ class PoseLandmarkerNode(rclpy.node.Node):
         # Initialize cv_bridge to convert between ROS and OpenCV images
         self._cv_bridge = cv_bridge.CvBridge()
 
-        # Create an ImageTransport object using this node's name and specifying
-        # the 'compressed' transport
-        self._image_sub = ImageTransport(
-            self.get_name() + "_sub", image_transport="compressed"
-        )
-        self._image_sub.subscribe(
-            self.resolve_topic_name(IMAGE_SUB_TOPIC), 1, self._image_callback
-        )
-
         # Publisher: advertise the annotated image using the "compressed" transport
-        self._image_pub = ImageTransport(
+        self._image_transport = ImageTransport(
             self.get_name() + "_pub", image_transport="compressed"
         )
-        self._pub = self._image_pub.advertise(
-            self.resolve_topic_name(IMAGE_PUB_TOPIC), 1
+        self._image_pub = self._image_transport.advertise(
+            self.resolve_topic_name(POSE_IMAGE_TOPIC), 1
+        )
+
+        # Pose‐landmarks array publisher
+        self._pose_array_pub = self.create_publisher(
+            PoseLandmarksArrayMsg,
+            POSE_LANDMARKS_TOPIC,
+            1,
         )
 
         # Camera scene publisher
         self._scene_pub = self.create_publisher(
             CameraSceneMsg,
-            self.resolve_topic_name(CAMERA_SCENE_TOPIC),
+            CAMERA_SCENE_TOPIC,
             1,
         )
 
@@ -212,6 +214,15 @@ class PoseLandmarkerNode(rclpy.node.Node):
         self._mp_drawing = mediapipe.solutions.drawing_utils
         self._mp_drawing_styles = mediapipe.solutions.drawing_styles
         self._mp_pose = mediapipe.solutions.pose
+
+        # Create an ImageTransport object using this node's name and specifying
+        # the 'compressed' transport
+        self._image_sub = ImageTransport(
+            self.get_name() + "_sub", image_transport="compressed"
+        )
+        self._image_sub.subscribe(
+            self.resolve_topic_name(IMAGE_SUB_TOPIC), 1, self._image_callback
+        )
 
     def initialize_detector(self):
         # Get model_asset_path as needed
@@ -231,6 +242,10 @@ class PoseLandmarkerNode(rclpy.node.Node):
             result_callback=self._result_callback,
         )
         return vision.PoseLandmarker.create_from_options(options)
+
+    def stop(self) -> None:
+        self.get_logger().info("Pose landmarker node shutting down")
+        self.destroy_node()
 
     def _image_callback(self, msg: sensor_msgs.msg.Image) -> None:
         if not msg.data:
@@ -266,7 +281,7 @@ class PoseLandmarkerNode(rclpy.node.Node):
             return
 
         # Create a MediaPipe image from the RGB data (no further color conversion required)
-        mp_image = mediapipe.Image(
+        mp_image: mediapipe.Image = mediapipe.Image(
             image_format=mediapipe.ImageFormat.SRGB, data=rgb_image
         )
 
@@ -279,97 +294,113 @@ class PoseLandmarkerNode(rclpy.node.Node):
         output_image is a mediapipe.Image. We convert it to a NumPy array using
         copy_to_numpy_view().
         """
-        try:
-            # Convert the mediapipe.Image to a NumPy array
-            annotated_image = output_image.numpy_view().copy()
-        except Exception as e:
-            self.get_logger().error("Failed to convert mediapipe image: " + str(e))
-            return
+        # Log the number of detected poses, if changed
+        if self._pose_count != len(result.pose_landmarks):
+            self._pose_count = len(result.pose_landmarks)
+            if self._pose_count > 0:
+                self.get_logger().debug(f"Detected {len(result.pose_landmarks)} poses")
+            else:
+                self.get_logger().debug("No poses detected")
 
         # Lookup the original header
         header: HeaderMsg | None = self._stamp_map.pop(timestamp_ms, None)
         if header is None:
             # If it wasn't stored (unlikely), reconstruct from timestamp_ms
-            secs = timestamp_ms // 1000
-            nsecs = int((timestamp_ms % 1000) * 1e6)
+            secs: int = timestamp_ms // 1000
+            nsecs: int = int((timestamp_ms % 1000) * 1e6)
 
             header = HeaderMsg()
             header.stamp = TimeMsg(sec=secs, nanosec=nsecs)
 
+        # Build up a PoseLandmarksArray for all detected poses
+        pose_array_msg = PoseLandmarksArrayMsg()
+        pose_array_msg.header = header
+        pose_array_msg.poses = []
+
         # Keep track of the bounding boxes for each detected pose
-        boxes: list[BoundingBoxMsg] = []
+        bboxes: list[tuple[int, int, int, int]] = []
+        bbox_msgs: list[BoundingBoxMsg] = []
 
-        # If landmarks are detected, draw them on the original image
-        if result.pose_landmarks:
-            # Log the number of detected poses
-            if self._pose_count != len(result.pose_landmarks):
-                self._pose_count = len(result.pose_landmarks)
-                self.get_logger().debug(f"Detected {len(result.pose_landmarks)} poses")
-
-            # A list of bounding boxes for each detected pose
-            boxes: list[BoundingBoxMsg] = []
-
-            for i, landmarks in enumerate(result.pose_landmarks):
-                # Create a NormalizedLandmarkList message
-                landmark_list = landmark_pb2.NormalizedLandmarkList()
-                landmark_list.landmark.extend(
-                    [
-                        landmark_pb2.NormalizedLandmark(x=lm.x, y=lm.y, z=lm.z)
-                        for lm in landmarks
-                    ]
+        for i, landmarks in enumerate(result.pose_landmarks):
+            pose_msg: PoseLandmarksMsg = PoseLandmarksMsg()
+            for landmark in landmarks:
+                landmark_msg: LandmarkMsg = LandmarkMsg(
+                    x=landmark.x, y=landmark.y, z=landmark.z
                 )
-                self._mp_drawing.draw_landmarks(
-                    annotated_image,
-                    landmark_list,
-                    self._mp_pose.POSE_CONNECTIONS,
-                    self._mp_drawing_styles.get_default_pose_landmarks_style(),
-                )
+                pose_msg.landmarks.append(landmark_msg)
+            pose_array_msg.poses.append(pose_msg)
 
-                # Draw bounding box around each pose
-                h, w, _ = annotated_image.shape
-                xs = [int(lm.x * w) for lm in landmarks]
-                ys = [int(lm.y * h) for lm in landmarks]
-                raw_box = (min(xs), min(ys), max(xs), max(ys))
-                smooth_box = self._bbox_smoothers[i].update(raw_box)
+            # Draw bounding box around each pose
+            h: int = output_image.numpy_view().shape[0]
+            w: int = output_image.numpy_view().shape[1]
+            xs: list[int] = [int(lm.x * w) for lm in landmarks]
+            ys: list[int] = [int(lm.y * h) for lm in landmarks]
+            raw_box: tuple[int, int, int, int] = (min(xs), min(ys), max(xs), max(ys))
+            smooth_box: tuple[int, int, int, int] = self._bbox_smoothers[i].update(
+                raw_box
+            )
+            bboxes.append(smooth_box)
 
-                # Compute pixel dimensions
-                px_c = (smooth_box[0] + smooth_box[2]) / 2.0
-                py_c = (smooth_box[1] + smooth_box[3]) / 2.0
-                pw = smooth_box[2] - smooth_box[0]
-                ph = smooth_box[3] - smooth_box[1]
+            # Compute pixel dimensions
+            px_c: float = (smooth_box[0] + smooth_box[2]) / 2.0
+            py_c: float = (smooth_box[1] + smooth_box[3]) / 2.0
+            pw: float = smooth_box[2] - smooth_box[0]
+            ph: float = smooth_box[3] - smooth_box[1]
 
-                # Normalize to [0..1]
-                nx = px_c / w
-                ny = py_c / h
-                nw = pw / w
-                nh = ph / h
+            # Normalize to [0..1]
+            nx: float = px_c / w
+            ny: float = py_c / h
+            nw: float = pw / w
+            nh: float = ph / h
 
-                # Fill and publish bounding‐box message
-                bbox_msg = BoundingBoxMsg()
-                bbox_msg.x_center = nx
-                bbox_msg.y_center = ny
-                bbox_msg.width = nw
-                bbox_msg.height = nh
-                boxes.append(bbox_msg)
+            # Fill and publish bounding‐box message
+            bbox_msg = BoundingBoxMsg()
+            bbox_msg.x_center = nx
+            bbox_msg.y_center = ny
+            bbox_msg.width = nw
+            bbox_msg.height = nh
+            bbox_msgs.append(bbox_msg)
 
-                cv2.rectangle(
-                    annotated_image,
-                    (smooth_box[0], smooth_box[1]),
-                    (smooth_box[2], smooth_box[3]),
-                    (0, 255, 255),  # Cyan in RGB
-                    thickness=3,
-                )
-        else:
-            # Log when no poses are detected
-            if self._pose_count > 0:
-                self._pose_count = 0
-                self.get_logger().debug("No poses detected")
+        # Publish the pose landmarks array
+        self._pose_array_pub.publish(pose_array_msg)
 
         # Publish the scene (all boxes in one message)
-        scene = CameraSceneMsg()
+        scene: CameraSceneMsg = CameraSceneMsg()
         scene.header = header
-        scene.bounding_boxes = boxes
+        scene.bounding_boxes = bboxes
         self._scene_pub.publish(scene)
+
+        # Convert the mediapipe.Image to a NumPy array
+        try:
+            annotated_image = output_image.numpy_view().copy()
+        except Exception as e:
+            self.get_logger().error("Failed to convert mediapipe image: " + str(e))
+            return
+
+        for i, landmarks in enumerate(result.pose_landmarks):
+            # Create a NormalizedLandmarkList message
+            landmark_list = landmark_pb2.NormalizedLandmarkList()
+            landmark_list.landmark.extend(
+                [
+                    landmark_pb2.NormalizedLandmark(x=lm.x, y=lm.y, z=lm.z)
+                    for lm in landmarks
+                ]
+            )
+            self._mp_drawing.draw_landmarks(
+                annotated_image,
+                landmark_list,
+                self._mp_pose.POSE_CONNECTIONS,
+                self._mp_drawing_styles.get_default_pose_landmarks_style(),
+            )
+
+            # Draw bounding box around each pose
+            cv2.rectangle(
+                annotated_image,
+                (bboxes[i][0], bboxes[i][1]),
+                (bboxes[i][2], bboxes[i][3]),
+                (0, 255, 255),  # Cyan in RGB
+                thickness=3,
+            )
 
         # Convert the annotated image back to a ROS Image message
         try:
@@ -387,8 +418,4 @@ class PoseLandmarkerNode(rclpy.node.Node):
         ros_image_msg.header = header
 
         # Publish the annotated image
-        self._pub.publish(ros_image_msg)
-
-    def stop(self) -> None:
-        self.get_logger().info("Pose landmarker node shutting down")
-        self.destroy_node()
+        self._image_pub.publish(ros_image_msg)

@@ -166,7 +166,8 @@ def add_pose_landmarker(ld: LaunchDescription, zone_id: str) -> None:
                     else f"{zone_id}/image_rect"
                 ),
             ),
-            ("pose_landmarks", f"{zone_id}/pose_landmarks"),
+            ("pose", f"{zone_id}/pose"),
+            ("pose_image", f"{zone_id}/pose_landmarks"),
         ],
     )
     ld.add_action(node)
