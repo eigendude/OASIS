@@ -47,6 +47,7 @@ rosidl_generate_interfaces(
     msg/I2CDeviceType.msg
     msg/I2CImu.msg
     msg/LabState.msg
+    msg/Landmark.msg
     msg/LeonardoState.msg
     msg/MCUMemory.msg
     msg/MCUString.msg
@@ -58,6 +59,8 @@ rosidl_generate_interfaces(
     msg/PeripheralInput.msg
     msg/PeripheralScan.msg
     msg/Plug.msg
+    msg/PoseLandmarks.msg
+    msg/PoseLandmarksArray.msg
     msg/PowerEvent.msg
     msg/PowerMode.msg
     msg/RGB.msg
