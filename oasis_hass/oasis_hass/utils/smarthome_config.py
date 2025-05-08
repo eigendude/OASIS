@@ -73,6 +73,9 @@ class SmarthomeConfig:
         self._smart_display_zones: list[str] = smarthome_config.get(
             "smart_display_zones", []
         )
+        self._smart_display_plug_id: str = smarthome_config.get(
+            "smart_display_plug_id", ""
+        )
         self._camera_zones: list[str] = smarthome_config.get("camera_zones", [])
 
     @property
@@ -86,6 +89,10 @@ class SmarthomeConfig:
     @property
     def SMART_DISPLAY_ZONES(self) -> list[str]:
         return self._smart_display_zones
+
+    @property
+    def SMART_DISPLAY_PLUG_ID(self) -> str:
+        return self._smart_display_plug_id
 
     @property
     def CAMERA_ZONES(self) -> list[str]:

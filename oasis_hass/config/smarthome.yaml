@@ -21,3 +21,6 @@ camera_zones:
   - hallway
   - kitchen
   - livingroom
+
+# Plug ID that controls smart displays
+smart_display_plug_id: hue_smart_plug_2

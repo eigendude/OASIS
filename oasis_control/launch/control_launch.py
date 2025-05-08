@@ -33,6 +33,9 @@ ZONE_ID: str = CONFIG.ZONE_ID
 # Zones with a smart display that can be controlled
 SMART_DISPLAY_ZONES: list[str] = CONFIG.SMART_DISPLAY_ZONES
 
+# Plug ID that controls smart displays
+SMART_DISPLAY_PLUG_ID: str = CONFIG.SMART_DISPLAY_PLUG_ID
+
 # Zones with a camera feed
 CAMERA_ZONES: list[str] = CONFIG.CAMERA_ZONES
 
@@ -72,6 +75,12 @@ def add_home_manager(ld: LaunchDescription) -> None:
         executable="home_manager",
         name="home_manager",
         output="screen",
+        parameters=[
+            {
+                "smart_display_zones": SMART_DISPLAY_ZONES,
+                "smart_display_plug_id": SMART_DISPLAY_PLUG_ID,
+            }
+        ],
         remappings=[
             *[
                 (f"camera_scene_{zone_id}", f"{zone_id}/camera_scene")

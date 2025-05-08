@@ -12,8 +12,6 @@
 # Manager that controls and senses 4-wire CPU fans
 #
 
-from typing import Optional
-
 import rclpy.node
 import rclpy.qos
 import rclpy.task
@@ -36,18 +34,6 @@ SET_DISPLAY_SERVICE = "set_display"
 
 
 ################################################################################
-# TODO: Harware parameters
-################################################################################
-
-
-# Smart displays with power control (e.g. DPMS, CEC, etc)
-SMART_DISPLAYS = ["bar", "door", "kitchen", "nuc"]
-
-# Master plugs that control power to the displays
-MASTER_PLUGS = ["hue_smart_plug_2"]
-
-
-################################################################################
 # ROS node
 ################################################################################
 
@@ -58,18 +44,25 @@ class DisplayManager:
     """
 
     def __init__(
-        self, node: rclpy.node.Node, display_host: Optional[str] = None
+        self,
+        node: rclpy.node.Node,
+        smart_display_zones: list[str],
+        smart_display_plug_id: str,
     ) -> None:
         """
         Initialize resources.
         """
+        # Construction parameters
+        self._smart_display_zones: list[str] = smart_display_zones
+        self._smart_display_plug_id: str = smart_display_plug_id
+
         # Initialize ROS parameters
         self._node: rclpy.node.Node = node
         self._logger = node.get_logger()
 
         # Service clients
         self._service_clients: dict[str, rclpy.client.Client] = {}
-        for display_host in SMART_DISPLAYS:
+        for display_host in self._smart_display_zones:
             set_display_service: str = f"{SET_DISPLAY_SERVICE}_{display_host}"
             set_display_client: rclpy.client.Client = self._node.create_client(
                 srv_type=SetDisplaySvc,
@@ -103,7 +96,7 @@ class DisplayManager:
         power_mode: str = plug_msg.power_mode
 
         # Ignore messages from non-master plugs
-        if entity_id not in MASTER_PLUGS:
+        if entity_id != self._smart_display_plug_id:
             return
 
         self._logger.debug(f'Received power {power_mode} event for plug "{entity_id}"')
@@ -114,7 +107,7 @@ class DisplayManager:
         self._set_display_in_flight.clear()
 
         # Set display power mode
-        for display_host in SMART_DISPLAYS:
+        for display_host in self._smart_display_zones:
             set_display_request: SetDisplaySvc = SetDisplaySvc.Request()
             set_display_request.dpms_mode = power_mode
             set_display_request.brightness = 100 if power_mode == PowerModeMsg.ON else 0

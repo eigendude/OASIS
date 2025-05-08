@@ -26,10 +26,14 @@ from oasis_control.presence.presence_manager import PresenceManager
 
 
 # ROS namespace
-ROS_NAMESPACE = "oasis"
+ROS_NAMESPACE: str = "oasis"
 
 # Default node name
-NODE_NAME = "home_manager"
+NODE_NAME: str = "home_manager"
+
+# Parameters
+SMART_DISPLAY_ZONES_PARAM: str = "smart_display_zones"
+SMART_DISPLAY_PLUG_ID_PARAM: str = "smart_display_plug_id"
 
 
 ################################################################################
@@ -49,8 +53,28 @@ class HomeManagerNode(rclpy.node.Node):
 
         self.get_logger().info("Home manager initializing...")
 
+        # Declare parameters
+        self.declare_parameter(
+            SMART_DISPLAY_ZONES_PARAM,
+            [""],  # Empty list is inferred as BYTE_ARRAY
+        )
+        self.declare_parameter(
+            SMART_DISPLAY_PLUG_ID_PARAM,
+            "",
+        )
+
+        # Read parameters
+        smart_display_zones: list[str] = self.get_parameter(
+            SMART_DISPLAY_ZONES_PARAM
+        ).value
+        smart_display_plug_id: str = self.get_parameter(
+            SMART_DISPLAY_PLUG_ID_PARAM
+        ).value
+
         # Subsystems
-        self._display_manager: DisplayManager = DisplayManager(self)
+        self._display_manager: DisplayManager = DisplayManager(
+            self, smart_display_zones, smart_display_plug_id
+        )
         self._lighting_manager: LightingManager = LightingManager(self)
         self._presence_manager: PresenceManager = PresenceManager(self)
 
