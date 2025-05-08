@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2024 Garrett Brown
+ *  Copyright (C) 2024-2025 Garrett Brown
  *  This file is part of OASIS - https://github.com/eigendude/OASIS
  *
  *  This file is derived from Hide Cursor under the GPL v2 license.

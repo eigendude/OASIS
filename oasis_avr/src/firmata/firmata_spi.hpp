@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021-2024 Garrett Brown
+ *  Copyright (C) 2021-2025 Garrett Brown
  *  This file is part of OASIS - https://github.com/eigendude/OASIS
  *
  *  This file is derived from ConfugurableFirmata under the LGPL 2.1 License

@@ -1,7 +1,7 @@
 #!/bin/bash
 ################################################################################
 #
-#  Copyright (C) 2023-2024 Garrett Brown
+#  Copyright (C) 2023-2025 Garrett Brown
 #  This file is part of OASIS - https://github.com/eigendude/OASIS
 #
 #  SPDX-License-Identifier: Apache-2.0
