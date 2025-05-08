@@ -1,7 +1,7 @@
 From 4b82c0e603ecb5d093caae9408c6d67feeaa687b Mon Sep 17 00:00:00 2001
 From: Garrett Brown <garrett.brown@aclima.earth>
 Date: Fri, 21 Mar 2025 15:53:48 -0700
-Subject: [PATCH] Change image_common to "rolling" branch
+Subject: [PATCH] Change image_common to "kilted" branch
 
 ---
  ros2.repos | 4 ++--
@@ -16,7 +16,7 @@ index 78c67e7..15024a4 100644
      type: git
      url: https://github.com/ros-perception/image_common.git
 -    version: jazzy
-+    version: rolling
++    version: kilted
    ros-perception/laser_geometry:
      type: git
      url: https://github.com/ros-perception/laser_geometry.git
@@ -25,7 +25,7 @@ index 78c67e7..15024a4 100644
      type: git
      url: https://github.com/ros2/message_filters.git
 -    version: jazzy
-+    version: rolling
++    version: kilted
    ros2/mimick_vendor:
      type: git
      url: https://github.com/ros2/mimick_vendor.git

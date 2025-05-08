@@ -220,7 +220,7 @@ echo "Downloading ROS 2 source code..."
       --reject-file="/dev/null" \
       --no-backup-if-mismatch \
       --directory="${ROS2_SOURCE_DIRECTORY}" \
-      < "${CONFIG_DIRECTORY}/ros2-desktop/0001-Change-image_common-to-rolling-branch.patch"
+      < "${CONFIG_DIRECTORY}/ros2-desktop/0001-Change-image_common-to-kilted-branch.patch"
   fi
 
   # Import ROS 2 sources
