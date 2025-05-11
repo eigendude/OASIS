@@ -135,9 +135,11 @@ def add_calibration(ld: LaunchDescription, zone_id: str) -> None:
         name=f"camera_calibrator_{zone_id}",
         output="screen",
         remappings=[
+            # Topics
             ("calibration", f"{zone_id}/calibration"),
-            ("camera/set_camera_info", f"{camera_node}/set_camera_info"),
             ("image", f"{zone_id}/image_raw"),
+            # Services
+            ("camera/set_camera_info", f"{camera_node}/set_camera_info"),
         ],
     )
     ld.add_action(node)
@@ -156,6 +158,7 @@ def add_pose_landmarker(ld: LaunchDescription, zone_id: str) -> None:
         name=f"pose_landmarker_{zone_id}",
         output="screen",
         remappings=[
+            # Topics
             ("camera_scene", f"{zone_id}/camera_scene"),
             (
                 "image",
@@ -166,7 +169,8 @@ def add_pose_landmarker(ld: LaunchDescription, zone_id: str) -> None:
                     else f"{zone_id}/image_rect"
                 ),
             ),
-            ("pose_landmarks", f"{zone_id}/pose_landmarks"),
+            ("pose", f"{zone_id}/pose"),
+            ("pose_image", f"{zone_id}/pose_image"),
         ],
     )
     ld.add_action(node)
@@ -181,16 +185,16 @@ def generate_launch_description() -> LaunchDescription:
     ld = LaunchDescription()
 
     if PERCEPTION_SERVER_BACKGROUND:
-        for host in PERCEPTION_SERVER_BACKGROUND:
-            add_background_modeler(ld, host)
+        for host_id in PERCEPTION_SERVER_BACKGROUND:
+            add_background_modeler(ld, host_id)
 
     if PERCEPTION_SERVER_POSE_LANDMARKS:
-        for host in PERCEPTION_SERVER_POSE_LANDMARKS:
-            add_pose_landmarker(ld, host)
+        for host_id in PERCEPTION_SERVER_POSE_LANDMARKS:
+            add_pose_landmarker(ld, host_id)
 
     if PERCEPTION_SERVER_CALIBRATION:
-        for host in PERCEPTION_SERVER_CALIBRATION:
-            add_calibration(ld, host)
+        for host_id in PERCEPTION_SERVER_CALIBRATION:
+            add_calibration(ld, host_id)
 
     """
     if HOST_ID == "cinder":
