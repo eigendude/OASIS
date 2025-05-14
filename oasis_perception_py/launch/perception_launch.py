@@ -176,6 +176,31 @@ def add_pose_landmarker(ld: LaunchDescription, zone_id: str) -> None:
     ld.add_action(node)
 
 
+#
+# Pose renderer
+#
+
+
+def add_pose_renderer(ld: LaunchDescription, zone_ids: list[str], host_id: str) -> None:
+    """
+    Launch a pose_renderer that subscribes to multiple
+    /oasis/<zone>/pose topics and publishes transparent
+    overlays on /oasis/<zone>/pose_image_<host_id>.
+    """
+    node: Node = Node(
+        namespace=ROS_NAMESPACE,
+        package=PYTHON_PACKAGE_NAME,
+        executable="pose_renderer",
+        name=f"pose_renderer_{host_id}",
+        output="screen",
+        parameters=[
+            {"host_id": host_id},
+            {"zone_ids": zone_ids},
+        ],
+    )
+    ld.add_action(node)
+
+
 ################################################################################
 # Launch description
 ################################################################################
@@ -195,6 +220,10 @@ def generate_launch_description() -> LaunchDescription:
     if PERCEPTION_SERVER_CALIBRATION:
         for host_id in PERCEPTION_SERVER_CALIBRATION:
             add_calibration(ld, host_id)
+
+    # TODO
+    # if ZONE_ID in SMART_DISPLAY_ZONES:
+    #     add_pose_renderer(ld, CAMERA_ZONES, HOST_ID)
 
     """
     if HOST_ID == "cinder":

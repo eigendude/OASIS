@@ -87,6 +87,7 @@ setuptools.setup(
         "console_scripts": [
             "camera_calibrator = oasis_perception.cli.camera_calibrator_cli:main",
             "pose_landmarker = oasis_perception.cli.pose_landmarker_cli:main",
+            "pose_renderer = oasis_perception.cli.pose_renderer_cli:main",
         ],
     },
 )
