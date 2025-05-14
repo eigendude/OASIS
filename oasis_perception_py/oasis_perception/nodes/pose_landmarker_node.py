@@ -55,7 +55,7 @@ IMAGE_PUB_TOPIC = "pose_landmarks"
 
 
 # Number of poses to detect
-NUM_POSES = 3
+NUM_POSES = 5
 
 
 ################################################################################
