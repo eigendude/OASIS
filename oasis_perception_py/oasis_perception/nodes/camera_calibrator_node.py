@@ -63,7 +63,7 @@ DEFAULT_FISHEYE_FIX_PRINCIPAL_POINT: bool = False
 DEFAULT_FISHEYE_K_COEFFICIENTS: int = 4
 DEFAULT_FISHEYE_CHECK_CONDITIONS: bool = False
 DEFAULT_DISABLE_CALIB_CB_FAST_CHECK: bool = False
-DEFAULT_MAX_CHESSBOARD_SPEED: float = -1.0
+DEFAULT_MAX_CHESSBOARD_SPEED: int = -1
 
 
 ################################################################################
@@ -201,7 +201,7 @@ class CameraCalibratorNode(CalibrationNode):
         )
 
         # Pattern enum
-        pat: Patterns = {
+        pat: int = {
             "chessboard": Patterns.Chessboard,
             "circles": Patterns.Circles,
             "acircles": Patterns.ACircles,
