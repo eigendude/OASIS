@@ -44,6 +44,7 @@ find_package(ORB_SLAM3)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 
 if (ORB_SLAM3_FOUND)
   find_package(DBoW2 REQUIRED)
@@ -340,6 +341,73 @@ install(
     multi_modeler
   DESTINATION
     lib/${PROJECT_NAME}
+)
+
+#
+# pose_landmarker
+#
+
+set(POSE_LANDMARKER_SOURCES
+  ${MEDIAPIPE_SOURCES}
+  src/nodes/PoseLandmarkerNode.cpp
+  src/pose/PoseLandmarker.cpp
+)
+set(POSE_LANDMARKER_INCLUDE_DIRS
+  ${oasis_msgs_INCLUDE_DIRS}
+)
+set(POSE_LANDMARKER_LIBRARIES
+  cv_bridge::cv_bridge
+  image_transport::image_transport
+  MediaPipe::MediaPipe
+  oasis_msgs::oasis_msgs__rosidl_generator_cpp
+  ${OpenCV_LIBRARIES}
+  rclcpp::rclcpp
+  sensor_msgs::sensor_msgs__rosidl_generator_cpp
+  std_msgs::std_msgs__rosidl_generator_cpp
+)
+
+add_executable(pose_landmarker
+  ${POSE_LANDMARKER_SOURCES}
+  src/cli/pose_landmarker_node.cpp
+)
+target_include_directories(pose_landmarker PUBLIC
+  ${POSE_LANDMARKER_INCLUDE_DIRS}
+)
+target_link_libraries(pose_landmarker PUBLIC
+  ${POSE_LANDMARKER_LIBRARIES}
+)
+install(
+  TARGETS
+    pose_landmarker
+  DESTINATION
+    lib/${PROJECT_NAME}
+)
+
+add_library(pose_landmarker_component SHARED
+  ${POSE_LANDMARKER_SOURCES}
+  src/components/pose_landmarker_component.cpp
+  src/ros/RosComponent.cpp
+)
+target_include_directories(pose_landmarker_component PUBLIC
+  ${POSE_LANDMARKER_INCLUDE_DIRS}
+  ${rclcpp_components_INCLUDE_DIRS}
+)
+target_link_libraries(pose_landmarker_component PUBLIC
+  ${POSE_LANDMARKER_LIBRARIES}
+  ${rclcpp_components_LIBRARIES}
+)
+install(
+  TARGETS
+    pose_landmarker_component
+  DESTINATION
+    lib
+)
+
+# Register the component
+rclcpp_components_register_node(
+  pose_landmarker_component
+  PLUGIN "pose_landmarker::PoseLandmarkerComponent"
+  EXECUTABLE pose_landmarker_component_node
 )
 
 #

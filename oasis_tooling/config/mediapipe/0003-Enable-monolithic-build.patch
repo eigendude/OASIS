@@ -1,18 +1,18 @@
-From 4d405f13d4ac92fb709b992a6607782ea59021ae Mon Sep 17 00:00:00 2001
+From 9c4063b657fa0da042909bbd6f6ae35acd7e5911 Mon Sep 17 00:00:00 2001
 From: Garrett Brown <eigendebugger@gmail.com>
 Date: Mon, 19 May 2025 19:20:30 -0700
 Subject: [PATCH 3/3] Enable monolithic build
 
 ---
- mediapipe/framework/BUILD                   | 85 +++++++++++++++++++++
- mediapipe/framework/monolithic_absl.cc      | 17 +++++
- mediapipe/framework/monolithic_mediapipe.cc | 17 +++++
- 3 files changed, 119 insertions(+)
+ mediapipe/framework/BUILD                   | 98 +++++++++++++++++++++
+ mediapipe/framework/monolithic_absl.cc      | 17 ++++
+ mediapipe/framework/monolithic_mediapipe.cc | 17 ++++
+ 3 files changed, 132 insertions(+)
  create mode 100644 mediapipe/framework/monolithic_absl.cc
  create mode 100644 mediapipe/framework/monolithic_mediapipe.cc
 
 diff --git a/mediapipe/framework/BUILD b/mediapipe/framework/BUILD
-index bb64530b..a45574ac 100644
+index bb64530b..e31a9e14 100644
 --- a/mediapipe/framework/BUILD
 +++ b/mediapipe/framework/BUILD
 @@ -396,6 +396,7 @@ cc_library(
@@ -23,7 +23,7 @@ index bb64530b..a45574ac 100644
  )
  
  cc_library(
-@@ -1988,3 +1989,87 @@ cc_library(
+@@ -1988,3 +1989,100 @@ cc_library(
          "@com_google_absl//absl/strings:string_view",
      ],
  )
@@ -97,6 +97,11 @@ index bb64530b..a45574ac 100644
 +cc_binary(
 +    name = "mediapipe_monolithic",
 +    srcs = ["monolithic_mediapipe.cc"],  # The dummy source
++    data = [
++        # pose_landmarker files
++        "//mediapipe/modules/pose_detection:pose_detection.tflite",
++        "//mediapipe/modules/pose_landmark:pose_landmark_full.tflite",
++    ],
 +    linkshared = 1,  # Produce a shared object
 +    linkstatic = 1,  # Include Albseil and all other deps in this .so
 +    visibility = ["//visibility:public"],
@@ -109,6 +114,14 @@ index bb64530b..a45574ac 100644
 +        "//mediapipe/framework:calculator_graph",
 +        "//mediapipe/framework/port:parse_text_proto",
 +        "//mediapipe/framework/port:status",
++
++        # pose_landmarker_cpu dependencies
++        "//mediapipe/examples/desktop:demo_run_graph_main",
++        "//mediapipe/graphs/pose_tracking:pose_tracking_cpu_deps",
++
++        # pose_landmarker_gpu dependencies
++        "//mediapipe/examples/desktop:demo_run_graph_main_gpu",
++        "//mediapipe/graphs/pose_tracking:pose_tracking_gpu_deps",
 +    ],
 +)
 diff --git a/mediapipe/framework/monolithic_absl.cc b/mediapipe/framework/monolithic_absl.cc
