@@ -41,6 +41,7 @@ find_package(image_transport REQUIRED)
 find_package(oasis_msgs REQUIRED)
 find_package(ORB_SLAM3)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_components REQUIRED)
 find_package(sensor_msgs REQUIRED)
 
 if (ORB_SLAM3_FOUND)
@@ -279,6 +280,73 @@ install(
     multi_modeler
   DESTINATION
     lib/${PROJECT_NAME}
+)
+
+#
+# pose_landmarker
+#
+
+set(POSE_LANDMARKER_SOURCES
+  src/nodes/PoseLandmarkerNode.cpp
+  src/pose/PoseLandmarker.cpp
+)
+
+SET(POSE_LANDMARKER_LIBRARIES
+  ${cv_bridge_LIBRARY}
+  ${image_transport_LIBRARY}
+  ${OpenCV_LIBRARIES}
+  ${rclcpp_LIBRARY}
+  ${rcutils_LIBRARY}
+  ${sensor_msgs_LIBRARY}
+  ${std_msgs_LIBRARY}
+)
+
+# TODO: ament depends are being replaced with target_link_libraries
+set(POSE_LANDMARKER_AMENT_DEPENDS
+  ${AMENT_COMMON_DEPENDENCIES}
+)
+
+add_executable(pose_landmarker
+  ${POSE_LANDMARKER_SOURCES}
+  src/cli/pose_landmarker_node.cpp
+)
+target_link_libraries(pose_landmarker
+  ${POSE_LANDMARKER_LIBRARIES}
+)
+ament_target_dependencies(pose_landmarker
+  ${POSE_LANDMARKER_AMENT_DEPENDS}
+)
+install(
+  TARGETS
+    pose_landmarker
+  DESTINATION
+    lib/${PROJECT_NAME}
+)
+
+add_library(pose_landmarker_component SHARED
+  ${POSE_LANDMARKER_SOURCES}
+  src/components/pose_landmarker_component.cpp
+  src/ros/RosComponent.cpp
+)
+target_link_libraries(pose_landmarker_component
+  ${POSE_LANDMARKER_LIBRARIES}
+)
+ament_target_dependencies(pose_landmarker_component
+  ${POSE_LANDMARKER_AMENT_DEPENDS}
+  rclcpp_components
+)
+install(
+  TARGETS
+    pose_landmarker_component
+  DESTINATION
+    lib/${PROJECT_NAME}
+)
+
+# Register the component
+rclcpp_components_register_node(
+  pose_landmarker_component
+  PLUGIN "pose_landmarker::PoseLandmarkerComponent"
+  EXECUTABLE pose_landmarker_component_node
 )
 
 #
