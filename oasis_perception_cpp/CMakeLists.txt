@@ -43,6 +43,7 @@ find_package(ORB_SLAM3)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 
 if (ORB_SLAM3_FOUND)
   find_package(DBoW2 REQUIRED)
@@ -292,15 +293,14 @@ set(POSE_LANDMARKER_SOURCES
 )
 
 SET(POSE_LANDMARKER_LIBRARIES
-  ${cv_bridge_LIBRARY}
-  ${image_transport_LIBRARY}
+  cv_bridge::cv_bridge
+  image_transport::image_transport
+  rclcpp::rclcpp
+  sensor_msgs::sensor_msgs
+  std_msgs::std_msgs
   ${OpenCV_LIBRARIES}
-  ${rclcpp_LIBRARY}
-  ${rcutils_LIBRARY}
-  ${sensor_msgs_LIBRARY}
-  ${std_msgs_LIBRARY}
 )
-
+  
 # TODO: ament depends are being replaced with target_link_libraries
 set(POSE_LANDMARKER_AMENT_DEPENDS
   ${AMENT_COMMON_DEPENDENCIES}
@@ -312,9 +312,6 @@ add_executable(pose_landmarker
 )
 target_link_libraries(pose_landmarker
   ${POSE_LANDMARKER_LIBRARIES}
-)
-ament_target_dependencies(pose_landmarker
-  ${POSE_LANDMARKER_AMENT_DEPENDS}
 )
 install(
   TARGETS
@@ -331,8 +328,8 @@ add_library(pose_landmarker_component SHARED
 target_link_libraries(pose_landmarker_component
   ${POSE_LANDMARKER_LIBRARIES}
 )
+# TODO: How to modernize this?
 ament_target_dependencies(pose_landmarker_component
-  ${POSE_LANDMARKER_AMENT_DEPENDS}
   rclcpp_components
 )
 install(
