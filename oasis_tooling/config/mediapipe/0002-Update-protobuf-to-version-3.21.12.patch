@@ -1,0 +1,163 @@
+From ddbd478339554cf373ddf75d8ddd441cd3bd3479 Mon Sep 17 00:00:00 2001
+From: Garrett Brown <eigendebugger@gmail.com>
+Date: Sun, 18 May 2025 22:32:02 -0700
+Subject: [PATCH 2/3] Update protobuf to version 3.21.12
+
+This matches the version that currently ships with Ubuntu 24.04.
+---
+ WORKSPACE                                  |  6 +-
+ third_party/com_google_protobuf_fixes.diff | 72 +++++++++++-----------
+ 2 files changed, 38 insertions(+), 40 deletions(-)
+
+diff --git a/WORKSPACE b/WORKSPACE
+index 711e16b5..0ffea5c2 100644
+--- a/WORKSPACE
++++ b/WORKSPACE
+@@ -90,9 +90,9 @@ http_archive(
+     patches = [
+         "@//third_party:com_google_protobuf_fixes.diff",
+     ],
+-    sha256 = "87407cd28e7a9c95d9f61a098a53cf031109d451a7763e7dd1253abf8b4df422",
+-    strip_prefix = "protobuf-3.19.1",
+-    urls = ["https://github.com/protocolbuffers/protobuf/archive/v3.19.1.tar.gz"],
++    sha256 = "930c2c3b5ecc6c9c12615cf5ad93f1cd6e12d0aba862b572e076259970ac3a53",
++    strip_prefix = "protobuf-3.21.12",
++    urls = ["https://github.com/protocolbuffers/protobuf/archive/v3.21.12.tar.gz"],
+ )
+ 
+ # GoogleTest/GoogleMock framework. Used by most unit-tests.
+diff --git a/third_party/com_google_protobuf_fixes.diff b/third_party/com_google_protobuf_fixes.diff
+index c8d4f325..e6348530 100644
+--- a/third_party/com_google_protobuf_fixes.diff
++++ b/third_party/com_google_protobuf_fixes.diff
+@@ -1,44 +1,39 @@
+-diff --git a/BUILD b/BUILD
+-index 1690d4219..e13ca8338 100644
+---- a/BUILD
+-+++ b/BUILD
+-@@ -19,7 +19,7 @@ exports_files(["LICENSE"])
+- # ZLIB configuration
+- ################################################################################
+-
+--ZLIB_DEPS = ["@zlib//:zlib"]
+-+ZLIB_DEPS = ["@zlib"]
+-
+- ################################################################################
+- # Protobuf Runtime Library
+-@@ -197,6 +197,7 @@ cc_library(
++diff --git a/BUILD.bazel b/BUILD.bazel
++index 0f6e41e3a..81e56ee55 100644
++--- a/BUILD.bazel
+++++ b/BUILD.bazel
++@@ -69,6 +69,7 @@ cc_library(
+      includes = ["src/"],
+      linkopts = LINK_OPTS,
+      visibility = ["//visibility:public"],
+ +    alwayslink = 1,
+  )
+-
+- PROTOBUF_DEPS = select({
+-@@ -271,6 +272,7 @@ cc_library(
+-     linkopts = LINK_OPTS,
++ 
++ cc_library(
++@@ -138,8 +139,9 @@ cc_library(
+      visibility = ["//visibility:public"],
+-     deps = [":protobuf_lite"] + PROTOBUF_DEPS,
++     deps = [":protobuf_lite"] + select({
++         "//build_defs:config_msvc": [],
++-        "//conditions:default": ["@zlib//:zlib"],
+++        "//conditions:default": ["@zlib"],
++     }),
+ +    alwayslink = 1,
+  )
+-
++ 
+  # This provides just the header files for use in projects that need to build
+ diff --git a/src/google/protobuf/io/gzip_stream.h b/src/google/protobuf/io/gzip_stream.h
+-index f0283e86f..436c6ce4b 100644
++index 4cf71b6c3..2035a33d3 100644
+ --- a/src/google/protobuf/io/gzip_stream.h
+ +++ b/src/google/protobuf/io/gzip_stream.h
+-@@ -47,10 +47,13 @@
++@@ -47,11 +47,14 @@
+  #include <google/protobuf/stubs/common.h>
+  #include <google/protobuf/io/zero_copy_stream.h>
+  #include <google/protobuf/port.h>
+--#include <zlib.h>
+-
++-#include "zlib.h"
++ 
++ // Must be included last.
+  #include <google/protobuf/port_def.inc>
+-
++ 
+ +#if HAVE_ZLIB
+ +#include <zlib.h>
+ +#endif  // HAVE_ZLIB
+@@ -46,47 +41,50 @@ index f0283e86f..436c6ce4b 100644
+  namespace google {
+  namespace protobuf {
+  namespace io {
+-@@ -76,8 +79,10 @@ class PROTOBUF_EXPORT GzipInputStream : public ZeroCopyInputStream {
++@@ -78,8 +81,10 @@ class PROTOBUF_EXPORT GzipInputStream PROTOBUF_FUTURE_FINAL
+    virtual ~GzipInputStream();
+-
++ 
+    // Return last error message or NULL if no error.
+ +  #if HAVE_ZLIB
+    inline const char* ZlibErrorMessage() const { return zcontext_.msg; }
+    inline int ZlibErrorCode() const { return zerror_; }
+ +  #endif  // HAVE_ZLIB
+-
++ 
+    // implements ZeroCopyInputStream ----------------------------------
+    bool Next(const void** data, int* size) override;
+-@@ -90,8 +95,10 @@ class PROTOBUF_EXPORT GzipInputStream : public ZeroCopyInputStream {
+-
++@@ -92,8 +97,10 @@ class PROTOBUF_EXPORT GzipInputStream PROTOBUF_FUTURE_FINAL
++ 
+    ZeroCopyInputStream* sub_stream_;
+-
++ 
+ +  #if HAVE_ZLIB
+    z_stream zcontext_;
+    int zerror_;
+ +  #endif  // HAVE_ZLIB
+-
++ 
+    void* output_buffer_;
+    void* output_position_;
+-@@ -143,8 +150,10 @@ class PROTOBUF_EXPORT GzipOutputStream : public ZeroCopyOutputStream {
++@@ -146,8 +153,10 @@ class PROTOBUF_EXPORT GzipOutputStream PROTOBUF_FUTURE_FINAL
+    virtual ~GzipOutputStream();
+-
++ 
+    // Return last error message or NULL if no error.
+ +  #if HAVE_ZLIB
+    inline const char* ZlibErrorMessage() const { return zcontext_.msg; }
+    inline int ZlibErrorCode() const { return zerror_; }
+ +  #endif  // HAVE_ZLIB
+-
++ 
+    // Flushes data written so far to zipped data in the underlying stream.
+    // It is the caller's responsibility to flush the underlying stream if
+-@@ -177,8 +186,10 @@ class PROTOBUF_EXPORT GzipOutputStream : public ZeroCopyOutputStream {
++@@ -180,8 +189,10 @@ class PROTOBUF_EXPORT GzipOutputStream PROTOBUF_FUTURE_FINAL
+    void* sub_data_;
+    int sub_data_size_;
+-
++ 
+ +  #if HAVE_ZLIB
+    z_stream zcontext_;
+    int zerror_;
+ +  #endif // HAVE_ZLIB
+    void* input_buffer_;
+    size_t input_buffer_length_;
++ 
++-- 
++2.43.0
+ 
+-- 
+2.43.0
+

@@ -24,6 +24,9 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # Import CMake paths and config
 source "${SCRIPT_DIR}/env_cmake.sh"
 
+# Import MediaPipe paths and config
+source "${SCRIPT_DIR}/env_mediapipe.sh"
+
 # Import OASIS paths and config
 source "${SCRIPT_DIR}/env_oasis.sh"
 
@@ -43,11 +46,14 @@ set -o nounset
 MAKE_FLAGS=
 COLCON_FLAGS="--merge-install"
 
-# Add ccache support and fix locating Python
+# Add ccache support
 COLCON_FLAGS+=" \
   --cmake-args \
     -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
 "
+
+# Expose the MediaPipe install directorie to CMake
+export CMAKE_PREFIX_PATH="${MEDIAPIPE_INSTALL_DIR}:${CMAKE_PREFIX_PATH}"
 
 # Uncomment these to force building in serial
 #MAKE_FLAGS+=" -j1 -l1"

@@ -64,6 +64,15 @@ jobs:
             ros-ws/oasis-depends-${{ matrix.ros2_distro }}/install
           key: restore-oasis-depends-${{ matrix.os }}-${{ matrix.ros2_distro }}-${{ hashFiles('oasis_tooling/config/ros2-desktop/**', 'oasis_tooling/scripts/*ros2_desktop.sh') }}-${{ hashFiles('oasis_tooling/config/bgslibrary/**', 'oasis_tooling/config/depends.repos', 'oasis_tooling/config/libcamera_cmake/**', 'oasis_tooling/config/libcec/**', 'oasis_tooling/config/libfreenect2/**', 'oasis_tooling/config/OpenNI/**', 'oasis_tooling/config/orb-slam3/**', 'oasis_tooling/config/p8-platform/**', 'oasis_tooling/config/pangolin/**', 'oasis_tooling/config/vision_opencv/**', 'oasis_tooling/scripts/*oasis_deps.sh') }}
 
+      - name: Restore MediaPipe
+        id: restore-mediapipe
+        uses: actions/cache@v4
+        with:
+          path: |
+            ros-ws/abseil/install
+            ros-ws/mediapipe/install
+          key: restore-mediapipe-${{ matrix.os }}-${{ hashFiles('oasis_tooling/config/mediapipe/**', 'oasis_tooling/scripts/*mediapipe.sh') }}
+
       - name: Restore Arduino IDE
         id: restore-arduino-ide
         uses: actions/cache@v4
@@ -95,6 +104,14 @@ jobs:
       - name: Build OASIS dependencies
         if: steps.restore-oasis-depends.outputs.cache-hit != 'true'
         run: ./oasis_tooling/scripts/build_oasis_deps.sh
+
+      - name: Install MediaPipe dependencies
+        if: steps.restore-mediapipe.outputs.cache-hit != 'true'
+        run: ./oasis_tooling/scripts/depinstall_mediapipe.sh
+
+      - name: Build MediaPipe
+        if: steps.restore-mediapipe.outputs.cache-hit != 'true'
+        run: ./oasis_tooling/scripts/build_mediapipe.sh
 
       - name: Install OASIS rosdeps
         run: ./oasis_tooling/scripts/depinstall_oasis.sh

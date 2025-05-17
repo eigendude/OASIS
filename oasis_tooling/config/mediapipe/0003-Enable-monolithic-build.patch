@@ -1,0 +1,156 @@
+From 91d3c5e7cb2909616ad1cd84db52d288edcf0419 Mon Sep 17 00:00:00 2001
+From: Garrett Brown <eigendebugger@gmail.com>
+Date: Mon, 19 May 2025 19:20:30 -0700
+Subject: [PATCH 3/3] Enable monolithic build
+
+---
+ mediapipe/framework/BUILD                   | 79 +++++++++++++++++++++
+ mediapipe/framework/monolithic_absl.cc      | 17 +++++
+ mediapipe/framework/monolithic_mediapipe.cc | 17 +++++
+ 3 files changed, 113 insertions(+)
+ create mode 100644 mediapipe/framework/monolithic_absl.cc
+ create mode 100644 mediapipe/framework/monolithic_mediapipe.cc
+
+diff --git a/mediapipe/framework/BUILD b/mediapipe/framework/BUILD
+index bb64530b..3655165b 100644
+--- a/mediapipe/framework/BUILD
++++ b/mediapipe/framework/BUILD
+@@ -396,6 +396,7 @@ cc_library(
+         "@com_google_absl//absl/synchronization",
+         "@com_google_absl//absl/time",
+     ],
++    alwayslink = 1,
+ )
+ 
+ cc_library(
+@@ -1988,3 +1989,81 @@ cc_library(
+         "@com_google_absl//absl/strings:string_view",
+     ],
+ )
++
++#-------------------------------------------------------------------------------
++# Monolithic .so
++#-------------------------------------------------------------------------------
++
++cc_binary(
++    name = "absl_monolithic",
++    srcs = ["monolithic_absl.cc"],  # The dummy source
++    linkshared = 1,  # Build as a .so
++    linkstatic = 1,  # Fold all Abseil cc_library deps into this .so
++    visibility = ["//visibility:public"],
++    deps = [
++        # Algorithm
++        "@com_google_absl//absl/algorithm",
++
++        # Base/core headers
++        "@com_google_absl//absl/base",
++
++        # Container: flat_hash_map + flat_hash_set, etc
++        "@com_google_absl//absl/container:btree",
++        "@com_google_absl//absl/container:flat_hash_map",
++        "@com_google_absl//absl/container:flat_hash_set",
++        "@com_google_absl//absl/container:node_hash_map",
++        "@com_google_absl//absl/container:node_hash_set",
++
++        # CRC
++        "@com_google_absl//absl/crc:crc32c",
++
++        # Flags
++        "@com_google_absl//absl/flags:flag",
++
++        # Logging (check + log + absl_check + absl_log)
++        "@com_google_absl//absl/log",
++        "@com_google_absl//absl/log:check",
++        "@com_google_absl//absl/log:absl_check",
++        "@com_google_absl//absl/log:absl_log",
++
++        # Memory
++        "@com_google_absl//absl/memory",
++
++        # Numeric
++        "@com_google_absl//absl/numeric:int128",
++
++        # Status + StatusOr
++        "@com_google_absl//absl/status",
++        "@com_google_absl//absl/status:statusor",
++
++        # Strings + formatting + ostream operator helper
++        "@com_google_absl//absl/strings",
++        "@com_google_absl//absl/strings:has_ostream_operator",
++        "@com_google_absl//absl/strings:str_format",
++
++        # Synchronization
++        "@com_google_absl//absl/synchronization",
++
++        # Time
++        "@com_google_absl//absl/time",
++
++        # Utility
++        "@com_google_absl//absl/utility",
++    ],
++)
++
++#-------------------------------------------------------------------------------
++# Monolithic .so
++#-------------------------------------------------------------------------------
++
++cc_binary(
++    name = "mediapipe_monolithic",
++    srcs = ["monolithic_mediapipe.cc"],  # The dummy source
++    linkshared = 1,  # Produce a shared object
++    linkstatic = 1,  # Include Albseil and all other deps in this .so
++    visibility = ["//visibility:public"],
++    deps = [
++        # Has our Abseil symbols
++        ":absl_monolithic",
++    ],
++)
+diff --git a/mediapipe/framework/monolithic_absl.cc b/mediapipe/framework/monolithic_absl.cc
+new file mode 100644
+index 00000000..ba1bea3b
+--- /dev/null
++++ b/mediapipe/framework/monolithic_absl.cc
+@@ -0,0 +1,17 @@
++// Copyright 2025 The MediaPipe Authors.
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//      http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++// Forces Bazel to create an object file so the monolithic archive is produced.
++// Anchors at least one TU in the monolithic .so.
++namespace absl { void _absl_monolithic_dummy() {} }
+diff --git a/mediapipe/framework/monolithic_mediapipe.cc b/mediapipe/framework/monolithic_mediapipe.cc
+new file mode 100644
+index 00000000..0fd323ea
+--- /dev/null
++++ b/mediapipe/framework/monolithic_mediapipe.cc
+@@ -0,0 +1,17 @@
++// Copyright 2025 The MediaPipe Authors.
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//      http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++// Forces Bazel to create an object file so the monolithic archive is produced.
++// Anchors at least one TU in the monolithic .so.
++namespace mediapipe { void _mediapipe_monolithic_dummy() {} }
+-- 
+2.43.0
+
