@@ -171,7 +171,6 @@ fi
 
 # Ensure directories exist
 mkdir -p "${OASIS_DEPENDS_SOURCE_DIRECTORY}"
-mkdir -p "${OASIS_DEPENDS_LIB_DIRECTORY}"
 
 #
 # Download OASIS dependency source code

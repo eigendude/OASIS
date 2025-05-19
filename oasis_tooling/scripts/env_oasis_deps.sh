@@ -37,9 +37,6 @@ OASIS_DEPENDS_SOURCE_DIRECTORY="${OASIS_DEPENDS_DIRECTORY}/src"
 # Directory for OASIS dependency installed files
 OASIS_DEPENDS_INSTALL_DIRECTORY="${OASIS_DEPENDS_DIRECTORY}/install"
 
-# Directory for OASIS dependency installed libraries
-OASIS_DEPENDS_LIB_DIRECTORY="${OASIS_DEPENDS_INSTALL_DIRECTORY}/lib"
-
 #
 # Package definitions
 #
