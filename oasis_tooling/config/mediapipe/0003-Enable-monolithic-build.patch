@@ -1,18 +1,18 @@
-From 91d3c5e7cb2909616ad1cd84db52d288edcf0419 Mon Sep 17 00:00:00 2001
+From 4d405f13d4ac92fb709b992a6607782ea59021ae Mon Sep 17 00:00:00 2001
 From: Garrett Brown <eigendebugger@gmail.com>
 Date: Mon, 19 May 2025 19:20:30 -0700
 Subject: [PATCH 3/3] Enable monolithic build
 
 ---
- mediapipe/framework/BUILD                   | 79 +++++++++++++++++++++
+ mediapipe/framework/BUILD                   | 85 +++++++++++++++++++++
  mediapipe/framework/monolithic_absl.cc      | 17 +++++
  mediapipe/framework/monolithic_mediapipe.cc | 17 +++++
- 3 files changed, 113 insertions(+)
+ 3 files changed, 119 insertions(+)
  create mode 100644 mediapipe/framework/monolithic_absl.cc
  create mode 100644 mediapipe/framework/monolithic_mediapipe.cc
 
 diff --git a/mediapipe/framework/BUILD b/mediapipe/framework/BUILD
-index bb64530b..3655165b 100644
+index bb64530b..a45574ac 100644
 --- a/mediapipe/framework/BUILD
 +++ b/mediapipe/framework/BUILD
 @@ -396,6 +396,7 @@ cc_library(
@@ -23,7 +23,7 @@ index bb64530b..3655165b 100644
  )
  
  cc_library(
-@@ -1988,3 +1989,81 @@ cc_library(
+@@ -1988,3 +1989,87 @@ cc_library(
          "@com_google_absl//absl/strings:string_view",
      ],
  )
@@ -103,6 +103,12 @@ index bb64530b..3655165b 100644
 +    deps = [
 +        # Has our Abseil symbols
 +        ":absl_monolithic",
++
++        # hello_world dependencies
++        "//mediapipe/calculators/core:pass_through_calculator",
++        "//mediapipe/framework:calculator_graph",
++        "//mediapipe/framework/port:parse_text_proto",
++        "//mediapipe/framework/port:status",
 +    ],
 +)
 diff --git a/mediapipe/framework/monolithic_absl.cc b/mediapipe/framework/monolithic_absl.cc

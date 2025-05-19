@@ -59,6 +59,7 @@ setuptools.setup(
             os.path.join("share", PACKAGE_NAME),
             [
                 "launch/calibration_launch.py",
+                "launch/hello_world_launch.py",
                 "launch/perception_launch.py",
             ],
         ),

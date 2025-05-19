@@ -38,9 +38,11 @@ find_package(ament_cmake REQUIRED)
 find_package(bgslibrary REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(image_transport REQUIRED)
+find_package(MediaPipe REQUIRED)
 find_package(oasis_msgs REQUIRED)
 find_package(ORB_SLAM3)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_components REQUIRED)
 find_package(sensor_msgs REQUIRED)
 
 if (ORB_SLAM3_FOUND)
@@ -69,6 +71,11 @@ set(BGS_LIBRARIES
 # TODO: Required by bgslibrary
 find_package(OpenCV REQUIRED)
 list(APPEND BGS_LIBRARIES ${OpenCV_LIBS})
+
+# Sources needed for MediaPipe
+set(MEDIAPIPE_SOURCES
+  src/utils/AbseilStubs.cpp
+)
 
 #
 # background_subtractor_abl
@@ -154,6 +161,60 @@ install(
     background_modeler
   DESTINATION
     lib/${PROJECT_NAME}
+)
+
+#
+# hello_world
+#
+
+set(HELLO_WORLD_SOURCES
+  ${MEDIAPIPE_SOURCES}
+  src/nodes/HelloWorldNode.cpp
+  src/utils/HelloWorld.cpp
+)
+set(HELLO_WORLD_LIBRARIES
+  MediaPipe::MediaPipe
+  rclcpp::rclcpp
+)
+
+add_executable(hello_world
+  ${HELLO_WORLD_SOURCES}
+  src/cli/hello_world_node.cpp
+)
+target_link_libraries(hello_world PUBLIC
+  ${HELLO_WORLD_LIBRARIES}
+)
+install(
+  TARGETS
+    hello_world
+  DESTINATION
+    lib/${PROJECT_NAME}
+)
+
+add_library(hello_world_component SHARED
+  ${HELLO_WORLD_SOURCES}
+  src/components/hello_world_component.cpp
+  src/ros/RosComponent.cpp
+)
+target_include_directories(hello_world_component PUBLIC
+  ${rclcpp_components_INCLUDE_DIRS}
+)
+target_link_libraries(hello_world_component PUBLIC
+  ${HELLO_WORLD_LIBRARIES}
+  ${rclcpp_components_LIBRARIES}
+)
+install(
+  TARGETS
+    hello_world_component
+  DESTINATION
+    lib
+)
+
+# Register the component
+rclcpp_components_register_node(
+  hello_world_component
+  PLUGIN "oasis_perception::HelloWorldComponent"
+  EXECUTABLE hello_world_component_node
 )
 
 #
