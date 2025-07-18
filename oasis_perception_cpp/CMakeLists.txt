@@ -38,7 +38,7 @@ find_package(ament_cmake REQUIRED)
 find_package(bgslibrary REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(image_transport REQUIRED)
-find_package(MediaPipe REQUIRED)
+find_package(MediaPipe)
 find_package(oasis_msgs REQUIRED)
 find_package(ORB_SLAM3)
 find_package(rclcpp REQUIRED)
@@ -168,55 +168,57 @@ install(
 # hello_world
 #
 
-set(HELLO_WORLD_SOURCES
-  ${MEDIAPIPE_SOURCES}
-  src/nodes/HelloWorldNode.cpp
-  src/utils/HelloWorld.cpp
-)
-set(HELLO_WORLD_LIBRARIES
-  MediaPipe::MediaPipe
-  rclcpp::rclcpp
-)
+if(TARGET MediaPipe::MediaPipe)
+  set(HELLO_WORLD_SOURCES
+    ${MEDIAPIPE_SOURCES}
+    src/nodes/HelloWorldNode.cpp
+    src/utils/HelloWorld.cpp
+  )
+  set(HELLO_WORLD_LIBRARIES
+    MediaPipe::MediaPipe
+    rclcpp::rclcpp
+  )
 
-add_executable(hello_world
-  ${HELLO_WORLD_SOURCES}
-  src/cli/hello_world_node.cpp
-)
-target_link_libraries(hello_world PUBLIC
-  ${HELLO_WORLD_LIBRARIES}
-)
-install(
-  TARGETS
-    hello_world
-  DESTINATION
-    lib/${PROJECT_NAME}
-)
+  add_executable(hello_world
+    ${HELLO_WORLD_SOURCES}
+    src/cli/hello_world_node.cpp
+  )
+  target_link_libraries(hello_world PUBLIC
+    ${HELLO_WORLD_LIBRARIES}
+  )
+  install(
+    TARGETS
+      hello_world
+    DESTINATION
+      lib/${PROJECT_NAME}
+  )
 
-add_library(hello_world_component SHARED
-  ${HELLO_WORLD_SOURCES}
-  src/components/hello_world_component.cpp
-  src/ros/RosComponent.cpp
-)
-target_include_directories(hello_world_component PUBLIC
-  ${rclcpp_components_INCLUDE_DIRS}
-)
-target_link_libraries(hello_world_component PUBLIC
-  ${HELLO_WORLD_LIBRARIES}
-  ${rclcpp_components_LIBRARIES}
-)
-install(
-  TARGETS
+  add_library(hello_world_component SHARED
+    ${HELLO_WORLD_SOURCES}
+    src/components/hello_world_component.cpp
+    src/ros/RosComponent.cpp
+  )
+  target_include_directories(hello_world_component PUBLIC
+    ${rclcpp_components_INCLUDE_DIRS}
+  )
+  target_link_libraries(hello_world_component PUBLIC
+    ${HELLO_WORLD_LIBRARIES}
+    ${rclcpp_components_LIBRARIES}
+  )
+  install(
+    TARGETS
+      hello_world_component
+    DESTINATION
+      lib
+  )
+
+  # Register the component
+  rclcpp_components_register_node(
     hello_world_component
-  DESTINATION
-    lib
-)
-
-# Register the component
-rclcpp_components_register_node(
-  hello_world_component
-  PLUGIN "oasis_perception::HelloWorldComponent"
-  EXECUTABLE hello_world_component_node
-)
+    PLUGIN "oasis_perception::HelloWorldComponent"
+    EXECUTABLE hello_world_component_node
+  )
+endif()
 
 #
 # monocular_slam
@@ -347,68 +349,72 @@ install(
 # pose_landmarker
 #
 
-set(POSE_LANDMARKER_SOURCES
-  ${MEDIAPIPE_SOURCES}
-  src/nodes/PoseLandmarkerNode.cpp
-  src/pose/PoseLandmarker.cpp
-)
-set(POSE_LANDMARKER_INCLUDE_DIRS
-  ${oasis_msgs_INCLUDE_DIRS}
-)
-set(POSE_LANDMARKER_LIBRARIES
-  cv_bridge::cv_bridge
-  image_transport::image_transport
-  MediaPipe::MediaPipe
-  oasis_msgs::oasis_msgs__rosidl_generator_cpp
-  ${OpenCV_LIBRARIES}
-  rclcpp::rclcpp
-  sensor_msgs::sensor_msgs__rosidl_generator_cpp
-  std_msgs::std_msgs__rosidl_generator_cpp
-)
 
-add_executable(pose_landmarker
-  ${POSE_LANDMARKER_SOURCES}
-  src/cli/pose_landmarker_node.cpp
-)
-target_include_directories(pose_landmarker PUBLIC
-  ${POSE_LANDMARKER_INCLUDE_DIRS}
-)
-target_link_libraries(pose_landmarker PUBLIC
-  ${POSE_LANDMARKER_LIBRARIES}
-)
-install(
-  TARGETS
-    pose_landmarker
-  DESTINATION
-    lib/${PROJECT_NAME}
-)
+# Check if the target MediaPipe::MediaPipe is available
+if(TARGET MediaPipe::MediaPipe)
+  set(POSE_LANDMARKER_SOURCES
+    ${MEDIAPIPE_SOURCES}
+    src/nodes/PoseLandmarkerNode.cpp
+    src/pose/PoseLandmarker.cpp
+  )
+  set(POSE_LANDMARKER_INCLUDE_DIRS
+    ${oasis_msgs_INCLUDE_DIRS}
+  )
+  set(POSE_LANDMARKER_LIBRARIES
+    cv_bridge::cv_bridge
+    image_transport::image_transport
+    MediaPipe::MediaPipe
+    oasis_msgs::oasis_msgs__rosidl_generator_cpp
+    ${OpenCV_LIBRARIES}
+    rclcpp::rclcpp
+    sensor_msgs::sensor_msgs__rosidl_generator_cpp
+    std_msgs::std_msgs__rosidl_generator_cpp
+  )
 
-add_library(pose_landmarker_component SHARED
-  ${POSE_LANDMARKER_SOURCES}
-  src/components/pose_landmarker_component.cpp
-  src/ros/RosComponent.cpp
-)
-target_include_directories(pose_landmarker_component PUBLIC
-  ${POSE_LANDMARKER_INCLUDE_DIRS}
-  ${rclcpp_components_INCLUDE_DIRS}
-)
-target_link_libraries(pose_landmarker_component PUBLIC
-  ${POSE_LANDMARKER_LIBRARIES}
-  ${rclcpp_components_LIBRARIES}
-)
-install(
-  TARGETS
+  add_executable(pose_landmarker
+    ${POSE_LANDMARKER_SOURCES}
+    src/cli/pose_landmarker_node.cpp
+  )
+  target_include_directories(pose_landmarker PUBLIC
+    ${POSE_LANDMARKER_INCLUDE_DIRS}
+  )
+  target_link_libraries(pose_landmarker PUBLIC
+    ${POSE_LANDMARKER_LIBRARIES}
+  )
+  install(
+    TARGETS
+      pose_landmarker
+    DESTINATION
+      lib/${PROJECT_NAME}
+  )
+
+  add_library(pose_landmarker_component SHARED
+    ${POSE_LANDMARKER_SOURCES}
+    src/components/pose_landmarker_component.cpp
+    src/ros/RosComponent.cpp
+  )
+  target_include_directories(pose_landmarker_component PUBLIC
+    ${POSE_LANDMARKER_INCLUDE_DIRS}
+    ${rclcpp_components_INCLUDE_DIRS}
+  )
+  target_link_libraries(pose_landmarker_component PUBLIC
+    ${POSE_LANDMARKER_LIBRARIES}
+    ${rclcpp_components_LIBRARIES}
+  )
+  install(
+    TARGETS
+      pose_landmarker_component
+    DESTINATION
+      lib
+  )
+
+  # Register the component
+  rclcpp_components_register_node(
     pose_landmarker_component
-  DESTINATION
-    lib
-)
-
-# Register the component
-rclcpp_components_register_node(
-  pose_landmarker_component
-  PLUGIN "pose_landmarker::PoseLandmarkerComponent"
-  EXECUTABLE pose_landmarker_component_node
-)
+    PLUGIN "pose_landmarker::PoseLandmarkerComponent"
+    EXECUTABLE pose_landmarker_component_node
+  )
+endif()
 
 #
 # Testing
