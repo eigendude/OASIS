@@ -27,6 +27,8 @@ bool PoseLandmarker::Initialize(const std::string& loggingName)
 
   // Full verbosity
   FLAGS_v = 3;
+
+  return true;
 }
 
 std::shared_ptr<sensor_msgs::msg::Image> PoseLandmarker::OnImage(
