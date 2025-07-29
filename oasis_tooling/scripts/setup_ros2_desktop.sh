@@ -28,24 +28,18 @@ source "${SCRIPT_DIR}/env_common.sh"
 # Setup ROS 2 sources
 ################################################################################
 
-KEY_URL="https://raw.githubusercontent.com/ros/rosdistro/master/ros.key"
-PKG_URL="http://packages.ros.org/ros2/ubuntu"
-SIGNED_BY="/usr/share/keyrings/ros-archive-keyring.gpg"
-SOURCES_LIST="/etc/apt/sources.list.d/ros2.list"
-
-# Add the ROS 2 repository
-if [ ! -f "${SIGNED_BY}" ] || [ ! -f ${SOURCES_LIST} ]; then
+# Add the ROS 2 repository using the ros2-apt-source package
+if ! dpkg -s ros2-apt-source >/dev/null 2>&1; then
   # Install required dependencies
   sudo apt install -y \
     curl \
     gnupg2
 
-  # Authorize the ROS 2 GPG key with apt
-  sudo curl -sSL "${KEY_URL}" -o "${SIGNED_BY}"
-
-  # Add the ROS 2 repository to our sources list
-  echo "deb [arch=${ARCH} signed-by=${SIGNED_BY}] ${PKG_URL} ${CODENAME} main" | \
-    sudo tee "${SOURCES_LIST}"
+  export ROS_APT_SOURCE_VERSION=$(curl -s https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest | grep -F "tag_name" | awk -F"\"" '{print $4}')
+  TMP_DEB=$(mktemp --suffix .deb)
+  curl -L -o "${TMP_DEB}" "https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.$(. /etc/os-release && echo $VERSION_CODENAME)_all.deb"
+  sudo dpkg -i "${TMP_DEB}"
+  rm -f "${TMP_DEB}"
 
   sudo apt update
 fi
