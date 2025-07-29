@@ -35,6 +35,14 @@ if ! dpkg -s ros2-apt-source >/dev/null 2>&1; then
     curl \
     gnupg2
 
+  # Remove any existing ROS apt sources added by older instructions
+  sudo rm -f \
+    /etc/apt/sources.list.d/ros2-latest.list \
+    /etc/apt/sources.list.d/ros2.list
+  sudo rm -f \
+    /usr/share/keyrings/ros-archive-keyring.gpg \
+    /etc/apt/trusted.gpg.d/ros-archive-keyring.gpg
+
   export ROS_APT_SOURCE_VERSION=$(curl -s https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest | grep -F "tag_name" | awk -F"\"" '{print $4}')
   TMP_DEB=$(mktemp --suffix .deb)
   curl -L -o "${TMP_DEB}" "https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.$(. /etc/os-release && echo $VERSION_CODENAME)_all.deb"
