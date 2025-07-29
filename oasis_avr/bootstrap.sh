@@ -118,14 +118,12 @@ fi
 # Patch Arduino-CMake-Toolchain
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${TOOLCHAIN_DIR}" \
   < "${PATCH_DIR}/Arduino-CMake-Toolchain/0001-Add-variable-ARDUINO_BOARD_RAM_SIZE.patch"
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${TOOLCHAIN_DIR}" \
@@ -134,21 +132,18 @@ patch \
 # Patch Adafruit BluefruitLE_nRF51 library
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${ADAFRUIT_BLE_DIR}" \
   < "${PATCH_DIR}/Adafruit_BluefruitLE_nRF51/0001-Fix-library-not-located-by-Arduino-CMake-Toolchain.patch"
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${ADAFRUIT_BLE_DIR}" \
   < "${PATCH_DIR}/Adafruit_BluefruitLE_nRF51/0001-Add-function-to-get-Bluefruit-info.patch"
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${ADAFRUIT_BLE_DIR}" \
@@ -157,7 +152,6 @@ patch \
 # Patch FirmataExpress
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${FIRMATA_EXPRESS_DIR}" \

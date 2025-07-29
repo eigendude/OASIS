@@ -188,8 +188,15 @@ fi
 # Directory setup
 #
 
-# Ensure directories exist
+# Ensure a clean slate for source code without deleting directories
 mkdir -p "${ROS2_SOURCE_DIRECTORY}"
+if [[ -d "${ROS2_SOURCE_DIRECTORY}" ]]; then
+  find "${ROS2_SOURCE_DIRECTORY}" -name .git -type d | while read -r git_dir; do
+    repo_dir="$(dirname "${git_dir}")"
+    git -C "${repo_dir}" reset --hard HEAD
+    git -C "${repo_dir}" clean -fdx
+  done
+fi
 mkdir -p "${ROS2_INSTALL_DIRECTORY}"
 
 if [[ "${OSTYPE}" != "darwin"* ]]; then
@@ -216,7 +223,6 @@ echo "Downloading ROS 2 source code..."
     # Update image_common branch
     patch \
       -p1 \
-      --forward \
       --reject-file="/dev/null" \
       --no-backup-if-mismatch \
       --directory="${ROS2_SOURCE_DIRECTORY}" \
@@ -224,7 +230,7 @@ echo "Downloading ROS 2 source code..."
   fi
 
   # Import ROS 2 sources
-  vcs import "${ROS2_SOURCE_DIRECTORY}" < ros2.repos
+  vcs import --force "${ROS2_SOURCE_DIRECTORY}" < ros2.repos
 )
 
 #
