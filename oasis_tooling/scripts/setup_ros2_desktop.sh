@@ -43,11 +43,12 @@ if ! dpkg -s ros2-apt-source >/dev/null 2>&1; then
     /usr/share/keyrings/ros-archive-keyring.gpg \
     /etc/apt/trusted.gpg.d/ros-archive-keyring.gpg
 
-  export ROS_APT_SOURCE_VERSION=$(curl -s https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest | grep -F "tag_name" | awk -F"\"" '{print $4}')
-  TMP_DEB=$(mktemp --suffix .deb)
-  curl -L -o "${TMP_DEB}" "https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.$(. /etc/os-release && echo $VERSION_CODENAME)_all.deb"
-  sudo dpkg -i "${TMP_DEB}"
-  rm -f "${TMP_DEB}"
+  # Download and install the latest ros2-apt-source package
+  export ROS_APT_SOURCE_VERSION=$(curl -s https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest | grep -F "tag_name" | awk -F '"' '{print $4}')
+  ROS_DEB="/tmp/ros2-apt-source.deb"
+  curl -L -o "${ROS_DEB}" "https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.$(. /etc/os-release && echo $VERSION_CODENAME)_all.deb"
+  sudo dpkg -i "${ROS_DEB}"
+  rm -f "${ROS_DEB}"
 
   sudo apt update
 fi
