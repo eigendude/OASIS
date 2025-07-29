@@ -53,8 +53,23 @@ if ! dpkg -s ros2-apt-source >/dev/null 2>&1; then
     exit 1
   fi
 
+  CODENAME=$(source /etc/os-release && echo "$VERSION_CODENAME")
   TMP_DEB=$(mktemp --suffix .deb)
-  curl -fL -o "${TMP_DEB}" "https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.$(. /etc/os-release && echo $VERSION_CODENAME)_all.deb"
+
+  # Attempt to download the package for the running distribution.  If that
+  # fails (for example, if we're on a non-LTS release), fall back to the latest
+  # LTS codename.
+  PACKAGE_URL="https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.${CODENAME}_all.deb"
+  if ! curl -fL -o "${TMP_DEB}" "${PACKAGE_URL}"; then
+    FALLBACK_CODENAME="noble"
+    echo "Package for ${CODENAME} not found, trying ${FALLBACK_CODENAME}..." >&2
+    PACKAGE_URL="https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.${FALLBACK_CODENAME}_all.deb"
+    if ! curl -fL -o "${TMP_DEB}" "${PACKAGE_URL}"; then
+      echo "Failed to download ros2-apt-source package" >&2
+      exit 1
+    fi
+  fi
+
   sudo dpkg -i "${TMP_DEB}"
   rm -f "${TMP_DEB}"
 fi
