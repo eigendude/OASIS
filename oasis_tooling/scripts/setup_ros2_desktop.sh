@@ -28,24 +28,50 @@ source "${SCRIPT_DIR}/env_common.sh"
 # Setup ROS 2 sources
 ################################################################################
 
-KEY_URL="https://raw.githubusercontent.com/ros/rosdistro/master/ros.key"
-PKG_URL="http://packages.ros.org/ros2/ubuntu"
-SIGNED_BY="/usr/share/keyrings/ros-archive-keyring.gpg"
-SOURCES_LIST="/etc/apt/sources.list.d/ros2.list"
+# Remove any existing ROS apt sources added by older instructions
+sudo rm -f \
+  /etc/apt/sources.list.d/ros2-latest.list \
+  /etc/apt/sources.list.d/ros2.list
+sudo sed -i '/packages\.ros\.org\/ros2/d' /etc/apt/sources.list 2>/dev/null || true
+sudo find /etc/apt/sources.list.d -name '*.list' -exec \
+  sed -i '/packages\.ros\.org\/ros2/d' {} \; 2>/dev/null || true
+sudo rm -f \
+  /usr/share/keyrings/ros-archive-keyring.gpg \
+  /etc/apt/trusted.gpg.d/ros-archive-keyring.gpg
 
-# Add the ROS 2 repository
-if [ ! -f "${SIGNED_BY}" ] || [ ! -f ${SOURCES_LIST} ]; then
+# Add the ROS 2 repository using the ros2-apt-source package
+if ! dpkg -s ros2-apt-source >/dev/null 2>&1; then
   # Install required dependencies
   sudo apt install -y \
     curl \
     gnupg2
 
-  # Authorize the ROS 2 GPG key with apt
-  sudo curl -sSL "${KEY_URL}" -o "${SIGNED_BY}"
+  ROS_APT_SOURCE_VERSION=$(curl -fs https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest | \
+    grep -F "tag_name" | awk -F"\"" '{print $4}')
+  if [ -z "${ROS_APT_SOURCE_VERSION}" ]; then
+    echo "Failed to determine ros2-apt-source version" >&2
+    exit 1
+  fi
 
-  # Add the ROS 2 repository to our sources list
-  echo "deb [arch=${ARCH} signed-by=${SIGNED_BY}] ${PKG_URL} ${CODENAME} main" | \
-    sudo tee "${SOURCES_LIST}"
+  CODENAME=$(source /etc/os-release && echo "$VERSION_CODENAME")
+  TMP_DEB=$(mktemp --suffix .deb)
 
-  sudo apt update
+  # Attempt to download the package for the running distribution.  If that
+  # fails (for example, if we're on a non-LTS release), fall back to the latest
+  # LTS codename.
+  PACKAGE_URL="https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.${CODENAME}_all.deb"
+  if ! curl -fL -o "${TMP_DEB}" "${PACKAGE_URL}"; then
+    FALLBACK_CODENAME="noble"
+    echo "Package for ${CODENAME} not found, trying ${FALLBACK_CODENAME}..." >&2
+    PACKAGE_URL="https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.${FALLBACK_CODENAME}_all.deb"
+    if ! curl -fL -o "${TMP_DEB}" "${PACKAGE_URL}"; then
+      echo "Failed to download ros2-apt-source package" >&2
+      exit 1
+    fi
+  fi
+
+  sudo dpkg -i "${TMP_DEB}"
+  rm -f "${TMP_DEB}"
 fi
+
+sudo apt update
