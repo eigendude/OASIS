@@ -189,9 +189,12 @@ fi
 #
 
 # Ensure a clean slate for source code
-rm -rf "${ROS2_SOURCE_DIRECTORY}"
 mkdir -p "${ROS2_SOURCE_DIRECTORY}"
 mkdir -p "${ROS2_INSTALL_DIRECTORY}"
+if [ -d "${ROS2_SOURCE_DIRECTORY}" ]; then
+  vcs custom --git --args "reset --hard" "${ROS2_SOURCE_DIRECTORY}" || true
+  vcs custom --git --args "clean -fdx" "${ROS2_SOURCE_DIRECTORY}" || true
+fi
 
 if [[ "${OSTYPE}" != "darwin"* ]]; then
   # After updating to Ubuntu 22.04, ament packages couldn't be found because

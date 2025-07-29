@@ -170,8 +170,11 @@ fi
 #
 
 # Ensure a clean slate for source code
-rm -rf "${OASIS_DEPENDS_SOURCE_DIRECTORY}"
 mkdir -p "${OASIS_DEPENDS_SOURCE_DIRECTORY}"
+if [ -d "${OASIS_DEPENDS_SOURCE_DIRECTORY}" ]; then
+  vcs custom --git --args "reset --hard" "${OASIS_DEPENDS_SOURCE_DIRECTORY}" || true
+  vcs custom --git --args "clean -fdx" "${OASIS_DEPENDS_SOURCE_DIRECTORY}" || true
+fi
 
 #
 # Download OASIS dependency source code
