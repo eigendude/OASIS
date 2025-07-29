@@ -216,7 +216,6 @@ echo "Downloading ROS 2 source code..."
     # Update image_common branch
     patch \
       -p1 \
-      --forward \
       --reject-file="/dev/null" \
       --no-backup-if-mismatch \
       --directory="${ROS2_SOURCE_DIRECTORY}" \

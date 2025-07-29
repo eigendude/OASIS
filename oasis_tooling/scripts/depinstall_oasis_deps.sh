@@ -186,7 +186,6 @@ vcs import --force "${OASIS_DEPENDS_SOURCE_DIRECTORY}" < "${PACKAGE_DIRECTORY}/c
 echo "Patching bgslibrary..."
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/bgslibrary" \
@@ -202,14 +201,12 @@ fi
 echo "Patching libcamera_cmake..."
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/libcamera_cmake" \
   < "${CONFIG_DIRECTORY}/libcamera_cmake/0001-Update-libcamera-repo-tag.patch"
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/libcamera_cmake" \
@@ -222,7 +219,6 @@ cp -v \
   "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/libcec"
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/libcec" \
@@ -235,28 +231,24 @@ cp -v \
   "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/libfreenect2"
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/libfreenect2" \
   < "${CONFIG_DIRECTORY}/libfreenect2/0001-Add-ament-packaging.patch"
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/libfreenect2" \
   < "${CONFIG_DIRECTORY}/libfreenect2/0002-Change-CMake-option-defaults.patch"
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/libfreenect2" \
   < "${CONFIG_DIRECTORY}/libfreenect2/0003-Enable-PIC.patch"
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/libfreenect2" \
@@ -282,35 +274,30 @@ cp -v \
   "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/orb-slam3"
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/orb-slam3" \
   < "${CONFIG_DIRECTORY}/orb-slam3/0001-Update-CMAKEList.txt-to-use-C-14.patch"
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/orb-slam3" \
   < "${CONFIG_DIRECTORY}/orb-slam3/0002-Add-missing-DBoW2-directory-to-CMakeLists.txt.patch"
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/orb-slam3" \
   < "${CONFIG_DIRECTORY}/orb-slam3/0003-Add-install-step-to-CMakeLists.txt.patch"
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/orb-slam3" \
   < "${CONFIG_DIRECTORY}/orb-slam3/0004-Don-t-build-examples.patch"
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/orb-slam3" \
@@ -329,7 +316,6 @@ cp -v \
   "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/p8-platform"
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/p8-platform" \
@@ -339,7 +325,6 @@ patch \
 echo "Patching Pangolin..."
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/pangolin" \
@@ -356,7 +341,6 @@ echo "Patching ros2_v4l2_camera..."
 if [ "${ROS2_DISTRO}" = "iron" ]; then
   patch \
     -p1 \
-    --forward \
     --reject-file="/dev/null" \
     --no-backup-if-mismatch \
     --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/ros2_v4l2_camera" \
