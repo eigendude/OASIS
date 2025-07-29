@@ -46,9 +46,15 @@ if ! dpkg -s ros2-apt-source >/dev/null 2>&1; then
     curl \
     gnupg2
 
-  export ROS_APT_SOURCE_VERSION=$(curl -s https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest | grep -F "tag_name" | awk -F"\"" '{print $4}')
+  ROS_APT_SOURCE_VERSION=$(curl -fs https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest | \
+    grep -F "tag_name" | awk -F"\"" '{print $4}')
+  if [ -z "${ROS_APT_SOURCE_VERSION}" ]; then
+    echo "Failed to determine ros2-apt-source version" >&2
+    exit 1
+  fi
+
   TMP_DEB=$(mktemp --suffix .deb)
-  curl -L -o "${TMP_DEB}" "https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.$(. /etc/os-release && echo $VERSION_CODENAME)_all.deb"
+  curl -fL -o "${TMP_DEB}" "https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.$(. /etc/os-release && echo $VERSION_CODENAME)_all.deb"
   sudo dpkg -i "${TMP_DEB}"
   rm -f "${TMP_DEB}"
 fi
