@@ -78,16 +78,14 @@ patch \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${KODI_SOURCE_DIR}" \
-  < "${CONFIG_DIRECTORY}/kodi/0001-depends-Remove-git-dependency.patch" \
-  || :
+  < "${CONFIG_DIRECTORY}/kodi/0001-depends-Remove-git-dependency.patch"
 patch \
   -p1 \
   --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${KODI_SOURCE_DIR}" \
-  < "${CONFIG_DIRECTORY}/kodi/0002-temp-Wayland-Disable-window-decorations.patch" \
-  || :
+  < "${CONFIG_DIRECTORY}/kodi/0002-temp-Wayland-Disable-window-decorations.patch"
 if [ -f "${CONFIG_DIRECTORY}/kodi/0003-temp-Force-${HOSTNAME}-dimensions.patch" ]; then
   patch \
     -p1 \
@@ -95,8 +93,7 @@ if [ -f "${CONFIG_DIRECTORY}/kodi/0003-temp-Force-${HOSTNAME}-dimensions.patch" 
     --reject-file="/dev/null" \
     --no-backup-if-mismatch \
     --directory="${KODI_SOURCE_DIR}" \
-    < "${CONFIG_DIRECTORY}/kodi/0003-temp-Force-${HOSTNAME}-dimensions.patch" \
-    || :
+    < "${CONFIG_DIRECTORY}/kodi/0003-temp-Force-${HOSTNAME}-dimensions.patch"
 fi
 
 #

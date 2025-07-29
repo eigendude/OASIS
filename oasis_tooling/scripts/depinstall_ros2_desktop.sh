@@ -224,7 +224,7 @@ echo "Downloading ROS 2 source code..."
   fi
 
   # Import ROS 2 sources
-  vcs import "${ROS2_SOURCE_DIRECTORY}" < ros2.repos
+  vcs import --force "${ROS2_SOURCE_DIRECTORY}" < ros2.repos
 )
 
 #
