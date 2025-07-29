@@ -169,7 +169,8 @@ fi
 # Directory setup
 #
 
-# Ensure directories exist
+# Ensure a clean slate for source code
+rm -rf "${OASIS_DEPENDS_SOURCE_DIRECTORY}"
 mkdir -p "${OASIS_DEPENDS_SOURCE_DIRECTORY}"
 
 #

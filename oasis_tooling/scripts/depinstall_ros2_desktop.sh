@@ -188,7 +188,8 @@ fi
 # Directory setup
 #
 
-# Ensure directories exist
+# Ensure a clean slate for source code
+rm -rf "${ROS2_SOURCE_DIRECTORY}"
 mkdir -p "${ROS2_SOURCE_DIRECTORY}"
 mkdir -p "${ROS2_INSTALL_DIRECTORY}"
 
