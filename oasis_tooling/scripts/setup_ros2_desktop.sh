@@ -41,16 +41,15 @@ sudo rm -f \
 
 # Add the ROS 2 repository using the ros2-apt-source package
 if ! dpkg -s ros2-apt-source >/dev/null 2>&1; then
-  # Install required dependencies
+  sudo apt update
   sudo apt install -y \
     curl \
     gnupg2
 
   export ROS_APT_SOURCE_VERSION=$(curl -s https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest | grep -F "tag_name" | awk -F"\"" '{print $4}')
-  TMP_DEB=$(mktemp --suffix .deb)
-  curl -L -o "${TMP_DEB}" "https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.$(. /etc/os-release && echo $VERSION_CODENAME)_all.deb"
-  sudo dpkg -i "${TMP_DEB}"
-  rm -f "${TMP_DEB}"
+  curl -L -o /tmp/ros2-apt-source.deb "https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.$(. /etc/os-release && echo $VERSION_CODENAME)_all.deb"
+  sudo dpkg -i /tmp/ros2-apt-source.deb
+  rm -f /tmp/ros2-apt-source.deb
 fi
 
 sudo apt update
