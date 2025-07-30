@@ -34,10 +34,6 @@ repositories:
     type: git
     url: https://github.com/andrewssobral/bgslibrary.git
     version: c4e35fb310798ccf859cc12e1571a8f0854e554c
-  ros-perception/camera_ros:
-    type: git
-    url: https://github.com/christianrauch/camera_ros.git
-    version: main
   ros-perception/ffmpeg_encoder_decoder:
     type: git
     url: https://github.com/ros-misc-utilities/ffmpeg_encoder_decoder.git
@@ -58,10 +54,6 @@ repositories:
     type: git
     url: https://github.com/ros-perception/image_transport_plugins.git
     version: kilted
-  ros-perception/libcamera_cmake:
-    type: git
-    url: https://github.com/christianrauch/libcamera_cmake.git
-    version: main
   ros-perception/oasis_kinect2:
     type: git
     url: https://github.com/eigendude/oasis_kinect2.git

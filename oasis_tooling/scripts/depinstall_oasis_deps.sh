@@ -29,6 +29,7 @@ ROSDEP_IGNORE_KEYS=" \
   image_view \
   launch_testing \
   launch_testing_ament_cmake \
+  libboost-python \
   python_cmake_module \
   ros_testing \
 "
@@ -203,21 +204,6 @@ if (( $(echo "${PHYSICAL_MEMORY_GB} <= 4" | bc -l) )); then
   echo "Disabling image_view with ${PHYSICAL_MEMORY_GB} GiB of RAM"
   touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/image_pipeline/image_view/COLCON_IGNORE"
 fi
-
-# libcamera_cmake
-echo "Patching libcamera_cmake..."
-patch \
-  -p1 \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/libcamera_cmake" \
-  < "${CONFIG_DIRECTORY}/libcamera_cmake/0001-Update-libcamera-repo-tag.patch"
-patch \
-  -p1 \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/libcamera_cmake" \
-  < "${CONFIG_DIRECTORY}/libcamera_cmake/0002-Force-serial-build.patch"
 
 # libcec
 echo "Patching libcec..."

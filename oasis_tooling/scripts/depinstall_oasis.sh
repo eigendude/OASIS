@@ -95,7 +95,6 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     --upgrade \
     --ignore-installed \
     --break-system-packages \
-    mediapipe \
     telemetrix-aio
 
   # Needed for communicating with UPS devices
@@ -145,12 +144,6 @@ EOF
 
   # Restart services for changes to take effect
   sudo systemctl restart nut-server.service
-
-  # Enable and start driver and server
-  sudo systemctl enable --now nut-server.service
-
-  # Disable the monitor unless you're using upsmon for shutdown
-  sudo systemctl disable --now nut-monitor.service || true
 fi
 
 #

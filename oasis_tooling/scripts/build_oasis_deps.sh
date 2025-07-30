@@ -53,6 +53,7 @@ fi
 COLCON_FLAGS+=" \
   --cmake-args \
     -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+    -DSKIP_PYTHON_WRAPPER=1 \
 "
 
 # Uncomment these to force building in serial

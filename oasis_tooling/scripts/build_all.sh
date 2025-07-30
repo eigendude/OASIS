@@ -43,13 +43,6 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 "${SCRIPT_DIR}/build_oasis_deps.sh"
 
 #
-# Build MediaPipe
-#
-
-"${SCRIPT_DIR}/depinstall_mediapipe.sh"
-"${SCRIPT_DIR}/build_mediapipe.sh"
-
-#
 # Build OASIS
 #
 
