@@ -169,14 +169,21 @@ fi
 # Directory setup
 #
 
-# Ensure directories exist
+# Ensure a clean slate for source code without deleting directories
 mkdir -p "${OASIS_DEPENDS_SOURCE_DIRECTORY}"
+if [[ -d "${OASIS_DEPENDS_SOURCE_DIRECTORY}" ]]; then
+  find "${OASIS_DEPENDS_SOURCE_DIRECTORY}" -name .git -type d | while read -r git_dir; do
+    repo_dir="$(dirname "${git_dir}")"
+    git -C "${repo_dir}" reset --hard HEAD
+    git -C "${repo_dir}" clean -fdx
+  done
+fi
 
 #
 # Download OASIS dependency source code
 #
 
-vcs import "${OASIS_DEPENDS_SOURCE_DIRECTORY}" < "${PACKAGE_DIRECTORY}/config/depends.repos"
+vcs import --force "${OASIS_DEPENDS_SOURCE_DIRECTORY}" < "${PACKAGE_DIRECTORY}/config/depends.repos"
 
 #
 # Patch dependency sources
@@ -186,12 +193,10 @@ vcs import "${OASIS_DEPENDS_SOURCE_DIRECTORY}" < "${PACKAGE_DIRECTORY}/config/de
 echo "Patching bgslibrary..."
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/bgslibrary" \
-  < "${CONFIG_DIRECTORY}/bgslibrary/0001-Disable-imshow-calls.patch" \
-  || :
+  < "${CONFIG_DIRECTORY}/bgslibrary/0001-Disable-imshow-calls.patch"
 
 # Disable image_view on systems with <= 4GiB memory
 if (( $(echo "${PHYSICAL_MEMORY_GB} <= 4" | bc -l) )); then
@@ -203,20 +208,16 @@ fi
 echo "Patching libcamera_cmake..."
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/libcamera_cmake" \
-  < "${CONFIG_DIRECTORY}/libcamera_cmake/0001-Update-libcamera-repo-tag.patch" \
-  || :
+  < "${CONFIG_DIRECTORY}/libcamera_cmake/0001-Update-libcamera-repo-tag.patch"
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/libcamera_cmake" \
-  < "${CONFIG_DIRECTORY}/libcamera_cmake/0002-Force-serial-build.patch" \
-  || :
+  < "${CONFIG_DIRECTORY}/libcamera_cmake/0002-Force-serial-build.patch"
 
 # libcec
 echo "Patching libcec..."
@@ -225,12 +226,10 @@ cp -v \
   "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/libcec"
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/libcec" \
-  < "${CONFIG_DIRECTORY}/libcec/0001-Ament-Add-packaging-for-ROS-2-compatibility.patch" \
-  || :
+  < "${CONFIG_DIRECTORY}/libcec/0001-Ament-Add-packaging-for-ROS-2-compatibility.patch"
 
 # libfreenect2
 echo "Patching libfreenect2..."
@@ -239,36 +238,28 @@ cp -v \
   "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/libfreenect2"
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/libfreenect2" \
-  < "${CONFIG_DIRECTORY}/libfreenect2/0001-Add-ament-packaging.patch" \
-  || :
+  < "${CONFIG_DIRECTORY}/libfreenect2/0001-Add-ament-packaging.patch"
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/libfreenect2" \
-  < "${CONFIG_DIRECTORY}/libfreenect2/0002-Change-CMake-option-defaults.patch" \
-  || :
+  < "${CONFIG_DIRECTORY}/libfreenect2/0002-Change-CMake-option-defaults.patch"
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/libfreenect2" \
-  < "${CONFIG_DIRECTORY}/libfreenect2/0003-Enable-PIC.patch" \
-  || :
+  < "${CONFIG_DIRECTORY}/libfreenect2/0003-Enable-PIC.patch"
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/libfreenect2" \
-  < "${CONFIG_DIRECTORY}/libfreenect2/0004-Force-disable-components.patch" \
-  || :
+  < "${CONFIG_DIRECTORY}/libfreenect2/0004-Force-disable-components.patch"
 
 # OpenNI
 echo "Patching OpenNI2..."
@@ -290,44 +281,34 @@ cp -v \
   "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/orb-slam3"
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/orb-slam3" \
-  < "${CONFIG_DIRECTORY}/orb-slam3/0001-Update-CMAKEList.txt-to-use-C-14.patch" \
-  || :
+  < "${CONFIG_DIRECTORY}/orb-slam3/0001-Update-CMAKEList.txt-to-use-C-14.patch"
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/orb-slam3" \
-  < "${CONFIG_DIRECTORY}/orb-slam3/0002-Add-missing-DBoW2-directory-to-CMakeLists.txt.patch" \
-  || :
+  < "${CONFIG_DIRECTORY}/orb-slam3/0002-Add-missing-DBoW2-directory-to-CMakeLists.txt.patch"
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/orb-slam3" \
-  < "${CONFIG_DIRECTORY}/orb-slam3/0003-Add-install-step-to-CMakeLists.txt.patch" \
-  || :
+  < "${CONFIG_DIRECTORY}/orb-slam3/0003-Add-install-step-to-CMakeLists.txt.patch"
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/orb-slam3" \
-  < "${CONFIG_DIRECTORY}/orb-slam3/0004-Don-t-build-examples.patch" \
-  || :
+  < "${CONFIG_DIRECTORY}/orb-slam3/0004-Don-t-build-examples.patch"
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/orb-slam3" \
-  < "${CONFIG_DIRECTORY}/orb-slam3/0005-Fix-parallel-make.patch" \
-  || :
+  < "${CONFIG_DIRECTORY}/orb-slam3/0005-Fix-parallel-make.patch"
 
 # Disable ORB_SLAM3 on systems with <= 4GiB memory
 if (( $(echo "${PHYSICAL_MEMORY_GB} <= 4" | bc -l) )); then
@@ -342,23 +323,19 @@ cp -v \
   "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/p8-platform"
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/p8-platform" \
-  < "${CONFIG_DIRECTORY}/p8-platform/0001-CMake-Default-to-C-20-to-fix-building-with-newer-cla.patch" \
-  || :
+  < "${CONFIG_DIRECTORY}/p8-platform/0001-CMake-Default-to-C-20-to-fix-building-with-newer-cla.patch"
 
 # Pangolin
 echo "Patching Pangolin..."
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/pangolin" \
-  < "${CONFIG_DIRECTORY}/pangolin/0001-Remove-Eigen3-Eigen-target-from-linked-libraries.patch" \
-  || :
+  < "${CONFIG_DIRECTORY}/pangolin/0001-Remove-Eigen3-Eigen-target-from-linked-libraries.patch"
 
 # Disable pangolin on systems with <= 4GiB memory
 if (( $(echo "${PHYSICAL_MEMORY_GB} <= 4" | bc -l) )); then
@@ -371,12 +348,10 @@ echo "Patching ros2_v4l2_camera..."
 if [ "${ROS2_DISTRO}" = "iron" ]; then
   patch \
     -p1 \
-    --forward \
     --reject-file="/dev/null" \
     --no-backup-if-mismatch \
     --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/ros2_v4l2_camera" \
-    < "${CONFIG_DIRECTORY}/ros2_v4l2_camera/0001-Fix-include-path.patch" \
-    || :
+    < "${CONFIG_DIRECTORY}/ros2_v4l2_camera/0001-Fix-include-path.patch"
 fi
 
 # vision_opencv

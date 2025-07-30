@@ -61,21 +61,18 @@ tar -zxf "${MEDIAPIPE_ARCHIVE_PATH}" --directory="${MEDIAPIPE_EXTRACT_DIR}"
 echo "Patching MediaPipe..."
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${MEDIAPIPE_SOURCE_DIR}" \
   < "${CONFIG_DIRECTORY}/mediapipe/0001-Enable-OpenCV-4.patch"
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${MEDIAPIPE_SOURCE_DIR}" \
   < "${CONFIG_DIRECTORY}/mediapipe/0002-Update-protobuf-to-version-3.21.12.patch"
 patch \
   -p1 \
-  --forward \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${MEDIAPIPE_SOURCE_DIR}" \
