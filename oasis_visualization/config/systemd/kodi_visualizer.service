@@ -26,7 +26,6 @@ Environment=RMW_IMPLEMENTATION=rmw_fastrtps_dynamic_cpp
 # Kodi configuration
 #
 
-Environment=DISPLAY=:0
 Environment=WAYLAND_DISPLAY=wayland-0
 
 #

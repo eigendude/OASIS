@@ -131,12 +131,11 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     sudo apt install -y lld
   fi
 
-  if [ "${ENABLE_WAYLAND}" = "ON" ]; then
-    sudo apt install -y \
-      libglew-dev \
-      libwayland-dev \
-      libxkbcommon-dev \
-      wayland-protocols \
-      waylandpp-dev
-  fi
+  # Wayland dependencies
+  sudo apt install -y \
+    libglew-dev \
+    libwayland-dev \
+    libxkbcommon-dev \
+    wayland-protocols \
+    waylandpp-dev
 fi

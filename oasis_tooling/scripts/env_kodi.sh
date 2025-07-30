@@ -61,9 +61,6 @@ fi
 # Enable LLD
 ENABLE_LLD="ON"
 
-# Enable Wayland
-ENABLE_WAYLAND="ON"
-
 #
 # Directory and path definitions
 #
