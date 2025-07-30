@@ -53,11 +53,11 @@ repositories:
   ros-perception/image_pipeline:
     type: git
     url: https://github.com/ros-perception/image_pipeline.git
-    version: rolling
+    version: kilted
   ros-perception/image_transport_plugins:
     type: git
     url: https://github.com/ros-perception/image_transport_plugins.git
-    version: rolling
+    version: kilted
   ros-perception/libcamera_cmake:
     type: git
     url: https://github.com/christianrauch/libcamera_cmake.git
