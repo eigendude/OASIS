@@ -75,4 +75,6 @@ touch "${BUILD_DIRECTORY}/COLCON_IGNORE"
 PHYSICAL_MEMORY_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
 
 # The physical memory in GiB
-PHYSICAL_MEMORY_GB=$(echo "scale=4; ${PHYSICAL_MEMORY_KB}/1024^2" | bc)
+# Use awk instead of bc so we don’t depend on the bc package
+# 1024 × 1024 = 1 048 576 KiB per GiB
+PHYSICAL_MEMORY_GB=$(awk -v kb="${PHYSICAL_MEMORY_KB}" 'BEGIN {printf "%.4f", kb/1048576}')
