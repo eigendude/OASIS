@@ -54,6 +54,15 @@ setuptools.setup(
             os.path.join("share", "ament_index", "resource_index", "packages"),
             ["resource/" + PACKAGE_NAME],
         ),
+        # Camera info files
+        (
+            os.path.join("share", PACKAGE_NAME, "camera_info"),
+            [
+                "config/camera_info/imx219__base_soc_i2c0mux_i2c_1_imx219_10_640x480_3280x2464_SBGGR10_CSI2P_RAW.yaml",
+                "config/camera_info/lenovo_easycamera:_lenovo_easyc.yaml",
+                "config/camera_info/usb_2.0_camera:_usb_2.0_camera.yaml",
+            ],
+        ),
         # Launch files
         (os.path.join("share", PACKAGE_NAME), ["launch/drivers_launch.py"]),
         # Systemd services

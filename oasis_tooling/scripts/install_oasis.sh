@@ -91,6 +91,37 @@ for OASIS_PACKAGE in \
 done
 
 #
+# Install camera info files
+#
+
+if [[ "${OSTYPE}" != "darwin"* ]]; then
+  # Directory for camera info files
+  CAMERA_INFO_DIRECTORY=~/".ros/camera_info"
+
+  # Create the camera info directory if it doesn't exist
+  install -m 0755 -d "${CAMERA_INFO_DIRECTORY}"
+
+  for OASIS_PACKAGE in "${ENABLED_PACKAGES[@]}"; do
+    DIRECTORY="${OASIS_DATA_DIRECTORY}/${OASIS_PACKAGE}/camera_info"
+
+    # Skip directories that don't exist
+    if [ ! -d "${DIRECTORY}" ]; then
+      continue
+    fi
+
+    for CAMERA_INFO_FILE in "${DIRECTORY}/"*.yaml; do
+      # Get filename
+      FILE_NAME="$(basename -- "${CAMERA_INFO_FILE}")"
+
+      echo "Installing ${FILE_NAME}"
+
+      # Install camera info file
+      install -m 0644 "${CAMERA_INFO_FILE}" "${CAMERA_INFO_DIRECTORY}/"
+    done
+  done
+fi
+
+#
 # Install systemd services
 #
 
