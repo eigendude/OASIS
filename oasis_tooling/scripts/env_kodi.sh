@@ -39,7 +39,7 @@ source "${SCRIPT_DIR}/env_oasis.sh"
 #
 
 # Version
-KODI_VERSION="d5bab6f8675ed73e05b58c3579a14f505dc90a88"
+KODI_VERSION="c81c58981ec7abd5a6951f2a8b6975790766ba01"
 
 # URL
 KODI_URL="https://github.com/garbear/xbmc/archive/${KODI_VERSION}.tar.gz"

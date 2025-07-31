@@ -90,7 +90,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     libnfs-dev \
     libogg-dev \
     libp8-platform-dev \
-    libpcre3-dev \
+    libpcre2-dev \
     libplist-dev \
     libpng-dev \
     libpulse-dev \
@@ -117,10 +117,10 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     meson \
     nasm \
     ninja-build \
+    nlohmann-json3-dev \
     python3-dev \
     python3-pil \
     python3-pip \
-    rapidjson-dev \
     swig \
     unzip \
     uuid-dev \
