@@ -29,3 +29,12 @@ sudo usermod -a -G plugdev ${USER}
 
 # Grant the user permission to work with I2C devices
 sudo usermod -a -G i2c ${USER}
+
+################################################################################
+# Disable the wait-online service to prevent the system from waiting on a
+# network connection and prevent the service from starting if requested by
+# another service
+################################################################################
+
+sudo systemctl disable systemd-networkd-wait-online.service
+sudo systemctl mask systemd-networkd-wait-online.service
