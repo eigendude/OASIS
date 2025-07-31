@@ -216,6 +216,12 @@ YAML
 # Configure MQTT Statestream (Home Assistant -> MQTT)
 ################################################################################
 
+# MQTT integration
+insert_block "mqtt:" <<'YAML'
+# MQTT integration can only be configured in the UI
+mqtt:
+YAML
+
 # MQTT Statestream for lights and switches
 insert_block "mqtt_statestream:" <<'YAML'
 mqtt_statestream:
