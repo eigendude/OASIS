@@ -415,8 +415,10 @@ def generate_launch_description() -> LaunchDescription:
         add_ros2_camera(ld, ZONE_ID)
         add_ups_server(ld, ZONE_ID)
 
+    #
     # TODO: Microcontroller drivers
-    """
+    #
+
     # Template for Firmata bridges
     def get_firmata_bridge(hostname: str, mcu_name: str) -> Node:
         return Node(
@@ -503,6 +505,5 @@ def generate_launch_description() -> LaunchDescription:
         mcu_node = "lab"
         lab_bridge_node: Node = get_telemetrix_bridge(HOST_ID, mcu_node)
         ld.add_action(lab_bridge_node)
-    """
 
     return ld
