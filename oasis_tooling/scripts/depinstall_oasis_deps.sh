@@ -26,6 +26,8 @@ source "${SCRIPT_DIR}/env_oasis_deps.sh"
 
 # rosdep keys to ignore
 ROSDEP_IGNORE_KEYS=" \
+  ament_black \
+  ament_cmake_black \
   image_view \
   launch_testing \
   launch_testing_ament_cmake \
