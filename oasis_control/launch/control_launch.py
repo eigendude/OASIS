@@ -75,7 +75,6 @@ def add_home_manager(ld: LaunchDescription) -> None:
         executable="home_manager",
         name="home_manager",
         output="screen",
-        arguments=["--ros-args", "--log-level", "home_manager:=debug"],
         parameters=[
             {
                 "smart_display_zones": SMART_DISPLAY_ZONES,
