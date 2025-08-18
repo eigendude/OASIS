@@ -95,11 +95,11 @@ class DisplayManager:
         entity_id: str = plug_msg.header.frame_id
         power_mode: str = plug_msg.power_mode
 
+        self._logger.debug(f'Received power {power_mode} event for plug "{entity_id}"')
+
         # Ignore messages from non-master plugs
         if entity_id != self._smart_display_plug_id:
             return
-
-        self._logger.debug(f'Received power {power_mode} event for plug "{entity_id}"')
 
         # Cancel previous service calls if any are in-flight
         for set_display_cmd in self._set_display_in_flight:
