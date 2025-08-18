@@ -389,7 +389,8 @@ def add_v4l2_camera(ld: LaunchDescription, zone_id: str) -> None:
 def generate_launch_description() -> LaunchDescription:
     ld: LaunchDescription = LaunchDescription()
 
-    add_serial_port_scanner(ld, HOST_ID)
+    # Disabled to save resources
+    # add_serial_port_scanner(ld, HOST_ID)
     add_system_monitor(ld, HOST_ID)
 
     # Smarthome hosts
