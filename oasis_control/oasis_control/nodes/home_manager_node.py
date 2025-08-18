@@ -76,6 +76,6 @@ class HomeManagerNode(rclpy.node.Node):
             self, smart_display_zones, smart_display_plug_id
         )
         self._lighting_manager: LightingManager = LightingManager(self)
-        self._presence_manager: PresenceManager = PresenceManager(self)
+        # self._presence_manager: PresenceManager = PresenceManager(self)
 
         self.get_logger().info("Home manager initialized")
