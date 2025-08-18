@@ -99,7 +99,7 @@ class DisplayManager:
         if entity_id != self._smart_display_plug_id:
             return
 
-        self._logger.debug(f'Received power {power_mode} event for plug "{entity_id}"')
+        self._logger.info(f'Received power {power_mode} event for plug "{entity_id}"')
 
         # Cancel previous service calls if any are in-flight
         for set_display_cmd in self._set_display_in_flight:
@@ -117,7 +117,7 @@ class DisplayManager:
             ]
             set_display_service: str = set_display_client.srv_name
 
-            self._logger.debug(
+            self._logger.info(
                 f"Sending display {power_mode} for {set_display_service}"
             )
             self._set_display_in_flight.append(
