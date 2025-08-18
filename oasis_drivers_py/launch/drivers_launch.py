@@ -121,6 +121,8 @@ def add_home_assistant(ld: LaunchDescription) -> None:
     ld.add_action(hass_mqtt_bridge_node)
 
     # Start the generic MQTT -> ROS bridge
+    # TODO: Disabled to save resources until mqtt_client is implemented
+    """
     mqtt_client_node: Node = Node(
         namespace=ROS_NAMESPACE,
         package="mqtt_client",
@@ -134,6 +136,7 @@ def add_home_assistant(ld: LaunchDescription) -> None:
         ],
     )
     ld.add_action(mqtt_client_node)
+    """
 
     # Also run the WoL server
     wol_server_node: Node = Node(
