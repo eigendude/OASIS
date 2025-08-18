@@ -28,6 +28,7 @@ import paho.mqtt.client
 import rclpy.logging
 import rclpy.node
 import rclpy.publisher
+import rclpy.qos
 import rclpy.service
 from builtin_interfaces.msg import Time as TimeMsg
 
@@ -98,11 +99,19 @@ class HassMqttBridgeNode(rclpy.node.Node):
         # ROS publishers
         #
 
+        qos_profile: rclpy.qos.QoSPresetProfile = (
+            rclpy.qos.QoSPresetProfiles.SENSOR_DATA.value  # Best-effort, keep-last
+        )
+
         self._plug_pub: rclpy.publisher.Publisher = self.create_publisher(
-            PlugMsg, PLUG_TOPIC, 10
+            msg_type=PlugMsg,
+            topic=PLUG_TOPIC,
+            qos_profile=qos_profile,
         )
         self._rgb_pub: rclpy.publisher.Publisher = self.create_publisher(
-            RGBMsg, RGB_TOPIC, 10
+            msg_type=RGBMsg,
+            topic=RGB_TOPIC,
+            qos_profile=qos_profile,
         )
 
         #

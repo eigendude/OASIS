@@ -74,9 +74,8 @@ class DisplayManager:
             )
         self._set_display_in_flight: list[rclpy.task.Future] = []
 
-        # Reliable listener QOS profile for subscribers
         qos_profile: rclpy.qos.QoSPresetProfile = (
-            rclpy.qos.QoSPresetProfiles.SYSTEM_DEFAULT.value
+            rclpy.qos.QoSPresetProfiles.SENSOR_DATA.value  # Best-effort, keep-last
         )
 
         # Subscribers
