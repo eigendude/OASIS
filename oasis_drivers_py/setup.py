@@ -92,6 +92,7 @@ setuptools.setup(
     ],
     entry_points={
         "console_scripts": [
+            "drivers = oasis_drivers.cli.drivers_cli:main",
             "display_server = oasis_drivers.cli.display_server_cli:main",
             "firmata_bridge = oasis_drivers.cli.firmata_bridge_cli:main",
             "serial_scanner = oasis_drivers.cli.serial_scanner_cli:main",
