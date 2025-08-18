@@ -76,7 +76,7 @@ class DisplayManager:
 
         # Reliable listener QOS profile for subscribers
         qos_profile: rclpy.qos.QoSPresetProfile = (
-            rclpy.qos.QoSPresetProfiles.SYSTEM_DEFAULT.value
+            rclpy.qos.QoSPresetProfiles.SENSOR_DATA.value  # Best-effort, keep-last
         )
 
         # Subscribers
