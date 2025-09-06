@@ -64,8 +64,9 @@ if [ ! -f "${CMAKE_MAKEFILE_PATH}" ]; then
     cd "${CMAKE_BUILD_DIR}"
     cmake \
       "${CMAKE_SOURCE_DIR}" \
-      -DCMAKE_INSTALL_PREFIX="${CMAKE_INSTALL_DIR}" \
+      -DBUILD_TESTING=OFF \
       -DCMAKE_BUILD_PARALLEL_LEVEL="$(getconf _NPROCESSORS_ONLN)" \
+      -DCMAKE_INSTALL_PREFIX="${CMAKE_INSTALL_DIR}" \
       $(! command -v ccache &> /dev/null || echo "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache")
   )
 fi
