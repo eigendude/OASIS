@@ -89,3 +89,6 @@ echo
 
 sudo systemctl disable systemd-networkd-wait-online.service
 sudo systemctl mask systemd-networkd-wait-online.service
+
+# TODO: Set the timezone based on GeoIP
+sudo timedatectl set-timezone America/Los_Angeles
