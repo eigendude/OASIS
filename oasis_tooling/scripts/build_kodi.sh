@@ -143,3 +143,26 @@ make \
   ADDONS="^(peripheral.joystick|screensaver.matrixtrails)$" \
   EXTRA_CMAKE_ARGS="-DAPP_RENDER_SYSTEM=gl" \
   PREFIX="${KODI_INSTALL_DIR}" \
+
+#
+# Install additional add-ons
+#
+
+WEATHER_ICONS_ADDON="resource.images.weathericons.hd.animated"
+WEATHER_ICONS_URL="https://mirrors.kodi.tv/addons/piers/${WEATHER_ICONS_ADDON}/${WEATHER_ICONS_ADDON}-1.0.0.zip"
+WEATHER_ICONS_ZIP="${KODI_DOWNLOAD_DIR}/${WEATHER_ICONS_ADDON}-1.0.0.zip"
+WEATHER_ICONS_ADDON_DIR="${KODI_INSTALL_DIR}/share/kodi/addons"
+WEATHER_ICONS_INSTALL_DIR="${WEATHER_ICONS_ADDON_DIR}/${WEATHER_ICONS_ADDON}"
+WEATHER_ICONS_ADDON_XML="${WEATHER_ICONS_INSTALL_DIR}/addon.xml"
+
+# Ensure directories exist
+mkdir -p "${WEATHER_ICONS_ADDON_DIR}"
+mkdir -p "${WEATHER_ICONS_INSTALL_DIR}"
+
+if [ ! -f "${WEATHER_ICONS_ADDON_XML}" ]; then
+  echo "Installing ${WEATHER_ICONS_ADDON} add-on..."
+  wget "${WEATHER_ICONS_URL}" -O "${WEATHER_ICONS_ZIP}"
+  unzip -o "${WEATHER_ICONS_ZIP}" -d "${WEATHER_ICONS_ADDON_DIR}"
+else
+  echo "${WEATHER_ICONS_ADDON} add-on already installed, skipping..."
+fi
