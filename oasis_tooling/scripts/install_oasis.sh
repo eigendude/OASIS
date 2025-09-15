@@ -44,8 +44,9 @@ if \
   [ "${HOSTNAME}" = "bar" ] || \
   [ "${HOSTNAME}" = "cinder" ] || \
   [ "${HOSTNAME}" = "door" ] || \
-  [ "${HOSTNAME}" = "kitchen" ] || \
   [ "${HOSTNAME}" = "hallway" ] || \
+  [ "${HOSTNAME}" = "kitchen" ] || \
+  [ "${HOSTNAME}" = "megapegasus" ] || \
   [ "${HOSTNAME}" = "station" ] \
 ; then
   ENABLE_PERCEPTION=1

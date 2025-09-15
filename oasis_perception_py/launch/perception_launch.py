@@ -58,7 +58,7 @@ PYTHON_PACKAGE_NAME: str = "oasis_perception_py"
 
 # The host ID used for perception
 # TODO: Move to smarthome config
-PERCEPTION_HOST_ID: str = "nas"
+PERCEPTION_HOST_ID: str = "oceanplatform"
 
 PERCEPTION_SERVER_BACKGROUND: list[str] = []
 PERCEPTION_SERVER_POSE_LANDMARKS: list[str] = []
