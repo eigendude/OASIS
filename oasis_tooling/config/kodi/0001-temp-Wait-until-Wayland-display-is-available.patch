@@ -1,0 +1,39 @@
+From a74e23a40e57c8258d5d64356e067afaf683c867 Mon Sep 17 00:00:00 2001
+From: Garrett Brown <themagnificentmrb@gmail.com>
+Date: Thu, 11 Sep 2025 19:11:19 -0700
+Subject: [PATCH] [temp] Wait until Wayland display is available
+
+---
+ xbmc/windowing/wayland/WinSystemWayland.cpp | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/xbmc/windowing/wayland/WinSystemWayland.cpp b/xbmc/windowing/wayland/WinSystemWayland.cpp
+index c7a2892ce4..b63e719f6b 100644
+--- a/xbmc/windowing/wayland/WinSystemWayland.cpp
++++ b/xbmc/windowing/wayland/WinSystemWayland.cpp
+@@ -40,6 +40,7 @@
+ #include "utils/MathUtils.h"
+ #include "utils/StringUtils.h"
+ #include "utils/TimeUtils.h"
++#include "utils/XTimeUtils.h"
+ #include "utils/log.h"
+ #include "windowing/linux/OSScreenSaverFreedesktop.h"
+ 
+@@ -155,8 +156,12 @@ bool CWinSystemWayland::InitWindowSystem()
+ 
+   CLog::LogF(LOGINFO, "Connecting to Wayland server");
+   m_connection = std::make_unique<CConnection>();
+-  if (!m_connection->HasDisplay())
+-    return false;
++  while (!m_connection->HasDisplay())
++  {
++    // Sleep for 1s
++    KODI::TIME::Sleep(1000ms);
++    m_connection = std::make_unique<CConnection>();
++  }
+ 
+   VIDEOPLAYER::CProcessInfoWayland::Register();
+   RETRO::CRPProcessInfoWayland::Register();
+-- 
+2.43.0
+
