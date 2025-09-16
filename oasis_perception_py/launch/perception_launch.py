@@ -68,9 +68,7 @@ if HOST_ID == PERCEPTION_HOST_ID:
     # PERCEPTION_SERVER_BACKGROUND.extend(
     #    ["bar", "doorbell", "entryway", "hallway", "kitchen", "livingroom"]
     # )
-    PERCEPTION_SERVER_POSE_LANDMARKS.extend(
-        ["bar", "doorbell", "entryway", "hallway", "kitchen", "livingroom"]
-    )
+    PERCEPTION_SERVER_POSE_LANDMARKS.extend(["livingroom"])
     # PERCEPTION_SERVER_CALIBRATION.extend(
     #     ["bar", "doorbell", "entryway", "hallway", "kitchen", "livingroom"]
     # )
