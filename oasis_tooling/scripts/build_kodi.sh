@@ -165,9 +165,13 @@ WEATHER_ICONS_ADDON_XML="${WEATHER_ICONS_INSTALL_DIR}/addon.xml"
 mkdir -p "${WEATHER_ICONS_ADDON_DIR}"
 mkdir -p "${WEATHER_ICONS_INSTALL_DIR}"
 
+if [ ! -f "${WEATHER_ICONS_ZIP}" ]; then
+  echo "Downloading ${WEATHER_ICONS_ADDON} add-on..."
+  wget "${WEATHER_ICONS_URL}" -O "${WEATHER_ICONS_ZIP}"
+fi
+
 if [ ! -f "${WEATHER_ICONS_ADDON_XML}" ]; then
   echo "Installing ${WEATHER_ICONS_ADDON} add-on..."
-  wget "${WEATHER_ICONS_URL}" -O "${WEATHER_ICONS_ZIP}"
   unzip -o "${WEATHER_ICONS_ZIP}" -d "${WEATHER_ICONS_ADDON_DIR}"
 else
   echo "${WEATHER_ICONS_ADDON} add-on already installed, skipping..."
