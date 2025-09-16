@@ -31,3 +31,7 @@ uint16 product_id
 # The Kodi controller profile that best represents this peripheral, of empty if
 # unknown
 string controller_profile
+
+# Set to 0 if the peripheral is available to capture input, or 1 if already
+# capturing input
+uint8 capturing_input
