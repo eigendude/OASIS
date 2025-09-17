@@ -88,7 +88,7 @@ CONTROLLER_PROFILE = "game.controller.default"
 WOL_HOSTNAME: str = "megapegasus.local"
 
 # Amount of time to wait for WoL services, in seconds
-WOL_TIMEOUT_SECS: float = 1.0
+WOL_TIMEOUT_SECS: float = 5.0
 
 
 ################################################################################

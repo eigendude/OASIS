@@ -111,12 +111,25 @@ class WolManager:
             # Record MAC address
             self._mac_address = self._mac_address_future.result().mac_address
 
+            # Log MAC address
+            if self._mac_address == "":
+                self._logger.error(f"Failed to get MAC address for {self._hostname}")
+                return False
+            else:
+                self._logger.info(f"MAC address for {self._hostname} is {self._mac_address}")
+
         self._logger.info(f"Sending Wake-On-LAN to {self._hostname} ({self._mac_address})")
 
         wol_svc = WoLCommandSvc.Request()
         wol_svc.mac_address = self._mac_address
 
-        # Call service asynchronously and return without waiting
+        # Call service asynchronously
         self._wol_future = self._wol_client.call_async(wol_svc)
+
+        # Wait for result
+        rclpy.spin_until_future_complete(self._node, self._wol_future)
+        if self._wol_future.result() is None:
+            self._logger.error(f"Exception while calling service: {self._wol_future.exception()}")
+            return False
 
         return True
