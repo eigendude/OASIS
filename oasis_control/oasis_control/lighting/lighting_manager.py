@@ -54,6 +54,9 @@ RGB_FORCE_OFF_INTERVAL_SECS: float = 3.0
 # Time for a full rainbow cycle
 RAINBOW_CYCLE_SECS: float = 25.0
 
+# Amount of white mixed into the rainbow colors to increase lightness
+RAINBOW_LIGHTNESS_BOOST: float = 0.3
+
 
 ################################################################################
 # Manager
@@ -156,7 +159,10 @@ class LightingManager:
         g_val: float
         b_val: float
         r_val, g_val, b_val = colorsys.hsv_to_rgb(hue, 1.0, 1.0)
-        rainbow_color: tuple[float, float, float] = (r_val, g_val, b_val)
+        rainbow_color: tuple[float, float, float] = tuple(
+            min(1.0, component + (1.0 - component) * RAINBOW_LIGHTNESS_BOOST)
+            for component in (r_val, g_val, b_val)
+        )
 
         # Process all lights
         for entity_id in list(self._light_ids):
