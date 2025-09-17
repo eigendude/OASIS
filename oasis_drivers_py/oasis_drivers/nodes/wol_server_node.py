@@ -73,6 +73,8 @@ class WolServerNode(rclpy.node.Node):
         """
         hostname: str = request.hostname
 
+        self.get_logger().info(f"Getting MAC address for '{hostname}'")
+
         response.mac_address = WolServer.get_mac_address(hostname)
 
         return response
@@ -81,6 +83,8 @@ class WolServerNode(rclpy.node.Node):
         self, request: WoLCommandSvc.Request, response: WoLCommandSvc.Response
     ) -> WoLCommandSvc.Response:
         mac_address: str = request.mac_address
+
+        self.get_logger().info(f"Sending WoL command to '{mac_address}'")
 
         try:
             WolServer.send_wol(mac_address)
