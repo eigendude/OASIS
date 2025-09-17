@@ -76,8 +76,8 @@ class HassMqttBridgeNode(rclpy.node.Node):
         """
         super().__init__(NODE_NAME)
 
-        # Set logging to DEBUG level
-        self.get_logger().set_level(rclpy.logging.LoggingSeverity.DEBUG)
+        # Set logging to INFO level
+        self.get_logger().set_level(rclpy.logging.LoggingSeverity.INFO)
 
         #
         # Device state
