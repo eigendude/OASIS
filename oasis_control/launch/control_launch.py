@@ -127,6 +127,7 @@ def generate_launch_description() -> LaunchDescription:
                 ("cpu_fan_write", f"{mcu_node}/cpu_fan_write"),
                 ("digital_reading", f"{mcu_node}/digital_reading"),
                 ("digital_write", f"{mcu_node}/digital_write"),
+                ("get_mac_address", f"{HOME_ASSISTANT_ID}/get_mac_address"),
                 ("input", f"{INPUT_PROVIDER}/input"),
                 ("mcu_memory", f"{mcu_node}/mcu_memory"),
                 ("mcu_string", f"{mcu_node}/mcu_string"),
@@ -141,6 +142,7 @@ def generate_launch_description() -> LaunchDescription:
                 ),
                 ("set_digital_mode", f"{mcu_node}/set_digital_mode"),
                 ("set_sampling_interval", f"{mcu_node}/set_sampling_interval"),
+                ("wol", f"{HOME_ASSISTANT_ID}/wol"),
             ],
         )
         ld.add_action(conductor_node)

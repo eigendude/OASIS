@@ -26,6 +26,7 @@ from std_msgs.msg import Header as HeaderMsg
 from oasis_control.managers.cpu_fan_manager import CPUFanManager
 from oasis_control.managers.mcu_memory_manager_telemetrix import McuMemoryManager
 from oasis_control.managers.sampling_manager import SamplingManager
+from oasis_control.managers.wol_manager import WolManager
 from oasis_drivers.ros.ros_translator import RosTranslator
 from oasis_drivers.telemetrix.telemetrix_types import AnalogMode
 from oasis_drivers.telemetrix.telemetrix_types import DigitalMode
@@ -82,6 +83,12 @@ VSS_R2: float = 102.5  # KΩ
 
 # The Kodi controller profile that peripheral input is translated to
 CONTROLLER_PROFILE = "game.controller.default"
+
+# The hostname or IP of the computer that provides input
+WOL_HOSTNAME: str = "megapegasus.local"
+
+# Amount of time to wait for WoL services, in seconds
+WOL_TIMEOUT_SECS: float = 5.0
 
 
 ################################################################################
@@ -164,6 +171,9 @@ class ConductorManagerNode(rclpy.node.Node):
         self._hold_speed: bool = (
             False  # True to hold a steady speed, toggled with Y button
         )
+
+        # Initialize input automation
+        self._wol_manager: WolManager = WolManager(self, WOL_HOSTNAME)
 
         # Reliable listener QOS profile for subscribers
         qos_profile: rclpy.qos.QoSPresetProfile = (
@@ -249,6 +259,10 @@ class ConductorManagerNode(rclpy.node.Node):
         self.get_logger().debug("  - Waiting for set_digital_mode...")
         self._set_digital_mode_client.wait_for_service()
 
+        # Initialize WoL manager
+        if not self._wol_manager.initialize(WOL_TIMEOUT_SECS):
+            self._wol_manager = None
+
         self.get_logger().debug("Starting conductor configuration")
 
         # CPU fan
@@ -308,6 +322,10 @@ class ConductorManagerNode(rclpy.node.Node):
         self._publish_timer = self.create_timer(
             timer_period_sec=PUBLISH_STATE_PERIOD_SECS, callback=self._publish_state
         )
+
+        # Wake the input host
+        if self._wol_manager is not None:
+            self._wol_manager.send_wol()
 
         self.get_logger().info("Conductor manager initialized successfully")
 
