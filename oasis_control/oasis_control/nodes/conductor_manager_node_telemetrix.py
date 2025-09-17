@@ -537,10 +537,6 @@ class ConductorManagerNode(rclpy.node.Node):
             if peripheral.type != PeripheralConstantsMsg.TYPE_JOYSTICK:
                 continue
 
-            # Check if joystick is already open
-            if peripheral_address in self._joysticks:
-                continue
-
             # Update peripheral state
             self._joysticks[peripheral_address] = CONTROLLER_PROFILE
 
