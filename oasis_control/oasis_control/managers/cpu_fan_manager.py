@@ -92,11 +92,6 @@ class CPUFanManager:
             )
         )
 
-        self._logger.error(
-            CLIENT_CPU_FAN_WRITE
-            if cpu_fan_host is None
-            else f"{CLIENT_CPU_FAN_WRITE}_{cpu_fan_host}"
-        )
         # Service clients
         self._cpu_fan_write_client: rclpy.client.Client = self._node.create_client(
             srv_type=PWMWriteSvc,
