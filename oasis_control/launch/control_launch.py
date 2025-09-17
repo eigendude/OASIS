@@ -43,7 +43,7 @@ CAMERA_ZONES: list[str] = CONFIG.CAMERA_ZONES
 HOME_ASSISTANT_ID: str = CONFIG.HOME_ASSISTANT_ID
 
 # Machine that broadcasts peripheral input
-INPUT_PROVIDER: str = "nuc"  # TODO
+INPUT_PROVIDER: str = "megapegasus"  # TODO
 
 print(f"Launching on {HOSTNAME} in zone {ZONE_ID}")
 
