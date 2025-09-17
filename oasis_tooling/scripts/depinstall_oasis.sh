@@ -102,6 +102,11 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
   sudo apt install -y --no-install-recommends \
     nut
 
+  # Needed for resolving hostnames for WoL
+  sudo apt install -y --no-install-recommends \
+    avahi-daemon \
+    avahi-utils \
+
   # Config files
   NUT_CONF="/etc/nut/nut.conf"
   UPS_CONF="/etc/nut/ups.conf"
