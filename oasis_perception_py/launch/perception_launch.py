@@ -58,7 +58,7 @@ PYTHON_PACKAGE_NAME: str = "oasis_perception_py"
 
 # The host ID used for perception
 # TODO: Move to smarthome config
-PERCEPTION_HOST_ID: str = "oceanplatform"
+PERCEPTION_HOST_ID: str = "nas"
 
 PERCEPTION_SERVER_BACKGROUND: list[str] = []
 PERCEPTION_SERVER_POSE_LANDMARKS: list[str] = []
@@ -68,7 +68,9 @@ if HOST_ID == PERCEPTION_HOST_ID:
     # PERCEPTION_SERVER_BACKGROUND.extend(
     #    ["bar", "doorbell", "entryway", "hallway", "kitchen", "livingroom"]
     # )
-    PERCEPTION_SERVER_POSE_LANDMARKS.extend(["livingroom"])
+    PERCEPTION_SERVER_POSE_LANDMARKS.extend(
+        ["bar", "doorbell", "entryway", "hallway", "kitchen", "livingroom"]
+    )
     # PERCEPTION_SERVER_CALIBRATION.extend(
     #     ["bar", "doorbell", "entryway", "hallway", "kitchen", "livingroom"]
     # )
@@ -223,6 +225,16 @@ def generate_launch_description() -> LaunchDescription:
     # TODO
     # if ZONE_ID in SMART_DISPLAY_ZONES:
     #     add_pose_renderer(ld, CAMERA_ZONES, HOST_ID)
+
+    if HOST_ID == "oceanplatform":
+        bgs_asbl_node = Node(
+            namespace=ROS_NAMESPACE,
+            package=CPP_PACKAGE_NAME,
+            executable="background_subtractor_asbl",
+            name=f"background_subtractor_asbl_{HOST_ID}",
+            output="screen",
+        )
+        ld.add_action(bgs_asbl_node)
 
     """
     if HOST_ID == "cinder":

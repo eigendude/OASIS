@@ -22,12 +22,10 @@ constexpr const char* ROS_NAMESPACE = "oasis"; // TODO
 constexpr const char* BGS_ASBL_NODE_NAME = "background_substractor_asbl";
 
 // TODO: Hardware configuration
-constexpr const char* VIDEO_MACHINE_BAR = "bar";
-constexpr const char* VIDEO_MACHINE_KINECT2 = "kinect2";
+constexpr const char* VIDEO_MACHINE = "livingroom";
 
 // Subscribed topics
-constexpr const char* IMAGE_TOPIC_BAR = "image_raw";
-constexpr const char* IMAGE_TOPIC_KINECT2 = "hd/image_color";
+constexpr const char* IMAGE_TOPIC = "image_raw";
 
 // Published topics
 constexpr const char* FOREGROUND_TOPIC = "foreground";
@@ -46,17 +44,11 @@ int main(int argc, char* argv[])
       std::make_shared<rclcpp::Node>(BGS_ASBL_NODE_NAME + appendHostname);
 
   // Create topics
-  const std::string barTopicBase = std::string("/") + ROS_NAMESPACE + "/" + VIDEO_MACHINE_BAR + "/";
-  const std::string kinectTopicBase =
-      std::string("/") + ROS_NAMESPACE + "/" + VIDEO_MACHINE_KINECT2 + "/";
+  const std::string topicBase = std::string("/") + ROS_NAMESPACE + "/" + VIDEO_MACHINE + "/";
 
   {
-    OASIS::IMAGE::BackgroundModelerASBL backgroundModelerAsus(node, barTopicBase + IMAGE_TOPIC_BAR,
-                                                              barTopicBase + FOREGROUND_TOPIC,
-                                                              barTopicBase + SUBTRACTED_TOPIC);
-    OASIS::IMAGE::BackgroundModelerASBL backgroundModelerKinect2(
-        node, kinectTopicBase + IMAGE_TOPIC_KINECT2, kinectTopicBase + FOREGROUND_TOPIC,
-        kinectTopicBase + SUBTRACTED_TOPIC);
+    OASIS::IMAGE::BackgroundModelerASBL backgroundModeler(
+        node, topicBase + IMAGE_TOPIC, topicBase + FOREGROUND_TOPIC, topicBase + SUBTRACTED_TOPIC);
 
     rclcpp::spin(node);
   }
