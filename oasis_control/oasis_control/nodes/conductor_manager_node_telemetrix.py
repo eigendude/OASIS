@@ -379,7 +379,8 @@ class ConductorManagerNode(rclpy.node.Node):
 
         if analog_pin == VSS_PIN:
             # Apply voltage divider formula
-            supply_voltage: float = analog_voltage * (VSS_R1 + VSS_R2) / VSS_R2
+            # supply_voltage: float = analog_voltage * (VSS_R1 + VSS_R2) / VSS_R2
+            supply_voltage: float = 12.0  # TODO: Add R3 resistor and uncomment above
 
             # Calculate motor voltage
             motor_voltage = (
@@ -468,16 +469,19 @@ class ConductorManagerNode(rclpy.node.Node):
             if a_button:
                 self._hold_speed = False
 
-            # Max thottle if hold speed is enabled
+            # Max throttle if hold speed is enabled
             if self._hold_speed:
                 throttle = 1.0
 
             # Reduce throttle if B button is not pressed
             if not b_button:
-                throttle *= 0.75  # Step 12V down to 9V
+                throttle *= 0.8  # Step 12V down
 
             magnitude: float = abs(throttle)
             reverse: bool = throttle < 0.0
+
+            # Reduce magnitude by a factor to limit top speed
+            magnitude /= 6.5
 
             # Futures to wait on while the service is being called
             future_pwm: Optional[asyncio.Future] = None
