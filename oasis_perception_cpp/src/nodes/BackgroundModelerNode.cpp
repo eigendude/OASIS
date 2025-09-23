@@ -13,6 +13,8 @@
 #include <bgslibrary/algorithms/AdaptiveBackgroundLearning.h>
 #include <cv_bridge/cv_bridge.hpp>
 #include <image_transport/image_transport.hpp>
+#include <image_transport/publisher.hpp>
+#include <image_transport/subscriber.hpp>
 #include <image_transport/transport_hints.hpp>
 #include <rcutils/logging_macros.h>
 #include <sensor_msgs/image_encodings.hpp>
@@ -21,41 +23,63 @@ using namespace OASIS;
 
 namespace OASIS
 {
-// Default node name
-constexpr const char* NODE_NAME = "background_modeler";
-
 // Subscribed topics
 constexpr const char* IMAGE_TOPIC = "image";
 
 // Published topics
 constexpr const char* BACKGROUND_TOPIC = "background";
+
+// Parameters
+constexpr const char* ZONE_ID_PARAMETER = "zone_id";
+constexpr const char* DEFAULT_ZONE_ID = "";
 } // namespace OASIS
 
-BackgroundModelerNode::BackgroundModelerNode()
-  : rclcpp::Node(NODE_NAME),
+BackgroundModelerNode::BackgroundModelerNode(rclcpp::Node& node)
+  : m_node(node),
     m_imgPublisherBackground(std::make_unique<image_transport::Publisher>()),
     m_imgSubscriber(std::make_unique<image_transport::Subscriber>()),
     m_bgsPackage(std::make_unique<bgslibrary::algorithms::AdaptiveBackgroundLearning>())
 {
+  m_node.declare_parameter<std::string>(ZONE_ID_PARAMETER, DEFAULT_ZONE_ID);
 }
 
 BackgroundModelerNode::~BackgroundModelerNode() = default;
 
-void BackgroundModelerNode::Initialize()
+bool BackgroundModelerNode::Initialize()
 {
-  m_imgTransport = std::make_unique<image_transport::ImageTransport>(shared_from_this());
+  if (!m_node.get_parameter(ZONE_ID_PARAMETER, m_zoneId))
+  {
+    RCLCPP_ERROR(m_node.get_logger(), "Missing zone ID parameter '%s'", ZONE_ID_PARAMETER);
+    return false;
+  }
 
-  RCLCPP_INFO(get_logger(), "Image topic: %s", IMAGE_TOPIC);
-  RCLCPP_INFO(get_logger(), "Background topic: %s", BACKGROUND_TOPIC);
+  if (m_zoneId.empty())
+  {
+    RCLCPP_ERROR(m_node.get_logger(), "Zone ID parameter '%s' is empty", ZONE_ID_PARAMETER);
+    return false;
+  }
 
-  auto transportHints = image_transport::TransportHints(this, "compressed");
+  RCLCPP_INFO(m_node.get_logger(), "Zone ID: %s", m_zoneId.c_str());
 
-  *m_imgSubscriber = m_imgTransport->subscribe(IMAGE_TOPIC, 1, &BackgroundModelerNode::ReceiveImage,
-                                               this, &transportHints);
+  const std::string imageTopic = m_zoneId + "_" + IMAGE_TOPIC;
+  const std::string backgroundTopic = m_zoneId + "_" + BACKGROUND_TOPIC;
 
-  *m_imgPublisherBackground = m_imgTransport->advertise(BACKGROUND_TOPIC, 10);
+  RCLCPP_INFO(m_node.get_logger(), "Image topic: %s", imageTopic.c_str());
+  RCLCPP_INFO(m_node.get_logger(), "Background topic: %s", backgroundTopic.c_str());
 
-  RCLCPP_INFO(get_logger(), "Started background modeler");
+  *m_imgPublisherBackground = image_transport::create_publisher(&m_node, backgroundTopic);
+  *m_imgSubscriber = image_transport::create_subscription(
+      &m_node, imageTopic, [this](const auto& msg) { ReceiveImage(msg); }, "compressed");
+
+  RCLCPP_INFO(m_node.get_logger(), "Started background modeler");
+
+  return true;
+}
+
+void BackgroundModelerNode::Deinitialize()
+{
+  m_imgSubscriber->shutdown();
+  m_imgPublisherBackground->shutdown();
 }
 
 void BackgroundModelerNode::ReceiveImage(const std::shared_ptr<const sensor_msgs::msg::Image>& msg)
@@ -67,7 +91,7 @@ void BackgroundModelerNode::ReceiveImage(const std::shared_ptr<const sensor_msgs
   }
   catch (cv_bridge::Exception& e)
   {
-    RCLCPP_ERROR(get_logger(), "cv_bridge exception: %s", e.what());
+    RCLCPP_ERROR(m_node.get_logger(), "cv_bridge exception: %s", e.what());
     return;
   }
 

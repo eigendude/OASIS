@@ -162,6 +162,39 @@ install(
     lib/${PROJECT_NAME}
 )
 
+add_library(background_modeler_component SHARED
+  src/nodes/BackgroundModelerNode.cpp
+  src/components/background_modeler_component.cpp
+  src/ros/RosComponent.cpp
+)
+
+ament_target_dependencies(background_modeler_component
+  ${AMENT_COMMON_DEPENDENCIES}
+)
+
+target_include_directories(background_modeler_component PUBLIC
+  ${BGSLIBRARY_INCLUDE_DIRS}
+  ${rclcpp_components_INCLUDE_DIRS}
+)
+
+target_link_libraries(background_modeler_component
+  ${BGS_LIBRARIES}
+  ${rclcpp_components_LIBRARIES}
+)
+
+install(
+  TARGETS
+    background_modeler_component
+  DESTINATION
+    lib
+)
+
+rclcpp_components_register_node(
+  background_modeler_component
+  PLUGIN "oasis_perception_cpp::BackgroundModelerComponent"
+  EXECUTABLE background_modeler_component_node
+)
+
 #
 # hello_world
 #
