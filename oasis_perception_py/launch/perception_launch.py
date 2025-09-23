@@ -8,8 +8,12 @@
 #
 ################################################################################
 
+from typing import List
+
 from launch import LaunchDescription
+from launch_ros.actions import ComposableNodeContainer
 from launch_ros.actions import Node
+from launch_ros.descriptions import ComposableNode
 
 from oasis_hass.utils.smarthome_config import SmarthomeConfig
 
@@ -109,6 +113,40 @@ def add_background_modeler(ld: LaunchDescription, zone_id: str) -> None:
         ],
     )
     ld.add_action(node)
+
+
+def add_background_modelers(
+    ld: LaunchDescription, host_id: str, zone_ids: List[str]
+) -> None:
+    background_container: ComposableNodeContainer = ComposableNodeContainer(
+        namespace=ROS_NAMESPACE,
+        name=f"background_modeler_container_{host_id}",
+        package="rclcpp_components",
+        executable="component_container_mt",
+        output="screen",
+        composable_node_descriptions=[
+            ComposableNode(
+                namespace=ROS_NAMESPACE,
+                package=CPP_PACKAGE_NAME,
+                plugin="oasis_perception_cpp::BackgroundModelerComponent",
+                name=f"background_modeler_{zone_id}",
+                remappings=[
+                    (
+                        "image",
+                        (
+                            # Use different remappings for Kinect V2
+                            f"{zone_id}/sd/image_color"
+                            if zone_id == KINECT_V2_ZONE_ID
+                            else f"{zone_id}/image_rect"
+                        ),
+                    ),
+                    ("background", f"{zone_id}/background"),
+                ],
+            )
+            for zone_id in zone_ids
+        ],
+    )
+    ld.add_action(background_container)
 
 
 #
@@ -211,8 +249,7 @@ def generate_launch_description() -> LaunchDescription:
     ld = LaunchDescription()
 
     if PERCEPTION_SERVER_BACKGROUND:
-        for host_id in PERCEPTION_SERVER_BACKGROUND:
-            add_background_modeler(ld, host_id)
+        add_background_modelers(ld, HOST_ID, PERCEPTION_SERVER_BACKGROUND)
 
     if PERCEPTION_SERVER_POSE_LANDMARKS:
         for host_id in PERCEPTION_SERVER_POSE_LANDMARKS:
