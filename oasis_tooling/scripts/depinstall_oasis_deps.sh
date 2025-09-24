@@ -200,6 +200,12 @@ patch \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/bgslibrary" \
   < "${CONFIG_DIRECTORY}/bgslibrary/0001-Disable-imshow-calls.patch"
+patch \
+  -p1 \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/bgslibrary" \
+  < "${CONFIG_DIRECTORY}/bgslibrary/0002-CMake-Fix-locating-libs-via-_ROOT-variables.patch"
 
 # Disable image_view on systems with <= 4GiB memory
 if (( $(echo "${PHYSICAL_MEMORY_GB} <= 4" | bc -l) )); then
