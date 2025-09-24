@@ -99,6 +99,7 @@ def add_background_modeler(ld: LaunchDescription, zone_id: str) -> None:
         executable="background_modeler",
         name=f"background_modeler_{zone_id}",
         output="screen",
+        parameters=[{"zone_id": zone_id}],
         remappings=[
             (
                 "image",
@@ -130,6 +131,7 @@ def add_background_modelers(
                 package=CPP_PACKAGE_NAME,
                 plugin="oasis_perception_cpp::BackgroundModelerComponent",
                 name=f"background_modeler_{zone_id}",
+                parameters=[{"zone_id": zone_id}],
                 remappings=[
                     (
                         "image",

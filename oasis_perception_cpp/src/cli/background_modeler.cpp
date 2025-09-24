@@ -12,16 +12,21 @@
 
 #include <rclcpp/rclcpp.hpp>
 
-using namespace OASIS;
-
 int main(int argc, char* argv[])
 {
   rclcpp::init(argc, argv);
 
-  std::shared_ptr<BackgroundModelerNode> node = std::make_shared<BackgroundModelerNode>();
-  node->Initialize();
+  auto node = std::make_shared<rclcpp::Node>("background_modeler");
+  OASIS::BackgroundModelerNode backgroundModeler(*node);
+  if (!backgroundModeler.Start())
+  {
+    RCLCPP_FATAL(node->get_logger(), "Failed to start background modeler node");
+    return 1;
+  }
 
   rclcpp::spin(node);
+
+  backgroundModeler.Stop();
 
   rclcpp::shutdown();
   return 0;
