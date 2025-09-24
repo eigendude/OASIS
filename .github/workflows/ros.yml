@@ -49,13 +49,21 @@ jobs:
             ros-ws/cmake/install
           key: restore-cmake-${{ matrix.os }}-${{ hashFiles('oasis_tooling/scripts/*cmake.sh') }}
 
+      - name: Restore OpenCV
+        id: restore-opencv
+        uses: actions/cache@v4
+        with:
+          path: |
+            ros-ws/opencv/install
+          key: restore-opencv-${{ matrix.os }}-${{ hashFiles('oasis_tooling/config/opencv/**', 'oasis_tooling/scripts/*cv.sh') }}-${{ hashFiles('oasis_tooling/scripts/*cmake.sh') }}
+
       - name: Restore ROS 2 Desktop
         id: restore-ros2-desktop
         uses: actions/cache@v4
         with:
           path: |
             ros-ws/ros2-desktop-${{ matrix.ros2_distro }}/install
-          key: restore-ros2-desktop-${{ matrix.os }}-${{ matrix.ros2_distro }}-${{ hashFiles('oasis_tooling/config/ros2-desktop/**', 'oasis_tooling/scripts/*ros2_desktop.sh') }}
+          key: restore-ros2-desktop-${{ matrix.os }}-${{ matrix.ros2_distro }}-${{ hashFiles('oasis_tooling/config/ros2-desktop/**', 'oasis_tooling/scripts/*ros2_desktop.sh') }}${{ hashFiles('oasis_tooling/config/opencv/**', 'oasis_tooling/scripts/*cv.sh') }}-${{ hashFiles('oasis_tooling/scripts/*cmake.sh') }}
       - name: Restore OASIS dependencies
         id: restore-oasis-depends
         uses: actions/cache@v4
@@ -88,6 +96,14 @@ jobs:
       - name: Build CMake
         if: steps.restore-cmake.outputs.cache-hit != 'true'
         run: ./oasis_tooling/scripts/build_cmake.sh
+
+      - name: Install OpenCV dependencies
+        if: steps.restore-opencv.outputs.cache-hit != 'true'
+        run: ./oasis_tooling/scripts/depinstall_cv.sh
+
+      - name: Build OpenCV
+        if: steps.restore-opencv.outputs.cache-hit != 'true'
+        run: ./oasis_tooling/scripts/build_cv.sh
 
       - name: Install ROS 2 Desktop dependencies
         if: steps.restore-ros2-desktop.outputs.cache-hit != 'true'
