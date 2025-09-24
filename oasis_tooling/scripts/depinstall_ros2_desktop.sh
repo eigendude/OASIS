@@ -38,6 +38,7 @@ elif [ "${ROS2_DISTRO}" = "kilted" ]; then
     urdfdom_headers \
   "
 fi
+
 # Testing ignorables
 ROSDEP_IGNORE_KEYS+=" \
   launch_testing \
@@ -121,7 +122,6 @@ if [[ "${OSTYPE}" == "darwin"* ]]; then
     eigen \
     freetype \
     graphviz \
-    opencv \
     openssl \
     orocos-kdl \
     pcre \

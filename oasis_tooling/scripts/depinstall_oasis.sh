@@ -24,6 +24,11 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # Import OASIS paths and config
 source "${SCRIPT_DIR}/env_oasis.sh"
 
+# rosdep keys to ignore
+ROSDEP_IGNORE_KEYS=" \
+  libopencv-dev \
+"
+
 #
 # Load OASIS dependency environment
 #
@@ -77,14 +82,19 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     libegl-dev \
     libgles-dev \
     libgoogle-glog-dev \
-    libopencv-calib3d-dev \
-    libopencv-contrib-dev \
-    libopencv-core-dev \
-    libopencv-features2d-dev \
-    libopencv-highgui-dev \
-    libopencv-imgproc-dev \
-    libopencv-video-dev \
     libprotobuf-dev \
+
+  # Needed for custom OpenCV build
+  sudo apt install -y --no-install-recommends \
+    libavcodec-dev \
+    libavformat-dev \
+    libavif-dev \
+    libavutil-dev \
+    libgstreamer-plugins-base1.0-dev \
+    libgstreamer1.0-dev \
+    libopenblas-dev \
+    libopenexr-dev \
+    libswscale-dev \
 
   # Install Python dependencies
   sudo apt install -y --no-install-recommends \
@@ -176,7 +186,8 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     --ignore-src \
     --rosdistro ${ROS2_DISTRO} \
     --as-root=pip:false \
-    --default-yes
+    --default-yes \
+    --skip-keys="${ROSDEP_IGNORE_KEYS}"
 fi
 
 # Bootstrap the Arduino toolchain

@@ -1,0 +1,28 @@
+From 74fc9828431845d5e1aff3a5527a4142d8cc7a33 Mon Sep 17 00:00:00 2001
+From: Garrett Brown <garrett.brown@aclima.earth>
+Date: Wed, 24 Sep 2025 14:09:45 -0700
+Subject: [PATCH 2/2] CMake: Fix locating libs via *_ROOT variables
+
+---
+ CMakeLists.txt | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index fc2b51d..c5d5e1d 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -35,6 +35,11 @@ if (POLICY CMP0042)
+   cmake_policy(SET CMP0042 NEW)
+ endif()
+ 
++# Ensure find_package honors *_ROOT hints so bgslibrary picks up custom OpenCV toolchains
++if(POLICY CMP0074)
++  cmake_policy(SET CMP0074 NEW)
++endif()
++
+ #set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c99")
+ #set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake-modules)
+ 
+-- 
+2.43.0
+

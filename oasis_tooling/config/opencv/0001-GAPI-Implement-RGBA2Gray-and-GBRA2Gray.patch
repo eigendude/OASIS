@@ -1,0 +1,3878 @@
+From 7b327b0f41b60f93ab5792886cf98843cf3e87b0 Mon Sep 17 00:00:00 2001
+From: Garrett Brown <eigendebugger@gmail.com>
+Date: Mon, 19 Oct 2020 01:27:35 -0700
+Subject: [PATCH] GAPI: Implement RGBA2Gray and GBRA2Gray
+
+---
+ modules/gapi/include/opencv2/gapi/imgproc.hpp |   40 +
+ .../include/opencv2/gapi/imgproc.hpp.orig     | 1085 +++++++++++++++++
+ .../perf/common/gapi_imgproc_perf_tests.hpp   |    2 +
+ .../common/gapi_imgproc_perf_tests_inl.hpp    |   76 ++
+ .../perf/cpu/gapi_imgproc_perf_tests_cpu.cpp  |   10 +
+ .../cpu/gapi_imgproc_perf_tests_fluid.cpp     |   10 +
+ .../perf/gpu/gapi_imgproc_perf_tests_gpu.cpp  |   10 +
+ modules/gapi/src/api/kernels_imgproc.cpp      |   10 +
+ modules/gapi/src/api/kernels_imgproc.cpp.orig |  209 ++++
+ modules/gapi/src/backends/cpu/gcpuimgproc.cpp |   18 +
+ .../src/backends/cpu/gcpuimgproc.cpp.orig     |  470 +++++++
+ .../gapi/src/backends/fluid/gfluidimgproc.cpp |   49 +-
+ .../fluid/gfluidimgproc_func.dispatch.cpp     |   14 +
+ .../src/backends/fluid/gfluidimgproc_func.hpp |    9 +
+ .../fluid/gfluidimgproc_func.simd.hpp         |   46 +
+ modules/gapi/src/backends/ocl/goclimgproc.cpp |   18 +
+ .../gapi/test/common/gapi_imgproc_tests.hpp   |    2 +
+ .../test/common/gapi_imgproc_tests.hpp.orig   |   87 ++
+ .../test/common/gapi_imgproc_tests_inl.hpp    |   38 +
+ .../common/gapi_imgproc_tests_inl.hpp.orig    |  828 +++++++++++++
+ .../gapi/test/cpu/gapi_imgproc_tests_cpu.cpp  |   16 +
+ .../test/cpu/gapi_imgproc_tests_cpu.cpp.orig  |  380 ++++++
+ .../test/cpu/gapi_imgproc_tests_fluid.cpp     |   16 +
+ .../gapi/test/gpu/gapi_imgproc_tests_gpu.cpp  |   16 +
+ 24 files changed, 3458 insertions(+), 1 deletion(-)
+ create mode 100644 modules/gapi/include/opencv2/gapi/imgproc.hpp.orig
+ create mode 100644 modules/gapi/src/api/kernels_imgproc.cpp.orig
+ create mode 100644 modules/gapi/src/backends/cpu/gcpuimgproc.cpp.orig
+ create mode 100644 modules/gapi/test/common/gapi_imgproc_tests.hpp.orig
+ create mode 100644 modules/gapi/test/common/gapi_imgproc_tests_inl.hpp.orig
+ create mode 100644 modules/gapi/test/cpu/gapi_imgproc_tests_cpu.cpp.orig
+
+diff --git a/modules/gapi/include/opencv2/gapi/imgproc.hpp b/modules/gapi/include/opencv2/gapi/imgproc.hpp
+index 96aaa5a447..23e52bc3e3 100644
+--- a/modules/gapi/include/opencv2/gapi/imgproc.hpp
++++ b/modules/gapi/include/opencv2/gapi/imgproc.hpp
+@@ -421,6 +421,12 @@ namespace imgproc {
+         }
+     };
+ 
++    G_TYPED_KERNEL(GRGBA2Gray, <GMat(GMat)>, "org.opencv.imgproc.colorconvert.rgba2gray") {
++        static GMatDesc outMeta(GMatDesc in) {
++            return in.withType(CV_8U, 1);
++        }
++    };
++
+     G_TYPED_KERNEL(GRGB2GrayCustom, <GMat(GMat,float,float,float)>, "org.opencv.imgproc.colorconvert.rgb2graycustom") {
+         static GMatDesc outMeta(GMatDesc in, float, float, float) {
+             return in.withType(CV_8U, 1);
+@@ -433,6 +439,12 @@ namespace imgproc {
+         }
+     };
+ 
++    G_TYPED_KERNEL(GBGRA2Gray, <GMat(GMat)>, "org.opencv.imgproc.colorconvert.bgra2gray") {
++        static GMatDesc outMeta(GMatDesc in) {
++            return in.withType(CV_8U, 1);
++        }
++    };
++
+     G_TYPED_KERNEL(GBayerGR2RGB, <cv::GMat(cv::GMat)>, "org.opencv.imgproc.colorconvert.bayergr2rgb") {
+         static cv::GMatDesc outMeta(cv::GMatDesc in) {
+             return in.withType(CV_8U, 3);
+@@ -1387,6 +1399,22 @@ Resulting gray color value computed as
+  */
+ GAPI_EXPORTS_W GMat RGB2Gray(const GMat& src);
+ 
++//! @} gapi_filters
++
++//! @addtogroup gapi_colorconvert
++//! @{
++/** @brief Converts an image from RGBA color space to gray-scaled.
++The conventional ranges for R, G, and B channel values are 0 to 255.
++Resulting gray color value computed as
++\f[\texttt{dst} (I)= \texttt{0.299} * \texttt{src}(I).R + \texttt{0.587} * \texttt{src}(I).G  + \texttt{0.114} * \texttt{src}(I).B \f]
++
++@note Function textual ID is "org.opencv.imgproc.colorconvert.rgb2gray"
++
++@param src input image: 8-bit unsigned 4-channel image @ref CV_8UC1.
++@sa RGB2YUV
++ */
++GAPI_EXPORTS GMat RGBA2Gray(const GMat& src);
++
+ /** @overload
+ Resulting gray color value computed as
+ \f[\texttt{dst} (I)= \texttt{rY} * \texttt{src}(I).R + \texttt{gY} * \texttt{src}(I).G  + \texttt{bY} * \texttt{src}(I).B \f]
+@@ -1414,6 +1442,18 @@ Resulting gray color value computed as
+  */
+ GAPI_EXPORTS_W GMat BGR2Gray(const GMat& src);
+ 
++/** @brief Converts an image from BGRA color space to gray-scaled.
++The conventional ranges for B, G, and R channel values are 0 to 255.
++Resulting gray color value computed as
++\f[\texttt{dst} (I)= \texttt{0.114} * \texttt{src}(I).B + \texttt{0.587} * \texttt{src}(I).G  + \texttt{0.299} * \texttt{src}(I).R \f]
++
++@note Function textual ID is "org.opencv.imgproc.colorconvert.bgr2gray"
++
++@param src input image: 8-bit unsigned 4-channel image @ref CV_8UC1.
++@sa BGR2LUV
++ */
++GAPI_EXPORTS GMat BGRA2Gray(const GMat& src);
++
+ /** @brief Converts an image from RGB color space to YUV color space.
+ 
+ The function converts an input image from RGB color space to YUV.
+diff --git a/modules/gapi/include/opencv2/gapi/imgproc.hpp.orig b/modules/gapi/include/opencv2/gapi/imgproc.hpp.orig
+new file mode 100644
+index 0000000000..b4905e932b
+--- /dev/null
++++ b/modules/gapi/include/opencv2/gapi/imgproc.hpp.orig
+@@ -0,0 +1,1085 @@
++// This file is part of OpenCV project.
++// It is subject to the license terms in the LICENSE file found in the top-level directory
++// of this distribution and at http://opencv.org/license.html.
++//
++// Copyright (C) 2018-2020 Intel Corporation
++
++
++#ifndef OPENCV_GAPI_IMGPROC_HPP
++#define OPENCV_GAPI_IMGPROC_HPP
++
++#include <opencv2/imgproc.hpp>
++
++#include <utility> // std::tuple
++
++#include <opencv2/gapi/gkernel.hpp>
++#include <opencv2/gapi/gmat.hpp>
++#include <opencv2/gapi/gscalar.hpp>
++
++
++/** \defgroup gapi_imgproc G-API Image processing functionality
++@{
++    @defgroup gapi_filters Graph API: Image filters
++    @defgroup gapi_colorconvert Graph API: Converting image from one color space to another
++@}
++ */
++
++namespace cv { namespace gapi {
++
++namespace imgproc {
++    using GMat2 = std::tuple<GMat,GMat>;
++    using GMat3 = std::tuple<GMat,GMat,GMat>; // FIXME: how to avoid this?
++
++    G_TYPED_KERNEL(GFilter2D, <GMat(GMat,int,Mat,Point,Scalar,int,Scalar)>,"org.opencv.imgproc.filters.filter2D") {
++        static GMatDesc outMeta(GMatDesc in, int ddepth, Mat, Point, Scalar, int, Scalar) {
++            return in.withDepth(ddepth);
++        }
++    };
++
++    G_TYPED_KERNEL(GSepFilter, <GMat(GMat,int,Mat,Mat,Point,Scalar,int,Scalar)>, "org.opencv.imgproc.filters.sepfilter") {
++        static GMatDesc outMeta(GMatDesc in, int ddepth, Mat, Mat, Point, Scalar, int, Scalar) {
++            return in.withDepth(ddepth);
++        }
++    };
++
++    G_TYPED_KERNEL(GBoxFilter, <GMat(GMat,int,Size,Point,bool,int,Scalar)>, "org.opencv.imgproc.filters.boxfilter") {
++        static GMatDesc outMeta(GMatDesc in, int ddepth, Size, Point, bool, int, Scalar) {
++            return in.withDepth(ddepth);
++        }
++    };
++
++    G_TYPED_KERNEL(GBlur, <GMat(GMat,Size,Point,int,Scalar)>,         "org.opencv.imgproc.filters.blur"){
++        static GMatDesc outMeta(GMatDesc in, Size, Point, int, Scalar) {
++            return in;
++        }
++    };
++
++    G_TYPED_KERNEL(GGaussBlur, <GMat(GMat,Size,double,double,int,Scalar)>, "org.opencv.imgproc.filters.gaussianBlur") {
++        static GMatDesc outMeta(GMatDesc in, Size, double, double, int, Scalar) {
++            return in;
++        }
++    };
++
++    G_TYPED_KERNEL(GMedianBlur, <GMat(GMat,int)>, "org.opencv.imgproc.filters.medianBlur") {
++        static GMatDesc outMeta(GMatDesc in, int) {
++            return in;
++        }
++    };
++
++    G_TYPED_KERNEL(GErode, <GMat(GMat,Mat,Point,int,int,Scalar)>, "org.opencv.imgproc.filters.erode") {
++        static GMatDesc outMeta(GMatDesc in, Mat, Point, int, int, Scalar) {
++            return in;
++        }
++    };
++
++    G_TYPED_KERNEL(GDilate, <GMat(GMat,Mat,Point,int,int,Scalar)>, "org.opencv.imgproc.filters.dilate") {
++        static GMatDesc outMeta(GMatDesc in, Mat, Point, int, int, Scalar) {
++            return in;
++        }
++    };
++
++    G_TYPED_KERNEL(GSobel, <GMat(GMat,int,int,int,int,double,double,int,Scalar)>, "org.opencv.imgproc.filters.sobel") {
++        static GMatDesc outMeta(GMatDesc in, int ddepth, int, int, int, double, double, int, Scalar) {
++            return in.withDepth(ddepth);
++        }
++    };
++
++    G_TYPED_KERNEL_M(GSobelXY, <GMat2(GMat,int,int,int,double,double,int,Scalar)>, "org.opencv.imgproc.filters.sobelxy") {
++        static std::tuple<GMatDesc, GMatDesc> outMeta(GMatDesc in, int ddepth, int, int, double, double, int, Scalar) {
++            return std::make_tuple(in.withDepth(ddepth), in.withDepth(ddepth));
++        }
++    };
++
++    G_TYPED_KERNEL(GLaplacian, <GMat(GMat,int, int, double, double, int)>,
++                   "org.opencv.imgproc.filters.laplacian") {
++        static GMatDesc outMeta(GMatDesc in, int ddepth, int, double, double, int) {
++            return in.withDepth(ddepth);
++        }
++    };
++
++    G_TYPED_KERNEL(GBilateralFilter, <GMat(GMat,int, double, double, int)>,
++                   "org.opencv.imgproc.filters.bilateralfilter") {
++        static GMatDesc outMeta(GMatDesc in, int, double, double, int) {
++            return in;
++        }
++    };
++
++    G_TYPED_KERNEL(GEqHist, <GMat(GMat)>, "org.opencv.imgproc.equalizeHist"){
++        static GMatDesc outMeta(GMatDesc in) {
++            return in.withType(CV_8U, 1);
++        }
++    };
++
++    G_TYPED_KERNEL(GCanny, <GMat(GMat,double,double,int,bool)>, "org.opencv.imgproc.canny"){
++        static GMatDesc outMeta(GMatDesc in, double, double, int, bool) {
++            return in.withType(CV_8U, 1);
++        }
++    };
++
++    G_TYPED_KERNEL(GGoodFeatures,
++                   <cv::GArray<cv::Point2f>(GMat,int,double,double,Mat,int,bool,double)>,
++                   "org.opencv.imgproc.goodFeaturesToTrack") {
++        static GArrayDesc outMeta(GMatDesc, int, double, double, const Mat&, int, bool, double) {
++            return empty_array_desc();
++        }
++    };
++
++    G_TYPED_KERNEL(GRGB2YUV, <GMat(GMat)>, "org.opencv.imgproc.colorconvert.rgb2yuv") {
++        static GMatDesc outMeta(GMatDesc in) {
++            return in; // type still remains CV_8UC3;
++        }
++    };
++
++    G_TYPED_KERNEL(GYUV2RGB, <GMat(GMat)>, "org.opencv.imgproc.colorconvert.yuv2rgb") {
++        static GMatDesc outMeta(GMatDesc in) {
++            return in; // type still remains CV_8UC3;
++        }
++    };
++
++    G_TYPED_KERNEL(GNV12toRGB, <GMat(GMat, GMat)>, "org.opencv.imgproc.colorconvert.nv12torgb") {
++        static GMatDesc outMeta(GMatDesc in_y, GMatDesc in_uv) {
++            GAPI_Assert(in_y.chan == 1);
++            GAPI_Assert(in_uv.chan == 2);
++            GAPI_Assert(in_y.depth == CV_8U);
++            GAPI_Assert(in_uv.depth == CV_8U);
++            // UV size should be aligned with Y
++            GAPI_Assert(in_y.size.width == 2 * in_uv.size.width);
++            GAPI_Assert(in_y.size.height == 2 * in_uv.size.height);
++            return in_y.withType(CV_8U, 3); // type will be CV_8UC3;
++        }
++    };
++
++    G_TYPED_KERNEL(GNV12toBGR, <GMat(GMat, GMat)>, "org.opencv.imgproc.colorconvert.nv12tobgr") {
++        static GMatDesc outMeta(GMatDesc in_y, GMatDesc in_uv) {
++            GAPI_Assert(in_y.chan == 1);
++            GAPI_Assert(in_uv.chan == 2);
++            GAPI_Assert(in_y.depth == CV_8U);
++            GAPI_Assert(in_uv.depth == CV_8U);
++            // UV size should be aligned with Y
++            GAPI_Assert(in_y.size.width == 2 * in_uv.size.width);
++            GAPI_Assert(in_y.size.height == 2 * in_uv.size.height);
++            return in_y.withType(CV_8U, 3); // type will be CV_8UC3;
++        }
++    };
++
++    G_TYPED_KERNEL(GRGB2Lab, <GMat(GMat)>, "org.opencv.imgproc.colorconvert.rgb2lab") {
++        static GMatDesc outMeta(GMatDesc in) {
++            return in; // type still remains CV_8UC3;
++        }
++    };
++
++    G_TYPED_KERNEL(GBGR2LUV, <GMat(GMat)>, "org.opencv.imgproc.colorconvert.bgr2luv") {
++        static GMatDesc outMeta(GMatDesc in) {
++            return in; // type still remains CV_8UC3;
++        }
++    };
++
++    G_TYPED_KERNEL(GLUV2BGR, <GMat(GMat)>, "org.opencv.imgproc.colorconvert.luv2bgr") {
++        static GMatDesc outMeta(GMatDesc in) {
++            return in; // type still remains CV_8UC3;
++        }
++    };
++
++    G_TYPED_KERNEL(GYUV2BGR, <GMat(GMat)>, "org.opencv.imgproc.colorconvert.yuv2bgr") {
++        static GMatDesc outMeta(GMatDesc in) {
++            return in; // type still remains CV_8UC3;
++        }
++    };
++
++    G_TYPED_KERNEL(GBGR2YUV, <GMat(GMat)>, "org.opencv.imgproc.colorconvert.bgr2yuv") {
++        static GMatDesc outMeta(GMatDesc in) {
++            return in; // type still remains CV_8UC3;
++        }
++    };
++
++    G_TYPED_KERNEL(GRGB2Gray, <GMat(GMat)>, "org.opencv.imgproc.colorconvert.rgb2gray") {
++        static GMatDesc outMeta(GMatDesc in) {
++            return in.withType(CV_8U, 1);
++        }
++    };
++
++    G_TYPED_KERNEL(GRGB2GrayCustom, <GMat(GMat,float,float,float)>, "org.opencv.imgproc.colorconvert.rgb2graycustom") {
++        static GMatDesc outMeta(GMatDesc in, float, float, float) {
++            return in.withType(CV_8U, 1);
++        }
++    };
++
++    G_TYPED_KERNEL(GBGR2Gray, <GMat(GMat)>, "org.opencv.imgproc.colorconvert.bgr2gray") {
++        static GMatDesc outMeta(GMatDesc in) {
++            return in.withType(CV_8U, 1);
++        }
++    };
++
++    G_TYPED_KERNEL(GBayerGR2RGB, <cv::GMat(cv::GMat)>, "org.opencv.imgproc.colorconvert.bayergr2rgb") {
++        static cv::GMatDesc outMeta(cv::GMatDesc in) {
++            return in.withType(CV_8U, 3);
++        }
++    };
++
++    G_TYPED_KERNEL(GRGB2HSV, <cv::GMat(cv::GMat)>, "org.opencv.imgproc.colorconvert.rgb2hsv") {
++        static cv::GMatDesc outMeta(cv::GMatDesc in) {
++            return in;
++        }
++    };
++
++    G_TYPED_KERNEL(GRGB2YUV422, <cv::GMat(cv::GMat)>, "org.opencv.imgproc.colorconvert.rgb2yuv422") {
++        static cv::GMatDesc outMeta(cv::GMatDesc in) {
++            GAPI_Assert(in.depth == CV_8U);
++            GAPI_Assert(in.chan == 3);
++            return in.withType(in.depth, 2);
++        }
++    };
++
++    G_TYPED_KERNEL(GNV12toRGBp, <GMatP(GMat,GMat)>, "org.opencv.colorconvert.imgproc.nv12torgbp") {
++        static GMatDesc outMeta(GMatDesc inY, GMatDesc inUV) {
++            GAPI_Assert(inY.depth == CV_8U);
++            GAPI_Assert(inUV.depth == CV_8U);
++            GAPI_Assert(inY.chan == 1);
++            GAPI_Assert(inY.planar == false);
++            GAPI_Assert(inUV.chan == 2);
++            GAPI_Assert(inUV.planar == false);
++            GAPI_Assert(inY.size.width  == 2 * inUV.size.width);
++            GAPI_Assert(inY.size.height == 2 * inUV.size.height);
++            return inY.withType(CV_8U, 3).asPlanar();
++        }
++    };
++
++    G_TYPED_KERNEL(GNV12toGray, <GMat(GMat,GMat)>, "org.opencv.colorconvert.imgproc.nv12togray") {
++        static GMatDesc outMeta(GMatDesc inY, GMatDesc inUV) {
++            GAPI_Assert(inY.depth   == CV_8U);
++            GAPI_Assert(inUV.depth  == CV_8U);
++            GAPI_Assert(inY.chan    == 1);
++            GAPI_Assert(inY.planar  == false);
++            GAPI_Assert(inUV.chan   == 2);
++            GAPI_Assert(inUV.planar == false);
++
++            GAPI_Assert(inY.size.width  == 2 * inUV.size.width);
++            GAPI_Assert(inY.size.height == 2 * inUV.size.height);
++            return inY.withType(CV_8U, 1);
++        }
++    };
++
++    G_TYPED_KERNEL(GNV12toBGRp, <GMatP(GMat,GMat)>, "org.opencv.colorconvert.imgproc.nv12tobgrp") {
++        static GMatDesc outMeta(GMatDesc inY, GMatDesc inUV) {
++            GAPI_Assert(inY.depth == CV_8U);
++            GAPI_Assert(inUV.depth == CV_8U);
++            GAPI_Assert(inY.chan == 1);
++            GAPI_Assert(inY.planar == false);
++            GAPI_Assert(inUV.chan == 2);
++            GAPI_Assert(inUV.planar == false);
++            GAPI_Assert(inY.size.width  == 2 * inUV.size.width);
++            GAPI_Assert(inY.size.height == 2 * inUV.size.height);
++            return inY.withType(CV_8U, 3).asPlanar();
++        }
++    };
++
++} //namespace imgproc
++
++//! @addtogroup gapi_filters
++//! @{
++/** @brief Applies a separable linear filter to a matrix(image).
++
++The function applies a separable linear filter to the matrix. That is, first, every row of src is
++filtered with the 1D kernel kernelX. Then, every column of the result is filtered with the 1D
++kernel kernelY. The final result is returned.
++
++Supported matrix data types are @ref CV_8UC1, @ref CV_8UC3, @ref CV_16UC1, @ref CV_16SC1, @ref CV_32FC1.
++Output image must have the same type, size, and number of channels as the input image.
++@note In case of floating-point computation, rounding to nearest even is procedeed
++if hardware supports it (if not - to nearest value).
++
++@note Function textual ID is "org.opencv.imgproc.filters.sepfilter"
++@param src Source image.
++@param ddepth desired depth of the destination image (the following combinations of src.depth() and ddepth are supported:
++
++        src.depth() = CV_8U, ddepth = -1/CV_16S/CV_32F/CV_64F
++        src.depth() = CV_16U/CV_16S, ddepth = -1/CV_32F/CV_64F
++        src.depth() = CV_32F, ddepth = -1/CV_32F/CV_64F
++        src.depth() = CV_64F, ddepth = -1/CV_64F
++
++when ddepth=-1, the output image will have the same depth as the source)
++@param kernelX Coefficients for filtering each row.
++@param kernelY Coefficients for filtering each column.
++@param anchor Anchor position within the kernel. The default value \f$(-1,-1)\f$ means that the anchor
++is at the kernel center.
++@param delta Value added to the filtered results before storing them.
++@param borderType Pixel extrapolation method, see cv::BorderTypes
++@param borderValue border value in case of constant border type
++@sa  boxFilter, gaussianBlur, medianBlur
++ */
++GAPI_EXPORTS GMat sepFilter(const GMat& src, int ddepth, const Mat& kernelX, const Mat& kernelY, const Point& anchor /*FIXME: = Point(-1,-1)*/,
++                            const Scalar& delta /*FIXME = GScalar(0)*/, int borderType = BORDER_DEFAULT,
++                            const Scalar& borderValue = Scalar(0));
++
++/** @brief Convolves an image with the kernel.
++
++The function applies an arbitrary linear filter to an image. When
++the aperture is partially outside the image, the function interpolates outlier pixel values
++according to the specified border mode.
++
++The function does actually compute correlation, not the convolution:
++
++\f[\texttt{dst} (x,y) =  \sum _{ \substack{0\leq x' < \texttt{kernel.cols}\\{0\leq y' < \texttt{kernel.rows}}}}  \texttt{kernel} (x',y')* \texttt{src} (x+x'- \texttt{anchor.x} ,y+y'- \texttt{anchor.y} )\f]
++
++That is, the kernel is not mirrored around the anchor point. If you need a real convolution, flip
++the kernel using flip and set the new anchor to `(kernel.cols - anchor.x - 1, kernel.rows -
++anchor.y - 1)`.
++
++Supported matrix data types are @ref CV_8UC1, @ref CV_8UC3, @ref CV_16UC1, @ref CV_16SC1, @ref CV_32FC1.
++Output image must have the same size and number of channels an input image.
++@note Rounding to nearest even is procedeed if hardware supports it, if not - to nearest.
++
++@note Function textual ID is "org.opencv.imgproc.filters.filter2D"
++
++@param src input image.
++@param ddepth desired depth of the destination image
++@param kernel convolution kernel (or rather a correlation kernel), a single-channel floating point
++matrix; if you want to apply different kernels to different channels, split the image into
++separate color planes using split and process them individually.
++@param anchor anchor of the kernel that indicates the relative position of a filtered point within
++the kernel; the anchor should lie within the kernel; default value (-1,-1) means that the anchor
++is at the kernel center.
++@param delta optional value added to the filtered pixels before storing them in dst.
++@param borderType pixel extrapolation method, see cv::BorderTypes
++@param borderValue border value in case of constant border type
++@sa  sepFilter
++ */
++GAPI_EXPORTS GMat filter2D(const GMat& src, int ddepth, const Mat& kernel, const Point& anchor = Point(-1,-1), const Scalar& delta = Scalar(0),
++                           int borderType = BORDER_DEFAULT, const Scalar& borderValue = Scalar(0));
++
++
++/** @brief Blurs an image using the box filter.
++
++The function smooths an image using the kernel:
++
++\f[\texttt{K} =  \alpha \begin{bmatrix} 1 & 1 & 1 &  \cdots & 1 & 1  \\ 1 & 1 & 1 &  \cdots & 1 & 1  \\ \hdotsfor{6} \\ 1 & 1 & 1 &  \cdots & 1 & 1 \end{bmatrix}\f]
++
++where
++
++\f[\alpha = \begin{cases} \frac{1}{\texttt{ksize.width*ksize.height}} & \texttt{when } \texttt{normalize=true}  \\1 & \texttt{otherwise} \end{cases}\f]
++
++Unnormalized box filter is useful for computing various integral characteristics over each pixel
++neighborhood, such as covariance matrices of image derivatives (used in dense optical flow
++algorithms, and so on). If you need to compute pixel sums over variable-size windows, use cv::integral.
++
++Supported input matrix data types are @ref CV_8UC1, @ref CV_8UC3, @ref CV_16UC1, @ref CV_16SC1, @ref CV_32FC1.
++Output image must have the same type, size, and number of channels as the input image.
++@note Rounding to nearest even is procedeed if hardware supports it, if not - to nearest.
++
++@note Function textual ID is "org.opencv.imgproc.filters.boxfilter"
++
++@param src Source image.
++@param dtype the output image depth (-1 to set the input image data type).
++@param ksize blurring kernel size.
++@param anchor Anchor position within the kernel. The default value \f$(-1,-1)\f$ means that the anchor
++is at the kernel center.
++@param normalize flag, specifying whether the kernel is normalized by its area or not.
++@param borderType Pixel extrapolation method, see cv::BorderTypes
++@param borderValue border value in case of constant border type
++@sa  sepFilter, gaussianBlur, medianBlur, integral
++ */
++GAPI_EXPORTS GMat boxFilter(const GMat& src, int dtype, const Size& ksize, const Point& anchor = Point(-1,-1),
++                            bool normalize = true, int borderType = BORDER_DEFAULT,
++                            const Scalar& borderValue = Scalar(0));
++
++/** @brief Blurs an image using the normalized box filter.
++
++The function smooths an image using the kernel:
++
++\f[\texttt{K} =  \frac{1}{\texttt{ksize.width*ksize.height}} \begin{bmatrix} 1 & 1 & 1 &  \cdots & 1 & 1  \\ 1 & 1 & 1 &  \cdots & 1 & 1  \\ \hdotsfor{6} \\ 1 & 1 & 1 &  \cdots & 1 & 1  \\ \end{bmatrix}\f]
++
++The call `blur(src, ksize, anchor, borderType)` is equivalent to `boxFilter(src, src.type(), ksize, anchor,
++true, borderType)`.
++
++Supported input matrix data types are @ref CV_8UC1, @ref CV_8UC3, @ref CV_16UC1, @ref CV_16SC1, @ref CV_32FC1.
++Output image must have the same type, size, and number of channels as the input image.
++@note Rounding to nearest even is procedeed if hardware supports it, if not - to nearest.
++
++@note Function textual ID is "org.opencv.imgproc.filters.blur"
++
++@param src Source image.
++@param ksize blurring kernel size.
++@param anchor anchor point; default value Point(-1,-1) means that the anchor is at the kernel
++center.
++@param borderType border mode used to extrapolate pixels outside of the image, see cv::BorderTypes
++@param borderValue border value in case of constant border type
++@sa  boxFilter, bilateralFilter, GaussianBlur, medianBlur
++ */
++GAPI_EXPORTS GMat blur(const GMat& src, const Size& ksize, const Point& anchor = Point(-1,-1),
++                       int borderType = BORDER_DEFAULT, const Scalar& borderValue = Scalar(0));
++
++
++//GAPI_EXPORTS_W void blur( InputArray src, OutputArray dst,
++ //                       Size ksize, Point anchor = Point(-1,-1),
++ //                       int borderType = BORDER_DEFAULT );
++
++
++/** @brief Blurs an image using a Gaussian filter.
++
++The function filter2Ds the source image with the specified Gaussian kernel.
++Output image must have the same type and number of channels an input image.
++
++Supported input matrix data types are @ref CV_8UC1, @ref CV_8UC3, @ref CV_16UC1, @ref CV_16SC1, @ref CV_32FC1.
++Output image must have the same type, size, and number of channels as the input image.
++@note Rounding to nearest even is procedeed if hardware supports it, if not - to nearest.
++
++@note Function textual ID is "org.opencv.imgproc.filters.gaussianBlur"
++
++@param src input image;
++@param ksize Gaussian kernel size. ksize.width and ksize.height can differ but they both must be
++positive and odd. Or, they can be zero's and then they are computed from sigma.
++@param sigmaX Gaussian kernel standard deviation in X direction.
++@param sigmaY Gaussian kernel standard deviation in Y direction; if sigmaY is zero, it is set to be
++equal to sigmaX, if both sigmas are zeros, they are computed from ksize.width and ksize.height,
++respectively (see cv::getGaussianKernel for details); to fully control the result regardless of
++possible future modifications of all this semantics, it is recommended to specify all of ksize,
++sigmaX, and sigmaY.
++@param borderType pixel extrapolation method, see cv::BorderTypes
++@param borderValue border value in case of constant border type
++@sa  sepFilter, boxFilter, medianBlur
++ */
++GAPI_EXPORTS GMat gaussianBlur(const GMat& src, const Size& ksize, double sigmaX, double sigmaY = 0,
++                               int borderType = BORDER_DEFAULT, const Scalar& borderValue = Scalar(0));
++
++/** @brief Blurs an image using the median filter.
++
++The function smoothes an image using the median filter with the \f$\texttt{ksize} \times
++\texttt{ksize}\f$ aperture. Each channel of a multi-channel image is processed independently.
++Output image must have the same type, size, and number of channels as the input image.
++@note Rounding to nearest even is procedeed if hardware supports it, if not - to nearest.
++The median filter uses cv::BORDER_REPLICATE internally to cope with border pixels, see cv::BorderTypes
++
++@note Function textual ID is "org.opencv.imgproc.filters.medianBlur"
++
++@param src input matrix (image)
++@param ksize aperture linear size; it must be odd and greater than 1, for example: 3, 5, 7 ...
++@sa  boxFilter, gaussianBlur
++ */
++GAPI_EXPORTS GMat medianBlur(const GMat& src, int ksize);
++
++/** @brief Erodes an image by using a specific structuring element.
++
++The function erodes the source image using the specified structuring element that determines the
++shape of a pixel neighborhood over which the minimum is taken:
++
++\f[\texttt{dst} (x,y) =  \min _{(x',y'):  \, \texttt{element} (x',y') \ne0 } \texttt{src} (x+x',y+y')\f]
++
++Erosion can be applied several (iterations) times. In case of multi-channel images, each channel is processed independently.
++Supported input matrix data types are @ref CV_8UC1, @ref CV_8UC3, @ref CV_16UC1, @ref CV_16SC1, and @ref CV_32FC1.
++Output image must have the same type, size, and number of channels as the input image.
++@note Rounding to nearest even is procedeed if hardware supports it, if not - to nearest.
++
++@note Function textual ID is "org.opencv.imgproc.filters.erode"
++
++@param src input image
++@param kernel structuring element used for erosion; if `element=Mat()`, a `3 x 3` rectangular
++structuring element is used. Kernel can be created using getStructuringElement.
++@param anchor position of the anchor within the element; default value (-1, -1) means that the
++anchor is at the element center.
++@param iterations number of times erosion is applied.
++@param borderType pixel extrapolation method, see cv::BorderTypes
++@param borderValue border value in case of a constant border
++@sa  dilate
++ */
++GAPI_EXPORTS GMat erode(const GMat& src, const Mat& kernel, const Point& anchor = Point(-1,-1), int iterations = 1,
++                        int borderType = BORDER_CONSTANT,
++                        const  Scalar& borderValue = morphologyDefaultBorderValue());
++
++/** @brief Erodes an image by using 3 by 3 rectangular structuring element.
++
++The function erodes the source image using the rectangular structuring element with rectangle center as an anchor.
++Erosion can be applied several (iterations) times. In case of multi-channel images, each channel is processed independently.
++Supported input matrix data types are @ref CV_8UC1, @ref CV_8UC3, @ref CV_16UC1, @ref CV_16SC1, and @ref CV_32FC1.
++Output image must have the same type, size, and number of channels as the input image.
++@note Rounding to nearest even is procedeed if hardware supports it, if not - to nearest.
++
++@param src input image
++@param iterations number of times erosion is applied.
++@param borderType pixel extrapolation method, see cv::BorderTypes
++@param borderValue border value in case of a constant border
++@sa  erode, dilate3x3
++ */
++GAPI_EXPORTS GMat erode3x3(const GMat& src, int iterations = 1,
++                           int borderType = BORDER_CONSTANT,
++                           const  Scalar& borderValue = morphologyDefaultBorderValue());
++
++/** @brief Dilates an image by using a specific structuring element.
++
++The function dilates the source image using the specified structuring element that determines the
++shape of a pixel neighborhood over which the maximum is taken:
++\f[\texttt{dst} (x,y) =  \max _{(x',y'):  \, \texttt{element} (x',y') \ne0 } \texttt{src} (x+x',y+y')\f]
++
++Dilation can be applied several (iterations) times. In case of multi-channel images, each channel is processed independently.
++Supported input matrix data types are @ref CV_8UC1, @ref CV_8UC3, @ref CV_16UC1, @ref CV_16SC1, and @ref CV_32FC1.
++Output image must have the same type, size, and number of channels as the input image.
++@note Rounding to nearest even is procedeed if hardware supports it, if not - to nearest.
++
++@note Function textual ID is "org.opencv.imgproc.filters.dilate"
++
++@param src input image.
++@param kernel structuring element used for dilation; if elemenat=Mat(), a 3 x 3 rectangular
++structuring element is used. Kernel can be created using getStructuringElement
++@param anchor position of the anchor within the element; default value (-1, -1) means that the
++anchor is at the element center.
++@param iterations number of times dilation is applied.
++@param borderType pixel extrapolation method, see cv::BorderTypes
++@param borderValue border value in case of a constant border
++@sa  erode, morphologyEx, getStructuringElement
++ */
++GAPI_EXPORTS GMat dilate(const GMat& src, const Mat& kernel, const Point& anchor = Point(-1,-1), int iterations = 1,
++                         int borderType = BORDER_CONSTANT,
++                         const  Scalar& borderValue = morphologyDefaultBorderValue());
++
++/** @brief Dilates an image by using 3 by 3 rectangular structuring element.
++
++The function dilates the source image using the specified structuring element that determines the
++shape of a pixel neighborhood over which the maximum is taken:
++\f[\texttt{dst} (x,y) =  \max _{(x',y'):  \, \texttt{element} (x',y') \ne0 } \texttt{src} (x+x',y+y')\f]
++
++Dilation can be applied several (iterations) times. In case of multi-channel images, each channel is processed independently.
++Supported input matrix data types are @ref CV_8UC1, @ref CV_8UC3, @ref CV_16UC1, @ref CV_16SC1, and @ref CV_32FC1.
++Output image must have the same type, size, and number of channels as the input image.
++@note Rounding to nearest even is procedeed if hardware supports it, if not - to nearest.
++
++@note Function textual ID is "org.opencv.imgproc.filters.dilate"
++
++@param src input image.
++@param iterations number of times dilation is applied.
++@param borderType pixel extrapolation method, see cv::BorderTypes
++@param borderValue border value in case of a constant border
++@sa  dilate, erode3x3
++ */
++
++GAPI_EXPORTS GMat dilate3x3(const GMat& src, int iterations = 1,
++                            int borderType = BORDER_CONSTANT,
++                            const  Scalar& borderValue = morphologyDefaultBorderValue());
++
++/** @brief Calculates the first, second, third, or mixed image derivatives using an extended Sobel operator.
++
++In all cases except one, the \f$\texttt{ksize} \times \texttt{ksize}\f$ separable kernel is used to
++calculate the derivative. When \f$\texttt{ksize = 1}\f$, the \f$3 \times 1\f$ or \f$1 \times 3\f$
++kernel is used (that is, no Gaussian smoothing is done). `ksize = 1` can only be used for the first
++or the second x- or y- derivatives.
++
++There is also the special value `ksize = FILTER_SCHARR (-1)` that corresponds to the \f$3\times3\f$ Scharr
++filter that may give more accurate results than the \f$3\times3\f$ Sobel. The Scharr aperture is
++
++\f[\vecthreethree{-3}{0}{3}{-10}{0}{10}{-3}{0}{3}\f]
++
++for the x-derivative, or transposed for the y-derivative.
++
++The function calculates an image derivative by convolving the image with the appropriate kernel:
++
++\f[\texttt{dst} =  \frac{\partial^{xorder+yorder} \texttt{src}}{\partial x^{xorder} \partial y^{yorder}}\f]
++
++The Sobel operators combine Gaussian smoothing and differentiation, so the result is more or less
++resistant to the noise. Most often, the function is called with ( xorder = 1, yorder = 0, ksize = 3)
++or ( xorder = 0, yorder = 1, ksize = 3) to calculate the first x- or y- image derivative. The first
++case corresponds to a kernel of:
++
++\f[\vecthreethree{-1}{0}{1}{-2}{0}{2}{-1}{0}{1}\f]
++
++The second case corresponds to a kernel of:
++
++\f[\vecthreethree{-1}{-2}{-1}{0}{0}{0}{1}{2}{1}\f]
++
++@note Rounding to nearest even is procedeed if hardware supports it, if not - to nearest.
++
++@note Function textual ID is "org.opencv.imgproc.filters.sobel"
++
++@param src input image.
++@param ddepth output image depth, see @ref filter_depths "combinations"; in the case of
++    8-bit input images it will result in truncated derivatives.
++@param dx order of the derivative x.
++@param dy order of the derivative y.
++@param ksize size of the extended Sobel kernel; it must be odd.
++@param scale optional scale factor for the computed derivative values; by default, no scaling is
++applied (see cv::getDerivKernels for details).
++@param delta optional delta value that is added to the results prior to storing them in dst.
++@param borderType pixel extrapolation method, see cv::BorderTypes
++@param borderValue border value in case of constant border type
++@sa filter2D, gaussianBlur, cartToPolar
++ */
++GAPI_EXPORTS GMat Sobel(const GMat& src, int ddepth, int dx, int dy, int ksize = 3,
++                        double scale = 1, double delta = 0,
++                        int borderType = BORDER_DEFAULT,
++                        const Scalar& borderValue = Scalar(0));
++
++/** @brief Calculates the first, second, third, or mixed image derivatives using an extended Sobel operator.
++
++In all cases except one, the \f$\texttt{ksize} \times \texttt{ksize}\f$ separable kernel is used to
++calculate the derivative. When \f$\texttt{ksize = 1}\f$, the \f$3 \times 1\f$ or \f$1 \times 3\f$
++kernel is used (that is, no Gaussian smoothing is done). `ksize = 1` can only be used for the first
++or the second x- or y- derivatives.
++
++There is also the special value `ksize = FILTER_SCHARR (-1)` that corresponds to the \f$3\times3\f$ Scharr
++filter that may give more accurate results than the \f$3\times3\f$ Sobel. The Scharr aperture is
++
++\f[\vecthreethree{-3}{0}{3}{-10}{0}{10}{-3}{0}{3}\f]
++
++for the x-derivative, or transposed for the y-derivative.
++
++The function calculates an image derivative by convolving the image with the appropriate kernel:
++
++\f[\texttt{dst} =  \frac{\partial^{xorder+yorder} \texttt{src}}{\partial x^{xorder} \partial y^{yorder}}\f]
++
++The Sobel operators combine Gaussian smoothing and differentiation, so the result is more or less
++resistant to the noise. Most often, the function is called with ( xorder = 1, yorder = 0, ksize = 3)
++or ( xorder = 0, yorder = 1, ksize = 3) to calculate the first x- or y- image derivative. The first
++case corresponds to a kernel of:
++
++\f[\vecthreethree{-1}{0}{1}{-2}{0}{2}{-1}{0}{1}\f]
++
++The second case corresponds to a kernel of:
++
++\f[\vecthreethree{-1}{-2}{-1}{0}{0}{0}{1}{2}{1}\f]
++
++@note First returned matrix correspons to dx derivative while the second one to dy.
++
++@note Rounding to nearest even is procedeed if hardware supports it, if not - to nearest.
++
++@note Function textual ID is "org.opencv.imgproc.filters.sobelxy"
++
++@param src input image.
++@param ddepth output image depth, see @ref filter_depths "combinations"; in the case of
++    8-bit input images it will result in truncated derivatives.
++@param order order of the derivatives.
++@param ksize size of the extended Sobel kernel; it must be odd.
++@param scale optional scale factor for the computed derivative values; by default, no scaling is
++applied (see cv::getDerivKernels for details).
++@param delta optional delta value that is added to the results prior to storing them in dst.
++@param borderType pixel extrapolation method, see cv::BorderTypes
++@param borderValue border value in case of constant border type
++@sa filter2D, gaussianBlur, cartToPolar
++ */
++GAPI_EXPORTS std::tuple<GMat, GMat> SobelXY(const GMat& src, int ddepth, int order, int ksize = 3,
++                        double scale = 1, double delta = 0,
++                        int borderType = BORDER_DEFAULT,
++                        const Scalar& borderValue = Scalar(0));
++
++/** @brief Calculates the Laplacian of an image.
++
++The function calculates the Laplacian of the source image by adding up the second x and y
++derivatives calculated using the Sobel operator:
++
++\f[\texttt{dst} =  \Delta \texttt{src} =  \frac{\partial^2 \texttt{src}}{\partial x^2} +  \frac{\partial^2 \texttt{src}}{\partial y^2}\f]
++
++This is done when `ksize > 1`. When `ksize == 1`, the Laplacian is computed by filtering the image
++with the following \f$3 \times 3\f$ aperture:
++
++\f[\vecthreethree {0}{1}{0}{1}{-4}{1}{0}{1}{0}\f]
++
++@note Function textual ID is "org.opencv.imgproc.filters.laplacian"
++
++@param src Source image.
++@param ddepth Desired depth of the destination image.
++@param ksize Aperture size used to compute the second-derivative filters. See #getDerivKernels for
++details. The size must be positive and odd.
++@param scale Optional scale factor for the computed Laplacian values. By default, no scaling is
++applied. See #getDerivKernels for details.
++@param delta Optional delta value that is added to the results prior to storing them in dst .
++@param borderType Pixel extrapolation method, see #BorderTypes. #BORDER_WRAP is not supported.
++@return Destination image of the same size and the same number of channels as src.
++@sa  Sobel, Scharr
++ */
++GAPI_EXPORTS GMat Laplacian(const GMat& src, int ddepth, int ksize = 1,
++                            double scale = 1, double delta = 0, int borderType = BORDER_DEFAULT);
++
++/** @brief Applies the bilateral filter to an image.
++
++The function applies bilateral filtering to the input image, as described in
++http://www.dai.ed.ac.uk/CVonline/LOCAL_COPIES/MANDUCHI1/Bilateral_Filtering.html
++bilateralFilter can reduce unwanted noise very well while keeping edges fairly sharp. However, it is
++very slow compared to most filters.
++
++_Sigma values_: For simplicity, you can set the 2 sigma values to be the same. If they are small (\<
++10), the filter will not have much effect, whereas if they are large (\> 150), they will have a very
++strong effect, making the image look "cartoonish".
++
++_Filter size_: Large filters (d \> 5) are very slow, so it is recommended to use d=5 for real-time
++applications, and perhaps d=9 for offline applications that need heavy noise filtering.
++
++This filter does not work inplace.
++
++@note Function textual ID is "org.opencv.imgproc.filters.bilateralfilter"
++
++@param src Source 8-bit or floating-point, 1-channel or 3-channel image.
++@param d Diameter of each pixel neighborhood that is used during filtering. If it is non-positive,
++it is computed from sigmaSpace.
++@param sigmaColor Filter sigma in the color space. A larger value of the parameter means that
++farther colors within the pixel neighborhood (see sigmaSpace) will be mixed together, resulting
++in larger areas of semi-equal color.
++@param sigmaSpace Filter sigma in the coordinate space. A larger value of the parameter means that
++farther pixels will influence each other as long as their colors are close enough (see sigmaColor
++). When d\>0, it specifies the neighborhood size regardless of sigmaSpace. Otherwise, d is
++proportional to sigmaSpace.
++@param borderType border mode used to extrapolate pixels outside of the image, see #BorderTypes
++@return Destination image of the same size and type as src.
++ */
++GAPI_EXPORTS GMat bilateralFilter(const GMat& src, int d, double sigmaColor, double sigmaSpace,
++                                  int borderType = BORDER_DEFAULT);
++
++/** @brief Finds edges in an image using the Canny algorithm.
++
++The function finds edges in the input image and marks them in the output map edges using the
++Canny algorithm. The smallest value between threshold1 and threshold2 is used for edge linking. The
++largest value is used to find initial segments of strong edges. See
++<http://en.wikipedia.org/wiki/Canny_edge_detector>
++
++@note Function textual ID is "org.opencv.imgproc.filters.canny"
++
++@param image 8-bit input image.
++@param threshold1 first threshold for the hysteresis procedure.
++@param threshold2 second threshold for the hysteresis procedure.
++@param apertureSize aperture size for the Sobel operator.
++@param L2gradient a flag, indicating whether a more accurate \f$L_2\f$ norm
++\f$=\sqrt{(dI/dx)^2 + (dI/dy)^2}\f$ should be used to calculate the image gradient magnitude (
++L2gradient=true ), or whether the default \f$L_1\f$ norm \f$=|dI/dx|+|dI/dy|\f$ is enough (
++L2gradient=false ).
++ */
++GAPI_EXPORTS GMat Canny(const GMat& image, double threshold1, double threshold2,
++                        int apertureSize = 3, bool L2gradient = false);
++
++/** @brief Determines strong corners on an image.
++
++The function finds the most prominent corners in the image or in the specified image region, as
++described in @cite Shi94
++
++-   Function calculates the corner quality measure at every source image pixel using the
++    #cornerMinEigenVal or #cornerHarris .
++-   Function performs a non-maximum suppression (the local maximums in *3 x 3* neighborhood are
++    retained).
++-   The corners with the minimal eigenvalue less than
++    \f$\texttt{qualityLevel} \cdot \max_{x,y} qualityMeasureMap(x,y)\f$ are rejected.
++-   The remaining corners are sorted by the quality measure in the descending order.
++-   Function throws away each corner for which there is a stronger corner at a distance less than
++    maxDistance.
++
++The function can be used to initialize a point-based tracker of an object.
++
++@note If the function is called with different values A and B of the parameter qualityLevel , and
++A \> B, the vector of returned corners with qualityLevel=A will be the prefix of the output vector
++with qualityLevel=B .
++
++@note Function textual ID is "org.opencv.imgproc.goodFeaturesToTrack"
++
++@param image Input 8-bit or floating-point 32-bit, single-channel image.
++@param maxCorners Maximum number of corners to return. If there are more corners than are found,
++the strongest of them is returned. `maxCorners <= 0` implies that no limit on the maximum is set
++and all detected corners are returned.
++@param qualityLevel Parameter characterizing the minimal accepted quality of image corners. The
++parameter value is multiplied by the best corner quality measure, which is the minimal eigenvalue
++(see #cornerMinEigenVal ) or the Harris function response (see #cornerHarris ). The corners with the
++quality measure less than the product are rejected. For example, if the best corner has the
++quality measure = 1500, and the qualityLevel=0.01 , then all the corners with the quality measure
++less than 15 are rejected.
++@param minDistance Minimum possible Euclidean distance between the returned corners.
++@param mask Optional region of interest. If the image is not empty (it needs to have the type
++CV_8UC1 and the same size as image ), it specifies the region in which the corners are detected.
++@param blockSize Size of an average block for computing a derivative covariation matrix over each
++pixel neighborhood. See cornerEigenValsAndVecs .
++@param useHarrisDetector Parameter indicating whether to use a Harris detector (see #cornerHarris)
++or #cornerMinEigenVal.
++@param k Free parameter of the Harris detector.
++
++@return vector of detected corners.
++ */
++GAPI_EXPORTS GArray<Point2f> goodFeaturesToTrack(const GMat  &image,
++                                                       int    maxCorners,
++                                                       double qualityLevel,
++                                                       double minDistance,
++                                                 const Mat   &mask = Mat(),
++                                                       int    blockSize = 3,
++                                                       bool   useHarrisDetector = false,
++                                                       double k = 0.04);
++
++/** @brief Equalizes the histogram of a grayscale image.
++
++The function equalizes the histogram of the input image using the following algorithm:
++
++- Calculate the histogram \f$H\f$ for src .
++- Normalize the histogram so that the sum of histogram bins is 255.
++- Compute the integral of the histogram:
++\f[H'_i =  \sum _{0  \le j < i} H(j)\f]
++- Transform the image using \f$H'\f$ as a look-up table: \f$\texttt{dst}(x,y) = H'(\texttt{src}(x,y))\f$
++
++The algorithm normalizes the brightness and increases the contrast of the image.
++@note The returned image is of the same size and type as input.
++
++@note Function textual ID is "org.opencv.imgproc.equalizeHist"
++
++@param src Source 8-bit single channel image.
++ */
++GAPI_EXPORTS GMat equalizeHist(const GMat& src);
++
++//! @} gapi_filters
++
++//! @addtogroup gapi_colorconvert
++//! @{
++/** @brief Converts an image from RGB color space to gray-scaled.
++The conventional ranges for R, G, and B channel values are 0 to 255.
++Resulting gray color value computed as
++\f[\texttt{dst} (I)= \texttt{0.299} * \texttt{src}(I).R + \texttt{0.587} * \texttt{src}(I).G  + \texttt{0.114} * \texttt{src}(I).B \f]
++
++@note Function textual ID is "org.opencv.imgproc.colorconvert.rgb2gray"
++
++@param src input image: 8-bit unsigned 3-channel image @ref CV_8UC1.
++@sa RGB2YUV
++ */
++GAPI_EXPORTS GMat RGB2Gray(const GMat& src);
++
++/** @overload
++Resulting gray color value computed as
++\f[\texttt{dst} (I)= \texttt{rY} * \texttt{src}(I).R + \texttt{gY} * \texttt{src}(I).G  + \texttt{bY} * \texttt{src}(I).B \f]
++
++@note Function textual ID is "org.opencv.imgproc.colorconvert.rgb2graycustom"
++
++@param src input image: 8-bit unsigned 3-channel image @ref CV_8UC1.
++@param rY float multiplier for R channel.
++@param gY float multiplier for G channel.
++@param bY float multiplier for B channel.
++@sa RGB2YUV
++ */
++GAPI_EXPORTS GMat RGB2Gray(const GMat& src, float rY, float gY, float bY);
++
++/** @brief Converts an image from BGR color space to gray-scaled.
++The conventional ranges for B, G, and R channel values are 0 to 255.
++Resulting gray color value computed as
++\f[\texttt{dst} (I)= \texttt{0.114} * \texttt{src}(I).B + \texttt{0.587} * \texttt{src}(I).G  + \texttt{0.299} * \texttt{src}(I).R \f]
++
++@note Function textual ID is "org.opencv.imgproc.colorconvert.bgr2gray"
++
++@param src input image: 8-bit unsigned 3-channel image @ref CV_8UC1.
++@sa BGR2LUV
++ */
++GAPI_EXPORTS GMat BGR2Gray(const GMat& src);
++
++/** @brief Converts an image from RGB color space to YUV color space.
++
++The function converts an input image from RGB color space to YUV.
++The conventional ranges for R, G, and B channel values are 0 to 255.
++
++In case of linear transformations, the range does not matter. But in case of a non-linear
++transformation, an input RGB image should be normalized to the proper value range to get the correct
++results, like here, at RGB \f$\rightarrow\f$ Y\*u\*v\* transformation.
++Output image must be 8-bit unsigned 3-channel image @ref CV_8UC3.
++
++@note Function textual ID is "org.opencv.imgproc.colorconvert.rgb2yuv"
++
++@param src input image: 8-bit unsigned 3-channel image @ref CV_8UC3.
++@sa YUV2RGB, RGB2Lab
++*/
++GAPI_EXPORTS GMat RGB2YUV(const GMat& src);
++
++/** @brief Converts an image from BGR color space to LUV color space.
++
++The function converts an input image from BGR color space to LUV.
++The conventional ranges for B, G, and R channel values are 0 to 255.
++
++Output image must be 8-bit unsigned 3-channel image @ref CV_8UC3.
++
++@note Function textual ID is "org.opencv.imgproc.colorconvert.bgr2luv"
++
++@param src input image: 8-bit unsigned 3-channel image @ref CV_8UC3.
++@sa RGB2Lab, RGB2LUV
++*/
++GAPI_EXPORTS GMat BGR2LUV(const GMat& src);
++
++/** @brief Converts an image from LUV color space to BGR color space.
++
++The function converts an input image from LUV color space to BGR.
++The conventional ranges for B, G, and R channel values are 0 to 255.
++
++Output image must be 8-bit unsigned 3-channel image @ref CV_8UC3.
++
++@note Function textual ID is "org.opencv.imgproc.colorconvert.luv2bgr"
++
++@param src input image: 8-bit unsigned 3-channel image @ref CV_8UC3.
++@sa BGR2LUV
++*/
++GAPI_EXPORTS GMat LUV2BGR(const GMat& src);
++
++/** @brief Converts an image from YUV color space to BGR color space.
++
++The function converts an input image from YUV color space to BGR.
++The conventional ranges for B, G, and R channel values are 0 to 255.
++
++Output image must be 8-bit unsigned 3-channel image @ref CV_8UC3.
++
++@note Function textual ID is "org.opencv.imgproc.colorconvert.yuv2bgr"
++
++@param src input image: 8-bit unsigned 3-channel image @ref CV_8UC3.
++@sa BGR2YUV
++*/
++GAPI_EXPORTS GMat YUV2BGR(const GMat& src);
++
++/** @brief Converts an image from BGR color space to YUV color space.
++
++The function converts an input image from BGR color space to YUV.
++The conventional ranges for B, G, and R channel values are 0 to 255.
++
++Output image must be 8-bit unsigned 3-channel image @ref CV_8UC3.
++
++@note Function textual ID is "org.opencv.imgproc.colorconvert.bgr2yuv"
++
++@param src input image: 8-bit unsigned 3-channel image @ref CV_8UC3.
++@sa YUV2BGR
++*/
++GAPI_EXPORTS GMat BGR2YUV(const GMat& src);
++
++/** @brief Converts an image from RGB color space to Lab color space.
++
++The function converts an input image from BGR color space to Lab.
++The conventional ranges for R, G, and B channel values are 0 to 255.
++
++Output image must be 8-bit unsigned 3-channel image @ref CV_8UC1.
++
++@note Function textual ID is "org.opencv.imgproc.colorconvert.rgb2lab"
++
++@param src input image: 8-bit unsigned 3-channel image @ref CV_8UC1.
++@sa RGB2YUV, RGB2LUV
++*/
++GAPI_EXPORTS GMat RGB2Lab(const GMat& src);
++
++/** @brief Converts an image from YUV color space to RGB.
++The function converts an input image from YUV color space to RGB.
++The conventional ranges for Y, U, and V channel values are 0 to 255.
++
++Output image must be 8-bit unsigned 3-channel image @ref CV_8UC3.
++
++@note Function textual ID is "org.opencv.imgproc.colorconvert.yuv2rgb"
++
++@param src input image: 8-bit unsigned 3-channel image @ref CV_8UC3.
++
++@sa RGB2Lab, RGB2YUV
++*/
++GAPI_EXPORTS GMat YUV2RGB(const GMat& src);
++
++/** @brief Converts an image from NV12 (YUV420p) color space to RGB.
++The function converts an input image from NV12 color space to RGB.
++The conventional ranges for Y, U, and V channel values are 0 to 255.
++
++Output image must be 8-bit unsigned 3-channel image @ref CV_8UC3.
++
++@note Function textual ID is "org.opencv.imgproc.colorconvert.nv12torgb"
++
++@param src_y input image: 8-bit unsigned 1-channel image @ref CV_8UC1.
++@param src_uv input image: 8-bit unsigned 2-channel image @ref CV_8UC2.
++
++@sa YUV2RGB, NV12toBGR
++*/
++GAPI_EXPORTS GMat NV12toRGB(const GMat& src_y, const GMat& src_uv);
++
++/** @brief Converts an image from NV12 (YUV420p) color space to gray-scaled.
++The function converts an input image from NV12 color space to gray-scaled.
++The conventional ranges for Y, U, and V channel values are 0 to 255.
++
++Output image must be 8-bit unsigned 1-channel image @ref CV_8UC1.
++
++@note Function textual ID is "org.opencv.imgproc.colorconvert.nv12togray"
++
++@param src_y input image: 8-bit unsigned 1-channel image @ref CV_8UC1.
++@param src_uv input image: 8-bit unsigned 2-channel image @ref CV_8UC2.
++
++@sa YUV2RGB, NV12toBGR
++*/
++GAPI_EXPORTS GMat NV12toGray(const GMat& src_y, const GMat& src_uv);
++
++/** @brief Converts an image from NV12 (YUV420p) color space to BGR.
++The function converts an input image from NV12 color space to RGB.
++The conventional ranges for Y, U, and V channel values are 0 to 255.
++
++Output image must be 8-bit unsigned 3-channel image @ref CV_8UC3.
++
++@note Function textual ID is "org.opencv.imgproc.colorconvert.nv12tobgr"
++
++@param src_y input image: 8-bit unsigned 1-channel image @ref CV_8UC1.
++@param src_uv input image: 8-bit unsigned 2-channel image @ref CV_8UC2.
++
++@sa YUV2BGR, NV12toRGB
++*/
++GAPI_EXPORTS GMat NV12toBGR(const GMat& src_y, const GMat& src_uv);
++
++/** @brief Converts an image from BayerGR color space to RGB.
++The function converts an input image from BayerGR color space to RGB.
++The conventional ranges for G, R, and B channel values are 0 to 255.
++
++Output image must be 8-bit unsigned 3-channel image @ref CV_8UC3.
++
++@note Function textual ID is "org.opencv.imgproc.colorconvert.bayergr2rgb"
++
++@param src_gr input image: 8-bit unsigned 1-channel image @ref CV_8UC1.
++
++@sa YUV2BGR, NV12toRGB
++*/
++GAPI_EXPORTS GMat BayerGR2RGB(const GMat& src_gr);
++
++/** @brief Converts an image from RGB color space to HSV.
++The function converts an input image from RGB color space to HSV.
++The conventional ranges for R, G, and B channel values are 0 to 255.
++
++Output image must be 8-bit unsigned 3-channel image @ref CV_8UC3.
++
++@note Function textual ID is "org.opencv.imgproc.colorconvert.rgb2hsv"
++
++@param src input image: 8-bit unsigned 3-channel image @ref CV_8UC3.
++
++@sa YUV2BGR, NV12toRGB
++*/
++GAPI_EXPORTS GMat RGB2HSV(const GMat& src);
++
++/** @brief Converts an image from RGB color space to YUV422.
++The function converts an input image from RGB color space to YUV422.
++The conventional ranges for R, G, and B channel values are 0 to 255.
++
++Output image must be 8-bit unsigned 2-channel image @ref CV_8UC2.
++
++@note Function textual ID is "org.opencv.imgproc.colorconvert.rgb2yuv422"
++
++@param src input image: 8-bit unsigned 3-channel image @ref CV_8UC3.
++
++@sa YUV2BGR, NV12toRGB
++*/
++GAPI_EXPORTS GMat RGB2YUV422(const GMat& src);
++
++/** @brief Converts an image from NV12 (YUV420p) color space to RGB.
++The function converts an input image from NV12 color space to RGB.
++The conventional ranges for Y, U, and V channel values are 0 to 255.
++
++Output image must be 8-bit unsigned planar 3-channel image @ref CV_8UC1.
++Planar image memory layout is three planes laying in the memory contiguously,
++so the image height should be plane_height*plane_number,
++image type is @ref CV_8UC1.
++
++@note Function textual ID is "org.opencv.imgproc.colorconvert.nv12torgbp"
++
++@param src_y input image: 8-bit unsigned 1-channel image @ref CV_8UC1.
++@param src_uv input image: 8-bit unsigned 2-channel image @ref CV_8UC2.
++
++@sa YUV2RGB, NV12toBGRp, NV12toRGB
++*/
++GAPI_EXPORTS GMatP NV12toRGBp(const GMat &src_y, const GMat &src_uv);
++
++/** @brief Converts an image from NV12 (YUV420p) color space to BGR.
++The function converts an input image from NV12 color space to BGR.
++The conventional ranges for Y, U, and V channel values are 0 to 255.
++
++Output image must be 8-bit unsigned planar 3-channel image @ref CV_8UC1.
++Planar image memory layout is three planes laying in the memory contiguously,
++so the image height should be plane_height*plane_number,
++image type is @ref CV_8UC1.
++
++@note Function textual ID is "org.opencv.imgproc.colorconvert.nv12torgbp"
++
++@param src_y input image: 8-bit unsigned 1-channel image @ref CV_8UC1.
++@param src_uv input image: 8-bit unsigned 2-channel image @ref CV_8UC2.
++
++@sa YUV2RGB, NV12toRGBp, NV12toBGR
++*/
++GAPI_EXPORTS GMatP NV12toBGRp(const GMat &src_y, const GMat &src_uv);
++
++//! @} gapi_colorconvert
++} //namespace gapi
++} //namespace cv
++
++#endif // OPENCV_GAPI_IMGPROC_HPP
+diff --git a/modules/gapi/perf/common/gapi_imgproc_perf_tests.hpp b/modules/gapi/perf/common/gapi_imgproc_perf_tests.hpp
+index c1afbfea6d..4dffc229b5 100644
+--- a/modules/gapi/perf/common/gapi_imgproc_perf_tests.hpp
++++ b/modules/gapi/perf/common/gapi_imgproc_perf_tests.hpp
+@@ -84,7 +84,9 @@ class FitLine3DVector64FPerfTest : public TestPerfParams<tuple<CompareVecs<float
+ class EqHistPerfTest      : public TestPerfParams<tuple<compare_f, cv::Size, cv::GCompileArgs>> {};
+ class BGR2RGBPerfTest     : public TestPerfParams<tuple<compare_f, cv::Size, cv::GCompileArgs>> {};
+ class RGB2GrayPerfTest    : public TestPerfParams<tuple<compare_f, cv::Size, cv::GCompileArgs>> {};
++class RGBA2GrayPerfTest   : public TestPerfParams<tuple<compare_f, cv::Size, cv::GCompileArgs>> {};
+ class BGR2GrayPerfTest    : public TestPerfParams<tuple<compare_f, cv::Size, cv::GCompileArgs>> {};
++class BGRA2GrayPerfTest   : public TestPerfParams<tuple<compare_f, cv::Size, cv::GCompileArgs>> {};
+ class RGB2YUVPerfTest     : public TestPerfParams<tuple<compare_f, cv::Size, cv::GCompileArgs>> {};
+ class YUV2RGBPerfTest     : public TestPerfParams<tuple<compare_f, cv::Size, cv::GCompileArgs>> {};
+ class BGR2I420PerfTest    : public TestPerfParams<tuple<compare_f, cv::Size, cv::GCompileArgs>> {};
+diff --git a/modules/gapi/perf/common/gapi_imgproc_perf_tests_inl.hpp b/modules/gapi/perf/common/gapi_imgproc_perf_tests_inl.hpp
+index 475daa84c1..aacf8d30fd 100644
+--- a/modules/gapi/perf/common/gapi_imgproc_perf_tests_inl.hpp
++++ b/modules/gapi/perf/common/gapi_imgproc_perf_tests_inl.hpp
+@@ -1235,6 +1235,44 @@ PERF_TEST_P_(RGB2GrayPerfTest, TestPerformance)
+ 
+ //------------------------------------------------------------------------------
+ 
++PERF_TEST_P_(RGBA2GrayPerfTest, TestPerformance)
++{
++    compare_f cmpF = get<0>(GetParam());
++    Size sz = get<1>(GetParam());
++    cv::GCompileArgs compile_args = get<2>(GetParam());
++
++    initMatrixRandN(CV_8UC4, sz, CV_8UC1, false);
++
++    // OpenCV code /////////////////////////////////////////////////////////////
++    {
++        cv::cvtColor(in_mat1, out_mat_ocv, cv::COLOR_RGBA2GRAY);
++    }
++
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in;
++    auto out = cv::gapi::RGBA2Gray(in);
++    cv::GComputation c(in, out);
++
++    // Warm-up graph engine:
++    c.apply(in_mat1, out_mat_gapi, std::move(compile_args));
++
++    TEST_CYCLE()
++    {
++        c.apply(in_mat1, out_mat_gapi);
++    }
++
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi, out_mat_ocv));
++        EXPECT_EQ(out_mat_gapi.size(), sz);
++    }
++
++    SANITY_CHECK_NOTHING();
++
++}
++
++//------------------------------------------------------------------------------
++
+ PERF_TEST_P_(BGR2GrayPerfTest, TestPerformance)
+ {
+     compare_f cmpF = get<0>(GetParam());
+@@ -1273,6 +1311,44 @@ PERF_TEST_P_(BGR2GrayPerfTest, TestPerformance)
+ 
+ //------------------------------------------------------------------------------
+ 
++PERF_TEST_P_(BGRA2GrayPerfTest, TestPerformance)
++{
++    compare_f cmpF = get<0>(GetParam());
++    Size sz = get<1>(GetParam());
++    cv::GCompileArgs compile_args = get<2>(GetParam());
++
++    initMatrixRandN(CV_8UC4, sz, CV_8UC1, false);
++
++    // OpenCV code /////////////////////////////////////////////////////////////
++    {
++        cv::cvtColor(in_mat1, out_mat_ocv, cv::COLOR_BGRA2GRAY);
++    }
++
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in;
++    auto out = cv::gapi::BGRA2Gray(in);
++    cv::GComputation c(in, out);
++
++    // Warm-up graph engine:
++    c.apply(in_mat1, out_mat_gapi, std::move(compile_args));
++
++    TEST_CYCLE()
++    {
++        c.apply(in_mat1, out_mat_gapi);
++    }
++
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi, out_mat_ocv));
++        EXPECT_EQ(out_mat_gapi.size(), sz);
++    }
++
++    SANITY_CHECK_NOTHING();
++
++}
++
++//------------------------------------------------------------------------------
++
+ PERF_TEST_P_(RGB2YUVPerfTest, TestPerformance)
+ {
+     compare_f cmpF = get<0>(GetParam());
+diff --git a/modules/gapi/perf/cpu/gapi_imgproc_perf_tests_cpu.cpp b/modules/gapi/perf/cpu/gapi_imgproc_perf_tests_cpu.cpp
+index dc4c65bf74..54248fcd8b 100644
+--- a/modules/gapi/perf/cpu/gapi_imgproc_perf_tests_cpu.cpp
++++ b/modules/gapi/perf/cpu/gapi_imgproc_perf_tests_cpu.cpp
+@@ -329,11 +329,21 @@ INSTANTIATE_TEST_CASE_P(RGB2GrayPerfTestCPU, RGB2GrayPerfTest,
+         Values(szVGA, sz720p, sz1080p),
+         Values(cv::compile_args(IMGPROC_CPU))));
+ 
++INSTANTIATE_TEST_CASE_P(RGBA2GrayPerfTestCPU, RGBA2GrayPerfTest,
++    Combine(Values(AbsExact().to_compare_f()),
++        Values(szVGA, sz720p, sz1080p),
++        Values(cv::compile_args(IMGPROC_CPU))));
++
+ INSTANTIATE_TEST_CASE_P(BGR2GrayPerfTestCPU, BGR2GrayPerfTest,
+     Combine(Values(AbsExact().to_compare_f()),
+         Values(szVGA, sz720p, sz1080p),
+         Values(cv::compile_args(IMGPROC_CPU))));
+ 
++INSTANTIATE_TEST_CASE_P(BGRA2GrayPerfTestCPU, BGRA2GrayPerfTest,
++    Combine(Values(AbsExact().to_compare_f()),
++        Values(szVGA, sz720p, sz1080p),
++        Values(cv::compile_args(IMGPROC_CPU))));
++
+ INSTANTIATE_TEST_CASE_P(RGB2YUVPerfTestCPU, RGB2YUVPerfTest,
+     Combine(Values(AbsExact().to_compare_f()),
+         Values(szVGA, sz720p, sz1080p),
+diff --git a/modules/gapi/perf/cpu/gapi_imgproc_perf_tests_fluid.cpp b/modules/gapi/perf/cpu/gapi_imgproc_perf_tests_fluid.cpp
+index a768875f32..775be39bd5 100644
+--- a/modules/gapi/perf/cpu/gapi_imgproc_perf_tests_fluid.cpp
++++ b/modules/gapi/perf/cpu/gapi_imgproc_perf_tests_fluid.cpp
+@@ -149,11 +149,21 @@ INSTANTIATE_TEST_CASE_P(RGB2GrayPerfTestFluid, RGB2GrayPerfTest,
+             Values(szVGA, sz720p, sz1080p),
+             Values(cv::compile_args(IMGPROC_FLUID))));
+ 
++INSTANTIATE_TEST_CASE_P(RGBA2GrayPerfTestFluid, RGBA2GrayPerfTest,
++    Combine(Values(ToleranceColor(1e-3).to_compare_f()),
++            Values(szVGA, sz720p, sz1080p),
++            Values(cv::compile_args(IMGPROC_FLUID))));
++
+ INSTANTIATE_TEST_CASE_P(BGR2GrayPerfTestFluid, BGR2GrayPerfTest,
+     Combine(Values(ToleranceColor(1e-3).to_compare_f()),
+             Values(szVGA, sz720p, sz1080p),
+             Values(cv::compile_args(IMGPROC_FLUID))));
+ 
++INSTANTIATE_TEST_CASE_P(BGRA2GrayPerfTestFluid, BGRA2GrayPerfTest,
++    Combine(Values(ToleranceColor(1e-3).to_compare_f()),
++            Values(szVGA, sz720p, sz1080p),
++            Values(cv::compile_args(IMGPROC_FLUID))));
++
+ INSTANTIATE_TEST_CASE_P(RGB2YUVPerfTestFluid, RGB2YUVPerfTest,
+     Combine(Values(ToleranceColor(1e-3).to_compare_f()),
+             Values(szVGA, sz720p, sz1080p),
+diff --git a/modules/gapi/perf/gpu/gapi_imgproc_perf_tests_gpu.cpp b/modules/gapi/perf/gpu/gapi_imgproc_perf_tests_gpu.cpp
+index faacf4f254..750e5d63e2 100644
+--- a/modules/gapi/perf/gpu/gapi_imgproc_perf_tests_gpu.cpp
++++ b/modules/gapi/perf/gpu/gapi_imgproc_perf_tests_gpu.cpp
+@@ -164,11 +164,21 @@ INSTANTIATE_TEST_CASE_P(RGB2GrayPerfTestGPU, RGB2GrayPerfTest,
+                         Values(szVGA, sz720p, sz1080p),
+                         Values(cv::compile_args(IMGPROC_GPU))));
+ 
++INSTANTIATE_TEST_CASE_P(RGBA2GrayPerfTestGPU, RGBA2GrayPerfTest,
++                        Combine(Values(ToleranceColor(1e-3).to_compare_f()),
++                        Values(szVGA, sz720p, sz1080p),
++                        Values(cv::compile_args(IMGPROC_GPU))));
++
+ INSTANTIATE_TEST_CASE_P(BGR2GrayPerfTestGPU, BGR2GrayPerfTest,
+                         Combine(Values(ToleranceColor(1e-3).to_compare_f()),
+                         Values(szVGA, sz720p, sz1080p),
+                         Values(cv::compile_args(IMGPROC_GPU))));
+ 
++INSTANTIATE_TEST_CASE_P(BGRA2GrayPerfTestGPU, BGRA2GrayPerfTest,
++                        Combine(Values(ToleranceColor(1e-3).to_compare_f()),
++                        Values(szVGA, sz720p, sz1080p),
++                        Values(cv::compile_args(IMGPROC_GPU))));
++
+ INSTANTIATE_TEST_CASE_P(RGB2YUVPerfTestGPU, RGB2YUVPerfTest,
+                         Combine(Values(ToleranceColor(1e-3).to_compare_f()),
+                         Values(szVGA, sz720p, sz1080p),
+diff --git a/modules/gapi/src/api/kernels_imgproc.cpp b/modules/gapi/src/api/kernels_imgproc.cpp
+index f94d986ed4..d33d3c96f1 100644
+--- a/modules/gapi/src/api/kernels_imgproc.cpp
++++ b/modules/gapi/src/api/kernels_imgproc.cpp
+@@ -237,11 +237,21 @@ GMat RGB2Gray(const GMat& src, float rY, float gY, float bY)
+     return imgproc::GRGB2GrayCustom::on(src, rY, gY, bY);
+ }
+ 
++GMat RGBA2Gray(const GMat& src)
++{
++    return imgproc::GRGBA2Gray::on(src);
++}
++
+ GMat BGR2Gray(const GMat& src)
+ {
+     return imgproc::GBGR2Gray::on(src);
+ }
+ 
++GMat BGRA2Gray(const GMat& src)
++{
++    return imgproc::GBGRA2Gray::on(src);
++}
++
+ GMat RGB2YUV(const GMat& src)
+ {
+     return imgproc::GRGB2YUV::on(src);
+diff --git a/modules/gapi/src/api/kernels_imgproc.cpp.orig b/modules/gapi/src/api/kernels_imgproc.cpp.orig
+new file mode 100644
+index 0000000000..108eefcb81
+--- /dev/null
++++ b/modules/gapi/src/api/kernels_imgproc.cpp.orig
+@@ -0,0 +1,209 @@
++// This file is part of OpenCV project.
++// It is subject to the license terms in the LICENSE file found in the top-level directory
++// of this distribution and at http://opencv.org/license.html.
++//
++// Copyright (C) 2018-2020 Intel Corporation
++
++
++#include "precomp.hpp"
++
++#include <opencv2/gapi/gscalar.hpp>
++#include <opencv2/gapi/gcall.hpp>
++#include <opencv2/gapi/gkernel.hpp>
++#include <opencv2/gapi/imgproc.hpp>
++
++namespace cv { namespace gapi {
++
++GMat sepFilter(const GMat& src, int ddepth, const Mat& kernelX, const Mat& kernelY, const Point& anchor,
++               const Scalar& delta, int borderType, const Scalar& borderVal)
++{
++    return imgproc::GSepFilter::on(src, ddepth, kernelX, kernelY, anchor, delta, borderType, borderVal);
++}
++
++GMat filter2D(const GMat& src, int ddepth, const Mat& kernel, const Point& anchor, const Scalar& delta, int borderType,
++              const Scalar& bordVal)
++{
++    return imgproc::GFilter2D::on(src, ddepth, kernel, anchor, delta, borderType, bordVal);
++}
++
++GMat boxFilter(const GMat& src, int dtype, const Size& ksize, const Point& anchor,
++               bool normalize, int borderType, const Scalar& bordVal)
++{
++    return imgproc::GBoxFilter::on(src, dtype, ksize, anchor, normalize, borderType, bordVal);
++}
++
++GMat blur(const GMat& src, const Size& ksize, const Point& anchor,
++               int borderType, const Scalar& bordVal)
++{
++    return imgproc::GBlur::on(src, ksize, anchor, borderType, bordVal);
++}
++
++GMat gaussianBlur(const GMat& src, const Size& ksize, double sigmaX, double sigmaY,
++                  int borderType, const Scalar& bordVal)
++{
++    return imgproc::GGaussBlur::on(src, ksize, sigmaX, sigmaY, borderType, bordVal);
++}
++
++GMat medianBlur(const GMat& src, int ksize)
++{
++    return imgproc::GMedianBlur::on(src, ksize);
++}
++
++GMat erode(const GMat& src, const Mat& kernel, const Point& anchor, int iterations,
++           int borderType, const Scalar& borderValue )
++{
++    return imgproc::GErode::on(src, kernel, anchor, iterations, borderType, borderValue);
++}
++
++GMat erode3x3(const GMat& src, int iterations,
++           int borderType, const Scalar& borderValue )
++{
++    return erode(src, cv::Mat(), cv::Point(-1, -1), iterations, borderType, borderValue);
++}
++
++GMat dilate(const GMat& src, const Mat& kernel, const Point& anchor, int iterations,
++            int borderType, const Scalar& borderValue)
++{
++    return imgproc::GDilate::on(src, kernel, anchor, iterations, borderType, borderValue);
++}
++
++GMat dilate3x3(const GMat& src, int iterations,
++            int borderType, const Scalar& borderValue)
++{
++    return dilate(src, cv::Mat(), cv::Point(-1,-1), iterations, borderType, borderValue);
++}
++
++GMat Sobel(const GMat& src, int ddepth, int dx, int dy, int ksize,
++           double scale, double delta,
++           int borderType, const Scalar& bordVal)
++{
++    return imgproc::GSobel::on(src, ddepth, dx, dy, ksize, scale, delta, borderType, bordVal);
++}
++
++std::tuple<GMat, GMat> SobelXY(const GMat& src, int ddepth, int order, int ksize,
++           double scale, double delta,
++           int borderType, const Scalar& bordVal)
++{
++    return imgproc::GSobelXY::on(src, ddepth, order, ksize, scale, delta, borderType, bordVal);
++}
++
++GMat Laplacian(const GMat& src, int ddepth, int ksize, double scale, double delta, int borderType)
++{
++    return imgproc::GLaplacian::on(src, ddepth, ksize, scale, delta, borderType);
++}
++
++GMat bilateralFilter(const GMat& src, int d, double sigmaColor, double sigmaSpace, int borderType)
++{
++    return imgproc::GBilateralFilter::on(src, d, sigmaColor, sigmaSpace, borderType);
++}
++
++GMat equalizeHist(const GMat& src)
++{
++    return imgproc::GEqHist::on(src);
++}
++
++GMat Canny(const GMat& src, double thr1, double thr2, int apertureSize, bool l2gradient)
++{
++    return imgproc::GCanny::on(src, thr1, thr2, apertureSize, l2gradient);
++}
++
++cv::GArray<cv::Point2f> goodFeaturesToTrack(const GMat& image, int maxCorners, double qualityLevel,
++                                            double minDistance, const Mat& mask, int blockSize,
++                                            bool useHarrisDetector, double k)
++{
++    return imgproc::GGoodFeatures::on(image, maxCorners, qualityLevel, minDistance, mask, blockSize,
++                                      useHarrisDetector, k);
++}
++
++GMat RGB2Gray(const GMat& src)
++{
++    return imgproc::GRGB2Gray::on(src);
++}
++
++GMat RGB2Gray(const GMat& src, float rY, float gY, float bY)
++{
++    return imgproc::GRGB2GrayCustom::on(src, rY, gY, bY);
++}
++
++GMat BGR2Gray(const GMat& src)
++{
++    return imgproc::GBGR2Gray::on(src);
++}
++
++GMat RGB2YUV(const GMat& src)
++{
++    return imgproc::GRGB2YUV::on(src);
++}
++
++GMat BGR2LUV(const GMat& src)
++{
++    return imgproc::GBGR2LUV::on(src);
++}
++
++GMat LUV2BGR(const GMat& src)
++{
++    return imgproc::GLUV2BGR::on(src);
++}
++
++GMat BGR2YUV(const GMat& src)
++{
++    return imgproc::GBGR2YUV::on(src);
++}
++
++GMat YUV2BGR(const GMat& src)
++{
++    return imgproc::GYUV2BGR::on(src);
++}
++
++GMat YUV2RGB(const GMat& src)
++{
++    return imgproc::GYUV2RGB::on(src);
++}
++
++GMat NV12toRGB(const GMat& src_y, const GMat& src_uv)
++{
++    return imgproc::GNV12toRGB::on(src_y, src_uv);
++}
++
++GMat NV12toBGR(const GMat& src_y, const GMat& src_uv)
++{
++    return imgproc::GNV12toBGR::on(src_y, src_uv);
++}
++
++GMat RGB2Lab(const GMat& src)
++{
++    return imgproc::GRGB2Lab::on(src);
++}
++
++GMat BayerGR2RGB(const GMat& src_gr)
++{
++    return imgproc::GBayerGR2RGB::on(src_gr);
++}
++
++GMat RGB2HSV(const GMat& src)
++{
++    return imgproc::GRGB2HSV::on(src);
++}
++
++GMat RGB2YUV422(const GMat& src)
++{
++    return imgproc::GRGB2YUV422::on(src);
++}
++
++GMat NV12toGray(const GMat &y, const GMat &uv)
++{
++    return imgproc::GNV12toGray::on(y, uv);
++}
++
++GMatP NV12toRGBp(const GMat &y, const GMat &uv)
++{
++    return imgproc::GNV12toRGBp::on(y, uv);
++}
++
++GMatP NV12toBGRp(const GMat &y, const GMat &uv)
++{
++    return imgproc::GNV12toBGRp::on(y, uv);
++}
++
++} //namespace gapi
++} //namespace cv
+diff --git a/modules/gapi/src/backends/cpu/gcpuimgproc.cpp b/modules/gapi/src/backends/cpu/gcpuimgproc.cpp
+index eae7c0d803..2d093cae7d 100644
+--- a/modules/gapi/src/backends/cpu/gcpuimgproc.cpp
++++ b/modules/gapi/src/backends/cpu/gcpuimgproc.cpp
+@@ -501,6 +501,14 @@ GAPI_OCV_KERNEL(GCPURGB2Gray, cv::gapi::imgproc::GRGB2Gray)
+     }
+ };
+ 
++GAPI_OCV_KERNEL(GCPURGBA2Gray, cv::gapi::imgproc::GRGBA2Gray)
++{
++    static void run(const cv::Mat& in, cv::Mat &out)
++    {
++        cv::cvtColor(in, out, cv::COLOR_RGBA2GRAY);
++    }
++};
++
+ GAPI_OCV_KERNEL(GCPUBGR2Gray, cv::gapi::imgproc::GBGR2Gray)
+ {
+     static void run(const cv::Mat& in, cv::Mat &out)
+@@ -509,6 +517,14 @@ GAPI_OCV_KERNEL(GCPUBGR2Gray, cv::gapi::imgproc::GBGR2Gray)
+     }
+ };
+ 
++GAPI_OCV_KERNEL(GCPUBGRA2Gray, cv::gapi::imgproc::GBGRA2Gray)
++{
++    static void run(const cv::Mat& in, cv::Mat &out)
++    {
++        cv::cvtColor(in, out, cv::COLOR_BGRA2GRAY);
++    }
++};
++
+ GAPI_OCV_KERNEL(GCPURGB2GrayCustom, cv::gapi::imgproc::GRGB2GrayCustom)
+ {
+     static void run(const cv::Mat& in, float rY, float bY, float gY, cv::Mat &out)
+@@ -688,7 +704,9 @@ cv::GKernelPackage cv::gapi::imgproc::cpu::kernels()
+         , GCPUYUV2BGR
+         , GCPULUV2BGR
+         , GCPUBGR2Gray
++        , GCPUBGRA2Gray
+         , GCPURGB2Gray
++        , GCPURGBA2Gray
+         , GCPURGB2GrayCustom
+         , GCPUBayerGR2RGB
+         , GCPURGB2HSV
+diff --git a/modules/gapi/src/backends/cpu/gcpuimgproc.cpp.orig b/modules/gapi/src/backends/cpu/gcpuimgproc.cpp.orig
+new file mode 100644
+index 0000000000..8104565f03
+--- /dev/null
++++ b/modules/gapi/src/backends/cpu/gcpuimgproc.cpp.orig
+@@ -0,0 +1,470 @@
++// This file is part of OpenCV project.
++// It is subject to the license terms in the LICENSE file found in the top-level directory
++// of this distribution and at http://opencv.org/license.html.
++//
++// Copyright (C) 2018-2020 Intel Corporation
++
++
++#include "precomp.hpp"
++
++#include <opencv2/gapi/imgproc.hpp>
++#include <opencv2/gapi/cpu/imgproc.hpp>
++#include <opencv2/gapi/cpu/gcpukernel.hpp>
++#include <opencv2/gapi/gcompoundkernel.hpp>
++
++#include "backends/fluid/gfluidimgproc_func.hpp"
++
++
++namespace {
++    cv::Mat add_border(const cv::Mat& in, const int ksize, const int borderType, const cv::Scalar& bordVal){
++        if( borderType == cv::BORDER_CONSTANT )
++        {
++            cv::Mat temp_in;
++            int add = (ksize - 1) / 2;
++            cv::copyMakeBorder(in, temp_in, add, add, add, add, borderType, bordVal);
++            return temp_in(cv::Rect(add, add, in.cols, in.rows));
++        }
++        return in;
++    }
++}
++
++GAPI_OCV_KERNEL(GCPUSepFilter, cv::gapi::imgproc::GSepFilter)
++{
++    static void run(const cv::Mat& in, int ddepth, const cv::Mat& kernX, const cv::Mat& kernY, const cv::Point& anchor, const cv::Scalar& delta,
++                    int border, const cv::Scalar& bordVal, cv::Mat &out)
++    {
++        if( border == cv::BORDER_CONSTANT )
++        {
++            cv::Mat temp_in;
++            int width_add = (kernY.cols - 1) / 2;
++            int height_add =  (kernX.rows - 1) / 2;
++            cv::copyMakeBorder(in, temp_in, height_add, height_add, width_add, width_add, border, bordVal);
++            cv::Rect rect = cv::Rect(height_add, width_add, in.cols, in.rows);
++            cv::sepFilter2D(temp_in(rect), out, ddepth, kernX, kernY, anchor, delta.val[0], border);
++        }
++        else
++            cv::sepFilter2D(in, out, ddepth, kernX, kernY, anchor, delta.val[0], border);
++    }
++};
++
++GAPI_OCV_KERNEL(GCPUBoxFilter, cv::gapi::imgproc::GBoxFilter)
++{
++    static void run(const cv::Mat& in, int ddepth, const cv::Size& ksize, const cv::Point& anchor, bool normalize, int borderType, const cv::Scalar& bordVal, cv::Mat &out)
++    {
++        if( borderType == cv::BORDER_CONSTANT )
++        {
++            cv::Mat temp_in;
++            int width_add = (ksize.width - 1) / 2;
++            int height_add =  (ksize.height - 1) / 2;
++            cv::copyMakeBorder(in, temp_in, height_add, height_add, width_add, width_add, borderType, bordVal);
++            cv::Rect rect = cv::Rect(height_add, width_add, in.cols, in.rows);
++            cv::boxFilter(temp_in(rect), out, ddepth, ksize, anchor, normalize, borderType);
++        }
++        else
++            cv::boxFilter(in, out, ddepth, ksize, anchor, normalize, borderType);
++    }
++};
++
++GAPI_OCV_KERNEL(GCPUBlur, cv::gapi::imgproc::GBlur)
++{
++    static void run(const cv::Mat& in, const cv::Size& ksize, const cv::Point& anchor, int borderType, const cv::Scalar& bordVal, cv::Mat &out)
++    {
++        if( borderType == cv::BORDER_CONSTANT )
++        {
++            cv::Mat temp_in;
++            int width_add = (ksize.width - 1) / 2;
++            int height_add =  (ksize.height - 1) / 2;
++            cv::copyMakeBorder(in, temp_in, height_add, height_add, width_add, width_add, borderType, bordVal);
++            cv::Rect rect = cv::Rect(height_add, width_add, in.cols, in.rows);
++            cv::blur(temp_in(rect), out, ksize, anchor, borderType);
++        }
++        else
++            cv::blur(in, out, ksize, anchor, borderType);
++    }
++};
++
++
++GAPI_OCV_KERNEL(GCPUFilter2D, cv::gapi::imgproc::GFilter2D)
++{
++    static void run(const cv::Mat& in, int ddepth, const cv::Mat& k, const cv::Point& anchor, const cv::Scalar& delta, int border,
++                    const cv::Scalar& bordVal, cv::Mat &out)
++    {
++        if( border == cv::BORDER_CONSTANT )
++        {
++            cv::Mat temp_in;
++            int width_add = (k.cols - 1) / 2;
++            int height_add =  (k.rows - 1) / 2;
++            cv::copyMakeBorder(in, temp_in, height_add, height_add, width_add, width_add, border, bordVal );
++            cv::Rect rect = cv::Rect(height_add, width_add, in.cols, in.rows);
++            cv::filter2D(temp_in(rect), out, ddepth, k, anchor, delta.val[0], border);
++        }
++        else
++            cv::filter2D(in, out, ddepth, k, anchor, delta.val[0], border);
++    }
++};
++
++GAPI_OCV_KERNEL(GCPUGaussBlur, cv::gapi::imgproc::GGaussBlur)
++{
++    static void run(const cv::Mat& in, const cv::Size& ksize, double sigmaX, double sigmaY, int borderType, const cv::Scalar& bordVal, cv::Mat &out)
++    {
++        if( borderType == cv::BORDER_CONSTANT )
++        {
++            cv::Mat temp_in;
++            int width_add = (ksize.width - 1) / 2;
++            int height_add =  (ksize.height - 1) / 2;
++            cv::copyMakeBorder(in, temp_in, height_add, height_add, width_add, width_add, borderType, bordVal );
++            cv::Rect rect = cv::Rect(height_add, width_add, in.cols, in.rows);
++            cv::GaussianBlur(temp_in(rect), out, ksize, sigmaX, sigmaY, borderType);
++        }
++        else
++            cv::GaussianBlur(in, out, ksize, sigmaX, sigmaY, borderType);
++    }
++};
++
++GAPI_OCV_KERNEL(GCPUMedianBlur, cv::gapi::imgproc::GMedianBlur)
++{
++    static void run(const cv::Mat& in, int ksize, cv::Mat &out)
++    {
++        cv::medianBlur(in, out, ksize);
++    }
++};
++
++GAPI_OCV_KERNEL(GCPUErode, cv::gapi::imgproc::GErode)
++{
++    static void run(const cv::Mat& in, const cv::Mat& kernel, const cv::Point& anchor, int iterations, int borderType, const cv::Scalar& borderValue, cv::Mat &out)
++    {
++        cv::erode(in, out, kernel, anchor, iterations, borderType, borderValue);
++    }
++};
++
++GAPI_OCV_KERNEL(GCPUDilate, cv::gapi::imgproc::GDilate)
++{
++    static void run(const cv::Mat& in, const cv::Mat& kernel, const cv::Point& anchor, int iterations, int borderType, const cv::Scalar& borderValue, cv::Mat &out)
++    {
++        cv::dilate(in, out, kernel, anchor, iterations, borderType, borderValue);
++    }
++};
++
++GAPI_OCV_KERNEL(GCPUSobel, cv::gapi::imgproc::GSobel)
++{
++    static void run(const cv::Mat& in, int ddepth, int dx, int dy, int ksize, double scale, double delta, int borderType,
++                    const cv::Scalar& bordVal, cv::Mat &out)
++    {
++        cv::Mat temp_in = add_border(in, ksize, borderType, bordVal);
++        cv::Sobel(temp_in, out, ddepth, dx, dy, ksize, scale, delta, borderType);
++    }
++};
++
++GAPI_OCV_KERNEL(GCPUSobelXY, cv::gapi::imgproc::GSobelXY)
++{
++    static void run(const cv::Mat& in, int ddepth, int order, int ksize, double scale, double delta, int borderType,
++                    const cv::Scalar& bordVal, cv::Mat &out_dx, cv::Mat &out_dy)
++    {
++        cv::Mat temp_in = add_border(in, ksize, borderType, bordVal);
++        cv::Sobel(temp_in, out_dx, ddepth, order, 0, ksize, scale, delta, borderType);
++        cv::Sobel(temp_in, out_dy, ddepth, 0, order, ksize, scale, delta, borderType);
++    }
++};
++
++GAPI_OCV_KERNEL(GCPULaplacian, cv::gapi::imgproc::GLaplacian)
++{
++    static void run(const cv::Mat& in, int ddepth, int ksize, double scale,
++                    double delta, int borderType, cv::Mat &out)
++    {
++        cv::Laplacian(in, out, ddepth, ksize, scale, delta, borderType);
++    }
++};
++
++GAPI_OCV_KERNEL(GCPUBilateralFilter, cv::gapi::imgproc::GBilateralFilter)
++{
++    static void run(const cv::Mat& in, int d, double sigmaColor,
++                    double sigmaSpace, int borderType, cv::Mat &out)
++    {
++        cv::bilateralFilter(in, out, d, sigmaColor, sigmaSpace, borderType);
++    }
++};
++
++GAPI_OCV_KERNEL(GCPUEqualizeHist, cv::gapi::imgproc::GEqHist)
++{
++    static void run(const cv::Mat& in, cv::Mat &out)
++    {
++        cv::equalizeHist(in, out);
++    }
++};
++
++GAPI_OCV_KERNEL(GCPUCanny, cv::gapi::imgproc::GCanny)
++{
++    static void run(const cv::Mat& in, double thr1, double thr2, int apSize, bool l2gradient, cv::Mat &out)
++    {
++        cv::Canny(in, out, thr1, thr2, apSize, l2gradient);
++    }
++};
++
++GAPI_OCV_KERNEL(GCPUGoodFeatures, cv::gapi::imgproc::GGoodFeatures)
++{
++    static void run(const cv::Mat& image, int maxCorners, double qualityLevel, double minDistance,
++                    const cv::Mat& mask, int blockSize, bool useHarrisDetector, double k,
++                    std::vector<cv::Point2f> &out)
++    {
++        cv::goodFeaturesToTrack(image, out, maxCorners, qualityLevel, minDistance,
++                                mask, blockSize, useHarrisDetector, k);
++    }
++};
++
++GAPI_OCV_KERNEL(GCPURGB2YUV, cv::gapi::imgproc::GRGB2YUV)
++{
++    static void run(const cv::Mat& in, cv::Mat &out)
++    {
++        cv::cvtColor(in, out, cv::COLOR_RGB2YUV);
++    }
++};
++
++GAPI_OCV_KERNEL(GCPUYUV2RGB, cv::gapi::imgproc::GYUV2RGB)
++{
++    static void run(const cv::Mat& in, cv::Mat &out)
++    {
++        cv::cvtColor(in, out, cv::COLOR_YUV2RGB);
++    }
++};
++
++GAPI_OCV_KERNEL(GCPUNV12toRGB, cv::gapi::imgproc::GNV12toRGB)
++{
++    static void run(const cv::Mat& in_y, const cv::Mat& in_uv, cv::Mat &out)
++    {
++        cv::cvtColorTwoPlane(in_y, in_uv, out, cv::COLOR_YUV2RGB_NV12);
++    }
++};
++
++GAPI_OCV_KERNEL(GCPUNV12toBGR, cv::gapi::imgproc::GNV12toBGR)
++{
++    static void run(const cv::Mat& in_y, const cv::Mat& in_uv, cv::Mat &out)
++    {
++        cv::cvtColorTwoPlane(in_y, in_uv, out, cv::COLOR_YUV2BGR_NV12);
++    }
++};
++
++GAPI_OCV_KERNEL(GCPURGB2Lab, cv::gapi::imgproc::GRGB2Lab)
++{
++    static void run(const cv::Mat& in, cv::Mat &out)
++    {
++        cv::cvtColor(in, out, cv::COLOR_RGB2Lab);
++    }
++};
++
++GAPI_OCV_KERNEL(GCPUBGR2LUV, cv::gapi::imgproc::GBGR2LUV)
++{
++    static void run(const cv::Mat& in, cv::Mat &out)
++    {
++        cv::cvtColor(in, out, cv::COLOR_BGR2Luv);
++    }
++};
++
++GAPI_OCV_KERNEL(GCPUBGR2YUV, cv::gapi::imgproc::GBGR2YUV)
++{
++    static void run(const cv::Mat& in, cv::Mat &out)
++    {
++        cv::cvtColor(in, out, cv::COLOR_BGR2YUV);
++    }
++};
++
++GAPI_OCV_KERNEL(GCPULUV2BGR, cv::gapi::imgproc::GLUV2BGR)
++{
++    static void run(const cv::Mat& in, cv::Mat &out)
++    {
++        cv::cvtColor(in, out, cv::COLOR_Luv2BGR);
++    }
++};
++
++GAPI_OCV_KERNEL(GCPUYUV2BGR, cv::gapi::imgproc::GYUV2BGR)
++{
++    static void run(const cv::Mat& in, cv::Mat &out)
++    {
++        cv::cvtColor(in, out, cv::COLOR_YUV2BGR);
++    }
++};
++
++GAPI_OCV_KERNEL(GCPURGB2Gray, cv::gapi::imgproc::GRGB2Gray)
++{
++    static void run(const cv::Mat& in, cv::Mat &out)
++    {
++        cv::cvtColor(in, out, cv::COLOR_RGB2GRAY);
++    }
++};
++
++GAPI_OCV_KERNEL(GCPUBGR2Gray, cv::gapi::imgproc::GBGR2Gray)
++{
++    static void run(const cv::Mat& in, cv::Mat &out)
++    {
++        cv::cvtColor(in, out, cv::COLOR_BGR2GRAY);
++    }
++};
++
++GAPI_OCV_KERNEL(GCPURGB2GrayCustom, cv::gapi::imgproc::GRGB2GrayCustom)
++{
++    static void run(const cv::Mat& in, float rY, float bY, float gY, cv::Mat &out)
++    {
++        cv::Mat planes[3];
++        cv::split(in, planes);
++        out = planes[0]*rY + planes[1]*bY + planes[2]*gY;
++    }
++};
++
++GAPI_OCV_KERNEL(GCPUBayerGR2RGB, cv::gapi::imgproc::GBayerGR2RGB)
++{
++    static void run(const cv::Mat& in, cv::Mat &out)
++    {
++        cv::cvtColor(in, out, cv::COLOR_BayerGR2RGB);
++    }
++};
++
++GAPI_OCV_KERNEL(GCPURGB2HSV, cv::gapi::imgproc::GRGB2HSV)
++{
++    static void run(const cv::Mat& in, cv::Mat &out)
++    {
++        cv::cvtColor(in, out, cv::COLOR_RGB2HSV);
++    }
++};
++
++GAPI_OCV_KERNEL(GCPURGB2YUV422, cv::gapi::imgproc::GRGB2YUV422)
++{
++    static void run(const cv::Mat& in, cv::Mat &out)
++    {
++        out.create(in.size(), CV_8UC2);
++
++        for (int i = 0; i < in.rows; ++i)
++        {
++            const uchar* in_line_p  = in.ptr<uchar>(i);
++            uchar* out_line_p = out.ptr<uchar>(i);
++            cv::gapi::fluid::run_rgb2yuv422_impl(out_line_p, in_line_p, in.cols);
++        }
++    }
++};
++
++static void toPlanar(const cv::Mat& in, cv::Mat& out)
++{
++    GAPI_Assert(out.depth() == in.depth());
++    GAPI_Assert(out.channels() == 1);
++    GAPI_Assert(in.channels() == 3);
++    GAPI_Assert(out.cols == in.cols);
++    GAPI_Assert(out.rows == 3*in.rows);
++
++    std::vector<cv::Mat> outs(3);
++    for (int i = 0; i < 3; i++) {
++        outs[i] = out(cv::Rect(0, i*in.rows, in.cols, in.rows));
++    }
++    cv::split(in, outs);
++}
++
++
++GAPI_OCV_KERNEL(GCPUNV12toRGBp, cv::gapi::imgproc::GNV12toRGBp)
++{
++    static void run(const cv::Mat& inY, const cv::Mat& inUV, cv::Mat& out)
++    {
++        cv::Mat rgb;
++        cv::cvtColorTwoPlane(inY, inUV, rgb, cv::COLOR_YUV2RGB_NV12);
++        toPlanar(rgb, out);
++    }
++};
++
++G_TYPED_KERNEL(GYUV2Gray, <cv::GMat(cv::GMat)>, "yuvtogray") {
++    static cv::GMatDesc outMeta(cv::GMatDesc in) {
++        GAPI_Assert(in.depth  == CV_8U);
++        GAPI_Assert(in.planar == false);
++        GAPI_Assert(in.size.width  % 2 == 0);
++        GAPI_Assert(in.size.height % 3 == 0);
++
++        /* YUV format for this kernel:
++         * Y Y Y Y Y Y Y Y
++         * Y Y Y Y Y Y Y Y
++         * Y Y Y Y Y Y Y Y
++         * Y Y Y Y Y Y Y Y
++         * U V U V U V U V
++         * U V U V U V U V
++         */
++
++        return {CV_8U, 1, cv::Size{in.size.width, in.size.height - (in.size.height / 3)}, false};
++    }
++};
++
++GAPI_OCV_KERNEL(GCPUYUV2Gray, GYUV2Gray)
++{
++    static void run(const cv::Mat& in, cv::Mat& out)
++    {
++        cv::cvtColor(in, out, cv::COLOR_YUV2GRAY_NV12);
++    }
++};
++
++G_TYPED_KERNEL(GConcatYUVPlanes, <cv::GMat(cv::GMat, cv::GMat)>, "concatyuvplanes") {
++    static cv::GMatDesc outMeta(cv::GMatDesc y, cv::GMatDesc uv) {
++        return {CV_8U, 1, cv::Size{y.size.width, y.size.height + uv.size.height}, false};
++    }
++};
++
++GAPI_OCV_KERNEL(GCPUConcatYUVPlanes, GConcatYUVPlanes)
++{
++    static void run(const cv::Mat& in_y, const cv::Mat& in_uv, cv::Mat& out)
++    {
++        cv::Mat uv_planar(in_uv.rows, in_uv.cols * 2, CV_8UC1, in_uv.data);
++        cv::vconcat(in_y, uv_planar, out);
++    }
++};
++
++GAPI_COMPOUND_KERNEL(GCPUNV12toGray, cv::gapi::imgproc::GNV12toGray)
++{
++    static cv::GMat expand(cv::GMat y, cv::GMat uv)
++    {
++        return GYUV2Gray::on(GConcatYUVPlanes::on(y, uv));
++    }
++};
++
++GAPI_OCV_KERNEL(GCPUNV12toBGRp, cv::gapi::imgproc::GNV12toBGRp)
++{
++    static void run(const cv::Mat& inY, const cv::Mat& inUV, cv::Mat& out)
++    {
++        cv::Mat rgb;
++        cv::cvtColorTwoPlane(inY, inUV, rgb, cv::COLOR_YUV2BGR_NV12);
++        toPlanar(rgb, out);
++    }
++};
++
++cv::gapi::GKernelPackage cv::gapi::imgproc::cpu::kernels()
++{
++    static auto pkg = cv::gapi::kernels
++        < GCPUFilter2D
++        , GCPUSepFilter
++        , GCPUBoxFilter
++        , GCPUBlur
++        , GCPUGaussBlur
++        , GCPUMedianBlur
++        , GCPUErode
++        , GCPUDilate
++        , GCPUSobel
++        , GCPUSobelXY
++        , GCPULaplacian
++        , GCPUBilateralFilter
++        , GCPUCanny
++        , GCPUGoodFeatures
++        , GCPUEqualizeHist
++        , GCPURGB2YUV
++        , GCPUYUV2RGB
++        , GCPUNV12toRGB
++        , GCPUNV12toBGR
++        , GCPURGB2Lab
++        , GCPUBGR2LUV
++        , GCPUBGR2YUV
++        , GCPUYUV2BGR
++        , GCPULUV2BGR
++        , GCPUBGR2Gray
++        , GCPURGB2Gray
++        , GCPURGB2GrayCustom
++        , GCPUBayerGR2RGB
++        , GCPURGB2HSV
++        , GCPURGB2YUV422
++        , GCPUYUV2Gray
++        , GCPUNV12toRGBp
++        , GCPUNV12toBGRp
++        , GCPUNV12toGray
++        , GCPUConcatYUVPlanes
++        >();
++    return pkg;
++}
+diff --git a/modules/gapi/src/backends/fluid/gfluidimgproc.cpp b/modules/gapi/src/backends/fluid/gfluidimgproc.cpp
+index bdd11b1214..45edd9954a 100644
+--- a/modules/gapi/src/backends/fluid/gfluidimgproc.cpp
++++ b/modules/gapi/src/backends/fluid/gfluidimgproc.cpp
+@@ -44,7 +44,7 @@ namespace fluid {
+ 
+ //----------------------------------
+ //
+-// Fluid kernels: RGB2Gray, BGR2Gray
++// Fluid kernels: RGB2Gray, BGR2Gray, RGB2AGray, BGRA2Gray
+ //
+ //----------------------------------
+ 
+@@ -77,6 +77,25 @@ static void run_rgb2gray(Buffer &dst, const View &src, float coef_r, float coef_
+     run_rgb2gray_impl(out, in, width, coef_r, coef_g, coef_b);
+ }
+ 
++static void run_rgba2gray(Buffer &dst, const View &src, float coef_r, float coef_g, float coef_b)
++{
++    GAPI_Assert(src.meta().depth == CV_8U);
++    GAPI_Assert(dst.meta().depth == CV_8U);
++    GAPI_Assert(src.meta().chan == 4);
++    GAPI_Assert(dst.meta().chan == 1);
++    GAPI_Assert(src.length() == dst.length());
++
++    GAPI_Assert(coef_r < 1 && coef_g < 1 && coef_b < 1);
++    GAPI_Assert(std::abs(coef_r + coef_g + coef_b - 1) < 0.001);
++
++    const auto *in  = src.InLine<uchar>(0);
++          auto *out = dst.OutLine<uchar>();
++
++    int width = dst.length();
++
++    run_rgba2gray_impl(out, in, width, coef_r, coef_g, coef_b);
++}
++
+ GAPI_FLUID_KERNEL(GFluidRGB2GrayCustom, cv::gapi::imgproc::GRGB2GrayCustom, false)
+ {
+     static const int Window = 1;
+@@ -100,6 +119,19 @@ GAPI_FLUID_KERNEL(GFluidRGB2Gray, cv::gapi::imgproc::GRGB2Gray, false)
+     }
+ };
+ 
++GAPI_FLUID_KERNEL(GFluidRGBA2Gray, cv::gapi::imgproc::GRGBA2Gray, false)
++{
++    static const int Window = 1;
++
++    static void run(const View &src, Buffer &dst)
++    {
++        float coef_r = coef_rgb2yuv_bt601[0];
++        float coef_g = coef_rgb2yuv_bt601[1];
++        float coef_b = coef_rgb2yuv_bt601[2];
++        run_rgba2gray(dst, src, coef_r, coef_g, coef_b);
++    }
++};
++
+ GAPI_FLUID_KERNEL(GFluidBGR2Gray, cv::gapi::imgproc::GBGR2Gray, false)
+ {
+     static const int Window = 1;
+@@ -113,6 +145,19 @@ GAPI_FLUID_KERNEL(GFluidBGR2Gray, cv::gapi::imgproc::GBGR2Gray, false)
+     }
+ };
+ 
++GAPI_FLUID_KERNEL(GFluidBGRA2Gray, cv::gapi::imgproc::GBGRA2Gray, false)
++{
++    static const int Window = 1;
++
++    static void run(const View &src, Buffer &dst)
++    {
++        float coef_r = coef_rgb2yuv_bt601[0];
++        float coef_g = coef_rgb2yuv_bt601[1];
++        float coef_b = coef_rgb2yuv_bt601[2];
++        run_rgba2gray(dst, src, coef_b, coef_g, coef_r);
++    }
++};
++
+ //--------------------------------------
+ //
+ // Fluid kernels: RGB-to-YUV, YUV-to-RGB
+@@ -2261,7 +2306,9 @@ cv::GKernelPackage cv::gapi::imgproc::fluid::kernels()
+     return cv::gapi::kernels
+     <   GFluidBGR2Gray
+       , GFluidResize
++      , GFluidBGRA2Gray
+       , GFluidRGB2Gray
++      , GFluidRGBA2Gray
+       , GFluidRGB2GrayCustom
+       , GFluidRGB2YUV
+       , GFluidYUV2RGB
+diff --git a/modules/gapi/src/backends/fluid/gfluidimgproc_func.dispatch.cpp b/modules/gapi/src/backends/fluid/gfluidimgproc_func.dispatch.cpp
+index 7854d3e988..1775763d08 100644
+--- a/modules/gapi/src/backends/fluid/gfluidimgproc_func.dispatch.cpp
++++ b/modules/gapi/src/backends/fluid/gfluidimgproc_func.dispatch.cpp
+@@ -41,6 +41,20 @@ void run_rgb2gray_impl(uchar out[], const uchar in[], int width,
+         CV_CPU_DISPATCH_MODES_ALL);
+ }
+ 
++//----------------------------------
++//
++// Fluid kernels: RGBA2Gray, BGRA2Gray
++//
++//----------------------------------
++
++void run_rgba2gray_impl(uchar out[], const uchar in[], int width,
++                        float coef_r, float coef_g, float coef_b)
++{
++    CV_CPU_DISPATCH(run_rgba2gray_impl,
++        (out, in, width, coef_r, coef_g, coef_b),
++        CV_CPU_DISPATCH_MODES_ALL);
++}
++
+ //--------------------------------------
+ //
+ // Fluid kernels: RGB-to-HSV
+diff --git a/modules/gapi/src/backends/fluid/gfluidimgproc_func.hpp b/modules/gapi/src/backends/fluid/gfluidimgproc_func.hpp
+index 79715d1754..00b521fc50 100644
+--- a/modules/gapi/src/backends/fluid/gfluidimgproc_func.hpp
++++ b/modules/gapi/src/backends/fluid/gfluidimgproc_func.hpp
+@@ -23,6 +23,15 @@ namespace fluid {
+ void run_rgb2gray_impl(uchar out[], const uchar in[], int width,
+                        float coef_r, float coef_g, float coef_b);
+ 
++//----------------------------------
++//
++// Fluid kernels: RGBA2Gray, BGRA2Gray
++//
++//----------------------------------
++
++void run_rgba2gray_impl(uchar out[], const uchar in[], int width,
++                        float coef_r, float coef_g, float coef_b);
++
+ //--------------------------------------
+ //
+ // Fluid kernels: RGB-to-HSV
+diff --git a/modules/gapi/src/backends/fluid/gfluidimgproc_func.simd.hpp b/modules/gapi/src/backends/fluid/gfluidimgproc_func.simd.hpp
+index 927f08d30a..4fd53fc690 100644
+--- a/modules/gapi/src/backends/fluid/gfluidimgproc_func.simd.hpp
++++ b/modules/gapi/src/backends/fluid/gfluidimgproc_func.simd.hpp
+@@ -45,6 +45,15 @@ CV_CPU_OPTIMIZATION_NAMESPACE_BEGIN
+ void run_rgb2gray_impl(uchar out[], const uchar in[], int width,
+                        float coef_r, float coef_g, float coef_b);
+ 
++//----------------------------------
++//
++// Fluid kernels: RGBA2Gray, BGRA2Gray
++//
++//----------------------------------
++
++void run_rgba2gray_impl(uchar out[], const uchar in[], int width,
++                        float coef_r, float coef_g, float coef_b);
++
+ //--------------------------------------
+ //
+ // Fluid kernels: RGB-to-HSV
+@@ -279,6 +288,43 @@ void run_rgb2gray_impl(uchar out[], const uchar in[], int width,
+     }
+ }
+ 
++//----------------------------------
++//
++// Fluid kernels: RGBA2Gray, BGRA2Gray
++//
++//----------------------------------
++
++void run_rgba2gray_impl(uchar out[], const uchar in[], int width,
++                        float coef_r, float coef_g, float coef_b)
++{
++    // assume:
++    // - coefficients are less than 1
++    // - and their sum equals 1
++
++    constexpr int unity = 1 << 16;  // Q0.0.16 inside ushort:
++    ushort rc = static_cast<ushort>(coef_r * unity + 0.5f);
++    ushort gc = static_cast<ushort>(coef_g * unity + 0.5f);
++    ushort bc = static_cast<ushort>(coef_b * unity + 0.5f);
++
++    GAPI_Assert(rc + gc + bc <= unity);
++    GAPI_Assert(rc + gc + bc >= USHRT_MAX);
++
++#if CV_SIMD
++    // TODO
++#endif
++
++    for (int w=0; w < width; w++)
++    {
++        uchar r = in[4*w    ];
++        uchar g = in[4*w + 1];
++        uchar b = in[4*w + 2];
++
++        static const int half = 1 << 15;  // Q0.0.16
++        ushort y = (r*rc + b*bc + g*gc + half) >> 16;
++        out[w] = static_cast<uchar>(y);
++    }
++}
++
+ //--------------------------------------
+ //
+ // Fluid kernels: RGB-to-HSV
+diff --git a/modules/gapi/src/backends/ocl/goclimgproc.cpp b/modules/gapi/src/backends/ocl/goclimgproc.cpp
+index 72650aa3ef..d3c29f83f2 100644
+--- a/modules/gapi/src/backends/ocl/goclimgproc.cpp
++++ b/modules/gapi/src/backends/ocl/goclimgproc.cpp
+@@ -252,6 +252,14 @@ GAPI_OCL_KERNEL(GOCLRGB2Gray, cv::gapi::imgproc::GRGB2Gray)
+     }
+ };
+ 
++GAPI_OCL_KERNEL(GOCLRGBA2Gray, cv::gapi::imgproc::GRGBA2Gray)
++{
++    static void run(const cv::UMat& in, cv::UMat &out)
++    {
++        cv::cvtColor(in, out, cv::COLOR_RGBA2GRAY);
++    }
++};
++
+ GAPI_OCL_KERNEL(GOCLBGR2Gray, cv::gapi::imgproc::GBGR2Gray)
+ {
+     static void run(const cv::UMat& in, cv::UMat &out)
+@@ -260,6 +268,14 @@ GAPI_OCL_KERNEL(GOCLBGR2Gray, cv::gapi::imgproc::GBGR2Gray)
+     }
+ };
+ 
++GAPI_OCL_KERNEL(GOCLBGRA2Gray, cv::gapi::imgproc::GBGRA2Gray)
++{
++    static void run(const cv::UMat& in, cv::UMat &out)
++    {
++        cv::cvtColor(in, out, cv::COLOR_BGRA2GRAY);
++    }
++};
++
+ GAPI_OCL_KERNEL(GOCLRGB2GrayCustom, cv::gapi::imgproc::GRGB2GrayCustom)
+ {
+     //TODO: avoid copy
+@@ -298,7 +314,9 @@ cv::GKernelPackage cv::gapi::imgproc::ocl::kernels()
+         , GOCLYUV2BGR
+         , GOCLLUV2BGR
+         , GOCLBGR2Gray
++        , GOCLBGRA2Gray
+         , GOCLRGB2Gray
++        , GOCLRGBA2Gray
+         , GOCLRGB2GrayCustom
+         >();
+     return pkg;
+diff --git a/modules/gapi/test/common/gapi_imgproc_tests.hpp b/modules/gapi/test/common/gapi_imgproc_tests.hpp
+index a5663a4ce6..a85f2b08cc 100644
+--- a/modules/gapi/test/common/gapi_imgproc_tests.hpp
++++ b/modules/gapi/test/common/gapi_imgproc_tests.hpp
+@@ -98,7 +98,9 @@ GAPI_TEST_FIXTURE(FitLine3DVector64FTest, initNothing,
+                   FIXTURE_API(CompareVecs<float, 6>,cv::DistanceTypes), 2, cmpF, distType)
+ GAPI_TEST_FIXTURE(BGR2RGBTest, initMatrixRandN, FIXTURE_API(CompareMats), 1, cmpF)
+ GAPI_TEST_FIXTURE(RGB2GrayTest, initMatrixRandN, FIXTURE_API(CompareMats), 1, cmpF)
++GAPI_TEST_FIXTURE(RGBA2GrayTest, initMatrixRandN, FIXTURE_API(CompareMats), 1, cmpF)
+ GAPI_TEST_FIXTURE(BGR2GrayTest, initMatrixRandN, FIXTURE_API(CompareMats), 1, cmpF)
++GAPI_TEST_FIXTURE(BGRA2GrayTest, initMatrixRandN, FIXTURE_API(CompareMats), 1, cmpF)
+ GAPI_TEST_FIXTURE(RGB2YUVTest, initMatrixRandN, FIXTURE_API(CompareMats), 1, cmpF)
+ GAPI_TEST_FIXTURE(BGR2I420Test, initMatrixRandN, FIXTURE_API(CompareMats), 1, cmpF)
+ GAPI_TEST_FIXTURE(RGB2I420Test, initMatrixRandN, FIXTURE_API(CompareMats), 1, cmpF)
+diff --git a/modules/gapi/test/common/gapi_imgproc_tests.hpp.orig b/modules/gapi/test/common/gapi_imgproc_tests.hpp.orig
+new file mode 100644
+index 0000000000..cd074efda0
+--- /dev/null
++++ b/modules/gapi/test/common/gapi_imgproc_tests.hpp.orig
+@@ -0,0 +1,87 @@
++// This file is part of OpenCV project.
++// It is subject to the license terms in the LICENSE file found in the top-level directory
++// of this distribution and at http://opencv.org/license.html.
++//
++// Copyright (C) 2018-2020 Intel Corporation
++
++
++#ifndef OPENCV_GAPI_IMGPROC_TESTS_HPP
++#define OPENCV_GAPI_IMGPROC_TESTS_HPP
++
++#include <iostream>
++
++#include "gapi_tests_common.hpp"
++
++namespace opencv_test
++{
++
++// Create new value-parameterized test fixture:
++// Filter2DTest - fixture name
++// initMatrixRandN - function that is used to initialize input/output data
++// FIXTURE_API(CompareMats,int,int) - test-specific parameters (types)
++// 3 - number of test-specific parameters
++// cmpF, kernSize, borderType - test-specific parameters (names)
++//
++// We get:
++// 1. Default parameters: int type, cv::Size sz, int dtype, getCompileArgs() function
++//      - available in test body
++// 2. Input/output matrices will be initialized by initMatrixRandN (in this fixture)
++// 3. Specific parameters: cmpF, kernSize, borderType of corresponding types
++//      - created (and initialized) automatically
++//      - available in test body
++// Note: all parameter _values_ (e.g. type CV_8UC3) are set via INSTANTIATE_TEST_CASE_P macro
++GAPI_TEST_FIXTURE(Filter2DTest, initMatrixRandN, FIXTURE_API(CompareMats,cv::Size,int), 3,
++    cmpF, filterSize, borderType)
++GAPI_TEST_FIXTURE(BoxFilterTest, initMatrixRandN, FIXTURE_API(CompareMats,int,int), 3,
++    cmpF, filterSize, borderType)
++GAPI_TEST_FIXTURE(SepFilterTest, initMatrixRandN, FIXTURE_API(CompareMats,int), 2, cmpF, kernSize)
++GAPI_TEST_FIXTURE(BlurTest, initMatrixRandN, FIXTURE_API(CompareMats,int,int), 3,
++    cmpF, filterSize, borderType)
++GAPI_TEST_FIXTURE(GaussianBlurTest, initMatrixRandN, FIXTURE_API(CompareMats,int), 2, cmpF, kernSize)
++GAPI_TEST_FIXTURE(MedianBlurTest, initMatrixRandN, FIXTURE_API(CompareMats,int), 2, cmpF, kernSize)
++GAPI_TEST_FIXTURE(ErodeTest, initMatrixRandN, FIXTURE_API(CompareMats,int,int), 3,
++    cmpF, kernSize, kernType)
++GAPI_TEST_FIXTURE(Erode3x3Test, initMatrixRandN, FIXTURE_API(CompareMats,int), 2,
++    cmpF, numIters)
++GAPI_TEST_FIXTURE(DilateTest, initMatrixRandN, FIXTURE_API(CompareMats,int,int), 3,
++    cmpF, kernSize, kernType)
++GAPI_TEST_FIXTURE(Dilate3x3Test, initMatrixRandN, FIXTURE_API(CompareMats,int), 2, cmpF, numIters)
++GAPI_TEST_FIXTURE(SobelTest, initMatrixRandN, FIXTURE_API(CompareMats,int,int,int), 4,
++    cmpF, kernSize, dx, dy)
++GAPI_TEST_FIXTURE(SobelXYTest, initMatrixRandN, FIXTURE_API(CompareMats,int,int,int,int), 5,
++    cmpF, kernSize, order, border_type, border_val)
++GAPI_TEST_FIXTURE(LaplacianTest, initMatrixRandN,
++                  FIXTURE_API(CompareMats,int,double,int), 4,
++                  cmpF, kernSize, scale, borderType)
++GAPI_TEST_FIXTURE(BilateralFilterTest, initMatrixRandN,
++                  FIXTURE_API(CompareMats,int,double,double,int), 5,
++                  cmpF, d, sigmaColor, sigmaSpace, borderType)
++GAPI_TEST_FIXTURE(EqHistTest, initMatrixRandN, FIXTURE_API(CompareMats), 1, cmpF)
++GAPI_TEST_FIXTURE(CannyTest, initMatrixRandN, FIXTURE_API(CompareMats,double,double,int,bool), 5,
++    cmpF, thrLow, thrUp, apSize, l2gr)
++GAPI_TEST_FIXTURE_SPEC_PARAMS(GoodFeaturesTest,
++                              FIXTURE_API(CompareVectors<cv::Point2f>,std::string,int,int,double,
++                                          double,int,bool),
++                              8, cmpF, fileName, type, maxCorners, qualityLevel, minDistance,
++                              blockSize, useHarrisDetector)
++GAPI_TEST_FIXTURE(RGB2GrayTest, initMatrixRandN, FIXTURE_API(CompareMats), 1, cmpF)
++GAPI_TEST_FIXTURE(BGR2GrayTest, initMatrixRandN, FIXTURE_API(CompareMats), 1, cmpF)
++GAPI_TEST_FIXTURE(RGB2YUVTest, initMatrixRandN, FIXTURE_API(CompareMats), 1, cmpF)
++GAPI_TEST_FIXTURE(YUV2RGBTest, initMatrixRandN, FIXTURE_API(CompareMats), 1, cmpF)
++GAPI_TEST_FIXTURE(YUV2GrayTest, initMatrixRandN, FIXTURE_API(CompareMats), 1, cmpF)
++GAPI_TEST_FIXTURE(NV12toRGBTest, initMatrixRandN, FIXTURE_API(CompareMats), 1, cmpF)
++GAPI_TEST_FIXTURE(NV12toBGRpTest, initMatrixRandN, FIXTURE_API(CompareMats), 1, cmpF)
++GAPI_TEST_FIXTURE(NV12toRGBpTest, initMatrixRandN, FIXTURE_API(CompareMats), 1, cmpF)
++GAPI_TEST_FIXTURE(NV12toBGRTest, initMatrixRandN, FIXTURE_API(CompareMats), 1, cmpF)
++GAPI_TEST_FIXTURE(NV12toGrayTest, initMatrixRandN, FIXTURE_API(CompareMats), 1, cmpF)
++GAPI_TEST_FIXTURE(RGB2LabTest, initMatrixRandN, FIXTURE_API(CompareMats), 1, cmpF)
++GAPI_TEST_FIXTURE(BGR2LUVTest, initMatrixRandN, FIXTURE_API(CompareMats), 1, cmpF)
++GAPI_TEST_FIXTURE(LUV2BGRTest, initMatrixRandN, FIXTURE_API(CompareMats), 1, cmpF)
++GAPI_TEST_FIXTURE(BGR2YUVTest, initMatrixRandN, FIXTURE_API(CompareMats), 1, cmpF)
++GAPI_TEST_FIXTURE(YUV2BGRTest, initMatrixRandN, FIXTURE_API(CompareMats), 1, cmpF)
++GAPI_TEST_FIXTURE(RGB2HSVTest, initMatrixRandN, FIXTURE_API(CompareMats), 1, cmpF)
++GAPI_TEST_FIXTURE(BayerGR2RGBTest, initMatrixRandN, FIXTURE_API(CompareMats), 1, cmpF)
++GAPI_TEST_FIXTURE(RGB2YUV422Test, initMatrixRandN, FIXTURE_API(CompareMats), 1, cmpF)
++} // opencv_test
++
++#endif //OPENCV_GAPI_IMGPROC_TESTS_HPP
+diff --git a/modules/gapi/test/common/gapi_imgproc_tests_inl.hpp b/modules/gapi/test/common/gapi_imgproc_tests_inl.hpp
+index e9f4edfd66..07920764db 100644
+--- a/modules/gapi/test/common/gapi_imgproc_tests_inl.hpp
++++ b/modules/gapi/test/common/gapi_imgproc_tests_inl.hpp
+@@ -634,6 +634,25 @@ TEST_P(RGB2GrayTest, AccuracyTest)
+     }
+ }
+ 
++TEST_P(RGBA2GrayTest, AccuracyTest)
++{
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in;
++    auto out = cv::gapi::RGBA2Gray(in);
++
++    cv::GComputation c(in, out);
++    c.apply(in_mat1, out_mat_gapi, getCompileArgs());
++    // OpenCV code /////////////////////////////////////////////////////////////
++    {
++        cv::cvtColor(in_mat1, out_mat_ocv, cv::COLOR_RGBA2GRAY);
++    }
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi, out_mat_ocv));
++        EXPECT_EQ(out_mat_gapi.size(), sz);
++    }
++}
++
+ TEST_P(BGR2GrayTest, AccuracyTest)
+ {
+     // G-API code //////////////////////////////////////////////////////////////
+@@ -653,6 +672,25 @@ TEST_P(BGR2GrayTest, AccuracyTest)
+     }
+ }
+ 
++TEST_P(BGRA2GrayTest, AccuracyTest)
++{
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in;
++    auto out = cv::gapi::BGRA2Gray(in);
++
++    cv::GComputation c(in, out);
++    c.apply(in_mat1, out_mat_gapi, getCompileArgs());
++    // OpenCV code /////////////////////////////////////////////////////////////
++    {
++        cv::cvtColor(in_mat1, out_mat_ocv, cv::COLOR_BGRA2GRAY);
++    }
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi, out_mat_ocv));
++        EXPECT_EQ(out_mat_gapi.size(), sz);
++    }
++}
++
+ TEST_P(RGB2YUVTest, AccuracyTest)
+ {
+     // G-API code //////////////////////////////////////////////////////////////
+diff --git a/modules/gapi/test/common/gapi_imgproc_tests_inl.hpp.orig b/modules/gapi/test/common/gapi_imgproc_tests_inl.hpp.orig
+new file mode 100644
+index 0000000000..4aadc17d5d
+--- /dev/null
++++ b/modules/gapi/test/common/gapi_imgproc_tests_inl.hpp.orig
+@@ -0,0 +1,828 @@
++// This file is part of OpenCV project.
++// It is subject to the license terms in the LICENSE file found in the top-level directory
++// of this distribution and at http://opencv.org/license.html.
++//
++// Copyright (C) 2018-2020 Intel Corporation
++
++
++#ifndef OPENCV_GAPI_IMGPROC_TESTS_INL_HPP
++#define OPENCV_GAPI_IMGPROC_TESTS_INL_HPP
++
++#include <opencv2/gapi/imgproc.hpp>
++#include "gapi_imgproc_tests.hpp"
++
++namespace opencv_test
++{
++
++// FIXME avoid this code duplicate in perf tests
++namespace
++{
++    void rgb2yuyv(const uchar* rgb_line, uchar* yuv422_line, int width)
++    {
++        CV_Assert(width % 2 == 0);
++
++        for (int i = 0; i < width; i += 2)
++        {
++            uchar r = rgb_line[i * 3    ];
++            uchar g = rgb_line[i * 3 + 1];
++            uchar b = rgb_line[i * 3 + 2];
++
++            yuv422_line[i * 2    ] = cv::saturate_cast<uchar>(-0.14713 * r - 0.28886 * g + 0.436   * b + 128.f);  // U0
++            yuv422_line[i * 2 + 1] = cv::saturate_cast<uchar>( 0.299   * r + 0.587   * g + 0.114   * b        );  // Y0
++            yuv422_line[i * 2 + 2] = cv::saturate_cast<uchar>( 0.615   * r - 0.51499 * g - 0.10001 * b + 128.f);  // V0
++
++            r = rgb_line[i * 3 + 3];
++            g = rgb_line[i * 3 + 4];
++            b = rgb_line[i * 3 + 5];
++
++            yuv422_line[i * 2 + 3] = cv::saturate_cast<uchar>(0.299 * r + 0.587 * g + 0.114 * b);   // Y1
++        }
++    }
++
++    void convertRGB2YUV422Ref(const cv::Mat& in, cv::Mat &out)
++    {
++        out.create(in.size(), CV_8UC2);
++
++        for (int i = 0; i < in.rows; ++i)
++        {
++            const uchar* in_line_p  = in.ptr<uchar>(i);
++            uchar* out_line_p = out.ptr<uchar>(i);
++            rgb2yuyv(in_line_p, out_line_p, in.cols);
++        }
++    }
++}
++
++TEST_P(Filter2DTest, AccuracyTest)
++{
++    cv::Point anchor = {-1, -1};
++    double delta = 0;
++
++    cv::Mat kernel = cv::Mat(filterSize, CV_32FC1);
++    cv::Scalar kernMean, kernStddev;
++
++    const auto kernSize = filterSize.width * filterSize.height;
++    const auto bigKernSize = 49;
++
++    if (kernSize < bigKernSize)
++    {
++        kernMean = cv::Scalar(0.3);
++        kernStddev = cv::Scalar(0.5);
++    }
++    else
++    {
++        kernMean = cv::Scalar(0.008);
++        kernStddev = cv::Scalar(0.008);
++    }
++
++    randn(kernel, kernMean, kernStddev);
++
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in;
++    auto out = cv::gapi::filter2D(in, dtype, kernel, anchor, delta, borderType);
++
++    cv::GComputation c(in, out);
++
++    c.apply(in_mat1, out_mat_gapi, getCompileArgs());
++    // OpenCV code /////////////////////////////////////////////////////////////
++    {
++        cv::filter2D(in_mat1, out_mat_ocv, dtype, kernel, anchor, delta, borderType);
++    }
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi, out_mat_ocv));
++        EXPECT_EQ(out_mat_gapi.size(), sz);
++    }
++}
++
++TEST_P(BoxFilterTest, AccuracyTest)
++{
++    cv::Point anchor = {-1, -1};
++    bool normalize = true;
++
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in;
++    auto out = cv::gapi::boxFilter(in, dtype, cv::Size(filterSize, filterSize), anchor, normalize,
++        borderType);
++
++    cv::GComputation c(in, out);
++    c.apply(in_mat1, out_mat_gapi, getCompileArgs());
++    // OpenCV code /////////////////////////////////////////////////////////////
++    {
++        cv::boxFilter(in_mat1, out_mat_ocv, dtype, cv::Size(filterSize, filterSize), anchor,
++            normalize, borderType);
++    }
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi, out_mat_ocv));
++        EXPECT_EQ(out_mat_gapi.size(), sz);
++    }
++}
++
++TEST_P(SepFilterTest, AccuracyTest)
++{
++    cv::Mat kernelX(kernSize, 1, CV_32F);
++    cv::Mat kernelY(kernSize, 1, CV_32F);
++    randu(kernelX, -1, 1);
++    randu(kernelY, -1, 1);
++
++    cv::Point anchor = cv::Point(-1, -1);
++
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in;
++    auto out = cv::gapi::sepFilter(in, dtype, kernelX, kernelY, anchor, cv::Scalar() );
++
++    cv::GComputation c(in, out);
++    c.apply(in_mat1, out_mat_gapi, getCompileArgs());
++    // OpenCV code /////////////////////////////////////////////////////////////
++    {
++        cv::sepFilter2D(in_mat1, out_mat_ocv, dtype, kernelX, kernelY );
++    }
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi, out_mat_ocv));
++        EXPECT_EQ(out_mat_gapi.size(), sz);
++    }
++}
++
++TEST_P(BlurTest, AccuracyTest)
++{
++    cv::Point anchor = {-1, -1};
++
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in;
++    auto out = cv::gapi::blur(in, cv::Size(filterSize, filterSize), anchor, borderType);
++
++    cv::GComputation c(in, out);
++    c.apply(in_mat1, out_mat_gapi, getCompileArgs());
++    // OpenCV code /////////////////////////////////////////////////////////////
++    {
++        cv::blur(in_mat1, out_mat_ocv, cv::Size(filterSize, filterSize), anchor, borderType);
++    }
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi, out_mat_ocv));
++        EXPECT_EQ(out_mat_gapi.size(), sz);
++    }
++}
++
++TEST_P(GaussianBlurTest, AccuracyTest)
++{
++    cv::Size kSize = cv::Size(kernSize, kernSize);
++    double sigmaX = rand();
++
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in;
++    auto out = cv::gapi::gaussianBlur(in, kSize, sigmaX);
++
++    cv::GComputation c(in, out);
++    c.apply(in_mat1, out_mat_gapi, getCompileArgs());
++    // OpenCV code /////////////////////////////////////////////////////////////
++    {
++        cv::GaussianBlur(in_mat1, out_mat_ocv, kSize, sigmaX);
++    }
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi, out_mat_ocv));
++        EXPECT_EQ(out_mat_gapi.size(), sz);
++    }
++}
++
++TEST_P(MedianBlurTest, AccuracyTest)
++{
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in;
++    auto out = cv::gapi::medianBlur(in, kernSize);
++
++    cv::GComputation c(in, out);
++    c.apply(in_mat1, out_mat_gapi, getCompileArgs());
++    // OpenCV code /////////////////////////////////////////////////////////////
++    {
++        cv::medianBlur(in_mat1, out_mat_ocv, kernSize);
++    }
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi, out_mat_ocv));
++        EXPECT_EQ(out_mat_gapi.size(), sz);
++    }
++}
++
++TEST_P(ErodeTest, AccuracyTest)
++{
++    cv::Mat kernel = cv::getStructuringElement(kernType, cv::Size(kernSize, kernSize));
++
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in;
++    auto out = cv::gapi::erode(in, kernel);
++
++    cv::GComputation c(in, out);
++    c.apply(in_mat1, out_mat_gapi, getCompileArgs());
++    // OpenCV code /////////////////////////////////////////////////////////////
++    {
++        cv::erode(in_mat1, out_mat_ocv, kernel);
++    }
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi, out_mat_ocv));
++        EXPECT_EQ(out_mat_gapi.size(), sz);
++    }
++}
++
++TEST_P(Erode3x3Test, AccuracyTest)
++{
++    cv::Mat kernel = cv::getStructuringElement(cv::MorphShapes::MORPH_RECT, cv::Size(3,3));
++
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in;
++    auto out = cv::gapi::erode3x3(in, numIters);
++
++    cv::GComputation c(in, out);
++    c.apply(in_mat1, out_mat_gapi, getCompileArgs());
++    // OpenCV code /////////////////////////////////////////////////////////////
++    {
++        cv::erode(in_mat1, out_mat_ocv, kernel, cv::Point(-1, -1), numIters);
++    }
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi, out_mat_ocv));
++        EXPECT_EQ(out_mat_gapi.size(), sz);
++    }
++}
++
++TEST_P(DilateTest, AccuracyTest)
++{
++    cv::Mat kernel = cv::getStructuringElement(kernType, cv::Size(kernSize, kernSize));
++
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in;
++    auto out = cv::gapi::dilate(in, kernel);
++
++    cv::GComputation c(in, out);
++    c.apply(in_mat1, out_mat_gapi, getCompileArgs());
++    // OpenCV code /////////////////////////////////////////////////////////////
++    {
++        cv::dilate(in_mat1, out_mat_ocv, kernel);
++    }
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi, out_mat_ocv));
++        EXPECT_EQ(out_mat_gapi.size(), sz);
++    }
++}
++
++TEST_P(Dilate3x3Test, AccuracyTest)
++{
++    cv::Mat kernel = cv::getStructuringElement(cv::MorphShapes::MORPH_RECT, cv::Size(3,3));
++
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in;
++    auto out = cv::gapi::dilate3x3(in, numIters);
++
++    cv::GComputation c(in, out);
++    c.apply(in_mat1, out_mat_gapi, getCompileArgs());
++    // OpenCV code /////////////////////////////////////////////////////////////
++    {
++        cv::dilate(in_mat1, out_mat_ocv, kernel, cv::Point(-1,-1), numIters);
++    }
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi, out_mat_ocv));
++        EXPECT_EQ(out_mat_gapi.size(), sz);
++    }
++}
++
++TEST_P(SobelTest, AccuracyTest)
++{
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in;
++    auto out = cv::gapi::Sobel(in, dtype, dx, dy, kernSize );
++
++    cv::GComputation c(in, out);
++    c.apply(in_mat1, out_mat_gapi, getCompileArgs());
++    // OpenCV code /////////////////////////////////////////////////////////////
++    {
++        cv::Sobel(in_mat1, out_mat_ocv, dtype, dx, dy, kernSize);
++    }
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi, out_mat_ocv));
++        EXPECT_EQ(out_mat_gapi.size(), sz);
++    }
++}
++
++TEST_P(SobelXYTest, AccuracyTest)
++{
++    cv::Mat out_mat_ocv2;
++    cv::Mat out_mat_gapi2;
++
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in;
++    auto out = cv::gapi::SobelXY(in, dtype, order, kernSize, 1, 0, border_type, border_val);
++
++    cv::GComputation c(cv::GIn(in), cv::GOut(std::get<0>(out), std::get<1>(out)));
++    c.apply(cv::gin(in_mat1), cv::gout(out_mat_gapi, out_mat_gapi2), getCompileArgs());
++    // OpenCV code /////////////////////////////////////////////////////////////
++    {
++        // workaround for cv::Sobel
++        cv::Mat temp_in;
++        if(border_type == cv::BORDER_CONSTANT)
++        {
++            int n_pixels = (kernSize - 1) / 2;
++            cv::copyMakeBorder(in_mat1, temp_in, n_pixels, n_pixels, n_pixels, n_pixels, border_type, border_val);
++            in_mat1 = temp_in(cv::Rect(n_pixels, n_pixels, in_mat1.cols, in_mat1.rows));
++        }
++        cv::Sobel(in_mat1, out_mat_ocv, dtype, order, 0, kernSize, 1, 0, border_type);
++        cv::Sobel(in_mat1, out_mat_ocv2, dtype, 0, order, kernSize, 1, 0, border_type);
++    }
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi, out_mat_ocv));
++        EXPECT_TRUE(cmpF(out_mat_gapi2, out_mat_ocv2));
++        EXPECT_EQ(out_mat_gapi.size(), sz);
++        EXPECT_EQ(out_mat_gapi2.size(), sz);
++    }
++}
++
++TEST_P(LaplacianTest, AccuracyTest)
++{
++    double delta = 10;
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in;
++    auto out = cv::gapi::Laplacian(in, dtype, kernSize, scale, delta, borderType);
++
++    cv::GComputation c(in, out);
++    c.apply(in_mat1, out_mat_gapi, getCompileArgs());
++    // OpenCV code /////////////////////////////////////////////////////////////
++    {
++        cv::Laplacian(in_mat1, out_mat_ocv, dtype, kernSize, scale, delta, borderType);
++    }
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi, out_mat_ocv));
++        EXPECT_EQ(out_mat_gapi.size(), sz);
++    }
++}
++
++TEST_P(BilateralFilterTest, AccuracyTest)
++{
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in;
++    auto out = cv::gapi::bilateralFilter(in, d, sigmaColor, sigmaSpace, borderType);
++
++    cv::GComputation c(in, out);
++    c.apply(in_mat1, out_mat_gapi, getCompileArgs());
++    // OpenCV code /////////////////////////////////////////////////////////////
++    {
++        cv::bilateralFilter(in_mat1, out_mat_ocv, d, sigmaColor, sigmaSpace, borderType);
++    }
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi, out_mat_ocv));
++        EXPECT_EQ(out_mat_gapi.size(), sz);
++    }
++}
++
++TEST_P(EqHistTest, AccuracyTest)
++{
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in;
++    auto out = cv::gapi::equalizeHist(in);
++
++    cv::GComputation c(in, out);
++    c.apply(in_mat1, out_mat_gapi, getCompileArgs());
++    // OpenCV code /////////////////////////////////////////////////////////////
++    {
++        cv::equalizeHist(in_mat1, out_mat_ocv);
++    }
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi, out_mat_ocv));
++        EXPECT_EQ(out_mat_gapi.size(), sz);
++    }
++}
++
++TEST_P(CannyTest, AccuracyTest)
++{
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in;
++    auto out = cv::gapi::Canny(in, thrLow, thrUp, apSize, l2gr);
++
++    cv::GComputation c(in, out);
++    c.apply(in_mat1, out_mat_gapi, getCompileArgs());
++    // OpenCV code /////////////////////////////////////////////////////////////
++    {
++        cv::Canny(in_mat1, out_mat_ocv, thrLow, thrUp, apSize, l2gr);
++    }
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi, out_mat_ocv));
++        EXPECT_EQ(out_mat_gapi.size(), sz);
++    }
++}
++
++TEST_P(GoodFeaturesTest, AccuracyTest)
++{
++    double k = 0.04;
++
++    initMatFromImage(type, fileName);
++
++    std::vector<cv::Point2f> outVecOCV, outVecGAPI;
++
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in;
++    auto out = cv::gapi::goodFeaturesToTrack(in, maxCorners, qualityLevel, minDistance, cv::Mat(),
++                                             blockSize, useHarrisDetector, k);
++
++    cv::GComputation c(cv::GIn(in), cv::GOut(out));
++    c.apply(cv::gin(in_mat1), cv::gout(outVecGAPI), getCompileArgs());
++
++    // OpenCV code /////////////////////////////////////////////////////////////
++    {
++        cv::goodFeaturesToTrack(in_mat1, outVecOCV, maxCorners, qualityLevel, minDistance,
++                                cv::noArray(), blockSize, useHarrisDetector, k);
++    }
++
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(outVecGAPI, outVecOCV));
++    }
++}
++
++TEST_P(RGB2GrayTest, AccuracyTest)
++{
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in;
++    auto out = cv::gapi::RGB2Gray(in);
++
++    cv::GComputation c(in, out);
++    c.apply(in_mat1, out_mat_gapi, getCompileArgs());
++    // OpenCV code /////////////////////////////////////////////////////////////
++    {
++        cv::cvtColor(in_mat1, out_mat_ocv, cv::COLOR_RGB2GRAY);
++    }
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi, out_mat_ocv));
++        EXPECT_EQ(out_mat_gapi.size(), sz);
++    }
++}
++
++TEST_P(BGR2GrayTest, AccuracyTest)
++{
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in;
++    auto out = cv::gapi::BGR2Gray(in);
++
++    cv::GComputation c(in, out);
++    c.apply(in_mat1, out_mat_gapi, getCompileArgs());
++    // OpenCV code /////////////////////////////////////////////////////////////
++    {
++        cv::cvtColor(in_mat1, out_mat_ocv, cv::COLOR_BGR2GRAY);
++    }
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi, out_mat_ocv));
++        EXPECT_EQ(out_mat_gapi.size(), sz);
++    }
++}
++
++TEST_P(RGB2YUVTest, AccuracyTest)
++{
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in;
++    auto out = cv::gapi::RGB2YUV(in);
++
++    cv::GComputation c(in, out);
++    c.apply(in_mat1, out_mat_gapi, getCompileArgs());
++    // OpenCV code /////////////////////////////////////////////////////////////
++    {
++        cv::cvtColor(in_mat1, out_mat_ocv, cv::COLOR_RGB2YUV);
++    }
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi, out_mat_ocv));
++        EXPECT_EQ(out_mat_gapi.size(), sz);
++    }
++}
++
++TEST_P(YUV2RGBTest, AccuracyTest)
++{
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in;
++    auto out = cv::gapi::YUV2RGB(in);
++
++    cv::GComputation c(in, out);
++    c.apply(in_mat1, out_mat_gapi, getCompileArgs());
++    // OpenCV code /////////////////////////////////////////////////////////////
++    {
++        cv::cvtColor(in_mat1, out_mat_ocv, cv::COLOR_YUV2RGB);
++    }
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi, out_mat_ocv));
++        EXPECT_EQ(out_mat_gapi.size(), sz);
++    }
++}
++
++TEST_P(NV12toRGBTest, AccuracyTest)
++{
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in_y;
++    cv::GMat in_uv;
++    auto out = cv::gapi::NV12toRGB(in_y, in_uv);
++
++    // Additional mat for uv
++    cv::Mat in_mat_uv(cv::Size(sz.width / 2, sz.height / 2), CV_8UC2);
++    cv::randn(in_mat_uv, cv::Scalar::all(127), cv::Scalar::all(40.f));
++
++    cv::GComputation c(cv::GIn(in_y, in_uv), cv::GOut(out));
++    c.apply(cv::gin(in_mat1, in_mat_uv), cv::gout(out_mat_gapi), getCompileArgs());
++    // OpenCV code /////////////////////////////////////////////////////////////
++    {
++        cv::cvtColorTwoPlane(in_mat1, in_mat_uv, out_mat_ocv, cv::COLOR_YUV2RGB_NV12);
++    }
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi, out_mat_ocv));
++        EXPECT_EQ(out_mat_gapi.size(), sz);
++    }
++}
++
++TEST_P(NV12toBGRTest, AccuracyTest)
++{
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in_y;
++    cv::GMat in_uv;
++    auto out = cv::gapi::NV12toBGR(in_y, in_uv);
++
++    // Additional mat for uv
++    cv::Mat in_mat_uv(cv::Size(sz.width / 2, sz.height / 2), CV_8UC2);
++    cv::randn(in_mat_uv, cv::Scalar::all(127), cv::Scalar::all(40.f));
++
++    cv::GComputation c(cv::GIn(in_y, in_uv), cv::GOut(out));
++    c.apply(cv::gin(in_mat1, in_mat_uv), cv::gout(out_mat_gapi), getCompileArgs());
++    // OpenCV code /////////////////////////////////////////////////////////////
++    {
++        cv::cvtColorTwoPlane(in_mat1, in_mat_uv, out_mat_ocv, cv::COLOR_YUV2BGR_NV12);
++    }
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi, out_mat_ocv));
++        EXPECT_EQ(out_mat_gapi.size(), sz);
++    }
++}
++
++TEST_P(NV12toGrayTest, AccuracyTest)
++{
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in_y;
++    cv::GMat in_uv;
++    auto out = cv::gapi::NV12toGray(in_y, in_uv);
++
++    // Additional mat for uv
++    cv::Mat in_mat_uv(cv::Size(sz.width / 2, sz.height / 2), CV_8UC2);
++    cv::randn(in_mat_uv, cv::Scalar::all(127), cv::Scalar::all(40.f));
++
++    cv::GComputation c(cv::GIn(in_y, in_uv), cv::GOut(out));
++    c.apply(cv::gin(in_mat1, in_mat_uv), cv::gout(out_mat_gapi), getCompileArgs());
++
++    cv::Mat out_mat_ocv_planar;
++    cv::Mat uv_planar(in_mat1.rows / 2, in_mat1.cols, CV_8UC1, in_mat_uv.data);
++    // OpenCV code /////////////////////////////////////////////////////////////
++    {
++        cv::vconcat(in_mat1, uv_planar, out_mat_ocv_planar);
++        cv::cvtColor(out_mat_ocv_planar, out_mat_ocv, cv::COLOR_YUV2GRAY_NV12);
++    }
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi, out_mat_ocv));
++        EXPECT_EQ(out_mat_gapi.size(), sz);
++    }
++}
++
++static void toPlanar(const cv::Mat& in, cv::Mat& out)
++{
++    GAPI_Assert(out.depth() == in.depth());
++    GAPI_Assert(out.channels() == 1);
++    GAPI_Assert(in.channels() == 3);
++    GAPI_Assert(out.cols == in.cols);
++    GAPI_Assert(out.rows == 3*in.rows);
++
++    std::vector<cv::Mat> outs(3);
++    for (int i = 0; i < 3; i++) {
++        outs[i] = out(cv::Rect(0, i*in.rows, in.cols, in.rows));
++    }
++    cv::split(in, outs);
++}
++
++TEST_P(NV12toRGBpTest, AccuracyTest)
++{
++    cv::Size sz_p = cv::Size(sz.width, sz.height * 3);
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in_y;
++    cv::GMat in_uv;
++    auto out = cv::gapi::NV12toRGBp(in_y, in_uv);
++
++    // Additional mat for uv
++    cv::Mat in_mat_uv(cv::Size(sz.width / 2, sz.height / 2), CV_8UC2);
++    cv::randn(in_mat_uv, cv::Scalar::all(127), cv::Scalar::all(40.f));
++
++    cv::GComputation c(cv::GIn(in_y, in_uv), cv::GOut(out));
++    cv::Mat out_mat_gapi_planar(cv::Size(sz.width, sz.height * 3), CV_8UC1);
++    c.apply(cv::gin(in_mat1, in_mat_uv), cv::gout(out_mat_gapi_planar), getCompileArgs());
++    // OpenCV code /////////////////////////////////////////////////////////////
++    cv::Mat out_mat_ocv_planar(cv::Size(sz.width, sz.height * 3), CV_8UC1);
++    {
++        cv::cvtColorTwoPlane(in_mat1, in_mat_uv, out_mat_ocv, cv::COLOR_YUV2RGB_NV12);
++        toPlanar(out_mat_ocv, out_mat_ocv_planar);
++    }
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi_planar, out_mat_ocv_planar));
++        EXPECT_EQ(out_mat_gapi_planar.size(), sz_p);
++    }
++}
++
++
++TEST_P(NV12toBGRpTest, AccuracyTest)
++{
++    cv::Size sz_p = cv::Size(sz.width, sz.height * 3);
++
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in_y;
++    cv::GMat in_uv;
++    auto out = cv::gapi::NV12toBGRp(in_y, in_uv);
++
++    // Additional mat for uv
++    cv::Mat in_mat_uv(cv::Size(sz.width / 2, sz.height / 2), CV_8UC2);
++    cv::randn(in_mat_uv, cv::Scalar::all(127), cv::Scalar::all(40.f));
++
++    cv::GComputation c(cv::GIn(in_y, in_uv), cv::GOut(out));
++    cv::Mat out_mat_gapi_planar(cv::Size(sz.width, sz.height * 3), CV_8UC1);
++    c.apply(cv::gin(in_mat1, in_mat_uv), cv::gout(out_mat_gapi_planar), getCompileArgs());
++    // OpenCV code /////////////////////////////////////////////////////////////
++    cv::Mat out_mat_ocv_planar(cv::Size(sz.width, sz.height * 3), CV_8UC1);
++    {
++        cv::cvtColorTwoPlane(in_mat1, in_mat_uv, out_mat_ocv, cv::COLOR_YUV2BGR_NV12);
++        toPlanar(out_mat_ocv, out_mat_ocv_planar);
++    }
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi_planar, out_mat_ocv_planar));
++        EXPECT_EQ(out_mat_gapi_planar.size(), sz_p);
++    }
++}
++
++TEST_P(RGB2LabTest, AccuracyTest)
++{
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in;
++    auto out = cv::gapi::RGB2Lab(in);
++
++    cv::GComputation c(in, out);
++    c.apply(in_mat1, out_mat_gapi, getCompileArgs());
++    // OpenCV code /////////////////////////////////////////////////////////////
++    {
++        cv::cvtColor(in_mat1, out_mat_ocv, cv::COLOR_RGB2Lab);
++    }
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi, out_mat_ocv));
++        EXPECT_EQ(out_mat_gapi.size(), sz);
++    }
++}
++
++TEST_P(BGR2LUVTest, AccuracyTest)
++{
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in;
++    auto out = cv::gapi::BGR2LUV(in);
++
++    cv::GComputation c(in, out);
++    c.apply(in_mat1, out_mat_gapi, getCompileArgs());
++    // OpenCV code /////////////////////////////////////////////////////////////
++    {
++        cv::cvtColor(in_mat1, out_mat_ocv, cv::COLOR_BGR2Luv);
++    }
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi, out_mat_ocv));
++        EXPECT_EQ(out_mat_gapi.size(), sz);
++    }
++}
++
++TEST_P(LUV2BGRTest, AccuracyTest)
++{
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in;
++    auto out = cv::gapi::LUV2BGR(in);
++
++    cv::GComputation c(in, out);
++    c.apply(in_mat1, out_mat_gapi, getCompileArgs());
++    // OpenCV code /////////////////////////////////////////////////////////////
++    {
++        cv::cvtColor(in_mat1, out_mat_ocv, cv::COLOR_Luv2BGR);
++    }
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi, out_mat_ocv));
++        EXPECT_EQ(out_mat_gapi.size(), sz);
++    }
++}
++
++TEST_P(BGR2YUVTest, AccuracyTest)
++{
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in;
++    auto out = cv::gapi::BGR2YUV(in);
++
++    cv::GComputation c(in, out);
++    c.apply(in_mat1, out_mat_gapi, getCompileArgs());
++    // OpenCV code /////////////////////////////////////////////////////////////
++    {
++        cv::cvtColor(in_mat1, out_mat_ocv, cv::COLOR_BGR2YUV);
++    }
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi, out_mat_ocv));
++        EXPECT_EQ(out_mat_gapi.size(), sz);
++    }
++}
++
++TEST_P(YUV2BGRTest, AccuracyTest)
++{
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in;
++    auto out = cv::gapi::YUV2BGR(in);
++
++    cv::GComputation c(in, out);
++    c.apply(in_mat1, out_mat_gapi, getCompileArgs());
++    // OpenCV code /////////////////////////////////////////////////////////////
++    {
++        cv::cvtColor(in_mat1, out_mat_ocv, cv::COLOR_YUV2BGR);
++    }
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi, out_mat_ocv));
++        EXPECT_EQ(out_mat_gapi.size(), sz);
++    }
++}
++
++TEST_P(RGB2HSVTest, AccuracyTest)
++{
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in;
++    auto out = cv::gapi::RGB2HSV(in);
++
++    cv::GComputation c(in, out);
++    c.apply(in_mat1, out_mat_gapi, getCompileArgs());
++    // OpenCV code /////////////////////////////////////////////////////////////
++    {
++        cv::cvtColor(in_mat1, out_mat_ocv, cv::COLOR_RGB2HSV);
++    }
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi, out_mat_ocv));
++        EXPECT_EQ(out_mat_gapi.size(), sz);
++    }
++}
++
++TEST_P(BayerGR2RGBTest, AccuracyTest)
++{
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in;
++    auto out = cv::gapi::BayerGR2RGB(in);
++
++    cv::GComputation c(in, out);
++    c.apply(in_mat1, out_mat_gapi, getCompileArgs());
++    // OpenCV code /////////////////////////////////////////////////////////////
++    {
++        cv::cvtColor(in_mat1, out_mat_ocv, cv::COLOR_BayerGR2RGB);
++    }
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi, out_mat_ocv));
++        EXPECT_EQ(out_mat_gapi.size(), sz);
++    }
++}
++
++TEST_P(RGB2YUV422Test, AccuracyTest)
++{
++    // G-API code //////////////////////////////////////////////////////////////
++    cv::GMat in;
++    auto out = cv::gapi::RGB2YUV422(in);
++
++    cv::GComputation c(in, out);
++    c.apply(in_mat1, out_mat_gapi, getCompileArgs());
++    // OpenCV code /////////////////////////////////////////////////////////////
++    {
++        convertRGB2YUV422Ref(in_mat1, out_mat_ocv);
++    }
++    // Comparison //////////////////////////////////////////////////////////////
++    {
++        EXPECT_TRUE(cmpF(out_mat_gapi, out_mat_ocv));
++        EXPECT_EQ(out_mat_gapi.size(), sz);
++    }
++}
++} // opencv_test
++
++#endif //OPENCV_GAPI_IMGPROC_TESTS_INL_HPP
+diff --git a/modules/gapi/test/cpu/gapi_imgproc_tests_cpu.cpp b/modules/gapi/test/cpu/gapi_imgproc_tests_cpu.cpp
+index 93df74e98f..8e3fa3ec4e 100644
+--- a/modules/gapi/test/cpu/gapi_imgproc_tests_cpu.cpp
++++ b/modules/gapi/test/cpu/gapi_imgproc_tests_cpu.cpp
+@@ -421,6 +421,14 @@ INSTANTIATE_TEST_CASE_P(RGB2GrayTestCPU, RGB2GrayTest,
+                                 Values(IMGPROC_CPU),
+                                 Values(AbsExact().to_compare_obj())));
+ 
++INSTANTIATE_TEST_CASE_P(RGBA2GrayTestCPU, RGBA2GrayTest,
++                        Combine(Values(CV_8UC4),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(CV_8UC1),
++                                Values(IMGPROC_CPU),
++                                Values(AbsExact().to_compare_obj())));
++
+ INSTANTIATE_TEST_CASE_P(BGR2GrayTestCPU, BGR2GrayTest,
+                         Combine(Values(CV_8UC3),
+                                 Values(cv::Size(1280, 720)),
+@@ -428,6 +436,14 @@ INSTANTIATE_TEST_CASE_P(BGR2GrayTestCPU, BGR2GrayTest,
+                                 Values(IMGPROC_CPU),
+                                 Values(AbsExact().to_compare_obj())));
+ 
++INSTANTIATE_TEST_CASE_P(BGRA2GrayTestCPU, BGRA2GrayTest,
++                        Combine(Values(CV_8UC4),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(CV_8UC1),
++                                Values(IMGPROC_CPU),
++                                Values(AbsExact().to_compare_obj())));
++
+ INSTANTIATE_TEST_CASE_P(RGB2YUVTestCPU, RGB2YUVTest,
+                         Combine(Values(CV_8UC3),
+                                 Values(cv::Size(1280, 720)),
+diff --git a/modules/gapi/test/cpu/gapi_imgproc_tests_cpu.cpp.orig b/modules/gapi/test/cpu/gapi_imgproc_tests_cpu.cpp.orig
+new file mode 100644
+index 0000000000..8a94583fcc
+--- /dev/null
++++ b/modules/gapi/test/cpu/gapi_imgproc_tests_cpu.cpp.orig
+@@ -0,0 +1,380 @@
++// This file is part of OpenCV project.
++// It is subject to the license terms in the LICENSE file found in the top-level directory
++// of this distribution and at http://opencv.org/license.html.
++//
++// Copyright (C) 2018-2020 Intel Corporation
++
++
++#include "../test_precomp.hpp"
++
++#include "../common/gapi_imgproc_tests.hpp"
++#include <opencv2/gapi/cpu/imgproc.hpp>
++
++namespace
++{
++#define IMGPROC_CPU [] () { return cv::compile_args(cv::gapi::use_only{cv::gapi::imgproc::cpu::kernels()}); }
++}  // anonymous namespace
++
++namespace opencv_test
++{
++
++INSTANTIATE_TEST_CASE_P(Filter2DTestCPU, Filter2DTest,
++                        Combine(Values(CV_8UC1, CV_8UC3, CV_16UC1, CV_16SC1, CV_32FC1),
++                                Values(cv::Size(1280, 720),
++                                        cv::Size(640, 480),
++                                        cv::Size(128, 128)),
++                                Values(-1, CV_32F),
++                                Values(IMGPROC_CPU),
++                                Values(AbsExact().to_compare_obj()),
++                                Values(cv::Size(3, 3),
++                                       cv::Size(4, 4),
++                                       cv::Size(5, 5),
++                                       cv::Size(7, 7)),
++                                Values(cv::BORDER_DEFAULT)));
++
++INSTANTIATE_TEST_CASE_P(BoxFilterTestCPU, BoxFilterTest,
++                        Combine(Values(CV_8UC1, CV_8UC3, CV_16UC1, CV_16SC1, CV_32FC1),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(-1, CV_32F),
++                                Values(IMGPROC_CPU),
++                                Values(AbsTolerance(0).to_compare_obj()),
++                                Values(3,5),
++                                Values(cv::BORDER_DEFAULT)));
++
++INSTANTIATE_TEST_CASE_P(SepFilterTestCPU_8U, SepFilterTest,
++                        Combine(Values(CV_8UC1, CV_8UC3),
++                                Values(cv::Size(1280, 720),
++                                        cv::Size(640, 480)),
++                                Values(-1, CV_16S, CV_32F),
++                                Values(IMGPROC_CPU),
++                                Values(AbsExact().to_compare_obj()),
++                                Values(3)));
++
++INSTANTIATE_TEST_CASE_P(SepFilterTestCPU_other, SepFilterTest,
++                        Combine(Values(CV_16UC1, CV_16SC1, CV_32FC1),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(-1, CV_32F),
++                                Values(IMGPROC_CPU),
++                                Values(AbsExact().to_compare_obj()),
++                                Values(3)));
++
++INSTANTIATE_TEST_CASE_P(BlurTestCPU, BlurTest,
++                        Combine(Values(CV_8UC1, CV_8UC3, CV_16UC1, CV_16SC1, CV_32FC1),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(-1),
++                                Values(IMGPROC_CPU),
++                                Values(AbsTolerance(0.0).to_compare_obj()),
++                                Values(3,5),
++                                Values(cv::BORDER_DEFAULT)));
++
++INSTANTIATE_TEST_CASE_P(gaussBlurTestCPU, GaussianBlurTest,
++                        Combine(Values(CV_8UC1, CV_8UC3, CV_16UC1, CV_16SC1, CV_32FC1),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(-1),
++                                Values(IMGPROC_CPU),
++                                Values(AbsExact().to_compare_obj()),
++                                Values(3, 5)));
++
++INSTANTIATE_TEST_CASE_P(MedianBlurTestCPU, MedianBlurTest,
++                        Combine(Values(CV_8UC1, CV_8UC3, CV_16UC1, CV_16SC1, CV_32FC1),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(-1),
++                                Values(IMGPROC_CPU),
++                                Values(AbsExact().to_compare_obj()),
++                                Values(3, 5)));
++
++INSTANTIATE_TEST_CASE_P(ErodeTestCPU, ErodeTest,
++                        Combine(Values(CV_8UC1, CV_8UC3, CV_16UC1, CV_16SC1, CV_32FC1),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(-1),
++                                Values(IMGPROC_CPU),
++                                Values(AbsExact().to_compare_obj()),
++                                Values(3, 5),
++                                Values(cv::MorphShapes::MORPH_RECT,
++                                       cv::MorphShapes::MORPH_CROSS,
++                                       cv::MorphShapes::MORPH_ELLIPSE)));
++
++INSTANTIATE_TEST_CASE_P(Erode3x3TestCPU, Erode3x3Test,
++                        Combine(Values(CV_8UC1, CV_8UC3, CV_16UC1, CV_16SC1, CV_32FC1),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(-1),
++                                Values(IMGPROC_CPU),
++                                Values(AbsExact().to_compare_obj()),
++                                Values(1,2,4)));
++
++INSTANTIATE_TEST_CASE_P(DilateTestCPU, DilateTest,
++                        Combine(Values(CV_8UC1, CV_8UC3, CV_16UC1, CV_16SC1, CV_32FC1),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(-1),
++                                Values(IMGPROC_CPU),
++                                Values(AbsExact().to_compare_obj()),
++                                Values(3, 5),
++                                Values(cv::MorphShapes::MORPH_RECT,
++                                       cv::MorphShapes::MORPH_CROSS,
++                                       cv::MorphShapes::MORPH_ELLIPSE)));
++
++INSTANTIATE_TEST_CASE_P(Dilate3x3TestCPU, Dilate3x3Test,
++                        Combine(Values(CV_8UC1, CV_8UC3, CV_16UC1, CV_16SC1, CV_32FC1),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(-1),
++                                Values(IMGPROC_CPU),
++                                Values(AbsExact().to_compare_obj()),
++                                Values(1,2,4)));
++
++INSTANTIATE_TEST_CASE_P(SobelTestCPU, SobelTest,
++                        Combine(Values(CV_8UC1, CV_8UC3, CV_16UC1, CV_16SC1),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(-1, CV_16S, CV_32F),
++                                Values(IMGPROC_CPU),
++                                Values(AbsExact().to_compare_obj()),
++                                Values(3, 5),
++                                Values(0, 1),
++                                Values(1, 2)));
++
++INSTANTIATE_TEST_CASE_P(SobelTestCPU32F, SobelTest,
++                        Combine(Values(CV_32FC1),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(CV_32F),
++                                Values(IMGPROC_CPU),
++                                Values(AbsExact().to_compare_obj()),
++                                Values(3, 5),
++                                Values(0, 1),
++                                Values(1, 2)));
++
++INSTANTIATE_TEST_CASE_P(SobelXYTestCPU, SobelXYTest,
++                        Combine(Values(CV_8UC1, CV_8UC3, CV_16UC1, CV_16SC1),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(-1, CV_16S, CV_32F),
++                                Values(IMGPROC_CPU),
++                                Values(AbsExact().to_compare_obj()),
++                                Values(3, 5),
++                                Values(1, 2),
++                                Values(BORDER_CONSTANT, BORDER_REPLICATE, BORDER_REFLECT),
++                                Values(0, 1, 255)));
++
++INSTANTIATE_TEST_CASE_P(SobelXYTestCPU32F, SobelXYTest,
++                        Combine(Values(CV_32FC1),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(CV_32F),
++                                Values(IMGPROC_CPU),
++                                Values(AbsExact().to_compare_obj()),
++                                Values(3, 5),
++                                Values(1, 2),
++                                Values(BORDER_CONSTANT, BORDER_REPLICATE, BORDER_REFLECT),
++                                Values(0, 1, 255)));
++
++INSTANTIATE_TEST_CASE_P(LaplacianTestCPU, LaplacianTest,
++                        Combine(Values(CV_8UC1, CV_8UC3, CV_16UC1, CV_16SC1),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(-1),
++                                Values(IMGPROC_CPU),
++                                Values(AbsExact().to_compare_obj()),
++                                Values(1, 3),
++                                Values(0.2, 1.0),
++                                Values(BORDER_CONSTANT, BORDER_REPLICATE, BORDER_REFLECT)));
++
++INSTANTIATE_TEST_CASE_P(BilateralFilterTestCPU, BilateralFilterTest,
++                        Combine(Values(CV_32FC1, CV_32FC3, CV_8UC1, CV_8UC3),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(-1),
++                                Values(IMGPROC_CPU),
++                                Values(AbsExact().to_compare_obj()),
++                                Values(3, 5),
++                                Values(20),
++                                Values(10),
++                                Values(BORDER_CONSTANT, BORDER_REPLICATE, BORDER_REFLECT)));
++
++INSTANTIATE_TEST_CASE_P(EqHistTestCPU, EqHistTest,
++                        Combine(Values(CV_8UC1),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(CV_8UC1),
++                                Values(IMGPROC_CPU),
++                                Values(AbsExact().to_compare_obj())));
++
++INSTANTIATE_TEST_CASE_P(CannyTestCPU, CannyTest,
++                        Combine(Values(CV_8UC1, CV_8UC3),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(CV_8UC1),
++                                Values(IMGPROC_CPU),
++                                Values(AbsSimilarPoints(0, 0.05).to_compare_obj()),
++                                Values(3.0, 120.0),
++                                Values(125.0, 240.0),
++                                Values(3, 5),
++                                testing::Bool()));
++
++INSTANTIATE_TEST_CASE_P(GoodFeaturesTestCPU, GoodFeaturesTest,
++                        Combine(Values(IMGPROC_CPU),
++                                Values(AbsExactVector<cv::Point2f>().to_compare_obj()),
++                                Values("cv/shared/fruits.png"),
++                                Values(CV_32FC1, CV_8UC1),
++                                Values(50, 100),
++                                Values(0.01),
++                                Values(10.0),
++                                Values(3),
++                                testing::Bool()));
++
++INSTANTIATE_TEST_CASE_P(GoodFeaturesInternalTestCPU, GoodFeaturesTest,
++                        Combine(Values(IMGPROC_CPU),
++                                Values(AbsExactVector<cv::Point2f>().to_compare_obj()),
++                                Values("cv/cascadeandhog/images/audrybt1.png"),
++                                Values(CV_32FC1, CV_8UC1),
++                                Values(100),
++                                Values(0.0000001),
++                                Values(5.0),
++                                Values(3),
++                                Values(true)));
++
++
++INSTANTIATE_TEST_CASE_P(RGB2GrayTestCPU, RGB2GrayTest,
++                        Combine(Values(CV_8UC3),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(CV_8UC1),
++                                Values(IMGPROC_CPU),
++                                Values(AbsExact().to_compare_obj())));
++
++INSTANTIATE_TEST_CASE_P(BGR2GrayTestCPU, BGR2GrayTest,
++                        Combine(Values(CV_8UC3),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(CV_8UC1),
++                                Values(IMGPROC_CPU),
++                                Values(AbsExact().to_compare_obj())));
++
++INSTANTIATE_TEST_CASE_P(RGB2YUVTestCPU, RGB2YUVTest,
++                        Combine(Values(CV_8UC3),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(CV_8UC3),
++                                Values(IMGPROC_CPU),
++                                Values(AbsExact().to_compare_obj())));
++
++INSTANTIATE_TEST_CASE_P(YUV2RGBTestCPU, YUV2RGBTest,
++                        Combine(Values(CV_8UC3),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(CV_8UC3),
++                                Values(IMGPROC_CPU),
++                                Values(AbsExact().to_compare_obj())));
++
++INSTANTIATE_TEST_CASE_P(NV12toRGBTestCPU, NV12toRGBTest,
++                        Combine(Values(CV_8UC1),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(CV_8UC3),
++                                Values(IMGPROC_CPU),
++                                Values(AbsExact().to_compare_obj())));
++
++INSTANTIATE_TEST_CASE_P(NV12toBGRTestCPU, NV12toBGRTest,
++                        Combine(Values(CV_8UC1),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(CV_8UC3),
++                                Values(IMGPROC_CPU),
++                                Values(AbsExact().to_compare_obj())));
++
++INSTANTIATE_TEST_CASE_P(NV12toGrayTestCPU, NV12toGrayTest,
++                        Combine(Values(CV_8UC1),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(CV_8UC1),
++                                Values(IMGPROC_CPU),
++                                Values(AbsExact().to_compare_obj())));
++
++INSTANTIATE_TEST_CASE_P(NV12toRGBpTestCPU, NV12toRGBpTest,
++                        Combine(Values(CV_8UC1),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(CV_8UC1),
++                                Values(IMGPROC_CPU),
++                                Values(AbsExact().to_compare_obj())));
++
++INSTANTIATE_TEST_CASE_P(NV12toBGRpTestCPU, NV12toBGRpTest,
++                        Combine(Values(CV_8UC1),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(CV_8UC3),
++                                Values(IMGPROC_CPU),
++                                Values(AbsExact().to_compare_obj())));
++
++INSTANTIATE_TEST_CASE_P(RGB2LabTestCPU, RGB2LabTest,
++                        Combine(Values(CV_8UC3),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(CV_8UC3),
++                                Values(IMGPROC_CPU),
++                                Values(AbsExact().to_compare_obj())));
++
++INSTANTIATE_TEST_CASE_P(BGR2LUVTestCPU, BGR2LUVTest,
++                        Combine(Values(CV_8UC3),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(CV_8UC3),
++                                Values(IMGPROC_CPU),
++                                Values(AbsExact().to_compare_obj())));
++
++INSTANTIATE_TEST_CASE_P(LUV2BGRTestCPU, LUV2BGRTest,
++                        Combine(Values(CV_8UC3),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(CV_8UC3),
++                                Values(IMGPROC_CPU),
++                                Values(AbsExact().to_compare_obj())));
++
++INSTANTIATE_TEST_CASE_P(BGR2YUVTestCPU, BGR2YUVTest,
++                        Combine(Values(CV_8UC3),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(CV_8UC3),
++                                Values(IMGPROC_CPU),
++                                Values(AbsExact().to_compare_obj())));
++
++INSTANTIATE_TEST_CASE_P(YUV2BGRTestCPU, YUV2BGRTest,
++                        Combine(Values(CV_8UC3),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(CV_8UC3),
++                                Values(IMGPROC_CPU),
++                                Values(AbsExact().to_compare_obj())));
++
++INSTANTIATE_TEST_CASE_P(RGB2HSVTestCPU, RGB2HSVTest,
++                        Combine(Values(CV_8UC3),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(CV_8UC3),
++                                Values(IMGPROC_CPU),
++                                Values(AbsExact().to_compare_obj())));
++
++INSTANTIATE_TEST_CASE_P(BayerGR2RGBTestCPU, BayerGR2RGBTest,
++                        Combine(Values(CV_8UC1),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(CV_8UC3),
++                                Values(IMGPROC_CPU),
++                                Values(AbsExact().to_compare_obj())));
++
++INSTANTIATE_TEST_CASE_P(RGB2YUV422TestCPU, RGB2YUV422Test,
++                        Combine(Values(CV_8UC3),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(CV_8UC2),
++                                Values(IMGPROC_CPU),
++                                Values(AbsTolerance(1).to_compare_obj())));
++} // opencv_test
+diff --git a/modules/gapi/test/cpu/gapi_imgproc_tests_fluid.cpp b/modules/gapi/test/cpu/gapi_imgproc_tests_fluid.cpp
+index 1b4c351232..1072e789d0 100644
+--- a/modules/gapi/test/cpu/gapi_imgproc_tests_fluid.cpp
++++ b/modules/gapi/test/cpu/gapi_imgproc_tests_fluid.cpp
+@@ -45,6 +45,14 @@ INSTANTIATE_TEST_CASE_P(RGB2GrayTestFluid, RGB2GrayTest,
+                                 Values(IMGPROC_FLUID),
+                                 Values(ToleranceColor(1e-3).to_compare_obj())));
+ 
++INSTANTIATE_TEST_CASE_P(RGBA2GrayTestFluid, RGBA2GrayTest,
++                        Combine(Values(CV_8UC4),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(CV_8UC1),
++                                Values(IMGPROC_FLUID),
++                                Values(ToleranceColor(1e-3).to_compare_obj())));
++
+ INSTANTIATE_TEST_CASE_P(BGR2GrayTestFluid, BGR2GrayTest,
+                         Combine(Values(CV_8UC3),
+                                 Values(cv::Size(1280, 720)),
+@@ -52,6 +60,14 @@ INSTANTIATE_TEST_CASE_P(BGR2GrayTestFluid, BGR2GrayTest,
+                                 Values(IMGPROC_FLUID),
+                                 Values(ToleranceColor(1e-3).to_compare_obj())));
+ 
++INSTANTIATE_TEST_CASE_P(BGRA2GrayTestFluid, BGRA2GrayTest,
++                        Combine(Values(CV_8UC4),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(CV_8UC1),
++                                Values(IMGPROC_FLUID),
++                                Values(ToleranceColor(1e-3).to_compare_obj())));
++
+ INSTANTIATE_TEST_CASE_P(RGB2YUVTestFluid, RGB2YUVTest,
+                         Combine(Values(CV_8UC3),
+                                 Values(cv::Size(1280, 720)),
+diff --git a/modules/gapi/test/gpu/gapi_imgproc_tests_gpu.cpp b/modules/gapi/test/gpu/gapi_imgproc_tests_gpu.cpp
+index bd9452a795..983d4603d1 100644
+--- a/modules/gapi/test/gpu/gapi_imgproc_tests_gpu.cpp
++++ b/modules/gapi/test/gpu/gapi_imgproc_tests_gpu.cpp
+@@ -205,6 +205,14 @@ INSTANTIATE_TEST_CASE_P(RGB2GrayTestGPU, RGB2GrayTest,
+                                 Values(IMGPROC_GPU),
+                                 Values(ToleranceColor(1e-3).to_compare_obj())));
+ 
++INSTANTIATE_TEST_CASE_P(RGBA2GrayTestGPU, RGBA2GrayTest,
++                        Combine(Values(CV_8UC4),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(CV_8UC1),
++                                Values(IMGPROC_GPU),
++                                Values(ToleranceColor(1e-3).to_compare_obj())));
++
+ INSTANTIATE_TEST_CASE_P(BGR2GrayTestGPU, BGR2GrayTest,
+                         Combine(Values(CV_8UC3),
+                                 Values(cv::Size(1280, 720)),
+@@ -212,6 +220,14 @@ INSTANTIATE_TEST_CASE_P(BGR2GrayTestGPU, BGR2GrayTest,
+                                 Values(IMGPROC_GPU),
+                                 Values(ToleranceColor(1e-3).to_compare_obj())));
+ 
++INSTANTIATE_TEST_CASE_P(BGRA2GrayTestGPU, BGRA2GrayTest,
++                        Combine(Values(CV_8UC4),
++                                Values(cv::Size(1280, 720),
++                                       cv::Size(640, 480)),
++                                Values(CV_8UC1),
++                                Values(IMGPROC_GPU),
++                                Values(ToleranceColor(1e-3).to_compare_obj())));
++
+ INSTANTIATE_TEST_CASE_P(RGB2YUVTestGPU, RGB2YUVTest,
+                         Combine(Values(CV_8UC3),
+                                 Values(cv::Size(1280, 720)),
+-- 
+2.43.0
+

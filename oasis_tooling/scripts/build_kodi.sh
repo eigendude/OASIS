@@ -24,6 +24,9 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # Import CMake paths and config
 source "${SCRIPT_DIR}/env_cmake.sh"
 
+# Import OpenCV paths and config
+source "${SCRIPT_DIR}/env_cv.sh"
+
 # Import Kodi paths and config
 source "${SCRIPT_DIR}/env_kodi.sh"
 
@@ -114,12 +117,15 @@ fi
       -DAPP_RENDER_SYSTEM=${APP_RENDER_SYSTEM} \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_INSTALL_PREFIX="${KODI_INSTALL_DIR}" \
+      -DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH} \
       -DCORE_PLATFORM_NAME="wayland" \
       -DENABLE_CEC=OFF \
       -DENABLE_INTERNAL_FFMPEG=ON \
       -DENABLE_LLD=${ENABLE_LLD} \
       -DENABLE_ROS2=ON \
       -DENABLE_TESTING=OFF \
+      -DOpenCV_DIR=${OpenCV_DIR} \
+      -DOpenCV_ROOT=${OpenCV_ROOT} \
 )
 
 #

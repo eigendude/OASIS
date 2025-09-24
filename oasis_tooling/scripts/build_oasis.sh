@@ -24,6 +24,9 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # Import CMake paths and config
 source "${SCRIPT_DIR}/env_cmake.sh"
 
+# Import OpenCV paths and config
+source "${SCRIPT_DIR}/env_cv.sh"
+
 # Import MediaPipe paths and config
 source "${SCRIPT_DIR}/env_mediapipe.sh"
 
@@ -49,11 +52,12 @@ COLCON_FLAGS="--merge-install"
 # Add ccache support
 COLCON_FLAGS+=" \
   --cmake-args \
+    -DCMAKE_C_COMPILER_LAUNCHER=ccache \
     -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+    -DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH} \
+    -DOpenCV_DIR=${OpenCV_DIR} \
+    -DOpenCV_ROOT=${OpenCV_ROOT} \
 "
-
-# Expose the MediaPipe install directorie to CMake
-export CMAKE_PREFIX_PATH="${MEDIAPIPE_INSTALL_DIR}:${CMAKE_PREFIX_PATH}"
 
 # Uncomment these to force building in serial
 #MAKE_FLAGS+=" -j1 -l1"

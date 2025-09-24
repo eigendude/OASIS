@@ -34,6 +34,7 @@ Environment=WAYLAND_DISPLAY=wayland-0
 
 Environment=OASIS_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/oasis-${ROS2_DISTRO}/install/setup.bash
 Environment=KODI_BINARY=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/kodi-${ROS2_DISTRO}/install/bin/kodi
+Environment=OPENCV_LIB_DIR=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/opencv/install/lib
 
 #
 # Service definition
@@ -42,7 +43,7 @@ Environment=KODI_BINARY=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/kodi-${R
 # Ensure the system has been up for at least 20 seconds before launching perception
 ExecStartPre=/bin/bash -c 'while [ $(cut -d. -f1 /proc/uptime) -lt 10 ]; do sleep 1; done'
 
-ExecStart=/bin/bash -c 'set +o nounset && source `eval echo "${OASIS_ENV}"` && `eval echo "${KODI_BINARY}"`'
+ExecStart=/bin/bash -c 'set +o nounset && export LD_LIBRARY_PATH="`eval echo "${OPENCV_LIB_DIR}"`:${LD_LIBRARY_PATH:-}" && source `eval echo "${OASIS_ENV}"` && `eval echo "${KODI_BINARY}"`'
 Restart=always
 
 [Install]

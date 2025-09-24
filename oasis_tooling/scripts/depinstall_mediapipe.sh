@@ -29,13 +29,6 @@ sudo apt install -y \
   curl \
   libegl-dev \
   libgles-dev \
-  libopencv-calib3d-dev \
-  libopencv-contrib-dev \
-  libopencv-core-dev \
-  libopencv-features2d-dev \
-  libopencv-highgui-dev \
-  libopencv-imgproc-dev \
-  libopencv-video-dev \
 
 # We patch protobuf to match the system version version, so it must be installed
 sudo apt install -y \
