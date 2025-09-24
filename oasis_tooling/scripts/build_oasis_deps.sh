@@ -52,6 +52,12 @@ if [[ "${OSTYPE}" == "darwin"* ]]; then
   COLCON_FLAGS+=" --packages-skip-by-dep v4l2_camera"
 fi
 
+# Convert the POSIX-style colon delimited prefix path that we maintain in the
+# environment into the semicolon delimited list that CMake expects on the
+# command line. This ensures hints like our custom OpenCV toolchain are honored
+# even after sourcing the ROS setup file which appends additional prefixes.
+cmake_prefix_path_cmake="${CMAKE_PREFIX_PATH//:/;}"
+
 # Add ccache support and fix locating Python
 # Also force CMP0074 NEW so find_package() respects *_ROOT hints (e.g., OpenCV_ROOT)
 COLCON_FLAGS+=" \
@@ -60,7 +66,7 @@ COLCON_FLAGS+=" \
     -DCMAKE_C_COMPILER_LAUNCHER=ccache \
     -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
     -DCMAKE_POLICY_DEFAULT_CMP0074=NEW \
-    -DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH} \
+    -DCMAKE_PREFIX_PATH=${cmake_prefix_path_cmake} \
     -DOpenCV_DIR=${OpenCV_DIR} \
     -DOpenCV_ROOT=${OpenCV_ROOT} \
 "
