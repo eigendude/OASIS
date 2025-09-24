@@ -68,7 +68,12 @@ set(BGS_LIBRARIES
 )
 
 # TODO: Required by bgslibrary
-find_package(OpenCV REQUIRED)
+if(NOT DEFINED OpenCV_DIR AND DEFINED ENV{OpenCV_DIR})
+  # Allow the build to use the custom OpenCV toolchain that is bundled with OASIS
+  set(OpenCV_DIR $ENV{OpenCV_DIR})
+endif()
+
+find_package(OpenCV 4.12 REQUIRED)
 list(APPEND BGS_LIBRARIES ${OpenCV_LIBS})
 
 # Sources needed for MediaPipe

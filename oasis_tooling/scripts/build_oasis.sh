@@ -27,6 +27,9 @@ source "${SCRIPT_DIR}/env_cmake.sh"
 # Import MediaPipe paths and config
 source "${SCRIPT_DIR}/env_mediapipe.sh"
 
+# Import OpenCV paths and config
+source "${SCRIPT_DIR}/env_opencv.sh"
+
 # Import OASIS paths and config
 source "${SCRIPT_DIR}/env_oasis.sh"
 
@@ -52,8 +55,22 @@ COLCON_FLAGS+=" \
     -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
 "
 
-# Expose the MediaPipe install directorie to CMake
-export CMAKE_PREFIX_PATH="${MEDIAPIPE_INSTALL_DIR}:${CMAKE_PREFIX_PATH}"
+# Expose the custom OpenCV build to CMake and downstream packages
+export OpenCV_DIR="${OPENCV_INSTALL_DIR}/lib/cmake/opencv4"
+export OpenCV_ROOT="${OPENCV_INSTALL_DIR}"
+
+if [ -n "${CMAKE_PREFIX_PATH:-}" ]; then
+  export CMAKE_PREFIX_PATH="${OPENCV_INSTALL_DIR}:${CMAKE_PREFIX_PATH}"
+else
+  export CMAKE_PREFIX_PATH="${OPENCV_INSTALL_DIR}"
+fi
+
+# Expose the MediaPipe install directories to CMake
+if [ -n "${CMAKE_PREFIX_PATH:-}" ]; then
+  export CMAKE_PREFIX_PATH="${MEDIAPIPE_INSTALL_DIR}:${CMAKE_PREFIX_PATH}"
+else
+  export CMAKE_PREFIX_PATH="${MEDIAPIPE_INSTALL_DIR}"
+fi
 
 # Uncomment these to force building in serial
 #MAKE_FLAGS+=" -j1 -l1"
