@@ -21,6 +21,9 @@ set -o nounset
 # Get the absolute path to this script
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
+# Import OpenCV paths and config
+source "${SCRIPT_DIR}/env_cv.sh"
+
 # Import MediaPipe environment and config
 source "${SCRIPT_DIR}/env_mediapipe.sh"
 
