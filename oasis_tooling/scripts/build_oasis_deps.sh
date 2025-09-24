@@ -53,11 +53,13 @@ if [[ "${OSTYPE}" == "darwin"* ]]; then
 fi
 
 # Add ccache support and fix locating Python
+# Also force CMP0074 NEW so find_package() respects *_ROOT hints (e.g., OpenCV_ROOT)
 COLCON_FLAGS+=" \
   --cmake-args \
     -DBUILD_TESTING=OFF \
     -DCMAKE_C_COMPILER_LAUNCHER=ccache \
     -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+    -DCMAKE_POLICY_DEFAULT_CMP0074=NEW \
     -DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH} \
     -DOpenCV_DIR=${OpenCV_DIR} \
     -DOpenCV_ROOT=${OpenCV_ROOT} \
