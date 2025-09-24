@@ -204,7 +204,7 @@ def add_background_subtractors(
                         ),
                     ),
                     (f"{zone_id}_foreground", f"{zone_id}/foreground"),
-                    (f"{zone_id}_background", f"{zone_id}/background"),
+                    (f"{zone_id}_subtracted", f"{zone_id}/subtracted"),
                 ],
             )
             for zone_id in zone_ids

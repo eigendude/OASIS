@@ -196,6 +196,67 @@ rclcpp_components_register_node(
 )
 
 #
+# background_subtractor
+#
+
+add_executable(background_subtractor
+  src/cli/background_subtractor.cpp
+  src/nodes/BackgroundSubtractorNode.cpp
+)
+
+ament_target_dependencies(background_subtractor
+  ${AMENT_COMMON_DEPENDENCIES}
+)
+
+target_include_directories(background_subtractor PUBLIC
+  ${BGSLIBRARY_INCLUDE_DIRS}
+)
+
+target_link_libraries(background_subtractor
+  ${BGS_LIBRARIES}
+)
+
+install(
+  TARGETS
+    background_subtractor
+  DESTINATION
+    lib/${PROJECT_NAME}
+)
+
+add_library(background_subtractor_component SHARED
+  src/nodes/BackgroundSubtractorNode.cpp
+  src/components/background_subtractor_component.cpp
+  src/ros/RosComponent.cpp
+)
+
+ament_target_dependencies(background_subtractor_component
+  ${AMENT_COMMON_DEPENDENCIES}
+)
+
+target_include_directories(background_subtractor_component PUBLIC
+  ${BGSLIBRARY_INCLUDE_DIRS}
+  ${rclcpp_components_INCLUDE_DIRS}
+)
+
+target_link_libraries(background_subtractor_component
+  ${BGS_LIBRARIES}
+  ${rclcpp_components_LIBRARIES}
+)
+
+install(
+  TARGETS
+    background_subtractor_component
+  DESTINATION
+    lib
+)
+
+rclcpp_components_register_node(
+  background_subtractor_component
+  PLUGIN "oasis_perception_cpp::BackgroundSubtractorComponent"
+  EXECUTABLE background_subtractor_component_node
+)
+
+#
 # hello_world
 #
 
