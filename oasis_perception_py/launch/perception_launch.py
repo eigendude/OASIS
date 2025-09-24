@@ -84,12 +84,12 @@ if HOST_ID == PERCEPTION_HOST_ID:
 
 
 #
-# Background modeler
+# Background modeler and background subtractor
 #
 
 
-def add_background_modeler(ld: LaunchDescription, zone_id: str) -> None:
-    node: Node = Node(
+def add_background_nodes(ld: LaunchDescription, zone_id: str) -> None:
+    modeler_node: Node = Node(
         namespace=ROS_NAMESPACE,
         package=CPP_PACKAGE_NAME,
         executable="background_modeler",
@@ -109,10 +109,33 @@ def add_background_modeler(ld: LaunchDescription, zone_id: str) -> None:
             (f"{zone_id}_background", f"{zone_id}/background"),
         ],
     )
-    ld.add_action(node)
+    ld.add_action(modeler_node)
+
+    subtractor_node: Node = Node(
+        namespace=ROS_NAMESPACE,
+        package=CPP_PACKAGE_NAME,
+        executable="background_subtractor",
+        name=f"background_subtractor_{zone_id}",
+        output="screen",
+        parameters=[{"zone_id": zone_id}],
+        remappings=[
+            (
+                f"{zone_id}_image",
+                (
+                    # Use different remappings for Kinect V2
+                    f"{zone_id}/sd/image_color"
+                    if zone_id == KINECT_V2_ZONE_ID
+                    else f"{zone_id}/image_rect"
+                ),
+            ),
+            (f"{zone_id}_foreground", f"{zone_id}/foreground"),
+            (f"{zone_id}_subtracted", f"{zone_id}/subtracted"),
+        ],
+    )
+    ld.add_action(subtractor_node)
 
 
-def add_background_modelers(
+def add_background_components(
     ld: LaunchDescription, host_id: str, zone_ids: List[str]
 ) -> None:
     background_container: ComposableNodeContainer = ComposableNodeContainer(
@@ -139,6 +162,29 @@ def add_background_modelers(
                         ),
                     ),
                     (f"{zone_id}_background", f"{zone_id}/background"),
+                ],
+            )
+            for zone_id in zone_ids
+        ]
+        + [
+            ComposableNode(
+                namespace=ROS_NAMESPACE,
+                package=CPP_PACKAGE_NAME,
+                plugin="oasis_perception_cpp::BackgroundSubtractorComponent",
+                name=f"background_subtractor_{zone_id}",
+                parameters=[{"zone_id": zone_id}],
+                remappings=[
+                    (
+                        f"{zone_id}_image",
+                        (
+                            # Use different remappings for Kinect V2
+                            f"{zone_id}/sd/image_color"
+                            if zone_id == KINECT_V2_ZONE_ID
+                            else f"{zone_id}/image_rect"
+                        ),
+                    ),
+                    (f"{zone_id}_foreground", f"{zone_id}/foreground"),
+                    (f"{zone_id}_subtracted", f"{zone_id}/subtracted"),
                 ],
             )
             for zone_id in zone_ids
@@ -247,7 +293,7 @@ def generate_launch_description() -> LaunchDescription:
     ld = LaunchDescription()
 
     if PERCEPTION_SERVER_BACKGROUND:
-        add_background_modelers(ld, HOST_ID, PERCEPTION_SERVER_BACKGROUND)
+        add_background_components(ld, HOST_ID, PERCEPTION_SERVER_BACKGROUND)
 
     if PERCEPTION_SERVER_POSE_LANDMARKS:
         for host_id in PERCEPTION_SERVER_POSE_LANDMARKS:
