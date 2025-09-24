@@ -13,8 +13,8 @@
 #include <opencv2/gapi/cpu/gcpukernel.hpp>
 #include <opencv2/gapi/cpu/imgproc.hpp>
 
-using namespace OASIS;
-using namespace VIDEO;
+namespace OASIS::VIDEO
+{
 
 // Predict points for optical flow
 // clang-format off
@@ -37,3 +37,5 @@ cv::gapi::GKernelPackage kernels()
 
   return pkg;
 }
+
+} // namespace OASIS::VIDEO

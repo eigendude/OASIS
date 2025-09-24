@@ -10,8 +10,8 @@
 
 #include <opencv2/gapi/imgproc.hpp>
 
-using namespace OASIS;
-using namespace IMAGE;
+namespace OASIS::IMAGE
+{
 
 cv::GMat RGBA2Gray(const cv::GMat& rgbaImage)
 {
@@ -30,3 +30,5 @@ cv::GArray<cv::Point2f> GoodFeaturesToTrack(const cv::GMat& grayscaleImage,
   return GGoodFeatures::on(grayscaleImage, maxFeatures, qualityLevel, minDistance, mask, blockSize,
                            useHarrisDetector, k);
 }
+
+} // namespace OASIS::IMAGE

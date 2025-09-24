@@ -13,8 +13,8 @@
 #include <opencv2/gapi/cpu/gcpukernel.hpp>
 #include <opencv2/imgproc.hpp>
 
-using namespace OASIS;
-using namespace IMAGE;
+namespace OASIS::IMAGE
+{
 
 // Find good features
 // clang-format off
@@ -49,3 +49,5 @@ cv::gapi::GKernelPackage kernels()
 
   return pkg;
 }
+
+} // namespace OASIS::IMAGE

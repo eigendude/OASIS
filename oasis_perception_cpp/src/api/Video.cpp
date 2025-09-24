@@ -10,8 +10,8 @@
 
 #include <opencv2/video/tracking.hpp>
 
-using namespace OASIS;
-using namespace VIDEO;
+namespace OASIS::VIDEO
+{
 
 cv::GArray<cv::Point2f> PredictPoints(const cv::GArray<std::vector<cv::Point2f>>& pointHistory)
 {
@@ -88,3 +88,5 @@ cv::gapi::video::GOptFlowLKOutput CalcOpticalFlow(const cv::GMat& prevImg,
   return cv::gapi::calcOpticalFlowPyrLK(prevImg, nextImg, prevPts, predPts, winSize, maxLevel,
                                         criteria, flags, minEigThresh);
 }
+
+} // namespace OASIS::VIDEO
