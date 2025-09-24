@@ -30,22 +30,32 @@ jobs:
             ros2_distro: kilted
 
     env:
-      CMAKE_HASH: ${{ hashFiles('oasis_tooling/scripts/*cmake.sh') }}
-      OPENCV_HASH: ${{ hashFiles('oasis_tooling/config/opencv/**', 'oasis_tooling/scripts/*cv.sh') }}
-      ROS2_DESKTOP_HASH: ${{ hashFiles('oasis_tooling/config/ros2-desktop/**', 'oasis_tooling/scripts/*ros2_desktop.sh') }}
-      OASIS_DEPENDS_HASH: ${{ hashFiles(
-        'oasis_tooling/config/bgslibrary/**',
-        'oasis_tooling/config/depends.repos',
-        'oasis_tooling/config/libcamera_cmake/**',
-        'oasis_tooling/config/libcec/**',
-        'oasis_tooling/config/libfreenect2/**',
-        'oasis_tooling/config/OpenNI/**',
-        'oasis_tooling/config/orb-slam3/**',
-        'oasis_tooling/config/p8-platform/**',
-        'oasis_tooling/config/pangolin/**',
-        'oasis_tooling/config/vision_opencv/**',
-        'oasis_tooling/scripts/*oasis_deps.sh'
-      ) }}
+      CMAKE_HASH: >-
+        ${{ hashFiles('oasis_tooling/scripts/*cmake.sh') }}
+      OPENCV_HASH: >-
+        ${{ hashFiles(
+          'oasis_tooling/config/opencv/**',
+          'oasis_tooling/scripts/*cv.sh'
+        ) }}
+      ROS2_DESKTOP_HASH: >-
+        ${{ hashFiles(
+          'oasis_tooling/config/ros2-desktop/**',
+          'oasis_tooling/scripts/*ros2_desktop.sh'
+        ) }}
+      OASIS_DEPENDS_HASH: >-
+        ${{ hashFiles(
+          'oasis_tooling/config/bgslibrary/**',
+          'oasis_tooling/config/depends.repos',
+          'oasis_tooling/config/libcamera_cmake/**',
+          'oasis_tooling/config/libcec/**',
+          'oasis_tooling/config/libfreenect2/**',
+          'oasis_tooling/config/OpenNI/**',
+          'oasis_tooling/config/orb-slam3/**',
+          'oasis_tooling/config/p8-platform/**',
+          'oasis_tooling/config/pangolin/**',
+          'oasis_tooling/config/vision_opencv/**',
+          'oasis_tooling/scripts/*oasis_deps.sh'
+        ) }}
 
     # Steps represent a sequence of tasks that will be executed as part of the
     # job
