@@ -438,70 +438,9 @@ install(
 )
 
 #
-# optical_flow
-#
-
-set(OPTICAL_FLOW_SOURCES
-  src/api/ImageProc.cpp
-  src/api/Video.cpp
-  src/kernels/cpu/CPUImageProc.cpp
-  src/kernels/cpu/CPUVideo.cpp
-  src/nodes/OpticalFlowNode.cpp
-  src/video/OpticalFlow.cpp
-  src/video/VisionGraph.cpp
-)
-set(OPTICAL_FLOW_LIBRARIES
-  ${OpenCV_LIBS}
-  rclcpp::rclcpp
-)
-
-add_executable(optical_flow
-  ${OPTICAL_FLOW_SOURCES}
-  src/cli/optical_flow_node.cpp
-)
-target_include_directories(optical_flow PUBLIC
-  ${OpenCV_INCLUDE_DIRS}
-)
-target_link_libraries(optical_flow PUBLIC
-  ${OPTICAL_FLOW_LIBRARIES}
-)
-install(
-  TARGETS
-    optical_flow
-  DESTINATION
-    lib/${PROJECT_NAME}
-)
-
-add_library(optical_flow_component SHARED
-  ${OPTICAL_FLOW_SOURCES}
-  src/components/optical_flow_component.cpp
-  src/ros/RosComponent.cpp
-)
-target_include_directories(optical_flow_component PUBLIC
-  ${OpenCV_INCLUDE_DIRS}
-  ${rclcpp_components_INCLUDE_DIRS}
-)
-target_link_libraries(optical_flow_component PUBLIC
-  ${OPTICAL_FLOW_LIBRARIES}
-  ${rclcpp_components_LIBRARIES}
-)
-install(
-  TARGETS
-    optical_flow_component
-  DESTINATION
-    lib
-)
-
-# Register the component
-rclcpp_components_register_node(
-  optical_flow_component
-  PLUGIN "oasis_perception::OpticalFlowComponent"
-  EXECUTABLE optical_flow_component_node
-)
-
-#
 # pose_landmarker
 #
+
 
 # Check if the target MediaPipe::MediaPipe is available
 if(TARGET MediaPipe::MediaPipe)
