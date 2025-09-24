@@ -45,6 +45,7 @@ else
   COLCON_FLAGS+=" \
     --cmake-args \
       -DBUILD_TESTING=OFF \
+      -DCMAKE_C_COMPILER_LAUNCHER=ccache \
       -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
   "
 

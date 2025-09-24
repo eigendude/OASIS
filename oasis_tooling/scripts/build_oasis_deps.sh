@@ -24,6 +24,9 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # Import CMake paths and config
 source "${SCRIPT_DIR}/env_cmake.sh"
 
+# Import OpenCV paths and config
+source "${SCRIPT_DIR}/env_cv.sh"
+
 # Import OASIS dependency paths and config
 source "${SCRIPT_DIR}/env_oasis_deps.sh"
 
@@ -55,6 +58,9 @@ COLCON_FLAGS+=" \
     -DBUILD_TESTING=OFF \
     -DCMAKE_C_COMPILER_LAUNCHER=ccache \
     -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+    -DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH} \
+    -DOpenCV_DIR=${OpenCV_DIR} \
+    -DOpenCV_ROOT=${OpenCV_ROOT} \
 "
 
 # Uncomment these to force building in serial

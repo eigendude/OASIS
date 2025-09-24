@@ -40,6 +40,46 @@ jobs:
       - name: Checkout main repo
         uses: actions/checkout@v4
 
+      # Compute all cache hashes once
+      - name: Compute cache hashes
+        id: hashes
+        run: |
+          echo "CMAKE_HASH=${{ hashFiles('oasis_tooling/scripts/*cmake.sh') }}" \
+            >> "$GITHUB_OUTPUT"
+
+          echo "OPENCV_HASH=${{ hashFiles(
+            'oasis_tooling/config/opencv/**',
+            'oasis_tooling/scripts/*cv.sh') }}" \
+            >> "$GITHUB_OUTPUT"
+
+          echo "ROS2_DESKTOP_HASH=${{ hashFiles(
+            'oasis_tooling/config/ros2-desktop/**',
+            'oasis_tooling/scripts/*ros2_desktop.sh') }}" \
+            >> "$GITHUB_OUTPUT"
+
+          echo "OASIS_DEPENDS_HASH=${{ hashFiles(
+            'oasis_tooling/config/bgslibrary/**',
+            'oasis_tooling/config/depends.repos',
+            'oasis_tooling/config/libcamera_cmake/**',
+            'oasis_tooling/config/libcec/**',
+            'oasis_tooling/config/libfreenect2/**',
+            'oasis_tooling/config/OpenNI/**',
+            'oasis_tooling/config/orb-slam3/**',
+            'oasis_tooling/config/p8-platform/**',
+            'oasis_tooling/config/pangolin/**',
+            'oasis_tooling/config/vision_opencv/**',
+            'oasis_tooling/scripts/*oasis_deps.sh') }}" \
+            >> "$GITHUB_OUTPUT"
+
+          echo "MEDIAPIPE_HASH=${{ hashFiles(
+            'oasis_tooling/config/mediapipe/**',
+            'oasis_tooling/scripts/*mediapipe.sh') }}" \
+            >> "$GITHUB_OUTPUT"
+
+          echo "ARDUINO_BOOTSTRAP_HASH=${{ hashFiles(
+            'oasis_avr/bootstrap.sh') }}" \
+            >> "$GITHUB_OUTPUT"
+
       - name: Restore CMake
         id: restore-cmake
         if: matrix.os != 'macbook'
@@ -47,7 +87,22 @@ jobs:
         with:
           path: |
             ros-ws/cmake/install
-          key: restore-cmake-${{ matrix.os }}-${{ hashFiles('oasis_tooling/scripts/*cmake.sh') }}
+          key: >
+            restore-cmake-\
+            ${{ matrix.os }}-\
+            ${{ steps.hashes.outputs.CMAKE_HASH }}
+
+      - name: Restore OpenCV
+        id: restore-opencv
+        uses: actions/cache@v4
+        with:
+          path: |
+            ros-ws/opencv/install
+          key: >
+            restore-opencv-\
+            ${{ matrix.os }}-\
+            ${{ steps.hashes.outputs.OPENCV_HASH }}-\
+            ${{ steps.hashes.outputs.CMAKE_HASH }}
 
       - name: Restore ROS 2 Desktop
         id: restore-ros2-desktop
@@ -55,14 +110,28 @@ jobs:
         with:
           path: |
             ros-ws/ros2-desktop-${{ matrix.ros2_distro }}/install
-          key: restore-ros2-desktop-${{ matrix.os }}-${{ matrix.ros2_distro }}-${{ hashFiles('oasis_tooling/config/ros2-desktop/**', 'oasis_tooling/scripts/*ros2_desktop.sh') }}
+          key: >
+            restore-ros2-desktop-\
+            ${{ matrix.os }}-\
+            ${{ matrix.ros2_distro }}-\
+            ${{ steps.hashes.outputs.ROS2_DESKTOP_HASH }}-\
+            ${{ steps.hashes.outputs.OPENCV_HASH }}-\
+            ${{ steps.hashes.outputs.CMAKE_HASH }}
+
       - name: Restore OASIS dependencies
         id: restore-oasis-depends
         uses: actions/cache@v4
         with:
           path: |
             ros-ws/oasis-depends-${{ matrix.ros2_distro }}/install
-          key: restore-oasis-depends-${{ matrix.os }}-${{ matrix.ros2_distro }}-${{ hashFiles('oasis_tooling/config/ros2-desktop/**', 'oasis_tooling/scripts/*ros2_desktop.sh') }}-${{ hashFiles('oasis_tooling/config/bgslibrary/**', 'oasis_tooling/config/depends.repos', 'oasis_tooling/config/libcamera_cmake/**', 'oasis_tooling/config/libcec/**', 'oasis_tooling/config/libfreenect2/**', 'oasis_tooling/config/OpenNI/**', 'oasis_tooling/config/orb-slam3/**', 'oasis_tooling/config/p8-platform/**', 'oasis_tooling/config/pangolin/**', 'oasis_tooling/config/vision_opencv/**', 'oasis_tooling/scripts/*oasis_deps.sh') }}
+          key: >
+            restore-oasis-depends-\
+            ${{ matrix.os }}-\
+            ${{ matrix.ros2_distro }}-\
+            ${{ steps.hashes.outputs.OASIS_DEPENDS_HASH }}-\
+            ${{ steps.hashes.outputs.ROS2_DESKTOP_HASH }}-\
+            ${{ steps.hashes.outputs.OPENCV_HASH }}-\
+            ${{ steps.hashes.outputs.CMAKE_HASH }}
 
       - name: Restore MediaPipe
         id: restore-mediapipe
@@ -71,7 +140,11 @@ jobs:
           path: |
             ros-ws/abseil/install
             ros-ws/mediapipe/install
-          key: restore-mediapipe-${{ matrix.os }}-${{ hashFiles('oasis_tooling/config/mediapipe/**', 'oasis_tooling/scripts/*mediapipe.sh') }}
+          key: >
+            restore-mediapipe-\
+            ${{ matrix.os }}-\
+            ${{ steps.hashes.outputs.MEDIAPIPE_HASH }} \
+            ${{ steps.hashes.outputs.OPENCV_HASH }}
 
       - name: Restore Arduino IDE
         id: restore-arduino-ide
@@ -79,7 +152,10 @@ jobs:
         with:
           path: |
             oasis_avr/arduino-*
-          key: restore-arduino-ide-${{ matrix.os }}-${{ hashFiles('oasis_avr/bootstrap.sh') }}
+          key: >
+            restore-arduino-ide-\
+            ${{ matrix.os }}-\
+            ${{ steps.hashes.outputs.ARDUINO_BOOTSTRAP_HASH }}
 
       - name: Install CMake dependencies
         if: steps.restore-cmake.outputs.cache-hit != 'true'
@@ -88,6 +164,14 @@ jobs:
       - name: Build CMake
         if: steps.restore-cmake.outputs.cache-hit != 'true'
         run: ./oasis_tooling/scripts/build_cmake.sh
+
+      - name: Install OpenCV dependencies
+        if: steps.restore-opencv.outputs.cache-hit != 'true'
+        run: ./oasis_tooling/scripts/depinstall_cv.sh
+
+      - name: Build OpenCV
+        if: steps.restore-opencv.outputs.cache-hit != 'true'
+        run: ./oasis_tooling/scripts/build_cv.sh
 
       - name: Install ROS 2 Desktop dependencies
         if: steps.restore-ros2-desktop.outputs.cache-hit != 'true'
