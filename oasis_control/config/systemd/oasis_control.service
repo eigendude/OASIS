@@ -31,7 +31,7 @@ Environment=OPENCV_LIB_DIR=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/openc
 # Service definition
 #
 
-ExecStart=/bin/bash -c 'set +o nounset && export LD_LIBRARY_PATH="`eval echo "${OPENCV_LIB_DIR}"`:${LD_LIBRARY_PATH:-}" && source `eval echo "${OASIS_ENV}"` && ros2 launch oasis_control control_launch.py'
+ExecStart=/bin/bash -c 'set +o nounset && source `eval echo "${OASIS_ENV}"` && ros2 launch oasis_control control_launch.py'
 Restart=on-failure
 
 [Install]

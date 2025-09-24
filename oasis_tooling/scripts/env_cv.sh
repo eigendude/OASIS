@@ -68,3 +68,12 @@ if [ -n "${CMAKE_PREFIX_PATH:-}" ]; then
 else
   export CMAKE_PREFIX_PATH="${OPENCV_INSTALL_DIR}"
 fi
+
+# Make OpenCV's shared libraries available at runtime
+OPENCV_LIBRARY_DIRECTORY="${OPENCV_INSTALL_DIR}/lib"
+
+if [ -n "${LD_LIBRARY_PATH:-}" ]; then
+  export LD_LIBRARY_PATH="${OPENCV_LIBRARY_DIRECTORY}:${LD_LIBRARY_PATH}"
+else
+  export LD_LIBRARY_PATH="${OPENCV_LIBRARY_DIRECTORY}"
+fi
