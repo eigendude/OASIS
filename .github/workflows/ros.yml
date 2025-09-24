@@ -115,7 +115,6 @@ jobs:
             ${{ matrix.os }}-\
             ${{ matrix.ros2_distro }}-\
             ${{ steps.hashes.outputs.ROS2_DESKTOP_HASH }}-\
-            ${{ steps.hashes.outputs.OPENCV_HASH }}-\
             ${{ steps.hashes.outputs.CMAKE_HASH }}
 
       - name: Restore OASIS dependencies
