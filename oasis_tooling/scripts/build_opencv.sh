@@ -56,18 +56,45 @@ tar -zxf "${OPENCV_ARCHIVE_PATH}" --directory="${OPENCV_EXTRACT_DIR}"
 
 cd "${OPENCV_SOURCE_DIR}"
 
-# TODO
+echo "Configuring OpenCV..."
+
+cmake_args=(
+  -S .
+  -B "${OPENCV_BUILD_DIR}"
+  -DCMAKE_BUILD_TYPE=Release
+  -DCMAKE_INSTALL_PREFIX="${OPENCV_INSTALL_DIR}"
+  -DCMAKE_BUILD_PARALLEL_LEVEL="$(getconf _NPROCESSORS_ONLN)"
+  -DBUILD_TESTS=OFF
+  -DBUILD_PERF_TESTS=OFF
+  -DBUILD_DOCS=OFF
+  -DBUILD_EXAMPLES=OFF
+  -DBUILD_opencv_java=OFF
+  -DBUILD_opencv_python2=OFF
+  -DBUILD_opencv_python3=OFF
+  -DOPENCV_GENERATE_PKGCONFIG=ON
+)
+
+if command -v ccache &> /dev/null; then
+  cmake_args+=(
+    -DCMAKE_C_COMPILER_LAUNCHER=ccache
+    -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+  )
+fi
+
+cmake "${cmake_args[@]}"
 
 #
 # Build OpenCV
 #
 
-# TODO
+echo "Building OpenCV..."
+cmake --build "${OPENCV_BUILD_DIR}" --parallel "$(getconf _NPROCESSORS_ONLN)"
 
 #
 # Install OpenCV
 #
 
-# TODO
+echo "Installing OpenCV..."
+cmake --install "${OPENCV_BUILD_DIR}"
 
 echo "OpenCV installed into ${OPENCV_INSTALL_DIR}"
