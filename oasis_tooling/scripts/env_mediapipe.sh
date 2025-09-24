@@ -34,6 +34,9 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # Import common paths and config
 source "${SCRIPT_DIR}/env_common.sh"
 
+# Import OpenCV paths and config
+source "${SCRIPT_DIR}/env_cv.sh"
+
 #
 # Directory and path definitions
 #
@@ -50,3 +53,10 @@ MEDIAPIPE_INSTALL_DIR="${MEDIAPIPE_DIRECTORY}/install"
 
 # Define archive path
 MEDIAPIPE_ARCHIVE_PATH="${MEDIAPIPE_DOWNLOAD_DIR}/mediapipe-${MEDIAPIPE_VERSION}.tar.gz"
+
+# Expose the MediaPipe install directories to CMake
+if [ -n "${CMAKE_PREFIX_PATH:-}" ]; then
+  export CMAKE_PREFIX_PATH="${MEDIAPIPE_INSTALL_DIR}:${CMAKE_PREFIX_PATH}"
+else
+  export CMAKE_PREFIX_PATH="${MEDIAPIPE_INSTALL_DIR}"
+fi

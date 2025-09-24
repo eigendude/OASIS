@@ -29,13 +29,6 @@ sudo apt install -y \
   curl \
   libegl-dev \
   libgles-dev \
-  libopencv-calib3d-dev \
-  libopencv-contrib-dev \
-  libopencv-core-dev \
-  libopencv-features2d-dev \
-  libopencv-highgui-dev \
-  libopencv-imgproc-dev \
-  libopencv-video-dev \
 
 # We patch protobuf to match the system version version, so it must be installed
 sudo apt install -y \
@@ -44,6 +37,16 @@ sudo apt install -y \
 # We also pull in system glog
 sudo apt install -y \
   libgoogle-glog-dev \
+
+# TODO: Needed until we can point MediaPipe at our OpenCV install
+sudo apt install -y \
+  libopencv-calib3d-dev \
+  libopencv-contrib-dev \
+  libopencv-core-dev \
+  libopencv-features2d-dev \
+  libopencv-highgui-dev \
+  libopencv-imgproc-dev \
+  libopencv-video-dev \
 
 # Install NVM
 curl -o- "https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh" | bash

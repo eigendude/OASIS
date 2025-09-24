@@ -31,6 +31,7 @@ ROSDEP_IGNORE_KEYS=" \
   image_view \
   launch_testing \
   launch_testing_ament_cmake \
+  libopencv-dev \
   python_cmake_module \
   ros_testing \
 "
@@ -83,6 +84,10 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     libconsole-bridge-dev \
     libspdlog-dev \
     libtinyxml2-dev \
+
+  # Needed for image_view
+  sudo apt install -y --no-install-recommends \
+    libavif-dev \
 
   # Needed for v4l2_camera
   sudo apt install -y --no-install-recommends \
@@ -199,6 +204,12 @@ patch \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/bgslibrary" \
   < "${CONFIG_DIRECTORY}/bgslibrary/0001-Disable-imshow-calls.patch"
+patch \
+  -p1 \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/bgslibrary" \
+  < "${CONFIG_DIRECTORY}/bgslibrary/0002-CMake-Fix-locating-libs-via-_ROOT-variables.patch"
 
 # Disable image_view on systems with <= 4GiB memory
 if (( $(echo "${PHYSICAL_MEMORY_GB} <= 4" | bc -l) )); then
@@ -382,7 +393,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     --rosdistro ${ROS2_DISTRO} \
     --as-root=pip:false \
     --default-yes \
-    --skip-keys="${ROSDEP_IGNORE_KEYS=}"
+    --skip-keys="${ROSDEP_IGNORE_KEYS}"
 else
   echo "Disabling perception dependencies on macOS"
   touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/OpenNI2/COLCON_IGNORE"
