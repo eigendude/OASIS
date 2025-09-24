@@ -21,6 +21,9 @@ set -o nounset
 # Get the absolute path to this script
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
+# Import OpenCV configuration so runtime libraries are on the search path
+source "${SCRIPT_DIR}/env_cv.sh"
+
 # Import OASIS dependency paths and config
 source "${SCRIPT_DIR}/env_oasis_deps.sh"
 

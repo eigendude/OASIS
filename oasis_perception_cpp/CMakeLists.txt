@@ -24,7 +24,14 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
+# Policy CMP0072: Prefer GLVND for OpenGL over legacy GL library
 set(OpenGL_GL_PREFERENCE GLVND)
+
+# Policy CMP0074: Ensure find_package honors *_ROOT hints so we pick up our
+# custom OpenCV toolchain
+if(POLICY CMP0074)
+  cmake_policy(SET CMP0074 NEW)
+endif()
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 
