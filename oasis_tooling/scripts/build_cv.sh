@@ -95,6 +95,7 @@ cmake_args=(
   -DBUILD_opencv_java=OFF
   -DBUILD_opencv_python2=OFF
   -DBUILD_opencv_python3=ON
+  -DBUILD_OPENJPEG=OFF
   -DBUILD_PERF_TESTS=OFF
   -DBUILD_PROTOBUF=OFF # Use system libprotobuf
   -DBUILD_SHARED_LIBS=ON
