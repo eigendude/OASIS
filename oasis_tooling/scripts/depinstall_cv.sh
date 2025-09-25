@@ -65,6 +65,7 @@ sudo apt install -y --no-install-recommends \
   libavif-dev \
   libjpeg-dev \
   libopenexr-dev \
+  libopenjp2-7-dev \
   libpng-dev \
   libtiff-dev \
   libwebp-dev \
@@ -78,12 +79,20 @@ sudo apt install -y --no-install-recommends \
 # Math, optimization, and linear algebra backends
 sudo apt install -y --no-install-recommends \
   libeigen3-dev \
-  libgflags-dev \
-  libgoogle-glog-dev \
   libhdf5-dev \
   liblapack-dev \
   liblapacke-dev \
   libopenblas-dev \
+
+# Google logging library and command-line flags
+sudo apt install -y --no-install-recommends \
+  libgflags-dev \
+  libgoogle-glog-dev \
+
+# Protocol Buffers
+sudo apt install -y --no-install-recommends \
+  libprotobuf-dev \
+  protobuf-compiler \
 
 # Text rendering and font support
 sudo apt install -y --no-install-recommends \
@@ -93,5 +102,6 @@ sudo apt install -y --no-install-recommends \
 # Optional modules and extras
 sudo apt install -y --no-install-recommends \
   libleptonica-dev \
+  libtbb-dev \
   libtesseract-dev \
   libva-dev \
