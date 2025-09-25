@@ -86,6 +86,9 @@ patch \
 
 echo "Configuring OpenCV..."
 
+# TODO: Configure where cv2 ends up, instead of under the prefix
+# -DPYTHON3_PACKAGES_PATH=/usr/lib/python3/dist-packages
+
 cmake_args=(
   -S "${OPENCV_SOURCE_DIR}"
   -B "${OPENCV_BUILD_DIR}"
@@ -96,7 +99,6 @@ cmake_args=(
   -DBUILD_opencv_python2=OFF
   -DBUILD_opencv_python3=ON
   -DBUILD_opencv_viz=OFF
-  -DBUILD_OPENJPEG=OFF
   -DBUILD_PERF_TESTS=OFF
   -DBUILD_PROTOBUF=OFF # Use system libprotobuf
   -DBUILD_SHARED_LIBS=ON
@@ -105,13 +107,13 @@ cmake_args=(
   -DCMAKE_BUILD_TYPE=Release
   -DCMAKE_INSTALL_PREFIX="${OPENCV_INSTALL_DIR}"
   -DENABLE_CCACHE=ON
+  -DOPENCV_ENABLE_NONFREE=ON
   -DOPENCV_EXTRA_MODULES_PATH="${OPENCV_CONTRIB_SOURCE_DIR}/modules"
+  -DOPENCV_GENERATE_PKGCONFIG=ON
   -DPROTOBUF_UPDATE_FILES=ON
   -DWITH_FFMPEG=ON
   -DWITH_GSTREAMER=ON
-  -DWITH_JASPER=OFF
   -DWITH_OPENCL=ON
-  -DWITH_TBB=ON
 )
 
 cmake "${cmake_args[@]}"
