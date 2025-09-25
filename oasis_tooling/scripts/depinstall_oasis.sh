@@ -24,6 +24,11 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # Import OASIS paths and config
 source "${SCRIPT_DIR}/env_oasis.sh"
 
+# rosdep keys to ignore
+ROSDEP_IGNORE_KEYS=" \
+  libopencv-dev \
+"
+
 #
 # Load OASIS dependency environment
 #
@@ -176,7 +181,8 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     --ignore-src \
     --rosdistro ${ROS2_DISTRO} \
     --as-root=pip:false \
-    --default-yes
+    --default-yes \
+    --skip-keys="${ROSDEP_IGNORE_KEYS}"
 fi
 
 # Bootstrap the Arduino toolchain
