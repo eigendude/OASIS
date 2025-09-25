@@ -47,17 +47,12 @@ sudo apt install -y --no-install-recommends \
 # Note that libgstreamer-plugins-bad1.0-dev depends on libopencv-dev, which we
 # do not want to install since we are building our own OpenCV
 sudo apt install -y --no-install-recommends \
-  ffmpeg \
-  gstreamer1.0-libav \
-  gstreamer1.0-plugins-ugly \
-  gstreamer1.0-tools \
   libavcodec-dev \
   libavformat-dev \
   libavutil-dev \
   libgstreamer-plugins-base1.0-dev \
   libgstreamer-plugins-good1.0-dev \
   libgstreamer1.0-dev \
-  libswresample-dev \
   libswscale-dev \
 
 # Image format libraries
