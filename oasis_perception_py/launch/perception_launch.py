@@ -59,20 +59,14 @@ ROS_NAMESPACE: str = "oasis"
 CPP_PACKAGE_NAME: str = "oasis_perception_cpp"
 PYTHON_PACKAGE_NAME: str = "oasis_perception_py"
 
-
-# The host ID used for perception
-# TODO: Move to smarthome config
-PERCEPTION_HOST_ID: str = "oceanplatform"
-
 PERCEPTION_SERVER_BACKGROUND: list[str] = []
 PERCEPTION_SERVER_POSE_LANDMARKS: list[str] = []
 PERCEPTION_SERVER_CALIBRATION: list[str] = []
 
-if HOST_ID == PERCEPTION_HOST_ID:
+if HOST_ID == "nas":
+    PERCEPTION_SERVER_POSE_LANDMARKS.extend(["hallway"])
+elif HOST_ID == "oceanplatform":
     PERCEPTION_SERVER_BACKGROUND.extend(["livingroom"])
-    # PERCEPTION_SERVER_POSE_LANDMARKS.extend(
-    #     ["bar", "doorbell", "entryway", "hallway", "kitchen", "livingroom"]
-    # )
     # PERCEPTION_SERVER_CALIBRATION.extend(
     #     ["bar", "doorbell", "entryway", "hallway", "kitchen", "livingroom"]
     # )
