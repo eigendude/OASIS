@@ -87,6 +87,8 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
   # Needed for custom OpenCV build
   sudo apt install -y --no-install-recommends \
     libavif-dev \
+    libgstreamer-plugins-base1.0-dev \
+    libgstreamer1.0-dev \
     libopenblas-dev \
     libopenexr-dev \
 
