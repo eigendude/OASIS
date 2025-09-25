@@ -95,6 +95,7 @@ cmake_args=(
   -DBUILD_DOCS=OFF
   -DBUILD_EXAMPLES=OFF
   -DBUILD_opencv_apps=OFF
+  -DBUILD_opencv_highgui=OFF
   -DBUILD_opencv_java=OFF
   -DBUILD_opencv_python2=OFF
   -DBUILD_opencv_python3=ON
@@ -113,7 +114,10 @@ cmake_args=(
   -DPROTOBUF_UPDATE_FILES=ON
   -DWITH_FFMPEG=ON
   -DWITH_GSTREAMER=ON
+  -DWITH_GTK=OFF
   -DWITH_OPENCL=ON
+  -DWITH_QT=OFF
+  -DWITH_V4L=ON
 )
 
 cmake "${cmake_args[@]}"
