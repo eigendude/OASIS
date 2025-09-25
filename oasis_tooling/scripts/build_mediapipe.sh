@@ -81,6 +81,53 @@ patch \
   --directory="${MEDIAPIPE_SOURCE_DIR}" \
   < "${CONFIG_DIRECTORY}/mediapipe/0003-Enable-monolithic-build.patch"
 
+# Configure MediaPipe to use the custom OpenCV build
+OPENCV_BUILD_FILE="${MEDIAPIPE_SOURCE_DIR}/third_party/opencv_linux.BUILD"
+OPENCV_WORKSPACE_FILE="${MEDIAPIPE_SOURCE_DIR}/WORKSPACE"
+
+export MEDIAPIPE_OPENCV_BUILD_FILE="${OPENCV_BUILD_FILE}"
+export MEDIAPIPE_OPENCV_WORKSPACE_FILE="${OPENCV_WORKSPACE_FILE}"
+export MEDIAPIPE_OPENCV_INSTALL_DIR="${OPENCV_INSTALL_DIR}"
+
+python3 <<'PY'
+import os
+from pathlib import Path
+
+build_file = Path(os.environ["MEDIAPIPE_OPENCV_BUILD_FILE"])
+workspace_file = Path(os.environ["MEDIAPIPE_OPENCV_WORKSPACE_FILE"])
+opencv_install_dir = Path(os.environ["MEDIAPIPE_OPENCV_INSTALL_DIR"])
+opencv_lib_dir = opencv_install_dir / "lib"
+
+build_text = build_file.read_text()
+
+link_block = '    linkopts = [\n'
+insertion_lines = []
+lib_flag = f'        "-L{opencv_lib_dir}",\n'
+rpath_flag = f'        "-Wl,-rpath,{opencv_lib_dir}",\n'
+
+if lib_flag not in build_text:
+    insertion_lines.append(lib_flag)
+if rpath_flag not in build_text:
+    insertion_lines.append(rpath_flag)
+
+if insertion_lines:
+    build_text = build_text.replace(link_block, link_block + ''.join(insertion_lines), 1)
+    build_file.write_text(build_text)
+
+workspace_lines = workspace_file.read_text().splitlines()
+
+for index, line in enumerate(workspace_lines):
+    if "linux_opencv" in line:
+        target_index = index + 2
+        if target_index < len(workspace_lines):
+            desired = f'    path = "{opencv_install_dir}",'  # Bazel requires trailing comma
+            if workspace_lines[target_index] != desired:
+                workspace_lines[target_index] = desired
+        break
+
+workspace_file.write_text("\n".join(workspace_lines) + "\n")
+PY
+
 #
 # Build with Bazel
 #

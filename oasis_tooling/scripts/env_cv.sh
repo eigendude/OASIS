@@ -77,3 +77,9 @@ if [ -n "${LD_LIBRARY_PATH:-}" ]; then
 else
   export LD_LIBRARY_PATH="${OPENCV_LIBRARY_DIR}"
 fi
+
+if [ -n "${LIBRARY_PATH:-}" ]; then
+  export LIBRARY_PATH="${OPENCV_LIBRARY_DIR}:${LIBRARY_PATH}"
+else
+  export LIBRARY_PATH="${OPENCV_LIBRARY_DIR}"
+fi
