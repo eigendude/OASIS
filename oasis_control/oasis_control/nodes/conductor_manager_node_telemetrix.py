@@ -475,13 +475,13 @@ class ConductorManagerNode(rclpy.node.Node):
 
             # Reduce throttle if B button is not pressed
             if not b_button:
-                throttle *= 0.8  # Step 12V down
+                throttle *= 0.85  # Step 12V down
 
             magnitude: float = abs(throttle)
             reverse: bool = throttle < 0.0
 
             # Reduce magnitude by a factor to limit top speed
-            magnitude /= 6.5
+            magnitude /= 6.4
 
             # Futures to wait on while the service is being called
             future_pwm: Optional[asyncio.Future] = None
