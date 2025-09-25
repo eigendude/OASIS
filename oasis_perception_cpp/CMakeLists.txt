@@ -260,6 +260,7 @@ rclcpp_components_register_node(
 # hello_world
 #
 
+if(FALSE)
 if(TARGET MediaPipe::MediaPipe)
   set(HELLO_WORLD_SOURCES
     ${MEDIAPIPE_SOURCES}
@@ -310,6 +311,7 @@ if(TARGET MediaPipe::MediaPipe)
     PLUGIN "oasis_perception::HelloWorldComponent"
     EXECUTABLE hello_world_component_node
   )
+endif()
 endif()
 
 #
@@ -504,6 +506,7 @@ rclcpp_components_register_node(
 # pose_landmarker
 #
 
+if(FALSE)
 # Check if the target MediaPipe::MediaPipe is available
 if(TARGET MediaPipe::MediaPipe)
   set(POSE_LANDMARKER_SOURCES
@@ -568,6 +571,7 @@ if(TARGET MediaPipe::MediaPipe)
     PLUGIN "pose_landmarker::PoseLandmarkerComponent"
     EXECUTABLE pose_landmarker_component_node
   )
+endif()
 endif()
 
 #
