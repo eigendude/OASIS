@@ -43,7 +43,7 @@ sudo apt install -y --no-install-recommends \
   python3-setuptools \
   python3-wheel \
 
-# Image / video codecs and media frameworks
+# Video codecs and media frameworks
 # Note that libgstreamer-plugins-bad1.0-dev depends on libopencv-dev, which we
 # do not want to install since we are building our own OpenCV
 sudo apt install -y --no-install-recommends \
@@ -78,6 +78,7 @@ sudo apt install -y --no-install-recommends \
 
 # Math, optimization, and linear algebra backends
 sudo apt install -y --no-install-recommends \
+  libceres-dev \
   libeigen3-dev \
   libhdf5-dev \
   liblapack-dev \
