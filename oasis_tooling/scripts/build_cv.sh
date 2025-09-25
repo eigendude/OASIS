@@ -95,6 +95,7 @@ cmake_args=(
   -DBUILD_opencv_java=OFF
   -DBUILD_opencv_python2=OFF
   -DBUILD_opencv_python3=ON
+  -DBUILD_opencv_viz=OFF
   -DBUILD_OPENJPEG=OFF
   -DBUILD_PERF_TESTS=OFF
   -DBUILD_PROTOBUF=OFF # Use system libprotobuf
@@ -108,7 +109,7 @@ cmake_args=(
   -DPROTOBUF_UPDATE_FILES=ON
   -DWITH_FFMPEG=ON
   -DWITH_GSTREAMER=ON
-  -DWITH_JASPER=OFF # Prefer OpenJPEG
+  -DWITH_JASPER=OFF
   -DWITH_OPENCL=ON
   -DWITH_TBB=ON
 )
