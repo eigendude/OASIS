@@ -83,7 +83,9 @@ sudo apt install -y --no-install-recommends \
   libhdf5-dev \
   liblapack-dev \
   liblapacke-dev \
+  libmetis-dev \
   libopenblas-dev \
+  libsuitesparse-dev \
 
 # Google logging library and command-line flags
 sudo apt install -y --no-install-recommends \
