@@ -82,13 +82,6 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     libegl-dev \
     libgles-dev \
     libgoogle-glog-dev \
-    libopencv-calib3d-dev \
-    libopencv-contrib-dev \
-    libopencv-core-dev \
-    libopencv-features2d-dev \
-    libopencv-highgui-dev \
-    libopencv-imgproc-dev \
-    libopencv-video-dev \
     libprotobuf-dev \
 
   # Install Python dependencies
