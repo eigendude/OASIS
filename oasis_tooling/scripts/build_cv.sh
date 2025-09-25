@@ -95,7 +95,6 @@ cmake_args=(
   -DBUILD_DOCS=OFF
   -DBUILD_EXAMPLES=OFF
   -DBUILD_opencv_apps=OFF
-  -DBUILD_opencv_highgui=OFF
   -DBUILD_opencv_java=OFF
   -DBUILD_opencv_python2=OFF
   -DBUILD_opencv_python3=ON
