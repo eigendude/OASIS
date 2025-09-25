@@ -87,6 +87,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
   # Needed for custom OpenCV build
   sudo apt install -y --no-install-recommends \
     libavif-dev \
+    libopenblas-dev \
     libopenexr-dev \
 
   # Install Python dependencies
