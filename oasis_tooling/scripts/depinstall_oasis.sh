@@ -84,9 +84,10 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     libgoogle-glog-dev \
     libprotobuf-dev \
 
-  # Needed for OpenCV support
+  # Needed for custom OpenCV build
   sudo apt install -y --no-install-recommends \
     libavif-dev \
+    libopenexr-dev \
 
   # Install Python dependencies
   sudo apt install -y --no-install-recommends \
