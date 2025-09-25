@@ -84,12 +84,10 @@ patch \
 # Configure OpenCV
 #
 
-cd "${OPENCV_SOURCE_DIR}"
-
 echo "Configuring OpenCV..."
 
 cmake_args=(
-  -S .
+  -S "${OPENCV_SOURCE_DIR}"
   -B "${OPENCV_BUILD_DIR}"
   -DBUILD_DOCS=OFF
   -DBUILD_EXAMPLES=OFF
@@ -98,6 +96,7 @@ cmake_args=(
   -DBUILD_opencv_python2=OFF
   -DBUILD_opencv_python3=OFF
   -DBUILD_PERF_TESTS=OFF
+  -DBUILD_PROTOBUF=OFF
   -DBUILD_SHARED_LIBS=ON
   -DBUILD_TESTS=OFF
   -DCMAKE_BUILD_PARALLEL_LEVEL="$(getconf _NPROCESSORS_ONLN)"
@@ -105,7 +104,7 @@ cmake_args=(
   -DCMAKE_INSTALL_PREFIX="${OPENCV_INSTALL_DIR}"
   -DENABLE_CCACHE=ON
   -DOPENCV_EXTRA_MODULES_PATH="${OPENCV_CONTRIB_SOURCE_DIR}/modules"
-
+  -DPROTOBUF_UPDATE_FILES=ON
 )
 
 cmake "${cmake_args[@]}"
