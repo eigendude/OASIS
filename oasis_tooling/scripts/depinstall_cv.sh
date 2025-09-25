@@ -85,12 +85,10 @@ sudo apt install -y --no-install-recommends \
   liblapacke-dev \
   libopenblas-dev \
 
-# GUI, text rendering, and font support
+# Text rendering and font support
 sudo apt install -y --no-install-recommends \
   libfreetype6-dev \
-  libgtk-3-dev \
   libharfbuzz-dev \
-  qtbase5-dev \
 
 # Optional modules and extras
 sudo apt install -y --no-install-recommends \
