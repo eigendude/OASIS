@@ -60,6 +60,8 @@ public:
 
   void SetConfig(const ConfigOptions& config);
 
+  bool ProcessImage(const cv::Mat& image);
+
   /*!
    * \brief Add a frame to the motion tracker and return the results
    *
@@ -127,6 +129,9 @@ private:
   cv::Mat m_currentGrayscaleBuffer;
   std::vector<std::vector<cv::Point2f>> m_pointHistoryBuffer;
   std::vector<uint8_t> m_statusBuffer;
+
+  bool m_hasPreviousFrame{false};
+  std::vector<cv::Point2f> m_previousPoints;
 
   // Output buffer (holds data returned from AddVideoFrame())
   mutable std::vector<float> m_points;
