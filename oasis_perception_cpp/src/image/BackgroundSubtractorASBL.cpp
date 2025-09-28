@@ -20,34 +20,29 @@
 using namespace OASIS;
 using namespace IMAGE;
 
-BackgroundSubtractorASBL::BackgroundSubtractorASBL(std::shared_ptr<rclcpp::Node> node,
+BackgroundSubtractorASBL::BackgroundSubtractorASBL(rclcpp::Node& node,
                                                    const std::string& imageTopic,
                                                    const std::string& foregroundTopic,
                                                    const std::string& subtractedTopic)
-  : m_logger(node->get_logger()),
-    m_imgTransport(std::make_unique<image_transport::ImageTransport>(node)),
+  : m_logger(node.get_logger()),
     m_imgPublisherForeground(std::make_unique<image_transport::Publisher>()),
     m_imgPublisherSubtracted(std::make_unique<image_transport::Publisher>()),
     m_imgSubscriber(std::make_unique<image_transport::Subscriber>()),
     m_bgsPackageASBL(
         std::make_unique<bgslibrary::algorithms::AdaptiveSelectiveBackgroundLearning>())
 {
-  RCLCPP_INFO(m_logger, "Image topic: %s", imageTopic.c_str());
-  RCLCPP_INFO(m_logger, "Foreground topic: %s", foregroundTopic.c_str());
-  RCLCPP_INFO(m_logger, "Subtracted topic: %s", subtractedTopic.c_str());
-
-  auto transportHints = image_transport::TransportHints(node.get(), "compressed");
-
-  *m_imgSubscriber = m_imgTransport->subscribe(
-      imageTopic, 1, &BackgroundSubtractorASBL::ReceiveImage, this, &transportHints);
-
-  *m_imgPublisherForeground = m_imgTransport->advertise(foregroundTopic, 10);
-  *m_imgPublisherSubtracted = m_imgTransport->advertise(subtractedTopic, 10);
-
-  RCLCPP_INFO(m_logger, "Started background modeler");
+  *m_imgPublisherForeground = image_transport::create_publisher(&node, foregroundTopic);
+  *m_imgPublisherSubtracted = image_transport::create_publisher(&node, subtractedTopic);
+  *m_imgSubscriber = image_transport::create_subscription(
+      &node, imageTopic, [this](const auto& msg) { ReceiveImage(msg); }, "compressed");
 }
 
-BackgroundSubtractorASBL::~BackgroundSubtractorASBL() = default;
+BackgroundSubtractorASBL::~BackgroundSubtractorASBL()
+{
+  m_imgSubscriber->shutdown();
+  m_imgPublisherSubtracted->shutdown();
+  m_imgPublisherForeground->shutdown();
+}
 
 void BackgroundSubtractorASBL::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg)
 {

@@ -87,69 +87,12 @@ set(MEDIAPIPE_SOURCES
 )
 
 #
-# background_subtractor_abl
-#
-
-add_executable(background_subtractor_abl
-  src/image/BackgroundModelerABL.cpp
-  src/utils/NetworkUtils.cpp
-  src/background_subtractor_abl.cpp
-)
-
-ament_target_dependencies(background_subtractor_abl
-  ${AMENT_COMMON_DEPENDENCIES}
-)
-
-target_include_directories(background_subtractor_abl PUBLIC
-  ${BGSLIBRARY_INCLUDE_DIRS}
-)
-
-target_link_libraries(background_subtractor_abl
-  ${BGS_LIBRARIES}
-)
-
-install(
-  TARGETS
-    background_subtractor_abl
-  DESTINATION
-    lib/${PROJECT_NAME}
-)
-
-#
-# background_subtractor_asbl
-#
-
-add_executable(background_subtractor_asbl
-  src/image/BackgroundSubtractorASBL.cpp
-  src/utils/NetworkUtils.cpp
-  src/background_subtractor_asbl.cpp
-)
-
-ament_target_dependencies(background_subtractor_asbl
-  ${AMENT_COMMON_DEPENDENCIES}
-)
-
-target_include_directories(background_subtractor_asbl PUBLIC
-  ${BGSLIBRARY_INCLUDE_DIRS}
-)
-
-target_link_libraries(background_subtractor_asbl
-  ${BGS_LIBRARIES}
-)
-
-install(
-  TARGETS
-    background_subtractor_asbl
-  DESTINATION
-    lib/${PROJECT_NAME}
-)
-
-#
 # background_modeler
 #
 
 # Project files
 set(BACKGROUND_MODELER_SOURCES
+  src/image/BackgroundModelerABL.cpp
   src/nodes/BackgroundModelerNode.cpp
 )
 set(BACKGROUND_MODELER_INCLUDE_DIRS
@@ -217,6 +160,7 @@ rclcpp_components_register_node(
 
 # Project files
 set(BACKGROUND_SUBTRACTOR_SOURCES
+  src/image/BackgroundSubtractorASBL.cpp
   src/nodes/BackgroundSubtractorNode.cpp
 )
 set(BACKGROUND_SUBTRACTOR_INCLUDE_DIRS

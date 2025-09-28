@@ -20,29 +20,24 @@
 using namespace OASIS;
 using namespace IMAGE;
 
-BackgroundModelerABL::BackgroundModelerABL(std::shared_ptr<rclcpp::Node> node,
+BackgroundModelerABL::BackgroundModelerABL(rclcpp::Node& node,
                                            const std::string& imageTopic,
                                            const std::string& backgroundTopic)
-  : m_logger(node->get_logger()),
-    m_imgTransport(std::make_unique<image_transport::ImageTransport>(node)),
+  : m_logger(node.get_logger()),
     m_imgPublisherBackground(std::make_unique<image_transport::Publisher>()),
     m_imgSubscriber(std::make_unique<image_transport::Subscriber>()),
     m_bgsPackageABL(std::make_unique<bgslibrary::algorithms::AdaptiveBackgroundLearning>())
 {
-  RCLCPP_INFO(m_logger, "Image topic: %s", imageTopic.c_str());
-  RCLCPP_INFO(m_logger, "Background topic: %s", backgroundTopic.c_str());
-
-  auto transportHints = image_transport::TransportHints(node.get(), "compressed");
-
-  *m_imgSubscriber = m_imgTransport->subscribe(imageTopic, 1, &BackgroundModelerABL::ReceiveImage,
-                                               this, &transportHints);
-
-  *m_imgPublisherBackground = m_imgTransport->advertise(backgroundTopic, 10);
-
-  RCLCPP_INFO(m_logger, "Started background modeler");
+  *m_imgPublisherBackground = image_transport::create_publisher(&node, backgroundTopic);
+  *m_imgSubscriber = image_transport::create_subscription(
+      &node, imageTopic, [this](const auto& msg) { ReceiveImage(msg); }, "compressed");
 }
 
-BackgroundModelerABL::~BackgroundModelerABL() = default;
+BackgroundModelerABL::~BackgroundModelerABL()
+{
+  m_imgSubscriber->shutdown();
+  m_imgPublisherBackground->shutdown();
+}
 
 void BackgroundModelerABL::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg)
 {

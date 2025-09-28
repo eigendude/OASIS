@@ -8,27 +8,18 @@
 #pragma once
 
 #include <memory>
-#include <string>
 
-#include <rclcpp/node.hpp>
-#include <sensor_msgs/msg/image.hpp>
-
-namespace bgslibrary
+namespace rclcpp
 {
-namespace algorithms
-{
-class IBGS;
-} // namespace algorithms
-} // namespace bgslibrary
-
-namespace image_transport
-{
-class Publisher;
-class Subscriber;
-} // namespace image_transport
+class Node;
+} // namespace rclcpp
 
 namespace OASIS
 {
+namespace IMAGE
+{
+class BackgroundModelerABL;
+}
 
 class BackgroundModelerNode
 {
@@ -40,19 +31,11 @@ public:
   void Deinitialize();
 
 private:
-  // ROS interface
-  void ReceiveImage(const std::shared_ptr<const sensor_msgs::msg::Image>& msg);
-
   // Construction parameters
   rclcpp::Node& m_node;
 
-  // ROS parameters
-  std::string m_zoneId;
-  std::unique_ptr<image_transport::Publisher> m_imgPublisherBackground;
-  std::unique_ptr<image_transport::Subscriber> m_imgSubscriber;
-
-  // Background subtractors
-  std::unique_ptr<bgslibrary::algorithms::IBGS> m_bgsPackage;
+  // Image parameters
+  std::unique_ptr<IMAGE::BackgroundModelerABL> m_backgroundModeler;
 };
 
 } // namespace OASIS

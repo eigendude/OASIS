@@ -24,7 +24,6 @@ class IBGS;
 
 namespace image_transport
 {
-class ImageTransport;
 class Publisher;
 class Subscriber;
 } // namespace image_transport
@@ -42,7 +41,7 @@ namespace IMAGE
 class BackgroundModelerABL
 {
 public:
-  BackgroundModelerABL(std::shared_ptr<rclcpp::Node> node,
+  BackgroundModelerABL(rclcpp::Node& node,
                        const std::string& imageTopic,
                        const std::string& backgroundTopic);
   ~BackgroundModelerABL();
@@ -55,7 +54,6 @@ private:
   rclcpp::Logger m_logger;
 
   // ROS parameters
-  std::unique_ptr<image_transport::ImageTransport> m_imgTransport;
   std::unique_ptr<image_transport::Publisher> m_imgPublisherBackground;
   std::unique_ptr<image_transport::Subscriber> m_imgSubscriber;
 

@@ -24,7 +24,6 @@ class IBGS;
 
 namespace image_transport
 {
-class ImageTransport;
 class Publisher;
 class Subscriber;
 } // namespace image_transport
@@ -42,7 +41,7 @@ namespace IMAGE
 class BackgroundSubtractorASBL
 {
 public:
-  BackgroundSubtractorASBL(std::shared_ptr<rclcpp::Node> node,
+  BackgroundSubtractorASBL(rclcpp::Node& node,
                            const std::string& imageTopic,
                            const std::string& foregroundTopic,
                            const std::string& subtractedTopic);
@@ -56,7 +55,6 @@ private:
   rclcpp::Logger m_logger;
 
   // ROS parameters
-  std::unique_ptr<image_transport::ImageTransport> m_imgTransport;
   std::unique_ptr<image_transport::Publisher> m_imgPublisherForeground;
   std::unique_ptr<image_transport::Publisher> m_imgPublisherSubtracted;
   std::unique_ptr<image_transport::Subscriber> m_imgSubscriber;
