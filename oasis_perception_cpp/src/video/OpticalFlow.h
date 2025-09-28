@@ -15,6 +15,11 @@
 
 #include <opencv2/core/mat.hpp>
 
+namespace rclcpp
+{
+class Logger;
+} // namespace rclcpp
+
 namespace OASIS
 {
 namespace VIDEO
@@ -48,10 +53,11 @@ public:
   /*!
    * \brief Initialize the motion tracker with the specified dimensions
    *
+   * \param logger The ROS logger
    * \param width The video width
    * \param height The video height
    */
-  bool Initialize(int width, int height);
+  bool Initialize(rclcpp::Logger& logger, int width, int height);
 
   /*!
    * \brief Deinitialize the motion tracker
@@ -59,6 +65,8 @@ public:
   void Deinitialize() {}
 
   void SetConfig(const ConfigOptions& config);
+
+  bool ProcessImage(const cv::Mat& image);
 
   /*!
    * \brief Add a frame to the motion tracker and return the results
@@ -127,6 +135,9 @@ private:
   cv::Mat m_currentGrayscaleBuffer;
   std::vector<std::vector<cv::Point2f>> m_pointHistoryBuffer;
   std::vector<uint8_t> m_statusBuffer;
+
+  bool m_hasPreviousFrame{false};
+  std::vector<cv::Point2f> m_previousPoints;
 
   // Output buffer (holds data returned from AddVideoFrame())
   mutable std::vector<float> m_points;
