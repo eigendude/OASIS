@@ -93,6 +93,10 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
   sudo apt install -y --no-install-recommends \
     libyaml-cpp-dev \
 
+  # Needed for custom OpenCV build
+  sudo apt install -y --no-install-recommends \
+    libopenblas-dev \
+
   # Needed for OpenNI (only enabled on x86_64)
   if [[ ${PLATFORM_ARCH} == x86_64 ]]; then
     sudo apt install -y --no-install-recommends \
@@ -144,7 +148,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     python3-ply \
     python3-yaml \
     qtbase5-dev \
-    v4l-utils
+    v4l-utils \
 
   # Needed for OpenCL support for oasis_kinect2
   sudo apt install -y --no-install-recommends \
