@@ -9,6 +9,9 @@
 
 #include <memory>
 
+#include <image_transport/subscriber.hpp>
+#include <sensor_msgs/msg/image.hpp>
+
 namespace rclcpp
 {
 class Node;
@@ -33,11 +36,21 @@ public:
   void Deinitialize();
 
 private:
+  void OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg);
+
   // Construction parameters
   rclcpp::Node& m_node;
 
-  // Optical flow instance
+  // ROS parameters
+  std::unique_ptr<image_transport::Subscriber> m_imgSubscriber;
+
+  // Video parameters
   std::unique_ptr<VIDEO::OpticalFlow> m_opticalFlow;
+
+  // State parameters
+  bool m_isInitialized{false};
+  int m_imageWidth{0};
+  int m_imageHeight{0};
 };
 } // namespace ROS
 } // namespace OASIS

@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <iostream>
 
+#include <opencv2/imgproc.hpp>
 #include <opencv2/video/tracking.hpp>
 
 using namespace OASIS;
@@ -39,15 +40,16 @@ bool OpticalFlow::Initialize(int width, int height)
   m_currentGrayscaleBuffer.create(m_height, m_width, CV_8UC1);
   m_previousGrayscale.create(m_height, m_width, CV_8UC1);
 
-  // Principle point of the camera
-  cv::Point2d pp(static_cast<double>(m_width),
-                 static_cast<double>(m_height)); // TODO
-
   m_visionGraph.reset(new VisionGraph);
   m_visionGraph->Compile(width, height, m_rgbaFrameBuffer, m_currentGrayscaleBuffer,
                          m_previousGrayscale);
 
   //m_framePool.reset(new FramePool);
+
+  m_hasPreviousFrame = false;
+  m_previousPoints.clear();
+  m_points.clear();
+  m_initialPoints.clear();
 
   return true;
 }
@@ -55,6 +57,98 @@ bool OpticalFlow::Initialize(int width, int height)
 void OpticalFlow::SetConfig(const ConfigOptions& config)
 {
   m_config = config;
+}
+
+bool OpticalFlow::ProcessImage(const cv::Mat& image)
+{
+  if (!m_visionGraph)
+    return false;
+
+  if (image.empty())
+    return false;
+
+  if (image.cols != static_cast<int>(m_width) || image.rows != static_cast<int>(m_height))
+    return false;
+
+  cv::Mat& rgbaFrame = m_rgbaFrameBuffer;
+  switch (image.type())
+  {
+    case CV_8UC4:
+      image.copyTo(rgbaFrame);
+      break;
+    case CV_8UC3:
+      cv::cvtColor(image, rgbaFrame, cv::COLOR_BGR2RGBA);
+      break;
+    case CV_8UC1:
+      cv::cvtColor(image, rgbaFrame, cv::COLOR_GRAY2RGBA);
+      break;
+    default:
+      return false;
+  }
+
+  cv::Mat& currentGrayscale = m_currentGrayscaleBuffer;
+  ConvertToGrayscale(rgbaFrame, currentGrayscale);
+
+  std::vector<cv::Point2f> currentPoints;
+  std::vector<uint8_t> status;
+  std::vector<float> errors;
+
+  auto storeInitialPoints = [this](const std::vector<cv::Point2f>& points)
+  {
+    m_initialPoints.clear();
+    if (points.empty())
+      return;
+
+    m_initialPoints.reserve(points.size() * 2);
+    for (const cv::Point2f& point : points)
+    {
+      m_initialPoints.push_back(point.x);
+      m_initialPoints.push_back(point.y);
+    }
+  };
+
+  if (!m_hasPreviousFrame || m_previousPoints.size() <= MIN_POINT_COUNT)
+  {
+    FindFeatures(currentGrayscale, currentPoints, status, errors);
+    storeInitialPoints(currentPoints);
+  }
+  else
+  {
+    cv::calcOpticalFlowPyrLK(m_previousGrayscale, currentGrayscale, m_previousPoints, currentPoints,
+                             status, errors);
+
+    std::vector<cv::Point2f> filteredPoints;
+    filteredPoints.reserve(currentPoints.size());
+    for (size_t i = 0; i < currentPoints.size(); ++i)
+    {
+      if (i < status.size() && status[i])
+        filteredPoints.emplace_back(currentPoints[i]);
+    }
+    currentPoints = std::move(filteredPoints);
+
+    if (currentPoints.size() <= MIN_POINT_COUNT)
+    {
+      FindFeatures(currentGrayscale, currentPoints, status, errors);
+      storeInitialPoints(currentPoints);
+    }
+  }
+
+  m_points.clear();
+  if (!currentPoints.empty())
+  {
+    m_points.reserve(currentPoints.size() * 2);
+    for (const cv::Point2f& point : currentPoints)
+    {
+      m_points.push_back(point.x);
+      m_points.push_back(point.y);
+    }
+  }
+
+  currentGrayscale.copyTo(m_previousGrayscale);
+  m_previousPoints = std::move(currentPoints);
+  m_hasPreviousFrame = true;
+
+  return true;
 }
 
 /*

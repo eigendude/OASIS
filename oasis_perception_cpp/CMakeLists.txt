@@ -417,9 +417,19 @@ set(OPTICAL_FLOW_SOURCES
   src/video/OpticalFlow.cpp
   src/video/VisionGraph.cpp
 )
+set(OPTICAL_FLOW_INCLUDE_DIRS
+  ${OpenCV_INCLUDE_DIRS}
+  ${cv_bridge_INCLUDE_DIRS}
+  ${image_transport_INCLUDE_DIRS}
+  ${rclcpp_INCLUDE_DIRS}
+  ${sensor_msgs_INCLUDE_DIRS}
+)
 set(OPTICAL_FLOW_LIBRARIES
   ${OpenCV_LIBS}
+  cv_bridge::cv_bridge
+  image_transport::image_transport
   rclcpp::rclcpp
+  ${sensor_msgs_TARGETS}
 )
 
 add_executable(optical_flow
