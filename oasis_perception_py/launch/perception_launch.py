@@ -129,16 +129,11 @@ def add_background_nodes(ld: LaunchDescription, system_id: str) -> None:
     ld.add_action(subtractor_node)
 
 
-def add_background_components(
-    ld: LaunchDescription, host_id: str, system_ids: List[str]
+def extend_background_components(
+    composable_nodes: list[ComposableNode], system_ids: List[str]
 ) -> None:
-    background_container: ComposableNodeContainer = ComposableNodeContainer(
-        namespace=ROS_NAMESPACE,
-        name=f"background_modeler_container_{host_id}",
-        package="rclcpp_components",
-        executable="component_container_mt",
-        output="screen",
-        composable_node_descriptions=[
+    composable_nodes.extend(
+        [
             ComposableNode(
                 namespace=ROS_NAMESPACE,
                 package=CPP_PACKAGE_NAME,
@@ -182,9 +177,25 @@ def add_background_components(
                 ],
             )
             for system_id in system_ids
-        ],
+        ]
     )
-    ld.add_action(background_container)
+
+
+def add_perception_components(
+    ld: LaunchDescription, host_id: str, composable_nodes: list[ComposableNode]
+) -> None:
+    if not composable_nodes:
+        return
+
+    perception_container: ComposableNodeContainer = ComposableNodeContainer(
+        namespace=ROS_NAMESPACE,
+        name=f"perception_container_{host_id}",
+        package="rclcpp_components",
+        executable="component_container_mt",
+        output="screen",
+        composable_node_descriptions=composable_nodes,
+    )
+    ld.add_action(perception_container)
 
 
 #
@@ -286,8 +297,10 @@ def add_pose_renderer(ld: LaunchDescription, zone_ids: list[str], host_id: str) 
 def generate_launch_description() -> LaunchDescription:
     ld = LaunchDescription()
 
+    composable_nodes: list[ComposableNode] = []
+
     if PERCEPTION_SERVER_BACKGROUND:
-        add_background_components(ld, HOST_ID, PERCEPTION_SERVER_BACKGROUND)
+        extend_background_components(composable_nodes, PERCEPTION_SERVER_BACKGROUND)
 
     if PERCEPTION_SERVER_POSE_LANDMARKS:
         for host_id in PERCEPTION_SERVER_POSE_LANDMARKS:
@@ -296,6 +309,8 @@ def generate_launch_description() -> LaunchDescription:
     if PERCEPTION_SERVER_CALIBRATION:
         for host_id in PERCEPTION_SERVER_CALIBRATION:
             add_calibration(ld, host_id)
+
+    add_perception_components(ld, HOST_ID, composable_nodes)
 
     # TODO
     # if ZONE_ID in SMART_DISPLAY_ZONES:
