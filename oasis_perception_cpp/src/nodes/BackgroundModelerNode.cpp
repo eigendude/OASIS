@@ -24,13 +24,13 @@ constexpr const char* BACKGROUND_TOPIC = "background";
 constexpr const char* IMAGE_TOPIC = "image";
 
 // Parameters
-constexpr const char* ZONE_ID_PARAMETER = "zone_id";
-constexpr const char* DEFAULT_ZONE_ID = "";
+constexpr const char* SYSTEM_ID_PARAMETER = "system_id";
+constexpr const char* DEFAULT_SYSTEM_ID = "";
 } // namespace
 
 BackgroundModelerNode::BackgroundModelerNode(rclcpp::Node& node) : m_node(node)
 {
-  m_node.declare_parameter<std::string>(ZONE_ID_PARAMETER, DEFAULT_ZONE_ID);
+  m_node.declare_parameter<std::string>(SYSTEM_ID_PARAMETER, DEFAULT_SYSTEM_ID);
 }
 
 BackgroundModelerNode::~BackgroundModelerNode() = default;
@@ -39,23 +39,23 @@ bool BackgroundModelerNode::Initialize()
 {
   RCLCPP_INFO(m_node.get_logger(), "Starting background modeler...");
 
-  std::string zoneId;
-  if (!m_node.get_parameter(ZONE_ID_PARAMETER, zoneId))
+  std::string systemId;
+  if (!m_node.get_parameter(SYSTEM_ID_PARAMETER, systemId))
   {
-    RCLCPP_ERROR(m_node.get_logger(), "Missing zone ID parameter '%s'", ZONE_ID_PARAMETER);
+    RCLCPP_ERROR(m_node.get_logger(), "Missing system ID parameter '%s'", SYSTEM_ID_PARAMETER);
     return false;
   }
 
-  if (zoneId.empty())
+  if (systemId.empty())
   {
-    RCLCPP_ERROR(m_node.get_logger(), "Zone ID parameter '%s' is empty", ZONE_ID_PARAMETER);
+    RCLCPP_ERROR(m_node.get_logger(), "System ID parameter '%s' is empty", SYSTEM_ID_PARAMETER);
     return false;
   }
 
-  RCLCPP_INFO(m_node.get_logger(), "Zone ID: %s", zoneId.c_str());
+  RCLCPP_INFO(m_node.get_logger(), "System ID: %s", systemId.c_str());
 
-  const std::string imageTopic = zoneId + "_" + IMAGE_TOPIC;
-  const std::string backgroundTopic = zoneId + "_" + BACKGROUND_TOPIC;
+  const std::string imageTopic = systemId + "_" + IMAGE_TOPIC;
+  const std::string backgroundTopic = systemId + "_" + BACKGROUND_TOPIC;
 
   RCLCPP_INFO(m_node.get_logger(), "Image topic: %s", imageTopic.c_str());
   RCLCPP_INFO(m_node.get_logger(), "Background topic: %s", backgroundTopic.c_str());
