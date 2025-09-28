@@ -428,6 +428,7 @@ install(
 # optical_flow
 #
 
+# Project files
 set(OPTICAL_FLOW_SOURCES
   src/api/ImageProc.cpp
   src/api/Video.cpp
@@ -438,11 +439,22 @@ set(OPTICAL_FLOW_SOURCES
   src/video/OpticalFlow.cpp
   src/video/VisionGraph.cpp
 )
+set(OPTICAL_FLOW_INCLUDE_DIRS
+  ${OpenCV_INCLUDE_DIRS}
+  ${cv_bridge_INCLUDE_DIRS}
+  ${image_transport_INCLUDE_DIRS}
+  ${rclcpp_INCLUDE_DIRS}
+  ${sensor_msgs_INCLUDE_DIRS}
+)
 set(OPTICAL_FLOW_LIBRARIES
   ${OpenCV_LIBS}
+  cv_bridge::cv_bridge
+  image_transport::image_transport
   rclcpp::rclcpp
+  ${sensor_msgs_TARGETS}
 )
 
+# Node
 add_executable(optical_flow
   ${OPTICAL_FLOW_SOURCES}
   src/cli/optical_flow_node.cpp
@@ -460,6 +472,7 @@ install(
     lib/${PROJECT_NAME}
 )
 
+# Component
 add_library(optical_flow_component SHARED
   ${OPTICAL_FLOW_SOURCES}
   src/components/optical_flow_component.cpp
@@ -479,8 +492,6 @@ install(
   DESTINATION
     lib
 )
-
-# Register the component
 rclcpp_components_register_node(
   optical_flow_component
   PLUGIN "oasis_perception::OpticalFlowComponent"
