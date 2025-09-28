@@ -73,72 +73,42 @@ elif HOST_ID == "oceanplatform":
 
 
 ################################################################################
+# Node Helpers
+################################################################################
+
+
+def add_perception_components(
+    ld: LaunchDescription, host_id: str, composable_nodes: list[ComposableNode]
+) -> None:
+    if not composable_nodes:
+        return
+
+    perception_container: ComposableNodeContainer = ComposableNodeContainer(
+        namespace=ROS_NAMESPACE,
+        name=f"perception_container_{host_id}",
+        package="rclcpp_components",
+        executable="component_container_mt",
+        output="screen",
+        composable_node_descriptions=composable_nodes,
+    )
+    ld.add_action(perception_container)
+
+
+################################################################################
 # Node definitions
 ################################################################################
 
 
 #
-# Background modeler and background subtractor
+# Background modeler
 #
 
 
-def add_background_nodes(ld: LaunchDescription, system_id: str) -> None:
-    modeler_node: Node = Node(
-        namespace=ROS_NAMESPACE,
-        package=CPP_PACKAGE_NAME,
-        executable="background_modeler",
-        name=f"background_modeler_{system_id}",
-        output="screen",
-        parameters=[{"system_id": system_id}],
-        remappings=[
-            (
-                f"{system_id}_image",
-                (
-                    # Use different remappings for Kinect V2
-                    f"{system_id}/sd/image_color"
-                    if system_id == KINECT_V2_ZONE_ID
-                    else f"{system_id}/image_rect"
-                ),
-            ),
-            (f"{system_id}_background", f"{system_id}/background"),
-        ],
-    )
-    ld.add_action(modeler_node)
-
-    subtractor_node: Node = Node(
-        namespace=ROS_NAMESPACE,
-        package=CPP_PACKAGE_NAME,
-        executable="background_subtractor",
-        name=f"background_subtractor_{system_id}",
-        output="screen",
-        parameters=[{"system_id": system_id}],
-        remappings=[
-            (
-                f"{system_id}_image",
-                (
-                    # Use different remappings for Kinect V2
-                    f"{system_id}/sd/image_color"
-                    if system_id == KINECT_V2_ZONE_ID
-                    else f"{system_id}/image_rect"
-                ),
-            ),
-            (f"{system_id}_foreground", f"{system_id}/foreground"),
-            (f"{system_id}_subtracted", f"{system_id}/subtracted"),
-        ],
-    )
-    ld.add_action(subtractor_node)
-
-
-def add_background_components(
-    ld: LaunchDescription, host_id: str, system_ids: List[str]
+def add_background_modeler(
+    composable_nodes: list[ComposableNode], system_ids: List[str]
 ) -> None:
-    background_container: ComposableNodeContainer = ComposableNodeContainer(
-        namespace=ROS_NAMESPACE,
-        name=f"background_modeler_container_{host_id}",
-        package="rclcpp_components",
-        executable="component_container_mt",
-        output="screen",
-        composable_node_descriptions=[
+    composable_nodes.extend(
+        [
             ComposableNode(
                 namespace=ROS_NAMESPACE,
                 package=CPP_PACKAGE_NAME,
@@ -160,7 +130,19 @@ def add_background_components(
             )
             for system_id in system_ids
         ]
-        + [
+    )
+
+
+#
+# Background subtractor
+#
+
+
+def add_background_subtractor(
+    composable_nodes: list[ComposableNode], system_ids: List[str]
+) -> None:
+    composable_nodes.extend(
+        [
             ComposableNode(
                 namespace=ROS_NAMESPACE,
                 package=CPP_PACKAGE_NAME,
@@ -182,9 +164,8 @@ def add_background_components(
                 ],
             )
             for system_id in system_ids
-        ],
+        ]
     )
-    ld.add_action(background_container)
 
 
 #
@@ -286,8 +267,11 @@ def add_pose_renderer(ld: LaunchDescription, zone_ids: list[str], host_id: str) 
 def generate_launch_description() -> LaunchDescription:
     ld = LaunchDescription()
 
+    composable_nodes: list[ComposableNode] = []
+
     if PERCEPTION_SERVER_BACKGROUND:
-        add_background_components(ld, HOST_ID, PERCEPTION_SERVER_BACKGROUND)
+        add_background_modeler(composable_nodes, PERCEPTION_SERVER_BACKGROUND)
+        add_background_subtractor(composable_nodes, PERCEPTION_SERVER_BACKGROUND)
 
     if PERCEPTION_SERVER_POSE_LANDMARKS:
         for host_id in PERCEPTION_SERVER_POSE_LANDMARKS:
@@ -296,6 +280,8 @@ def generate_launch_description() -> LaunchDescription:
     if PERCEPTION_SERVER_CALIBRATION:
         for host_id in PERCEPTION_SERVER_CALIBRATION:
             add_calibration(ld, host_id)
+
+    add_perception_components(ld, HOST_ID, composable_nodes)
 
     # TODO
     # if ZONE_ID in SMART_DISPLAY_ZONES:
