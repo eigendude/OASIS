@@ -302,25 +302,6 @@ def generate_launch_description() -> LaunchDescription:
     #     add_pose_renderer(ld, CAMERA_ZONES, HOST_ID)
 
     """
-    if HOST_ID == "cinder":
-        bgs_abl_node = Node(
-            namespace=ROS_NAMESPACE,
-            package=CPP_PACKAGE_NAME,
-            executable="background_subtractor_abl",
-            name=f"background_subtractor_abl_{HOST_ID}",
-            output="screen",
-        )
-        ld.add_action(bgs_abl_node)
-
-        bgs_asbl_node = Node(
-            namespace=ROS_NAMESPACE,
-            package=CPP_PACKAGE_NAME,
-            executable="background_subtractor_asbl",
-            name=f"background_subtractor_asbl_{HOST_ID}",
-            output="screen",
-        )
-        ld.add_action(bgs_asbl_node)
-
     elif HOST_ID == "starship":
         multi_modeler_node = Node(
             namespace=ROS_NAMESPACE,
