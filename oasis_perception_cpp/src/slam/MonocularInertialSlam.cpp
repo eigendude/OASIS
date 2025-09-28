@@ -17,8 +17,8 @@
 #include <image_transport/transport_hints.hpp>
 #include <oasis_msgs/msg/i2_c_imu.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
+#include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
-#include <rcutils/logging_macros.h>
 #include <sensor_msgs/image_encodings.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <std_msgs/msg/header.hpp>

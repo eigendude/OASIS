@@ -16,8 +16,8 @@
 #include <image_transport/image_transport.hpp>
 #include <image_transport/transport_hints.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
+#include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
-#include <rcutils/logging_macros.h>
 #include <sensor_msgs/image_encodings.hpp>
 
 using namespace OASIS;
