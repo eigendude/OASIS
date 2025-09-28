@@ -403,6 +403,8 @@ set(OPTICAL_FLOW_INCLUDE_DIRS
 )
 set(OPTICAL_FLOW_LIBRARIES
   ${OpenCV_LIBS}
+  cv_bridge::cv_bridge
+  image_transport::image_transport
   rclcpp::rclcpp
   ${sensor_msgs_TARGETS}
   ${std_msgs_TARGETS}
@@ -445,8 +447,6 @@ install(
   DESTINATION
     lib
 )
-
-# Register the component
 rclcpp_components_register_node(
   optical_flow_component
   PLUGIN "oasis_perception::OpticalFlowComponent"

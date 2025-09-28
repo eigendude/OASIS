@@ -60,16 +60,18 @@ CPP_PACKAGE_NAME: str = "oasis_perception_cpp"
 PYTHON_PACKAGE_NAME: str = "oasis_perception_py"
 
 PERCEPTION_SERVER_BACKGROUND: list[str] = []
-PERCEPTION_SERVER_POSE_LANDMARKS: list[str] = []
 PERCEPTION_SERVER_CALIBRATION: list[str] = []
+PERCEPTION_SERVER_FLOW: list[str] = []
+PERCEPTION_SERVER_POSE_LANDMARKS: list[str] = []
 
 if HOST_ID == "nas":
-    PERCEPTION_SERVER_POSE_LANDMARKS.extend(["hallway"])
-elif HOST_ID == "oceanplatform":
-    PERCEPTION_SERVER_BACKGROUND.extend(["station"])
     # PERCEPTION_SERVER_CALIBRATION.extend(
     #     ["bar", "doorbell", "entryway", "hallway", "kitchen", "livingroom"]
     # )
+    PERCEPTION_SERVER_POSE_LANDMARKS.extend(["hallway"])
+elif HOST_ID == "oceanplatform":
+    PERCEPTION_SERVER_BACKGROUND.extend(["station"])
+    PERCEPTION_SERVER_FLOW.extend(["station"])
 
 
 ################################################################################
@@ -204,6 +206,40 @@ def add_calibration(ld: LaunchDescription, zone_id: str) -> None:
 
 
 #
+# Optical flow
+#
+
+
+def add_optical_flow(
+    composable_nodes: list[ComposableNode], system_ids: List[str]
+) -> None:
+    composable_nodes.extend(
+        [
+            ComposableNode(
+                namespace=ROS_NAMESPACE,
+                package=CPP_PACKAGE_NAME,
+                plugin="oasis_perception::OpticalFlowComponent",
+                name=f"optical_flow_{system_id}",
+                parameters=[{"system_id": system_id}],
+                remappings=[
+                    (
+                        f"{system_id}_image",
+                        (
+                            # Use different remappings for Kinect V2
+                            f"{system_id}/sd/image_color"
+                            if system_id == KINECT_V2_ZONE_ID
+                            else f"{system_id}/image_rect"
+                        ),
+                    ),
+                    (f"{system_id}_flow", f"{system_id}/flow"),
+                ],
+            )
+            for system_id in system_ids
+        ]
+    )
+
+
+#
 # Pose landmarker
 #
 
@@ -273,13 +309,16 @@ def generate_launch_description() -> LaunchDescription:
         add_background_modeler(composable_nodes, PERCEPTION_SERVER_BACKGROUND)
         add_background_subtractor(composable_nodes, PERCEPTION_SERVER_BACKGROUND)
 
-    if PERCEPTION_SERVER_POSE_LANDMARKS:
-        for host_id in PERCEPTION_SERVER_POSE_LANDMARKS:
-            add_pose_landmarker(ld, host_id)
-
     if PERCEPTION_SERVER_CALIBRATION:
         for host_id in PERCEPTION_SERVER_CALIBRATION:
             add_calibration(ld, host_id)
+
+    if PERCEPTION_SERVER_FLOW:
+        add_optical_flow(composable_nodes, PERCEPTION_SERVER_FLOW)
+
+    if PERCEPTION_SERVER_POSE_LANDMARKS:
+        for host_id in PERCEPTION_SERVER_POSE_LANDMARKS:
+            add_pose_landmarker(ld, host_id)
 
     add_perception_components(ld, HOST_ID, composable_nodes)
 
