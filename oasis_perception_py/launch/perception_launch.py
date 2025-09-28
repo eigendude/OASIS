@@ -82,25 +82,25 @@ elif HOST_ID == "oceanplatform":
 #
 
 
-def add_background_nodes(ld: LaunchDescription, zone_id: str) -> None:
+def add_background_nodes(ld: LaunchDescription, system_id: str) -> None:
     modeler_node: Node = Node(
         namespace=ROS_NAMESPACE,
         package=CPP_PACKAGE_NAME,
         executable="background_modeler",
-        name=f"background_modeler_{zone_id}",
+        name=f"background_modeler_{system_id}",
         output="screen",
-        parameters=[{"zone_id": zone_id}],
+        parameters=[{"system_id": system_id}],
         remappings=[
             (
-                f"{zone_id}_image",
+                f"{system_id}_image",
                 (
                     # Use different remappings for Kinect V2
-                    f"{zone_id}/sd/image_color"
-                    if zone_id == KINECT_V2_ZONE_ID
-                    else f"{zone_id}/image_rect"
+                    f"{system_id}/sd/image_color"
+                    if system_id == KINECT_V2_ZONE_ID
+                    else f"{system_id}/image_rect"
                 ),
             ),
-            (f"{zone_id}_background", f"{zone_id}/background"),
+            (f"{system_id}_background", f"{system_id}/background"),
         ],
     )
     ld.add_action(modeler_node)
@@ -109,28 +109,28 @@ def add_background_nodes(ld: LaunchDescription, zone_id: str) -> None:
         namespace=ROS_NAMESPACE,
         package=CPP_PACKAGE_NAME,
         executable="background_subtractor",
-        name=f"background_subtractor_{zone_id}",
+        name=f"background_subtractor_{system_id}",
         output="screen",
-        parameters=[{"zone_id": zone_id}],
+        parameters=[{"system_id": system_id}],
         remappings=[
             (
-                f"{zone_id}_image",
+                f"{system_id}_image",
                 (
                     # Use different remappings for Kinect V2
-                    f"{zone_id}/sd/image_color"
-                    if zone_id == KINECT_V2_ZONE_ID
-                    else f"{zone_id}/image_rect"
+                    f"{system_id}/sd/image_color"
+                    if system_id == KINECT_V2_ZONE_ID
+                    else f"{system_id}/image_rect"
                 ),
             ),
-            (f"{zone_id}_foreground", f"{zone_id}/foreground"),
-            (f"{zone_id}_subtracted", f"{zone_id}/subtracted"),
+            (f"{system_id}_foreground", f"{system_id}/foreground"),
+            (f"{system_id}_subtracted", f"{system_id}/subtracted"),
         ],
     )
     ld.add_action(subtractor_node)
 
 
 def add_background_components(
-    ld: LaunchDescription, host_id: str, zone_ids: List[str]
+    ld: LaunchDescription, host_id: str, system_ids: List[str]
 ) -> None:
     background_container: ComposableNodeContainer = ComposableNodeContainer(
         namespace=ROS_NAMESPACE,
@@ -143,45 +143,45 @@ def add_background_components(
                 namespace=ROS_NAMESPACE,
                 package=CPP_PACKAGE_NAME,
                 plugin="oasis_perception_cpp::BackgroundModelerComponent",
-                name=f"background_modeler_{zone_id}",
-                parameters=[{"zone_id": zone_id}],
+                name=f"background_modeler_{system_id}",
+                parameters=[{"system_id": system_id}],
                 remappings=[
                     (
-                        f"{zone_id}_image",
+                        f"{system_id}_image",
                         (
                             # Use different remappings for Kinect V2
-                            f"{zone_id}/sd/image_color"
-                            if zone_id == KINECT_V2_ZONE_ID
-                            else f"{zone_id}/image_rect"
+                            f"{system_id}/sd/image_color"
+                            if system_id == KINECT_V2_ZONE_ID
+                            else f"{system_id}/image_rect"
                         ),
                     ),
-                    (f"{zone_id}_background", f"{zone_id}/background"),
+                    (f"{system_id}_background", f"{system_id}/background"),
                 ],
             )
-            for zone_id in zone_ids
+            for system_id in system_ids
         ]
         + [
             ComposableNode(
                 namespace=ROS_NAMESPACE,
                 package=CPP_PACKAGE_NAME,
                 plugin="oasis_perception_cpp::BackgroundSubtractorComponent",
-                name=f"background_subtractor_{zone_id}",
-                parameters=[{"zone_id": zone_id}],
+                name=f"background_subtractor_{system_id}",
+                parameters=[{"system_id": system_id}],
                 remappings=[
                     (
-                        f"{zone_id}_image",
+                        f"{system_id}_image",
                         (
                             # Use different remappings for Kinect V2
-                            f"{zone_id}/sd/image_color"
-                            if zone_id == KINECT_V2_ZONE_ID
-                            else f"{zone_id}/image_rect"
+                            f"{system_id}/sd/image_color"
+                            if system_id == KINECT_V2_ZONE_ID
+                            else f"{system_id}/image_rect"
                         ),
                     ),
-                    (f"{zone_id}_foreground", f"{zone_id}/foreground"),
-                    (f"{zone_id}_subtracted", f"{zone_id}/subtracted"),
+                    (f"{system_id}_foreground", f"{system_id}/foreground"),
+                    (f"{system_id}_subtracted", f"{system_id}/subtracted"),
                 ],
             )
-            for zone_id in zone_ids
+            for system_id in system_ids
         ],
     )
     ld.add_action(background_container)
