@@ -66,7 +66,7 @@ PERCEPTION_SERVER_CALIBRATION: list[str] = []
 if HOST_ID == "nas":
     PERCEPTION_SERVER_POSE_LANDMARKS.extend(["hallway"])
 elif HOST_ID == "oceanplatform":
-    PERCEPTION_SERVER_BACKGROUND.extend(["livingroom"])
+    PERCEPTION_SERVER_BACKGROUND.extend(["station"])
     # PERCEPTION_SERVER_CALIBRATION.extend(
     #     ["bar", "doorbell", "entryway", "hallway", "kitchen", "livingroom"]
     # )
