@@ -6,21 +6,16 @@ host_id_map:
 # Remap HOST_ID to zone names
 zone_id_map:
   nas: hallway
-  station: livingroom
-  oceanplatform: livingroom
 
 # Zones with smart displays that can be controlled
 smart_display_zones:
   - bar
   - hallway
-  - kitchen
 
 # Zones with camera feeds
 camera_zones:
   - bar
   - hallway
-  - kitchen
-  - livingroom
 
 # Plug ID that controls smart displays
 smart_display_plug_id: doorway_display
