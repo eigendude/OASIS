@@ -148,23 +148,36 @@ install(
 # background_modeler
 #
 
-add_executable(background_modeler
-  src/cli/background_modeler.cpp
+# Project files
+set(BACKGROUND_MODELER_SOURCES
   src/nodes/BackgroundModelerNode.cpp
 )
-
-ament_target_dependencies(background_modeler
-  ${AMENT_COMMON_DEPENDENCIES}
-)
-
-target_include_directories(background_modeler PUBLIC
+set(BACKGROUND_MODELER_INCLUDE_DIRS
   ${BGSLIBRARY_INCLUDE_DIRS}
+  ${cv_bridge_INCLUDE_DIRS}
+  ${image_transport_INCLUDE_DIRS}
+  ${rclcpp_INCLUDE_DIRS}
+  ${sensor_msgs_INCLUDE_DIRS}
 )
-
-target_link_libraries(background_modeler
+set(BACKGROUND_MODELER_LIBRARIES
   ${BGS_LIBRARIES}
+  cv_bridge::cv_bridge
+  image_transport::image_transport
+  rclcpp::rclcpp
+  ${sensor_msgs_TARGETS}
 )
 
+# Node
+add_executable(background_modeler
+  ${BACKGROUND_MODELER_SOURCES}
+  src/cli/background_modeler.cpp
+)
+target_include_directories(background_modeler PUBLIC
+  ${BACKGROUND_MODELER_INCLUDE_DIRS}
+)
+target_link_libraries(background_modeler PUBLIC
+  ${BACKGROUND_MODELER_LIBRARIES}
+)
 install(
   TARGETS
     background_modeler
@@ -172,33 +185,26 @@ install(
     lib/${PROJECT_NAME}
 )
 
+# Component
 add_library(background_modeler_component SHARED
-  src/nodes/BackgroundModelerNode.cpp
+  ${BACKGROUND_MODELER_SOURCES}
   src/components/background_modeler_component.cpp
   src/ros/RosComponent.cpp
 )
-
-ament_target_dependencies(background_modeler_component
-  ${AMENT_COMMON_DEPENDENCIES}
-)
-
 target_include_directories(background_modeler_component PUBLIC
-  ${BGSLIBRARY_INCLUDE_DIRS}
+  ${BACKGROUND_MODELER_INCLUDE_DIRS}
   ${rclcpp_components_INCLUDE_DIRS}
 )
-
-target_link_libraries(background_modeler_component
-  ${BGS_LIBRARIES}
+target_link_libraries(background_modeler_component PUBLIC
+  ${BACKGROUND_MODELER_LIBRARIES}
   ${rclcpp_components_LIBRARIES}
 )
-
 install(
   TARGETS
     background_modeler_component
   DESTINATION
     lib
 )
-
 rclcpp_components_register_node(
   background_modeler_component
   PLUGIN "oasis_perception_cpp::BackgroundModelerComponent"
@@ -209,23 +215,36 @@ rclcpp_components_register_node(
 # background_subtractor
 #
 
-add_executable(background_subtractor
-  src/cli/background_subtractor.cpp
+# Project files
+set(BACKGROUND_SUBTRACTOR_SOURCES
   src/nodes/BackgroundSubtractorNode.cpp
 )
-
-ament_target_dependencies(background_subtractor
-  ${AMENT_COMMON_DEPENDENCIES}
-)
-
-target_include_directories(background_subtractor PUBLIC
+set(BACKGROUND_SUBTRACTOR_INCLUDE_DIRS
   ${BGSLIBRARY_INCLUDE_DIRS}
+  ${cv_bridge_INCLUDE_DIRS}
+  ${image_transport_INCLUDE_DIRS}
+  ${rclcpp_INCLUDE_DIRS}
+  ${sensor_msgs_INCLUDE_DIRS}
 )
-
-target_link_libraries(background_subtractor
+set(BACKGROUND_SUBTRACTOR_LIBRARIES
   ${BGS_LIBRARIES}
+  cv_bridge::cv_bridge
+  image_transport::image_transport
+  rclcpp::rclcpp
+  ${sensor_msgs_TARGETS}
 )
 
+# Node
+add_executable(background_subtractor
+  ${BACKGROUND_SUBTRACTOR_SOURCES}
+  src/cli/background_subtractor.cpp
+)
+target_include_directories(background_subtractor PUBLIC
+  ${BACKGROUND_SUBTRACTOR_INCLUDE_DIRS}
+)
+target_link_libraries(background_subtractor PUBLIC
+  ${BACKGROUND_SUBTRACTOR_LIBRARIES}
+)
 install(
   TARGETS
     background_subtractor
@@ -233,33 +252,26 @@ install(
     lib/${PROJECT_NAME}
 )
 
+# Component
 add_library(background_subtractor_component SHARED
-  src/nodes/BackgroundSubtractorNode.cpp
+  ${BACKGROUND_SUBTRACTOR_SOURCES}
   src/components/background_subtractor_component.cpp
   src/ros/RosComponent.cpp
 )
-
-ament_target_dependencies(background_subtractor_component
-  ${AMENT_COMMON_DEPENDENCIES}
-)
-
 target_include_directories(background_subtractor_component PUBLIC
-  ${BGSLIBRARY_INCLUDE_DIRS}
+  ${BACKGROUND_SUBTRACTOR_INCLUDE_DIRS}
   ${rclcpp_components_INCLUDE_DIRS}
 )
-
-target_link_libraries(background_subtractor_component
-  ${BGS_LIBRARIES}
+target_link_libraries(background_subtractor_component PUBLIC
+  ${BACKGROUND_SUBTRACTOR_LIBRARIES}
   ${rclcpp_components_LIBRARIES}
 )
-
 install(
   TARGETS
     background_subtractor_component
   DESTINATION
     lib
 )
-
 rclcpp_components_register_node(
   background_subtractor_component
   PLUGIN "oasis_perception_cpp::BackgroundSubtractorComponent"
