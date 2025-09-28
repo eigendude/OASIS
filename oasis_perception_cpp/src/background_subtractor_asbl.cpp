@@ -6,7 +6,7 @@
  *  See the file LICENSE.txt for more information.
  */
 
-#include "image/BackgroundModelerASBL.h"
+#include "image/BackgroundSubtractorASBL.h"
 #include "utils/NetworkUtils.h"
 
 #include <memory>
@@ -47,7 +47,7 @@ int main(int argc, char* argv[])
   const std::string topicBase = std::string("/") + ROS_NAMESPACE + "/" + VIDEO_MACHINE + "/";
 
   {
-    OASIS::IMAGE::BackgroundModelerASBL backgroundModeler(
+    OASIS::IMAGE::BackgroundSubtractorASBL backgroundModeler(
         node, topicBase + IMAGE_TOPIC, topicBase + FOREGROUND_TOPIC, topicBase + SUBTRACTED_TOPIC);
 
     rclcpp::spin(node);

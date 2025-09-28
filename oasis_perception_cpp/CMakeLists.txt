@@ -120,7 +120,7 @@ install(
 #
 
 add_executable(background_subtractor_asbl
-  src/image/BackgroundModelerASBL.cpp
+  src/image/BackgroundSubtractorASBL.cpp
   src/utils/NetworkUtils.cpp
   src/background_subtractor_asbl.cpp
 )

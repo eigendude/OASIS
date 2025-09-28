@@ -6,7 +6,7 @@
  *  See the file LICENSE.txt for more information.
  */
 
-#include "BackgroundModelerASBL.h"
+#include "BackgroundSubtractorASBL.h"
 
 #include <bgslibrary/algorithms/AdaptiveSelectiveBackgroundLearning.h>
 #include <cv_bridge/cv_bridge.hpp>
@@ -20,10 +20,10 @@
 using namespace OASIS;
 using namespace IMAGE;
 
-BackgroundModelerASBL::BackgroundModelerASBL(std::shared_ptr<rclcpp::Node> node,
-                                             const std::string& imageTopic,
-                                             const std::string& foregroundTopic,
-                                             const std::string& subtractedTopic)
+BackgroundSubtractorASBL::BackgroundSubtractorASBL(std::shared_ptr<rclcpp::Node> node,
+                                                   const std::string& imageTopic,
+                                                   const std::string& foregroundTopic,
+                                                   const std::string& subtractedTopic)
   : m_logger(node->get_logger()),
     m_imgTransport(std::make_unique<image_transport::ImageTransport>(node)),
     m_imgPublisherForeground(std::make_unique<image_transport::Publisher>()),
@@ -38,8 +38,8 @@ BackgroundModelerASBL::BackgroundModelerASBL(std::shared_ptr<rclcpp::Node> node,
 
   auto transportHints = image_transport::TransportHints(node.get(), "compressed");
 
-  *m_imgSubscriber = m_imgTransport->subscribe(imageTopic, 1, &BackgroundModelerASBL::ReceiveImage,
-                                               this, &transportHints);
+  *m_imgSubscriber = m_imgTransport->subscribe(
+      imageTopic, 1, &BackgroundSubtractorASBL::ReceiveImage, this, &transportHints);
 
   *m_imgPublisherForeground = m_imgTransport->advertise(foregroundTopic, 10);
   *m_imgPublisherSubtracted = m_imgTransport->advertise(subtractedTopic, 10);
@@ -47,9 +47,9 @@ BackgroundModelerASBL::BackgroundModelerASBL(std::shared_ptr<rclcpp::Node> node,
   RCLCPP_INFO(m_logger, "Started background modeler");
 }
 
-BackgroundModelerASBL::~BackgroundModelerASBL() = default;
+BackgroundSubtractorASBL::~BackgroundSubtractorASBL() = default;
 
-void BackgroundModelerASBL::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg)
+void BackgroundSubtractorASBL::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg)
 {
   cv_bridge::CvImagePtr cv_ptr;
   try

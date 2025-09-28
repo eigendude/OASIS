@@ -39,14 +39,14 @@ namespace OASIS
 namespace IMAGE
 {
 
-class BackgroundModelerASBL
+class BackgroundSubtractorASBL
 {
 public:
-  BackgroundModelerASBL(std::shared_ptr<rclcpp::Node> node,
-                        const std::string& imageTopic,
-                        const std::string& foregroundTopic,
-                        const std::string& subtractedTopic);
-  ~BackgroundModelerASBL();
+  BackgroundSubtractorASBL(std::shared_ptr<rclcpp::Node> node,
+                           const std::string& imageTopic,
+                           const std::string& foregroundTopic,
+                           const std::string& subtractedTopic);
+  ~BackgroundSubtractorASBL();
 
   // ROS interface
   void ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg);
