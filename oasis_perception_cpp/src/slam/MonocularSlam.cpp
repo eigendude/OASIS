@@ -41,9 +41,9 @@ std::string GetVocabularyFile(const rclcpp::Logger& logger)
 
     return vocabularyPath.string();
   }
-  catch (const ament_index_cpp::PackageNotFoundError& exception)
+  catch (const std::exception& ex)
   {
-    RCLCPP_FATAL(logger, "Failed to locate the 'orb_slam3' package: %s", exception.what());
+    RCLCPP_FATAL(logger, "Failed to locate the 'orb_slam3' package: %s", ex.what());
     throw;
   }
 }
@@ -64,9 +64,9 @@ std::string GetSettingsFile(const rclcpp::Logger& logger)
 
     return settingsPath.string();
   }
-  catch (const ament_index_cpp::PackageNotFoundError& exception)
+  catch (const std::exception& ex)
   {
-    RCLCPP_FATAL(logger, "Failed to locate the 'oasis_perception_cpp' package: %s", exception.what());
+    RCLCPP_FATAL(logger, "Failed to locate the 'oasis_perception_cpp' package: %s", ex.what());
     throw;
   }
 }
