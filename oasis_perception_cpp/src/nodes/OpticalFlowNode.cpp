@@ -15,6 +15,7 @@
 
 #include <cv_bridge/cv_bridge.hpp>
 #include <image_transport/image_transport.hpp>
+#include <opencv2/imgproc.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
 #include <sensor_msgs/image_encodings.hpp>
@@ -24,6 +25,9 @@ using namespace ROS;
 
 namespace
 {
+// Published topics
+constexpr const char* FLOW_TOPIC = "flow";
+
 // Subscribed topics
 constexpr const char* IMAGE_TOPIC = "image";
 
@@ -35,6 +39,7 @@ constexpr const char* DEFAULT_SYSTEM_ID = "";
 OpticalFlowNode::OpticalFlowNode(rclcpp::Node& node)
   : m_node(node),
     m_logger(node.get_logger()),
+    m_flowPublisher(std::make_unique<image_transport::Publisher>()),
     m_imgSubscriber(std::make_unique<image_transport::Subscriber>()),
     m_opticalFlow(std::make_unique<VIDEO::OpticalFlow>())
 {
@@ -61,9 +66,13 @@ bool OpticalFlowNode::Initialize()
   }
 
   const std::string imageTopic = systemId + "_" + IMAGE_TOPIC;
+  const std::string flowTopic = systemId + "_" + FLOW_TOPIC;
 
   RCLCPP_INFO(m_node.get_logger(), "System ID: %s", systemId.c_str());
   RCLCPP_INFO(m_node.get_logger(), "Image topic: %s", imageTopic.c_str());
+  RCLCPP_INFO(m_node.get_logger(), "Flow topic: %s", flowTopic.c_str());
+
+  *m_flowPublisher = image_transport::create_publisher(&m_node, flowTopic);
 
   *m_imgSubscriber = image_transport::create_subscription(
       &m_node, imageTopic,
@@ -77,6 +86,8 @@ bool OpticalFlowNode::Initialize()
 void OpticalFlowNode::Deinitialize()
 {
   m_imgSubscriber->shutdown();
+
+  m_flowPublisher->shutdown();
 
   m_opticalFlow->Deinitialize();
 
@@ -130,4 +141,12 @@ void OpticalFlowNode::OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg
 
   const auto points = m_opticalFlow->GetPoints();
   RCLCPP_INFO(m_node.get_logger(), "Tracked %zu optical flow points", points.size() / 2);
+
+  for (size_t i = 0; i + 1 < points.size(); i += 2)
+  {
+    const cv::Point2f point(points[i], points[i + 1]);
+    cv::circle(cv_ptr->image, point, 3, cv::Scalar(0, 0, 255), cv::FILLED);
+  }
+
+  m_flowPublisher->publish(cv_ptr->toImageMsg());
 }
