@@ -1,0 +1,17 @@
+[Unit]
+Description=OASIS UPS ROS driver (%i)
+Requires=nut-server.service
+After=nut-server.service
+BindsTo=nut-driver@%i.service
+PartOf=nut-driver@%i.service
+
+[Service]
+User=ubuntu
+Environment=ROS2_DISTRO=kilted
+Environment=RMW_IMPLEMENTATION=rmw_fastrtps_dynamic_cpp
+Environment=OASIS_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/oasis-${ROS2_DISTRO}/install/setup.bash
+ExecStart=/bin/bash -c 'set +o nounset && source `eval echo "${OASIS_ENV}"` && ros2 launch oasis_drivers_py ups_launch.py'
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

@@ -307,28 +307,6 @@ def add_system_monitor(ld: LaunchDescription, host_id: str) -> None:
 
 
 #
-# UPS server
-#
-
-
-def add_ups_server(ld: LaunchDescription, zone_id: str) -> None:
-    ups_server_node = Node(
-        namespace=ROS_NAMESPACE,
-        package=PYTHON_PACKAGE_NAME,
-        executable="ups_server",
-        name=f"ups_server_{zone_id}",
-        output="screen",
-        remappings=[
-            # Topics
-            ("ups_status", f"{zone_id}/ups_status"),
-            # Services
-            ("ups_command", f"{zone_id}/ups_command"),
-        ],
-    )
-    ld.add_action(ups_server_node)
-
-
-#
 # V4L2 camera
 #
 
@@ -407,17 +385,14 @@ def generate_launch_description() -> LaunchDescription:
         add_ros2_camera(ld, "entryway")
     elif HOST_ID == HOME_ASSISTANT_ID:
         add_home_assistant(ld)
-        add_ups_server(ld, ZONE_ID)
     elif HOST_ID == "kitchen":
         add_v4l2_camera(ld, ZONE_ID)
     elif HOST_ID == "nas":
         add_kinect_v2(ld, KINECT_V2_ZONE_ID)
-        add_ups_server(ld, ZONE_ID)
 
     # LEGO hosts
     if HOST_ID == "station":
         add_ros2_camera(ld, ZONE_ID)
-        add_ups_server(ld, ZONE_ID)
 
     #
     # TODO: Microcontroller drivers

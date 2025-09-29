@@ -171,9 +171,13 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
         echo "Enabling ${TIMER_FILE}"
         sudo systemctl enable "${TIMER_FILE}"
       else
-        # Otherwise enable the service
-        echo "Enabling ${SERVICE_FILE}"
-        sudo systemctl enable "${SERVICE_FILE}"
+        # Otherwise enable the service (unless it's a template unit)
+        if [[ "${SERVICE_FILE}" == *@.service ]]; then
+          echo "Skipping template unit ${SERVICE_FILE}"
+        else
+          echo "Enabling ${SERVICE_FILE}"
+          sudo systemctl enable "${SERVICE_FILE}"
+        fi
       fi
     done
   done
