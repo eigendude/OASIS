@@ -63,13 +63,20 @@ setuptools.setup(
             ],
         ),
         # Launch files
-        (os.path.join("share", PACKAGE_NAME), ["launch/drivers_launch.py"]),
+        (
+            os.path.join("share", PACKAGE_NAME),
+            [
+                "launch/drivers_launch.py",
+                "launch/ups_launch.py",
+            ],
+        ),
         # Systemd services
         (
             os.path.join("share", PACKAGE_NAME, "systemd"),
             [
                 "config/systemd/display_fixes.service",
                 "config/systemd/oasis_drivers.service",
+                "config/systemd/oasis_ups@.service",
             ],
         ),
         # udev rules
