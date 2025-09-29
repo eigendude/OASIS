@@ -155,8 +155,8 @@ void OpticalFlowNode::OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg
   for (size_t index = 0; index < trackedPointCount; ++index)
   {
     const cv::Point2f point(points[index * 2], points[index * 2 + 1]);
-    cv::circle(cv_ptr->image, point, 3, cv::Scalar(255, 255, 255), 1, cv::LINE_AA);
-    cv::circle(cv_ptr->image, point, 2, cv::Scalar(0, 0, 0), cv::FILLED, cv::LINE_AA);
+    cv::circle(cv_ptr->image, point, 4, cv::Scalar(255, 255, 255), 2, cv::LINE_AA);
+    cv::circle(cv_ptr->image, point, 3, cv::Scalar(0, 0, 0), cv::FILLED, cv::LINE_AA);
   }
 
   m_flowPublisher->publish(cv_ptr->toImageMsg());
