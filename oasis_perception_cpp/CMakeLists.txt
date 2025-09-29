@@ -33,6 +33,14 @@ if(POLICY CMP0074)
   cmake_policy(SET CMP0074 NEW)
 endif()
 
+# Load OpenCV variables from the environment
+if(DEFINED ENV{OpenCV_DIR})
+  set(OpenCV_DIR $ENV{OpenCV_DIR} CACHE PATH "Path to OpenCVConfig.cmake")
+endif()
+if(DEFINED ENV{OpenCV_ROOT})
+  set(OpenCV_ROOT $ENV{OpenCV_ROOT} CACHE PATH "Path to OpenCV installation")
+endif()
+
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 #
