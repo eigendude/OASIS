@@ -39,7 +39,6 @@ setuptools.setup(
         "ROS",
     ],
     classifiers=[
-        "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.12",
         "Topic :: Scientific/Engineering",
@@ -80,9 +79,6 @@ setuptools.setup(
     ],
     install_requires=[
         "mediapipe",
-    ],
-    tests_require=[
-        "pytest",
     ],
     entry_points={
         "console_scripts": [
