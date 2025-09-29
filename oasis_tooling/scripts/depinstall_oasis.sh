@@ -61,20 +61,13 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
   # Needed for ROS message generation
   sudo apt install -y --no-install-recommends \
     python3-lark \
+    python3-numpy \
 
   # Needed by image_transport and plugins
   sudo apt install -y --no-install-recommends \
     libconsole-bridge-dev \
     libspdlog-dev \
     libtinyxml2-dev \
-
-  # Install display controllers
-  if [[ ${PLATFORM_ARCH} == i*86 ]] || [[ ${PLATFORM_ARCH} == x86_64 ]]; then
-    sudo apt install -y --no-install-recommends \
-      cec-utils \
-      ddcutil \
-      vbetool
-  fi
 
   # Needed to link MediaPipe, as its Bazel build system doesn't export
   # dependencies
@@ -95,78 +88,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     libopenblas-dev \
     libopenexr-dev \
     libswscale-dev \
-
-  # Install Python dependencies
-  sudo apt install -y --no-install-recommends \
-    python3-numpy \
-    python3-psutil \
-    python3-serial
-  sudo python3 -m pip install \
-    --upgrade \
-    --ignore-installed \
-    --break-system-packages \
-    mediapipe \
-    telemetrix-aio
-
-  # Needed for communicating with UPS devices
-  sudo apt install -y --no-install-recommends \
-    nut
-
-  # Needed for resolving hostnames for WoL
-  sudo apt install -y --no-install-recommends \
-    avahi-daemon \
-    avahi-utils \
-
-  # Config files
-  NUT_CONF="/etc/nut/nut.conf"
-  UPS_CONF="/etc/nut/ups.conf"
-  UPSD_CONF="/etc/nut/upsd.conf"
-  UPSD_USERS="/etc/nut/upsd.users"
-  sudo touch "$NUT_CONF" "$UPS_CONF" "$UPSD_CONF" "$UPSD_USERS"
-
-  # Set mode to standalone (idempotent)
-  if sudo grep -q "^MODE=" "$NUT_CONF"; then
-    sudo sed -i 's/^MODE=.*/MODE=standalone/' "$NUT_CONF"
-  else
-    echo "MODE=standalone" | sudo tee -a "$NUT_CONF" > /dev/null
-  fi
-
-  # Basic UPS config (CyberPower via USB)
-  if ! sudo grep -q "^\#[ups\]" "$UPS_CONF" 2>/dev/null; then
-    cat <<EOF | sudo tee -a "$UPS_CONF" > /dev/null
-#[ups]
-#  driver = usbhid-ups
-#  port = auto
-#  desc = "Generic USB UPS"
-EOF
-  fi
-
-  # Enable network access for Home Assistant in upsd.conf
-  if ! sudo grep -q "^LISTEN 0.0.0.0 3493" "$UPSD_CONF" 2>/dev/null; then
-    echo "LISTEN 0.0.0.0 3493" | sudo tee -a "$UPSD_CONF" > /dev/null
-  fi
-
-  # Create local NUT user
-  if ! sudo grep -q "^\[admin\]" "$UPSD_USERS" 2>/dev/null; then
-    cat <<EOF | sudo tee -a "$UPSD_USERS" > /dev/null
-[admin]
-  password = adminpass
-  actions = SET
-  instcmds = ALL
-EOF
-    sudo chown root:nut "$UPSD_USERS"
-    sudo chmod 640 "$UPSD_USERS"
-  fi
-
-  # Restart services for changes to take effect
-  sudo systemctl restart nut-server.service
-
-  # Enable and start driver and server
-  sudo systemctl enable --now nut-server.service
-
-  # Disable the monitor unless you're using upsmon for shutdown
-  sudo systemctl disable --now nut-monitor.service || true
-fi
+; fi
 
 #
 # Install OASIS rosdeps
@@ -187,8 +109,8 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     --rosdistro ${ROS2_DISTRO} \
     --as-root=pip:false \
     --default-yes \
-    --skip-keys="${ROSDEP_IGNORE_KEYS}"
-fi
+    --skip-keys="${ROSDEP_IGNORE_KEYS}" \
+; fi
 
 # Bootstrap the Arduino toolchain
 "${STACK_DIRECTORY}/oasis_avr/bootstrap.sh"

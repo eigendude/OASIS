@@ -62,6 +62,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 "${SCRIPT_DIR}/depinstall_oasis.sh"
 "${SCRIPT_DIR}/build_oasis.sh"
+"${SCRIPT_DIR}/rdepinstall_oasis.sh"
 
 #
 # Build Kodi
