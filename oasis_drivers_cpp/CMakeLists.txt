@@ -60,13 +60,6 @@ if (UDEV_FOUND)
     src/cec_server.cpp
   )
 
-  ament_target_dependencies(cec_server
-    oasis_msgs
-    rclcpp
-    rcutils
-    std_msgs
-  )
-
   target_compile_definitions(cec_server PUBLIC
     ${CEC_DEFINITIONS}
     ${UDEV_DEFINITIONS}
@@ -74,12 +67,16 @@ if (UDEV_FOUND)
 
   target_include_directories(cec_server PUBLIC
     ${CEC_INCLUDE_DIRS}
+    ${rcutils_INCLUDE_DIRS}
     ${UDEV_INCLUDE_DIRS}
   )
 
   target_link_libraries(cec_server
     ${CEC_LIBRARIES}
     ${UDEV_LIBRARIES}
+    ${oasis_msgs_TARGETS}
+    rclcpp::rclcpp
+    ${std_msgs_TARGETS}
   )
 
   install(
