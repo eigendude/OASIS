@@ -9,6 +9,7 @@
 
 #include <memory>
 
+#include <image_transport/publisher.hpp>
 #include <image_transport/subscriber.hpp>
 #include <sensor_msgs/msg/image.hpp>
 
@@ -43,6 +44,7 @@ private:
 
   // ROS parameters
   rclcpp::Logger m_logger;
+  std::unique_ptr<image_transport::Publisher> m_flowPublisher;
   std::unique_ptr<image_transport::Subscriber> m_imgSubscriber;
 
   // Video parameters
