@@ -50,6 +50,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 find_package(ament_cmake REQUIRED)
+find_package(ament_index_cpp REQUIRED)
 find_package(bgslibrary REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(geometry_msgs REQUIRED)
@@ -308,6 +309,7 @@ if (ORB_SLAM3_FOUND)
     ${SOPHUS_INCLUDE_DIRS}
   )
   set(MONOCULAR_SLAM_LIBRARIES
+    ament_index_cpp::ament_index_cpp
     cv_bridge::cv_bridge
     ${DBoW2_LIBRARIES}
     ${g2o_LIBRARIES}
