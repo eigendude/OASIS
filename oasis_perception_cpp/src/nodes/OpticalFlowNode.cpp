@@ -147,17 +147,8 @@ void OpticalFlowNode::OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg
     return;
   }
 
-  const auto points = m_opticalFlow->GetPoints();
-  const size_t trackedPointCount = std::min(points.size() / 2,
-                                            static_cast<size_t>(MAX_TRACKED_POINTS));
+  const size_t trackedPointCount = m_opticalFlow->DrawPoints(cv_ptr->image, MAX_TRACKED_POINTS);
   RCLCPP_INFO(m_node.get_logger(), "Tracked %zu optical flow points", trackedPointCount);
-
-  for (size_t index = 0; index < trackedPointCount; ++index)
-  {
-    const cv::Point2f point(points[index * 2], points[index * 2 + 1]);
-    cv::circle(cv_ptr->image, point, 5, cv::Scalar(255, 255, 255), 10, cv::LINE_AA);
-    cv::circle(cv_ptr->image, point, 4, cv::Scalar(0, 0, 0), cv::FILLED, cv::LINE_AA);
-  }
 
   m_flowPublisher->publish(cv_ptr->toImageMsg());
 }

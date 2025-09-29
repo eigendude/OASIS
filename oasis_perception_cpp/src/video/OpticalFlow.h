@@ -11,6 +11,7 @@
 //#include "utils/frame_pool.hpp"
 
 #include <stdint.h>
+#include <limits>
 #include <vector>
 
 #include <opencv2/core/mat.hpp>
@@ -66,6 +67,9 @@ public:
   void SetConfig(const ConfigOptions& config);
 
   bool ProcessImage(const cv::Mat& image);
+
+  //! \brief Draw tracked points onto an image
+  size_t DrawPoints(cv::Mat& image, size_t maxPointCount = std::numeric_limits<size_t>::max()) const;
 
   /*!
    * \brief Add a frame to the motion tracker and return the results
