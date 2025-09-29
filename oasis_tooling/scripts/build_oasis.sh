@@ -55,8 +55,6 @@ COLCON_FLAGS+=" \
     -DCMAKE_C_COMPILER_LAUNCHER=ccache \
     -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
     -DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH} \
-    -DOpenCV_DIR=${OpenCV_DIR} \
-    -DOpenCV_ROOT=${OpenCV_ROOT} \
 "
 
 # Uncomment these to force building in serial
