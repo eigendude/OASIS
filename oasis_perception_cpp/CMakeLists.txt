@@ -72,23 +72,6 @@ if (ORB_SLAM3_FOUND)
   find_package(Sophus REQUIRED)
 endif()
 
-# Common dependencies for executables
-set(AMENT_COMMON_DEPENDENCIES
-  cv_bridge
-  image_transport
-  rclcpp
-  sensor_msgs
-)
-
-# bgslibrary dependencies to link in
-set(BGS_LIBRARIES
-  ${BGSLIBRARY_LIBRARIES}
-)
-
-# TODO: Required by bgslibrary
-find_package(OpenCV REQUIRED)
-list(APPEND BGS_LIBRARIES ${OpenCV_LIBS})
-
 # Sources needed for MediaPipe
 set(MEDIAPIPE_SOURCES
   src/utils/AbseilStubs.cpp
@@ -103,28 +86,19 @@ set(BACKGROUND_MODELER_SOURCES
   src/image/BackgroundModelerABL.cpp
   src/nodes/BackgroundModelerNode.cpp
 )
-set(BACKGROUND_MODELER_INCLUDE_DIRS
-  ${BGSLIBRARY_INCLUDE_DIRS}
-  ${cv_bridge_INCLUDE_DIRS}
-  ${image_transport_INCLUDE_DIRS}
-  ${rclcpp_INCLUDE_DIRS}
-  ${sensor_msgs_INCLUDE_DIRS}
-)
 set(BACKGROUND_MODELER_LIBRARIES
-  ${BGS_LIBRARIES}
+  bgslibrary::bgslibrary
   cv_bridge::cv_bridge
   image_transport::image_transport
   rclcpp::rclcpp
   ${sensor_msgs_TARGETS}
+  ${std_msgs_TARGETS}
 )
 
 # Node
 add_executable(background_modeler
   ${BACKGROUND_MODELER_SOURCES}
   src/cli/background_modeler.cpp
-)
-target_include_directories(background_modeler PUBLIC
-  ${BACKGROUND_MODELER_INCLUDE_DIRS}
 )
 target_link_libraries(background_modeler PUBLIC
   ${BACKGROUND_MODELER_LIBRARIES}
@@ -143,12 +117,10 @@ add_library(background_modeler_component SHARED
   src/ros/RosComponent.cpp
 )
 target_include_directories(background_modeler_component PUBLIC
-  ${BACKGROUND_MODELER_INCLUDE_DIRS}
   ${rclcpp_components_INCLUDE_DIRS}
 )
 target_link_libraries(background_modeler_component PUBLIC
   ${BACKGROUND_MODELER_LIBRARIES}
-  ${rclcpp_components_LIBRARIES}
 )
 install(
   TARGETS
@@ -171,28 +143,19 @@ set(BACKGROUND_SUBTRACTOR_SOURCES
   src/image/BackgroundSubtractorASBL.cpp
   src/nodes/BackgroundSubtractorNode.cpp
 )
-set(BACKGROUND_SUBTRACTOR_INCLUDE_DIRS
-  ${BGSLIBRARY_INCLUDE_DIRS}
-  ${cv_bridge_INCLUDE_DIRS}
-  ${image_transport_INCLUDE_DIRS}
-  ${rclcpp_INCLUDE_DIRS}
-  ${sensor_msgs_INCLUDE_DIRS}
-)
 set(BACKGROUND_SUBTRACTOR_LIBRARIES
-  ${BGS_LIBRARIES}
+  bgslibrary::bgslibrary
   cv_bridge::cv_bridge
   image_transport::image_transport
   rclcpp::rclcpp
   ${sensor_msgs_TARGETS}
+  ${std_msgs_TARGETS}
 )
 
 # Node
 add_executable(background_subtractor
   ${BACKGROUND_SUBTRACTOR_SOURCES}
   src/cli/background_subtractor.cpp
-)
-target_include_directories(background_subtractor PUBLIC
-  ${BACKGROUND_SUBTRACTOR_INCLUDE_DIRS}
 )
 target_link_libraries(background_subtractor PUBLIC
   ${BACKGROUND_SUBTRACTOR_LIBRARIES}
@@ -211,12 +174,10 @@ add_library(background_subtractor_component SHARED
   src/ros/RosComponent.cpp
 )
 target_include_directories(background_subtractor_component PUBLIC
-  ${BACKGROUND_SUBTRACTOR_INCLUDE_DIRS}
   ${rclcpp_components_INCLUDE_DIRS}
 )
 target_link_libraries(background_subtractor_component PUBLIC
   ${BACKGROUND_SUBTRACTOR_LIBRARIES}
-  ${rclcpp_components_LIBRARIES}
 )
 install(
   TARGETS
@@ -235,6 +196,7 @@ rclcpp_components_register_node(
 #
 
 if(TARGET MediaPipe::MediaPipe)
+  # Project files
   set(HELLO_WORLD_SOURCES
     ${MEDIAPIPE_SOURCES}
     src/nodes/HelloWorldNode.cpp
@@ -245,6 +207,7 @@ if(TARGET MediaPipe::MediaPipe)
     rclcpp::rclcpp
   )
 
+  # Node
   add_executable(hello_world
     ${HELLO_WORLD_SOURCES}
     src/cli/hello_world_node.cpp
@@ -259,6 +222,7 @@ if(TARGET MediaPipe::MediaPipe)
       lib/${PROJECT_NAME}
   )
 
+  # Component
   add_library(hello_world_component SHARED
     ${HELLO_WORLD_SOURCES}
     src/components/hello_world_component.cpp
@@ -269,7 +233,6 @@ if(TARGET MediaPipe::MediaPipe)
   )
   target_link_libraries(hello_world_component PUBLIC
     ${HELLO_WORLD_LIBRARIES}
-    ${rclcpp_components_LIBRARIES}
   )
   install(
     TARGETS
@@ -291,41 +254,50 @@ endif()
 #
 
 if (ORB_SLAM3_FOUND)
-  add_executable(monocular_slam
+  # Project files
+  set(MONOCULAR_SLAM_SOURCES
     src/slam/MonocularSlam.cpp
     src/utils/NetworkUtils.cpp
-    src/monocular_slam.cpp
   )
-
-  ament_target_dependencies(monocular_slam
-    cv_bridge
-    image_transport
-    rclcpp
-    sensor_msgs
-  )
-
-  target_compile_definitions(monocular_slam PUBLIC
+  set(MONOCULAR_SLAM_DEFINITIONS
     HAVE_EIGEN
     HAVE_GLEW
   )
-
-  target_include_directories(monocular_slam PUBLIC
+  set(MONOCULAR_SLAM_INCLUDE_DIRS
     $<BUILD_INTERFACE:${OPENGL_INCLUDE_DIR}>
     $<BUILD_INTERFACE:${GLEW_INCLUDE_DIR}>
     ${EIGEN3_INCLUDE_DIRS}
     ${ORB_SLAM3_INCLUDE_DIRS}
     ${SOPHUS_INCLUDE_DIRS}
   )
-
-  target_link_libraries(monocular_slam
+  set(MONOCULAR_SLAM_LIBRARIES
+    cv_bridge::cv_bridge
     ${DBoW2_LIBRARIES}
     ${g2o_LIBRARIES}
     ${GLEW_LIBRARY}
+    image_transport::image_transport
     ${ORB_SLAM3_LIBRARIES}
     ${OPENGL_LIBRARIES}
     ${Pangolin_LIBRARIES}
+    rclcpp::rclcpp
+    ${sensor_msgs_TARGETS}
+    ${std_msgs_TARGETS}
   )
 
+  # Node
+  add_executable(monocular_slam
+    ${MONOCULAR_SLAM_SOURCES}
+    src/monocular_slam.cpp
+  )
+  target_compile_definitions(monocular_slam PUBLIC
+    ${MONOCULAR_SLAM_DEFINITIONS}
+  )
+  target_include_directories(monocular_slam PUBLIC
+    ${MONOCULAR_SLAM_INCLUDE_DIRS}
+  )
+  target_link_libraries(monocular_slam PUBLIC
+    ${MONOCULAR_SLAM_LIBRARIES}
+  )
   install(
     TARGETS
       monocular_slam
@@ -339,43 +311,37 @@ endif()
 #
 
 if (ORB_SLAM3_FOUND)
-  add_executable(monocular_inertial_slam
+  # Project files
+  set(MONOCULAR_INERTIAL_SLAM_SOURCES
     src/slam/MonocularInertialSlam.cpp
     src/utils/NetworkUtils.cpp
+  )
+  set(MONOCULAR_INERTIAL_SLAM_DEFINITIONS
+    ${MONOCULAR_SLAM_DEFINITIONS}
+  )
+  set(MONOCULAR_INERTIAL_SLAM_INCLUDE_DIRS
+    ${MONOCULAR_SLAM_INCLUDE_DIRS}
+  )
+  set(MONOCULAR_INERTIAL_SLAM_LIBRARIES
+    ${MONOCULAR_SLAM_LIBRARIES}
+    ${geometry_msgs_TARGETS}
+    ${oasis_msgs_TARGETS}
+  )
+
+  # Node
+  add_executable(monocular_inertial_slam
+    ${MONOCULAR_INERTIAL_SLAM_SOURCES}
     src/monocular_inertial_slam.cpp
   )
-
-  ament_target_dependencies(monocular_inertial_slam
-    cv_bridge
-    geometry_msgs
-    image_transport
-    oasis_msgs
-    rclcpp
-    sensor_msgs
-  )
-
   target_compile_definitions(monocular_inertial_slam PUBLIC
-    HAVE_EIGEN
-    HAVE_GLEW
+    ${MONOCULAR_INERTIAL_SLAM_DEFINITIONS}
   )
-
   target_include_directories(monocular_inertial_slam PUBLIC
-    $<BUILD_INTERFACE:${OPENGL_INCLUDE_DIR}>
-    $<BUILD_INTERFACE:${GLEW_INCLUDE_DIR}>
-    ${EIGEN3_INCLUDE_DIRS}
-    ${ORB_SLAM3_INCLUDE_DIRS}
-    ${SOPHUS_INCLUDE_DIRS}
+    ${MONOCULAR_INERTIAL_SLAM_INCLUDE_DIRS}
   )
-
   target_link_libraries(monocular_inertial_slam
-    ${DBoW2_LIBRARIES}
-    ${g2o_LIBRARIES}
-    ${GLEW_LIBRARY}
-    ${ORB_SLAM3_LIBRARIES}
-    ${OPENGL_LIBRARIES}
-    ${Pangolin_LIBRARIES}
+    ${MONOCULAR_INERTIAL_SLAM_LIBRARIES}
   )
-
   install(
     TARGETS
       monocular_inertial_slam
@@ -388,22 +354,28 @@ endif()
 # multi_modeler
 #
 
-add_executable(multi_modeler
+# Project files
+set(MULTI_MODELER_SOURCES
   src/image/MultiModeler.cpp
   src/utils/NetworkUtils.cpp
+)
+set(MULTI_MODELER_LIBRARIES
+  bgslibrary::bgslibrary
+  cv_bridge::cv_bridge
+  image_transport::image_transport
+  rclcpp::rclcpp
+  ${sensor_msgs_TARGETS}
+  ${std_msgs_TARGETS}
+)
+
+# Node
+add_executable(multi_modeler
+  ${MULTI_MODELER_SOURCES}
   src/multi_modeler.cpp
 )
-
-ament_target_dependencies(multi_modeler ${AMENT_COMMON_DEPENDENCIES})
-
-target_include_directories(multi_modeler PUBLIC
-  ${BGSLIBRARY_INCLUDE_DIRS}
-)
-
 target_link_libraries(multi_modeler
-  ${BGS_LIBRARIES}
+  ${MULTI_MODELER_LIBRARIES}
 )
-
 install(
   TARGETS
     multi_modeler
@@ -415,6 +387,7 @@ install(
 # optical_flow
 #
 
+# Project files
 set(OPTICAL_FLOW_SOURCES
   src/api/ImageProc.cpp
   src/api/Video.cpp
@@ -425,11 +398,17 @@ set(OPTICAL_FLOW_SOURCES
   src/video/OpticalFlow.cpp
   src/video/VisionGraph.cpp
 )
+set(OPTICAL_FLOW_INCLUDE_DIRS
+  ${OpenCV_INCLUDE_DIRS}
+)
 set(OPTICAL_FLOW_LIBRARIES
   ${OpenCV_LIBS}
   rclcpp::rclcpp
+  ${sensor_msgs_TARGETS}
+  ${std_msgs_TARGETS}
 )
 
+# Node
 add_executable(optical_flow
   ${OPTICAL_FLOW_SOURCES}
   src/cli/optical_flow_node.cpp
@@ -447,6 +426,7 @@ install(
     lib/${PROJECT_NAME}
 )
 
+# Component
 add_library(optical_flow_component SHARED
   ${OPTICAL_FLOW_SOURCES}
   src/components/optical_flow_component.cpp
@@ -458,7 +438,6 @@ target_include_directories(optical_flow_component PUBLIC
 )
 target_link_libraries(optical_flow_component PUBLIC
   ${OPTICAL_FLOW_LIBRARIES}
-  ${rclcpp_components_LIBRARIES}
 )
 install(
   TARGETS
@@ -480,25 +459,27 @@ rclcpp_components_register_node(
 
 # Check if the target MediaPipe::MediaPipe is available
 if(TARGET MediaPipe::MediaPipe)
+  # Project files
   set(POSE_LANDMARKER_SOURCES
     ${MEDIAPIPE_SOURCES}
     src/nodes/PoseLandmarkerNode.cpp
     src/pose/PoseLandmarker.cpp
   )
   set(POSE_LANDMARKER_INCLUDE_DIRS
-    ${oasis_msgs_INCLUDE_DIRS}
+    ${OpenCV_INCLUDE_DIRS}
   )
   set(POSE_LANDMARKER_LIBRARIES
     cv_bridge::cv_bridge
     image_transport::image_transport
     MediaPipe::MediaPipe
-    oasis_msgs::oasis_msgs__rosidl_generator_cpp
+    ${oasis_msgs_TARGETS}
     ${OpenCV_LIBRARIES}
     rclcpp::rclcpp
-    sensor_msgs::sensor_msgs__rosidl_generator_cpp
-    std_msgs::std_msgs__rosidl_generator_cpp
+    ${sensor_msgs_TARGETS}
+    ${std_msgs_TARGETS}
   )
 
+  # Node
   add_executable(pose_landmarker
     ${POSE_LANDMARKER_SOURCES}
     src/cli/pose_landmarker_node.cpp
@@ -516,6 +497,7 @@ if(TARGET MediaPipe::MediaPipe)
       lib/${PROJECT_NAME}
   )
 
+  # Component
   add_library(pose_landmarker_component SHARED
     ${POSE_LANDMARKER_SOURCES}
     src/components/pose_landmarker_component.cpp
@@ -527,7 +509,6 @@ if(TARGET MediaPipe::MediaPipe)
   )
   target_link_libraries(pose_landmarker_component PUBLIC
     ${POSE_LANDMARKER_LIBRARIES}
-    ${rclcpp_components_LIBRARIES}
   )
   install(
     TARGETS
@@ -535,8 +516,6 @@ if(TARGET MediaPipe::MediaPipe)
     DESTINATION
       lib
   )
-
-  # Register the component
   rclcpp_components_register_node(
     pose_landmarker_component
     PLUGIN "pose_landmarker::PoseLandmarkerComponent"
