@@ -10,6 +10,7 @@
 
 #include "video/OpticalFlow.h"
 
+#include <algorithm>
 #include <functional>
 #include <string>
 
@@ -28,6 +29,9 @@ namespace
 // Published topics
 constexpr const char* FLOW_TOPIC = "flow";
 
+// Optical flow configuration
+constexpr unsigned int MAX_TRACKED_POINTS = 20;
+
 // Subscribed topics
 constexpr const char* IMAGE_TOPIC = "image";
 
@@ -44,6 +48,10 @@ OpticalFlowNode::OpticalFlowNode(rclcpp::Node& node)
     m_opticalFlow(std::make_unique<VIDEO::OpticalFlow>())
 {
   m_node.declare_parameter<std::string>(SYSTEM_ID_PARAMETER, DEFAULT_SYSTEM_ID);
+
+  VIDEO::ConfigOptions configOptions;
+  configOptions.maxPointCount = MAX_TRACKED_POINTS;
+  m_opticalFlow->SetConfig(configOptions);
 }
 
 OpticalFlowNode::~OpticalFlowNode() = default;
@@ -140,12 +148,15 @@ void OpticalFlowNode::OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg
   }
 
   const auto points = m_opticalFlow->GetPoints();
-  RCLCPP_INFO(m_node.get_logger(), "Tracked %zu optical flow points", points.size() / 2);
+  const size_t trackedPointCount = std::min(points.size() / 2,
+                                            static_cast<size_t>(MAX_TRACKED_POINTS));
+  RCLCPP_INFO(m_node.get_logger(), "Tracked %zu optical flow points", trackedPointCount);
 
-  for (size_t i = 0; i + 1 < points.size(); i += 2)
+  for (size_t index = 0; index < trackedPointCount; ++index)
   {
-    const cv::Point2f point(points[i], points[i + 1]);
-    cv::circle(cv_ptr->image, point, 3, cv::Scalar(0, 0, 255), cv::FILLED);
+    const cv::Point2f point(points[index * 2], points[index * 2 + 1]);
+    cv::circle(cv_ptr->image, point, 3, cv::Scalar(255, 255, 255), 1, cv::LINE_AA);
+    cv::circle(cv_ptr->image, point, 2, cv::Scalar(0, 0, 0), cv::FILLED, cv::LINE_AA);
   }
 
   m_flowPublisher->publish(cv_ptr->toImageMsg());
