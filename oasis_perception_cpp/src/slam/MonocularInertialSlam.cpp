@@ -11,6 +11,7 @@
 #include <functional>
 
 #include <System.h>
+#include <ament_index_cpp/get_package_share_directory.hpp>
 #include <cv_bridge/cv_bridge.hpp>
 #include <geometry_msgs/msg/vector3.hpp>
 #include <image_transport/image_transport.hpp>
@@ -23,18 +24,60 @@
 #include <sensor_msgs/msg/imu.hpp>
 #include <std_msgs/msg/header.hpp>
 
+#include <filesystem>
+#include <stdexcept>
+
 using namespace OASIS;
 using namespace SLAM;
 using std::placeholders::_1;
 
 namespace
 {
-// TODO
-constexpr const char* VOCABULARY_FILE =
-    "/home/garrett/Documents/ros-ws/src/oasis/ros-ws/oasis-depends-iron/src/depends/orb-slam3/"
-    "Vocabulary/ORBvoc.txt"; // TODO
-constexpr const char* SETTINGS_FILE =
-    "/home/garrett/Documents/ros-ws/src/oasis/oasis_perception/config/Webcam.yaml"; // TODO
+std::string GetVocabularyFile(const rclcpp::Logger& logger)
+{
+  try
+  {
+    const std::string shareDir = ament_index_cpp::get_package_share_directory("orb_slam3");
+    const auto vocabularyPath = std::filesystem::path(shareDir) / "Vocabulary" / "ORBvoc.txt";
+
+    if (!std::filesystem::exists(vocabularyPath))
+    {
+      RCLCPP_FATAL(logger, "ORB-SLAM3 vocabulary file is missing: %s", vocabularyPath.c_str());
+      throw std::runtime_error("ORB-SLAM3 vocabulary file not found");
+    }
+
+    return vocabularyPath.string();
+  }
+  catch (const ament_index_cpp::PackageNotFoundError& error)
+  {
+    RCLCPP_FATAL(logger, "Failed to locate the 'orb_slam3' package: %s", error.what());
+    throw;
+  }
+}
+
+std::string GetSettingsFile(const rclcpp::Logger& logger)
+{
+  try
+  {
+    const std::string shareDir =
+        ament_index_cpp::get_package_share_directory("oasis_perception_cpp");
+    const auto settingsPath = std::filesystem::path(shareDir) / "config" / "Webcam.yaml";
+
+    if (!std::filesystem::exists(settingsPath))
+    {
+      RCLCPP_FATAL(logger, "Monocular inertial SLAM settings file is missing: %s",
+                   settingsPath.c_str());
+      throw std::runtime_error("Monocular inertial SLAM settings file not found");
+    }
+
+    return settingsPath.string();
+  }
+  catch (const ament_index_cpp::PackageNotFoundError& error)
+  {
+    RCLCPP_FATAL(logger, "Failed to locate the 'oasis_perception_cpp' package: %s", error.what());
+    throw;
+  }
+}
 } // namespace
 
 MonocularInertialSlam::MonocularInertialSlam(std::shared_ptr<rclcpp::Node> node,
@@ -43,8 +86,9 @@ MonocularInertialSlam::MonocularInertialSlam(std::shared_ptr<rclcpp::Node> node,
   : m_logger(node->get_logger()),
     m_imgTransport(std::make_unique<image_transport::ImageTransport>(node)),
     m_imgSubscriber(std::make_unique<image_transport::Subscriber>()),
-    m_slam(std::make_unique<ORB_SLAM3::System>(
-        VOCABULARY_FILE, SETTINGS_FILE, ORB_SLAM3::System::IMU_MONOCULAR, false))
+    m_slam(std::make_unique<ORB_SLAM3::System>(GetVocabularyFile(m_logger),
+                                               GetSettingsFile(m_logger),
+                                               ORB_SLAM3::System::IMU_MONOCULAR, false))
 {
   RCLCPP_INFO(m_logger, "Image topic: %s", imageTopic.c_str());
   RCLCPP_INFO(m_logger, "IMU topic: %s", imuTopic.c_str());
