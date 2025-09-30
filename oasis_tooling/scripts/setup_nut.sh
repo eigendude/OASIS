@@ -15,6 +15,23 @@ set -o pipefail
 set -o nounset
 
 #
+# Resolve repository paths
+#
+
+# Get the absolute path to this script
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+# Repository root (one level above oasis_tooling)
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+
+# Systemd service directory for template installs
+SYSTEMD_SERVICE_DIRECTORY="/etc/systemd/system"
+
+# UPS companion service template paths
+UPS_SERVICE_TEMPLATE_SOURCE="${REPO_ROOT}/oasis_drivers_py/config/systemd/oasis_ups@.service"
+UPS_SERVICE_TEMPLATE="${SYSTEMD_SERVICE_DIRECTORY}/$(basename "${UPS_SERVICE_TEMPLATE_SOURCE}")"
+
+#
 # NUT setup script for Debian-based systems
 #
 
@@ -46,6 +63,9 @@ fi
 
 # Update the User= in the templated unit (underscore or hyphen)
 sudo sed -i "s|^[[:space:]]*User=.*|User=$(id -un)|" "${UPS_SERVICE_TEMPLATE}"
+
+# Reload systemd units to pick up the new template
+sudo systemctl daemon-reload
 
 # Set mode to standalone (idempotent)
 echo "Configuring NUT for standalone mode"
@@ -88,6 +108,9 @@ sudo systemctl restart nut-server.service
 
 # Enable and start driver and server
 sudo systemctl enable --now nut-server.service
+
+# Enable and start the OASIS UPS companion service
+sudo systemctl enable --now "oasis_ups@${UPS_NAME}.service"
 
 # Disable the monitor unless you're using upsmon for shutdown
 sudo systemctl disable --now nut-monitor.service || true
