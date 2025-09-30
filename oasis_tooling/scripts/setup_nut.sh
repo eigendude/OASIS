@@ -18,11 +18,22 @@ set -o nounset
 # NUT setup script for Debian-based systems
 #
 
+UPS_NAME="${UPS_NAME:-ups}"
+UPS_DRIVER="${UPS_DRIVER:-usbhid-ups}"
+UPS_PORT="${UPS_PORT:-auto}"
+UPS_DESC="${UPS_DESC:-Generic USB UPS}"
+UPS_VENDOR_ID="${UPS_VENDOR_ID:-0764}"
+UPS_PRODUCT_ID="${UPS_PRODUCT_ID:-0501}"
+
 # Config files
 NUT_CONF="/etc/nut/nut.conf"
 UPS_CONF="/etc/nut/ups.conf"
 UPSD_CONF="/etc/nut/upsd.conf"
 UPSD_USERS="/etc/nut/upsd.users"
+UDEV_RULE="/etc/udev/rules.d/90-nut-${UPS_NAME}.rules"
+DRIVER_OVERRIDE_DIR="/etc/systemd/system/nut-driver@.service.d"
+SERVER_OVERRIDE_DIR="/etc/systemd/system/nut-server.service.d"
+
 sudo touch "$NUT_CONF" "$UPS_CONF" "$UPSD_CONF" "$UPSD_USERS"
 
 # Set mode to standalone (idempotent)
@@ -32,15 +43,13 @@ else
   echo "MODE=standalone" | sudo tee -a "$NUT_CONF" > /dev/null
 fi
 
-# Basic UPS config (CyberPower via USB)
-if ! sudo grep -q "^\#[ups\]" "$UPS_CONF" 2>/dev/null; then
-  cat <<EOF | sudo tee -a "$UPS_CONF" > /dev/null
-#[ups]
-#  driver = usbhid-ups
-#  port = auto
-#  desc = "Generic USB UPS"
-EOF
-fi
+# Configure the UPS entry
+sudo tee "$UPS_CONF" > /dev/null <<EOF_CONF
+[${UPS_NAME}]
+  driver = ${UPS_DRIVER}
+  port = ${UPS_PORT}
+  desc = "${UPS_DESC}"
+EOF_CONF
 
 # Enable network access for Home Assistant in upsd.conf
 if ! sudo grep -q "^LISTEN 0.0.0.0 3493" "$UPSD_CONF" 2>/dev/null; then
@@ -49,21 +58,60 @@ fi
 
 # Create local NUT user
 if ! sudo grep -q "^\[admin\]" "$UPSD_USERS" 2>/dev/null; then
-  cat <<EOF | sudo tee -a "$UPSD_USERS" > /dev/null
+  cat <<EOF_USERS | sudo tee -a "$UPSD_USERS" > /dev/null
 [admin]
 password = adminpass
 actions = SET
 instcmds = ALL
-EOF
-  sudo chown root:nut "$UPSD_USERS"
-  sudo chmod 640 "$UPSD_USERS"
+EOF_USERS
 fi
 
-# Restart services for changes to take effect
-sudo systemctl restart nut-server.service
+sudo chown root:nut "$UPSD_USERS"
+sudo chmod 640 "$UPSD_USERS"
 
-# Enable and start driver and server
-sudo systemctl enable --now nut-server.service
-
-# Disable the monitor unless you're using upsmon for shutdown
+# Disable legacy always-on services so the driver can be event-driven
+sudo systemctl disable --now nut-driver.service || true
+sudo systemctl disable --now nut-server.service || true
 sudo systemctl disable --now nut-monitor.service || true
+sudo systemctl disable --now nut-driver@${UPS_NAME}.service || true
+
+# Ensure any running instances are stopped before reconfiguring them
+sudo systemctl stop nut-driver@${UPS_NAME}.service || true
+sudo systemctl stop nut-server.service || true
+
+# Ensure the driver instance behaves like a device-bound service
+sudo install -d -m 0755 "$DRIVER_OVERRIDE_DIR"
+sudo tee "$DRIVER_OVERRIDE_DIR/override.conf" > /dev/null <<EOF_DRIVER
+[Service]
+Restart=on-failure
+RestartSec=10s
+EOF_DRIVER
+
+# Bind the server lifecycle to the driver so it follows the hardware
+sudo install -d -m 0755 "$SERVER_OVERRIDE_DIR"
+sudo tee "$SERVER_OVERRIDE_DIR/override.conf" > /dev/null <<EOF_SERVER
+[Unit]
+BindsTo=nut-driver@${UPS_NAME}.service
+After=nut-driver@${UPS_NAME}.service
+PartOf=nut-driver@${UPS_NAME}.service
+EOF_SERVER
+
+# Create a udev rule to start/stop the driver when the UPS is connected/disconnected
+sudo tee "$UDEV_RULE" > /dev/null <<EOF_UDEV
+# Network UPS Tools event-driven driver for ${UPS_NAME}
+ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", \
+  ATTR{idVendor}=="${UPS_VENDOR_ID}", ATTR{idProduct}=="${UPS_PRODUCT_ID}", \
+  TAG+="systemd", ENV{SYSTEMD_WANTS}+="nut-driver@${UPS_NAME}.service", \
+  ENV{SYSTEMD_WANTS}+="nut-server.service"
+ACTION=="remove", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", \
+  ATTR{idVendor}=="${UPS_VENDOR_ID}", ATTR{idProduct}=="${UPS_PRODUCT_ID}", \
+  RUN+="/bin/systemctl stop nut-driver@${UPS_NAME}.service", \
+  RUN+="/bin/systemctl stop nut-server.service"
+EOF_UDEV
+
+sudo udevadm control --reload || true
+sudo systemctl daemon-reload
+
+# If the UPS is already plugged in, trigger udev so the driver starts now
+sudo udevadm trigger --subsystem-match=usb --attr-match=idVendor="${UPS_VENDOR_ID}" \
+  --attr-match=idProduct="${UPS_PRODUCT_ID}" || true
