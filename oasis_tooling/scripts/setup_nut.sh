@@ -29,6 +29,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 UPS_SERVICE_TEMPLATE_SOURCE="${SCRIPT_DIR}/../../oasis_drivers_py/config/systemd/oasis_ups@.service"
 UPS_SERVICE_TEMPLATE="/etc/systemd/system/oasis-ups@.service"
 UPS_SERVICE_NAME="oasis-ups@${UPS_NAME}.service"
+UPS_DEVICE_PATH="/dev/nut/${UPS_NAME}"
+UPS_DEVICE_UNIT="$(systemd-escape --path --suffix=.device "${UPS_DEVICE_PATH}")"
 
 # Config files
 NUT_CONF="/etc/nut/nut.conf"
@@ -133,10 +135,15 @@ sudo systemctl disable --now nut-client.service 2>/dev/null || true
 # Overrides
 ###############################################################################
 
-# Ensure the driver instance behaves like a device-bound service
+# Ensure the driver instance behaves like a device-bound service and only
+# starts after udev creates the device node symlink
 echo "Creating systemd overrides"
 sudo install -d -m 0755 "${DRIVER_OVERRIDE_DIR}"
-sudo tee "${DRIVER_OVERRIDE_DIR}/override.conf" > /dev/null <<'EOF_DRIVER'
+sudo tee "${DRIVER_OVERRIDE_DIR}/override.conf" > /dev/null <<EOF_DRIVER
+[Unit]
+ConditionPathExists=${UPS_DEVICE_PATH}
+After=${UPS_DEVICE_UNIT}
+
 [Service]
 Restart=on-failure
 RestartSec=10s
@@ -172,8 +179,10 @@ ACTION=="remove", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", \
   RUN+="/bin/systemctl stop nut-server.service", \
   RUN+="/bin/systemctl stop ${UPS_SERVICE_NAME}"
 
-# 2) Match the HID character device to grant access and start services
+# 2) Match the HID character device to grant access, create a stable symlink,
+#    and start services
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="${UPS_VENDOR_ID}", ATTRS{idProduct}=="${UPS_PRODUCT_ID}", \
+  SYMLINK+="nut/${UPS_NAME}", \
   GROUP="nut", MODE="0660", \
   TAG+="systemd", \
   ENV{SYSTEMD_WANTS}+="nut-driver@${UPS_NAME}.service", \
