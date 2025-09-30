@@ -97,13 +97,37 @@ sudo chmod 640 "${UPSD_USERS}"
 # Stop anything running now
 echo "Disabling existing NUT services"
 sudo systemctl stop "nut-driver@${UPS_NAME}.service" nut-server.service nut-driver-enumerator.service 2>/dev/null || true
+echo "Disabling nut-driver@${UPS_NAME}.service"
+sudo systemctl disable --now "nut-driver@${UPS_NAME}.service" 2>/dev/null || true
+
+# Debian-based packages ship vendor symlinks that auto-start the default
+# nut-driver@${UPS_NAME}.service instance via nut-driver.target. Removing the
+# symlink from /etc is not enough because the packaged link lives in /lib (or
+# /usr/lib) and systemd will still follow it at boot. Explicitly remove any
+# vendor-provided symlinks so the driver stays inactive until udev starts it
+# for a detected UPS.
+NUT_DRIVER_WANTS_DIRS=(
+  "/etc/systemd/system/nut-driver.target.wants"
+  "/lib/systemd/system/nut-driver.target.wants"
+  "/usr/lib/systemd/system/nut-driver.target.wants"
+)
+
+for wants_dir in "${NUT_DRIVER_WANTS_DIRS[@]}"; do
+  if [[ -L "${wants_dir}/nut-driver@${UPS_NAME}.service" ]]; then
+    echo "Removing nut-driver@${UPS_NAME}.service symlink from ${wants_dir}"
+    sudo rm -f "${wants_dir}/nut-driver@${UPS_NAME}.service"
+  fi
+done
 
 # Disable enumerator path (prevents auto-instances from ups.conf when device absent)
 echo "Disabling nut-driver-enumerator.path"
 sudo systemctl disable --now nut-driver-enumerator.path 2>/dev/null || true
-# Also ensure enumerator service is stopped
+# Also ensure enumerator service is stopped and permanently masked so it cannot
+# auto-start the driver instance during boot when no UPS is connected.
 echo "Stopping nut-driver-enumerator.service"
 sudo systemctl stop nut-driver-enumerator.service 2>/dev/null || true
+echo "Masking nut-driver-enumerator.service"
+sudo systemctl mask nut-driver-enumerator.service 2>/dev/null || true
 
 # Remove any auto-enable symlink created earlier
 echo  "Removing any existing nut-driver@${UPS_NAME}.service symlink"
@@ -116,6 +140,13 @@ sudo systemctl disable --now nut-server.service 2>/dev/null || true
 # nut-monitor.service is not shipped on some distros; ignore errors
 echo "Disabling nut-monitor.service"
 sudo systemctl stop nut-monitor.service 2>/dev/null || true || true
+
+# The legacy LSB nut-client.service (a SysV wrapper around upsmon) is still
+# enabled by default on many distributions and will repeatedly attempt to start
+# even when no UPS is connected. Disable it so that service activation becomes
+# fully event-driven via the udev rules below.
+echo "Disabling nut-client.service"
+sudo systemctl disable --now nut-client.service 2>/dev/null || true
 
 ###############################################################################
 # Overrides
