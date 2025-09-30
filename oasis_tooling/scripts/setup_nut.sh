@@ -25,6 +25,11 @@ UPS_DESC="${UPS_DESC:-Generic USB UPS}"
 UPS_VENDOR_ID="${UPS_VENDOR_ID:-0764}"
 UPS_PRODUCT_ID="${UPS_PRODUCT_ID:-0501}"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+UPS_SERVICE_TEMPLATE_SOURCE="${SCRIPT_DIR}/../../oasis_drivers_py/config/systemd/oasis_ups@.service"
+UPS_SERVICE_TEMPLATE="/etc/systemd/system/oasis-ups@.service"
+UPS_SERVICE_NAME="oasis-ups@${UPS_NAME}.service"
+
 # Config files
 NUT_CONF="/etc/nut/nut.conf"
 UPS_CONF="/etc/nut/ups.conf"
@@ -35,6 +40,12 @@ DRIVER_OVERRIDE_DIR="/etc/systemd/system/nut-driver@.service.d"
 SERVER_OVERRIDE_DIR="/etc/systemd/system/nut-server.service.d"
 
 sudo touch "$NUT_CONF" "$UPS_CONF" "$UPSD_CONF" "$UPSD_USERS"
+
+if [[ -f "$UPS_SERVICE_TEMPLATE_SOURCE" ]]; then
+  sudo install -m 0644 "$UPS_SERVICE_TEMPLATE_SOURCE" "$UPS_SERVICE_TEMPLATE"
+else
+  echo "Warning: UPS systemd service template not found at $UPS_SERVICE_TEMPLATE_SOURCE" >&2
+fi
 
 # Set mode to standalone (idempotent)
 if sudo grep -q "^MODE=" "$NUT_CONF"; then
@@ -74,10 +85,12 @@ sudo systemctl disable --now nut-driver.service || true
 sudo systemctl disable --now nut-server.service || true
 sudo systemctl disable --now nut-monitor.service || true
 sudo systemctl disable --now nut-driver@${UPS_NAME}.service || true
+sudo systemctl disable --now "$UPS_SERVICE_NAME" || true
 
 # Ensure any running instances are stopped before reconfiguring them
 sudo systemctl stop nut-driver@${UPS_NAME}.service || true
 sudo systemctl stop nut-server.service || true
+sudo systemctl stop "$UPS_SERVICE_NAME" || true
 
 # Ensure the driver instance behaves like a device-bound service
 sudo install -d -m 0755 "$DRIVER_OVERRIDE_DIR"
@@ -102,11 +115,13 @@ sudo tee "$UDEV_RULE" > /dev/null <<EOF_UDEV
 ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", \
   ATTR{idVendor}=="${UPS_VENDOR_ID}", ATTR{idProduct}=="${UPS_PRODUCT_ID}", \
   TAG+="systemd", ENV{SYSTEMD_WANTS}+="nut-driver@${UPS_NAME}.service", \
-  ENV{SYSTEMD_WANTS}+="nut-server.service"
+  ENV{SYSTEMD_WANTS}+="nut-server.service", \
+  ENV{SYSTEMD_WANTS}+="${UPS_SERVICE_NAME}"
 ACTION=="remove", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", \
   ATTR{idVendor}=="${UPS_VENDOR_ID}", ATTR{idProduct}=="${UPS_PRODUCT_ID}", \
   RUN+="/bin/systemctl stop nut-driver@${UPS_NAME}.service", \
-  RUN+="/bin/systemctl stop nut-server.service"
+  RUN+="/bin/systemctl stop nut-server.service", \
+  RUN+="/bin/systemctl stop ${UPS_SERVICE_NAME}"
 EOF_UDEV
 
 sudo udevadm control --reload || true
