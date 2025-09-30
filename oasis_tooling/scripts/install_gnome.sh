@@ -265,6 +265,89 @@ if [ "${ENABLE_EXTENSIONS}" -eq 1 ]; then
 fi
 
 ################################################################################
+# Disable GNOME Tracker (file indexer)
+################################################################################
+
+echo
+echo "Disabling GNOME Tracker indexer"
+
+# Helper: run a gsettings write only if the schema/key exists
+gset_if_writable() {
+  local schema="$1" key="$2" value="$3"
+  if gsettings list-schemas | grep -qx "$schema" && gsettings writable "$schema" "$key" >/dev/null 2>&1; then
+    echo " - $schema $key -> $value"
+    gsettings set "$schema" "$key" $value
+  fi
+}
+
+# Stop current Tracker daemons if the CLI exists
+if command -v tracker3 >/dev/null 2>&1; then
+  echo " - Stopping tracker3 daemon"
+  tracker3 daemon -t || :
+elif command -v tracker >/dev/null 2>&1; then
+  echo " - Stopping tracker daemon"
+  tracker daemon -t || :
+fi
+
+# Tell Tracker not to crawl or watch for changes (Tracker 3 schema)
+gset_if_writable org.freedesktop.Tracker3.Miner.Files enable-monitors false
+gset_if_writable org.freedesktop.Tracker3.Miner.Files crawling-interval -2
+gset_if_writable org.freedesktop.Tracker3.Miner.Files index-recursive-directories "[]"
+gset_if_writable org.freedesktop.Tracker3.Miner.Files index-single-directories "[]"
+
+# Fallback for older installations (Tracker 2 schema)
+gset_if_writable org.freedesktop.Tracker.Miner.Files enable-monitors false
+gset_if_writable org.freedesktop.Tracker.Miner.Files crawling-interval -2
+gset_if_writable org.freedesktop.Tracker.Miner.Files index-recursive-directories "[]"
+gset_if_writable org.freedesktop.Tracker.Miner.Files index-single-directories "[]"
+
+# Mask user units so they cannot auto-start again (names vary by distro)
+TRACKER_UNITS=(
+  tracker-miner-fs-3.service
+  tracker-extract-3.service
+  tracker-miner-apps-3.service
+  tracker-miner-rss-3.service
+  tracker-writeback-3.service
+  tracker3.service
+  tracker-store-3.service
+)
+for unit in "${TRACKER_UNITS[@]}"; do
+  if systemctl --user list-unit-files | awk '{print $1}' | grep -qx "$unit"; then
+    state="$(systemctl --user is-enabled "$unit" 2>/dev/null || echo "unknown")"
+    echo " - $unit is $state; stopping and masking"
+    systemctl --user stop "$unit" || :
+    systemctl --user mask "$unit" || :
+  fi
+done
+
+# Also mask corresponding timers if present
+for timer in tracker-miner-fs-3.timer tracker-extract-3.timer; do
+  if systemctl --user list-unit-files | awk '{print $1}' | grep -qx "$timer"; then
+    echo " - Masking $timer"
+    systemctl --user stop "$timer" || :
+    systemctl --user mask "$timer" || :
+  fi
+done
+
+# Prevent autostart .desktop launchers (defensive; some builds use them)
+mkdir -p "${HOME}/.config/autostart"
+for f in /etc/xdg/autostart/tracker-*.desktop; do
+  [ -f "$f" ] || continue
+  base="$(basename "$f")"
+  dest="${HOME}/.config/autostart/${base}"
+  if [ ! -f "$dest" ]; then
+    echo " - Creating autostart override for ${base}"
+    cp "$f" "$dest"
+  fi
+  # Ensure Hidden=true is present
+  if ! grep -q '^Hidden=true' "$dest"; then
+    echo "Hidden=true" >> "$dest"
+  fi
+done
+
+echo "GNOME Tracker has been disabled."
+
+################################################################################
 # Done
 ################################################################################
 
