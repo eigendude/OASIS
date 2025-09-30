@@ -359,7 +359,7 @@ endif()
 # Project files
 set(MULTI_MODELER_SOURCES
   src/image/MultiModeler.cpp
-  src/utils/NetworkUtils.cpp
+  src/nodes/MultiModelerNode.cpp
 )
 set(MULTI_MODELER_LIBRARIES
   bgslibrary::bgslibrary
@@ -373,9 +373,9 @@ set(MULTI_MODELER_LIBRARIES
 # Node
 add_executable(multi_modeler
   ${MULTI_MODELER_SOURCES}
-  src/multi_modeler.cpp
+  src/cli/multi_modeler.cpp
 )
-target_link_libraries(multi_modeler
+target_link_libraries(multi_modeler PUBLIC
   ${MULTI_MODELER_LIBRARIES}
 )
 install(
@@ -383,6 +383,30 @@ install(
     multi_modeler
   DESTINATION
     lib/${PROJECT_NAME}
+)
+
+# Component
+add_library(multi_modeler_component SHARED
+  ${MULTI_MODELER_SOURCES}
+  src/components/multi_modeler_component.cpp
+  src/ros/RosComponent.cpp
+)
+target_include_directories(multi_modeler_component PUBLIC
+  ${rclcpp_components_INCLUDE_DIRS}
+)
+target_link_libraries(multi_modeler_component PUBLIC
+  ${MULTI_MODELER_LIBRARIES}
+)
+install(
+  TARGETS
+    multi_modeler_component
+  DESTINATION
+    lib
+)
+rclcpp_components_register_node(
+  multi_modeler_component
+  PLUGIN "oasis_perception_cpp::MultiModelerComponent"
+  EXECUTABLE multi_modeler_component_node
 )
 
 #
