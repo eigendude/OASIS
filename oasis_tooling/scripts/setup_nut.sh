@@ -149,13 +149,10 @@ echo "Creating udev rule at ${UDEV_RULE}"
 sudo tee "${UDEV_RULE}" > /dev/null <<EOF_UDEV
 # Network UPS Tools event-driven driver for ${UPS_NAME}
 
-# 1) Match the USB device to start/stop services
+# 1) Match the USB device to tag add/remove events for the UPS
 ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", \
   ATTR{idVendor}=="${UPS_VENDOR_ID}", ATTR{idProduct}=="${UPS_PRODUCT_ID}", \
-  TAG+="systemd", \
-  ENV{SYSTEMD_WANTS}+="nut-driver@${UPS_NAME}.service", \
-  ENV{SYSTEMD_WANTS}+="nut-server.service", \
-  ENV{SYSTEMD_WANTS}+="${UPS_SERVICE_NAME}"
+  TAG+="systemd"
 
 ACTION=="remove", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", \
   ATTR{idVendor}=="${UPS_VENDOR_ID}", ATTR{idProduct}=="${UPS_PRODUCT_ID}", \
@@ -163,9 +160,13 @@ ACTION=="remove", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", \
   RUN+="/bin/systemctl stop nut-server.service", \
   RUN+="/bin/systemctl stop ${UPS_SERVICE_NAME}"
 
-# 2) Match the HID character device to grant access to the service user
+# 2) Match the HID character device to grant access and start services
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="${UPS_VENDOR_ID}", ATTRS{idProduct}=="${UPS_PRODUCT_ID}", \
-  GROUP="nut", MODE="0660"
+  GROUP="nut", MODE="0660", \
+  TAG+="systemd", \
+  ENV{SYSTEMD_WANTS}+="nut-driver@${UPS_NAME}.service", \
+  ENV{SYSTEMD_WANTS}+="nut-server.service", \
+  ENV{SYSTEMD_WANTS}+="${UPS_SERVICE_NAME}"
 EOF_UDEV
 
 # Apply rules and units
