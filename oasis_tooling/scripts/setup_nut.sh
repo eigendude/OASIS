@@ -97,6 +97,8 @@ sudo chmod 640 "${UPSD_USERS}"
 # Stop anything running now
 echo "Disabling existing NUT services"
 sudo systemctl stop "nut-driver@${UPS_NAME}.service" nut-server.service nut-driver-enumerator.service 2>/dev/null || true
+echo "Disabling nut-driver@${UPS_NAME}.service"
+sudo systemctl disable --now "nut-driver@${UPS_NAME}.service" 2>/dev/null || true
 
 # Disable enumerator path (prevents auto-instances from ups.conf when device absent)
 echo "Disabling nut-driver-enumerator.path"
