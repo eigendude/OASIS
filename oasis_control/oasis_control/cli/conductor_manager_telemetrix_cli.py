@@ -10,7 +10,7 @@
 
 import rclpy
 
-from oasis_control.nodes.conductor_manager_node_telemetrix import ConductorManagerNode
+from oasis_control.nodes.conductor_manager_telemetrix_node import ConductorManagerNode
 
 
 ################################################################################
