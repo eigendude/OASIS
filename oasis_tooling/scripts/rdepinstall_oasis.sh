@@ -44,6 +44,11 @@ if [[ ${PLATFORM_ARCH} == i*86 ]] || [[ ${PLATFORM_ARCH} == x86_64 ]]; then
     vbetool \
 ; fi
 
+# Needed for resolving hostnames for WoL
+sudo apt install -y --no-install-recommends \
+  avahi-daemon \
+  avahi-utils \
+
 # Install Python dependencies
 sudo apt install -y --no-install-recommends \
   python3-psutil \
@@ -54,9 +59,5 @@ sudo python3 -m pip install \
   --ignore-installed \
   --break-system-packages \
   mediapipe \
+  git+https://github.com/eigendude/pymata-express@master#egg=pymata-express \
   telemetrix-aio \
-
-# Needed for resolving hostnames for WoL
-sudo apt install -y --no-install-recommends \
-  avahi-daemon \
-  avahi-utils \
