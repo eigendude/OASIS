@@ -74,7 +74,7 @@ I2C_MPU6050_ADDRESS: int = 0x68
 
 ROS_NAMESPACE = "oasis"
 
-NODE_NAME = "lab_manager"
+NODE_NAME = "lab_manager_telemetrix"
 
 # TODO: Host configuration
 CPU_FAN_HOST: str = "conductor"

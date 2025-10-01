@@ -10,7 +10,7 @@
 
 import rclpy
 
-from oasis_control.nodes.lab_manager_node import LabManagerNode
+from oasis_control.nodes.lab_manager_telemetrix_node import LabManagerNode
 
 
 ################################################################################
