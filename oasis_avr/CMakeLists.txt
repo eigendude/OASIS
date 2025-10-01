@@ -83,7 +83,7 @@ if (HOST_NAME STREQUAL station)
   set(ENABLE_SONAR OFF)
   set(ENABLE_SPI OFF)
   set(ENABLE_STEPPER OFF)
-elseif (HOST_NAME STREQUAL substation)
+elseif (HOST_NAME STREQUAL megapegasus)
   # Building lab
   set(ARDUINO_VARIANT uno)
 

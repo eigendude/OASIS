@@ -505,7 +505,7 @@ def generate_launch_description() -> LaunchDescription:
         mcu_node = "engine"
         engine_bridge_node: Node = get_telemetrix_bridge(HOST_ID, mcu_node)
         ld.add_action(engine_bridge_node)
-    elif HOST_ID == "substation":
+    elif HOST_ID == "oceanplatform":
         mcu_node = "lab"
         lab_bridge_node: Node = get_telemetrix_bridge(HOST_ID, mcu_node)
         ld.add_action(lab_bridge_node)

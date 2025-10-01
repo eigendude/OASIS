@@ -165,7 +165,7 @@ def generate_launch_description() -> LaunchDescription:
             ],
         )
         ld.add_action(engine_node)
-    elif HOST_ID == "substation":
+    elif HOST_ID == "oceanplatform":
         mcu_node = "lab"
         CPU_FAN_HOST: str = "conductor"
         lab_node: Node = Node(
