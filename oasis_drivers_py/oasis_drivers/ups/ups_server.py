@@ -52,13 +52,19 @@ class UpsServer:
                 if ": " in line
             )
 
+            load_total: int = int(values.get("ups.realpower.nominal", 0))
+
             msg = UPSStatusMsg(
+                manufacturer=values.get("device.mfr", ""),
+                model=values.get("device.model", ""),
+                serial_number=values.get("device.serial", ""),
                 input_voltage=float(values.get("input.voltage", 0.0)),
                 output_voltage=float(values.get("output.voltage", 0.0)),
                 battery_charge=int(values.get("battery.charge", 0)),
                 battery_runtime=int(values.get("battery.runtime", 0)),
-                load_percent=int(values.get("ups.load", 0)),
-                status=values.get("ups.status", "unknown"),
+                load=float(int(values.get("ups.load", 0)) * load_total / 100),
+                load_total=float(load_total),
+                status=values.get("ups.status", ""),
             )
             return msg
 
