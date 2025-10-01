@@ -171,8 +171,8 @@ def generate_launch_description() -> LaunchDescription:
         lab_node: Node = Node(
             namespace=ROS_NAMESPACE,
             package=CONTROL_PACKAGE_NAME,
-            executable=f"{mcu_node}_manager_telemetrix",
-            name=f"{mcu_node}_manager_telemetrix_{HOST_ID}",
+            executable=f"{mcu_node}_manager_firmata",
+            name=f"{mcu_node}_manager_firmata_{HOST_ID}",
             output="screen",
             remappings=[
                 (f"{mcu_node}_state", f"{HOST_ID}/{mcu_node}_state"),
