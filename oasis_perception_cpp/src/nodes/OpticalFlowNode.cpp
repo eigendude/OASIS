@@ -148,7 +148,7 @@ void OpticalFlowNode::OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg
   }
 
   const size_t trackedPointCount = m_opticalFlow->DrawPoints(cv_ptr->image, MAX_TRACKED_POINTS);
-  RCLCPP_INFO(m_node.get_logger(), "Tracked %zu optical flow points", trackedPointCount);
+  //RCLCPP_INFO(m_node.get_logger(), "Tracked %zu optical flow points", trackedPointCount);
 
   m_flowPublisher->publish(cv_ptr->toImageMsg());
 }
