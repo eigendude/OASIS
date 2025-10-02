@@ -556,7 +556,7 @@ add_library(oasis_avr_leds
 
 target_link_arduino_libraries(oasis_avr_leds PRIVATE
   core
-  Scheduler
+  TaskScheduler
 )
 
 #
