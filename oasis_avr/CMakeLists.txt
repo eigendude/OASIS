@@ -173,7 +173,7 @@ message(STATUS "Building for: ${ARDUINO_VARIANT}")
 #
 
 if (NOT ARDUINO_BOARD_OPTIONS_FILE)
-  set(ARDUINO_BOARD_OPTIONS_FILE "${CMAKE_CURRENT_SOURCE_DIR}/config/BoardOptions-${ARDUINO_VARIANT}.cmake")
+  set(ARDUINO_BOARD_OPTIONS_FILE "${CMAKE_CURRENT_SOURCE_DIR}/config/boards/BoardOptions-${ARDUINO_VARIANT}.cmake")
 endif()
 
 #
@@ -647,6 +647,21 @@ install(
     telemetrix_node
   DESTINATION
     share/${PROJECT_NAME}
+)
+
+################################################################################
+#
+# Install data files
+#
+################################################################################
+
+install(
+  DIRECTORY
+    config/udev/
+  DESTINATION
+    share/${PROJECT_NAME}/udev
+  FILES_MATCHING
+    PATTERN "*.rules"
 )
 
 ################################################################################
