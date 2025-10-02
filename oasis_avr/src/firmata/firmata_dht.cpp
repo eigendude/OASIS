@@ -10,8 +10,8 @@
 
 #include "firmata_callbacks.hpp"
 
+#include <Arduino.h>
 #include <FirmataExpress.h>
-#include <Scheduler.h>
 
 using namespace OASIS;
 

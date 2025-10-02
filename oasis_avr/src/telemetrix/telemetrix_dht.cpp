@@ -16,6 +16,7 @@
 
 #include <string.h>
 
+#include <Arduino.h>
 #include <HardwareSerial.h>
 
 using namespace OASIS;

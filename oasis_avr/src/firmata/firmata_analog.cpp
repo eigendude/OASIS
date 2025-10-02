@@ -13,9 +13,9 @@
 
 #include "firmata_analog.hpp"
 
+#include <Arduino.h>
 #include <Boards.h>
 #include <FirmataExpress.h>
-#include <Scheduler.h>
 
 using namespace OASIS;
 

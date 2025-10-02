@@ -17,10 +17,10 @@
 
 #include "firmata_extra.hpp"
 
+#include <Arduino.h>
 #include <Boards.h>
 #include <FirmataExpress.h>
 #include <SPI.h>
-#include <Scheduler.h>
 
 using namespace OASIS;
 

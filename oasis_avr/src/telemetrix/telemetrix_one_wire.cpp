@@ -14,6 +14,7 @@
 #include "telemetrix_commands.hpp"
 #include "telemetrix_reports.hpp"
 
+#include <Arduino.h>
 #include <HardwareSerial.h>
 #include <OneWire.h>
 
