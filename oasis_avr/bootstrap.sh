@@ -177,6 +177,7 @@ for dir in \
   "${I2CDEVLIB_DIR}/EFM32" \
   "${I2CDEVLIB_DIR}/ESP32_ESP-IDF" \
   "${I2CDEVLIB_DIR}/Jennic" \
+  "${I2CDEVLIB_DIR}/LinuxI2CDev" \
   "${I2CDEVLIB_DIR}/MSP430" \
   "${I2CDEVLIB_DIR}/nRF51" \
   "${I2CDEVLIB_DIR}/PIC18" \
