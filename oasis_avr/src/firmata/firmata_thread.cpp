@@ -60,8 +60,10 @@
 #include "firmata_stepper.hpp"
 #endif
 
+#include "scheduler/task_scheduler.hpp"
+
+#include <Arduino.h>
 #include <FirmataExpress.h>
-#include <Scheduler.h>
 
 using namespace OASIS;
 
@@ -70,10 +72,6 @@ namespace OASIS
 
 // Serial constants
 constexpr uint32_t SERIAL_BAUD_RATE = 115200;
-
-// Threading constants
-constexpr size_t FIRMATA_MESSAGING_STACK_SIZE = 256; // Default is 128
-constexpr size_t FIRMATA_SAMPLING_STACK_SIZE = 96; // Default is 128
 
 } // namespace OASIS
 
@@ -150,8 +148,18 @@ void FirmataThread::Setup()
   // Initialize the default Serial transport and override the default baud
   Firmata.begin(SERIAL_BAUD_RATE);
 
-  // Start Firmata messaging thread
-  Scheduler.startLoop(FirmataMessageLoop, FIRMATA_MESSAGING_STACK_SIZE);
+  // Initialize scheduler support
+  InitializeTaskScheduler();
+
+  // Register Firmata tasks
+  static TsTask firmataMessageTask(TASK_IMMEDIATE, TASK_FOREVER, FirmataMessageLoop);
+  static TsTask firmataSamplingTask(TASK_IMMEDIATE, TASK_FOREVER, FirmataSamplingLoop);
+
+  GetTaskScheduler().addTask(firmataMessageTask);
+  GetTaskScheduler().addTask(firmataSamplingTask);
+
+  firmataMessageTask.enable();
+  firmataSamplingTask.enable();
 
   // Configure subsystems
   for (unsigned int i = 0; i < SubsystemID::SUBSYSTEM_COUNT; ++i)
@@ -159,9 +167,6 @@ void FirmataThread::Setup()
     if (m_subsystems[i] != nullptr)
       m_subsystems[i]->Setup();
   }
-
-  // Start Firmata sampling thread
-  Scheduler.startLoop(FirmataSamplingLoop, FIRMATA_SAMPLING_STACK_SIZE);
 }
 
 void FirmataThread::MessageLoop()
@@ -171,38 +176,59 @@ void FirmataThread::MessageLoop()
     Firmata.processInput();
 
   // Loop subsystems
-  for (unsigned int i = 0; i < SubsystemID::SUBSYSTEM_COUNT; ++i)
+  unsigned int index = m_messageSubsystemIndex;
+  unsigned int processed = 0;
+
+  while (processed < SubsystemID::SUBSYSTEM_COUNT)
   {
-    if (m_subsystems[i] != nullptr)
-      m_subsystems[i]->Loop();
+    FirmataSubsystem* subsystem = m_subsystems[index];
+    index = (index + 1) % SubsystemID::SUBSYSTEM_COUNT;
+    ++processed;
+
+    if (subsystem == nullptr)
+      continue;
+
+    subsystem->Loop();
+    m_messageSubsystemIndex = index;
+
+    if (TaskSchedulerYield())
+      return;
   }
 
-  // TODO: Ensure that Stream buffer doesn't go over 60 bytes
-  yield();
+  m_messageSubsystemIndex = index;
 }
 
 void FirmataThread::SamplingLoop()
 {
-  if (m_samplingIntervalMs > 0)
-  {
-    m_samplingTimer.SetTimeout(m_samplingIntervalMs);
+  if (m_samplingIntervalMs == 0)
+    return;
 
-    // Sample subsystems
-    for (unsigned int i = 0; i < SubsystemID::SUBSYSTEM_COUNT; ++i)
-    {
-      if (m_subsystems[i] != nullptr)
-      {
-        m_subsystems[i]->Sample();
-        yield();
-      }
-    }
+  if (!m_samplingTimer.IsExpired())
+    return;
 
-    delay(m_samplingTimer.TimeLeft());
-  }
-  else
+  m_samplingTimer.SetTimeout(m_samplingIntervalMs);
+
+  // Sample subsystems
+  unsigned int index = m_samplingSubsystemIndex;
+  unsigned int processed = 0;
+
+  while (processed < SubsystemID::SUBSYSTEM_COUNT)
   {
-    yield();
+    FirmataSubsystem* subsystem = m_subsystems[index];
+    index = (index + 1) % SubsystemID::SUBSYSTEM_COUNT;
+    ++processed;
+
+    if (subsystem == nullptr)
+      continue;
+
+    subsystem->Sample();
+    m_samplingSubsystemIndex = index;
+
+    if (TaskSchedulerYield())
+      return;
   }
+
+  m_samplingSubsystemIndex = index;
 }
 
 void FirmataThread::FirmataMessageLoop()

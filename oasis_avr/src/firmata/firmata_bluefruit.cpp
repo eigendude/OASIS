@@ -14,8 +14,8 @@
 
 #include <string.h>
 
+#include <Arduino.h>
 //#include <FirmataExpress.h>
-#include <Scheduler.h>
 
 using namespace OASIS;
 

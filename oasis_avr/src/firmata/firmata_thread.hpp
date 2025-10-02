@@ -16,6 +16,7 @@
 
 #include <stdint.h>
 
+#include <Arduino.h>
 #include <Boards.h>
 
 namespace OASIS
@@ -80,6 +81,7 @@ public:
   void SetSamplingInterval(uint32_t samplingIntervalMs)
   {
     m_samplingIntervalMs = samplingIntervalMs;
+    m_samplingTimer.Reset();
   }
 
 private:
@@ -127,6 +129,10 @@ private:
   // Timing parameters
   Timer m_samplingTimer;
   uint32_t m_samplingIntervalMs{0};
+
+  // Cooperative scheduling state
+  unsigned int m_messageSubsystemIndex{0};
+  unsigned int m_samplingSubsystemIndex{0};
 };
 
 } // namespace OASIS

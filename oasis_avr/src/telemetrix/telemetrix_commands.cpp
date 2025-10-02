@@ -11,6 +11,7 @@
 
 #include "telemetrix_commands.hpp"
 
+#include "scheduler/task_scheduler.hpp"
 #include "telemetrix_cpu_fan.hpp"
 #include "telemetrix_dht.hpp"
 #include "telemetrix_i2c.hpp"
@@ -155,7 +156,7 @@ void TelemetrixCommands::GetNextCommand()
   const uint8_t packetLength = static_cast<uint8_t>(Serial.read());
 
   while (!Serial.available())
-    yield();
+    TaskSchedulerYield();
 
   // Get the command byte
   const uint8_t command = static_cast<uint8_t>(Serial.read());
@@ -168,7 +169,7 @@ void TelemetrixCommands::GetNextCommand()
     {
       // Need this delay or data read is not correct
       while (!Serial.available())
-        yield();
+        TaskSchedulerYield();
 
       commandBuffer[i] = static_cast<uint8_t>(Serial.read());
     }
