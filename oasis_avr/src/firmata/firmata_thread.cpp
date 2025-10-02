@@ -139,7 +139,7 @@ FirmataThread& FirmataThread::GetInstance()
 void FirmataThread::Setup()
 {
   // Set Firmata version
-  Firmata.setFirmwareVersion(FIRMATA_FIRMWARE_MAJOR_VERSION, FIRMATA_FIRMWARE_MINOR_VERSION);
+  Firmata.setFirmwareNameAndVersion("OASIS", FIRMATA_FIRMWARE_MAJOR_VERSION, FIRMATA_FIRMWARE_MINOR_VERSION);
 
   // Initialize callbacks
   FirmataCallbacks::InitializeCallbacks(*this);
