@@ -269,7 +269,7 @@ set(FIRMATA_DEFINITIONS)
 set(FIRMATA_LIBRARIES
   core
   FirmataExpress
-  Scheduler
+  TaskScheduler
 )
 
 if (ENABLE_ANALOG)
@@ -400,6 +400,18 @@ target_compile_definitions(oasis_avr_firmata PRIVATE ${FIRMATA_DEFINITIONS})
 target_link_arduino_libraries(oasis_avr_firmata PRIVATE ${FIRMATA_LIBRARIES})
 
 #
+# Scheduler
+#
+
+add_library(oasis_avr_scheduler
+  src/scheduler/task_scheduler.cpp
+)
+
+target_link_arduino_libraries(oasis_avr_scheduler PRIVATE
+  TaskScheduler
+)
+
+#
 # LEDs
 #
 
@@ -409,7 +421,7 @@ add_library(oasis_avr_leds
 
 target_link_arduino_libraries(oasis_avr_leds PRIVATE
   core
-  Scheduler
+  TaskScheduler
 )
 
 #
@@ -442,6 +454,7 @@ add_executable(firmata_node
 
 target_link_libraries(firmata_node PRIVATE
   oasis_avr_firmata
+  oasis_avr_scheduler
   oasis_avr_leds
   oasis_avr_utils
 )

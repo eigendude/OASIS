@@ -19,7 +19,6 @@
 
 #if defined(__AVR__) && __cpp_sized_deallocation
 
-#include <new>
 #include <stddef.h>
 
 void operator delete(void* ptr, size_t) noexcept;
