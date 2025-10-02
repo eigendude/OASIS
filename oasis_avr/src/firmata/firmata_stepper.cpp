@@ -13,6 +13,7 @@
 
 #include "firmata_stepper.hpp"
 
+#include <Arduino.h>
 #include <FirmataExpress.h>
 #include <Stepper.h>
 
