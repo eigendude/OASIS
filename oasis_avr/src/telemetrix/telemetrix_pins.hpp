@@ -35,6 +35,14 @@
 // the program to compile, even though the
 // pins may not exist for the board in use.
 
+#ifndef A6
+#define A6 2047
+#endif
+
+#ifndef A7
+#define A7 2047
+#endif
+
 #ifndef A8
 #define A8 2047
 #endif
