@@ -27,7 +27,7 @@
 
 #include <string.h>
 
-#include <Arduino.h>
+#include "arduino_shim.hpp"
 #include <HardwareSerial.h>
 
 ////////////////////////////////////////////////////////////////////////////////

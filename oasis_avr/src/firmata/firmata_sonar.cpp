@@ -16,7 +16,7 @@
 #include "firmata_callbacks.hpp"
 #include "utils/delete.hpp"
 
-#include <Arduino.h>
+#include "arduino_shim.hpp"
 #include <FirmataExpress.h>
 #include <Ultrasonic.h>
 

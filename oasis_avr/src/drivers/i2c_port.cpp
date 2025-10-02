@@ -11,7 +11,7 @@
 
 #include "i2c_port.hpp"
 
-#include <Arduino.h>
+#include "arduino_shim.hpp"
 #include <Wire.h>
 #include <avr/io.h>
 

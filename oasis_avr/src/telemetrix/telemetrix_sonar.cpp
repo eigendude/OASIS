@@ -16,7 +16,7 @@
 
 #include <string.h>
 
-#include <Arduino.h>
+#include "arduino_shim.hpp"
 #include <Ultrasonic.h>
 
 using namespace OASIS;

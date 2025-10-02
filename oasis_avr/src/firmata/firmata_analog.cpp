@@ -13,7 +13,7 @@
 
 #include "firmata_analog.hpp"
 
-#include <Arduino.h>
+#include "arduino_shim.hpp"
 #include <Boards.h>
 #include <FirmataExpress.h>
 

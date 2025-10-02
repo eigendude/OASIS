@@ -10,7 +10,7 @@
 
 #include "telemetrix_reports.hpp"
 
-#include <Arduino.h>
+#include "arduino_shim.hpp"
 #include <HardwareSerial.h>
 
 using namespace OASIS;

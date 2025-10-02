@@ -10,7 +10,7 @@
 
 #include "utils/math_utils.hpp"
 
-#include <Arduino.h>
+#include "arduino_shim.hpp"
 #include <avr/io.h>
 
 using namespace OASIS;

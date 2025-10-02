@@ -10,7 +10,7 @@
 
 #include "firmata_extra.hpp"
 
-#include <Arduino.h>
+#include "arduino_shim.hpp"
 #include <FirmataExpress.h>
 #include <avr/io.h>
 

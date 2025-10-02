@@ -15,7 +15,7 @@
 #include <string.h>
 
 //#include <FirmataExpress.h>
-#include <Arduino.h>
+#include "arduino_shim.hpp"
 
 using namespace OASIS;
 

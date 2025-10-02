@@ -13,7 +13,7 @@
 
 #include "firmata_servo.hpp"
 
-#include <Arduino.h>
+#include "arduino_shim.hpp"
 #include <FirmataExpress.h>
 
 using namespace OASIS;

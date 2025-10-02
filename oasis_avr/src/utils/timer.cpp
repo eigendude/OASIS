@@ -8,7 +8,7 @@
 
 #include "timer.hpp"
 
-#include <Arduino.h>
+#include "arduino_shim.hpp"
 
 using namespace OASIS;
 

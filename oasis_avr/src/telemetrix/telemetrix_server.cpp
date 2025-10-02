@@ -24,7 +24,7 @@
 #include "telemetrix_spi.hpp"
 #include "telemetrix_stepper.hpp"
 
-#include <Arduino.h>
+#include "arduino_shim.hpp"
 #include <HardwareSerial.h>
 
 using namespace OASIS;

@@ -10,7 +10,7 @@
 
 #include "firmata/firmata_scheduler.hpp"
 
-#include <Arduino.h>
+#include "arduino_shim.hpp"
 
 using namespace OASIS;
 

@@ -11,7 +11,7 @@
 
 #include <stdint.h>
 
-#include <Arduino.h>
+#include "arduino_shim.hpp"
 #include <Scheduler.h>
 
 using namespace OASIS;

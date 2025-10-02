@@ -13,7 +13,7 @@
 
 #include <stdint.h>
 
-#include <Arduino.h>
+#include "arduino_shim.hpp"
 
 // Pin mode definitions
 

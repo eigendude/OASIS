@@ -17,7 +17,7 @@
 
 #include "firmata_extra.hpp"
 
-#include <Arduino.h>
+#include "arduino_shim.hpp"
 #include <Boards.h>
 #include <FirmataExpress.h>
 #include <SPI.h>

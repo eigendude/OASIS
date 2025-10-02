@@ -17,7 +17,7 @@
 
 #include <stddef.h>
 
-#include <Arduino.h>
+#include "arduino_shim.hpp"
 #include <FirmataExpress.h>
 #include <Wire.h>
 
