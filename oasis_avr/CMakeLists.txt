@@ -269,7 +269,7 @@ set(FIRMATA_DEFINITIONS)
 set(FIRMATA_LIBRARIES
   core
   FirmataExpress
-  Scheduler
+  TaskScheduler
 )
 
 if (ENABLE_ANALOG)
@@ -546,14 +546,36 @@ target_compile_definitions(oasis_avr_telemetrix PRIVATE ${TELEMETRIX_DEFINITIONS
 target_link_arduino_libraries(oasis_avr_telemetrix PRIVATE ${TELEMETRIX_LIBRARIES})
 
 #
+# Scheduler
+#
+
+add_library(oasis_avr_scheduler
+  src/scheduler/task_scheduler.cpp
+)
+
+target_link_arduino_libraries(oasis_avr_scheduler PRIVATE
+  core
+  TaskScheduler
+)
+
+#
 # LEDs
 #
 
-add_library(oasis_avr_leds
+add_library(oasis_avr_led_task
+  src/leds/heartbeat_task.cpp
+)
+
+target_link_arduino_libraries(oasis_avr_led_task PRIVATE
+  core
+  TaskScheduler
+)
+
+add_library(oasis_avr_led_thread
   src/leds/heartbeat_thread.cpp
 )
 
-target_link_arduino_libraries(oasis_avr_leds PRIVATE
+target_link_arduino_libraries(oasis_avr_led_thread PRIVATE
   core
   Scheduler
 )
@@ -588,7 +610,8 @@ add_executable(firmata_node
 
 target_link_libraries(firmata_node PRIVATE
   oasis_avr_firmata
-  oasis_avr_leds
+  oasis_avr_led_task
+  oasis_avr_scheduler
   oasis_avr_utils
 )
 
@@ -626,7 +649,7 @@ target_compile_definitions(telemetrix_node PRIVATE
 
 target_link_libraries(telemetrix_node PRIVATE
   oasis_avr_telemetrix
-  oasis_avr_leds
+  oasis_avr_led_thread
 )
 
 target_link_arduino_libraries(telemetrix_node PRIVATE
