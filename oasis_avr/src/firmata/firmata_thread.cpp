@@ -187,25 +187,22 @@ void FirmataThread::MessageLoop()
 
 void FirmataThread::SamplingLoop()
 {
-  if (m_samplingIntervalMs > 0)
-  {
-    m_samplingTimer.SetTimeout(m_samplingIntervalMs);
+  if (m_samplingIntervalMs == 0)
+    return;
 
-    // Sample subsystems
-    for (unsigned int i = 0; i < SubsystemID::SUBSYSTEM_COUNT; ++i)
+  if (!m_samplingTimer.IsExpired())
+    return;
+
+  m_samplingTimer.SetTimeout(m_samplingIntervalMs);
+
+  // Sample subsystems
+  for (unsigned int i = 0; i < SubsystemID::SUBSYSTEM_COUNT; ++i)
+  {
+    if (m_subsystems[i] != nullptr)
     {
-      if (m_subsystems[i] != nullptr)
-      {
-        m_subsystems[i]->Sample();
-        yield();
-      }
+      m_subsystems[i]->Sample();
+      yield();
     }
-
-    delay(m_samplingTimer.TimeLeft());
-  }
-  else
-  {
-    yield();
   }
 }
 
