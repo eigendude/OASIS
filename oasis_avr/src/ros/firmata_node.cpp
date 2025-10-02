@@ -10,7 +10,8 @@
 #include "leds/heartbeat_thread.hpp"
 
 #include <Arduino.h>
-#include <Scheduler.h>
+
+#include "firmata/firmata_scheduler.hpp"
 
 using namespace OASIS;
 
@@ -22,6 +23,5 @@ void setup()
 
 void loop()
 {
-  // TODO: Delay forever
-  delay(1000);
+  RunTaskScheduler();
 }

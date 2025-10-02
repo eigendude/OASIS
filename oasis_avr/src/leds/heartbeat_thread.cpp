@@ -9,15 +9,13 @@
 #include "heartbeat_thread.hpp"
 
 #include <Arduino.h>
-#include <Scheduler.h>
+
+#include "firmata/firmata_scheduler.hpp"
 
 using namespace OASIS;
 
 namespace OASIS
 {
-
-// Threading constants
-constexpr size_t HEARTBEAT_STACK_SIZE = 32; // Default is 128
 
 // LED parameters
 constexpr unsigned int HEARTBEAT_LED = LED_BUILTIN;
@@ -37,8 +35,11 @@ void HeartbeatThread::Setup()
   // Setup to blink the inbuilt LED
   pinMode(HEARTBEAT_LED, OUTPUT);
 
-  // Start heartbeat thread
-  Scheduler.startLoop(HeartbeatLoop, HEARTBEAT_STACK_SIZE);
+  InitializeTaskScheduler();
+
+  static TsTask heartbeatTask(TASK_IMMEDIATE, TASK_FOREVER, HeartbeatLoop);
+  GetTaskScheduler().addTask(heartbeatTask);
+  heartbeatTask.enable();
 }
 
 void HeartbeatThread::Loop()
