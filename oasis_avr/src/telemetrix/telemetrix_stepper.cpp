@@ -15,6 +15,7 @@
 #include "telemetrix_reports.hpp"
 
 #include <AccelStepper.h>
+#include <Arduino.h>
 #include <HardwareSerial.h>
 
 using namespace OASIS;
