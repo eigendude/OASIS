@@ -32,6 +32,7 @@ public:
 private:
   // Analog pin state
   uint16_t m_analogInputsToReport{0}; // Bitwise array to store pin reporting
+  uint8_t m_nextAnalogPin{0};
 };
 
 } // namespace OASIS

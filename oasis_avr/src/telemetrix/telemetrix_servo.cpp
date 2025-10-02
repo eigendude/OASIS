@@ -14,6 +14,7 @@
 #include "drivers/servomotor.hpp"
 #include "telemetrix_reports.hpp"
 
+#include <Arduino.h>
 #include <HardwareSerial.h>
 
 using namespace OASIS;

@@ -91,19 +91,28 @@ void TelemetrixServer::Setup()
 
 void TelemetrixServer::Loop()
 {
+  ProcessCommands();
+  ScanSensors();
+}
+
+void TelemetrixServer::ProcessCommands()
+{
   // Keep processing incoming commands
   TelemetrixCommands::GetNextCommand();
+}
 
-  if (!m_stopReports)
-  {
-    ScanCPUFans();
-    ScanDHTs();
-    ScanI2C();
-    ScanMemory();
-    ScanPins();
-    ScanSonars();
-    ScanSteppers();
-  }
+void TelemetrixServer::ScanSensors()
+{
+  if (m_stopReports)
+    return;
+
+  ScanCPUFans();
+  ScanDHTs();
+  ScanI2C();
+  ScanMemory();
+  ScanPins();
+  ScanSonars();
+  ScanSteppers();
 }
 
 void TelemetrixServer::ScanCPUFans()
