@@ -7,7 +7,10 @@
  */
 #pragma once
 
-#include <TScheduler.hpp>
+// Use the declarations-only header to avoid instantiating TaskScheduler
+// definitions in every translation unit. The actual implementation is
+// provided by the TaskScheduler Arduino library that we link against.
+#include <TSchedulerDeclarations.hpp>
 
 namespace OASIS
 {
