@@ -21,8 +21,14 @@ private:
   // Threading functions
   void Loop();
 
+  void SetPhase(unsigned int phase, unsigned long now);
+
   // Static threading functions
   static void HeartbeatLoop();
+
+  unsigned int m_phaseIndex = 0;
+  unsigned long m_nextTransitionMs = 0;
+  bool m_phaseInitialized = false;
 };
 
 } // namespace OASIS

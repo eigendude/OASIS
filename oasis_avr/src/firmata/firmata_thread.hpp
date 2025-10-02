@@ -80,6 +80,7 @@ public:
   void SetSamplingInterval(uint32_t samplingIntervalMs)
   {
     m_samplingIntervalMs = samplingIntervalMs;
+    m_samplingTimer.Reset();
   }
 
 private:
