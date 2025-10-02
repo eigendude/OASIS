@@ -14,7 +14,7 @@
 
 #include <string.h>
 
-#include <Scheduler.h>
+#include <Arduino.h>
 
 using namespace OASIS;
 
