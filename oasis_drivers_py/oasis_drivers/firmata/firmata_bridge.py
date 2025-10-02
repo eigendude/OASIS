@@ -9,6 +9,8 @@
 ################################################################################
 
 import asyncio
+import logging
+import os
 import threading
 from concurrent.futures import Future
 from datetime import datetime
@@ -35,7 +37,7 @@ class FirmataBridge:
     # AVR parameters
     BAUD_RATE = 115200
     ARDUINO_INSTANCE_ID = 1  # TODO
-    ARDUINO_WAIT_SECS = 2  # TODO
+    ARDUINO_WAIT_SECS = 4  # TODO
 
     # Firmata callback data indices
     CB_PIN_MODE = 0
@@ -52,8 +54,23 @@ class FirmataBridge:
         # Construction parameters
         self._callback = callback
 
+        # Turn on asyncio debug (env var must be set before the loop is created)
+        os.environ["PYTHONASYNCIODEBUG"] = "1"
+
+        # Configure logging
+        logging.basicConfig(level=logging.DEBUG)  # or INFO first, then bump to DEBUG
+        for name in (
+            "pymata_express",  # package
+            "pymata_express.pymata_express",  # high-level API
+            "pymata_express.pymata_core",  # core/transport
+            "asyncio",  # event loop noise (very helpful)
+            "serial",  # pyserial logs
+        ):
+            logging.getLogger(name).setLevel(logging.DEBUG)
+
         # Initialize asyncio event loop for running bridge in a new thread
         self._loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
+        self._loop.set_debug(True)
         self._thread = threading.Thread(target=self._run_thread)
 
         # Instantiate pymata-express
