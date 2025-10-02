@@ -85,7 +85,7 @@ if (HOST_NAME STREQUAL station)
   set(ENABLE_STEPPER OFF)
 elseif (HOST_NAME STREQUAL megapegasus)
   # Building lab
-  set(ARDUINO_VARIANT uno)
+  set(ARDUINO_VARIANT unowifi)
 
   set(ENABLE_AIR_QUALITY OFF)
   set(ENABLE_ANALOG ON)
