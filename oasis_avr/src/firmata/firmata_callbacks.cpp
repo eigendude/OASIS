@@ -376,29 +376,10 @@ void FirmataCallbacks::SysexCallback(uint8_t command, uint8_t argc, uint8_t* arg
   {
     case RU_THERE:
     {
-      // ID must be 7-bit clean
-      const uint8_t id_7bit = static_cast<uint8_t>(ARDUINO_INSTANCE_ID & 0x7F);
-
-      // Send exactly: F0 52 <id> F7
       Firmata.write(START_SYSEX);
       Firmata.write(static_cast<uint8_t>(I_AM_HERE));
-      Firmata.write(id_7bit);
+      Firmata.write(static_cast<uint8_t>(ARDUINO_INSTANCE_ID));
       Firmata.write(END_SYSEX);
-
-      // Make sure it’s actually on the wire before anything else happens.
-      // Important on some boards/bootloaders.
-      Serial.flush();
-
-      break;
-    }
-
-    case REPORT_FIRMWARE:
-    {
-      // Let Firmata compose the frame (it handles 7-bit packing & name)
-      Firmata.printFirmwareVersion();
-
-      // Ensure it actually hits the wire before anything else interleaves
-      Serial.flush();
 
       break;
     }
@@ -519,9 +500,6 @@ void FirmataCallbacks::SysexCallback(uint8_t command, uint8_t argc, uint8_t* arg
       }
 
       Firmata.write(END_SYSEX);
-
-      // Ensure it’s on the wire
-      Serial.flush();
 
       break;
     }
@@ -885,7 +863,7 @@ void FirmataCallbacks::SysexCallback(uint8_t command, uint8_t argc, uint8_t* arg
 
     default:
     {
-      //Firmata.sendString("Unknown sysex callback");
+      Firmata.sendString("Unknown sysex callback");
       break;
     }
   }
