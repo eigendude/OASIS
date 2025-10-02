@@ -14,8 +14,6 @@
 
 #include <string.h>
 
-#include <Scheduler.h>
-
 using namespace OASIS;
 
 namespace OASIS
