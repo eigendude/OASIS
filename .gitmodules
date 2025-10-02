@@ -28,3 +28,6 @@
 [submodule "oasis_avr/libraries/SparkFunCCS811"]
 	path = oasis_avr/libraries/SparkFunCCS811
 	url = https://github.com/sparkfun/SparkFun_CCS811_Arduino_Library.git
+[submodule "oasis_avr/libraries/TaskScheduler"]
+	path = oasis_avr/libraries/TaskScheduler
+	url = https://github.com/arkhipenko/TaskScheduler.git
