@@ -1,9 +1,17 @@
 #
 # udev rules to grant the 'nut' group secure access to USB HID UPS devices
 # so that the usbhid-ups driver (libusb backend) and any hidraw-based tools
-# can communicate with all HID-class UPSes (CyberPower, APC, Eaton, etc.).
+# can communicate with these HID-class UPSes (CyberPower, APC, Eaton, etc).
 #
 
-# Allow libusb (upsc/usbhid-ups) to open the USB device node for any
-# USB device with at least one HID interface (class 0x03).
-SUBSYSTEM=="usb", ENV{ID_USB_INTERFACES}=="*:030000:*", MODE="0660", GROUP="nut"
+# APC (American Power Conversion)
+SUBSYSTEM=="usb", ENV{ID_USB_INTERFACES}=="*:030000:*", ATTRS{idVendor}=="051d", MODE="0660", GROUP="nut"
+
+# Eaton / MGE
+SUBSYSTEM=="usb", ENV{ID_USB_INTERFACES}=="*:030000:*", ATTRS{idVendor}=="0463", MODE="0660", GROUP="nut"
+
+# CyberPower
+SUBSYSTEM=="usb", ENV{ID_USB_INTERFACES}=="*:030000:*", ATTRS{idVendor}=="0764", MODE="0660", GROUP="nut"
+
+# Tripp Lite
+SUBSYSTEM=="usb", ENV{ID_USB_INTERFACES}=="*:030000:*", ATTRS{idVendor}=="09ae", MODE="0660", GROUP="nut"
