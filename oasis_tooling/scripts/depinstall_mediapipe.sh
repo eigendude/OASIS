@@ -24,19 +24,21 @@ NVM_VERSION="0.40.3"
 # Install dependencies
 #
 
-# Install curl and MediaPipe dependencies
-sudo apt install -y \
-  curl \
-  libegl-dev \
-  libgles-dev \
+# Packages to install via apt
+APT_PACKAGES=(
+  # curl and MediaPipe dependencies
+  curl
+  libegl-dev
+  libgles-dev
 
-# We patch protobuf to match the system version version, so it must be installed
-sudo apt install -y \
-  libprotobuf-dev \
+  # We patch protobuf to match the system version version, so it must be installed
+  libprotobuf-dev
 
-# We also pull in system glog
-sudo apt install -y \
-  libgoogle-glog-dev \
+  # We also pull in system glog
+  libgoogle-glog-dev
+)
+
+sudo apt install -y --no-install-recommends "${APT_PACKAGES[@]}"
 
 # Install NVM
 curl -o- "https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh" | bash
