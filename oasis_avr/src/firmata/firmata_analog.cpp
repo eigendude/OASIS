@@ -13,6 +13,8 @@
 
 #include "firmata_analog.hpp"
 
+#include "scheduler/task_scheduler.hpp"
+
 #include <Arduino.h>
 #include <Boards.h>
 #include <FirmataExpress.h>
@@ -21,19 +23,26 @@ using namespace OASIS;
 
 void FirmataAnalog::Sample()
 {
-  for (uint8_t pin = 0; pin < TOTAL_PINS; ++pin)
-  {
-    if (IS_PIN_ANALOG(pin) && Firmata.getPinMode(pin) == PIN_MODE_ANALOG)
-    {
-      const uint8_t analogPin = PIN_TO_ANALOG(pin);
+  const uint8_t startPin = m_nextAnalogPin;
 
-      if (m_analogInputsToReport & (1 << analogPin))
-      {
-        Firmata.sendAnalog(analogPin, analogRead(analogPin));
-        yield();
-      }
-    }
-  }
+  do
+  {
+    const uint8_t pin = m_nextAnalogPin;
+    m_nextAnalogPin = static_cast<uint8_t>((m_nextAnalogPin + 1) % TOTAL_PINS);
+
+    if (!IS_PIN_ANALOG(pin) || Firmata.getPinMode(pin) != PIN_MODE_ANALOG)
+      continue;
+
+    const uint8_t analogPin = PIN_TO_ANALOG(pin);
+
+    if ((m_analogInputsToReport & (1 << analogPin)) == 0)
+      continue;
+
+    Firmata.sendAnalog(analogPin, analogRead(analogPin));
+
+    if (TaskSchedulerYield())
+      return;
+  } while (m_nextAnalogPin != startPin);
 }
 
 void FirmataAnalog::SetAnalogMode(uint8_t pin)
