@@ -126,36 +126,43 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     v4l-utils
   )
 
-  sudo apt install -y --no-install-recommends "${APT_PACKAGES[@]}"
-
   # Needed for OpenNI (only enabled on x86_64)
   if [[ ${PLATFORM_ARCH} == x86_64 ]]; then
-    sudo apt install -y --no-install-recommends \
-      default-jdk \
-      libudev-dev \
+    APT_PACKAGES+=(
+      default-jdk
+      libudev-dev
       libusb-1.0-0-dev
+    )
   fi
 
   # Needed for libcec on ARM
   if [[ "$(uname -m)" == "aarch64" ]] ||
      [[ "$(uname -m)" == "armv7l" ]] ||
      [[ "$(uname -m)" == "armv6l" ]]; then
-    sudo apt install -y --no-install-recommends \
+    APT_PACKAGES+=(
       libraspberrypi-dev
+    )
   fi
 
   # Needed for OpenCL support for oasis_kinect2
-  sudo apt install -y --no-install-recommends \
-    clinfo \
-    ocl-icd-opencl-dev \
+  APT_PACKAGES+=(
+    clinfo
+    ocl-icd-opencl-dev
     opencl-clhpp-headers
+  )
   if [[ ${PLATFORM_ARCH} == i*86 ]] || [[ ${PLATFORM_ARCH} == x86_64 ]]; then
-    sudo apt install -y --no-install-recommends \
+    # Intel OpenCL implementation
+    APT_PACKAGES+=(
       intel-opencl-icd
+    )
   else
-    sudo apt install -y --no-install-recommends \
+    # Portable OpenCL implementation
+    APT_PACKAGES+=(
       pocl-opencl-icd
+    )
   fi
+
+  sudo apt install -y --no-install-recommends "${APT_PACKAGES[@]}"
 fi
 
 #

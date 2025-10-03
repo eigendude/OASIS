@@ -140,9 +140,12 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     waylandpp-dev
   )
 
-  sudo apt install -y --no-install-recommends "${APT_PACKAGES[@]}"
-
   if [ "${ENABLE_LLD}" = "ON" ]; then
-    sudo apt install -y lld
+    # Optional LLD linker
+    APT_PACKAGES+=(
+      lld
+    )
   fi
+
+  sudo apt install -y --no-install-recommends "${APT_PACKAGES[@]}"
 fi
