@@ -90,12 +90,15 @@ void Bluefruit::Loop()
 {
   const unsigned long now = millis();
 
-  if (static_cast<long>(now - m_nextScanMs) < 0)
+  const bool hasPendingEvent = m_ble.available() > 0;
+
+  // Avoid running the full event query unless either the module signals that
+  // work is pending (via the IRQ line exposed through available()) or the
+  // periodic scan interval has elapsed. This keeps the Bluefruit handling
+  // responsive without stalling other tasks like the heartbeat scheduler.
+  if (!hasPendingEvent && static_cast<long>(now - m_nextScanMs) < 0)
     return;
 
-  // Update without blocking to keep other tasks responsive, such as the
-  // heartbeat scheduler. The scan interval is maintained manually using
-  // m_nextScanMs instead of relying on the library to delay for us.
   m_ble.update(0);
 
   m_nextScanMs = now + BLUETOOTH_SCAN_INTERVAL_MS;
