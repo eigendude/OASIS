@@ -85,22 +85,22 @@ if (HOST_NAME STREQUAL station)
   set(ENABLE_STEPPER OFF)
 elseif (HOST_NAME STREQUAL megapegasus)
   # Building lab
-  set(ARDUINO_VARIANT uno)
+  set(ARDUINO_VARIANT unowifi)
 
   set(ENABLE_AIR_QUALITY ON)
   set(ENABLE_ANALOG ON)
-  set(ENABLE_BLUEFRUIT OFF)
-  set(ENABLE_CPU_FAN OFF)
-  set(ENABLE_DHT OFF)
+  set(ENABLE_BLUEFRUIT ON)
+  set(ENABLE_CPU_FAN ON)
+  set(ENABLE_DHT ON)
   set(ENABLE_DIAGNOSTICS ON)
   set(ENABLE_DIGITAL ON)
   set(ENABLE_I2C ON)
   set(ENABLE_IMU ON)
-  set(ENABLE_ONE_WIRE OFF)
-  set(ENABLE_SERVO OFF)
-  set(ENABLE_SONAR OFF)
-  set(ENABLE_SPI OFF)
-  set(ENABLE_STEPPER OFF)
+  set(ENABLE_ONE_WIRE ON)
+  set(ENABLE_SERVO ON)
+  set(ENABLE_SONAR ON)
+  set(ENABLE_SPI ON)
+  set(ENABLE_STEPPER ON)
 else()
   set(ARDUINO_VARIANT mega)
 
@@ -269,7 +269,7 @@ set(FIRMATA_DEFINITIONS)
 set(FIRMATA_LIBRARIES
   core
   FirmataExpress
-  Scheduler
+  TaskScheduler
 )
 
 if (ENABLE_ANALOG)
@@ -408,6 +408,7 @@ set(TELEMETRIX_SOURCES
   src/telemetrix/telemetrix_memory.cpp
   src/telemetrix/telemetrix_pins.cpp
   src/telemetrix/telemetrix_server.cpp
+  src/telemetrix/telemetrix_thread.cpp
   src/utils/delete.cpp
   src/utils/math_utils.cpp
   src/utils/memory_utils.cpp
@@ -418,7 +419,7 @@ set(TELEMETRIX_DEFINITIONS)
 
 set(TELEMETRIX_LIBRARIES
   core
-  Scheduler
+  TaskScheduler
 )
 
 if (ENABLE_AIR_QUALITY)
@@ -554,16 +555,29 @@ target_compile_definitions(oasis_avr_telemetrix PRIVATE ${TELEMETRIX_DEFINITIONS
 target_link_arduino_libraries(oasis_avr_telemetrix PRIVATE ${TELEMETRIX_LIBRARIES})
 
 #
+# Scheduler
+#
+
+add_library(oasis_avr_scheduler
+  src/scheduler/task_scheduler.cpp
+)
+
+target_link_arduino_libraries(oasis_avr_scheduler PRIVATE
+  core
+  TaskScheduler
+)
+
+#
 # LEDs
 #
 
-add_library(oasis_avr_leds
-  src/leds/heartbeat_thread.cpp
+add_library(oasis_avr_led_task
+  src/leds/heartbeat_task.cpp
 )
 
-target_link_arduino_libraries(oasis_avr_leds PRIVATE
+target_link_arduino_libraries(oasis_avr_led_task PRIVATE
   core
-  Scheduler
+  TaskScheduler
 )
 
 #
@@ -596,7 +610,8 @@ add_executable(firmata_node
 
 target_link_libraries(firmata_node PRIVATE
   oasis_avr_firmata
-  oasis_avr_leds
+  oasis_avr_led_task
+  oasis_avr_scheduler
   oasis_avr_utils
 )
 
@@ -634,7 +649,8 @@ target_compile_definitions(telemetrix_node PRIVATE
 
 target_link_libraries(telemetrix_node PRIVATE
   oasis_avr_telemetrix
-  oasis_avr_leds
+  oasis_avr_led_task
+  oasis_avr_scheduler
 )
 
 target_link_arduino_libraries(telemetrix_node PRIVATE

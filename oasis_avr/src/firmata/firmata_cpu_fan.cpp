@@ -10,8 +10,8 @@
 
 #include "firmata_extra.hpp"
 
+#include <Arduino.h>
 #include <FirmataExpress.h>
-#include <Scheduler.h>
 #include <avr/io.h>
 
 using namespace OASIS;

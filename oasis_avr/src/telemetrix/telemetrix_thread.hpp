@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021-2025 Garrett Brown
+ *  Copyright (C) 2022-2025 Garrett Brown
  *  This file is part of OASIS - https://github.com/eigendude/OASIS
  *
  *  SPDX-License-Identifier: Apache-2.0
@@ -7,22 +7,26 @@
  */
 #pragma once
 
+#include "telemetrix_server.hpp"
+
 namespace OASIS
 {
 
-class HeartbeatThread
+class TelemetrixThread
 {
 public:
-  static HeartbeatThread& GetInstance();
+  static TelemetrixThread& GetInstance();
 
   void Setup();
 
 private:
-  // Threading functions
-  void Loop();
+  TelemetrixThread() = default;
 
-  // Static threading functions
-  static void HeartbeatLoop();
+  // Task entry points
+  void Loop();
+  static void TelemetrixLoop();
+
+  TelemetrixServer m_server;
 };
 
 } // namespace OASIS

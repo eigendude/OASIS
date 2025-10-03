@@ -17,8 +17,8 @@
 
 #include <stddef.h>
 
+#include <Arduino.h>
 #include <FirmataExpress.h>
-#include <Scheduler.h>
 #include <Wire.h>
 
 using namespace OASIS;
