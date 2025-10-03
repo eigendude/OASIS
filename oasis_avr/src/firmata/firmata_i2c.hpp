@@ -16,20 +16,18 @@
 
 #include <stdint.h>
 
-#include <binary.h>
-
 namespace OASIS
 {
 
 // I2C constants
 // clang-format off
-static constexpr uint8_t I2C_WRITE =                   B00000000;
-static constexpr uint8_t I2C_READ =                    B00001000;
-static constexpr uint8_t I2C_READ_CONTINUOUSLY =       B00010000;
-static constexpr uint8_t I2C_STOP_READING =            B00011000;
-static constexpr uint8_t I2C_READ_WRITE_MODE_MASK =    B00011000;
-static constexpr uint8_t I2C_10BIT_ADDRESS_MODE_MASK = B00100000;
-static constexpr uint8_t I2C_END_TX_MASK =             B01000000;
+static constexpr uint8_t I2C_WRITE =                   0b00000000;
+static constexpr uint8_t I2C_READ =                    0b00001000;
+static constexpr uint8_t I2C_READ_CONTINUOUSLY =       0b00010000;
+static constexpr uint8_t I2C_STOP_READING =            0b00011000;
+static constexpr uint8_t I2C_READ_WRITE_MODE_MASK =    0b00011000;
+static constexpr uint8_t I2C_10BIT_ADDRESS_MODE_MASK = 0b00100000;
+static constexpr uint8_t I2C_END_TX_MASK =             0b01000000;
 static constexpr uint8_t I2C_STOP_TX =                 1;
 static constexpr uint8_t I2C_RESTART_TX =              0;
 static constexpr uint8_t I2C_MAX_QUERIES =             8;
