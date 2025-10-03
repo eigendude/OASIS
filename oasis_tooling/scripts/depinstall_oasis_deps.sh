@@ -58,110 +58,111 @@ fi
 #
 
 if [[ "${OSTYPE}" != "darwin"* ]]; then
-  # Install development tools and ROS tools
-  sudo apt install -y --no-install-recommends \
-    bc \
-    build-essential \
-    ccache \
-    cmake \
-    git \
-    ros-dev-tools \
+  # Packages to install via apt
+  APT_PACKAGES=(
+    # Development tools and ROS tools
+    bc
+    build-essential
+    ccache
+    cmake
+    git
+    ros-dev-tools
 
-  # Needed for ROS message generation
-  sudo apt install -y --no-install-recommends \
-    python3-lark \
+    # Needed for ROS message generation
+    python3-lark
 
-  # Needed by cv_bridge, dev dependency of tracetools package in ros2_tracing stack
-  sudo apt install -y --no-install-recommends \
-    liblttng-ust-dev \
+    # Needed by cv_bridge, dev dependency of tracetools package in ros2_tracing stack
+    liblttng-ust-dev
 
-  # Needed by image_pipeline
-  sudo apt install -y --no-install-recommends \
+    # Needed by image_pipeline
     liborocos-kdl-dev
 
-  # Needed by image_transport and plugins
-  sudo apt install -y --no-install-recommends \
-    libconsole-bridge-dev \
-    libspdlog-dev \
-    libtinyxml2-dev \
+    # Needed by image_transport and plugins
+    libconsole-bridge-dev
+    libspdlog-dev
+    libtinyxml2-dev
 
-  # Needed for image_view
-  sudo apt install -y --no-install-recommends \
-    libavif-dev \
+    # Needed for image_view
+    libavif-dev
 
-  # Needed for v4l2_camera
-  sudo apt install -y --no-install-recommends \
-    libyaml-cpp-dev \
+    # Needed for v4l2_camera
+    libyaml-cpp-dev
 
-  # Needed for custom OpenCV build
-  sudo apt install -y --no-install-recommends \
-    libopenblas-dev \
+    # Needed for custom OpenCV build
+    libopenblas-dev
+
+    # Needed for libfreenect2
+    libturbojpeg0-dev
+    libusb-1.0-0-dev
+    ocl-icd-opencl-dev
+
+    # libcec dependencies
+    libudev-dev
+    libxrandr-dev
+    swig
+
+    # Needed for libcamera according to https://github.com/christian-nils/libcamera_cmake
+    cmake
+    git
+    libboost-dev
+    libevent-dev
+    libglib2.0-dev
+    libgnutls28-dev
+    libgstreamer-plugins-base1.0-dev
+    libqt5core5a
+    libqt5gui5
+    libqt5widgets5
+    libtiff5-dev
+    meson
+    ninja-build
+    openssl
+    pybind11-dev
+    python3
+    python3-jinja2
+    python3-pip
+    python3-ply
+    python3-yaml
+    qtbase5-dev
+    v4l-utils
+  )
 
   # Needed for OpenNI (only enabled on x86_64)
   if [[ ${PLATFORM_ARCH} == x86_64 ]]; then
-    sudo apt install -y --no-install-recommends \
-      default-jdk \
-      libudev-dev \
+    APT_PACKAGES+=(
+      default-jdk
+      libudev-dev
       libusb-1.0-0-dev
+    )
   fi
-
-  # Needed for libfreenect2
-  sudo apt install -y --no-install-recommends \
-    libturbojpeg0-dev \
-    libusb-1.0-0-dev \
-    ocl-icd-opencl-dev \
-
-  # Install libcec dependencies
-  sudo apt install -y --no-install-recommends \
-    libudev-dev \
-    libxrandr-dev \
-    swig \
 
   # Needed for libcec on ARM
   if [[ "$(uname -m)" == "aarch64" ]] ||
      [[ "$(uname -m)" == "armv7l" ]] ||
      [[ "$(uname -m)" == "armv6l" ]]; then
-    sudo apt install -y --no-install-recommends \
+    APT_PACKAGES+=(
       libraspberrypi-dev
+    )
   fi
-
-  # Needed for libcamera according to https://github.com/christian-nils/libcamera_cmake
-  sudo apt install -y --no-install-recommends \
-    cmake \
-    git \
-    libboost-dev \
-    libevent-dev \
-    libglib2.0-dev \
-    libgnutls28-dev \
-    libgstreamer-plugins-base1.0-dev \
-    libqt5core5a \
-    libqt5gui5 \
-    libqt5widgets5 \
-    libtiff5-dev \
-    meson \
-    ninja-build \
-    openssl \
-    pybind11-dev \
-    python3 \
-    python3-jinja2 \
-    python3-pip \
-    python3-ply \
-    python3-yaml \
-    qtbase5-dev \
-    v4l-utils \
 
   # Needed for OpenCL support for oasis_kinect2
-  sudo apt install -y --no-install-recommends \
-    clinfo \
-    ocl-icd-opencl-dev \
+  APT_PACKAGES+=(
+    clinfo
+    ocl-icd-opencl-dev
     opencl-clhpp-headers
+  )
   if [[ ${PLATFORM_ARCH} == i*86 ]] || [[ ${PLATFORM_ARCH} == x86_64 ]]; then
-    sudo apt install -y --no-install-recommends \
+    # Intel OpenCL implementation
+    APT_PACKAGES+=(
       intel-opencl-icd
+    )
   else
-    sudo apt install -y --no-install-recommends \
+    # Portable OpenCL implementation
+    APT_PACKAGES+=(
       pocl-opencl-icd
+    )
   fi
+
+  sudo apt install -y --no-install-recommends "${APT_PACKAGES[@]}"
 fi
 
 #

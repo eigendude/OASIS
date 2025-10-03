@@ -36,23 +36,30 @@ set -o nounset
 # Install OASIS runtime dependencies
 #
 
+# Refresh package metadata
+sudo apt update
+
+# Packages to install via apt
+APT_PACKAGES=(
+  # Needed for resolving hostnames for WoL
+  avahi-daemon
+  avahi-utils
+
+  # Python dependencies
+  python3-psutil
+  python3-serial
+)
+
 # Install display controllers
 if [[ ${PLATFORM_ARCH} == i*86 ]] || [[ ${PLATFORM_ARCH} == x86_64 ]]; then
-  sudo apt install -y --no-install-recommends \
-    cec-utils \
-    ddcutil \
-    vbetool \
-; fi
+  APT_PACKAGES+=(
+    cec-utils
+    ddcutil
+    vbetool
+  )
+fi
 
-# Needed for resolving hostnames for WoL
-sudo apt install -y --no-install-recommends \
-  avahi-daemon \
-  avahi-utils \
-
-# Install Python dependencies
-sudo apt install -y --no-install-recommends \
-  python3-psutil \
-  python3-serial \
+sudo apt install -y --no-install-recommends "${APT_PACKAGES[@]}"
 
 sudo python3 -m pip install \
   --upgrade \

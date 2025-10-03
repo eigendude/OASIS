@@ -70,30 +70,33 @@ fi
 #
 
 if [[ "${OSTYPE}" != "darwin"* ]]; then
-  # Install general development tools
-  sudo apt install -y --no-install-recommends \
-    build-essential \
-    ccache \
-    cmake \
-    git \
-    wget \
+  # Packages to install via apt
+  APT_PACKAGES=(
+    # General development tools
+    build-essential
+    ccache
+    cmake
+    git
+    wget
 
-  # Install ROS development tools
-  sudo apt install -y --no-install-recommends \
-    python3-flake8-blind-except \
-    python3-flake8-class-newline \
-    python3-flake8-deprecated \
-    python3-lark \
-    python3-mypy \
-    python3-pip \
-    python3-pytest \
-    python3-pytest-cov \
-    python3-pytest-mock \
-    python3-pytest-repeat \
-    python3-pytest-rerunfailures \
-    python3-pytest-runner \
-    python3-pytest-timeout \
+    # ROS development tools
+    python3-flake8-blind-except
+    python3-flake8-class-newline
+    python3-flake8-deprecated
+    python3-lark
+    python3-mypy
+    python3-pip
+    python3-pytest
+    python3-pytest-cov
+    python3-pytest-mock
+    python3-pytest-repeat
+    python3-pytest-rerunfailures
+    python3-pytest-runner
+    python3-pytest-timeout
     ros-dev-tools
+  )
+
+  sudo apt install -y --no-install-recommends "${APT_PACKAGES[@]}"
 fi
 
 #
