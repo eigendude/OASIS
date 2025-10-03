@@ -411,6 +411,7 @@ set(TELEMETRIX_SOURCES
   src/telemetrix/telemetrix_memory.cpp
   src/telemetrix/telemetrix_pins.cpp
   src/telemetrix/telemetrix_server.cpp
+  src/telemetrix/telemetrix_thread.cpp
   src/utils/delete.cpp
   src/utils/math_utils.cpp
   src/utils/memory_utils.cpp
@@ -421,7 +422,7 @@ set(TELEMETRIX_DEFINITIONS)
 
 set(TELEMETRIX_LIBRARIES
   core
-  Scheduler
+  TaskScheduler
 )
 
 if (ENABLE_AIR_QUALITY)
@@ -571,15 +572,6 @@ target_link_arduino_libraries(oasis_avr_led_task PRIVATE
   TaskScheduler
 )
 
-add_library(oasis_avr_led_thread
-  src/leds/heartbeat_thread.cpp
-)
-
-target_link_arduino_libraries(oasis_avr_led_thread PRIVATE
-  core
-  Scheduler
-)
-
 #
 # Utils
 #
@@ -649,7 +641,8 @@ target_compile_definitions(telemetrix_node PRIVATE
 
 target_link_libraries(telemetrix_node PRIVATE
   oasis_avr_telemetrix
-  oasis_avr_led_thread
+  oasis_avr_led_task
+  oasis_avr_scheduler
 )
 
 target_link_arduino_libraries(telemetrix_node PRIVATE
