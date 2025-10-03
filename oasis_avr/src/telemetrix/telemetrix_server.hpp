@@ -31,6 +31,8 @@ class TelemetrixServer
 public:
   void Setup();
   void Loop();
+  void ProcessCommands();
+  void ScanSensors();
 
   uint8_t Features() const { return m_features; }
 

@@ -23,8 +23,10 @@ private:
   TelemetrixThread() = default;
 
   // Task entry points
-  void Loop();
-  static void TelemetrixLoop();
+  void CommandLoop();
+  void SensorLoop();
+  static void TelemetrixCommandLoop();
+  static void TelemetrixSensorLoop();
 
   TelemetrixServer m_server;
 };

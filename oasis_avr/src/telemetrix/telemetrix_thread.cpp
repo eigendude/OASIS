@@ -27,17 +27,32 @@ void TelemetrixThread::Setup()
 
   InitializeTaskScheduler();
 
-  static TsTask telemetrixTask(TASK_IMMEDIATE, TASK_FOREVER, TelemetrixLoop);
-  GetTaskScheduler().addTask(telemetrixTask);
-  telemetrixTask.enable();
+  static TsTask telemetrixCommandTask(TASK_IMMEDIATE, TASK_FOREVER, TelemetrixCommandLoop);
+  static TsTask telemetrixSensorTask(TASK_IMMEDIATE, TASK_FOREVER, TelemetrixSensorLoop);
+
+  GetTaskScheduler().addTask(telemetrixCommandTask);
+  GetTaskScheduler().addTask(telemetrixSensorTask);
+
+  telemetrixCommandTask.enable();
+  telemetrixSensorTask.enable();
 }
 
-void TelemetrixThread::Loop()
+void TelemetrixThread::CommandLoop()
 {
-  m_server.Loop();
+  m_server.ProcessCommands();
 }
 
-void TelemetrixThread::TelemetrixLoop()
+void TelemetrixThread::SensorLoop()
 {
-  GetInstance().Loop();
+  m_server.ScanSensors();
+}
+
+void TelemetrixThread::TelemetrixCommandLoop()
+{
+  GetInstance().CommandLoop();
+}
+
+void TelemetrixThread::TelemetrixSensorLoop()
+{
+  GetInstance().SensorLoop();
 }
