@@ -18,14 +18,21 @@ set -o nounset
 # Install dependencies
 #
 
-# Install CMake build dependencies
-sudo apt install -y \
-  build-essential \
-  cmake \
-  libssl-dev \
-  make \
-  tar \
-  wget \
+# Refresh package metadata
+sudo apt update
 
-# Add ccache support
-sudo apt install -y ccache
+# Packages to install via apt
+APT_PACKAGES=(
+  # CMake build dependencies
+  build-essential
+  cmake
+  libssl-dev
+  make
+  tar
+  wget
+
+  # ccache support
+  ccache
+)
+
+sudo apt install -y --no-install-recommends "${APT_PACKAGES[@]}"
