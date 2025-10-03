@@ -22,12 +22,8 @@ namespace
 {
 // To translate a pin number from an integer value to its analog pin number
 // equivalent, this array is used to look up the value to use for the pin.
-#ifdef ARDUINO_SAMD_MKRWIFI1010
-static const int analogReadPins[20] = {A0, A1, A2, A3, A4, A5, A6};
-#else
 static const int analogReadPins[20] = {A0, A1, A2,  A3,  A4,  A5,  A6,  A7,
                                        A8, A9, A10, A11, A12, A13, A14, A15};
-#endif
 } // namespace
 
 TelemetrixPins::TelemetrixPins()
