@@ -479,6 +479,15 @@ install(
     share/${PROJECT_NAME}
 )
 
+install(
+  DIRECTORY
+    config/udev/
+  DESTINATION
+    share/${PROJECT_NAME}/udev
+  FILES_MATCHING
+    PATTERN "*.rules"
+)
+
 ################################################################################
 #
 # Declare an ament Package
