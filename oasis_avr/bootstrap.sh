@@ -79,6 +79,9 @@ FIRMATA_DIR="${ARDUINO_IDE_DIR}/libraries/Firmata"
 # Location of the FirmataExpress library
 FIRMATA_EXPRESS_DIR="${LIBRARY_DIR}/FirmataExpress"
 
+# Location of the TaskScheduler library
+TASK_SCHEDULER_DIR="${LIBRARY_DIR}/TaskScheduler"
+
 # Location of the i2cdevlib repo
 I2CDEVLIB_DIR="${LIBRARY_DIR}/i2cdevlib"
 
@@ -168,6 +171,12 @@ fi
 if [ -d "${ADAFRUIT_CP_DIR}" ]; then
   echo "Removing ${ADAFRUIT_CP_DIR}"
   rm -rf "${ADAFRUIT_CP_DIR}"
+fi
+
+# TaskSheduler includes and Arduino.h with its tests
+if [ -f "${TASK_SCHEDULER_DIR}/tests/Arduino.h" ]; then
+  echo "Removing ${TASK_SCHEDULER_DIR}/tests/Arduino.h"
+  rm -f "${TASK_SCHEDULER_DIR}/tests/Arduino.h"
 fi
 
 # Remove unused platforms that can confuse IDEs
