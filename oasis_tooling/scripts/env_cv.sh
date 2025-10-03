@@ -44,7 +44,7 @@ source "${SCRIPT_DIR}/env_common.sh"
 #
 
 # Subdirectory for OpenCV build files
-OPENCV_DIRECTORY="${BUILD_DIRECTORY}/opencv"
+OPENCV_DIRECTORY="${BUILD_DIRECTORY}/cv"
 
 # Define top-level directories for OpenCV
 OPENCV_DOWNLOAD_DIR="${OPENCV_DIRECTORY}/downloads"
