@@ -92,6 +92,10 @@ jobs:
               'oasis_avr/bootstrap.sh',
             ]);
 
+            await setHash('OASIS_RUNTIME_HASH', [
+              'oasis_tooling/scripts/rdepinstall_oasis.sh',
+            ]);
+
       - name: Restore CMake
         id: restore-cmake
         if: matrix.os != 'macbook'
@@ -168,6 +172,17 @@ jobs:
             ${{ matrix.os }}-\
             ${{ env.ARDUINO_BOOTSTRAP_HASH }}
 
+      - name: Restore OASIS runtime dependencies
+        id: restore-oasis-runtime
+        uses: actions/cache@v4
+        with:
+          path: |
+            ros-ws/oasis-kilted/install/share/oasis_tooling/package.xml
+          key: >
+            restore-oasis-runtime-\
+            ${{ matrix.os }}-\
+            ${{ env.OASIS_RUNTIME_HASH }}
+
       - name: Install CMake dependencies
         if: steps.restore-cmake.outputs.cache-hit != 'true'
         run: ./oasis_tooling/scripts/depinstall_cmake.sh
@@ -216,6 +231,10 @@ jobs:
 
       - name: Install OASIS files
         run: ./oasis_tooling/scripts/install_oasis.sh
+
+      - name: Install OASIS runtime dependencies
+        if: steps.restore-oasis-runtime.outputs.cache-hit != 'true'
+        run: ./oasis_tooling/scripts/rdepinstall_oasis.sh
 
       #- name: Upload Ardino hex to /dev/ttyACM0
       #  if: matrix.os == 'cinder'
