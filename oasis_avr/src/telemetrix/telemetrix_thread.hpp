@@ -19,12 +19,11 @@ public:
 
   void Setup();
 
+  // Execute a single Telemetrix server iteration.
+  void Loop();
+
 private:
   TelemetrixThread() = default;
-
-  // Task entry points
-  void Loop();
-  static void TelemetrixLoop();
 
   TelemetrixServer m_server;
 };

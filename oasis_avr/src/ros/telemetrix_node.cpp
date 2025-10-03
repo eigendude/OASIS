@@ -22,5 +22,6 @@ void setup()
 
 void loop()
 {
+  TelemetrixThread::GetInstance().Loop();
   RunTaskScheduler();
 }

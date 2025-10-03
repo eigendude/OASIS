@@ -8,10 +8,7 @@
 
 #include "telemetrix_thread.hpp"
 
-#include "scheduler/task_scheduler.hpp"
 #include "telemetrix/telemetrix_server.hpp"
-
-#include <Arduino.h>
 
 using namespace OASIS;
 
@@ -24,20 +21,9 @@ TelemetrixThread& TelemetrixThread::GetInstance()
 void TelemetrixThread::Setup()
 {
   m_server.Setup();
-
-  InitializeTaskScheduler();
-
-  static TsTask telemetrixTask(TASK_IMMEDIATE, TASK_FOREVER, TelemetrixLoop);
-  GetTaskScheduler().addTask(telemetrixTask);
-  telemetrixTask.enable();
 }
 
 void TelemetrixThread::Loop()
 {
   m_server.Loop();
-}
-
-void TelemetrixThread::TelemetrixLoop()
-{
-  GetInstance().Loop();
 }
