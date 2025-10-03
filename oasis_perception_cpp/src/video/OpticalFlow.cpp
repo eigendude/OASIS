@@ -12,10 +12,11 @@
 #include "video/VisionGraph.h"
 
 #include <algorithm>
+#include <cmath>
 #include <iostream>
 
 #include <opencv2/imgproc.hpp>
-#include <opencv2/video/tracking.hpp>
+#include <opencv2/optflow.hpp>
 #include <rclcpp/logging.hpp>
 
 using namespace OASIS;
@@ -120,17 +121,36 @@ bool OpticalFlow::ProcessImage(const cv::Mat& image)
   }
   else
   {
-    cv::calcOpticalFlowPyrLK(m_previousGrayscale, currentGrayscale, m_previousPoints, currentPoints,
-                             status, errors);
+    cv::Mat flow;
+    cv::optflow::calcOpticalFlowDeepFlow(m_previousGrayscale, currentGrayscale, flow);
 
-    std::vector<cv::Point2f> filteredPoints;
-    filteredPoints.reserve(currentPoints.size());
-    for (size_t i = 0; i < currentPoints.size(); ++i)
+    std::vector<cv::Point2f> propagatedPoints;
+    propagatedPoints.reserve(m_previousPoints.size());
+
+    const int flowWidth = flow.cols;
+    const int flowHeight = flow.rows;
+
+    for (const cv::Point2f& previousPoint : m_previousPoints)
     {
-      if (i < status.size() && status[i])
-        filteredPoints.emplace_back(currentPoints[i]);
+      if (flowWidth == 0 || flowHeight == 0)
+        break;
+
+      const int sampleX = std::clamp(static_cast<int>(std::lround(previousPoint.x)), 0, flowWidth - 1);
+      const int sampleY = std::clamp(static_cast<int>(std::lround(previousPoint.y)), 0, flowHeight - 1);
+
+      const cv::Point2f flowVector = flow.at<cv::Point2f>(sampleY, sampleX);
+      const cv::Point2f updatedPoint(previousPoint.x + flowVector.x, previousPoint.y + flowVector.y);
+
+      if (updatedPoint.x < 0.0f || updatedPoint.x >= static_cast<float>(flowWidth) ||
+          updatedPoint.y < 0.0f || updatedPoint.y >= static_cast<float>(flowHeight))
+      {
+        continue;
+      }
+
+      propagatedPoints.emplace_back(updatedPoint);
     }
-    currentPoints = std::move(filteredPoints);
+
+    currentPoints = std::move(propagatedPoints);
 
     if (currentPoints.size() <= MIN_POINT_COUNT)
     {
