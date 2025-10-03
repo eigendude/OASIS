@@ -6,7 +6,7 @@
  *  See DOCS/LICENSING.md for more information.
  */
 
-#include "firmata/firmata_scheduler.hpp"
+#include "scheduler/task_scheduler.hpp"
 #include "firmata/firmata_thread.hpp"
 #include "leds/heartbeat_thread.hpp"
 

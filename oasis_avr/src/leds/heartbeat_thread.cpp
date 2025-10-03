@@ -8,10 +8,9 @@
 
 #include "heartbeat_thread.hpp"
 
-#include "firmata/firmata_scheduler.hpp"
+#include "scheduler/task_scheduler.hpp"
 
 #include <Arduino.h>
-#include <TScheduler.hpp>
 
 using namespace OASIS;
 

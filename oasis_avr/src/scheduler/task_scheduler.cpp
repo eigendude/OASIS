@@ -6,7 +6,7 @@
  *  See DOCS/LICENSING.md for more information.
  */
 
-#include "firmata_scheduler.hpp"
+#include "task_scheduler.hpp"
 
 #include <TScheduler.hpp>
 

@@ -260,7 +260,6 @@ find_package(ament_cmake REQUIRED)
 
 set(FIRMATA_SOURCES
   src/firmata/firmata_callbacks.cpp
-  src/firmata/firmata_scheduler.cpp
   src/firmata/firmata_thread.cpp
   src/firmata/firmata_utils.cpp
 )
@@ -401,6 +400,18 @@ target_compile_definitions(oasis_avr_firmata PRIVATE ${FIRMATA_DEFINITIONS})
 target_link_arduino_libraries(oasis_avr_firmata PRIVATE ${FIRMATA_LIBRARIES})
 
 #
+# Scheduler
+#
+
+add_library(oasis_avr_scheduler
+  src/scheduler/task_scheduler.cpp
+)
+
+target_link_arduino_libraries(oasis_avr_scheduler PRIVATE
+  TaskScheduler
+)
+
+#
 # LEDs
 #
 
@@ -443,6 +454,7 @@ add_executable(firmata_node
 
 target_link_libraries(firmata_node PRIVATE
   oasis_avr_firmata
+  oasis_avr_scheduler
   oasis_avr_leds
   oasis_avr_utils
 )

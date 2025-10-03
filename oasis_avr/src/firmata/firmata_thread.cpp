@@ -60,7 +60,7 @@
 #include "firmata_stepper.hpp"
 #endif
 
-#include "firmata_scheduler.hpp"
+#include "scheduler/task_scheduler.hpp"
 
 #include <FirmataExpress.h>
 
