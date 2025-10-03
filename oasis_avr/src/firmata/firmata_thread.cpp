@@ -60,10 +60,8 @@
 #include "firmata_stepper.hpp"
 #endif
 
-#include "scheduler/task_scheduler.hpp"
-
-#include <Arduino.h>
 #include <FirmataExpress.h>
+#include <Scheduler.h>
 
 using namespace OASIS;
 
@@ -72,6 +70,10 @@ namespace OASIS
 
 // Serial constants
 constexpr uint32_t SERIAL_BAUD_RATE = 115200;
+
+// Threading constants
+constexpr size_t FIRMATA_MESSAGING_STACK_SIZE = 256; // Default is 128
+constexpr size_t FIRMATA_SAMPLING_STACK_SIZE = 96; // Default is 128
 
 } // namespace OASIS
 
@@ -148,18 +150,8 @@ void FirmataThread::Setup()
   // Initialize the default Serial transport and override the default baud
   Firmata.begin(SERIAL_BAUD_RATE);
 
-  // Initialize scheduler support
-  InitializeTaskScheduler();
-
-  // Register Firmata tasks
-  static TsTask firmataMessageTask(TASK_IMMEDIATE, TASK_FOREVER, FirmataMessageLoop);
-  static TsTask firmataSamplingTask(TASK_IMMEDIATE, TASK_FOREVER, FirmataSamplingLoop);
-
-  GetTaskScheduler().addTask(firmataMessageTask);
-  GetTaskScheduler().addTask(firmataSamplingTask);
-
-  firmataMessageTask.enable();
-  firmataSamplingTask.enable();
+  // Start Firmata messaging thread
+  Scheduler.startLoop(FirmataMessageLoop, FIRMATA_MESSAGING_STACK_SIZE);
 
   // Configure subsystems
   for (unsigned int i = 0; i < SubsystemID::SUBSYSTEM_COUNT; ++i)
@@ -167,6 +159,9 @@ void FirmataThread::Setup()
     if (m_subsystems[i] != nullptr)
       m_subsystems[i]->Setup();
   }
+
+  // Start Firmata sampling thread
+  Scheduler.startLoop(FirmataSamplingLoop, FIRMATA_SAMPLING_STACK_SIZE);
 }
 
 void FirmataThread::MessageLoop()
@@ -181,23 +176,32 @@ void FirmataThread::MessageLoop()
     if (m_subsystems[i] != nullptr)
       m_subsystems[i]->Loop();
   }
+
+  // TODO: Ensure that Stream buffer doesn't go over 60 bytes
+  yield();
 }
 
 void FirmataThread::SamplingLoop()
 {
-  if (m_samplingIntervalMs == 0)
-    return;
-
-  if (!m_samplingTimer.IsExpired())
-    return;
-
-  m_samplingTimer.SetTimeout(m_samplingIntervalMs);
-
-  // Sample subsystems
-  for (unsigned int i = 0; i < SubsystemID::SUBSYSTEM_COUNT; ++i)
+  if (m_samplingIntervalMs > 0)
   {
-    if (m_subsystems[i] != nullptr)
-      m_subsystems[i]->Sample();
+    m_samplingTimer.SetTimeout(m_samplingIntervalMs);
+
+    // Sample subsystems
+    for (unsigned int i = 0; i < SubsystemID::SUBSYSTEM_COUNT; ++i)
+    {
+      if (m_subsystems[i] != nullptr)
+      {
+        m_subsystems[i]->Sample();
+        yield();
+      }
+    }
+
+    delay(m_samplingTimer.TimeLeft());
+  }
+  else
+  {
+    yield();
   }
 }
 

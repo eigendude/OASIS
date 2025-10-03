@@ -11,7 +11,6 @@
 #include "firmata_extra.hpp"
 #include "utils/memory_utils.hpp"
 
-#include <Arduino.h>
 #include <FirmataExpress.h>
 
 using namespace OASIS;

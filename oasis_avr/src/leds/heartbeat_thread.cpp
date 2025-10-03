@@ -8,37 +8,22 @@
 
 #include "heartbeat_thread.hpp"
 
-#include "scheduler/task_scheduler.hpp"
-
 #include <Arduino.h>
-#include <TScheduler.hpp>
+#include <Scheduler.h>
 
 using namespace OASIS;
 
 namespace OASIS
 {
 
+// Threading constants
+constexpr size_t HEARTBEAT_STACK_SIZE = 32; // Default is 128
+
 // LED parameters
 constexpr unsigned int HEARTBEAT_LED = LED_BUILTIN;
 
 // Instance storage
 HeartbeatThread heartbeatInstance;
-
-struct HeartbeatPhase
-{
-  bool levelHigh;
-  unsigned long durationMs;
-};
-
-constexpr HeartbeatPhase HEARTBEAT_SEQUENCE[] = {
-    {true, 100}, // First pulse
-    {false, 150}, // Short pause
-    {true, 100}, // Second pulse
-    {false, 800}, // Long pause
-};
-
-constexpr unsigned int HEARTBEAT_PHASE_COUNT =
-    sizeof(HEARTBEAT_SEQUENCE) / sizeof(HEARTBEAT_SEQUENCE[0]);
 
 } // namespace OASIS
 
@@ -51,47 +36,28 @@ void HeartbeatThread::Setup()
 {
   // Setup to blink the inbuilt LED
   pinMode(HEARTBEAT_LED, OUTPUT);
-  digitalWrite(HEARTBEAT_LED, LOW);
 
-  m_phaseIndex = 0;
-  m_nextTransitionMs = 0;
-  m_phaseInitialized = false;
-
-  InitializeTaskScheduler();
-
-  static TsTask heartbeatThread(TASK_IMMEDIATE, TASK_FOREVER, HeartbeatLoop);
-  GetTaskScheduler().addTask(heartbeatThread);
-  heartbeatThread.enable();
+  // Start heartbeat thread
+  Scheduler.startLoop(HeartbeatLoop, HEARTBEAT_STACK_SIZE);
 }
 
 void HeartbeatThread::Loop()
 {
-  const unsigned long now = millis();
+  digitalWrite(HEARTBEAT_LED, HIGH);
 
-  if (!m_phaseInitialized)
-  {
-    SetPhase(0, now);
-    return;
-  }
+  delay(100);
 
-  if (static_cast<long>(now - m_nextTransitionMs) < 0)
-    return;
+  digitalWrite(HEARTBEAT_LED, LOW);
 
-  const unsigned int nextPhase = (m_phaseIndex + 1) % HEARTBEAT_PHASE_COUNT;
-  SetPhase(nextPhase, now);
-}
+  delay(150);
 
-void HeartbeatThread::SetPhase(unsigned int phase, unsigned long now)
-{
-  if (phase >= HEARTBEAT_PHASE_COUNT)
-    return;
+  digitalWrite(HEARTBEAT_LED, HIGH);
 
-  const HeartbeatPhase& heartbeatPhase = HEARTBEAT_SEQUENCE[phase];
-  digitalWrite(HEARTBEAT_LED, heartbeatPhase.levelHigh ? HIGH : LOW);
+  delay(100);
 
-  m_phaseIndex = phase;
-  m_nextTransitionMs = now + heartbeatPhase.durationMs;
-  m_phaseInitialized = true;
+  digitalWrite(HEARTBEAT_LED, LOW);
+
+  delay(800);
 }
 
 void HeartbeatThread::HeartbeatLoop()

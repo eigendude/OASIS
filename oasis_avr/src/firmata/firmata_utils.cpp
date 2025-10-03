@@ -13,7 +13,6 @@
 
 #include "firmata_utils.hpp"
 
-#include <Arduino.h>
 #include <FirmataExpress.h>
 #include <WString.h>
 
