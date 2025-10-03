@@ -11,6 +11,7 @@
 
 #include "telemetrix_commands.hpp"
 
+#include "scheduler/task_scheduler.hpp"
 #include "telemetrix_cpu_fan.hpp"
 #include "telemetrix_dht.hpp"
 #include "telemetrix_i2c.hpp"
@@ -148,30 +149,17 @@ void TelemetrixCommands::GetNextCommand()
   memset(commandBuffer, 0, sizeof(commandBuffer));
 
   // If there is no command waiting, then return
-  if (Serial.available() < 1)
+  if (!Serial.available())
     return;
 
-  // Peek at the packet length without consuming it so we can ensure that the
-  // entire command payload is buffered before reading from Serial.
-  const int lengthByte = Serial.peek();
-  if (lengthByte < 0)
-    return;
-
-  const uint8_t packetLength = static_cast<uint8_t>(lengthByte);
+  // Get the packet length
+  const uint8_t packetLength = static_cast<uint8_t>(Serial.read());
 
   if (packetLength == 0)
-  {
-    // Discard the length byte and wait for a valid command.
-    Serial.read();
-    return;
-  }
-
-  // Wait until the complete command payload has been buffered.
-  if (Serial.available() < static_cast<int>(packetLength) + 1)
     return;
 
-  // Consume the packet length
-  Serial.read();
+  while (!Serial.available())
+    TaskSchedulerYield();
 
   // Get the command byte
   const uint8_t command = static_cast<uint8_t>(Serial.read());
@@ -182,6 +170,10 @@ void TelemetrixCommands::GetNextCommand()
     // Get the data for that command
     for (unsigned int i = 0; i < packetLength - 1; ++i)
     {
+      // Need this delay or data read is not correct
+      while (!Serial.available())
+        TaskSchedulerYield();
+
       commandBuffer[i] = static_cast<uint8_t>(Serial.read());
     }
   }
