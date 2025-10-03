@@ -8,11 +8,16 @@
 
 #include "leds/heartbeat_thread.hpp"
 #include "scheduler/task_scheduler.hpp"
-#include "telemetrix/telemetrix_thread.hpp"
+#include "telemetrix/telemetrix_server.hpp"
 
 #include <Arduino.h>
 
 using namespace OASIS;
+
+namespace
+{
+TelemetrixServer telemetrixServer;
+} // namespace
 
 void setup()
 {
@@ -20,10 +25,14 @@ void setup()
   HeartbeatThread::GetInstance().Setup();
 
   // Initialize Telemetrix (also initializes serial)
-  TelemetrixThread::GetInstance().Setup();
+  telemetrixServer.Setup();
 }
 
 void loop()
 {
+  // Loop Telemetrix
+  telemetrixServer.Loop();
+
+  // Run queued off-thread tasks
   RunTaskScheduler();
 }
