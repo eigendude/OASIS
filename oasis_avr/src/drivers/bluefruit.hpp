@@ -72,6 +72,7 @@ private:
 
   // State parameters
   bool m_connected{false};
+  unsigned long m_nextScanMs{0};
 };
 
 } // namespace OASIS

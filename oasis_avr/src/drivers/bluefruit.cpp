@@ -88,7 +88,20 @@ void Bluefruit::Setup()
 
 void Bluefruit::Loop()
 {
-  m_ble.update(BLUETOOTH_SCAN_INTERVAL_MS);
+  const unsigned long now = millis();
+
+  const bool hasPendingEvent = m_ble.available() > 0;
+
+  // Avoid running the full event query unless either the module signals that
+  // work is pending (via the IRQ line exposed through available()) or the
+  // periodic scan interval has elapsed. This keeps the Bluefruit handling
+  // responsive without stalling other tasks like the heartbeat scheduler.
+  if (!hasPendingEvent && static_cast<long>(now - m_nextScanMs) < 0)
+    return;
+
+  m_ble.update(0);
+
+  m_nextScanMs = now + BLUETOOTH_SCAN_INTERVAL_MS;
 }
 
 bool Bluefruit::WriteUart(const uint8_t* buffer, size_t size)
