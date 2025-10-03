@@ -42,4 +42,19 @@ void RunTaskScheduler()
   g_scheduler.execute();
 }
 
+bool TaskSchedulerYield()
+{
+  InitializeTaskScheduler();
+
+  TsTask* currentTask = g_scheduler.getCurrentTask();
+  if (currentTask != nullptr)
+  {
+    currentTask->forceNextIteration();
+    return true;
+  }
+
+  ::yield();
+  return false;
+}
+
 } // namespace OASIS

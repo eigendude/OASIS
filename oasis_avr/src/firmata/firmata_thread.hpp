@@ -129,6 +129,10 @@ private:
   // Timing parameters
   Timer m_samplingTimer;
   uint32_t m_samplingIntervalMs{0};
+
+  // Cooperative scheduling state
+  unsigned int m_messageSubsystemIndex{0};
+  unsigned int m_samplingSubsystemIndex{0};
 };
 
 } // namespace OASIS

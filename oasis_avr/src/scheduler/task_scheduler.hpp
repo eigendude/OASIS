@@ -26,4 +26,9 @@ TsScheduler& GetTaskScheduler();
 // Execute one scheduler pass. Call from the Arduino loop().
 void RunTaskScheduler();
 
+// Request that the current task cooperatively yields back to the scheduler.
+// Returns true when called from inside a TaskScheduler callback and false
+// otherwise (in which case the Arduino core's yield() is invoked instead).
+bool TaskSchedulerYield();
+
 } // namespace OASIS

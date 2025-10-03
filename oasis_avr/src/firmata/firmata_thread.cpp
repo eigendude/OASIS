@@ -176,14 +176,26 @@ void FirmataThread::MessageLoop()
     Firmata.processInput();
 
   // Loop subsystems
-  for (unsigned int i = 0; i < SubsystemID::SUBSYSTEM_COUNT; ++i)
+  unsigned int index = m_messageSubsystemIndex;
+  unsigned int processed = 0;
+
+  while (processed < SubsystemID::SUBSYSTEM_COUNT)
   {
-    if (m_subsystems[i] != nullptr)
-    {
-      m_subsystems[i]->Loop();
-      yield();
-    }
+    FirmataSubsystem* subsystem = m_subsystems[index];
+    index = (index + 1) % SubsystemID::SUBSYSTEM_COUNT;
+    ++processed;
+
+    if (subsystem == nullptr)
+      continue;
+
+    subsystem->Loop();
+    m_messageSubsystemIndex = index;
+
+    if (TaskSchedulerYield())
+      return;
   }
+
+  m_messageSubsystemIndex = index;
 }
 
 void FirmataThread::SamplingLoop()
@@ -197,14 +209,26 @@ void FirmataThread::SamplingLoop()
   m_samplingTimer.SetTimeout(m_samplingIntervalMs);
 
   // Sample subsystems
-  for (unsigned int i = 0; i < SubsystemID::SUBSYSTEM_COUNT; ++i)
+  unsigned int index = m_samplingSubsystemIndex;
+  unsigned int processed = 0;
+
+  while (processed < SubsystemID::SUBSYSTEM_COUNT)
   {
-    if (m_subsystems[i] != nullptr)
-    {
-      m_subsystems[i]->Sample();
-      yield();
-    }
+    FirmataSubsystem* subsystem = m_subsystems[index];
+    index = (index + 1) % SubsystemID::SUBSYSTEM_COUNT;
+    ++processed;
+
+    if (subsystem == nullptr)
+      continue;
+
+    subsystem->Sample();
+    m_samplingSubsystemIndex = index;
+
+    if (TaskSchedulerYield())
+      return;
   }
+
+  m_samplingSubsystemIndex = index;
 }
 
 void FirmataThread::FirmataMessageLoop()
