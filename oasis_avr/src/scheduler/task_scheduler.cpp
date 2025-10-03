@@ -8,7 +8,6 @@
 
 #include "task_scheduler.hpp"
 
-#include <TScheduler.hpp>
 
 namespace OASIS
 {

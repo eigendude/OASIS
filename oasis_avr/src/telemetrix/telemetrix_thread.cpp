@@ -12,7 +12,6 @@
 #include "telemetrix/telemetrix_server.hpp"
 
 #include <Arduino.h>
-#include <TScheduler.hpp>
 
 using namespace OASIS;
 
