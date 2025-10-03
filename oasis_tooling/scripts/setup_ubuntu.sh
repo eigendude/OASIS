@@ -31,6 +31,13 @@ sudo usermod -a -G plugdev ${USER}
 sudo usermod -a -G i2c ${USER}
 
 ################################################################################
+# Disable ModemManager to prevent it from grabbing serial interfaces needed by
+# AVR programming tools such as avrdude
+################################################################################
+
+sudo systemctl disable --now ModemManager.service
+
+################################################################################
 # Disable the wait-online service to prevent the system from waiting on a
 # network connection and prevent the service from starting if requested by
 # another service
