@@ -8,6 +8,10 @@
 
 #include "task_scheduler.hpp"
 
+// Pull in the TaskScheduler implementation once so the generated binary links
+// against the definitions provided by the Arduino library. Other translation
+// units only include the declarations header to avoid duplicate symbol errors.
+#include <TScheduler.hpp>
 
 namespace OASIS
 {
