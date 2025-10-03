@@ -33,8 +33,10 @@ void TelemetrixServer::Setup()
 {
   Serial.begin(115200);
 
+#if defined(ENABLE_CPU_FAN)
   static TelemetrixCPUFan cpuFan;
   m_cpuFan = &cpuFan;
+#endif
 
   static TelemetrixMemory memory;
   m_memory = &memory;
@@ -106,7 +108,9 @@ void TelemetrixServer::Loop()
 
 void TelemetrixServer::ScanCPUFans()
 {
+#if defined(ENABLE_CPU_FAN)
   m_cpuFan->ScanTachometers();
+#endif
 }
 
 void TelemetrixServer::ScanDHTs()

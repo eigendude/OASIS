@@ -806,47 +806,58 @@ void TelemetrixCommands::set_memory_reporting_interval()
 
 void TelemetrixCommands::cpu_fan_pwm_attach()
 {
+#if defined(ENABLE_CPU_FAN)
   const uint8_t pwmPin = commandBuffer[0];
 
   TelemetrixCPUFan* cpuFan = m_server->GetCPUFan();
   cpuFan->AttachPWM(pwmPin);
+#endif
 }
 
 void TelemetrixCommands::cpu_fan_pwm_detach()
 {
+#if defined(ENABLE_CPU_FAN)
   const uint8_t pwmPin = commandBuffer[0];
 
   TelemetrixCPUFan* cpuFan = m_server->GetCPUFan();
   cpuFan->DetachPWM(pwmPin);
+#endif
 }
 
 void TelemetrixCommands::cpu_fan_tach_attach()
 {
+#if defined(ENABLE_CPU_FAN)
   const uint8_t tachometerPin = commandBuffer[0];
 
   TelemetrixCPUFan* cpuFan = m_server->GetCPUFan();
   cpuFan->AttachTachometer(tachometerPin);
+#endif
 }
 
 void TelemetrixCommands::cpu_fan_tach_detach()
 {
+#if defined(ENABLE_CPU_FAN)
   const uint8_t tachometerPin = commandBuffer[0];
 
   TelemetrixCPUFan* cpuFan = m_server->GetCPUFan();
   cpuFan->DetachTachometer(tachometerPin);
+#endif
 }
 
 void TelemetrixCommands::set_cpu_fan_sampling_interval()
 {
+#if defined(ENABLE_CPU_FAN)
   const uint32_t intervalMs = (commandBuffer[0] << 24) + (commandBuffer[1] << 16) +
                               (commandBuffer[2] << 8) + commandBuffer[3];
 
   TelemetrixCPUFan* cpuFan = m_server->GetCPUFan();
   cpuFan->SetTachSamplingInterval(intervalMs);
+#endif
 }
 
 void TelemetrixCommands::cpu_fan_write()
 {
+#if defined(ENABLE_CPU_FAN)
   const uint8_t pwmPin = commandBuffer[0];
   const uint16_t value = (commandBuffer[1] << 8) + commandBuffer[2];
 
@@ -855,6 +866,7 @@ void TelemetrixCommands::cpu_fan_write()
 
   TelemetrixCPUFan* cpuFan = m_server->GetCPUFan();
   cpuFan->PWMWrite(pwmPin, floatVal);
+#endif
 }
 
 void TelemetrixCommands::i2c_ccs811_begin()

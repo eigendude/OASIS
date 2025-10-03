@@ -404,10 +404,7 @@ target_link_arduino_libraries(oasis_avr_firmata PRIVATE ${FIRMATA_LIBRARIES})
 #
 
 set(TELEMETRIX_SOURCES
-  src/drivers/cpu_fan_pwm.cpp
-  src/drivers/cpu_fan_tach.cpp
   src/telemetrix/telemetrix_commands.cpp
-  src/telemetrix/telemetrix_cpu_fan.cpp
   src/telemetrix/telemetrix_memory.cpp
   src/telemetrix/telemetrix_pins.cpp
   src/telemetrix/telemetrix_server.cpp
@@ -431,6 +428,17 @@ if (ENABLE_AIR_QUALITY)
   list(APPEND TELEMETRIX_LIBRARIES
     SparkFunCCS811
     Wire
+  )
+endif()
+
+if (ENABLE_CPU_FAN)
+  list(APPEND TELEMETRIX_SOURCES
+    src/drivers/cpu_fan_pwm.cpp
+    src/drivers/cpu_fan_tach.cpp
+    src/telemetrix/telemetrix_cpu_fan.cpp
+  )
+  list(APPEND TELEMETRIX_DEFINITIONS
+    -DENABLE_CPU_FAN
   )
 endif()
 
