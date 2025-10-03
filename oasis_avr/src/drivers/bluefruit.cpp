@@ -88,7 +88,17 @@ void Bluefruit::Setup()
 
 void Bluefruit::Loop()
 {
-  m_ble.update(BLUETOOTH_SCAN_INTERVAL_MS);
+  const unsigned long now = millis();
+
+  if (static_cast<long>(now - m_nextScanMs) < 0)
+    return;
+
+  // Update without blocking to keep other tasks responsive, such as the
+  // heartbeat scheduler. The scan interval is maintained manually using
+  // m_nextScanMs instead of relying on the library to delay for us.
+  m_ble.update(0);
+
+  m_nextScanMs = now + BLUETOOTH_SCAN_INTERVAL_MS;
 }
 
 bool Bluefruit::WriteUart(const uint8_t* buffer, size_t size)
