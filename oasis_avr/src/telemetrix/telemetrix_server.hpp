@@ -30,7 +30,6 @@ class TelemetrixServer
 {
 public:
   void Setup();
-  void Loop();
   void ProcessCommands();
   void ScanSensors();
 

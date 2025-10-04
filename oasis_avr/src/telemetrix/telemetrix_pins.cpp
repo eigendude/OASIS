@@ -22,7 +22,7 @@ namespace
 {
 // To translate a pin number from an integer value to its analog pin number
 // equivalent, this array is used to look up the value to use for the pin.
-static const int analogReadPins[20] = {A0, A1, A2,  A3,  A4,  A5,  A6,  A7,
+static const int analogReadPins[16] = {A0, A1, A2,  A3,  A4,  A5,  A6,  A7,
                                        A8, A9, A10, A11, A12, A13, A14, A15};
 } // namespace
 
@@ -125,7 +125,6 @@ void TelemetrixPins::scan_analog_inputs()
             report_message[4] = lowByte(value);
 
             Serial.write(report_message, 5);
-            delay(1);
           }
         }
       }

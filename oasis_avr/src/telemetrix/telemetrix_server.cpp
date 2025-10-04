@@ -11,6 +11,7 @@
 
 #include "telemetrix_server.hpp"
 
+#include "scheduler/task_scheduler.hpp"
 #include "telemetrix_commands.hpp"
 #include "telemetrix_cpu_fan.hpp"
 #include "telemetrix_dht.hpp"
@@ -89,12 +90,6 @@ void TelemetrixServer::Setup()
   TelemetrixCommands::RegisterServer(this);
 }
 
-void TelemetrixServer::Loop()
-{
-  ProcessCommands();
-  ScanSensors();
-}
-
 void TelemetrixServer::ProcessCommands()
 {
   // Keep processing incoming commands
@@ -106,13 +101,23 @@ void TelemetrixServer::ScanSensors()
   if (m_stopReports)
     return;
 
-  ScanCPUFans();
-  ScanDHTs();
-  ScanI2C();
-  ScanMemory();
-  ScanPins();
-  ScanSonars();
-  ScanSteppers();
+  using ScanFunction = void (TelemetrixServer::*)();
+
+  static const ScanFunction scanFunctions[] = {
+      &ScanCPUFans, &ScanDHTs, &ScanI2C, &ScanMemory, &ScanPins, &ScanSonars, &ScanSteppers,
+  };
+
+  for (auto scanFunction : scanFunctions)
+  {
+    // If a command is in progress, don't emit spontaneous reports
+    if (TelemetrixCommands::IsInCommand())
+      continue;
+
+    (this->*scanFunction)();
+
+    // Let RX side breathe between reporters
+    TaskSchedulerYield();
+  }
 }
 
 void TelemetrixServer::ScanCPUFans()
