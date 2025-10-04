@@ -35,6 +35,7 @@ UDEV_RULE_DIRECTORY="/etc/udev/rules.d"
 #
 
 if [[ "${OSTYPE}" != "darwin"* ]]; then
+  shopt -s nullglob
   for OASIS_PACKAGE in \
     oasis_control \
     oasis_drivers_py \
@@ -70,6 +71,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
 
   # Make updated service files take effect
   sudo systemctl daemon-reload
+  shopt -u nullglob
 fi
 
 #
@@ -77,6 +79,7 @@ fi
 #
 
 if [[ "${OSTYPE}" != "darwin"* ]]; then
+  shopt -s nullglob
   for DIRECTORY in \
     "${LIBFREENECT2_UDEV_DIRECTORY}" \
     "${OASIS_DATA_DIRECTORY}/oasis_avr/udev" \
@@ -104,4 +107,5 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
       sudo rm -f "${UDEV_RULE_DIRECTORY}/${FILE_NAME}"
     done
   done
+  shopt -u nullglob
 fi
