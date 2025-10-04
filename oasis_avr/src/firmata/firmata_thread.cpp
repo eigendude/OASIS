@@ -203,10 +203,10 @@ void FirmataThread::SamplingLoop()
   if (m_samplingIntervalMs == 0)
     return;
 
-  if (!m_samplingTimer.IsExpired())
+  if (!m_samplingInProgress && !m_samplingTimer.IsExpired())
     return;
 
-  m_samplingTimer.SetTimeout(m_samplingIntervalMs);
+  m_samplingInProgress = true;
 
   // Sample subsystems
   unsigned int index = m_samplingSubsystemIndex;
@@ -224,11 +224,13 @@ void FirmataThread::SamplingLoop()
     subsystem->Sample();
     m_samplingSubsystemIndex = index;
 
-    if (TaskSchedulerYield())
-      return;
+    TaskSchedulerYield();
   }
 
   m_samplingSubsystemIndex = index;
+
+  m_samplingInProgress = false;
+  m_samplingTimer.SetTimeout(m_samplingIntervalMs);
 }
 
 void FirmataThread::FirmataMessageLoop()

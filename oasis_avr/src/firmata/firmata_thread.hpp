@@ -129,6 +129,7 @@ private:
   // Timing parameters
   Timer m_samplingTimer;
   uint32_t m_samplingIntervalMs{0};
+  bool m_samplingInProgress{false};
 
   // Cooperative scheduling state
   unsigned int m_messageSubsystemIndex{0};
