@@ -92,3 +92,12 @@ sudo systemctl mask systemd-networkd-wait-online.service
 
 # TODO: Set the timezone based on GeoIP
 sudo timedatectl set-timezone America/Los_Angeles
+
+################################################################################
+# Disable and mask ModemManager to prevent it from grabbing serial interfaces
+# needed by AVR programming tools such as avrdude. Masking ensures it cannot be
+# started manually or via dependencies.
+################################################################################
+
+sudo systemctl disable --now ModemManager.service
+sudo systemctl mask ModemManager.service
