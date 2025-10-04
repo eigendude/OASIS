@@ -148,41 +148,6 @@ jobs:
             ${{ env.OPENCV_HASH }}-\
             ${{ env.CMAKE_HASH }}
 
-      - name: Restore MediaPipe
-        id: restore-mediapipe
-        uses: actions/cache@v4
-        with:
-          path: |
-            ros-ws/abseil/install
-            ros-ws/mediapipe/install
-          key: >
-            restore-mediapipe-\
-            ${{ matrix.os }}-\
-            ${{ env.MEDIAPIPE_HASH }}-\
-            ${{ env.OPENCV_HASH }}
-
-      - name: Restore Arduino IDE
-        id: restore-arduino-ide
-        uses: actions/cache@v4
-        with:
-          path: |
-            oasis_avr/arduino-*
-          key: >
-            restore-arduino-ide-\
-            ${{ matrix.os }}-\
-            ${{ env.ARDUINO_BOOTSTRAP_HASH }}
-
-      - name: Restore OASIS runtime dependencies
-        id: restore-oasis-runtime
-        uses: actions/cache@v4
-        with:
-          path: |
-            ros-ws/oasis-kilted/install/share/oasis_tooling/package.xml
-          key: >
-            restore-oasis-runtime-\
-            ${{ matrix.os }}-\
-            ${{ env.OASIS_RUNTIME_HASH }}
-
       - name: Install CMake dependencies
         if: steps.restore-cmake.outputs.cache-hit != 'true'
         run: ./oasis_tooling/scripts/depinstall_cmake.sh
@@ -214,37 +179,3 @@ jobs:
       - name: Build OASIS dependencies
         if: steps.restore-oasis-depends.outputs.cache-hit != 'true'
         run: ./oasis_tooling/scripts/build_oasis_deps.sh
-
-      - name: Install MediaPipe dependencies
-        if: steps.restore-mediapipe.outputs.cache-hit != 'true'
-        run: ./oasis_tooling/scripts/depinstall_mediapipe.sh
-
-      - name: Build MediaPipe
-        if: steps.restore-mediapipe.outputs.cache-hit != 'true'
-        run: ./oasis_tooling/scripts/build_mediapipe.sh
-
-      - name: Install OASIS rosdeps
-        run: ./oasis_tooling/scripts/depinstall_oasis.sh
-
-      - name: colcon build
-        run: ./oasis_tooling/scripts/build_oasis.sh
-
-      - name: Install OASIS files
-        run: ./oasis_tooling/scripts/install_oasis.sh
-
-      - name: Install OASIS runtime dependencies
-        if: steps.restore-oasis-runtime.outputs.cache-hit != 'true'
-        run: ./oasis_tooling/scripts/rdepinstall_oasis.sh
-
-      #- name: Upload Ardino hex to /dev/ttyACM0
-      #  if: matrix.os == 'cinder'
-      #  run: |
-      #    ./oasis_avr/scripts/reset_leonardo.py /dev/ttyACM0
-      #    sleep 2
-      #    source oasis_tooling/scripts/env_ros2_desktop.sh && cmake --build "build/oasis_avr" --target upload -- TARGET=firmata_node SERIAL_PORT=/dev/ttyACM0
-      #    sleep 2
-
-      #- name: Test Ardino
-      #  if: matrix.os == 'cinder'
-      #  run: |
-      #    source install/setup.bash && ros2 run oasis_drivers_py firmata_test
