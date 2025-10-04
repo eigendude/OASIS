@@ -34,6 +34,14 @@ set -o nounset
 # Get the absolute path to this script
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
+# Location of the ROS workspace build directory
+STACK_DIR="${SCRIPT_DIR}/.."
+BUILD_DIR="${STACK_DIR}/ros-ws"
+
+# Location of the Arduino CLI
+ARDUINO_CLI_VERSION="1.3.1"
+ARDUINO_CLI_DIR="${BUILD_DIR}/arduino-cli"
+
 # Location of the Arduino CMake toolchain
 TOOLCHAIN_DIR="${SCRIPT_DIR}/cmake/Arduino-CMake-Toolchain"
 
@@ -48,6 +56,49 @@ PATCH_DIR="${LIBRARY_DIR}/patches"
 #
 
 source "${SCRIPT_DIR}/scripts/get_arduino_platform.sh"
+
+#
+# Helper functions
+#
+
+get_arduino_cli_platform() {
+  local kernel_name
+  kernel_name="$(uname -s)"
+
+  case "${kernel_name}" in
+    Linux)
+      case "$(uname -m)" in
+        x86_64)
+          echo "Linux_64bit"
+          ;;
+        i386|i686)
+          echo "Linux_32bit"
+          ;;
+        armv6l)
+          echo "Linux_ARMv6"
+          ;;
+        armv7l|armv7*)
+          echo "Linux_ARMv7"
+          ;;
+        aarch64|arm64)
+          echo "Linux_ARM64"
+          ;;
+        *)
+          echo ""
+          ;;
+      esac
+      ;;
+    Darwin)
+      echo "macOS_64bit"
+      ;;
+    MINGW*|MSYS*|CYGWIN*)
+      echo "Windows_64bit"
+      ;;
+    *)
+      echo ""
+      ;;
+  esac
+}
 
 #
 # Dependency configuration
@@ -66,6 +117,18 @@ fi
 
 # Location of the extracted Arduino IDE and toolchain
 ARDUINO_IDE_DIR="${SCRIPT_DIR}/arduino-${ARDUINO_IDE_VERSION}"
+
+# Location of the extracted Arduino CLI archive
+ARDUINO_CLI_PLATFORM="$(get_arduino_cli_platform)"
+
+if [ -z "${ARDUINO_CLI_PLATFORM}" ]; then
+  echo "Unsupported platform for Arduino CLI: $(uname -s) $(uname -m)" >&2
+  exit 1
+fi
+
+ARDUINO_CLI_ARCHIVE="arduino-cli_${ARDUINO_CLI_VERSION}_${ARDUINO_CLI_PLATFORM}.tar.gz"
+ARDUINO_CLI_URL="https://downloads.arduino.cc/arduino-cli/${ARDUINO_CLI_ARCHIVE}"
+ARDUINO_CLI_BIN="${ARDUINO_CLI_DIR}/arduino-cli"
 
 # Location of the Adafruit BluefruitLE nRF15 library
 ADAFRUIT_BLE_DIR="${LIBRARY_DIR}/Adafruit_BluefruitLE_nRF51"
@@ -89,6 +152,9 @@ I2CDEVLIB_DIR="${LIBRARY_DIR}/i2cdevlib"
 # Toolchain setup
 #
 
+# Ensure working directories exist
+mkdir -p "${BUILD_DIR}" "${ARDUINO_CLI_DIR}"
+
 # Enter working directory
 cd "${SCRIPT_DIR}"
 
@@ -97,6 +163,44 @@ echo "Updating git submodules..."
   cd "${SCRIPT_DIR}"
   git submodule update --init --recursive --force .
 )
+
+echo "Setting up Arduino CLI..."
+
+INSTALLED_ARDUINO_CLI_VERSION=""
+if [ -x "${ARDUINO_CLI_BIN}" ]; then
+  INSTALLED_ARDUINO_CLI_VERSION_OUTPUT="$("${ARDUINO_CLI_BIN}" version || true)"
+  INSTALLED_ARDUINO_CLI_VERSION="$(printf '%s\n' "${INSTALLED_ARDUINO_CLI_VERSION_OUTPUT}" | awk '/Version:/ {print $2; exit}')"
+fi
+
+if [ "${INSTALLED_ARDUINO_CLI_VERSION}" != "${ARDUINO_CLI_VERSION}" ]; then
+  rm -f "${ARDUINO_CLI_BIN}"
+fi
+
+if [ ! -x "${ARDUINO_CLI_BIN}" ]; then
+  echo "Downloading Arduino CLI ${ARDUINO_CLI_VERSION} (${ARDUINO_CLI_PLATFORM})..."
+  curl --fail --location --show-error "${ARDUINO_CLI_URL}" --output "${ARDUINO_CLI_DIR}/${ARDUINO_CLI_ARCHIVE}"
+  tar -xzf "${ARDUINO_CLI_DIR}/${ARDUINO_CLI_ARCHIVE}" --directory "${ARDUINO_CLI_DIR}"
+  rm -f "${ARDUINO_CLI_DIR}/${ARDUINO_CLI_ARCHIVE}"
+fi
+
+if [ ! -x "${ARDUINO_CLI_BIN}" ]; then
+  echo "Failed to set up Arduino CLI" >&2
+  exit 1
+fi
+
+if [ ! -f "${HOME}/.arduino15/arduino-cli.yaml" ]; then
+  echo "Initializing Arduino CLI configuration..."
+  "${ARDUINO_CLI_BIN}" config init
+fi
+
+if ! "${ARDUINO_CLI_BIN}" core list | grep -q '^arduino:megaavr[[:space:]]'; then
+  echo "Updating Arduino core index..."
+  "${ARDUINO_CLI_BIN}" core update-index
+  echo "Installing Arduino megaAVR core..."
+  "${ARDUINO_CLI_BIN}" core install arduino:megaavr
+else
+  echo "Arduino megaAVR core already installed"
+fi
 
 if [ ! -d "${ARDUINO_IDE_DIR}" ]; then
   echo "Downloading Arduino IDE..."
