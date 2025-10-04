@@ -165,8 +165,8 @@ class LabManagerNode(rclpy.node.Node):
         self.get_logger().debug("Starting lab manager configuration")
 
         # Memory reporting
-        if not self._mcu_memory_manager.initialize(MEMORY_INTERVAL_SECS):
-            return False
+        # if not self._mcu_memory_manager.initialize(MEMORY_INTERVAL_SECS):
+        #     return False
 
         # Sampling interval
         if not self._sampling_manager.initialize(SAMPLING_INTERVAL_MS):
@@ -339,8 +339,8 @@ class LabManagerNode(rclpy.node.Node):
 
         msg: LabStateMsg = LabStateMsg()
         msg.header = header
-        msg.total_ram = self._mcu_memory_manager.total_ram
-        msg.ram_utilization = self._mcu_memory_manager.ram_utilization
+        msg.total_ram = 0
+        msg.ram_utilization = 0.0
         msg.current_vout = self._current_vout
         msg.shunt_current = self._shunt_current
         msg.ir_vout = self._ir_vout
