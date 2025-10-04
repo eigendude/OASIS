@@ -137,6 +137,7 @@ static const command_descriptor commandTable[] = {
 
 TelemetrixServer* TelemetrixCommands::m_server{nullptr};
 uint8_t TelemetrixCommands::commandBuffer[MAX_COMMAND_LENGTH]{};
+volatile bool TelemetrixCommands::m_inCommand{false};
 
 void TelemetrixCommands::RegisterServer(TelemetrixServer* server)
 {
@@ -145,12 +146,15 @@ void TelemetrixCommands::RegisterServer(TelemetrixServer* server)
 
 void TelemetrixCommands::GetNextCommand()
 {
-  // Clear the command buffer
-  memset(commandBuffer, 0, sizeof(commandBuffer));
-
   // If there is no command waiting, then return
   if (!Serial.available())
     return;
+
+  // Gate reporters
+  m_inCommand = true;
+
+  // Clear the command buffer
+  memset(commandBuffer, 0, sizeof(commandBuffer));
 
   // Get the packet length
   const uint8_t packetLength = static_cast<uint8_t>(Serial.read());
@@ -175,6 +179,9 @@ void TelemetrixCommands::GetNextCommand()
     }
   }
   commandEntry.command_func();
+
+  // Release reporters
+  m_inCommand = false;
 }
 
 void TelemetrixCommands::serial_loopback()
@@ -243,6 +250,9 @@ void TelemetrixCommands::get_firmware_version()
                                      FIRMWARE_PATCH};
 
   Serial.write(report_message, 5);
+
+  // Synchronize input to avoid interleaving for the early part of the handshake
+  Serial.flush();
 }
 
 void TelemetrixCommands::are_you_there()
@@ -250,6 +260,9 @@ void TelemetrixCommands::are_you_there()
   const uint8_t report_message[3] = {2, I_AM_HERE, ARDUINO_ID};
 
   Serial.write(report_message, 3);
+
+  // Synchronize input to avoid interleaving for the early part of the handshake
+  Serial.flush();
 }
 
 void TelemetrixCommands::servo_attach()
@@ -346,8 +359,6 @@ void TelemetrixCommands::dht_new()
 void TelemetrixCommands::stop_all_reports()
 {
   m_server->SetReporting(false);
-  delay(20);
-  Serial.flush();
 }
 
 void TelemetrixCommands::set_analog_scanning_interval()
@@ -356,13 +367,13 @@ void TelemetrixCommands::set_analog_scanning_interval()
 
   TelemetrixPins* pins = m_server->GetPins();
   pins->set_analog_sampling_interval(analogSamplingInterval);
+
+  enable_all_reports();
 }
 
 void TelemetrixCommands::enable_all_reports()
 {
-  Serial.flush();
   m_server->SetReporting(true);
-  delay(20);
 }
 
 void TelemetrixCommands::reset_data()
@@ -390,8 +401,6 @@ void TelemetrixCommands::reset_data()
   TelemetrixDHT* dht = m_server->GetDHT();
   dht->ResetData();
 #endif
-
-  enable_all_reports();
 }
 
 void TelemetrixCommands::init_pin_structures()

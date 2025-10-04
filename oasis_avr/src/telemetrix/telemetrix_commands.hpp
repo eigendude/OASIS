@@ -103,6 +103,9 @@ public:
   // Retrieve the next command from the serial link
   static void GetNextCommand();
 
+  // Returns true if a command is currently incoming on the serial link
+  static bool IsInCommand() { return m_inCommand; }
+
   //////////////////////////////////////////////////////////////////////////////
   // Command functions
   //////////////////////////////////////////////////////////////////////////////
@@ -326,5 +329,8 @@ private:
 
   // Buffer to hold incoming command data
   static uint8_t commandBuffer[MAX_COMMAND_LENGTH];
+
+  // Critical section guard
+  static volatile bool m_inCommand;
 };
 } // namespace OASIS

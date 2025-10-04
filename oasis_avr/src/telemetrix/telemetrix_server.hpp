@@ -30,7 +30,6 @@ class TelemetrixServer
 {
 public:
   void Setup();
-  void Loop();
   void ProcessCommands();
   void ScanSensors();
 
@@ -76,6 +75,6 @@ private:
   uint8_t m_features{0};
 
   // A flag to stop sending all report messages
-  bool m_stopReports{false};
+  bool m_stopReports{true};
 };
 } // namespace OASIS
