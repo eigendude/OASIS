@@ -109,12 +109,14 @@ class LabManagerNode(rclpy.node.Node):
         self.get_logger().set_level(LoggingSeverity.DEBUG)
 
         # Subsystems
+        """
         self._ccs811_manager: CCS811Manager = CCS811Manager(
             self, I2C_PORT, I2C_CCS811_ADDRESS
         )
         self._mpu6050_manager: MPU6050Manager = MPU6050Manager(
             self, I2C_PORT, I2C_MPU6050_ADDRESS
         )
+        """
         self._mcu_memory_manager: McuMemoryManager = McuMemoryManager(self)
         self._sampling_manager: SamplingManager = SamplingManager(self)
 
@@ -173,12 +175,12 @@ class LabManagerNode(rclpy.node.Node):
         self.get_logger().debug("Starting lab manager configuration")
 
         # Air quality
-        if not self._ccs811_manager.initialize():
-            return False
+        # if not self._ccs811_manager.initialize():
+        #     return False
 
         # IMU
-        if not self._mpu6050_manager.initialize():
-            return False
+        # if not self._mpu6050_manager.initialize():
+        #     return False
 
         # Memory reporting
         if not self._mcu_memory_manager.initialize(MEMORY_INTERVAL_SECS):
@@ -360,8 +362,8 @@ class LabManagerNode(rclpy.node.Node):
         msg.current_vout = self._current_vout
         msg.shunt_current = self._shunt_current
         msg.ir_vout = self._ir_vout
-        msg.co2_ppb = self._ccs811_manager.co2_ppb
-        msg.tvoc_ppb = self._ccs811_manager.tvoc_ppb
+        # msg.co2_ppb = self._ccs811_manager.co2_ppb
+        # msg.tvoc_ppb = self._ccs811_manager.tvoc_ppb
         msg.linear_acceleration = Vector3Msg()
         msg.linear_acceleration.x = self._mpu6050_manager.ax
         msg.linear_acceleration.y = self._mpu6050_manager.ay
