@@ -234,6 +234,17 @@ if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 20)
 endif()
 
+#
+# AVR libc++ does not provide sized delete operators, which became part of the
+# C++14 standard. When the compiler emits calls to the sized delete overload we
+# get a link failure:
+#
+#   undefined reference to `operator delete(void*, unsigned int)'
+#
+# Disabling sized deallocation keeps the compiler using the non-sized delete
+# symbol that is available in the Arduino toolchain.
+add_compile_options(-fno-sized-deallocation)
+
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 add_compile_definitions(
@@ -409,7 +420,6 @@ set(TELEMETRIX_SOURCES
   src/telemetrix/telemetrix_pins.cpp
   src/telemetrix/telemetrix_server.cpp
   src/telemetrix/telemetrix_thread.cpp
-  src/utils/delete.cpp
   src/utils/math_utils.cpp
   src/utils/memory_utils.cpp
   src/utils/timer.cpp
@@ -585,7 +595,6 @@ target_link_arduino_libraries(oasis_avr_leds PRIVATE
 #
 
 add_library(oasis_avr_utils
-  src/utils/delete.cpp
   src/utils/memory_utils.cpp
   src/utils/timer.cpp
 )
