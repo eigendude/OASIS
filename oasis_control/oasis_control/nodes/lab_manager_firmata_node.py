@@ -24,12 +24,12 @@ from rclpy.logging import LoggingSeverity
 from std_msgs.msg import Header as HeaderMsg
 
 from oasis_control.managers.ccs811_manager import CCS811Manager
-from oasis_control.managers.mcu_memory_manager_telemetrix import McuMemoryManager
+from oasis_control.managers.mcu_memory_manager_firmata import McuMemoryManager
 from oasis_control.managers.mpu6050_manager import MPU6050Manager
 from oasis_control.managers.sampling_manager import SamplingManager
 from oasis_drivers.ros.ros_translator import RosTranslator
-from oasis_drivers.telemetrix.telemetrix_types import AnalogMode
-from oasis_drivers.telemetrix.telemetrix_types import DigitalMode
+from oasis_drivers.firmata.firmata_types import AnalogMode
+from oasis_drivers.firmata.firmata_types import DigitalMode
 from oasis_msgs.msg import AnalogReading as AnalogReadingMsg
 from oasis_msgs.msg import LabState as LabStateMsg
 from oasis_msgs.srv import DigitalWrite as DigitalWriteSvc
@@ -73,7 +73,7 @@ I2C_MPU6050_ADDRESS: int = 0x68
 
 ROS_NAMESPACE = "oasis"
 
-NODE_NAME = "lab_manager_telemetrix"
+NODE_NAME = "lab_manager_firmata"
 
 PUBLISH_STATE_PERIOD_SECS = 0.1
 

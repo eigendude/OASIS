@@ -93,7 +93,9 @@ class McuMemoryManager:
     def ram_utilization(self) -> float:
         return self._ram_utilization
 
-    def initialize(self) -> bool:
+    def initialize(
+        self, reporting_period_secs: float = REPORT_MCU_MEMORY_PERIOD_SECS
+    ) -> bool:
         self._node.get_logger().debug("Waiting for MCU memory services")
         self._node.get_logger().debug("  - Waiting for report_mcu_memory...")
         self._report_mcu_memory_client.wait_for_service()
@@ -102,7 +104,7 @@ class McuMemoryManager:
 
         # Memory reporting
         self._node.get_logger().debug("Enabling MCU memory reporting")
-        if not self._report_mcu_memory(REPORT_MCU_MEMORY_PERIOD_SECS):
+        if not self._report_mcu_memory(reporting_period_secs):
             return False
 
         self._node.get_logger().info("MCU memory manager initialized successfully")
