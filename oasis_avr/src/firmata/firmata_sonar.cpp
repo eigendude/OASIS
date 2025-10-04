@@ -14,7 +14,6 @@
 #include "firmata_sonar.hpp"
 
 #include "firmata_callbacks.hpp"
-#include "utils/delete.hpp"
 
 #include <Arduino.h>
 #include <FirmataExpress.h>
