@@ -17,8 +17,12 @@ from std_msgs.msg import Header as HeaderMsg
 
 from oasis_drivers.serial.serial_types import SerialPort
 from oasis_drivers.serial.serial_types import UsbDevice
-from oasis_drivers.telemetrix.telemetrix_types import AnalogMode
-from oasis_drivers.telemetrix.telemetrix_types import DigitalMode
+from typing import Union
+
+from oasis_drivers.firmata.firmata_types import AnalogMode as FirmataAnalogMode
+from oasis_drivers.firmata.firmata_types import DigitalMode as FirmataDigitalMode
+from oasis_drivers.telemetrix.telemetrix_types import AnalogMode as TelemetrixAnalogMode
+from oasis_drivers.telemetrix.telemetrix_types import DigitalMode as TelemetrixDigitalMode
 from oasis_msgs.msg import AVRConstants as AVRConstantsMsg
 from oasis_msgs.msg import SerialDevice as SerialDeviceMsg
 from oasis_msgs.msg import SerialDeviceScan as SerialDeviceScanMsg
@@ -72,45 +76,53 @@ class RosTranslator(object):
         return msg
 
     @staticmethod
-    def analog_mode_to_ros(analog_mode: AnalogMode) -> int:
+    def analog_mode_to_ros(
+        analog_mode: Union[FirmataAnalogMode, TelemetrixAnalogMode]
+    ) -> int:
         return {
-            AnalogMode.DISABLED: AVRConstantsMsg.ANALOG_DISABLED,
-            AnalogMode.INPUT: AVRConstantsMsg.ANALOG_INPUT,
-        }[analog_mode]
+            TelemetrixAnalogMode.DISABLED.value: AVRConstantsMsg.ANALOG_DISABLED,
+            TelemetrixAnalogMode.INPUT.value: AVRConstantsMsg.ANALOG_INPUT,
+        }[analog_mode.value]
 
     @staticmethod
-    def digital_mode_to_ros(digital_mode: DigitalMode) -> int:
+    def digital_mode_to_ros(
+        digital_mode: Union[FirmataDigitalMode, TelemetrixDigitalMode]
+    ) -> int:
         return {
-            DigitalMode.DISABLED: AVRConstantsMsg.DIGITAL_DISABLED,
-            DigitalMode.INPUT: AVRConstantsMsg.DIGITAL_INPUT,
-            DigitalMode.INPUT_PULLUP: AVRConstantsMsg.DIGITAL_INPUT_PULLUP,
-            DigitalMode.OUTPUT: AVRConstantsMsg.DIGITAL_OUTPUT,
-            DigitalMode.PWM: AVRConstantsMsg.DIGITAL_PWM,
-            DigitalMode.SERVO: AVRConstantsMsg.DIGITAL_SERVO,
-            DigitalMode.CPU_FAN_PWM: AVRConstantsMsg.DIGITAL_CPU_FAN_PWM,
-            DigitalMode.CPU_FAN_TACHOMETER: AVRConstantsMsg.DIGITAL_CPU_FAN_TACHOMETER,
-        }[digital_mode]
+            TelemetrixDigitalMode.DISABLED.value: AVRConstantsMsg.DIGITAL_DISABLED,
+            TelemetrixDigitalMode.INPUT.value: AVRConstantsMsg.DIGITAL_INPUT,
+            TelemetrixDigitalMode.INPUT_PULLUP.value: AVRConstantsMsg.DIGITAL_INPUT_PULLUP,
+            TelemetrixDigitalMode.OUTPUT.value: AVRConstantsMsg.DIGITAL_OUTPUT,
+            TelemetrixDigitalMode.PWM.value: AVRConstantsMsg.DIGITAL_PWM,
+            TelemetrixDigitalMode.SERVO.value: AVRConstantsMsg.DIGITAL_SERVO,
+            TelemetrixDigitalMode.CPU_FAN_PWM.value: AVRConstantsMsg.DIGITAL_CPU_FAN_PWM,
+            TelemetrixDigitalMode.CPU_FAN_TACHOMETER.value: AVRConstantsMsg.DIGITAL_CPU_FAN_TACHOMETER,
+        }[digital_mode.value]
 
     @staticmethod
-    def analog_mode_to_telemetrix(ros2_analog_mode: int) -> AnalogMode:
+    def analog_mode_to_telemetrix(
+        ros2_analog_mode: int
+    ) -> TelemetrixAnalogMode:
         """Translate an analog pin mode from ROS 2 API to Telemetrix API"""
         return {
-            AVRConstantsMsg.ANALOG_DISABLED: AnalogMode.DISABLED,
-            AVRConstantsMsg.ANALOG_INPUT: AnalogMode.INPUT,
+            AVRConstantsMsg.ANALOG_DISABLED: TelemetrixAnalogMode.DISABLED,
+            AVRConstantsMsg.ANALOG_INPUT: TelemetrixAnalogMode.INPUT,
         }[ros2_analog_mode]
 
     @staticmethod
-    def digital_mode_to_telemetrix(ros2_digital_mode: int) -> DigitalMode:
+    def digital_mode_to_telemetrix(
+        ros2_digital_mode: int
+    ) -> TelemetrixDigitalMode:
         """Translate a digital pin mode from ROS 2 API to Telemetrix API"""
         return {
-            AVRConstantsMsg.DIGITAL_DISABLED: DigitalMode.DISABLED,
-            AVRConstantsMsg.DIGITAL_INPUT: DigitalMode.INPUT,
-            AVRConstantsMsg.DIGITAL_INPUT_PULLUP: DigitalMode.INPUT_PULLUP,
-            AVRConstantsMsg.DIGITAL_OUTPUT: DigitalMode.OUTPUT,
-            AVRConstantsMsg.DIGITAL_PWM: DigitalMode.PWM,
-            AVRConstantsMsg.DIGITAL_SERVO: DigitalMode.SERVO,
-            AVRConstantsMsg.DIGITAL_CPU_FAN_PWM: DigitalMode.CPU_FAN_PWM,
-            AVRConstantsMsg.DIGITAL_CPU_FAN_TACHOMETER: DigitalMode.CPU_FAN_TACHOMETER,
+            AVRConstantsMsg.DIGITAL_DISABLED: TelemetrixDigitalMode.DISABLED,
+            AVRConstantsMsg.DIGITAL_INPUT: TelemetrixDigitalMode.INPUT,
+            AVRConstantsMsg.DIGITAL_INPUT_PULLUP: TelemetrixDigitalMode.INPUT_PULLUP,
+            AVRConstantsMsg.DIGITAL_OUTPUT: TelemetrixDigitalMode.OUTPUT,
+            AVRConstantsMsg.DIGITAL_PWM: TelemetrixDigitalMode.PWM,
+            AVRConstantsMsg.DIGITAL_SERVO: TelemetrixDigitalMode.SERVO,
+            AVRConstantsMsg.DIGITAL_CPU_FAN_PWM: TelemetrixDigitalMode.CPU_FAN_PWM,
+            AVRConstantsMsg.DIGITAL_CPU_FAN_TACHOMETER: TelemetrixDigitalMode.CPU_FAN_TACHOMETER,
         }[ros2_digital_mode]
 
     @staticmethod
