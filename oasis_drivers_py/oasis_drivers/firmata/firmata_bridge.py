@@ -89,9 +89,9 @@ class FirmataBridge:
             asyncio.run_coroutine_threadsafe(
                 self._board.start_aio(), self._loop
             ).result()
-        except Exception as e:
+        except Exception as exc:
             self.deinitialize()
-            raise e
+            raise self._translate_start_exception(exc) from exc
 
     def deinitialize(self) -> None:
         """Stop communicating and deinitialize the bridge"""
@@ -128,6 +128,24 @@ class FirmataBridge:
             self._thread.join()
 
         self._loop.close()
+
+    def _translate_start_exception(self, exc: Exception) -> Exception:
+        """Provide a more helpful error when the Firmata handshake fails."""
+
+        # When the Firmata board fails to respond to the "are you there" request,
+        # pymata-express attempts to convert the result (``None``) to a list which
+        # raises ``TypeError: 'NoneType' object is not iterable``.  This masks the
+        # underlying connection failure and leaves operators without guidance.
+        if isinstance(exc, TypeError) and "NoneType" in str(exc):
+            port = getattr(self._board, "com_port", "unknown")
+            return RuntimeError(
+                "Failed to establish a Firmata connection: the board on "
+                f"port '{port}' did not respond to the identification request. "
+                "Verify the USB connection, permissions, and that the expected "
+                "Firmata firmware is running on the device."
+            )
+
+        return exc
 
     def _run_thread(self) -> None:
         """Run the asyncio event loop in a thread to process Firmata coroutines"""
