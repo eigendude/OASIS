@@ -23,9 +23,7 @@ from geometry_msgs.msg import Vector3 as Vector3Msg
 from rclpy.logging import LoggingSeverity
 from std_msgs.msg import Header as HeaderMsg
 
-from oasis_control.managers.ccs811_manager import CCS811Manager
 from oasis_control.managers.mcu_memory_manager_telemetrix import McuMemoryManager
-from oasis_control.managers.mpu6050_manager import MPU6050Manager
 from oasis_control.managers.sampling_manager import SamplingManager
 from oasis_drivers.ros.ros_translator import RosTranslator
 from oasis_drivers.telemetrix.telemetrix_types import AnalogMode
@@ -61,9 +59,9 @@ SHUNT_RESISTOR_OHMS: float = 1.1
 IR_THRESHOLD_VOLTS: float = 3.5
 
 # I2C addresses
-I2C_PORT: int = 0
-I2C_CCS811_ADDRESS: int = 0x5B
-I2C_MPU6050_ADDRESS: int = 0x68
+# I2C_PORT: int = 0
+# I2C_CCS811_ADDRESS: int = 0x5B
+# I2C_MPU6050_ADDRESS: int = 0x68
 
 
 ################################################################################
@@ -183,8 +181,8 @@ class LabManagerNode(rclpy.node.Node):
         #     return False
 
         # Memory reporting
-        if not self._mcu_memory_manager.initialize(MEMORY_INTERVAL_SECS):
-            return False
+        # if not self._mcu_memory_manager.initialize(MEMORY_INTERVAL_SECS):
+        #     return False
 
         # Sampling interval
         if not self._sampling_manager.initialize(SAMPLING_INTERVAL_MS):
@@ -357,20 +355,20 @@ class LabManagerNode(rclpy.node.Node):
 
         msg: LabStateMsg = LabStateMsg()
         msg.header = header
-        msg.total_ram = self._mcu_memory_manager.total_ram
-        msg.ram_utilization = self._mcu_memory_manager.ram_utilization
+        msg.total_ram = 0
+        msg.ram_utilization = 0.0
         msg.current_vout = self._current_vout
         msg.shunt_current = self._shunt_current
         msg.ir_vout = self._ir_vout
-        # msg.co2_ppb = self._ccs811_manager.co2_ppb
-        # msg.tvoc_ppb = self._ccs811_manager.tvoc_ppb
+        msg.co2_ppb = 0.0
+        msg.tvoc_ppb = 0.0
         msg.linear_acceleration = Vector3Msg()
-        msg.linear_acceleration.x = self._mpu6050_manager.ax
-        msg.linear_acceleration.y = self._mpu6050_manager.ay
-        msg.linear_acceleration.z = self._mpu6050_manager.az
+        msg.linear_acceleration.x = 0.0
+        msg.linear_acceleration.y = 0.0
+        msg.linear_acceleration.z = 0.0
         msg.angular_velocity = Vector3Msg()
-        msg.angular_velocity.x = self._mpu6050_manager.gx
-        msg.angular_velocity.y = self._mpu6050_manager.gy
-        msg.angular_velocity.z = self._mpu6050_manager.gz
+        msg.angular_velocity.x = 0.0
+        msg.angular_velocity.y = 0.0
+        msg.angular_velocity.z = 0.0
 
         self._lab_state_pub.publish(msg)
