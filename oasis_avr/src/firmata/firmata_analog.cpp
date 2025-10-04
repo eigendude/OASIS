@@ -40,8 +40,7 @@ void FirmataAnalog::Sample()
 
     Firmata.sendAnalog(analogPin, analogRead(analogPin));
 
-    if (TaskSchedulerYield())
-      return;
+    TaskSchedulerYield();
   } while (m_nextAnalogPin != startPin);
 }
 

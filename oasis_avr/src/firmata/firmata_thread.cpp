@@ -224,8 +224,7 @@ void FirmataThread::SamplingLoop()
     subsystem->Sample();
     m_samplingSubsystemIndex = index;
 
-    if (TaskSchedulerYield())
-      return;
+    TaskSchedulerYield();
   }
 
   m_samplingSubsystemIndex = index;
