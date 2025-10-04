@@ -234,6 +234,17 @@ if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 20)
 endif()
 
+#
+# AVR libc++ does not provide sized delete operators, which became part of the
+# C++14 standard. When the compiler emits calls to the sized delete overload we
+# get a link failure:
+#
+#   undefined reference to `operator delete(void*, unsigned int)'
+#
+# Disabling sized deallocation keeps the compiler using the non-sized delete
+# symbol that is available in the Arduino toolchain.
+add_compile_options(-fno-sized-deallocation)
+
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 add_compile_definitions(
