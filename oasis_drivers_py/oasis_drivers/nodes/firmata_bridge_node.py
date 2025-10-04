@@ -9,7 +9,8 @@
 ################################################################################
 
 from datetime import datetime
-from typing import Tuple
+import queue
+from typing import Callable, Tuple
 
 import rclpy.node
 import rclpy.service
@@ -92,6 +93,12 @@ class FirmataBridgeNode(rclpy.node.Node, FirmataCallback):
         # Initialize members
         com_port: str = str(self.get_parameter(PARAM_COM_PORT).value)
         self._bridge = FirmataBridge(self, com_port)
+
+        # Guard condition and queue for dispatching callbacks onto the ROS thread
+        self._dispatch_queue: "queue.Queue[Callable[[], None]]" = queue.Queue()
+        self._dispatch_guard = self.create_guard_condition(
+            callback=self._drain_dispatch_queue
+        )
 
         # Reliable listener QOS profile for subscribers
         qos_profile: rclpy.qos.QoSPresetProfile = (
@@ -198,53 +205,62 @@ class FirmataBridgeNode(rclpy.node.Node, FirmataCallback):
         reference_voltage: float,
     ) -> None:
         """Implement FirmataCallback"""
-        msg: AnalogReadingMsg = AnalogReadingMsg()
+        def _publish() -> None:
+            msg: AnalogReadingMsg = AnalogReadingMsg()
 
-        # Timestamp in ROS header
-        header = HeaderMsg()
-        header.stamp = self._convert_timestamp(timestamp)
-        header.frame_id = ""  # TODO
+            # Timestamp in ROS header
+            header = HeaderMsg()
+            header.stamp = self._convert_timestamp(timestamp)
+            header.frame_id = ""  # TODO
 
-        msg.header = header
-        msg.analog_pin = analog_pin
-        msg.reference_voltage = reference_voltage
-        msg.analog_value = analog_value
+            msg.header = header
+            msg.analog_pin = analog_pin
+            msg.reference_voltage = reference_voltage
+            msg.analog_value = analog_value
 
-        self._analog_reading_pub.publish(msg)
+            self._analog_reading_pub.publish(msg)
+
+        self._enqueue_dispatch(_publish)
 
     def on_cpu_fan_rpm(self, timestamp: datetime, digital_pin: int, rpm: int) -> None:
         """Implement FirmataCallback"""
-        msg: CPUFanSpeedMsg = CPUFanSpeedMsg()
+        def _publish() -> None:
+            msg: CPUFanSpeedMsg = CPUFanSpeedMsg()
 
-        # Timestamp in ROS header
-        header = HeaderMsg()
-        header.stamp = self._convert_timestamp(timestamp)
-        header.frame_id = ""  # TODO
+            # Timestamp in ROS header
+            header = HeaderMsg()
+            header.stamp = self._convert_timestamp(timestamp)
+            header.frame_id = ""  # TODO
 
-        msg.header = header
-        msg.digital_pin = digital_pin
-        msg.fan_speed_rpm = float(rpm)
+            msg.header = header
+            msg.digital_pin = digital_pin
+            msg.fan_speed_rpm = float(rpm)
 
-        self._cpu_fan_speed_pub.publish(msg)
+            self._cpu_fan_speed_pub.publish(msg)
+
+        self._enqueue_dispatch(_publish)
 
     def on_digital_reading(
         self, timestamp: datetime, digital_pin: int, digital_value: bool
     ) -> None:
         """Implement FirmataCallback"""
-        msg: DigitalReadingMsg = DigitalReadingMsg()
+        def _publish() -> None:
+            msg: DigitalReadingMsg = DigitalReadingMsg()
 
-        # Timestamp in ROS header
-        header = HeaderMsg()
-        header.stamp = self._convert_timestamp(timestamp)
-        header.frame_id = ""  # TODO
+            # Timestamp in ROS header
+            header = HeaderMsg()
+            header.stamp = self._convert_timestamp(timestamp)
+            header.frame_id = ""  # TODO
 
-        msg.header = header
-        msg.digital_pin = digital_pin
-        msg.digital_value = (
-            AVRConstantsMsg.HIGH if digital_value else AVRConstantsMsg.LOW
-        )
+            msg.header = header
+            msg.digital_pin = digital_pin
+            msg.digital_value = (
+                AVRConstantsMsg.HIGH if digital_value else AVRConstantsMsg.LOW
+            )
 
-        self._digital_reading_pub.publish(msg)
+            self._digital_reading_pub.publish(msg)
+
+        self._enqueue_dispatch(_publish)
 
     def on_memory_data(
         self,
@@ -256,39 +272,58 @@ class FirmataBridgeNode(rclpy.node.Node, FirmataCallback):
         free_heap: int,
     ) -> None:
         """Implement FirmataCallback"""
-        msg: MCUMemoryMsg = MCUMemoryMsg()
+        def _publish() -> None:
+            msg: MCUMemoryMsg = MCUMemoryMsg()
 
-        # Timestamp in ROS header
-        header = HeaderMsg()
-        header.stamp = self._get_timestamp()
-        header.frame_id = ""  # TODO
+            # Timestamp in ROS header
+            header = HeaderMsg()
+            header.stamp = self._get_timestamp()
+            header.frame_id = ""  # TODO
 
-        msg.header = header
-        msg.total_ram = total_ram
-        msg.static_data_size = static_data_size
-        msg.heap_size = heap_size
-        msg.stack_size = stack_size
-        msg.free_ram = free_ram
-        msg.free_heap = free_heap
+            msg.header = header
+            msg.total_ram = total_ram
+            msg.static_data_size = static_data_size
+            msg.heap_size = heap_size
+            msg.stack_size = stack_size
+            msg.free_ram = free_ram
+            msg.free_heap = free_heap
 
-        self._mcu_memory_pub.publish(msg)
+            self._mcu_memory_pub.publish(msg)
+
+        self._enqueue_dispatch(_publish)
 
     def on_string_data(self, data: str) -> None:
         """Implement FirmataCallback"""
-        msg: MCUStringMsg = MCUStringMsg()
+        def _publish() -> None:
+            msg: MCUStringMsg = MCUStringMsg()
 
-        # Timestamp in ROS header
-        header = HeaderMsg()
-        header.stamp = self._get_timestamp()
-        header.frame_id = ""  # TODO
+            # Timestamp in ROS header
+            header = HeaderMsg()
+            header.stamp = self._get_timestamp()
+            header.frame_id = ""  # TODO
 
-        msg.header = header
-        msg.message = data
+            msg.header = header
+            msg.message = data
 
-        self._mcu_string_pub.publish(msg)
+            self._mcu_string_pub.publish(msg)
 
-        # Debug logging
-        self.get_logger().info(data)
+            # Debug logging
+            self.get_logger().info(data)
+
+        self._enqueue_dispatch(_publish)
+
+    def _enqueue_dispatch(self, callback: Callable[[], None]) -> None:
+        self._dispatch_queue.put(callback)
+        self._dispatch_guard.trigger()
+
+    def _drain_dispatch_queue(self) -> None:
+        while True:
+            try:
+                callback = self._dispatch_queue.get_nowait()
+            except queue.Empty:
+                break
+
+            callback()
 
     def _handle_analog_read(
         self, request: AnalogReadSvc.Request, response: AnalogReadSvc.Response

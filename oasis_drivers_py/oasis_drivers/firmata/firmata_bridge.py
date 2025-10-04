@@ -29,6 +29,9 @@ from oasis_drivers.firmata.firmata_types import AnalogMode
 from oasis_drivers.firmata.firmata_types import DigitalMode
 
 
+LOGGER = logging.getLogger(__name__)
+
+
 class FirmataBridge:
     """
     Bridge to Firmata server running on an AVR processor.
@@ -110,6 +113,8 @@ class FirmataBridge:
             self.deinitialize()
             raise self._translate_start_exception(exc) from exc
 
+        self._configure_serial_connection()
+
     def deinitialize(self) -> None:
         """Stop communicating and deinitialize the bridge"""
         if self._loop.is_closed():
@@ -145,6 +150,40 @@ class FirmataBridge:
             self._thread.join()
 
         self._loop.close()
+
+    def _configure_serial_connection(self) -> None:
+        """Reset and configure the serial transport after the board connects."""
+
+        transport = getattr(self._board, "transport", None)
+        serial_port = getattr(transport, "serial", None)
+        if serial_port is None:
+            LOGGER.debug("Firmata transport does not expose a serial port handle")
+            return
+
+        try:
+            serial_port.reset_input_buffer()
+        except Exception as exc:  # pragma: no cover - best effort
+            LOGGER.debug("Unable to reset Firmata serial input buffer: %s", exc)
+
+        try:
+            serial_port.reset_output_buffer()
+        except Exception as exc:  # pragma: no cover - best effort
+            LOGGER.debug("Unable to reset Firmata serial output buffer: %s", exc)
+
+        for attr in ("rtscts", "dsrdtr", "xonxoff"):
+            try:
+                if hasattr(serial_port, attr):
+                    setattr(serial_port, attr, False)
+            except Exception as exc:  # pragma: no cover - best effort
+                LOGGER.debug("Failed to disable %s on Firmata serial port: %s", attr, exc)
+
+        try:
+            if hasattr(serial_port, "exclusive"):
+                serial_port.exclusive = True
+        except Exception as exc:  # pragma: no cover - best effort
+            LOGGER.debug(
+                "Failed to mark Firmata serial port as exclusive: %s", exc
+            )
 
     def _translate_start_exception(self, exc: Exception) -> Exception:
         """Provide a more helpful error when the Firmata handshake fails."""
