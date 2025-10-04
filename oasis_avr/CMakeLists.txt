@@ -420,7 +420,6 @@ set(TELEMETRIX_SOURCES
   src/telemetrix/telemetrix_pins.cpp
   src/telemetrix/telemetrix_server.cpp
   src/telemetrix/telemetrix_thread.cpp
-  src/utils/delete.cpp
   src/utils/math_utils.cpp
   src/utils/memory_utils.cpp
   src/utils/timer.cpp
@@ -596,7 +595,6 @@ target_link_arduino_libraries(oasis_avr_leds PRIVATE
 #
 
 add_library(oasis_avr_utils
-  src/utils/delete.cpp
   src/utils/memory_utils.cpp
   src/utils/timer.cpp
 )
