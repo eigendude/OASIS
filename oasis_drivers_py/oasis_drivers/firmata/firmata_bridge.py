@@ -95,14 +95,38 @@ class FirmataBridge:
 
     def deinitialize(self) -> None:
         """Stop communicating and deinitialize the bridge"""
-        self._loop.stop()
+        if self._loop.is_closed():
+            return
 
-        # Let's also cancel all running tasks
-        pending = asyncio.all_tasks(loop=self._loop)
-        for task in pending:
-            task.cancel()
+        try:
+            future: Future = asyncio.run_coroutine_threadsafe(
+                self._board.shutdown(), self._loop
+            )
+            future.result(timeout=5.0)
+        except Exception:
+            pass
 
-        self._thread.join()
+        def _cancel_tasks_and_stop() -> None:
+            pending = asyncio.all_tasks(loop=self._loop)
+            for task in pending:
+                task.cancel()
+            self._loop.stop()
+
+        try:
+            self._loop.call_soon_threadsafe(_cancel_tasks_and_stop)
+        except RuntimeError:
+            pass
+
+        if self._thread.is_alive():
+            self._thread.join(timeout=5.0)
+
+        if self._thread.is_alive():
+            try:
+                self._loop.call_soon_threadsafe(self._loop.stop)
+            except RuntimeError:
+                pass
+            self._thread.join()
+
         self._loop.close()
 
     def _run_thread(self) -> None:
