@@ -34,7 +34,7 @@ Environment=QT_QPA_PLATFORM=offscreen
 
 Environment=OASIS_SRC=/home/${USER}/Documents/ros-ws/src/oasis
 Environment=OASIS_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/oasis-${ROS2_DISTRO}/install/setup.bash
-Environment=OPENCV_LIB_DIR=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/opencv/install/lib
+Environment=OPENCV_LIB_DIR=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/cv/install/lib
 
 #
 # Service definition

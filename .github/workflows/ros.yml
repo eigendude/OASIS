@@ -113,7 +113,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ros-ws/opencv/install
+            ros-ws/cv/install
           key: >
             restore-opencv-\
             ${{ matrix.os }}-\

@@ -34,7 +34,7 @@ Environment=WAYLAND_DISPLAY=wayland-0
 
 Environment=OASIS_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/oasis-${ROS2_DISTRO}/install/setup.bash
 Environment=KODI_BINARY=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/kodi-${ROS2_DISTRO}/install/bin/kodi
-Environment=OPENCV_LIB_DIR=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/opencv/install/lib
+Environment=OPENCV_LIB_DIR=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/cv/install/lib
 
 #
 # Service definition
