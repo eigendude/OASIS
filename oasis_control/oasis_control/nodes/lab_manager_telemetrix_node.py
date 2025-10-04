@@ -262,7 +262,13 @@ class LabManagerNode(rclpy.node.Node):
         analog_value: float = analog_reading_msg.analog_value
 
         # Translate analog value
-        analog_voltage: float = analog_value * reference_voltage
+        if not 0.0 <= analog_value <= 1.0:
+            self.get_logger().warning(
+                f"Analog reading {analog_value:.2f} for pin {analog_pin} out of "
+                "range, clamping to [0.0, 1.0]"
+            )
+        normalized_value = max(0.0, min(analog_value, 1.0))
+        analog_voltage: float = normalized_value * reference_voltage
 
         if analog_pin == CURRENT_PIN:
             # Record state
