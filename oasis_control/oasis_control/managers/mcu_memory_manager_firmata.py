@@ -13,6 +13,7 @@
 #
 
 import asyncio
+from typing import Optional
 
 import rclpy.client
 import rclpy.node
@@ -93,16 +94,19 @@ class McuMemoryManager:
     def ram_utilization(self) -> float:
         return self._ram_utilization
 
-    def initialize(self) -> bool:
+    def initialize(self, memory_report_interval: Optional[float] = None) -> bool:
         self._node.get_logger().debug("Waiting for MCU memory services")
         self._node.get_logger().debug("  - Waiting for report_mcu_memory...")
         self._report_mcu_memory_client.wait_for_service()
 
         self._node.get_logger().debug("Starting MCU memory configuration")
 
+        if memory_report_interval is None:
+            memory_report_interval = REPORT_MCU_MEMORY_PERIOD_SECS
+
         # Memory reporting
         self._node.get_logger().debug("Enabling MCU memory reporting")
-        if not self._report_mcu_memory(REPORT_MCU_MEMORY_PERIOD_SECS):
+        if not self._report_mcu_memory(memory_report_interval):
             return False
 
         self._node.get_logger().info("MCU memory manager initialized successfully")
