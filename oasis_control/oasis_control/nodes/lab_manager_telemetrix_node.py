@@ -24,7 +24,6 @@ from rclpy.logging import LoggingSeverity
 from std_msgs.msg import Header as HeaderMsg
 
 from oasis_control.managers.ccs811_manager import CCS811Manager
-from oasis_control.managers.cpu_thermal_manager import CPUThermalManager
 from oasis_control.managers.mcu_memory_manager_telemetrix import McuMemoryManager
 from oasis_control.managers.mpu6050_manager import MPU6050Manager
 from oasis_control.managers.sampling_manager import SamplingManager
@@ -76,9 +75,6 @@ ROS_NAMESPACE = "oasis"
 
 NODE_NAME = "lab_manager_telemetrix"
 
-# TODO: Host configuration
-CPU_FAN_HOST: str = "conductor"
-
 PUBLISH_STATE_PERIOD_SECS = 0.1
 
 # Publisher
@@ -115,9 +111,6 @@ class LabManagerNode(rclpy.node.Node):
         # Subsystems
         self._ccs811_manager: CCS811Manager = CCS811Manager(
             self, I2C_PORT, I2C_CCS811_ADDRESS
-        )
-        self._cpu_thermal_manager: CPUThermalManager = CPUThermalManager(
-            node=self, cpu_fan_host=CPU_FAN_HOST
         )
         self._mpu6050_manager: MPU6050Manager = MPU6050Manager(
             self, I2C_PORT, I2C_MPU6050_ADDRESS
@@ -181,10 +174,6 @@ class LabManagerNode(rclpy.node.Node):
 
         # Air quality
         if not self._ccs811_manager.initialize():
-            return False
-
-        # CPU thermal manager
-        if not self._cpu_thermal_manager.initialize():
             return False
 
         # IMU
