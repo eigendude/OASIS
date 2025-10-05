@@ -27,10 +27,10 @@ from oasis_control.managers.ccs811_manager import CCS811Manager
 from oasis_control.managers.mcu_memory_manager_telemetrix import McuMemoryManager
 from oasis_control.managers.mpu6050_manager import MPU6050Manager
 from oasis_control.managers.sampling_manager import SamplingManager
-from oasis_drivers.ros.ros_translator import RosTranslator
-from oasis_drivers.telemetrix.telemetrix_types import AnalogMode
-from oasis_drivers.telemetrix.telemetrix_types import DigitalMode
+from oasis_drivers.firmata.firmata_types import AnalogMode
+from oasis_drivers.firmata.firmata_types import DigitalMode
 from oasis_msgs.msg import AnalogReading as AnalogReadingMsg
+from oasis_msgs.msg import AVRConstants as AVRConstantsMsg
 from oasis_msgs.msg import LabState as LabStateMsg
 from oasis_msgs.srv import DigitalWrite as DigitalWriteSvc
 from oasis_msgs.srv import SetAnalogMode as SetAnalogModeSvc
@@ -73,7 +73,7 @@ I2C_MPU6050_ADDRESS: int = 0x68
 
 ROS_NAMESPACE = "oasis"
 
-NODE_NAME = "lab_manager_telemetrix"
+NODE_NAME = "lab_manager_firmata"
 
 PUBLISH_STATE_PERIOD_SECS = 0.1
 
@@ -221,7 +221,10 @@ class LabManagerNode(rclpy.node.Node):
         # Create message
         vss_analog_svc = SetAnalogModeSvc.Request()
         vss_analog_svc.analog_pin = analog_pin
-        vss_analog_svc.analog_mode = RosTranslator.analog_mode_to_ros(analog_mode)
+        vss_analog_svc.analog_mode = {
+            AnalogMode.DISABLED: AVRConstantsMsg.ANALOG_DISABLED,
+            AnalogMode.INPUT: AVRConstantsMsg.ANALOG_INPUT,
+        }[analog_mode]
 
         # Call service
         future: asyncio.Future = self._set_analog_mode_client.call_async(vss_analog_svc)
@@ -240,7 +243,16 @@ class LabManagerNode(rclpy.node.Node):
         # Create message
         motor_pwm_svc = SetDigitalModeSvc.Request()
         motor_pwm_svc.digital_pin = digital_pin
-        motor_pwm_svc.digital_mode = RosTranslator.digital_mode_to_ros(digital_mode)
+        motor_pwm_svc.digital_mode = {
+            DigitalMode.DISABLED: AVRConstantsMsg.DIGITAL_DISABLED,
+            DigitalMode.INPUT: AVRConstantsMsg.DIGITAL_INPUT,
+            DigitalMode.INPUT_PULLUP: AVRConstantsMsg.DIGITAL_INPUT_PULLUP,
+            DigitalMode.OUTPUT: AVRConstantsMsg.DIGITAL_OUTPUT,
+            DigitalMode.PWM: AVRConstantsMsg.DIGITAL_PWM,
+            DigitalMode.SERVO: AVRConstantsMsg.DIGITAL_SERVO,
+            DigitalMode.CPU_FAN_PWM: AVRConstantsMsg.DIGITAL_CPU_FAN_PWM,
+            DigitalMode.CPU_FAN_TACHOMETER: AVRConstantsMsg.DIGITAL_CPU_FAN_TACHOMETER,
+        }[digital_mode]
 
         # Call service
         future: asyncio.Future = self._set_digital_mode_client.call_async(motor_pwm_svc)
