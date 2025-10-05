@@ -93,7 +93,7 @@ class FirmataBridgeNode(rclpy.node.Node, FirmataCallback):
 
         # Initialize members
         com_port: str = str(self.get_parameter(PARAM_COM_PORT).value)
-        self._bridge = FirmataBridge(self, com_port)
+        self._bridge = FirmataBridge(self, com_port, logger=self.get_logger())
 
         # Guard condition and queue for dispatching callbacks onto the ROS thread
         self._dispatch_queue: "queue.Queue[Callable[[], None]]" = queue.Queue()

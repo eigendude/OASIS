@@ -9,14 +9,16 @@
 ################################################################################
 
 import asyncio
+import logging
 import threading
 from concurrent.futures import Future
 from datetime import datetime
 from datetime import timezone
-from typing import Any
 from typing import Awaitable
 from typing import List
 from typing import Optional
+from typing import TYPE_CHECKING
+from typing import cast
 from typing import Tuple
 
 from pymata_express import pymata_express
@@ -26,6 +28,10 @@ from oasis_drivers.firmata.firmata_callback import FirmataCallback
 from oasis_drivers.firmata.firmata_constants import FirmataConstants
 from oasis_drivers.firmata.firmata_types import AnalogMode
 from oasis_drivers.firmata.firmata_types import DigitalMode
+
+
+if TYPE_CHECKING:  # pragma: no cover - typing-only import
+    from rclpy.impl.rcutils_logger import RcutilsLogger
 
 
 class FirmataBridge:
@@ -49,9 +55,20 @@ class FirmataBridge:
     ANALOG_REFERENCE: float = 5.0  # Volts (TODO: Where to get this number?)
     PWM_MAX: int = 255  # TODO: Max PWM value?
 
-    def __init__(self, callback: FirmataCallback, com_port: str) -> None:
+    def __init__(
+        self,
+        callback: FirmataCallback,
+        com_port: str,
+        logger: Optional["RcutilsLogger"] = None,
+    ) -> None:
         # Construction parameters
         self._callback = callback
+        default_logger = logging.getLogger(__name__)
+        self._logger: "RcutilsLogger"
+        if logger is None:
+            self._logger = cast("RcutilsLogger", default_logger)
+        else:
+            self._logger = logger
 
         # Initialize asyncio event loop for running bridge in a new thread
         self._loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
@@ -236,7 +253,15 @@ class FirmataBridge:
         result: Tuple[int, int] = future.result()
 
         # Translate result
-        analog_value_raw: int = int(result[0]) & self.ANALOG_MAX
+        raw_payload: int = int(result[0])
+        analog_value_raw: int = raw_payload & self.ANALOG_MAX
+        if raw_payload != analog_value_raw:
+            self._logger.error(
+                "Received out-of-range Firmata analog payload %s for pin %d; "
+                "masking to 10 bits",
+                raw_payload,
+                analog_pin,
+            )
         analog_value: float = float(analog_value_raw) / self.ANALOG_MAX
         reference_voltage: float = self.ANALOG_REFERENCE
         timestamp: datetime = self._get_timestamp(result[1])
@@ -424,7 +449,15 @@ class FirmataBridge:
         # spurious bytes from other handlers can occasionally leak into the
         # callback.  Mask the raw value to 10 bits so that only the valid ADC
         # range (0-1023) is considered when normalizing to a float in [0, 1].
-        analog_raw: int = int(data[self.CB_VALUE]) & self.ANALOG_MAX
+        raw_payload: int = int(data[self.CB_VALUE])
+        analog_raw: int = raw_payload & self.ANALOG_MAX
+        if raw_payload != analog_raw:
+            self._logger.error(
+                "Received out-of-range Firmata analog payload %s for pin %d; "
+                "masking to 10 bits",
+                raw_payload,
+                analog_pin,
+            )
         analog_value: float = float(analog_raw) / self.ANALOG_MAX
         reference_voltage: float = self.ANALOG_REFERENCE
         timestamp: datetime = self._get_timestamp(data[self.CB_TIME])
