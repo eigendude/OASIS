@@ -16,6 +16,7 @@ from datetime import timezone
 from typing import Any
 from typing import Awaitable
 from typing import List
+from typing import Optional
 from typing import Tuple
 
 from pymata_express import pymata_express
@@ -84,6 +85,9 @@ class FirmataBridge:
             self._on_string_data
         )
 
+        # Serialize Firmata writes that run inside the asyncio loop
+        self._write_lock: Optional[asyncio.Lock] = None
+
     def initialize(self) -> None:
         """Initialize the bridge and start communicating via Firmata"""
         self._thread.start()
@@ -97,6 +101,11 @@ class FirmataBridge:
             raise self._translate_start_exception(exc) from exc
 
         self._configure_serial_connection()
+
+        # Initialize the write lock now that the asyncio loop is running
+        asyncio.run_coroutine_threadsafe(
+            self._initialize_write_lock(), self._loop
+        ).result()
 
     def deinitialize(self) -> None:
         """Stop communicating and deinitialize the bridge"""
@@ -133,6 +142,8 @@ class FirmataBridge:
             self._thread.join()
 
         self._loop.close()
+
+        self._write_lock = None
 
     def _configure_serial_connection(self) -> None:
         """Reset and configure the serial transport after the board connects."""
@@ -211,10 +222,7 @@ class FirmataBridge:
             raise ValueError(f"Invalid analog mode: {analog_mode}")
 
         # Dispatch to asyncio
-        future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
-
-        # Wait for completion
-        future.result()
+        self._await_with_write_lock(coroutine)
 
     def analog_read(self, analog_pin: int) -> Tuple[float, float, datetime]:
         """
@@ -278,11 +286,7 @@ class FirmataBridge:
         else:
             raise ValueError(f"Invalid digital mode: {digital_mode}")
 
-        # Dispatch to asyncio
-        future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
-
-        # Wait for completion
-        future.result()
+        self._await_with_write_lock(coroutine)
 
     def digital_read(self, digital_pin: int) -> Tuple[bool, datetime]:
         """
@@ -320,11 +324,7 @@ class FirmataBridge:
         # Create coroutine
         coroutine: Awaitable[None] = self._board.digital_write(digital_pin, value_int)
 
-        # Dispatch to asyncio
-        future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
-
-        # Wait for completion
-        future.result()
+        self._await_with_write_lock(coroutine)
 
     def pwm_write(self, digital_pin: int, duty_cycle: float) -> None:
         """
@@ -339,11 +339,29 @@ class FirmataBridge:
         # Create coroutine
         coroutine: Awaitable[None] = self._board.pwm_write(digital_pin, value_int)
 
-        # Dispatch to asyncio
-        future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
+        self._await_with_write_lock(coroutine)
 
-        # Wait for completion
-        future.result()
+    async def _initialize_write_lock(self) -> None:
+        if self._write_lock is None:
+            self._write_lock = asyncio.Lock()
+
+    def _await_with_write_lock(self, coroutine: Awaitable[Any]) -> Any:
+        if self._write_lock is None:
+            asyncio.run_coroutine_threadsafe(
+                self._initialize_write_lock(), self._loop
+            ).result()
+
+        future: Future = asyncio.run_coroutine_threadsafe(
+            self._run_with_write_lock(coroutine), self._loop
+        )
+        return future.result()
+
+    async def _run_with_write_lock(self, coroutine: Awaitable[Any]) -> Any:
+        if self._write_lock is None:
+            raise RuntimeError("Firmata write lock not initialized")
+
+        async with self._write_lock:
+            return await coroutine
 
     def set_sampling_interval(self, sampling_interval_ms: int) -> None:
         """
@@ -356,11 +374,7 @@ class FirmataBridge:
         # Create coroutine
         coroutine = self._board.set_sampling_interval(sampling_interval_ms)
 
-        # Dispatch to asyncio
-        future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
-
-        # Wait for completion
-        future.result()
+        self._await_with_write_lock(coroutine)
 
     def report_mcu_memory(self, reporting_period_ms: int) -> None:
         """
@@ -383,11 +397,7 @@ class FirmataBridge:
             FirmataConstants.MEMORY_CONFIG, sysex_data
         )
 
-        # Dispatch to asyncio
-        future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
-
-        # Wait for completion
-        future.result()
+        self._await_with_write_lock(coroutine)
 
     def servo_write(self, digital_pin: int, position: float) -> None:
         """
@@ -402,11 +412,7 @@ class FirmataBridge:
         # Create coroutine
         coroutine: Awaitable[None] = self._board.servo_write(digital_pin, value_int)
 
-        # Dispatch to asyncio
-        future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
-
-        # Wait for completion
-        future.result()
+        self._await_with_write_lock(coroutine)
 
     async def _analog_read_callback(self, data: List[int]) -> None:
         """
