@@ -195,7 +195,8 @@ class FirmataBridge:
         result: Tuple[int, int] = future.result()
 
         # Translate result
-        analog_value: float = float(result[0]) / self.ANALOG_MAX
+        analog_value_raw: int = int(result[0]) & self.ANALOG_MAX
+        analog_value: float = float(analog_value_raw) / self.ANALOG_MAX
         reference_voltage: float = self.ANALOG_REFERENCE
         timestamp: datetime = self._get_timestamp(result[1])
 
@@ -380,7 +381,12 @@ class FirmataBridge:
         """
         # Translate parameters
         analog_pin: int = data[self.CB_PIN]
-        analog_value: float = float(data[self.CB_VALUE]) / self.ANALOG_MAX
+        # Firmata guarantees a 10-bit ADC payload, but corrupted messages or
+        # spurious bytes from other handlers can occasionally leak into the
+        # callback.  Mask the raw value to 10 bits so that only the valid ADC
+        # range (0-1023) is considered when normalizing to a float in [0, 1].
+        analog_raw: int = int(data[self.CB_VALUE]) & self.ANALOG_MAX
+        analog_value: float = float(analog_raw) / self.ANALOG_MAX
         reference_voltage: float = self.ANALOG_REFERENCE
         timestamp: datetime = self._get_timestamp(data[self.CB_TIME])
 
