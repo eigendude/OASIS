@@ -24,9 +24,9 @@ from rclpy.logging import LoggingSeverity
 from std_msgs.msg import Header as HeaderMsg
 
 from oasis_control.managers.ccs811_manager import CCS811Manager
-from oasis_control.managers.mcu_memory_manager_telemetrix import McuMemoryManager
 from oasis_control.managers.mpu6050_manager import MPU6050Manager
 from oasis_control.managers.sampling_manager import SamplingManager
+from oasis_control.mcu.mcu_memory_manager import McuMemoryManager
 from oasis_drivers.firmata.firmata_types import AnalogMode
 from oasis_drivers.firmata.firmata_types import DigitalMode
 from oasis_msgs.msg import AnalogReading as AnalogReadingMsg
