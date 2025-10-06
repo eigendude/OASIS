@@ -166,40 +166,20 @@ def generate_launch_description() -> LaunchDescription:
         )
         ld.add_action(engine_node)
     elif HOST_ID == "falcon":
-        mcu_node = "lab"
-        CPU_FAN_HOST: str = "conductor"
-        lab_node: Node = Node(
+        mcu_node = "engineer"
+        engineer_node: Node = Node(
             namespace=ROS_NAMESPACE,
             package=CONTROL_PACKAGE_NAME,
-            executable=f"{mcu_node}_manager_firmata",
-            name=f"{mcu_node}_manager_firmata_{HOST_ID}",
+            executable=f"{mcu_node}_manager",
+            name=f"{mcu_node}_manager_{HOST_ID}",
             output="screen",
             remappings=[
                 (f"{mcu_node}_state", f"{HOST_ID}/{mcu_node}_state"),
-                (f"cpu_fan_speed_{CPU_FAN_HOST}", f"{CPU_FAN_HOST}/cpu_fan_speed"),
-                (f"cpu_fan_write_{CPU_FAN_HOST}", f"{CPU_FAN_HOST}/cpu_fan_write"),
-                (f"digital_write_{CPU_FAN_HOST}", f"{CPU_FAN_HOST}/digital_write"),
-                (
-                    f"set_cpu_fan_sampling_interval_{CPU_FAN_HOST}",
-                    f"{CPU_FAN_HOST}/set_cpu_fan_sampling_interval",
-                ),
-                (
-                    f"set_digital_mode_{CPU_FAN_HOST}",
-                    f"{CPU_FAN_HOST}/set_digital_mode",
-                ),
-                ("air_quality", f"{mcu_node}/air_quality"),
-                ("analog_reading", f"{mcu_node}/analog_reading"),
-                ("digital_write", f"{mcu_node}/digital_write"),
-                ("i2c_begin", f"{mcu_node}/i2c_begin"),
-                ("i2c_end", f"{mcu_node}/i2c_end"),
-                ("i2c_imu", f"{mcu_node}/i2c_imu"),
                 ("mcu_memory", f"{mcu_node}/mcu_memory"),
                 ("report_mcu_memory", f"{mcu_node}/report_mcu_memory"),
-                ("set_analog_mode", f"{mcu_node}/set_analog_mode"),
-                ("set_digital_mode", f"{mcu_node}/set_digital_mode"),
                 ("set_sampling_interval", f"{mcu_node}/set_sampling_interval"),
             ],
         )
-        ld.add_action(lab_node)
+        ld.add_action(engineer_node)
 
     return ld
