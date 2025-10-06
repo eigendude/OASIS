@@ -481,8 +481,8 @@ def generate_launch_description() -> LaunchDescription:
         engine_bridge_node: Node = get_telemetrix_bridge(HOST_ID, mcu_node)
         ld.add_action(engine_bridge_node)
     elif HOST_ID == "falcon":
-        mcu_node = "lab"
-        lab_bridge_node: Node = get_firmata_bridge(HOST_ID, mcu_node)
-        ld.add_action(lab_bridge_node)
+        mcu_node = "engineer"
+        engineer_bridge_node: Node = get_firmata_bridge(HOST_ID, mcu_node)
+        ld.add_action(engineer_bridge_node)
 
     return ld
