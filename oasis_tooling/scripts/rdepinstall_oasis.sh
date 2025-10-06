@@ -48,6 +48,9 @@ APT_PACKAGES=(
   # Python dependencies
   python3-psutil
   python3-serial
+
+  # WiFi and network management
+  network-manager
 )
 
 # Install display controllers

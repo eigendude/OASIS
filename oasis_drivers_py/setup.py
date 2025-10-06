@@ -104,4 +104,8 @@ setuptools.setup(
             "wol_server = oasis_drivers.cli.wol_server_cli:main",
         ],
     },
+    scripts=[
+        "scripts/wifi_connect.sh",
+        "scripts/wifi_list.sh",
+    ],
 )
