@@ -42,6 +42,7 @@ rosidl_generate_interfaces(
     msg/DigitalButton.msg
     msg/DigitalReading.msg
     msg/DiskPartition.msg
+    msg/EngineerState.msg
     msg/EngineState.msg
     msg/I2CDevice.msg
     msg/I2CDeviceType.msg
