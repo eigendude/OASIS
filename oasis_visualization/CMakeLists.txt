@@ -18,6 +18,17 @@ project(oasis_visualization)
 find_package(ament_cmake REQUIRED)
 
 #
+# Scripts
+#
+
+install(
+  PROGRAMS
+    scripts/dismiss-osd.sh
+  DESTINATION
+    lib/${PROJECT_NAME}
+)
+
+#
 # Configuration files
 #
 
