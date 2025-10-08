@@ -9,7 +9,9 @@
 ################################################################################
 
 import asyncio
+import logging
 import threading
+import time
 from concurrent.futures import Future
 from datetime import datetime
 from datetime import timezone
@@ -38,6 +40,10 @@ class FirmataBridge:
     ARDUINO_INSTANCE_ID = 1  # TODO
     ARDUINO_WAIT_SECS = 2  # TODO
 
+    # Handshake retry parameters
+    HANDSHAKE_ATTEMPTS = 3
+    HANDSHAKE_RETRY_DELAY_SECS = 1.0
+
     # Firmata callback data indices
     CB_PIN_MODE = 0
     CB_PIN = 1
@@ -52,35 +58,17 @@ class FirmataBridge:
     def __init__(self, callback: FirmataCallback, com_port: str) -> None:
         # Construction parameters
         self._callback = callback
+        self._com_port = com_port
+
+        # Logger
+        self._logger = logging.getLogger(__name__)
 
         # Initialize asyncio event loop for running bridge in a new thread
         self._loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
         self._thread = threading.Thread(target=self._run_thread)
 
         # Instantiate pymata-express
-        self._board = pymata_express.PymataExpress(
-            com_port=com_port,
-            baud_rate=self.BAUD_RATE,
-            arduino_instance_id=self.ARDUINO_INSTANCE_ID,
-            arduino_wait=self.ARDUINO_WAIT_SECS,
-            autostart=False,
-            loop=self._loop,
-            shutdown_on_exception=True,
-            close_loop_on_shutdown=False,
-        )
-
-        # Install custom sysex handlers
-        self._board.command_dictionary[FirmataConstants.CPU_FAN_RPM] = (
-            self._on_cpu_fan_rpm
-        )
-        self._board.command_dictionary[FirmataConstants.MEMORY_DATA] = (
-            self._on_memory_data
-        )
-
-        # Patch string-handling (pymata-express prints to stdout)
-        self._board.command_dictionary[PrivateConstants.STRING_DATA] = (
-            self._on_string_data
-        )
+        self._board = self._create_board()
 
         # Serialize Firmata writes that run inside the asyncio loop
         self._write_lock: Optional[asyncio.Lock] = None
@@ -90,9 +78,7 @@ class FirmataBridge:
         self._thread.start()
 
         try:
-            asyncio.run_coroutine_threadsafe(
-                self._board.start_aio(), self._loop
-            ).result()
+            self._start_board_with_retries()
         except Exception as exc:
             self.deinitialize()
             raise self._translate_start_exception(exc) from exc
@@ -171,6 +157,63 @@ class FirmataBridge:
             if hasattr(serial_port, "exclusive"):
                 serial_port.exclusive = True
         except Exception:  # pragma: no cover - best effort
+            pass
+
+    def _create_board(self) -> pymata_express.PymataExpress:
+        board = pymata_express.PymataExpress(
+            com_port=self._com_port,
+            baud_rate=self.BAUD_RATE,
+            arduino_instance_id=self.ARDUINO_INSTANCE_ID,
+            arduino_wait=self.ARDUINO_WAIT_SECS,
+            autostart=False,
+            loop=self._loop,
+            shutdown_on_exception=True,
+            close_loop_on_shutdown=False,
+        )
+
+        board.command_dictionary[FirmataConstants.CPU_FAN_RPM] = self._on_cpu_fan_rpm
+        board.command_dictionary[FirmataConstants.MEMORY_DATA] = self._on_memory_data
+        board.command_dictionary[PrivateConstants.STRING_DATA] = self._on_string_data
+
+        return board
+
+    def _start_board_with_retries(self) -> None:
+        last_exception: Optional[Exception] = None
+
+        for attempt in range(1, self.HANDSHAKE_ATTEMPTS + 1):
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    self._board.start_aio(), self._loop
+                ).result()
+            except Exception as exc:
+                last_exception = exc
+                self._logger.warning(
+                    "Firmata handshake attempt %d/%d failed: %s",
+                    attempt,
+                    self.HANDSHAKE_ATTEMPTS,
+                    exc,
+                )
+
+                self._shutdown_board_best_effort()
+
+                if attempt >= self.HANDSHAKE_ATTEMPTS:
+                    break
+
+                time.sleep(self.HANDSHAKE_RETRY_DELAY_SECS)
+                self._board = self._create_board()
+            else:
+                return
+
+        if last_exception is not None:
+            raise last_exception
+
+    def _shutdown_board_best_effort(self) -> None:
+        try:
+            future: Future = asyncio.run_coroutine_threadsafe(
+                self._board.shutdown(), self._loop
+            )
+            future.result(timeout=5.0)
+        except Exception:
             pass
 
     def _translate_start_exception(self, exc: Exception) -> Exception:
