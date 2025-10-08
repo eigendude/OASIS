@@ -72,32 +72,39 @@ std::string GetSettingsFile(const rclcpp::Logger& logger)
 }
 } // namespace
 
-MonocularSlam::MonocularSlam(std::shared_ptr<rclcpp::Node> node, const std::string& imageTopic)
-  : m_logger(node->get_logger()),
-    m_imgTransport(std::make_unique<image_transport::ImageTransport>(node)),
-    m_imgSubscriber(std::make_unique<image_transport::Subscriber>()),
-    m_slam(std::make_unique<ORB_SLAM3::System>(GetVocabularyFile(m_logger),
-                                               GetSettingsFile(m_logger),
-                                               ORB_SLAM3::System::MONOCULAR,
-                                               false))
+MonocularSlam::MonocularSlam(rclcpp::Node& node)
+  : m_logger(std::make_unique<rclcpp::Logger>(node.get_logger()))
 {
-  RCLCPP_INFO(m_logger, "Image topic: %s", imageTopic.c_str());
-
-  auto transportHints = image_transport::TransportHints(node.get(), "compressed");
-
-  *m_imgSubscriber =
-      m_imgTransport->subscribe(imageTopic, 1, &MonocularSlam::ReceiveImage, this, &transportHints);
-
-  RCLCPP_INFO(m_logger, "Started monocular SLAM");
 }
 
-MonocularSlam::~MonocularSlam()
-{
-  // Stop all threads
-  m_slam->Shutdown();
+MonocularSlam::~MonocularSlam() = default;
 
-  //m_slam->SaveTrajectoryEuRoC("CameraTrajectory.txt");
-  //m_slam->SaveKeyFrameTrajectoryEuRoC("KeyFrameTrajectory.txt");
+bool MonocularSlam::Initialize()
+{
+  const std::string vocabularyFile = GetVocabularyFile(*m_logger);
+  const std::string settingsFile = GetSettingsFile(*m_logger);
+
+  RCLCPP_INFO(*m_logger, "Using ORB-SLAM3 vocabulary file: %s", vocabularyFile.c_str());
+  RCLCPP_INFO(*m_logger, "Using monocular SLAM settings file: %s", settingsFile.c_str());
+
+  m_slam = std::make_unique<ORB_SLAM3::System>(vocabularyFile, settingsFile,
+                                               ORB_SLAM3::System::MONOCULAR, false);
+
+  return true;
+}
+
+void MonocularSlam::Deinitialize()
+{
+  if (m_slam)
+  {
+    // Stop all threads
+    m_slam->Shutdown();
+
+    //m_slam->SaveTrajectoryEuRoC("CameraTrajectory.txt");
+    //m_slam->SaveKeyFrameTrajectoryEuRoC("KeyFrameTrajectory.txt");
+
+    m_slam.reset();
+  }
 }
 
 void MonocularSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg)
@@ -109,7 +116,7 @@ void MonocularSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& 
   }
   catch (cv_bridge::Exception& e)
   {
-    RCLCPP_ERROR(m_logger, "cv_bridge exception: %s", e.what());
+    RCLCPP_ERROR(*m_logger, "cv_bridge exception: %s", e.what());
     return;
   }
 
