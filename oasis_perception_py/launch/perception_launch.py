@@ -64,7 +64,9 @@ PERCEPTION_SERVER_CALIBRATION: list[str] = []
 PERCEPTION_SERVER_FLOW: list[str] = []
 PERCEPTION_SERVER_POSE_LANDMARKS: list[str] = []
 
-if HOST_ID == "nas":
+if HOST_ID == "falcon":
+    PERCEPTION_SERVER_FLOW.extend(["falcon"])
+elif HOST_ID == "nas":
     # PERCEPTION_SERVER_CALIBRATION.extend(
     #     ["bar", "doorbell", "entryway", "hallway", "kitchen", "livingroom"]
     # )
@@ -72,6 +74,7 @@ if HOST_ID == "nas":
 elif HOST_ID == "oceanplatform":
     PERCEPTION_SERVER_BACKGROUND.extend(["station"])
     PERCEPTION_SERVER_FLOW.extend(["station"])
+    PERCEPTION_SERVER_POSE_LANDMARKS.extend(["falcon"])
 
 
 ################################################################################

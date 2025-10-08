@@ -44,6 +44,7 @@ if \
   [ "${HOSTNAME}" = "bar" ] || \
   [ "${HOSTNAME}" = "cinder" ] || \
   [ "${HOSTNAME}" = "door" ] || \
+  [ "${HOSTNAME}" = "falcon" ] || \
   [ "${HOSTNAME}" = "hallway" ] || \
   [ "${HOSTNAME}" = "kitchen" ] || \
   [ "${HOSTNAME}" = "megapegasus" ] || \
