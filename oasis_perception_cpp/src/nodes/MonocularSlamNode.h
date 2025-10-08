@@ -15,23 +15,24 @@
 
 namespace rclcpp
 {
+class Logger;
 class Node;
-}
+} // namespace rclcpp
 
 namespace OASIS
 {
-namespace VIDEO
+namespace SLAM
 {
-class OpticalFlow;
+class MonocularSlam;
 }
 
 namespace ROS
 {
-class OpticalFlowNode
+class MonocularSlamNode
 {
 public:
-  OpticalFlowNode(rclcpp::Node& node);
-  ~OpticalFlowNode();
+  MonocularSlamNode(rclcpp::Node& node);
+  ~MonocularSlamNode();
 
   bool Initialize();
   void Deinitialize();
@@ -44,17 +45,11 @@ private:
   rclcpp::Node& m_node;
 
   // ROS parameters
-  rclcpp::Logger m_logger;
-  std::unique_ptr<image_transport::Publisher> m_flowPublisher;
+  std::unique_ptr<rclcpp::Logger> m_logger;
   std::unique_ptr<image_transport::Subscriber> m_imgSubscriber;
 
   // Video parameters
-  std::unique_ptr<VIDEO::OpticalFlow> m_opticalFlow;
-
-  // State parameters
-  bool m_isInitialized{false};
-  int m_imageWidth{0};
-  int m_imageHeight{0};
+  std::unique_ptr<SLAM::MonocularSlam> m_monocularSlam;
 };
 } // namespace ROS
 } // namespace OASIS

@@ -11,13 +11,10 @@
 #include <memory>
 #include <string>
 
-#include <rclcpp/logger.hpp>
 #include <sensor_msgs/msg/image.hpp>
 
 namespace image_transport
 {
-class ImageTransport;
-class Publisher;
 class Subscriber;
 } // namespace image_transport
 
@@ -28,8 +25,9 @@ class System;
 
 namespace rclcpp
 {
+class Logger;
 class Node;
-}
+} // namespace rclcpp
 
 namespace OASIS
 {
@@ -39,19 +37,19 @@ namespace SLAM
 class MonocularSlam
 {
 public:
-  MonocularSlam(std::shared_ptr<rclcpp::Node> node, const std::string& imageTopic);
+  MonocularSlam(rclcpp::Node& node);
   ~MonocularSlam();
+
+  // Lifecycle interface
+  bool Initialize();
+  void Deinitialize();
 
   // ROS interface
   void ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg);
 
 private:
-  // Logging parameters
-  rclcpp::Logger m_logger;
-
   // ROS parameters
-  std::unique_ptr<image_transport::ImageTransport> m_imgTransport;
-  std::unique_ptr<image_transport::Subscriber> m_imgSubscriber;
+  std::unique_ptr<rclcpp::Logger> m_logger;
 
   // ORB-SLAM3 system
   std::unique_ptr<ORB_SLAM3::System> m_slam;
