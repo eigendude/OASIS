@@ -17,5 +17,13 @@ camera_zones:
   - bar
   - hallway
 
+# Map host or zone IDs to camera drivers
+camera_driver_map:
+  bar: v4l2
+  door: libcamera
+  falcon: libcamera
+  kitchen: v4l2
+  station: libcamera
+
 # Plug ID that controls smart displays
 smart_display_plug_id: doorway_display

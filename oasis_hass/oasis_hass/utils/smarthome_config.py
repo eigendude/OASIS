@@ -77,6 +77,9 @@ class SmarthomeConfig:
             "smart_display_plug_id", ""
         )
         self._camera_zones: list[str] = smarthome_config.get("camera_zones", [])
+        self._camera_driver_map: dict[str, str] = smarthome_config.get(
+            "camera_driver_map", {}
+        )
 
     @property
     def HOST_ID(self) -> str:
@@ -97,3 +100,15 @@ class SmarthomeConfig:
     @property
     def CAMERA_ZONES(self) -> list[str]:
         return self._camera_zones
+
+    @property
+    def CAMERA_DRIVER_MAP(self) -> dict[str, str]:
+        return self._camera_driver_map
+
+    def get_camera_driver(self, host_id: str, zone_id: str) -> str:
+        """Return the configured camera driver for a host or zone."""
+
+        # Prefer explicit host configuration and fall back to zone configuration
+        return self._camera_driver_map.get(
+            host_id, self._camera_driver_map.get(zone_id, "")
+        )
