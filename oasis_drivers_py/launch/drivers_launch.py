@@ -391,7 +391,9 @@ def generate_launch_description() -> LaunchDescription:
         add_kinect_v2(ld, KINECT_V2_ZONE_ID)
 
     # LEGO hosts
-    if HOST_ID == "station":
+    if HOST_ID == "falcon":
+        add_ros2_camera(ld, ZONE_ID)
+    elif HOST_ID == "station":
         add_ros2_camera(ld, ZONE_ID)
 
     #
