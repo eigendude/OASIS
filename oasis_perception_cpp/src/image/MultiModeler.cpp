@@ -54,7 +54,7 @@ MultiModeler::MultiModeler(std::shared_ptr<rclcpp::Node> node,
     m_bgsPackageSigmaDelta(std::make_unique<bgslibrary::algorithms::SigmaDelta>()),
     m_bgsPackageKNN(std::make_unique<bgslibrary::algorithms::KNN>())
 {
-  auto transportHints = image_transport::TransportHints(node.get(), "compressed");
+  auto transportHints = image_transport::TransportHints(node.get(), "zstd");
 
   *m_imgSubscriber =
       m_imgTransport->subscribe(imageTopic, 1, &MultiModeler::ReceiveImage, this, &transportHints);
