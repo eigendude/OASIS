@@ -8,6 +8,7 @@
 #
 ################################################################################
 
+import glob
 import os
 import xml.etree.ElementTree
 
@@ -21,6 +22,10 @@ PACKAGE_MANIFEST = os.path.join(SCRIPT_DIRECTORY, "package.xml")
 
 tree = xml.etree.ElementTree.parse(PACKAGE_MANIFEST)
 root = tree.getroot()
+
+CAMERA_INFO_FILES = sorted(
+    glob.glob(os.path.join("config", "camera_info", "*.yaml"))
+)
 
 PACKAGE_NAME: str = root.find("name").text  # type: ignore
 
@@ -56,11 +61,7 @@ setuptools.setup(
         # Camera info files
         (
             os.path.join("share", PACKAGE_NAME, "camera_info"),
-            [
-                "config/camera_info/imx219__base_soc_i2c0mux_i2c_1_imx219_10_640x480_3280x2464_SBGGR10_CSI2P_RAW.yaml",
-                "config/camera_info/lenovo_easycamera:_lenovo_easyc.yaml",
-                "config/camera_info/usb_2.0_camera:_usb_2.0_camera.yaml",
-            ],
+            CAMERA_INFO_FILES,
         ),
         # Launch files
         (
