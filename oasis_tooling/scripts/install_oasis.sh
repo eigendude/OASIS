@@ -47,6 +47,7 @@ if \
   [ "${HOSTNAME}" = "falcon" ] || \
   [ "${HOSTNAME}" = "hallway" ] || \
   [ "${HOSTNAME}" = "kitchen" ] || \
+  [ "${HOSTNAME}" = "macbook-vm" ] || \
   [ "${HOSTNAME}" = "megapegasus" ] || \
   [ "${HOSTNAME}" = "station" ] \
 ; then

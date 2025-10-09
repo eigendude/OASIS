@@ -77,6 +77,8 @@ elif HOST_ID == "oceanplatform":
     # PERCEPTION_SERVER_BACKGROUND.extend(["station"])
     PERCEPTION_SERVER_FLOW.extend(["station"])
     PERCEPTION_SERVER_POSE_LANDMARKS.extend(["falcon"])
+elif HOST_ID == "macbook_vm":
+    PERCEPTION_SERVER_MONOCULAR_SLAM.extend(["falcon"])
 
 
 ################################################################################
