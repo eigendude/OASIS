@@ -69,9 +69,9 @@ class PoseRendererNode(rclpy.node.Node):
         self._mp_styles = mediapipe.solutions.drawing_styles
         self._mp_pose = mediapipe.solutions.pose
 
-        # ImageTransport for publishing compressed overlays
+        # ImageTransport for publishing zstd-compressed overlays
         self._it: ImageTransport = ImageTransport(
-            self.get_name(), image_transport="compressed"
+            self.get_name(), image_transport="zstd"
         )
 
         # Per‑zone publishers and subscriptions

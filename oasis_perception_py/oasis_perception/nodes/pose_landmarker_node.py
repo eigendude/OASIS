@@ -213,9 +213,9 @@ class PoseLandmarkerNode(rclpy.node.Node):
         self._cv_bridge = cv_bridge.CvBridge()
 
         # Create an ImageTransport object using this node's name and specifying
-        # the 'compressed' transport
+        # the 'zstd' transport
         self._image_transport: ImageTransport = ImageTransport(
-            self.get_name(), image_transport="compressed"
+            self.get_name(), image_transport="zstd"
         )
 
         # Subscribers
