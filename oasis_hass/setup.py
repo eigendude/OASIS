@@ -58,6 +58,7 @@ setuptools.setup(
             os.path.join("share", PACKAGE_NAME, "systemd"),
             [
                 "config/systemd/home-assistant.service",
+                "config/systemd/oasis_hass.service",
             ],
         ),
         # mqtt_client configuration

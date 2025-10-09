@@ -1,6 +1,6 @@
 ################################################################################
 #
-#  Copyright (C) 2025 Garrett Brown
+#  Copyright (C) 2021-2025 Garrett Brown
 #  This file is part of OASIS - https://github.com/eigendude/OASIS
 #
 #  SPDX-License-Identifier: Apache-2.0
@@ -9,19 +9,32 @@
 ################################################################################
 
 from launch import LaunchDescription
-from launch_ros.actions import Node
-from oasis_perception.launch.perception_descriptions import PerceptionDescriptions
 
+from oasis_drivers.launch.driver_descriptions import DriverDescriptions as Drivers
+from oasis_hass.launch.hass_descriptions import HomeAssistantDescriptions as HA
 from oasis_hass.utils.smarthome_config import SmarthomeConfig
 
 
 ################################################################################
-# System parameters
+# Smarthome parameters
 ################################################################################
+
 
 CONFIG: SmarthomeConfig = SmarthomeConfig()
 
+# Get the hostname
+HOSTNAME: str = CONFIG.HOSTNAME
+
+# Host aliases
 HOST_ID: str = CONFIG.HOST_ID
+
+# Zone configuration
+ZONE_ID: str = CONFIG.ZONE_ID
+
+# The host and zone IDs used for Home Assistant
+HOME_ASSISTANT_ID: str = CONFIG.HOME_ASSISTANT_ID
+
+print(f"Launching on {HOSTNAME} in zone {ZONE_ID}")
 
 
 ################################################################################
@@ -32,7 +45,9 @@ HOST_ID: str = CONFIG.HOST_ID
 def generate_launch_description() -> LaunchDescription:
     ld: LaunchDescription = LaunchDescription()
 
-    if CAMERA_DRIVER:
-        PerceptionDescriptions.add_calibration(ld, HOST_ID)
+    HA.add_home_assistant(ld)
+
+    # Also run the WoL server
+    Drivers.add_wol_server(ld, HOME_ASSISTANT_ID)
 
     return ld
