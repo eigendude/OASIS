@@ -9,15 +9,12 @@
 #include "MonocularInertialSlam.h"
 
 #include <filesystem>
-#include <functional>
 #include <stdexcept>
 
 #include <System.h>
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <cv_bridge/cv_bridge.hpp>
 #include <geometry_msgs/msg/vector3.hpp>
-#include <image_transport/image_transport.hpp>
-#include <image_transport/transport_hints.hpp>
 #include <oasis_msgs/msg/i2_c_imu.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <rclcpp/logging.hpp>
@@ -28,7 +25,6 @@
 
 using namespace OASIS;
 using namespace SLAM;
-using std::placeholders::_1;
 
 namespace
 {
@@ -79,43 +75,50 @@ std::string GetSettingsFile(const rclcpp::Logger& logger)
 }
 } // namespace
 
-MonocularInertialSlam::MonocularInertialSlam(std::shared_ptr<rclcpp::Node> node,
-                                             const std::string& imageTopic,
-                                             const std::string& imuTopic)
-  : m_logger(node->get_logger()),
-    m_imgTransport(std::make_unique<image_transport::ImageTransport>(node)),
-    m_imgSubscriber(std::make_unique<image_transport::Subscriber>()),
-    m_slam(std::make_unique<ORB_SLAM3::System>(GetVocabularyFile(m_logger),
-                                               GetSettingsFile(m_logger),
-                                               ORB_SLAM3::System::IMU_MONOCULAR,
-                                               false))
+MonocularInertialSlam::MonocularInertialSlam(rclcpp::Node& node)
+  : m_logger(std::make_unique<rclcpp::Logger>(node.get_logger()))
 {
-  RCLCPP_INFO(m_logger, "Image topic: %s", imageTopic.c_str());
-  RCLCPP_INFO(m_logger, "IMU topic: %s", imuTopic.c_str());
-
-  const rclcpp::QoS qos{10};
-
-  auto transportHints = image_transport::TransportHints(node.get(), "compressed");
-
-  *m_imgSubscriber = m_imgTransport->subscribe(imageTopic, 1, &MonocularInertialSlam::ReceiveImage,
-                                               this, &transportHints);
-  m_imuSubscriber = node->create_subscription<oasis_msgs::msg::I2CImu>(
-      imuTopic, qos, std::bind(&MonocularInertialSlam::ImuCallback, this, _1));
-
-  RCLCPP_INFO(m_logger, "Started monocular inertial SLAM");
 }
 
-MonocularInertialSlam::~MonocularInertialSlam()
-{
-  // Stop all threads
-  m_slam->Shutdown();
+MonocularInertialSlam::~MonocularInertialSlam() = default;
 
-  //m_slam->SaveTrajectoryEuRoC("CameraTrajectory.txt");
-  //m_slam->SaveKeyFrameTrajectoryEuRoC("KeyFrameTrajectory.txt");
+bool MonocularInertialSlam::Initialize()
+{
+  const std::string vocabularyFile = GetVocabularyFile(*m_logger);
+  const std::string settingsFile = GetSettingsFile(*m_logger);
+
+  RCLCPP_INFO(*m_logger, "Using ORB-SLAM3 vocabulary file: %s", vocabularyFile.c_str());
+  RCLCPP_INFO(*m_logger, "Using monocular inertial SLAM settings file: %s", settingsFile.c_str());
+
+  m_slam = std::make_unique<ORB_SLAM3::System>(vocabularyFile, settingsFile,
+                                               ORB_SLAM3::System::IMU_MONOCULAR, false);
+
+  m_imuMeasurements.clear();
+
+  return true;
+}
+
+void MonocularInertialSlam::Deinitialize()
+{
+  if (m_slam)
+  {
+    // Stop all threads
+    m_slam->Shutdown();
+
+    //m_slam->SaveTrajectoryEuRoC("CameraTrajectory.txt");
+    //m_slam->SaveKeyFrameTrajectoryEuRoC("KeyFrameTrajectory.txt");
+
+    m_slam.reset();
+  }
+
+  m_imuMeasurements.clear();
 }
 
 void MonocularInertialSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg)
 {
+  if (!m_slam)
+    return;
+
   const std_msgs::msg::Header& header = msg->header;
   const double timestamp =
       static_cast<double>(header.stamp.sec) + static_cast<double>(header.stamp.nanosec) * 1E9;
@@ -127,7 +130,7 @@ void MonocularInertialSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSha
   }
   catch (cv_bridge::Exception& e)
   {
-    RCLCPP_ERROR(m_logger, "cv_bridge exception: %s", e.what());
+    RCLCPP_ERROR(*m_logger, "cv_bridge exception: %s", e.what());
     return;
   }
 
@@ -140,6 +143,9 @@ void MonocularInertialSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSha
 
 void MonocularInertialSlam::ImuCallback(const oasis_msgs::msg::I2CImu::ConstSharedPtr& msg)
 {
+  if (!m_slam)
+    return;
+
   const sensor_msgs::msg::Imu& imuMsg = msg->imu;
 
   const std_msgs::msg::Header& header = imuMsg.header;
