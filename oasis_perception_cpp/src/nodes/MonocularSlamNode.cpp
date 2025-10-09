@@ -64,8 +64,6 @@ bool MonocularSlamNode::Initialize()
   RCLCPP_INFO(*m_logger, "System ID: %s", systemId.c_str());
   RCLCPP_INFO(*m_logger, "Image topic: %s", imageTopic.c_str());
 
-  //*m_flowPublisher = image_transport::create_publisher(&m_node, flowTopic);
-
   *m_imgSubscriber = image_transport::create_subscription(
       &m_node, imageTopic,
       [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg) { OnImage(msg); }, "compressed");
@@ -87,5 +85,8 @@ void MonocularSlamNode::Deinitialize()
 void MonocularSlamNode::OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg)
 {
   if (m_monocularSlam)
+  {
+    RCLCPP_INFO(*m_logger, "MonocularSlamNode::OnImage()");
     m_monocularSlam->ReceiveImage(msg);
+  }
 }

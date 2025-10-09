@@ -62,17 +62,19 @@ PYTHON_PACKAGE_NAME: str = "oasis_perception_py"
 PERCEPTION_SERVER_BACKGROUND: list[str] = []
 PERCEPTION_SERVER_CALIBRATION: list[str] = []
 PERCEPTION_SERVER_FLOW: list[str] = []
+PERCEPTION_SERVER_MONOCULAR_SLAM: list[str] = []
 PERCEPTION_SERVER_POSE_LANDMARKS: list[str] = []
 
 if HOST_ID == "falcon":
     PERCEPTION_SERVER_FLOW.extend(["falcon"])
+    PERCEPTION_SERVER_MONOCULAR_SLAM.extend(["falcon"])
 elif HOST_ID == "nas":
     # PERCEPTION_SERVER_CALIBRATION.extend(
     #     ["bar", "doorbell", "entryway", "hallway", "kitchen", "livingroom"]
     # )
     PERCEPTION_SERVER_POSE_LANDMARKS.extend(["hallway"])
 elif HOST_ID == "oceanplatform":
-    PERCEPTION_SERVER_BACKGROUND.extend(["station"])
+    # PERCEPTION_SERVER_BACKGROUND.extend(["station"])
     PERCEPTION_SERVER_FLOW.extend(["station"])
     PERCEPTION_SERVER_POSE_LANDMARKS.extend(["falcon"])
 
@@ -209,6 +211,39 @@ def add_calibration(ld: LaunchDescription, zone_id: str) -> None:
 
 
 #
+# Monocular SLAM
+#
+
+
+def add_monocular_slam(
+    composable_nodes: list[ComposableNode], system_ids: List[str]
+) -> None:
+    composable_nodes.extend(
+        [
+            ComposableNode(
+                namespace=ROS_NAMESPACE,
+                package=CPP_PACKAGE_NAME,
+                plugin="oasis_perception::MonocularSlamComponent",
+                name=f"monocular_slam_{system_id}",
+                parameters=[{"system_id": system_id}],
+                remappings=[
+                    (
+                        f"{system_id}_image",
+                        (
+                            # Use different remappings for Kinect V2
+                            f"{system_id}/sd/image_color"
+                            if system_id == KINECT_V2_ZONE_ID
+                            else f"{system_id}/image_rect"
+                        ),
+                    ),
+                ],
+            )
+            for system_id in system_ids
+        ]
+    )
+
+
+#
 # Optical flow
 #
 
@@ -318,6 +353,9 @@ def generate_launch_description() -> LaunchDescription:
 
     if PERCEPTION_SERVER_FLOW:
         add_optical_flow(composable_nodes, PERCEPTION_SERVER_FLOW)
+
+    if PERCEPTION_SERVER_MONOCULAR_SLAM:
+        add_monocular_slam(composable_nodes, PERCEPTION_SERVER_MONOCULAR_SLAM)
 
     if PERCEPTION_SERVER_POSE_LANDMARKS:
         for host_id in PERCEPTION_SERVER_POSE_LANDMARKS:
