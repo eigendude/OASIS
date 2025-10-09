@@ -66,7 +66,7 @@ HASS_PACKAGE_NAME: str = CONFIG.HASS_PACKAGE_NAME
 
 # Video parameters
 VIDEO_DEVICE: str = "/dev/video0"
-IMAGE_SIZE: list[int] = [640, 480]
+IMAGE_SIZE: list[int] = [1280, 720]
 
 # Firmata parameters
 AVR_COM_PORT: str = "/dev/ttyACM0"
