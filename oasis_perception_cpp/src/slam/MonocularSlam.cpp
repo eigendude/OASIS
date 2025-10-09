@@ -81,9 +81,14 @@ MonocularSlam::~MonocularSlam() = default;
 
 bool MonocularSlam::Initialize()
 {
-  m_slam =
-      std::make_unique<ORB_SLAM3::System>(GetVocabularyFile(*m_logger), GetSettingsFile(*m_logger),
-                                          ORB_SLAM3::System::MONOCULAR, false);
+  const std::string vocabularyFile = GetVocabularyFile(*m_logger);
+  const std::string settingsFile = GetSettingsFile(*m_logger);
+
+  RCLCPP_INFO(*m_logger, "Using ORB-SLAM3 vocabulary file: %s", vocabularyFile.c_str());
+  RCLCPP_INFO(*m_logger, "Using monocular SLAM settings file: %s", settingsFile.c_str());
+
+  m_slam = std::make_unique<ORB_SLAM3::System>(vocabularyFile, settingsFile,
+                                               ORB_SLAM3::System::MONOCULAR, false);
 
   return true;
 }
