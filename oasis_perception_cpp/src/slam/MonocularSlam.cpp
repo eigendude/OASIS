@@ -72,34 +72,32 @@ std::string GetSettingsFile(const rclcpp::Logger& logger)
 }
 } // namespace
 
-MonocularSlam::MonocularSlam(rclcpp::Node& node)
-  : m_logger(std::make_unique<rclcpp::Logger>(node.get_logger()))
+MonocularSlam::MonocularSlam(std::shared_ptr<rclcpp::Node> node, const std::string& imageTopic)
+  : m_logger(node->get_logger()),
+    m_imgTransport(std::make_unique<image_transport::ImageTransport>(node)),
+    m_imgSubscriber(std::make_unique<image_transport::Subscriber>()),
+    m_slam(std::make_unique<ORB_SLAM3::System>(GetVocabularyFile(m_logger),
+                                               GetSettingsFile(m_logger),
+                                               ORB_SLAM3::System::MONOCULAR,
+                                               false))
 {
+  RCLCPP_INFO(m_logger, "Image topic: %s", imageTopic.c_str());
+
+  auto transportHints = image_transport::TransportHints(node.get(), "compressed");
+
+  *m_imgSubscriber =
+      m_imgTransport->subscribe(imageTopic, 1, &MonocularSlam::ReceiveImage, this, &transportHints);
+
+  RCLCPP_INFO(m_logger, "Started monocular SLAM");
 }
 
-MonocularSlam::~MonocularSlam() = default;
-
-bool MonocularSlam::Initialize()
+MonocularSlam::~MonocularSlam()
 {
-  m_slam =
-      std::make_unique<ORB_SLAM3::System>(GetVocabularyFile(*m_logger), GetSettingsFile(*m_logger),
-                                          ORB_SLAM3::System::MONOCULAR, false);
+  // Stop all threads
+  m_slam->Shutdown();
 
-  return true;
-}
-
-void MonocularSlam::Deinitialize()
-{
-  if (m_slam)
-  {
-    // Stop all threads
-    m_slam->Shutdown();
-
-    //m_slam->SaveTrajectoryEuRoC("CameraTrajectory.txt");
-    //m_slam->SaveKeyFrameTrajectoryEuRoC("KeyFrameTrajectory.txt");
-
-    m_slam.reset();
-  }
+  //m_slam->SaveTrajectoryEuRoC("CameraTrajectory.txt");
+  //m_slam->SaveKeyFrameTrajectoryEuRoC("KeyFrameTrajectory.txt");
 }
 
 void MonocularSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg)
@@ -111,7 +109,7 @@ void MonocularSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& 
   }
   catch (cv_bridge::Exception& e)
   {
-    RCLCPP_ERROR(*m_logger, "cv_bridge exception: %s", e.what());
+    RCLCPP_ERROR(m_logger, "cv_bridge exception: %s", e.what());
     return;
   }
 

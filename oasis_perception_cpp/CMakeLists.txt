@@ -257,8 +257,8 @@ endif()
 if (ORB_SLAM3_FOUND)
   # Project files
   set(MONOCULAR_SLAM_SOURCES
-    src/nodes/MonocularSlamNode.cpp
     src/slam/MonocularSlam.cpp
+    src/utils/NetworkUtils.cpp
   )
   set(MONOCULAR_SLAM_DEFINITIONS
     HAVE_EIGEN
@@ -289,7 +289,7 @@ if (ORB_SLAM3_FOUND)
   # Node
   add_executable(monocular_slam
     ${MONOCULAR_SLAM_SOURCES}
-    src/cli/monocular_slam_node.cpp
+    src/monocular_slam.cpp
   )
   target_compile_definitions(monocular_slam PUBLIC
     ${MONOCULAR_SLAM_DEFINITIONS}
@@ -305,34 +305,6 @@ if (ORB_SLAM3_FOUND)
       monocular_slam
     DESTINATION
       lib/${PROJECT_NAME}
-  )
-
-  # Component
-  add_library(monocular_slam_component SHARED
-    ${MONOCULAR_SLAM_SOURCES}
-    src/components/monocular_slam_component.cpp
-    src/ros/RosComponent.cpp
-  )
-  target_compile_definitions(monocular_slam_component PUBLIC
-    ${MONOCULAR_SLAM_DEFINITIONS}
-  )
-  target_include_directories(monocular_slam_component PUBLIC
-    ${MONOCULAR_SLAM_INCLUDE_DIRS}
-    ${rclcpp_components_INCLUDE_DIRS}
-  )
-  target_link_libraries(monocular_slam_component PUBLIC
-    ${MONOCULAR_SLAM_LIBRARIES}
-  )
-  install(
-    TARGETS
-      monocular_slam_component
-    DESTINATION
-      lib
-  )
-  rclcpp_components_register_node(
-    monocular_slam_component
-    PLUGIN "oasis_perception::MonocularSlamComponent"
-    EXECUTABLE monocular_slam_component_node
   )
 endif()
 

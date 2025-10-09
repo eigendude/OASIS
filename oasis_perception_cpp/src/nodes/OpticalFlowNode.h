@@ -37,7 +37,6 @@ public:
   void Deinitialize();
 
 private:
-  // ROS interface
   void OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg);
 
   // Construction parameters
