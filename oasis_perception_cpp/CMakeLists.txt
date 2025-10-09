@@ -343,8 +343,8 @@ endif()
 if (ORB_SLAM3_FOUND)
   # Project files
   set(MONOCULAR_INERTIAL_SLAM_SOURCES
+    src/nodes/MonocularInertialSlamNode.cpp
     src/slam/MonocularInertialSlam.cpp
-    src/utils/NetworkUtils.cpp
   )
   set(MONOCULAR_INERTIAL_SLAM_DEFINITIONS
     ${MONOCULAR_SLAM_DEFINITIONS}
@@ -361,7 +361,7 @@ if (ORB_SLAM3_FOUND)
   # Node
   add_executable(monocular_inertial_slam
     ${MONOCULAR_INERTIAL_SLAM_SOURCES}
-    src/monocular_inertial_slam.cpp
+    src/cli/monocular_inertial_slam_node.cpp
   )
   target_compile_definitions(monocular_inertial_slam PUBLIC
     ${MONOCULAR_INERTIAL_SLAM_DEFINITIONS}
@@ -377,6 +377,34 @@ if (ORB_SLAM3_FOUND)
       monocular_inertial_slam
     DESTINATION
       lib/${PROJECT_NAME}
+  )
+
+  # Component
+  add_library(monocular_inertial_slam_component SHARED
+    ${MONOCULAR_INERTIAL_SLAM_SOURCES}
+    src/components/monocular_inertial_slam_component.cpp
+    src/ros/RosComponent.cpp
+  )
+  target_compile_definitions(monocular_inertial_slam_component PUBLIC
+    ${MONOCULAR_INERTIAL_SLAM_DEFINITIONS}
+  )
+  target_include_directories(monocular_inertial_slam_component PUBLIC
+    ${MONOCULAR_INERTIAL_SLAM_INCLUDE_DIRS}
+    ${rclcpp_components_INCLUDE_DIRS}
+  )
+  target_link_libraries(monocular_inertial_slam_component PUBLIC
+    ${MONOCULAR_INERTIAL_SLAM_LIBRARIES}
+  )
+  install(
+    TARGETS
+      monocular_inertial_slam_component
+    DESTINATION
+      lib
+  )
+  rclcpp_components_register_node(
+    monocular_inertial_slam_component
+    PLUGIN "oasis_perception::MonocularInertialSlamComponent"
+    EXECUTABLE monocular_inertial_slam_component_node
   )
 endif()
 
