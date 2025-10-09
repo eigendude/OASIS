@@ -30,7 +30,7 @@ namespace
 constexpr const char* FLOW_TOPIC = "flow";
 
 // Optical flow configuration
-constexpr unsigned int MAX_TRACKED_POINTS = 20;
+constexpr unsigned int MAX_TRACKED_POINTS = 40;
 
 // Subscribed topics
 constexpr const char* IMAGE_TOPIC = "image";
