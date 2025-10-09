@@ -30,7 +30,7 @@ BackgroundModelerABL::BackgroundModelerABL(rclcpp::Node& node,
 {
   *m_imgPublisherBackground = image_transport::create_publisher(&node, backgroundTopic);
   *m_imgSubscriber = image_transport::create_subscription(
-      &node, imageTopic, [this](const auto& msg) { ReceiveImage(msg); }, "zstd");
+      &node, imageTopic, [this](const auto& msg) { ReceiveImage(msg); }, "compressed");
 }
 
 BackgroundModelerABL::~BackgroundModelerABL()

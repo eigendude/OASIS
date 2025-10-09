@@ -34,7 +34,7 @@ BackgroundSubtractorASBL::BackgroundSubtractorASBL(rclcpp::Node& node,
   *m_imgPublisherForeground = image_transport::create_publisher(&node, foregroundTopic);
   *m_imgPublisherSubtracted = image_transport::create_publisher(&node, subtractedTopic);
   *m_imgSubscriber = image_transport::create_subscription(
-      &node, imageTopic, [this](const auto& msg) { ReceiveImage(msg); }, "zstd");
+      &node, imageTopic, [this](const auto& msg) { ReceiveImage(msg); }, "compressed");
 }
 
 BackgroundSubtractorASBL::~BackgroundSubtractorASBL()

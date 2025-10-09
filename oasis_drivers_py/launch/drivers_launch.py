@@ -239,10 +239,10 @@ def add_ros2_camera(ld: LaunchDescription, zone_id: str) -> None:
                         f"camera_ros_{zone_id}/image_raw",
                         f"{zone_id}/image_raw",
                     ),
-                    # TODO: Need to remap zstd image topic?
+                    # TODO: Need to remap compressed image topic?
                     (
-                        f"camera_ros_{zone_id}/image_raw/zstd",
-                        f"{zone_id}/image_raw/zstd",
+                        f"camera_ros_{zone_id}/image_raw/compressed",
+                        f"{zone_id}/image_raw/compressed",
                     ),
                 ],
             ),
@@ -252,7 +252,7 @@ def add_ros2_camera(ld: LaunchDescription, zone_id: str) -> None:
                 plugin="image_proc::RectifyNode",
                 name=f"rectify_node_{zone_id}",
                 parameters=[
-                    {"image_transport": "zstd", "interpolation": 1},  # Linear
+                    {"image_transport": "compressed", "interpolation": 1},  # Linear
                 ],
                 remappings=[
                     # Topics
@@ -348,7 +348,7 @@ def add_v4l2_camera(ld: LaunchDescription, zone_id: str) -> None:
                 plugin="image_proc::RectifyNode",
                 name=f"rectify_node_{zone_id}",
                 parameters=[
-                    {"image_transport": "zstd", "interpolation": 1},  # Linear
+                    {"image_transport": "compressed", "interpolation": 1},  # Linear
                 ],
                 remappings=[
                     # Topics
