@@ -83,7 +83,7 @@ MonocularSlam::MonocularSlam(std::shared_ptr<rclcpp::Node> node, const std::stri
 {
   RCLCPP_INFO(m_logger, "Image topic: %s", imageTopic.c_str());
 
-  auto transportHints = image_transport::TransportHints(node.get(), "compressed");
+  auto transportHints = image_transport::TransportHints(node.get(), "zstd");
 
   *m_imgSubscriber =
       m_imgTransport->subscribe(imageTopic, 1, &MonocularSlam::ReceiveImage, this, &transportHints);

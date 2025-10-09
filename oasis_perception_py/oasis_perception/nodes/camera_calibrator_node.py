@@ -232,9 +232,9 @@ class CameraCalibratorNode(CalibrationNode):
         # Bridge for cv2 -> ROS conversions
         self._bridge: cv_bridge.CvBridge = cv_bridge.CvBridge()
 
-        # image_transport publisher using "compressed" transport
+        # image_transport publisher using "zstd" transport
         self._it_pub: ImageTransport = ImageTransport(
-            self.get_name() + "_pub", image_transport="compressed"
+            self.get_name() + "_pub", image_transport="zstd"
         )
         self._calibration_pub: rclpy.publisher.Publisher = self._it_pub.advertise(
             self.resolve_topic_name(CALIBRATION_TOPIC), 1

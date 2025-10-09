@@ -95,7 +95,7 @@ MonocularInertialSlam::MonocularInertialSlam(std::shared_ptr<rclcpp::Node> node,
 
   const rclcpp::QoS qos{10};
 
-  auto transportHints = image_transport::TransportHints(node.get(), "compressed");
+  auto transportHints = image_transport::TransportHints(node.get(), "zstd");
 
   *m_imgSubscriber = m_imgTransport->subscribe(imageTopic, 1, &MonocularInertialSlam::ReceiveImage,
                                                this, &transportHints);
