@@ -69,11 +69,18 @@ if \
   ENABLE_VISUALIZATION=1
 fi
 
+# Home Assistant machine
+ENABLE_HASS=0
+if [ "${HOSTNAME}" = "homeassistant" ]; then
+  ENABLE_HASS=1
+fi
+
 # Get a list of enabled packages
 ENABLED_PACKAGES=()
 for OASIS_PACKAGE in \
     $([ "${ENABLE_CONTROL}" = "0" ] || echo "oasis_control") \
     $([ "${ENABLE_DRIVERS}" = "0" ] || echo "oasis_drivers_py") \
+    $([ "${ENABLE_HASS}" = "0" ] || echo "oasis_hass") \
     $([ "${ENABLE_PERCEPTION}" = "0" ] || echo "oasis_perception_py") \
     $([ "${ENABLE_VISUALIZATION}" = "0" ] || echo "oasis_visualization") \
 ; do
