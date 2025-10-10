@@ -1,0 +1,47 @@
+[Unit]
+
+Description=OASIS Home Assistant
+After=network.target
+
+[Service]
+
+#
+# User configuration
+#
+# TODO: Better way to define this
+#
+
+User=ubuntu
+
+#
+# ROS 2 configuration
+#
+
+Environment=ROS2_DISTRO=kilted
+Environment=RMW_IMPLEMENTATION=rmw_fastrtps_dynamic_cpp
+
+#
+# Path configuration
+#
+
+Environment=OASIS_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/oasis-${ROS2_DISTRO}/install/setup.bash
+
+#
+# Service definition
+#
+
+# Ensure the system has been up for at least 20 seconds before launching service
+ExecStartPre=/bin/bash -c 'while [ $(cut -d. -f1 /proc/uptime) -lt 10 ]; do sleep 1; done'
+
+ExecStart=/bin/bash -c 'set +o nounset && source `eval echo "${OASIS_ENV}"` && ros2 launch oasis_hass hass_launch.py'
+Restart=on-failure
+
+[Install]
+
+WantedBy=multi-user.target
+
+# To install:
+# sudo cp oasis_hass.service /etc/systemd/system/
+
+# To enable at startup:
+# sudo systemctl enable oasis_hass.service

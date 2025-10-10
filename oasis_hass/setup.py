@@ -53,11 +53,19 @@ setuptools.setup(
             os.path.join("share", "ament_index", "resource_index", "packages"),
             ["resource/" + PACKAGE_NAME],
         ),
+        # Launch files
+        (
+            os.path.join("share", PACKAGE_NAME),
+            [
+                "launch/hass_launch.py",
+            ],
+        ),
         # Systemd services
         (
             os.path.join("share", PACKAGE_NAME, "systemd"),
             [
                 "config/systemd/home-assistant.service",
+                "config/systemd/oasis_hass.service",
             ],
         ),
         # mqtt_client configuration

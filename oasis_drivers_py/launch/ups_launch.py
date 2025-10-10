@@ -9,8 +9,8 @@
 ################################################################################
 
 from launch import LaunchDescription
-from launch_ros.actions import Node
 
+from oasis_drivers.launch.driver_descriptions import DriverDescriptions as Drivers
 from oasis_hass.utils.smarthome_config import SmarthomeConfig
 
 
@@ -23,9 +23,6 @@ CONFIG: SmarthomeConfig = SmarthomeConfig()
 
 ZONE_ID: str = CONFIG.ZONE_ID
 
-ROS_NAMESPACE: str = "oasis"
-PYTHON_PACKAGE_NAME: str = "oasis_drivers_py"
-
 
 ################################################################################
 # Launch description
@@ -35,18 +32,6 @@ PYTHON_PACKAGE_NAME: str = "oasis_drivers_py"
 def generate_launch_description() -> LaunchDescription:
     ld = LaunchDescription()
 
-    ups_server_node = Node(
-        namespace=ROS_NAMESPACE,
-        package=PYTHON_PACKAGE_NAME,
-        executable="ups_server",
-        name=f"ups_server_{ZONE_ID}",
-        output="screen",
-        remappings=[
-            ("ups_status", f"{ZONE_ID}/ups_status"),
-            ("ups_command", f"{ZONE_ID}/ups_command"),
-        ],
-    )
-
-    ld.add_action(ups_server_node)
+    Drivers.add_ups_server(ld, ZONE_ID)
 
     return ld

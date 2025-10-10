@@ -105,10 +105,6 @@ class SmarthomeConfig:
     def CAMERA_DRIVER_MAP(self) -> dict[str, str]:
         return self._camera_driver_map
 
-    def get_camera_driver(self, host_id: str, zone_id: str) -> str:
-        """Return the configured camera driver for a host or zone."""
-
-        # Prefer explicit host configuration and fall back to zone configuration
-        return self._camera_driver_map.get(
-            host_id, self._camera_driver_map.get(zone_id, "")
-        )
+    def get_camera_driver(self, host_id) -> str:
+        """Return the configured camera driver for a given host."""
+        return self._camera_driver_map.get(host_id, "")
