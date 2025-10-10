@@ -71,3 +71,11 @@ sudo python3 -m pip install \
   mediapipe \
   git+https://github.com/eigendude/pymata-express@master#egg=pymata-express \
   telemetrix-aio \
+
+# Install Matplotlib from pip to ensure Mediapipe's 3-D tooling has the newer
+# wheel even when an older apt package is already present on the system.
+sudo python3 -m pip install \
+  --upgrade \
+  --ignore-installed \
+  --break-system-packages \
+  matplotlib
