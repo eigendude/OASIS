@@ -64,7 +64,8 @@ VIDEO_DEVICE: str = "/dev/video0"
 
 # TODO: Hardware configuration
 if HOST_ID == "falcon":
-    IMAGE_SIZE: list[int] = [1280, 720]
+    # IMAGE_SIZE: list[int] = [1280, 720]
+    IMAGE_SIZE: list[int] = [640, 480]
 else:
     IMAGE_SIZE: list[int] = [640, 480]
 
