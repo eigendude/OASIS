@@ -481,7 +481,7 @@ class ConductorManagerNode(rclpy.node.Node):
             reverse: bool = throttle < 0.0
 
             # Reduce magnitude by a factor to limit top speed
-            magnitude /= 5.75
+            magnitude /= 5.5
 
             # Futures to wait on while the service is being called
             future_pwm: Optional[asyncio.Future] = None
