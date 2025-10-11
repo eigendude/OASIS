@@ -30,10 +30,8 @@ Environment=OASIS_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/oasis-${RO
 # Service definition
 #
 
-# Ensure the system has been up for at least 20 seconds before launching service
-ExecStartPre=/bin/bash -c 'while [ $(cut -d. -f1 /proc/uptime) -lt 10 ]; do sleep 1; done'
-
-ExecStart=/bin/bash -c 'set +o nounset && source `eval echo "${OASIS_ENV}"` && ros2 launch oasis_hass hass_launch.py'
+# Delay launch until the system has been up long enough for ROS nodes to connect
+ExecStart=/bin/bash -c 'set +o nounset && source `eval echo "${OASIS_ENV}"` && DELAY_SCRIPT="$(ros2 pkg prefix oasis_drivers_py)/lib/oasis_drivers_py/delay_launch.sh" && "${DELAY_SCRIPT}" && ros2 launch oasis_hass hass_launch.py'
 Restart=on-failure
 
 [Install]

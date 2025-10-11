@@ -10,7 +10,7 @@ User=ubuntu
 Environment=ROS2_DISTRO=kilted
 Environment=RMW_IMPLEMENTATION=rmw_fastrtps_dynamic_cpp
 Environment=OASIS_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/oasis-${ROS2_DISTRO}/install/setup.bash
-ExecStart=/bin/bash -c 'set +o nounset && source `eval echo "${OASIS_ENV}"` && ros2 launch oasis_drivers_py ups_launch.py'
+ExecStart=/bin/bash -c 'set +o nounset && source `eval echo "${OASIS_ENV}"` && DELAY_SCRIPT="$(ros2 pkg prefix oasis_drivers_py)/lib/oasis_drivers_py/delay_launch.sh" && "${DELAY_SCRIPT}" && ros2 launch oasis_drivers_py ups_launch.py'
 Restart=on-failure
 
 [Install]

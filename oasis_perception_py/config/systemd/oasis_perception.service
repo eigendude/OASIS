@@ -40,11 +40,9 @@ Environment=OPENCV_LIB_DIR=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/cv/in
 # Service definition
 #
 
-# Ensure the system has been up for at least 20 seconds before launching perception
-ExecStartPre=/bin/bash -c 'while [ $(cut -d. -f1 /proc/uptime) -lt 10 ]; do sleep 1; done'
-
+# Delay launch until the system has been up long enough for ROS nodes to connect
 # Need to run from oasis_perception_cpp for background subtractor to find configs
-ExecStart=/bin/bash -c 'set +o nounset && export LD_LIBRARY_PATH="`eval echo "${OPENCV_LIB_DIR}"`:${LD_LIBRARY_PATH:-}" && source `eval echo "${OASIS_ENV}"` && cd `eval echo "${OASIS_SRC}/oasis_perception_cpp"` && ros2 launch oasis_perception_py perception_launch.py'
+ExecStart=/bin/bash -c 'set +o nounset && export LD_LIBRARY_PATH="`eval echo "${OPENCV_LIB_DIR}"`:${LD_LIBRARY_PATH:-}" && source `eval echo "${OASIS_ENV}"` && DELAY_SCRIPT="$(ros2 pkg prefix oasis_drivers_py)/lib/oasis_drivers_py/delay_launch.sh" && "${DELAY_SCRIPT}" && cd `eval echo "${OASIS_SRC}/oasis_perception_cpp"` && ros2 launch oasis_perception_py perception_launch.py'
 Restart=on-failure
 
 [Install]
