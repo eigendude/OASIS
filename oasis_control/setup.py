@@ -8,6 +8,7 @@
 #
 ################################################################################
 
+import glob
 import os
 import xml.etree.ElementTree
 
@@ -23,6 +24,7 @@ tree = xml.etree.ElementTree.parse(PACKAGE_MANIFEST)
 root = tree.getroot()
 
 PACKAGE_NAME: str = root.find("name").text  # type: ignore
+SYSTEMD_FILES = sorted(glob.glob(os.path.join("config", "systemd", "*")))
 
 setuptools.setup(
     name=PACKAGE_NAME,
@@ -55,19 +57,10 @@ setuptools.setup(
         ),
         # Launch files
         (os.path.join("share", PACKAGE_NAME), ["launch/control_launch.py"]),
-        # Systemd services
+        # Systemd units
         (
             os.path.join("share", PACKAGE_NAME, "systemd"),
-            ["config/systemd/autoupdate.service"],
-        ),
-        (
-            os.path.join("share", PACKAGE_NAME, "systemd"),
-            ["config/systemd/oasis_control.service"],
-        ),
-        # Systemd timers
-        (
-            os.path.join("share", PACKAGE_NAME, "systemd"),
-            ["config/systemd/autoupdate.timer"],
+            SYSTEMD_FILES,
         ),
     ],
     install_requires=[

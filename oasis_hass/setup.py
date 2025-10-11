@@ -8,6 +8,7 @@
 #
 ################################################################################
 
+import glob
 import os
 import xml.etree.ElementTree
 
@@ -23,6 +24,7 @@ tree = xml.etree.ElementTree.parse(PACKAGE_MANIFEST)
 root = tree.getroot()
 
 PACKAGE_NAME: str = root.find("name").text  # type: ignore
+SYSTEMD_FILES = sorted(glob.glob(os.path.join("config", "systemd", "*")))
 
 setuptools.setup(
     name=PACKAGE_NAME,
@@ -63,10 +65,7 @@ setuptools.setup(
         # Systemd services
         (
             os.path.join("share", PACKAGE_NAME, "systemd"),
-            [
-                "config/systemd/home-assistant.service",
-                "config/systemd/oasis_hass.service",
-            ],
+            SYSTEMD_FILES,
         ),
         # mqtt_client configuration
         (

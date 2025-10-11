@@ -24,6 +24,7 @@ tree = xml.etree.ElementTree.parse(PACKAGE_MANIFEST)
 root = tree.getroot()
 
 CAMERA_INFO_FILES = sorted(glob.glob(os.path.join("config", "camera_info", "*.yaml")))
+SYSTEMD_FILES = sorted(glob.glob(os.path.join("config", "systemd", "*")))
 
 PACKAGE_NAME: str = root.find("name").text  # type: ignore
 
@@ -72,11 +73,7 @@ setuptools.setup(
         # Systemd services
         (
             os.path.join("share", PACKAGE_NAME, "systemd"),
-            [
-                "config/systemd/display_fixes.service",
-                "config/systemd/oasis_drivers.service",
-                "config/systemd/oasis_ups@.service",
-            ],
+            SYSTEMD_FILES,
         ),
         # udev rules
         (
