@@ -1,4 +1,5 @@
 [Unit]
+
 Description=OASIS UPS ROS driver (%i)
 Requires=nut-server.service
 After=nut-server.service
@@ -6,12 +7,37 @@ BindsTo=nut-driver@%i.service
 PartOf=nut-driver@%i.service
 
 [Service]
+
+#
+# User configuration
+#
+# TODO: Better way to define this
+#
+
 User=ubuntu
+
+#
+# ROS 2 configuration
+#
+
 Environment=ROS2_DISTRO=kilted
 Environment=RMW_IMPLEMENTATION=rmw_fastrtps_dynamic_cpp
+
+#
+# Path configuration
+#
+
 Environment=OASIS_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/oasis-${ROS2_DISTRO}/install/setup.bash
-ExecStart=/bin/bash -c 'set +o nounset && source `eval echo "${OASIS_ENV}"` && ros2 launch oasis_drivers_py ups_launch.py'
+
+#
+# Service definition
+#
+
+# Delay launch until the system has been up long enough for ROS nodes to connect
+ExecStart=/bin/bash -c 'set +o nounset && source `eval echo "${OASIS_ENV}"` && "$(ros2 pkg prefix oasis_drivers_py)/lib/oasis_drivers_py/delay_launch.sh" && ros2 launch oasis_drivers_py ups_launch.py'
+
 Restart=on-failure
 
 [Install]
+
 WantedBy=multi-user.target
