@@ -13,7 +13,6 @@
 #
 
 import rclpy.node
-from rclpy.logging import LoggingSeverity
 
 from oasis_control.lighting.display_manager import DisplayManager
 from oasis_control.lighting.lighting_manager import LightingManager
@@ -49,9 +48,6 @@ class HomeManagerNode(rclpy.node.Node):
         Initialize resources.
         """
         super().__init__(NODE_NAME)
-
-        # Enable debug logging
-        self.get_logger().set_level(LoggingSeverity.DEBUG)
 
         self.get_logger().info("Home manager initializing...")
 
