@@ -101,6 +101,7 @@ setuptools.setup(
         ],
     },
     scripts=[
+        "scripts/delay_launch.sh",
         "scripts/wifi_connect.sh",
         "scripts/wifi_disconnect.sh",
         "scripts/wifi_list.sh",
