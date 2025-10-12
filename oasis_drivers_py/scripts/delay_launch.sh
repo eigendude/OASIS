@@ -23,7 +23,7 @@ ARCHITECTURE="$(uname -m)"
 
 case "${ARCHITECTURE}" in
   x86_64)
-    DELAY_DURATION="15"
+    DELAY_DURATION="20"
     ;;
   arm*|aarch64)
     DELAY_DURATION="30"
