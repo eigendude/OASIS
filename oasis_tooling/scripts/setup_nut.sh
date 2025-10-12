@@ -120,5 +120,16 @@ sudo systemctl enable --now nut-server.service
 # Enable and start the OASIS UPS companion service
 sudo systemctl enable --now "oasis_ups@${UPS_NAME}.service"
 
+# Disable the default host-based nut-driver@ service if it exists. Debian-based
+# systems ship with a generator that attempts to start a driver whose instance
+# name matches the system hostname. OASIS uses a dedicated instance name
+# ("${UPS_NAME}") instead, so shut down the stray service to avoid repeated
+# start failures in the journal.
+SYSTEM_HOSTNAME="$(hostname)"
+DEFAULT_HOSTNAME_SERVICE="nut-driver@${SYSTEM_HOSTNAME}.service"
+if [[ "${UPS_NAME}" != "${SYSTEM_HOSTNAME}" ]]; then
+  sudo systemctl disable --now "${DEFAULT_HOSTNAME_SERVICE}" 2>/dev/null || true
+fi
+
 # Disable the monitor unless you're using upsmon for shutdown
 sudo systemctl disable --now nut-monitor.service || true
