@@ -18,9 +18,21 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
-# Determine the delay duration (in seconds)
-# TODO: This should depend on the system being used
-DELAY_DURATION="30"
+# Determine the delay duration (in seconds) based on system architecture
+ARCHITECTURE="$(uname -m)"
+
+case "${ARCHITECTURE}" in
+  x86_64)
+    DELAY_DURATION="15"
+    ;;
+  arm*|aarch64)
+    DELAY_DURATION="30"
+    ;;
+  *)
+    echo "Warning: Unknown architecture '${ARCHITECTURE}', defaulting delay to 30 seconds." >&2
+    DELAY_DURATION="30"
+    ;;
+esac
 
 # Get the system uptime
 UPTIME_SECONDS="$(awk '{print int($1)}' /proc/uptime)"
