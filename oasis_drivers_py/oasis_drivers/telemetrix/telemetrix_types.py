@@ -12,16 +12,16 @@ import enum
 
 
 class AnalogMode(enum.Enum):
-    DISABLED: int = 0
-    INPUT: int = 1
+    DISABLED = enum.auto()
+    INPUT = enum.auto()
 
 
 class DigitalMode(enum.Enum):
-    DISABLED: int = 0
-    INPUT: int = 1
-    INPUT_PULLUP: int = 2
-    OUTPUT: int = 3
-    PWM: int = 4
-    SERVO: int = 5
-    CPU_FAN_PWM: int = 6
-    CPU_FAN_TACHOMETER: int = 7
+    DISABLED = enum.auto()
+    INPUT = enum.auto()
+    INPUT_PULLUP = enum.auto()
+    OUTPUT = enum.auto()
+    PWM = enum.auto()
+    SERVO = enum.auto()
+    CPU_FAN_PWM = enum.auto()
+    CPU_FAN_TACHOMETER = enum.auto()
