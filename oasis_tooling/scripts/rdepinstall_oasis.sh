@@ -69,7 +69,9 @@ sudo python3 -m pip install \
   --ignore-installed \
   --break-system-packages \
   mediapipe \
+  psutil \
   git+https://github.com/eigendude/pymata-express@master#egg=pymata-express \
+  pyserial \
   telemetrix-aio \
 
 # Install Matplotlib from pip to ensure Mediapipe's 3-D tooling has the newer
