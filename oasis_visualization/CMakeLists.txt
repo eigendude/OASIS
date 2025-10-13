@@ -34,6 +34,8 @@ install(
 
 install(
   FILES
+    config/systemd/dismiss-osd.service
+    config/systemd/dismiss-osd.timer
     config/systemd/kodi_visualizer.service
   DESTINATION
     share/${PROJECT_NAME}/systemd

@@ -1,0 +1,33 @@
+[Unit]
+Description=Dismiss GNOME on-screen display notifications
+
+[Service]
+Type=oneshot
+
+#
+# User configuration
+#
+# TODO: Better way to define this
+#
+
+User=ubuntu
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+
+#
+# Path configuration
+#
+
+Environment=ROS2_DISTRO=kilted
+Environment=DISMISS_OSD_SCRIPT=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/oasis-${ROS2_DISTRO}/install/lib/oasis_visualization/dismiss-osd.sh
+
+#
+# Service definition
+#
+
+ExecStart=/bin/bash -c 'set +o nounset && DISMISS_OSD_SCRIPT="`eval echo "${DISMISS_OSD_SCRIPT}"`" && exec "${DISMISS_OSD_SCRIPT}"'
+
+# To install:
+# sudo cp dismiss-osd.service /etc/systemd/system/
+
+# To run manually:
+# sudo systemctl start dismiss-osd.service
