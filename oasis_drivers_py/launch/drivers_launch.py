@@ -61,13 +61,19 @@ PYTHON_PACKAGE_NAME: str = "oasis_drivers_py"
 #
 
 VIDEO_DEVICE: str = "/dev/video0"
+IMAGE_FORMAT: str
+IMAGE_SIZE: list[int]
+SENSOR_MODE: str
 
 # TODO: Hardware configuration
 if HOST_ID == "falcon":
-    # IMAGE_SIZE: list[int] = [1280, 720]
-    IMAGE_SIZE: list[int] = [640, 480]
+    IMAGE_FORMAT = "BGR888"
+    IMAGE_SIZE = [1280, 720]
+    SENSOR_MODE = "3280:2464"  # V2 camera full sensor resolution
 else:
-    IMAGE_SIZE: list[int] = [640, 480]
+    IMAGE_FORMAT = "BGR888"
+    IMAGE_SIZE = [640, 480]
+    SENSOR_MODE = "3280:2464"  # V2 camera full sensor resolution
 
 
 #
@@ -136,9 +142,9 @@ def generate_launch_description() -> LaunchDescription:
 
     # LEGO models
     if HOST_ID == "falcon":
-        Drivers.add_ros2_camera(ld, ZONE_ID, IMAGE_SIZE)
+        Drivers.add_ros2_camera(ld, ZONE_ID, IMAGE_FORMAT, IMAGE_SIZE, SENSOR_MODE)
     if HOST_ID == "station":
-        Drivers.add_ros2_camera(ld, ZONE_ID, IMAGE_SIZE)
+        Drivers.add_ros2_camera(ld, ZONE_ID, IMAGE_FORMAT, IMAGE_SIZE, SENSOR_MODE)
 
     # Smarthome cameras
     if HOST_ID == "door":

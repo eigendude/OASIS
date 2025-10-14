@@ -132,7 +132,11 @@ class DriverDescriptions:
 
     @staticmethod
     def add_ros2_camera(
-        ld: LaunchDescription, zone_id: str, image_size: list[int]
+        ld: LaunchDescription,
+        zone_id: str,
+        image_format: str,
+        image_size: list[int],
+        sensor_mode: str,
     ) -> None:
         camera_container: ComposableNodeContainer = ComposableNodeContainer(
             namespace=ROS_NAMESPACE,
@@ -148,10 +152,11 @@ class DriverDescriptions:
                     name=f"camera_ros_{zone_id}",
                     parameters=[
                         {
-                            "format": "RGB888",
+                            "role": "video",
+                            "format": image_format,
                             "width": image_size[0],
                             "height": image_size[1],
-                            "sensor_mode": "3280:2464",  # V2 camera full sensor resolution
+                            "sensor_mode": sensor_mode,
                         },
                     ],
                     remappings=[
@@ -177,7 +182,7 @@ class DriverDescriptions:
                     plugin="image_proc::RectifyNode",
                     name=f"rectify_node_{zone_id}",
                     parameters=[
-                        {"image_transport": "compressed", "interpolation": 1},  # Linear
+                        {"interpolation": 1},  # Linear
                     ],
                     remappings=[
                         # Topics
