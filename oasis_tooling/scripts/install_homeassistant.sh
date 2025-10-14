@@ -243,7 +243,7 @@ HA_AUTOMATIONS="${HASS_CFG_DIR}/automations.yaml"
 
 # Write automations.yaml with our MQTT automations
 # TODO: Preserve existing automations.yaml content
-echo "Writing Home Assistant automations.yaml..."
+echo "Writing Home Assistant automations.yaml..."
 sudo -u "${HASS_USERNAME}" tee "${HA_AUTOMATIONS}" > /dev/null < "${TEMPLATE_AUTOMATIONS}"
 
 ################################################################################
