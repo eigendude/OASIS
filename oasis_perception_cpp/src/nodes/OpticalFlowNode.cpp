@@ -84,7 +84,7 @@ bool OpticalFlowNode::Initialize()
 
   *m_imgSubscriber = image_transport::create_subscription(
       &m_node, imageTopic,
-      [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg) { OnImage(msg); }, "compressed");
+      [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg) { OnImage(msg); }, "raw");
 
   RCLCPP_INFO(m_node.get_logger(), "Started optical flow");
 
