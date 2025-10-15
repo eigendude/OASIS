@@ -146,6 +146,7 @@ def generate_launch_description() -> LaunchDescription:
     # LEGO models
     if HOST_ID == "falcon":
         Drivers.add_ros2_camera(composable_nodes, ZONE_ID, IMAGE_FORMAT, IMAGE_SIZE, SENSOR_MODE)
+        PerceptionDescriptions.add_optical_flow(composable_nodes, [HOST_ID])
     if HOST_ID == "station":
         Drivers.add_ros2_camera(composable_nodes, ZONE_ID, IMAGE_FORMAT, IMAGE_SIZE, SENSOR_MODE)
 
