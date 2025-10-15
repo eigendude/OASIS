@@ -41,6 +41,17 @@ print(f"Launching on {HOSTNAME} in zone {ZONE_ID}")
 
 
 ################################################################################
+# Optical flow configuration
+################################################################################
+
+
+OPTICAL_FLOW_TRANSPORT_BY_HOST: dict[str, str] = {
+    "falcon": "raw",
+    "oceanplatform": "compressed",
+}
+
+
+################################################################################
 # Hardware configuration
 ################################################################################
 
@@ -87,8 +98,9 @@ def generate_launch_description() -> LaunchDescription:
             PerceptionDescriptions.add_calibration(ld, host_id)
 
     if PERCEPTION_SERVER_FLOW:
+        image_transport = OPTICAL_FLOW_TRANSPORT_BY_HOST.get(HOST_ID, "raw")
         PerceptionDescriptions.add_optical_flow(
-            composable_nodes, PERCEPTION_SERVER_FLOW
+            composable_nodes, PERCEPTION_SERVER_FLOW, image_transport
         )
 
     if PERCEPTION_SERVER_POSE_LANDMARKS:
