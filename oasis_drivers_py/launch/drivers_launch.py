@@ -12,6 +12,7 @@ from typing import Optional
 
 from launch import LaunchDescription
 from launch_ros.descriptions import ComposableNode
+from oasis_perception.launch.perception_descriptions import PerceptionDescriptions
 
 from oasis_drivers.launch.driver_descriptions import DriverDescriptions as Drivers
 from oasis_drivers.launch.mcu_descriptions import MCUDescriptions as MCU
@@ -40,7 +41,7 @@ KINECT_V2_ZONE_ID: str = CONFIG.KINECT_V2_ZONE_ID
 # Zones with a smart display that can be controlled
 SMART_DISPLAY_ZONES: list[str] = CONFIG.SMART_DISPLAY_ZONES
 
-print(f"Launching on {HOSTNAME} in zone {ZONE_ID}")
+print(f"Launching drivers on {HOSTNAME} in zone {ZONE_ID}")
 
 
 ################################################################################
@@ -147,6 +148,9 @@ def generate_launch_description() -> LaunchDescription:
     if HOST_ID == "falcon":
         Drivers.add_ros2_camera(
             composable_nodes, ZONE_ID, IMAGE_FORMAT, IMAGE_SIZE, SENSOR_MODE
+        )
+        PerceptionDescriptions.add_optical_flow(
+            composable_nodes, [HOST_ID], image_transport="raw"
         )
     if HOST_ID == "station":
         Drivers.add_ros2_camera(
