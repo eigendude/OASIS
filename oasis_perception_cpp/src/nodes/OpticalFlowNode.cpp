@@ -38,6 +38,8 @@ constexpr const char* IMAGE_TOPIC = "image";
 // Parameters
 constexpr const char* SYSTEM_ID_PARAMETER = "system_id";
 constexpr const char* DEFAULT_SYSTEM_ID = "";
+constexpr const char* IMAGE_TRANSPORT_PARAMETER = "image_transport";
+constexpr const char* DEFAULT_IMAGE_TRANSPORT = "raw";
 } // namespace
 
 OpticalFlowNode::OpticalFlowNode(rclcpp::Node& node)
@@ -48,6 +50,7 @@ OpticalFlowNode::OpticalFlowNode(rclcpp::Node& node)
     m_opticalFlow(std::make_unique<VIDEO::OpticalFlow>())
 {
   m_node.declare_parameter<std::string>(SYSTEM_ID_PARAMETER, DEFAULT_SYSTEM_ID);
+  m_node.declare_parameter<std::string>(IMAGE_TRANSPORT_PARAMETER, DEFAULT_IMAGE_TRANSPORT);
 
   VIDEO::ConfigOptions configOptions;
   configOptions.maxPointCount = MAX_TRACKED_POINTS;
@@ -73,18 +76,30 @@ bool OpticalFlowNode::Initialize()
     return false;
   }
 
+  std::string imageTransport;
+  if (!m_node.get_parameter(IMAGE_TRANSPORT_PARAMETER, imageTransport))
+  {
+    RCLCPP_ERROR(m_node.get_logger(), "Missing image transport parameter '%s'",
+                 IMAGE_TRANSPORT_PARAMETER);
+    return false;
+  }
+
+  if (imageTransport.empty())
+    imageTransport = DEFAULT_IMAGE_TRANSPORT;
+
   const std::string imageTopic = systemId + "_" + IMAGE_TOPIC;
   const std::string flowTopic = systemId + "_" + FLOW_TOPIC;
 
   RCLCPP_INFO(m_node.get_logger(), "System ID: %s", systemId.c_str());
   RCLCPP_INFO(m_node.get_logger(), "Image topic: %s", imageTopic.c_str());
+  RCLCPP_INFO(m_node.get_logger(), "Image transport: %s", imageTransport.c_str());
   RCLCPP_INFO(m_node.get_logger(), "Flow topic: %s", flowTopic.c_str());
 
   *m_flowPublisher = image_transport::create_publisher(&m_node, flowTopic);
 
   *m_imgSubscriber = image_transport::create_subscription(
       &m_node, imageTopic,
-      [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg) { OnImage(msg); }, "compressed");
+      [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg) { OnImage(msg); }, imageTransport);
 
   RCLCPP_INFO(m_node.get_logger(), "Started optical flow");
 
