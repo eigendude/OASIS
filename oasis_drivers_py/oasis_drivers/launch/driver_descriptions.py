@@ -60,6 +60,27 @@ HASS_PACKAGE_NAME: str = CONFIG.HASS_PACKAGE_NAME
 
 class DriverDescriptions:
     #
+    # Helper function
+    #
+
+    @staticmethod
+    def add_driver_components(
+        ld: LaunchDescription, host_id: str, composable_nodes: list[ComposableNode]
+    ) -> None:
+        if not composable_nodes:
+            return
+
+        driver_container: ComposableNodeContainer = ComposableNodeContainer(
+            namespace=ROS_NAMESPACE,
+            name=f"driver_container_{host_id}",
+            package="rclcpp_components",
+            executable="component_container_mt",
+            output="screen",
+            composable_node_descriptions=composable_nodes,
+        )
+        ld.add_action(driver_container)
+
+    #
     # Display server
     #
 
@@ -132,19 +153,14 @@ class DriverDescriptions:
 
     @staticmethod
     def add_ros2_camera(
-        ld: LaunchDescription,
+        composable_nodes: list[ComposableNode],
         zone_id: str,
         image_format: str,
         image_size: list[int],
         sensor_mode: str,
     ) -> None:
-        camera_container: ComposableNodeContainer = ComposableNodeContainer(
-            namespace=ROS_NAMESPACE,
-            package="rclcpp_components",
-            executable="component_container_mt",
-            name=f"camera_container_{zone_id}",
-            output="screen",
-            composable_node_descriptions=[
+        composable_nodes.extend(
+            [
                 ComposableNode(
                     namespace=ROS_NAMESPACE,
                     package="camera_ros",
@@ -193,7 +209,6 @@ class DriverDescriptions:
                 ),
             ],
         )
-        ld.add_action(camera_container)
 
     #
     # Serial port scanner

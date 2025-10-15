@@ -11,6 +11,7 @@
 from typing import Optional
 
 from launch import LaunchDescription
+from launch_ros.descriptions import ComposableNode
 
 from oasis_drivers.launch.driver_descriptions import DriverDescriptions as Drivers
 from oasis_drivers.launch.mcu_descriptions import MCUDescriptions as MCU
@@ -110,6 +111,8 @@ AVR_COM_PORT: str = "/dev/ttyACM0"
 def generate_launch_description() -> LaunchDescription:
     ld: LaunchDescription = LaunchDescription()
 
+    composable_nodes: list[ComposableNode] = []
+
     #
     # General drivers
     #
@@ -142,9 +145,13 @@ def generate_launch_description() -> LaunchDescription:
 
     # LEGO models
     if HOST_ID == "falcon":
-        Drivers.add_ros2_camera(ld, ZONE_ID, IMAGE_FORMAT, IMAGE_SIZE, SENSOR_MODE)
+        Drivers.add_ros2_camera(
+            composable_nodes, ZONE_ID, IMAGE_FORMAT, IMAGE_SIZE, SENSOR_MODE
+        )
     if HOST_ID == "station":
-        Drivers.add_ros2_camera(ld, ZONE_ID, IMAGE_FORMAT, IMAGE_SIZE, SENSOR_MODE)
+        Drivers.add_ros2_camera(
+            composable_nodes, ZONE_ID, IMAGE_FORMAT, IMAGE_SIZE, SENSOR_MODE
+        )
 
     # Smarthome cameras
     if HOST_ID == "door":
@@ -161,5 +168,11 @@ def generate_launch_description() -> LaunchDescription:
             MCU.add_firmata_bridge(ld, HOST_ID, MCU_NODE, AVR_COM_PORT)
         elif MCU_TYPE == MCUType.TELEMETRIX:
             MCU.add_telemetrix_bridge(ld, HOST_ID, MCU_NODE, AVR_COM_PORT)
+
+    #
+    # Add composable nodes to launch description
+    #
+
+    Drivers.add_driver_components(ld, HOST_ID, composable_nodes)
 
     return ld
