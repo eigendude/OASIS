@@ -37,7 +37,7 @@ SMART_DISPLAY_ZONES: list[str] = CONFIG.SMART_DISPLAY_ZONES
 # Zones with a camera feed
 CAMERA_ZONES: list[str] = CONFIG.CAMERA_ZONES
 
-print(f"Launching on {HOSTNAME} in zone {ZONE_ID}")
+print(f"Launching perception on {HOSTNAME} in zone {ZONE_ID}")
 
 
 ################################################################################
@@ -87,7 +87,7 @@ def generate_launch_description() -> LaunchDescription:
 
     if PERCEPTION_SERVER_FLOW:
         PerceptionDescriptions.add_optical_flow(
-            composable_nodes, PERCEPTION_SERVER_FLOW
+            composable_nodes, PERCEPTION_SERVER_FLOW, image_transport="compressed"
         )
 
     if PERCEPTION_SERVER_POSE_LANDMARKS:

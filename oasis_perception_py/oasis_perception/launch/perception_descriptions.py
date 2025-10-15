@@ -233,7 +233,9 @@ class PerceptionDescriptions:
 
     @staticmethod
     def add_optical_flow(
-        composable_nodes: list[ComposableNode], system_ids: List[str]
+        composable_nodes: list[ComposableNode],
+        system_ids: List[str],
+        image_transport: str,
     ) -> None:
         composable_nodes.extend(
             [
@@ -242,7 +244,12 @@ class PerceptionDescriptions:
                     package=CPP_PACKAGE_NAME,
                     plugin="oasis_perception::OpticalFlowComponent",
                     name=f"optical_flow_{system_id}",
-                    parameters=[{"system_id": system_id}],
+                    parameters=[
+                        {
+                            "system_id": system_id,
+                            "image_transport": image_transport,
+                        }
+                    ],
                     remappings=[
                         (
                             f"{system_id}_image",
