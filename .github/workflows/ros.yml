@@ -90,6 +90,7 @@ jobs:
 
             await setHash('ARDUINO_BOOTSTRAP_HASH', [
               'oasis_avr/bootstrap.sh',
+              'oasis_avr/scripts/get_arduino_platform.sh',
             ]);
 
             await setHash('OASIS_RUNTIME_HASH', [
@@ -161,14 +162,15 @@ jobs:
             ${{ env.MEDIAPIPE_HASH }}-\
             ${{ env.OPENCV_HASH }}
 
-      - name: Restore Arduino IDE
-        id: restore-arduino-ide
+      - name: Restore Arduino IDE and CLI
+        id: restore-arduino-tools
         uses: actions/cache@v4
         with:
           path: |
             oasis_avr/arduino-*
+            ros-ws/arduino-*
           key: >
-            restore-arduino-ide-\
+            restore-arduino-tools-\
             ${{ matrix.os }}-\
             ${{ env.ARDUINO_BOOTSTRAP_HASH }}
 
