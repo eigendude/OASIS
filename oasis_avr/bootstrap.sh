@@ -27,9 +27,19 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
-#
+################################################################################
+# Dependency configuration
+################################################################################
+
+# Version of the Arduino IDE to use
+ARDUINO_IDE_VERSION="1.8.19"
+
+# Version of the Arduino CLI to use
+ARDUINO_CLI_VERSION="1.3.1"
+
+################################################################################
 # Environment paths
-#
+################################################################################
 
 # Get the absolute path to this script
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -38,8 +48,10 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 STACK_DIR="${SCRIPT_DIR}/.."
 BUILD_DIR="${STACK_DIR}/ros-ws"
 
-# Location of the Arduino CLI
-ARDUINO_CLI_VERSION="1.3.1"
+# Location of the Arduino IDE archive
+ARDUINO_IDE_DOWNLOAD_DIR="${BUILD_DIR}/arduino-ide"
+
+# Location of the Arduino CLI archive and binary
 ARDUINO_CLI_DIR="${BUILD_DIR}/arduino-cli"
 
 # Location of the Arduino CMake toolchain
@@ -51,72 +63,33 @@ LIBRARY_DIR="${SCRIPT_DIR}/libraries"
 # Location of dependency patches
 PATCH_DIR="${LIBRARY_DIR}/patches"
 
-#
+################################################################################
 # Import functions
-#
+################################################################################
 
 source "${SCRIPT_DIR}/scripts/get_arduino_platform.sh"
 
-#
-# Helper functions
-#
+################################################################################
+# Arduino IDE configuration
+################################################################################
 
-get_arduino_cli_platform() {
-  local kernel_name
-  kernel_name="$(uname -s)"
-
-  case "${kernel_name}" in
-    Linux)
-      case "$(uname -m)" in
-        x86_64)
-          echo "Linux_64bit"
-          ;;
-        i386|i686)
-          echo "Linux_32bit"
-          ;;
-        armv6l)
-          echo "Linux_ARMv6"
-          ;;
-        armv7l|armv7*)
-          echo "Linux_ARMv7"
-          ;;
-        aarch64|arm64)
-          echo "Linux_ARM64"
-          ;;
-        *)
-          echo ""
-          ;;
-      esac
-      ;;
-    Darwin)
-      echo "macOS_64bit"
-      ;;
-    MINGW*|MSYS*|CYGWIN*)
-      echo "Windows_64bit"
-      ;;
-    *)
-      echo ""
-      ;;
-  esac
-}
-
-#
-# Dependency configuration
-#
-# TODO: Move dependency mangement to CMake
-#
-
-ARDUINO_IDE_VERSION="1.8.19"
-ARDUINO_IDE_PLATFORM="$(get_arduino_platform)"
+ARDUINO_IDE_PLATFORM="$(get_arduino_ide_platform)"
 
 if [[ "${OSTYPE}" != "darwin"* ]]; then
-  ARDUINO_IDE_URL="https://downloads.arduino.cc/arduino-${ARDUINO_IDE_VERSION}-${ARDUINO_IDE_PLATFORM}.tar.xz"
+  ARDUINO_IDE_ARCHIVE="arduino-${ARDUINO_IDE_VERSION}-${ARDUINO_IDE_PLATFORM}.tar.xz"
 else
-  ARDUINO_IDE_URL="https://downloads.arduino.cc/arduino-${ARDUINO_IDE_VERSION}-${ARDUINO_IDE_PLATFORM}.zip"
+  ARDUINO_IDE_ARCHIVE="arduino-${ARDUINO_IDE_VERSION}-${ARDUINO_IDE_PLATFORM}.zip"
 fi
+
+ARDUINO_IDE_URL="https://downloads.arduino.cc/${ARDUINO_IDE_ARCHIVE}"
+ARDUINO_IDE_ARCHIVE_PATH="${ARDUINO_IDE_DOWNLOAD_DIR}/${ARDUINO_IDE_ARCHIVE}"
 
 # Location of the extracted Arduino IDE and toolchain
 ARDUINO_IDE_DIR="${SCRIPT_DIR}/arduino-${ARDUINO_IDE_VERSION}"
+
+################################################################################
+# Arduino CLI configuration
+################################################################################
 
 # Location of the extracted Arduino CLI archive
 ARDUINO_CLI_PLATFORM="$(get_arduino_cli_platform)"
@@ -128,7 +101,12 @@ fi
 
 ARDUINO_CLI_ARCHIVE="arduino-cli_${ARDUINO_CLI_VERSION}_${ARDUINO_CLI_PLATFORM}.tar.gz"
 ARDUINO_CLI_URL="https://downloads.arduino.cc/arduino-cli/${ARDUINO_CLI_ARCHIVE}"
+ARDUINO_CLI_ARCHIVE_PATH="${ARDUINO_CLI_DIR}/${ARDUINO_CLI_ARCHIVE}"
 ARDUINO_CLI_BIN="${ARDUINO_CLI_DIR}/arduino-cli"
+
+################################################################################
+# Library configuration
+################################################################################
 
 # Location of the Adafruit BluefruitLE nRF15 library
 ADAFRUIT_BLE_DIR="${LIBRARY_DIR}/Adafruit_BluefruitLE_nRF51"
@@ -148,12 +126,14 @@ TASK_SCHEDULER_DIR="${LIBRARY_DIR}/TaskScheduler"
 # Location of the i2cdevlib repo
 I2CDEVLIB_DIR="${LIBRARY_DIR}/i2cdevlib"
 
-#
+################################################################################
 # Toolchain setup
-#
+################################################################################
 
 # Ensure working directories exist
-mkdir -p "${BUILD_DIR}" "${ARDUINO_CLI_DIR}"
+mkdir -p "${BUILD_DIR}"
+mkdir -p "${ARDUINO_IDE_DOWNLOAD_DIR}"
+mkdir -p "${ARDUINO_CLI_DIR}"
 
 # Enter working directory
 cd "${SCRIPT_DIR}"
@@ -164,23 +144,50 @@ echo "Updating git submodules..."
   git submodule update --init --recursive --force .
 )
 
-echo "Setting up Arduino CLI..."
+################################################################################
+# Arduino IDE setup
+################################################################################
 
-INSTALLED_ARDUINO_CLI_VERSION=""
-if [ -x "${ARDUINO_CLI_BIN}" ]; then
-  INSTALLED_ARDUINO_CLI_VERSION_OUTPUT="$("${ARDUINO_CLI_BIN}" version || true)"
-  INSTALLED_ARDUINO_CLI_VERSION="$(printf '%s\n' "${INSTALLED_ARDUINO_CLI_VERSION_OUTPUT}" | awk '/Version:/ {print $2; exit}')"
+if [ -f "${ARDUINO_IDE_ARCHIVE_PATH}" ]; then
+  echo "Using existing Arduino IDE archive ${ARDUINO_IDE_ARCHIVE}..."
+else
+  echo "Downloading Arduino IDE v${ARDUINO_IDE_VERSION}..."
+  curl --fail --location --show-error "${ARDUINO_IDE_URL}" --output "${ARDUINO_IDE_ARCHIVE_PATH}"
 fi
 
-if [ "${INSTALLED_ARDUINO_CLI_VERSION}" != "${ARDUINO_CLI_VERSION}" ]; then
-  rm -f "${ARDUINO_CLI_BIN}"
+if [ ! -d "${ARDUINO_IDE_DIR}" ]; then
+  echo "Setting up Arduino IDE v${ARDUINO_IDE_VERSION}..."
+
+  if [[ "${OSTYPE}" != "darwin"* ]]; then
+    tar -xJf "${ARDUINO_IDE_ARCHIVE_PATH}" --directory "${SCRIPT_DIR}"
+  else
+    # Not as graceful as piping to tar...
+    # TODO: Add gnu-tar brew package to dependencies and use "gtar"
+    unzip -o "${ARDUINO_IDE_ARCHIVE_PATH}"
+    mv "${SCRIPT_DIR}/Arduino.app/Contents/Java" "${ARDUINO_IDE_DIR}"
+    rm -rf "${SCRIPT_DIR}/Arduino.app"
+  fi
+fi
+
+if [ ! -d "${ARDUINO_IDE_DIR}" ]; then
+  echo "Failed to set up Arduino IDE" >&2
+  exit 1
+fi
+
+################################################################################
+# Arduino CLI setup
+################################################################################
+
+if [ -f "${ARDUINO_CLI_ARCHIVE_PATH}" ]; then
+  echo "Using existing Arduino CLI archive ${ARDUINO_CLI_ARCHIVE}..."
+else
+  echo "Downloading Arduino CLI v${ARDUINO_CLI_VERSION}..."
+  curl --fail --location --show-error "${ARDUINO_CLI_URL}" --output "${ARDUINO_CLI_ARCHIVE_PATH}"
 fi
 
 if [ ! -x "${ARDUINO_CLI_BIN}" ]; then
-  echo "Downloading Arduino CLI ${ARDUINO_CLI_VERSION} (${ARDUINO_CLI_PLATFORM})..."
-  curl --fail --location --show-error "${ARDUINO_CLI_URL}" --output "${ARDUINO_CLI_DIR}/${ARDUINO_CLI_ARCHIVE}"
-  tar -xzf "${ARDUINO_CLI_DIR}/${ARDUINO_CLI_ARCHIVE}" --directory "${ARDUINO_CLI_DIR}"
-  rm -f "${ARDUINO_CLI_DIR}/${ARDUINO_CLI_ARCHIVE}"
+  echo "Setting up Arduino CLI v${ARDUINO_CLI_VERSION}..."
+  tar -xzf "${ARDUINO_CLI_ARCHIVE_PATH}" --directory "${ARDUINO_CLI_DIR}"
 fi
 
 if [ ! -x "${ARDUINO_CLI_BIN}" ]; then
@@ -188,9 +195,15 @@ if [ ! -x "${ARDUINO_CLI_BIN}" ]; then
   exit 1
 fi
 
+################################################################################
+# Arduino core setup
+################################################################################
+
 if [ ! -f "${HOME}/.arduino15/arduino-cli.yaml" ]; then
   echo "Initializing Arduino CLI configuration..."
   "${ARDUINO_CLI_BIN}" config init
+else
+  echo "Using existing Arduino CLI configuration..."
 fi
 
 if ! "${ARDUINO_CLI_BIN}" core list | grep -q '^arduino:megaavr[[:space:]]'; then
@@ -202,25 +215,9 @@ else
   echo "Arduino megaAVR core already installed"
 fi
 
-if [ ! -d "${ARDUINO_IDE_DIR}" ]; then
-  echo "Downloading Arduino IDE..."
-
-  if [[ "${OSTYPE}" != "darwin"* ]]; then
-    curl "${ARDUINO_IDE_URL}" | tar -xJ --directory "${SCRIPT_DIR}"
-  else
-    # Not as graceful as piping to tar...
-    # TODO: Add gnu-tar brew package to dependencies and use "gtar"
-    ARDUINO_IDE_ARCHIVE="${SCRIPT_DIR}/arduino-${ARDUINO_IDE_VERSION}-${ARDUINO_IDE_PLATFORM}.zip"
-    curl "${ARDUINO_IDE_URL}" > "${ARDUINO_IDE_ARCHIVE}"
-    unzip -o "${ARDUINO_IDE_ARCHIVE}"
-    mv "${SCRIPT_DIR}/Arduino.app/Contents/Java" "${ARDUINO_IDE_DIR}"
-    rm -rf "${ARDUINO_IDE_ARCHIVE}" "${SCRIPT_DIR}/Arduino.app"
-  fi
-fi
-
-#
+################################################################################
 # Patch dependencies
-#
+################################################################################
 
 # Patch Arduino-CMake-Toolchain
 patch \

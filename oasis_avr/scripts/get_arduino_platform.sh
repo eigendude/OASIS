@@ -9,8 +9,13 @@
 #
 ################################################################################
 
+# Enable strict mode
+set -o errexit
+set -o pipefail
+set -o nounset
+
 #
-# This script detects the system parameters and returns an appropriate Arduino
+# This function detects the system parameters and returns an appropriate Arduino
 # IDE platform. If it fails to detect a platform, it exits non-zero.
 #
 # The available Arduino IDE platforms are:
@@ -28,12 +33,7 @@
 #   * uname (on Linux/FreeBSD)
 #
 
-# Enable strict mode
-set -o errexit
-set -o pipefail
-set -o nounset
-
-function get_arduino_platform() {
+function get_arduino_ide_platform() {
   ARDUINO_PLATFORM=""
 
   if [[ "${OSTYPE}" == "linux-gnu"* ]] || [[ "${OSTYPE}" == "freebsd"* ]]; then
@@ -72,4 +72,49 @@ function get_arduino_platform() {
   fi
 
   echo "${ARDUINO_PLATFORM}"
+}
+
+#
+# This function detects the system parameters and returns an appropriate
+# Arduino CLI platform. If it fails to detect a platform, it returns an
+# empty string.
+#
+
+function get_arduino_cli_platform() {
+  local kernel_name
+  kernel_name="$(uname -s)"
+
+  case "${kernel_name}" in
+    Linux)
+      case "$(uname -m)" in
+        x86_64)
+          echo "Linux_64bit"
+          ;;
+        i386|i686)
+          echo "Linux_32bit"
+          ;;
+        armv6l)
+          echo "Linux_ARMv6"
+          ;;
+        armv7l|armv7*)
+          echo "Linux_ARMv7"
+          ;;
+        aarch64|arm64)
+          echo "Linux_ARM64"
+          ;;
+        *)
+          echo ""
+          ;;
+      esac
+      ;;
+    Darwin)
+      echo "macOS_64bit"
+      ;;
+    MINGW*|MSYS*|CYGWIN*)
+      echo "Windows_64bit"
+      ;;
+    *)
+      echo ""
+      ;;
+  esac
 }
