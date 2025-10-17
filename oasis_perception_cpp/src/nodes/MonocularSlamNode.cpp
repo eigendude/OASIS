@@ -71,6 +71,11 @@ bool MonocularSlamNode::Initialize()
       [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg) { OnImage(msg); }, "compressed");
 
   m_monocularSlam = std::make_unique<SLAM::MonocularSlam>(m_node);
+  if (!m_monocularSlam->Initialize())
+  {
+    RCLCPP_ERROR(*m_logger, "Failed to initialize monocular SLAM");
+    return false;
+  }
 
   RCLCPP_INFO(*m_logger, "Started monocular SLAM");
 
