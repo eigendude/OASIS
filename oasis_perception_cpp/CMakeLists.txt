@@ -57,6 +57,7 @@ find_package(geometry_msgs REQUIRED)
 find_package(image_transport REQUIRED)
 find_package(MediaPipe)
 find_package(oasis_msgs REQUIRED)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs video)
 find_package(ORB_SLAM3)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
@@ -91,6 +92,7 @@ set(BACKGROUND_MODELER_LIBRARIES
   bgslibrary::bgslibrary
   cv_bridge::cv_bridge
   image_transport::image_transport
+  ${OpenCV_LIBS}
   rclcpp::rclcpp
   ${sensor_msgs_TARGETS}
   ${std_msgs_TARGETS}
@@ -148,6 +150,7 @@ set(BACKGROUND_SUBTRACTOR_LIBRARIES
   bgslibrary::bgslibrary
   cv_bridge::cv_bridge
   image_transport::image_transport
+  ${OpenCV_LIBS}
   rclcpp::rclcpp
   ${sensor_msgs_TARGETS}
   ${std_msgs_TARGETS}
@@ -421,6 +424,7 @@ set(MULTI_MODELER_LIBRARIES
   bgslibrary::bgslibrary
   cv_bridge::cv_bridge
   image_transport::image_transport
+  ${OpenCV_LIBS}
   rclcpp::rclcpp
   ${sensor_msgs_TARGETS}
   ${std_msgs_TARGETS}
@@ -484,9 +488,9 @@ set(OPTICAL_FLOW_INCLUDE_DIRS
   ${OpenCV_INCLUDE_DIRS}
 )
 set(OPTICAL_FLOW_LIBRARIES
-  ${OpenCV_LIBS}
   cv_bridge::cv_bridge
   image_transport::image_transport
+  ${OpenCV_LIBS}
   rclcpp::rclcpp
   ${sensor_msgs_TARGETS}
   ${std_msgs_TARGETS}
