@@ -12,8 +12,9 @@
   <url type="repository">https://github.com/eigendude/OASIS.git</url>
 
   <exec_depend>geometry_msgs</exec_depend>
-  <exec_depend>oasis_hass</exec_depend>
-  <exec_depend>oasis_msgs</exec_depend>
+  <!-- We don't want Colcon to block building this package for runtime dependencies -->
+  <!--<exec_depend>oasis_hass</exec_depend>-->
+  <!--<exec_depend>oasis_msgs</exec_depend>-->
   <exec_depend>rclpy</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
 
