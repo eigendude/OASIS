@@ -8,12 +8,16 @@
 #
 ################################################################################
 
+import logging
 from typing import List
 
 from launch import LaunchDescription
 from launch_ros.actions import ComposableNodeContainer
 from launch_ros.actions import Node
 from launch_ros.descriptions import ComposableNode
+
+from ament_index_python.packages import PackageNotFoundError
+from ament_index_python.packages import get_package_share_directory
 
 from oasis_hass.utils.smarthome_config import SmarthomeConfig
 
@@ -237,6 +241,16 @@ class PerceptionDescriptions:
         system_ids: List[str],
         image_transport: str,
     ) -> None:
+        try:
+            get_package_share_directory("orb_slam3")
+        except PackageNotFoundError:
+            logging.getLogger(__name__).warning(
+                "Skipping monocular SLAM nodes because the 'orb_slam3' package is missing. "
+                "Install the OASIS toolchain dependencies (see docs/oasis_tooling.md) "
+                "to build ORB-SLAM3, or disable monocular SLAM in the launch config."
+            )
+            return
+
         composable_nodes.extend(
             [
                 ComposableNode(
