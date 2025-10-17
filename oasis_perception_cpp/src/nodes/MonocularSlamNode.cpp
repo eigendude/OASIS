@@ -32,14 +32,18 @@ constexpr const char* IMAGE_TOPIC = "image";
 // Parameters
 constexpr const char* SYSTEM_ID_PARAMETER = "system_id";
 constexpr const char* DEFAULT_SYSTEM_ID = "";
+constexpr const char* IMAGE_TRANSPORT_PARAMETER = "image_transport";
+constexpr const char* DEFAULT_IMAGE_TRANSPORT = "compressed";
 } // namespace
 
 MonocularSlamNode::MonocularSlamNode(rclcpp::Node& node)
   : m_node(node),
     m_logger(std::make_unique<rclcpp::Logger>(node.get_logger())),
-    m_imgSubscriber(std::make_unique<image_transport::Subscriber>())
+    m_imgSubscriber(std::make_unique<image_transport::Subscriber>()),
+    m_imageTransport(DEFAULT_IMAGE_TRANSPORT)
 {
   m_node.declare_parameter<std::string>(SYSTEM_ID_PARAMETER, DEFAULT_SYSTEM_ID);
+  m_node.declare_parameter<std::string>(IMAGE_TRANSPORT_PARAMETER, DEFAULT_IMAGE_TRANSPORT);
 }
 
 MonocularSlamNode::~MonocularSlamNode() = default;
@@ -59,16 +63,29 @@ bool MonocularSlamNode::Initialize()
     return false;
   }
 
+  if (!m_node.get_parameter(IMAGE_TRANSPORT_PARAMETER, m_imageTransport) ||
+      m_imageTransport.empty())
+  {
+    m_imageTransport = DEFAULT_IMAGE_TRANSPORT;
+    RCLCPP_WARN(
+        *m_logger,
+        "Image transport parameter '%s' missing or empty, defaulting to '%s'",
+        IMAGE_TRANSPORT_PARAMETER, m_imageTransport.c_str());
+  }
+
   const std::string imageTopic = systemId + "_" + IMAGE_TOPIC;
 
   RCLCPP_INFO(*m_logger, "System ID: %s", systemId.c_str());
   RCLCPP_INFO(*m_logger, "Image topic: %s", imageTopic.c_str());
+  RCLCPP_INFO(
+      *m_logger, "Image transport: %s", m_imageTransport.c_str());
 
   //*m_flowPublisher = image_transport::create_publisher(&m_node, flowTopic);
 
   *m_imgSubscriber = image_transport::create_subscription(
       &m_node, imageTopic,
-      [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg) { OnImage(msg); }, "compressed");
+      [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg) { OnImage(msg); },
+      m_imageTransport);
 
   m_monocularSlam = std::make_unique<SLAM::MonocularSlam>(m_node);
   if (!m_monocularSlam->Initialize())

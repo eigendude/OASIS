@@ -8,6 +8,7 @@
 #pragma once
 
 #include <memory>
+#include <string>
 
 #include <image_transport/publisher.hpp>
 #include <image_transport/subscriber.hpp>
@@ -47,6 +48,7 @@ private:
   // ROS parameters
   std::unique_ptr<rclcpp::Logger> m_logger;
   std::unique_ptr<image_transport::Subscriber> m_imgSubscriber;
+  std::string m_imageTransport;
 
   // Video parameters
   std::unique_ptr<SLAM::MonocularSlam> m_monocularSlam;
