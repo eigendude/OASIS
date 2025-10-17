@@ -235,6 +235,7 @@ class PerceptionDescriptions:
     def add_monocular_slam(
         composable_nodes: list[ComposableNode],
         system_ids: List[str],
+        image_transport: str,
     ) -> None:
         composable_nodes.extend(
             [
@@ -246,6 +247,7 @@ class PerceptionDescriptions:
                     parameters=[
                         {
                             "system_id": system_id,
+                            "image_transport": image_transport,
                         }
                     ],
                     remappings=[

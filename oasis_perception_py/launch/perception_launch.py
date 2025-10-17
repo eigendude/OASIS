@@ -97,6 +97,7 @@ def generate_launch_description() -> LaunchDescription:
         PerceptionDescriptions.add_monocular_slam(
             composable_nodes,
             PERCEPTION_SERVER_MONOCULAR_SLAM,
+            image_transport="compressed",
         )
 
     if PERCEPTION_SERVER_POSE_LANDMARKS:
