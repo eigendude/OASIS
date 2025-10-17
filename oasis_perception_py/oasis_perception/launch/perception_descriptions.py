@@ -228,6 +228,45 @@ class PerceptionDescriptions:
         ld.add_action(hello_world_container)
 
     #
+    # Monocular SLAM
+    #
+
+    @staticmethod
+    def add_monocular_slam(
+        composable_nodes: list[ComposableNode],
+        system_ids: List[str],
+        image_transport: str,
+    ) -> None:
+        composable_nodes.extend(
+            [
+                ComposableNode(
+                    namespace=ROS_NAMESPACE,
+                    package=CPP_PACKAGE_NAME,
+                    plugin="oasis_perception::MonocularSlamComponent",
+                    name=f"monocular_slam_{system_id}",
+                    parameters=[
+                        {
+                            "system_id": system_id,
+                            "image_transport": image_transport,
+                        }
+                    ],
+                    remappings=[
+                        (
+                            f"{system_id}_image",
+                            (
+                                # Use different remappings for Kinect V2
+                                f"{system_id}/sd/image_color"
+                                if system_id == KINECT_V2_ZONE_ID
+                                else f"{system_id}/image_rect"
+                            ),
+                        ),
+                    ],
+                )
+                for system_id in system_ids
+            ]
+        )
+
+    #
     # Optical flow
     #
 

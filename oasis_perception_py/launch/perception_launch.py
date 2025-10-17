@@ -48,10 +48,13 @@ print(f"Launching perception on {HOSTNAME} in zone {ZONE_ID}")
 PERCEPTION_SERVER_BACKGROUND: list[str] = []
 PERCEPTION_SERVER_CALIBRATION: list[str] = []
 PERCEPTION_SERVER_FLOW: list[str] = []
+PERCEPTION_SERVER_MONOCULAR_SLAM: list[str] = []
 PERCEPTION_SERVER_POSE_LANDMARKS: list[str] = []
+
 
 if HOST_ID == "falcon":
     # PERCEPTION_SERVER_FLOW.extend(["falcon"])
+    PERCEPTION_SERVER_MONOCULAR_SLAM.extend(["falcon"])
     pass
 elif HOST_ID == "nas":
     # PERCEPTION_SERVER_CALIBRATION.extend(
@@ -89,6 +92,13 @@ def generate_launch_description() -> LaunchDescription:
     if PERCEPTION_SERVER_FLOW:
         PerceptionDescriptions.add_optical_flow(
             composable_nodes, PERCEPTION_SERVER_FLOW, image_transport="compressed"
+        )
+
+    if PERCEPTION_SERVER_MONOCULAR_SLAM:
+        PerceptionDescriptions.add_monocular_slam(
+            composable_nodes,
+            PERCEPTION_SERVER_MONOCULAR_SLAM,
+            image_transport="compressed",
         )
 
     if PERCEPTION_SERVER_POSE_LANDMARKS:
