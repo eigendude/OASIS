@@ -8,9 +8,10 @@
 #
 ################################################################################
 
+from typing import Any
 from typing import Optional
 
-from launch import LaunchDescription
+from launch.launch_description import LaunchDescription
 from launch_ros.descriptions import ComposableNode
 
 from oasis_drivers.launch.driver_descriptions import DriverDescriptions as Drivers
@@ -18,6 +19,7 @@ from oasis_drivers.launch.mcu_descriptions import MCUDescriptions as MCU
 from oasis_hass.utils.smarthome_config import SmarthomeConfig
 
 
+PerceptionDescriptions: Any
 try:
     from oasis_perception.launch.perception_descriptions import PerceptionDescriptions
 except ModuleNotFoundError:

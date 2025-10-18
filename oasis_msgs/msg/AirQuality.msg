@@ -12,6 +12,9 @@
 # An air quality reading
 #
 
+# The message header
+std_msgs/Header header
+
 # The I2C device that made the reading, or empty if an I2C device wasn't used
 I2CDevice[] i2c_device
 

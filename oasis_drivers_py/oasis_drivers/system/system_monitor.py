@@ -13,8 +13,8 @@ from typing import Optional
 
 import psutil
 import rclpy.publisher
-import std_msgs.msg
 from builtin_interfaces.msg import Time as TimeMsg
+from std_msgs.msg import Header as HeaderMsg
 
 from oasis_drivers.network.network_utils import NetworkUtils
 from oasis_drivers.system.system_types import Battery
@@ -59,7 +59,10 @@ class SystemMonitor:
         cpu_utilization = float(psutil.cpu_percent())
         cpu_temperature = cls._read_cpu_temperature()
         cpu_frequency_ghz = cls._read_cpu_frequency_ghz()
-        cpu_logical_core_count = int(psutil.cpu_count(logical=True))
+        logical_core_count = psutil.cpu_count(logical=True)
+        cpu_logical_core_count = (
+            int(logical_core_count) if logical_core_count is not None else 0
+        )
 
         #
         # psutil.cpu_count() can return None on RPi because /proc/cpuinfo has a
@@ -69,9 +72,10 @@ class SystemMonitor:
         #
         #   https://github.com/giampaolo/psutil/issues/1078
         #
-        try:
-            cpu_physical_core_count = int(psutil.cpu_count(logical=False))
-        except TypeError:
+        physical_core_count = psutil.cpu_count(logical=False)
+        if physical_core_count is not None:
+            cpu_physical_core_count = int(physical_core_count)
+        else:
             cpu_physical_core_count = cpu_logical_core_count
 
         memory_utilization = float(psutil.virtual_memory().percent)
@@ -80,7 +84,7 @@ class SystemMonitor:
         battery = cls._get_battery()
 
         # Timestamp in ROS header
-        header = std_msgs.msg.Header()
+        header = HeaderMsg()
         header.stamp = timestamp
         header.frame_id = frame_id
 

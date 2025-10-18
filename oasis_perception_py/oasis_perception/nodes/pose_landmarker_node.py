@@ -17,14 +17,16 @@ import cv_bridge
 import mediapipe
 import numpy as np
 import rclpy.node
-import sensor_msgs.msg
-from ament_index_python.packages import get_package_share_directory
+from ament_index_python import get_package_share_directory
 from builtin_interfaces.msg import Time as TimeMsg
 from image_transport_py import ImageTransport
+from mediapipe import Image as MediapipeImage  # type: ignore[attr-defined]
+from mediapipe import ImageFormat as MediapipeImageFormat  # type: ignore[attr-defined]
 from mediapipe.framework.formats import landmark_pb2
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 from rclpy.logging import LoggingSeverity
+from sensor_msgs.msg import Image as ImageMsg
 from std_msgs.msg import Header as HeaderMsg
 
 from oasis_msgs.msg import BoundingBox as BoundingBoxMsg
@@ -269,7 +271,7 @@ class PoseLandmarkerNode(rclpy.node.Node):
         self.get_logger().info("Pose landmarker node shutting down")
         self.destroy_node()
 
-    def _image_callback(self, msg: sensor_msgs.msg.Image) -> None:
+    def _image_callback(self, msg: ImageMsg) -> None:
         if not msg.data:
             self.get_logger().error("Received empty image message")
             return
@@ -308,8 +310,8 @@ class PoseLandmarkerNode(rclpy.node.Node):
             return
 
         # Create a MediaPipe image from the RGB data (no further color conversion required)
-        mp_image: mediapipe.Image = mediapipe.Image(
-            image_format=mediapipe.ImageFormat.SRGB, data=rgb_image
+        mp_image: MediapipeImage = MediapipeImage(
+            image_format=MediapipeImageFormat.SRGB, data=rgb_image
         )
 
         # Submit the frame for asynchronous processing
@@ -318,7 +320,7 @@ class PoseLandmarkerNode(rclpy.node.Node):
     def _result_callback(
         self,
         result: vision.PoseLandmarkerResult,
-        output_image: mediapipe.Image,
+        output_image: MediapipeImage,
         timestamp_ms: int,
     ) -> None:
         """
@@ -406,7 +408,7 @@ class PoseLandmarkerNode(rclpy.node.Node):
     def _publish_image(
         self,
         result: vision.PoseLandmarkerResult,
-        output_image: mediapipe.Image,
+        output_image: MediapipeImage,
         header: HeaderMsg,
     ) -> None:
         # Convert the mediapipe.Image to a NumPy array

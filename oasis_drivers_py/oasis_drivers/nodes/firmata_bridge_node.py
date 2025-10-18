@@ -366,7 +366,9 @@ class FirmataBridgeNode(rclpy.node.Node, FirmataCallback):
 
         # Translate result
         response.stamp = self._convert_timestamp(result[1])
-        response.value = AVRConstantsMsg.HIGH if result[0] else AVRConstantsMsg.LOW
+        response.digital_value = (
+            AVRConstantsMsg.HIGH if result[0] else AVRConstantsMsg.LOW
+        )
 
         return response
 
