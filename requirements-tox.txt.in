@@ -10,4 +10,5 @@ flake8-logging-format
 flake8-quotes
 isort
 mypy
+types-pyserial
 tox

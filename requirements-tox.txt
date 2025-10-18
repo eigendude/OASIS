@@ -30,5 +30,6 @@ pytokens==0.1.10
 setuptools==80.9.0
 snowballstemmer==3.0.1
 tox==4.30.2
+types-pyserial==3.5.0.20240527
 typing_extensions==4.15.0
 virtualenv==20.34.0
