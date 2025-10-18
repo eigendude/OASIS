@@ -64,11 +64,11 @@ jobs:
             ros-kilted-sensor-msgs \
             ros-kilted-std-msgs
 
-      - name: Ensure Empy is available
+      - name: Ensure ROS Python tooling is available
         if: steps.restore-oasis-msgs.outputs.cache-hit != 'true'
         run: |
           python3 -m pip install --upgrade pip
-          python3 -m pip install empy
+          python3 -m pip install empy catkin_pkg
 
       - name: Build oasis_msgs
         if: steps.restore-oasis-msgs.outputs.cache-hit != 'true'
