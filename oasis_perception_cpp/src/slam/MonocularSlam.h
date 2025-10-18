@@ -41,7 +41,7 @@ public:
   ~MonocularSlam();
 
   // Lifecycle interface
-  bool Initialize();
+  bool Initialize(const std::string& vocabularyFile);
   void Deinitialize();
 
   // ROS interface

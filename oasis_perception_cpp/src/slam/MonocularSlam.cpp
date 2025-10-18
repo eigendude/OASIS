@@ -26,28 +26,6 @@ using namespace SLAM;
 
 namespace
 {
-std::string GetVocabularyFile(const rclcpp::Logger& logger)
-{
-  try
-  {
-    const std::string shareDir = ament_index_cpp::get_package_share_directory("orb_slam3");
-    const auto vocabularyPath = std::filesystem::path(shareDir) / "Vocabulary" / "ORBvoc.txt";
-
-    if (!std::filesystem::exists(vocabularyPath))
-    {
-      RCLCPP_FATAL(logger, "ORB-SLAM3 vocabulary file is missing: %s", vocabularyPath.c_str());
-      throw std::runtime_error("ORB-SLAM3 vocabulary file not found");
-    }
-
-    return vocabularyPath.string();
-  }
-  catch (const std::exception& ex)
-  {
-    RCLCPP_FATAL(logger, "Failed to locate the 'orb_slam3' package: %s", ex.what());
-    throw;
-  }
-}
-
 std::string GetSettingsFile(const rclcpp::Logger& logger)
 {
   try
@@ -79,12 +57,15 @@ MonocularSlam::MonocularSlam(rclcpp::Node& node)
 
 MonocularSlam::~MonocularSlam() = default;
 
-bool MonocularSlam::Initialize()
+bool MonocularSlam::Initialize(const std::string& vocabularyFile)
 {
-  const std::string vocabularyFile = GetVocabularyFile(*m_logger);
-  const std::string settingsFile = GetSettingsFile(*m_logger);
+  if (vocabularyFile.empty())
+    return false;
 
-  RCLCPP_INFO(*m_logger, "Using ORB-SLAM3 vocabulary file: %s", vocabularyFile.c_str());
+  const std::string settingsFile = GetSettingsFile(*m_logger);
+  if (settingsFile.empty())
+    return false;
+
   RCLCPP_INFO(*m_logger, "Using monocular SLAM settings file: %s", settingsFile.c_str());
 
   m_slam = std::make_unique<ORB_SLAM3::System>(vocabularyFile, settingsFile,
