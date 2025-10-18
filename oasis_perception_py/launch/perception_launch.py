@@ -52,7 +52,7 @@ PERCEPTION_SERVER_MONOCULAR_SLAM: list[str] = []
 PERCEPTION_SERVER_POSE_LANDMARKS: list[str] = []
 
 
-if HOST_ID == "falcon":
+if HOST_ID == "macbook_vm":
     # PERCEPTION_SERVER_FLOW.extend(["falcon"])
     PERCEPTION_SERVER_MONOCULAR_SLAM.extend(["falcon"])
     pass
