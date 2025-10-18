@@ -10,7 +10,7 @@
 
 from typing import Optional
 
-from launch import LaunchDescription
+from launch.launch_description import LaunchDescription
 from launch_ros.descriptions import ComposableNode
 
 from oasis_drivers.launch.driver_descriptions import DriverDescriptions as Drivers
