@@ -173,7 +173,7 @@ class ConductorManagerNode(rclpy.node.Node):
         )
 
         # Initialize input automation
-        self._wol_manager: WolManager = WolManager(self, WOL_HOSTNAME)
+        self._wol_manager: Optional[WolManager] = WolManager(self, WOL_HOSTNAME)
 
         # Reliable listener QOS profile for subscribers
         qos_profile: rclpy.qos.QoSPresetProfile = (
@@ -260,7 +260,8 @@ class ConductorManagerNode(rclpy.node.Node):
         self._set_digital_mode_client.wait_for_service()
 
         # Initialize WoL manager
-        if not self._wol_manager.initialize(WOL_TIMEOUT_SECS):
+        wol_manager = self._wol_manager
+        if wol_manager is not None and not wol_manager.initialize(WOL_TIMEOUT_SECS):
             self._wol_manager = None
 
         self.get_logger().debug("Starting conductor configuration")

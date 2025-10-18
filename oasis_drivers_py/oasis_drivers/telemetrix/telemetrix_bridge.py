@@ -15,8 +15,11 @@ from datetime import datetime
 from datetime import timezone
 from typing import Any
 from typing import Awaitable
+from typing import Coroutine
 from typing import List
 from typing import Tuple
+from typing import TypeVar
+from typing import cast
 
 from telemetrix_aio import private_constants
 from telemetrix_aio import telemetrix_aio
@@ -29,6 +32,15 @@ from oasis_drivers.telemetrix.telemetrix_types import DigitalMode
 
 # TODO: Upstream feature flag
 private_constants.PrivateConstants.I2C_FEATURE = 0x40
+
+
+_T = TypeVar("_T")
+
+
+def _to_coroutine(awaitable: Awaitable[_T]) -> Coroutine[Any, Any, _T]:
+    """Safely coerce awaitables returned by Telemetrix into coroutines."""
+
+    return cast(Coroutine[Any, Any, _T], awaitable)
 
 
 class TelemetrixBridge:
@@ -210,7 +222,9 @@ class TelemetrixBridge:
             raise ValueError(f"Invalid analog mode: {analog_mode}")
 
         # Dispatch to asyncio
-        future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
+        future: Future = asyncio.run_coroutine_threadsafe(
+            _to_coroutine(coroutine), self._loop
+        )
 
         # Wait for completion
         future.result()
@@ -227,7 +241,9 @@ class TelemetrixBridge:
         coroutine: Awaitable[Tuple[int, int]] = self._board.analog_read(analog_pin)
 
         # Dispatch to asyncio
-        future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
+        future: Future = asyncio.run_coroutine_threadsafe(
+            _to_coroutine(coroutine), self._loop
+        )
 
         # Get result
         result: Tuple[int, int] = future.result()
@@ -279,7 +295,9 @@ class TelemetrixBridge:
             raise ValueError(f"Invalid digital mode: {digital_mode}")
 
         # Dispatch to asyncio
-        future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
+        future: Future = asyncio.run_coroutine_threadsafe(
+            _to_coroutine(coroutine), self._loop
+        )
 
         # Wait for completion
         future.result()
@@ -296,7 +314,9 @@ class TelemetrixBridge:
         coroutine: Awaitable[Tuple[int, int]] = self._board.digital_read(digital_pin)
 
         # Dispatch to asyncio
-        future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
+        future: Future = asyncio.run_coroutine_threadsafe(
+            _to_coroutine(coroutine), self._loop
+        )
 
         # Get result
         result: Tuple[int, int] = future.result()
@@ -331,7 +351,9 @@ class TelemetrixBridge:
         coroutine: Awaitable[None] = self._board._send_command(command)
 
         # Dispatch to asyncio
-        future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
+        future: Future = asyncio.run_coroutine_threadsafe(
+            _to_coroutine(coroutine), self._loop
+        )
 
         # Wait for completion
         future.result()
@@ -350,7 +372,9 @@ class TelemetrixBridge:
         coroutine: Awaitable[None] = self._board.digital_write(digital_pin, value_int)
 
         # Dispatch to asyncio
-        future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
+        future: Future = asyncio.run_coroutine_threadsafe(
+            _to_coroutine(coroutine), self._loop
+        )
 
         # Wait for completion
         future.result()
@@ -365,7 +389,9 @@ class TelemetrixBridge:
         coroutine: Awaitable[None] = self._board.set_pin_mode_i2c(i2c_port)
 
         # Dispatch to asyncio
-        future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
+        future: Future = asyncio.run_coroutine_threadsafe(
+            _to_coroutine(coroutine), self._loop
+        )
 
         # Wait for completion
         future.result()
@@ -388,7 +414,9 @@ class TelemetrixBridge:
         coroutine: Awaitable[None] = self._board._send_command(command)
 
         # Dispatch to asyncio
-        future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
+        future: Future = asyncio.run_coroutine_threadsafe(
+            _to_coroutine(coroutine), self._loop
+        )
 
         # Wait for completion
         future.result()
@@ -411,7 +439,9 @@ class TelemetrixBridge:
         coroutine: Awaitable[None] = self._board._send_command(command)
 
         # Dispatch to asyncio
-        future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
+        future: Future = asyncio.run_coroutine_threadsafe(
+            _to_coroutine(coroutine), self._loop
+        )
 
         # Wait for completion
         future.result()
@@ -434,7 +464,9 @@ class TelemetrixBridge:
         coroutine: Awaitable[None] = self._board._send_command(command)
 
         # Dispatch to asyncio
-        future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
+        future: Future = asyncio.run_coroutine_threadsafe(
+            _to_coroutine(coroutine), self._loop
+        )
 
         # Wait for completion
         future.result()
@@ -457,7 +489,9 @@ class TelemetrixBridge:
         coroutine: Awaitable[None] = self._board._send_command(command)
 
         # Dispatch to asyncio
-        future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
+        future: Future = asyncio.run_coroutine_threadsafe(
+            _to_coroutine(coroutine), self._loop
+        )
 
         # Wait for completion
         future.result()
@@ -476,7 +510,9 @@ class TelemetrixBridge:
         coroutine: Awaitable[None] = self._board.analog_write(digital_pin, value_int)
 
         # Dispatch to asyncio
-        future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
+        future: Future = asyncio.run_coroutine_threadsafe(
+            _to_coroutine(coroutine), self._loop
+        )
 
         # Wait for completion
         future.result()
@@ -493,7 +529,9 @@ class TelemetrixBridge:
         coroutine = self._board.set_analog_scan_interval(sampling_interval_ms)
 
         # Dispatch to asyncio
-        future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
+        future: Future = asyncio.run_coroutine_threadsafe(
+            _to_coroutine(coroutine), self._loop
+        )
 
         # Wait for completion
         future.result()
@@ -517,7 +555,9 @@ class TelemetrixBridge:
         coroutine: Awaitable[None] = self._board._send_command(command)
 
         # Dispatch to asyncio
-        future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
+        future: Future = asyncio.run_coroutine_threadsafe(
+            _to_coroutine(coroutine), self._loop
+        )
 
         # Wait for completion
         future.result()
@@ -540,7 +580,9 @@ class TelemetrixBridge:
         coroutine: Awaitable[None] = self._board._send_command(command)
 
         # Dispatch to asyncio
-        future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
+        future: Future = asyncio.run_coroutine_threadsafe(
+            _to_coroutine(coroutine), self._loop
+        )
 
         # Wait for completion
         future.result()
@@ -559,7 +601,9 @@ class TelemetrixBridge:
         coroutine: Awaitable[None] = self._board.servo_write(digital_pin, value_int)
 
         # Dispatch to asyncio
-        future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
+        future: Future = asyncio.run_coroutine_threadsafe(
+            _to_coroutine(coroutine), self._loop
+        )
 
         # Wait for completion
         future.result()
