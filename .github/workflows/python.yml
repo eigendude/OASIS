@@ -84,9 +84,7 @@ jobs:
         with:
           path: |
             .tox
-          key: tox-env-${{ hashFiles('tox.ini') }}
-          restore-keys: |
-            tox-env-
+          key: tox-env-${{ hashFiles('tox.ini', 'requirements-tox.txt') }}
 
       # Run the tests!
       - name: Run tox
