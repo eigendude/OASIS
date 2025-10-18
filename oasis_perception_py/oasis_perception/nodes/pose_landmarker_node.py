@@ -21,6 +21,8 @@ import sensor_msgs.msg
 from ament_index_python.packages import get_package_share_directory
 from builtin_interfaces.msg import Time as TimeMsg
 from image_transport_py import ImageTransport
+from mediapipe import Image as MediapipeImage  # type: ignore[attr-defined]
+from mediapipe import ImageFormat as MediapipeImageFormat  # type: ignore[attr-defined]
 from mediapipe.framework.formats import landmark_pb2
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
@@ -308,8 +310,8 @@ class PoseLandmarkerNode(rclpy.node.Node):
             return
 
         # Create a MediaPipe image from the RGB data (no further color conversion required)
-        mp_image: mediapipe.Image = mediapipe.Image(
-            image_format=mediapipe.ImageFormat.SRGB, data=rgb_image
+        mp_image: MediapipeImage = MediapipeImage(
+            image_format=MediapipeImageFormat.SRGB, data=rgb_image
         )
 
         # Submit the frame for asynchronous processing
@@ -318,7 +320,7 @@ class PoseLandmarkerNode(rclpy.node.Node):
     def _result_callback(
         self,
         result: vision.PoseLandmarkerResult,
-        output_image: mediapipe.Image,
+        output_image: MediapipeImage,
         timestamp_ms: int,
     ) -> None:
         """
@@ -406,7 +408,7 @@ class PoseLandmarkerNode(rclpy.node.Node):
     def _publish_image(
         self,
         result: vision.PoseLandmarkerResult,
-        output_image: mediapipe.Image,
+        output_image: MediapipeImage,
         header: HeaderMsg,
     ) -> None:
         # Convert the mediapipe.Image to a NumPy array
