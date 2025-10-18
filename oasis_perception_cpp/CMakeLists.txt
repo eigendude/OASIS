@@ -276,8 +276,8 @@ if (ORB_SLAM3_FOUND)
   set(MONOCULAR_SLAM_LIBRARIES
     ament_index_cpp::ament_index_cpp
     cv_bridge::cv_bridge
-    ${DBoW2_LIBRARIES}
-    ${g2o_LIBRARIES}
+    DBoW2::DBoW2
+    g2o::g2o
     ${GLEW_LIBRARY}
     image_transport::image_transport
     ${OPENGL_LIBRARIES}

@@ -292,46 +292,52 @@ if [[ ${PLATFORM_ARCH} != x86_64 ]]; then
   touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/OpenNI2/COLCON_IGNORE"
 fi
 
-# ORB-SLAM3
-echo "Patching ORB-SLAM3..."
+# ORB_SLAM3
+echo "Patching ORB_SLAM3..."
 cp -v \
-  "${CONFIG_DIRECTORY}/orb-slam3/package.xml" \
-  "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/orb-slam3"
+  "${CONFIG_DIRECTORY}/ORB_SLAM3/package.xml" \
+  "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/ORB_SLAM3"
 patch \
   -p1 \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
-  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/orb-slam3" \
-  < "${CONFIG_DIRECTORY}/orb-slam3/0001-Update-CMAKEList.txt-to-use-C-14.patch"
+  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/ORB_SLAM3" \
+  < "${CONFIG_DIRECTORY}/ORB_SLAM3/0001-Update-CMAKEList.txt-to-use-C-14.patch"
 patch \
   -p1 \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
-  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/orb-slam3" \
-  < "${CONFIG_DIRECTORY}/orb-slam3/0002-Add-missing-DBoW2-directory-to-CMakeLists.txt.patch"
+  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/ORB_SLAM3" \
+  < "${CONFIG_DIRECTORY}/ORB_SLAM3/0002-Fix-parallel-make.patch"
 patch \
   -p1 \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
-  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/orb-slam3" \
-  < "${CONFIG_DIRECTORY}/orb-slam3/0003-Add-install-step-to-CMakeLists.txt.patch"
+  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/ORB_SLAM3" \
+  < "${CONFIG_DIRECTORY}/ORB_SLAM3/0003-Don-t-build-examples.patch"
 patch \
   -p1 \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
-  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/orb-slam3" \
-  < "${CONFIG_DIRECTORY}/orb-slam3/0004-Don-t-build-examples.patch"
+  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/ORB_SLAM3" \
+  < "${CONFIG_DIRECTORY}/ORB_SLAM3/0004-Add-missing-third-party-directories-to-CMakeLists.tx.patch"
 patch \
   -p1 \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
-  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/orb-slam3" \
-  < "${CONFIG_DIRECTORY}/orb-slam3/0005-Fix-parallel-make.patch"
+  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/ORB_SLAM3" \
+  < "${CONFIG_DIRECTORY}/ORB_SLAM3/0005-Fix-hard-coded-paths-to-Thirdparty-directory.patch"
+patch \
+  -p1 \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/ORB_SLAM3" \
+  < "${CONFIG_DIRECTORY}/ORB_SLAM3/0006-Add-install-steps-to-CMakeLists.txt.patch"
 
 # Disable ORB_SLAM3 on systems with <= 4GiB memory
 if (( $(echo "${PHYSICAL_MEMORY_GB} <= 4" | bc -l) )); then
-  echo "Disabling ORB-SLAM3 with ${PHYSICAL_MEMORY_GB} GiB of RAM"
-  touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/orb-slam3/COLCON_IGNORE"
+  echo "Disabling ORB_SLAM3 with ${PHYSICAL_MEMORY_GB} GiB of RAM"
+  touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/ORB_SLAM3/COLCON_IGNORE"
 fi
 
 # p8-platform

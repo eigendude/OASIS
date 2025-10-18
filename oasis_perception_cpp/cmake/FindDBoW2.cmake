@@ -16,12 +16,14 @@
 
 include(FindPackageHandleStandardArgs)
 
+set(PACKAGE_NAME DBoW2)
+
 find_path(
   DBOW2_INCLUDE_DIR
   NAMES
     "DBoW2/FeatureVector.h"
   PATH_SUFFIXES
-    "include/Thirdparty/DBoW2"
+    "include/${PACKAGE_NAME}"
 )
 
 find_library(
@@ -29,7 +31,7 @@ find_library(
   NAMES
     "DBoW2"
   PATH_SUFFIXES
-    "${LIBRARY_PATH_PREFIX}"
+    "lib/${PACKAGE_NAME}"
 )
 
 find_package_handle_standard_args(
@@ -49,7 +51,7 @@ if (DBoW2_FOUND)
 
     set_target_properties(DBoW2::DBoW2 PROPERTIES
       INTERFACE_INCLUDE_DIRECTORIES
-        "${DBOW2_INCLUDE_DIR}"
+        "${DBOW2_INCLUDE_DIRS}"
       IMPORTED_LOCATION
         "${DBOW2_LIBRARY}"
     )

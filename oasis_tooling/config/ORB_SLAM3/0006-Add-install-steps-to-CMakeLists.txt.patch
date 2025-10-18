@@ -1,0 +1,134 @@
+From ddbc8c5f3542410f6c0dcf33575f713f12091d36 Mon Sep 17 00:00:00 2001
+From: Garrett Brown <eigendebugger@gmail.com>
+Date: Fri, 23 Dec 2022 15:17:15 -0800
+Subject: [PATCH 6/6] Add install steps to CMakeLists.txt
+
+---
+ CMakeLists.txt                   | 44 ++++++++++++++++++++++++++++++++
+ Thirdparty/DBoW2/CMakeLists.txt  | 19 ++++++++++++++
+ Thirdparty/Sophus/CMakeLists.txt |  2 +-
+ Thirdparty/g2o/CMakeLists.txt    | 21 +++++++++++++++
+ 4 files changed, 85 insertions(+), 1 deletion(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 91836f9..fe34e66 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -139,3 +139,47 @@ if(realsense2_FOUND)
+     ${realsense2_LIBRARY}
+     )
+ endif()
++
++# Install headers and library
++install(
++  DIRECTORY
++    include/
++  DESTINATION
++    include/${PROJECT_NAME}
++)
++install(
++  TARGETS
++    ${PROJECT_NAME}
++  RUNTIME DESTINATION
++    lib/${PROJECT_NAME}
++)
++
++# ORBvoc extraction and install
++set(VOCAB_TXT ORBvoc.txt)
++set(VOCAB_ARCHIVE ${VOCAB_TXT}.tar.gz)
++
++set(VOCAB_ARCHIVE_PATH ${PROJECT_SOURCE_DIR}/Vocabulary/${VOCAB_ARCHIVE})
++set(VOCAB_BUILD_DIR ${CMAKE_CURRENT_BINARY_DIR}/Vocabulary)
++set(VOCAB_TXT_PATH ${VOCAB_BUILD_DIR}/${VOCAB_TXT})
++
++# Create build-side Vocabulary directory and extract the archive into it
++add_custom_command(
++  OUTPUT ${VOCAB_TXT_PATH}
++  COMMAND ${CMAKE_COMMAND} -E make_directory ${VOCAB_BUILD_DIR}
++  COMMAND ${CMAKE_COMMAND} -E chdir ${VOCAB_BUILD_DIR}
++          # Use CMake's portable tar helper (works on macOS/Linux/Windows)
++          ${CMAKE_COMMAND} -E tar xzf ${VOCAB_ARCHIVE_PATH}
++  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
++  DEPENDS ${VOCAB_ARCHIVE_PATH}
++  COMMENT "Extracting ${VOCAB_TXT} from ${VOCAB_ARCHIVE}"
++  VERBATIM
++)
++
++# Build target for the vocabulary file
++add_custom_target(orb_vocab ALL DEPENDS ${VOCAB_TXT_PATH})
++
++# Install the Vocabulary directory
++install(
++  DIRECTORY ${VOCAB_BUILD_DIR}/
++  DESTINATION share/${PROJECT_NAME}/Vocabulary
++)
+diff --git a/Thirdparty/DBoW2/CMakeLists.txt b/Thirdparty/DBoW2/CMakeLists.txt
+index c312b25..7c7d796 100644
+--- a/Thirdparty/DBoW2/CMakeLists.txt
++++ b/Thirdparty/DBoW2/CMakeLists.txt
+@@ -43,3 +43,22 @@ include_directories(${OpenCV_INCLUDE_DIRS})
+ add_library(DBoW2 SHARED ${SRCS_DBOW2} ${SRCS_DUTILS})
+ target_link_libraries(DBoW2 ${OpenCV_LIBS})
+ 
++# Install headers
++install(
++  DIRECTORY DBoW2
++  DESTINATION include/${PROJECT_NAME}
++  FILES_MATCHING PATTERN "*.h"
++)
++install(
++  DIRECTORY DUtils
++  DESTINATION include/${PROJECT_NAME}
++  FILES_MATCHING PATTERN "*.h"
++)
++
++# Install library
++install(
++  TARGETS
++    DBoW2
++  RUNTIME DESTINATION
++    lib/${PROJECT_NAME}
++)
+diff --git a/Thirdparty/Sophus/CMakeLists.txt b/Thirdparty/Sophus/CMakeLists.txt
+index 933445b..3f9b76f 100644
+--- a/Thirdparty/Sophus/CMakeLists.txt
++++ b/Thirdparty/Sophus/CMakeLists.txt
+@@ -154,5 +154,5 @@ install(
+ # Install header files
+ install(
+   FILES ${SOPHUS_HEADER_FILES}
+-  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/sophus
++  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME}/sophus
+ )
+diff --git a/Thirdparty/g2o/CMakeLists.txt b/Thirdparty/g2o/CMakeLists.txt
+index 1a32ff9..b95c583 100644
+--- a/Thirdparty/g2o/CMakeLists.txt
++++ b/Thirdparty/g2o/CMakeLists.txt
+@@ -176,3 +176,24 @@ g2o/stuff/string_tools.cpp
+ g2o/stuff/property.cpp       
+ g2o/stuff/property.h       
+ )
++
++# Install headers
++install(
++  DIRECTORY g2o
++  DESTINATION include/${PROJECT_NAME}
++  FILES_MATCHING
++    PATTERN "*.h"
++    PATTERN "*.hpp"
++)
++install(
++  FILES config.h
++  DESTINATION include/${PROJECT_NAME}
++)
++
++# Install library
++install(
++  TARGETS
++    g2o
++  RUNTIME DESTINATION
++    lib/${PROJECT_NAME}
++)
+-- 
+2.43.0
+
