@@ -40,6 +40,35 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Restore oasis_msgs
+        id: restore-oasis-msgs
+        uses: actions/cache@v4
+        with:
+          path: oasis_msgs/install
+          key: oasis-msgs-${{ runner.os }}-${{ hashFiles('oasis_msgs/msg/**', 'oasis_msgs/srv/**', 'oasis_msgs/CMakeLists.txt', 'oasis_msgs/package.xml') }}
+
+      - name: Install ROS message dependencies
+        if: steps.restore-oasis-msgs.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake \
+            ros-kilted-ament-cmake \
+            ros-kilted-geometry-msgs \
+            ros-kilted-rosidl-default-generators \
+            ros-kilted-rosidl-default-runtime \
+            ros-kilted-sensor-msgs \
+            ros-kilted-std-msgs
+
+      - name: Build oasis_msgs
+        if: steps.restore-oasis-msgs.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p oasis_msgs/build oasis_msgs/install
+          cd oasis_msgs/build
+          cmake .. -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/oasis_msgs/install
+          make
+          make install
+
       - name: Install dependencies
         run: |
           python3 -m pip install --upgrade pip
