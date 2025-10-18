@@ -23,6 +23,7 @@ jobs:
       matrix:
         include:
           - os: ubuntu-24.04
+            ros2_distro: kilted
 
     # Steps represent a sequence of tasks that will be executed as part of the
     # job
@@ -40,6 +41,51 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Update pip
+        run: python3 -m pip install --upgrade pip
+
+      - name: Restore oasis_msgs
+        id: restore-oasis-msgs
+        uses: actions/cache@v4
+        with:
+          path: ros-ws/oasis-${{ matrix.ros2_distro }}/install
+          key: oasis-msgs-${{ runner.os }}-${{ matrix.ros2_distro }}-${{ hashFiles('oasis_msgs/msg/**', 'oasis_msgs/srv/**', 'oasis_msgs/CMakeLists.txt', 'oasis_msgs/package.xml') }}
+
+      - name: Setup ROS 2 apt sources
+        if: steps.restore-oasis-msgs.outputs.cache-hit != 'true'
+        run: ./oasis_tooling/scripts/setup_ros2_desktop.sh
+
+      - name: Install ROS message dependencies
+        if: steps.restore-oasis-msgs.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get install -y \
+            cmake \
+            ros-${{ matrix.ros2_distro }}-ament-cmake \
+            ros-${{ matrix.ros2_distro }}-geometry-msgs \
+            ros-${{ matrix.ros2_distro }}-rosidl-default-generators \
+            ros-${{ matrix.ros2_distro }}-rosidl-default-runtime \
+            ros-${{ matrix.ros2_distro }}-sensor-msgs \
+            ros-${{ matrix.ros2_distro }}-std-msgs
+
+      - name: Ensure ROS Python tooling is available
+        if: steps.restore-oasis-msgs.outputs.cache-hit != 'true'
+        run: |
+          python3 -m pip install \
+            catkin_pkg \
+            empy \
+            lark \
+            numpy
+
+      - name: Build oasis_msgs
+        if: steps.restore-oasis-msgs.outputs.cache-hit != 'true'
+        run: |
+          source /opt/ros/${{ matrix.ros2_distro }}/setup.bash
+          mkdir -p oasis_msgs/build
+          cd oasis_msgs/build
+          cmake .. -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/ros-ws/oasis-${{ matrix.ros2_distro }}/install
+          # Build and install in parallel using the CMake driver
+          cmake --build . --target install --parallel
+
       - name: Install dependencies
         run: |
           python3 -m pip install --upgrade pip
@@ -51,9 +97,7 @@ jobs:
         with:
           path: |
             .tox
-          key: tox-env-${{ hashFiles('tox.ini') }}
-          restore-keys: |
-            tox-env-
+          key: tox-env-${{ hashFiles('tox.ini', 'requirements-tox.txt') }}
 
       # Run the tests!
       - name: Run tox

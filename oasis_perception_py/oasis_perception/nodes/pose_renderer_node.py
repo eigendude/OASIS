@@ -12,11 +12,13 @@ from typing import Any
 
 import cv2
 import cv_bridge
-import mediapipe
 import numpy as np
 import rclpy.node
 from image_transport_py import ImageTransport
 from mediapipe.framework.formats import landmark_pb2
+from mediapipe.solutions import drawing_styles as mp_drawing_styles
+from mediapipe.solutions import drawing_utils as mp_drawing
+from mediapipe.solutions import pose as mp_pose
 
 from oasis_msgs.msg import PoseLandmarksArray as PoseLandmarksArrayMsg
 
@@ -65,9 +67,9 @@ class PoseRendererNode(rclpy.node.Node):
 
         # Prepare CV bridge & mediapipe drawing
         self._cv_bridge: cv_bridge.CvBridge = cv_bridge.CvBridge()
-        self._mp_drawing = mediapipe.solutions.drawing_utils
-        self._mp_styles = mediapipe.solutions.drawing_styles
-        self._mp_pose = mediapipe.solutions.pose
+        self._mp_drawing = mp_drawing
+        self._mp_styles = mp_drawing_styles
+        self._mp_pose = mp_pose
 
         # ImageTransport for publishing compressed overlays
         self._it: ImageTransport = ImageTransport(

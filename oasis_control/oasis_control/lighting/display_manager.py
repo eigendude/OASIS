@@ -107,7 +107,7 @@ class DisplayManager:
 
         # Set display power mode
         for display_host in self._smart_display_zones:
-            set_display_request: SetDisplaySvc = SetDisplaySvc.Request()
+            set_display_request: SetDisplaySvc.Request = SetDisplaySvc.Request()
             set_display_request.dpms_mode = power_mode
             set_display_request.brightness = 100 if power_mode == PowerModeMsg.ON else 0
 
