@@ -16,12 +16,14 @@
 
 include(FindPackageHandleStandardArgs)
 
+set(PACKAGE_NAME g2o)
+
 find_path(
   G2O_INCLUDE_DIR
   NAMES
     "config.h"
   PATH_SUFFIXES
-    "include/Thirdparty/g2o"
+    "include/${PACKAGE_NAME}"
 )
 
 find_library(
@@ -29,7 +31,7 @@ find_library(
   NAMES
     "g2o"
   PATH_SUFFIXES
-    "${LIBRARY_PATH_PREFIX}"
+    "lib/${PACKAGE_NAME}"
 )
 
 find_package_handle_standard_args(
@@ -49,7 +51,7 @@ if (g2o_FOUND)
 
     set_target_properties(g2o::g2o PROPERTIES
       INTERFACE_INCLUDE_DIRECTORIES
-        "${G2O_INCLUDE_DIR}"
+        "${G2O_INCLUDE_DIRS}"
       IMPORTED_LOCATION
         "${G2O_LIBRARY}"
     )

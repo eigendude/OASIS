@@ -62,7 +62,9 @@ cmake_prefix_path_cmake="${CMAKE_PREFIX_PATH//:/;}"
 # Also force CMP0074 NEW so find_package() respects *_ROOT hints (e.g., OpenCV_ROOT)
 COLCON_FLAGS+=" \
   --cmake-args \
+    -DBUILD_EXAMPLES=OFF \
     -DBUILD_TESTING=OFF \
+    -DBUILD_TESTS=OFF \
     -DCMAKE_C_COMPILER_LAUNCHER=ccache \
     -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
     -DCMAKE_POLICY_DEFAULT_CMP0074=NEW \

@@ -11,12 +11,14 @@
 
 include(FindPackageHandleStandardArgs)
 
+set(PACKAGE_NAME Sophus)
+
 find_path(
   SOPHUS_INCLUDE_DIR
   NAMES
-    "sophus/se3.hpp"
+    "sophus/types.hpp"
   PATH_SUFFIXES
-    "include/Thirdparty/Sophus"
+    "include/${PACKAGE_NAME}"
 )
 
 find_package_handle_standard_args(
