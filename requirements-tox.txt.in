@@ -10,6 +10,7 @@ flake8-logging-format
 flake8-quotes
 isort
 mypy
+numpy
 types-paho-mqtt
 types-psutil
 types-pyserial
