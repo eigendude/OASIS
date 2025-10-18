@@ -267,7 +267,7 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         msg.co2_ppb = float(co2_ppb)
         msg.tvoc_ppb = float(tvoc_ppb)
 
-        i2c_device: I2CDeviceMsg = I2CDeviceMsg
+        i2c_device: I2CDeviceMsg = I2CDeviceMsg()
         i2c_device.i2c_device_type = I2CDeviceTypeMsg.CCS811
         i2c_device.i2c_port = i2c_port
         i2c_device.i2c_address = i2c_address
