@@ -8,7 +8,7 @@
 #
 ################################################################################
 
-from launch import LaunchDescription
+from launch.launch_description import LaunchDescription
 
 from oasis_drivers.launch.driver_descriptions import DriverDescriptions as Drivers
 from oasis_hass.launch.hass_descriptions import HomeAssistantDescriptions as HA
