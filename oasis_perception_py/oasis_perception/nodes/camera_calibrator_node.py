@@ -11,7 +11,7 @@
 import functools
 import socket
 from typing import Any
-from typing import Type
+from typing import Callable
 
 import cv2
 import cv_bridge
@@ -160,7 +160,7 @@ class CameraCalibratorNode(CalibrationNode):
             ]
 
         # Pick synchronizer class
-        sync_cls: Type[Any] = (
+        sync_cls: Callable[..., Any] = (
             message_filters.TimeSynchronizer
             if DEFAULT_APPROXIMATE <= 0.0
             else functools.partial(
