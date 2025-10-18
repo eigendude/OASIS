@@ -271,18 +271,17 @@ if (ORB_SLAM3_FOUND)
     $<BUILD_INTERFACE:${OPENGL_INCLUDE_DIR}>
     $<BUILD_INTERFACE:${GLEW_INCLUDE_DIR}>
     ${EIGEN3_INCLUDE_DIRS}
-    ${ORB_SLAM3_INCLUDE_DIRS}
     ${SOPHUS_INCLUDE_DIRS}
   )
   set(MONOCULAR_SLAM_LIBRARIES
     ament_index_cpp::ament_index_cpp
     cv_bridge::cv_bridge
-    ${DBoW2_LIBRARIES}
-    ${g2o_LIBRARIES}
+    DBoW2::DBoW2
+    g2o::g2o
     ${GLEW_LIBRARY}
     image_transport::image_transport
-    ${ORB_SLAM3_LIBRARIES}
     ${OPENGL_LIBRARIES}
+    ORB_SLAM3::ORB_SLAM3
     ${Pangolin_LIBRARIES}
     rclcpp::rclcpp
     ${sensor_msgs_TARGETS}

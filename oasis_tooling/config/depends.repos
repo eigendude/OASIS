@@ -14,7 +14,7 @@ repositories:
     type: git
     url: https://github.com/structureio/OpenNI2.git
     version: master
-  depends/orb-slam3:
+  depends/ORB_SLAM3:
     type: git
     url: https://github.com/UZ-SLAMLab/ORB_SLAM3.git
     version: master
