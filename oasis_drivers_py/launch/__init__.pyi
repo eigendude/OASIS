@@ -1,0 +1,6 @@
+from typing import Any, Iterable, Optional
+
+class LaunchDescription:
+    def __init__(self, entities: Optional[Iterable[Any]] = ...) -> None: ...
+
+    def add_action(self, action: Any) -> None: ...

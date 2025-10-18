@@ -13,6 +13,7 @@ import re
 import shutil
 import stat
 import subprocess
+from typing import Optional
 
 
 class DisplayServer:
@@ -52,7 +53,7 @@ class DisplayServer:
                  missing
         """
         # 1) Locate the binary
-        vbetool_path: str | None = shutil.which("vbetool")
+        vbetool_path: Optional[str] = shutil.which("vbetool")
         if vbetool_path is None:
             raise Exception('Missing "vbetool". Install with: sudo apt install vbetool')
 
@@ -176,7 +177,7 @@ class DisplayServer:
             raise Exception('Missing ddcutil, install with "sudo apt install ddcutil"')
 
         out: str = detect.stdout + detect.stderr
-        match: re.Match[str] | None = re.search(r"I2C bus:\s*/dev/i2c-(\d+)", out)
+        match: Optional[re.Match[str]] = re.search(r"I2C bus:\s*/dev/i2c-(\d+)", out)
         if not match:
             raise Exception(
                 "Unable to determine I2C bus from ddcutil detect output:\n"
