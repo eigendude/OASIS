@@ -10,6 +10,7 @@
 
 from typing import List
 from typing import Optional
+from typing import Sequence
 
 import serial.tools.list_ports
 import serial.tools.list_ports_common
@@ -24,8 +25,8 @@ class SerialScanner(object):
     """
 
     @classmethod
-    def do_scan(cls) -> List[serial.tools.list_ports_common.ListPortInfo]:
-        ports: List[serial.tools.list_ports_common.ListPortInfo] = (
+    def do_scan(cls) -> List[SerialPort]:
+        ports: Sequence[serial.tools.list_ports_common.ListPortInfo] = (
             serial.tools.list_ports.comports(include_links=False)
         )
         return [cls._get_serial_port(port) for port in ports]
