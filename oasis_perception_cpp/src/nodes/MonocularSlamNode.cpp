@@ -34,6 +34,8 @@ constexpr const char* SYSTEM_ID_PARAMETER = "system_id";
 constexpr const char* DEFAULT_SYSTEM_ID = "";
 constexpr const char* IMAGE_TRANSPORT_PARAMETER = "image_transport";
 constexpr const char* DEFAULT_IMAGE_TRANSPORT = "raw";
+constexpr const char* VOCABULARY_FILE_PARAMETER = "vocabulary_file";
+constexpr const char* DEFAULT_VOCABULARY_FILE = "";
 } // namespace
 
 MonocularSlamNode::MonocularSlamNode(rclcpp::Node& node)
@@ -43,6 +45,7 @@ MonocularSlamNode::MonocularSlamNode(rclcpp::Node& node)
 {
   m_node.declare_parameter<std::string>(SYSTEM_ID_PARAMETER, DEFAULT_SYSTEM_ID);
   m_node.declare_parameter<std::string>(IMAGE_TRANSPORT_PARAMETER, DEFAULT_IMAGE_TRANSPORT);
+  m_node.declare_parameter<std::string>(VOCABULARY_FILE_PARAMETER, DEFAULT_VOCABULARY_FILE);
 }
 
 MonocularSlamNode::~MonocularSlamNode() = default;
@@ -76,6 +79,17 @@ bool MonocularSlamNode::Initialize()
   RCLCPP_INFO(*m_logger, "Image topic: %s", imageTopic.c_str());
   RCLCPP_INFO(*m_logger, "Image transport: %s", imageTransport.c_str());
 
+  std::string vocabularyFile;
+  if (!m_node.get_parameter(VOCABULARY_FILE_PARAMETER, vocabularyFile))
+  {
+    vocabularyFile = DEFAULT_VOCABULARY_FILE;
+  }
+
+  if (!vocabularyFile.empty())
+  {
+    RCLCPP_INFO(*m_logger, "Vocabulary file: %s", vocabularyFile.c_str());
+  }
+
   //*m_flowPublisher = image_transport::create_publisher(&m_node, flowTopic);
 
   *m_imgSubscriber = image_transport::create_subscription(
@@ -83,7 +97,7 @@ bool MonocularSlamNode::Initialize()
       [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg) { OnImage(msg); }, imageTransport);
 
   m_monocularSlam = std::make_unique<SLAM::MonocularSlam>(m_node);
-  if (!m_monocularSlam->Initialize())
+  if (!m_monocularSlam->Initialize(vocabularyFile))
   {
     RCLCPP_ERROR(*m_logger, "Failed to initialize monocular SLAM");
     return false;
