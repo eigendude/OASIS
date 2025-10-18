@@ -159,9 +159,10 @@ class LightingManager:
         g_val: float
         b_val: float
         r_val, g_val, b_val = colorsys.hsv_to_rgb(hue, 1.0, 1.0)
-        rainbow_color: tuple[float, float, float] = tuple(
-            min(1.0, component + (1.0 - component) * RAINBOW_LIGHTNESS_BOOST)
-            for component in (r_val, g_val, b_val)
+        rainbow_color: tuple[float, float, float] = (
+            min(1.0, r_val + (1.0 - r_val) * RAINBOW_LIGHTNESS_BOOST),
+            min(1.0, g_val + (1.0 - g_val) * RAINBOW_LIGHTNESS_BOOST),
+            min(1.0, b_val + (1.0 - b_val) * RAINBOW_LIGHTNESS_BOOST),
         )
 
         # Process all lights
