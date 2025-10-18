@@ -14,6 +14,7 @@ from launch import LaunchDescription
 from launch_ros.actions import ComposableNodeContainer
 from launch_ros.actions import Node
 from launch_ros.descriptions import ComposableNode
+from oasis_perception.utils.perception_paths import PerceptionPaths
 
 from oasis_hass.utils.smarthome_config import SmarthomeConfig
 
@@ -248,6 +249,7 @@ class PerceptionDescriptions:
                         {
                             "system_id": system_id,
                             "image_transport": image_transport,
+                            "vocabulary_file": PerceptionPaths.find_orb_slam3_vocabulary(),
                         }
                     ],
                     remappings=[
