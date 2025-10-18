@@ -64,6 +64,12 @@ jobs:
             ros-kilted-sensor-msgs \
             ros-kilted-std-msgs
 
+      - name: Ensure Empy is available
+        if: steps.restore-oasis-msgs.outputs.cache-hit != 'true'
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install empy
+
       - name: Build oasis_msgs
         if: steps.restore-oasis-msgs.outputs.cache-hit != 'true'
         run: |
