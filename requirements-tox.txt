@@ -22,6 +22,8 @@ pyflakes==3.4.0
 pytokens==0.2.0
 setuptools==80.9.0
 snowballstemmer==3.0.1
+types-paho-mqtt==1.6.0.20240321
 types-pyserial==3.5.0.20251001
+types-PyYAML==6.0.12.20250915
 types-setuptools==80.9.0.20250822
 typing_extensions==4.15.0
