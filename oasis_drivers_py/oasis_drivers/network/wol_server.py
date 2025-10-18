@@ -101,7 +101,7 @@ class WolServer:
 
         # 2) Build the payload: 6 × 0xFF followed by 16 × the MAC bytes
         mac_bytes: bytes = bytes.fromhex(cleaned)
-        packet: bytes = b"\xFF" * 6 + mac_bytes * 16
+        packet: bytes = b"\xff" * 6 + mac_bytes * 16
 
         # 3) Send as a UDP broadcast on port 9
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:

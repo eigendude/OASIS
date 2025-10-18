@@ -10,6 +10,7 @@
 
 import math
 import os
+from typing import Any
 from typing import Optional
 
 import cv2
@@ -318,7 +319,7 @@ class PoseLandmarkerNode(rclpy.node.Node):
     def _result_callback(
         self,
         result: vision.PoseLandmarkerResult,
-        output_image: mediapipe.Image,
+        output_image: Any,
         timestamp_ms: int,
     ) -> None:
         """
@@ -406,7 +407,7 @@ class PoseLandmarkerNode(rclpy.node.Node):
     def _publish_image(
         self,
         result: vision.PoseLandmarkerResult,
-        output_image: mediapipe.Image,
+        output_image: Any,
         header: HeaderMsg,
     ) -> None:
         # Convert the mediapipe.Image to a NumPy array

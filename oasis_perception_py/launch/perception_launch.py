@@ -8,7 +8,7 @@
 #
 ################################################################################
 
-from launch import LaunchDescription
+from launch.launch_description import LaunchDescription
 from launch_ros.descriptions import ComposableNode
 from oasis_perception.launch.perception_descriptions import PerceptionDescriptions
 

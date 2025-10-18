@@ -17,9 +17,12 @@ from datetime import datetime
 from datetime import timezone
 from typing import Any
 from typing import Awaitable
+from typing import Coroutine
 from typing import List
 from typing import Optional
 from typing import Tuple
+from typing import TypeVar
+from typing import cast
 
 from pymata_express import pymata_express
 from pymata_express.private_constants import PrivateConstants
@@ -28,6 +31,15 @@ from oasis_drivers.firmata.firmata_callback import FirmataCallback
 from oasis_drivers.firmata.firmata_constants import FirmataConstants
 from oasis_drivers.firmata.firmata_types import AnalogMode
 from oasis_drivers.firmata.firmata_types import DigitalMode
+
+
+_T = TypeVar("_T")
+
+
+def _to_coroutine(awaitable: Awaitable[_T]) -> Coroutine[Any, Any, _T]:
+    """Safely coerce awaitables returned by pymata-express into coroutines."""
+
+    return cast(Coroutine[Any, Any, _T], awaitable)
 
 
 class FirmataBridge:
@@ -273,7 +285,9 @@ class FirmataBridge:
         coroutine: Awaitable[Tuple[int, int]] = self._board.analog_read(analog_pin)
 
         # Dispatch to asyncio
-        future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
+        future: Future = asyncio.run_coroutine_threadsafe(
+            _to_coroutine(coroutine), self._loop
+        )
 
         # Get result
         result: Tuple[int, int] = future.result()
@@ -337,7 +351,9 @@ class FirmataBridge:
         coroutine: Awaitable[Tuple[int, int]] = self._board.digital_read(digital_pin)
 
         # Dispatch to asyncio
-        future: Future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
+        future: Future = asyncio.run_coroutine_threadsafe(
+            _to_coroutine(coroutine), self._loop
+        )
 
         # Get result
         result: Tuple[int, int] = future.result()
