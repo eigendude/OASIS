@@ -8,7 +8,7 @@
 #
 ################################################################################
 
-from typing import Any
+from typing import Any, cast
 
 import cv2
 import cv_bridge
@@ -18,7 +18,7 @@ import rclpy.node
 from image_transport_py import ImageTransport
 from mediapipe.framework.formats import landmark_pb2
 
-from oasis_msgs.msg import PoseLandmarksArray as PoseLandmarksArrayMsg
+from oasis_msgs.msg import PoseLandmarksArray as PoseLandmarksArrayMsg  # type: ignore[attr-defined]
 
 
 ################################################################################
@@ -64,10 +64,11 @@ class PoseRendererNode(rclpy.node.Node):
         height: int = self.get_parameter("height").get_parameter_value().integer_value
 
         # Prepare CV bridge & mediapipe drawing
+        mediapipe_module = cast(Any, mediapipe)
         self._cv_bridge: cv_bridge.CvBridge = cv_bridge.CvBridge()
-        self._mp_drawing = mediapipe.solutions.drawing_utils
-        self._mp_styles = mediapipe.solutions.drawing_styles
-        self._mp_pose = mediapipe.solutions.pose
+        self._mp_drawing = mediapipe_module.solutions.drawing_utils
+        self._mp_styles = mediapipe_module.solutions.drawing_styles
+        self._mp_pose = mediapipe_module.solutions.pose
 
         # ImageTransport for publishing compressed overlays
         self._it: ImageTransport = ImageTransport(

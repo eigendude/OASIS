@@ -10,7 +10,7 @@
 
 import math
 import os
-from typing import Optional
+from typing import Any, Optional, cast
 
 import cv2
 import cv_bridge
@@ -27,11 +27,13 @@ from mediapipe.tasks.python import vision
 from rclpy.logging import LoggingSeverity
 from std_msgs.msg import Header as HeaderMsg
 
-from oasis_msgs.msg import BoundingBox as BoundingBoxMsg
-from oasis_msgs.msg import CameraScene as CameraSceneMsg
-from oasis_msgs.msg import Landmark as LandmarkMsg
-from oasis_msgs.msg import PoseLandmarks as PoseLandmarksMsg
-from oasis_msgs.msg import PoseLandmarksArray as PoseLandmarksArrayMsg
+from oasis_msgs.msg import BoundingBox as BoundingBoxMsg  # type: ignore[attr-defined]
+from oasis_msgs.msg import CameraScene as CameraSceneMsg  # type: ignore[attr-defined]
+from oasis_msgs.msg import Landmark as LandmarkMsg  # type: ignore[attr-defined]
+from oasis_msgs.msg import PoseLandmarks as PoseLandmarksMsg  # type: ignore[attr-defined]
+from oasis_msgs.msg import PoseLandmarksArray as PoseLandmarksArrayMsg  # type: ignore[attr-defined]
+
+mediapipe_module = cast(Any, mediapipe)
 
 
 ################################################################################
@@ -242,9 +244,9 @@ class PoseLandmarkerNode(rclpy.node.Node):
         self._detector = self.initialize_detector()
 
         # Setup MediaPipe drawing utilities
-        self._mp_drawing = mediapipe.solutions.drawing_utils
-        self._mp_drawing_styles = mediapipe.solutions.drawing_styles
-        self._mp_pose = mediapipe.solutions.pose
+        self._mp_drawing = mediapipe_module.solutions.drawing_utils
+        self._mp_drawing_styles = mediapipe_module.solutions.drawing_styles
+        self._mp_pose = mediapipe_module.solutions.pose
 
     def initialize_detector(self):
         # Get model_asset_path as needed
@@ -308,8 +310,8 @@ class PoseLandmarkerNode(rclpy.node.Node):
             return
 
         # Create a MediaPipe image from the RGB data (no further color conversion required)
-        mp_image: mediapipe.Image = mediapipe.Image(
-            image_format=mediapipe.ImageFormat.SRGB, data=rgb_image
+        mp_image: Any = mediapipe_module.Image(
+            image_format=mediapipe_module.ImageFormat.SRGB, data=rgb_image
         )
 
         # Submit the frame for asynchronous processing
@@ -318,7 +320,7 @@ class PoseLandmarkerNode(rclpy.node.Node):
     def _result_callback(
         self,
         result: vision.PoseLandmarkerResult,
-        output_image: mediapipe.Image,
+        output_image: Any,
         timestamp_ms: int,
     ) -> None:
         """
@@ -406,7 +408,7 @@ class PoseLandmarkerNode(rclpy.node.Node):
     def _publish_image(
         self,
         result: vision.PoseLandmarkerResult,
-        output_image: mediapipe.Image,
+        output_image: Any,
         header: HeaderMsg,
     ) -> None:
         # Convert the mediapipe.Image to a NumPy array
