@@ -109,17 +109,24 @@ class WolManager:
     def send_wol(self) -> bool:
         if self._mac_address is None:
             # Wait for result
+            if self._mac_address_future is None:
+                self._logger.error("MAC address future was not initialized")
+                return False
+
+            mac_address_future = self._mac_address_future
             rclpy.spin_until_future_complete(
-                self._node, self._mac_address_future, None, TIMEOUT_SECS
+                self._node, mac_address_future, None, TIMEOUT_SECS
             )
-            if self._mac_address_future.result() is None:
+
+            mac_address_response = mac_address_future.result()
+            if mac_address_response is None:
                 self._logger.error(
-                    f"Exception while calling service: {self._mac_address_future.exception()}"
+                    f"Exception while calling service: {mac_address_future.exception()}"
                 )
                 return False
 
             # Record MAC address
-            self._mac_address = self._mac_address_future.result().mac_address
+            self._mac_address = mac_address_response.mac_address
 
             # Log MAC address
             if self._mac_address == "":
@@ -141,12 +148,18 @@ class WolManager:
         self._wol_future = self._wol_client.call_async(wol_svc)
 
         # Wait for result
+        wol_future = self._wol_future
+        if wol_future is None:
+            self._logger.error("WoL future was not initialized")
+            return False
         rclpy.spin_until_future_complete(
-            self._node, self._wol_future, None, TIMEOUT_SECS
+            self._node, wol_future, None, TIMEOUT_SECS
         )
-        if self._wol_future.result() is None:
+
+        wol_response = wol_future.result()
+        if wol_response is None:
             self._logger.error(
-                f"Exception while calling service: {self._wol_future.exception()}"
+                f"Exception while calling service: {wol_future.exception()}"
             )
             return False
 
