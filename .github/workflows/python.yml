@@ -23,6 +23,7 @@ jobs:
       matrix:
         include:
           - os: ubuntu-24.04
+            ros2_distro: kilted
 
     # Steps represent a sequence of tasks that will be executed as part of the
     # job
@@ -47,8 +48,8 @@ jobs:
         id: restore-oasis-msgs
         uses: actions/cache@v4
         with:
-          path: ros-ws/oasis-kilted/install
-          key: oasis-msgs-${{ runner.os }}-${{ hashFiles('oasis_msgs/msg/**', 'oasis_msgs/srv/**', 'oasis_msgs/CMakeLists.txt', 'oasis_msgs/package.xml') }}
+          path: ros-ws/oasis-${{ matrix.ros2_distro }}/install
+          key: oasis-msgs-${{ runner.os }}-${{ matrix.ros2_distro }}-${{ hashFiles('oasis_msgs/msg/**', 'oasis_msgs/srv/**', 'oasis_msgs/CMakeLists.txt', 'oasis_msgs/package.xml') }}
 
       - name: Setup ROS 2 apt sources
         if: steps.restore-oasis-msgs.outputs.cache-hit != 'true'
@@ -59,12 +60,12 @@ jobs:
         run: |
           sudo apt-get install -y \
             cmake \
-            ros-kilted-ament-cmake \
-            ros-kilted-geometry-msgs \
-            ros-kilted-rosidl-default-generators \
-            ros-kilted-rosidl-default-runtime \
-            ros-kilted-sensor-msgs \
-            ros-kilted-std-msgs
+            ros-${{ matrix.ros2_distro }}-ament-cmake \
+            ros-${{ matrix.ros2_distro }}-geometry-msgs \
+            ros-${{ matrix.ros2_distro }}-rosidl-default-generators \
+            ros-${{ matrix.ros2_distro }}-rosidl-default-runtime \
+            ros-${{ matrix.ros2_distro }}-sensor-msgs \
+            ros-${{ matrix.ros2_distro }}-std-msgs
 
       - name: Ensure ROS Python tooling is available
         if: steps.restore-oasis-msgs.outputs.cache-hit != 'true'
@@ -76,10 +77,10 @@ jobs:
       - name: Build oasis_msgs
         if: steps.restore-oasis-msgs.outputs.cache-hit != 'true'
         run: |
-          source /opt/ros/kilted/setup.bash
+          source /opt/ros/${{ matrix.ros2_distro }}/setup.bash
           mkdir -p oasis_msgs/build
           cd oasis_msgs/build
-          cmake .. -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/ros-ws/oasis-kilted/install
+          cmake .. -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/ros-ws/oasis-${{ matrix.ros2_distro }}/install
           make
           make install
 
