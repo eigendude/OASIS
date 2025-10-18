@@ -271,7 +271,6 @@ if (ORB_SLAM3_FOUND)
     $<BUILD_INTERFACE:${OPENGL_INCLUDE_DIR}>
     $<BUILD_INTERFACE:${GLEW_INCLUDE_DIR}>
     ${EIGEN3_INCLUDE_DIRS}
-    ${ORB_SLAM3_INCLUDE_DIRS}
     ${SOPHUS_INCLUDE_DIRS}
   )
   set(MONOCULAR_SLAM_LIBRARIES
@@ -281,8 +280,8 @@ if (ORB_SLAM3_FOUND)
     ${g2o_LIBRARIES}
     ${GLEW_LIBRARY}
     image_transport::image_transport
-    ${ORB_SLAM3_LIBRARIES}
     ${OPENGL_LIBRARIES}
+    ORB_SLAM3::ORB_SLAM3
     ${Pangolin_LIBRARIES}
     rclcpp::rclcpp
     ${sensor_msgs_TARGETS}
