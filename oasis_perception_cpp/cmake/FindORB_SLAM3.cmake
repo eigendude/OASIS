@@ -16,19 +16,21 @@
 
 include(FindPackageHandleStandardArgs)
 
+set(PACKAGE_NAME ORB_SLAM3)
+
 find_path(
   ORB_SLAM3_INCLUDE_DIR
   NAMES
     "System.h"
   PATH_SUFFIXES
-    "include"
+    "include/${PACKAGE_NAME}"
 )
 find_path(
-  CAMERA_MODLE_INCLUDE_DIR
+  CAMERA_MODEL_INCLUDE_DIR
   NAMES
     "GeometricCamera.h"
   PATH_SUFFIXES
-    "include/CameraModels"
+    "include/${PACKAGE_NAME}/CameraModels"
 )
 
 find_library(
@@ -36,7 +38,7 @@ find_library(
   NAMES
     "ORB_SLAM3"
   PATH_SUFFIXES
-    "${LIBRARY_PATH_PREFIX}"
+    "${LIBRARY_PATH_PREFIX}/${PACKAGE_NAME}"
 )
 
 find_package_handle_standard_args(
@@ -44,13 +46,13 @@ find_package_handle_standard_args(
   DEFAULT_MSG
     ORB_SLAM3_INCLUDE_DIR
     ORB_SLAM3_LIBRARY
-    CAMERA_MODLE_INCLUDE_DIR
+    CAMERA_MODEL_INCLUDE_DIR
 )
 
 if (ORB_SLAM3_FOUND)
   set(ORB_SLAM3_INCLUDE_DIRS
     "${ORB_SLAM3_INCLUDE_DIR}"
-    "${CAMERA_MODLE_INCLUDE_DIR}"
+    "${CAMERA_MODEL_INCLUDE_DIR}"
   )
   set(ORB_SLAM3_LIBRARIES "${ORB_SLAM3_LIBRARY}")
 
@@ -59,7 +61,7 @@ if (ORB_SLAM3_FOUND)
 
     set_target_properties(ORB_SLAM3::ORB_SLAM3 PROPERTIES
       INTERFACE_INCLUDE_DIRECTORIES
-        "${ORB_SLAM3_INCLUDE_DIR}"
+        "${ORB_SLAM3_INCLUDE_DIRS}"
       IMPORTED_LOCATION
         "${ORB_SLAM3_LIBRARY}"
     )

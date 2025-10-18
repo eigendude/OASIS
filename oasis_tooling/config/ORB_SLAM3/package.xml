@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>orb_slam3</name>
+  <name>ORB_SLAM3</name>
   <version>1.0.0</version>
   <description>ORB-SLAM3: An Accurate Open-Source Library for Visual, Visual-Inertial and Multi-Map SLAM</description>
   <maintainer email="noone@nowhere.com">SLAMLab - Universidad de Zaragoza</maintainer>
