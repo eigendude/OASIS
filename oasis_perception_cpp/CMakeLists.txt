@@ -609,6 +609,17 @@ if(TARGET MediaPipe::MediaPipe)
 endif()
 
 #
+# Configuration files
+#
+
+install(
+  DIRECTORY
+    config
+  DESTINATION
+    share/${PROJECT_NAME}
+)
+
+#
 # Testing
 #
 

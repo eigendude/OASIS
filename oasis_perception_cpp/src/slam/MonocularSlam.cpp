@@ -24,54 +24,6 @@
 using namespace OASIS;
 using namespace SLAM;
 
-namespace
-{
-std::string GetVocabularyFile(const rclcpp::Logger& logger)
-{
-  try
-  {
-    const std::string shareDir = ament_index_cpp::get_package_share_directory("orb_slam3");
-    const auto vocabularyPath = std::filesystem::path(shareDir) / "Vocabulary" / "ORBvoc.txt";
-
-    if (!std::filesystem::exists(vocabularyPath))
-    {
-      RCLCPP_FATAL(logger, "ORB-SLAM3 vocabulary file is missing: %s", vocabularyPath.c_str());
-      throw std::runtime_error("ORB-SLAM3 vocabulary file not found");
-    }
-
-    return vocabularyPath.string();
-  }
-  catch (const std::exception& ex)
-  {
-    RCLCPP_FATAL(logger, "Failed to locate the 'orb_slam3' package: %s", ex.what());
-    throw;
-  }
-}
-
-std::string GetSettingsFile(const rclcpp::Logger& logger)
-{
-  try
-  {
-    const std::string shareDir =
-        ament_index_cpp::get_package_share_directory("oasis_perception_cpp");
-    const auto settingsPath = std::filesystem::path(shareDir) / "config" / "Webcam.yaml";
-
-    if (!std::filesystem::exists(settingsPath))
-    {
-      RCLCPP_FATAL(logger, "Monocular SLAM settings file is missing: %s", settingsPath.c_str());
-      throw std::runtime_error("Monocular SLAM settings file not found");
-    }
-
-    return settingsPath.string();
-  }
-  catch (const std::exception& ex)
-  {
-    RCLCPP_FATAL(logger, "Failed to locate the 'oasis_perception_cpp' package: %s", ex.what());
-    throw;
-  }
-}
-} // namespace
-
 MonocularSlam::MonocularSlam(rclcpp::Node& node)
   : m_logger(std::make_unique<rclcpp::Logger>(node.get_logger()))
 {
@@ -79,13 +31,10 @@ MonocularSlam::MonocularSlam(rclcpp::Node& node)
 
 MonocularSlam::~MonocularSlam() = default;
 
-bool MonocularSlam::Initialize()
+bool MonocularSlam::Initialize(const std::string& vocabularyFile, const std::string& settingsFile)
 {
-  const std::string vocabularyFile = GetVocabularyFile(*m_logger);
-  const std::string settingsFile = GetSettingsFile(*m_logger);
-
-  RCLCPP_INFO(*m_logger, "Using ORB-SLAM3 vocabulary file: %s", vocabularyFile.c_str());
-  RCLCPP_INFO(*m_logger, "Using monocular SLAM settings file: %s", settingsFile.c_str());
+  if (vocabularyFile.empty() || settingsFile.empty())
+    return false;
 
   m_slam = std::make_unique<ORB_SLAM3::System>(vocabularyFile, settingsFile,
                                                ORB_SLAM3::System::MONOCULAR, false);

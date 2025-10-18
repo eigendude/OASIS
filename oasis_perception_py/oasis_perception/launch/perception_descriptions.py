@@ -14,6 +14,7 @@ from launch import LaunchDescription
 from launch_ros.actions import ComposableNodeContainer
 from launch_ros.actions import Node
 from launch_ros.descriptions import ComposableNode
+from oasis_perception.utils.perception_paths import PerceptionPaths
 
 from oasis_hass.utils.smarthome_config import SmarthomeConfig
 
@@ -237,6 +238,13 @@ class PerceptionDescriptions:
         system_ids: List[str],
         image_transport: str,
     ) -> None:
+        vocabulary_file: str | None = PerceptionPaths.find_orb_slam3_vocabulary()
+        if vocabulary_file is None:
+            raise FileNotFoundError("ORB_SLAM3 vocabulary file not found.")
+        settings_file: str | None = PerceptionPaths.find_orb_slam3_settings()
+        if settings_file is None:
+            raise FileNotFoundError("ORB_SLAM3 settings file not found.")
+
         composable_nodes.extend(
             [
                 ComposableNode(
@@ -248,6 +256,8 @@ class PerceptionDescriptions:
                         {
                             "system_id": system_id,
                             "image_transport": image_transport,
+                            "vocabulary_file": vocabulary_file,
+                            "settings_file": settings_file,
                         }
                     ],
                     remappings=[
