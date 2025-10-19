@@ -26,6 +26,8 @@ from image_transport_py import ImageTransport
 from message_filters import ApproximateTimeSynchronizer
 from sensor_msgs.msg import Image as ImageMsg
 
+from oasis_msgs.msg import CalibrationStatus as CalibrationStatusMsg
+
 
 ################################################################################
 # ROS parameters
@@ -36,7 +38,8 @@ from sensor_msgs.msg import Image as ImageMsg
 NODE_NAME: str = "camera_calibrator"
 
 # Topic names
-CALIBRATION_TOPIC: str = "calibration"
+CALIBRATION_IMAGE_TOPIC: str = "calibration_image"
+CALIBRATION_STATUS_TOPIC: str = "calibration_status"
 
 
 ################################################################################
@@ -46,7 +49,7 @@ CALIBRATION_TOPIC: str = "calibration"
 
 DEFAULT_CAMERA_NAME: str = socket.gethostname().replace("-", "_")
 DEFAULT_PATTERN: str = "chessboard"
-DEFAULT_SIZE: list[str] = ["8x6"]
+DEFAULT_SIZE: list[str] = ["8x6"]  # Inner corners of 9x7 board
 DEFAULT_SQUARE: list[float] = [0.025]
 DEFAULT_CHARUCO_MARKER_SIZE: list[float] = []
 DEFAULT_ARUCO_DICT: list[str] = []
@@ -236,8 +239,13 @@ class CameraCalibratorNode(CalibrationNode):
         self._it_pub: ImageTransport = ImageTransport(
             self.get_name() + "_pub", image_transport="compressed"
         )
-        self._calibration_pub: rclpy.publisher.Publisher = self._it_pub.advertise(
-            self.resolve_topic_name(CALIBRATION_TOPIC), 1
+        self._calibration_image_pub: rclpy.publisher.Publisher = self._it_pub.advertise(
+            self.resolve_topic_name(CALIBRATION_IMAGE_TOPIC), 1
+        )
+        self._calibration_status_pub: rclpy.publisher.Publisher = self.create_publisher(
+            CalibrationStatusMsg,
+            self.resolve_topic_name(CALIBRATION_STATUS_TOPIC),
+            1,
         )
 
     def stop(self) -> None:
@@ -265,19 +273,36 @@ class CameraCalibratorNode(CalibrationNode):
         img_msg.header.stamp = self.get_clock().now().to_msg()
         img_msg.header.frame_id = self._camera_name
 
-        # Publish the image
-        self._calibration_pub.publish(img_msg)
+        # Publish the calibration image
+        self._calibration_image_pub.publish(img_msg)
+
+        # Publish the calibration status
+        status_msg: CalibrationStatusMsg = CalibrationStatusMsg()
+        status_msg.sample_count = sample_count
+        status_msg.good_enough = self.c.goodenough
+        status_msg.calibrated = self.c.calibrated
+        status_msg.uploaded = self._uploaded
+        self._calibration_status_pub.publish(status_msg)
 
         # Check if we have enough images to calibrate
         if self.c.goodenough and not self.c.calibrated:
             self.get_logger().info("Good enough -> calibrating")
             self.c.do_calibration()
+            self.get_logger().info("Calibrated successfully")
+
+            # Publish the updated status
+            status_msg.calibrated = self.c.calibrated
+            self._calibration_status_pub.publish(status_msg)
 
         # Check if we have enough images to upload
         if self.c.calibrated and not self._uploaded:
             self.get_logger().info("Calibrated -> uploading CameraInfo")
             self.do_upload()
             self._uploaded = True
+
+            # Publish the updated status
+            status_msg.uploaded = self._uploaded
+            self._calibration_status_pub.publish(status_msg)
 
     def redraw_stereo(self, drawable: Any) -> None:
         """
@@ -310,16 +335,33 @@ class CameraCalibratorNode(CalibrationNode):
         img_msg.header.stamp = self.get_clock().now().to_msg()
         img_msg.header.frame_id = self._camera_name
 
-        # Publish the image
-        self._calibration_pub.publish(img_msg)
+        # Publish the calibration image
+        self._calibration_image_pub.publish(img_msg)
+
+        # Publish the calibration status
+        status_msg: CalibrationStatusMsg = CalibrationStatusMsg()
+        status_msg.sample_count = sample_count
+        status_msg.good_enough = self.c.goodenough
+        status_msg.calibrated = self.c.calibrated
+        status_msg.uploaded = self._uploaded
+        self._calibration_status_pub.publish(status_msg)
 
         # Once we have enough varied samples, do calibration exactly once
         if self.c.goodenough and not self.c.calibrated:
             self.get_logger().info("Good enough -> running stereo calibration")
             self.c.do_calibration()
+            self.get_logger().info("Stereo calibrated successfully")
+
+            # Publish the updated status
+            status_msg.calibrated = self.c.calibrated
+            self._calibration_status_pub.publish(status_msg)
 
         # Once calibrated, upload to set_camera_info exactly once
         if self.c.calibrated and not self._uploaded:
             self.get_logger().info("Stereo calibrated -> uploading CameraInfo")
             self.do_upload()
             self._uploaded = True
+
+            # Publish the updated status
+            status_msg.uploaded = self._uploaded
+            self._calibration_status_pub.publish(status_msg)

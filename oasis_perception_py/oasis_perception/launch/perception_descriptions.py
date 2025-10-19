@@ -158,7 +158,8 @@ class PerceptionDescriptions:
                 output="screen",
                 remappings=[
                     # Topics
-                    ("calibration", f"{system_id}/calibration"),
+                    ("calibration_image", f"{system_id}/calibration_image"),
+                    ("calibration_status", f"{system_id}/calibration_status"),
                     ("image", f"{system_id}/image_raw"),
                     # Services
                     ("camera/set_camera_info", f"{camera_node}/set_camera_info"),
