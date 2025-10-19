@@ -77,8 +77,8 @@ SENSOR_MODE: str
 # TODO: Hardware configuration
 if HOST_ID == "falcon":
     IMAGE_FORMAT = "BGR888"
-    IMAGE_SIZE = [1280, 720]
-    SENSOR_MODE = "3280:2464"  # V2 camera full sensor resolution
+    IMAGE_SIZE = [1920, 1080]
+    SENSOR_MODE = "4608:2592"  # V3 camera full sensor resolution
 else:
     IMAGE_FORMAT = "BGR888"
     IMAGE_SIZE = [640, 480]
