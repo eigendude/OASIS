@@ -26,6 +26,8 @@ from image_transport_py import ImageTransport
 from message_filters import ApproximateTimeSynchronizer
 from sensor_msgs.msg import Image as ImageMsg
 
+from oasis_msgs.msg import CalibrationStatus
+
 
 ################################################################################
 # ROS parameters
@@ -37,6 +39,7 @@ NODE_NAME: str = "camera_calibrator"
 
 # Topic names
 CALIBRATION_TOPIC: str = "calibration"
+CALIBRATION_STATUS_TOPIC: str = "calibration_status"
 
 
 ################################################################################
@@ -236,8 +239,13 @@ class CameraCalibratorNode(CalibrationNode):
         self._it_pub: ImageTransport = ImageTransport(
             self.get_name() + "_pub", image_transport="compressed"
         )
-        self._calibration_pub: rclpy.publisher.Publisher = self._it_pub.advertise(
+        self._calibration_image_pub: rclpy.publisher.Publisher = self._it_pub.advertise(
             self.resolve_topic_name(CALIBRATION_TOPIC), 1
+        )
+        self._calibration_status_pub: rclpy.publisher.Publisher = self.create_publisher(
+            CalibrationStatus,
+            self.resolve_topic_name(CALIBRATION_STATUS_TOPIC),
+            1,
         )
 
     def stop(self) -> None:
@@ -265,8 +273,15 @@ class CameraCalibratorNode(CalibrationNode):
         img_msg.header.stamp = self.get_clock().now().to_msg()
         img_msg.header.frame_id = self._camera_name
 
-        # Publish the image
-        self._calibration_pub.publish(img_msg)
+        # Publish the calibration image
+        self._calibration_image_pub.publish(img_msg)
+
+        # Publish the calibration status
+        status_msg: CalibrationStatus = CalibrationStatus()
+        status_msg.sample_count = sample_count
+        status_msg.good_enough = self.c.goodenough
+        status_msg.uploaded = self._uploaded
+        self._calibration_status_pub.publish(status_msg)
 
         # Check if we have enough images to calibrate
         if self.c.goodenough and not self.c.calibrated:
@@ -310,8 +325,15 @@ class CameraCalibratorNode(CalibrationNode):
         img_msg.header.stamp = self.get_clock().now().to_msg()
         img_msg.header.frame_id = self._camera_name
 
-        # Publish the image
-        self._calibration_pub.publish(img_msg)
+        # Publish the calibration image
+        self._calibration_image_pub.publish(img_msg)
+
+        # Publish the calibration status
+        status_msg: CalibrationStatus = CalibrationStatus()
+        status_msg.sample_count = sample_count
+        status_msg.good_enough = self.c.goodenough
+        status_msg.uploaded = self._uploaded
+        self._calibration_status_pub.publish(status_msg)
 
         # Once we have enough varied samples, do calibration exactly once
         if self.c.goodenough and not self.c.calibrated:
