@@ -13,6 +13,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 
 #include <image_transport/image_transport.hpp>
 #include <rclcpp/logging.hpp>
@@ -25,12 +26,12 @@ using namespace ROS;
 namespace
 {
 // Subscribed topics
-constexpr const char* IMAGE_TOPIC = "image";
-constexpr const char* IMU_TOPIC = "imu";
+constexpr std::string_view IMAGE_TOPIC = "image";
+constexpr std::string_view IMU_TOPIC = "imu";
 
 // Parameters
-constexpr const char* SYSTEM_ID_PARAMETER = "system_id";
-constexpr const char* DEFAULT_SYSTEM_ID = "";
+constexpr std::string_view SYSTEM_ID_PARAMETER = "system_id";
+constexpr std::string_view DEFAULT_SYSTEM_ID = "";
 } // namespace
 
 MonocularInertialSlamNode::MonocularInertialSlamNode(rclcpp::Node& node)
@@ -38,7 +39,7 @@ MonocularInertialSlamNode::MonocularInertialSlamNode(rclcpp::Node& node)
     m_logger(std::make_unique<rclcpp::Logger>(node.get_logger())),
     m_imgSubscriber(std::make_unique<image_transport::Subscriber>())
 {
-  m_node.declare_parameter<std::string>(SYSTEM_ID_PARAMETER, DEFAULT_SYSTEM_ID);
+  m_node.declare_parameter<std::string>(SYSTEM_ID_PARAMETER.data(), DEFAULT_SYSTEM_ID.data());
 }
 
 MonocularInertialSlamNode::~MonocularInertialSlamNode() = default;
@@ -46,20 +47,25 @@ MonocularInertialSlamNode::~MonocularInertialSlamNode() = default;
 bool MonocularInertialSlamNode::Initialize()
 {
   std::string systemId;
-  if (!m_node.get_parameter(SYSTEM_ID_PARAMETER, systemId))
+  if (!m_node.get_parameter(SYSTEM_ID_PARAMETER.data(), systemId))
   {
-    RCLCPP_ERROR(*m_logger, "Missing system ID parameter '%s'", SYSTEM_ID_PARAMETER);
+    RCLCPP_ERROR(*m_logger, "Missing system ID parameter '%s'", SYSTEM_ID_PARAMETER.data());
     return false;
   }
 
   if (systemId.empty())
   {
-    RCLCPP_ERROR(*m_logger, "System ID parameter '%s' is empty", SYSTEM_ID_PARAMETER);
+    RCLCPP_ERROR(*m_logger, "System ID parameter '%s' is empty", SYSTEM_ID_PARAMETER.data());
     return false;
   }
 
-  const std::string imageTopic = systemId + "_" + IMAGE_TOPIC;
-  const std::string imuTopic = systemId + "_" + IMU_TOPIC;
+  std::string imageTopic = systemId;
+  imageTopic.push_back('_');
+  imageTopic.append(IMAGE_TOPIC);
+
+  std::string imuTopic = systemId;
+  imuTopic.push_back('_');
+  imuTopic.append(IMU_TOPIC);
 
   RCLCPP_INFO(*m_logger, "System ID: %s", systemId.c_str());
   RCLCPP_INFO(*m_logger, "Image topic: %s", imageTopic.c_str());

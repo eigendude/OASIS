@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <functional>
 #include <string>
+#include <string_view>
 
 #include <cv_bridge/cv_bridge.hpp>
 #include <image_transport/image_transport.hpp>
@@ -27,19 +28,19 @@ using namespace ROS;
 namespace
 {
 // Published topics
-constexpr const char* FLOW_TOPIC = "flow";
+constexpr std::string_view FLOW_TOPIC = "flow";
 
 // Optical flow configuration
 constexpr unsigned int MAX_TRACKED_POINTS = 60;
 
 // Subscribed topics
-constexpr const char* IMAGE_TOPIC = "image";
+constexpr std::string_view IMAGE_TOPIC = "image";
 
 // Parameters
-constexpr const char* SYSTEM_ID_PARAMETER = "system_id";
-constexpr const char* DEFAULT_SYSTEM_ID = "";
-constexpr const char* IMAGE_TRANSPORT_PARAMETER = "image_transport";
-constexpr const char* DEFAULT_IMAGE_TRANSPORT = "raw";
+constexpr std::string_view SYSTEM_ID_PARAMETER = "system_id";
+constexpr std::string_view DEFAULT_SYSTEM_ID = "";
+constexpr std::string_view IMAGE_TRANSPORT_PARAMETER = "image_transport";
+constexpr std::string_view DEFAULT_IMAGE_TRANSPORT = "raw";
 } // namespace
 
 OpticalFlowNode::OpticalFlowNode(rclcpp::Node& node)
@@ -49,8 +50,8 @@ OpticalFlowNode::OpticalFlowNode(rclcpp::Node& node)
     m_imgSubscriber(std::make_unique<image_transport::Subscriber>()),
     m_opticalFlow(std::make_unique<VIDEO::OpticalFlow>())
 {
-  m_node.declare_parameter<std::string>(SYSTEM_ID_PARAMETER, DEFAULT_SYSTEM_ID);
-  m_node.declare_parameter<std::string>(IMAGE_TRANSPORT_PARAMETER, DEFAULT_IMAGE_TRANSPORT);
+  m_node.declare_parameter<std::string>(SYSTEM_ID_PARAMETER.data(), DEFAULT_SYSTEM_ID.data());
+  m_node.declare_parameter<std::string>(IMAGE_TRANSPORT_PARAMETER.data(), DEFAULT_IMAGE_TRANSPORT.data());
 
   VIDEO::ConfigOptions configOptions;
   configOptions.maxPointCount = MAX_TRACKED_POINTS;
@@ -64,31 +65,38 @@ bool OpticalFlowNode::Initialize()
   RCLCPP_INFO(m_node.get_logger(), "Starting optical flow...");
 
   std::string systemId;
-  if (!m_node.get_parameter(SYSTEM_ID_PARAMETER, systemId))
+  if (!m_node.get_parameter(SYSTEM_ID_PARAMETER.data(), systemId))
   {
-    RCLCPP_ERROR(m_node.get_logger(), "Missing system ID parameter '%s'", SYSTEM_ID_PARAMETER);
+    RCLCPP_ERROR(m_node.get_logger(), "Missing system ID parameter '%s'",
+                 SYSTEM_ID_PARAMETER.data());
     return false;
   }
 
   if (systemId.empty())
   {
-    RCLCPP_ERROR(m_node.get_logger(), "System ID parameter '%s' is empty", SYSTEM_ID_PARAMETER);
+    RCLCPP_ERROR(m_node.get_logger(), "System ID parameter '%s' is empty",
+                 SYSTEM_ID_PARAMETER.data());
     return false;
   }
 
   std::string imageTransport;
-  if (!m_node.get_parameter(IMAGE_TRANSPORT_PARAMETER, imageTransport))
+  if (!m_node.get_parameter(IMAGE_TRANSPORT_PARAMETER.data(), imageTransport))
   {
     RCLCPP_ERROR(m_node.get_logger(), "Missing image transport parameter '%s'",
-                 IMAGE_TRANSPORT_PARAMETER);
+                 IMAGE_TRANSPORT_PARAMETER.data());
     return false;
   }
 
   if (imageTransport.empty())
-    imageTransport = DEFAULT_IMAGE_TRANSPORT;
+    imageTransport = std::string{DEFAULT_IMAGE_TRANSPORT};
 
-  const std::string imageTopic = systemId + "_" + IMAGE_TOPIC;
-  const std::string flowTopic = systemId + "_" + FLOW_TOPIC;
+  std::string imageTopic = systemId;
+  imageTopic.push_back('_');
+  imageTopic.append(IMAGE_TOPIC);
+
+  std::string flowTopic = systemId;
+  flowTopic.push_back('_');
+  flowTopic.append(FLOW_TOPIC);
 
   RCLCPP_INFO(m_node.get_logger(), "System ID: %s", systemId.c_str());
   RCLCPP_INFO(m_node.get_logger(), "Image topic: %s", imageTopic.c_str());
