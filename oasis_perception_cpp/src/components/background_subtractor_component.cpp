@@ -18,7 +18,7 @@ namespace
 constexpr const char* ROS_COMPONENT_NAME = "background_subtractor_component";
 } // namespace
 
-namespace oasis_perception_cpp
+namespace oasis_perception
 {
 class BackgroundSubtractorComponent : public oasis_perception::RosComponent
 {
@@ -46,6 +46,6 @@ public:
 private:
   std::unique_ptr<OASIS::BackgroundSubtractorNode> m_interface;
 };
-} // namespace oasis_perception_cpp
+} // namespace oasis_perception
 
-RCLCPP_COMPONENTS_REGISTER_NODE(oasis_perception_cpp::BackgroundSubtractorComponent);
+RCLCPP_COMPONENTS_REGISTER_NODE(oasis_perception::BackgroundSubtractorComponent);

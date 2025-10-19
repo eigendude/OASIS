@@ -133,7 +133,7 @@ install(
 )
 rclcpp_components_register_node(
   background_modeler_component
-  PLUGIN "oasis_perception_cpp::BackgroundModelerComponent"
+  PLUGIN "oasis_perception::BackgroundModelerComponent"
   EXECUTABLE background_modeler_component_node
 )
 
@@ -191,7 +191,7 @@ install(
 )
 rclcpp_components_register_node(
   background_subtractor_component
-  PLUGIN "oasis_perception_cpp::BackgroundSubtractorComponent"
+  PLUGIN "oasis_perception::BackgroundSubtractorComponent"
   EXECUTABLE background_subtractor_component_node
 )
 
@@ -464,7 +464,7 @@ install(
 )
 rclcpp_components_register_node(
   multi_modeler_component
-  PLUGIN "oasis_perception_cpp::MultiModelerComponent"
+  PLUGIN "oasis_perception::MultiModelerComponent"
   EXECUTABLE multi_modeler_component_node
 )
 

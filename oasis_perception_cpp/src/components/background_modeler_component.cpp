@@ -19,7 +19,7 @@ namespace
 constexpr const char* ROS_COMPONENT_NAME = "background_modeler_component";
 } // namespace
 
-namespace oasis_perception_cpp
+namespace oasis_perception
 {
 class BackgroundModelerComponent : public oasis_perception::RosComponent
 {
@@ -47,7 +47,7 @@ public:
 private:
   std::unique_ptr<OASIS::BackgroundModelerNode> m_interface;
 };
-} // namespace oasis_perception_cpp
+} // namespace oasis_perception
 
 // Register the component with ROS 2
-RCLCPP_COMPONENTS_REGISTER_NODE(oasis_perception_cpp::BackgroundModelerComponent);
+RCLCPP_COMPONENTS_REGISTER_NODE(oasis_perception::BackgroundModelerComponent);
