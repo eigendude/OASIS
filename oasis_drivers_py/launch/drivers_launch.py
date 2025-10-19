@@ -77,8 +77,8 @@ SENSOR_MODE: str
 # TODO: Hardware configuration
 if HOST_ID == "falcon":
     IMAGE_FORMAT = "BGR888"
-    IMAGE_SIZE = [1280, 720]
-    SENSOR_MODE = "3280:2464"  # V2 camera full sensor resolution
+    IMAGE_SIZE = [1920, 1080]
+    SENSOR_MODE = "4608:2592"  # V3 camera full sensor resolution
 else:
     IMAGE_FORMAT = "BGR888"
     IMAGE_SIZE = [640, 480]
@@ -156,14 +156,6 @@ def generate_launch_description() -> LaunchDescription:
         Drivers.add_ros2_camera(
             composable_nodes, ZONE_ID, IMAGE_FORMAT, IMAGE_SIZE, SENSOR_MODE
         )
-        if PerceptionDescriptions is not None:
-            PerceptionDescriptions.add_optical_flow(
-                composable_nodes, [HOST_ID], image_transport="raw"
-            )
-        else:
-            print(
-                "Optical flow component not available: missing oasis_perception package"
-            )
     if HOST_ID == "station":
         Drivers.add_ros2_camera(
             composable_nodes, ZONE_ID, IMAGE_FORMAT, IMAGE_SIZE, SENSOR_MODE
