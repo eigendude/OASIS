@@ -97,6 +97,13 @@ jobs:
               'oasis_tooling/scripts/rdepinstall_oasis.sh',
             ]);
 
+            await setHash('OASIS_MESSAGES_HASH', [
+              'oasis_msgs/msg/**',
+              'oasis_msgs/srv/**',
+              'oasis_msgs/CMakeLists.txt',
+              'oasis_msgs/package.xml',
+            ]);
+
       - name: Restore CMake
         id: restore-cmake
         if: matrix.os != 'macbook'
@@ -161,6 +168,18 @@ jobs:
             ${{ matrix.os }}-\
             ${{ env.MEDIAPIPE_HASH }}-\
             ${{ env.OPENCV_HASH }}
+
+      - name: Restore OASIS messages
+        id: restore-oasis-msgs
+        uses: actions/cache@v4
+        with:
+          path: |
+            ros-ws/oasis-${{ matrix.ros2_distro }}/install
+          key: >
+            restore-oasis-msgs-\
+            ${{ matrix.os }}-\
+            ${{ matrix.ros2_distro }}-\
+            ${{ env.OASIS_MESSAGES_HASH }}
 
       - name: Restore Arduino IDE and CLI
         id: restore-arduino-tools
@@ -229,7 +248,12 @@ jobs:
       - name: Install OASIS rosdeps
         run: ./oasis_tooling/scripts/depinstall_oasis.sh
 
+      - name: colcon build (skip messages)
+        if: steps.restore-oasis-msgs.outputs.cache-hit == 'true'
+        run: ./oasis_tooling/scripts/build_oasis.sh --skip-messages
+
       - name: colcon build
+        if: steps.restore-oasis-msgs.outputs.cache-hit != 'true'
         run: ./oasis_tooling/scripts/build_oasis.sh
 
       - name: Install OASIS files
