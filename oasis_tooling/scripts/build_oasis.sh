@@ -9,10 +9,41 @@
 #
 ################################################################################
 
+usage() {
+  cat <<'USAGE'
+Usage: build_oasis.sh [OPTIONS]
+
+Options:
+  --skip-messages   Skip building the oasis_msgs package. Use this when
+                    pre-built messages have been restored from cache.
+  -h, --help        Display this help and exit.
+USAGE
+}
+
 # Enable strict mode
 set -o errexit
 set -o pipefail
 set -o nounset
+
+SKIP_MESSAGES=false
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --skip-messages)
+      SKIP_MESSAGES=true
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Error: Unknown option '$1'" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
 
 #
 # Environment paths and configuration
@@ -57,6 +88,10 @@ COLCON_FLAGS+=" \
     -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
     -DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH} \
 "
+
+if [[ "${SKIP_MESSAGES}" == true ]]; then
+  COLCON_FLAGS+=" --packages-skip oasis_msgs"
+fi
 
 # Uncomment these to force building in serial
 #MAKE_FLAGS+=" -j1 -l1"

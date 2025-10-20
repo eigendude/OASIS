@@ -97,6 +97,13 @@ jobs:
               'oasis_tooling/scripts/rdepinstall_oasis.sh',
             ]);
 
+            await setHash('OASIS_MESSAGES_HASH', [
+              'oasis_msgs/msg/**',
+              'oasis_msgs/srv/**',
+              'oasis_msgs/CMakeLists.txt',
+              'oasis_msgs/package.xml',
+            ]);
+
       - name: Restore CMake
         id: restore-cmake
         if: matrix.os != 'macbook'
@@ -175,12 +182,28 @@ jobs:
             ${{ matrix.os }}-\
             ${{ env.ARDUINO_BOOTSTRAP_HASH }}
 
+      - name: Restore OASIS messages
+        id: restore-oasis-msgs
+        uses: actions/cache@v4
+        with:
+          path: |
+            ros-ws/oasis-${{ matrix.ros2_distro }}/install/include/oasis_msgs
+            ros-ws/oasis-${{ matrix.ros2_distro }}/install/lib/liboasis_msgs*
+            ros-ws/oasis-${{ matrix.ros2_distro }}/install/share/ament_index/resource_index/*/oasis_msgs
+            ros-ws/oasis-${{ matrix.ros2_distro }}/install/share/colcon-core/packages/oasis_msgs
+            ros-ws/oasis-${{ matrix.ros2_distro }}/install/share/oasis_msgs
+          key: >
+            restore-oasis-msgs-\
+            ${{ matrix.os }}-\
+            ${{ matrix.ros2_distro }}-\
+            ${{ env.OASIS_MESSAGES_HASH }}
+
       - name: Restore OASIS runtime dependencies
         id: restore-oasis-runtime
         uses: actions/cache@v4
         with:
           path: |
-            ros-ws/oasis-kilted/install/share/oasis_tooling/package.xml
+            ros-ws/oasis-${{ matrix.ros2_distro }}/install/share/oasis_tooling/package.xml
           key: >
             restore-oasis-runtime-\
             ${{ matrix.os }}-\
@@ -229,7 +252,12 @@ jobs:
       - name: Install OASIS rosdeps
         run: ./oasis_tooling/scripts/depinstall_oasis.sh
 
+      - name: colcon build (skip messages)
+        if: steps.restore-oasis-msgs.outputs.cache-hit == 'true'
+        run: ./oasis_tooling/scripts/build_oasis.sh --skip-messages
+
       - name: colcon build
+        if: steps.restore-oasis-msgs.outputs.cache-hit != 'true'
         run: ./oasis_tooling/scripts/build_oasis.sh
 
       - name: Install OASIS files
