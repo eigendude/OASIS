@@ -95,7 +95,7 @@ bool OpticalFlow::ProcessImage(const cv::Mat& image)
   ConvertToGrayscale(rgbaFrame, currentGrayscale);
 
   std::vector<cv::Point2f> currentPoints;
-  std::vector<cv::uchar> status;
+  std::vector<unsigned char> status;
   std::vector<float> errors;
 
   auto storeInitialPoints = [this](const std::vector<cv::Point2f>& points)
@@ -255,7 +255,7 @@ void OpticalFlow::ConvertToGrayscale(const cv::Mat& in, cv::Mat& out)
 
 void OpticalFlow::FindFeatures(const cv::Mat& currentGrayscale,
                                std::vector<cv::Point2f>& currentPoints,
-                               std::vector<cv::uchar>& status,
+                               std::vector<unsigned char>& status,
                                std::vector<float>& errors)
 {
   // TODO
@@ -264,13 +264,13 @@ void OpticalFlow::FindFeatures(const cv::Mat& currentGrayscale,
                                       2.0);
 
   m_visionGraph->FindFeatures(currentGrayscale, m_config.maxPointCount, minDistance, currentPoints);
-  status.assign(currentPoints.size(), static_cast<cv::uchar>(1));
+  status.assign(currentPoints.size(), static_cast<unsigned char>(1));
   errors.assign(currentPoints.size(), 0.0f);
 }
 
 void OpticalFlow::CalculateOpticalFlow(const cv::Mat& currentGrayscale,
                                        std::vector<cv::Point2f>& currentPoints,
-                                       std::vector<cv::uchar>& status,
+                                       std::vector<unsigned char>& status,
                                        std::vector<float>& errors)
 {
   if (!m_visionGraph)
