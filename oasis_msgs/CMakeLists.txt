@@ -39,6 +39,7 @@ rosidl_generate_interfaces(
     msg/BoundingBox.msg
     msg/CalibrationStatus.msg
     msg/CameraScene.msg
+    msg/SceneScore.msg
     msg/ConductorState.msg
     msg/CPUFanSpeed.msg
     msg/DigitalButton.msg
