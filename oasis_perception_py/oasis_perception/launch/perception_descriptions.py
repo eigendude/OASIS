@@ -268,6 +268,54 @@ class PerceptionDescriptions:
                                 # Use different remappings for Kinect V2
                                 f"{system_id}/sd/image_color"
                                 if system_id == KINECT_V2_ZONE_ID
+                                else f"{system_id}/image_raw"
+                            ),
+                        ),
+                    ],
+                )
+                for system_id in system_ids
+            ]
+        )
+
+    #
+    # Monocular inertial SLAM
+    #
+
+    @staticmethod
+    def add_monocular_inertial_slam(
+        composable_nodes: list[ComposableNode],
+        system_ids: List[str],
+        image_transport: str,
+    ) -> None:
+        vocabulary_file: str | None = PerceptionPaths.find_orb_slam3_vocabulary()
+        if vocabulary_file is None:
+            raise FileNotFoundError("ORB_SLAM3 vocabulary file not found.")
+        settings_file: str | None = PerceptionPaths.find_orb_slam3_settings()
+        if settings_file is None:
+            raise FileNotFoundError("ORB_SLAM3 settings file not found.")
+
+        composable_nodes.extend(
+            [
+                ComposableNode(
+                    namespace=ROS_NAMESPACE,
+                    package=CPP_PACKAGE_NAME,
+                    plugin="oasis_perception::MonocularInertialSlamComponent",
+                    name=f"monocular_inertial_slam_{system_id}",
+                    parameters=[
+                        {
+                            "system_id": system_id,
+                            "image_transport": image_transport,
+                            "vocabulary_file": vocabulary_file,
+                            "settings_file": settings_file,
+                        }
+                    ],
+                    remappings=[
+                        (
+                            f"{system_id}_image",
+                            (
+                                # Use different remappings for Kinect V2
+                                f"{system_id}/sd/image_color"
+                                if system_id == KINECT_V2_ZONE_ID
                                 else f"{system_id}/image_rect"
                             ),
                         ),
