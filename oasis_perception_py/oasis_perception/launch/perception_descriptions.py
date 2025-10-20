@@ -311,6 +311,7 @@ class PerceptionDescriptions:
                             ),
                         ),
                         (f"{system_id}_flow", f"{system_id}/flow"),
+                        (f"{system_id}_scene_score", f"{system_id}/scene_score"),
                     ],
                 )
                 for system_id in system_ids

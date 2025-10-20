@@ -20,6 +20,7 @@
 #include <opencv2/imgproc.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
+#include <rclcpp/qos.hpp>
 #include <sensor_msgs/image_encodings.hpp>
 
 using namespace OASIS;
@@ -29,6 +30,7 @@ namespace
 {
 // Published topics
 constexpr std::string_view FLOW_TOPIC = "flow";
+constexpr std::string_view SCENE_TOPIC = "scene_score";
 
 // Optical flow configuration
 constexpr unsigned int MAX_TRACKED_POINTS = 60;
@@ -99,12 +101,19 @@ bool OpticalFlowNode::Initialize()
   flowTopic.push_back('_');
   flowTopic.append(FLOW_TOPIC);
 
+  std::string sceneTopic = systemId;
+  sceneTopic.push_back('_');
+  sceneTopic.append(SCENE_TOPIC);
+
   RCLCPP_INFO(m_node.get_logger(), "System ID: %s", systemId.c_str());
   RCLCPP_INFO(m_node.get_logger(), "Image topic: %s", imageTopic.c_str());
   RCLCPP_INFO(m_node.get_logger(), "Image transport: %s", imageTransport.c_str());
   RCLCPP_INFO(m_node.get_logger(), "Flow topic: %s", flowTopic.c_str());
+  RCLCPP_INFO(m_node.get_logger(), "Scene score topic: %s", sceneTopic.c_str());
 
   *m_flowPublisher = image_transport::create_publisher(&m_node, flowTopic);
+  m_scenePublisher =
+      m_node.create_publisher<oasis_msgs::msg::SceneScore>(sceneTopic, rclcpp::SensorDataQoS());
 
   *m_imgSubscriber = image_transport::create_subscription(
       &m_node, imageTopic,
@@ -120,6 +129,7 @@ void OpticalFlowNode::Deinitialize()
   m_imgSubscriber->shutdown();
 
   m_flowPublisher->shutdown();
+  m_scenePublisher.reset();
 
   m_opticalFlow->Deinitialize();
 
@@ -175,4 +185,14 @@ void OpticalFlowNode::OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg
   //RCLCPP_INFO(m_node.get_logger(), "Tracked %zu optical flow points", trackedPointCount);
 
   m_flowPublisher->publish(cv_ptr->toImageMsg());
+
+  if (m_scenePublisher)
+  {
+    oasis_msgs::msg::SceneScore sceneMsg;
+    sceneMsg.header = msg->header;
+    sceneMsg.score = m_opticalFlow->GetSceneScore();
+    sceneMsg.mafd = m_opticalFlow->GetSceneMafd();
+    sceneMsg.is_valid = m_opticalFlow->HasSceneScore();
+    m_scenePublisher->publish(sceneMsg);
+  }
 }

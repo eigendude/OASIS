@@ -67,6 +67,10 @@ public:
   std::vector<float> GetPoints() const { return m_points; }
   std::vector<float> GetInitialPoints() const { return m_initialPoints; }
 
+  float GetSceneScore() const { return m_sceneScore; }
+  float GetSceneMafd() const { return m_previousMafd; }
+  bool HasSceneScore() const { return m_hasSceneScore; }
+
 private:
   /*!
    * \brief Convert a 32-bit RGBA frame to 8-bit grayscale
@@ -113,6 +117,11 @@ private:
   // Output buffer (holds data returned from AddVideoFrame())
   mutable std::vector<float> m_points;
   mutable std::vector<float> m_initialPoints;
+
+  // Scene detection state
+  float m_previousMafd{0.0f};
+  float m_sceneScore{0.0f};
+  bool m_hasSceneScore{false};
 };
 } // namespace VIDEO
 } // namespace OASIS
