@@ -8,6 +8,8 @@
 
 #include "MonocularInertialSlam.h"
 
+#include "ros/RosUtils.h"
+
 #include <System.h>
 #include <cv_bridge/cv_bridge.hpp>
 #include <geometry_msgs/msg/vector3.hpp>
@@ -65,8 +67,7 @@ void MonocularInertialSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSha
     return;
 
   const std_msgs::msg::Header& header = msg->header;
-  const double timestamp =
-      static_cast<double>(header.stamp.sec) + static_cast<double>(header.stamp.nanosec) * 1E-9;
+  const double timestamp = oasis_perception::RosUtils::HeaderStampToSeconds(header);
 
   cv_bridge::CvImagePtr cv_ptr;
   try
@@ -94,8 +95,7 @@ void MonocularInertialSlam::ImuCallback(const oasis_msgs::msg::I2CImu::ConstShar
   const sensor_msgs::msg::Imu& imuMsg = msg->imu;
 
   const std_msgs::msg::Header& header = imuMsg.header;
-  const double timestamp =
-      static_cast<double>(header.stamp.sec) + static_cast<double>(header.stamp.nanosec) * 1E-9;
+  const double timestamp = oasis_perception::RosUtils::HeaderStampToSeconds(header);
 
   const geometry_msgs::msg::Vector3& angularVelocity = imuMsg.angular_velocity;
   const geometry_msgs::msg::Vector3& linearAceleration = imuMsg.linear_acceleration;

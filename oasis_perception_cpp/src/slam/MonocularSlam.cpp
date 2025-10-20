@@ -8,6 +8,8 @@
 
 #include "MonocularSlam.h"
 
+#include "ros/RosUtils.h"
+
 #include <filesystem>
 #include <stdexcept>
 
@@ -61,8 +63,7 @@ void MonocularSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& 
     return;
 
   const std_msgs::msg::Header& header = msg->header;
-  const double timestamp =
-      static_cast<double>(header.stamp.sec) + static_cast<double>(header.stamp.nanosec) * 1E-9;
+  const double timestamp = oasis_perception::RosUtils::HeaderStampToSeconds(header);
 
   cv_bridge::CvImagePtr cv_ptr;
   try

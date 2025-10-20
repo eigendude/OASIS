@@ -256,6 +256,7 @@ if (ORB_SLAM3_FOUND)
   set(MONOCULAR_SLAM_SOURCES
     src/nodes/MonocularSlamNode.cpp
     src/slam/MonocularSlam.cpp
+    src/ros/RosUtils.cpp
   )
   set(MONOCULAR_SLAM_DEFINITIONS
     HAVE_EIGEN
@@ -341,6 +342,7 @@ if (ORB_SLAM3_FOUND)
   set(MONOCULAR_INERTIAL_SLAM_SOURCES
     src/nodes/MonocularInertialSlamNode.cpp
     src/slam/MonocularInertialSlam.cpp
+    src/ros/RosUtils.cpp
   )
   set(MONOCULAR_INERTIAL_SLAM_DEFINITIONS
     ${MONOCULAR_SLAM_DEFINITIONS}
