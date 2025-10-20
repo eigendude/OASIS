@@ -58,34 +58,44 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     cmake
     git
     ros-dev-tools
-
-    # Needed for ROS message generation
-    python3-lark
-    python3-numpy
-
-    # Needed by image_transport and plugins
-    libconsole-bridge-dev
-    libspdlog-dev
-    libtinyxml2-dev
-
-    # Needed to link MediaPipe, as its Bazel build system doesn't export
-    # dependencies
-    libegl-dev
-    libgles-dev
-    libgoogle-glog-dev
-    libprotobuf-dev
-
-    # Needed for custom OpenCV build
-    libavcodec-dev
-    libavformat-dev
-    libavif-dev
-    libavutil-dev
-    libgstreamer-plugins-base1.0-dev
-    libgstreamer1.0-dev
-    libopenblas-dev
-    libopenexr-dev
-    libswscale-dev
   )
+
+  if [[ -d "${STACK_DIRECTORY}/oasis_msgs" ]] && \
+     [[ ! -f "${STACK_DIRECTORY}/oasis_msgs/COLCON_IGNORE" ]]; then
+    # Needed for ROS message generation
+    APT_PACKAGES+=(
+      python3-lark
+      python3-numpy
+    )
+  fi
+
+  if [[ -d "${STACK_DIRECTORY}/oasis_perception_cpp" ]] && \
+     [[ ! -f "${STACK_DIRECTORY}/oasis_perception_cpp/COLCON_IGNORE" ]]; then
+    APT_PACKAGES+=(
+      # Needed by image_transport and plugins
+      libconsole-bridge-dev
+      libspdlog-dev
+      libtinyxml2-dev
+
+      # Needed to link MediaPipe, as its Bazel build system doesn't export
+      # dependencies
+      libegl-dev
+      libgles-dev
+      libgoogle-glog-dev
+      libprotobuf-dev
+
+      # Needed for custom OpenCV build
+      libavcodec-dev
+      libavformat-dev
+      libavif-dev
+      libavutil-dev
+      libgstreamer-plugins-base1.0-dev
+      libgstreamer1.0-dev
+      libopenblas-dev
+      libopenexr-dev
+      libswscale-dev
+    )
+  fi
 
   sudo apt install -y --no-install-recommends "${APT_PACKAGES[@]}"
 fi

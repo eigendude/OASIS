@@ -68,28 +68,17 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     git
     ros-dev-tools
 
-    # Needed for ROS message generation
-    python3-lark
-
     # Needed by cv_bridge, dev dependency of tracetools package in ros2_tracing stack
     liblttng-ust-dev
 
     # Needed by image_pipeline
     liborocos-kdl-dev
 
-    # Needed by image_transport and plugins
-    libconsole-bridge-dev
-    libspdlog-dev
-    libtinyxml2-dev
-
     # Needed for image_view
     libavif-dev
 
     # Needed for v4l2_camera
     libyaml-cpp-dev
-
-    # Needed for custom OpenCV build
-    libopenblas-dev
 
     # Needed for libfreenect2
     libturbojpeg0-dev
@@ -125,6 +114,27 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     qtbase5-dev
     v4l-utils
   )
+
+  if [[ -d "${STACK_DIRECTORY}/oasis_msgs" ]] && \
+     [[ ! -f "${STACK_DIRECTORY}/oasis_msgs/COLCON_IGNORE" ]]; then
+    # Needed for ROS message generation
+    APT_PACKAGES+=(
+      python3-lark
+    )
+  fi
+
+  if [[ -d "${STACK_DIRECTORY}/oasis_perception_cpp" ]] && \
+     [[ ! -f "${STACK_DIRECTORY}/oasis_perception_cpp/COLCON_IGNORE" ]]; then
+    APT_PACKAGES+=(
+      # Needed by image_transport and plugins
+      libconsole-bridge-dev
+      libspdlog-dev
+      libtinyxml2-dev
+
+      # Needed for custom OpenCV build
+      libopenblas-dev
+    )
+  fi
 
   # Needed for OpenNI (only enabled on x86_64)
   if [[ ${PLATFORM_ARCH} == x86_64 ]]; then
