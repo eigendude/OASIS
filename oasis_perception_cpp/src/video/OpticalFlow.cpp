@@ -15,7 +15,6 @@
 #include <iostream>
 
 #include <opencv2/imgproc.hpp>
-#include <opencv2/video/tracking.hpp>
 #include <rclcpp/logging.hpp>
 
 using namespace OASIS;
@@ -96,7 +95,7 @@ bool OpticalFlow::ProcessImage(const cv::Mat& image)
   ConvertToGrayscale(rgbaFrame, currentGrayscale);
 
   std::vector<cv::Point2f> currentPoints;
-  std::vector<uint8_t> status;
+  std::vector<cv::uchar> status;
   std::vector<float> errors;
 
   auto storeInitialPoints = [this](const std::vector<cv::Point2f>& points)
@@ -120,8 +119,7 @@ bool OpticalFlow::ProcessImage(const cv::Mat& image)
   }
   else
   {
-    cv::calcOpticalFlowPyrLK(m_previousGrayscale, currentGrayscale, m_previousPoints, currentPoints,
-                             status, errors);
+    CalculateOpticalFlow(currentGrayscale, currentPoints, status, errors);
 
     std::vector<cv::Point2f> filteredPoints;
     filteredPoints.reserve(currentPoints.size());
@@ -257,7 +255,7 @@ void OpticalFlow::ConvertToGrayscale(const cv::Mat& in, cv::Mat& out)
 
 void OpticalFlow::FindFeatures(const cv::Mat& currentGrayscale,
                                std::vector<cv::Point2f>& currentPoints,
-                               std::vector<uint8_t>& status,
+                               std::vector<cv::uchar>& status,
                                std::vector<float>& errors)
 {
   // TODO
@@ -266,31 +264,35 @@ void OpticalFlow::FindFeatures(const cv::Mat& currentGrayscale,
                                       2.0);
 
   m_visionGraph->FindFeatures(currentGrayscale, m_config.maxPointCount, minDistance, currentPoints);
-  status.assign(currentPoints.size(), 1U);
+  status.assign(currentPoints.size(), static_cast<cv::uchar>(1));
   errors.assign(currentPoints.size(), 0.0f);
 }
 
 void OpticalFlow::CalculateOpticalFlow(const cv::Mat& currentGrayscale,
                                        std::vector<cv::Point2f>& currentPoints,
-                                       std::vector<uint8_t>& status,
+                                       std::vector<cv::uchar>& status,
                                        std::vector<float>& errors)
 {
-  /*
-  if (!m_frameHistory.empty())
-  {
-    const std::vector<cv::Point2f>& previousPoints = m_frameHistory.back()->points;
-    if (!previousPoints.empty())
-    {
-      // TODO: Zero-copy
-      m_pointHistoryBuffer.clear();
-      for (const auto& frame : m_frameHistory)
-        m_pointHistoryBuffer.emplace_back(frame->points);
+  if (!m_visionGraph)
+    return;
 
-      m_visionGraph->CalcOpticalFlow(m_previousGrayscale, currentGrayscale, previousPoints,
-                                     m_pointHistoryBuffer, currentPoints, status, errors);
-    }
+  if (!m_hasPreviousFrame)
+    return;
+
+  if (m_previousPoints.empty())
+  {
+    currentPoints.clear();
+    status.clear();
+    errors.clear();
+    return;
   }
-  */
+
+  // Rebuild the point history with the latest set of tracked points
+  m_pointHistoryBuffer.clear();
+  m_pointHistoryBuffer.emplace_back(m_previousPoints);
+
+  m_visionGraph->CalcOpticalFlow(m_previousGrayscale, currentGrayscale, m_previousPoints,
+                                 m_pointHistoryBuffer, currentPoints, status, errors);
 }
 
 /*

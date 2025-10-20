@@ -15,6 +15,7 @@
 #include <vector>
 
 #include <opencv2/core/mat.hpp>
+#include <opencv2/core/types.hpp>
 
 namespace rclcpp
 {
@@ -96,7 +97,7 @@ private:
    */
   void FindFeatures(const cv::Mat& currentGrayscale,
                     std::vector<cv::Point2f>& currentPoints,
-                    std::vector<uint8_t>& status,
+                    std::vector<cv::uchar>& status,
                     std::vector<float>& errors);
 
   /*!
@@ -104,7 +105,7 @@ private:
    */
   void CalculateOpticalFlow(const cv::Mat& currentGrayscale,
                             std::vector<cv::Point2f>& currentPoints,
-                            std::vector<uint8_t>& status,
+                            std::vector<cv::uchar>& status,
                             std::vector<float>& errors);
 
   /*!
@@ -138,7 +139,7 @@ private:
   cv::Mat m_rgbaFrameBuffer;
   cv::Mat m_currentGrayscaleBuffer;
   std::vector<std::vector<cv::Point2f>> m_pointHistoryBuffer;
-  std::vector<uint8_t> m_statusBuffer;
+  std::vector<cv::uchar> m_statusBuffer;
 
   bool m_hasPreviousFrame{false};
   std::vector<cv::Point2f> m_previousPoints;
