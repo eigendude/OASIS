@@ -14,9 +14,17 @@ usage() {
 Usage: build_oasis.sh [OPTIONS]
 
 Options:
-  --skip-messages   Skip building the oasis_msgs package. Use this when
-                    pre-built messages have been restored from cache.
-  -h, --help        Display this help and exit.
+  --skip-avr               Skip building the oasis_avr package. Use this when
+                           pre-built libraries have been restored from cache.
+  --skip-drivers-cpp       Skip building the oasis_drivers_cpp package. Use
+                           this when pre-built libraries have been restored
+                           from cache.
+  --skip-messages          Skip building the oasis_msgs package. Use this when
+                           pre-built messages have been restored from cache.
+  --skip-perception-cpp    Skip building the oasis_perception_cpp package. Use
+                           this when pre-built libraries have been restored
+                           from cache.
+  -h, --help               Display this help and exit.
 USAGE
 }
 
@@ -25,12 +33,27 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
+SKIP_AVR=false
+SKIP_DRIVERS_CPP=false
 SKIP_MESSAGES=false
+SKIP_PERCEPTION_CPP=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --skip-avr)
+      SKIP_AVR=true
+      shift
+      ;;
+    --skip-drivers-cpp)
+      SKIP_DRIVERS_CPP=true
+      shift
+      ;;
     --skip-messages)
       SKIP_MESSAGES=true
+      shift
+      ;;
+    --skip-perception-cpp)
+      SKIP_PERCEPTION_CPP=true
       shift
       ;;
     -h|--help)
@@ -89,8 +112,20 @@ COLCON_FLAGS+=" \
     -DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH} \
 "
 
+if [[ "${SKIP_AVR}" == true ]]; then
+  COLCON_FLAGS+=" --packages-skip oasis_avr"
+fi
+
+if [[ "${SKIP_DRIVERS_CPP}" == true ]]; then
+  COLCON_FLAGS+=" --packages-skip oasis_drivers_cpp"
+fi
+
 if [[ "${SKIP_MESSAGES}" == true ]]; then
   COLCON_FLAGS+=" --packages-skip oasis_msgs"
+fi
+
+if [[ "${SKIP_PERCEPTION_CPP}" == true ]]; then
+  COLCON_FLAGS+=" --packages-skip oasis_perception_cpp"
 fi
 
 # Uncomment these to force building in serial
