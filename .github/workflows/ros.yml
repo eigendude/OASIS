@@ -44,6 +44,8 @@ jobs:
       - name: Compute cache hashes
         uses: actions/github-script@v7
         with:
+          # Include messages with perception_cpp as keys can't be longer than
+          # 512 characters
           script: |
             async function hash(patterns) {
               return await glob.hashFiles(patterns.join('\n'));
@@ -98,10 +100,20 @@ jobs:
             ]);
 
             await setHash('OASIS_MESSAGES_HASH', [
-              'oasis_msgs/msg/**',
-              'oasis_msgs/srv/**',
-              'oasis_msgs/CMakeLists.txt',
-              'oasis_msgs/package.xml',
+              'oasis_msgs/**',
+            ]);
+
+            await setHash('OASIS_AVR_HASH', [
+              'oasis_avr/**',
+            ]);
+
+            await setHash('OASIS_DRIVERS_CPP_HASH', [
+              'oasis_drivers_cpp/**',
+            ]);
+
+            await setHash('OASIS_PERCEPTION_CPP_HASH', [
+              'oasis_msgs/**',
+              'oasis_perception_cpp/**',
             ]);
 
       - name: Restore CMake
@@ -189,14 +201,65 @@ jobs:
           path: |
             ros-ws/oasis-${{ matrix.ros2_distro }}/install/include/oasis_msgs
             ros-ws/oasis-${{ matrix.ros2_distro }}/install/lib/liboasis_msgs*
-            ros-ws/oasis-${{ matrix.ros2_distro }}/install/share/ament_index/resource_index/*/oasis_msgs
-            ros-ws/oasis-${{ matrix.ros2_distro }}/install/share/colcon-core/packages/oasis_msgs
-            ros-ws/oasis-${{ matrix.ros2_distro }}/install/share/oasis_msgs
+            ros-ws/oasis-${{ matrix.ros2_distro }}/install/share/**/oasis_msgs
           key: >
             restore-oasis-msgs-\
             ${{ matrix.os }}-\
             ${{ matrix.ros2_distro }}-\
+            ${{ env.CMAKE_HASH }}-\
+            ${{ env.ROS2_DESKTOP_HASH }}-\
             ${{ env.OASIS_MESSAGES_HASH }}
+
+      - name: Restore OASIS AVR
+        id: restore-oasis-avr
+        uses: actions/cache@v4
+        with:
+          path: |
+            ros-ws/oasis-${{ matrix.ros2_distro }}/install/share/**/oasis_avr
+          key: >
+            restore-oasis-avr-\
+            ${{ matrix.os }}-\
+            ${{ matrix.ros2_distro }}-\
+            ${{ env.CMAKE_HASH }}-\
+            ${{ env.ARDUINO_BOOTSTRAP_HASH }}-\
+            ${{ env.OASIS_AVR_HASH }}
+
+      - name: Restore OASIS drivers_cpp
+        id: restore-oasis-drivers-cpp
+        uses: actions/cache@v4
+        with:
+          path: |
+            ros-ws/oasis-${{ matrix.ros2_distro }}/install/include/oasis_drivers_cpp
+            ros-ws/oasis-${{ matrix.ros2_distro }}/install/lib/oasis_drivers_cpp
+            ros-ws/oasis-${{ matrix.ros2_distro }}/install/share/**/oasis_drivers_cpp
+          key: >
+            restore-oasis-drivers-cpp-\
+            ${{ matrix.os }}-\
+            ${{ matrix.ros2_distro }}-\
+            ${{ env.CMAKE_HASH }}-\
+            ${{ env.ROS2_DESKTOP_HASH }}-\
+            ${{ env.OASIS_DEPENDS_HASH }}-\
+            ${{ env.OASIS_MESSAGES_HASH }}-\
+            ${{ env.OASIS_DRIVERS_CPP_HASH }}
+
+      - name: Restore OASIS perception_cpp
+        id: restore-oasis-perception-cpp
+        uses: actions/cache@v4
+        with:
+          path: |
+            ros-ws/oasis-${{ matrix.ros2_distro }}/install/include/oasis_perception_cpp
+            ros-ws/oasis-${{ matrix.ros2_distro }}/install/lib/oasis_perception_cpp
+            ros-ws/oasis-${{ matrix.ros2_distro }}/install/share/**/oasis_perception_cpp
+          key: >
+            restore-oasis-perception-cpp-\
+            ${{ matrix.os }}-\
+            ${{ matrix.ros2_distro }}-\
+            ${{ env.CMAKE_HASH }}-\
+            ${{ env.OPENCV_HASH }}-\
+            ${{ env.MEDIAPIPE_HASH }}-\
+            ${{ env.ROS2_DESKTOP_HASH }}-\
+            ${{ env.OASIS_DEPENDS_HASH }}-\
+            ${{ env.OASIS_PERCEPTION_CPP_HASH }}
 
       - name: Restore OASIS runtime dependencies
         id: restore-oasis-runtime
@@ -252,13 +315,33 @@ jobs:
       - name: Install OASIS rosdeps
         run: ./oasis_tooling/scripts/depinstall_oasis.sh
 
-      - name: colcon build (skip messages)
-        if: steps.restore-oasis-msgs.outputs.cache-hit == 'true'
-        run: ./oasis_tooling/scripts/build_oasis.sh --skip-messages
-
       - name: colcon build
-        if: steps.restore-oasis-msgs.outputs.cache-hit != 'true'
-        run: ./oasis_tooling/scripts/build_oasis.sh
+        run: |
+          set -euo pipefail
+
+          args=()
+
+          if [ "${{ steps.restore-oasis-msgs.outputs.cache-hit }}" = 'true' ]; then
+            args+=(--skip-messages)
+          fi
+
+          if [ "${{ steps.restore-oasis-avr.outputs.cache-hit }}" = 'true' ]; then
+            args+=(--skip-avr)
+          fi
+
+          if [ "${{ steps.restore-oasis-drivers-cpp.outputs.cache-hit }}" = 'true' ]; then
+            args+=(--skip-drivers-cpp)
+          fi
+
+          if [ "${{ steps.restore-oasis-perception-cpp.outputs.cache-hit }}" = 'true' ]; then
+            args+=(--skip-perception-cpp)
+          fi
+
+          if [ ${#args[@]} -eq 0 ]; then
+            ./oasis_tooling/scripts/build_oasis.sh
+          else
+            ./oasis_tooling/scripts/build_oasis.sh "${args[@]}"
+          fi
 
       - name: Install OASIS files
         run: ./oasis_tooling/scripts/install_oasis.sh
