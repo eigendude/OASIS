@@ -12,7 +12,6 @@
 #include <stdexcept>
 
 #include <System.h>
-#include <ament_index_cpp/get_package_share_directory.hpp>
 #include <cv_bridge/cv_bridge.hpp>
 #include <image_transport/image_transport.hpp>
 #include <image_transport/transport_hints.hpp>
@@ -58,6 +57,13 @@ void MonocularSlam::Deinitialize()
 
 void MonocularSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg)
 {
+  if (!m_slam)
+    return;
+
+  const std_msgs::msg::Header& header = msg->header;
+  const double timestamp =
+      static_cast<double>(header.stamp.sec) + static_cast<double>(header.stamp.nanosec) * 1E-9;
+
   cv_bridge::CvImagePtr cv_ptr;
   try
   {
@@ -69,8 +75,6 @@ void MonocularSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& 
     return;
   }
 
-  double tframe = 0.0; // TODO
-
   // Pass the image to the SLAM system
-  m_slam->TrackMonocular(cv_ptr->image, tframe);
+  m_slam->TrackMonocular(cv_ptr->image, timestamp);
 }
