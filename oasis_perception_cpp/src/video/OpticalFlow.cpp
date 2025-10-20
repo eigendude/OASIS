@@ -9,6 +9,7 @@
 #include "OpticalFlow.h"
 
 #include "utils/MathUtils.h"
+#include "utils/SceneUtils.h"
 #include "video/VisionGraph.h"
 
 #include <algorithm>
@@ -53,6 +54,9 @@ bool OpticalFlow::Initialize(rclcpp::Logger& logger, int width, int height)
   m_previousPoints.clear();
   m_points.clear();
   m_initialPoints.clear();
+  m_previousMafd = 0.0f;
+  m_sceneScore = 0.0f;
+  m_hasSceneScore = false;
 
   RCLCPP_INFO(logger, "Initialized optical flow with dimensions %u x %u", width, height);
 
@@ -97,6 +101,20 @@ bool OpticalFlow::ProcessImage(const cv::Mat& image)
   std::vector<cv::Point2f> currentPoints;
   std::vector<uint8_t> status;
   std::vector<float> errors;
+
+  float nextMafd = 0.0f;
+  if (m_hasPreviousFrame)
+  {
+    nextMafd = UTILS::SceneUtils::CalcSceneMAFD(m_previousGrayscale.data, currentGrayscale.data,
+                                                m_width, m_height);
+    m_sceneScore = UTILS::SceneUtils::CalcSceneScore(nextMafd, m_previousMafd);
+    m_hasSceneScore = true;
+  }
+  else
+  {
+    m_sceneScore = 0.0f;
+    m_hasSceneScore = false;
+  }
 
   auto storeInitialPoints = [this](const std::vector<cv::Point2f>& points)
   {
@@ -151,6 +169,7 @@ bool OpticalFlow::ProcessImage(const cv::Mat& image)
   currentGrayscale.copyTo(m_previousGrayscale);
   m_previousPoints = std::move(currentPoints);
   m_hasPreviousFrame = true;
+  m_previousMafd = nextMafd;
 
   return true;
 }
