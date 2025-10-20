@@ -11,7 +11,10 @@
 
 #include <image_transport/publisher.hpp>
 #include <image_transport/subscriber.hpp>
+#include <rclcpp/publisher.hpp>
 #include <sensor_msgs/msg/image.hpp>
+
+#include <oasis_msgs/msg/scene_score.hpp>
 
 namespace rclcpp
 {
@@ -47,6 +50,7 @@ private:
   rclcpp::Logger m_logger;
   std::unique_ptr<image_transport::Publisher> m_flowPublisher;
   std::unique_ptr<image_transport::Subscriber> m_imgSubscriber;
+  rclcpp::Publisher<oasis_msgs::msg::SceneScore>::SharedPtr m_scenePublisher;
 
   // Video parameters
   std::unique_ptr<VIDEO::OpticalFlow> m_opticalFlow;

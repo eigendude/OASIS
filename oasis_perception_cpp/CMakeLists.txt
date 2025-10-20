@@ -486,6 +486,7 @@ set(OPTICAL_FLOW_LIBRARIES
   image_transport::image_transport
   ${OpenCV_LIBS}
   rclcpp::rclcpp
+  ${oasis_msgs_TARGETS}
   ${sensor_msgs_TARGETS}
   ${std_msgs_TARGETS}
 )
