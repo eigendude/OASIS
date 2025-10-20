@@ -83,11 +83,11 @@ void MonocularSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& 
   const Sophus::SE3f cameraPose = m_slam->TrackMonocular(cv_ptr->image, timestamp);
 
   const int trackingState = m_slam->GetTrackingState();
-  const auto trackedMapPoints = m_slam->GetTrackedMapPoints();
-  const auto trackedKeyPoints = m_slam->GetTrackedKeyPointsUn();
+  const std::vector<ORB_SLAM3::MapPoint*> trackedMapPoints = m_slam->GetTrackedMapPoints();
+  const std::vector<cv::KeyPoint> trackedKeyPoints = m_slam->GetTrackedKeyPointsUn();
 
   std::size_t trackedMapPointCount = 0;
-  for (const auto* mapPoint : trackedMapPoints)
+  for (const ORB_SLAM3::MapPoint* mapPoint : trackedMapPoints)
   {
     if (mapPoint != nullptr)
       ++trackedMapPointCount;
