@@ -326,11 +326,6 @@ jobs:
             touch "oasis_drivers_cpp/COLCON_IGNORE"
           fi
 
-          if [ "${{ steps.restore-oasis-msgs.outputs.cache-hit }}" = 'true' ]; then
-            echo "Marking oasis_msgs as ignored (cache hit detected)"
-            touch "oasis_msgs/COLCON_IGNORE"
-          fi
-
           if [ "${{ steps.restore-oasis-perception-cpp.outputs.cache-hit }}" = 'true' ]; then
             echo "Marking oasis_perception_cpp as ignored (cache hit detected)"
             touch "oasis_perception_cpp/COLCON_IGNORE"
