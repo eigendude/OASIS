@@ -97,6 +97,15 @@ bool OpticalFlowNode::Initialize()
   if (imageTransport.empty())
     imageTransport = std::string{DEFAULT_IMAGE_TRANSPORT};
 
+  if (!m_node.get_parameter(PUBLISH_SCENE_SCORES_PARAMETER.data(), m_publishSceneScores))
+  {
+    RCLCPP_WARN(m_node.get_logger(),
+                "Missing publish scene scores parameter '%s', using default: %s",
+                PUBLISH_SCENE_SCORES_PARAMETER.data(),
+                DEFAULT_PUBLISH_SCENE_SCORES ? "true" : "false");
+    m_publishSceneScores = DEFAULT_PUBLISH_SCENE_SCORES;
+  }
+
   std::string imageTopic = systemId;
   imageTopic.push_back('_');
   imageTopic.append(IMAGE_TOPIC);
@@ -172,7 +181,7 @@ void OpticalFlowNode::OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg
 
   if (!m_isInitialized || width != m_imageWidth || height != m_imageHeight)
   {
-    if (!m_opticalFlow->Initialize(m_logger, width, height))
+    if (!m_opticalFlow->Initialize(m_logger, width, height, m_publishSceneScores))
     {
       RCLCPP_ERROR(m_node.get_logger(), "Failed to initialize optical flow for image size %dx%d",
                    width, height);
