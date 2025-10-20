@@ -112,20 +112,26 @@ COLCON_FLAGS+=" \
     -DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH} \
 "
 
+PACKAGES_SKIP=()
+
 if [[ "${SKIP_AVR}" == true ]]; then
-  COLCON_FLAGS+=" --packages-skip oasis_avr"
+  PACKAGES_SKIP+=("oasis_avr")
 fi
 
 if [[ "${SKIP_DRIVERS_CPP}" == true ]]; then
-  COLCON_FLAGS+=" --packages-skip oasis_drivers_cpp"
+  PACKAGES_SKIP+=("oasis_drivers_cpp")
 fi
 
 if [[ "${SKIP_MESSAGES}" == true ]]; then
-  COLCON_FLAGS+=" --packages-skip oasis_msgs"
+  PACKAGES_SKIP+=("oasis_msgs")
 fi
 
 if [[ "${SKIP_PERCEPTION_CPP}" == true ]]; then
-  COLCON_FLAGS+=" --packages-skip oasis_perception_cpp"
+  PACKAGES_SKIP+=("oasis_perception_cpp")
+fi
+
+if [[ ${#PACKAGES_SKIP[@]} -gt 0 ]]; then
+  COLCON_FLAGS+=" --packages-skip ${PACKAGES_SKIP[*]}"
 fi
 
 # Uncomment these to force building in serial
