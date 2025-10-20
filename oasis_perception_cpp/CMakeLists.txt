@@ -467,11 +467,14 @@ rclcpp_components_register_node(
 # Project files
 set(OPTICAL_FLOW_SOURCES
   src/api/ImageProc.cpp
+  src/api/Scene.cpp
   src/api/Video.cpp
   src/kernels/cpu/CPUImageProc.cpp
+  src/kernels/cpu/CPUScene.cpp
   src/kernels/cpu/CPUVideo.cpp
   src/nodes/OpticalFlowNode.cpp
   src/utils/MathUtils.cpp
+  src/utils/SceneUtils.cpp
   src/video/OpticalFlow.cpp
   src/video/VisionGraph.cpp
 )
