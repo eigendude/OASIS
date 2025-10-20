@@ -43,6 +43,8 @@ constexpr std::string_view SYSTEM_ID_PARAMETER = "system_id";
 constexpr std::string_view DEFAULT_SYSTEM_ID = "";
 constexpr std::string_view IMAGE_TRANSPORT_PARAMETER = "image_transport";
 constexpr std::string_view DEFAULT_IMAGE_TRANSPORT = "raw";
+constexpr std::string_view PUBLISH_SCENE_SCORES_PARAMETER = "publish_scene_scores";
+constexpr bool DEFAULT_PUBLISH_SCENE_SCORES = false;
 } // namespace
 
 OpticalFlowNode::OpticalFlowNode(rclcpp::Node& node)
@@ -55,6 +57,8 @@ OpticalFlowNode::OpticalFlowNode(rclcpp::Node& node)
   m_node.declare_parameter<std::string>(SYSTEM_ID_PARAMETER.data(), DEFAULT_SYSTEM_ID.data());
   m_node.declare_parameter<std::string>(IMAGE_TRANSPORT_PARAMETER.data(),
                                         DEFAULT_IMAGE_TRANSPORT.data());
+  m_node.declare_parameter<bool>(PUBLISH_SCENE_SCORES_PARAMETER.data(),
+                                 DEFAULT_PUBLISH_SCENE_SCORES);
 
   VIDEO::ConfigOptions configOptions;
   configOptions.maxPointCount = MAX_TRACKED_POINTS;
@@ -110,10 +114,15 @@ bool OpticalFlowNode::Initialize()
   RCLCPP_INFO(m_node.get_logger(), "Image transport: %s", imageTransport.c_str());
   RCLCPP_INFO(m_node.get_logger(), "Flow topic: %s", flowTopic.c_str());
   RCLCPP_INFO(m_node.get_logger(), "Scene score topic: %s", sceneTopic.c_str());
+  RCLCPP_INFO(m_node.get_logger(), "Publishing scene scores: %s",
+              m_publishSceneScores ? "true" : "false");
 
   *m_flowPublisher = image_transport::create_publisher(&m_node, flowTopic);
-  m_scenePublisher =
-      m_node.create_publisher<oasis_msgs::msg::SceneScore>(sceneTopic, rclcpp::SensorDataQoS());
+  if (m_publishSceneScores)
+  {
+    m_scenePublisher =
+        m_node.create_publisher<oasis_msgs::msg::SceneScore>(sceneTopic, rclcpp::SensorDataQoS());
+  }
 
   *m_imgSubscriber = image_transport::create_subscription(
       &m_node, imageTopic,
@@ -186,7 +195,7 @@ void OpticalFlowNode::OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg
 
   m_flowPublisher->publish(cv_ptr->toImageMsg());
 
-  if (m_scenePublisher)
+  if (m_publishSceneScores && m_scenePublisher)
   {
     oasis_msgs::msg::SceneScore sceneMsg;
     sceneMsg.header = msg->header;
