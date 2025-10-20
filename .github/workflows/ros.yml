@@ -22,6 +22,12 @@ jobs:
     # The type of runner that the job will run on
     runs-on: ${{ matrix.os }}
 
+    env:
+      SKIP_OASIS_MESSAGES: ${{ vars.SKIP_OASIS_MESSAGES }}
+      SKIP_OASIS_AVR: ${{ vars.SKIP_OASIS_AVR }}
+      SKIP_OASIS_DRIVERS_CPP: ${{ vars.SKIP_OASIS_DRIVERS_CPP }}
+      SKIP_OASIS_PERCEPTION_CPP: ${{ vars.SKIP_OASIS_PERCEPTION_CPP }}
+
     strategy:
       fail-fast: false
       matrix:
@@ -320,6 +326,22 @@ jobs:
           set -euo pipefail
 
           args=()
+
+          if [ "${{ env.SKIP_OASIS_MESSAGES }}" = 'true' ]; then
+            args+=(--skip-messages)
+          fi
+
+          if [ "${{ env.SKIP_OASIS_AVR }}" = 'true' ]; then
+            args+=(--skip-avr)
+          fi
+
+          if [ "${{ env.SKIP_OASIS_DRIVERS_CPP }}" = 'true' ]; then
+            args+=(--skip-drivers-cpp)
+          fi
+
+          if [ "${{ env.SKIP_OASIS_PERCEPTION_CPP }}" = 'true' ]; then
+            args+=(--skip-perception-cpp)
+          fi
 
           if [ "${{ steps.restore-oasis-msgs.outputs.cache-hit }}" = 'true' ]; then
             args+=(--skip-messages)

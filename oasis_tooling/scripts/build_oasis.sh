@@ -25,6 +25,13 @@ Options:
                            this when pre-built libraries have been restored
                            from cache.
   -h, --help               Display this help and exit.
+
+Environment variables:
+  SKIP_OASIS_MESSAGES      When set to "true", behaves like --skip-messages.
+  SKIP_OASIS_AVR           When set to "true", behaves like --skip-avr.
+  SKIP_OASIS_DRIVERS_CPP   When set to "true", behaves like --skip-drivers-cpp.
+  SKIP_OASIS_PERCEPTION_CPP
+                           When set to "true", behaves like --skip-perception-cpp.
 USAGE
 }
 
@@ -67,6 +74,23 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# Allow environment variables to enable skip flags without command line args
+if [[ "${SKIP_OASIS_MESSAGES:-false}" == "true" ]]; then
+  SKIP_MESSAGES=true
+fi
+
+if [[ "${SKIP_OASIS_AVR:-false}" == "true" ]]; then
+  SKIP_AVR=true
+fi
+
+if [[ "${SKIP_OASIS_DRIVERS_CPP:-false}" == "true" ]]; then
+  SKIP_DRIVERS_CPP=true
+fi
+
+if [[ "${SKIP_OASIS_PERCEPTION_CPP:-false}" == "true" ]]; then
+  SKIP_PERCEPTION_CPP=true
+fi
 
 #
 # Environment paths and configuration
