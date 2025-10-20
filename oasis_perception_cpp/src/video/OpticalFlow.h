@@ -49,7 +49,7 @@ public:
    * \param width The video width
    * \param height The video height
    */
-  bool Initialize(rclcpp::Logger& logger, int width, int height);
+  bool Initialize(rclcpp::Logger& logger, int width, int height, bool calculateSceneScores);
 
   /*!
    * \brief Deinitialize the motion tracker
@@ -122,6 +122,7 @@ private:
   float m_previousMafd{0.0f};
   float m_sceneScore{0.0f};
   bool m_hasSceneScore{false};
+  bool m_calculateSceneScores{false};
 };
 } // namespace VIDEO
 } // namespace OASIS

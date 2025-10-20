@@ -27,7 +27,10 @@ namespace
 constexpr unsigned int MIN_POINT_COUNT = 10;
 } // namespace
 
-bool OpticalFlow::Initialize(rclcpp::Logger& logger, int width, int height)
+bool OpticalFlow::Initialize(rclcpp::Logger& logger,
+                             int width,
+                             int height,
+                             bool calculateSceneScores)
 {
   if (width <= 0 || height <= 0)
   {
@@ -38,6 +41,7 @@ bool OpticalFlow::Initialize(rclcpp::Logger& logger, int width, int height)
   // Initialize video parameters
   m_width = width;
   m_height = height;
+  m_calculateSceneScores = calculateSceneScores;
 
   // Initialize buffers
   m_rgbaFrameBuffer.create(m_height, m_width, CV_8UC4);
@@ -103,12 +107,20 @@ bool OpticalFlow::ProcessImage(const cv::Mat& image)
   std::vector<float> errors;
 
   float nextMafd = 0.0f;
-  if (m_hasPreviousFrame)
+  if (m_calculateSceneScores)
   {
-    nextMafd = UTILS::SceneUtils::CalcSceneMAFD(m_previousGrayscale.data, currentGrayscale.data,
-                                                m_width, m_height);
-    m_sceneScore = UTILS::SceneUtils::CalcSceneScore(nextMafd, m_previousMafd);
-    m_hasSceneScore = true;
+    if (m_hasPreviousFrame)
+    {
+      nextMafd = UTILS::SceneUtils::CalcSceneMAFD(m_previousGrayscale.data, currentGrayscale.data,
+                                                  m_width, m_height);
+      m_sceneScore = UTILS::SceneUtils::CalcSceneScore(nextMafd, m_previousMafd);
+      m_hasSceneScore = true;
+    }
+    else
+    {
+      m_sceneScore = 0.0f;
+      m_hasSceneScore = false;
+    }
   }
   else
   {

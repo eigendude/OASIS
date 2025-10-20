@@ -55,6 +55,7 @@ private:
   std::unique_ptr<VIDEO::OpticalFlow> m_opticalFlow;
 
   // State parameters
+  bool m_publishSceneScore{false};
   bool m_isInitialized{false};
   int m_imageWidth{0};
   int m_imageHeight{0};

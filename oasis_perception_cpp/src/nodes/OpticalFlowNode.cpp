@@ -43,6 +43,8 @@ constexpr std::string_view SYSTEM_ID_PARAMETER = "system_id";
 constexpr std::string_view DEFAULT_SYSTEM_ID = "";
 constexpr std::string_view IMAGE_TRANSPORT_PARAMETER = "image_transport";
 constexpr std::string_view DEFAULT_IMAGE_TRANSPORT = "raw";
+constexpr std::string_view PUBLISH_SCENE_SCORE_PARAMETER = "publish_scene_score";
+constexpr bool DEFAULT_PUBLISH_SCENE_SCORE = false;
 } // namespace
 
 OpticalFlowNode::OpticalFlowNode(rclcpp::Node& node)
@@ -55,6 +57,7 @@ OpticalFlowNode::OpticalFlowNode(rclcpp::Node& node)
   m_node.declare_parameter<std::string>(SYSTEM_ID_PARAMETER.data(), DEFAULT_SYSTEM_ID.data());
   m_node.declare_parameter<std::string>(IMAGE_TRANSPORT_PARAMETER.data(),
                                         DEFAULT_IMAGE_TRANSPORT.data());
+  m_node.declare_parameter<bool>(PUBLISH_SCENE_SCORE_PARAMETER.data(), DEFAULT_PUBLISH_SCENE_SCORE);
 
   VIDEO::ConfigOptions configOptions;
   configOptions.maxPointCount = MAX_TRACKED_POINTS;
@@ -93,6 +96,9 @@ bool OpticalFlowNode::Initialize()
   if (imageTransport.empty())
     imageTransport = std::string{DEFAULT_IMAGE_TRANSPORT};
 
+  if (!m_node.get_parameter(PUBLISH_SCENE_SCORE_PARAMETER.data(), m_publishSceneScore))
+    m_publishSceneScore = DEFAULT_PUBLISH_SCENE_SCORE;
+
   std::string imageTopic = systemId;
   imageTopic.push_back('_');
   imageTopic.append(IMAGE_TOPIC);
@@ -110,10 +116,15 @@ bool OpticalFlowNode::Initialize()
   RCLCPP_INFO(m_node.get_logger(), "Image transport: %s", imageTransport.c_str());
   RCLCPP_INFO(m_node.get_logger(), "Flow topic: %s", flowTopic.c_str());
   RCLCPP_INFO(m_node.get_logger(), "Scene score topic: %s", sceneTopic.c_str());
+  RCLCPP_INFO(m_node.get_logger(), "Publishing scene score: %s",
+              m_publishSceneScore ? "true" : "false");
 
   *m_flowPublisher = image_transport::create_publisher(&m_node, flowTopic);
-  m_scenePublisher =
-      m_node.create_publisher<oasis_msgs::msg::SceneScore>(sceneTopic, rclcpp::SensorDataQoS());
+  if (m_publishSceneScore)
+  {
+    m_scenePublisher =
+        m_node.create_publisher<oasis_msgs::msg::SceneScore>(sceneTopic, rclcpp::SensorDataQoS());
+  }
 
   *m_imgSubscriber = image_transport::create_subscription(
       &m_node, imageTopic,
@@ -163,7 +174,7 @@ void OpticalFlowNode::OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg
 
   if (!m_isInitialized || width != m_imageWidth || height != m_imageHeight)
   {
-    if (!m_opticalFlow->Initialize(m_logger, width, height))
+    if (!m_opticalFlow->Initialize(m_logger, width, height, m_publishSceneScore))
     {
       RCLCPP_ERROR(m_node.get_logger(), "Failed to initialize optical flow for image size %dx%d",
                    width, height);
@@ -186,7 +197,7 @@ void OpticalFlowNode::OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg
 
   m_flowPublisher->publish(cv_ptr->toImageMsg());
 
-  if (m_scenePublisher)
+  if (m_publishSceneScore && m_scenePublisher)
   {
     oasis_msgs::msg::SceneScore sceneMsg;
     sceneMsg.header = msg->header;
