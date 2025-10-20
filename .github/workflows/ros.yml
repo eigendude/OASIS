@@ -312,6 +312,25 @@ jobs:
         if: steps.restore-mediapipe.outputs.cache-hit != 'true'
         run: ./oasis_tooling/scripts/build_mediapipe.sh
 
+      - name: Mark cached packages as skipped
+        run: |
+          set -euo pipefail
+
+          if [ "${{ steps.restore-oasis-avr.outputs.cache-hit }}" = 'true' ]; then
+            echo "Marking oasis_avr as ignored (cache hit detected)"
+            touch "oasis_avr/COLCON_IGNORE"
+          fi
+
+          if [ "${{ steps.restore-oasis-drivers-cpp.outputs.cache-hit }}" = 'true' ]; then
+            echo "Marking oasis_drivers_cpp as ignored (cache hit detected)"
+            touch "oasis_drivers_cpp/COLCON_IGNORE"
+          fi
+
+          if [ "${{ steps.restore-oasis-perception-cpp.outputs.cache-hit }}" = 'true' ]; then
+            echo "Marking oasis_perception_cpp as ignored (cache hit detected)"
+            touch "oasis_perception_cpp/COLCON_IGNORE"
+          fi
+
       - name: Install OASIS rosdeps
         run: ./oasis_tooling/scripts/depinstall_oasis.sh
 
@@ -322,24 +341,30 @@ jobs:
           args=()
 
           if [ "${{ steps.restore-oasis-avr.outputs.cache-hit }}" = 'true' ]; then
+            echo "Skipping oasis_avr build (cache hit detected)"
             args+=(--skip-avr)
           fi
 
           if [ "${{ steps.restore-oasis-drivers-cpp.outputs.cache-hit }}" = 'true' ]; then
+            echo "Skipping oasis_drivers_cpp build (cache hit detected)"
             args+=(--skip-drivers-cpp)
           fi
 
           if [ "${{ steps.restore-oasis-msgs.outputs.cache-hit }}" = 'true' ]; then
+            echo "Skipping oasis_msgs build (cache hit detected)"
             args+=(--skip-messages)
           fi
 
           if [ "${{ steps.restore-oasis-perception-cpp.outputs.cache-hit }}" = 'true' ]; then
+            echo "Skipping oasis_perception_cpp build (cache hit detected)"
             args+=(--skip-perception-cpp)
           fi
 
           if [ ${#args[@]} -eq 0 ]; then
+            echo "No packages skipped; performing full build."
             ./oasis_tooling/scripts/build_oasis.sh
           else
+            echo "Running build with skipped packages: ${args[*]}"
             ./oasis_tooling/scripts/build_oasis.sh "${args[@]}"
           fi
 
