@@ -10,6 +10,7 @@
 
 #include "ros/RosUtils.h"
 
+#include <cstddef>
 #include <filesystem>
 #include <stdexcept>
 
@@ -17,10 +18,12 @@
 #include <cv_bridge/cv_bridge.hpp>
 #include <image_transport/image_transport.hpp>
 #include <image_transport/transport_hints.hpp>
+#include <Eigen/Geometry>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
 #include <sensor_msgs/image_encodings.hpp>
+#include <sophus/se3.hpp>
 
 using namespace OASIS;
 using namespace SLAM;
@@ -77,5 +80,33 @@ void MonocularSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& 
   }
 
   // Pass the image to the SLAM system
-  m_slam->TrackMonocular(cv_ptr->image, timestamp);
+  const Sophus::SE3f cameraPose = m_slam->TrackMonocular(cv_ptr->image, timestamp);
+
+  const int trackingState = m_slam->GetTrackingState();
+  const auto trackedMapPoints = m_slam->GetTrackedMapPoints();
+  const auto trackedKeyPoints = m_slam->GetTrackedKeyPointsUn();
+
+  std::size_t trackedMapPointCount = 0;
+  for (const auto* mapPoint : trackedMapPoints)
+  {
+    if (mapPoint != nullptr)
+      ++trackedMapPointCount;
+  }
+
+  const auto& translation = cameraPose.translation();
+  const Eigen::Quaternionf quaternion = cameraPose.unit_quaternion();
+
+  RCLCPP_INFO(*m_logger,
+              "SLAM pose timestamp=%.9f state=%d position=(%.3f, %.3f, %.3f) orientation=(%.4f, %.4f, %.4f, %.4f) tracked=%zu/%zu",
+              timestamp,
+              trackingState,
+              translation.x(),
+              translation.y(),
+              translation.z(),
+              quaternion.w(),
+              quaternion.x(),
+              quaternion.y(),
+              quaternion.z(),
+              trackedMapPointCount,
+              trackedKeyPoints.size());
 }
