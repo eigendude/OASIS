@@ -36,14 +36,6 @@ struct ConfigOptions
   unsigned int maxFrameCount = 240;
 };
 
-struct FrameInfo
-{
-  uintptr_t pointData = 0;
-  unsigned int pointSize = 0;
-  uintptr_t initialPointData = 0;
-  unsigned int initialPointSize = 0;
-};
-
 class OpticalFlow
 {
 public:
@@ -72,16 +64,6 @@ public:
   size_t DrawPoints(cv::Mat& image,
                     size_t maxPointCount = std::numeric_limits<size_t>::max()) const;
 
-  /*!
-   * \brief Add a frame to the motion tracker and return the results
-   *
-   * \param frameArray Javascript array of type Uint8ClampedArray
-   *
-   * \return Results of analyzing the new frame
-   *
-  FrameInfo AddVideoFrame(const emscripten::val& frameArray);
-  */
-
   std::vector<float> GetPoints() const { return m_points; }
   std::vector<float> GetInitialPoints() const { return m_initialPoints; }
 
@@ -107,16 +89,6 @@ private:
                             std::vector<uint8_t>& status,
                             std::vector<float>& errors);
 
-  /*!
-   * \brief Add frame to history vector
-   *
-  void AddFrameToHistory(FramePtr&& frame);
-
-  /*!
-   * \brief Fill out the frame struct being returned to JavaScript land
-   */
-  FrameInfo GetResult() const;
-
   // Video parameters
   unsigned int m_width = 0;
   unsigned int m_height = 0;
@@ -125,20 +97,15 @@ private:
   ConfigOptions m_config;
 
   // State parameters
-  //std::vector<FramePtr> m_frameHistory;
   cv::Mat m_previousGrayscale;
 
   // Vision graph
   std::shared_ptr<VisionGraph> m_visionGraph;
 
-  // Frame pool
-  //std::shared_ptr<FramePool> m_framePool;
-
   // Buffers
   cv::Mat m_rgbaFrameBuffer;
   cv::Mat m_currentGrayscaleBuffer;
   std::vector<std::vector<cv::Point2f>> m_pointHistoryBuffer;
-  std::vector<uint8_t> m_statusBuffer;
 
   bool m_hasPreviousFrame{false};
   std::vector<cv::Point2f> m_previousPoints;

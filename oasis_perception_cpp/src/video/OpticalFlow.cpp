@@ -15,7 +15,6 @@
 #include <iostream>
 
 #include <opencv2/imgproc.hpp>
-#include <opencv2/video/tracking.hpp>
 #include <rclcpp/logging.hpp>
 
 using namespace OASIS;
@@ -24,7 +23,7 @@ using namespace VIDEO;
 namespace
 {
 // Minimum number of points to force redetection
-constexpr unsigned int MIN_POINT_COUNT = 5;
+constexpr unsigned int MIN_POINT_COUNT = 10;
 } // namespace
 
 bool OpticalFlow::Initialize(rclcpp::Logger& logger, int width, int height)
@@ -120,8 +119,7 @@ bool OpticalFlow::ProcessImage(const cv::Mat& image)
   }
   else
   {
-    cv::calcOpticalFlowPyrLK(m_previousGrayscale, currentGrayscale, m_previousPoints, currentPoints,
-                             status, errors);
+    CalculateOpticalFlow(currentGrayscale, currentPoints, status, errors);
 
     std::vector<cv::Point2f> filteredPoints;
     filteredPoints.reserve(currentPoints.size());
@@ -173,83 +171,6 @@ size_t OpticalFlow::DrawPoints(cv::Mat& image, size_t maxPointCount) const
   return trackedPointCount;
 }
 
-/*
-FrameInfo OpticalFlow::AddVideoFrame(const emscripten::val& frameArray)
-{
-  // Dereference buffers
-  cv::Mat& rgbaFrame = m_rgbaFrameBuffer;
-  cv::Mat& currentGrayscale = m_currentGrayscaleBuffer;
-
-  // Get a frame to gather our results
-  FramePtr currentFrame = m_framePool->GetFrame();
-
-  // Fetch array from JavaScript
-  // TODO: Elide copy
-  ReadArray(frameArray, rgbaFrame.data);
-
-  // Convert to grayscale
-  ConvertToGrayscale(rgbaFrame, currentGrayscale);
-
-  // Reset frame history when a scene change is detected
-  if (currentFrame->sceneScore >= SCENE_THREASHOLD)
-  {
-    std::cout << "Scene change detected (score: " << currentFrame->sceneScore << ")" << std::endl;
-    m_frameHistory.clear();
-  }
-
-  // TODO
-  if (m_frameHistory.size() > m_config.maxFrameCount)
-  {
-    m_frameHistory.clear();
-  }
-
-  if (m_frameHistory.empty())
-  {
-    FindFeatures(currentGrayscale, currentFrame->points, currentFrame->status,
-                 currentFrame->errors);
-  }
-  else
-  {
-    // Calculate optical flow if we have a previous frame
-    CalculateOpticalFlow(currentGrayscale, currentFrame->points, currentFrame->status,
-                         currentFrame->errors);
-
-    // If feature count drops by 10% or more, consider it a scene change
-    const unsigned int missing = std::count(currentFrame->status.begin(),
-                                            currentFrame->status.end(),
-                                            0);
-
-    if (10 * missing > currentFrame->status.size())
-    {
-      std::cout << "Scene change detected (missing points: " << missing << ")"
-          << std::endl;
-      m_frameHistory.clear();
-    }
-
-    if (currentFrame->points.size() <= MIN_POINT_COUNT)
-    {
-      std::cout << "Scene change detected (points count: " << currentFrame->points.size()
-          << ")" << std::endl;
-      m_frameHistory.clear();
-    }
-
-    if (m_frameHistory.empty())
-      FindFeatures(currentGrayscale, currentFrame->points, currentFrame->status, currentFrame->errors);
-  }
-
-  if (!currentFrame->points.empty())
-    AddFrameToHistory(std::move(currentFrame));
-
-  // Update state
-  std::swap(currentGrayscale, m_previousGrayscale);
-
-  // Create result
-  FrameInfo frameInfo = GetResult();
-
-  return frameInfo;
-}
-*/
-
 void OpticalFlow::ConvertToGrayscale(const cv::Mat& in, cv::Mat& out)
 {
   m_visionGraph->ApplyGrayscale(in, out);
@@ -266,7 +187,7 @@ void OpticalFlow::FindFeatures(const cv::Mat& currentGrayscale,
                                       2.0);
 
   m_visionGraph->FindFeatures(currentGrayscale, m_config.maxPointCount, minDistance, currentPoints);
-  status.assign(currentPoints.size(), 1U);
+  status.assign(currentPoints.size(), static_cast<uint8_t>(1));
   errors.assign(currentPoints.size(), 0.0f);
 }
 
@@ -275,103 +196,24 @@ void OpticalFlow::CalculateOpticalFlow(const cv::Mat& currentGrayscale,
                                        std::vector<uint8_t>& status,
                                        std::vector<float>& errors)
 {
-  /*
-  if (!m_frameHistory.empty())
-  {
-    const std::vector<cv::Point2f>& previousPoints = m_frameHistory.back()->points;
-    if (!previousPoints.empty())
-    {
-      // TODO: Zero-copy
-      m_pointHistoryBuffer.clear();
-      for (const auto& frame : m_frameHistory)
-        m_pointHistoryBuffer.emplace_back(frame->points);
+  if (!m_visionGraph)
+    return;
 
-      m_visionGraph->CalcOpticalFlow(m_previousGrayscale, currentGrayscale, previousPoints,
-                                     m_pointHistoryBuffer, currentPoints, status, errors);
-    }
-  }
-  */
-}
+  if (!m_hasPreviousFrame)
+    return;
 
-/*
-void OpticalFlow::AddFrameToHistory(FramePtr&& frame)
-{
-  // Check for missing points (value of "status" is 0)
-  std::vector<unsigned int> missing;
-  for (unsigned int index = 0; index < frame->status.size(); index++)
+  if (m_previousPoints.empty())
   {
-    if (frame->status[index] == 0)
-      missing.push_back(index);
+    currentPoints.clear();
+    status.clear();
+    errors.clear();
+    return;
   }
 
-  m_frameHistory.emplace_back(std::move(frame));
+  // Rebuild the point history with the latest set of tracked points
+  m_pointHistoryBuffer.clear();
+  m_pointHistoryBuffer.emplace_back(m_previousPoints);
 
-  if (!missing.empty())
-  {
-    // Prune missing points from history
-    for (auto& frame : m_frameHistory)
-    {
-      if (frame->points.empty())
-        continue;
-
-      // This used to use lambdas, but they were causing function index
-      // out-of-bound errors in the browser
-      for (auto it = missing.end(); it != missing.begin(); --it)
-      {
-        const unsigned int index = *(it - 1);
-
-        frame->points.erase(frame->points.begin() + index);
-        frame->status.erase(frame->status.begin() + index);
-        frame->errors.erase(frame->errors.begin() + index);
-      }
-    }
-  }
-}
-*/
-
-FrameInfo OpticalFlow::GetResult() const
-{
-  FrameInfo frameInfo{};
-
-  m_points.clear();
-  m_initialPoints.clear();
-
-  /*
-  if (!m_frameHistory.empty())
-  {
-    // Grab references to pertinent frames
-    const FramePtr& currentFrame = m_frameHistory.back();
-    const FramePtr& initialFrame = m_frameHistory.front();
-
-    // Set current points
-    const std::vector<cv::Point2f>& currentPoints = currentFrame->points;
-    if (!currentPoints.empty())
-    {
-      m_points.reserve(currentPoints.size() * 2);
-      for (const cv::Point2f& point : currentPoints)
-      {
-        m_points.push_back(point.x);
-        m_points.push_back(point.y);
-      }
-      frameInfo.pointData = reinterpret_cast<uintptr_t>(m_points.data());
-      frameInfo.pointSize = m_points.size();
-    }
-
-    // Set initial points
-    const std::vector<cv::Point2f>& initialPoints = initialFrame->points;
-    if (!initialPoints.empty())
-    {
-      m_initialPoints.reserve(initialPoints.size() * 2);
-      for (const cv::Point2f& point : initialPoints)
-      {
-        m_initialPoints.push_back(point.x);
-        m_initialPoints.push_back(point.y);
-      }
-      frameInfo.initialPointData = reinterpret_cast<uintptr_t>(m_initialPoints.data());
-      frameInfo.initialPointSize = m_initialPoints.size();
-    }
-  }
-  */
-
-  return frameInfo;
+  m_visionGraph->CalcOpticalFlow(m_previousGrayscale, currentGrayscale, m_previousPoints,
+                                 m_pointHistoryBuffer, currentPoints, status, errors);
 }
