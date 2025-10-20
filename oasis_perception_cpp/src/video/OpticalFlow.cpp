@@ -166,8 +166,8 @@ size_t OpticalFlow::DrawPoints(cv::Mat& image, size_t maxPointCount) const
   for (size_t index = 0; index < trackedPointCount; ++index)
   {
     const cv::Point2f point(m_points[index * 2], m_points[index * 2 + 1]);
-    cv::circle(image, point, 5, cv::Scalar(255, 255, 0), 12, cv::LINE_AA);
-    cv::circle(image, point, 4, cv::Scalar(255, 255, 255), cv::FILLED, cv::LINE_AA);
+    cv::circle(image, point, 15, cv::Scalar(255, 255, 0), 36, cv::LINE_AA);
+    cv::circle(image, point, 12, cv::Scalar(255, 255, 255), cv::FILLED, cv::LINE_AA);
   }
 
   return trackedPointCount;
