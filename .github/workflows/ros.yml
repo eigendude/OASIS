@@ -322,24 +322,30 @@ jobs:
           args=()
 
           if [ "${{ steps.restore-oasis-avr.outputs.cache-hit }}" = 'true' ]; then
+            echo "Skipping oasis_avr build (cache hit detected)."
             args+=(--skip-avr)
           fi
 
           if [ "${{ steps.restore-oasis-drivers-cpp.outputs.cache-hit }}" = 'true' ]; then
+            echo "Skipping oasis_drivers_cpp build (cache hit detected)."
             args+=(--skip-drivers-cpp)
           fi
 
           if [ "${{ steps.restore-oasis-msgs.outputs.cache-hit }}" = 'true' ]; then
+            echo "Skipping oasis_msgs build (cache hit detected)."
             args+=(--skip-messages)
           fi
 
           if [ "${{ steps.restore-oasis-perception-cpp.outputs.cache-hit }}" = 'true' ]; then
+            echo "Skipping oasis_perception_cpp build (cache hit detected)."
             args+=(--skip-perception-cpp)
           fi
 
           if [ ${#args[@]} -eq 0 ]; then
+            echo "No packages skipped; performing full build."
             ./oasis_tooling/scripts/build_oasis.sh
           else
+            echo "Running build with skipped packages: ${args[*]}"
             ./oasis_tooling/scripts/build_oasis.sh "${args[@]}"
           fi
 
