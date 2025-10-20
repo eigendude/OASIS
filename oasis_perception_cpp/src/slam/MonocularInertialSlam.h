@@ -9,6 +9,7 @@
 #pragma once
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include <oasis_msgs/msg/i2_c_imu.hpp>
@@ -42,7 +43,7 @@ public:
   ~MonocularInertialSlam();
 
   // Lifecycle interface
-  bool Initialize();
+  bool Initialize(const std::string& vocabularyFile, const std::string& settingsFile);
   void Deinitialize();
 
   // ROS interface
