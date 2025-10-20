@@ -8,11 +8,14 @@
 
 #include "MonocularSlam.h"
 
+#include "ros/RosUtils.h"
+
+#include <cstddef>
 #include <filesystem>
 #include <stdexcept>
 
+#include <Eigen/Geometry>
 #include <System.h>
-#include <ament_index_cpp/get_package_share_directory.hpp>
 #include <cv_bridge/cv_bridge.hpp>
 #include <image_transport/image_transport.hpp>
 #include <image_transport/transport_hints.hpp>
@@ -58,6 +61,12 @@ void MonocularSlam::Deinitialize()
 
 void MonocularSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg)
 {
+  if (!m_slam)
+    return;
+
+  const std_msgs::msg::Header& header = msg->header;
+  const double timestamp = ROS::RosUtils::HeaderStampToSeconds(header);
+
   cv_bridge::CvImagePtr cv_ptr;
   try
   {
@@ -69,8 +78,35 @@ void MonocularSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& 
     return;
   }
 
-  double tframe = 0.0; // TODO
-
   // Pass the image to the SLAM system
-  m_slam->TrackMonocular(cv_ptr->image, tframe);
+  const Sophus::SE3f cameraPose = m_slam->TrackMonocular(cv_ptr->image, timestamp);
+
+  const int trackingState = m_slam->GetTrackingState();
+  const std::vector<ORB_SLAM3::MapPoint*> trackedMapPoints = m_slam->GetTrackedMapPoints();
+  const std::vector<cv::KeyPoint> trackedKeyPoints = m_slam->GetTrackedKeyPointsUn();
+
+  std::size_t trackedMapPointCount = 0;
+  for (const ORB_SLAM3::MapPoint* mapPoint : trackedMapPoints)
+  {
+    if (mapPoint != nullptr)
+      ++trackedMapPointCount;
+  }
+
+  const Eigen::Vector3f& translation = cameraPose.translation();
+  const Eigen::Quaternionf& quaternion = cameraPose.unit_quaternion();
+
+  // clang-format off
+  RCLCPP_INFO(*m_logger,
+              "SLAM pose state=%d position=(%.3f, %.3f, %.3f) orientation=(%.4f, %.4f, %.4f, %.4f) tracked=%zu/%zu",
+              trackingState,
+              translation.x(),
+              translation.y(),
+              translation.z(),
+              quaternion.w(),
+              quaternion.x(),
+              quaternion.y(),
+              quaternion.z(),
+              trackedMapPointCount,
+              trackedKeyPoints.size());
+  // clang-format on
 }

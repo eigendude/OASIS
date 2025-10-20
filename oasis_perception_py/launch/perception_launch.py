@@ -49,6 +49,7 @@ PERCEPTION_SERVER_BACKGROUND: list[str] = []
 PERCEPTION_SERVER_CALIBRATION: list[str] = []
 PERCEPTION_SERVER_FLOW: list[str] = []
 PERCEPTION_SERVER_MONOCULAR_SLAM: list[str] = []
+PERCEPTION_SERVER_MONOCULAR_INERTIAL_SLAM: list[str] = []
 PERCEPTION_SERVER_POSE_LANDMARKS: list[str] = []
 
 
@@ -97,6 +98,13 @@ def generate_launch_description() -> LaunchDescription:
         PerceptionDescriptions.add_monocular_slam(
             composable_nodes,
             PERCEPTION_SERVER_MONOCULAR_SLAM,
+            image_transport="compressed",
+        )
+
+    if PERCEPTION_SERVER_MONOCULAR_INERTIAL_SLAM:
+        PerceptionDescriptions.add_monocular_inertial_slam(
+            composable_nodes,
+            PERCEPTION_SERVER_MONOCULAR_INERTIAL_SLAM,
             image_transport="compressed",
         )
 
