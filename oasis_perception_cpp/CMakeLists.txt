@@ -119,11 +119,9 @@ add_library(background_modeler_component SHARED
   src/components/background_modeler_component.cpp
   src/ros/RosComponent.cpp
 )
-target_include_directories(background_modeler_component PUBLIC
-  ${rclcpp_components_INCLUDE_DIRS}
-)
 target_link_libraries(background_modeler_component PUBLIC
   ${BACKGROUND_MODELER_LIBRARIES}
+  rclcpp_components::component
 )
 install(
   TARGETS
@@ -177,11 +175,9 @@ add_library(background_subtractor_component SHARED
   src/components/background_subtractor_component.cpp
   src/ros/RosComponent.cpp
 )
-target_include_directories(background_subtractor_component PUBLIC
-  ${rclcpp_components_INCLUDE_DIRS}
-)
 target_link_libraries(background_subtractor_component PUBLIC
   ${BACKGROUND_SUBTRACTOR_LIBRARIES}
+  rclcpp_components::component
 )
 install(
   TARGETS
@@ -232,11 +228,9 @@ if(TARGET MediaPipe::MediaPipe)
     src/components/hello_world_component.cpp
     src/ros/RosComponent.cpp
   )
-  target_include_directories(hello_world_component PUBLIC
-    ${rclcpp_components_INCLUDE_DIRS}
-  )
   target_link_libraries(hello_world_component PUBLIC
     ${HELLO_WORLD_LIBRARIES}
+    rclcpp_components::component
   )
   install(
     TARGETS
@@ -320,10 +314,10 @@ if (ORB_SLAM3_FOUND)
   )
   target_include_directories(monocular_slam_component PUBLIC
     ${MONOCULAR_SLAM_INCLUDE_DIRS}
-    ${rclcpp_components_INCLUDE_DIRS}
   )
   target_link_libraries(monocular_slam_component PUBLIC
     ${MONOCULAR_SLAM_LIBRARIES}
+    rclcpp_components::component
   )
   install(
     TARGETS
@@ -392,10 +386,10 @@ if (ORB_SLAM3_FOUND)
   )
   target_include_directories(monocular_inertial_slam_component PUBLIC
     ${MONOCULAR_INERTIAL_SLAM_INCLUDE_DIRS}
-    ${rclcpp_components_INCLUDE_DIRS}
   )
   target_link_libraries(monocular_inertial_slam_component PUBLIC
     ${MONOCULAR_INERTIAL_SLAM_LIBRARIES}
+    rclcpp_components::component
   )
   install(
     TARGETS
@@ -450,11 +444,9 @@ add_library(multi_modeler_component SHARED
   src/components/multi_modeler_component.cpp
   src/ros/RosComponent.cpp
 )
-target_include_directories(multi_modeler_component PUBLIC
-  ${rclcpp_components_INCLUDE_DIRS}
-)
 target_link_libraries(multi_modeler_component PUBLIC
   ${MULTI_MODELER_LIBRARIES}
+  rclcpp_components::component
 )
 install(
   TARGETS
@@ -521,10 +513,10 @@ add_library(optical_flow_component SHARED
 )
 target_include_directories(optical_flow_component PUBLIC
   ${OpenCV_INCLUDE_DIRS}
-  ${rclcpp_components_INCLUDE_DIRS}
 )
 target_link_libraries(optical_flow_component PUBLIC
   ${OPTICAL_FLOW_LIBRARIES}
+  rclcpp_components::component
 )
 install(
   TARGETS
@@ -590,10 +582,10 @@ if(TARGET MediaPipe::MediaPipe)
   )
   target_include_directories(pose_landmarker_component PUBLIC
     ${POSE_LANDMARKER_INCLUDE_DIRS}
-    ${rclcpp_components_INCLUDE_DIRS}
   )
   target_link_libraries(pose_landmarker_component PUBLIC
     ${POSE_LANDMARKER_LIBRARIES}
+    rclcpp_components::component
   )
   install(
     TARGETS
