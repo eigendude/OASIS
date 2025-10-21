@@ -361,6 +361,12 @@ def format_float(value: float) -> str:
         text = text.rstrip("0").rstrip(".")
     if text == "-0":
         text = "0"
+    if "." not in text and "e" not in text.lower():
+        # Ensure values are serialized as floating point numbers in the YAML
+        # output. Some downstream parsers (e.g. OpenCV FileStorage) require the
+        # value to be tagged as a real number, so we explicitly append a decimal
+        # marker when the formatted value looks like an integer.
+        text = f"{text}.0"
     return text
 
 

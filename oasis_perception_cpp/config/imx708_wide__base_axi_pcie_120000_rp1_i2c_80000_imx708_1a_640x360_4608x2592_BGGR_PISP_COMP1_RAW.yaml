@@ -15,8 +15,8 @@ Camera1.cx: 321.24389237
 Camera1.cy: 178.35052543
 
 # distortion parameters
-Camera1.k1: 0
-Camera1.k2: 0
+Camera1.k1: 0.0
+Camera1.k2: 0.0
 Camera1.p1: -0.0021267
 Camera1.p2: -0.00573608
 Camera1.k3: -0.02357245
