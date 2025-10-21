@@ -11,6 +11,7 @@
 #include "ros/RosUtils.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <stdexcept>
 #include <string>
@@ -46,29 +47,13 @@ bool ExtractMapPointPosition(const ORB_SLAM3::MapPoint* mapPoint, Eigen::Vector3
   if (mapPoint == nullptr)
     return false;
 
-  const cv::Mat worldPos = mapPoint->GetWorldPos();
-  if (worldPos.empty() || worldPos.rows < 3)
+  if (mapPoint->isBad())
     return false;
 
-  switch (worldPos.type())
-  {
-    case CV_32F:
-    {
-      position.x() = worldPos.at<float>(0);
-      position.y() = worldPos.at<float>(1);
-      position.z() = worldPos.at<float>(2);
-      return true;
-    }
-    case CV_64F:
-    {
-      position.x() = static_cast<float>(worldPos.at<double>(0));
-      position.y() = static_cast<float>(worldPos.at<double>(1));
-      position.z() = static_cast<float>(worldPos.at<double>(2));
-      return true;
-    }
-    default:
-      return false;
-  }
+  position = mapPoint->GetWorldPos();
+
+  return std::isfinite(position.x()) && std::isfinite(position.y()) &&
+         std::isfinite(position.z());
 }
 } // namespace
 
@@ -189,12 +174,31 @@ void MonocularSlam::PublishMapVisualization(
 
   for (const ORB_SLAM3::MapPoint* mapPoint : trackedMapPoints)
   {
-    Eigen::Vector3f position{Eigen::Vector3f::Zero()};
+    Eigen::Vector3f position = Eigen::Vector3f::Zero();
     if (!ExtractMapPointPosition(mapPoint, position))
       continue;
 
     trackedPositions.push_back(position);
     m_mapPointPositions[mapPoint] = position;
+  }
+
+  for (auto it = m_mapPointPositions.begin(); it != m_mapPointPositions.end();)
+  {
+    const ORB_SLAM3::MapPoint* mapPoint = it->first;
+    if (mapPoint == nullptr || mapPoint->isBad())
+    {
+      it = m_mapPointPositions.erase(it);
+      continue;
+    }
+
+    Eigen::Vector3f& storedPosition = it->second;
+    if (!ExtractMapPointPosition(mapPoint, storedPosition))
+    {
+      it = m_mapPointPositions.erase(it);
+      continue;
+    }
+
+    ++it;
   }
 
   if (m_mapPointPositions.empty())

@@ -16,6 +16,7 @@
 #include <Eigen/Geometry>
 
 #include <sensor_msgs/msg/image.hpp>
+#include <std_msgs/msg/header.hpp>
 
 namespace image_transport
 {
