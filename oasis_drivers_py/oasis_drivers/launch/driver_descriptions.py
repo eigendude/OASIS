@@ -158,40 +158,44 @@ class DriverDescriptions:
         image_format: str,
         image_size: list[int],
         sensor_mode: str,
+        rectify: bool = False,
     ) -> None:
-        composable_nodes.extend(
-            [
-                ComposableNode(
-                    namespace=ROS_NAMESPACE,
-                    package="camera_ros",
-                    plugin="camera::CameraNode",
-                    name=f"camera_ros_{zone_id}",
-                    parameters=[
-                        {
-                            "role": "video",
-                            "format": image_format,
-                            "width": image_size[0],
-                            "height": image_size[1],
-                            "sensor_mode": sensor_mode,
-                        },
-                    ],
-                    remappings=[
-                        # Topics
-                        (
-                            f"camera_ros_{zone_id}/camera_info",
-                            f"{zone_id}/camera_info",
-                        ),
-                        (
-                            f"camera_ros_{zone_id}/image_raw",
-                            f"{zone_id}/image_raw",
-                        ),
-                        # TODO: Need to remap compressed image topic?
-                        (
-                            f"camera_ros_{zone_id}/image_raw/compressed",
-                            f"{zone_id}/image_raw/compressed",
-                        ),
-                    ],
-                ),
+        composable_nodes.append(
+            ComposableNode(
+                namespace=ROS_NAMESPACE,
+                package="camera_ros",
+                plugin="camera::CameraNode",
+                name=f"camera_ros_{zone_id}",
+                parameters=[
+                    {
+                        "role": "video",
+                        "format": image_format,
+                        "width": image_size[0],
+                        "height": image_size[1],
+                        "sensor_mode": sensor_mode,
+                    },
+                ],
+                remappings=[
+                    # Topics
+                    (
+                        f"camera_ros_{zone_id}/camera_info",
+                        f"{zone_id}/camera_info",
+                    ),
+                    (
+                        f"camera_ros_{zone_id}/image_raw",
+                        f"{zone_id}/image_raw",
+                    ),
+                    # TODO: Need to remap compressed image topic?
+                    (
+                        f"camera_ros_{zone_id}/image_raw/compressed",
+                        f"{zone_id}/image_raw/compressed",
+                    ),
+                ],
+            )
+        )
+
+        if rectify:
+            composable_nodes.append(
                 ComposableNode(
                     namespace=ROS_NAMESPACE,
                     package="image_proc",
@@ -207,8 +211,7 @@ class DriverDescriptions:
                         ("image", f"{zone_id}/image_raw"),
                     ],
                 ),
-            ],
-        )
+            )
 
     #
     # Serial port scanner

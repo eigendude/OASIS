@@ -156,6 +156,7 @@ def generate_launch_description() -> LaunchDescription:
         Drivers.add_ros2_camera(
             composable_nodes, ZONE_ID, IMAGE_FORMAT, IMAGE_SIZE, SENSOR_MODE
         )
+        PerceptionDescriptions.add_monocular_slam(composable_nodes, [HOST_ID], "raw")
     if HOST_ID == "station":
         Drivers.add_ros2_camera(
             composable_nodes, ZONE_ID, IMAGE_FORMAT, IMAGE_SIZE, SENSOR_MODE
