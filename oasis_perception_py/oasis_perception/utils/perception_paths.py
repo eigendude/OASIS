@@ -31,7 +31,7 @@ ORB_SLAM3_VOCABULARY_RELPATH: str = os.path.join(
 # ORB_SLAM3 settings file
 ORB_SLAM3_SETTINGS_DIR: str = "config"
 ORB_SLAM3_SETTINGS_FILE: str = (
-    "imx708_wide__base_axi_pcie_120000_rp1_i2c_80000_imx708_1a_640x360_4608x2592_BGGR_PISP_COMP1_RAW.yaml"
+    "imx708_wide__base_axi_pcie_120000_rp1_i2c_80000_imx708_1a_1920x1080_4608x2592_BGGR_PISP_COMP1_RAW.yaml"
 )
 ORB_SLAM3_SETTINGS_RELPATH: str = os.path.join(
     ORB_SLAM3_SETTINGS_DIR, ORB_SLAM3_SETTINGS_FILE
