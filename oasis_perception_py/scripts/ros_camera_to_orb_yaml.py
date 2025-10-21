@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import re
 from pathlib import Path
 from typing import Any
@@ -109,7 +110,9 @@ def parse_args() -> argparse.Namespace:
         "--fps",
         type=float,
         default=30.0,
-        help="Camera frame rate used by ORB-SLAM3 (frames per second).",
+        help=(
+            "Camera frame rate used by ORB-SLAM3 (frames per second). Must be an integer."
+        ),
     )
     parser.add_argument(
         "--rgb",
@@ -376,7 +379,7 @@ def build_yaml(
     params: dict,
     width: int,
     height: int,
-    fps: float,
+    fps: int,
     rgb_flag: int,
     orb_params: dict,
     input_name: str,
@@ -421,7 +424,7 @@ def build_yaml(
     lines.append("")
 
     lines.append("# Camera frames per second")
-    lines.append(f"Camera.fps: {format_float(fps)}")
+    lines.append(f"Camera.fps: {fps}")
     lines.append("")
 
     lines.append(
@@ -518,12 +521,18 @@ def main() -> None:
             f"Output file already exists: {output_path}. Use --overwrite to replace it."
         )
 
+    fps_value = round(args.fps)
+    if not math.isclose(args.fps, fps_value, abs_tol=1e-6):
+        raise CameraCalibrationError(
+            "Camera FPS must be an integer value compatible with ORB-SLAM3."
+        )
+
     yaml_content = build_yaml(
         camera_type=camera_type,
         params=params,
         width=width,
         height=height,
-        fps=args.fps,
+        fps=int(fps_value),
         rgb_flag=args.rgb,
         orb_params=orb_params,
         input_name=str(camera_info.get("camera_name") or camera_info_path.name),
