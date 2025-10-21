@@ -97,11 +97,13 @@ done
 #
 
 if [[ "${OSTYPE}" != "darwin"* ]]; then
-  # Directory for camera info files
-  CAMERA_INFO_DIRECTORY=~/".ros/camera_info"
+  # Parent directory for ROS metadata
+  ROS_DIRECTORY=~/".ros"
+  CAMERA_INFO_LINK="${ROS_DIRECTORY}/camera_info"
+  CAMERA_INFO_TARGET=""
 
-  # Create the camera info directory if it doesn't exist
-  install -m 0755 -d "${CAMERA_INFO_DIRECTORY}"
+  # Ensure ~/.ros exists for the symlink
+  install -m 0755 -d "${ROS_DIRECTORY}"
 
   for OASIS_PACKAGE in "${ENABLED_PACKAGES[@]}"; do
     DIRECTORY="${OASIS_DATA_DIRECTORY}/${OASIS_PACKAGE}/camera_info"
@@ -111,16 +113,20 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
       continue
     fi
 
-    for CAMERA_INFO_FILE in "${DIRECTORY}/"*.yaml; do
-      # Get filename
-      FILE_NAME="$(basename -- "${CAMERA_INFO_FILE}")"
-
-      echo "Installing ${FILE_NAME}"
-
-      # Install camera info file
-      install -m 0644 "${CAMERA_INFO_FILE}" "${CAMERA_INFO_DIRECTORY}/"
-    done
+    CAMERA_INFO_TARGET="${DIRECTORY}"
+    break
   done
+
+  if [ -n "${CAMERA_INFO_TARGET}" ]; then
+    echo "Linking camera info directory to ${CAMERA_INFO_TARGET}"
+
+    # Remove any existing non-symlink directory
+    if [ -e "${CAMERA_INFO_LINK}" ] && [ ! -L "${CAMERA_INFO_LINK}" ]; then
+      rm -rf "${CAMERA_INFO_LINK}"
+    fi
+
+    ln -sfn "${CAMERA_INFO_TARGET}" "${CAMERA_INFO_LINK}"
+  fi
 fi
 
 #
