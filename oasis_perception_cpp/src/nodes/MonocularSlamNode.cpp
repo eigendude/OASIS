@@ -30,6 +30,9 @@ namespace
 // Subscribed topics
 constexpr std::string_view IMAGE_TOPIC = "image";
 
+// Published topics
+constexpr std::string_view MAP_TOPIC = "slam_map";
+
 // Parameters
 constexpr std::string_view SYSTEM_ID_PARAMETER = "system_id";
 constexpr std::string_view DEFAULT_SYSTEM_ID = "";
@@ -73,6 +76,11 @@ bool MonocularSlamNode::Initialize()
   imageTopic.append(IMAGE_TOPIC);
   RCLCPP_INFO(*m_logger, "Image topic: %s", imageTopic.c_str());
 
+  std::string mapTopic = systemId;
+  mapTopic.push_back('_');
+  mapTopic.append(MAP_TOPIC);
+  RCLCPP_INFO(*m_logger, "Map visualization topic: %s", mapTopic.c_str());
+
   std::string imageTransport;
   if (!m_node.get_parameter(IMAGE_TRANSPORT_PARAMETER.data(), imageTransport) ||
       imageTransport.empty())
@@ -102,13 +110,11 @@ bool MonocularSlamNode::Initialize()
   }
   RCLCPP_INFO(*m_logger, "ORB_SLAM3 settings file: %s", settingsFile.c_str());
 
-  //*m_flowPublisher = image_transport::create_publisher(&m_node, flowTopic);
-
   *m_imgSubscriber = image_transport::create_subscription(
       &m_node, imageTopic,
       [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg) { OnImage(msg); }, imageTransport);
 
-  m_monocularSlam = std::make_unique<SLAM::MonocularSlam>(m_node);
+  m_monocularSlam = std::make_unique<SLAM::MonocularSlam>(m_node, mapTopic);
   if (!m_monocularSlam->Initialize(vocabularyFile, settingsFile))
   {
     RCLCPP_ERROR(*m_logger, "Failed to initialize monocular SLAM");
