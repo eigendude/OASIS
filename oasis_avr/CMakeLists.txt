@@ -33,6 +33,7 @@ cmake_minimum_required(VERSION 3.11)
 # Current options are:
 #
 #   - uno
+#   - unowifi (Uno WiFi Rev2)
 #   - leonardo
 #   - mega
 #
