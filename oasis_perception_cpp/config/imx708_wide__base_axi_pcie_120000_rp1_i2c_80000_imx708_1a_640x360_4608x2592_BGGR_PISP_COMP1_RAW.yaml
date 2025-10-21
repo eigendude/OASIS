@@ -1,0 +1,68 @@
+%YAML:1.0
+
+#--------------------------------------------------------------------------------------------
+# Camera Parameters generated from
+# imx708_wide__base_axi_pcie_120000_rp1_i2c_80000_imx708_1a_640x360_4608x2592_BGGR_PISP_COMP1_RAW
+#--------------------------------------------------------------------------------------------
+File.version: "1.0"
+
+Camera.type: "PinHole"
+
+# Left Camera calibration and distortion parameters (OpenCV)
+Camera1.fx: 278.71753072
+Camera1.fy: 279.14488372
+Camera1.cx: 321.24389237
+Camera1.cy: 178.35052543
+
+# distortion parameters
+Camera1.k1: 0.0
+Camera1.k2: 0.0
+Camera1.p1: -0.0021267
+Camera1.p2: -0.00573608
+Camera1.k3: -0.02357245
+
+# Camera resolution
+Camera.width: 640
+Camera.height: 360
+
+# Camera frames per second
+Camera.fps: 30.0
+
+# Color order of the images (0: BGR, 1: RGB. It is ignored if images are grayscale)
+Camera.RGB: 1
+
+#--------------------------------------------------------------------------------------------
+# ORB Parameters
+#--------------------------------------------------------------------------------------------
+# ORB Extractor: Number of features per image
+ORBextractor.nFeatures: 2000
+
+# ORB Extractor: Scale factor between levels in the scale pyramid
+ORBextractor.scaleFactor: 1.2
+
+# ORB Extractor: Number of levels in the scale pyramid
+ORBextractor.nLevels: 12
+
+# ORB Extractor: Fast threshold
+# Image is divided in a grid. At each cell FAST are extracted imposing a minimum response.
+# Firstly we impose iniThFAST. If no corners are detected we impose a lower value minThFAST
+# You can lower these values if your images have low contrast
+ORBextractor.iniThFAST: 20
+ORBextractor.minThFAST: 7
+
+#--------------------------------------------------------------------------------------------
+# Viewer Parameters
+#--------------------------------------------------------------------------------------------
+Viewer.KeyFrameSize: 0.06
+Viewer.KeyFrameLineWidth: 2.0
+Viewer.GraphLineWidth: 1.4
+Viewer.PointSize: 2.6
+Viewer.CameraSize: 0.1
+Viewer.CameraLineWidth: 3.0
+Viewer.ViewpointX: 0.0
+Viewer.ViewpointY: -0.8
+Viewer.ViewpointZ: -4.5
+Viewer.ViewpointF: 420.0
+
+# System.LoadAtlasFromFile: "./atlas"
+# System.SaveAtlasToFile: "./atlas"
