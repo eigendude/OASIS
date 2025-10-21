@@ -30,7 +30,7 @@ ORB_SLAM3_VOCABULARY_RELPATH: str = os.path.join(
 
 # ORB_SLAM3 settings file
 ORB_SLAM3_SETTINGS_DIR: str = "config"
-ORB_SLAM3_SETTINGS_FILE: str = "Webcam.yaml"
+ORB_SLAM3_SETTINGS_FILE: str = "IMX708_Wide.yaml"
 ORB_SLAM3_SETTINGS_RELPATH: str = os.path.join(
     ORB_SLAM3_SETTINGS_DIR, ORB_SLAM3_SETTINGS_FILE
 )
@@ -72,10 +72,10 @@ class PerceptionPaths:
     @staticmethod
     def find_orb_slam3_settings() -> str | None:
         """
-        Get the path to the Webcam.yaml settings file.
+        Get the path to the IMX708_Wide.yaml settings file.
 
         Returns:
-            The full path to the Webcam.yaml file, or None if not found.
+            The full path to the IMX708_Wide.yaml file, or None if not found.
         """
         from ament_index_python import get_package_share_directory
 
