@@ -16,20 +16,31 @@ from __future__ import annotations
 import argparse
 import math
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from typing import Dict
 from typing import Final
 from typing import List
+from typing import Literal
+from typing import Protocol
 from typing import Sequence
 from typing import TypedDict
 from typing import Union
+from typing import cast
+
+
+class _YamlModule(Protocol):
+    def safe_load(self, stream: str) -> Any:  # pragma: no cover - interface definition
+        """Parse YAML content and return native Python objects."""
 
 
 try:  # pragma: no cover - optional dependency
-    import yaml  # type: ignore
+    import yaml as _yaml_module  # type: ignore[import-untyped, import-not-found]
 except ImportError:  # pragma: no cover - optional dependency
-    yaml = None  # type: ignore[assignment]
+    yaml_module: _YamlModule | None = None
+else:
+    yaml_module = cast(_YamlModule, _yaml_module)
 
 
 class _MatrixDict(TypedDict, total=False):
@@ -49,7 +60,47 @@ class CameraInfoDict(TypedDict, total=False):
     camera_name: str
 
 
-DEFAULT_ORB_PARAMS: Final[Dict[str, Union[int, float]]] = {
+CameraType = Literal["PinHole", "KannalaBrandt8", "Rectified"]
+
+
+class BaseCameraParams(TypedDict):
+    fx: float
+    fy: float
+    cx: float
+    cy: float
+
+
+class PinHoleParams(BaseCameraParams):
+    k1: float
+    k2: float
+    p1: float
+    p2: float
+    k3: float | None
+
+
+class KannalaBrandt8Params(BaseCameraParams):
+    k1: float
+    k2: float
+    k3: float
+    k4: float
+
+
+class RectifiedParams(BaseCameraParams):
+    pass
+
+
+CameraParams = PinHoleParams | KannalaBrandt8Params | RectifiedParams
+
+
+class OrbParams(TypedDict):
+    nFeatures: int
+    scaleFactor: float
+    nLevels: int
+    iniThFAST: int
+    minThFAST: int
+
+
+DEFAULT_ORB_PARAMS: Final[OrbParams] = {
     "nFeatures": 2000,
     "scaleFactor": 1.2,
     "nLevels": 12,
@@ -78,7 +129,22 @@ class CameraCalibrationError(RuntimeError):
     """Raised when the input calibration cannot be converted."""
 
 
-def parse_args() -> argparse.Namespace:
+@dataclass(frozen=True)
+class ParsedArgs:
+    camera_info: Path
+    output_name: str | None
+    output_dir: Path | None
+    fps: int
+    rgb: int
+    camera_type: CameraType | None
+    n_features: int
+    scale_factor: float
+    n_levels: int
+    init_fast: int
+    min_fast: int
+
+
+def parse_args() -> ParsedArgs:
     parser: argparse.ArgumentParser = argparse.ArgumentParser(
         description=(
             "Generate an ORB-SLAM3 camera configuration from a ROS camera_info YAML file."
@@ -154,7 +220,21 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_ORB_PARAMS["minThFAST"],
         help="Minimum FAST threshold used when no features are detected.",
     )
-    return parser.parse_args()
+    namespace = parser.parse_args()
+
+    return ParsedArgs(
+        camera_info=namespace.camera_info,
+        output_name=namespace.output_name,
+        output_dir=namespace.output_dir,
+        fps=namespace.fps,
+        rgb=namespace.rgb,
+        camera_type=cast(CameraType | None, namespace.camera_type),
+        n_features=namespace.n_features,
+        scale_factor=namespace.scale_factor,
+        n_levels=namespace.n_levels,
+        init_fast=namespace.init_fast,
+        min_fast=namespace.min_fast,
+    )
 
 
 def sanitize_name(name: str) -> str:
@@ -171,8 +251,8 @@ def load_camera_info(path: Path) -> CameraInfoDict:
         text = handle.read()
 
     data_any: Any
-    if yaml is not None:  # type: ignore[truthy-bool]
-        data_any = yaml.safe_load(text)
+    if yaml_module is not None:
+        data_any = yaml_module.safe_load(text)
     else:
         data_any = simple_yaml_load(text)
 
@@ -261,8 +341,8 @@ def simple_yaml_load(text: str) -> Dict[str, Any]:
 
 
 def extract_intrinsics(
-    camera_info: CameraInfoDict, camera_type_override: str | None
-) -> tuple[str, Dict[str, Any]]:
+    camera_info: CameraInfoDict, camera_type_override: CameraType | None
+) -> tuple[CameraType, CameraParams]:
     distortion_model: str = str(camera_info.get("distortion_model", "")).strip().lower()
     matrix: _MatrixDict = camera_info.get("camera_matrix", {})
     coeffs: _CoeffDict = camera_info.get("distortion_coefficients", {})
@@ -291,7 +371,7 @@ def extract_intrinsics(
     else:
         camera_type = infer_camera_type(distortion_model)
 
-    params: Dict[str, Any]
+    params: CameraParams
     if camera_type == "PinHole":
         if len(distortion_data) < 4:
             raise CameraCalibrationError(
@@ -299,47 +379,47 @@ def extract_intrinsics(
             )
         k1, k2, p1, p2, *rest = [float(value) for value in distortion_data]
         k3 = float(rest[0]) if rest else None
-        params = {
-            "fx": fx,
-            "fy": fy,
-            "cx": cx,
-            "cy": cy,
-            "k1": k1,
-            "k2": k2,
-            "p1": p1,
-            "p2": p2,
-            "k3": k3,
-        }
+        params = PinHoleParams(
+            fx=fx,
+            fy=fy,
+            cx=cx,
+            cy=cy,
+            k1=k1,
+            k2=k2,
+            p1=p1,
+            p2=p2,
+            k3=k3,
+        )
     elif camera_type == "KannalaBrandt8":
         if len(distortion_data) < 4:
             raise CameraCalibrationError(
                 "KannalaBrandt8 model requires four distortion coefficients (k1..k4)."
             )
         k1, k2, k3, k4, *_ = [float(value) for value in distortion_data]
-        params = {
-            "fx": fx,
-            "fy": fy,
-            "cx": cx,
-            "cy": cy,
-            "k1": k1,
-            "k2": k2,
-            "k3": k3,
-            "k4": k4,
-        }
+        params = KannalaBrandt8Params(
+            fx=fx,
+            fy=fy,
+            cx=cx,
+            cy=cy,
+            k1=k1,
+            k2=k2,
+            k3=k3,
+            k4=k4,
+        )
     elif camera_type == "Rectified":
-        params = {
-            "fx": fx,
-            "fy": fy,
-            "cx": cx,
-            "cy": cy,
-        }
+        params = RectifiedParams(
+            fx=fx,
+            fy=fy,
+            cx=cx,
+            cy=cy,
+        )
     else:
         raise CameraCalibrationError(f"Unsupported camera type: {camera_type}")
 
     return camera_type, params
 
 
-def infer_camera_type(distortion_model: str) -> str:
+def infer_camera_type(distortion_model: str) -> CameraType:
     if distortion_model in {"plumb_bob", "rational_polynomial", "brown-conrady"}:
         return "PinHole"
     if distortion_model in {"equidistant", "kannalabrandt8"}:
@@ -352,7 +432,7 @@ def infer_camera_type(distortion_model: str) -> str:
 
 
 def format_float(value: float) -> str:
-    text = f"{value:.8f}"
+    text: str = f"{value:.8f}"
     if "." in text:
         text = text.rstrip("0").rstrip(".")
     if text == "-0":
@@ -368,13 +448,13 @@ def format_float(value: float) -> str:
 
 def build_yaml(
     *,
-    camera_type: str,
-    params: dict,
+    camera_type: CameraType,
+    params: CameraParams,
     width: int,
     height: int,
     fps: int,
     rgb_flag: int,
-    orb_params: dict,
+    orb_params: OrbParams,
     input_name: str,
 ) -> str:
     lines: List[str] = ["%YAML:1.0", ""]
@@ -397,18 +477,24 @@ def build_yaml(
     lines.append(f"Camera1.cy: {format_float(params['cy'])}")
     lines.append("")
 
-    if camera_type in {"PinHole", "KannalaBrandt8"}:
+    if camera_type == "PinHole":
+        pinhole_params = cast(PinHoleParams, params)
         lines.append("# distortion parameters")
-        lines.append(f"Camera1.k1: {format_float(params['k1'])}")
-        lines.append(f"Camera1.k2: {format_float(params['k2'])}")
-        if camera_type == "PinHole":
-            lines.append(f"Camera1.p1: {format_float(params['p1'])}")
-            lines.append(f"Camera1.p2: {format_float(params['p2'])}")
-            if params.get("k3") is not None:
-                lines.append(f"Camera1.k3: {format_float(params['k3'])}")
-        else:  # KannalaBrandt8
-            lines.append(f"Camera1.k3: {format_float(params['k3'])}")
-            lines.append(f"Camera1.k4: {format_float(params['k4'])}")
+        lines.append(f"Camera1.k1: {format_float(pinhole_params['k1'])}")
+        lines.append(f"Camera1.k2: {format_float(pinhole_params['k2'])}")
+        lines.append(f"Camera1.p1: {format_float(pinhole_params['p1'])}")
+        lines.append(f"Camera1.p2: {format_float(pinhole_params['p2'])}")
+        k3_value = pinhole_params["k3"]
+        if k3_value is not None:
+            lines.append(f"Camera1.k3: {format_float(k3_value)}")
+        lines.append("")
+    elif camera_type == "KannalaBrandt8":
+        kannala_params = cast(KannalaBrandt8Params, params)
+        lines.append("# distortion parameters")
+        lines.append(f"Camera1.k1: {format_float(kannala_params['k1'])}")
+        lines.append(f"Camera1.k2: {format_float(kannala_params['k2'])}")
+        lines.append(f"Camera1.k3: {format_float(kannala_params['k3'])}")
+        lines.append(f"Camera1.k4: {format_float(kannala_params['k4'])}")
         lines.append("")
 
     lines.append("# Camera resolution")
@@ -472,21 +558,23 @@ def build_yaml(
 
 
 def main() -> None:
-    args = parse_args()
+    args: ParsedArgs = parse_args()
 
-    camera_info_path = args.camera_info.resolve()
-    camera_info = load_camera_info(camera_info_path)
+    camera_info_path: Path = args.camera_info.resolve()
+    camera_info: CameraInfoDict = load_camera_info(camera_info_path)
 
-    width = int(camera_info.get("image_width", 0))
-    height = int(camera_info.get("image_height", 0))
+    width: int = int(camera_info.get("image_width", 0))
+    height: int = int(camera_info.get("image_height", 0))
     if width <= 0 or height <= 0:
         raise CameraCalibrationError(
             "image_width and image_height must be positive integers."
         )
 
+    camera_type: CameraType
+    params: CameraParams
     camera_type, params = extract_intrinsics(camera_info, args.camera_type)
 
-    orb_params = {
+    orb_params: OrbParams = {
         "nFeatures": args.n_features,
         "scaleFactor": args.scale_factor,
         "nLevels": args.n_levels,
@@ -494,28 +582,29 @@ def main() -> None:
         "minThFAST": args.min_fast,
     }
 
-    repo_root = Path(__file__).resolve().parents[2]
-    default_output_dir = repo_root / CONFIG_RELATIVE_PATH
-    output_dir = args.output_dir or default_output_dir
-    output_dir = output_dir.resolve()
+    repo_root: Path = Path(__file__).resolve().parents[2]
+    default_output_dir: Path = repo_root / CONFIG_RELATIVE_PATH
+    output_dir: Path = (args.output_dir or default_output_dir).resolve()
 
     if not output_dir.exists():
         output_dir.mkdir(parents=True, exist_ok=True)
 
     if args.output_name:
-        output_name = sanitize_name(Path(args.output_name).stem)
+        output_name: str = sanitize_name(Path(args.output_name).stem)
     else:
-        camera_name = str(camera_info.get("camera_name") or camera_info_path.stem)
+        camera_name: str = str(
+            camera_info.get("camera_name") or camera_info_path.stem
+        )
         output_name = sanitize_name(Path(camera_name).stem)
-    output_path = output_dir / f"{output_name}.yaml"
+    output_path: Path = output_dir / f"{output_name}.yaml"
 
-    fps_value = round(args.fps)
+    fps_value: int = round(args.fps)
     if not math.isclose(args.fps, fps_value, abs_tol=1e-6):
         raise CameraCalibrationError(
             "Camera FPS must be an integer value compatible with ORB-SLAM3."
         )
 
-    yaml_content = build_yaml(
+    yaml_content: str = build_yaml(
         camera_type=camera_type,
         params=params,
         width=width,
