@@ -9,7 +9,7 @@
 ################################################################################
 
 #
-# State of a LEGO lab for driver development
+# State of a LEGO air quality lab for driver development
 #
 
 # Message header and timestamp
