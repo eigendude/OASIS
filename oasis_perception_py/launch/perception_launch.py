@@ -63,7 +63,8 @@ elif HOST_ID == "nas":
     PERCEPTION_SERVER_POSE_LANDMARKS.extend(["hallway"])
 elif HOST_ID == "oceanplatform":
     # PERCEPTION_SERVER_BACKGROUND.extend(["station"])
-    PERCEPTION_SERVER_FLOW.extend(["falcon", "station"])
+    # PERCEPTION_SERVER_FLOW.extend(["falcon", "station"])
+    PERCEPTION_SERVER_MONOCULAR_SLAM.extend(["falcon"])
     # PERCEPTION_SERVER_POSE_LANDMARKS.extend(["falcon"])
 
 
