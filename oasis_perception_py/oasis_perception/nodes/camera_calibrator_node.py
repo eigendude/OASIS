@@ -318,8 +318,10 @@ class CameraCalibratorNode(rclpy.node.Node):
         # Bridge for cv2 -> ROS conversions
         self._bridge: cv_bridge.CvBridge = cv_bridge.CvBridge()
 
-        # Image transport for image publishers and subscribers
-        self._it_pub: ImageTransport = ImageTransport(self)
+        # Image transport for image publishers and subscribers. The Python
+        # bindings currently require a node name rather than a node handle, so
+        # reuse this node's name without forcing a transport type.
+        self._it_pub: ImageTransport = ImageTransport(self.get_name())
 
         # Publishers
         self._calibration_image_pub: rclpy.publisher.Publisher = self._it_pub.advertise(
