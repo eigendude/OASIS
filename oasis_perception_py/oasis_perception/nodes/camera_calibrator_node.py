@@ -60,7 +60,7 @@ CALIBRATION_STATUS_TOPIC: str = "calibration_status"
 
 
 DEFAULT_CAMERA_NAME: str = socket.gethostname().replace("-", "_")
-DEFAULT_CAMERA_MODEL: CAMERA_MODEL = CAMERA_MODEL.PINHOLE
+DEFAULT_CAMERA_MODEL: CAMERA_MODEL = CAMERA_MODEL.FISHEYE
 DEFAULT_PATTERN: str = "chessboard"
 DEFAULT_SIZE: list[str] = ["8x6"]  # Inner corners of 9x7 board
 DEFAULT_SQUARE: list[float] = [0.025]
@@ -229,9 +229,9 @@ class CameraCalibratorNode(rclpy.node.Node):
             calib_flags |= cv2.CALIB_ZERO_TANGENT_DIST
         if DEFAULT_K_COEFFICIENTS > 3:
             calib_flags |= cv2.CALIB_RATIONAL_MODEL
-        # Fix‑unused K flags...
-        for k_level in range(DEFAULT_K_COEFFICIENTS):
-            calib_flags |= getattr(cv2, f"CALIB_FIX_K{k_level + 1}")
+        # If we want N radial coeffs, fix K(N+1..6)
+        for k in range(6, DEFAULT_K_COEFFICIENTS, -1):
+            calib_flags |= getattr(cv2, f"CALIB_FIX_K{k}")
 
         # Build fisheye flag
         fisheye_flags: int = 0
@@ -243,8 +243,9 @@ class CameraCalibratorNode(rclpy.node.Node):
             fisheye_flags |= cv2.fisheye.CALIB_RECOMPUTE_EXTRINSIC
         if DEFAULT_FISHEYE_CHECK_CONDITIONS:
             fisheye_flags |= cv2.fisheye.CALIB_CHECK_COND
-        for k_level in range(DEFAULT_FISHEYE_K_COEFFICIENTS):
-            fisheye_flags |= getattr(cv2.fisheye, f"CALIB_FIX_K{k_level + 1}")
+        # If we want N fisheye radial coeffs, fix K(N+1..4)
+        for k in range(4, DEFAULT_FISHEYE_K_COEFFICIENTS, -1):
+            fisheye_flags |= getattr(cv2.fisheye, f"CALIB_FIX_K{k}")
 
         # Checkerboard fast‑check
         checkerboard_flags: int = (
