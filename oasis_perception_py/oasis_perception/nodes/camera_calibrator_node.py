@@ -22,6 +22,7 @@ import cv2
 import cv_bridge
 import message_filters
 import numpy as np
+import rclpy.client
 import rclpy.node
 import rclpy.publisher
 import rclpy.qos
@@ -259,13 +260,13 @@ class CameraCalibratorNode(rclpy.node.Node):
         }[DEFAULT_PATTERN]
 
         # Initialize service clients
-        self.set_camera_info_service = self.create_client(
+        self.set_camera_info_service: rclpy.client.Client = self.create_client(
             SetCameraInfoSrv, "camera/set_camera_info"
         )
-        self.set_left_camera_info_service = self.create_client(
+        self.set_left_camera_info_service: rclpy.client.Client = self.create_client(
             SetCameraInfoSrv, "left_camera/set_camera_info"
         )
-        self.set_right_camera_info_service = self.create_client(
+        self.set_right_camera_info_service: rclpy.client.Client = self.create_client(
             SetCameraInfoSrv, "right_camera/set_camera_info"
         )
 
