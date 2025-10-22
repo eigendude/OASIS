@@ -3,13 +3,18 @@
 #  Copyright (C) 2025 Garrett Brown
 #  This file is part of OASIS - https://github.com/eigendude/OASIS
 #
-#  SPDX-License-Identifier: Apache-2.0
+#  This file is derived from the image_pipeline package under the BSD license.
+#  Copyright (C) 2009, Willow Garage, Inc.
+#
+#  SPDX-License-Identifier: Apache-2.0 AND BSD-3-Clause
 #  See DOCS/LICENSING.md for more information.
 #
 ################################################################################
 
 import functools
+import queue
 import socket
+import threading
 from typing import Any
 from typing import Callable
 
@@ -17,14 +22,21 @@ import cv2
 import cv_bridge
 import message_filters
 import numpy as np
+import rclpy.client
+import rclpy.node
 import rclpy.publisher
+import rclpy.qos
+from camera_calibration.calibrator import CAMERA_MODEL
+from camera_calibration.calibrator import Calibrator
 from camera_calibration.calibrator import ChessboardInfo
 from camera_calibration.calibrator import ImageDrawable
 from camera_calibration.calibrator import Patterns
-from camera_calibration.camera_calibrator import CalibrationNode
+from camera_calibration.mono_calibrator import MonoCalibrator
+from camera_calibration.stereo_calibrator import StereoCalibrator
 from image_transport_py import ImageTransport
 from message_filters import ApproximateTimeSynchronizer
 from sensor_msgs.msg import Image as ImageMsg
+from sensor_msgs.srv import SetCameraInfo as SetCameraInfoSrv
 
 from oasis_msgs.msg import CalibrationStatus as CalibrationStatusMsg
 
@@ -48,13 +60,13 @@ CALIBRATION_STATUS_TOPIC: str = "calibration_status"
 
 
 DEFAULT_CAMERA_NAME: str = socket.gethostname().replace("-", "_")
+DEFAULT_CAMERA_MODEL: CAMERA_MODEL = CAMERA_MODEL.PINHOLE
 DEFAULT_PATTERN: str = "chessboard"
 DEFAULT_SIZE: list[str] = ["8x6"]  # Inner corners of 9x7 board
 DEFAULT_SQUARE: list[float] = [0.025]
 DEFAULT_CHARUCO_MARKER_SIZE: list[float] = []
 DEFAULT_ARUCO_DICT: list[str] = []
 DEFAULT_APPROXIMATE: float = 0.0
-DEFAULT_SERVICE_CHECK: bool = False
 DEFAULT_QUEUE_SIZE: int = 1
 DEFAULT_FIX_PRINCIPAL_POINT: bool = False
 DEFAULT_FIX_ASPECT_RATIO: bool = False
@@ -130,12 +142,48 @@ def options_valid_charuco(
 
 
 ################################################################################
+# Utility classes
+################################################################################
+
+
+class BufferQueue(queue.Queue):
+    """
+    Slight modification of the standard Queue that discards the oldest item
+    when adding an item and the queue is full.
+    """
+
+    def put(self, item, *args, **kwargs):
+        # The base implementation, for reference:
+        # https://github.com/python/cpython/blob/3.8/Lib/queue.py#L121
+        with self.mutex:
+            if self.maxsize > 0 and self._qsize() == self.maxsize:
+                self._get()
+            self._put(item)
+            self.unfinished_tasks += 1
+            self.not_empty.notify()
+
+
+class ConsumerThread(threading.Thread):
+    def __init__(self, queue, function):
+        threading.Thread.__init__(self)
+        self.queue = queue
+        self.function = function
+
+    def run(self):
+        while rclpy.ok():
+            m = self.queue.get()
+            self.function(m)
+
+
+################################################################################
 # ROS node
 ################################################################################
 
 
-class CameraCalibratorNode(CalibrationNode):
+class CameraCalibratorNode(rclpy.node.Node):
     def __init__(self) -> None:
+        super().__init__(NODE_NAME)
+
         # Build the list of ChessboardInfo up front
         boards: list[ChessboardInfo]
         if DEFAULT_PATTERN == "charuco":
@@ -199,32 +247,67 @@ class CameraCalibratorNode(CalibrationNode):
             fisheye_flags |= getattr(cv2.fisheye, f"CALIB_FIX_K{k_level + 1}")
 
         # Checkerboard fast‑check
-        cb_flags: int = (
+        checkerboard_flags: int = (
             0 if DEFAULT_DISABLE_CALIB_CB_FAST_CHECK else cv2.CALIB_CB_FAST_CHECK
         )
 
         # Pattern enum
-        pat: int = {
+        pattern: int = {
             "chessboard": Patterns.Chessboard,
             "circles": Patterns.Circles,
             "acircles": Patterns.ACircles,
             "charuco": Patterns.ChArUco,
         }[DEFAULT_PATTERN]
 
-        # Call the upstream constructor
-        super().__init__(
-            NODE_NAME,
-            boards,
-            DEFAULT_SERVICE_CHECK,
-            sync_cls,
-            calib_flags,
-            fisheye_flags,
-            pat,
-            DEFAULT_CAMERA_NAME,
-            checkerboard_flags=cb_flags,
-            max_chessboard_speed=DEFAULT_MAX_CHESSBOARD_SPEED,
-            queue_size=DEFAULT_QUEUE_SIZE,
+        # Initialize service clients
+        self.set_camera_info_service: rclpy.client.Client = self.create_client(
+            SetCameraInfoSrv, "camera/set_camera_info"
         )
+        self.set_left_camera_info_service: rclpy.client.Client = self.create_client(
+            SetCameraInfoSrv, "left_camera/set_camera_info"
+        )
+        self.set_right_camera_info_service: rclpy.client.Client = self.create_client(
+            SetCameraInfoSrv, "right_camera/set_camera_info"
+        )
+
+        # Initialize state
+        self._boards = boards
+        self._calib_flags = calib_flags
+        self._fisheye_calib_flags = fisheye_flags
+        self._checkerboard_flags = checkerboard_flags
+        self._pattern = pattern
+        self._camera_name = DEFAULT_CAMERA_NAME
+        self._max_chessboard_speed = DEFAULT_MAX_CHESSBOARD_SPEED
+
+        # Setup message filters
+        lsub = message_filters.Subscriber(
+            self, ImageMsg, "left", qos_profile=self.get_topic_qos("left")
+        )
+        rsub = message_filters.Subscriber(
+            self, ImageMsg, "right", qos_profile=self.get_topic_qos("right")
+        )
+        time_sync = sync_cls([lsub, rsub], 4)
+        time_sync.registerCallback(self.queue_stereo)
+
+        msub = message_filters.Subscriber(
+            self, ImageMsg, "image", qos_profile=self.get_topic_qos("image")
+        )
+        msub.registerCallback(self.queue_monocular)
+
+        self.q_mono = BufferQueue(DEFAULT_QUEUE_SIZE)
+        self.q_stereo = BufferQueue(DEFAULT_QUEUE_SIZE)
+
+        self.c: Calibrator | None = None
+
+        self._last_display = None
+
+        mth = ConsumerThread(self.q_mono, self.handle_monocular)
+        mth.daemon = True
+        mth.start()
+
+        sth = ConsumerThread(self.q_stereo, self.handle_stereo)
+        sth.daemon = True
+        sth.start()
 
         # State for counting samples
         self._sample_count: int = -1
@@ -235,10 +318,10 @@ class CameraCalibratorNode(CalibrationNode):
         # Bridge for cv2 -> ROS conversions
         self._bridge: cv_bridge.CvBridge = cv_bridge.CvBridge()
 
-        # image_transport publisher using "compressed" transport
-        self._it_pub: ImageTransport = ImageTransport(
-            self.get_name() + "_pub", image_transport="compressed"
-        )
+        # Image transport for image publishers and subscribers
+        self._it_pub: ImageTransport = ImageTransport(self)
+
+        # Publishers
         self._calibration_image_pub: rclpy.publisher.Publisher = self._it_pub.advertise(
             self.resolve_topic_name(CALIBRATION_IMAGE_TOPIC), 1
         )
@@ -252,10 +335,140 @@ class CameraCalibratorNode(CalibrationNode):
         self.get_logger().info("Stopping camera calibrator node...")
         self.destroy_node()
 
+    def queue_monocular(self, msg):
+        self.q_mono.put(msg)
+
+    def queue_stereo(self, lmsg, rmsg):
+        self.q_stereo.put((lmsg, rmsg))
+
+    def handle_monocular(self, msg):
+        if self.c is None:
+            if self._camera_name:
+                self.c = MonoCalibrator(
+                    self._boards,
+                    self._calib_flags,
+                    self._fisheye_calib_flags,
+                    self._pattern,
+                    name=self._camera_name,
+                    checkerboard_flags=self._checkerboard_flags,
+                    max_chessboard_speed=self._max_chessboard_speed,
+                )
+            else:
+                self.c = MonoCalibrator(
+                    self._boards,
+                    self._calib_flags,
+                    self._fisheye_calib_flags,
+                    self._pattern,
+                    checkerboard_flags=self._checkerboard_flags,
+                    max_chessboard_speed=self._max_chessboard_speed,
+                )
+
+        # Package image_pipeline couldn't set camera model until first image received?
+        self.c.set_cammodel(DEFAULT_CAMERA_MODEL)
+
+        # This should just call the MonoCalibrator
+        drawable = self.c.handle_msg(msg)
+        self.displaywidth = drawable.scrib.shape[1]
+        self.redraw_monocular(drawable)
+
+    def handle_stereo(self, msg):
+        if self.c is None:
+            if self._camera_name:
+                self.c = StereoCalibrator(
+                    self._boards,
+                    self._calib_flags,
+                    self._fisheye_calib_flags,
+                    self._pattern,
+                    name=self._camera_name,
+                    checkerboard_flags=self._checkerboard_flags,
+                    max_chessboard_speed=self._max_chessboard_speed,
+                )
+            else:
+                self.c = StereoCalibrator(
+                    self._boards,
+                    self._calib_flags,
+                    self._fisheye_calib_flags,
+                    self._pattern,
+                    checkerboard_flags=self._checkerboard_flags,
+                    max_chessboard_speed=self._max_chessboard_speed,
+                )
+
+        # Package image_pipeline couldn't set camera model until first image received?
+        self.c.set_cammodel(DEFAULT_CAMERA_MODEL)
+
+        drawable = self.c.handle_msg(msg)
+        self.displaywidth = drawable.lscrib.shape[1] + drawable.rscrib.shape[1]
+        self.redraw_stereo(drawable)
+
+    def check_set_camera_info(self, response):
+        if response.success:
+            return True
+
+        for i in range(10):
+            print("!" * 80)
+        print()
+        print(f"Attempt to set camera info failed: {response.status_message}")
+        print()
+        for i in range(10):
+            print("!" * 80)
+        print()
+        self.get_logger().error(
+            f"Unable to set camera info for calibration. Failure message: {response.status_message}"
+        )
+        return False
+
+    def do_upload(self):
+        assert self.c is not None
+
+        self.c.report()
+        print(self.c.ost())
+        info = self.c.as_message()
+
+        req = SetCameraInfoSrv.Request()
+        rv = True
+        if self.c.is_mono:
+            req.camera_info = info
+            response = self.set_camera_info_service.call(req)
+            rv = self.check_set_camera_info(response)
+        else:
+            req.camera_info = info[0]
+            response = self.set_left_camera_info_service.call(req)
+            rv = rv and self.check_set_camera_info(response)
+            req.camera_info = info[1]
+            response = self.set_right_camera_info_service.call(req)
+            rv = rv and self.check_set_camera_info(response)
+        return rv
+
+    def get_topic_qos(self, topic_name: str) -> rclpy.qos.QoSProfile:
+        """
+        Given a topic name, get the QoS profile with which it is being
+        published.
+
+        Replaces history and depth settings with default values since they
+        cannot be retrieved.
+
+        @param topic_name (str) The topic name
+
+        @return QosProfile The QoS profile with which the topic is published.
+        If no publishers exist for the given topic, it returns the sensor data
+        QoS.
+        """
+        topic_name = self.resolve_topic_name(topic_name)
+        topic_info = self.get_publishers_info_by_topic(topic_name=topic_name)
+        if len(topic_info):
+            qos_profile = topic_info[0].qos_profile
+            qos_profile.history = rclpy.qos.qos_profile_system_default.history
+            qos_profile.depth = rclpy.qos.qos_profile_system_default.depth
+            return qos_profile
+        else:
+            self.get_logger().warn(
+                f"No publishers available for topic {topic_name}. Using system default QoS for subscriber."
+            )
+            return rclpy.qos.qos_profile_system_default
+
     def redraw_monocular(self, drawable: ImageDrawable) -> None:
-        """
-        Implementation of CalibrationNode.
-        """
+        assert self.c is not None
+
         sample_count: int = len(self.c.db)
         if sample_count != self._sample_count:
             self._sample_count = sample_count
@@ -305,9 +518,8 @@ class CameraCalibratorNode(CalibrationNode):
             self._calibration_status_pub.publish(status_msg)
 
     def redraw_stereo(self, drawable: Any) -> None:
-        """
-        Implementation of CalibrationNode.
-        """
+        assert self.c is not None
+
         sample_count: int = len(self.c.db)
         if sample_count != self._sample_count:
             self._sample_count = sample_count
