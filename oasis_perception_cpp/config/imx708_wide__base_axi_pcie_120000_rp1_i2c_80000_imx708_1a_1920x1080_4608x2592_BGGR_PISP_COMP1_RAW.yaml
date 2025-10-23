@@ -13,12 +13,20 @@ Camera1.fx: 853.18309545
 Camera1.fy: 859.99817905
 Camera1.cx: 952.49976072
 Camera1.cy: 540.64406431
+Camera.fx: 853.18309545
+Camera.fy: 859.99817905
+Camera.cx: 952.49976072
+Camera.cy: 540.64406431
 
 # distortion parameters
 Camera1.k1: 0.59458499
 Camera1.k2: -2.59824793
 Camera1.k3: 8.19667086
 Camera1.k4: -7.66709435
+Camera.k1: 0.59458499
+Camera.k2: -2.59824793
+Camera.k3: 8.19667086
+Camera.k4: -7.66709435
 
 # Camera resolution
 Camera.width: 1920
