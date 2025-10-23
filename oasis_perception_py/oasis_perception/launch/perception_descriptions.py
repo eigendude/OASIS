@@ -359,7 +359,7 @@ class PerceptionDescriptions:
                                 else f"{system_id}/image_rect"
                             ),
                         ),
-                        (f"{system_id}_flow", f"{system_id}/flow"),
+                        (f"{system_id}_flow_image", f"{system_id}/flow_image"),
                         (f"{system_id}_scene_score", f"{system_id}/scene_score"),
                     ],
                 )

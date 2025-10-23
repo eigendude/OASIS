@@ -29,7 +29,7 @@ using namespace ROS;
 namespace
 {
 // Published topics
-constexpr std::string_view FLOW_TOPIC = "flow";
+constexpr std::string_view FLOW_TOPIC = "flow_image";
 constexpr std::string_view SCENE_TOPIC = "scene_score";
 
 // Optical flow configuration
