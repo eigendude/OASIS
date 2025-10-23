@@ -24,7 +24,7 @@ using namespace VIDEO;
 namespace
 {
 // Minimum number of points to force redetection
-constexpr unsigned int MIN_POINT_COUNT = 10;
+constexpr unsigned int MIN_POINT_COUNT = 50;
 } // namespace
 
 bool OpticalFlow::Initialize(rclcpp::Logger& logger,
@@ -195,7 +195,7 @@ size_t OpticalFlow::DrawPoints(cv::Mat& image, size_t maxPointCount) const
   for (size_t index = 0; index < trackedPointCount; ++index)
   {
     const cv::Point2f point(m_points[index * 2], m_points[index * 2 + 1]);
-    cv::circle(image, point, 12, cv::Scalar(255, 255, 0), 4, cv::LINE_AA);
+    cv::circle(image, point, 14, cv::Scalar(255, 255, 0), 6, cv::LINE_AA);
   }
 
   return trackedPointCount;
