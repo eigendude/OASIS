@@ -356,7 +356,7 @@ class PerceptionDescriptions:
                                 # Use different remappings for Kinect V2
                                 f"{system_id}/sd/image_color"
                                 if system_id == KINECT_V2_ZONE_ID
-                                else f"{system_id}/image_rect"
+                                else f"{system_id}/image_raw"
                             ),
                         ),
                         (f"{system_id}_flow_image", f"{system_id}/flow_image"),
