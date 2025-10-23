@@ -78,7 +78,7 @@ DEFAULT_FISHEYE_FIX_PRINCIPAL_POINT: bool = False
 DEFAULT_FISHEYE_K_COEFFICIENTS: int = 4
 DEFAULT_FISHEYE_CHECK_CONDITIONS: bool = False
 DEFAULT_DISABLE_CALIB_CB_FAST_CHECK: bool = False
-DEFAULT_MAX_CHESSBOARD_SPEED: int = -1
+DEFAULT_MAX_CHESSBOARD_SPEED: float = -1.0
 
 
 ################################################################################
@@ -227,11 +227,22 @@ class CameraCalibratorNode(rclpy.node.Node):
             calib_flags |= cv2.CALIB_FIX_ASPECT_RATIO
         if DEFAULT_ZERO_TANGENT_DIST:
             calib_flags |= cv2.CALIB_ZERO_TANGENT_DIST
-        if DEFAULT_K_COEFFICIENTS > 3:
+        num_k_coeffs = DEFAULT_K_COEFFICIENTS
+
+        if num_k_coeffs > 3:
             calib_flags |= cv2.CALIB_RATIONAL_MODEL
-        # Fix‑unused K flags...
-        for k_level in range(DEFAULT_K_COEFFICIENTS):
-            calib_flags |= getattr(cv2, f"CALIB_FIX_K{k_level + 1}")
+        if num_k_coeffs < 6:
+            calib_flags |= cv2.CALIB_FIX_K6
+        if num_k_coeffs < 5:
+            calib_flags |= cv2.CALIB_FIX_K5
+        if num_k_coeffs < 4:
+            calib_flags |= cv2.CALIB_FIX_K4
+        if num_k_coeffs < 3:
+            calib_flags |= cv2.CALIB_FIX_K3
+        if num_k_coeffs < 2:
+            calib_flags |= cv2.CALIB_FIX_K2
+        if num_k_coeffs < 1:
+            calib_flags |= cv2.CALIB_FIX_K1
 
         # Build fisheye flag
         fisheye_flags: int = 0
@@ -243,8 +254,15 @@ class CameraCalibratorNode(rclpy.node.Node):
             fisheye_flags |= cv2.fisheye.CALIB_RECOMPUTE_EXTRINSIC
         if DEFAULT_FISHEYE_CHECK_CONDITIONS:
             fisheye_flags |= cv2.fisheye.CALIB_CHECK_COND
-        for k_level in range(DEFAULT_FISHEYE_K_COEFFICIENTS):
-            fisheye_flags |= getattr(cv2.fisheye, f"CALIB_FIX_K{k_level + 1}")
+        num_fisheye_k_coeffs = DEFAULT_FISHEYE_K_COEFFICIENTS
+        if num_fisheye_k_coeffs < 4:
+            fisheye_flags |= cv2.fisheye.CALIB_FIX_K4
+        if num_fisheye_k_coeffs < 3:
+            fisheye_flags |= cv2.fisheye.CALIB_FIX_K3
+        if num_fisheye_k_coeffs < 2:
+            fisheye_flags |= cv2.fisheye.CALIB_FIX_K2
+        if num_fisheye_k_coeffs < 1:
+            fisheye_flags |= cv2.fisheye.CALIB_FIX_K1
 
         # Checkerboard fast‑check
         checkerboard_flags: int = (
