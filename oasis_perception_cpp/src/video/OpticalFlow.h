@@ -30,10 +30,7 @@ class VisionGraph;
 struct ConfigOptions
 {
   // The maximum number of points to track
-  unsigned int maxPointCount = 200;
-
-  // The maximum number of frames to solve for
-  unsigned int maxFrameCount = 240;
+  unsigned int maxPointCount = 400;
 };
 
 class OpticalFlow
