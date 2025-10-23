@@ -35,6 +35,11 @@ class Logger;
 class Node;
 } // namespace rclcpp
 
+namespace cv
+{
+class Mat;
+} // namespace cv
+
 namespace OASIS
 {
 namespace SLAM
@@ -43,7 +48,7 @@ namespace SLAM
 class MonocularSlam
 {
 public:
-  MonocularSlam(rclcpp::Node& node, const std::string& mapTopic);
+  MonocularSlam(rclcpp::Node& node, const std::string& mapTopic, const std::string& debugTopic = "");
   ~MonocularSlam();
 
   // Lifecycle interface
@@ -58,10 +63,12 @@ private:
                                const std::vector<ORB_SLAM3::MapPoint*>& trackedMapPoints,
                                const Eigen::Vector3f& cameraPosition,
                                const Eigen::Quaternionf& cameraOrientation);
+  void PublishDebugImage(const std_msgs::msg::Header& header, const cv::Mat& debugImage);
 
   // ROS parameters
   std::unique_ptr<rclcpp::Logger> m_logger;
   std::unique_ptr<image_transport::Publisher> m_mapPublisher;
+  std::unique_ptr<image_transport::Publisher> m_debugPublisher;
 
   std::unordered_map<const ORB_SLAM3::MapPoint*, Eigen::Vector3f> m_mapPointPositions;
 
