@@ -73,16 +73,25 @@ VIDEO_DEVICE: str = "/dev/video0"
 IMAGE_FORMAT: str
 IMAGE_SIZE: list[int]
 SENSOR_MODE: str
+CAMERA_CONTROLS: dict[str, float | int]
 
 # TODO: Hardware configuration
 if HOST_ID == "falcon":
     IMAGE_FORMAT = "BGR888"
     IMAGE_SIZE = [1920, 1080]
     SENSOR_MODE = "4608:2592"  # V3 camera full sensor resolution
+    CAMERA_CONTROLS = {
+        "frame_rate": 60.0,  # Target high frame rate for reduced motion blur
+        "exposure_time": 8000,  # Microseconds (~1/125s) to keep images crisp
+    }
 else:
     IMAGE_FORMAT = "BGR888"
     IMAGE_SIZE = [640, 480]
     SENSOR_MODE = "3280:2464"  # V2 camera full sensor resolution
+    CAMERA_CONTROLS = {
+        "frame_rate": 60.0,
+        "exposure_time": 8000,
+    }
 
 
 #
@@ -155,12 +164,22 @@ def generate_launch_description() -> LaunchDescription:
     # LEGO models
     if HOST_ID == "falcon":
         Drivers.add_ros2_camera(
-            composable_nodes, ZONE_ID, IMAGE_FORMAT, IMAGE_SIZE, SENSOR_MODE
+            composable_nodes,
+            ZONE_ID,
+            IMAGE_FORMAT,
+            IMAGE_SIZE,
+            SENSOR_MODE,
+            camera_controls=CAMERA_CONTROLS,
         )
         PerceptionDescriptions.add_monocular_slam(composable_nodes, [HOST_ID], "raw")
     if HOST_ID == "station":
         Drivers.add_ros2_camera(
-            composable_nodes, ZONE_ID, IMAGE_FORMAT, IMAGE_SIZE, SENSOR_MODE
+            composable_nodes,
+            ZONE_ID,
+            IMAGE_FORMAT,
+            IMAGE_SIZE,
+            SENSOR_MODE,
+            camera_controls=CAMERA_CONTROLS,
         )
 
     # Smarthome cameras

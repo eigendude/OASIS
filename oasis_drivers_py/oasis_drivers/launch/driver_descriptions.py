@@ -8,6 +8,8 @@
 #
 ################################################################################
 
+from typing import Optional
+
 from launch.launch_description import LaunchDescription
 from launch_ros.actions import ComposableNodeContainer
 from launch_ros.actions import Node
@@ -158,8 +160,24 @@ class DriverDescriptions:
         image_format: str,
         image_size: list[int],
         sensor_mode: str,
+        camera_controls: Optional[dict[str, int | float]] = None,
         rectify: bool = False,
     ) -> None:
+        if isinstance(camera_controls, bool):
+            rectify = camera_controls
+            camera_controls = None
+
+        camera_parameters: dict[str, object] = {
+            "role": "video",
+            "format": image_format,
+            "width": image_size[0],
+            "height": image_size[1],
+            "sensor_mode": sensor_mode,
+        }
+
+        if camera_controls:
+            camera_parameters["controls"] = camera_controls
+
         composable_nodes.append(
             ComposableNode(
                 namespace=ROS_NAMESPACE,
@@ -167,13 +185,7 @@ class DriverDescriptions:
                 plugin="camera::CameraNode",
                 name=f"camera_ros_{zone_id}",
                 parameters=[
-                    {
-                        "role": "video",
-                        "format": image_format,
-                        "width": image_size[0],
-                        "height": image_size[1],
-                        "sensor_mode": sensor_mode,
-                    },
+                    camera_parameters,
                 ],
                 remappings=[
                     # Topics
