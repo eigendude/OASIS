@@ -60,7 +60,16 @@ CALIBRATION_STATUS_TOPIC: str = "calibration_status"
 
 
 DEFAULT_CAMERA_NAME: str = socket.gethostname().replace("-", "_")
-DEFAULT_CAMERA_MODEL: CAMERA_MODEL = CAMERA_MODEL.PINHOLE
+
+# Parameter names and defaults
+CAMERA_MODEL_PARAM: str = "camera_model"
+DEFAULT_CAMERA_MODEL_NAME: str = "pinhole"
+
+# Supported camera models exposed through the ROS parameter
+CAMERA_MODEL_CHOICES: dict[str, CAMERA_MODEL] = {
+    "pinhole": CAMERA_MODEL.PINHOLE,
+    "fisheye": CAMERA_MODEL.FISHEYE,
+}
 DEFAULT_PATTERN: str = "chessboard"
 DEFAULT_SIZE: list[str] = ["8x6"]  # Inner corners of 9x7 board
 DEFAULT_SQUARE: list[float] = [0.025]
@@ -187,6 +196,29 @@ class ConsumerThread(threading.Thread):
 class CameraCalibratorNode(rclpy.node.Node):
     def __init__(self) -> None:
         super().__init__(NODE_NAME)
+
+        # Declare ROS parameters
+        self.declare_parameter(CAMERA_MODEL_PARAM, DEFAULT_CAMERA_MODEL_NAME)
+
+        # Resolve camera model parameter
+        camera_model_value: str = (
+            self.get_parameter(CAMERA_MODEL_PARAM)
+            .get_parameter_value()
+            .string_value
+        )
+        camera_model_key: str = camera_model_value.lower()
+
+        if camera_model_key not in CAMERA_MODEL_CHOICES:
+            valid_options = ", ".join(sorted(CAMERA_MODEL_CHOICES))
+            self.get_logger().warning(
+                f"Invalid camera model '{camera_model_value}'. "
+                f"Falling back to default '{DEFAULT_CAMERA_MODEL_NAME}'. "
+                f"Valid options: {valid_options}"
+            )
+
+        self._camera_model: CAMERA_MODEL = CAMERA_MODEL_CHOICES.get(
+            camera_model_key, CAMERA_MODEL_CHOICES[DEFAULT_CAMERA_MODEL_NAME]
+        )
 
         # Build the list of ChessboardInfo up front
         boards: list[ChessboardInfo]
@@ -388,7 +420,7 @@ class CameraCalibratorNode(rclpy.node.Node):
                 )
 
         # Package image_pipeline couldn't set camera model until first image received?
-        self.c.set_cammodel(DEFAULT_CAMERA_MODEL)
+        self.c.set_cammodel(self._camera_model)
 
         # This should just call the MonoCalibrator
         drawable = self.c.handle_msg(msg)
@@ -418,7 +450,7 @@ class CameraCalibratorNode(rclpy.node.Node):
                 )
 
         # Package image_pipeline couldn't set camera model until first image received?
-        self.c.set_cammodel(DEFAULT_CAMERA_MODEL)
+        self.c.set_cammodel(self._camera_model)
 
         drawable = self.c.handle_msg(msg)
         self.displaywidth = drawable.lscrib.shape[1] + drawable.rscrib.shape[1]
