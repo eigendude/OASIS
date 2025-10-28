@@ -171,7 +171,7 @@ def generate_launch_description() -> LaunchDescription:
             SENSOR_MODE,
             camera_controls=CAMERA_CONTROLS,
         )
-        PerceptionDescriptions.add_monocular_slam(composable_nodes, [HOST_ID], "raw")
+        # PerceptionDescriptions.add_monocular_slam(composable_nodes, [HOST_ID], "raw")
     if HOST_ID == "station":
         Drivers.add_ros2_camera(
             composable_nodes,
