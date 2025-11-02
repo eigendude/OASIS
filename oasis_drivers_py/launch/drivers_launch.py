@@ -65,6 +65,7 @@ PYTHON_PACKAGE_NAME: str = "oasis_drivers_py"
 # Hardware/video parameters
 ################################################################################
 
+
 #
 # Video configuration
 #
@@ -73,24 +74,33 @@ VIDEO_DEVICE: str = "/dev/video0"
 IMAGE_FORMAT: str
 IMAGE_SIZE: list[int]
 SENSOR_MODE: str
-CAMERA_CONTROLS: dict[str, float | int]
+LIBCAMERA_PARAMS: dict[str, object]
 
 # TODO: Hardware configuration
 if HOST_ID == "falcon":
     IMAGE_FORMAT = "RGB888"
     IMAGE_SIZE = [1920, 1080]
-    SENSOR_MODE = "4608:2592"  # V3 camera full sensor resolution
-    CAMERA_CONTROLS = {
-        "frame_rate": 60.0,  # Target high frame rate for reduced motion blur
-        "exposure_time": 8000,  # Microseconds (~1/125s) to keep images crisp
+
+    # Use a binned full-FOV mode that can run fast
+    SENSOR_MODE = "2304:1296"  # 2×2 binned 16:9; full FOV and scales cleanly to 1080p
+
+    # Low-blur, full-FOV binned mode @ ~56 fps (IMX708 2304x1296 min frame time ≈ 17849 µs)
+    LIBCAMERA_PARAMS = {
+        "ExposureTime": 8000,  # 8 ms  (~1/125 s)
+        "ExposureTimeMode": 1,  # Manual exposure (>= libcamera 0.5)
+        "FrameDurationLimits": [
+            33333,
+            33333,
+        ],  # Exact 30.000 fps: both elements equal to ~33.333 ms
     }
 else:
     IMAGE_FORMAT = "RGB888"
     IMAGE_SIZE = [640, 480]
     SENSOR_MODE = "3280:2464"  # V2 camera full sensor resolution
-    CAMERA_CONTROLS = {
-        "frame_rate": 60.0,
-        "exposure_time": 8000,
+
+    LIBCAMERA_PARAMS = {
+        "ExposureTime": 8000,  # 8 ms  (~1/125 s)
+        "ExposureTimeMode": 1,  # Manual exposure (>= libcamera 0.5)
     }
 
 
@@ -169,7 +179,7 @@ def generate_launch_description() -> LaunchDescription:
             IMAGE_FORMAT,
             IMAGE_SIZE,
             SENSOR_MODE,
-            camera_controls=CAMERA_CONTROLS,
+            libcamera_params=LIBCAMERA_PARAMS,
         )
         # PerceptionDescriptions.add_monocular_slam(composable_nodes, [HOST_ID], "raw")
     if HOST_ID == "station":
@@ -179,7 +189,7 @@ def generate_launch_description() -> LaunchDescription:
             IMAGE_FORMAT,
             IMAGE_SIZE,
             SENSOR_MODE,
-            camera_controls=CAMERA_CONTROLS,
+            libcamera_params=LIBCAMERA_PARAMS,
         )
 
     # Smarthome cameras

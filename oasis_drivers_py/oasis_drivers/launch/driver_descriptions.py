@@ -8,6 +8,7 @@
 #
 ################################################################################
 
+from typing import Any
 from typing import Optional
 
 from launch.launch_description import LaunchDescription
@@ -160,14 +161,10 @@ class DriverDescriptions:
         image_format: str,
         image_size: list[int],
         sensor_mode: str,
-        camera_controls: Optional[dict[str, int | float]] = None,
+        libcamera_params: Optional[dict[str, object]] = None,
         rectify: bool = False,
     ) -> None:
-        if isinstance(camera_controls, bool):
-            rectify = camera_controls
-            camera_controls = None
-
-        camera_parameters: dict[str, object] = {
+        camera_parameters: dict[str, Any] = {
             "role": "video",
             "format": image_format,
             "width": image_size[0],
@@ -175,8 +172,9 @@ class DriverDescriptions:
             "sensor_mode": sensor_mode,
         }
 
-        if camera_controls:
-            camera_parameters["controls"] = camera_controls
+        # Merge explicit libcamera params from top-level; explicit wins
+        if libcamera_params:
+            camera_parameters.update(libcamera_params)
 
         composable_nodes.append(
             ComposableNode(
