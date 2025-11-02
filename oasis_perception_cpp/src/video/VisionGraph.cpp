@@ -46,14 +46,14 @@ void VisionGraph::Compile(unsigned int width,
       []()
       {
         // Input
-        cv::GMat rgbaImage;
+        cv::GMat colorImage;
 
         // Output
         cv::GMat grayscaleImage;
 
-        grayscaleImage = IMAGE::RGBA2Gray(rgbaImage);
+        grayscaleImage = IMAGE::ConvertToGray(colorImage);
 
-        return cv::GComputation(cv::GIn(rgbaImage), cv::GOut(grayscaleImage));
+        return cv::GComputation(cv::GIn(colorImage), cv::GOut(grayscaleImage));
       });
 
   // Find features

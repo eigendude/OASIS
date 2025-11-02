@@ -16,8 +16,30 @@
 namespace OASIS::IMAGE
 {
 
-// Find good features
+// Convert to grayscale
 // clang-format off
+GAPI_OCV_KERNEL(GCPUConvertToGray, GConvertToGray)
+{
+  static void run(const cv::Mat& image, cv::Mat& out)
+  {
+    switch (image.type())
+    {
+      case CV_8UC1:
+        image.copyTo(out);
+        break;
+      case CV_8UC3:
+        cv::cvtColor(image, out, cv::COLOR_BGR2GRAY);
+        break;
+      case CV_8UC4:
+        cv::cvtColor(image, out, cv::COLOR_BGRA2GRAY);
+        break;
+      default:
+        CV_Error(cv::Error::StsBadArg, "Unsupported image type for ConvertToGray");
+    }
+  }
+};
+
+// Find good features
 GAPI_OCV_KERNEL(GCPUGoodFeatures, GGoodFeatures)
 {
   static void run(const cv::Mat& image,
@@ -45,7 +67,7 @@ GAPI_OCV_KERNEL(GCPUGoodFeatures, GGoodFeatures)
 
 cv::gapi::GKernelPackage kernels()
 {
-  static auto pkg = cv::gapi::kernels<GCPUGoodFeatures>();
+  static auto pkg = cv::gapi::kernels<GCPUConvertToGray, GCPUGoodFeatures>();
 
   return pkg;
 }

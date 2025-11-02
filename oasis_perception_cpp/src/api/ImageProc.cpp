@@ -18,6 +18,11 @@ cv::GMat RGBA2Gray(const cv::GMat& rgbaImage)
   return cv::gapi::RGBA2Gray(rgbaImage);
 }
 
+cv::GMat ConvertToGray(const cv::GMat& image)
+{
+  return GConvertToGray::on(image);
+}
+
 cv::GArray<cv::Point2f> GoodFeaturesToTrack(const cv::GMat& grayscaleImage,
                                             const cv::GScalar& maxFeatures,
                                             const cv::GScalar& minDistance,

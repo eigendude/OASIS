@@ -70,7 +70,7 @@ public:
 
 private:
   /*!
-   * \brief Convert a 32-bit RGBA frame to 8-bit grayscale
+   * \brief Convert a color frame to 8-bit grayscale
    */
   void ConvertToGrayscale(const cv::Mat& in, cv::Mat& out);
 
@@ -104,7 +104,7 @@ private:
   std::shared_ptr<VisionGraph> m_visionGraph;
 
   // Buffers
-  cv::Mat m_rgbaFrameBuffer;
+  cv::Mat m_bgrFrameBuffer;
   cv::Mat m_currentGrayscaleBuffer;
   std::vector<std::vector<cv::Point2f>> m_pointHistoryBuffer;
 
