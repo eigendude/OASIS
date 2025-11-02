@@ -44,12 +44,12 @@ bool OpticalFlow::Initialize(rclcpp::Logger& logger,
   m_calculateSceneScores = calculateSceneScores;
 
   // Initialize buffers
-  m_rgbaFrameBuffer.create(m_height, m_width, CV_8UC4);
+  m_bgrFrameBuffer.create(m_height, m_width, CV_8UC3);
   m_currentGrayscaleBuffer.create(m_height, m_width, CV_8UC1);
   m_previousGrayscale.create(m_height, m_width, CV_8UC1);
 
   m_visionGraph.reset(new VisionGraph);
-  m_visionGraph->Compile(width, height, m_rgbaFrameBuffer, m_currentGrayscaleBuffer,
+  m_visionGraph->Compile(width, height, m_bgrFrameBuffer, m_currentGrayscaleBuffer,
                          m_previousGrayscale);
 
   m_hasPreviousFrame = false;
@@ -69,7 +69,7 @@ void OpticalFlow::Deinitialize()
 {
   m_visionGraph.reset();
 
-  m_rgbaFrameBuffer.release();
+  m_bgrFrameBuffer.release();
   m_currentGrayscaleBuffer.release();
   m_previousGrayscale.release();
 }
@@ -90,24 +90,27 @@ bool OpticalFlow::ProcessImage(const cv::Mat& image)
   if (image.cols != static_cast<int>(m_width) || image.rows != static_cast<int>(m_height))
     return false;
 
-  cv::Mat& rgbaFrame = m_rgbaFrameBuffer;
+  cv::Mat& currentGrayscale = m_currentGrayscaleBuffer;
+
+  const cv::Mat* colorFrame = nullptr;
   switch (image.type())
   {
-    case CV_8UC4:
-      image.copyTo(rgbaFrame);
-      break;
     case CV_8UC3:
-      cv::cvtColor(image, rgbaFrame, cv::COLOR_BGR2RGBA);
+      colorFrame = &image;
+      break;
+    case CV_8UC4:
+      cv::cvtColor(image, m_bgrFrameBuffer, cv::COLOR_RGBA2BGR);
+      colorFrame = &m_bgrFrameBuffer;
       break;
     case CV_8UC1:
-      cv::cvtColor(image, rgbaFrame, cv::COLOR_GRAY2RGBA);
+      image.copyTo(currentGrayscale);
       break;
     default:
       return false;
   }
 
-  cv::Mat& currentGrayscale = m_currentGrayscaleBuffer;
-  ConvertToGrayscale(rgbaFrame, currentGrayscale);
+  if (colorFrame != nullptr)
+    ConvertToGrayscale(*colorFrame, currentGrayscale);
 
   std::vector<cv::Point2f> currentPoints;
   std::vector<uint8_t> status;
