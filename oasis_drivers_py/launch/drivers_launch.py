@@ -77,7 +77,7 @@ CAMERA_CONTROLS: dict[str, float | int]
 
 # TODO: Hardware configuration
 if HOST_ID == "falcon":
-    IMAGE_FORMAT = "BGR888"
+    IMAGE_FORMAT = "RGB888"
     IMAGE_SIZE = [1920, 1080]
     SENSOR_MODE = "4608:2592"  # V3 camera full sensor resolution
     CAMERA_CONTROLS = {
@@ -85,7 +85,7 @@ if HOST_ID == "falcon":
         "exposure_time": 8000,  # Microseconds (~1/125s) to keep images crisp
     }
 else:
-    IMAGE_FORMAT = "BGR888"
+    IMAGE_FORMAT = "RGB888"
     IMAGE_SIZE = [640, 480]
     SENSOR_MODE = "3280:2464"  # V2 camera full sensor resolution
     CAMERA_CONTROLS = {
