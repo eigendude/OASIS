@@ -14,6 +14,7 @@
 #include <cv_bridge/cv_bridge.hpp>
 #include <geometry_msgs/msg/vector3.hpp>
 #include <oasis_msgs/msg/i2_c_imu.hpp>
+#include <opencv2/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
@@ -72,7 +73,7 @@ void MonocularInertialSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSha
   cv_bridge::CvImagePtr cv_ptr;
   try
   {
-    cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
+    cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::RGB8);
   }
   catch (cv_bridge::Exception& e)
   {
@@ -80,8 +81,17 @@ void MonocularInertialSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSha
     return;
   }
 
+  const cv::Mat& rgbImage = cv_ptr->image;
+
+  if (rgbImage.type() != CV_8UC3)
+  {
+    RCLCPP_WARN(*m_logger,
+                "Received image converted to unexpected type (type=%d channels=%d). Expected RGB8.",
+                rgbImage.type(), rgbImage.channels());
+  }
+
   // Pass the image to the SLAM system
-  m_slam->TrackMonocular(cv_ptr->image, timestamp, m_imuMeasurements);
+  m_slam->TrackMonocular(rgbImage, timestamp, m_imuMeasurements);
 
   // TODO: Better IMU synchronization
   m_imuMeasurements.clear();
