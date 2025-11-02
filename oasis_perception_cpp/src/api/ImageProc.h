@@ -27,6 +27,18 @@ G_TYPED_KERNEL(GGoodFeatures,
     return cv::empty_array_desc();
   }
 };
+
+G_TYPED_KERNEL(GConvertToGray,
+               <cv::GMat(cv::GMat)>,
+               "com.oasis.imgproc.colorconvert.convertToGray")
+{
+  static cv::GMatDesc outMeta(cv::GMatDesc in)
+  {
+    GAPI_Assert(in.depth == CV_8U);
+    GAPI_Assert(in.chan == 1 || in.chan == 3 || in.chan == 4);
+    return in.withType(CV_8U, 1);
+  }
+};
 // clang-format on
 
 /*!
@@ -37,6 +49,17 @@ G_TYPED_KERNEL(GGoodFeatures,
  * \return The single-channel grayscale image
  */
 cv::GMat RGBA2Gray(const cv::GMat& rgbaImage);
+
+/*!
+ * \brief Convert an image to grayscale.
+ *
+ * Supported input formats are 8-bit single-channel, BGR, and BGRA images.
+ *
+ * \param image The 1-, 3-, or 4-channel image to convert
+ *
+ * \return The single-channel grayscale image
+ */
+cv::GMat ConvertToGray(const cv::GMat& image);
 
 /*!
  * \brief Get some good features to track
