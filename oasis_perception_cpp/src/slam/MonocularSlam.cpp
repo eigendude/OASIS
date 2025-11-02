@@ -37,9 +37,9 @@ constexpr int MAP_IMAGE_WIDTH = 640;
 constexpr int MAP_IMAGE_HEIGHT = 640;
 constexpr int MAP_IMAGE_MARGIN = 40;
 
-cv::Scalar CreateColor(unsigned char b, unsigned char g, unsigned char r)
+cv::Scalar CreateColor(unsigned char r, unsigned char g, unsigned char b)
 {
-  return cv::Scalar(b, g, r);
+  return cv::Scalar(r, g, b);
 }
 
 bool ExtractMapPointPosition(const ORB_SLAM3::MapPoint* mapPoint, Eigen::Vector3f& position)
@@ -135,7 +135,7 @@ void MonocularSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& 
   cv_bridge::CvImagePtr cv_ptr;
   try
   {
-    cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
+    cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::RGB8);
   }
   catch (cv_bridge::Exception& e)
   {
@@ -143,12 +143,21 @@ void MonocularSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& 
     return;
   }
 
+  const cv::Mat& rgbImage = cv_ptr->image;
+
+  if (rgbImage.type() != CV_8UC3)
+  {
+    RCLCPP_WARN(*m_logger,
+                "Received image converted to unexpected type (type=%d channels=%d). Expected RGB8.",
+                rgbImage.type(), rgbImage.channels());
+  }
+
   if (m_debugPublisher && m_debugPublisher->getNumSubscribers() > 0)
   {
-    cv::Mat debugImage = cv_ptr->image.clone();
+    cv::Mat debugImage = rgbImage.clone();
 
     cv::Mat grayImage;
-    cv::cvtColor(cv_ptr->image, grayImage, cv::COLOR_BGR2GRAY);
+    cv::cvtColor(rgbImage, grayImage, cv::COLOR_RGB2GRAY);
 
     std::vector<cv::Point2f> corners;
     constexpr int MAX_CORNERS = 500;
@@ -163,7 +172,7 @@ void MonocularSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& 
   }
 
   // Pass the image to the SLAM system
-  const Sophus::SE3f cameraPose = m_slam->TrackMonocular(cv_ptr->image, timestamp);
+  const Sophus::SE3f cameraPose = m_slam->TrackMonocular(rgbImage, timestamp);
 
   const int trackingState = m_slam->GetTrackingState();
   const std::vector<ORB_SLAM3::MapPoint*> trackedMapPoints = m_slam->GetTrackedMapPoints();
@@ -205,7 +214,7 @@ void MonocularSlam::PublishDebugImage(const std_msgs::msg::Header& header,
 
   cv_bridge::CvImage cvImage;
   cvImage.header = header;
-  cvImage.encoding = sensor_msgs::image_encodings::BGR8;
+  cvImage.encoding = sensor_msgs::image_encodings::RGB8;
   cvImage.image = debugImage;
 
   m_debugPublisher->publish(cvImage.toImageMsg());
@@ -259,7 +268,7 @@ void MonocularSlam::PublishMapVisualization(
                 cv::FONT_HERSHEY_SIMPLEX, 1.0, CreateColor(200, 200, 200), 2, cv::LINE_AA);
 
     sensor_msgs::msg::Image::SharedPtr mapMsg =
-        cv_bridge::CvImage(header, sensor_msgs::image_encodings::BGR8, mapImage).toImageMsg();
+        cv_bridge::CvImage(header, sensor_msgs::image_encodings::RGB8, mapImage).toImageMsg();
     m_mapPublisher->publish(mapMsg);
     return;
   }
@@ -316,24 +325,24 @@ void MonocularSlam::PublishMapVisualization(
   {
     const Eigen::Vector3f& pos = entry.second;
     const cv::Point pixel = projectPoint(pos.x(), pos.z());
-    cv::circle(mapImage, pixel, 2, CreateColor(80, 80, 255), cv::FILLED, cv::LINE_AA);
+    cv::circle(mapImage, pixel, 2, CreateColor(255, 80, 80), cv::FILLED, cv::LINE_AA);
   }
 
   // Highlight currently tracked points
   for (const Eigen::Vector3f& pos : trackedPositions)
   {
     const cv::Point pixel = projectPoint(pos.x(), pos.z());
-    cv::circle(mapImage, pixel, 3, CreateColor(0, 255, 255), cv::FILLED, cv::LINE_AA);
+    cv::circle(mapImage, pixel, 3, CreateColor(255, 255, 0), cv::FILLED, cv::LINE_AA);
   }
 
   const cv::Point cameraPixel = projectPoint(cameraPosition.x(), cameraPosition.z());
-  cv::circle(mapImage, cameraPixel, 6, CreateColor(0, 0, 255), cv::FILLED, cv::LINE_AA);
+  cv::circle(mapImage, cameraPixel, 6, CreateColor(255, 0, 0), cv::FILLED, cv::LINE_AA);
 
   const Eigen::Vector3f forwardVector = cameraOrientation * Eigen::Vector3f::UnitZ();
   const float arrowScale = 0.1F * std::max(rangeX, rangeZ);
   const Eigen::Vector3f arrowEnd3D = cameraPosition + forwardVector * arrowScale;
   const cv::Point arrowEndPixel = projectPoint(arrowEnd3D.x(), arrowEnd3D.z());
-  cv::arrowedLine(mapImage, cameraPixel, arrowEndPixel, CreateColor(0, 0, 255), 2, cv::LINE_AA, 0,
+  cv::arrowedLine(mapImage, cameraPixel, arrowEndPixel, CreateColor(255, 0, 0), 2, cv::LINE_AA, 0,
                   0.2);
 
   cv::putText(mapImage, "SLAM map", cv::Point(20, 40), cv::FONT_HERSHEY_SIMPLEX, 1.0,
@@ -345,6 +354,6 @@ void MonocularSlam::PublishMapVisualization(
               CreateColor(220, 220, 220), 1, cv::LINE_AA);
 
   auto mapMsg =
-      cv_bridge::CvImage(header, sensor_msgs::image_encodings::BGR8, mapImage).toImageMsg();
+      cv_bridge::CvImage(header, sensor_msgs::image_encodings::RGB8, mapImage).toImageMsg();
   m_mapPublisher->publish(mapMsg);
 }
