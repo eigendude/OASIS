@@ -63,6 +63,7 @@ public:
 
   std::vector<float> GetPoints() const { return m_points; }
   std::vector<float> GetInitialPoints() const { return m_initialPoints; }
+  std::vector<std::vector<float>> GetPointHistoryFrames() const;
 
   float GetSceneScore() const { return m_sceneScore; }
   float GetSceneMafd() const { return m_previousMafd; }
@@ -106,7 +107,7 @@ private:
   // Buffers
   cv::Mat m_bgrFrameBuffer;
   cv::Mat m_currentGrayscaleBuffer;
-  std::vector<std::vector<cv::Point2f>> m_pointHistoryBuffer;
+  std::vector<std::vector<cv::Point2f>> m_pointHistory;
 
   bool m_hasPreviousFrame{false};
   std::vector<cv::Point2f> m_previousPoints;
