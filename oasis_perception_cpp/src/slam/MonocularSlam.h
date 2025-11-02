@@ -14,14 +14,10 @@
 #include <vector>
 
 #include <Eigen/Geometry>
+#include <rclcpp/publisher.hpp>
 #include <sensor_msgs/msg/image.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
 #include <std_msgs/msg/header.hpp>
-
-namespace image_transport
-{
-class Publisher;
-class Subscriber;
-} // namespace image_transport
 
 namespace ORB_SLAM3
 {
@@ -34,6 +30,12 @@ namespace rclcpp
 class Logger;
 class Node;
 } // namespace rclcpp
+
+namespace image_transport
+{
+class Publisher;
+class Subscriber;
+} // namespace image_transport
 
 namespace cv
 {
@@ -50,7 +52,8 @@ class MonocularSlam
 public:
   MonocularSlam(rclcpp::Node& node,
                 const std::string& mapTopic,
-                const std::string& debugTopic = "");
+                const std::string& debugTopic = "",
+                const std::string& mapImageTopic = "");
   ~MonocularSlam();
 
   // Lifecycle interface
@@ -66,10 +69,21 @@ private:
                                const Eigen::Vector3f& cameraPosition,
                                const Eigen::Quaternionf& cameraOrientation);
   void PublishDebugImage(const std_msgs::msg::Header& header, const cv::Mat& debugImage);
+  struct MapPointRenderInfo
+  {
+    Eigen::Vector3f position = Eigen::Vector3f::Zero();
+    bool tracked = false;
+  };
+  void PublishMapImage(const std_msgs::msg::Header& header,
+                       const std::vector<MapPointRenderInfo>& renderPoints,
+                       const Eigen::Vector3f& cameraPosition,
+                       const Eigen::Quaternionf& cameraOrientation,
+                       float maxDistance);
 
   // ROS parameters
   std::unique_ptr<rclcpp::Logger> m_logger;
-  std::unique_ptr<image_transport::Publisher> m_mapPublisher;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr m_mapPublisher;
+  std::unique_ptr<image_transport::Publisher> m_mapImagePublisher;
   std::unique_ptr<image_transport::Publisher> m_debugPublisher;
 
   std::unordered_map<const ORB_SLAM3::MapPoint*, Eigen::Vector3f> m_mapPointPositions;
