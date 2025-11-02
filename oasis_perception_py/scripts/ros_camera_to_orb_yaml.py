@@ -475,6 +475,10 @@ def build_yaml(
     lines.append(f"Camera1.fy: {format_float(params['fy'])}")
     lines.append(f"Camera1.cx: {format_float(params['cx'])}")
     lines.append(f"Camera1.cy: {format_float(params['cy'])}")
+    lines.append(f"Camera.fx: {format_float(params['fx'])}")
+    lines.append(f"Camera.fy: {format_float(params['fy'])}")
+    lines.append(f"Camera.cx: {format_float(params['cx'])}")
+    lines.append(f"Camera.cy: {format_float(params['cy'])}")
     lines.append("")
 
     if camera_type == "PinHole":
@@ -487,6 +491,12 @@ def build_yaml(
         k3_value = pinhole_params["k3"]
         if k3_value is not None:
             lines.append(f"Camera1.k3: {format_float(k3_value)}")
+        lines.append(f"Camera.k1: {format_float(pinhole_params['k1'])}")
+        lines.append(f"Camera.k2: {format_float(pinhole_params['k2'])}")
+        lines.append(f"Camera.p1: {format_float(pinhole_params['p1'])}")
+        lines.append(f"Camera.p2: {format_float(pinhole_params['p2'])}")
+        if k3_value is not None:
+            lines.append(f"Camera.k3: {format_float(k3_value)}")
         lines.append("")
     elif camera_type == "KannalaBrandt8":
         kannala_params = cast(KannalaBrandt8Params, params)
@@ -495,6 +505,10 @@ def build_yaml(
         lines.append(f"Camera1.k2: {format_float(kannala_params['k2'])}")
         lines.append(f"Camera1.k3: {format_float(kannala_params['k3'])}")
         lines.append(f"Camera1.k4: {format_float(kannala_params['k4'])}")
+        lines.append(f"Camera.k1: {format_float(kannala_params['k1'])}")
+        lines.append(f"Camera.k2: {format_float(kannala_params['k2'])}")
+        lines.append(f"Camera.k3: {format_float(kannala_params['k3'])}")
+        lines.append(f"Camera.k4: {format_float(kannala_params['k4'])}")
         lines.append("")
 
     lines.append("# Camera resolution")
