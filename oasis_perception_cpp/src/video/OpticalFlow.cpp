@@ -56,6 +56,7 @@ bool OpticalFlow::Initialize(rclcpp::Logger& logger,
   m_previousPoints.clear();
   m_points.clear();
   m_initialPoints.clear();
+  m_pointHistory.clear();
   m_previousMafd = 0.0f;
   m_sceneScore = 0.0f;
   m_hasSceneScore = false;
@@ -72,6 +73,12 @@ void OpticalFlow::Deinitialize()
   m_bgrFrameBuffer.release();
   m_currentGrayscaleBuffer.release();
   m_previousGrayscale.release();
+
+  m_pointHistory.clear();
+  m_points.clear();
+  m_initialPoints.clear();
+  m_previousPoints.clear();
+  m_hasPreviousFrame = false;
 }
 
 void OpticalFlow::SetConfig(const ConfigOptions& config)
@@ -115,6 +122,7 @@ bool OpticalFlow::ProcessImage(const cv::Mat& image)
   std::vector<cv::Point2f> currentPoints;
   std::vector<uint8_t> status;
   std::vector<float> errors;
+  bool resetPointHistory = false;
 
   float nextMafd = 0.0f;
   if (m_calculateSceneScores)
@@ -156,6 +164,7 @@ bool OpticalFlow::ProcessImage(const cv::Mat& image)
   {
     FindFeatures(currentGrayscale, currentPoints, status, errors);
     storeInitialPoints(currentPoints);
+    resetPointHistory = true;
   }
   else
   {
@@ -163,17 +172,38 @@ bool OpticalFlow::ProcessImage(const cv::Mat& image)
 
     std::vector<cv::Point2f> filteredPoints;
     filteredPoints.reserve(currentPoints.size());
+    std::vector<size_t> keptIndices;
+    keptIndices.reserve(currentPoints.size());
     for (size_t i = 0; i < currentPoints.size(); ++i)
     {
       if (i < status.size() && status[i])
+      {
         filteredPoints.emplace_back(currentPoints[i]);
+        keptIndices.emplace_back(i);
+      }
     }
     currentPoints = std::move(filteredPoints);
+
+    if (!keptIndices.empty() && keptIndices.size() < m_previousPoints.size())
+    {
+      for (auto& historyFrame : m_pointHistory)
+      {
+        std::vector<cv::Point2f> filteredFrame;
+        filteredFrame.reserve(keptIndices.size());
+        for (size_t index : keptIndices)
+        {
+          if (index < historyFrame.size())
+            filteredFrame.emplace_back(historyFrame[index]);
+        }
+        historyFrame.swap(filteredFrame);
+      }
+    }
 
     if (currentPoints.size() <= MIN_POINT_COUNT)
     {
       FindFeatures(currentGrayscale, currentPoints, status, errors);
       storeInitialPoints(currentPoints);
+      resetPointHistory = true;
     }
   }
 
@@ -187,6 +217,12 @@ bool OpticalFlow::ProcessImage(const cv::Mat& image)
       m_points.push_back(point.y);
     }
   }
+
+  if (resetPointHistory)
+    m_pointHistory.clear();
+
+  if (!currentPoints.empty())
+    m_pointHistory.emplace_back(currentPoints);
 
   currentGrayscale.copyTo(m_previousGrayscale);
   m_previousPoints = std::move(currentPoints);
@@ -209,6 +245,26 @@ size_t OpticalFlow::DrawPoints(cv::Mat& image, size_t maxPointCount) const
   }
 
   return trackedPointCount;
+}
+
+std::vector<std::vector<float>> OpticalFlow::GetPointHistoryFrames() const
+{
+  std::vector<std::vector<float>> serializedHistory;
+  serializedHistory.reserve(m_pointHistory.size());
+
+  for (const auto& frame : m_pointHistory)
+  {
+    std::vector<float> serializedFrame;
+    serializedFrame.reserve(frame.size() * 2);
+    for (const auto& point : frame)
+    {
+      serializedFrame.push_back(point.x);
+      serializedFrame.push_back(point.y);
+    }
+    serializedHistory.emplace_back(std::move(serializedFrame));
+  }
+
+  return serializedHistory;
 }
 
 void OpticalFlow::ConvertToGrayscale(const cv::Mat& in, cv::Mat& out)
@@ -250,10 +306,15 @@ void OpticalFlow::CalculateOpticalFlow(const cv::Mat& currentGrayscale,
     return;
   }
 
-  // Rebuild the point history with the latest set of tracked points
-  m_pointHistoryBuffer.clear();
-  m_pointHistoryBuffer.emplace_back(m_previousPoints);
+  if (m_pointHistory.empty())
+  {
+    m_pointHistory.emplace_back(m_previousPoints);
+  }
+  else
+  {
+    m_pointHistory.back() = m_previousPoints;
+  }
 
   m_visionGraph->CalcOpticalFlow(m_previousGrayscale, currentGrayscale, m_previousPoints,
-                                 m_pointHistoryBuffer, currentPoints, status, errors);
+                                 m_pointHistory, currentPoints, status, errors);
 }
