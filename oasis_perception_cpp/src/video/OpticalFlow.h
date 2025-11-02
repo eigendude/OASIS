@@ -51,7 +51,7 @@ public:
   /*!
    * \brief Deinitialize the motion tracker
    */
-  void Deinitialize() {}
+  void Deinitialize();
 
   void SetConfig(const ConfigOptions& config);
 

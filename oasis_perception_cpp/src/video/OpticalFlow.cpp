@@ -52,8 +52,6 @@ bool OpticalFlow::Initialize(rclcpp::Logger& logger,
   m_visionGraph->Compile(width, height, m_rgbaFrameBuffer, m_currentGrayscaleBuffer,
                          m_previousGrayscale);
 
-  //m_framePool.reset(new FramePool);
-
   m_hasPreviousFrame = false;
   m_previousPoints.clear();
   m_points.clear();
@@ -65,6 +63,15 @@ bool OpticalFlow::Initialize(rclcpp::Logger& logger,
   RCLCPP_INFO(logger, "Initialized optical flow with dimensions %u x %u", width, height);
 
   return true;
+}
+
+void OpticalFlow::Deinitialize()
+{
+  m_visionGraph.reset();
+
+  m_rgbaFrameBuffer.release();
+  m_currentGrayscaleBuffer.release();
+  m_previousGrayscale.release();
 }
 
 void OpticalFlow::SetConfig(const ConfigOptions& config)
