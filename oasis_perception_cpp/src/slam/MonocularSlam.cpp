@@ -153,8 +153,10 @@ void ApplyFisheyeEffect(cv::Mat& image)
     const float invCx = 1.0F / cx;
     const float invCy = 1.0F / cy;
 
-    constexpr float k1 = -0.6F;
-    constexpr float k2 = 0.3F;
+    // Use a gentle distortion profile so the fisheye effect remains noticeable
+    // without overpowering the underlying geometry.
+    constexpr float k1 = -0.35F;
+    constexpr float k2 = 0.12F;
 
     for (int y = 0; y < height; ++y)
     {
