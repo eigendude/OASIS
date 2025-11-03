@@ -365,10 +365,20 @@ void MonocularSlam::PublishMapVisualization(
 
   std::size_t validMapPointCount = pointsToRender.size();
   float maxDistance = 0.0F;
+  float minDistance = std::numeric_limits<float>::max();
   if (cameraValid)
   {
     for (const auto& renderPoint : pointsToRender)
-      maxDistance = std::max(maxDistance, (renderPoint.position - cameraPosition).norm());
+    {
+      const float distance = (renderPoint.position - cameraPosition).norm();
+      if (!std::isfinite(distance))
+        continue;
+
+      maxDistance = std::max(maxDistance, distance);
+      minDistance = std::min(minDistance, distance);
+    }
+    if (!(minDistance < maxDistance))
+      minDistance = 0.0F;
   }
 
   float minHeight = std::numeric_limits<float>::max();
@@ -452,10 +462,53 @@ void MonocularSlam::PublishMapVisualization(
         ++iterB;
       };
 
+      const bool useDepthColors = cameraValid && (minDistance < maxDistance);
+      const float distanceRange =
+          useDepthColors ? std::max(maxDistance - minDistance, 1e-3F) : 0.0F;
+
       for (const auto& renderPoint : pointsToRender)
       {
-        const float heightFactor =
-            std::clamp((renderPoint.position.y() - minHeight) / heightRange, 0.0F, 1.0F);
+        float redBase = 0.0F;
+        float greenBase = 0.0F;
+        float blueBase = 0.0F;
+
+        if (useDepthColors)
+        {
+          const float distance = (renderPoint.position - cameraPosition).norm();
+          if (std::isfinite(distance))
+          {
+            const float depthFactor =
+                std::clamp((distance - minDistance) / distanceRange, 0.0F, 1.0F);
+
+            const float nearRed = 255.0F;
+            const float nearGreen = 200.0F;
+            const float nearBlue = 64.0F;
+            const float farRed = 64.0F;
+            const float farGreen = 128.0F;
+            const float farBlue = 255.0F;
+
+            redBase = nearRed + depthFactor * (farRed - nearRed);
+            greenBase = nearGreen + depthFactor * (farGreen - nearGreen);
+            blueBase = nearBlue + depthFactor * (farBlue - nearBlue);
+          }
+          else
+          {
+            const float heightFactor =
+                std::clamp((renderPoint.position.y() - minHeight) / heightRange, 0.0F, 1.0F);
+            redBase = 45.0F + heightFactor * 205.0F;
+            greenBase = 80.0F + heightFactor * 140.0F;
+            blueBase = 210.0F - heightFactor * 150.0F;
+          }
+        }
+        else
+        {
+          const float heightFactor =
+              std::clamp((renderPoint.position.y() - minHeight) / heightRange, 0.0F, 1.0F);
+          redBase = 45.0F + heightFactor * 205.0F;
+          greenBase = 80.0F + heightFactor * 140.0F;
+          blueBase = 210.0F - heightFactor * 150.0F;
+        }
+
         const float trackedBoost = renderPoint.tracked ? 1.1F : 0.95F;
         const auto encodeChannel = [&](float base)
         {
@@ -463,9 +516,9 @@ void MonocularSlam::PublishMapVisualization(
           return static_cast<uint8_t>(std::clamp(value, 0L, 255L));
         };
 
-        const uint8_t red = encodeChannel(45.0F + heightFactor * 205.0F);
-        const uint8_t green = encodeChannel(80.0F + heightFactor * 140.0F);
-        const uint8_t blue = encodeChannel(210.0F - heightFactor * 150.0F);
+        const uint8_t red = encodeChannel(redBase);
+        const uint8_t green = encodeChannel(greenBase);
+        const uint8_t blue = encodeChannel(blueBase);
 
         addPoint(renderPoint.position, red, green, blue);
       }
