@@ -674,29 +674,68 @@ void MonocularSlam::PublishMapImage(const std_msgs::msg::Header& header,
       ++trackedVisibleCount;
   }
 
-  std::stable_sort(projectedPoints.begin(), projectedPoints.end(),
-                   [](const ProjectedPoint& lhs, const ProjectedPoint& rhs)
-                   { return lhs.depth > rhs.depth; });
+  // After we've built projectedPoints, compute robust depth range (5th-95th percentile)
+  std::vector<float> depths;
+  depths.reserve(projectedPoints.size());
+  for (const auto& p : projectedPoints)
+    depths.push_back(p.depth);
 
-  for (const ProjectedPoint& point : projectedPoints)
+  if (!depths.empty())
   {
-    Eigen::Vector3f color = ViridisPaletteSampler::Sample(1.0F - point.depthNormalized);
-    color *= point.depthFactor;
-    color *= point.tracked ? 1.1F : 0.95F;
-    color = color.cwiseMax(0.0F).cwiseMin(1.0F);
+    std::nth_element(depths.begin(), depths.begin() + depths.size() / 20, depths.end());
+    const float depthP05 = depths[depths.size() / 20];
 
-    const auto toChannel = [](float value)
+    std::nth_element(depths.begin(), depths.begin() + depths.size() * 19 / 20, depths.end());
+    const float depthP95 = depths[depths.size() * 19 / 20];
+
+    const float zMin = std::min(depthP05, depthP95);
+    const float zMax = std::max(depthP05, depthP95);
+    const float zSpan = std::max(zMax - zMin, 1e-3f);
+
+    // Depth-to-viridis with optional gamma for perceptual spread
+    auto depthToViridis = [&](float z) -> Eigen::Vector3f
     {
-      const long scaled = std::lround(std::clamp(value, 0.0F, 1.0F) * 255.0F);
-      return static_cast<int>(std::clamp(scaled, 0L, 255L));
+      float t = std::clamp((z - zMin) / zSpan, 0.0f, 1.0f);
+
+      // gamma < 1.0 boosts mid range; tweak to taste (0.8–0.9 is subtle)
+      constexpr float gamma = 0.9f;
+
+      t = std::pow(t, gamma); // comment out if you want strictly linear
+
+      // If you want near=yellow (as before), flip: t = 1.0f - t;
+      return ViridisPaletteSampler::Sample(t);
     };
 
-    cv::Scalar colorBgr(toChannel(color.z()), toChannel(color.y()), toChannel(color.x()));
+    // Sort back-to-front so farther points are drawn first (already in your code)
+    std::stable_sort(projectedPoints.begin(), projectedPoints.end(),
+                     [](const ProjectedPoint& a, const ProjectedPoint& b)
+                     { return a.depth > b.depth; });
 
-    const int radius =
-        std::clamp(static_cast<int>(std::round(2.0F + 6.0F * point.depthFactor)), 1, 8);
+    for (const ProjectedPoint& point : projectedPoints)
+    {
+      // 1) Use viridis WITHOUT multiplying by depthFactor (keeps color distribution even)
+      Eigen::Vector3f color = depthToViridis(point.depth);
 
-    cv::circle(mapImageBgr, point.pixel, radius, colorBgr, cv::FILLED, cv::LINE_AA);
+      // Optional tiny brightness tweak for tracked vs. untracked (keeps hue constant)
+      const float trackedBoost = point.tracked ? 1.06f : 1.00f;
+      color *= trackedBoost;
+      color = color.cwiseMax(0.0f).cwiseMin(1.0f);
+
+      const auto to8 = [](float v)
+      {
+        const long s = std::lround(std::clamp(v, 0.0f, 1.0f) * 255.0f);
+        return static_cast<int>(std::clamp(s, 0L, 255L));
+      };
+
+      // Viridis is in RGB order in your sampler; OpenCV draw expects BGR
+      cv::Scalar bgr(to8(color.z()), to8(color.y()), to8(color.x()));
+
+      // 2) Keep depthFactor ONLY for size (nice depth cue without washing colors)
+      const int radius =
+          std::clamp(static_cast<int>(std::round(2.0f + 6.0f * point.depthFactor)), 1, 8);
+
+      cv::circle(mapImageBgr, point.pixel, radius, bgr, cv::FILLED, cv::LINE_AA);
+    }
   }
 
   cv::line(mapImageBgr, cv::Point(IMAGE_WIDTH / 2, 0), cv::Point(IMAGE_WIDTH / 2, IMAGE_HEIGHT),
