@@ -163,25 +163,26 @@ void MonocularSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& 
       ++trackedMapPointCount;
   }
 
-  const Eigen::Vector3f& translation = cameraPose.translation();
-  const Eigen::Quaternionf& quaternion = cameraPose.unit_quaternion();
+  const Sophus::SE3f worldPose = cameraPose.inverse();
+  const Eigen::Vector3f cameraPosition = worldPose.translation();
+  const Eigen::Quaternionf cameraOrientation = worldPose.unit_quaternion();
 
   // clang-format off
   RCLCPP_INFO(*m_logger,
               "SLAM pose state=%d position=(%.3f, %.3f, %.3f) orientation=(%.4f, %.4f, %.4f, %.4f) tracked=%zu/%zu",
               trackingState,
-              translation.x(),
-              translation.y(),
-              translation.z(),
-              quaternion.w(),
-              quaternion.x(),
-              quaternion.y(),
-              quaternion.z(),
+              cameraPosition.x(),
+              cameraPosition.y(),
+              cameraPosition.z(),
+              cameraOrientation.w(),
+              cameraOrientation.x(),
+              cameraOrientation.y(),
+              cameraOrientation.z(),
               trackedMapPointCount,
               trackedKeyPoints.size());
   // clang-format on
 
-  PublishMapVisualization(header, trackedMapPoints, translation, quaternion);
+  PublishMapVisualization(header, trackedMapPoints, cameraPosition, cameraOrientation);
 }
 
 void MonocularSlam::PublishMapVisualization(
