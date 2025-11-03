@@ -528,7 +528,7 @@ void MonocularSlam::PublishMapVisualization(
             const float depthFactor =
                 std::clamp((distance - minDistance) / distanceRange, 0.0F, 1.0F);
 
-            color = ViridisPaletteSampler::Sample(1.0F - depthFactor);
+            color = ViridisPaletteSampler::Sample(depthFactor);
           }
           else
           {
