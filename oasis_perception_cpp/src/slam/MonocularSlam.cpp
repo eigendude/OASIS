@@ -125,6 +125,73 @@ bool ExtractMapPointPosition(const ORB_SLAM3::MapPoint* mapPoint, Eigen::Vector3
 
   return std::isfinite(position.x()) && std::isfinite(position.y()) && std::isfinite(position.z());
 }
+
+void ApplyFisheyeEffect(cv::Mat& image)
+{
+  if (image.empty())
+    return;
+
+  static cv::Mat mapX;
+  static cv::Mat mapY;
+  static cv::Size cachedSize;
+
+  const cv::Size imageSize = image.size();
+  if (cachedSize != imageSize)
+  {
+    cachedSize = imageSize;
+
+    mapX.create(imageSize, CV_32FC1);
+    mapY.create(imageSize, CV_32FC1);
+
+    const int width = image.cols;
+    const int height = image.rows;
+    if (width == 0 || height == 0)
+      return;
+
+    const float cx = 0.5F * static_cast<float>(width);
+    const float cy = 0.5F * static_cast<float>(height);
+    const float invCx = 1.0F / cx;
+    const float invCy = 1.0F / cy;
+
+    constexpr float k1 = -0.6F;
+    constexpr float k2 = 0.3F;
+
+    for (int y = 0; y < height; ++y)
+    {
+      float* mapXRow = mapX.ptr<float>(y);
+      float* mapYRow = mapY.ptr<float>(y);
+
+      const float ny = (static_cast<float>(y) - cy) * invCy;
+      for (int x = 0; x < width; ++x)
+      {
+        const float nx = (static_cast<float>(x) - cx) * invCx;
+        const float r2 = nx * nx + ny * ny;
+        const float r4 = r2 * r2;
+        const float distortion = 1.0F + k1 * r2 + k2 * r4;
+
+        const float srcX = cx + nx * distortion * cx;
+        const float srcY = cy + ny * distortion * cy;
+
+        if (srcX >= 0.0F && srcX < static_cast<float>(width) && srcY >= 0.0F &&
+            srcY < static_cast<float>(height))
+        {
+          mapXRow[x] = srcX;
+          mapYRow[x] = srcY;
+        }
+        else
+        {
+          mapXRow[x] = -1.0F;
+          mapYRow[x] = -1.0F;
+        }
+      }
+    }
+  }
+
+  cv::Mat distorted;
+  cv::remap(image, distorted, mapX, mapY, cv::INTER_LINEAR, cv::BORDER_CONSTANT,
+            cv::Scalar(0, 0, 0));
+  distorted.copyTo(image);
+}
 } // namespace
 
 MonocularSlam::MonocularSlam(rclcpp::Node& node,
@@ -780,6 +847,8 @@ void MonocularSlam::PublishMapImage(const std_msgs::msg::Header& header,
                             " | Tracked: " + std::to_string(trackedVisibleCount);
   cv::putText(mapImageBgr, overlayText, cv::Point(8, IMAGE_HEIGHT - 12), cv::FONT_HERSHEY_SIMPLEX,
               0.45, cv::Scalar(200, 200, 200), 1, cv::LINE_AA);
+
+  ApplyFisheyeEffect(mapImageBgr);
 
   cv::Mat mapImageRgb;
   cv::cvtColor(mapImageBgr, mapImageRgb, cv::COLOR_BGR2RGB);
