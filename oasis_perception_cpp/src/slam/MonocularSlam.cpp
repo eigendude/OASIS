@@ -56,7 +56,6 @@ bool ExtractMapPointPosition(const ORB_SLAM3::MapPoint* mapPoint, Eigen::Vector3
 
 MonocularSlam::MonocularSlam(rclcpp::Node& node,
                              const std::string& mapTopic,
-                             const std::string& debugTopic,
                              const std::string& mapImageTopic)
   : m_logger(std::make_unique<rclcpp::Logger>(node.get_logger()))
 {
@@ -89,23 +88,6 @@ MonocularSlam::MonocularSlam(rclcpp::Node& node,
       RCLCPP_ERROR(*m_logger, "Failed to create map image publisher '%s': %s",
                    mapImageTopic.c_str(), err.what());
       m_mapImagePublisher.reset();
-    }
-  }
-
-  if (!debugTopic.empty())
-  {
-    try
-    {
-      m_debugPublisher = std::make_unique<image_transport::Publisher>(
-          image_transport::create_publisher(&node, debugTopic));
-      RCLCPP_INFO(*m_logger, "Publishing SLAM debug visualization on topic: %s",
-                  debugTopic.c_str());
-    }
-    catch (const std::exception& err)
-    {
-      RCLCPP_ERROR(*m_logger, "Failed to create debug image publisher '%s': %s", debugTopic.c_str(),
-                   err.what());
-      m_debugPublisher.reset();
     }
   }
 }
@@ -167,25 +149,6 @@ void MonocularSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& 
                 rgbImage.type(), rgbImage.channels());
   }
 
-  if (m_debugPublisher && m_debugPublisher->getNumSubscribers() > 0)
-  {
-    cv::Mat debugImage = rgbImage.clone();
-
-    cv::Mat grayImage;
-    cv::cvtColor(rgbImage, grayImage, cv::COLOR_RGB2GRAY);
-
-    std::vector<cv::Point2f> corners;
-    constexpr int MAX_CORNERS = 500;
-    constexpr double QUALITY_LEVEL = 0.01;
-    constexpr double MIN_DISTANCE = 7.0;
-    cv::goodFeaturesToTrack(grayImage, corners, MAX_CORNERS, QUALITY_LEVEL, MIN_DISTANCE);
-
-    for (const cv::Point2f& corner : corners)
-      cv::circle(debugImage, corner, 3, cv::Scalar(0, 255, 0), cv::FILLED);
-
-    PublishDebugImage(header, debugImage);
-  }
-
   // Pass the image to the SLAM system
   const Sophus::SE3f cameraPose = m_slam->TrackMonocular(rgbImage, timestamp);
 
@@ -219,20 +182,6 @@ void MonocularSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& 
   // clang-format on
 
   PublishMapVisualization(header, trackedMapPoints, translation, quaternion);
-}
-
-void MonocularSlam::PublishDebugImage(const std_msgs::msg::Header& header,
-                                      const cv::Mat& debugImage)
-{
-  if (!m_debugPublisher)
-    return;
-
-  cv_bridge::CvImage cvImage;
-  cvImage.header = header;
-  cvImage.encoding = sensor_msgs::image_encodings::RGB8;
-  cvImage.image = debugImage;
-
-  m_debugPublisher->publish(cvImage.toImageMsg());
 }
 
 void MonocularSlam::PublishMapVisualization(

@@ -271,7 +271,6 @@ class PerceptionDescriptions:
                                 else f"{system_id}/image_raw"
                             ),
                         ),
-                        (f"{system_id}_slam_debug", f"{system_id}/slam_debug"),
                         (f"{system_id}_slam_map", f"{system_id}/slam_map"),
                         (f"{system_id}_slam_map_image", f"{system_id}/slam_map_image"),
                     ],

@@ -52,7 +52,6 @@ class MonocularSlam
 public:
   MonocularSlam(rclcpp::Node& node,
                 const std::string& mapTopic,
-                const std::string& debugTopic = "",
                 const std::string& mapImageTopic = "");
   ~MonocularSlam();
 
@@ -68,7 +67,6 @@ private:
                                const std::vector<ORB_SLAM3::MapPoint*>& trackedMapPoints,
                                const Eigen::Vector3f& cameraPosition,
                                const Eigen::Quaternionf& cameraOrientation);
-  void PublishDebugImage(const std_msgs::msg::Header& header, const cv::Mat& debugImage);
   struct MapPointRenderInfo
   {
     Eigen::Vector3f position = Eigen::Vector3f::Zero();
@@ -84,7 +82,6 @@ private:
   std::unique_ptr<rclcpp::Logger> m_logger;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr m_mapPublisher;
   std::unique_ptr<image_transport::Publisher> m_mapImagePublisher;
-  std::unique_ptr<image_transport::Publisher> m_debugPublisher;
 
   std::unordered_map<const ORB_SLAM3::MapPoint*, Eigen::Vector3f> m_mapPointPositions;
 
