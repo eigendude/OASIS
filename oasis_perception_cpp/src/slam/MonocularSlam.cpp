@@ -41,6 +41,30 @@ using namespace SLAM;
 
 namespace
 {
+struct DepthEMA
+{
+  float zMin = 0.0F;
+  float zMax = 1.0F;
+  bool init = false;
+
+  void update(float newMin, float newMax, float alpha = 0.1F)
+  {
+    if (!init)
+    {
+      zMin = newMin;
+      zMax = newMax;
+      init = true;
+      return;
+    }
+
+    zMin = alpha * newMin + (1.0F - alpha) * zMin;
+    zMax = alpha * newMax + (1.0F - alpha) * zMax;
+
+    if (!(zMin < zMax))
+      zMax = zMin + 1e-3F;
+  }
+};
+
 class ViridisPaletteSampler
 {
 public:
@@ -688,14 +712,16 @@ void MonocularSlam::PublishMapImage(const std_msgs::msg::Header& header,
     std::nth_element(depths.begin(), depths.begin() + depths.size() * 19 / 20, depths.end());
     const float depthP95 = depths[depths.size() * 19 / 20];
 
-    const float zMin = std::min(depthP05, depthP95);
-    const float zMax = std::max(depthP05, depthP95);
-    const float zSpan = std::max(zMax - zMin, 1e-3f);
+    static DepthEMA depthEma;
+    depthEma.update(std::min(depthP05, depthP95), std::max(depthP05, depthP95));
+    const float zMin = depthEma.zMin;
+    const float zMax = depthEma.zMax;
+    const float zSpan = std::max(zMax - zMin, 1e-3F);
 
     // Depth-to-viridis with optional gamma for perceptual spread
     auto depthToViridis = [&](float z) -> Eigen::Vector3f
     {
-      float t = std::clamp((z - zMin) / zSpan, 0.0f, 1.0f);
+      float t = std::clamp((z - zMin) / zSpan, 0.0F, 1.0F);
 
       // gamma < 1.0 boosts mid range; tweak to taste (0.8–0.9 is subtle)
       constexpr float gamma = 0.9f;
@@ -734,8 +760,10 @@ void MonocularSlam::PublishMapImage(const std_msgs::msg::Header& header,
       cv::Scalar bgr(to8(color.z()), to8(color.y()), to8(color.x()));
 
       // 2) Keep depthFactor ONLY for size (nice depth cue without washing colors)
-      const int radius =
-          std::clamp(static_cast<int>(std::round(2.0f + 6.0f * point.depthFactor)), 1, 8);
+      float pxSize = (2.0F * fx) / std::max(point.depth, 1e-3F);
+      pxSize *= 0.8F + 0.4F * point.depthFactor;
+      pxSize = std::clamp(pxSize, 2.0F, 14.0F);
+      const int radius = std::clamp(static_cast<int>(std::round(0.5F * pxSize)), 1, 8);
 
       cv::circle(mapImageBgr, point.pixel, radius, bgr, cv::FILLED, cv::LINE_AA);
     }
