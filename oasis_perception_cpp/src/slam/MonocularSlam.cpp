@@ -321,7 +321,8 @@ void MonocularSlam::PublishMapVisualization(
   if (!publishPointCloud && !publishMapImage)
     return;
 
-  std::unordered_set<const ORB_SLAM3::MapPoint*> trackedPointSet;
+  static thread_local std::unordered_set<const ORB_SLAM3::MapPoint*> trackedPointSet;
+  trackedPointSet.clear();
   trackedPointSet.reserve(trackedMapPoints.size());
 
   for (const ORB_SLAM3::MapPoint* mapPoint : trackedMapPoints)
@@ -356,7 +357,8 @@ void MonocularSlam::PublishMapVisualization(
   const bool cameraValid = std::isfinite(cameraPosition.x()) && std::isfinite(cameraPosition.y()) &&
                            std::isfinite(cameraPosition.z());
 
-  std::vector<MapPointRenderInfo> renderPoints;
+  static thread_local std::vector<MapPointRenderInfo> renderPoints;
+  renderPoints.clear();
   renderPoints.reserve(m_mapPointPositions.size());
 
   for (const auto& entry : m_mapPointPositions)
@@ -399,7 +401,8 @@ void MonocularSlam::PublishMapVisualization(
     std::size_t trackedCount = 0;
   };
 
-  std::unordered_map<VoxelKey, VoxelAggregate, VoxelKeyHasher> voxelizedPoints;
+  static thread_local std::unordered_map<VoxelKey, VoxelAggregate, VoxelKeyHasher> voxelizedPoints;
+  voxelizedPoints.clear();
   voxelizedPoints.reserve(renderPoints.size());
 
   constexpr float VOXEL_SIZE_METERS = 0.08F;
@@ -422,7 +425,8 @@ void MonocularSlam::PublishMapVisualization(
       ++aggregate.trackedCount;
   }
 
-  std::vector<MapPointRenderInfo> aggregatedPoints;
+  static thread_local std::vector<MapPointRenderInfo> aggregatedPoints;
+  aggregatedPoints.clear();
   aggregatedPoints.reserve(voxelizedPoints.size());
   for (const auto& entry : voxelizedPoints)
   {
@@ -649,11 +653,11 @@ void MonocularSlam::PublishMapImage(const std_msgs::msg::Header& header,
     cv::Point pixel;
     float depth = 0.0F;
     float depthFactor = 0.0F;
-    float depthNormalized = 0.0F;
     bool tracked = false;
   };
 
-  std::vector<ProjectedPoint> projectedPoints;
+  static thread_local std::vector<ProjectedPoint> projectedPoints;
+  projectedPoints.clear();
   projectedPoints.reserve(renderPoints.size());
   std::size_t visibleCount = 0;
   std::size_t trackedVisibleCount = 0;
@@ -689,7 +693,6 @@ void MonocularSlam::PublishMapImage(const std_msgs::msg::Header& header,
         cv::Point{static_cast<int>(std::round(u)), static_cast<int>(std::round(v))},
         cameraSpace.z(),
         depthFactor,
-        depthNormalized,
         point.tracked,
     });
 
@@ -699,7 +702,8 @@ void MonocularSlam::PublishMapImage(const std_msgs::msg::Header& header,
   }
 
   // After we've built projectedPoints, compute robust depth range (5th-95th percentile)
-  std::vector<float> depths;
+  static thread_local std::vector<float> depths;
+  depths.clear();
   depths.reserve(projectedPoints.size());
   for (const auto& p : projectedPoints)
     depths.push_back(p.depth);
@@ -736,9 +740,12 @@ void MonocularSlam::PublishMapImage(const std_msgs::msg::Header& header,
     };
 
     // Sort back-to-front so farther points are drawn first (already in your code)
-    std::stable_sort(projectedPoints.begin(), projectedPoints.end(),
-                     [](const ProjectedPoint& a, const ProjectedPoint& b)
-                     { return a.depth > b.depth; });
+    if (projectedPoints.size() > 1)
+    {
+      std::sort(projectedPoints.begin(), projectedPoints.end(),
+                [](const ProjectedPoint& a, const ProjectedPoint& b)
+                { return a.depth > b.depth; });
+    }
 
     for (const ProjectedPoint& point : projectedPoints)
     {
@@ -781,13 +788,10 @@ void MonocularSlam::PublishMapImage(const std_msgs::msg::Header& header,
   cv::putText(mapImageBgr, overlayText, cv::Point(8, IMAGE_HEIGHT - 12), cv::FONT_HERSHEY_SIMPLEX,
               0.45, cv::Scalar(200, 200, 200), 1, cv::LINE_AA);
 
-  cv::Mat mapImageRgb;
-  cv::cvtColor(mapImageBgr, mapImageRgb, cv::COLOR_BGR2RGB);
-
   cv_bridge::CvImage cvImage;
   cvImage.header = header;
-  cvImage.encoding = sensor_msgs::image_encodings::RGB8;
-  cvImage.image = mapImageRgb;
+  cvImage.encoding = sensor_msgs::image_encodings::BGR8;
+  cvImage.image = mapImageBgr;
 
   m_mapImagePublisher->publish(cvImage.toImageMsg());
 }
