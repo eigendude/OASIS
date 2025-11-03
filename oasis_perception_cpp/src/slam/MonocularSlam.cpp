@@ -763,7 +763,10 @@ void MonocularSlam::PublishMapImage(const std_msgs::msg::Header& header,
     const int gridHeight = (IMAGE_HEIGHT + GRID_CELL_SIZE - 1) / GRID_CELL_SIZE;
     std::vector<uint8_t> occupied(gridWidth * gridHeight, 0);
 
-    // Iterate from nearest to farthest so the occupied-grid keeps the closest sample.
+    // Iterate from nearest to farthest so the thinning keeps the closest sample per cell.
+    std::vector<const ProjectedPoint*> thinnedPoints;
+    thinnedPoints.reserve(projectedPoints.size());
+
     for (auto it = projectedPoints.rbegin(); it != projectedPoints.rend(); ++it)
     {
       const ProjectedPoint& point = *it;
@@ -777,6 +780,16 @@ void MonocularSlam::PublishMapImage(const std_msgs::msg::Header& header,
         continue;
 
       occupied[cellIdx] = 1;
+      thinnedPoints.push_back(&point);
+    }
+
+    // Render back-to-front so nearer points naturally overdraw the far ones that remain.
+    for (auto it = thinnedPoints.rbegin(); it != thinnedPoints.rend(); ++it)
+    {
+      const ProjectedPoint& point = **it;
+
+      const int pixelX = std::clamp(point.pixel.x, 0, IMAGE_WIDTH - 1);
+      const int pixelY = std::clamp(point.pixel.y, 0, IMAGE_HEIGHT - 1);
 
       // 1) Use viridis WITHOUT multiplying by depthFactor (keeps color distribution even)
       Eigen::Vector3f color = depthToViridis(point.depth);
