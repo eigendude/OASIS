@@ -702,6 +702,9 @@ void MonocularSlam::PublishMapImage(const std_msgs::msg::Header& header,
 
       t = std::pow(t, gamma); // comment out if you want strictly linear
 
+      // Invert the palette direction
+      t = 1.0f - t;
+
       // If you want near=yellow (as before), flip: t = 1.0f - t;
       return ViridisPaletteSampler::Sample(t);
     };
