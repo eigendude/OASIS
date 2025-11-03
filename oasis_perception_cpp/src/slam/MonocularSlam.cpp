@@ -11,6 +11,7 @@
 #include "ros/RosUtils.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -40,6 +41,54 @@ using namespace SLAM;
 
 namespace
 {
+class ViridisPaletteSampler
+{
+public:
+  static Eigen::Vector3f Sample(float t)
+  {
+    t = std::clamp(t, 0.0F, 1.0F);
+
+    const auto& samples = GetSamples();
+    for (std::size_t index = 1; index < samples.size(); ++index)
+    {
+      const ViridisSample& prev = samples[index - 1];
+      const ViridisSample& next = samples[index];
+      if (t <= next.position)
+      {
+        const float span =
+            std::max(next.position - prev.position, std::numeric_limits<float>::epsilon());
+        const float alpha = std::clamp((t - prev.position) / span, 0.0F, 1.0F);
+        return prev.color + alpha * (next.color - prev.color);
+      }
+    }
+
+    return samples.back().color;
+  }
+
+private:
+  struct ViridisSample
+  {
+    float position = 0.0F;
+    Eigen::Vector3f color = Eigen::Vector3f::Zero();
+  };
+
+  static const std::array<ViridisSample, 8>& GetSamples()
+  {
+    static const std::array<ViridisSample, 8> samples = {
+        ViridisSample{0.0F, Eigen::Vector3f(0.267004F, 0.004874F, 0.329415F)},
+        ViridisSample{0.125F, Eigen::Vector3f(0.282327F, 0.094955F, 0.417331F)},
+        ViridisSample{0.25F, Eigen::Vector3f(0.252899F, 0.358853F, 0.594714F)},
+        ViridisSample{0.375F, Eigen::Vector3f(0.211718F, 0.553018F, 0.751428F)},
+        ViridisSample{0.5F, Eigen::Vector3f(0.164924F, 0.7173F, 0.607793F)},
+        ViridisSample{0.625F, Eigen::Vector3f(0.134692F, 0.827384F, 0.467008F)},
+        ViridisSample{0.75F, Eigen::Vector3f(0.369214F, 0.892281F, 0.273006F)},
+        ViridisSample{1.0F, Eigen::Vector3f(0.993248F, 0.906157F, 0.143936F)},
+    };
+
+    return samples;
+  }
+};
+
 bool ExtractMapPointPosition(const ORB_SLAM3::MapPoint* mapPoint, Eigen::Vector3f& position)
 {
   if (mapPoint == nullptr)
@@ -469,9 +518,7 @@ void MonocularSlam::PublishMapVisualization(
 
       for (const auto& renderPoint : pointsToRender)
       {
-        float redBase = 0.0F;
-        float greenBase = 0.0F;
-        float blueBase = 0.0F;
+        Eigen::Vector3f color = Eigen::Vector3f::Zero();
 
         if (useDepthColors)
         {
@@ -481,45 +528,36 @@ void MonocularSlam::PublishMapVisualization(
             const float depthFactor =
                 std::clamp((distance - minDistance) / distanceRange, 0.0F, 1.0F);
 
-            const float nearRed = 255.0F;
-            const float nearGreen = 200.0F;
-            const float nearBlue = 64.0F;
-            const float farRed = 64.0F;
-            const float farGreen = 128.0F;
-            const float farBlue = 255.0F;
-
-            redBase = nearRed + depthFactor * (farRed - nearRed);
-            greenBase = nearGreen + depthFactor * (farGreen - nearGreen);
-            blueBase = nearBlue + depthFactor * (farBlue - nearBlue);
+            color = ViridisPaletteSampler::Sample(1.0F - depthFactor);
           }
           else
           {
             const float heightFactor =
                 std::clamp((renderPoint.position.y() - minHeight) / heightRange, 0.0F, 1.0F);
-            redBase = 45.0F + heightFactor * 205.0F;
-            greenBase = 80.0F + heightFactor * 140.0F;
-            blueBase = 210.0F - heightFactor * 150.0F;
+            color = Eigen::Vector3f((45.0F + heightFactor * 205.0F) / 255.0F,
+                                    (80.0F + heightFactor * 140.0F) / 255.0F,
+                                    (210.0F - heightFactor * 150.0F) / 255.0F);
           }
         }
         else
         {
           const float heightFactor =
               std::clamp((renderPoint.position.y() - minHeight) / heightRange, 0.0F, 1.0F);
-          redBase = 45.0F + heightFactor * 205.0F;
-          greenBase = 80.0F + heightFactor * 140.0F;
-          blueBase = 210.0F - heightFactor * 150.0F;
+          color = Eigen::Vector3f((45.0F + heightFactor * 205.0F) / 255.0F,
+                                  (80.0F + heightFactor * 140.0F) / 255.0F,
+                                  (210.0F - heightFactor * 150.0F) / 255.0F);
         }
 
         const float trackedBoost = renderPoint.tracked ? 1.1F : 0.95F;
         const auto encodeChannel = [&](float base)
         {
-          const long value = std::lround(std::clamp(base * trackedBoost, 0.0F, 255.0F));
+          const long value = std::lround(std::clamp(base * trackedBoost, 0.0F, 1.0F) * 255.0F);
           return static_cast<uint8_t>(std::clamp(value, 0L, 255L));
         };
 
-        const uint8_t red = encodeChannel(redBase);
-        const uint8_t green = encodeChannel(greenBase);
-        const uint8_t blue = encodeChannel(blueBase);
+        const uint8_t red = encodeChannel(color.x());
+        const uint8_t green = encodeChannel(color.y());
+        const uint8_t blue = encodeChannel(color.z());
 
         addPoint(renderPoint.position, red, green, blue);
       }
@@ -587,6 +625,7 @@ void MonocularSlam::PublishMapImage(const std_msgs::msg::Header& header,
     cv::Point pixel;
     float depth = 0.0F;
     float depthFactor = 0.0F;
+    float depthNormalized = 0.0F;
     bool tracked = false;
   };
 
@@ -617,13 +656,16 @@ void MonocularSlam::PublishMapImage(const std_msgs::msg::Header& header,
       continue;
 
     const float clampedDepth = std::min(farPlane, cameraSpace.z());
-    float depthFactor = 1.0F - (clampedDepth - NEAR_PLANE) / (farPlane - NEAR_PLANE);
+    const float depthNormalized =
+        std::clamp((clampedDepth - NEAR_PLANE) / (farPlane - NEAR_PLANE), 0.0F, 1.0F);
+    float depthFactor = 1.0F - depthNormalized;
     depthFactor = std::clamp(depthFactor, 0.1F, 1.0F);
 
     projectedPoints.push_back({
         cv::Point{static_cast<int>(std::round(u)), static_cast<int>(std::round(v))},
         cameraSpace.z(),
         depthFactor,
+        depthNormalized,
         point.tracked,
     });
 
@@ -638,10 +680,18 @@ void MonocularSlam::PublishMapImage(const std_msgs::msg::Header& header,
 
   for (const ProjectedPoint& point : projectedPoints)
   {
-    cv::Scalar colorBgr = point.tracked ? cv::Scalar(0, 255, 255) : cv::Scalar(64, 64, 255);
-    colorBgr[0] = std::clamp(static_cast<int>(colorBgr[0] * point.depthFactor), 0, 255);
-    colorBgr[1] = std::clamp(static_cast<int>(colorBgr[1] * point.depthFactor), 0, 255);
-    colorBgr[2] = std::clamp(static_cast<int>(colorBgr[2] * point.depthFactor), 0, 255);
+    Eigen::Vector3f color = ViridisPaletteSampler::Sample(1.0F - point.depthNormalized);
+    color *= point.depthFactor;
+    color *= point.tracked ? 1.1F : 0.95F;
+    color = color.cwiseMax(0.0F).cwiseMin(1.0F);
+
+    const auto toChannel = [](float value)
+    {
+      const long scaled = std::lround(std::clamp(value, 0.0F, 1.0F) * 255.0F);
+      return static_cast<int>(std::clamp(scaled, 0L, 255L));
+    };
+
+    cv::Scalar colorBgr(toChannel(color.z()), toChannel(color.y()), toChannel(color.x()));
 
     const int radius =
         std::clamp(static_cast<int>(std::round(2.0F + 6.0F * point.depthFactor)), 1, 8);
