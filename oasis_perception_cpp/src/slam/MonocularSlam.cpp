@@ -17,6 +17,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -284,8 +285,6 @@ void MonocularSlam::PublishMapVisualization(
   std::vector<MapPointRenderInfo> renderPoints;
   renderPoints.reserve(m_mapPointPositions.size());
 
-  std::size_t validMapPointCount = 0;
-  float maxDistance = 0.0F;
   for (const auto& entry : m_mapPointPositions)
   {
     const Eigen::Vector3f& position = entry.second;
@@ -296,11 +295,93 @@ void MonocularSlam::PublishMapVisualization(
     const bool isTracked = trackedPointSet.find(entry.first) != trackedPointSet.end();
 
     renderPoints.push_back({position, isTracked});
+  }
 
-    ++validMapPointCount;
+  struct VoxelKey
+  {
+    int x = 0;
+    int y = 0;
+    int z = 0;
 
-    if (cameraValid)
-      maxDistance = std::max(maxDistance, (position - cameraPosition).norm());
+    bool operator==(const VoxelKey&) const = default;
+  };
+
+  struct VoxelKeyHasher
+  {
+    std::size_t operator()(const VoxelKey& key) const noexcept
+    {
+      constexpr std::size_t PRIME1 = 73856093U;
+      constexpr std::size_t PRIME2 = 19349663U;
+      constexpr std::size_t PRIME3 = 83492791U;
+      return static_cast<std::size_t>(key.x) * PRIME1 ^ static_cast<std::size_t>(key.y) * PRIME2 ^
+             static_cast<std::size_t>(key.z) * PRIME3;
+    }
+  };
+
+  struct VoxelAggregate
+  {
+    Eigen::Vector3f sum = Eigen::Vector3f::Zero();
+    std::size_t count = 0;
+    std::size_t trackedCount = 0;
+  };
+
+  std::unordered_map<VoxelKey, VoxelAggregate, VoxelKeyHasher> voxelizedPoints;
+  voxelizedPoints.reserve(renderPoints.size());
+
+  constexpr float VOXEL_SIZE_METERS = 0.08F;
+  const float invVoxelSize = 1.0F / VOXEL_SIZE_METERS;
+
+  const auto voxelize = [&](const Eigen::Vector3f& position)
+  {
+    return VoxelKey{static_cast<int>(std::floor(position.x() * invVoxelSize)),
+                    static_cast<int>(std::floor(position.y() * invVoxelSize)),
+                    static_cast<int>(std::floor(position.z() * invVoxelSize))};
+  };
+
+  for (const MapPointRenderInfo& renderPoint : renderPoints)
+  {
+    const VoxelKey key = voxelize(renderPoint.position);
+    VoxelAggregate& aggregate = voxelizedPoints[key];
+    aggregate.sum += renderPoint.position;
+    ++aggregate.count;
+    if (renderPoint.tracked)
+      ++aggregate.trackedCount;
+  }
+
+  std::vector<MapPointRenderInfo> aggregatedPoints;
+  aggregatedPoints.reserve(voxelizedPoints.size());
+  for (const auto& entry : voxelizedPoints)
+  {
+    const VoxelAggregate& aggregate = entry.second;
+    if (aggregate.count == 0)
+      continue;
+
+    const Eigen::Vector3f averaged = aggregate.sum / static_cast<float>(aggregate.count);
+    aggregatedPoints.push_back({averaged, aggregate.trackedCount > 0});
+  }
+
+  const std::vector<MapPointRenderInfo>& pointsToRender =
+      aggregatedPoints.empty() ? renderPoints : aggregatedPoints;
+
+  std::size_t validMapPointCount = pointsToRender.size();
+  float maxDistance = 0.0F;
+  if (cameraValid)
+  {
+    for (const auto& renderPoint : pointsToRender)
+      maxDistance = std::max(maxDistance, (renderPoint.position - cameraPosition).norm());
+  }
+
+  float minHeight = std::numeric_limits<float>::max();
+  float maxHeight = std::numeric_limits<float>::lowest();
+  for (const auto& renderPoint : pointsToRender)
+  {
+    minHeight = std::min(minHeight, renderPoint.position.y());
+    maxHeight = std::max(maxHeight, renderPoint.position.y());
+  }
+  if (!(minHeight < maxHeight))
+  {
+    minHeight = -1.0F;
+    maxHeight = 1.0F;
   }
 
   bool arrowValid = false;
@@ -323,6 +404,8 @@ void MonocularSlam::PublishMapVisualization(
       }
     }
   }
+
+  const float heightRange = std::max(maxHeight - minHeight, 1e-3F);
 
   if (publishPointCloud)
   {
@@ -369,12 +452,22 @@ void MonocularSlam::PublishMapVisualization(
         ++iterB;
       };
 
-      for (const auto& renderPoint : renderPoints)
+      for (const auto& renderPoint : pointsToRender)
       {
-        if (renderPoint.tracked)
-          addPoint(renderPoint.position, 255, 255, 0);
-        else
-          addPoint(renderPoint.position, 255, 64, 64);
+        const float heightFactor =
+            std::clamp((renderPoint.position.y() - minHeight) / heightRange, 0.0F, 1.0F);
+        const float trackedBoost = renderPoint.tracked ? 1.1F : 0.95F;
+        const auto encodeChannel = [&](float base)
+        {
+          const long value = std::lround(std::clamp(base * trackedBoost, 0.0F, 255.0F));
+          return static_cast<uint8_t>(std::clamp(value, 0L, 255L));
+        };
+
+        const uint8_t red = encodeChannel(45.0F + heightFactor * 205.0F);
+        const uint8_t green = encodeChannel(80.0F + heightFactor * 140.0F);
+        const uint8_t blue = encodeChannel(210.0F - heightFactor * 150.0F);
+
+        addPoint(renderPoint.position, red, green, blue);
       }
 
       if (cameraValid)
@@ -390,7 +483,7 @@ void MonocularSlam::PublishMapVisualization(
   }
 
   if (publishMapImage)
-    PublishMapImage(header, renderPoints, cameraPosition, cameraOrientation, maxDistance);
+    PublishMapImage(header, pointsToRender, cameraPosition, cameraOrientation, maxDistance);
 }
 
 void MonocularSlam::PublishMapImage(const std_msgs::msg::Header& header,
