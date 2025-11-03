@@ -14,7 +14,10 @@
 #include <vector>
 
 #include <Eigen/Geometry>
+#include <rclcpp/clock.hpp>
+#include <rclcpp/duration.hpp>
 #include <rclcpp/publisher.hpp>
+#include <rclcpp/time.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <std_msgs/msg/header.hpp>
@@ -82,6 +85,7 @@ private:
 
   // ROS parameters
   std::unique_ptr<rclcpp::Logger> m_logger;
+  rclcpp::Clock::SharedPtr m_clock;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr m_mapPublisher;
   std::unique_ptr<image_transport::Publisher> m_mapImagePublisher;
   std::unique_ptr<image_transport::Publisher> m_debugPublisher;
@@ -90,6 +94,11 @@ private:
 
   // ORB-SLAM3 system
   std::unique_ptr<ORB_SLAM3::System> m_slam;
+
+  // Publishing throttling
+  bool m_haveLastMapPublishTime = false;
+  rclcpp::Time m_lastMapPublishTime;
+  rclcpp::Duration m_mapPublishPeriod;
 };
 
 } // namespace SLAM

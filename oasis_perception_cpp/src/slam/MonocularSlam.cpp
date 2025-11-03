@@ -107,7 +107,9 @@ MonocularSlam::MonocularSlam(rclcpp::Node& node,
                              const std::string& mapTopic,
                              const std::string& debugTopic,
                              const std::string& mapImageTopic)
-  : m_logger(std::make_unique<rclcpp::Logger>(node.get_logger()))
+  : m_logger(std::make_unique<rclcpp::Logger>(node.get_logger())),
+    m_clock(node.get_clock()),
+    m_mapPublishPeriod(rclcpp::Duration::from_seconds(0.2))
 {
   if (!mapTopic.empty())
   {
@@ -196,10 +198,17 @@ void MonocularSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& 
   const std_msgs::msg::Header& header = msg->header;
   const double timestamp = ROS::RosUtils::HeaderStampToSeconds(header);
 
-  cv_bridge::CvImagePtr cv_ptr;
+  cv_bridge::CvImageConstPtr cv_ptr;
   try
   {
-    cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::RGB8);
+    if (msg->encoding == sensor_msgs::image_encodings::RGB8)
+    {
+      cv_ptr = cv_bridge::toCvShare(msg, sensor_msgs::image_encodings::RGB8);
+    }
+    else
+    {
+      cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::RGB8);
+    }
   }
   catch (cv_bridge::Exception& e)
   {
@@ -254,21 +263,61 @@ void MonocularSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& 
   const Eigen::Quaternionf cameraOrientation = worldPose.unit_quaternion();
 
   // clang-format off
-  RCLCPP_INFO(*m_logger,
-              "SLAM pose state=%d position=(%.3f, %.3f, %.3f) orientation=(%.4f, %.4f, %.4f, %.4f) tracked=%zu/%zu",
-              trackingState,
-              cameraPosition.x(),
-              cameraPosition.y(),
-              cameraPosition.z(),
-              cameraOrientation.w(),
-              cameraOrientation.x(),
-              cameraOrientation.y(),
-              cameraOrientation.z(),
-              trackedMapPointCount,
-              trackedKeyPoints.size());
+  if (m_clock)
+  {
+    RCLCPP_INFO_THROTTLE(*m_logger,
+                         *m_clock,
+                         1000,
+                         "SLAM pose state=%d position=(%.3f, %.3f, %.3f) orientation=(%.4f, %.4f, %.4f, %.4f) tracked=%zu/%zu",
+                         trackingState,
+                         cameraPosition.x(),
+                         cameraPosition.y(),
+                         cameraPosition.z(),
+                         cameraOrientation.w(),
+                         cameraOrientation.x(),
+                         cameraOrientation.y(),
+                         cameraOrientation.z(),
+                         trackedMapPointCount,
+                         trackedKeyPoints.size());
+  }
+  else
+  {
+    RCLCPP_INFO(*m_logger,
+                "SLAM pose state=%d position=(%.3f, %.3f, %.3f) orientation=(%.4f, %.4f, %.4f, %.4f) tracked=%zu/%zu",
+                trackingState,
+                cameraPosition.x(),
+                cameraPosition.y(),
+                cameraPosition.z(),
+                cameraOrientation.w(),
+                cameraOrientation.x(),
+                cameraOrientation.y(),
+                cameraOrientation.z(),
+                trackedMapPointCount,
+                trackedKeyPoints.size());
+  }
   // clang-format on
 
-  PublishMapVisualization(header, trackedMapPoints, cameraPosition, cameraOrientation);
+  bool shouldPublishMap = true;
+  if (m_mapPublisher == nullptr &&
+      (!m_mapImagePublisher || m_mapImagePublisher->getNumSubscribers() == 0))
+  {
+    shouldPublishMap = false;
+  }
+
+  if (shouldPublishMap && m_clock)
+  {
+    const rclcpp::Time now = m_clock->now();
+    if (!m_haveLastMapPublishTime || now - m_lastMapPublishTime >= m_mapPublishPeriod)
+    {
+      m_lastMapPublishTime = now;
+      m_haveLastMapPublishTime = true;
+      PublishMapVisualization(header, trackedMapPoints, cameraPosition, cameraOrientation);
+    }
+  }
+  else if (shouldPublishMap)
+  {
+    PublishMapVisualization(header, trackedMapPoints, cameraPosition, cameraOrientation);
+  }
 }
 
 void MonocularSlam::PublishDebugImage(const std_msgs::msg::Header& header,
