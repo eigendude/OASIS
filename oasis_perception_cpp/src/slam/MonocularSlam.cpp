@@ -760,12 +760,10 @@ void MonocularSlam::PublishMapImage(const std_msgs::msg::Header& header,
 
     for (const ProjectedPoint& point : projectedPoints)
     {
-      // 1) Use viridis WITHOUT multiplying by depthFactor (keeps color distribution even)
-      Eigen::Vector3f color = depthToViridis(point.depth);
+      // Render tracked points as bright white so they stand out as key features.
+      Eigen::Vector3f color = point.tracked ? Eigen::Vector3f::Ones()
+                                            : depthToViridis(point.depth);
 
-      // Optional tiny brightness tweak for tracked vs. untracked (keeps hue constant)
-      const float trackedBoost = point.tracked ? 1.06f : 1.00f;
-      color *= trackedBoost;
       color = color.cwiseMax(0.0f).cwiseMin(1.0f);
 
       const auto to8 = [](float v)
@@ -777,7 +775,7 @@ void MonocularSlam::PublishMapImage(const std_msgs::msg::Header& header,
       // Viridis is in RGB order in your sampler; OpenCV draw expects BGR
       cv::Scalar bgr(to8(color.z()), to8(color.y()), to8(color.x()));
 
-      // 2) Keep depthFactor ONLY for size (nice depth cue without washing colors)
+      // Keep depthFactor ONLY for size (nice depth cue without washing colors)
       float pxSize = (2.0F * fx) / std::max(point.depth, 1e-3F);
       pxSize *= 0.8F + 0.4F * point.depthFactor;
       pxSize = std::clamp(pxSize, 2.0F, 14.0F);
