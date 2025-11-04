@@ -241,11 +241,13 @@ class PerceptionDescriptions:
         composable_nodes: list[ComposableNode],
         system_ids: List[str],
         image_transport: str,
+        camera_name: str,
     ) -> None:
         vocabulary_file: str | None = PerceptionPaths.find_orb_slam3_vocabulary()
         if vocabulary_file is None:
             raise FileNotFoundError("ORB_SLAM3 vocabulary file not found.")
-        settings_file: str | None = PerceptionPaths.find_orb_slam3_settings()
+
+        settings_file: str | None = PerceptionPaths.find_orb_slam3_settings(camera_name)
         if settings_file is None:
             raise FileNotFoundError("ORB_SLAM3 settings file not found.")
 
@@ -291,11 +293,13 @@ class PerceptionDescriptions:
         composable_nodes: list[ComposableNode],
         system_ids: List[str],
         image_transport: str,
+        camera_name: str,
     ) -> None:
         vocabulary_file: str | None = PerceptionPaths.find_orb_slam3_vocabulary()
         if vocabulary_file is None:
             raise FileNotFoundError("ORB_SLAM3 vocabulary file not found.")
-        settings_file: str | None = PerceptionPaths.find_orb_slam3_settings()
+
+        settings_file: str | None = PerceptionPaths.find_orb_slam3_settings(camera_name)
         if settings_file is None:
             raise FileNotFoundError("ORB_SLAM3 settings file not found.")
 

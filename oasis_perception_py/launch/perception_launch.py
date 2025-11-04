@@ -40,6 +40,11 @@ CAMERA_ZONES: list[str] = CONFIG.CAMERA_ZONES
 # TODO: Select "pinhole" or "fisheye" from configuration
 CAMERA_MODEL: str = "fisheye"
 
+# TODO: Select camera name from configuration
+CAMERA_NAME: str = (
+    "imx708_wide__base_axi_pcie_120000_rp1_i2c_80000_imx708_1a_1920x1080_2304x1296_BGGR_PISP_COMP1_RAW"
+)
+
 print(f"Launching perception on {HOSTNAME} in zone {ZONE_ID}")
 
 
@@ -103,6 +108,7 @@ def generate_launch_description() -> LaunchDescription:
             composable_nodes,
             PERCEPTION_SERVER_MONOCULAR_SLAM,
             image_transport="compressed",
+            camera_name=CAMERA_NAME,
         )
 
     if PERCEPTION_SERVER_MONOCULAR_INERTIAL_SLAM:
@@ -110,6 +116,7 @@ def generate_launch_description() -> LaunchDescription:
             composable_nodes,
             PERCEPTION_SERVER_MONOCULAR_INERTIAL_SLAM,
             image_transport="compressed",
+            camera_name=CAMERA_NAME,
         )
 
     if PERCEPTION_SERVER_POSE_LANDMARKS:
