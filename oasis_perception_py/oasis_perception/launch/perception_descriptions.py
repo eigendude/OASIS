@@ -140,7 +140,9 @@ class PerceptionDescriptions:
     #
 
     @staticmethod
-    def add_calibration(ld: LaunchDescription, system_id: str) -> None:
+    def add_calibration(
+        ld: LaunchDescription, system_id: str, camera_model: str
+    ) -> None:
         # Get camera driver from smarthome configuration
         camera_driver: str = CONFIG.get_camera_driver(system_id)
 
@@ -156,6 +158,7 @@ class PerceptionDescriptions:
                 executable="camera_calibrator",
                 name=f"camera_calibrator_{system_id}",
                 output="screen",
+                parameters=[{"camera_model": camera_model}],
                 remappings=[
                     # Topics
                     ("calibration_image", f"{system_id}/calibration_image"),

@@ -18,9 +18,13 @@ from oasis_hass.utils.smarthome_config import SmarthomeConfig
 # System parameters
 ################################################################################
 
+
 CONFIG: SmarthomeConfig = SmarthomeConfig()
 
 HOST_ID: str = CONFIG.HOST_ID
+
+# TODO: Select "pinhole" or "fisheye" from configuration
+CAMERA_MODEL: str = "fisheye"
 
 
 ################################################################################
@@ -31,6 +35,6 @@ HOST_ID: str = CONFIG.HOST_ID
 def generate_launch_description() -> LaunchDescription:
     ld: LaunchDescription = LaunchDescription()
 
-    PerceptionDescriptions.add_calibration(ld, HOST_ID)
+    PerceptionDescriptions.add_calibration(ld, HOST_ID, CAMERA_MODEL)
 
     return ld

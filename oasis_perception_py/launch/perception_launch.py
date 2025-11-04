@@ -37,6 +37,9 @@ SMART_DISPLAY_ZONES: list[str] = CONFIG.SMART_DISPLAY_ZONES
 # Zones with a camera feed
 CAMERA_ZONES: list[str] = CONFIG.CAMERA_ZONES
 
+# TODO: Select "pinhole" or "fisheye" from configuration
+CAMERA_MODEL: str = "fisheye"
+
 print(f"Launching perception on {HOSTNAME} in zone {ZONE_ID}")
 
 
@@ -88,7 +91,7 @@ def generate_launch_description() -> LaunchDescription:
 
     if PERCEPTION_SERVER_CALIBRATION:
         for host_id in PERCEPTION_SERVER_CALIBRATION:
-            PerceptionDescriptions.add_calibration(ld, host_id)
+            PerceptionDescriptions.add_calibration(ld, host_id, CAMERA_MODEL)
 
     if PERCEPTION_SERVER_FLOW:
         PerceptionDescriptions.add_optical_flow(
