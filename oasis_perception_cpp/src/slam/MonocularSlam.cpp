@@ -762,10 +762,6 @@ void MonocularSlam::PublishMapImage(const std_msgs::msg::Header& header,
     {
       // 1) Use viridis WITHOUT multiplying by depthFactor (keeps color distribution even)
       Eigen::Vector3f color = depthToViridis(point.depth);
-
-      // Optional tiny brightness tweak for tracked vs. untracked (keeps hue constant)
-      const float trackedBoost = point.tracked ? 1.06f : 1.00f;
-      color *= trackedBoost;
       color = color.cwiseMax(0.0f).cwiseMin(1.0f);
 
       const auto to8 = [](float v)
@@ -784,6 +780,34 @@ void MonocularSlam::PublishMapImage(const std_msgs::msg::Header& header,
       const int radius = std::clamp(static_cast<int>(std::round(0.5F * pxSize)), 1, 8);
 
       cv::circle(mapImageBgr, point.pixel, radius, bgr, cv::FILLED, cv::LINE_AA);
+
+      if (point.tracked)
+      {
+        // Add a subtle white halo and crosshair so tracked points stand out
+        const cv::Scalar highlightColor(255, 255, 255);
+        const int haloRadius = std::min(radius + 2, 12);
+        cv::circle(mapImageBgr, point.pixel, haloRadius, highlightColor, 1, cv::LINE_AA);
+
+        const int armInner = radius + 1;
+        const int armOuter = std::max(armInner + 4, 8);
+        const int crossThickness = 1;
+        cv::line(mapImageBgr,
+                 cv::Point(point.pixel.x - armOuter, point.pixel.y),
+                 cv::Point(point.pixel.x - armInner, point.pixel.y),
+                 highlightColor, crossThickness, cv::LINE_AA);
+        cv::line(mapImageBgr,
+                 cv::Point(point.pixel.x + armInner, point.pixel.y),
+                 cv::Point(point.pixel.x + armOuter, point.pixel.y),
+                 highlightColor, crossThickness, cv::LINE_AA);
+        cv::line(mapImageBgr,
+                 cv::Point(point.pixel.x, point.pixel.y - armOuter),
+                 cv::Point(point.pixel.x, point.pixel.y - armInner),
+                 highlightColor, crossThickness, cv::LINE_AA);
+        cv::line(mapImageBgr,
+                 cv::Point(point.pixel.x, point.pixel.y + armInner),
+                 cv::Point(point.pixel.x, point.pixel.y + armOuter),
+                 highlightColor, crossThickness, cv::LINE_AA);
+      }
     }
   }
 
