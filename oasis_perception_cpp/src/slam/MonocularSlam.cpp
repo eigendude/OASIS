@@ -758,24 +758,8 @@ void MonocularSlam::PublishMapImage(const std_msgs::msg::Header& header,
                      [](const ProjectedPoint& a, const ProjectedPoint& b)
                      { return a.depth > b.depth; });
 
-    constexpr int GRID_CELL_SIZE = 6;
-    const int gridWidth = (IMAGE_WIDTH + GRID_CELL_SIZE - 1) / GRID_CELL_SIZE;
-    const int gridHeight = (IMAGE_HEIGHT + GRID_CELL_SIZE - 1) / GRID_CELL_SIZE;
-    std::vector<uint8_t> occupied(gridWidth * gridHeight, 0);
-
-    // Walk far-to-near so the grid keeps the background dense while thinning the foreground.
     for (const ProjectedPoint& point : projectedPoints)
     {
-      const int pixelX = std::clamp(point.pixel.x, 0, IMAGE_WIDTH - 1);
-      const int pixelY = std::clamp(point.pixel.y, 0, IMAGE_HEIGHT - 1);
-      const int cellX = std::clamp(pixelX / GRID_CELL_SIZE, 0, gridWidth - 1);
-      const int cellY = std::clamp(pixelY / GRID_CELL_SIZE, 0, gridHeight - 1);
-      const int cellIdx = cellY * gridWidth + cellX;
-      if (occupied[cellIdx])
-        continue;
-
-      occupied[cellIdx] = 1;
-
       // 1) Use viridis WITHOUT multiplying by depthFactor (keeps color distribution even)
       Eigen::Vector3f color = depthToViridis(point.depth);
 
@@ -799,9 +783,7 @@ void MonocularSlam::PublishMapImage(const std_msgs::msg::Header& header,
       pxSize = std::clamp(pxSize, 2.0F, 14.0F);
       const int radius = std::clamp(static_cast<int>(std::round(0.5F * pxSize)), 1, 8);
 
-      const cv::Point pixel(pixelX, pixelY);
-
-      cv::circle(mapImageBgr, pixel, radius, bgr, cv::FILLED, cv::LINE_AA);
+      cv::circle(mapImageBgr, point.pixel, radius, bgr, cv::FILLED, cv::LINE_AA);
     }
   }
 
