@@ -783,29 +783,55 @@ void MonocularSlam::PublishMapImage(const std_msgs::msg::Header& header,
 
       if (point.tracked)
       {
-        // Add a subtle white halo and crosshair so tracked points stand out
+        // Add a bold white halo and crosshair so tracked points stand out
         const cv::Scalar highlightColor(255, 255, 255);
-        const int haloRadius = std::min(radius + 2, 12);
-        cv::circle(mapImageBgr, point.pixel, haloRadius, highlightColor, 1, cv::LINE_AA);
+        const int haloRadius = std::min(radius + 3, 14);
+        const int haloThickness = 2;
+        cv::circle(mapImageBgr, point.pixel, haloRadius, highlightColor, haloThickness, cv::LINE_AA);
 
-        const int armInner = radius + 1;
-        const int armOuter = std::max(armInner + 4, 8);
-        const int crossThickness = 1;
+        const int armInner = haloRadius + 1;
+        const int armOuter = armInner + std::max(5, radius);
+        const int crossThickness = std::max(2, radius / 2);
+        const int knobHalf = crossThickness + 1;
+
+        // Left arm and knob
         cv::line(mapImageBgr,
                  cv::Point(point.pixel.x - armOuter, point.pixel.y),
                  cv::Point(point.pixel.x - armInner, point.pixel.y),
                  highlightColor, crossThickness, cv::LINE_AA);
         cv::line(mapImageBgr,
+                 cv::Point(point.pixel.x - armOuter, point.pixel.y - knobHalf),
+                 cv::Point(point.pixel.x - armOuter, point.pixel.y + knobHalf),
+                 highlightColor, crossThickness, cv::LINE_AA);
+
+        // Right arm and knob
+        cv::line(mapImageBgr,
                  cv::Point(point.pixel.x + armInner, point.pixel.y),
                  cv::Point(point.pixel.x + armOuter, point.pixel.y),
                  highlightColor, crossThickness, cv::LINE_AA);
+        cv::line(mapImageBgr,
+                 cv::Point(point.pixel.x + armOuter, point.pixel.y - knobHalf),
+                 cv::Point(point.pixel.x + armOuter, point.pixel.y + knobHalf),
+                 highlightColor, crossThickness, cv::LINE_AA);
+
+        // Top arm and knob
         cv::line(mapImageBgr,
                  cv::Point(point.pixel.x, point.pixel.y - armOuter),
                  cv::Point(point.pixel.x, point.pixel.y - armInner),
                  highlightColor, crossThickness, cv::LINE_AA);
         cv::line(mapImageBgr,
+                 cv::Point(point.pixel.x - knobHalf, point.pixel.y - armOuter),
+                 cv::Point(point.pixel.x + knobHalf, point.pixel.y - armOuter),
+                 highlightColor, crossThickness, cv::LINE_AA);
+
+        // Bottom arm and knob
+        cv::line(mapImageBgr,
                  cv::Point(point.pixel.x, point.pixel.y + armInner),
                  cv::Point(point.pixel.x, point.pixel.y + armOuter),
+                 highlightColor, crossThickness, cv::LINE_AA);
+        cv::line(mapImageBgr,
+                 cv::Point(point.pixel.x - knobHalf, point.pixel.y + armOuter),
+                 cv::Point(point.pixel.x + knobHalf, point.pixel.y + armOuter),
                  highlightColor, crossThickness, cv::LINE_AA);
       }
     }
