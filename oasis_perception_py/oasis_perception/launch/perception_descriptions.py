@@ -233,6 +233,40 @@ class PerceptionDescriptions:
         ld.add_action(hello_world_container)
 
     #
+    # Image rectifier
+    #
+
+    @staticmethod
+    def add_image_rectifier(
+        composable_nodes: list[ComposableNode],
+        system_ids: list[str],
+        image_transport: str,
+    ) -> None:
+        composable_nodes.extend(
+            [
+                ComposableNode(
+                    namespace=ROS_NAMESPACE,
+                    package="image_proc",
+                    plugin="image_proc::RectifyNode",
+                    name=f"rectify_node_{system_id}",
+                    parameters=[
+                        {
+                            "interpolation": 1,  # Linear
+                            "image_transport": image_transport,
+                        },
+                    ],
+                    remappings=[
+                        # Topics
+                        ("camera_info", f"{system_id}/camera_info"),
+                        ("image_rect", f"{system_id}/image_rect"),
+                        ("image", f"{system_id}/image_raw"),
+                    ],
+                )
+                for system_id in system_ids
+            ]
+        )
+
+    #
     # Monocular SLAM
     #
 
