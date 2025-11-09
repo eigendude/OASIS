@@ -29,6 +29,10 @@ namespace
 constexpr std::string_view IMAGE_TOPIC = "image";
 constexpr std::string_view IMU_TOPIC = "imu";
 
+// Published topics
+constexpr std::string_view MAP_TOPIC = "slam_map";
+constexpr std::string_view MAP_IMAGE_TOPIC = "slam_map_image";
+
 // Parameters
 constexpr std::string_view SYSTEM_ID_PARAMETER = "system_id";
 constexpr std::string_view DEFAULT_SYSTEM_ID = "";
@@ -74,9 +78,19 @@ bool MonocularInertialSlamNode::Initialize()
   imuTopic.push_back('_');
   imuTopic.append(IMU_TOPIC);
 
+  std::string mapTopic = systemId;
+  mapTopic.push_back('_');
+  mapTopic.append(MAP_TOPIC);
+
+  std::string mapImageTopic = systemId;
+  mapImageTopic.push_back('_');
+  mapImageTopic.append(MAP_IMAGE_TOPIC);
+
   RCLCPP_INFO(*m_logger, "System ID: %s", systemId.c_str());
   RCLCPP_INFO(*m_logger, "Image topic: %s", imageTopic.c_str());
   RCLCPP_INFO(*m_logger, "IMU topic: %s", imuTopic.c_str());
+  RCLCPP_INFO(*m_logger, "Map visualization topic: %s", mapTopic.c_str());
+  RCLCPP_INFO(*m_logger, "Map image topic: %s", mapImageTopic.c_str());
 
   std::string imageTransport;
   if (!m_node.get_parameter(IMAGE_TRANSPORT_PARAMETER.data(), imageTransport) ||
@@ -115,7 +129,8 @@ bool MonocularInertialSlamNode::Initialize()
   m_imuSubscriber = m_node.create_subscription<oasis_msgs::msg::I2CImu>(
       imuTopic, qos, std::bind(&MonocularInertialSlamNode::OnImu, this, std::placeholders::_1));
 
-  m_monocularInertialSlam = std::make_unique<SLAM::MonocularInertialSlam>(m_node);
+  m_monocularInertialSlam =
+      std::make_unique<SLAM::MonocularInertialSlam>(m_node, mapTopic, mapImageTopic);
   if (!m_monocularInertialSlam->Initialize(vocabularyFile, settingsFile))
   {
     RCLCPP_ERROR(*m_logger, "Failed to initialize monocular inertial SLAM");

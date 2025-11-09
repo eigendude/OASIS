@@ -8,8 +8,10 @@
 
 #include "MonocularInertialSlam.h"
 
+#include "MapVisualizer.h"
 #include "ros/RosUtils.h"
 
+#include <Eigen/Geometry>
 #include <System.h>
 #include <cv_bridge/cv_bridge.hpp>
 #include <geometry_msgs/msg/vector3.hpp>
@@ -25,8 +27,11 @@
 using namespace OASIS;
 using namespace SLAM;
 
-MonocularInertialSlam::MonocularInertialSlam(rclcpp::Node& node)
-  : m_logger(std::make_unique<rclcpp::Logger>(node.get_logger()))
+MonocularInertialSlam::MonocularInertialSlam(rclcpp::Node& node,
+                                             const std::string& mapTopic,
+                                             const std::string& mapImageTopic)
+  : m_logger(std::make_unique<rclcpp::Logger>(node.get_logger())),
+    m_visualizer(std::make_unique<MapVisualizer>(node, *m_logger, mapTopic, mapImageTopic))
 {
 }
 
@@ -42,6 +47,9 @@ bool MonocularInertialSlam::Initialize(const std::string& vocabularyFile,
                                                ORB_SLAM3::System::IMU_MONOCULAR, false);
 
   m_imuMeasurements.clear();
+
+  if (m_visualizer)
+    m_visualizer->Reset();
 
   return true;
 }
@@ -60,6 +68,9 @@ void MonocularInertialSlam::Deinitialize()
   }
 
   m_imuMeasurements.clear();
+
+  if (m_visualizer)
+    m_visualizer->Reset();
 }
 
 void MonocularInertialSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg)
@@ -91,7 +102,40 @@ void MonocularInertialSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSha
   }
 
   // Pass the image to the SLAM system
-  m_slam->TrackMonocular(rgbImage, timestamp, m_imuMeasurements);
+  const Sophus::SE3f cameraPose = m_slam->TrackMonocular(rgbImage, timestamp, m_imuMeasurements);
+
+  const int trackingState = m_slam->GetTrackingState();
+  const std::vector<ORB_SLAM3::MapPoint*> trackedMapPoints = m_slam->GetTrackedMapPoints();
+  const std::vector<cv::KeyPoint> trackedKeyPoints = m_slam->GetTrackedKeyPointsUn();
+
+  std::size_t trackedMapPointCount = 0;
+  for (const ORB_SLAM3::MapPoint* mapPoint : trackedMapPoints)
+  {   
+    if (mapPoint != nullptr)
+      ++trackedMapPointCount;
+  }
+
+  const Sophus::SE3f worldPose = cameraPose.inverse();
+  const Eigen::Vector3f cameraPosition = worldPose.translation();
+  const Eigen::Quaternionf cameraOrientation = worldPose.unit_quaternion();
+
+  // clang-format off
+  RCLCPP_INFO(*m_logger,
+              "SLAM pose state=%d position=(%.3f, %.3f, %.3f) orientation=(%.4f, %.4f, %.4f, %.4f) tracked=%zu/%zu",
+              trackingState,
+              cameraPosition.x(),
+              cameraPosition.y(),
+              cameraPosition.z(),
+              cameraOrientation.w(),
+              cameraOrientation.x(),
+              cameraOrientation.y(),
+              cameraOrientation.z(),
+              trackedMapPointCount,
+              trackedKeyPoints.size());
+  // clang-format on
+
+  if (m_visualizer)
+    m_visualizer->Publish(msg->header, trackedMapPoints, cameraPosition, cameraOrientation);
 
   // TODO: Better IMU synchronization
   m_imuMeasurements.clear();
