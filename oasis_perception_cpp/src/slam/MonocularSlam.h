@@ -10,14 +10,10 @@
 
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include <Eigen/Geometry>
-#include <rclcpp/publisher.hpp>
 #include <sensor_msgs/msg/image.hpp>
-#include <sensor_msgs/msg/point_cloud2.hpp>
-#include <std_msgs/msg/header.hpp>
 
 namespace ORB_SLAM3
 {
@@ -47,6 +43,8 @@ namespace OASIS
 namespace SLAM
 {
 
+class MapVisualizer;
+
 class MonocularSlam
 {
 public:
@@ -63,27 +61,9 @@ public:
   void ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg);
 
 private:
-  void PublishMapVisualization(const std_msgs::msg::Header& header,
-                               const std::vector<ORB_SLAM3::MapPoint*>& trackedMapPoints,
-                               const Eigen::Vector3f& cameraPosition,
-                               const Eigen::Quaternionf& cameraOrientation);
-  struct MapPointRenderInfo
-  {
-    Eigen::Vector3f position = Eigen::Vector3f::Zero();
-    bool tracked = false;
-  };
-  void PublishMapImage(const std_msgs::msg::Header& header,
-                       const std::vector<MapPointRenderInfo>& renderPoints,
-                       const Eigen::Vector3f& cameraPosition,
-                       const Eigen::Quaternionf& cameraOrientation,
-                       float maxDistance);
-
   // ROS parameters
   std::unique_ptr<rclcpp::Logger> m_logger;
-  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr m_mapPublisher;
-  std::unique_ptr<image_transport::Publisher> m_mapImagePublisher;
-
-  std::unordered_map<const ORB_SLAM3::MapPoint*, Eigen::Vector3f> m_mapPointPositions;
+  std::unique_ptr<MapVisualizer> m_visualizer;
 
   // ORB-SLAM3 system
   std::unique_ptr<ORB_SLAM3::System> m_slam;
