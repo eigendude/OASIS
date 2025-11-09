@@ -19,6 +19,10 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <std_msgs/msg/header.hpp>
 
+#include "MapImageRenderer.h"
+#include "MapPointCloudBuilder.h"
+#include "MapPointRenderInfo.h"
+
 namespace ORB_SLAM3
 {
 class MapPoint;
@@ -57,12 +61,6 @@ public:
   void Reset();
 
 private:
-  struct MapPointRenderInfo
-  {
-    Eigen::Vector3f position = Eigen::Vector3f::Zero();
-    bool tracked = false;
-  };
-
   void PublishMapImage(const std_msgs::msg::Header& header,
                        const std::vector<MapPointRenderInfo>& renderPoints,
                        const Eigen::Vector3f& cameraPosition,
@@ -72,6 +70,8 @@ private:
   rclcpp::Logger* m_logger = nullptr;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr m_mapPublisher;
   std::unique_ptr<image_transport::Publisher> m_mapImagePublisher;
+  MapPointCloudBuilder m_pointCloudBuilder;
+  std::unique_ptr<MapImageRenderer> m_mapImageRenderer;
   std::unordered_map<const ORB_SLAM3::MapPoint*, Eigen::Vector3f> m_mapPointPositions;
 };
 

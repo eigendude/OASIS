@@ -9,102 +9,24 @@
 #include "MapVisualizer.h"
 
 #include <algorithm>
-#include <array>
 #include <cmath>
-#include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <stdexcept>
 #include <unordered_set>
 
 #include <MapPoint.h>
-#include <cv_bridge/cv_bridge.hpp>
 #include <image_transport/image_transport.hpp>
-#include <opencv2/core.hpp>
-#include <opencv2/imgproc/imgproc.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
 #include <rclcpp/qos.hpp>
-#include <sensor_msgs/image_encodings.hpp>
-#include <sensor_msgs/point_cloud2_iterator.hpp>
 
 using namespace OASIS;
 using namespace SLAM;
 
 namespace
 {
-struct DepthEMA
-{
-  float zMin = 0.0F;
-  float zMax = 1.0F;
-  bool init = false;
-
-  void update(float newMin, float newMax, float alpha = 0.1F)
-  {
-    if (!init)
-    {
-      zMin = newMin;
-      zMax = newMax;
-      init = true;
-      return;
-    }
-
-    zMin = alpha * newMin + (1.0F - alpha) * zMin;
-    zMax = alpha * newMax + (1.0F - alpha) * zMax;
-
-    if (!(zMin < zMax))
-      zMax = zMin + 1e-3F;
-  }
-};
-
-class ViridisPaletteSampler
-{
-public:
-  static Eigen::Vector3f Sample(float t)
-  {
-    t = std::clamp(t, 0.0F, 1.0F);
-
-    const auto& samples = GetSamples();
-    for (std::size_t index = 1; index < samples.size(); ++index)
-    {
-      const ViridisSample& prev = samples[index - 1];
-      const ViridisSample& next = samples[index];
-      if (t <= next.position)
-      {
-        const float span =
-            std::max(next.position - prev.position, std::numeric_limits<float>::epsilon());
-        const float alpha = std::clamp((t - prev.position) / span, 0.0F, 1.0F);
-        return prev.color + alpha * (next.color - prev.color);
-      }
-    }
-
-    return samples.back().color;
-  }
-
-private:
-  struct ViridisSample
-  {
-    float position = 0.0F;
-    Eigen::Vector3f color = Eigen::Vector3f::Zero();
-  };
-
-  static const std::array<ViridisSample, 8>& GetSamples()
-  {
-    static const std::array<ViridisSample, 8> samples = {
-        ViridisSample{0.0F, Eigen::Vector3f(0.267004F, 0.004874F, 0.329415F)},
-        ViridisSample{0.125F, Eigen::Vector3f(0.282327F, 0.094955F, 0.417331F)},
-        ViridisSample{0.25F, Eigen::Vector3f(0.252899F, 0.358853F, 0.594714F)},
-        ViridisSample{0.375F, Eigen::Vector3f(0.211718F, 0.553018F, 0.751428F)},
-        ViridisSample{0.5F, Eigen::Vector3f(0.164924F, 0.7173F, 0.607793F)},
-        ViridisSample{0.625F, Eigen::Vector3f(0.134692F, 0.827384F, 0.467008F)},
-        ViridisSample{0.75F, Eigen::Vector3f(0.369214F, 0.892281F, 0.273006F)},
-        ViridisSample{1.0F, Eigen::Vector3f(0.993248F, 0.906157F, 0.143936F)},
-    };
-
-    return samples;
-  }
-};
-
 bool ExtractMapPointPosition(const ORB_SLAM3::MapPoint* mapPoint, Eigen::Vector3f& position)
 {
   if (mapPoint == nullptr)
@@ -118,74 +40,6 @@ bool ExtractMapPointPosition(const ORB_SLAM3::MapPoint* mapPoint, Eigen::Vector3
   return std::isfinite(position.x()) && std::isfinite(position.y()) && std::isfinite(position.z());
 }
 
-void ApplyFisheyeEffect(cv::Mat& image)
-{
-  if (image.empty())
-    return;
-
-  static cv::Mat mapX;
-  static cv::Mat mapY;
-  static cv::Size cachedSize;
-
-  const cv::Size imageSize = image.size();
-  if (cachedSize != imageSize)
-  {
-    cachedSize = imageSize;
-
-    mapX.create(imageSize, CV_32FC1);
-    mapY.create(imageSize, CV_32FC1);
-
-    const int width = image.cols;
-    const int height = image.rows;
-    if (width == 0 || height == 0)
-      return;
-
-    const float cx = 0.5F * static_cast<float>(width);
-    const float cy = 0.5F * static_cast<float>(height);
-    const float invCx = 1.0F / cx;
-    const float invCy = 1.0F / cy;
-
-    // Use a gentle distortion profile so the fisheye effect remains noticeable
-    // without overpowering the underlying geometry.
-    constexpr float k1 = -0.35F;
-    constexpr float k2 = 0.12F;
-
-    for (int y = 0; y < height; ++y)
-    {
-      float* mapXRow = mapX.ptr<float>(y);
-      float* mapYRow = mapY.ptr<float>(y);
-
-      const float ny = (static_cast<float>(y) - cy) * invCy;
-      for (int x = 0; x < width; ++x)
-      {
-        const float nx = (static_cast<float>(x) - cx) * invCx;
-        const float r2 = nx * nx + ny * ny;
-        const float r4 = r2 * r2;
-        const float distortion = 1.0F + k1 * r2 + k2 * r4;
-
-        const float srcX = cx + nx * distortion * cx;
-        const float srcY = cy + ny * distortion * cy;
-
-        if (srcX >= 0.0F && srcX < static_cast<float>(width) && srcY >= 0.0F &&
-            srcY < static_cast<float>(height))
-        {
-          mapXRow[x] = srcX;
-          mapYRow[x] = srcY;
-        }
-        else
-        {
-          mapXRow[x] = -1.0F;
-          mapYRow[x] = -1.0F;
-        }
-      }
-    }
-  }
-
-  cv::Mat distorted;
-  cv::remap(image, distorted, mapX, mapY, cv::INTER_LINEAR, cv::BORDER_CONSTANT,
-            cv::Scalar(0, 0, 0));
-  distorted.copyTo(image);
-}
 } // namespace
 
 MapVisualizer::MapVisualizer(rclcpp::Node& node,
@@ -218,6 +72,7 @@ MapVisualizer::MapVisualizer(rclcpp::Node& node,
     {
       m_mapImagePublisher = std::make_unique<image_transport::Publisher>(
           image_transport::create_publisher(&node, mapImageTopic));
+      m_mapImageRenderer = std::make_unique<MapImageRenderer>();
       if (m_logger)
         RCLCPP_INFO(*m_logger, "Publishing SLAM map image on topic: %s", mapImageTopic.c_str());
     }
@@ -227,6 +82,7 @@ MapVisualizer::MapVisualizer(rclcpp::Node& node,
         RCLCPP_ERROR(*m_logger, "Failed to create map image publisher '%s': %s",
                      mapImageTopic.c_str(), err.what());
       m_mapImagePublisher.reset();
+      m_mapImageRenderer.reset();
     }
   }
 }
@@ -412,113 +268,16 @@ void MapVisualizer::Publish(const std_msgs::msg::Header& header,
     }
   }
 
-  const float heightRange = std::max(maxHeight - minHeight, 1e-3F);
-
   if (publishPointCloud)
   {
-    sensor_msgs::msg::PointCloud2 pointCloud;
-    pointCloud.header = header;
-
-    std::size_t pointCount = validMapPointCount;
-    if (cameraValid)
-      ++pointCount;
-    if (arrowValid)
-      ++pointCount;
-
-    sensor_msgs::PointCloud2Modifier modifier(pointCloud);
-    modifier.setPointCloud2Fields(4, "x", 1, sensor_msgs::msg::PointField::FLOAT32, "y", 1,
-                                  sensor_msgs::msg::PointField::FLOAT32, "z", 1,
-                                  sensor_msgs::msg::PointField::FLOAT32, "rgb", 1,
-                                  sensor_msgs::msg::PointField::UINT32);
-    modifier.resize(pointCount);
-
-    if (pointCount > 0)
+    if (auto pointCloud = m_pointCloudBuilder.BuildPointCloud(header, pointsToRender,
+                                                              validMapPointCount, cameraValid,
+                                                              cameraPosition, arrowValid, arrowTip,
+                                                              minDistance, maxDistance, minHeight,
+                                                              maxHeight))
     {
-      sensor_msgs::PointCloud2Iterator<float> iterX(pointCloud, "x");
-      sensor_msgs::PointCloud2Iterator<float> iterY(pointCloud, "y");
-      sensor_msgs::PointCloud2Iterator<float> iterZ(pointCloud, "z");
-      sensor_msgs::PointCloud2Iterator<uint8_t> iterR(pointCloud, "r");
-      sensor_msgs::PointCloud2Iterator<uint8_t> iterG(pointCloud, "g");
-      sensor_msgs::PointCloud2Iterator<uint8_t> iterB(pointCloud, "b");
-
-      const auto addPoint =
-          [&](const Eigen::Vector3f& position, uint8_t red, uint8_t green, uint8_t blue)
-      {
-        *iterX = position.x();
-        *iterY = position.y();
-        *iterZ = position.z();
-        *iterR = red;
-        *iterG = green;
-        *iterB = blue;
-
-        ++iterX;
-        ++iterY;
-        ++iterZ;
-        ++iterR;
-        ++iterG;
-        ++iterB;
-      };
-
-      const bool useDepthColors = cameraValid && (minDistance < maxDistance);
-      const float distanceRange =
-          useDepthColors ? std::max(maxDistance - minDistance, 1e-3F) : 0.0F;
-
-      for (const auto& renderPoint : pointsToRender)
-      {
-        Eigen::Vector3f color = Eigen::Vector3f::Zero();
-
-        if (useDepthColors)
-        {
-          const float distance = (renderPoint.position - cameraPosition).norm();
-          if (std::isfinite(distance))
-          {
-            const float depthFactor =
-                std::clamp((distance - minDistance) / distanceRange, 0.0F, 1.0F);
-
-            color = ViridisPaletteSampler::Sample(depthFactor);
-          }
-          else
-          {
-            const float heightFactor =
-                std::clamp((renderPoint.position.y() - minHeight) / heightRange, 0.0F, 1.0F);
-            color = Eigen::Vector3f((45.0F + heightFactor * 205.0F) / 255.0F,
-                                    (80.0F + heightFactor * 140.0F) / 255.0F,
-                                    (210.0F - heightFactor * 150.0F) / 255.0F);
-          }
-        }
-        else
-        {
-          const float heightFactor =
-              std::clamp((renderPoint.position.y() - minHeight) / heightRange, 0.0F, 1.0F);
-          color = Eigen::Vector3f((45.0F + heightFactor * 205.0F) / 255.0F,
-                                  (80.0F + heightFactor * 140.0F) / 255.0F,
-                                  (210.0F - heightFactor * 150.0F) / 255.0F);
-        }
-
-        const float trackedBoost = renderPoint.tracked ? 1.1F : 0.95F;
-        const auto encodeChannel = [&](float base)
-        {
-          const long value = std::lround(std::clamp(base * trackedBoost, 0.0F, 1.0F) * 255.0F);
-          return static_cast<uint8_t>(std::clamp(value, 0L, 255L));
-        };
-
-        const uint8_t red = encodeChannel(color.x());
-        const uint8_t green = encodeChannel(color.y());
-        const uint8_t blue = encodeChannel(color.z());
-
-        addPoint(renderPoint.position, red, green, blue);
-      }
-
-      if (cameraValid)
-        addPoint(cameraPosition, 64, 160, 255);
-
-      if (arrowValid)
-        addPoint(arrowTip, 64, 160, 255);
+      m_mapPublisher->publish(*pointCloud);
     }
-
-    pointCloud.is_dense = false;
-
-    m_mapPublisher->publish(pointCloud);
   }
 
   if (publishMapImage)
@@ -539,195 +298,12 @@ void MapVisualizer::PublishMapImage(const std_msgs::msg::Header& header,
   if (!m_mapImagePublisher || m_mapImagePublisher->getNumSubscribers() == 0)
     return;
 
-  if (!cameraPosition.allFinite())
+  if (!m_mapImageRenderer)
     return;
 
-  if (!cameraOrientation.coeffs().array().isFinite().all())
-    return;
-
-  Eigen::Quaternionf orientation = cameraOrientation;
-  const float orientationNorm = orientation.norm();
-  if (!(orientationNorm > std::numeric_limits<float>::epsilon()))
-    return;
-
-  orientation.normalize();
-
-  constexpr int IMAGE_WIDTH = 640;
-  constexpr int IMAGE_HEIGHT = 480;
-  constexpr float FIELD_OF_VIEW_DEGREES = 90.0F;
-  constexpr float PI = 3.14159265358979323846F;
-  constexpr float NEAR_PLANE = 0.05F;
-
-  const float fovRadians = FIELD_OF_VIEW_DEGREES * PI / 180.0F;
-  const float halfWidth = static_cast<float>(IMAGE_WIDTH) * 0.5F;
-  const float halfHeight = static_cast<float>(IMAGE_HEIGHT) * 0.5F;
-  const float focalLength = halfWidth / std::tan(fovRadians * 0.5F);
-  const float fx = focalLength;
-  const float fy = focalLength;
-  const float cx = halfWidth;
-  const float cy = halfHeight;
-
-  const float farPlane =
-      std::max(NEAR_PLANE + 1e-3F, maxDistance > 0.0F ? maxDistance * 1.25F : 5.0F);
-
-  cv::Mat mapImageBgr(IMAGE_HEIGHT, IMAGE_WIDTH, CV_8UC3, cv::Scalar(0, 0, 0));
-
-  struct ProjectedPoint
+  if (auto image = m_mapImageRenderer->RenderImage(header, renderPoints, cameraPosition,
+                                                   cameraOrientation, maxDistance))
   {
-    cv::Point pixel;
-    float depth = 0.0F;
-    float depthFactor = 0.0F;
-    float depthNormalized = 0.0F;
-    bool tracked = false;
-  };
-
-  std::vector<ProjectedPoint> projectedPoints;
-  projectedPoints.reserve(renderPoints.size());
-  std::size_t visibleCount = 0;
-  std::size_t trackedVisibleCount = 0;
-
-  for (const auto& point : renderPoints)
-  {
-    Eigen::Vector3f relative = point.position - cameraPosition;
-    if (!relative.allFinite())
-      continue;
-
-    Eigen::Vector3f cameraSpace = orientation.conjugate() * relative;
-    if (!cameraSpace.allFinite())
-      continue;
-
-    if (cameraSpace.z() <= NEAR_PLANE)
-      continue;
-
-    const float invZ = 1.0F / cameraSpace.z();
-    const float u = fx * cameraSpace.x() * invZ + cx;
-    const float v = fy * cameraSpace.y() * invZ + cy;
-
-    if (u < 0.0F || u >= static_cast<float>(IMAGE_WIDTH) || v < 0.0F ||
-        v >= static_cast<float>(IMAGE_HEIGHT))
-      continue;
-
-    const float clampedDepth = std::min(farPlane, cameraSpace.z());
-    const float depthNormalized =
-        std::clamp((clampedDepth - NEAR_PLANE) / (farPlane - NEAR_PLANE), 0.0F, 1.0F);
-    float depthFactor = 1.0F - depthNormalized;
-    depthFactor = std::clamp(depthFactor, 0.1F, 1.0F);
-
-    projectedPoints.push_back({
-        cv::Point{static_cast<int>(std::round(u)), static_cast<int>(std::round(v))},
-        cameraSpace.z(),
-        depthFactor,
-        depthNormalized,
-        point.tracked,
-    });
-
-    ++visibleCount;
-    if (point.tracked)
-      ++trackedVisibleCount;
+    m_mapImagePublisher->publish(image);
   }
-
-  std::vector<float> depths;
-  depths.reserve(projectedPoints.size());
-  for (const auto& p : projectedPoints)
-    depths.push_back(p.depth);
-
-  if (!depths.empty())
-  {
-    std::nth_element(depths.begin(), depths.begin() + depths.size() / 20, depths.end());
-    const float depthP05 = depths[depths.size() / 20];
-
-    std::nth_element(depths.begin(), depths.begin() + depths.size() * 19 / 20, depths.end());
-    const float depthP95 = depths[depths.size() * 19 / 20];
-
-    static DepthEMA depthEma;
-    depthEma.update(std::min(depthP05, depthP95), std::max(depthP05, depthP95));
-    const float zMin = depthEma.zMin;
-    const float zMax = depthEma.zMax;
-    const float zSpan = std::max(zMax - zMin, 1e-3F);
-
-    auto depthToViridis = [&](float z) -> Eigen::Vector3f
-    {
-      float t = std::clamp((z - zMin) / zSpan, 0.0F, 1.0F);
-
-      constexpr float gamma = 0.9f;
-
-      t = std::pow(t, gamma);
-
-      t = 1.0f - t;
-
-      return ViridisPaletteSampler::Sample(t);
-    };
-
-    std::stable_sort(projectedPoints.begin(), projectedPoints.end(),
-                     [](const ProjectedPoint& a, const ProjectedPoint& b)
-                     { return a.depth > b.depth; });
-
-    for (const ProjectedPoint& point : projectedPoints)
-    {
-      Eigen::Vector3f color = depthToViridis(point.depth);
-      color = color.cwiseMax(0.0f).cwiseMin(1.0f);
-
-      const auto to8 = [](float v)
-      {
-        const long s = std::lround(std::clamp(v, 0.0f, 1.0f) * 255.0f);
-        return static_cast<int>(std::clamp(s, 0L, 255L));
-      };
-
-      cv::Scalar bgr(to8(color.z()), to8(color.y()), to8(color.x()));
-
-      float pxSize = (2.0F * fx) / std::max(point.depth, 1e-3F);
-      pxSize *= 0.8F + 0.4F * point.depthFactor;
-      pxSize = std::clamp(pxSize, 2.0F, 14.0F);
-      const int radius = std::clamp(static_cast<int>(std::round(0.5F * pxSize)), 1, 8);
-
-      cv::circle(mapImageBgr, point.pixel, radius, bgr, cv::FILLED, cv::LINE_AA);
-
-      if (point.tracked)
-      {
-        const cv::Scalar highlightColor(255, 255, 255);
-        const int haloRadius = std::min(radius + 2, 12);
-        cv::circle(mapImageBgr, point.pixel, haloRadius, highlightColor, 1, cv::LINE_AA);
-
-        const int armInner = radius + 1;
-        const int armOuter = std::max(armInner + 4, 14);
-        const int crossThickness = 1;
-        cv::line(mapImageBgr, cv::Point(point.pixel.x - armOuter, point.pixel.y),
-                 cv::Point(point.pixel.x - armInner, point.pixel.y), highlightColor, crossThickness,
-                 cv::LINE_AA);
-        cv::line(mapImageBgr, cv::Point(point.pixel.x + armInner, point.pixel.y),
-                 cv::Point(point.pixel.x + armOuter, point.pixel.y), highlightColor, crossThickness,
-                 cv::LINE_AA);
-        cv::line(mapImageBgr, cv::Point(point.pixel.x, point.pixel.y - armOuter),
-                 cv::Point(point.pixel.x, point.pixel.y - armInner), highlightColor, crossThickness,
-                 cv::LINE_AA);
-        cv::line(mapImageBgr, cv::Point(point.pixel.x, point.pixel.y + armInner),
-                 cv::Point(point.pixel.x, point.pixel.y + armOuter), highlightColor, crossThickness,
-                 cv::LINE_AA);
-      }
-    }
-  }
-
-  cv::line(mapImageBgr, cv::Point(IMAGE_WIDTH / 2, 0), cv::Point(IMAGE_WIDTH / 2, IMAGE_HEIGHT),
-           cv::Scalar(40, 40, 40), 1, cv::LINE_AA);
-  cv::line(mapImageBgr, cv::Point(0, IMAGE_HEIGHT / 2), cv::Point(IMAGE_WIDTH, IMAGE_HEIGHT / 2),
-           cv::Scalar(40, 40, 40), 1, cv::LINE_AA);
-  cv::circle(mapImageBgr, cv::Point(IMAGE_WIDTH / 2, IMAGE_HEIGHT / 2), 6, cv::Scalar(80, 80, 80),
-             1, cv::LINE_AA);
-
-  std::string overlayText = "Visible: " + std::to_string(visibleCount) +
-                            " | Tracked: " + std::to_string(trackedVisibleCount);
-  cv::putText(mapImageBgr, overlayText, cv::Point(8, IMAGE_HEIGHT - 12), cv::FONT_HERSHEY_SIMPLEX,
-              0.45, cv::Scalar(200, 200, 200), 1, cv::LINE_AA);
-
-  ApplyFisheyeEffect(mapImageBgr);
-
-  cv::Mat mapImageRgb;
-  cv::cvtColor(mapImageBgr, mapImageRgb, cv::COLOR_BGR2RGB);
-
-  cv_bridge::CvImage cvImage;
-  cvImage.header = header;
-  cvImage.encoding = sensor_msgs::image_encodings::RGB8;
-  cvImage.image = mapImageRgb;
-
-  m_mapImagePublisher->publish(cvImage.toImageMsg());
 }
