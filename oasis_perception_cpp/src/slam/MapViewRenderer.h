@@ -33,6 +33,8 @@ public:
 
   void SetCameraModel(const CameraModel& model);
   void SetImageSize(int width, int height);
+  void EnableRoiMask(bool enable);
+  void SetRoiPolygon(const std::vector<cv::Point>& polygon);
 
   bool Render(const Sophus::SE3f& Tcw,
               const std::vector<ORB_SLAM3::MapPoint*>& mapPoints,
@@ -40,6 +42,7 @@ public:
 
 private:
   void ResizeBuffers();
+  void UpdateRoiMask();
 
   CameraModel m_cameraModel;
   int m_width{0};
@@ -48,6 +51,10 @@ private:
   std::vector<float> m_depthBuffer;
   std::vector<cv::Vec3f> m_colorBuffer;
   std::vector<float> m_weightBuffer;
+  bool m_roiMaskEnabled{false};
+  bool m_roiMaskDirty{true};
+  std::vector<cv::Point> m_roiPolygon;
+  cv::Mat m_roiMask;
 };
 
 } // namespace SLAM
