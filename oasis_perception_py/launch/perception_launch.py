@@ -75,7 +75,7 @@ elif HOST_ID == "oceanplatform":
     # PERCEPTION_SERVER_FLOW.extend(["falcon", "station"])
     PERCEPTION_SERVER_IMAGE_RECT.extend(["falcon"])
     PERCEPTION_SERVER_MONOCULAR_SLAM.extend(["falcon"])
-    # PERCEPTION_SERVER_POSE_LANDMARKS.extend(["falcon"])
+    PERCEPTION_SERVER_POSE_LANDMARKS.extend(["falcon"])
 
 
 ################################################################################
