@@ -233,6 +233,50 @@ class PerceptionDescriptions:
         ld.add_action(hello_world_container)
 
     #
+    # Image downscaler
+    #
+
+    @staticmethod
+    def add_image_downscaler(
+        composable_nodes: list[ComposableNode],
+        system_ids: list[str],
+        input_topic: str,
+        output_suffix: str,
+        image_transport: str,
+        max_width: int,
+        max_height: int,
+    ) -> None:
+        parameter_suffix: str = f"{input_topic}/{output_suffix}"
+
+        composable_nodes.extend(
+            [
+                ComposableNode(
+                    namespace=ROS_NAMESPACE,
+                    package=CPP_PACKAGE_NAME,
+                    plugin="oasis_perception::ImageDownscalerComponent",
+                    name=f"image_downscaler_{system_id}",
+                    parameters=[
+                        {
+                            "system_id": system_id,
+                            "image_transport": image_transport,
+                            "output_suffix": parameter_suffix,
+                            "max_width": max_width,
+                            "max_height": max_height,
+                        }
+                    ],
+                    remappings=[
+                        (f"{system_id}_image", f"{system_id}/{input_topic}"),
+                        (
+                            f"{system_id}_{parameter_suffix}",
+                            f"{system_id}/{input_topic}/{output_suffix}",
+                        ),
+                    ],
+                )
+                for system_id in system_ids
+            ]
+        )
+
+    #
     # Image rectifier
     #
 
@@ -240,6 +284,7 @@ class PerceptionDescriptions:
     def add_image_rectifier(
         composable_nodes: list[ComposableNode],
         system_ids: list[str],
+        image_resolution: str,
         image_transport: str,
     ) -> None:
         composable_nodes.extend(
@@ -258,8 +303,8 @@ class PerceptionDescriptions:
                     remappings=[
                         # Topics
                         ("camera_info", f"{system_id}/camera_info"),
-                        ("image_rect", f"{system_id}/image_rect"),
-                        ("image", f"{system_id}/image_raw"),
+                        ("image_rect", f"{system_id}/image_rect/{image_resolution}"),
+                        ("image", f"{system_id}/image_raw/{image_resolution}"),
                     ],
                 )
                 for system_id in system_ids
@@ -431,7 +476,7 @@ class PerceptionDescriptions:
                         # Use different remappings for Kinect V2
                         f"{zone_id}/sd/image_color"
                         if zone_id == KINECT_V2_ZONE_ID
-                        else f"{zone_id}/image_rect"
+                        else f"{zone_id}/image_rect/sd"
                     ),
                 ),
                 ("pose", f"{zone_id}/pose"),

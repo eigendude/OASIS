@@ -248,6 +248,60 @@ if(TARGET MediaPipe::MediaPipe)
 endif()
 
 #
+# image_downscaler
+#
+
+# Project files
+set(IMAGE_DOWNSCALER_SOURCES
+  src/image/ImageDownscaler.cpp
+  src/nodes/ImageDownscalerNode.cpp
+)
+set(IMAGE_DOWNSCALER_LIBRARIES
+  cv_bridge::cv_bridge
+  image_transport::image_transport
+  ${OpenCV_LIBS}
+  rclcpp::rclcpp
+  ${sensor_msgs_TARGETS}
+)
+
+# Node
+add_executable(image_downscaler
+  ${IMAGE_DOWNSCALER_SOURCES}
+  src/cli/image_downscaler.cpp
+)
+target_link_libraries(image_downscaler PUBLIC
+  ${IMAGE_DOWNSCALER_LIBRARIES}
+)
+install(
+  TARGETS
+    image_downscaler
+  DESTINATION
+    lib/${PROJECT_NAME}
+)
+
+# Component
+add_library(image_downscaler_component SHARED
+  ${IMAGE_DOWNSCALER_SOURCES}
+  src/components/image_downscaler_component.cpp
+  src/ros/RosComponent.cpp
+)
+target_link_libraries(image_downscaler_component PUBLIC
+  ${IMAGE_DOWNSCALER_LIBRARIES}
+  rclcpp_components::component
+)
+install(
+  TARGETS
+    image_downscaler_component
+  DESTINATION
+    lib
+)
+rclcpp_components_register_node(
+  image_downscaler_component
+  PLUGIN "oasis_perception::ImageDownscalerComponent"
+  EXECUTABLE image_downscaler_component_node
+)
+
+#
 # monocular_slam
 #
 
