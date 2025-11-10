@@ -42,9 +42,7 @@ class MapVisualizer;
 class MonocularInertialSlam
 {
 public:
-  MonocularInertialSlam(rclcpp::Node& node,
-                        const std::string& mapTopic,
-                        const std::string& mapImageTopic);
+  MonocularInertialSlam(rclcpp::Node& node, const std::string& mapImageTopic);
   ~MonocularInertialSlam();
 
   // Lifecycle interface
@@ -58,7 +56,6 @@ public:
 private:
   // ROS parameters
   std::unique_ptr<rclcpp::Logger> m_logger;
-  std::unique_ptr<MapVisualizer> m_visualizer;
 
   // ORB-SLAM3 system
   std::unique_ptr<ORB_SLAM3::System> m_slam;
