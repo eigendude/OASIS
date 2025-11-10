@@ -197,6 +197,14 @@ class PoseLandmarkerNode(rclpy.node.Node):
 
         self.get_logger().info("Pose landmarker node initializing")
 
+        # Declare parameters
+        self.declare_parameter("image_transport", "compressed")
+
+        image_transport_param = (
+            self.get_parameter("image_transport").get_parameter_value().string_value
+        )
+        image_transport = image_transport_param or "compressed"
+
         # Pose detection state
         self._pose_count: int = 0
 
@@ -214,10 +222,10 @@ class PoseLandmarkerNode(rclpy.node.Node):
         # Initialize cv_bridge to convert between ROS and OpenCV images
         self._cv_bridge = cv_bridge.CvBridge()
 
-        # Create an ImageTransport object using this node's name and specifying
-        # the 'compressed' transport
+        # Create an ImageTransport object using this node's name and the
+        # configured transport
         self._image_transport: ImageTransport = ImageTransport(
-            self.get_name(), image_transport="compressed"
+            self.get_name(), image_transport=image_transport
         )
 
         # Subscribers

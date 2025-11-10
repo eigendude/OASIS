@@ -466,13 +466,20 @@ class PerceptionDescriptions:
     #
 
     @staticmethod
-    def add_pose_landmarker(ld: LaunchDescription, zone_id: str) -> None:
+    def add_pose_landmarker(
+        ld: LaunchDescription, zone_id: str, image_transport: str = "compressed"
+    ) -> None:
         node: Node = Node(
             namespace=ROS_NAMESPACE,
             package=PYTHON_PACKAGE_NAME,
             executable="pose_landmarker",
             name=f"pose_landmarker_{zone_id}",
             output="screen",
+            parameters=[
+                {
+                    "image_transport": image_transport,
+                }
+            ],
             remappings=[
                 # Topics
                 ("camera_scene", f"{zone_id}/camera_scene"),
