@@ -112,7 +112,7 @@ def generate_launch_description() -> LaunchDescription:
             composable_nodes,
             PERCEPTION_SERVER_IMAGE_DOWNSCALER,
             input_topic="image_raw",
-            output_suffix="sd",
+            output_resolution="sd",
             image_transport="compressed",
             max_width=640,
             max_height=480,
