@@ -20,6 +20,7 @@
 #include <opencv2/core.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
+#include <rmw/qos_profiles.h>
 #include <sensor_msgs/image_encodings.hpp>
 
 using namespace OASIS;
@@ -29,7 +30,12 @@ MonocularSlam::MonocularSlam(rclcpp::Node& node, const std::string& mapImageTopi
   : m_logger(std::make_unique<rclcpp::Logger>(node.get_logger()))
 {
   if (!mapImageTopic.empty())
-    m_mapImagePublisher = image_transport::create_publisher(&node, mapImageTopic);
+  {
+    rmw_qos_profile_t qos = rmw_qos_profile_sensor_data;
+    qos.reliability = RMW_QOS_POLICY_RELIABILITY_RELIABLE;
+
+    m_mapImagePublisher = image_transport::create_publisher(&node, mapImageTopic, qos);
+  }
 }
 
 MonocularSlam::~MonocularSlam() = default;

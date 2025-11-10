@@ -20,6 +20,7 @@
 #include <opencv2/imgproc.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
+#include <rmw/qos_profiles.h>
 #include <sensor_msgs/image_encodings.hpp>
 
 using namespace OASIS;
@@ -111,8 +112,8 @@ bool MonocularSlamNode::Initialize()
   RCLCPP_INFO(*m_logger, "ORB_SLAM3 settings file: %s", settingsFile.c_str());
 
   *m_imgSubscriber = image_transport::create_subscription(
-      &m_node, imageTopic,
-      [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg) { OnImage(msg); }, imageTransport);
+      &m_node, imageTopic, [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg)
+      { OnImage(msg); }, imageTransport, rmw_qos_profile_sensor_data);
 
   m_monocularSlam = std::make_unique<SLAM::MonocularSlam>(m_node, mapImageTopic);
   if (!m_monocularSlam->Initialize(vocabularyFile, settingsFile))

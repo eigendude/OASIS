@@ -73,7 +73,6 @@ private:
   };
 
   // Image parameters
-  std::unique_ptr<image_transport::ImageTransport> m_imgTransport;
   std::map<std::string, ImagePublisher> m_imgPublishers; // Algorithm topic -> publisher
   std::unique_ptr<image_transport::Subscriber> m_imgSubscriber;
 

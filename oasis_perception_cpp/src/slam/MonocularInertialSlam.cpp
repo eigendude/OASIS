@@ -22,6 +22,7 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
+#include <rmw/qos_profiles.h>
 #include <sensor_msgs/image_encodings.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <std_msgs/msg/header.hpp>
@@ -33,7 +34,12 @@ MonocularInertialSlam::MonocularInertialSlam(rclcpp::Node& node, const std::stri
   : m_logger(std::make_unique<rclcpp::Logger>(node.get_logger()))
 {
   if (!mapImageTopic.empty())
-    m_mapImagePublisher = image_transport::create_publisher(&node, mapImageTopic);
+  {
+    rmw_qos_profile_t qos = rmw_qos_profile_sensor_data;
+    qos.reliability = RMW_QOS_POLICY_RELIABILITY_RELIABLE;
+
+    m_mapImagePublisher = image_transport::create_publisher(&node, mapImageTopic, qos);
+  }
 }
 
 MonocularInertialSlam::~MonocularInertialSlam() = default;

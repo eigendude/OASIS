@@ -15,6 +15,7 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
+#include <rmw/qos_profiles.h>
 #include <sensor_msgs/image_encodings.hpp>
 
 using namespace OASIS;
@@ -28,9 +29,11 @@ BackgroundModelerABL::BackgroundModelerABL(rclcpp::Node& node,
     m_imgSubscriber(std::make_unique<image_transport::Subscriber>()),
     m_bgsPackageABL(std::make_unique<bgslibrary::algorithms::AdaptiveBackgroundLearning>())
 {
-  *m_imgPublisherBackground = image_transport::create_publisher(&node, backgroundTopic);
+  const rmw_qos_profile_t sensorQos = rmw_qos_profile_sensor_data;
+
+  *m_imgPublisherBackground = image_transport::create_publisher(&node, backgroundTopic, sensorQos);
   *m_imgSubscriber = image_transport::create_subscription(
-      &node, imageTopic, [this](const auto& msg) { ReceiveImage(msg); }, "compressed");
+      &node, imageTopic, [this](const auto& msg) { ReceiveImage(msg); }, "compressed", sensorQos);
 }
 
 BackgroundModelerABL::~BackgroundModelerABL()

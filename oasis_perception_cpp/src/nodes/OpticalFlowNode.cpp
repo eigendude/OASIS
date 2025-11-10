@@ -21,6 +21,7 @@
 #include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
 #include <rclcpp/qos.hpp>
+#include <rmw/qos_profiles.h>
 #include <sensor_msgs/image_encodings.hpp>
 
 using namespace OASIS;
@@ -119,7 +120,9 @@ bool OpticalFlowNode::Initialize()
   RCLCPP_INFO(m_node.get_logger(), "Publishing scene score: %s",
               m_publishSceneScore ? "true" : "false");
 
-  *m_flowPublisher = image_transport::create_publisher(&m_node, flowTopic);
+  const rmw_qos_profile_t sensorQos = rmw_qos_profile_sensor_data;
+
+  *m_flowPublisher = image_transport::create_publisher(&m_node, flowTopic, sensorQos);
   if (m_publishSceneScore)
   {
     m_scenePublisher =
@@ -127,8 +130,8 @@ bool OpticalFlowNode::Initialize()
   }
 
   *m_imgSubscriber = image_transport::create_subscription(
-      &m_node, imageTopic,
-      [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg) { OnImage(msg); }, imageTransport);
+      &m_node, imageTopic, [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg)
+      { OnImage(msg); }, imageTransport, sensorQos);
 
   RCLCPP_INFO(m_node.get_logger(), "Started optical flow");
 
