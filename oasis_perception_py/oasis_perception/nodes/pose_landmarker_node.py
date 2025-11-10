@@ -46,6 +46,10 @@ PACKAGE_NAME = "oasis_perception_py"
 # Default node name
 NODE_NAME = "pose_landmarker"
 
+# Parameters
+IMAGE_TRANSPORT_PARAM = "image_transport"
+IMAGE_TRANSPORT_DEFAULT = "compressed"
+
 # Subscribers
 IMAGE_SUB_TOPIC = "image"
 
@@ -77,6 +81,14 @@ class PoseLandmarkerNode(rclpy.node.Node):
 
         self.get_logger().info("Pose landmarker node initializing")
 
+        # Declare parameters
+        self.declare_parameter(IMAGE_TRANSPORT_PARAM, IMAGE_TRANSPORT_DEFAULT)
+
+        image_transport_param = (
+            self.get_parameter(IMAGE_TRANSPORT_PARAM).get_parameter_value().string_value
+        )
+        image_transport = image_transport_param or IMAGE_TRANSPORT_DEFAULT
+
         # Pose detection state
         self._pose_count: int = 0
 
@@ -94,10 +106,10 @@ class PoseLandmarkerNode(rclpy.node.Node):
         # Initialize cv_bridge to convert between ROS and OpenCV images
         self._cv_bridge = cv_bridge.CvBridge()
 
-        # Create an ImageTransport object using this node's name and specifying
-        # the 'compressed' transport
+        # Create an ImageTransport object using this node's name and the
+        # configured transport
         self._image_transport: ImageTransport = ImageTransport(
-            self.get_name(), image_transport="compressed"
+            self.get_name(), image_transport=image_transport
         )
 
         # Subscribers

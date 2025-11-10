@@ -130,7 +130,9 @@ def generate_launch_description() -> LaunchDescription:
 
     if PERCEPTION_SERVER_POSE_LANDMARKS:
         for host_id in PERCEPTION_SERVER_POSE_LANDMARKS:
-            PerceptionDescriptions.add_pose_landmarker(ld, host_id)
+            PerceptionDescriptions.add_pose_landmarker(
+                ld, host_id, image_transport="raw"
+            )
 
     # TODO
     # if ZONE_ID in SMART_DISPLAY_ZONES:
