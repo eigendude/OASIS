@@ -241,13 +241,11 @@ class PerceptionDescriptions:
         composable_nodes: list[ComposableNode],
         system_ids: list[str],
         input_topic: str,
-        output_suffix: str,
+        output_resolution: str,
         image_transport: str,
         max_width: int,
         max_height: int,
     ) -> None:
-        parameter_suffix: str = f"{input_topic}/{output_suffix}"
-
         composable_nodes.extend(
             [
                 ComposableNode(
@@ -259,24 +257,24 @@ class PerceptionDescriptions:
                         {
                             "system_id": system_id,
                             "image_transport": image_transport,
-                            "output_suffix": parameter_suffix,
+                            "output_resolution": output_resolution,
                             "max_width": max_width,
                             "max_height": max_height,
                         }
                     ],
                     remappings=[
-                        (f"{system_id}_image", f"{system_id}/{input_topic}"),
                         (
                             f"{system_id}_camera_info",
-                            f"{system_id}/{input_topic}/camera_info",
+                            f"{system_id}/camera_info",
                         ),
                         (
-                            f"{system_id}_{parameter_suffix}",
-                            f"{system_id}/{input_topic}/{output_suffix}",
+                            f"{system_id}_camera_info_{output_resolution}",
+                            f"{system_id}/camera_info/{output_resolution}",
                         ),
+                        (f"{system_id}_image", f"{system_id}/{input_topic}"),
                         (
-                            f"{system_id}_{parameter_suffix}_camera_info",
-                            f"{system_id}/{input_topic}/{output_suffix}/camera_info",
+                            f"{system_id}_image_{output_resolution}",
+                            f"{system_id}/{input_topic}/{output_resolution}",
                         ),
                     ],
                 )
@@ -310,7 +308,7 @@ class PerceptionDescriptions:
                     ],
                     remappings=[
                         # Topics
-                        ("camera_info", f"{system_id}/camera_info"),
+                        ("camera_info", f"{system_id}/camera_info/{image_resolution}"),
                         ("image_rect", f"{system_id}/image_rect/{image_resolution}"),
                         ("image", f"{system_id}/image_raw/{image_resolution}"),
                     ],
