@@ -1,7 +1,7 @@
 From 6b834bebd20982ab8afcf6976bbdfa96586d44d3 Mon Sep 17 00:00:00 2001
 From: Garrett Brown <garrett.brown@aclima.earth>
 Date: Fri, 17 Oct 2025 20:44:14 -0700
-Subject: [PATCH 5/6] Fix hard-coded paths to Thirdparty directory
+Subject: [PATCH 5/7] Fix hard-coded paths to Thirdparty directory
 
 ---
  CMakeLists.txt             |  2 ++

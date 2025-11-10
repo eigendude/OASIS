@@ -1,7 +1,7 @@
 From 43c753e6c3df4ef1355359f86807147ccea00994 Mon Sep 17 00:00:00 2001
 From: Garrett Brown <eigendebugger@gmail.com>
 Date: Tue, 12 Nov 2024 14:27:28 -0800
-Subject: [PATCH 2/6] Fix parallel make
+Subject: [PATCH 2/7] Fix parallel make
 
 ---
  CMakeLists.txt | 3 +++

@@ -1,7 +1,7 @@
 From a70f15b0ca98a76830a7b8b4641c8ddcfc030b44 Mon Sep 17 00:00:00 2001
 From: Garrett Brown <eigendebugger@gmail.com>
 Date: Thu, 6 Jun 2024 19:39:18 -0700
-Subject: [PATCH 3/6] Don't build examples
+Subject: [PATCH 3/7] Don't build examples
 
 ---
  CMakeLists.txt | 254 -------------------------------------------------

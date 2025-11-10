@@ -333,6 +333,12 @@ patch \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/ORB_SLAM3" \
   < "${CONFIG_DIRECTORY}/ORB_SLAM3/0006-Add-install-steps-to-CMakeLists.txt.patch"
+patch \
+  -p1 \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/ORB_SLAM3" \
+  < "${CONFIG_DIRECTORY}/ORB_SLAM3/0007-Add-function-to-get-atlas.patch"
 
 # Disable ORB_SLAM3 on systems with <= 4GiB memory
 if (( $(echo "${PHYSICAL_MEMORY_GB} <= 4" | bc -l) )); then

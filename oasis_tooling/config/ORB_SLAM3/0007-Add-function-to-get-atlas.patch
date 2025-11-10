@@ -1,0 +1,24 @@
+From d5884b0833e8be198a4a7d4b94e9b2ef30de7a9f Mon Sep 17 00:00:00 2001
+From: Garrett Brown <garrett.brown@aclima.earth>
+Date: Sun, 9 Nov 2025 20:01:31 -0800
+Subject: [PATCH 7/7] Add function to get atlas
+
+---
+ include/System.h | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/include/System.h b/include/System.h
+index 872c86e..8fb99be 100644
+--- a/include/System.h
++++ b/include/System.h
+@@ -176,6 +176,7 @@ public:
+     int GetTrackingState();
+     std::vector<MapPoint*> GetTrackedMapPoints();
+     std::vector<cv::KeyPoint> GetTrackedKeyPointsUn();
++    Atlas* GetAtlas() { return mpAtlas; }
+ 
+     // For debugging
+     double GetTimeFromIMUInit();
+-- 
+2.43.0
+

@@ -1,7 +1,7 @@
 From 14fda5fea1c957f9e483f74ed5efdcff833f8a0f Mon Sep 17 00:00:00 2001
 From: Garrett Brown <eigendebugger@gmail.com>
 Date: Fri, 23 Dec 2022 13:43:38 -0800
-Subject: [PATCH 4/6] Add missing third party directories to CMakeLists.txt
+Subject: [PATCH 4/7] Add missing third party directories to CMakeLists.txt
 
 ---
  CMakeLists.txt | 4 ++--
