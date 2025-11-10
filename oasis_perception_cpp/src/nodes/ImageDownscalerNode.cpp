@@ -24,6 +24,7 @@ using namespace OASIS;
 namespace
 {
 constexpr std::string_view IMAGE_TOPIC = "image";
+constexpr std::string_view CAMERA_INFO_TOPIC = "camera_info";
 
 constexpr std::string_view SYSTEM_ID_PARAMETER = "system_id";
 constexpr std::string_view DEFAULT_SYSTEM_ID = "";
@@ -117,10 +118,19 @@ bool ImageDownscalerNode::Initialize()
   downscaledTopic.push_back('_');
   downscaledTopic.append(outputSuffix);
 
+  std::string cameraInfoTopic = systemId;
+  cameraInfoTopic.push_back('_');
+  cameraInfoTopic.append(CAMERA_INFO_TOPIC);
+
+  std::string downscaledCameraInfoTopic = downscaledTopic;
+  downscaledCameraInfoTopic.append("_camera_info");
+
   RCLCPP_INFO(m_node.get_logger(), "System ID: %s", systemId.c_str());
   RCLCPP_INFO(m_node.get_logger(), "Image topic: %s", imageTopic.c_str());
   RCLCPP_INFO(m_node.get_logger(), "Image transport: %s", imageTransport.c_str());
   RCLCPP_INFO(m_node.get_logger(), "Downscaled topic: %s", downscaledTopic.c_str());
+  RCLCPP_INFO(m_node.get_logger(), "Camera info topic: %s", cameraInfoTopic.c_str());
+  RCLCPP_INFO(m_node.get_logger(), "Downscaled camera info topic: %s", downscaledCameraInfoTopic.c_str());
   RCLCPP_INFO(m_node.get_logger(), "Max dimensions: %ldx%ld", maxWidthParam, maxHeightParam);
 
   try
@@ -128,7 +138,7 @@ bool ImageDownscalerNode::Initialize()
     auto nodeShared = m_node.shared_from_this();
     m_downscaler = std::make_unique<IMAGE::ImageDownscaler>(
         nodeShared, imageTopic, downscaledTopic, imageTransport, static_cast<int>(maxWidthParam),
-        static_cast<int>(maxHeightParam));
+        static_cast<int>(maxHeightParam), cameraInfoTopic, downscaledCameraInfoTopic);
   }
   catch (const std::exception& e)
   {

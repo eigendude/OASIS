@@ -11,12 +11,14 @@
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
+#include <utility>
 
 #include <cv_bridge/cv_bridge.hpp>
 #include <image_transport/image_transport.hpp>
 #include <opencv2/imgproc.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
+#include <rclcpp/qos.hpp>
 #include <sensor_msgs/image_encodings.hpp>
 
 using namespace OASIS;
@@ -32,7 +34,9 @@ ImageDownscaler::ImageDownscaler(std::shared_ptr<rclcpp::Node> node,
                                  const std::string& downscaledTopic,
                                  const std::string& imageTransport,
                                  int maxWidth,
-                                 int maxHeight)
+                                 int maxHeight,
+                                 const std::string& cameraInfoTopic,
+                                 const std::string& downscaledCameraInfoTopic)
   : m_logger(node->get_logger()),
     m_node(std::move(node)),
     m_downscaledPublisher(std::make_unique<image_transport::Publisher>()),
@@ -54,12 +58,23 @@ ImageDownscaler::ImageDownscaler(std::shared_ptr<rclcpp::Node> node,
   *m_imageSubscriber = image_transport::create_subscription(
       m_node.get(), imageTopic,
       [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg) { ReceiveImage(msg); }, imageTransport);
+
+  m_cameraInfoPublisher =
+      m_node->create_publisher<sensor_msgs::msg::CameraInfo>(downscaledCameraInfoTopic, rclcpp::SensorDataQoS());
+
+  m_cameraInfoSubscriber = m_node->create_subscription<sensor_msgs::msg::CameraInfo>(
+      cameraInfoTopic, rclcpp::SensorDataQoS(),
+      [this](const sensor_msgs::msg::CameraInfo::SharedPtr msg) { ReceiveCameraInfo(msg); });
 }
 
 ImageDownscaler::~ImageDownscaler()
 {
   m_imageSubscriber->shutdown();
   m_downscaledPublisher->shutdown();
+  if (m_cameraInfoSubscriber)
+    m_cameraInfoSubscriber.reset();
+  if (m_cameraInfoPublisher)
+    m_cameraInfoPublisher.reset();
 }
 
 void ImageDownscaler::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg)
@@ -99,6 +114,7 @@ void ImageDownscaler::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr
 
   if (width <= m_maxWidth && height <= m_maxHeight)
   {
+    PublishDownscaledCameraInfo(msg->header, width, height, width, height);
     m_downscaledPublisher->publish(msg);
     return;
   }
@@ -109,6 +125,7 @@ void ImageDownscaler::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr
 
   if (scale >= 1.0 - SCALE_EPSILON)
   {
+    PublishDownscaledCameraInfo(msg->header, width, height, width, height);
     m_downscaledPublisher->publish(msg);
     return;
   }
@@ -120,6 +137,88 @@ void ImageDownscaler::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr
   cv::resize(image, resizedImage, cv::Size(targetWidth, targetHeight), 0.0, 0.0, cv::INTER_AREA);
 
   cv_bridge::CvImage downscaledImage(cv_ptr->header, cv_ptr->encoding, resizedImage);
-  m_downscaledPublisher->publish(downscaledImage.toImageMsg());
+  auto downscaledMessage = downscaledImage.toImageMsg();
+  PublishDownscaledCameraInfo(downscaledMessage->header, width, height, targetWidth, targetHeight);
+  m_downscaledPublisher->publish(downscaledMessage);
+}
+
+void ImageDownscaler::ReceiveCameraInfo(const sensor_msgs::msg::CameraInfo::SharedPtr& msg)
+{
+  if (!msg)
+  {
+    RCLCPP_WARN(m_logger, "Received null camera info message");
+    return;
+  }
+
+  std::scoped_lock lock(m_cameraInfoMutex);
+  m_lastCameraInfo = std::make_shared<sensor_msgs::msg::CameraInfo>(*msg);
+  m_reportedMissingCameraInfo = false;
+}
+
+void ImageDownscaler::PublishDownscaledCameraInfo(const std_msgs::msg::Header& header,
+                                                  int originalWidth,
+                                                  int originalHeight,
+                                                  int outputWidth,
+                                                  int outputHeight)
+{
+  sensor_msgs::msg::CameraInfo::SharedPtr cameraInfo;
+  {
+    std::scoped_lock lock(m_cameraInfoMutex);
+    if (!m_lastCameraInfo)
+    {
+      if (!m_reportedMissingCameraInfo)
+      {
+        RCLCPP_WARN(m_logger, "Cannot publish camera info before receiving any camera info messages");
+        m_reportedMissingCameraInfo = true;
+      }
+      return;
+    }
+
+    cameraInfo = std::make_shared<sensor_msgs::msg::CameraInfo>(*m_lastCameraInfo);
+  }
+
+  cameraInfo->header.stamp = header.stamp;
+  if (!header.frame_id.empty())
+    cameraInfo->header.frame_id = header.frame_id;
+
+  const bool shouldScale = (outputWidth != originalWidth) || (outputHeight != originalHeight);
+  if (shouldScale && originalWidth > 0 && originalHeight > 0)
+  {
+    const double widthScale = static_cast<double>(outputWidth) / static_cast<double>(originalWidth);
+    const double heightScale = static_cast<double>(outputHeight) / static_cast<double>(originalHeight);
+    const double scale = std::min(widthScale, heightScale);
+
+    cameraInfo->width = static_cast<uint32_t>(std::max(1, outputWidth));
+    cameraInfo->height = static_cast<uint32_t>(std::max(1, outputHeight));
+
+    cameraInfo->k[0] *= scale; // fx
+    cameraInfo->k[2] *= scale; // cx
+    cameraInfo->k[4] *= scale; // fy
+    cameraInfo->k[5] *= scale; // cy
+
+    cameraInfo->p[0] *= scale; // fx
+    cameraInfo->p[2] *= scale; // cx
+    cameraInfo->p[5] *= scale; // fy
+    cameraInfo->p[6] *= scale; // cy
+
+    if (cameraInfo->roi.width > 0 && cameraInfo->roi.height > 0)
+    {
+      cameraInfo->roi.x_offset = static_cast<uint32_t>(
+          std::max(0, static_cast<int>(std::lround(static_cast<double>(cameraInfo->roi.x_offset) * scale))));
+      cameraInfo->roi.y_offset = static_cast<uint32_t>(
+          std::max(0, static_cast<int>(std::lround(static_cast<double>(cameraInfo->roi.y_offset) * scale))));
+      cameraInfo->roi.width = static_cast<uint32_t>(
+          std::max(1, static_cast<int>(std::lround(static_cast<double>(cameraInfo->roi.width) * scale))));
+      cameraInfo->roi.height = static_cast<uint32_t>(
+          std::max(1, static_cast<int>(std::lround(static_cast<double>(cameraInfo->roi.height) * scale))));
+    }
+  }
+  else
+  {
+    cameraInfo->width = static_cast<uint32_t>(std::max(1, outputWidth));
+    cameraInfo->height = static_cast<uint32_t>(std::max(1, outputHeight));
+  }
+
+  m_cameraInfoPublisher->publish(*cameraInfo);
 }
 
