@@ -125,12 +125,13 @@ bool ImageDownscalerNode::Initialize()
   cameraInfoTopic.append(CAMERA_INFO_TOPIC);
 
   std::string downscaledCameraInfoTopic = downscaledTopic;
-  downscaledTopic.push_back('_');
-  downscaledTopic.append(outputResolution);
+  downscaledCameraInfoTopic.push_back('_');
+  downscaledCameraInfoTopic.append(outputResolution);
 
   RCLCPP_INFO(m_node.get_logger(), "System ID: %s", systemId.c_str());
   RCLCPP_INFO(m_node.get_logger(), "Image topic: %s", imageTopic.c_str());
   RCLCPP_INFO(m_node.get_logger(), "Image transport: %s", imageTransport.c_str());
+  RCLCPP_INFO(m_node.get_logger(), "Output resolution: %s", outputResolution.c_str());
   RCLCPP_INFO(m_node.get_logger(), "Downscaled topic: %s", downscaledTopic.c_str());
   RCLCPP_INFO(m_node.get_logger(), "Camera info topic: %s", cameraInfoTopic.c_str());
   RCLCPP_INFO(m_node.get_logger(), "Downscaled camera info topic: %s",
