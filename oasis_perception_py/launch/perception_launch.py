@@ -56,6 +56,7 @@ print(f"Launching perception on {HOSTNAME} in zone {ZONE_ID}")
 PERCEPTION_SERVER_BACKGROUND: list[str] = []
 PERCEPTION_SERVER_CALIBRATION: list[str] = []
 PERCEPTION_SERVER_FLOW: list[str] = []
+PERCEPTION_SERVER_IMAGE_DOWNSCALER: list[str] = []
 PERCEPTION_SERVER_IMAGE_RECT: list[str] = []
 PERCEPTION_SERVER_MONOCULAR_SLAM: list[str] = []
 PERCEPTION_SERVER_MONOCULAR_INERTIAL_SLAM: list[str] = []
@@ -73,6 +74,7 @@ elif HOST_ID == "nas":
 elif HOST_ID == "oceanplatform":
     # PERCEPTION_SERVER_BACKGROUND.extend(["station"])
     # PERCEPTION_SERVER_FLOW.extend(["falcon", "station"])
+    PERCEPTION_SERVER_IMAGE_DOWNSCALER.extend(["falcon"])
     PERCEPTION_SERVER_IMAGE_RECT.extend(["falcon"])
     PERCEPTION_SERVER_MONOCULAR_SLAM.extend(["falcon"])
     PERCEPTION_SERVER_POSE_LANDMARKS.extend(["falcon"])
@@ -105,11 +107,23 @@ def generate_launch_description() -> LaunchDescription:
             composable_nodes, PERCEPTION_SERVER_FLOW, image_transport="compressed"
         )
 
+    if PERCEPTION_SERVER_IMAGE_DOWNSCALER:
+        PerceptionDescriptions.add_image_downscaler(
+            composable_nodes,
+            PERCEPTION_SERVER_IMAGE_DOWNSCALER,
+            input_topic="image_raw",
+            output_resolution="sd",
+            image_transport="compressed",
+            max_width=640,
+            max_height=480,
+        )
+
     if PERCEPTION_SERVER_IMAGE_RECT:
         PerceptionDescriptions.add_image_rectifier(
             composable_nodes,
             PERCEPTION_SERVER_IMAGE_RECT,
-            image_transport="compressed",
+            input_resolution="sd",
+            image_transport="raw",
         )
 
     if PERCEPTION_SERVER_MONOCULAR_SLAM:

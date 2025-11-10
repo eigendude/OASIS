@@ -233,6 +233,56 @@ class PerceptionDescriptions:
         ld.add_action(hello_world_container)
 
     #
+    # Image downscaler
+    #
+
+    @staticmethod
+    def add_image_downscaler(
+        composable_nodes: list[ComposableNode],
+        system_ids: list[str],
+        input_topic: str,
+        output_resolution: str,
+        image_transport: str,
+        max_width: int,
+        max_height: int,
+    ) -> None:
+        composable_nodes.extend(
+            [
+                ComposableNode(
+                    namespace=ROS_NAMESPACE,
+                    package=CPP_PACKAGE_NAME,
+                    plugin="oasis_perception::ImageDownscalerComponent",
+                    name=f"image_downscaler_{system_id}",
+                    parameters=[
+                        {
+                            "system_id": system_id,
+                            "image_transport": image_transport,
+                            "output_resolution": output_resolution,
+                            "max_width": max_width,
+                            "max_height": max_height,
+                        }
+                    ],
+                    remappings=[
+                        (
+                            f"{system_id}_camera_info",
+                            f"{system_id}/camera_info",
+                        ),
+                        (
+                            f"{system_id}_camera_info_{output_resolution}",
+                            f"{system_id}/{output_resolution}/camera_info",
+                        ),
+                        (f"{system_id}_image", f"{system_id}/{input_topic}"),
+                        (
+                            f"{system_id}_image_{output_resolution}",
+                            f"{system_id}/{output_resolution}/{input_topic}",
+                        ),
+                    ],
+                )
+                for system_id in system_ids
+            ]
+        )
+
+    #
     # Image rectifier
     #
 
@@ -240,6 +290,7 @@ class PerceptionDescriptions:
     def add_image_rectifier(
         composable_nodes: list[ComposableNode],
         system_ids: list[str],
+        input_resolution: str,
         image_transport: str,
     ) -> None:
         composable_nodes.extend(
@@ -257,9 +308,9 @@ class PerceptionDescriptions:
                     ],
                     remappings=[
                         # Topics
-                        ("camera_info", f"{system_id}/camera_info"),
-                        ("image_rect", f"{system_id}/image_rect"),
-                        ("image", f"{system_id}/image_raw"),
+                        ("camera_info", f"{system_id}/{input_resolution}/camera_info"),
+                        ("image", f"{system_id}/{input_resolution}/image_raw"),
+                        ("image_rect", f"{system_id}/{input_resolution}/image_rect"),
                     ],
                 )
                 for system_id in system_ids
@@ -399,7 +450,7 @@ class PerceptionDescriptions:
                                 # Use different remappings for Kinect V2
                                 f"{system_id}/sd/image_color"
                                 if system_id == KINECT_V2_ZONE_ID
-                                else f"{system_id}/image_raw"
+                                else f"{system_id}/sd/image_raw"
                             ),
                         ),
                         (f"{system_id}_flow_image", f"{system_id}/flow_image"),
@@ -431,18 +482,18 @@ class PerceptionDescriptions:
             ],
             remappings=[
                 # Topics
-                ("camera_scene", f"{zone_id}/camera_scene"),
+                ("camera_scene", f"{zone_id}/sd/camera_scene"),
                 (
                     "image",
                     (
                         # Use different remappings for Kinect V2
                         f"{zone_id}/sd/image_color"
                         if zone_id == KINECT_V2_ZONE_ID
-                        else f"{zone_id}/image_rect"
+                        else f"{zone_id}/sd/image_rect"
                     ),
                 ),
-                ("pose", f"{zone_id}/pose"),
-                ("pose_image", f"{zone_id}/pose_image"),
+                ("pose", f"{zone_id}/sd/pose"),
+                ("pose_image", f"{zone_id}/sd/pose_image"),
             ],
         )
         ld.add_action(node)
