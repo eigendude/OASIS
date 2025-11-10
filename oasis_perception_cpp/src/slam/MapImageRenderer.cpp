@@ -87,13 +87,15 @@ sensor_msgs::msg::Image::SharedPtr MapImageRenderer::RenderImage(
   std::size_t visibleCount = 0;
   std::size_t trackedVisibleCount = 0;
 
+  const Eigen::Matrix3f cameraRotation = orientation.conjugate().toRotationMatrix();
+
   for (const auto& point : renderPoints)
   {
     Eigen::Vector3f relative = point.position - cameraPosition;
     if (!relative.allFinite())
       continue;
 
-    Eigen::Vector3f cameraSpace = orientation.conjugate() * relative;
+    Eigen::Vector3f cameraSpace = cameraRotation * relative;
     if (!cameraSpace.allFinite())
       continue;
 
