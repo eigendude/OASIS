@@ -14,6 +14,7 @@ import cv2
 import cv_bridge
 import numpy as np
 import rclpy.node
+from rclpy.qos import QoSPresetProfiles
 from image_transport_py import ImageTransport
 from mediapipe.framework.formats import landmark_pb2
 from mediapipe.solutions import drawing_styles as mp_drawing_styles
@@ -71,6 +72,9 @@ class PoseRendererNode(rclpy.node.Node):
         self._mp_styles = mp_drawing_styles
         self._mp_pose = mp_pose
 
+        # QoS profiles
+        sensor_qos = QoSPresetProfiles.SENSOR_DATA.value
+
         # ImageTransport for publishing compressed overlays
         self._it: ImageTransport = ImageTransport(
             self.get_name(), image_transport="compressed"
@@ -89,12 +93,14 @@ class PoseRendererNode(rclpy.node.Node):
                 lambda msg, _, z=zone_id, w=width, h=height: self._on_pose(
                     msg, z, w, h
                 ),
-                1,
+                sensor_qos,
             )
 
             # Advertise overlay
             self._pubs[zone_id] = self._it.advertise(
-                self.resolve_topic_name(topic_out), 1
+                self.resolve_topic_name(topic_out),
+                1,
+                qos_profile=sensor_qos,
             )
 
         self.get_logger().info(f"PoseRendererNode initialized for zones: {zone_ids}")

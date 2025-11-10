@@ -15,6 +15,7 @@ import cv_bridge
 import mediapipe
 import numpy as np
 import rclpy.node
+from rclpy.qos import QoSPresetProfiles
 from ament_index_python import get_package_share_directory
 from builtin_interfaces.msg import Time as TimeMsg
 from image_transport_py import ImageTransport
@@ -112,24 +113,32 @@ class PoseLandmarkerNode(rclpy.node.Node):
             self.get_name(), image_transport=image_transport
         )
 
+        # QoS profiles
+        sensor_qos = QoSPresetProfiles.SENSOR_DATA.value
+
         # Subscribers
         self._image_transport.subscribe(
-            self.resolve_topic_name(IMAGE_SUB_TOPIC), 1, self._image_callback
+            self.resolve_topic_name(IMAGE_SUB_TOPIC),
+            1,
+            self._image_callback,
+            qos_profile=sensor_qos,
         )
 
         # Publishers
         self._scene_pub = self.create_publisher(
             CameraSceneMsg,
             self.resolve_topic_name(CAMERA_SCENE_TOPIC),
-            1,
+            sensor_qos,
         )
         self._pose_image_pub = self._image_transport.advertise(
-            self.resolve_topic_name(POSE_IMAGE_TOPIC), 1
+            self.resolve_topic_name(POSE_IMAGE_TOPIC),
+            1,
+            qos_profile=sensor_qos,
         )
         self._pose_landmarks_pub = self.create_publisher(
             PoseLandmarksArrayMsg,
             POSE_LANDMARKS_TOPIC,
-            1,
+            sensor_qos,
         )
 
         # Initialize MediaPipe pose detector in IMAGE mode for synchronous processing
