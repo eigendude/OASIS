@@ -56,11 +56,11 @@ ImageDownscaler::ImageDownscaler(std::shared_ptr<rclcpp::Node> node,
 
   *m_downscaledPublisher = image_transport::create_publisher(m_node.get(), downscaledTopic);
   *m_imageSubscriber = image_transport::create_subscription(
-      m_node.get(), imageTopic,
-      [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg) { ReceiveImage(msg); }, imageTransport);
+      m_node.get(), imageTopic, [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg)
+      { ReceiveImage(msg); }, imageTransport);
 
-  m_cameraInfoPublisher =
-      m_node->create_publisher<sensor_msgs::msg::CameraInfo>(downscaledCameraInfoTopic, rclcpp::SensorDataQoS());
+  m_cameraInfoPublisher = m_node->create_publisher<sensor_msgs::msg::CameraInfo>(
+      downscaledCameraInfoTopic, rclcpp::SensorDataQoS());
 
   m_cameraInfoSubscriber = m_node->create_subscription<sensor_msgs::msg::CameraInfo>(
       cameraInfoTopic, rclcpp::SensorDataQoS(),
@@ -168,7 +168,8 @@ void ImageDownscaler::PublishDownscaledCameraInfo(const std_msgs::msg::Header& h
     {
       if (!m_reportedMissingCameraInfo)
       {
-        RCLCPP_WARN(m_logger, "Cannot publish camera info before receiving any camera info messages");
+        RCLCPP_WARN(m_logger,
+                    "Cannot publish camera info before receiving any camera info messages");
         m_reportedMissingCameraInfo = true;
       }
       return;
@@ -185,7 +186,8 @@ void ImageDownscaler::PublishDownscaledCameraInfo(const std_msgs::msg::Header& h
   if (shouldScale && originalWidth > 0 && originalHeight > 0)
   {
     const double widthScale = static_cast<double>(outputWidth) / static_cast<double>(originalWidth);
-    const double heightScale = static_cast<double>(outputHeight) / static_cast<double>(originalHeight);
+    const double heightScale =
+        static_cast<double>(outputHeight) / static_cast<double>(originalHeight);
     const double scale = std::min(widthScale, heightScale);
 
     cameraInfo->width = static_cast<uint32_t>(std::max(1, outputWidth));
@@ -203,14 +205,14 @@ void ImageDownscaler::PublishDownscaledCameraInfo(const std_msgs::msg::Header& h
 
     if (cameraInfo->roi.width > 0 && cameraInfo->roi.height > 0)
     {
-      cameraInfo->roi.x_offset = static_cast<uint32_t>(
-          std::max(0, static_cast<int>(std::lround(static_cast<double>(cameraInfo->roi.x_offset) * scale))));
-      cameraInfo->roi.y_offset = static_cast<uint32_t>(
-          std::max(0, static_cast<int>(std::lround(static_cast<double>(cameraInfo->roi.y_offset) * scale))));
-      cameraInfo->roi.width = static_cast<uint32_t>(
-          std::max(1, static_cast<int>(std::lround(static_cast<double>(cameraInfo->roi.width) * scale))));
-      cameraInfo->roi.height = static_cast<uint32_t>(
-          std::max(1, static_cast<int>(std::lround(static_cast<double>(cameraInfo->roi.height) * scale))));
+      cameraInfo->roi.x_offset = static_cast<uint32_t>(std::max(
+          0, static_cast<int>(std::lround(static_cast<double>(cameraInfo->roi.x_offset) * scale))));
+      cameraInfo->roi.y_offset = static_cast<uint32_t>(std::max(
+          0, static_cast<int>(std::lround(static_cast<double>(cameraInfo->roi.y_offset) * scale))));
+      cameraInfo->roi.width = static_cast<uint32_t>(std::max(
+          1, static_cast<int>(std::lround(static_cast<double>(cameraInfo->roi.width) * scale))));
+      cameraInfo->roi.height = static_cast<uint32_t>(std::max(
+          1, static_cast<int>(std::lround(static_cast<double>(cameraInfo->roi.height) * scale))));
     }
   }
   else
@@ -221,4 +223,3 @@ void ImageDownscaler::PublishDownscaledCameraInfo(const std_msgs::msg::Header& h
 
   m_cameraInfoPublisher->publish(*cameraInfo);
 }
-

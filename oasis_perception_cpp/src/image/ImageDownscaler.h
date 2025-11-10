@@ -13,8 +13,8 @@
 #include <string>
 
 #include <rclcpp/logger.hpp>
-#include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
+#include <sensor_msgs/msg/image.hpp>
 #include <std_msgs/msg/header.hpp>
 
 namespace image_transport
@@ -71,4 +71,3 @@ private:
 
 } // namespace IMAGE
 } // namespace OASIS
-

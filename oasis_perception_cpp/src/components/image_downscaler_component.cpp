@@ -49,4 +49,3 @@ private:
 } // namespace oasis_perception
 
 RCLCPP_COMPONENTS_REGISTER_NODE(oasis_perception::ImageDownscalerComponent);
-

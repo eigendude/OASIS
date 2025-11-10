@@ -62,13 +62,15 @@ bool ImageDownscalerNode::Initialize()
   std::string systemId;
   if (!m_node.get_parameter(SYSTEM_ID_PARAMETER.data(), systemId))
   {
-    RCLCPP_ERROR(m_node.get_logger(), "Missing system ID parameter '%s'", SYSTEM_ID_PARAMETER.data());
+    RCLCPP_ERROR(m_node.get_logger(), "Missing system ID parameter '%s'",
+                 SYSTEM_ID_PARAMETER.data());
     return false;
   }
 
   if (systemId.empty())
   {
-    RCLCPP_ERROR(m_node.get_logger(), "System ID parameter '%s' is empty", SYSTEM_ID_PARAMETER.data());
+    RCLCPP_ERROR(m_node.get_logger(), "System ID parameter '%s' is empty",
+                 SYSTEM_ID_PARAMETER.data());
     return false;
   }
 
@@ -130,7 +132,8 @@ bool ImageDownscalerNode::Initialize()
   RCLCPP_INFO(m_node.get_logger(), "Image transport: %s", imageTransport.c_str());
   RCLCPP_INFO(m_node.get_logger(), "Downscaled topic: %s", downscaledTopic.c_str());
   RCLCPP_INFO(m_node.get_logger(), "Camera info topic: %s", cameraInfoTopic.c_str());
-  RCLCPP_INFO(m_node.get_logger(), "Downscaled camera info topic: %s", downscaledCameraInfoTopic.c_str());
+  RCLCPP_INFO(m_node.get_logger(), "Downscaled camera info topic: %s",
+              downscaledCameraInfoTopic.c_str());
   RCLCPP_INFO(m_node.get_logger(), "Max dimensions: %ldx%ld", maxWidthParam, maxHeightParam);
 
   try
@@ -155,4 +158,3 @@ void ImageDownscalerNode::Deinitialize()
 {
   m_downscaler.reset();
 }
-
