@@ -233,6 +233,56 @@ class PerceptionDescriptions:
         ld.add_action(hello_world_container)
 
     #
+    # Image downscaler
+    #
+
+    @staticmethod
+    def add_image_downscaler(
+        composable_nodes: list[ComposableNode],
+        system_ids: list[str],
+        input_topic: str,
+        output_resolution: str,
+        image_transport: str,
+        max_width: int,
+        max_height: int,
+    ) -> None:
+        composable_nodes.extend(
+            [
+                ComposableNode(
+                    namespace=ROS_NAMESPACE,
+                    package=CPP_PACKAGE_NAME,
+                    plugin="oasis_perception::ImageDownscalerComponent",
+                    name=f"image_downscaler_{system_id}",
+                    parameters=[
+                        {
+                            "system_id": system_id,
+                            "image_transport": image_transport,
+                            "output_resolution": output_resolution,
+                            "max_width": max_width,
+                            "max_height": max_height,
+                        }
+                    ],
+                    remappings=[
+                        (
+                            f"{system_id}_camera_info",
+                            f"{system_id}/camera_info",
+                        ),
+                        (
+                            f"{system_id}_camera_info_{output_resolution}",
+                            f"{system_id}/camera_info/{output_resolution}",
+                        ),
+                        (f"{system_id}_image", f"{system_id}/{input_topic}"),
+                        (
+                            f"{system_id}_image_{output_resolution}",
+                            f"{system_id}/{input_topic}/{output_resolution}",
+                        ),
+                    ],
+                )
+                for system_id in system_ids
+            ]
+        )
+
+    #
     # Image rectifier
     #
 
@@ -240,6 +290,7 @@ class PerceptionDescriptions:
     def add_image_rectifier(
         composable_nodes: list[ComposableNode],
         system_ids: list[str],
+        input_resolution: str,
         image_transport: str,
     ) -> None:
         composable_nodes.extend(
@@ -257,9 +308,9 @@ class PerceptionDescriptions:
                     ],
                     remappings=[
                         # Topics
-                        ("camera_info", f"{system_id}/camera_info"),
+                        ("camera_info", f"{system_id}/image_raw/camera_info"),
+                        ("image", f"{system_id}/image_raw/{input_resolution}"),
                         ("image_rect", f"{system_id}/image_rect"),
-                        ("image", f"{system_id}/image_raw"),
                     ],
                 )
                 for system_id in system_ids
