@@ -69,6 +69,8 @@ bool MapViewRenderer::Render(const Sophus::SE3f& Tcw,
 
   std::vector<ProjectedPoint> projectedPoints;
   projectedPoints.reserve(mapPoints.size());
+  std::vector<float> depths;
+  depths.reserve(mapPoints.size());
 
   float minDepth = std::numeric_limits<float>::infinity();
   float maxDepth = 0.0f;
@@ -94,6 +96,7 @@ bool MapViewRenderer::Render(const Sophus::SE3f& Tcw,
       continue;
 
     projectedPoints.push_back({pixelX, pixelY, depth});
+    depths.push_back(depth);
     minDepth = std::min(minDepth, depth);
     maxDepth = std::max(maxDepth, depth);
   }
@@ -101,13 +104,36 @@ bool MapViewRenderer::Render(const Sophus::SE3f& Tcw,
   if (projectedPoints.empty() || !std::isfinite(minDepth))
     return false;
 
-  const float depthRange = std::max(maxDepth - minDepth, 1e-3f);
+  float trimmedMinDepth = minDepth;
+  float trimmedMaxDepth = maxDepth;
+  if (depths.size() >= 2)
+  {
+    std::sort(depths.begin(), depths.end());
+    const float lowerPercentile = 0.05f;
+    const float upperPercentile = 0.95f;
+    const std::size_t lowerIndex =
+        static_cast<std::size_t>(std::floor(lowerPercentile * static_cast<float>(depths.size() - 1)));
+    const std::size_t upperIndex =
+        static_cast<std::size_t>(std::ceil(upperPercentile * static_cast<float>(depths.size() - 1)));
+
+    trimmedMinDepth = depths[std::min(lowerIndex, depths.size() - 1)];
+    trimmedMaxDepth = depths[std::min(upperIndex, depths.size() - 1)];
+
+    if (!std::isfinite(trimmedMinDepth) || !std::isfinite(trimmedMaxDepth) ||
+        trimmedMaxDepth <= trimmedMinDepth)
+    {
+      trimmedMinDepth = minDepth;
+      trimmedMaxDepth = maxDepth;
+    }
+  }
+
+  const float depthRange = std::max(trimmedMaxDepth - trimmedMinDepth, 1e-3f);
   const float averageFocal = 0.5f * (m_cameraModel.fx + m_cameraModel.fy);
 
   for (const ProjectedPoint& point : projectedPoints)
   {
-    const float normalizedDepth = (point.depth - minDepth) / depthRange;
-    const cv::Vec3b sampledColor = m_paletteSampler.Sample(normalizedDepth);
+    const float normalizedDepth = (point.depth - trimmedMinDepth) / depthRange;
+    const cv::Vec3b sampledColor = m_paletteSampler.Sample(std::clamp(normalizedDepth, 0.0f, 1.0f));
     const cv::Vec3f colorVec(static_cast<float>(sampledColor[0]),
                              static_cast<float>(sampledColor[1]),
                              static_cast<float>(sampledColor[2]));
