@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <vector>
 
@@ -60,6 +61,8 @@ bool MapViewRenderer::Render(const Sophus::SE3f& Tcw,
   outputImage.setTo(cv::Scalar(0, 0, 0));
 
   std::fill(m_depthBuffer.begin(), m_depthBuffer.end(), std::numeric_limits<float>::infinity());
+  std::fill(m_colorBuffer.begin(), m_colorBuffer.end(), cv::Vec3f(0.0f, 0.0f, 0.0f));
+  std::fill(m_weightBuffer.begin(), m_weightBuffer.end(), 0.0f);
 
   const Eigen::Matrix3f rotation = Tcw.rotationMatrix();
   const Eigen::Vector3f translation = Tcw.translation();
@@ -99,18 +102,80 @@ bool MapViewRenderer::Render(const Sophus::SE3f& Tcw,
     return false;
 
   const float depthRange = std::max(maxDepth - minDepth, 1e-3f);
+  const float averageFocal = 0.5f * (m_cameraModel.fx + m_cameraModel.fy);
+
   for (const ProjectedPoint& point : projectedPoints)
   {
-    const int index = point.y * m_width + point.x;
-    if (index < 0 || index >= static_cast<int>(m_depthBuffer.size()))
-      continue;
-
-    if (point.depth >= m_depthBuffer[index])
-      continue;
-
-    m_depthBuffer[index] = point.depth;
     const float normalizedDepth = (point.depth - minDepth) / depthRange;
-    outputImage.at<cv::Vec3b>(point.y, point.x) = m_paletteSampler.Sample(normalizedDepth);
+    const cv::Vec3b sampledColor = m_paletteSampler.Sample(normalizedDepth);
+    const cv::Vec3f colorVec(static_cast<float>(sampledColor[0]),
+                             static_cast<float>(sampledColor[1]),
+                             static_cast<float>(sampledColor[2]));
+
+    const float pointDepth = std::max(point.depth, 1e-3f);
+    const float radius = std::clamp(averageFocal / (pointDepth * 120.0f), 1.5f, 6.0f);
+    const int radiusInt = static_cast<int>(std::ceil(radius));
+    const float radiusSquared = radius * radius;
+    const float sigma = std::max(radius * 0.5f, 0.75f);
+    const float invTwoSigmaSquared = 1.0f / (2.0f * sigma * sigma);
+    const float depthTolerance = std::max(0.02f * point.depth, 0.02f);
+
+    for (int dy = -radiusInt; dy <= radiusInt; ++dy)
+    {
+      const int pixelY = point.y + dy;
+      if (pixelY < 0 || pixelY >= m_height)
+        continue;
+
+      for (int dx = -radiusInt; dx <= radiusInt; ++dx)
+      {
+        const int pixelX = point.x + dx;
+        if (pixelX < 0 || pixelX >= m_width)
+          continue;
+
+        const float distanceSquared = static_cast<float>(dx * dx + dy * dy);
+        if (distanceSquared > radiusSquared)
+          continue;
+
+        const int index = pixelY * m_width + pixelX;
+        if (index < 0 || index >= static_cast<int>(m_depthBuffer.size()))
+          continue;
+
+        if (point.depth > m_depthBuffer[index] + depthTolerance)
+          continue;
+
+        const float weight = std::exp(-distanceSquared * invTwoSigmaSquared);
+
+        if (point.depth < m_depthBuffer[index] - depthTolerance)
+        {
+          m_depthBuffer[index] = point.depth;
+          m_colorBuffer[index] = weight * colorVec;
+          m_weightBuffer[index] = weight;
+        }
+        else
+        {
+          m_depthBuffer[index] = std::min(m_depthBuffer[index], point.depth);
+          m_colorBuffer[index] += weight * colorVec;
+          m_weightBuffer[index] += weight;
+        }
+      }
+    }
+  }
+
+  for (int y = 0; y < m_height; ++y)
+  {
+    for (int x = 0; x < m_width; ++x)
+    {
+      const int index = y * m_width + x;
+      const float weight = m_weightBuffer[index];
+      if (weight <= 0.0f)
+        continue;
+
+      const cv::Vec3f color = m_colorBuffer[index] / weight;
+      outputImage.at<cv::Vec3b>(y, x) =
+          cv::Vec3b(static_cast<std::uint8_t>(std::clamp(color[0], 0.0f, 255.0f)),
+                    static_cast<std::uint8_t>(std::clamp(color[1], 0.0f, 255.0f)),
+                    static_cast<std::uint8_t>(std::clamp(color[2], 0.0f, 255.0f)));
+    }
   }
 
   return true;
@@ -124,4 +189,6 @@ void MapViewRenderer::ResizeBuffers()
     return;
 
   m_depthBuffer.assign(bufferSize, std::numeric_limits<float>::infinity());
+  m_colorBuffer.assign(bufferSize, cv::Vec3f(0.0f, 0.0f, 0.0f));
+  m_weightBuffer.assign(bufferSize, 0.0f);
 }

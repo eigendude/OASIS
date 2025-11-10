@@ -46,6 +46,8 @@ private:
   int m_height{0};
   ViridisPaletteSampler m_paletteSampler;
   std::vector<float> m_depthBuffer;
+  std::vector<cv::Vec3f> m_colorBuffer;
+  std::vector<float> m_weightBuffer;
 };
 
 } // namespace SLAM
