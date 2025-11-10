@@ -124,7 +124,7 @@ bool ImageDownscalerNode::Initialize()
   cameraInfoTopic.push_back('_');
   cameraInfoTopic.append(CAMERA_INFO_TOPIC);
 
-  std::string downscaledCameraInfoTopic = downscaledTopic;
+  std::string downscaledCameraInfoTopic = cameraInfoTopic;
   downscaledCameraInfoTopic.push_back('_');
   downscaledCameraInfoTopic.append(outputResolution);
 
