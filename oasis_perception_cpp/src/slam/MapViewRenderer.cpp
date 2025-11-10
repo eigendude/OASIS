@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <vector>
@@ -69,11 +70,16 @@ bool MapViewRenderer::Render(const Sophus::SE3f& Tcw,
 
   std::vector<ProjectedPoint> projectedPoints;
   projectedPoints.reserve(mapPoints.size());
-  std::vector<float> depths;
-  depths.reserve(mapPoints.size());
+  struct DepthSample
+  {
+    float depth;
+    std::size_t index;
+  };
+
+  std::vector<DepthSample> depthSamples;
+  depthSamples.reserve(mapPoints.size());
 
   float minDepth = std::numeric_limits<float>::infinity();
-  float maxDepth = 0.0f;
 
   for (auto* mapPoint : mapPoints)
   {
@@ -95,45 +101,58 @@ bool MapViewRenderer::Render(const Sophus::SE3f& Tcw,
     if (pixelX < 0 || pixelX >= m_width || pixelY < 0 || pixelY >= m_height)
       continue;
 
+    const std::size_t pointIndex = projectedPoints.size();
     projectedPoints.push_back({pixelX, pixelY, depth});
-    depths.push_back(depth);
+    depthSamples.push_back({depth, pointIndex});
     minDepth = std::min(minDepth, depth);
-    maxDepth = std::max(maxDepth, depth);
   }
 
   if (projectedPoints.empty() || !std::isfinite(minDepth))
     return false;
 
-  float trimmedMinDepth = minDepth;
-  float trimmedMaxDepth = maxDepth;
-  if (depths.size() >= 2)
+  std::vector<float> normalizedDepths(projectedPoints.size(), 0.0f);
+  if (depthSamples.size() >= 2)
   {
-    std::sort(depths.begin(), depths.end());
-    const float lowerPercentile = 0.05f;
-    const float upperPercentile = 0.95f;
-    const std::size_t lowerIndex = static_cast<std::size_t>(
-        std::floor(lowerPercentile * static_cast<float>(depths.size() - 1)));
-    const std::size_t upperIndex = static_cast<std::size_t>(
-        std::ceil(upperPercentile * static_cast<float>(depths.size() - 1)));
+    std::sort(depthSamples.begin(), depthSamples.end(),
+              [](const DepthSample& lhs, const DepthSample& rhs) {
+                return lhs.depth < rhs.depth;
+              });
 
-    trimmedMinDepth = depths[std::min(lowerIndex, depths.size() - 1)];
-    trimmedMaxDepth = depths[std::min(upperIndex, depths.size() - 1)];
-
-    if (!std::isfinite(trimmedMinDepth) || !std::isfinite(trimmedMaxDepth) ||
-        trimmedMaxDepth <= trimmedMinDepth)
+    std::size_t i = 0;
+    while (i < depthSamples.size())
     {
-      trimmedMinDepth = minDepth;
-      trimmedMaxDepth = maxDepth;
+      const float currentDepth = depthSamples[i].depth;
+      std::size_t j = i + 1;
+      while (j < depthSamples.size() && depthSamples[j].depth == currentDepth)
+        ++j;
+
+      const float rankStart = static_cast<float>(i);
+      const float rankEnd = static_cast<float>(j - 1);
+      const float averageRank = 0.5f * (rankStart + rankEnd);
+      const float normalizedValue = (depthSamples.size() > 1)
+                                        ? averageRank /
+                                              static_cast<float>(depthSamples.size() - 1)
+                                        : 0.0f;
+
+      for (std::size_t k = i; k < j; ++k)
+        normalizedDepths[depthSamples[k].index] = normalizedValue;
+
+      i = j;
     }
   }
+  else if (depthSamples.size() == 1)
+  {
+    normalizedDepths[depthSamples[0].index] = 0.5f;
+  }
 
-  const float depthRange = std::max(trimmedMaxDepth - trimmedMinDepth, 1e-3f);
   const float averageFocal = 0.5f * (m_cameraModel.fx + m_cameraModel.fy);
 
-  for (const ProjectedPoint& point : projectedPoints)
+  for (std::size_t idx = 0; idx < projectedPoints.size(); ++idx)
   {
-    const float normalizedDepth = (point.depth - trimmedMinDepth) / depthRange;
-    const cv::Vec3b sampledColor = m_paletteSampler.Sample(std::clamp(normalizedDepth, 0.0f, 1.0f));
+    const ProjectedPoint& point = projectedPoints[idx];
+    const float normalizedDepth = normalizedDepths[idx];
+    const cv::Vec3b sampledColor =
+        m_paletteSampler.Sample(std::clamp(normalizedDepth, 0.0f, 1.0f));
     const cv::Vec3f colorVec(static_cast<float>(sampledColor[0]),
                              static_cast<float>(sampledColor[1]),
                              static_cast<float>(sampledColor[2]));
