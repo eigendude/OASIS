@@ -32,8 +32,8 @@ constexpr std::string_view DEFAULT_SYSTEM_ID = "";
 constexpr std::string_view IMAGE_TRANSPORT_PARAMETER = "image_transport";
 constexpr std::string_view DEFAULT_IMAGE_TRANSPORT = "raw";
 
-constexpr std::string_view OUTPUT_SUFFIX_PARAMETER = "output_suffix";
-constexpr std::string_view DEFAULT_OUTPUT_SUFFIX = "sd";
+constexpr std::string_view OUTPUT_RESOLUTION_PARAMETER = "output_resolution";
+constexpr std::string_view DEFAULT_OUTPUT_RESOLUTION = "sd";
 
 constexpr std::string_view MAX_WIDTH_PARAMETER = "max_width";
 constexpr int64_t DEFAULT_MAX_WIDTH = 640;
@@ -47,8 +47,8 @@ ImageDownscalerNode::ImageDownscalerNode(rclcpp::Node& node) : m_node(node)
   m_node.declare_parameter<std::string>(SYSTEM_ID_PARAMETER.data(), DEFAULT_SYSTEM_ID.data());
   m_node.declare_parameter<std::string>(IMAGE_TRANSPORT_PARAMETER.data(),
                                         DEFAULT_IMAGE_TRANSPORT.data());
-  m_node.declare_parameter<std::string>(OUTPUT_SUFFIX_PARAMETER.data(),
-                                        DEFAULT_OUTPUT_SUFFIX.data());
+  m_node.declare_parameter<std::string>(OUTPUT_RESOLUTION_PARAMETER.data(),
+                                        DEFAULT_OUTPUT_RESOLUTION.data());
   m_node.declare_parameter<int64_t>(MAX_WIDTH_PARAMETER.data(), DEFAULT_MAX_WIDTH);
   m_node.declare_parameter<int64_t>(MAX_HEIGHT_PARAMETER.data(), DEFAULT_MAX_HEIGHT);
 }
@@ -86,15 +86,15 @@ bool ImageDownscalerNode::Initialize()
     imageTransport = std::string{DEFAULT_IMAGE_TRANSPORT};
 
   std::string outputSuffix;
-  if (!m_node.get_parameter(OUTPUT_SUFFIX_PARAMETER.data(), outputSuffix))
+  if (!m_node.get_parameter(OUTPUT_RESOLUTION_PARAMETER.data(), outputSuffix))
   {
-    RCLCPP_ERROR(m_node.get_logger(), "Missing output suffix parameter '%s'",
-                 OUTPUT_SUFFIX_PARAMETER.data());
+    RCLCPP_ERROR(m_node.get_logger(), "Missing output resolution parameter '%s'",
+                 OUTPUT_RESOLUTION_PARAMETER.data());
     return false;
   }
 
   if (outputSuffix.empty())
-    outputSuffix = std::string{DEFAULT_OUTPUT_SUFFIX};
+    outputSuffix = std::string{DEFAULT_OUTPUT_RESOLUTION};
 
   int64_t maxWidthParam = DEFAULT_MAX_WIDTH;
   if (!m_node.get_parameter(MAX_WIDTH_PARAMETER.data(), maxWidthParam))
