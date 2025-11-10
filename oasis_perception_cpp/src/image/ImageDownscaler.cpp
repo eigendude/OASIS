@@ -112,33 +112,19 @@ void ImageDownscaler::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr
     return;
   }
 
-  if (width <= m_maxWidth && height <= m_maxHeight)
+  const auto [targetWidth, targetHeight] = CalculateTargetDimensions(width, height);
+
+  if (targetWidth == width && targetHeight == height)
   {
-    PublishDownscaledCameraInfo(msg->header, width, height, width, height);
     m_downscaledPublisher->publish(msg);
     return;
   }
-
-  const double widthScale = static_cast<double>(m_maxWidth) / static_cast<double>(width);
-  const double heightScale = static_cast<double>(m_maxHeight) / static_cast<double>(height);
-  const double scale = std::min(widthScale, heightScale);
-
-  if (scale >= 1.0 - SCALE_EPSILON)
-  {
-    PublishDownscaledCameraInfo(msg->header, width, height, width, height);
-    m_downscaledPublisher->publish(msg);
-    return;
-  }
-
-  const int targetWidth = std::max(1, static_cast<int>(std::round(width * scale)));
-  const int targetHeight = std::max(1, static_cast<int>(std::round(height * scale)));
 
   cv::Mat resizedImage;
   cv::resize(image, resizedImage, cv::Size(targetWidth, targetHeight), 0.0, 0.0, cv::INTER_AREA);
 
   cv_bridge::CvImage downscaledImage(cv_ptr->header, cv_ptr->encoding, resizedImage);
   auto downscaledMessage = downscaledImage.toImageMsg();
-  PublishDownscaledCameraInfo(downscaledMessage->header, width, height, targetWidth, targetHeight);
   m_downscaledPublisher->publish(downscaledMessage);
 }
 
@@ -150,70 +136,78 @@ void ImageDownscaler::ReceiveCameraInfo(const sensor_msgs::msg::CameraInfo::Shar
     return;
   }
 
-  std::scoped_lock lock(m_cameraInfoMutex);
-  m_lastCameraInfo = std::make_shared<sensor_msgs::msg::CameraInfo>(*msg);
-}
+  sensor_msgs::msg::CameraInfo cameraInfo = *msg;
 
-void ImageDownscaler::PublishDownscaledCameraInfo(const std_msgs::msg::Header& header,
-                                                  int originalWidth,
-                                                  int originalHeight,
-                                                  int outputWidth,
-                                                  int outputHeight)
-{
-  sensor_msgs::msg::CameraInfo::SharedPtr cameraInfo;
+  const int originalWidth = static_cast<int>(cameraInfo.width);
+  const int originalHeight = static_cast<int>(cameraInfo.height);
+
+  if (originalWidth <= 0 || originalHeight <= 0)
   {
-    std::scoped_lock lock(m_cameraInfoMutex);
-    if (!m_lastCameraInfo)
-    {
-      // Cannot publish camera info before receiving any camera info messages
-      return;
-    }
-
-    cameraInfo = std::make_shared<sensor_msgs::msg::CameraInfo>(*m_lastCameraInfo);
+    RCLCPP_WARN(m_logger, "Invalid camera info dimensions: %dx%d", originalWidth, originalHeight);
+    m_cameraInfoPublisher->publish(cameraInfo);
+    return;
   }
 
-  cameraInfo->header.stamp = header.stamp;
-  if (!header.frame_id.empty())
-    cameraInfo->header.frame_id = header.frame_id;
+  const auto [outputWidth, outputHeight] = CalculateTargetDimensions(originalWidth, originalHeight);
 
   const bool shouldScale = (outputWidth != originalWidth) || (outputHeight != originalHeight);
-  if (shouldScale && originalWidth > 0 && originalHeight > 0)
+  if (shouldScale)
   {
     const double widthScale = static_cast<double>(outputWidth) / static_cast<double>(originalWidth);
-    const double heightScale =
-        static_cast<double>(outputHeight) / static_cast<double>(originalHeight);
+    const double heightScale = static_cast<double>(outputHeight) / static_cast<double>(originalHeight);
     const double scale = std::min(widthScale, heightScale);
 
-    cameraInfo->width = static_cast<uint32_t>(std::max(1, outputWidth));
-    cameraInfo->height = static_cast<uint32_t>(std::max(1, outputHeight));
+    cameraInfo.width = static_cast<uint32_t>(std::max(1, outputWidth));
+    cameraInfo.height = static_cast<uint32_t>(std::max(1, outputHeight));
 
-    cameraInfo->k[0] *= scale; // fx
-    cameraInfo->k[2] *= scale; // cx
-    cameraInfo->k[4] *= scale; // fy
-    cameraInfo->k[5] *= scale; // cy
+    cameraInfo.k[0] *= scale; // fx
+    cameraInfo.k[2] *= scale; // cx
+    cameraInfo.k[4] *= scale; // fy
+    cameraInfo.k[5] *= scale; // cy
 
-    cameraInfo->p[0] *= scale; // fx
-    cameraInfo->p[2] *= scale; // cx
-    cameraInfo->p[5] *= scale; // fy
-    cameraInfo->p[6] *= scale; // cy
+    cameraInfo.p[0] *= scale; // fx
+    cameraInfo.p[2] *= scale; // cx
+    cameraInfo.p[5] *= scale; // fy
+    cameraInfo.p[6] *= scale; // cy
 
-    if (cameraInfo->roi.width > 0 && cameraInfo->roi.height > 0)
+    if (cameraInfo.roi.width > 0 && cameraInfo.roi.height > 0)
     {
-      cameraInfo->roi.x_offset = static_cast<uint32_t>(std::max(
-          0, static_cast<int>(std::lround(static_cast<double>(cameraInfo->roi.x_offset) * scale))));
-      cameraInfo->roi.y_offset = static_cast<uint32_t>(std::max(
-          0, static_cast<int>(std::lround(static_cast<double>(cameraInfo->roi.y_offset) * scale))));
-      cameraInfo->roi.width = static_cast<uint32_t>(std::max(
-          1, static_cast<int>(std::lround(static_cast<double>(cameraInfo->roi.width) * scale))));
-      cameraInfo->roi.height = static_cast<uint32_t>(std::max(
-          1, static_cast<int>(std::lround(static_cast<double>(cameraInfo->roi.height) * scale))));
+      cameraInfo.roi.x_offset = static_cast<uint32_t>(std::max(
+          0, static_cast<int>(std::lround(static_cast<double>(cameraInfo.roi.x_offset) * scale))));
+      cameraInfo.roi.y_offset = static_cast<uint32_t>(std::max(
+          0, static_cast<int>(std::lround(static_cast<double>(cameraInfo.roi.y_offset) * scale))));
+      cameraInfo.roi.width = static_cast<uint32_t>(std::max(
+          1, static_cast<int>(std::lround(static_cast<double>(cameraInfo.roi.width) * scale))));
+      cameraInfo.roi.height = static_cast<uint32_t>(std::max(
+          1, static_cast<int>(std::lround(static_cast<double>(cameraInfo.roi.height) * scale))));
     }
   }
   else
   {
-    cameraInfo->width = static_cast<uint32_t>(std::max(1, outputWidth));
-    cameraInfo->height = static_cast<uint32_t>(std::max(1, outputHeight));
+    cameraInfo.width = static_cast<uint32_t>(std::max(1, outputWidth));
+    cameraInfo.height = static_cast<uint32_t>(std::max(1, outputHeight));
   }
 
-  m_cameraInfoPublisher->publish(*cameraInfo);
+  m_cameraInfoPublisher->publish(cameraInfo);
+}
+
+std::pair<int, int> ImageDownscaler::CalculateTargetDimensions(int width, int height) const
+{
+  if (width <= 0 || height <= 0)
+    return {width, height};
+
+  if (width <= m_maxWidth && height <= m_maxHeight)
+    return {width, height};
+
+  const double widthScale = static_cast<double>(m_maxWidth) / static_cast<double>(width);
+  const double heightScale = static_cast<double>(m_maxHeight) / static_cast<double>(height);
+  const double scale = std::min(widthScale, heightScale);
+
+  if (scale >= 1.0 - SCALE_EPSILON)
+    return {width, height};
+
+  const int targetWidth = std::max(1, static_cast<int>(std::round(width * scale)));
+  const int targetHeight = std::max(1, static_cast<int>(std::round(height * scale)));
+
+  return {targetWidth, targetHeight};
 }

@@ -9,15 +9,14 @@
 #pragma once
 
 #include <memory>
-#include <mutex>
 #include <string>
+#include <utility>
 
 #include <rclcpp/logger.hpp>
 #include <rclcpp/publisher.hpp>
 #include <rclcpp/subscription.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/image.hpp>
-#include <std_msgs/msg/header.hpp>
 
 namespace image_transport
 {
@@ -52,11 +51,7 @@ public:
   void ReceiveCameraInfo(const sensor_msgs::msg::CameraInfo::SharedPtr& msg);
 
 private:
-  void PublishDownscaledCameraInfo(const std_msgs::msg::Header& header,
-                                   int originalWidth,
-                                   int originalHeight,
-                                   int outputWidth,
-                                   int outputHeight);
+  std::pair<int, int> CalculateTargetDimensions(int width, int height) const;
 
   rclcpp::Logger m_logger;
   std::shared_ptr<rclcpp::Node> m_node;
@@ -66,8 +61,6 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr m_cameraInfoSubscriber;
   int m_maxWidth{0};
   int m_maxHeight{0};
-  std::mutex m_cameraInfoMutex;
-  sensor_msgs::msg::CameraInfo::SharedPtr m_lastCameraInfo;
 };
 
 } // namespace IMAGE
