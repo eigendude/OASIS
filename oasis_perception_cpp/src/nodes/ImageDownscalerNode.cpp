@@ -85,16 +85,16 @@ bool ImageDownscalerNode::Initialize()
   if (imageTransport.empty())
     imageTransport = std::string{DEFAULT_IMAGE_TRANSPORT};
 
-  std::string outputSuffix;
-  if (!m_node.get_parameter(OUTPUT_RESOLUTION_PARAMETER.data(), outputSuffix))
+  std::string outputResolution;
+  if (!m_node.get_parameter(OUTPUT_RESOLUTION_PARAMETER.data(), outputResolution))
   {
     RCLCPP_ERROR(m_node.get_logger(), "Missing output resolution parameter '%s'",
                  OUTPUT_RESOLUTION_PARAMETER.data());
     return false;
   }
 
-  if (outputSuffix.empty())
-    outputSuffix = std::string{DEFAULT_OUTPUT_RESOLUTION};
+  if (outputResolution.empty())
+    outputResolution = std::string{DEFAULT_OUTPUT_RESOLUTION};
 
   int64_t maxWidthParam = DEFAULT_MAX_WIDTH;
   if (!m_node.get_parameter(MAX_WIDTH_PARAMETER.data(), maxWidthParam))
@@ -116,16 +116,17 @@ bool ImageDownscalerNode::Initialize()
   imageTopic.push_back('_');
   imageTopic.append(IMAGE_TOPIC);
 
-  std::string downscaledTopic = systemId;
+  std::string downscaledTopic = imageTopic;
   downscaledTopic.push_back('_');
-  downscaledTopic.append(outputSuffix);
+  downscaledTopic.append(outputResolution);
 
   std::string cameraInfoTopic = systemId;
   cameraInfoTopic.push_back('_');
   cameraInfoTopic.append(CAMERA_INFO_TOPIC);
 
   std::string downscaledCameraInfoTopic = downscaledTopic;
-  downscaledCameraInfoTopic.append("_camera_info");
+  downscaledTopic.push_back('_');
+  downscaledTopic.append(outputResolution);
 
   RCLCPP_INFO(m_node.get_logger(), "System ID: %s", systemId.c_str());
   RCLCPP_INFO(m_node.get_logger(), "Image topic: %s", imageTopic.c_str());
