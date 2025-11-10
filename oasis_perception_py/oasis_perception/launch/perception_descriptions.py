@@ -267,8 +267,16 @@ class PerceptionDescriptions:
                     remappings=[
                         (f"{system_id}_image", f"{system_id}/{input_topic}"),
                         (
+                            f"{system_id}_camera_info",
+                            f"{system_id}/{input_topic}/camera_info",
+                        ),
+                        (
                             f"{system_id}_{parameter_suffix}",
                             f"{system_id}/{input_topic}/{output_suffix}",
+                        ),
+                        (
+                            f"{system_id}_{parameter_suffix}_camera_info",
+                            f"{system_id}/{input_topic}/{output_suffix}/camera_info",
                         ),
                     ],
                 )
