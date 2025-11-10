@@ -18,6 +18,7 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
+#include <rmw/qos_profiles.h>
 #include <sensor_msgs/image_encodings.hpp>
 
 using namespace OASIS;
@@ -45,7 +46,6 @@ MultiModeler::MultiModeler(std::shared_ptr<rclcpp::Node> node,
                            const std::string& backgroundTopic,
                            const std::string& subtractedTopic)
   : m_logger(node->get_logger()),
-    m_imgTransport(std::make_unique<image_transport::ImageTransport>(node)),
     m_imgSubscriber(std::make_unique<image_transport::Subscriber>()),
     m_bgsPackageAdaptiveBackgroundLearning(
         std::make_unique<bgslibrary::algorithms::AdaptiveBackgroundLearning>()),
@@ -55,9 +55,11 @@ MultiModeler::MultiModeler(std::shared_ptr<rclcpp::Node> node,
     m_bgsPackageKNN(std::make_unique<bgslibrary::algorithms::KNN>())
 {
   auto transportHints = image_transport::TransportHints(node.get(), "compressed");
+  const rmw_qos_profile_t sensorQos = rmw_qos_profile_sensor_data;
 
-  *m_imgSubscriber =
-      m_imgTransport->subscribe(imageTopic, 1, &MultiModeler::ReceiveImage, this, &transportHints);
+  *m_imgSubscriber = image_transport::create_subscription(
+      node.get(), imageTopic, [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg)
+      { ReceiveImage(msg); }, transportHints.getTransport(), sensorQos);
 
   for (const char* algorithm : GetAlgorithms())
   {
@@ -72,9 +74,12 @@ MultiModeler::MultiModeler(std::shared_ptr<rclcpp::Node> node,
     RCLCPP_INFO(m_logger, "  Background topic: %s", backgroundAlgorithm.c_str());
     RCLCPP_INFO(m_logger, "  Subtracted topic: %s", subtractedAlgorithm.c_str());
 
-    *publisher.foreground = m_imgTransport->advertise(foregroundAlgorithm, 1, true);
-    *publisher.background = m_imgTransport->advertise(backgroundAlgorithm, 1, true);
-    *publisher.subtracted = m_imgTransport->advertise(subtractedAlgorithm, 1, true);
+    *publisher.foreground =
+        image_transport::create_publisher(node.get(), foregroundAlgorithm, sensorQos);
+    *publisher.background =
+        image_transport::create_publisher(node.get(), backgroundAlgorithm, sensorQos);
+    *publisher.subtracted =
+        image_transport::create_publisher(node.get(), subtractedAlgorithm, sensorQos);
   }
 
   RCLCPP_INFO(m_logger, "Started background modeler");

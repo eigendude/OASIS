@@ -19,6 +19,7 @@
 #include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
 #include <rclcpp/qos.hpp>
+#include <rmw/qos_profiles.h>
 
 using namespace OASIS;
 using namespace ROS;
@@ -116,8 +117,8 @@ bool MonocularInertialSlamNode::Initialize()
   RCLCPP_INFO(*m_logger, "ORB_SLAM3 settings file: %s", settingsFile.c_str());
 
   *m_imgSubscriber = image_transport::create_subscription(
-      &m_node, imageTopic,
-      [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg) { OnImage(msg); }, imageTransport);
+      &m_node, imageTopic, [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg)
+      { OnImage(msg); }, imageTransport, rmw_qos_profile_sensor_data);
 
   const rclcpp::QoS qos{10};
   m_imuSubscriber = m_node.create_subscription<oasis_msgs::msg::I2CImu>(

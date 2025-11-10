@@ -25,6 +25,7 @@ from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 from oasis_perception.utils.bounding_box_smoother import BoundingBoxSmoother
 from rclpy.logging import LoggingSeverity
+from rclpy.qos import QoSPresetProfiles
 from sensor_msgs.msg import Image as ImageMsg
 from std_msgs.msg import Header as HeaderMsg
 
@@ -112,24 +113,32 @@ class PoseLandmarkerNode(rclpy.node.Node):
             self.get_name(), image_transport=image_transport
         )
 
+        # QoS profiles
+        sensor_qos = QoSPresetProfiles.SENSOR_DATA.value
+
         # Subscribers
         self._image_transport.subscribe(
-            self.resolve_topic_name(IMAGE_SUB_TOPIC), 1, self._image_callback
+            self.resolve_topic_name(IMAGE_SUB_TOPIC),
+            1,
+            self._image_callback,
+            qos_profile=sensor_qos,
         )
 
         # Publishers
         self._scene_pub = self.create_publisher(
             CameraSceneMsg,
             self.resolve_topic_name(CAMERA_SCENE_TOPIC),
-            1,
+            sensor_qos,
         )
         self._pose_image_pub = self._image_transport.advertise(
-            self.resolve_topic_name(POSE_IMAGE_TOPIC), 1
+            self.resolve_topic_name(POSE_IMAGE_TOPIC),
+            1,
+            qos_profile=sensor_qos,
         )
         self._pose_landmarks_pub = self.create_publisher(
             PoseLandmarksArrayMsg,
             POSE_LANDMARKS_TOPIC,
-            1,
+            sensor_qos,
         )
 
         # Initialize MediaPipe pose detector in IMAGE mode for synchronous processing
