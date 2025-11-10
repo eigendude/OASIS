@@ -59,8 +59,11 @@ ImageDownscaler::ImageDownscaler(std::shared_ptr<rclcpp::Node> node,
       m_node.get(), imageTopic, [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg)
       { ReceiveImage(msg); }, imageTransport);
 
+  rclcpp::QoS cameraInfoQos = rclcpp::SensorDataQoS();
+  cameraInfoQos.reliability(rclcpp::ReliabilityPolicy::Reliable);
+
   m_cameraInfoPublisher = m_node->create_publisher<sensor_msgs::msg::CameraInfo>(
-      downscaledCameraInfoTopic, rclcpp::SensorDataQoS());
+      downscaledCameraInfoTopic, cameraInfoQos);
 
   m_cameraInfoSubscriber = m_node->create_subscription<sensor_msgs::msg::CameraInfo>(
       cameraInfoTopic, rclcpp::SensorDataQoS(),
