@@ -252,8 +252,15 @@ endif()
 #
 
 if (ORB_SLAM3_FOUND)
+  set(SLAM_RENDERING_SOURCES
+    src/slam/CameraModel.cpp
+    src/slam/MapViewRenderer.cpp
+    src/slam/ViridisPaletteSampler.cpp
+  )
+
   # Project files
   set(MONOCULAR_SLAM_SOURCES
+    ${SLAM_RENDERING_SOURCES}
     src/nodes/MonocularSlamNode.cpp
     src/ros/RosUtils.cpp
     src/slam/MonocularSlam.cpp
@@ -340,6 +347,7 @@ endif()
 if (ORB_SLAM3_FOUND)
   # Project files
   set(MONOCULAR_INERTIAL_SLAM_SOURCES
+    ${SLAM_RENDERING_SOURCES}
     src/nodes/MonocularInertialSlamNode.cpp
     src/ros/RosUtils.cpp
     src/slam/MonocularInertialSlam.cpp

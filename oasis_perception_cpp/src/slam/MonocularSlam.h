@@ -8,11 +8,17 @@
 
 #pragma once
 
+#include "CameraModel.h"
+#include "MapViewRenderer.h"
+
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include <Eigen/Geometry>
+#include <image_transport/image_transport.hpp>
+#include <rclcpp/clock.hpp>
 #include <sensor_msgs/msg/image.hpp>
 
 namespace ORB_SLAM3
@@ -27,12 +33,6 @@ class Logger;
 class Node;
 } // namespace rclcpp
 
-namespace image_transport
-{
-class Publisher;
-class Subscriber;
-} // namespace image_transport
-
 namespace cv
 {
 class Mat;
@@ -42,8 +42,6 @@ namespace OASIS
 {
 namespace SLAM
 {
-
-class MapVisualizer;
 
 class MonocularSlam
 {
@@ -61,6 +59,11 @@ public:
 private:
   // ROS parameters
   std::unique_ptr<rclcpp::Logger> m_logger;
+  std::unique_ptr<rclcpp::Clock> m_clock;
+  std::optional<image_transport::Publisher> m_mapImagePublisher;
+
+  CameraModel m_cameraModel;
+  MapViewRenderer m_mapViewRenderer;
 
   // ORB-SLAM3 system
   std::unique_ptr<ORB_SLAM3::System> m_slam;
