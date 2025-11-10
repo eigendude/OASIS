@@ -289,7 +289,8 @@ const cv::Vec3b& ViridisPaletteSampler::Lookup(int index)
 cv::Vec3b ViridisPaletteSampler::Sample(float value) const
 {
   const float clamped = std::clamp(value, 0.0f, 1.0f);
-  const float scaled = clamped * static_cast<float>(VIRIDIS_LUT.size() - 1);
+  const float reversed = 1.0f - clamped;
+  const float scaled = reversed * static_cast<float>(VIRIDIS_LUT.size() - 1);
   const int lowerIndex = static_cast<int>(std::floor(scaled));
   const int upperIndex = std::min(lowerIndex + 1, static_cast<int>(VIRIDIS_LUT.size() - 1));
   const float t = scaled - static_cast<float>(lowerIndex);
