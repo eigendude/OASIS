@@ -130,7 +130,7 @@ def generate_launch_description() -> LaunchDescription:
         PerceptionDescriptions.add_monocular_slam(
             composable_nodes,
             PERCEPTION_SERVER_MONOCULAR_SLAM,
-            image_transport="raw",
+            image_transport="compressed",
             camera_name=CAMERA_NAME,
         )
 
@@ -138,7 +138,7 @@ def generate_launch_description() -> LaunchDescription:
         PerceptionDescriptions.add_monocular_inertial_slam(
             composable_nodes,
             PERCEPTION_SERVER_MONOCULAR_INERTIAL_SLAM,
-            image_transport="raw",
+            image_transport="compressed",
             camera_name=CAMERA_NAME,
         )
 
