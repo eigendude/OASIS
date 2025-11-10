@@ -10,10 +10,13 @@
 
 #include "ros/RosUtils.h"
 
+#include <vector>
+
 #include <Eigen/Geometry>
 #include <System.h>
 #include <cv_bridge/cv_bridge.hpp>
 #include <geometry_msgs/msg/vector3.hpp>
+#include <image_transport/image_transport.hpp>
 #include <oasis_msgs/msg/i2_c_imu.hpp>
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
@@ -29,6 +32,8 @@ using namespace SLAM;
 MonocularInertialSlam::MonocularInertialSlam(rclcpp::Node& node, const std::string& mapImageTopic)
   : m_logger(std::make_unique<rclcpp::Logger>(node.get_logger()))
 {
+  if (!mapImageTopic.empty())
+    m_mapImagePublisher = image_transport::create_publisher(&node, mapImageTopic);
 }
 
 MonocularInertialSlam::~MonocularInertialSlam() = default;
@@ -38,6 +43,12 @@ bool MonocularInertialSlam::Initialize(const std::string& vocabularyFile,
 {
   if (vocabularyFile.empty() || settingsFile.empty())
     return false;
+
+  if (!LoadCameraModel(settingsFile, m_cameraModel, *m_logger))
+    return false;
+
+  m_mapViewRenderer.SetCameraModel(m_cameraModel);
+  m_mapViewRenderer.SetImageSize(m_cameraModel.width, m_cameraModel.height);
 
   m_slam = std::make_unique<ORB_SLAM3::System>(vocabularyFile, settingsFile,
                                                ORB_SLAM3::System::IMU_MONOCULAR, false);
@@ -84,10 +95,29 @@ void MonocularInertialSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSha
 
   const cv::Mat& rgbImage = inputImage->image;
 
+  m_mapViewRenderer.SetImageSize(rgbImage.cols, rgbImage.rows);
+
   // Pass the image to the SLAM system
   const Sophus::SE3f cameraPose = m_slam->TrackMonocular(rgbImage, timestamp, m_imuMeasurements);
 
-  // TODO: Log status and publish map image
+  const int trackingState = m_slam->GetTrackingState();
+  const std::vector<ORB_SLAM3::MapPoint*> trackedMapPoints = m_slam->GetTrackedMapPoints();
+  std::vector<ORB_SLAM3::MapPoint*> mapPoints;
+  if (m_slam->GetAtlas() != nullptr)
+    mapPoints = m_slam->GetAtlas()->GetAllMapPoints();
+
+  RCLCPP_INFO(*m_logger, "Tracking state: %d, tracked points: %zu, map points: %zu", trackingState,
+              trackedMapPoints.size(), mapPoints.size());
+
+  if (m_mapImagePublisher && !mapPoints.empty())
+  {
+    cv::Mat mapImage;
+    if (m_mapViewRenderer.Render(cameraPose, mapPoints, mapImage))
+    {
+      cv_bridge::CvImage output(header, sensor_msgs::image_encodings::BGR8, mapImage);
+      m_mapImagePublisher->publish(output.toImageMsg());
+    }
+  }
 
   // TODO: Better IMU synchronization
   m_imuMeasurements.clear();
