@@ -48,13 +48,6 @@ private:
     bool isTracked{false};
   };
 
-  struct HaloPoint
-  {
-    int x{0};
-    int y{0};
-    float radius{0.0f};
-  };
-
   bool CanRender() const;
   void PrepareRender(cv::Mat& outputImage);
   std::vector<ProjectedPoint> ProjectMapPoints(
@@ -65,10 +58,9 @@ private:
       const std::vector<ProjectedPoint>& projectedPoints) const;
   void RenderProjectedPoint(const ProjectedPoint& point,
                             float normalizedDepth,
-                            float averageFocal,
-                            std::vector<HaloPoint>& haloPoints);
+                            float averageFocal);
+  void RenderHalo(const ProjectedPoint& point, float radius, float depthTolerance);
   void ComposeOutputImage(cv::Mat& outputImage) const;
-  void DrawHalos(cv::Mat& outputImage, const std::vector<HaloPoint>& haloPoints) const;
   void ResizeBuffers();
 
   // Initialization parameters

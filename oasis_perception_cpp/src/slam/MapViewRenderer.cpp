@@ -61,14 +61,10 @@ bool MapViewRenderer::Render(const Sophus::SE3f& cameraFromWorldTransform,
   const std::vector<float> normalizedDepths = ComputeNormalizedDepths(projectedPoints);
   const float averageFocal = 0.5f * (m_cameraModel.fx + m_cameraModel.fy);
 
-  std::vector<HaloPoint> haloPoints;
-  haloPoints.reserve(trackedMapPoints.size());
-
   for (std::size_t idx = 0; idx < projectedPoints.size(); ++idx)
-    RenderProjectedPoint(projectedPoints[idx], normalizedDepths[idx], averageFocal, haloPoints);
+    RenderProjectedPoint(projectedPoints[idx], normalizedDepths[idx], averageFocal);
 
   ComposeOutputImage(outputImage);
-  DrawHalos(outputImage, haloPoints);
 
   return true;
 }
@@ -192,8 +188,7 @@ std::vector<float> MapViewRenderer::ComputeNormalizedDepths(
 
 void MapViewRenderer::RenderProjectedPoint(const ProjectedPoint& point,
                                            float normalizedDepth,
-                                           float averageFocal,
-                                           std::vector<HaloPoint>& haloPoints)
+                                           float averageFocal)
 {
   const cv::Vec3b sampledColor = m_paletteSampler.Sample(std::clamp(normalizedDepth, 0.0f, 1.0f));
   const cv::Vec3f colorVec(static_cast<float>(sampledColor[0]), static_cast<float>(sampledColor[1]),
@@ -208,7 +203,7 @@ void MapViewRenderer::RenderProjectedPoint(const ProjectedPoint& point,
   const float depthTolerance = std::max(0.02f * point.depth, 0.02f);
 
   if (point.isTracked)
-    haloPoints.push_back({point.x, point.y, radius});
+    RenderHalo(point, radius, depthTolerance);
 
   for (int dy = -radiusInt; dy <= radiusInt; ++dy)
   {
@@ -251,6 +246,63 @@ void MapViewRenderer::RenderProjectedPoint(const ProjectedPoint& point,
   }
 }
 
+void MapViewRenderer::RenderHalo(const ProjectedPoint& point, float radius, float depthTolerance)
+{
+  const float haloInnerRadius = radius + 1.0f;
+  const float haloOuterRadius = radius + 3.0f;
+  const int haloRadiusInt = static_cast<int>(std::ceil(haloOuterRadius));
+  const float haloInnerSquared = haloInnerRadius * haloInnerRadius;
+  const float haloOuterSquared = haloOuterRadius * haloOuterRadius;
+  const float haloRadiusCenter = 0.5f * (haloInnerRadius + haloOuterRadius);
+  const float haloSigma = std::max(0.5f * (haloOuterRadius - haloInnerRadius), 0.5f);
+  const float invTwoHaloSigmaSquared = 1.0f / (2.0f * haloSigma * haloSigma);
+  const cv::Vec3f haloColor(255.0f, 255.0f, 255.0f);
+
+  for (int dy = -haloRadiusInt; dy <= haloRadiusInt; ++dy)
+  {
+    const int pixelY = point.y + dy;
+    if (pixelY < 0 || pixelY >= m_height)
+      continue;
+
+    for (int dx = -haloRadiusInt; dx <= haloRadiusInt; ++dx)
+    {
+      const int pixelX = point.x + dx;
+      if (pixelX < 0 || pixelX >= m_width)
+        continue;
+
+      const float distanceSquared = static_cast<float>(dx * dx + dy * dy);
+      if (distanceSquared < haloInnerSquared || distanceSquared > haloOuterSquared)
+        continue;
+
+      const int index = pixelY * m_width + pixelX;
+      if (index < 0 || index >= static_cast<int>(m_depthBuffer.size()))
+        continue;
+
+      if (point.depth > m_depthBuffer[index] + depthTolerance)
+        continue;
+
+      const float distance = std::sqrt(distanceSquared);
+      const float haloWeight = std::exp(-((distance - haloRadiusCenter) * (distance - haloRadiusCenter)) *
+                                        invTwoHaloSigmaSquared);
+      if (haloWeight <= 0.0f)
+        continue;
+
+      if (point.depth < m_depthBuffer[index] - depthTolerance)
+      {
+        m_depthBuffer[index] = point.depth;
+        m_colorBuffer[index] = haloWeight * haloColor;
+        m_weightBuffer[index] = haloWeight;
+      }
+      else
+      {
+        m_depthBuffer[index] = std::min(m_depthBuffer[index], point.depth);
+        m_colorBuffer[index] += haloWeight * haloColor;
+        m_weightBuffer[index] += haloWeight;
+      }
+    }
+  }
+}
+
 void MapViewRenderer::ComposeOutputImage(cv::Mat& outputImage) const
 {
   for (int y = 0; y < m_height; ++y)
@@ -268,16 +320,6 @@ void MapViewRenderer::ComposeOutputImage(cv::Mat& outputImage) const
                     static_cast<std::uint8_t>(std::clamp(color[1], 0.0f, 255.0f)),
                     static_cast<std::uint8_t>(std::clamp(color[2], 0.0f, 255.0f)));
     }
-  }
-}
-
-void MapViewRenderer::DrawHalos(cv::Mat& outputImage, const std::vector<HaloPoint>& haloPoints) const
-{
-  for (const HaloPoint& halo : haloPoints)
-  {
-    const cv::Point center(halo.x, halo.y);
-    const int haloRadius = std::max(static_cast<int>(std::lround(halo.radius + 3.0f)), 2);
-    cv::circle(outputImage, center, haloRadius, cv::Scalar(255, 255, 255), 2, cv::LINE_AA);
   }
 }
 
