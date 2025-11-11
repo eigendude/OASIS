@@ -31,23 +31,30 @@ class MapViewRenderer
 public:
   MapViewRenderer() = default;
 
-  void SetCameraModel(const CameraModel& model);
+  void Initialize(const CameraModel& model);
   void SetImageSize(int width, int height);
 
-  bool Render(const Sophus::SE3f& Tcw,
+  bool Render(const Sophus::SE3f& cameraFromWorldTransform,
               const std::vector<ORB_SLAM3::MapPoint*>& mapPoints,
               cv::Mat& outputImage);
 
 private:
   void ResizeBuffers();
 
+  // Initialization parameters
   CameraModel m_cameraModel;
+
+  // Image parameters
   int m_width{0};
   int m_height{0};
-  ViridisPaletteSampler m_paletteSampler;
+
+  // Buffers
   std::vector<float> m_depthBuffer;
   std::vector<cv::Vec3f> m_colorBuffer;
   std::vector<float> m_weightBuffer;
+
+  // Utilities
+  ViridisPaletteSampler m_paletteSampler;
 };
 
 } // namespace SLAM

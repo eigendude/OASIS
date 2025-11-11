@@ -53,8 +53,7 @@ bool MonocularInertialSlam::Initialize(const std::string& vocabularyFile,
   if (!LoadCameraModel(settingsFile, m_cameraModel, *m_logger))
     return false;
 
-  m_mapViewRenderer.SetCameraModel(m_cameraModel);
-  m_mapViewRenderer.SetImageSize(m_cameraModel.width, m_cameraModel.height);
+  m_mapViewRenderer.Initialize(m_cameraModel);
 
   m_slam = std::make_unique<ORB_SLAM3::System>(vocabularyFile, settingsFile,
                                                ORB_SLAM3::System::IMU_MONOCULAR, false);
@@ -106,6 +105,7 @@ void MonocularInertialSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSha
   // Pass the image to the SLAM system
   const Sophus::SE3f cameraPose = m_slam->TrackMonocular(rgbImage, timestamp, m_imuMeasurements);
 
+  // Get SLAM properties
   const int trackingState = m_slam->GetTrackingState();
   const std::vector<ORB_SLAM3::MapPoint*> trackedMapPoints = m_slam->GetTrackedMapPoints();
   std::vector<ORB_SLAM3::MapPoint*> mapPoints;

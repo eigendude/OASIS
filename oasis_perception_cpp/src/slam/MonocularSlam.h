@@ -60,11 +60,15 @@ private:
   std::unique_ptr<rclcpp::Logger> m_logger;
   std::optional<image_transport::Publisher> m_mapImagePublisher;
 
+  // SLAM components
   CameraModel m_cameraModel;
   MapViewRenderer m_mapViewRenderer;
 
   // ORB-SLAM3 system
   std::unique_ptr<ORB_SLAM3::System> m_slam;
+
+  // SLAM properties
+  cv::Mat m_mapImageBuffer;
 };
 
 } // namespace SLAM

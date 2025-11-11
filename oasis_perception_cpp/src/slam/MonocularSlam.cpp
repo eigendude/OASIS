@@ -48,8 +48,7 @@ bool MonocularSlam::Initialize(const std::string& vocabularyFile, const std::str
   if (!LoadCameraModel(settingsFile, m_cameraModel, *m_logger))
     return false;
 
-  m_mapViewRenderer.SetCameraModel(m_cameraModel);
-  m_mapViewRenderer.SetImageSize(m_cameraModel.width, m_cameraModel.height);
+  m_mapViewRenderer.Initialize(m_cameraModel);
 
   m_slam = std::make_unique<ORB_SLAM3::System>(vocabularyFile, settingsFile,
                                                ORB_SLAM3::System::MONOCULAR, false);
@@ -97,6 +96,7 @@ void MonocularSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& 
   // Pass the image to the SLAM system
   const Sophus::SE3f cameraPose = m_slam->TrackMonocular(rgbImage, timestamp);
 
+  // Get SLAM properties
   const int trackingState = m_slam->GetTrackingState();
   const std::vector<ORB_SLAM3::MapPoint*> trackedMapPoints = m_slam->GetTrackedMapPoints();
   std::vector<ORB_SLAM3::MapPoint*> mapPoints;
@@ -108,10 +108,9 @@ void MonocularSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& 
 
   if (m_mapImagePublisher && !mapPoints.empty())
   {
-    cv::Mat mapImage;
-    if (m_mapViewRenderer.Render(cameraPose, mapPoints, mapImage))
+    if (m_mapViewRenderer.Render(cameraPose, mapPoints, m_mapImageBuffer))
     {
-      cv_bridge::CvImage output(header, sensor_msgs::image_encodings::BGR8, mapImage);
+      cv_bridge::CvImage output(header, sensor_msgs::image_encodings::BGR8, m_mapImageBuffer);
       m_mapImagePublisher->publish(output.toImageMsg());
     }
   }
