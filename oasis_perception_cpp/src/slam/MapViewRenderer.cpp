@@ -217,9 +217,9 @@ bool MapViewRenderer::Render(const Sophus::SE3f& cameraFromWorldTransform,
 
       const cv::Vec3f color = m_colorBuffer[index] / weight;
       outputImage.at<cv::Vec3b>(y, x) =
-          cv::Vec3b(static_cast<std::uint8_t>(std::clamp(color[2], 0.0f, 255.0f)),
+          cv::Vec3b(static_cast<std::uint8_t>(std::clamp(color[0], 0.0f, 255.0f)),
                     static_cast<std::uint8_t>(std::clamp(color[1], 0.0f, 255.0f)),
-                    static_cast<std::uint8_t>(std::clamp(color[0], 0.0f, 255.0f)));
+                    static_cast<std::uint8_t>(std::clamp(color[2], 0.0f, 255.0f)));
     }
   }
 

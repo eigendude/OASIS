@@ -110,7 +110,7 @@ void MonocularSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& 
   {
     if (m_mapViewRenderer.Render(cameraPose, mapPoints, m_mapImageBuffer))
     {
-      cv_bridge::CvImage output(header, sensor_msgs::image_encodings::BGR8, m_mapImageBuffer);
+      cv_bridge::CvImage output(header, sensor_msgs::image_encodings::RGB8, m_mapImageBuffer);
       m_mapImagePublisher->publish(output.toImageMsg());
     }
   }
