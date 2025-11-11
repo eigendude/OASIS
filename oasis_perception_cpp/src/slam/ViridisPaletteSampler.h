@@ -8,6 +8,9 @@
 
 #pragma once
 
+#include <array>
+#include <cstdint>
+
 #include <opencv2/core.hpp>
 
 namespace OASIS
@@ -20,10 +23,12 @@ class ViridisPaletteSampler
 public:
   ViridisPaletteSampler() = default;
 
+  //! Sample the Viridis colormap returning an RGB triplet (R, G, B)
   cv::Vec3b Sample(float value) const;
 
 private:
-  static const cv::Vec3b& Lookup(int index);
+  //! Lookup an RGB entry from the precomputed Viridis table
+  static const std::array<uint8_t, 3>& Lookup(int index);
 };
 
 } // namespace SLAM
