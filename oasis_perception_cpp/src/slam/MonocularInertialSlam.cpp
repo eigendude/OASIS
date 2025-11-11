@@ -118,7 +118,7 @@ void MonocularInertialSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSha
   if (m_mapImagePublisher && !mapPoints.empty())
   {
     cv::Mat mapImage;
-    if (m_mapViewRenderer.Render(cameraPose, mapPoints, mapImage))
+    if (m_mapViewRenderer.Render(cameraPose, mapPoints, trackedMapPoints, mapImage))
     {
       cv_bridge::CvImage output(header, sensor_msgs::image_encodings::RGB8, mapImage);
       m_mapImagePublisher->publish(output.toImageMsg());
