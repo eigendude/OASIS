@@ -11,18 +11,25 @@
 #include "CameraModel.h"
 #include "MapViewRenderer.h"
 
+#include <atomic>
+#include <condition_variable>
+#include <deque>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <Eigen/Geometry>
 #include <image_transport/image_transport.hpp>
 #include <oasis_msgs/msg/i2_c_imu.hpp>
 #include <sensor_msgs/msg/image.hpp>
+#include <std_msgs/msg/header.hpp>
 
 namespace ORB_SLAM3
 {
+class MapPoint;
 class System;
 
 namespace IMU
@@ -57,6 +64,18 @@ public:
   void ImuCallback(const oasis_msgs::msg::I2CImu::ConstSharedPtr& msg);
 
 private:
+  struct MapRenderTask
+  {
+    std_msgs::msg::Header header;
+    Sophus::SE3f cameraPose;
+    std::vector<ORB_SLAM3::MapPoint*> mapPoints;
+    int imageWidth = 0;
+    int imageHeight = 0;
+  };
+
+  void MapPublisherLoop();
+  void StopMapPublisher();
+
   // ROS parameters
   std::unique_ptr<rclcpp::Logger> m_logger;
   std::optional<image_transport::Publisher> m_mapImagePublisher;
@@ -67,6 +86,14 @@ private:
   // ORB-SLAM3 system
   std::unique_ptr<ORB_SLAM3::System> m_slam;
   std::vector<ORB_SLAM3::IMU::Point> m_imuMeasurements;
+
+  cv::Mat m_mapImageBuffer;
+
+  std::deque<MapRenderTask> m_renderQueue;
+  std::mutex m_renderMutex;
+  std::condition_variable m_renderCv;
+  std::thread m_renderThread;
+  std::atomic<bool> m_renderThreadRunning{false};
 };
 
 } // namespace SLAM
