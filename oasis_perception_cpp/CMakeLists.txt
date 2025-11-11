@@ -317,6 +317,7 @@ if (ORB_SLAM3_FOUND)
     ${SLAM_RENDERING_SOURCES}
     src/nodes/MonocularSlamNode.cpp
     src/ros/RosUtils.cpp
+    src/slam/MonocularSlamBase.cpp
     src/slam/MonocularSlam.cpp
   )
   set(MONOCULAR_SLAM_DEFINITIONS
@@ -404,6 +405,7 @@ if (ORB_SLAM3_FOUND)
     ${SLAM_RENDERING_SOURCES}
     src/nodes/MonocularInertialSlamNode.cpp
     src/ros/RosUtils.cpp
+    src/slam/MonocularSlamBase.cpp
     src/slam/MonocularInertialSlam.cpp
   )
   set(MONOCULAR_INERTIAL_SLAM_DEFINITIONS

@@ -49,7 +49,7 @@ void MapViewRenderer::SetImageSize(int width, int height)
   ResizeBuffers();
 }
 
-bool MapViewRenderer::Render(const Sophus::SE3f& Tcw,
+bool MapViewRenderer::Render(const Eigen::Isometry3f& cameraFromWorldTransform,
                              const std::vector<ORB_SLAM3::MapPoint*>& mapPoints,
                              cv::Mat& outputImage)
 {
@@ -65,11 +65,12 @@ bool MapViewRenderer::Render(const Sophus::SE3f& Tcw,
   std::fill(m_colorBuffer.begin(), m_colorBuffer.end(), cv::Vec3f(0.0f, 0.0f, 0.0f));
   std::fill(m_weightBuffer.begin(), m_weightBuffer.end(), 0.0f);
 
-  const Eigen::Matrix3f rotation = Tcw.rotationMatrix();
-  const Eigen::Vector3f translation = Tcw.translation();
+  const Eigen::Matrix3f rotation = cameraFromWorldTransform.linear();
+  const Eigen::Vector3f translation = cameraFromWorldTransform.translation();
 
   std::vector<ProjectedPoint> projectedPoints;
   projectedPoints.reserve(mapPoints.size());
+
   struct DepthSample
   {
     float depth;

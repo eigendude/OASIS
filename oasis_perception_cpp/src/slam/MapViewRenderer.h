@@ -13,8 +13,8 @@
 
 #include <vector>
 
+#include <Eigen/Geometry>
 #include <opencv2/core.hpp>
-#include <sophus/se3.hpp>
 
 namespace ORB_SLAM3
 {
@@ -34,7 +34,7 @@ public:
   void SetCameraModel(const CameraModel& model);
   void SetImageSize(int width, int height);
 
-  bool Render(const Sophus::SE3f& Tcw,
+  bool Render(const Eigen::Isometry3f& cameraFromWorldTransform,
               const std::vector<ORB_SLAM3::MapPoint*>& mapPoints,
               cv::Mat& outputImage);
 
