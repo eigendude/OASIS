@@ -36,6 +36,7 @@ public:
 
   bool Render(const Sophus::SE3f& cameraFromWorldTransform,
               const std::vector<ORB_SLAM3::MapPoint*>& mapPoints,
+              const std::vector<ORB_SLAM3::MapPoint*>& trackedMapPoints,
               cv::Mat& outputImage);
 
 private:
@@ -44,17 +45,30 @@ private:
     int x{0};
     int y{0};
     float depth{0.0f};
+    bool isTracked{false};
+  };
+
+  struct HaloPoint
+  {
+    int x{0};
+    int y{0};
+    float radius{0.0f};
   };
 
   bool CanRender() const;
   void PrepareRender(cv::Mat& outputImage);
   std::vector<ProjectedPoint> ProjectMapPoints(
       const Sophus::SE3f& cameraFromWorldTransform,
-      const std::vector<ORB_SLAM3::MapPoint*>& mapPoints) const;
+      const std::vector<ORB_SLAM3::MapPoint*>& mapPoints,
+      const std::vector<ORB_SLAM3::MapPoint*>& trackedMapPoints) const;
   std::vector<float> ComputeNormalizedDepths(
       const std::vector<ProjectedPoint>& projectedPoints) const;
-  void RenderProjectedPoint(const ProjectedPoint& point, float normalizedDepth, float averageFocal);
+  void RenderProjectedPoint(const ProjectedPoint& point,
+                            float normalizedDepth,
+                            float averageFocal,
+                            std::vector<HaloPoint>& haloPoints);
   void ComposeOutputImage(cv::Mat& outputImage) const;
+  void DrawHalos(cv::Mat& outputImage, const std::vector<HaloPoint>& haloPoints) const;
   void ResizeBuffers();
 
   // Initialization parameters

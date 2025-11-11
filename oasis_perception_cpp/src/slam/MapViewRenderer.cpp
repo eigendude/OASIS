@@ -13,9 +13,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <unordered_set>
 #include <vector>
 
 #include <MapPoint.h>
+#include <opencv2/imgproc/imgproc.hpp>
 
 using namespace OASIS;
 using namespace SLAM;
@@ -43,6 +45,7 @@ void MapViewRenderer::SetImageSize(int width, int height)
 
 bool MapViewRenderer::Render(const Sophus::SE3f& cameraFromWorldTransform,
                              const std::vector<ORB_SLAM3::MapPoint*>& mapPoints,
+                             const std::vector<ORB_SLAM3::MapPoint*>& trackedMapPoints,
                              cv::Mat& outputImage)
 {
   if (!CanRender())
@@ -51,17 +54,21 @@ bool MapViewRenderer::Render(const Sophus::SE3f& cameraFromWorldTransform,
   PrepareRender(outputImage);
 
   const std::vector<ProjectedPoint> projectedPoints =
-      ProjectMapPoints(cameraFromWorldTransform, mapPoints);
+      ProjectMapPoints(cameraFromWorldTransform, mapPoints, trackedMapPoints);
   if (projectedPoints.empty())
     return false;
 
   const std::vector<float> normalizedDepths = ComputeNormalizedDepths(projectedPoints);
   const float averageFocal = 0.5f * (m_cameraModel.fx + m_cameraModel.fy);
 
+  std::vector<HaloPoint> haloPoints;
+  haloPoints.reserve(trackedMapPoints.size());
+
   for (std::size_t idx = 0; idx < projectedPoints.size(); ++idx)
-    RenderProjectedPoint(projectedPoints[idx], normalizedDepths[idx], averageFocal);
+    RenderProjectedPoint(projectedPoints[idx], normalizedDepths[idx], averageFocal, haloPoints);
 
   ComposeOutputImage(outputImage);
+  DrawHalos(outputImage, haloPoints);
 
   return true;
 }
@@ -85,10 +92,19 @@ void MapViewRenderer::PrepareRender(cv::Mat& outputImage)
 
 std::vector<MapViewRenderer::ProjectedPoint> MapViewRenderer::ProjectMapPoints(
     const Sophus::SE3f& cameraFromWorldTransform,
-    const std::vector<ORB_SLAM3::MapPoint*>& mapPoints) const
+    const std::vector<ORB_SLAM3::MapPoint*>& mapPoints,
+    const std::vector<ORB_SLAM3::MapPoint*>& trackedMapPoints) const
 {
   std::vector<ProjectedPoint> projectedPoints;
   projectedPoints.reserve(mapPoints.size());
+
+  std::unordered_set<const ORB_SLAM3::MapPoint*> trackedSet;
+  trackedSet.reserve(trackedMapPoints.size());
+  for (auto* trackedPoint : trackedMapPoints)
+  {
+    if (trackedPoint != nullptr)
+      trackedSet.insert(trackedPoint);
+  }
 
   const Eigen::Matrix3f rotation = cameraFromWorldTransform.rotationMatrix();
   const Eigen::Vector3f translation = cameraFromWorldTransform.translation();
@@ -115,7 +131,8 @@ std::vector<MapViewRenderer::ProjectedPoint> MapViewRenderer::ProjectMapPoints(
     if (pixelX < 0 || pixelX >= m_width || pixelY < 0 || pixelY >= m_height)
       continue;
 
-    projectedPoints.push_back({pixelX, pixelY, depth});
+    const bool isTracked = trackedSet.find(mapPoint) != trackedSet.end();
+    projectedPoints.push_back({pixelX, pixelY, depth, isTracked});
     minDepth = std::min(minDepth, depth);
   }
 
@@ -175,7 +192,8 @@ std::vector<float> MapViewRenderer::ComputeNormalizedDepths(
 
 void MapViewRenderer::RenderProjectedPoint(const ProjectedPoint& point,
                                            float normalizedDepth,
-                                           float averageFocal)
+                                           float averageFocal,
+                                           std::vector<HaloPoint>& haloPoints)
 {
   const cv::Vec3b sampledColor = m_paletteSampler.Sample(std::clamp(normalizedDepth, 0.0f, 1.0f));
   const cv::Vec3f colorVec(static_cast<float>(sampledColor[0]), static_cast<float>(sampledColor[1]),
@@ -188,6 +206,9 @@ void MapViewRenderer::RenderProjectedPoint(const ProjectedPoint& point,
   const float sigma = std::max(radius * 0.5f, 0.75f);
   const float invTwoSigmaSquared = 1.0f / (2.0f * sigma * sigma);
   const float depthTolerance = std::max(0.02f * point.depth, 0.02f);
+
+  if (point.isTracked)
+    haloPoints.push_back({point.x, point.y, radius});
 
   for (int dy = -radiusInt; dy <= radiusInt; ++dy)
   {
@@ -247,6 +268,16 @@ void MapViewRenderer::ComposeOutputImage(cv::Mat& outputImage) const
                     static_cast<std::uint8_t>(std::clamp(color[1], 0.0f, 255.0f)),
                     static_cast<std::uint8_t>(std::clamp(color[2], 0.0f, 255.0f)));
     }
+  }
+}
+
+void MapViewRenderer::DrawHalos(cv::Mat& outputImage, const std::vector<HaloPoint>& haloPoints) const
+{
+  for (const HaloPoint& halo : haloPoints)
+  {
+    const cv::Point center(halo.x, halo.y);
+    const int haloRadius = std::max(static_cast<int>(std::lround(halo.radius + 3.0f)), 2);
+    cv::circle(outputImage, center, haloRadius, cv::Scalar(255, 255, 255), 2, cv::LINE_AA);
   }
 }
 
