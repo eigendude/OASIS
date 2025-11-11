@@ -8,92 +8,44 @@
 
 #pragma once
 
-#include "CameraModel.h"
-#include "MapViewRenderer.h"
+#include "MonocularSlamBase.h"
 
-#include <atomic>
-#include <condition_variable>
-#include <deque>
-#include <memory>
-#include <mutex>
-#include <optional>
-#include <string>
-#include <thread>
 #include <vector>
 
-#include <Eigen/Geometry>
-#include <image_transport/image_transport.hpp>
 #include <oasis_msgs/msg/i2_c_imu.hpp>
-#include <sensor_msgs/msg/image.hpp>
-#include <std_msgs/msg/header.hpp>
 
 namespace ORB_SLAM3
 {
-class MapPoint;
-class System;
-
 namespace IMU
 {
 class Point;
-}
+} // namespace IMU
 } // namespace ORB_SLAM3
-
-namespace rclcpp
-{
-class Logger;
-class Node;
-} // namespace rclcpp
 
 namespace OASIS
 {
 namespace SLAM
 {
 
-class MonocularInertialSlam
+class MonocularInertialSlam : public MonocularSlamBase
 {
 public:
   MonocularInertialSlam(rclcpp::Node& node, const std::string& mapImageTopic);
-  ~MonocularInertialSlam();
+  ~MonocularInertialSlam() override;
 
-  // Lifecycle interface
   bool Initialize(const std::string& vocabularyFile, const std::string& settingsFile);
   void Deinitialize();
 
-  // ROS interface
-  void ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg);
   void ImuCallback(const oasis_msgs::msg::I2CImu::ConstSharedPtr& msg);
 
+protected:
+  Sophus::SE3f TrackFrame(const cv::Mat& rgbImage, double timestamp) override;
+  void OnInitialized() override;
+  void OnDeinitialized() override;
+  void OnPostTrack() override;
+
 private:
-  struct MapRenderTask
-  {
-    std_msgs::msg::Header header;
-    Sophus::SE3f cameraPose;
-    std::vector<ORB_SLAM3::MapPoint*> mapPoints;
-    int imageWidth = 0;
-    int imageHeight = 0;
-  };
-
-  void MapPublisherLoop();
-  void StopMapPublisher();
-
-  // ROS parameters
-  std::unique_ptr<rclcpp::Logger> m_logger;
-  std::optional<image_transport::Publisher> m_mapImagePublisher;
-
-  CameraModel m_cameraModel;
-  MapViewRenderer m_mapViewRenderer;
-
-  // ORB-SLAM3 system
-  std::unique_ptr<ORB_SLAM3::System> m_slam;
   std::vector<ORB_SLAM3::IMU::Point> m_imuMeasurements;
-
-  cv::Mat m_mapImageBuffer;
-
-  std::deque<MapRenderTask> m_renderQueue;
-  std::mutex m_renderMutex;
-  std::condition_variable m_renderCv;
-  std::thread m_renderThread;
-  std::atomic<bool> m_renderThreadRunning{false};
 };
 
 } // namespace SLAM
