@@ -48,8 +48,18 @@ bool SLAM::LoadCameraModel(const std::string& settingsFile,
     return false;
   }
 
-  settings[std::string(CAMERA_WIDTH_KEY)] >> model.width;
-  settings[std::string(CAMERA_HEIGHT_KEY)] >> model.height;
+  int width;
+  int height;
+
+  settings[std::string(CAMERA_WIDTH_KEY)] >> width;
+  settings[std::string(CAMERA_HEIGHT_KEY)] >> height;
+
+  if (width < 0 || height < 0)
+    return false;
+
+  model.width = static_cast<unsigned int>(width);
+  model.height = static_cast<unsigned int>(height);
+
   settings[std::string(CAMERA_FX_KEY)] >> model.fx;
   settings[std::string(CAMERA_FY_KEY)] >> model.fy;
   settings[std::string(CAMERA_CX_KEY)] >> model.cx;

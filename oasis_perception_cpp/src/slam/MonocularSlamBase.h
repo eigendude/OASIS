@@ -23,6 +23,7 @@
 
 #include <Eigen/Geometry>
 #include <System.h>
+#include <cv_bridge/cv_bridge.hpp>
 #include <image_transport/image_transport.hpp>
 #include <opencv2/core.hpp>
 #include <sensor_msgs/msg/image.hpp>
@@ -67,8 +68,7 @@ private:
     std_msgs::msg::Header header;
     Eigen::Isometry3f cameraPose;
     std::vector<ORB_SLAM3::MapPoint*> mapPoints;
-    int imageWidth = 0;
-    int imageHeight = 0;
+    cv_bridge::CvImageConstPtr inputImage;
   };
 
   void MapPublisherLoop();
@@ -84,9 +84,6 @@ private:
 
   // ORB-SLAM3 system
   std::unique_ptr<ORB_SLAM3::System> m_slam;
-
-  // SLAM properties
-  cv::Mat m_mapImageBuffer;
 
   // Synchronization parameters
   std::deque<MapRenderTask> m_renderQueue;

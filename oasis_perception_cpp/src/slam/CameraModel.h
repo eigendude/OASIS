@@ -22,8 +22,8 @@ namespace SLAM
 
 struct CameraModel
 {
-  int width{0};
-  int height{0};
+  unsigned int width{0};
+  unsigned int height{0};
   float fx{0.0f};
   float fy{0.0f};
   float cx{0.0f};

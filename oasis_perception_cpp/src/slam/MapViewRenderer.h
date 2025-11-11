@@ -9,8 +9,8 @@
 #pragma once
 
 #include "CameraModel.h"
-#include "ViridisPaletteSampler.h"
 
+#include <cstddef>
 #include <vector>
 
 #include <Eigen/Geometry>
@@ -31,23 +31,62 @@ class MapViewRenderer
 public:
   MapViewRenderer() = default;
 
-  void SetCameraModel(const CameraModel& model);
-  void SetImageSize(int width, int height);
+  void Initialize(const CameraModel& cameraModel);
 
   bool Render(const Eigen::Isometry3f& cameraFromWorldTransform,
               const std::vector<ORB_SLAM3::MapPoint*>& mapPoints,
               cv::Mat& outputImage);
 
 private:
-  void ResizeBuffers();
+  struct ProjectedPoint
+  {
+    int x{0};
+    int y{0};
+    float depth{0.0f};
+  };
 
+  struct DepthSample
+  {
+    float depth;
+    std::size_t index;
+  };
+
+  struct ImageBuffers
+  {
+    std::vector<float> depthBuffer;
+    std::vector<cv::Vec3f> colorBuffer;
+    std::vector<float> weightBuffer;
+  };
+
+  static void ResizeBuffers(const CameraModel& cameraModel, ImageBuffers& imageBuffers);
+  static bool CanRender(const CameraModel& cameraModel);
+  static void PrepareRender(const CameraModel& cameraModel,
+                            ImageBuffers& imageBuffers,
+                            cv::Mat& outputImage);
+  static void ProjectMapPoints(const CameraModel& cameraModel,
+                               const Eigen::Isometry3f& cameraFromWorldTransform,
+                               const std::vector<ORB_SLAM3::MapPoint*>& mapPoints,
+                               std::vector<ProjectedPoint>& projectedPoints);
+  static void ComputeNormalizedDepths(const std::vector<ProjectedPoint>& projectedPoints,
+                                      std::vector<DepthSample>& depthBuffer,
+                                      std::vector<float>& normalizedDepths);
+  static void RenderProjectedPoint(const CameraModel& cameraModel,
+                                   const ProjectedPoint& point,
+                                   float normalizedDepth,
+                                   float averageFocal,
+                                   ImageBuffers& imageBuffers);
+  static void ComposeOutputImage(const CameraModel& cameraModel,
+                                 const ImageBuffers& imageBuffers,
+                                 cv::Mat& outputImage);
+
+  // Initialization parameters
   CameraModel m_cameraModel;
-  int m_width{0};
-  int m_height{0};
-  ViridisPaletteSampler m_paletteSampler;
-  std::vector<float> m_depthBuffer;
-  std::vector<cv::Vec3f> m_colorBuffer;
-  std::vector<float> m_weightBuffer;
+
+  // Caches
+  std::vector<ProjectedPoint> m_projectedPoints;
+  std::vector<DepthSample> m_depthBuffer;
+  std::vector<float> m_normalizedDepths;
+  ImageBuffers m_imageBuffers;
 };
 
 } // namespace SLAM

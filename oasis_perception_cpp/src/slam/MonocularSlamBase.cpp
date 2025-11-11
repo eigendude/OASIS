@@ -14,7 +14,6 @@
 #include <utility>
 #include <vector>
 
-#include <cv_bridge/cv_bridge.hpp>
 #include <image_transport/image_transport.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
@@ -51,7 +50,7 @@ bool MonocularSlamBase::InitializeSystem(const std::string& vocabularyFile,
   if (!LoadCameraModel(settingsFile, m_cameraModel, Logger()))
     return false;
 
-  m_mapViewRenderer.SetCameraModel(m_cameraModel);
+  m_mapViewRenderer.Initialize(m_cameraModel);
 
   m_slam = std::make_unique<ORB_SLAM3::System>(vocabularyFile, settingsFile, sensorType, false);
 
@@ -114,8 +113,7 @@ void MonocularSlamBase::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedP
     task.header = header;
     task.cameraPose = cameraPose;
     task.mapPoints = mapPoints;
-    task.imageWidth = rgbImage.cols;
-    task.imageHeight = rgbImage.rows;
+    task.inputImage = std::move(inputImage);
 
     {
       std::lock_guard<std::mutex> lock(m_renderMutex);
@@ -166,10 +164,11 @@ void MonocularSlamBase::MapPublisherLoop()
       m_renderQueue.pop_front();
     }
 
-    m_mapViewRenderer.SetImageSize(task.imageWidth, task.imageHeight);
-    if (m_mapViewRenderer.Render(task.cameraPose, task.mapPoints, m_mapImageBuffer))
+    if (m_mapViewRenderer.Render(task.cameraPose, task.mapPoints,
+                                 const_cast<cv::Mat&>(task.inputImage->image)))
     {
-      cv_bridge::CvImage output(task.header, sensor_msgs::image_encodings::RGB8, m_mapImageBuffer);
+      cv_bridge::CvImage output(task.header, sensor_msgs::image_encodings::RGB8,
+                                task.inputImage->image);
       m_mapImagePublisher->publish(output.toImageMsg());
     }
   }
