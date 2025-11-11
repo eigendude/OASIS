@@ -20,17 +20,6 @@
 using namespace OASIS;
 using namespace SLAM;
 
-namespace
-{
-struct ProjectedPoint
-{
-  int x{0};
-  int y{0};
-  float depth{0.0f};
-};
-
-} // namespace
-
 void MapViewRenderer::Initialize(const CameraModel& model)
 {
   m_cameraModel = model;
@@ -56,9 +45,34 @@ bool MapViewRenderer::Render(const Sophus::SE3f& cameraFromWorldTransform,
                              const std::vector<ORB_SLAM3::MapPoint*>& mapPoints,
                              cv::Mat& outputImage)
 {
-  if (m_width <= 0 || m_height <= 0 || m_cameraModel.width <= 0 || m_cameraModel.height <= 0)
+  if (!CanRender())
     return false;
 
+  PrepareRender(outputImage);
+
+  const std::vector<ProjectedPoint> projectedPoints =
+      ProjectMapPoints(cameraFromWorldTransform, mapPoints);
+  if (projectedPoints.empty())
+    return false;
+
+  const std::vector<float> normalizedDepths = ComputeNormalizedDepths(projectedPoints);
+  const float averageFocal = 0.5f * (m_cameraModel.fx + m_cameraModel.fy);
+
+  for (std::size_t idx = 0; idx < projectedPoints.size(); ++idx)
+    RenderProjectedPoint(projectedPoints[idx], normalizedDepths[idx], averageFocal);
+
+  ComposeOutputImage(outputImage);
+
+  return true;
+}
+
+bool MapViewRenderer::CanRender() const
+{
+  return m_width > 0 && m_height > 0 && m_cameraModel.width > 0 && m_cameraModel.height > 0;
+}
+
+void MapViewRenderer::PrepareRender(cv::Mat& outputImage)
+{
   ResizeBuffers();
 
   outputImage.create(m_height, m_width, CV_8UC3);
@@ -67,21 +81,17 @@ bool MapViewRenderer::Render(const Sophus::SE3f& cameraFromWorldTransform,
   std::fill(m_depthBuffer.begin(), m_depthBuffer.end(), std::numeric_limits<float>::infinity());
   std::fill(m_colorBuffer.begin(), m_colorBuffer.end(), cv::Vec3f(0.0f, 0.0f, 0.0f));
   std::fill(m_weightBuffer.begin(), m_weightBuffer.end(), 0.0f);
+}
 
-  const Eigen::Matrix3f rotation = cameraFromWorldTransform.rotationMatrix();
-  const Eigen::Vector3f translation = cameraFromWorldTransform.translation();
-
+std::vector<MapViewRenderer::ProjectedPoint> MapViewRenderer::ProjectMapPoints(
+    const Sophus::SE3f& cameraFromWorldTransform,
+    const std::vector<ORB_SLAM3::MapPoint*>& mapPoints) const
+{
   std::vector<ProjectedPoint> projectedPoints;
   projectedPoints.reserve(mapPoints.size());
 
-  struct DepthSample
-  {
-    float depth;
-    std::size_t index;
-  };
-
-  std::vector<DepthSample> depthSamples;
-  depthSamples.reserve(mapPoints.size());
+  const Eigen::Matrix3f rotation = cameraFromWorldTransform.rotationMatrix();
+  const Eigen::Vector3f translation = cameraFromWorldTransform.translation();
 
   float minDepth = std::numeric_limits<float>::infinity();
 
@@ -105,107 +115,124 @@ bool MapViewRenderer::Render(const Sophus::SE3f& cameraFromWorldTransform,
     if (pixelX < 0 || pixelX >= m_width || pixelY < 0 || pixelY >= m_height)
       continue;
 
-    const std::size_t pointIndex = projectedPoints.size();
     projectedPoints.push_back({pixelX, pixelY, depth});
-    depthSamples.push_back({depth, pointIndex});
     minDepth = std::min(minDepth, depth);
   }
 
-  if (projectedPoints.empty() || !std::isfinite(minDepth))
-    return false;
+  if (!std::isfinite(minDepth))
+    projectedPoints.clear();
 
+  return projectedPoints;
+}
+
+std::vector<float> MapViewRenderer::ComputeNormalizedDepths(
+    const std::vector<ProjectedPoint>& projectedPoints) const
+{
   std::vector<float> normalizedDepths(projectedPoints.size(), 0.0f);
-  if (depthSamples.size() >= 2)
+  if (projectedPoints.size() <= 1)
   {
-    std::sort(depthSamples.begin(), depthSamples.end(),
-              [](const DepthSample& lhs, const DepthSample& rhs) { return lhs.depth < rhs.depth; });
-
-    std::size_t i = 0;
-    while (i < depthSamples.size())
-    {
-      const float currentDepth = depthSamples[i].depth;
-      std::size_t j = i + 1;
-      while (j < depthSamples.size() && depthSamples[j].depth == currentDepth)
-        ++j;
-
-      const float rankStart = static_cast<float>(i);
-      const float rankEnd = static_cast<float>(j - 1);
-      const float averageRank = 0.5f * (rankStart + rankEnd);
-      const float normalizedValue = (depthSamples.size() > 1)
-                                        ? averageRank / static_cast<float>(depthSamples.size() - 1)
-                                        : 0.0f;
-
-      for (std::size_t k = i; k < j; ++k)
-        normalizedDepths[depthSamples[k].index] = normalizedValue;
-
-      i = j;
-    }
-  }
-  else if (depthSamples.size() == 1)
-  {
-    normalizedDepths[depthSamples[0].index] = 0.5f;
+    if (projectedPoints.size() == 1)
+      normalizedDepths[0] = 0.5f;
+    return normalizedDepths;
   }
 
-  const float averageFocal = 0.5f * (m_cameraModel.fx + m_cameraModel.fy);
-
-  for (std::size_t idx = 0; idx < projectedPoints.size(); ++idx)
+  struct DepthSample
   {
-    const ProjectedPoint& point = projectedPoints[idx];
-    const float normalizedDepth = normalizedDepths[idx];
-    const cv::Vec3b sampledColor = m_paletteSampler.Sample(std::clamp(normalizedDepth, 0.0f, 1.0f));
-    const cv::Vec3f colorVec(static_cast<float>(sampledColor[0]),
-                             static_cast<float>(sampledColor[1]),
-                             static_cast<float>(sampledColor[2]));
+    float depth;
+    std::size_t index;
+  };
 
-    const float pointDepth = std::max(point.depth, 1e-3f);
-    const float radius = std::clamp(averageFocal / (pointDepth * 120.0f), 1.5f, 6.0f);
-    const int radiusInt = static_cast<int>(std::ceil(radius));
-    const float radiusSquared = radius * radius;
-    const float sigma = std::max(radius * 0.5f, 0.75f);
-    const float invTwoSigmaSquared = 1.0f / (2.0f * sigma * sigma);
-    const float depthTolerance = std::max(0.02f * point.depth, 0.02f);
+  std::vector<DepthSample> depthSamples;
+  depthSamples.reserve(projectedPoints.size());
 
-    for (int dy = -radiusInt; dy <= radiusInt; ++dy)
+  for (std::size_t i = 0; i < projectedPoints.size(); ++i)
+    depthSamples.push_back({projectedPoints[i].depth, i});
+
+  std::sort(depthSamples.begin(), depthSamples.end(),
+            [](const DepthSample& lhs, const DepthSample& rhs) { return lhs.depth < rhs.depth; });
+
+  std::size_t i = 0;
+  while (i < depthSamples.size())
+  {
+    const float currentDepth = depthSamples[i].depth;
+    std::size_t j = i + 1;
+    while (j < depthSamples.size() && depthSamples[j].depth == currentDepth)
+      ++j;
+
+    const float rankStart = static_cast<float>(i);
+    const float rankEnd = static_cast<float>(j - 1);
+    const float averageRank = 0.5f * (rankStart + rankEnd);
+    const float normalizedValue = averageRank / static_cast<float>(depthSamples.size() - 1);
+
+    for (std::size_t k = i; k < j; ++k)
+      normalizedDepths[depthSamples[k].index] = normalizedValue;
+
+    i = j;
+  }
+
+  return normalizedDepths;
+}
+
+void MapViewRenderer::RenderProjectedPoint(const ProjectedPoint& point,
+                                           float normalizedDepth,
+                                           float averageFocal)
+{
+  const cv::Vec3b sampledColor = m_paletteSampler.Sample(std::clamp(normalizedDepth, 0.0f, 1.0f));
+  const cv::Vec3f colorVec(static_cast<float>(sampledColor[0]),
+                           static_cast<float>(sampledColor[1]),
+                           static_cast<float>(sampledColor[2]));
+
+  const float pointDepth = std::max(point.depth, 1e-3f);
+  const float radius = std::clamp(averageFocal / (pointDepth * 120.0f), 1.5f, 6.0f);
+  const int radiusInt = static_cast<int>(std::ceil(radius));
+  const float radiusSquared = radius * radius;
+  const float sigma = std::max(radius * 0.5f, 0.75f);
+  const float invTwoSigmaSquared = 1.0f / (2.0f * sigma * sigma);
+  const float depthTolerance = std::max(0.02f * point.depth, 0.02f);
+
+  for (int dy = -radiusInt; dy <= radiusInt; ++dy)
+  {
+    const int pixelY = point.y + dy;
+    if (pixelY < 0 || pixelY >= m_height)
+      continue;
+
+    for (int dx = -radiusInt; dx <= radiusInt; ++dx)
     {
-      const int pixelY = point.y + dy;
-      if (pixelY < 0 || pixelY >= m_height)
+      const int pixelX = point.x + dx;
+      if (pixelX < 0 || pixelX >= m_width)
         continue;
 
-      for (int dx = -radiusInt; dx <= radiusInt; ++dx)
+      const float distanceSquared = static_cast<float>(dx * dx + dy * dy);
+      if (distanceSquared > radiusSquared)
+        continue;
+
+      const int index = pixelY * m_width + pixelX;
+      if (index < 0 || index >= static_cast<int>(m_depthBuffer.size()))
+        continue;
+
+      if (point.depth > m_depthBuffer[index] + depthTolerance)
+        continue;
+
+      const float weight = std::exp(-distanceSquared * invTwoSigmaSquared);
+
+      if (point.depth < m_depthBuffer[index] - depthTolerance)
       {
-        const int pixelX = point.x + dx;
-        if (pixelX < 0 || pixelX >= m_width)
-          continue;
-
-        const float distanceSquared = static_cast<float>(dx * dx + dy * dy);
-        if (distanceSquared > radiusSquared)
-          continue;
-
-        const int index = pixelY * m_width + pixelX;
-        if (index < 0 || index >= static_cast<int>(m_depthBuffer.size()))
-          continue;
-
-        if (point.depth > m_depthBuffer[index] + depthTolerance)
-          continue;
-
-        const float weight = std::exp(-distanceSquared * invTwoSigmaSquared);
-
-        if (point.depth < m_depthBuffer[index] - depthTolerance)
-        {
-          m_depthBuffer[index] = point.depth;
-          m_colorBuffer[index] = weight * colorVec;
-          m_weightBuffer[index] = weight;
-        }
-        else
-        {
-          m_depthBuffer[index] = std::min(m_depthBuffer[index], point.depth);
-          m_colorBuffer[index] += weight * colorVec;
-          m_weightBuffer[index] += weight;
-        }
+        m_depthBuffer[index] = point.depth;
+        m_colorBuffer[index] = weight * colorVec;
+        m_weightBuffer[index] = weight;
+      }
+      else
+      {
+        m_depthBuffer[index] = std::min(m_depthBuffer[index], point.depth);
+        m_colorBuffer[index] += weight * colorVec;
+        m_weightBuffer[index] += weight;
       }
     }
   }
+}
 
+void MapViewRenderer::ComposeOutputImage(cv::Mat& outputImage) const
+{
   for (int y = 0; y < m_height; ++y)
   {
     for (int x = 0; x < m_width; ++x)
@@ -222,8 +249,6 @@ bool MapViewRenderer::Render(const Sophus::SE3f& cameraFromWorldTransform,
                     static_cast<std::uint8_t>(std::clamp(color[2], 0.0f, 255.0f)));
     }
   }
-
-  return true;
 }
 
 void MapViewRenderer::ResizeBuffers()

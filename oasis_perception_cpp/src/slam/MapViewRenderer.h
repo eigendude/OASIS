@@ -39,6 +39,23 @@ public:
               cv::Mat& outputImage);
 
 private:
+  struct ProjectedPoint
+  {
+    int x{0};
+    int y{0};
+    float depth{0.0f};
+  };
+
+  bool CanRender() const;
+  void PrepareRender(cv::Mat& outputImage);
+  std::vector<ProjectedPoint> ProjectMapPoints(
+      const Sophus::SE3f& cameraFromWorldTransform,
+      const std::vector<ORB_SLAM3::MapPoint*>& mapPoints) const;
+  std::vector<float> ComputeNormalizedDepths(const std::vector<ProjectedPoint>& projectedPoints) const;
+  void RenderProjectedPoint(const ProjectedPoint& point,
+                            float normalizedDepth,
+                            float averageFocal);
+  void ComposeOutputImage(cv::Mat& outputImage) const;
   void ResizeBuffers();
 
   // Initialization parameters
