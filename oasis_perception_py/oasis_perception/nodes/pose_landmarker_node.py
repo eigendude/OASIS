@@ -117,11 +117,10 @@ class PoseLandmarkerNode(rclpy.node.Node):
         sensor_qos = QoSPresetProfiles.SENSOR_DATA.value
 
         # Subscribers
-        self._image_transport.subscribe(
+        self._image_subscription = self._image_transport.subscribe(
             self.resolve_topic_name(IMAGE_SUB_TOPIC),
             1,
             self._image_callback,
-            qos_profile=sensor_qos,
         )
 
         # Publishers
@@ -133,7 +132,6 @@ class PoseLandmarkerNode(rclpy.node.Node):
         self._pose_image_pub = self._image_transport.advertise(
             self.resolve_topic_name(POSE_IMAGE_TOPIC),
             1,
-            qos_profile=sensor_qos,
         )
         self._pose_landmarks_pub = self.create_publisher(
             PoseLandmarksArrayMsg,
