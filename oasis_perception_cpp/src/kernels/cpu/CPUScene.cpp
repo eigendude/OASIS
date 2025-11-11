@@ -8,8 +8,8 @@
 
 #include "CPUScene.h"
 
-#include "api/Scene.h"
-#include "utils/SceneUtils.h"
+#include "gapi/Scene.h"
+#include "image/SceneUtils.h"
 
 #include <opencv2/gapi/cpu/gcpukernel.hpp>
 

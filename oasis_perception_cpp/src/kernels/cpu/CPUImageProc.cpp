@@ -8,7 +8,7 @@
 
 #include "CPUImageProc.h"
 
-#include "api/ImageProc.h"
+#include "gapi/ImageProc.h"
 
 #include <opencv2/gapi/cpu/gcpukernel.hpp>
 #include <opencv2/imgproc.hpp>

@@ -85,7 +85,7 @@ set(MEDIAPIPE_SOURCES
 
 # Project files
 set(BACKGROUND_MODELER_SOURCES
-  src/image/BackgroundModelerABL.cpp
+  src/background/BackgroundModelerABL.cpp
   src/nodes/BackgroundModelerNode.cpp
 )
 set(BACKGROUND_MODELER_LIBRARIES
@@ -141,7 +141,7 @@ rclcpp_components_register_node(
 
 # Project files
 set(BACKGROUND_SUBTRACTOR_SOURCES
-  src/image/BackgroundSubtractorASBL.cpp
+  src/background/BackgroundSubtractorASBL.cpp
   src/nodes/BackgroundSubtractorNode.cpp
 )
 set(BACKGROUND_SUBTRACTOR_LIBRARIES
@@ -200,7 +200,7 @@ if(TARGET MediaPipe::MediaPipe)
   set(HELLO_WORLD_SOURCES
     ${MEDIAPIPE_SOURCES}
     src/nodes/HelloWorldNode.cpp
-    src/utils/HelloWorld.cpp
+    src/pose/HelloWorld.cpp
   )
   set(HELLO_WORLD_LIBRARIES
     MediaPipe::MediaPipe
@@ -474,7 +474,7 @@ endif()
 
 # Project files
 set(MULTI_MODELER_SOURCES
-  src/image/MultiModeler.cpp
+  src/background/MultiModeler.cpp
   src/nodes/MultiModelerNode.cpp
 )
 set(MULTI_MODELER_LIBRARIES
@@ -530,15 +530,15 @@ rclcpp_components_register_node(
 
 # Project files
 set(OPTICAL_FLOW_SOURCES
-  src/api/ImageProc.cpp
-  src/api/Scene.cpp
-  src/api/Video.cpp
+  src/gapi/ImageProc.cpp
+  src/gapi/Scene.cpp
+  src/gapi/Video.cpp
+  src/image/SceneUtils.cpp
   src/kernels/cpu/CPUImageProc.cpp
   src/kernels/cpu/CPUScene.cpp
   src/kernels/cpu/CPUVideo.cpp
   src/nodes/OpticalFlowNode.cpp
   src/utils/MathUtils.cpp
-  src/utils/SceneUtils.cpp
   src/video/OpticalFlow.cpp
   src/video/VisionGraph.cpp
 )

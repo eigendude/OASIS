@@ -8,7 +8,7 @@
 
 #include "CPUVideo.h"
 
-#include "api/Video.h"
+#include "gapi/Video.h"
 
 #include <opencv2/gapi/cpu/gcpukernel.hpp>
 #include <opencv2/gapi/cpu/imgproc.hpp>

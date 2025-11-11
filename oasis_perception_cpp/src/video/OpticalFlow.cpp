@@ -8,8 +8,8 @@
 
 #include "OpticalFlow.h"
 
+#include "image/SceneUtils.h"
 #include "utils/MathUtils.h"
-#include "utils/SceneUtils.h"
 #include "video/VisionGraph.h"
 
 #include <algorithm>

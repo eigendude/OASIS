@@ -8,7 +8,7 @@
 
 #include "MultiModelerNode.h"
 
-#include "image/MultiModeler.h"
+#include "background/MultiModeler.h"
 
 #include <memory>
 #include <string>

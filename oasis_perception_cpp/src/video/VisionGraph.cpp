@@ -8,8 +8,8 @@
 
 #include "VisionGraph.h"
 
-#include "api/ImageProc.h"
-#include "api/Video.h"
+#include "gapi/ImageProc.h"
+#include "gapi/Video.h"
 #include "kernels/cpu/CPUImageProc.h"
 #include "kernels/cpu/CPUVideo.h"
 

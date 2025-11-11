@@ -8,7 +8,7 @@
 
 #include "BackgroundModelerNode.h"
 
-#include "image/BackgroundModelerABL.h"
+#include "background/BackgroundModelerABL.h"
 
 #include <string_view>
 
