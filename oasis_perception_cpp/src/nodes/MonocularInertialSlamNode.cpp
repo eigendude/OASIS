@@ -18,6 +18,7 @@
 #include <image_transport/image_transport.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
+#include <rmw/qos_profiles.h>
 #include <rclcpp/qos.hpp>
 
 using namespace OASIS;
@@ -117,7 +118,8 @@ bool MonocularInertialSlamNode::Initialize()
 
   *m_imgSubscriber = image_transport::create_subscription(
       &m_node, imageTopic,
-      [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg) { OnImage(msg); }, imageTransport);
+      [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg) { OnImage(msg); }, imageTransport,
+      rmw_qos_profile_sensor_data);
 
   const rclcpp::QoS qos{10};
   m_imuSubscriber = m_node.create_subscription<oasis_msgs::msg::I2CImu>(

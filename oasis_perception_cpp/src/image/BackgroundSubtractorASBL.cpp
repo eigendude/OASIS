@@ -15,6 +15,7 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
+#include <rmw/qos_profiles.h>
 #include <sensor_msgs/image_encodings.hpp>
 
 using namespace OASIS;
@@ -31,10 +32,15 @@ BackgroundSubtractorASBL::BackgroundSubtractorASBL(rclcpp::Node& node,
     m_bgsPackageASBL(
         std::make_unique<bgslibrary::algorithms::AdaptiveSelectiveBackgroundLearning>())
 {
-  *m_imgPublisherForeground = image_transport::create_publisher(&node, foregroundTopic);
-  *m_imgPublisherSubtracted = image_transport::create_publisher(&node, subtractedTopic);
+  const rmw_qos_profile_t sensorQos = rmw_qos_profile_sensor_data;
+
+  *m_imgPublisherForeground =
+      image_transport::create_publisher(&node, foregroundTopic, sensorQos);
+  *m_imgPublisherSubtracted =
+      image_transport::create_publisher(&node, subtractedTopic, sensorQos);
   *m_imgSubscriber = image_transport::create_subscription(
-      &node, imageTopic, [this](const auto& msg) { ReceiveImage(msg); }, "compressed");
+      &node, imageTopic, [this](const auto& msg) { ReceiveImage(msg); }, "compressed",
+      sensorQos);
 }
 
 BackgroundSubtractorASBL::~BackgroundSubtractorASBL()
