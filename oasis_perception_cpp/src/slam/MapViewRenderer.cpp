@@ -13,9 +13,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <unordered_set>
 #include <vector>
 
 #include <MapPoint.h>
+#include <opencv2/imgproc.hpp>
 
 using namespace OASIS;
 using namespace SLAM;
@@ -27,6 +29,8 @@ struct ProjectedPoint
   int x{0};
   int y{0};
   float depth{0.0f};
+  float radius{0.0f};
+  bool tracked{false};
 };
 
 } // namespace
@@ -54,6 +58,7 @@ void MapViewRenderer::SetImageSize(int width, int height)
 
 bool MapViewRenderer::Render(const Sophus::SE3f& cameraFromWorldTransform,
                              const std::vector<ORB_SLAM3::MapPoint*>& mapPoints,
+                             const std::vector<ORB_SLAM3::MapPoint*>& trackedMapPoints,
                              cv::Mat& outputImage)
 {
   if (m_width <= 0 || m_height <= 0 || m_cameraModel.width <= 0 || m_cameraModel.height <= 0)
@@ -73,6 +78,14 @@ bool MapViewRenderer::Render(const Sophus::SE3f& cameraFromWorldTransform,
 
   std::vector<ProjectedPoint> projectedPoints;
   projectedPoints.reserve(mapPoints.size());
+
+  std::unordered_set<const ORB_SLAM3::MapPoint*> trackedPointSet;
+  trackedPointSet.reserve(trackedMapPoints.size());
+  for (const auto* trackedPoint : trackedMapPoints)
+  {
+    if (trackedPoint != nullptr)
+      trackedPointSet.insert(trackedPoint);
+  }
 
   struct DepthSample
   {
@@ -105,8 +118,9 @@ bool MapViewRenderer::Render(const Sophus::SE3f& cameraFromWorldTransform,
     if (pixelX < 0 || pixelX >= m_width || pixelY < 0 || pixelY >= m_height)
       continue;
 
+    const bool isTracked = trackedPointSet.find(mapPoint) != trackedPointSet.end();
     const std::size_t pointIndex = projectedPoints.size();
-    projectedPoints.push_back({pixelX, pixelY, depth});
+    projectedPoints.push_back({pixelX, pixelY, depth, 0.0f, isTracked});
     depthSamples.push_back({depth, pointIndex});
     minDepth = std::min(minDepth, depth);
   }
@@ -150,7 +164,7 @@ bool MapViewRenderer::Render(const Sophus::SE3f& cameraFromWorldTransform,
 
   for (std::size_t idx = 0; idx < projectedPoints.size(); ++idx)
   {
-    const ProjectedPoint& point = projectedPoints[idx];
+    ProjectedPoint& point = projectedPoints[idx];
     const float normalizedDepth = normalizedDepths[idx];
     const cv::Vec3b sampledColor = m_paletteSampler.Sample(std::clamp(normalizedDepth, 0.0f, 1.0f));
     const cv::Vec3f colorVec(static_cast<float>(sampledColor[0]),
@@ -159,6 +173,7 @@ bool MapViewRenderer::Render(const Sophus::SE3f& cameraFromWorldTransform,
 
     const float pointDepth = std::max(point.depth, 1e-3f);
     const float radius = std::clamp(averageFocal / (pointDepth * 120.0f), 1.5f, 6.0f);
+    point.radius = radius;
     const int radiusInt = static_cast<int>(std::ceil(radius));
     const float radiusSquared = radius * radius;
     const float sigma = std::max(radius * 0.5f, 0.75f);
@@ -221,6 +236,16 @@ bool MapViewRenderer::Render(const Sophus::SE3f& cameraFromWorldTransform,
                     static_cast<std::uint8_t>(std::clamp(color[1], 0.0f, 255.0f)),
                     static_cast<std::uint8_t>(std::clamp(color[2], 0.0f, 255.0f)));
     }
+  }
+
+  for (const ProjectedPoint& point : projectedPoints)
+  {
+    if (!point.tracked)
+      continue;
+
+    const int haloRadius = std::clamp(static_cast<int>(std::ceil(point.radius)) + 1, 2, 8);
+    cv::circle(outputImage, cv::Point(point.x, point.y), haloRadius, cv::Scalar(255, 255, 255), 2,
+               cv::LINE_AA);
   }
 
   return true;

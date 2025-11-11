@@ -36,6 +36,7 @@ public:
 
   bool Render(const Sophus::SE3f& cameraFromWorldTransform,
               const std::vector<ORB_SLAM3::MapPoint*>& mapPoints,
+              const std::vector<ORB_SLAM3::MapPoint*>& trackedMapPoints,
               cv::Mat& outputImage);
 
 private:
