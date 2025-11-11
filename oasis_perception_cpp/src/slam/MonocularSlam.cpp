@@ -10,8 +10,8 @@
 
 #include "ros/RosUtils.h"
 
-#include <algorithm>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <System.h>
@@ -35,10 +35,16 @@ MonocularSlam::MonocularSlam(rclcpp::Node& node, const std::string& mapImageTopi
     qos.reliability = RMW_QOS_POLICY_RELIABILITY_RELIABLE;
 
     m_mapImagePublisher = image_transport::create_publisher(&node, mapImageTopic, qos);
+
+    m_renderThreadRunning = true;
+    m_renderThread = std::thread(&MonocularSlam::MapPublisherLoop, this);
   }
 }
 
-MonocularSlam::~MonocularSlam() = default;
+MonocularSlam::~MonocularSlam()
+{
+  StopMapPublisher();
+}
 
 bool MonocularSlam::Initialize(const std::string& vocabularyFile, const std::string& settingsFile)
 {
@@ -69,6 +75,11 @@ void MonocularSlam::Deinitialize()
 
     m_slam.reset();
   }
+
+  {
+    std::lock_guard<std::mutex> lock(m_renderMutex);
+    m_renderQueue.clear();
+  }
 }
 
 void MonocularSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg)
@@ -92,8 +103,6 @@ void MonocularSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& 
 
   const cv::Mat& rgbImage = inputImage->image;
 
-  m_mapViewRenderer.SetImageSize(rgbImage.cols, rgbImage.rows);
-
   // Pass the image to the SLAM system
   const Sophus::SE3f cameraPose = m_slam->TrackMonocular(rgbImage, timestamp);
 
@@ -106,13 +115,63 @@ void MonocularSlam::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& 
   RCLCPP_INFO(*m_logger, "Tracking state: %d, tracked points: %zu, map points: %zu", trackingState,
               trackedMapPoints.size(), mapPoints.size());
 
-  if (m_mapImagePublisher && !mapPoints.empty())
+  if (m_mapImagePublisher && m_renderThreadRunning.load() && !mapPoints.empty())
   {
-    cv::Mat mapImage;
-    if (m_mapViewRenderer.Render(cameraPose, mapPoints, mapImage))
+    MapRenderTask task;
+    task.header = header;
+    task.cameraPose = cameraPose;
+    task.mapPoints = mapPoints;
+    task.imageWidth = rgbImage.cols;
+    task.imageHeight = rgbImage.rows;
+
     {
-      cv_bridge::CvImage output(header, sensor_msgs::image_encodings::RGB8, mapImage);
+      std::lock_guard<std::mutex> lock(m_renderMutex);
+      m_renderQueue.clear();
+      m_renderQueue.emplace_back(std::move(task));
+    }
+
+    m_renderCv.notify_one();
+  }
+}
+
+void MonocularSlam::MapPublisherLoop()
+{
+  while (true)
+  {
+    MapRenderTask task;
+    {
+      std::unique_lock<std::mutex> lock(m_renderMutex);
+      m_renderCv.wait(lock,
+                      [this] { return !m_renderThreadRunning.load() || !m_renderQueue.empty(); });
+
+      if (!m_renderThreadRunning.load() && m_renderQueue.empty())
+        break;
+
+      task = std::move(m_renderQueue.front());
+      m_renderQueue.pop_front();
+    }
+
+    m_mapViewRenderer.SetImageSize(task.imageWidth, task.imageHeight);
+    if (m_mapViewRenderer.Render(task.cameraPose, task.mapPoints, m_mapImageBuffer))
+    {
+      cv_bridge::CvImage output(task.header, sensor_msgs::image_encodings::RGB8, m_mapImageBuffer);
       m_mapImagePublisher->publish(output.toImageMsg());
     }
+  }
+}
+
+void MonocularSlam::StopMapPublisher()
+{
+  m_renderThreadRunning = false;
+
+  if (m_renderThread.joinable())
+  {
+    m_renderCv.notify_all();
+    m_renderThread.join();
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(m_renderMutex);
+    m_renderQueue.clear();
   }
 }
