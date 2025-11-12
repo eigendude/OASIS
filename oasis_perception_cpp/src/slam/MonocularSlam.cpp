@@ -8,6 +8,8 @@
 
 #include "MonocularSlam.h"
 
+#include <sophus/se3.hpp>
+
 using namespace OASIS;
 using namespace SLAM;
 
@@ -28,11 +30,16 @@ void MonocularSlam::Deinitialize()
   DeinitializeSystem();
 }
 
-Sophus::SE3f MonocularSlam::TrackFrame(const cv::Mat& rgbImage, double timestamp)
+Eigen::Isometry3f MonocularSlam::TrackFrame(const cv::Mat& rgbImage, double timestamp)
 {
   ORB_SLAM3::System* slam = GetSlam();
   if (slam == nullptr)
-    return Sophus::SE3f{};
+    return Eigen::Isometry3f::Identity();
 
-  return slam->TrackMonocular(rgbImage, timestamp);
+  const Sophus::SE3f sophusPose = slam->TrackMonocular(rgbImage, timestamp);
+
+  Eigen::Isometry3f pose = Eigen::Isometry3f::Identity();
+  pose.matrix() = sophusPose.matrix();
+
+  return pose;
 }

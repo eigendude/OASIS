@@ -100,7 +100,7 @@ void MonocularSlamBase::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedP
 
   const cv::Mat& rgbImage = inputImage->image;
 
-  const Sophus::SE3f cameraPose = TrackFrame(rgbImage, timestamp);
+  const Eigen::Isometry3f cameraPose = TrackFrame(rgbImage, timestamp);
 
   ORB_SLAM3::System* slam = GetSlam();
   if (slam == nullptr)

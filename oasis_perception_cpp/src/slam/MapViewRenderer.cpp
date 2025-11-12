@@ -41,7 +41,7 @@ void MapViewRenderer::SetImageSize(int width, int height)
   ResizeBuffers();
 }
 
-bool MapViewRenderer::Render(const Sophus::SE3f& cameraFromWorldTransform,
+bool MapViewRenderer::Render(const Eigen::Isometry3f& cameraFromWorldTransform,
                              const std::vector<ORB_SLAM3::MapPoint*>& mapPoints,
                              cv::Mat& outputImage)
 {
@@ -84,13 +84,13 @@ void MapViewRenderer::PrepareRender(cv::Mat& outputImage)
 }
 
 std::vector<MapViewRenderer::ProjectedPoint> MapViewRenderer::ProjectMapPoints(
-    const Sophus::SE3f& cameraFromWorldTransform,
+    const Eigen::Isometry3f& cameraFromWorldTransform,
     const std::vector<ORB_SLAM3::MapPoint*>& mapPoints) const
 {
   std::vector<ProjectedPoint> projectedPoints;
   projectedPoints.reserve(mapPoints.size());
 
-  const Eigen::Matrix3f rotation = cameraFromWorldTransform.rotationMatrix();
+  const Eigen::Matrix3f rotation = cameraFromWorldTransform.linear();
   const Eigen::Vector3f translation = cameraFromWorldTransform.translation();
 
   float minDepth = std::numeric_limits<float>::infinity();

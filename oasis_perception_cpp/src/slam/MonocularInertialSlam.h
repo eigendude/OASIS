@@ -39,7 +39,7 @@ public:
   void ImuCallback(const oasis_msgs::msg::I2CImu::ConstSharedPtr& msg);
 
 protected:
-  Sophus::SE3f TrackFrame(const cv::Mat& rgbImage, double timestamp) override;
+  Eigen::Isometry3f TrackFrame(const cv::Mat& rgbImage, double timestamp) override;
   void OnInitialized() override;
   void OnDeinitialized() override;
   void OnPostTrack() override;

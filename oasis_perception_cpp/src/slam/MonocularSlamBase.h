@@ -26,7 +26,6 @@
 #include <image_transport/image_transport.hpp>
 #include <opencv2/core.hpp>
 #include <sensor_msgs/msg/image.hpp>
-#include <sophus/se3.hpp>
 #include <std_msgs/msg/header.hpp>
 
 namespace ORB_SLAM3
@@ -59,7 +58,7 @@ public:
   void ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg);
 
 protected:
-  virtual Sophus::SE3f TrackFrame(const cv::Mat& rgbImage, double timestamp) = 0;
+  virtual Eigen::Isometry3f TrackFrame(const cv::Mat& rgbImage, double timestamp) = 0;
   virtual void OnInitialized();
   virtual void OnDeinitialized();
   virtual void OnPostTrack();
@@ -73,7 +72,7 @@ private:
   struct MapRenderTask
   {
     std_msgs::msg::Header header;
-    Sophus::SE3f cameraPose;
+    Eigen::Isometry3f cameraPose;
     std::vector<ORB_SLAM3::MapPoint*> mapPoints;
     int imageWidth = 0;
     int imageHeight = 0;

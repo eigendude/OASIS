@@ -25,7 +25,7 @@ public:
   void Deinitialize();
 
 protected:
-  Sophus::SE3f TrackFrame(const cv::Mat& rgbImage, double timestamp) override;
+  Eigen::Isometry3f TrackFrame(const cv::Mat& rgbImage, double timestamp) override;
 };
 
 } // namespace SLAM

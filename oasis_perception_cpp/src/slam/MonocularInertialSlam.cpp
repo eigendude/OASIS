@@ -10,6 +10,7 @@
 
 #include "ros/RosUtils.h"
 
+#include <sophus/se3.hpp>
 #include <geometry_msgs/msg/vector3.hpp>
 #include <oasis_msgs/msg/i2_c_imu.hpp>
 #include <sensor_msgs/msg/imu.hpp>
@@ -62,13 +63,18 @@ void MonocularInertialSlam::ImuCallback(const oasis_msgs::msg::I2CImu::ConstShar
   m_imuMeasurements.push_back(ORB_SLAM3::IMU::Point(acc, gyr, timestamp));
 }
 
-Sophus::SE3f MonocularInertialSlam::TrackFrame(const cv::Mat& rgbImage, double timestamp)
+Eigen::Isometry3f MonocularInertialSlam::TrackFrame(const cv::Mat& rgbImage, double timestamp)
 {
   ORB_SLAM3::System* slam = GetSlam();
   if (slam == nullptr)
-    return Sophus::SE3f{};
+    return Eigen::Isometry3f::Identity();
 
-  return slam->TrackMonocular(rgbImage, timestamp, m_imuMeasurements);
+  const Sophus::SE3f sophusPose = slam->TrackMonocular(rgbImage, timestamp, m_imuMeasurements);
+
+  Eigen::Isometry3f pose = Eigen::Isometry3f::Identity();
+  pose.matrix() = sophusPose.matrix();
+
+  return pose;
 }
 
 void MonocularInertialSlam::OnInitialized()
