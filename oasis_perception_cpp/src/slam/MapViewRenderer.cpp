@@ -30,7 +30,7 @@ void MapViewRenderer::Initialize(const CameraModel& cameraModel)
 }
 
 bool MapViewRenderer::Render(const Eigen::Isometry3f& cameraFromWorldTransform,
-                             const std::vector<ORB_SLAM3::MapPoint*>& mapPoints,
+                             const std::vector<Eigen::Vector3f>& worldPoints,
                              cv::Mat& outputImage)
 {
   if (!CanRender(m_cameraModel))
@@ -38,7 +38,7 @@ bool MapViewRenderer::Render(const Eigen::Isometry3f& cameraFromWorldTransform,
 
   PrepareRender(m_cameraModel, m_imageBuffers, outputImage);
 
-  ProjectMapPoints(m_cameraModel, cameraFromWorldTransform, mapPoints, m_projectedPoints);
+  ProjectMapPoints(m_cameraModel, cameraFromWorldTransform, worldPoints, m_projectedPoints);
   if (m_projectedPoints.empty())
     return false;
 
@@ -46,9 +46,11 @@ bool MapViewRenderer::Render(const Eigen::Isometry3f& cameraFromWorldTransform,
 
   const float averageFocal = 0.5f * (m_cameraModel.fx + m_cameraModel.fy);
 
-  for (std::size_t idx = 0; idx < m_projectedPoints.size(); ++idx)
-    RenderProjectedPoint(m_cameraModel, m_projectedPoints[idx], m_normalizedDepths[idx],
+  for (std::size_t index = 0; index < m_projectedPoints.size(); ++index)
+  {
+    RenderProjectedPoint(m_cameraModel, m_projectedPoints[index], m_normalizedDepths[index],
                          averageFocal, m_imageBuffers);
+  }
 
   ComposeOutputImage(m_cameraModel, m_imageBuffers, outputImage);
 
@@ -89,24 +91,23 @@ void MapViewRenderer::PrepareRender(const CameraModel& cameraModel,
 
 void MapViewRenderer::ProjectMapPoints(const CameraModel& cameraModel,
                                        const Eigen::Isometry3f& cameraFromWorldTransform,
-                                       const std::vector<ORB_SLAM3::MapPoint*>& mapPoints,
+                                       const std::vector<Eigen::Vector3f>& worldPoints,
                                        std::vector<ProjectedPoint>& projectedPoints)
 {
-  projectedPoints.clear();
-  projectedPoints.reserve(mapPoints.size());
-
+  // Translate parameters
   const Eigen::Matrix3f rotation = cameraFromWorldTransform.linear();
   const Eigen::Vector3f translation = cameraFromWorldTransform.translation();
 
-  float minDepth = std::numeric_limits<float>::infinity();
+  // Initialize output
+  projectedPoints.clear();
 
-  for (const ORB_SLAM3::MapPoint* mapPoint : mapPoints)
+  // Optimistically reserve space for all points
+  projectedPoints.reserve(worldPoints.size());
+
+  for (const Eigen::Vector3f& worldPoint : worldPoints)
   {
-    if (mapPoint == nullptr || const_cast<ORB_SLAM3::MapPoint*>(mapPoint)->isBad())
-      continue;
+    const Eigen::Vector3f cameraPos = rotation * worldPoint + translation;
 
-    const Eigen::Vector3f worldPos = const_cast<ORB_SLAM3::MapPoint*>(mapPoint)->GetWorldPos();
-    const Eigen::Vector3f cameraPos = rotation * worldPos + translation;
     const float depth = cameraPos.z();
     if (!std::isfinite(depth) || depth <= 0.0f)
       continue;
@@ -121,8 +122,8 @@ void MapViewRenderer::ProjectMapPoints(const CameraModel& cameraModel,
         pixelY >= static_cast<int>(cameraModel.height))
       continue;
 
+    // Record projected point
     projectedPoints.push_back({pixelX, pixelY, depth});
-    minDepth = std::min(minDepth, depth);
   }
 }
 
