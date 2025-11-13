@@ -18,7 +18,9 @@ namespace SLAM
 class MonocularSlam : public MonocularSlamBase
 {
 public:
-  MonocularSlam(rclcpp::Node& node, const std::string& mapImageTopic);
+  MonocularSlam(rclcpp::Node& node,
+                const std::string& mapImageTopic,
+                const std::string& pointCloudTopic);
   ~MonocularSlam() override;
 
   bool Initialize(const std::string& vocabularyFile, const std::string& settingsFile);
