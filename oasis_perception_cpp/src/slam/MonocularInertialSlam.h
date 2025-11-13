@@ -30,7 +30,9 @@ namespace SLAM
 class MonocularInertialSlam : public MonocularSlamBase
 {
 public:
-  MonocularInertialSlam(rclcpp::Node& node, const std::string& mapImageTopic);
+  MonocularInertialSlam(rclcpp::Node& node,
+                        const std::string& mapImageTopic,
+                        const std::string& pointCloudTopic);
   ~MonocularInertialSlam() override;
 
   bool Initialize(const std::string& vocabularyFile, const std::string& settingsFile);

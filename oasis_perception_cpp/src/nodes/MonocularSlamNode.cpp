@@ -33,6 +33,7 @@ constexpr std::string_view IMAGE_TOPIC = "image";
 
 // Published topics
 constexpr std::string_view MAP_IMAGE_TOPIC = "slam_map_image";
+constexpr std::string_view POINT_CLOUD_TOPIC = "slam_map_point_cloud";
 
 // Parameters
 constexpr std::string_view SYSTEM_ID_PARAMETER = "system_id";
@@ -82,6 +83,11 @@ bool MonocularSlamNode::Initialize()
   mapImageTopic.append(MAP_IMAGE_TOPIC);
   RCLCPP_INFO(*m_logger, "Map image topic: %s", mapImageTopic.c_str());
 
+  std::string pointCloudTopic = systemId;
+  pointCloudTopic.push_back('_');
+  pointCloudTopic.append(POINT_CLOUD_TOPIC);
+  RCLCPP_INFO(*m_logger, "Map point cloud topic: %s", pointCloudTopic.c_str());
+
   std::string imageTransport;
   if (!m_node.get_parameter(IMAGE_TRANSPORT_PARAMETER.data(), imageTransport) ||
       imageTransport.empty())
@@ -115,7 +121,8 @@ bool MonocularSlamNode::Initialize()
       &m_node, imageTopic, [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg)
       { OnImage(msg); }, imageTransport, rmw_qos_profile_sensor_data);
 
-  m_monocularSlam = std::make_unique<SLAM::MonocularSlam>(m_node, mapImageTopic);
+  m_monocularSlam =
+      std::make_unique<SLAM::MonocularSlam>(m_node, mapImageTopic, pointCloudTopic);
   if (!m_monocularSlam->Initialize(vocabularyFile, settingsFile))
   {
     RCLCPP_ERROR(*m_logger, "Failed to initialize monocular SLAM");

@@ -27,6 +27,8 @@
 #include <image_transport/image_transport.hpp>
 #include <opencv2/core.hpp>
 #include <sensor_msgs/msg/image.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
+#include <rclcpp/publisher.hpp>
 #include <std_msgs/msg/header.hpp>
 
 namespace rclcpp
@@ -43,7 +45,9 @@ namespace SLAM
 class MonocularSlamBase
 {
 public:
-  MonocularSlamBase(rclcpp::Node& node, const std::string& mapImageTopic);
+  MonocularSlamBase(rclcpp::Node& node,
+                    const std::string& mapImageTopic,
+                    const std::string& pointCloudTopic);
   virtual ~MonocularSlamBase();
 
   void ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg);
@@ -77,6 +81,7 @@ private:
   // ROS parameters
   std::unique_ptr<rclcpp::Logger> m_logger;
   std::optional<image_transport::Publisher> m_mapImagePublisher;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr m_pointCloudPublisher;
 
   // SLAM components
   CameraModel m_cameraModel;
