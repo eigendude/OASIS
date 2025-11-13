@@ -63,6 +63,7 @@ cmake_prefix_path_cmake="${CMAKE_PREFIX_PATH//:/;}"
 COLCON_FLAGS+=" \
   --cmake-args \
     -DBUILD_EXAMPLES=OFF \
+    -DBUILD_PANGOLIN_OPENNI2=OFF \
     -DBUILD_TESTING=OFF \
     -DBUILD_TESTS=OFF \
     -DCMAKE_C_COMPILER_LAUNCHER=ccache \
