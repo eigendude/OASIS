@@ -26,7 +26,9 @@
 #include <cv_bridge/cv_bridge.hpp>
 #include <image_transport/image_transport.hpp>
 #include <opencv2/core.hpp>
+#include <rclcpp/publisher.hpp>
 #include <sensor_msgs/msg/image.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
 #include <std_msgs/msg/header.hpp>
 
 namespace rclcpp
@@ -43,7 +45,9 @@ namespace SLAM
 class MonocularSlamBase
 {
 public:
-  MonocularSlamBase(rclcpp::Node& node, const std::string& mapImageTopic);
+  MonocularSlamBase(rclcpp::Node& node,
+                    const std::string& mapImageTopic,
+                    const std::string& pointCloudTopic);
   virtual ~MonocularSlamBase();
 
   void ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg);
@@ -71,12 +75,19 @@ private:
     cv_bridge::CvImageConstPtr inputImage;
   };
 
+  // Threading functions
   void MapPublisherLoop();
   void StopMapPublisher();
+
+  // Publishing functions
+  void PublishPointCloud(const std_msgs::msg::Header& header,
+                         const std::vector<Eigen::Vector3f>& worldPoints);
+  void PublishMapView(const MapRenderTask& task, const std::vector<Eigen::Vector3f>& worldPoints);
 
   // ROS parameters
   std::unique_ptr<rclcpp::Logger> m_logger;
   std::optional<image_transport::Publisher> m_mapImagePublisher;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr m_pointCloudPublisher;
 
   // SLAM components
   CameraModel m_cameraModel;
@@ -84,6 +95,9 @@ private:
 
   // ORB-SLAM3 system
   std::unique_ptr<ORB_SLAM3::System> m_slam;
+
+  // Buffers
+  std::vector<Eigen::Vector3f> m_worldPointBuffer;
 
   // Synchronization parameters
   std::deque<MapRenderTask> m_renderQueue;

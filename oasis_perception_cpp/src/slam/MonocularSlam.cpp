@@ -13,8 +13,10 @@
 using namespace OASIS;
 using namespace SLAM;
 
-MonocularSlam::MonocularSlam(rclcpp::Node& node, const std::string& mapImageTopic)
-  : MonocularSlamBase(node, mapImageTopic)
+MonocularSlam::MonocularSlam(rclcpp::Node& node,
+                             const std::string& mapImageTopic,
+                             const std::string& pointCloudTopic)
+  : MonocularSlamBase(node, mapImageTopic, pointCloudTopic)
 {
 }
 

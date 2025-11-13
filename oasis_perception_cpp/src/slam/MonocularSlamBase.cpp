@@ -10,6 +10,7 @@
 
 #include "ros/RosUtils.h"
 
+#include <cmath>
 #include <string>
 #include <utility>
 #include <vector>
@@ -17,19 +18,33 @@
 #include <image_transport/image_transport.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
+#include <rclcpp/qos.hpp>
 #include <rmw/qos_profiles.h>
 #include <sensor_msgs/image_encodings.hpp>
+#include <sensor_msgs/point_cloud2_iterator.hpp>
 
 using namespace OASIS;
 using namespace SLAM;
 
-MonocularSlamBase::MonocularSlamBase(rclcpp::Node& node, const std::string& mapImageTopic)
+namespace
+{
+constexpr char MAP_FRAME_ID[] = "map";
+} // namespace
+
+MonocularSlamBase::MonocularSlamBase(rclcpp::Node& node,
+                                     const std::string& mapImageTopic,
+                                     const std::string& pointCloudTopic)
   : m_logger(std::make_unique<rclcpp::Logger>(node.get_logger()))
 {
   rmw_qos_profile_t qos = rmw_qos_profile_sensor_data;
   qos.reliability = RMW_QOS_POLICY_RELIABILITY_RELIABLE;
 
   m_mapImagePublisher = image_transport::create_publisher(&node, mapImageTopic, qos);
+
+  rclcpp::QoS pointCloudQos{rclcpp::SensorDataQoS{}};
+  pointCloudQos.reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE);
+  m_pointCloudPublisher =
+      node.create_publisher<sensor_msgs::msg::PointCloud2>(pointCloudTopic, pointCloudQos);
 
   m_renderThreadRunning = true;
   m_renderThread = std::thread(&MonocularSlamBase::MapPublisherLoop, this);
@@ -98,11 +113,15 @@ void MonocularSlamBase::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedP
   if (slam == nullptr)
     return;
 
+  // Get SLAM state
   const int trackingState = slam->GetTrackingState();
   const std::vector<ORB_SLAM3::MapPoint*> trackedMapPoints = slam->GetTrackedMapPoints();
+
+  // Get map points
   std::vector<ORB_SLAM3::MapPoint*> mapPoints;
-  if (slam->GetAtlas() != nullptr)
-    mapPoints = slam->GetAtlas()->GetAllMapPoints();
+  ORB_SLAM3::Atlas* atlas = slam->GetAtlas();
+  if (atlas != nullptr)
+    mapPoints = atlas->GetAllMapPoints();
 
   RCLCPP_INFO(Logger(), "Tracking state: %d, tracked points: %zu, map points: %zu", trackingState,
               trackedMapPoints.size(), mapPoints.size());
@@ -112,7 +131,7 @@ void MonocularSlamBase::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedP
     MapRenderTask task;
     task.header = header;
     task.cameraPose = cameraPose;
-    task.mapPoints = mapPoints;
+    task.mapPoints = std::move(mapPoints);
     task.inputImage = std::move(inputImage);
 
     {
@@ -164,13 +183,38 @@ void MonocularSlamBase::MapPublisherLoop()
       m_renderQueue.pop_front();
     }
 
-    if (m_mapViewRenderer.Render(task.cameraPose, task.mapPoints,
-                                 const_cast<cv::Mat&>(task.inputImage->image)))
+    // Initialize world points
+    m_worldPointBuffer.clear();
+    m_worldPointBuffer.reserve(task.mapPoints.size());
+
+    // Get world points
+    for (const ORB_SLAM3::MapPoint* mapPoint : task.mapPoints)
     {
-      cv_bridge::CvImage output(task.header, sensor_msgs::image_encodings::RGB8,
-                                task.inputImage->image);
-      m_mapImagePublisher->publish(output.toImageMsg());
+      // Validate map point
+      if (mapPoint == nullptr || const_cast<ORB_SLAM3::MapPoint*>(mapPoint)->isBad())
+        continue;
+
+      const Eigen::Vector3f worldPoint = const_cast<ORB_SLAM3::MapPoint*>(mapPoint)->GetWorldPos();
+
+      // Validate world point
+      if (!std::isfinite(worldPoint.x()) || !std::isfinite(worldPoint.y()) ||
+          !std::isfinite(worldPoint.z()))
+      {
+        continue;
+      }
+
+      // Record world point
+      m_worldPointBuffer.push_back(worldPoint);
     }
+
+    if (m_worldPointBuffer.empty())
+      continue;
+
+    if (m_pointCloudPublisher && m_pointCloudPublisher->get_subscription_count() > 0)
+      PublishPointCloud(task.header, m_worldPointBuffer);
+
+    if (m_mapImagePublisher && m_mapImagePublisher->getNumSubscribers() > 0)
+      PublishMapView(task, m_worldPointBuffer);
   }
 }
 
@@ -187,5 +231,47 @@ void MonocularSlamBase::StopMapPublisher()
   {
     std::lock_guard<std::mutex> lock(m_renderMutex);
     m_renderQueue.clear();
+  }
+}
+
+void MonocularSlamBase::PublishPointCloud(const std_msgs::msg::Header& header,
+                                          const std::vector<Eigen::Vector3f>& worldPoints)
+{
+  sensor_msgs::msg::PointCloud2 pointCloud;
+  pointCloud.header = header;
+  pointCloud.header.frame_id = MAP_FRAME_ID;
+  pointCloud.is_bigendian = false;
+  pointCloud.is_dense = false;
+
+  sensor_msgs::PointCloud2Modifier modifier(pointCloud);
+  modifier.setPointCloud2FieldsByString(1, "xyz");
+  modifier.resize(m_worldPointBuffer.size());
+
+  sensor_msgs::PointCloud2Iterator<float> iterX(pointCloud, "x");
+  sensor_msgs::PointCloud2Iterator<float> iterY(pointCloud, "y");
+  sensor_msgs::PointCloud2Iterator<float> iterZ(pointCloud, "z");
+
+  for (const Eigen::Vector3f& worldPoint : m_worldPointBuffer)
+  {
+    *iterX = worldPoint.x();
+    *iterY = worldPoint.y();
+    *iterZ = worldPoint.z();
+    ++iterX;
+    ++iterY;
+    ++iterZ;
+  }
+
+  m_pointCloudPublisher->publish(pointCloud);
+}
+
+void MonocularSlamBase::PublishMapView(const MapRenderTask& task,
+                                       const std::vector<Eigen::Vector3f>& worldPoints)
+{
+  if (m_mapViewRenderer.Render(task.cameraPose, m_worldPointBuffer,
+                               const_cast<cv::Mat&>(task.inputImage->image)))
+  {
+    cv_bridge::CvImage output(task.header, sensor_msgs::image_encodings::RGB8,
+                              task.inputImage->image);
+    m_mapImagePublisher->publish(output.toImageMsg());
   }
 }

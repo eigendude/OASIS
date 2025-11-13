@@ -34,7 +34,7 @@ public:
   void Initialize(const CameraModel& cameraModel);
 
   bool Render(const Eigen::Isometry3f& cameraFromWorldTransform,
-              const std::vector<ORB_SLAM3::MapPoint*>& mapPoints,
+              const std::vector<Eigen::Vector3f>& worldPoints,
               cv::Mat& outputImage);
 
 private:
@@ -65,7 +65,7 @@ private:
                             cv::Mat& outputImage);
   static void ProjectMapPoints(const CameraModel& cameraModel,
                                const Eigen::Isometry3f& cameraFromWorldTransform,
-                               const std::vector<ORB_SLAM3::MapPoint*>& mapPoints,
+                               const std::vector<Eigen::Vector3f>& worldPoints,
                                std::vector<ProjectedPoint>& projectedPoints);
   static void ComputeNormalizedDepths(const std::vector<ProjectedPoint>& projectedPoints,
                                       std::vector<DepthSample>& depthBuffer,
