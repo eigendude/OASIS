@@ -31,8 +31,11 @@ ROSDEP_IGNORE_KEYS=" \
   image_view \
   launch_testing \
   launch_testing_ament_cmake \
+  launch_testing_ros \
   libopencv-dev \
+  libopencv-imgproc-dev \
   python_cmake_module \
+  python3-opencv \
   ros_testing \
 "
 
@@ -90,6 +93,8 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
 
     # Needed for custom OpenCV build
     libopenblas-dev
+    libopenexr-dev
+    libprotobuf-dev
 
     # Needed for libfreenect2
     libturbojpeg0-dev
