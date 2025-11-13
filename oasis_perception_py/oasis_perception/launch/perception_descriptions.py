@@ -328,13 +328,15 @@ class PerceptionDescriptions:
         image_transport: str,
         camera_name: str,
     ) -> None:
-        vocabulary_file: str | None = PerceptionPaths.find_orb_slam3_vocabulary()
+        vocabulary_file: str | None = PerceptionPaths.find_orb_slam_oasis_vocabulary()
         if vocabulary_file is None:
-            raise FileNotFoundError("ORB_SLAM3 vocabulary file not found.")
+            raise FileNotFoundError("ORB_SLAM_OASIS vocabulary file not found.")
 
-        settings_file: str | None = PerceptionPaths.find_orb_slam3_settings(camera_name)
+        settings_file: str | None = PerceptionPaths.find_orb_slam_oasis_settings(
+            camera_name
+        )
         if settings_file is None:
-            raise FileNotFoundError("ORB_SLAM3 settings file not found.")
+            raise FileNotFoundError("ORB_SLAM_OASIS settings file not found.")
 
         composable_nodes.extend(
             [
@@ -379,13 +381,15 @@ class PerceptionDescriptions:
         image_transport: str,
         camera_name: str,
     ) -> None:
-        vocabulary_file: str | None = PerceptionPaths.find_orb_slam3_vocabulary()
+        vocabulary_file: str | None = PerceptionPaths.find_orb_slam_oasis_vocabulary()
         if vocabulary_file is None:
-            raise FileNotFoundError("ORB_SLAM3 vocabulary file not found.")
+            raise FileNotFoundError("ORB_SLAM_OASIS vocabulary file not found.")
 
-        settings_file: str | None = PerceptionPaths.find_orb_slam3_settings(camera_name)
+        settings_file: str | None = PerceptionPaths.find_orb_slam_oasis_settings(
+            camera_name
+        )
         if settings_file is None:
-            raise FileNotFoundError("ORB_SLAM3 settings file not found.")
+            raise FileNotFoundError("ORB_SLAM_OASIS settings file not found.")
 
         composable_nodes.extend(
             [

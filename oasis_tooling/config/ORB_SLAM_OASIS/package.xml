@@ -1,10 +1,10 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>ORB_SLAM3</name>
+  <name>ORB_SLAM_OASIS</name>
   <version>1.0.0</version>
-  <description>ORB-SLAM3: An Accurate Open-Source Library for Visual, Visual-Inertial and Multi-Map SLAM</description>
-  <maintainer email="noone@nowhere.com">SLAMLab - Universidad de Zaragoza</maintainer>
+  <description>ORB_SLAM_OASIS: An Accurate Open-Source Library for Visual, Visual-Inertial and Multi-Map SLAM</description>
+  <maintainer email="eigendebugger@gmail.com">eigendude</maintainer>
   <license>GPL-3.0-or-later</license>
 
   <buildtool_depend>cmake</buildtool_depend>
@@ -15,7 +15,7 @@
   <build_depend>libssl-dev</build_depend>
   <build_depend>pangolin</build_depend>
 
-  <url type="website">https://github.com/UZ-SLAMLab/ORB_SLAM3</url>
-  <url type="bugtracker">https://github.com/UZ-SLAMLab/ORB_SLAM3/issues</url>
-  <url type="repository">https://github.com/UZ-SLAMLab/ORB_SLAM3.git</url>
+  <url type="website">https://github.com/UZ-eigendude/ORB_SLAM_OASIS3</url>
+  <url type="bugtracker">https://github.com/UZ-eigendude/ORB_SLAM_OASIS3/issues</url>
+  <url type="repository">https://github.com/UZ-eigendude/ORB_SLAM_OASIS3.git</url>
 </package>

@@ -9,7 +9,7 @@
 #
 ################################################################################
 
-"""Convert ROS camera_info YAML files into ORB-SLAM3 configuration files."""
+"""Convert ROS camera_info YAML files into ORB_SLAM_OASIS configuration files."""
 
 from __future__ import annotations
 
@@ -147,7 +147,7 @@ class ParsedArgs:
 def parse_args() -> ParsedArgs:
     parser: argparse.ArgumentParser = argparse.ArgumentParser(
         description=(
-            "Generate an ORB-SLAM3 camera configuration from a ROS camera_info YAML file."
+            "Generate an ORB_SLAM_OASIS camera configuration from a ROS camera_info YAML file."
         )
     )
     parser.add_argument(
@@ -160,7 +160,7 @@ def parse_args() -> ParsedArgs:
         "-o",
         type=str,
         help=(
-            "Filename for the generated ORB-SLAM3 YAML (within the config directory). "
+            "Filename for the generated ORB_SLAM_OASIS YAML (within the config directory). "
             "Defaults to the stem of the input file."
         ),
     )
@@ -168,7 +168,7 @@ def parse_args() -> ParsedArgs:
         "--output-dir",
         type=Path,
         help=(
-            "Optional directory where the ORB-SLAM3 YAML will be written. "
+            "Optional directory where the ORB_SLAM_OASIS YAML will be written. "
             "Defaults to oasis_perception_cpp/config inside the repository."
         ),
     )
@@ -176,7 +176,7 @@ def parse_args() -> ParsedArgs:
         "--fps",
         type=int,
         default=30,
-        help="Camera frame rate used by ORB-SLAM3 (frames per second).",
+        help="Camera frame rate used by ORB_SLAM_OASIS (frames per second).",
     )
     parser.add_argument(
         "--rgb",
@@ -188,7 +188,7 @@ def parse_args() -> ParsedArgs:
     parser.add_argument(
         "--camera-type",
         choices=("PinHole", "KannalaBrandt8", "Rectified"),
-        help="Override the inferred ORB-SLAM3 camera type.",
+        help="Override the inferred ORB_SLAM_OASIS camera type.",
     )
     parser.add_argument(
         "--n-features",
@@ -613,7 +613,7 @@ def main() -> None:
     fps_value: int = round(args.fps)
     if not math.isclose(args.fps, fps_value, abs_tol=1e-6):
         raise CameraCalibrationError(
-            "Camera FPS must be an integer value compatible with ORB-SLAM3."
+            "Camera FPS must be an integer value compatible with ORB_SLAM_OASIS."
         )
 
     yaml_content: str = build_yaml(
@@ -628,7 +628,7 @@ def main() -> None:
     )
 
     output_path.write_text(yaml_content, encoding="utf-8")
-    print(f"Wrote ORB-SLAM3 configuration to {output_path}")
+    print(f"Wrote ORB_SLAM_OASIS configuration to {output_path}")
 
 
 if __name__ == "__main__":

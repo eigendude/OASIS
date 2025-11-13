@@ -14,10 +14,10 @@ repositories:
     type: git
     url: https://github.com/structureio/OpenNI2.git
     version: master
-  depends/ORB_SLAM3:
+  depends/ORB_SLAM_OASIS:
     type: git
-    url: https://github.com/UZ-SLAMLab/ORB_SLAM3.git
-    version: master
+    url: https://github.com/eigendude/ORB_SLAM_OASIS.git
+    version: main
   depends/p8-platform:
     type: git
     url: https://github.com/Pulse-Eight/platform.git

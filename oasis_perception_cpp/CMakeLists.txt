@@ -58,13 +58,13 @@ find_package(image_transport REQUIRED)
 find_package(MediaPipe)
 find_package(oasis_msgs REQUIRED)
 find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs video)
-find_package(ORB_SLAM3)
+find_package(ORB_SLAM_OASIS)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 
-if (ORB_SLAM3_FOUND)
+if (ORB_SLAM_OASIS_FOUND)
   find_package(DBoW2 REQUIRED)
   find_package(Eigen3 REQUIRED)
   find_package(g2o REQUIRED)
@@ -305,7 +305,7 @@ rclcpp_components_register_node(
 # monocular_slam
 #
 
-if (ORB_SLAM3_FOUND)
+if (ORB_SLAM_OASIS_FOUND)
   set(SLAM_RENDERING_SOURCES
     src/slam/CameraModel.cpp
     src/slam/MapViewRenderer.cpp
@@ -338,7 +338,7 @@ if (ORB_SLAM3_FOUND)
     ${GLEW_LIBRARY}
     image_transport::image_transport
     ${OPENGL_LIBRARIES}
-    ORB_SLAM3::ORB_SLAM3
+    ORB_SLAM_OASIS::ORB_SLAM_OASIS
     ${Pangolin_LIBRARIES}
     rclcpp::rclcpp
     ${sensor_msgs_TARGETS}
@@ -399,7 +399,7 @@ endif()
 # monocular_inertial_slam
 #
 
-if (ORB_SLAM3_FOUND)
+if (ORB_SLAM_OASIS_FOUND)
   # Project files
   set(MONOCULAR_INERTIAL_SLAM_SOURCES
     ${SLAM_RENDERING_SOURCES}

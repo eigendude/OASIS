@@ -19,17 +19,20 @@ from typing import List
 
 # Package names
 OASIS_PERCEPTION_CPP_PACKAGE_NAME: str = "oasis_perception_cpp"
-ORB_SLAM3_PACKAGE_NAME: str = "ORB_SLAM3"
+ORB_SLAM_OASIS_PACKAGE_NAME: str = "ORB_SLAM_OASIS"
 
-# ORB_SLAM3 vocabulary file
-ORB_SLAM3_VOCABULARY_DIR: str = "Vocabulary"
-ORB_SLAM3_VOCABULARY_FILE: str = "ORBvoc.txt"
-ORB_SLAM3_VOCABULARY_RELPATH: str = os.path.join(
-    "share", ORB_SLAM3_PACKAGE_NAME, ORB_SLAM3_VOCABULARY_DIR, ORB_SLAM3_VOCABULARY_FILE
+# ORB_SLAM_OASIS vocabulary file
+ORB_SLAM_OASIS_VOCABULARY_DIR: str = "Vocabulary"
+ORB_SLAM_OASIS_VOCABULARY_FILE: str = "ORBvoc.txt"
+ORB_SLAM_OASIS_VOCABULARY_RELPATH: str = os.path.join(
+    "share",
+    ORB_SLAM_OASIS_PACKAGE_NAME,
+    ORB_SLAM_OASIS_VOCABULARY_DIR,
+    ORB_SLAM_OASIS_VOCABULARY_FILE,
 )
 
-# ORB_SLAM3 settings file
-ORB_SLAM3_SETTINGS_DIR: str = "config"
+# ORB_SLAM_OASIS settings file
+ORB_SLAM_OASIS_SETTINGS_DIR: str = "config"
 
 
 ################################################################################
@@ -39,9 +42,9 @@ ORB_SLAM3_SETTINGS_DIR: str = "config"
 
 class PerceptionPaths:
     @staticmethod
-    def find_orb_slam3_vocabulary() -> str | None:
+    def find_orb_slam_oasis_vocabulary() -> str | None:
         """
-        Locate the ORB_SLAM3 vocabulary file.
+        Locate the ORB_SLAM_OASIS vocabulary file.
 
         Returns:
             The full path to the vocabulary file, or None if not found.
@@ -59,14 +62,14 @@ class PerceptionPaths:
                     )
 
         for prefix in prefixes:
-            candidate: str = os.path.join(prefix, ORB_SLAM3_VOCABULARY_RELPATH)
+            candidate: str = os.path.join(prefix, ORB_SLAM_OASIS_VOCABULARY_RELPATH)
             if os.path.isfile(candidate):
                 return candidate
 
         return None
 
     @staticmethod
-    def find_orb_slam3_settings(camera_name: str) -> str | None:
+    def find_orb_slam_oasis_settings(camera_name: str) -> str | None:
         """
         Get the path to the camera settings file.
 
@@ -80,7 +83,7 @@ class PerceptionPaths:
 
         # Construct the full path to the settings file
         settings_path: str = os.path.join(
-            share_dir, ORB_SLAM3_SETTINGS_DIR, f"{camera_name}.yaml"
+            share_dir, ORB_SLAM_OASIS_SETTINGS_DIR, f"{camera_name}.yaml"
         )
 
         if os.path.isfile(settings_path):

@@ -126,7 +126,7 @@ DEFAULT_K_COEFFICIENTS: int = 2
 
 DEFAULT_FISHEYE_RECOMPUTE_EXTRINSICSTS: bool = False
 
-# Set to True to fix skew coefficient (kappa) to zero. ORB_SLAM3 does not
+# Set to True to fix skew coefficient (kappa) to zero. ORB_SLAM_OASIS does not
 # support non‑zero skew.
 DEFAULT_FISHEYE_FIX_SKEW: bool = True
 

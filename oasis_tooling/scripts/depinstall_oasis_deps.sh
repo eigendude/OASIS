@@ -292,58 +292,16 @@ if [[ ${PLATFORM_ARCH} != x86_64 ]]; then
   touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/OpenNI2/COLCON_IGNORE"
 fi
 
-# ORB_SLAM3
-echo "Patching ORB_SLAM3..."
+# ORB_SLAM_OASIS
+echo "Patching ORB_SLAM_OASIS..."
 cp -v \
-  "${CONFIG_DIRECTORY}/ORB_SLAM3/package.xml" \
-  "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/ORB_SLAM3"
-patch \
-  -p1 \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/ORB_SLAM3" \
-  < "${CONFIG_DIRECTORY}/ORB_SLAM3/0001-Update-CMAKEList.txt-to-use-C-14.patch"
-patch \
-  -p1 \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/ORB_SLAM3" \
-  < "${CONFIG_DIRECTORY}/ORB_SLAM3/0002-Fix-parallel-make.patch"
-patch \
-  -p1 \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/ORB_SLAM3" \
-  < "${CONFIG_DIRECTORY}/ORB_SLAM3/0003-Don-t-build-examples.patch"
-patch \
-  -p1 \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/ORB_SLAM3" \
-  < "${CONFIG_DIRECTORY}/ORB_SLAM3/0004-Add-missing-third-party-directories-to-CMakeLists.tx.patch"
-patch \
-  -p1 \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/ORB_SLAM3" \
-  < "${CONFIG_DIRECTORY}/ORB_SLAM3/0005-Fix-hard-coded-paths-to-Thirdparty-directory.patch"
-patch \
-  -p1 \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/ORB_SLAM3" \
-  < "${CONFIG_DIRECTORY}/ORB_SLAM3/0006-Add-install-steps-to-CMakeLists.txt.patch"
-patch \
-  -p1 \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/ORB_SLAM3" \
-  < "${CONFIG_DIRECTORY}/ORB_SLAM3/0007-Add-function-to-get-atlas.patch"
+  "${CONFIG_DIRECTORY}/ORB_SLAM_OASIS/package.xml" \
+  "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/ORB_SLAM_OASIS"
 
-# Disable ORB_SLAM3 on systems with <= 4GiB memory
+# Disable ORB_SLAM_OASIS on systems with <= 4GiB memory
 if (( $(echo "${PHYSICAL_MEMORY_GB} <= 4" | bc -l) )); then
-  echo "Disabling ORB_SLAM3 with ${PHYSICAL_MEMORY_GB} GiB of RAM"
-  touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/ORB_SLAM3/COLCON_IGNORE"
+  echo "Disabling ORB_SLAM_OASIS with ${PHYSICAL_MEMORY_GB} GiB of RAM"
+  touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/ORB_SLAM_OASIS/COLCON_IGNORE"
 fi
 
 # p8-platform

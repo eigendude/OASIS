@@ -78,7 +78,7 @@ jobs:
               'oasis_tooling/config/libcec/**',
               'oasis_tooling/config/libfreenect2/**',
               'oasis_tooling/config/OpenNI/**',
-              'oasis_tooling/config/orb-slam3/**',
+              'oasis_tooling/config/ORB_SLAM_OASIS/**',
               'oasis_tooling/config/p8-platform/**',
               'oasis_tooling/config/pangolin/**',
               'oasis_tooling/config/vision_opencv/**',
