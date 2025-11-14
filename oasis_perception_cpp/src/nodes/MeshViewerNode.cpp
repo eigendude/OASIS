@@ -55,6 +55,9 @@ constexpr int IMAGE_HEIGHT = 480;
 
 // Constants
 constexpr double PI = 3.14159265358979323846;
+constexpr double DEFAULT_VOXEL_LEAF_SIZE = 0.05;
+constexpr double DEFAULT_NORMAL_SEARCH_RADIUS = 0.1;
+constexpr double DEFAULT_TRIANGULATION_SEARCH_RADIUS = 0.2;
 
 // Utility function
 cv::Point ProjectPoint(const pcl::PointNormal& point,
@@ -74,7 +77,11 @@ cv::Point ProjectPoint(const pcl::PointNormal& point,
 }
 } // namespace
 
-MeshViewerNode::MeshViewerNode(rclcpp::Node& node) : m_node(node)
+MeshViewerNode::MeshViewerNode(rclcpp::Node& node)
+  : m_node(node),
+    m_voxelLeafSize(DEFAULT_VOXEL_LEAF_SIZE),
+    m_normalSearchRadius(DEFAULT_NORMAL_SEARCH_RADIUS),
+    m_triangulationSearchRadius(DEFAULT_TRIANGULATION_SEARCH_RADIUS)
 {
   m_node.declare_parameter<std::string>(SYSTEM_ID_PARAMETER.data(), DEFAULT_SYSTEM_ID.data());
   m_node.declare_parameter<double>(VOXEL_LEAF_SIZE_PARAMETER.data(), m_voxelLeafSize);
@@ -103,12 +110,12 @@ bool MeshViewerNode::Initialize()
   }
 
   if (!m_node.get_parameter(VOXEL_LEAF_SIZE_PARAMETER.data(), m_voxelLeafSize))
-    m_voxelLeafSize = 0.05;
+    m_voxelLeafSize = DEFAULT_VOXEL_LEAF_SIZE;
   if (!m_node.get_parameter(NORMAL_SEARCH_RADIUS_PARAMETER.data(), m_normalSearchRadius))
-    m_normalSearchRadius = 0.1;
+    m_normalSearchRadius = DEFAULT_NORMAL_SEARCH_RADIUS;
   if (!m_node.get_parameter(TRIANGULATION_SEARCH_RADIUS_PARAMETER.data(),
                             m_triangulationSearchRadius))
-    m_triangulationSearchRadius = 0.2;
+    m_triangulationSearchRadius = DEFAULT_TRIANGULATION_SEARCH_RADIUS;
 
   std::string pointCloudTopic = systemId;
   pointCloudTopic.push_back('_');

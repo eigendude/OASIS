@@ -37,8 +37,8 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr m_pointCloudSubscription;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr m_meshImagePublisher;
 
-  double m_voxelLeafSize{0.05};
-  double m_normalSearchRadius{0.1};
-  double m_triangulationSearchRadius{0.2};
+  double m_voxelLeafSize;
+  double m_normalSearchRadius;
+  double m_triangulationSearchRadius;
 };
 } // namespace OASIS
