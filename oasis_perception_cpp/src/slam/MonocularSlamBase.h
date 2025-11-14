@@ -99,6 +99,9 @@ private:
   // ORB-SLAM3 system
   std::unique_ptr<ORB_SLAM3::System> m_slam;
 
+  // Time synchronization
+  std::optional<double> m_lastTimestamp;
+
   // Buffers
   std::vector<Eigen::Vector3f> m_worldPointBuffer;
 

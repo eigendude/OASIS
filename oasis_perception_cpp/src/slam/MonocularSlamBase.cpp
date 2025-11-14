@@ -69,6 +69,8 @@ bool MonocularSlamBase::InitializeSystem(const std::string& vocabularyFile,
 
   m_slam = std::make_unique<ORB_SLAM3::System>(vocabularyFile, settingsFile, sensorType, false);
 
+  m_lastTimestamp.reset();
+
   return true;
 }
 
@@ -79,6 +81,8 @@ void MonocularSlamBase::DeinitializeSystem()
     m_slam->Shutdown();
     m_slam.reset();
   }
+
+  m_lastTimestamp.reset();
 
   {
     std::lock_guard<std::mutex> lock(m_renderMutex);
@@ -94,6 +98,13 @@ void MonocularSlamBase::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedP
   const std_msgs::msg::Header& header = msg->header;
   const double timestamp = ROS::RosUtils::HeaderStampToSeconds(header);
 
+  if (m_lastTimestamp && timestamp <= *m_lastTimestamp)
+  {
+    RCLCPP_WARN(Logger(), "Rejecting frame with non-increasing timestamp %.6f (last %.6f)",
+                timestamp, *m_lastTimestamp);
+    return;
+  }
+
   cv_bridge::CvImageConstPtr inputImage;
   try
   {
@@ -106,6 +117,8 @@ void MonocularSlamBase::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedP
   }
 
   const cv::Mat& rgbImage = inputImage->image;
+
+  m_lastTimestamp = timestamp;
 
   const Eigen::Isometry3f cameraPose = TrackFrame(rgbImage, timestamp);
 
