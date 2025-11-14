@@ -359,7 +359,7 @@ install(
 )
 rclcpp_components_register_node(
   mesh_viewer_component
-  PLUGIN "oasis::perception::MeshViewerNode"
+  PLUGIN "oasis_perception::MeshViewerComponent"
   EXECUTABLE mesh_viewer_component_node
 )
 

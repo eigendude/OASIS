@@ -12,6 +12,8 @@
 #include <functional>
 #include <limits>
 #include <memory>
+#include <string>
+#include <string_view>
 #include <vector>
 
 #include <cv_bridge/cv_bridge.hpp>
@@ -24,138 +26,203 @@
 #include <pcl/search/kdtree.h>
 #include <pcl/surface/gp3.h>
 #include <pcl_conversions/pcl_conversions.h>
+#include <rclcpp/logging.hpp>
+#include <rclcpp/node.hpp>
 #include <rclcpp/qos.hpp>
-#include <rclcpp/rclcpp.hpp>
 
 using sensor_msgs::msg::Image;
 using sensor_msgs::msg::PointCloud2;
 
-namespace oasis::perception
+namespace OASIS
 {
 namespace
 {
-constexpr const char* INPUT_TOPIC = "slam_point_cloud";
-constexpr const char* OUTPUT_TOPIC = "slam_mesh_image";
+constexpr std::string_view SYSTEM_ID_PARAMETER = "system_id";
+constexpr std::string_view DEFAULT_SYSTEM_ID = "";
 
-constexpr int kImageWidth = 640;
-constexpr int kImageHeight = 480;
-constexpr double kPi = 3.14159265358979323846;
+constexpr std::string_view VOXEL_LEAF_SIZE_PARAMETER = "voxel_leaf_size";
+constexpr std::string_view NORMAL_SEARCH_RADIUS_PARAMETER = "normal_search_radius";
+constexpr std::string_view TRIANGULATION_SEARCH_RADIUS_PARAMETER = "triangulation_search_radius";
+
+constexpr std::string_view INPUT_TOPIC_SUFFIX = "slam_point_cloud";
+constexpr std::string_view OUTPUT_TOPIC_SUFFIX = "slam_mesh_image";
+
+constexpr int IMAGE_WIDTH = 640;
+constexpr int IMAGE_HEIGHT = 480;
+constexpr double PI = 3.14159265358979323846;
 
 cv::Point ProjectPoint(const pcl::PointNormal& point,
-                       const pcl::PointNormal& min_point,
-                       const pcl::PointNormal& max_point)
+                       const pcl::PointNormal& minPoint,
+                       const pcl::PointNormal& maxPoint)
 {
-  const double range_x = std::max(1e-6f, max_point.x - min_point.x);
-  const double range_y = std::max(1e-6f, max_point.y - min_point.y);
+  const double rangeX = std::max(1e-6f, maxPoint.x - minPoint.x);
+  const double rangeY = std::max(1e-6f, maxPoint.y - minPoint.y);
 
-  const double u = (point.x - min_point.x) / range_x;
-  const double v = (point.y - min_point.y) / range_y;
+  const double u = (point.x - minPoint.x) / rangeX;
+  const double v = (point.y - minPoint.y) / rangeY;
 
-  const int x = static_cast<int>(u * (kImageWidth - 1));
-  const int y = kImageHeight - 1 - static_cast<int>(v * (kImageHeight - 1));
+  const int x = static_cast<int>(u * (IMAGE_WIDTH - 1));
+  const int y = IMAGE_HEIGHT - 1 - static_cast<int>(v * (IMAGE_HEIGHT - 1));
 
   return {x, y};
 }
 } // namespace
 
-MeshViewerNode::MeshViewerNode(const rclcpp::NodeOptions& options)
-  : rclcpp::Node("mesh_viewer_node", options)
+MeshViewerNode::MeshViewerNode(rclcpp::Node& node) : m_node(node)
 {
-  mesh_image_publisher_ = create_publisher<Image>(OUTPUT_TOPIC, rclcpp::SensorDataQoS());
+  m_node.declare_parameter<std::string>(SYSTEM_ID_PARAMETER.data(), DEFAULT_SYSTEM_ID.data());
+  m_node.declare_parameter<double>(VOXEL_LEAF_SIZE_PARAMETER.data(), m_voxelLeafSize);
+  m_node.declare_parameter<double>(NORMAL_SEARCH_RADIUS_PARAMETER.data(), m_normalSearchRadius);
+  m_node.declare_parameter<double>(TRIANGULATION_SEARCH_RADIUS_PARAMETER.data(),
+                                   m_triangulationSearchRadius);
+}
 
-  point_cloud_subscription_ = create_subscription<PointCloud2>(
-      INPUT_TOPIC, rclcpp::SensorDataQoS(),
+MeshViewerNode::~MeshViewerNode() = default;
+
+bool MeshViewerNode::Initialize()
+{
+  std::string systemId;
+  if (!m_node.get_parameter(SYSTEM_ID_PARAMETER.data(), systemId))
+  {
+    RCLCPP_ERROR(m_node.get_logger(), "Missing system ID parameter '%s'", SYSTEM_ID_PARAMETER.data());
+    return false;
+  }
+
+  if (systemId.empty())
+  {
+    RCLCPP_ERROR(m_node.get_logger(), "System ID parameter '%s' is empty", SYSTEM_ID_PARAMETER.data());
+    return false;
+  }
+
+  if (!m_node.get_parameter(VOXEL_LEAF_SIZE_PARAMETER.data(), m_voxelLeafSize))
+    m_voxelLeafSize = 0.05;
+  if (!m_node.get_parameter(NORMAL_SEARCH_RADIUS_PARAMETER.data(), m_normalSearchRadius))
+    m_normalSearchRadius = 0.1;
+  if (!m_node.get_parameter(TRIANGULATION_SEARCH_RADIUS_PARAMETER.data(), m_triangulationSearchRadius))
+    m_triangulationSearchRadius = 0.2;
+
+  std::string pointCloudTopic = systemId;
+  pointCloudTopic.push_back('_');
+  pointCloudTopic.append(INPUT_TOPIC_SUFFIX);
+
+  std::string meshImageTopic = systemId;
+  meshImageTopic.push_back('_');
+  meshImageTopic.append(OUTPUT_TOPIC_SUFFIX);
+
+  RCLCPP_INFO(m_node.get_logger(), "System ID: %s", systemId.c_str());
+  RCLCPP_INFO(m_node.get_logger(), "Point cloud topic: %s", pointCloudTopic.c_str());
+  RCLCPP_INFO(m_node.get_logger(), "Mesh image topic: %s", meshImageTopic.c_str());
+  RCLCPP_INFO(m_node.get_logger(), "Voxel leaf size: %.3f", m_voxelLeafSize);
+  RCLCPP_INFO(m_node.get_logger(), "Normal search radius: %.3f", m_normalSearchRadius);
+  RCLCPP_INFO(m_node.get_logger(), "Triangulation search radius: %.3f", m_triangulationSearchRadius);
+
+  m_meshImagePublisher =
+      m_node.create_publisher<Image>(meshImageTopic, rclcpp::SensorDataQoS().keep_last(1));
+
+  m_pointCloudSubscription = m_node.create_subscription<PointCloud2>(
+      pointCloudTopic, rclcpp::SensorDataQoS(),
       std::bind(&MeshViewerNode::OnPointCloud, this, std::placeholders::_1));
+
+  return true;
+}
+
+void MeshViewerNode::Deinitialize()
+{
+  m_pointCloudSubscription.reset();
+  m_meshImagePublisher.reset();
 }
 
 void MeshViewerNode::OnPointCloud(const PointCloud2::ConstSharedPtr& msg)
 {
+  if (!m_meshImagePublisher)
+    return;
+
   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
   pcl::fromROSMsg(*msg, *cloud);
 
   if (cloud->empty())
   {
-    RCLCPP_DEBUG(get_logger(), "Received empty point cloud");
+    RCLCPP_DEBUG(m_node.get_logger(), "Received empty point cloud");
     return;
   }
 
   pcl::PointCloud<pcl::PointXYZ>::Ptr filtered(new pcl::PointCloud<pcl::PointXYZ>);
-  pcl::VoxelGrid<pcl::PointXYZ> voxel_grid;
-  voxel_grid.setInputCloud(cloud);
-  voxel_grid.setLeafSize(static_cast<float>(voxel_leaf_size_), static_cast<float>(voxel_leaf_size_),
-                         static_cast<float>(voxel_leaf_size_));
-  voxel_grid.filter(*filtered);
+  pcl::VoxelGrid<pcl::PointXYZ> voxelGrid;
+  voxelGrid.setInputCloud(cloud);
+  voxelGrid.setLeafSize(static_cast<float>(m_voxelLeafSize), static_cast<float>(m_voxelLeafSize),
+                        static_cast<float>(m_voxelLeafSize));
+  voxelGrid.filter(*filtered);
 
   if (filtered->size() < 3)
   {
-    RCLCPP_DEBUG(get_logger(), "Downsampled cloud too small for meshing");
+    RCLCPP_DEBUG(m_node.get_logger(), "Downsampled cloud too small for meshing");
     return;
   }
 
-  pcl::PointCloud<pcl::PointNormal>::Ptr cloud_with_normals(new pcl::PointCloud<pcl::PointNormal>);
-  pcl::NormalEstimationOMP<pcl::PointXYZ, pcl::PointNormal> normal_estimator;
-  auto search_tree = std::make_shared<pcl::search::KdTree<pcl::PointXYZ>>();
-  normal_estimator.setInputCloud(filtered);
-  normal_estimator.setSearchMethod(search_tree);
-  normal_estimator.setRadiusSearch(normal_search_radius_);
-  normal_estimator.compute(*cloud_with_normals);
+  pcl::PointCloud<pcl::PointNormal>::Ptr cloudWithNormals(new pcl::PointCloud<pcl::PointNormal>);
+  pcl::NormalEstimationOMP<pcl::PointXYZ, pcl::PointNormal> normalEstimator;
+  auto searchTree = std::make_shared<pcl::search::KdTree<pcl::PointXYZ>>();
+  normalEstimator.setInputCloud(filtered);
+  normalEstimator.setSearchMethod(searchTree);
+  normalEstimator.setRadiusSearch(m_normalSearchRadius);
+  normalEstimator.compute(*cloudWithNormals);
 
-  if (cloud_with_normals->size() != filtered->size())
+  if (cloudWithNormals->size() != filtered->size())
   {
-    RCLCPP_WARN(get_logger(), "Normal estimation returned unexpected result size");
+    RCLCPP_WARN(m_node.get_logger(), "Normal estimation returned unexpected result size");
     return;
   }
 
-  auto normals_tree = std::make_shared<pcl::search::KdTree<pcl::PointNormal>>();
-  normals_tree->setInputCloud(cloud_with_normals);
+  auto normalsTree = std::make_shared<pcl::search::KdTree<pcl::PointNormal>>();
+  normalsTree->setInputCloud(cloudWithNormals);
 
   pcl::GreedyProjectionTriangulation<pcl::PointNormal> gp3;
-  gp3.setSearchRadius(triangulation_search_radius_);
+  gp3.setSearchRadius(m_triangulationSearchRadius);
   gp3.setMu(2.5);
   gp3.setMaximumNearestNeighbors(100);
-  gp3.setMaximumSurfaceAngle(kPi / 4.0);
-  gp3.setMinimumAngle(kPi / 18.0);
-  gp3.setMaximumAngle(2.0 * kPi / 3.0);
+  gp3.setMaximumSurfaceAngle(PI / 4.0);
+  gp3.setMinimumAngle(PI / 18.0);
+  gp3.setMaximumAngle(2.0 * PI / 3.0);
   gp3.setNormalConsistency(false);
-  gp3.setInputCloud(cloud_with_normals);
-  gp3.setSearchMethod(normals_tree);
+  gp3.setInputCloud(cloudWithNormals);
+  gp3.setSearchMethod(normalsTree);
 
   pcl::PolygonMesh mesh;
   gp3.reconstruct(mesh);
 
   if (mesh.polygons.empty())
   {
-    RCLCPP_DEBUG(get_logger(), "Mesh reconstruction produced no polygons");
+    RCLCPP_DEBUG(m_node.get_logger(), "Mesh reconstruction produced no polygons");
     return;
   }
 
-  pcl::PointCloud<pcl::PointNormal> mesh_vertices;
-  pcl::fromPCLPointCloud2(mesh.cloud, mesh_vertices);
+  pcl::PointCloud<pcl::PointNormal> meshVertices;
+  pcl::fromPCLPointCloud2(mesh.cloud, meshVertices);
 
-  if (mesh_vertices.empty())
+  if (meshVertices.empty())
   {
-    RCLCPP_DEBUG(get_logger(), "Mesh reconstruction produced no vertices");
+    RCLCPP_DEBUG(m_node.get_logger(), "Mesh reconstruction produced no vertices");
     return;
   }
 
-  pcl::PointNormal min_point;
-  pcl::PointNormal max_point;
-  min_point.x = min_point.y = std::numeric_limits<float>::max();
-  min_point.z = std::numeric_limits<float>::max();
-  max_point.x = max_point.y = max_point.z = std::numeric_limits<float>::lowest();
+  pcl::PointNormal minPoint;
+  pcl::PointNormal maxPoint;
+  minPoint.x = minPoint.y = std::numeric_limits<float>::max();
+  minPoint.z = std::numeric_limits<float>::max();
+  maxPoint.x = maxPoint.y = maxPoint.z = std::numeric_limits<float>::lowest();
 
-  for (const auto& vertex : mesh_vertices)
+  for (const auto& vertex : meshVertices)
   {
-    min_point.x = std::min(min_point.x, vertex.x);
-    min_point.y = std::min(min_point.y, vertex.y);
-    min_point.z = std::min(min_point.z, vertex.z);
+    minPoint.x = std::min(minPoint.x, vertex.x);
+    minPoint.y = std::min(minPoint.y, vertex.y);
+    minPoint.z = std::min(minPoint.z, vertex.z);
 
-    max_point.x = std::max(max_point.x, vertex.x);
-    max_point.y = std::max(max_point.y, vertex.y);
-    max_point.z = std::max(max_point.z, vertex.z);
+    maxPoint.x = std::max(maxPoint.x, vertex.x);
+    maxPoint.y = std::max(maxPoint.y, vertex.y);
+    maxPoint.z = std::max(maxPoint.z, vertex.z);
   }
 
-  cv::Mat image(kImageHeight, kImageWidth, CV_8UC3, cv::Scalar(255, 255, 255));
+  cv::Mat image(IMAGE_HEIGHT, IMAGE_WIDTH, CV_8UC3, cv::Scalar(255, 255, 255));
 
   for (const auto& polygon : mesh.polygons)
   {
@@ -168,16 +235,15 @@ void MeshViewerNode::OnPointCloud(const PointCloud2::ConstSharedPtr& msg)
     const int index1 = polygon.vertices[1];
     const int index2 = polygon.vertices[2];
 
-    if (index0 >= static_cast<int>(mesh_vertices.size()) ||
-        index1 >= static_cast<int>(mesh_vertices.size()) ||
-        index2 >= static_cast<int>(mesh_vertices.size()))
+    if (index0 >= static_cast<int>(meshVertices.size()) || index1 >= static_cast<int>(meshVertices.size()) ||
+        index2 >= static_cast<int>(meshVertices.size()))
     {
       continue;
     }
 
-    const cv::Point p0 = ProjectPoint(mesh_vertices[index0], min_point, max_point);
-    const cv::Point p1 = ProjectPoint(mesh_vertices[index1], min_point, max_point);
-    const cv::Point p2 = ProjectPoint(mesh_vertices[index2], min_point, max_point);
+    const cv::Point p0 = ProjectPoint(meshVertices[index0], minPoint, maxPoint);
+    const cv::Point p1 = ProjectPoint(meshVertices[index1], minPoint, maxPoint);
+    const cv::Point p2 = ProjectPoint(meshVertices[index2], minPoint, maxPoint);
 
     cv::line(image, p0, p1, cv::Scalar(0, 0, 0), 1, cv::LINE_AA);
     cv::line(image, p1, p2, cv::Scalar(0, 0, 0), 1, cv::LINE_AA);
@@ -185,8 +251,8 @@ void MeshViewerNode::OnPointCloud(const PointCloud2::ConstSharedPtr& msg)
   }
 
   auto bridge = std::make_shared<cv_bridge::CvImage>(msg->header, "bgr8", image);
-  auto image_msg = bridge->toImageMsg();
+  auto imageMsg = bridge->toImageMsg();
 
-  mesh_image_publisher_->publish(*image_msg);
+  m_meshImagePublisher->publish(*imageMsg);
 }
-} // namespace oasis::perception
+} // namespace OASIS

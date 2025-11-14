@@ -9,7 +9,6 @@
 
 #include <memory>
 
-#include <rclcpp/node.hpp>
 #include <rclcpp/publisher.hpp>
 #include <rclcpp/subscription.hpp>
 #include <sensor_msgs/msg/image.hpp>
@@ -17,24 +16,29 @@
 
 namespace rclcpp
 {
-class NodeOptions;
+class Node;
 } // namespace rclcpp
 
-namespace oasis::perception
+namespace OASIS
 {
-class MeshViewerNode : public rclcpp::Node
+class MeshViewerNode
 {
 public:
-  explicit MeshViewerNode(const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
+  explicit MeshViewerNode(rclcpp::Node& node);
+  ~MeshViewerNode();
+
+  bool Initialize();
+  void Deinitialize();
 
 private:
   void OnPointCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPtr& msg);
 
-  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr point_cloud_subscription_;
-  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr mesh_image_publisher_;
+  rclcpp::Node& m_node;
+  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr m_pointCloudSubscription;
+  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr m_meshImagePublisher;
 
-  double voxel_leaf_size_{0.05};
-  double normal_search_radius_{0.1};
-  double triangulation_search_radius_{0.2};
+  double m_voxelLeafSize{0.05};
+  double m_normalSearchRadius{0.1};
+  double m_triangulationSearchRadius{0.2};
 };
-} // namespace oasis::perception
+} // namespace OASIS
