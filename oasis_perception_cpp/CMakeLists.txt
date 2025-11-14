@@ -61,6 +61,8 @@ find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs video)
 find_package(ORB_SLAM_OASIS)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
+find_package(pcl_conversions REQUIRED)
+find_package(PCL REQUIRED COMPONENTS common features filters search surface)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 
@@ -299,6 +301,66 @@ rclcpp_components_register_node(
   image_downscaler_component
   PLUGIN "oasis_perception::ImageDownscalerComponent"
   EXECUTABLE image_downscaler_component_node
+)
+
+#
+# mesh_viewer
+#
+
+set(MESH_VIEWER_SOURCES
+  src/nodes/MeshViewerNode.cpp
+)
+set(MESH_VIEWER_INCLUDE_DIRS
+  ${PCL_INCLUDE_DIRS}
+)
+set(MESH_VIEWER_LIBRARIES
+  cv_bridge::cv_bridge
+  ${OpenCV_LIBS}
+  pcl_conversions::pcl_conversions
+  ${PCL_LIBRARIES}
+  rclcpp::rclcpp
+  ${sensor_msgs_TARGETS}
+)
+
+add_executable(mesh_viewer_node
+  ${MESH_VIEWER_SOURCES}
+  src/cli/mesh_viewer_node.cpp
+)
+target_include_directories(mesh_viewer_node PUBLIC
+  ${MESH_VIEWER_INCLUDE_DIRS}
+)
+target_link_libraries(mesh_viewer_node PUBLIC
+  ${MESH_VIEWER_LIBRARIES}
+)
+install(
+  TARGETS
+    mesh_viewer_node
+  DESTINATION
+    lib/${PROJECT_NAME}
+)
+
+add_library(mesh_viewer_component SHARED
+  ${MESH_VIEWER_SOURCES}
+  src/components/mesh_viewer_component.cpp
+  src/ros/RosComponent.cpp
+)
+target_include_directories(mesh_viewer_component PUBLIC
+  ${MESH_VIEWER_INCLUDE_DIRS}
+)
+target_link_libraries(mesh_viewer_component PUBLIC
+  ${MESH_VIEWER_LIBRARIES}
+  rclcpp_components::component
+)
+install(
+  TARGETS
+    mesh_viewer_component
+  DESTINATION
+    lib
+)
+rclcpp_components_register_node(
+  mesh_viewer_component
+  PLUGIN "oasis_perception::MeshViewerComponent"
+  EXECUTABLE mesh_viewer_component_node
 )
 
 #

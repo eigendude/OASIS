@@ -318,6 +318,38 @@ class PerceptionDescriptions:
         )
 
     #
+    # Mesh viewer
+    #
+
+    @staticmethod
+    def add_mesh_viewer(
+        composable_nodes: list[ComposableNode],
+        system_ids: list[str],
+    ) -> None:
+        composable_nodes.extend(
+            [
+                ComposableNode(
+                    namespace=ROS_NAMESPACE,
+                    package=CPP_PACKAGE_NAME,
+                    plugin="oasis_perception::MeshViewerComponent",
+                    name=f"mesh_viewer_{system_id}",
+                    parameters=[{"system_id": system_id}],
+                    remappings=[
+                        (
+                            f"{system_id}_slam_mesh_image",
+                            f"{system_id}/slam_mesh_image",
+                        ),
+                        (
+                            f"{system_id}_slam_point_cloud",
+                            f"{system_id}/slam_point_cloud",
+                        ),
+                    ],
+                )
+                for system_id in system_ids
+            ]
+        )
+
+    #
     # Monocular SLAM
     #
 
