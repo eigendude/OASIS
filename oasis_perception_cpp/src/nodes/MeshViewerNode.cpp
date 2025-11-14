@@ -29,6 +29,7 @@
 #include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
 #include <rclcpp/qos.hpp>
+#include <sensor_msgs/image_encodings.hpp>
 
 using sensor_msgs::msg::Image;
 using sensor_msgs::msg::PointCloud2;
@@ -226,7 +227,9 @@ void MeshViewerNode::OnPointCloud(const PointCloud2::ConstSharedPtr& msg)
     maxPoint.z = std::max(maxPoint.z, vertex.z);
   }
 
-  cv::Mat image(IMAGE_HEIGHT, IMAGE_WIDTH, CV_8UC3, cv::Scalar(255, 255, 255));
+  const cv::Scalar backgroundColorRGB(255, 255, 255);
+  const cv::Scalar edgeColorRGB(0, 0, 0);
+  cv::Mat image(IMAGE_HEIGHT, IMAGE_WIDTH, CV_8UC3, backgroundColorRGB);
 
   for (const pcl::Vertices& polygon : mesh.polygons)
   {
@@ -250,12 +253,14 @@ void MeshViewerNode::OnPointCloud(const PointCloud2::ConstSharedPtr& msg)
     const cv::Point p1 = ProjectPoint(meshVertices[index1], minPoint, maxPoint);
     const cv::Point p2 = ProjectPoint(meshVertices[index2], minPoint, maxPoint);
 
-    cv::line(image, p0, p1, cv::Scalar(0, 0, 0), 1, cv::LINE_AA);
-    cv::line(image, p1, p2, cv::Scalar(0, 0, 0), 1, cv::LINE_AA);
-    cv::line(image, p2, p0, cv::Scalar(0, 0, 0), 1, cv::LINE_AA);
+    cv::line(image, p0, p1, edgeColorRGB, 1, cv::LINE_AA);
+    cv::line(image, p1, p2, edgeColorRGB, 1, cv::LINE_AA);
+    cv::line(image, p2, p0, edgeColorRGB, 1, cv::LINE_AA);
   }
 
-  auto bridge = std::make_shared<cv_bridge::CvImage>(msg->header, "bgr8", image);
+  auto bridge = std::make_shared<cv_bridge::CvImage>(msg->header,
+                                                     sensor_msgs::image_encodings::RGB8,
+                                                     image);
   auto imageMsg = bridge->toImageMsg();
 
   m_meshImagePublisher->publish(*imageMsg);
