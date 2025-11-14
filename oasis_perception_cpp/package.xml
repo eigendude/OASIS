@@ -16,6 +16,9 @@
   <build_depend>eigen</build_depend>
   <build_depend>libboost-serialization-dev</build_depend>
   <build_depend>libglew-dev</build_depend>
+  <build_depend>libpcl-all-dev</build_depend>
+
+  <build_export_depend>libpcl-all-dev</build_export_depend>
 
   <depend>cv_bridge</depend>
   <depend>geometry_msgs</depend>
@@ -23,6 +26,8 @@
   <depend>liblttng-ust-dev</depend>
   <depend>libopencv-dev</depend>
   <depend>oasis_msgs</depend>
+  <depend>pcl_conversions</depend>
+  <depend>rclcpp_components</depend>
   <depend>rclcpp</depend>
   <depend>sensor_msgs</depend>
 
