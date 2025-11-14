@@ -36,13 +36,12 @@ MonocularSlamBase::MonocularSlamBase(rclcpp::Node& node,
                                      const std::string& pointCloudTopic)
   : m_logger(std::make_unique<rclcpp::Logger>(node.get_logger()))
 {
-  rmw_qos_profile_t qos = rmw_qos_profile_sensor_data;
-  qos.reliability = RMW_QOS_POLICY_RELIABILITY_RELIABLE;
+  rmw_qos_profile_t sensorQos = rmw_qos_profile_sensor_data;
+  sensorQos.depth = 1;
 
-  m_mapImagePublisher = image_transport::create_publisher(&node, mapImageTopic, qos);
+  m_mapImagePublisher = image_transport::create_publisher(&node, mapImageTopic, sensorQos);
 
   rclcpp::QoS pointCloudQos{rclcpp::SensorDataQoS{}};
-  pointCloudQos.reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE);
   m_pointCloudPublisher =
       node.create_publisher<sensor_msgs::msg::PointCloud2>(pointCloudTopic, pointCloudQos);
 

@@ -29,7 +29,8 @@ BackgroundModelerABL::BackgroundModelerABL(rclcpp::Node& node,
     m_imgSubscriber(std::make_unique<image_transport::Subscriber>()),
     m_bgsPackageABL(std::make_unique<bgslibrary::algorithms::AdaptiveBackgroundLearning>())
 {
-  const rmw_qos_profile_t sensorQos = rmw_qos_profile_sensor_data;
+  rmw_qos_profile_t sensorQos = rmw_qos_profile_sensor_data;
+  sensorQos.depth = 1;
 
   *m_imgPublisherBackground = image_transport::create_publisher(&node, backgroundTopic, sensorQos);
   *m_imgSubscriber = image_transport::create_subscription(

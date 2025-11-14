@@ -32,7 +32,8 @@ BackgroundSubtractorASBL::BackgroundSubtractorASBL(rclcpp::Node& node,
     m_bgsPackageASBL(
         std::make_unique<bgslibrary::algorithms::AdaptiveSelectiveBackgroundLearning>())
 {
-  const rmw_qos_profile_t sensorQos = rmw_qos_profile_sensor_data;
+  rmw_qos_profile_t sensorQos = rmw_qos_profile_sensor_data;
+  sensorQos.depth = 1;
 
   *m_imgPublisherForeground = image_transport::create_publisher(&node, foregroundTopic, sensorQos);
   *m_imgPublisherSubtracted = image_transport::create_publisher(&node, subtractedTopic, sensorQos);

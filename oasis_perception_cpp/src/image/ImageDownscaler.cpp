@@ -58,7 +58,8 @@ ImageDownscaler::ImageDownscaler(std::shared_ptr<rclcpp::Node> node,
   rclcpp::QoS cameraInfoQos = rclcpp::SensorDataQoS();
   cameraInfoQos.reliability(rclcpp::ReliabilityPolicy::Reliable);
 
-  const rmw_qos_profile_t sensorQos = rmw_qos_profile_sensor_data;
+  rmw_qos_profile_t sensorQos = rmw_qos_profile_sensor_data;
+  sensorQos.depth = 1;
 
   // Publishers
   *m_downscaledPublisher =
@@ -66,10 +67,15 @@ ImageDownscaler::ImageDownscaler(std::shared_ptr<rclcpp::Node> node,
   m_cameraInfoPublisher = m_node->create_publisher<sensor_msgs::msg::CameraInfo>(
       downscaledCameraInfoTopic, cameraInfoQos);
 
+  // Subscribing to raw camera feed from camera_ros, need reliable transport
+  rmw_qos_profile_t subscriberQos = rmw_qos_profile_sensor_data;
+  subscriberQos.depth = 1;
+  subscriberQos.reliability = RMW_QOS_POLICY_RELIABILITY_RELIABLE;
+
   // Subscribers
   *m_imageSubscriber = image_transport::create_subscription(
       m_node.get(), imageTopic, [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg)
-      { ReceiveImage(msg); }, imageTransport, sensorQos);
+      { ReceiveImage(msg); }, imageTransport, subscriberQos);
   m_cameraInfoSubscriber = m_node->create_subscription<sensor_msgs::msg::CameraInfo>(
       cameraInfoTopic, rclcpp::SensorDataQoS(),
       [this](const sensor_msgs::msg::CameraInfo::SharedPtr msg) { ReceiveCameraInfo(msg); });

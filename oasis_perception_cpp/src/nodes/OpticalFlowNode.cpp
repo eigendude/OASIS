@@ -120,7 +120,8 @@ bool OpticalFlowNode::Initialize()
   RCLCPP_INFO(m_node.get_logger(), "Publishing scene score: %s",
               m_publishSceneScore ? "true" : "false");
 
-  const rmw_qos_profile_t sensorQos = rmw_qos_profile_sensor_data;
+  rmw_qos_profile_t sensorQos = rmw_qos_profile_sensor_data;
+  sensorQos.depth = 1;
 
   *m_flowPublisher = image_transport::create_publisher(&m_node, flowTopic, sensorQos);
   if (m_publishSceneScore)

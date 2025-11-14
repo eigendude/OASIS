@@ -55,7 +55,8 @@ MultiModeler::MultiModeler(std::shared_ptr<rclcpp::Node> node,
     m_bgsPackageKNN(std::make_unique<bgslibrary::algorithms::KNN>())
 {
   auto transportHints = image_transport::TransportHints(node.get(), "compressed");
-  const rmw_qos_profile_t sensorQos = rmw_qos_profile_sensor_data;
+  rmw_qos_profile_t sensorQos = rmw_qos_profile_sensor_data;
+  sensorQos.depth = 1;
 
   *m_imgSubscriber = image_transport::create_subscription(
       node.get(), imageTopic, [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg)
