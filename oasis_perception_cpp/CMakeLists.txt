@@ -310,6 +310,7 @@ rclcpp_components_register_node(
 # Project files
 set(MESH_VIEWER_SOURCES
   src/nodes/MeshViewerNode.cpp
+  src/pointcloud/MeshRenderer.cpp
 )
 set(MESH_VIEWER_LIBRARIES
   cv_bridge::cv_bridge

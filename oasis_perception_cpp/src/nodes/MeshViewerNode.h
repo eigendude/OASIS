@@ -21,6 +21,8 @@ class Node;
 
 namespace OASIS
 {
+class MeshRenderer;
+
 class MeshViewerNode
 {
 public:
@@ -36,6 +38,8 @@ private:
   rclcpp::Node& m_node;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr m_pointCloudSubscription;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr m_meshImagePublisher;
+
+  std::unique_ptr<MeshRenderer> m_meshRenderer;
 
   double m_voxelLeafSize;
   double m_normalSearchRadius;
