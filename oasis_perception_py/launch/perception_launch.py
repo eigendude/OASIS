@@ -58,6 +58,7 @@ PERCEPTION_SERVER_CALIBRATION: list[str] = []
 PERCEPTION_SERVER_FLOW: list[str] = []
 PERCEPTION_SERVER_IMAGE_DOWNSCALER: list[str] = []
 PERCEPTION_SERVER_IMAGE_RECT: list[str] = []
+PERCEPTION_SERVER_MESH_VIEWER: list[str] = []
 PERCEPTION_SERVER_MONOCULAR_SLAM: list[str] = []
 PERCEPTION_SERVER_MONOCULAR_INERTIAL_SLAM: list[str] = []
 PERCEPTION_SERVER_POSE_LANDMARKS: list[str] = []
@@ -76,6 +77,7 @@ elif HOST_ID == "oceanplatform":
     # PERCEPTION_SERVER_FLOW.extend(["falcon", "station"])
     PERCEPTION_SERVER_IMAGE_DOWNSCALER.extend(["falcon"])
     PERCEPTION_SERVER_IMAGE_RECT.extend(["falcon"])
+    # PERCEPTION_SERVER_MESH_VIEWER.extend(["falcon"])
     PERCEPTION_SERVER_MONOCULAR_SLAM.extend(["falcon"])
     PERCEPTION_SERVER_POSE_LANDMARKS.extend(["falcon"])
 
@@ -124,6 +126,12 @@ def generate_launch_description() -> LaunchDescription:
             PERCEPTION_SERVER_IMAGE_RECT,
             input_resolution="sd",
             image_transport="raw",
+        )
+
+    if PERCEPTION_SERVER_MESH_VIEWER:
+        PerceptionDescriptions.add_mesh_viewer(
+            composable_nodes,
+            PERCEPTION_SERVER_MESH_VIEWER,
         )
 
     if PERCEPTION_SERVER_MONOCULAR_SLAM:
