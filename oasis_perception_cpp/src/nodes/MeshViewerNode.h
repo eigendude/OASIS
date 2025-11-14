@@ -9,7 +9,7 @@
 
 #include <memory>
 
-#include <rclcpp/publisher.hpp>
+#include <image_transport/publisher.hpp>
 #include <rclcpp/subscription.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -37,7 +37,7 @@ private:
 
   rclcpp::Node& m_node;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr m_pointCloudSubscription;
-  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr m_meshImagePublisher;
+  std::unique_ptr<image_transport::Publisher> m_meshImagePublisher;
 
   std::unique_ptr<MeshRenderer> m_meshRenderer;
 

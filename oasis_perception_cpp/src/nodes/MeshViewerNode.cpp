@@ -15,11 +15,12 @@
 #include <string>
 #include <string_view>
 
+#include <image_transport/image_transport.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
 #include <rclcpp/qos.hpp>
+#include <rmw/qos_profiles.h>
 
-using sensor_msgs::msg::Image;
 using sensor_msgs::msg::PointCloud2;
 
 namespace OASIS
@@ -47,6 +48,7 @@ constexpr double DEFAULT_TRIANGULATION_SEARCH_RADIUS = 0.2;
 
 MeshViewerNode::MeshViewerNode(rclcpp::Node& node)
   : m_node(node),
+    m_meshImagePublisher(std::make_unique<image_transport::Publisher>()),
     m_voxelLeafSize(DEFAULT_VOXEL_LEAF_SIZE),
     m_normalSearchRadius(DEFAULT_NORMAL_SEARCH_RADIUS),
     m_triangulationSearchRadius(DEFAULT_TRIANGULATION_SEARCH_RADIUS)
@@ -104,8 +106,10 @@ bool MeshViewerNode::Initialize()
   m_meshRenderer = std::make_unique<MeshRenderer>(
       m_node.get_logger(), m_voxelLeafSize, m_normalSearchRadius, m_triangulationSearchRadius);
 
-  m_meshImagePublisher =
-      m_node.create_publisher<Image>(meshImageTopic, rclcpp::SensorDataQoS().keep_last(1));
+  rmw_qos_profile_t sensorQos = rmw_qos_profile_sensor_data;
+  sensorQos.depth = 1;
+
+  *m_meshImagePublisher = image_transport::create_publisher(&m_node, meshImageTopic, sensorQos);
 
   m_pointCloudSubscription = m_node.create_subscription<PointCloud2>(
       pointCloudTopic, rclcpp::SensorDataQoS(),
@@ -118,7 +122,7 @@ void MeshViewerNode::Deinitialize()
 {
   m_meshRenderer.reset();
   m_pointCloudSubscription.reset();
-  m_meshImagePublisher.reset();
+  m_meshImagePublisher->shutdown();
 }
 
 void MeshViewerNode::OnPointCloud(const PointCloud2::ConstSharedPtr& msg)
