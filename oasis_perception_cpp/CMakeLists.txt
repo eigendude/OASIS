@@ -33,6 +33,20 @@ if(POLICY CMP0074)
   cmake_policy(SET CMP0074 NEW)
 endif()
 
+# Policy CMP0144: find_package uses upper-case <PACKAGENAME>_ROOT variables
+if(POLICY CMP0144)
+  cmake_policy(SET CMP0144 NEW)
+else()
+  message(STATUS "Policy CMP0144 not supported by this CMake version")
+endif()
+
+# Policy CMP0167: Use find_package modules from CMake distribution
+if(POLICY CMP0167)
+  cmake_policy(SET CMP0167 NEW)
+else()
+  message(STATUS "Policy CMP0167 not supported by this CMake version")
+endif()
+
 # Load OpenCV variables from the environment
 if(DEFINED ENV{OpenCV_DIR})
   set(OpenCV_DIR $ENV{OpenCV_DIR} CACHE PATH "Path to OpenCVConfig.cmake")
