@@ -30,6 +30,14 @@ repositories:
     type: git
     url: https://github.com/ika-rwth-aachen/mqtt_client.git
     version: v2.3.0
+  ros-perception/apriltag_msgs:
+    type: git
+    url: https://github.com/christianrauch/apriltag_msgs.git
+    version: master
+  ros-perception/apriltag_ros:
+    type: git
+    url: https://github.com/christianrauch/apriltag_ros.git
+    version: master
   ros-perception/bgslibrary:
     type: git
     url: https://github.com/andrewssobral/bgslibrary.git

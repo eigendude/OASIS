@@ -46,3 +46,19 @@ LIBFREENECT2_SOURCE_DIRECTORY="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/libfree
 
 # udev fules for libfreenect2
 LIBFREENECT2_UDEV_DIRECTORY="${LIBFREENECT2_SOURCE_DIRECTORY}/platform/linux/udev"
+
+#
+# AprilTag paths
+#
+
+# Auto-detect apriltag_DIR from ROS AprilTag package if not already set
+if [ -z "${apriltag_DIR:-}" ]; then
+  if command -v dpkg >/dev/null 2>&1; then
+    apriltag_DIR=$(dpkg -L "ros-${ROS2_DISTRO}-apriltag" 2>/dev/null \
+      | grep -m1 'apriltagConfig.cmake' \
+      | xargs -r dirname || true)
+    if [ -n "${apriltag_DIR}" ]; then
+      export apriltag_DIR
+    fi
+  fi
+fi
