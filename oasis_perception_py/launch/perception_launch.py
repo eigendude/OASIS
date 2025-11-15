@@ -53,6 +53,7 @@ print(f"Launching perception on {HOSTNAME} in zone {ZONE_ID}")
 ################################################################################
 
 
+PERCEPTION_SERVER_APRILTAGS: list[str] = []
 PERCEPTION_SERVER_BACKGROUND: list[str] = []
 PERCEPTION_SERVER_CALIBRATION: list[str] = []
 PERCEPTION_SERVER_FLOW: list[str] = []
@@ -73,6 +74,7 @@ elif HOST_ID == "nas":
     # )
     PERCEPTION_SERVER_POSE_LANDMARKS.extend(["hallway"])
 elif HOST_ID == "oceanplatform":
+    PERCEPTION_SERVER_APRILTAGS.extend(["falcon"])
     # PERCEPTION_SERVER_BACKGROUND.extend(["station"])
     # PERCEPTION_SERVER_FLOW.extend(["falcon", "station"])
     PERCEPTION_SERVER_IMAGE_DOWNSCALER.extend(["falcon"])
@@ -91,6 +93,11 @@ def generate_launch_description() -> LaunchDescription:
     ld = LaunchDescription()
 
     composable_nodes: list[ComposableNode] = []
+
+    if PERCEPTION_SERVER_APRILTAGS:
+        PerceptionDescriptions.add_apriltag_detector(
+            composable_nodes, PERCEPTION_SERVER_APRILTAGS, image_transport="raw"
+        )
 
     if PERCEPTION_SERVER_BACKGROUND:
         PerceptionDescriptions.add_background_modeler(

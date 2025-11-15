@@ -69,6 +69,58 @@ class PerceptionDescriptions:
         ld.add_action(perception_container)
 
     #
+    # AprilTag detector
+    #
+
+    @staticmethod
+    def add_apriltag_detector(
+        composable_nodes: list[ComposableNode],
+        system_ids: List[str],
+        image_transport: str,
+    ) -> None:
+        composable_nodes.extend(
+            [
+                ComposableNode(
+                    namespace=ROS_NAMESPACE,
+                    package="apriltag_ros",
+                    plugin="AprilTagNode",
+                    name=f"apriltag_{system_id}",
+                    parameters=[
+                        {
+                            "image_transport": image_transport,
+                            "family": "36h11",
+                            "size": 0.1,  # 100 mm tag edge size in meters
+                            "max_hamming": 2,  # Good robustness/performance tradeoff
+                            "pose_estimation_method": "pnp",
+                            "qos_profile": "sensor_data",
+                            "tag.ids": [0],
+                            "tag.frames": [f"{system_id}_apriltag_0"],
+                            "tag.sizes": [0.1],
+                            #
+                            # Tuning parameters
+                            #
+                            "detector.threads": 4,  # TODO: Detect this?
+                            "detector.decimate": 1.0,  # Process at full resolution
+                            "detector.blur": 0.0,  # No blur before quad detection
+                            "detector.refine": True,  # Refine edges (slightly slower, more accurate corners)
+                            # How much sharpening to apply to the image used for decoding the tag bits.
+                            # A small positive value (like 0.25) can help with low-contrast tags.
+                            # Too high can amplify noise.
+                            "detector.sharpening": 0.25,
+                            "detector.debug": False,  # Disable writing debug images and info to disk
+                            "profile": False,  # Noisy and useless in production
+                        }
+                    ],
+                    remappings=[
+                        ("camera_info", f"{system_id}/sd/camera_info"),
+                        ("image_rect", f"{system_id}/sd/image_rect"),
+                    ],
+                )
+                for system_id in system_ids
+            ]
+        )
+
+    #
     # Background modeler
     #
 
