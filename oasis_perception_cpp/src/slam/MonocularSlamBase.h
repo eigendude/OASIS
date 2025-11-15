@@ -24,6 +24,7 @@
 #include <Eigen/Geometry>
 #include <System.h>
 #include <cv_bridge/cv_bridge.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
 #include <image_transport/image_transport.hpp>
 #include <opencv2/core.hpp>
 #include <rclcpp/publisher.hpp>
@@ -47,7 +48,8 @@ class MonocularSlamBase
 public:
   MonocularSlamBase(rclcpp::Node& node,
                     const std::string& mapImageTopic,
-                    const std::string& pointCloudTopic);
+                    const std::string& pointCloudTopic,
+                    const std::string& poseTopic);
   virtual ~MonocularSlamBase();
 
   void ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg);
@@ -91,6 +93,7 @@ private:
   std::unique_ptr<rclcpp::Logger> m_logger;
   std::optional<image_transport::Publisher> m_mapImagePublisher;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr m_pointCloudPublisher;
+  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr m_posePublisher;
 
   // SLAM components
   CameraModel m_cameraModel;

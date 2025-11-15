@@ -20,7 +20,8 @@ class MonocularSlam : public MonocularSlamBase
 public:
   MonocularSlam(rclcpp::Node& node,
                 const std::string& mapImageTopic,
-                const std::string& pointCloudTopic);
+                const std::string& pointCloudTopic,
+                const std::string& poseTopic);
   ~MonocularSlam() override;
 
   bool Initialize(const std::string& vocabularyFile, const std::string& settingsFile);
