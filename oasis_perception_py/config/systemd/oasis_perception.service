@@ -35,6 +35,7 @@ Environment=QT_QPA_PLATFORM=offscreen
 Environment=OASIS_SRC=/home/${USER}/Documents/ros-ws/src/oasis
 Environment=OASIS_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/oasis-${ROS2_DISTRO}/install/setup.bash
 Environment=OPENCV_LIB_DIR=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/cv/install/lib
+Environment="APRILTAG_LIB_DIR=/opt/ros/${ROS2_DISTRO}/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)"
 
 #
 # Service definition
@@ -42,7 +43,7 @@ Environment=OPENCV_LIB_DIR=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/cv/in
 
 # Delay launch until the system has been up long enough for ROS nodes to connect
 # Need to run from oasis_perception_cpp for background subtractor to find configs
-ExecStart=/bin/bash -c 'set +o nounset && export LD_LIBRARY_PATH="`eval echo "${OPENCV_LIB_DIR}"`" && source `eval echo "${OASIS_ENV}"` && "$(ros2 pkg prefix oasis_drivers_py)/lib/oasis_drivers_py/delay_launch.sh" && cd `eval echo "${OASIS_SRC}/oasis_perception_cpp"` && ros2 launch oasis_perception_py perception_launch.py'
+ExecStart=/bin/bash -c 'set +o nounset && export LD_LIBRARY_PATH="`eval echo "${OPENCV_LIB_DIR}:${APRILTAG_LIB_DIR}"`" && source `eval echo "${OASIS_ENV}"` && "$(ros2 pkg prefix oasis_drivers_py)/lib/oasis_drivers_py/delay_launch.sh" && cd `eval echo "${OASIS_SRC}/oasis_perception_cpp"` && ros2 launch oasis_perception_py perception_launch.py'
 
 Restart=on-failure
 
