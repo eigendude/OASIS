@@ -33,7 +33,8 @@ constexpr char MAP_FRAME_ID[] = "map";
 
 MonocularSlamBase::MonocularSlamBase(rclcpp::Node& node,
                                      const std::string& mapImageTopic,
-                                     const std::string& pointCloudTopic)
+                                     const std::string& pointCloudTopic,
+                                     const std::string& poseTopic)
   : m_logger(std::make_unique<rclcpp::Logger>(node.get_logger()))
 {
   rmw_qos_profile_t qos = rmw_qos_profile_sensor_data;
@@ -45,6 +46,10 @@ MonocularSlamBase::MonocularSlamBase(rclcpp::Node& node,
   pointCloudQos.reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE);
   m_pointCloudPublisher =
       node.create_publisher<sensor_msgs::msg::PointCloud2>(pointCloudTopic, pointCloudQos);
+
+  rclcpp::QoS poseQos{rclcpp::SensorDataQoS{}};
+  poseQos.reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE);
+  m_posePublisher = node.create_publisher<geometry_msgs::msg::PoseStamped>(poseTopic, poseQos);
 
   m_renderThreadRunning = true;
   m_renderThread = std::thread(&MonocularSlamBase::MapPublisherLoop, this);
@@ -125,6 +130,27 @@ void MonocularSlamBase::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedP
   ORB_SLAM3::System* slam = GetSlam();
   if (slam == nullptr)
     return;
+
+  if (m_posePublisher)
+  {
+    geometry_msgs::msg::PoseStamped poseMsg;
+    poseMsg.header = header;
+    poseMsg.header.frame_id = MAP_FRAME_ID;
+
+    const Eigen::Vector3f& translation = cameraPose.translation();
+    poseMsg.pose.position.x = static_cast<double>(translation.x());
+    poseMsg.pose.position.y = static_cast<double>(translation.y());
+    poseMsg.pose.position.z = static_cast<double>(translation.z());
+
+    Eigen::Quaternionf quaternion(cameraPose.linear());
+    quaternion.normalize();
+    poseMsg.pose.orientation.x = static_cast<double>(quaternion.x());
+    poseMsg.pose.orientation.y = static_cast<double>(quaternion.y());
+    poseMsg.pose.orientation.z = static_cast<double>(quaternion.z());
+    poseMsg.pose.orientation.w = static_cast<double>(quaternion.w());
+
+    m_posePublisher->publish(poseMsg);
+  }
 
   // Get SLAM state
   const int trackingState = slam->GetTrackingState();

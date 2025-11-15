@@ -400,6 +400,7 @@ class PerceptionDescriptions:
                             f"{system_id}_slam_point_cloud",
                             f"{system_id}/slam_point_cloud",
                         ),
+                        (f"{system_id}_slam_pose", f"{system_id}/slam_pose"),
                     ],
                 )
                 for system_id in system_ids
@@ -458,6 +459,7 @@ class PerceptionDescriptions:
                             f"{system_id}_slam_point_cloud",
                             f"{system_id}/slam_point_cloud",
                         ),
+                        (f"{system_id}_slam_pose", f"{system_id}/slam_pose"),
                     ],
                 )
                 for system_id in system_ids
