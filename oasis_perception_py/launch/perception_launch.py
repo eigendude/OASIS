@@ -133,6 +133,7 @@ def generate_launch_description() -> LaunchDescription:
             PERCEPTION_SERVER_IMAGE_RECT,
             input_resolution="sd",
             image_transport="raw",
+            reliable_transport=True,
         )
 
     if PERCEPTION_SERVER_MESH_VIEWER:

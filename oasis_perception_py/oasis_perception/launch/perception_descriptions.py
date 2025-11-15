@@ -344,6 +344,7 @@ class PerceptionDescriptions:
         system_ids: list[str],
         input_resolution: str,
         image_transport: str,
+        reliable_transport: bool,
     ) -> None:
         composable_nodes.extend(
             [
@@ -356,6 +357,27 @@ class PerceptionDescriptions:
                         {
                             "interpolation": 1,  # Linear
                             "image_transport": image_transport,
+                            #
+                            # QoS overrides for the rectified image publisher
+                            #
+                            # Use sensor data settings with a depth of 1 so that
+                            # downstream consumers see a reliable stream with
+                            # the smallest queue possible.
+                            #
+                            "qos_overrides": {
+                                f"/{ROS_NAMESPACE}/{system_id}/{input_resolution}/image_rect": {
+                                    "publisher": {
+                                        "reliability": (
+                                            "reliable"
+                                            if reliable_transport
+                                            else "best_effort"
+                                        ),
+                                        "history": "keep_last",
+                                        "depth": 1,
+                                        "durability": "volatile",
+                                    }
+                                }
+                            },
                         },
                     ],
                     remappings=[

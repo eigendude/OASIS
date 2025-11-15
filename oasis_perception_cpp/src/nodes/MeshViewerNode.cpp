@@ -106,13 +106,14 @@ bool MeshViewerNode::Initialize()
   m_meshRenderer = std::make_unique<MeshRenderer>(
       m_node.get_logger(), m_voxelLeafSize, m_normalSearchRadius, m_triangulationSearchRadius);
 
-  rmw_qos_profile_t sensorQos = rmw_qos_profile_sensor_data;
-  sensorQos.depth = 1;
+  rclcpp::QoS sensorQos = rclcpp::SensorDataQoS();
+  sensorQos.keep_last(1);
 
-  *m_meshImagePublisher = image_transport::create_publisher(&m_node, meshImageTopic, sensorQos);
+  *m_meshImagePublisher =
+      image_transport::create_publisher(&m_node, meshImageTopic, sensorQos.get_rmw_qos_profile());
 
   m_pointCloudSubscription = m_node.create_subscription<PointCloud2>(
-      pointCloudTopic, rclcpp::SensorDataQoS(),
+      pointCloudTopic, sensorQos,
       std::bind(&MeshViewerNode::OnPointCloud, this, std::placeholders::_1));
 
   return true;

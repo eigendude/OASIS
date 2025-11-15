@@ -55,23 +55,27 @@ ImageDownscaler::ImageDownscaler(std::shared_ptr<rclcpp::Node> node,
     throw std::invalid_argument("ImageDownscaler requires positive maximum dimensions");
   }
 
-  rclcpp::QoS cameraInfoQos = rclcpp::SensorDataQoS();
-  cameraInfoQos.reliability(rclcpp::ReliabilityPolicy::Reliable);
+  // QoS for input from camera driver
+  rclcpp::QoS inputQos = rclcpp::SensorDataQoS();
+  inputQos.keep_last(1);
 
-  const rmw_qos_profile_t sensorQos = rmw_qos_profile_sensor_data;
+  // QoS for output topics - reliable is required for some camera info subscribers
+  rclcpp::QoS outputQos = rclcpp::SensorDataQoS();
+  outputQos.keep_last(1);
+  outputQos.reliable();
 
   // Publishers
-  *m_downscaledPublisher =
-      image_transport::create_publisher(m_node.get(), downscaledTopic, sensorQos);
-  m_cameraInfoPublisher = m_node->create_publisher<sensor_msgs::msg::CameraInfo>(
-      downscaledCameraInfoTopic, cameraInfoQos);
+  *m_downscaledPublisher = image_transport::create_publisher(m_node.get(), downscaledTopic,
+                                                             outputQos.get_rmw_qos_profile());
+  m_cameraInfoPublisher =
+      m_node->create_publisher<sensor_msgs::msg::CameraInfo>(downscaledCameraInfoTopic, outputQos);
 
   // Subscribers
   *m_imageSubscriber = image_transport::create_subscription(
       m_node.get(), imageTopic, [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg)
-      { ReceiveImage(msg); }, imageTransport, sensorQos);
+      { ReceiveImage(msg); }, imageTransport, inputQos.get_rmw_qos_profile());
   m_cameraInfoSubscriber = m_node->create_subscription<sensor_msgs::msg::CameraInfo>(
-      cameraInfoTopic, rclcpp::SensorDataQoS(),
+      cameraInfoTopic, inputQos,
       [this](const sensor_msgs::msg::CameraInfo::SharedPtr msg) { ReceiveCameraInfo(msg); });
 }
 

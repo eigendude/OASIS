@@ -55,11 +55,13 @@ MultiModeler::MultiModeler(std::shared_ptr<rclcpp::Node> node,
     m_bgsPackageKNN(std::make_unique<bgslibrary::algorithms::KNN>())
 {
   auto transportHints = image_transport::TransportHints(node.get(), "compressed");
-  const rmw_qos_profile_t sensorQos = rmw_qos_profile_sensor_data;
+
+  rclcpp::QoS sensorQos = rclcpp::SensorDataQoS();
+  sensorQos.keep_last(1);
 
   *m_imgSubscriber = image_transport::create_subscription(
       node.get(), imageTopic, [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg)
-      { ReceiveImage(msg); }, transportHints.getTransport(), sensorQos);
+      { ReceiveImage(msg); }, transportHints.getTransport(), sensorQos.get_rmw_qos_profile());
 
   for (const char* algorithm : GetAlgorithms())
   {
@@ -74,12 +76,12 @@ MultiModeler::MultiModeler(std::shared_ptr<rclcpp::Node> node,
     RCLCPP_INFO(m_logger, "  Background topic: %s", backgroundAlgorithm.c_str());
     RCLCPP_INFO(m_logger, "  Subtracted topic: %s", subtractedAlgorithm.c_str());
 
-    *publisher.foreground =
-        image_transport::create_publisher(node.get(), foregroundAlgorithm, sensorQos);
-    *publisher.background =
-        image_transport::create_publisher(node.get(), backgroundAlgorithm, sensorQos);
-    *publisher.subtracted =
-        image_transport::create_publisher(node.get(), subtractedAlgorithm, sensorQos);
+    *publisher.foreground = image_transport::create_publisher(node.get(), foregroundAlgorithm,
+                                                              sensorQos.get_rmw_qos_profile());
+    *publisher.background = image_transport::create_publisher(node.get(), backgroundAlgorithm,
+                                                              sensorQos.get_rmw_qos_profile());
+    *publisher.subtracted = image_transport::create_publisher(node.get(), subtractedAlgorithm,
+                                                              sensorQos.get_rmw_qos_profile());
   }
 
   RCLCPP_INFO(m_logger, "Started background modeler");

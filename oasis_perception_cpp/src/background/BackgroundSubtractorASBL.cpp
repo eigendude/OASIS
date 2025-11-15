@@ -32,12 +32,16 @@ BackgroundSubtractorASBL::BackgroundSubtractorASBL(rclcpp::Node& node,
     m_bgsPackageASBL(
         std::make_unique<bgslibrary::algorithms::AdaptiveSelectiveBackgroundLearning>())
 {
-  const rmw_qos_profile_t sensorQos = rmw_qos_profile_sensor_data;
+  rclcpp::QoS sensorQos = rclcpp::SensorDataQoS();
+  sensorQos.keep_last(1);
 
-  *m_imgPublisherForeground = image_transport::create_publisher(&node, foregroundTopic, sensorQos);
-  *m_imgPublisherSubtracted = image_transport::create_publisher(&node, subtractedTopic, sensorQos);
+  *m_imgPublisherForeground =
+      image_transport::create_publisher(&node, foregroundTopic, sensorQos.get_rmw_qos_profile());
+  *m_imgPublisherSubtracted =
+      image_transport::create_publisher(&node, subtractedTopic, sensorQos.get_rmw_qos_profile());
   *m_imgSubscriber = image_transport::create_subscription(
-      &node, imageTopic, [this](const auto& msg) { ReceiveImage(msg); }, "compressed", sensorQos);
+      &node, imageTopic, [this](const auto& msg) { ReceiveImage(msg); }, "compressed",
+      sensorQos.get_rmw_qos_profile());
 }
 
 BackgroundSubtractorASBL::~BackgroundSubtractorASBL()

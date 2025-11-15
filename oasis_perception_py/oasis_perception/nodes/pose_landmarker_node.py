@@ -26,6 +26,7 @@ from mediapipe.tasks.python import vision
 from oasis_perception.utils.bounding_box_smoother import BoundingBoxSmoother
 from rclpy.logging import LoggingSeverity
 from rclpy.qos import QoSPresetProfiles
+from sensor_msgs.msg import CameraInfo as CameraInfoMsg
 from sensor_msgs.msg import Image as ImageMsg
 from std_msgs.msg import Header as HeaderMsg
 
@@ -117,10 +118,10 @@ class PoseLandmarkerNode(rclpy.node.Node):
         sensor_qos = QoSPresetProfiles.SENSOR_DATA.value
 
         # Subscribers
-        self._image_subscription = self._image_transport.subscribe(
-            self.resolve_topic_name(IMAGE_SUB_TOPIC),
-            1,
-            self._image_callback,
+        self._camera_subscription = self._image_transport.subscribe_camera(
+            base_topic=self.resolve_topic_name(IMAGE_SUB_TOPIC),
+            queue_size=1,
+            callback=self._camera_callback,
         )
 
         # Publishers
@@ -130,8 +131,9 @@ class PoseLandmarkerNode(rclpy.node.Node):
             sensor_qos,
         )
         self._pose_image_pub = self._image_transport.advertise(
-            self.resolve_topic_name(POSE_IMAGE_TOPIC),
-            1,
+            base_topic=self.resolve_topic_name(POSE_IMAGE_TOPIC),
+            queue_size=1,
+            latch=False,  # Default
         )
         self._pose_landmarks_pub = self.create_publisher(
             PoseLandmarksArrayMsg,
@@ -170,15 +172,15 @@ class PoseLandmarkerNode(rclpy.node.Node):
         self.get_logger().info("Pose landmarker node shutting down")
         self.destroy_node()
 
-    def _image_callback(self, msg: ImageMsg) -> None:
-        if not msg.data:
+    def _camera_callback(self, image_msg: ImageMsg, camera_info: CameraInfoMsg) -> None:
+        if not image_msg.data:
             self.get_logger().error("Received empty image message")
             return
 
         # Grab the header stamp
-        header_stamp = msg.header.stamp
+        header_stamp = image_msg.header.stamp
         if header_stamp.sec != 0 or header_stamp.nanosec != 0:
-            # Use camera driver’s timestamp
+            # Use camera driver's timestamp
             timestamp_ms: int = header_stamp.sec * 1000 + (
                 header_stamp.nanosec // 1_000_000
             )
@@ -199,11 +201,13 @@ class PoseLandmarkerNode(rclpy.node.Node):
         self._last_timestamp_ms = timestamp_ms
 
         # Store for later use in the result callback
-        self._stamp_map[timestamp_ms] = msg.header
+        self._stamp_map[timestamp_ms] = image_msg.header
 
         try:
             # Convert the raw ROS image to an OpenCV image with rgb8 encoding
-            rgb_image = self._cv_bridge.imgmsg_to_cv2(msg, desired_encoding="rgb8")
+            rgb_image = self._cv_bridge.imgmsg_to_cv2(
+                image_msg, desired_encoding="rgb8"
+            )
         except Exception as e:
             self.get_logger().error("Image conversion failed: " + str(e))
             return
