@@ -67,7 +67,6 @@ jobs:
             ]);
 
             await setHash('ROS2_DESKTOP_HASH', [
-              'oasis_tooling/config/ros2-desktop/**',
               'oasis_tooling/scripts/*ros2_desktop.sh',
             ]);
 
