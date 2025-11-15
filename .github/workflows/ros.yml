@@ -73,6 +73,7 @@ jobs:
 
             await setHash('OASIS_DEPENDS_HASH', [
               'oasis_tooling/config/bgslibrary/**',
+              'oasis_tooling/config/camera_ros/**',
               'oasis_tooling/config/depends.repos',
               'oasis_tooling/config/libcamera_cmake/**',
               'oasis_tooling/config/libcec/**',

@@ -221,6 +221,15 @@ patch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/bgslibrary" \
   < "${CONFIG_DIRECTORY}/bgslibrary/0002-CMake-Fix-locating-libs-via-_ROOT-variables.patch"
 
+# camera_ros
+echo "Patching camera_ros..."
+patch \
+  -p1 \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/camera_ros" \
+  < "${CONFIG_DIRECTORY}/camera_ros/0001-Use-modern-image_transport-API.patch"
+
 # Disable image_view on systems with <= 4GiB memory
 if (( $(echo "${PHYSICAL_MEMORY_GB} <= 4" | bc -l) )); then
   echo "Disabling image_view with ${PHYSICAL_MEMORY_GB} GiB of RAM"
