@@ -81,7 +81,7 @@ elif HOST_ID == "oceanplatform":
     PERCEPTION_SERVER_IMAGE_RECT.extend(["falcon"])
     # PERCEPTION_SERVER_MESH_VIEWER.extend(["falcon"])
     PERCEPTION_SERVER_MONOCULAR_SLAM.extend(["falcon"])
-    # PERCEPTION_SERVER_POSE_LANDMARKS.extend(["falcon"])
+    PERCEPTION_SERVER_POSE_LANDMARKS.extend(["falcon"])
 
 
 ################################################################################
@@ -169,10 +169,10 @@ def generate_launch_description() -> LaunchDescription:
             composable_nodes,
             PERCEPTION_SERVER_POSE_LANDMARKS,
             input_topic="image_rect",
-            output_resolution="qhd",
+            output_resolution="sq256",
             image_transport="raw",
-            max_width=int(1920 / 2),
-            max_height=int(1080 / 2),
+            output_width=256,
+            output_height=256,
         )
 
         # Add the pose landmarker
@@ -180,7 +180,7 @@ def generate_launch_description() -> LaunchDescription:
             PerceptionDescriptions.add_pose_landmarker(
                 ld,
                 host_id,
-                input_resolution="qhd",
+                input_resolution="sq256",
                 image_transport="raw",
             )
 
