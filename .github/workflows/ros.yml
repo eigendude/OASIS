@@ -67,6 +67,7 @@ jobs:
             ]);
 
             await setHash('ROS2_DESKTOP_HASH', [
+              'oasis_tooling/config/image_common/**',
               'oasis_tooling/scripts/*ros2_desktop.sh',
             ]);
 

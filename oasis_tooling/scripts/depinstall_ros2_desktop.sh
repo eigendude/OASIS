@@ -272,6 +272,17 @@ if (( $(echo "${PHYSICAL_MEMORY_GB} <= 4" | bc -l) )); then
   touch "${ROS2_SOURCE_DIRECTORY}/ros2/rviz/COLCON_IGNORE"
 fi
 
+# Patch image_common
+echo "Patching image_common..."
+if [ "${ROS2_DISTRO}" = "kilted" ]; then
+  patch \
+    -p1 \
+    --reject-file="/dev/null" \
+    --no-backup-if-mismatch \
+    --directory="${ROS2_SOURCE_DIRECTORY}/ros-perception/image_common" \
+    < "${CONFIG_DIRECTORY}/image_common/0001-Fix-CameraSubscriber-to-honor-QoS-reliability.patch"
+fi
+
 #
 # Install rosdep packages
 #
