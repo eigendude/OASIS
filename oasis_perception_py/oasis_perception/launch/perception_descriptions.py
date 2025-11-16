@@ -299,9 +299,21 @@ class PerceptionDescriptions:
         input_topic: str,
         output_resolution: str,
         image_transport: str,
-        max_width: int,
-        max_height: int,
+        output_width: int = -1,
+        output_height: int = -1,
+        max_width: int = -1,
+        max_height: int = -1,
     ) -> None:
+        size_params = {}
+        if output_width > 0:
+            size_params["output_width"] = output_width
+        if output_height > 0:
+            size_params["output_height"] = output_height
+        if max_width > 0:
+            size_params["max_width"] = max_width
+        if max_height > 0:
+            size_params["max_height"] = max_height
+
         composable_nodes.extend(
             [
                 ComposableNode(
@@ -314,9 +326,7 @@ class PerceptionDescriptions:
                             "system_id": system_id,
                             "image_transport": image_transport,
                             "output_resolution": output_resolution,
-                            "max_width": max_width,
-                            "max_height": max_height,
-                        }
+                        }.update(size_params)
                     ],
                     remappings=[
                         (
