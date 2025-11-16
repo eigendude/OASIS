@@ -34,8 +34,10 @@ ImageDownscaler::ImageDownscaler(std::shared_ptr<rclcpp::Node> node,
                                  const std::string& imageTopic,
                                  const std::string& downscaledTopic,
                                  const std::string& imageTransport,
-                                 unsigned int maxWidth,
-                                 unsigned int maxHeight)
+                                 std::optional<unsigned int> outputWidth,
+                                 std::optional<unsigned int> outputHeight,
+                                 std::optional<unsigned int> maxWidth,
+                                 std::optional<unsigned int> maxHeight)
   : m_logger(node->get_logger()),
     m_node(std::move(node)),
     m_downscaledPublisher(std::make_unique<image_transport::CameraPublisher>()),
@@ -46,13 +48,37 @@ ImageDownscaler::ImageDownscaler(std::shared_ptr<rclcpp::Node> node,
     throw std::invalid_argument("ImageDownscaler requires a valid node");
   }
 
-  if (maxWidth == 0 || maxHeight == 0)
+  if (outputWidth && *outputWidth == 0)
   {
-    throw std::invalid_argument("ImageDownscaler requires positive maximum dimensions");
+    throw std::invalid_argument("ImageDownscaler requires a positive output width");
   }
 
-  m_maxWidth = static_cast<unsigned int>(maxWidth);
-  m_maxHeight = static_cast<unsigned int>(maxHeight);
+  if (outputHeight && *outputHeight == 0)
+  {
+    throw std::invalid_argument("ImageDownscaler requires a positive output height");
+  }
+
+  if (maxWidth && *maxWidth == 0)
+  {
+    throw std::invalid_argument("ImageDownscaler requires a positive maximum width");
+  }
+
+  if (maxHeight && *maxHeight == 0)
+  {
+    throw std::invalid_argument("ImageDownscaler requires a positive maximum height");
+  }
+
+  if (!outputWidth && !outputHeight && !maxWidth && !maxHeight)
+  {
+    RCLCPP_WARN(m_logger,
+                "No sizing parameters provided to image downscaler. Incoming images will be "
+                "republished without resizing.");
+  }
+
+  m_outputWidth = outputWidth;
+  m_outputHeight = outputHeight;
+  m_maxWidth = maxWidth;
+  m_maxHeight = maxHeight;
 
   // QoS for input from camera driver
   rclcpp::QoS inputQos = rclcpp::SensorDataQoS();
@@ -167,38 +193,39 @@ void ImageDownscaler::ReceiveImage(
   const bool shouldScale = (outputWidth != originalWidth) || (outputHeight != originalHeight);
   if (shouldScale)
   {
-    const double widthScale = static_cast<double>(outputWidth) / static_cast<double>(originalWidth);
-    const double heightScale =
-        static_cast<double>(outputHeight) / static_cast<double>(originalHeight);
-    const double scale = std::min(widthScale, heightScale);
-
     cameraInfo.width = static_cast<uint32_t>(std::max(1U, outputWidth));
     cameraInfo.height = static_cast<uint32_t>(std::max(1U, outputHeight));
 
-    cameraInfo.k[0] *= scale; // fx
-    cameraInfo.k[2] *= scale; // cx
-    cameraInfo.k[4] *= scale; // fy
-    cameraInfo.k[5] *= scale; // cy
+    const double widthScale = static_cast<double>(outputWidth) / static_cast<double>(originalWidth);
+    const double heightScale =
+        static_cast<double>(outputHeight) / static_cast<double>(originalHeight);
 
-    cameraInfo.p[0] *= scale; // fx
-    cameraInfo.p[2] *= scale; // cx
-    cameraInfo.p[5] *= scale; // fy
-    cameraInfo.p[6] *= scale; // cy
+    // Scale K matrix
+    cameraInfo.k[0] *= widthScale; // fx
+    cameraInfo.k[2] *= widthScale; // cx
+    cameraInfo.k[4] *= heightScale; // fy
+    cameraInfo.k[5] *= heightScale; // cy
+
+    // Scale P matrix
+    cameraInfo.p[0] *= widthScale; // fx
+    cameraInfo.p[2] *= widthScale; // cx
+    cameraInfo.p[5] *= heightScale; // fy
+    cameraInfo.p[6] *= heightScale; // cy
 
     if (cameraInfo.roi.width > 0 && cameraInfo.roi.height > 0)
     {
       cameraInfo.roi.x_offset = static_cast<uint32_t>(
-          std::max(0U, static_cast<unsigned int>(
-                           std::lround(static_cast<double>(cameraInfo.roi.x_offset) * scale))));
+          std::max(0U, static_cast<unsigned int>(std::lround(
+                           static_cast<double>(cameraInfo.roi.x_offset) * widthScale))));
       cameraInfo.roi.y_offset = static_cast<uint32_t>(
-          std::max(0U, static_cast<unsigned int>(
-                           std::lround(static_cast<double>(cameraInfo.roi.y_offset) * scale))));
+          std::max(0U, static_cast<unsigned int>(std::lround(
+                           static_cast<double>(cameraInfo.roi.y_offset) * heightScale))));
       cameraInfo.roi.width = static_cast<uint32_t>(
           std::max(1U, static_cast<unsigned int>(
-                           std::lround(static_cast<double>(cameraInfo.roi.width) * scale))));
+                           std::lround(static_cast<double>(cameraInfo.roi.width) * widthScale))));
       cameraInfo.roi.height = static_cast<uint32_t>(
           std::max(1U, static_cast<unsigned int>(
-                           std::lround(static_cast<double>(cameraInfo.roi.height) * scale))));
+                           std::lround(static_cast<double>(cameraInfo.roi.height) * heightScale))));
     }
   }
   else
@@ -221,11 +248,41 @@ std::pair<unsigned int, unsigned int> ImageDownscaler::CalculateTargetDimensions
   if (width == 0 || height == 0)
     return {width, height};
 
-  if (width <= m_maxWidth && height <= m_maxHeight)
+  if (m_outputWidth || m_outputHeight)
+  {
+    unsigned int targetWidth = width;
+    unsigned int targetHeight = height;
+
+    if (m_outputWidth && m_outputHeight)
+    {
+      targetWidth = *m_outputWidth;
+      targetHeight = *m_outputHeight;
+    }
+    else if (m_outputWidth)
+    {
+      targetWidth = *m_outputWidth;
+      const double aspectRatio = static_cast<double>(width) / static_cast<double>(height);
+      targetHeight = std::max(1U, static_cast<unsigned int>(
+                                      std::lround(static_cast<double>(targetWidth) / aspectRatio)));
+    }
+    else if (m_outputHeight)
+    {
+      targetHeight = *m_outputHeight;
+      const double aspectRatio = static_cast<double>(width) / static_cast<double>(height);
+      targetWidth = std::max(1U, static_cast<unsigned int>(
+                                     std::lround(static_cast<double>(targetHeight) * aspectRatio)));
+    }
+
+    return {targetWidth, targetHeight};
+  }
+
+  if (!m_maxWidth && !m_maxHeight)
     return {width, height};
 
-  const double widthScale = static_cast<double>(m_maxWidth) / static_cast<double>(width);
-  const double heightScale = static_cast<double>(m_maxHeight) / static_cast<double>(height);
+  const double widthScale =
+      m_maxWidth ? static_cast<double>(*m_maxWidth) / static_cast<double>(width) : 1.0;
+  const double heightScale =
+      m_maxHeight ? static_cast<double>(*m_maxHeight) / static_cast<double>(height) : 1.0;
   const double scale = std::min(widthScale, heightScale);
 
   if (scale >= 1.0 - SCALE_EPSILON)

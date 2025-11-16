@@ -162,12 +162,26 @@ def generate_launch_description() -> LaunchDescription:
         )
 
     if PERCEPTION_SERVER_POSE_LANDMARKS:
+        # The TensorFlow Lite model used for pose landmarking has an
+        # internal resolution of 224x224 for detecting people, and once
+        # detected landmarking is performed at 256x256.
+        PerceptionDescriptions.add_image_downscaler(
+            composable_nodes,
+            PERCEPTION_SERVER_POSE_LANDMARKS,
+            input_topic="image_rect",
+            output_resolution="qhd",
+            image_transport="raw",
+            max_width=int(1920 / 2),
+            max_height=int(1080 / 2),
+        )
+
+        # Add the pose landmarker
         for host_id in PERCEPTION_SERVER_POSE_LANDMARKS:
             PerceptionDescriptions.add_pose_landmarker(
                 ld,
                 host_id,
-                input_resolution="",  # Native resolution
-                image_transport="raw",  # Get raw images from image rectifier
+                input_resolution="qhd",
+                image_transport="raw",
             )
 
     # TODO

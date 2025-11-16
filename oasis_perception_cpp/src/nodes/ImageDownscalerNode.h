@@ -32,7 +32,10 @@ public:
   void Deinitialize();
 
 private:
+  // Construction parameters
   rclcpp::Node& m_node;
+
+  // Image parameters
   std::unique_ptr<IMAGE::ImageDownscaler> m_downscaler;
 };
 
