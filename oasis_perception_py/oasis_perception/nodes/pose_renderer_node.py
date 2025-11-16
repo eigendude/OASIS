@@ -34,7 +34,7 @@ NODE_NAME = "pose_landmarker"
 
 # Publishers
 POSE_IMAGE_TOPIC = "pose_image"
-POSE_LANDMARKS_TOPIC = "pose"
+POSE_LANDMARKS_TOPIC = "pose_landmarks"
 
 
 ################################################################################

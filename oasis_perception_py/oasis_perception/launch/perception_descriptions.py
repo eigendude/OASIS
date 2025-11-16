@@ -76,8 +76,11 @@ class PerceptionDescriptions:
     def add_apriltag_detector(
         composable_nodes: list[ComposableNode],
         system_ids: List[str],
+        input_resolution: str,
         image_transport: str,
     ) -> None:
+        RESOLUTION_PREFIX = f"{input_resolution}/" if input_resolution else ""
+
         composable_nodes.extend(
             [
                 ComposableNode(
@@ -112,8 +115,9 @@ class PerceptionDescriptions:
                         }
                     ],
                     remappings=[
-                        ("camera_info", f"{system_id}/sd/camera_info"),
-                        ("image_rect", f"{system_id}/sd/image_rect"),
+                        ("camera_info", f"{system_id}/{RESOLUTION_PREFIX}camera_info"),
+                        ("image_rect", f"{system_id}/{RESOLUTION_PREFIX}image_rect"),
+                        ("detections", f"{system_id}/{RESOLUTION_PREFIX}apriltags"),
                     ],
                 )
                 for system_id in system_ids
@@ -344,8 +348,19 @@ class PerceptionDescriptions:
         system_ids: list[str],
         input_resolution: str,
         image_transport: str,
-        reliable_transport: bool,
+        reliable_publisher: bool,
     ) -> None:
+        QOS_OVERRIDES = {
+            "publisher": {
+                "reliability": "reliable" if reliable_publisher else "best_effort",
+                "history": "keep_last",
+                "depth": 1,
+                "durability": "volatile",
+            }
+        }
+
+        RESOLUTION_PREFIX = f"{input_resolution}/" if input_resolution else ""
+
         composable_nodes.extend(
             [
                 ComposableNode(
@@ -360,31 +375,16 @@ class PerceptionDescriptions:
                             #
                             # QoS overrides for the rectified image publisher
                             #
-                            # Use sensor data settings with a depth of 1 so that
-                            # downstream consumers see a reliable stream with
-                            # the smallest queue possible.
-                            #
                             "qos_overrides": {
-                                f"/{ROS_NAMESPACE}/{system_id}/{input_resolution}/image_rect": {
-                                    "publisher": {
-                                        "reliability": (
-                                            "reliable"
-                                            if reliable_transport
-                                            else "best_effort"
-                                        ),
-                                        "history": "keep_last",
-                                        "depth": 1,
-                                        "durability": "volatile",
-                                    }
-                                }
+                                f"/{ROS_NAMESPACE}/{system_id}/{RESOLUTION_PREFIX}image_rect": QOS_OVERRIDES,
                             },
                         },
                     ],
                     remappings=[
                         # Topics
-                        ("camera_info", f"{system_id}/{input_resolution}/camera_info"),
-                        ("image", f"{system_id}/{input_resolution}/image_raw"),
-                        ("image_rect", f"{system_id}/{input_resolution}/image_rect"),
+                        ("camera_info", f"{system_id}/{RESOLUTION_PREFIX}camera_info"),
+                        ("image", f"{system_id}/{RESOLUTION_PREFIX}image_raw"),
+                        ("image_rect", f"{system_id}/{RESOLUTION_PREFIX}image_rect"),
                     ],
                 )
                 for system_id in system_ids
@@ -587,8 +587,10 @@ class PerceptionDescriptions:
 
     @staticmethod
     def add_pose_landmarker(
-        ld: LaunchDescription, zone_id: str, image_transport: str
+        ld: LaunchDescription, zone_id: str, input_resolution: str, image_transport: str
     ) -> None:
+        RESOLUTION_PREFIX = f"{input_resolution}/" if input_resolution else ""
+
         node: Node = Node(
             namespace=ROS_NAMESPACE,
             package=PYTHON_PACKAGE_NAME,
@@ -602,18 +604,18 @@ class PerceptionDescriptions:
             ],
             remappings=[
                 # Topics
-                ("camera_scene", f"{zone_id}/sd/camera_scene"),
+                ("camera_scene", f"{zone_id}/{RESOLUTION_PREFIX}camera_scene"),
                 (
                     "image",
                     (
                         # Use different remappings for Kinect V2
-                        f"{zone_id}/sd/image_color"
+                        f"{zone_id}/{RESOLUTION_PREFIX}image_color"
                         if zone_id == KINECT_V2_ZONE_ID
-                        else f"{zone_id}/sd/image_rect"
+                        else f"{zone_id}/{RESOLUTION_PREFIX}image_rect"
                     ),
                 ),
-                ("pose", f"{zone_id}/sd/pose"),
-                ("pose_image", f"{zone_id}/sd/pose_image"),
+                ("pose_landmarks", f"{zone_id}/{RESOLUTION_PREFIX}pose_landmarks"),
+                ("pose_image", f"{zone_id}/{RESOLUTION_PREFIX}pose_image"),
             ],
         )
         ld.add_action(node)

@@ -58,7 +58,7 @@ IMAGE_SUB_TOPIC = "image"
 # Publishers
 CAMERA_SCENE_TOPIC = "camera_scene"
 POSE_IMAGE_TOPIC = "pose_image"
-POSE_LANDMARKS_TOPIC = "pose"
+POSE_LANDMARKS_TOPIC = "pose_landmarks"
 
 ################################################################################
 # Pose landmarker parameters
