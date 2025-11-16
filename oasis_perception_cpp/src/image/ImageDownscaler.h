@@ -9,6 +9,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -42,8 +43,10 @@ public:
                   const std::string& imageTopic,
                   const std::string& downscaledTopic,
                   const std::string& imageTransport,
-                  unsigned int maxWidth,
-                  unsigned int maxHeight);
+                  std::optional<unsigned int> outputWidth,
+                  std::optional<unsigned int> outputHeight,
+                  std::optional<unsigned int> maxWidth,
+                  std::optional<unsigned int> maxHeight);
   ~ImageDownscaler();
 
   // ROS interface
@@ -59,8 +62,10 @@ private:
   std::shared_ptr<rclcpp::Node> m_node;
   std::unique_ptr<image_transport::CameraPublisher> m_downscaledPublisher;
   std::unique_ptr<image_transport::CameraSubscriber> m_cameraSubscriber;
-  unsigned int m_maxWidth{0};
-  unsigned int m_maxHeight{0};
+  std::optional<unsigned int> m_outputWidth;
+  std::optional<unsigned int> m_outputHeight;
+  std::optional<unsigned int> m_maxWidth;
+  std::optional<unsigned int> m_maxHeight;
 };
 
 } // namespace IMAGE

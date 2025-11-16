@@ -12,7 +12,9 @@
 
 #include <cstdint>
 #include <exception>
+#include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -36,11 +38,17 @@ constexpr std::string_view DEFAULT_IMAGE_TRANSPORT = "raw";
 constexpr std::string_view OUTPUT_RESOLUTION_PARAMETER = "output_resolution";
 constexpr std::string_view DEFAULT_OUTPUT_RESOLUTION = "sd";
 
+constexpr std::string_view OUTPUT_WIDTH_PARAMETER = "output_width";
+constexpr int64_t DEFAULT_OUTPUT_WIDTH = -1;
+
+constexpr std::string_view OUTPUT_HEIGHT_PARAMETER = "output_height";
+constexpr int64_t DEFAULT_OUTPUT_HEIGHT = -1;
+
 constexpr std::string_view MAX_WIDTH_PARAMETER = "max_width";
-constexpr int64_t DEFAULT_MAX_WIDTH = 640;
+constexpr int64_t DEFAULT_MAX_WIDTH = -1;
 
 constexpr std::string_view MAX_HEIGHT_PARAMETER = "max_height";
-constexpr int64_t DEFAULT_MAX_HEIGHT = 480;
+constexpr int64_t DEFAULT_MAX_HEIGHT = -1;
 } // namespace
 
 ImageDownscalerNode::ImageDownscalerNode(rclcpp::Node& node) : m_node(node)
@@ -50,6 +58,8 @@ ImageDownscalerNode::ImageDownscalerNode(rclcpp::Node& node) : m_node(node)
                                         DEFAULT_IMAGE_TRANSPORT.data());
   m_node.declare_parameter<std::string>(OUTPUT_RESOLUTION_PARAMETER.data(),
                                         DEFAULT_OUTPUT_RESOLUTION.data());
+  m_node.declare_parameter<int64_t>(OUTPUT_WIDTH_PARAMETER.data(), DEFAULT_OUTPUT_WIDTH);
+  m_node.declare_parameter<int64_t>(OUTPUT_HEIGHT_PARAMETER.data(), DEFAULT_OUTPUT_HEIGHT);
   m_node.declare_parameter<int64_t>(MAX_WIDTH_PARAMETER.data(), DEFAULT_MAX_WIDTH);
   m_node.declare_parameter<int64_t>(MAX_HEIGHT_PARAMETER.data(), DEFAULT_MAX_HEIGHT);
 }
@@ -90,6 +100,14 @@ bool ImageDownscalerNode::Initialize()
   if (outputResolution.empty())
     outputResolution = std::string{DEFAULT_OUTPUT_RESOLUTION};
 
+  int64_t outputWidthParam = DEFAULT_OUTPUT_WIDTH;
+  if (!m_node.get_parameter(OUTPUT_WIDTH_PARAMETER.data(), outputWidthParam))
+    outputWidthParam = DEFAULT_OUTPUT_WIDTH;
+
+  int64_t outputHeightParam = DEFAULT_OUTPUT_HEIGHT;
+  if (!m_node.get_parameter(OUTPUT_HEIGHT_PARAMETER.data(), outputHeightParam))
+    outputHeightParam = DEFAULT_OUTPUT_HEIGHT;
+
   int64_t maxWidthParam = DEFAULT_MAX_WIDTH;
   if (!m_node.get_parameter(MAX_WIDTH_PARAMETER.data(), maxWidthParam))
     maxWidthParam = DEFAULT_MAX_WIDTH;
@@ -98,12 +116,47 @@ bool ImageDownscalerNode::Initialize()
   if (!m_node.get_parameter(MAX_HEIGHT_PARAMETER.data(), maxHeightParam))
     maxHeightParam = DEFAULT_MAX_HEIGHT;
 
-  if (maxWidthParam <= 0 || maxHeightParam <= 0)
+  auto toOptionalDimension = [this](std::string_view parameterName, int64_t rawValue,
+                                    std::optional<unsigned int>& destination) -> bool
   {
-    RCLCPP_ERROR(m_node.get_logger(),
-                 "Invalid maximum dimensions %ldx%ld. Both values must be positive.", maxWidthParam,
-                 maxHeightParam);
+    if (rawValue <= 0)
+    {
+      destination.reset();
+      return true;
+    }
+
+    if (rawValue > std::numeric_limits<unsigned int>::max())
+    {
+      RCLCPP_ERROR(m_node.get_logger(), "Parameter '%s' value %ld exceeds supported range",
+                   parameterName.data(), rawValue);
+      return false;
+    }
+
+    destination = static_cast<unsigned int>(rawValue);
+    return true;
+  };
+
+  std::optional<unsigned int> outputWidth;
+  if (!toOptionalDimension(OUTPUT_WIDTH_PARAMETER, outputWidthParam, outputWidth))
     return false;
+
+  std::optional<unsigned int> outputHeight;
+  if (!toOptionalDimension(OUTPUT_HEIGHT_PARAMETER, outputHeightParam, outputHeight))
+    return false;
+
+  std::optional<unsigned int> maxWidth;
+  if (!toOptionalDimension(MAX_WIDTH_PARAMETER, maxWidthParam, maxWidth))
+    return false;
+
+  std::optional<unsigned int> maxHeight;
+  if (!toOptionalDimension(MAX_HEIGHT_PARAMETER, maxHeightParam, maxHeight))
+    return false;
+
+  if (!outputWidth && !outputHeight && !maxWidth && !maxHeight)
+  {
+    RCLCPP_WARN(
+        m_node.get_logger(),
+        "No size parameters provided for image downscaler. Images will be republished as-is.");
   }
 
   std::string imageTopic = systemId;
@@ -130,15 +183,27 @@ bool ImageDownscalerNode::Initialize()
   RCLCPP_INFO(m_node.get_logger(), "Camera info topic: %s", cameraInfoTopic.c_str());
   RCLCPP_INFO(m_node.get_logger(), "Downscaled camera info topic: %s",
               downscaledCameraInfoTopic.c_str());
-  RCLCPP_INFO(m_node.get_logger(), "Max dimensions: %ldx%ld", maxWidthParam, maxHeightParam);
+  if (outputWidth || outputHeight)
+  {
+    const auto widthLog = outputWidth ? std::to_string(*outputWidth) : std::string{"native"};
+    const auto heightLog = outputHeight ? std::to_string(*outputHeight) : std::string{"native"};
+    RCLCPP_INFO(m_node.get_logger(), "Output dimensions: %sx%s", widthLog.c_str(),
+                heightLog.c_str());
+  }
+  if (maxWidth || maxHeight)
+  {
+    const auto widthLog = maxWidth ? std::to_string(*maxWidth) : std::string{"unbounded"};
+    const auto heightLog = maxHeight ? std::to_string(*maxHeight) : std::string{"unbounded"};
+    RCLCPP_INFO(m_node.get_logger(), "Max dimensions: %sx%s", widthLog.c_str(), heightLog.c_str());
+  }
 
   try
   {
     std::shared_ptr<rclcpp::Node> nodeShared = m_node.shared_from_this();
     m_downscaler = std::make_unique<IMAGE::ImageDownscaler>(
         std::move(nodeShared), std::move(imageTopic), std::move(downscaledTopic),
-        std::move(imageTransport), static_cast<unsigned int>(maxWidthParam),
-        static_cast<unsigned int>(maxHeightParam));
+        std::move(imageTransport), std::move(outputWidth), std::move(outputHeight),
+        std::move(maxWidth), std::move(maxHeight));
   }
   catch (const std::exception& e)
   {
