@@ -193,38 +193,39 @@ void ImageDownscaler::ReceiveImage(
   const bool shouldScale = (outputWidth != originalWidth) || (outputHeight != originalHeight);
   if (shouldScale)
   {
-    const double widthScale = static_cast<double>(outputWidth) / static_cast<double>(originalWidth);
-    const double heightScale =
-        static_cast<double>(outputHeight) / static_cast<double>(originalHeight);
-    const double scale = std::min(widthScale, heightScale);
-
     cameraInfo.width = static_cast<uint32_t>(std::max(1U, outputWidth));
     cameraInfo.height = static_cast<uint32_t>(std::max(1U, outputHeight));
 
-    cameraInfo.k[0] *= scale; // fx
-    cameraInfo.k[2] *= scale; // cx
-    cameraInfo.k[4] *= scale; // fy
-    cameraInfo.k[5] *= scale; // cy
+    const double widthScale = static_cast<double>(outputWidth) / static_cast<double>(originalWidth);
+    const double heightScale =
+        static_cast<double>(outputHeight) / static_cast<double>(originalHeight);
 
-    cameraInfo.p[0] *= scale; // fx
-    cameraInfo.p[2] *= scale; // cx
-    cameraInfo.p[5] *= scale; // fy
-    cameraInfo.p[6] *= scale; // cy
+    // Scale K matrix
+    cameraInfo.k[0] *= widthScale;  // fx
+    cameraInfo.k[2] *= widthScale;  // cx
+    cameraInfo.k[4] *= heightScale; // fy
+    cameraInfo.k[5] *= heightScale; // cy
+
+    // Scale P matrix
+    cameraInfo.p[0] *= widthScale;  // fx
+    cameraInfo.p[2] *= widthScale;  // cx
+    cameraInfo.p[5] *= heightScale; // fy
+    cameraInfo.p[6] *= heightScale; // cy
 
     if (cameraInfo.roi.width > 0 && cameraInfo.roi.height > 0)
     {
-      cameraInfo.roi.x_offset = static_cast<uint32_t>(
-          std::max(0U, static_cast<unsigned int>(
-                           std::lround(static_cast<double>(cameraInfo.roi.x_offset) * scale))));
-      cameraInfo.roi.y_offset = static_cast<uint32_t>(
-          std::max(0U, static_cast<unsigned int>(
-                           std::lround(static_cast<double>(cameraInfo.roi.y_offset) * scale))));
-      cameraInfo.roi.width = static_cast<uint32_t>(
-          std::max(1U, static_cast<unsigned int>(
-                           std::lround(static_cast<double>(cameraInfo.roi.width) * scale))));
-      cameraInfo.roi.height = static_cast<uint32_t>(
-          std::max(1U, static_cast<unsigned int>(
-                           std::lround(static_cast<double>(cameraInfo.roi.height) * scale))));
+      cameraInfo.roi.x_offset = static_cast<uint32_t>(std::max(
+          0U, static_cast<unsigned int>(
+                   std::lround(static_cast<double>(cameraInfo.roi.x_offset) * widthScale))));
+      cameraInfo.roi.y_offset = static_cast<uint32_t>(std::max(
+          0U, static_cast<unsigned int>(
+                   std::lround(static_cast<double>(cameraInfo.roi.y_offset) * heightScale))));
+      cameraInfo.roi.width = static_cast<uint32_t>(std::max(
+          1U, static_cast<unsigned int>(
+                   std::lround(static_cast<double>(cameraInfo.roi.width) * widthScale))));
+      cameraInfo.roi.height = static_cast<uint32_t>(std::max(
+          1U, static_cast<unsigned int>(
+                   std::lround(static_cast<double>(cameraInfo.roi.height) * heightScale))));
     }
   }
   else
