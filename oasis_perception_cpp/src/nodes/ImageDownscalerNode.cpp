@@ -16,6 +16,7 @@
 #include <string>
 #include <string_view>
 
+#include <image_transport/image_transport.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
 
@@ -74,16 +75,9 @@ bool ImageDownscalerNode::Initialize()
     return false;
   }
 
-  std::string imageTransport;
-  if (!m_node.get_parameter(IMAGE_TRANSPORT_PARAMETER.data(), imageTransport))
-  {
-    RCLCPP_ERROR(m_node.get_logger(), "Missing image transport parameter '%s'",
-                 IMAGE_TRANSPORT_PARAMETER.data());
-    return false;
-  }
-
-  if (imageTransport.empty())
-    imageTransport = std::string{DEFAULT_IMAGE_TRANSPORT};
+  const image_transport::TransportHints transportHints{
+      &m_node, std::string{DEFAULT_IMAGE_TRANSPORT}, std::string{IMAGE_TRANSPORT_PARAMETER}};
+  const std::string imageTransport = transportHints.getTransport();
 
   std::string outputResolution;
   if (!m_node.get_parameter(OUTPUT_RESOLUTION_PARAMETER.data(), outputResolution))
@@ -140,10 +134,11 @@ bool ImageDownscalerNode::Initialize()
 
   try
   {
-    auto nodeShared = m_node.shared_from_this();
+    std::shared_ptr<rclcpp::Node> nodeShared = m_node.shared_from_this();
     m_downscaler = std::make_unique<IMAGE::ImageDownscaler>(
-        nodeShared, imageTopic, downscaledTopic, imageTransport, static_cast<int>(maxWidthParam),
-        static_cast<int>(maxHeightParam), cameraInfoTopic, downscaledCameraInfoTopic);
+        std::move(nodeShared), std::move(imageTopic), std::move(downscaledTopic),
+        std::move(imageTransport), static_cast<unsigned int>(maxWidthParam),
+        static_cast<unsigned int>(maxHeightParam));
   }
   catch (const std::exception& e)
   {

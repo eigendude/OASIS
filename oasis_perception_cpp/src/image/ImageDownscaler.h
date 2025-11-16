@@ -20,8 +20,9 @@
 
 namespace image_transport
 {
-class Publisher;
-class Subscriber;
+class CameraPublisher;
+class CameraSubscriber;
+class TransportHints;
 } // namespace image_transport
 
 namespace rclcpp
@@ -41,26 +42,25 @@ public:
                   const std::string& imageTopic,
                   const std::string& downscaledTopic,
                   const std::string& imageTransport,
-                  int maxWidth,
-                  int maxHeight,
-                  const std::string& cameraInfoTopic,
-                  const std::string& downscaledCameraInfoTopic);
+                  unsigned int maxWidth,
+                  unsigned int maxHeight);
   ~ImageDownscaler();
 
-  void ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg);
-  void ReceiveCameraInfo(const sensor_msgs::msg::CameraInfo::SharedPtr& msg);
+  // ROS interface
+  void ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& imageMsg,
+                    const sensor_msgs::msg::CameraInfo::ConstSharedPtr& cameraInfoPtr);
+  void ReceiveCameraInfo();
 
 private:
-  std::pair<int, int> CalculateTargetDimensions(int width, int height) const;
+  std::pair<unsigned int, unsigned int> CalculateTargetDimensions(unsigned int width,
+                                                                  unsigned int height) const;
 
   rclcpp::Logger m_logger;
   std::shared_ptr<rclcpp::Node> m_node;
-  std::unique_ptr<image_transport::Publisher> m_downscaledPublisher;
-  std::unique_ptr<image_transport::Subscriber> m_imageSubscriber;
-  rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr m_cameraInfoPublisher;
-  rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr m_cameraInfoSubscriber;
-  int m_maxWidth{0};
-  int m_maxHeight{0};
+  std::unique_ptr<image_transport::CameraPublisher> m_downscaledPublisher;
+  std::unique_ptr<image_transport::CameraSubscriber> m_cameraSubscriber;
+  unsigned int m_maxWidth{0};
+  unsigned int m_maxHeight{0};
 };
 
 } // namespace IMAGE

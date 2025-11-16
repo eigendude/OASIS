@@ -34,26 +34,25 @@ ImageDownscaler::ImageDownscaler(std::shared_ptr<rclcpp::Node> node,
                                  const std::string& imageTopic,
                                  const std::string& downscaledTopic,
                                  const std::string& imageTransport,
-                                 int maxWidth,
-                                 int maxHeight,
-                                 const std::string& cameraInfoTopic,
-                                 const std::string& downscaledCameraInfoTopic)
+                                 unsigned int maxWidth,
+                                 unsigned int maxHeight)
   : m_logger(node->get_logger()),
     m_node(std::move(node)),
-    m_downscaledPublisher(std::make_unique<image_transport::Publisher>()),
-    m_imageSubscriber(std::make_unique<image_transport::Subscriber>()),
-    m_maxWidth(maxWidth),
-    m_maxHeight(maxHeight)
+    m_downscaledPublisher(std::make_unique<image_transport::CameraPublisher>()),
+    m_cameraSubscriber(std::make_unique<image_transport::CameraSubscriber>())
 {
   if (!m_node)
   {
     throw std::invalid_argument("ImageDownscaler requires a valid node");
   }
 
-  if (m_maxWidth <= 0 || m_maxHeight <= 0)
+  if (maxWidth == 0 || maxHeight == 0)
   {
     throw std::invalid_argument("ImageDownscaler requires positive maximum dimensions");
   }
+
+  m_maxWidth = static_cast<unsigned int>(maxWidth);
+  m_maxHeight = static_cast<unsigned int>(maxHeight);
 
   // QoS for input from camera driver
   rclcpp::QoS inputQos = rclcpp::SensorDataQoS();
@@ -65,43 +64,51 @@ ImageDownscaler::ImageDownscaler(std::shared_ptr<rclcpp::Node> node,
   outputQos.reliable();
 
   // Publishers
-  *m_downscaledPublisher = image_transport::create_publisher(m_node.get(), downscaledTopic,
-                                                             outputQos.get_rmw_qos_profile());
-  m_cameraInfoPublisher =
-      m_node->create_publisher<sensor_msgs::msg::CameraInfo>(downscaledCameraInfoTopic, outputQos);
+  *m_downscaledPublisher = image_transport::create_camera_publisher(
+      m_node.get(), downscaledTopic, outputQos.get_rmw_qos_profile());
 
   // Subscribers
-  *m_imageSubscriber = image_transport::create_subscription(
-      m_node.get(), imageTopic, [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg)
-      { ReceiveImage(msg); }, imageTransport, inputQos.get_rmw_qos_profile());
-  m_cameraInfoSubscriber = m_node->create_subscription<sensor_msgs::msg::CameraInfo>(
-      cameraInfoTopic, inputQos,
-      [this](const sensor_msgs::msg::CameraInfo::SharedPtr msg) { ReceiveCameraInfo(msg); });
+  *m_cameraSubscriber = image_transport::create_camera_subscription(
+      m_node.get(), imageTopic,
+      [this](const sensor_msgs::msg::Image::ConstSharedPtr& imageMsg,
+             const sensor_msgs::msg::CameraInfo::ConstSharedPtr& cameraInfo)
+      { ReceiveImage(imageMsg, cameraInfo); },
+      imageTransport, inputQos.get_rmw_qos_profile());
 }
 
 ImageDownscaler::~ImageDownscaler()
 {
   // Deinitialize subscribers
-  m_imageSubscriber->shutdown();
-  m_cameraInfoSubscriber.reset();
+  m_cameraSubscriber->shutdown();
 
   // Deinitialize publishers
   m_downscaledPublisher->shutdown();
-  m_cameraInfoPublisher.reset();
 }
 
-void ImageDownscaler::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg)
+void ImageDownscaler::ReceiveImage(
+    const sensor_msgs::msg::Image::ConstSharedPtr& imageMsg,
+    const sensor_msgs::msg::CameraInfo::ConstSharedPtr& cameraInfoPtr)
 {
-  if (!msg)
+  if (!imageMsg)
   {
     RCLCPP_WARN(m_logger, "Received null image message");
     return;
   }
 
-  cv_bridge::CvImageConstPtr cv_ptr;
+  if (!cameraInfoPtr)
+  {
+    RCLCPP_WARN(m_logger, "Received null camera info message");
+    return;
+  }
+
+  //
+  // Get downscaled image
+  //
+
+  cv_bridge::CvImageConstPtr cvImagePtr;
   try
   {
-    cv_ptr = cv_bridge::toCvShare(msg, msg->encoding);
+    cvImagePtr = cv_bridge::toCvShare(imageMsg, imageMsg->encoding);
   }
   catch (const cv_bridge::Exception& e)
   {
@@ -109,7 +116,7 @@ void ImageDownscaler::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr
     return;
   }
 
-  const cv::Mat& image = cv_ptr->image;
+  const cv::Mat& image = cvImagePtr->image;
   if (image.empty())
   {
     RCLCPP_WARN(m_logger, "Received empty image frame");
@@ -127,37 +134,31 @@ void ImageDownscaler::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr
 
   const auto [targetWidth, targetHeight] = CalculateTargetDimensions(width, height);
 
-  if (targetWidth == width && targetHeight == height)
+  if (targetWidth == static_cast<unsigned int>(width) &&
+      targetHeight == static_cast<unsigned int>(height))
   {
-    m_downscaledPublisher->publish(msg);
+    m_downscaledPublisher->publish(imageMsg, cameraInfoPtr);
     return;
   }
 
   cv::Mat resizedImage;
   cv::resize(image, resizedImage, cv::Size(targetWidth, targetHeight), 0.0, 0.0, cv::INTER_AREA);
 
-  cv_bridge::CvImage downscaledImage(cv_ptr->header, cv_ptr->encoding, resizedImage);
-  auto downscaledMessage = downscaledImage.toImageMsg();
-  m_downscaledPublisher->publish(downscaledMessage);
-}
+  const cv_bridge::CvImage downscaledImage(cvImagePtr->header, cvImagePtr->encoding, resizedImage);
+  const sensor_msgs::msg::Image::SharedPtr downscaledMessage = downscaledImage.toImageMsg();
 
-void ImageDownscaler::ReceiveCameraInfo(const sensor_msgs::msg::CameraInfo::SharedPtr& msg)
-{
-  if (!msg)
+  //
+  // Get downscaled camera info
+  //
+
+  sensor_msgs::msg::CameraInfo cameraInfo = *cameraInfoPtr;
+
+  const unsigned int originalWidth = static_cast<unsigned int>(cameraInfo.width);
+  const unsigned int originalHeight = static_cast<unsigned int>(cameraInfo.height);
+
+  if (originalWidth == 0 || originalHeight == 0)
   {
-    RCLCPP_WARN(m_logger, "Received null camera info message");
-    return;
-  }
-
-  sensor_msgs::msg::CameraInfo cameraInfo = *msg;
-
-  const int originalWidth = static_cast<int>(cameraInfo.width);
-  const int originalHeight = static_cast<int>(cameraInfo.height);
-
-  if (originalWidth <= 0 || originalHeight <= 0)
-  {
-    RCLCPP_WARN(m_logger, "Invalid camera info dimensions: %dx%d", originalWidth, originalHeight);
-    m_cameraInfoPublisher->publish(cameraInfo);
+    RCLCPP_ERROR(m_logger, "Invalid camera info dimensions: %dx%d", originalWidth, originalHeight);
     return;
   }
 
@@ -171,8 +172,8 @@ void ImageDownscaler::ReceiveCameraInfo(const sensor_msgs::msg::CameraInfo::Shar
         static_cast<double>(outputHeight) / static_cast<double>(originalHeight);
     const double scale = std::min(widthScale, heightScale);
 
-    cameraInfo.width = static_cast<uint32_t>(std::max(1, outputWidth));
-    cameraInfo.height = static_cast<uint32_t>(std::max(1, outputHeight));
+    cameraInfo.width = static_cast<uint32_t>(std::max(1U, outputWidth));
+    cameraInfo.height = static_cast<uint32_t>(std::max(1U, outputHeight));
 
     cameraInfo.k[0] *= scale; // fx
     cameraInfo.k[2] *= scale; // cx
@@ -186,28 +187,38 @@ void ImageDownscaler::ReceiveCameraInfo(const sensor_msgs::msg::CameraInfo::Shar
 
     if (cameraInfo.roi.width > 0 && cameraInfo.roi.height > 0)
     {
-      cameraInfo.roi.x_offset = static_cast<uint32_t>(std::max(
-          0, static_cast<int>(std::lround(static_cast<double>(cameraInfo.roi.x_offset) * scale))));
-      cameraInfo.roi.y_offset = static_cast<uint32_t>(std::max(
-          0, static_cast<int>(std::lround(static_cast<double>(cameraInfo.roi.y_offset) * scale))));
-      cameraInfo.roi.width = static_cast<uint32_t>(std::max(
-          1, static_cast<int>(std::lround(static_cast<double>(cameraInfo.roi.width) * scale))));
-      cameraInfo.roi.height = static_cast<uint32_t>(std::max(
-          1, static_cast<int>(std::lround(static_cast<double>(cameraInfo.roi.height) * scale))));
+      cameraInfo.roi.x_offset = static_cast<uint32_t>(
+          std::max(0U, static_cast<unsigned int>(
+                           std::lround(static_cast<double>(cameraInfo.roi.x_offset) * scale))));
+      cameraInfo.roi.y_offset = static_cast<uint32_t>(
+          std::max(0U, static_cast<unsigned int>(
+                           std::lround(static_cast<double>(cameraInfo.roi.y_offset) * scale))));
+      cameraInfo.roi.width = static_cast<uint32_t>(
+          std::max(1U, static_cast<unsigned int>(
+                           std::lround(static_cast<double>(cameraInfo.roi.width) * scale))));
+      cameraInfo.roi.height = static_cast<uint32_t>(
+          std::max(1U, static_cast<unsigned int>(
+                           std::lround(static_cast<double>(cameraInfo.roi.height) * scale))));
     }
   }
   else
   {
-    cameraInfo.width = static_cast<uint32_t>(std::max(1, outputWidth));
-    cameraInfo.height = static_cast<uint32_t>(std::max(1, outputHeight));
+    cameraInfo.width = static_cast<uint32_t>(std::max(1U, outputWidth));
+    cameraInfo.height = static_cast<uint32_t>(std::max(1U, outputHeight));
   }
 
-  m_cameraInfoPublisher->publish(cameraInfo);
+  //
+  // Publish image/camera info pair
+  //
+
+  m_downscaledPublisher->publish(
+      downscaledMessage, std::make_shared<sensor_msgs::msg::CameraInfo>(std::move(cameraInfo)));
 }
 
-std::pair<int, int> ImageDownscaler::CalculateTargetDimensions(int width, int height) const
+std::pair<unsigned int, unsigned int> ImageDownscaler::CalculateTargetDimensions(
+    unsigned int width, unsigned int height) const
 {
-  if (width <= 0 || height <= 0)
+  if (width == 0 || height == 0)
     return {width, height};
 
   if (width <= m_maxWidth && height <= m_maxHeight)
@@ -220,8 +231,10 @@ std::pair<int, int> ImageDownscaler::CalculateTargetDimensions(int width, int he
   if (scale >= 1.0 - SCALE_EPSILON)
     return {width, height};
 
-  const int targetWidth = std::max(1, static_cast<int>(std::round(width * scale)));
-  const int targetHeight = std::max(1, static_cast<int>(std::round(height * scale)));
+  const unsigned int targetWidth =
+      std::max(1U, static_cast<unsigned int>(std::round(width * scale)));
+  const unsigned int targetHeight =
+      std::max(1U, static_cast<unsigned int>(std::round(height * scale)));
 
   return {targetWidth, targetHeight};
 }
