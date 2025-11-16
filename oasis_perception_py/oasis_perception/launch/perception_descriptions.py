@@ -326,7 +326,8 @@ class PerceptionDescriptions:
                             "system_id": system_id,
                             "image_transport": image_transport,
                             "output_resolution": output_resolution,
-                        }.update(size_params)
+                            **size_params,
+                        }
                     ],
                     remappings=[
                         (
