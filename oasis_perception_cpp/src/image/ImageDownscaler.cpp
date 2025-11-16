@@ -84,10 +84,9 @@ ImageDownscaler::ImageDownscaler(std::shared_ptr<rclcpp::Node> node,
   rclcpp::QoS inputQos = rclcpp::SensorDataQoS();
   inputQos.keep_last(1);
 
-  // QoS for output topics - reliable is required for some camera info subscribers
+  // QoS for output topics
   rclcpp::QoS outputQos = rclcpp::SensorDataQoS();
   outputQos.keep_last(1);
-  outputQos.reliable();
 
   // Publishers
   *m_downscaledPublisher = image_transport::create_camera_publisher(
