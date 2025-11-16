@@ -1,7 +1,7 @@
 From 518db680e8a0d2945c6d938f2f990d65ab6ffcef Mon Sep 17 00:00:00 2001
 From: Garrett Brown <garrett.brown@aclima.earth>
 Date: Sat, 15 Nov 2025 20:40:43 -0800
-Subject: [PATCH] Fix CameraSubscriber to honor QoS reliability
+Subject: [PATCH 1/2] Fix CameraSubscriber to honor QoS reliability
 
 ---
  image_transport/src/camera_subscriber.cpp | 2 +-

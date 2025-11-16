@@ -281,6 +281,12 @@ if [ "${ROS2_DISTRO}" = "kilted" ]; then
     --no-backup-if-mismatch \
     --directory="${ROS2_SOURCE_DIRECTORY}/ros-perception/image_common" \
     < "${CONFIG_DIRECTORY}/image_common/0001-Fix-CameraSubscriber-to-honor-QoS-reliability.patch"
+  patch \
+    -p1 \
+    --reject-file="/dev/null" \
+    --no-backup-if-mismatch \
+    --directory="${ROS2_SOURCE_DIRECTORY}/ros-perception/image_common" \
+    < "${CONFIG_DIRECTORY}/image_common/0002-Use-sensor-data-QoS.patch"
 fi
 
 #
