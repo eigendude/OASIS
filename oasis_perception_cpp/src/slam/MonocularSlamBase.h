@@ -69,11 +69,10 @@ protected:
   const rclcpp::Logger& Logger() const;
 
 private:
-  struct MapRenderTask
+  struct ImageProcessTask
   {
     std_msgs::msg::Header header;
-    Eigen::Isometry3f cameraPose;
-    std::vector<ORB_SLAM3::MapPoint*> mapPoints;
+    double timestamp = 0.0;
     cv_bridge::CvImageConstPtr inputImage;
   };
 
@@ -109,7 +108,7 @@ private:
   std::vector<Eigen::Vector3f> m_worldPointBuffer;
 
   // Synchronization parameters
-  std::deque<MapRenderTask> m_renderQueue;
+  std::deque<ImageProcessTask> m_renderQueue;
   std::mutex m_renderMutex;
   std::condition_variable m_renderCv;
   std::thread m_renderThread;
