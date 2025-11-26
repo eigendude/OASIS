@@ -38,13 +38,18 @@ MonocularSlamBase::MonocularSlamBase(rclcpp::Node& node,
   : m_logger(std::make_unique<rclcpp::Logger>(node.get_logger()))
 {
   rclcpp::QoS sensorQos = rclcpp::SensorDataQoS();
-  sensorQos.keep_last(1);
-
+  sensorQos.reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE);
   m_mapImagePublisher =
       image_transport::create_publisher(&node, mapImageTopic, sensorQos.get_rmw_qos_profile());
+
+  rclcpp::QoS pointCloudQos{rclcpp::SensorDataQoS{}};
+  pointCloudQos.reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE);
   m_pointCloudPublisher =
-      node.create_publisher<sensor_msgs::msg::PointCloud2>(pointCloudTopic, sensorQos);
-  m_posePublisher = node.create_publisher<geometry_msgs::msg::PoseStamped>(poseTopic, sensorQos);
+      node.create_publisher<sensor_msgs::msg::PointCloud2>(pointCloudTopic, pointCloudQos);
+
+  rclcpp::QoS poseQos{rclcpp::SensorDataQoS{}};
+  poseQos.reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE);
+  m_posePublisher = node.create_publisher<geometry_msgs::msg::PoseStamped>(poseTopic, poseQos);
 
   m_renderThreadRunning = true;
   m_renderThread = std::thread(&MonocularSlamBase::MapPublisherLoop, this);
