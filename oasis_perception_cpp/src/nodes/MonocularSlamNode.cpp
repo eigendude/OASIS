@@ -124,7 +124,9 @@ bool MonocularSlamNode::Initialize()
   RCLCPP_INFO(*m_logger, "ORB_SLAM3 settings file: %s", settingsFile.c_str());
 
   rclcpp::QoS sensorQos = rclcpp::SensorDataQoS();
-  sensorQos.reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE);
+  // Prefer best-effort delivery for camera frames so lossy wireless links don't
+  // block the pipeline while retransmitting dropped packets.
+  sensorQos.reliability(RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT);
   *m_imgSubscriber = image_transport::create_subscription(
       &m_node, imageTopic, [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg)
       { OnImage(msg); }, imageTransport, sensorQos.get_rmw_qos_profile());
