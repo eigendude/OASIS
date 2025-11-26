@@ -180,6 +180,11 @@ class ConductorManagerNode(rclpy.node.Node):
             rclpy.qos.QoSPresetProfiles.SYSTEM_DEFAULT.value
         )
 
+        # Reliable QoS with minimal queueing for input events
+        input_qos_profile = rclpy.qos.QoSProfile(
+            depth=1, reliability=rclpy.qos.ReliabilityPolicy.RELIABLE
+        )
+
         # Publishers
         self._conductor_state_pub: rclpy.publisher.Publisher = self.create_publisher(
             msg_type=ConductorStateMsg,
@@ -209,7 +214,7 @@ class ConductorManagerNode(rclpy.node.Node):
                 msg_type=PeripheralInputMsg,
                 topic=SUBSCRIBE_PERIPHERAL_INPUT,
                 callback=self._on_peripheral_input,
-                qos_profile=qos_profile,
+                qos_profile=input_qos_profile,
             )
         )
         self._peripherals_sub: rclpy.subscription.Subscription = (
