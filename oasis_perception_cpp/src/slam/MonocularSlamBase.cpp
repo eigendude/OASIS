@@ -103,13 +103,6 @@ void MonocularSlamBase::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedP
   const std_msgs::msg::Header& header = msg->header;
   const double timestamp = ROS::RosUtils::HeaderStampToSeconds(header);
 
-  if (m_lastTimestamp && timestamp <= *m_lastTimestamp)
-  {
-    RCLCPP_WARN(Logger(), "Rejecting frame with non-increasing timestamp %.6f (last %.6f)",
-                timestamp, *m_lastTimestamp);
-    return;
-  }
-
   cv_bridge::CvImageConstPtr inputImage;
   try
   {
@@ -121,68 +114,18 @@ void MonocularSlamBase::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedP
     return;
   }
 
-  const cv::Mat& rgbImage = inputImage->image;
+  ImageProcessTask task;
+  task.header = header;
+  task.timestamp = timestamp;
+  task.inputImage = std::move(inputImage);
 
-  m_lastTimestamp = timestamp;
-
-  const Eigen::Isometry3f cameraPose = TrackFrame(rgbImage, timestamp);
-
-  ORB_SLAM3::System* slam = GetSlam();
-  if (slam == nullptr)
-    return;
-
-  if (m_posePublisher)
   {
-    geometry_msgs::msg::PoseStamped poseMsg;
-    poseMsg.header = header;
-    poseMsg.header.frame_id = MAP_FRAME_ID;
-
-    const Eigen::Vector3f& translation = cameraPose.translation();
-    poseMsg.pose.position.x = static_cast<double>(translation.x());
-    poseMsg.pose.position.y = static_cast<double>(translation.y());
-    poseMsg.pose.position.z = static_cast<double>(translation.z());
-
-    Eigen::Quaternionf quaternion(cameraPose.linear());
-    quaternion.normalize();
-    poseMsg.pose.orientation.x = static_cast<double>(quaternion.x());
-    poseMsg.pose.orientation.y = static_cast<double>(quaternion.y());
-    poseMsg.pose.orientation.z = static_cast<double>(quaternion.z());
-    poseMsg.pose.orientation.w = static_cast<double>(quaternion.w());
-
-    m_posePublisher->publish(poseMsg);
+    std::lock_guard<std::mutex> lock(m_renderMutex);
+    m_renderQueue.clear();
+    m_renderQueue.emplace_back(std::move(task));
   }
 
-  // Get SLAM state
-  const int trackingState = slam->GetTrackingState();
-  const std::vector<ORB_SLAM3::MapPoint*> trackedMapPoints = slam->GetTrackedMapPoints();
-
-  // Get map points
-  std::vector<ORB_SLAM3::MapPoint*> mapPoints;
-  ORB_SLAM3::Atlas* atlas = slam->GetAtlas();
-  if (atlas != nullptr)
-    mapPoints = atlas->GetAllMapPoints();
-
-  RCLCPP_INFO(Logger(), "Tracking state: %d, tracked points: %zu, map points: %zu", trackingState,
-              trackedMapPoints.size(), mapPoints.size());
-
-  if (m_mapImagePublisher && m_renderThreadRunning.load() && !mapPoints.empty())
-  {
-    MapRenderTask task;
-    task.header = header;
-    task.cameraPose = cameraPose;
-    task.mapPoints = std::move(mapPoints);
-    task.inputImage = std::move(inputImage);
-
-    {
-      std::lock_guard<std::mutex> lock(m_renderMutex);
-      m_renderQueue.clear();
-      m_renderQueue.emplace_back(std::move(task));
-    }
-
-    m_renderCv.notify_one();
-  }
-
-  OnPostTrack();
+  m_renderCv.notify_one();
 }
 
 bool MonocularSlamBase::HasSlam() const
@@ -209,7 +152,7 @@ void MonocularSlamBase::MapPublisherLoop()
 {
   while (true)
   {
-    MapRenderTask task;
+    ImageProcessTask task;
     {
       std::unique_lock<std::mutex> lock(m_renderMutex);
       m_renderCv.wait(lock,
@@ -222,39 +165,103 @@ void MonocularSlamBase::MapPublisherLoop()
       m_renderQueue.pop_front();
     }
 
-    // Initialize world points
-    m_worldPointBuffer.clear();
-    m_worldPointBuffer.reserve(task.mapPoints.size());
+    const std_msgs::msg::Header& header = task.header;
+    const double timestamp = task.timestamp;
 
-    // Get world points
-    for (const ORB_SLAM3::MapPoint* mapPoint : task.mapPoints)
+    if (m_lastTimestamp && timestamp <= *m_lastTimestamp)
     {
-      // Validate map point
-      if (mapPoint == nullptr || const_cast<ORB_SLAM3::MapPoint*>(mapPoint)->isBad())
-        continue;
-
-      const Eigen::Vector3f worldPoint = const_cast<ORB_SLAM3::MapPoint*>(mapPoint)->GetWorldPos();
-
-      // Validate world point
-      if (!std::isfinite(worldPoint.x()) || !std::isfinite(worldPoint.y()) ||
-          !std::isfinite(worldPoint.z()))
-      {
-        continue;
-      }
-
-      // Record world point
-      m_worldPointBuffer.push_back(worldPoint);
+      RCLCPP_WARN(Logger(), "Rejecting frame with non-increasing timestamp %.6f (last %.6f)",
+                  timestamp, *m_lastTimestamp);
+      continue;
     }
 
-    if (m_worldPointBuffer.empty())
+    cv_bridge::CvImageConstPtr inputImage = task.inputImage;
+    if (!inputImage)
       continue;
 
-    if (m_pointCloudPublisher && m_pointCloudPublisher->get_subscription_count() > 0)
-      PublishPointCloud(task.header, m_worldPointBuffer);
+    const cv::Mat& rgbImage = inputImage->image;
 
-    if (m_mapImagePublisher && m_mapImagePublisher->getNumSubscribers() > 0)
-      PublishMapView(task.header, task.cameraPose, m_worldPointBuffer,
-                     const_cast<cv::Mat&>(task.inputImage->image));
+    m_lastTimestamp = timestamp;
+
+    const Eigen::Isometry3f cameraPose = TrackFrame(rgbImage, timestamp);
+
+    ORB_SLAM3::System* slam = GetSlam();
+    if (slam == nullptr)
+      continue;
+
+    if (m_posePublisher)
+    {
+      geometry_msgs::msg::PoseStamped poseMsg;
+      poseMsg.header = header;
+      poseMsg.header.frame_id = MAP_FRAME_ID;
+
+      const Eigen::Vector3f& translation = cameraPose.translation();
+      poseMsg.pose.position.x = static_cast<double>(translation.x());
+      poseMsg.pose.position.y = static_cast<double>(translation.y());
+      poseMsg.pose.position.z = static_cast<double>(translation.z());
+
+      Eigen::Quaternionf quaternion(cameraPose.linear());
+      quaternion.normalize();
+      poseMsg.pose.orientation.x = static_cast<double>(quaternion.x());
+      poseMsg.pose.orientation.y = static_cast<double>(quaternion.y());
+      poseMsg.pose.orientation.z = static_cast<double>(quaternion.z());
+      poseMsg.pose.orientation.w = static_cast<double>(quaternion.w());
+
+      m_posePublisher->publish(poseMsg);
+    }
+
+    // Get SLAM state
+    const int trackingState = slam->GetTrackingState();
+    const std::vector<ORB_SLAM3::MapPoint*> trackedMapPoints = slam->GetTrackedMapPoints();
+
+    // Get map points
+    std::vector<ORB_SLAM3::MapPoint*> mapPoints;
+    ORB_SLAM3::Atlas* atlas = slam->GetAtlas();
+    if (atlas != nullptr)
+      mapPoints = atlas->GetAllMapPoints();
+
+    RCLCPP_INFO(Logger(), "Tracking state: %d, tracked points: %zu, map points: %zu",
+                trackingState, trackedMapPoints.size(), mapPoints.size());
+
+    if (m_mapImagePublisher && m_renderThreadRunning.load() && !mapPoints.empty())
+    {
+      // Initialize world points
+      m_worldPointBuffer.clear();
+      m_worldPointBuffer.reserve(mapPoints.size());
+
+      // Get world points
+      for (const ORB_SLAM3::MapPoint* mapPoint : mapPoints)
+      {
+        // Validate map point
+        if (mapPoint == nullptr || const_cast<ORB_SLAM3::MapPoint*>(mapPoint)->isBad())
+          continue;
+
+        const Eigen::Vector3f worldPoint =
+            const_cast<ORB_SLAM3::MapPoint*>(mapPoint)->GetWorldPos();
+
+        // Validate world point
+        if (!std::isfinite(worldPoint.x()) || !std::isfinite(worldPoint.y()) ||
+            !std::isfinite(worldPoint.z()))
+        {
+          continue;
+        }
+
+        // Record world point
+        m_worldPointBuffer.push_back(worldPoint);
+      }
+
+      if (!m_worldPointBuffer.empty())
+      {
+        if (m_pointCloudPublisher && m_pointCloudPublisher->get_subscription_count() > 0)
+          PublishPointCloud(header, m_worldPointBuffer);
+
+        if (m_mapImagePublisher && m_mapImagePublisher->getNumSubscribers() > 0)
+          PublishMapView(header, cameraPose, m_worldPointBuffer,
+                         const_cast<cv::Mat&>(inputImage->image));
+      }
+    }
+
+    OnPostTrack();
   }
 }
 
