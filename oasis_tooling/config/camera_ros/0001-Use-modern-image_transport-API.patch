@@ -1,4 +1,4 @@
-From 5f128a944d611daf96b39588eafa60e0b9d7fa88 Mon Sep 17 00:00:00 2001
+From 0e5b66f53a147a87341fb385e74bd20ced6d4aa1 Mon Sep 17 00:00:00 2001
 From: Garrett Brown <garrett.brown@aclima.earth>
 Date: Sat, 15 Nov 2025 10:26:07 -0800
 Subject: [PATCH] Use modern image_transport API
@@ -6,8 +6,8 @@ Subject: [PATCH] Use modern image_transport API
 ---
  CMakeLists.txt     |   2 +
  package.xml        |   1 +
- src/CameraNode.cpp | 168 ++++++++-------------------------------------
- 3 files changed, 30 insertions(+), 141 deletions(-)
+ src/CameraNode.cpp | 166 +++++++--------------------------------------
+ 3 files changed, 28 insertions(+), 141 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
 index aea7317..40d0721 100644
@@ -42,7 +42,7 @@ index 36d63b4..8d038ec 100644
    <exec_depend>ros2launch</exec_depend>
    <exec_depend>ament_index_python</exec_depend>
 diff --git a/src/CameraNode.cpp b/src/CameraNode.cpp
-index 6a743ca..658520d 100644
+index 6a743ca..b3786aa 100644
 --- a/src/CameraNode.cpp
 +++ b/src/CameraNode.cpp
 @@ -15,6 +15,7 @@
@@ -152,7 +152,7 @@ index 6a743ca..658520d 100644
  {
    // pixel format
    rcl_interfaces::msg::ParameterDescriptor param_descr_format;
-@@ -301,34 +239,16 @@ CameraNode::CameraNode(const rclcpp::NodeOptions &options)
+@@ -301,34 +239,14 @@ CameraNode::CameraNode(const rclcpp::NodeOptions &options)
    const rclcpp::ParameterValue &camera_id =
      declare_parameter("camera", rclcpp::ParameterValue {}, param_descr_ro.set__dynamic_typing(true));
  
@@ -185,13 +185,11 @@ index 6a743ca..658520d 100644
 -    this->create_publisher<sensor_msgs::msg::CompressedImage>("~/image_raw/compressed", 1);
 -  pub_ci = this->create_publisher<sensor_msgs::msg::CameraInfo>("~/camera_info", 1);
 +  // publisher for images and camera info
-+  rclcpp::QoS sensorQos = rclcpp::SensorDataQoS();
-+  sensorQos.keep_last(1);
-+  pub_camera = image_transport::create_camera_publisher(this, "~/image_raw", sensorQos.get_rmw_qos_profile());
++  pub_camera = image_transport::create_camera_publisher(this, "~/image_raw");
  
    // start camera manager and check for cameras
    camera_manager.start();
-@@ -658,55 +578,44 @@ CameraNode::process(libcamera::Request *const request)
+@@ -658,55 +576,44 @@ CameraNode::process(libcamera::Request *const request)
        // prepare image messages
        const libcamera::StreamConfiguration &cfg = stream->configuration();
  
@@ -267,7 +265,7 @@ index 6a743ca..658520d 100644
      }
      else if (request->status() == libcamera::Request::RequestCancelled) {
        RCLCPP_ERROR_STREAM(get_logger(), "request '" << request->toString() << "' cancelled");
-@@ -727,27 +636,4 @@ CameraNode::process(libcamera::Request *const request)
+@@ -727,27 +634,4 @@ CameraNode::process(libcamera::Request *const request)
    }
  }
  
