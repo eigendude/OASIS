@@ -21,6 +21,9 @@ set -o nounset
 # Version
 OPENCV_VERSION="4.12.0"
 
+# Extract major version (everything before the first '.')
+OPENCV_MAJOR_VERSION="${OPENCV_VERSION%%.*}"
+
 # URLS
 OPENCV_URL="https://github.com/opencv/opencv/archive/refs/tags/${OPENCV_VERSION}.tar.gz"
 OPENCV_CONTRIB_URL="https://github.com/opencv/opencv_contrib/archive/refs/tags/${OPENCV_VERSION}.tar.gz"
@@ -60,7 +63,7 @@ OPENCV_ARCHIVE_PATH="${OPENCV_DOWNLOAD_DIR}/opencv-${OPENCV_VERSION}.tar.gz"
 OPENCV_CONTRIB_ARCHIVE_PATH="${OPENCV_DOWNLOAD_DIR}/opencv_contrib-${OPENCV_VERSION}.tar.gz"
 
 # Expose the custom OpenCV build to CMake and downstream packages
-export OpenCV_DIR="${OPENCV_INSTALL_DIR}/lib/cmake/opencv4"
+export OpenCV_DIR="${OPENCV_INSTALL_DIR}/lib/cmake/opencv${OPENCV_MAJOR_VERSION}"
 export OpenCV_ROOT="${OPENCV_INSTALL_DIR}"
 
 if [ -n "${CMAKE_PREFIX_PATH:-}" ]; then
