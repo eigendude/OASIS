@@ -123,9 +123,11 @@ bool MonocularSlamNode::Initialize()
   }
   RCLCPP_INFO(*m_logger, "ORB_SLAM3 settings file: %s", settingsFile.c_str());
 
+  rclcpp::QoS sensorQos = rclcpp::SensorDataQoS();
+  sensorQos.reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE);
   *m_imgSubscriber = image_transport::create_subscription(
       &m_node, imageTopic, [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg)
-      { OnImage(msg); }, imageTransport, rmw_qos_profile_sensor_data);
+      { OnImage(msg); }, imageTransport, sensorQos.get_rmw_qos_profile());
 
   m_monocularSlam =
       std::make_unique<SLAM::MonocularSlam>(m_node, mapImageTopic, pointCloudTopic, poseTopic);
