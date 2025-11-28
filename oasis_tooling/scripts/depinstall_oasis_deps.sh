@@ -244,12 +244,6 @@ patch \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/libcamera_cmake" \
   < "${CONFIG_DIRECTORY}/libcamera_cmake/0001-Update-libcamera-repo-tag.patch"
-patch \
-  -p1 \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/libcamera_cmake" \
-  < "${CONFIG_DIRECTORY}/libcamera_cmake/0002-Force-serial-build.patch"
 
 # libcec
 echo "Patching libcec..."
