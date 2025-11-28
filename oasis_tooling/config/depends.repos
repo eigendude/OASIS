@@ -32,12 +32,16 @@ repositories:
     version: v2.3.0
   ros-perception/apriltag_msgs:
     type: git
-    url: https://github.com/christianrauch/apriltag_msgs.git
-    version: master
+    url: https://github.com/eigendude/apriltag_msgs.git
+    version: main
   ros-perception/apriltag_ros:
     type: git
-    url: https://github.com/christianrauch/apriltag_ros.git
-    version: master
+    url: https://github.com/eigendude/apriltag_ros.git
+    version: main
+  ros-perception/apriltag_viz:
+    type: git
+    url: https://github.com/eigendude/apriltag_viz.git
+    version: main
   ros-perception/bgslibrary:
     type: git
     url: https://github.com/andrewssobral/bgslibrary.git
