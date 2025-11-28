@@ -45,7 +45,7 @@ repositories:
   ros-perception/camera_ros:
     type: git
     url: https://github.com/christianrauch/camera_ros.git
-    version: main
+    version: 0.5.2
   ros-perception/ffmpeg_encoder_decoder:
     type: git
     url: https://github.com/ros-misc-utilities/ffmpeg_encoder_decoder.git
@@ -66,9 +66,9 @@ repositories:
     type: git
     url: https://github.com/ros-perception/image_transport_plugins.git
     version: kilted
-  ros-perception/libcamera_cmake:
+  ros-perception/oasis_libcamera_cmake:
     type: git
-    url: https://github.com/christianrauch/libcamera_cmake.git
+    url: https://github.com/eigendude/oasis_libcamera_cmake.git
     version: main
   ros-perception/oasis_kinect2:
     type: git

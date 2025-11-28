@@ -1,13 +1,13 @@
-From 0e5b66f53a147a87341fb385e74bd20ced6d4aa1 Mon Sep 17 00:00:00 2001
-From: Garrett Brown <garrett.brown@aclima.earth>
-Date: Sat, 15 Nov 2025 10:26:07 -0800
+From ae30268cd0e3199e70b763df9fc7cd325f14f30b Mon Sep 17 00:00:00 2001
+From: Garrett Brown <eigendebugger@gmail.com>
+Date: Thu, 27 Nov 2025 21:59:42 -0800
 Subject: [PATCH] Use modern image_transport API
 
 ---
  CMakeLists.txt     |   2 +
  package.xml        |   1 +
- src/CameraNode.cpp | 166 +++++++--------------------------------------
- 3 files changed, 28 insertions(+), 141 deletions(-)
+ src/CameraNode.cpp | 182 ++++++++++++---------------------------------
+ 3 files changed, 50 insertions(+), 135 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
 index aea7317..40d0721 100644
@@ -30,7 +30,7 @@ index aea7317..40d0721 100644
  target_include_directories(camera_component PUBLIC ${libcamera_INCLUDE_DIRS})
  target_link_libraries(camera_component PUBLIC ${libcamera_LINK_LIBRARIES})
 diff --git a/package.xml b/package.xml
-index 36d63b4..8d038ec 100644
+index 9a88ace..e4ff567 100644
 --- a/package.xml
 +++ b/package.xml
 @@ -15,6 +15,7 @@
@@ -42,7 +42,7 @@ index 36d63b4..8d038ec 100644
    <exec_depend>ros2launch</exec_depend>
    <exec_depend>ament_index_python</exec_depend>
 diff --git a/src/CameraNode.cpp b/src/CameraNode.cpp
-index 6a743ca..b3786aa 100644
+index 8a5f0b1..91b9645 100644
 --- a/src/CameraNode.cpp
 +++ b/src/CameraNode.cpp
 @@ -15,6 +15,7 @@
@@ -53,7 +53,15 @@ index 6a743ca..b3786aa 100644
  #include <iostream>
  #include <libcamera/base/shared_fd.h>
  #include <libcamera/base/signal.h>
-@@ -97,38 +98,18 @@ private:
+@@ -46,6 +47,7 @@
+ #include <rclcpp/parameter.hpp>
+ #include <rclcpp/parameter_value.hpp>
+ #include <rclcpp/publisher.hpp>
++#include <rclcpp/qos.hpp>
+ #include <rclcpp/time.hpp>
+ #include <rclcpp_components/register_node_macro.hpp>
+ #include <regex>
+@@ -97,38 +99,18 @@ private:
  
    bool use_node_time;
  
@@ -93,7 +101,7 @@ index 6a743ca..b3786aa 100644
  };
  
  RCLCPP_COMPONENTS_REGISTER_NODE(camera::CameraNode)
-@@ -182,42 +163,6 @@ get_sensor_format(const std::string &format_str)
+@@ -182,40 +164,31 @@ get_sensor_format(const std::string &format_str)
    throw std::runtime_error("Invalid sensor_mode. Expected [width]:[height] but got " + format_str);
  }
  
@@ -104,12 +112,29 @@ index 6a743ca..b3786aa 100644
 -compressImageMsg(const sensor_msgs::msg::Image &source,
 -                 sensor_msgs::msg::CompressedImage &destination,
 -                 const std::vector<int> &params = std::vector<int>())
--{
++image_transport::CameraPublisher
++create_camera_publisher(rclcpp::Node *node, const std::string &topic)
+ {
 -  namespace enc = sensor_msgs::image_encodings;
--
++  image_transport::CameraPublisher pub_camera;
++
++  // Publisher QoS
++  const rclcpp::QoS publish_qos {1};
++
++  // NOTE: ROS 2 Rolling deprecates image_transport::create_camera_publisher(Node*, ...),
++  // but this node still uses the older API. We intentionally call the deprecated
++  // overload here and locally suppress -Wdeprecated-declarations so the code
++  // keeps building with -Werror enabled. When this package is updated to the
++  // QoS-based interface, this helper should be removed and the new overload used.
++#if defined(__GNUC__) || defined(__clang__)
++#pragma GCC diagnostic push
++#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
++#endif
+ 
 -  std::shared_ptr<CameraNode> tracked_object;
 -  cv_bridge::CvImageConstPtr cv_ptr = cv_bridge::toCvShare(source, tracked_object);
--
++  pub_camera = image_transport::create_camera_publisher(node, topic, publish_qos.get_rmw_qos_profile());
+ 
 -  destination.header = source.header;
 -  cv::Mat image;
 -  if (cv_ptr->encoding == enc::BGR8 || cv_ptr->encoding == enc::BGRA8 ||
@@ -128,15 +153,17 @@ index 6a743ca..b3786aa 100644
 -    }
 -    image = temp->image;
 -  }
--
++#if defined(__GNUC__) || defined(__clang__)
++#pragma GCC diagnostic pop
++#endif
+ 
 -  destination.format = "jpg";
 -  cv::imencode(".jpg", image, destination.data, params);
--}
--
++  return pub_camera;
+ }
  
- CameraNode::CameraNode(const rclcpp::NodeOptions &options)
-     : Node("camera", options),
-@@ -234,14 +179,7 @@ CameraNode::CameraNode(const rclcpp::NodeOptions &options)
+ 
+@@ -234,14 +207,7 @@ CameraNode::CameraNode(const rclcpp::NodeOptions &options)
  #else
        cim(this),
  #endif
@@ -152,7 +179,7 @@ index 6a743ca..b3786aa 100644
  {
    // pixel format
    rcl_interfaces::msg::ParameterDescriptor param_descr_format;
-@@ -301,34 +239,14 @@ CameraNode::CameraNode(const rclcpp::NodeOptions &options)
+@@ -301,34 +267,14 @@ CameraNode::CameraNode(const rclcpp::NodeOptions &options)
    const rclcpp::ParameterValue &camera_id =
      declare_parameter("camera", rclcpp::ParameterValue {}, param_descr_ro.set__dynamic_typing(true));
  
@@ -185,11 +212,11 @@ index 6a743ca..b3786aa 100644
 -    this->create_publisher<sensor_msgs::msg::CompressedImage>("~/image_raw/compressed", 1);
 -  pub_ci = this->create_publisher<sensor_msgs::msg::CameraInfo>("~/camera_info", 1);
 +  // publisher for images and camera info
-+  pub_camera = image_transport::create_camera_publisher(this, "~/image_raw");
++  pub_camera = create_camera_publisher(this, "~/image_raw");
  
    // start camera manager and check for cameras
    camera_manager.start();
-@@ -658,55 +576,44 @@ CameraNode::process(libcamera::Request *const request)
+@@ -658,55 +604,44 @@ CameraNode::process(libcamera::Request *const request)
        // prepare image messages
        const libcamera::StreamConfiguration &cfg = stream->configuration();
  
@@ -265,7 +292,7 @@ index 6a743ca..b3786aa 100644
      }
      else if (request->status() == libcamera::Request::RequestCancelled) {
        RCLCPP_ERROR_STREAM(get_logger(), "request '" << request->toString() << "' cancelled");
-@@ -727,27 +634,4 @@ CameraNode::process(libcamera::Request *const request)
+@@ -727,27 +662,4 @@ CameraNode::process(libcamera::Request *const request)
    }
  }
  
