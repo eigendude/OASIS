@@ -112,6 +112,7 @@ class PerceptionDescriptions:
                             "detector.sharpening": 0.25,
                             "detector.debug": False,  # Disable writing debug images and info to disk
                             "profile": False,  # Noisy and useless in production
+                            "debug_image_pub": True,  # Enable publishing debug image
                         }
                     ],
                     remappings=[
