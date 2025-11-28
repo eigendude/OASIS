@@ -18,7 +18,7 @@ index 2ec20f6..7c3b2e5 100644
 -  GIT_REPOSITORY      https://git.libcamera.org/libcamera/libcamera.git
 -  GIT_TAG             v0.0.4
 +  GIT_REPOSITORY      https://github.com/raspberrypi/libcamera.git
-+  GIT_TAG             v0.5.2+rpt20250903
++  GIT_TAG             v0.6.0+rpt20251127
    GIT_SHALLOW         ON
    CONFIGURE_COMMAND   meson setup build ../libcamera_source --prefix ${CMAKE_INSTALL_PREFIX} --libdir lib --buildtype ${MESON_BUILD_TYPE} --auto-features=disabled
                          -Dpipelines=all

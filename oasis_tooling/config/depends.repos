@@ -45,7 +45,7 @@ repositories:
   ros-perception/camera_ros:
     type: git
     url: https://github.com/christianrauch/camera_ros.git
-    version: main
+    version: f12efe6c8e7bd7d7f1151475260dbf87720a77f4
   ros-perception/ffmpeg_encoder_decoder:
     type: git
     url: https://github.com/ros-misc-utilities/ffmpeg_encoder_decoder.git
