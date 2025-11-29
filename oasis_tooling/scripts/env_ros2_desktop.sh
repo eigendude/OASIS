@@ -19,7 +19,7 @@ set -o nounset
 #
 
 # Define the ROS distro to use
-ROS2_DISTRO=rolling
+ROS2_DISTRO=kilted
 
 #
 # Environment paths and config

@@ -65,11 +65,11 @@ repositories:
   ros-perception/image_pipeline:
     type: git
     url: https://github.com/ros-perception/image_pipeline.git
-    version: rolling
+    version: kilted
   ros-perception/image_transport_plugins:
     type: git
     url: https://github.com/ros-perception/image_transport_plugins.git
-    version: rolling
+    version: kilted
   ros-perception/oasis_libcamera_cmake:
     type: git
     url: https://github.com/eigendude/oasis_libcamera_cmake.git
@@ -89,7 +89,7 @@ repositories:
   ros-perception/ros2_v4l2_camera:
     type: git
     url: https://gitlab.com/boldhearts/ros2_v4l2_camera.git
-    version: rolling
+    version: 0.7.1
   ros-perception/vision_opencv:
     type: git
     url: https://github.com/ros-perception/vision_opencv.git
