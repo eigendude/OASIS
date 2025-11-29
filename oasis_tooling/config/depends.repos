@@ -38,10 +38,6 @@ repositories:
     type: git
     url: https://github.com/eigendude/apriltag_ros.git
     version: main
-  ros-perception/apriltag_viz:
-    type: git
-    url: https://github.com/eigendude/apriltag_viz.git
-    version: main
   ros-perception/bgslibrary:
     type: git
     url: https://github.com/andrewssobral/bgslibrary.git
