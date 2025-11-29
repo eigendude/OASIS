@@ -9,7 +9,9 @@
 #include "apriltag/AprilTagVisualizer.h"
 
 #include <array>
+#include <cmath>
 #include <string>
+#include <vector>
 
 #include <opencv2/imgproc.hpp>
 #include <rclcpp/logging.hpp>
@@ -21,12 +23,61 @@ using sensor_msgs::msg::Image;
 namespace
 {
 // Drawing colours
-const std::array<cv::Scalar, 4> COLORS = {
-    cv::Scalar(0, 0, 255, 255), // Red
-    cv::Scalar(0, 255, 0, 255), // Green
-    cv::Scalar(255, 0, 0, 255), // Blue
-    cv::Scalar(0, 255, 255, 255), // Yellow
-};
+const cv::Scalar OUTLINE_COLOR(255, 255, 0, 255); // Aqua
+
+constexpr int OUTLINE_THICKNESS = 4;
+
+std::vector<cv::Point> CreateOutline(const std::array<cv::Point2f, 4>& corners,
+                                     float offsetDistance)
+{
+  std::vector<cv::Point> outline;
+  outline.reserve(corners.size());
+
+  double area = 0.0;
+  for (std::size_t index = 0; index < corners.size(); ++index)
+  {
+    const auto& current = corners[index];
+    const auto& next = corners[(index + 1) % corners.size()];
+    area += current.x * next.y - next.x * current.y;
+  }
+
+  const bool isCounterClockwise = area > 0.0;
+
+  std::array<cv::Point2f, 4> outwardNormals{};
+  for (std::size_t index = 0; index < corners.size(); ++index)
+  {
+    const auto& current = corners[index];
+    const auto& next = corners[(index + 1) % corners.size()];
+
+    const cv::Point2f edge = next - current;
+    const float length = std::hypot(edge.x, edge.y);
+
+    if (length == 0.0F)
+      continue;
+
+    if (isCounterClockwise)
+      outwardNormals[index] = cv::Point2f(edge.y / length, -edge.x / length);
+    else
+      outwardNormals[index] = cv::Point2f(-edge.y / length, edge.x / length);
+  }
+
+  for (std::size_t index = 0; index < corners.size(); ++index)
+  {
+    const cv::Point2f combinedNormal =
+        outwardNormals[index] + outwardNormals[(index + corners.size() - 1) % corners.size()];
+
+    const float magnitude = std::hypot(combinedNormal.x, combinedNormal.y);
+
+    const cv::Point2f direction =
+        magnitude > 0.0F ? combinedNormal * (1.0F / magnitude) : outwardNormals[index];
+
+    outline.emplace_back(
+        static_cast<int>(std::round(corners[index].x + direction.x * offsetDistance)),
+        static_cast<int>(std::round(corners[index].y + direction.y * offsetDistance)));
+  }
+
+  return outline;
+}
 } // namespace
 
 using namespace OASIS;
@@ -83,20 +134,11 @@ sensor_msgs::msg::Image::SharedPtr AprilTagVisualizer::ProcessDetections(
 
   for (const auto& detection : msg->detections)
   {
-    // Overlay mode "axes"
-    const auto center = Project(detection.homography, {0.0, 0.0});
-    const auto xAxis = Project(detection.homography, {1.0, 0.0});
-    const auto yAxis = Project(detection.homography, {0.0, 1.0});
+    const auto outline = CreateOutline(detection.corners, static_cast<float>(OUTLINE_THICKNESS));
 
-    cv::line(m_overlayImage, cv::Point2d(center[0], center[1]), cv::Point2d(xAxis[0], xAxis[1]),
-             COLORS[0], 3);
-    cv::line(m_overlayImage, cv::Point2d(center[0], center[1]), cv::Point2d(yAxis[0], yAxis[1]),
-             COLORS[1], 3);
-
-    for (std::size_t index = 0; index < 4; ++index)
+    if (!outline.empty())
     {
-      cv::circle(m_overlayImage, cv::Point(detection.corners[index].x, detection.corners[index].y),
-                 5, COLORS[index], 2);
+      cv::polylines(m_overlayImage, outline, true, OUTLINE_COLOR, OUTLINE_THICKNESS, cv::LINE_AA);
     }
   }
 
