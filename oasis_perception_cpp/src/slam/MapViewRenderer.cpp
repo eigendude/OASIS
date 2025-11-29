@@ -149,31 +149,20 @@ void MapViewRenderer::RenderOverlayQuadrilateral(const CameraModel& cameraModel,
   if (cameraModel.width == 0 || cameraModel.height == 0)
     return;
 
-  // Convert the detected quadrilateral from image_rect pixel coordinates to normalized
-  // camera coordinates. This "dewarps" the incoming pixels so they can be reprojected
-  // using the supplied camera model.
-  std::array<cv::Point2f, 4> normalizedCorners;
+  // The input corners are already expressed in the image_rect pixel frame, which matches
+  // the output buffer dimensions. Render directly in pixel space to avoid applying the
+  // camera model twice.
+  std::array<cv::Point, 4> pixelCorners;
   for (std::size_t index = 0; index < overlay.pixelCorners.size(); ++index)
   {
-    normalizedCorners[index].x = (overlay.pixelCorners[index].x - cameraModel.cx) / cameraModel.fx;
-    normalizedCorners[index].y = (overlay.pixelCorners[index].y - cameraModel.cy) / cameraModel.fy;
-  }
-
-  // Reproject the normalized corners back into the output map image using the camera model.
-  std::array<cv::Point, 4> reprojectedCorners;
-  for (std::size_t index = 0; index < normalizedCorners.size(); ++index)
-  {
-    const float u = cameraModel.fx * normalizedCorners[index].x + cameraModel.cx;
-    const float v = cameraModel.fy * normalizedCorners[index].y + cameraModel.cy;
-
-    reprojectedCorners[index].x = static_cast<int>(std::lround(u));
-    reprojectedCorners[index].y = static_cast<int>(std::lround(v));
+    pixelCorners[index].x = static_cast<int>(std::lround(overlay.pixelCorners[index].x));
+    pixelCorners[index].y = static_cast<int>(std::lround(overlay.pixelCorners[index].y));
   }
 
   cv::Mat mask(static_cast<int>(cameraModel.height), static_cast<int>(cameraModel.width), CV_8UC1,
                cv::Scalar(0));
 
-  cv::fillConvexPoly(mask, reprojectedCorners.data(), static_cast<int>(reprojectedCorners.size()),
+  cv::fillConvexPoly(mask, pixelCorners.data(), static_cast<int>(pixelCorners.size()),
                      cv::Scalar(255));
 
   // Use a large weight so the overlay remains visible atop the map projection.
