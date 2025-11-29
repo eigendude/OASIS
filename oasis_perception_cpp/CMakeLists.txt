@@ -87,6 +87,7 @@ set(MEDIAPIPE_SOURCES
 #
 
 set(APRILTAG_VIZ_SOURCES
+  src/apriltag/AprilTagVisualizer.cpp
   src/nodes/AprilTagVizNode.cpp
 )
 set(APRILTAG_VIZ_LIBRARIES
