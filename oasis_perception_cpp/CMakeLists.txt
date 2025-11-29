@@ -465,6 +465,7 @@ if (ORB_SLAM_OASIS_FOUND)
     src/nodes/MapVizNode.cpp
   )
   set(MAP_VIZ_LIBRARIES
+    apriltag_msgs::apriltag_msgs__rosidl_typesupport_cpp
     cv_bridge::cv_bridge
     DBoW2::DBoW2
     g2o::g2o
