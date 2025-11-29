@@ -86,6 +86,7 @@ if HOST_ID == "falcon":
 
     # Low-blur, full-FOV binned mode @ ~56 fps (IMX708 2304x1296 min frame time ≈ 17849 µs)
     LIBCAMERA_PARAMS = {
+        "AeEnable": False,  # Disable auto-exposure
         "ExposureTime": 8000,  # 8 ms  (~1/125 s)
         "ExposureTimeMode": 1,  # Manual exposure (>= libcamera 0.5)
         "FrameDurationLimits": [
