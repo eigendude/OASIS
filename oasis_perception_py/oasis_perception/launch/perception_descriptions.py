@@ -142,20 +142,27 @@ class PerceptionDescriptions:
             [
                 ComposableNode(
                     namespace=ROS_NAMESPACE,
-                    package="apriltag_viz",
-                    plugin="AprilVizNode",
+                    package=CPP_PACKAGE_NAME,
+                    plugin="oasis_perception::AprilTagVizComponent",
                     name=f"apriltag_viz_{system_id}",
                     parameters=[
                         {
+                            "system_id": system_id,
                             "image_transport": image_transport,
                             "overlay_mode": overlay_mode,
                         }
                     ],
                     remappings=[
-                        ("image", f"{system_id}/{RESOLUTION_PREFIX}image_rect"),
-                        ("detections", f"{system_id}/{RESOLUTION_PREFIX}apriltags"),
                         (
-                            "tag_detections_image",
+                            f"{system_id}_image",
+                            f"{system_id}/{RESOLUTION_PREFIX}image_rect",
+                        ),
+                        (
+                            f"{system_id}_apriltags",
+                            f"{system_id}/{RESOLUTION_PREFIX}apriltags",
+                        ),
+                        (
+                            f"{system_id}_apriltags_image",
                             f"{system_id}/{RESOLUTION_PREFIX}apriltags_image",
                         ),
                     ],
