@@ -9,7 +9,6 @@
 #pragma once
 
 #include "CameraModel.h"
-#include "MapViewRenderer.h"
 
 #include <atomic>
 #include <condition_variable>
@@ -25,10 +24,8 @@
 #include <System.h>
 #include <cv_bridge/cv_bridge.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
-#include <image_transport/image_transport.hpp>
 #include <opencv2/core.hpp>
 #include <rclcpp/publisher.hpp>
-#include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <std_msgs/msg/header.hpp>
 
@@ -47,7 +44,6 @@ class MonocularSlamBase
 {
 public:
   MonocularSlamBase(rclcpp::Node& node,
-                    const std::string& mapImageTopic,
                     const std::string& pointCloudTopic,
                     const std::string& poseTopic);
   virtual ~MonocularSlamBase();
@@ -83,20 +79,14 @@ private:
   // Publishing functions
   void PublishPointCloud(const std_msgs::msg::Header& header,
                          const std::vector<Eigen::Vector3f>& worldPoints);
-  void PublishMapView(const std_msgs::msg::Header& header,
-                      const Eigen::Isometry3f& cameraPose,
-                      const std::vector<Eigen::Vector3f>& worldPoints,
-                      cv::Mat& imageBuffer);
 
   // ROS parameters
   std::unique_ptr<rclcpp::Logger> m_logger;
-  std::optional<image_transport::Publisher> m_mapImagePublisher;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr m_pointCloudPublisher;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr m_posePublisher;
 
   // SLAM components
   CameraModel m_cameraModel;
-  MapViewRenderer m_mapViewRenderer;
 
   // ORB-SLAM3 system
   std::unique_ptr<ORB_SLAM3::System> m_slam;

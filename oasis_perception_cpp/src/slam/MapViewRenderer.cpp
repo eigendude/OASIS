@@ -11,6 +11,7 @@
 #include "ViridisPaletteSampler.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -18,6 +19,7 @@
 #include <vector>
 
 #include <MapPoint.h>
+#include <opencv2/imgproc.hpp>
 
 using namespace OASIS;
 using namespace SLAM;
@@ -31,6 +33,16 @@ void MapViewRenderer::Initialize(const CameraModel& cameraModel)
 
 bool MapViewRenderer::Render(const Eigen::Isometry3f& cameraFromWorldTransform,
                              const std::vector<Eigen::Vector3f>& worldPoints,
+                             cv::Mat& outputImage)
+{
+  static const std::vector<OverlayQuadrilateral> EMPTY_OVERLAYS;
+
+  return Render(cameraFromWorldTransform, worldPoints, EMPTY_OVERLAYS, outputImage);
+}
+
+bool MapViewRenderer::Render(const Eigen::Isometry3f& cameraFromWorldTransform,
+                             const std::vector<Eigen::Vector3f>& worldPoints,
+                             const std::vector<OverlayQuadrilateral>& overlays,
                              cv::Mat& outputImage)
 {
   if (!CanRender(m_cameraModel))
@@ -51,6 +63,9 @@ bool MapViewRenderer::Render(const Eigen::Isometry3f& cameraFromWorldTransform,
     RenderProjectedPoint(m_cameraModel, m_projectedPoints[index], m_normalizedDepths[index],
                          averageFocal, m_imageBuffers);
   }
+
+  for (const auto& overlay : overlays)
+    RenderOverlayQuadrilateral(m_cameraModel, overlay, m_imageBuffers);
 
   ComposeOutputImage(m_cameraModel, m_imageBuffers, outputImage);
 
@@ -124,6 +139,49 @@ void MapViewRenderer::ProjectMapPoints(const CameraModel& cameraModel,
 
     // Record projected point
     projectedPoints.push_back({pixelX, pixelY, depth});
+  }
+}
+
+void MapViewRenderer::RenderOverlayQuadrilateral(const CameraModel& cameraModel,
+                                                 const OverlayQuadrilateral& overlay,
+                                                 ImageBuffers& imageBuffers)
+{
+  if (cameraModel.width == 0 || cameraModel.height == 0)
+    return;
+
+  // The input corners are already expressed in the image_rect pixel frame, which matches
+  // the output buffer dimensions. Render directly in pixel space to avoid applying the
+  // camera model twice.
+  std::array<cv::Point, 4> pixelCorners;
+  for (std::size_t index = 0; index < overlay.pixelCorners.size(); ++index)
+  {
+    pixelCorners[index].x = static_cast<int>(std::lround(overlay.pixelCorners[index].x));
+    pixelCorners[index].y = static_cast<int>(std::lround(overlay.pixelCorners[index].y));
+  }
+
+  cv::Mat mask(static_cast<int>(cameraModel.height), static_cast<int>(cameraModel.width), CV_8UC1,
+               cv::Scalar(0));
+
+  cv::fillConvexPoly(mask, pixelCorners.data(), static_cast<int>(pixelCorners.size()),
+                     cv::Scalar(255));
+
+  // Use a large weight so the overlay remains visible atop the map projection.
+  const float overlayWeight = 1000.0f;
+
+  for (int y = 0; y < mask.rows; ++y)
+  {
+    const std::uint8_t* maskRow = mask.ptr<std::uint8_t>(y);
+    for (int x = 0; x < mask.cols; ++x)
+    {
+      if (maskRow[x] == 0)
+        continue;
+
+      const int index = y * static_cast<int>(cameraModel.width) + x;
+
+      imageBuffers.depthBuffer[index] = 0.0f;
+      imageBuffers.colorBuffer[index] = overlayWeight * overlay.color;
+      imageBuffers.weightBuffer[index] = overlayWeight;
+    }
   }
 }
 
