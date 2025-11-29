@@ -54,6 +54,7 @@ print(f"Launching perception on {HOSTNAME} in zone {ZONE_ID}")
 
 
 PERCEPTION_SERVER_APRILTAGS: list[str] = []
+PERCEPTION_SERVER_APRILTAG_VIZ: list[str] = []
 PERCEPTION_SERVER_BACKGROUND: list[str] = []
 PERCEPTION_SERVER_CALIBRATION: list[str] = []
 PERCEPTION_SERVER_FLOW: list[str] = []
@@ -75,6 +76,7 @@ elif HOST_ID == "nas":
     PERCEPTION_SERVER_POSE_LANDMARKS.extend(["hallway"])
 elif HOST_ID == "oceanplatform":
     PERCEPTION_SERVER_APRILTAGS.extend(["falcon"])
+    PERCEPTION_SERVER_APRILTAG_VIZ.extend(["falcon"])
     # PERCEPTION_SERVER_BACKGROUND.extend(["station"])
     # PERCEPTION_SERVER_FLOW.extend(["falcon", "station"])
     # PERCEPTION_SERVER_IMAGE_DOWNSCALER.extend(["falcon"])
@@ -98,6 +100,14 @@ def generate_launch_description() -> LaunchDescription:
         PerceptionDescriptions.add_apriltag_detector(
             composable_nodes,
             PERCEPTION_SERVER_APRILTAGS,
+            input_resolution="",  # Native resolution
+            image_transport="raw",  # Get raw images from image rectifier
+        )
+
+    if PERCEPTION_SERVER_APRILTAG_VIZ:
+        PerceptionDescriptions.add_apriltag_visualizer(
+            composable_nodes,
+            PERCEPTION_SERVER_APRILTAG_VIZ,
             input_resolution="",  # Native resolution
             image_transport="raw",  # Get raw images from image rectifier
         )
