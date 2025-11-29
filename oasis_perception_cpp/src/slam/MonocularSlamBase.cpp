@@ -15,12 +15,12 @@
 #include <utility>
 #include <vector>
 
-#include <image_transport/image_transport.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
 #include <rclcpp/qos.hpp>
 #include <rmw/qos_profiles.h>
 #include <sensor_msgs/image_encodings.hpp>
+#include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 
 using namespace OASIS;
@@ -32,16 +32,10 @@ constexpr char MAP_FRAME_ID[] = "map";
 } // namespace
 
 MonocularSlamBase::MonocularSlamBase(rclcpp::Node& node,
-                                     const std::string& mapImageTopic,
                                      const std::string& pointCloudTopic,
                                      const std::string& poseTopic)
   : m_logger(std::make_unique<rclcpp::Logger>(node.get_logger()))
 {
-  rclcpp::QoS sensorQos = rclcpp::SensorDataQoS();
-  sensorQos.reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE);
-  m_mapImagePublisher =
-      image_transport::create_publisher(&node, mapImageTopic, sensorQos.get_rmw_qos_profile());
-
   rclcpp::QoS pointCloudQos{rclcpp::SensorDataQoS{}};
   pointCloudQos.reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE);
   m_pointCloudPublisher =
@@ -69,8 +63,6 @@ bool MonocularSlamBase::InitializeSystem(const std::string& vocabularyFile,
 
   if (!LoadCameraModel(settingsFile, m_cameraModel, Logger()))
     return false;
-
-  m_mapViewRenderer.Initialize(m_cameraModel);
 
   m_slam = std::make_unique<ORB_SLAM3::System>(vocabularyFile, settingsFile, sensorType, false);
 
@@ -223,7 +215,7 @@ void MonocularSlamBase::MapPublisherLoop()
     RCLCPP_INFO(Logger(), "Tracking state: %d, tracked points: %zu, map points: %zu", trackingState,
                 trackedMapPoints.size(), mapPoints.size());
 
-    if (m_mapImagePublisher && m_renderThreadRunning.load() && !mapPoints.empty())
+    if (m_renderThreadRunning.load() && !mapPoints.empty())
     {
       // Initialize world points
       m_worldPointBuffer.clear();
@@ -254,10 +246,6 @@ void MonocularSlamBase::MapPublisherLoop()
       {
         if (m_pointCloudPublisher && m_pointCloudPublisher->get_subscription_count() > 0)
           PublishPointCloud(header, m_worldPointBuffer);
-
-        if (m_mapImagePublisher && m_mapImagePublisher->getNumSubscribers() > 0)
-          PublishMapView(header, cameraPose, m_worldPointBuffer,
-                         const_cast<cv::Mat&>(inputImage->image));
       }
     }
 
@@ -309,16 +297,4 @@ void MonocularSlamBase::PublishPointCloud(const std_msgs::msg::Header& header,
   }
 
   m_pointCloudPublisher->publish(pointCloud);
-}
-
-void MonocularSlamBase::PublishMapView(const std_msgs::msg::Header& header,
-                                       const Eigen::Isometry3f& cameraPose,
-                                       const std::vector<Eigen::Vector3f>& worldPoints,
-                                       cv::Mat& imageBuffer)
-{
-  if (m_mapViewRenderer.Render(cameraPose, worldPoints, imageBuffer))
-  {
-    cv_bridge::CvImage output(header, sensor_msgs::image_encodings::RGB8, imageBuffer);
-    m_mapImagePublisher->publish(output.toImageMsg());
-  }
 }
