@@ -25,6 +25,7 @@
   <depend>image_transport</depend>
   <depend>liblttng-ust-dev</depend>
   <depend>libopencv-dev</depend>
+  <depend>apriltag_msgs</depend>
   <depend>oasis_msgs</depend>
   <depend>pcl_conversions</depend>
   <depend>rclcpp_components</depend>
