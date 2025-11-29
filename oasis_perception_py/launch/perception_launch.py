@@ -160,6 +160,13 @@ def generate_launch_description() -> LaunchDescription:
             PERCEPTION_SERVER_MONOCULAR_SLAM,
             image_transport="compressed",
             camera_name=CAMERA_NAME,
+            input_resolution="",
+        )
+        PerceptionDescriptions.add_map_viz(
+            composable_nodes,
+            PERCEPTION_SERVER_MONOCULAR_SLAM,
+            camera_name=CAMERA_NAME,
+            camera_resolution="",
         )
 
     if PERCEPTION_SERVER_MONOCULAR_INERTIAL_SLAM:
@@ -168,6 +175,13 @@ def generate_launch_description() -> LaunchDescription:
             PERCEPTION_SERVER_MONOCULAR_INERTIAL_SLAM,
             image_transport="compressed",
             camera_name=CAMERA_NAME,
+            input_resolution="",
+        )
+        PerceptionDescriptions.add_map_viz(
+            composable_nodes,
+            PERCEPTION_SERVER_MONOCULAR_INERTIAL_SLAM,
+            camera_name=CAMERA_NAME,
+            camera_resolution="",
         )
 
     if PERCEPTION_SERVER_POSE_LANDMARKS:
