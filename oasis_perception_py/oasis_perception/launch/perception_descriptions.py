@@ -112,13 +112,59 @@ class PerceptionDescriptions:
                             "detector.sharpening": 0.25,
                             "detector.debug": False,  # Disable writing debug images and info to disk
                             "profile": False,  # Noisy and useless in production
-                            "debug_image_pub": True,  # Enable publishing debug image
                         }
                     ],
                     remappings=[
                         ("camera_info", f"{system_id}/{RESOLUTION_PREFIX}camera_info"),
                         ("image_rect", f"{system_id}/{RESOLUTION_PREFIX}image_rect"),
                         ("detections", f"{system_id}/{RESOLUTION_PREFIX}apriltags"),
+                    ],
+                )
+                for system_id in system_ids
+            ]
+        )
+
+    #
+    # AprilTag visualizer
+    #
+
+    @staticmethod
+    def add_apriltag_visualizer(
+        composable_nodes: list[ComposableNode],
+        system_ids: List[str],
+        input_resolution: str,
+        image_transport: str,
+        overlay_mode: str = "axes",
+    ) -> None:
+        RESOLUTION_PREFIX = f"{input_resolution}/" if input_resolution else ""
+
+        composable_nodes.extend(
+            [
+                ComposableNode(
+                    namespace=ROS_NAMESPACE,
+                    package=CPP_PACKAGE_NAME,
+                    plugin="oasis_perception::AprilTagVizComponent",
+                    name=f"apriltag_viz_{system_id}",
+                    parameters=[
+                        {
+                            "system_id": system_id,
+                            "image_transport": image_transport,
+                            "overlay_mode": overlay_mode,
+                        }
+                    ],
+                    remappings=[
+                        (
+                            f"{system_id}_image",
+                            f"{system_id}/{RESOLUTION_PREFIX}image_rect",
+                        ),
+                        (
+                            f"{system_id}_apriltags",
+                            f"{system_id}/{RESOLUTION_PREFIX}apriltags",
+                        ),
+                        (
+                            f"{system_id}_apriltags_image",
+                            f"{system_id}/{RESOLUTION_PREFIX}apriltags_image",
+                        ),
                     ],
                 )
                 for system_id in system_ids
