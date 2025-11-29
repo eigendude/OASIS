@@ -152,12 +152,22 @@ def generate_launch_description() -> LaunchDescription:
             image_transport="compressed",
             camera_name=CAMERA_NAME,
         )
+        PerceptionDescriptions.add_map_viz(
+            composable_nodes,
+            PERCEPTION_SERVER_MONOCULAR_SLAM,
+            camera_name=CAMERA_NAME,
+        )
 
     if PERCEPTION_SERVER_MONOCULAR_INERTIAL_SLAM:
         PerceptionDescriptions.add_monocular_inertial_slam(
             composable_nodes,
             PERCEPTION_SERVER_MONOCULAR_INERTIAL_SLAM,
             image_transport="compressed",
+            camera_name=CAMERA_NAME,
+        )
+        PerceptionDescriptions.add_map_viz(
+            composable_nodes,
+            PERCEPTION_SERVER_MONOCULAR_INERTIAL_SLAM,
             camera_name=CAMERA_NAME,
         )
 
