@@ -11,6 +11,7 @@
 #include "ViridisPaletteSampler.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -18,6 +19,7 @@
 #include <vector>
 
 #include <MapPoint.h>
+#include <opencv2/imgproc.hpp>
 
 using namespace OASIS;
 using namespace SLAM;

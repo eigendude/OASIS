@@ -10,6 +10,7 @@
 
 #include "CameraModel.h"
 
+#include <array>
 #include <cstddef>
 #include <vector>
 

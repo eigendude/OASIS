@@ -432,6 +432,48 @@ class PerceptionDescriptions:
         )
 
     #
+    # Map visualization
+    #
+
+    @staticmethod
+    def add_map_viz(
+        composable_nodes: list[ComposableNode], system_ids: List[str], camera_name: str, camera_resolution: str
+    ) -> None:
+        RESOLUTION_PREFIX = f"{camera_resolution}/" if camera_resolution else ""
+
+        settings_file: str | None = PerceptionPaths.find_orb_slam_oasis_settings(
+            camera_name
+        )
+        if settings_file is None:
+            raise FileNotFoundError("ORB_SLAM_OASIS settings file not found.")
+
+        composable_nodes.extend(
+            [
+                ComposableNode(
+                    namespace=ROS_NAMESPACE,
+                    package=CPP_PACKAGE_NAME,
+                    plugin="oasis_perception::MapVizComponent",
+                    name=f"map_viz_{system_id}",
+                    parameters=[
+                        {"system_id": system_id},
+                        {"settings_file": settings_file},
+                    ],
+                    remappings=[
+                        (f"{system_id}_apriltags", f"{system_id}/apriltags"),
+                        (f"{system_id}_camera_info", f"{system_id}/{RESOLUTION_PREFIX}camera_info"),
+                        (f"{system_id}_slam_pose", f"{system_id}/slam_pose"),
+                        (
+                            f"{system_id}_slam_point_cloud",
+                            f"{system_id}/slam_point_cloud",
+                        ),
+                        (f"{system_id}_slam_map_image", f"{system_id}/{RESOLUTION_PREFIX}slam_map_image"),
+                    ],
+                )
+                for system_id in system_ids
+            ]
+        )
+
+    #
     # Mesh viewer
     #
 
@@ -473,7 +515,10 @@ class PerceptionDescriptions:
         system_ids: List[str],
         image_transport: str,
         camera_name: str,
+        input_resolution: str,
     ) -> None:
+        RESOLUTION_PREFIX = f"{input_resolution}/" if input_resolution else ""
+
         vocabulary_file: str | None = PerceptionPaths.find_orb_slam_oasis_vocabulary()
         if vocabulary_file is None:
             raise FileNotFoundError("ORB_SLAM_OASIS vocabulary file not found.")
@@ -506,10 +551,9 @@ class PerceptionDescriptions:
                                 # Use different remappings for Kinect V2
                                 f"{system_id}/sd/image_color"
                                 if system_id == KINECT_V2_ZONE_ID
-                                else f"{system_id}/image_raw"
+                                else f"{system_id}/{RESOLUTION_PREFIX}image_raw"
                             ),
                         ),
-                        (f"{system_id}_slam_map_image", f"{system_id}/slam_map_image"),
                         (
                             f"{system_id}_slam_point_cloud",
                             f"{system_id}/slam_point_cloud",
@@ -531,7 +575,10 @@ class PerceptionDescriptions:
         system_ids: List[str],
         image_transport: str,
         camera_name: str,
+        input_resolution: str,
     ) -> None:
+        RESOLUTION_PREFIX = f"{input_resolution}/" if input_resolution else ""
+
         vocabulary_file: str | None = PerceptionPaths.find_orb_slam_oasis_vocabulary()
         if vocabulary_file is None:
             raise FileNotFoundError("ORB_SLAM_OASIS vocabulary file not found.")
@@ -564,11 +611,10 @@ class PerceptionDescriptions:
                                 # Use different remappings for Kinect V2
                                 f"{system_id}/sd/image_color"
                                 if system_id == KINECT_V2_ZONE_ID
-                                else f"{system_id}/image_rect"
+                                else f"{system_id}/{RESOLUTION_PREFIX}image_raw"
                             ),
                         ),
                         (f"{system_id}_imu", f"{system_id}/i2c_imu"),
-                        (f"{system_id}_slam_map_image", f"{system_id}/slam_map_image"),
                         (
                             f"{system_id}_slam_point_cloud",
                             f"{system_id}/slam_point_cloud",
