@@ -6,6 +6,9 @@ Wants=network-online.target
 
 [Service]
 
+# Give Kodi a little scheduling edge vs background work
+Nice=-5
+
 #
 # User configuration
 #
