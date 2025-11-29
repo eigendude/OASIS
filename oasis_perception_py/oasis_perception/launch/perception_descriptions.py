@@ -533,6 +533,44 @@ class PerceptionDescriptions:
         )
 
     #
+    # Map visualization
+    #
+
+    @staticmethod
+    def add_map_viz(
+        composable_nodes: list[ComposableNode], system_ids: List[str], camera_name: str
+    ) -> None:
+        settings_file: str | None = PerceptionPaths.find_orb_slam_oasis_settings(
+            camera_name
+        )
+        if settings_file is None:
+            raise FileNotFoundError("ORB_SLAM_OASIS settings file not found.")
+
+        composable_nodes.extend(
+            [
+                ComposableNode(
+                    namespace=ROS_NAMESPACE,
+                    package=CPP_PACKAGE_NAME,
+                    plugin="oasis_perception::MapVizComponent",
+                    name=f"map_viz_{system_id}",
+                    parameters=[
+                        {"system_id": system_id},
+                        {"settings_file": settings_file},
+                    ],
+                    remappings=[
+                        (f"{system_id}_slam_pose", f"{system_id}/slam_pose"),
+                        (
+                            f"{system_id}_slam_point_cloud",
+                            f"{system_id}/slam_point_cloud",
+                        ),
+                        (f"{system_id}_slam_map_image", f"{system_id}/slam_map_image"),
+                    ],
+                )
+                for system_id in system_ids
+            ]
+        )
+
+    #
     # Monocular inertial SLAM
     #
 

@@ -136,8 +136,8 @@ bool MonocularInertialSlamNode::Initialize()
   m_imuSubscriber = m_node.create_subscription<oasis_msgs::msg::I2CImu>(
       imuTopic, qos, std::bind(&MonocularInertialSlamNode::OnImu, this, std::placeholders::_1));
 
-  m_monocularInertialSlam = std::make_unique<SLAM::MonocularInertialSlam>(
-      m_node, mapImageTopic, pointCloudTopic, poseTopic);
+  m_monocularInertialSlam =
+      std::make_unique<SLAM::MonocularInertialSlam>(m_node, pointCloudTopic, poseTopic);
   if (!m_monocularInertialSlam->Initialize(vocabularyFile, settingsFile))
   {
     RCLCPP_ERROR(*m_logger, "Failed to initialize monocular inertial SLAM");
