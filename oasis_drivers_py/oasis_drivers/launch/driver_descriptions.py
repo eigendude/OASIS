@@ -68,10 +68,17 @@ class DriverDescriptions:
 
     @staticmethod
     def add_driver_components(
-        ld: LaunchDescription, host_id: str, composable_nodes: list[ComposableNode]
+        ld: LaunchDescription,
+        host_id: str,
+        composable_nodes: list[ComposableNode],
+        log_level: Optional[str] = None,
     ) -> None:
         if not composable_nodes:
             return
+
+        container_arguments: list[str] | None = None
+        if log_level:
+            container_arguments = ["--ros-args", "--log-level", log_level]
 
         driver_container: ComposableNodeContainer = ComposableNodeContainer(
             namespace=ROS_NAMESPACE,
@@ -79,6 +86,7 @@ class DriverDescriptions:
             package="rclcpp_components",
             executable="component_container_mt",
             output="screen",
+            arguments=container_arguments,
             composable_node_descriptions=composable_nodes,
         )
         ld.add_action(driver_container)

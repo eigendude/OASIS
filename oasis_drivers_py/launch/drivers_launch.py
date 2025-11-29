@@ -140,6 +140,7 @@ def generate_launch_description() -> LaunchDescription:
     ld: LaunchDescription = LaunchDescription()
 
     composable_nodes: list[ComposableNode] = []
+    has_camera_ros: bool = False
 
     #
     # General drivers
@@ -182,6 +183,7 @@ def generate_launch_description() -> LaunchDescription:
             libcamera_params=LIBCAMERA_PARAMS,
         )
         # PerceptionDescriptions.add_monocular_slam(composable_nodes, [HOST_ID], "raw")
+        has_camera_ros = True
     if HOST_ID == "station":
         Drivers.add_ros2_camera(
             composable_nodes,
@@ -191,6 +193,7 @@ def generate_launch_description() -> LaunchDescription:
             SENSOR_MODE,
             libcamera_params=LIBCAMERA_PARAMS,
         )
+        has_camera_ros = True
 
     # Smarthome cameras
     if HOST_ID == "door":
@@ -212,6 +215,11 @@ def generate_launch_description() -> LaunchDescription:
     # Add composable nodes to launch description
     #
 
-    Drivers.add_driver_components(ld, HOST_ID, composable_nodes)
+    Drivers.add_driver_components(
+        ld,
+        HOST_ID,
+        composable_nodes,
+        log_level="debug" if has_camera_ros else None,
+    )
 
     return ld
