@@ -18,6 +18,7 @@
 #include <vector>
 
 #include <MapPoint.h>
+#include <opencv2/imgproc.hpp>
 
 using namespace OASIS;
 using namespace SLAM;
@@ -31,6 +32,16 @@ void MapViewRenderer::Initialize(const CameraModel& cameraModel)
 
 bool MapViewRenderer::Render(const Eigen::Isometry3f& cameraFromWorldTransform,
                              const std::vector<Eigen::Vector3f>& worldPoints,
+                             cv::Mat& outputImage)
+{
+  static const std::vector<OverlayQuadrilateral> EMPTY_OVERLAYS;
+
+  return Render(cameraFromWorldTransform, worldPoints, EMPTY_OVERLAYS, outputImage);
+}
+
+bool MapViewRenderer::Render(const Eigen::Isometry3f& cameraFromWorldTransform,
+                             const std::vector<Eigen::Vector3f>& worldPoints,
+                             const std::vector<OverlayQuadrilateral>& overlays,
                              cv::Mat& outputImage)
 {
   if (!CanRender(m_cameraModel))
@@ -51,6 +62,9 @@ bool MapViewRenderer::Render(const Eigen::Isometry3f& cameraFromWorldTransform,
     RenderProjectedPoint(m_cameraModel, m_projectedPoints[index], m_normalizedDepths[index],
                          averageFocal, m_imageBuffers);
   }
+
+  for (const auto& overlay : overlays)
+    RenderOverlayQuadrilateral(m_cameraModel, overlay, m_imageBuffers);
 
   ComposeOutputImage(m_cameraModel, m_imageBuffers, outputImage);
 
@@ -124,6 +138,100 @@ void MapViewRenderer::ProjectMapPoints(const CameraModel& cameraModel,
 
     // Record projected point
     projectedPoints.push_back({pixelX, pixelY, depth});
+  }
+}
+
+namespace
+{
+float MedianDepth(const std::vector<float>& depths)
+{
+  if (depths.empty())
+    return std::numeric_limits<float>::infinity();
+
+  std::vector<float> sortedDepths = depths;
+  const std::size_t mid = sortedDepths.size() / 2;
+  std::nth_element(sortedDepths.begin(), sortedDepths.begin() + mid, sortedDepths.end());
+
+  if (sortedDepths.size() % 2 == 1)
+    return sortedDepths[mid];
+
+  const float lower = *std::max_element(sortedDepths.begin(), sortedDepths.begin() + mid);
+  return 0.5f * (lower + sortedDepths[mid]);
+}
+} // namespace
+
+void MapViewRenderer::RenderOverlayQuadrilateral(const CameraModel& cameraModel,
+                                                 const OverlayQuadrilateral& overlay,
+                                                 ImageBuffers& imageBuffers)
+{
+  std::array<cv::Point, 4> projectedCorners;
+
+  for (std::size_t index = 0; index < overlay.pixelCorners.size(); ++index)
+  {
+    projectedCorners[index] =
+        cv::Point(static_cast<int>(std::lround(overlay.pixelCorners[index].x)),
+                  static_cast<int>(std::lround(overlay.pixelCorners[index].y)));
+  }
+
+  cv::Mat mask(static_cast<int>(cameraModel.height), static_cast<int>(cameraModel.width), CV_8UC1,
+               cv::Scalar(0));
+  cv::fillConvexPoly(mask, projectedCorners.data(), static_cast<int>(projectedCorners.size()),
+                     cv::Scalar(255));
+
+  const std::vector<cv::Point> projectedCornersVec(projectedCorners.begin(),
+                                                   projectedCorners.end());
+  const cv::Rect boundingBox = cv::boundingRect(projectedCornersVec);
+  if (boundingBox.width <= 0 || boundingBox.height <= 0)
+    return;
+
+  const int xStart = std::max(0, boundingBox.x);
+  const int yStart = std::max(0, boundingBox.y);
+  const int xEnd = std::min(static_cast<int>(cameraModel.width), boundingBox.x + boundingBox.width);
+  const int yEnd =
+      std::min(static_cast<int>(cameraModel.height), boundingBox.y + boundingBox.height);
+
+  std::vector<float> sampledDepths;
+  sampledDepths.reserve(static_cast<std::size_t>(boundingBox.width * boundingBox.height));
+
+  for (int y = yStart; y < yEnd; ++y)
+  {
+    const std::uint8_t* maskRow = mask.ptr<std::uint8_t>(y);
+    for (int x = xStart; x < xEnd; ++x)
+    {
+      if (maskRow[x] == 0)
+        continue;
+
+      const int index = y * static_cast<int>(cameraModel.width) + x;
+      const float depth = imageBuffers.depthBuffer[index];
+      if (std::isfinite(depth))
+        sampledDepths.push_back(depth);
+    }
+  }
+
+  const float medianDepth = MedianDepth(sampledDepths);
+  const float overlayDepth = std::isfinite(medianDepth) ? medianDepth : 1.0f;
+
+  if (overlayDepth <= 0.0f)
+    return;
+
+  const float depthTolerance = std::max(0.02f * overlayDepth, 0.02f);
+
+  for (int y = yStart; y < yEnd; ++y)
+  {
+    const std::uint8_t* maskRow = mask.ptr<std::uint8_t>(y);
+    for (int x = xStart; x < xEnd; ++x)
+    {
+      if (maskRow[x] == 0)
+        continue;
+
+      const int index = y * static_cast<int>(cameraModel.width) + x;
+      if (overlayDepth > imageBuffers.depthBuffer[index] + depthTolerance)
+        continue;
+
+      imageBuffers.depthBuffer[index] = overlayDepth;
+      imageBuffers.colorBuffer[index] = overlay.color;
+      imageBuffers.weightBuffer[index] = 1.0f;
+    }
   }
 }
 
