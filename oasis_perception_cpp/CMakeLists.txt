@@ -82,6 +82,23 @@ set(MEDIAPIPE_SOURCES
   src/utils/AbseilStubs.cpp
 )
 
+# Build definitions and include dirs for monocular SLAM
+set(MONOCULAR_SLAM_DEFINITIONS
+  HAVE_EIGEN
+  HAVE_GLEW
+)
+set(MONOCULAR_SLAM_INCLUDE_DIRS
+  $<BUILD_INTERFACE:${OPENGL_INCLUDE_DIR}>
+  $<BUILD_INTERFACE:${GLEW_INCLUDE_DIR}>
+  ${EIGEN3_INCLUDE_DIRS}
+  ${SOPHUS_INCLUDE_DIRS}
+)
+set(SLAM_RENDERING_SOURCES
+  src/slam/CameraModel.cpp
+  src/slam/MapViewRenderer.cpp
+  src/slam/ViridisPaletteSampler.cpp
+)
+
 #
 # apriltag_viz
 #
@@ -357,6 +374,80 @@ rclcpp_components_register_node(
 )
 
 #
+# map_viz
+#
+
+if (ORB_SLAM_OASIS_FOUND)
+  # Project files
+  set(MAP_VIZ_SOURCES
+    ${SLAM_RENDERING_SOURCES}
+    src/nodes/MapVizNode.cpp
+  )
+  set(MAP_VIZ_LIBRARIES
+    apriltag_msgs::apriltag_msgs__rosidl_typesupport_cpp
+    cv_bridge::cv_bridge
+    DBoW2::DBoW2
+    g2o::g2o
+    image_transport::image_transport
+    ${OpenCV_LIBS}
+    ORB_SLAM_OASIS::ORB_SLAM_OASIS
+    ${Pangolin_LIBRARIES}
+    rclcpp::rclcpp
+    ${geometry_msgs_TARGETS}
+    ${sensor_msgs_TARGETS}
+  )
+
+  # Node
+  add_executable(map_viz
+    ${MAP_VIZ_SOURCES}
+    src/cli/map_viz_node.cpp
+  )
+  target_compile_definitions(map_viz PUBLIC
+    ${MONOCULAR_SLAM_DEFINITIONS}
+  )
+  target_include_directories(map_viz PUBLIC
+    ${MONOCULAR_SLAM_INCLUDE_DIRS}
+  )
+  target_link_libraries(map_viz PUBLIC
+    ${MAP_VIZ_LIBRARIES}
+  )
+  install(
+    TARGETS
+      map_viz
+    DESTINATION
+      lib/${PROJECT_NAME}
+  )
+
+  # Component
+  add_library(map_viz_component SHARED
+    ${MAP_VIZ_SOURCES}
+    src/components/map_viz_component.cpp
+    src/ros/RosComponent.cpp
+  )
+  target_compile_definitions(map_viz_component PUBLIC
+    ${MONOCULAR_SLAM_DEFINITIONS}
+  )
+  target_include_directories(map_viz_component PUBLIC
+    ${MONOCULAR_SLAM_INCLUDE_DIRS}
+  )
+  target_link_libraries(map_viz_component PUBLIC
+    ${MAP_VIZ_LIBRARIES}
+    rclcpp_components::component
+  )
+  install(
+    TARGETS
+      map_viz_component
+    DESTINATION
+      lib
+  )
+  rclcpp_components_register_node(
+    map_viz_component
+    PLUGIN "oasis_perception::MapVizComponent"
+    EXECUTABLE map_viz_component_node
+  )
+endif()
+
+#
 # mesh_viewer
 #
 
@@ -421,12 +512,6 @@ rclcpp_components_register_node(
 #
 
 if (ORB_SLAM_OASIS_FOUND)
-  set(SLAM_RENDERING_SOURCES
-    src/slam/CameraModel.cpp
-    src/slam/MapViewRenderer.cpp
-    src/slam/ViridisPaletteSampler.cpp
-  )
-
   # Project files
   set(MONOCULAR_SLAM_SOURCES
     ${SLAM_RENDERING_SOURCES}
@@ -434,16 +519,6 @@ if (ORB_SLAM_OASIS_FOUND)
     src/ros/RosUtils.cpp
     src/slam/MonocularSlamBase.cpp
     src/slam/MonocularSlam.cpp
-  )
-  set(MONOCULAR_SLAM_DEFINITIONS
-    HAVE_EIGEN
-    HAVE_GLEW
-  )
-  set(MONOCULAR_SLAM_INCLUDE_DIRS
-    $<BUILD_INTERFACE:${OPENGL_INCLUDE_DIR}>
-    $<BUILD_INTERFACE:${GLEW_INCLUDE_DIR}>
-    ${EIGEN3_INCLUDE_DIRS}
-    ${SOPHUS_INCLUDE_DIRS}
   )
   set(MONOCULAR_SLAM_LIBRARIES
     ament_index_cpp::ament_index_cpp
