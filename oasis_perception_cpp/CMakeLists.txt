@@ -459,6 +459,50 @@ if (ORB_SLAM_OASIS_FOUND)
     ${std_msgs_TARGETS}
   )
 
+  set(MAP_VIZ_SOURCES
+    ${SLAM_RENDERING_SOURCES}
+    src/nodes/MapVizNode.cpp
+  )
+  set(MAP_VIZ_LIBRARIES
+    cv_bridge::cv_bridge
+    DBoW2::DBoW2
+    g2o::g2o
+    image_transport::image_transport
+    ${OpenCV_LIBS}
+    ORB_SLAM_OASIS::ORB_SLAM_OASIS
+    ${Pangolin_LIBRARIES}
+    rclcpp::rclcpp
+    ${geometry_msgs_TARGETS}
+    ${sensor_msgs_TARGETS}
+  )
+
+  add_library(map_viz_component SHARED
+    ${MAP_VIZ_SOURCES}
+    src/components/map_viz_component.cpp
+    src/ros/RosComponent.cpp
+  )
+  target_compile_definitions(map_viz_component PUBLIC
+    ${MONOCULAR_SLAM_DEFINITIONS}
+  )
+  target_include_directories(map_viz_component PUBLIC
+    ${MONOCULAR_SLAM_INCLUDE_DIRS}
+  )
+  target_link_libraries(map_viz_component PUBLIC
+    ${MAP_VIZ_LIBRARIES}
+    rclcpp_components::component
+  )
+  install(
+    TARGETS
+      map_viz_component
+    DESTINATION
+      lib
+  )
+  rclcpp_components_register_node(
+    map_viz_component
+    PLUGIN "oasis_perception::MapVizComponent"
+    EXECUTABLE map_viz_component_node
+  )
+
   # Node
   add_executable(monocular_slam
     ${MONOCULAR_SLAM_SOURCES}
