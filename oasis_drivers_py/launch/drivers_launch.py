@@ -213,6 +213,6 @@ def generate_launch_description() -> LaunchDescription:
     # Add composable nodes to launch description
     #
 
-    Drivers.add_driver_components(ld, HOST_ID, composable_nodes)
+    Drivers.add_driver_components(ld, HOST_ID, composable_nodes, log_level="info")
 
     return ld
