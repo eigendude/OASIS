@@ -11,6 +11,7 @@
 #include "ViridisPaletteSampler.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -145,7 +146,54 @@ void MapViewRenderer::RenderOverlayQuadrilateral(const CameraModel& cameraModel,
                                                  const OverlayQuadrilateral& overlay,
                                                  ImageBuffers& imageBuffers)
 {
-  // TODO
+  if (cameraModel.width == 0 || cameraModel.height == 0)
+    return;
+
+  // Convert the detected quadrilateral from image_rect pixel coordinates to normalized
+  // camera coordinates. This "dewarps" the incoming pixels so they can be reprojected
+  // using the supplied camera model.
+  std::array<cv::Point2f, 4> normalizedCorners;
+  for (std::size_t index = 0; index < overlay.pixelCorners.size(); ++index)
+  {
+    normalizedCorners[index].x = (overlay.pixelCorners[index].x - cameraModel.cx) / cameraModel.fx;
+    normalizedCorners[index].y = (overlay.pixelCorners[index].y - cameraModel.cy) / cameraModel.fy;
+  }
+
+  // Reproject the normalized corners back into the output map image using the camera model.
+  std::array<cv::Point, 4> reprojectedCorners;
+  for (std::size_t index = 0; index < normalizedCorners.size(); ++index)
+  {
+    const float u = cameraModel.fx * normalizedCorners[index].x + cameraModel.cx;
+    const float v = cameraModel.fy * normalizedCorners[index].y + cameraModel.cy;
+
+    reprojectedCorners[index].x = static_cast<int>(std::lround(u));
+    reprojectedCorners[index].y = static_cast<int>(std::lround(v));
+  }
+
+  cv::Mat mask(static_cast<int>(cameraModel.height), static_cast<int>(cameraModel.width), CV_8UC1,
+               cv::Scalar(0));
+
+  cv::fillConvexPoly(mask, reprojectedCorners.data(), static_cast<int>(reprojectedCorners.size()),
+                     cv::Scalar(255));
+
+  // Use a large weight so the overlay remains visible atop the map projection.
+  const float overlayWeight = 1000.0f;
+
+  for (int y = 0; y < mask.rows; ++y)
+  {
+    const std::uint8_t* maskRow = mask.ptr<std::uint8_t>(y);
+    for (int x = 0; x < mask.cols; ++x)
+    {
+      if (maskRow[x] == 0)
+        continue;
+
+      const int index = y * static_cast<int>(cameraModel.width) + x;
+
+      imageBuffers.depthBuffer[index] = 0.0f;
+      imageBuffers.colorBuffer[index] = overlayWeight * overlay.color;
+      imageBuffers.weightBuffer[index] = overlayWeight;
+    }
+  }
 }
 
 void MapViewRenderer::ComputeNormalizedDepths(const std::vector<ProjectedPoint>& projectedPoints,
