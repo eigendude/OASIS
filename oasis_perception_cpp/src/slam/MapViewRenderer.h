@@ -10,6 +10,7 @@
 
 #include "CameraModel.h"
 
+#include <array>
 #include <cstddef>
 #include <vector>
 
@@ -35,6 +36,17 @@ public:
 
   bool Render(const Eigen::Isometry3f& cameraFromWorldTransform,
               const std::vector<Eigen::Vector3f>& worldPoints,
+              cv::Mat& outputImage);
+
+  struct OverlayQuadrilateral
+  {
+    std::array<cv::Point2f, 4> pixelCorners;
+    cv::Vec3f color{255.0f, 255.0f, 255.0f};
+  };
+
+  bool Render(const Eigen::Isometry3f& cameraFromWorldTransform,
+              const std::vector<Eigen::Vector3f>& worldPoints,
+              const std::vector<OverlayQuadrilateral>& overlays,
               cv::Mat& outputImage);
 
 private:
@@ -67,6 +79,9 @@ private:
                                const Eigen::Isometry3f& cameraFromWorldTransform,
                                const std::vector<Eigen::Vector3f>& worldPoints,
                                std::vector<ProjectedPoint>& projectedPoints);
+  static void RenderOverlayQuadrilateral(const CameraModel& cameraModel,
+                                         const OverlayQuadrilateral& overlay,
+                                         ImageBuffers& imageBuffers);
   static void ComputeNormalizedDepths(const std::vector<ProjectedPoint>& projectedPoints,
                                       std::vector<DepthSample>& depthBuffer,
                                       std::vector<float>& normalizedDepths);

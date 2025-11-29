@@ -19,7 +19,6 @@ class MonocularSlam : public MonocularSlamBase
 {
 public:
   MonocularSlam(rclcpp::Node& node,
-                const std::string& mapImageTopic,
                 const std::string& pointCloudTopic,
                 const std::string& poseTopic);
   ~MonocularSlam() override;

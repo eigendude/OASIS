@@ -129,8 +129,7 @@ bool MonocularSlamNode::Initialize()
       &m_node, imageTopic, [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg)
       { OnImage(msg); }, imageTransport, sensorQos.get_rmw_qos_profile());
 
-  m_monocularSlam =
-      std::make_unique<SLAM::MonocularSlam>(m_node, mapImageTopic, pointCloudTopic, poseTopic);
+  m_monocularSlam = std::make_unique<SLAM::MonocularSlam>(m_node, pointCloudTopic, poseTopic);
   if (!m_monocularSlam->Initialize(vocabularyFile, settingsFile))
   {
     RCLCPP_ERROR(*m_logger, "Failed to initialize monocular SLAM");

@@ -18,6 +18,7 @@
 #include <vector>
 
 #include <MapPoint.h>
+#include <opencv2/imgproc.hpp>
 
 using namespace OASIS;
 using namespace SLAM;
@@ -31,6 +32,16 @@ void MapViewRenderer::Initialize(const CameraModel& cameraModel)
 
 bool MapViewRenderer::Render(const Eigen::Isometry3f& cameraFromWorldTransform,
                              const std::vector<Eigen::Vector3f>& worldPoints,
+                             cv::Mat& outputImage)
+{
+  static const std::vector<OverlayQuadrilateral> EMPTY_OVERLAYS;
+
+  return Render(cameraFromWorldTransform, worldPoints, EMPTY_OVERLAYS, outputImage);
+}
+
+bool MapViewRenderer::Render(const Eigen::Isometry3f& cameraFromWorldTransform,
+                             const std::vector<Eigen::Vector3f>& worldPoints,
+                             const std::vector<OverlayQuadrilateral>& overlays,
                              cv::Mat& outputImage)
 {
   if (!CanRender(m_cameraModel))
@@ -51,6 +62,9 @@ bool MapViewRenderer::Render(const Eigen::Isometry3f& cameraFromWorldTransform,
     RenderProjectedPoint(m_cameraModel, m_projectedPoints[index], m_normalizedDepths[index],
                          averageFocal, m_imageBuffers);
   }
+
+  for (const auto& overlay : overlays)
+    RenderOverlayQuadrilateral(m_cameraModel, overlay, m_imageBuffers);
 
   ComposeOutputImage(m_cameraModel, m_imageBuffers, outputImage);
 
@@ -125,6 +139,13 @@ void MapViewRenderer::ProjectMapPoints(const CameraModel& cameraModel,
     // Record projected point
     projectedPoints.push_back({pixelX, pixelY, depth});
   }
+}
+
+void MapViewRenderer::RenderOverlayQuadrilateral(const CameraModel& cameraModel,
+                                                 const OverlayQuadrilateral& overlay,
+                                                 ImageBuffers& imageBuffers)
+{
+  // TODO
 }
 
 void MapViewRenderer::ComputeNormalizedDepths(const std::vector<ProjectedPoint>& projectedPoints,
