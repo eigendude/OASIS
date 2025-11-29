@@ -230,6 +230,18 @@ patch \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/camera_ros" \
   < "${CONFIG_DIRECTORY}/camera_ros/0001-Use-modern-image_transport-API.patch"
+patch \
+  -p1 \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/camera_ros" \
+  < "${CONFIG_DIRECTORY}/camera_ros/0002-replace-the-usage-of-the-Span-extent-with-the-actual.patch"
+patch \
+  -p1 \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/camera_ros" \
+  < "${CONFIG_DIRECTORY}/camera_ros/0003-Handle-array-controls-safely-in-ParameterHandler.patch"
 
 # Disable image_view on systems with <= 4GiB memory
 if (( $(echo "${PHYSICAL_MEMORY_GB} <= 4" | bc -l) )); then

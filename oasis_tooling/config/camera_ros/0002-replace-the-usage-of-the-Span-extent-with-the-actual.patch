@@ -1,0 +1,298 @@
+From a024c13e61cebd8016b12c2d42a1c1f1e16bf365 Mon Sep 17 00:00:00 2001
+From: Christian Rauch <Rauch.Christian@gmx.de>
+Date: Mon, 13 Oct 2025 22:55:39 +0200
+Subject: [PATCH 2/3] replace the usage of the Span::extent with the actual
+ ControlId size
+
+---
+ CMakeLists.txt           |   1 -
+ src/ParameterHandler.cpp |  25 +++-----
+ src/cv_to_pv.cpp         |   3 +-
+ src/exceptions.hpp       |   6 --
+ src/type_extent.cpp      | 124 ---------------------------------------
+ src/type_extent.hpp      |  16 -----
+ 6 files changed, 10 insertions(+), 165 deletions(-)
+ delete mode 100644 src/type_extent.cpp
+ delete mode 100644 src/type_extent.hpp
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 40d0721..6166919 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -59,7 +59,6 @@ add_library(param OBJECT
+     src/cv_to_pv.cpp
+     src/pv_to_cv.cpp
+     src/types.cpp
+-    src/type_extent.cpp
+     src/ParameterHandler.cpp
+     src/ParameterConflictHandler.cpp
+ )
+diff --git a/src/ParameterHandler.cpp b/src/ParameterHandler.cpp
+index 88a74e9..9361095 100644
+--- a/src/ParameterHandler.cpp
++++ b/src/ParameterHandler.cpp
+@@ -2,7 +2,6 @@
+ #include "clamp.hpp"
+ #include "cv_to_pv.hpp"
+ #include "pv_to_cv.hpp"
+-#include "type_extent.hpp"
+ #include "types.hpp"
+ #include <cstddef>
+ #include <libcamera/base/span.h>
+@@ -90,15 +89,9 @@ ParameterHandler::declare(const libcamera::ControlInfoMap &controls)
+ 
+     // check if the control can be mapped to a parameter
+     rclcpp::ParameterType pv_type;
+-    std::size_t extent;
++    const std::size_t size = id->size();
+     try {
+       pv_type = cv_to_pv_type(id);
+-      extent = get_extent(id);
+-    }
+-    catch (const unknown_control &e) {
+-      // ignore not yet handled control
+-      RCLCPP_WARN_STREAM(node->get_logger(), e.what());
+-      continue;
+     }
+     catch (const unsupported_control &e) {
+       // ignore control which cannot be supported
+@@ -106,8 +99,8 @@ ParameterHandler::declare(const libcamera::ControlInfoMap &controls)
+       continue;
+     }
+ 
+-    const bool ctrl_scalar = (extent == 0);
+-    const bool ctrl_dynamic = (extent == libcamera::dynamic_extent);
++    const bool ctrl_scalar = (size == 0);
++    const bool ctrl_dynamic = (size == libcamera::dynamic_extent);
+     const bool ctrl_fixed = !(ctrl_scalar || ctrl_dynamic);
+ 
+     if (ctrl_fixed && !cv_def.isArray() && !cv_def.isNone()) {
+@@ -115,7 +108,7 @@ ParameterHandler::declare(const libcamera::ControlInfoMap &controls)
+         node->get_logger(),
+         id->name()
+           << ": cannot set default scalar value '" << cv_def.toString() << "' "
+-          << "on span control (extend: " << extent << "), default will be ignored");
++          << "on span control (extend: " << size << "), default will be ignored");
+       cv_def = {};
+     }
+ 
+@@ -125,7 +118,7 @@ ParameterHandler::declare(const libcamera::ControlInfoMap &controls)
+     descriptor.type = pv_type;
+     descriptor.dynamic_typing = true;
+     const std::string cv_type_descr =
+-      ctrl_scalar ? "scalar" : "array[" + (ctrl_dynamic ? std::string() : std::to_string(extent)) + "]";
++      ctrl_scalar ? "scalar" : "array[" + (ctrl_dynamic ? std::string() : std::to_string(size)) + "]";
+     descriptor.description =
+       std::to_string(id->type()) + " " + cv_type_descr + " range {" + info.min().toString() +
+       "}..{" + info.max().toString() + "}" +
+@@ -359,14 +352,14 @@ ParameterHandler::validate_new_parameters(const std::vector<rclcpp::Parameter> &
+     assert(value.type() == id->type());
+ 
+     // check array dimension
+-    const std::size_t extent = get_extent(id);
++    const std::size_t size = id->size();
+     if (value.isArray() &&
+-        (extent != libcamera::dynamic_extent) &&
+-        (value.numElements() != extent))
++        (size != libcamera::dynamic_extent) &&
++        (value.numElements() != size))
+     {
+       msgs_valid_check.push_back(
+         parameter.get_name() + ": array dimensions mismatch, expected " +
+-        std::to_string(extent) + ", got " + std::to_string(value.numElements()));
++        std::to_string(size) + ", got " + std::to_string(value.numElements()));
+       continue;
+     }
+ 
+diff --git a/src/cv_to_pv.cpp b/src/cv_to_pv.cpp
+index 65b2465..a0917a9 100644
+--- a/src/cv_to_pv.cpp
++++ b/src/cv_to_pv.cpp
+@@ -1,6 +1,5 @@
+ #include "cv_to_pv.hpp"
+ #include "libcamera_version_utils.hpp"
+-#include "type_extent.hpp"
+ #include "types.hpp"
+ #include <cstdint>
+ #include <libcamera/base/span.h>
+@@ -143,7 +142,7 @@ cv_to_pv(const libcamera::ControlValue &value)
+ rclcpp::ParameterType
+ cv_to_pv_type(const libcamera::ControlId *const id)
+ {
+-  if (get_extent(id) == 0) {
++  if (!id->isArray()) {
+     switch (id->type()) {
+     case libcamera::ControlType::ControlTypeNone:
+       throw unsupported_control(id);
+diff --git a/src/exceptions.hpp b/src/exceptions.hpp
+index e4147e2..8c78824 100644
+--- a/src/exceptions.hpp
++++ b/src/exceptions.hpp
+@@ -15,12 +15,6 @@ public:
+   explicit should_not_reach() : std::runtime_error("should not reach here") {}
+ };
+ 
+-class unknown_control : public std::runtime_error
+-{
+-public:
+-  explicit unknown_control(const libcamera::ControlId *const id) : std::runtime_error("unknown control: " + id->name() + " (" + std::to_string(id->id()) + ")") {}
+-};
+-
+ class unsupported_control : public std::runtime_error
+ {
+ public:
+diff --git a/src/type_extent.cpp b/src/type_extent.cpp
+deleted file mode 100644
+index f122d57..0000000
+--- a/src/type_extent.cpp
++++ /dev/null
+@@ -1,124 +0,0 @@
+-#include "type_extent.hpp"
+-#include "libcamera_version_utils.hpp"
+-#include <libcamera/control_ids.h>
+-
+-#if LIBCAMERA_VER_GE(0, 4, 0)
+-
+-std::size_t
+-get_extent(const libcamera::ControlId *const id)
+-{
+-  return id->size();
+-}
+-
+-#else
+-#include "exceptions.hpp"
+-#include <libcamera/base/span.h>
+-#include <libcamera/controls.h>
+-#include <stdexcept>
+-#include <string>
+-#include <type_traits>
+-
+-
+-template<typename T, std::enable_if_t<!libcamera::details::is_span<T>::value, bool> = true>
+-std::size_t
+-get_extent(const libcamera::Control<T> &)
+-{
+-  // return an extent of 0 for non-span types
+-  return 0;
+-}
+-
+-template<typename T, std::enable_if_t<libcamera::details::is_span<T>::value, bool> = true>
+-std::size_t
+-get_extent(const libcamera::Control<T> &)
+-{
+-  // return the span extent, excluding 0
+-  // This assumes that libcamera does not define control types
+-  // with a fixed size span that does not hold any elements
+-  constexpr std::size_t extent = libcamera::Control<T>::type::extent;
+-  static_assert(extent != 0);
+-  return extent;
+-}
+-
+-#define IF(T)                                  \
+-  if (id->id() == libcamera::controls::T.id()) \
+-    return get_extent(libcamera::controls::T);
+-
+-
+-std::size_t
+-get_extent(const libcamera::ControlId *const id)
+-{
+-#if LIBCAMERA_VER_GE(0, 1, 0)
+-  IF(AeEnable)
+-#if !LIBCAMERA_VER_GE(0, 5, 0)
+-  IF(AeLocked)
+-#endif
+-  IF(AeMeteringMode)
+-  IF(AeConstraintMode)
+-  IF(AeExposureMode)
+-  IF(ExposureValue)
+-  IF(ExposureTime)
+-  IF(AnalogueGain)
+-  IF(Brightness)
+-  IF(Contrast)
+-  IF(Lux)
+-  IF(AwbEnable)
+-  IF(AwbMode)
+-  IF(AwbLocked)
+-  IF(ColourGains)
+-  IF(ColourTemperature)
+-  IF(Saturation)
+-  IF(SensorBlackLevels)
+-  IF(Sharpness)
+-  IF(FocusFoM)
+-  IF(ColourCorrectionMatrix)
+-  IF(ScalerCrop)
+-  IF(DigitalGain)
+-  IF(FrameDuration)
+-  IF(FrameDurationLimits)
+-  IF(SensorTemperature)
+-  IF(SensorTimestamp)
+-  IF(AfMode)
+-  IF(AfRange)
+-  IF(AfSpeed)
+-  IF(AfMetering)
+-  IF(AfWindows)
+-  IF(AfTrigger)
+-  IF(AfPause)
+-  IF(LensPosition)
+-  IF(AfState)
+-  IF(AfPauseState)
+-#endif
+-
+-#if LIBCAMERA_VER_GE(0, 2, 0)
+-  IF(HdrMode)
+-  IF(HdrChannel)
+-  IF(AeFlickerPeriod)
+-  IF(AeFlickerMode)
+-  IF(AeFlickerDetected)
+-#ifdef LIBCAMERA_HAS_RPI_VENDOR_CONTROLS
+-  IF(rpi::StatsOutputEnable)
+-  IF(rpi::Bcm2835StatsOutput)
+-#endif
+-#endif
+-
+-#if LIBCAMERA_VER_GE(0, 4, 0)
+-  IF(Gamma)
+-  IF(DebugMetadataEnable)
+-#ifdef LIBCAMERA_HAS_RPI_VENDOR_CONTROLS
+-  IF(rpi::ScalerCrops)
+-#endif
+-#endif
+-
+-#if LIBCAMERA_VER_GE(0, 5, 0)
+-  IF(AeState)
+-  IF(ExposureTimeMode)
+-  IF(AnalogueGainMode)
+-#ifdef LIBCAMERA_HAS_RPI_VENDOR_CONTROLS
+-  IF(rpi::PispStatsOutput)
+-#endif
+-#endif
+-
+-  throw unknown_control(id);
+-}
+-
+-#endif
+diff --git a/src/type_extent.hpp b/src/type_extent.hpp
+deleted file mode 100644
+index ca9b9d1..0000000
+--- a/src/type_extent.hpp
++++ /dev/null
+@@ -1,16 +0,0 @@
+-#pragma once
+-#include <cstddef>
+-
+-namespace libcamera
+-{
+-class ControlId;
+-}
+-
+-/**
+- * @brief get the extent of a libcamera::ControlId
+- * @param id
+- * @return the extent of the control: 0 if the control is not a span,
+- *         otherwise [1 ... libcamera::dynamic_extent]
+- */
+-std::size_t
+-get_extent(const libcamera::ControlId *const id);
+-- 
+2.43.0
+
