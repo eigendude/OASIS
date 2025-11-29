@@ -18,6 +18,7 @@
 #include <vector>
 
 #include <MapPoint.h>
+#include <opencv2/imgproc.hpp>
 
 using namespace OASIS;
 using namespace SLAM;
@@ -31,6 +32,16 @@ void MapViewRenderer::Initialize(const CameraModel& cameraModel)
 
 bool MapViewRenderer::Render(const Eigen::Isometry3f& cameraFromWorldTransform,
                              const std::vector<Eigen::Vector3f>& worldPoints,
+                             cv::Mat& outputImage)
+{
+  static const std::vector<OverlayQuadrilateral> EMPTY_OVERLAYS;
+
+  return Render(cameraFromWorldTransform, worldPoints, EMPTY_OVERLAYS, outputImage);
+}
+
+bool MapViewRenderer::Render(const Eigen::Isometry3f& cameraFromWorldTransform,
+                             const std::vector<Eigen::Vector3f>& worldPoints,
+                             const std::vector<OverlayQuadrilateral>& overlays,
                              cv::Mat& outputImage)
 {
   if (!CanRender(m_cameraModel))
@@ -51,6 +62,9 @@ bool MapViewRenderer::Render(const Eigen::Isometry3f& cameraFromWorldTransform,
     RenderProjectedPoint(m_cameraModel, m_projectedPoints[index], m_normalizedDepths[index],
                          averageFocal, m_imageBuffers);
   }
+
+  for (const auto& overlay : overlays)
+    RenderOverlayQuadrilateral(m_cameraModel, overlay, m_imageBuffers);
 
   ComposeOutputImage(m_cameraModel, m_imageBuffers, outputImage);
 
@@ -124,6 +138,69 @@ void MapViewRenderer::ProjectMapPoints(const CameraModel& cameraModel,
 
     // Record projected point
     projectedPoints.push_back({pixelX, pixelY, depth});
+  }
+}
+
+void MapViewRenderer::RenderOverlayQuadrilateral(const CameraModel& cameraModel,
+                                                 const OverlayQuadrilateral& overlay,
+                                                 ImageBuffers& imageBuffers)
+{
+  std::array<cv::Point, 4> projectedCorners;
+  float depthSum = 0.0f;
+
+  for (std::size_t index = 0; index < overlay.corners.size(); ++index)
+  {
+    const Eigen::Vector3f& cameraPoint = overlay.corners[index];
+    const float depth = cameraPoint.z();
+    if (depth <= 0.0f)
+      return;
+
+    const float invDepth = 1.0f / depth;
+    const float u = cameraModel.fx * cameraPoint.x() * invDepth + cameraModel.cx;
+    const float v = cameraModel.fy * cameraPoint.y() * invDepth + cameraModel.cy;
+
+    const int pixelX = static_cast<int>(std::lround(u));
+    const int pixelY = static_cast<int>(std::lround(v));
+    if (pixelX < 0 || pixelX >= static_cast<int>(cameraModel.width) || pixelY < 0 ||
+        pixelY >= static_cast<int>(cameraModel.height))
+      return;
+
+    projectedCorners[index] = cv::Point(pixelX, pixelY);
+    depthSum += depth;
+  }
+
+  const float averageDepth = depthSum / static_cast<float>(overlay.corners.size());
+  const float depthTolerance = std::max(0.02f * averageDepth, 0.02f);
+
+  cv::Mat mask(static_cast<int>(cameraModel.height), static_cast<int>(cameraModel.width), CV_8UC1,
+               cv::Scalar(0));
+  cv::fillConvexPoly(mask, projectedCorners.data(), static_cast<int>(projectedCorners.size()),
+                     cv::Scalar(255));
+
+  const cv::Rect boundingBox = cv::boundingRect(projectedCorners.data(),
+                                                static_cast<int>(projectedCorners.size()));
+
+  const int xStart = std::max(0, boundingBox.x);
+  const int yStart = std::max(0, boundingBox.y);
+  const int xEnd = std::min(static_cast<int>(cameraModel.width), boundingBox.x + boundingBox.width);
+  const int yEnd = std::min(static_cast<int>(cameraModel.height), boundingBox.y + boundingBox.height);
+
+  for (int y = yStart; y < yEnd; ++y)
+  {
+    const std::uint8_t* maskRow = mask.ptr<std::uint8_t>(y);
+    for (int x = xStart; x < xEnd; ++x)
+    {
+      if (maskRow[x] == 0)
+        continue;
+
+      const int index = y * static_cast<int>(cameraModel.width) + x;
+      if (averageDepth > imageBuffers.depthBuffer[index] + depthTolerance)
+        continue;
+
+      imageBuffers.depthBuffer[index] = averageDepth;
+      imageBuffers.colorBuffer[index] = overlay.color;
+      imageBuffers.weightBuffer[index] = 1.0f;
+    }
   }
 }
 
