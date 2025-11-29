@@ -49,9 +49,6 @@ private:
   static Eigen::Isometry3f PoseMsgToIsometry(const geometry_msgs::msg::PoseStamped& poseMsg);
   static bool PointCloudToVector(const sensor_msgs::msg::PointCloud2& pointCloud,
                                  std::vector<Eigen::Vector3f>& worldPoints);
-  static Eigen::Vector3f PixelToCamera(const SLAM::CameraModel& cameraModel,
-                                       float pixelX,
-                                       float pixelY);
 
   rclcpp::Node& m_node;
   rclcpp::Logger m_logger;

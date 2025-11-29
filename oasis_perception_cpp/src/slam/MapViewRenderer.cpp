@@ -141,36 +141,36 @@ void MapViewRenderer::ProjectMapPoints(const CameraModel& cameraModel,
   }
 }
 
+namespace
+{
+float MedianDepth(const std::vector<float>& depths)
+{
+  if (depths.empty())
+    return std::numeric_limits<float>::infinity();
+
+  std::vector<float> sortedDepths = depths;
+  const std::size_t mid = sortedDepths.size() / 2;
+  std::nth_element(sortedDepths.begin(), sortedDepths.begin() + mid, sortedDepths.end());
+
+  if (sortedDepths.size() % 2 == 1)
+    return sortedDepths[mid];
+
+  const float lower = *std::max_element(sortedDepths.begin(), sortedDepths.begin() + mid);
+  return 0.5f * (lower + sortedDepths[mid]);
+}
+} // namespace
+
 void MapViewRenderer::RenderOverlayQuadrilateral(const CameraModel& cameraModel,
                                                  const OverlayQuadrilateral& overlay,
                                                  ImageBuffers& imageBuffers)
 {
   std::array<cv::Point, 4> projectedCorners;
-  float depthSum = 0.0f;
 
-  for (std::size_t index = 0; index < overlay.corners.size(); ++index)
+  for (std::size_t index = 0; index < overlay.pixelCorners.size(); ++index)
   {
-    const Eigen::Vector3f& cameraPoint = overlay.corners[index];
-    const float depth = cameraPoint.z();
-    if (depth <= 0.0f)
-      return;
-
-    const float invDepth = 1.0f / depth;
-    const float u = cameraModel.fx * cameraPoint.x() * invDepth + cameraModel.cx;
-    const float v = cameraModel.fy * cameraPoint.y() * invDepth + cameraModel.cy;
-
-    const int pixelX = static_cast<int>(std::lround(u));
-    const int pixelY = static_cast<int>(std::lround(v));
-    if (pixelX < 0 || pixelX >= static_cast<int>(cameraModel.width) || pixelY < 0 ||
-        pixelY >= static_cast<int>(cameraModel.height))
-      return;
-
-    projectedCorners[index] = cv::Point(pixelX, pixelY);
-    depthSum += depth;
+    projectedCorners[index] = cv::Point(static_cast<int>(std::lround(overlay.pixelCorners[index].x)),
+                                        static_cast<int>(std::lround(overlay.pixelCorners[index].y)));
   }
-
-  const float averageDepth = depthSum / static_cast<float>(overlay.corners.size());
-  const float depthTolerance = std::max(0.02f * averageDepth, 0.02f);
 
   cv::Mat mask(static_cast<int>(cameraModel.height), static_cast<int>(cameraModel.width), CV_8UC1,
                cv::Scalar(0));
@@ -180,12 +180,17 @@ void MapViewRenderer::RenderOverlayQuadrilateral(const CameraModel& cameraModel,
   const std::vector<cv::Point> projectedCornersVec(projectedCorners.begin(),
                                                    projectedCorners.end());
   const cv::Rect boundingBox = cv::boundingRect(projectedCornersVec);
+  if (boundingBox.width <= 0 || boundingBox.height <= 0)
+    return;
 
   const int xStart = std::max(0, boundingBox.x);
   const int yStart = std::max(0, boundingBox.y);
   const int xEnd = std::min(static_cast<int>(cameraModel.width), boundingBox.x + boundingBox.width);
   const int yEnd =
       std::min(static_cast<int>(cameraModel.height), boundingBox.y + boundingBox.height);
+
+  std::vector<float> sampledDepths;
+  sampledDepths.reserve(static_cast<std::size_t>(boundingBox.width * boundingBox.height));
 
   for (int y = yStart; y < yEnd; ++y)
   {
@@ -196,10 +201,33 @@ void MapViewRenderer::RenderOverlayQuadrilateral(const CameraModel& cameraModel,
         continue;
 
       const int index = y * static_cast<int>(cameraModel.width) + x;
-      if (averageDepth > imageBuffers.depthBuffer[index] + depthTolerance)
+      const float depth = imageBuffers.depthBuffer[index];
+      if (std::isfinite(depth))
+        sampledDepths.push_back(depth);
+    }
+  }
+
+  const float medianDepth = MedianDepth(sampledDepths);
+  const float overlayDepth = std::isfinite(medianDepth) ? medianDepth : 1.0f;
+
+  if (overlayDepth <= 0.0f)
+    return;
+
+  const float depthTolerance = std::max(0.02f * overlayDepth, 0.02f);
+
+  for (int y = yStart; y < yEnd; ++y)
+  {
+    const std::uint8_t* maskRow = mask.ptr<std::uint8_t>(y);
+    for (int x = xStart; x < xEnd; ++x)
+    {
+      if (maskRow[x] == 0)
         continue;
 
-      imageBuffers.depthBuffer[index] = averageDepth;
+      const int index = y * static_cast<int>(cameraModel.width) + x;
+      if (overlayDepth > imageBuffers.depthBuffer[index] + depthTolerance)
+        continue;
+
+      imageBuffers.depthBuffer[index] = overlayDepth;
       imageBuffers.colorBuffer[index] = overlay.color;
       imageBuffers.weightBuffer[index] = 1.0f;
     }

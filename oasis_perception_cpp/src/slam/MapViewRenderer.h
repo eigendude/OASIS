@@ -40,7 +40,7 @@ public:
 
   struct OverlayQuadrilateral
   {
-    std::array<Eigen::Vector3f, 4> corners;
+    std::array<cv::Point2f, 4> pixelCorners;
     cv::Vec3f color{255.0f, 255.0f, 255.0f};
   };
 

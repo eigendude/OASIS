@@ -178,7 +178,7 @@ void MapVizNode::OnPointCloud(const PointCloud2::ConstSharedPtr& msg)
     return;
 
   std::vector<SLAM::MapViewRenderer::OverlayQuadrilateral> overlays;
-  if (m_cameraModel.fx > 0.0f && m_cameraModel.fy > 0.0f)
+  if (m_cameraModel.width > 0 && m_cameraModel.height > 0)
   {
     std::scoped_lock lock(m_aprilTagMutex);
     overlays.reserve(m_latestAprilTagCorners.size());
@@ -186,10 +186,7 @@ void MapVizNode::OnPointCloud(const PointCloud2::ConstSharedPtr& msg)
     for (const auto& aprilTagCorners : m_latestAprilTagCorners)
     {
       SLAM::MapViewRenderer::OverlayQuadrilateral overlay;
-      for (std::size_t index = 0; index < overlay.corners.size(); ++index)
-        overlay.corners[index] =
-            PixelToCamera(m_cameraModel, aprilTagCorners[index].x, aprilTagCorners[index].y);
-
+      overlay.pixelCorners = aprilTagCorners;
       overlays.emplace_back(overlay);
     }
   }
@@ -304,16 +301,6 @@ bool MapVizNode::PointCloudToVector(const PointCloud2& pointCloud,
   }
 
   return true;
-}
-
-Eigen::Vector3f MapVizNode::PixelToCamera(const SLAM::CameraModel& cameraModel,
-                                          float pixelX,
-                                          float pixelY)
-{
-  const float x = (pixelX - cameraModel.cx) / cameraModel.fx;
-  const float y = (pixelY - cameraModel.cy) / cameraModel.fy;
-
-  return Eigen::Vector3f(x, y, 1.0f);
 }
 
 } // namespace OASIS
