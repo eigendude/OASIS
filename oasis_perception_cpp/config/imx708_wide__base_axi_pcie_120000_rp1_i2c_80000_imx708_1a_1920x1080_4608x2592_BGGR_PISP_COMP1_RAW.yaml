@@ -4,6 +4,7 @@
 # Camera Parameters generated from
 # imx708_wide__base_axi_pcie_120000_rp1_i2c_80000_imx708_1a_1920x1080_4608x2592_BGGR_PISP_COMP1_RAW
 #--------------------------------------------------------------------------------------------
+
 File.version: "1.0"
 
 Camera.type: "KannalaBrandt8"
@@ -33,8 +34,9 @@ Camera.RGB: 1
 #--------------------------------------------------------------------------------------------
 # ORB Parameters
 #--------------------------------------------------------------------------------------------
+
 # ORB Extractor: Number of features per image
-ORBextractor.nFeatures: 4000
+ORBextractor.nFeatures: 4500
 
 # ORB Extractor: Scale factor between levels in the scale pyramid
 ORBextractor.scaleFactor: 1.2
@@ -43,15 +45,19 @@ ORBextractor.scaleFactor: 1.2
 ORBextractor.nLevels: 12
 
 # ORB Extractor: Fast threshold
-# Image is divided in a grid. At each cell FAST are extracted imposing a minimum response.
-# Firstly we impose iniThFAST. If no corners are detected we impose a lower value minThFAST
-# You can lower these values if your images have low contrast
-ORBextractor.iniThFAST: 10
-ORBextractor.minThFAST: 4
+# Image is divided in a grid. At each cell FAST are extracted imposing a minimum
+# response.
+#
+# First we impose iniThFAST
+ORBextractor.iniThFAST: 18
+
+# If no corners are detected we impose a lower value minThFAST
+ORBextractor.minThFAST: 7
 
 #--------------------------------------------------------------------------------------------
 # Viewer Parameters
 #--------------------------------------------------------------------------------------------
+
 Viewer.KeyFrameSize: 0.06
 Viewer.KeyFrameLineWidth: 2.0
 Viewer.GraphLineWidth: 1.4

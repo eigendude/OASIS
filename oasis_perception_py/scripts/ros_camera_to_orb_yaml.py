@@ -100,13 +100,58 @@ class OrbParams(TypedDict):
     minThFAST: int
 
 
-DEFAULT_ORB_PARAMS: Final[OrbParams] = {
-    "nFeatures": 3000,
+# More aggressive ORB parameters, suitable for desktop-class hardware
+DESKTOP_ORB_PARAMS_HIGH_CPU: Final[OrbParams] = {
+    # Target ~4.5k features per frame at 1080p fisheye. Favors robustness
+    # in fast motion and vibration over CPU usage.
+    "nFeatures": 4500,
+
+    # Standard ORB scale pyramid factor; dense enough for wide-FOV fisheye
+    # and motion blur.
     "scaleFactor": 1.2,
+
+    # More pyramid levels than the balanced profile. Helps with large scale
+    # changes (close / far structure) at the cost of extra compute.
     "nLevels": 12,
-    "iniThFAST": 12,
-    "minThFAST": 5,
+
+    # Main FAST threshold: higher = stronger, higher-contrast corners only.
+    # 18 leans toward more repeatable, stable corners in high-motion scenes.
+    "iniThFAST": 18,
+
+    # Fallback threshold if a grid cell finds too few corners at iniThFAST.
+    # 7 matches ORB-SLAM defaults and still recovers features in darker
+    # or low-contrast tiles without going too noisy.
+    "minThFAST": 7,
 }
+
+
+# Default balanced ORB parameters, tuned for real-time on embedded (e.g. Pi 5)
+DEFAULT_ORB_PARAMS_LOW_CPU: Final[OrbParams] = {
+    # Target ~2.4k features per frame at 1080p fisheye. Still dense enough
+    # for fast motion and parallax, but noticeably lighter than desktop.
+    "nFeatures": 2400,
+
+    # Standard ORB scale pyramid factor; good compromise between coverage
+    # and compute on wide-FOV fisheye.
+    "scaleFactor": 1.2,
+
+    # Fewer levels than desktop. Reduces per-frame cost while still
+    # covering a good range of scales in typical indoor scenes.
+    "nLevels": 8,
+
+    # Main FAST threshold. Slightly higher than the balanced profile to
+    # prefer more stable, higher-contrast corners on noisy sensors.
+    "iniThFAST": 16,
+
+    # Fallback threshold if a grid cell finds too few corners at
+    # iniThFAST. 7 matches ORB-SLAM defaults and helps low-light tiles.
+    "minThFAST": 7,
+}
+
+
+# Select the default ORB parameters based on expected hardware
+DEFAULT_ORB_PARAMS: Final[OrbParams] = DESKTOP_ORB_PARAMS_HIGH_CPU
+
 
 # Suitable for an operator viewing a 50" 1080p display from a few feet away
 DEFAULT_VIEWER_PARAMS: Final[Dict[str, float]] = {
@@ -466,6 +511,7 @@ def build_yaml(
     lines.append(
         "#--------------------------------------------------------------------------------------------"
     )
+    lines.append("")
     lines.append('File.version: "1.0"')
     lines.append("")
     lines.append(f'Camera.type: "{camera_type}"')
@@ -517,6 +563,7 @@ def build_yaml(
     lines.append(
         "#--------------------------------------------------------------------------------------------"
     )
+    lines.append("")
     lines.append("# ORB Extractor: Number of features per image")
     lines.append(f"ORBextractor.nFeatures: {orb_params['nFeatures']}")
     lines.append("")
@@ -528,13 +575,16 @@ def build_yaml(
     lines.append("")
     lines.append("# ORB Extractor: Fast threshold")
     lines.append(
-        "# Image is divided in a grid. At each cell FAST are extracted imposing a minimum response."
+        "# Image is divided in a grid. At each cell FAST are extracted imposing a minimum"
     )
     lines.append(
-        "# Firstly we impose iniThFAST. If no corners are detected we impose a lower value minThFAST"
+        "# response."
     )
-    lines.append("# You can lower these values if your images have low contrast")
+    lines.append("#")
+    lines.append("# First we impose iniThFAST")
     lines.append(f"ORBextractor.iniThFAST: {orb_params['iniThFAST']}")
+    lines.append("")
+    lines.append("# If no corners are detected we impose a lower value minThFAST")
     lines.append(f"ORBextractor.minThFAST: {orb_params['minThFAST']}")
     lines.append("")
 
@@ -545,6 +595,7 @@ def build_yaml(
     lines.append(
         "#--------------------------------------------------------------------------------------------"
     )
+    lines.append("")
     for key, value in DEFAULT_VIEWER_PARAMS.items():
         lines.append(f"Viewer.{key}: {format_float(value)}")
     lines.append("")
