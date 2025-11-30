@@ -3,20 +3,22 @@
 #--------------------------------------------------------------------------------------------
 # Camera Parameters generated from
 # imx708_wide__base_axi_pcie_120000_rp1_i2c_80000_imx708_1a_1920x1080_2304x1296_BGGR_PISP_COMP1_RAW
+# downscaled to 1280x720 (720p)
 #--------------------------------------------------------------------------------------------
 File.version: "1.0"
 
 Camera.type: "KannalaBrandt8"
 
 # Left Camera calibration and distortion parameters (OpenCV)
-Camera1.fx: 414.7298249 # 829.4596498 / 2
-Camera1.fy: 417.9458305 # 835.89166107 / 2
-Camera1.cx: 478.2035441 # 956.40708822 / 2
-Camera1.cy: 270.8604794 # 541.72095873 / 2
-Camera.fx: 414.7298249 # 829.4596498 / 2
-Camera.fy: 417.9458305 # 835.89166107 / 2
-Camera.cx: 478.2035441 # 956.40708822 / 2
-Camera.cy: 270.8604794 # 541.72095873 / 2
+Camera1.fx: 552.9730999   # 829.4596498 * 2/3
+Camera1.fy: 557.2611074   # 835.89166107 * 2/3
+Camera1.cx: 637.6047255   # 956.40708822 * 2/3
+Camera1.cy: 361.1473058   # 541.72095873 * 2/3
+
+Camera.fx: 552.9730999
+Camera.fy: 557.2611074
+Camera.cx: 637.6047255
+Camera.cy: 361.1473058
 
 # distortion parameters
 Camera1.k1: 0.67444594
@@ -29,11 +31,11 @@ Camera.k3: 7.70263566
 Camera.k4: -6.625675
 
 # Camera resolution
-Camera.width: 960
-Camera.height: 540
+Camera.width: 1280
+Camera.height: 720
 
 # Camera frames per second
-Camera.fps: 30
+Camera.fps: 15
 
 # Color order of the images (0: BGR, 1: RGB. It is ignored if images are grayscale)
 Camera.RGB: 1
