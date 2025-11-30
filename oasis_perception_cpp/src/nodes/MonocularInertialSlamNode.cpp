@@ -16,8 +16,10 @@
 #include <string_view>
 
 #include <image_transport/image_transport.hpp>
+#include <rclcpp/duration.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
+#include <rclcpp/time.hpp>
 #include <rclcpp/qos.hpp>
 #include <rmw/qos_profiles.h>
 
@@ -44,6 +46,8 @@ constexpr std::string_view VOCABULARY_FILE_PARAMETER = "vocabulary_file";
 constexpr std::string_view DEFAULT_VOCABULARY_FILE = "";
 constexpr std::string_view SETTINGS_FILE_PARAMETER = "settings_file";
 constexpr std::string_view DEFAULT_SETTINGS_FILE = "";
+constexpr std::string_view MAX_TRACKING_FPS_PARAMETER = "max_tracking_fps";
+constexpr double DEFAULT_MAX_TRACKING_FPS = 15.0;
 } // namespace
 
 MonocularInertialSlamNode::MonocularInertialSlamNode(rclcpp::Node& node)
@@ -58,6 +62,8 @@ MonocularInertialSlamNode::MonocularInertialSlamNode(rclcpp::Node& node)
                                         DEFAULT_VOCABULARY_FILE.data());
   m_node.declare_parameter<std::string>(SETTINGS_FILE_PARAMETER.data(),
                                         DEFAULT_SETTINGS_FILE.data());
+  m_node.declare_parameter<double>(MAX_TRACKING_FPS_PARAMETER.data(),
+                                   DEFAULT_MAX_TRACKING_FPS);
 }
 
 MonocularInertialSlamNode::~MonocularInertialSlamNode() = default;
@@ -128,6 +134,16 @@ bool MonocularInertialSlamNode::Initialize()
   }
   RCLCPP_INFO(*m_logger, "ORB_SLAM3 settings file: %s", settingsFile.c_str());
 
+  if (!m_node.get_parameter(MAX_TRACKING_FPS_PARAMETER.data(), m_maxTrackingFps) ||
+      m_maxTrackingFps <= 0.0)
+  {
+    m_maxTrackingFps = DEFAULT_MAX_TRACKING_FPS;
+    RCLCPP_WARN(*m_logger,
+                "Max tracking FPS parameter '%s' missing or invalid, defaulting to %.2f",
+                MAX_TRACKING_FPS_PARAMETER.data(), m_maxTrackingFps);
+  }
+  RCLCPP_INFO(*m_logger, "Max tracking FPS: %.2f", m_maxTrackingFps);
+
   *m_imgSubscriber = image_transport::create_subscription(
       &m_node, imageTopic, [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg)
       { OnImage(msg); }, imageTransport, rmw_qos_profile_sensor_data);
@@ -165,8 +181,25 @@ void MonocularInertialSlamNode::Deinitialize()
 
 void MonocularInertialSlamNode::OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg)
 {
-  if (m_monocularInertialSlam)
-    m_monocularInertialSlam->ReceiveImage(msg);
+  if (m_monocularInertialSlam == nullptr)
+    return;
+
+  if (m_maxTrackingFps > 0.0)
+  {
+    const rclcpp::Time currentFrameTime{msg->header.stamp};
+    const rclcpp::Duration minFrameDelta =
+        rclcpp::Duration::from_seconds(1.0 / m_maxTrackingFps);
+
+    if (m_lastFrameTime.nanoseconds() != 0 &&
+        (currentFrameTime - m_lastFrameTime) < minFrameDelta)
+    {
+      return;
+    }
+
+    m_lastFrameTime = currentFrameTime;
+  }
+
+  m_monocularInertialSlam->ReceiveImage(msg);
 }
 
 void MonocularInertialSlamNode::OnImu(const oasis_msgs::msg::I2CImu::ConstSharedPtr& msg)

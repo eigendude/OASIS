@@ -12,6 +12,7 @@
 #include <image_transport/publisher.hpp>
 #include <image_transport/subscriber.hpp>
 #include <sensor_msgs/msg/image.hpp>
+#include <rclcpp/time.hpp>
 
 namespace rclcpp
 {
@@ -47,6 +48,8 @@ private:
   // ROS parameters
   std::unique_ptr<rclcpp::Logger> m_logger;
   std::unique_ptr<image_transport::Subscriber> m_imgSubscriber;
+  double m_maxTrackingFps = 0.0;
+  rclcpp::Time m_lastFrameTime;
 
   // Video parameters
   std::unique_ptr<SLAM::MonocularSlam> m_monocularSlam;

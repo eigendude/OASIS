@@ -18,6 +18,7 @@
 #include <cv_bridge/cv_bridge.hpp>
 #include <image_transport/image_transport.hpp>
 #include <opencv2/imgproc.hpp>
+#include <rclcpp/duration.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
 #include <rmw/qos_profiles.h>
@@ -45,6 +46,8 @@ constexpr std::string_view VOCABULARY_FILE_PARAMETER = "vocabulary_file";
 constexpr std::string_view DEFAULT_VOCABULARY_FILE = "";
 constexpr std::string_view SETTINGS_FILE_PARAMETER = "settings_file";
 constexpr std::string_view DEFAULT_SETTINGS_FILE = "";
+constexpr std::string_view MAX_TRACKING_FPS_PARAMETER = "max_tracking_fps";
+constexpr double DEFAULT_MAX_TRACKING_FPS = 15.0;
 } // namespace
 
 MonocularSlamNode::MonocularSlamNode(rclcpp::Node& node)
@@ -59,6 +62,8 @@ MonocularSlamNode::MonocularSlamNode(rclcpp::Node& node)
                                         DEFAULT_VOCABULARY_FILE.data());
   m_node.declare_parameter<std::string>(SETTINGS_FILE_PARAMETER.data(),
                                         DEFAULT_SETTINGS_FILE.data());
+  m_node.declare_parameter<double>(MAX_TRACKING_FPS_PARAMETER.data(),
+                                   DEFAULT_MAX_TRACKING_FPS);
 }
 
 MonocularSlamNode::~MonocularSlamNode() = default;
@@ -123,6 +128,16 @@ bool MonocularSlamNode::Initialize()
   }
   RCLCPP_INFO(*m_logger, "ORB_SLAM3 settings file: %s", settingsFile.c_str());
 
+  if (!m_node.get_parameter(MAX_TRACKING_FPS_PARAMETER.data(), m_maxTrackingFps) ||
+      m_maxTrackingFps <= 0.0)
+  {
+    m_maxTrackingFps = DEFAULT_MAX_TRACKING_FPS;
+    RCLCPP_WARN(*m_logger,
+                "Max tracking FPS parameter '%s' missing or invalid, defaulting to %.2f",
+                MAX_TRACKING_FPS_PARAMETER.data(), m_maxTrackingFps);
+  }
+  RCLCPP_INFO(*m_logger, "Max tracking FPS: %.2f", m_maxTrackingFps);
+
   rclcpp::QoS sensorQos = rclcpp::SensorDataQoS();
   sensorQos.reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE);
   *m_imgSubscriber = image_transport::create_subscription(
@@ -150,6 +165,23 @@ void MonocularSlamNode::Deinitialize()
 
 void MonocularSlamNode::OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg)
 {
-  if (m_monocularSlam)
-    m_monocularSlam->ReceiveImage(msg);
+  if (m_monocularSlam == nullptr)
+    return;
+
+  if (m_maxTrackingFps > 0.0)
+  {
+    const rclcpp::Time currentFrameTime{msg->header.stamp};
+    const rclcpp::Duration minFrameDelta =
+        rclcpp::Duration::from_seconds(1.0 / m_maxTrackingFps);
+
+    if (m_lastFrameTime.nanoseconds() != 0 &&
+        (currentFrameTime - m_lastFrameTime) < minFrameDelta)
+    {
+      return;
+    }
+
+    m_lastFrameTime = currentFrameTime;
+  }
+
+  m_monocularSlam->ReceiveImage(msg);
 }

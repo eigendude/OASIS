@@ -12,6 +12,7 @@
 #include <image_transport/subscriber.hpp>
 #include <oasis_msgs/msg/i2_c_imu.hpp>
 #include <rclcpp/subscription.hpp>
+#include <rclcpp/time.hpp>
 #include <sensor_msgs/msg/image.hpp>
 
 namespace rclcpp
@@ -50,6 +51,8 @@ private:
   std::unique_ptr<rclcpp::Logger> m_logger;
   std::unique_ptr<image_transport::Subscriber> m_imgSubscriber;
   rclcpp::Subscription<oasis_msgs::msg::I2CImu>::SharedPtr m_imuSubscriber;
+  double m_maxTrackingFps = 0.0;
+  rclcpp::Time m_lastFrameTime;
 
   // Video parameters
   std::unique_ptr<SLAM::MonocularInertialSlam> m_monocularInertialSlam;
