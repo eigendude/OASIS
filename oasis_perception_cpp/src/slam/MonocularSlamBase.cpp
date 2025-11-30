@@ -29,6 +29,8 @@ using namespace SLAM;
 namespace
 {
 constexpr char MAP_FRAME_ID[] = "map";
+// Limit incoming image processing to reduce out-of-order frames
+constexpr double MAX_FRAME_RATE_HZ = 15.0;
 } // namespace
 
 MonocularSlamBase::MonocularSlamBase(rclcpp::Node& node,
@@ -67,6 +69,7 @@ bool MonocularSlamBase::InitializeSystem(const std::string& vocabularyFile,
   m_slam = std::make_unique<ORB_SLAM3::System>(vocabularyFile, settingsFile, sensorType, false);
 
   m_lastTimestamp.reset();
+  m_lastEnqueuedTimestamp.reset();
 
   return true;
 }
@@ -80,6 +83,7 @@ void MonocularSlamBase::DeinitializeSystem()
   }
 
   m_lastTimestamp.reset();
+  m_lastEnqueuedTimestamp.reset();
 
   {
     std::lock_guard<std::mutex> lock(m_renderMutex);
@@ -113,6 +117,22 @@ void MonocularSlamBase::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedP
 
   {
     std::lock_guard<std::mutex> lock(m_renderMutex);
+
+    if (m_lastEnqueuedTimestamp)
+    {
+      const double delta = timestamp - *m_lastEnqueuedTimestamp;
+      if (delta < 1.0 / MAX_FRAME_RATE_HZ)
+      {
+        RCLCPP_DEBUG(Logger(),
+                     "Dropping frame to enforce %.0f FPS limit (%.2f ms since last)",
+                     MAX_FRAME_RATE_HZ,
+                     delta * 1000.0);
+        return;
+      }
+    }
+
+    m_lastEnqueuedTimestamp = timestamp;
+
     m_renderQueue.clear();
     m_renderQueue.emplace_back(std::move(task));
   }

@@ -93,6 +93,7 @@ private:
 
   // Time synchronization
   std::optional<double> m_lastTimestamp;
+  std::optional<double> m_lastEnqueuedTimestamp;
 
   // Buffers
   std::vector<Eigen::Vector3f> m_worldPointBuffer;
