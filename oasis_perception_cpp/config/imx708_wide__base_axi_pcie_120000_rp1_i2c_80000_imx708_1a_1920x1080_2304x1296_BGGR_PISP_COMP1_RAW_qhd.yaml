@@ -1,0 +1,85 @@
+%YAML:1.0
+
+#--------------------------------------------------------------------------------------------
+# Camera Parameters generated from
+# imx708_wide__base_axi_pcie_120000_rp1_i2c_80000_imx708_1a_1920x1080_2304x1296_BGGR_PISP_COMP1_RAW
+# Downscaled to 960x540 (quarter HD)
+#--------------------------------------------------------------------------------------------
+
+File.version: "1.0"
+
+Camera.type: "KannalaBrandt8"
+
+# Camera resolution
+Camera.width: 960
+Camera.height: 540
+
+# Left Camera calibration and distortion parameters (OpenCV)
+#
+# Scale intrinsics by 1/2 to go from 1920x1080 to 960x540 while preserving
+# the same principal point in normalized coordinates.
+Camera1.fx: 414.7298249   # 829.4596498 * 0.5
+Camera1.fy: 417.9458305   # 835.89166107 * 0.5
+Camera1.cx: 478.2035441   # 956.40708822 * 0.5
+Camera1.cy: 270.8604794   # 541.72095873 * 0.5
+
+# Distortion parameters
+Camera1.k1: 0.67444594
+Camera1.k2: -2.66765432
+Camera1.k3: 7.70263566
+Camera1.k4: -6.625675
+
+# Camera frames per second
+Camera.fps: 30
+
+# Color order of the images (0: BGR, 1: RGB. It is ignored if images are
+# grayscale)
+Camera.RGB: 1
+
+#--------------------------------------------------------------------------------------------
+# ORB Parameters
+#--------------------------------------------------------------------------------------------
+
+# ORB Extractor: Number of features per image
+#
+# 2600 at 960x540 keeps a similar feature density to 3200 at 1280x720, while
+# trimming CPU a bit for embedded targets.
+ORBextractor.nFeatures: 2600
+
+# ORB Extractor: Scale factor between levels in the scale pyramid
+ORBextractor.scaleFactor: 1.2
+
+# ORB Extractor: Number of levels in the scale pyramid
+#
+# Slightly shallower than 720p (10 vs 11). Still handles reasonable scale
+# changes but reduces per-frame cost.
+ORBextractor.nLevels: 10
+
+# ORB Extractor: FAST thresholds
+#
+# The image is divided in a grid. At each cell FAST corners are extracted
+# imposing a minimum response. First we impose iniThFAST; if no corners are
+# detected we impose a lower value minThFAST.
+#
+# 14 is a bit softer than the 720p value (16), which helps recover corners
+# at the lower resolution without going too noisy.
+ORBextractor.iniThFAST: 14
+ORBextractor.minThFAST: 7
+
+#--------------------------------------------------------------------------------------------
+# Viewer Parameters
+#--------------------------------------------------------------------------------------------
+
+Viewer.KeyFrameSize: 0.06
+Viewer.KeyFrameLineWidth: 2.0
+Viewer.GraphLineWidth: 1.4
+Viewer.PointSize: 2.6
+Viewer.CameraSize: 0.1
+Viewer.CameraLineWidth: 3.0
+Viewer.ViewpointX: 0.0
+Viewer.ViewpointY: -0.8
+Viewer.ViewpointZ: -4.5
+Viewer.ViewpointF: 420.0
+
+# System.LoadAtlasFromFile: "./atlas"
+# System.SaveAtlasToFile: "./atlas"
