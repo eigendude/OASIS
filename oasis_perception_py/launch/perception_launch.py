@@ -53,6 +53,11 @@ print(f"Launching perception on {HOSTNAME} in zone {ZONE_ID}")
 ################################################################################
 
 
+HD720_RESOLUTION: str = "hd720"
+HD720_WIDTH: int = 1280
+HD720_HEIGHT: int = 720
+
+
 PERCEPTION_SERVER_APRILTAGS: list[str] = []
 PERCEPTION_SERVER_APRILTAG_VIZ: list[str] = []
 PERCEPTION_SERVER_BACKGROUND: list[str] = []
@@ -97,20 +102,20 @@ def generate_launch_description() -> LaunchDescription:
     composable_nodes: list[ComposableNode] = []
 
     if PERCEPTION_SERVER_APRILTAGS:
-        PerceptionDescriptions.add_apriltag_detector(
-            composable_nodes,
-            PERCEPTION_SERVER_APRILTAGS,
-            input_resolution="hd720",  # Quarter HD resolution
-            image_transport="raw",  # Get raw images from image rectifier
-        )
+            PerceptionDescriptions.add_apriltag_detector(
+                composable_nodes,
+                PERCEPTION_SERVER_APRILTAGS,
+                input_resolution=HD720_RESOLUTION,  # Quarter HD resolution
+                image_transport="raw",  # Get raw images from image rectifier
+            )
 
     if PERCEPTION_SERVER_APRILTAG_VIZ:
-        PerceptionDescriptions.add_apriltag_visualizer(
-            composable_nodes,
-            PERCEPTION_SERVER_APRILTAG_VIZ,
-            input_resolution="hd720",  # Quarter HD resolution
-            image_transport="raw",  # Get raw images from image rectifier
-        )
+            PerceptionDescriptions.add_apriltag_visualizer(
+                composable_nodes,
+                PERCEPTION_SERVER_APRILTAG_VIZ,
+                input_resolution=HD720_RESOLUTION,  # Quarter HD resolution
+                image_transport="raw",  # Get raw images from image rectifier
+            )
 
     if PERCEPTION_SERVER_BACKGROUND:
         PerceptionDescriptions.add_background_modeler(
@@ -134,17 +139,17 @@ def generate_launch_description() -> LaunchDescription:
             composable_nodes,
             PERCEPTION_SERVER_IMAGE_DOWNSCALER,
             input_topic="image_raw",
-            output_resolution="hd720",
+            output_resolution=HD720_RESOLUTION,
             image_transport="compressed",
-            max_width=1280,
-            max_height=720,
+            max_width=HD720_WIDTH,
+            max_height=HD720_HEIGHT,
         )
 
     if PERCEPTION_SERVER_IMAGE_RECT:
         PerceptionDescriptions.add_image_rectifier(
             composable_nodes,
             PERCEPTION_SERVER_IMAGE_RECT,
-            input_resolution="hd720",  # Lesser HD resolution
+            input_resolution=HD720_RESOLUTION,  # Lesser HD resolution
             image_transport="raw",  # Get raw images from image downscaler
         )
 
@@ -160,13 +165,13 @@ def generate_launch_description() -> LaunchDescription:
             PERCEPTION_SERVER_MONOCULAR_SLAM,
             image_transport="raw",
             camera_name=CAMERA_NAME,
-            input_resolution="hd720",
+            input_resolution=HD720_RESOLUTION,
         )
         PerceptionDescriptions.add_map_viz(
             composable_nodes,
             PERCEPTION_SERVER_MONOCULAR_SLAM,
             camera_name=CAMERA_NAME,
-            camera_resolution="hd720",
+            camera_resolution=HD720_RESOLUTION,
         )
 
     if PERCEPTION_SERVER_MONOCULAR_INERTIAL_SLAM:
@@ -175,13 +180,13 @@ def generate_launch_description() -> LaunchDescription:
             PERCEPTION_SERVER_MONOCULAR_INERTIAL_SLAM,
             image_transport="raw",
             camera_name=CAMERA_NAME,
-            input_resolution="hd720",
+            input_resolution=HD720_RESOLUTION,
         )
         PerceptionDescriptions.add_map_viz(
             composable_nodes,
             PERCEPTION_SERVER_MONOCULAR_INERTIAL_SLAM,
             camera_name=CAMERA_NAME,
-            camera_resolution="hd720",
+            camera_resolution=HD720_RESOLUTION,
         )
 
     if PERCEPTION_SERVER_POSE_LANDMARKS:
