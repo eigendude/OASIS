@@ -76,6 +76,7 @@ class PerceptionDescriptions:
     def add_apriltag_detector(
         composable_nodes: list[ComposableNode],
         system_ids: List[str],
+        input_topic: str,
         input_resolution: str,
         image_transport: str,
     ) -> None:
@@ -116,7 +117,7 @@ class PerceptionDescriptions:
                     ],
                     remappings=[
                         ("camera_info", f"{system_id}/{RESOLUTION_PREFIX}camera_info"),
-                        ("image_rect", f"{system_id}/{RESOLUTION_PREFIX}image_rect"),
+                        ("image_rect", f"{system_id}/{RESOLUTION_PREFIX}{input_topic}"),
                         ("detections", f"{system_id}/{RESOLUTION_PREFIX}apriltags"),
                     ],
                 )
@@ -132,6 +133,7 @@ class PerceptionDescriptions:
     def add_apriltag_visualizer(
         composable_nodes: list[ComposableNode],
         system_ids: List[str],
+        input_image: str,
         input_resolution: str,
         image_transport: str,
     ) -> None:
@@ -153,7 +155,7 @@ class PerceptionDescriptions:
                     remappings=[
                         (
                             f"{system_id}_image",
-                            f"{system_id}/{RESOLUTION_PREFIX}image_rect",
+                            f"{system_id}/{RESOLUTION_PREFIX}{input_image}",
                         ),
                         (
                             f"{system_id}_apriltags",
@@ -342,6 +344,7 @@ class PerceptionDescriptions:
         composable_nodes: list[ComposableNode],
         system_ids: list[str],
         input_topic: str,
+        input_resolution: str,
         output_resolution: str,
         image_transport: str,
         output_width: int = -1,
@@ -349,6 +352,8 @@ class PerceptionDescriptions:
         max_width: int = -1,
         max_height: int = -1,
     ) -> None:
+        RESOLUTION_PREFIX = f"{input_resolution}/" if input_resolution else ""
+
         size_params = {}
         if output_width > 0:
             size_params["output_width"] = output_width
@@ -377,13 +382,16 @@ class PerceptionDescriptions:
                     remappings=[
                         (
                             f"{system_id}_camera_info",
-                            f"{system_id}/camera_info",
+                            f"{system_id}/{RESOLUTION_PREFIX}camera_info",
                         ),
                         (
                             f"{system_id}_camera_info_{output_resolution}",
                             f"{system_id}/{output_resolution}/camera_info",
                         ),
-                        (f"{system_id}_image", f"{system_id}/{input_topic}"),
+                        (
+                            f"{system_id}_image",
+                            f"{system_id}/{RESOLUTION_PREFIX}{input_topic}",
+                        ),
                         (
                             f"{system_id}_image_{output_resolution}",
                             f"{system_id}/{output_resolution}/{input_topic}",
@@ -697,7 +705,11 @@ class PerceptionDescriptions:
 
     @staticmethod
     def add_pose_landmarker(
-        ld: LaunchDescription, zone_id: str, input_resolution: str, image_transport: str
+        ld: LaunchDescription,
+        zone_id: str,
+        input_topic: str,
+        input_resolution: str,
+        image_transport: str,
     ) -> None:
         RESOLUTION_PREFIX = f"{input_resolution}/" if input_resolution else ""
 
@@ -715,15 +727,7 @@ class PerceptionDescriptions:
             remappings=[
                 # Topics
                 ("camera_scene", f"{zone_id}/{RESOLUTION_PREFIX}camera_scene"),
-                (
-                    "image",
-                    (
-                        # Use different remappings for Kinect V2
-                        f"{zone_id}/{RESOLUTION_PREFIX}image_color"
-                        if zone_id == KINECT_V2_ZONE_ID
-                        else f"{zone_id}/{RESOLUTION_PREFIX}image_rect"
-                    ),
-                ),
+                ("image", f"{zone_id}/{RESOLUTION_PREFIX}{input_topic}"),
                 ("pose_landmarks", f"{zone_id}/{RESOLUTION_PREFIX}pose_landmarks"),
                 ("pose_image", f"{zone_id}/{RESOLUTION_PREFIX}pose_image"),
             ],

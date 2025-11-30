@@ -31,12 +31,6 @@ HOST_ID: str = CONFIG.HOST_ID
 # Zone configuration
 ZONE_ID: str = CONFIG.ZONE_ID
 
-# Zones with a smart display that can be controlled
-SMART_DISPLAY_ZONES: list[str] = CONFIG.SMART_DISPLAY_ZONES
-
-# Zones with a camera feed
-CAMERA_ZONES: list[str] = CONFIG.CAMERA_ZONES
-
 # TODO: Select "pinhole" or "fisheye" from configuration
 CAMERA_MODEL: str = "fisheye"
 
@@ -49,49 +43,6 @@ print(f"Launching perception on {HOSTNAME} in zone {ZONE_ID}")
 
 
 ################################################################################
-# Hardware configuration
-################################################################################
-
-
-IMAGE_RESOLUTION: str = "hd720"
-IMAGE_WIDTH: int = 1280
-IMAGE_HEIGHT: int = 720
-
-
-PERCEPTION_SERVER_APRILTAGS: list[str] = []
-PERCEPTION_SERVER_APRILTAG_VIZ: list[str] = []
-PERCEPTION_SERVER_BACKGROUND: list[str] = []
-PERCEPTION_SERVER_CALIBRATION: list[str] = []
-PERCEPTION_SERVER_FLOW: list[str] = []
-PERCEPTION_SERVER_IMAGE_DOWNSCALER: list[str] = []
-PERCEPTION_SERVER_IMAGE_RECT: list[str] = []
-PERCEPTION_SERVER_MESH_VIEWER: list[str] = []
-PERCEPTION_SERVER_MONOCULAR_SLAM: list[str] = []
-PERCEPTION_SERVER_MONOCULAR_INERTIAL_SLAM: list[str] = []
-PERCEPTION_SERVER_POSE_LANDMARKS: list[str] = []
-
-
-if HOST_ID == "falcon":
-    # PERCEPTION_SERVER_FLOW.extend(["falcon"])
-    pass
-elif HOST_ID == "nas":
-    # PERCEPTION_SERVER_CALIBRATION.extend(
-    #     ["bar", "doorbell", "entryway", "hallway", "kitchen", "livingroom"]
-    # )
-    PERCEPTION_SERVER_POSE_LANDMARKS.extend(["hallway"])
-elif HOST_ID == "oceanplatform":
-    PERCEPTION_SERVER_APRILTAGS.extend(["falcon"])
-    PERCEPTION_SERVER_APRILTAG_VIZ.extend(["falcon"])
-    # PERCEPTION_SERVER_BACKGROUND.extend(["station"])
-    # PERCEPTION_SERVER_FLOW.extend(["falcon", "station"])
-    PERCEPTION_SERVER_IMAGE_DOWNSCALER.extend(["falcon"])
-    PERCEPTION_SERVER_IMAGE_RECT.extend(["falcon"])
-    # PERCEPTION_SERVER_MESH_VIEWER.extend(["falcon"])
-    PERCEPTION_SERVER_MONOCULAR_SLAM.extend(["falcon"])
-    # PERCEPTION_SERVER_POSE_LANDMARKS.extend(["falcon"])
-
-
-################################################################################
 # Launch description
 ################################################################################
 
@@ -101,120 +52,100 @@ def generate_launch_description() -> LaunchDescription:
 
     composable_nodes: list[ComposableNode] = []
 
-    if PERCEPTION_SERVER_APRILTAGS:
-        PerceptionDescriptions.add_apriltag_detector(
-            composable_nodes,
-            PERCEPTION_SERVER_APRILTAGS,
-            input_resolution=IMAGE_RESOLUTION,
-            image_transport="raw",  # Get raw images from image rectifier
-        )
-
-    if PERCEPTION_SERVER_APRILTAG_VIZ:
-        PerceptionDescriptions.add_apriltag_visualizer(
-            composable_nodes,
-            PERCEPTION_SERVER_APRILTAG_VIZ,
-            input_resolution=IMAGE_RESOLUTION,
-            image_transport="raw",  # Get raw images from image rectifier
-        )
-
-    if PERCEPTION_SERVER_BACKGROUND:
-        PerceptionDescriptions.add_background_modeler(
-            composable_nodes, PERCEPTION_SERVER_BACKGROUND
-        )
-        PerceptionDescriptions.add_background_subtractor(
-            composable_nodes, PERCEPTION_SERVER_BACKGROUND
-        )
-
-    if PERCEPTION_SERVER_CALIBRATION:
-        for host_id in PERCEPTION_SERVER_CALIBRATION:
-            PerceptionDescriptions.add_calibration(ld, host_id, CAMERA_MODEL)
-
-    if PERCEPTION_SERVER_FLOW:
-        PerceptionDescriptions.add_optical_flow(
-            composable_nodes, PERCEPTION_SERVER_FLOW, image_transport="compressed"
-        )
-
-    if PERCEPTION_SERVER_IMAGE_DOWNSCALER:
+    # NAS pipeline
+    if HOST_ID == "nas":
+        # Ingestion: Single source, fanout to nodes
         PerceptionDescriptions.add_image_downscaler(
             composable_nodes,
-            PERCEPTION_SERVER_IMAGE_DOWNSCALER,
+            ["falcon"],
             input_topic="image_raw",
-            output_resolution=IMAGE_RESOLUTION,
+            input_resolution="",
+            output_resolution="hd",
             image_transport="compressed",
-            max_width=IMAGE_WIDTH,
-            max_height=IMAGE_HEIGHT,
+            max_width=1920,
+            max_height=1080,
+        )
+        PerceptionDescriptions.add_image_downscaler(
+            composable_nodes,
+            ["falcon"],
+            input_topic="image_raw",
+            input_resolution="",
+            output_resolution="sd",
+            image_transport="compressed",
+            max_width=640,
+            max_height=480,
+        )
+        PerceptionDescriptions.add_image_downscaler(
+            composable_nodes,
+            ["hallway"],
+            input_topic="image_color",
+            input_resolution="qhd",
+            output_resolution="sd",
+            image_transport="raw",
+            max_width=640,
+            max_height=480,
         )
 
-    if PERCEPTION_SERVER_IMAGE_RECT:
+        # Image rectification
         PerceptionDescriptions.add_image_rectifier(
             composable_nodes,
-            PERCEPTION_SERVER_IMAGE_RECT,
-            input_resolution=IMAGE_RESOLUTION,
-            image_transport="raw",  # Get raw images from image downscaler
+            ["falcon"],
+            input_resolution="hd",
+            image_transport="raw",
         )
 
-    if PERCEPTION_SERVER_MESH_VIEWER:
-        PerceptionDescriptions.add_mesh_viewer(
+        # AprilTag detection
+        PerceptionDescriptions.add_apriltag_detector(
             composable_nodes,
-            PERCEPTION_SERVER_MESH_VIEWER,
+            ["falcon"],
+            input_topic="image_rect",
+            input_resolution="hd",
+            image_transport="raw",
         )
 
-    if PERCEPTION_SERVER_MONOCULAR_SLAM:
+        # Pose landmarking
+        PerceptionDescriptions.add_pose_landmarker(
+            ld,
+            "falcon",
+            input_topic="image_rect",
+            input_resolution="sd",
+            image_transport="raw",
+        )
+        PerceptionDescriptions.add_pose_landmarker(
+            ld,
+            "hallway",
+            input_topic="image_color",
+            input_resolution="sd",
+            image_transport="raw",
+        )
+
+        # Monocular SLAM
         PerceptionDescriptions.add_monocular_slam(
             composable_nodes,
-            PERCEPTION_SERVER_MONOCULAR_SLAM,
+            ["falcon"],
             image_transport="raw",
             camera_name=CAMERA_NAME,
-            input_resolution=IMAGE_RESOLUTION,
+            input_resolution="hd",
         )
+
+    # Ocean Platform pipeline
+    elif HOST_ID == "oceanplatform":
+        # AprilTag visualization
+        PerceptionDescriptions.add_apriltag_visualizer(
+            composable_nodes,
+            ["falcon"],
+            input_image="image_rect",
+            input_resolution="hd",
+            image_transport="compressed",
+        )
+
+        # Map visualization
         PerceptionDescriptions.add_map_viz(
             composable_nodes,
-            PERCEPTION_SERVER_MONOCULAR_SLAM,
+            ["falcon"],
             camera_name=CAMERA_NAME,
-            camera_resolution=IMAGE_RESOLUTION,
+            camera_resolution="hd",
         )
-
-    if PERCEPTION_SERVER_MONOCULAR_INERTIAL_SLAM:
-        PerceptionDescriptions.add_monocular_inertial_slam(
-            composable_nodes,
-            PERCEPTION_SERVER_MONOCULAR_INERTIAL_SLAM,
-            image_transport="raw",
-            camera_name=CAMERA_NAME,
-            input_resolution=IMAGE_RESOLUTION,
-        )
-        PerceptionDescriptions.add_map_viz(
-            composable_nodes,
-            PERCEPTION_SERVER_MONOCULAR_INERTIAL_SLAM,
-            camera_name=CAMERA_NAME,
-            camera_resolution=IMAGE_RESOLUTION,
-        )
-
-    if PERCEPTION_SERVER_POSE_LANDMARKS:
-        # The TensorFlow Lite model used for pose landmarking has an
-        # internal resolution of 224x224 for detecting people, and once
-        # detected landmarking is performed at 256x256.
-        PerceptionDescriptions.add_image_downscaler(
-            composable_nodes,
-            PERCEPTION_SERVER_POSE_LANDMARKS,
-            input_topic="image_rect",
-            output_resolution="sq256",
-            image_transport="raw",
-            output_width=256,
-            output_height=256,
-        )
-
-        # Add the pose landmarker
-        for host_id in PERCEPTION_SERVER_POSE_LANDMARKS:
-            PerceptionDescriptions.add_pose_landmarker(
-                ld,
-                host_id,
-                input_resolution="sq256",
-                image_transport="raw",
-            )
-
-    # TODO
-    # if ZONE_ID in SMART_DISPLAY_ZONES:
-    #     PerceptionDescriptions..add_pose_renderer(ld, CAMERA_ZONES, HOST_ID)
 
     PerceptionDescriptions.add_perception_components(ld, HOST_ID, composable_nodes)
 

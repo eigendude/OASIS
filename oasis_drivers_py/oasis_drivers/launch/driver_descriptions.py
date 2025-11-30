@@ -130,33 +130,35 @@ class DriverDescriptions:
         )
         ld.add_action(kinect2_bridge_node)
 
-        kinect2_container: ComposableNodeContainer = ComposableNodeContainer(
-            namespace=ROS_NAMESPACE,
-            name=f"kinect2_container_{zone_id}",
-            package="rclcpp_components",
-            executable="component_container_mt",
-            output="screen",
-            composable_node_descriptions=[
-                # TODO: Composable nodes seem to break when not using the modern image_transport API
-                # ComposableNode(
-                #     package="kinect2_bridge",
-                #     plugin="kinect2_bridge::Kinect2BridgeComponent",
-                #     name=f"kinect2_bridge_{zone_id}",
-                # ),
-                ComposableNode(
-                    namespace=ROS_NAMESPACE,
-                    package="kinect2_bridge",
-                    plugin="kinect2_bridge::Kinect2DownscalerComponent",
-                    name=f"kinect2_downscaler_{zone_id}",
-                    parameters=[
-                        {
-                            "base_name": zone_id,
-                        },
-                    ],
-                ),
-            ],
-        )
-        ld.add_action(kinect2_container)
+        # This was moved to the oasis_perception_py launchfile
+        if False:
+            kinect2_container: ComposableNodeContainer = ComposableNodeContainer(
+                namespace=ROS_NAMESPACE,
+                name=f"kinect2_container_{zone_id}",
+                package="rclcpp_components",
+                executable="component_container_mt",
+                output="screen",
+                composable_node_descriptions=[
+                    # TODO: Composable nodes seem to break when not using the modern image_transport API
+                    # ComposableNode(
+                    #     package="kinect2_bridge",
+                    #     plugin="kinect2_bridge::Kinect2BridgeComponent",
+                    #     name=f"kinect2_bridge_{zone_id}",
+                    # ),
+                    ComposableNode(
+                        namespace=ROS_NAMESPACE,
+                        package="kinect2_bridge",
+                        plugin="kinect2_bridge::Kinect2DownscalerComponent",
+                        name=f"kinect2_downscaler_{zone_id}",
+                        parameters=[
+                            {
+                                "base_name": zone_id,
+                            },
+                        ],
+                    ),
+                ],
+            )
+            ld.add_action(kinect2_container)
 
     #
     # ROS2 (libcamera) camera
