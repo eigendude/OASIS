@@ -437,13 +437,18 @@ class PerceptionDescriptions:
 
     @staticmethod
     def add_map_viz(
-        composable_nodes: list[ComposableNode], system_ids: List[str], camera_name: str
+        composable_nodes: list[ComposableNode],
+        system_ids: List[str],
+        camera_name: str,
+        input_resolution: str,
     ) -> None:
         settings_file: str | None = PerceptionPaths.find_orb_slam_oasis_settings(
             camera_name
         )
         if settings_file is None:
             raise FileNotFoundError("ORB_SLAM_OASIS settings file not found.")
+
+        RESOLUTION_PREFIX = f"{input_resolution}/" if input_resolution else ""
 
         composable_nodes.extend(
             [
@@ -463,6 +468,10 @@ class PerceptionDescriptions:
                             f"{system_id}/slam_point_cloud",
                         ),
                         (f"{system_id}_slam_map_image", f"{system_id}/slam_map_image"),
+                        (
+                            f"{system_id}_camera_info",
+                            f"{system_id}/{RESOLUTION_PREFIX}camera_info",
+                        ),
                     ],
                 )
                 for system_id in system_ids

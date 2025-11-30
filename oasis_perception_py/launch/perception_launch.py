@@ -166,6 +166,7 @@ def generate_launch_description() -> LaunchDescription:
             composable_nodes,
             PERCEPTION_SERVER_MONOCULAR_SLAM,
             camera_name=CAMERA_NAME,
+            input_resolution="qhd",
         )
 
     if PERCEPTION_SERVER_MONOCULAR_INERTIAL_SLAM:
@@ -180,6 +181,7 @@ def generate_launch_description() -> LaunchDescription:
             composable_nodes,
             PERCEPTION_SERVER_MONOCULAR_INERTIAL_SLAM,
             camera_name=CAMERA_NAME,
+            input_resolution="qhd",
         )
 
     if PERCEPTION_SERVER_POSE_LANDMARKS:
