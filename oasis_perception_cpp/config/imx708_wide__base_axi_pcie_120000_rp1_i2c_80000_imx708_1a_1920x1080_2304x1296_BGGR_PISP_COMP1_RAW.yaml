@@ -8,29 +8,21 @@ File.version: "1.0"
 
 Camera.type: "KannalaBrandt8"
 
+# Camera resolution
+Camera.width: 1920
+Camera.height: 1080
+
 # Left Camera calibration and distortion parameters (OpenCV)
 Camera1.fx: 829.4596498
 Camera1.fy: 835.89166107
 Camera1.cx: 956.40708822
 Camera1.cy: 541.72095873
-Camera.fx: 829.4596498
-Camera.fy: 835.89166107
-Camera.cx: 956.40708822
-Camera.cy: 541.72095873
 
-# distortion parameters
+# Distortion parameters
 Camera1.k1: 0.67444594
 Camera1.k2: -2.66765432
 Camera1.k3: 7.70263566
 Camera1.k4: -6.625675
-Camera.k1: 0.67444594
-Camera.k2: -2.66765432
-Camera.k3: 7.70263566
-Camera.k4: -6.625675
-
-# Camera resolution
-Camera.width: 1920
-Camera.height: 1080
 
 # Camera frames per second
 Camera.fps: 30
