@@ -178,17 +178,15 @@ void ImageDownscaler::ReceiveImage(
     return;
   }
 
-  const auto [outputWidth, outputHeight] = CalculateTargetDimensions(originalWidth, originalHeight);
-
-  const bool shouldScale = (outputWidth != originalWidth) || (outputHeight != originalHeight);
+  const bool shouldScale = (targetWidth != static_cast<unsigned int>(width)) ||
+                          (targetHeight != static_cast<unsigned int>(height));
   if (shouldScale)
   {
-    cameraInfo.width = static_cast<uint32_t>(std::max(1U, outputWidth));
-    cameraInfo.height = static_cast<uint32_t>(std::max(1U, outputHeight));
+    cameraInfo.width = static_cast<uint32_t>(std::max(1U, targetWidth));
+    cameraInfo.height = static_cast<uint32_t>(std::max(1U, targetHeight));
 
-    const double widthScale = static_cast<double>(outputWidth) / static_cast<double>(originalWidth);
-    const double heightScale =
-        static_cast<double>(outputHeight) / static_cast<double>(originalHeight);
+    const double widthScale = static_cast<double>(targetWidth) / static_cast<double>(width);
+    const double heightScale = static_cast<double>(targetHeight) / static_cast<double>(height);
 
     // Scale K matrix
     cameraInfo.k[0] *= widthScale; // fx
