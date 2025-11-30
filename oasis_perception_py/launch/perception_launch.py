@@ -53,6 +53,11 @@ print(f"Launching perception on {HOSTNAME} in zone {ZONE_ID}")
 ################################################################################
 
 
+IMAGE_RESOLUTION: str = "hd720"
+IMAGE_WIDTH: int = 1280
+IMAGE_HEIGHT: int = 720
+
+
 PERCEPTION_SERVER_APRILTAGS: list[str] = []
 PERCEPTION_SERVER_APRILTAG_VIZ: list[str] = []
 PERCEPTION_SERVER_BACKGROUND: list[str] = []
@@ -100,7 +105,7 @@ def generate_launch_description() -> LaunchDescription:
         PerceptionDescriptions.add_apriltag_detector(
             composable_nodes,
             PERCEPTION_SERVER_APRILTAGS,
-            input_resolution="qhd",  # Quarter HD resolution
+            input_resolution=IMAGE_RESOLUTION,
             image_transport="raw",  # Get raw images from image rectifier
         )
 
@@ -108,7 +113,7 @@ def generate_launch_description() -> LaunchDescription:
         PerceptionDescriptions.add_apriltag_visualizer(
             composable_nodes,
             PERCEPTION_SERVER_APRILTAG_VIZ,
-            input_resolution="qhd",  # Quarter HD resolution
+            input_resolution=IMAGE_RESOLUTION,
             image_transport="raw",  # Get raw images from image rectifier
         )
 
@@ -134,17 +139,17 @@ def generate_launch_description() -> LaunchDescription:
             composable_nodes,
             PERCEPTION_SERVER_IMAGE_DOWNSCALER,
             input_topic="image_raw",
-            output_resolution="qhd",
+            output_resolution=IMAGE_RESOLUTION,
             image_transport="compressed",
-            max_width=960,
-            max_height=540,
+            max_width=IMAGE_WIDTH,
+            max_height=IMAGE_HEIGHT,
         )
 
     if PERCEPTION_SERVER_IMAGE_RECT:
         PerceptionDescriptions.add_image_rectifier(
             composable_nodes,
             PERCEPTION_SERVER_IMAGE_RECT,
-            input_resolution="qhd",  # Quarter HD resolution
+            input_resolution=IMAGE_RESOLUTION,
             image_transport="raw",  # Get raw images from image downscaler
         )
 
@@ -160,13 +165,13 @@ def generate_launch_description() -> LaunchDescription:
             PERCEPTION_SERVER_MONOCULAR_SLAM,
             image_transport="raw",
             camera_name=CAMERA_NAME,
-            input_resolution="qhd",
+            input_resolution=IMAGE_RESOLUTION,
         )
         PerceptionDescriptions.add_map_viz(
             composable_nodes,
             PERCEPTION_SERVER_MONOCULAR_SLAM,
             camera_name=CAMERA_NAME,
-            camera_resolution="qhd",
+            camera_resolution=IMAGE_RESOLUTION,
         )
 
     if PERCEPTION_SERVER_MONOCULAR_INERTIAL_SLAM:
@@ -175,13 +180,13 @@ def generate_launch_description() -> LaunchDescription:
             PERCEPTION_SERVER_MONOCULAR_INERTIAL_SLAM,
             image_transport="raw",
             camera_name=CAMERA_NAME,
-            input_resolution="qhd",
+            input_resolution=IMAGE_RESOLUTION,
         )
         PerceptionDescriptions.add_map_viz(
             composable_nodes,
             PERCEPTION_SERVER_MONOCULAR_INERTIAL_SLAM,
             camera_name=CAMERA_NAME,
-            camera_resolution="qhd",
+            camera_resolution=IMAGE_RESOLUTION,
         )
 
     if PERCEPTION_SERVER_POSE_LANDMARKS:
