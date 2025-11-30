@@ -23,10 +23,10 @@ namespace
 {
 constexpr std::string_view CAMERA_WIDTH_KEY = "Camera.width";
 constexpr std::string_view CAMERA_HEIGHT_KEY = "Camera.height";
-constexpr std::string_view CAMERA_FX_KEY = "Camera.fx";
-constexpr std::string_view CAMERA_FY_KEY = "Camera.fy";
-constexpr std::string_view CAMERA_CX_KEY = "Camera.cx";
-constexpr std::string_view CAMERA_CY_KEY = "Camera.cy";
+constexpr std::string_view CAMERA_FX_KEY = "Camera1.fx";
+constexpr std::string_view CAMERA_FY_KEY = "Camera1.fy";
+constexpr std::string_view CAMERA_CX_KEY = "Camera1.cx";
+constexpr std::string_view CAMERA_CY_KEY = "Camera1.cy";
 
 bool ValidateCameraModel(const CameraModel& model)
 {
