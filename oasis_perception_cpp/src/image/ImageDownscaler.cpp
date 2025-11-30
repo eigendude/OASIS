@@ -80,17 +80,8 @@ ImageDownscaler::ImageDownscaler(std::shared_ptr<rclcpp::Node> node,
   m_maxWidth = maxWidth;
   m_maxHeight = maxHeight;
 
-  // QoS for input from camera driver
-  rclcpp::QoS inputQos = rclcpp::SensorDataQoS();
-  inputQos.keep_last(1);
-
-  // QoS for output topics
-  rclcpp::QoS outputQos = rclcpp::SensorDataQoS();
-  outputQos.keep_last(1);
-
   // Publishers
-  *m_downscaledPublisher = image_transport::create_camera_publisher(
-      m_node.get(), downscaledTopic, outputQos.get_rmw_qos_profile());
+  *m_downscaledPublisher = image_transport::create_camera_publisher(m_node.get(), downscaledTopic);
 
   // Subscribers
   *m_cameraSubscriber = image_transport::create_camera_subscription(
@@ -98,7 +89,7 @@ ImageDownscaler::ImageDownscaler(std::shared_ptr<rclcpp::Node> node,
       [this](const sensor_msgs::msg::Image::ConstSharedPtr& imageMsg,
              const sensor_msgs::msg::CameraInfo::ConstSharedPtr& cameraInfo)
       { ReceiveImage(imageMsg, cameraInfo); },
-      imageTransport, inputQos.get_rmw_qos_profile());
+      imageTransport);
 }
 
 ImageDownscaler::~ImageDownscaler()

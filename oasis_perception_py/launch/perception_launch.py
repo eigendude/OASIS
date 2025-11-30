@@ -146,7 +146,6 @@ def generate_launch_description() -> LaunchDescription:
             PERCEPTION_SERVER_IMAGE_RECT,
             input_resolution="",  # Native resolution
             image_transport="compressed",  # Get compressed images from camera driver
-            reliable_publisher=True,
         )
 
     if PERCEPTION_SERVER_MESH_VIEWER:

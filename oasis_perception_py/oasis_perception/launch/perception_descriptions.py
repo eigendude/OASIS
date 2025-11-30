@@ -404,17 +404,7 @@ class PerceptionDescriptions:
         system_ids: list[str],
         input_resolution: str,
         image_transport: str,
-        reliable_publisher: bool,
     ) -> None:
-        QOS_OVERRIDES = {
-            "publisher": {
-                "reliability": "reliable" if reliable_publisher else "best_effort",
-                "history": "keep_last",
-                "depth": 1,
-                "durability": "volatile",
-            }
-        }
-
         RESOLUTION_PREFIX = f"{input_resolution}/" if input_resolution else ""
 
         composable_nodes.extend(
@@ -428,12 +418,6 @@ class PerceptionDescriptions:
                         {
                             "interpolation": 1,  # Linear
                             "image_transport": image_transport,
-                            #
-                            # QoS overrides for the rectified image publisher
-                            #
-                            "qos_overrides": {
-                                f"/{ROS_NAMESPACE}/{system_id}/{RESOLUTION_PREFIX}image_rect": QOS_OVERRIDES,
-                            },
                         },
                     ],
                     remappings=[
