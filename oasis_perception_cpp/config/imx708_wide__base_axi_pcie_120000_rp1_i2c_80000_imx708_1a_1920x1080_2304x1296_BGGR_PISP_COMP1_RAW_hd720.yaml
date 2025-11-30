@@ -1,0 +1,77 @@
+%YAML:1.0
+
+#--------------------------------------------------------------------------------------------
+# Camera Parameters generated from
+# imx708_wide__base_axi_pcie_120000_rp1_i2c_80000_imx708_1a_1920x1080_2304x1296_BGGR_PISP_COMP1_RAW
+# downscaled to 1280x720 (720p)
+#--------------------------------------------------------------------------------------------
+File.version: "1.0"
+
+Camera.type: "KannalaBrandt8"
+
+# Left Camera calibration and distortion parameters (OpenCV)
+Camera1.fx: 552.9730999   # 829.4596498 * 2/3
+Camera1.fy: 557.2611074   # 835.89166107 * 2/3
+Camera1.cx: 637.6047255   # 956.40708822 * 2/3
+Camera1.cy: 361.1473058   # 541.72095873 * 2/3
+
+Camera.fx: 552.9730999
+Camera.fy: 557.2611074
+Camera.cx: 637.6047255
+Camera.cy: 361.1473058
+
+# distortion parameters
+Camera1.k1: 0.67444594
+Camera1.k2: -2.66765432
+Camera1.k3: 7.70263566
+Camera1.k4: -6.625675
+Camera.k1: 0.67444594
+Camera.k2: -2.66765432
+Camera.k3: 7.70263566
+Camera.k4: -6.625675
+
+# Camera resolution
+Camera.width: 1280
+Camera.height: 720
+
+# Camera frames per second
+Camera.fps: 30
+
+# Color order of the images (0: BGR, 1: RGB. It is ignored if images are grayscale)
+Camera.RGB: 1
+
+#--------------------------------------------------------------------------------------------
+# ORB Parameters
+#--------------------------------------------------------------------------------------------
+# ORB Extractor: Number of features per image
+ORBextractor.nFeatures: 3000
+
+# ORB Extractor: Scale factor between levels in the scale pyramid
+ORBextractor.scaleFactor: 1.2
+
+# ORB Extractor: Number of levels in the scale pyramid
+ORBextractor.nLevels: 12
+
+# ORB Extractor: Fast threshold
+# Image is divided in a grid. At each cell FAST are extracted imposing a minimum response.
+# Firstly we impose iniThFAST. If no corners are detected we impose a lower value minThFAST
+# You can lower these values if your images have low contrast
+ORBextractor.iniThFAST: 10
+ORBextractor.minThFAST: 4
+
+#--------------------------------------------------------------------------------------------
+# Viewer Parameters
+#--------------------------------------------------------------------------------------------
+Viewer.KeyFrameSize: 0.06
+Viewer.KeyFrameLineWidth: 2.0
+Viewer.GraphLineWidth: 1.4
+Viewer.PointSize: 2.6
+Viewer.CameraSize: 0.1
+Viewer.CameraLineWidth: 3.0
+Viewer.ViewpointX: 0.0
+Viewer.ViewpointY: -0.8
+Viewer.ViewpointZ: -4.5
+Viewer.ViewpointF: 420.0
+
+# System.LoadAtlasFromFile: "./atlas"
+# System.SaveAtlasToFile: "./atlas"
