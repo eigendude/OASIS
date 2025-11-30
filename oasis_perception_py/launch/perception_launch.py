@@ -79,7 +79,7 @@ elif HOST_ID == "oceanplatform":
     PERCEPTION_SERVER_APRILTAG_VIZ.extend(["falcon"])
     # PERCEPTION_SERVER_BACKGROUND.extend(["station"])
     # PERCEPTION_SERVER_FLOW.extend(["falcon", "station"])
-    # PERCEPTION_SERVER_IMAGE_DOWNSCALER.extend(["falcon"])
+    PERCEPTION_SERVER_IMAGE_DOWNSCALER.extend(["falcon"])
     PERCEPTION_SERVER_IMAGE_RECT.extend(["falcon"])
     # PERCEPTION_SERVER_MESH_VIEWER.extend(["falcon"])
     PERCEPTION_SERVER_MONOCULAR_SLAM.extend(["falcon"])
@@ -100,7 +100,7 @@ def generate_launch_description() -> LaunchDescription:
         PerceptionDescriptions.add_apriltag_detector(
             composable_nodes,
             PERCEPTION_SERVER_APRILTAGS,
-            input_resolution="",  # Native resolution
+            input_resolution="qhd",  # Quarter HD resolution
             image_transport="raw",  # Get raw images from image rectifier
         )
 
@@ -108,7 +108,7 @@ def generate_launch_description() -> LaunchDescription:
         PerceptionDescriptions.add_apriltag_visualizer(
             composable_nodes,
             PERCEPTION_SERVER_APRILTAG_VIZ,
-            input_resolution="",  # Native resolution
+            input_resolution="qhd",  # Quarter HD resolution
             image_transport="raw",  # Get raw images from image rectifier
         )
 
@@ -134,19 +134,18 @@ def generate_launch_description() -> LaunchDescription:
             composable_nodes,
             PERCEPTION_SERVER_IMAGE_DOWNSCALER,
             input_topic="image_raw",
-            output_resolution="sd",
+            output_resolution="qhd",
             image_transport="compressed",
-            max_width=640,
-            max_height=480,
+            max_width=960,
+            max_height=540,
         )
 
     if PERCEPTION_SERVER_IMAGE_RECT:
         PerceptionDescriptions.add_image_rectifier(
             composable_nodes,
             PERCEPTION_SERVER_IMAGE_RECT,
-            input_resolution="",  # Native resolution
-            image_transport="compressed",  # Get compressed images from camera driver
-            reliable_publisher=True,
+            input_resolution="qhd",  # Quarter HD resolution
+            image_transport="raw",  # Get raw images from camera driver
         )
 
     if PERCEPTION_SERVER_MESH_VIEWER:
@@ -161,6 +160,7 @@ def generate_launch_description() -> LaunchDescription:
             PERCEPTION_SERVER_MONOCULAR_SLAM,
             image_transport="compressed",
             camera_name=CAMERA_NAME,
+            input_resolution="qhd",
         )
         PerceptionDescriptions.add_map_viz(
             composable_nodes,
@@ -174,6 +174,7 @@ def generate_launch_description() -> LaunchDescription:
             PERCEPTION_SERVER_MONOCULAR_INERTIAL_SLAM,
             image_transport="compressed",
             camera_name=CAMERA_NAME,
+            input_resolution="qhd",
         )
         PerceptionDescriptions.add_map_viz(
             composable_nodes,

@@ -404,17 +404,7 @@ class PerceptionDescriptions:
         system_ids: list[str],
         input_resolution: str,
         image_transport: str,
-        reliable_publisher: bool,
     ) -> None:
-        QOS_OVERRIDES = {
-            "publisher": {
-                "reliability": "reliable" if reliable_publisher else "best_effort",
-                "history": "keep_last",
-                "depth": 1,
-                "durability": "volatile",
-            }
-        }
-
         RESOLUTION_PREFIX = f"{input_resolution}/" if input_resolution else ""
 
         composable_nodes.extend(
@@ -428,12 +418,6 @@ class PerceptionDescriptions:
                         {
                             "interpolation": 1,  # Linear
                             "image_transport": image_transport,
-                            #
-                            # QoS overrides for the rectified image publisher
-                            #
-                            "qos_overrides": {
-                                f"/{ROS_NAMESPACE}/{system_id}/{RESOLUTION_PREFIX}image_rect": QOS_OVERRIDES,
-                            },
                         },
                     ],
                     remappings=[
@@ -527,7 +511,10 @@ class PerceptionDescriptions:
         system_ids: List[str],
         image_transport: str,
         camera_name: str,
+        input_resolution: str,
     ) -> None:
+        RESOLUTION_PREFIX = f"{input_resolution}/" if input_resolution else ""
+
         vocabulary_file: str | None = PerceptionPaths.find_orb_slam_oasis_vocabulary()
         if vocabulary_file is None:
             raise FileNotFoundError("ORB_SLAM_OASIS vocabulary file not found.")
@@ -560,7 +547,7 @@ class PerceptionDescriptions:
                                 # Use different remappings for Kinect V2
                                 f"{system_id}/sd/image_color"
                                 if system_id == KINECT_V2_ZONE_ID
-                                else f"{system_id}/image_raw"
+                                else f"{system_id}/{RESOLUTION_PREFIX}image_raw"
                             ),
                         ),
                         (
@@ -584,7 +571,10 @@ class PerceptionDescriptions:
         system_ids: List[str],
         image_transport: str,
         camera_name: str,
+        input_resolution: str,
     ) -> None:
+        RESOLUTION_PREFIX = f"{input_resolution}/" if input_resolution else ""
+
         vocabulary_file: str | None = PerceptionPaths.find_orb_slam_oasis_vocabulary()
         if vocabulary_file is None:
             raise FileNotFoundError("ORB_SLAM_OASIS vocabulary file not found.")
@@ -617,7 +607,7 @@ class PerceptionDescriptions:
                                 # Use different remappings for Kinect V2
                                 f"{system_id}/sd/image_color"
                                 if system_id == KINECT_V2_ZONE_ID
-                                else f"{system_id}/image_rect"
+                                else f"{system_id}/{RESOLUTION_PREFIX}image_raw"
                             ),
                         ),
                         (f"{system_id}_imu", f"{system_id}/i2c_imu"),
