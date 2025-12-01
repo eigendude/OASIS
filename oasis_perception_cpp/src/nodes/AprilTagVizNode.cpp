@@ -102,7 +102,7 @@ void AprilTagVizNode::OnImage(const Image::ConstSharedPtr& msg)
   if (!m_overlayPublisher)
     return;
 
-  auto output = m_visualizer.ProcessImage(msg);
+  sensor_msgs::msg::Image::SharedPtr output = m_visualizer.ProcessImage(msg);
   if (output == nullptr)
     return;
 
@@ -111,12 +111,5 @@ void AprilTagVizNode::OnImage(const Image::ConstSharedPtr& msg)
 
 void AprilTagVizNode::OnDetections(const AprilTagDetectionArray::ConstSharedPtr& msg)
 {
-  if (!m_overlayPublisher)
-    return;
-
-  auto output = m_visualizer.ProcessDetections(msg);
-  if (output == nullptr)
-    return;
-
-  m_overlayPublisher->publish(output);
+  m_visualizer.ProcessDetections(msg);
 }
