@@ -103,6 +103,12 @@ def generate_launch_description() -> LaunchDescription:
             input_resolution="hd720",
             image_transport="raw",
         )
+        PerceptionDescriptions.add_image_rectifier(
+            composable_nodes,
+            ["falcon"],
+            input_resolution="sd",
+            image_transport="raw",
+        )
 
         # AprilTag detection
         PerceptionDescriptions.add_apriltag_detector(
