@@ -8,6 +8,7 @@
 
 #include "apriltag/AprilTagVisualizer.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <string>
@@ -24,6 +25,7 @@ namespace
 {
 // Drawing colours
 const cv::Scalar OUTLINE_COLOR(255, 255, 0, 255); // Aqua
+const cv::Scalar TEXT_COLOR(0, 0, 255, 255); // Red
 
 constexpr int OUTLINE_THICKNESS = 16;
 
@@ -151,6 +153,34 @@ sensor_msgs::msg::Image::SharedPtr AprilTagVisualizer::ProcessDetections(
     if (!outline.empty())
     {
       cv::polylines(m_overlayImage, outline, true, OUTLINE_COLOR, OUTLINE_THICKNESS, cv::LINE_AA);
+
+      const cv::Rect boundingBox = cv::boundingRect(outline);
+      const std::string tagText = std::to_string(detection.id);
+
+      constexpr int fontFace = cv::FONT_HERSHEY_SIMPLEX;
+      int baseline = 0;
+      const int initialThickness = std::max(1, static_cast<int>(std::round(boundingBox.height * 0.08)));
+      const cv::Size textSize =
+          cv::getTextSize(tagText, fontFace, 1.0 /*fontScale*/, initialThickness, &baseline);
+
+      double fontScale = 1.0;
+      if (textSize.width > 0 && textSize.height > 0)
+      {
+        const double scaleX = static_cast<double>(boundingBox.width) * 0.9 / textSize.width;
+        const double scaleY = static_cast<double>(boundingBox.height) * 0.9 / textSize.height;
+        fontScale = std::min(scaleX, scaleY);
+      }
+
+      const cv::Size scaledSize(static_cast<int>(std::round(textSize.width * fontScale)),
+                                static_cast<int>(std::round(textSize.height * fontScale)));
+      const int scaledBaseline = static_cast<int>(std::round(baseline * fontScale));
+
+      const cv::Point origin(boundingBox.x + (boundingBox.width - scaledSize.width) / 2,
+                             boundingBox.y + (boundingBox.height + scaledSize.height) / 2 -
+                                 scaledBaseline);
+
+      cv::putText(m_overlayImage, tagText, origin, fontFace, fontScale, TEXT_COLOR,
+                  initialThickness, cv::LINE_AA);
     }
   }
 
