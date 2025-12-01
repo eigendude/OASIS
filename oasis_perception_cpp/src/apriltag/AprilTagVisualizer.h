@@ -23,6 +23,8 @@
 namespace OASIS
 {
 
+class AprilTagGenerator;
+
 class AprilTagVisualizer
 {
 public:
@@ -46,8 +48,15 @@ private:
       const std::string& latestEncoding,
       const cv::Mat& mergedImage);
 
+  static std::array<cv::Point2f, 4> ToCvCorners(
+      const std::array<apriltag_msgs::msg::Point, 4>& corners);
+
+  void OverlayTag(const cv::Mat& tagImage, const std::array<cv::Point2f, 4>& corners);
+
   rclcpp::Logger m_logger;
   rclcpp::Clock::SharedPtr m_clock;
+
+  std::unique_ptr<AprilTagGenerator> m_tagGenerator;
 
   cv::Mat m_latestImage;
   cv::Mat m_overlayImage;

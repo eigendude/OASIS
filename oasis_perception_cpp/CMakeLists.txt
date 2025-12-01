@@ -51,6 +51,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 find_package(ament_cmake REQUIRED)
 find_package(ament_index_cpp REQUIRED)
+find_package(apriltag REQUIRED)
 find_package(apriltag_msgs REQUIRED)
 find_package(bgslibrary REQUIRED)
 find_package(cv_bridge REQUIRED)
@@ -104,10 +105,12 @@ set(SLAM_RENDERING_SOURCES
 #
 
 set(APRILTAG_VIZ_SOURCES
+  src/apriltag/AprilTagGenerator.cpp
   src/apriltag/AprilTagVisualizer.cpp
   src/nodes/AprilTagVizNode.cpp
 )
 set(APRILTAG_VIZ_LIBRARIES
+  apriltag::apriltag
   apriltag_msgs::apriltag_msgs__rosidl_typesupport_cpp
   cv_bridge::cv_bridge
   image_transport::image_transport

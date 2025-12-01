@@ -10,8 +10,11 @@
 
 #include <array>
 #include <cmath>
+#include <memory>
 #include <string>
 #include <vector>
+
+#include "apriltag/AprilTagGenerator.h"
 
 #include <opencv2/imgproc.hpp>
 #include <rclcpp/logging.hpp>
@@ -93,7 +96,7 @@ std::vector<cv::Point> CreateOutline(const std::array<apriltag_msgs::msg::Point,
 
 AprilTagVisualizer::AprilTagVisualizer(const rclcpp::Logger& logger,
                                        const rclcpp::Clock::SharedPtr& clock)
-  : m_logger(logger), m_clock(clock)
+  : m_logger(logger), m_clock(clock), m_tagGenerator(std::make_unique<AprilTagGenerator>(logger))
 {
 }
 
@@ -151,8 +154,11 @@ sensor_msgs::msg::Image::SharedPtr AprilTagVisualizer::ProcessDetections(
       cv::polylines(m_overlayImage, outline, true, OUTLINE_COLOR, OUTLINE_THICKNESS, cv::LINE_AA);
 
       const int32_t detectionId = detection.id;
-
-      // TODO: Draw AprilTag with corresponding ID
+      const cv::Mat tagImage = m_tagGenerator->Generate(detection.family, detectionId);
+      if (!tagImage.empty())
+      {
+        OverlayTag(tagImage, ToCvCorners(detection.corners));
+      }
     }
   }
 
@@ -187,4 +193,53 @@ sensor_msgs::msg::Image::SharedPtr AprilTagVisualizer::CreateOutputMessage(
 {
   cv_bridge::CvImage output(latestHeader, latestEncoding, mergedImage);
   return output.toImageMsg();
+}
+
+std::array<cv::Point2f, 4> AprilTagVisualizer::ToCvCorners(
+    const std::array<apriltag_msgs::msg::Point, 4>& corners)
+{
+  std::array<cv::Point2f, 4> cvCorners{};
+  for (std::size_t i = 0; i < corners.size(); ++i)
+  {
+    cvCorners[i].x = static_cast<float>(corners[i].x);
+    cvCorners[i].y = static_cast<float>(corners[i].y);
+  }
+  return cvCorners;
+}
+
+void AprilTagVisualizer::OverlayTag(const cv::Mat& tagImage,
+                                    const std::array<cv::Point2f, 4>& corners)
+{
+  if (tagImage.empty() || m_overlayImage.empty())
+    return;
+
+  cv::Mat tagColor;
+  if (m_overlayImage.channels() == 4)
+    cv::cvtColor(tagImage, tagColor, cv::COLOR_GRAY2BGRA);
+  else if (m_overlayImage.channels() == 3)
+    cv::cvtColor(tagImage, tagColor, cv::COLOR_GRAY2BGR);
+  else if (m_overlayImage.channels() == 1)
+    tagColor = tagImage;
+  else
+    return;
+
+  const std::array<cv::Point2f, 4> sourceCorners = {
+      cv::Point2f(0.0F, 0.0F),
+      cv::Point2f(static_cast<float>(tagColor.cols - 1), 0.0F),
+      cv::Point2f(static_cast<float>(tagColor.cols - 1), static_cast<float>(tagColor.rows - 1)),
+      cv::Point2f(0.0F, static_cast<float>(tagColor.rows - 1))};
+
+  const cv::Mat homography = cv::getPerspectiveTransform(sourceCorners.data(), corners.data());
+
+  cv::Mat warpedTag = cv::Mat::zeros(m_overlayImage.size(), m_overlayImage.type());
+  cv::Mat warpedMask = cv::Mat::zeros(m_overlayImage.size(), CV_8UC1);
+
+  cv::Mat tagMask(tagColor.size(), CV_8UC1, cv::Scalar(255));
+
+  cv::warpPerspective(
+      tagColor, warpedTag, homography, m_overlayImage.size(), cv::INTER_NEAREST, cv::BORDER_CONSTANT);
+  cv::warpPerspective(
+      tagMask, warpedMask, homography, m_overlayImage.size(), cv::INTER_NEAREST, cv::BORDER_CONSTANT);
+
+  warpedTag.copyTo(m_overlayImage, warpedMask);
 }
