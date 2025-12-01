@@ -70,6 +70,16 @@ def generate_launch_description() -> LaunchDescription:
             ["falcon"],
             input_topic="image_raw",
             input_resolution="",
+            output_resolution="hd720",
+            image_transport="compressed",
+            max_width=1280,
+            max_height=720,
+        )
+        PerceptionDescriptions.add_image_downscaler(
+            composable_nodes,
+            ["falcon"],
+            input_topic="image_raw",
+            input_resolution="",
             output_resolution="sd",
             image_transport="compressed",
             max_width=640,
@@ -125,7 +135,7 @@ def generate_launch_description() -> LaunchDescription:
             ["falcon"],
             image_transport="raw",
             camera_name=CAMERA_NAME,
-            input_resolution="hd",
+            input_resolution="hd720",
         )
 
     # Ocean Platform pipeline
@@ -144,7 +154,7 @@ def generate_launch_description() -> LaunchDescription:
             composable_nodes,
             ["falcon"],
             camera_name=CAMERA_NAME,
-            camera_resolution="hd",
+            camera_resolution="hd720",
         )
 
     PerceptionDescriptions.add_perception_components(ld, HOST_ID, composable_nodes)
