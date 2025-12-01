@@ -135,6 +135,7 @@ class PerceptionDescriptions:
         system_ids: List[str],
         input_image: str,
         input_resolution: str,
+        output_image: str,
         image_transport: str,
     ) -> None:
         RESOLUTION_PREFIX = f"{input_resolution}/" if input_resolution else ""
@@ -145,7 +146,7 @@ class PerceptionDescriptions:
                     namespace=ROS_NAMESPACE,
                     package=CPP_PACKAGE_NAME,
                     plugin="oasis_perception::AprilTagVizComponent",
-                    name=f"apriltag_viz_{system_id}",
+                    name=f"apriltag_viz_{system_id}_{input_image}_{output_image}",
                     parameters=[
                         {
                             "system_id": system_id,
@@ -163,7 +164,7 @@ class PerceptionDescriptions:
                         ),
                         (
                             f"{system_id}_apriltags_image",
-                            f"{system_id}/{RESOLUTION_PREFIX}apriltags_image",
+                            f"{system_id}/{RESOLUTION_PREFIX}{output_image}",
                         ),
                     ],
                 )
