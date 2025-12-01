@@ -78,7 +78,7 @@ LIBCAMERA_PARAMS: dict[str, object]
 
 # TODO: Hardware configuration
 if HOST_ID == "falcon":
-    IMAGE_FORMAT = "RGB888"
+    IMAGE_FORMAT = "BGR888"
     IMAGE_SIZE = [1920, 1080]
 
     # Use a binned full-FOV mode that can run fast
@@ -95,7 +95,7 @@ if HOST_ID == "falcon":
         ],  # Exact 30.000 fps: both elements equal to ~33.333 ms
     }
 else:
-    IMAGE_FORMAT = "RGB888"
+    IMAGE_FORMAT = "BGR888"
     IMAGE_SIZE = [640, 480]
     SENSOR_MODE = "3280:2464"  # V2 camera full sensor resolution
 

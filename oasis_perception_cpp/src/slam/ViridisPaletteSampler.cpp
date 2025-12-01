@@ -308,7 +308,7 @@ cv::Vec3b ViridisPaletteSampler::Sample(float value) const
   if (upperIndex == lowerIndex)
   {
     const auto& color = Lookup(lowerIndex);
-    return cv::Vec3b(color[0], color[1], color[2]);
+    return cv::Vec3b(color[2], color[1], color[0]);
   }
 
   const auto& lowerColor = Lookup(lowerIndex);
@@ -318,7 +318,8 @@ cv::Vec3b ViridisPaletteSampler::Sample(float value) const
   {
     const float channel =
         static_cast<float>(lowerColor[i]) + t * static_cast<float>(upperColor[i] - lowerColor[i]);
-    result[i] = static_cast<uint8_t>(std::lround(channel));
+    // Flip from RGB table order to BGR output order
+    result[2 - i] = static_cast<uint8_t>(std::lround(channel));
   }
 
   return result;

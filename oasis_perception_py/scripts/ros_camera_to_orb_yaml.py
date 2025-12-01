@@ -219,7 +219,7 @@ def parse_args() -> ParsedArgs:
         "--rgb",
         type=int,
         choices=(0, 1),
-        default=1,
+        default=0,
         help="Color order flag for the images (0 for BGR, 1 for RGB).",
     )
     parser.add_argument(

@@ -175,7 +175,7 @@ void MapVizNode::OnPointCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPt
   if (!m_renderer.Render(*m_cameraFromWorldTransform, worldPoints, m_imageBuffer))
     return;
 
-  cv_bridge::CvImage output(msg->header, sensor_msgs::image_encodings::RGB8, m_imageBuffer);
+  cv_bridge::CvImage output(msg->header, sensor_msgs::image_encodings::BGR8, m_imageBuffer);
   m_mapImagePublisher->publish(output.toImageMsg());
 }
 

@@ -98,7 +98,7 @@ void MonocularSlamBase::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedP
   cv_bridge::CvImageConstPtr inputImage;
   try
   {
-    inputImage = cv_bridge::toCvShare(msg, sensor_msgs::image_encodings::RGB8);
+    inputImage = cv_bridge::toCvShare(msg, sensor_msgs::image_encodings::BGR8);
   }
   catch (cv_bridge::Exception& e)
   {
