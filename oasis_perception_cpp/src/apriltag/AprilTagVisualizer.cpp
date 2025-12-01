@@ -8,8 +8,11 @@
 
 #include "apriltag/AprilTagVisualizer.h"
 
+#include "apriltag/AprilTagGenerator.h"
+
 #include <array>
 #include <cmath>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -17,13 +20,12 @@
 #include <rclcpp/logging.hpp>
 #include <sensor_msgs/image_encodings.hpp>
 
-using apriltag_msgs::msg::AprilTagDetectionArray;
-using sensor_msgs::msg::Image;
+using namespace OASIS;
 
 namespace
 {
 // Drawing colours
-const cv::Scalar OUTLINE_COLOR(255, 255, 0, 255); // Aqua
+const cv::Scalar OUTLINE_COLOR(0, 255, 255, 255); // Aqua in RGBA
 
 constexpr int OUTLINE_THICKNESS = 16;
 
@@ -92,18 +94,16 @@ std::vector<cv::Point> CreateOutline(const std::array<apriltag_msgs::msg::Point,
 }
 } // namespace
 
-using namespace OASIS;
-
 AprilTagVisualizer::AprilTagVisualizer(const rclcpp::Logger& logger,
                                        const rclcpp::Clock::SharedPtr& clock)
-  : m_logger(logger), m_clock(clock)
+  : m_logger(logger), m_clock(clock), m_tagGenerator(std::make_unique<AprilTagGenerator>(logger))
 {
 }
 
 AprilTagVisualizer::~AprilTagVisualizer() = default;
 
 sensor_msgs::msg::Image::SharedPtr AprilTagVisualizer::ProcessImage(
-    const Image::ConstSharedPtr& msg)
+    const sensor_msgs::msg::Image::ConstSharedPtr& msg)
 {
   if (msg == nullptr)
     return nullptr;
@@ -124,37 +124,44 @@ sensor_msgs::msg::Image::SharedPtr AprilTagVisualizer::ProcessImage(
   m_latestHeader = msg->header;
   m_latestEncoding = msg->encoding;
 
-  if (m_overlayImage.empty())
-  {
-    m_mergedImage = m_latestImage;
-  }
-  else
-  {
-    cv::addWeighted(m_latestImage, 1.0, m_overlayImage, 1.0, 0.0, m_mergedImage, -1);
-  }
+  m_mergedImage = m_latestImage.clone();
+  if (!m_overlayImage.empty() && !m_overlayMask.empty())
+    m_overlayImage.copyTo(m_mergedImage, m_overlayMask);
 
   return CreateOutputMessage(m_latestHeader, m_latestEncoding, m_mergedImage);
 }
 
 sensor_msgs::msg::Image::SharedPtr AprilTagVisualizer::ProcessDetections(
-    const AprilTagDetectionArray::ConstSharedPtr& msg)
+    const apriltag_msgs::msg::AprilTagDetectionArray::ConstSharedPtr& msg)
 {
-  if (msg == nullptr || m_latestImage.empty())
-    return nullptr;
+  if (!msg || m_latestImage.empty())
+    return {};
 
   m_overlayImage = cv::Mat::zeros(m_latestImage.size(), m_latestImage.type());
+  m_overlayMask = cv::Mat::zeros(m_latestImage.size(), CV_8UC1);
 
-  for (const auto& detection : msg->detections)
+  for (const apriltag_msgs::msg::AprilTagDetection& detection : msg->detections)
   {
-    const auto outline = CreateOutline(detection.corners, static_cast<float>(OUTLINE_THICKNESS));
+    const std::vector<cv::Point> outline =
+        CreateOutline(detection.corners, static_cast<float>(OUTLINE_THICKNESS));
 
     if (!outline.empty())
     {
       cv::polylines(m_overlayImage, outline, true, OUTLINE_COLOR, OUTLINE_THICKNESS, cv::LINE_AA);
+      cv::polylines(m_overlayMask, outline, true, cv::Scalar(255), OUTLINE_THICKNESS, cv::LINE_AA);
+
+      const int32_t detectionId = detection.id;
+      const cv::Mat tagImage = m_tagGenerator->Generate(detection.family, detectionId);
+      if (!tagImage.empty())
+      {
+        OverlayTag(tagImage, ToCvCorners(detection.corners));
+      }
     }
   }
 
-  cv::addWeighted(m_latestImage, 1.0, m_overlayImage, 1.0, 0.0, m_mergedImage, -1);
+  m_mergedImage = m_latestImage.clone();
+  if (!m_overlayImage.empty() && !m_overlayMask.empty())
+    m_overlayImage.copyTo(m_mergedImage, m_overlayMask);
 
   return CreateOutputMessage(m_latestHeader, m_latestEncoding, m_mergedImage);
 }
@@ -185,4 +192,56 @@ sensor_msgs::msg::Image::SharedPtr AprilTagVisualizer::CreateOutputMessage(
 {
   cv_bridge::CvImage output(latestHeader, latestEncoding, mergedImage);
   return output.toImageMsg();
+}
+
+std::array<cv::Point2f, 4> AprilTagVisualizer::ToCvCorners(
+    const std::array<apriltag_msgs::msg::Point, 4>& corners)
+{
+  std::array<cv::Point2f, 4> cvCorners{};
+  for (std::size_t i = 0; i < corners.size(); ++i)
+  {
+    cvCorners[i].x = static_cast<float>(corners[i].x);
+    cvCorners[i].y = static_cast<float>(corners[i].y);
+  }
+  return cvCorners;
+}
+
+void AprilTagVisualizer::OverlayTag(const cv::Mat& tagImage,
+                                    const std::array<cv::Point2f, 4>& corners)
+{
+  if (tagImage.empty() || m_overlayImage.empty() || m_overlayMask.empty())
+    return;
+
+  cv::Mat tagColor;
+  if (m_overlayImage.channels() == 4)
+    cv::cvtColor(tagImage, tagColor, cv::COLOR_GRAY2BGRA);
+  else if (m_overlayImage.channels() == 3)
+    cv::cvtColor(tagImage, tagColor, cv::COLOR_GRAY2BGR);
+  else if (m_overlayImage.channels() == 1)
+    tagColor = tagImage;
+  else
+    return;
+
+  // The generated tag image has an inverted vertical axis relative to the detected corner
+  // ordering, so map the bottom row of the tag image to the first corner to render the
+  // tag right side up while preserving its left-right orientation.
+  const std::array<cv::Point2f, 4> sourceCorners = {
+      cv::Point2f(0.0F, static_cast<float>(tagColor.rows - 1)),
+      cv::Point2f(static_cast<float>(tagColor.cols - 1), static_cast<float>(tagColor.rows - 1)),
+      cv::Point2f(static_cast<float>(tagColor.cols - 1), 0.0F), cv::Point2f(0.0F, 0.0F)};
+
+  const cv::Mat homography = cv::getPerspectiveTransform(sourceCorners.data(), corners.data());
+
+  cv::Mat warpedTag = cv::Mat::zeros(m_overlayImage.size(), m_overlayImage.type());
+  cv::Mat warpedMask = cv::Mat::zeros(m_overlayImage.size(), CV_8UC1);
+
+  cv::Mat tagMask(tagColor.size(), CV_8UC1, cv::Scalar(255));
+
+  cv::warpPerspective(tagColor, warpedTag, homography, m_overlayImage.size(), cv::INTER_NEAREST,
+                      cv::BORDER_CONSTANT);
+  cv::warpPerspective(tagMask, warpedMask, homography, m_overlayImage.size(), cv::INTER_NEAREST,
+                      cv::BORDER_CONSTANT);
+
+  warpedTag.copyTo(m_overlayImage, warpedMask);
+  cv::bitwise_or(m_overlayMask, warpedMask, m_overlayMask);
 }
