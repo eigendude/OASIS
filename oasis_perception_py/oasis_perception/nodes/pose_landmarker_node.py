@@ -217,6 +217,26 @@ class PoseLandmarkerNode(rclpy.node.Node):
         # Submit the frame for asynchronous processing
         self._detector.detect_async(mp_image, timestamp_ms)
 
+    @staticmethod
+    def _get_mediapipe_image_format(encoding: str) -> MediapipeImageFormat:
+        """
+        Map ROS image encoding strings to MediaPipe image formats.
+        :param encoding: The ROS image encoding string.
+        :return: The corresponding MediaPipe image format.
+        """
+        if encoding == "rgb8":
+            return MediapipeImageFormat.SRGB
+        elif encoding == "rgba8":
+            return MediapipeImageFormat.SRGBA
+        elif encoding == "bgra8":
+            return MediapipeImageFormat.SBGRA
+        elif encoding == "mono8":
+            return MediapipeImageFormat.GRAY8
+        elif encoding == "mono16":
+            return MediapipeImageFormat.GRAY16
+        else:
+            raise ValueError(f"Unsupported image encoding: {encoding}")
+
     def _result_callback(
         self,
         result: vision.PoseLandmarkerResult,
