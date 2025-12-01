@@ -11,11 +11,14 @@ zone_id_map:
 smart_display_zones:
   - bar
   - hallway
+  - oceanplatform
 
 # Zones with camera feeds
 camera_zones:
   - bar
   - hallway
+  - falcon
+  - station
 
 # Map host or zone IDs to camera drivers
 camera_driver_map:
