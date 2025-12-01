@@ -23,7 +23,7 @@ class ViridisPaletteSampler
 public:
   ViridisPaletteSampler() = default;
 
-  //! Sample the Viridis colormap returning an RGB triplet (R, G, B)
+  //! Sample the Viridis colormap returning a BGR triplet (B, G, R)
   cv::Vec3b Sample(float value) const;
 
 private:
