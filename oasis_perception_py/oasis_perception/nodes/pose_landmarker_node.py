@@ -200,19 +200,10 @@ class PoseLandmarkerNode(rclpy.node.Node):
         self._stamp_map[timestamp_ms] = image_msg.header
 
         try:
-            # Convert the raw ROS image to an OpenCV image with bgr8 encoding
-            bgr_image = self._cv_bridge.imgmsg_to_cv2(
-                image_msg, desired_encoding="bgr8"
-            )
+            mp_image = self._ros_image_to_mediapipe_image(image_msg)
         except Exception as e:
             self.get_logger().error("Image conversion failed: " + str(e))
             return
-
-        # Create a MediaPipe image from the RGB data
-        rgb_image = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2RGB)
-        mp_image: MediapipeImage = MediapipeImage(
-            image_format=MediapipeImageFormat.SRGB, data=rgb_image
-        )
 
         # Submit the frame for asynchronous processing
         self._detector.detect_async(mp_image, timestamp_ms)
@@ -236,6 +227,66 @@ class PoseLandmarkerNode(rclpy.node.Node):
             return MediapipeImageFormat.GRAY16
         else:
             raise ValueError(f"Unsupported image encoding: {encoding}")
+
+    @staticmethod
+    def _get_numpy_encoding_info(encoding: str) -> tuple[np.dtype, int]:
+        """
+        Return the NumPy dtype and number of channels for a ROS image encoding.
+        :param encoding: The ROS image encoding string.
+        :return: Tuple of (dtype, channels).
+        """
+        if encoding in ("rgb8", "bgr8"):
+            return (np.uint8, 3)
+        if encoding in ("rgba8", "bgra8"):
+            return (np.uint8, 4)
+        if encoding == "mono8":
+            return (np.uint8, 1)
+        if encoding == "mono16":
+            return (np.uint16, 1)
+
+        raise ValueError(f"Unsupported image encoding: {encoding}")
+
+    def _ros_image_to_mediapipe_image(self, image_msg: ImageMsg) -> MediapipeImage:
+        """
+        Create a MediaPipe image from a ROS Image message.
+
+        If the incoming encoding is supported by MediaPipe, a zero-copy NumPy view
+        is created. Otherwise, the image is converted to SRGB using OpenCV.
+        """
+
+        encoding: str = image_msg.encoding.lower()
+        dtype, channels = self._get_numpy_encoding_info(encoding)
+
+        # Build a NumPy view on top of the ROS image buffer to avoid copies.
+        itemsize: int = np.dtype(dtype).itemsize
+        if channels == 1:
+            np_view = np.ndarray(
+                shape=(image_msg.height, image_msg.width),
+                dtype=dtype,
+                buffer=image_msg.data,
+                strides=(image_msg.step, itemsize),
+            )
+        else:
+            pixel_stride: int = itemsize * channels
+            np_view = np.ndarray(
+                shape=(image_msg.height, image_msg.width, channels),
+                dtype=dtype,
+                buffer=image_msg.data,
+                strides=(image_msg.step, pixel_stride, itemsize),
+            )
+
+        if encoding in {"rgb8", "rgba8", "bgra8", "mono8", "mono16"}:
+            mp_format = self._get_mediapipe_image_format(encoding)
+            return MediapipeImage(image_format=mp_format, data=np_view)
+
+        # Convert unsupported encodings (e.g., BGR) to SRGB for MediaPipe.
+        if encoding == "bgr8":
+            rgb_image = cv2.cvtColor(np_view, cv2.COLOR_BGR2RGB)
+            return MediapipeImage(
+                image_format=MediapipeImageFormat.SRGB, data=rgb_image
+            )
+
+        raise ValueError(f"Unsupported image encoding for MediaPipe: {encoding}")
 
     def _result_callback(
         self,
