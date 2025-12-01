@@ -222,10 +222,13 @@ void AprilTagVisualizer::OverlayTag(const cv::Mat& tagImage,
   else
     return;
 
+  // The generated tag image has an inverted vertical axis relative to the detected corner
+  // ordering, so map the bottom row of the tag image to the first corner to render the
+  // tag right side up while preserving its left-right orientation.
   const std::array<cv::Point2f, 4> sourceCorners = {
-      cv::Point2f(0.0F, 0.0F), cv::Point2f(static_cast<float>(tagColor.cols - 1), 0.0F),
+      cv::Point2f(0.0F, static_cast<float>(tagColor.rows - 1)),
       cv::Point2f(static_cast<float>(tagColor.cols - 1), static_cast<float>(tagColor.rows - 1)),
-      cv::Point2f(0.0F, static_cast<float>(tagColor.rows - 1))};
+      cv::Point2f(static_cast<float>(tagColor.cols - 1), 0.0F), cv::Point2f(0.0F, 0.0F)};
 
   const cv::Mat homography = cv::getPerspectiveTransform(sourceCorners.data(), corners.data());
 
