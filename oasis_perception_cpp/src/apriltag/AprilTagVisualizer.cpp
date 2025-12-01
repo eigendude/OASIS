@@ -17,13 +17,12 @@
 #include <rclcpp/logging.hpp>
 #include <sensor_msgs/image_encodings.hpp>
 
-using apriltag_msgs::msg::AprilTagDetectionArray;
-using sensor_msgs::msg::Image;
+using namespace OASIS;
 
 namespace
 {
 // Drawing colours
-const cv::Scalar OUTLINE_COLOR(255, 255, 0, 255); // Aqua
+const cv::Scalar OUTLINE_COLOR(0, 255, 255, 255); // Aqua in RGBA
 
 constexpr int OUTLINE_THICKNESS = 16;
 
@@ -92,8 +91,6 @@ std::vector<cv::Point> CreateOutline(const std::array<apriltag_msgs::msg::Point,
 }
 } // namespace
 
-using namespace OASIS;
-
 AprilTagVisualizer::AprilTagVisualizer(const rclcpp::Logger& logger,
                                        const rclcpp::Clock::SharedPtr& clock)
   : m_logger(logger), m_clock(clock)
@@ -103,7 +100,7 @@ AprilTagVisualizer::AprilTagVisualizer(const rclcpp::Logger& logger,
 AprilTagVisualizer::~AprilTagVisualizer() = default;
 
 sensor_msgs::msg::Image::SharedPtr AprilTagVisualizer::ProcessImage(
-    const Image::ConstSharedPtr& msg)
+    const sensor_msgs::msg::Image::ConstSharedPtr& msg)
 {
   if (msg == nullptr)
     return nullptr;
@@ -137,20 +134,25 @@ sensor_msgs::msg::Image::SharedPtr AprilTagVisualizer::ProcessImage(
 }
 
 sensor_msgs::msg::Image::SharedPtr AprilTagVisualizer::ProcessDetections(
-    const AprilTagDetectionArray::ConstSharedPtr& msg)
+    const apriltag_msgs::msg::AprilTagDetectionArray::ConstSharedPtr& msg)
 {
-  if (msg == nullptr || m_latestImage.empty())
-    return nullptr;
+  if (!msg || m_latestImage.empty())
+    return {};
 
   m_overlayImage = cv::Mat::zeros(m_latestImage.size(), m_latestImage.type());
 
-  for (const auto& detection : msg->detections)
+  for (const apriltag_msgs::msg::AprilTagDetection& detection : msg->detections)
   {
-    const auto outline = CreateOutline(detection.corners, static_cast<float>(OUTLINE_THICKNESS));
+    const std::vector<cv::Point> outline =
+        CreateOutline(detection.corners, static_cast<float>(OUTLINE_THICKNESS));
 
     if (!outline.empty())
     {
       cv::polylines(m_overlayImage, outline, true, OUTLINE_COLOR, OUTLINE_THICKNESS, cv::LINE_AA);
+
+      const int32_t detectionId = detection.id;
+
+      // TODO: Draw AprilTag with corresponding ID
     }
   }
 
