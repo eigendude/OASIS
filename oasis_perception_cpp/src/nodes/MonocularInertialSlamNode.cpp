@@ -130,11 +130,11 @@ bool MonocularInertialSlamNode::Initialize()
 
   *m_imgSubscriber = image_transport::create_subscription(
       &m_node, imageTopic, [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg)
-      { OnImage(msg); }, imageTransport, rmw_qos_profile_sensor_data);
+      { OnImage(msg); }, imageTransport, rclcpp::QoS{1}.get_rmw_qos_profile());
 
-  const rclcpp::QoS qos{10};
   m_imuSubscriber = m_node.create_subscription<oasis_msgs::msg::I2CImu>(
-      imuTopic, qos, std::bind(&MonocularInertialSlamNode::OnImu, this, std::placeholders::_1));
+      imuTopic, rclcpp::QoS{1},
+      std::bind(&MonocularInertialSlamNode::OnImu, this, std::placeholders::_1));
 
   m_monocularInertialSlam =
       std::make_unique<SLAM::MonocularInertialSlam>(m_node, pointCloudTopic, poseTopic);

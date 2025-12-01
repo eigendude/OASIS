@@ -15,6 +15,7 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
+#include <rclcpp/qos.hpp>
 #include <rmw/qos_profiles.h>
 #include <sensor_msgs/image_encodings.hpp>
 
@@ -29,14 +30,10 @@ BackgroundModelerABL::BackgroundModelerABL(rclcpp::Node& node,
     m_imgSubscriber(std::make_unique<image_transport::Subscriber>()),
     m_bgsPackageABL(std::make_unique<bgslibrary::algorithms::AdaptiveBackgroundLearning>())
 {
-  rclcpp::QoS sensorQos = rclcpp::SensorDataQoS();
-  sensorQos.keep_last(1);
-
-  *m_imgPublisherBackground =
-      image_transport::create_publisher(&node, backgroundTopic, sensorQos.get_rmw_qos_profile());
+  *m_imgPublisherBackground = image_transport::create_publisher(&node, backgroundTopic);
   *m_imgSubscriber = image_transport::create_subscription(
       &node, imageTopic, [this](const auto& msg) { ReceiveImage(msg); }, "compressed",
-      sensorQos.get_rmw_qos_profile());
+      rclcpp::QoS{1}.get_rmw_qos_profile());
 }
 
 BackgroundModelerABL::~BackgroundModelerABL()

@@ -18,6 +18,7 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
+#include <rclcpp/qos.hpp>
 #include <rmw/qos_profiles.h>
 #include <sensor_msgs/image_encodings.hpp>
 
@@ -56,12 +57,9 @@ MultiModeler::MultiModeler(std::shared_ptr<rclcpp::Node> node,
 {
   auto transportHints = image_transport::TransportHints(node.get(), "compressed");
 
-  rclcpp::QoS sensorQos = rclcpp::SensorDataQoS();
-  sensorQos.keep_last(1);
-
   *m_imgSubscriber = image_transport::create_subscription(
       node.get(), imageTopic, [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg)
-      { ReceiveImage(msg); }, transportHints.getTransport(), sensorQos.get_rmw_qos_profile());
+      { ReceiveImage(msg); }, transportHints.getTransport(), rclcpp::QoS{1}.get_rmw_qos_profile());
 
   for (const char* algorithm : GetAlgorithms())
   {
@@ -77,11 +75,11 @@ MultiModeler::MultiModeler(std::shared_ptr<rclcpp::Node> node,
     RCLCPP_INFO(m_logger, "  Subtracted topic: %s", subtractedAlgorithm.c_str());
 
     *publisher.foreground = image_transport::create_publisher(node.get(), foregroundAlgorithm,
-                                                              sensorQos.get_rmw_qos_profile());
+                                                              rclcpp::QoS{1}.get_rmw_qos_profile());
     *publisher.background = image_transport::create_publisher(node.get(), backgroundAlgorithm,
-                                                              sensorQos.get_rmw_qos_profile());
+                                                              rclcpp::QoS{1}.get_rmw_qos_profile());
     *publisher.subtracted = image_transport::create_publisher(node.get(), subtractedAlgorithm,
-                                                              sensorQos.get_rmw_qos_profile());
+                                                              rclcpp::QoS{1}.get_rmw_qos_profile());
   }
 
   RCLCPP_INFO(m_logger, "Started background modeler");

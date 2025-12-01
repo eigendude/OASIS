@@ -20,6 +20,7 @@
 #include <opencv2/imgproc.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
+#include <rclcpp/qos.hpp>
 #include <rmw/qos_profiles.h>
 #include <sensor_msgs/image_encodings.hpp>
 
@@ -123,11 +124,9 @@ bool MonocularSlamNode::Initialize()
   }
   RCLCPP_INFO(*m_logger, "ORB_SLAM3 settings file: %s", settingsFile.c_str());
 
-  rclcpp::QoS sensorQos = rclcpp::SensorDataQoS();
-  sensorQos.reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE);
   *m_imgSubscriber = image_transport::create_subscription(
       &m_node, imageTopic, [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg)
-      { OnImage(msg); }, imageTransport, sensorQos.get_rmw_qos_profile());
+      { OnImage(msg); }, imageTransport, rclcpp::QoS{1}.get_rmw_qos_profile());
 
   m_monocularSlam = std::make_unique<SLAM::MonocularSlam>(m_node, pointCloudTopic, poseTopic);
   if (!m_monocularSlam->Initialize(vocabularyFile, settingsFile))

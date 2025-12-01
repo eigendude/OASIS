@@ -15,6 +15,7 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
+#include <rclcpp/qos.hpp>
 #include <rmw/qos_profiles.h>
 #include <sensor_msgs/image_encodings.hpp>
 
@@ -32,16 +33,11 @@ BackgroundSubtractorASBL::BackgroundSubtractorASBL(rclcpp::Node& node,
     m_bgsPackageASBL(
         std::make_unique<bgslibrary::algorithms::AdaptiveSelectiveBackgroundLearning>())
 {
-  rclcpp::QoS sensorQos = rclcpp::SensorDataQoS();
-  sensorQos.keep_last(1);
-
-  *m_imgPublisherForeground =
-      image_transport::create_publisher(&node, foregroundTopic, sensorQos.get_rmw_qos_profile());
-  *m_imgPublisherSubtracted =
-      image_transport::create_publisher(&node, subtractedTopic, sensorQos.get_rmw_qos_profile());
+  *m_imgPublisherForeground = image_transport::create_publisher(&node, foregroundTopic);
+  *m_imgPublisherSubtracted = image_transport::create_publisher(&node, subtractedTopic);
   *m_imgSubscriber = image_transport::create_subscription(
       &node, imageTopic, [this](const auto& msg) { ReceiveImage(msg); }, "compressed",
-      sensorQos.get_rmw_qos_profile());
+      rclcpp::QoS{1}.get_rmw_qos_profile());
 }
 
 BackgroundSubtractorASBL::~BackgroundSubtractorASBL()
