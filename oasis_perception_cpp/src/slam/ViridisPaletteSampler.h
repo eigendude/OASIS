@@ -27,7 +27,7 @@ public:
   cv::Vec3b Sample(float value) const;
 
 private:
-  //! Lookup an RGB entry from the precomputed Viridis table
+  //! Lookup a BGR entry from the precomputed Viridis table
   static const std::array<uint8_t, 3>& Lookup(int index);
 };
 
