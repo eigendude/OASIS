@@ -100,7 +100,7 @@ def generate_launch_description() -> LaunchDescription:
         PerceptionDescriptions.add_image_rectifier(
             composable_nodes,
             ["falcon"],
-            input_resolution="hd",
+            input_resolution="hd720",
             image_transport="raw",
         )
 
@@ -109,7 +109,7 @@ def generate_launch_description() -> LaunchDescription:
             composable_nodes,
             ["falcon"],
             input_topic="image_rect",
-            input_resolution="hd",
+            input_resolution="hd720",
             image_transport="raw",
         )
 
@@ -144,8 +144,8 @@ def generate_launch_description() -> LaunchDescription:
         PerceptionDescriptions.add_apriltag_visualizer(
             composable_nodes,
             ["falcon"],
-            input_image="image_rect",
-            input_resolution="hd",
+            input_image="slam_map_image",
+            input_resolution="hd720",
             image_transport="compressed",
         )
 
