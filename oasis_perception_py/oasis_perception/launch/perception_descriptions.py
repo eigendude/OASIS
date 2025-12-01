@@ -353,6 +353,7 @@ class PerceptionDescriptions:
         max_height: int = -1,
     ) -> None:
         RESOLUTION_PREFIX = f"{input_resolution}/" if input_resolution else ""
+        RESOLUTION_SUFFIX = f"_{output_resolution}" if output_resolution else ""
 
         size_params = {}
         if output_width > 0:
@@ -370,7 +371,7 @@ class PerceptionDescriptions:
                     namespace=ROS_NAMESPACE,
                     package=CPP_PACKAGE_NAME,
                     plugin="oasis_perception::ImageDownscalerComponent",
-                    name=f"image_downscaler_{system_id}",
+                    name=f"image_downscaler_{system_id}_{RESOLUTION_SUFFIX}",
                     parameters=[
                         {
                             "system_id": system_id,
