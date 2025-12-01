@@ -200,15 +200,16 @@ class PoseLandmarkerNode(rclpy.node.Node):
         self._stamp_map[timestamp_ms] = image_msg.header
 
         try:
-            # Convert the raw ROS image to an OpenCV image with rgb8 encoding
-            rgb_image = self._cv_bridge.imgmsg_to_cv2(
-                image_msg, desired_encoding="rgb8"
+            # Convert the raw ROS image to an OpenCV image with bgr8 encoding
+            bgr_image = self._cv_bridge.imgmsg_to_cv2(
+                image_msg, desired_encoding="bgr8"
             )
         except Exception as e:
             self.get_logger().error("Image conversion failed: " + str(e))
             return
 
-        # Create a MediaPipe image from the RGB data (no further color conversion required)
+        # Create a MediaPipe image from the RGB data
+        rgb_image = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2RGB)
         mp_image: MediapipeImage = MediapipeImage(
             image_format=MediapipeImageFormat.SRGB, data=rgb_image
         )
@@ -312,7 +313,9 @@ class PoseLandmarkerNode(rclpy.node.Node):
     ) -> None:
         # Convert the mediapipe.Image to a NumPy array
         try:
-            annotated_image: np.ndarray = output_image.numpy_view().copy()
+            annotated_image: np.ndarray = cv2.cvtColor(
+                output_image.numpy_view(), cv2.COLOR_RGB2BGR
+            )
         except Exception as e:
             self.get_logger().error("Failed to convert mediapipe image: " + str(e))
             return
@@ -356,14 +359,14 @@ class PoseLandmarkerNode(rclpy.node.Node):
                 annotated_image,
                 (px0, py0),
                 (px1, py1),
-                (0, 255, 255),  # Cyan in RGB
+                (255, 255, 0),  # Cyan in BGR
                 thickness=3,
             )
 
         # Convert the annotated image back to a ROS Image message
         try:
             ros_image_msg = self._cv_bridge.cv2_to_imgmsg(
-                annotated_image, encoding="rgb8"
+                annotated_image, encoding="bgr8"
             )
         except Exception as err:
             # If conversion fails, we can’t publish an image header, so bail

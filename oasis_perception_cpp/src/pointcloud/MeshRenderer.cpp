@@ -158,9 +158,9 @@ Image::SharedPtr MeshRenderer::Render(const PointCloud2& pointCloud) const
     maxPoint.z = std::max(maxPoint.z, vertex.z);
   }
 
-  const cv::Scalar backgroundColorRGB(255, 255, 255);
-  const cv::Scalar edgeColorRGB(0, 0, 0);
-  cv::Mat image(IMAGE_HEIGHT, IMAGE_WIDTH, CV_8UC3, backgroundColorRGB);
+  const cv::Scalar backgroundColorBGR(255, 255, 255);
+  const cv::Scalar edgeColorBGR(0, 0, 0);
+  cv::Mat image(IMAGE_HEIGHT, IMAGE_WIDTH, CV_8UC3, backgroundColorBGR);
 
   for (const pcl::Vertices& polygon : mesh.polygons)
   {
@@ -182,13 +182,13 @@ Image::SharedPtr MeshRenderer::Render(const PointCloud2& pointCloud) const
     const cv::Point p1 = ProjectPoint(meshVertices[index1], minPoint, maxPoint);
     const cv::Point p2 = ProjectPoint(meshVertices[index2], minPoint, maxPoint);
 
-    cv::line(image, p0, p1, edgeColorRGB, 1, cv::LINE_AA);
-    cv::line(image, p1, p2, edgeColorRGB, 1, cv::LINE_AA);
-    cv::line(image, p2, p0, edgeColorRGB, 1, cv::LINE_AA);
+    cv::line(image, p0, p1, edgeColorBGR, 1, cv::LINE_AA);
+    cv::line(image, p1, p2, edgeColorBGR, 1, cv::LINE_AA);
+    cv::line(image, p2, p0, edgeColorBGR, 1, cv::LINE_AA);
   }
 
   auto bridge = std::make_shared<cv_bridge::CvImage>(pointCloud.header,
-                                                     sensor_msgs::image_encodings::RGB8, image);
+                                                     sensor_msgs::image_encodings::BGR8, image);
   return bridge->toImageMsg();
 }
 } // namespace OASIS
