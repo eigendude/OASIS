@@ -60,6 +60,7 @@ private:
 
   cv::Mat m_latestImage;
   cv::Mat m_overlayImage;
+  cv::Mat m_overlayMask;
   cv::Mat m_mergedImage;
 
   std_msgs::msg::Header m_latestHeader;

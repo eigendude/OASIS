@@ -124,14 +124,9 @@ sensor_msgs::msg::Image::SharedPtr AprilTagVisualizer::ProcessImage(
   m_latestHeader = msg->header;
   m_latestEncoding = msg->encoding;
 
-  if (m_overlayImage.empty())
-  {
-    m_mergedImage = m_latestImage;
-  }
-  else
-  {
-    cv::addWeighted(m_latestImage, 1.0, m_overlayImage, 1.0, 0.0, m_mergedImage, -1);
-  }
+  m_mergedImage = m_latestImage.clone();
+  if (!m_overlayImage.empty() && !m_overlayMask.empty())
+    m_overlayImage.copyTo(m_mergedImage, m_overlayMask);
 
   return CreateOutputMessage(m_latestHeader, m_latestEncoding, m_mergedImage);
 }
@@ -143,6 +138,7 @@ sensor_msgs::msg::Image::SharedPtr AprilTagVisualizer::ProcessDetections(
     return {};
 
   m_overlayImage = cv::Mat::zeros(m_latestImage.size(), m_latestImage.type());
+  m_overlayMask = cv::Mat::zeros(m_latestImage.size(), CV_8UC1);
 
   for (const apriltag_msgs::msg::AprilTagDetection& detection : msg->detections)
   {
@@ -152,6 +148,7 @@ sensor_msgs::msg::Image::SharedPtr AprilTagVisualizer::ProcessDetections(
     if (!outline.empty())
     {
       cv::polylines(m_overlayImage, outline, true, OUTLINE_COLOR, OUTLINE_THICKNESS, cv::LINE_AA);
+      cv::polylines(m_overlayMask, outline, true, cv::Scalar(255), OUTLINE_THICKNESS, cv::LINE_AA);
 
       const int32_t detectionId = detection.id;
       const cv::Mat tagImage = m_tagGenerator->Generate(detection.family, detectionId);
@@ -162,7 +159,9 @@ sensor_msgs::msg::Image::SharedPtr AprilTagVisualizer::ProcessDetections(
     }
   }
 
-  cv::addWeighted(m_latestImage, 1.0, m_overlayImage, 1.0, 0.0, m_mergedImage, -1);
+  m_mergedImage = m_latestImage.clone();
+  if (!m_overlayImage.empty() && !m_overlayMask.empty())
+    m_overlayImage.copyTo(m_mergedImage, m_overlayMask);
 
   return CreateOutputMessage(m_latestHeader, m_latestEncoding, m_mergedImage);
 }
@@ -210,7 +209,7 @@ std::array<cv::Point2f, 4> AprilTagVisualizer::ToCvCorners(
 void AprilTagVisualizer::OverlayTag(const cv::Mat& tagImage,
                                     const std::array<cv::Point2f, 4>& corners)
 {
-  if (tagImage.empty() || m_overlayImage.empty())
+  if (tagImage.empty() || m_overlayImage.empty() || m_overlayMask.empty())
     return;
 
   cv::Mat tagColor;
@@ -241,4 +240,5 @@ void AprilTagVisualizer::OverlayTag(const cv::Mat& tagImage,
                       cv::BORDER_CONSTANT);
 
   warpedTag.copyTo(m_overlayImage, warpedMask);
+  cv::bitwise_or(m_overlayMask, warpedMask, m_overlayMask);
 }
