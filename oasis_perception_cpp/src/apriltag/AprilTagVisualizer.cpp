@@ -214,9 +214,9 @@ void AprilTagVisualizer::OverlayTag(const cv::Mat& tagImage,
 
   cv::Mat tagColor;
   if (m_overlayImage.channels() == 4)
-    cv::cvtColor(tagImage, tagColor, cv::COLOR_GRAY2BGRA);
+    cv::cvtColor(tagImage, tagColor, cv::COLOR_GRAY2RGBA);
   else if (m_overlayImage.channels() == 3)
-    cv::cvtColor(tagImage, tagColor, cv::COLOR_GRAY2BGR);
+    cv::cvtColor(tagImage, tagColor, cv::COLOR_GRAY2RGB);
   else if (m_overlayImage.channels() == 1)
     tagColor = tagImage;
   else
