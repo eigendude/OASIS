@@ -150,7 +150,7 @@ def generate_launch_description() -> LaunchDescription:
         PerceptionDescriptions.add_apriltag_visualizer(
             composable_nodes,
             ["falcon"],
-            input_image="slam_map_image",
+            input_image="image_raw",
             input_resolution="hd720",
             image_transport="compressed",
         )
