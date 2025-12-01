@@ -25,7 +25,7 @@ using namespace OASIS;
 namespace
 {
 // Drawing colours
-const cv::Scalar OUTLINE_COLOR(0, 255, 255, 255); // Aqua in RGBA
+const cv::Scalar OUTLINE_COLOR(255, 255, 0, 255); // Aqua in BGRA
 
 constexpr int OUTLINE_THICKNESS = 16;
 
