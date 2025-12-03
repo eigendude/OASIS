@@ -36,7 +36,8 @@ public:
 
   bool Render(const Eigen::Isometry3f& cameraFromWorldTransform,
               const std::vector<Eigen::Vector3f>& worldPoints,
-              cv::Mat& outputImage);
+              cv::Mat& outputImage,
+              const cv::Mat* backgroundImage = nullptr);
 
 private:
   struct ProjectedPoint
@@ -63,6 +64,7 @@ private:
   static bool CanRender(const CameraModel& cameraModel);
   static void PrepareRender(const CameraModel& cameraModel,
                             ImageBuffers& imageBuffers,
+                            const cv::Mat* backgroundImage,
                             cv::Mat& outputImage);
   static void ProjectMapPoints(const CameraModel& cameraModel,
                                const Eigen::Isometry3f& cameraFromWorldTransform,

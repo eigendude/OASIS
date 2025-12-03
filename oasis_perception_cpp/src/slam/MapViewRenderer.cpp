@@ -33,12 +33,13 @@ void MapViewRenderer::Initialize(const CameraModel& cameraModel)
 
 bool MapViewRenderer::Render(const Eigen::Isometry3f& cameraFromWorldTransform,
                              const std::vector<Eigen::Vector3f>& worldPoints,
-                             cv::Mat& outputImage)
+                             cv::Mat& outputImage,
+                             const cv::Mat* backgroundImage)
 {
   if (!CanRender(m_cameraModel))
     return false;
 
-  PrepareRender(m_cameraModel, m_imageBuffers, outputImage);
+  PrepareRender(m_cameraModel, m_imageBuffers, backgroundImage, outputImage);
 
   ProjectMapPoints(m_cameraModel, cameraFromWorldTransform, worldPoints, m_projectedPoints);
   if (m_projectedPoints.empty())
@@ -78,6 +79,7 @@ bool MapViewRenderer::CanRender(const CameraModel& cameraModel)
 
 void MapViewRenderer::PrepareRender(const CameraModel& cameraModel,
                                     ImageBuffers& imageBuffers,
+                                    const cv::Mat* backgroundImage,
                                     cv::Mat& outputImage)
 {
   std::fill(imageBuffers.depthBuffer.begin(), imageBuffers.depthBuffer.end(),
@@ -88,7 +90,16 @@ void MapViewRenderer::PrepareRender(const CameraModel& cameraModel,
 
   outputImage.create(static_cast<int>(cameraModel.height), static_cast<int>(cameraModel.width),
                      CV_8UC3);
-  outputImage.setTo(cv::Scalar(0, 0, 0));
+  if (backgroundImage != nullptr && backgroundImage->type() == CV_8UC3 &&
+      backgroundImage->cols == static_cast<int>(cameraModel.width) &&
+      backgroundImage->rows == static_cast<int>(cameraModel.height))
+  {
+    backgroundImage->copyTo(outputImage);
+  }
+  else
+  {
+    outputImage.setTo(cv::Scalar(0, 0, 0));
+  }
 }
 
 void MapViewRenderer::ProjectMapPoints(const CameraModel& cameraModel,
