@@ -85,6 +85,7 @@ setuptools.setup(
             "camera_calibrator = oasis_perception.cli.camera_calibrator_cli:main",
             "pose_landmarker = oasis_perception.cli.pose_landmarker_cli:main",
             "pose_renderer = oasis_perception.cli.pose_renderer_cli:main",
+            "slam_resolution_relay = oasis_perception.cli.slam_resolution_relay_cli:main",
         ],
     },
 )
