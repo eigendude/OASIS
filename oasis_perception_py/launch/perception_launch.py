@@ -144,6 +144,14 @@ def generate_launch_description() -> LaunchDescription:
             input_resolution="hd720",
         )
 
+        # Republish SLAM outputs under the hd namespace for 1080p pipelines
+        PerceptionDescriptions.add_slam_resolution_relay(
+            ld,
+            ["falcon"],
+            input_resolution="hd720",
+            output_resolution="hd",
+        )
+
     # Ocean Platform pipeline
     elif HOST_ID == "oceanplatform":
         # AprilTag visualization
