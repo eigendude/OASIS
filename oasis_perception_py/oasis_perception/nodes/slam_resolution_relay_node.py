@@ -94,11 +94,12 @@ class SlamResolutionRelayNode(Node):
             cloud_topic_in = f"{input_prefix}slam_point_cloud"
             cloud_topic_out = f"{output_prefix}slam_point_cloud"
 
+            input_prefix_clean = input_prefix.rstrip("/")
+            output_prefix_clean = output_prefix.rstrip("/")
+
             self.get_logger().info(
-                "Relaying SLAM topics for %s: %s -> %s",
-                system_id,
-                input_prefix.rstrip("/"),
-                output_prefix.rstrip("/"),
+                f"Relaying SLAM topics for {system_id}: "
+                f"{input_prefix_clean} -> {output_prefix_clean}"
             )
 
             pose_pub = self.create_publisher(PoseStamped, pose_topic_out, sensor_qos)
