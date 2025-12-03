@@ -69,7 +69,7 @@ cv::Mat AprilTagGenerator::Generate(const std::string& family, int32_t id, int s
   image_u8_destroy(tagImage);
 
   if (scale != 1)
-    cv::resize(tagClone, tagClone, cv::Size(), scale, scale, cv::INTER_NEAREST);
+    cv::resize(tagClone, tagClone, cv::Size(), scale, scale, cv::INTER_LINEAR);
 
   return tagClone;
 }
