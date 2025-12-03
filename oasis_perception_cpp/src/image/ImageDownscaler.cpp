@@ -89,7 +89,7 @@ ImageDownscaler::ImageDownscaler(std::shared_ptr<rclcpp::Node> node,
       [this](const sensor_msgs::msg::Image::ConstSharedPtr& imageMsg,
              const sensor_msgs::msg::CameraInfo::ConstSharedPtr& cameraInfo)
       { ReceiveImage(imageMsg, cameraInfo); },
-      imageTransport);
+      imageTransport, rclcpp::QoS{1}.get_rmw_qos_profile());
 }
 
 ImageDownscaler::~ImageDownscaler()
