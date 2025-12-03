@@ -413,6 +413,7 @@ class PerceptionDescriptions:
         image_transport: str,
     ) -> None:
         RESOLUTION_PREFIX = f"{input_resolution}/" if input_resolution else ""
+        RESOLUTION_SUFFIX = f"_{input_resolution}" if input_resolution else ""
 
         composable_nodes.extend(
             [
@@ -420,7 +421,7 @@ class PerceptionDescriptions:
                     namespace=ROS_NAMESPACE,
                     package="image_proc",
                     plugin="image_proc::RectifyNode",
-                    name=f"rectify_node_{system_id}",
+                    name=f"rectify_node_{system_id}{RESOLUTION_SUFFIX}",
                     parameters=[
                         {
                             "interpolation": 1,  # Linear
