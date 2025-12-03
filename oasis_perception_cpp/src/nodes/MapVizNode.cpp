@@ -23,6 +23,7 @@
 #include <cv_bridge/cv_bridge.hpp>
 #include <geometry_msgs/msg/point.hpp>
 #include <image_transport/image_transport.hpp>
+#include <opencv2/imgproc.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
 #include <rclcpp/qos.hpp>
@@ -42,6 +43,7 @@ constexpr std::string_view POINT_CLOUD_TOPIC_SUFFIX = "slam_point_cloud";
 constexpr std::string_view MAP_IMAGE_TOPIC_SUFFIX = "slam_map_image";
 constexpr std::string_view APRILTAG_TOPIC_SUFFIX = "apriltags";
 constexpr std::string_view CAMERA_INFO_TOPIC_SUFFIX = "camera_info";
+constexpr std::string_view IMAGE_TOPIC_SUFFIX = "image_raw";
 
 // ROS parameters
 constexpr std::string_view SYSTEM_ID_PARAMETER = "system_id";
@@ -49,16 +51,33 @@ constexpr std::string_view DEFAULT_SYSTEM_ID = "";
 
 constexpr std::string_view SETTINGS_FILE_PARAMETER = "settings_file";
 constexpr std::string_view DEFAULT_SETTINGS_FILE = "";
+
+constexpr std::string_view IMAGE_TOPIC_PARAMETER = "image_topic";
+constexpr std::string_view IMAGE_TRANSPORT_PARAMETER = "image_transport";
+constexpr std::string_view DEFAULT_IMAGE_TRANSPORT = "raw";
+
+constexpr std::string_view BACKGROUND_ALPHA_PARAMETER = "background_alpha";
+constexpr double DEFAULT_BACKGROUND_ALPHA = 0.4;
+
+constexpr std::string_view OUTPUT_ENCODING_PARAMETER = "output_encoding";
+constexpr std::string_view DEFAULT_OUTPUT_ENCODING = sensor_msgs::image_encodings::BGR8;
 } // namespace
 
 MapVizNode::MapVizNode(rclcpp::Node& node)
   : m_node(node),
     m_logger(node.get_logger()),
-    m_mapImagePublisher(std::make_unique<image_transport::Publisher>())
+    m_mapImagePublisher(std::make_unique<image_transport::Publisher>()),
+    m_imageSubscription(std::make_unique<image_transport::Subscriber>())
 {
   m_node.declare_parameter<std::string>(SYSTEM_ID_PARAMETER.data(), DEFAULT_SYSTEM_ID.data());
   m_node.declare_parameter<std::string>(SETTINGS_FILE_PARAMETER.data(),
                                         DEFAULT_SETTINGS_FILE.data());
+  m_node.declare_parameter<std::string>(IMAGE_TOPIC_PARAMETER.data(), "");
+  m_node.declare_parameter<std::string>(IMAGE_TRANSPORT_PARAMETER.data(),
+                                        DEFAULT_IMAGE_TRANSPORT.data());
+  m_node.declare_parameter<double>(BACKGROUND_ALPHA_PARAMETER.data(), DEFAULT_BACKGROUND_ALPHA);
+  m_node.declare_parameter<std::string>(OUTPUT_ENCODING_PARAMETER.data(),
+                                        DEFAULT_OUTPUT_ENCODING.data());
 }
 
 MapVizNode::~MapVizNode() = default;
@@ -89,6 +108,31 @@ bool MapVizNode::Initialize()
 
   m_renderer.Initialize(m_cameraModel);
 
+  std::string imageTopic;
+  if (!m_node.get_parameter(IMAGE_TOPIC_PARAMETER.data(), imageTopic) || imageTopic.empty())
+  {
+    imageTopic = systemId;
+    imageTopic.push_back('_');
+    imageTopic.append(IMAGE_TOPIC_SUFFIX);
+  }
+
+  std::string imageTransport;
+  if (!m_node.get_parameter(IMAGE_TRANSPORT_PARAMETER.data(), imageTransport) ||
+      imageTransport.empty())
+  {
+    imageTransport = DEFAULT_IMAGE_TRANSPORT;
+  }
+
+  double backgroundAlpha = DEFAULT_BACKGROUND_ALPHA;
+  m_node.get_parameter(BACKGROUND_ALPHA_PARAMETER.data(), backgroundAlpha);
+  m_backgroundAlpha = std::clamp(backgroundAlpha, 0.0, 1.0);
+
+  if (!m_node.get_parameter(OUTPUT_ENCODING_PARAMETER.data(), m_outputEncoding) ||
+      m_outputEncoding.empty())
+  {
+    m_outputEncoding = DEFAULT_OUTPUT_ENCODING;
+  }
+
   std::string poseTopic = systemId;
   poseTopic.push_back('_');
   poseTopic.append(POSE_TOPIC_SUFFIX);
@@ -110,14 +154,22 @@ bool MapVizNode::Initialize()
   cameraInfoTopic.append(CAMERA_INFO_TOPIC_SUFFIX);
 
   RCLCPP_INFO(m_logger, "System ID: %s", systemId.c_str());
+  RCLCPP_INFO(m_logger, "Camera image topic: %s", imageTopic.c_str());
+  RCLCPP_INFO(m_logger, "Image transport: %s", imageTransport.c_str());
   RCLCPP_INFO(m_logger, "Pose topic: %s", poseTopic.c_str());
   RCLCPP_INFO(m_logger, "Point cloud topic: %s", pointCloudTopic.c_str());
   RCLCPP_INFO(m_logger, "Map image topic: %s", mapImageTopic.c_str());
   RCLCPP_INFO(m_logger, "AprilTag topic: %s", aprilTagTopic.c_str());
   RCLCPP_INFO(m_logger, "Camera info topic: %s", cameraInfoTopic.c_str());
+  RCLCPP_INFO(m_logger, "Background alpha: %.3f", m_backgroundAlpha);
+  RCLCPP_INFO(m_logger, "Output encoding: %s", m_outputEncoding.c_str());
   RCLCPP_INFO(m_logger, "Settings file: %s", settingsFile.c_str());
 
   *m_mapImagePublisher = image_transport::create_publisher(&m_node, mapImageTopic);
+
+  *m_imageSubscription = image_transport::create_subscription(
+      &m_node, imageTopic, [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg)
+      { OnImage(msg); }, imageTransport, rclcpp::SensorDataQoS().get_rmw_qos_profile());
 
   m_poseSubscription = m_node.create_subscription<geometry_msgs::msg::PoseStamped>(
       poseTopic, {1},
@@ -145,6 +197,7 @@ void MapVizNode::Deinitialize()
   m_aprilTagSubscription.reset();
   m_pointCloudSubscription.reset();
   m_poseSubscription.reset();
+  m_imageSubscription->shutdown();
   m_mapImagePublisher->shutdown();
 }
 
@@ -172,11 +225,81 @@ void MapVizNode::OnPointCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPt
   if (!PointCloudToVector(*msg, worldPoints) || worldPoints.empty())
     return;
 
-  if (!m_renderer.Render(*m_cameraFromWorldTransform, worldPoints, m_imageBuffer))
+  cv::Mat backgroundImage;
+  {
+    std::scoped_lock lock(m_backgroundMutex);
+    backgroundImage = m_backgroundImage;
+  }
+
+  const bool backgroundReady = !backgroundImage.empty() &&
+                               backgroundImage.cols == static_cast<int>(m_cameraModel.width) &&
+                               backgroundImage.rows == static_cast<int>(m_cameraModel.height);
+
+  if (!m_renderer.Render(*m_cameraFromWorldTransform, worldPoints, m_imageBuffer,
+                         backgroundReady ? &backgroundImage : nullptr))
     return;
 
-  cv_bridge::CvImage output(msg->header, sensor_msgs::image_encodings::BGR8, m_imageBuffer);
+  const cv::Mat* publishImage = &m_imageBuffer;
+  std::string publishEncoding = sensor_msgs::image_encodings::BGR8;
+
+  if (m_outputEncoding == sensor_msgs::image_encodings::RGB8)
+  {
+    cv::cvtColor(m_imageBuffer, m_outputBuffer, cv::COLOR_BGR2RGB);
+    publishImage = &m_outputBuffer;
+    publishEncoding = m_outputEncoding;
+  }
+  else if (m_outputEncoding == sensor_msgs::image_encodings::BGRA8)
+  {
+    cv::cvtColor(m_imageBuffer, m_outputBuffer, cv::COLOR_BGR2BGRA);
+    publishImage = &m_outputBuffer;
+    publishEncoding = m_outputEncoding;
+  }
+  else if (m_outputEncoding == sensor_msgs::image_encodings::RGBA8)
+  {
+    cv::cvtColor(m_imageBuffer, m_outputBuffer, cv::COLOR_BGR2RGBA);
+    publishImage = &m_outputBuffer;
+    publishEncoding = m_outputEncoding;
+  }
+  else if (m_outputEncoding != sensor_msgs::image_encodings::BGR8 && !m_warnedOutputEncoding)
+  {
+    RCLCPP_WARN(m_logger, "Unsupported output encoding '%s', falling back to BGR8",
+                m_outputEncoding.c_str());
+    m_warnedOutputEncoding = true;
+  }
+
+  cv_bridge::CvImage output(msg->header, publishEncoding, *publishImage);
   m_mapImagePublisher->publish(output.toImageMsg());
+}
+
+void MapVizNode::OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg)
+{
+  if (msg == nullptr)
+    return;
+
+  cv_bridge::CvImageConstPtr cvImage;
+  try
+  {
+    cvImage = cv_bridge::toCvShare(msg, sensor_msgs::image_encodings::BGR8);
+  }
+  catch (const cv_bridge::Exception& exception)
+  {
+    RCLCPP_ERROR(m_logger, "cv_bridge exception: %s", exception.what());
+    return;
+  }
+
+  const cv::Mat& image = cvImage->image;
+  if (image.empty())
+  {
+    RCLCPP_WARN(m_logger, "Received empty background image frame");
+    return;
+  }
+
+  cv::Mat darkenedImage;
+  image.convertTo(darkenedImage, image.type(), m_backgroundAlpha, 0.0);
+
+  std::scoped_lock lock(m_backgroundMutex);
+  m_backgroundImage = darkenedImage;
+  m_backgroundHeader = msg->header;
 }
 
 void MapVizNode::OnAprilTags(const apriltag_msgs::msg::AprilTagDetectionArray::ConstSharedPtr& msg)
