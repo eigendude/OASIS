@@ -100,7 +100,7 @@ def generate_launch_description() -> LaunchDescription:
         PerceptionDescriptions.add_image_rectifier(
             composable_nodes,
             ["falcon"],
-            input_resolution="hd720",
+            input_resolution="hd",
             image_transport="raw",
         )
         PerceptionDescriptions.add_image_rectifier(
@@ -115,7 +115,7 @@ def generate_launch_description() -> LaunchDescription:
             composable_nodes,
             ["falcon"],
             input_topic="image_rect",
-            input_resolution="hd720",
+            input_resolution="hd",
             image_transport="raw",
         )
 
@@ -151,7 +151,7 @@ def generate_launch_description() -> LaunchDescription:
             composable_nodes,
             ["falcon"],
             input_image="image_raw",
-            input_resolution="hd720",
+            input_resolution="hd",
             output_image="apriltags_image",
             image_transport="compressed",
         )
@@ -159,7 +159,7 @@ def generate_launch_description() -> LaunchDescription:
             composable_nodes,
             ["falcon"],
             input_image="slam_map_image",
-            input_resolution="hd720",
+            input_resolution="hd",
             output_image="apriltags_slam_map_image",
             image_transport="compressed",
         )
@@ -170,6 +170,7 @@ def generate_launch_description() -> LaunchDescription:
             ["falcon"],
             camera_name=CAMERA_NAME,
             camera_resolution="hd720",
+            output_resolution="hd",
         )
 
     PerceptionDescriptions.add_perception_components(ld, HOST_ID, composable_nodes)
