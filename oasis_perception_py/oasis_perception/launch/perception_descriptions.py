@@ -493,6 +493,10 @@ class PerceptionDescriptions:
                             f"{system_id}_slam_map_image",
                             f"{system_id}/{RESOLUTION_PREFIX}slam_map_image",
                         ),
+                        (
+                            f"{system_id}_image_raw",
+                            f"{system_id}/{RESOLUTION_PREFIX}image_raw",
+                        ),
                     ],
                 )
                 for system_id in system_ids
