@@ -93,7 +93,7 @@ class PerceptionDescriptions:
                         {
                             "image_transport": image_transport,
                             "family": "36h11",
-                            "size": 0.1,  # 100 mm tag edge size in meters
+                            "size": 0.2,  # 200 mm tag edge size in meters (250mm total size with black border)
                             "max_hamming": 2,  # Good robustness/performance tradeoff
                             "pose_estimation_method": "pnp",
                             "qos_profile": "sensor_data",
