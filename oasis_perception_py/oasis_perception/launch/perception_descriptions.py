@@ -64,6 +64,12 @@ class PerceptionDescriptions:
             package="rclcpp_components",
             executable="component_container_mt",
             output="screen",
+            # Reduce noisy INFO logs when loading components while retaining node logs
+            arguments=[
+                "--ros-args",
+                "--log-level",
+                f"{ROS_NAMESPACE}.perception_container_{host_id}:=warn",
+            ],
             composable_node_descriptions=composable_nodes,
         )
         ld.add_action(perception_container)
