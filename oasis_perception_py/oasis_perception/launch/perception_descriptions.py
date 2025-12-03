@@ -97,9 +97,6 @@ class PerceptionDescriptions:
                             "max_hamming": 2,  # Good robustness/performance tradeoff
                             "pose_estimation_method": "pnp",
                             "qos_profile": "sensor_data",
-                            "tag.ids": [0],
-                            "tag.frames": [f"{system_id}_apriltag_0"],
-                            "tag.sizes": [0.1],
                             #
                             # Tuning parameters
                             #
