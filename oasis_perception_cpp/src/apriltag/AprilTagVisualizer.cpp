@@ -237,9 +237,9 @@ void AprilTagVisualizer::OverlayTag(const cv::Mat& tagImage,
 
   cv::Mat tagMask(tagColor.size(), CV_8UC1, cv::Scalar(255));
 
-  cv::warpPerspective(tagColor, warpedTag, homography, m_overlayImage.size(), cv::INTER_NEAREST,
+  cv::warpPerspective(tagColor, warpedTag, homography, m_overlayImage.size(), cv::INTER_LINEAR,
                       cv::BORDER_CONSTANT);
-  cv::warpPerspective(tagMask, warpedMask, homography, m_overlayImage.size(), cv::INTER_NEAREST,
+  cv::warpPerspective(tagMask, warpedMask, homography, m_overlayImage.size(), cv::INTER_LINEAR,
                       cv::BORDER_CONSTANT);
 
   warpedTag.copyTo(m_overlayImage, warpedMask);
