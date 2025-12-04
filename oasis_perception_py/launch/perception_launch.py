@@ -183,6 +183,14 @@ def generate_launch_description() -> LaunchDescription:
             image_transport="compressed",
         )
 
+        # Calibration demo
+        PerceptionDescriptions.add_calibration(
+            ld,
+            system_id="station",
+            camera_model="pinhole",
+            # TODO: image_transport="compressed",
+        )
+
     PerceptionDescriptions.add_perception_components(ld, HOST_ID, composable_nodes)
 
     return ld
