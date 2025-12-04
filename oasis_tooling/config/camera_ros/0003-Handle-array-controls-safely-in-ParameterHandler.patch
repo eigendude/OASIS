@@ -1,7 +1,7 @@
-From cb13eec0e62d48c8236aa1fa64c5023bd10ec260 Mon Sep 17 00:00:00 2001
+From 1250a562f659fd5254f6f0bd97ea4af126d1e918 Mon Sep 17 00:00:00 2001
 From: Garrett Brown <eigendebugger@gmail.com>
 Date: Fri, 28 Nov 2025 20:37:31 -0800
-Subject: [PATCH 3/3] Handle array controls safely in ParameterHandler
+Subject: [PATCH 3/4] Handle array controls safely in ParameterHandler
 
 Avoid deriving ranges and defaults for libcamera array controls when
 declaring ROS parameters.
