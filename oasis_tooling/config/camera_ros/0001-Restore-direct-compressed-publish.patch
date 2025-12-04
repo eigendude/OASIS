@@ -1,0 +1,121 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: OASIS <dev@oasis.local>
+Date: Fri, 1 Nov 2024 00:00:00 +0000
+Subject: [PATCH] Restore direct compressed publish for hardware JPEG
+
+Bring the camera node back to the pre image_transport::CameraPublisher
+behaviour so the hardware JPEG buffer from libcamera is forwarded directly
+on `~/image_raw/compressed` without passing through a software
+reencode/republish path. Software JPEG compression is still used when the
+stream itself is raw, but MJPEG streams now move the libcamera payload
+straight into `sensor_msgs::msg::CompressedImage` with the format set from
+`get_ros_encoding`. When a raw image subscriber is present alongside a
+compressed MJPEG stream, the compressed buffer is decoded to populate the
+raw image without disturbing the compressed data.
+
+This also keeps the existing `jpeg_quality` ROS parameter for the software
+encode path used when the libcamera stream is not already compressed.
+---
+ src/CameraNode.cpp | 71 ++++++++++++++++++++++++++++++++++++++++++-----------
+ 1 file changed, 57 insertions(+), 14 deletions(-)
+
+diff --git a/src/CameraNode.cpp b/src/CameraNode.cpp
+index 0000000..1111111 100644
+--- a/src/CameraNode.cpp
++++ b/src/CameraNode.cpp
+@@
+-#include <image_transport/image_transport.hpp>
+-#include <image_transport/publisher.hpp>
+-#include <image_transport/camera_publisher.hpp>
++#include <rclcpp/publisher.hpp>
++#include <sensor_msgs/msg/compressed_image.hpp>
+@@
+-  image_transport::CameraPublisher pub_image;
++  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_image;
++  rclcpp::Publisher<sensor_msgs::msg::CompressedImage>::SharedPtr pub_image_compressed;
++  rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr pub_ci;
+@@
+-  pub_image = image_transport::create_camera_publisher(this, "~/image_raw");
++  pub_image = this->create_publisher<sensor_msgs::msg::Image>("~/image_raw", 1);
++  pub_image_compressed =
++    this->create_publisher<sensor_msgs::msg::CompressedImage>("~/image_raw/compressed", 1);
++  pub_ci = this->create_publisher<sensor_msgs::msg::CameraInfo>("~/camera_info", 1);
+@@
+-      auto msg = std::make_unique<sensor_msgs::msg::Image>();
+-      auto msg_ci = std::make_unique<sensor_msgs::msg::CameraInfo>();
++      auto msg_img = std::make_unique<sensor_msgs::msg::Image>();
++      auto msg_img_compressed = std::make_unique<sensor_msgs::msg::CompressedImage>();
++      auto msg_ci = std::make_unique<sensor_msgs::msg::CameraInfo>();
+@@
+-      msg_ci->header = hdr;
++      msg_ci->header = hdr;
+@@
+-      if (msg->encoding == "jpeg" || msg->encoding == "mjpeg") {
+-        // compressed image, publish directly
+-        pub_image.publish(std::move(msg), msg_ci);
+-      }
+-      else {
+-        // raw image, perform a software JPEG encode for the compressed topic
+-        if (pub_image.getNumSubscribers() > 0) {
+-          pub_image.publish(std::move(msg), msg_ci);
+-        }
+-        if (pub_image.getNumSubscribers(ImageTransportType::COMPRESSED) > 0) {
+-          auto msg_compressed = std::make_unique<sensor_msgs::msg::CompressedImage>();
+-          compressImageMsg(*msg, *msg_compressed, {cv::IMWRITE_JPEG_QUALITY, jpeg_quality});
+-          pub_image.publish(std::move(msg_compressed), msg_ci);
+-        }
+-      }
++      const libcamera::StreamConfiguration &cfg = stream->configuration();
++
++      if (format_type(cfg.pixelFormat) == FormatType::RAW) {
++        // raw uncompressed image
++        assert(buffer_info[buffer].size == bytesused);
++        msg_img->header = hdr;
++        msg_img->width = cfg.size.width;
++        msg_img->height = cfg.size.height;
++        msg_img->step = cfg.stride;
++        msg_img->encoding = get_ros_encoding(cfg.pixelFormat);
++        msg_img->is_bigendian = (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__);
++        msg_img->data.resize(buffer_info[buffer].size);
++        memcpy(msg_img->data.data(), buffer_info[buffer].data, buffer_info[buffer].size);
++
++        // compress to jpeg if requested
++        if (pub_image_compressed->get_subscription_count()) {
++          try {
++            compressImageMsg(*msg_img, *msg_img_compressed,
++                             {cv::IMWRITE_JPEG_QUALITY, jpeg_quality});
++          }
++          catch (const cv_bridge::Exception &e) {
++            RCLCPP_ERROR_STREAM(get_logger(), e.what());
++          }
++        }
++      }
++      else if (format_type(cfg.pixelFormat) == FormatType::COMPRESSED) {
++        // compressed image from hardware encoder
++        assert(bytesused < buffer_info[buffer].size);
++        msg_img_compressed->header = hdr;
++        msg_img_compressed->format = get_ros_encoding(cfg.pixelFormat);
++        msg_img_compressed->data.resize(bytesused);
++        memcpy(msg_img_compressed->data.data(), buffer_info[buffer].data, bytesused);
++
++        // decompress into raw rgb8 image for raw subscribers
++        if (pub_image->get_subscription_count())
++          cv_bridge::toCvCopy(*msg_img_compressed, "rgb8")->toImageMsg(*msg_img);
++      }
++      else {
++        throw std::runtime_error("unsupported pixel format: " + cfg.pixelFormat.toString());
++      }
++
++      pub_image->publish(std::move(msg_img));
++      pub_image_compressed->publish(std::move(msg_img_compressed));
++      pub_ci->publish(*msg_ci);
+@@
+-    pub_image.publish(msg, msg_ci);
++    pub_image->publish(msg_img);
++    pub_image_compressed->publish(msg_img_compressed);
++    pub_ci->publish(ci);
+ }
+ 
+ } // namespace camera
+-- 
+2.25.1

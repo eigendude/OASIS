@@ -78,7 +78,9 @@ LIBCAMERA_PARAMS: dict[str, object]
 
 # TODO: Hardware configuration
 if HOST_ID == "falcon":
-    IMAGE_FORMAT = "RGB888"  # TODO: This is inverted and produces BGR888 images
+    # Request a hardware-compressed JPEG stream when possible so we avoid
+    # decoding and re-encoding in the ROS graph.
+    IMAGE_FORMAT = "MJPEG"
     IMAGE_SIZE = [1920, 1080]
 
     # Use a binned full-FOV mode that can run fast

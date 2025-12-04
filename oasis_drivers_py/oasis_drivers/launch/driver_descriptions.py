@@ -180,11 +180,19 @@ class DriverDescriptions:
             "width": image_size[0],
             "height": image_size[1],
             "sensor_mode": sensor_mode,
+            # Default JPEG quality used by libcamera's encoder. This can be
+            # overridden by callers via libcamera_params.
+            "jpeg_quality": 95,
         }
 
         # Merge explicit libcamera params from top-level; explicit wins
         if libcamera_params:
             camera_parameters.update(libcamera_params)
+
+        # Ensure the camera node sees a JPEG-capable format and quality knob even
+        # if the caller didn't pass them explicitly.
+        camera_parameters.setdefault("format", "MJPEG")
+        camera_parameters.setdefault("jpeg_quality", 95)
 
         composable_nodes.append(
             ComposableNode(
