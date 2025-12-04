@@ -94,7 +94,7 @@ class PerceptionDescriptions:
                     namespace=ROS_NAMESPACE,
                     package="apriltag_ros",
                     plugin="AprilTagNode",
-                    name=f"apriltag_{system_id}",
+                    name=f"apriltag_detector_{system_id}",
                     parameters=[
                         {
                             "image_transport": image_transport,
@@ -149,7 +149,7 @@ class PerceptionDescriptions:
                     namespace=ROS_NAMESPACE,
                     package=CPP_PACKAGE_NAME,
                     plugin="oasis_perception::AprilTagVizComponent",
-                    name=f"apriltag_viz_{system_id}_{input_image}_{output_image}",
+                    name=f"apriltag_viz_{system_id}_from_{input_image}_to_{output_image}",
                     parameters=[
                         {
                             "system_id": system_id,
