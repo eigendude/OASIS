@@ -18,7 +18,6 @@
 #include <vector>
 
 #include <Eigen/Geometry>
-#include <apriltag_msgs/msg/april_tag_detection_array.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <image_transport/image_transport.hpp>
 #include <image_transport/subscriber.hpp>
@@ -47,7 +46,6 @@ private:
   void OnPose(const geometry_msgs::msg::PoseStamped::ConstSharedPtr& msg);
   void OnPointCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPtr& msg);
   void OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg);
-  void OnAprilTags(const apriltag_msgs::msg::AprilTagDetectionArray::ConstSharedPtr& msg);
   void OnCameraInfo(const sensor_msgs::msg::CameraInfo::ConstSharedPtr& msg);
 
   static Eigen::Isometry3f PoseMsgToIsometry(const geometry_msgs::msg::PoseStamped& poseMsg);
@@ -61,16 +59,11 @@ private:
   std::unique_ptr<image_transport::Subscriber> m_imageSubscription;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr m_poseSubscription;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr m_pointCloudSubscription;
-  rclcpp::Subscription<apriltag_msgs::msg::AprilTagDetectionArray>::SharedPtr
-      m_aprilTagSubscription;
   rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr m_cameraInfoSubscription;
 
   SLAM::CameraModel m_cameraModel;
   SLAM::MapViewRenderer m_renderer;
   std::optional<Eigen::Isometry3f> m_cameraFromWorldTransform;
-
-  std::vector<std::array<cv::Point2f, 4>> m_latestAprilTagCorners;
-  std::mutex m_aprilTagMutex;
 
   cv::Mat m_imageBuffer;
   cv::Mat m_outputBuffer;

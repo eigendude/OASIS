@@ -19,7 +19,6 @@
 #include <utility>
 #include <vector>
 
-#include <apriltag_msgs/msg/april_tag_detection.hpp>
 #include <cv_bridge/cv_bridge.hpp>
 #include <geometry_msgs/msg/point.hpp>
 #include <image_transport/image_transport.hpp>
@@ -41,7 +40,6 @@ namespace
 constexpr std::string_view POSE_TOPIC_SUFFIX = "slam_pose";
 constexpr std::string_view POINT_CLOUD_TOPIC_SUFFIX = "slam_point_cloud";
 constexpr std::string_view MAP_IMAGE_TOPIC_SUFFIX = "slam_map_image";
-constexpr std::string_view APRILTAG_TOPIC_SUFFIX = "apriltags";
 constexpr std::string_view CAMERA_INFO_TOPIC_SUFFIX = "camera_info";
 constexpr std::string_view IMAGE_TOPIC_SUFFIX = "image_raw";
 
@@ -145,10 +143,6 @@ bool MapVizNode::Initialize()
   mapImageTopic.push_back('_');
   mapImageTopic.append(MAP_IMAGE_TOPIC_SUFFIX);
 
-  std::string aprilTagTopic = systemId;
-  aprilTagTopic.push_back('_');
-  aprilTagTopic.append(APRILTAG_TOPIC_SUFFIX);
-
   std::string cameraInfoTopic = systemId;
   cameraInfoTopic.push_back('_');
   cameraInfoTopic.append(CAMERA_INFO_TOPIC_SUFFIX);
@@ -159,7 +153,6 @@ bool MapVizNode::Initialize()
   RCLCPP_INFO(m_logger, "Pose topic: %s", poseTopic.c_str());
   RCLCPP_INFO(m_logger, "Point cloud topic: %s", pointCloudTopic.c_str());
   RCLCPP_INFO(m_logger, "Map image topic: %s", mapImageTopic.c_str());
-  RCLCPP_INFO(m_logger, "AprilTag topic: %s", aprilTagTopic.c_str());
   RCLCPP_INFO(m_logger, "Camera info topic: %s", cameraInfoTopic.c_str());
   RCLCPP_INFO(m_logger, "Background alpha: %.3f", m_backgroundAlpha);
   RCLCPP_INFO(m_logger, "Output encoding: %s", m_outputEncoding.c_str());
@@ -179,11 +172,6 @@ bool MapVizNode::Initialize()
       pointCloudTopic, {1},
       [this](const sensor_msgs::msg::PointCloud2::ConstSharedPtr& msg) { OnPointCloud(msg); });
 
-  m_aprilTagSubscription = m_node.create_subscription<apriltag_msgs::msg::AprilTagDetectionArray>(
-      aprilTagTopic, {1},
-      [this](const apriltag_msgs::msg::AprilTagDetectionArray::ConstSharedPtr& msg)
-      { OnAprilTags(msg); });
-
   m_cameraInfoSubscription = m_node.create_subscription<sensor_msgs::msg::CameraInfo>(
       cameraInfoTopic, {1},
       [this](const sensor_msgs::msg::CameraInfo::ConstSharedPtr& msg) { OnCameraInfo(msg); });
@@ -194,7 +182,6 @@ bool MapVizNode::Initialize()
 void MapVizNode::Deinitialize()
 {
   m_cameraInfoSubscription.reset();
-  m_aprilTagSubscription.reset();
   m_pointCloudSubscription.reset();
   m_poseSubscription.reset();
   m_imageSubscription->shutdown();
@@ -300,31 +287,6 @@ void MapVizNode::OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg)
   std::scoped_lock lock(m_backgroundMutex);
   m_backgroundImage = darkenedImage;
   m_backgroundHeader = msg->header;
-}
-
-void MapVizNode::OnAprilTags(const apriltag_msgs::msg::AprilTagDetectionArray::ConstSharedPtr& msg)
-{
-  if (msg == nullptr)
-    return;
-
-  std::scoped_lock lock(m_aprilTagMutex);
-  m_latestAprilTagCorners.clear();
-  m_latestAprilTagCorners.reserve(msg->detections.size());
-
-  for (const apriltag_msgs::msg::AprilTagDetection& detection : msg->detections)
-  {
-    if (detection.corners.size() < 4)
-      continue;
-
-    std::array<cv::Point2f, 4> corners;
-    for (std::size_t index = 0; index < 4; ++index)
-    {
-      corners[index].x = static_cast<float>(detection.corners[index].x);
-      corners[index].y = static_cast<float>(detection.corners[index].y);
-    }
-
-    m_latestAprilTagCorners.emplace_back(corners);
-  }
 }
 
 void MapVizNode::OnCameraInfo(const sensor_msgs::msg::CameraInfo::ConstSharedPtr& msg)
