@@ -178,6 +178,7 @@ def generate_launch_description() -> LaunchDescription:
             ["falcon"],
             camera_name=CAMERA_NAME,
             camera_resolution="hd",
+            image_transport="compressed",
         )
 
     PerceptionDescriptions.add_perception_components(ld, HOST_ID, composable_nodes)

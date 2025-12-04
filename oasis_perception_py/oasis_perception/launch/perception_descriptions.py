@@ -455,6 +455,7 @@ class PerceptionDescriptions:
         system_ids: List[str],
         camera_name: str,
         camera_resolution: str,
+        image_transport: str,
     ) -> None:
         RESOLUTION_PREFIX = f"{camera_resolution}/" if camera_resolution else ""
         RESOLUTION_SUFFIX = f"_{camera_resolution}" if camera_resolution else ""
@@ -475,6 +476,7 @@ class PerceptionDescriptions:
                     parameters=[
                         {"system_id": system_id},
                         {"settings_file": settings_file},
+                        {"image_transport": image_transport},
                     ],
                     remappings=[
                         (
