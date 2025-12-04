@@ -171,6 +171,7 @@ class DriverDescriptions:
         image_format: str,
         image_size: list[int],
         sensor_mode: str,
+        jpeg_quality: Optional[int] = None,
         libcamera_params: Optional[dict[str, object]] = None,
         rectify: bool = False,
     ) -> None:
@@ -181,6 +182,9 @@ class DriverDescriptions:
             "height": image_size[1],
             "sensor_mode": sensor_mode,
         }
+
+        if jpeg_quality is not None:
+            camera_parameters["jpeg_quality"] = jpeg_quality
 
         # Merge explicit libcamera params from top-level; explicit wins
         if libcamera_params:

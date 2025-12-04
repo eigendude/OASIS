@@ -180,6 +180,8 @@ def generate_launch_description() -> LaunchDescription:
             IMAGE_FORMAT,
             IMAGE_SIZE,
             SENSOR_MODE,
+            # Lower JPEG quality to cap Wi-Fi bandwidth from the Falcon
+            jpeg_quality=60,
             libcamera_params=LIBCAMERA_PARAMS,
         )
         # PerceptionDescriptions.add_monocular_slam(composable_nodes, [HOST_ID], "raw")
