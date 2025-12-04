@@ -120,6 +120,7 @@ def generate_launch_description() -> LaunchDescription:
         )
 
         # Pose landmarking
+        """
         PerceptionDescriptions.add_pose_landmarker(
             ld,
             "falcon",
@@ -127,6 +128,7 @@ def generate_launch_description() -> LaunchDescription:
             input_resolution="sd",
             image_transport="raw",
         )
+        """
         PerceptionDescriptions.add_pose_landmarker(
             ld,
             "hallway",
