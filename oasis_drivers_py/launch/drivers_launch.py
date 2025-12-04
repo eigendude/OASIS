@@ -84,15 +84,15 @@ if HOST_ID == "falcon":
     # Use a binned full-FOV mode that can run fast
     SENSOR_MODE = "2304:1296"  # 2×2 binned 16:9; full FOV and scales cleanly to 1080p
 
-    # Low-blur, full-FOV binned mode @ ~56 fps (IMX708 2304x1296 min frame time ≈ 17849 µs)
+    # Low-blur, full-FOV binned mode @ ~15 fps (IMX708 2304x1296 min frame time ≈ 17849 µs)
     LIBCAMERA_PARAMS = {
         "AeEnable": False,  # Disable auto-exposure
         "ExposureTime": 8000,  # 8 ms  (~1/125 s)
         "ExposureTimeMode": 1,  # Manual exposure (>= libcamera 0.5)
         "FrameDurationLimits": [
-            33333,
-            33333,
-        ],  # Exact 30.000 fps: both elements equal to ~33.333 ms
+            66667,
+            66667,
+        ],  # Exact 15.000 fps: both elements equal to ~66.667 ms
     }
 else:
     IMAGE_FORMAT = "BGR888"
