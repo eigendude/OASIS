@@ -162,7 +162,7 @@ bool MapVizNode::Initialize()
 
   *m_imageSubscription = image_transport::create_subscription(
       &m_node, imageTopic, [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg)
-      { OnImage(msg); }, imageTransport, rclcpp::SensorDataQoS().get_rmw_qos_profile());
+      { OnImage(msg); }, imageTransport, rclcpp::QoS{1}.get_rmw_qos_profile());
 
   m_poseSubscription = m_node.create_subscription<geometry_msgs::msg::PoseStamped>(
       poseTopic, {1},
