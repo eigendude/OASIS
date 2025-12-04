@@ -176,7 +176,9 @@ class DriverDescriptions:
     ) -> None:
         camera_parameters: dict[str, Any] = {
             "role": "video",
-            "format": image_format,
+            # Request a hardware-compressed JPEG stream when possible so we avoid
+            # decoding and re-encoding in the ROS graph.
+            "format": "MJPEG",
             "width": image_size[0],
             "height": image_size[1],
             "sensor_mode": sensor_mode,
