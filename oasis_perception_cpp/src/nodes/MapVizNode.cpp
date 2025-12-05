@@ -23,6 +23,7 @@
 #include <geometry_msgs/msg/point.hpp>
 #include <image_transport/image_transport.hpp>
 #include <opencv2/imgproc.hpp>
+#include <rclcpp/duration.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
 #include <rclcpp/qos.hpp>
@@ -59,13 +60,17 @@ constexpr double DEFAULT_BACKGROUND_ALPHA = 0.4;
 
 constexpr std::string_view OUTPUT_ENCODING_PARAMETER = "output_encoding";
 constexpr std::string_view DEFAULT_OUTPUT_ENCODING = sensor_msgs::image_encodings::BGR8;
+
+// Synchronization settings
+constexpr int SYNC_QUEUE_SIZE = 10;
+constexpr double MAX_SYNC_INTERVAL_SECONDS = 0.05;
 } // namespace
 
 MapVizNode::MapVizNode(rclcpp::Node& node)
   : m_node(node),
     m_logger(node.get_logger()),
     m_mapImagePublisher(std::make_unique<image_transport::Publisher>()),
-    m_imageSubscription(std::make_unique<image_transport::Subscriber>())
+    m_imageSubscriber(std::make_shared<image_transport::SubscriberFilter>())
 {
   m_node.declare_parameter<std::string>(SYSTEM_ID_PARAMETER.data(), DEFAULT_SYSTEM_ID.data());
   m_node.declare_parameter<std::string>(SETTINGS_FILE_PARAMETER.data(),
@@ -160,17 +165,25 @@ bool MapVizNode::Initialize()
 
   *m_mapImagePublisher = image_transport::create_publisher(&m_node, mapImageTopic);
 
-  *m_imageSubscription = image_transport::create_subscription(
-      &m_node, imageTopic, [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg)
-      { OnImage(msg); }, imageTransport, rclcpp::QoS{1}.get_rmw_qos_profile());
+  m_imageSubscriber->subscribe(
+      &m_node, imageTopic, imageTransport, rclcpp::QoS{SYNC_QUEUE_SIZE}.get_rmw_qos_profile());
 
   m_poseSubscription = m_node.create_subscription<geometry_msgs::msg::PoseStamped>(
       poseTopic, {1},
       [this](const geometry_msgs::msg::PoseStamped::ConstSharedPtr& msg) { OnPose(msg); });
 
-  m_pointCloudSubscription = m_node.create_subscription<sensor_msgs::msg::PointCloud2>(
-      pointCloudTopic, {1},
-      [this](const sensor_msgs::msg::PointCloud2::ConstSharedPtr& msg) { OnPointCloud(msg); });
+  m_pointCloudSubscription = std::make_shared<message_filters::Subscriber<sensor_msgs::msg::PointCloud2>>(
+      &m_node, pointCloudTopic, rclcpp::QoS{SYNC_QUEUE_SIZE}.get_rmw_qos_profile());
+
+  m_imagePointCloudSynchronizer =
+      std::make_shared<message_filters::Synchronizer<ImagePointCloudSyncPolicy>>(
+          ImagePointCloudSyncPolicy{SYNC_QUEUE_SIZE}, *m_imageSubscriber,
+          *m_pointCloudSubscription);
+  m_imagePointCloudSynchronizer->setMaxIntervalDuration(
+      rclcpp::Duration::from_seconds(MAX_SYNC_INTERVAL_SECONDS));
+  m_imagePointCloudSynchronizer->registerCallback(
+      std::bind(&MapVizNode::OnImageAndPointCloud, this, std::placeholders::_1,
+                std::placeholders::_2));
 
   m_cameraInfoSubscription = m_node.create_subscription<sensor_msgs::msg::CameraInfo>(
       cameraInfoTopic, {1},
@@ -182,9 +195,18 @@ bool MapVizNode::Initialize()
 void MapVizNode::Deinitialize()
 {
   m_cameraInfoSubscription.reset();
-  m_pointCloudSubscription.reset();
+  m_imagePointCloudSynchronizer.reset();
+  if (m_pointCloudSubscription)
+  {
+    m_pointCloudSubscription->unsubscribe();
+    m_pointCloudSubscription.reset();
+  }
   m_poseSubscription.reset();
-  m_imageSubscription->shutdown();
+  if (m_imageSubscriber)
+  {
+    m_imageSubscriber->unsubscribe();
+    m_imageSubscriber.reset();
+  }
   m_mapImagePublisher->shutdown();
 }
 
@@ -194,6 +216,14 @@ void MapVizNode::OnPose(const geometry_msgs::msg::PoseStamped::ConstSharedPtr& m
     return;
 
   m_cameraFromWorldTransform = PoseMsgToIsometry(*msg);
+}
+
+void MapVizNode::OnImageAndPointCloud(
+    const sensor_msgs::msg::Image::ConstSharedPtr& imageMsg,
+    const sensor_msgs::msg::PointCloud2::ConstSharedPtr& pointCloudMsg)
+{
+  if (OnImage(imageMsg))
+    OnPointCloud(pointCloudMsg);
 }
 
 void MapVizNode::OnPointCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPtr& msg)
@@ -258,10 +288,10 @@ void MapVizNode::OnPointCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPt
   m_mapImagePublisher->publish(output.toImageMsg());
 }
 
-void MapVizNode::OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg)
+bool MapVizNode::OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg)
 {
   if (msg == nullptr)
-    return;
+    return false;
 
   cv_bridge::CvImageConstPtr cvImage;
   try
@@ -271,14 +301,14 @@ void MapVizNode::OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg)
   catch (const cv_bridge::Exception& exception)
   {
     RCLCPP_ERROR(m_logger, "cv_bridge exception: %s", exception.what());
-    return;
+    return false;
   }
 
   const cv::Mat& image = cvImage->image;
   if (image.empty())
   {
     RCLCPP_WARN(m_logger, "Received empty background image frame");
-    return;
+    return false;
   }
 
   cv::Mat darkenedImage;
@@ -287,6 +317,7 @@ void MapVizNode::OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg)
   std::scoped_lock lock(m_backgroundMutex);
   m_backgroundImage = darkenedImage;
   m_backgroundHeader = msg->header;
+  return true;
 }
 
 void MapVizNode::OnCameraInfo(const sensor_msgs::msg::CameraInfo::ConstSharedPtr& msg)

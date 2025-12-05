@@ -20,7 +20,10 @@
 #include <Eigen/Geometry>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <image_transport/image_transport.hpp>
-#include <image_transport/subscriber.hpp>
+#include <image_transport/subscriber_filter.hpp>
+#include <message_filters/subscriber.h>
+#include <message_filters/sync_policies/approximate_time.h>
+#include <message_filters/synchronizer.h>
 #include <opencv2/core.hpp>
 #include <rclcpp/logger.hpp>
 #include <rclcpp/node.hpp>
@@ -45,7 +48,9 @@ public:
 private:
   void OnPose(const geometry_msgs::msg::PoseStamped::ConstSharedPtr& msg);
   void OnPointCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPtr& msg);
-  void OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg);
+  bool OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg);
+  void OnImageAndPointCloud(const sensor_msgs::msg::Image::ConstSharedPtr& imageMsg,
+                            const sensor_msgs::msg::PointCloud2::ConstSharedPtr& pointCloudMsg);
   void OnCameraInfo(const sensor_msgs::msg::CameraInfo::ConstSharedPtr& msg);
 
   static Eigen::Isometry3f PoseMsgToIsometry(const geometry_msgs::msg::PoseStamped& poseMsg);
@@ -56,10 +61,15 @@ private:
   rclcpp::Logger m_logger;
 
   std::unique_ptr<image_transport::Publisher> m_mapImagePublisher;
-  std::unique_ptr<image_transport::Subscriber> m_imageSubscription;
+  std::shared_ptr<image_transport::SubscriberFilter> m_imageSubscriber;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr m_poseSubscription;
-  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr m_pointCloudSubscription;
+  std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::PointCloud2>>
+      m_pointCloudSubscription;
   rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr m_cameraInfoSubscription;
+  using ImagePointCloudSyncPolicy = message_filters::sync_policies::ApproximateTime<
+      sensor_msgs::msg::Image, sensor_msgs::msg::PointCloud2>;
+  std::shared_ptr<message_filters::Synchronizer<ImagePointCloudSyncPolicy>>
+      m_imagePointCloudSynchronizer;
 
   SLAM::CameraModel m_cameraModel;
   SLAM::MapViewRenderer m_renderer;
