@@ -166,6 +166,47 @@ sensor_msgs::msg::Image::SharedPtr AprilTagVisualizer::ProcessDetections(
   return CreateOutputMessage(m_latestHeader, m_latestEncoding, m_mergedImage);
 }
 
+bool AprilTagVisualizer::RenderDetections(
+    cv::Mat& image,
+    const std_msgs::msg::Header& header,
+    const std::string& encoding,
+    const apriltag_msgs::msg::AprilTagDetectionArray::ConstSharedPtr& msg)
+{
+  if (!msg || image.empty())
+    return false;
+
+  m_latestImage = image;
+  m_latestHeader = header;
+  m_latestEncoding = encoding;
+
+  m_overlayImage = cv::Mat::zeros(m_latestImage.size(), m_latestImage.type());
+  m_overlayMask = cv::Mat::zeros(m_latestImage.size(), CV_8UC1);
+
+  for (const apriltag_msgs::msg::AprilTagDetection& detection : msg->detections)
+  {
+    const std::vector<cv::Point> outline =
+        CreateOutline(detection.corners, static_cast<float>(OUTLINE_THICKNESS));
+
+    if (!outline.empty())
+    {
+      cv::polylines(m_overlayImage, outline, true, OUTLINE_COLOR, OUTLINE_THICKNESS, cv::LINE_AA);
+      cv::polylines(m_overlayMask, outline, true, cv::Scalar(255), OUTLINE_THICKNESS, cv::LINE_AA);
+
+      const int32_t detectionId = detection.id;
+      const cv::Mat tagImage = m_tagGenerator->Generate(detection.family, detectionId);
+      if (!tagImage.empty())
+      {
+        OverlayTag(tagImage, ToCvCorners(detection.corners));
+      }
+    }
+  }
+
+  if (!m_overlayImage.empty() && !m_overlayMask.empty())
+    m_overlayImage.copyTo(image, m_overlayMask);
+
+  return true;
+}
+
 std::array<double, 2> AprilTagVisualizer::Project(const std::array<double, 9>& homography,
                                                   const std::array<double, 2>& pointInCamera)
 {

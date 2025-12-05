@@ -278,33 +278,11 @@ void MapVizNode::OnPointCloud(
     return;
 
   const cv::Mat* publishImage = &m_imageBuffer;
-  sensor_msgs::msg::Image::SharedPtr overlayedImage;
 
   if (detectionsMsg != nullptr)
   {
-    const sensor_msgs::msg::Image::SharedPtr mapImage =
-        cv_bridge::CvImage(msg->header, sensor_msgs::image_encodings::BGR8, m_imageBuffer)
-            .toImageMsg();
-
-    if (sensor_msgs::msg::Image::SharedPtr processedImage =
-            m_aprilTagVisualizer.ProcessImage(mapImage))
-    {
-      overlayedImage = m_aprilTagVisualizer.ProcessDetections(detectionsMsg);
-
-      if (overlayedImage != nullptr)
-      {
-        try
-        {
-          cv_bridge::CvImageConstPtr overlayedCvImage =
-              cv_bridge::toCvShare(overlayedImage, sensor_msgs::image_encodings::BGR8);
-          publishImage = &overlayedCvImage->image;
-        }
-        catch (const cv_bridge::Exception& exception)
-        {
-          RCLCPP_ERROR(m_logger, "cv_bridge exception: %s", exception.what());
-        }
-      }
-    }
+    m_aprilTagVisualizer.RenderDetections(
+        m_imageBuffer, msg->header, sensor_msgs::image_encodings::BGR8, detectionsMsg);
   }
 
   std::string publishEncoding = sensor_msgs::image_encodings::BGR8;
