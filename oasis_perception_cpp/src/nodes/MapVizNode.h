@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include "apriltag/AprilTagVisualizer.h"
 #include "slam/CameraModel.h"
 #include "slam/MapViewRenderer.h"
 
@@ -18,6 +19,7 @@
 #include <vector>
 
 #include <Eigen/Geometry>
+#include <apriltag_msgs/msg/april_tag_detection_array.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <image_transport/image_transport.hpp>
 #include <image_transport/subscriber_filter.hpp>
@@ -48,9 +50,12 @@ public:
 private:
   void OnPose(const geometry_msgs::msg::PoseStamped::ConstSharedPtr& msg);
   void OnPointCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPtr& msg);
-  bool OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg);
-  void OnImageAndPointCloud(const sensor_msgs::msg::Image::ConstSharedPtr& imageMsg,
-                            const sensor_msgs::msg::PointCloud2::ConstSharedPtr& pointCloudMsg);
+  bool OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& imageMsg,
+               const apriltag_msgs::msg::AprilTagDetectionArray::ConstSharedPtr& detectionsMsg);
+  void OnImagePointCloudDetections(
+      const sensor_msgs::msg::Image::ConstSharedPtr& imageMsg,
+      const sensor_msgs::msg::PointCloud2::ConstSharedPtr& pointCloudMsg,
+      const apriltag_msgs::msg::AprilTagDetectionArray::ConstSharedPtr& detectionsMsg);
   void OnCameraInfo(const sensor_msgs::msg::CameraInfo::ConstSharedPtr& msg);
 
   static Eigen::Isometry3f PoseMsgToIsometry(const geometry_msgs::msg::PoseStamped& poseMsg);
@@ -65,15 +70,18 @@ private:
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr m_poseSubscription;
   std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::PointCloud2>>
       m_pointCloudSubscription;
+  std::shared_ptr<message_filters::Subscriber<apriltag_msgs::msg::AprilTagDetectionArray>>
+      m_detectionsSubscription;
   rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr m_cameraInfoSubscription;
-  using ImagePointCloudSyncPolicy =
-      message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::Image,
-                                                      sensor_msgs::msg::PointCloud2>;
-  std::shared_ptr<message_filters::Synchronizer<ImagePointCloudSyncPolicy>>
-      m_imagePointCloudSynchronizer;
+  using ImagePointCloudDetectionsSyncPolicy = message_filters::sync_policies::ApproximateTime<
+      sensor_msgs::msg::Image, sensor_msgs::msg::PointCloud2,
+      apriltag_msgs::msg::AprilTagDetectionArray>;
+  std::shared_ptr<message_filters::Synchronizer<ImagePointCloudDetectionsSyncPolicy>>
+      m_imagePointCloudDetectionsSynchronizer;
 
   SLAM::CameraModel m_cameraModel;
   SLAM::MapViewRenderer m_renderer;
+  AprilTagVisualizer m_aprilTagVisualizer;
   std::optional<Eigen::Isometry3f> m_cameraFromWorldTransform;
 
   cv::Mat m_imageBuffer;
