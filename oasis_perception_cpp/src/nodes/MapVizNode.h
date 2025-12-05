@@ -49,9 +49,10 @@ public:
 
 private:
   void OnPose(const geometry_msgs::msg::PoseStamped::ConstSharedPtr& msg);
-  void OnPointCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPtr& msg);
-  bool OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& imageMsg,
-               const apriltag_msgs::msg::AprilTagDetectionArray::ConstSharedPtr& detectionsMsg);
+  void OnPointCloud(
+      const sensor_msgs::msg::PointCloud2::ConstSharedPtr& msg,
+      const apriltag_msgs::msg::AprilTagDetectionArray::ConstSharedPtr& detectionsMsg);
+  bool OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& imageMsg);
   void OnImagePointCloudDetections(
       const sensor_msgs::msg::Image::ConstSharedPtr& imageMsg,
       const sensor_msgs::msg::PointCloud2::ConstSharedPtr& pointCloudMsg,
