@@ -19,6 +19,7 @@
 #include <utility>
 #include <vector>
 
+#include <apriltag_msgs/msg/april_tag_detection_array.hpp>
 #include <cv_bridge/cv_bridge.hpp>
 #include <geometry_msgs/msg/point.hpp>
 #include <image_transport/image_transport.hpp>
@@ -43,6 +44,7 @@ constexpr std::string_view POINT_CLOUD_TOPIC_SUFFIX = "slam_point_cloud";
 constexpr std::string_view MAP_IMAGE_TOPIC_SUFFIX = "slam_map_image";
 constexpr std::string_view CAMERA_INFO_TOPIC_SUFFIX = "camera_info";
 constexpr std::string_view IMAGE_TOPIC_SUFFIX = "image_raw";
+constexpr std::string_view DETECTIONS_TOPIC_SUFFIX = "apriltags";
 
 // ROS parameters
 constexpr std::string_view SYSTEM_ID_PARAMETER = "system_id";
@@ -63,14 +65,15 @@ constexpr std::string_view DEFAULT_OUTPUT_ENCODING = sensor_msgs::image_encoding
 
 // Synchronization settings
 constexpr int SYNC_QUEUE_SIZE = 10;
-constexpr double MAX_SYNC_INTERVAL_SECONDS = 0.05;
+constexpr double MAX_SYNC_INTERVAL_SECONDS = 0.1;
 } // namespace
 
 MapVizNode::MapVizNode(rclcpp::Node& node)
   : m_node(node),
     m_logger(node.get_logger()),
     m_mapImagePublisher(std::make_unique<image_transport::Publisher>()),
-    m_imageSubscriber(std::make_shared<image_transport::SubscriberFilter>())
+    m_imageSubscriber(std::make_shared<image_transport::SubscriberFilter>()),
+    m_aprilTagVisualizer(m_logger, m_node.get_clock())
 {
   m_node.declare_parameter<std::string>(SYSTEM_ID_PARAMETER.data(), DEFAULT_SYSTEM_ID.data());
   m_node.declare_parameter<std::string>(SETTINGS_FILE_PARAMETER.data(),
@@ -152,6 +155,10 @@ bool MapVizNode::Initialize()
   cameraInfoTopic.push_back('_');
   cameraInfoTopic.append(CAMERA_INFO_TOPIC_SUFFIX);
 
+  std::string detectionsTopic = systemId;
+  detectionsTopic.push_back('_');
+  detectionsTopic.append(DETECTIONS_TOPIC_SUFFIX);
+
   RCLCPP_INFO(m_logger, "System ID: %s", systemId.c_str());
   RCLCPP_INFO(m_logger, "Camera image topic: %s", imageTopic.c_str());
   RCLCPP_INFO(m_logger, "Image transport: %s", imageTransport.c_str());
@@ -159,6 +166,7 @@ bool MapVizNode::Initialize()
   RCLCPP_INFO(m_logger, "Point cloud topic: %s", pointCloudTopic.c_str());
   RCLCPP_INFO(m_logger, "Map image topic: %s", mapImageTopic.c_str());
   RCLCPP_INFO(m_logger, "Camera info topic: %s", cameraInfoTopic.c_str());
+  RCLCPP_INFO(m_logger, "Detections topic: %s", detectionsTopic.c_str());
   RCLCPP_INFO(m_logger, "Background alpha: %.3f", m_backgroundAlpha);
   RCLCPP_INFO(m_logger, "Output encoding: %s", m_outputEncoding.c_str());
   RCLCPP_INFO(m_logger, "Settings file: %s", settingsFile.c_str());
@@ -176,14 +184,19 @@ bool MapVizNode::Initialize()
       std::make_shared<message_filters::Subscriber<sensor_msgs::msg::PointCloud2>>(
           &m_node, pointCloudTopic, rclcpp::QoS{SYNC_QUEUE_SIZE}.get_rmw_qos_profile());
 
-  m_imagePointCloudSynchronizer =
-      std::make_shared<message_filters::Synchronizer<ImagePointCloudSyncPolicy>>(
-          ImagePointCloudSyncPolicy{SYNC_QUEUE_SIZE}, *m_imageSubscriber,
-          *m_pointCloudSubscription);
-  m_imagePointCloudSynchronizer->setMaxIntervalDuration(
+  m_detectionsSubscription =
+      std::make_shared<message_filters::Subscriber<apriltag_msgs::msg::AprilTagDetectionArray>>(
+          &m_node, detectionsTopic, rclcpp::QoS{SYNC_QUEUE_SIZE}.get_rmw_qos_profile());
+
+  m_imagePointCloudDetectionsSynchronizer =
+      std::make_shared<message_filters::Synchronizer<ImagePointCloudDetectionsSyncPolicy>>(
+          ImagePointCloudDetectionsSyncPolicy{SYNC_QUEUE_SIZE}, *m_imageSubscriber,
+          *m_pointCloudSubscription, *m_detectionsSubscription);
+  m_imagePointCloudDetectionsSynchronizer->setMaxIntervalDuration(
       rclcpp::Duration::from_seconds(MAX_SYNC_INTERVAL_SECONDS));
-  m_imagePointCloudSynchronizer->registerCallback(std::bind(
-      &MapVizNode::OnImageAndPointCloud, this, std::placeholders::_1, std::placeholders::_2));
+  m_imagePointCloudDetectionsSynchronizer->registerCallback(
+      std::bind(&MapVizNode::OnImagePointCloudDetections, this, std::placeholders::_1,
+                std::placeholders::_2, std::placeholders::_3));
 
   m_cameraInfoSubscription = m_node.create_subscription<sensor_msgs::msg::CameraInfo>(
       cameraInfoTopic, {1},
@@ -195,7 +208,12 @@ bool MapVizNode::Initialize()
 void MapVizNode::Deinitialize()
 {
   m_cameraInfoSubscription.reset();
-  m_imagePointCloudSynchronizer.reset();
+  m_imagePointCloudDetectionsSynchronizer.reset();
+  if (m_detectionsSubscription)
+  {
+    m_detectionsSubscription->unsubscribe();
+    m_detectionsSubscription.reset();
+  }
   if (m_pointCloudSubscription)
   {
     m_pointCloudSubscription->unsubscribe();
@@ -218,15 +236,18 @@ void MapVizNode::OnPose(const geometry_msgs::msg::PoseStamped::ConstSharedPtr& m
   m_cameraFromWorldTransform = PoseMsgToIsometry(*msg);
 }
 
-void MapVizNode::OnImageAndPointCloud(
+void MapVizNode::OnImagePointCloudDetections(
     const sensor_msgs::msg::Image::ConstSharedPtr& imageMsg,
-    const sensor_msgs::msg::PointCloud2::ConstSharedPtr& pointCloudMsg)
+    const sensor_msgs::msg::PointCloud2::ConstSharedPtr& pointCloudMsg,
+    const apriltag_msgs::msg::AprilTagDetectionArray::ConstSharedPtr& detectionsMsg)
 {
   if (OnImage(imageMsg))
-    OnPointCloud(pointCloudMsg);
+    OnPointCloud(pointCloudMsg, detectionsMsg);
 }
 
-void MapVizNode::OnPointCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPtr& msg)
+void MapVizNode::OnPointCloud(
+    const sensor_msgs::msg::PointCloud2::ConstSharedPtr& msg,
+    const apriltag_msgs::msg::AprilTagDetectionArray::ConstSharedPtr& detectionsMsg)
 {
   if (!m_mapImagePublisher || m_mapImagePublisher->getNumSubscribers() == 0)
     return;
@@ -257,23 +278,30 @@ void MapVizNode::OnPointCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPt
     return;
 
   const cv::Mat* publishImage = &m_imageBuffer;
+
+  if (detectionsMsg != nullptr)
+  {
+    m_aprilTagVisualizer.RenderDetections(m_imageBuffer, msg->header,
+                                          sensor_msgs::image_encodings::BGR8, detectionsMsg);
+  }
+
   std::string publishEncoding = sensor_msgs::image_encodings::BGR8;
 
   if (m_outputEncoding == sensor_msgs::image_encodings::RGB8)
   {
-    cv::cvtColor(m_imageBuffer, m_outputBuffer, cv::COLOR_BGR2RGB);
+    cv::cvtColor(*publishImage, m_outputBuffer, cv::COLOR_BGR2RGB);
     publishImage = &m_outputBuffer;
     publishEncoding = m_outputEncoding;
   }
   else if (m_outputEncoding == sensor_msgs::image_encodings::BGRA8)
   {
-    cv::cvtColor(m_imageBuffer, m_outputBuffer, cv::COLOR_BGR2BGRA);
+    cv::cvtColor(*publishImage, m_outputBuffer, cv::COLOR_BGR2BGRA);
     publishImage = &m_outputBuffer;
     publishEncoding = m_outputEncoding;
   }
   else if (m_outputEncoding == sensor_msgs::image_encodings::RGBA8)
   {
-    cv::cvtColor(m_imageBuffer, m_outputBuffer, cv::COLOR_BGR2RGBA);
+    cv::cvtColor(*publishImage, m_outputBuffer, cv::COLOR_BGR2RGBA);
     publishImage = &m_outputBuffer;
     publishEncoding = m_outputEncoding;
   }
