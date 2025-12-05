@@ -385,9 +385,12 @@ if (ORB_SLAM_OASIS_FOUND)
   # Project files
   set(MAP_VIZ_SOURCES
     ${SLAM_RENDERING_SOURCES}
+    src/apriltag/AprilTagGenerator.cpp
+    src/apriltag/AprilTagVisualizer.cpp
     src/nodes/MapVizNode.cpp
   )
   set(MAP_VIZ_LIBRARIES
+    apriltag::apriltag
     apriltag_msgs::apriltag_msgs__rosidl_typesupport_cpp
     cv_bridge::cv_bridge
     DBoW2::DBoW2
