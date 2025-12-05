@@ -28,7 +28,6 @@
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
-#include <std_msgs/msg/header.hpp>
 
 namespace OASIS
 {
@@ -64,16 +63,16 @@ private:
   SLAM::CameraModel m_cameraModel;
   SLAM::MapViewRenderer m_renderer;
   std::optional<Eigen::Isometry3f> m_cameraFromWorldTransform;
+  std::mutex m_poseMutex;
 
   cv::Mat m_imageBuffer;
   cv::Mat m_outputBuffer;
 
+  std::vector<Eigen::Vector3f> m_worldPoints;
+  std::mutex m_worldPointsMutex;
+
   double m_backgroundAlpha{0.25};
   std::string m_outputEncoding;
-
-  cv::Mat m_backgroundImage;
-  std_msgs::msg::Header m_backgroundHeader;
-  std::mutex m_backgroundMutex;
   bool m_warnedOutputEncoding{false};
 };
 

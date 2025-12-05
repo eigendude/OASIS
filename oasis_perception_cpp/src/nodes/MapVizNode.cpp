@@ -193,74 +193,29 @@ void MapVizNode::OnPose(const geometry_msgs::msg::PoseStamped::ConstSharedPtr& m
   if (msg == nullptr)
     return;
 
+  std::scoped_lock lock(m_poseMutex);
   m_cameraFromWorldTransform = PoseMsgToIsometry(*msg);
 }
 
 void MapVizNode::OnPointCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPtr& msg)
 {
-  if (!m_mapImagePublisher || m_mapImagePublisher->getNumSubscribers() == 0)
+  if (msg == nullptr)
     return;
-
-  if (!m_cameraFromWorldTransform)
-  {
-    RCLCPP_WARN_THROTTLE(m_logger, *m_node.get_clock(), 5000,
-                         "Skipping map viz: waiting for slam pose");
-    return;
-  }
 
   std::vector<Eigen::Vector3f> worldPoints;
   if (!PointCloudToVector(*msg, worldPoints) || worldPoints.empty())
     return;
 
-  cv::Mat backgroundImage;
-  {
-    std::scoped_lock lock(m_backgroundMutex);
-    backgroundImage = m_backgroundImage;
-  }
-
-  const bool backgroundReady = !backgroundImage.empty() &&
-                               backgroundImage.cols == static_cast<int>(m_cameraModel.width) &&
-                               backgroundImage.rows == static_cast<int>(m_cameraModel.height);
-
-  if (!m_renderer.Render(*m_cameraFromWorldTransform, worldPoints, m_imageBuffer,
-                         backgroundReady ? &backgroundImage : nullptr))
-    return;
-
-  const cv::Mat* publishImage = &m_imageBuffer;
-  std::string publishEncoding = sensor_msgs::image_encodings::BGR8;
-
-  if (m_outputEncoding == sensor_msgs::image_encodings::RGB8)
-  {
-    cv::cvtColor(m_imageBuffer, m_outputBuffer, cv::COLOR_BGR2RGB);
-    publishImage = &m_outputBuffer;
-    publishEncoding = m_outputEncoding;
-  }
-  else if (m_outputEncoding == sensor_msgs::image_encodings::BGRA8)
-  {
-    cv::cvtColor(m_imageBuffer, m_outputBuffer, cv::COLOR_BGR2BGRA);
-    publishImage = &m_outputBuffer;
-    publishEncoding = m_outputEncoding;
-  }
-  else if (m_outputEncoding == sensor_msgs::image_encodings::RGBA8)
-  {
-    cv::cvtColor(m_imageBuffer, m_outputBuffer, cv::COLOR_BGR2RGBA);
-    publishImage = &m_outputBuffer;
-    publishEncoding = m_outputEncoding;
-  }
-  else if (m_outputEncoding != sensor_msgs::image_encodings::BGR8 && !m_warnedOutputEncoding)
-  {
-    RCLCPP_WARN(m_logger, "Unsupported output encoding '%s', falling back to BGR8",
-                m_outputEncoding.c_str());
-    m_warnedOutputEncoding = true;
-  }
-
-  cv_bridge::CvImage output(msg->header, publishEncoding, *publishImage);
-  m_mapImagePublisher->publish(output.toImageMsg());
+  std::scoped_lock lock(m_worldPointsMutex);
+  m_worldPoints = std::move(worldPoints);
 }
 
 void MapVizNode::OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg)
 {
   if (msg == nullptr)
+    return;
+
+  if (!m_mapImagePublisher || m_mapImagePublisher->getNumSubscribers() == 0)
     return;
 
   cv_bridge::CvImageConstPtr cvImage;
@@ -274,19 +229,73 @@ void MapVizNode::OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg)
     return;
   }
 
-  const cv::Mat& image = cvImage->image;
-  if (image.empty())
+  const cv::Mat& backgroundImage = cvImage->image;
+  if (backgroundImage.empty())
   {
     RCLCPP_WARN(m_logger, "Received empty background image frame");
     return;
   }
 
   cv::Mat darkenedImage;
-  image.convertTo(darkenedImage, image.type(), m_backgroundAlpha, 0.0);
+  backgroundImage.convertTo(darkenedImage, backgroundImage.type(), m_backgroundAlpha, 0.0);
 
-  std::scoped_lock lock(m_backgroundMutex);
-  m_backgroundImage = darkenedImage;
-  m_backgroundHeader = msg->header;
+  std::optional<Eigen::Isometry3f> cameraFromWorld;
+  {
+    std::scoped_lock lock(m_poseMutex);
+    cameraFromWorld = m_cameraFromWorldTransform;
+  }
+
+  std::vector<Eigen::Vector3f> worldPoints;
+  {
+    std::scoped_lock lock(m_worldPointsMutex);
+    worldPoints = m_worldPoints;
+  }
+
+  const bool hasPoseAndPoints = cameraFromWorld && !worldPoints.empty();
+  const bool backgroundReady =
+      darkenedImage.cols == static_cast<int>(m_cameraModel.width) &&
+      darkenedImage.rows == static_cast<int>(m_cameraModel.height);
+
+  const cv::Mat* publishImage = &darkenedImage;
+  if (hasPoseAndPoints)
+  {
+    const cv::Mat* renderBackground = backgroundReady ? &darkenedImage : nullptr;
+    if (m_renderer.Render(*cameraFromWorld, worldPoints, m_imageBuffer, renderBackground))
+    {
+      publishImage = &m_imageBuffer;
+    }
+  }
+
+  const cv::Mat* publishImagePtr = publishImage;
+  std::string publishEncoding = sensor_msgs::image_encodings::BGR8;
+
+  if (m_outputEncoding == sensor_msgs::image_encodings::RGB8)
+  {
+    cv::cvtColor(*publishImagePtr, m_outputBuffer, cv::COLOR_BGR2RGB);
+    publishImagePtr = &m_outputBuffer;
+    publishEncoding = m_outputEncoding;
+  }
+  else if (m_outputEncoding == sensor_msgs::image_encodings::BGRA8)
+  {
+    cv::cvtColor(*publishImagePtr, m_outputBuffer, cv::COLOR_BGR2BGRA);
+    publishImagePtr = &m_outputBuffer;
+    publishEncoding = m_outputEncoding;
+  }
+  else if (m_outputEncoding == sensor_msgs::image_encodings::RGBA8)
+  {
+    cv::cvtColor(*publishImagePtr, m_outputBuffer, cv::COLOR_BGR2RGBA);
+    publishImagePtr = &m_outputBuffer;
+    publishEncoding = m_outputEncoding;
+  }
+  else if (m_outputEncoding != sensor_msgs::image_encodings::BGR8 && !m_warnedOutputEncoding)
+  {
+    RCLCPP_WARN(m_logger, "Unsupported output encoding '%s', falling back to BGR8",
+                m_outputEncoding.c_str());
+    m_warnedOutputEncoding = true;
+  }
+
+  cv_bridge::CvImage output(msg->header, publishEncoding, *publishImagePtr);
+  m_mapImagePublisher->publish(output.toImageMsg());
 }
 
 void MapVizNode::OnCameraInfo(const sensor_msgs::msg::CameraInfo::ConstSharedPtr& msg)
