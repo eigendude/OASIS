@@ -21,9 +21,9 @@
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <image_transport/image_transport.hpp>
 #include <image_transport/subscriber_filter.hpp>
-#include <message_filters/subscriber.h>
-#include <message_filters/sync_policies/approximate_time.h>
-#include <message_filters/synchronizer.h>
+#include <message_filters/approximate_time.hpp>
+#include <message_filters/subscriber.hpp>
+#include <message_filters/synchronizer.hpp>
 #include <opencv2/core.hpp>
 #include <rclcpp/logger.hpp>
 #include <rclcpp/node.hpp>
