@@ -175,28 +175,23 @@ bool MapVizNode::Initialize()
 
   m_imageSubscriber->subscribe(&m_node, imageTopic, imageTransport,
                                rclcpp::QoS{SYNC_QUEUE_SIZE}.get_rmw_qos_profile());
+  m_imageSubscriber->registerCallback(
+      [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg) { OnImage(msg); });
 
   m_poseSubscription = m_node.create_subscription<geometry_msgs::msg::PoseStamped>(
       poseTopic, {1},
       [this](const geometry_msgs::msg::PoseStamped::ConstSharedPtr& msg) { OnPose(msg); });
 
-  m_pointCloudSubscription =
-      std::make_shared<message_filters::Subscriber<sensor_msgs::msg::PointCloud2>>(
-          &m_node, pointCloudTopic, rclcpp::QoS{SYNC_QUEUE_SIZE}.get_rmw_qos_profile());
+  m_pointCloudSubscription = m_node.create_subscription<sensor_msgs::msg::PointCloud2>(
+      pointCloudTopic, rclcpp::QoS{SYNC_QUEUE_SIZE},
+      [this](const sensor_msgs::msg::PointCloud2::ConstSharedPtr& msg) { OnPointCloud(msg); });
 
   m_detectionsSubscription =
-      std::make_shared<message_filters::Subscriber<apriltag_msgs::msg::AprilTagDetectionArray>>(
-          &m_node, detectionsTopic, rclcpp::QoS{SYNC_QUEUE_SIZE}.get_rmw_qos_profile());
-
-  m_imagePointCloudDetectionsSynchronizer =
-      std::make_shared<message_filters::Synchronizer<ImagePointCloudDetectionsSyncPolicy>>(
-          ImagePointCloudDetectionsSyncPolicy{SYNC_QUEUE_SIZE}, *m_imageSubscriber,
-          *m_pointCloudSubscription, *m_detectionsSubscription);
-  m_imagePointCloudDetectionsSynchronizer->setMaxIntervalDuration(
-      rclcpp::Duration::from_seconds(MAX_SYNC_INTERVAL_SECONDS));
-  m_imagePointCloudDetectionsSynchronizer->registerCallback(
-      std::bind(&MapVizNode::OnImagePointCloudDetections, this, std::placeholders::_1,
-                std::placeholders::_2, std::placeholders::_3));
+      m_node.create_subscription<apriltag_msgs::msg::AprilTagDetectionArray>(
+          detectionsTopic, rclcpp::QoS{SYNC_QUEUE_SIZE},
+          [this](const apriltag_msgs::msg::AprilTagDetectionArray::ConstSharedPtr& msg) {
+            OnDetections(msg);
+          });
 
   m_cameraInfoSubscription = m_node.create_subscription<sensor_msgs::msg::CameraInfo>(
       cameraInfoTopic, {1},
@@ -208,15 +203,12 @@ bool MapVizNode::Initialize()
 void MapVizNode::Deinitialize()
 {
   m_cameraInfoSubscription.reset();
-  m_imagePointCloudDetectionsSynchronizer.reset();
   if (m_detectionsSubscription)
   {
-    m_detectionsSubscription->unsubscribe();
     m_detectionsSubscription.reset();
   }
   if (m_pointCloudSubscription)
   {
-    m_pointCloudSubscription->unsubscribe();
     m_pointCloudSubscription.reset();
   }
   m_poseSubscription.reset();
@@ -236,18 +228,17 @@ void MapVizNode::OnPose(const geometry_msgs::msg::PoseStamped::ConstSharedPtr& m
   m_cameraFromWorldTransform = PoseMsgToIsometry(*msg);
 }
 
-void MapVizNode::OnImagePointCloudDetections(
-    const sensor_msgs::msg::Image::ConstSharedPtr& imageMsg,
-    const sensor_msgs::msg::PointCloud2::ConstSharedPtr& pointCloudMsg,
-    const apriltag_msgs::msg::AprilTagDetectionArray::ConstSharedPtr& detectionsMsg)
+void MapVizNode::OnDetections(
+    const apriltag_msgs::msg::AprilTagDetectionArray::ConstSharedPtr& msg)
 {
-  if (OnImage(imageMsg))
-    OnPointCloud(pointCloudMsg, detectionsMsg);
+  if (msg == nullptr)
+    return;
+
+  std::scoped_lock lock(m_detectionsMutex);
+  m_latestDetectionsMsg = msg;
 }
 
-void MapVizNode::OnPointCloud(
-    const sensor_msgs::msg::PointCloud2::ConstSharedPtr& msg,
-    const apriltag_msgs::msg::AprilTagDetectionArray::ConstSharedPtr& detectionsMsg)
+void MapVizNode::OnPointCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPtr& msg)
 {
   if (!m_mapImagePublisher || m_mapImagePublisher->getNumSubscribers() == 0)
     return;
@@ -264,9 +255,45 @@ void MapVizNode::OnPointCloud(
     return;
 
   cv::Mat backgroundImage;
+  std_msgs::msg::Header backgroundHeader;
   {
     std::scoped_lock lock(m_backgroundMutex);
     backgroundImage = m_backgroundImage;
+    backgroundHeader = m_backgroundHeader;
+  }
+
+  if (backgroundImage.empty())
+  {
+    RCLCPP_WARN_THROTTLE(m_logger, *m_node.get_clock(), 5000,
+                         "Skipping map viz: waiting for background image");
+    return;
+  }
+
+  const rclcpp::Time pointCloudTime(msg->header.stamp);
+  const rclcpp::Time backgroundTime(backgroundHeader.stamp);
+  const double backgroundDeltaSeconds =
+      std::abs((pointCloudTime - backgroundTime).seconds());
+
+  if (backgroundDeltaSeconds > MAX_SYNC_INTERVAL_SECONDS)
+  {
+    RCLCPP_WARN_THROTTLE(m_logger, *m_node.get_clock(), 5000,
+                         "Skipping map viz: background is %.0f ms out of sync",
+                         backgroundDeltaSeconds * 1000.0);
+    return;
+  }
+
+  apriltag_msgs::msg::AprilTagDetectionArray::ConstSharedPtr detectionsMsg;
+  {
+    std::scoped_lock lock(m_detectionsMutex);
+    if (m_latestDetectionsMsg != nullptr)
+    {
+      const rclcpp::Time detectionsTime(m_latestDetectionsMsg->header.stamp);
+      const double detectionsDeltaSeconds =
+          std::abs((pointCloudTime - detectionsTime).seconds());
+
+      if (detectionsDeltaSeconds <= MAX_SYNC_INTERVAL_SECONDS)
+        detectionsMsg = m_latestDetectionsMsg;
+    }
   }
 
   const bool backgroundReady = !backgroundImage.empty() &&
