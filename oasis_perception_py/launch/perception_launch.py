@@ -31,11 +31,8 @@ HOST_ID: str = CONFIG.HOST_ID
 # Zone configuration
 ZONE_ID: str = CONFIG.ZONE_ID
 
-# TODO: Select "pinhole" or "fisheye" from configuration
-CAMERA_MODEL: str = "fisheye"
-
 # TODO: Select camera name from configuration
-CAMERA_NAME: str = (
+SLAM_CAMERA_NAME: str = (
     "imx708_wide__base_axi_pcie_120000_rp1_i2c_80000_imx708_1a_1920x1080_2304x1296_BGGR_PISP_COMP1_RAW"
 )
 
@@ -52,8 +49,8 @@ def generate_launch_description() -> LaunchDescription:
 
     composable_nodes: list[ComposableNode] = []
 
-    # NAS pipeline
-    if HOST_ID == "nas":
+    # Vision pipeline
+    if HOST_ID == "vision":
         # Ingestion: Single source, fanout to nodes
         PerceptionDescriptions.add_image_downscaler(
             composable_nodes,
@@ -91,7 +88,7 @@ def generate_launch_description() -> LaunchDescription:
             input_topic="image_color",
             input_resolution="qhd",
             output_resolution="sd",
-            image_transport="raw",
+            image_transport="compressed",
             max_width=640,
             max_height=480,
         )
@@ -120,7 +117,6 @@ def generate_launch_description() -> LaunchDescription:
         )
 
         # Pose landmarking
-        """
         PerceptionDescriptions.add_pose_landmarker(
             ld,
             "falcon",
@@ -128,7 +124,6 @@ def generate_launch_description() -> LaunchDescription:
             input_resolution="sd",
             image_transport="raw",
         )
-        """
         PerceptionDescriptions.add_pose_landmarker(
             ld,
             "hallway",
@@ -142,7 +137,7 @@ def generate_launch_description() -> LaunchDescription:
             composable_nodes,
             ["falcon"],
             image_transport="raw",
-            camera_name=CAMERA_NAME,
+            camera_name=SLAM_CAMERA_NAME,
             input_resolution="hd720",
         )
 
@@ -163,8 +158,8 @@ def generate_launch_description() -> LaunchDescription:
             # TODO: image_transport="compressed",
         )
 
-    # Ocean Platform pipeline
-    elif HOST_ID == "oceanplatform":
+    # Rendering pipeline
+    if HOST_ID == "vision":
         # AprilTag visualization
         PerceptionDescriptions.add_apriltag_visualizer(
             composable_nodes,
@@ -179,7 +174,7 @@ def generate_launch_description() -> LaunchDescription:
         PerceptionDescriptions.add_map_viz(
             composable_nodes,
             ["falcon"],
-            camera_name=CAMERA_NAME,
+            camera_name=SLAM_CAMERA_NAME,
             camera_resolution="hd",
             image_transport="compressed",
         )

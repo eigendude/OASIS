@@ -2,6 +2,7 @@
 host_id_map:
   cinder: nas
   megapegasus: oceanplatform
+  precision: vision
 
 # Remap HOST_ID to zone names
 zone_id_map:
