@@ -82,7 +82,7 @@ if HOST_ID == "falcon":
     IMAGE_SIZE = [1920, 1080]
 
     # Use a binned full-FOV mode that can run fast
-    SENSOR_MODE = "2304:1296"  # 2x2 binned 16:9; full FOV and scales cleanly to 1080p
+    SENSOR_MODE = "2304:1296"  # 2×2 binned 16:9; full FOV and scales cleanly to 1080p
 
     # Low-blur, full-FOV binned mode @ ~15 fps (IMX708 2304x1296 min frame time ≈ 17849 µs)
     LIBCAMERA_PARAMS = {
@@ -97,9 +97,7 @@ if HOST_ID == "falcon":
 else:
     IMAGE_FORMAT = "BGR888"
     IMAGE_SIZE = [640, 480]
-
-    # Use the lowest-resolution full-FOV mode available on the V2 camera (2x2 binned)
-    SENSOR_MODE = "1640:1232"
+    SENSOR_MODE = "3280:2464"  # V2 camera full sensor resolution
 
     LIBCAMERA_PARAMS = {
         "ExposureTime": 8000,  # 8 ms  (~1/125 s)
