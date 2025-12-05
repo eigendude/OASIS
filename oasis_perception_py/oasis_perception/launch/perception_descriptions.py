@@ -248,8 +248,13 @@ class PerceptionDescriptions:
 
     @staticmethod
     def add_calibration(
-        ld: LaunchDescription, system_id: str, camera_model: str
+        ld: LaunchDescription,
+        system_id: str,
+        camera_model: str,
+        input_resolution: str = "",
     ) -> None:
+        RESOLUTION_PREFIX = f"{input_resolution}/" if input_resolution else ""
+
         # Get camera driver from smarthome configuration
         camera_driver: str = CONFIG.get_camera_driver(system_id)
 
@@ -268,9 +273,15 @@ class PerceptionDescriptions:
                 parameters=[{"camera_model": camera_model}],
                 remappings=[
                     # Topics
-                    ("calibration_image", f"{system_id}/calibration_image"),
-                    ("calibration_status", f"{system_id}/calibration_status"),
-                    ("image", f"{system_id}/image_raw"),
+                    (
+                        "calibration_image",
+                        f"{system_id}/{RESOLUTION_PREFIX}calibration_image",
+                    ),
+                    (
+                        "calibration_status",
+                        f"{system_id}/{RESOLUTION_PREFIX}calibration_status",
+                    ),
+                    ("image", f"{system_id}/{RESOLUTION_PREFIX}image_raw"),
                     # Services
                     ("camera/set_camera_info", f"{camera_node}/set_camera_info"),
                 ],

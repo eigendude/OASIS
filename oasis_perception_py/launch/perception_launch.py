@@ -77,7 +77,7 @@ def generate_launch_description() -> LaunchDescription:
         )
         PerceptionDescriptions.add_image_downscaler(
             composable_nodes,
-            ["falcon"],
+            ["falcon", "station"],
             input_topic="image_raw",
             input_resolution="",
             output_resolution="sd",
@@ -152,6 +152,15 @@ def generate_launch_description() -> LaunchDescription:
             ["falcon"],
             input_resolution="hd720",
             output_resolution="hd",
+        )
+
+        # Calibration demo (TODO: separate checkerboard detection)
+        PerceptionDescriptions.add_calibration(
+            ld,
+            system_id="station",
+            camera_model="pinhole",
+            input_resolution="sd",
+            # TODO: image_transport="compressed",
         )
 
     # Ocean Platform pipeline
