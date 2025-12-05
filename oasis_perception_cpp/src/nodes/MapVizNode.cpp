@@ -198,6 +198,16 @@ bool MapVizNode::Initialize()
       std::bind(&MapVizNode::OnImagePointCloudDetections, this, std::placeholders::_1,
                 std::placeholders::_2, std::placeholders::_3));
 
+  m_imageSubscriber->registerCallback(
+      std::bind(&MapVizNode::OnImageOnly, this, std::placeholders::_1));
+
+  m_detectionsSubscription->registerCallback(
+      std::bind(&MapVizNode::OnDetections, this, std::placeholders::_1));
+
+  m_fastPointCloudSubscription = m_node.create_subscription<sensor_msgs::msg::PointCloud2>(
+      pointCloudTopic, {SYNC_QUEUE_SIZE},
+      std::bind(&MapVizNode::OnFastPointCloud, this, std::placeholders::_1));
+
   m_cameraInfoSubscription = m_node.create_subscription<sensor_msgs::msg::CameraInfo>(
       cameraInfoTopic, {1},
       [this](const sensor_msgs::msg::CameraInfo::ConstSharedPtr& msg) { OnCameraInfo(msg); });
@@ -208,6 +218,7 @@ bool MapVizNode::Initialize()
 void MapVizNode::Deinitialize()
 {
   m_cameraInfoSubscription.reset();
+  m_fastPointCloudSubscription.reset();
   m_imagePointCloudDetectionsSynchronizer.reset();
   if (m_detectionsSubscription)
   {
@@ -236,13 +247,70 @@ void MapVizNode::OnPose(const geometry_msgs::msg::PoseStamped::ConstSharedPtr& m
   m_cameraFromWorldTransform = PoseMsgToIsometry(*msg);
 }
 
+void MapVizNode::OnDetections(
+    const apriltag_msgs::msg::AprilTagDetectionArray::ConstSharedPtr& detectionsMsg)
+{
+  std::scoped_lock lock(m_syncMutex);
+  m_latestDetectionsMsg = detectionsMsg;
+}
+
+void MapVizNode::OnFastPointCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPtr& msg)
+{
+  if (msg == nullptr)
+    return;
+
+  const rclcpp::Time pointCloudStamp(msg->header.stamp);
+
+  std_msgs::msg::Header backgroundHeader;
+  {
+    std::scoped_lock backgroundLock(m_backgroundMutex);
+    backgroundHeader = m_backgroundHeader;
+  }
+
+  std::scoped_lock lock(m_syncMutex);
+
+  const rclcpp::Time backgroundStamp(backgroundHeader.stamp);
+
+  if (backgroundStamp.nanoseconds() == 0)
+    return;
+
+  const double backgroundAgeSeconds =
+      std::abs((pointCloudStamp - backgroundStamp).seconds());
+  if (backgroundAgeSeconds > MAX_SYNC_INTERVAL_SECONDS)
+    return;
+
+  auto detectionsMsg = m_latestDetectionsMsg;
+  if (detectionsMsg != nullptr)
+  {
+    const rclcpp::Time detectionsStamp(detectionsMsg->header.stamp);
+    const double detectionsAgeSeconds =
+        std::abs((pointCloudStamp - detectionsStamp).seconds());
+    if (detectionsAgeSeconds > MAX_SYNC_INTERVAL_SECONDS)
+      detectionsMsg.reset();
+  }
+
+  lock.unlock();
+
+  OnPointCloud(msg, detectionsMsg);
+}
+
 void MapVizNode::OnImagePointCloudDetections(
     const sensor_msgs::msg::Image::ConstSharedPtr& imageMsg,
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr& pointCloudMsg,
     const apriltag_msgs::msg::AprilTagDetectionArray::ConstSharedPtr& detectionsMsg)
 {
   if (OnImage(imageMsg))
-    OnPointCloud(pointCloudMsg, detectionsMsg);
+  {
+    std::scoped_lock lock(m_syncMutex);
+    m_latestImageMsg = imageMsg;
+  }
+
+  {
+    std::scoped_lock lock(m_syncMutex);
+    m_latestDetectionsMsg = detectionsMsg;
+  }
+
+  OnPointCloud(pointCloudMsg, detectionsMsg);
 }
 
 void MapVizNode::OnPointCloud(
@@ -346,6 +414,15 @@ bool MapVizNode::OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg)
   m_backgroundImage = darkenedImage;
   m_backgroundHeader = msg->header;
   return true;
+}
+
+void MapVizNode::OnImageOnly(const sensor_msgs::msg::Image::ConstSharedPtr& msg)
+{
+  if (!OnImage(msg))
+    return;
+
+  std::scoped_lock syncLock(m_syncMutex);
+  m_latestImageMsg = msg;
 }
 
 void MapVizNode::OnCameraInfo(const sensor_msgs::msg::CameraInfo::ConstSharedPtr& msg)

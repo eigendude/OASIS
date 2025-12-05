@@ -49,6 +49,10 @@ public:
 
 private:
   void OnPose(const geometry_msgs::msg::PoseStamped::ConstSharedPtr& msg);
+  void OnDetections(
+      const apriltag_msgs::msg::AprilTagDetectionArray::ConstSharedPtr& detectionsMsg);
+  void OnFastPointCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPtr& msg);
+  void OnImageOnly(const sensor_msgs::msg::Image::ConstSharedPtr& msg);
   void OnPointCloud(
       const sensor_msgs::msg::PointCloud2::ConstSharedPtr& msg,
       const apriltag_msgs::msg::AprilTagDetectionArray::ConstSharedPtr& detectionsMsg);
@@ -69,6 +73,7 @@ private:
   std::unique_ptr<image_transport::Publisher> m_mapImagePublisher;
   std::shared_ptr<image_transport::SubscriberFilter> m_imageSubscriber;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr m_poseSubscription;
+  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr m_fastPointCloudSubscription;
   std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::PointCloud2>>
       m_pointCloudSubscription;
   std::shared_ptr<message_filters::Subscriber<apriltag_msgs::msg::AprilTagDetectionArray>>
@@ -95,6 +100,10 @@ private:
   cv::Mat m_backgroundImage;
   std_msgs::msg::Header m_backgroundHeader;
   std::mutex m_backgroundMutex;
+
+  sensor_msgs::msg::Image::ConstSharedPtr m_latestImageMsg;
+  apriltag_msgs::msg::AprilTagDetectionArray::ConstSharedPtr m_latestDetectionsMsg;
+  std::mutex m_syncMutex;
   bool m_warnedOutputEncoding{false};
 };
 
