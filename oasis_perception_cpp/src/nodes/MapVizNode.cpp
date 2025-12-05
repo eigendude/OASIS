@@ -241,11 +241,13 @@ void MapVizNode::OnImagePointCloudDetections(
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr& pointCloudMsg,
     const apriltag_msgs::msg::AprilTagDetectionArray::ConstSharedPtr& detectionsMsg)
 {
-  if (OnImage(imageMsg, detectionsMsg))
-    OnPointCloud(pointCloudMsg);
+  if (OnImage(imageMsg))
+    OnPointCloud(pointCloudMsg, detectionsMsg);
 }
 
-void MapVizNode::OnPointCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPtr& msg)
+void MapVizNode::OnPointCloud(
+    const sensor_msgs::msg::PointCloud2::ConstSharedPtr& msg,
+    const apriltag_msgs::msg::AprilTagDetectionArray::ConstSharedPtr& detectionsMsg)
 {
   if (!m_mapImagePublisher || m_mapImagePublisher->getNumSubscribers() == 0)
     return;
@@ -276,23 +278,51 @@ void MapVizNode::OnPointCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPt
     return;
 
   const cv::Mat* publishImage = &m_imageBuffer;
+  sensor_msgs::msg::Image::SharedPtr overlayedImage;
+
+  if (detectionsMsg != nullptr)
+  {
+    const sensor_msgs::msg::Image::SharedPtr mapImage =
+        cv_bridge::CvImage(msg->header, sensor_msgs::image_encodings::BGR8, m_imageBuffer)
+            .toImageMsg();
+
+    if (sensor_msgs::msg::Image::SharedPtr processedImage = m_aprilTagVisualizer.ProcessImage(mapImage))
+    {
+      overlayedImage = m_aprilTagVisualizer.ProcessDetections(detectionsMsg);
+
+      if (overlayedImage != nullptr)
+      {
+        try
+        {
+          cv_bridge::CvImageConstPtr overlayedCvImage =
+              cv_bridge::toCvShare(overlayedImage, sensor_msgs::image_encodings::BGR8);
+          publishImage = &overlayedCvImage->image;
+        }
+        catch (const cv_bridge::Exception& exception)
+        {
+          RCLCPP_ERROR(m_logger, "cv_bridge exception: %s", exception.what());
+        }
+      }
+    }
+  }
+
   std::string publishEncoding = sensor_msgs::image_encodings::BGR8;
 
   if (m_outputEncoding == sensor_msgs::image_encodings::RGB8)
   {
-    cv::cvtColor(m_imageBuffer, m_outputBuffer, cv::COLOR_BGR2RGB);
+    cv::cvtColor(*publishImage, m_outputBuffer, cv::COLOR_BGR2RGB);
     publishImage = &m_outputBuffer;
     publishEncoding = m_outputEncoding;
   }
   else if (m_outputEncoding == sensor_msgs::image_encodings::BGRA8)
   {
-    cv::cvtColor(m_imageBuffer, m_outputBuffer, cv::COLOR_BGR2BGRA);
+    cv::cvtColor(*publishImage, m_outputBuffer, cv::COLOR_BGR2BGRA);
     publishImage = &m_outputBuffer;
     publishEncoding = m_outputEncoding;
   }
   else if (m_outputEncoding == sensor_msgs::image_encodings::RGBA8)
   {
-    cv::cvtColor(m_imageBuffer, m_outputBuffer, cv::COLOR_BGR2RGBA);
+    cv::cvtColor(*publishImage, m_outputBuffer, cv::COLOR_BGR2RGBA);
     publishImage = &m_outputBuffer;
     publishEncoding = m_outputEncoding;
   }
@@ -307,30 +337,15 @@ void MapVizNode::OnPointCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPt
   m_mapImagePublisher->publish(output.toImageMsg());
 }
 
-bool MapVizNode::OnImage(
-    const sensor_msgs::msg::Image::ConstSharedPtr& msg,
-    const apriltag_msgs::msg::AprilTagDetectionArray::ConstSharedPtr& detectionsMsg)
+bool MapVizNode::OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg)
 {
   if (msg == nullptr)
     return false;
 
-  sensor_msgs::msg::Image::SharedPtr processedImage = m_aprilTagVisualizer.ProcessImage(msg);
-  if (processedImage == nullptr)
-    return false;
-
-  if (detectionsMsg != nullptr)
-  {
-    if (sensor_msgs::msg::Image::SharedPtr overlayedImage =
-            m_aprilTagVisualizer.ProcessDetections(detectionsMsg))
-    {
-      processedImage = overlayedImage;
-    }
-  }
-
   cv_bridge::CvImageConstPtr cvImage;
   try
   {
-    cvImage = cv_bridge::toCvShare(processedImage, sensor_msgs::image_encodings::BGR8);
+    cvImage = cv_bridge::toCvShare(msg, sensor_msgs::image_encodings::BGR8);
   }
   catch (const cv_bridge::Exception& exception)
   {
@@ -350,7 +365,7 @@ bool MapVizNode::OnImage(
 
   std::scoped_lock lock(m_backgroundMutex);
   m_backgroundImage = darkenedImage;
-  m_backgroundHeader = processedImage->header;
+  m_backgroundHeader = msg->header;
   return true;
 }
 
