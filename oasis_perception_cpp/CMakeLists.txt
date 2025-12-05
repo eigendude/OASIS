@@ -57,6 +57,7 @@ find_package(bgslibrary REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(image_transport REQUIRED)
+find_package(message_filters REQUIRED)
 find_package(MediaPipe)
 find_package(oasis_msgs REQUIRED)
 find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs video)
@@ -392,6 +393,7 @@ if (ORB_SLAM_OASIS_FOUND)
     DBoW2::DBoW2
     g2o::g2o
     image_transport::image_transport
+    message_filters::message_filters
     ${OpenCV_LIBS}
     ORB_SLAM_OASIS::ORB_SLAM_OASIS
     ${Pangolin_LIBRARIES}
