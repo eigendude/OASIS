@@ -38,6 +38,10 @@ public:
       const sensor_msgs::msg::Image::ConstSharedPtr& msg);
   sensor_msgs::msg::Image::SharedPtr ProcessDetections(
       const apriltag_msgs::msg::AprilTagDetectionArray::ConstSharedPtr& msg);
+  bool RenderDetections(cv::Mat& image,
+                        const std_msgs::msg::Header& header,
+                        const std::string& encoding,
+                        const apriltag_msgs::msg::AprilTagDetectionArray::ConstSharedPtr& msg);
 
 private:
   static std::array<double, 2> Project(const std::array<double, 9>& homography,
