@@ -51,6 +51,17 @@ APT_PACKAGES=(
 
   # WiFi and network management
   network-manager
+
+  # Useful linux tools
+  bmon
+  htop
+
+  # Python development tools
+  black
+  flake8
+  isort
+  mypy
+  tox
 )
 
 # Install display controllers
