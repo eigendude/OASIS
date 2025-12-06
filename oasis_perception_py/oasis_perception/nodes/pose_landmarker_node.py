@@ -9,6 +9,7 @@
 ################################################################################
 
 import os
+from typing import Any
 
 import cv2
 import cv_bridge
@@ -23,6 +24,7 @@ from mediapipe import ImageFormat as MediapipeImageFormat  # type: ignore[attr-d
 from mediapipe.framework.formats import landmark_pb2
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
+from numpy.typing import NDArray
 from oasis_perception.utils.bounding_box_smoother import BoundingBoxSmoother
 from rclpy.logging import LoggingSeverity
 from rclpy.qos import qos_profile_default
@@ -260,7 +262,7 @@ class PoseLandmarkerNode(rclpy.node.Node):
         # Build a NumPy view on top of the ROS image buffer to avoid copies.
         itemsize: int = np.dtype(dtype).itemsize
         if channels == 1:
-            np_view = np.ndarray(
+            np_view: NDArray[Any] = np.ndarray(
                 shape=(image_msg.height, image_msg.width),
                 dtype=dtype,
                 buffer=image_msg.data,
