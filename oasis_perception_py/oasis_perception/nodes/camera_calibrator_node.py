@@ -506,17 +506,29 @@ class CameraCalibratorNode(rclpy.node.Node):
 
         # This should just call the MonoCalibrator
         try:
-            drawable = self.c.handle_msg(msg)
+            drawable: ImageDrawable = self.c.handle_msg(msg)
         except cv_bridge.CvBridgeError as e:
+            # Extra introspection for debugging empty cv::Mat / cvtColor failures
+            try:
+                data_len = len(msg.data)
+            except Exception:
+                data_len = -1
+
             self.get_logger().warn(
-                f"camera_calibrator: CvBridgeError on monocular frame, skipping: {e}"
+                "camera_calibrator: CvBridgeError on monocular frame, skipping. "
+                f"Error={e}; "
+                f"encoding={msg.encoding!r}, "
+                f"height={msg.height}, width={msg.width}, "
+                f"step={msg.step}, len(data)={data_len}"
             )
             return
         except Exception as e:
             self.get_logger().error(
-                f"camera_calibrator: unexpected error in handle_monocular, skipping frame: {e}"
+                "camera_calibrator: unexpected error in handle_monocular, "
+                f"skipping frame: {e}"
             )
             return
+
         self.displaywidth = drawable.scrib.shape[1]
         self.redraw_monocular(drawable)
 
