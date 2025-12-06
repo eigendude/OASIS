@@ -33,15 +33,15 @@ from oasis_drivers.telemetrix.telemetrix_types import DigitalMode
 from oasis_msgs.msg import AnalogReading as AnalogReadingMsg
 from oasis_msgs.msg import ConductorState as ConductorStateMsg
 from oasis_msgs.msg import DigitalReading as DigitalReadingMsg
+from oasis_msgs.msg import DigitalWriteCommand
 from oasis_msgs.msg import PeripheralConstants as PeripheralConstantsMsg
 from oasis_msgs.msg import PeripheralInfo as PeripheralInfoMsg
 from oasis_msgs.msg import PeripheralInput as PeripheralInputMsg
 from oasis_msgs.msg import PeripheralScan as PeripheralScanMsg
 from oasis_msgs.msg import PowerMode as PowerModeMsg
+from oasis_msgs.msg import PWMWriteCommand
 from oasis_msgs.srv import CaptureInput as CaptureInputSvc
-from oasis_msgs.srv import DigitalWrite as DigitalWriteSvc
 from oasis_msgs.srv import PowerControl as PowerControlSvc
-from oasis_msgs.srv import PWMWrite as PWMWriteSvc
 from oasis_msgs.srv import SetAnalogMode as SetAnalogModeSvc
 from oasis_msgs.srv import SetDigitalMode as SetDigitalModeSvc
 
@@ -69,6 +69,9 @@ MOTOR_FF2_PIN: int = 7  # D7
 MOTOR_CURRENT_PIN: int = 1  # A1
 CPU_FAN_PWM_PIN: int = 9  # D9
 CPU_FAN_SPEED_PIN: int = 2  # D2
+
+# Minimum change in motor duty cycle required to publish an update
+MOTOR_EPSILON: float = 0.02
 
 # Voltage dividers
 # R1 is the input-side resistor, R2 is the ground-side resistor
@@ -119,11 +122,13 @@ SERVICE_POWER_CONTROL = "power_control"
 
 # Service clients
 CLIENT_CAPTURE_INPUT = "capture_input"
-CLIENT_DIGITAL_WRITE = "digital_write"
-CLIENT_PWM_WRITE = "pwm_write"
 CLIENT_REPORT_MCU_MEMORY = "report_mcu_memory"
 CLIENT_SET_ANALOG_MODE = "set_analog_mode"
 CLIENT_SET_DIGITAL_MODE = "set_digital_mode"
+
+# Command publishers (Telemetrix)
+PUBLISH_MOTOR_DIR_CMD = "digital_write_cmd"
+PUBLISH_MOTOR_PWM_CMD = "pwm_write_cmd"
 
 
 ################################################################################
@@ -187,6 +192,22 @@ class ConductorManagerNode(rclpy.node.Node):
             qos_profile=qos_profile,
         )
 
+        cmd_qos = rclpy.qos.QoSProfile(
+            depth=1,
+            reliability=rclpy.qos.QoSReliabilityPolicy.RELIABLE,
+            history=rclpy.qos.QoSHistoryPolicy.KEEP_LAST,
+        )
+        self._motor_dir_cmd_pub: rclpy.publisher.Publisher = self.create_publisher(
+            msg_type=DigitalWriteCommand,
+            topic=PUBLISH_MOTOR_DIR_CMD,
+            qos_profile=cmd_qos,
+        )
+        self._motor_pwm_cmd_pub: rclpy.publisher.Publisher = self.create_publisher(
+            msg_type=PWMWriteCommand,
+            topic=PUBLISH_MOTOR_PWM_CMD,
+            qos_profile=cmd_qos,
+        )
+
         # Subscribers
         self._analog_reading_sub: rclpy.subscription.Subscription = (
             self.create_subscription(
@@ -232,12 +253,6 @@ class ConductorManagerNode(rclpy.node.Node):
         self._capture_input_client: rclpy.client.Client = self.create_client(
             srv_type=CaptureInputSvc, srv_name=CLIENT_CAPTURE_INPUT
         )
-        self._digital_write_client: rclpy.client.Client = self.create_client(
-            srv_type=DigitalWriteSvc, srv_name=CLIENT_DIGITAL_WRITE
-        )
-        self._pwm_write_client: rclpy.client.Client = self.create_client(
-            srv_type=PWMWriteSvc, srv_name=CLIENT_PWM_WRITE
-        )
         self._set_analog_mode_client: rclpy.client.Client = self.create_client(
             srv_type=SetAnalogModeSvc, srv_name=CLIENT_SET_ANALOG_MODE
         )
@@ -250,10 +265,6 @@ class ConductorManagerNode(rclpy.node.Node):
 
     def initialize(self) -> bool:
         self.get_logger().debug("Waiting for conductor services")
-        self.get_logger().debug("  - Waiting for digital_write...")
-        self._digital_write_client.wait_for_service()
-        self.get_logger().debug("  - Waiting for pwm_write...")
-        self._pwm_write_client.wait_for_service()
         self.get_logger().debug("  - Waiting for set_analog_mode...")
         self._set_analog_mode_client.wait_for_service()
         self.get_logger().debug("  - Waiting for set_digital_mode...")
@@ -484,10 +495,6 @@ class ConductorManagerNode(rclpy.node.Node):
             # Reduce magnitude by a factor to limit top speed
             magnitude /= 6.0  # Max 2.0V out of 12V supply
 
-            # Futures to wait on while the service is being called
-            future_pwm: Optional[asyncio.Future] = None
-            future_dir: Optional[asyncio.Future] = None
-
             # Update direction
             if self._reverse != reverse:
                 self._reverse = reverse
@@ -496,38 +503,40 @@ class ConductorManagerNode(rclpy.node.Node):
                     f"Direction: {'backward' if reverse else 'forward'}"
                 )
 
-                # Create message for motor direction
-                digital_write_svc = DigitalWriteSvc.Request()
-                digital_write_svc.digital_pin = MOTOR_DIR_PIN
-                digital_write_svc.digital_value = 1 if reverse else 0
+                # Publish command for motor direction
+                dir_cmd = DigitalWriteCommand()
+                dir_cmd.digital_pin = MOTOR_DIR_PIN
+                dir_cmd.digital_value = reverse
 
-                # Call service
-                future_dir = self._digital_write_client.call_async(digital_write_svc)
+                self._motor_dir_cmd_pub.publish(dir_cmd)
 
             # Update magnitude
-            if self._magnitude != magnitude:
-                self._magnitude = magnitude
+            target_magnitude: float = magnitude
+            if target_magnitude < MOTOR_EPSILON:
+                target_magnitude = 0.0
+
+            send_pwm: bool = False
+            if target_magnitude == 0.0:
+                if self._magnitude != 0.0:
+                    send_pwm = True
+            elif abs(target_magnitude - self._magnitude) >= MOTOR_EPSILON:
+                send_pwm = True
+
+            if send_pwm:
+                self._magnitude = target_magnitude
 
                 self.get_logger().info(f"Throttle: {throttle}")
 
-                # Create message for motor PWM
-                pwm_write_svc = PWMWriteSvc.Request()
-                pwm_write_svc.digital_pin = MOTOR_PWM_PIN
-                pwm_write_svc.duty_cycle = magnitude
+                pwm_cmd = PWMWriteCommand()
+                pwm_cmd.digital_pin = MOTOR_PWM_PIN
+                pwm_cmd.duty_cycle = target_magnitude
 
-                # Call service
-                future_pwm = self._pwm_write_client.call_async(pwm_write_svc)
+                self._motor_pwm_cmd_pub.publish(pwm_cmd)
 
             # Update state
             self._motor_voltage = (
-                self._supply_voltage * magnitude * (-1 if reverse else 1)
+                self._supply_voltage * target_magnitude * (-1 if reverse else 1)
             )
-
-            # Wait for results
-            if future_pwm is not None:
-                future_pwm.result()
-            if future_dir is not None:
-                future_dir.result()
 
     def _on_peripheral_scan(self, peripheral_scan_msg: PeripheralScanMsg) -> None:
         peripheral: PeripheralInfoMsg
