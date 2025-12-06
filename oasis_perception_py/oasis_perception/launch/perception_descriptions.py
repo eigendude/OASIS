@@ -8,6 +8,7 @@
 #
 ################################################################################
 
+from typing import Any
 from typing import List
 
 from launch.launch_description import LaunchDescription
@@ -370,7 +371,7 @@ class PerceptionDescriptions:
         RESOLUTION_PREFIX = f"{input_resolution}/" if input_resolution else ""
         RESOLUTION_SUFFIX = f"_{output_resolution}" if output_resolution else ""
 
-        size_params = {}
+        size_params: dict[str, Any] = {}
         if output_width > 0:
             size_params["output_width"] = output_width
         if output_height > 0:
