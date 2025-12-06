@@ -467,10 +467,30 @@ class CameraCalibratorNode(rclpy.node.Node):
         self.destroy_node()
 
     def queue_monocular(self, msg: ImageMsg) -> None:
-        self.q_mono.put(msg)
+        # DDS may loan image buffers that become invalid once the callback
+        # returns. Copy the incoming message so the consumer thread always
+        # owns a stable buffer.
+        self.q_mono.put(self.copy_image_msg(msg))
 
     def queue_stereo(self, lmsg: ImageMsg, rmsg: ImageMsg) -> None:
-        self.q_stereo.put((lmsg, rmsg))
+        # See queue_monocular() for rationale on copying incoming images.
+        self.q_stereo.put((self.copy_image_msg(lmsg), self.copy_image_msg(rmsg)))
+
+    def copy_image_msg(self, msg: ImageMsg) -> ImageMsg:
+        """Create a deep copy of an Image message with owned pixel data."""
+
+        msg_copy: ImageMsg = ImageMsg()
+        msg_copy.header = msg.header
+        msg_copy.height = msg.height
+        msg_copy.width = msg.width
+        msg_copy.encoding = msg.encoding
+        msg_copy.is_bigendian = msg.is_bigendian
+        msg_copy.step = msg.step
+
+        # Ensure pixel data is backed by our own buffer instead of a DDS loan.
+        msg_copy.data = bytes(msg.data)
+
+        return msg_copy
 
     def handle_monocular(self, msg: ImageMsg) -> None:
         # Skip obviously invalid/empty images
