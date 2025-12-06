@@ -22,8 +22,12 @@ Environment=XDG_RUNTIME_DIR=/run/user/1000
 # ROS 2 configuration
 #
 
+# ROS 2 distro and middleware
 Environment=ROS2_DISTRO=kilted
-Environment=RMW_IMPLEMENTATION=rmw_fastrtps_dynamic_cpp
+Environment=RMW_IMPLEMENTATION=rmw_zenoh_cpp
+
+# Remove ROS 2 log timestamps to keep lines short and readable
+Environment=RCUTILS_CONSOLE_OUTPUT_FORMAT="[{severity}] [{name}]: {message}"
 
 #
 # Kodi configuration

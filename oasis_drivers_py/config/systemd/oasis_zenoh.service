@@ -1,12 +1,13 @@
 [Unit]
 
-Description=OASIS UPS ROS driver (%i)
-Requires=nut-server.service
-After=nut-server.service
-BindsTo=nut-driver@%i.service
-PartOf=nut-driver@%i.service
+Description=Zenoh router for ROS 2 (rmw_zenoh_cpp)
+
+After=network-online.target
+Wants=network-online.target
 
 [Service]
+
+Type=simple
 
 #
 # User configuration
@@ -24,7 +25,7 @@ User=ubuntu
 Environment=ROS2_DISTRO=kilted
 Environment=RMW_IMPLEMENTATION=rmw_zenoh_cpp
 
-# Remove ROS 2 log timestamps to keep lines short and readable
+# Match your other OASIS services: short, timestamp-free logs
 Environment=RCUTILS_CONSOLE_OUTPUT_FORMAT="[{severity}] [{name}]: {message}"
 
 #
@@ -37,10 +38,10 @@ Environment=OASIS_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/oasis-${RO
 # Service definition
 #
 
-# Delay launch until the system has been up long enough for ROS nodes to connect
-ExecStart=/bin/bash -c 'set +o nounset && source `eval echo "${OASIS_ENV}"` && "$(ros2 pkg prefix oasis_drivers_py)/lib/oasis_drivers_py/delay_launch.sh" && ros2 launch oasis_drivers_py ups_launch.py'
+ExecStart=/bin/bash -lc 'source `eval echo "${OASIS_ENV}"` && ros2 run rmw_zenoh_cpp rmw_zenohd'
 
 Restart=on-failure
+RestartSec=5
 
 [Install]
 
