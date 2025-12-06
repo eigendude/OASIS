@@ -9,11 +9,13 @@
 ################################################################################
 
 import os
+from typing import Any
 
 import cv2
 import cv_bridge
 import mediapipe
 import numpy as np
+from numpy.typing import NDArray
 import rclpy.node
 from ament_index_python import get_package_share_directory
 from builtin_interfaces.msg import Time as TimeMsg
@@ -260,7 +262,7 @@ class PoseLandmarkerNode(rclpy.node.Node):
         # Build a NumPy view on top of the ROS image buffer to avoid copies.
         itemsize: int = np.dtype(dtype).itemsize
         if channels == 1:
-            np_view = np.ndarray(
+            np_view: NDArray[Any] = np.ndarray(
                 shape=(image_msg.height, image_msg.width),
                 dtype=dtype,
                 buffer=image_msg.data,
