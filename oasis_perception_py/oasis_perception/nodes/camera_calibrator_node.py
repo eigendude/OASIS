@@ -241,7 +241,14 @@ class ConsumerThread(threading.Thread):
     def run(self):
         while rclpy.ok():
             m = self.queue.get()
-            self.function(m)
+            try:
+                self.function(m)
+            except Exception as e:
+                # Never let a single bad frame kill the worker thread
+                print(f"[camera_calibrator] ConsumerThread error, skipping frame: {e}")
+                import traceback
+
+                traceback.print_exc()
 
 
 ################################################################################
@@ -452,6 +459,14 @@ class CameraCalibratorNode(rclpy.node.Node):
         self.q_stereo.put((lmsg, rmsg))
 
     def handle_monocular(self, msg):
+        # Skip obviously invalid/empty images
+        if isinstance(msg, ImageMsg):
+            if msg.height == 0 or msg.width == 0 or not msg.data:
+                self.get_logger().warn(
+                    "camera_calibrator: received empty monocular image, skipping"
+                )
+                return
+
         if self.c is None:
             if self._camera_name:
                 self.c = MonoCalibrator(
@@ -477,11 +492,47 @@ class CameraCalibratorNode(rclpy.node.Node):
         self.c.set_cammodel(self._camera_model)
 
         # This should just call the MonoCalibrator
-        drawable = self.c.handle_msg(msg)
+        try:
+            drawable = self.c.handle_msg(msg)
+        except cv_bridge.CvBridgeError as e:
+            self.get_logger().warn(
+                f"camera_calibrator: CvBridgeError on monocular frame, skipping: {e}"
+            )
+            return
+        except Exception as e:
+            self.get_logger().error(
+                f"camera_calibrator: unexpected error in handle_monocular, skipping frame: {e}"
+            )
+            return
+
         self.displaywidth = drawable.scrib.shape[1]
         self.redraw_monocular(drawable)
 
     def handle_stereo(self, msg):
+        # msg is (left, right)
+        try:
+            lmsg, rmsg = msg
+        except Exception:
+            self.get_logger().warn(
+                "camera_calibrator: stereo callback got malformed message, skipping"
+            )
+            return
+
+        # Skip invalid/empty stereo images
+        if isinstance(lmsg, ImageMsg) and isinstance(rmsg, ImageMsg):
+            if (
+                lmsg.height == 0
+                or lmsg.width == 0
+                or not lmsg.data
+                or rmsg.height == 0
+                or rmsg.width == 0
+                or not rmsg.data
+            ):
+                self.get_logger().warn(
+                    "camera_calibrator: received empty stereo image(s), skipping"
+                )
+                return
+
         if self.c is None:
             if self._camera_name:
                 self.c = StereoCalibrator(
@@ -506,7 +557,19 @@ class CameraCalibratorNode(rclpy.node.Node):
         # Package image_pipeline couldn't set camera model until first image received?
         self.c.set_cammodel(self._camera_model)
 
-        drawable = self.c.handle_msg(msg)
+        try:
+            drawable = self.c.handle_msg(msg)
+        except cv_bridge.CvBridgeError as e:
+            self.get_logger().warn(
+                f"camera_calibrator: CvBridgeError on stereo frame, skipping: {e}"
+            )
+            return
+        except Exception as e:
+            self.get_logger().error(
+                f"camera_calibrator: unexpected error in handle_stereo, skipping frame: {e}"
+            )
+            return
+
         self.displaywidth = drawable.lscrib.shape[1] + drawable.rscrib.shape[1]
         self.redraw_stereo(drawable)
 
