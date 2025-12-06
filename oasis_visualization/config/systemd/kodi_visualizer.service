@@ -23,7 +23,7 @@ Environment=XDG_RUNTIME_DIR=/run/user/1000
 #
 
 Environment=ROS2_DISTRO=kilted
-Environment=RMW_IMPLEMENTATION=rmw_fastrtps_dynamic_cpp
+Environment=RMW_IMPLEMENTATION=rmw_zenoh_cpp
 
 #
 # Kodi configuration

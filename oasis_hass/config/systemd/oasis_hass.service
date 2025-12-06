@@ -18,7 +18,7 @@ User=ubuntu
 #
 
 Environment=ROS2_DISTRO=kilted
-Environment=RMW_IMPLEMENTATION=rmw_fastrtps_dynamic_cpp
+Environment=RMW_IMPLEMENTATION=rmw_zenoh_cpp
 
 #
 # Path configuration
