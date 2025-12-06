@@ -44,6 +44,7 @@ rosidl_generate_interfaces(
     msg/CPUFanSpeed.msg
     msg/DigitalButton.msg
     msg/DigitalReading.msg
+    msg/DigitalWriteCommand.msg
     msg/DiskPartition.msg
     msg/EngineerState.msg
     msg/EngineState.msg
@@ -67,9 +68,11 @@ rosidl_generate_interfaces(
     msg/PoseLandmarksArray.msg
     msg/PowerEvent.msg
     msg/PowerMode.msg
+    msg/PWMWriteCommand.msg
     msg/RGB.msg
     msg/SerialDevice.msg
     msg/SerialDeviceScan.msg
+    msg/ServoWriteCommand.msg
     msg/SystemTelemetry.msg
     msg/Throttle.msg
     msg/UPSStatus.msg
