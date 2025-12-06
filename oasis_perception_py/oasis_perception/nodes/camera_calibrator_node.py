@@ -11,6 +11,7 @@
 #
 ################################################################################
 
+import copy
 import functools
 import queue
 import socket
@@ -467,10 +468,13 @@ class CameraCalibratorNode(rclpy.node.Node):
         self.destroy_node()
 
     def queue_monocular(self, msg: ImageMsg) -> None:
-        self.q_mono.put(msg)
+        # message_filters may pass loaned messages whose backing memory becomes
+        # invalid after the callback returns. Always queue a deep copy so image
+        # data is preserved for the worker thread.
+        self.q_mono.put(copy.deepcopy(msg))
 
     def queue_stereo(self, lmsg: ImageMsg, rmsg: ImageMsg) -> None:
-        self.q_stereo.put((lmsg, rmsg))
+        self.q_stereo.put((copy.deepcopy(lmsg), copy.deepcopy(rmsg)))
 
     def handle_monocular(self, msg: ImageMsg) -> None:
         # Skip obviously invalid/empty images
