@@ -24,7 +24,6 @@ User=ubuntu
 # ROS 2 distro and middleware
 Environment=ROS2_DISTRO=kilted
 Environment=RMW_IMPLEMENTATION=rmw_zenoh_cpp
-Environment=ZENOH_CONFIG_OVERRIDE=mode=\"client\";connect/endpoints=[\"tcp/192.168.0.10:7447\"]
 
 # Match your other OASIS services: short, timestamp-free logs
 Environment=RCUTILS_CONSOLE_OUTPUT_FORMAT="[{severity}] [{name}]: {message}"
