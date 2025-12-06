@@ -17,6 +17,9 @@ import socket
 import threading
 from typing import Any
 from typing import Callable
+from typing import Generic
+from typing import Optional
+from typing import TypeVar
 
 import cv2
 import cv_bridge
@@ -215,13 +218,16 @@ def options_valid_charuco(
 ################################################################################
 
 
-class BufferQueue(queue.Queue):
+T = TypeVar("T")
+
+
+class BufferQueue(queue.Queue[T]):
     """
     Slight modification of the standard Queue that discards the oldest item
     when adding an item and the queue is full.
     """
 
-    def put(self, item, *args, **kwargs):
+    def put(self, item: T, *args: Any, **kwargs: Any) -> None:
         # The base implementation, for reference:
         # https://github.com/python/cpython/blob/3.8/Lib/queue.py#L121
         with self.mutex:
@@ -232,15 +238,15 @@ class BufferQueue(queue.Queue):
             self.not_empty.notify()
 
 
-class ConsumerThread(threading.Thread):
-    def __init__(self, queue, function):
+class ConsumerThread(Generic[T], threading.Thread):
+    def __init__(self, queue: BufferQueue[T], function: Callable[[T], None]):
         threading.Thread.__init__(self)
-        self.queue = queue
-        self.function = function
+        self.queue: BufferQueue[T] = queue
+        self.function: Callable[[T], None] = function
 
-    def run(self):
+    def run(self) -> None:
         while rclpy.ok():
-            m = self.queue.get()
+            m: T = self.queue.get()
             self.function(m)
 
 
@@ -317,7 +323,7 @@ class CameraCalibratorNode(rclpy.node.Node):
             calib_flags |= cv2.CALIB_FIX_ASPECT_RATIO
         if DEFAULT_ZERO_TANGENT_DIST:
             calib_flags |= cv2.CALIB_ZERO_TANGENT_DIST
-        num_k_coeffs = DEFAULT_K_COEFFICIENTS
+        num_k_coeffs: int = DEFAULT_K_COEFFICIENTS
 
         if num_k_coeffs > 3:
             calib_flags |= cv2.CALIB_RATIONAL_MODEL
@@ -344,7 +350,7 @@ class CameraCalibratorNode(rclpy.node.Node):
             fisheye_flags |= cv2.fisheye.CALIB_RECOMPUTE_EXTRINSIC
         if DEFAULT_FISHEYE_CHECK_CONDITIONS:
             fisheye_flags |= cv2.fisheye.CALIB_CHECK_COND
-        num_fisheye_k_coeffs = DEFAULT_FISHEYE_K_COEFFICIENTS
+        num_fisheye_k_coeffs: int = DEFAULT_FISHEYE_K_COEFFICIENTS
         if num_fisheye_k_coeffs < 4:
             fisheye_flags |= cv2.fisheye.CALIB_FIX_K4
         if num_fisheye_k_coeffs < 3:
@@ -379,46 +385,54 @@ class CameraCalibratorNode(rclpy.node.Node):
         )
 
         # Initialize state
-        self._boards = boards
-        self._calib_flags = calib_flags
-        self._fisheye_calib_flags = fisheye_flags
-        self._checkerboard_flags = checkerboard_flags
-        self._pattern = pattern
-        self._camera_name = DEFAULT_CAMERA_NAME
-        self._max_chessboard_speed = DEFAULT_MAX_CHESSBOARD_SPEED
+        self._boards: list[ChessboardInfo] = boards
+        self._calib_flags: int = calib_flags
+        self._fisheye_calib_flags: int = fisheye_flags
+        self._checkerboard_flags: int = checkerboard_flags
+        self._pattern: int = pattern
+        self._camera_name: str = DEFAULT_CAMERA_NAME
+        self._max_chessboard_speed: float = DEFAULT_MAX_CHESSBOARD_SPEED
 
         # Setup message filters
-        self._lsub = message_filters.Subscriber(
+        self._lsub: message_filters.Subscriber = message_filters.Subscriber(
             self, ImageMsg, "left", qos_profile=self.get_topic_qos("left")
         )
-        self._rsub = message_filters.Subscriber(
+        self._rsub: message_filters.Subscriber = message_filters.Subscriber(
             self, ImageMsg, "right", qos_profile=self.get_topic_qos("right")
         )
-        self._time_sync = sync_cls([self._lsub, self._rsub], 4)
+        self._time_sync: Any = sync_cls([self._lsub, self._rsub], 4)
         self._time_sync.registerCallback(self.queue_stereo)
 
-        self._msub = message_filters.Subscriber(
+        self._msub: message_filters.Subscriber = message_filters.Subscriber(
             self, ImageMsg, "image", qos_profile=self.get_topic_qos("image")
         )
         self._msub.registerCallback(self.queue_monocular)
 
-        self.q_mono = BufferQueue(DEFAULT_QUEUE_SIZE)
-        self.q_stereo = BufferQueue(DEFAULT_QUEUE_SIZE)
+        self.q_mono: BufferQueue[ImageMsg] = BufferQueue(DEFAULT_QUEUE_SIZE)
+        self.q_stereo: BufferQueue[tuple[ImageMsg, ImageMsg]] = BufferQueue(
+            DEFAULT_QUEUE_SIZE
+        )
 
         self.c: Calibrator | None = None
 
-        self._last_display = None
+        self._last_display: Optional[ImageDrawable] = None
 
-        mth = ConsumerThread(self.q_mono, self.handle_monocular)
+        mth: ConsumerThread[ImageMsg] = ConsumerThread(
+            self.q_mono, self.handle_monocular
+        )
         mth.daemon = True
         mth.start()
 
-        sth = ConsumerThread(self.q_stereo, self.handle_stereo)
+        sth: ConsumerThread[tuple[ImageMsg, ImageMsg]] = ConsumerThread(
+            self.q_stereo, self.handle_stereo
+        )
         sth.daemon = True
         sth.start()
 
         # State for counting samples
         self._sample_count: int = -1
+
+        self.displaywidth: int = 0
 
         # State to avoid re‑running upload
         self._uploaded: bool = False
@@ -445,13 +459,13 @@ class CameraCalibratorNode(rclpy.node.Node):
         self.get_logger().info("Stopping camera calibrator node...")
         self.destroy_node()
 
-    def queue_monocular(self, msg):
+    def queue_monocular(self, msg: ImageMsg) -> None:
         self.q_mono.put(msg)
 
-    def queue_stereo(self, lmsg, rmsg):
+    def queue_stereo(self, lmsg: ImageMsg, rmsg: ImageMsg) -> None:
         self.q_stereo.put((lmsg, rmsg))
 
-    def handle_monocular(self, msg):
+    def handle_monocular(self, msg: ImageMsg) -> None:
         if self.c is None:
             if self._camera_name:
                 self.c = MonoCalibrator(
@@ -477,11 +491,11 @@ class CameraCalibratorNode(rclpy.node.Node):
         self.c.set_cammodel(self._camera_model)
 
         # This should just call the MonoCalibrator
-        drawable = self.c.handle_msg(msg)
-        self.displaywidth = drawable.scrib.shape[1]
+        drawable: ImageDrawable = self.c.handle_msg(msg)
+        self.displaywidth: int = drawable.scrib.shape[1]
         self.redraw_monocular(drawable)
 
-    def handle_stereo(self, msg):
+    def handle_stereo(self, msg: tuple[ImageMsg, ImageMsg]) -> None:
         if self.c is None:
             if self._camera_name:
                 self.c = StereoCalibrator(
@@ -506,11 +520,13 @@ class CameraCalibratorNode(rclpy.node.Node):
         # Package image_pipeline couldn't set camera model until first image received?
         self.c.set_cammodel(self._camera_model)
 
-        drawable = self.c.handle_msg(msg)
-        self.displaywidth = drawable.lscrib.shape[1] + drawable.rscrib.shape[1]
+        drawable: ImageDrawable = self.c.handle_msg(msg)
+        self.displaywidth: int = (
+            drawable.lscrib.shape[1] + drawable.rscrib.shape[1]
+        )
         self.redraw_stereo(drawable)
 
-    def check_set_camera_info(self, response):
+    def check_set_camera_info(self, response: SetCameraInfoSrv.Response) -> bool:
         if response.success:
             return True
 
@@ -527,18 +543,20 @@ class CameraCalibratorNode(rclpy.node.Node):
         )
         return False
 
-    def do_upload(self):
+    def do_upload(self) -> bool:
         assert self.c is not None
 
         self.c.report()
         print(self.c.ost())
-        info = self.c.as_message()
+        info: Any = self.c.as_message()
 
-        req = SetCameraInfoSrv.Request()
-        rv = True
+        req: SetCameraInfoSrv.Request = SetCameraInfoSrv.Request()
+        rv: bool = True
         if self.c.is_mono:
             req.camera_info = info
-            response = self.set_camera_info_service.call(req)
+            response: SetCameraInfoSrv.Response = (
+                self.set_camera_info_service.call(req)
+            )
             rv = self.check_set_camera_info(response)
         else:
             req.camera_info = info[0]
@@ -564,9 +582,11 @@ class CameraCalibratorNode(rclpy.node.Node):
         QoS.
         """
         topic_name = self.resolve_topic_name(topic_name)
-        topic_info = self.get_publishers_info_by_topic(topic_name=topic_name)
+        topic_info: list[Any] = self.get_publishers_info_by_topic(
+            topic_name=topic_name
+        )
         if len(topic_info):
-            qos_profile = topic_info[0].qos_profile
+            qos_profile: rclpy.qos.QoSProfile = topic_info[0].qos_profile
             qos_profile.history = rclpy.qos.qos_profile_system_default.history
             qos_profile.depth = rclpy.qos.qos_profile_system_default.depth
             return qos_profile
@@ -627,7 +647,7 @@ class CameraCalibratorNode(rclpy.node.Node):
             status_msg.uploaded = self._uploaded
             self._calibration_status_pub.publish(status_msg)
 
-    def redraw_stereo(self, drawable: Any) -> None:
+    def redraw_stereo(self, drawable: ImageDrawable) -> None:
         assert self.c is not None
 
         sample_count: int = len(self.c.db)
