@@ -13,6 +13,7 @@
 #
 
 import asyncio
+from dataclasses import dataclass
 from typing import Dict
 from typing import Optional
 
@@ -92,6 +93,20 @@ WOL_HOSTNAME: str = "megapegasus.local"
 
 # Amount of time to wait for WoL services, in seconds
 WOL_TIMEOUT_SECS: float = 5.0
+
+
+################################################################################
+# Input types
+################################################################################
+
+
+@dataclass
+class JoystickState:
+    a_button: bool = False
+    b_button: bool = False
+    y_button: bool = False
+    left_trigger: float = 0.0
+    right_trigger: float = 0.0
 
 
 ################################################################################
@@ -176,6 +191,16 @@ class ConductorManagerNode(rclpy.node.Node):
         self._hold_speed: bool = (
             False  # True to hold a steady speed, toggled with Y button
         )
+
+        # Latched controller state (updated incrementally from peripheral input)
+        self._a_button: bool = False
+        self._b_button: bool = False
+        self._y_button: bool = False
+        self._left_trigger: float = 0.0
+        self._right_trigger: float = 0.0
+
+        # Per-joystick controller state
+        self._joystick_states: Dict[str, JoystickState] = {}
 
         # Initialize input automation
         self._wol_manager: Optional[WolManager] = WolManager(self, WOL_HOSTNAME)
@@ -435,59 +460,92 @@ class ConductorManagerNode(rclpy.node.Node):
     def _on_peripheral_input(self, peripheral_input_msg: PeripheralInputMsg) -> None:
         # Translate parameters
         peripheral_address: str = peripheral_input_msg.address
-
         if peripheral_address in self._joysticks:
-            # Look for button states
-            a_button: bool = False
-            b_button: bool = False
-            y_button: bool = False
-            left_trigger: float = 0.0
-            right_trigger: float = 0.0
+            # Update latched controller state from this message.
+            # Messages may not include every button or axis every time, so we only
+            # overwrite the controls that are present for this joystick.
+            joystick_state = self._joystick_states.get(peripheral_address)
+            if joystick_state is None:
+                joystick_state = JoystickState()
+                self._joystick_states[peripheral_address] = joystick_state
 
+            # Update per-joystick digital state
             for digital_button in peripheral_input_msg.digital_buttons:
                 button_name: str = digital_button.name
                 pressed: bool = True if digital_button.pressed else False
 
                 if button_name == "a":
-                    a_button = pressed
-                if button_name == "b":
-                    b_button = pressed
-                if button_name == "y":
-                    y_button = pressed
+                    joystick_state.a_button = pressed
+                elif button_name == "b":
+                    joystick_state.b_button = pressed
+                elif button_name == "y":
+                    joystick_state.y_button = pressed
 
+            # Update per-joystick analog state
             for analog_button in peripheral_input_msg.analog_buttons:
                 button_name = analog_button.name
                 analog_magnitude: float = analog_button.magnitude
 
                 if button_name == "lefttrigger":
-                    left_trigger = analog_magnitude
+                    joystick_state.left_trigger = analog_magnitude
                 elif button_name == "righttrigger":
-                    right_trigger = analog_magnitude
+                    joystick_state.right_trigger = analog_magnitude
 
-            # Calculate throttle
-            throttle: float = right_trigger - left_trigger
+            # Aggregate state across all joysticks
+            if self._joystick_states:
+                any_a_button = any(
+                    state.a_button for state in self._joystick_states.values()
+                )
+                any_b_button = any(
+                    state.b_button for state in self._joystick_states.values()
+                )
+                any_y_button = any(
+                    state.y_button for state in self._joystick_states.values()
+                )
+                max_left_trigger = max(
+                    state.left_trigger for state in self._joystick_states.values()
+                )
+                max_right_trigger = max(
+                    state.right_trigger for state in self._joystick_states.values()
+                )
+            else:
+                any_a_button = False
+                any_b_button = False
+                any_y_button = False
+                max_left_trigger = 0.0
+                max_right_trigger = 0.0
+
+            # Update latched controller state
+            self._a_button = any_a_button
+            self._b_button = any_b_button
+            self._y_button = any_y_button
+            self._left_trigger = max_left_trigger
+            self._right_trigger = max_right_trigger
+
+            # Calculate throttle from latched triggers
+            throttle: float = self._right_trigger - self._left_trigger
 
             # Zero throttle if A or B buttons are not pressed
-            if not a_button and not b_button:
+            if not self._a_button and not self._b_button:
                 throttle = 0.0
 
             # Toggle hold speed when Y button is pressed
-            if self._last_y_button != y_button:
-                self._last_y_button = y_button
-                if y_button:
+            if self._last_y_button != self._y_button:
+                self._last_y_button = self._y_button
+                if self._y_button:
                     self._hold_speed = not self._hold_speed
 
             # Disable hold speed if A is pressed
-            if a_button:
+            if self._a_button:
                 self._hold_speed = False
 
             # Max throttle if hold speed is enabled
             if self._hold_speed:
                 throttle = 1.0
 
-            # Reduce throttle if B button is not pressed
-            if not b_button:
-                throttle *= 0.85  # Step 12V down
+            # Reduce throttle if B button is not pressed (step 12V down)
+            if not self._b_button:
+                throttle *= 0.85
 
             magnitude: float = abs(throttle)
             reverse: bool = throttle < 0.0
@@ -510,7 +568,7 @@ class ConductorManagerNode(rclpy.node.Node):
 
                 self._motor_dir_cmd_pub.publish(dir_cmd)
 
-            # Update magnitude
+            # Update magnitude with epsilon + "always send final zero" logic
             target_magnitude: float = magnitude
             if target_magnitude < MOTOR_EPSILON:
                 target_magnitude = 0.0
@@ -518,8 +576,10 @@ class ConductorManagerNode(rclpy.node.Node):
             send_pwm: bool = False
             if target_magnitude == 0.0:
                 if self._magnitude != 0.0:
+                    # Non-zero -> zero: send a final zero
                     send_pwm = True
             elif abs(target_magnitude - self._magnitude) >= MOTOR_EPSILON:
+                # Only send if we've moved by more than epsilon
                 send_pwm = True
 
             if send_pwm:
@@ -554,6 +614,10 @@ class ConductorManagerNode(rclpy.node.Node):
             # Update peripheral state
             self._joysticks[peripheral_address] = CONTROLLER_PROFILE
 
+            # Initialize per-joystick controller state
+            if peripheral_address not in self._joystick_states:
+                self._joystick_states[peripheral_address] = JoystickState()
+
             # Open the joystick to capture input
             self._open_joystick(peripheral_address, controller_profile)
 
@@ -567,6 +631,7 @@ class ConductorManagerNode(rclpy.node.Node):
             if not found:
                 self.get_logger().debug(f"Closing joystick {address} of type {profile}")
                 del self._joysticks[address]
+                self._joystick_states.pop(address, None)
 
     def _open_joystick(self, peripheral_address: str, controller_profile: str) -> None:
         self.get_logger().debug(
