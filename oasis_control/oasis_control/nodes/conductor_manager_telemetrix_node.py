@@ -469,6 +469,9 @@ class ConductorManagerNode(rclpy.node.Node):
                 joystick_state = JoystickState()
                 self._joystick_states[peripheral_address] = joystick_state
 
+            # Track Y button state for this message to drive edge detection
+            message_y_button: bool = False
+
             # Update per-joystick digital state
             for digital_button in peripheral_input_msg.digital_buttons:
                 button_name: str = digital_button.name
@@ -480,6 +483,7 @@ class ConductorManagerNode(rclpy.node.Node):
                     joystick_state.b_button = pressed
                 elif button_name == "y":
                     joystick_state.y_button = pressed
+                    message_y_button = message_y_button or pressed
 
             # Update per-joystick analog state
             for analog_button in peripheral_input_msg.analog_buttons:
@@ -530,9 +534,9 @@ class ConductorManagerNode(rclpy.node.Node):
                 throttle = 0.0
 
             # Toggle hold speed when Y button is pressed
-            if self._last_y_button != self._y_button:
-                self._last_y_button = self._y_button
-                if self._y_button:
+            if self._last_y_button != message_y_button:
+                self._last_y_button = message_y_button
+                if message_y_button:
                     self._hold_speed = not self._hold_speed
 
             # Disable hold speed if A is pressed
