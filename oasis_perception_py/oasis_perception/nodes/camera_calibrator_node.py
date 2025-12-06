@@ -34,10 +34,10 @@ from camera_calibration.calibrator import Calibrator
 from camera_calibration.calibrator import ChessboardInfo
 from camera_calibration.calibrator import ImageDrawable
 from camera_calibration.calibrator import Patterns
-from camera_calibration.mono_calibrator import MonoCalibrator
 from camera_calibration.stereo_calibrator import StereoCalibrator
 from image_transport_py import ImageTransport
 from message_filters import ApproximateTimeSynchronizer
+from oasis_perception.calibration.mono_calibrator import MonoCalibrator
 from sensor_msgs.msg import Image as ImageMsg
 from sensor_msgs.srv import SetCameraInfo as SetCameraInfoSrv
 
