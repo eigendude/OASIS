@@ -14,6 +14,7 @@ from typing import List
 from typing import Tuple
 
 import rclpy.node
+import rclpy.qos
 import rclpy.service
 import rclpy.time
 from builtin_interfaces.msg import Time as TimeMsg
@@ -31,11 +32,14 @@ from oasis_msgs.msg import AnalogReading as AnalogReadingMsg
 from oasis_msgs.msg import AVRConstants as AVRConstantsMsg
 from oasis_msgs.msg import CPUFanSpeed as CPUFanSpeedMsg
 from oasis_msgs.msg import DigitalReading as DigitalReadingMsg
+from oasis_msgs.msg import DigitalWriteCommand
 from oasis_msgs.msg import I2CDevice as I2CDeviceMsg
 from oasis_msgs.msg import I2CDeviceType as I2CDeviceTypeMsg
 from oasis_msgs.msg import I2CImu as I2CImuMsg
 from oasis_msgs.msg import MCUMemory as MCUMemoryMsg
 from oasis_msgs.msg import MCUString as MCUStringMsg
+from oasis_msgs.msg import PWMWriteCommand
+from oasis_msgs.msg import ServoWriteCommand
 from oasis_msgs.srv import AnalogRead as AnalogReadSvc
 from oasis_msgs.srv import DigitalRead as DigitalReadSvc
 from oasis_msgs.srv import DigitalWrite as DigitalWriteSvc
@@ -67,6 +71,12 @@ DIGITAL_READING_TOPIC = "digital_reading"
 IMU_TOPIC = "i2c_imu"
 MCU_MEMORY_TOPIC = "mcu_memory"
 MCU_STRING_TOPIC = "mcu_string"
+
+# New command topics
+DIGITAL_WRITE_COMMAND_TOPIC = "digital_write_cmd"
+PWM_WRITE_COMMAND_TOPIC = "pwm_write_cmd"
+SERVO_WRITE_COMMAND_TOPIC = "servo_write_cmd"
+CPU_FAN_WRITE_COMMAND_TOPIC = "cpu_fan_write_cmd"
 
 # ROS services
 ANALOG_READ_SERVICE = "analog_read"
@@ -116,6 +126,13 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
             rclpy.qos.QoSPresetProfiles.SYSTEM_DEFAULT.value
         )
 
+        # Command subscription QOS profile
+        cmd_qos = rclpy.qos.QoSProfile(
+            depth=1,
+            reliability=rclpy.qos.QoSReliabilityPolicy.RELIABLE,
+            history=rclpy.qos.QoSHistoryPolicy.KEEP_LAST,
+        )
+
         # Publishers
         self._air_quality_pub: rclpy.publisher.Publisher = self.create_publisher(
             msg_type=AirQualityMsg,
@@ -155,6 +172,32 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
 
         # Once the publishers are set up, start the bridge
         self._bridge.initialize()
+
+        # Command topic subscriptions
+        self._digital_write_sub = self.create_subscription(
+            msg_type=DigitalWriteCommand,
+            topic=DIGITAL_WRITE_COMMAND_TOPIC,
+            callback=self._on_digital_write_cmd,
+            qos_profile=cmd_qos,
+        )
+        self._pwm_write_sub = self.create_subscription(
+            msg_type=PWMWriteCommand,
+            topic=PWM_WRITE_COMMAND_TOPIC,
+            callback=self._on_pwm_write_cmd,
+            qos_profile=cmd_qos,
+        )
+        self._servo_write_sub = self.create_subscription(
+            msg_type=ServoWriteCommand,
+            topic=SERVO_WRITE_COMMAND_TOPIC,
+            callback=self._on_servo_write_cmd,
+            qos_profile=cmd_qos,
+        )
+        self._cpu_fan_write_sub = self.create_subscription(
+            msg_type=PWMWriteCommand,
+            topic=CPU_FAN_WRITE_COMMAND_TOPIC,
+            callback=self._on_cpu_fan_write_cmd,
+            qos_profile=cmd_qos,
+        )
 
         # Once the bridge is started, advertise the services
         self._analog_read_service: rclpy.service.Service = self.create_service(
@@ -243,6 +286,58 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         # collector automatically destroys the node object after ROS has
         # shut down.
         self.destroy_node()
+
+    def _on_digital_write_cmd(self, msg: DigitalWriteCommand) -> None:
+        if not self._initialized:
+            return
+
+        digital_pin: int = msg.digital_pin
+        digital_value: bool = msg.digital_value
+
+        self.get_logger().debug(
+            f"[cmd] Setting digital pin {digital_pin} to {'HIGH' if digital_value else 'LOW'}"
+        )
+
+        self._bridge.digital_write(digital_pin, digital_value)
+
+    def _on_pwm_write_cmd(self, msg: PWMWriteCommand) -> None:
+        if not self._initialized:
+            return
+
+        digital_pin: int = msg.digital_pin
+        duty_cycle: float = msg.duty_cycle
+
+        self.get_logger().debug(
+            f"[cmd] Setting PWM on pin {digital_pin} to duty cycle {duty_cycle}"
+        )
+
+        self._bridge.pwm_write(digital_pin, duty_cycle)
+
+    def _on_servo_write_cmd(self, msg: ServoWriteCommand) -> None:
+        if not self._initialized:
+            return
+
+        digital_pin: int = msg.digital_pin
+        position: float = msg.position
+
+        self.get_logger().debug(
+            f"[cmd] Setting servo on pin {digital_pin} to position {position}"
+        )
+
+        self._bridge.servo_write(digital_pin, position)
+
+    def _on_cpu_fan_write_cmd(self, msg: PWMWriteCommand) -> None:
+        if not self._initialized:
+            return
+
+        digital_pin: int = msg.digital_pin
+        duty_cycle: float = msg.duty_cycle
+
+        self.get_logger().debug(
+            f"[cmd] Setting CPU fan on pin {digital_pin} to duty cycle {duty_cycle}"
+        )
+
+        self._bridge.cpu_fan_write(digital_pin, duty_cycle)
 
     def on_air_quality(
         self,
