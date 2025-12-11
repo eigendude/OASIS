@@ -65,7 +65,7 @@ constexpr std::string_view DEFAULT_OUTPUT_ENCODING = sensor_msgs::image_encoding
 
 // Synchronization settings
 constexpr int SYNC_QUEUE_SIZE = 10;
-constexpr double MAX_SYNC_INTERVAL_SECONDS = 0.1;
+constexpr double MAX_SYNC_INTERVAL_SECONDS = 0.5;
 } // namespace
 
 MapVizNode::MapVizNode(rclcpp::Node& node)
