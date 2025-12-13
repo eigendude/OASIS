@@ -53,6 +53,7 @@ MQTT_PARAMS_FILE: str = CONFIG.MQTT_PARAMS_FILE
 ROS_NAMESPACE: str = "oasis"
 
 PYTHON_PACKAGE_NAME: str = "oasis_drivers_py"
+CPP_PACKAGE_NAME: str = "oasis_drivers_cpp"
 HASS_PACKAGE_NAME: str = CONFIG.HASS_PACKAGE_NAME
 
 
@@ -159,6 +160,25 @@ class DriverDescriptions:
                 ],
             )
             ld.add_action(kinect2_container)
+
+    #
+    # MPU 6050 6-DoF IMU driver
+    #
+
+    @staticmethod
+    def add_mpu_6050_imu(ld: LaunchDescription, host_id: str) -> None:
+        mpu_node: Node = Node(
+            namespace=ROS_NAMESPACE,
+            package=CPP_PACKAGE_NAME,
+            executable="mpu6050_imu_driver",
+            name=f"mpu6050_imu_driver_{host_id}",
+            output="screen",
+            remappings=[
+                # Topics
+                ("imu", f"{host_id}/imu"),
+            ],
+        )
+        ld.add_action(mpu_node)
 
     #
     # ROS2 (libcamera) camera

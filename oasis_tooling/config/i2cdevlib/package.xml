@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>i2cdevlib</name>
+  <version>0.0.0</version>
+  <description>I2C device library collection for AVR/Arduino or other C++-based MCUs</description>
+  <maintainer email="jeff@rowberg.net">Jeff Rowberg</maintainer>
+  <license file="README.md">MIT</license>
+
+  <url type="website">https://github.com/jrowberg/i2cdevlib</url>
+  <url type="bugtracker">https://github.com/jrowberg/i2cdevlib/issues</url>
+  <url type="repository">https://github.com/jrowberg/i2cdevlib</url>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

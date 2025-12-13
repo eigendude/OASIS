@@ -183,7 +183,7 @@ def generate_launch_description() -> LaunchDescription:
             jpeg_quality=60,
             libcamera_params=LIBCAMERA_PARAMS,
         )
-        # PerceptionDescriptions.add_monocular_slam(composable_nodes, [HOST_ID], "raw")
+        Drivers.add_mpu_6050_imu(ld, HOST_ID)
     if HOST_ID == "station":
         Drivers.add_ros2_camera(
             composable_nodes,
