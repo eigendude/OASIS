@@ -20,6 +20,7 @@ import rclpy.client
 import rclpy.node
 import rclpy.qos
 import rclpy.subscription
+from rclpy.duration import Duration
 from rclpy.logging import LoggingSeverity
 from std_msgs.msg import Header as HeaderMsg
 
@@ -31,6 +32,7 @@ from oasis_drivers.ros.ros_translator import RosTranslator
 from oasis_drivers.telemetrix.telemetrix_types import AnalogMode
 from oasis_drivers.telemetrix.telemetrix_types import DigitalMode
 from oasis_msgs.msg import AnalogReading as AnalogReadingMsg
+from oasis_msgs.msg import CalibrationStatus as CalibrationStatusMsg
 from oasis_msgs.msg import ConductorState as ConductorStateMsg
 from oasis_msgs.msg import DigitalReading as DigitalReadingMsg
 from oasis_msgs.msg import DigitalWriteCommand
@@ -73,6 +75,9 @@ CPU_FAN_SPEED_PIN: int = 2  # D2
 # Minimum change in motor duty cycle required to publish an update
 MOTOR_EPSILON: float = 0.02
 
+# Target stop cooldown, in seconds
+TARGET_COOLDOWN_SECS: float = 5.0
+
 # Voltage dividers
 # R1 is the input-side resistor, R2 is the ground-side resistor
 VSS_R1: float = 147.9  # KΩ
@@ -110,6 +115,7 @@ PUBLISH_CONDUCTOR_STATE = "conductor_state"
 
 # Subscribers
 SUBSCRIBE_ANALOG_READING = "analog_reading"
+SUBSCRIBE_CALIBRATION_STATUS = "calibration_status"
 SUBSCRIBE_CPU_FAN_SPEED = "cpu_fan_speed"
 SUBSCRIBE_DIGITAL_READING = "digital_reading"
 SUBSCRIBE_MCU_MEMORY = "mcu_memory"
@@ -176,6 +182,11 @@ class ConductorManagerNode(rclpy.node.Node):
         self._hold_speed: bool = (
             False  # True to hold a steady speed, toggled with Y button
         )
+        self._target_stop_mode_enabled: bool = False
+        self._target_stop_active: bool = False
+        self._target_stop_toggle_allowed: bool = True
+        self._target_visible: bool = False
+        self._target_cooldown_until: Optional[rclpy.time.Time] = None
 
         # Initialize input automation
         self._wol_manager: Optional[WolManager] = WolManager(self, WOL_HOSTNAME)
@@ -214,6 +225,14 @@ class ConductorManagerNode(rclpy.node.Node):
                 msg_type=AnalogReadingMsg,
                 topic=SUBSCRIBE_ANALOG_READING,
                 callback=self._on_analog_reading,
+                qos_profile=qos_profile,
+            )
+        )
+        self._calibration_status_sub: rclpy.subscription.Subscription = (
+            self.create_subscription(
+                msg_type=CalibrationStatusMsg,
+                topic=SUBSCRIBE_CALIBRATION_STATUS,
+                callback=self._on_calibration_status,
                 qos_profile=qos_profile,
             )
         )
@@ -432,6 +451,23 @@ class ConductorManagerNode(rclpy.node.Node):
                 # Record state
                 self._motor_ff2_state = digital_value
 
+    def _on_calibration_status(self, status_msg: CalibrationStatusMsg) -> None:
+        target_visible: bool = bool(status_msg.target_visible)
+        now: rclpy.time.Time = self.get_clock().now()
+
+        if target_visible:
+            self._target_cooldown_until = now + Duration(seconds=TARGET_COOLDOWN_SECS)
+
+            if (
+                not self._target_visible
+                and self._target_stop_mode_enabled
+                and not self._target_stop_active
+            ):
+                self.get_logger().info("Chessboard detected -> stopping train")
+                self._engage_target_stop(now)
+
+        self._target_visible = target_visible
+
     def _on_peripheral_input(self, peripheral_input_msg: PeripheralInputMsg) -> None:
         # Translate parameters
         peripheral_address: str = peripheral_input_msg.address
@@ -477,6 +513,11 @@ class ConductorManagerNode(rclpy.node.Node):
                 if y_button:
                     self._hold_speed = not self._hold_speed
 
+                    if self._target_stop_toggle_allowed and not self._target_stop_mode_enabled:
+                        self._target_stop_mode_enabled = True
+                        self._target_stop_toggle_allowed = False
+                        self.get_logger().info("Target stop mode armed")
+
             # Disable hold speed if A is pressed
             if a_button:
                 self._hold_speed = False
@@ -494,6 +535,12 @@ class ConductorManagerNode(rclpy.node.Node):
 
             # Reduce magnitude by a factor to limit top speed
             magnitude /= 6.0  # Max 2.0V out of 12V supply
+
+            # Stop train if chessboard was recently visible
+            if self._should_hold_for_target():
+                throttle = 0.0
+                magnitude = 0.0
+                self._hold_speed = False
 
             # Update direction
             if self._reverse != reverse:
@@ -537,6 +584,39 @@ class ConductorManagerNode(rclpy.node.Node):
             self._motor_voltage = (
                 self._supply_voltage * target_magnitude * (-1 if reverse else 1)
             )
+
+    def _engage_target_stop(self, now: rclpy.time.Time) -> None:
+        self._target_stop_active = True
+        self._target_stop_mode_enabled = False
+        self._target_stop_toggle_allowed = True
+        self._hold_speed = False
+
+        if self._target_cooldown_until is None:
+            self._target_cooldown_until = now + Duration(seconds=TARGET_COOLDOWN_SECS)
+
+        if self._magnitude != 0.0:
+            pwm_cmd = PWMWriteCommand()
+            pwm_cmd.digital_pin = MOTOR_PWM_PIN
+            pwm_cmd.duty_cycle = 0.0
+
+            self._motor_pwm_cmd_pub.publish(pwm_cmd)
+
+        self._magnitude = 0.0
+        self._motor_voltage = 0.0
+
+    def _should_hold_for_target(self) -> bool:
+        if not self._target_stop_active:
+            return False
+
+        if self._target_cooldown_until is None:
+            return False
+
+        now: rclpy.time.Time = self.get_clock().now()
+        if now < self._target_cooldown_until:
+            return True
+
+        self._target_stop_active = False
+        return False
 
     def _on_peripheral_scan(self, peripheral_scan_msg: PeripheralScanMsg) -> None:
         peripheral: PeripheralInfoMsg
