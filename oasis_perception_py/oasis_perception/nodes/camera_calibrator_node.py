@@ -439,6 +439,9 @@ class CameraCalibratorNode(rclpy.node.Node):
         # State for counting samples
         self._sample_count: int = -1
 
+        # Track whether a calibration pattern is currently detected
+        self._target_visible: bool = False
+
         self.displaywidth: int = 0
 
         # State to avoid re‑running upload
@@ -530,6 +533,7 @@ class CameraCalibratorNode(rclpy.node.Node):
             return
 
         self.displaywidth = drawable.scrib.shape[1]
+        self._target_visible = self.c.last_frame_corners is not None
         self.redraw_monocular(drawable)
 
     def handle_stereo(self, msg: tuple[ImageMsg, ImageMsg]) -> None:
@@ -590,6 +594,7 @@ class CameraCalibratorNode(rclpy.node.Node):
             )
             return
         self.displaywidth = drawable.lscrib.shape[1] + drawable.rscrib.shape[1]
+        self._target_visible = self.c.last_frame_corners is not None
         self.redraw_stereo(drawable)
 
     def check_set_camera_info(self, response: SetCameraInfoSrv.Response) -> bool:
@@ -684,6 +689,7 @@ class CameraCalibratorNode(rclpy.node.Node):
         # Publish the calibration status
         status_msg: CalibrationStatusMsg = CalibrationStatusMsg()
         status_msg.sample_count = sample_count
+        status_msg.target_visible = self._target_visible
         status_msg.good_enough = self.c.goodenough
         status_msg.calibrated = self.c.calibrated
         status_msg.uploaded = self._uploaded
@@ -745,6 +751,7 @@ class CameraCalibratorNode(rclpy.node.Node):
         # Publish the calibration status
         status_msg: CalibrationStatusMsg = CalibrationStatusMsg()
         status_msg.sample_count = sample_count
+        status_msg.target_visible = self._target_visible
         status_msg.good_enough = self.c.goodenough
         status_msg.calibrated = self.c.calibrated
         status_msg.uploaded = self._uploaded

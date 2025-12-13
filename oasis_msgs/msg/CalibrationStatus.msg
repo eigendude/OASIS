@@ -22,6 +22,9 @@
 # intrinsic solve.
 uint32 sample_count
 
+# True when the calibration target is detected in the current frame(s).
+bool target_visible
+
 # True once the Calibrator reports that the dataset is "good enough" to solve
 # for intrinsics.  The upstream camera_calibration heuristics require a diverse
 # set of target poses (tilt, pan, size in frame) before this flips to true.
