@@ -20,6 +20,7 @@ import rclpy.client
 import rclpy.node
 import rclpy.qos
 import rclpy.subscription
+from rclpy.duration import Duration
 from rclpy.logging import LoggingSeverity
 from std_msgs.msg import Header as HeaderMsg
 
@@ -31,6 +32,7 @@ from oasis_drivers.ros.ros_translator import RosTranslator
 from oasis_drivers.telemetrix.telemetrix_types import AnalogMode
 from oasis_drivers.telemetrix.telemetrix_types import DigitalMode
 from oasis_msgs.msg import AnalogReading as AnalogReadingMsg
+from oasis_msgs.msg import CalibrationStatus as CalibrationStatusMsg
 from oasis_msgs.msg import ConductorState as ConductorStateMsg
 from oasis_msgs.msg import DigitalReading as DigitalReadingMsg
 from oasis_msgs.msg import DigitalWriteCommand
@@ -73,6 +75,9 @@ CPU_FAN_SPEED_PIN: int = 2  # D2
 # Minimum change in motor duty cycle required to publish an update
 MOTOR_EPSILON: float = 0.02
 
+# Target stop cooldown, in seconds
+TARGET_COOLDOWN_SECS: float = 5.0
+
 # Voltage dividers
 # R1 is the input-side resistor, R2 is the ground-side resistor
 VSS_R1: float = 147.9  # KΩ
@@ -110,6 +115,7 @@ PUBLISH_CONDUCTOR_STATE = "conductor_state"
 
 # Subscribers
 SUBSCRIBE_ANALOG_READING = "analog_reading"
+SUBSCRIBE_CALIBRATION_STATUS = "calibration_status"
 SUBSCRIBE_CPU_FAN_SPEED = "cpu_fan_speed"
 SUBSCRIBE_DIGITAL_READING = "digital_reading"
 SUBSCRIBE_MCU_MEMORY = "mcu_memory"
@@ -172,9 +178,19 @@ class ConductorManagerNode(rclpy.node.Node):
         # Initialize input state
         self._magnitude: float = 0.0
         self._reverse: bool = False  # True if magnitude is in reverse (high DIR pin)
+        self._last_x_button: bool = False  # Set to the last value of the X button
         self._last_y_button: bool = False  # Set to the last value of the Y button
         self._hold_speed: bool = (
             False  # True to hold a steady speed, toggled with Y button
+        )
+        self._autostop_enabled: bool = (
+            False  # True to enable autostop mode, toggled with X button
+        )
+        self._autostopping: bool = False  # True if currently performing an autostop
+
+        # Initialize calibration state
+        self._target_visible: bool = (
+            False  # True if the calibration target is currently visible
         )
 
         # Initialize input automation
@@ -214,6 +230,14 @@ class ConductorManagerNode(rclpy.node.Node):
                 msg_type=AnalogReadingMsg,
                 topic=SUBSCRIBE_ANALOG_READING,
                 callback=self._on_analog_reading,
+                qos_profile=qos_profile,
+            )
+        )
+        self._calibration_status_sub: rclpy.subscription.Subscription = (
+            self.create_subscription(
+                msg_type=CalibrationStatusMsg,
+                topic=SUBSCRIBE_CALIBRATION_STATUS,
+                callback=self._on_calibration_status,
                 qos_profile=qos_profile,
             )
         )
@@ -432,6 +456,9 @@ class ConductorManagerNode(rclpy.node.Node):
                 # Record state
                 self._motor_ff2_state = digital_value
 
+    def _on_calibration_status(self, status_msg: CalibrationStatusMsg) -> None:
+        self._target_visible = bool(status_msg.target_visible)
+
     def _on_peripheral_input(self, peripheral_input_msg: PeripheralInputMsg) -> None:
         # Translate parameters
         peripheral_address: str = peripheral_input_msg.address
@@ -440,6 +467,7 @@ class ConductorManagerNode(rclpy.node.Node):
             # Look for button states
             a_button: bool = False
             b_button: bool = False
+            x_button: bool = False
             y_button: bool = False
             left_trigger: float = 0.0
             right_trigger: float = 0.0
@@ -452,6 +480,8 @@ class ConductorManagerNode(rclpy.node.Node):
                     a_button = pressed
                 if button_name == "b":
                     b_button = pressed
+                if button_name == "x":
+                    x_button = pressed
                 if button_name == "y":
                     y_button = pressed
 
@@ -471,6 +501,12 @@ class ConductorManagerNode(rclpy.node.Node):
             if not a_button and not b_button:
                 throttle = 0.0
 
+            # Toggle autostop mode when X button is pressed
+            if self._last_x_button != x_button:
+                self._last_x_button = x_button
+                if x_button:
+                    self._autostop_enabled = not self._autostop_enabled
+
             # Toggle hold speed when Y button is pressed
             if self._last_y_button != y_button:
                 self._last_y_button = y_button
@@ -484,6 +520,16 @@ class ConductorManagerNode(rclpy.node.Node):
             # Max throttle if hold speed is enabled
             if self._hold_speed:
                 throttle = 1.0
+
+            # Zero throttle if autostop is enabled and the target is not visible
+            if self._autostop_enabled and not self._target_visible:
+                self._autostopping = True
+
+                # Disable autostop after the train is stopped
+                self._autostop_enabled = False
+
+            if self._autostopping:
+                throttle = 0.0
 
             # Reduce throttle if B button is not pressed
             if not b_button:
