@@ -38,6 +38,7 @@ find_package(CEC REQUIRED)
 find_package(oasis_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rcutils REQUIRED)
+find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(UDEV)
 
@@ -86,6 +87,26 @@ if (UDEV_FOUND)
       lib/${PROJECT_NAME}
   )
 endif()
+
+add_executable(mpu6050_driver
+  src/ros/Mpu6050Node.cpp
+  src/mpu6050_driver.cpp
+)
+
+target_link_libraries(mpu6050_driver
+  ${oasis_msgs_TARGETS}
+  rclcpp::rclcpp
+  rcutils::rcutils
+  sensor_msgs::sensor_msgs
+  ${std_msgs_TARGETS}
+)
+
+install(
+  TARGETS
+    mpu6050_driver
+  DESTINATION
+    lib/${PROJECT_NAME}
+)
 
 #
 # Testing
