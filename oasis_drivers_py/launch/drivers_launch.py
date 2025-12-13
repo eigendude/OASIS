@@ -119,9 +119,8 @@ class MCUType:
 
 
 if HOST_ID == "falcon":
-    # MCU_NODE = "engineer"
-    # MCU_TYPE = MCUType.FIRMATA
-    pass
+    MCU_NODE = "engineer"
+    MCU_TYPE = MCUType.TELEMETRIX
 elif HOST_ID == "jetson":
     MCU_NODE = "engine"
     MCU_TYPE = MCUType.TELEMETRIX
