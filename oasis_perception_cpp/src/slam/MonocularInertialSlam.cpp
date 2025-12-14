@@ -11,8 +11,6 @@
 #include "ros/RosUtils.h"
 
 #include <geometry_msgs/msg/vector3.hpp>
-#include <oasis_msgs/msg/i2_c_imu.hpp>
-#include <sensor_msgs/msg/imu.hpp>
 #include <sophus/se3.hpp>
 
 using namespace OASIS;
@@ -38,18 +36,16 @@ void MonocularInertialSlam::Deinitialize()
   DeinitializeSystem();
 }
 
-void MonocularInertialSlam::ImuCallback(const oasis_msgs::msg::I2CImu::ConstSharedPtr& msg)
+void MonocularInertialSlam::ImuCallback(const sensor_msgs::msg::Imu::ConstSharedPtr& imuMsg)
 {
-  if (!HasSlam())
+  if (!imuMsg || !HasSlam())
     return;
 
-  const sensor_msgs::msg::Imu& imuMsg = msg->imu;
-
-  const std_msgs::msg::Header& header = imuMsg.header;
+  const std_msgs::msg::Header& header = imuMsg->header;
   const double timestamp = ROS::RosUtils::HeaderStampToSeconds(header);
 
-  const geometry_msgs::msg::Vector3& angularVelocity = imuMsg.angular_velocity;
-  const geometry_msgs::msg::Vector3& linearAceleration = imuMsg.linear_acceleration;
+  const geometry_msgs::msg::Vector3& angularVelocity = imuMsg->angular_velocity;
+  const geometry_msgs::msg::Vector3& linearAceleration = imuMsg->linear_acceleration;
 
   const double ax = linearAceleration.x;
   const double ay = linearAceleration.y;

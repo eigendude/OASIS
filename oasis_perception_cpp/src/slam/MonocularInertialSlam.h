@@ -12,7 +12,7 @@
 
 #include <vector>
 
-#include <oasis_msgs/msg/i2_c_imu.hpp>
+#include <sensor_msgs/msg/imu.hpp>
 
 namespace ORB_SLAM3
 {
@@ -38,7 +38,7 @@ public:
   bool Initialize(const std::string& vocabularyFile, const std::string& settingsFile);
   void Deinitialize();
 
-  void ImuCallback(const oasis_msgs::msg::I2CImu::ConstSharedPtr& msg);
+  void ImuCallback(const sensor_msgs::msg::Imu::ConstSharedPtr& msg);
 
 protected:
   Eigen::Isometry3f TrackFrame(const cv::Mat& rgbImage, double timestamp) override;

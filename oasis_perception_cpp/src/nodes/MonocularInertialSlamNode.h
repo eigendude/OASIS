@@ -10,9 +10,9 @@
 #include <memory>
 
 #include <image_transport/subscriber.hpp>
-#include <oasis_msgs/msg/i2_c_imu.hpp>
 #include <rclcpp/subscription.hpp>
 #include <sensor_msgs/msg/image.hpp>
+#include <sensor_msgs/msg/imu.hpp>
 
 namespace rclcpp
 {
@@ -41,7 +41,7 @@ public:
 private:
   // ROS interface
   void OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg);
-  void OnImu(const oasis_msgs::msg::I2CImu::ConstSharedPtr& msg);
+  void OnImu(const sensor_msgs::msg::Imu::ConstSharedPtr& msg);
 
   // Construction parameters
   rclcpp::Node& m_node;
@@ -49,7 +49,7 @@ private:
   // ROS parameters
   std::unique_ptr<rclcpp::Logger> m_logger;
   std::unique_ptr<image_transport::Subscriber> m_imgSubscriber;
-  rclcpp::Subscription<oasis_msgs::msg::I2CImu>::SharedPtr m_imuSubscriber;
+  rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr m_imuSubscriber;
 
   // Video parameters
   std::unique_ptr<SLAM::MonocularInertialSlam> m_monocularInertialSlam;

@@ -522,31 +522,6 @@ class PerceptionDescriptions:
         )
 
     #
-    # SLAM resolution relay
-    #
-
-    @staticmethod
-    def add_slam_resolution_relay(
-        ld: LaunchDescription,
-        system_ids: list[str],
-        input_resolution: str,
-        output_resolution: str,
-    ) -> None:
-        node: Node = Node(
-            namespace=ROS_NAMESPACE,
-            package=PYTHON_PACKAGE_NAME,
-            executable="slam_resolution_relay",
-            name=f"slam_resolution_relay_{input_resolution}_to_{output_resolution}",
-            output="screen",
-            parameters=[
-                {"system_ids": system_ids},
-                {"input_resolution": input_resolution},
-                {"output_resolution": output_resolution},
-            ],
-        )
-        ld.add_action(node)
-
-    #
     # Mesh viewer
     #
 
@@ -692,7 +667,7 @@ class PerceptionDescriptions:
                                 else f"{system_id}/{RESOLUTION_PREFIX}image_raw"
                             ),
                         ),
-                        (f"{system_id}_imu", f"{system_id}/i2c_imu"),
+                        (f"{system_id}_imu", f"{system_id}/imu"),
                         (
                             f"{system_id}_slam_point_cloud",
                             f"{system_id}/{RESOLUTION_PREFIX}slam_point_cloud",
@@ -805,6 +780,31 @@ class PerceptionDescriptions:
             parameters=[
                 {"host_id": host_id},
                 {"zone_ids": zone_ids},
+            ],
+        )
+        ld.add_action(node)
+
+    #
+    # SLAM resolution relay
+    #
+
+    @staticmethod
+    def add_slam_resolution_relay(
+        ld: LaunchDescription,
+        system_ids: list[str],
+        input_resolution: str,
+        output_resolution: str,
+    ) -> None:
+        node: Node = Node(
+            namespace=ROS_NAMESPACE,
+            package=PYTHON_PACKAGE_NAME,
+            executable="slam_resolution_relay",
+            name=f"slam_resolution_relay_{input_resolution}_to_{output_resolution}",
+            output="screen",
+            parameters=[
+                {"system_ids": system_ids},
+                {"input_resolution": input_resolution},
+                {"output_resolution": output_resolution},
             ],
         )
         ld.add_action(node)

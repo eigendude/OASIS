@@ -132,7 +132,7 @@ bool MonocularInertialSlamNode::Initialize()
       &m_node, imageTopic, [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg)
       { OnImage(msg); }, imageTransport, rclcpp::QoS{1}.get_rmw_qos_profile());
 
-  m_imuSubscriber = m_node.create_subscription<oasis_msgs::msg::I2CImu>(
+  m_imuSubscriber = m_node.create_subscription<sensor_msgs::msg::Imu>(
       imuTopic, rclcpp::QoS{1},
       std::bind(&MonocularInertialSlamNode::OnImu, this, std::placeholders::_1));
 
@@ -169,7 +169,7 @@ void MonocularInertialSlamNode::OnImage(const sensor_msgs::msg::Image::ConstShar
     m_monocularInertialSlam->ReceiveImage(msg);
 }
 
-void MonocularInertialSlamNode::OnImu(const oasis_msgs::msg::I2CImu::ConstSharedPtr& msg)
+void MonocularInertialSlamNode::OnImu(const sensor_msgs::msg::Imu::ConstSharedPtr& msg)
 {
   if (m_monocularInertialSlam)
     m_monocularInertialSlam->ImuCallback(msg);
