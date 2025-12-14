@@ -12,11 +12,11 @@
 # Manager for a computer that supports Wake-On-LAN (WOL)
 #
 
-import asyncio
 from typing import Optional
 
 import rclpy.client
 import rclpy.node
+import rclpy.task
 
 from oasis_msgs.srv import GetMACAddress as GetMACAddressSvc
 from oasis_msgs.srv import WoLCommand as WoLCommandSvc
@@ -65,8 +65,8 @@ class WolManager:
         self._mac_address: Optional[str] = None
 
         # Futures for async service calls
-        self._mac_address_future: Optional[asyncio.Future] = None
-        self._wol_future: Optional[asyncio.Future] = None
+        self._mac_address_future: Optional[rclpy.task.Future] = None
+        self._wol_future: Optional[rclpy.task.Future] = None
 
         # Service clients
         self._get_mac_address_client: rclpy.client.Client = self._node.create_client(
