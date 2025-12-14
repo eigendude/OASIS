@@ -74,7 +74,7 @@ class DisplayManager:
             )
         self._set_display_in_flight: list[rclpy.task.Future] = []
 
-        qos_profile: rclpy.qos.QoSPresetProfile = (
+        qos_profile: rclpy.qos.QoSProfile = (
             rclpy.qos.QoSPresetProfiles.SENSOR_DATA.value  # Best-effort, keep-last
         )
 

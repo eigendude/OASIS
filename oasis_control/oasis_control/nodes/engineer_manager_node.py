@@ -15,6 +15,7 @@
 from typing import Optional
 
 import rclpy.node
+import rclpy.publisher
 import rclpy.qos
 from rclpy.logging import LoggingSeverity
 from std_msgs.msg import Header as HeaderMsg
@@ -75,7 +76,7 @@ class EngineerManagerNode(rclpy.node.Node):
         self._sampling_manager: SamplingManager = SamplingManager(self)
 
         # Reliable listener QOS profile for publishers
-        qos_profile: rclpy.qos.QoSPresetProfile = (
+        qos_profile: rclpy.qos.QoSProfile = (
             rclpy.qos.QoSPresetProfiles.SYSTEM_DEFAULT.value
         )
 
