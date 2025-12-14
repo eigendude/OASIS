@@ -12,13 +12,13 @@
 # leonardo manager for NAS server
 #
 
-import asyncio
 from typing import Optional
 
 import rclpy.client
 import rclpy.node
 import rclpy.qos
 import rclpy.subscription
+import rclpy.task
 from rclpy.logging import LoggingSeverity
 from std_msgs.msg import Header as HeaderMsg
 
@@ -172,7 +172,7 @@ class LeonardoManagerNode(rclpy.node.Node):
         report_memory_svc.reporting_period_ms = int(reporting_period_secs * 1000)
 
         # Call service
-        future: asyncio.Future = self._report_mcu_memory_client.call_async(
+        future: rclpy.task.Future = self._report_mcu_memory_client.call_async(
             report_memory_svc
         )
 
@@ -193,7 +193,9 @@ class LeonardoManagerNode(rclpy.node.Node):
         vss_analog_svc.analog_mode = self._translate_analog_mode(analog_mode)
 
         # Call service
-        future: asyncio.Future = self._set_analog_mode_client.call_async(vss_analog_svc)
+        future: rclpy.task.Future = self._set_analog_mode_client.call_async(
+            vss_analog_svc
+        )
 
         # Wait for result
         rclpy.spin_until_future_complete(self, future)

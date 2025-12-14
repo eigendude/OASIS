@@ -12,7 +12,6 @@
 # Manager for a LEGO train power station's microcontroller
 #
 
-import asyncio
 from typing import Dict
 from typing import Optional
 
@@ -20,6 +19,7 @@ import rclpy.client
 import rclpy.node
 import rclpy.qos
 import rclpy.subscription
+import rclpy.task
 from rclpy.logging import LoggingSeverity
 from std_msgs.msg import Header as HeaderMsg
 
@@ -363,7 +363,7 @@ class ConductorManagerNode(rclpy.node.Node):
         report_memory_svc.reporting_period_ms = int(reporting_period_secs * 1000)
 
         # Call service
-        future: asyncio.Future = self._report_mcu_memory_client.call_async(
+        future: rclpy.task.Future = self._report_mcu_memory_client.call_async(
             report_memory_svc
         )
 
@@ -384,7 +384,9 @@ class ConductorManagerNode(rclpy.node.Node):
         vss_analog_svc.analog_mode = self._translate_analog_mode(analog_mode)
 
         # Call service
-        future: asyncio.Future = self._set_analog_mode_client.call_async(vss_analog_svc)
+        future: rclpy.task.Future = self._set_analog_mode_client.call_async(
+            vss_analog_svc
+        )
 
         # Wait for result
         rclpy.spin_until_future_complete(self, future)
@@ -403,7 +405,9 @@ class ConductorManagerNode(rclpy.node.Node):
         motor_pwm_svc.digital_mode = self._translate_digital_mode(digital_mode)
 
         # Call service
-        future: asyncio.Future = self._set_digital_mode_client.call_async(motor_pwm_svc)
+        future: rclpy.task.Future = self._set_digital_mode_client.call_async(
+            motor_pwm_svc
+        )
 
         # Wait for result
         rclpy.spin_until_future_complete(self, future)
@@ -421,7 +425,7 @@ class ConductorManagerNode(rclpy.node.Node):
         set_sampling_interval_svc.sampling_interval_ms = sampling_interval_ms
 
         # Call service
-        future: asyncio.Future = self._set_sampling_interval_client.call_async(
+        future: rclpy.task.Future = self._set_sampling_interval_client.call_async(
             set_sampling_interval_svc
         )
 
@@ -578,8 +582,8 @@ class ConductorManagerNode(rclpy.node.Node):
             reverse: bool = throttle < 0.0
 
             # Futures to wait on while the service is being called
-            future_pwm: Optional[asyncio.Future] = None
-            future_dir: Optional[asyncio.Future] = None
+            future_pwm: Optional[rclpy.task.Future] = None
+            future_dir: Optional[rclpy.task.Future] = None
 
             # Update direction
             if self._reverse != reverse:
@@ -668,7 +672,7 @@ class ConductorManagerNode(rclpy.node.Node):
         capture_input_svc.controller_profile = CONTROLLER_PROFILE
 
         # Call service
-        future: asyncio.Future = self._capture_input_client.call_async(
+        future: rclpy.task.Future = self._capture_input_client.call_async(
             capture_input_svc
         )
 
