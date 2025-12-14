@@ -243,6 +243,15 @@ if (( $(echo "${PHYSICAL_MEMORY_GB} <= 4" | bc -l) )); then
   touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/image_pipeline/image_view/COLCON_IGNORE"
 fi
 
+# i2cdevlib
+echo "Patching i2cdevlib..."
+cp -v \
+  "${CONFIG_DIRECTORY}/i2cdevlib/CMakeLists.txt" \
+  "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/i2cdevlib"
+cp -v \
+  "${CONFIG_DIRECTORY}/i2cdevlib/package.xml" \
+  "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/i2cdevlib"
+
 # libcec
 echo "Patching libcec..."
 cp -v \

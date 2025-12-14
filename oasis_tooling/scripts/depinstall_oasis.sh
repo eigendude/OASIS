@@ -60,6 +60,15 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     ros-dev-tools
   )
 
+  if [[ -d "${STACK_DIRECTORY}/oasis_drivers_cpp" ]] && \
+     [[ ! -f "${STACK_DIRECTORY}/oasis_drivers_cpp/COLCON_IGNORE" ]]; then
+    # Needed for linking rclcpp
+    APT_PACKAGES+=(
+      liblttng-ust-dev
+      libspdlog-dev
+    )
+  fi
+
   if [[ -d "${STACK_DIRECTORY}/oasis_msgs" ]] && \
      [[ ! -f "${STACK_DIRECTORY}/oasis_msgs/COLCON_IGNORE" ]]; then
     # Needed for ROS message generation

@@ -62,6 +62,9 @@ APT_PACKAGES=(
   isort
   mypy
   tox
+
+  # I2C debugging tools
+  i2c-tools
 )
 
 # Install display controllers

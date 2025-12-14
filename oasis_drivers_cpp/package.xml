@@ -13,15 +13,14 @@
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <build_depend>libcec</build_depend>
-  <build_depend>libudev-dev</build_depend>
-  <build_depend>oasis_msgs</build_depend>
-  <build_depend>rclcpp</build_depend>
-  <build_depend>rcutils</build_depend>
-  <build_depend>std_msgs</build_depend>
-
-  <exec_depend>oasis_msgs</exec_depend>
-  <exec_depend>std_msgs</exec_depend>
+  <depend>geometry_msgs</depend>
+  <depend>libcec</depend>
+  <depend>libudev-dev</depend>
+  <depend>oasis_msgs</depend>
+  <depend>rclcpp</depend>
+  <depend>rcutils</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

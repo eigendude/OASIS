@@ -35,9 +35,12 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
 find_package(ament_cmake REQUIRED)
 find_package(CEC REQUIRED)
+find_package(i2cdevlib REQUIRED)
+find_package(geometry_msgs REQUIRED)
 find_package(oasis_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rcutils REQUIRED)
+find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(UDEV)
 
@@ -86,6 +89,28 @@ if (UDEV_FOUND)
       lib/${PROJECT_NAME}
   )
 endif()
+
+add_executable(mpu6050_imu_driver
+  src/cli/mpu6050_imu_driver.cpp
+  src/ros/Mpu6050Node.cpp
+)
+
+target_link_libraries(mpu6050_imu_driver
+  i2cdevlib::mpu6050
+  ${geometry_msgs_TARGETS}
+  ${oasis_msgs_TARGETS}
+  rclcpp::rclcpp
+  rcutils::rcutils
+  ${sensor_msgs_TARGETS}
+  ${std_msgs_TARGETS}
+)
+
+install(
+  TARGETS
+    mpu6050_imu_driver
+  DESTINATION
+    lib/${PROJECT_NAME}
+)
 
 #
 # Testing

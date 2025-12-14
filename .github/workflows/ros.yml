@@ -75,6 +75,7 @@ jobs:
               'oasis_tooling/config/bgslibrary/**',
               'oasis_tooling/config/camera_ros/**',
               'oasis_tooling/config/depends.repos',
+              'oasis_tooling/config/i2cdevlib/**',
               'oasis_tooling/config/libcamera_cmake/**',
               'oasis_tooling/config/libcec/**',
               'oasis_tooling/config/libfreenect2/**',

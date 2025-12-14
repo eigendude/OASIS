@@ -1,4 +1,8 @@
 repositories:
+  depends/i2cdevlib:
+    type: git
+    url: https://github.com/jrowberg/i2cdevlib.git
+    version: master
   # See https://github.com/christian-nils/libcamera_cmake for dependencies
   depends/libcec:
     type: git
