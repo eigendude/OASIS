@@ -12,10 +12,9 @@
 # Manager for a mcu that reports memory statistics
 #
 
-import asyncio
-
 import rclpy.client
 import rclpy.node
+import rclpy.task
 
 from oasis_msgs.srv import SetSamplingInterval as SetSamplingIntervalSvc
 
@@ -76,7 +75,7 @@ class SamplingManager:
         set_sampling_interval_svc.sampling_interval_ms = sampling_interval_ms
 
         # Call service
-        future: asyncio.Future = self._set_sampling_interval_client.call_async(
+        future: rclpy.task.Future = self._set_sampling_interval_client.call_async(
             set_sampling_interval_svc
         )
 

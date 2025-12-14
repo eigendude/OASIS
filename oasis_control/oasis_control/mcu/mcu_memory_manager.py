@@ -12,12 +12,11 @@
 # Manager for a mcu that reports memory statistics
 #
 
-import asyncio
-
 import rclpy.client
 import rclpy.node
 import rclpy.qos
 import rclpy.subscription
+import rclpy.task
 
 from oasis_msgs.msg import MCUMemory as MCUMemoryMsg
 from oasis_msgs.srv import ReportMCUMemory as ReportMCUMemorySvc
@@ -57,7 +56,7 @@ class McuMemoryManager:
         self._ram_utilization: float = 0.0
 
         # Reliable listener QOS profile for subscribers
-        qos_profile: rclpy.qos.QoSPresetProfile = (
+        qos_profile: rclpy.qos.QoSProfile = (
             rclpy.qos.QoSPresetProfiles.SYSTEM_DEFAULT.value
         )
 
@@ -106,7 +105,7 @@ class McuMemoryManager:
         report_memory_svc.reporting_period_ms = int(reporting_period_secs * 1000)
 
         # Call service
-        future: asyncio.Future = self._report_mcu_memory_client.call_async(
+        future: rclpy.task.Future = self._report_mcu_memory_client.call_async(
             report_memory_svc
         )
 

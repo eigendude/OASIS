@@ -12,13 +12,13 @@
 # Manager for a mcu that controls and senses 4-wire CPU fans
 #
 
-import asyncio
 from typing import Optional
 
 import rclpy.client
 import rclpy.node
 import rclpy.qos
 import rclpy.subscription
+import rclpy.task
 
 from oasis_drivers.ros.ros_translator import RosTranslator
 from oasis_drivers.telemetrix.telemetrix_types import DigitalMode
@@ -74,7 +74,7 @@ class CPUFanManager:
         self._cpu_fan_speed_rpm: float = 0.0
 
         # Reliable listener QOS profile for subscribers
-        qos_profile: rclpy.qos.QoSPresetProfile = (
+        qos_profile: rclpy.qos.QoSProfile = (
             rclpy.qos.QoSPresetProfiles.SYSTEM_DEFAULT.value
         )
 
@@ -163,7 +163,7 @@ class CPUFanManager:
         pwm_write_svc.duty_cycle = magnitude
 
         # Call service
-        future: asyncio.Future = self._cpu_fan_write_client.call_async(pwm_write_svc)
+        future: rclpy.task.Future = self._cpu_fan_write_client.call_async(pwm_write_svc)
 
         # Wait for result
         future.result()
@@ -177,7 +177,7 @@ class CPUFanManager:
         )
 
         # Call service
-        future: asyncio.Future = self._set_digital_mode_client.call_async(
+        future: rclpy.task.Future = self._set_digital_mode_client.call_async(
             set_digital_mode_svc
         )
 
@@ -195,8 +195,10 @@ class CPUFanManager:
         set_sampling_interval_svc.sampling_interval_ms = sampling_interval_ms
 
         # Call service
-        future: asyncio.Future = self._set_cpu_fan_sampling_interval_client.call_async(
-            set_sampling_interval_svc
+        future: rclpy.task.Future = (
+            self._set_cpu_fan_sampling_interval_client.call_async(
+                set_sampling_interval_svc
+            )
         )
 
         # Wait for result

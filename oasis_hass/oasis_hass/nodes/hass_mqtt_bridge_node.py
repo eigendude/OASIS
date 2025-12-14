@@ -99,7 +99,7 @@ class HassMqttBridgeNode(rclpy.node.Node):
         # ROS publishers
         #
 
-        qos_profile: rclpy.qos.QoSPresetProfile = (
+        qos_profile: rclpy.qos.QoSProfile = (
             rclpy.qos.QoSPresetProfiles.SENSOR_DATA.value  # Best-effort, keep-last
         )
 

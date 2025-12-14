@@ -47,7 +47,7 @@ class SerialScannerNode(rclpy.node.Node):
         super().__init__(NODE_NAME)
 
         # Reliable listener QOS profile for subscribers
-        qos_profile: rclpy.qos.QoSPresetProfile = (
+        qos_profile: rclpy.qos.QoSProfile = (
             rclpy.qos.QoSPresetProfiles.SYSTEM_DEFAULT.value
         )
 

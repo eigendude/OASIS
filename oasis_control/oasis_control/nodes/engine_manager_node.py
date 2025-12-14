@@ -12,13 +12,13 @@
 # Manager for a LEGO train's engine
 #
 
-import asyncio
 from typing import Optional
 
 import rclpy.client
 import rclpy.node
 import rclpy.qos
 import rclpy.subscription
+import rclpy.task
 from rclpy.logging import LoggingSeverity
 from std_msgs.msg import Header as HeaderMsg
 
@@ -99,7 +99,7 @@ class EngineManagerNode(rclpy.node.Node):
         self._message: Optional[str] = None
 
         # Reliable listener QOS profile for subscribers
-        qos_profile: rclpy.qos.QoSPresetProfile = (
+        qos_profile: rclpy.qos.QoSProfile = (
             rclpy.qos.QoSPresetProfiles.SYSTEM_DEFAULT.value
         )
 
@@ -193,7 +193,7 @@ class EngineManagerNode(rclpy.node.Node):
         report_memory_svc.reporting_period_ms = int(reporting_period_secs * 1000)
 
         # Call service
-        future: asyncio.Future = self._report_mcu_memory_client.call_async(
+        future: rclpy.task.Future = self._report_mcu_memory_client.call_async(
             report_memory_svc
         )
 
@@ -214,7 +214,9 @@ class EngineManagerNode(rclpy.node.Node):
         vss_analog_svc.analog_mode = RosTranslator.analog_mode_to_ros(analog_mode)
 
         # Call service
-        future: asyncio.Future = self._set_analog_mode_client.call_async(vss_analog_svc)
+        future: rclpy.task.Future = self._set_analog_mode_client.call_async(
+            vss_analog_svc
+        )
 
         # Wait for result
         rclpy.spin_until_future_complete(self, future)
@@ -232,7 +234,7 @@ class EngineManagerNode(rclpy.node.Node):
         set_sampling_interval_svc.sampling_interval_ms = sampling_interval_ms
 
         # Call service
-        future: asyncio.Future = self._set_sampling_interval_client.call_async(
+        future: rclpy.task.Future = self._set_sampling_interval_client.call_async(
             set_sampling_interval_svc
         )
 

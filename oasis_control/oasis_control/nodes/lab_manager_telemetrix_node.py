@@ -12,13 +12,13 @@
 # Manager for a LEGO train's lab
 #
 
-import asyncio
 from typing import Optional
 
 import rclpy.client
 import rclpy.node
 import rclpy.qos
 import rclpy.subscription
+import rclpy.task
 from geometry_msgs.msg import Vector3 as Vector3Msg
 from rclpy.logging import LoggingSeverity
 from std_msgs.msg import Header as HeaderMsg
@@ -126,7 +126,7 @@ class LabManagerNode(rclpy.node.Node):
         self._red_led_2_on = False
 
         # Reliable listener QOS profile for subscribers
-        qos_profile: rclpy.qos.QoSPresetProfile = (
+        qos_profile: rclpy.qos.QoSProfile = (
             rclpy.qos.QoSPresetProfiles.SYSTEM_DEFAULT.value
         )
 
@@ -224,7 +224,9 @@ class LabManagerNode(rclpy.node.Node):
         vss_analog_svc.analog_mode = RosTranslator.analog_mode_to_ros(analog_mode)
 
         # Call service
-        future: asyncio.Future = self._set_analog_mode_client.call_async(vss_analog_svc)
+        future: rclpy.task.Future = self._set_analog_mode_client.call_async(
+            vss_analog_svc
+        )
 
         # Wait for result
         rclpy.spin_until_future_complete(self, future)
@@ -243,7 +245,9 @@ class LabManagerNode(rclpy.node.Node):
         motor_pwm_svc.digital_mode = RosTranslator.digital_mode_to_ros(digital_mode)
 
         # Call service
-        future: asyncio.Future = self._set_digital_mode_client.call_async(motor_pwm_svc)
+        future: rclpy.task.Future = self._set_digital_mode_client.call_async(
+            motor_pwm_svc
+        )
 
         # Wait for result
         rclpy.spin_until_future_complete(self, future)

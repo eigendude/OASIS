@@ -12,10 +12,9 @@
 # Manager for a mcu that controls a CCS811 air quality sensor over I2C
 #
 
-import asyncio
-
 import rclpy.client
 import rclpy.node
+import rclpy.task
 
 from oasis_msgs.msg import I2CDevice as I2CDeviceMsg
 from oasis_msgs.srv import I2CBegin as I2CBeginSvc
@@ -93,7 +92,7 @@ class I2CDeviceManager:
         i2c_begin_svc.i2c_devices.append(i2c_device)
 
         # Call service
-        future: asyncio.Future = self._i2c_begin_client.call_async(i2c_begin_svc)
+        future: rclpy.task.Future = self._i2c_begin_client.call_async(i2c_begin_svc)
 
         # Wait for result
         rclpy.spin_until_future_complete(self._node, future)
@@ -118,7 +117,7 @@ class I2CDeviceManager:
         i2c_end_svc.i2c_devices.append(i2c_device)
 
         # Call service
-        future: asyncio.Future = self._i2c_end_client.call_async(i2c_end_svc)
+        future: rclpy.task.Future = self._i2c_end_client.call_async(i2c_end_svc)
 
         # Wait for result
         rclpy.spin_until_future_complete(self._node, future)

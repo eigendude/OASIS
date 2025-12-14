@@ -8,10 +8,11 @@
 #
 ################################################################################
 
-import logging
 import os
 import subprocess
 from typing import Optional
+
+import rclpy.logging
 
 from oasis_msgs.msg import UPSStatus as UPSStatusMsg
 
@@ -28,7 +29,7 @@ class UpsServer:
     """
 
     @classmethod
-    def read_status(cls, logger: logging.Logger) -> Optional[UPSStatusMsg]:
+    def read_status(cls, logger: rclpy.logging.RcutilsLogger) -> Optional[UPSStatusMsg]:
         # Configure NUT
         env = os.environ.copy()
         env["NUT_QUIET_INIT_SSL"] = "true"
@@ -73,7 +74,9 @@ class UpsServer:
             return None
 
     @classmethod
-    def send_command(cls, command: str, delay: float, logger: logging.Logger) -> bool:
+    def send_command(
+        cls, command: str, delay: float, logger: rclpy.logging.RcutilsLogger
+    ) -> bool:
         # Configure NUT
         env = os.environ.copy()
         env["NUT_QUIET_INIT_SSL"] = "true"

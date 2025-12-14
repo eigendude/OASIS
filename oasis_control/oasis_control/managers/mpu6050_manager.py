@@ -61,7 +61,7 @@ class MPU6050Manager(I2CDeviceManager):
         self._gz: float = 0.0
 
         # Reliable listener QOS profile for subscribers
-        qos_profile: rclpy.qos.QoSPresetProfile = (
+        qos_profile: rclpy.qos.QoSProfile = (
             rclpy.qos.QoSPresetProfiles.SYSTEM_DEFAULT.value
         )
 

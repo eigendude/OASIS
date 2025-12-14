@@ -14,9 +14,9 @@ from typing import List
 from typing import Tuple
 
 import rclpy.node
+import rclpy.publisher
 import rclpy.qos
 import rclpy.service
-import rclpy.time
 from builtin_interfaces.msg import Time as TimeMsg
 from geometry_msgs.msg import Vector3 as Vector3Msg
 from sensor_msgs.msg import Imu as ImuMsg
@@ -122,7 +122,7 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         self._initialized: bool = True
 
         # Reliable listener QOS profile for subscribers
-        qos_profile: rclpy.qos.QoSPresetProfile = (
+        qos_profile: rclpy.qos.QoSProfile = (
             rclpy.qos.QoSPresetProfiles.SYSTEM_DEFAULT.value
         )
 
@@ -154,8 +154,8 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
             topic=DIGITAL_READING_TOPIC,
             qos_profile=qos_profile,
         )
-        self._imu_pub: rclpy.publisher.Publisher = self.create_publisher(
-            msg_type=ImuMsg,
+        self._i2c_imu_pub: rclpy.publisher.Publisher = self.create_publisher(
+            msg_type=I2CImuMsg,
             topic=IMU_TOPIC,
             qos_profile=qos_profile,
         )
@@ -474,7 +474,7 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         i2c_imu_msg.i2c_device.i2c_address = i2c_address
         i2c_imu_msg.imu = imu_msg
 
-        self._imu_publish_pub.publish(i2c_imu_msg)
+        self._i2c_imu_pub.publish(i2c_imu_msg)
 
     def on_memory_data(
         self,
