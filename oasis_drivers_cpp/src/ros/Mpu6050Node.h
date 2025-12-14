@@ -8,10 +8,13 @@
 
 #pragma once
 
+#include <memory>
 #include <rclcpp/node.hpp>
 #include <rclcpp/publisher.hpp>
 #include <rclcpp/timer.hpp>
 #include <sensor_msgs/msg/imu.hpp>
+
+class MPU6050;
 
 namespace OASIS
 {
@@ -28,6 +31,11 @@ private:
 
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr m_publisher;
   rclcpp::TimerBase::SharedPtr m_timer;
+  std::unique_ptr<MPU6050> m_mpu6050;
+
+  double m_accelScale = 0.0;
+  double m_gyroScale = 0.0;
+  bool m_isConnected = false;
 };
 
 } // namespace ROS
