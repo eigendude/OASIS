@@ -114,6 +114,10 @@ def generate_launch_description() -> LaunchDescription:
     # Microcontroller nodes
     if HOST_ID == "station":
         mcu_node = "conductor"
+
+        # TODO
+        CALIBRATION_RESOLUTION: str = "sd"
+
         conductor_node: Node = Node(
             namespace=ROS_NAMESPACE,
             package=CONTROL_PACKAGE_NAME,
@@ -123,6 +127,10 @@ def generate_launch_description() -> LaunchDescription:
             remappings=[
                 (f"{mcu_node}_state", f"{HOST_ID}/{mcu_node}_state"),
                 ("analog_reading", f"{mcu_node}/analog_reading"),
+                (
+                    "calibration_status",
+                    f"{mcu_node}/{CALIBRATION_RESOLUTION}/calibration_status",
+                ),
                 ("capture_input", f"{INPUT_PROVIDER}/capture_input"),
                 ("cpu_fan_speed", f"{mcu_node}/cpu_fan_speed"),
                 ("cpu_fan_write", f"{mcu_node}/cpu_fan_write"),
