@@ -219,20 +219,24 @@ void TelemetrixCommands::set_pin_mode()
 
 void TelemetrixCommands::digital_write()
 {
+#if defined(ENABLE_DIGITAL)
   const uint8_t pin = commandBuffer[0];
   const uint8_t value = commandBuffer[1];
 
   TelemetrixPins* pins = m_server->GetPins();
   pins->DigitalWrite(pin, value);
+#endif
 }
 
 void TelemetrixCommands::analog_write()
 {
+#if defined(ENABLE_DIGITAL)
   const uint8_t pin = commandBuffer[0];
   const uint16_t value = (commandBuffer[1] << 8) + commandBuffer[2];
 
   TelemetrixPins* pins = m_server->GetPins();
   pins->AnalogWrite(pin, value);
+#endif
 }
 
 void TelemetrixCommands::modify_reporting()

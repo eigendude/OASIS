@@ -148,8 +148,12 @@ void TelemetrixServer::ScanMemory()
 
 void TelemetrixServer::ScanPins()
 {
+#if defined(ENABLE_DIGITAL)
   m_pins->scan_digital_inputs();
+#endif
+#if defined(ENABLE_ANALOG)
   m_pins->scan_analog_inputs();
+#endif
 }
 
 void TelemetrixServer::ScanSonars()

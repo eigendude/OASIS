@@ -20,10 +20,12 @@ using namespace OASIS;
 
 namespace
 {
+#if defined(ENABLE_ANALOG)
 // To translate a pin number from an integer value to its analog pin number
 // equivalent, this array is used to look up the value to use for the pin.
 static const int analogReadPins[16] = {A0, A1, A2,  A3,  A4,  A5,  A6,  A7,
                                        A8, A9, A10, A11, A12, A13, A14, A15};
+#endif
 } // namespace
 
 TelemetrixPins::TelemetrixPins()
@@ -33,6 +35,7 @@ TelemetrixPins::TelemetrixPins()
 
 void TelemetrixPins::InitPinStructures()
 {
+#if defined(ENABLE_DIGITAL)
   // Initialize the digital pin array
   for (unsigned int i = 0; i < MAX_DIGITAL_PINS_SUPPORTED; i++)
   {
@@ -41,7 +44,9 @@ void TelemetrixPins::InitPinStructures()
     the_digital_pins[i].reporting_enabled = false;
     the_digital_pins[i].last_value = 0;
   }
+#endif
 
+#if defined(ENABLE_ANALOG)
   // Initialize the analog pin array
   for (unsigned int i = 0; i < MAX_ANALOG_PINS_SUPPORTED; i++)
   {
@@ -51,10 +56,12 @@ void TelemetrixPins::InitPinStructures()
     the_analog_pins[i].last_value = 0;
     the_analog_pins[i].differential = 0;
   }
+#endif
 }
 
 void TelemetrixPins::scan_digital_inputs()
 {
+#if defined(ENABLE_DIGITAL)
   //
   // Report message
   //
@@ -83,10 +90,12 @@ void TelemetrixPins::scan_digital_inputs()
       }
     }
   }
+#endif
 }
 
 void TelemetrixPins::scan_analog_inputs()
 {
+#if defined(ENABLE_ANALOG)
   //
   // Report message
   //
@@ -130,48 +139,63 @@ void TelemetrixPins::scan_analog_inputs()
       }
     }
   }
+#endif
 }
 
 void TelemetrixPins::DigitalWrite(uint8_t pin, uint8_t value)
 {
+#if defined(ENABLE_DIGITAL)
   digitalWrite(pin, value);
+#endif
 }
 
 void TelemetrixPins::AnalogWrite(uint8_t pin, unsigned int value)
 {
+#if defined(ENABLE_DIGITAL)
   analogWrite(pin, static_cast<int>(value));
+#endif
 }
 
 void TelemetrixPins::set_pin_mode_input(uint8_t pin, bool reportingEnabled)
 {
+#if defined(ENABLE_DIGITAL)
   the_digital_pins[pin].pin_mode = INPUT;
   the_digital_pins[pin].reporting_enabled = reportingEnabled;
   pinMode(pin, INPUT);
+#endif
 }
 
 void TelemetrixPins::set_pin_mode_input_pullup(uint8_t pin, bool reportingEnabled)
 {
+#if defined(ENABLE_DIGITAL)
   the_digital_pins[pin].pin_mode = INPUT_PULLUP;
   the_digital_pins[pin].reporting_enabled = reportingEnabled;
   pinMode(pin, INPUT_PULLUP);
+#endif
 }
 
 void TelemetrixPins::set_pin_mode_output(uint8_t pin)
 {
+#if defined(ENABLE_DIGITAL)
   the_digital_pins[pin].pin_mode = OUTPUT;
   pinMode(pin, OUTPUT);
+#endif
 }
 
 void TelemetrixPins::set_pin_mode_analog(uint8_t pin, int differential, bool reportingEnabled)
 {
+#if defined(ENABLE_ANALOG)
   the_analog_pins[pin].pin_mode = AT_ANALOG;
   the_analog_pins[pin].differential = differential;
   the_analog_pins[pin].reporting_enabled = reportingEnabled;
+#endif
 }
 
 void TelemetrixPins::set_analog_sampling_interval(uint8_t analogSamplingInterval)
 {
+#if defined(ENABLE_ANALOG)
   analog_sampling_interval = analogSamplingInterval;
+#endif
 }
 
 void TelemetrixPins::modify_reporting(uint8_t pin, uint8_t reporting)
@@ -180,34 +204,46 @@ void TelemetrixPins::modify_reporting(uint8_t pin, uint8_t reporting)
   {
     case REPORTING_DISABLE_ALL:
     {
+#if defined(ENABLE_DIGITAL)
       for (unsigned int i = 0; i < MAX_DIGITAL_PINS_SUPPORTED; i++)
         the_digital_pins[i].reporting_enabled = false;
+#endif
+#if defined(ENABLE_ANALOG)
       for (unsigned int i = 0; i < MAX_ANALOG_PINS_SUPPORTED; i++)
         the_analog_pins[i].reporting_enabled = false;
+#endif
       break;
     }
     case REPORTING_ANALOG_ENABLE:
     {
+#if defined(ENABLE_ANALOG)
       if (the_analog_pins[pin].pin_mode != AT_MODE_NOT_SET)
         the_analog_pins[pin].reporting_enabled = true;
+#endif
       break;
     }
     case REPORTING_ANALOG_DISABLE:
     {
+#if defined(ENABLE_ANALOG)
       if (the_analog_pins[pin].pin_mode != AT_MODE_NOT_SET)
         the_analog_pins[pin].reporting_enabled = false;
+#endif
       break;
     }
     case REPORTING_DIGITAL_ENABLE:
     {
+#if defined(ENABLE_DIGITAL)
       if (the_digital_pins[pin].pin_mode != AT_MODE_NOT_SET)
         the_digital_pins[pin].reporting_enabled = true;
+#endif
       break;
     }
     case REPORTING_DIGITAL_DISABLE:
     {
+#if defined(ENABLE_DIGITAL)
       if (the_digital_pins[pin].pin_mode != AT_MODE_NOT_SET)
         the_digital_pins[pin].reporting_enabled = false;
+#endif
       break;
     }
     default:
@@ -217,6 +253,8 @@ void TelemetrixPins::modify_reporting(uint8_t pin, uint8_t reporting)
 
 void TelemetrixPins::reset_data()
 {
+#if defined(ENABLE_ANALOG)
   previous_millis = 0;
   analog_sampling_interval = 19;
+#endif
 }
