@@ -227,10 +227,6 @@ class StationInput:
             if peripheral.type != PeripheralConstantsMsg.TYPE_JOYSTICK:
                 continue
 
-            # Ignore joystick if already open
-            if self._joysticks.get(peripheral_address) == CONTROLLER_PROFILE:
-                continue
-
             # Update peripheral state
             self._joysticks[peripheral_address] = CONTROLLER_PROFILE
 
@@ -251,10 +247,6 @@ class StationInput:
                 del self._joysticks[address]
 
     def _open_joystick(self, peripheral_address: str, controller_profile: str) -> None:
-        self._node.get_logger().debug(
-            f"Opening joystick {peripheral_address} of type {controller_profile}"
-        )
-
         # Create message
         capture_input_svc = CaptureInputSvc.Request()
         capture_input_svc.capture = 1
