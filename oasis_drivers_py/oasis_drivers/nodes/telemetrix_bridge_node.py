@@ -32,14 +32,14 @@ from oasis_msgs.msg import AnalogReading as AnalogReadingMsg
 from oasis_msgs.msg import AVRConstants as AVRConstantsMsg
 from oasis_msgs.msg import CPUFanSpeed as CPUFanSpeedMsg
 from oasis_msgs.msg import DigitalReading as DigitalReadingMsg
-from oasis_msgs.msg import DigitalWriteCommand
+from oasis_msgs.msg import DigitalWriteCommand as DigitalWriteCommandMsg
 from oasis_msgs.msg import I2CDevice as I2CDeviceMsg
 from oasis_msgs.msg import I2CDeviceType as I2CDeviceTypeMsg
 from oasis_msgs.msg import I2CImu as I2CImuMsg
 from oasis_msgs.msg import MCUMemory as MCUMemoryMsg
 from oasis_msgs.msg import MCUString as MCUStringMsg
-from oasis_msgs.msg import PWMWriteCommand
-from oasis_msgs.msg import ServoWriteCommand
+from oasis_msgs.msg import PWMWriteCommand as PWMWriteCommandMsg
+from oasis_msgs.msg import ServoWriteCommand as ServoWriteCommandMsg
 from oasis_msgs.srv import AnalogRead as AnalogReadSvc
 from oasis_msgs.srv import DigitalRead as DigitalReadSvc
 from oasis_msgs.srv import DigitalWrite as DigitalWriteSvc
@@ -174,28 +174,28 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         self._bridge.initialize()
 
         # Command topic subscriptions
+        self._cpu_fan_write_sub = self.create_subscription(
+            msg_type=PWMWriteCommandMsg,
+            topic=CPU_FAN_WRITE_COMMAND_TOPIC,
+            callback=self._on_cpu_fan_write_cmd,
+            qos_profile=cmd_qos,
+        )
         self._digital_write_sub = self.create_subscription(
-            msg_type=DigitalWriteCommand,
+            msg_type=DigitalWriteCommandMsg,
             topic=DIGITAL_WRITE_COMMAND_TOPIC,
             callback=self._on_digital_write_cmd,
             qos_profile=cmd_qos,
         )
         self._pwm_write_sub = self.create_subscription(
-            msg_type=PWMWriteCommand,
+            msg_type=PWMWriteCommandMsg,
             topic=PWM_WRITE_COMMAND_TOPIC,
             callback=self._on_pwm_write_cmd,
             qos_profile=cmd_qos,
         )
         self._servo_write_sub = self.create_subscription(
-            msg_type=ServoWriteCommand,
+            msg_type=ServoWriteCommandMsg,
             topic=SERVO_WRITE_COMMAND_TOPIC,
             callback=self._on_servo_write_cmd,
-            qos_profile=cmd_qos,
-        )
-        self._cpu_fan_write_sub = self.create_subscription(
-            msg_type=PWMWriteCommand,
-            topic=CPU_FAN_WRITE_COMMAND_TOPIC,
-            callback=self._on_cpu_fan_write_cmd,
             qos_profile=cmd_qos,
         )
 
@@ -287,7 +287,7 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         # shut down.
         self.destroy_node()
 
-    def _on_digital_write_cmd(self, msg: DigitalWriteCommand) -> None:
+    def _on_digital_write_cmd(self, msg: DigitalWriteCommandMsg) -> None:
         if not self._initialized:
             return
 
@@ -300,7 +300,7 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
 
         self._bridge.digital_write(digital_pin, digital_value)
 
-    def _on_pwm_write_cmd(self, msg: PWMWriteCommand) -> None:
+    def _on_pwm_write_cmd(self, msg: PWMWriteCommandMsg) -> None:
         if not self._initialized:
             return
 
@@ -313,7 +313,7 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
 
         self._bridge.pwm_write(digital_pin, duty_cycle)
 
-    def _on_servo_write_cmd(self, msg: ServoWriteCommand) -> None:
+    def _on_servo_write_cmd(self, msg: ServoWriteCommandMsg) -> None:
         if not self._initialized:
             return
 
@@ -326,7 +326,7 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
 
         self._bridge.servo_write(digital_pin, position)
 
-    def _on_cpu_fan_write_cmd(self, msg: PWMWriteCommand) -> None:
+    def _on_cpu_fan_write_cmd(self, msg: PWMWriteCommandMsg) -> None:
         if not self._initialized:
             return
 
