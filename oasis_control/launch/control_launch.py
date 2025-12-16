@@ -185,7 +185,9 @@ def generate_launch_description() -> LaunchDescription:
             remappings=[
                 (f"{mcu_node}_state", f"{HOST_ID}/{mcu_node}_state"),
                 ("mcu_memory", f"{mcu_node}/mcu_memory"),
+                ("pwm_write_cmd", f"{mcu_node}/pwm_write_cmd"),
                 ("report_mcu_memory", f"{mcu_node}/report_mcu_memory"),
+                ("set_digital_mode", f"{mcu_node}/set_digital_mode"),
                 ("set_sampling_interval", f"{mcu_node}/set_sampling_interval"),
             ],
         )

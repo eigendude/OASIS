@@ -20,6 +20,7 @@ import rclpy.qos
 from rclpy.logging import LoggingSeverity
 from std_msgs.msg import Header as HeaderMsg
 
+from oasis_control.lego_models.falcon_manager import FalconManager
 from oasis_control.managers.sampling_manager import SamplingManager
 from oasis_control.mcu.mcu_memory_manager import McuMemoryManager
 from oasis_msgs.msg import EngineerState as EngineerStateMsg
@@ -74,6 +75,7 @@ class EngineerManagerNode(rclpy.node.Node):
         # Subsystems
         self._mcu_memory_manager: McuMemoryManager = McuMemoryManager(self)
         self._sampling_manager: SamplingManager = SamplingManager(self)
+        self._falcon_manager: FalconManager = FalconManager(self)
 
         # Reliable listener QOS profile for publishers
         qos_profile: rclpy.qos.QoSProfile = (
@@ -99,6 +101,10 @@ class EngineerManagerNode(rclpy.node.Node):
 
         # Sampling interval
         if not self._sampling_manager.initialize(SAMPLING_INTERVAL_MS):
+            return False
+
+        # Initialize LEGO model
+        if not self._falcon_manager.initialize():
             return False
 
         # Now that the manager is initialized, start the publishing timer
