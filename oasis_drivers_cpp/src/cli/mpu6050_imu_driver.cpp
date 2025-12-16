@@ -18,7 +18,12 @@ int main(int argc, char* argv[])
 
   std::shared_ptr<OASIS::ROS::Mpu6050Node> node = std::make_shared<OASIS::ROS::Mpu6050Node>();
 
+  if (!node->Initialize())
+    return -1;
+
   rclcpp::spin(node);
+
+  node->Deinitialize();
 
   rclcpp::shutdown();
 

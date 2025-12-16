@@ -8,7 +8,9 @@
 
 #pragma once
 
+#include <chrono>
 #include <memory>
+#include <string>
 
 #include <MPU6050.h>
 #include <rclcpp/node.hpp>
@@ -26,16 +28,24 @@ class Mpu6050Node : public rclcpp::Node
 public:
   Mpu6050Node();
 
+  bool Initialize();
+  void Deinitialize();
+
 private:
   void PublishImu();
 
+  // ROS parameters
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr m_publisher;
   rclcpp::TimerBase::SharedPtr m_timer;
-  std::unique_ptr<MPU6050> m_mpu6050;
 
+  // IMU parameters
+  std::unique_ptr<MPU6050> m_mpu6050;
+  std::string m_i2cDevice;
+  std::chrono::duration<double> m_publishPeriod;
+
+  // IMU state
   double m_accelScale = 0.0;
   double m_gyroScale = 0.0;
-  bool m_isConnected = false;
 };
 
 } // namespace ROS

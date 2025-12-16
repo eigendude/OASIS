@@ -9,22 +9,29 @@
 #include "Mpu6050Node.h"
 
 #include <algorithm>
-#include <chrono>
 #include <cmath>
 #include <functional>
-#include <memory>
-#include <string>
 
 #include <I2Cdev.h>
 #include <rclcpp/rclcpp.hpp>
 
 namespace
 {
+
+// Default node name
 constexpr const char* NODE_NAME = "mpu6050_imu_driver";
+
+// ROS topics
 constexpr const char* IMU_TOPIC = "imu";
+
+// ROS frame IDs
 constexpr const char* FRAME_ID = "imu_link";
-constexpr double DEFAULT_PUBLISH_RATE_HZ = 50.0;
+
+// ROS parameters
 constexpr const char* DEFAULT_I2C_DEVICE = "/dev/i2c-1";
+constexpr double DEFAULT_PUBLISH_RATE_HZ = 50.0;
+
+// IMU parameters
 constexpr double GRAVITY = 9.80665; // m/s^2
 constexpr double ACCEL_SCALE = GRAVITY / 16384.0; // +/-2g full scale
 constexpr double GYRO_SCALE = (M_PI / 180.0) / 131.0; // +/-250 deg/s full scale
@@ -35,40 +42,53 @@ using namespace std::chrono_literals;
 
 Mpu6050Node::Mpu6050Node() : rclcpp::Node(NODE_NAME)
 {
-  declare_parameter("publish_rate_hz", DEFAULT_PUBLISH_RATE_HZ);
   declare_parameter("i2c_device", std::string(DEFAULT_I2C_DEVICE));
+  declare_parameter("publish_rate_hz", DEFAULT_PUBLISH_RATE_HZ);
 
-  m_publisher = create_publisher<sensor_msgs::msg::Imu>(IMU_TOPIC, rclcpp::QoS(10));
+  m_i2cDevice = get_parameter("i2c_device").as_string();
 
   const double publishRateHz = get_parameter("publish_rate_hz").as_double();
   const double clampedRate = std::max(publishRateHz, 1.0);
-  const auto publishPeriod = std::chrono::duration<double>(1.0 / clampedRate);
+  m_publishPeriod = std::chrono::duration<double>(1.0 / clampedRate);
+}
 
-  const std::string i2cDevice = get_parameter("i2c_device").as_string();
-  I2Cdev::initialize(i2cDevice.c_str());
+bool Mpu6050Node::Initialize()
+{
+  I2Cdev::initialize(m_i2cDevice.c_str());
 
   m_mpu6050 = std::make_unique<MPU6050>();
   m_mpu6050->initialize();
 
-  m_isConnected = m_mpu6050->testConnection();
-  if (!m_isConnected)
+  if (!m_mpu6050->testConnection())
   {
-    RCLCPP_ERROR(get_logger(), "Failed to connect to MPU6050 on %s", i2cDevice.c_str());
-  }
-  else
-  {
-    RCLCPP_INFO(get_logger(), "Connected to MPU6050 on %s", i2cDevice.c_str());
+    RCLCPP_ERROR(get_logger(), "Failed to connect to MPU6050 on %s", m_i2cDevice.c_str());
+    m_mpu6050.reset();
+    return false;
   }
 
+  RCLCPP_INFO(get_logger(), "Connected to MPU6050 on %s", m_i2cDevice.c_str());
+
+  // Initialize IMU state
   m_accelScale = ACCEL_SCALE;
   m_gyroScale = GYRO_SCALE;
 
-  m_timer = create_wall_timer(publishPeriod, std::bind(&Mpu6050Node::PublishImu, this));
+  // Initialize publishers
+  m_publisher = create_publisher<sensor_msgs::msg::Imu>(IMU_TOPIC, rclcpp::QoS(10));
+
+  // Initialize timers
+  m_timer = create_wall_timer(m_publishPeriod, std::bind(&Mpu6050Node::PublishImu, this));
+
+  return true;
+}
+
+void Mpu6050Node::Deinitialize()
+{
+  // TODO
 }
 
 void Mpu6050Node::PublishImu()
 {
-  if (!m_isConnected)
+  if (!m_mpu6050)
   {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "MPU6050 not connected");
     return;
@@ -92,13 +112,13 @@ void Mpu6050Node::PublishImu()
   geometry_msgs::msg::Vector3& angularVelocity = imuMsg.angular_velocity;
   geometry_msgs::msg::Vector3& linearAceleration = imuMsg.linear_acceleration;
 
-  linearAceleration.x = ax * m_accelScale;
-  linearAceleration.y = ay * m_accelScale;
-  linearAceleration.z = az * m_accelScale;
+  linearAceleration.x = static_cast<double>(ax) * m_accelScale;
+  linearAceleration.y = static_cast<double>(ay) * m_accelScale;
+  linearAceleration.z = static_cast<double>(az) * m_accelScale;
 
-  angularVelocity.x = gx * m_gyroScale;
-  angularVelocity.y = gy * m_gyroScale;
-  angularVelocity.z = gz * m_gyroScale;
+  angularVelocity.x = static_cast<double>(gx) * m_gyroScale;
+  angularVelocity.y = static_cast<double>(gy) * m_gyroScale;
+  angularVelocity.z = static_cast<double>(gz) * m_gyroScale;
 
   imuMsg.orientation.w = 1.0;
   imuMsg.orientation.x = 0.0;
