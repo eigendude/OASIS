@@ -199,21 +199,12 @@ class StationInput:
             if target_magnitude < MOTOR_EPSILON:
                 target_magnitude = 0.0
 
-            # Cull messages if possible
-            send_pwm: bool = False
-            if target_magnitude == 0.0 and self._magnitude != 0.0:
-                send_pwm = True
-            elif abs(target_magnitude - self._magnitude) >= MOTOR_EPSILON:
-                send_pwm = True
-
             # Update magnitude
             self._magnitude = target_magnitude
 
-            if send_pwm:
-                self._node.get_logger().debug(f"Throttle: {throttle}")
+            self._node.get_logger().debug(f"Throttle: {throttle}")
 
-                if self._station_manager is not None:
-                    self._station_manager.set_motor_pwm(target_magnitude, self._reverse)
+            self._station_manager.set_motor_pwm(target_magnitude, self._reverse)
 
     def _on_peripheral_scan(self, peripheral_scan_msg: PeripheralScanMsg) -> None:
         peripheral: PeripheralInfoMsg
