@@ -287,8 +287,7 @@ class StationManager:
 
         if analog_pin == VSS_PIN:
             # Apply voltage divider formula
-            # supply_voltage: float = analog_voltage * (VSS_R1 + VSS_R2) / VSS_R2
-            supply_voltage: float = 12.0  # TODO: Add R3 resistor and uncomment above
+            supply_voltage: float = analog_voltage * (VSS_R1 + VSS_R2) / VSS_R2
 
             # Record state
             self._supply_voltage = supply_voltage
