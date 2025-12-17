@@ -82,16 +82,6 @@ def generate_launch_description() -> LaunchDescription:
             max_width=640,
             max_height=480,
         )
-        PerceptionDescriptions.add_image_downscaler(
-            composable_nodes,
-            ["hallway"],
-            input_topic="image_color",
-            input_resolution="qhd",
-            output_resolution="sd",
-            image_transport="compressed",
-            max_width=640,
-            max_height=480,
-        )
 
         # Image rectification
         PerceptionDescriptions.add_image_rectifier(
@@ -124,13 +114,6 @@ def generate_launch_description() -> LaunchDescription:
             input_resolution="sd",
             image_transport="raw",
         )
-        PerceptionDescriptions.add_pose_landmarker(
-            ld,
-            "hallway",
-            input_topic="image_color",
-            input_resolution="sd",
-            image_transport="raw",
-        )
 
         # Monocular Inertial SLAM
         PerceptionDescriptions.add_monocular_inertial_slam(
@@ -156,6 +139,27 @@ def generate_launch_description() -> LaunchDescription:
             camera_model="pinhole",
             input_resolution="sd",
             # TODO: image_transport="compressed",
+        )
+
+    # Hallway pipeline
+    if ZONE_ID == "hallway":
+        PerceptionDescriptions.add_image_downscaler(
+            composable_nodes,
+            ["hallway"],
+            input_topic="image_color",
+            input_resolution="qhd",
+            output_resolution="sd",
+            image_transport="compressed",
+            max_width=640,
+            max_height=480,
+        )
+
+        PerceptionDescriptions.add_pose_landmarker(
+            ld,
+            "hallway",
+            input_topic="image_color",
+            input_resolution="sd",
+            image_transport="raw",
         )
 
     # Rendering pipeline
