@@ -189,7 +189,9 @@ class ConductorManagerNode(rclpy.node.Node):
         msg: ConductorStateMsg = ConductorStateMsg()
         msg.header = header
         msg.supply_voltage = self._station_manager.supply_voltage
+        msg.supply_voltage_stddev = self._station_manager.supply_voltage_stddev
         msg.motor_voltage = self._station_manager.motor_voltage
+        msg.motor_voltage_stddev = self._station_manager.motor_voltage_stddev
         msg.motor_current = self._station_manager.motor_current
         msg.motor_ff1_count = self._station_manager.motor_ff1_count
         msg.motor_ff2_count = self._station_manager.motor_ff2_count

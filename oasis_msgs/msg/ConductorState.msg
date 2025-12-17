@@ -18,8 +18,14 @@ std_msgs/Header header
 # 12V supply voltage, read via voltage divider
 float32 supply_voltage
 
+# Stddev (Volts) of supply voltage measurement (online estimate)
+float32 supply_voltage_stddev
+
 # Motor voltage, negative for the backwards direction
 float32 motor_voltage
+
+# Stddev (Volts) of motor voltage estimate (online estimate)
+float32 motor_voltage_stddev
 
 # Motor current, in Amps
 float32 motor_current
