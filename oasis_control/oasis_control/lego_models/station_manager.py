@@ -36,8 +36,8 @@ from oasis_msgs.srv import SetDigitalMode as SetDigitalModeSvc
 
 
 VSS_PIN: int = 0  # A0
-VSS_R1: float = 147.9  # KΩ
-VSS_R2: float = 102.5  # KΩ
+VSS_R1: float = 26.62  # KΩ
+VSS_R2: float = 9.83  # KΩ
 MOTOR_PWM_PIN: int = 5  # D5
 MOTOR_DIR_PIN: int = 4  # D4
 MOTOR_FF1_PIN: int = 8  # D8
