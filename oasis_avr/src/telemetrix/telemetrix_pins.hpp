@@ -82,8 +82,6 @@ class TelemetrixPins
 public:
   TelemetrixPins();
 
-  void InitPinStructures();
-
   void scan_analog_inputs();
   void scan_digital_inputs();
 
@@ -101,6 +99,9 @@ public:
   void reset_data();
 
 private:
+  void InitPinStructures();
+  void SetupAnalogSubsystem();
+
 #if defined(ENABLE_DIGITAL)
   //////////////////////////////////////////////////////////////////////////////
   // Digital pins

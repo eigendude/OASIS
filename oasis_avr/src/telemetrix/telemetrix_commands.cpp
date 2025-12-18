@@ -407,12 +407,6 @@ void TelemetrixCommands::reset_data()
   enable_all_reports();
 }
 
-void TelemetrixCommands::init_pin_structures()
-{
-  TelemetrixPins* pins = m_server->GetPins();
-  pins->InitPinStructures();
-}
-
 void TelemetrixCommands::init_spi()
 {
 #if defined(ENABLE_SPI)

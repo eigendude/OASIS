@@ -38,6 +38,9 @@ from oasis_msgs.srv import SetDigitalMode as SetDigitalModeSvc
 VSS_PIN: int = 0  # A0
 VSS_R1: float = 26.62  # KΩ
 VSS_R2: float = 9.83  # KΩ
+# External AREF is tied to a 5.02 V regulator for stable ADC scaling
+AREF_VOLTAGE: float = 5.02  # V
+VIN_GAIN: float = 0.9887  # Empirical system calibration to match DMM at ~12V
 MOTOR_PWM_PIN: int = 5  # D5
 MOTOR_DIR_PIN: int = 4  # D4
 MOTOR_FF1_PIN: int = 8  # D8
@@ -279,15 +282,17 @@ class StationManager:
 
     def _on_analog_reading(self, analog_reading_msg: AnalogReadingMsg) -> None:
         analog_pin: int = analog_reading_msg.analog_pin
-        reference_voltage: float = analog_reading_msg.reference_voltage
         analog_value: float = analog_reading_msg.analog_value
 
         # Translate analog value
-        analog_voltage: float = analog_value * reference_voltage
+        analog_voltage: float = analog_value * AREF_VOLTAGE
 
         if analog_pin == VSS_PIN:
             # Apply voltage divider formula
             supply_voltage: float = analog_voltage * (VSS_R1 + VSS_R2) / VSS_R2
+
+            # Adjust for empirical gain
+            supply_voltage *= VIN_GAIN
 
             # Record state
             self._supply_voltage = supply_voltage
