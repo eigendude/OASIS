@@ -84,6 +84,8 @@ public:
 
   void InitPinStructures();
 
+  void SetupAnalogSubsystem();
+
   void scan_analog_inputs();
   void scan_digital_inputs();
 

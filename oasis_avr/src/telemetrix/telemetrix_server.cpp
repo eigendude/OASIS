@@ -45,6 +45,9 @@ void TelemetrixServer::Setup()
   static TelemetrixPins pins;
   m_pins = &pins;
 
+  // Ensure the ADC uses the external AREF rail before any analog sampling occurs.
+  m_pins->SetupAnalogSubsystem();
+
 #if defined(ENABLE_DHT)
   static TelemetrixDHT dht;
   m_dht = &dht;
