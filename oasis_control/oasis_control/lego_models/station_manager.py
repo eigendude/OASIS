@@ -12,6 +12,8 @@
 # Manager for a LEGO train station's microcontroller
 #
 
+import math
+
 import rclpy.client
 import rclpy.node
 import rclpy.publisher
@@ -46,6 +48,15 @@ MOTOR_DIR_PIN: int = 4  # D4
 MOTOR_FF1_PIN: int = 8  # D8
 MOTOR_FF2_PIN: int = 7  # D7
 MOTOR_CURRENT_PIN: int = 1  # A1
+
+
+################################################################################
+# Filtering parameters
+################################################################################
+
+
+# Higher beta adapts faster to changing noise when motors toggle
+STDDEV_BETA: float = 0.2
 
 
 ################################################################################
@@ -85,7 +96,13 @@ class StationManager:
 
         # Initialize hardware state
         self._supply_voltage: float = 0.0
+        self._supply_voltage_mu: float = 0.0
+        self._supply_voltage_var: float = 0.0
+        self._supply_voltage_initialized: bool = False
+        self._supply_voltage_stddev: float = 0.0
         self._motor_voltage: float = 0.0
+        self._motor_voltage_stddev: float = 0.0
+        self._motor_duty_cycle: float = 0.0
         self._motor_current: float = 0.0
         self._motor_ff1_state: bool = False
         self._motor_ff1_count: int = 0
@@ -149,8 +166,16 @@ class StationManager:
         return self._supply_voltage
 
     @property
+    def supply_voltage_stddev(self) -> float:
+        return self._supply_voltage_stddev
+
+    @property
     def motor_voltage(self) -> float:
         return self._motor_voltage
+
+    @property
+    def motor_voltage_stddev(self) -> float:
+        return self._motor_voltage_stddev
 
     @property
     def motor_current(self) -> float:
@@ -234,8 +259,12 @@ class StationManager:
         self._motor_pwm_cmd_pub.publish(pwm_cmd)
 
         # Update state
+        self._motor_duty_cycle = -target_magnitude if reverse else target_magnitude
         self._motor_voltage = (
             self._supply_voltage * target_magnitude * (-1 if reverse else 1)
+        )
+        self._motor_voltage_stddev = (
+            abs(self._motor_duty_cycle) * self._supply_voltage_stddev
         )
 
     def _set_analog_mode(self, analog_pin: int, analog_mode: AnalogMode) -> bool:
@@ -296,6 +325,24 @@ class StationManager:
 
             # Record state
             self._supply_voltage = supply_voltage
+
+            # Update EWMA statistics
+            if not self._supply_voltage_initialized:
+                self._supply_voltage_mu = supply_voltage
+                self._supply_voltage_var = 0.0
+                self._supply_voltage_initialized = True
+            else:
+                err: float = supply_voltage - self._supply_voltage_mu
+                self._supply_voltage_mu += STDDEV_BETA * err
+                self._supply_voltage_var = (1 - STDDEV_BETA) * (
+                    self._supply_voltage_var + STDDEV_BETA * err * err
+                )
+
+            self._supply_voltage_var = max(self._supply_voltage_var, 0.0)
+            self._supply_voltage_stddev = math.sqrt(self._supply_voltage_var)
+            self._motor_voltage_stddev = (
+                abs(self._motor_duty_cycle) * self._supply_voltage_stddev
+            )
 
         elif analog_pin == MOTOR_CURRENT_PIN:
             # TODO: Apply Vref and Gain to get current
