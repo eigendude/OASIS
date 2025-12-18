@@ -43,7 +43,7 @@ REPORT_MCU_MEMORY_PERIOD_SECS: float = 1.0
 # Sampling interval, in ms
 SAMPLING_INTERVAL_MS = 100
 
-# Pins
+# Pin configuration
 VSS_PIN: int = 0  # A0
 MOTOR_PWM_PIN: int = 5  # D5
 MOTOR_DIR_PIN: int = 4  # D4
@@ -55,9 +55,8 @@ CPU_FAN_SPEED_PIN: int = 2  # D2
 
 # Voltage dividers
 # R1 is the input-side resistor, R2 is the ground-side resistor
-# R3 is 10.66 MΩ
-VSS_R1: float = 147.9  # KΩ
-VSS_R2: float = 102.5  # KΩ
+VSS_R1: float = 26.62  # KΩ
+VSS_R2: float = 9.83  # KΩ
 
 
 ################################################################################

@@ -35,14 +35,20 @@ from oasis_msgs.srv import SetDigitalMode as SetDigitalModeSvc
 ################################################################################
 
 
+# Pin configuration
 VSS_PIN: int = 0  # A0
-VSS_R1: float = 147.9  # KΩ
-VSS_R2: float = 102.5  # KΩ
 MOTOR_PWM_PIN: int = 5  # D5
 MOTOR_DIR_PIN: int = 4  # D4
 MOTOR_FF1_PIN: int = 8  # D8
 MOTOR_FF2_PIN: int = 7  # D7
 MOTOR_CURRENT_PIN: int = 1  # A1
+CPU_FAN_PWM_PIN: int = 9  # D9
+CPU_FAN_SPEED_PIN: int = 2  # D2
+
+# Voltage dividers
+# R1 is the input-side resistor, R2 is the ground-side resistor
+VSS_R1: float = 26.62  # KΩ
+VSS_R2: float = 9.83  # KΩ
 
 
 ################################################################################
