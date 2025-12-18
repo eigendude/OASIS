@@ -33,6 +33,19 @@ TelemetrixPins::TelemetrixPins()
   InitPinStructures();
 }
 
+void TelemetrixPins::SetupAnalogSubsystem()
+{
+#if defined(ENABLE_ANALOG)
+  // Use the external AREF rail (measured at ~5.03V) for more stable ADC readings.
+  analogReference(EXTERNAL);
+
+  // Allow the external reference to settle before sampling and discard the first read
+  // after switching references for accuracy.
+  delay(5);
+  (void)analogRead(A0);
+#endif
+}
+
 void TelemetrixPins::InitPinStructures()
 {
 #if defined(ENABLE_DIGITAL)
