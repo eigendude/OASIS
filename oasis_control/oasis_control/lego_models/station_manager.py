@@ -45,6 +45,10 @@ MOTOR_CURRENT_PIN: int = 1  # A1
 CPU_FAN_PWM_PIN: int = 9  # D9
 CPU_FAN_SPEED_PIN: int = 2  # D2
 
+# External AREF is tied to a 5.02 V regulator for stable ADC scaling
+AREF_VOLTAGE: float = 5.02  # V
+VIN_GAIN: float = 0.9887  # Empirical system calibration to match DMM at ~12V
+
 # Voltage dividers
 # R1 is the input-side resistor, R2 is the ground-side resistor
 VSS_R1: float = 26.62  # KΩ
@@ -285,15 +289,17 @@ class StationManager:
 
     def _on_analog_reading(self, analog_reading_msg: AnalogReadingMsg) -> None:
         analog_pin: int = analog_reading_msg.analog_pin
-        reference_voltage: float = analog_reading_msg.reference_voltage
         analog_value: float = analog_reading_msg.analog_value
 
         # Translate analog value
-        analog_voltage: float = analog_value * reference_voltage
+        analog_voltage: float = analog_value * AREF_VOLTAGE
 
         if analog_pin == VSS_PIN:
             # Apply voltage divider formula
             supply_voltage: float = analog_voltage * (VSS_R1 + VSS_R2) / VSS_R2
+
+            # Adjust for empirical gain
+            supply_voltage *= VIN_GAIN
 
             # Record state
             self._supply_voltage = supply_voltage

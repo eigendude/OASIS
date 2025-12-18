@@ -31,6 +31,18 @@ static const int analogReadPins[16] = {A0, A1, A2,  A3,  A4,  A5,  A6,  A7,
 TelemetrixPins::TelemetrixPins()
 {
   InitPinStructures();
+  SetupAnalogSubsystem();
+}
+
+void TelemetrixPins::SetupAnalogSubsystem()
+{
+#if defined(ENABLE_ANALOG)
+  // Use the external AREF rail for more stable ADC readings
+  analogReference(EXTERNAL);
+
+  // Allow the external reference to settle before sampling
+  delay(5);
+#endif
 }
 
 void TelemetrixPins::InitPinStructures()
