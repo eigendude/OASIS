@@ -267,9 +267,7 @@ class StationManager:
 
         # Update state
         self._motor_duty_cycle = -target_magnitude if reverse else target_magnitude
-        self._motor_voltage = (
-            self._supply_voltage * target_magnitude * (-1 if reverse else 1)
-        )
+        self._motor_voltage = self._supply_voltage * self._motor_duty_cycle
         self._motor_voltage_stddev = (
             abs(self._motor_duty_cycle) * self._supply_voltage_stddev
         )
@@ -347,6 +345,7 @@ class StationManager:
 
             self._supply_voltage_var = max(self._supply_voltage_var, 0.0)
             self._supply_voltage_stddev = math.sqrt(self._supply_voltage_var)
+            self._motor_voltage = self._supply_voltage * self._motor_duty_cycle
             self._motor_voltage_stddev = (
                 abs(self._motor_duty_cycle) * self._supply_voltage_stddev
             )
