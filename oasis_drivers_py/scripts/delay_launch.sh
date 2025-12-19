@@ -45,3 +45,27 @@ if (( UPTIME_SECONDS < DELAY_DURATION )); then
 else
   echo "System uptime is ${UPTIME_SECONDS} seconds. No delay needed."
 fi
+
+NETWORK_CHECK_INTERVAL="5"
+
+network_ready() {
+  local gateway
+
+  if [[ -z "$(ip -o addr show scope global up | head -n 1)" ]]; then
+    return 1
+  fi
+
+  gateway="$(ip route show default 2>/dev/null | awk '/default/ {print $3; exit}')"
+  if [[ -z "${gateway}" ]]; then
+    return 1
+  fi
+
+  ping -c 1 -W 1 "${gateway}" >/dev/null 2>&1
+}
+
+echo "Checking for network readiness (required for Zenoh)..."
+until network_ready; do
+  echo "Network not ready yet. Waiting ${NETWORK_CHECK_INTERVAL} seconds..."
+  sleep "${NETWORK_CHECK_INTERVAL}"
+done
+echo "Network ready."
