@@ -6,7 +6,7 @@
  *  See the file LICENSE.txt for more information.
  */
 
-#include "ros/Mpu6050Node.h"
+#include "nodes/Mpu6050Node.h"
 
 #include <memory>
 

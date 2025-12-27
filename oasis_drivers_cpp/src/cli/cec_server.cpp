@@ -7,7 +7,7 @@
  */
 
 #include "cec/CecServer.h"
-#include "ros/CecServerNode.h"
+#include "nodes/CecServerNode.h"
 #include "utils/LogUtils.h"
 
 #include <memory>

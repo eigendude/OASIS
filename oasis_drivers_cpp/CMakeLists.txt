@@ -54,13 +54,13 @@ if (UDEV_FOUND)
     src/cec/CecServer.cpp
     src/cec/CecTranslator.cpp
     src/cec/CecUtils.cpp
-    src/ros/CecServerNode.cpp
+    src/cli/cec_server.cpp
+    src/nodes/CecServerNode.cpp
     src/udev/UdevScanner.cpp
     src/udev/UdevTranslator.cpp
     src/udev/UdevUtils.cpp
     src/utils/LogUtils.cpp
     src/utils/StringUtils.cpp
-    src/cec_server.cpp
   )
 
   target_compile_definitions(cec_server PUBLIC
@@ -92,7 +92,7 @@ endif()
 
 add_executable(mpu6050_imu_driver
   src/cli/mpu6050_imu_driver.cpp
-  src/ros/Mpu6050Node.cpp
+  src/nodes/Mpu6050Node.cpp
 )
 
 target_link_libraries(mpu6050_imu_driver
