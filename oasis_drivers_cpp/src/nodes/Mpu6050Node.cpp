@@ -122,6 +122,7 @@ Mpu6050Node::Mpu6050Node() : rclcpp::Node(NODE_NAME)
   m_yawInflateFactor = get_parameter("yaw_inflate_factor").as_double();
   m_dtMin = get_parameter("dt_min").as_double();
   m_dtMax = get_parameter("dt_max").as_double();
+  m_motorIntent = MotorIntent(m_ewmaTau, m_conductorStaleSeconds);
 
   const double publishRateHz = get_parameter("publish_rate_hz").as_double();
   const double clampedRate = std::max(publishRateHz, 1.0);
@@ -193,32 +194,7 @@ void Mpu6050Node::OnConductorState(const oasis_msgs::msg::ConductorState& msg)
   const double dutyRaw = msg.duty_cycle;
   const double dutyClamped = std::clamp(dutyRaw, -1.0, 1.0);
 
-  if (!m_dutyFiltInit)
-  {
-    m_dutyFilt = dutyClamped;
-    m_dutyFiltDvdt = 0.0;
-    m_dutyFiltInit = true;
-    m_lastConductorStamp = stamp;
-    m_duty = dutyClamped;
-    return;
-  }
-
-  const double dt = (stamp - m_lastConductorStamp).seconds();
-  if (dt <= 0.0 || dt > 1.0) // guard out-of-order / stale bursts
-  {
-    m_lastConductorStamp = stamp;
-    m_duty = dutyClamped;
-    return;
-  }
-
-  const double alpha = EwmaAlpha(dt, m_ewmaTau);
-  const double prevDutyFilt = m_dutyFilt;
-  m_dutyFilt = prevDutyFilt + alpha * (dutyClamped - prevDutyFilt);
-  const double dvdtRaw = (m_dutyFilt - prevDutyFilt) / dt;
-  m_dutyFiltDvdt = m_dutyFiltDvdt + alpha * (dvdtRaw - m_dutyFiltDvdt);
-
-  m_lastConductorStamp = stamp;
-  m_duty = dutyClamped;
+  m_motorIntent.Update(stamp, dutyClamped);
 }
 
 void Mpu6050Node::OnMappingJump(const char* reason)
@@ -493,11 +469,8 @@ void Mpu6050Node::PublishImu()
 
   // Low-pass gravity for forward inference only to reduce estimator coupling.
   // Gate on low gyro and either not commanded or accel near g for robustness.
-  const bool conductorFresh =
-      m_dutyFiltInit && (now - m_lastConductorStamp).seconds() <= m_conductorStaleSeconds;
-  const bool commanded = m_dutyFiltInit && conductorFresh;
-  if (m_dutyFiltInit && !conductorFresh)
-    m_dutyFiltDvdt = 0.0;
+  const MotorIntentOutput motor = m_motorIntent.Get(now);
+  const bool commanded = motor.commanded;
   const bool gravityLpOk = accelConfidence > 0.7 &&
                            gyroUnbiasedNorm < (m_stationaryGyroThresh * 2.0) &&
                            (!commanded || accelOk);
@@ -531,8 +504,7 @@ void Mpu6050Node::PublishImu()
   {
     const double accelLinXY =
         std::sqrt(accelHoriz[0] * accelHoriz[0] + accelHoriz[1] * accelHoriz[1]);
-    const bool event =
-        commanded && (std::abs(m_dutyFiltDvdt) > m_dvdtThresh || accelLinXY > m_alinThresh);
+    const bool event = MotorIntentEvent(motor, accelLinXY, m_dvdtThresh, m_alinThresh);
     const bool hasResponse =
         accelLinXY > m_forwardResponseAccelThresh || gyroUnbiasedNorm > m_forwardResponseGyroThresh;
     const bool gyroVeto = std::abs(gyroUnbiased[2]) > m_forwardGyroVetoZ ||
@@ -543,7 +515,7 @@ void Mpu6050Node::PublishImu()
     if (event && hasResponse && !gyroVeto)
     {
       const double alpha = EwmaAlpha(dt, m_ewmaTau);
-      const double sign = (m_dutyFilt >= 0.0) ? 1.0 : -1.0;
+      const double sign = motor.sign;
       if (std::abs(accelHoriz[0]) >= m_forwardDeadband)
       {
         m_forwardScoreX = (1.0 - alpha) * m_forwardScoreX + alpha * sign * accelHoriz[0];
@@ -635,8 +607,8 @@ void Mpu6050Node::PublishImu()
   if (m_debugPublisher)
   {
     std_msgs::msg::Float64MultiArray debugMsg;
-    debugMsg.data = {m_dutyFilt,
-                     m_dutyFiltDvdt,
+    debugMsg.data = {motor.duty_filt,
+                     motor.duty_dvdt,
                      accelConfidence,
                      accelHoriz[0],
                      accelHoriz[1],

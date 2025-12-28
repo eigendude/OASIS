@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include "MotorIntent.h"
 #include "Mpu6050NodeUtils.h"
 
 #include <array>
@@ -65,11 +66,7 @@ private:
   double m_gyroScale = 0.0;
 
   // Conductor state
-  double m_duty = 0.0;
-  double m_dutyFilt = 0.0;
-  double m_dutyFiltDvdt = 0.0;
-  bool m_dutyFiltInit = false;
-  rclcpp::Time m_lastConductorStamp;
+  MotorIntent m_motorIntent{m_ewmaTau, m_conductorStaleSeconds};
 
   // Filter state
   rclcpp::Time m_lastStamp;
