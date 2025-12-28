@@ -55,6 +55,7 @@ private:
   bool m_hasAxisState{false};
   bool m_lastAxisLocked{false};
   int m_lastSignedSign{1};
+  bool m_debugPrinted{false};
 };
 
 } // namespace ROS
