@@ -130,7 +130,8 @@ Mpu6050Node::Mpu6050Node()
   const double yawInflateFactor = get_parameter("yaw_inflate_factor").as_double();
   const double dtMin = get_parameter("dt_min").as_double();
   const double dtMax = get_parameter("dt_max").as_double();
-  m_motorIntent = MotorIntent(ewmaTau, conductorStaleSeconds);
+  m_motorIntent.SetEwmaTau(ewmaTau);
+  m_motorIntent.SetStaleSeconds(conductorStaleSeconds);
   OASIS::IMU::Mpu6050ImuProcessor::Config imuConfig;
   imuConfig.stationary_gyro_thresh = stationaryGyroThresh;
   imuConfig.stationary_accel_mag_thresh = stationaryAccelMagThresh;
