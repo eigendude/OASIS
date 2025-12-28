@@ -27,6 +27,9 @@ float32 motor_voltage
 # Stddev (Volts) of motor voltage estimate (online estimate)
 float32 motor_voltage_stddev
 
+# Commanded motor duty cycle (-1..1). Positive is forward.
+float32 duty
+
 # Motor current, in Amps
 float32 motor_current
 

@@ -185,6 +185,10 @@ class StationManager:
         return self._motor_voltage_stddev
 
     @property
+    def motor_duty_cycle(self) -> float:
+        return self._motor_duty_cycle
+
+    @property
     def motor_current(self) -> float:
         return self._motor_current
 

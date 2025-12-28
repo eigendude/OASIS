@@ -141,6 +141,7 @@ class ConductorManagerNode(rclpy.node.Node):
         # Initialize hardware state
         self._supply_voltage: float = 0.0
         self._motor_voltage: float = 0.0
+        self._motor_duty_cycle: float = 0.0
         self._motor_current: float = 0.0
         self._motor_ff1_state: bool = False
         self._motor_ff1_count: int = 0
@@ -619,6 +620,7 @@ class ConductorManagerNode(rclpy.node.Node):
             self._motor_voltage = (
                 self._supply_voltage * magnitude * (-1 if reverse else 1)
             )
+            self._motor_duty_cycle = throttle
 
             # Wait for results
             if future_pwm is not None:
@@ -702,6 +704,7 @@ class ConductorManagerNode(rclpy.node.Node):
         msg.header = header
         msg.supply_voltage = self._supply_voltage
         msg.motor_voltage = self._motor_voltage
+        msg.duty = self._motor_duty_cycle
         msg.motor_current = self._motor_current
         msg.motor_ff1_count = self._motor_ff1_count
         msg.motor_ff2_count = self._motor_ff2_count

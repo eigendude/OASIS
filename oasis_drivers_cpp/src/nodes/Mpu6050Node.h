@@ -20,6 +20,7 @@
 #include <rclcpp/subscription.hpp>
 #include <rclcpp/timer.hpp>
 #include <sensor_msgs/msg/imu.hpp>
+#include <std_msgs/msg/float64_multi_array.hpp>
 
 namespace OASIS
 {
@@ -44,6 +45,7 @@ private:
 
   // ROS parameters
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr m_publisher;
+  rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr m_debugPublisher;
   rclcpp::Subscription<oasis_msgs::msg::ConductorState>::SharedPtr m_conductorStateSub;
   rclcpp::TimerBase::SharedPtr m_timer;
 
@@ -62,7 +64,15 @@ private:
   double m_motorVoltageFilt = 0.0;
   double m_motorVoltageFiltDvdt = 0.0;
   bool m_motorVoltageFiltInit = false;
-  rclcpp::Time m_lastMotorStamp;
+  double m_supplyVoltage = 0.0;
+  double m_supplyVoltageFilt = 0.0;
+  double m_supplyVoltageFiltDvdt = 0.0;
+  bool m_supplyVoltageFiltInit = false;
+  double m_duty = 0.0;
+  double m_dutyFilt = 0.0;
+  double m_dutyFiltDvdt = 0.0;
+  bool m_dutyFiltInit = false;
+  rclcpp::Time m_lastConductorStamp;
 
   // Filter state
   rclcpp::Time m_lastStamp;
@@ -89,8 +99,12 @@ private:
   // Forward inference
   double m_forwardScoreX = 0.0;
   double m_forwardScoreY = 0.0;
+  double m_forwardEnergyX = 0.0;
+  double m_forwardEnergyY = 0.0;
   double m_forwardDominanceDuration = 0.0;
   int m_forwardDominantAxis = 0;
+  int m_forwardSignConsistencyCount = 0;
+  int m_forwardSignLast = 0;
 
   // Temperature tracking
   bool m_hasTemperature = false;
@@ -104,8 +118,8 @@ private:
   double m_pitchVar = 0.1;
 
   // Parameters
-  // Commanded intent threshold; motor voltage can change while a heavy train
-  // stays still, so dv/dt is not motion truth.
+  // Commanded intent threshold; intent can change while a heavy train stays
+  // still, so dv/dt is not motion truth.
   double m_stationaryVoltageThresh = 0.3;
   // Prefer ~0.03-0.06 rad/s for true still; vibration varies by build/setup,
   // so tune per train. Heuristics, not universal constants.
@@ -142,10 +156,15 @@ private:
   double m_forwardResponseGyroThresh = 0.12;
   double m_forwardLockSeconds = 3.0;
   double m_forwardScoreThresh = 0.5;
+  double m_forwardDeadband = 0.08;
+  int m_forwardSignConsistencySamples = 10;
+  double m_forwardGyroVetoZ = 0.8;
+  double m_forwardGyroVetoXY = 0.8;
   double m_yawInflateFactor = 2.0;
   double m_dtMin = 0.001;
   double m_dtMax = 0.2;
   std::string m_conductorStateTopic;
+  std::string m_imuDebugTopic;
 };
 
 } // namespace ROS
