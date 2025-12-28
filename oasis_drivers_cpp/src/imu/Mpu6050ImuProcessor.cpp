@@ -11,6 +11,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include <rclcpp/rclcpp.hpp>
+
 namespace
 {
 constexpr double GRAVITY = 9.80665;
@@ -46,6 +48,12 @@ constexpr double IMU_SIGN_CONF_THRESH = 0.4;
 constexpr double T_CONFIRM = 0.3;
 
 constexpr double EMA_TAU = 0.2;
+constexpr double T_GRAVITY_COLLECT = 1.2;
+constexpr int MIN_GRAVITY_SAMPLES = 50;
+constexpr double A_DYN_MIN = 0.4;
+constexpr int MIN_YAW_SAMPLES = 20;
+constexpr double YAW_CONF_THRESH = 0.35;
+constexpr double YAW_DYNAMIC_EMA_TAU = 0.3;
 
 double Clamp(double value, double minValue, double maxValue)
 {
@@ -86,6 +94,73 @@ std::array<double, 3> Normalize3(const std::array<double, 3>& value)
   if (norm < EPS)
     return {0.0, 0.0, 1.0};
   return {value[0] / norm, value[1] / norm, value[2] / norm};
+}
+
+std::array<double, 3> Cross3(const std::array<double, 3>& left, const std::array<double, 3>& right)
+{
+  return {left[1] * right[2] - left[2] * right[1], left[2] * right[0] - left[0] * right[2],
+          left[0] * right[1] - left[1] * right[0]};
+}
+
+struct Quaternion
+{
+  double w = 1.0;
+  double x = 0.0;
+  double y = 0.0;
+  double z = 0.0;
+};
+
+Quaternion NormalizeQuat(const Quaternion& q)
+{
+  const double norm = std::sqrt(q.w * q.w + q.x * q.x + q.y * q.y + q.z * q.z);
+  if (norm < EPS)
+    return {};
+  return {q.w / norm, q.x / norm, q.y / norm, q.z / norm};
+}
+
+Quaternion MultiplyQuat(const Quaternion& left, const Quaternion& right)
+{
+  return {left.w * right.w - left.x * right.x - left.y * right.y - left.z * right.z,
+          left.w * right.x + left.x * right.w + left.y * right.z - left.z * right.y,
+          left.w * right.y - left.x * right.z + left.y * right.w + left.z * right.x,
+          left.w * right.z + left.x * right.y - left.y * right.x + left.z * right.w};
+}
+
+std::array<double, 3> RotateVector(const Quaternion& q, const std::array<double, 3>& v)
+{
+  const Quaternion qv{0.0, v[0], v[1], v[2]};
+  const Quaternion qInv{q.w, -q.x, -q.y, -q.z};
+  const Quaternion result = MultiplyQuat(MultiplyQuat(q, qv), qInv);
+  return {result.x, result.y, result.z};
+}
+
+Quaternion QuaternionFromAxisAngle(const std::array<double, 3>& axis, double angle)
+{
+  const std::array<double, 3> axisHat = Normalize3(axis);
+  const double half = 0.5 * angle;
+  const double s = std::sin(half);
+  return NormalizeQuat({std::cos(half), axisHat[0] * s, axisHat[1] * s, axisHat[2] * s});
+}
+
+Quaternion QuaternionFromTwoVectors(const std::array<double, 3>& from,
+                                    const std::array<double, 3>& to)
+{
+  const std::array<double, 3> v0 = Normalize3(from);
+  const std::array<double, 3> v1 = Normalize3(to);
+  const double dot = Dot3(v0, v1);
+  if (dot > 1.0 - 1e-5)
+    return {};
+  if (dot < -1.0 + 1e-5)
+  {
+    std::array<double, 3> axis = Cross3({1.0, 0.0, 0.0}, v0);
+    if (Norm3(axis) < EPS)
+      axis = Cross3({0.0, 1.0, 0.0}, v0);
+    return QuaternionFromAxisAngle(axis, M_PI);
+  }
+
+  const std::array<double, 3> axis = Cross3(v0, v1);
+  const Quaternion q{1.0 + dot, axis[0], axis[1], axis[2]};
+  return NormalizeQuat(q);
 }
 
 double EmaAlpha(double dt, double tau)
@@ -166,6 +241,51 @@ double Mpu6050ImuProcessor::GetStillTime() const
 double Mpu6050ImuProcessor::GetMoveTime() const
 {
   return m_moveTime;
+}
+
+bool Mpu6050ImuProcessor::IsCalibrated() const
+{
+  return m_calState == CalibrationState::kCalibrated;
+}
+
+Mpu6050ImuProcessor::CalibrationState Mpu6050ImuProcessor::GetCalibrationState() const
+{
+  return m_calState;
+}
+
+bool Mpu6050ImuProcessor::HasMountingQuaternion() const
+{
+  return m_calState == CalibrationState::kCalibrated;
+}
+
+geometry_msgs::msg::Quaternion Mpu6050ImuProcessor::GetMountingQuaternionMsg() const
+{
+  geometry_msgs::msg::Quaternion msg;
+  msg.w = m_qMounting[0];
+  msg.x = m_qMounting[1];
+  msg.y = m_qMounting[2];
+  msg.z = m_qMounting[3];
+  return msg;
+}
+
+std::array<double, 3> Mpu6050ImuProcessor::GetGravityHat() const
+{
+  return m_gravityHatSolved;
+}
+
+std::array<double, 2> Mpu6050ImuProcessor::GetForwardHatIntermediate() const
+{
+  return m_forwardHatIntermediate;
+}
+
+double Mpu6050ImuProcessor::GetYawRadians() const
+{
+  return m_yawRadians;
+}
+
+double Mpu6050ImuProcessor::GetYawConfidence() const
+{
+  return m_yawConfidence;
 }
 
 std::optional<Mpu6050ImuProcessor::ImuOutput> Mpu6050ImuProcessor::Process(
@@ -253,6 +373,148 @@ std::optional<Mpu6050ImuProcessor::ImuOutput> Mpu6050ImuProcessor::Process(
                                aDyn[2] - aDynDotG * m_gravityHat[2]};
   const std::array<double, 2> aHoriz2d{aHoriz[0], aHoriz[1]};
   const double aHorizMag = Norm2(aHoriz2d);
+
+  // Calibration state transitions.
+  const rclcpp::Logger logger = rclcpp::get_logger("Mpu6050ImuProcessor");
+  static rclcpp::Clock clock(RCL_ROS_TIME);
+
+  if (m_calState == CalibrationState::kUncalibrated)
+  {
+    m_calState = CalibrationState::kGravityCollect;
+    m_gravityCollectTime = 0.0;
+    m_gravitySamples = 0;
+    m_gravitySum = {0.0, 0.0, 0.0};
+    RCLCPP_INFO(logger, "IMU calibration: entering gravity collect (stationary window)");
+  }
+
+  if (m_calState == CalibrationState::kGravityCollect)
+  {
+    if (m_stationary)
+    {
+      m_gravityCollectTime += dt;
+      m_gravitySamples += 1;
+      m_gravitySum[0] += sample.accel[0];
+      m_gravitySum[1] += sample.accel[1];
+      m_gravitySum[2] += sample.accel[2];
+      if (m_gravityCollectTime >= T_GRAVITY_COLLECT && m_gravitySamples >= MIN_GRAVITY_SAMPLES)
+      {
+        const std::array<double, 3> meanAccel{
+            m_gravitySum[0] / static_cast<double>(m_gravitySamples),
+            m_gravitySum[1] / static_cast<double>(m_gravitySamples),
+            m_gravitySum[2] / static_cast<double>(m_gravitySamples)};
+        m_gravityHatSolved = Normalize3(meanAccel);
+        const Quaternion qGravity = QuaternionFromTwoVectors(m_gravityHatSolved, {0.0, 0.0, 1.0});
+        m_qGravity = {qGravity.w, qGravity.x, qGravity.y, qGravity.z};
+        m_calState = CalibrationState::kGravitySolved;
+        RCLCPP_INFO(logger,
+                    "IMU calibration: gravity solved g_hat_s=(%.3f, %.3f, %.3f) "
+                    "q_gravity=(w=%.3f, x=%.3f, y=%.3f, z=%.3f)",
+                    m_gravityHatSolved[0], m_gravityHatSolved[1], m_gravityHatSolved[2],
+                    m_qGravity[0], m_qGravity[1], m_qGravity[2], m_qGravity[3]);
+      }
+    }
+    else if (m_gravityCollectTime > 0.0)
+    {
+      m_gravityCollectTime = 0.0;
+      m_gravitySamples = 0;
+      m_gravitySum = {0.0, 0.0, 0.0};
+    }
+  }
+
+  if (m_calState == CalibrationState::kGravitySolved)
+  {
+    m_calState = CalibrationState::kYawPulseCollect;
+    m_collectingYaw = false;
+    m_forwardAccum = {0.0, 0.0};
+    m_forwardSamples = 0;
+    m_forwardDynamicEma = 0.0;
+    RCLCPP_INFO(logger, "IMU calibration: waiting for forward-axis lock");
+  }
+
+  if (m_calState == CalibrationState::kYawPulseCollect)
+  {
+    if (m_axisLocked && !m_collectingYaw)
+    {
+      m_collectingYaw = true;
+      m_forwardAccum = {0.0, 0.0};
+      m_forwardSamples = 0;
+      m_forwardDynamicEma = 0.0;
+      RCLCPP_INFO(logger, "IMU calibration: forward-axis lock engaged, collecting yaw pulse");
+    }
+
+    if (m_axisLocked && m_collectingYaw)
+    {
+      const std::array<double, 3> gHat = m_gravityHatSolved;
+      const double aDotG = Dot3(sample.accel, gHat);
+      std::array<double, 3> aDynS{sample.accel[0] - aDotG * gHat[0],
+                                  sample.accel[1] - aDotG * gHat[1],
+                                  sample.accel[2] - aDotG * gHat[2]};
+      Quaternion qGravity{m_qGravity[0], m_qGravity[1], m_qGravity[2], m_qGravity[3]};
+      const std::array<double, 3> aDynI = RotateVector(qGravity, aDynS);
+      std::array<double, 2> horiz{aDynI[0], aDynI[1]};
+      const double horizMag = Norm2(horiz);
+      const double dynAlpha = EmaAlpha(dt, YAW_DYNAMIC_EMA_TAU);
+      m_forwardDynamicEma = m_forwardDynamicEma + dynAlpha * (horizMag - m_forwardDynamicEma);
+
+      if (horizMag > A_DYN_MIN && m_signedAxisSign != 0)
+      {
+        const double invMag = 1.0 / (horizMag + EPS);
+        horiz[0] *= invMag;
+        horiz[1] *= invMag;
+        m_forwardAccum[0] += static_cast<double>(m_signedAxisSign) * horiz[0];
+        m_forwardAccum[1] += static_cast<double>(m_signedAxisSign) * horiz[1];
+        m_forwardSamples += 1;
+      }
+    }
+
+    if (!m_axisLocked && m_collectingYaw)
+    {
+      m_collectingYaw = false;
+      const double accumMag = Norm2(m_forwardAccum);
+      const double samples = static_cast<double>(std::max(m_forwardSamples, 1));
+      m_yawConfidence = accumMag / samples;
+      if (m_forwardSamples >= MIN_YAW_SAMPLES && m_yawConfidence > YAW_CONF_THRESH)
+      {
+        m_forwardHatIntermediate = Normalize2(m_forwardAccum);
+        m_yawRadians = std::atan2(m_forwardHatIntermediate[1], m_forwardHatIntermediate[0]);
+        const Quaternion qYaw = QuaternionFromAxisAngle({0.0, 0.0, 1.0}, -m_yawRadians);
+        const Quaternion qGravity{m_qGravity[0], m_qGravity[1], m_qGravity[2], m_qGravity[3]};
+        const Quaternion qMount = MultiplyQuat(qYaw, qGravity);
+        const Quaternion qMountNorm = NormalizeQuat(qMount);
+        m_qMounting = {qMountNorm.w, qMountNorm.x, qMountNorm.y, qMountNorm.z};
+        m_calState = CalibrationState::kCalibrated;
+        RCLCPP_INFO(logger,
+                    "IMU calibration: yaw solved f_hat_i=(%.3f, %.3f) yaw=%.3f rad conf=%.3f "
+                    "q_yaw=(w=%.3f, x=%.3f, y=%.3f, z=%.3f)",
+                    m_forwardHatIntermediate[0], m_forwardHatIntermediate[1], m_yawRadians,
+                    m_yawConfidence, qYaw.w, qYaw.x, qYaw.y, qYaw.z);
+        RCLCPP_INFO(logger, "IMU calibration: calibrated q_s2t=(w=%.3f, x=%.3f, y=%.3f, z=%.3f)",
+                    m_qMounting[0], m_qMounting[1], m_qMounting[2], m_qMounting[3]);
+      }
+      else
+      {
+        RCLCPP_INFO(logger,
+                    "IMU calibration: yaw pulse insufficient (samples=%d conf=%.3f dyn=%.3f), "
+                    "waiting for next lock",
+                    m_forwardSamples, m_yawConfidence, m_forwardDynamicEma);
+        m_forwardAccum = {0.0, 0.0};
+        m_forwardSamples = 0;
+        m_forwardDynamicEma = 0.0;
+      }
+    }
+  }
+
+  if (m_calState != CalibrationState::kCalibrated)
+  {
+    RCLCPP_INFO_THROTTLE(logger, clock, 2000,
+                         "IMU calibration: state=%d stationary=%s still_time=%.2f move_time=%.2f "
+                         "gyro_ema=%.3f accel_dev_ema=%.3f g_hat_s=(%.2f,%.2f,%.2f) "
+                         "yaw_dyn=%.3f yaw_conf=%.3f",
+                         static_cast<int>(m_calState), m_stationary ? "true" : "false", m_stillTime,
+                         m_moveTime, m_gyroEma, m_accelDevEma, m_gravityHatSolved[0],
+                         m_gravityHatSolved[1], m_gravityHatSolved[2], m_forwardDynamicEma,
+                         m_yawConfidence);
+  }
 
   // B) Axis-line estimation reset when stationary long enough.
   if (m_stationary && m_stillTime > T_RESET && m_axisResetArmed)
