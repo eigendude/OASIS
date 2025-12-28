@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 
 #include <MPU6050.h>
 
@@ -38,13 +39,13 @@ double GyroScaleFromRange(uint8_t range)
   switch (range)
   {
     case MPU6050_GYRO_FS_250:
-      return (M_PI / 180.0) / 131.0;
+      return (std::numbers::pi_v<double> / 180.0) / 131.0;
     case MPU6050_GYRO_FS_500:
-      return (M_PI / 180.0) / 65.5;
+      return (std::numbers::pi_v<double> / 180.0) / 65.5;
     case MPU6050_GYRO_FS_1000:
-      return (M_PI / 180.0) / 32.8;
+      return (std::numbers::pi_v<double> / 180.0) / 32.8;
     case MPU6050_GYRO_FS_2000:
-      return (M_PI / 180.0) / 16.4;
+      return (std::numbers::pi_v<double> / 180.0) / 16.4;
     default:
       return GYRO_SCALE;
   }
@@ -208,7 +209,8 @@ Vec3 EulerFromQuat(const Quaternion& q)
   const double cosr = 1.0 - 2.0 * (q[1] * q[1] + q[2] * q[2]);
   const double roll = std::atan2(sinr, cosr);
   const double sinp = 2.0 * (q[0] * q[2] - q[3] * q[1]);
-  const double pitch = std::abs(sinp) >= 1.0 ? std::copysign(M_PI / 2.0, sinp) : std::asin(sinp);
+  const double pitch = std::abs(sinp) >= 1.0 ? std::copysign(std::numbers::pi_v<double> / 2.0, sinp)
+                                             : std::asin(sinp);
   const double siny = 2.0 * (q[0] * q[3] + q[1] * q[2]);
   const double cosy = 1.0 - 2.0 * (q[2] * q[2] + q[3] * q[3]);
   const double yaw = std::atan2(siny, cosy);

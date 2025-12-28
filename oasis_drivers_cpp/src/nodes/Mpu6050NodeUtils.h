@@ -12,6 +12,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <numbers>
 #include <vector>
 
 namespace OASIS::ROS::Mpu6050NodeUtils
@@ -23,7 +24,7 @@ using Quaternion = std::array<double, 4>;
 // IMU parameters
 inline constexpr double GRAVITY = 9.80665; // m/s^2
 inline constexpr double ACCEL_SCALE = GRAVITY / 16384.0; // +/-2g full scale
-inline constexpr double GYRO_SCALE = (M_PI / 180.0) / 131.0; // +/-250 deg/s full scale
+inline constexpr double GYRO_SCALE = (std::numbers::pi_v<double> / 180.0) / 131.0; // +/-250 deg/s full scale
 inline constexpr double Z_UP_SCORE_GRAVITY_PENALTY = 1.0;
 
 // Utility helpers

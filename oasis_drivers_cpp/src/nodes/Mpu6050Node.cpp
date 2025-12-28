@@ -207,7 +207,7 @@ void Mpu6050Node::OnConductorState(const oasis_msgs::msg::ConductorState& msg)
   if (dt <= 0.0 || dt > 1.0) // guard out-of-order / stale bursts
   {
     m_lastConductorStamp = stamp;
-    m_duty = dutyRaw;
+    m_duty = dutyClamped;
     return;
   }
 
