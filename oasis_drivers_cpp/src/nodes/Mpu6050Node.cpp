@@ -376,7 +376,6 @@ Mpu6050Node::Mpu6050Node() : rclcpp::Node(NODE_NAME)
   declare_parameter("motor_voltage_lp_tau", m_motorVoltageLpTau);
   declare_parameter("dvdt_thresh", m_dvdtThresh);
   declare_parameter("alin_thresh", m_alinThresh);
-  declare_parameter("forward_candidate_window_seconds", m_forwardCandidateWindowSeconds);
   declare_parameter("forward_response_accel_thresh", m_forwardResponseAccelThresh);
   declare_parameter("forward_response_gyro_thresh", m_forwardResponseGyroThresh);
   declare_parameter("forward_lock_seconds", m_forwardLockSeconds);
@@ -408,7 +407,6 @@ Mpu6050Node::Mpu6050Node() : rclcpp::Node(NODE_NAME)
   m_motorVoltageLpTau = get_parameter("motor_voltage_lp_tau").as_double();
   m_dvdtThresh = get_parameter("dvdt_thresh").as_double();
   m_alinThresh = get_parameter("alin_thresh").as_double();
-  m_forwardCandidateWindowSeconds = get_parameter("forward_candidate_window_seconds").as_double();
   m_forwardResponseAccelThresh = get_parameter("forward_response_accel_thresh").as_double();
   m_forwardResponseGyroThresh = get_parameter("forward_response_gyro_thresh").as_double();
   m_forwardLockSeconds = get_parameter("forward_lock_seconds").as_double();
@@ -802,15 +800,13 @@ void Mpu6050Node::PublishImu()
   {
     const double accelLinXY = std::sqrt(accelLinForForward[0] * accelLinForForward[0] +
                                         accelLinForForward[1] * accelLinForForward[1]);
-    m_forwardCandidateTime = std::max(0.0, m_forwardCandidateTime - dt);
-    if (std::abs(m_motorVoltageFiltDvdt) > m_dvdtThresh && commanded)
-      m_forwardCandidateTime = m_forwardCandidateWindowSeconds;
-    const bool event = m_forwardCandidateTime > 0.0 || accelLinXY > m_alinThresh;
+    const bool event = commanded && (std::abs(m_motorVoltageFiltDvdt) > m_dvdtThresh ||
+                                     accelLinXY > m_alinThresh);
     const bool hasResponse =
         accelLinXY > m_forwardResponseAccelThresh || gyroUnbiasedNorm > m_forwardResponseGyroThresh;
     // Motor voltage is commanded intent; it may change while a heavy train
     // stays still, so dv/dt is not motion truth.
-    if (event && commanded && hasResponse)
+    if (event && hasResponse)
     {
       const double alpha = EwmaAlpha(dt, m_ewmaTau);
       const double sign = (m_motorVoltageFilt >= 0.0) ? 1.0 : -1.0;
