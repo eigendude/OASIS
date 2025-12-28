@@ -52,6 +52,9 @@ private:
 
   // Station parameters
   double m_dutyCycleInput{0.0};
+  bool m_hasAxisState{false};
+  bool m_lastAxisLocked{false};
+  int m_lastSignedSign{1};
 };
 
 } // namespace ROS
