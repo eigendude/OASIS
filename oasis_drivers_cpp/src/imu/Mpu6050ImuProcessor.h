@@ -27,35 +27,65 @@ public:
 
   struct Config
   {
+    // Gyro magnitude (rad/s) below which the IMU is considered stationary.
     double stationary_gyro_thresh = 0.15;
+    // Accel magnitude deviation (m/s^2) threshold for stationary detection.
     double stationary_accel_mag_thresh = 0.7;
+    // Time (s) that stationary detection must hold before latching.
     double stationary_hold_seconds = 1.0;
+    // Mahony filter proportional gain for correcting attitude drift.
     double mahony_kp = 1.2;
+    // Mahony filter integral gain for bias correction.
     double mahony_ki = 0.05;
+    // Mahony integral windup limit.
     double mahony_integral_limit = 0.5;
+    // Time constant (s) for gyro bias convergence.
     double bias_tau = 2.0;
+    // Process noise for gyro bias random walk.
     double bias_q = 1e-4;
+    // Minimum gyro bias variance.
     double bias_var_min = 1e-5;
+    // Maximum gyro bias variance.
     double bias_var_max = 0.5;
+    // EWMA time constant (s) for motor intent filtering.
     double ewma_tau = 2.0;
+    // Rate for releveling Z-up orientation when stationary.
     double relevel_rate = 0.5;
+    // Range (m/s^2) where accelerometer is considered reliable for leveling.
     double accel_confidence_range = 1.0;
+    // Low-pass filter time constant (s) for gravity vector.
     double gravity_lp_tau = 1.5;
+    // Accelerometer scale noise standard deviation.
     double accel_scale_noise = 0.02;
+    // Gyroscope scale noise standard deviation.
     double gyro_scale_noise = 0.02;
+    // Temperature scale noise standard deviation.
     double temp_scale = 0.02;
+    // Motor intent derivative threshold for detecting acceleration events.
     double dvdt_thresh = 0.4;
+    // Linear acceleration threshold (m/s^2) for motor intent detection.
     double alin_thresh = 0.6;
+    // Minimum accelerometer response (m/s^2) to update forward inference score.
     double forward_response_accel_thresh = 0.2;
+    // Minimum gyroscope response (rad/s) to update forward inference score.
     double forward_response_gyro_thresh = 0.12;
+    // Time (s) to lock forward inference once a direction is chosen.
     double forward_lock_seconds = 3.0;
+    // Score threshold to accept forward inference.
     double forward_score_thresh = 0.5;
+    // Deadband for forward inference score updates.
     double forward_deadband = 0.08;
+    // Samples required to confirm forward sign consistency.
     int forward_sign_consistency_samples = 10;
+    // Veto threshold for forward inference based on Z-axis gyro magnitude.
     double forward_gyro_veto_z = 0.8;
+    // Veto threshold for forward inference based on XY gyro magnitude.
     double forward_gyro_veto_xy = 0.8;
+    // Factor to inflate yaw covariance relative to roll/pitch.
     double yaw_inflate_factor = 2.0;
+    // Minimum delta time (s) allowed for filter updates.
     double dt_min = 0.001;
+    // Maximum delta time (s) allowed for filter updates.
     double dt_max = 0.2;
   };
 
