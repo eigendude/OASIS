@@ -140,7 +140,7 @@ private:
   // for a LEGO train; dv/dt is not motion truth).
   double m_forwardCandidateWindowSeconds = 0.25;
   // Forward inference: minimum IMU response required to update score, tuned
-  // for LEGO train vibration levels (heuristic).
+  // for LEGO train vibration levels (heuristic; gyro magnitude threshold).
   double m_forwardResponseAccelThresh = 0.2;
   double m_forwardResponseGyroThresh = 0.12;
   double m_forwardLockSeconds = 3.0;
