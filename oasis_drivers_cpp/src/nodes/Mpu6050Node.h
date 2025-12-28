@@ -9,9 +9,8 @@
 #pragma once
 
 #include "MotorIntent.h"
-#include "Mpu6050NodeUtils.h"
+#include "imu/Mpu6050ImuProcessor.h"
 
-#include <array>
 #include <chrono>
 #include <memory>
 #include <string>
@@ -34,10 +33,6 @@ namespace ROS
 class Mpu6050Node : public rclcpp::Node
 {
 public:
-  using Vec3 = Mpu6050NodeUtils::Vec3;
-  using Mapping = Mpu6050NodeUtils::Mapping;
-  using Quaternion = Mpu6050NodeUtils::Quaternion;
-
   Mpu6050Node();
 
   bool Initialize();
@@ -46,7 +41,6 @@ public:
 private:
   void PublishImu();
   void OnConductorState(const oasis_msgs::msg::ConductorState& msg);
-  void OnMappingJump(const char* reason);
 
   // ROS parameters
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr m_publisher;
@@ -60,56 +54,10 @@ private:
   std::unique_ptr<MPU6050> m_mpu6050;
   std::string m_i2cDevice;
   std::chrono::duration<double> m_publishPeriod;
-
-  // IMU state
-  double m_accelScale = 0.0;
-  double m_gyroScale = 0.0;
+  std::unique_ptr<OASIS::IMU::Mpu6050ImuProcessor> m_imuProcessor;
 
   // Conductor state
   MotorIntent m_motorIntent{m_ewmaTau, m_conductorStaleSeconds};
-
-  // Filter state
-  rclcpp::Time m_lastStamp;
-  Vec3 m_gyroBias{0.0, 0.0, 0.0};
-  Vec3 m_gyroBiasVar{0.01, 0.01, 0.01};
-  Vec3 m_mahonyIntegral{0.0, 0.0, 0.0};
-  Quaternion m_orientationQuat{1.0, 0.0, 0.0, 0.0};
-  double m_yawVar = 0.5;
-  bool m_covarianceInitialized = false;
-  Vec3 m_gravityLpBody{0.0, 0.0, 0.0};
-  bool m_gravityLpInit = false;
-
-  // Stationary detection
-  bool m_isStationary = false;
-  double m_stationaryDuration = 0.0;
-  double m_stationaryGoodDuration = 0.0;
-
-  // Axis mapping
-  bool m_zUpSolved = false;
-  bool m_forwardSolved = false;
-  Mapping m_zUpMapping{{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}};
-  Mapping m_activeMapping{{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}};
-
-  // Forward inference
-  double m_forwardScoreX = 0.0;
-  double m_forwardScoreY = 0.0;
-  double m_forwardEnergyX = 0.0;
-  double m_forwardEnergyY = 0.0;
-  double m_forwardDominanceDuration = 0.0;
-  int m_forwardDominantAxis = 0;
-  int m_forwardSignConsistencyCount = 0;
-  int m_forwardSignLast = 0;
-
-  // Temperature tracking
-  bool m_hasTemperature = false;
-  double m_lastTemperature = 0.0;
-  double m_temperatureAtCal = 0.0;
-
-  // Noise estimates
-  Vec3 m_accelVar{0.2, 0.2, 0.2};
-  Vec3 m_gyroVar{0.01, 0.01, 0.01};
-  double m_rollVar = 0.1;
-  double m_pitchVar = 0.1;
 
   // Parameters
   // Prefer ~0.03-0.06 rad/s for true still; vibration varies by build/setup,
