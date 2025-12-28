@@ -132,6 +132,41 @@ double Mpu6050ImuProcessor::GetGyroScale() const
   return m_gyroScale;
 }
 
+double Mpu6050ImuProcessor::GetAccelMagBaseline() const
+{
+  return m_hasGMag ? m_gMagEma : 0.0;
+}
+
+bool Mpu6050ImuProcessor::HasAccelMagBaseline() const
+{
+  return m_hasGMag;
+}
+
+double Mpu6050ImuProcessor::GetGyroEma() const
+{
+  return m_gyroEma;
+}
+
+double Mpu6050ImuProcessor::GetAccelDevEma() const
+{
+  return m_accelDevEma;
+}
+
+bool Mpu6050ImuProcessor::IsStationary() const
+{
+  return m_stationary;
+}
+
+double Mpu6050ImuProcessor::GetStillTime() const
+{
+  return m_stillTime;
+}
+
+double Mpu6050ImuProcessor::GetMoveTime() const
+{
+  return m_moveTime;
+}
+
 std::optional<Mpu6050ImuProcessor::ImuOutput> Mpu6050ImuProcessor::Process(
     const Mpu6050ImuProcessor::ImuSample& sample)
 {

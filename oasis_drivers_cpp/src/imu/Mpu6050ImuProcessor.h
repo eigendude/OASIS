@@ -45,6 +45,13 @@ public:
   void SetGyroScale(double gyroScale);
   double GetAccelScale() const;
   double GetGyroScale() const;
+  double GetAccelMagBaseline() const;
+  bool HasAccelMagBaseline() const;
+  double GetGyroEma() const;
+  double GetAccelDevEma() const;
+  bool IsStationary() const;
+  double GetStillTime() const;
+  double GetMoveTime() const;
 
   std::optional<ImuOutput> Process(const ImuSample& sample);
 
