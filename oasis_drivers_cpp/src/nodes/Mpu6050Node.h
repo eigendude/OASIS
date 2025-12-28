@@ -105,13 +105,14 @@ private:
   double m_pitchVar = 0.1;
 
   // Parameters
-  // Commanded intent threshold; not a motion truth source.
+  // Commanded intent threshold; motor voltage can change while a heavy train
+  // stays still, so dv/dt is not motion truth.
   double m_stationaryVoltageThresh = 0.3;
-  // Prefer ~0.03-0.06 rad/s for true still; LEGO train vibration varies, so
-  // tune. These thresholds are heuristics, not universal constants.
+  // Prefer ~0.03-0.06 rad/s for true still; vibration varies by build/setup,
+  // so tune per train. Heuristics, not universal constants.
   double m_stationaryGyroThresh = 0.15;
-  // Typical 0.3-1.5 m/s^2; vibration varies so tune for your setup. Heuristic
-  // values only.
+  // Typical 0.3-1.5 m/s^2; vibration varies by build/setup, so tune per train.
+  // Heuristic values only.
   double m_stationaryAccelMagThresh = 0.7;
   // Typical 0.5-3.0s; longer reduces false stationary at the cost of latency.
   double m_stationaryHoldSeconds = 1.0;
@@ -137,7 +138,8 @@ private:
   double m_dvdtThresh = 0.4;
   double m_alinThresh = 0.6;
   // Forward inference: window opened by commanded dv/dt (intent-only heuristic
-  // for a LEGO train; dv/dt is not motion truth).
+  // for a LEGO train; motor voltage can change while stationary and dv/dt is
+  // not motion truth).
   double m_forwardCandidateWindowSeconds = 0.25;
   // Forward inference: minimum IMU response required to update score, tuned
   // for LEGO train vibration levels (heuristic; gyro magnitude threshold).
