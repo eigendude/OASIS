@@ -373,8 +373,12 @@ Mpu6050Node::Mpu6050Node() : rclcpp::Node(NODE_NAME)
   declare_parameter("accel_scale_noise", m_accelScaleNoise);
   declare_parameter("gyro_scale_noise", m_gyroScaleNoise);
   declare_parameter("temp_scale", m_tempScale);
+  declare_parameter("motor_voltage_lp_tau", m_motorVoltageLpTau);
   declare_parameter("dvdt_thresh", m_dvdtThresh);
   declare_parameter("alin_thresh", m_alinThresh);
+  declare_parameter("forward_candidate_window_seconds", m_forwardCandidateWindowSeconds);
+  declare_parameter("forward_response_accel_thresh", m_forwardResponseAccelThresh);
+  declare_parameter("forward_response_gyro_thresh", m_forwardResponseGyroThresh);
   declare_parameter("forward_lock_seconds", m_forwardLockSeconds);
   declare_parameter("forward_score_thresh", m_forwardScoreThresh);
   declare_parameter("yaw_inflate_factor", m_yawInflateFactor);
@@ -401,8 +405,12 @@ Mpu6050Node::Mpu6050Node() : rclcpp::Node(NODE_NAME)
   m_accelScaleNoise = get_parameter("accel_scale_noise").as_double();
   m_gyroScaleNoise = get_parameter("gyro_scale_noise").as_double();
   m_tempScale = get_parameter("temp_scale").as_double();
+  m_motorVoltageLpTau = get_parameter("motor_voltage_lp_tau").as_double();
   m_dvdtThresh = get_parameter("dvdt_thresh").as_double();
   m_alinThresh = get_parameter("alin_thresh").as_double();
+  m_forwardCandidateWindowSeconds = get_parameter("forward_candidate_window_seconds").as_double();
+  m_forwardResponseAccelThresh = get_parameter("forward_response_accel_thresh").as_double();
+  m_forwardResponseGyroThresh = get_parameter("forward_response_gyro_thresh").as_double();
   m_forwardLockSeconds = get_parameter("forward_lock_seconds").as_double();
   m_forwardScoreThresh = get_parameter("forward_score_thresh").as_double();
   m_yawInflateFactor = get_parameter("yaw_inflate_factor").as_double();
@@ -476,7 +484,28 @@ void Mpu6050Node::OnConductorState(const oasis_msgs::msg::ConductorState& msg)
   {
     const double dt = (msgStamp - m_lastMotorStamp).seconds();
     if (dt > 1e-3)
+    {
       m_motorVoltageDvdt = (msg.motor_voltage - m_motorVoltage) / dt;
+      const double alpha = EwmaAlpha(dt, m_motorVoltageLpTau);
+      const double prevFilt = m_motorVoltageFilt;
+      if (!m_motorVoltageFiltInit)
+      {
+        m_motorVoltageFilt = msg.motor_voltage;
+        m_motorVoltageFiltDvdt = 0.0;
+        m_motorVoltageFiltInit = true;
+      }
+      else
+      {
+        m_motorVoltageFilt += alpha * (msg.motor_voltage - m_motorVoltageFilt);
+        m_motorVoltageFiltDvdt = (m_motorVoltageFilt - prevFilt) / dt;
+      }
+    }
+  }
+  else
+  {
+    m_motorVoltageFilt = msg.motor_voltage;
+    m_motorVoltageFiltDvdt = 0.0;
+    m_motorVoltageFiltInit = true;
   }
   m_motorVoltage = msg.motor_voltage;
   m_lastMotorStamp = msgStamp;
@@ -542,8 +571,7 @@ void Mpu6050Node::PublishImu()
   {
     const double accelMag = Norm(accelRaw);
     const bool accelOk = std::abs(accelMag - GRAVITY) < m_stationaryAccelMagThresh;
-    const bool motorOk = std::abs(m_motorVoltage) < m_stationaryVoltageThresh;
-    if (motorOk && gyroMagPreSolve < m_stationaryGyroThresh && accelOk)
+    if (gyroMagPreSolve < m_stationaryGyroThresh && accelOk)
     {
       const double alpha = EwmaAlpha(dt, m_ewmaTau);
       if (!accelMeanInit)
@@ -607,11 +635,10 @@ void Mpu6050Node::PublishImu()
   const Vec3 gyroUnbiased = Sub(gyro, m_gyroBias);
 
   const double accelMag = Norm(accel);
-  const double gyroMag = Norm(gyroUnbiased);
-  const bool motorOk = std::abs(m_motorVoltage) < m_stationaryVoltageThresh;
+  const double gyroUnbiasedNorm = Norm(gyroUnbiased);
   const bool accelOk = std::abs(accelMag - GRAVITY) < m_stationaryAccelMagThresh;
-  const bool gyroOk = gyroMag < m_stationaryGyroThresh;
-  const bool stationaryNow = motorOk && accelOk && gyroOk;
+  const bool gyroOk = gyroUnbiasedNorm < m_stationaryGyroThresh;
+  const bool stationaryNow = accelOk && gyroOk;
   if (stationaryNow)
   {
     m_stationaryDuration += dt;
@@ -722,20 +749,13 @@ void Mpu6050Node::PublishImu()
     }
     for (size_t i = 0; i < 3; ++i)
     {
-      bool init = gyroVarInit[i];
-      EwmaUpdate(gyroUnbiased[i], alpha, gyroMean[i], gyroVar[i], init);
-      gyroVarInit[i] = init;
-
-      init = accelVarInit[i];
       const double accelResidual = accel[i] - accelMeanStationary[i];
-      EwmaUpdate(accelResidual, alpha, accelResidualMean[i], accelVar[i], init);
-      accelVarInit[i] = init;
+      EwmaUpdate(gyroUnbiased[i], alpha, gyroMean[i], gyroVar[i], gyroVarInit[i]);
+      EwmaUpdate(accelResidual, alpha, accelResidualMean[i], accelVar[i], accelVarInit[i]);
     }
     const Vec3 euler = EulerFromQuat(q);
-    bool init = orientVarInit;
-    EwmaUpdate(euler[0], alpha, rollPitchMean[0], rollPitchVar[0], init);
-    EwmaUpdate(euler[1], alpha, rollPitchMean[1], rollPitchVar[1], init);
-    orientVarInit = init;
+    EwmaUpdate(euler[0], alpha, rollPitchMean[0], rollPitchVar[0], orientVarInit);
+    EwmaUpdate(euler[1], alpha, rollPitchMean[1], rollPitchVar[1], orientVarInit);
 
     const bool gyroVarReady = gyroVarInit[0] && gyroVarInit[1] && gyroVarInit[2];
     const bool accelVarReady = accelVarInit[0] && accelVarInit[1] && accelVarInit[2];
@@ -754,9 +774,11 @@ void Mpu6050Node::PublishImu()
   }
 
   // Low-pass gravity for forward inference only to reduce estimator coupling.
-  // Gate on low gyro and either motor idle or accel near g for robustness.
-  const bool gravityLpOk =
-      accelConfidence > 0.7 && gyroMag < (m_stationaryGyroThresh * 2.0) && (motorOk || accelOk);
+  // Gate on low gyro and either commanded idle intent or accel near g for robustness.
+  const bool commanded = std::abs(m_motorVoltageFilt) > m_stationaryVoltageThresh;
+  const bool gravityLpOk = accelConfidence > 0.7 &&
+                           gyroUnbiasedNorm < (m_stationaryGyroThresh * 2.0) &&
+                           (!commanded || accelOk);
   if (gravityLpOk)
   {
     const double alpha = EwmaAlpha(dt, m_gravityLpTau);
@@ -778,11 +800,17 @@ void Mpu6050Node::PublishImu()
   {
     const double accelLinXY = std::sqrt(accelLinForForward[0] * accelLinForForward[0] +
                                         accelLinForForward[1] * accelLinForForward[1]);
-    const bool event = std::abs(m_motorVoltageDvdt) > m_dvdtThresh || accelLinXY > m_alinThresh;
-    if (event && std::abs(m_motorVoltage) > m_stationaryVoltageThresh)
+    m_forwardCandidateTime = std::max(0.0, m_forwardCandidateTime - dt);
+    if (std::abs(m_motorVoltageFiltDvdt) > m_dvdtThresh && commanded)
+      m_forwardCandidateTime = m_forwardCandidateWindowSeconds;
+    const bool event = m_forwardCandidateTime > 0.0 || accelLinXY > m_alinThresh;
+    const bool hasResponse = accelLinXY > m_forwardResponseAccelThresh ||
+                             gyroUnbiasedNorm > m_forwardResponseGyroThresh;
+    // Motor voltage is commanded intent; dv/dt alone is not motion truth.
+    if (event && commanded && hasResponse)
     {
       const double alpha = EwmaAlpha(dt, m_ewmaTau);
-      const double sign = (m_motorVoltage >= 0.0) ? 1.0 : -1.0;
+      const double sign = (m_motorVoltageFilt >= 0.0) ? 1.0 : -1.0;
       m_forwardScoreX = (1.0 - alpha) * m_forwardScoreX + alpha * sign * accelLinForForward[0];
       m_forwardScoreY = (1.0 - alpha) * m_forwardScoreY + alpha * sign * accelLinForForward[1];
 
