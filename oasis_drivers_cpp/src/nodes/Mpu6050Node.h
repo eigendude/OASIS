@@ -20,6 +20,7 @@
 #include <rclcpp/subscription.hpp>
 #include <rclcpp/timer.hpp>
 #include <sensor_msgs/msg/imu.hpp>
+#include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/float64_multi_array.hpp>
 
 namespace OASIS
@@ -42,10 +43,13 @@ public:
 private:
   void PublishImu();
   void OnConductorState(const oasis_msgs::msg::ConductorState& msg);
+  void OnMappingJump(const char* reason);
 
   // ROS parameters
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr m_publisher;
   rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr m_debugPublisher;
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr m_statusPublisher;
+  rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr m_mappingDebugPublisher;
   rclcpp::Subscription<oasis_msgs::msg::ConductorState>::SharedPtr m_conductorStateSub;
   rclcpp::TimerBase::SharedPtr m_timer;
 
@@ -109,8 +113,8 @@ private:
   double m_pitchVar = 0.1;
 
   // Parameters
-  // Commanded intent threshold; intent can change while a heavy train stays
-  // still, so dv/dt is not motion truth.
+  // Commanded duty intent threshold; intent can change while a heavy train
+  // stays still, so dv/dt is not motion truth.
   double m_stationaryVoltageThresh = 0.3;
   // Prefer ~0.03-0.06 rad/s for true still; vibration varies by build/setup,
   // so tune per train. Heuristics, not universal constants.
@@ -137,7 +141,7 @@ private:
   double m_accelScaleNoise = 0.02;
   double m_gyroScaleNoise = 0.02;
   double m_tempScale = 0.02;
-  // Low-pass tau for commanded motor voltage intent filtering.
+  // Low-pass tau for commanded duty intent filtering.
   double m_motorVoltageLpTau = 0.2;
   double m_dvdtThresh = 0.4;
   double m_alinThresh = 0.6;
@@ -156,6 +160,8 @@ private:
   double m_dtMax = 0.2;
   std::string m_conductorStateTopic;
   std::string m_imuDebugTopic;
+  std::string m_imuStatusTopic;
+  std::string m_imuMappingDebugTopic;
 };
 
 } // namespace ROS

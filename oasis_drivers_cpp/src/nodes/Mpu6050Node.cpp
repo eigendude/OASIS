@@ -15,6 +15,7 @@
 
 #include <I2Cdev.h>
 #include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/float64_multi_array.hpp>
 
 namespace
@@ -27,6 +28,8 @@ constexpr const char* NODE_NAME = "mpu6050_imu_driver";
 constexpr const char* IMU_TOPIC = "imu";
 constexpr const char* CONDUCTOR_STATE_TOPIC = "conductor_state";
 constexpr const char* IMU_DEBUG_TOPIC = "imu_debug";
+constexpr const char* IMU_STATUS_TOPIC = "imu_status";
+constexpr const char* IMU_MAPPING_DEBUG_TOPIC = "imu_mapping_debug";
 
 // ROS frame IDs
 constexpr const char* FRAME_ID = "imu_link";
@@ -358,7 +361,10 @@ Mpu6050Node::Mpu6050Node() : rclcpp::Node(NODE_NAME)
   declare_parameter("publish_rate_hz", DEFAULT_PUBLISH_RATE_HZ);
   declare_parameter("conductor_state_topic", std::string(CONDUCTOR_STATE_TOPIC));
   declare_parameter("imu_debug_topic", std::string(IMU_DEBUG_TOPIC));
+  declare_parameter("imu_status_topic", std::string(IMU_STATUS_TOPIC));
+  declare_parameter("imu_mapping_debug_topic", std::string(IMU_MAPPING_DEBUG_TOPIC));
   declare_parameter("stationary_voltage_thresh", m_stationaryVoltageThresh);
+  declare_parameter("duty_intent_thresh", m_stationaryVoltageThresh);
   declare_parameter("stationary_gyro_thresh", m_stationaryGyroThresh);
   declare_parameter("stationary_accel_mag_thresh", m_stationaryAccelMagThresh);
   declare_parameter("stationary_hold_seconds", m_stationaryHoldSeconds);
@@ -377,6 +383,7 @@ Mpu6050Node::Mpu6050Node() : rclcpp::Node(NODE_NAME)
   declare_parameter("gyro_scale_noise", m_gyroScaleNoise);
   declare_parameter("temp_scale", m_tempScale);
   declare_parameter("motor_voltage_lp_tau", m_motorVoltageLpTau);
+  declare_parameter("duty_intent_lp_tau", m_motorVoltageLpTau);
   declare_parameter("dvdt_thresh", m_dvdtThresh);
   declare_parameter("alin_thresh", m_alinThresh);
   declare_parameter("forward_response_accel_thresh", m_forwardResponseAccelThresh);
@@ -394,7 +401,18 @@ Mpu6050Node::Mpu6050Node() : rclcpp::Node(NODE_NAME)
   m_i2cDevice = get_parameter("i2c_device").as_string();
   m_conductorStateTopic = get_parameter("conductor_state_topic").as_string();
   m_imuDebugTopic = get_parameter("imu_debug_topic").as_string();
-  m_stationaryVoltageThresh = get_parameter("stationary_voltage_thresh").as_double();
+  m_imuStatusTopic = get_parameter("imu_status_topic").as_string();
+  m_imuMappingDebugTopic = get_parameter("imu_mapping_debug_topic").as_string();
+  const auto& overrides = get_node_parameters_interface()->get_parameter_overrides();
+  const bool hasDutyIntentThresh = overrides.count("duty_intent_thresh") > 0;
+  const bool hasDutyIntentLpTau = overrides.count("duty_intent_lp_tau") > 0;
+  const bool hasOldVoltageThresh = overrides.count("stationary_voltage_thresh") > 0;
+  const bool hasOldVoltageLpTau = overrides.count("motor_voltage_lp_tau") > 0;
+  const double dutyIntentThresh = get_parameter("duty_intent_thresh").as_double();
+  const double dutyIntentLpTau = get_parameter("duty_intent_lp_tau").as_double();
+  const double oldVoltageThresh = get_parameter("stationary_voltage_thresh").as_double();
+  const double oldVoltageLpTau = get_parameter("motor_voltage_lp_tau").as_double();
+  m_stationaryVoltageThresh = hasDutyIntentThresh ? dutyIntentThresh : oldVoltageThresh;
   m_stationaryGyroThresh = get_parameter("stationary_gyro_thresh").as_double();
   m_stationaryAccelMagThresh = get_parameter("stationary_accel_mag_thresh").as_double();
   m_stationaryHoldSeconds = get_parameter("stationary_hold_seconds").as_double();
@@ -412,7 +430,7 @@ Mpu6050Node::Mpu6050Node() : rclcpp::Node(NODE_NAME)
   m_accelScaleNoise = get_parameter("accel_scale_noise").as_double();
   m_gyroScaleNoise = get_parameter("gyro_scale_noise").as_double();
   m_tempScale = get_parameter("temp_scale").as_double();
-  m_motorVoltageLpTau = get_parameter("motor_voltage_lp_tau").as_double();
+  m_motorVoltageLpTau = hasDutyIntentLpTau ? dutyIntentLpTau : oldVoltageLpTau;
   m_dvdtThresh = get_parameter("dvdt_thresh").as_double();
   m_alinThresh = get_parameter("alin_thresh").as_double();
   m_forwardResponseAccelThresh = get_parameter("forward_response_accel_thresh").as_double();
@@ -430,6 +448,19 @@ Mpu6050Node::Mpu6050Node() : rclcpp::Node(NODE_NAME)
   const double publishRateHz = get_parameter("publish_rate_hz").as_double();
   const double clampedRate = std::max(publishRateHz, 1.0);
   m_publishPeriod = std::chrono::duration<double>(1.0 / clampedRate);
+
+  if (!hasDutyIntentThresh && hasOldVoltageThresh)
+  {
+    RCLCPP_WARN(get_logger(),
+                "Using deprecated parameter 'stationary_voltage_thresh'; use 'duty_intent_thresh' "
+                "instead.");
+  }
+  if (!hasDutyIntentLpTau && hasOldVoltageLpTau)
+  {
+    RCLCPP_WARN(
+        get_logger(),
+        "Using deprecated parameter 'motor_voltage_lp_tau'; use 'duty_intent_lp_tau' instead.");
+  }
 }
 
 bool Mpu6050Node::Initialize()
@@ -466,6 +497,9 @@ bool Mpu6050Node::Initialize()
   m_publisher = create_publisher<sensor_msgs::msg::Imu>(IMU_TOPIC, rclcpp::QoS(10));
   m_debugPublisher =
       create_publisher<std_msgs::msg::Float64MultiArray>(m_imuDebugTopic, rclcpp::QoS(10));
+  m_statusPublisher = create_publisher<std_msgs::msg::Bool>(m_imuStatusTopic, rclcpp::QoS(10));
+  m_mappingDebugPublisher =
+      create_publisher<std_msgs::msg::Float64MultiArray>(m_imuMappingDebugTopic, rclcpp::QoS(10));
   m_conductorStateSub = create_subscription<oasis_msgs::msg::ConductorState>(
       m_conductorStateTopic, rclcpp::QoS(10),
       std::bind(&Mpu6050Node::OnConductorState, this, std::placeholders::_1));
@@ -511,13 +545,19 @@ void Mpu6050Node::OnConductorState(const oasis_msgs::msg::ConductorState& msg)
     return;
   }
 
-  const double alpha = EwmaAlpha(dt, m_motorVoltageLpTau); // you already have this param
+  const double alpha = EwmaAlpha(dt, m_motorVoltageLpTau);
   const double prev = m_dutyFilt;
   m_dutyFilt = prev + alpha * (dutyRaw - prev);
   m_dutyFiltDvdt = (m_dutyFilt - prev) / dt;
 
   m_lastConductorStamp = stamp;
   m_duty = dutyRaw;
+}
+
+void Mpu6050Node::OnMappingJump(const char* reason)
+{
+  m_yawVar = std::max(m_yawVar, 1.5);
+  RCLCPP_INFO(get_logger(), "IMU mapping jump: %s", reason);
 }
 
 void Mpu6050Node::PublishImu()
@@ -622,11 +662,11 @@ void Mpu6050Node::PublishImu()
       {
         const Mapping oldMapping = m_activeMapping;
         m_zUpMapping = best;
-        m_activeMapping = best;
-        m_zUpSolved = true;
-        m_stationaryGoodDuration = 0.0;
-        if (m_hasTemperature)
-          m_temperatureAtCal = m_lastTemperature;
+      m_activeMapping = best;
+      m_zUpSolved = true;
+      m_stationaryGoodDuration = 0.0;
+      if (m_hasTemperature)
+        m_temperatureAtCal = m_lastTemperature;
         const Mapping delta = MultiplyMapping(m_activeMapping, TransposeMapping(oldMapping));
         const Quaternion qDelta = QuatFromRotationMatrix(delta);
         Quaternion q = {m_orientationQuat[0], m_orientationQuat[1], m_orientationQuat[2],
@@ -634,6 +674,7 @@ void Mpu6050Node::PublishImu()
         q = MultiplyQuat(q, ConjugateQuat(qDelta));
         q = NormalizeQuat(q);
         m_orientationQuat = {q[0], q[1], q[2], q[3]};
+        OnMappingJump("Z-up solve");
         RCLCPP_INFO(get_logger(), "IMU mapping leveled to +Z");
       }
     }
@@ -913,6 +954,7 @@ void Mpu6050Node::PublishImu()
       q = MultiplyQuat(q, ConjugateQuat(qDelta));
       q = NormalizeQuat(q);
       m_orientationQuat = {q[0], q[1], q[2], q[3]};
+      OnMappingJump("forward-axis lock");
       RCLCPP_INFO(get_logger(), "IMU forward axis locked");
     }
   }
@@ -936,6 +978,23 @@ void Mpu6050Node::PublishImu()
                      static_cast<double>(m_forwardDominantAxis),
                      m_forwardDominanceDuration};
     m_debugPublisher->publish(debugMsg);
+  }
+  if (m_statusPublisher && m_statusPublisher->get_subscription_count() > 0)
+  {
+    std_msgs::msg::Bool statusMsg;
+    statusMsg.data = m_forwardSolved;
+    m_statusPublisher->publish(statusMsg);
+  }
+  if (m_mappingDebugPublisher && m_mappingDebugPublisher->get_subscription_count() > 0)
+  {
+    std_msgs::msg::Float64MultiArray mappingMsg;
+    mappingMsg.data.reserve(9);
+    for (const auto& row : m_activeMapping)
+    {
+      for (int value : row)
+        mappingMsg.data.push_back(static_cast<double>(value));
+    }
+    m_mappingDebugPublisher->publish(mappingMsg);
   }
 
   linearAcceleration.x = accel[0];
