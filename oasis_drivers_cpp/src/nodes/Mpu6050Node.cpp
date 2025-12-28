@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <functional>
 #include <vector>
 
@@ -40,6 +41,10 @@ constexpr const char* FRAME_ID = "imu_link";
 // ROS parameters
 constexpr const char* DEFAULT_I2C_DEVICE = "/dev/i2c-1";
 constexpr double DEFAULT_PUBLISH_RATE_HZ = 50.0;
+
+// Debug logging
+constexpr bool DEBUG_LOG_THROTTLE_ENABLED = true;
+constexpr int64_t DEBUG_LOG_THROTTLE_MS = 2000;
 
 } // namespace
 
@@ -135,6 +140,43 @@ void Mpu6050Node::PublishImu()
 
   const double accelScale = m_imuProcessor.GetAccelScale();
   const double gyroScale = m_imuProcessor.GetGyroScale();
+
+  const uint8_t accelRange = m_mpu6050->getFullScaleAccelRange();
+  const uint8_t gyroRange = m_mpu6050->getFullScaleGyroRange();
+
+  const double axd = static_cast<double>(ax);
+  const double ayd = static_cast<double>(ay);
+  const double azd = static_cast<double>(az);
+  const double rawNorm = std::sqrt(axd * axd + ayd * ayd + azd * azd);
+  const double scaledNorm = rawNorm * accelScale;
+  const double sax = axd * accelScale;
+  const double say = ayd * accelScale;
+  const double saz = azd * accelScale;
+  const double accelMag = std::sqrt(sax * sax + say * say + saz * saz);
+  const double accelDev = std::abs(accelMag - 9.80665);
+
+  if (!m_debugPrinted)
+  {
+    RCLCPP_INFO(get_logger(),
+                "MPU6050 accelRange=%u gyroRange=%u accelScale=%.6f raw=(%d,%d,%d) "
+                "raw_norm=%.3f scaled_norm=%.3f scaled=(%.3f,%.3f,%.3f) accel_mag=%.3f "
+                "accel_dev=%.3f",
+                static_cast<unsigned>(accelRange), static_cast<unsigned>(gyroRange), accelScale,
+                static_cast<int>(ax), static_cast<int>(ay), static_cast<int>(az), rawNorm,
+                scaledNorm, sax, say, saz, accelMag, accelDev);
+    m_debugPrinted = true;
+  }
+  else if (DEBUG_LOG_THROTTLE_ENABLED)
+  {
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), DEBUG_LOG_THROTTLE_MS,
+                         "MPU6050 accelRange=%u gyroRange=%u accelScale=%.6f raw=(%d,%d,%d) "
+                         "raw_norm=%.3f scaled_norm=%.3f scaled=(%.3f,%.3f,%.3f) "
+                         "accel_mag=%.3f accel_dev=%.3f",
+                         static_cast<unsigned>(accelRange), static_cast<unsigned>(gyroRange),
+                         accelScale, static_cast<int>(ax), static_cast<int>(ay),
+                         static_cast<int>(az), rawNorm, scaledNorm, sax, say, saz, accelMag,
+                         accelDev);
+  }
 
   IMU::Mpu6050ImuProcessor::ImuSample sample;
   sample.stamp = now;
