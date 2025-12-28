@@ -102,9 +102,9 @@ private:
 
   // Parameters
   double m_stationaryVoltageThresh = 0.3;
-  // Typical 0.1-0.3 rad/s; too low misses quiet motion, too high false-stills.
+  // Prefer ~0.03-0.06 rad/s for true still; LEGO/train vibration may require higher, tune as needed.
   double m_stationaryGyroThresh = 0.15;
-  // Typical 0.3-1.5 m/s^2; too tight rejects vibration.
+  // Typical 0.3-1.5 m/s^2; vibration may force higher, tune for your setup.
   double m_stationaryAccelMagThresh = 0.7;
   // Typical 0.5-3.0s; longer reduces false stationary at the cost of latency.
   double m_stationaryHoldSeconds = 1.0;
