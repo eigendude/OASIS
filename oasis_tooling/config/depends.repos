@@ -70,6 +70,10 @@ repositories:
     type: git
     url: https://github.com/ros-perception/image_transport_plugins.git
     version: kilted
+  ros-perception/imu_pipeline:
+    type: git
+    url: https://github.com/ros-perception/imu_pipeline.git
+    version: ros2
   ros-perception/oasis_libcamera_cmake:
     type: git
     url: https://github.com/eigendude/oasis_libcamera_cmake.git
