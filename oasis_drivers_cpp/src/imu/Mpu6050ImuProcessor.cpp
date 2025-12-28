@@ -29,6 +29,7 @@ constexpr double T_RESET = 1.0;
 
 constexpr double GYRO_STILL_THRESH = 0.10;
 constexpr double ACCEL_STILL_THRESH = 0.15;
+constexpr double BASELINE_UPDATE_DEV_THRESH = 0.25;
 constexpr double GYRO_MOVE_THRESH = 0.15;
 constexpr double ACCEL_MOVE_THRESH = 0.25;
 constexpr double T_STILL = 0.5;
@@ -189,9 +190,13 @@ std::optional<Mpu6050ImuProcessor::ImuOutput> Mpu6050ImuProcessor::Process(
     m_gMagEma = accelMag;
     m_hasGMag = true;
   }
-  else if (gyroMag < GYRO_STILL_THRESH)
+  else
   {
-    m_gMagEma = m_gMagEma + emaAlpha * (accelMag - m_gMagEma);
+    const double accelDevBaseline = std::abs(accelMag - m_gMagEma);
+    if (gyroMag < GYRO_STILL_THRESH && accelDevBaseline < BASELINE_UPDATE_DEV_THRESH)
+    {
+      m_gMagEma = m_gMagEma + emaAlpha * (accelMag - m_gMagEma);
+    }
   }
   const double accelDev = std::abs(accelMag - m_gMagEma);
 

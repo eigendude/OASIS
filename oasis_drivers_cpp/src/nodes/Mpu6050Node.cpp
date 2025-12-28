@@ -153,46 +153,9 @@ void Mpu6050Node::PublishImu()
   const double sax = axd * accelScale;
   const double say = ayd * accelScale;
   const double saz = azd * accelScale;
-  const double accelMag = std::sqrt(sax * sax + say * say + saz * saz);
-  const double accelDevGravity = std::abs(accelMag - GRAVITY);
-  const bool hasBaseline = m_imuProcessor.HasAccelMagBaseline();
-  const double accelBaseline = m_imuProcessor.GetAccelMagBaseline();
-  const double accelDevBaseline = hasBaseline ? std::abs(accelMag - accelBaseline) : 0.0;
   const double sgx = static_cast<double>(gx) * gyroScale;
   const double sgy = static_cast<double>(gy) * gyroScale;
   const double sgz = static_cast<double>(gz) * gyroScale;
-  const double gyroMag = std::sqrt(sgx * sgx + sgy * sgy + sgz * sgz);
-
-  if (!m_debugPrinted)
-  {
-    RCLCPP_INFO(get_logger(),
-                "MPU6050 accelRange=%u gyroRange=%u accelScale=%.6f raw=(%d,%d,%d) "
-                "raw_norm=%.3f scaled_norm=%.3f scaled=(%.3f,%.3f,%.3f) accel_mag=%.3f "
-                "baseline=%.3f dev_g=%.3f dev_b=%.3f",
-                static_cast<unsigned>(accelRange), static_cast<unsigned>(gyroRange), accelScale,
-                static_cast<int>(ax), static_cast<int>(ay), static_cast<int>(az), rawNorm,
-                scaledNorm, sax, say, saz, accelMag, accelBaseline, accelDevGravity,
-                accelDevBaseline);
-    m_debugPrinted = true;
-  }
-  else if (DEBUG_LOG_THROTTLE_ENABLED)
-  {
-    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), DEBUG_LOG_THROTTLE_MS,
-                         "MPU6050 accelRange=%u gyroRange=%u accelScale=%.6f raw=(%d,%d,%d) "
-                         "raw_norm=%.3f scaled_norm=%.3f scaled=(%.3f,%.3f,%.3f) "
-                         "accel_mag=%.3f baseline=%.3f dev_g=%.3f dev_b=%.3f",
-                         static_cast<unsigned>(accelRange), static_cast<unsigned>(gyroRange),
-                         accelScale, static_cast<int>(ax), static_cast<int>(ay),
-                         static_cast<int>(az), rawNorm, scaledNorm, sax, say, saz, accelMag,
-                         accelBaseline, accelDevGravity, accelDevBaseline);
-    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), DEBUG_LOG_THROTTLE_MS,
-                         "MPU6050 gyro_mag=%.3f gyro_ema=%.3f accel_dev=%.3f "
-                         "accel_dev_ema=%.3f stationary=%s still_time=%.3f move_time=%.3f",
-                         gyroMag, m_imuProcessor.GetGyroEma(), accelDevGravity,
-                         m_imuProcessor.GetAccelDevEma(),
-                         m_imuProcessor.IsStationary() ? "true" : "false",
-                         m_imuProcessor.GetStillTime(), m_imuProcessor.GetMoveTime());
-  }
 
   IMU::Mpu6050ImuProcessor::ImuSample sample;
   sample.stamp = now;
@@ -205,6 +168,44 @@ void Mpu6050Node::PublishImu()
   auto output = m_imuProcessor.Process(sample);
   if (!output)
     return;
+
+  const double accelMag = std::sqrt(sax * sax + say * say + saz * saz);
+  const double accelDevGravity = std::abs(accelMag - GRAVITY);
+  const bool hasBaseline = m_imuProcessor.HasAccelMagBaseline();
+  const double accelBaseline = m_imuProcessor.GetAccelMagBaseline();
+  const double accelDevBaseline = hasBaseline ? std::abs(accelMag - accelBaseline) : 0.0;
+  const double gyroMag = std::sqrt(sgx * sgx + sgy * sgy + sgz * sgz);
+
+  if (!m_debugPrinted)
+  {
+    RCLCPP_INFO(get_logger(),
+                "MPU6050 accelRange=%u gyroRange=%u accelScale=%.6f raw=(%d,%d,%d) "
+                "raw_norm=%.3f scaled_norm=%.3f scaled=(%.3f,%.3f,%.3f) accel_mag=%.3f "
+                "baseline=%.3f has_baseline=%s dev_g=%.3f dev_b=%.3f",
+                static_cast<unsigned>(accelRange), static_cast<unsigned>(gyroRange), accelScale,
+                static_cast<int>(ax), static_cast<int>(ay), static_cast<int>(az), rawNorm,
+                scaledNorm, sax, say, saz, accelMag, accelBaseline, hasBaseline ? "true" : "false",
+                accelDevGravity, accelDevBaseline);
+    m_debugPrinted = true;
+  }
+  else if (DEBUG_LOG_THROTTLE_ENABLED)
+  {
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), DEBUG_LOG_THROTTLE_MS,
+                         "MPU6050 accelRange=%u gyroRange=%u accelScale=%.6f raw=(%d,%d,%d) "
+                         "raw_norm=%.3f scaled_norm=%.3f scaled=(%.3f,%.3f,%.3f) "
+                         "accel_mag=%.3f baseline=%.3f has_baseline=%s dev_g=%.3f dev_b=%.3f",
+                         static_cast<unsigned>(accelRange), static_cast<unsigned>(gyroRange),
+                         accelScale, static_cast<int>(ax), static_cast<int>(ay),
+                         static_cast<int>(az), rawNorm, scaledNorm, sax, say, saz, accelMag,
+                         accelBaseline, hasBaseline ? "true" : "false", accelDevGravity,
+                         accelDevBaseline);
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), DEBUG_LOG_THROTTLE_MS,
+                         "MPU6050 gyro_mag=%.3f gyro_ema=%.3f dev_b_ema=%.3f stationary=%s "
+                         "still_time=%.3f move_time=%.3f",
+                         gyroMag, m_imuProcessor.GetGyroEma(), m_imuProcessor.GetAccelDevEma(),
+                         m_imuProcessor.IsStationary() ? "true" : "false",
+                         m_imuProcessor.GetStillTime(), m_imuProcessor.GetMoveTime());
+  }
 
   sensor_msgs::msg::Imu imuMsg;
 
