@@ -8,15 +8,14 @@
 
 #include "imu/Mpu6050ImuUtils.h"
 
-#include <numbers>
-
 #include <MPU6050.h>
 
 namespace
 {
+constexpr double PI = 3.14159265358979323846;
 constexpr double GRAVITY = 9.80665; // m/s^2
 constexpr double ACCEL_SCALE = GRAVITY / 16384.0; // Default to +/-2g
-constexpr double GYRO_SCALE = (std::numbers::pi_v<double> / 180.0) / 131.0; // Default to +/-250°/s
+constexpr double GYRO_SCALE = (PI / 180.0) / 131.0; // Default to +/-250°/s
 } // namespace
 
 namespace OASIS::IMU
@@ -43,13 +42,13 @@ double Mpu6050ImuUtils::GyroScaleFromRange(uint8_t range)
   switch (range)
   {
     case MPU6050_GYRO_FS_250:
-      return (std::numbers::pi_v<double> / 180.0) / 131.0;
+      return (PI / 180.0) / 131.0;
     case MPU6050_GYRO_FS_500:
-      return (std::numbers::pi_v<double> / 180.0) / 65.5;
+      return (PI / 180.0) / 65.5;
     case MPU6050_GYRO_FS_1000:
-      return (std::numbers::pi_v<double> / 180.0) / 32.8;
+      return (PI / 180.0) / 32.8;
     case MPU6050_GYRO_FS_2000:
-      return (std::numbers::pi_v<double> / 180.0) / 16.4;
+      return (PI / 180.0) / 16.4;
     default:
       return GYRO_SCALE;
   }
