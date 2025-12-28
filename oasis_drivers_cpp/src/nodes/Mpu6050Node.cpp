@@ -15,6 +15,7 @@
 
 #include <I2Cdev.h>
 #include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/float64_multi_array.hpp>
 
 namespace
 {
@@ -25,6 +26,7 @@ constexpr const char* NODE_NAME = "mpu6050_imu_driver";
 // ROS topics
 constexpr const char* IMU_TOPIC = "imu";
 constexpr const char* CONDUCTOR_STATE_TOPIC = "conductor_state";
+constexpr const char* IMU_DEBUG_TOPIC = "imu_debug";
 
 // ROS frame IDs
 constexpr const char* FRAME_ID = "imu_link";
@@ -355,6 +357,7 @@ Mpu6050Node::Mpu6050Node() : rclcpp::Node(NODE_NAME)
   declare_parameter("i2c_device", std::string(DEFAULT_I2C_DEVICE));
   declare_parameter("publish_rate_hz", DEFAULT_PUBLISH_RATE_HZ);
   declare_parameter("conductor_state_topic", std::string(CONDUCTOR_STATE_TOPIC));
+  declare_parameter("imu_debug_topic", std::string(IMU_DEBUG_TOPIC));
   declare_parameter("stationary_voltage_thresh", m_stationaryVoltageThresh);
   declare_parameter("stationary_gyro_thresh", m_stationaryGyroThresh);
   declare_parameter("stationary_accel_mag_thresh", m_stationaryAccelMagThresh);
@@ -380,12 +383,17 @@ Mpu6050Node::Mpu6050Node() : rclcpp::Node(NODE_NAME)
   declare_parameter("forward_response_gyro_thresh", m_forwardResponseGyroThresh);
   declare_parameter("forward_lock_seconds", m_forwardLockSeconds);
   declare_parameter("forward_score_thresh", m_forwardScoreThresh);
+  declare_parameter("forward_deadband", m_forwardDeadband);
+  declare_parameter("forward_sign_consistency_samples", m_forwardSignConsistencySamples);
+  declare_parameter("forward_gyro_veto_z", m_forwardGyroVetoZ);
+  declare_parameter("forward_gyro_veto_xy", m_forwardGyroVetoXY);
   declare_parameter("yaw_inflate_factor", m_yawInflateFactor);
   declare_parameter("dt_min", m_dtMin);
   declare_parameter("dt_max", m_dtMax);
 
   m_i2cDevice = get_parameter("i2c_device").as_string();
   m_conductorStateTopic = get_parameter("conductor_state_topic").as_string();
+  m_imuDebugTopic = get_parameter("imu_debug_topic").as_string();
   m_stationaryVoltageThresh = get_parameter("stationary_voltage_thresh").as_double();
   m_stationaryGyroThresh = get_parameter("stationary_gyro_thresh").as_double();
   m_stationaryAccelMagThresh = get_parameter("stationary_accel_mag_thresh").as_double();
@@ -411,6 +419,11 @@ Mpu6050Node::Mpu6050Node() : rclcpp::Node(NODE_NAME)
   m_forwardResponseGyroThresh = get_parameter("forward_response_gyro_thresh").as_double();
   m_forwardLockSeconds = get_parameter("forward_lock_seconds").as_double();
   m_forwardScoreThresh = get_parameter("forward_score_thresh").as_double();
+  m_forwardDeadband = get_parameter("forward_deadband").as_double();
+  m_forwardSignConsistencySamples =
+      get_parameter("forward_sign_consistency_samples").as_int();
+  m_forwardGyroVetoZ = get_parameter("forward_gyro_veto_z").as_double();
+  m_forwardGyroVetoXY = get_parameter("forward_gyro_veto_xy").as_double();
   m_yawInflateFactor = get_parameter("yaw_inflate_factor").as_double();
   m_dtMin = get_parameter("dt_min").as_double();
   m_dtMax = get_parameter("dt_max").as_double();
@@ -452,6 +465,8 @@ bool Mpu6050Node::Initialize()
 
   // Initialize publishers
   m_publisher = create_publisher<sensor_msgs::msg::Imu>(IMU_TOPIC, rclcpp::QoS(10));
+  m_debugPublisher =
+      create_publisher<std_msgs::msg::Float64MultiArray>(m_imuDebugTopic, rclcpp::QoS(10));
   m_conductorStateSub = create_subscription<oasis_msgs::msg::ConductorState>(
       m_conductorStateTopic, rclcpp::QoS(10),
       std::bind(&Mpu6050Node::OnConductorState, this, std::placeholders::_1));
@@ -477,36 +492,78 @@ void Mpu6050Node::OnConductorState(const oasis_msgs::msg::ConductorState& msg)
   }
 
   const rclcpp::Time msgStamp(msg.header.stamp);
+  double dutyRaw = msg.duty;
+  const double supplyVoltage = msg.supply_voltage;
+  const bool dutyProvided = std::abs(dutyRaw) > 1e-6;
+  const bool supplyValid = std::abs(supplyVoltage) > 1e-3;
 
-  if (m_lastMotorStamp.nanoseconds() > 0)
+  if (!dutyProvided)
   {
-    const double dt = (msgStamp - m_lastMotorStamp).seconds();
+    if ((supplyValid || m_supplyVoltageFiltInit) && std::abs(msg.motor_voltage) > 1e-3)
+    {
+      const double supplyForDuty = supplyValid ? supplyVoltage : m_supplyVoltageFilt;
+      if (std::abs(supplyForDuty) > 1e-3)
+        dutyRaw = std::clamp(msg.motor_voltage / supplyForDuty, -1.0, 1.0);
+      else
+        dutyRaw = msg.motor_voltage;
+    }
+    else
+    {
+      dutyRaw = msg.motor_voltage;
+    }
+  }
+
+  if (m_lastConductorStamp.nanoseconds() > 0)
+  {
+    const double dt = (msgStamp - m_lastConductorStamp).seconds();
     if (dt > 1e-3)
     {
       m_motorVoltageDvdt = (msg.motor_voltage - m_motorVoltage) / dt;
       const double alpha = EwmaAlpha(dt, m_motorVoltageLpTau);
-      const double prevFilt = m_motorVoltageFilt;
-      if (!m_motorVoltageFiltInit)
+      const double prevDuty = m_dutyFilt;
+      if (!m_dutyFiltInit)
       {
-        m_motorVoltageFilt = msg.motor_voltage;
-        m_motorVoltageFiltDvdt = 0.0;
-        m_motorVoltageFiltInit = true;
+        m_dutyFilt = dutyRaw;
+        m_dutyFiltDvdt = 0.0;
+        m_dutyFiltInit = true;
       }
       else
       {
-        m_motorVoltageFilt += alpha * (msg.motor_voltage - m_motorVoltageFilt);
-        m_motorVoltageFiltDvdt = (m_motorVoltageFilt - prevFilt) / dt;
+        m_dutyFilt += alpha * (dutyRaw - m_dutyFilt);
+        m_dutyFiltDvdt = (m_dutyFilt - prevDuty) / dt;
+      }
+
+      if (!m_supplyVoltageFiltInit)
+      {
+        m_supplyVoltageFilt = supplyVoltage;
+        m_supplyVoltageFiltDvdt = 0.0;
+        m_supplyVoltageFiltInit = supplyValid;
+      }
+      else if (supplyValid)
+      {
+        const double prevSupply = m_supplyVoltageFilt;
+        m_supplyVoltageFilt += alpha * (supplyVoltage - m_supplyVoltageFilt);
+        m_supplyVoltageFiltDvdt = (m_supplyVoltageFilt - prevSupply) / dt;
+      }
+      else
+      {
+        m_supplyVoltageFiltDvdt = 0.0;
       }
     }
   }
   else
   {
-    m_motorVoltageFilt = msg.motor_voltage;
-    m_motorVoltageFiltDvdt = 0.0;
-    m_motorVoltageFiltInit = true;
+    m_dutyFilt = dutyRaw;
+    m_dutyFiltDvdt = 0.0;
+    m_dutyFiltInit = true;
+    m_supplyVoltageFilt = supplyVoltage;
+    m_supplyVoltageFiltDvdt = 0.0;
+    m_supplyVoltageFiltInit = supplyValid;
   }
   m_motorVoltage = msg.motor_voltage;
-  m_lastMotorStamp = msgStamp;
+  m_supplyVoltage = supplyVoltage;
+  m_duty = dutyRaw;
+  m_lastConductorStamp = msgStamp;
 }
 
 void Mpu6050Node::PublishImu()
@@ -774,8 +831,7 @@ void Mpu6050Node::PublishImu()
 
   // Low-pass gravity for forward inference only to reduce estimator coupling.
   // Gate on low gyro and either not commanded or accel near g for robustness.
-  const bool commanded =
-      m_motorVoltageFiltInit && std::abs(m_motorVoltageFilt) > m_stationaryVoltageThresh;
+  const bool commanded = m_dutyFiltInit && std::abs(m_dutyFilt) > m_stationaryVoltageThresh;
   const bool gravityLpOk = accelConfidence > 0.7 &&
                            gyroUnbiasedNorm < (m_stationaryGyroThresh * 2.0) &&
                            (!commanded || accelOk);
@@ -795,48 +851,87 @@ void Mpu6050Node::PublishImu()
 
   const Vec3 gravityForForward = m_gravityLpInit ? m_gravityLpBody : gravityBodyUpdated;
   const Vec3 accelLinForForward = Sub(accel, gravityForForward);
-
-  if (m_zUpSolved && !m_forwardSolved)
+  Vec3 accelHoriz{0.0, 0.0, 0.0};
+  const double gravityNorm = Norm(gravityForForward);
+  const bool forwardPlaneOk = gravityNorm > 1e-3;
+  if (forwardPlaneOk)
   {
-    const double accelLinXY = std::sqrt(accelLinForForward[0] * accelLinForForward[0] +
-                                        accelLinForForward[1] * accelLinForForward[1]);
+    const Vec3 zHat = Scale(gravityForForward, 1.0 / gravityNorm);
+    const double proj = Dot(accelLinForForward, zHat);
+    accelHoriz = Sub(accelLinForForward, Scale(zHat, proj));
+  }
+
+  if (m_zUpSolved && !m_forwardSolved && forwardPlaneOk)
+  {
+    const double accelLinXY =
+        std::sqrt(accelHoriz[0] * accelHoriz[0] + accelHoriz[1] * accelHoriz[1]);
     const bool event =
-        commanded && (std::abs(m_motorVoltageFiltDvdt) > m_dvdtThresh || accelLinXY > m_alinThresh);
+        commanded && (std::abs(m_dutyFiltDvdt) > m_dvdtThresh || accelLinXY > m_alinThresh);
     const bool hasResponse =
         accelLinXY > m_forwardResponseAccelThresh || gyroUnbiasedNorm > m_forwardResponseGyroThresh;
-    // Motor voltage is commanded intent; it may change while a heavy train
-    // stays still, so dv/dt is not motion truth.
-    if (event && hasResponse)
+    const bool gyroVeto =
+        std::abs(gyroUnbiased[2]) > m_forwardGyroVetoZ ||
+        std::abs(gyroUnbiased[0]) > m_forwardGyroVetoXY ||
+        std::abs(gyroUnbiased[1]) > m_forwardGyroVetoXY;
+    // Duty is commanded intent; it may change while a heavy train stays still,
+    // so dv/dt is not motion truth.
+    if (event && hasResponse && !gyroVeto)
     {
       const double alpha = EwmaAlpha(dt, m_ewmaTau);
-      const double sign = (m_motorVoltageFilt >= 0.0) ? 1.0 : -1.0;
-      m_forwardScoreX = (1.0 - alpha) * m_forwardScoreX + alpha * sign * accelLinForForward[0];
-      m_forwardScoreY = (1.0 - alpha) * m_forwardScoreY + alpha * sign * accelLinForForward[1];
-
-      const double absX = std::abs(m_forwardScoreX);
-      const double absY = std::abs(m_forwardScoreY);
-      int dominantAxis = 0;
-      if (absX > absY)
-        dominantAxis = 1;
-      else if (absY > absX)
-        dominantAxis = -1;
-      if (dominantAxis != 0 && std::max(absX, absY) > m_forwardScoreThresh)
+      const double sign = (m_dutyFilt >= 0.0) ? 1.0 : -1.0;
+      if (std::abs(accelHoriz[0]) >= m_forwardDeadband)
       {
-        if (m_forwardDominantAxis == 0 || m_forwardDominantAxis == dominantAxis)
-        {
-          m_forwardDominantAxis = dominantAxis;
-          m_forwardDominanceDuration += dt;
-        }
-        else
+        m_forwardScoreX = (1.0 - alpha) * m_forwardScoreX + alpha * sign * accelHoriz[0];
+        m_forwardEnergyX =
+            (1.0 - alpha) * m_forwardEnergyX + alpha * std::abs(accelHoriz[0]);
+      }
+      if (std::abs(accelHoriz[1]) >= m_forwardDeadband)
+      {
+        m_forwardScoreY = (1.0 - alpha) * m_forwardScoreY + alpha * sign * accelHoriz[1];
+        m_forwardEnergyY =
+            (1.0 - alpha) * m_forwardEnergyY + alpha * std::abs(accelHoriz[1]);
+      }
+
+      const double confX = std::abs(m_forwardScoreX) / (m_forwardEnergyX + 1e-6);
+      const double confY = std::abs(m_forwardScoreY) / (m_forwardEnergyY + 1e-6);
+      int dominantAxis = 0;
+      if (confX > confY)
+        dominantAxis = 1;
+      else if (confY > confX)
+        dominantAxis = -1;
+      const double dominantConf = dominantAxis == 1 ? confX : confY;
+      const double dominantAccel = dominantAxis == 1 ? accelHoriz[0] : accelHoriz[1];
+      const bool dominantEligible =
+          dominantAxis != 0 && dominantConf > m_forwardScoreThresh &&
+          std::abs(dominantAccel) >= m_forwardDeadband;
+      if (dominantEligible)
+      {
+        const int signSample = (sign * dominantAccel >= 0.0) ? 1 : -1;
+        if (m_forwardDominantAxis != dominantAxis)
         {
           m_forwardDominantAxis = dominantAxis;
           m_forwardDominanceDuration = 0.0;
+          m_forwardSignConsistencyCount = 0;
+          m_forwardSignLast = 0;
         }
+
+        if (signSample == m_forwardSignLast)
+          m_forwardSignConsistencyCount += 1;
+        else
+        {
+          m_forwardSignLast = signSample;
+          m_forwardSignConsistencyCount = 1;
+        }
+
+        if (m_forwardSignConsistencyCount >= m_forwardSignConsistencySamples)
+          m_forwardDominanceDuration += dt;
       }
       else
       {
         m_forwardDominantAxis = 0;
         m_forwardDominanceDuration = 0.0;
+        m_forwardSignConsistencyCount = 0;
+        m_forwardSignLast = 0;
       }
     }
 
@@ -870,6 +965,20 @@ void Mpu6050Node::PublishImu()
       m_orientationQuat = {q[0], q[1], q[2], q[3]};
       RCLCPP_INFO(get_logger(), "IMU forward axis locked");
     }
+  }
+
+  const double confX = std::abs(m_forwardScoreX) / (m_forwardEnergyX + 1e-6);
+  const double confY = std::abs(m_forwardScoreY) / (m_forwardEnergyY + 1e-6);
+  if (m_debugPublisher)
+  {
+    std_msgs::msg::Float64MultiArray debugMsg;
+    debugMsg.data = {m_dutyFilt,         m_dutyFiltDvdt,     m_supplyVoltageFilt,
+                     m_supplyVoltageFiltDvdt, accelConfidence, accelHoriz[0],
+                     accelHoriz[1],      m_forwardScoreX,    m_forwardScoreY,
+                     m_forwardEnergyX,   m_forwardEnergyY,   confX,
+                     confY,              static_cast<double>(m_forwardDominantAxis),
+                     m_forwardDominanceDuration};
+    m_debugPublisher->publish(debugMsg);
   }
 
   linearAcceleration.x = accel[0];
