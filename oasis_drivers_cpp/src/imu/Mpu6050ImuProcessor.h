@@ -113,6 +113,7 @@ public:
 
   struct Output
   {
+    // Raw accelerometer measurement in body frame (includes gravity).
     Vec3 linear_acceleration{0.0, 0.0, 0.0};
     Vec3 angular_velocity{0.0, 0.0, 0.0};
     Quaternion orientation{1.0, 0.0, 0.0, 0.0};

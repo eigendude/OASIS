@@ -16,6 +16,11 @@ namespace OASIS
 {
 namespace ROS
 {
+namespace
+{
+// Duty magnitude below which the motor is treated as not actively commanded.
+constexpr double DUTY_COMMANDED_DEADBAND = 0.02;
+} // namespace
 
 MotorIntent::MotorIntent(double ewma_tau, double stale_seconds)
   : m_ewmaTau(ewma_tau), m_staleSeconds(stale_seconds)
@@ -52,15 +57,24 @@ void MotorIntent::Update(const rclcpp::Time& stamp, double duty_cycle)
   m_dutyRaw = duty_cycle;
 }
 
+void MotorIntent::SetEwmaTau(double ewma_tau)
+{
+  m_ewmaTau = ewma_tau;
+}
+
+void MotorIntent::SetStaleSeconds(double stale_seconds)
+{
+  m_staleSeconds = stale_seconds;
+}
+
 MotorIntentOutput MotorIntent::Get(const rclcpp::Time& now) const
 {
   MotorIntentOutput output;
   output.duty_raw = m_dutyRaw;
   output.duty_filt = m_dutyFilt;
   output.fresh = m_initialized && (now - m_lastStamp).seconds() <= m_staleSeconds;
-  output.commanded = m_initialized && output.fresh;
-  if (!output.fresh && m_initialized)
-    m_dutyFiltDvdt = 0.0;
+  output.commanded =
+      output.fresh && std::abs(m_dutyFilt) > DUTY_COMMANDED_DEADBAND;
   output.duty_dvdt = output.fresh ? m_dutyFiltDvdt : 0.0;
   output.sign = (m_dutyFilt >= 0.0) ? 1.0 : -1.0;
   return output;

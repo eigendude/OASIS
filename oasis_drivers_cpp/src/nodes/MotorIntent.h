@@ -31,6 +31,8 @@ public:
   MotorIntent(double ewma_tau, double stale_seconds);
 
   void Update(const rclcpp::Time& stamp, double duty_cycle);
+  void SetEwmaTau(double ewma_tau);
+  void SetStaleSeconds(double stale_seconds);
   MotorIntentOutput Get(const rclcpp::Time& now) const;
   bool IsInitialized() const;
 
@@ -39,7 +41,7 @@ private:
   double m_staleSeconds = 0.0;
   double m_dutyRaw = 0.0;
   double m_dutyFilt = 0.0;
-  mutable double m_dutyFiltDvdt = 0.0;
+  double m_dutyFiltDvdt = 0.0;
   rclcpp::Time m_lastStamp;
   bool m_initialized = false;
 };
