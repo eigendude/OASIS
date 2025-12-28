@@ -58,6 +58,9 @@ private:
   bool m_hasGravity = false;
   std::array<double, 3> m_gravityHat{{0.0, 0.0, 1.0}};
 
+  double m_gMagEma = 0.0;
+  bool m_hasGMag = false;
+
   double m_gyroEma = 0.0;
   double m_accelDevEma = 0.0;
   double m_stillTime = 0.0;

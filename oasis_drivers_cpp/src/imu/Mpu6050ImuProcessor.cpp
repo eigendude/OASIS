@@ -148,9 +148,18 @@ std::optional<Mpu6050ImuProcessor::ImuOutput> Mpu6050ImuProcessor::Process(
   // C) Stationary detection using EMAs of gyro magnitude and accel deviation from gravity.
   const double gyroMag = Norm3(sample.gyro);
   const double accelMag = Norm3(sample.accel);
-  const double accelDev = std::abs(accelMag - GRAVITY);
-
   const double emaAlpha = EmaAlpha(dt, EMA_TAU);
+  if (!m_hasGMag)
+  {
+    m_gMagEma = accelMag;
+    m_hasGMag = true;
+  }
+  else if (gyroMag < GYRO_STILL_THRESH)
+  {
+    m_gMagEma = m_gMagEma + emaAlpha * (accelMag - m_gMagEma);
+  }
+  const double accelDev = std::abs(accelMag - m_gMagEma);
+
   m_gyroEma = m_gyroEma + emaAlpha * (gyroMag - m_gyroEma);
   m_accelDevEma = m_accelDevEma + emaAlpha * (accelDev - m_accelDevEma);
 
