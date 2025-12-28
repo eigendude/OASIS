@@ -35,6 +35,40 @@ constexpr double DEFAULT_PUBLISH_RATE_HZ = 50.0;
 constexpr double GRAVITY = 9.80665; // m/s^2
 constexpr double ACCEL_SCALE = GRAVITY / 16384.0; // +/-2g full scale
 constexpr double GYRO_SCALE = (M_PI / 180.0) / 131.0; // +/-250 deg/s full scale
+
+double AccelScaleFromRange(uint8_t range)
+{
+  switch (range)
+  {
+    case MPU6050_ACCEL_FS_2:
+      return GRAVITY / 16384.0;
+    case MPU6050_ACCEL_FS_4:
+      return GRAVITY / 8192.0;
+    case MPU6050_ACCEL_FS_8:
+      return GRAVITY / 4096.0;
+    case MPU6050_ACCEL_FS_16:
+      return GRAVITY / 2048.0;
+    default:
+      return ACCEL_SCALE;
+  }
+}
+
+double GyroScaleFromRange(uint8_t range)
+{
+  switch (range)
+  {
+    case MPU6050_GYRO_FS_250:
+      return (M_PI / 180.0) / 131.0;
+    case MPU6050_GYRO_FS_500:
+      return (M_PI / 180.0) / 65.5;
+    case MPU6050_GYRO_FS_1000:
+      return (M_PI / 180.0) / 32.8;
+    case MPU6050_GYRO_FS_2000:
+      return (M_PI / 180.0) / 16.4;
+    default:
+      return GYRO_SCALE;
+  }
+}
 } // namespace
 
 using namespace OASIS::ROS;
@@ -68,9 +102,22 @@ bool Mpu6050Node::Initialize()
 
   RCLCPP_INFO(get_logger(), "Connected to MPU6050 on %s", m_i2cDevice.c_str());
 
-  // Initialize IMU state
-  m_accelScale = ACCEL_SCALE;
-  m_gyroScale = GYRO_SCALE;
+  // Ensure full-scale ranges match our scaling assumptions
+  m_mpu6050->setFullScaleAccelRange(MPU6050_ACCEL_FS_2);
+  m_mpu6050->setFullScaleGyroRange(MPU6050_GYRO_FS_250);
+
+  const uint8_t accelRange = m_mpu6050->getFullScaleAccelRange();
+  const uint8_t gyroRange = m_mpu6050->getFullScaleGyroRange();
+
+  // Initialize IMU state based on actual configuration
+  m_accelScale = AccelScaleFromRange(accelRange);
+  m_gyroScale = GyroScaleFromRange(gyroRange);
+
+  RCLCPP_INFO(
+    get_logger(),
+    "MPU6050 full-scale ranges set (accel=%u, gyro=%u)",
+    static_cast<unsigned>(accelRange),
+    static_cast<unsigned>(gyroRange));
 
   // Initialize publishers
   m_publisher = create_publisher<sensor_msgs::msg::Imu>(IMU_TOPIC, rclcpp::QoS(10));
