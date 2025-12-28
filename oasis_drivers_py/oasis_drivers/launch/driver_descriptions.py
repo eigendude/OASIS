@@ -179,6 +179,8 @@ class DriverDescriptions:
                 # Topics
                 ("conductor_state", f"{STATION_HOST_ID}/conductor_state"),
                 ("imu", f"{host_id}/imu"),
+                ("imu_status", f"{host_id}/imu_status"),
+                ("imu_mapping_debug", f"{host_id}/imu_mapping_debug"),
             ],
         )
         ld.add_action(mpu_node)
