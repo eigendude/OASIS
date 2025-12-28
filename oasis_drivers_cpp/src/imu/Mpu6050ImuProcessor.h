@@ -71,6 +71,7 @@ private:
   bool m_axisLocked = false;
   double m_lockAccumTime = 0.0;
   int m_covSamples = 0;
+  bool m_axisResetArmed = true;
 
   double m_cmdFiltered = 0.0;
   int m_cmdSign = 0;

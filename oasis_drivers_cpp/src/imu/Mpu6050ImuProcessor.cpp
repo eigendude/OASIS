@@ -166,6 +166,8 @@ std::optional<Mpu6050ImuProcessor::ImuOutput> Mpu6050ImuProcessor::Process(
     m_stillTime = 0.0;
   }
 
+  const bool wasStationary = m_stationary;
+
   if (m_stationary)
   {
     if (m_moveTime > T_MOVE)
@@ -176,6 +178,9 @@ std::optional<Mpu6050ImuProcessor::ImuOutput> Mpu6050ImuProcessor::Process(
     if (m_stillTime > T_STILL)
       m_stationary = true;
   }
+
+  if (wasStationary && !m_stationary)
+    m_axisResetArmed = true;
 
   // A) Gravity direction estimation using an EMA that is more aggressive when stationary.
   if (!m_hasGravity)
@@ -202,7 +207,7 @@ std::optional<Mpu6050ImuProcessor::ImuOutput> Mpu6050ImuProcessor::Process(
   const double aHorizMag = Norm2(aHoriz2d);
 
   // B) Axis-line estimation reset when stationary long enough.
-  if (m_stationary && m_stillTime > T_RESET)
+  if (m_stationary && m_stillTime > T_RESET && m_axisResetArmed)
   {
     m_cov00 = 0.0;
     m_cov01 = 0.0;
@@ -211,15 +216,20 @@ std::optional<Mpu6050ImuProcessor::ImuOutput> Mpu6050ImuProcessor::Process(
     m_lockAccumTime = 0.0;
     m_axisLocked = false;
     m_axisHat = {1.0, 0.0};
+    m_signConfirmTime = 0.0;
+    m_confirmTarget = 0;
+    m_axisResetArmed = false;
   }
 
   // B) Axis-line estimation: signless covariance update in the horizontal plane.
   if (!m_stationary && aHorizMag > A_MOVE_THRESH)
   {
     const double beta = m_axisLocked ? BETA_COV_LOCKED : BETA_COV;
-    m_cov00 = (1.0 - beta) * m_cov00 + beta * (aHoriz2d[0] * aHoriz2d[0]);
-    m_cov01 = (1.0 - beta) * m_cov01 + beta * (aHoriz2d[0] * aHoriz2d[1]);
-    m_cov11 = (1.0 - beta) * m_cov11 + beta * (aHoriz2d[1] * aHoriz2d[1]);
+    const double invMag = 1.0 / (aHorizMag + EPS);
+    const std::array<double, 2> dir{aHoriz2d[0] * invMag, aHoriz2d[1] * invMag};
+    m_cov00 = (1.0 - beta) * m_cov00 + beta * (dir[0] * dir[0]);
+    m_cov01 = (1.0 - beta) * m_cov01 + beta * (dir[0] * dir[1]);
+    m_cov11 = (1.0 - beta) * m_cov11 + beta * (dir[1] * dir[1]);
     m_covSamples++;
   }
 
@@ -289,6 +299,7 @@ std::optional<Mpu6050ImuProcessor::ImuOutput> Mpu6050ImuProcessor::Process(
   else if (m_cmdFiltered < -CMD_HYST)
     cmdSign = -1;
 
+  const int prevCmdSign = m_cmdSign;
   if (cmdSign != m_cmdSign && cmdSign != 0 && m_cmdSign != 0)
   {
     m_reversalGraceTime = T_GRACE;
@@ -300,6 +311,12 @@ std::optional<Mpu6050ImuProcessor::ImuOutput> Mpu6050ImuProcessor::Process(
   if (m_reversalGraceTime > 0.0)
   {
     m_reversalGraceTime = std::max(0.0, m_reversalGraceTime - dt);
+    m_signConfirmTime = 0.0;
+    m_confirmTarget = 0;
+  }
+  else if (prevCmdSign == 0 && m_cmdSign != 0)
+  {
+    m_signedAxisSign = m_cmdSign;
     m_signConfirmTime = 0.0;
     m_confirmTarget = 0;
   }
@@ -330,23 +347,20 @@ std::optional<Mpu6050ImuProcessor::ImuOutput> Mpu6050ImuProcessor::Process(
   {
     if (m_cmdSign != 0)
     {
-      if (imuStrong)
+      if (imuStrong && imuSign != 0 && imuSign != m_cmdSign)
       {
-        const int target = (imuSign == 0) ? m_cmdSign : imuSign;
-        if (target != m_confirmTarget)
+        if (imuSign != m_confirmTarget)
         {
-          m_confirmTarget = target;
+          m_confirmTarget = imuSign;
           m_signConfirmTime = 0.0;
         }
         m_signConfirmTime += dt;
         if (m_signConfirmTime >= T_CONFIRM)
-        {
-          if (target == m_cmdSign || target == imuSign)
-            m_signedAxisSign = target;
-        }
+          m_signedAxisSign = imuSign;
       }
       else
       {
+        m_signedAxisSign = m_cmdSign;
         m_signConfirmTime = 0.0;
         m_confirmTarget = 0;
       }
