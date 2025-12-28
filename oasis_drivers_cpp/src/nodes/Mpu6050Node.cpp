@@ -539,7 +539,7 @@ void Mpu6050Node::PublishImu()
   header.frame_id = FRAME_ID;
 
   geometry_msgs::msg::Vector3& angularVelocity = imuMsg.angular_velocity;
-  geometry_msgs::msg::Vector3& linearAceleration = imuMsg.linear_acceleration;
+  geometry_msgs::msg::Vector3& linearAcceleration = imuMsg.linear_acceleration;
 
   const Vec3 accelRaw = {static_cast<double>(ax) * m_accelScale,
                          static_cast<double>(ay) * m_accelScale,
@@ -808,7 +808,8 @@ void Mpu6050Node::PublishImu()
     const bool event = m_forwardCandidateTime > 0.0 || accelLinXY > m_alinThresh;
     const bool hasResponse =
         accelLinXY > m_forwardResponseAccelThresh || gyroUnbiasedNorm > m_forwardResponseGyroThresh;
-    // Motor voltage is commanded intent; dv/dt alone is not motion truth.
+    // Motor voltage is commanded intent; it may change while a heavy train
+    // stays still, so dv/dt is not motion truth.
     if (event && commanded && hasResponse)
     {
       const double alpha = EwmaAlpha(dt, m_ewmaTau);
@@ -875,9 +876,9 @@ void Mpu6050Node::PublishImu()
     }
   }
 
-  linearAceleration.x = accel[0];
-  linearAceleration.y = accel[1];
-  linearAceleration.z = accel[2];
+  linearAcceleration.x = accel[0];
+  linearAcceleration.y = accel[1];
+  linearAcceleration.z = accel[2];
 
   angularVelocity.x = gyro[0];
   angularVelocity.y = gyro[1];
@@ -890,12 +891,17 @@ void Mpu6050Node::PublishImu()
 
   const double tempScale =
       m_hasTemperature ? 1.0 + m_tempScale * std::abs(m_lastTemperature - m_temperatureAtCal) : 1.0;
-  const double accelScaleNoise = std::pow(m_accelScaleNoise * Norm(accel), 2.0) * tempScale;
-  const double gyroScaleNoise = std::pow(m_gyroScaleNoise * Norm(gyroUnbiased), 2.0) * tempScale;
+  Vec3 accelScaleNoise{0.0, 0.0, 0.0};
+  Vec3 gyroScaleNoise{0.0, 0.0, 0.0};
+  for (size_t i = 0; i < 3; ++i)
+  {
+    accelScaleNoise[i] = std::pow(m_accelScaleNoise * std::abs(accel[i]), 2.0) * tempScale;
+    gyroScaleNoise[i] = std::pow(m_gyroScaleNoise * std::abs(gyroUnbiased[i]), 2.0) * tempScale;
+  }
 
   const double rollVarPub = m_rollVar / std::max(accelConfidence, 0.1);
   const double pitchVarPub = m_pitchVar / std::max(accelConfidence, 0.1);
-  m_yawVar += (m_gyroVar[2] + m_gyroBiasVar[2] + gyroScaleNoise) * dt * dt;
+  m_yawVar += (m_gyroVar[2] + m_gyroBiasVar[2] + gyroScaleNoise[2]) * dt * dt;
   if (!m_isStationary || accelConfidence < 0.7)
     m_yawVar += m_yawInflateFactor * (1.0 - accelConfidence) * dt;
 
@@ -906,17 +912,17 @@ void Mpu6050Node::PublishImu()
   // Angular velocity covariance: sensor noise plus bias uncertainty (and
   // scale/temperature heuristics).
   imuMsg.angular_velocity_covariance = {
-      m_gyroVar[0] + m_gyroBiasVar[0] + gyroScaleNoise, 0.0, 0.0, 0.0,
-      m_gyroVar[1] + m_gyroBiasVar[1] + gyroScaleNoise, 0.0, 0.0, 0.0,
-      m_gyroVar[2] + m_gyroBiasVar[2] + gyroScaleNoise};
+      m_gyroVar[0] + m_gyroBiasVar[0] + gyroScaleNoise[0], 0.0, 0.0, 0.0,
+      m_gyroVar[1] + m_gyroBiasVar[1] + gyroScaleNoise[1], 0.0, 0.0, 0.0,
+      m_gyroVar[2] + m_gyroBiasVar[2] + gyroScaleNoise[2]};
 
   // Linear acceleration covariance: specific force (includes gravity) noise,
   // estimated in stationary windows and inflated for dynamic maneuvers.
   const double accelInflate = m_isStationary ? 1.0 : 1.0 / std::max(accelConfidence, 0.1);
   imuMsg.linear_acceleration_covariance = {
-      accelInflate * (m_accelVar[0] + accelScaleNoise), 0.0, 0.0, 0.0,
-      accelInflate * (m_accelVar[1] + accelScaleNoise), 0.0, 0.0, 0.0,
-      accelInflate * (m_accelVar[2] + accelScaleNoise)};
+      accelInflate * (m_accelVar[0] + accelScaleNoise[0]), 0.0, 0.0, 0.0,
+      accelInflate * (m_accelVar[1] + accelScaleNoise[1]), 0.0, 0.0, 0.0,
+      accelInflate * (m_accelVar[2] + accelScaleNoise[2])};
 
   m_publisher->publish(imuMsg);
 }
