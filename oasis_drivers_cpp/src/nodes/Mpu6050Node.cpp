@@ -534,13 +534,16 @@ void Mpu6050Node::PublishImu()
   static Vec3 accelMean{0.0, 0.0, 0.0};
   static bool accelMeanInit = false;
 
+  const Vec3 gyroMapped = ApplyMapping(m_activeMapping, gyroRaw);
+  const Vec3 gyroUnbiasedPreSolve = Sub(gyroMapped, m_gyroBias);
+  const double gyroMagPreSolve = Norm(gyroUnbiasedPreSolve);
+
   if (!m_zUpSolved)
   {
     const double accelMag = Norm(accelRaw);
     const bool accelOk = std::abs(accelMag - GRAVITY) < m_stationaryAccelMagThresh;
-    const double gyroMag = Norm(gyroRaw);
     const bool motorOk = std::abs(m_motorVoltage) < m_stationaryVoltageThresh;
-    if (motorOk && gyroMag < m_stationaryGyroThresh && accelOk)
+    if (motorOk && gyroMagPreSolve < m_stationaryGyroThresh && accelOk)
     {
       const double alpha = EwmaAlpha(dt, m_ewmaTau);
       if (!accelMeanInit)
@@ -601,9 +604,10 @@ void Mpu6050Node::PublishImu()
 
   Vec3 accel = ApplyMapping(m_activeMapping, accelRaw);
   Vec3 gyro = ApplyMapping(m_activeMapping, gyroRaw);
+  const Vec3 gyroUnbiased = Sub(gyro, m_gyroBias);
 
   const double accelMag = Norm(accel);
-  const double gyroMag = Norm(gyro);
+  const double gyroMag = Norm(gyroUnbiased);
   const bool motorOk = std::abs(m_motorVoltage) < m_stationaryVoltageThresh;
   const bool accelOk = std::abs(accelMag - GRAVITY) < m_stationaryAccelMagThresh;
   const bool gyroOk = gyroMag < m_stationaryGyroThresh;
@@ -643,7 +647,6 @@ void Mpu6050Node::PublishImu()
   for (size_t i = 0; i < 3; ++i)
     m_mahonyIntegral[i] =
         std::clamp(m_mahonyIntegral[i], -m_mahonyIntegralLimit, m_mahonyIntegralLimit);
-  const Vec3 gyroUnbiased = Sub(gyro, m_gyroBias);
   Vec3 gyroCorrected = gyroUnbiased;
   gyroCorrected = Add(gyroCorrected, Add(Scale(error, kpEff), m_mahonyIntegral));
 
@@ -693,8 +696,8 @@ void Mpu6050Node::PublishImu()
     }
   }
 
-  static bool gyroVarInit = false;
-  static bool accelVarInit = false;
+  static std::array<bool, 3> gyroVarInit{{false, false, false}};
+  static std::array<bool, 3> accelVarInit{{false, false, false}};
   static bool orientVarInit = false;
   static bool accelMeanStationaryInit = false;
   static Vec3 gyroMean{0.0, 0.0, 0.0};
@@ -719,14 +722,14 @@ void Mpu6050Node::PublishImu()
     }
     for (size_t i = 0; i < 3; ++i)
     {
-      bool init = gyroVarInit;
+      bool init = gyroVarInit[i];
       EwmaUpdate(gyroUnbiased[i], alpha, gyroMean[i], gyroVar[i], init);
-      gyroVarInit = init;
+      gyroVarInit[i] = init;
 
-      init = accelVarInit;
+      init = accelVarInit[i];
       const double accelResidual = accel[i] - accelMeanStationary[i];
       EwmaUpdate(accelResidual, alpha, accelResidualMean[i], accelVar[i], init);
-      accelVarInit = init;
+      accelVarInit[i] = init;
     }
     const Vec3 euler = EulerFromQuat(q);
     bool init = orientVarInit;
@@ -734,7 +737,9 @@ void Mpu6050Node::PublishImu()
     EwmaUpdate(euler[1], alpha, rollPitchMean[1], rollPitchVar[1], init);
     orientVarInit = init;
 
-    if (gyroVarInit && accelVarInit && orientVarInit && !m_covarianceInitialized)
+    const bool gyroVarReady = gyroVarInit[0] && gyroVarInit[1] && gyroVarInit[2];
+    const bool accelVarReady = accelVarInit[0] && accelVarInit[1] && accelVarInit[2];
+    if (gyroVarReady && accelVarReady && orientVarInit && !m_covarianceInitialized)
     {
       m_covarianceInitialized = true;
       RCLCPP_INFO(get_logger(), "IMU covariance estimates initialized");
@@ -856,7 +861,7 @@ void Mpu6050Node::PublishImu()
   const double tempScale =
       m_hasTemperature ? 1.0 + m_tempScale * std::abs(m_lastTemperature - m_temperatureAtCal) : 1.0;
   const double accelScaleNoise = std::pow(m_accelScaleNoise * Norm(accel), 2.0) * tempScale;
-  const double gyroScaleNoise = std::pow(m_gyroScaleNoise * Norm(gyro), 2.0) * tempScale;
+  const double gyroScaleNoise = std::pow(m_gyroScaleNoise * Norm(gyroUnbiased), 2.0) * tempScale;
 
   const double rollVarPub = m_rollVar / std::max(accelConfidence, 0.1);
   const double pitchVarPub = m_pitchVar / std::max(accelConfidence, 0.1);
