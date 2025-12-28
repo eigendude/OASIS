@@ -91,7 +91,6 @@ private:
   double m_forwardScoreY = 0.0;
   double m_forwardDominanceDuration = 0.0;
   int m_forwardDominantAxis = 0;
-  double m_forwardCandidateTime = 0.0;
 
   // Temperature tracking
   bool m_hasTemperature = false;
@@ -137,10 +136,6 @@ private:
   double m_motorVoltageLpTau = 0.2;
   double m_dvdtThresh = 0.4;
   double m_alinThresh = 0.6;
-  // Forward inference: window opened by commanded dv/dt (intent-only heuristic
-  // for a LEGO train; motor voltage can change while stationary and dv/dt is
-  // not motion truth).
-  double m_forwardCandidateWindowSeconds = 0.25;
   // Forward inference: minimum IMU response required to update score, tuned
   // for LEGO train vibration levels (heuristic; gyro magnitude threshold).
   double m_forwardResponseAccelThresh = 0.2;
