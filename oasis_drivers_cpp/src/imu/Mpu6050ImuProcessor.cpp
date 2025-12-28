@@ -41,7 +41,6 @@ constexpr double T_GRACE = 0.6;
 
 constexpr double BETA_SIGN = 0.05;
 constexpr double BETA_IDLE = 0.005;
-constexpr double E_MAX = 1.5;
 constexpr double IMU_SIGN_CONF_THRESH = 0.4;
 constexpr double T_CONFIRM = 0.3;
 
@@ -91,7 +90,7 @@ std::array<double, 3> Normalize3(const std::array<double, 3>& value)
 double EmaAlpha(double dt, double tau)
 {
   if (dt <= 0.0)
-    return 1.0;
+    return 0.0;
   return 1.0 - std::exp(-dt / tau);
 }
 
@@ -326,7 +325,9 @@ std::optional<Mpu6050ImuProcessor::ImuOutput> Mpu6050ImuProcessor::Process(
   {
     if (!m_stationary && aHorizMag > A_MOVE_THRESH)
     {
-      const double evidence = Clamp(Dot2(aHoriz2d, m_axisHat) / E_MAX, -1.0, 1.0);
+      const double invMag = 1.0 / (aHorizMag + EPS);
+      const std::array<double, 2> dir{aHoriz2d[0] * invMag, aHoriz2d[1] * invMag};
+      const double evidence = Dot2(dir, m_axisHat);
       m_imuEvidence = (1.0 - BETA_SIGN) * m_imuEvidence + BETA_SIGN * evidence;
     }
     else
