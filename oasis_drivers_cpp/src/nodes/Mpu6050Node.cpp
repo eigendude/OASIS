@@ -228,6 +228,7 @@ void Mpu6050Node::PublishImu()
   imuMsg.orientation.x = 0.0;
   imuMsg.orientation.y = 0.0;
   imuMsg.orientation.z = 0.0;
+  imuMsg.orientation_covariance[0] = -1.0;
 
   if (!m_hasAxisState)
   {
@@ -251,6 +252,14 @@ void Mpu6050Node::PublishImu()
       RCLCPP_INFO(get_logger(), "Forward-axis sign set to %d", output->signed_sign);
       m_lastSignedSign = output->signed_sign;
     }
+  }
+
+  if (m_imuProcessor.IsCalibrated())
+  {
+    imuMsg.orientation = m_imuProcessor.GetMountingQuaternionMsg();
+    constexpr double kSigmaRad = 2.0 * M_PI / 180.0;
+    const double variance = kSigmaRad * kSigmaRad;
+    imuMsg.orientation_covariance = {variance, 0.0, 0.0, 0.0, variance, 0.0, 0.0, 0.0, variance};
   }
 
   m_imuPublisher->publish(imuMsg);
