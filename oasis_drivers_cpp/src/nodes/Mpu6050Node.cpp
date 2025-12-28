@@ -123,6 +123,38 @@ Mpu6050Node::Mpu6050Node() : rclcpp::Node(NODE_NAME)
   m_dtMin = get_parameter("dt_min").as_double();
   m_dtMax = get_parameter("dt_max").as_double();
   m_motorIntent = MotorIntent(m_ewmaTau, m_conductorStaleSeconds);
+  OASIS::IMU::Mpu6050ImuProcessor::Config imuConfig;
+  imuConfig.stationary_gyro_thresh = m_stationaryGyroThresh;
+  imuConfig.stationary_accel_mag_thresh = m_stationaryAccelMagThresh;
+  imuConfig.stationary_hold_seconds = m_stationaryHoldSeconds;
+  imuConfig.mahony_kp = m_kpBase;
+  imuConfig.mahony_ki = m_kiBase;
+  imuConfig.mahony_integral_limit = m_mahonyIntegralLimit;
+  imuConfig.bias_tau = m_biasTau;
+  imuConfig.bias_q = m_biasQ;
+  imuConfig.bias_var_min = m_biasVarMin;
+  imuConfig.bias_var_max = m_biasVarMax;
+  imuConfig.ewma_tau = m_ewmaTau;
+  imuConfig.relevel_rate = m_relevelRate;
+  imuConfig.accel_confidence_range = m_accelConfidenceRange;
+  imuConfig.gravity_lp_tau = m_gravityLpTau;
+  imuConfig.accel_scale_noise = m_accelScaleNoise;
+  imuConfig.gyro_scale_noise = m_gyroScaleNoise;
+  imuConfig.temp_scale = m_tempScale;
+  imuConfig.dvdt_thresh = m_dvdtThresh;
+  imuConfig.alin_thresh = m_alinThresh;
+  imuConfig.forward_response_accel_thresh = m_forwardResponseAccelThresh;
+  imuConfig.forward_response_gyro_thresh = m_forwardResponseGyroThresh;
+  imuConfig.forward_lock_seconds = m_forwardLockSeconds;
+  imuConfig.forward_score_thresh = m_forwardScoreThresh;
+  imuConfig.forward_deadband = m_forwardDeadband;
+  imuConfig.forward_sign_consistency_samples = m_forwardSignConsistencySamples;
+  imuConfig.forward_gyro_veto_z = m_forwardGyroVetoZ;
+  imuConfig.forward_gyro_veto_xy = m_forwardGyroVetoXY;
+  imuConfig.yaw_inflate_factor = m_yawInflateFactor;
+  imuConfig.dt_min = m_dtMin;
+  imuConfig.dt_max = m_dtMax;
+  m_imuProcessor = std::make_unique<OASIS::IMU::Mpu6050ImuProcessor>(imuConfig);
 
   const double publishRateHz = get_parameter("publish_rate_hz").as_double();
   const double clampedRate = std::max(publishRateHz, 1.0);
@@ -153,8 +185,13 @@ bool Mpu6050Node::Initialize()
   const uint8_t gyroRange = m_mpu6050->getFullScaleGyroRange();
 
   // Initialize IMU state based on actual configuration
-  m_accelScale = AccelScaleFromRange(accelRange);
-  m_gyroScale = GyroScaleFromRange(gyroRange);
+  const double accelScale = AccelScaleFromRange(accelRange);
+  const double gyroScale = GyroScaleFromRange(gyroRange);
+  if (m_imuProcessor)
+  {
+    m_imuProcessor->SetAccelScale(accelScale);
+    m_imuProcessor->SetGyroScale(gyroScale);
+  }
 
   RCLCPP_INFO(get_logger(), "MPU6050 full-scale ranges set (accel=%u, gyro=%u)",
               static_cast<unsigned>(accelRange), static_cast<unsigned>(gyroRange));
@@ -197,12 +234,6 @@ void Mpu6050Node::OnConductorState(const oasis_msgs::msg::ConductorState& msg)
   m_motorIntent.Update(stamp, dutyClamped);
 }
 
-void Mpu6050Node::OnMappingJump(const char* reason)
-{
-  m_yawVar = std::max(m_yawVar, 1.5);
-  RCLCPP_INFO(get_logger(), "IMU mapping jump: %s", reason);
-}
-
 void Mpu6050Node::PublishImu()
 {
   if (!m_mpu6050)
@@ -221,472 +252,91 @@ void Mpu6050Node::PublishImu()
   m_mpu6050->getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
 
   const int16_t tempRaw = m_mpu6050->getTemperature();
-  m_hasTemperature = true;
-  m_lastTemperature = static_cast<double>(tempRaw) / 340.0 + 36.53;
+  const rclcpp::Time now = get_clock()->now();
+  if (!m_imuProcessor)
+    return;
+
+  const MotorIntentOutput motorOutput = m_motorIntent.Get(now);
+  OASIS::IMU::Mpu6050ImuProcessor::MotorIntentInput motorInput;
+  motorInput.duty_raw = motorOutput.duty_raw;
+  motorInput.duty_filt = motorOutput.duty_filt;
+  motorInput.duty_dvdt = motorOutput.duty_dvdt;
+  motorInput.fresh = motorOutput.fresh;
+  motorInput.commanded = motorOutput.commanded;
+  motorInput.sign = motorOutput.sign;
+
+  OASIS::IMU::Mpu6050ImuProcessor::RawSample sample;
+  sample.ax = ax;
+  sample.ay = ay;
+  sample.az = az;
+  sample.gx = gx;
+  sample.gy = gy;
+  sample.gz = gz;
+  sample.temp_raw = tempRaw;
+  sample.timestamp = now.seconds();
+
+  auto output = m_imuProcessor->Process(sample, motorInput);
+  if (!output)
+    return;
+
+  if (output->mapping_jump_reason.has_value())
+  {
+    RCLCPP_INFO(get_logger(), "IMU mapping jump: %s", output->mapping_jump_reason->c_str());
+  }
+  for (const auto& message : output->info_messages)
+  {
+    RCLCPP_INFO(get_logger(), "%s", message.c_str());
+  }
 
   auto imuMsg = sensor_msgs::msg::Imu();
 
   std_msgs::msg::Header& header = imuMsg.header;
-  header.stamp = get_clock()->now();
+  header.stamp = now;
   header.frame_id = FRAME_ID;
 
   geometry_msgs::msg::Vector3& angularVelocity = imuMsg.angular_velocity;
   geometry_msgs::msg::Vector3& linearAcceleration = imuMsg.linear_acceleration;
 
-  const Vec3 accelRaw = {static_cast<double>(ax) * m_accelScale,
-                         static_cast<double>(ay) * m_accelScale,
-                         static_cast<double>(az) * m_accelScale};
-  const Vec3 gyroRaw = {static_cast<double>(gx) * m_gyroScale,
-                        static_cast<double>(gy) * m_gyroScale,
-                        static_cast<double>(gz) * m_gyroScale};
+  linearAcceleration.x = output->linear_acceleration[0];
+  linearAcceleration.y = output->linear_acceleration[1];
+  linearAcceleration.z = output->linear_acceleration[2];
 
-  const rclcpp::Time now = header.stamp;
-  if (m_lastStamp.nanoseconds() == 0)
-  {
-    m_lastStamp = now;
-    return;
-  }
-  const double dt = (now - m_lastStamp).seconds();
-  m_lastStamp = now;
-  if (dt < m_dtMin || dt > m_dtMax)
-    return;
+  angularVelocity.x = output->angular_velocity[0];
+  angularVelocity.y = output->angular_velocity[1];
+  angularVelocity.z = output->angular_velocity[2];
 
-  static const std::vector<Mapping> mappings = GenerateMappings();
-  static Vec3 accelMean{0.0, 0.0, 0.0};
-  static bool accelMeanInit = false;
+  imuMsg.orientation.w = output->orientation[0];
+  imuMsg.orientation.x = output->orientation[1];
+  imuMsg.orientation.y = output->orientation[2];
+  imuMsg.orientation.z = output->orientation[3];
 
-  const Vec3 gyroMapped = ApplyMapping(m_activeMapping, gyroRaw);
-  const Vec3 gyroUnbiasedPreSolve = Sub(gyroMapped, m_gyroBias);
-  const double gyroMagPreSolve = Norm(gyroUnbiasedPreSolve);
+  imuMsg.orientation_covariance = output->orientation_covariance;
+  imuMsg.angular_velocity_covariance = output->angular_velocity_covariance;
+  imuMsg.linear_acceleration_covariance = output->linear_acceleration_covariance;
 
-  if (!m_zUpSolved)
-  {
-    const double accelMag = Norm(accelRaw);
-    const bool accelOk = std::abs(accelMag - GRAVITY) < m_stationaryAccelMagThresh;
-    if (gyroMagPreSolve < m_stationaryGyroThresh && accelOk)
-    {
-      const double alpha = EwmaAlpha(dt, m_ewmaTau);
-      if (!accelMeanInit)
-      {
-        accelMean = accelRaw;
-        accelMeanInit = true;
-      }
-      else
-      {
-        accelMean = Add(accelMean, Scale(Sub(accelRaw, accelMean), alpha));
-      }
-      m_stationaryGoodDuration += dt;
-    }
-    else
-    {
-      m_stationaryGoodDuration = 0.0;
-    }
-
-    if (accelMeanInit && m_stationaryGoodDuration >= m_stationaryHoldSeconds)
-    {
-      double bestScore = -1e9;
-      Mapping best = m_zUpMapping;
-      for (const auto& mapping : mappings)
-      {
-        const Vec3 mapped = ApplyMapping(mapping, accelMean);
-        // Penalize Z magnitude too far from +g to avoid selecting a tilted axis.
-        const double score = mapped[2] - 0.5 * (std::abs(mapped[0]) + std::abs(mapped[1])) -
-                             Z_UP_SCORE_GRAVITY_PENALTY * std::abs(mapped[2] - GRAVITY);
-        if (score > bestScore)
-        {
-          bestScore = score;
-          best = mapping;
-        }
-      }
-      const Vec3 mappedBest = ApplyMapping(best, accelMean);
-      const bool zUpOk = mappedBest[2] > 0.8 * GRAVITY && std::abs(mappedBest[0]) < 0.3 * GRAVITY &&
-                         std::abs(mappedBest[1]) < 0.3 * GRAVITY;
-      if (zUpOk)
-      {
-        const Mapping oldMapping = m_activeMapping;
-        m_zUpMapping = best;
-        m_activeMapping = best;
-        m_zUpSolved = true;
-        m_stationaryGoodDuration = 0.0;
-        if (m_hasTemperature)
-          m_temperatureAtCal = m_lastTemperature;
-        const Mapping delta = MultiplyMapping(m_activeMapping, TransposeMapping(oldMapping));
-        const Quaternion qDelta = QuatFromRotationMatrix(delta);
-        Quaternion q = {m_orientationQuat[0], m_orientationQuat[1], m_orientationQuat[2],
-                        m_orientationQuat[3]};
-        q = MultiplyQuat(q, ConjugateQuat(qDelta));
-        q = NormalizeQuat(q);
-        m_orientationQuat = {q[0], q[1], q[2], q[3]};
-        OnMappingJump("Z-up solve");
-        RCLCPP_INFO(get_logger(), "IMU mapping leveled to +Z");
-      }
-    }
-  }
-
-  Vec3 accel = ApplyMapping(m_activeMapping, accelRaw);
-  Vec3 gyro = ApplyMapping(m_activeMapping, gyroRaw);
-  const Vec3 gyroUnbiased = Sub(gyro, m_gyroBias);
-
-  const double accelMag = Norm(accel);
-  const double gyroUnbiasedNorm = Norm(gyroUnbiased);
-  const bool accelOk = std::abs(accelMag - GRAVITY) < m_stationaryAccelMagThresh;
-  const bool gyroOk = gyroUnbiasedNorm < m_stationaryGyroThresh;
-  const bool stationaryNow = accelOk && gyroOk;
-  if (stationaryNow)
-  {
-    m_stationaryDuration += dt;
-    if (!m_isStationary && m_stationaryDuration >= m_stationaryHoldSeconds)
-    {
-      m_isStationary = true;
-      RCLCPP_INFO(get_logger(), "IMU stationary detected");
-    }
-  }
-  else
-  {
-    if (m_isStationary)
-      RCLCPP_INFO(get_logger(), "IMU moving detected");
-    m_isStationary = false;
-    m_stationaryDuration = 0.0;
-  }
-
-  const double accelConfidence =
-      std::clamp(1.0 - std::abs(accelMag - GRAVITY) / m_accelConfidenceRange, 0.0, 1.0);
-
-  Quaternion q = {m_orientationQuat[0], m_orientationQuat[1], m_orientationQuat[2],
-                  m_orientationQuat[3]};
-  const Vec3 gravityBody = RotateVec(ConjugateQuat(q), {0.0, 0.0, GRAVITY});
-  const Vec3 accelNorm = accelMag > 1e-6 ? Scale(accel, 1.0 / accelMag) : Vec3{0.0, 0.0, 0.0};
-  const Vec3 gravityDir = Normalize(gravityBody);
-  const Vec3 error = Cross(gravityDir, accelNorm);
-
-  const double kpEff = m_kpBase * accelConfidence;
-  const double kiEff = m_kiBase * accelConfidence;
-
-  m_mahonyIntegral = Add(m_mahonyIntegral, Scale(error, kiEff * dt));
-  // Clamp integrator to limit windup during sustained linear acceleration.
-  for (size_t i = 0; i < 3; ++i)
-    m_mahonyIntegral[i] =
-        std::clamp(m_mahonyIntegral[i], -m_mahonyIntegralLimit, m_mahonyIntegralLimit);
-  Vec3 gyroCorrected = gyroUnbiased;
-  gyroCorrected = Add(gyroCorrected, Add(Scale(error, kpEff), m_mahonyIntegral));
-
-  const double omegaNorm = Norm(gyroCorrected);
-  if (omegaNorm > 1e-9)
-  {
-    const Quaternion dq = QuatFromAxisAngle(Scale(gyroCorrected, 1.0 / omegaNorm), omegaNorm * dt);
-    q = MultiplyQuat(q, dq);
-  }
-  q = NormalizeQuat(q);
-
-  if (m_isStationary && accelConfidence > 0.7)
-  {
-    const Vec3 euler = EulerFromQuat(q);
-    const double roll = std::atan2(accel[1], accel[2]);
-    const double pitch =
-        std::atan2(-accel[0], std::sqrt(accel[1] * accel[1] + accel[2] * accel[2]));
-    const Quaternion target = QuatFromEuler(roll, pitch, euler[2]);
-    q = Slerp(q, target, std::clamp(m_relevelRate * dt, 0.0, 1.0));
-  }
-
-  m_orientationQuat = {q[0], q[1], q[2], q[3]};
-
-  const Vec3 gravityBodyUpdated = RotateVec(ConjugateQuat(q), {0.0, 0.0, GRAVITY});
-
-  if (m_isStationary && accelConfidence > 0.7)
-  {
-    const double alphaBias = EwmaAlpha(dt, m_biasTau);
-    m_gyroBias = Add(m_gyroBias, Scale(Sub(gyro, m_gyroBias), alphaBias));
-    for (size_t i = 0; i < 3; ++i)
-    {
-      m_gyroBiasVar[i] =
-          std::clamp(m_gyroBiasVar[i] * (1.0 - alphaBias), m_biasVarMin, m_biasVarMax);
-    }
-    if (m_hasTemperature)
-      m_temperatureAtCal = m_lastTemperature;
-  }
-  else
-  {
-    const double tempScale =
-        m_hasTemperature ? 1.0 + m_tempScale * std::abs(m_lastTemperature - m_temperatureAtCal)
-                         : 1.0;
-    for (size_t i = 0; i < 3; ++i)
-    {
-      m_gyroBiasVar[i] =
-          std::clamp(m_gyroBiasVar[i] + tempScale * m_biasQ * dt, m_biasVarMin, m_biasVarMax);
-    }
-  }
-
-  static std::array<bool, 3> gyroVarInit{{false, false, false}};
-  static std::array<bool, 3> accelVarInit{{false, false, false}};
-  static std::array<bool, 2> orientVarInit{{false, false}};
-  static bool accelMeanStationaryInit = false;
-  static Vec3 gyroMean{0.0, 0.0, 0.0};
-  static Vec3 accelMeanStationary{0.0, 0.0, 0.0};
-  static Vec3 accelResidualMean{0.0, 0.0, 0.0};
-  static Vec3 rollPitchMean{0.0, 0.0, 0.0};
-  static Vec3 gyroVar{0.0, 0.0, 0.0};
-  static Vec3 accelVar{0.0, 0.0, 0.0};
-  static Vec3 rollPitchVar{0.0, 0.0, 0.0};
-
-  if (m_isStationary && accelConfidence > 0.7)
-  {
-    const double alpha = EwmaAlpha(dt, m_ewmaTau);
-    if (!accelMeanStationaryInit)
-    {
-      accelMeanStationary = accel;
-      accelMeanStationaryInit = true;
-    }
-    else
-    {
-      accelMeanStationary = Add(accelMeanStationary, Scale(Sub(accel, accelMeanStationary), alpha));
-    }
-    for (size_t i = 0; i < 3; ++i)
-    {
-      const double accelResidual = accel[i] - accelMeanStationary[i];
-      EwmaUpdate(gyroUnbiased[i], alpha, gyroMean[i], gyroVar[i], gyroVarInit[i]);
-      EwmaUpdate(accelResidual, alpha, accelResidualMean[i], accelVar[i], accelVarInit[i]);
-    }
-    const Vec3 euler = EulerFromQuat(q);
-    EwmaUpdate(euler[0], alpha, rollPitchMean[0], rollPitchVar[0], orientVarInit[0]);
-    EwmaUpdate(euler[1], alpha, rollPitchMean[1], rollPitchVar[1], orientVarInit[1]);
-
-    const bool gyroVarReady = gyroVarInit[0] && gyroVarInit[1] && gyroVarInit[2];
-    const bool accelVarReady = accelVarInit[0] && accelVarInit[1] && accelVarInit[2];
-    const bool orientVarReady = orientVarInit[0] && orientVarInit[1];
-    if (gyroVarReady && accelVarReady && orientVarReady && !m_covarianceInitialized)
-    {
-      m_covarianceInitialized = true;
-      RCLCPP_INFO(get_logger(), "IMU covariance estimates initialized");
-    }
-    for (size_t i = 0; i < 3; ++i)
-    {
-      m_gyroVar[i] = std::max(gyroVar[i], 1e-6);
-      m_accelVar[i] = std::max(accelVar[i], 1e-6);
-    }
-    m_rollVar = std::max(rollPitchVar[0], 1e-6);
-    m_pitchVar = std::max(rollPitchVar[1], 1e-6);
-  }
-
-  // Low-pass gravity for forward inference only to reduce estimator coupling.
-  // Gate on low gyro and either not commanded or accel near g for robustness.
-  const MotorIntentOutput motor = m_motorIntent.Get(now);
-  const bool commanded = motor.commanded;
-  const bool gravityLpOk = accelConfidence > 0.7 &&
-                           gyroUnbiasedNorm < (m_stationaryGyroThresh * 2.0) &&
-                           (!commanded || accelOk);
-  if (gravityLpOk)
-  {
-    const double alpha = EwmaAlpha(dt, m_gravityLpTau);
-    if (!m_gravityLpInit)
-    {
-      m_gravityLpBody = accel;
-      m_gravityLpInit = true;
-    }
-    else
-    {
-      m_gravityLpBody = Add(m_gravityLpBody, Scale(Sub(accel, m_gravityLpBody), alpha));
-    }
-  }
-
-  const Vec3 gravityForForward = m_gravityLpInit ? m_gravityLpBody : gravityBodyUpdated;
-  const Vec3 accelLinForForward = Sub(accel, gravityForForward);
-  Vec3 accelHoriz{0.0, 0.0, 0.0};
-  const double gravityNorm = Norm(gravityForForward);
-  const bool forwardPlaneOk = gravityNorm > 1e-3;
-  if (forwardPlaneOk)
-  {
-    const Vec3 zHat = Scale(gravityForForward, 1.0 / gravityNorm);
-    const double proj = Dot(accelLinForForward, zHat);
-    accelHoriz = Sub(accelLinForForward, Scale(zHat, proj));
-  }
-
-  if (m_zUpSolved && !m_forwardSolved && forwardPlaneOk)
-  {
-    const double accelLinXY =
-        std::sqrt(accelHoriz[0] * accelHoriz[0] + accelHoriz[1] * accelHoriz[1]);
-    const bool event = MotorIntentEvent(motor, accelLinXY, m_dvdtThresh, m_alinThresh);
-    const bool hasResponse =
-        accelLinXY > m_forwardResponseAccelThresh || gyroUnbiasedNorm > m_forwardResponseGyroThresh;
-    const bool gyroVeto = std::abs(gyroUnbiased[2]) > m_forwardGyroVetoZ ||
-                          std::abs(gyroUnbiased[0]) > m_forwardGyroVetoXY ||
-                          std::abs(gyroUnbiased[1]) > m_forwardGyroVetoXY;
-    // Duty is commanded intent; it may change while a heavy train stays still,
-    // so dv/dt is not motion truth.
-    if (event && hasResponse && !gyroVeto)
-    {
-      const double alpha = EwmaAlpha(dt, m_ewmaTau);
-      const double sign = motor.sign;
-      if (std::abs(accelHoriz[0]) >= m_forwardDeadband)
-      {
-        m_forwardScoreX = (1.0 - alpha) * m_forwardScoreX + alpha * sign * accelHoriz[0];
-        m_forwardEnergyX = (1.0 - alpha) * m_forwardEnergyX + alpha * std::abs(accelHoriz[0]);
-      }
-      if (std::abs(accelHoriz[1]) >= m_forwardDeadband)
-      {
-        m_forwardScoreY = (1.0 - alpha) * m_forwardScoreY + alpha * sign * accelHoriz[1];
-        m_forwardEnergyY = (1.0 - alpha) * m_forwardEnergyY + alpha * std::abs(accelHoriz[1]);
-      }
-
-      const double confX = std::abs(m_forwardScoreX) / (m_forwardEnergyX + 1e-6);
-      const double confY = std::abs(m_forwardScoreY) / (m_forwardEnergyY + 1e-6);
-      int dominantAxis = 0;
-      if (confX > confY)
-        dominantAxis = 1;
-      else if (confY > confX)
-        dominantAxis = -1;
-      const double dominantConf = dominantAxis == 1 ? confX : confY;
-      const double dominantAccel = dominantAxis == 1 ? accelHoriz[0] : accelHoriz[1];
-      const bool dominantEligible = dominantAxis != 0 && dominantConf > m_forwardScoreThresh &&
-                                    std::abs(dominantAccel) >= m_forwardDeadband;
-      if (dominantEligible)
-      {
-        const int signSample = (sign * dominantAccel >= 0.0) ? 1 : -1;
-        if (m_forwardDominantAxis != dominantAxis)
-        {
-          m_forwardDominantAxis = dominantAxis;
-          m_forwardDominanceDuration = 0.0;
-          m_forwardSignConsistencyCount = 0;
-          m_forwardSignLast = 0;
-        }
-
-        if (signSample == m_forwardSignLast)
-          m_forwardSignConsistencyCount += 1;
-        else
-        {
-          m_forwardSignLast = signSample;
-          m_forwardSignConsistencyCount = 1;
-        }
-
-        if (m_forwardSignConsistencyCount >= m_forwardSignConsistencySamples)
-          m_forwardDominanceDuration += dt;
-      }
-      else
-      {
-        m_forwardDominantAxis = 0;
-        m_forwardDominanceDuration = 0.0;
-        m_forwardSignConsistencyCount = 0;
-        m_forwardSignLast = 0;
-      }
-    }
-
-    if (m_forwardDominanceDuration >= m_forwardLockSeconds)
-    {
-      const bool xForward = std::abs(m_forwardScoreX) >= std::abs(m_forwardScoreY);
-      const double score = xForward ? m_forwardScoreX : m_forwardScoreY;
-      Mapping yawMapping{{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}};
-      if (xForward)
-      {
-        if (score < 0.0)
-          yawMapping = {{{-1, 0, 0}, {0, -1, 0}, {0, 0, 1}}};
-      }
-      else
-      {
-        if (score > 0.0)
-          yawMapping = {{{0, 1, 0}, {-1, 0, 0}, {0, 0, 1}}};
-        else
-          yawMapping = {{{0, -1, 0}, {1, 0, 0}, {0, 0, 1}}};
-      }
-
-      const Mapping newMapping = MultiplyMapping(yawMapping, m_zUpMapping);
-      const Mapping oldMapping = m_activeMapping;
-      m_activeMapping = newMapping;
-      m_forwardSolved = true;
-
-      const Mapping delta = MultiplyMapping(newMapping, TransposeMapping(oldMapping));
-      const Quaternion qDelta = QuatFromRotationMatrix(delta);
-      q = MultiplyQuat(q, ConjugateQuat(qDelta));
-      q = NormalizeQuat(q);
-      m_orientationQuat = {q[0], q[1], q[2], q[3]};
-      OnMappingJump("forward-axis lock");
-      RCLCPP_INFO(get_logger(), "IMU forward axis locked");
-    }
-  }
-
-  const double confX = std::abs(m_forwardScoreX) / (m_forwardEnergyX + 1e-6);
-  const double confY = std::abs(m_forwardScoreY) / (m_forwardEnergyY + 1e-6);
   if (m_debugPublisher)
   {
     std_msgs::msg::Float64MultiArray debugMsg;
-    debugMsg.data = {motor.duty_filt,
-                     motor.duty_dvdt,
-                     accelConfidence,
-                     accelHoriz[0],
-                     accelHoriz[1],
-                     m_forwardScoreX,
-                     m_forwardScoreY,
-                     m_forwardEnergyX,
-                     m_forwardEnergyY,
-                     confX,
-                     confY,
-                     static_cast<double>(m_forwardDominantAxis),
-                     m_forwardDominanceDuration};
+    debugMsg.data = output->debug_values;
     m_debugPublisher->publish(debugMsg);
   }
   if (m_statusPublisher && m_statusPublisher->get_subscription_count() > 0)
   {
     std_msgs::msg::Bool statusMsg;
-    statusMsg.data = m_forwardSolved;
+    statusMsg.data = output->forward_solved;
     m_statusPublisher->publish(statusMsg);
   }
   if (m_mappingDebugPublisher && m_mappingDebugPublisher->get_subscription_count() > 0)
   {
     std_msgs::msg::Float64MultiArray mappingMsg;
     mappingMsg.data.reserve(9);
-    for (const auto& row : m_activeMapping)
+    for (const auto& row : output->active_mapping)
     {
       for (int value : row)
         mappingMsg.data.push_back(static_cast<double>(value));
     }
     m_mappingDebugPublisher->publish(mappingMsg);
   }
-
-  linearAcceleration.x = accel[0];
-  linearAcceleration.y = accel[1];
-  linearAcceleration.z = accel[2];
-
-  angularVelocity.x = gyro[0];
-  angularVelocity.y = gyro[1];
-  angularVelocity.z = gyro[2];
-
-  imuMsg.orientation.w = q[0];
-  imuMsg.orientation.x = q[1];
-  imuMsg.orientation.y = q[2];
-  imuMsg.orientation.z = q[3];
-
-  const double tempScale =
-      m_hasTemperature ? 1.0 + m_tempScale * std::abs(m_lastTemperature - m_temperatureAtCal) : 1.0;
-  Vec3 accelScaleNoise{0.0, 0.0, 0.0};
-  Vec3 gyroScaleNoise{0.0, 0.0, 0.0};
-  for (size_t i = 0; i < 3; ++i)
-  {
-    accelScaleNoise[i] = std::pow(m_accelScaleNoise * std::abs(accel[i]), 2.0) * tempScale;
-    gyroScaleNoise[i] = std::pow(m_gyroScaleNoise * std::abs(gyroUnbiased[i]), 2.0) * tempScale;
-  }
-
-  const double rollVarPub = m_rollVar / std::max(accelConfidence, 0.1);
-  const double pitchVarPub = m_pitchVar / std::max(accelConfidence, 0.1);
-  m_yawVar += (m_gyroVar[2] + m_gyroBiasVar[2] + gyroScaleNoise[2]) * dt * dt;
-  if (!m_isStationary || accelConfidence < 0.7)
-    m_yawVar += m_yawInflateFactor * (1.0 - accelConfidence) * dt;
-
-  // Orientation covariance: roll/pitch from stationary relevel noise, yaw
-  // unobservable and inflated by integrated gyro variance + bias drift.
-  imuMsg.orientation_covariance = {rollVarPub, 0.0, 0.0, 0.0, pitchVarPub, 0.0, 0.0, 0.0, m_yawVar};
-
-  // Angular velocity covariance: sensor noise plus bias uncertainty (and
-  // scale/temperature heuristics).
-  imuMsg.angular_velocity_covariance = {
-      m_gyroVar[0] + m_gyroBiasVar[0] + gyroScaleNoise[0], 0.0, 0.0, 0.0,
-      m_gyroVar[1] + m_gyroBiasVar[1] + gyroScaleNoise[1], 0.0, 0.0, 0.0,
-      m_gyroVar[2] + m_gyroBiasVar[2] + gyroScaleNoise[2]};
-
-  // Linear acceleration covariance: specific force (includes gravity) noise,
-  // estimated in stationary windows and inflated for dynamic maneuvers.
-  const double accelInflate = m_isStationary ? 1.0 : 1.0 / std::max(accelConfidence, 0.1);
-  imuMsg.linear_acceleration_covariance = {
-      accelInflate * (m_accelVar[0] + accelScaleNoise[0]), 0.0, 0.0, 0.0,
-      accelInflate * (m_accelVar[1] + accelScaleNoise[1]), 0.0, 0.0, 0.0,
-      accelInflate * (m_accelVar[2] + accelScaleNoise[2])};
 
   m_publisher->publish(imuMsg);
 }

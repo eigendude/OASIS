@@ -92,6 +92,7 @@ endif()
 
 add_executable(mpu6050_imu_driver
   src/cli/mpu6050_imu_driver.cpp
+  src/imu/Mpu6050ImuProcessor.cpp
   src/nodes/MotorIntent.cpp
   src/nodes/Mpu6050Node.cpp
   src/nodes/Mpu6050NodeUtils.cpp
