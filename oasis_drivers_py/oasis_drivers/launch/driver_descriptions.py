@@ -44,6 +44,8 @@ KINECT_V2_ZONE_ID: str = CONFIG.KINECT_V2_ZONE_ID
 # Path to the MQTT parameters file for Home Assistant
 MQTT_PARAMS_FILE: str = CONFIG.MQTT_PARAMS_FILE
 
+# Station host ID
+STATION_HOST_ID: str = "station"
 
 ################################################################################
 # ROS parameters
@@ -175,7 +177,11 @@ class DriverDescriptions:
             output="screen",
             remappings=[
                 # Topics
+                ("conductor_state", f"{STATION_HOST_ID}/conductor_state"),
                 ("imu", f"{host_id}/imu"),
+                ("imu_debug", f"{host_id}/imu_debug"),
+                ("imu_mapping_debug", f"{host_id}/imu_mapping_debug"),
+                ("imu_status", f"{host_id}/imu_status"),
             ],
         )
         ld.add_action(mpu_node)
