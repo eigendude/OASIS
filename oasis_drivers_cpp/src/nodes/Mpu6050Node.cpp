@@ -131,12 +131,22 @@ void Mpu6050Node::PublishImu()
 
   const rclcpp::Time now = get_clock()->now();
 
-  // TODO
-  /*
-  auto output = m_imuProcessor->Process(sample, m_dutyCycleInput);
+  (void)tempRaw;
+
+  const double accelScale = m_imuProcessor.GetAccelScale();
+  const double gyroScale = m_imuProcessor.GetGyroScale();
+
+  IMU::Mpu6050ImuProcessor::ImuSample sample;
+  sample.stamp = now;
+  sample.accel = {static_cast<double>(ax) * accelScale, static_cast<double>(ay) * accelScale,
+                  static_cast<double>(az) * accelScale};
+  sample.gyro = {static_cast<double>(gx) * gyroScale, static_cast<double>(gy) * gyroScale,
+                 static_cast<double>(gz) * gyroScale};
+  sample.duty_cycle = m_dutyCycleInput;
+
+  auto output = m_imuProcessor.Process(sample);
   if (!output)
     return;
-   */
 
   sensor_msgs::msg::Imu imuMsg;
 
@@ -147,8 +157,6 @@ void Mpu6050Node::PublishImu()
   geometry_msgs::msg::Vector3& angularVelocity = imuMsg.angular_velocity;
   geometry_msgs::msg::Vector3& linearAcceleration = imuMsg.linear_acceleration;
 
-  // TODO
-  /*
   linearAcceleration.x = output->linear_acceleration[0];
   linearAcceleration.y = output->linear_acceleration[1];
   linearAcceleration.z = output->linear_acceleration[2];
@@ -157,15 +165,34 @@ void Mpu6050Node::PublishImu()
   angularVelocity.y = output->angular_velocity[1];
   angularVelocity.z = output->angular_velocity[2];
 
-  imuMsg.orientation.w = output->orientation[0];
-  imuMsg.orientation.x = output->orientation[1];
-  imuMsg.orientation.y = output->orientation[2];
-  imuMsg.orientation.z = output->orientation[3];
+  imuMsg.orientation.w = 1.0;
+  imuMsg.orientation.x = 0.0;
+  imuMsg.orientation.y = 0.0;
+  imuMsg.orientation.z = 0.0;
 
-  imuMsg.orientation_covariance = output->orientation_covariance;
-  imuMsg.angular_velocity_covariance = output->angular_velocity_covariance;
-  imuMsg.linear_acceleration_covariance = output->linear_acceleration_covariance;
-  */
+  if (!m_hasAxisState)
+  {
+    m_hasAxisState = true;
+    m_lastAxisLocked = output->axis_locked;
+    m_lastSignedSign = output->signed_sign;
+  }
+  else
+  {
+    if (output->axis_locked != m_lastAxisLocked)
+    {
+      if (output->axis_locked)
+        RCLCPP_INFO(get_logger(), "Forward-axis lock engaged");
+      else
+        RCLCPP_INFO(get_logger(), "Forward-axis lock released");
+      m_lastAxisLocked = output->axis_locked;
+    }
+
+    if (output->signed_sign != m_lastSignedSign)
+    {
+      RCLCPP_INFO(get_logger(), "Forward-axis sign set to %d", output->signed_sign);
+      m_lastSignedSign = output->signed_sign;
+    }
+  }
 
   m_imuPublisher->publish(imuMsg);
 }
