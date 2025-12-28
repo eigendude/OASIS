@@ -71,6 +71,7 @@ Mpu6050Node::Mpu6050Node() : rclcpp::Node(NODE_NAME)
   declare_parameter("accel_scale_noise", m_accelScaleNoise);
   declare_parameter("gyro_scale_noise", m_gyroScaleNoise);
   declare_parameter("temp_scale", m_tempScale);
+  declare_parameter("conductor_stale_seconds", m_conductorStaleSeconds);
   declare_parameter("dvdt_thresh", m_dvdtThresh);
   declare_parameter("alin_thresh", m_alinThresh);
   declare_parameter("forward_response_accel_thresh", m_forwardResponseAccelThresh);
@@ -107,6 +108,7 @@ Mpu6050Node::Mpu6050Node() : rclcpp::Node(NODE_NAME)
   m_accelScaleNoise = get_parameter("accel_scale_noise").as_double();
   m_gyroScaleNoise = get_parameter("gyro_scale_noise").as_double();
   m_tempScale = get_parameter("temp_scale").as_double();
+  m_conductorStaleSeconds = get_parameter("conductor_stale_seconds").as_double();
   m_dvdtThresh = get_parameter("dvdt_thresh").as_double();
   m_alinThresh = get_parameter("alin_thresh").as_double();
   m_forwardResponseAccelThresh = get_parameter("forward_response_accel_thresh").as_double();
@@ -189,14 +191,15 @@ void Mpu6050Node::OnConductorState(const oasis_msgs::msg::ConductorState& msg)
 
   const rclcpp::Time stamp{msg.header.stamp};
   const double dutyRaw = msg.duty_cycle;
+  const double dutyClamped = std::clamp(dutyRaw, -1.0, 1.0);
 
   if (!m_dutyFiltInit)
   {
-    m_dutyFilt = dutyRaw;
+    m_dutyFilt = dutyClamped;
     m_dutyFiltDvdt = 0.0;
     m_dutyFiltInit = true;
     m_lastConductorStamp = stamp;
-    m_duty = dutyRaw;
+    m_duty = dutyClamped;
     return;
   }
 
@@ -208,10 +211,14 @@ void Mpu6050Node::OnConductorState(const oasis_msgs::msg::ConductorState& msg)
     return;
   }
 
-  // TODO
+  const double alpha = EwmaAlpha(dt, m_ewmaTau);
+  const double prevDutyFilt = m_dutyFilt;
+  m_dutyFilt = prevDutyFilt + alpha * (dutyClamped - prevDutyFilt);
+  const double dvdtRaw = (m_dutyFilt - prevDutyFilt) / dt;
+  m_dutyFiltDvdt = m_dutyFiltDvdt + alpha * (dvdtRaw - m_dutyFiltDvdt);
 
   m_lastConductorStamp = stamp;
-  m_duty = dutyRaw;
+  m_duty = dutyClamped;
 }
 
 void Mpu6050Node::OnMappingJump(const char* reason)
@@ -486,7 +493,11 @@ void Mpu6050Node::PublishImu()
 
   // Low-pass gravity for forward inference only to reduce estimator coupling.
   // Gate on low gyro and either not commanded or accel near g for robustness.
-  const bool commanded = m_dutyFiltInit;
+  const bool conductorFresh =
+      m_dutyFiltInit && (now - m_lastConductorStamp).seconds() <= m_conductorStaleSeconds;
+  const bool commanded = m_dutyFiltInit && conductorFresh;
+  if (m_dutyFiltInit && !conductorFresh)
+    m_dutyFiltDvdt = 0.0;
   const bool gravityLpOk = accelConfidence > 0.7 &&
                            gyroUnbiasedNorm < (m_stationaryGyroThresh * 2.0) &&
                            (!commanded || accelOk);

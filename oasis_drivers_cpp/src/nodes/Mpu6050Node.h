@@ -140,6 +140,7 @@ private:
   double m_accelScaleNoise = 0.02;
   double m_gyroScaleNoise = 0.02;
   double m_tempScale = 0.02;
+  double m_conductorStaleSeconds = 0.5;
   double m_dvdtThresh = 0.4;
   double m_alinThresh = 0.6;
   // Forward inference: minimum IMU response required to update score, tuned
