@@ -69,6 +69,8 @@ private:
   Quaternion m_orientationQuat{1.0, 0.0, 0.0, 0.0};
   double m_yawVar = 0.5;
   bool m_covarianceInitialized = false;
+  Vec3 m_gravityLpBody{0.0, 0.0, 0.0};
+  bool m_gravityLpInit = false;
 
   // Stationary detection
   bool m_isStationary = false;
@@ -100,11 +102,18 @@ private:
 
   // Parameters
   double m_stationaryVoltageThresh = 0.3;
+  // Typical 0.1-0.3 rad/s; too low misses quiet motion, too high false-stills.
   double m_stationaryGyroThresh = 0.15;
+  // Typical 0.3-1.5 m/s^2; too tight rejects vibration.
   double m_stationaryAccelMagThresh = 0.7;
+  // Typical 0.5-3.0s; longer reduces false stationary at the cost of latency.
   double m_stationaryHoldSeconds = 1.0;
+  // Trade-off: longer for robustness, shorter for faster leveling.
   double m_kpBase = 1.2;
+  // Higher KP corrects quicker but can jitter under vibration.
   double m_kiBase = 0.05;
+  // KI fights bias but can wind up; keep small if accel is noisy.
+  double m_mahonyIntegralLimit = 0.5;
   double m_biasTau = 2.0;
   double m_biasQ = 1e-4;
   double m_biasVarMin = 1e-5;
@@ -112,6 +121,7 @@ private:
   double m_ewmaTau = 2.0;
   double m_relevelRate = 0.5;
   double m_accelConfidenceRange = 1.0;
+  double m_gravityLpTau = 1.5;
   double m_accelScaleNoise = 0.02;
   double m_gyroScaleNoise = 0.02;
   double m_tempScale = 0.02;

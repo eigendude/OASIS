@@ -37,6 +37,7 @@ constexpr double DEFAULT_PUBLISH_RATE_HZ = 50.0;
 constexpr double GRAVITY = 9.80665; // m/s^2
 constexpr double ACCEL_SCALE = GRAVITY / 16384.0; // +/-2g full scale
 constexpr double GYRO_SCALE = (M_PI / 180.0) / 131.0; // +/-250 deg/s full scale
+constexpr double Z_UP_SCORE_GRAVITY_PENALTY = 1.0;
 
 using Vec3 = OASIS::ROS::Mpu6050Node::Vec3;
 using Mapping = OASIS::ROS::Mpu6050Node::Mapping;
@@ -360,6 +361,7 @@ Mpu6050Node::Mpu6050Node() : rclcpp::Node(NODE_NAME)
   declare_parameter("stationary_hold_seconds", m_stationaryHoldSeconds);
   declare_parameter("mahony_kp", m_kpBase);
   declare_parameter("mahony_ki", m_kiBase);
+  declare_parameter("mahony_integral_limit", m_mahonyIntegralLimit);
   declare_parameter("bias_tau", m_biasTau);
   declare_parameter("bias_q", m_biasQ);
   declare_parameter("bias_var_min", m_biasVarMin);
@@ -367,6 +369,7 @@ Mpu6050Node::Mpu6050Node() : rclcpp::Node(NODE_NAME)
   declare_parameter("ewma_tau", m_ewmaTau);
   declare_parameter("relevel_rate", m_relevelRate);
   declare_parameter("accel_confidence_range", m_accelConfidenceRange);
+  declare_parameter("gravity_lp_tau", m_gravityLpTau);
   declare_parameter("accel_scale_noise", m_accelScaleNoise);
   declare_parameter("gyro_scale_noise", m_gyroScaleNoise);
   declare_parameter("temp_scale", m_tempScale);
@@ -386,6 +389,7 @@ Mpu6050Node::Mpu6050Node() : rclcpp::Node(NODE_NAME)
   m_stationaryHoldSeconds = get_parameter("stationary_hold_seconds").as_double();
   m_kpBase = get_parameter("mahony_kp").as_double();
   m_kiBase = get_parameter("mahony_ki").as_double();
+  m_mahonyIntegralLimit = get_parameter("mahony_integral_limit").as_double();
   m_biasTau = get_parameter("bias_tau").as_double();
   m_biasQ = get_parameter("bias_q").as_double();
   m_biasVarMin = get_parameter("bias_var_min").as_double();
@@ -393,6 +397,7 @@ Mpu6050Node::Mpu6050Node() : rclcpp::Node(NODE_NAME)
   m_ewmaTau = get_parameter("ewma_tau").as_double();
   m_relevelRate = get_parameter("relevel_rate").as_double();
   m_accelConfidenceRange = get_parameter("accel_confidence_range").as_double();
+  m_gravityLpTau = get_parameter("gravity_lp_tau").as_double();
   m_accelScaleNoise = get_parameter("accel_scale_noise").as_double();
   m_gyroScaleNoise = get_parameter("gyro_scale_noise").as_double();
   m_tempScale = get_parameter("temp_scale").as_double();
@@ -464,16 +469,16 @@ void Mpu6050Node::OnConductorState(const oasis_msgs::msg::ConductorState& msg)
     // TODO: Log error
   }
 
-  const rclcpp::Time now{msg.header.stamp};
+  const rclcpp::Time msgStamp(msg.header.stamp);
 
   if (m_lastMotorStamp.nanoseconds() > 0)
   {
-    const double dt = (now - m_lastMotorStamp).seconds();
+    const double dt = (msgStamp - m_lastMotorStamp).seconds();
     if (dt > 1e-3)
       m_motorVoltageDvdt = (msg.motor_voltage - m_motorVoltage) / dt;
   }
   m_motorVoltage = msg.motor_voltage;
-  m_lastMotorStamp = now;
+  m_lastMotorStamp = msgStamp;
 }
 
 void Mpu6050Node::PublishImu()
@@ -560,14 +565,19 @@ void Mpu6050Node::PublishImu()
       for (const auto& mapping : mappings)
       {
         const Vec3 mapped = ApplyMapping(mapping, accelMean);
-        const double score = mapped[2] - 0.5 * (std::abs(mapped[0]) + std::abs(mapped[1]));
+        // Penalize Z magnitude too far from +g to avoid selecting a tilted axis.
+        const double score = mapped[2] - 0.5 * (std::abs(mapped[0]) + std::abs(mapped[1])) -
+                             Z_UP_SCORE_GRAVITY_PENALTY * std::abs(mapped[2] - GRAVITY);
         if (score > bestScore)
         {
           bestScore = score;
           best = mapping;
         }
       }
-      if (bestScore > 0.5 * GRAVITY)
+      const Vec3 mappedBest = ApplyMapping(best, accelMean);
+      const bool zUpOk = mappedBest[2] > 0.8 * GRAVITY && std::abs(mappedBest[0]) < 0.3 * GRAVITY &&
+                         std::abs(mappedBest[1]) < 0.3 * GRAVITY;
+      if (zUpOk)
       {
         const Mapping oldMapping = m_activeMapping;
         m_zUpMapping = best;
@@ -628,7 +638,12 @@ void Mpu6050Node::PublishImu()
   const double kiEff = m_kiBase * accelConfidence;
 
   m_mahonyIntegral = Add(m_mahonyIntegral, Scale(error, kiEff * dt));
-  Vec3 gyroCorrected = Sub(gyro, m_gyroBias);
+  // Clamp integrator to limit windup during sustained linear acceleration.
+  for (size_t i = 0; i < 3; ++i)
+    m_mahonyIntegral[i] = std::clamp(m_mahonyIntegral[i], -m_mahonyIntegralLimit,
+                                     m_mahonyIntegralLimit);
+  const Vec3 gyroUnbiased = Sub(gyro, m_gyroBias);
+  Vec3 gyroCorrected = gyroUnbiased;
   gyroCorrected = Add(gyroCorrected, Add(Scale(error, kpEff), m_mahonyIntegral));
 
   const double omegaNorm = Norm(gyroCorrected);
@@ -680,8 +695,10 @@ void Mpu6050Node::PublishImu()
   static bool gyroVarInit = false;
   static bool accelVarInit = false;
   static bool orientVarInit = false;
+  static bool accelMeanStationaryInit = false;
   static Vec3 gyroMean{0.0, 0.0, 0.0};
-  static Vec3 accelMeanResidual{0.0, 0.0, 0.0};
+  static Vec3 accelMeanStationary{0.0, 0.0, 0.0};
+  static Vec3 accelResidualMean{0.0, 0.0, 0.0};
   static Vec3 rollPitchMean{0.0, 0.0, 0.0};
   static Vec3 gyroVar{0.0, 0.0, 0.0};
   static Vec3 accelVar{0.0, 0.0, 0.0};
@@ -690,15 +707,24 @@ void Mpu6050Node::PublishImu()
   if (m_isStationary && accelConfidence > 0.7)
   {
     const double alpha = EwmaAlpha(dt, m_ewmaTau);
+    if (!accelMeanStationaryInit)
+    {
+      accelMeanStationary = accel;
+      accelMeanStationaryInit = true;
+    }
+    else
+    {
+      accelMeanStationary = Add(accelMeanStationary, Scale(Sub(accel, accelMeanStationary), alpha));
+    }
     for (size_t i = 0; i < 3; ++i)
     {
       bool init = gyroVarInit;
-      EwmaUpdate(gyroCorrected[i], alpha, gyroMean[i], gyroVar[i], init);
+      EwmaUpdate(gyroUnbiased[i], alpha, gyroMean[i], gyroVar[i], init);
       gyroVarInit = init;
 
       init = accelVarInit;
-      const double accelResidual = accel[i] - gravityBodyUpdated[i];
-      EwmaUpdate(accelResidual, alpha, accelMeanResidual[i], accelVar[i], init);
+      const double accelResidual = accel[i] - accelMeanStationary[i];
+      EwmaUpdate(accelResidual, alpha, accelResidualMean[i], accelVar[i], init);
       accelVarInit = init;
     }
     const Vec3 euler = EulerFromQuat(q);
@@ -721,18 +747,39 @@ void Mpu6050Node::PublishImu()
     m_pitchVar = std::max(rollPitchVar[1], 1e-6);
   }
 
-  const Vec3 accelLin = Sub(accel, gravityBodyUpdated);
+  // Low-pass gravity for forward inference only to reduce estimator coupling.
+  // Gate on low gyro and either motor idle or accel near g for robustness.
+  const bool gravityLpOk = accelConfidence > 0.7 &&
+                           gyroMag < (m_stationaryGyroThresh * 2.0) &&
+                           (motorOk || accelOk);
+  if (gravityLpOk)
+  {
+    const double alpha = EwmaAlpha(dt, m_gravityLpTau);
+    if (!m_gravityLpInit)
+    {
+      m_gravityLpBody = accel;
+      m_gravityLpInit = true;
+    }
+    else
+    {
+      m_gravityLpBody = Add(m_gravityLpBody, Scale(Sub(accel, m_gravityLpBody), alpha));
+    }
+  }
+
+  const Vec3 gravityForForward = m_gravityLpInit ? m_gravityLpBody : gravityBodyUpdated;
+  const Vec3 accelLinForForward = Sub(accel, gravityForForward);
 
   if (m_zUpSolved && !m_forwardSolved)
   {
-    const double accelLinXY = std::sqrt(accelLin[0] * accelLin[0] + accelLin[1] * accelLin[1]);
+    const double accelLinXY = std::sqrt(accelLinForForward[0] * accelLinForForward[0] +
+                                        accelLinForForward[1] * accelLinForForward[1]);
     const bool event = std::abs(m_motorVoltageDvdt) > m_dvdtThresh || accelLinXY > m_alinThresh;
     if (event && std::abs(m_motorVoltage) > m_stationaryVoltageThresh)
     {
       const double alpha = EwmaAlpha(dt, m_ewmaTau);
       const double sign = (m_motorVoltage >= 0.0) ? 1.0 : -1.0;
-      m_forwardScoreX = (1.0 - alpha) * m_forwardScoreX + alpha * sign * accelLin[0];
-      m_forwardScoreY = (1.0 - alpha) * m_forwardScoreY + alpha * sign * accelLin[1];
+      m_forwardScoreX = (1.0 - alpha) * m_forwardScoreX + alpha * sign * accelLinForForward[0];
+      m_forwardScoreY = (1.0 - alpha) * m_forwardScoreY + alpha * sign * accelLinForForward[1];
 
       const double absX = std::abs(m_forwardScoreX);
       const double absY = std::abs(m_forwardScoreY);
@@ -817,13 +864,19 @@ void Mpu6050Node::PublishImu()
   if (!m_isStationary || accelConfidence < 0.7)
     m_yawVar += m_yawInflateFactor * (1.0 - accelConfidence) * dt;
 
+  // Orientation covariance: roll/pitch from stationary relevel noise, yaw
+  // unobservable and inflated by integrated gyro variance + bias drift.
   imuMsg.orientation_covariance = {rollVarPub, 0.0, 0.0, 0.0, pitchVarPub, 0.0, 0.0, 0.0, m_yawVar};
 
+  // Angular velocity covariance: sensor noise plus bias uncertainty (and
+  // scale/temperature heuristics).
   imuMsg.angular_velocity_covariance = {
       m_gyroVar[0] + m_gyroBiasVar[0] + gyroScaleNoise, 0.0, 0.0, 0.0,
       m_gyroVar[1] + m_gyroBiasVar[1] + gyroScaleNoise, 0.0, 0.0, 0.0,
       m_gyroVar[2] + m_gyroBiasVar[2] + gyroScaleNoise};
 
+  // Linear acceleration covariance: specific force (includes gravity) noise,
+  // estimated in stationary windows and inflated for dynamic maneuvers.
   const double accelInflate = m_isStationary ? 1.0 : 1.0 / std::max(accelConfidence, 0.1);
   imuMsg.linear_acceleration_covariance = {
       accelInflate * (m_accelVar[0] + accelScaleNoise), 0.0, 0.0, 0.0,
