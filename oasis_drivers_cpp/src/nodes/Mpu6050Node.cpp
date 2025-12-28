@@ -725,7 +725,7 @@ void Mpu6050Node::PublishImu()
 
   static std::array<bool, 3> gyroVarInit{{false, false, false}};
   static std::array<bool, 3> accelVarInit{{false, false, false}};
-  static bool orientVarInit = false;
+  static std::array<bool, 2> orientVarInit{{false, false}};
   static bool accelMeanStationaryInit = false;
   static Vec3 gyroMean{0.0, 0.0, 0.0};
   static Vec3 accelMeanStationary{0.0, 0.0, 0.0};
@@ -754,12 +754,13 @@ void Mpu6050Node::PublishImu()
       EwmaUpdate(accelResidual, alpha, accelResidualMean[i], accelVar[i], accelVarInit[i]);
     }
     const Vec3 euler = EulerFromQuat(q);
-    EwmaUpdate(euler[0], alpha, rollPitchMean[0], rollPitchVar[0], orientVarInit);
-    EwmaUpdate(euler[1], alpha, rollPitchMean[1], rollPitchVar[1], orientVarInit);
+    EwmaUpdate(euler[0], alpha, rollPitchMean[0], rollPitchVar[0], orientVarInit[0]);
+    EwmaUpdate(euler[1], alpha, rollPitchMean[1], rollPitchVar[1], orientVarInit[1]);
 
     const bool gyroVarReady = gyroVarInit[0] && gyroVarInit[1] && gyroVarInit[2];
     const bool accelVarReady = accelVarInit[0] && accelVarInit[1] && accelVarInit[2];
-    if (gyroVarReady && accelVarReady && orientVarInit && !m_covarianceInitialized)
+    const bool orientVarReady = orientVarInit[0] && orientVarInit[1];
+    if (gyroVarReady && accelVarReady && orientVarReady && !m_covarianceInitialized)
     {
       m_covarianceInitialized = true;
       RCLCPP_INFO(get_logger(), "IMU covariance estimates initialized");
@@ -774,8 +775,9 @@ void Mpu6050Node::PublishImu()
   }
 
   // Low-pass gravity for forward inference only to reduce estimator coupling.
-  // Gate on low gyro and either commanded idle intent or accel near g for robustness.
-  const bool commanded = std::abs(m_motorVoltageFilt) > m_stationaryVoltageThresh;
+  // Gate on low gyro and either not commanded or accel near g for robustness.
+  const bool commanded = m_motorVoltageFiltInit &&
+                         std::abs(m_motorVoltageFilt) > m_stationaryVoltageThresh;
   const bool gravityLpOk = accelConfidence > 0.7 &&
                            gyroUnbiasedNorm < (m_stationaryGyroThresh * 2.0) &&
                            (!commanded || accelOk);
