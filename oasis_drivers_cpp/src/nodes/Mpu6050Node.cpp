@@ -149,26 +149,33 @@ void Mpu6050Node::PublishImu()
   const double azd = static_cast<double>(az);
   const double rawNorm = std::sqrt(axd * axd + ayd * ayd + azd * azd);
   const double scaledNorm = rawNorm * accelScale;
+  const double sax = axd * accelScale;
+  const double say = ayd * accelScale;
+  const double saz = azd * accelScale;
+  const double accelMag = std::sqrt(sax * sax + say * say + saz * saz);
+  const double accelDev = std::abs(accelMag - 9.80665);
 
   if (!m_debugPrinted)
   {
     RCLCPP_INFO(get_logger(),
                 "MPU6050 accelRange=%u gyroRange=%u accelScale=%.6f raw=(%d,%d,%d) "
-                "raw_norm=%.3f scaled_norm=%.3f",
+                "raw_norm=%.3f scaled_norm=%.3f scaled=(%.3f,%.3f,%.3f) accel_mag=%.3f "
+                "accel_dev=%.3f",
                 static_cast<unsigned>(accelRange), static_cast<unsigned>(gyroRange), accelScale,
                 static_cast<int>(ax), static_cast<int>(ay), static_cast<int>(az), rawNorm,
-                scaledNorm);
+                scaledNorm, sax, say, saz, accelMag, accelDev);
     m_debugPrinted = true;
   }
-
-  if (DEBUG_LOG_THROTTLE_ENABLED)
+  else if (DEBUG_LOG_THROTTLE_ENABLED)
   {
     RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), DEBUG_LOG_THROTTLE_MS,
                          "MPU6050 accelRange=%u gyroRange=%u accelScale=%.6f raw=(%d,%d,%d) "
-                         "raw_norm=%.3f scaled_norm=%.3f",
+                         "raw_norm=%.3f scaled_norm=%.3f scaled=(%.3f,%.3f,%.3f) "
+                         "accel_mag=%.3f accel_dev=%.3f",
                          static_cast<unsigned>(accelRange), static_cast<unsigned>(gyroRange),
                          accelScale, static_cast<int>(ax), static_cast<int>(ay),
-                         static_cast<int>(az), rawNorm, scaledNorm);
+                         static_cast<int>(az), rawNorm, scaledNorm, sax, say, saz, accelMag,
+                         accelDev);
   }
 
   IMU::Mpu6050ImuProcessor::ImuSample sample;
