@@ -79,7 +79,7 @@ class ControlDescriptions:
         ld: LaunchDescription,
         host_id: str,
         mcu_node: str,
-        home_assistant_id: str,
+        wol_server_id: str,
         input_provider: str,
         calibration_resolution: str,
     ) -> None:
@@ -101,7 +101,7 @@ class ControlDescriptions:
                 ("cpu_fan_write", f"{mcu_node}/cpu_fan_write"),
                 ("digital_reading", f"{mcu_node}/digital_reading"),
                 ("digital_write_cmd", f"{mcu_node}/digital_write_cmd"),
-                ("get_mac_address", f"{home_assistant_id}/get_mac_address"),
+                ("get_mac_address", f"{wol_server_id}/get_mac_address"),
                 ("input", f"{input_provider}/input"),
                 ("mcu_memory", f"{mcu_node}/mcu_memory"),
                 ("mcu_string", f"{mcu_node}/mcu_string"),
@@ -116,7 +116,7 @@ class ControlDescriptions:
                 ),
                 ("set_digital_mode", f"{mcu_node}/set_digital_mode"),
                 ("set_sampling_interval", f"{mcu_node}/set_sampling_interval"),
-                ("wol", f"{home_assistant_id}/wol"),
+                ("wol", f"{host_id}/wol"),
             ],
         )
         ld.add_action(conductor_node)
