@@ -82,6 +82,7 @@ private:
   void EvaluateBurst(const std::array<double, 3>& u_hat);
 
   State m_state{State::ARMED};
+  State m_state_before_burst{State::ARMED};
   std::size_t m_start_counter{0};
   std::size_t m_end_counter{0};
   std::size_t m_yaw_over_counter{0};

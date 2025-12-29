@@ -32,6 +32,7 @@ constexpr double kMaxYawInBurstAccept = 0.15;
 constexpr double kOppositeDotMin = 0.90;
 constexpr double kOppositeDotMinLoose = 0.80;
 constexpr double kOppositeImpulseStrong = 0.35;
+constexpr double kAHPeakAccept = 0.8;
 constexpr double kSameDotMin = 0.75;
 constexpr std::size_t kStartSamples = 2;
 constexpr std::size_t kEndSamples = 5;
@@ -178,6 +179,7 @@ ForwardAxisLearner::State ForwardAxisLearner::GetState() const
 
 void ForwardAxisLearner::StartBurst()
 {
+  m_state_before_burst = m_state;
   m_sum_vec = {0.0, 0.0, 0.0};
   m_impulse = 0.0;
   m_yaw_accum = 0.0;
@@ -203,9 +205,8 @@ void ForwardAxisLearner::ResetBurst()
 
 void ForwardAxisLearner::EvaluateBurst(const std::array<double, 3>& u_hat)
 {
-  const bool is_opposite_stage = (m_state == State::HAVE_FIRST);
+  const bool is_opposite_stage = (m_state_before_burst == State::HAVE_FIRST);
   const double min_burst_seconds = is_opposite_stage ? kMinBurstSecondsAccept : kMinBurstSeconds;
-  const double min_impulse = is_opposite_stage ? kMinImpulseAccept : kMinImpulse;
   const double max_yaw_in_burst = is_opposite_stage ? kMaxYawInBurstAccept : kMaxYawInBurst;
   auto log_reject = [&](const char* reason, double dot = 0.0, bool include_dot = false)
   {
@@ -213,7 +214,9 @@ void ForwardAxisLearner::EvaluateBurst(const std::array<double, 3>& u_hat)
       return;
     std::cerr << "ForwardAxisLearner: reject burst (" << reason << ") t=" << m_t_burst
               << " impulse=" << m_impulse << " yaw_accum=" << m_yaw_accum
-              << " yaw_peak=" << m_yaw_rate_peak;
+              << " yaw_peak=" << m_yaw_rate_peak
+              << " stage=" << (is_opposite_stage ? "opposite" : "first")
+              << " state_before_burst=" << static_cast<int>(m_state_before_burst);
     if (include_dot)
       std::cerr << " dot=" << dot;
     std::cerr << '\n';
@@ -224,7 +227,9 @@ void ForwardAxisLearner::EvaluateBurst(const std::array<double, 3>& u_hat)
       return;
     std::cerr << "ForwardAxisLearner: accept burst (" << reason << ") t=" << m_t_burst
               << " impulse=" << m_impulse << " yaw_accum=" << m_yaw_accum
-              << " yaw_peak=" << m_yaw_rate_peak;
+              << " yaw_peak=" << m_yaw_rate_peak
+              << " stage=" << (is_opposite_stage ? "opposite" : "first")
+              << " state_before_burst=" << static_cast<int>(m_state_before_burst);
     if (include_dot)
       std::cerr << " dot=" << dot;
     std::cerr << '\n';
@@ -236,7 +241,17 @@ void ForwardAxisLearner::EvaluateBurst(const std::array<double, 3>& u_hat)
     return;
   }
 
-  if (m_impulse < min_impulse)
+  if (is_opposite_stage)
+  {
+    const bool impulse_ok = (m_impulse >= kMinImpulseAccept);
+    const bool a_h_peak_ok = (m_a_h_peak >= kAHPeakAccept);
+    if (!impulse_ok && !a_h_peak_ok)
+    {
+      log_reject("impulse_or_peak");
+      return;
+    }
+  }
+  else if (m_impulse < kMinImpulse)
   {
     log_reject("impulse");
     return;
@@ -259,12 +274,14 @@ void ForwardAxisLearner::EvaluateBurst(const std::array<double, 3>& u_hat)
   m_last_candidate = candidate;
 
   ++m_burst_count;
-  if (m_state == State::HAVE_FIRST)
+  if (is_opposite_stage)
   {
+    m_state = State::HAVE_FIRST;
     m_consistency_dot = Math::Dot(candidate, m_first_candidate);
     const bool opposite_strict = (m_consistency_dot <= -kOppositeDotMin);
     const bool opposite_loose =
-        (m_consistency_dot <= -kOppositeDotMinLoose && m_impulse >= kOppositeImpulseStrong);
+        (m_consistency_dot <= -kOppositeDotMinLoose &&
+         (m_impulse >= kOppositeImpulseStrong || m_a_h_peak >= kAHPeakAccept));
     if (opposite_strict || opposite_loose)
     {
       m_f_hat_unsigned = Math::Normalize(m_first_candidate);
@@ -285,6 +302,10 @@ void ForwardAxisLearner::EvaluateBurst(const std::array<double, 3>& u_hat)
       m_first_candidate = Math::Normalize(Math::Add(m_first_candidate, candidate));
       m_f_hat_unsigned = m_first_candidate;
       log_accept("same_direction", m_consistency_dot, true);
+    }
+    else if (m_consistency_dot > -kSameDotMin)
+    {
+      log_reject("dot_ambiguous", m_consistency_dot, true);
     }
     else
     {
