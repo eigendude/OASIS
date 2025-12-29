@@ -384,7 +384,7 @@ class DriverDescriptions:
             namespace=ROS_NAMESPACE,
             package=PYTHON_PACKAGE_NAME,
             executable="wol_server",
-            name="wol_server",
+            name=f"wol_server_{system_id}",
             output="screen",
             remappings=[
                 # Services
