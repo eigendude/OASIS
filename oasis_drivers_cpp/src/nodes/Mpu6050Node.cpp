@@ -323,13 +323,17 @@ void Mpu6050Node::PublishImu()
   RCLCPP_INFO_THROTTLE(
       get_logger(), *get_clock(), 1000,
       "IMU accel=(%.3f, %.3f, %.3f) m/s^2 |g|=%.3f stationary=%s stationary_confirmed=%s "
-      "phase2=%s dwell=%.2f/%.2f coverage=x(+:%s -:%s) y(+:%s -:%s) z(+:%s -:%s) "
+      "phase2=%s dwell=%.2f/%.2f score=%.2f "
+      "noise(omega=%.4f±%.4f rad/s, delta_a=%.4f±%.4f m/s^2) "
+      "coverage=x(+:%s -:%s) y(+:%s -:%s) z(+:%s -:%s) "
       "bias=(%.4f, %.4f, %.4f) scale=(%.4f, %.4f, %.4f) temp=%.2fC data_ready=%s",
       processed.accel_mps2[0], processed.accel_mps2[1], processed.accel_mps2[2], accel_norm_g,
       processed.diag.stationary ? "true" : "false",
       processed.diag.stationary_confirmed ? "true" : "false",
       processed.diag.stationary_phase2 ? "true" : "false", processed.diag.stationary_dwell_seconds,
-      processed.diag.stationary_dwell_target_seconds, processed.diag.pos_seen[0] ? "true" : "false",
+      processed.diag.stationary_dwell_target_seconds, processed.diag.stationarity_score,
+      processed.diag.omega_mean, processed.diag.omega_sigma, processed.diag.delta_a_mean,
+      processed.diag.delta_a_sigma, processed.diag.pos_seen[0] ? "true" : "false",
       processed.diag.neg_seen[0] ? "true" : "false", processed.diag.pos_seen[1] ? "true" : "false",
       processed.diag.neg_seen[1] ? "true" : "false", processed.diag.pos_seen[2] ? "true" : "false",
       processed.diag.neg_seen[2] ? "true" : "false", processed.diag.bias_mps2[0],
@@ -387,6 +391,20 @@ void Mpu6050Node::PublishImu()
     msg.orientation_covariance[8] = kYawVariance;
     msg.angular_velocity_covariance.fill(0.0);
     msg.linear_acceleration_covariance.fill(0.0);
+
+    if (processed.diag.omega_stats_inited && processed.diag.delta_a_stats_inited)
+    {
+      const double gyro_sigma = processed.diag.omega_sigma;
+      // Use accel first-difference noise as a conservative proxy for accel noise.
+      const double accel_sigma = processed.diag.delta_a_sigma;
+
+      msg.angular_velocity_covariance[0] = gyro_sigma * gyro_sigma;
+      msg.angular_velocity_covariance[4] = gyro_sigma * gyro_sigma;
+      msg.angular_velocity_covariance[8] = gyro_sigma * gyro_sigma;
+      msg.linear_acceleration_covariance[0] = accel_sigma * accel_sigma;
+      msg.linear_acceleration_covariance[4] = accel_sigma * accel_sigma;
+      msg.linear_acceleration_covariance[8] = accel_sigma * accel_sigma;
+    }
   };
 
   sensor_msgs::msg::Imu imuMsg;
