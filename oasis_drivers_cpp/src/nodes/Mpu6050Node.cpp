@@ -216,18 +216,18 @@ void Mpu6050Node::PublishImu()
   RCLCPP_INFO_THROTTLE(
       get_logger(), *get_clock(), 1000,
       "IMU accel=(%.3f, %.3f, %.3f) m/s^2 |g|=%.3f stationary=%s stationary_confirmed=%s "
-      "dwell=%.2f/%.2f coverage=x(+:%s -:%s) y(+:%s -:%s) z(+:%s -:%s) "
+      "phase2=%s dwell=%.2f/%.2f coverage=x(+:%s -:%s) y(+:%s -:%s) z(+:%s -:%s) "
       "bias=(%.4f, %.4f, %.4f) scale=(%.4f, %.4f, %.4f) temp=%.2fC data_ready=%s",
       processed.accel_mps2[0], processed.accel_mps2[1], processed.accel_mps2[2], accel_norm_g,
       processed.diag.stationary ? "true" : "false",
       processed.diag.stationary_confirmed ? "true" : "false",
-      processed.diag.stationary_dwell_seconds, processed.diag.stationary_dwell_target_seconds,
-      processed.diag.pos_seen[0] ? "true" : "false", processed.diag.neg_seen[0] ? "true" : "false",
-      processed.diag.pos_seen[1] ? "true" : "false", processed.diag.neg_seen[1] ? "true" : "false",
-      processed.diag.pos_seen[2] ? "true" : "false", processed.diag.neg_seen[2] ? "true" : "false",
-      processed.diag.bias_mps2[0], processed.diag.bias_mps2[1], processed.diag.bias_mps2[2],
-      processed.diag.scale[0], processed.diag.scale[1], processed.diag.scale[2], tempC,
-      dataReady ? "true" : "false");
+      processed.diag.stationary_phase2 ? "true" : "false", processed.diag.stationary_dwell_seconds,
+      processed.diag.stationary_dwell_target_seconds, processed.diag.pos_seen[0] ? "true" : "false",
+      processed.diag.neg_seen[0] ? "true" : "false", processed.diag.pos_seen[1] ? "true" : "false",
+      processed.diag.neg_seen[1] ? "true" : "false", processed.diag.pos_seen[2] ? "true" : "false",
+      processed.diag.neg_seen[2] ? "true" : "false", processed.diag.bias_mps2[0],
+      processed.diag.bias_mps2[1], processed.diag.bias_mps2[2], processed.diag.scale[0],
+      processed.diag.scale[1], processed.diag.scale[2], tempC, dataReady ? "true" : "false");
 
   if (kLogStationaryTransitions)
   {
