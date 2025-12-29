@@ -8,6 +8,8 @@
 
 #include "Mpu6050Node.h"
 
+#include "imu/ImuMath.h"
+#include "imu/ImuOrientationUtils.h"
 #include "imu/Mpu6050ImuUtils.h"
 
 #include <algorithm>
@@ -39,6 +41,20 @@ constexpr const char* FRAME_ID = "imu_link";
 // ROS parameters
 constexpr const char* DEFAULT_I2C_DEVICE = "/dev/i2c-1";
 constexpr double DEFAULT_PUBLISH_RATE_HZ = 50.0;
+constexpr double kRollPitchVariance = 0.0076;
+constexpr double kYawVariance = 1e6;
+constexpr double kPi = 3.141592653589793;
+constexpr double kTwoPi = 2.0 * kPi;
+
+geometry_msgs::msg::Quaternion ToRosQuaternion(const Math::Quaternion& q)
+{
+  geometry_msgs::msg::Quaternion out;
+  out.w = q.w;
+  out.x = q.x;
+  out.y = q.y;
+  out.z = q.z;
+  return out;
+}
 
 } // namespace
 
@@ -169,9 +185,9 @@ void Mpu6050Node::PublishImu()
 
   // MPU6050 datasheet formula: Temp(°C) = (TEMP_OUT / 340) + 36.53
   const int16_t tempRaw = m_mpu6050->getTemperature();
-  const double temp_c = (static_cast<double>(tempRaw) / 340.0) + 36.53;
+  const double tempC = (static_cast<double>(tempRaw) / 340.0) + 36.53;
 
-  const bool drdy = m_mpu6050->getIntDataReadyStatus();
+  const bool dataReady = m_mpu6050->getIntDataReadyStatus();
 
   const auto processed = m_imuProcessor.ProcessRaw(ax, ay, az, gx, gy, gz, dt_seconds);
 
@@ -207,34 +223,48 @@ void Mpu6050Node::PublishImu()
       processed.diag.neg_seen[1] ? "true" : "false", processed.diag.pos_seen[2] ? "true" : "false",
       processed.diag.neg_seen[2] ? "true" : "false", processed.diag.bias_mps2[0],
       processed.diag.bias_mps2[1], processed.diag.bias_mps2[2], processed.diag.scale[0],
-      processed.diag.scale[1], processed.diag.scale[2], temp_c, drdy ? "true" : "false");
+      processed.diag.scale[1], processed.diag.scale[2], tempC, dataReady ? "true" : "false");
+
+  const Math::Quaternion tilt_q =
+      ImuOrientationUtils::TiltQuaternionFromUp(processed.u_hat, processed.u_hat_valid);
+  if (dt_seconds > 0.0)
+  {
+    m_yawRad += processed.gyro_rads[2] * dt_seconds;
+    m_yawRad = std::remainder(m_yawRad, kTwoPi);
+  }
+  const Math::Quaternion yaw_q = Math::FromAxisAngle({0.0, 0.0, 1.0}, m_yawRad);
+  const Math::Quaternion orientation_q = Math::Multiply(yaw_q, tilt_q);
+
+  auto fillImuMsg = [&](sensor_msgs::msg::Imu& msg, const Math::Quaternion& orientation)
+  {
+    std_msgs::msg::Header& header = msg.header;
+    header.stamp = now;
+    header.frame_id = FRAME_ID;
+
+    geometry_msgs::msg::Vector3& angularVelocity = msg.angular_velocity;
+    geometry_msgs::msg::Vector3& linearAcceleration = msg.linear_acceleration;
+
+    linearAcceleration.x = processed.accel_mps2[0];
+    linearAcceleration.y = processed.accel_mps2[1];
+    linearAcceleration.z = processed.accel_mps2[2];
+
+    angularVelocity.x = processed.gyro_rads[0];
+    angularVelocity.y = processed.gyro_rads[1];
+    angularVelocity.z = processed.gyro_rads[2];
+
+    msg.orientation = ToRosQuaternion(orientation);
+
+    msg.orientation_covariance.fill(0.0);
+    msg.orientation_covariance[0] = kRollPitchVariance;
+    msg.orientation_covariance[4] = kRollPitchVariance;
+    msg.orientation_covariance[8] = kYawVariance;
+    msg.angular_velocity_covariance.fill(0.0);
+    msg.linear_acceleration_covariance.fill(0.0);
+  };
 
   sensor_msgs::msg::Imu imuMsg;
 
-  std_msgs::msg::Header& header = imuMsg.header;
-  header.stamp = now;
-  header.frame_id = FRAME_ID;
-
-  geometry_msgs::msg::Vector3& angularVelocity = imuMsg.angular_velocity;
-  geometry_msgs::msg::Vector3& linearAcceleration = imuMsg.linear_acceleration;
-
-  linearAcceleration.x = processed.accel_mps2[0];
-  linearAcceleration.y = processed.accel_mps2[1];
-  linearAcceleration.z = processed.accel_mps2[2];
-
-  angularVelocity.x = processed.gyro_rads[0];
-  angularVelocity.y = processed.gyro_rads[1];
-  angularVelocity.z = processed.gyro_rads[2];
-
-  imuMsg.orientation.w = 1.0;
-  imuMsg.orientation.x = 0.0;
-  imuMsg.orientation.y = 0.0;
-  imuMsg.orientation.z = 0.0;
-
-  imuMsg.orientation_covariance.fill(0.0);
-  imuMsg.orientation_covariance[0] = -1.0;
-  imuMsg.angular_velocity_covariance.fill(0.0);
-  imuMsg.linear_acceleration_covariance.fill(0.0);
+  fillImuMsg(imuMsg, orientation_q);
 
   m_imuPublisher->publish(imuMsg);
 }

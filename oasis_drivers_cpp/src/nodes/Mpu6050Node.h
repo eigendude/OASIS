@@ -52,6 +52,7 @@ private:
   IMU::Mpu6050ImuProcessor m_imuProcessor;
   rclcpp::Time m_lastSampleTime;
   bool m_hasLastSampleTime{false};
+  double m_yawRad{0.0};
 
   // Station parameters
   double m_dutyCycleInput{0.0};
