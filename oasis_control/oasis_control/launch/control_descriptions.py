@@ -1,0 +1,169 @@
+################################################################################
+#
+#  Copyright (C) 2021-2025 Garrett Brown
+#  This file is part of OASIS - https://github.com/eigendude/OASIS
+#
+#  SPDX-License-Identifier: Apache-2.0
+#  See the file LICENSE.txt for more information.
+#
+################################################################################
+
+from launch.launch_description import LaunchDescription
+from launch_ros.actions import Node
+
+
+################################################################################
+# ROS parameters
+################################################################################
+
+
+ROS_NAMESPACE: str = "oasis"
+
+CONTROL_PACKAGE_NAME: str = "oasis_control"
+
+
+################################################################################
+# Node descriptions
+################################################################################
+
+
+class ControlDescriptions:
+    #
+    # Home manager
+    #
+
+    @staticmethod
+    def add_home_manager(
+        ld: LaunchDescription,
+        smart_display_zones: list[str],
+        smart_display_plug_id: str,
+        camera_zones: list[str],
+        home_assistant_id: str,
+    ) -> None:
+        home_manager_node: Node = Node(
+            namespace=ROS_NAMESPACE,
+            package=CONTROL_PACKAGE_NAME,
+            executable="home_manager",
+            name="home_manager",
+            output="screen",
+            arguments=["--ros-args", "--log-level", "home_manager:=info"],
+            parameters=[
+                {
+                    "smart_display_zones": smart_display_zones,
+                    "smart_display_plug_id": smart_display_plug_id,
+                }
+            ],
+            remappings=[
+                *[
+                    (f"camera_scene_{zone_id}", f"{zone_id}/camera_scene")
+                    for zone_id in camera_zones
+                ],
+                ("plug", f"{home_assistant_id}/plug"),
+                ("rgb", f"{home_assistant_id}/rgb"),
+                *[
+                    (f"set_display_{zone_id}", f"{zone_id}/set_display")
+                    for zone_id in smart_display_zones
+                ],
+                ("set_plug", f"{home_assistant_id}/set_plug"),
+                ("set_rgb", f"{home_assistant_id}/set_rgb"),
+            ],
+        )
+        ld.add_action(home_manager_node)
+
+    #
+    # Microcontroller nodes
+    #
+
+    @staticmethod
+    def add_mcu_manager_telemetrix(
+        ld: LaunchDescription,
+        host_id: str,
+        mcu_node: str,
+        home_assistant_id: str,
+        input_provider: str,
+        calibration_resolution: str,
+    ) -> None:
+        conductor_node: Node = Node(
+            namespace=ROS_NAMESPACE,
+            package=CONTROL_PACKAGE_NAME,
+            executable=f"{mcu_node}_manager_telemetrix",
+            name=f"{mcu_node}_manager_telemetrix_{host_id}",
+            output="screen",
+            remappings=[
+                (f"{mcu_node}_state", f"{host_id}/{mcu_node}_state"),
+                ("analog_reading", f"{mcu_node}/analog_reading"),
+                (
+                    "calibration_status",
+                    f"{mcu_node}/{calibration_resolution}/calibration_status",
+                ),
+                ("capture_input", f"{input_provider}/capture_input"),
+                ("cpu_fan_speed", f"{mcu_node}/cpu_fan_speed"),
+                ("cpu_fan_write", f"{mcu_node}/cpu_fan_write"),
+                ("digital_reading", f"{mcu_node}/digital_reading"),
+                ("digital_write_cmd", f"{mcu_node}/digital_write_cmd"),
+                ("get_mac_address", f"{home_assistant_id}/get_mac_address"),
+                ("input", f"{input_provider}/input"),
+                ("mcu_memory", f"{mcu_node}/mcu_memory"),
+                ("mcu_string", f"{mcu_node}/mcu_string"),
+                ("peripherals", f"{input_provider}/peripherals"),
+                ("power_control", f"{host_id}/power_control"),
+                ("pwm_write_cmd", f"{mcu_node}/pwm_write_cmd"),
+                ("report_mcu_memory", f"{mcu_node}/report_mcu_memory"),
+                ("set_analog_mode", f"{mcu_node}/set_analog_mode"),
+                (
+                    "set_cpu_fan_sampling_interval",
+                    f"{mcu_node}/set_cpu_fan_sampling_interval",
+                ),
+                ("set_digital_mode", f"{mcu_node}/set_digital_mode"),
+                ("set_sampling_interval", f"{mcu_node}/set_sampling_interval"),
+                ("wol", f"{home_assistant_id}/wol"),
+            ],
+        )
+        ld.add_action(conductor_node)
+
+    @staticmethod
+    def add_mcu_manager(
+        ld: LaunchDescription,
+        host_id: str,
+        mcu_node: str,
+    ) -> None:
+        engine_node: Node = Node(
+            namespace=ROS_NAMESPACE,
+            package=CONTROL_PACKAGE_NAME,
+            executable=f"{mcu_node}_manager",
+            name=f"{mcu_node}_manager_{host_id}",
+            output="screen",
+            remappings=[
+                (f"{mcu_node}_state", f"{host_id}/{mcu_node}_state"),
+                ("analog_reading", f"{mcu_node}/analog_reading"),
+                ("mcu_memory", f"{mcu_node}/mcu_memory"),
+                ("mcu_string", f"{mcu_node}/mcu_string"),
+                ("report_mcu_memory", f"{mcu_node}/report_mcu_memory"),
+                ("set_analog_mode", f"{mcu_node}/set_analog_mode"),
+                ("set_sampling_interval", f"{mcu_node}/set_sampling_interval"),
+            ],
+        )
+        ld.add_action(engine_node)
+
+    @staticmethod
+    def add_mcu_manager_with_pwm(
+        ld: LaunchDescription,
+        host_id: str,
+        mcu_node: str,
+    ) -> None:
+        engineer_node: Node = Node(
+            namespace=ROS_NAMESPACE,
+            package=CONTROL_PACKAGE_NAME,
+            executable=f"{mcu_node}_manager",
+            name=f"{mcu_node}_manager_{host_id}",
+            output="screen",
+            remappings=[
+                (f"{mcu_node}_state", f"{host_id}/{mcu_node}_state"),
+                ("mcu_memory", f"{mcu_node}/mcu_memory"),
+                ("pwm_write_cmd", f"{mcu_node}/pwm_write_cmd"),
+                ("report_mcu_memory", f"{mcu_node}/report_mcu_memory"),
+                ("set_digital_mode", f"{mcu_node}/set_digital_mode"),
+                ("set_sampling_interval", f"{mcu_node}/set_sampling_interval"),
+            ],
+        )
+        ld.add_action(engineer_node)
