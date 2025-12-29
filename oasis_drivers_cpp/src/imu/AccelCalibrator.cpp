@@ -16,6 +16,13 @@ namespace OASIS::IMU
 namespace
 {
 constexpr double kG = 9.80665;
+constexpr double kStationaryDwellSeconds = 0.75;
+constexpr double kStationaryDwellMinSeconds = 0.5;
+constexpr double kStationaryDwellMaxSeconds = 1.0;
+constexpr double kStationaryAccelTolG = 0.06;
+constexpr double kStationaryGyroTolRadS = 0.10;
+constexpr double kStationaryFallbackDtSeconds = 0.02;
+constexpr double kStationaryMaxDtSeconds = 0.1;
 
 // Low-pass filter for accel (Hz). Keeps jerk metric stable under vibration.
 constexpr double kAccelLpCutoffHz = 2.5;
@@ -76,6 +83,43 @@ double AccelCalibrator::Norm3(const std::array<double, 3>& v)
   return std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
 }
 
+bool AccelCalibrator::IsStrictStationary(const std::array<double, 3>& accel_mps2,
+                                         const std::array<double, 3>& gyro_rads) const
+{
+  const double accel_mag = Norm3(accel_mps2);
+  const double gyro_mag = Norm3(gyro_rads);
+
+  const double accel_err = std::abs(accel_mag - kG);
+  const bool accel_ok = accel_err < (kStationaryAccelTolG * kG);
+  const bool gyro_ok = gyro_mag < kStationaryGyroTolRadS;
+
+  return accel_ok && gyro_ok;
+}
+
+bool AccelCalibrator::UpdateStationaryDwell(bool is_strict, double dt_seconds)
+{
+  const double dwell_target =
+      std::clamp(kStationaryDwellSeconds, kStationaryDwellMinSeconds, kStationaryDwellMaxSeconds);
+
+  double dt = dt_seconds;
+  if (dt <= 0.0)
+    dt = kStationaryFallbackDtSeconds;
+  dt = std::clamp(dt, 0.0, kStationaryMaxDtSeconds);
+
+  if (!is_strict)
+  {
+    m_stationary_dwell_seconds = 0.0;
+    m_stationary_confirmed = false;
+    return false;
+  }
+
+  m_stationary_dwell_seconds = std::min(m_stationary_dwell_seconds + dt, dwell_target);
+  if (m_stationary_dwell_seconds >= dwell_target)
+    m_stationary_confirmed = true;
+
+  return m_stationary_confirmed;
+}
+
 AccelCalibrator::Diagnostics AccelCalibrator::Update(const std::array<double, 3>& accel_mps2,
                                                      const std::array<double, 3>& gyro_rads,
                                                      double dt_seconds)
@@ -112,9 +156,16 @@ AccelCalibrator::Diagnostics AccelCalibrator::Update(const std::array<double, 3>
   d.stationary = stationary;
 
   const double accel_lp_norm = Norm3(m_accel_lp);
+  const bool strict_stationary = IsStrictStationary(m_accel_lp, gyro_rads);
+  d.stationary_strict = strict_stationary;
+  const bool stationary_confirmed = UpdateStationaryDwell(strict_stationary, dt_seconds);
+  d.stationary_confirmed = stationary_confirmed;
+  d.stationary_dwell_seconds = m_stationary_dwell_seconds;
+  d.stationary_dwell_target_seconds =
+      std::clamp(kStationaryDwellSeconds, kStationaryDwellMinSeconds, kStationaryDwellMaxSeconds);
 
   // Initialize uniform scale from the first stationary window to avoid large start-up errors.
-  if (stationary && !m_uniform_scale_initialized)
+  if (stationary_confirmed && !m_uniform_scale_initialized)
   {
     m_stationary_norm_mean.Add(accel_lp_norm);
     if (m_stationary_norm_mean.Ready(kMinStationarySamplesForInit))
@@ -128,7 +179,7 @@ AccelCalibrator::Diagnostics AccelCalibrator::Update(const std::array<double, 3>
   // Magnitude residual: r = (accel - bias) / scale, e = |r| - g.
   // Scale updates are gated by coverage so the estimator only stretches when
   // gravity has been observed from both directions on an axis.
-  if (stationary)
+  if (stationary_confirmed)
   {
     std::array<double, 3> r{0.0, 0.0, 0.0};
     for (std::size_t i = 0; i < 3; ++i)
