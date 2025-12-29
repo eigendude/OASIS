@@ -21,17 +21,15 @@ constexpr double kG = 9.80665;
 constexpr double kYawStraightMax = 0.06;
 constexpr double kYawStraightMaxInBurst = 0.06;
 constexpr double kABurstStart = 0.6;
-constexpr double kABurstEnd = 0.2;
 constexpr double kMinBurstSeconds = 0.150;
 constexpr double kMaxBurstSeconds = 1.500;
 constexpr double kMinImpulse = 0.25;
 constexpr double kMaxYawInBurst = 0.10;
-constexpr std::size_t kMinBurstsToLock = 1;
-constexpr double kConsistencyDotMin = 0.90;
+constexpr double kOppositeDotMin = 0.90;
 constexpr std::size_t kStartSamples = 4;
 constexpr std::size_t kEndSamples = 5;
 constexpr std::size_t kYawOverSamplesAbort = 3;
-constexpr double kBeta = 0.2;
+constexpr double kDropFraction = 0.5;
 constexpr double kEps = 1e-9;
 } // namespace
 
@@ -98,8 +96,9 @@ ForwardAxisLearner::Diagnostics ForwardAxisLearner::Update(const std::array<doub
       m_impulse += a_h_mag * dt_seconds;
       m_yaw_accum += std::abs(yaw_rate) * dt_seconds;
       m_t_burst += dt_seconds;
+      m_a_h_peak = std::max(m_a_h_peak, a_h_mag);
 
-      if (a_h_mag < kABurstEnd)
+      if (a_h_mag <= m_a_h_peak * kDropFraction)
         ++m_end_counter;
       else
         m_end_counter = 0;
@@ -108,7 +107,21 @@ ForwardAxisLearner::Diagnostics ForwardAxisLearner::Update(const std::array<doub
       {
         EvaluateBurst(u_hat);
         ResetBurst();
-        m_state = (m_state == State::LOCKED) ? State::LOCKED : State::ARMED;
+        m_state = (m_state == State::LOCKED || m_state == State::HAVE_UNSIGNED) ? m_state : State::ARMED;
+      }
+      break;
+    }
+    case State::HAVE_UNSIGNED:
+    {
+      if (std::abs(yaw_rate) < kYawStraightMax && a_h_mag > kABurstStart)
+        ++m_start_counter;
+      else
+        m_start_counter = 0;
+
+      if (m_start_counter >= kStartSamples)
+      {
+        StartBurst();
+        m_state = State::IN_BURST;
       }
       break;
     }
@@ -154,6 +167,7 @@ void ForwardAxisLearner::StartBurst()
   m_t_burst = 0.0;
   m_end_counter = 0;
   m_yaw_over_counter = 0;
+  m_a_h_peak = 0.0;
 }
 
 void ForwardAxisLearner::ResetBurst()
@@ -165,6 +179,7 @@ void ForwardAxisLearner::ResetBurst()
   m_impulse = 0.0;
   m_yaw_accum = 0.0;
   m_t_burst = 0.0;
+  m_a_h_peak = 0.0;
 }
 
 void ForwardAxisLearner::EvaluateBurst(const std::array<double, 3>& u_hat)
@@ -185,32 +200,30 @@ void ForwardAxisLearner::EvaluateBurst(const std::array<double, 3>& u_hat)
   std::array<double, 3> candidate = Math::Normalize(m_sum_vec);
   m_last_candidate = candidate;
 
-  if (m_burst_count == 0)
-  {
-    m_f_mean = candidate;
-  }
-  else
-  {
-    if (Math::Dot(candidate, m_f_mean) < 0.0)
-      candidate = Math::Scale(candidate, -1.0);
-
-    m_f_mean = Math::Normalize(
-        Math::Add(Math::Scale(m_f_mean, 1.0 - kBeta), Math::Scale(candidate, kBeta)));
-  }
-
   ++m_burst_count;
-  m_consistency_dot = Math::Dot(candidate, m_f_mean);
-
-  if (m_burst_count >= kMinBurstsToLock && m_consistency_dot >= kConsistencyDotMin)
+  if (m_state == State::HAVE_UNSIGNED)
   {
-    const std::array<double, 3> r_hat = Math::Normalize(Math::Cross(u_hat, m_f_mean));
-    const double r_norm = Math::Norm(r_hat);
-    if (r_norm <= kEps)
-      return;
+    m_consistency_dot = Math::Dot(candidate, m_f_hat_unsigned);
+    if (m_consistency_dot <= -kOppositeDotMin)
+    {
+      const std::array<double, 3> r_hat = Math::Normalize(Math::Cross(u_hat, m_f_hat_unsigned));
+      const double r_norm = Math::Norm(r_hat);
+      if (r_norm <= kEps)
+        return;
 
-    m_f_hat_unsigned = m_f_mean;
-    m_f_hat = Math::Normalize(Math::Cross(r_hat, u_hat));
-    m_state = State::LOCKED;
+      m_f_hat = Math::Normalize(Math::Cross(r_hat, u_hat));
+      m_state = State::LOCKED;
+    }
+    else
+    {
+      // Latest accepted burst becomes the new unsigned candidate while waiting for an opposite.
+      m_f_hat_unsigned = candidate;
+    }
+    return;
   }
+
+  m_f_hat_unsigned = candidate;
+  m_consistency_dot = 1.0;
+  m_state = State::HAVE_UNSIGNED;
 }
 } // namespace OASIS::IMU
