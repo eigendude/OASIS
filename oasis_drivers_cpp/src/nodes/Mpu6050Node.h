@@ -49,6 +49,8 @@ private:
   std::string m_i2cDevice;
   std::chrono::duration<double> m_publishPeriod;
   IMU::Mpu6050ImuProcessor m_imuProcessor;
+  rclcpp::Time m_lastSampleTime{};
+  bool m_hasLastSampleTime{false};
 
   // Station parameters
   double m_dutyCycleInput{0.0};
