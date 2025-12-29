@@ -18,15 +18,16 @@ namespace OASIS::IMU
 namespace
 {
 constexpr double kG = 9.80665;
-constexpr double kYawStraightMax = 0.06;
-constexpr double kYawStraightMaxInBurst = 0.06;
-constexpr double kABurstStart = 0.6;
+constexpr double kYawStraightMax = 0.10;
+constexpr double kYawStraightMaxInBurst = 0.10;
+constexpr double kABurstStart = 0.25;
 constexpr double kMinBurstSeconds = 0.150;
 constexpr double kMaxBurstSeconds = 1.500;
 constexpr double kMinImpulse = 0.25;
 constexpr double kMaxYawInBurst = 0.10;
 constexpr double kOppositeDotMin = 0.90;
-constexpr std::size_t kStartSamples = 4;
+constexpr double kSameDotMin = 0.75;
+constexpr std::size_t kStartSamples = 2;
 constexpr std::size_t kEndSamples = 5;
 constexpr std::size_t kYawOverSamplesAbort = 3;
 constexpr double kDropFraction = 0.5;
@@ -216,11 +217,10 @@ void ForwardAxisLearner::EvaluateBurst(const std::array<double, 3>& u_hat)
       m_f_hat = Math::Normalize(Math::Cross(r_hat, u_hat));
       m_state = State::LOCKED;
     }
-    else
+    else if (m_consistency_dot >= kSameDotMin)
     {
-      // Latest accepted burst becomes the new first candidate while waiting for an opposite.
-      m_first_candidate = candidate;
-      m_f_hat_unsigned = candidate;
+      m_first_candidate = Math::Normalize(Math::Add(m_first_candidate, candidate));
+      m_f_hat_unsigned = m_first_candidate;
     }
     return;
   }
