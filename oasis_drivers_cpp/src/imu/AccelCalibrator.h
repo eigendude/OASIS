@@ -8,21 +8,15 @@
 
 #pragma once
 
-#include "imu/AccelCalibrator.h"
-
 namespace OASIS::IMU
 {
-class Mpu6050ImuProcessor
+
+class AccelCalibrator
 {
 public:
-  Mpu6050ImuProcessor();
-
-  void SetAccelScale(double accelScale);
-  void SetGyroScale(double gyroScale);
+  AccelCalibrator();
 
 private:
-  double m_accelScale{0.0};
-  double m_gyroScale{0.0};
-  AccelCalibrator m_accelCalibrator;
 };
+
 } // namespace OASIS::IMU

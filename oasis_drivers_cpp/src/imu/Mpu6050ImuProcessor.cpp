@@ -8,13 +8,9 @@
 
 #include "imu/Mpu6050ImuProcessor.h"
 
-namespace OASIS::IMU
-{
-Mpu6050ImuProcessor::Mpu6050ImuProcessor()
-{
-}
+using namespace OASIS::IMU;
 
-Mpu6050ImuProcessor::~Mpu6050ImuProcessor() = default;
+Mpu6050ImuProcessor::Mpu6050ImuProcessor() = default;
 
 void Mpu6050ImuProcessor::SetAccelScale(double accelScale)
 {
@@ -25,4 +21,3 @@ void Mpu6050ImuProcessor::SetGyroScale(double gyroScale)
 {
   m_gyroScale = gyroScale;
 }
-} // namespace OASIS::IMU

@@ -12,13 +12,11 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <functional>
-#include <vector>
 
 #include <I2Cdev.h>
 #include <rclcpp/rclcpp.hpp>
-#include <std_msgs/msg/bool.hpp>
-#include <std_msgs/msg/float64_multi_array.hpp>
 
 using namespace OASIS::IMU;
 using namespace OASIS::ROS;
@@ -75,12 +73,44 @@ bool Mpu6050Node::Initialize()
   m_mpu6050->setFullScaleAccelRange(MPU6050_ACCEL_FS_2);
   m_mpu6050->setFullScaleGyroRange(MPU6050_GYRO_FS_250);
 
+  const uint8_t who = m_mpu6050->getDeviceID();
+  RCLCPP_INFO(get_logger(), "MPU6050 WHO_AM_I / device ID: 0x%02X", who);
+
   const uint8_t accelRange = m_mpu6050->getFullScaleAccelRange();
   const uint8_t gyroRange = m_mpu6050->getFullScaleGyroRange();
 
   // Initialize IMU state based on actual configuration
   const double accelScale = Mpu6050ImuUtils::AccelScaleFromRange(accelRange);
   const double gyroScale = Mpu6050ImuUtils::GyroScaleFromRange(gyroRange);
+
+  RCLCPP_INFO(get_logger(),
+              "MPU6050 ranges: accelRange=%u gyroRange=%u accelScale=%.9f m/s^2/LSB gyroScale=%.9f "
+              "rad/s/LSB",
+              static_cast<unsigned>(accelRange), static_cast<unsigned>(gyroRange), accelScale,
+              gyroScale);
+
+  // Also log raw register values (helps catch library enum vs register mismatch)
+  const uint8_t regAccelCfg = m_mpu6050->getFullScaleAccelRange(); // same call, but log explicitly
+  const uint8_t regGyroCfg = m_mpu6050->getFullScaleGyroRange();
+  RCLCPP_INFO(get_logger(), "MPU6050 readback (enum): ACCEL_CFG=%u GYRO_CFG=%u",
+              static_cast<unsigned>(regAccelCfg), static_cast<unsigned>(regGyroCfg));
+
+  uint8_t accelConfig = 0;
+  uint8_t gyroConfig = 0;
+  uint8_t dlpfConfig = 0;
+  uint8_t sampleRateDiv = 0;
+  uint8_t powerMgmt = 0;
+
+  I2Cdev::readByte(MPU6050_DEFAULT_ADDRESS, MPU6050_RA_ACCEL_CONFIG, &accelConfig);
+  I2Cdev::readByte(MPU6050_DEFAULT_ADDRESS, MPU6050_RA_GYRO_CONFIG, &gyroConfig);
+  I2Cdev::readByte(MPU6050_DEFAULT_ADDRESS, MPU6050_RA_CONFIG, &dlpfConfig);
+  I2Cdev::readByte(MPU6050_DEFAULT_ADDRESS, MPU6050_RA_SMPLRT_DIV, &sampleRateDiv);
+  I2Cdev::readByte(MPU6050_DEFAULT_ADDRESS, MPU6050_RA_PWR_MGMT_1, &powerMgmt);
+
+  RCLCPP_INFO(get_logger(),
+              "MPU6050 regs: ACCEL_CONFIG=0x%02X GYRO_CONFIG=0x%02X CONFIG(DLPF)=0x%02X "
+              "SMPLRT_DIV=0x%02X PWR_MGMT_1=0x%02X",
+              accelConfig, gyroConfig, dlpfConfig, sampleRateDiv, powerMgmt);
 
   m_imuProcessor.SetAccelScale(accelScale);
   m_imuProcessor.SetGyroScale(gyroScale);
@@ -127,16 +157,22 @@ void Mpu6050Node::PublishImu()
 
   m_mpu6050->getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
 
-  const int16_t tempRaw = m_mpu6050->getTemperature();
-
   const rclcpp::Time now = get_clock()->now();
+
+  // MPU6050 datasheet formula: Temp(°C) = (TEMP_OUT / 340) + 36.53
+  const int16_t tempRaw = m_mpu6050->getTemperature();
+  const double temp_c = (static_cast<double>(tempRaw) / 340.0) + 36.53;
+
+  const bool drdy = m_mpu6050->getIntDataReadyStatus();
+
+  RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000, "IMU tempRaw=%d (%.2fC), data_ready=%s",
+                       tempRaw, temp_c, drdy ? "true" : "false");
 
   // TODO
   /*
-  auto output = m_imuProcessor->Process(sample, m_dutyCycleInput);
-  if (!output)
-    return;
-   */
+  const auto processed = m_imuProcessor.ProcessRaw(sample.ax, sample.ay, sample.az, sample.gx,
+                                                   sample.gy, sample.gz, dt_seconds);
+  */
 
   sensor_msgs::msg::Imu imuMsg;
 
@@ -149,23 +185,24 @@ void Mpu6050Node::PublishImu()
 
   // TODO
   /*
-  linearAcceleration.x = output->linear_acceleration[0];
-  linearAcceleration.y = output->linear_acceleration[1];
-  linearAcceleration.z = output->linear_acceleration[2];
+  linearAcceleration.x = processed.accel_mps2[0];
+  linearAcceleration.y = processed.accel_mps2[1];
+  linearAcceleration.z = processed.accel_mps2[2];
 
-  angularVelocity.x = output->angular_velocity[0];
-  angularVelocity.y = output->angular_velocity[1];
-  angularVelocity.z = output->angular_velocity[2];
-
-  imuMsg.orientation.w = output->orientation[0];
-  imuMsg.orientation.x = output->orientation[1];
-  imuMsg.orientation.y = output->orientation[2];
-  imuMsg.orientation.z = output->orientation[3];
-
-  imuMsg.orientation_covariance = output->orientation_covariance;
-  imuMsg.angular_velocity_covariance = output->angular_velocity_covariance;
-  imuMsg.linear_acceleration_covariance = output->linear_acceleration_covariance;
+  angularVelocity.x = processed.gyro_rads[0];
+  angularVelocity.y = processed.gyro_rads[1];
+  angularVelocity.z = processed.gyro_rads[2];
   */
+
+  imuMsg.orientation.w = 1.0;
+  imuMsg.orientation.x = 0.0;
+  imuMsg.orientation.y = 0.0;
+  imuMsg.orientation.z = 0.0;
+
+  imuMsg.orientation_covariance.fill(0.0);
+  imuMsg.orientation_covariance[0] = -1.0;
+  imuMsg.angular_velocity_covariance.fill(0.0);
+  imuMsg.linear_acceleration_covariance.fill(0.0);
 
   m_imuPublisher->publish(imuMsg);
 }
