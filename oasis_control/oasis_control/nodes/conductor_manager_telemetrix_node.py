@@ -69,7 +69,10 @@ VSS_R2: float = 9.83  # KΩ
 
 
 # The hostname or IP of the computer that provides input
-WOL_HOSTNAME: str = "megapegasus.local"
+INPUT_HOSTNAME: str = "megapegasus.local"
+
+# The hostname or IP of the computer that provides perception and rendering
+VISION_HOSTNAME: str = "precision.local"
 
 # Amount of time to wait for WoL services, in seconds
 WOL_TIMEOUT_SECS: float = 5.0
@@ -120,7 +123,10 @@ class ConductorManagerNode(rclpy.node.Node):
         self._sampling_manager: SamplingManager = SamplingManager(self)
         self._station_manager: StationManager = StationManager(self)
         self._station_input: StationInput = StationInput(self, self._station_manager)
-        self._wol_manager: Optional[WolManager] = WolManager(self, WOL_HOSTNAME)
+        self._wol_manager_input: Optional[WolManager] = WolManager(self, INPUT_HOSTNAME)
+        self._wol_manager_vision: Optional[WolManager] = WolManager(
+            self, VISION_HOSTNAME
+        )
 
         # Reliable listener QOS profile for subscribers
         qos_profile: rclpy.qos.QoSProfile = (
@@ -138,10 +144,19 @@ class ConductorManagerNode(rclpy.node.Node):
         self._publish_timer: Optional[rclpy.node.Timer] = None
 
     def initialize(self) -> bool:
-        # Initialize WoL manager
-        wol_manager = self._wol_manager
-        if wol_manager is not None and not wol_manager.initialize(WOL_TIMEOUT_SECS):
-            self._wol_manager = None
+        # Initialize WoL managers
+        wol_manager_input = self._wol_manager_input
+
+        if wol_manager_input is not None and not wol_manager_input.initialize(
+            WOL_TIMEOUT_SECS
+        ):
+            self._wol_manager_input = None
+
+        wol_manager_vision = self._wol_manager_vision
+        if wol_manager_vision is not None and not wol_manager_vision.initialize(
+            WOL_TIMEOUT_SECS
+        ):
+            self._wol_manager_vision = None
 
         self.get_logger().debug("Starting conductor configuration")
 
@@ -174,8 +189,12 @@ class ConductorManagerNode(rclpy.node.Node):
         )
 
         # Wake the input host
-        if self._wol_manager is not None:
-            self._wol_manager.send_wol()
+        if self._wol_manager_input is not None:
+            self._wol_manager_input.send_wol()
+
+        # Wake the vision host
+        if self._wol_manager_vision is not None:
+            self._wol_manager_vision.send_wol()
 
         self.get_logger().info("Conductor manager initialized successfully")
 
