@@ -11,6 +11,7 @@
 from launch.launch_description import LaunchDescription
 
 from oasis_control.launch.control_descriptions import ControlDescriptions
+from oasis_drivers.launch.driver_descriptions import DriverDescriptions as Drivers
 from oasis_hass.utils.smarthome_config import SmarthomeConfig
 
 
@@ -78,6 +79,8 @@ def generate_launch_description() -> LaunchDescription:
             INPUT_PROVIDER,
             CALIBRATION_RESOLUTION,
         )
+
+        Drivers.add_wol_server(ld, HOST_ID)
     elif HOST_ID == "jetson":
         ControlDescriptions.add_mcu_manager(ld, HOST_ID, "engine")
     elif HOST_ID == "falcon":

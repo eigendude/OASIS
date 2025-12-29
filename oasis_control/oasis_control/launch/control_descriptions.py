@@ -116,7 +116,7 @@ class ControlDescriptions:
                 ),
                 ("set_digital_mode", f"{mcu_node}/set_digital_mode"),
                 ("set_sampling_interval", f"{mcu_node}/set_sampling_interval"),
-                ("wol", f"{home_assistant_id}/wol"),
+                ("wol", f"{host_id}/wol"),
             ],
         )
         ld.add_action(conductor_node)
