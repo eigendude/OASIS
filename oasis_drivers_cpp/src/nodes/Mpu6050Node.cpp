@@ -174,6 +174,14 @@ void Mpu6050Node::PublishImu()
   const bool drdy = m_mpu6050->getIntDataReadyStatus();
 
   const auto processed = m_imuProcessor.ProcessRaw(ax, ay, az, gx, gy, gz, dt_seconds);
+
+  if (processed.boot_accel_scale_applied)
+  {
+    RCLCPP_INFO(get_logger(),
+                "Auto-trimmed accel sensitivity: lsb_per_g=%.3f new_accelScale=%.9f m/s^2/LSB",
+                processed.boot_lsb_per_g, processed.boot_accel_scale);
+  }
+
   const double accel_norm_g = std::sqrt(processed.accel_mps2[0] * processed.accel_mps2[0] +
                                         processed.accel_mps2[1] * processed.accel_mps2[1] +
                                         processed.accel_mps2[2] * processed.accel_mps2[2]) /

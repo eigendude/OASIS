@@ -61,6 +61,14 @@ public:
   /// Latest scale estimate (unitless).
   const std::array<double, 3>& GetScale() const;
 
+  /**
+   * @brief Reset uniform scale initialization state.
+   *
+   * Clears the stationary mean accumulator and allows the uniform scale
+   * initialization to run again with new input scaling.
+   */
+  void ResetUniformScaleInitialization();
+
 private:
   struct RunningMean
   {
