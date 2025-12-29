@@ -44,7 +44,8 @@ constexpr const char* FRAME_ID = "imu_link";
 constexpr const char* DEFAULT_I2C_DEVICE = "/dev/i2c-1";
 constexpr double DEFAULT_PUBLISH_RATE_HZ = 50.0;
 constexpr double kRollPitchVariance = 0.0076;
-constexpr double kYawVariance = 1e6;
+constexpr double kYawVarianceUnlocked = 1e6;
+constexpr double kYawVarianceLocked = 0.02;
 constexpr double kPi = 3.141592653589793;
 
 const char* ToString(ForwardAxisLearner::State state)
@@ -259,7 +260,8 @@ void Mpu6050Node::PublishImu()
   const Math::Quaternion yaw_pi_q = Math::FromAxisAngle({0.0, 0.0, 1.0}, kPi);
   const Math::Quaternion reverse_q = Math::Multiply(yaw_pi_q, tilt_q);
 
-  auto fillImuMsg = [&](sensor_msgs::msg::Imu& msg, const Math::Quaternion& orientation)
+  auto fillImuMsg =
+      [&](sensor_msgs::msg::Imu& msg, const Math::Quaternion& orientation, bool yaw_defined)
   {
     std_msgs::msg::Header& header = msg.header;
     header.stamp = now;
@@ -281,7 +283,7 @@ void Mpu6050Node::PublishImu()
     msg.orientation_covariance.fill(0.0);
     msg.orientation_covariance[0] = kRollPitchVariance;
     msg.orientation_covariance[4] = kRollPitchVariance;
-    msg.orientation_covariance[8] = kYawVariance;
+    msg.orientation_covariance[8] = yaw_defined ? kYawVarianceLocked : kYawVarianceUnlocked;
     msg.angular_velocity_covariance.fill(0.0);
     msg.linear_acceleration_covariance.fill(0.0);
   };
@@ -290,9 +292,9 @@ void Mpu6050Node::PublishImu()
   sensor_msgs::msg::Imu imuForwardMsg;
   sensor_msgs::msg::Imu imuReverseMsg;
 
-  fillImuMsg(imuMsg, tilt_q);
-  fillImuMsg(imuForwardMsg, tilt_q);
-  fillImuMsg(imuReverseMsg, reverse_q);
+  fillImuMsg(imuMsg, tilt_q, false);
+  fillImuMsg(imuForwardMsg, tilt_q, processed.f_hat_locked);
+  fillImuMsg(imuReverseMsg, reverse_q, processed.f_hat_locked);
 
   m_imuPublisher->publish(imuMsg);
   m_imuForwardPublisher->publish(imuForwardMsg);
