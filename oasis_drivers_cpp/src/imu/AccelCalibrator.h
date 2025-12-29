@@ -21,7 +21,7 @@ namespace OASIS::IMU
  * The calibrator watches for stationary periods and nudges a diagonal
  * bias/scale model so the corrected acceleration magnitude matches gravity.
  *
- * Phase 1 ("precal") detects stationarity using gyro + accel first differences,
+ * Phase 1 ("precal") detects stationarity using gyro + accel high-pass noise,
  * avoids the |a|≈g chicken-and-egg before bias/scale are learned. Phase 2
  * ("strict") activates once uniform scale is initialized and requires the
  * corrected accel magnitude to be near gravity.
@@ -53,19 +53,23 @@ public:
     /// Stationary dwell target (s) required to confirm.
     double stationary_dwell_target_seconds{0.0};
 
-    /// EWMA mean gyro magnitude (rad/s).
-    double omega_mean{0.0};
-    /// EWMA 1-sigma gyro magnitude noise estimate (rad/s).
-    double omega_sigma{0.0};
-    /// True when gyro noise statistics have been initialized.
-    bool omega_stats_inited{false};
-    /// EWMA mean accel delta magnitude (m/s^2).
-    double delta_a_mean{0.0};
-    /// EWMA 1-sigma accel delta noise estimate (m/s^2).
-    double delta_a_sigma{0.0};
-    /// True when accel delta noise statistics have been initialized.
-    bool delta_a_stats_inited{false};
-    /// Stationarity score from normalized gyro + accel delta residuals.
+    /// EWMA mean gyro noise per axis (rad/s).
+    std::array<double, 3> gyro_mu{0.0, 0.0, 0.0};
+    /// EWMA 1-sigma gyro noise per axis (rad/s).
+    std::array<double, 3> gyro_sigma{0.0, 0.0, 0.0};
+    /// True when gyro noise statistics have been initialized per axis.
+    std::array<bool, 3> gyro_inited{false, false, false};
+    /// EWMA mean accel high-pass noise per axis (m/s^2).
+    std::array<double, 3> accel_hp_mu{0.0, 0.0, 0.0};
+    /// EWMA 1-sigma accel high-pass noise per axis (m/s^2).
+    std::array<double, 3> accel_hp_sigma{0.0, 0.0, 0.0};
+    /// True when accel high-pass noise statistics have been initialized per axis.
+    std::array<bool, 3> accel_hp_inited{false, false, false};
+    /// True when boot-time noise calibration window is active.
+    bool noise_calib_active{false};
+    /// True when boot-time noise calibration window has completed.
+    bool noise_calib_done{false};
+    /// Stationarity score from normalized gyro + accel high-pass residuals.
     double stationarity_score{0.0};
 
     /// Coverage flags: true if gravity has pointed mostly in +axis (unit > +0.75).
@@ -113,13 +117,19 @@ private:
 
   struct OnlineStats
   {
+    std::size_t n{0};
     double mu{0.0};
     double var{0.0};
     bool inited{false};
 
-    void UpdateWinsor(double x, double alpha, double sigma_floor, double k_clip);
-    double Sigma(double sigma_floor) const;
-    double Z(double x, double sigma_floor) const;
+    void UpdateWinsor(double x,
+                      double alpha,
+                      double sigma_floor,
+                      double sigma_cap,
+                      double k_clip);
+    double Sigma(double sigma_floor, double sigma_cap) const;
+    double Z(double x, double sigma_floor, double sigma_cap) const;
+    bool Ready(std::size_t min_samples) const;
   };
 
   static double Norm3(const std::array<double, 3>& v);
@@ -135,10 +145,11 @@ private:
   RunningMean m_stationary_norm_mean;
   double m_stationary_dwell_seconds{0.0};
   bool m_stationary_confirmed{false};
-  std::array<double, 3> m_prev_accel_raw_mps2{0.0, 0.0, 0.0};
-  bool m_have_prev_accel{false};
-  OnlineStats m_omega_stats;
-  OnlineStats m_delta_a_stats;
+  std::array<double, 3> m_accel_lpf_mps2{0.0, 0.0, 0.0};
+  bool m_have_accel_lpf{false};
+  std::array<OnlineStats, 3> m_gyro_stats{};
+  std::array<OnlineStats, 3> m_accel_hp_stats{};
+  double m_noise_calib_elapsed{0.0};
   bool m_stationary_gate_active{false};
 
   std::array<bool, 3> m_pos_seen{false, false, false};

@@ -324,7 +324,9 @@ void Mpu6050Node::PublishImu()
       get_logger(), *get_clock(), 1000,
       "IMU accel=(%.3f, %.3f, %.3f) m/s^2 |g|=%.3f stationary=%s stationary_confirmed=%s "
       "phase2=%s dwell=%.2f/%.2f score=%.2f "
-      "noise(omega=%.4f±%.4f rad/s, delta_a=%.4f±%.4f m/s^2) "
+      "noise_calib(active=%s done=%s) "
+      "noise(gyro_mu=(%.4f, %.4f, %.4f) gyro_sigma=(%.4f, %.4f, %.4f) "
+      "accel_hp_mu=(%.4f, %.4f, %.4f) accel_hp_sigma=(%.4f, %.4f, %.4f)) "
       "coverage=x(+:%s -:%s) y(+:%s -:%s) z(+:%s -:%s) "
       "bias=(%.4f, %.4f, %.4f) scale=(%.4f, %.4f, %.4f) temp=%.2fC data_ready=%s",
       processed.accel_mps2[0], processed.accel_mps2[1], processed.accel_mps2[2], accel_norm_g,
@@ -332,8 +334,13 @@ void Mpu6050Node::PublishImu()
       processed.diag.stationary_confirmed ? "true" : "false",
       processed.diag.stationary_phase2 ? "true" : "false", processed.diag.stationary_dwell_seconds,
       processed.diag.stationary_dwell_target_seconds, processed.diag.stationarity_score,
-      processed.diag.omega_mean, processed.diag.omega_sigma, processed.diag.delta_a_mean,
-      processed.diag.delta_a_sigma, processed.diag.pos_seen[0] ? "true" : "false",
+      processed.diag.noise_calib_active ? "true" : "false",
+      processed.diag.noise_calib_done ? "true" : "false", processed.diag.gyro_mu[0],
+      processed.diag.gyro_mu[1], processed.diag.gyro_mu[2], processed.diag.gyro_sigma[0],
+      processed.diag.gyro_sigma[1], processed.diag.gyro_sigma[2], processed.diag.accel_hp_mu[0],
+      processed.diag.accel_hp_mu[1], processed.diag.accel_hp_mu[2],
+      processed.diag.accel_hp_sigma[0], processed.diag.accel_hp_sigma[1],
+      processed.diag.accel_hp_sigma[2], processed.diag.pos_seen[0] ? "true" : "false",
       processed.diag.neg_seen[0] ? "true" : "false", processed.diag.pos_seen[1] ? "true" : "false",
       processed.diag.neg_seen[1] ? "true" : "false", processed.diag.pos_seen[2] ? "true" : "false",
       processed.diag.neg_seen[2] ? "true" : "false", processed.diag.bias_mps2[0],
@@ -392,18 +399,26 @@ void Mpu6050Node::PublishImu()
     msg.angular_velocity_covariance.fill(0.0);
     msg.linear_acceleration_covariance.fill(0.0);
 
-    if (processed.diag.omega_stats_inited && processed.diag.delta_a_stats_inited)
-    {
-      const double gyro_sigma = processed.diag.omega_sigma;
-      // Use accel first-difference noise as a conservative proxy for accel noise.
-      const double accel_sigma = processed.diag.delta_a_sigma;
+    const bool gyro_noise_ready = processed.diag.gyro_inited[0] && processed.diag.gyro_inited[1] &&
+                                  processed.diag.gyro_inited[2];
+    const bool accel_noise_ready = processed.diag.accel_hp_inited[0] &&
+                                   processed.diag.accel_hp_inited[1] &&
+                                   processed.diag.accel_hp_inited[2];
 
-      msg.angular_velocity_covariance[0] = gyro_sigma * gyro_sigma;
-      msg.angular_velocity_covariance[4] = gyro_sigma * gyro_sigma;
-      msg.angular_velocity_covariance[8] = gyro_sigma * gyro_sigma;
-      msg.linear_acceleration_covariance[0] = accel_sigma * accel_sigma;
-      msg.linear_acceleration_covariance[4] = accel_sigma * accel_sigma;
-      msg.linear_acceleration_covariance[8] = accel_sigma * accel_sigma;
+    if (processed.diag.noise_calib_done && gyro_noise_ready && accel_noise_ready)
+    {
+      msg.angular_velocity_covariance[0] =
+          processed.diag.gyro_sigma[0] * processed.diag.gyro_sigma[0];
+      msg.angular_velocity_covariance[4] =
+          processed.diag.gyro_sigma[1] * processed.diag.gyro_sigma[1];
+      msg.angular_velocity_covariance[8] =
+          processed.diag.gyro_sigma[2] * processed.diag.gyro_sigma[2];
+      msg.linear_acceleration_covariance[0] =
+          processed.diag.accel_hp_sigma[0] * processed.diag.accel_hp_sigma[0];
+      msg.linear_acceleration_covariance[4] =
+          processed.diag.accel_hp_sigma[1] * processed.diag.accel_hp_sigma[1];
+      msg.linear_acceleration_covariance[8] =
+          processed.diag.accel_hp_sigma[2] * processed.diag.accel_hp_sigma[2];
     }
   };
 
