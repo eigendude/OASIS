@@ -21,6 +21,9 @@ constexpr double kStationaryDwellMinSeconds = 0.5;
 constexpr double kStationaryDwellMaxSeconds = 1.0;
 constexpr double kStationaryAccelTolG = 0.06;
 constexpr double kStationaryGyroTolRadS = 0.10;
+// Phase1 avoids the |a|≈g chicken-and-egg before bias/scale are learned.
+constexpr double kGyroPrecalRadS = 0.25;
+constexpr double kJerkPrecalMps3 = 3.0;
 constexpr double kStationaryFallbackDtSeconds = 0.02;
 constexpr double kStationaryMaxDtSeconds = 0.1;
 
@@ -121,16 +124,40 @@ AccelCalibrator::Diagnostics AccelCalibrator::Update(const std::array<double, 3>
   if (dt_seconds <= 0.0)
     dt_seconds = 0.02;
 
-  const bool strict_stationary = IsStrictStationary(accel_mps2, gyro_rads);
-  const bool stationary = strict_stationary;
-  d.stationary = stationary;
+  const double gyro_mag = Norm3(gyro_rads);
+  const double jerk_dt = std::max(dt_seconds, kStationaryFallbackDtSeconds);
+  std::array<double, 3> jerk{0.0, 0.0, 0.0};
+  double jerk_mag = 0.0;
+  if (m_have_prev_accel)
+  {
+    for (std::size_t i = 0; i < 3; ++i)
+      jerk[i] = (accel_mps2[i] - m_prev_accel_raw_mps2[i]) / jerk_dt;
+    jerk_mag = Norm3(jerk);
+  }
+
+  const bool precal_stationary =
+      m_have_prev_accel && gyro_mag < kGyroPrecalRadS && jerk_mag < kJerkPrecalMps3;
+
+  m_prev_accel_raw_mps2 = accel_mps2;
+  m_have_prev_accel = true;
+
+  std::array<double, 3> accel_corr{0.0, 0.0, 0.0};
+  for (std::size_t i = 0; i < 3; ++i)
+  {
+    const double scale_abs = std::max(std::abs(m_scale[i]), kEps);
+    accel_corr[i] = (accel_mps2[i] - m_bias[i]) / scale_abs;
+  }
+
+  const bool strict_stationary = IsStrictStationary(accel_corr, gyro_rads);
+  const bool phase2_active = m_uniform_scale_initialized;
+  // Phase 1 uses gyro + jerk only; phase 2 requires corrected |a|≈g.
+  const bool dwell_predicate = phase2_active ? strict_stationary : precal_stationary;
+  d.stationary = dwell_predicate;
+  d.stationary_precal = precal_stationary;
 
   const double accel_norm = Norm3(accel_mps2);
-  const bool phase2_active = m_uniform_scale_initialized;
   d.stationary_strict = strict_stationary;
   d.stationary_phase2 = phase2_active;
-  // Stationary gating uses strict accel + gyro criteria from the raw samples.
-  const bool dwell_predicate = strict_stationary;
   const bool stationary_confirmed = UpdateStationaryDwell(dwell_predicate, dt_seconds);
   d.stationary_confirmed = stationary_confirmed;
   d.stationary_dwell_seconds = m_stationary_dwell_seconds;
