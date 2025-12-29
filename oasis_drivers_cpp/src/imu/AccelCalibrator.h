@@ -16,11 +16,10 @@ namespace OASIS::IMU
 {
 
 /**
- * @brief Online accelerometer bias/scale estimator using stationary "face" samples.
+ * @brief Online accelerometer bias/scale estimator using stationary magnitude residuals.
  *
- * The calibrator watches for stationary periods, classifies the dominant gravity
- * axis (face), and accumulates mean measurements for +g and -g on each axis.
- * Once both sides are seen, it solves per-axis bias/scale and smooths updates.
+ * The calibrator watches for stationary periods, estimates gravity magnitude
+ * error, and applies small gradient updates to bias and scale.
  */
 class AccelCalibrator
 {
@@ -32,23 +31,13 @@ public:
   {
     /// Estimated bias per axis (m/s^2). Applied additively to raw accel.
     std::array<double, 3> bias_mps2{0.0, 0.0, 0.0};
-    /// Estimated scale per axis (unitless). Applied multiplicatively.
+    /// Estimated scale per axis (unitless, expected ~[0.5,2.0]). Applied multiplicatively.
     std::array<double, 3> scale{1.0, 1.0, 1.0};
     /// True when gyro + accel jerk indicate the IMU is stationary.
     bool stationary{false};
-
-    /// Face detection result (valid only when stationary).
-    bool face_valid{false};
-    /// Dominant axis index for the gravity direction (0=x,1=y,2=z).
-    std::size_t face_axis{0};
-    /// Sign of gravity on the dominant axis (+1 or -1).
-    int face_sign{0};
-    /// Absolute unit component on the dominant axis (0..1).
-    double face_cos{0.0};
-
-    /// Coverage flags: true if +g has been observed on each axis.
+    /// Coverage flags: true if +g has been observed on each axis (unit>+0.75).
     std::array<bool, 3> pos_seen{false, false, false};
-    /// Coverage flags: true if -g has been observed on each axis.
+    /// Coverage flags: true if -g has been observed on each axis (unit<-0.75).
     std::array<bool, 3> neg_seen{false, false, false};
   };
 
@@ -93,10 +82,6 @@ private:
 
   bool m_uniform_scale_initialized{false};
   RunningMean m_stationary_norm_mean;
-
-  // Per-axis face means (only the axis component in that face)
-  std::array<RunningMean, 3> m_pos_face_mean;
-  std::array<RunningMean, 3> m_neg_face_mean;
 
   std::array<bool, 3> m_pos_seen{false, false, false};
   std::array<bool, 3> m_neg_seen{false, false, false};
