@@ -172,16 +172,21 @@ void Mpu6050Node::PublishImu()
   const int16_t tempRaw = m_mpu6050->getTemperature();
 
   const rclcpp::Time now = get_clock()->now();
+  const double dt_seconds =
+      m_hasLastSampleTime ? (now - m_lastSampleTime).seconds() : m_publishPeriod.count();
+  m_lastSampleTime = now;
+  m_hasLastSampleTime = true;
 
   const RawImuSample sample{ax, ay, az, gx, gy, gz, tempRaw, now};
-  const auto processed =
-      m_imuProcessor.ProcessRaw(sample.ax, sample.ay, sample.az, sample.gx, sample.gy, sample.gz);
+  const auto processed = m_imuProcessor.ProcessRaw(sample.ax, sample.ay, sample.az, sample.gx,
+                                                   sample.gy, sample.gz, dt_seconds);
 
   const double ax_d = static_cast<double>(ax);
   const double ay_d = static_cast<double>(ay);
   const double az_d = static_cast<double>(az);
 
   const double raw_accel_norm = std::sqrt(ax_d * ax_d + ay_d * ay_d + az_d * az_d);
+  const auto& bias_diag = processed.bias_diag;
   const double accel_x = processed.accel_mps2[0];
   const double accel_y = processed.accel_mps2[1];
   const double accel_z = processed.accel_mps2[2];
@@ -194,12 +199,26 @@ void Mpu6050Node::PublishImu()
 
   const bool drdy = m_mpu6050->getIntDataReadyStatus();
 
-  RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
-                       "IMU raw accel=[%d %d %d] raw|a|=%.1f LSB (expect ~16384 @1g, FS=±2g), "
-                       "scaled accel=[%.3f %.3f %.3f] |a|=%.3f m/s^2 (%.3fg) (expect ~9.807), "
-                       "raw gyro=[%d %d %d], tempRaw=%d (%.2fC), data_ready=%s",
-                       ax, ay, az, raw_accel_norm, accel_x, accel_y, accel_z, accel_norm, accel_g,
-                       gx, gy, gz, tempRaw, temp_c, drdy ? "true" : "false");
+  RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "IMU raw accel=[%d %d %d] raw|a|=%.1f LSB (expect ~16384 @1g, FS=±2g), "
+      "bias=[%.3f %.3f %.3f] |b|=%.3f, "
+      "accel=[%.3f %.3f %.3f] |a|=%.3f m/s^2 (%.3fg), "
+      "lp|a|=%.3f (%.3fg) g_err=%.3f, w_conf=%.4f (var=%.4f jerk=%.3f gyro=%.3f) state=%s, "
+      "coverage x[%c%c] y[%c%c] z[%c%c], "
+      "raw gyro=[%d %d %d], tempRaw=%d (%.2fC), data_ready=%s",
+      ax, ay, az, raw_accel_norm, bias_diag.bias_mps2[0], bias_diag.bias_mps2[1],
+      bias_diag.bias_mps2[2],
+      std::sqrt(bias_diag.bias_mps2[0] * bias_diag.bias_mps2[0] +
+                bias_diag.bias_mps2[1] * bias_diag.bias_mps2[1] +
+                bias_diag.bias_mps2[2] * bias_diag.bias_mps2[2]),
+      accel_x, accel_y, accel_z, accel_norm, accel_g, bias_diag.accel_norm_mps2, bias_diag.accel_g,
+      bias_diag.g_err_mps2, bias_diag.w_conf, bias_diag.var_mag_mps4, bias_diag.jerk_avg_mps3,
+      bias_diag.gyro_mag_avg_rads, bias_diag.stationary ? "stationary" : "dynamic",
+      bias_diag.axis_neg_seen[0] ? '-' : ' ', bias_diag.axis_pos_seen[0] ? '+' : ' ',
+      bias_diag.axis_neg_seen[1] ? '-' : ' ', bias_diag.axis_pos_seen[1] ? '+' : ' ',
+      bias_diag.axis_neg_seen[2] ? '-' : ' ', bias_diag.axis_pos_seen[2] ? '+' : ' ', gx, gy, gz,
+      tempRaw, temp_c, drdy ? "true" : "false");
 
   sensor_msgs::msg::Imu imuMsg;
 
