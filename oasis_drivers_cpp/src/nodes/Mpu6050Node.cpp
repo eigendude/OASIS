@@ -8,6 +8,8 @@
 
 #include "Mpu6050Node.h"
 
+#include "imu/ImuMath.h"
+#include "imu/ImuOrientationUtils.h"
 #include "imu/Mpu6050ImuUtils.h"
 
 #include <algorithm>
@@ -32,6 +34,8 @@ constexpr double GRAVITY_MPS2 = 9.80665;
 // ROS topics
 constexpr const char* CONDUCTOR_STATE_TOPIC = "conductor_state";
 constexpr const char* IMU_TOPIC = "imu";
+constexpr const char* IMU_FORWARD_TOPIC = "imu_forward";
+constexpr const char* IMU_REVERSE_TOPIC = "imu_reverse";
 
 // ROS frame IDs
 constexpr const char* FRAME_ID = "imu_link";
@@ -39,6 +43,34 @@ constexpr const char* FRAME_ID = "imu_link";
 // ROS parameters
 constexpr const char* DEFAULT_I2C_DEVICE = "/dev/i2c-1";
 constexpr double DEFAULT_PUBLISH_RATE_HZ = 50.0;
+constexpr double kRollPitchVariance = 0.0076;
+constexpr double kYawVarianceUnlocked = 1e6;
+constexpr double kYawVarianceLocked = 0.02;
+constexpr double kPi = 3.141592653589793;
+
+const char* ToString(ForwardAxisLearner::State state)
+{
+  switch (state)
+  {
+    case ForwardAxisLearner::State::ARMED:
+      return "ARMED";
+    case ForwardAxisLearner::State::IN_BURST:
+      return "IN_BURST";
+    case ForwardAxisLearner::State::LOCKED:
+      return "LOCKED";
+  }
+  return "UNKNOWN";
+}
+
+geometry_msgs::msg::Quaternion ToRosQuaternion(const Math::Quaternion& q)
+{
+  geometry_msgs::msg::Quaternion out;
+  out.w = q.w;
+  out.x = q.x;
+  out.y = q.y;
+  out.z = q.z;
+  return out;
+}
 
 } // namespace
 
@@ -121,6 +153,10 @@ bool Mpu6050Node::Initialize()
 
   // Initialize publishers
   m_imuPublisher = create_publisher<sensor_msgs::msg::Imu>(IMU_TOPIC, rclcpp::QoS{1});
+  m_imuForwardPublisher =
+      create_publisher<sensor_msgs::msg::Imu>(IMU_FORWARD_TOPIC, rclcpp::QoS{1});
+  m_imuReversePublisher =
+      create_publisher<sensor_msgs::msg::Imu>(IMU_REVERSE_TOPIC, rclcpp::QoS{1});
   m_conductorStateSub = create_subscription<oasis_msgs::msg::ConductorState>(
       CONDUCTOR_STATE_TOPIC, rclcpp::QoS{1},
       std::bind(&Mpu6050Node::OnConductorState, this, std::placeholders::_1));
@@ -209,32 +245,58 @@ void Mpu6050Node::PublishImu()
       processed.diag.bias_mps2[1], processed.diag.bias_mps2[2], processed.diag.scale[0],
       processed.diag.scale[1], processed.diag.scale[2], temp_c, drdy ? "true" : "false");
 
+  RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "ForwardAxis state=%s yaw_rate=%.3f a_h=%.3f impulse=%.3f yaw_accum=%.3f t_burst=%.3f "
+      "bursts=%zu dot=%.3f locked=%s",
+      ToString(processed.forward_diag.state), processed.forward_diag.yaw_rate_rads,
+      processed.forward_diag.a_h_mag_mps2, processed.forward_diag.impulse_mps,
+      processed.forward_diag.yaw_accum_rad, processed.forward_diag.burst_time_s,
+      processed.forward_diag.burst_count, processed.forward_diag.consistency_dot,
+      processed.forward_diag.locked ? "true" : "false");
+
+  const Math::Quaternion tilt_q =
+      ImuOrientationUtils::TiltQuaternionFromUp(processed.u_hat, processed.u_hat_valid);
+  const Math::Quaternion yaw_pi_q = Math::FromAxisAngle({0.0, 0.0, 1.0}, kPi);
+  const Math::Quaternion reverse_q = Math::Multiply(yaw_pi_q, tilt_q);
+
+  auto fillImuMsg =
+      [&](sensor_msgs::msg::Imu& msg, const Math::Quaternion& orientation, bool yaw_defined)
+  {
+    std_msgs::msg::Header& header = msg.header;
+    header.stamp = now;
+    header.frame_id = FRAME_ID;
+
+    geometry_msgs::msg::Vector3& angularVelocity = msg.angular_velocity;
+    geometry_msgs::msg::Vector3& linearAcceleration = msg.linear_acceleration;
+
+    linearAcceleration.x = processed.accel_mps2[0];
+    linearAcceleration.y = processed.accel_mps2[1];
+    linearAcceleration.z = processed.accel_mps2[2];
+
+    angularVelocity.x = processed.gyro_rads[0];
+    angularVelocity.y = processed.gyro_rads[1];
+    angularVelocity.z = processed.gyro_rads[2];
+
+    msg.orientation = ToRosQuaternion(orientation);
+
+    msg.orientation_covariance.fill(0.0);
+    msg.orientation_covariance[0] = kRollPitchVariance;
+    msg.orientation_covariance[4] = kRollPitchVariance;
+    msg.orientation_covariance[8] = yaw_defined ? kYawVarianceLocked : kYawVarianceUnlocked;
+    msg.angular_velocity_covariance.fill(0.0);
+    msg.linear_acceleration_covariance.fill(0.0);
+  };
+
   sensor_msgs::msg::Imu imuMsg;
+  sensor_msgs::msg::Imu imuForwardMsg;
+  sensor_msgs::msg::Imu imuReverseMsg;
 
-  std_msgs::msg::Header& header = imuMsg.header;
-  header.stamp = now;
-  header.frame_id = FRAME_ID;
-
-  geometry_msgs::msg::Vector3& angularVelocity = imuMsg.angular_velocity;
-  geometry_msgs::msg::Vector3& linearAcceleration = imuMsg.linear_acceleration;
-
-  linearAcceleration.x = processed.accel_mps2[0];
-  linearAcceleration.y = processed.accel_mps2[1];
-  linearAcceleration.z = processed.accel_mps2[2];
-
-  angularVelocity.x = processed.gyro_rads[0];
-  angularVelocity.y = processed.gyro_rads[1];
-  angularVelocity.z = processed.gyro_rads[2];
-
-  imuMsg.orientation.w = 1.0;
-  imuMsg.orientation.x = 0.0;
-  imuMsg.orientation.y = 0.0;
-  imuMsg.orientation.z = 0.0;
-
-  imuMsg.orientation_covariance.fill(0.0);
-  imuMsg.orientation_covariance[0] = -1.0;
-  imuMsg.angular_velocity_covariance.fill(0.0);
-  imuMsg.linear_acceleration_covariance.fill(0.0);
+  fillImuMsg(imuMsg, tilt_q, false);
+  fillImuMsg(imuForwardMsg, tilt_q, processed.f_hat_locked);
+  fillImuMsg(imuReverseMsg, reverse_q, processed.f_hat_locked);
 
   m_imuPublisher->publish(imuMsg);
+  m_imuForwardPublisher->publish(imuForwardMsg);
+  m_imuReversePublisher->publish(imuReverseMsg);
 }
