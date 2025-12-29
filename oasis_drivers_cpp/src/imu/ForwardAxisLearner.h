@@ -82,6 +82,7 @@ private:
   State m_state{State::ARMED};
   std::size_t m_start_counter{0};
   std::size_t m_end_counter{0};
+  std::size_t m_yaw_over_counter{0};
 
   std::array<double, 3> m_sum_vec{0.0, 0.0, 0.0};
   double m_impulse{0.0};
