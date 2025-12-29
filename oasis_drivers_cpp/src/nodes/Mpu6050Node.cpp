@@ -45,6 +45,7 @@ constexpr double kRollPitchVariance = 0.0076;
 constexpr double kYawVariance = 1e6;
 constexpr double kPi = 3.141592653589793;
 constexpr double kTwoPi = 2.0 * kPi;
+constexpr bool kLogStationaryTransitions = false;
 
 geometry_msgs::msg::Quaternion ToRosQuaternion(const Math::Quaternion& q)
 {
@@ -214,16 +215,35 @@ void Mpu6050Node::PublishImu()
 
   RCLCPP_INFO_THROTTLE(
       get_logger(), *get_clock(), 1000,
-      "IMU accel=(%.3f, %.3f, %.3f) m/s^2 |g|=%.3f stationary=%s coverage=x(+:%s -:%s) "
-      "y(+:%s -:%s) z(+:%s -:%s) bias=(%.4f, %.4f, %.4f) "
-      "scale=(%.4f, %.4f, %.4f) temp=%.2fC data_ready=%s",
+      "IMU accel=(%.3f, %.3f, %.3f) m/s^2 |g|=%.3f stationary=%s stationary_confirmed=%s "
+      "dwell=%.2f/%.2f coverage=x(+:%s -:%s) y(+:%s -:%s) z(+:%s -:%s) "
+      "bias=(%.4f, %.4f, %.4f) scale=(%.4f, %.4f, %.4f) temp=%.2fC data_ready=%s",
       processed.accel_mps2[0], processed.accel_mps2[1], processed.accel_mps2[2], accel_norm_g,
-      processed.diag.stationary ? "true" : "false", processed.diag.pos_seen[0] ? "true" : "false",
-      processed.diag.neg_seen[0] ? "true" : "false", processed.diag.pos_seen[1] ? "true" : "false",
-      processed.diag.neg_seen[1] ? "true" : "false", processed.diag.pos_seen[2] ? "true" : "false",
-      processed.diag.neg_seen[2] ? "true" : "false", processed.diag.bias_mps2[0],
-      processed.diag.bias_mps2[1], processed.diag.bias_mps2[2], processed.diag.scale[0],
-      processed.diag.scale[1], processed.diag.scale[2], tempC, dataReady ? "true" : "false");
+      processed.diag.stationary ? "true" : "false",
+      processed.diag.stationary_confirmed ? "true" : "false",
+      processed.diag.stationary_dwell_seconds, processed.diag.stationary_dwell_target_seconds,
+      processed.diag.pos_seen[0] ? "true" : "false", processed.diag.neg_seen[0] ? "true" : "false",
+      processed.diag.pos_seen[1] ? "true" : "false", processed.diag.neg_seen[1] ? "true" : "false",
+      processed.diag.pos_seen[2] ? "true" : "false", processed.diag.neg_seen[2] ? "true" : "false",
+      processed.diag.bias_mps2[0], processed.diag.bias_mps2[1], processed.diag.bias_mps2[2],
+      processed.diag.scale[0], processed.diag.scale[1], processed.diag.scale[2], tempC,
+      dataReady ? "true" : "false");
+
+  if (kLogStationaryTransitions)
+  {
+    if (processed.diag.stationary_strict != m_prevStationaryStrict)
+    {
+      RCLCPP_INFO(get_logger(), "IMU strict stationary %s",
+                  processed.diag.stationary_strict ? "entered" : "exited");
+    }
+    if (processed.diag.stationary_confirmed && !m_prevStationaryConfirmed)
+    {
+      RCLCPP_INFO(get_logger(), "IMU stationary dwell confirmed (%.2fs)",
+                  processed.diag.stationary_dwell_seconds);
+    }
+  }
+  m_prevStationaryStrict = processed.diag.stationary_strict;
+  m_prevStationaryConfirmed = processed.diag.stationary_confirmed;
 
   const Math::Quaternion tilt_q =
       ImuOrientationUtils::TiltQuaternionFromUp(processed.u_hat, processed.u_hat_valid);

@@ -35,6 +35,14 @@ public:
     std::array<double, 3> scale{1.0, 1.0, 1.0};
     /// True when gyro + accel jerk indicate the IMU is stationary.
     bool stationary{false};
+    /// True when accel magnitude and gyro rate meet strict stationary criteria.
+    bool stationary_strict{false};
+    /// True when strict stationary conditions have been held for dwell time.
+    bool stationary_confirmed{false};
+    /// Accumulated stationary dwell time (s).
+    double stationary_dwell_seconds{0.0};
+    /// Stationary dwell target (s) required to confirm.
+    double stationary_dwell_target_seconds{0.0};
 
     /// Coverage flags: true if gravity has pointed mostly in +axis (unit > +0.75).
     std::array<bool, 3> pos_seen{false, false, false};
@@ -80,6 +88,9 @@ private:
   };
 
   static double Norm3(const std::array<double, 3>& v);
+  bool IsStrictStationary(const std::array<double, 3>& accel_mps2,
+                          const std::array<double, 3>& gyro_rads) const;
+  bool UpdateStationaryDwell(bool is_strict, double dt_seconds);
 
   // State
   bool m_initialized{false};
@@ -91,6 +102,8 @@ private:
 
   bool m_uniform_scale_initialized{false};
   RunningMean m_stationary_norm_mean;
+  double m_stationary_dwell_seconds{0.0};
+  bool m_stationary_confirmed{false};
 
   std::array<bool, 3> m_pos_seen{false, false, false};
   std::array<bool, 3> m_neg_seen{false, false, false};
