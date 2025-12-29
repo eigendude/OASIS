@@ -50,10 +50,12 @@ constexpr double T_CONFIRM = 0.3;
 constexpr double EMA_TAU = 0.2;
 constexpr double T_GRAVITY_COLLECT = 1.2;
 constexpr int MIN_GRAVITY_SAMPLES = 50;
-constexpr double A_DYN_MIN = 0.4;
-constexpr int MIN_YAW_SAMPLES = 20;
-constexpr double YAW_CONF_THRESH = 0.35;
+// Bring-up defaults; tighten after field validation.
+constexpr double A_DYN_MIN = 0.2;
+constexpr int MIN_YAW_SAMPLES = 10;
+constexpr double YAW_CONF_THRESH = 0.25;
 constexpr double YAW_DYNAMIC_EMA_TAU = 0.3;
+constexpr double T_SIGN_FLIP_GUARD = 0.12;
 
 double Clamp(double value, double minValue, double maxValue)
 {
@@ -428,6 +430,14 @@ std::optional<Mpu6050ImuProcessor::ImuOutput> Mpu6050ImuProcessor::Process(
     m_forwardAccum = {0.0, 0.0};
     m_forwardSamples = 0;
     m_forwardDynamicEma = 0.0;
+    m_pulseTime = 0.0;
+    m_yawTotalSeen = 0;
+    m_yawAccepted = 0;
+    m_yawSkipLowDyn = 0;
+    m_yawSkipNoSign = 0;
+    m_yawSkipSignGuard = 0;
+    m_sumHorizMag = 0.0;
+    m_yawConfidence = 0.0;
     RCLCPP_INFO(logger, "IMU calibration: waiting for forward-axis lock");
   }
 
@@ -439,11 +449,21 @@ std::optional<Mpu6050ImuProcessor::ImuOutput> Mpu6050ImuProcessor::Process(
       m_forwardAccum = {0.0, 0.0};
       m_forwardSamples = 0;
       m_forwardDynamicEma = 0.0;
+      m_pulseTime = 0.0;
+      m_yawTotalSeen = 0;
+      m_yawAccepted = 0;
+      m_yawSkipLowDyn = 0;
+      m_yawSkipNoSign = 0;
+      m_yawSkipSignGuard = 0;
+      m_sumHorizMag = 0.0;
+      m_yawConfidence = 0.0;
       RCLCPP_INFO(logger, "IMU calibration: forward-axis lock engaged, collecting yaw pulse");
     }
 
     if (m_axisLocked && m_collectingYaw)
     {
+      m_pulseTime += dt;
+      m_yawTotalSeen += 1;
       const std::array<double, 3> gHat = m_gravityHatSolved;
       const double aDotG = Dot3(sample.accel, gHat);
       std::array<double, 3> aDynS{sample.accel[0] - aDotG * gHat[0],
@@ -456,27 +476,56 @@ std::optional<Mpu6050ImuProcessor::ImuOutput> Mpu6050ImuProcessor::Process(
       const double dynAlpha = EmaAlpha(dt, YAW_DYNAMIC_EMA_TAU);
       m_forwardDynamicEma = m_forwardDynamicEma + dynAlpha * (horizMag - m_forwardDynamicEma);
 
-      if (horizMag > A_DYN_MIN && m_signedAxisSign != 0)
+      if (m_signedAxisSign == 0)
       {
-        const double invMag = 1.0 / (horizMag + EPS);
-        horiz[0] *= invMag;
-        horiz[1] *= invMag;
+        m_yawSkipNoSign += 1;
+      }
+      else if (m_timeSinceSignFlip < T_SIGN_FLIP_GUARD)
+      {
+        m_yawSkipSignGuard += 1;
+      }
+      else if (horizMag <= A_DYN_MIN)
+      {
+        m_yawSkipLowDyn += 1;
+      }
+      else
+      {
         m_forwardAccum[0] += static_cast<double>(m_signedAxisSign) * horiz[0];
         m_forwardAccum[1] += static_cast<double>(m_signedAxisSign) * horiz[1];
+        m_sumHorizMag += horizMag;
         m_forwardSamples += 1;
+        m_yawAccepted += 1;
       }
+      const double accumMag = Norm2(m_forwardAccum);
+      if (m_sumHorizMag > EPS)
+        m_yawConfidence = accumMag / (m_sumHorizMag + EPS);
+      else
+        m_yawConfidence = 0.0;
     }
 
     if (!m_axisLocked && m_collectingYaw)
     {
       m_collectingYaw = false;
       const double accumMag = Norm2(m_forwardAccum);
-      const double samples = static_cast<double>(std::max(m_forwardSamples, 1));
-      m_yawConfidence = accumMag / samples;
+      m_forwardHatIntermediate = Normalize2(m_forwardAccum);
+      m_yawRadians = std::atan2(m_forwardHatIntermediate[1], m_forwardHatIntermediate[0]);
+      if (m_sumHorizMag > EPS)
+        m_yawConfidence = accumMag / (m_sumHorizMag + EPS);
+      else
+        m_yawConfidence = 0.0;
+      const double acceptanceRatio =
+          static_cast<double>(m_yawAccepted) / static_cast<double>(std::max(m_yawTotalSeen, 1));
+      RCLCPP_INFO(logger,
+                  "IMU calibration: yaw pulse end dt=%.3f accum=(%.3f, %.3f) accum_mag=%.3f "
+                  "sum_horiz=%.3f dyn_ema=%.3f samples=%d/%d skip_low=%d skip_no_sign=%d "
+                  "skip_guard=%d ratio=%.2f yaw=%.3f conf=%.3f thresh(a_dyn=%.2f min_samples=%d "
+                  "conf=%.2f)",
+                  m_pulseTime, m_forwardAccum[0], m_forwardAccum[1], accumMag, m_sumHorizMag,
+                  m_forwardDynamicEma, m_yawAccepted, m_yawTotalSeen, m_yawSkipLowDyn,
+                  m_yawSkipNoSign, m_yawSkipSignGuard, acceptanceRatio, m_yawRadians,
+                  m_yawConfidence, A_DYN_MIN, MIN_YAW_SAMPLES, YAW_CONF_THRESH);
       if (m_forwardSamples >= MIN_YAW_SAMPLES && m_yawConfidence > YAW_CONF_THRESH)
       {
-        m_forwardHatIntermediate = Normalize2(m_forwardAccum);
-        m_yawRadians = std::atan2(m_forwardHatIntermediate[1], m_forwardHatIntermediate[0]);
         const Quaternion qYaw = QuaternionFromAxisAngle({0.0, 0.0, 1.0}, -m_yawRadians);
         const Quaternion qGravity{m_qGravity[0], m_qGravity[1], m_qGravity[2], m_qGravity[3]};
         const Quaternion qMount = MultiplyQuat(qYaw, qGravity);
@@ -500,20 +549,32 @@ std::optional<Mpu6050ImuProcessor::ImuOutput> Mpu6050ImuProcessor::Process(
         m_forwardAccum = {0.0, 0.0};
         m_forwardSamples = 0;
         m_forwardDynamicEma = 0.0;
+        m_pulseTime = 0.0;
+        m_yawTotalSeen = 0;
+        m_yawAccepted = 0;
+        m_yawSkipLowDyn = 0;
+        m_yawSkipNoSign = 0;
+        m_yawSkipSignGuard = 0;
+        m_sumHorizMag = 0.0;
       }
     }
   }
 
   if (m_calState != CalibrationState::kCalibrated)
   {
+    const double accumMag = Norm2(m_forwardAccum);
     RCLCPP_INFO_THROTTLE(logger, clock, 2000,
                          "IMU calibration: state=%d stationary=%s still_time=%.2f move_time=%.2f "
-                         "gyro_ema=%.3f accel_dev_ema=%.3f g_hat_s=(%.2f,%.2f,%.2f) "
-                         "yaw_dyn=%.3f yaw_conf=%.3f",
+                         "gyro_ema=%.3f accel_dev_ema=%.3f axis_locked=%s collecting_yaw=%s "
+                         "yaw_seen=%d yaw_accept=%d skip_low=%d skip_no_sign=%d skip_guard=%d "
+                         "sum_horiz=%.3f accum_mag=%.3f yaw_dyn=%.3f yaw_conf=%.3f sign_flip_dt=%.3f "
+                         "g_hat_s=(%.2f,%.2f,%.2f)",
                          static_cast<int>(m_calState), m_stationary ? "true" : "false", m_stillTime,
-                         m_moveTime, m_gyroEma, m_accelDevEma, m_gravityHatSolved[0],
-                         m_gravityHatSolved[1], m_gravityHatSolved[2], m_forwardDynamicEma,
-                         m_yawConfidence);
+                         m_moveTime, m_gyroEma, m_accelDevEma, m_axisLocked ? "true" : "false",
+                         m_collectingYaw ? "true" : "false", m_yawTotalSeen, m_yawAccepted,
+                         m_yawSkipLowDyn, m_yawSkipNoSign, m_yawSkipSignGuard, m_sumHorizMag,
+                         accumMag, m_forwardDynamicEma, m_yawConfidence, m_timeSinceSignFlip,
+                         m_gravityHatSolved[0], m_gravityHatSolved[1], m_gravityHatSolved[2]);
   }
 
   // B) Axis-line estimation reset when stationary long enough.
@@ -696,6 +757,27 @@ std::optional<Mpu6050ImuProcessor::ImuOutput> Mpu6050ImuProcessor::Process(
         m_confirmTarget = 0;
       }
     }
+  }
+
+  if (m_signedAxisSign != m_prevSignedAxisSign)
+  {
+    m_timeSinceSignFlip = 0.0;
+    m_prevSignedAxisSign = m_signedAxisSign;
+  }
+  else
+  {
+    m_timeSinceSignFlip += dt;
+  }
+
+  if (m_axisLocked != m_prevAxisLocked)
+  {
+    RCLCPP_INFO(logger,
+                "IMU calibration: axis lock %s t=%.3f state=%d still_time=%.2f move_time=%.2f "
+                "signed_sign=%d gyro_ema=%.3f accel_dev_ema=%.3f",
+                m_axisLocked ? "engaged" : "released", sample.stamp.seconds(),
+                static_cast<int>(m_calState), m_stillTime, m_moveTime, m_signedAxisSign, m_gyroEma,
+                m_accelDevEma);
+    m_prevAxisLocked = m_axisLocked;
   }
 
   ImuOutput output;
