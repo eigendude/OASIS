@@ -20,9 +20,16 @@ class Mpu6050ImuProcessor
 public:
   struct ProcessedSample
   {
+    //! Bias-corrected acceleration, meters per second^2 (near 9.81 in
+    //! magnitude at rest).
     std::array<double, 3> accel_mps2{};
+    //! Raw scaled acceleration before bias correction, meters per second^2
+    //! (sensor output range).
     std::array<double, 3> accel_raw_mps2{};
+    //! Scaled angular rate, radians per second (near 0 when stationary).
     std::array<double, 3> gyro_rads{};
+    //! Bias estimator diagnostics for the current sample window (computed
+    //! during Update()).
     AccelBiasEstimator::Diagnostics bias_diag{};
   };
 
