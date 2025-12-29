@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include "imu/AccelBiasEstimator.h"
+#include "imu/AccelCalibrator.h"
 
 #include <array>
 #include <cstdint>
@@ -28,9 +28,9 @@ public:
     std::array<double, 3> accel_raw_mps2{};
     //! Scaled angular rate, radians per second (near 0 when stationary).
     std::array<double, 3> gyro_rads{};
-    //! Bias estimator diagnostics for the current sample window (computed
-    //! during Update()).
-    AccelBiasEstimator::Diagnostics bias_diag{};
+    //! Accelerometer calibrator diagnostics for the current sample window
+    //! (computed during Update()).
+    AccelCalibrator::Diagnostics bias_diag{};
   };
 
   Mpu6050ImuProcessor();
@@ -44,6 +44,6 @@ public:
 private:
   double m_accelScale = 0.0;
   double m_gyroScale = 0.0;
-  AccelBiasEstimator m_biasEstimator;
+  AccelCalibrator m_biasEstimator;
 };
 } // namespace OASIS::IMU
