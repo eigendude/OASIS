@@ -11,14 +11,10 @@
 #include "imu/Mpu6050ImuUtils.h"
 
 #include <algorithm>
-#include <cmath>
 #include <functional>
-#include <vector>
 
 #include <I2Cdev.h>
 #include <rclcpp/rclcpp.hpp>
-#include <std_msgs/msg/bool.hpp>
-#include <std_msgs/msg/float64_multi_array.hpp>
 
 using namespace OASIS::IMU;
 using namespace OASIS::ROS;
@@ -40,6 +36,18 @@ constexpr const char* FRAME_ID = "imu_link";
 // ROS parameters
 constexpr const char* DEFAULT_I2C_DEVICE = "/dev/i2c-1";
 constexpr double DEFAULT_PUBLISH_RATE_HZ = 50.0;
+
+struct RawImuSample
+{
+  int16_t ax{0};
+  int16_t ay{0};
+  int16_t az{0};
+  int16_t gx{0};
+  int16_t gy{0};
+  int16_t gz{0};
+  int16_t tempRaw{0};
+  rclcpp::Time stamp{};
+};
 
 } // namespace
 
@@ -131,12 +139,9 @@ void Mpu6050Node::PublishImu()
 
   const rclcpp::Time now = get_clock()->now();
 
-  // TODO
-  /*
-  auto output = m_imuProcessor->Process(sample, m_dutyCycleInput);
-  if (!output)
-    return;
-   */
+  const RawImuSample sample{ax, ay, az, gx, gy, gz, tempRaw, now};
+  const auto processed = m_imuProcessor.ProcessRaw(sample.ax, sample.ay, sample.az, sample.gx,
+                                                   sample.gy, sample.gz);
 
   sensor_msgs::msg::Imu imuMsg;
 
@@ -147,25 +152,23 @@ void Mpu6050Node::PublishImu()
   geometry_msgs::msg::Vector3& angularVelocity = imuMsg.angular_velocity;
   geometry_msgs::msg::Vector3& linearAcceleration = imuMsg.linear_acceleration;
 
-  // TODO
-  /*
-  linearAcceleration.x = output->linear_acceleration[0];
-  linearAcceleration.y = output->linear_acceleration[1];
-  linearAcceleration.z = output->linear_acceleration[2];
+  linearAcceleration.x = processed.accel_mps2[0];
+  linearAcceleration.y = processed.accel_mps2[1];
+  linearAcceleration.z = processed.accel_mps2[2];
 
-  angularVelocity.x = output->angular_velocity[0];
-  angularVelocity.y = output->angular_velocity[1];
-  angularVelocity.z = output->angular_velocity[2];
+  angularVelocity.x = processed.gyro_rads[0];
+  angularVelocity.y = processed.gyro_rads[1];
+  angularVelocity.z = processed.gyro_rads[2];
 
-  imuMsg.orientation.w = output->orientation[0];
-  imuMsg.orientation.x = output->orientation[1];
-  imuMsg.orientation.y = output->orientation[2];
-  imuMsg.orientation.z = output->orientation[3];
+  imuMsg.orientation.w = 1.0;
+  imuMsg.orientation.x = 0.0;
+  imuMsg.orientation.y = 0.0;
+  imuMsg.orientation.z = 0.0;
 
-  imuMsg.orientation_covariance = output->orientation_covariance;
-  imuMsg.angular_velocity_covariance = output->angular_velocity_covariance;
-  imuMsg.linear_acceleration_covariance = output->linear_acceleration_covariance;
-  */
+  imuMsg.orientation_covariance.fill(0.0);
+  imuMsg.orientation_covariance[0] = -1.0;
+  imuMsg.angular_velocity_covariance.fill(0.0);
+  imuMsg.linear_acceleration_covariance.fill(0.0);
 
   m_imuPublisher->publish(imuMsg);
 }
