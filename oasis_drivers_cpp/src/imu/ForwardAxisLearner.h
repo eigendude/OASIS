@@ -91,6 +91,7 @@ private:
   double m_yaw_accum{0.0};
   double m_t_burst{0.0};
   double m_a_h_peak{0.0};
+  double m_yaw_rate_peak{0.0};
 
   std::size_t m_burst_count{0};
   std::array<double, 3> m_first_candidate{1.0, 0.0, 0.0};
