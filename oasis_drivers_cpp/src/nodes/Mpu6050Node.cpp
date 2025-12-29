@@ -56,6 +56,8 @@ const char* ToString(ForwardAxisLearner::State state)
       return "ARMED";
     case ForwardAxisLearner::State::IN_BURST:
       return "IN_BURST";
+    case ForwardAxisLearner::State::HAVE_FIRST:
+      return "HAVE_FIRST";
     case ForwardAxisLearner::State::LOCKED:
       return "LOCKED";
   }

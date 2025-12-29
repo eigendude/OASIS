@@ -108,11 +108,11 @@ ForwardAxisLearner::Diagnostics ForwardAxisLearner::Update(const std::array<doub
         EvaluateBurst(u_hat);
         ResetBurst();
         m_state =
-            (m_state == State::LOCKED || m_state == State::HAVE_UNSIGNED) ? m_state : State::ARMED;
+            (m_state == State::LOCKED || m_state == State::HAVE_FIRST) ? m_state : State::ARMED;
       }
       break;
     }
-    case State::HAVE_UNSIGNED:
+    case State::HAVE_FIRST:
     {
       if (std::abs(yaw_rate) < kYawStraightMax && a_h_mag > kABurstStart)
         ++m_start_counter;
@@ -202,11 +202,12 @@ void ForwardAxisLearner::EvaluateBurst(const std::array<double, 3>& u_hat)
   m_last_candidate = candidate;
 
   ++m_burst_count;
-  if (m_state == State::HAVE_UNSIGNED)
+  if (m_state == State::HAVE_FIRST)
   {
-    m_consistency_dot = Math::Dot(candidate, m_f_hat_unsigned);
+    m_consistency_dot = Math::Dot(candidate, m_first_candidate);
     if (m_consistency_dot <= -kOppositeDotMin)
     {
+      m_f_hat_unsigned = Math::Normalize(m_first_candidate);
       const std::array<double, 3> r_hat = Math::Normalize(Math::Cross(u_hat, m_f_hat_unsigned));
       const double r_norm = Math::Norm(r_hat);
       if (r_norm <= kEps)
@@ -217,14 +218,16 @@ void ForwardAxisLearner::EvaluateBurst(const std::array<double, 3>& u_hat)
     }
     else
     {
-      // Latest accepted burst becomes the new unsigned candidate while waiting for an opposite.
+      // Latest accepted burst becomes the new first candidate while waiting for an opposite.
+      m_first_candidate = candidate;
       m_f_hat_unsigned = candidate;
     }
     return;
   }
 
+  m_first_candidate = candidate;
   m_f_hat_unsigned = candidate;
   m_consistency_dot = 1.0;
-  m_state = State::HAVE_UNSIGNED;
+  m_state = State::HAVE_FIRST;
 }
 } // namespace OASIS::IMU
