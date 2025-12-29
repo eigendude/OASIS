@@ -17,22 +17,22 @@ namespace
 {
 constexpr double kG = 9.80665;
 
-// Low-pass filter for accel (Hz)
+// Low-pass filter for accel (Hz). Keeps face detection stable under vibration.
 constexpr double kAccelLpCutoffHz = 2.5;
 constexpr double kTwoPi = 6.283185307179586;
 
-// Stationary thresholds (keep simple)
+// Stationary thresholds: low gyro rate + low LP accel jerk.
 constexpr double kGyroStationaryRadS = 0.20; // ~11 deg/s
 constexpr double kJerkStationaryMps3 = 2.5; // based on LP accel delta
 
-// Face detection: dominant axis must be close to ±1 in unit vector
+// Face detection: dominant axis must be close to ±1 in unit vector.
 constexpr double kFaceCosMin = 0.92; // ~23 degrees cone
 
-// Sample requirements
+// Sample requirements: enough stationary samples for stable means.
 constexpr std::size_t kMinStationarySamplesForInit = 30;
 constexpr std::size_t kMinFaceSamplesPerSide = 60;
 
-// Smoothing when updating solved parameters
+// Smoothing when updating solved parameters to avoid step changes.
 constexpr double kSolveAlpha = 0.15;
 
 // Safety clamps
@@ -80,7 +80,7 @@ AccelCalibrator::Diagnostics AccelCalibrator::Update(const std::array<double, 3>
   if (dt_seconds <= 0.0)
     dt_seconds = 0.02;
 
-  // LP accel
+  // Low-pass filter the accelerometer to make "face" detection robust.
   const double lp_alpha = 1.0 - std::exp(-dt_seconds * kAccelLpCutoffHz * kTwoPi);
 
   if (!m_initialized)
@@ -95,7 +95,7 @@ AccelCalibrator::Diagnostics AccelCalibrator::Update(const std::array<double, 3>
       m_accel_lp[i] = m_accel_lp[i] + lp_alpha * (accel_mps2[i] - m_accel_lp[i]);
   }
 
-  // Stationary check: gyro magnitude + jerk of LP accel (NO g_err involved)
+  // Stationary check: gyro magnitude + jerk of LP accel (NO g_err involved).
   const double gyro_mag = Norm3(gyro_rads);
 
   std::array<double, 3> jerk{0.0, 0.0, 0.0};
@@ -108,7 +108,7 @@ AccelCalibrator::Diagnostics AccelCalibrator::Update(const std::array<double, 3>
 
   const double accel_lp_norm = Norm3(m_accel_lp);
 
-  // Initialize UNIFORM scale from first stationary window (keeps you from starting wildly off)
+  // Initialize uniform scale from the first stationary window to avoid large start-up errors.
   if (stationary && !m_uniform_scale_initialized)
   {
     m_stationary_norm_mean.Add(accel_lp_norm);
@@ -120,7 +120,7 @@ AccelCalibrator::Diagnostics AccelCalibrator::Update(const std::array<double, 3>
     }
   }
 
-  // Face detection (only while stationary)
+  // Face detection (only while stationary): find dominant gravity axis.
   bool face_valid = false;
   std::size_t face_axis = 0;
   int face_sign = 0;
@@ -160,7 +160,7 @@ AccelCalibrator::Diagnostics AccelCalibrator::Update(const std::array<double, 3>
   d.face_sign = face_sign;
   d.face_cos = face_cos;
 
-  // Accumulate face means (axis component only)
+  // Accumulate face means (axis component only): +/- g along one axis.
   if (face_valid)
   {
     const double v = m_accel_lp[face_axis];
@@ -176,7 +176,7 @@ AccelCalibrator::Diagnostics AccelCalibrator::Update(const std::array<double, 3>
     }
   }
 
-  // Solve bias+scale per-axis when both sides are available with enough samples
+  // Solve bias+scale per-axis when both sides are available with enough samples.
   for (std::size_t i = 0; i < 3; ++i)
   {
     if (!m_pos_face_mean[i].Ready(kMinFaceSamplesPerSide) ||
@@ -185,6 +185,7 @@ AccelCalibrator::Diagnostics AccelCalibrator::Update(const std::array<double, 3>
       continue;
     }
 
+    // mu_pos/neg are mean axis measurements with gravity aligned to +/- axis.
     const double mu_pos = m_pos_face_mean[i].mean; // ~ b_i + s_i * (+g)
     const double mu_neg = m_neg_face_mean[i].mean; // ~ b_i + s_i * (-g)
 
