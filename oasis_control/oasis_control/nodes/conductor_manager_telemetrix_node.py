@@ -22,7 +22,6 @@ from std_msgs.msg import Header as HeaderMsg
 
 from oasis_control.input.station_input import StationInput
 from oasis_control.lego_models.station_manager import StationManager
-from oasis_control.managers.cpu_fan_manager import CPUFanManager
 from oasis_control.managers.sampling_manager import SamplingManager
 from oasis_control.managers.wol_manager import WolManager
 from oasis_control.mcu.mcu_memory_manager import McuMemoryManager
@@ -33,9 +32,6 @@ from oasis_msgs.msg import ConductorState as ConductorStateMsg
 # Hardware configuration
 ################################################################################
 
-
-# CPU fan sampling interval, in ms
-CPU_FAN_SAMPLING_INTERVAL_MS = 100
 
 # Memory reporting interval, in seconds
 REPORT_MCU_MEMORY_PERIOD_SECS: float = 1.0
@@ -50,8 +46,6 @@ MOTOR_DIR_PIN: int = 4  # D4
 MOTOR_FF1_PIN: int = 8  # D8
 MOTOR_FF2_PIN: int = 7  # D7
 MOTOR_CURRENT_PIN: int = 1  # A1
-CPU_FAN_PWM_PIN: int = 9  # D9
-CPU_FAN_SPEED_PIN: int = 2  # D2
 
 # External AREF is tied to a 5.02 V regulator for stable ADC scaling
 AREF_VOLTAGE: float = 5.02  # V
@@ -116,9 +110,6 @@ class ConductorManagerNode(rclpy.node.Node):
         self.get_logger().set_level(LoggingSeverity.DEBUG)
 
         # Subsystems
-        self._cpu_fan_manager: CPUFanManager = CPUFanManager(
-            self, CPU_FAN_PWM_PIN, CPU_FAN_SPEED_PIN
-        )
         self._mcu_memory_manager: McuMemoryManager = McuMemoryManager(self)
         self._sampling_manager: SamplingManager = SamplingManager(self)
         self._station_manager: StationManager = StationManager(self)
@@ -159,13 +150,6 @@ class ConductorManagerNode(rclpy.node.Node):
             self._wol_manager_vision = None
 
         self.get_logger().debug("Starting conductor configuration")
-
-        # CPU fan
-        if not self._cpu_fan_manager.initialize(CPU_FAN_SAMPLING_INTERVAL_MS):
-            return False
-
-        # Turn on fan
-        self._cpu_fan_manager.write(CPU_FAN_PWM_PIN, 1.0)
 
         # Memory reporting
         if not self._mcu_memory_manager.initialize(REPORT_MCU_MEMORY_PERIOD_SECS):
@@ -215,7 +199,7 @@ class ConductorManagerNode(rclpy.node.Node):
         msg.motor_current = self._station_manager.motor_current
         msg.motor_ff1_count = self._station_manager.motor_ff1_count
         msg.motor_ff2_count = self._station_manager.motor_ff2_count
-        msg.cpu_fan_speed_rpm = self._cpu_fan_manager.cpu_fan_rpm
+        msg.cpu_fan_speed_rpm = 0.0  # Not implemented
         msg.total_ram = self._mcu_memory_manager.total_ram
         msg.ram_utilization = self._mcu_memory_manager.ram_utilization
 
