@@ -8,6 +8,8 @@
 
 #include "imu/Mpu6050ImuProcessor.h"
 
+#include "imu/ImuMath.h"
+
 #include <cmath>
 
 namespace
@@ -15,6 +17,7 @@ namespace
 constexpr double kG = 9.80665;
 constexpr std::size_t kBootTrimStationarySamples = 50;
 constexpr double kEps = 1e-9;
+constexpr double kUpAlpha = 0.1;
 } // namespace
 
 using namespace OASIS::IMU;
@@ -49,7 +52,8 @@ Mpu6050ImuProcessor::ProcessedSample Mpu6050ImuProcessor::ProcessRaw(
 
   sample.diag = m_accelCalibrator.Update(sample.accel_raw_mps2, sample.gyro_rads, dt_seconds);
 
-  if (!m_boot_accel_scale_applied && sample.diag.stationary)
+  // Boot auto-trim can use the pre-calibration stationary gate to unlock scale early.
+  if (!m_boot_accel_scale_applied && sample.diag.stationary_confirmed)
   {
     const double raw_norm_lsb = std::sqrt(static_cast<double>(ax) * static_cast<double>(ax) +
                                           static_cast<double>(ay) * static_cast<double>(ay) +
@@ -78,11 +82,37 @@ Mpu6050ImuProcessor::ProcessedSample Mpu6050ImuProcessor::ProcessRaw(
       sample.boot_accel_scale = new_accel_scale;
     }
   }
+  else if (!m_boot_accel_scale_applied)
+  {
+    m_boot_stationary_samples = 0;
+    m_boot_stationary_mean = 0.0;
+  }
 
   sample.accel_mps2 = {(sample.accel_raw_mps2[0] - sample.diag.bias_mps2[0]) / sample.diag.scale[0],
                        (sample.accel_raw_mps2[1] - sample.diag.bias_mps2[1]) / sample.diag.scale[1],
                        (sample.accel_raw_mps2[2] - sample.diag.bias_mps2[2]) /
                            sample.diag.scale[2]};
 
+  if (sample.diag.stationary)
+  {
+    const double accel_norm = Math::Norm(sample.accel_mps2);
+    if (accel_norm > kEps)
+    {
+      const std::array<double, 3> u_meas = Math::Scale(sample.accel_mps2, 1.0 / accel_norm);
+      if (!m_u_hat_valid)
+      {
+        m_u_hat = u_meas;
+        m_u_hat_valid = true;
+      }
+      else
+      {
+        m_u_hat = Math::Normalize(
+            Math::Add(Math::Scale(m_u_hat, 1.0 - kUpAlpha), Math::Scale(u_meas, kUpAlpha)));
+      }
+    }
+  }
+
+  sample.u_hat = m_u_hat;
+  sample.u_hat_valid = m_u_hat_valid;
   return sample;
 }
