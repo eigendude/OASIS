@@ -54,6 +54,12 @@ const std::array<double, 3>& AccelCalibrator::GetScale() const
   return m_scale;
 }
 
+void AccelCalibrator::ResetUniformScaleInitialization()
+{
+  m_uniform_scale_initialized = false;
+  m_stationary_norm_mean = RunningMean{};
+}
+
 void AccelCalibrator::RunningMean::Add(double x)
 {
   ++n;

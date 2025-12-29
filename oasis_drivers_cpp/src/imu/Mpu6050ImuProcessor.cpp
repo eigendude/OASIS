@@ -8,6 +8,15 @@
 
 #include "imu/Mpu6050ImuProcessor.h"
 
+#include <cmath>
+
+namespace
+{
+constexpr double kG = 9.80665;
+constexpr std::size_t kBootTrimStationarySamples = 50;
+constexpr double kEps = 1e-9;
+} // namespace
+
 using namespace OASIS::IMU;
 
 Mpu6050ImuProcessor::Mpu6050ImuProcessor() = default;
@@ -39,6 +48,34 @@ Mpu6050ImuProcessor::ProcessedSample Mpu6050ImuProcessor::ProcessRaw(
                       static_cast<double>(gz) * m_gyroScale};
 
   sample.diag = m_accelCalibrator.Update(sample.accel_raw_mps2, sample.gyro_rads, dt_seconds);
+
+  if (!m_boot_accel_scale_applied && sample.diag.stationary)
+  {
+    const double raw_norm_lsb =
+        std::sqrt(static_cast<double>(ax) * static_cast<double>(ax) +
+                  static_cast<double>(ay) * static_cast<double>(ay) +
+                  static_cast<double>(az) * static_cast<double>(az));
+
+    ++m_boot_stationary_samples;
+    m_boot_stationary_mean +=
+        (raw_norm_lsb - m_boot_stationary_mean) /
+        static_cast<double>(m_boot_stationary_samples);
+
+    if (m_boot_stationary_samples >= kBootTrimStationarySamples &&
+        m_boot_stationary_mean > kEps)
+    {
+      const double lsb_per_g = m_boot_stationary_mean;
+      const double new_accel_scale = kG / lsb_per_g;
+
+      m_accelScale = new_accel_scale;
+      m_boot_accel_scale_applied = true;
+      m_accelCalibrator.ResetUniformScaleInitialization();
+
+      sample.boot_accel_scale_applied = true;
+      sample.boot_lsb_per_g = lsb_per_g;
+      sample.boot_accel_scale = new_accel_scale;
+    }
+  }
 
   sample.accel_mps2 = {(sample.accel_raw_mps2[0] - sample.diag.bias_mps2[0]) / sample.diag.scale[0],
                        (sample.accel_raw_mps2[1] - sample.diag.bias_mps2[1]) / sample.diag.scale[1],
