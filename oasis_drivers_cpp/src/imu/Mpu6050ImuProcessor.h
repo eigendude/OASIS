@@ -11,6 +11,7 @@
 #include "imu/AccelCalibrator.h"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 
 namespace OASIS::IMU
@@ -31,6 +32,15 @@ public:
 
     // Calibration diagnostics for the current update
     AccelCalibrator::Diagnostics diag{};
+
+    // True when the boot-time accel scale trim is applied this update.
+    bool boot_accel_scale_applied{false};
+
+    // Mean raw accel magnitude in LSB used for boot-time trim.
+    double boot_lsb_per_g{0.0};
+
+    // New accel scale (m/s^2 per LSB) applied during boot-time trim.
+    double boot_accel_scale{0.0};
   };
 
   Mpu6050ImuProcessor();
@@ -46,5 +56,9 @@ private:
   double m_accelScale{0.0};
   double m_gyroScale{0.0};
   AccelCalibrator m_accelCalibrator;
+
+  bool m_boot_accel_scale_applied{false};
+  std::size_t m_boot_stationary_samples{0};
+  double m_boot_stationary_mean{0.0};
 };
 } // namespace OASIS::IMU
