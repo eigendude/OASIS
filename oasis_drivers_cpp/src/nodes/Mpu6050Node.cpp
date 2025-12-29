@@ -13,9 +13,11 @@
 #include "imu/Mpu6050ImuUtils.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <functional>
+#include <thread>
 
 #include <I2Cdev.h>
 #include <rclcpp/rclcpp.hpp>
@@ -110,10 +112,25 @@ bool Mpu6050Node::Initialize()
 
   uint8_t accelConfig = 0;
   I2Cdev::readByte(MPU6050_DEFAULT_ADDRESS, MPU6050_RA_ACCEL_CONFIG, &accelConfig);
-  const uint8_t accelConfigHpfOff = static_cast<uint8_t>(accelConfig & 0xF8);
-  if (accelConfigHpfOff != accelConfig)
+  const uint8_t accelConfigForced = static_cast<uint8_t>(accelConfig & 0xE0);
+  I2Cdev::writeByte(MPU6050_DEFAULT_ADDRESS, MPU6050_RA_ACCEL_CONFIG, accelConfigForced);
+
+  uint8_t accelConfigForcedReadback = 0;
+  I2Cdev::readByte(MPU6050_DEFAULT_ADDRESS, MPU6050_RA_ACCEL_CONFIG, &accelConfigForcedReadback);
+  const uint8_t accelForcedAfsSel = static_cast<uint8_t>((accelConfigForcedReadback >> 3) & 0x03);
+  const uint8_t accelForcedHpf = static_cast<uint8_t>(accelConfigForcedReadback & 0x07);
+  const unsigned accelForcedRangeG = AccelRangeGFromAfsSel(accelForcedAfsSel);
+
+  RCLCPP_INFO(
+      get_logger(),
+      "MPU6050 forced ACCEL_CONFIG=0x%02X AFS_SEL=%u (±%ug) ACCEL_HPF=%u (self-test=0x%02X)",
+      accelConfigForcedReadback, static_cast<unsigned>(accelForcedAfsSel), accelForcedRangeG,
+      static_cast<unsigned>(accelForcedHpf), static_cast<unsigned>(accelConfigForcedReadback >> 5));
+  if (accelForcedAfsSel != 0 || accelForcedHpf != 0)
   {
-    I2Cdev::writeByte(MPU6050_DEFAULT_ADDRESS, MPU6050_RA_ACCEL_CONFIG, accelConfigHpfOff);
+    RCLCPP_WARN(get_logger(), "MPU6050 ACCEL_CONFIG readback AFS_SEL=%u ACCEL_HPF=%u (expected 0)",
+                static_cast<unsigned>(accelForcedAfsSel),
+                static_cast<unsigned>(accelForcedHpf));
   }
 
   const uint8_t who = m_mpu6050->getDeviceID();
@@ -169,6 +186,59 @@ bool Mpu6050Node::Initialize()
               "MPU6050 regs: ACCEL_CONFIG=0x%02X GYRO_CONFIG=0x%02X CONFIG(DLPF)=0x%02X "
               "SMPLRT_DIV=0x%02X PWR_MGMT_1=0x%02X",
               accelConfigReadback, gyroConfig, dlpfConfig, sampleRateDiv, powerMgmt);
+
+  for (int i = 0; i < 5; ++i)
+  {
+    uint8_t startupAccelConfig = 0;
+    const int8_t configBytesRead =
+        I2Cdev::readByte(MPU6050_DEFAULT_ADDRESS, MPU6050_RA_ACCEL_CONFIG, &startupAccelConfig);
+    if (configBytesRead <= 0)
+    {
+      RCLCPP_WARN(get_logger(), "MPU6050 startup ACCEL_CONFIG read failed");
+      std::this_thread::sleep_for(1s);
+      continue;
+    }
+
+    uint8_t rawBuffer[6] = {};
+    const int8_t accelBytesRead = I2Cdev::readBytes(
+        MPU6050_DEFAULT_ADDRESS, MPU6050_RA_ACCEL_XOUT_H, 6, rawBuffer);
+    if (accelBytesRead != 6)
+    {
+      RCLCPP_WARN(get_logger(), "MPU6050 startup accel read failed (bytes=%d)",
+                  static_cast<int>(accelBytesRead));
+      std::this_thread::sleep_for(1s);
+      continue;
+    }
+
+    const int16_t ax = static_cast<int16_t>((rawBuffer[0] << 8) | rawBuffer[1]);
+    const int16_t ay = static_cast<int16_t>((rawBuffer[2] << 8) | rawBuffer[3]);
+    const int16_t az = static_cast<int16_t>((rawBuffer[4] << 8) | rawBuffer[5]);
+    const double accelNormLsb =
+        std::sqrt(static_cast<double>(ax) * ax + static_cast<double>(ay) * ay +
+                  static_cast<double>(az) * az);
+
+    const uint8_t accelAfsSelStartup = static_cast<uint8_t>((startupAccelConfig >> 3) & 0x03);
+    const uint8_t accelHpfStartup = static_cast<uint8_t>(startupAccelConfig & 0x07);
+    const unsigned accelRangeStartupG = AccelRangeGFromAfsSel(accelAfsSelStartup);
+
+    RCLCPP_INFO(
+        get_logger(),
+        "MPU6050 startup ACCEL_CONFIG=0x%02X AFS_SEL=%u (±%ug) ACCEL_HPF=%u ax=%d ay=%d az=%d "
+        "|a|=%.1f LSB",
+        startupAccelConfig, static_cast<unsigned>(accelAfsSelStartup), accelRangeStartupG,
+        static_cast<unsigned>(accelHpfStartup), static_cast<int>(ax), static_cast<int>(ay),
+        static_cast<int>(az), accelNormLsb);
+
+    if (accelAfsSelStartup != 0 || accelHpfStartup != 0)
+    {
+      RCLCPP_WARN(get_logger(),
+                  "MPU6050 startup ACCEL_CONFIG AFS_SEL=%u ACCEL_HPF=%u (expected 0)",
+                  static_cast<unsigned>(accelAfsSelStartup),
+                  static_cast<unsigned>(accelHpfStartup));
+    }
+
+    std::this_thread::sleep_for(1s);
+  }
 
   m_imuProcessor.SetAccelScale(accelScale);
   m_imuProcessor.SetGyroScale(gyroScale);
