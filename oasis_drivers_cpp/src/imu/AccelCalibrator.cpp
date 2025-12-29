@@ -44,10 +44,11 @@ constexpr double kScaleLeakWeak = 0.002;
 constexpr double kScaleLeakUnknown = 0.004;
 constexpr double kScaleClampStrongMin = 0.7;
 constexpr double kScaleClampStrongMax = 1.3;
-constexpr double kScaleClampWeakMin = 0.85;
-constexpr double kScaleClampWeakMax = 1.15;
-constexpr double kScaleClampUnknownMin = 0.9;
-constexpr double kScaleClampUnknownMax = 1.1;
+// Allow weaker/unknown axes to represent large initial scale errors (e.g. ~1.25g).
+constexpr double kScaleClampWeakMin = 0.6;
+constexpr double kScaleClampWeakMax = 1.5;
+constexpr double kScaleClampUnknownMin = 0.6;
+constexpr double kScaleClampUnknownMax = 1.5;
 constexpr double kGSanity = 1.5;
 
 enum class AxisStrength
@@ -251,11 +252,31 @@ AccelCalibrator::Diagnostics AccelCalibrator::Update(const std::array<double, 3>
 
   const double score = (var_mag / kVarScale) + (jerk_avg / kJerkScale) + (gyro_avg / kGyroScale);
   const double w_conf = std::clamp(std::exp(-score), kMinConf, kMaxConf);
+  const bool learn_enabled = (w_conf >= kLearnConfThreshold);
 
   std::array<double, 3> residual{};
   for (std::size_t i = 0; i < 3; ++i)
   {
     residual[i] = m_accel_lp_mps2[i] - m_bias_mps2[i];
+  }
+
+  if (!m_scale_initialized && learn_enabled && m_accel_mag_window.Size() >= window_size)
+  {
+    double residual_norm_raw = 0.0;
+    for (double value : residual)
+    {
+      residual_norm_raw += value * value;
+    }
+    residual_norm_raw = std::sqrt(residual_norm_raw);
+    if (residual_norm_raw > kEps)
+    {
+      const double init_scale = residual_norm_raw / GRAVITY;
+      for (std::size_t i = 0; i < 3; ++i)
+      {
+        m_scale[i] = std::clamp(m_scale[i] * init_scale, 0.5, 2.0);
+      }
+      m_scale_initialized = true;
+    }
   }
 
   std::array<double, 3> accel_cal_lp{};
@@ -273,10 +294,9 @@ AccelCalibrator::Diagnostics AccelCalibrator::Update(const std::array<double, 3>
   accel_cal_norm = std::sqrt(accel_cal_norm);
 
   const double g_err = accel_cal_norm - GRAVITY;
-  const bool learn_enabled = (w_conf >= kLearnConfThreshold);
-  const bool scale_sane = (std::abs(g_err) <= kGSanity);
+  const bool g_err_sane = (std::abs(g_err) <= kGSanity);
   const bool learn_bias = (learn_enabled && accel_cal_norm > kEps);
-  const bool learn_scale = (learn_enabled && scale_sane && accel_cal_norm > kEps);
+  const bool learn_scale = (learn_enabled && accel_cal_norm > kEps);
 
   std::array<double, 3> direction{};
   if (accel_cal_norm > kEps)
@@ -290,7 +310,7 @@ AccelCalibrator::Diagnostics AccelCalibrator::Update(const std::array<double, 3>
 
   if (learn_bias)
   {
-    const double bias_scale = scale_sane ? 1.0 : kBiasSanityScale;
+    const double bias_scale = g_err_sane ? 1.0 : kBiasSanityScale;
     for (std::size_t i = 0; i < 3; ++i)
     {
       const AxisStrength strength = GetAxisStrength(m_axis_pos_seen[i], m_axis_neg_seen[i]);
