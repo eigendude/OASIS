@@ -86,6 +86,7 @@ private:
   std::array<bool, 3> m_axis_pos_seen{};
   std::array<bool, 3> m_axis_neg_seen{};
   bool m_initialized{false};
+  bool m_scale_initialized{false};
 
   WindowStats m_accel_mag_window;
   WindowStats m_jerk_window;
