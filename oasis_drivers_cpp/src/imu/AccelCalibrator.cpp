@@ -96,6 +96,12 @@ bool AccelCalibrator::IsStrictStationary(const std::array<double, 3>& accel_mps2
   return accel_ok && gyro_ok;
 }
 
+bool AccelCalibrator::IsPrecalStationary(bool stationary_motion, double gyro_mag) const
+{
+  const bool gyro_ok = gyro_mag < kStationaryGyroTolRadS;
+  return stationary_motion && gyro_ok;
+}
+
 bool AccelCalibrator::UpdateStationaryDwell(bool is_strict, double dt_seconds)
 {
   const double dwell_target =
@@ -157,8 +163,13 @@ AccelCalibrator::Diagnostics AccelCalibrator::Update(const std::array<double, 3>
 
   const double accel_lp_norm = Norm3(m_accel_lp);
   const bool strict_stationary = IsStrictStationary(m_accel_lp, gyro_rads);
+  const bool precal_stationary = IsPrecalStationary(stationary, gyro_mag);
+  const bool phase2_active = m_uniform_scale_initialized;
   d.stationary_strict = strict_stationary;
-  const bool stationary_confirmed = UpdateStationaryDwell(strict_stationary, dt_seconds);
+  d.stationary_phase2 = phase2_active;
+  // Two-phase stationary gating avoids the |a|≈g chicken-and-egg before scale init.
+  const bool dwell_predicate = phase2_active ? strict_stationary : precal_stationary;
+  const bool stationary_confirmed = UpdateStationaryDwell(dwell_predicate, dt_seconds);
   d.stationary_confirmed = stationary_confirmed;
   d.stationary_dwell_seconds = m_stationary_dwell_seconds;
   d.stationary_dwell_target_seconds =
@@ -179,7 +190,7 @@ AccelCalibrator::Diagnostics AccelCalibrator::Update(const std::array<double, 3>
   // Magnitude residual: r = (accel - bias) / scale, e = |r| - g.
   // Scale updates are gated by coverage so the estimator only stretches when
   // gravity has been observed from both directions on an axis.
-  if (stationary_confirmed)
+  if (stationary_confirmed && phase2_active)
   {
     std::array<double, 3> r{0.0, 0.0, 0.0};
     for (std::size_t i = 0; i < 3; ++i)

@@ -52,6 +52,7 @@ Mpu6050ImuProcessor::ProcessedSample Mpu6050ImuProcessor::ProcessRaw(
 
   sample.diag = m_accelCalibrator.Update(sample.accel_raw_mps2, sample.gyro_rads, dt_seconds);
 
+  // Boot auto-trim can use the pre-calibration stationary gate to unlock scale early.
   if (!m_boot_accel_scale_applied && sample.diag.stationary_confirmed)
   {
     const double raw_norm_lsb = std::sqrt(static_cast<double>(ax) * static_cast<double>(ax) +

@@ -37,6 +37,8 @@ public:
     bool stationary{false};
     /// True when accel magnitude and gyro rate meet strict stationary criteria.
     bool stationary_strict{false};
+    /// True when dwell is using the post-calibration (strict |a|≈g) gate.
+    bool stationary_phase2{false};
     /// True when strict stationary conditions have been held for dwell time.
     bool stationary_confirmed{false};
     /// Accumulated stationary dwell time (s).
@@ -90,6 +92,7 @@ private:
   static double Norm3(const std::array<double, 3>& v);
   bool IsStrictStationary(const std::array<double, 3>& accel_mps2,
                           const std::array<double, 3>& gyro_rads) const;
+  bool IsPrecalStationary(bool stationary_motion, double gyro_mag) const;
   bool UpdateStationaryDwell(bool is_strict, double dt_seconds);
 
   // State
