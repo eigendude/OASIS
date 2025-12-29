@@ -74,4 +74,4 @@ if ! dpkg -s ros2-apt-source >/dev/null 2>&1; then
   rm -f "${TMP_DEB}"
 fi
 
-sudo apt update
+sudo apt update || :
