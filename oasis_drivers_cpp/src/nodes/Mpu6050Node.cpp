@@ -27,6 +27,7 @@ namespace
 
 // Default node name
 constexpr const char* NODE_NAME = "mpu6050_imu_driver";
+constexpr double GRAVITY_MPS2 = 9.80665;
 
 // ROS topics
 constexpr const char* CONDUCTOR_STATE_TOPIC = "conductor_state";
@@ -158,6 +159,13 @@ void Mpu6050Node::PublishImu()
   m_mpu6050->getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
 
   const rclcpp::Time now = get_clock()->now();
+  double dt_seconds = 0.0;
+  if (m_hasLastSampleTime)
+  {
+    dt_seconds = (now - m_lastSampleTime).seconds();
+  }
+  m_lastSampleTime = now;
+  m_hasLastSampleTime = true;
 
   // MPU6050 datasheet formula: Temp(°C) = (TEMP_OUT / 340) + 36.53
   const int16_t tempRaw = m_mpu6050->getTemperature();
@@ -165,14 +173,27 @@ void Mpu6050Node::PublishImu()
 
   const bool drdy = m_mpu6050->getIntDataReadyStatus();
 
-  RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000, "IMU tempRaw=%d (%.2fC), data_ready=%s",
-                       tempRaw, temp_c, drdy ? "true" : "false");
+  const auto processed = m_imuProcessor.ProcessRaw(ax, ay, az, gx, gy, gz, dt_seconds);
+  const double accel_norm_g =
+      std::sqrt(processed.accel_mps2[0] * processed.accel_mps2[0] +
+                processed.accel_mps2[1] * processed.accel_mps2[1] +
+                processed.accel_mps2[2] * processed.accel_mps2[2]) /
+      GRAVITY_MPS2;
 
-  // TODO
-  /*
-  const auto processed = m_imuProcessor.ProcessRaw(sample.ax, sample.ay, sample.az, sample.gx,
-                                                   sample.gy, sample.gz, dt_seconds);
-  */
+  RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "IMU accel=(%.3f, %.3f, %.3f) m/s^2 |g|=%.3f stationary=%s face=valid:%s axis:%zu sign:%d "
+      "cos:%.3f coverage=x(+:%s -:%s) y(+:%s -:%s) z(+:%s -:%s) bias=(%.4f, %.4f, %.4f) "
+      "scale=(%.4f, %.4f, %.4f) temp=%.2fC data_ready=%s",
+      processed.accel_mps2[0], processed.accel_mps2[1], processed.accel_mps2[2], accel_norm_g,
+      processed.diag.stationary ? "true" : "false", processed.diag.face_valid ? "true" : "false",
+      processed.diag.face_axis, processed.diag.face_sign, processed.diag.face_cos,
+      processed.diag.pos_seen[0] ? "true" : "false", processed.diag.neg_seen[0] ? "true" : "false",
+      processed.diag.pos_seen[1] ? "true" : "false", processed.diag.neg_seen[1] ? "true" : "false",
+      processed.diag.pos_seen[2] ? "true" : "false", processed.diag.neg_seen[2] ? "true" : "false",
+      processed.diag.bias_mps2[0], processed.diag.bias_mps2[1], processed.diag.bias_mps2[2],
+      processed.diag.scale[0], processed.diag.scale[1], processed.diag.scale[2], temp_c,
+      drdy ? "true" : "false");
 
   sensor_msgs::msg::Imu imuMsg;
 
@@ -183,8 +204,6 @@ void Mpu6050Node::PublishImu()
   geometry_msgs::msg::Vector3& angularVelocity = imuMsg.angular_velocity;
   geometry_msgs::msg::Vector3& linearAcceleration = imuMsg.linear_acceleration;
 
-  // TODO
-  /*
   linearAcceleration.x = processed.accel_mps2[0];
   linearAcceleration.y = processed.accel_mps2[1];
   linearAcceleration.z = processed.accel_mps2[2];
@@ -192,7 +211,6 @@ void Mpu6050Node::PublishImu()
   angularVelocity.x = processed.gyro_rads[0];
   angularVelocity.y = processed.gyro_rads[1];
   angularVelocity.z = processed.gyro_rads[2];
-  */
 
   imuMsg.orientation.w = 1.0;
   imuMsg.orientation.x = 0.0;
