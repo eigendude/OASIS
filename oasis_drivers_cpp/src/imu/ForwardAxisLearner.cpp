@@ -30,6 +30,7 @@ constexpr std::size_t kMinBurstsToLock = 2;
 constexpr double kConsistencyDotMin = 0.90;
 constexpr std::size_t kStartSamples = 4;
 constexpr std::size_t kEndSamples = 5;
+constexpr std::size_t kYawOverSamplesAbort = 3;
 constexpr double kBeta = 0.2;
 constexpr double kEps = 1e-9;
 } // namespace
@@ -82,6 +83,11 @@ ForwardAxisLearner::Diagnostics ForwardAxisLearner::Update(const std::array<doub
     case State::IN_BURST:
     {
       if (std::abs(yaw_rate) > kYawStraightMaxInBurst)
+        ++m_yaw_over_counter;
+      else
+        m_yaw_over_counter = 0;
+
+      if (m_yaw_over_counter >= kYawOverSamplesAbort)
       {
         ResetBurst();
         m_state = State::ARMED;
@@ -147,12 +153,14 @@ void ForwardAxisLearner::StartBurst()
   m_yaw_accum = 0.0;
   m_t_burst = 0.0;
   m_end_counter = 0;
+  m_yaw_over_counter = 0;
 }
 
 void ForwardAxisLearner::ResetBurst()
 {
   m_start_counter = 0;
   m_end_counter = 0;
+  m_yaw_over_counter = 0;
   m_sum_vec = {0.0, 0.0, 0.0};
   m_impulse = 0.0;
   m_yaw_accum = 0.0;
