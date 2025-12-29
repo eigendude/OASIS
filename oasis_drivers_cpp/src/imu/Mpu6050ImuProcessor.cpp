@@ -52,7 +52,7 @@ Mpu6050ImuProcessor::ProcessedSample Mpu6050ImuProcessor::ProcessRaw(
 
   sample.diag = m_accelCalibrator.Update(sample.accel_raw_mps2, sample.gyro_rads, dt_seconds);
 
-  if (!m_boot_accel_scale_applied && sample.diag.stationary)
+  if (!m_boot_accel_scale_applied && sample.diag.stationary_confirmed)
   {
     const double raw_norm_lsb = std::sqrt(static_cast<double>(ax) * static_cast<double>(ax) +
                                           static_cast<double>(ay) * static_cast<double>(ay) +
@@ -80,6 +80,11 @@ Mpu6050ImuProcessor::ProcessedSample Mpu6050ImuProcessor::ProcessRaw(
       sample.boot_lsb_per_g = lsb_per_g;
       sample.boot_accel_scale = new_accel_scale;
     }
+  }
+  else if (!m_boot_accel_scale_applied)
+  {
+    m_boot_stationary_samples = 0;
+    m_boot_stationary_mean = 0.0;
   }
 
   sample.accel_mps2 = {(sample.accel_raw_mps2[0] - sample.diag.bias_mps2[0]) / sample.diag.scale[0],
