@@ -20,6 +20,7 @@
 #include <rclcpp/publisher.hpp>
 #include <rclcpp/subscription.hpp>
 #include <rclcpp/timer.hpp>
+#include <rclcpp/time.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 
 namespace OASIS
@@ -49,6 +50,8 @@ private:
   std::string m_i2cDevice;
   std::chrono::duration<double> m_publishPeriod;
   IMU::Mpu6050ImuProcessor m_imuProcessor;
+  rclcpp::Time m_lastSampleTime;
+  bool m_hasLastSampleTime{false};
 
   // Station parameters
   double m_dutyCycleInput{0.0};
