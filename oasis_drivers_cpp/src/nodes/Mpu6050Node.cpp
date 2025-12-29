@@ -181,12 +181,11 @@ void Mpu6050Node::PublishImu()
 
   RCLCPP_INFO_THROTTLE(
       get_logger(), *get_clock(), 1000,
-      "IMU accel=(%.3f, %.3f, %.3f) m/s^2 |g|=%.3f stationary=%s face=valid:%s axis:%zu sign:%d "
-      "cos:%.3f coverage=x(+:%s -:%s) y(+:%s -:%s) z(+:%s -:%s) bias=(%.4f, %.4f, %.4f) "
+      "IMU accel=(%.3f, %.3f, %.3f) m/s^2 |g|=%.3f stationary=%s coverage=x(+:%s -:%s) "
+      "y(+:%s -:%s) z(+:%s -:%s) bias=(%.4f, %.4f, %.4f) "
       "scale=(%.4f, %.4f, %.4f) temp=%.2fC data_ready=%s",
       processed.accel_mps2[0], processed.accel_mps2[1], processed.accel_mps2[2], accel_norm_g,
-      processed.diag.stationary ? "true" : "false", processed.diag.face_valid ? "true" : "false",
-      processed.diag.face_axis, processed.diag.face_sign, processed.diag.face_cos,
+      processed.diag.stationary ? "true" : "false",
       processed.diag.pos_seen[0] ? "true" : "false", processed.diag.neg_seen[0] ? "true" : "false",
       processed.diag.pos_seen[1] ? "true" : "false", processed.diag.neg_seen[1] ? "true" : "false",
       processed.diag.pos_seen[2] ? "true" : "false", processed.diag.neg_seen[2] ? "true" : "false",

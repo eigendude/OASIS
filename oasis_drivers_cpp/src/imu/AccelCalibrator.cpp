@@ -17,7 +17,7 @@ namespace
 {
 constexpr double kG = 9.80665;
 
-// Low-pass filter for accel (Hz). Keeps face detection stable under vibration.
+// Low-pass filter for accel (Hz). Keeps jerk metric stable under vibration.
 constexpr double kAccelLpCutoffHz = 2.5;
 constexpr double kTwoPi = 6.283185307179586;
 
@@ -25,15 +25,14 @@ constexpr double kTwoPi = 6.283185307179586;
 constexpr double kGyroStationaryRadS = 0.20; // ~11 deg/s
 constexpr double kJerkStationaryMps3 = 2.5; // based on LP accel delta
 
-// Face detection: dominant axis must be close to ±1 in unit vector.
-constexpr double kFaceCosMin = 0.92; // ~23 degrees cone
-
-// Sample requirements: enough stationary samples for stable means.
+// Sample requirements: enough stationary samples for stable mean.
 constexpr std::size_t kMinStationarySamplesForInit = 30;
-constexpr std::size_t kMinFaceSamplesPerSide = 60;
 
-// Smoothing when updating solved parameters to avoid step changes.
-constexpr double kSolveAlpha = 0.15;
+// Online learning rates and stabilization.
+constexpr double kAlphaBias = 0.003;
+constexpr double kAlphaScale = 0.0002;
+constexpr double kBiasLeak = 0.0005;
+constexpr double kScaleLeak = 0.0002;
 
 // Safety clamps
 constexpr double kScaleMin = 0.5;
@@ -120,84 +119,61 @@ AccelCalibrator::Diagnostics AccelCalibrator::Update(const std::array<double, 3>
     }
   }
 
-  // Face detection (only while stationary): find dominant gravity axis.
-  bool face_valid = false;
-  std::size_t face_axis = 0;
-  int face_sign = 0;
-  double face_cos = 0.0;
-
-  if (stationary && accel_lp_norm > kEps)
+  // Magnitude residual: r = (accel - bias) / scale, e = |r| - g.
+  // Scale updates are gated by coverage so the estimator only stretches when
+  // gravity has been observed from both directions on an axis.
+  if (stationary)
   {
-    std::array<double, 3> u{
-        m_accel_lp[0] / accel_lp_norm,
-        m_accel_lp[1] / accel_lp_norm,
-        m_accel_lp[2] / accel_lp_norm,
-    };
-
-    double best = 0.0;
-    std::size_t best_axis = 0;
+    std::array<double, 3> r{0.0, 0.0, 0.0};
     for (std::size_t i = 0; i < 3; ++i)
     {
-      const double a = std::abs(u[i]);
-      if (a > best)
+      const double scale_abs = std::max(std::abs(m_scale[i]), kEps);
+      r[i] = (m_accel_lp[i] - m_bias[i]) / scale_abs;
+    }
+
+    const double r_norm = Norm3(r);
+    if (r_norm > kEps)
+    {
+      const double e = r_norm - kG;
+      std::array<double, 3> unit{
+          r[0] / r_norm,
+          r[1] / r_norm,
+          r[2] / r_norm,
+      };
+
+      for (std::size_t i = 0; i < 3; ++i)
       {
-        best = a;
-        best_axis = i;
+        const double scale_abs = std::max(std::abs(m_scale[i]), kEps);
+        m_bias[i] += kAlphaBias * e * (unit[i] / scale_abs);
+      }
+
+      for (std::size_t i = 0; i < 3; ++i)
+      {
+        if (unit[i] > 0.75)
+          m_pos_seen[i] = true;
+        if (unit[i] < -0.75)
+          m_neg_seen[i] = true;
+      }
+
+      for (std::size_t i = 0; i < 3; ++i)
+      {
+        if (!(m_pos_seen[i] && m_neg_seen[i]))
+          continue;
+
+        const double scale_abs = std::max(std::abs(m_scale[i]), kEps);
+        m_scale[i] +=
+            kAlphaScale * e * (r[i] * r[i]) / (scale_abs * r_norm);
       }
     }
-
-    if (best >= kFaceCosMin)
-    {
-      face_valid = true;
-      face_axis = best_axis;
-      face_sign = (u[best_axis] >= 0.0) ? +1 : -1;
-      face_cos = best;
-    }
   }
 
-  d.face_valid = face_valid;
-  d.face_axis = face_axis;
-  d.face_sign = face_sign;
-  d.face_cos = face_cos;
-
-  // Accumulate face means (axis component only): +/- g along one axis.
-  if (face_valid)
-  {
-    const double v = m_accel_lp[face_axis];
-    if (face_sign > 0)
-    {
-      m_pos_face_mean[face_axis].Add(v);
-      m_pos_seen[face_axis] = true;
-    }
-    else
-    {
-      m_neg_face_mean[face_axis].Add(v);
-      m_neg_seen[face_axis] = true;
-    }
-  }
-
-  // Solve bias+scale per-axis when both sides are available with enough samples.
   for (std::size_t i = 0; i < 3; ++i)
   {
-    if (!m_pos_face_mean[i].Ready(kMinFaceSamplesPerSide) ||
-        !m_neg_face_mean[i].Ready(kMinFaceSamplesPerSide))
-    {
-      continue;
-    }
+    m_bias[i] *= (1.0 - kBiasLeak);
+    m_bias[i] = std::clamp(m_bias[i], -kBiasClampMps2, kBiasClampMps2);
 
-    // mu_pos/neg are mean axis measurements with gravity aligned to +/- axis.
-    const double mu_pos = m_pos_face_mean[i].mean; // ~ b_i + s_i * (+g)
-    const double mu_neg = m_neg_face_mean[i].mean; // ~ b_i + s_i * (-g)
-
-    const double b_new = 0.5 * (mu_pos + mu_neg);
-    const double s_new = (mu_pos - mu_neg) / (2.0 * kG);
-
-    // Smooth + clamp
-    const double b_smooth = (1.0 - kSolveAlpha) * m_bias[i] + kSolveAlpha * b_new;
-    const double s_smooth = (1.0 - kSolveAlpha) * m_scale[i] + kSolveAlpha * s_new;
-
-    m_bias[i] = std::clamp(b_smooth, -kBiasClampMps2, kBiasClampMps2);
-    m_scale[i] = std::clamp(s_smooth, kScaleMin, kScaleMax);
+    m_scale[i] += kScaleLeak * (1.0 - m_scale[i]);
+    m_scale[i] = std::clamp(m_scale[i], kScaleMin, kScaleMax);
   }
 
   // Emit diagnostics
