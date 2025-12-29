@@ -17,6 +17,11 @@ void Mpu6050ImuProcessor::SetAccelScale(double accelScale)
   m_accelScale = accelScale;
 }
 
+double Mpu6050ImuProcessor::GetAccelScale() const
+{
+  return m_accelScale;
+}
+
 void Mpu6050ImuProcessor::SetGyroScale(double gyroScale)
 {
   m_gyroScale = gyroScale;

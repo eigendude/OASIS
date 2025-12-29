@@ -36,6 +36,7 @@ public:
   Mpu6050ImuProcessor();
 
   void SetAccelScale(double accelScale);
+  double GetAccelScale() const;
   void SetGyroScale(double gyroScale);
 
   ProcessedSample ProcessRaw(
