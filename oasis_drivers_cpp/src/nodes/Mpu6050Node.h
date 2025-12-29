@@ -42,6 +42,8 @@ private:
 
   // ROS parameters
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr m_imuPublisher;
+  rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr m_imuForwardPublisher;
+  rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr m_imuReversePublisher;
   rclcpp::Subscription<oasis_msgs::msg::ConductorState>::SharedPtr m_conductorStateSub;
   rclcpp::TimerBase::SharedPtr m_timer;
 
