@@ -93,6 +93,9 @@ endif()
 add_executable(mpu6050_imu_driver
   src/cli/mpu6050_imu_driver.cpp
   src/imu/AccelCalibrator.cpp
+  src/imu/ForwardAxisLearner.cpp
+  src/imu/ImuMath.cpp
+  src/imu/ImuOrientationUtils.cpp
   src/imu/Mpu6050ImuProcessor.cpp
   src/imu/Mpu6050ImuUtils.cpp
   src/nodes/Mpu6050Node.cpp
