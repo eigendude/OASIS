@@ -33,7 +33,7 @@ public:
     std::array<double, 3> bias_mps2{0.0, 0.0, 0.0};
     /// Estimated scale per axis (unitless). Applied multiplicatively.
     std::array<double, 3> scale{1.0, 1.0, 1.0};
-    /// True when gyro + accel jerk indicate the IMU is stationary.
+    /// True when accel magnitude and gyro rate meet stationary criteria.
     bool stationary{false};
     /// True when accel magnitude and gyro rate meet strict stationary criteria.
     bool stationary_strict{false};
@@ -92,14 +92,9 @@ private:
   static double Norm3(const std::array<double, 3>& v);
   bool IsStrictStationary(const std::array<double, 3>& accel_mps2,
                           const std::array<double, 3>& gyro_rads) const;
-  bool IsPrecalStationary(bool stationary_motion, double gyro_mag) const;
   bool UpdateStationaryDwell(bool is_strict, double dt_seconds);
 
   // State
-  bool m_initialized{false};
-  std::array<double, 3> m_accel_lp{0.0, 0.0, 0.0};
-  std::array<double, 3> m_prev_accel_lp{0.0, 0.0, 0.0};
-
   std::array<double, 3> m_bias{0.0, 0.0, 0.0};
   std::array<double, 3> m_scale{1.0, 1.0, 1.0};
 

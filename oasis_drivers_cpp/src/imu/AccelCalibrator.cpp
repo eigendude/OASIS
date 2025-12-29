@@ -24,14 +24,6 @@ constexpr double kStationaryGyroTolRadS = 0.10;
 constexpr double kStationaryFallbackDtSeconds = 0.02;
 constexpr double kStationaryMaxDtSeconds = 0.1;
 
-// Low-pass filter for accel (Hz). Keeps jerk metric stable under vibration.
-constexpr double kAccelLpCutoffHz = 2.5;
-constexpr double kTwoPi = 6.283185307179586;
-
-// Stationary thresholds: low gyro rate + low LP accel jerk.
-constexpr double kGyroStationaryRadS = 0.20; // ~11 deg/s
-constexpr double kJerkStationaryMps3 = 2.5; // based on LP accel delta
-
 // Sample requirements: enough stationary samples for stable mean.
 constexpr std::size_t kMinStationarySamplesForInit = 30;
 
@@ -96,12 +88,6 @@ bool AccelCalibrator::IsStrictStationary(const std::array<double, 3>& accel_mps2
   return accel_ok && gyro_ok;
 }
 
-bool AccelCalibrator::IsPrecalStationary(bool stationary_motion, double gyro_mag) const
-{
-  const bool gyro_ok = gyro_mag < kStationaryGyroTolRadS;
-  return stationary_motion && gyro_ok;
-}
-
 bool AccelCalibrator::UpdateStationaryDwell(bool is_strict, double dt_seconds)
 {
   const double dwell_target =
@@ -135,40 +121,16 @@ AccelCalibrator::Diagnostics AccelCalibrator::Update(const std::array<double, 3>
   if (dt_seconds <= 0.0)
     dt_seconds = 0.02;
 
-  // Low-pass filter the accelerometer to make "face" detection robust.
-  const double lp_alpha = 1.0 - std::exp(-dt_seconds * kAccelLpCutoffHz * kTwoPi);
-
-  if (!m_initialized)
-  {
-    m_accel_lp = accel_mps2;
-    m_prev_accel_lp = accel_mps2;
-    m_initialized = true;
-  }
-  else
-  {
-    for (std::size_t i = 0; i < 3; ++i)
-      m_accel_lp[i] = m_accel_lp[i] + lp_alpha * (accel_mps2[i] - m_accel_lp[i]);
-  }
-
-  // Stationary check: gyro magnitude + jerk of LP accel (NO g_err involved).
-  const double gyro_mag = Norm3(gyro_rads);
-
-  std::array<double, 3> jerk{0.0, 0.0, 0.0};
-  for (std::size_t i = 0; i < 3; ++i)
-    jerk[i] = (m_accel_lp[i] - m_prev_accel_lp[i]) / dt_seconds;
-  const double jerk_mag = Norm3(jerk);
-
-  const bool stationary = (gyro_mag < kGyroStationaryRadS) && (jerk_mag < kJerkStationaryMps3);
+  const bool strict_stationary = IsStrictStationary(accel_mps2, gyro_rads);
+  const bool stationary = strict_stationary;
   d.stationary = stationary;
 
-  const double accel_lp_norm = Norm3(m_accel_lp);
-  const bool strict_stationary = IsStrictStationary(m_accel_lp, gyro_rads);
-  const bool precal_stationary = IsPrecalStationary(stationary, gyro_mag);
+  const double accel_norm = Norm3(accel_mps2);
   const bool phase2_active = m_uniform_scale_initialized;
   d.stationary_strict = strict_stationary;
   d.stationary_phase2 = phase2_active;
-  // Two-phase stationary gating avoids the |a|≈g chicken-and-egg before scale init.
-  const bool dwell_predicate = phase2_active ? strict_stationary : precal_stationary;
+  // Stationary gating uses strict accel + gyro criteria from the raw samples.
+  const bool dwell_predicate = strict_stationary;
   const bool stationary_confirmed = UpdateStationaryDwell(dwell_predicate, dt_seconds);
   d.stationary_confirmed = stationary_confirmed;
   d.stationary_dwell_seconds = m_stationary_dwell_seconds;
@@ -178,7 +140,7 @@ AccelCalibrator::Diagnostics AccelCalibrator::Update(const std::array<double, 3>
   // Initialize uniform scale from the first stationary window to avoid large start-up errors.
   if (stationary_confirmed && !m_uniform_scale_initialized)
   {
-    m_stationary_norm_mean.Add(accel_lp_norm);
+    m_stationary_norm_mean.Add(accel_norm);
     if (m_stationary_norm_mean.Ready(kMinStationarySamplesForInit))
     {
       const double s0 = std::clamp(m_stationary_norm_mean.mean / kG, kScaleMin, kScaleMax);
@@ -196,7 +158,7 @@ AccelCalibrator::Diagnostics AccelCalibrator::Update(const std::array<double, 3>
     for (std::size_t i = 0; i < 3; ++i)
     {
       const double scale_abs = std::max(std::abs(m_scale[i]), kEps);
-      r[i] = (m_accel_lp[i] - m_bias[i]) / scale_abs;
+      r[i] = (accel_mps2[i] - m_bias[i]) / scale_abs;
     }
 
     const double r_norm = Norm3(r);
@@ -253,7 +215,6 @@ AccelCalibrator::Diagnostics AccelCalibrator::Update(const std::array<double, 3>
   d.pos_seen = m_pos_seen;
   d.neg_seen = m_neg_seen;
 
-  m_prev_accel_lp = m_accel_lp;
   return d;
 }
 } // namespace OASIS::IMU

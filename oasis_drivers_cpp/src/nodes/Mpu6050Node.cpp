@@ -47,6 +47,23 @@ constexpr double kPi = 3.141592653589793;
 constexpr double kTwoPi = 2.0 * kPi;
 constexpr bool kLogStationaryTransitions = false;
 
+unsigned AccelRangeGFromAfsSel(uint8_t afs_sel)
+{
+  switch (afs_sel & 0x03)
+  {
+    case 0:
+      return 2;
+    case 1:
+      return 4;
+    case 2:
+      return 8;
+    case 3:
+      return 16;
+    default:
+      return 0;
+  }
+}
+
 geometry_msgs::msg::Quaternion ToRosQuaternion(const Math::Quaternion& q)
 {
   geometry_msgs::msg::Quaternion out;
@@ -91,6 +108,14 @@ bool Mpu6050Node::Initialize()
   m_mpu6050->setFullScaleAccelRange(MPU6050_ACCEL_FS_2);
   m_mpu6050->setFullScaleGyroRange(MPU6050_GYRO_FS_250);
 
+  uint8_t accelConfig = 0;
+  I2Cdev::readByte(MPU6050_DEFAULT_ADDRESS, MPU6050_RA_ACCEL_CONFIG, &accelConfig);
+  const uint8_t accelConfigHpfOff = static_cast<uint8_t>(accelConfig & 0xF8);
+  if (accelConfigHpfOff != accelConfig)
+  {
+    I2Cdev::writeByte(MPU6050_DEFAULT_ADDRESS, MPU6050_RA_ACCEL_CONFIG, accelConfigHpfOff);
+  }
+
   const uint8_t who = m_mpu6050->getDeviceID();
   RCLCPP_INFO(get_logger(), "MPU6050 WHO_AM_I / device ID: 0x%02X", who);
 
@@ -100,6 +125,7 @@ bool Mpu6050Node::Initialize()
   // Initialize IMU state based on actual configuration
   const double accelScale = Mpu6050ImuUtils::AccelScaleFromRange(accelRange);
   const double gyroScale = Mpu6050ImuUtils::GyroScaleFromRange(gyroRange);
+  const double accel_lsb_per_g = GRAVITY_MPS2 / accelScale;
 
   RCLCPP_INFO(get_logger(),
               "MPU6050 ranges: accelRange=%u gyroRange=%u accelScale=%.9f m/s^2/LSB gyroScale=%.9f "
@@ -113,22 +139,36 @@ bool Mpu6050Node::Initialize()
   RCLCPP_INFO(get_logger(), "MPU6050 readback (enum): ACCEL_CFG=%u GYRO_CFG=%u",
               static_cast<unsigned>(regAccelCfg), static_cast<unsigned>(regGyroCfg));
 
-  uint8_t accelConfig = 0;
+  uint8_t accelConfigReadback = 0;
   uint8_t gyroConfig = 0;
   uint8_t dlpfConfig = 0;
   uint8_t sampleRateDiv = 0;
   uint8_t powerMgmt = 0;
 
-  I2Cdev::readByte(MPU6050_DEFAULT_ADDRESS, MPU6050_RA_ACCEL_CONFIG, &accelConfig);
+  I2Cdev::readByte(MPU6050_DEFAULT_ADDRESS, MPU6050_RA_ACCEL_CONFIG, &accelConfigReadback);
   I2Cdev::readByte(MPU6050_DEFAULT_ADDRESS, MPU6050_RA_GYRO_CONFIG, &gyroConfig);
   I2Cdev::readByte(MPU6050_DEFAULT_ADDRESS, MPU6050_RA_CONFIG, &dlpfConfig);
   I2Cdev::readByte(MPU6050_DEFAULT_ADDRESS, MPU6050_RA_SMPLRT_DIV, &sampleRateDiv);
   I2Cdev::readByte(MPU6050_DEFAULT_ADDRESS, MPU6050_RA_PWR_MGMT_1, &powerMgmt);
 
+  const uint8_t accelAfsSel = static_cast<uint8_t>((accelConfigReadback >> 3) & 0x03);
+  const uint8_t accelHpf = static_cast<uint8_t>(accelConfigReadback & 0x07);
+  const unsigned accelRangeG = AccelRangeGFromAfsSel(accelAfsSel);
+
+  RCLCPP_INFO(get_logger(),
+              "MPU6050 ACCEL_CONFIG=0x%02X AFS_SEL=%u (±%ug) ACCEL_HPF=%u accel_lsb_per_g=%.1f",
+              accelConfigReadback, static_cast<unsigned>(accelAfsSel), accelRangeG,
+              static_cast<unsigned>(accelHpf), accel_lsb_per_g);
+  if (accelHpf != 0)
+  {
+    RCLCPP_WARN(get_logger(), "MPU6050 ACCEL_HPF readback=%u (expected 0)",
+                static_cast<unsigned>(accelHpf));
+  }
+
   RCLCPP_INFO(get_logger(),
               "MPU6050 regs: ACCEL_CONFIG=0x%02X GYRO_CONFIG=0x%02X CONFIG(DLPF)=0x%02X "
               "SMPLRT_DIV=0x%02X PWR_MGMT_1=0x%02X",
-              accelConfig, gyroConfig, dlpfConfig, sampleRateDiv, powerMgmt);
+              accelConfigReadback, gyroConfig, dlpfConfig, sampleRateDiv, powerMgmt);
 
   m_imuProcessor.SetAccelScale(accelScale);
   m_imuProcessor.SetGyroScale(gyroScale);
