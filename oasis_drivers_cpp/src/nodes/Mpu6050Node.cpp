@@ -178,6 +178,16 @@ void Mpu6050Node::PublishImu()
                                         processed.accel_mps2[1] * processed.accel_mps2[1] +
                                         processed.accel_mps2[2] * processed.accel_mps2[2]) /
                               GRAVITY_MPS2;
+  const double raw_accel_norm_lsb = std::sqrt(static_cast<double>(ax) * static_cast<double>(ax) +
+                                              static_cast<double>(ay) * static_cast<double>(ay) +
+                                              static_cast<double>(az) * static_cast<double>(az));
+  const double accel_scale = m_imuProcessor.GetAccelScale();
+  const double raw_accel_norm_mps2 = raw_accel_norm_lsb * accel_scale;
+
+  RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "IMU accel scale=%.9f m/s^2/LSB raw |a|=%.3f m/s^2 (%.1f LSB)", accel_scale,
+      raw_accel_norm_mps2, raw_accel_norm_lsb);
 
   RCLCPP_INFO_THROTTLE(
       get_logger(), *get_clock(), 1000,
