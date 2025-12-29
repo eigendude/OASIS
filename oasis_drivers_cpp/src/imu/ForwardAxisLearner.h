@@ -28,8 +28,8 @@ public:
     ARMED,
     /// Accumulating burst samples.
     IN_BURST,
-    /// Learned unsigned forward axis, waiting for opposite burst.
-    HAVE_UNSIGNED,
+    /// Learned first signed axis, waiting for opposite burst.
+    HAVE_FIRST,
     /// Learned signed forward axis.
     LOCKED
   };
@@ -93,7 +93,7 @@ private:
   double m_a_h_peak{0.0};
 
   std::size_t m_burst_count{0};
-  std::array<double, 3> m_f_mean{1.0, 0.0, 0.0};
+  std::array<double, 3> m_first_candidate{1.0, 0.0, 0.0};
   std::array<double, 3> m_last_candidate{1.0, 0.0, 0.0};
   double m_consistency_dot{0.0};
 
