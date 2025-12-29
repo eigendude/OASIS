@@ -9,7 +9,6 @@
 #pragma once
 
 #include "imu/AccelCalibrator.h"
-#include "imu/ForwardAxisLearner.h"
 
 #include <array>
 #include <cstddef>
@@ -40,15 +39,6 @@ public:
     // True when the up vector estimate is valid.
     bool u_hat_valid{false};
 
-    // Forward axis learner diagnostics for the current update.
-    ForwardAxisLearner::Diagnostics forward_diag{};
-
-    // Learned unsigned forward axis (unit) in sensor frame.
-    std::array<double, 3> f_hat_unsigned{1.0, 0.0, 0.0};
-
-    // True when the unsigned forward axis is locked.
-    bool f_hat_locked{false};
-
     // True when the boot-time accel scale trim is applied this update.
     bool boot_accel_scale_applied{false};
 
@@ -72,7 +62,6 @@ private:
   double m_accelScale{0.0};
   double m_gyroScale{0.0};
   AccelCalibrator m_accelCalibrator;
-  ForwardAxisLearner m_forwardAxisLearner;
 
   std::array<double, 3> m_u_hat{0.0, 0.0, 1.0};
   bool m_u_hat_valid{false};

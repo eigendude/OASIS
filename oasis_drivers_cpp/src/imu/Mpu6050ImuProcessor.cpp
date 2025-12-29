@@ -108,10 +108,5 @@ Mpu6050ImuProcessor::ProcessedSample Mpu6050ImuProcessor::ProcessRaw(
 
   sample.u_hat = m_u_hat;
   sample.u_hat_valid = m_u_hat_valid;
-  sample.forward_diag = m_forwardAxisLearner.Update(sample.accel_mps2, sample.gyro_rads, dt_seconds,
-                                                    m_u_hat, m_u_hat_valid);
-  sample.f_hat_unsigned = m_forwardAxisLearner.GetForwardAxisUnsigned();
-  sample.f_hat_locked = m_forwardAxisLearner.IsLocked();
-
   return sample;
 }
