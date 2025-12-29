@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <functional>
 
 #include <I2Cdev.h>
@@ -84,6 +85,9 @@ bool Mpu6050Node::Initialize()
   m_mpu6050->setFullScaleAccelRange(MPU6050_ACCEL_FS_2);
   m_mpu6050->setFullScaleGyroRange(MPU6050_GYRO_FS_250);
 
+  const uint8_t who = m_mpu6050->getDeviceID();
+  RCLCPP_INFO(get_logger(), "MPU6050 WHO_AM_I / device ID: 0x%02X", who);
+
   const uint8_t accelRange = m_mpu6050->getFullScaleAccelRange();
   const uint8_t gyroRange = m_mpu6050->getFullScaleGyroRange();
 
@@ -102,6 +106,23 @@ bool Mpu6050Node::Initialize()
   const uint8_t regGyroCfg = m_mpu6050->getFullScaleGyroRange();
   RCLCPP_INFO(get_logger(), "MPU6050 readback (enum): ACCEL_CFG=%u GYRO_CFG=%u",
               static_cast<unsigned>(regAccelCfg), static_cast<unsigned>(regGyroCfg));
+
+  uint8_t accelConfig = 0;
+  uint8_t gyroConfig = 0;
+  uint8_t dlpfConfig = 0;
+  uint8_t sampleRateDiv = 0;
+  uint8_t powerMgmt = 0;
+
+  I2Cdev::readByte(MPU6050_DEFAULT_ADDRESS, MPU6050_RA_ACCEL_CONFIG, &accelConfig);
+  I2Cdev::readByte(MPU6050_DEFAULT_ADDRESS, MPU6050_RA_GYRO_CONFIG, &gyroConfig);
+  I2Cdev::readByte(MPU6050_DEFAULT_ADDRESS, MPU6050_RA_CONFIG, &dlpfConfig);
+  I2Cdev::readByte(MPU6050_DEFAULT_ADDRESS, MPU6050_RA_SMPLRT_DIV, &sampleRateDiv);
+  I2Cdev::readByte(MPU6050_DEFAULT_ADDRESS, MPU6050_RA_PWR_MGMT_1, &powerMgmt);
+
+  RCLCPP_INFO(get_logger(),
+              "MPU6050 regs: ACCEL_CONFIG=0x%02X GYRO_CONFIG=0x%02X CONFIG(DLPF)=0x%02X "
+              "SMPLRT_DIV=0x%02X PWR_MGMT_1=0x%02X",
+              accelConfig, gyroConfig, dlpfConfig, sampleRateDiv, powerMgmt);
 
   m_imuProcessor.SetAccelScale(accelScale);
   m_imuProcessor.SetGyroScale(gyroScale);
@@ -165,16 +186,20 @@ void Mpu6050Node::PublishImu()
   const double accel_y = processed.accel_mps2[1];
   const double accel_z = processed.accel_mps2[2];
   const double accel_norm = std::sqrt(accel_x * accel_x + accel_y * accel_y + accel_z * accel_z);
+  constexpr double GRAVITY = 9.80665;
+  const double accel_g = accel_norm / GRAVITY;
 
   // MPU6050 datasheet formula: Temp(°C) = (TEMP_OUT / 340) + 36.53
   const double temp_c = (static_cast<double>(tempRaw) / 340.0) + 36.53;
 
+  const bool drdy = m_mpu6050->getIntDataReadyStatus();
+
   RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
                        "IMU raw accel=[%d %d %d] raw|a|=%.1f LSB (expect ~16384 @1g, FS=±2g), "
-                       "scaled accel=[%.3f %.3f %.3f] |a|=%.3f m/s^2 (expect ~9.807), "
-                       "raw gyro=[%d %d %d], tempRaw=%d (%.2fC)",
-                       ax, ay, az, raw_accel_norm, accel_x, accel_y, accel_z, accel_norm, gx, gy,
-                       gz, tempRaw, temp_c);
+                       "scaled accel=[%.3f %.3f %.3f] |a|=%.3f m/s^2 (%.3fg) (expect ~9.807), "
+                       "raw gyro=[%d %d %d], tempRaw=%d (%.2fC), data_ready=%s",
+                       ax, ay, az, raw_accel_norm, accel_x, accel_y, accel_z, accel_norm, accel_g,
+                       gx, gy, gz, tempRaw, temp_c, drdy ? "true" : "false");
 
   sensor_msgs::msg::Imu imuMsg;
 
