@@ -20,6 +20,11 @@ namespace OASIS::IMU
  *
  * The calibrator watches for stationary periods and nudges a diagonal
  * bias/scale model so the corrected acceleration magnitude matches gravity.
+ *
+ * Phase 1 ("precal") detects stationarity using gyro + accel jerk only, which
+ * avoids the |a|≈g chicken-and-egg before bias/scale are learned. Phase 2
+ * ("strict") activates once uniform scale is initialized and requires the
+ * corrected accel magnitude to be near gravity.
  */
 class AccelCalibrator
 {
@@ -33,8 +38,10 @@ public:
     std::array<double, 3> bias_mps2{0.0, 0.0, 0.0};
     /// Estimated scale per axis (unitless). Applied multiplicatively.
     std::array<double, 3> scale{1.0, 1.0, 1.0};
-    /// True when accel magnitude and gyro rate meet stationary criteria.
+    /// True when the active phase's stationary predicate is met.
     bool stationary{false};
+    /// True when gyro + accel jerk meet pre-calibration stationary criteria.
+    bool stationary_precal{false};
     /// True when accel magnitude and gyro rate meet strict stationary criteria.
     bool stationary_strict{false};
     /// True when dwell is using the post-calibration (strict |a|≈g) gate.
@@ -102,6 +109,8 @@ private:
   RunningMean m_stationary_norm_mean;
   double m_stationary_dwell_seconds{0.0};
   bool m_stationary_confirmed{false};
+  std::array<double, 3> m_prev_accel_raw_mps2{0.0, 0.0, 0.0};
+  bool m_have_prev_accel{false};
 
   std::array<bool, 3> m_pos_seen{false, false, false};
   std::array<bool, 3> m_neg_seen{false, false, false};
