@@ -31,6 +31,14 @@ namespace
 constexpr const char* NODE_NAME = "mpu6050_imu_driver";
 constexpr double GRAVITY_MPS2 = 9.80665;
 
+// Gyro bias calibration constants (startup only).
+constexpr double kGyroBiasWarmupSeconds = 0.5; // Initial discard window after boot.
+constexpr double kGyroBiasStillnessSeconds = 0.5; // Required stillness before calibration.
+constexpr double kGyroBiasCalibrateSeconds = 2.0; // Sample window for gyro bias.
+constexpr double kGyroBiasAccelMagToleranceMps2 = 0.25; // |a|-g tolerance for stillness.
+constexpr double kGyroBiasAccelJerkThresholdMps3 = 1.0; // Max accel magnitude jerk.
+constexpr double kGyroBiasStddevThresholdRads = 0.01; // Reject if any axis exceeds.
+
 // ROS topics
 constexpr const char* CONDUCTOR_STATE_TOPIC = "conductor_state";
 constexpr const char* IMU_TOPIC = "imu";
@@ -71,9 +79,23 @@ geometry_msgs::msg::Quaternion ToRosQuaternion(const Math::Quaternion& q)
   return out;
 }
 
+GyroBiasCalibratorConfig MakeGyroBiasConfig()
+{
+  GyroBiasCalibratorConfig config;
+  config.gravity_mps2 = GRAVITY_MPS2;
+  config.accel_mag_tolerance_mps2 = kGyroBiasAccelMagToleranceMps2;
+  config.accel_jerk_threshold_mps3 = kGyroBiasAccelJerkThresholdMps3;
+  config.warmup_duration_s = kGyroBiasWarmupSeconds;
+  config.stillness_duration_s = kGyroBiasStillnessSeconds;
+  config.calibrate_duration_s = kGyroBiasCalibrateSeconds;
+  config.gyro_stddev_threshold_rads = kGyroBiasStddevThresholdRads;
+  return config;
+}
+
 } // namespace
 
-Mpu6050Node::Mpu6050Node() : rclcpp::Node(NODE_NAME)
+Mpu6050Node::Mpu6050Node()
+    : rclcpp::Node(NODE_NAME), m_gyroBiasCalibrator(MakeGyroBiasConfig())
 {
   declare_parameter("i2c_device", std::string(DEFAULT_I2C_DEVICE));
   declare_parameter("publish_rate_hz", DEFAULT_PUBLISH_RATE_HZ);
@@ -217,6 +239,29 @@ void Mpu6050Node::PublishImu()
                 processed.boot_lsb_per_g, processed.boot_accel_scale);
   }
 
+  const auto prevCalState = m_gyroBiasCalibrator.GetState();
+  m_gyroBiasCalibrator.Update(processed.accel_mps2, processed.gyro_rads, dt_seconds);
+  const auto calState = m_gyroBiasCalibrator.GetState();
+
+  if (prevCalState != calState && calState == GyroBiasCalibrator::State::CALIBRATE)
+  {
+    RCLCPP_INFO(get_logger(), "Gyro bias calibration started");
+  }
+
+  if (prevCalState != calState && calState == GyroBiasCalibrator::State::READY)
+  {
+    const auto& estimate = m_gyroBiasCalibrator.GetEstimate();
+    RCLCPP_INFO(get_logger(),
+                "Gyro bias calibration complete bias=(%.6f, %.6f, %.6f) stddev=(%.6f, %.6f, %.6f)",
+                estimate.bias_rads[0], estimate.bias_rads[1], estimate.bias_rads[2],
+                estimate.stddev_rads[0], estimate.stddev_rads[1], estimate.stddev_rads[2]);
+  }
+
+  if (calState != GyroBiasCalibrator::State::READY)
+  {
+    return;
+  }
+
   const double accel_norm_g = std::sqrt(processed.accel_mps2[0] * processed.accel_mps2[0] +
                                         processed.accel_mps2[1] * processed.accel_mps2[1] +
                                         processed.accel_mps2[2] * processed.accel_mps2[2]) /
@@ -258,6 +303,7 @@ void Mpu6050Node::PublishImu()
       ImuOrientationUtils::TiltQuaternionFromUp(processed.u_hat, processed.u_hat_valid);
   const Math::Quaternion yaw_pi_q = Math::FromAxisAngle({0.0, 0.0, 1.0}, kPi);
   const Math::Quaternion reverse_q = Math::Multiply(yaw_pi_q, tilt_q);
+  const auto& gyro_bias = m_gyroBiasCalibrator.GetEstimate().bias_rads;
 
   auto fillImuMsg = [&](sensor_msgs::msg::Imu& msg, const Math::Quaternion& orientation)
   {
@@ -272,9 +318,9 @@ void Mpu6050Node::PublishImu()
     linearAcceleration.y = processed.accel_mps2[1];
     linearAcceleration.z = processed.accel_mps2[2];
 
-    angularVelocity.x = processed.gyro_rads[0];
-    angularVelocity.y = processed.gyro_rads[1];
-    angularVelocity.z = processed.gyro_rads[2];
+    angularVelocity.x = processed.gyro_rads[0] - gyro_bias[0];
+    angularVelocity.y = processed.gyro_rads[1] - gyro_bias[1];
+    angularVelocity.z = processed.gyro_rads[2] - gyro_bias[2];
 
     msg.orientation = ToRosQuaternion(orientation);
 

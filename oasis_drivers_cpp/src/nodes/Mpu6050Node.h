@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include "imu/GyroBiasCalibrator.h"
 #include "imu/Mpu6050ImuProcessor.h"
 
 #include <chrono>
@@ -52,6 +53,7 @@ private:
   std::string m_i2cDevice;
   std::chrono::duration<double> m_publishPeriod;
   IMU::Mpu6050ImuProcessor m_imuProcessor;
+  IMU::GyroBiasCalibrator m_gyroBiasCalibrator;
   rclcpp::Time m_lastSampleTime;
   bool m_hasLastSampleTime{false};
 
