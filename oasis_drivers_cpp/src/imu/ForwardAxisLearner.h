@@ -28,7 +28,9 @@ public:
     ARMED,
     /// Accumulating burst samples.
     IN_BURST,
-    /// Learned unsigned forward axis.
+    /// Learned unsigned forward axis, waiting for opposite burst.
+    HAVE_UNSIGNED,
+    /// Learned signed forward axis.
     LOCKED
   };
 
@@ -65,7 +67,7 @@ public:
                      const std::array<double, 3>& u_hat,
                      bool u_hat_valid);
 
-  /// True when the unsigned forward axis has been locked.
+  /// True when the signed forward axis has been locked.
   bool IsLocked() const;
   /// Learned unsigned forward axis (unit vector in sensor frame).
   const std::array<double, 3>& GetForwardAxisUnsigned() const;
@@ -88,6 +90,7 @@ private:
   double m_impulse{0.0};
   double m_yaw_accum{0.0};
   double m_t_burst{0.0};
+  double m_a_h_peak{0.0};
 
   std::size_t m_burst_count{0};
   std::array<double, 3> m_f_mean{1.0, 0.0, 0.0};
