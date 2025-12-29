@@ -97,6 +97,7 @@ private:
   double m_cov11 = 0.0;
   std::array<double, 2> m_axisHat{{1.0, 0.0}};
   bool m_axisLocked = false;
+  bool m_prevAxisLocked = false;
   double m_lockAccumTime = 0.0;
   int m_covSamples = 0;
   bool m_axisResetArmed = true;
@@ -109,6 +110,7 @@ private:
 
   double m_imuEvidence = 0.0;
   int m_signedAxisSign = 1;
+  int m_prevSignedAxisSign = 1;
 
   CalibrationState m_calState = CalibrationState::kUncalibrated;
   double m_gravityCollectTime = 0.0;
@@ -121,6 +123,14 @@ private:
   std::array<double, 2> m_forwardAccum{{0.0, 0.0}};
   int m_forwardSamples = 0;
   double m_forwardDynamicEma = 0.0;
+  double m_pulseTime = 0.0;
+  double m_timeSinceSignFlip = 0.0;
+  int m_yawTotalSeen = 0;
+  int m_yawAccepted = 0;
+  int m_yawSkipLowDyn = 0;
+  int m_yawSkipNoSign = 0;
+  int m_yawSkipSignGuard = 0;
+  double m_sumHorizMag = 0.0;
   std::array<double, 2> m_forwardHatIntermediate{{1.0, 0.0}};
   double m_yawRadians = 0.0;
   double m_yawConfidence = 0.0;
