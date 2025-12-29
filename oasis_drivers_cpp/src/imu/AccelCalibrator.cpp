@@ -168,10 +168,14 @@ AccelCalibrator::Diagnostics AccelCalibrator::Update(const std::array<double, 3>
 
   for (std::size_t i = 0; i < 3; ++i)
   {
-    m_bias[i] *= (1.0 - kBiasLeak);
+    const bool observable = m_pos_seen[i] && m_neg_seen[i];
+
+    if (observable)
+      m_bias[i] *= (1.0 - kBiasLeak);
     m_bias[i] = std::clamp(m_bias[i], -kBiasClampMps2, kBiasClampMps2);
 
-    m_scale[i] += kScaleLeak * (1.0 - m_scale[i]);
+    if (observable)
+      m_scale[i] += kScaleLeak * (1.0 - m_scale[i]);
     m_scale[i] = std::clamp(m_scale[i], kScaleMin, kScaleMax);
   }
 
