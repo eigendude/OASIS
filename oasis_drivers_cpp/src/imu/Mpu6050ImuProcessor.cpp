@@ -68,6 +68,11 @@ Mpu6050ImuProcessor::ProcessedSample Mpu6050ImuProcessor::ProcessRaw(
       m_boot_accel_scale_applied = true;
       m_accelCalibrator.ResetUniformScaleInitialization();
 
+      sample.accel_raw_mps2 = {static_cast<double>(ax) * m_accelScale,
+                               static_cast<double>(ay) * m_accelScale,
+                               static_cast<double>(az) * m_accelScale};
+      sample.diag = m_accelCalibrator.Update(sample.accel_raw_mps2, sample.gyro_rads, dt_seconds);
+
       sample.boot_accel_scale_applied = true;
       sample.boot_lsb_per_g = lsb_per_g;
       sample.boot_accel_scale = new_accel_scale;
