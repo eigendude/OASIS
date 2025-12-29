@@ -8,6 +8,9 @@
 
 #include "imu/Mpu6050ImuProcessor.h"
 
+#include <algorithm>
+#include <cmath>
+
 namespace OASIS::IMU
 {
 Mpu6050ImuProcessor::Mpu6050ImuProcessor()
@@ -43,7 +46,8 @@ Mpu6050ImuProcessor::ProcessedSample Mpu6050ImuProcessor::ProcessRaw(
 
   for (std::size_t i = 0; i < 3; ++i)
   {
-    sample.accel_mps2[i] = sample.accel_raw_mps2[i] - sample.bias_diag.bias_mps2[i];
+    const double scale = std::max(std::abs(sample.bias_diag.scale[i]), 1e-6);
+    sample.accel_mps2[i] = (sample.accel_raw_mps2[i] - sample.bias_diag.bias_mps2[i]) / scale;
   }
 
   return sample;

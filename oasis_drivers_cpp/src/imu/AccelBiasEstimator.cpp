@@ -17,33 +17,38 @@ namespace
 {
 constexpr double GRAVITY = 9.80665;
 constexpr double kEps = 1e-6;
-constexpr double kAlpha = 0.006;
+constexpr double kAlphaBias = 0.006;
+constexpr double kAlphaScale = 0.0003;
 constexpr double kAccelLpCutoff = 2.5;
 constexpr double kTwoPi = 6.283185307179586;
 constexpr double kWindowSeconds = 0.4;
 constexpr double kStrongAxisLeak = 0.0006;
 constexpr double kWeakAxisLeak = 0.003;
 constexpr double kUnknownAxisLeak = 0.008;
-constexpr double kWeakAxisAlphaScale = 0.2;
-constexpr double kUnknownAxisAlphaScale = 0.05;
+constexpr double kWeakAxisAlphaScale = 0.3;
+constexpr double kUnknownAxisAlphaScale = 0.1;
 constexpr double kBiasClamp = 3.0;
-constexpr double kWeakAxisClamp = 2.0;
-constexpr double kUnknownAxisClamp = 1.2;
+constexpr double kWeakAxisClamp = 1.5;
+constexpr double kUnknownAxisClamp = 1.0;
 constexpr double kCoverageThreshold = 0.35;
 constexpr double kVarScale = 0.25;
 constexpr double kJerkScale = 1.2;
 constexpr double kGyroScale = 0.6;
-constexpr double kGateGErrScale = 0.5;
-constexpr double kGateGyroThreshold = 2.0;
-constexpr double kGateGyroScale = 0.1;
 constexpr double kMinConf = 0.001;
 constexpr double kMaxConf = 1.0;
 constexpr double kStationaryThreshold = 0.5;
-constexpr double kGainAlpha = 0.004;
-constexpr double kGainMin = 0.7;
-constexpr double kGainMax = 1.3;
-constexpr double kGainGateMin = 0.2;
-constexpr double kGainConfMin = 0.7;
+constexpr double kLearnConfThreshold = 0.8;
+constexpr double kBiasSanityScale = 0.3;
+constexpr double kScaleLeakStrong = 0.0004;
+constexpr double kScaleLeakWeak = 0.002;
+constexpr double kScaleLeakUnknown = 0.004;
+constexpr double kScaleClampStrongMin = 0.7;
+constexpr double kScaleClampStrongMax = 1.3;
+constexpr double kScaleClampWeakMin = 0.85;
+constexpr double kScaleClampWeakMax = 1.15;
+constexpr double kScaleClampUnknownMin = 0.9;
+constexpr double kScaleClampUnknownMax = 1.1;
+constexpr double kGSanity = 1.5;
 
 enum class AxisStrength
 {
@@ -57,6 +62,13 @@ struct AxisTuning
   double alpha{0.0};
   double leak{0.0};
   double clamp{0.0};
+};
+
+struct ScaleTuning
+{
+  double leak{0.0};
+  double clamp_min{1.0};
+  double clamp_max{1.0};
 };
 
 AxisStrength GetAxisStrength(bool pos_seen, bool neg_seen)
@@ -77,24 +89,43 @@ AxisTuning GetAxisTuning(AxisStrength strength)
   switch (strength)
   {
     case AxisStrength::Strong:
-      return {kAlpha, kStrongAxisLeak, kBiasClamp};
+      return {kAlphaBias, kStrongAxisLeak, kBiasClamp};
     case AxisStrength::Weak:
-      return {kAlpha * kWeakAxisAlphaScale, kWeakAxisLeak, kWeakAxisClamp};
+      return {kAlphaBias * kWeakAxisAlphaScale, kWeakAxisLeak, kWeakAxisClamp};
     case AxisStrength::Unknown:
     default:
-      return {kAlpha * kUnknownAxisAlphaScale, kUnknownAxisLeak, kUnknownAxisClamp};
+      return {kAlphaBias * kUnknownAxisAlphaScale, kUnknownAxisLeak, kUnknownAxisClamp};
+  }
+}
+
+ScaleTuning GetScaleTuning(AxisStrength strength)
+{
+  switch (strength)
+  {
+    case AxisStrength::Strong:
+      return {kScaleLeakStrong, kScaleClampStrongMin, kScaleClampStrongMax};
+    case AxisStrength::Weak:
+      return {kScaleLeakWeak, kScaleClampWeakMin, kScaleClampWeakMax};
+    case AxisStrength::Unknown:
+    default:
+      return {kScaleLeakUnknown, kScaleClampUnknownMin, kScaleClampUnknownMax};
   }
 }
 } // namespace
 
-AccelBiasEstimator::AccelBiasEstimator() = default;
+AccelCalibrator::AccelCalibrator() = default;
 
-const std::array<double, 3>& AccelBiasEstimator::GetBias() const
+const std::array<double, 3>& AccelCalibrator::GetBias() const
 {
   return m_bias_mps2;
 }
 
-void AccelBiasEstimator::WindowStats::AddSample(double value, std::size_t target_size)
+const std::array<double, 3>& AccelCalibrator::GetScale() const
+{
+  return m_scale;
+}
+
+void AccelCalibrator::WindowStats::AddSample(double value, std::size_t target_size)
 {
   samples.push_back(value);
   while (samples.size() > target_size)
@@ -103,7 +134,7 @@ void AccelBiasEstimator::WindowStats::AddSample(double value, std::size_t target
   }
 }
 
-double AccelBiasEstimator::WindowStats::Mean() const
+double AccelCalibrator::WindowStats::Mean() const
 {
   if (samples.empty())
   {
@@ -117,7 +148,7 @@ double AccelBiasEstimator::WindowStats::Mean() const
   return sum / static_cast<double>(samples.size());
 }
 
-double AccelBiasEstimator::WindowStats::Variance() const
+double AccelCalibrator::WindowStats::Variance() const
 {
   if (samples.size() < 2)
   {
@@ -133,17 +164,17 @@ double AccelBiasEstimator::WindowStats::Variance() const
   return accum / static_cast<double>(samples.size());
 }
 
-bool AccelBiasEstimator::WindowStats::Empty() const
+bool AccelCalibrator::WindowStats::Empty() const
 {
   return samples.empty();
 }
 
-std::size_t AccelBiasEstimator::WindowStats::Size() const
+std::size_t AccelCalibrator::WindowStats::Size() const
 {
   return samples.size();
 }
 
-void AccelBiasEstimator::UpdateCoverage(const std::array<double, 3>& direction)
+void AccelCalibrator::UpdateCoverage(const std::array<double, 3>& direction)
 {
   for (std::size_t axis = 0; axis < 3; ++axis)
   {
@@ -158,9 +189,9 @@ void AccelBiasEstimator::UpdateCoverage(const std::array<double, 3>& direction)
   }
 }
 
-AccelBiasEstimator::Diagnostics AccelBiasEstimator::Update(const std::array<double, 3>& accel_mps2,
-                                                           const std::array<double, 3>& gyro_rads,
-                                                           double dt_seconds)
+AccelCalibrator::Diagnostics AccelCalibrator::Update(const std::array<double, 3>& accel_mps2,
+                                                     const std::array<double, 3>& gyro_rads,
+                                                     double dt_seconds)
 {
   Diagnostics diag;
   if (dt_seconds <= 0.0)
@@ -221,40 +252,69 @@ AccelBiasEstimator::Diagnostics AccelBiasEstimator::Update(const std::array<doub
   const double score = (var_mag / kVarScale) + (jerk_avg / kJerkScale) + (gyro_avg / kGyroScale);
   const double w_conf = std::clamp(std::exp(-score), kMinConf, kMaxConf);
 
-  std::array<double, 3> accel_lp_scaled{};
-  for (std::size_t i = 0; i < 3; ++i)
-  {
-    accel_lp_scaled[i] = m_accel_gain * m_accel_lp_mps2[i];
-  }
-
   std::array<double, 3> residual{};
   for (std::size_t i = 0; i < 3; ++i)
   {
-    residual[i] = accel_lp_scaled[i] - m_bias_mps2[i];
+    residual[i] = m_accel_lp_mps2[i] - m_bias_mps2[i];
   }
-  double residual_norm = 0.0;
-  for (double value : residual)
-  {
-    residual_norm += value * value;
-  }
-  residual_norm = std::sqrt(residual_norm);
 
-  const double g_err = residual_norm - GRAVITY;
-  double w_gate = w_conf;
-  w_gate *= std::exp(-std::abs(g_err) / kGateGErrScale);
-  if (gyro_avg > kGateGyroThreshold)
+  std::array<double, 3> accel_cal_lp{};
+  for (std::size_t i = 0; i < 3; ++i)
   {
-    w_gate *= kGateGyroScale;
+    const double scale = std::max(std::abs(m_scale[i]), kEps);
+    accel_cal_lp[i] = residual[i] / scale;
   }
-  w_gate = std::clamp(w_gate, 0.0, 1.0);
-  if (residual_norm > kEps)
+
+  double accel_cal_norm = 0.0;
+  for (double value : accel_cal_lp)
   {
+    accel_cal_norm += value * value;
+  }
+  accel_cal_norm = std::sqrt(accel_cal_norm);
+
+  const double g_err = accel_cal_norm - GRAVITY;
+  const bool learn_enabled = (w_conf >= kLearnConfThreshold);
+  const bool scale_sane = (std::abs(g_err) <= kGSanity);
+  const bool learn_bias = (learn_enabled && accel_cal_norm > kEps);
+  const bool learn_scale = (learn_enabled && scale_sane && accel_cal_norm > kEps);
+
+  std::array<double, 3> direction{};
+  if (accel_cal_norm > kEps)
+  {
+    for (std::size_t i = 0; i < 3; ++i)
+    {
+      direction[i] = accel_cal_lp[i] / accel_cal_norm;
+    }
+    UpdateCoverage(direction);
+  }
+
+  if (learn_bias)
+  {
+    const double bias_scale = scale_sane ? 1.0 : kBiasSanityScale;
     for (std::size_t i = 0; i < 3; ++i)
     {
       const AxisStrength strength = GetAxisStrength(m_axis_pos_seen[i], m_axis_neg_seen[i]);
       const AxisTuning tuning = GetAxisTuning(strength);
-      const double grad = (g_err / residual_norm) * residual[i];
-      m_bias_mps2[i] += tuning.alpha * w_gate * grad;
+      const double denom = std::max(std::abs(m_scale[i]), kEps);
+      const double unit = accel_cal_lp[i] / accel_cal_norm;
+      const double grad = (unit / denom);
+      m_bias_mps2[i] += tuning.alpha * bias_scale * w_conf * g_err * grad;
+    }
+  }
+
+  if (learn_scale)
+  {
+    for (std::size_t i = 0; i < 3; ++i)
+    {
+      const bool coverage_complete = m_axis_pos_seen[i] && m_axis_neg_seen[i];
+      if (!coverage_complete)
+      {
+        continue;
+      }
+      const double denom = std::max(std::abs(m_scale[i]), kEps);
+      const double unit = accel_cal_lp[i] / accel_cal_norm;
+      const double grad = (unit * residual[i]) / (denom * denom);
+      m_scale[i] += kAlphaScale * w_conf * g_err * grad;
     }
   }
 
@@ -263,46 +323,33 @@ AccelBiasEstimator::Diagnostics AccelBiasEstimator::Update(const std::array<doub
     const AxisStrength strength = GetAxisStrength(m_axis_pos_seen[i], m_axis_neg_seen[i]);
     const AxisTuning tuning = GetAxisTuning(strength);
     m_bias_mps2[i] *= (1.0 - tuning.leak);
+    m_bias_mps2[i] = std::clamp(m_bias_mps2[i], -tuning.clamp, tuning.clamp);
   }
 
   for (std::size_t i = 0; i < 3; ++i)
   {
     const AxisStrength strength = GetAxisStrength(m_axis_pos_seen[i], m_axis_neg_seen[i]);
-    const AxisTuning tuning = GetAxisTuning(strength);
-    m_bias_mps2[i] = std::clamp(m_bias_mps2[i], -tuning.clamp, tuning.clamp);
-  }
-
-  if (residual_norm > kEps && w_gate > kGainGateMin && w_conf > kGainConfMin)
-  {
-    const double ratio = GRAVITY / std::max(residual_norm, kEps);
-    const double gain_step = std::pow(ratio, kGainAlpha * w_gate);
-    m_accel_gain = std::clamp(m_accel_gain * gain_step, kGainMin, kGainMax);
-  }
-
-  std::array<double, 3> direction{};
-  if (residual_norm > kEps)
-  {
-    for (std::size_t i = 0; i < 3; ++i)
-    {
-      direction[i] = residual[i] / residual_norm;
-    }
-    UpdateCoverage(direction);
+    const ScaleTuning tuning = GetScaleTuning(strength);
+    m_scale[i] += tuning.leak * (1.0 - m_scale[i]);
+    m_scale[i] = std::clamp(m_scale[i], tuning.clamp_min, tuning.clamp_max);
   }
 
   diag.bias_mps2 = m_bias_mps2;
+  diag.scale = m_scale;
   diag.accel_lp_mps2 = m_accel_lp_mps2;
-  diag.accel_gain = m_accel_gain;
-  diag.accel_norm_mps2 = accel_norm;
-  diag.accel_g = accel_norm / GRAVITY;
+  diag.accel_cal_lp_mps2 = accel_cal_lp;
+  diag.accel_norm_mps2 = accel_cal_norm;
+  diag.accel_g = accel_cal_norm / GRAVITY;
   diag.g_err_mps2 = g_err;
   diag.w_conf = w_conf;
-  diag.w_gate = w_gate;
   diag.var_mag_mps4 = var_mag;
   diag.jerk_avg_mps3 = jerk_avg;
   diag.gyro_mag_avg_rads = gyro_avg;
   diag.axis_pos_seen = m_axis_pos_seen;
   diag.axis_neg_seen = m_axis_neg_seen;
   diag.stationary = (w_conf > kStationaryThreshold);
+  diag.learn_bias = learn_bias;
+  diag.learn_scale = learn_scale;
 
   m_prev_accel_lp_mps2 = m_accel_lp_mps2;
 
