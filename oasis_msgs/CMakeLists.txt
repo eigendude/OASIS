@@ -77,6 +77,7 @@ rosidl_generate_interfaces(
     msg/Throttle.msg
     msg/UPSStatus.msg
     msg/UsbDevice.msg
+    msg/Vibration.msg
     msg/Wheel.msg
     srv/AnalogRead.srv
     srv/CaptureInput.srv
