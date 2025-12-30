@@ -65,6 +65,10 @@ public:
     double delta_a_sigma{0.0};
     /// True when accel delta noise statistics have been initialized.
     bool delta_a_stats_inited{false};
+    /// True when boot-time noise calibration is actively collecting samples.
+    bool noise_calib_active{false};
+    /// True when boot-time noise calibration has completed.
+    bool noise_calib_done{false};
     /// Stationarity score from normalized gyro + accel delta residuals.
     double stationarity_score{0.0};
 
@@ -115,11 +119,17 @@ private:
   {
     double mu{0.0};
     double var{0.0};
+    std::size_t n{0};
     bool inited{false};
 
-    void UpdateWinsor(double x, double alpha, double sigma_floor, double k_clip);
+    void UpdateWinsor(double x,
+                      double alpha,
+                      double sigma_floor,
+                      double sigma_cap,
+                      double k_clip);
     double Sigma(double sigma_floor) const;
     double Z(double x, double sigma_floor) const;
+    bool Ready(std::size_t min_n) const;
   };
 
   static double Norm3(const std::array<double, 3>& v);
@@ -140,6 +150,7 @@ private:
   OnlineStats m_omega_stats;
   OnlineStats m_delta_a_stats;
   bool m_stationary_gate_active{false};
+  double m_noise_calib_elapsed{0.0};
 
   std::array<bool, 3> m_pos_seen{false, false, false};
   std::array<bool, 3> m_neg_seen{false, false, false};

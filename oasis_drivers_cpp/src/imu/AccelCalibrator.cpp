@@ -26,6 +26,10 @@ constexpr double kStationaryGateTauSeconds = 3.0;
 constexpr double kStationaryClipSigma = 3.0;
 constexpr double kStationarySigmaFloorGyro = 0.01;
 constexpr double kStationarySigmaFloorDeltaA = 0.03;
+constexpr double kStationarySigmaCapGyro = kStationaryGyroTolRadS;
+constexpr double kStationarySigmaCapDeltaA = kStationaryAccelTolG * kG;
+constexpr double kStationaryGyroAbsMaxRadS = 3.0 * kStationaryGyroTolRadS;
+constexpr double kStationaryAccelHpAbsMaxMps2 = 3.0 * kStationaryAccelTolG * kG;
 constexpr double kStationaryScoreEnter = 6.0;
 constexpr double kStationaryScoreExit = 12.0;
 constexpr double kStationaryDwellDecayRate = 2.0;
@@ -45,6 +49,11 @@ constexpr double kScaleLeak = 0.0002;
 constexpr double kScaleMin = 0.5;
 constexpr double kScaleMax = 2.0;
 constexpr double kBiasClampMps2 = 5.0;
+
+constexpr bool kUseBootNoiseCalib = true;
+constexpr double kBootNoiseCalibSeconds = 2.0;
+constexpr std::size_t kBootNoiseCalibMinSamples = 50;
+constexpr bool kAllowStationaryNoiseUpdate = false;
 
 constexpr double kEps = 1e-9;
 } // namespace
@@ -81,6 +90,7 @@ bool AccelCalibrator::RunningMean::Ready(std::size_t min_n) const
 void AccelCalibrator::OnlineStats::UpdateWinsor(double x,
                                                 double alpha,
                                                 double sigma_floor,
+                                                double sigma_cap,
                                                 double k_clip)
 {
   const double sigma = Sigma(sigma_floor);
@@ -91,15 +101,18 @@ void AccelCalibrator::OnlineStats::UpdateWinsor(double x,
   if (!inited)
   {
     mu = x_w;
-    var = sigma_floor * sigma_floor;
+    var = std::min(sigma_floor * sigma_floor, sigma_cap * sigma_cap);
     inited = true;
+    n = 1;
     return;
   }
 
+  ++n;
   const double delta = x_w - mu;
   mu += alpha * delta;
   const double var_update = delta * delta - var;
   var = std::max(var + alpha * var_update, sigma_floor * sigma_floor);
+  var = std::min(var, sigma_cap * sigma_cap);
 }
 
 double AccelCalibrator::OnlineStats::Sigma(double sigma_floor) const
@@ -111,6 +124,11 @@ double AccelCalibrator::OnlineStats::Z(double x, double sigma_floor) const
 {
   const double sigma = Sigma(sigma_floor);
   return (x - mu) / sigma;
+}
+
+bool AccelCalibrator::OnlineStats::Ready(std::size_t min_n) const
+{
+  return n >= min_n;
 }
 
 double AccelCalibrator::Norm3(const std::array<double, 3>& v)
@@ -173,6 +191,7 @@ AccelCalibrator::Diagnostics AccelCalibrator::Update(const std::array<double, 3>
   const double dt_clamped =
       std::clamp(dt_seconds, kStationaryFallbackDtSeconds, kStationaryMaxDtSeconds);
   const double alpha = 1.0 - std::exp(-dt_clamped / kStationaryGateTauSeconds);
+  m_noise_calib_elapsed += dt_clamped;
 
   const double omega = Norm3(gyro_rads);
   double delta_a = 0.0;
@@ -186,17 +205,15 @@ AccelCalibrator::Diagnostics AccelCalibrator::Update(const std::array<double, 3>
     have_delta_a = true;
   }
 
-  if (have_delta_a)
-    m_delta_a_stats.UpdateWinsor(delta_a, alpha, kStationarySigmaFloorDeltaA, kStationaryClipSigma);
-  m_omega_stats.UpdateWinsor(omega, alpha, kStationarySigmaFloorGyro, kStationaryClipSigma);
-
   const double z_a = have_delta_a ? m_delta_a_stats.Z(delta_a, kStationarySigmaFloorDeltaA) : 0.0;
   const double z_g = m_omega_stats.Z(omega, kStationarySigmaFloorGyro);
   const double score = (z_a * z_a) + (z_g * z_g);
 
   if (!m_stationary_gate_active)
   {
-    if (score < kStationaryScoreEnter && have_delta_a)
+    const bool stats_ready = m_omega_stats.Ready(kBootNoiseCalibMinSamples) &&
+                             m_delta_a_stats.Ready(kBootNoiseCalibMinSamples);
+    if (stats_ready && score < kStationaryScoreEnter && have_delta_a)
       m_stationary_gate_active = true;
   }
   else if (score > kStationaryScoreExit)
@@ -232,6 +249,39 @@ AccelCalibrator::Diagnostics AccelCalibrator::Update(const std::array<double, 3>
   d.stationary_dwell_seconds = m_stationary_dwell_seconds;
   d.stationary_dwell_target_seconds =
       std::clamp(kStationaryDwellSeconds, kStationaryDwellMinSeconds, kStationaryDwellMaxSeconds);
+
+  const bool stats_ready = m_omega_stats.Ready(kBootNoiseCalibMinSamples) &&
+                           m_delta_a_stats.Ready(kBootNoiseCalibMinSamples);
+  const bool noise_calib_done =
+      !kUseBootNoiseCalib ||
+      (m_noise_calib_elapsed >= kBootNoiseCalibSeconds && stats_ready);
+  const bool noise_calib_active = kUseBootNoiseCalib && !noise_calib_done;
+  const bool boot_force_update = noise_calib_active && !stats_ready;
+  const bool noise_update_allowed =
+      noise_calib_active || (kAllowStationaryNoiseUpdate && m_stationary_confirmed);
+  const bool gyro_bounds_ok = omega <= kStationaryGyroAbsMaxRadS;
+  const bool delta_a_bounds_ok = have_delta_a && (delta_a <= kStationaryAccelHpAbsMaxMps2);
+  const bool bounds_ok = gyro_bounds_ok && (!have_delta_a || delta_a_bounds_ok);
+  const bool noise_score_ok = score < kStationaryScoreEnter;
+
+  if (boot_force_update)
+  {
+    // Boot-time: force updates while within abs bounds to prevent score-gate deadlock.
+    if (gyro_bounds_ok)
+      m_omega_stats.UpdateWinsor(omega, alpha, kStationarySigmaFloorGyro, kStationarySigmaCapGyro,
+                                 kStationaryClipSigma);
+    if (have_delta_a && delta_a_bounds_ok)
+      m_delta_a_stats.UpdateWinsor(delta_a, alpha, kStationarySigmaFloorDeltaA,
+                                   kStationarySigmaCapDeltaA, kStationaryClipSigma);
+  }
+  else if (noise_update_allowed && bounds_ok && (noise_score_ok || strict_stationary))
+  {
+    m_omega_stats.UpdateWinsor(omega, alpha, kStationarySigmaFloorGyro, kStationarySigmaCapGyro,
+                               kStationaryClipSigma);
+    if (have_delta_a)
+      m_delta_a_stats.UpdateWinsor(delta_a, alpha, kStationarySigmaFloorDeltaA,
+                                   kStationarySigmaCapDeltaA, kStationaryClipSigma);
+  }
 
   // Initialize uniform scale from the first stationary window to avoid large start-up errors.
   if (stationary_confirmed && !m_uniform_scale_initialized)
@@ -316,6 +366,8 @@ AccelCalibrator::Diagnostics AccelCalibrator::Update(const std::array<double, 3>
   d.delta_a_mean = m_delta_a_stats.mu;
   d.delta_a_sigma = m_delta_a_stats.Sigma(kStationarySigmaFloorDeltaA);
   d.delta_a_stats_inited = m_delta_a_stats.inited;
+  d.noise_calib_active = noise_calib_active;
+  d.noise_calib_done = noise_calib_done;
   d.stationarity_score = score;
 
   return d;

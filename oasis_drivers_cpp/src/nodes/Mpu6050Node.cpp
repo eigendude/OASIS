@@ -392,7 +392,8 @@ void Mpu6050Node::PublishImu()
     msg.angular_velocity_covariance.fill(0.0);
     msg.linear_acceleration_covariance.fill(0.0);
 
-    if (processed.diag.omega_stats_inited && processed.diag.delta_a_stats_inited)
+    if (processed.diag.noise_calib_done && processed.diag.omega_stats_inited &&
+        processed.diag.delta_a_stats_inited)
     {
       const double gyro_sigma = processed.diag.omega_sigma;
       // Use accel first-difference noise as a conservative proxy for accel noise.
