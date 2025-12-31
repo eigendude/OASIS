@@ -8,8 +8,10 @@
 
 #pragma once
 
+#include "imu/GyroBiasEstimator.h"
+#include "imu/NoiseEstimator.h"
+
 #include <array>
-#include <cstddef>
 #include <cstdint>
 
 namespace OASIS::IMU
@@ -65,62 +67,6 @@ public:
       int16_t ax, int16_t ay, int16_t az, int16_t gx, int16_t gy, int16_t gz, double dt_s);
 
 private:
-  class GyroBiasEstimator
-  {
-  public:
-    void Reset();
-    void Update(const std::array<double, 3>& gyro_rads,
-                const std::array<double, 3>& accel_mps2,
-                double gravity_mps2);
-    const std::array<double, 3>& GetBias() const { return m_bias_rads; }
-    bool IsValid() const { return m_valid; }
-
-  private:
-    std::array<double, 3> m_bias_rads{0.0, 0.0, 0.0};
-    int m_stationary_samples{0};
-    bool m_valid{false};
-  };
-
-  /**
-   * Jitter-aware 2nd-difference estimator for i.i.d. measurement noise.
-   *
-   * Given samples x0, x1, x2 with time steps h1, h2, the non-uniform
-   * second-difference residual is:
-   *
-   *   d2 = x2 - x1 * (h1 + h2) / h1 + x0 * h2 / h1.
-   *
-   * Define a = h2 / h1 and b = 1 + a. For independent noise with variance
-   * sigma^2, Var(d2) = (a^2 + b^2 + 1) * sigma^2, so K(h1, h2) is
-   *
-   *   K = a^2 + b^2 + 1
-   *
-   * and
-   *
-   *   sigma^2 = d2^2 / (a^2 + b^2 + 1).
-   *
-   * If h1 is tiny, fall back to the uniform-grid formula:
-   *
-   *   d2 = x2 - 2 * x1 + x0,  sigma^2 = d2^2 / 6.
-   */
-  class NoiseEstimator
-  {
-  public:
-    void Reset();
-    std::array<double, 3> Update(int16_t x, int16_t y, int16_t z, double dt_s);
-
-  private:
-    static constexpr size_t kWindowSize = 16;
-
-    std::array<int32_t, 3> m_prev1_counts{0, 0, 0};
-    std::array<int32_t, 3> m_prev2_counts{0, 0, 0};
-    std::array<std::array<double, kWindowSize>, 3> m_sigma2_window{};
-    std::array<double, 3> m_sigma2_sum{0.0, 0.0, 0.0};
-    double m_prev_dt_s{0.0};
-    size_t m_sigma2_index{0};
-    size_t m_sigma2_count{0};
-    int m_samples{0};
-  };
-
   double m_gravity{0.0};
   double m_accelScale{0.0};
   double m_gyroScale{0.0};

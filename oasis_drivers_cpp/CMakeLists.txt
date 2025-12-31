@@ -92,9 +92,11 @@ endif()
 
 add_executable(mpu6050_imu_driver
   src/cli/mpu6050_imu_driver.cpp
+  src/imu/GyroBiasEstimator.cpp
   src/imu/ImuTemperature.cpp
   src/imu/Mpu6050ImuProcessor.cpp
   src/imu/Mpu6050ImuUtils.cpp
+  src/imu/NoiseEstimator.cpp
   src/nodes/Mpu6050Node.cpp
 )
 
