@@ -183,19 +183,18 @@ void Mpu6050Node::PublishImu()
   const int16_t tempRaw = m_mpu6050->getTemperature();
 
   // Process temperature
-  // MPU6050 datasheet formula: Temp(°C) = (TEMP_OUT / 340) + 36.53
-  const double tempC = (static_cast<double>(tempRaw) / 340.0) + 36.53;
+  const auto tempSample = m_imuTemperature.ProcessRaw(tempRaw);
 
   // Publish temperature
   sensor_msgs::msg::Temperature temperatureMsg;
 
   temperatureMsg.header = headerMsg;
-  temperatureMsg.temperature = tempC;
-  temperatureMsg.variance = 0.0;
+  temperatureMsg.temperature = tempSample.temperature_c;
+  temperatureMsg.variance = tempSample.variance_c2;
 
   m_imuTemperaturePublisher->publish(temperatureMsg);
 
   // Log data
   RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000, "IMU: |a|=%.3f m/s^2, temp=%.2fC",
-                       raw_accel_norm_mps2, tempC);
+                       raw_accel_norm_mps2, tempSample.temperature_c);
 }
