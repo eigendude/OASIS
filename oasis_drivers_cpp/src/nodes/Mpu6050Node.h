@@ -54,6 +54,8 @@ private:
   std::string m_i2cDevice;
   std::chrono::duration<double> m_publishPeriod;
   double m_gravity;
+  std::string m_systemId;
+  std::string m_imuCalibrationBase;
 
   // Calibration
   std::filesystem::path m_calibrationCachePath;
