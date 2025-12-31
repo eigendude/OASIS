@@ -114,6 +114,10 @@ public:
     size_t num_clusters{0};
     size_t num_samples{0};
 
+    // Noise fit metadata
+    size_t noise_stationary_windows{0};
+    std::string noise_method;
+
     // Temperature summary of samples used for the fit
     double temperature_mean_c{0.0};
     double temperature_stddev_c{0.0};
@@ -148,11 +152,17 @@ public:
     // Mean of the acceleration window (m/s^2).
     std::array<double, 3> mean_accel{0.0, 0.0, 0.0};
 
+    // Mean of the calibrated acceleration window (m/s^2).
+    std::array<double, 3> mean_accel_cal{0.0, 0.0, 0.0};
+
     // Mean of the gyro window (rad/s).
     std::array<double, 3> mean_gyro{0.0, 0.0, 0.0};
 
     // Variance of the acceleration window (m/s^2)^2.
     std::array<double, 3> var_accel{0.0, 0.0, 0.0};
+
+    // Variance of the calibrated acceleration window (m/s^2)^2.
+    std::array<double, 3> var_accel_cal{0.0, 0.0, 0.0};
 
     // Variance of the gyro window (rad/s)^2.
     std::array<double, 3> var_gyro{0.0, 0.0, 0.0};
@@ -209,6 +219,7 @@ private:
   };
 
   void UpdateNoiseEstimates(const Sample& sample);
+  void UpdateBaselineNoise(const WindowSample& stats);
   bool DetectStationary(const Sample& sample, const WindowSample& stats);
   void MergePose(const Sample& sample, const WindowSample& stats);
   bool HasAxisCoverage() const;
@@ -243,5 +254,11 @@ private:
   // Slow gyro bias used to de-bias the mean gate for stationary detection.
   std::array<double, 3> m_gyro_bias_iir{0.0, 0.0, 0.0};
   bool m_gyro_bias_iir_init{false};
+
+  // Baseline rest noise accumulation
+  bool m_baseline_noise_valid{false};
+  size_t m_stationary_noise_samples{0};
+  std::array<double, 3> m_baseline_accel_var{0.0, 0.0, 0.0};
+  std::array<double, 3> m_baseline_gyro_var{0.0, 0.0, 0.0};
 };
 } // namespace OASIS::IMU

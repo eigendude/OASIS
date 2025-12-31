@@ -26,6 +26,12 @@ constexpr double kNoiseAlpha = 0.05;
 // Variance floor during early boot (avoid zero/denorm variance before stats settle)
 constexpr double kNoiseFloor = 1e-6;
 
+// Exp smoothing alpha for baseline rest noise (slow to avoid motion)
+constexpr double kBaselineNoiseAlpha = 0.01;
+
+// Number of stationary windows required before freezing the baseline noise
+constexpr size_t kMinBaselineWindows = 200;
+
 // Autosave cooldown (s) to rate-limit writes and avoid thrash on small updates
 constexpr double kSaveCooldownSeconds = 1.0;
 
@@ -213,6 +219,7 @@ AccelCalibrator::WindowSample ComputeWindowStats(
     for (size_t i = 0; i < 3; ++i)
     {
       stats.mean_accel[i] += sample.mean_accel[i];
+      stats.mean_accel_cal[i] += sample.mean_accel_cal[i];
       stats.mean_gyro[i] += sample.mean_gyro[i];
     }
     stats.mean_norm += sample.mean_norm;
@@ -221,6 +228,7 @@ AccelCalibrator::WindowSample ComputeWindowStats(
   for (size_t i = 0; i < 3; ++i)
   {
     stats.mean_accel[i] /= count;
+    stats.mean_accel_cal[i] /= count;
     stats.mean_gyro[i] /= count;
   }
   stats.mean_norm /= count;
@@ -230,8 +238,10 @@ AccelCalibrator::WindowSample ComputeWindowStats(
     for (size_t i = 0; i < 3; ++i)
     {
       const double da = sample.mean_accel[i] - stats.mean_accel[i];
+      const double da_cal = sample.mean_accel_cal[i] - stats.mean_accel_cal[i];
       const double dg = sample.mean_gyro[i] - stats.mean_gyro[i];
       stats.var_accel[i] += da * da;
+      stats.var_accel_cal[i] += da_cal * da_cal;
       stats.var_gyro[i] += dg * dg;
     }
 
@@ -242,6 +252,7 @@ AccelCalibrator::WindowSample ComputeWindowStats(
   for (size_t i = 0; i < 3; ++i)
   {
     stats.var_accel[i] /= count;
+    stats.var_accel_cal[i] /= count;
     stats.var_gyro[i] /= count;
   }
   stats.stddev_norm = std::sqrt(stats.stddev_norm / count);
@@ -333,6 +344,13 @@ AccelCalibrator::Calibration ParseCalibration(const YAML::Node& root)
     calib.num_samples = fit_quality["num_samples"].as<size_t>(0);
   }
 
+  const auto noise_fit = root["noise_fit"];
+  if (noise_fit)
+  {
+    calib.noise_stationary_windows = noise_fit["stationary_windows"].as<size_t>(0);
+    calib.noise_method = noise_fit["method"].as<std::string>("");
+  }
+
   const auto temperature = root["temperature"];
   if (temperature)
   {
@@ -403,6 +421,14 @@ YAML::Node SerializeCalibration(const AccelCalibrator::Calibration& calib)
   fit_quality["num_samples"] = calib.num_samples;
   root["fit_quality"] = fit_quality;
 
+  if (calib.noise_stationary_windows > 0 || !calib.noise_method.empty())
+  {
+    YAML::Node noise_fit;
+    noise_fit["stationary_windows"] = calib.noise_stationary_windows;
+    noise_fit["method"] = calib.noise_method;
+    root["noise_fit"] = noise_fit;
+  }
+
   return root;
 }
 } // namespace
@@ -429,6 +455,10 @@ void AccelCalibrator::Reset()
   m_last_save_time_s = 0.0;
   m_gyro_bias_iir = {0.0, 0.0, 0.0};
   m_gyro_bias_iir_init = false;
+  m_baseline_noise_valid = false;
+  m_stationary_noise_samples = 0;
+  m_baseline_accel_var = {0.0, 0.0, 0.0};
+  m_baseline_gyro_var = {0.0, 0.0, 0.0};
 }
 
 bool AccelCalibrator::LoadCache()
@@ -450,6 +480,15 @@ bool AccelCalibrator::LoadCache()
     m_noise_stddev_accel = calib.accel_noise_stddev_mps2;
     m_noise_stddev_gyro = calib.gyro_noise_stddev_rads;
     m_noise_initialized = true;
+    m_baseline_noise_valid = true;
+    m_stationary_noise_samples = calib.noise_stationary_windows;
+    for (size_t axis = 0; axis < 3; ++axis)
+    {
+      m_baseline_accel_var[axis] =
+          calib.accel_noise_stddev_mps2[axis] * calib.accel_noise_stddev_mps2[axis];
+      m_baseline_gyro_var[axis] =
+          calib.gyro_noise_stddev_rads[axis] * calib.gyro_noise_stddev_rads[axis];
+    }
     return true;
   }
   catch (const YAML::Exception&)
@@ -477,6 +516,7 @@ AccelCalibrator::UpdateStatus AccelCalibrator::Update(const Sample& sample)
   // Append to the sliding window.
   WindowSample window_entry{};
   window_entry.mean_accel = sample.accel_mps2;
+  window_entry.mean_accel_cal = Apply(sample.accel_mps2);
   window_entry.mean_gyro = sample.gyro_rads;
   window_entry.mean_norm = Norm(sample.accel_mps2);
   m_window.push_back(window_entry);
@@ -485,6 +525,9 @@ AccelCalibrator::UpdateStatus AccelCalibrator::Update(const Sample& sample)
 
   const WindowSample stats = ComputeWindowStats(m_window);
   status.stationary = DetectStationary(sample, stats);
+
+  if (status.stationary)
+    UpdateBaselineNoise(stats);
 
   if (m_calibration_mode && status.stationary)
     MergePose(sample, stats);
@@ -534,6 +577,47 @@ void AccelCalibrator::UpdateNoiseEstimates(const Sample& sample)
   }
 
   m_noise_initialized = true;
+}
+
+void AccelCalibrator::UpdateBaselineNoise(const WindowSample& stats)
+{
+  if (!m_calibration_mode || m_baseline_noise_valid)
+    return;
+
+  auto update_var = [](double current, double measurement)
+  {
+    if (current <= 0.0)
+      return std::max(measurement, kNoiseFloor);
+    return (1.0 - kBaselineNoiseAlpha) * current + kBaselineNoiseAlpha * measurement;
+  };
+
+  for (size_t axis = 0; axis < 3; ++axis)
+  {
+    const double accel_var = std::max(stats.var_accel_cal[axis], kNoiseFloor);
+    const double gyro_var = std::max(stats.var_gyro[axis], kNoiseFloor);
+    m_baseline_accel_var[axis] = update_var(m_baseline_accel_var[axis], accel_var);
+    m_baseline_gyro_var[axis] = update_var(m_baseline_gyro_var[axis], gyro_var);
+  }
+
+  ++m_stationary_noise_samples;
+
+  if (m_stationary_noise_samples >= kMinBaselineWindows)
+  {
+    m_baseline_noise_valid = true;
+    if (m_calibration)
+    {
+      for (size_t axis = 0; axis < 3; ++axis)
+      {
+        m_calibration->accel_noise_stddev_mps2[axis] =
+            std::sqrt(std::max(m_baseline_accel_var[axis], kNoiseFloor));
+        m_calibration->gyro_noise_stddev_rads[axis] =
+            std::sqrt(std::max(m_baseline_gyro_var[axis], kNoiseFloor));
+      }
+
+      m_calibration->noise_stationary_windows = m_stationary_noise_samples;
+      m_calibration->noise_method = "rest_baseline";
+    }
+  }
 }
 
 bool AccelCalibrator::DetectStationary(const Sample& sample, const WindowSample& stats)
@@ -895,8 +979,24 @@ bool AccelCalibrator::FitEllipsoid()
   calib.W = MultiplyATransposeA(A);
   calib.center_mps2 = bias;
 
-  calib.accel_noise_stddev_mps2 = m_noise_stddev_accel;
-  calib.gyro_noise_stddev_rads = m_noise_stddev_gyro;
+  const bool has_baseline = m_stationary_noise_samples > 0;
+
+  std::array<double, 3> accel_noise_stddev = m_noise_stddev_accel;
+  std::array<double, 3> gyro_noise_stddev = m_noise_stddev_gyro;
+
+  if (has_baseline)
+  {
+    for (size_t axis = 0; axis < 3; ++axis)
+    {
+      accel_noise_stddev[axis] = std::sqrt(std::max(m_baseline_accel_var[axis], kNoiseFloor));
+      gyro_noise_stddev[axis] = std::sqrt(std::max(m_baseline_gyro_var[axis], kNoiseFloor));
+    }
+  }
+
+  calib.accel_noise_stddev_mps2 = accel_noise_stddev;
+  calib.gyro_noise_stddev_rads = gyro_noise_stddev;
+  calib.noise_stationary_windows = m_baseline_noise_valid ? m_stationary_noise_samples : 0;
+  calib.noise_method = m_baseline_noise_valid ? "rest_baseline" : "";
 
   calib.num_clusters = m_clusters.size();
   calib.num_samples = m_total_pose_samples;
