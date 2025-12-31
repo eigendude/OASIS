@@ -120,6 +120,17 @@ install(
 )
 
 #
+# Configuration files
+#
+
+install(
+  DIRECTORY
+    config/imu_info
+  DESTINATION
+    share/${PROJECT_NAME}/imu_info
+)
+
+#
 # Testing
 #
 

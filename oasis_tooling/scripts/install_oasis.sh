@@ -74,6 +74,7 @@ fi
 ENABLED_PACKAGES=()
 for OASIS_PACKAGE in \
     $([ "${ENABLE_CONTROL}" = "0" ] || echo "oasis_control") \
+    $([ "${ENABLE_DRIVERS}" = "0" ] || echo "oasis_drivers_cpp") \
     $([ "${ENABLE_DRIVERS}" = "0" ] || echo "oasis_drivers_py") \
     $([ "${ENABLE_PERCEPTION}" = "0" ] || echo "oasis_perception_py") \
     $([ "${ENABLE_VISUALIZATION}" = "0" ] || echo "oasis_visualization") \
@@ -94,7 +95,7 @@ for OASIS_PACKAGE in \
 done
 
 #
-# Install camera info files
+# Install camera and imu info files
 #
 
 if [[ "${OSTYPE}" != "darwin"* ]]; then
@@ -102,10 +103,13 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
   ROS_DIRECTORY=~/".ros"
   CAMERA_INFO_LINK="${ROS_DIRECTORY}/camera_info"
   CAMERA_INFO_TARGET=""
+  IMU_INFO_LINK="${ROS_DIRECTORY}/imu_info"
+  IMU_INFO_TARGET=""
 
   # Ensure ~/.ros exists for the symlink
   install -m 0755 -d "${ROS_DIRECTORY}"
 
+  # Get camera info directory
   for OASIS_PACKAGE in "${ENABLED_PACKAGES[@]}"; do
     DIRECTORY="${OASIS_DATA_DIRECTORY}/${OASIS_PACKAGE}/camera_info"
 
@@ -118,6 +122,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     break
   done
 
+  # Link camera info directory
   if [ -n "${CAMERA_INFO_TARGET}" ]; then
     echo "Linking camera info directory to ${CAMERA_INFO_TARGET}"
 
@@ -125,6 +130,29 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     rm -rf "${CAMERA_INFO_LINK}"
 
     ln -sfn "${CAMERA_INFO_TARGET}" "${CAMERA_INFO_LINK}"
+  fi
+
+  # Get imu info directory
+  for OASIS_PACKAGE in "${ENABLED_PACKAGES[@]}"; do
+    DIRECTORY="${OASIS_SOURCE_DIRECTORY}/${OASIS_PACKAGE}/config/imu_info"
+
+    # Skip directories that don't exist
+    if [ ! -d "${DIRECTORY}" ]; then
+      continue
+    fi
+
+    IMU_INFO_TARGET="${DIRECTORY}"
+    break
+  done
+
+  # Link imu info directory
+  if [ -n "${IMU_INFO_TARGET}" ]; then
+    echo "Linking imu info directory to ${IMU_INFO_TARGET}"
+
+    # Remove any existing directory
+    rm -rf "${IMU_INFO_LINK}"
+
+    ln -sfn "${IMU_INFO_TARGET}" "${IMU_INFO_LINK}"
   fi
 fi
 
@@ -134,7 +162,15 @@ fi
 
 if [[ "${OSTYPE}" != "darwin"* ]]; then
   for OASIS_PACKAGE in "${ENABLED_PACKAGES[@]}"; do
-    for SYSTEMD_SERVICE in "${OASIS_DATA_DIRECTORY}/${OASIS_PACKAGE}/systemd/"*.service; do
+    OASIS_SYSTEMD_DIRECTORY="${OASIS_DATA_DIRECTORY}/${OASIS_PACKAGE}/systemd"
+
+    # Skip systemd directories that don't exist
+    if [ ! -d "${OASIS_SYSTEMD_DIRECTORY}" ]; then
+      echo "Skipping systemd directory for package: ${OASIS_PACKAGE}"
+      continue
+    fi
+
+    for SYSTEMD_SERVICE in "${OASIS_SYSTEMD_DIRECTORY}/"*.service; do
       SYSTEMD_TIMER="${SYSTEMD_SERVICE%.service}.timer"
 
       # Get service filename
@@ -163,7 +199,15 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
   sudo systemctl daemon-reload
 
   for OASIS_PACKAGE in "${ENABLED_PACKAGES[@]}"; do
-    for SYSTEMD_SERVICE in "${OASIS_DATA_DIRECTORY}/${OASIS_PACKAGE}/systemd/"*.service; do
+    OASIS_SYSTEMD_DIRECTORY="${OASIS_DATA_DIRECTORY}/${OASIS_PACKAGE}/systemd"
+
+    # Skip systemd directories that don't exist
+    if [ ! -d "${OASIS_SYSTEMD_DIRECTORY}" ]; then
+      echo "Skipping systemd directory for package: ${OASIS_PACKAGE}"
+      continue
+    fi
+
+    for SYSTEMD_SERVICE in "${OASIS_SYSTEMD_DIRECTORY}/"*.service; do
       SYSTEMD_TIMER="${SYSTEMD_SERVICE%.service}.timer"
 
       # Get service filename

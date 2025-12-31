@@ -173,6 +173,9 @@ class DriverDescriptions:
             executable="mpu6050_imu_driver",
             name=f"mpu6050_imu_driver_{host_id}",
             output="screen",
+            parameters=[
+                {"system_id": host_id},
+            ],
             remappings=[
                 # Topics
                 ("imu", f"{host_id}/imu"),
