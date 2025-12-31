@@ -87,6 +87,7 @@ public:
     std::string frame_id{"imu_link"};
     double gravity_mps2{9.80665};
     std::uint64_t created_unix_ns{0};
+    bool has_ellipsoid{true};
 
     // Noise statistics (Gaussian standard deviation per axis)
     std::array<double, 3> accel_noise_stddev_mps2{0.0, 0.0, 0.0};
@@ -117,6 +118,25 @@ public:
     // Noise fit metadata
     size_t noise_stationary_samples{0};
     std::string noise_method;
+    std::string noise_phase;
+
+    // Raw baseline noise and bias estimates at rest
+    std::array<double, 3> raw_accel_bias_mps2{0.0, 0.0, 0.0};
+    std::array<double, 3> raw_gyro_bias_rads{0.0, 0.0, 0.0};
+    std::array<double, 3> raw_accel_noise_stddev_mps2{0.0, 0.0, 0.0};
+    std::array<double, 3> raw_gyro_noise_stddev_rads{0.0, 0.0, 0.0};
+    size_t raw_stationary_samples{0};
+    std::string raw_noise_method;
+
+    // Calibrated baseline noise after ellipsoid fit
+    std::array<double, 3> calibrated_noise_accel_stddev_mps2{0.0, 0.0, 0.0};
+    std::array<double, 3> calibrated_noise_gyro_stddev_rads{0.0, 0.0, 0.0};
+    size_t calibrated_stationary_samples{0};
+    std::string calibrated_noise_method;
+
+    // Stability of rest biases across stationary windows
+    std::array<double, 3> gyro_bias_stddev_rads{0.0, 0.0, 0.0};
+    std::array<double, 3> accel_bias_stddev_mps2{0.0, 0.0, 0.0};
 
     // Temperature summary of samples used for the fit
     double temperature_mean_c{0.0};
@@ -191,7 +211,10 @@ public:
   // Process one IMU sample. Calibration runs only when enabled.
   UpdateStatus Update(const Sample& sample);
 
-  bool HasSolution() const { return m_calibration.has_value(); }
+  bool HasSolution() const
+  {
+    return m_calibration.has_value() && m_calibration->has_ellipsoid;
+  }
 
   const Calibration& GetCalibration() const { return *m_calibration; }
 
@@ -199,11 +222,25 @@ public:
 
   const std::array<double, 3>& GetGyroNoiseStddev() const { return m_noise_stddev_gyro; }
 
-  bool HasBaselineNoise() const { return m_baseline_noise_valid; }
+  bool HasRawBaseline() const { return m_raw_baseline_valid; }
 
-  std::array<double, 3> GetBaselineAccelNoiseStddev() const;
+  bool HasCalibratedBaseline() const { return m_calibrated_baseline_valid; }
 
-  std::array<double, 3> GetBaselineGyroNoiseStddev() const;
+  std::array<double, 3> GetRawBaselineAccelNoiseStddev() const;
+
+  std::array<double, 3> GetRawBaselineGyroNoiseStddev() const;
+
+  std::array<double, 3> GetCalibratedBaselineAccelNoiseStddev() const;
+
+  std::array<double, 3> GetCalibratedBaselineGyroNoiseStddev() const;
+
+  std::array<double, 3> GetRawBias() const { return m_raw_bias_accel; }
+
+  std::array<double, 3> GetRawGyroBias() const { return m_raw_bias_gyro; }
+
+  std::array<double, 3> GetBiasStabilityAccel() const;
+
+  std::array<double, 3> GetBiasStabilityGyro() const;
 
 private:
   struct Cluster
@@ -235,6 +272,29 @@ private:
 
   static Calibration MakeIdentityCalibration(double gravity_mps2, const std::string& frame_id);
 
+  struct RunningStats
+  {
+    double mean{0.0};
+    double m2{0.0};
+    size_t count{0};
+
+    void AddSample(double value)
+    {
+      ++count;
+      const double delta = value - mean;
+      mean += delta / static_cast<double>(count);
+      const double delta2 = value - mean;
+      m2 += delta * delta2;
+    }
+
+    double Variance() const
+    {
+      if (count < 2)
+        return 0.0;
+      return m2 / static_cast<double>(count - 1);
+    }
+  };
+
   Config m_config{};
   std::filesystem::path m_cache_path;
   std::string m_frame_id{"imu_link"};
@@ -262,9 +322,18 @@ private:
   bool m_gyro_bias_iir_init{false};
 
   // Baseline rest noise accumulation
-  bool m_baseline_noise_valid{false};
-  size_t m_stationary_noise_samples{0};
-  std::array<double, 3> m_baseline_accel_var{0.0, 0.0, 0.0};
-  std::array<double, 3> m_baseline_gyro_var{0.0, 0.0, 0.0};
+  bool m_raw_baseline_valid{false};
+  bool m_calibrated_baseline_valid{false};
+  size_t m_raw_stationary_samples{0};
+  size_t m_calibrated_stationary_samples{0};
+  size_t m_consecutive_stationary{0};
+  std::array<double, 3> m_raw_baseline_accel_var{0.0, 0.0, 0.0};
+  std::array<double, 3> m_raw_baseline_gyro_var{0.0, 0.0, 0.0};
+  std::array<double, 3> m_cal_baseline_accel_var{0.0, 0.0, 0.0};
+  std::array<double, 3> m_cal_baseline_gyro_var{0.0, 0.0, 0.0};
+  std::array<double, 3> m_raw_bias_accel{0.0, 0.0, 0.0};
+  std::array<double, 3> m_raw_bias_gyro{0.0, 0.0, 0.0};
+  std::array<RunningStats, 3> m_raw_bias_stats_accel;
+  std::array<RunningStats, 3> m_raw_bias_stats_gyro;
 };
 } // namespace OASIS::IMU

@@ -88,9 +88,18 @@ bool Mpu6050ImuProcessor::LoadCachedCalibration()
   if (loaded)
   {
     const auto& calib = m_accelCalibrator.GetCalibration();
-    m_cached_accel_noise_stddev = calib.accel_noise_stddev_mps2;
-    m_cached_gyro_noise_stddev = calib.gyro_noise_stddev_rads;
-    m_use_cached_noise = m_accelCalibrator.HasBaselineNoise();
+    if (m_accelCalibrator.HasCalibratedBaseline())
+    {
+      m_cached_accel_noise_stddev = calib.accel_noise_stddev_mps2;
+      m_cached_gyro_noise_stddev = calib.gyro_noise_stddev_rads;
+      m_use_cached_noise = true;
+    }
+    else if (m_accelCalibrator.HasRawBaseline())
+    {
+      m_cached_accel_noise_stddev = calib.raw_accel_noise_stddev_mps2;
+      m_cached_gyro_noise_stddev = calib.raw_gyro_noise_stddev_rads;
+      m_use_cached_noise = true;
+    }
   }
 
   return loaded;
@@ -165,11 +174,20 @@ Mpu6050ImuProcessor::ProcessedOutputs Mpu6050ImuProcessor::ProcessRaw(int16_t ax
   sample.timestamp_s = timestamp_s;
   outputs.calibration_status = m_accelCalibrator.Update(sample);
 
-  if (!m_use_cached_noise && m_accelCalibrator.HasBaselineNoise())
+  if (!m_use_cached_noise)
   {
-    m_cached_accel_noise_stddev = m_accelCalibrator.GetBaselineAccelNoiseStddev();
-    m_cached_gyro_noise_stddev = m_accelCalibrator.GetBaselineGyroNoiseStddev();
-    m_use_cached_noise = true;
+    if (m_accelCalibrator.HasCalibratedBaseline())
+    {
+      m_cached_accel_noise_stddev = m_accelCalibrator.GetCalibratedBaselineAccelNoiseStddev();
+      m_cached_gyro_noise_stddev = m_accelCalibrator.GetCalibratedBaselineGyroNoiseStddev();
+      m_use_cached_noise = true;
+    }
+    else if (m_accelCalibrator.HasRawBaseline())
+    {
+      m_cached_accel_noise_stddev = m_accelCalibrator.GetRawBaselineAccelNoiseStddev();
+      m_cached_gyro_noise_stddev = m_accelCalibrator.GetRawBaselineGyroNoiseStddev();
+      m_use_cached_noise = true;
+    }
   }
 
   // Record calibrated measurements
@@ -178,7 +196,7 @@ Mpu6050ImuProcessor::ProcessedOutputs Mpu6050ImuProcessor::ProcessRaw(int16_t ax
   outputs.imu.accel_var_mps2_2 = accel_var_body_mps2_2;
   outputs.imu.gyro_var_rads2_2 = gyro_var_body_rads2_2;
 
-  if (m_use_cached_noise && m_accelCalibrator.HasSolution())
+  if (m_use_cached_noise)
   {
     std::array<double, 3> accel_var_cached{0.0, 0.0, 0.0};
     std::array<double, 3> gyro_var_cached{0.0, 0.0, 0.0};
@@ -193,8 +211,16 @@ Mpu6050ImuProcessor::ProcessedOutputs Mpu6050ImuProcessor::ProcessRaw(int16_t ax
     outputs.imu_raw.accel_var_mps2_2 = accel_var_cached;
     outputs.imu_raw.gyro_var_rads2_2 = gyro_var_cached;
 
-    const auto& calib = m_accelCalibrator.GetCalibration();
-    outputs.imu.accel_var_mps2_2 = ApplyAccelVariance(calib.A, accel_var_cached);
+    if (m_accelCalibrator.HasSolution())
+    {
+      const auto& calib = m_accelCalibrator.GetCalibration();
+      outputs.imu.accel_var_mps2_2 = ApplyAccelVariance(calib.A, accel_var_cached);
+    }
+    else
+    {
+      outputs.imu.accel_var_mps2_2 = accel_var_cached;
+    }
+
     outputs.imu.gyro_var_rads2_2 = gyro_var_cached;
   }
 
