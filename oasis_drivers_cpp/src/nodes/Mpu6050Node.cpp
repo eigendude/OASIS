@@ -83,7 +83,7 @@ bool Mpu6050Node::Initialize()
   const uint8_t gyroRange = m_mpu6050->getFullScaleGyroRange();
 
   // Initialize IMU state based on actual configuration
-  const double accelScale = IMU::Mpu6050ImuUtils::AccelScaleFromRange(accelRange);
+  const double accelScale = IMU::Mpu6050ImuUtils::AccelScaleFromRange(accelRange, m_gravity);
   const double gyroScale = IMU::Mpu6050ImuUtils::GyroScaleFromRange(gyroRange);
 
   m_imuProcessor.SetGravity(m_gravity);

@@ -14,27 +14,27 @@
 
 namespace
 {
-constexpr double GRAVITY = 9.80665; // m/s^2
-constexpr double ACCEL_SCALE = GRAVITY / 16384.0; // Default to +/-2g
-constexpr double GYRO_SCALE = (std::numbers::pi_v<double> / 180.0) / 131.0; // Default to +/-250°/s
+// Default to +/-250°/s. Converts deg/s to rad/s and divides by 131 LSB/(deg/s).
+constexpr double GYRO_SCALE = (std::numbers::pi_v<double> / 180.0) / 131.0;
 } // namespace
 
 namespace OASIS::IMU
 {
-double Mpu6050ImuUtils::AccelScaleFromRange(uint8_t range)
+double Mpu6050ImuUtils::AccelScaleFromRange(uint8_t range, double gravity)
 {
   switch (range)
   {
     case MPU6050_ACCEL_FS_2:
-      return GRAVITY / 16384.0;
+      return gravity / 16384.0;
     case MPU6050_ACCEL_FS_4:
-      return GRAVITY / 8192.0;
+      return gravity / 8192.0;
     case MPU6050_ACCEL_FS_8:
-      return GRAVITY / 4096.0;
+      return gravity / 4096.0;
     case MPU6050_ACCEL_FS_16:
-      return GRAVITY / 2048.0;
+      return gravity / 2048.0;
     default:
-      return ACCEL_SCALE;
+      // Default to +/-2g: 16384 counts per g.
+      return gravity / 16384.0;
   }
 }
 
