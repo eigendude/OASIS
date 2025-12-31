@@ -11,14 +11,14 @@
 #include "imu/Mpu6050ImuUtils.h"
 
 #include <algorithm>
-#include <chrono>
 #include <cmath>
-#include <cstdint>
 #include <functional>
-#include <thread>
+#include <vector>
 
 #include <I2Cdev.h>
 #include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/bool.hpp>
+#include <std_msgs/msg/float64_multi_array.hpp>
 
 using namespace OASIS::IMU;
 using namespace OASIS::ROS;
@@ -29,9 +29,9 @@ namespace
 
 // Default node name
 constexpr const char* NODE_NAME = "mpu6050_imu_driver";
-constexpr double GRAVITY_MPS2 = 9.80665;
 
 // ROS topics
+constexpr const char* CONDUCTOR_STATE_TOPIC = "conductor_state";
 constexpr const char* IMU_TOPIC = "imu";
 
 // ROS frame IDs
@@ -40,11 +40,6 @@ constexpr const char* FRAME_ID = "imu_link";
 // ROS parameters
 constexpr const char* DEFAULT_I2C_DEVICE = "/dev/i2c-1";
 constexpr double DEFAULT_PUBLISH_RATE_HZ = 50.0;
-constexpr double kRollPitchVariance = 0.0076;
-constexpr double kYawVariance = 1e6;
-constexpr double kPi = 3.141592653589793;
-constexpr double kTwoPi = 2.0 * kPi;
-constexpr bool kLogStationaryTransitions = true;
 
 } // namespace
 
@@ -76,10 +71,6 @@ bool Mpu6050Node::Initialize()
 
   RCLCPP_INFO(get_logger(), "Connected to MPU6050 on %s", m_i2cDevice.c_str());
 
-  // Log WHO_AM_I
-  const uint8_t who = m_mpu6050->getDeviceID();
-  RCLCPP_INFO(get_logger(), "MPU6050 WHO_AM_I / device ID: 0x%02X", who);
-
   // Ensure full-scale ranges match our scaling assumptions
   m_mpu6050->setFullScaleAccelRange(MPU6050_ACCEL_FS_2);
   m_mpu6050->setFullScaleGyroRange(MPU6050_GYRO_FS_250);
@@ -99,6 +90,9 @@ bool Mpu6050Node::Initialize()
 
   // Initialize publishers
   m_imuPublisher = create_publisher<sensor_msgs::msg::Imu>(IMU_TOPIC, rclcpp::QoS{1});
+  m_conductorStateSub = create_subscription<oasis_msgs::msg::ConductorState>(
+      CONDUCTOR_STATE_TOPIC, rclcpp::QoS{1},
+      std::bind(&Mpu6050Node::OnConductorState, this, std::placeholders::_1));
 
   // Initialize timers
   m_timer = create_wall_timer(m_publishPeriod, std::bind(&Mpu6050Node::PublishImu, this));
@@ -109,6 +103,11 @@ bool Mpu6050Node::Initialize()
 void Mpu6050Node::Deinitialize()
 {
   // TODO
+}
+
+void Mpu6050Node::OnConductorState(const oasis_msgs::msg::ConductorState& msg)
+{
+  m_dutyCycleInput = msg.duty_cycle;
 }
 
 void Mpu6050Node::PublishImu()
@@ -128,58 +127,45 @@ void Mpu6050Node::PublishImu()
 
   m_mpu6050->getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
 
-  const rclcpp::Time now = get_clock()->now();
-  double dt_seconds = 0.0;
-  if (m_hasLastSampleTime)
-  {
-    dt_seconds = (now - m_lastSampleTime).seconds();
-  }
-  m_lastSampleTime = now;
-  m_hasLastSampleTime = true;
-
-  // MPU6050 datasheet formula: Temp(°C) = (TEMP_OUT / 340) + 36.53
   const int16_t tempRaw = m_mpu6050->getTemperature();
-  const double tempC = (static_cast<double>(tempRaw) / 340.0) + 36.53;
 
-  const bool dataReady = m_mpu6050->getIntDataReadyStatus();
+  const rclcpp::Time now = get_clock()->now();
 
-  const auto processed = m_imuProcessor.ProcessRaw(ax, ay, az, gx, gy, gz, dt_seconds);
-
-  const double raw_accel_norm_lsb = std::sqrt(static_cast<double>(ax) * static_cast<double>(ax) +
-                                              static_cast<double>(ay) * static_cast<double>(ay) +
-                                              static_cast<double>(az) * static_cast<double>(az));
-  const double accel_scale = m_imuProcessor.GetAccelScale();
-  const double raw_accel_norm_mps2 = raw_accel_norm_lsb * accel_scale;
-
-  RCLCPP_INFO_THROTTLE(
-      get_logger(), *get_clock(), 1000,
-      "IMU accel scale=%.9f m/s^2/LSB raw |a|=%.3f m/s^2 (%.1f LSB) temp=%.2fC data_ready=%s",
-      accel_scale, raw_accel_norm_mps2, raw_accel_norm_lsb, tempC, dataReady ? "true" : "false");
-
-  auto fillImuMsg = [&](sensor_msgs::msg::Imu& msg)
-  {
-    std_msgs::msg::Header& header = msg.header;
-    header.stamp = now;
-    header.frame_id = FRAME_ID;
-
-    geometry_msgs::msg::Vector3& angularVelocity = msg.angular_velocity;
-    geometry_msgs::msg::Vector3& linearAcceleration = msg.linear_acceleration;
-
-    linearAcceleration.x = processed.accel_raw_mps2[0];
-    linearAcceleration.y = processed.accel_raw_mps2[1];
-    linearAcceleration.z = processed.accel_raw_mps2[2];
-
-    angularVelocity.x = processed.gyro_rads[0];
-    angularVelocity.y = processed.gyro_rads[1];
-    angularVelocity.z = processed.gyro_rads[2];
-
-    msg.angular_velocity_covariance.fill(0.0);
-    msg.linear_acceleration_covariance.fill(0.0);
-  };
+  // TODO
+  /*
+  auto output = m_imuProcessor->Process(sample, m_dutyCycleInput);
+  if (!output)
+    return;
+   */
 
   sensor_msgs::msg::Imu imuMsg;
 
-  fillImuMsg(imuMsg);
+  std_msgs::msg::Header& header = imuMsg.header;
+  header.stamp = now;
+  header.frame_id = FRAME_ID;
+
+  geometry_msgs::msg::Vector3& angularVelocity = imuMsg.angular_velocity;
+  geometry_msgs::msg::Vector3& linearAcceleration = imuMsg.linear_acceleration;
+
+  // TODO
+  /*
+  linearAcceleration.x = output->linear_acceleration[0];
+  linearAcceleration.y = output->linear_acceleration[1];
+  linearAcceleration.z = output->linear_acceleration[2];
+
+  angularVelocity.x = output->angular_velocity[0];
+  angularVelocity.y = output->angular_velocity[1];
+  angularVelocity.z = output->angular_velocity[2];
+
+  imuMsg.orientation.w = output->orientation[0];
+  imuMsg.orientation.x = output->orientation[1];
+  imuMsg.orientation.y = output->orientation[2];
+  imuMsg.orientation.z = output->orientation[3];
+
+  imuMsg.orientation_covariance = output->orientation_covariance;
+  imuMsg.angular_velocity_covariance = output->angular_velocity_covariance;
+  imuMsg.linear_acceleration_covariance = output->linear_acceleration_covariance;
+  */
 
   m_imuPublisher->publish(imuMsg);
 }

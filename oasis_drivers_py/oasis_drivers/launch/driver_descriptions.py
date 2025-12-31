@@ -177,8 +177,8 @@ class DriverDescriptions:
             output="screen",
             remappings=[
                 # Topics
+                ("conductor_state", f"{STATION_HOST_ID}/conductor_state"),
                 ("imu", f"{host_id}/imu"),
-                ("imu_temperature", f"{host_id}/imu_temperature"),
             ],
         )
         ld.add_action(mpu_node)

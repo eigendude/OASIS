@@ -15,10 +15,10 @@
 #include <string>
 
 #include <MPU6050.h>
+#include <oasis_msgs/msg/conductor_state.hpp>
 #include <rclcpp/node.hpp>
 #include <rclcpp/publisher.hpp>
 #include <rclcpp/subscription.hpp>
-#include <rclcpp/time.hpp>
 #include <rclcpp/timer.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 
@@ -32,15 +32,16 @@ class Mpu6050Node : public rclcpp::Node
 public:
   Mpu6050Node();
 
-  // Lifecycle functions
   bool Initialize();
   void Deinitialize();
 
 private:
   void PublishImu();
+  void OnConductorState(const oasis_msgs::msg::ConductorState& msg);
 
   // ROS parameters
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr m_imuPublisher;
+  rclcpp::Subscription<oasis_msgs::msg::ConductorState>::SharedPtr m_conductorStateSub;
   rclcpp::TimerBase::SharedPtr m_timer;
 
   // IMU parameters
@@ -48,9 +49,9 @@ private:
   std::string m_i2cDevice;
   std::chrono::duration<double> m_publishPeriod;
   IMU::Mpu6050ImuProcessor m_imuProcessor;
-  rclcpp::Time m_lastSampleTime;
-  bool m_hasLastSampleTime{false};
-  double m_yawRad{0.0};
+
+  // Station parameters
+  double m_dutyCycleInput{0.0};
 };
 
 } // namespace ROS
