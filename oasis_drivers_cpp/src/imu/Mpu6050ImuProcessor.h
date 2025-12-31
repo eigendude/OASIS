@@ -54,29 +54,31 @@ private:
   /**
    * Jitter-aware 2nd-difference estimator for i.i.d. measurement noise.
    *
-   * Given samples x0, x1, x2 with time steps h1, h2, the non-uniform
-   * second-difference residual is:
+   * Given samples x0, x1, x2 with time steps h2 = t1 - t0 and h1 = t2 - t1,
+   * the non-uniform derivative residual is:
    *
-   *   d2 = x2 - x1 * (h1 + h2) / h1 + x0 * h2 / h1.
+   *   d = (x2 - x1) / h1 - (x1 - x0) / h2.
    *
-   * Define a = h2 / h1 and b = 1 + a. For independent noise with variance
-   * sigma^2, Var(d2) = (a^2 + b^2 + 1) * sigma^2, so K(h1, h2) is
+   * For independent noise with variance sigma^2, Var(d) = K * sigma^2 with:
    *
-   *   K = a^2 + b^2 + 1
+   *   K = 2 * (1 / h1^2 + 1 / h2^2 + 1 / (h1 * h2)).
    *
-   * and
+   * So the per-sample estimate is:
    *
-   *   sigma^2 = d2^2 / (a^2 + b^2 + 1).
+   *   sigma^2 = d^2 / K.
    *
-   * If h1 is tiny, fall back to the uniform-grid formula:
-   *
-   *   d2 = x2 - 2 * x1 + x0,  sigma^2 = d2^2 / 6.
+   * For uniform dt this reduces to sigma^2 = (d2^2) / 6 with
+   * d2 = x2 - 2 * x1 + x0.
    */
   class NoiseEstimator
   {
   public:
     void Reset();
-    std::array<double, 3> Update(int16_t x, int16_t y, int16_t z, double dt_s);
+    std::array<double, 3> Update(int16_t x,
+                                 int16_t y,
+                                 int16_t z,
+                                 double dt_s,
+                                 bool is_stationary);
 
   private:
     static constexpr size_t kWindowSize = 16;
