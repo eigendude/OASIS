@@ -9,3 +9,4 @@
 - **Stable, message-driven APIs**: design core classes around plain inputs/outputs (structs, spans, arrays) that map cleanly to messages; avoid parameter-heavy constructors or ROS parameter lookups inside the core.
 - **Document public structs/interfaces**: any public `struct`/`enum` must have brief field docs (meaning + units + expected range + how it’s computed/used), so downstream users can treat it as a contract.
 - **Minimize hidden coupling**: avoid implicit dependencies on global state/time/ROS clocks; pass time stamps and configuration explicitly.
+- **Document mathematical parameters**: any constant/denominator/derived factor in algorithms must be documented with its meaning or derivation.
