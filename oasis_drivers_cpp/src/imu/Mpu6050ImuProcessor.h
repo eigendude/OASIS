@@ -50,6 +50,20 @@ public:
     bool gyro_bias_valid{false};
   };
 
+  struct AxisRemap
+  {
+    // map[imu_axis] gives the source sensor axis index that feeds imu_axis.
+    std::array<size_t, 3> map{0, 1, 2};
+
+    // sign[imu_axis] flips the mapped source axis so imu axes follow ROS
+    // conventions.
+    std::array<int, 3> sign{1, 1, 1};
+  };
+
+  // Fixed axis remap for the MPU6050 breakout: sensor Y is forward (imu X),
+  // sensor X is right (imu -Y), and sensor Z is up.
+  static constexpr AxisRemap MPU6050_AXIS_REMAP{{1, 0, 2}, {1, -1, 1}};
+
   Mpu6050ImuProcessor() = default;
 
   void SetGravity(double gravityMps2) { m_gravity = gravityMps2; }
@@ -63,6 +77,8 @@ public:
 
   void Reset();
 
+  void SetAxisRemap(const AxisRemap& axisRemap) { m_axisRemap = axisRemap; }
+
   ProcessedOutputs ProcessRaw(
       int16_t ax, int16_t ay, int16_t az, int16_t gx, int16_t gy, int16_t gz, double dt_s);
 
@@ -73,5 +89,6 @@ private:
   NoiseEstimator m_accelNoise;
   NoiseEstimator m_gyroNoise;
   GyroBiasEstimator m_gyroBiasEstimator;
+  AxisRemap m_axisRemap{MPU6050_AXIS_REMAP};
 };
 } // namespace OASIS::IMU

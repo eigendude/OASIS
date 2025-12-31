@@ -13,6 +13,36 @@
 
 using namespace OASIS::IMU;
 
+namespace
+{
+std::array<double, 3> RemapAxes(const std::array<double, 3>& source,
+                                const Mpu6050ImuProcessor::AxisRemap& remap)
+{
+  std::array<double, 3> remapped{0.0, 0.0, 0.0};
+
+  for (size_t axis = 0; axis < remapped.size(); ++axis)
+  {
+    remapped[axis] = static_cast<double>(remap.sign[axis]) *
+                     source[remap.map[axis]];
+  }
+
+  return remapped;
+}
+
+std::array<double, 3> RemapVariances(const std::array<double, 3>& variances,
+                                     const Mpu6050ImuProcessor::AxisRemap& remap)
+{
+  std::array<double, 3> remapped{0.0, 0.0, 0.0};
+
+  for (size_t axis = 0; axis < remapped.size(); ++axis)
+  {
+    remapped[axis] = variances[remap.map[axis]];
+  }
+
+  return remapped;
+}
+} // namespace
+
 void Mpu6050ImuProcessor::Reset()
 {
   m_accelNoise.Reset();
@@ -50,14 +80,19 @@ Mpu6050ImuProcessor::ProcessedOutputs Mpu6050ImuProcessor::ProcessRaw(
     gyro_var_sensor_rads2_2[axis] = std::max(gyro_variance, gyro_floor);
   }
 
-  outputs.imu_raw.accel_mps2 = accel_sensor_mps2;
-  outputs.imu_raw.gyro_rads = gyro_sensor_rads;
-  outputs.imu_raw.accel_var_mps2_2 = accel_var_sensor_mps2_2;
-  outputs.imu_raw.gyro_var_rads2_2 = gyro_var_sensor_rads2_2;
+  const std::array<double, 3> accel_body_mps2 =
+      RemapAxes(accel_sensor_mps2, m_axisRemap);
+  const std::array<double, 3> gyro_body_rads =
+      RemapAxes(gyro_sensor_rads, m_axisRemap);
+  const std::array<double, 3> accel_var_body_mps2_2 =
+      RemapVariances(accel_var_sensor_mps2_2, m_axisRemap);
+  const std::array<double, 3> gyro_var_body_rads2_2 =
+      RemapVariances(gyro_var_sensor_rads2_2, m_axisRemap);
 
-  // TODO
-  const std::array<double, 3> accel_body_mps2 = accel_sensor_mps2;
-  const std::array<double, 3> gyro_body_rads = gyro_sensor_rads;
+  outputs.imu_raw.accel_mps2 = accel_body_mps2;
+  outputs.imu_raw.gyro_rads = gyro_body_rads;
+  outputs.imu_raw.accel_var_mps2_2 = accel_var_body_mps2_2;
+  outputs.imu_raw.gyro_var_rads2_2 = gyro_var_body_rads2_2;
 
   m_gyroBiasEstimator.Update(gyro_body_rads, accel_body_mps2, m_gravity);
   outputs.gyro_bias_valid = m_gyroBiasEstimator.IsValid();
@@ -75,9 +110,8 @@ Mpu6050ImuProcessor::ProcessedOutputs Mpu6050ImuProcessor::ProcessRaw(
   outputs.imu.accel_mps2 = accel_body_mps2;
   outputs.imu.gyro_rads = gyro_calibrated_rads;
 
-  // TODO
-  outputs.imu.accel_var_mps2_2 = outputs.imu_raw.accel_var_mps2_2;
-  outputs.imu.gyro_var_rads2_2 = outputs.imu_raw.gyro_var_rads2_2;
+  outputs.imu.accel_var_mps2_2 = accel_var_body_mps2_2;
+  outputs.imu.gyro_var_rads2_2 = gyro_var_body_rads2_2;
 
   return outputs;
 }
