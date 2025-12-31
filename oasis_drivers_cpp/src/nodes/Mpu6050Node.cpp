@@ -8,18 +8,28 @@
 
 #include "Mpu6050Node.h"
 
+#include "imu/Mpu6050ImuUtils.h"
+
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <functional>
+#include <thread>
 
 #include <I2Cdev.h>
 #include <rclcpp/rclcpp.hpp>
+
+using namespace OASIS::IMU;
+using namespace OASIS::ROS;
+using namespace std::chrono_literals;
 
 namespace
 {
 
 // Default node name
 constexpr const char* NODE_NAME = "mpu6050_imu_driver";
+constexpr double GRAVITY_MPS2 = 9.80665;
 
 // ROS topics
 constexpr const char* IMU_TOPIC = "imu";
@@ -30,49 +40,13 @@ constexpr const char* FRAME_ID = "imu_link";
 // ROS parameters
 constexpr const char* DEFAULT_I2C_DEVICE = "/dev/i2c-1";
 constexpr double DEFAULT_PUBLISH_RATE_HZ = 50.0;
+constexpr double kRollPitchVariance = 0.0076;
+constexpr double kYawVariance = 1e6;
+constexpr double kPi = 3.141592653589793;
+constexpr double kTwoPi = 2.0 * kPi;
+constexpr bool kLogStationaryTransitions = true;
 
-// IMU parameters
-constexpr double GRAVITY = 9.80665; // m/s^2
-constexpr double ACCEL_SCALE = GRAVITY / 16384.0; // +/-2g full scale
-constexpr double GYRO_SCALE = (M_PI / 180.0) / 131.0; // +/-250 deg/s full scale
-
-double AccelScaleFromRange(uint8_t range)
-{
-  switch (range)
-  {
-    case MPU6050_ACCEL_FS_2:
-      return GRAVITY / 16384.0;
-    case MPU6050_ACCEL_FS_4:
-      return GRAVITY / 8192.0;
-    case MPU6050_ACCEL_FS_8:
-      return GRAVITY / 4096.0;
-    case MPU6050_ACCEL_FS_16:
-      return GRAVITY / 2048.0;
-    default:
-      return ACCEL_SCALE;
-  }
-}
-
-double GyroScaleFromRange(uint8_t range)
-{
-  switch (range)
-  {
-    case MPU6050_GYRO_FS_250:
-      return (M_PI / 180.0) / 131.0;
-    case MPU6050_GYRO_FS_500:
-      return (M_PI / 180.0) / 65.5;
-    case MPU6050_GYRO_FS_1000:
-      return (M_PI / 180.0) / 32.8;
-    case MPU6050_GYRO_FS_2000:
-      return (M_PI / 180.0) / 16.4;
-    default:
-      return GYRO_SCALE;
-  }
-}
 } // namespace
-
-using namespace OASIS::ROS;
-using namespace std::chrono_literals;
 
 Mpu6050Node::Mpu6050Node() : rclcpp::Node(NODE_NAME)
 {
@@ -102,6 +76,10 @@ bool Mpu6050Node::Initialize()
 
   RCLCPP_INFO(get_logger(), "Connected to MPU6050 on %s", m_i2cDevice.c_str());
 
+  // Log WHO_AM_I
+  const uint8_t who = m_mpu6050->getDeviceID();
+  RCLCPP_INFO(get_logger(), "MPU6050 WHO_AM_I / device ID: 0x%02X", who);
+
   // Ensure full-scale ranges match our scaling assumptions
   m_mpu6050->setFullScaleAccelRange(MPU6050_ACCEL_FS_2);
   m_mpu6050->setFullScaleGyroRange(MPU6050_GYRO_FS_250);
@@ -110,14 +88,17 @@ bool Mpu6050Node::Initialize()
   const uint8_t gyroRange = m_mpu6050->getFullScaleGyroRange();
 
   // Initialize IMU state based on actual configuration
-  m_accelScale = AccelScaleFromRange(accelRange);
-  m_gyroScale = GyroScaleFromRange(gyroRange);
+  const double accelScale = Mpu6050ImuUtils::AccelScaleFromRange(accelRange);
+  const double gyroScale = Mpu6050ImuUtils::GyroScaleFromRange(gyroRange);
+
+  m_imuProcessor.SetAccelScale(accelScale);
+  m_imuProcessor.SetGyroScale(gyroScale);
 
   RCLCPP_INFO(get_logger(), "MPU6050 full-scale ranges set (accel=%u, gyro=%u)",
               static_cast<unsigned>(accelRange), static_cast<unsigned>(gyroRange));
 
   // Initialize publishers
-  m_publisher = create_publisher<sensor_msgs::msg::Imu>(IMU_TOPIC, rclcpp::QoS(10));
+  m_imuPublisher = create_publisher<sensor_msgs::msg::Imu>(IMU_TOPIC, rclcpp::QoS{1});
 
   // Initialize timers
   m_timer = create_wall_timer(m_publishPeriod, std::bind(&Mpu6050Node::PublishImu, this));
@@ -147,27 +128,58 @@ void Mpu6050Node::PublishImu()
 
   m_mpu6050->getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
 
-  auto imuMsg = sensor_msgs::msg::Imu();
+  const rclcpp::Time now = get_clock()->now();
+  double dt_seconds = 0.0;
+  if (m_hasLastSampleTime)
+  {
+    dt_seconds = (now - m_lastSampleTime).seconds();
+  }
+  m_lastSampleTime = now;
+  m_hasLastSampleTime = true;
 
-  std_msgs::msg::Header& header = imuMsg.header;
-  header.stamp = get_clock()->now();
-  header.frame_id = FRAME_ID;
+  // MPU6050 datasheet formula: Temp(°C) = (TEMP_OUT / 340) + 36.53
+  const int16_t tempRaw = m_mpu6050->getTemperature();
+  const double tempC = (static_cast<double>(tempRaw) / 340.0) + 36.53;
 
-  geometry_msgs::msg::Vector3& angularVelocity = imuMsg.angular_velocity;
-  geometry_msgs::msg::Vector3& linearAceleration = imuMsg.linear_acceleration;
+  const bool dataReady = m_mpu6050->getIntDataReadyStatus();
 
-  linearAceleration.x = static_cast<double>(ax) * m_accelScale;
-  linearAceleration.y = static_cast<double>(ay) * m_accelScale;
-  linearAceleration.z = static_cast<double>(az) * m_accelScale;
+  const auto processed = m_imuProcessor.ProcessRaw(ax, ay, az, gx, gy, gz, dt_seconds);
 
-  angularVelocity.x = static_cast<double>(gx) * m_gyroScale;
-  angularVelocity.y = static_cast<double>(gy) * m_gyroScale;
-  angularVelocity.z = static_cast<double>(gz) * m_gyroScale;
+  const double raw_accel_norm_lsb = std::sqrt(static_cast<double>(ax) * static_cast<double>(ax) +
+                                              static_cast<double>(ay) * static_cast<double>(ay) +
+                                              static_cast<double>(az) * static_cast<double>(az));
+  const double accel_scale = m_imuProcessor.GetAccelScale();
+  const double raw_accel_norm_mps2 = raw_accel_norm_lsb * accel_scale;
 
-  imuMsg.orientation.w = 1.0;
-  imuMsg.orientation.x = 0.0;
-  imuMsg.orientation.y = 0.0;
-  imuMsg.orientation.z = 0.0;
+  RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "IMU accel scale=%.9f m/s^2/LSB raw |a|=%.3f m/s^2 (%.1f LSB) temp=%.2fC data_ready=%s",
+      accel_scale, raw_accel_norm_mps2, raw_accel_norm_lsb, tempC, dataReady ? "true" : "false");
 
-  m_publisher->publish(imuMsg);
+  auto fillImuMsg = [&](sensor_msgs::msg::Imu& msg)
+  {
+    std_msgs::msg::Header& header = msg.header;
+    header.stamp = now;
+    header.frame_id = FRAME_ID;
+
+    geometry_msgs::msg::Vector3& angularVelocity = msg.angular_velocity;
+    geometry_msgs::msg::Vector3& linearAcceleration = msg.linear_acceleration;
+
+    linearAcceleration.x = processed.accel_raw_mps2[0];
+    linearAcceleration.y = processed.accel_raw_mps2[1];
+    linearAcceleration.z = processed.accel_raw_mps2[2];
+
+    angularVelocity.x = processed.gyro_rads[0];
+    angularVelocity.y = processed.gyro_rads[1];
+    angularVelocity.z = processed.gyro_rads[2];
+
+    msg.angular_velocity_covariance.fill(0.0);
+    msg.linear_acceleration_covariance.fill(0.0);
+  };
+
+  sensor_msgs::msg::Imu imuMsg;
+
+  fillImuMsg(imuMsg);
+
+  m_imuPublisher->publish(imuMsg);
 }
