@@ -38,34 +38,51 @@ ImuTemperature::Sample ImuTemperature::ProcessRaw(int16_t tempRaw, double dt_s)
 
   sample.temperatureC = static_cast<double>(tempRaw) * kTempScale + kTempOffsetC;
 
-  if (m_count < 2)
+  m_raw[m_rawIndex] = tempRaw;
+  m_rawIndex = (m_rawIndex + 1) % kRawHistory;
+  if (m_rawCount < kRawHistory)
   {
-    if (m_count == 0)
-    {
-      m_r2 = tempRaw;
-    }
-    else
-    {
-      m_r1 = m_r2;
-      m_r2 = tempRaw;
-    }
-    ++m_count;
+    ++m_rawCount;
+  }
+
+  if (m_rawCount < 3)
+  {
     sample.varianceC2 = m_minVarianceC2;
     return sample;
   }
 
-  m_r0 = m_r1;
-  m_r1 = m_r2;
-  m_r2 = tempRaw;
+  const std::size_t idx2 = (m_rawIndex + kRawHistory - 1) % kRawHistory;
+  const std::size_t idx1 = (m_rawIndex + kRawHistory - 2) % kRawHistory;
+  const std::size_t idx0 = (m_rawIndex + kRawHistory - 3) % kRawHistory;
 
-  const int32_t d2 =
-      static_cast<int32_t>(m_r2) - 2 * static_cast<int32_t>(m_r1) + static_cast<int32_t>(m_r0);
+  const int32_t r2 = static_cast<int32_t>(m_raw[idx2]);
+  const int32_t r1 = static_cast<int32_t>(m_raw[idx1]);
+  const int32_t r0 = static_cast<int32_t>(m_raw[idx0]);
+
+  const int32_t d2 = r2 - 2 * r1 + r0;
 
   // Denominator 6.0 derives from Var(d2) = 6 * sigma^2 for white measurement noise.
   const double var_counts2_instant = (static_cast<double>(d2) * static_cast<double>(d2)) / 6.0;
 
+  if (m_varCount < kVarHistory)
+  {
+    m_varCounts2Instant[m_varIndex] = var_counts2_instant;
+    m_varSumCounts2Instant += var_counts2_instant;
+    ++m_varCount;
+  }
+  else
+  {
+    m_varSumCounts2Instant -= m_varCounts2Instant[m_varIndex];
+    m_varCounts2Instant[m_varIndex] = var_counts2_instant;
+    m_varSumCounts2Instant += var_counts2_instant;
+  }
+  m_varIndex = (m_varIndex + 1) % kVarHistory;
+
+  const double mean_var_counts2_instant =
+      (m_varCount > 0) ? (m_varSumCounts2Instant / static_cast<double>(m_varCount)) : 0.0;
+
   const double dt = std::clamp(dt_s, kMinDtS, kMaxDtS);
-  const double var_rate_counts2_per_s = var_counts2_instant / dt;
+  const double var_rate_counts2_per_s = mean_var_counts2_instant / dt;
   const double var_counts2 = var_rate_counts2_per_s * kNominalDtS;
   const double var_c2 = var_counts2 * (kTempScale * kTempScale);
 
@@ -82,9 +99,12 @@ void ImuTemperature::SetMinStdDev(double min_stddev_c)
 
 void ImuTemperature::Reset()
 {
-  m_r0 = 0;
-  m_r1 = 0;
-  m_r2 = 0;
-  m_count = 0;
+  m_raw.fill(0);
+  m_varCounts2Instant.fill(0.0);
+  m_rawIndex = 0;
+  m_varIndex = 0;
+  m_rawCount = 0;
+  m_varCount = 0;
+  m_varSumCounts2Instant = 0.0;
 }
 } // namespace OASIS::IMU

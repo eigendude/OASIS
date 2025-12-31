@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 
@@ -40,17 +41,29 @@ public:
   void Reset();
 
 private:
-  // Oldest raw temperature sample x[n-2] in MPU6050 counts.
-  int16_t m_r0{0};
+  static constexpr std::size_t kRawHistory = 16;
+  static constexpr std::size_t kVarHistory = 16;
 
-  // Middle raw temperature sample x[n-1] in MPU6050 counts.
-  int16_t m_r1{0};
+  // Raw temperature samples in MPU6050 counts (ring buffer).
+  std::array<int16_t, kRawHistory> m_raw{};
 
-  // Newest raw temperature sample x[n] in MPU6050 counts.
-  int16_t m_r2{0};
+  // Second-difference variance estimates in raw counts^2 (ring buffer).
+  std::array<double, kVarHistory> m_varCounts2Instant{};
 
-  // Number of raw samples captured, capped at 3.
-  std::size_t m_count{0};
+  // Next index to write in the raw sample ring buffer.
+  std::size_t m_rawIndex{0};
+
+  // Next index to write in the variance ring buffer.
+  std::size_t m_varIndex{0};
+
+  // Number of raw samples captured, capped at kRawHistory.
+  std::size_t m_rawCount{0};
+
+  // Number of variance samples captured, capped at kVarHistory.
+  std::size_t m_varCount{0};
+
+  // Running sum of variance samples in counts^2 for fast averaging.
+  double m_varSumCounts2Instant{0.0};
 
   // Minimum temperature variance in (degrees Celsius)^2.
   double m_minVarianceC2{(0.02 * 0.02)};
