@@ -8,9 +8,6 @@
 
 #include "imu/ImuTemperature.h"
 
-#include <algorithm>
-#include <cmath>
-
 namespace OASIS::IMU
 {
 namespace
@@ -21,42 +18,44 @@ constexpr double kTempOffsetC = 36.53;
 
 ImuTemperature::Sample ImuTemperature::ProcessRaw(int16_t tempRaw, double dt_s)
 {
+  (void)dt_s;
   Sample sample{};
 
   // MPU6050 datasheet formula: Temp(°C) = (TEMP_OUT / 340) + 36.53
   sample.temperature_c = static_cast<double>(tempRaw) * kTempScale + kTempOffsetC;
 
-  if (!m_hasSample)
+  if (!m_hasX1)
   {
-    m_meanC = sample.temperature_c;
-    m_varianceC2 = 0.0;
-    m_hasSample = true;
-    sample.variance_c2 = m_varianceC2;
+    m_x1 = sample.temperature_c;
+    m_hasX1 = true;
+    sample.variance_c2 = 0.0;
     return sample;
   }
 
-  const double clampedDt = std::max(dt_s, 0.0);
-  const double alpha = (m_timeConstantS > 0.0 && clampedDt > 0.0)
-                           ? (1.0 - std::exp(-clampedDt / m_timeConstantS))
-                           : 0.0;
-  const double delta = sample.temperature_c - m_meanC;
+  if (!m_hasX2)
+  {
+    m_x2 = m_x1;
+    m_x1 = sample.temperature_c;
+    m_hasX2 = true;
+    sample.variance_c2 = 0.0;
+    return sample;
+  }
 
-  m_meanC += alpha * delta;
-  m_varianceC2 = (1.0 - alpha) * (m_varianceC2 + alpha * delta * delta);
-  sample.variance_c2 = m_varianceC2;
+  const double d2 = sample.temperature_c - 2.0 * m_x1 + m_x2;
+  // Denominator 6.0 derives from Var(d2) = 6*sigma^2 for white measurement noise.
+  sample.variance_c2 = (d2 * d2) / 6.0;
+
+  m_x2 = m_x1;
+  m_x1 = sample.temperature_c;
 
   return sample;
 }
 
 void ImuTemperature::Reset()
 {
-  m_meanC = 0.0;
-  m_varianceC2 = 0.0;
-  m_hasSample = false;
-}
-
-void ImuTemperature::SetTimeConstant(double time_constant_s)
-{
-  m_timeConstantS = std::max(time_constant_s, 0.0);
+  m_hasX1 = false;
+  m_hasX2 = false;
+  m_x1 = 0.0;
+  m_x2 = 0.0;
 }
 } // namespace OASIS::IMU

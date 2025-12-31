@@ -8,7 +8,6 @@
 
 #pragma once
 
-#include <cstddef>
 #include <cstdint>
 
 namespace OASIS::IMU
@@ -21,7 +20,7 @@ public:
     // Temperature in degrees Celsius, computed from the raw sensor reading
     double temperature_c{0.0};
 
-    // Temperature variance in (degrees Celsius)^2, computed from running samples
+    // Temperature noise variance in (degrees Celsius)^2, computed from a 2nd-difference residual
     double variance_c2{0.0};
   };
 
@@ -29,12 +28,11 @@ public:
 
   Sample ProcessRaw(int16_t tempRaw, double dt_s);
   void Reset();
-  void SetTimeConstant(double time_constant_s);
 
 private:
-  double m_meanC{0.0};
-  double m_varianceC2{0.0};
-  double m_timeConstantS{30.0};
-  bool m_hasSample{false};
+  bool m_hasX1{false};
+  bool m_hasX2{false};
+  double m_x1{0.0};
+  double m_x2{0.0};
 };
 } // namespace OASIS::IMU
