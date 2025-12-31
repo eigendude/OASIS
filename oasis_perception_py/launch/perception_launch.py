@@ -106,6 +106,7 @@ def generate_launch_description() -> LaunchDescription:
             image_transport="raw",
         )
 
+        """
         # Pose landmarking
         PerceptionDescriptions.add_pose_landmarker(
             ld,
@@ -114,9 +115,10 @@ def generate_launch_description() -> LaunchDescription:
             input_resolution="sd",
             image_transport="raw",
         )
+        """
 
         # Monocular SLAM
-        PerceptionDescriptions.add_monocular_slam(
+        PerceptionDescriptions.add_monocular_inertial_slam(
             composable_nodes,
             ["falcon"],
             image_transport="raw",
