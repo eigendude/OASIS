@@ -27,9 +27,5 @@ public:
 
   // Returns the gyroscope scale in radians per second per count.
   static double GyroScaleFromRange(uint8_t range);
-
-private:
-  double m_accelScale{0.0};
-  double m_gyroScale{0.0};
 };
 } // namespace OASIS::IMU

@@ -214,29 +214,39 @@ void Mpu6050Node::PublishImu()
   auto fillImuMsg =
       [&](sensor_msgs::msg::Imu& imuMsg, const IMU::Mpu6050ImuProcessor::ImuSample& sample)
   {
+    // Header
     imuMsg.header = headerMsg;
 
-    geometry_msgs::msg::Vector3& angularVelocity = imuMsg.angular_velocity;
-    geometry_msgs::msg::Vector3& linearAcceleration = imuMsg.linear_acceleration;
+    // Linear acceleration
+    imuMsg.linear_acceleration.x = sample.accel_mps2[0];
+    imuMsg.linear_acceleration.y = sample.accel_mps2[1];
+    imuMsg.linear_acceleration.z = sample.accel_mps2[2];
 
-    linearAcceleration.x = sample.accel_mps2[0];
-    linearAcceleration.y = sample.accel_mps2[1];
-    linearAcceleration.z = sample.accel_mps2[2];
+    // Angular velocity
+    imuMsg.angular_velocity.x = sample.gyro_rads[0];
+    imuMsg.angular_velocity.y = sample.gyro_rads[1];
+    imuMsg.angular_velocity.z = sample.gyro_rads[2];
 
-    angularVelocity.x = sample.gyro_rads[0];
-    angularVelocity.y = sample.gyro_rads[1];
-    angularVelocity.z = sample.gyro_rads[2];
+    // Orientation not provided, set identity
+    imuMsg.orientation.x = 0.0;
+    imuMsg.orientation.y = 0.0;
+    imuMsg.orientation.z = 0.0;
+    imuMsg.orientation.w = 1.0;
 
+    // Covariances: initialize all to zero, then set diagonals
     imuMsg.orientation_covariance.fill(0.0);
-    imuMsg.orientation_covariance[0] = -1.0;
-
     imuMsg.linear_acceleration_covariance.fill(0.0);
     imuMsg.angular_velocity_covariance.fill(0.0);
 
+    // Orientation not estimated (set [0,0] to -1 per REP-145)
+    imuMsg.orientation_covariance[0] = -1.0;
+
+    // Linear acceleration covariance (diagonal)
     imuMsg.linear_acceleration_covariance[0] = sample.accel_var_mps2_2[0];
     imuMsg.linear_acceleration_covariance[4] = sample.accel_var_mps2_2[1];
     imuMsg.linear_acceleration_covariance[8] = sample.accel_var_mps2_2[2];
 
+    // Angular velocity covariance (diagonal)
     imuMsg.angular_velocity_covariance[0] = sample.gyro_var_rads2_2[0];
     imuMsg.angular_velocity_covariance[4] = sample.gyro_var_rads2_2[1];
     imuMsg.angular_velocity_covariance[8] = sample.gyro_var_rads2_2[2];
@@ -245,9 +255,8 @@ void Mpu6050Node::PublishImu()
   // imu_raw: direct sensor measurements with measurement-noise covariances.
   fillImuMsg(imuRawMsg, processed.imu_raw);
 
-  // imu: calibrated stream for ORB-SLAM3 (frame-aligned, gyro bias
-  // handled). Acceleration retains gravity because ORB-SLAM3 expects
-  // specific force.
+  // imu: calibrated stream for ORB-SLAM3. Acceleration retains gravity
+  // because ORB-SLAM3 expects specific force.
   fillImuMsg(imuMsg, processed.imu);
 
   m_imuPublisher->publish(imuMsg);

@@ -20,13 +20,26 @@ using namespace OASIS::IMU;
 
 namespace
 {
-constexpr double kNoiseAlpha = 0.05; // Exponential smoothing for noise.
-constexpr double kNoiseFloor = 1e-6; // Prevent zero variance in early boot.
-constexpr double kSaveCooldownSeconds = 1.0; // Autosave guard.
-constexpr double kBiasAlpha = 0.001; // Slow IIR for gyro bias removal.
-constexpr double kSigmaMeanFloor = 0.002; // Floor for gyro mean sigma (rad/s).
-constexpr size_t kMinClusters = 10; // Minimum clusters before attempting a fit.
-constexpr double kSpreadThreshold = 0.3; // Directional spread gate for fitting.
+// Exp smoothing alpha for noise (EMA weight on new samples; higher = faster)
+constexpr double kNoiseAlpha = 0.05;
+
+// Variance floor during early boot (avoid zero/denorm variance before stats settle)
+constexpr double kNoiseFloor = 1e-6;
+
+// Autosave cooldown (s) to rate-limit writes and avoid thrash on small updates
+constexpr double kSaveCooldownSeconds = 1.0;
+
+// Slow IIR alpha for gyro bias (long time constant; tracks drift, not motion)
+constexpr double kBiasAlpha = 0.001;
+
+// Gyro mean-sigma floor (rad/s) to prevent overconfidence when variance collapses
+constexpr double kSigmaMeanFloor = 0.002;
+
+// Min clusters required to fit (skip model estimation until data is non-trivial)
+constexpr size_t kMinClusters = 10;
+
+// Directional spread gate for fit (require enough angular diversity to be stable)
+constexpr double kSpreadThreshold = 0.3;
 
 // Utility helpers for small fixed-size vectors/matrices
 std::array<double, 3> Subtract(const std::array<double, 3>& a, const std::array<double, 3>& b)

@@ -10,4 +10,6 @@
 - **Document public structs/interfaces**: any public `struct`/`enum` must have brief field docs (meaning + units + expected range + how it’s computed/used), so downstream users can treat it as a contract.
 - **Minimize hidden coupling**: avoid implicit dependencies on global state/time/ROS clocks; pass time stamps and configuration explicitly.
 - **Document mathematical parameters**: any constant/denominator/derived factor in algorithms must be documented with its meaning or derivation. Math explanations can be dense, so try to use comment style and whitespace to optimize readability.
-* Wrap comments at 80 chars
+- Wrap comments at 80 chars
+- **Math params**: comment on the line above (units + meaning and derivation); no end-of-line comments; blank line between blocks.
+- Comments: If only one sentence, don't use a trailing period. 2 or more sentences can use periods in comments.
