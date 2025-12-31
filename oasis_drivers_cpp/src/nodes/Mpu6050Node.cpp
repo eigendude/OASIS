@@ -194,12 +194,12 @@ void Mpu6050Node::PublishImu()
   sensor_msgs::msg::Temperature temperatureMsg;
 
   temperatureMsg.header = headerMsg;
-  temperatureMsg.temperature = tempSample.temperature_c;
-  temperatureMsg.variance = tempSample.variance_c2;
+  temperatureMsg.temperature = tempSample.temperatureC;
+  temperatureMsg.variance = tempSample.varianceC2;
 
   m_imuTemperaturePublisher->publish(temperatureMsg);
 
   // Log data
   RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000, "IMU: |a|=%.3f m/s^2, temp=%.2fC",
-                       raw_accel_norm_mps2, tempSample.temperature_c);
+                       raw_accel_norm_mps2, tempSample.temperatureC);
 }
