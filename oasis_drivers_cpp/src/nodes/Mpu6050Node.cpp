@@ -140,20 +140,21 @@ void Mpu6050Node::PublishImu()
   const double dt_s = m_lastSampleTime ? (now - *m_lastSampleTime).seconds() : 0.0;
   m_lastSampleTime = now;
 
-  // Create header for published messages
-  std_msgs::msg::Header headerMsg;
-  headerMsg.stamp = now;
-  headerMsg.frame_id = FRAME_ID;
+  // Get scales
+  const double accelScale = m_imuProcessor.GetAccelScale();
+  const double gyroScale = m_imuProcessor.GetGyroScale();
+
+  // Quantization noise variance for a uniform distribution over one LSB.
+  const double varAccel = (accelScale * accelScale) / 12.0;
+  const double varGyro = (gyroScale * gyroScale) / 12.0;
 
   // Process motion
   const auto processed = m_imuProcessor.ProcessRaw(ax, ay, az, gx, gy, gz);
 
-  const double raw_accel_norm_lsb = std::sqrt(static_cast<double>(ax) * static_cast<double>(ax) +
-                                              static_cast<double>(ay) * static_cast<double>(ay) +
-                                              static_cast<double>(az) * static_cast<double>(az));
-  const double accel_scale = m_imuProcessor.GetAccelScale();
-  const double gyro_scale = m_imuProcessor.GetGyroScale();
-  const double raw_accel_norm_mps2 = raw_accel_norm_lsb * accel_scale;
+  // Create header for published messages
+  std_msgs::msg::Header headerMsg;
+  headerMsg.stamp = now;
+  headerMsg.frame_id = FRAME_ID;
 
   // Publish motion
   sensor_msgs::msg::Imu imuMsg;
@@ -174,30 +175,23 @@ void Mpu6050Node::PublishImu()
     angularVelocity.y = processed.gyro_rads[1];
     angularVelocity.z = processed.gyro_rads[2];
 
-    imuMsg.angular_velocity_covariance.fill(0.0);
+    imuMsg.orientation_covariance.fill(0.0);
+    imuMsg.orientation_covariance[0] = -1.0;
+
     imuMsg.linear_acceleration_covariance.fill(0.0);
+    imuMsg.linear_acceleration_covariance[0] = varAccel;
+    imuMsg.linear_acceleration_covariance[4] = varAccel;
+    imuMsg.linear_acceleration_covariance[8] = varAccel;
+
+    imuMsg.angular_velocity_covariance.fill(0.0);
+    imuMsg.angular_velocity_covariance[0] = varGyro;
+    imuMsg.angular_velocity_covariance[4] = varGyro;
+    imuMsg.angular_velocity_covariance[8] = varGyro;
   };
 
   // TODO: The IMU messages will be different
   fillImuMsg(imuMsg);
   fillImuMsg(imuRawMsg);
-
-  // Quantization noise variance for a uniform distribution over one LSB.
-  const double var_accel = (accel_scale * accel_scale) / 12.0;
-  const double var_gyro = (gyro_scale * gyro_scale) / 12.0;
-
-  imuRawMsg.orientation_covariance.fill(0.0);
-  imuRawMsg.orientation_covariance[0] = -1.0;
-
-  imuRawMsg.linear_acceleration_covariance.fill(0.0);
-  imuRawMsg.linear_acceleration_covariance[0] = var_accel;
-  imuRawMsg.linear_acceleration_covariance[4] = var_accel;
-  imuRawMsg.linear_acceleration_covariance[8] = var_accel;
-
-  imuRawMsg.angular_velocity_covariance.fill(0.0);
-  imuRawMsg.angular_velocity_covariance[0] = var_gyro;
-  imuRawMsg.angular_velocity_covariance[4] = var_gyro;
-  imuRawMsg.angular_velocity_covariance[8] = var_gyro;
 
   m_imuPublisher->publish(imuMsg);
   m_imuRawPublisher->publish(imuRawMsg);
@@ -218,6 +212,10 @@ void Mpu6050Node::PublishImu()
   m_imuTemperaturePublisher->publish(temperatureMsg);
 
   // Log data
+  const double raw_accel_norm_lsb = std::sqrt(static_cast<double>(ax) * static_cast<double>(ax) +
+                                              static_cast<double>(ay) * static_cast<double>(ay) +
+                                              static_cast<double>(az) * static_cast<double>(az));
+  const double raw_accel_norm_mps2 = raw_accel_norm_lsb * accelScale;
   RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000, "IMU: |a|=%.3f m/s^2, temp=%.2fC",
                        raw_accel_norm_mps2, tempSample.temperatureC);
 }
