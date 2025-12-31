@@ -143,7 +143,7 @@ void Mpu6050Node::PublishImu()
   m_lastSampleTime = now;
 
   // Process motion
-  const auto processed = m_imuProcessor.ProcessRaw(ax, ay, az, gx, gy, gz);
+  const auto processed = m_imuProcessor.ProcessRaw(ax, ay, az, gx, gy, gz, dt_s);
 
   // Create header for published messages
   std_msgs::msg::Header headerMsg;
@@ -173,14 +173,15 @@ void Mpu6050Node::PublishImu()
     imuMsg.orientation_covariance[0] = -1.0;
 
     imuMsg.linear_acceleration_covariance.fill(0.0);
-    imuMsg.linear_acceleration_covariance[0] = processed.accel_variance_mps2[0];
-    imuMsg.linear_acceleration_covariance[4] = processed.accel_variance_mps2[1];
-    imuMsg.linear_acceleration_covariance[8] = processed.accel_variance_mps2[2];
-
     imuMsg.angular_velocity_covariance.fill(0.0);
-    imuMsg.angular_velocity_covariance[0] = processed.gyro_variance_rads[0];
-    imuMsg.angular_velocity_covariance[4] = processed.gyro_variance_rads[1];
-    imuMsg.angular_velocity_covariance[8] = processed.gyro_variance_rads[2];
+
+    imuMsg.linear_acceleration_covariance[0] = processed.accel_var_mps2_2[0];
+    imuMsg.linear_acceleration_covariance[4] = processed.accel_var_mps2_2[1];
+    imuMsg.linear_acceleration_covariance[8] = processed.accel_var_mps2_2[2];
+
+    imuMsg.angular_velocity_covariance[0] = processed.gyro_var_rads2_2[0];
+    imuMsg.angular_velocity_covariance[4] = processed.gyro_var_rads2_2[1];
+    imuMsg.angular_velocity_covariance[8] = processed.gyro_var_rads2_2[2];
   };
 
   // TODO: The IMU messages will be different
