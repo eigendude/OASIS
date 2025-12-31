@@ -181,6 +181,32 @@ void Mpu6050Node::PublishImu()
                 m_calibrationCachePath.c_str());
   }
 
+  if (m_calibrationMode)
+  {
+    static double last_log_s = 0.0;
+    if (timestamp_s - last_log_s >= 1.0)
+    {
+      last_log_s = timestamp_s;
+
+      const auto& st = processed.calibration_status;
+      const auto& raw = processed.imu_raw;
+      const double accel_norm = std::sqrt(raw.accel_mps2[0] * raw.accel_mps2[0] +
+                                          raw.accel_mps2[1] * raw.accel_mps2[1] +
+                                          raw.accel_mps2[2] * raw.accel_mps2[2]);
+
+      RCLCPP_INFO(get_logger(),
+                  "Cal: stationary=%d clusters=%zu samples=%zu axis_cov=%d solved=%d "
+                  "wrote=%d |a|=%.3f",
+                  st.stationary,
+                  st.num_clusters,
+                  st.num_pose_samples,
+                  st.has_axis_coverage,
+                  st.has_solution,
+                  st.wrote_cache,
+                  accel_norm);
+    }
+  }
+
   // Create header for published messages
   std_msgs::msg::Header headerMsg;
   headerMsg.stamp = now;
