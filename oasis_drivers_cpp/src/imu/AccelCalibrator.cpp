@@ -29,8 +29,8 @@ constexpr double kNoiseFloor = 1e-6;
 // Exp smoothing alpha for baseline rest noise (slow to avoid motion)
 constexpr double kBaselineNoiseAlpha = 0.01;
 
-// Number of stationary windows required before freezing the baseline noise
-constexpr size_t kMinBaselineWindows = 200;
+// Number of stationary samples required before freezing the baseline noise
+constexpr size_t kMinBaselineSamples = 200;
 
 // Autosave cooldown (s) to rate-limit writes and avoid thrash on small updates
 constexpr double kSaveCooldownSeconds = 1.0;
@@ -347,7 +347,9 @@ AccelCalibrator::Calibration ParseCalibration(const YAML::Node& root)
   const auto noise_fit = root["noise_fit"];
   if (noise_fit)
   {
-    calib.noise_stationary_windows = noise_fit["stationary_windows"].as<size_t>(0);
+    calib.noise_stationary_samples = noise_fit["stationary_samples"].as<size_t>(0);
+    if (calib.noise_stationary_samples == 0)
+      calib.noise_stationary_samples = noise_fit["stationary_windows"].as<size_t>(0);
     calib.noise_method = noise_fit["method"].as<std::string>("");
   }
 
@@ -421,10 +423,10 @@ YAML::Node SerializeCalibration(const AccelCalibrator::Calibration& calib)
   fit_quality["num_samples"] = calib.num_samples;
   root["fit_quality"] = fit_quality;
 
-  if (calib.noise_stationary_windows > 0 || !calib.noise_method.empty())
+  if (calib.noise_stationary_samples > 0 || !calib.noise_method.empty())
   {
     YAML::Node noise_fit;
-    noise_fit["stationary_windows"] = calib.noise_stationary_windows;
+    noise_fit["stationary_samples"] = calib.noise_stationary_samples;
     noise_fit["method"] = calib.noise_method;
     root["noise_fit"] = noise_fit;
   }
@@ -440,6 +442,26 @@ void AccelCalibrator::Configure(const Config& config,
   m_config = config;
   m_cache_path = cache_path;
   m_frame_id = frame_id;
+}
+
+std::array<double, 3> AccelCalibrator::GetBaselineAccelNoiseStddev() const
+{
+  std::array<double, 3> accel_noise_stddev{0.0, 0.0, 0.0};
+
+  for (size_t axis = 0; axis < 3; ++axis)
+    accel_noise_stddev[axis] = std::sqrt(std::max(m_baseline_accel_var[axis], kNoiseFloor));
+
+  return accel_noise_stddev;
+}
+
+std::array<double, 3> AccelCalibrator::GetBaselineGyroNoiseStddev() const
+{
+  std::array<double, 3> gyro_noise_stddev{0.0, 0.0, 0.0};
+
+  for (size_t axis = 0; axis < 3; ++axis)
+    gyro_noise_stddev[axis] = std::sqrt(std::max(m_baseline_gyro_var[axis], kNoiseFloor));
+
+  return gyro_noise_stddev;
 }
 
 void AccelCalibrator::Reset()
@@ -480,14 +502,23 @@ bool AccelCalibrator::LoadCache()
     m_noise_stddev_accel = calib.accel_noise_stddev_mps2;
     m_noise_stddev_gyro = calib.gyro_noise_stddev_rads;
     m_noise_initialized = true;
-    m_baseline_noise_valid = true;
-    m_stationary_noise_samples = calib.noise_stationary_windows;
-    for (size_t axis = 0; axis < 3; ++axis)
+    const bool baseline_from_cache = calib.noise_method == "rest_baseline";
+    m_baseline_noise_valid = baseline_from_cache;
+    m_stationary_noise_samples = baseline_from_cache ? calib.noise_stationary_samples : 0;
+    if (baseline_from_cache)
     {
-      m_baseline_accel_var[axis] =
-          calib.accel_noise_stddev_mps2[axis] * calib.accel_noise_stddev_mps2[axis];
-      m_baseline_gyro_var[axis] =
-          calib.gyro_noise_stddev_rads[axis] * calib.gyro_noise_stddev_rads[axis];
+      for (size_t axis = 0; axis < 3; ++axis)
+      {
+        m_baseline_accel_var[axis] =
+            calib.accel_noise_stddev_mps2[axis] * calib.accel_noise_stddev_mps2[axis];
+        m_baseline_gyro_var[axis] =
+            calib.gyro_noise_stddev_rads[axis] * calib.gyro_noise_stddev_rads[axis];
+      }
+    }
+    else
+    {
+      m_baseline_accel_var = {0.0, 0.0, 0.0};
+      m_baseline_gyro_var = {0.0, 0.0, 0.0};
     }
     return true;
   }
@@ -601,7 +632,7 @@ void AccelCalibrator::UpdateBaselineNoise(const WindowSample& stats)
 
   ++m_stationary_noise_samples;
 
-  if (m_stationary_noise_samples >= kMinBaselineWindows)
+  if (m_stationary_noise_samples >= kMinBaselineSamples)
   {
     m_baseline_noise_valid = true;
     if (m_calibration)
@@ -614,7 +645,7 @@ void AccelCalibrator::UpdateBaselineNoise(const WindowSample& stats)
             std::sqrt(std::max(m_baseline_gyro_var[axis], kNoiseFloor));
       }
 
-      m_calibration->noise_stationary_windows = m_stationary_noise_samples;
+      m_calibration->noise_stationary_samples = m_stationary_noise_samples;
       m_calibration->noise_method = "rest_baseline";
     }
   }
@@ -979,7 +1010,7 @@ bool AccelCalibrator::FitEllipsoid()
   calib.W = MultiplyATransposeA(A);
   calib.center_mps2 = bias;
 
-  const bool has_baseline = m_stationary_noise_samples > 0;
+  const bool has_baseline = m_baseline_noise_valid;
 
   std::array<double, 3> accel_noise_stddev = m_noise_stddev_accel;
   std::array<double, 3> gyro_noise_stddev = m_noise_stddev_gyro;
@@ -995,7 +1026,7 @@ bool AccelCalibrator::FitEllipsoid()
 
   calib.accel_noise_stddev_mps2 = accel_noise_stddev;
   calib.gyro_noise_stddev_rads = gyro_noise_stddev;
-  calib.noise_stationary_windows = m_baseline_noise_valid ? m_stationary_noise_samples : 0;
+  calib.noise_stationary_samples = m_baseline_noise_valid ? m_stationary_noise_samples : 0;
   calib.noise_method = m_baseline_noise_valid ? "rest_baseline" : "";
 
   calib.num_clusters = m_clusters.size();
