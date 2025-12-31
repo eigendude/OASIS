@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <array>
+#include <filesystem>
 
 using namespace OASIS::IMU;
 
@@ -47,10 +48,39 @@ void Mpu6050ImuProcessor::Reset()
   m_accelNoise.Reset();
   m_gyroNoise.Reset();
   m_gyroBiasEstimator.Reset();
+  m_accelCalibrator.Reset();
 }
 
-Mpu6050ImuProcessor::ProcessedOutputs Mpu6050ImuProcessor::ProcessRaw(
-    int16_t ax, int16_t ay, int16_t az, int16_t gx, int16_t gy, int16_t gz, double dt_s)
+void Mpu6050ImuProcessor::ConfigureCalibration(const std::filesystem::path& cachePath,
+                                               const std::string& frameId)
+{
+  m_calibrationCachePath = cachePath;
+  m_calibrationFrameId = frameId;
+
+  AccelCalibrator::Config config{};
+  config.gravity_mps2 = m_gravity;
+  m_accelCalibrator.Configure(config, m_calibrationCachePath, m_calibrationFrameId);
+}
+
+bool Mpu6050ImuProcessor::LoadCachedCalibration()
+{
+  return m_accelCalibrator.LoadCache();
+}
+
+void Mpu6050ImuProcessor::SetCalibrationMode(bool enabled)
+{
+  m_accelCalibrator.SetCalibrationMode(enabled);
+}
+
+Mpu6050ImuProcessor::ProcessedOutputs Mpu6050ImuProcessor::ProcessRaw(int16_t ax,
+                                                                      int16_t ay,
+                                                                      int16_t az,
+                                                                      int16_t gx,
+                                                                      int16_t gy,
+                                                                      int16_t gz,
+                                                                      double dt_s,
+                                                                      double temperature_c,
+                                                                      double timestamp_s)
 {
   ProcessedOutputs outputs{};
 
@@ -96,9 +126,18 @@ Mpu6050ImuProcessor::ProcessedOutputs Mpu6050ImuProcessor::ProcessRaw(
   // Update gyro bias
   m_gyroBiasEstimator.Update(gyro_body_rads, accel_body_mps2, m_gravity);
 
+  // Run calibration logic (stationary detection, ellipsoid fit, autosave)
+  AccelCalibrator::Sample sample{};
+  sample.accel_mps2 = accel_body_mps2;
+  sample.gyro_rads = gyro_body_rads;
+  sample.accel_var_mps2_2 = accel_var_body_mps2_2;
+  sample.gyro_var_rads2_2 = gyro_var_body_rads2_2;
+  sample.temperature_c = temperature_c;
+  sample.timestamp_s = timestamp_s;
+  outputs.calibration_status = m_accelCalibrator.Update(sample);
+
   // Record calibrated measurements
-  // TODO
-  outputs.imu.accel_mps2 = accel_body_mps2;
+  outputs.imu.accel_mps2 = m_accelCalibrator.Apply(accel_body_mps2);
   outputs.imu.gyro_rads = gyro_body_rads;
   outputs.imu.accel_var_mps2_2 = accel_var_body_mps2_2;
   outputs.imu.gyro_var_rads2_2 = gyro_var_body_rads2_2;
