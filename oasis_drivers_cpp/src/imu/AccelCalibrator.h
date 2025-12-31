@@ -115,7 +115,7 @@ public:
     size_t num_samples{0};
 
     // Noise fit metadata
-    size_t noise_stationary_windows{0};
+    size_t noise_stationary_samples{0};
     std::string noise_method;
 
     // Temperature summary of samples used for the fit
@@ -198,6 +198,12 @@ public:
   const std::array<double, 3>& GetAccelNoiseStddev() const { return m_noise_stddev_accel; }
 
   const std::array<double, 3>& GetGyroNoiseStddev() const { return m_noise_stddev_gyro; }
+
+  bool HasBaselineNoise() const { return m_baseline_noise_valid; }
+
+  std::array<double, 3> GetBaselineAccelNoiseStddev() const;
+
+  std::array<double, 3> GetBaselineGyroNoiseStddev() const;
 
 private:
   struct Cluster
