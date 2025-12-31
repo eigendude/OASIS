@@ -130,6 +130,12 @@ public:
     // True when enough coverage exists to solve the ellipsoid.
     bool has_axis_coverage{false};
 
+    // Number of pose clusters accumulated for the fit.
+    size_t num_clusters{0};
+
+    // Total pose samples merged into clusters.
+    size_t num_pose_samples{0};
+
     // True when a calibration matrix has been solved.
     bool has_solution{false};
 
@@ -203,9 +209,10 @@ private:
   };
 
   void UpdateNoiseEstimates(const Sample& sample);
-  bool DetectStationary(const Sample& sample, const WindowSample& stats) const;
+  bool DetectStationary(const Sample& sample, const WindowSample& stats);
   void MergePose(const Sample& sample, const WindowSample& stats);
   bool HasAxisCoverage() const;
+  double ComputeDirectionalSpread() const;
   bool FitEllipsoid();
   bool SaveCache(const Sample& sample);
 
@@ -232,5 +239,9 @@ private:
   std::optional<Calibration> m_calibration;
   bool m_dirty{false};
   double m_last_save_time_s{0.0};
+
+  // Slow gyro bias used to de-bias the mean gate for stationary detection.
+  std::array<double, 3> m_gyro_bias_iir{0.0, 0.0, 0.0};
+  bool m_gyro_bias_iir_init{false};
 };
 } // namespace OASIS::IMU

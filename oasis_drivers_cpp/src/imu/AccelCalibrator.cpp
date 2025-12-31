@@ -23,6 +23,10 @@ namespace
 constexpr double kNoiseAlpha = 0.05; // Exponential smoothing for noise.
 constexpr double kNoiseFloor = 1e-6; // Prevent zero variance in early boot.
 constexpr double kSaveCooldownSeconds = 1.0; // Autosave guard.
+constexpr double kBiasAlpha = 0.001; // Slow IIR for gyro bias removal.
+constexpr double kSigmaMeanFloor = 0.002; // Floor for gyro mean sigma (rad/s).
+constexpr size_t kMinClusters = 10; // Minimum clusters before attempting a fit.
+constexpr double kSpreadThreshold = 0.3; // Directional spread gate for fitting.
 
 // Utility helpers for small fixed-size vectors/matrices
 std::array<double, 3> Subtract(const std::array<double, 3>& a, const std::array<double, 3>& b)
@@ -410,6 +414,8 @@ void AccelCalibrator::Reset()
   m_calibration.reset();
   m_dirty = false;
   m_last_save_time_s = 0.0;
+  m_gyro_bias_iir = {0.0, 0.0, 0.0};
+  m_gyro_bias_iir_init = false;
 }
 
 bool AccelCalibrator::LoadCache()
@@ -468,11 +474,22 @@ AccelCalibrator::UpdateStatus AccelCalibrator::Update(const Sample& sample)
   status.stationary = DetectStationary(sample, stats);
 
   if (m_calibration_mode && status.stationary)
-  {
     MergePose(sample, stats);
-    status.has_axis_coverage = HasAxisCoverage();
 
-    if (status.has_axis_coverage)
+  status.num_clusters = m_clusters.size();
+  status.num_pose_samples = m_total_pose_samples;
+  status.has_axis_coverage = HasAxisCoverage();
+
+  if (m_calibration_mode && status.stationary)
+  {
+    const size_t param_count = 9;
+    const size_t required_clusters =
+        std::max(kMinClusters, param_count + static_cast<size_t>(6));
+    const bool enough_clusters = m_clusters.size() >= required_clusters;
+    const double spread = ComputeDirectionalSpread();
+    const bool has_spread = spread > kSpreadThreshold;
+
+    if (enough_clusters && has_spread)
     {
       status.has_solution = FitEllipsoid();
       if (status.has_solution)
@@ -498,45 +515,75 @@ void AccelCalibrator::UpdateNoiseEstimates(const Sample& sample)
 
   for (size_t axis = 0; axis < 3; ++axis)
   {
-    const double accel_sigma = std::sqrt(std::max(sample.accel_var_mps2_2[axis], kNoiseFloor));
-    const double gyro_sigma = std::sqrt(std::max(sample.gyro_var_rads2_2[axis], kNoiseFloor));
-    m_noise_stddev_accel[axis] = update_axis(m_noise_stddev_accel[axis], accel_sigma);
+    const double accel_sigma =
+        std::sqrt(std::max(sample.accel_var_mps2_2[axis], kNoiseFloor));
+    const double gyro_sigma =
+        std::sqrt(std::max(sample.gyro_var_rads2_2[axis], kNoiseFloor));
+    m_noise_stddev_accel[axis] =
+        update_axis(m_noise_stddev_accel[axis], accel_sigma);
     m_noise_stddev_gyro[axis] = update_axis(m_noise_stddev_gyro[axis], gyro_sigma);
   }
 
   m_noise_initialized = true;
 }
 
-bool AccelCalibrator::DetectStationary(const Sample& sample, const WindowSample& stats) const
+bool AccelCalibrator::DetectStationary(const Sample& sample, const WindowSample& stats)
 {
   (void)sample;
 
   if (m_window.size() < m_config.window_size / 2)
     return false;
 
+  // Stage A: variance-only stillness gates.
   for (size_t axis = 0; axis < 3; ++axis)
   {
-    const double noise_var =
-        std::max(m_noise_stddev_accel[axis] * m_noise_stddev_accel[axis], kNoiseFloor);
-    const double window_var = stats.var_accel[axis];
-    if (window_var > noise_var * m_config.variance_threshold)
+    const double accel_var_noise = std::max(
+        m_noise_stddev_accel[axis] * m_noise_stddev_accel[axis], kNoiseFloor);
+    if (stats.var_accel[axis] > accel_var_noise * m_config.variance_threshold)
       return false;
 
-    const double noise_gyro = std::max(m_noise_stddev_gyro[axis], std::sqrt(kNoiseFloor));
-    const double mean_gyro = stats.mean_gyro[axis];
-    if (std::abs(mean_gyro) > m_config.gyro_mean_threshold * noise_gyro)
+    const double gyro_var_noise =
+        std::max(m_noise_stddev_gyro[axis] * m_noise_stddev_gyro[axis], kNoiseFloor);
+    if (stats.var_gyro[axis] > gyro_var_noise * m_config.variance_threshold)
       return false;
   }
 
-  // Magnitude stability gate.
-  const double noise_mag_sigma = std::sqrt(Dot(m_noise_stddev_accel, m_noise_stddev_accel));
+  const double noise_mag_sigma =
+      std::sqrt(Dot(m_noise_stddev_accel, m_noise_stddev_accel));
   if (stats.stddev_norm > m_config.variance_threshold * noise_mag_sigma)
     return false;
 
-  // Sanity check: window mean should roughly match gravity.
+  // Sanity check: loose magnitude check to reject gross outliers.
   const double mean_norm = stats.mean_norm;
   if (std::abs(mean_norm - m_config.gravity_mps2) > m_config.gravity_mps2 * 0.5)
     return false;
+
+  // Stage B: mean gyro gate using a slowly de-biased gyro mean.
+  if (!m_gyro_bias_iir_init)
+  {
+    m_gyro_bias_iir = stats.mean_gyro;
+    m_gyro_bias_iir_init = true;
+  }
+  else
+  {
+    for (size_t axis = 0; axis < 3; ++axis)
+    {
+      m_gyro_bias_iir[axis] = (1.0 - kBiasAlpha) * m_gyro_bias_iir[axis] +
+                              kBiasAlpha * stats.mean_gyro[axis];
+    }
+  }
+
+  const double n = static_cast<double>(m_window.size());
+  for (size_t axis = 0; axis < 3; ++axis)
+  {
+    const double noise_sigma =
+        std::max(m_noise_stddev_gyro[axis], std::sqrt(kNoiseFloor));
+    const double sigma_mean =
+        std::max(noise_sigma / std::sqrt(std::max(1.0, n)), kSigmaMeanFloor);
+    const double mean_gyro_unbiased = stats.mean_gyro[axis] - m_gyro_bias_iir[axis];
+    if (std::abs(mean_gyro_unbiased) > m_config.gyro_mean_threshold * sigma_mean)
+      return false;
+  }
 
   return true;
 }
@@ -641,6 +688,40 @@ bool AccelCalibrator::HasAxisCoverage() const
   }
 
   return std::all_of(covered.begin(), covered.end(), [](bool v) { return v; });
+}
+
+double AccelCalibrator::ComputeDirectionalSpread() const
+{
+  std::array<std::array<double, 3>, 3> cov{};
+  size_t count = 0;
+
+  for (const auto& cluster : m_clusters)
+  {
+    const double norm = Norm(cluster.mean);
+    if (norm < 1e-6)
+      continue;
+
+    const std::array<double, 3> u = Scale(cluster.mean, 1.0 / norm);
+    for (size_t r = 0; r < 3; ++r)
+    {
+      for (size_t c = 0; c < 3; ++c)
+        cov[r][c] += u[r] * u[c];
+    }
+    ++count;
+  }
+
+  if (count == 0)
+    return 0.0;
+
+  for (auto& row : cov)
+  {
+    for (double& v : row)
+      v /= static_cast<double>(count);
+  }
+
+  const double trace = cov[0][0] + cov[1][1] + cov[2][2];
+  const double maxdiag = std::max({cov[0][0], cov[1][1], cov[2][2]});
+  return trace - maxdiag;
 }
 
 bool AccelCalibrator::FitEllipsoid()
