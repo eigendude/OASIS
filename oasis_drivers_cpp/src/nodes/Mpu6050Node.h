@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include "imu/ImuTemperature.h"
 #include "imu/Mpu6050ImuProcessor.h"
 
 #include <chrono>
@@ -51,6 +52,7 @@ private:
   std::string m_i2cDevice;
   std::chrono::duration<double> m_publishPeriod;
   IMU::Mpu6050ImuProcessor m_imuProcessor;
+  IMU::ImuTemperature m_imuTemperature;
   rclcpp::Time m_lastSampleTime;
   bool m_hasLastSampleTime{false};
   double m_yawRad{0.0};
