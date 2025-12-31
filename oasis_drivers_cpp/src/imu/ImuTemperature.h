@@ -27,12 +27,14 @@ public:
 
   ImuTemperature() = default;
 
-  Sample ProcessRaw(int16_t tempRaw);
+  Sample ProcessRaw(int16_t tempRaw, double dt_s);
   void Reset();
+  void SetTimeConstant(double time_constant_s);
 
 private:
-  std::size_t m_sampleCount{0};
   double m_meanC{0.0};
-  double m_m2{0.0};
+  double m_varianceC2{0.0};
+  double m_timeConstantS{30.0};
+  bool m_hasSample{false};
 };
 } // namespace OASIS::IMU

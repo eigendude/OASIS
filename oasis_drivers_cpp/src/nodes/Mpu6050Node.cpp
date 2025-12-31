@@ -38,6 +38,7 @@ constexpr const char* FRAME_ID = "imu_link";
 constexpr const char* DEFAULT_I2C_DEVICE = "/dev/i2c-1";
 constexpr double DEFAULT_PUBLISH_RATE_HZ = 50.0;
 constexpr double DEFAULT_GRAVITY = 9.80665; // m/s^2
+constexpr double DEFAULT_TEMP_VARIANCE_TIME_CONSTANT_S = 30.0;
 
 } // namespace
 
@@ -46,6 +47,7 @@ Mpu6050Node::Mpu6050Node() : rclcpp::Node(NODE_NAME)
   declare_parameter("i2c_device", std::string(DEFAULT_I2C_DEVICE));
   declare_parameter("publish_rate_hz", DEFAULT_PUBLISH_RATE_HZ);
   declare_parameter("gravity", DEFAULT_GRAVITY);
+  declare_parameter("temperature_variance_time_constant_s", DEFAULT_TEMP_VARIANCE_TIME_CONSTANT_S);
 
   m_i2cDevice = get_parameter("i2c_device").as_string();
 
@@ -54,6 +56,8 @@ Mpu6050Node::Mpu6050Node() : rclcpp::Node(NODE_NAME)
   m_publishPeriod = std::chrono::duration<double>(1.0 / clampedRate);
 
   m_gravity = get_parameter("gravity").as_double();
+  m_imuTemperature.SetTimeConstant(
+      get_parameter("temperature_variance_time_constant_s").as_double());
 }
 
 bool Mpu6050Node::Initialize()
@@ -182,7 +186,14 @@ void Mpu6050Node::PublishImu()
   const int16_t tempRaw = m_mpu6050->getTemperature();
 
   // Process temperature
-  const auto tempSample = m_imuTemperature.ProcessRaw(tempRaw);
+  double dt_s = 0.0;
+  if (m_hasLastSampleTime)
+  {
+    dt_s = (headerMsg.stamp - m_lastSampleTime).seconds();
+  }
+  m_lastSampleTime = headerMsg.stamp;
+  m_hasLastSampleTime = true;
+  const auto tempSample = m_imuTemperature.ProcessRaw(tempRaw, dt_s);
 
   // Publish temperature
   sensor_msgs::msg::Temperature temperatureMsg;
