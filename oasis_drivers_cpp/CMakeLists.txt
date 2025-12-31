@@ -119,6 +119,13 @@ install(
     lib/${PROJECT_NAME}
 )
 
+install(
+  DIRECTORY
+    imu_info/
+  DESTINATION
+    share/${PROJECT_NAME}/imu_info
+)
+
 #
 # Testing
 #

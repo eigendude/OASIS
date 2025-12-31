@@ -102,6 +102,8 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
   ROS_DIRECTORY=~/".ros"
   CAMERA_INFO_LINK="${ROS_DIRECTORY}/camera_info"
   CAMERA_INFO_TARGET=""
+  IMU_INFO_LINK="${ROS_DIRECTORY}/imu_info"
+  IMU_INFO_TARGET=""
 
   # Ensure ~/.ros exists for the symlink
   install -m 0755 -d "${ROS_DIRECTORY}"
@@ -125,6 +127,27 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     rm -rf "${CAMERA_INFO_LINK}"
 
     ln -sfn "${CAMERA_INFO_TARGET}" "${CAMERA_INFO_LINK}"
+  fi
+
+  for OASIS_PACKAGE in "${ENABLED_PACKAGES[@]}"; do
+    DIRECTORY="${OASIS_DATA_DIRECTORY}/${OASIS_PACKAGE}/imu_info"
+
+    # Skip directories that don't exist
+    if [ ! -d "${DIRECTORY}" ]; then
+      continue
+    fi
+
+    IMU_INFO_TARGET="${DIRECTORY}"
+    break
+  done
+
+  if [ -n "${IMU_INFO_TARGET}" ]; then
+    echo "Linking imu info directory to ${IMU_INFO_TARGET}"
+
+    # Remove any existing directory
+    rm -rf "${IMU_INFO_LINK}"
+
+    ln -sfn "${IMU_INFO_TARGET}" "${IMU_INFO_LINK}"
   fi
 fi
 

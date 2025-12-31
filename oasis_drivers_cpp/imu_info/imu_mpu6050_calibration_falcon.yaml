@@ -1,0 +1,32 @@
+version: 1
+frame_id: imu_link
+config:
+  gravity: 9.80665
+noise:
+  accel_stddev_mps2: [0.0, 0.0, 0.0]
+  gyro_stddev_rads: [0.0, 0.0, 0.0]
+accel_calibration:
+  bias_mps2: [0.0, 0.0, 0.0]
+  A:
+    - [1.0, 0.0, 0.0]
+    - [0.0, 1.0, 0.0]
+    - [0.0, 0.0, 1.0]
+  bias_stddev_mps2: [0.0, 0.0, 0.0]
+  A_stddev:
+    - [0.0, 0.0, 0.0]
+    - [0.0, 0.0, 0.0]
+    - [0.0, 0.0, 0.0]
+ellipsoid:
+  W:
+    - [1.0, 0.0, 0.0]
+    - [0.0, 1.0, 0.0]
+    - [0.0, 0.0, 1.0]
+  center: [0.0, 0.0, 0.0]
+fit_quality:
+  rms_residual_mps2: 0.0
+  num_clusters: 0
+  num_samples: 0
+temperature:
+  mean_c: 0.0
+  stddev_c: 0.0
+created_unix_ns: 0

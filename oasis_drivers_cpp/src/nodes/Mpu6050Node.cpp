@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
+#include <stdexcept>
 
 #include <I2Cdev.h>
 #include <rclcpp/rclcpp.hpp>
@@ -40,6 +41,7 @@ constexpr const char* FRAME_ID = "imu_link";
 constexpr const char* DEFAULT_I2C_DEVICE = "/dev/i2c-1";
 constexpr double DEFAULT_PUBLISH_RATE_HZ = 50.0;
 constexpr double DEFAULT_GRAVITY = 9.80665; // m/s^2
+constexpr const char* DEFAULT_IMU_CALIBRATION_BASE = "imu_mpu6050_calibration";
 } // namespace
 
 Mpu6050Node::Mpu6050Node() : rclcpp::Node(NODE_NAME)
@@ -47,6 +49,8 @@ Mpu6050Node::Mpu6050Node() : rclcpp::Node(NODE_NAME)
   declare_parameter("i2c_device", std::string(DEFAULT_I2C_DEVICE));
   declare_parameter("publish_rate_hz", DEFAULT_PUBLISH_RATE_HZ);
   declare_parameter("gravity", DEFAULT_GRAVITY);
+  declare_parameter("system_id", std::string(""));
+  declare_parameter("imu_calibration_base", std::string(DEFAULT_IMU_CALIBRATION_BASE));
 
   m_i2cDevice = get_parameter("i2c_device").as_string();
 
@@ -56,10 +60,42 @@ Mpu6050Node::Mpu6050Node() : rclcpp::Node(NODE_NAME)
 
   m_gravity = get_parameter("gravity").as_double();
 
+  m_systemId = get_parameter("system_id").as_string();
+  m_imuCalibrationBase = get_parameter("imu_calibration_base").as_string();
+
   const char* home = std::getenv("HOME");
   const std::filesystem::path homePath =
       home ? std::filesystem::path(home) : std::filesystem::path(".");
-  m_calibrationCachePath = homePath / ".cache" / "imu_mpu6050_calibration.yaml";
+  const std::filesystem::path imuInfoDirectory = homePath / ".ros" / "imu_info";
+
+  std::error_code imuInfoError;
+  std::filesystem::create_directories(imuInfoDirectory, imuInfoError);
+  if (imuInfoError)
+  {
+    RCLCPP_ERROR(get_logger(), "Failed to create IMU info directory at %s: %s",
+                imuInfoDirectory.c_str(), imuInfoError.message().c_str());
+    throw std::runtime_error("Failed to create IMU info directory");
+  }
+
+  if (m_systemId.empty())
+  {
+    RCLCPP_ERROR(get_logger(),
+                 "system_id parameter is empty (imu_calibration_base=%s, imu_info_dir=%s)",
+                 m_imuCalibrationBase.c_str(), imuInfoDirectory.c_str());
+    throw std::runtime_error("Missing system_id parameter");
+  }
+
+  m_calibrationCachePath =
+      imuInfoDirectory / (m_imuCalibrationBase + "_" + m_systemId + ".yaml");
+
+  if (!std::filesystem::exists(m_calibrationCachePath))
+  {
+    RCLCPP_ERROR(get_logger(),
+                 "IMU calibration file not found: %s (imu_calibration_base=%s, system_id=%s)",
+                 m_calibrationCachePath.c_str(), m_imuCalibrationBase.c_str(),
+                 m_systemId.c_str());
+    throw std::runtime_error("IMU calibration file missing");
+  }
 }
 
 bool Mpu6050Node::Initialize()
@@ -99,19 +135,18 @@ bool Mpu6050Node::Initialize()
   m_imuProcessor.Reset();
   m_imuProcessor.ConfigureCalibration(m_calibrationCachePath, FRAME_ID);
   const bool loadedCalibration = m_imuProcessor.LoadCachedCalibration();
-  m_calibrationMode = !loadedCalibration;
+  if (!loadedCalibration)
+  {
+    RCLCPP_ERROR(get_logger(), "Failed to load IMU calibration file: %s",
+                 m_calibrationCachePath.c_str());
+    throw std::runtime_error("Failed to load IMU calibration file");
+  }
+
+  m_calibrationMode = false;
   m_imuProcessor.SetCalibrationMode(m_calibrationMode);
 
-  if (loadedCalibration)
-  {
-    RCLCPP_INFO(get_logger(), "Loaded accelerometer calibration cache: %s",
-                m_calibrationCachePath.c_str());
-  }
-  else
-  {
-    RCLCPP_INFO(get_logger(), "Calibration cache missing, running online calibration: %s",
-                m_calibrationCachePath.c_str());
-  }
+  RCLCPP_INFO(get_logger(), "Loaded accelerometer calibration cache: %s",
+              m_calibrationCachePath.c_str());
 
   RCLCPP_INFO(get_logger(), "MPU6050 full-scale ranges set (accel=%u, gyro=%u)",
               static_cast<unsigned>(accelRange), static_cast<unsigned>(gyroRange));
