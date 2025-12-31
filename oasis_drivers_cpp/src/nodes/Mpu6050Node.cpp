@@ -89,6 +89,7 @@ bool Mpu6050Node::Initialize()
   m_imuProcessor.SetGravity(m_gravity);
   m_imuProcessor.SetAccelScale(accelScale);
   m_imuProcessor.SetGyroScale(gyroScale);
+  m_imuProcessor.Reset();
 
   RCLCPP_INFO(get_logger(), "MPU6050 full-scale ranges set (accel=%u, gyro=%u)",
               static_cast<unsigned>(accelRange), static_cast<unsigned>(gyroRange));
@@ -107,7 +108,8 @@ bool Mpu6050Node::Initialize()
 
 void Mpu6050Node::Deinitialize()
 {
-  // TODO
+  m_imuProcessor.Reset();
+  m_lastSampleTime.reset();
 }
 
 void Mpu6050Node::PublishImu()
@@ -140,14 +142,6 @@ void Mpu6050Node::PublishImu()
   const double dt_s = m_lastSampleTime ? (now - *m_lastSampleTime).seconds() : 0.0;
   m_lastSampleTime = now;
 
-  // Get scales
-  const double accelScale = m_imuProcessor.GetAccelScale();
-  const double gyroScale = m_imuProcessor.GetGyroScale();
-
-  // Quantization noise variance for a uniform distribution over one LSB.
-  const double varAccel = (accelScale * accelScale) / 12.0;
-  const double varGyro = (gyroScale * gyroScale) / 12.0;
-
   // Process motion
   const auto processed = m_imuProcessor.ProcessRaw(ax, ay, az, gx, gy, gz);
 
@@ -179,14 +173,14 @@ void Mpu6050Node::PublishImu()
     imuMsg.orientation_covariance[0] = -1.0;
 
     imuMsg.linear_acceleration_covariance.fill(0.0);
-    imuMsg.linear_acceleration_covariance[0] = varAccel;
-    imuMsg.linear_acceleration_covariance[4] = varAccel;
-    imuMsg.linear_acceleration_covariance[8] = varAccel;
+    imuMsg.linear_acceleration_covariance[0] = processed.accel_variance_mps2[0];
+    imuMsg.linear_acceleration_covariance[4] = processed.accel_variance_mps2[1];
+    imuMsg.linear_acceleration_covariance[8] = processed.accel_variance_mps2[2];
 
     imuMsg.angular_velocity_covariance.fill(0.0);
-    imuMsg.angular_velocity_covariance[0] = varGyro;
-    imuMsg.angular_velocity_covariance[4] = varGyro;
-    imuMsg.angular_velocity_covariance[8] = varGyro;
+    imuMsg.angular_velocity_covariance[0] = processed.gyro_variance_rads[0];
+    imuMsg.angular_velocity_covariance[4] = processed.gyro_variance_rads[1];
+    imuMsg.angular_velocity_covariance[8] = processed.gyro_variance_rads[2];
   };
 
   // TODO: The IMU messages will be different
@@ -215,7 +209,7 @@ void Mpu6050Node::PublishImu()
   const double raw_accel_norm_lsb = std::sqrt(static_cast<double>(ax) * static_cast<double>(ax) +
                                               static_cast<double>(ay) * static_cast<double>(ay) +
                                               static_cast<double>(az) * static_cast<double>(az));
-  const double raw_accel_norm_mps2 = raw_accel_norm_lsb * accelScale;
+  const double raw_accel_norm_mps2 = raw_accel_norm_lsb * m_imuProcessor.GetAccelScale();
   RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000, "IMU: |a|=%.3f m/s^2, temp=%.2fC",
                        raw_accel_norm_mps2, tempSample.temperatureC);
 }
