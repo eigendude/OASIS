@@ -41,6 +41,22 @@ std::array<double, 3> RemapVariances(const std::array<double, 3>& variances,
 
   return remapped;
 }
+
+std::array<double, 3> ApplyAccelVariance(const std::array<std::array<double, 3>, 3>& A,
+                                         const std::array<double, 3>& accel_var)
+{
+  std::array<double, 3> result{0.0, 0.0, 0.0};
+
+  for (size_t row = 0; row < 3; ++row)
+  {
+    double variance = 0.0;
+    for (size_t col = 0; col < 3; ++col)
+      variance += A[row][col] * A[row][col] * accel_var[col];
+    result[row] = variance;
+  }
+
+  return result;
+}
 } // namespace
 
 void Mpu6050ImuProcessor::Reset()
@@ -49,6 +65,9 @@ void Mpu6050ImuProcessor::Reset()
   m_gyroNoise.Reset();
   m_gyroBiasEstimator.Reset();
   m_accelCalibrator.Reset();
+  m_use_cached_noise = false;
+  m_cached_accel_noise_stddev = {0.0, 0.0, 0.0};
+  m_cached_gyro_noise_stddev = {0.0, 0.0, 0.0};
 }
 
 void Mpu6050ImuProcessor::ConfigureCalibration(const std::filesystem::path& cachePath,
@@ -64,7 +83,17 @@ void Mpu6050ImuProcessor::ConfigureCalibration(const std::filesystem::path& cach
 
 bool Mpu6050ImuProcessor::LoadCachedCalibration()
 {
-  return m_accelCalibrator.LoadCache();
+  const bool loaded = m_accelCalibrator.LoadCache();
+
+  if (loaded)
+  {
+    const auto& calib = m_accelCalibrator.GetCalibration();
+    m_cached_accel_noise_stddev = calib.accel_noise_stddev_mps2;
+    m_cached_gyro_noise_stddev = calib.gyro_noise_stddev_rads;
+    m_use_cached_noise = true;
+  }
+
+  return loaded;
 }
 
 void Mpu6050ImuProcessor::SetCalibrationMode(bool enabled)
@@ -141,6 +170,27 @@ Mpu6050ImuProcessor::ProcessedOutputs Mpu6050ImuProcessor::ProcessRaw(int16_t ax
   outputs.imu.gyro_rads = gyro_body_rads;
   outputs.imu.accel_var_mps2_2 = accel_var_body_mps2_2;
   outputs.imu.gyro_var_rads2_2 = gyro_var_body_rads2_2;
+
+  if (m_use_cached_noise && m_accelCalibrator.HasSolution())
+  {
+    std::array<double, 3> accel_var_cached{0.0, 0.0, 0.0};
+    std::array<double, 3> gyro_var_cached{0.0, 0.0, 0.0};
+
+    for (size_t axis = 0; axis < 3; ++axis)
+    {
+      accel_var_cached[axis] =
+          m_cached_accel_noise_stddev[axis] * m_cached_accel_noise_stddev[axis];
+      gyro_var_cached[axis] =
+          m_cached_gyro_noise_stddev[axis] * m_cached_gyro_noise_stddev[axis];
+    }
+
+    outputs.imu_raw.accel_var_mps2_2 = accel_var_cached;
+    outputs.imu_raw.gyro_var_rads2_2 = gyro_var_cached;
+
+    const auto& calib = m_accelCalibrator.GetCalibration();
+    outputs.imu.accel_var_mps2_2 = ApplyAccelVariance(calib.A, accel_var_cached);
+    outputs.imu.gyro_var_rads2_2 = gyro_var_cached;
+  }
 
   return outputs;
 }

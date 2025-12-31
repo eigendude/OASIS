@@ -110,6 +110,10 @@ private:
   GyroBiasEstimator m_gyroBiasEstimator;
   AccelCalibrator m_accelCalibrator;
 
+  bool m_use_cached_noise{false};
+  std::array<double, 3> m_cached_accel_noise_stddev{0.0, 0.0, 0.0};
+  std::array<double, 3> m_cached_gyro_noise_stddev{0.0, 0.0, 0.0};
+
   std::filesystem::path m_calibrationCachePath;
   std::string m_calibrationFrameId{"imu_link"};
 };
