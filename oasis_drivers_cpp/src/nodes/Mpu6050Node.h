@@ -8,15 +8,21 @@
 
 #pragma once
 
+#include "imu/ImuTemperature.h"
+#include "imu/Mpu6050ImuProcessor.h"
+
 #include <chrono>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include <MPU6050.h>
 #include <rclcpp/node.hpp>
 #include <rclcpp/publisher.hpp>
+#include <rclcpp/time.hpp>
 #include <rclcpp/timer.hpp>
 #include <sensor_msgs/msg/imu.hpp>
+#include <sensor_msgs/msg/temperature.hpp>
 
 namespace OASIS
 {
@@ -28,24 +34,31 @@ class Mpu6050Node : public rclcpp::Node
 public:
   Mpu6050Node();
 
+  // Lifecycle functions
   bool Initialize();
   void Deinitialize();
 
 private:
   void PublishImu();
 
-  // ROS parameters
-  rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr m_publisher;
+  // ROS publishers
+  rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr m_imuPublisher;
+  rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr m_imuRawPublisher;
+  rclcpp::Publisher<sensor_msgs::msg::Temperature>::SharedPtr m_imuTemperaturePublisher;
+
+  // ROS timers
   rclcpp::TimerBase::SharedPtr m_timer;
+
+  // ROS parameters
+  std::string m_i2cDevice;
+  std::chrono::duration<double> m_publishPeriod;
+  double m_gravity;
 
   // IMU parameters
   std::unique_ptr<MPU6050> m_mpu6050;
-  std::string m_i2cDevice;
-  std::chrono::duration<double> m_publishPeriod;
-
-  // IMU state
-  double m_accelScale = 0.0;
-  double m_gyroScale = 0.0;
+  IMU::Mpu6050ImuProcessor m_imuProcessor;
+  IMU::ImuTemperature m_imuTemperature;
+  std::optional<rclcpp::Time> m_lastSampleTime;
 };
 
 } // namespace ROS
