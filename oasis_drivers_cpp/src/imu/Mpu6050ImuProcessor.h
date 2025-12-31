@@ -17,21 +17,35 @@ namespace OASIS::IMU
 class Mpu6050ImuProcessor
 {
 public:
-  struct ProcessedSample
+  struct ImuSample
   {
-    // Raw accelerometer sample in m/s^2, converted from sensor counts.
-    std::array<double, 3> accel_raw_mps2{0.0, 0.0, 0.0};
+    // Linear acceleration in m/s^2 in the imu_link frame.
+    std::array<double, 3> accel_mps2{0.0, 0.0, 0.0};
 
     // Per-axis accelerometer variance in (m/s^2)^2 from the online
     // 2nd-difference estimator on raw counts, floored by 1 LSB quantization.
     std::array<double, 3> accel_var_mps2_2{0.0, 0.0, 0.0};
 
-    // Gyroscope sample in rad/s, converted from sensor counts.
+    // Angular velocity in rad/s in the imu_link frame.
     std::array<double, 3> gyro_rads{0.0, 0.0, 0.0};
 
     // Per-axis gyroscope variance in (rad/s)^2 from the online
     // 2nd-difference estimator on raw counts, floored by 1 LSB quantization.
     std::array<double, 3> gyro_var_rads2_2{0.0, 0.0, 0.0};
+  };
+
+  struct ProcessedOutputs
+  {
+    // imu_raw: scaled sensor measurements in imu_link with noise covariances.
+    ImuSample imu_raw{};
+
+    // imu: calibrated stream for ORB-SLAM3 with gyro bias subtraction.
+    // Acceleration remains specific force (gravity is not removed).
+    ImuSample imu{};
+
+    // True once the gyro bias estimate has reached its minimum sample
+    // threshold.
+    bool gyro_bias_valid{false};
   };
 
   Mpu6050ImuProcessor() = default;
@@ -47,10 +61,26 @@ public:
 
   void Reset();
 
-  ProcessedSample ProcessRaw(
+  ProcessedOutputs ProcessRaw(
       int16_t ax, int16_t ay, int16_t az, int16_t gx, int16_t gy, int16_t gz, double dt_s);
 
 private:
+  class GyroBiasEstimator
+  {
+  public:
+    void Reset();
+    void Update(const std::array<double, 3>& gyro_rads,
+                const std::array<double, 3>& accel_mps2,
+                double gravity_mps2);
+    const std::array<double, 3>& GetBias() const { return m_bias_rads; }
+    bool IsValid() const { return m_valid; }
+
+  private:
+    std::array<double, 3> m_bias_rads{0.0, 0.0, 0.0};
+    int m_stationary_samples{0};
+    bool m_valid{false};
+  };
+
   /**
    * Jitter-aware 2nd-difference estimator for i.i.d. measurement noise.
    *
@@ -96,5 +126,6 @@ private:
   double m_gyroScale{0.0};
   NoiseEstimator m_accelNoise;
   NoiseEstimator m_gyroNoise;
+  GyroBiasEstimator m_gyroBiasEstimator;
 };
 } // namespace OASIS::IMU
