@@ -92,13 +92,14 @@ endif()
 
 add_executable(mpu6050_imu_driver
   src/cli/mpu6050_imu_driver.cpp
+  src/imu/Mpu6050ImuProcessor.cpp
+  src/imu/Mpu6050ImuUtils.cpp
   src/nodes/Mpu6050Node.cpp
 )
 
 target_link_libraries(mpu6050_imu_driver
   i2cdevlib::mpu6050
   ${geometry_msgs_TARGETS}
-  ${oasis_msgs_TARGETS}
   rclcpp::rclcpp
   rcutils::rcutils
   ${sensor_msgs_TARGETS}

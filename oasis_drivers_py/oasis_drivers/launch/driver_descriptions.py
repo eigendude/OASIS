@@ -176,6 +176,7 @@ class DriverDescriptions:
             remappings=[
                 # Topics
                 ("imu", f"{host_id}/imu"),
+                ("imu_temperature", f"{host_id}/imu_temperature"),
             ],
         )
         ld.add_action(mpu_node)
