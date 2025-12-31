@@ -42,6 +42,7 @@ find_package(rclcpp REQUIRED)
 find_package(rcutils REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(yaml-cpp REQUIRED)
 find_package(UDEV)
 
 #
@@ -93,6 +94,7 @@ endif()
 add_executable(mpu6050_imu_driver
   src/cli/mpu6050_imu_driver.cpp
   src/imu/GyroBiasEstimator.cpp
+  src/imu/AccelCalibrator.cpp
   src/imu/ImuTemperature.cpp
   src/imu/Mpu6050ImuProcessor.cpp
   src/imu/Mpu6050ImuUtils.cpp
@@ -107,6 +109,7 @@ target_link_libraries(mpu6050_imu_driver
   rcutils::rcutils
   ${sensor_msgs_TARGETS}
   ${std_msgs_TARGETS}
+  yaml-cpp
 )
 
 install(
