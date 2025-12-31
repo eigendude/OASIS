@@ -9,6 +9,7 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 
 namespace OASIS::IMU
@@ -18,19 +19,19 @@ class Mpu6050ImuProcessor
 public:
   struct ProcessedSample
   {
-    // Raw accelerometer sample in m/s^2, converted from sensor counts
+    // Raw accelerometer sample in m/s^2, converted from sensor counts.
     std::array<double, 3> accel_raw_mps2{0.0, 0.0, 0.0};
 
-    // Per-axis accelerometer variance in (m/s^2)^2, combining quantization
-    // noise with an online analog noise estimate from raw counts.
-    std::array<double, 3> accel_variance_mps2{0.0, 0.0, 0.0};
+    // Per-axis accelerometer variance in (m/s^2)^2 from the online
+    // 2nd-difference estimator on raw counts, floored by 1 LSB quantization.
+    std::array<double, 3> accel_var_mps2_2{0.0, 0.0, 0.0};
 
-    // Gyroscope sample in rad/s, converted from sensor counts
+    // Gyroscope sample in rad/s, converted from sensor counts.
     std::array<double, 3> gyro_rads{0.0, 0.0, 0.0};
 
-    // Per-axis gyroscope variance in (rad/s)^2, combining quantization
-    // noise with an online analog noise estimate from raw counts.
-    std::array<double, 3> gyro_variance_rads{0.0, 0.0, 0.0};
+    // Per-axis gyroscope variance in (rad/s)^2 from the online
+    // 2nd-difference estimator on raw counts, floored by 1 LSB quantization.
+    std::array<double, 3> gyro_var_rads2_2{0.0, 0.0, 0.0};
   };
 
   Mpu6050ImuProcessor() = default;
@@ -46,20 +47,40 @@ public:
 
   void Reset();
 
-  ProcessedSample ProcessRaw(
-      int16_t ax, int16_t ay, int16_t az, int16_t gx, int16_t gy, int16_t gz);
+  ProcessedSample ProcessRaw(int16_t ax, int16_t ay, int16_t az, int16_t gx,
+                             int16_t gy, int16_t gz, double dt_s);
 
 private:
+  /**
+   * Jitter-aware 2nd-difference estimator for i.i.d. measurement noise.
+   *
+   * Given samples x0, x1, x2 with time steps h1, h2, the non-uniform
+   * second-difference residual is:
+   *   d2 = x2 - x1 * (h1 + h2) / h1 + x0 * h2 / h1.
+   * Define a = h2 / h1 and b = 1 + a. For independent noise with variance
+   * sigma^2, Var(d2) = (a^2 + b^2 + 1) * sigma^2, so K(h1, h2) is
+   *   K = a^2 + b^2 + 1
+   * and
+   *   sigma^2 = d2^2 / (a^2 + b^2 + 1).
+   * If h1 is tiny, fall back to the uniform-grid formula:
+   *   d2 = x2 - 2 * x1 + x0,  sigma^2 = d2^2 / 6.
+   */
   class NoiseEstimator
   {
   public:
     void Reset();
-    std::array<double, 3> Update(int16_t x, int16_t y, int16_t z);
+    std::array<double, 3> Update(int16_t x, int16_t y, int16_t z, double dt_s);
 
   private:
+    static constexpr size_t kWindowSize = 16;
+
     std::array<int32_t, 3> m_prev1_counts{0, 0, 0};
     std::array<int32_t, 3> m_prev2_counts{0, 0, 0};
-    std::array<double, 3> m_sigma2_counts{0.0, 0.0, 0.0};
+    std::array<std::array<double, kWindowSize>, 3> m_sigma2_window{};
+    std::array<double, 3> m_sigma2_sum{0.0, 0.0, 0.0};
+    double m_prev_dt_s{0.0};
+    size_t m_sigma2_index{0};
+    size_t m_sigma2_count{0};
     int m_samples{0};
   };
 
