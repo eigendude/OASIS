@@ -154,20 +154,21 @@ void Mpu6050Node::PublishImu()
   sensor_msgs::msg::Imu imuMsg;
   sensor_msgs::msg::Imu imuRawMsg;
 
-  auto fillImuMsg = [&](sensor_msgs::msg::Imu& imuMsg)
+  auto fillImuMsg =
+      [&](sensor_msgs::msg::Imu& imuMsg, const IMU::Mpu6050ImuProcessor::ImuSample& sample)
   {
     imuMsg.header = headerMsg;
 
     geometry_msgs::msg::Vector3& angularVelocity = imuMsg.angular_velocity;
     geometry_msgs::msg::Vector3& linearAcceleration = imuMsg.linear_acceleration;
 
-    linearAcceleration.x = processed.accel_raw_mps2[0];
-    linearAcceleration.y = processed.accel_raw_mps2[1];
-    linearAcceleration.z = processed.accel_raw_mps2[2];
+    linearAcceleration.x = sample.accel_mps2[0];
+    linearAcceleration.y = sample.accel_mps2[1];
+    linearAcceleration.z = sample.accel_mps2[2];
 
-    angularVelocity.x = processed.gyro_rads[0];
-    angularVelocity.y = processed.gyro_rads[1];
-    angularVelocity.z = processed.gyro_rads[2];
+    angularVelocity.x = sample.gyro_rads[0];
+    angularVelocity.y = sample.gyro_rads[1];
+    angularVelocity.z = sample.gyro_rads[2];
 
     imuMsg.orientation_covariance.fill(0.0);
     imuMsg.orientation_covariance[0] = -1.0;
@@ -175,18 +176,22 @@ void Mpu6050Node::PublishImu()
     imuMsg.linear_acceleration_covariance.fill(0.0);
     imuMsg.angular_velocity_covariance.fill(0.0);
 
-    imuMsg.linear_acceleration_covariance[0] = processed.accel_var_mps2_2[0];
-    imuMsg.linear_acceleration_covariance[4] = processed.accel_var_mps2_2[1];
-    imuMsg.linear_acceleration_covariance[8] = processed.accel_var_mps2_2[2];
+    imuMsg.linear_acceleration_covariance[0] = sample.accel_var_mps2_2[0];
+    imuMsg.linear_acceleration_covariance[4] = sample.accel_var_mps2_2[1];
+    imuMsg.linear_acceleration_covariance[8] = sample.accel_var_mps2_2[2];
 
-    imuMsg.angular_velocity_covariance[0] = processed.gyro_var_rads2_2[0];
-    imuMsg.angular_velocity_covariance[4] = processed.gyro_var_rads2_2[1];
-    imuMsg.angular_velocity_covariance[8] = processed.gyro_var_rads2_2[2];
+    imuMsg.angular_velocity_covariance[0] = sample.gyro_var_rads2_2[0];
+    imuMsg.angular_velocity_covariance[4] = sample.gyro_var_rads2_2[1];
+    imuMsg.angular_velocity_covariance[8] = sample.gyro_var_rads2_2[2];
   };
 
-  // TODO: The IMU messages will be different
-  fillImuMsg(imuMsg);
-  fillImuMsg(imuRawMsg);
+  // imu_raw: direct sensor measurements with measurement-noise covariances.
+  fillImuMsg(imuRawMsg, processed.imu_raw);
+
+  // imu: calibrated stream for ORB-SLAM3 (frame-aligned, gyro bias
+  // handled). Acceleration retains gravity because ORB-SLAM3 expects
+  // specific force.
+  fillImuMsg(imuMsg, processed.imu);
 
   m_imuPublisher->publish(imuMsg);
   m_imuRawPublisher->publish(imuRawMsg);
