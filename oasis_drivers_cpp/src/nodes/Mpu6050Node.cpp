@@ -151,6 +151,7 @@ void Mpu6050Node::PublishImu()
                                               static_cast<double>(ay) * static_cast<double>(ay) +
                                               static_cast<double>(az) * static_cast<double>(az));
   const double accel_scale = m_imuProcessor.GetAccelScale();
+  const double gyro_scale = m_imuProcessor.GetGyroScale();
   const double raw_accel_norm_mps2 = raw_accel_norm_lsb * accel_scale;
 
   // Publish motion
@@ -179,6 +180,23 @@ void Mpu6050Node::PublishImu()
   // TODO: The IMU messages will be different
   fillImuMsg(imuMsg);
   fillImuMsg(imuRawMsg);
+
+  // Quantization noise variance for a uniform distribution over one LSB.
+  const double var_accel = (accel_scale * accel_scale) / 12.0;
+  const double var_gyro = (gyro_scale * gyro_scale) / 12.0;
+
+  imuRawMsg.orientation_covariance.fill(0.0);
+  imuRawMsg.orientation_covariance[0] = -1.0;
+
+  imuRawMsg.linear_acceleration_covariance.fill(0.0);
+  imuRawMsg.linear_acceleration_covariance[0] = var_accel;
+  imuRawMsg.linear_acceleration_covariance[4] = var_accel;
+  imuRawMsg.linear_acceleration_covariance[8] = var_accel;
+
+  imuRawMsg.angular_velocity_covariance.fill(0.0);
+  imuRawMsg.angular_velocity_covariance[0] = var_gyro;
+  imuRawMsg.angular_velocity_covariance[4] = var_gyro;
+  imuRawMsg.angular_velocity_covariance[8] = var_gyro;
 
   m_imuPublisher->publish(imuMsg);
   m_imuRawPublisher->publish(imuRawMsg);
