@@ -21,13 +21,15 @@ namespace OASIS::IMU
  * formula, and produces an online estimate of temperature measurement-noise
  * variance for downstream filters.
  *
- * Variance is estimated from the 2nd-difference residual in raw counts:
+ * Variance is estimated from a time-aware 2nd-difference residual in raw counts
+ * so small sampling-interval jitter does not bias the result:
  *
- *   d2 = r[n] - 2*r[n-1] + r[n-2]
+ *   d2 = c0*r[n-2] + c1*r[n-1] + c2*r[n]
  *
- * For white measurement noise, Var(d2) = 6*sigma^2, so:
+ * Coefficients are derived from the nonuniform 3-point second-derivative
+ * stencil, and the variance estimate uses the normalization:
  *
- *   var_counts2 = (d2*d2) / 6
+ *   var_counts2 = (d2*d2) / (c0^2 + c1^2 + c2^2)
  *
  * A short history of var_counts2 is averaged to reduce quantization-induced
  * zeros and spikes, then converted to (deg C)^2 using (1/340)^2. A minimum
@@ -43,14 +45,15 @@ public:
     // Temperature in degrees Celsius, computed from the raw sensor reading
     double temperatureC{0.0};
 
-    // Temperature noise variance in (degrees Celsius)^2 from the second-difference residual
-    // normalized to a fixed nominal sampling interval.
+    // Temperature noise variance in (degrees Celsius)^2 from the
+    // second-difference residual with sampling-interval jitter compensation.
     double varianceC2{0.0};
   };
 
   ImuTemperature() = default;
 
-  // Processes a raw temperature sample and returns the converted temperature with variance.
+  // Processes a raw temperature sample and returns the converted temperature
+  // with variance.
   Sample ProcessRaw(int16_t tempRaw, double dt_s);
 
   // Sets the minimum temperature noise standard deviation in degrees Celsius.
@@ -83,6 +86,12 @@ private:
 
   // Running sum of variance samples in counts^2 for fast averaging.
   double m_varSumCounts2Instant{0.0};
+
+  // Tracks whether a previous dt sample is available for the 3-sample stencil.
+  bool m_hasPrevDt{false};
+
+  // Previous sampling interval in seconds for the 3-sample stencil.
+  double m_prevDtS{0.0};
 
   // Minimum temperature variance in (degrees Celsius)^2.
   double m_minVarianceC2{(0.02 * 0.02)};
