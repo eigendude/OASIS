@@ -21,6 +21,7 @@
 #include <rclcpp/time.hpp>
 #include <rclcpp/timer.hpp>
 #include <sensor_msgs/msg/imu.hpp>
+#include <sensor_msgs/msg/temperature.hpp>
 
 namespace OASIS
 {
@@ -41,6 +42,7 @@ private:
 
   // ROS parameters
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr m_imuPublisher;
+  rclcpp::Publisher<sensor_msgs::msg::Temperature>::SharedPtr m_temperaturePublisher;
   rclcpp::TimerBase::SharedPtr m_timer;
 
   // IMU parameters

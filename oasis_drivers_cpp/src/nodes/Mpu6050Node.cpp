@@ -33,6 +33,7 @@ constexpr double GRAVITY_MPS2 = 9.80665;
 
 // ROS topics
 constexpr const char* IMU_TOPIC = "imu";
+constexpr const char* IMU_TEMPERATURE_TOPIC = "imu_temperature";
 
 // ROS frame IDs
 constexpr const char* FRAME_ID = "imu_link";
@@ -99,6 +100,8 @@ bool Mpu6050Node::Initialize()
 
   // Initialize publishers
   m_imuPublisher = create_publisher<sensor_msgs::msg::Imu>(IMU_TOPIC, rclcpp::QoS{1});
+  m_temperaturePublisher =
+      create_publisher<sensor_msgs::msg::Temperature>(IMU_TEMPERATURE_TOPIC, rclcpp::QoS{1});
 
   // Initialize timers
   m_timer = create_wall_timer(m_publishPeriod, std::bind(&Mpu6050Node::PublishImu, this));
@@ -178,8 +181,15 @@ void Mpu6050Node::PublishImu()
   };
 
   sensor_msgs::msg::Imu imuMsg;
+  sensor_msgs::msg::Temperature temperatureMsg;
 
   fillImuMsg(imuMsg);
 
+  temperatureMsg.header.stamp = now;
+  temperatureMsg.header.frame_id = FRAME_ID;
+  temperatureMsg.temperature = tempC;
+  temperatureMsg.variance = 0.0;
+
   m_imuPublisher->publish(imuMsg);
+  m_temperaturePublisher->publish(temperatureMsg);
 }
