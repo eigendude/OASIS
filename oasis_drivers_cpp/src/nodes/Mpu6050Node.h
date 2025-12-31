@@ -12,6 +12,7 @@
 #include "imu/Mpu6050ImuProcessor.h"
 
 #include <chrono>
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <string>
@@ -53,6 +54,10 @@ private:
   std::string m_i2cDevice;
   std::chrono::duration<double> m_publishPeriod;
   double m_gravity;
+
+  // Calibration
+  std::filesystem::path m_calibrationCachePath;
+  bool m_calibrationMode{false};
 
   // IMU parameters
   std::unique_ptr<MPU6050> m_mpu6050;

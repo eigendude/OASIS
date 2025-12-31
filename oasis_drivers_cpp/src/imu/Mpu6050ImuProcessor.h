@@ -8,11 +8,13 @@
 
 #pragma once
 
+#include "imu/AccelCalibrator.h"
 #include "imu/GyroBiasEstimator.h"
 #include "imu/NoiseEstimator.h"
 
 #include <array>
 #include <cstdint>
+#include <filesystem>
 
 namespace OASIS::IMU
 {
@@ -41,9 +43,13 @@ public:
     // imu_raw: scaled sensor measurements in imu_link with noise covariances.
     ImuSample imu_raw{};
 
-    // imu: calibrated stream for ORB-SLAM3 with gyro bias subtraction.
-    // Acceleration remains specific force (gravity is not removed).
+    // imu: calibrated stream with accelerometer correction applied.
+    // Acceleration remains specific force (gravity is not removed) and gyro
+    // bias is not subtracted.
     ImuSample imu{};
+
+    // Calibration pipeline status for observability at the ROS layer.
+    AccelCalibrator::UpdateStatus calibration_status{};
   };
 
   struct AxisRemap
@@ -58,7 +64,11 @@ public:
 
   Mpu6050ImuProcessor() = default;
 
-  void SetGravity(double gravityMps2) { m_gravity = gravityMps2; }
+  void SetGravity(double gravityMps2)
+  {
+    m_gravity = gravityMps2;
+    ConfigureCalibration(m_calibrationCachePath, m_calibrationFrameId);
+  }
   double GetGravity() const { return m_gravity; }
 
   void SetAccelScale(double accelScale) { m_accelScale = accelScale; }
@@ -67,10 +77,26 @@ public:
   void SetGyroScale(double gyroScale) { m_gyroScale = gyroScale; }
   double GetGyroScale() const { return m_gyroScale; }
 
+  void ConfigureCalibration(const std::filesystem::path& cachePath, const std::string& frameId);
+  bool LoadCachedCalibration();
+  void SetCalibrationMode(bool enabled);
+  bool HasCalibration() const { return m_accelCalibrator.HasSolution(); }
+  const AccelCalibrator::Calibration& GetCalibration() const
+  {
+    return m_accelCalibrator.GetCalibration();
+  }
+
   void Reset();
 
-  ProcessedOutputs ProcessRaw(
-      int16_t ax, int16_t ay, int16_t az, int16_t gx, int16_t gy, int16_t gz, double dt_s);
+  ProcessedOutputs ProcessRaw(int16_t ax,
+                              int16_t ay,
+                              int16_t az,
+                              int16_t gx,
+                              int16_t gy,
+                              int16_t gz,
+                              double dt_s,
+                              double temperature_c,
+                              double timestamp_s);
 
 private:
   // Configuration parameters
@@ -82,5 +108,9 @@ private:
   NoiseEstimator m_accelNoise;
   NoiseEstimator m_gyroNoise;
   GyroBiasEstimator m_gyroBiasEstimator;
+  AccelCalibrator m_accelCalibrator;
+
+  std::filesystem::path m_calibrationCachePath;
+  std::string m_calibrationFrameId{"imu_link"};
 };
 } // namespace OASIS::IMU
