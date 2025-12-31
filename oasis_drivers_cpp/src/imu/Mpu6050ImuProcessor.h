@@ -17,21 +17,36 @@ namespace OASIS::IMU
 class Mpu6050ImuProcessor
 {
 public:
-  struct ProcessedSample
+  struct ImuSample
   {
-    // Raw accelerometer sample in m/s^2, converted from sensor counts.
-    std::array<double, 3> accel_raw_mps2{0.0, 0.0, 0.0};
+    // Accelerometer sample in m/s^2 (imu_link frame, includes gravity).
+    std::array<double, 3> accel_mps2{0.0, 0.0, 0.0};
 
     // Per-axis accelerometer variance in (m/s^2)^2 from the online
     // 2nd-difference estimator on raw counts, floored by 1 LSB quantization.
     std::array<double, 3> accel_var_mps2_2{0.0, 0.0, 0.0};
 
-    // Gyroscope sample in rad/s, converted from sensor counts.
+    // Gyroscope sample in rad/s (imu_link frame).
     std::array<double, 3> gyro_rads{0.0, 0.0, 0.0};
 
     // Per-axis gyroscope variance in (rad/s)^2 from the online
     // 2nd-difference estimator on raw counts, floored by 1 LSB quantization.
     std::array<double, 3> gyro_var_rads2_2{0.0, 0.0, 0.0};
+  };
+
+  struct ProcessedSamples
+  {
+    // Raw sensor measurements for imu_raw (no bias subtraction).
+    ImuSample imu_raw;
+
+    // Calibrated stream for imu (gyro bias removed, accel keeps gravity).
+    ImuSample imu;
+
+    // Learned gyro bias in rad/s once bias_valid is true.
+    std::array<double, 3> gyro_bias_rads{0.0, 0.0, 0.0};
+
+    // True once the stationary bias estimator has locked.
+    bool gyro_bias_valid{false};
   };
 
   Mpu6050ImuProcessor() = default;
@@ -47,7 +62,7 @@ public:
 
   void Reset();
 
-  ProcessedSample ProcessRaw(
+  ProcessedSamples ProcessRaw(
       int16_t ax, int16_t ay, int16_t az, int16_t gx, int16_t gy, int16_t gz, double dt_s);
 
 private:
@@ -89,10 +104,28 @@ private:
     int m_samples{0};
   };
 
+  class GyroBiasEstimator
+  {
+  public:
+    void Reset();
+    void Update(const std::array<double, 3>& gyro_rads, bool is_stationary);
+    bool IsValid() const { return m_bias_valid; }
+    const std::array<double, 3>& GetBias() const { return m_bias_rads; }
+
+  private:
+    std::array<double, 3> m_bias_sum{0.0, 0.0, 0.0};
+    std::array<double, 3> m_bias_rads{0.0, 0.0, 0.0};
+    int m_stationary_samples{0};
+    bool m_bias_valid{false};
+  };
+
+  static std::array<double, 3> RemapToImuLink(const std::array<double, 3>& sample);
+
   double m_gravity{0.0};
   double m_accelScale{0.0};
   double m_gyroScale{0.0};
   NoiseEstimator m_accelNoise;
   NoiseEstimator m_gyroNoise;
+  GyroBiasEstimator m_gyroBias;
 };
 } // namespace OASIS::IMU
