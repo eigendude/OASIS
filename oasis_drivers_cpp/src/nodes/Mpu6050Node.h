@@ -8,17 +8,13 @@
 
 #pragma once
 
-#include "imu/Mpu6050ImuProcessor.h"
-
 #include <chrono>
 #include <memory>
 #include <string>
 
 #include <MPU6050.h>
-#include <oasis_msgs/msg/conductor_state.hpp>
 #include <rclcpp/node.hpp>
 #include <rclcpp/publisher.hpp>
-#include <rclcpp/subscription.hpp>
 #include <rclcpp/timer.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 
@@ -37,21 +33,19 @@ public:
 
 private:
   void PublishImu();
-  void OnConductorState(const oasis_msgs::msg::ConductorState& msg);
 
   // ROS parameters
-  rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr m_imuPublisher;
-  rclcpp::Subscription<oasis_msgs::msg::ConductorState>::SharedPtr m_conductorStateSub;
+  rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr m_publisher;
   rclcpp::TimerBase::SharedPtr m_timer;
 
   // IMU parameters
   std::unique_ptr<MPU6050> m_mpu6050;
   std::string m_i2cDevice;
   std::chrono::duration<double> m_publishPeriod;
-  IMU::Mpu6050ImuProcessor m_imuProcessor;
 
-  // Station parameters
-  double m_dutyCycleInput{0.0};
+  // IMU state
+  double m_accelScale = 0.0;
+  double m_gyroScale = 0.0;
 };
 
 } // namespace ROS
