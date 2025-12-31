@@ -83,3 +83,34 @@ Viewer.ViewpointF: 420.0
 
 # System.LoadAtlasFromFile: "./atlas"
 # System.SaveAtlasToFile: "./atlas"
+
+#--------------------------------------------------------------------------------------------
+# IMU Parameters (REQUIRED for Monocular-Inertial)
+#--------------------------------------------------------------------------------------------
+
+# Must match your IMU message rate (your driver default looked like 50 Hz)
+IMU.Frequency: 50.0
+
+# Continuous-time noise densities.
+# Your logs/yaml showed ~0.09–0.10 m/s^2 accel stddev per sample and ~0.03–0.04 rad/s gyro stddev per sample @ 50Hz.
+# density ≈ sigma_sample / sqrt(f)
+IMU.NoiseAcc: 0.014      # m/s^2 / sqrt(Hz)
+IMU.NoiseGyro: 0.006     # rad/s  / sqrt(Hz)
+
+# Bias random walk (start conservative; tune later)
+IMU.AccWalk: 0.03        # m/s^3 / sqrt(Hz)
+IMU.GyroWalk: 0.001      # rad/s^2 / sqrt(Hz)
+
+# Gravity magnitude (harmless if ignored)
+IMU.g: 9.80665
+
+# Transform from body(imu) to camera1.
+# If you don't have it yet, identity will at least let it start.
+IMU.T_b_c1: !!opencv-matrix
+  rows: 4
+  cols: 4
+  dt: f
+  data: [1,0,0,0,
+         0,1,0,0,
+         0,0,1,0,
+         0,0,0,1]
