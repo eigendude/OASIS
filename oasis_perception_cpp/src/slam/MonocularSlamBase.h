@@ -57,7 +57,6 @@ protected:
   void DeinitializeSystem();
 
   virtual Eigen::Isometry3f TrackFrame(const cv::Mat& rgbImage, double timestamp) = 0;
-  virtual void OnPostTrack() {}
 
   bool HasSlam() const;
   ORB_SLAM3::System* GetSlam();

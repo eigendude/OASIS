@@ -58,7 +58,23 @@ void MonocularInertialSlam::ImuCallback(const sensor_msgs::msg::Imu::ConstShared
   const cv::Point3f acc(ax, ay, az);
   const cv::Point3f gyr(gx, gy, gz);
 
-  m_imuMeasurements.push_back(ORB_SLAM3::IMU::Point(acc, gyr, timestamp));
+  std::lock_guard<std::mutex> lock(m_imuMutex);
+
+  // Enforce monotonic IMU time (drop out-of-order)
+  if (m_lastImuTime && timestamp <= *m_lastImuTime)
+    return;
+  m_lastImuTime = timestamp;
+
+  m_imuMeasurements.emplace_back(acc, gyr, timestamp);
+
+  // Prune by age (relative to newest IMU time)
+  const double min_t = timestamp - kImuMaxAgeSec;
+  while (!m_imuMeasurements.empty() && m_imuMeasurements.front().t < min_t)
+    m_imuMeasurements.pop_front();
+
+  // Safety cap by count
+  while (m_imuMeasurements.size() > kImuMaxCount)
+    m_imuMeasurements.pop_front();
 }
 
 Eigen::Isometry3f MonocularInertialSlam::TrackFrame(const cv::Mat& rgbImage, double timestamp)
@@ -67,15 +83,44 @@ Eigen::Isometry3f MonocularInertialSlam::TrackFrame(const cv::Mat& rgbImage, dou
   if (slam == nullptr)
     return Eigen::Isometry3f::Identity();
 
-  const Sophus::SE3f sophusPose = slam->TrackMonocular(rgbImage, timestamp, m_imuMeasurements);
+  std::vector<ORB_SLAM3::IMU::Point> imu_for_frame;
+  {
+    std::lock_guard<std::mutex> lock(m_imuMutex);
+
+    const double t_prev = m_lastImgTime.value_or(timestamp);
+
+    // If this is the first frame, you can either:
+    //  (a) pass empty IMU and let ORB init, or
+    //  (b) take a short warmup window. I usually do (a).
+    if (!m_lastImgTime)
+    {
+      // Drop any future IMU? no; just keep buffer.
+      m_lastImgTime = timestamp;
+    }
+    else
+    {
+      // Drop IMUs at/before previous image time (already accounted for)
+      while (!m_imuMeasurements.empty() && m_imuMeasurements.front().t <= t_prev)
+        m_imuMeasurements.pop_front();
+
+      // Collect IMUs up to this image time
+      while (!m_imuMeasurements.empty() && m_imuMeasurements.front().t <= timestamp)
+      {
+        imu_for_frame.push_back(m_imuMeasurements.front());
+        m_imuMeasurements.pop_front();
+      }
+
+      m_lastImgTime = timestamp;
+    }
+  }
+
+  // Optional: if you want to be strict, skip frames without IMU once initialized:
+  // if (m_lastImgTime && imu_for_frame.empty()) { ... }
+
+  const Sophus::SE3f sophusPose = slam->TrackMonocular(rgbImage, timestamp, imu_for_frame);
 
   Eigen::Isometry3f pose = Eigen::Isometry3f::Identity();
   pose.matrix() = sophusPose.matrix();
 
   return pose;
-}
-
-void MonocularInertialSlam::OnPostTrack()
-{
-  m_imuMeasurements.clear();
 }
