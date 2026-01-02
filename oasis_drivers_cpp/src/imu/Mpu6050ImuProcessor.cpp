@@ -200,28 +200,36 @@ Mpu6050ImuProcessor::ProcessedOutputs Mpu6050ImuProcessor::ProcessRaw(int16_t ax
   {
     std::array<double, 3> accel_var_cached{0.0, 0.0, 0.0};
     std::array<double, 3> gyro_var_cached{0.0, 0.0, 0.0};
+    std::array<double, 3> accel_var_selected = outputs.imu.accel_var_mps2_2;
+    std::array<double, 3> gyro_var_selected = outputs.imu.gyro_var_rads2_2;
 
     for (size_t axis = 0; axis < 3; ++axis)
     {
       accel_var_cached[axis] =
           m_cached_accel_noise_stddev[axis] * m_cached_accel_noise_stddev[axis];
       gyro_var_cached[axis] = m_cached_gyro_noise_stddev[axis] * m_cached_gyro_noise_stddev[axis];
+
+      // Prefer live covariance estimates when they are quieter than cached
+      // baseline noise in YAML. This lets the covariance shrink when the
+      // sensor is stationary instead of being clamped to the offline value.
+      accel_var_selected[axis] = std::min(accel_var_selected[axis], accel_var_cached[axis]);
+      gyro_var_selected[axis] = std::min(gyro_var_selected[axis], gyro_var_cached[axis]);
     }
 
-    outputs.imu_raw.accel_var_mps2_2 = accel_var_cached;
-    outputs.imu_raw.gyro_var_rads2_2 = gyro_var_cached;
+    outputs.imu_raw.accel_var_mps2_2 = accel_var_selected;
+    outputs.imu_raw.gyro_var_rads2_2 = gyro_var_selected;
 
     if (m_accelCalibrator.HasSolution())
     {
       const auto& calib = m_accelCalibrator.GetCalibration();
-      outputs.imu.accel_var_mps2_2 = ApplyAccelVariance(calib.A, accel_var_cached);
+      outputs.imu.accel_var_mps2_2 = ApplyAccelVariance(calib.A, accel_var_selected);
     }
     else
     {
-      outputs.imu.accel_var_mps2_2 = accel_var_cached;
+      outputs.imu.accel_var_mps2_2 = accel_var_selected;
     }
 
-    outputs.imu.gyro_var_rads2_2 = gyro_var_cached;
+    outputs.imu.gyro_var_rads2_2 = gyro_var_selected;
   }
 
   return outputs;
