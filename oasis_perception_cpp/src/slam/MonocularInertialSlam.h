@@ -10,9 +10,6 @@
 
 #include "MonocularSlamBase.h"
 
-#include <deque>
-#include <mutex>
-#include <optional>
 #include <vector>
 
 #include <sensor_msgs/msg/imu.hpp>
@@ -45,19 +42,10 @@ public:
 
 protected:
   Eigen::Isometry3f TrackFrame(const cv::Mat& rgbImage, double timestamp) override;
+  void OnPostTrack() override;
 
 private:
-  // IMU parameters
-  std::deque<ORB_SLAM3::IMU::Point> m_imuMeasurements;
-  std::optional<double> m_lastImgTime;
-  std::optional<double> m_lastImuTime;
-
-  // oOptional: cap memory / age
-  static constexpr double kImuMaxAgeSec = 10.0; // Keep last 10s of IMU
-  static constexpr std::size_t kImuMaxCount = 2000; // Safety cap (50 Hz * 40s)
-
-  // Threading parameters
-  std::mutex m_imuMutex;
+  std::vector<ORB_SLAM3::IMU::Point> m_imuMeasurements;
 };
 
 } // namespace SLAM

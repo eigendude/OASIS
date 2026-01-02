@@ -128,19 +128,13 @@ bool MonocularInertialSlamNode::Initialize()
   }
   RCLCPP_INFO(*m_logger, "ORB_SLAM3 settings file: %s", settingsFile.c_str());
 
-  rclcpp::QoS image_qos(rclcpp::KeepLast(10));
-  image_qos.reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE)
-      .durability(RMW_QOS_POLICY_DURABILITY_VOLATILE)
-      .history(RMW_QOS_POLICY_HISTORY_KEEP_LAST);
-
   *m_imgSubscriber = image_transport::create_subscription(
       &m_node, imageTopic, [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg)
-      { OnImage(msg); }, imageTransport, image_qos.get_rmw_qos_profile());
+      { OnImage(msg); }, imageTransport, rclcpp::QoS{1}.get_rmw_qos_profile());
 
-  // 500 @ 50 Hz = 10 seconds of cushion if we fall behind briefly
-  const rclcpp::QoS imu_qos = rclcpp::QoS{rclcpp::KeepLast(500)}.reliable().durability_volatile();
   m_imuSubscriber = m_node.create_subscription<sensor_msgs::msg::Imu>(
-      imuTopic, imu_qos, std::bind(&MonocularInertialSlamNode::OnImu, this, std::placeholders::_1));
+      imuTopic, rclcpp::QoS{1},
+      std::bind(&MonocularInertialSlamNode::OnImu, this, std::placeholders::_1));
 
   m_monocularInertialSlam =
       std::make_unique<SLAM::MonocularInertialSlam>(m_node, pointCloudTopic, poseTopic);

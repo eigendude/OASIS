@@ -248,6 +248,8 @@ void MonocularSlamBase::MapPublisherLoop()
           PublishPointCloud(header, m_worldPointBuffer);
       }
     }
+
+    OnPostTrack();
   }
 }
 
