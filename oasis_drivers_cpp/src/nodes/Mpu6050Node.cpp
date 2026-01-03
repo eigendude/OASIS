@@ -288,10 +288,16 @@ void Mpu6050Node::PublishImu()
     imuMsg.linear_acceleration_covariance[7] = sample.accel_cov_mps2_2[2][1];
     imuMsg.linear_acceleration_covariance[8] = sample.accel_cov_mps2_2[2][2];
 
-    // Angular velocity covariance (diagonal)
-    imuMsg.angular_velocity_covariance[0] = sample.gyro_var_rads2_2[0];
-    imuMsg.angular_velocity_covariance[4] = sample.gyro_var_rads2_2[1];
-    imuMsg.angular_velocity_covariance[8] = sample.gyro_var_rads2_2[2];
+    // Angular velocity covariance (full 3x3 row-major)
+    imuMsg.angular_velocity_covariance[0] = sample.gyro_cov_rads2_2[0][0];
+    imuMsg.angular_velocity_covariance[1] = sample.gyro_cov_rads2_2[0][1];
+    imuMsg.angular_velocity_covariance[2] = sample.gyro_cov_rads2_2[0][2];
+    imuMsg.angular_velocity_covariance[3] = sample.gyro_cov_rads2_2[1][0];
+    imuMsg.angular_velocity_covariance[4] = sample.gyro_cov_rads2_2[1][1];
+    imuMsg.angular_velocity_covariance[5] = sample.gyro_cov_rads2_2[1][2];
+    imuMsg.angular_velocity_covariance[6] = sample.gyro_cov_rads2_2[2][0];
+    imuMsg.angular_velocity_covariance[7] = sample.gyro_cov_rads2_2[2][1];
+    imuMsg.angular_velocity_covariance[8] = sample.gyro_cov_rads2_2[2][2];
   };
 
   // imu_raw: direct sensor measurements with measurement-noise covariances.
