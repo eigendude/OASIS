@@ -38,6 +38,81 @@ class PoseEstimate:
 
 
 ################################################################################
+# Online covariance estimation
+################################################################################
+
+
+class OnlineCovarianceEstimator:
+    """Track sample covariance for fixed-dimension vectors.
+
+    The estimator implements Welford's online algorithm to accumulate mean and
+    covariance without storing the full history of measurements. Only the final
+    covariance matrix is exposed to callers.
+    """
+
+    def __init__(self, dimension: int, min_variance: float) -> None:
+        """
+        Initialize the estimator.
+
+        Args:
+            dimension: Number of elements in each input vector.
+            min_variance: Lower bound for diagonal terms.
+        """
+
+        self._dimension = dimension
+        self._min_variance = min_variance
+
+        self._count = 0
+        self._mean = [0.0] * self._dimension
+        self._m2 = [
+            [0.0 for _ in range(self._dimension)] for _ in range(self._dimension)
+        ]
+
+    def update(self, sample: Iterable[float]) -> None:
+        """Update the running covariance with a new sample."""
+
+        values = tuple(sample)
+        if len(values) != self._dimension:
+            return
+
+        self._count += 1
+
+        delta = [value - mean for value, mean in zip(values, self._mean)]
+        inv_count = 1.0 / float(self._count)
+        self._mean = [
+            mean + delta_value * inv_count
+            for mean, delta_value in zip(self._mean, delta)
+        ]
+
+        delta2 = [value - mean for value, mean in zip(values, self._mean)]
+
+        for i in range(self._dimension):
+            for j in range(self._dimension):
+                self._m2[i][j] += delta[i] * delta2[j]
+
+    def covariance(self) -> Optional[tuple[tuple[float, ...], ...]]:
+        """Return the unbiased sample covariance if enough samples are present."""
+
+        if self._count < 2:
+            return None
+
+        denominator = float(self._count - 1)
+
+        covariance_rows: list[tuple[float, ...]] = []
+
+        for i in range(self._dimension):
+            row = []
+            for j in range(self._dimension):
+                value = self._m2[i][j] / denominator
+                if i == j:
+                    value = max(value, self._min_variance)
+                row.append(value)
+            covariance_rows.append(tuple(row))
+
+        return tuple(covariance_rows)
+
+
+################################################################################
 # Gravity-based pose estimation
 ################################################################################
 
@@ -80,6 +155,7 @@ class GravityPoseEstimator:
         self._min_variance = min_variance
 
         self._gravity: Optional[tuple[float, float, float]] = None
+        self._accel_covariance = OnlineCovarianceEstimator(3, self._min_variance)
 
     def update(
         self,
@@ -112,6 +188,8 @@ class GravityPoseEstimator:
                 (1.0 - self._alpha) * current + self._alpha * new
                 for current, new in zip(self._gravity, accel_tuple)
             )
+
+        self._accel_covariance.update(accel_tuple)
 
         roll, pitch = self._gravity_to_attitude(self._gravity)
         covariance = self._covariance_from_accel_covariance(linear_accel_covariance)
@@ -186,11 +264,8 @@ class GravityPoseEstimator:
         respect to the accelerometer inputs. Pitch variance uses the Jacobian of
         atan2(-ax, sqrt(ay^2 + az^2)). The result is returned in rad^2.
         """
-        if linear_accel_covariance is None:
-            return self._min_variance, self._min_variance
-
-        covariance_values = tuple(linear_accel_covariance)
-        if len(covariance_values) != 9:
+        covariance_values = self._accel_covariance_values(linear_accel_covariance)
+        if covariance_values is None:
             return self._min_variance, self._min_variance
 
         if self._gravity is None:
@@ -248,6 +323,24 @@ class GravityPoseEstimator:
         pitch_variance = max(pitch_variance, self._min_variance)
 
         return roll_variance, pitch_variance
+
+    def _accel_covariance_values(
+        self, linear_accel_covariance: Optional[Iterable[float]]
+    ) -> Optional[tuple[float, ...]]:
+        """Select the best available accelerometer covariance estimate."""
+
+        if linear_accel_covariance is not None:
+            covariance_values = tuple(linear_accel_covariance)
+            if len(covariance_values) == 9 and any(
+                value != 0.0 for value in covariance_values
+            ):
+                return covariance_values
+
+        covariance_matrix = self._accel_covariance.covariance()
+        if covariance_matrix is None:
+            return None
+
+        return tuple(value for row in covariance_matrix for value in row)
 
     def _project_variance(
         self,
