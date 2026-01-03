@@ -13,6 +13,8 @@
 #include <cmath>
 #include <filesystem>
 
+#include <Eigen/Dense>
+
 using namespace OASIS::IMU;
 
 namespace
@@ -107,7 +109,37 @@ AccelCalibrator::Mat3 SanitizeCovariance(const AccelCalibrator::Mat3& covariance
     }
   }
 
-  return sanitized;
+  Eigen::Matrix3d M = Eigen::Matrix3d::Zero();
+  for (size_t row = 0; row < 3; ++row)
+  {
+    for (size_t col = 0; col < 3; ++col)
+      M(static_cast<int>(row), static_cast<int>(col)) = sanitized[row][col];
+  }
+
+  M = 0.5 * (M + M.transpose());
+
+  Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver(M);
+  if (solver.info() != Eigen::Success || !solver.eigenvalues().allFinite() ||
+      !solver.eigenvectors().allFinite())
+  {
+    return sanitized;
+  }
+
+  const Eigen::Vector3d clamped = solver.eigenvalues().cwiseMax(kNoiseFloor);
+  const Eigen::Matrix3d M_psd =
+      solver.eigenvectors() * clamped.asDiagonal() * solver.eigenvectors().transpose();
+
+  AccelCalibrator::Mat3 projected{};
+  for (size_t row = 0; row < 3; ++row)
+  {
+    for (size_t col = 0; col < 3; ++col)
+      projected[row][col] = M_psd(static_cast<int>(row), static_cast<int>(col));
+  }
+
+  for (size_t axis = 0; axis < 3; ++axis)
+    projected[axis][axis] = std::max(projected[axis][axis], kNoiseFloor);
+
+  return projected;
 }
 
 } // namespace
@@ -121,6 +153,7 @@ void Mpu6050ImuProcessor::Reset()
   m_use_cached_noise = false;
   m_cached_accel_noise_stddev = {0.0, 0.0, 0.0};
   m_cached_gyro_noise_stddev = {0.0, 0.0, 0.0};
+  m_cached_accel_noise_cov = {};
   m_cached_gyro_noise_cov = {};
 }
 
@@ -146,6 +179,7 @@ bool Mpu6050ImuProcessor::LoadCachedCalibration()
     {
       m_cached_accel_noise_stddev = calib.accel_noise_stddev_mps2;
       m_cached_gyro_noise_stddev = calib.gyro_noise_stddev_rads;
+      m_cached_accel_noise_cov = SanitizeCovariance(calib.accel_noise_cov_mps2_2);
       m_cached_gyro_noise_cov = SanitizeCovariance(calib.gyro_noise_cov_rads2_2);
       m_use_cached_noise = true;
     }
@@ -153,6 +187,7 @@ bool Mpu6050ImuProcessor::LoadCachedCalibration()
     {
       m_cached_accel_noise_stddev = calib.raw_accel_noise_stddev_mps2;
       m_cached_gyro_noise_stddev = calib.raw_gyro_noise_stddev_rads;
+      m_cached_accel_noise_cov = SanitizeCovariance(calib.raw_accel_noise_cov_mps2_2);
       m_cached_gyro_noise_cov = SanitizeCovariance(calib.raw_gyro_noise_cov_rads2_2);
       m_use_cached_noise = true;
     }
@@ -218,6 +253,9 @@ Mpu6050ImuProcessor::ProcessedOutputs Mpu6050ImuProcessor::ProcessRaw(int16_t ax
   const AccelCalibrator::Mat3 gyro_cov_body_rads2_2 =
       RemapCovariance(gyro_cov_sensor_rads2_2, MPU6050_AXIS_REMAP);
 
+  const AccelCalibrator::Mat3 accel_cov_body_sanitized_mps2_2 =
+      SanitizeCovariance(accel_cov_body_mps2_2);
+
   const AccelCalibrator::Mat3 gyro_cov_body_sanitized_rads2_2 =
       SanitizeCovariance(gyro_cov_body_rads2_2);
 
@@ -228,7 +266,7 @@ Mpu6050ImuProcessor::ProcessedOutputs Mpu6050ImuProcessor::ProcessRaw(int16_t ax
   // Record raw measurements
   outputs.imu_raw.accel_mps2 = accel_body_mps2;
   outputs.imu_raw.gyro_rads = gyro_body_rads;
-  outputs.imu_raw.accel_cov_mps2_2 = accel_cov_body_mps2_2;
+  outputs.imu_raw.accel_cov_mps2_2 = accel_cov_body_sanitized_mps2_2;
   outputs.imu_raw.gyro_cov_rads2_2 = gyro_cov_body_sanitized_rads2_2;
 
   // Update gyro bias
@@ -238,7 +276,7 @@ Mpu6050ImuProcessor::ProcessedOutputs Mpu6050ImuProcessor::ProcessRaw(int16_t ax
   AccelCalibrator::Sample sample{};
   sample.accel_mps2 = accel_body_mps2;
   sample.gyro_rads = gyro_body_rads;
-  sample.accel_cov_mps2_2 = accel_cov_body_mps2_2;
+  sample.accel_cov_mps2_2 = accel_cov_body_sanitized_mps2_2;
   sample.gyro_cov_rads2_2 = gyro_cov_body_sanitized_rads2_2;
   sample.gyro_var_rads2_2 = gyro_cov_body_diag_rads2_2;
   sample.temperature_c = temperature_c;
@@ -251,12 +289,16 @@ Mpu6050ImuProcessor::ProcessedOutputs Mpu6050ImuProcessor::ProcessRaw(int16_t ax
     {
       m_cached_accel_noise_stddev = m_accelCalibrator.GetCalibratedBaselineAccelNoiseStddev();
       m_cached_gyro_noise_stddev = m_accelCalibrator.GetCalibratedBaselineGyroNoiseStddev();
+      m_cached_accel_noise_cov = m_accelCalibrator.GetCalibratedBaselineAccelNoiseCov();
+      m_cached_gyro_noise_cov = m_accelCalibrator.GetCalibratedBaselineGyroNoiseCov();
       m_use_cached_noise = true;
     }
     else if (m_accelCalibrator.HasRawBaseline())
     {
       m_cached_accel_noise_stddev = m_accelCalibrator.GetRawBaselineAccelNoiseStddev();
       m_cached_gyro_noise_stddev = m_accelCalibrator.GetRawBaselineGyroNoiseStddev();
+      m_cached_accel_noise_cov = m_accelCalibrator.GetRawBaselineAccelNoiseCov();
+      m_cached_gyro_noise_cov = m_accelCalibrator.GetRawBaselineGyroNoiseCov();
       m_use_cached_noise = true;
     }
   }
@@ -265,25 +307,33 @@ Mpu6050ImuProcessor::ProcessedOutputs Mpu6050ImuProcessor::ProcessRaw(int16_t ax
   outputs.imu.accel_mps2 = m_accelCalibrator.ApplyAccel(accel_body_mps2);
   outputs.imu.gyro_rads = gyro_body_rads;
   outputs.imu.accel_cov_mps2_2 =
-      m_accelCalibrator.ApplyAccelCovariance(accel_body_mps2, accel_cov_body_mps2_2);
+      m_accelCalibrator.ApplyAccelCovariance(accel_body_mps2, accel_cov_body_sanitized_mps2_2);
   outputs.imu.gyro_cov_rads2_2 = gyro_cov_body_sanitized_rads2_2;
 
   if (m_use_cached_noise)
   {
-    std::array<double, 3> accel_var_cached{0.0, 0.0, 0.0};
-    std::array<double, 3> gyro_var_cached{0.0, 0.0, 0.0};
+    AccelCalibrator::Mat3 accel_cov_cached = SanitizeCovariance(m_cached_accel_noise_cov);
+    AccelCalibrator::Mat3 gyro_cov_cached = SanitizeCovariance(m_cached_gyro_noise_cov);
 
     for (size_t axis = 0; axis < 3; ++axis)
     {
-      accel_var_cached[axis] =
+      const double accel_var_cached =
           m_cached_accel_noise_stddev[axis] * m_cached_accel_noise_stddev[axis];
-      gyro_var_cached[axis] = m_cached_gyro_noise_stddev[axis] * m_cached_gyro_noise_stddev[axis];
+      const double gyro_var_cached =
+          m_cached_gyro_noise_stddev[axis] * m_cached_gyro_noise_stddev[axis];
+      accel_cov_cached[axis][axis] = std::max(accel_cov_cached[axis][axis], accel_var_cached);
+      gyro_cov_cached[axis][axis] = std::max(gyro_cov_cached[axis][axis], gyro_var_cached);
     }
 
-    const AccelCalibrator::Mat3 accel_cov_cached = MakeDiagonalCovariance(accel_var_cached);
-    AccelCalibrator::Mat3 gyro_cov_cached = SanitizeCovariance(m_cached_gyro_noise_cov);
     for (size_t axis = 0; axis < 3; ++axis)
-      gyro_cov_cached[axis][axis] = std::max(gyro_cov_cached[axis][axis], gyro_var_cached[axis]);
+      accel_cov_cached[axis][axis] =
+          std::max(accel_cov_cached[axis][axis], accel_var_sensor_mps2_2[axis]);
+
+    for (size_t axis = 0; axis < 3; ++axis)
+      gyro_cov_cached[axis][axis] =
+          std::max(gyro_cov_cached[axis][axis], gyro_var_sensor_rads2_2[axis]);
+
+    accel_cov_cached = SanitizeCovariance(accel_cov_cached);
     const AccelCalibrator::Mat3 gyro_cov_cached_sanitized = SanitizeCovariance(gyro_cov_cached);
 
     outputs.imu_raw.accel_cov_mps2_2 = accel_cov_cached;
