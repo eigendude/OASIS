@@ -53,6 +53,21 @@ public:
 
     // Maximum angular deviation (radians) accepted for axis coverage.
     double max_axis_angle_rad{0.436332}; // 25 degrees
+
+    // Diagonal stddev floor applied to calibrated accel covariance.
+    double calibrated_accel_stddev_floor_mps2{0.15};
+
+    // Diagonal stddev floor applied to calibrated gyro covariance.
+    double calibrated_gyro_stddev_floor_rads{0.02};
+
+    // EMA weight for |a_cal|-g residual variance during stationarity.
+    double gravity_residual_ema_alpha{0.05};
+
+    // Minimum sigma used for residual-based inflation.
+    double gravity_residual_sigma_floor_mps2{0.10};
+
+    // Inflation factor based on ellipsoid RMS residual; 0 disables.
+    double fit_quality_inflation_k{0.0};
   };
 
   /**
@@ -293,6 +308,11 @@ private:
   bool FitEllipsoid();
   bool SaveCache(const Sample& sample);
 
+  void ComputeEffectiveCalibratedCovariances(const Mat3& accel_cov,
+                                             const Mat3& gyro_cov,
+                                             Mat3& accel_cov_out,
+                                             Mat3& gyro_cov_out) const;
+
   static Calibration MakeIdentityCalibration(double gravity_mps2, const std::string& frame_id);
 
   struct RunningStats
@@ -367,5 +387,7 @@ private:
   std::array<double, 3> m_raw_bias_gyro{0.0, 0.0, 0.0};
   std::array<RunningStats, 3> m_raw_bias_stats_accel;
   std::array<RunningStats, 3> m_raw_bias_stats_gyro;
+  double m_gravity_residual_var_ema{0.0};
+  bool m_gravity_residual_var_init{false};
 };
 } // namespace OASIS::IMU
