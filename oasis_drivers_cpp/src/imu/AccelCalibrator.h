@@ -31,7 +31,6 @@ class AccelCalibrator
 public:
   using Mat3 = std::array<std::array<double, 3>, 3>;
   using Mat9 = std::array<std::array<double, 9>, 9>;
-  using Mat12 = std::array<std::array<double, 12>, 12>;
 
   /**
    * Configuration parameters that control calibration behavior.
@@ -130,9 +129,10 @@ public:
     // Full bias covariance in (m/s^2)^2.
     Mat3 accel_bias_cov_mps2_2{};
 
-    // Full parameter covariance for theta=[b;vec(A)] (row-major vec).
-    // Ordering: [bx, by, bz, a00, a01, a02, a10, a11, a12, a20, a21, a22]
-    Mat12 accel_param_cov{};
+    // Covariance of theta parameters from the ellipsoid fit.
+    // Bias terms use (m/s^2)^2, A terms are unitless^2.
+    // theta = [bx, by, bz, a00, a10, a11, a20, a21, a22]
+    Mat9 accel_param_cov{};
 
     // Parameter uncertainties (1 sigma) for bias (m/s^2)
     std::array<double, 3> bias_stddev_mps2{0.0, 0.0, 0.0};
