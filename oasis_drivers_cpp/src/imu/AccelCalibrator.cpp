@@ -15,6 +15,7 @@
 #include <cmath>
 #include <cstddef>
 #include <fstream>
+#include <iostream>
 #include <numeric>
 
 #include <Eigen/Dense>
@@ -37,13 +38,13 @@ constexpr double kBaselineNoiseAlpha = 0.01;
 constexpr double kDirectionalSpreadThreshold = 0.15;
 
 // Minimum consecutive stationary samples before accepting a window
-constexpr size_t kMinConsecutiveStationary = 20;
+constexpr size_t kMinConsecutiveStationary = 10;
 
 // Number of stationary samples required before freezing the baseline noise
-constexpr size_t kMinBootstrapStationarySamples = 800;
+constexpr size_t kMinBootstrapStationarySamples = 400;
 
 // Number of stationary samples required before freezing calibrated noise
-constexpr size_t kMinRefineStationarySamples = 1600;
+constexpr size_t kMinRefineStationarySamples = 800;
 
 // Autosave cooldown (s) to rate-limit writes and avoid thrash on small updates
 constexpr double kSaveCooldownSeconds = 1.0;
@@ -59,6 +60,13 @@ constexpr size_t kMinClusters = 10;
 
 // Directional spread gate for fit (require enough angular diversity to be stable)
 constexpr double kSpreadThreshold = 0.3;
+
+// Covariance/stddev diagonal mismatch tolerance in (units)^2.
+// Triggers a debug log if diag differs from stddev^2 beyond abs/rel bounds.
+constexpr double kStddevDiagAbsTolerance = 1e-6;
+
+// Relative tolerance for stddev^2 vs covariance diag mismatch.
+constexpr double kStddevDiagRelTolerance = 0.05;
 
 // Utility helpers for small fixed-size vectors/matrices
 std::array<double, 3> Subtract(const std::array<double, 3>& a, const std::array<double, 3>& b)
@@ -162,6 +170,14 @@ AccelCalibrator::Mat3 ClampDiagonal(const AccelCalibrator::Mat3& matrix)
     clamped[axis][axis] = std::max(clamped[axis][axis], kNoiseFloor);
 
   return clamped;
+}
+
+double SanitizeVariance(double variance)
+{
+  if (!std::isfinite(variance) || variance < kNoiseFloor)
+    return kNoiseFloor;
+
+  return variance;
 }
 
 bool IsFinite(const AccelCalibrator::Mat3& matrix);
@@ -272,6 +288,65 @@ void PopulateStddevFromCov(const AccelCalibrator::Mat3& covariance, std::array<d
 {
   for (size_t axis = 0; axis < 3; ++axis)
     stddev[axis] = std::sqrt(std::max(covariance[axis][axis], kNoiseFloor));
+}
+
+bool StddevCovarianceMismatch(const std::array<double, 3>& stddev,
+                              const AccelCalibrator::Mat3& covariance,
+                              const char* label)
+{
+  bool mismatch = false;
+
+  for (size_t axis = 0; axis < 3; ++axis)
+  {
+    const double stddev_value = stddev[axis];
+    if (!std::isfinite(stddev_value))
+      continue;
+
+    const double stddev_var = stddev_value * stddev_value;
+    const double diag = covariance[axis][axis];
+    const double diff = std::abs(diag - stddev_var);
+    const double scale = std::max(std::max(stddev_var, diag), kNoiseFloor);
+    const double tolerance =
+        std::max(kStddevDiagAbsTolerance, kStddevDiagRelTolerance * scale);
+
+    if (diff > tolerance)
+    {
+      mismatch = true;
+      std::cerr << "AccelCalibrator: " << label
+                << " stddev^2 mismatch on axis " << axis << " stddev^2=" << stddev_var
+                << " cov=" << diag << '\n';
+    }
+  }
+
+  return mismatch;
+}
+
+AccelCalibrator::Mat3 ResolveCovarianceFromStddev(const AccelCalibrator::Mat3& covariance,
+                                                  const std::array<double, 3>& stddev,
+                                                  const char* label,
+                                                  std::array<double, 3>& derived_stddev)
+{
+  AccelCalibrator::Mat3 resolved = covariance;
+
+  if (!IsFinite(resolved))
+    resolved = CovarianceFromStddev(stddev);
+
+  resolved = SanitizeCovariance(resolved);
+
+  for (size_t axis = 0; axis < 3; ++axis)
+  {
+    const double stddev_value = stddev[axis];
+    const double stddev_var =
+        std::isfinite(stddev_value) ? stddev_value * stddev_value : 0.0;
+    const double floor_var = std::max(stddev_var, kNoiseFloor);
+    resolved[axis][axis] = std::max(resolved[axis][axis], floor_var);
+  }
+
+  resolved = SanitizeCovariance(resolved);
+  PopulateStddevFromCov(resolved, derived_stddev);
+  StddevCovarianceMismatch(stddev, resolved, label);
+
+  return resolved;
 }
 
 bool NodeToMat3(const YAML::Node& node, AccelCalibrator::Mat3& matrix)
@@ -739,11 +814,18 @@ YAML::Node SerializeCalibration(const AccelCalibrator::Calibration& calib)
   root["temperature"] = temperature;
 
   YAML::Node noise;
-  noise["accel_stddev_mps2"] = ToSequence(calib.accel_noise_stddev_mps2);
-  noise["gyro_stddev_rads"] = ToSequence(calib.gyro_noise_stddev_rads);
-  const auto accel_noise_cov = SanitizeCovariance(calib.accel_noise_cov_mps2_2);
+  std::array<double, 3> accel_noise_stddev{};
+  const auto accel_noise_cov = ResolveCovarianceFromStddev(
+      calib.accel_noise_cov_mps2_2, calib.accel_noise_stddev_mps2, "noise accel",
+      accel_noise_stddev);
+  noise["accel_stddev_mps2"] = ToSequence(accel_noise_stddev);
+
+  std::array<double, 3> gyro_noise_stddev{};
+  const auto gyro_noise_cov = ResolveCovarianceFromStddev(
+      calib.gyro_noise_cov_rads2_2, calib.gyro_noise_stddev_rads, "noise gyro",
+      gyro_noise_stddev);
+  noise["gyro_stddev_rads"] = ToSequence(gyro_noise_stddev);
   noise["accel_cov_mps2_2"] = ToMatrix(accel_noise_cov);
-  const auto gyro_noise_cov = SanitizeCovariance(calib.gyro_noise_cov_rads2_2);
   noise["gyro_cov_rads2_2"] = ToMatrix(gyro_noise_cov);
   root["noise"] = noise;
 
@@ -752,11 +834,17 @@ YAML::Node SerializeCalibration(const AccelCalibrator::Calibration& calib)
     YAML::Node raw;
     raw["accel_bias_mps2"] = ToSequence(calib.raw_accel_bias_mps2);
     raw["gyro_bias_rads"] = ToSequence(calib.raw_gyro_bias_rads);
-    raw["accel_stddev_mps2"] = ToSequence(calib.raw_accel_noise_stddev_mps2);
-    raw["gyro_stddev_rads"] = ToSequence(calib.raw_gyro_noise_stddev_rads);
-    const auto raw_accel_cov = SanitizeCovariance(calib.raw_accel_noise_cov_mps2_2);
+    std::array<double, 3> raw_accel_stddev{};
+    const auto raw_accel_cov = ResolveCovarianceFromStddev(
+        calib.raw_accel_noise_cov_mps2_2, calib.raw_accel_noise_stddev_mps2, "raw accel",
+        raw_accel_stddev);
+    raw["accel_stddev_mps2"] = ToSequence(raw_accel_stddev);
+    std::array<double, 3> raw_gyro_stddev{};
+    const auto raw_gyro_cov = ResolveCovarianceFromStddev(
+        calib.raw_gyro_noise_cov_rads2_2, calib.raw_gyro_noise_stddev_rads, "raw gyro",
+        raw_gyro_stddev);
+    raw["gyro_stddev_rads"] = ToSequence(raw_gyro_stddev);
     raw["accel_cov_mps2_2"] = ToMatrix(raw_accel_cov);
-    const auto raw_gyro_cov = SanitizeCovariance(calib.raw_gyro_noise_cov_rads2_2);
     raw["gyro_cov_rads2_2"] = ToMatrix(raw_gyro_cov);
     raw["stationary_samples"] = calib.raw_stationary_samples;
     raw["method"] = calib.raw_noise_method;
@@ -766,11 +854,18 @@ YAML::Node SerializeCalibration(const AccelCalibrator::Calibration& calib)
   if (!calib.calibrated_noise_method.empty() || calib.calibrated_stationary_samples > 0)
   {
     YAML::Node calibrated_noise;
-    calibrated_noise["accel_stddev_mps2"] = ToSequence(calib.calibrated_noise_accel_stddev_mps2);
-    calibrated_noise["gyro_stddev_rads"] = ToSequence(calib.calibrated_noise_gyro_stddev_rads);
-    const auto calibrated_accel_cov = SanitizeCovariance(calib.calibrated_noise_accel_cov_mps2_2);
+    std::array<double, 3> calibrated_accel_stddev{};
+    const auto calibrated_accel_cov = ResolveCovarianceFromStddev(
+        calib.calibrated_noise_accel_cov_mps2_2, calib.calibrated_noise_accel_stddev_mps2,
+        "calibrated accel", calibrated_accel_stddev);
+    calibrated_noise["accel_stddev_mps2"] = ToSequence(calibrated_accel_stddev);
+
+    std::array<double, 3> calibrated_gyro_stddev{};
+    const auto calibrated_gyro_cov = ResolveCovarianceFromStddev(
+        calib.calibrated_noise_gyro_cov_rads2_2, calib.calibrated_noise_gyro_stddev_rads,
+        "calibrated gyro", calibrated_gyro_stddev);
+    calibrated_noise["gyro_stddev_rads"] = ToSequence(calibrated_gyro_stddev);
     calibrated_noise["accel_cov_mps2_2"] = ToMatrix(calibrated_accel_cov);
-    const auto calibrated_gyro_cov = SanitizeCovariance(calib.calibrated_noise_gyro_cov_rads2_2);
     calibrated_noise["gyro_cov_rads2_2"] = ToMatrix(calibrated_gyro_cov);
     calibrated_noise["stationary_samples"] = calib.calibrated_stationary_samples;
     calibrated_noise["method"] = calib.calibrated_noise_method;
@@ -1238,12 +1333,15 @@ void AccelCalibrator::UpdateBaselineNoise(const WindowSample& stats)
   ++m_raw_stationary_samples;
 
   const Mat3 raw_cov_gyro = SanitizeCovariance(stats.cov_gyro);
-  Mat3 raw_cov_accel = MakeDiagonal(stats.var_accel);
+  const std::array<double, 3> accel_variance{SanitizeVariance(stats.var_accel[0]),
+                                             SanitizeVariance(stats.var_accel[1]),
+                                             SanitizeVariance(stats.var_accel[2])};
+  Mat3 raw_cov_accel = MakeDiagonal(accel_variance);
   raw_cov_accel = SanitizeCovariance(raw_cov_accel);
 
   for (size_t axis = 0; axis < 3; ++axis)
   {
-    const double accel_var = std::max(stats.var_accel[axis], kNoiseFloor);
+    const double accel_var = accel_variance[axis];
     m_raw_baseline_accel_var[axis] =
         update_mean(m_raw_baseline_accel_var[axis], accel_var, m_raw_stationary_samples);
     m_raw_bias_accel[axis] =
@@ -1274,11 +1372,14 @@ void AccelCalibrator::UpdateBaselineNoise(const WindowSample& stats)
   {
     ++m_calibrated_stationary_samples;
     const Mat3 cal_cov_gyro = raw_cov_gyro;
-    Mat3 cal_cov_accel = MakeDiagonal(stats.var_accel_cal);
+    const std::array<double, 3> accel_cal_variance{SanitizeVariance(stats.var_accel_cal[0]),
+                                                   SanitizeVariance(stats.var_accel_cal[1]),
+                                                   SanitizeVariance(stats.var_accel_cal[2])};
+    Mat3 cal_cov_accel = MakeDiagonal(accel_cal_variance);
     cal_cov_accel = SanitizeCovariance(cal_cov_accel);
     for (size_t axis = 0; axis < 3; ++axis)
     {
-      const double accel_var = std::max(stats.var_accel_cal[axis], kNoiseFloor);
+      const double accel_var = accel_cal_variance[axis];
       m_cal_baseline_accel_var[axis] =
           update_mean(m_cal_baseline_accel_var[axis], accel_var, m_calibrated_stationary_samples);
     }
