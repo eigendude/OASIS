@@ -1892,6 +1892,7 @@ bool AccelCalibrator::FitEllipsoid()
 
   // Gauss-Newton iterations
   const size_t max_iter = 10;
+  double lambda = 1e-3;
   for (size_t iter = 0; iter < max_iter; ++iter)
   {
     std::vector<double> residuals;
@@ -1907,7 +1908,9 @@ bool AccelCalibrator::FitEllipsoid()
       if (norm_y < 1e-6)
         continue;
       const double r = norm_y - m_config.gravity_mps2;
-      residuals.push_back(r);
+      const double weight = std::max(1.0, static_cast<double>(cluster.count));
+      const double sqrt_w = std::sqrt(weight);
+      residuals.push_back(sqrt_w * r);
 
       // Jacobian row
       std::vector<double> row(9, 0.0);
@@ -1930,6 +1933,9 @@ bool AccelCalibrator::FitEllipsoid()
       row[7] = unit[2] * diff[1]; // a21
       row[8] = unit[2] * diff[2]; // a22
 
+      for (auto& value : row)
+        value *= sqrt_w;
+
       J.emplace_back(row);
     }
 
@@ -1938,7 +1944,7 @@ bool AccelCalibrator::FitEllipsoid()
 
     const size_t m = residuals.size();
     const size_t n = params.size();
-    std::vector<std::vector<double>> JtJ(n, std::vector<double>(n, 0.0));
+    std::vector<std::vector<double>> JtJ_base(n, std::vector<double>(n, 0.0));
     std::vector<double> Jtr(n, 0.0);
 
     for (size_t i = 0; i < m; ++i)
@@ -1949,12 +1955,39 @@ bool AccelCalibrator::FitEllipsoid()
       {
         Jtr[c] += row[c] * r;
         for (size_t k = 0; k < n; ++k)
-          JtJ[c][k] += row[c] * row[k];
+          JtJ_base[c][k] += row[c] * row[k];
       }
     }
 
     std::vector<double> delta;
-    if (!SolveLinearSystem(JtJ, Jtr, delta))
+    bool solved = false;
+    for (size_t retry = 0; retry < 5; ++retry)
+    {
+      auto JtJ = JtJ_base;
+      for (size_t d = 0; d < n; ++d)
+        JtJ[d][d] += lambda;
+
+      if (!SolveLinearSystem(JtJ, Jtr, delta))
+      {
+        lambda *= 10.0;
+        continue;
+      }
+
+      const bool finite_delta =
+          std::all_of(delta.begin(), delta.end(), [](double v) { return std::isfinite(v); });
+      const double step_norm =
+          std::sqrt(std::inner_product(delta.begin(), delta.end(), delta.begin(), 0.0));
+      if (!finite_delta || !std::isfinite(step_norm) || step_norm > 1e3)
+      {
+        lambda *= 10.0;
+        continue;
+      }
+
+      solved = true;
+      break;
+    }
+
+    if (!solved)
       break;
 
     const double step_norm =
@@ -1980,7 +2013,9 @@ bool AccelCalibrator::FitEllipsoid()
     const double norm_y = Norm(y);
     if (norm_y < 1e-6)
       continue;
-    residuals.push_back(norm_y - m_config.gravity_mps2);
+    const double weight = std::max(1.0, static_cast<double>(cluster.count));
+    const double sqrt_w = std::sqrt(weight);
+    residuals.push_back(sqrt_w * (norm_y - m_config.gravity_mps2));
 
     std::vector<double> row(9, 0.0);
     const std::array<double, 3> unit = Scale(y, 1.0 / norm_y);
@@ -1993,6 +2028,8 @@ bool AccelCalibrator::FitEllipsoid()
     row[6] = unit[2] * diff[0];
     row[7] = unit[2] * diff[1];
     row[8] = unit[2] * diff[2];
+    for (auto& value : row)
+      value *= sqrt_w;
     J_final.emplace_back(row);
   }
 
