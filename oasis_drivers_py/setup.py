@@ -98,6 +98,7 @@ setuptools.setup(
             "telemetrix_bridge = oasis_drivers.cli.telemetrix_bridge_cli:main",
             "ups_server = oasis_drivers.cli.ups_server_cli:main",
             "wol_server = oasis_drivers.cli.wol_server_cli:main",
+            "train_localization = oasis_drivers.cli.train_localization_cli:main",
         ],
     },
     scripts=[
