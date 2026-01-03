@@ -210,8 +210,8 @@ public:
 
   struct WindowSample
   {
-    // Mean of the acceleration window (m/s^2).
-    std::array<double, 3> mean_accel{0.0, 0.0, 0.0};
+    // Mean of the raw acceleration window (m/s^2).
+    std::array<double, 3> mean_accel_raw{0.0, 0.0, 0.0};
 
     // Mean of the calibrated acceleration window (m/s^2).
     std::array<double, 3> mean_accel_cal{0.0, 0.0, 0.0};
@@ -219,8 +219,8 @@ public:
     // Mean of the gyro window (rad/s).
     std::array<double, 3> mean_gyro{0.0, 0.0, 0.0};
 
-    // Sample covariance of the acceleration window (m/s^2)^2.
-    Mat3 cov_accel{};
+    // Sample covariance of the raw acceleration window (m/s^2)^2.
+    Mat3 cov_accel_raw{};
 
     // Sample covariance of the calibrated acceleration window (m/s^2)^2.
     Mat3 cov_accel_cal{};
@@ -228,8 +228,8 @@ public:
     // Sample covariance of the per-window mean gyro (rad/s)^2.
     Mat3 cov_gyro{};
 
-    // Variance of the acceleration window (m/s^2)^2 from cov_accel.
-    std::array<double, 3> var_accel{0.0, 0.0, 0.0};
+    // Variance of the raw acceleration window (m/s^2)^2 from cov_accel_raw.
+    std::array<double, 3> var_accel_raw{0.0, 0.0, 0.0};
 
     // Variance of the calibrated acceleration window (m/s^2)^2 from cov_accel_cal.
     std::array<double, 3> var_accel_cal{0.0, 0.0, 0.0};
