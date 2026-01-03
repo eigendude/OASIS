@@ -927,9 +927,6 @@ bool AccelCalibrator::LoadCache()
       const auto accel_stddev = !calib.calibrated_noise_method.empty()
                                     ? calib.calibrated_noise_accel_stddev_mps2
                                     : calib.accel_noise_stddev_mps2;
-      const auto gyro_stddev = !calib.calibrated_noise_method.empty()
-                                   ? calib.calibrated_noise_gyro_stddev_rads
-                                   : calib.gyro_noise_stddev_rads;
       const auto gyro_cov = !calib.calibrated_noise_method.empty()
                                 ? calib.calibrated_noise_gyro_cov_rads2_2
                                 : calib.gyro_noise_cov_rads2_2;
