@@ -17,6 +17,8 @@
 #include <fstream>
 #include <numeric>
 
+#include <Eigen/Dense>
+
 #include <yaml-cpp/yaml.h>
 
 using namespace OASIS::IMU;
@@ -152,6 +154,63 @@ AccelCalibrator::Mat3 Symmetrize(const AccelCalibrator::Mat3& matrix)
 
   return sym;
 }
+
+AccelCalibrator::Mat3 ProjectToPSD(const AccelCalibrator::Mat3& matrix)
+{
+  Eigen::Matrix3d M = Eigen::Matrix3d::Zero();
+
+  for (size_t row = 0; row < 3; ++row)
+  {
+    for (size_t col = 0; col < 3; ++col)
+      M(static_cast<int>(row), static_cast<int>(col)) = matrix[row][col];
+  }
+
+  M = 0.5 * (M + M.transpose());
+
+  Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver(M);
+  if (solver.info() != Eigen::Success ||
+      !solver.eigenvalues().allFinite() || !solver.eigenvectors().allFinite())
+  {
+    const auto sym = Symmetrize(matrix);
+    return IsFinite(sym) ? sym : matrix;
+  }
+
+  const Eigen::Vector3d clamped = solver.eigenvalues().cwiseMax(kNoiseFloor);
+  const Eigen::Matrix3d M_psd =
+      solver.eigenvectors() * clamped.asDiagonal() * solver.eigenvectors().transpose();
+
+  AccelCalibrator::Mat3 result{};
+  for (size_t row = 0; row < 3; ++row)
+  {
+    for (size_t col = 0; col < 3; ++col)
+      result[row][col] = M_psd(static_cast<int>(row), static_cast<int>(col));
+  }
+
+  return result;
+}
+
+#ifndef NDEBUG
+void AssertSymmetricPSD(const AccelCalibrator::Mat3& matrix)
+{
+  Eigen::Matrix3d M = Eigen::Matrix3d::Zero();
+
+  for (size_t row = 0; row < 3; ++row)
+  {
+    for (size_t col = 0; col < 3; ++col)
+      M(static_cast<int>(row), static_cast<int>(col)) = matrix[row][col];
+  }
+
+  const Eigen::Matrix3d sym = 0.5 * (M + M.transpose());
+  const double asymmetry = (M - sym).cwiseAbs().maxCoeff();
+  assert(asymmetry < 1e-9);
+
+  Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver(sym);
+  assert(solver.info() == Eigen::Success);
+
+  const double min_eigen = solver.eigenvalues().minCoeff();
+  assert(min_eigen >= -1e-12);
+}
+#endif
 
 AccelCalibrator::Mat3 Add(const AccelCalibrator::Mat3& lhs, const AccelCalibrator::Mat3& rhs)
 {
@@ -836,6 +895,18 @@ AccelCalibrator::Mat3 AccelCalibrator::ApplyAccelCovariance(const std::array<dou
 
   if (!IsFinite(total_cov))
     return IsFinite(meas_cov) ? meas_cov : accel_cov_mps2_2;
+
+  total_cov = ProjectToPSD(total_cov);
+
+  for (size_t axis = 0; axis < 3; ++axis)
+    total_cov[axis][axis] = std::max(total_cov[axis][axis], kNoiseFloor);
+
+  if (!IsFinite(total_cov))
+    return IsFinite(meas_cov) ? meas_cov : accel_cov_mps2_2;
+
+#ifndef NDEBUG
+  AssertSymmetricPSD(total_cov);
+#endif
 
   return total_cov;
 }
