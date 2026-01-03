@@ -13,6 +13,7 @@
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
+  <depend>eigen</depend>
   <depend>geometry_msgs</depend>
   <depend>libcec</depend>
   <depend>libudev-dev</depend>
