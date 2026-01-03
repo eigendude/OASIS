@@ -87,6 +87,44 @@ raw:
       - 0.00065619657700644474
   stationary_samples: 1765
   method: bootstrap_rest
+calibrated_noise:
+  accel_stddev_mps2:
+    - 0.12811232697860067
+    - 0.16544033784757106
+    - 0.10949858711073167
+  gyro_stddev_rads:
+    - 0.045261181779770211
+    - 0.027570051157961354
+    - 0.025616334183611134
+  accel_cov_mps2_2:
+    -
+      - 0.016412768323871892
+      - 0
+      - 0
+    -
+      - 0
+      - 0.027370505387118455
+      - 0
+    -
+      - 0
+      - 0
+      - 0.011989940579246492
+  gyro_cov_rads2_2:
+    -
+      - 0.0020485745761014027
+      - -0.00019902091839864384
+      - 0.00017849469321178961
+    -
+      - -0.00019902091839864384
+      - 0.00076010772085260622
+      - -3.6461307821812821e-05
+    -
+      - 0.00017849469321178964
+      - -3.6461307821812828e-05
+      - 0.00065619657700644431
+  stationary_samples: 1765
+  method: refined_rest
+  phase: refine
 stability:
   gyro_bias_stddev_rads:
     - 0.027839024097832222
@@ -155,5 +193,5 @@ fit_quality:
   num_samples: 2260
 noise_fit:
   stationary_samples: 1765
-  method: bootstrap_rest
-  phase: bootstrap
+  method: rest_baseline
+  phase: refine
