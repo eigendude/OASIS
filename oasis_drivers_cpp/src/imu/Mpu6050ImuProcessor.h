@@ -33,9 +33,9 @@ public:
     // Angular velocity in rad/s in the imu_link frame.
     std::array<double, 3> gyro_rads{0.0, 0.0, 0.0};
 
-    // Per-axis gyroscope variance in (rad/s)^2 from the online
-    // 2nd-difference estimator on raw counts, floored by 1 LSB quantization.
-    std::array<double, 3> gyro_var_rads2_2{0.0, 0.0, 0.0};
+    // Gyroscope covariance in (rad/s)^2 from the online 2nd-difference
+    // estimator on raw counts, floored by 1 LSB quantization.
+    AccelCalibrator::Mat3 gyro_cov_rads2_2{};
   };
 
   struct ProcessedOutputs
