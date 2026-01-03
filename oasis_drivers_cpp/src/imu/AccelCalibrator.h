@@ -29,6 +29,8 @@ namespace OASIS::IMU
 class AccelCalibrator
 {
 public:
+  using Mat3 = std::array<std::array<double, 3>, 3>;
+
   /**
    * Configuration parameters that control calibration behavior.
    */
@@ -61,8 +63,8 @@ public:
     // Linear acceleration in m/s^2 in the imu_link frame.
     std::array<double, 3> accel_mps2{0.0, 0.0, 0.0};
 
-    // Per-axis accelerometer variance in (m/s^2)^2.
-    std::array<double, 3> accel_var_mps2_2{0.0, 0.0, 0.0};
+    // Accelerometer covariance in (m/s^2)^2.
+    Mat3 accel_cov_mps2_2{};
 
     // Angular velocity in rad/s in the imu_link frame.
     std::array<double, 3> gyro_rads{0.0, 0.0, 0.0};
@@ -210,8 +212,8 @@ public:
 
   // Apply calibration to accelerometer variance (includes parameter uncertainty
   // when available).
-  std::array<double, 3> ApplyAccelVariance(const std::array<double, 3>& accel_mps2,
-                                           const std::array<double, 3>& accel_var_mps2_2) const;
+  Mat3 ApplyAccelCovariance(const std::array<double, 3>& accel_mps2,
+                            const Mat3& accel_cov_mps2_2) const;
 
   // Process one IMU sample. Calibration runs only when enabled.
   UpdateStatus Update(const Sample& sample);

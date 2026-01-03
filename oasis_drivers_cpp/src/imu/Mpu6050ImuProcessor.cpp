@@ -42,6 +42,25 @@ std::array<double, 3> RemapVariances(const std::array<double, 3>& variances,
   return remapped;
 }
 
+AccelCalibrator::Mat3 RemapCovariance(const AccelCalibrator::Mat3& covariance,
+                                      const Mpu6050ImuProcessor::AxisRemap& remap)
+{
+  AccelCalibrator::Mat3 remapped{};
+
+  for (size_t row = 0; row < 3; ++row)
+  {
+    for (size_t col = 0; col < 3; ++col)
+    {
+      const int sign_row = remap.sign[row];
+      const int sign_col = remap.sign[col];
+      remapped[row][col] =
+          static_cast<double>(sign_row * sign_col) * covariance[remap.map[row]][remap.map[col]];
+    }
+  }
+
+  return remapped;
+}
+
 } // namespace
 
 void Mpu6050ImuProcessor::Reset()
@@ -135,15 +154,20 @@ Mpu6050ImuProcessor::ProcessedOutputs Mpu6050ImuProcessor::ProcessRaw(int16_t ax
   // Remap to link frame
   const std::array<double, 3> accel_body_mps2 = RemapAxes(accel_sensor_mps2, MPU6050_AXIS_REMAP);
   const std::array<double, 3> gyro_body_rads = RemapAxes(gyro_sensor_rads, MPU6050_AXIS_REMAP);
-  const std::array<double, 3> accel_var_body_mps2_2 =
-      RemapVariances(accel_var_sensor_mps2_2, MPU6050_AXIS_REMAP);
   const std::array<double, 3> gyro_var_body_rads2_2 =
       RemapVariances(gyro_var_sensor_rads2_2, MPU6050_AXIS_REMAP);
+
+  AccelCalibrator::Mat3 accel_cov_sensor_mps2_2{};
+  for (size_t axis = 0; axis < 3; ++axis)
+    accel_cov_sensor_mps2_2[axis][axis] = accel_var_sensor_mps2_2[axis];
+
+  const AccelCalibrator::Mat3 accel_cov_body_mps2_2 =
+      RemapCovariance(accel_cov_sensor_mps2_2, MPU6050_AXIS_REMAP);
 
   // Record raw measurements
   outputs.imu_raw.accel_mps2 = accel_body_mps2;
   outputs.imu_raw.gyro_rads = gyro_body_rads;
-  outputs.imu_raw.accel_var_mps2_2 = accel_var_body_mps2_2;
+  outputs.imu_raw.accel_cov_mps2_2 = accel_cov_body_mps2_2;
   outputs.imu_raw.gyro_var_rads2_2 = gyro_var_body_rads2_2;
 
   // Update gyro bias
@@ -153,7 +177,7 @@ Mpu6050ImuProcessor::ProcessedOutputs Mpu6050ImuProcessor::ProcessRaw(int16_t ax
   AccelCalibrator::Sample sample{};
   sample.accel_mps2 = accel_body_mps2;
   sample.gyro_rads = gyro_body_rads;
-  sample.accel_var_mps2_2 = accel_var_body_mps2_2;
+  sample.accel_cov_mps2_2 = accel_cov_body_mps2_2;
   sample.gyro_var_rads2_2 = gyro_var_body_rads2_2;
   sample.temperature_c = temperature_c;
   sample.timestamp_s = timestamp_s;
@@ -178,8 +202,8 @@ Mpu6050ImuProcessor::ProcessedOutputs Mpu6050ImuProcessor::ProcessRaw(int16_t ax
   // Record calibrated measurements
   outputs.imu.accel_mps2 = m_accelCalibrator.ApplyAccel(accel_body_mps2);
   outputs.imu.gyro_rads = gyro_body_rads;
-  outputs.imu.accel_var_mps2_2 =
-      m_accelCalibrator.ApplyAccelVariance(accel_body_mps2, accel_var_body_mps2_2);
+  outputs.imu.accel_cov_mps2_2 =
+      m_accelCalibrator.ApplyAccelCovariance(accel_body_mps2, accel_cov_body_mps2_2);
   outputs.imu.gyro_var_rads2_2 = gyro_var_body_rads2_2;
 
   if (m_use_cached_noise)
@@ -194,11 +218,15 @@ Mpu6050ImuProcessor::ProcessedOutputs Mpu6050ImuProcessor::ProcessRaw(int16_t ax
       gyro_var_cached[axis] = m_cached_gyro_noise_stddev[axis] * m_cached_gyro_noise_stddev[axis];
     }
 
-    outputs.imu_raw.accel_var_mps2_2 = accel_var_cached;
+    AccelCalibrator::Mat3 accel_cov_cached{};
+    for (size_t axis = 0; axis < 3; ++axis)
+      accel_cov_cached[axis][axis] = accel_var_cached[axis];
+
+    outputs.imu_raw.accel_cov_mps2_2 = accel_cov_cached;
     outputs.imu_raw.gyro_var_rads2_2 = gyro_var_cached;
 
-    outputs.imu.accel_var_mps2_2 =
-        m_accelCalibrator.ApplyAccelVariance(accel_body_mps2, accel_var_cached);
+    outputs.imu.accel_cov_mps2_2 =
+        m_accelCalibrator.ApplyAccelCovariance(accel_body_mps2, accel_cov_cached);
 
     outputs.imu.gyro_var_rads2_2 = gyro_var_cached;
   }

@@ -9,8 +9,11 @@
 #include "imu/AccelCalibrator.h"
 
 #include <algorithm>
+#include <array>
+#include <cassert>
 #include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <fstream>
 #include <numeric>
 
@@ -102,6 +105,89 @@ std::array<std::array<double, 3>, 3> MultiplyATransposeA(
   }
 
   return W;
+}
+
+AccelCalibrator::Mat3 Multiply(const AccelCalibrator::Mat3& lhs, const AccelCalibrator::Mat3& rhs)
+{
+  AccelCalibrator::Mat3 result{};
+
+  for (size_t row = 0; row < 3; ++row)
+  {
+    for (size_t col = 0; col < 3; ++col)
+    {
+      double value = 0.0;
+      for (size_t k = 0; k < 3; ++k)
+        value += lhs[row][k] * rhs[k][col];
+      result[row][col] = value;
+    }
+  }
+
+  return result;
+}
+
+AccelCalibrator::Mat3 Transpose(const AccelCalibrator::Mat3& matrix)
+{
+  AccelCalibrator::Mat3 transpose{};
+
+  for (size_t row = 0; row < 3; ++row)
+  {
+    for (size_t col = 0; col < 3; ++col)
+      transpose[row][col] = matrix[col][row];
+  }
+
+  return transpose;
+}
+
+AccelCalibrator::Mat3 Symmetrize(const AccelCalibrator::Mat3& matrix)
+{
+  AccelCalibrator::Mat3 sym{};
+
+  for (size_t row = 0; row < 3; ++row)
+  {
+    for (size_t col = 0; col < 3; ++col)
+    {
+      sym[row][col] = 0.5 * (matrix[row][col] + matrix[col][row]);
+    }
+  }
+
+  return sym;
+}
+
+AccelCalibrator::Mat3 Add(const AccelCalibrator::Mat3& lhs, const AccelCalibrator::Mat3& rhs)
+{
+  AccelCalibrator::Mat3 result{};
+
+  for (size_t row = 0; row < 3; ++row)
+  {
+    for (size_t col = 0; col < 3; ++col)
+      result[row][col] = lhs[row][col] + rhs[row][col];
+  }
+
+  return result;
+}
+
+bool IsFinite(const AccelCalibrator::Mat3& matrix)
+{
+  for (const auto& row : matrix)
+  {
+    for (double value : row)
+    {
+      if (!std::isfinite(value))
+        return false;
+    }
+  }
+
+  return true;
+}
+
+AccelCalibrator::Mat3 MakeDiagonal(const std::array<double, 3>& diagonal)
+{
+  AccelCalibrator::Mat3 matrix{};
+
+  for (size_t axis = 0; axis < 3; ++axis)
+    matrix[axis][axis] = diagonal[axis];
+
+  return matrix;
 }
 
 bool SolveLinearSystem(std::vector<std::vector<double>> A,
@@ -707,38 +793,51 @@ std::array<double, 3> AccelCalibrator::ApplyAccel(const std::array<double, 3>& a
   return MatrixVector(m_calibration->A, centered);
 }
 
-std::array<double, 3> AccelCalibrator::ApplyAccelVariance(
-    const std::array<double, 3>& accel_mps2, const std::array<double, 3>& accel_var_mps2_2) const
+AccelCalibrator::Mat3 AccelCalibrator::ApplyAccelCovariance(const std::array<double, 3>& accel_mps2,
+                                                            const Mat3& accel_cov_mps2_2) const
 {
   if (!m_calibration || !m_calibration->has_ellipsoid)
-    return accel_var_mps2_2;
-
-  std::array<double, 3> result{0.0, 0.0, 0.0};
+    return accel_cov_mps2_2;
 
   const std::array<double, 3> centered = Subtract(accel_mps2, m_calibration->bias_mps2);
+  const Mat3& A = m_calibration->A;
 
+  const Mat3 meas_cov = Multiply(A, Multiply(accel_cov_mps2_2, Transpose(A)));
+  Mat3 total_cov = meas_cov;
+
+  const std::array<double, 3> bias_variance{
+      m_calibration->bias_stddev_mps2[0] * m_calibration->bias_stddev_mps2[0],
+      m_calibration->bias_stddev_mps2[1] * m_calibration->bias_stddev_mps2[1],
+      m_calibration->bias_stddev_mps2[2] * m_calibration->bias_stddev_mps2[2]};
+
+  const Mat3 bias_cov = Multiply(A, Multiply(MakeDiagonal(bias_variance), Transpose(A)));
+
+  total_cov = Add(total_cov, bias_cov);
+
+  Mat3 A_cov{};
   for (size_t row = 0; row < 3; ++row)
   {
-    double var_meas = 0.0;
-    double var_bias = 0.0;
-    double var_A = 0.0;
-
+    double variance = 0.0;
     for (size_t col = 0; col < 3; ++col)
     {
-      const double a = m_calibration->A[row][col];
-      const double d = centered[col];
-      const double bias_sigma = m_calibration->bias_stddev_mps2[col];
-      const double A_sigma = m_calibration->A_stddev[row][col];
-
-      var_meas += a * a * accel_var_mps2_2[col];
-      var_bias += a * a * bias_sigma * bias_sigma;
-      var_A += d * d * A_sigma * A_sigma;
+      const double centered_val = centered[col];
+      const double sigma = m_calibration->A_stddev[row][col];
+      variance += centered_val * centered_val * sigma * sigma;
     }
 
-    result[row] = std::max(var_meas + var_bias + var_A, kNoiseFloor);
+    A_cov[row][row] = variance;
   }
 
-  return result;
+  total_cov = Add(total_cov, A_cov);
+  total_cov = Symmetrize(total_cov);
+
+  for (size_t axis = 0; axis < 3; ++axis)
+    total_cov[axis][axis] = std::max(total_cov[axis][axis], kNoiseFloor);
+
+  if (!IsFinite(total_cov))
+    return IsFinite(meas_cov) ? meas_cov : accel_cov_mps2_2;
+
+  return total_cov;
 }
 
 AccelCalibrator::UpdateStatus AccelCalibrator::Update(const Sample& sample)
@@ -818,7 +917,8 @@ void AccelCalibrator::UpdateNoiseEstimates(const Sample& sample)
 
   for (size_t axis = 0; axis < 3; ++axis)
   {
-    const double accel_sigma = std::sqrt(std::max(sample.accel_var_mps2_2[axis], kNoiseFloor));
+    const double accel_sigma =
+        std::sqrt(std::max(sample.accel_cov_mps2_2[axis][axis], kNoiseFloor));
     const double gyro_sigma = std::sqrt(std::max(sample.gyro_var_rads2_2[axis], kNoiseFloor));
     m_noise_stddev_accel[axis] = update_axis(m_noise_stddev_accel[axis], accel_sigma);
     m_noise_stddev_gyro[axis] = update_axis(m_noise_stddev_gyro[axis], gyro_sigma);

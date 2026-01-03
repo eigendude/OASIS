@@ -26,9 +26,9 @@ public:
     // Linear acceleration in m/s^2 in the imu_link frame.
     std::array<double, 3> accel_mps2{0.0, 0.0, 0.0};
 
-    // Per-axis accelerometer variance in (m/s^2)^2 from the online
-    // 2nd-difference estimator on raw counts, floored by 1 LSB quantization.
-    std::array<double, 3> accel_var_mps2_2{0.0, 0.0, 0.0};
+    // Accelerometer covariance in (m/s^2)^2 from the online 2nd-difference
+    // estimator on raw counts, floored by 1 LSB quantization.
+    AccelCalibrator::Mat3 accel_cov_mps2_2{};
 
     // Angular velocity in rad/s in the imu_link frame.
     std::array<double, 3> gyro_rads{0.0, 0.0, 0.0};
