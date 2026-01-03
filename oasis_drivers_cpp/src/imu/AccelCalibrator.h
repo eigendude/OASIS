@@ -30,6 +30,7 @@ class AccelCalibrator
 {
 public:
   using Mat3 = std::array<std::array<double, 3>, 3>;
+  using Mat9 = std::array<std::array<double, 9>, 9>;
 
   /**
    * Configuration parameters that control calibration behavior.
@@ -53,6 +54,21 @@ public:
 
     // Maximum angular deviation (radians) accepted for axis coverage.
     double max_axis_angle_rad{0.436332}; // 25 degrees
+
+    // Diagonal stddev floor applied to calibrated accel covariance.
+    double calibrated_accel_stddev_floor_mps2{0.15};
+
+    // Diagonal stddev floor applied to calibrated gyro covariance.
+    double calibrated_gyro_stddev_floor_rads{0.02};
+
+    // EMA weight for |a_cal|-g residual variance during stationarity.
+    double gravity_residual_ema_alpha{0.05};
+
+    // Minimum sigma used for residual-based inflation.
+    double gravity_residual_sigma_floor_mps2{0.10};
+
+    // Inflation factor based on ellipsoid RMS residual; 0 disables.
+    double fit_quality_inflation_k{0.0};
   };
 
   /**
@@ -98,6 +114,9 @@ public:
     std::array<double, 3> accel_noise_stddev_mps2{0.0, 0.0, 0.0};
     std::array<double, 3> gyro_noise_stddev_rads{0.0, 0.0, 0.0};
 
+    // Full accel noise covariance in (m/s^2)^2 used by downstream filters.
+    Mat3 accel_noise_cov_mps2_2{};
+
     // Full gyro noise covariance in (rad/s)^2 used by downstream filters.
     Mat3 gyro_noise_cov_rads2_2{};
 
@@ -106,6 +125,14 @@ public:
 
     // Accelerometer correction matrix A (row-major 3x3)
     std::array<std::array<double, 3>, 3> A{{{1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {0.0, 0.0, 1.0}}};
+
+    // Full bias covariance in (m/s^2)^2.
+    Mat3 accel_bias_cov_mps2_2{};
+
+    // Covariance of theta parameters from the ellipsoid fit.
+    // Bias terms use (m/s^2)^2, A terms are unitless^2.
+    // theta = [bx, by, bz, a00, a10, a11, a20, a21, a22]
+    Mat9 accel_param_cov{};
 
     // Parameter uncertainties (1 sigma) for bias (m/s^2)
     std::array<double, 3> bias_stddev_mps2{0.0, 0.0, 0.0};
@@ -133,6 +160,7 @@ public:
     std::array<double, 3> raw_gyro_bias_rads{0.0, 0.0, 0.0};
     std::array<double, 3> raw_accel_noise_stddev_mps2{0.0, 0.0, 0.0};
     std::array<double, 3> raw_gyro_noise_stddev_rads{0.0, 0.0, 0.0};
+    Mat3 raw_accel_noise_cov_mps2_2{};
     Mat3 raw_gyro_noise_cov_rads2_2{};
     size_t raw_stationary_samples{0};
     std::string raw_noise_method;
@@ -140,9 +168,12 @@ public:
     // Calibrated baseline noise after ellipsoid fit
     std::array<double, 3> calibrated_noise_accel_stddev_mps2{0.0, 0.0, 0.0};
     std::array<double, 3> calibrated_noise_gyro_stddev_rads{0.0, 0.0, 0.0};
+    Mat3 calibrated_noise_accel_cov_mps2_2{};
     Mat3 calibrated_noise_gyro_cov_rads2_2{};
     size_t calibrated_stationary_samples{0};
     std::string calibrated_noise_method;
+    // Phase label for calibrated noise (e.g. refine)
+    std::string calibrated_noise_phase;
 
     // Stability of rest biases across stationary windows
     std::array<double, 3> gyro_bias_stddev_rads{0.0, 0.0, 0.0};
@@ -179,8 +210,8 @@ public:
 
   struct WindowSample
   {
-    // Mean of the acceleration window (m/s^2).
-    std::array<double, 3> mean_accel{0.0, 0.0, 0.0};
+    // Mean of the raw acceleration window (m/s^2).
+    std::array<double, 3> mean_accel_raw{0.0, 0.0, 0.0};
 
     // Mean of the calibrated acceleration window (m/s^2).
     std::array<double, 3> mean_accel_cal{0.0, 0.0, 0.0};
@@ -188,16 +219,22 @@ public:
     // Mean of the gyro window (rad/s).
     std::array<double, 3> mean_gyro{0.0, 0.0, 0.0};
 
+    // Sample covariance of the raw acceleration window (m/s^2)^2.
+    Mat3 cov_accel_raw{};
+
+    // Sample covariance of the calibrated acceleration window (m/s^2)^2.
+    Mat3 cov_accel_cal{};
+
     // Sample covariance of the per-window mean gyro (rad/s)^2.
     Mat3 cov_gyro{};
 
-    // Variance of the acceleration window (m/s^2)^2.
-    std::array<double, 3> var_accel{0.0, 0.0, 0.0};
+    // Variance of the raw acceleration window (m/s^2)^2 from cov_accel_raw.
+    std::array<double, 3> var_accel_raw{0.0, 0.0, 0.0};
 
-    // Variance of the calibrated acceleration window (m/s^2)^2.
+    // Variance of the calibrated acceleration window (m/s^2)^2 from cov_accel_cal.
     std::array<double, 3> var_accel_cal{0.0, 0.0, 0.0};
 
-    // Variance of the gyro window (rad/s)^2.
+    // Variance of the gyro window (rad/s)^2 from cov_gyro.
     std::array<double, 3> var_gyro{0.0, 0.0, 0.0};
 
     // Mean and standard deviation of |a| over the window.
@@ -234,12 +271,18 @@ public:
   const Calibration& GetCalibration() const { return *m_calibration; }
   const std::array<double, 3>& GetAccelNoiseStddev() const { return m_noise_stddev_accel; }
   const std::array<double, 3>& GetGyroNoiseStddev() const { return m_noise_stddev_gyro; }
+  const Mat3& GetAccelNoiseCov() const { return m_noise_cov_accel; }
+  const Mat3& GetGyroNoiseCov() const { return m_noise_cov_gyro; }
   bool HasRawBaseline() const { return m_raw_baseline_valid; }
   bool HasCalibratedBaseline() const { return m_calibrated_baseline_valid; }
   std::array<double, 3> GetRawBaselineAccelNoiseStddev() const;
   std::array<double, 3> GetRawBaselineGyroNoiseStddev() const;
+  Mat3 GetRawBaselineAccelNoiseCov() const;
+  Mat3 GetRawBaselineGyroNoiseCov() const;
   std::array<double, 3> GetCalibratedBaselineAccelNoiseStddev() const;
   std::array<double, 3> GetCalibratedBaselineGyroNoiseStddev() const;
+  Mat3 GetCalibratedBaselineAccelNoiseCov() const;
+  Mat3 GetCalibratedBaselineGyroNoiseCov() const;
   std::array<double, 3> GetRawBias() const { return m_raw_bias_accel; }
   std::array<double, 3> GetRawGyroBias() const { return m_raw_bias_gyro; }
   std::array<double, 3> GetBiasStabilityAccel() const;
@@ -269,9 +312,15 @@ private:
   bool DetectStationary(const Sample& sample, const WindowSample& stats);
   void MergePose(const Sample& sample, const WindowSample& stats);
   bool HasAxisCoverage() const;
-  double ComputeDirectionalSpread() const;
+  size_t CountAxisCoverage() const;
+  size_t CountEdgeCoverage() const;
   bool FitEllipsoid();
   bool SaveCache(const Sample& sample);
+
+  void ComputeEffectiveCalibratedCovariances(const Mat3& accel_cov,
+                                             const Mat3& gyro_cov,
+                                             Mat3& accel_cov_out,
+                                             Mat3& gyro_cov_out) const;
 
   static Calibration MakeIdentityCalibration(double gravity_mps2, const std::string& frame_id);
 
@@ -306,6 +355,7 @@ private:
   // Noise tracking (stddev per axis)
   std::array<double, 3> m_noise_stddev_accel{0.0, 0.0, 0.0};
   std::array<double, 3> m_noise_stddev_gyro{0.0, 0.0, 0.0};
+  Mat3 m_noise_cov_accel{};
   Mat3 m_noise_cov_gyro{};
   bool m_noise_initialized{false};
 
@@ -315,6 +365,8 @@ private:
   // Pose clusters
   std::vector<Cluster> m_clusters;
   size_t m_total_pose_samples{0};
+  size_t m_last_attempt_cluster_count{0};
+  bool m_last_attempt_was_eligible{false};
 
   // Fit status
   std::optional<Calibration> m_calibration;
@@ -330,16 +382,21 @@ private:
   bool m_calibrated_baseline_valid{false};
   size_t m_raw_stationary_samples{0};
   size_t m_calibrated_stationary_samples{0};
+  size_t m_calibrated_convergence_samples{0};
   size_t m_consecutive_stationary{0};
   std::array<double, 3> m_raw_baseline_accel_var{0.0, 0.0, 0.0};
   std::array<double, 3> m_raw_baseline_gyro_var{0.0, 0.0, 0.0};
+  Mat3 m_raw_baseline_accel_cov{};
   Mat3 m_raw_baseline_gyro_cov{};
   std::array<double, 3> m_cal_baseline_accel_var{0.0, 0.0, 0.0};
   std::array<double, 3> m_cal_baseline_gyro_var{0.0, 0.0, 0.0};
+  Mat3 m_cal_baseline_accel_cov{};
   Mat3 m_cal_baseline_gyro_cov{};
   std::array<double, 3> m_raw_bias_accel{0.0, 0.0, 0.0};
   std::array<double, 3> m_raw_bias_gyro{0.0, 0.0, 0.0};
   std::array<RunningStats, 3> m_raw_bias_stats_accel;
   std::array<RunningStats, 3> m_raw_bias_stats_gyro;
+  double m_gravity_residual_var_ema{0.0};
+  bool m_gravity_residual_var_init{false};
 };
 } // namespace OASIS::IMU

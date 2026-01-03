@@ -14,6 +14,7 @@ import math
 from dataclasses import dataclass
 from typing import Iterable
 from typing import Optional
+from typing import Sequence
 
 
 ################################################################################
@@ -114,28 +115,27 @@ class OnlineCovarianceEstimator:
 
 
 ################################################################################
-# Gravity-based pose estimation
+# Tilt estimation with gyro fusion
 ################################################################################
 
 
-class GravityPoseEstimator:
-    """Estimate pose from gravity direction.
+class TiltPoseEstimator:
+    """Estimate tilt using gyro integration and accel correction.
 
-    The estimator low-pass filters accelerometer readings to recover the gravity
-    vector. Roll and pitch are derived from the filtered gravity vector and yaw
-    is fixed to zero because IMU-only yaw is unobservable. Pose covariance marks
-    yaw as highly uncertain and inflates roll/pitch variance when acceleration
-    deviates from the filtered gravity vector.
+    Roll and pitch are propagated with gyro rates for short-term dynamics and
+    corrected with accelerometer-derived gravity for long-term stability. The
+    2x2 roll/pitch covariance is tracked and mapped into a full 6x6 pose
+    covariance matrix.
     """
 
     def __init__(
         self,
         gravity_magnitude: float = 9.80665,
-        alpha: float = 0.05,
         yaw_variance: float = 1.0e6,
         position_variance: float = 1.0e6,
         min_accel_mps2: float = 1.0e-3,
         min_accel_variance: float = 1.0e-4,
+        min_gyro_variance: float = 1.0e-6,
         min_attitude_variance: float = 1.0e-6,
         motion_alpha: float = 1.0,
         motion_deadband_mps2: float = 0.2,
@@ -146,16 +146,16 @@ class GravityPoseEstimator:
 
         Args:
             gravity_magnitude: Expected gravity magnitude in m/s^2.
-            alpha: Low-pass filter coefficient for accelerometer smoothing.
             yaw_variance: Variance assigned to yaw in rad^2.
             position_variance: Variance assigned to xyz in m^2.
             min_accel_mps2: Minimum acceleration magnitude to accept samples.
             min_accel_variance: Lower bound for accelerometer covariance in
                 (m/s^2)^2.
+            min_gyro_variance: Lower bound for gyro covariance in (rad/s)^2.
             min_attitude_variance: Lower bound for roll/pitch variance in
                 rad^2.
             motion_alpha: Scaling for variance inflation when acceleration
-                deviates from the filtered gravity vector.
+                deviates from the predicted gravity vector.
             motion_deadband_mps2: Residual in m/s^2 ignored before
                 motion-based inflation is applied.
             motion_inflation_max: Maximum factor for motion-based covariance
@@ -163,77 +163,104 @@ class GravityPoseEstimator:
         """
 
         self._gravity_magnitude = gravity_magnitude
-        self._alpha = alpha
         self._yaw_variance = yaw_variance
         self._position_variance = position_variance
         self._min_accel_mps2 = min_accel_mps2
+        self._min_gyro_variance = min_gyro_variance
         self._min_attitude_variance = min_attitude_variance
         self._motion_alpha = motion_alpha
         self._motion_deadband_mps2 = motion_deadband_mps2
         self._motion_inflation_max = motion_inflation_max
 
-        self._gravity: Optional[tuple[float, float, float]] = None
+        self._roll: Optional[float] = None
+        self._pitch: Optional[float] = None
+        self._state_cov = [
+            [min_attitude_variance, 0.0],
+            [0.0, min_attitude_variance],
+        ]
+
         self._accel_covariance = OnlineCovarianceEstimator(3, min_accel_variance)
+        self._gyro_covariance = OnlineCovarianceEstimator(3, min_gyro_variance)
 
     def update(
         self,
         linear_accel: Iterable[float],
+        angular_velocity: Iterable[float],
+        dt_s: float,
         linear_accel_covariance: Optional[Iterable[float]] = None,
+        angular_velocity_covariance: Optional[Iterable[float]] = None,
     ) -> Optional[PoseEstimate]:
         """
-        Update the estimate with a new accelerometer sample.
+        Update the tilt estimate with accel + gyro data.
 
         Args:
             linear_accel: Linear acceleration in m/s^2.
+            angular_velocity: Angular velocity in rad/s.
+            dt_s: Time delta in seconds.
             linear_accel_covariance: 3x3 covariance in row-major form.
+            angular_velocity_covariance: 3x3 covariance in row-major form.
 
         Returns:
-            Pose estimate if a valid gravity vector is available.
+            Pose estimate if a valid attitude is available.
         """
 
         accel_values = tuple(linear_accel)
-        if len(accel_values) != 3:
+        gyro_values = tuple(angular_velocity)
+        if len(accel_values) != 3 or len(gyro_values) != 3:
             return None
 
         ax, ay, az = accel_values
-        accel: tuple[float, float, float] = (float(ax), float(ay), float(az))
+        gx, gy, gz = gyro_values
 
-        magnitude = math.sqrt(ax * ax + ay * ay + az * az)
-        if magnitude < self._min_accel_mps2:
-            return None
+        accel = (float(ax), float(ay), float(az))
+        gyro = (float(gx), float(gy), float(gz))
 
-        if self._gravity is None:
-            gravity: tuple[float, float, float] = accel
-        else:
-            gx, gy, gz = self._gravity
-            a = self._alpha
-            gravity = (
-                (1.0 - a) * gx + a * ax,
-                (1.0 - a) * gy + a * ay,
-                (1.0 - a) * gz + a * az,
-            )
-
-        self._gravity = gravity
-
-        rx = ax - gravity[0]
-        ry = ay - gravity[1]
-        rz = az - gravity[2]
-        residual = math.sqrt(rx * rx + ry * ry + rz * rz)
-
-        effective = max(0.0, residual - self._motion_deadband_mps2)
-        motion_inflation = (
-            1.0 + self._motion_alpha * (effective / self._gravity_magnitude) ** 2
-        )
-        motion_inflation = min(motion_inflation, self._motion_inflation_max)
+        dt = max(0.0, float(dt_s))
 
         self._accel_covariance.update(accel)
+        self._gyro_covariance.update(gyro)
 
-        roll, pitch = self._gravity_to_attitude(gravity)
-        covariance = self._covariance_from_accel_covariance(
-            linear_accel_covariance, motion_inflation
-        )
+        accel_magnitude = math.sqrt(ax * ax + ay * ay + az * az)
+        has_accel = accel_magnitude >= self._min_accel_mps2
 
-        orientation = self._rpy_to_quaternion(roll, pitch, 0.0)
+        if self._roll is None or self._pitch is None:
+            if not has_accel:
+                return None
+
+            self._roll, self._pitch = self._gravity_to_attitude(accel)
+            self._state_cov = [
+                [self._min_attitude_variance, 0.0],
+                [0.0, self._min_attitude_variance],
+            ]
+        else:
+            roll_pred, pitch_pred = self._predict_attitude(gyro, dt)
+            pred_cov = self._predict_covariance(
+                angular_velocity_covariance,
+                dt,
+            )
+
+            if has_accel:
+                roll_meas, pitch_meas = self._gravity_to_attitude(accel)
+                motion_inflation = self._motion_inflation(accel, roll_pred, pitch_pred)
+                meas_cov = self._orientation_covariance(
+                    accel, linear_accel_covariance, motion_inflation
+                )
+                roll_upd, pitch_upd, upd_cov = self._kalman_update(
+                    (roll_pred, pitch_pred),
+                    pred_cov,
+                    (roll_meas, pitch_meas),
+                    meas_cov,
+                )
+                self._roll = roll_upd
+                self._pitch = pitch_upd
+                self._state_cov = upd_cov
+            else:
+                self._roll = roll_pred
+                self._pitch = pitch_pred
+                self._state_cov = pred_cov
+
+        orientation = self._rpy_to_quaternion(self._roll, self._pitch, 0.0)
+        covariance = self._pose_covariance(self._state_cov)
 
         return PoseEstimate(
             position=(0.0, 0.0, 0.0),
@@ -241,136 +268,257 @@ class GravityPoseEstimator:
             covariance=covariance,
         )
 
-    def _gravity_to_attitude(
-        self, gravity_vector: tuple[float, float, float]
+    def _predict_attitude(
+        self, gyro: tuple[float, float, float], dt: float
     ) -> tuple[float, float]:
-        gx, gy, gz = gravity_vector
+        roll = float(self._roll) if self._roll is not None else 0.0
+        pitch = float(self._pitch) if self._pitch is not None else 0.0
 
-        norm = math.sqrt(gx * gx + gy * gy + gz * gz)
-        if norm < self._min_accel_mps2:
-            return 0.0, 0.0
+        wx, wy, wz = gyro
+        tan_pitch = math.tan(pitch)
+        cos_roll = math.cos(roll)
+        sin_roll = math.sin(roll)
 
-        normalized = (gx / norm, gy / norm, gz / norm)
+        roll_rate = wx + sin_roll * tan_pitch * wy + cos_roll * tan_pitch * wz
+        pitch_rate = cos_roll * wy - sin_roll * wz
 
-        roll = math.atan2(normalized[1], normalized[2])
-        pitch = math.atan2(
-            -normalized[0],
-            math.sqrt(normalized[1] ** 2 + normalized[2] ** 2),
-        )
+        return roll + roll_rate * dt, pitch + pitch_rate * dt
 
-        return roll, pitch
-
-    def _rpy_to_quaternion(
-        self, roll: float, pitch: float, yaw: float
-    ) -> tuple[float, float, float, float]:
-        cr = math.cos(roll * 0.5)
-        sr = math.sin(roll * 0.5)
-        cp = math.cos(pitch * 0.5)
-        sp = math.sin(pitch * 0.5)
-        cy = math.cos(yaw * 0.5)
-        sy = math.sin(yaw * 0.5)
-
-        x = sr * cp * cy - cr * sp * sy
-        y = cr * sp * cy + sr * cp * sy
-        z = cr * cp * sy - sr * sp * cy
-        w = cr * cp * cy + sr * sp * sy
-
-        return x, y, z, w
-
-    def _covariance_from_accel_covariance(
+    def _predict_covariance(
         self,
-        linear_accel_covariance: Optional[Iterable[float]],
-        motion_inflation: float,
-    ) -> list[float]:
-        roll_variance, pitch_variance, roll_pitch_covariance = (
-            self._orientation_covariance(linear_accel_covariance, motion_inflation)
+        angular_velocity_covariance: Optional[Iterable[float]],
+        dt: float,
+    ) -> list[list[float]]:
+        roll = float(self._roll) if self._roll is not None else 0.0
+        pitch = float(self._pitch) if self._pitch is not None else 0.0
+
+        gyro_cov = self._gyro_covariance_matrix(angular_velocity_covariance)
+
+        sin_roll = math.sin(roll)
+        cos_roll = math.cos(roll)
+        tan_pitch = math.tan(pitch)
+
+        jac = (
+            (1.0, sin_roll * tan_pitch, cos_roll * tan_pitch),
+            (0.0, cos_roll, -sin_roll),
         )
 
-        covariance: list[float] = [0.0] * 36
-        covariance[0] = self._position_variance
-        covariance[7] = self._position_variance
-        covariance[14] = self._position_variance
-        covariance[21] = roll_variance
-        covariance[22] = roll_pitch_covariance
-        covariance[27] = roll_pitch_covariance
-        covariance[28] = pitch_variance
-        covariance[35] = self._yaw_variance
+        q = [
+            [0.0, 0.0],
+            [0.0, 0.0],
+        ]
 
-        return covariance
+        for i in range(2):
+            for j in range(2):
+                value = 0.0
+                for k in range(3):
+                    for col in range(3):
+                        value += jac[i][k] * gyro_cov[k][col] * jac[j][col]
+                q[i][j] = value * dt * dt
+
+        pred = [
+            [self._state_cov[0][0] + q[0][0], self._state_cov[0][1] + q[0][1]],
+            [self._state_cov[1][0] + q[1][0], self._state_cov[1][1] + q[1][1]],
+        ]
+
+        return self._sanitize_covariance(pred)
+
+    def _gyro_covariance_matrix(
+        self,
+        angular_velocity_covariance: Optional[Iterable[float]],
+    ) -> tuple[tuple[float, ...], ...]:
+        covariance_values = self._covariance_values(
+            covariance=angular_velocity_covariance,
+            fallback=self._gyro_covariance.covariance(),
+        )
+
+        if covariance_values is None:
+            return (
+                (self._min_gyro_variance, 0.0, 0.0),
+                (0.0, self._min_gyro_variance, 0.0),
+                (0.0, 0.0, self._min_gyro_variance),
+            )
+
+        cov = [
+            [covariance_values[0], covariance_values[1], covariance_values[2]],
+            [covariance_values[3], covariance_values[4], covariance_values[5]],
+            [covariance_values[6], covariance_values[7], covariance_values[8]],
+        ]
+
+        for i in range(3):
+            cov[i][i] = max(cov[i][i], self._min_gyro_variance)
+
+        for i in range(3):
+            for j in range(i + 1, 3):
+                symmetric = 0.5 * (cov[i][j] + cov[j][i])
+                cov[i][j] = symmetric
+                cov[j][i] = symmetric
+
+        return (
+            (cov[0][0], cov[0][1], cov[0][2]),
+            (cov[1][0], cov[1][1], cov[1][2]),
+            (cov[2][0], cov[2][1], cov[2][2]),
+        )
+
+    def _kalman_update(
+        self,
+        prediction: tuple[float, float],
+        pred_cov: list[list[float]],
+        measurement: tuple[float, float],
+        meas_cov: list[list[float]],
+    ) -> tuple[float, float, list[list[float]]]:
+        s = self._add2x2(pred_cov, meas_cov)
+        inv_s = self._inv2x2(s)
+        k = self._matmul2x2(pred_cov, inv_s)
+
+        innovation = (
+            measurement[0] - prediction[0],
+            measurement[1] - prediction[1],
+        )
+
+        roll = prediction[0] + k[0][0] * innovation[0] + k[0][1] * innovation[1]
+        pitch = prediction[1] + k[1][0] * innovation[0] + k[1][1] * innovation[1]
+
+        identity = ((1.0, 0.0), (0.0, 1.0))
+        i_minus_k = self._sub2x2(identity, k)
+
+        left_term = self._matmul2x2(i_minus_k, pred_cov)
+        left_term = self._matmul2x2_transpose(left_term, i_minus_k)
+
+        right_term = self._matmul2x2(k, meas_cov)
+        right_term = self._matmul2x2_transpose(right_term, k)
+
+        updated = self._add2x2(left_term, right_term)
+
+        return roll, pitch, self._sanitize_covariance(updated)
+
+    def _add2x2(
+        self, lhs: Sequence[Sequence[float]], rhs: Sequence[Sequence[float]]
+    ) -> list[list[float]]:
+        return [
+            [
+                float(lhs_row[0]) + float(rhs_row[0]),
+                float(lhs_row[1]) + float(rhs_row[1]),
+            ]
+            for lhs_row, rhs_row in zip(lhs, rhs)
+        ]
+
+    def _sub2x2(
+        self, lhs: Sequence[Sequence[float]], rhs: Sequence[Sequence[float]]
+    ) -> list[list[float]]:
+        return [
+            [
+                float(lhs_row[0]) - float(rhs_row[0]),
+                float(lhs_row[1]) - float(rhs_row[1]),
+            ]
+            for lhs_row, rhs_row in zip(lhs, rhs)
+        ]
+
+    def _matmul2x2(
+        self, lhs: Iterable[Iterable[float]], rhs: Iterable[Iterable[float]]
+    ) -> list[list[float]]:
+        lhs_rows = tuple(tuple(row) for row in lhs)
+        rhs_rows = tuple(tuple(row) for row in rhs)
+        return [
+            [
+                lhs_rows[i][0] * rhs_rows[0][j] + lhs_rows[i][1] * rhs_rows[1][j]
+                for j in range(2)
+            ]
+            for i in range(2)
+        ]
+
+    def _matmul2x2_transpose(
+        self, lhs: Iterable[Iterable[float]], rhs: Iterable[Iterable[float]]
+    ) -> list[list[float]]:
+        lhs_rows = tuple(tuple(row) for row in lhs)
+        rhs_rows = tuple(tuple(row) for row in rhs)
+        return [
+            [
+                lhs_rows[i][0] * rhs_rows[j][0] + lhs_rows[i][1] * rhs_rows[j][1]
+                for j in range(2)
+            ]
+            for i in range(2)
+        ]
+
+    def _inv2x2(self, matrix: Iterable[Iterable[float]]) -> list[list[float]]:
+        rows = tuple(tuple(row) for row in matrix)
+        a, b = rows[0]
+        c, d = rows[1]
+
+        det = a * d - b * c
+        eps = 1.0e-9
+        if not math.isfinite(det) or abs(det) < eps:
+            det = eps if det >= 0.0 else -eps
+
+        inv_det = 1.0 / det
+
+        return [
+            [d * inv_det, -b * inv_det],
+            [-c * inv_det, a * inv_det],
+        ]
+
+    def _motion_inflation(
+        self, accel: tuple[float, float, float], roll: float, pitch: float
+    ) -> float:
+        gx = -math.sin(pitch) * self._gravity_magnitude
+        gy = math.sin(roll) * math.cos(pitch) * self._gravity_magnitude
+        gz = math.cos(roll) * math.cos(pitch) * self._gravity_magnitude
+
+        rx = accel[0] - gx
+        ry = accel[1] - gy
+        rz = accel[2] - gz
+        residual = math.sqrt(rx * rx + ry * ry + rz * rz)
+
+        effective = max(0.0, residual - self._motion_deadband_mps2)
+        motion_inflation = (
+            1.0 + self._motion_alpha * (effective / self._gravity_magnitude) ** 2
+        )
+        return min(motion_inflation, self._motion_inflation_max)
 
     def _orientation_covariance(
         self,
+        accel: tuple[float, float, float],
         linear_accel_covariance: Optional[Iterable[float]],
         motion_inflation: float,
-    ) -> tuple[float, float, float]:
-        """Project accelerometer covariance into roll and pitch covariance.
-
-        The roll/pitch covariance is computed from the Jacobian of the
-        gravity-to-attitude mapping and the Jacobian of the gravity
-        normalization. The result is returned in rad^2 and inflated to reflect
-        motion if the measured acceleration deviates from the filtered gravity
-        vector.
-        """
-        covariance_values = self._accel_covariance_values(linear_accel_covariance)
+    ) -> list[list[float]]:
+        covariance_values = self._covariance_values(
+            covariance=linear_accel_covariance,
+            fallback=self._accel_covariance.covariance(),
+        )
         if covariance_values is None:
             base_variance = self._min_attitude_variance
-            return (
-                base_variance * motion_inflation,
-                base_variance * motion_inflation,
-                0.0,
-            )
+            return [
+                [base_variance * motion_inflation, 0.0],
+                [0.0, base_variance * motion_inflation],
+            ]
 
-        if self._gravity is None:
-            base_variance = self._min_attitude_variance
-            return (
-                base_variance * motion_inflation,
-                base_variance * motion_inflation,
-                0.0,
-            )
-
-        norm = math.sqrt(sum(value * value for value in self._gravity))
+        norm = math.sqrt(sum(value * value for value in accel))
         if norm < self._min_accel_mps2:
             base_variance = self._min_attitude_variance
-            return (
-                base_variance * motion_inflation,
-                base_variance * motion_inflation,
-                0.0,
-            )
+            return [
+                [base_variance * motion_inflation, 0.0],
+                [0.0, base_variance * motion_inflation],
+            ]
 
-        gx, gy, gz = self._gravity
-        nx = gx / norm
-        ny = gy / norm
-        nz = gz / norm
+        ax, ay, az = accel
+        nx = ax / norm
+        ny = ay / norm
+        nz = az / norm
 
-        # Minimum denominator to avoid divide-by-zero in Jacobians
         eps = 1.0e-12
 
         d = ny * ny + nz * nz
-        if d < eps:
-            base_variance = self._min_attitude_variance
-            return (
-                base_variance * motion_inflation,
-                base_variance * motion_inflation,
-                0.0,
-            )
-
-        # Dimensionless sum for roll/pitch denominator
         d = max(d, eps)
 
-        # Dimensionless magnitude for pitch Jacobian
         s = math.sqrt(d)
-
-        # Dimensionless normalization for pitch Jacobian
         q = nx * nx + d
         if q < eps:
             base_variance = self._min_attitude_variance
-            return (
-                base_variance * motion_inflation,
-                base_variance * motion_inflation,
-                0.0,
-            )
+            return [
+                [base_variance * motion_inflation, 0.0],
+                [0.0, base_variance * motion_inflation],
+            ]
 
-        # Jacobian of roll, pitch with respect to normalized gravity
         roll_row_n = (
             0.0,
             nz / d,
@@ -382,10 +530,8 @@ class GravityPoseEstimator:
             (nx * nz) / (s * q),
         )
 
-        # Inverse gravity magnitude converts to units of 1/(m/s^2)
         inv_norm = 1.0 / max(norm, eps)
 
-        # Jacobian of normalized gravity with respect to gravity
         jn = (
             (
                 inv_norm * (1.0 - nx * nx),
@@ -404,7 +550,6 @@ class GravityPoseEstimator:
             ),
         )
 
-        # Jacobian of roll/pitch with respect to gravity
         jrp_g = []
         for row in (roll_row_n, pitch_row_n):
             jrp_g.append(
@@ -446,28 +591,87 @@ class GravityPoseEstimator:
                         value += jrp_g[i][k] * accel_covariance[k][col] * jrp_g[j][col]
                 covariance_rp[i][j] = value * motion_inflation
 
-        roll_variance = max(covariance_rp[0][0], self._min_attitude_variance)
-        pitch_variance = max(covariance_rp[1][1], self._min_attitude_variance)
-        roll_pitch_covariance = covariance_rp[0][1]
+        covariance_rp[0][0] = max(covariance_rp[0][0], self._min_attitude_variance)
+        covariance_rp[1][1] = max(covariance_rp[1][1], self._min_attitude_variance)
 
-        return roll_variance, pitch_variance, roll_pitch_covariance
+        return covariance_rp
 
-    def _accel_covariance_values(
-        self, linear_accel_covariance: Optional[Iterable[float]]
+    def _covariance_values(
+        self,
+        covariance: Optional[Iterable[float]],
+        fallback: Optional[tuple[tuple[float, ...], ...]],
     ) -> Optional[tuple[float, ...]]:
-        """Select the best available accelerometer covariance estimate."""
-
-        if linear_accel_covariance is not None:
-            covariance_values = tuple(linear_accel_covariance)
+        if covariance is not None:
+            covariance_values = tuple(covariance)
+            diag_indices = (0, 4, 8)
             if (
                 len(covariance_values) == 9
-                and covariance_values[0] >= 0.0
+                and all(math.isfinite(value) for value in covariance_values)
+                and all(covariance_values[index] >= 0.0 for index in diag_indices)
                 and any(value != 0.0 for value in covariance_values)
             ):
                 return covariance_values
 
-        covariance_matrix = self._accel_covariance.covariance()
-        if covariance_matrix is None:
+        if fallback is None:
             return None
 
-        return tuple(value for row in covariance_matrix for value in row)
+        return tuple(value for row in fallback for value in row)
+
+    def _pose_covariance(self, tilt_covariance: list[list[float]]) -> list[float]:
+        covariance: list[float] = [0.0] * 36
+        covariance[0] = self._position_variance
+        covariance[7] = self._position_variance
+        covariance[14] = self._position_variance
+
+        covariance[21] = tilt_covariance[0][0]
+        covariance[22] = tilt_covariance[0][1]
+        covariance[27] = tilt_covariance[1][0]
+        covariance[28] = tilt_covariance[1][1]
+
+        covariance[35] = self._yaw_variance
+        return covariance
+
+    def _sanitize_covariance(self, covariance: list[list[float]]) -> list[list[float]]:
+        cov00 = max(covariance[0][0], self._min_attitude_variance)
+        cov11 = max(covariance[1][1], self._min_attitude_variance)
+        cov01 = 0.5 * (covariance[0][1] + covariance[1][0])
+        return [
+            [cov00, cov01],
+            [cov01, cov11],
+        ]
+
+    def _gravity_to_attitude(
+        self, gravity_vector: tuple[float, float, float]
+    ) -> tuple[float, float]:
+        gx, gy, gz = gravity_vector
+
+        norm = math.sqrt(gx * gx + gy * gy + gz * gz)
+        if norm < self._min_accel_mps2:
+            return 0.0, 0.0
+
+        normalized = (gx / norm, gy / norm, gz / norm)
+
+        roll = math.atan2(normalized[1], normalized[2])
+        pitch = math.atan2(
+            -normalized[0],
+            math.sqrt(normalized[1] ** 2 + normalized[2] ** 2),
+        )
+
+        return roll, pitch
+
+    def _rpy_to_quaternion(
+        self, roll: float, pitch: float, yaw: float
+    ) -> tuple[float, float, float, float]:
+        cr = math.cos(roll * 0.5)
+        sr = math.sin(roll * 0.5)
+        cp = math.cos(pitch * 0.5)
+        sp = math.sin(pitch * 0.5)
+        cy = math.cos(yaw * 0.5)
+        sy = math.sin(yaw * 0.5)
+
+        x = sr * cp * cy - cr * sp * sy
+        y = cr * sp * cy + sr * cp * sy
+        z = cr * cp * sy - sr * sp * cy
+        w = cr * cp * cy + sr * sp * sy
+
+        return x, y, z, w
