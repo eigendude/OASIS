@@ -14,6 +14,7 @@ import math
 from dataclasses import dataclass
 from typing import Iterable
 from typing import Optional
+from typing import Sequence
 
 
 ################################################################################
@@ -392,7 +393,7 @@ class TiltPoseEstimator:
         return roll, pitch, self._sanitize_covariance(updated)
 
     def _add2x2(
-        self, lhs: Iterable[Iterable[float]], rhs: Iterable[Iterable[float]]
+        self, lhs: Sequence[Sequence[float]], rhs: Sequence[Sequence[float]]
     ) -> list[list[float]]:
         return [
             [
@@ -403,7 +404,7 @@ class TiltPoseEstimator:
         ]
 
     def _sub2x2(
-        self, lhs: Iterable[Iterable[float]], rhs: Iterable[Iterable[float]]
+        self, lhs: Sequence[Sequence[float]], rhs: Sequence[Sequence[float]]
     ) -> list[list[float]]:
         return [
             [
