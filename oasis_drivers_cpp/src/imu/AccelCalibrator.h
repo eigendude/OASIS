@@ -148,6 +148,8 @@ public:
     Mat3 calibrated_noise_gyro_cov_rads2_2{};
     size_t calibrated_stationary_samples{0};
     std::string calibrated_noise_method;
+    // Phase label for calibrated noise (e.g. refine)
+    std::string calibrated_noise_phase;
 
     // Stability of rest biases across stationary windows
     std::array<double, 3> gyro_bias_stddev_rads{0.0, 0.0, 0.0};
@@ -193,16 +195,22 @@ public:
     // Mean of the gyro window (rad/s).
     std::array<double, 3> mean_gyro{0.0, 0.0, 0.0};
 
+    // Sample covariance of the acceleration window (m/s^2)^2.
+    Mat3 cov_accel{};
+
+    // Sample covariance of the calibrated acceleration window (m/s^2)^2.
+    Mat3 cov_accel_cal{};
+
     // Sample covariance of the per-window mean gyro (rad/s)^2.
     Mat3 cov_gyro{};
 
-    // Variance of the acceleration window (m/s^2)^2.
+    // Variance of the acceleration window (m/s^2)^2 from cov_accel.
     std::array<double, 3> var_accel{0.0, 0.0, 0.0};
 
-    // Variance of the calibrated acceleration window (m/s^2)^2.
+    // Variance of the calibrated acceleration window (m/s^2)^2 from cov_accel_cal.
     std::array<double, 3> var_accel_cal{0.0, 0.0, 0.0};
 
-    // Variance of the gyro window (rad/s)^2.
+    // Variance of the gyro window (rad/s)^2 from cov_gyro.
     std::array<double, 3> var_gyro{0.0, 0.0, 0.0};
 
     // Mean and standard deviation of |a| over the window.
@@ -280,7 +288,8 @@ private:
   bool DetectStationary(const Sample& sample, const WindowSample& stats);
   void MergePose(const Sample& sample, const WindowSample& stats);
   bool HasAxisCoverage() const;
-  double ComputeDirectionalSpread() const;
+  size_t CountAxisCoverage() const;
+  size_t CountEdgeCoverage() const;
   bool FitEllipsoid();
   bool SaveCache(const Sample& sample);
 
@@ -327,6 +336,8 @@ private:
   // Pose clusters
   std::vector<Cluster> m_clusters;
   size_t m_total_pose_samples{0};
+  size_t m_last_attempt_cluster_count{0};
+  bool m_last_attempt_was_eligible{false};
 
   // Fit status
   std::optional<Calibration> m_calibration;
@@ -342,6 +353,7 @@ private:
   bool m_calibrated_baseline_valid{false};
   size_t m_raw_stationary_samples{0};
   size_t m_calibrated_stationary_samples{0};
+  size_t m_calibrated_convergence_samples{0};
   size_t m_consecutive_stationary{0};
   std::array<double, 3> m_raw_baseline_accel_var{0.0, 0.0, 0.0};
   std::array<double, 3> m_raw_baseline_gyro_var{0.0, 0.0, 0.0};
