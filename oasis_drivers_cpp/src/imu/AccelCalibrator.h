@@ -350,6 +350,7 @@ private:
   bool m_calibrated_baseline_valid{false};
   size_t m_raw_stationary_samples{0};
   size_t m_calibrated_stationary_samples{0};
+  size_t m_calibrated_convergence_samples{0};
   size_t m_consecutive_stationary{0};
   std::array<double, 3> m_raw_baseline_accel_var{0.0, 0.0, 0.0};
   std::array<double, 3> m_raw_baseline_gyro_var{0.0, 0.0, 0.0};
