@@ -37,6 +37,7 @@ find_package(ament_cmake REQUIRED)
 find_package(CEC REQUIRED)
 find_package(i2cdevlib REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(Eigen3 REQUIRED)
 find_package(oasis_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rcutils REQUIRED)
@@ -104,6 +105,7 @@ add_executable(mpu6050_imu_driver
 
 target_link_libraries(mpu6050_imu_driver
   i2cdevlib::mpu6050
+  Eigen3::Eigen
   ${geometry_msgs_TARGETS}
   rclcpp::rclcpp
   rcutils::rcutils
