@@ -98,6 +98,9 @@ public:
     std::array<double, 3> accel_noise_stddev_mps2{0.0, 0.0, 0.0};
     std::array<double, 3> gyro_noise_stddev_rads{0.0, 0.0, 0.0};
 
+    // Full accel noise covariance in (m/s^2)^2 used by downstream filters.
+    Mat3 accel_noise_cov_mps2_2{};
+
     // Full gyro noise covariance in (rad/s)^2 used by downstream filters.
     Mat3 gyro_noise_cov_rads2_2{};
 
@@ -133,6 +136,7 @@ public:
     std::array<double, 3> raw_gyro_bias_rads{0.0, 0.0, 0.0};
     std::array<double, 3> raw_accel_noise_stddev_mps2{0.0, 0.0, 0.0};
     std::array<double, 3> raw_gyro_noise_stddev_rads{0.0, 0.0, 0.0};
+    Mat3 raw_accel_noise_cov_mps2_2{};
     Mat3 raw_gyro_noise_cov_rads2_2{};
     size_t raw_stationary_samples{0};
     std::string raw_noise_method;
@@ -140,6 +144,7 @@ public:
     // Calibrated baseline noise after ellipsoid fit
     std::array<double, 3> calibrated_noise_accel_stddev_mps2{0.0, 0.0, 0.0};
     std::array<double, 3> calibrated_noise_gyro_stddev_rads{0.0, 0.0, 0.0};
+    Mat3 calibrated_noise_accel_cov_mps2_2{};
     Mat3 calibrated_noise_gyro_cov_rads2_2{};
     size_t calibrated_stationary_samples{0};
     std::string calibrated_noise_method;
@@ -234,12 +239,18 @@ public:
   const Calibration& GetCalibration() const { return *m_calibration; }
   const std::array<double, 3>& GetAccelNoiseStddev() const { return m_noise_stddev_accel; }
   const std::array<double, 3>& GetGyroNoiseStddev() const { return m_noise_stddev_gyro; }
+  const Mat3& GetAccelNoiseCov() const { return m_noise_cov_accel; }
+  const Mat3& GetGyroNoiseCov() const { return m_noise_cov_gyro; }
   bool HasRawBaseline() const { return m_raw_baseline_valid; }
   bool HasCalibratedBaseline() const { return m_calibrated_baseline_valid; }
   std::array<double, 3> GetRawBaselineAccelNoiseStddev() const;
   std::array<double, 3> GetRawBaselineGyroNoiseStddev() const;
+  Mat3 GetRawBaselineAccelNoiseCov() const;
+  Mat3 GetRawBaselineGyroNoiseCov() const;
   std::array<double, 3> GetCalibratedBaselineAccelNoiseStddev() const;
   std::array<double, 3> GetCalibratedBaselineGyroNoiseStddev() const;
+  Mat3 GetCalibratedBaselineAccelNoiseCov() const;
+  Mat3 GetCalibratedBaselineGyroNoiseCov() const;
   std::array<double, 3> GetRawBias() const { return m_raw_bias_accel; }
   std::array<double, 3> GetRawGyroBias() const { return m_raw_bias_gyro; }
   std::array<double, 3> GetBiasStabilityAccel() const;
@@ -306,6 +317,7 @@ private:
   // Noise tracking (stddev per axis)
   std::array<double, 3> m_noise_stddev_accel{0.0, 0.0, 0.0};
   std::array<double, 3> m_noise_stddev_gyro{0.0, 0.0, 0.0};
+  Mat3 m_noise_cov_accel{};
   Mat3 m_noise_cov_gyro{};
   bool m_noise_initialized{false};
 
@@ -333,9 +345,11 @@ private:
   size_t m_consecutive_stationary{0};
   std::array<double, 3> m_raw_baseline_accel_var{0.0, 0.0, 0.0};
   std::array<double, 3> m_raw_baseline_gyro_var{0.0, 0.0, 0.0};
+  Mat3 m_raw_baseline_accel_cov{};
   Mat3 m_raw_baseline_gyro_cov{};
   std::array<double, 3> m_cal_baseline_accel_var{0.0, 0.0, 0.0};
   std::array<double, 3> m_cal_baseline_gyro_var{0.0, 0.0, 0.0};
+  Mat3 m_cal_baseline_accel_cov{};
   Mat3 m_cal_baseline_gyro_cov{};
   std::array<double, 3> m_raw_bias_accel{0.0, 0.0, 0.0};
   std::array<double, 3> m_raw_bias_gyro{0.0, 0.0, 0.0};
