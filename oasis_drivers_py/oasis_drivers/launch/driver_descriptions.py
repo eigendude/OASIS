@@ -185,6 +185,10 @@ class DriverDescriptions:
         )
         ld.add_action(mpu_node)
 
+    #
+    # Train localization
+    #
+
     @staticmethod
     def add_train_localization(ld: LaunchDescription, host_id: str) -> None:
         localization_node: Node = Node(
@@ -195,6 +199,7 @@ class DriverDescriptions:
             output="screen",
             remappings=[
                 ("imu", f"{host_id}/imu"),
+                ("tilt", f"{host_id}/tilt"),
                 ("train_pose", f"{host_id}/train_pose"),
             ],
         )
