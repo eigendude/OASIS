@@ -90,6 +90,112 @@ double Norm(const std::array<double, 3>& a)
   return std::sqrt(Dot(a, a));
 }
 
+template <size_t N>
+using MatN = std::array<std::array<double, N>, N>;
+
+template <size_t N>
+MatN<N> SymmetrizeMatrix(const MatN<N>& matrix)
+{
+  MatN<N> sym{};
+
+  for (size_t row = 0; row < N; ++row)
+  {
+    for (size_t col = 0; col < N; ++col)
+      sym[row][col] = 0.5 * (matrix[row][col] + matrix[col][row]);
+  }
+
+  return sym;
+}
+
+template <size_t N>
+MatN<N> ClampDiagonalMatrix(const MatN<N>& matrix, double floor_value = kNoiseFloor)
+{
+  MatN<N> clamped = matrix;
+
+  for (size_t axis = 0; axis < N; ++axis)
+    clamped[axis][axis] = std::max(clamped[axis][axis], floor_value);
+
+  return clamped;
+}
+
+template <size_t N>
+bool IsFiniteMatrix(const MatN<N>& matrix)
+{
+  for (const auto& row : matrix)
+  {
+    for (double value : row)
+    {
+      if (!std::isfinite(value))
+        return false;
+    }
+  }
+
+  return true;
+}
+
+template <size_t N>
+MatN<N> ProjectToPSDMatrix(const MatN<N>& matrix)
+{
+  Eigen::Matrix<double, static_cast<int>(N), static_cast<int>(N)> M =
+      Eigen::Matrix<double, static_cast<int>(N), static_cast<int>(N)>::Zero();
+
+  for (size_t row = 0; row < N; ++row)
+  {
+    for (size_t col = 0; col < N; ++col)
+      M(static_cast<int>(row), static_cast<int>(col)) = matrix[row][col];
+  }
+
+  M = 0.5 * (M + M.transpose());
+
+  Eigen::SelfAdjointEigenSolver<Eigen::Matrix<double, static_cast<int>(N), static_cast<int>(N)>>
+      solver(M);
+  if (solver.info() != Eigen::Success || !solver.eigenvalues().allFinite() ||
+      !solver.eigenvectors().allFinite())
+  {
+    const auto sym = SymmetrizeMatrix(matrix);
+    return IsFiniteMatrix(sym) ? sym : matrix;
+  }
+
+  const auto clamped = solver.eigenvalues().unaryExpr([](double v) { return std::max(v, kNoiseFloor); });
+  const auto M_psd = solver.eigenvectors() * clamped.asDiagonal() * solver.eigenvectors().transpose();
+
+  MatN<N> result{};
+  for (size_t row = 0; row < N; ++row)
+  {
+    for (size_t col = 0; col < N; ++col)
+      result[row][col] = M_psd(static_cast<int>(row), static_cast<int>(col));
+  }
+
+  return result;
+}
+
+template <size_t N>
+MatN<N> SanitizeCovarianceMatrix(const MatN<N>& matrix)
+{
+  if (!IsFiniteMatrix(matrix))
+  {
+    MatN<N> fallback{};
+    for (size_t axis = 0; axis < N; ++axis)
+      fallback[axis][axis] = kNoiseFloor;
+    return fallback;
+  }
+
+  const auto sym = SymmetrizeMatrix(matrix);
+  const auto sym_clamped = ClampDiagonalMatrix(sym);
+  const auto psd = ProjectToPSDMatrix(sym_clamped);
+  const auto psd_clamped = ClampDiagonalMatrix(psd);
+
+  if (!IsFiniteMatrix(psd_clamped))
+  {
+    MatN<N> fallback{};
+    for (size_t axis = 0; axis < N; ++axis)
+      fallback[axis][axis] = kNoiseFloor;
+    return fallback;
+  }
+
+  return psd_clamped;
+}
+
 std::array<double, 3> MatrixVector(const std::array<std::array<double, 3>, 3>& A,
                                    const std::array<double, 3>& x)
 {
@@ -150,89 +256,24 @@ AccelCalibrator::Mat3 Transpose(const AccelCalibrator::Mat3& matrix)
 
 AccelCalibrator::Mat3 Symmetrize(const AccelCalibrator::Mat3& matrix)
 {
-  AccelCalibrator::Mat3 sym{};
-
-  for (size_t row = 0; row < 3; ++row)
-  {
-    for (size_t col = 0; col < 3; ++col)
-    {
-      sym[row][col] = 0.5 * (matrix[row][col] + matrix[col][row]);
-    }
-  }
-
-  return sym;
+  return SymmetrizeMatrix<3>(matrix);
 }
 
 AccelCalibrator::Mat3 ClampDiagonal(const AccelCalibrator::Mat3& matrix)
 {
-  AccelCalibrator::Mat3 clamped = matrix;
-
-  for (size_t axis = 0; axis < 3; ++axis)
-    clamped[axis][axis] = std::max(clamped[axis][axis], kNoiseFloor);
-
-  return clamped;
+  return ClampDiagonalMatrix<3>(matrix);
 }
 
 bool IsFinite(const AccelCalibrator::Mat3& matrix);
 
 AccelCalibrator::Mat3 ProjectToPSD(const AccelCalibrator::Mat3& matrix)
 {
-  Eigen::Matrix3d M = Eigen::Matrix3d::Zero();
-
-  for (size_t row = 0; row < 3; ++row)
-  {
-    for (size_t col = 0; col < 3; ++col)
-      M(static_cast<int>(row), static_cast<int>(col)) = matrix[row][col];
-  }
-
-  M = 0.5 * (M + M.transpose());
-
-  Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver(M);
-  if (solver.info() != Eigen::Success || !solver.eigenvalues().allFinite() ||
-      !solver.eigenvectors().allFinite())
-  {
-    const auto sym = Symmetrize(matrix);
-    return IsFinite(sym) ? sym : matrix;
-  }
-
-  const Eigen::Vector3d clamped = solver.eigenvalues().cwiseMax(kNoiseFloor);
-  const Eigen::Matrix3d M_psd =
-      solver.eigenvectors() * clamped.asDiagonal() * solver.eigenvectors().transpose();
-
-  AccelCalibrator::Mat3 result{};
-  for (size_t row = 0; row < 3; ++row)
-  {
-    for (size_t col = 0; col < 3; ++col)
-      result[row][col] = M_psd(static_cast<int>(row), static_cast<int>(col));
-  }
-
-  return result;
+  return ProjectToPSDMatrix<3>(matrix);
 }
 
 AccelCalibrator::Mat3 SanitizeCovariance(const AccelCalibrator::Mat3& matrix)
 {
-  if (!IsFinite(matrix))
-  {
-    AccelCalibrator::Mat3 fallback{};
-    for (size_t axis = 0; axis < 3; ++axis)
-      fallback[axis][axis] = kNoiseFloor;
-    return fallback;
-  }
-
-  const auto sym = Symmetrize(matrix);
-  const auto sym_clamped = ClampDiagonal(sym);
-  const auto psd = ProjectToPSD(sym_clamped);
-  const auto psd_clamped = ClampDiagonal(psd);
-
-  if (!IsFinite(psd_clamped))
-  {
-    AccelCalibrator::Mat3 fallback{};
-    for (size_t axis = 0; axis < 3; ++axis)
-      fallback[axis][axis] = kNoiseFloor;
-    return fallback;
-  }
-
-  return psd_clamped;
+  return SanitizeCovarianceMatrix<3>(matrix);
 }
 
 AccelCalibrator::Mat3 Add(const AccelCalibrator::Mat3& lhs, const AccelCalibrator::Mat3& rhs)
@@ -270,16 +311,7 @@ AccelCalibrator::Mat3 ClampDiagFloor(const AccelCalibrator::Mat3& cov, double fl
 
 bool IsFinite(const AccelCalibrator::Mat3& matrix)
 {
-  for (const auto& row : matrix)
-  {
-    for (double value : row)
-    {
-      if (!std::isfinite(value))
-        return false;
-    }
-  }
-
-  return true;
+  return IsFiniteMatrix<3>(matrix);
 }
 
 AccelCalibrator::Mat3 MakeDiagonal(const std::array<double, 3>& diagonal)
@@ -359,27 +391,33 @@ AccelCalibrator::Mat3 ResolveCovarianceFromStddev(const AccelCalibrator::Mat3& c
   return resolved;
 }
 
-bool NodeToMat3(const YAML::Node& node, AccelCalibrator::Mat3& matrix)
+template <size_t N>
+bool NodeToMatrix(const YAML::Node& node, MatN<N>& matrix)
 {
-  if (!node || !node.IsSequence() || node.size() != 3)
+  if (!node || !node.IsSequence() || node.size() != N)
     return false;
 
   bool valid = true;
 
-  for (size_t row = 0; row < 3; ++row)
+  for (size_t row = 0; row < N; ++row)
   {
     const auto row_node = node[row];
-    if (!row_node.IsSequence() || row_node.size() != 3)
+    if (!row_node.IsSequence() || row_node.size() != N)
     {
       valid = false;
       continue;
     }
 
-    for (size_t col = 0; col < 3; ++col)
+    for (size_t col = 0; col < N; ++col)
       matrix[row][col] = row_node[col].as<double>(0.0);
   }
 
   return valid;
+}
+
+bool NodeToMat3(const YAML::Node& node, AccelCalibrator::Mat3& matrix)
+{
+  return NodeToMatrix<3>(node, matrix);
 }
 
 bool SolveLinearSystem(std::vector<std::vector<double>> A,
@@ -433,13 +471,12 @@ bool SolveLinearSystem(std::vector<std::vector<double>> A,
   return true;
 }
 
-bool MatricesNear(const AccelCalibrator::Mat3& lhs,
-                  const AccelCalibrator::Mat3& rhs,
-                  double tolerance)
+template <size_t N>
+bool MatricesNear(const MatN<N>& lhs, const MatN<N>& rhs, double tolerance)
 {
-  for (size_t row = 0; row < 3; ++row)
+  for (size_t row = 0; row < N; ++row)
   {
-    for (size_t col = 0; col < 3; ++col)
+    for (size_t col = 0; col < N; ++col)
     {
       if (std::abs(lhs[row][col] - rhs[row][col]) > tolerance)
         return false;
@@ -447,6 +484,13 @@ bool MatricesNear(const AccelCalibrator::Mat3& lhs,
   }
 
   return true;
+}
+
+bool MatricesNear(const AccelCalibrator::Mat3& lhs,
+                  const AccelCalibrator::Mat3& rhs,
+                  double tolerance)
+{
+  return MatricesNear<3>(lhs, rhs, tolerance);
 }
 
 double RelativeMatrixChange(const AccelCalibrator::Mat3& previous,
@@ -468,6 +512,57 @@ double RelativeMatrixChange(const AccelCalibrator::Mat3& previous,
   // Scale by overall energy, not per-entry; clamp to avoid divide-by-zero
   const double denom = std::sqrt(std::max(den, kNoiseFloor * kNoiseFloor));
   return std::sqrt(num) / denom;
+}
+
+AccelCalibrator::Mat3 ComputeParameterContribution(
+    const std::array<double, 3>& centered_accel,
+    const AccelCalibrator::Mat3& A,
+    const AccelCalibrator::Mat12& param_cov)
+{
+  AccelCalibrator::Mat3 contribution{};
+
+  if (!IsFiniteMatrix(param_cov))
+    return contribution;
+
+  std::array<std::array<double, 12>, 3> J{};
+
+  for (size_t row = 0; row < 3; ++row)
+  {
+    J[row][0] = -A[row][0];
+    J[row][1] = -A[row][1];
+    J[row][2] = -A[row][2];
+
+    for (size_t col = 0; col < 3; ++col)
+    {
+      const size_t idx = 3 + row * 3 + col;
+      J[row][idx] = centered_accel[col];
+    }
+  }
+
+  std::array<std::array<double, 12>, 3> temp{};
+  for (size_t row = 0; row < 3; ++row)
+  {
+    for (size_t col = 0; col < 12; ++col)
+    {
+      double value = 0.0;
+      for (size_t k = 0; k < 12; ++k)
+        value += J[row][k] * param_cov[k][col];
+      temp[row][col] = value;
+    }
+  }
+
+  for (size_t row = 0; row < 3; ++row)
+  {
+    for (size_t col = 0; col < 3; ++col)
+    {
+      double value = 0.0;
+      for (size_t k = 0; k < 12; ++k)
+        value += temp[row][k] * J[col][k];
+      contribution[row][col] = value;
+    }
+  }
+
+  return contribution;
 }
 
 bool InvertMatrix(const std::vector<std::vector<double>>& A,
@@ -523,6 +618,52 @@ bool InvertMatrix(const std::vector<std::vector<double>>& A,
         inverse[r][c] -= factor * inverse[i][c];
       }
     }
+  }
+
+  return true;
+}
+
+template <size_t N>
+MatN<N> ToFixedMatrix(const std::vector<std::vector<double>>& A)
+{
+  MatN<N> out{};
+
+  for (size_t r = 0; r < N; ++r)
+  {
+    for (size_t c = 0; c < N; ++c)
+    {
+      const double value = (r < A.size() && c < A[r].size()) ? A[r][c] : 0.0;
+      out[r][c] = value;
+    }
+  }
+
+  return out;
+}
+
+template <size_t N>
+bool InvertSymmetric(const MatN<N>& A, MatN<N>& inverse)
+{
+  Eigen::Matrix<double, static_cast<int>(N), static_cast<int>(N)> M;
+  for (size_t r = 0; r < N; ++r)
+  {
+    for (size_t c = 0; c < N; ++c)
+      M(static_cast<int>(r), static_cast<int>(c)) = A[r][c];
+  }
+
+  auto llt = M.selfadjointView<Eigen::Lower>().llt();
+  if (llt.info() != Eigen::Success)
+    return false;
+
+  const auto identity =
+      Eigen::Matrix<double, static_cast<int>(N), static_cast<int>(N)>::Identity();
+  const auto inv = llt.solve(identity);
+  if (llt.info() != Eigen::Success || !inv.allFinite())
+    return false;
+
+  for (size_t r = 0; r < N; ++r)
+  {
+    for (size_t c = 0; c < N; ++c)
+      inverse[r][c] = inv(static_cast<int>(r), static_cast<int>(c));
   }
 
   return true;
@@ -824,6 +965,87 @@ AccelCalibrator::Calibration ParseCalibration(const YAML::Node& root)
           calib.A_stddev[r][c] = row ? row[c].as<double>(0.0) : 0.0;
       }
     }
+
+    AccelCalibrator::Mat3 bias_cov_node{};
+    const bool has_bias_cov = NodeToMat3(accel["bias_cov_mps2_2"], bias_cov_node);
+
+    AccelCalibrator::Mat12 param_cov_node{};
+    const bool has_param_cov = NodeToMatrix<12>(accel["param_cov"], param_cov_node);
+
+    AccelCalibrator::Mat9 A_cov_node{};
+    const bool has_A_cov = NodeToMatrix<9>(accel["A_cov"], A_cov_node);
+
+    const std::array<double, 3> bias_stddev_read = calib.bias_stddev_mps2;
+    const auto bias_cov_fallback = [&]() {
+      AccelCalibrator::Mat3 cov{};
+      for (size_t axis = 0; axis < 3; ++axis)
+      {
+        const double sigma = bias_stddev_read[axis];
+        const double variance = std::isfinite(sigma) ? sigma * sigma : 0.0;
+        cov[axis][axis] = variance;
+      }
+      return SanitizeCovariance(cov);
+    }();
+
+    calib.accel_bias_cov_mps2_2 = has_bias_cov && IsFinite(bias_cov_node)
+                                      ? SanitizeCovariance(bias_cov_node)
+                                      : bias_cov_fallback;
+    PopulateStddevFromCov(calib.accel_bias_cov_mps2_2, calib.bias_stddev_mps2);
+
+    AccelCalibrator::Mat12 param_cov{};
+
+    if (has_param_cov && IsFiniteMatrix(param_cov_node))
+    {
+      param_cov = SanitizeCovarianceMatrix<12>(param_cov_node);
+    }
+    else
+    {
+      for (size_t r = 0; r < 3; ++r)
+      {
+        for (size_t c = 0; c < 3; ++c)
+          param_cov[r][c] = calib.accel_bias_cov_mps2_2[r][c];
+      }
+
+      AccelCalibrator::Mat9 A_cov{};
+      if (has_A_cov && IsFiniteMatrix(A_cov_node))
+      {
+        A_cov = SanitizeCovarianceMatrix<9>(A_cov_node);
+      }
+      else
+      {
+        for (size_t r = 0; r < 3; ++r)
+        {
+          for (size_t c = 0; c < 3; ++c)
+          {
+            const size_t idx = r * 3 + c;
+            const double sigma = calib.A_stddev[r][c];
+            A_cov[idx][idx] = std::isfinite(sigma) ? sigma * sigma : 0.0;
+          }
+        }
+      }
+
+      for (size_t r = 0; r < 9; ++r)
+      {
+        for (size_t c = 0; c < 9; ++c)
+          param_cov[3 + r][3 + c] = A_cov[r][c];
+      }
+
+      param_cov = SymmetrizeMatrix(param_cov);
+      param_cov = SanitizeCovarianceMatrix<12>(param_cov);
+    }
+
+    calib.accel_param_cov = param_cov;
+
+    for (size_t r = 0; r < 3; ++r)
+    {
+      for (size_t c = 0; c < 3; ++c)
+      {
+        const size_t idx = 3 + r * 3 + c;
+        const double variance = param_cov[idx][idx];
+        const double sigma = std::sqrt(std::max(variance, kNoiseFloor));
+        calib.A_stddev[r][c] = sigma;
+      }
+    }
   }
 
   const auto ellipsoid = root["ellipsoid"];
@@ -880,7 +1102,8 @@ YAML::Node ToSequence(const std::array<double, 3>& values)
   return node;
 }
 
-YAML::Node ToMatrix(const std::array<std::array<double, 3>, 3>& values)
+template <size_t N>
+YAML::Node ToMatrix(const MatN<N>& values)
 {
   YAML::Node node;
   for (const auto& row_values : values)
@@ -891,6 +1114,11 @@ YAML::Node ToMatrix(const std::array<std::array<double, 3>, 3>& values)
     node.push_back(row);
   }
   return node;
+}
+
+YAML::Node ToMatrix(const std::array<std::array<double, 3>, 3>& values)
+{
+  return ToMatrix<3>(values);
 }
 
 YAML::Node SerializeCalibration(const AccelCalibrator::Calibration& calib)
@@ -976,6 +1204,27 @@ YAML::Node SerializeCalibration(const AccelCalibrator::Calibration& calib)
   accel["A"] = ToMatrix(calib.A);
   accel["bias_stddev_mps2"] = ToSequence(calib.bias_stddev_mps2);
   accel["A_stddev"] = ToMatrix(calib.A_stddev);
+  accel["bias_cov_mps2_2"] = ToMatrix(calib.accel_bias_cov_mps2_2);
+
+  const auto param_cov = SanitizeCovarianceMatrix<12>(calib.accel_param_cov);
+  accel["param_cov"] = ToMatrix<12>(param_cov);
+
+  AccelCalibrator::Mat9 A_cov{};
+  for (size_t r = 0; r < 3; ++r)
+  {
+    for (size_t c = 0; c < 3; ++c)
+    {
+      const size_t row = r * 3 + c;
+      for (size_t k = 0; k < 3; ++k)
+      {
+        const size_t col = k * 3;
+        A_cov[row][col + 0] = param_cov[3 + row][3 + col + 0];
+        A_cov[row][col + 1] = param_cov[3 + row][3 + col + 1];
+        A_cov[row][col + 2] = param_cov[3 + row][3 + col + 2];
+      }
+    }
+  }
+  accel["A_cov"] = ToMatrix<9>(SanitizeCovarianceMatrix<9>(A_cov));
   root["accel_calibration"] = accel;
 
   YAML::Node ellipsoid;
@@ -1228,30 +1477,10 @@ AccelCalibrator::Mat3 AccelCalibrator::ApplyAccelCovariance(const std::array<dou
   const Mat3 meas_cov = Multiply(A, Multiply(accel_cov_mps2_2, Transpose(A)));
   Mat3 total_cov = meas_cov;
 
-  const std::array<double, 3> bias_variance{
-      m_calibration->bias_stddev_mps2[0] * m_calibration->bias_stddev_mps2[0],
-      m_calibration->bias_stddev_mps2[1] * m_calibration->bias_stddev_mps2[1],
-      m_calibration->bias_stddev_mps2[2] * m_calibration->bias_stddev_mps2[2]};
+  const AccelCalibrator::Mat12 theta_cov = SanitizeCovarianceMatrix<12>(m_calibration->accel_param_cov);
+  const Mat3 param_cov = ComputeParameterContribution(centered, A, theta_cov);
 
-  const Mat3 bias_cov = Multiply(A, Multiply(MakeDiagonal(bias_variance), Transpose(A)));
-
-  total_cov = Add(total_cov, bias_cov);
-
-  Mat3 A_cov{};
-  for (size_t row = 0; row < 3; ++row)
-  {
-    double variance = 0.0;
-    for (size_t col = 0; col < 3; ++col)
-    {
-      const double centered_val = centered[col];
-      const double sigma = m_calibration->A_stddev[row][col];
-      variance += centered_val * centered_val * sigma * sigma;
-    }
-
-    A_cov[row][row] = variance;
-  }
-
-  total_cov = Add(total_cov, A_cov);
+  total_cov = Add(total_cov, param_cov);
   total_cov = Symmetrize(total_cov);
 
   for (size_t axis = 0; axis < 3; ++axis)
@@ -1261,6 +1490,13 @@ AccelCalibrator::Mat3 AccelCalibrator::ApplyAccelCovariance(const std::array<dou
     return IsFinite(meas_cov) ? meas_cov : accel_cov_mps2_2;
 
   total_cov = ProjectToPSD(total_cov);
+
+  if ((param_cov[0][0] > 0.0 || param_cov[1][1] > 0.0 || param_cov[2][2] > 0.0) &&
+      (total_cov[0][0] + total_cov[1][1] + total_cov[2][2]) + 1e-12 <
+          (meas_cov[0][0] + meas_cov[1][1] + meas_cov[2][2]))
+  {
+    std::cerr << "AccelCalibrator: parameter covariance failed to increase variance\n";
+  }
 
   for (size_t axis = 0; axis < 3; ++axis)
   {
@@ -1562,7 +1798,8 @@ void AccelCalibrator::UpdateBaselineNoise(const WindowSample& stats)
   if (has_calibration && m_calibrated_stationary_samples > 0)
   {
     ComputeEffectiveCalibratedCovariances(m_cal_baseline_accel_cov, m_cal_baseline_gyro_cov,
-                                          effective_cal_accel_cov, effective_cal_gyro_cov);
+                                          stats.mean_accel, effective_cal_accel_cov,
+                                          effective_cal_gyro_cov);
     have_effective_cal_cov = true;
 
     const double norm_cal = Norm(stats.mean_accel_cal);
@@ -1951,13 +2188,16 @@ bool AccelCalibrator::FitEllipsoid()
   if (m_clusters.size() < 4)
     return false;
 
-  // Parameter vector: [bx, by, bz, a00, a10, a11, a20, a21, a22]
-  std::array<double, 9> params{0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0};
+  // Parameter vector theta = [b; vec(A)] with row-major vec(A)
+  // ordering: [a00, a01, a02, a10, a11, a12, a20, a21, a22].
+  std::array<double, 12> params{0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0,
+                                0.0, 0.0, 0.0, 1.0};
 
   auto build_matrix = [&]()
   {
-    std::array<std::array<double, 3>, 3> A{
-        {{params[3], 0.0, 0.0}, {params[4], params[5], 0.0}, {params[6], params[7], params[8]}}};
+    std::array<std::array<double, 3>, 3> A{{{params[3], params[4], params[5]},
+                                            {params[6], params[7], params[8]},
+                                            {params[9], params[10], params[11]}}};
     return A;
   };
 
@@ -1992,7 +2232,7 @@ bool AccelCalibrator::FitEllipsoid()
       residuals.push_back(sqrt_w * r);
 
       // Jacobian row
-      std::vector<double> row(9, 0.0);
+      std::vector<double> row(12, 0.0);
       const std::array<std::array<double, 3>, 3> A = build_matrix();
       const std::array<double, 3> unit = Scale(y, 1.0 / norm_y);
 
@@ -2004,13 +2244,14 @@ bool AccelCalibrator::FitEllipsoid()
       const std::array<double, 3> diff{cluster.mean[0] - params[0], cluster.mean[1] - params[1],
                                        cluster.mean[2] - params[2]};
 
-      // Lower-triangular A entries
-      row[3] = unit[0] * diff[0]; // a00
-      row[4] = unit[1] * diff[0]; // a10
-      row[5] = unit[1] * diff[1]; // a11
-      row[6] = unit[2] * diff[0]; // a20
-      row[7] = unit[2] * diff[1]; // a21
-      row[8] = unit[2] * diff[2]; // a22
+      for (size_t r = 0; r < 3; ++r)
+      {
+        for (size_t c = 0; c < 3; ++c)
+        {
+          const size_t idx = 3 + r * 3 + c;
+          row[idx] = unit[r] * diff[c];
+        }
+      }
 
       for (auto& value : row)
         value *= sqrt_w;
@@ -2079,7 +2320,8 @@ bool AccelCalibrator::FitEllipsoid()
   }
 
   const std::array<std::array<double, 3>, 3> A = {
-      {{params[3], 0.0, 0.0}, {params[4], params[5], 0.0}, {params[6], params[7], params[8]}}};
+      {{params[3], params[4], params[5]}, {params[6], params[7], params[8]},
+       {params[9], params[10], params[11]}}};
   const std::array<double, 3> bias{params[0], params[1], params[2]};
 
   // Final residuals and covariance
@@ -2096,17 +2338,19 @@ bool AccelCalibrator::FitEllipsoid()
     const double sqrt_w = std::sqrt(weight);
     residuals.push_back(sqrt_w * (norm_y - m_config.gravity_mps2));
 
-    std::vector<double> row(9, 0.0);
+    std::vector<double> row(12, 0.0);
     const std::array<double, 3> unit = Scale(y, 1.0 / norm_y);
     row[0] = -(A[0][0] * unit[0] + A[1][0] * unit[1] + A[2][0] * unit[2]);
     row[1] = -(A[0][1] * unit[0] + A[1][1] * unit[1] + A[2][1] * unit[2]);
     row[2] = -(A[0][2] * unit[0] + A[1][2] * unit[1] + A[2][2] * unit[2]);
-    row[3] = unit[0] * diff[0];
-    row[4] = unit[1] * diff[0];
-    row[5] = unit[1] * diff[1];
-    row[6] = unit[2] * diff[0];
-    row[7] = unit[2] * diff[1];
-    row[8] = unit[2] * diff[2];
+    for (size_t r = 0; r < 3; ++r)
+    {
+      for (size_t c = 0; c < 3; ++c)
+      {
+        const size_t idx = 3 + r * 3 + c;
+        row[idx] = unit[r] * diff[c];
+      }
+    }
     for (auto& value : row)
       value *= sqrt_w;
     J_final.emplace_back(row);
@@ -2134,13 +2378,34 @@ bool AccelCalibrator::FitEllipsoid()
     }
   }
 
-  std::vector<std::vector<double>> cov;
-  if (!InvertMatrix(JtJ, cov))
-    cov.assign(n, std::vector<double>(n, 0.0));
+  auto sym_JtJ = SymmetrizeMatrix(ToFixedMatrix<12>(JtJ));
+  AccelCalibrator::Mat12 cov{};
+  bool cov_inverted = false;
+  for (double damping : {0.0, 1e-6, 1e-4, 1e-3})
+  {
+    AccelCalibrator::Mat12 damped = sym_JtJ;
+    for (size_t d = 0; d < 12; ++d)
+      damped[d][d] += damping;
+    if (InvertSymmetric(damped, cov))
+    {
+      cov_inverted = true;
+      break;
+    }
+  }
 
   const double dof =
       static_cast<double>(std::max<int>(1, static_cast<int>(m) - static_cast<int>(n)));
   const double sigma_r2 = residual_energy / dof;
+
+  AccelCalibrator::Mat12 param_cov{};
+  if (cov_inverted)
+  {
+    for (size_t r = 0; r < 12; ++r)
+    {
+      for (size_t c = 0; c < 12; ++c)
+        param_cov[r][c] = cov[r][c] * sigma_r2;
+    }
+  }
 
   Calibration calib = MakeIdentityCalibration(m_config.gravity_mps2, m_frame_id);
   calib.has_ellipsoid = true;
@@ -2222,6 +2487,25 @@ bool AccelCalibrator::FitEllipsoid()
 
   calib.gyro_noise_stddev_rads = gyro_noise_stddev;
 
+  calib.accel_param_cov = SanitizeCovarianceMatrix<12>(param_cov);
+  calib.accel_bias_cov_mps2_2 = {};
+  for (size_t r = 0; r < 3; ++r)
+  {
+    for (size_t c = 0; c < 3; ++c)
+      calib.accel_bias_cov_mps2_2[r][c] = calib.accel_param_cov[r][c];
+  }
+  PopulateStddevFromCov(calib.accel_bias_cov_mps2_2, calib.bias_stddev_mps2);
+
+  for (size_t r = 0; r < 3; ++r)
+  {
+    for (size_t c = 0; c < 3; ++c)
+    {
+      const size_t idx = 3 + r * 3 + c;
+      const double variance = calib.accel_param_cov[idx][idx];
+      calib.A_stddev[r][c] = std::sqrt(std::max(variance, kNoiseFloor));
+    }
+  }
+
   // Record what we actually used.
   calib.noise_stationary_samples = has_baseline ? m_raw_stationary_samples : 0;
   calib.noise_method = has_baseline ? "bootstrap_rest" : "";
@@ -2294,6 +2578,7 @@ bool AccelCalibrator::SaveCache(const Sample& sample)
   try
   {
     YAML::Node node = SerializeCalibration(*m_calibration);
+    const auto parsed = ParseCalibration(node);
 
     const bool has_calibrated_noise =
         m_calibration->has_ellipsoid && m_calibration->calibrated_stationary_samples > 0;
@@ -2307,14 +2592,17 @@ bool AccelCalibrator::SaveCache(const Sample& sample)
       const auto gyro_cov = ResolveCovarianceFromStddev(
           m_calibration->calibrated_noise_gyro_cov_rads2_2,
           m_calibration->calibrated_noise_gyro_stddev_rads, "calibrated gyro", gyro_stddev);
-
-      const auto parsed = ParseCalibration(node);
       if (!MatricesNear(parsed.calibrated_noise_accel_cov_mps2_2, accel_cov, 1e-9) ||
           !MatricesNear(parsed.calibrated_noise_gyro_cov_rads2_2, gyro_cov, 1e-9))
       {
         std::cerr << "AccelCalibrator: calibrated covariance round-trip mismatch\n";
       }
     }
+
+    const auto param_cov_serialized = SanitizeCovarianceMatrix<12>(m_calibration->accel_param_cov);
+    const auto param_cov_parsed = SanitizeCovarianceMatrix<12>(parsed.accel_param_cov);
+    if (!MatricesNear<12>(param_cov_serialized, param_cov_parsed, 1e-9))
+      std::cerr << "AccelCalibrator: parameter covariance round-trip mismatch\n";
 
     std::ofstream fout(m_cache_path, std::ios::out | std::ios::trunc);
     fout << node;
@@ -2332,11 +2620,20 @@ bool AccelCalibrator::SaveCache(const Sample& sample)
 
 void AccelCalibrator::ComputeEffectiveCalibratedCovariances(const Mat3& accel_cov,
                                                             const Mat3& gyro_cov,
+                                                            const std::array<double, 3>& mean_accel,
                                                             Mat3& accel_cov_out,
                                                             Mat3& gyro_cov_out) const
 {
   accel_cov_out = SanitizeCovariance(accel_cov);
   gyro_cov_out = SanitizeCovariance(gyro_cov);
+
+  if (m_calibration && m_calibration->has_ellipsoid)
+  {
+    const auto centered = Subtract(mean_accel, m_calibration->bias_mps2);
+    const AccelCalibrator::Mat12 theta_cov = SanitizeCovarianceMatrix<12>(m_calibration->accel_param_cov);
+    const Mat3 param_cov = ComputeParameterContribution(centered, m_calibration->A, theta_cov);
+    accel_cov_out = Add(accel_cov_out, param_cov);
+  }
 
   const double sigma_floor = m_config.gravity_residual_sigma_floor_mps2;
   const double residual_var = std::max(m_gravity_residual_var_ema, sigma_floor * sigma_floor);
