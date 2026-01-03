@@ -59,11 +59,8 @@ constexpr double kBiasAlpha = 0.001;
 // Gyro mean-sigma floor (rad/s) to prevent overconfidence when variance collapses
 constexpr double kSigmaMeanFloor = 0.002;
 
-// Min clusters required to fit (skip model estimation until data is non-trivial)
-constexpr size_t kMinClusters = 10;
-
-// Directional spread gate for fit (require enough angular diversity to be stable)
-constexpr double kSpreadThreshold = 0.3;
+// Min clusters required to fit (avoid solving with trivial data)
+constexpr size_t kMinCoverageClusters = 8;
 
 // Covariance/stddev diagonal mismatch tolerance in (units)^2.
 // Triggers a debug log if diag differs from stddev^2 beyond abs/rel bounds.
@@ -1084,6 +1081,8 @@ void AccelCalibrator::Reset()
   m_window.clear();
   m_clusters.clear();
   m_total_pose_samples = 0;
+  m_last_attempt_cluster_count = 0;
+  m_last_attempt_was_eligible = false;
   m_calibration.reset();
   m_dirty = false;
   m_last_save_time_s = 0.0;
@@ -1286,24 +1285,49 @@ AccelCalibrator::UpdateStatus AccelCalibrator::Update(const Sample& sample)
 
   status.num_clusters = m_clusters.size();
   status.num_pose_samples = m_total_pose_samples;
-  status.has_axis_coverage = HasAxisCoverage();
+  const size_t faces_covered = CountAxisCoverage();
+  const size_t edges_covered = CountEdgeCoverage();
+  status.has_axis_coverage = faces_covered == 6;
 
   if (m_calibration_mode && status.stationary)
   {
-    const size_t param_count = 9;
-    const size_t required_clusters = std::max(kMinClusters, param_count + static_cast<size_t>(6));
-    const bool enough_clusters = m_clusters.size() >= required_clusters;
-    const double spread = ComputeDirectionalSpread();
-    const bool has_spread = spread > kSpreadThreshold;
+    const size_t cluster_count = m_clusters.size();
+    const bool enough_clusters = cluster_count >= kMinCoverageClusters;
+    const bool coverage_eligible = (faces_covered == 6) && (edges_covered == 3);
+    const bool eligible = coverage_eligible && enough_clusters;
+    const bool just_became_eligible = eligible && !m_last_attempt_was_eligible;
+    const bool clusters_increased = cluster_count > m_last_attempt_cluster_count;
 
-    if (enough_clusters && has_spread)
+    if (eligible && (just_became_eligible || clusters_increased))
     {
+      if (just_became_eligible)
+      {
+        std::cerr << "AccelCalibrator: coverage eligible with facesCovered="
+                  << faces_covered << " edgesCovered=" << edges_covered
+                  << " clusters=" << cluster_count << "\n";
+      }
+
       status.has_solution = FitEllipsoid();
       if (status.has_solution)
+      {
+        std::cerr << "AccelCalibrator: FitEllipsoid succeeded with facesCovered="
+                  << faces_covered << " edgesCovered=" << edges_covered
+                  << " clusters=" << cluster_count << "\n";
         status.wrote_cache = SaveCache(sample);
+      }
+      else
+      {
+        std::cerr << "AccelCalibrator: FitEllipsoid failed with facesCovered="
+                  << faces_covered << " edgesCovered=" << edges_covered
+                  << " clusters=" << cluster_count << "\n";
+      }
+
+      m_last_attempt_cluster_count = cluster_count;
     }
+
+    m_last_attempt_was_eligible = eligible;
   }
-  else if (HasSolution())
+  if (!status.has_solution && HasSolution())
   {
     status.has_solution = true;
   }
@@ -1720,8 +1744,13 @@ void AccelCalibrator::MergePose(const Sample& sample, const WindowSample& stats)
 
 bool AccelCalibrator::HasAxisCoverage() const
 {
+  return CountAxisCoverage() == 6;
+}
+
+size_t AccelCalibrator::CountAxisCoverage() const
+{
   if (m_clusters.size() < 4)
-    return false;
+    return 0U;
 
   const std::array<std::array<double, 3>, 6> axes{{{1.0, 0.0, 0.0},
                                                    {-1.0, 0.0, 0.0},
@@ -1748,13 +1777,41 @@ bool AccelCalibrator::HasAxisCoverage() const
     }
   }
 
-  return std::all_of(covered.begin(), covered.end(), [](bool v) { return v; });
+  return static_cast<size_t>(
+      std::count(covered.begin(), covered.end(), true));
 }
 
-double AccelCalibrator::ComputeDirectionalSpread() const
+size_t AccelCalibrator::CountEdgeCoverage() const
 {
-  std::array<std::array<double, 3>, 3> cov{};
-  size_t count = 0;
+  if (m_clusters.size() < 4)
+    return 0U;
+
+  // 1/sqrt(2) is the normalization factor for axis-aligned edge directions.
+  const double inv_sqrt2 = 1.0 / std::sqrt(2.0);
+
+  const std::array<std::array<double, 3>, 4> xy_dirs{{
+      {inv_sqrt2, inv_sqrt2, 0.0},
+      {inv_sqrt2, -inv_sqrt2, 0.0},
+      {-inv_sqrt2, inv_sqrt2, 0.0},
+      {-inv_sqrt2, -inv_sqrt2, 0.0},
+  }};
+  const std::array<std::array<double, 3>, 4> xz_dirs{{
+      {inv_sqrt2, 0.0, inv_sqrt2},
+      {inv_sqrt2, 0.0, -inv_sqrt2},
+      {-inv_sqrt2, 0.0, inv_sqrt2},
+      {-inv_sqrt2, 0.0, -inv_sqrt2},
+  }};
+  const std::array<std::array<double, 3>, 4> yz_dirs{{
+      {0.0, inv_sqrt2, inv_sqrt2},
+      {0.0, inv_sqrt2, -inv_sqrt2},
+      {0.0, -inv_sqrt2, inv_sqrt2},
+      {0.0, -inv_sqrt2, -inv_sqrt2},
+  }};
+
+  const double cos_max_angle = std::cos(m_config.max_axis_angle_rad);
+  bool xy_covered = false;
+  bool xz_covered = false;
+  bool yz_covered = false;
 
   for (const auto& cluster : m_clusters)
   {
@@ -1763,26 +1820,55 @@ double AccelCalibrator::ComputeDirectionalSpread() const
       continue;
 
     const std::array<double, 3> u = Scale(cluster.mean, 1.0 / norm);
-    for (size_t r = 0; r < 3; ++r)
+
+    if (!xy_covered)
     {
-      for (size_t c = 0; c < 3; ++c)
-        cov[r][c] += u[r] * u[c];
+      for (const auto& dir : xy_dirs)
+      {
+        if (Dot(u, dir) > cos_max_angle)
+        {
+          xy_covered = true;
+          break;
+        }
+      }
     }
-    ++count;
+
+    if (!xz_covered)
+    {
+      for (const auto& dir : xz_dirs)
+      {
+        if (Dot(u, dir) > cos_max_angle)
+        {
+          xz_covered = true;
+          break;
+        }
+      }
+    }
+
+    if (!yz_covered)
+    {
+      for (const auto& dir : yz_dirs)
+      {
+        if (Dot(u, dir) > cos_max_angle)
+        {
+          yz_covered = true;
+          break;
+        }
+      }
+    }
+
+    if (xy_covered && xz_covered && yz_covered)
+      break;
   }
 
-  if (count == 0)
-    return 0.0;
-
-  for (auto& row : cov)
-  {
-    for (double& v : row)
-      v /= static_cast<double>(count);
-  }
-
-  const double trace = cov[0][0] + cov[1][1] + cov[2][2];
-  const double maxdiag = std::max({cov[0][0], cov[1][1], cov[2][2]});
-  return trace - maxdiag;
+  size_t covered = 0;
+  if (xy_covered)
+    ++covered;
+  if (xz_covered)
+    ++covered;
+  if (yz_covered)
+    ++covered;
+  return covered;
 }
 
 bool AccelCalibrator::FitEllipsoid()
