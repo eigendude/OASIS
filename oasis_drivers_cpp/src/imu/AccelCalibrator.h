@@ -148,6 +148,8 @@ public:
     Mat3 calibrated_noise_gyro_cov_rads2_2{};
     size_t calibrated_stationary_samples{0};
     std::string calibrated_noise_method;
+    // Phase label for calibrated noise (e.g. refine)
+    std::string calibrated_noise_phase;
 
     // Stability of rest biases across stationary windows
     std::array<double, 3> gyro_bias_stddev_rads{0.0, 0.0, 0.0};
