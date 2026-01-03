@@ -121,6 +121,7 @@ void Mpu6050ImuProcessor::Reset()
   m_use_cached_noise = false;
   m_cached_accel_noise_stddev = {0.0, 0.0, 0.0};
   m_cached_gyro_noise_stddev = {0.0, 0.0, 0.0};
+  m_cached_gyro_noise_cov = {};
 }
 
 void Mpu6050ImuProcessor::ConfigureCalibration(const std::filesystem::path& cachePath,
@@ -145,12 +146,14 @@ bool Mpu6050ImuProcessor::LoadCachedCalibration()
     {
       m_cached_accel_noise_stddev = calib.accel_noise_stddev_mps2;
       m_cached_gyro_noise_stddev = calib.gyro_noise_stddev_rads;
+      m_cached_gyro_noise_cov = SanitizeCovariance(calib.gyro_noise_cov_rads2_2);
       m_use_cached_noise = true;
     }
     else if (m_accelCalibrator.HasRawBaseline())
     {
       m_cached_accel_noise_stddev = calib.raw_accel_noise_stddev_mps2;
       m_cached_gyro_noise_stddev = calib.raw_gyro_noise_stddev_rads;
+      m_cached_gyro_noise_cov = SanitizeCovariance(calib.raw_gyro_noise_cov_rads2_2);
       m_use_cached_noise = true;
     }
   }
@@ -236,6 +239,7 @@ Mpu6050ImuProcessor::ProcessedOutputs Mpu6050ImuProcessor::ProcessRaw(int16_t ax
   sample.accel_mps2 = accel_body_mps2;
   sample.gyro_rads = gyro_body_rads;
   sample.accel_cov_mps2_2 = accel_cov_body_mps2_2;
+  sample.gyro_cov_rads2_2 = gyro_cov_body_sanitized_rads2_2;
   sample.gyro_var_rads2_2 = gyro_cov_body_diag_rads2_2;
   sample.temperature_c = temperature_c;
   sample.timestamp_s = timestamp_s;
@@ -277,8 +281,9 @@ Mpu6050ImuProcessor::ProcessedOutputs Mpu6050ImuProcessor::ProcessRaw(int16_t ax
     }
 
     const AccelCalibrator::Mat3 accel_cov_cached = MakeDiagonalCovariance(accel_var_cached);
-    const AccelCalibrator::Mat3 gyro_cov_cached = MakeDiagonalCovariance(gyro_var_cached);
-
+    AccelCalibrator::Mat3 gyro_cov_cached = SanitizeCovariance(m_cached_gyro_noise_cov);
+    for (size_t axis = 0; axis < 3; ++axis)
+      gyro_cov_cached[axis][axis] = std::max(gyro_cov_cached[axis][axis], gyro_var_cached[axis]);
     const AccelCalibrator::Mat3 gyro_cov_cached_sanitized = SanitizeCovariance(gyro_cov_cached);
 
     outputs.imu_raw.accel_cov_mps2_2 = accel_cov_cached;
