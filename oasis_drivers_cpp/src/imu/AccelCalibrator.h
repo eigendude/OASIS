@@ -195,16 +195,22 @@ public:
     // Mean of the gyro window (rad/s).
     std::array<double, 3> mean_gyro{0.0, 0.0, 0.0};
 
+    // Sample covariance of the acceleration window (m/s^2)^2.
+    Mat3 cov_accel{};
+
+    // Sample covariance of the calibrated acceleration window (m/s^2)^2.
+    Mat3 cov_accel_cal{};
+
     // Sample covariance of the per-window mean gyro (rad/s)^2.
     Mat3 cov_gyro{};
 
-    // Variance of the acceleration window (m/s^2)^2.
+    // Variance of the acceleration window (m/s^2)^2 from cov_accel.
     std::array<double, 3> var_accel{0.0, 0.0, 0.0};
 
-    // Variance of the calibrated acceleration window (m/s^2)^2.
+    // Variance of the calibrated acceleration window (m/s^2)^2 from cov_accel_cal.
     std::array<double, 3> var_accel_cal{0.0, 0.0, 0.0};
 
-    // Variance of the gyro window (rad/s)^2.
+    // Variance of the gyro window (rad/s)^2 from cov_gyro.
     std::array<double, 3> var_gyro{0.0, 0.0, 0.0};
 
     // Mean and standard deviation of |a| over the window.
