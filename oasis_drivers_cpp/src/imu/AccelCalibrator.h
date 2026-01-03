@@ -30,6 +30,8 @@ class AccelCalibrator
 {
 public:
   using Mat3 = std::array<std::array<double, 3>, 3>;
+  using Mat9 = std::array<std::array<double, 9>, 9>;
+  using Mat12 = std::array<std::array<double, 12>, 12>;
 
   /**
    * Configuration parameters that control calibration behavior.
@@ -124,6 +126,13 @@ public:
 
     // Accelerometer correction matrix A (row-major 3x3)
     std::array<std::array<double, 3>, 3> A{{{1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {0.0, 0.0, 1.0}}};
+
+    // Full covariance of accelerometer bias parameters in (m/s^2)^2.
+    Mat3 accel_bias_cov_mps2_2{};
+
+    // Covariance of theta = [b; vec(A)] using row-major vec(A)
+    // (a00, a01, a02, a10, a11, a12, a20, a21, a22).
+    Mat12 accel_param_cov{};
 
     // Parameter uncertainties (1 sigma) for bias (m/s^2)
     std::array<double, 3> bias_stddev_mps2{0.0, 0.0, 0.0};
@@ -310,6 +319,7 @@ private:
 
   void ComputeEffectiveCalibratedCovariances(const Mat3& accel_cov,
                                              const Mat3& gyro_cov,
+                                             const std::array<double, 3>& mean_accel,
                                              Mat3& accel_cov_out,
                                              Mat3& gyro_cov_out) const;
 
