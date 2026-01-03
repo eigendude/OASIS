@@ -98,7 +98,7 @@ public:
     std::array<double, 3> accel_noise_stddev_mps2{0.0, 0.0, 0.0};
     std::array<double, 3> gyro_noise_stddev_rads{0.0, 0.0, 0.0};
 
-    // Full gyro noise covariance in (rad/s)^2.
+    // Full gyro noise covariance in (rad/s)^2 used by downstream filters.
     Mat3 gyro_noise_cov_rads2_2{};
 
     // Accelerometer bias term b in a_cal = A * (a_raw - b)
@@ -127,9 +127,6 @@ public:
     size_t noise_stationary_samples{0};
     std::string noise_method;
     std::string noise_phase;
-
-    // Full gyro noise covariance in (rad/s)^2 used by downstream filters.
-    Mat3 gyro_noise_cov_rads2_2{};
 
     // Raw baseline noise and bias estimates at rest
     std::array<double, 3> raw_accel_bias_mps2{0.0, 0.0, 0.0};

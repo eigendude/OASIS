@@ -263,11 +263,6 @@ AccelCalibrator::Mat3 MakeDiagonal(const std::array<double, 3>& diagonal)
   return matrix;
 }
 
-std::array<double, 3> ExtractDiagonal(const AccelCalibrator::Mat3& matrix)
-{
-  return {matrix[0][0], matrix[1][1], matrix[2][2]};
-}
-
 AccelCalibrator::Mat3 CovarianceFromStddev(const std::array<double, 3>& stddev)
 {
   return MakeDiagonal({stddev[0] * stddev[0], stddev[1] * stddev[1], stddev[2] * stddev[2]});
