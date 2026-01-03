@@ -8,8 +8,6 @@
 #
 ################################################################################
 
-import math
-
 import rclpy.node
 import rclpy.publisher
 import rclpy.qos
@@ -17,8 +15,8 @@ import rclpy.subscription
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from sensor_msgs.msg import Imu
 
-from oasis_drivers.localization.gravity_pose_estimator import GravityPoseEstimator
 from oasis_drivers.localization.gravity_pose_estimator import PoseEstimate
+from oasis_drivers.localization.gravity_pose_estimator import TiltPoseEstimator
 
 
 ################################################################################
@@ -53,7 +51,7 @@ class TrainLocalizationNode(rclpy.node.Node):
 
         self._frame_id: str = DEFAULT_FRAME_ID
 
-        self._estimator = GravityPoseEstimator()
+        self._estimator = TiltPoseEstimator()
 
         self._pose_pub: rclpy.publisher.Publisher = self.create_publisher(
             msg_type=PoseWithCovarianceStamped,
@@ -62,7 +60,7 @@ class TrainLocalizationNode(rclpy.node.Node):
         )
 
         self._tilt_pub: rclpy.publisher.Publisher = self.create_publisher(
-            msg_type=Imu,
+            msg_type=PoseWithCovarianceStamped,
             topic=TILT_TOPIC,
             qos_profile=qos_profile,
         )
@@ -74,6 +72,8 @@ class TrainLocalizationNode(rclpy.node.Node):
             qos_profile=qos_profile,
         )
 
+        self._last_imu_time: float | None = None
+
         self.get_logger().info("Train localization initialized")
 
     def stop(self) -> None:
@@ -82,13 +82,28 @@ class TrainLocalizationNode(rclpy.node.Node):
         self.destroy_node()
 
     def _handle_imu(self, message: Imu) -> None:
+        stamp = message.header.stamp
+        timestamp = float(stamp.sec) + float(stamp.nanosec) * 1.0e-9
+        if self._last_imu_time is None:
+            dt_s = 0.0
+        else:
+            dt_s = max(0.0, timestamp - self._last_imu_time)
+        self._last_imu_time = timestamp
+
         estimate: PoseEstimate | None = self._estimator.update(
             linear_accel=(
                 message.linear_acceleration.x,
                 message.linear_acceleration.y,
                 message.linear_acceleration.z,
             ),
+            angular_velocity=(
+                message.angular_velocity.x,
+                message.angular_velocity.y,
+                message.angular_velocity.z,
+            ),
+            dt_s=dt_s,
             linear_accel_covariance=message.linear_acceleration_covariance,
+            angular_velocity_covariance=message.angular_velocity_covariance,
         )
 
         if estimate is None:
@@ -113,80 +128,18 @@ class TrainLocalizationNode(rclpy.node.Node):
 
         self._pose_pub.publish(pose_message)
 
-        imu_cov = list(message.linear_acceleration_covariance)
-        accel_cov_unknown = self._covariance_unknown(imu_cov)
-        if accel_cov_unknown and imu_cov[0] >= 0.0:
-            imu_cov = [-1.0] + [0.0] * 8
-
-        gyro_cov = list(message.angular_velocity_covariance)
-        gyro_cov_unknown = self._covariance_unknown(gyro_cov)
-        if gyro_cov_unknown:
-            gyro_cov = [-1.0] + [0.0] * 8
-
-        pose_cov = estimate.covariance
-
-        # Map pose covariance [x,y,z,roll,pitch,yaw] to Imu orientation entries
-        var_roll = self._clamp_variance(pose_cov[21], 0.0)
-        var_pitch = self._clamp_variance(pose_cov[28], 0.0)
-        var_yaw = self._clamp_variance(pose_cov[35], 1.0e6)
-        var_yaw = max(var_yaw, 1.0e6)
-        cov_rp = self._clamp_covariance(pose_cov[22])
-
-        tilt_message = Imu()
+        tilt_message = PoseWithCovarianceStamped()
         tilt_message.header.stamp = message.header.stamp
         tilt_message.header.frame_id = (
             message.header.frame_id if message.header.frame_id else self._frame_id
         )
-
-        tilt_message.orientation.x = estimate.orientation[0]
-        tilt_message.orientation.y = estimate.orientation[1]
-        tilt_message.orientation.z = estimate.orientation[2]
-        tilt_message.orientation.w = estimate.orientation[3]
-        tilt_message.orientation_covariance = [
-            var_roll,
-            cov_rp,
-            0.0,
-            cov_rp,
-            var_pitch,
-            0.0,
-            0.0,
-            0.0,
-            var_yaw,
-        ]
-
-        # Unknown covariances use -1.0 in the first element per ROS conventions
-        tilt_message.angular_velocity.x = message.angular_velocity.x
-        tilt_message.angular_velocity.y = message.angular_velocity.y
-        tilt_message.angular_velocity.z = message.angular_velocity.z
-        tilt_message.angular_velocity_covariance = gyro_cov
-
-        tilt_message.linear_acceleration.x = message.linear_acceleration.x
-        tilt_message.linear_acceleration.y = message.linear_acceleration.y
-        tilt_message.linear_acceleration.z = message.linear_acceleration.z
-        tilt_message.linear_acceleration_covariance = imu_cov
+        tilt_message.pose.pose.position.x = estimate.position[0]
+        tilt_message.pose.pose.position.y = estimate.position[1]
+        tilt_message.pose.pose.position.z = estimate.position[2]
+        tilt_message.pose.pose.orientation.x = estimate.orientation[0]
+        tilt_message.pose.pose.orientation.y = estimate.orientation[1]
+        tilt_message.pose.pose.orientation.z = estimate.orientation[2]
+        tilt_message.pose.pose.orientation.w = estimate.orientation[3]
+        tilt_message.pose.covariance = estimate.covariance
 
         self._tilt_pub.publish(tilt_message)
-
-    @staticmethod
-    def _covariance_unknown(covariance: list[float]) -> bool:
-        if len(covariance) != 9:
-            return True
-
-        if covariance[0] < 0.0:
-            return True
-
-        return all(value == 0.0 for value in covariance)
-
-    @staticmethod
-    def _clamp_variance(value: float, default: float) -> float:
-        if not math.isfinite(value):
-            return default
-
-        return max(value, 0.0)
-
-    @staticmethod
-    def _clamp_covariance(value: float) -> float:
-        if not math.isfinite(value):
-            return 0.0
-
-        return value
