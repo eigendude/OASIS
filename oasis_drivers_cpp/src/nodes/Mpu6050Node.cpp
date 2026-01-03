@@ -270,7 +270,6 @@ void Mpu6050Node::PublishImu()
     imuMsg.orientation.z = 0.0;
     imuMsg.orientation.w = 1.0;
 
-    // Covariances: initialize all to zero, then set diagonals
     imuMsg.orientation_covariance.fill(0.0);
     imuMsg.linear_acceleration_covariance.fill(0.0);
     imuMsg.angular_velocity_covariance.fill(0.0);
@@ -278,10 +277,16 @@ void Mpu6050Node::PublishImu()
     // Orientation not estimated (set [0,0] to -1 per REP-145)
     imuMsg.orientation_covariance[0] = -1.0;
 
-    // Linear acceleration covariance (diagonal)
-    imuMsg.linear_acceleration_covariance[0] = sample.accel_var_mps2_2[0];
-    imuMsg.linear_acceleration_covariance[4] = sample.accel_var_mps2_2[1];
-    imuMsg.linear_acceleration_covariance[8] = sample.accel_var_mps2_2[2];
+    // Linear acceleration covariance (full 3x3 row-major)
+    imuMsg.linear_acceleration_covariance[0] = sample.accel_cov_mps2_2[0][0];
+    imuMsg.linear_acceleration_covariance[1] = sample.accel_cov_mps2_2[0][1];
+    imuMsg.linear_acceleration_covariance[2] = sample.accel_cov_mps2_2[0][2];
+    imuMsg.linear_acceleration_covariance[3] = sample.accel_cov_mps2_2[1][0];
+    imuMsg.linear_acceleration_covariance[4] = sample.accel_cov_mps2_2[1][1];
+    imuMsg.linear_acceleration_covariance[5] = sample.accel_cov_mps2_2[1][2];
+    imuMsg.linear_acceleration_covariance[6] = sample.accel_cov_mps2_2[2][0];
+    imuMsg.linear_acceleration_covariance[7] = sample.accel_cov_mps2_2[2][1];
+    imuMsg.linear_acceleration_covariance[8] = sample.accel_cov_mps2_2[2][2];
 
     // Angular velocity covariance (diagonal)
     imuMsg.angular_velocity_covariance[0] = sample.gyro_var_rads2_2[0];
