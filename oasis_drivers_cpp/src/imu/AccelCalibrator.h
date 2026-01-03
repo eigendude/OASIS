@@ -288,7 +288,8 @@ private:
   bool DetectStationary(const Sample& sample, const WindowSample& stats);
   void MergePose(const Sample& sample, const WindowSample& stats);
   bool HasAxisCoverage() const;
-  double ComputeDirectionalSpread() const;
+  size_t CountAxisCoverage() const;
+  size_t CountEdgeCoverage() const;
   bool FitEllipsoid();
   bool SaveCache(const Sample& sample);
 
@@ -335,6 +336,8 @@ private:
   // Pose clusters
   std::vector<Cluster> m_clusters;
   size_t m_total_pose_samples{0};
+  size_t m_last_attempt_cluster_count{0};
+  bool m_last_attempt_was_eligible{false};
 
   // Fit status
   std::optional<Calibration> m_calibration;
