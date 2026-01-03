@@ -125,7 +125,7 @@ class GravityPoseEstimator:
     vector. Roll and pitch are derived from the filtered gravity vector and yaw
     is fixed to zero because IMU-only yaw is unobservable. Pose covariance marks
     yaw as highly uncertain and inflates roll/pitch variance when acceleration
-    deviates from gravity.
+    deviates from the filtered gravity vector.
     """
 
     def __init__(
@@ -139,6 +139,7 @@ class GravityPoseEstimator:
         min_attitude_variance: float = 1.0e-6,
         motion_alpha: float = 1.0,
         motion_deadband_mps2: float = 0.2,
+        motion_inflation_max: float = 1.0e3,
     ) -> None:
         """
         Initialize the estimator.
@@ -153,10 +154,12 @@ class GravityPoseEstimator:
                 (m/s^2)^2.
             min_attitude_variance: Lower bound for roll/pitch variance in
                 rad^2.
-            motion_alpha: Scaling for variance inflation when motion deviates
-                from gravity.
-            motion_deadband_mps2: Magnitude deviation in m/s^2 ignored before
+            motion_alpha: Scaling for variance inflation when acceleration
+                deviates from the filtered gravity vector.
+            motion_deadband_mps2: Residual in m/s^2 ignored before
                 motion-based inflation is applied.
+            motion_inflation_max: Maximum factor for motion-based covariance
+                inflation.
         """
 
         self._gravity_magnitude = gravity_magnitude
@@ -167,6 +170,7 @@ class GravityPoseEstimator:
         self._min_attitude_variance = min_attitude_variance
         self._motion_alpha = motion_alpha
         self._motion_deadband_mps2 = motion_deadband_mps2
+        self._motion_inflation_max = motion_inflation_max
 
         self._gravity: Optional[tuple[float, float, float]] = None
         self._accel_covariance = OnlineCovarianceEstimator(3, min_accel_variance)
@@ -198,12 +202,6 @@ class GravityPoseEstimator:
         if magnitude < self._min_accel_mps2:
             return None
 
-        deviation = abs(magnitude - self._gravity_magnitude)
-        effective = max(0.0, deviation - self._motion_deadband_mps2)
-        motion_inflation = (
-            1.0 + self._motion_alpha * (effective / self._gravity_magnitude) ** 2
-        )
-
         if self._gravity is None:
             gravity: tuple[float, float, float] = accel
         else:
@@ -216,6 +214,19 @@ class GravityPoseEstimator:
             )
 
         self._gravity = gravity
+
+        rx = ax - gravity[0]
+        ry = ay - gravity[1]
+        rz = az - gravity[2]
+        residual = math.sqrt(rx * rx + ry * ry + rz * rz)
+
+        effective = max(0.0, residual - self._motion_deadband_mps2)
+        motion_inflation = (
+            1.0
+            + self._motion_alpha
+            * (effective / self._gravity_magnitude) ** 2
+        )
+        motion_inflation = min(motion_inflation, self._motion_inflation_max)
 
         self._accel_covariance.update(accel)
 
@@ -297,8 +308,8 @@ class GravityPoseEstimator:
         The roll variance is computed from the Jacobian of atan2(ay, az) with
         respect to the accelerometer inputs. Pitch variance uses the Jacobian of
         atan2(-ax, sqrt(ay^2 + az^2)). The result is returned in rad^2 and
-        inflated to reflect motion if the measured acceleration magnitude
-        deviates from gravity.
+        inflated to reflect motion if the measured acceleration deviates from
+        the filtered gravity vector.
         """
         covariance_values = self._accel_covariance_values(linear_accel_covariance)
         if covariance_values is None:
