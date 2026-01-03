@@ -163,40 +163,106 @@ class GravityPoseEstimator:
     def _covariance_from_accel_covariance(
         self, linear_accel_covariance: Optional[Iterable[float]]
     ) -> list[float]:
-        variance = self._orientation_variance(linear_accel_covariance)
+        roll_variance, pitch_variance = self._orientation_variance(
+            linear_accel_covariance
+        )
 
         covariance: list[float] = [0.0] * 36
         covariance[0] = self._position_variance
         covariance[7] = self._position_variance
         covariance[14] = self._position_variance
-        covariance[21] = variance
-        covariance[28] = variance
+        covariance[21] = roll_variance
+        covariance[28] = pitch_variance
         covariance[35] = self._yaw_variance
 
         return covariance
 
     def _orientation_variance(
         self, linear_accel_covariance: Optional[Iterable[float]]
-    ) -> float:
+    ) -> tuple[float, float]:
+        """Project accelerometer covariance into roll and pitch variance.
+
+        The roll variance is computed from the Jacobian of atan2(ay, az) with
+        respect to the accelerometer inputs. Pitch variance uses the Jacobian of
+        atan2(-ax, sqrt(ay^2 + az^2)). The result is returned in rad^2.
+        """
         if linear_accel_covariance is None:
-            return self._min_variance
+            return self._min_variance, self._min_variance
 
         covariance_values = tuple(linear_accel_covariance)
         if len(covariance_values) != 9:
-            return self._min_variance
+            return self._min_variance, self._min_variance
 
-        accel_variance = max(
-            covariance_values[0],
-            covariance_values[4],
-            covariance_values[8],
+        if self._gravity is None:
+            return self._min_variance, self._min_variance
+
+        norm = math.sqrt(sum(value * value for value in self._gravity))
+        if norm < self._min_accel_mps2:
+            return self._min_variance, self._min_variance
+
+        gx, gy, gz = self._gravity
+
+        roll_denominator = gy * gy + gz * gz
+        if roll_denominator < self._min_accel_mps2 * self._min_accel_mps2:
+            return self._min_variance, self._min_variance
+
+        roll_row = (
+            0.0,
+            gz / roll_denominator,
+            -gy / roll_denominator,
         )
 
-        if accel_variance <= 0.0:
-            return self._min_variance
+        sqrt_yz = math.sqrt(roll_denominator)
+        pitch_denominator = norm * norm
+        if sqrt_yz < self._min_accel_mps2:
+            return self._min_variance, self._min_variance
 
-        attitude_variance = accel_variance / max(
-            self._gravity_magnitude * self._gravity_magnitude,
-            self._min_accel_mps2,
+        pitch_row = (
+            -sqrt_yz / pitch_denominator,
+            gx * gy / (sqrt_yz * pitch_denominator),
+            gx * gz / (sqrt_yz * pitch_denominator),
         )
 
-        return max(attitude_variance, self._min_variance)
+        accel_covariance = (
+            (
+                covariance_values[0],
+                covariance_values[1],
+                covariance_values[2],
+            ),
+            (
+                covariance_values[3],
+                covariance_values[4],
+                covariance_values[5],
+            ),
+            (
+                covariance_values[6],
+                covariance_values[7],
+                covariance_values[8],
+            ),
+        )
+
+        roll_variance = self._project_variance(roll_row, accel_covariance)
+        pitch_variance = self._project_variance(pitch_row, accel_covariance)
+
+        roll_variance = max(roll_variance, self._min_variance)
+        pitch_variance = max(pitch_variance, self._min_variance)
+
+        return roll_variance, pitch_variance
+
+    def _project_variance(
+        self,
+        transform_row: tuple[float, float, float],
+        covariance: tuple[
+            tuple[float, float, float],
+            tuple[float, float, float],
+            tuple[float, float, float],
+        ],
+    ) -> float:
+        """Project a covariance matrix with a single Jacobian row."""
+        projected = 0.0
+
+        for i in range(3):
+            for j in range(3):
+                projected += transform_row[i] * covariance[i][j] * transform_row[j]
+
+        return projected
