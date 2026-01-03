@@ -175,7 +175,8 @@ bool Mpu6050ImuProcessor::LoadCachedCalibration()
   if (loaded)
   {
     const auto& calib = m_accelCalibrator.GetCalibration();
-    if (m_accelCalibrator.HasCalibratedBaseline() && calib.has_ellipsoid)
+    const bool has_solution = m_accelCalibrator.HasSolution();
+    if (has_solution && m_accelCalibrator.HasCalibratedBaseline())
     {
       m_cached_accel_noise_stddev = calib.accel_noise_stddev_mps2;
       m_cached_gyro_noise_stddev = calib.gyro_noise_stddev_rads;
@@ -285,7 +286,7 @@ Mpu6050ImuProcessor::ProcessedOutputs Mpu6050ImuProcessor::ProcessRaw(int16_t ax
 
   if (!m_use_cached_noise)
   {
-    if (m_accelCalibrator.HasCalibratedBaseline() && m_accelCalibrator.HasSolution())
+    if (m_accelCalibrator.HasSolution() && m_accelCalibrator.HasCalibratedBaseline())
     {
       m_cached_accel_noise_stddev = m_accelCalibrator.GetCalibratedBaselineAccelNoiseStddev();
       m_cached_gyro_noise_stddev = m_accelCalibrator.GetCalibratedBaselineGyroNoiseStddev();
