@@ -622,7 +622,7 @@ AccelCalibrator::WindowSample ComputeWindowStats(
   {
     for (size_t i = 0; i < 3; ++i)
     {
-      stats.mean_accel[i] += sample.mean_accel[i];
+      stats.mean_accel_raw[i] += sample.mean_accel_raw[i];
       stats.mean_accel_cal[i] += sample.mean_accel_cal[i];
       stats.mean_gyro[i] += sample.mean_gyro[i];
     }
@@ -631,7 +631,7 @@ AccelCalibrator::WindowSample ComputeWindowStats(
 
   for (size_t i = 0; i < 3; ++i)
   {
-    stats.mean_accel[i] /= count;
+    stats.mean_accel_raw[i] /= count;
     stats.mean_accel_cal[i] /= count;
     stats.mean_gyro[i] /= count;
   }
@@ -643,15 +643,15 @@ AccelCalibrator::WindowSample ComputeWindowStats(
   {
     for (size_t i = 0; i < 3; ++i)
     {
-      const double da = sample.mean_accel[i] - stats.mean_accel[i];
+      const double da = sample.mean_accel_raw[i] - stats.mean_accel_raw[i];
       const double da_cal = sample.mean_accel_cal[i] - stats.mean_accel_cal[i];
       const double dg = sample.mean_gyro[i] - stats.mean_gyro[i];
       for (size_t j = 0; j < 3; ++j)
       {
-        const double da_j = sample.mean_accel[j] - stats.mean_accel[j];
+        const double da_j = sample.mean_accel_raw[j] - stats.mean_accel_raw[j];
         const double da_cal_j = sample.mean_accel_cal[j] - stats.mean_accel_cal[j];
         const double dg_j = sample.mean_gyro[j] - stats.mean_gyro[j];
-        stats.cov_accel[i][j] += da * da_j;
+        stats.cov_accel_raw[i][j] += da * da_j;
         stats.cov_accel_cal[i][j] += da_cal * da_cal_j;
         stats.cov_gyro[i][j] += dg * dg_j;
       }
@@ -667,13 +667,13 @@ AccelCalibrator::WindowSample ComputeWindowStats(
     {
       for (size_t j = 0; j < 3; ++j)
       {
-        stats.cov_accel[i][j] /= denom;
+        stats.cov_accel_raw[i][j] /= denom;
         stats.cov_accel_cal[i][j] /= denom;
         stats.cov_gyro[i][j] /= denom;
       }
     }
 
-    stats.cov_accel = Symmetrize(stats.cov_accel);
+    stats.cov_accel_raw = Symmetrize(stats.cov_accel_raw);
     stats.cov_accel_cal = Symmetrize(stats.cov_accel_cal);
     stats.cov_gyro = Symmetrize(stats.cov_gyro);
     stats.stddev_norm = std::sqrt(stats.stddev_norm / denom);
@@ -681,7 +681,7 @@ AccelCalibrator::WindowSample ComputeWindowStats(
 
   for (size_t axis = 0; axis < 3; ++axis)
   {
-    stats.var_accel[axis] = stats.cov_accel[axis][axis];
+    stats.var_accel_raw[axis] = stats.cov_accel_raw[axis][axis];
     stats.var_accel_cal[axis] = stats.cov_accel_cal[axis][axis];
     stats.var_gyro[axis] = stats.cov_gyro[axis][axis];
   }
@@ -1449,7 +1449,7 @@ AccelCalibrator::UpdateStatus AccelCalibrator::Update(const Sample& sample)
 
   // Append to the sliding window.
   WindowSample window_entry{};
-  window_entry.mean_accel = sample.accel_mps2;
+  window_entry.mean_accel_raw = sample.accel_mps2;
   window_entry.mean_accel_cal = ApplyAccel(sample.accel_mps2);
   window_entry.mean_gyro = sample.gyro_rads;
   window_entry.mean_norm = Norm(sample.accel_mps2);
@@ -1647,15 +1647,15 @@ void AccelCalibrator::UpdateBaselineNoise(const WindowSample& stats)
   ++m_raw_stationary_samples;
 
   const Mat3 raw_cov_gyro = SanitizeCovariance(stats.cov_gyro);
-  const Mat3 raw_cov_accel = SanitizeCovariance(stats.cov_accel);
+  const Mat3 raw_cov_accel = SanitizeCovariance(stats.cov_accel_raw);
 
   for (size_t axis = 0; axis < 3; ++axis)
   {
     m_raw_bias_accel[axis] =
-        update_mean(m_raw_bias_accel[axis], stats.mean_accel[axis], m_raw_stationary_samples);
+        update_mean(m_raw_bias_accel[axis], stats.mean_accel_raw[axis], m_raw_stationary_samples);
     m_raw_bias_gyro[axis] =
         update_mean(m_raw_bias_gyro[axis], stats.mean_gyro[axis], m_raw_stationary_samples);
-    m_raw_bias_stats_accel[axis].AddSample(stats.mean_accel[axis]);
+    m_raw_bias_stats_accel[axis].AddSample(stats.mean_accel_raw[axis]);
     m_raw_bias_stats_gyro[axis].AddSample(stats.mean_gyro[axis]);
   }
 
@@ -1688,7 +1688,7 @@ void AccelCalibrator::UpdateBaselineNoise(const WindowSample& stats)
     const Mat3 prev_gyro_cov = m_cal_baseline_gyro_cov;
     ++m_calibrated_stationary_samples;
     const Mat3 cal_cov_gyro = raw_cov_gyro;
-    const Mat3 cal_cov_accel = ApplyAccelCovariance(stats.mean_accel, raw_cov_accel);
+    const Mat3 cal_cov_accel = ApplyAccelCovariance(stats.mean_accel_raw, raw_cov_accel);
 
     m_cal_baseline_accel_cov = update_ema_matrix(m_cal_baseline_accel_cov, cal_cov_accel,
                                                  kCalibratedBaselineAlpha, has_previous_cal);
@@ -1833,11 +1833,11 @@ bool AccelCalibrator::DetectStationary(const Sample& sample, const WindowSample&
   size_t dir_count = 0;
   for (const auto& entry : m_window)
   {
-    const double norm = Norm(entry.mean_accel);
+    const double norm = Norm(entry.mean_accel_raw);
     if (norm < 1e-6)
       continue;
 
-    const std::array<double, 3> unit = Scale(entry.mean_accel, 1.0 / norm);
+    const std::array<double, 3> unit = Scale(entry.mean_accel_raw, 1.0 / norm);
     for (size_t axis = 0; axis < 3; ++axis)
       mean_dir[axis] += unit[axis];
     ++dir_count;
@@ -1857,10 +1857,10 @@ bool AccelCalibrator::DetectStationary(const Sample& sample, const WindowSample&
   double max_spread = 0.0;
   for (const auto& entry : m_window)
   {
-    const double norm = Norm(entry.mean_accel);
+    const double norm = Norm(entry.mean_accel_raw);
     if (norm < 1e-6)
       continue;
-    const std::array<double, 3> unit = Scale(entry.mean_accel, 1.0 / norm);
+    const std::array<double, 3> unit = Scale(entry.mean_accel_raw, 1.0 / norm);
     const double spread = 1.0 - Dot(unit, unit_mean_dir);
     max_spread = std::max(max_spread, spread);
   }
@@ -1872,7 +1872,7 @@ bool AccelCalibrator::DetectStationary(const Sample& sample, const WindowSample&
   {
     const double accel_var_noise =
         std::max(m_noise_stddev_accel[axis] * m_noise_stddev_accel[axis], kNoiseFloor);
-    if (stats.var_accel[axis] > accel_var_noise * m_config.variance_threshold)
+    if (stats.var_accel_raw[axis] > accel_var_noise * m_config.variance_threshold)
       return false;
 
     const double gyro_var_noise =
@@ -1911,7 +1911,7 @@ bool AccelCalibrator::DetectStationary(const Sample& sample, const WindowSample&
 
 void AccelCalibrator::MergePose(const Sample& sample, const WindowSample& stats)
 {
-  std::array<double, 3> pose_mean = stats.mean_accel;
+  std::array<double, 3> pose_mean = stats.mean_accel_raw;
   std::array<double, 3> pose_cov{0.0, 0.0, 0.0};
   for (size_t axis = 0; axis < 3; ++axis)
   {
