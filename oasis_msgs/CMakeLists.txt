@@ -39,7 +39,6 @@ rosidl_generate_interfaces(
     msg/BoundingBox.msg
     msg/CalibrationStatus.msg
     msg/CameraScene.msg
-    msg/SceneScore.msg
     msg/ConductorState.msg
     msg/CPUFanSpeed.msg
     msg/DigitalButton.msg
@@ -51,6 +50,7 @@ rosidl_generate_interfaces(
     msg/I2CDevice.msg
     msg/I2CDeviceType.msg
     msg/I2CImu.msg
+    msg/ImuCalibration.msg
     msg/LabState.msg
     msg/Landmark.msg
     msg/LeonardoState.msg
@@ -70,6 +70,7 @@ rosidl_generate_interfaces(
     msg/PowerMode.msg
     msg/PWMWriteCommand.msg
     msg/RGB.msg
+    msg/SceneScore.msg
     msg/SerialDevice.msg
     msg/SerialDeviceScan.msg
     msg/ServoWriteCommand.msg
