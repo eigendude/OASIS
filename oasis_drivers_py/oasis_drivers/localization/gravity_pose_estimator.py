@@ -282,8 +282,10 @@ class GravityPoseEstimator:
         linear_accel_covariance: Optional[Iterable[float]],
         motion_inflation: float,
     ) -> list[float]:
-        roll_variance, pitch_variance = self._orientation_variance(
-            linear_accel_covariance, motion_inflation
+        roll_variance, pitch_variance, roll_pitch_covariance = (
+            self._orientation_covariance(
+                linear_accel_covariance, motion_inflation
+            )
         )
 
         covariance: list[float] = [0.0] * 36
@@ -291,23 +293,25 @@ class GravityPoseEstimator:
         covariance[7] = self._position_variance
         covariance[14] = self._position_variance
         covariance[21] = roll_variance
+        covariance[22] = roll_pitch_covariance
+        covariance[27] = roll_pitch_covariance
         covariance[28] = pitch_variance
         covariance[35] = self._yaw_variance
 
         return covariance
 
-    def _orientation_variance(
+    def _orientation_covariance(
         self,
         linear_accel_covariance: Optional[Iterable[float]],
         motion_inflation: float,
-    ) -> tuple[float, float]:
-        """Project accelerometer covariance into roll and pitch variance.
+    ) -> tuple[float, float, float]:
+        """Project accelerometer covariance into roll and pitch covariance.
 
-        The roll variance is computed from the Jacobian of atan2(ay, az) with
-        respect to the accelerometer inputs. Pitch variance uses the Jacobian of
-        atan2(-ax, sqrt(ay^2 + az^2)). The result is returned in rad^2 and
-        inflated to reflect motion if the measured acceleration deviates from
-        the filtered gravity vector.
+        The roll/pitch covariance is computed from the Jacobian of the
+        gravity-to-attitude mapping and the Jacobian of the gravity
+        normalization. The result is returned in rad^2 and inflated to reflect
+        motion if the measured acceleration deviates from the filtered gravity
+        vector.
         """
         covariance_values = self._accel_covariance_values(linear_accel_covariance)
         if covariance_values is None:
@@ -315,6 +319,7 @@ class GravityPoseEstimator:
             return (
                 base_variance * motion_inflation,
                 base_variance * motion_inflation,
+                0.0,
             )
 
         if self._gravity is None:
@@ -322,6 +327,7 @@ class GravityPoseEstimator:
             return (
                 base_variance * motion_inflation,
                 base_variance * motion_inflation,
+                0.0,
             )
 
         norm = math.sqrt(sum(value * value for value in self._gravity))
@@ -330,38 +336,86 @@ class GravityPoseEstimator:
             return (
                 base_variance * motion_inflation,
                 base_variance * motion_inflation,
+                0.0,
             )
 
         gx, gy, gz = self._gravity
+        nx = gx / norm
+        ny = gy / norm
+        nz = gz / norm
 
-        roll_denominator = gy * gy + gz * gz
-        if roll_denominator < self._min_accel_mps2 * self._min_accel_mps2:
+        # Minimum denominator to avoid divide-by-zero in Jacobians
+        eps = 1.0e-12
+
+        d = ny * ny + nz * nz
+        if d < eps:
             base_variance = self._min_attitude_variance
             return (
                 base_variance * motion_inflation,
                 base_variance * motion_inflation,
+                0.0,
             )
 
-        roll_row = (
+        # Dimensionless sum for roll/pitch denominator
+        d = max(d, eps)
+
+        # Dimensionless magnitude for pitch Jacobian
+        s = math.sqrt(d)
+
+        # Dimensionless normalization for pitch Jacobian
+        q = nx * nx + d
+        if q < eps:
+            base_variance = self._min_attitude_variance
+            return (
+                base_variance * motion_inflation,
+                base_variance * motion_inflation,
+                0.0,
+            )
+
+        # Jacobian of roll, pitch with respect to normalized gravity
+        roll_row_n = (
             0.0,
-            gz / roll_denominator,
-            -gy / roll_denominator,
+            nz / d,
+            -ny / d,
+        )
+        pitch_row_n = (
+            -s / q,
+            (nx * ny) / (s * q),
+            (nx * nz) / (s * q),
         )
 
-        sqrt_yz = math.sqrt(roll_denominator)
-        pitch_denominator = norm * norm
-        if sqrt_yz < self._min_accel_mps2:
-            base_variance = self._min_attitude_variance
-            return (
-                base_variance * motion_inflation,
-                base_variance * motion_inflation,
+        # Inverse gravity magnitude converts to units of 1/(m/s^2)
+        inv_norm = 1.0 / max(norm, eps)
+
+        # Jacobian of normalized gravity with respect to gravity
+        jn = (
+            (
+                inv_norm * (1.0 - nx * nx),
+                inv_norm * (-nx * ny),
+                inv_norm * (-nx * nz),
+            ),
+            (
+                inv_norm * (-ny * nx),
+                inv_norm * (1.0 - ny * ny),
+                inv_norm * (-ny * nz),
+            ),
+            (
+                inv_norm * (-nz * nx),
+                inv_norm * (-nz * ny),
+                inv_norm * (1.0 - nz * nz),
+            ),
+        )
+
+        # Jacobian of roll/pitch with respect to gravity
+        jrp_g = []
+        for row in (roll_row_n, pitch_row_n):
+            jrp_g.append(
+                (
+                    row[0] * jn[0][0] + row[1] * jn[1][0] + row[2] * jn[2][0],
+                    row[0] * jn[0][1] + row[1] * jn[1][1] + row[2] * jn[2][1],
+                    row[0] * jn[0][2] + row[1] * jn[1][2] + row[2] * jn[2][2],
+                )
             )
-
-        pitch_row = (
-            -sqrt_yz / pitch_denominator,
-            gx * gy / (sqrt_yz * pitch_denominator),
-            gx * gz / (sqrt_yz * pitch_denominator),
-        )
 
         accel_covariance = (
             (
@@ -381,16 +435,28 @@ class GravityPoseEstimator:
             ),
         )
 
-        roll_variance = self._project_variance(roll_row, accel_covariance)
-        pitch_variance = self._project_variance(pitch_row, accel_covariance)
+        covariance_rp = [
+            [0.0, 0.0],
+            [0.0, 0.0],
+        ]
 
-        roll_variance = max(roll_variance, self._min_attitude_variance)
-        pitch_variance = max(pitch_variance, self._min_attitude_variance)
+        for i in range(2):
+            for j in range(2):
+                value = 0.0
+                for k in range(3):
+                    for l in range(3):
+                        value += (
+                            jrp_g[i][k]
+                            * accel_covariance[k][l]
+                            * jrp_g[j][l]
+                        )
+                covariance_rp[i][j] = value * motion_inflation
 
-        return (
-            roll_variance * motion_inflation,
-            pitch_variance * motion_inflation,
-        )
+        roll_variance = max(covariance_rp[0][0], self._min_attitude_variance)
+        pitch_variance = max(covariance_rp[1][1], self._min_attitude_variance)
+        roll_pitch_covariance = covariance_rp[0][1]
+
+        return roll_variance, pitch_variance, roll_pitch_covariance
 
     def _accel_covariance_values(
         self, linear_accel_covariance: Optional[Iterable[float]]
@@ -411,21 +477,3 @@ class GravityPoseEstimator:
             return None
 
         return tuple(value for row in covariance_matrix for value in row)
-
-    def _project_variance(
-        self,
-        transform_row: tuple[float, float, float],
-        covariance: tuple[
-            tuple[float, float, float],
-            tuple[float, float, float],
-            tuple[float, float, float],
-        ],
-    ) -> float:
-        """Project a covariance matrix with a single Jacobian row."""
-        projected = 0.0
-
-        for i in range(3):
-            for j in range(3):
-                projected += transform_row[i] * covariance[i][j] * transform_row[j]
-
-        return projected
