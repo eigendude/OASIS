@@ -31,8 +31,14 @@ constexpr double kNoiseAlpha = 0.05;
 // Variance floor during early boot (avoid zero/denorm variance before stats settle)
 constexpr double kNoiseFloor = 1e-6;
 
-// Exp smoothing alpha for baseline rest noise (slow to avoid motion)
-constexpr double kBaselineNoiseAlpha = 0.01;
+// Exp smoothing alpha for calibrated rest covariance (EMA weight on new samples)
+constexpr double kCalibratedBaselineAlpha = 0.10;
+
+// Relative change threshold for calibrated baseline convergence (unitless)
+constexpr double kCalibratedConvergenceRel = 0.01;
+
+// Stationary updates required with stable covariance to mark convergence
+constexpr size_t kCalibratedConvergenceSamples = 10;
 
 // Direction spread gate for stationary detection during bootstrap
 constexpr double kDirectionalSpreadThreshold = 0.15;
@@ -43,8 +49,6 @@ constexpr size_t kMinConsecutiveStationary = 10;
 // Number of stationary samples required before freezing the baseline noise
 constexpr size_t kMinBootstrapStationarySamples = 400;
 
-// Number of stationary samples required before freezing calibrated noise
-constexpr size_t kMinRefineStationarySamples = 800;
 
 // Autosave cooldown (s) to rate-limit writes and avoid thrash on small updates
 constexpr double kSaveCooldownSeconds = 1.0;
@@ -428,6 +432,27 @@ bool MatricesNear(const AccelCalibrator::Mat3& lhs,
   return true;
 }
 
+double RelativeMatrixChange(const AccelCalibrator::Mat3& previous,
+                            const AccelCalibrator::Mat3& current)
+{
+  double max_change = 0.0;
+
+  for (size_t row = 0; row < 3; ++row)
+  {
+    for (size_t col = 0; col < 3; ++col)
+    {
+      const double prev = previous[row][col];
+      const double curr = current[row][col];
+      // Clamp denominator to avoid excessive relative change for tiny values
+      const double denom = std::max(std::abs(prev), kNoiseFloor);
+      const double change = std::abs(curr - prev) / denom;
+      max_change = std::max(max_change, change);
+    }
+  }
+
+  return max_change;
+}
+
 bool InvertMatrix(const std::vector<std::vector<double>>& A,
                   std::vector<std::vector<double>>& inverse)
 {
@@ -714,12 +739,9 @@ AccelCalibrator::Calibration ParseCalibration(const YAML::Node& root)
   const bool has_raw_noise =
       raw_noise && (!calib.raw_noise_method.empty() || calib.raw_stationary_samples > 0 ||
                     raw_noise["accel_cov_mps2_2"] || raw_noise["gyro_cov_rads2_2"]);
-  const bool has_calibrated_noise =
-      calibrated_noise &&
-      (!calib.calibrated_noise_method.empty() || calib.calibrated_stationary_samples > 0 ||
-       calibrated_noise["accel_cov_mps2_2"] || calibrated_noise["gyro_cov_rads2_2"]);
+  const bool has_calibrated_samples = calib.calibrated_stationary_samples > 0;
 
-  if (calib.has_ellipsoid && has_calibrated_noise)
+  if (calib.has_ellipsoid && has_calibrated_samples)
   {
     calib.accel_noise_cov_mps2_2 = calib.calibrated_noise_accel_cov_mps2_2;
     calib.gyro_noise_cov_rads2_2 = calib.calibrated_noise_gyro_cov_rads2_2;
@@ -870,8 +892,7 @@ YAML::Node SerializeCalibration(const AccelCalibrator::Calibration& calib)
   root["temperature"] = temperature;
 
   const bool has_raw_noise = !calib.raw_noise_method.empty() || calib.raw_stationary_samples > 0;
-  const bool has_calibrated_noise =
-      !calib.calibrated_noise_method.empty() || calib.calibrated_stationary_samples > 0;
+  const bool has_calibrated_noise = calib.has_ellipsoid && calib.calibrated_stationary_samples > 0;
 
   if (has_raw_noise)
   {
@@ -1070,6 +1091,7 @@ void AccelCalibrator::Reset()
   m_calibrated_baseline_valid = false;
   m_raw_stationary_samples = 0;
   m_calibrated_stationary_samples = 0;
+  m_calibrated_convergence_samples = 0;
   m_consecutive_stationary = 0;
   m_raw_baseline_accel_var = {0.0, 0.0, 0.0};
   m_raw_baseline_gyro_var = {0.0, 0.0, 0.0};
@@ -1375,6 +1397,22 @@ void AccelCalibrator::UpdateBaselineNoise(const WindowSample& stats)
     return updated;
   };
 
+  auto update_ema_matrix =
+      [](const Mat3& current, const Mat3& measurement, double alpha, bool has_previous)
+  {
+    if (!has_previous)
+      return measurement;
+
+    Mat3 updated = current;
+    for (size_t row = 0; row < 3; ++row)
+    {
+      for (size_t col = 0; col < 3; ++col)
+        updated[row][col] = (1.0 - alpha) * current[row][col] + alpha * measurement[row][col];
+    }
+
+    return updated;
+  };
+
   ++m_raw_stationary_samples;
 
   const Mat3 raw_cov_gyro = SanitizeCovariance(stats.cov_gyro);
@@ -1411,16 +1449,19 @@ void AccelCalibrator::UpdateBaselineNoise(const WindowSample& stats)
   const bool has_calibration = HasSolution();
   if (has_calibration)
   {
+    const bool has_previous_cal = m_calibrated_stationary_samples > 0;
+    const Mat3 prev_accel_cov = m_cal_baseline_accel_cov;
+    const Mat3 prev_gyro_cov = m_cal_baseline_gyro_cov;
     ++m_calibrated_stationary_samples;
     const Mat3 cal_cov_gyro = raw_cov_gyro;
     const Mat3 cal_cov_accel = SanitizeCovariance(stats.cov_accel_cal);
 
-    m_cal_baseline_accel_cov = update_mean_matrix(m_cal_baseline_accel_cov, cal_cov_accel,
-                                                  m_calibrated_stationary_samples);
+    m_cal_baseline_accel_cov = update_ema_matrix(m_cal_baseline_accel_cov, cal_cov_accel,
+                                                 kCalibratedBaselineAlpha, has_previous_cal);
     m_cal_baseline_accel_cov = SanitizeCovariance(m_cal_baseline_accel_cov);
 
-    m_cal_baseline_gyro_cov =
-        update_mean_matrix(m_cal_baseline_gyro_cov, cal_cov_gyro, m_calibrated_stationary_samples);
+    m_cal_baseline_gyro_cov = update_ema_matrix(m_cal_baseline_gyro_cov, cal_cov_gyro,
+                                                kCalibratedBaselineAlpha, has_previous_cal);
     m_cal_baseline_gyro_cov = SanitizeCovariance(m_cal_baseline_gyro_cov);
 
     for (size_t axis = 0; axis < 3; ++axis)
@@ -1428,10 +1469,24 @@ void AccelCalibrator::UpdateBaselineNoise(const WindowSample& stats)
       m_cal_baseline_accel_var[axis] = std::max(m_cal_baseline_accel_cov[axis][axis], kNoiseFloor);
       m_cal_baseline_gyro_var[axis] = std::max(m_cal_baseline_gyro_cov[axis][axis], kNoiseFloor);
     }
+
+    if (has_previous_cal)
+    {
+      const double accel_change = RelativeMatrixChange(prev_accel_cov, m_cal_baseline_accel_cov);
+      const double gyro_change = RelativeMatrixChange(prev_gyro_cov, m_cal_baseline_gyro_cov);
+      if (accel_change < kCalibratedConvergenceRel && gyro_change < kCalibratedConvergenceRel)
+        ++m_calibrated_convergence_samples;
+      else
+        m_calibrated_convergence_samples = 0;
+    }
+    else
+    {
+      m_calibrated_convergence_samples = 0;
+    }
   }
 
-  const bool cal_ready = m_calibrated_stationary_samples >= kMinRefineStationarySamples;
-  if (cal_ready && !m_calibrated_baseline_valid)
+  if (!m_calibrated_baseline_valid &&
+      m_calibrated_convergence_samples >= kCalibratedConvergenceSamples)
     m_calibrated_baseline_valid = true;
 
   if (!m_calibration && (m_raw_baseline_valid || has_calibration))
@@ -1461,6 +1516,18 @@ void AccelCalibrator::UpdateBaselineNoise(const WindowSample& stats)
           m_calibrated_baseline_valid ? m_cal_baseline_gyro_cov : m_raw_baseline_gyro_cov;
     }
 
+    if (has_calibration && m_calibrated_stationary_samples > 0)
+    {
+      m_calibration->calibrated_noise_accel_stddev_mps2 = GetCalibratedBaselineAccelNoiseStddev();
+      m_calibration->calibrated_noise_gyro_stddev_rads = GetCalibratedBaselineGyroNoiseStddev();
+      m_calibration->calibrated_noise_accel_cov_mps2_2 = m_cal_baseline_accel_cov;
+      m_calibration->calibrated_noise_gyro_cov_rads2_2 = m_cal_baseline_gyro_cov;
+      m_calibration->calibrated_stationary_samples = m_calibrated_stationary_samples;
+      m_calibration->calibrated_noise_method =
+          m_calibrated_baseline_valid ? "refined_rest" : "bootstrap_rest";
+      m_calibration->calibrated_noise_phase = m_calibrated_baseline_valid ? "refine" : "bootstrap";
+    }
+
     if (m_calibrated_baseline_valid)
     {
       m_calibration->accel_noise_stddev_mps2 = GetCalibratedBaselineAccelNoiseStddev();
@@ -1470,13 +1537,6 @@ void AccelCalibrator::UpdateBaselineNoise(const WindowSample& stats)
       m_calibration->noise_stationary_samples = m_calibrated_stationary_samples;
       m_calibration->noise_method = "rest_baseline";
       m_calibration->noise_phase = "refine";
-      m_calibration->calibrated_noise_accel_stddev_mps2 = GetCalibratedBaselineAccelNoiseStddev();
-      m_calibration->calibrated_noise_gyro_stddev_rads = GetCalibratedBaselineGyroNoiseStddev();
-      m_calibration->calibrated_noise_accel_cov_mps2_2 = m_cal_baseline_accel_cov;
-      m_calibration->calibrated_noise_gyro_cov_rads2_2 = m_cal_baseline_gyro_cov;
-      m_calibration->calibrated_stationary_samples = m_calibrated_stationary_samples;
-      m_calibration->calibrated_noise_method = "refined_rest";
-      m_calibration->calibrated_noise_phase = "refine";
     }
     else if (m_raw_baseline_valid)
     {
@@ -1490,8 +1550,11 @@ void AccelCalibrator::UpdateBaselineNoise(const WindowSample& stats)
     }
   }
 
-  if ((raw_ready && m_raw_baseline_valid) || (cal_ready && m_calibrated_baseline_valid))
+  if ((raw_ready && m_raw_baseline_valid) || m_calibrated_baseline_valid ||
+      (has_calibration && m_calibrated_stationary_samples > 0))
+  {
     m_dirty = true;
+  }
 }
 
 bool AccelCalibrator::DetectStationary(const Sample& sample, const WindowSample& stats)
@@ -1946,15 +2009,15 @@ bool AccelCalibrator::FitEllipsoid()
   calib.gyro_noise_cov_rads2_2 = gyro_noise_cov;
   calib.raw_accel_noise_cov_mps2_2 = raw_accel_cov;
   calib.raw_gyro_noise_cov_rads2_2 = raw_gyro_cov;
-  if (m_calibrated_baseline_valid)
+  if (m_calibrated_stationary_samples > 0)
   {
     PopulateStddevFromCov(calibrated_accel_cov, calib.calibrated_noise_accel_stddev_mps2);
     PopulateStddevFromCov(calibrated_gyro_cov, calib.calibrated_noise_gyro_stddev_rads);
     calib.calibrated_noise_accel_cov_mps2_2 = calibrated_accel_cov;
     calib.calibrated_noise_gyro_cov_rads2_2 = calibrated_gyro_cov;
     calib.calibrated_stationary_samples = m_calibrated_stationary_samples;
-    calib.calibrated_noise_method = "refined_rest";
-    calib.calibrated_noise_phase = "refine";
+    calib.calibrated_noise_method = m_calibrated_baseline_valid ? "refined_rest" : "bootstrap_rest";
+    calib.calibrated_noise_phase = m_calibrated_baseline_valid ? "refine" : "bootstrap";
   }
 
   calib.gyro_noise_stddev_rads = gyro_noise_stddev;
@@ -2033,8 +2096,7 @@ bool AccelCalibrator::SaveCache(const Sample& sample)
     YAML::Node node = SerializeCalibration(*m_calibration);
 
     const bool has_calibrated_noise =
-        m_calibration->has_ellipsoid && (!m_calibration->calibrated_noise_method.empty() ||
-                                         m_calibration->calibrated_stationary_samples > 0);
+        m_calibration->has_ellipsoid && m_calibration->calibrated_stationary_samples > 0;
     if (has_calibrated_noise)
     {
       std::array<double, 3> accel_stddev{};
