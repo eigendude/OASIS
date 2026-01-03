@@ -130,7 +130,6 @@ class TiltPoseEstimator:
     def __init__(
         self,
         gravity_magnitude: float = 9.80665,
-        complementary_gain: float = 0.98,
         yaw_variance: float = 1.0e6,
         position_variance: float = 1.0e6,
         min_accel_mps2: float = 1.0e-3,
@@ -146,8 +145,6 @@ class TiltPoseEstimator:
 
         Args:
             gravity_magnitude: Expected gravity magnitude in m/s^2.
-            complementary_gain: Weight of gyro propagation in the fusion
-                blend. Smaller values rely more on accelerometer correction.
             yaw_variance: Variance assigned to yaw in rad^2.
             position_variance: Variance assigned to xyz in m^2.
             min_accel_mps2: Minimum acceleration magnitude to accept samples.
@@ -165,7 +162,6 @@ class TiltPoseEstimator:
         """
 
         self._gravity_magnitude = gravity_magnitude
-        self._complementary_gain = complementary_gain
         self._yaw_variance = yaw_variance
         self._position_variance = position_variance
         self._min_accel_mps2 = min_accel_mps2
@@ -248,7 +244,7 @@ class TiltPoseEstimator:
                 meas_cov = self._orientation_covariance(
                     accel, linear_accel_covariance, motion_inflation
                 )
-                roll_upd, pitch_upd, upd_cov = self._complementary_update(
+                roll_upd, pitch_upd, upd_cov = self._kalman_update(
                     (roll_pred, pitch_pred),
                     pred_cov,
                     (roll_meas, pitch_meas),
@@ -363,34 +359,102 @@ class TiltPoseEstimator:
             (cov[2][0], cov[2][1], cov[2][2]),
         )
 
-    def _complementary_update(
+    def _kalman_update(
         self,
         prediction: tuple[float, float],
         pred_cov: list[list[float]],
         measurement: tuple[float, float],
         meas_cov: list[list[float]],
     ) -> tuple[float, float, list[list[float]]]:
-        gain = min(max(self._complementary_gain, 0.0), 1.0)
-        inv_gain = 1.0 - gain
+        s = self._add2x2(pred_cov, meas_cov)
+        inv_s = self._inv2x2(s)
+        k = self._matmul2x2(pred_cov, inv_s)
 
-        roll = gain * prediction[0] + inv_gain * measurement[0]
-        pitch = gain * prediction[1] + inv_gain * measurement[1]
+        innovation = (
+            measurement[0] - prediction[0],
+            measurement[1] - prediction[1],
+        )
 
-        g2 = gain * gain
-        ig2 = inv_gain * inv_gain
+        roll = prediction[0] + k[0][0] * innovation[0] + k[0][1] * innovation[1]
+        pitch = prediction[1] + k[1][0] * innovation[0] + k[1][1] * innovation[1]
 
-        updated = [
-            [
-                g2 * pred_cov[0][0] + ig2 * meas_cov[0][0],
-                g2 * pred_cov[0][1] + ig2 * meas_cov[0][1],
-            ],
-            [
-                g2 * pred_cov[1][0] + ig2 * meas_cov[1][0],
-                g2 * pred_cov[1][1] + ig2 * meas_cov[1][1],
-            ],
-        ]
+        identity = ((1.0, 0.0), (0.0, 1.0))
+        i_minus_k = self._sub2x2(identity, k)
+
+        left_term = self._matmul2x2(i_minus_k, pred_cov)
+        left_term = self._matmul2x2_transpose(left_term, i_minus_k)
+
+        right_term = self._matmul2x2(k, meas_cov)
+        right_term = self._matmul2x2_transpose(right_term, k)
+
+        updated = self._add2x2(left_term, right_term)
 
         return roll, pitch, self._sanitize_covariance(updated)
+
+    def _add2x2(
+        self, lhs: Iterable[Iterable[float]], rhs: Iterable[Iterable[float]]
+    ) -> list[list[float]]:
+        return [
+            [
+                float(lhs_row[0]) + float(rhs_row[0]),
+                float(lhs_row[1]) + float(rhs_row[1]),
+            ]
+            for lhs_row, rhs_row in zip(lhs, rhs)
+        ]
+
+    def _sub2x2(
+        self, lhs: Iterable[Iterable[float]], rhs: Iterable[Iterable[float]]
+    ) -> list[list[float]]:
+        return [
+            [
+                float(lhs_row[0]) - float(rhs_row[0]),
+                float(lhs_row[1]) - float(rhs_row[1]),
+            ]
+            for lhs_row, rhs_row in zip(lhs, rhs)
+        ]
+
+    def _matmul2x2(
+        self, lhs: Iterable[Iterable[float]], rhs: Iterable[Iterable[float]]
+    ) -> list[list[float]]:
+        lhs_rows = tuple(tuple(row) for row in lhs)
+        rhs_rows = tuple(tuple(row) for row in rhs)
+        return [
+            [
+                lhs_rows[i][0] * rhs_rows[0][j] + lhs_rows[i][1] * rhs_rows[1][j]
+                for j in range(2)
+            ]
+            for i in range(2)
+        ]
+
+    def _matmul2x2_transpose(
+        self, lhs: Iterable[Iterable[float]], rhs: Iterable[Iterable[float]]
+    ) -> list[list[float]]:
+        lhs_rows = tuple(tuple(row) for row in lhs)
+        rhs_rows = tuple(tuple(row) for row in rhs)
+        return [
+            [
+                lhs_rows[i][0] * rhs_rows[j][0] + lhs_rows[i][1] * rhs_rows[j][1]
+                for j in range(2)
+            ]
+            for i in range(2)
+        ]
+
+    def _inv2x2(self, matrix: Iterable[Iterable[float]]) -> list[list[float]]:
+        rows = tuple(tuple(row) for row in matrix)
+        a, b = rows[0]
+        c, d = rows[1]
+
+        det = a * d - b * c
+        eps = 1.0e-9
+        if not math.isfinite(det) or abs(det) < eps:
+            det = eps if det >= 0.0 else -eps
+
+        inv_det = 1.0 / det
+
+        return [
+            [d * inv_det, -b * inv_det],
+            [-c * inv_det, a * inv_det],
+        ]
 
     def _motion_inflation(
         self, accel: tuple[float, float, float], roll: float, pitch: float
@@ -538,9 +602,11 @@ class TiltPoseEstimator:
     ) -> Optional[tuple[float, ...]]:
         if covariance is not None:
             covariance_values = tuple(covariance)
+            diag_indices = (0, 4, 8)
             if (
                 len(covariance_values) == 9
-                and covariance_values[0] >= 0.0
+                and all(math.isfinite(value) for value in covariance_values)
+                and all(covariance_values[index] >= 0.0 for index in diag_indices)
                 and any(value != 0.0 for value in covariance_values)
             ):
                 return covariance_values
