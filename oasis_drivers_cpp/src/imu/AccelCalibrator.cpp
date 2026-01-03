@@ -739,9 +739,12 @@ AccelCalibrator::Calibration ParseCalibration(const YAML::Node& root)
   const bool has_raw_noise =
       raw_noise && (!calib.raw_noise_method.empty() || calib.raw_stationary_samples > 0 ||
                     raw_noise["accel_cov_mps2_2"] || raw_noise["gyro_cov_rads2_2"]);
-  const bool has_calibrated_samples = calib.calibrated_stationary_samples > 0;
+  const bool has_calibrated_noise =
+      calibrated_noise && (calib.calibrated_stationary_samples > 0 ||
+                           calibrated_noise["accel_cov_mps2_2"] ||
+                           calibrated_noise["gyro_cov_rads2_2"]);
 
-  if (calib.has_ellipsoid && has_calibrated_samples)
+  if (calib.has_ellipsoid && has_calibrated_noise)
   {
     calib.accel_noise_cov_mps2_2 = calib.calibrated_noise_accel_cov_mps2_2;
     calib.gyro_noise_cov_rads2_2 = calib.calibrated_noise_gyro_cov_rads2_2;
@@ -1988,7 +1991,7 @@ bool AccelCalibrator::FitEllipsoid()
     gyro_noise_cov = m_cal_baseline_gyro_cov;
   }
 
-  if (m_calibrated_baseline_valid)
+  if (m_calibrated_stationary_samples > 0)
   {
     calibrated_accel_cov = m_cal_baseline_accel_cov;
     calibrated_gyro_cov = m_cal_baseline_gyro_cov;
