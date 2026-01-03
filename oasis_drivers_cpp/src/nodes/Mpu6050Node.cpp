@@ -317,7 +317,7 @@ void Mpu6050Node::PublishImu()
   const auto& a = processed.imu.accel_mps2;
   const double a_cal_mps2 = std::sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
 
-  RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
-                       "IMU: |a_raw|=%.3f |a_cal|=%.3f m/s^2, temp=%.2fC", a_raw_mps2, a_cal_mps2,
-                       tempSample.temperatureC);
+  RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 1000,
+                        "IMU: |a_raw|=%.3f |a_cal|=%.3f m/s^2, temp=%.2fC", a_raw_mps2, a_cal_mps2,
+                        tempSample.temperatureC);
 }
