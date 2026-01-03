@@ -206,7 +206,13 @@ public:
   void SetCalibrationMode(bool enabled) { m_calibration_mode = enabled; }
 
   // Apply current calibration to an accel vector; returns input when invalid.
-  std::array<double, 3> Apply(const std::array<double, 3>& accel_mps2) const;
+  std::array<double, 3> ApplyAccel(const std::array<double, 3>& accel_mps2) const;
+
+  // Apply calibration to accelerometer variance (includes parameter uncertainty
+  // when available).
+  std::array<double, 3> ApplyAccelVariance(
+      const std::array<double, 3>& accel_mps2,
+      const std::array<double, 3>& accel_var_mps2_2) const;
 
   // Process one IMU sample. Calibration runs only when enabled.
   UpdateStatus Update(const Sample& sample);
