@@ -698,13 +698,47 @@ bool AccelCalibrator::LoadCache()
   }
 }
 
-std::array<double, 3> AccelCalibrator::Apply(const std::array<double, 3>& accel_mps2) const
+std::array<double, 3> AccelCalibrator::ApplyAccel(const std::array<double, 3>& accel_mps2) const
 {
   if (!m_calibration || !m_calibration->has_ellipsoid)
     return accel_mps2;
 
   const std::array<double, 3> centered = Subtract(accel_mps2, m_calibration->bias_mps2);
   return MatrixVector(m_calibration->A, centered);
+}
+
+std::array<double, 3> AccelCalibrator::ApplyAccelVariance(
+    const std::array<double, 3>& accel_mps2, const std::array<double, 3>& accel_var_mps2_2) const
+{
+  if (!m_calibration || !m_calibration->has_ellipsoid)
+    return accel_var_mps2_2;
+
+  std::array<double, 3> result{0.0, 0.0, 0.0};
+
+  const std::array<double, 3> centered = Subtract(accel_mps2, m_calibration->bias_mps2);
+
+  for (size_t row = 0; row < 3; ++row)
+  {
+    double var_meas = 0.0;
+    double var_bias = 0.0;
+    double var_A = 0.0;
+
+    for (size_t col = 0; col < 3; ++col)
+    {
+      const double a = m_calibration->A[row][col];
+      const double d = centered[col];
+      const double bias_sigma = m_calibration->bias_stddev_mps2[col];
+      const double A_sigma = m_calibration->A_stddev[row][col];
+
+      var_meas += a * a * accel_var_mps2_2[col];
+      var_bias += a * a * bias_sigma * bias_sigma;
+      var_A += d * d * A_sigma * A_sigma;
+    }
+
+    result[row] = std::max(var_meas + var_bias + var_A, kNoiseFloor);
+  }
+
+  return result;
 }
 
 AccelCalibrator::UpdateStatus AccelCalibrator::Update(const Sample& sample)
@@ -717,7 +751,7 @@ AccelCalibrator::UpdateStatus AccelCalibrator::Update(const Sample& sample)
   // Append to the sliding window.
   WindowSample window_entry{};
   window_entry.mean_accel = sample.accel_mps2;
-  window_entry.mean_accel_cal = Apply(sample.accel_mps2);
+  window_entry.mean_accel_cal = ApplyAccel(sample.accel_mps2);
   window_entry.mean_gyro = sample.gyro_rads;
   window_entry.mean_norm = Norm(sample.accel_mps2);
   m_window.push_back(window_entry);

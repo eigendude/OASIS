@@ -206,7 +206,12 @@ public:
   void SetCalibrationMode(bool enabled) { m_calibration_mode = enabled; }
 
   // Apply current calibration to an accel vector; returns input when invalid.
-  std::array<double, 3> Apply(const std::array<double, 3>& accel_mps2) const;
+  std::array<double, 3> ApplyAccel(const std::array<double, 3>& accel_mps2) const;
+
+  // Apply calibration to accelerometer variance (includes parameter uncertainty
+  // when available).
+  std::array<double, 3> ApplyAccelVariance(const std::array<double, 3>& accel_mps2,
+                                           const std::array<double, 3>& accel_var_mps2_2) const;
 
   // Process one IMU sample. Calibration runs only when enabled.
   UpdateStatus Update(const Sample& sample);
@@ -214,29 +219,17 @@ public:
   bool HasSolution() const { return m_calibration.has_value() && m_calibration->has_ellipsoid; }
 
   const Calibration& GetCalibration() const { return *m_calibration; }
-
   const std::array<double, 3>& GetAccelNoiseStddev() const { return m_noise_stddev_accel; }
-
   const std::array<double, 3>& GetGyroNoiseStddev() const { return m_noise_stddev_gyro; }
-
   bool HasRawBaseline() const { return m_raw_baseline_valid; }
-
   bool HasCalibratedBaseline() const { return m_calibrated_baseline_valid; }
-
   std::array<double, 3> GetRawBaselineAccelNoiseStddev() const;
-
   std::array<double, 3> GetRawBaselineGyroNoiseStddev() const;
-
   std::array<double, 3> GetCalibratedBaselineAccelNoiseStddev() const;
-
   std::array<double, 3> GetCalibratedBaselineGyroNoiseStddev() const;
-
   std::array<double, 3> GetRawBias() const { return m_raw_bias_accel; }
-
   std::array<double, 3> GetRawGyroBias() const { return m_raw_bias_gyro; }
-
   std::array<double, 3> GetBiasStabilityAccel() const;
-
   std::array<double, 3> GetBiasStabilityGyro() const;
 
 private:
