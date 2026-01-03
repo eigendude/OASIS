@@ -69,6 +69,9 @@ public:
     // Angular velocity in rad/s in the imu_link frame.
     std::array<double, 3> gyro_rads{0.0, 0.0, 0.0};
 
+    // Gyroscope covariance in (rad/s)^2 (row-major 3x3).
+    Mat3 gyro_cov_rads2_2{};
+
     // Per-axis gyroscope variance in (rad/s)^2.
     std::array<double, 3> gyro_var_rads2_2{0.0, 0.0, 0.0};
 
@@ -94,6 +97,9 @@ public:
     // Noise statistics (Gaussian standard deviation per axis)
     std::array<double, 3> accel_noise_stddev_mps2{0.0, 0.0, 0.0};
     std::array<double, 3> gyro_noise_stddev_rads{0.0, 0.0, 0.0};
+
+    // Full gyro noise covariance in (rad/s)^2.
+    Mat3 gyro_noise_cov_rads2_2{};
 
     // Accelerometer bias term b in a_cal = A * (a_raw - b)
     std::array<double, 3> bias_mps2{0.0, 0.0, 0.0};
@@ -122,17 +128,22 @@ public:
     std::string noise_method;
     std::string noise_phase;
 
+    // Full gyro noise covariance in (rad/s)^2 used by downstream filters.
+    Mat3 gyro_noise_cov_rads2_2{};
+
     // Raw baseline noise and bias estimates at rest
     std::array<double, 3> raw_accel_bias_mps2{0.0, 0.0, 0.0};
     std::array<double, 3> raw_gyro_bias_rads{0.0, 0.0, 0.0};
     std::array<double, 3> raw_accel_noise_stddev_mps2{0.0, 0.0, 0.0};
     std::array<double, 3> raw_gyro_noise_stddev_rads{0.0, 0.0, 0.0};
+    Mat3 raw_gyro_noise_cov_rads2_2{};
     size_t raw_stationary_samples{0};
     std::string raw_noise_method;
 
     // Calibrated baseline noise after ellipsoid fit
     std::array<double, 3> calibrated_noise_accel_stddev_mps2{0.0, 0.0, 0.0};
     std::array<double, 3> calibrated_noise_gyro_stddev_rads{0.0, 0.0, 0.0};
+    Mat3 calibrated_noise_gyro_cov_rads2_2{};
     size_t calibrated_stationary_samples{0};
     std::string calibrated_noise_method;
 
@@ -179,6 +190,9 @@ public:
 
     // Mean of the gyro window (rad/s).
     std::array<double, 3> mean_gyro{0.0, 0.0, 0.0};
+
+    // Sample covariance of the per-window mean gyro (rad/s)^2.
+    Mat3 cov_gyro{};
 
     // Variance of the acceleration window (m/s^2)^2.
     std::array<double, 3> var_accel{0.0, 0.0, 0.0};
@@ -295,6 +309,7 @@ private:
   // Noise tracking (stddev per axis)
   std::array<double, 3> m_noise_stddev_accel{0.0, 0.0, 0.0};
   std::array<double, 3> m_noise_stddev_gyro{0.0, 0.0, 0.0};
+  Mat3 m_noise_cov_gyro{};
   bool m_noise_initialized{false};
 
   // Stationary window
@@ -321,8 +336,10 @@ private:
   size_t m_consecutive_stationary{0};
   std::array<double, 3> m_raw_baseline_accel_var{0.0, 0.0, 0.0};
   std::array<double, 3> m_raw_baseline_gyro_var{0.0, 0.0, 0.0};
+  Mat3 m_raw_baseline_gyro_cov{};
   std::array<double, 3> m_cal_baseline_accel_var{0.0, 0.0, 0.0};
   std::array<double, 3> m_cal_baseline_gyro_var{0.0, 0.0, 0.0};
+  Mat3 m_cal_baseline_gyro_cov{};
   std::array<double, 3> m_raw_bias_accel{0.0, 0.0, 0.0};
   std::array<double, 3> m_raw_bias_gyro{0.0, 0.0, 0.0};
   std::array<RunningStats, 3> m_raw_bias_stats_accel;
