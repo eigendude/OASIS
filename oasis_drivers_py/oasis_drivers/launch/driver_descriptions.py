@@ -185,6 +185,21 @@ class DriverDescriptions:
         )
         ld.add_action(mpu_node)
 
+    @staticmethod
+    def add_train_localization(ld: LaunchDescription, host_id: str) -> None:
+        localization_node: Node = Node(
+            namespace=ROS_NAMESPACE,
+            package=PYTHON_PACKAGE_NAME,
+            executable="train_localization",
+            name=f"train_localization_{host_id}",
+            output="screen",
+            remappings=[
+                ("imu", f"{host_id}/imu"),
+                ("train_pose", f"{host_id}/train_pose"),
+            ],
+        )
+        ld.add_action(localization_node)
+
     #
     # ROS2 (libcamera) camera
     #
