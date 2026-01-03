@@ -435,22 +435,22 @@ bool MatricesNear(const AccelCalibrator::Mat3& lhs,
 double RelativeMatrixChange(const AccelCalibrator::Mat3& previous,
                             const AccelCalibrator::Mat3& current)
 {
-  double max_change = 0.0;
+  double num = 0.0;
+  double den = 0.0;
 
-  for (size_t row = 0; row < 3; ++row)
+  for (size_t r = 0; r < 3; ++r)
   {
-    for (size_t col = 0; col < 3; ++col)
+    for (size_t c = 0; c < 3; ++c)
     {
-      const double prev = previous[row][col];
-      const double curr = current[row][col];
-      // Clamp denominator to avoid excessive relative change for tiny values
-      const double denom = std::max(std::abs(prev), kNoiseFloor);
-      const double change = std::abs(curr - prev) / denom;
-      max_change = std::max(max_change, change);
+      const double d = current[r][c] - previous[r][c];
+      num += d * d;
+      den += current[r][c] * current[r][c];
     }
   }
 
-  return max_change;
+  // Scale by overall energy, not per-entry; clamp to avoid divide-by-zero
+  const double denom = std::sqrt(std::max(den, kNoiseFloor * kNoiseFloor));
+  return std::sqrt(num) / denom;
 }
 
 bool InvertMatrix(const std::vector<std::vector<double>>& A,
