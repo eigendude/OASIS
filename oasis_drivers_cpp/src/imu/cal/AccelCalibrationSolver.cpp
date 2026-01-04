@@ -30,6 +30,9 @@ constexpr double kAccelMatrixVariance = 0.01 * 0.01;
 // Units: 1/(m/s^2)^2. Minimum eigenvalue for a valid ellipsoid
 constexpr double kMinEllipsoidEigenvalue = 1e-12;
 
+// Units: 1/(m/s^2)^2. Negative tolerance for eigenvalues due to numeric error
+constexpr double kEigenNegTolerance = 1e-12;
+
 #ifndef OASIS_IMU_ACCEL_CAL_DEBUG
 #define OASIS_IMU_ACCEL_CAL_DEBUG 0
 #endif
@@ -127,7 +130,8 @@ bool AccelCalibrationSolver::Solve(double gravity_mps2, Result& out) const
   const double r = v(9);
 
   auto try_solution = [&](double sign, Eigen::Vector3d& center_out, Eigen::Matrix3d& Q_out,
-                          double& k_out, Eigen::Vector3d& eigenvalues_out) -> bool
+                          double& k_out, Eigen::Vector3d& eigenvalues_out,
+                          Eigen::Matrix3d& eigenvectors_out) -> bool
   {
     const Eigen::Matrix3d M_signed = sign * M;
     const Eigen::Vector3d g_signed = sign * g;
@@ -165,23 +169,36 @@ bool AccelCalibrationSolver::Solve(double gravity_mps2, Result& out) const
     if (eigen_solver.info() != Eigen::Success)
       return false;
 
-    eigenvalues_out = eigen_solver.eigenvalues();
-    if ((eigenvalues_out.array() <= kMinEllipsoidEigenvalue).any())
+    const Eigen::Vector3d eigenvalues_raw = eigen_solver.eigenvalues();
+    eigenvectors_out = eigen_solver.eigenvectors();
+
+    if constexpr (OASIS_IMU_ACCEL_CAL_DEBUG)
+    {
+      std::cerr << std::fixed << std::setprecision(6);
+      std::cerr << "[AccelCal] Sign " << sign << " eigenvalues raw=[" << eigenvalues_raw.transpose()
+                << "]\n";
+    }
+
+    // Reject truly indefinite Q while tolerating tiny negative noise
+    if ((eigenvalues_raw.array() < -kEigenNegTolerance).any())
     {
       if constexpr (OASIS_IMU_ACCEL_CAL_DEBUG)
       {
         std::cerr << std::fixed << std::setprecision(6);
         std::cerr << "[AccelCal] Sign " << sign << " SPD failed eigenvalues=["
-                  << eigenvalues_out.transpose() << "]\n";
+                  << eigenvalues_raw.transpose() << "]\n";
       }
       return false;
     }
 
+    // Clamp tiny negatives to keep sqrt stable for near-zero eigenvalues
+    eigenvalues_out = eigenvalues_raw.cwiseMax(kMinEllipsoidEigenvalue);
+
     if constexpr (OASIS_IMU_ACCEL_CAL_DEBUG)
     {
       std::cerr << std::fixed << std::setprecision(6);
-      std::cerr << "[AccelCal] Sign " << sign << " eigenvalues=[" << eigenvalues_out.transpose()
-                << "]\n";
+      std::cerr << "[AccelCal] Sign " << sign << " eigenvalues clamped=["
+                << eigenvalues_out.transpose() << "]\n";
     }
 
     return true;
@@ -191,20 +208,22 @@ bool AccelCalibrationSolver::Solve(double gravity_mps2, Result& out) const
   Eigen::Matrix3d Q;
   double k = 0.0;
   Eigen::Vector3d eigenvalues;
+  Eigen::Matrix3d eigenvectors;
   double chosen_sign = 1.0;
 
-  if (!try_solution(1.0, center, Q, k, eigenvalues))
+  if (!try_solution(1.0, center, Q, k, eigenvalues, eigenvectors))
   {
-    if (!try_solution(-1.0, center, Q, k, eigenvalues))
+    if (!try_solution(-1.0, center, Q, k, eigenvalues, eigenvectors))
       return false;
     chosen_sign = -1.0;
   }
 
-  Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> eigen_solver(Q);
-  if (eigen_solver.info() != Eigen::Success)
-    return false;
+  if constexpr (OASIS_IMU_ACCEL_CAL_DEBUG)
+  {
+    std::cerr << std::fixed << std::setprecision(6);
+    std::cerr << "[AccelCal] Chosen sign=" << chosen_sign << "\n";
+  }
 
-  const Eigen::Matrix3d eigenvectors = eigen_solver.eigenvectors();
   const Eigen::Vector3d sqrt_eigenvalues = eigenvalues.array().sqrt();
   const Eigen::Matrix3d sqrt_Q =
       eigenvectors * sqrt_eigenvalues.asDiagonal() * eigenvectors.transpose();
