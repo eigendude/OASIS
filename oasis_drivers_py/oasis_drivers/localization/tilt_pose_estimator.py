@@ -200,8 +200,8 @@ class TiltPoseEstimator:
                 (roll_meas, pitch_meas),
                 meas_cov,
             )
-            self._roll = roll_upd
-            self._pitch = pitch_upd
+            self._roll = self._wrap_pi(roll_upd)
+            self._pitch = self._wrap_pi(pitch_upd)
             self._state_cov = upd_cov
         else:
             self._roll = roll_pred
@@ -213,7 +213,7 @@ class TiltPoseEstimator:
     def attitude_rpy(self) -> tuple[float, float, float]:
         roll: float = 0.0 if self._roll is None else float(self._roll)
         pitch: float = 0.0 if self._pitch is None else float(self._pitch)
-        return roll, pitch, 0.0
+        return self._wrap_pi(roll), self._wrap_pi(pitch), 0.0
 
     def orientation_quaternion(self) -> tuple[float, float, float, float]:
         roll: float
@@ -243,7 +243,9 @@ class TiltPoseEstimator:
         pitch_rate: float
         roll_rate, pitch_rate = self._roll_pitch_rate(roll, pitch, gyro)
 
-        return roll + roll_rate * dt, pitch + pitch_rate * dt
+        pred_roll: float = roll + roll_rate * dt
+        pred_pitch: float = pitch + pitch_rate * dt
+        return self._wrap_pi(pred_roll), self._wrap_pi(pred_pitch)
 
     def _predict_covariance(
         self, gyro: np.ndarray, gyro_cov: np.ndarray, dt: float
@@ -490,6 +492,12 @@ class TiltPoseEstimator:
         wy: float
         wz: float
         wx, wy, wz = gyro
+        cos_pitch: float = math.cos(pitch)
+
+        # Guard against Euler singularity when cos(pitch) approaches zero
+        if abs(cos_pitch) < 1.0e-6:
+            pitch = math.copysign((math.pi / 2.0) - 1.0e-6, pitch)
+
         tan_pitch: float = math.tan(pitch)
         cos_roll: float = math.cos(roll)
         sin_roll: float = math.sin(roll)
@@ -498,6 +506,12 @@ class TiltPoseEstimator:
         pitch_rate: float = cos_roll * wy - sin_roll * wz
 
         return roll_rate, pitch_rate
+
+    def _wrap_pi(self, angle: float) -> float:
+        wrapped: float = (angle + math.pi) % (2.0 * math.pi) - math.pi
+        if wrapped <= -math.pi:
+            wrapped += 2.0 * math.pi
+        return wrapped
 
     def _rpy_to_quaternion(
         self, roll: float, pitch: float, yaw: float
