@@ -47,8 +47,14 @@ MOTOR_CURRENT_PIN: int = 1  # A1
 CPU_FAN_PWM_PIN: int = 9  # D9
 CPU_FAN_SPEED_PIN: int = 2  # D2
 
-# External AREF is tied to a 5.02 V regulator for stable ADC scaling
-AREF_VOLTAGE: float = 5.02  # V
+# External AREF is tied to a voltage regulator for stable ADC scaling
+#
+# Observed values:
+#
+#   5.02 V on 2025-12-18
+#   4.95 V on 2026-01-03
+#
+AREF_VOLTAGE: float = 4.95  # V
 VIN_GAIN: float = 0.9887  # Empirical system calibration to match DMM at ~12V
 
 # Voltage dividers
