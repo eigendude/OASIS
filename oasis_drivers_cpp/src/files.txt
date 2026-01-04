@@ -1,0 +1,2332 @@
+Files in /home/garrett/Documents/ros-ws/src/oasis/oasis_drivers_cpp/src/imu:
+
+./Mpu6050ImuUtils.cpp:
+
+/*
+ *  Copyright (C) 2025 Garrett Brown
+ *  This file is part of OASIS - https://github.com/eigendude/OASIS
+ *
+ *  SPDX-License-Identifier: Apache-2.0
+ *  See the file LICENSE.txt for more information.
+ */
+
+#include "imu/Mpu6050ImuUtils.h"
+
+#include <numbers>
+
+#include <MPU6050.h>
+
+namespace
+{
+// Default to +/-250°/s. Converts deg/s to rad/s and divides by 131 LSB/(deg/s).
+constexpr double GYRO_SCALE = (std::numbers::pi_v<double> / 180.0) / 131.0;
+} // namespace
+
+namespace OASIS::IMU
+{
+double Mpu6050ImuUtils::AccelScaleFromRange(uint8_t range, double gravity)
+{
+  switch (range)
+  {
+    case MPU6050_ACCEL_FS_2:
+      return gravity / 16384.0;
+    case MPU6050_ACCEL_FS_4:
+      return gravity / 8192.0;
+    case MPU6050_ACCEL_FS_8:
+      return gravity / 4096.0;
+    case MPU6050_ACCEL_FS_16:
+      return gravity / 2048.0;
+    default:
+      // Default to +/-2g: 16384 counts per g.
+      return gravity / 16384.0;
+  }
+}
+
+double Mpu6050ImuUtils::GyroScaleFromRange(uint8_t range)
+{
+  switch (range)
+  {
+    case MPU6050_GYRO_FS_250:
+      return (std::numbers::pi_v<double> / 180.0) / 131.0;
+    case MPU6050_GYRO_FS_500:
+      return (std::numbers::pi_v<double> / 180.0) / 65.5;
+    case MPU6050_GYRO_FS_1000:
+      return (std::numbers::pi_v<double> / 180.0) / 32.8;
+    case MPU6050_GYRO_FS_2000:
+      return (std::numbers::pi_v<double> / 180.0) / 16.4;
+    default:
+      return GYRO_SCALE;
+  }
+}
+} // namespace OASIS::IMU
+
+./cal/GyroBiasEstimator.cpp:
+
+/*
+ *  Copyright (C) 2026 Garrett Brown
+ *  This file is part of OASIS - https://github.com/eigendude/OASIS
+ *
+ *  SPDX-License-Identifier: Apache-2.0
+ *  See the file LICENSE.txt for more information.
+ */
+
+#include "imu/cal/GyroBiasEstimator.h"
+
+#include <algorithm>
+
+namespace OASIS::IMU
+{
+namespace
+{
+Eigen::Matrix3d Symmetrize(const Eigen::Matrix3d& m)
+{
+  return 0.5 * (m + m.transpose());
+}
+} // namespace
+
+void GyroBiasEstimator::Reset()
+{
+  m_initialized = false;
+  m_b = Eigen::Vector3d::Zero();
+  m_P = Eigen::Matrix3d::Zero();
+}
+
+void GyroBiasEstimator::Update(const Vec3& z_mean_rads,
+                               const Mat3& cov_sample_rads2_2,
+                               std::size_t window_count)
+{
+  if (window_count == 0)
+    return;
+
+  const double n = static_cast<double>(std::max<std::size_t>(1, window_count));
+
+  Eigen::Vector3d z = ToEigen(z_mean_rads);
+  Eigen::Matrix3d R = ToEigen(cov_sample_rads2_2) / n;
+
+  R = Symmetrize(R);
+
+  // Units: (rad/s)^2, diagonal jitter to avoid singular R
+  constexpr double kDiagJitter = 1e-12;
+
+  R += kDiagJitter * Eigen::Matrix3d::Identity();
+
+  if (!m_initialized)
+  {
+    m_b = z;
+    m_P = R;
+    m_initialized = true;
+    return;
+  }
+
+  const Eigen::Matrix3d S = m_P + R;
+  const Eigen::Matrix3d K = m_P * S.inverse();
+
+  m_b = m_b + K * (z - m_b);
+
+  const Eigen::Matrix3d I = Eigen::Matrix3d::Identity();
+  const Eigen::Matrix3d IK = I - K;
+  m_P = IK * m_P * IK.transpose() + K * R * K.transpose();
+  m_P = Symmetrize(m_P);
+}
+
+bool GyroBiasEstimator::IsInitialized() const
+{
+  return m_initialized;
+}
+
+Vec3 GyroBiasEstimator::GetBias() const
+{
+  return FromEigen(m_b);
+}
+
+Mat3 GyroBiasEstimator::GetCov() const
+{
+  return FromEigen(m_P);
+}
+
+Eigen::Vector3d GyroBiasEstimator::ToEigen(const Vec3& v)
+{
+  return {v[0], v[1], v[2]};
+}
+
+Eigen::Matrix3d GyroBiasEstimator::ToEigen(const Mat3& m)
+{
+  Eigen::Matrix3d out = Eigen::Matrix3d::Zero();
+  for (std::size_t i = 0; i < 3; ++i)
+  {
+    for (std::size_t j = 0; j < 3; ++j)
+      out(i, j) = m[i][j];
+  }
+  return out;
+}
+
+Vec3 GyroBiasEstimator::FromEigen(const Eigen::Vector3d& v)
+{
+  return {v[0], v[1], v[2]};
+}
+
+Mat3 GyroBiasEstimator::FromEigen(const Eigen::Matrix3d& m)
+{
+  Mat3 out{};
+  for (std::size_t i = 0; i < 3; ++i)
+  {
+    for (std::size_t j = 0; j < 3; ++j)
+      out[i][j] = m(i, j);
+  }
+  return out;
+}
+} // namespace OASIS::IMU
+
+./cal/AccelCalibrationSolver.h:
+
+/*
+ *  Copyright (C) 2026 Garrett Brown
+ *  This file is part of OASIS - https://github.com/eigendude/OASIS
+ *
+ *  SPDX-License-Identifier: Apache-2.0
+ *  See the file LICENSE.txt for more information.
+ */
+
+#pragma once
+
+#include "imu/ImuTypes.h"
+#include "imu/io/ImuCalibrationFile.h"
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <vector>
+
+namespace OASIS::IMU
+{
+/*!\brief Accel calibration solver for raw samples*/
+class AccelCalibrationSolver
+{
+public:
+  struct Result
+  {
+    /*!
+     * \brief Estimated accelerometer bias
+     *
+     * Units: m/s^2
+     */
+    Vec3 accel_bias_mps2{0.0, 0.0, 0.0};
+
+    /*!
+     * \brief Estimated accelerometer correction matrix
+     *
+     * Units: unitless
+     * Layout: row-major 3x3
+     */
+    Mat3 accel_A{{{1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {0.0, 0.0, 1.0}}};
+
+    /*!
+     * \brief Covariance of [b_a, vec(A)] parameters
+     *
+     * Units:
+     * - b_a terms: (m/s^2)^2
+     * - A terms:   unitless^2
+     *
+     * Params: [bx, by, bz, a00, a01, a02, a10, a11, a12, a20, a21, a22]
+     * Layout: row-major 12x12
+     */
+    std::array<std::array<double, 12>, 12> accel_param_cov{};
+
+    /*!
+     * \brief Fit-quality metric
+     *
+     * Units: m/s^2
+     */
+    double rms_residual_mps2{0.0};
+
+    /*!
+     * \brief Raw accelerometer ellipsoid fit
+     */
+    AccelEllipsoid ellipsoid{};
+
+    /*!
+     * \brief Number of samples used in the fit
+     *
+     * Units: samples
+     */
+    std::uint32_t sample_count{0};
+  };
+
+  void Reset();
+  void AddSample(const Vec3& accel_mps2);
+  std::size_t SampleCount() const;
+
+  bool Solve(double gravity_mps2, Result& out) const;
+
+private:
+  std::vector<Vec3> m_samples;
+};
+} // namespace OASIS::IMU
+
+./cal/GyroBiasEstimator.h:
+
+/*
+ *  Copyright (C) 2026 Garrett Brown
+ *  This file is part of OASIS - https://github.com/eigendude/OASIS
+ *
+ *  SPDX-License-Identifier: Apache-2.0
+ *  See the file LICENSE.txt for more information.
+ */
+
+#pragma once
+
+#include "imu/ImuTypes.h"
+
+#include <cstddef>
+
+#include <Eigen/Dense>
+
+namespace OASIS::IMU
+{
+/*!
+ * \brief Estimates constant gyroscope bias using fused stationary windows.
+ *
+ * This estimator fuses many stationary-window measurements of the mean gyro rate
+ * into a single bias estimate with a full 3×3 covariance, using a Kalman-style
+ * measurement update (equivalent to sequential Bayesian fusion of Gaussians).
+ *
+ * Model (during stationary):
+ *   z = b_g + v
+ *
+ * Where:
+ *   z   : measured mean angular rate over a stationary window (rad/s)
+ *   b_g : constant gyroscope bias (rad/s)
+ *   v   : zero-mean measurement noise for the window mean
+ *
+ * The input covariance is the *sample covariance over the window* (units (rad/s)^2).
+ * Internally, the update treats the measurement noise for the *mean* as:
+ *
+ *   R_mean = cov_sample / N
+ *
+ * where N is the window sample count (window_count). This assumes the samples in the
+ * window are approximately independent (or that cov_sample already reflects the
+ * effective correlation). If the IMU has strong colored noise, N may overstate the
+ * reduction—StationaryDetector gating plus covariance floors/jitter help keep it stable.
+ *
+ * Notes:
+ * - No process model is applied (i.e., bias is assumed constant between updates).
+ * - This is effectively a recursive weighted least squares estimator when starting
+ *   from an uninformative prior.
+ * - All matrices are symmetrized and a small diagonal jitter is added in the .cpp
+ *   to avoid singular inversions.
+ */
+class GyroBiasEstimator
+{
+public:
+  /*!
+   * \brief Reset estimator state.
+   *
+   * After Reset(), the estimator is uninitialized. The next Update() call will
+   * initialize the bias to the provided measurement and covariance.
+   */
+  void Reset();
+
+  /*!
+   * \brief Update estimator using a stationary-window gyro measurement.
+   *
+   * \param z_mean_rads
+   *   Mean gyro rate over the stationary window.
+   *   Units: rad/s
+   *
+   * \param cov_sample_rads2_2
+   *   Sample covariance of gyro samples within the window (not divided by N).
+   *   Units: (rad/s)^2
+   *   Layout: row-major 3×3
+   *
+   * \param window_count
+   *   Number of samples used to compute z_mean_rads and cov_sample_rads2_2.
+   *   Units: samples
+   *
+   * Behavior:
+   * - Converts inputs to Eigen.
+   * - Computes measurement covariance for the mean: R = cov_sample / window_count.
+   * - If uninitialized: sets b := z_mean, P := R (prior from first measurement).
+   * - Otherwise performs a Kalman measurement update with H = I and no process noise:
+   *     S = P + R
+   *     K = P * S^{-1}
+   *     b = b + K * (z - b)
+   *     P = (I-K) P (I-K)^T + K R K^T   (Joseph form for numerical stability)
+   */
+  void Update(const Vec3& z_mean_rads, const Mat3& cov_sample_rads2_2, std::size_t window_count);
+
+  /*!
+   * \brief True if at least one measurement has been fused.
+   */
+  bool IsInitialized() const;
+
+  /*!
+   * \brief Return current bias estimate b_g.
+   *
+   * Units: rad/s
+   */
+  Vec3 GetBias() const;
+
+  /*!
+   * \brief Return current bias covariance P.
+   *
+   * Units: (rad/s)^2
+   * Layout: row-major 3×3
+   */
+  Mat3 GetCov() const;
+
+private:
+  /*!
+   * \brief True after the first successful Update().
+   */
+  bool m_initialized{false};
+
+  /*!
+   * \brief Current bias estimate b_g in Eigen form.
+   *
+   * Units: rad/s
+   */
+  Eigen::Vector3d m_b = Eigen::Vector3d::Zero();
+
+  /*!
+   * \brief Current bias covariance P in Eigen form.
+   *
+   * Units: (rad/s)^2
+   */
+  Eigen::Matrix3d m_P = Eigen::Matrix3d::Zero();
+
+  /*!
+   * \brief Convert Vec3 (std::array) to Eigen vector.
+   */
+  static Eigen::Vector3d ToEigen(const Vec3& v);
+
+  /*!
+   * \brief Convert Mat3 (row-major std::array) to Eigen matrix.
+   */
+  static Eigen::Matrix3d ToEigen(const Mat3& m);
+
+  /*!
+   * \brief Convert Eigen vector to Vec3 (std::array).
+   */
+  static Vec3 FromEigen(const Eigen::Vector3d& v);
+
+  /*!
+   * \brief Convert Eigen matrix to Mat3 (row-major std::array).
+   */
+  static Mat3 FromEigen(const Eigen::Matrix3d& m);
+};
+} // namespace OASIS::IMU
+
+./cal/AccelCalibrationSolver.cpp:
+
+/*
+ *  Copyright (C) 2026 Garrett Brown
+ *  This file is part of OASIS - https://github.com/eigendude/OASIS
+ *
+ *  SPDX-License-Identifier: Apache-2.0
+ *  See the file LICENSE.txt for more information.
+ */
+
+#include "imu/cal/AccelCalibrationSolver.h"
+
+#include <cmath>
+
+namespace OASIS::IMU
+{
+namespace
+{
+constexpr std::size_t kMinSamples = 20;
+constexpr std::size_t kMaxSamples = 5000;
+
+// Units: (m/s^2)^2. Conservative variance for accel bias estimate
+constexpr double kAccelBiasVarianceMps2_2 = 0.05 * 0.05;
+
+// Units: unitless^2. Conservative variance for accel matrix estimate
+constexpr double kAccelMatrixVariance = 0.01 * 0.01;
+
+Vec3 Subtract(const Vec3& a, const Vec3& b)
+{
+  return {a[0] - b[0], a[1] - b[1], a[2] - b[2]};
+}
+
+double Dot(const Vec3& a, const Vec3& b)
+{
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+double Norm(const Vec3& a)
+{
+  return std::sqrt(Dot(a, a));
+}
+
+Mat3 IdentityMatrix()
+{
+  return {{{1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {0.0, 0.0, 1.0}}};
+}
+} // namespace
+
+void AccelCalibrationSolver::Reset()
+{
+  m_samples.clear();
+}
+
+void AccelCalibrationSolver::AddSample(const Vec3& accel_mps2)
+{
+  m_samples.push_back(accel_mps2);
+  if (m_samples.size() > kMaxSamples)
+    m_samples.erase(m_samples.begin());
+}
+
+std::size_t AccelCalibrationSolver::SampleCount() const
+{
+  return m_samples.size();
+}
+
+bool AccelCalibrationSolver::Solve(double gravity_mps2, Result& out) const
+{
+  if (m_samples.size() < kMinSamples)
+    return false;
+
+  Vec3 mean{0.0, 0.0, 0.0};
+  for (const Vec3& sample : m_samples)
+  {
+    mean[0] += sample[0];
+    mean[1] += sample[1];
+    mean[2] += sample[2];
+  }
+
+  const double sample_count = static_cast<double>(m_samples.size());
+  mean[0] /= sample_count;
+  mean[1] /= sample_count;
+  mean[2] /= sample_count;
+
+  Mat3 accel_A = IdentityMatrix();
+
+  Mat3 ellipsoid_Q{};
+  const double gravity_mps2_2 = gravity_mps2 * gravity_mps2;
+  const double inv_gravity_mps2_2 = 1.0 / gravity_mps2_2;
+  ellipsoid_Q[0][0] = inv_gravity_mps2_2;
+  ellipsoid_Q[1][1] = inv_gravity_mps2_2;
+  ellipsoid_Q[2][2] = inv_gravity_mps2_2;
+
+  double residual_sum_sq = 0.0;
+  for (const Vec3& sample : m_samples)
+  {
+    const Vec3 centered = Subtract(sample, mean);
+    const double residual = Norm(centered) - gravity_mps2;
+    residual_sum_sq += residual * residual;
+  }
+
+  const double rms_residual_mps2 = std::sqrt(residual_sum_sq / sample_count);
+
+  out.accel_bias_mps2 = mean;
+  out.accel_A = accel_A;
+  out.accel_param_cov = {};
+  for (std::size_t i = 0; i < 3; ++i)
+    out.accel_param_cov[i][i] = kAccelBiasVarianceMps2_2;
+  for (std::size_t i = 3; i < 12; ++i)
+    out.accel_param_cov[i][i] = kAccelMatrixVariance;
+  out.rms_residual_mps2 = rms_residual_mps2;
+  out.ellipsoid.center_mps2 = mean;
+  out.ellipsoid.Q = ellipsoid_Q;
+  out.sample_count = static_cast<std::uint32_t>(m_samples.size());
+
+  return true;
+}
+} // namespace OASIS::IMU
+
+./ImuTemperature.h:
+
+/*
+ *  Copyright (C) 2025 Garrett Brown
+ *  This file is part of OASIS - https://github.com/eigendude/OASIS
+ *
+ *  SPDX-License-Identifier: Apache-2.0
+ *  See the file LICENSE.txt for more information.
+ */
+
+#pragma once
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+
+namespace OASIS::IMU
+{
+/*!
+ * \brief Converts raw MPU6050 temperature readings and estimates noise variance.
+ *
+ * Converts TEMP_OUT (raw counts) to degrees Celsius using the datasheet
+ * formula, and produces an online estimate of temperature measurement-noise
+ * variance for downstream filters.
+ *
+ * Variance is estimated from a time-aware 2nd-difference residual in raw counts
+ * so small sampling-interval jitter does not bias the result:
+ *
+ *   d2 = c0*r[n-2] + c1*r[n-1] + c2*r[n]
+ *
+ * Coefficients are derived from the nonuniform 3-point second-derivative
+ * stencil, and the variance estimate uses the normalization:
+ *
+ *   var_counts2 = (d2*d2) / (c0^2 + c1^2 + c2^2)
+ *
+ * A short history of var_counts2 is averaged to reduce quantization-induced
+ * zeros and spikes, then converted to (deg C)^2 using (1/340)^2. A minimum
+ * variance floor is applied so covariance is never zero.
+ *
+ * Note: during warmup/cooldown, nonlinearity can increase the estimate.
+ */
+class ImuTemperature
+{
+public:
+  struct Sample
+  {
+    // Temperature in degrees Celsius, computed from the raw sensor reading
+    double temperatureC{0.0};
+
+    // Temperature noise variance in (degrees Celsius)^2 from the
+    // second-difference residual with sampling-interval jitter compensation.
+    double varianceC2{0.0};
+  };
+
+  ImuTemperature() = default;
+
+  // Processes a raw temperature sample and returns the converted temperature
+  // with variance.
+  Sample ProcessRaw(int16_t tempRaw, double dt_s);
+
+  // Sets the minimum temperature noise standard deviation in degrees Celsius.
+  void SetMinStdDev(double min_stddev_c);
+
+  // Clears raw-sample history without changing configuration.
+  void Reset();
+
+private:
+  static constexpr std::size_t kRawHistory = 16;
+  static constexpr std::size_t kVarHistory = 16;
+
+  // Raw temperature samples in MPU6050 counts (ring buffer).
+  std::array<int16_t, kRawHistory> m_raw{};
+
+  // Second-difference variance estimates in raw counts^2 (ring buffer).
+  std::array<double, kVarHistory> m_varCounts2Instant{};
+
+  // Next index to write in the raw sample ring buffer.
+  std::size_t m_rawIndex{0};
+
+  // Next index to write in the variance ring buffer.
+  std::size_t m_varIndex{0};
+
+  // Number of raw samples captured, capped at kRawHistory.
+  std::size_t m_rawCount{0};
+
+  // Number of variance samples captured, capped at kVarHistory.
+  std::size_t m_varCount{0};
+
+  // Running sum of variance samples in counts^2 for fast averaging.
+  double m_varSumCounts2Instant{0.0};
+
+  // Tracks whether a previous dt sample is available for the 3-sample stencil.
+  bool m_hasPrevDt{false};
+
+  // Previous sampling interval in seconds for the 3-sample stencil.
+  double m_prevDtS{0.0};
+
+  // Minimum temperature variance in (degrees Celsius)^2.
+  double m_minVarianceC2{(0.02 * 0.02)};
+};
+} // namespace OASIS::IMU
+
+./ImuTemperature.cpp:
+
+/*
+ *  Copyright (C) 2025 Garrett Brown
+ *  This file is part of OASIS - https://github.com/eigendude/OASIS
+ *
+ *  SPDX-License-Identifier: Apache-2.0
+ *  See the file LICENSE.txt for more information.
+ */
+
+#include "imu/ImuTemperature.h"
+
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+
+namespace OASIS::IMU
+{
+namespace
+{
+// MPU6050 datasheet scale factor: degrees Celsius per TEMP_OUT LSB.
+constexpr double kTempScale = 1.0 / 340.0;
+
+// MPU6050 datasheet offset: degrees Celsius added after scaling.
+constexpr double kTempOffsetC = 36.53;
+
+// Minimum supported dt for the second-derivative stencil (prevents blow-up).
+constexpr double kMinDtS = 1e-4;
+
+// Maximum supported dt for the second-derivative stencil (prevents underflow).
+constexpr double kMaxDtS = 1.0;
+} // namespace
+
+ImuTemperature::Sample ImuTemperature::ProcessRaw(int16_t tempRaw, double dt_s)
+{
+  Sample sample{};
+
+  sample.temperatureC = static_cast<double>(tempRaw) * kTempScale + kTempOffsetC;
+
+  m_raw[m_rawIndex] = tempRaw;
+  m_rawIndex = (m_rawIndex + 1) % kRawHistory;
+  if (m_rawCount < kRawHistory)
+  {
+    ++m_rawCount;
+  }
+
+  const double dt = std::clamp(dt_s, kMinDtS, kMaxDtS);
+
+  if (m_rawCount < 3 || !m_hasPrevDt)
+  {
+    sample.varianceC2 = m_minVarianceC2;
+    m_prevDtS = dt;
+    m_hasPrevDt = true;
+    return sample;
+  }
+
+  const std::size_t idx2 = (m_rawIndex + kRawHistory - 1) % kRawHistory;
+  const std::size_t idx1 = (m_rawIndex + kRawHistory - 2) % kRawHistory;
+  const std::size_t idx0 = (m_rawIndex + kRawHistory - 3) % kRawHistory;
+
+  const int32_t r2 = static_cast<int32_t>(m_raw[idx2]);
+  const int32_t r1 = static_cast<int32_t>(m_raw[idx1]);
+  const int32_t r0 = static_cast<int32_t>(m_raw[idx0]);
+
+  const double h1 = m_prevDtS;
+  const double h2 = dt;
+
+  const double a = 2.0 / (h1 + h2);
+  const double c0 = a * (1.0 / h1);
+  const double c1 = -a * (1.0 / h1 + 1.0 / h2);
+  const double c2 = a * (1.0 / h2);
+
+  const double d2 =
+      c0 * static_cast<double>(r0) + c1 * static_cast<double>(r1) + c2 * static_cast<double>(r2);
+
+  const double denom = c0 * c0 + c1 * c1 + c2 * c2;
+
+  // Denominator derives from Var(d2) for white measurement noise in counts and
+  // reduces to 6.0 when h1 == h2.
+  const double var_counts2_instant = (d2 * d2) / denom;
+
+  if (m_varCount < kVarHistory)
+  {
+    m_varCounts2Instant[m_varIndex] = var_counts2_instant;
+    m_varSumCounts2Instant += var_counts2_instant;
+    ++m_varCount;
+  }
+  else
+  {
+    m_varSumCounts2Instant -= m_varCounts2Instant[m_varIndex];
+    m_varCounts2Instant[m_varIndex] = var_counts2_instant;
+    m_varSumCounts2Instant += var_counts2_instant;
+  }
+  m_varIndex = (m_varIndex + 1) % kVarHistory;
+
+  const double mean_var_counts2_instant =
+      (m_varCount > 0) ? (m_varSumCounts2Instant / static_cast<double>(m_varCount)) : 0.0;
+  const double var_c2 = mean_var_counts2_instant * (kTempScale * kTempScale);
+
+  sample.varianceC2 = std::max(var_c2, m_minVarianceC2);
+  m_prevDtS = dt;
+  m_hasPrevDt = true;
+
+  return sample;
+}
+
+void ImuTemperature::SetMinStdDev(double min_stddev_c)
+{
+  const double clamped_stddev = std::max(min_stddev_c, 0.0);
+  m_minVarianceC2 = clamped_stddev * clamped_stddev;
+}
+
+void ImuTemperature::Reset()
+{
+  m_raw.fill(0);
+  m_varCounts2Instant.fill(0.0);
+  m_rawIndex = 0;
+  m_varIndex = 0;
+  m_rawCount = 0;
+  m_varCount = 0;
+  m_varSumCounts2Instant = 0.0;
+  m_hasPrevDt = false;
+  m_prevDtS = 0.0;
+}
+} // namespace OASIS::IMU
+
+./ImuTypes.h:
+
+/*
+ *  Copyright (C) 2025 Garrett Brown
+ *  This file is part of OASIS - https://github.com/eigendude/OASIS
+ *
+ *  SPDX-License-Identifier: Apache-2.0
+ *  See the file LICENSE.txt for more information.
+ */
+
+#pragma once
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+
+namespace OASIS::IMU
+{
+using Vec3 = std::array<double, 3>;
+using Mat3 = std::array<std::array<double, 3>, 3>;
+
+/*!
+ * \brief One IMU sample in the IMU frame
+ */
+struct ImuSample
+{
+  /*!
+   * \brief Linear acceleration
+   *
+   * Units: m/s^2
+   */
+  Vec3 accel_mps2{0.0, 0.0, 0.0};
+
+  /*!
+   * \brief Angular velocity
+   *
+   * Units: rad/s
+   */
+  Vec3 gyro_rads{0.0, 0.0, 0.0};
+
+  /*!
+   * \brief Per-sample measurement noise covariance for accel
+   *
+   * Units: (m/s^2)^2
+   */
+  Mat3 accel_cov_mps2_2{};
+
+  /*!
+   * \brief Per-sample measurement noise covariance for gyro
+   *
+   * Units: (rad/s)^2
+   */
+  Mat3 gyro_cov_rads2_2{};
+
+  /*!
+   * \brief Temperature at sample time
+   *
+   * Units: deg C
+   */
+  double temperature_c{0.0};
+
+  /*!
+   * \brief Temperature measurement variance at sample time
+   *
+   * Units: (deg C)^2
+   */
+  double temperature_var_c2{0.0};
+
+  /*!
+   * \brief Monotonic timestamp for dt computations
+   *
+   * Units: seconds
+   */
+  double stamp_s{0.0};
+};
+
+/*!
+ * \brief IMU calibration parameters and systematic uncertainty
+ *
+ * Model
+ * - Accelerometer: a_cal = A * (a_raw - b_a)
+ * - Gyroscope:     w_cal = w_raw - b_g
+ */
+struct ImuCalibration
+{
+  /*!
+   * \brief Accelerometer bias b_a
+   *
+   * Units: m/s^2
+   */
+  Vec3 accel_bias_mps2{0.0, 0.0, 0.0};
+
+  /*!
+   * \brief Accelerometer correction matrix A
+   *
+   * Units: unitless
+   * Layout: row-major 3x3
+   */
+  Mat3 accel_A{{{1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {0.0, 0.0, 1.0}}};
+
+  /*!
+   * \brief Covariance of [b_a, vec(A)] parameters
+   *
+   * Units:
+   * - b_a terms: (m/s^2)^2
+   * - A terms:   unitless^2
+   *
+   * Params: [bx, by, bz, a00, a01, a02, a10, a11, a12, a20, a21, a22]
+   * Layout: row-major 12x12
+   */
+  std::array<std::array<double, 12>, 12> accel_param_cov{};
+
+  /*!
+   * \brief Fit-quality metric
+   *
+   * Units: m/s^2
+   */
+  double rms_residual_mps2{0.0};
+
+  /*!
+   * \brief Gyro bias b_g
+   *
+   * Units: rad/s
+   */
+  Vec3 gyro_bias_rads{0.0, 0.0, 0.0};
+
+  /*!
+   * \brief Covariance of gyro bias estimate
+   *
+   * Units: (rad/s)^2
+   * Layout: row-major 3x3
+   */
+  Mat3 gyro_bias_cov_rads2_2{};
+
+  /*!
+   * \brief Mean temperature of samples used to estimate this calibration
+   *
+   * Units: deg C
+   */
+  double temperature_c{0.0};
+
+  /*!
+   * \brief Temperature variance of samples used to estimate this calibration
+   *
+   * Units: (deg C)^2
+   */
+  double temperature_var_c2{0.0};
+
+  /*!
+   * \brief True when calibration is populated and safe to apply
+   */
+  bool valid{false};
+};
+} // namespace OASIS::IMU
+
+./ImuProcessor.h:
+
+/*
+ *  Copyright (C) 2026 Garrett Brown
+ *  This file is part of OASIS - https://github.com/eigendude/OASIS
+ *
+ *  SPDX-License-Identifier: Apache-2.0
+ *  See the file LICENSE.txt for more information.
+ */
+
+#pragma once
+
+#include "imu/ImuTemperature.h"
+#include "imu/ImuTypes.h"
+#include "imu/StationaryDetector.h"
+#include "imu/cal/AccelCalibrationSolver.h"
+#include "imu/cal/GyroBiasEstimator.h"
+#include "imu/io/ImuCalibrationFile.h"
+
+#include <cstddef>
+#include <cstdint>
+#include <filesystem>
+
+namespace OASIS::IMU
+{
+class ImuProcessor
+{
+public:
+  enum class Mode
+  {
+    Driver,
+    Calibration
+  };
+
+  struct Config
+  {
+    /*!
+     * \brief Gravity magnitude used for calibration
+     *
+     * Units: m/s^2
+     */
+    double gravity_mps2{9.80665};
+
+    /*!
+     * \brief Accel scale conversion factor
+     *
+     * Units: (m/s^2)/count
+     */
+    double accel_scale_mps2_per_count{0.0};
+
+    /*!
+     * \brief Gyro scale conversion factor
+     *
+     * Units: (rad/s)/count
+     */
+    double gyro_scale_rads_per_count{0.0};
+
+    /*!
+     * \brief EWMA time constant for measurement-noise covariance estimation
+     *
+     * Units: seconds
+     */
+    double noise_tau_s{2.0};
+
+    /*!
+     * \brief Minimum accel variance floor for measurement-noise covariance
+     *
+     * Units: counts^2
+     */
+    double noise_floor_accel_counts2{1.0};
+
+    /*!
+     * \brief Minimum gyro variance floor for measurement-noise covariance
+     *
+     * Units: counts^2
+     */
+    double noise_floor_gyro_counts2{1.0};
+
+    /*!
+     * \brief Calibration file path to load
+     *
+     * Units: path
+     */
+    std::filesystem::path calibration_path;
+  };
+
+  struct Output
+  {
+    /*!
+     * \brief True when the raw sample fields are populated
+     */
+    bool has_raw{false};
+
+    /*!
+     * \brief True when the corrected sample fields are populated
+     */
+    bool has_corrected{false};
+
+    /*!
+     * \brief Raw sample in IMU frame
+     */
+    ImuSample raw{};
+
+    /*!
+     * \brief Corrected sample in IMU frame
+     */
+    ImuSample corrected{};
+
+    /*!
+     * \brief Current processor mode
+     */
+    Mode mode{Mode::Calibration};
+
+    /*!
+     * \brief True when a calibration record is ready in calibration mode
+     */
+    bool calibration_ready{false};
+
+    /*!
+     * \brief Latest calibration record when ready
+     */
+    ImuCalibrationRecord calibration_record{};
+  };
+
+  bool Initialize(const Config& cfg);
+
+  Output Update(int16_t ax,
+                int16_t ay,
+                int16_t az,
+                int16_t gx,
+                int16_t gy,
+                int16_t gz,
+                int16_t tempRaw,
+                double dt_s,
+                double stamp_s);
+
+  Mode GetMode() const;
+  bool HasCalibrationRecord() const;
+  const ImuCalibrationRecord& GetCalibrationRecord() const;
+  void Reset();
+
+private:
+  struct RunningStats
+  {
+    void Reset();
+    void Update(double value);
+    double Variance() const;
+
+    std::size_t count{0};
+    double mean{0.0};
+    double m2{0.0};
+  };
+
+  struct EwmaCovariance3
+  {
+    void Configure(double tau_s, double min_variance_floor_counts2);
+    void Reset();
+    void Update(const Vec3& sample, double dt_s);
+    Mat3 Covariance() const;
+
+    bool initialized{false};
+    double tau_s{2.0};
+    double min_variance_floor{1.0};
+
+    Vec3 mean{0.0, 0.0, 0.0};
+    Mat3 cov{};
+  };
+
+  void ResetCalibrationState();
+
+  Config m_cfg{};
+  Mode m_mode{Mode::Calibration};
+
+  bool m_hasCalibrationRecord{false};
+  bool m_calibrationReady{false};
+
+  ImuCalibrationRecord m_calibrationRecord{};
+
+  ImuTemperature m_temperature;
+  StationaryDetector m_stationaryDetector;
+  AccelCalibrationSolver m_solver;
+  GyroBiasEstimator m_gyroBiasEstimator;
+
+  RunningStats m_temperatureStats;
+  EwmaCovariance3 m_accelNoise;
+  EwmaCovariance3 m_gyroNoise;
+};
+} // namespace OASIS::IMU
+
+./StationaryDetector.cpp:
+
+/*
+ *  Copyright (C) 2025 Garrett Brown
+ *  This file is part of OASIS - https://github.com/eigendude/OASIS
+ *
+ *  SPDX-License-Identifier: Apache-2.0
+ *  See the file LICENSE.txt for more information.
+ */
+
+#include "imu/StationaryDetector.h"
+
+#include <algorithm>
+#include <cmath>
+
+namespace OASIS::IMU
+{
+namespace
+{
+void Symmetrize(Mat3& mat)
+{
+  // Units: unitless
+  // Meaning: average upper/lower triangle to enforce symmetry
+  const double sym_scale = 0.5;
+
+  for (std::size_t i = 0; i < 3; ++i)
+  {
+    for (std::size_t j = i + 1; j < 3; ++j)
+    {
+      const double sym = sym_scale * (mat[i][j] + mat[j][i]);
+      mat[i][j] = sym;
+      mat[j][i] = sym;
+    }
+  }
+}
+
+double Dot(const Vec3& a, const Vec3& b)
+{
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+double Norm(const Vec3& a)
+{
+  return std::sqrt(Dot(a, a));
+}
+} // namespace
+
+void StationaryDetector::Configure(const Config& cfg)
+{
+  m_cfg = cfg;
+}
+
+void StationaryDetector::Reset()
+{
+  m_window.clear();
+  m_gyro_bias_iir = {0.0, 0.0, 0.0};
+  m_gyro_bias_iir_init = false;
+}
+
+StationaryDetector::Status StationaryDetector::Update(const ImuSample& sample, const Noise& noise)
+{
+  Status out{};
+
+  if (!m_window.empty())
+  {
+    const double dt = sample.stamp_s - m_window.back().stamp_s;
+    if (dt <= 0.0 || dt > m_cfg.max_sample_gap_s)
+    {
+      Reset();
+    }
+  }
+
+  m_window.push_back(sample);
+  if (m_window.size() > m_cfg.window_size)
+    m_window.erase(m_window.begin());
+
+  out.window_count = m_window.size();
+
+  double window_duration_s = 0.0;
+  if (m_window.size() >= 2)
+    window_duration_s = m_window.back().stamp_s - m_window.front().stamp_s;
+
+  out.window_duration_s = window_duration_s;
+
+  if (m_window.size() < m_cfg.window_size)
+    return out;
+
+  if (window_duration_s < m_cfg.min_window_duration_s)
+    return out;
+
+  const double n = static_cast<double>(m_window.size());
+
+  for (const auto& s : m_window)
+  {
+    for (std::size_t i = 0; i < 3; ++i)
+    {
+      out.mean_accel_mps2[i] += s.accel_mps2[i];
+      out.mean_gyro_rads[i] += s.gyro_rads[i];
+    }
+  }
+  for (std::size_t i = 0; i < 3; ++i)
+  {
+    out.mean_accel_mps2[i] /= n;
+    out.mean_gyro_rads[i] /= n;
+  }
+
+  Mat3 cov_accel_sum{};
+  Mat3 cov_gyro_sum{};
+  for (const auto& s : m_window)
+  {
+    for (std::size_t i = 0; i < 3; ++i)
+    {
+      const double da_i = s.accel_mps2[i] - out.mean_accel_mps2[i];
+      const double dg_i = s.gyro_rads[i] - out.mean_gyro_rads[i];
+      for (std::size_t j = 0; j < 3; ++j)
+      {
+        const double da_j = s.accel_mps2[j] - out.mean_accel_mps2[j];
+        const double dg_j = s.gyro_rads[j] - out.mean_gyro_rads[j];
+        cov_accel_sum[i][j] += da_i * da_j;
+        cov_gyro_sum[i][j] += dg_i * dg_j;
+      }
+    }
+  }
+
+  Symmetrize(cov_accel_sum);
+  Symmetrize(cov_gyro_sum);
+
+  Mat3 cov_accel = cov_accel_sum;
+  Mat3 cov_gyro = cov_gyro_sum;
+
+  // Units: samples
+  // Meaning: unbiased sample covariance normalization (n - 1)
+  const double denom = std::max(1.0, n - 1.0);
+
+  for (std::size_t i = 0; i < 3; ++i)
+  {
+    for (std::size_t j = 0; j < 3; ++j)
+    {
+      cov_accel[i][j] /= denom;
+      cov_gyro[i][j] /= denom;
+    }
+  }
+
+  Symmetrize(cov_accel);
+  Symmetrize(cov_gyro);
+
+  out.cov_gyro_rads2_2 = cov_gyro_sum;
+
+  // Units: (m/s^2)^2
+  // Meaning: accel variance floor to avoid zero/noise-free gating
+  const double accel_var_floor = 1e-12;
+
+  // Units: (rad/s)^2
+  // Meaning: gyro variance floor to avoid zero/noise-free gating
+  const double gyro_var_floor = 1e-12;
+
+  for (std::size_t axis = 0; axis < 3; ++axis)
+  {
+    const double accel_var_gate =
+        std::max(noise.accel_cov_mps2_2[axis][axis], accel_var_floor) * m_cfg.variance_sigma_mult;
+
+    const double gyro_var_gate =
+        std::max(noise.gyro_cov_rads2_2[axis][axis], gyro_var_floor) * m_cfg.variance_sigma_mult;
+
+    if (cov_accel[axis][axis] > accel_var_gate)
+      return out;
+
+    if (cov_gyro[axis][axis] > gyro_var_gate)
+      return out;
+  }
+
+  if (!m_gyro_bias_iir_init)
+  {
+    m_gyro_bias_iir = out.mean_gyro_rads;
+    m_gyro_bias_iir_init = true;
+  }
+  else
+  {
+    // Units: unitless
+    // Meaning: IIR smoothing factor for gyro bias estimate
+    const double alpha = 0.001;
+
+    for (std::size_t axis = 0; axis < 3; ++axis)
+      m_gyro_bias_iir[axis] =
+          (1.0 - alpha) * m_gyro_bias_iir[axis] + alpha * out.mean_gyro_rads[axis];
+  }
+
+  for (std::size_t axis = 0; axis < 3; ++axis)
+  {
+    const double sigma = std::sqrt(std::max(noise.gyro_cov_rads2_2[axis][axis], gyro_var_floor));
+
+    // Units: samples
+    // Meaning: lower bound for mean variance scaling to avoid divide-by-zero
+    const double mean_count_floor = 1.0;
+
+    const double sigma_mean = std::max(sigma / std::sqrt(std::max(mean_count_floor, n)),
+                                       m_cfg.gyro_sigma_mean_floor_rads);
+
+    const double mean_unbiased = out.mean_gyro_rads[axis] - m_gyro_bias_iir[axis];
+    if (std::abs(mean_unbiased) > m_cfg.gyro_mean_sigma_mult * sigma_mean)
+      return out;
+  }
+
+  out.stationary = true;
+  (void)Norm;
+  return out;
+}
+} // namespace OASIS::IMU
+
+./StationaryDetector.h:
+
+/*
+ *  Copyright (C) 2025 Garrett Brown
+ *  This file is part of OASIS - https://github.com/eigendude/OASIS
+ *
+ *  SPDX-License-Identifier: Apache-2.0
+ *  See the file LICENSE.txt for more information.
+ */
+
+#pragma once
+
+#include "imu/ImuTypes.h"
+
+#include <cstddef>
+#include <vector>
+
+namespace OASIS::IMU
+{
+/*!
+ * \brief Windowed stationary detector for IMU calibration gating
+ *
+ * Intended to reject motion by checking variance and gyro mean in a short window
+ */
+class StationaryDetector
+{
+public:
+  struct Config
+  {
+    /*!
+     * \brief Sliding window size
+     *
+     * Units: samples
+     */
+    std::size_t window_size{20};
+
+    /*!
+     * \brief Minimum window duration required before evaluating stationarity
+     *
+     * Units: seconds
+     */
+    double min_window_duration_s{0.25};
+
+    /*!
+     * \brief Maximum gap between consecutive samples before resetting
+     *
+     * Units: seconds
+     */
+    double max_sample_gap_s{0.1};
+
+    /*!
+     * \brief Variance gate multiplier on per-axis noise variance
+     *
+     * Units: unitless
+     */
+    double variance_sigma_mult{3.0};
+
+    /*!
+     * \brief Gyro mean gate multiplier on mean sigma
+     *
+     * Units: unitless
+     */
+    double gyro_mean_sigma_mult{3.0};
+
+    /*!
+     * \brief Minimum mean-sigma floor for gyro gate
+     *
+     * Units: rad/s
+     */
+    double gyro_sigma_mean_floor_rads{0.002};
+  };
+
+  struct Noise
+  {
+    /*!
+     * \brief Expected accel noise covariance
+     *
+     * Units: (m/s^2)^2
+     */
+    Mat3 accel_cov_mps2_2{};
+
+    /*!
+     * \brief Expected gyro noise covariance
+     *
+     * Units: (rad/s)^2
+     */
+    Mat3 gyro_cov_rads2_2{};
+  };
+
+  struct Status
+  {
+    /*!
+     * \brief True when window is classified as stationary
+     */
+    bool stationary{false};
+
+    /*!
+     * \brief Mean accel over window
+     *
+     * Units: m/s^2
+     */
+    Vec3 mean_accel_mps2{0.0, 0.0, 0.0};
+
+    /*!
+     * \brief Mean gyro over window
+     *
+     * Units: rad/s
+     */
+    Vec3 mean_gyro_rads{0.0, 0.0, 0.0};
+
+    /*!
+     * \brief Gyro sample covariance over window
+     *
+     * Units: (rad/s)^2
+     * Layout: row-major 3x3
+     */
+    Mat3 cov_gyro_rads2_2{};
+
+    /*!
+     * \brief Number of samples in the window
+     *
+     * Units: samples
+     */
+    std::size_t window_count{0};
+
+    /*!
+     * \brief Time span covered by the window
+     *
+     * Units: seconds
+     */
+    double window_duration_s{0.0};
+  };
+
+  StationaryDetector() = default;
+
+  void Configure(const Config& cfg);
+  void Reset();
+
+  Status Update(const ImuSample& sample, const Noise& noise);
+
+private:
+  Config m_cfg{};
+
+  std::vector<ImuSample> m_window;
+
+  Vec3 m_gyro_bias_iir{0.0, 0.0, 0.0};
+  bool m_gyro_bias_iir_init{false};
+};
+} // namespace OASIS::IMU
+
+./ImuProcessor.cpp:
+
+/*
+ *  Copyright (C) 2026 Garrett Brown
+ *  This file is part of OASIS - https://github.com/eigendude/OASIS
+ *
+ *  SPDX-License-Identifier: Apache-2.0
+ *  See the file LICENSE.txt for more information.
+ */
+
+#include "imu/ImuProcessor.h"
+
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
+
+namespace OASIS::IMU
+{
+namespace
+{
+// Units: seconds
+constexpr double kMinDtS = 1e-4;
+
+// Units: seconds
+constexpr double kMaxDtS = 1.0;
+
+// Units: seconds
+// Meaning: minimum EWMA time constant for noise estimation
+constexpr double kMinTauS = 1e-3;
+
+// Units: unitless
+// Meaning: minimum EWMA update fraction to keep filter responsive
+constexpr double kMinAlpha = 1e-6;
+
+// Units: counts^2
+// Meaning: diagonal jitter added to keep covariance invertible
+constexpr double kDiagJitter = 1e-18;
+
+// Units: nanoseconds per second
+constexpr double kNsPerSecond = 1e9;
+
+Mat3 ScaleMat3(const Mat3& m, double scale)
+{
+  Mat3 out{};
+  for (std::size_t i = 0; i < 3; ++i)
+  {
+    for (std::size_t j = 0; j < 3; ++j)
+      out[i][j] = m[i][j] * scale;
+  }
+  return out;
+}
+
+Vec3 ScaleCounts(const Vec3& counts, double scale)
+{
+  return {counts[0] * scale, counts[1] * scale, counts[2] * scale};
+}
+
+Vec3 Subtract(const Vec3& a, const Vec3& b)
+{
+  return {a[0] - b[0], a[1] - b[1], a[2] - b[2]};
+}
+
+Vec3 AddScaled(const Vec3& a, const Vec3& b, double scale)
+{
+  return {a[0] + b[0] * scale, a[1] + b[1] * scale, a[2] + b[2] * scale};
+}
+
+Mat3 Outer(const Vec3& a, const Vec3& b)
+{
+  Mat3 out{};
+  for (std::size_t i = 0; i < 3; ++i)
+  {
+    for (std::size_t j = 0; j < 3; ++j)
+      out[i][j] = a[i] * b[j];
+  }
+  return out;
+}
+
+Mat3 AddScaledMat3(const Mat3& a, const Mat3& b, double scale)
+{
+  Mat3 out{};
+  for (std::size_t i = 0; i < 3; ++i)
+  {
+    for (std::size_t j = 0; j < 3; ++j)
+      out[i][j] = a[i][j] + b[i][j] * scale;
+  }
+  return out;
+}
+
+Mat3 SymmetrizeMat3(const Mat3& m)
+{
+  Mat3 out{};
+  for (std::size_t i = 0; i < 3; ++i)
+  {
+    for (std::size_t j = 0; j < 3; ++j)
+      out[i][j] = 0.5 * (m[i][j] + m[j][i]);
+  }
+  return out;
+}
+
+Mat3 ZeroMat3()
+{
+  return {};
+}
+
+Vec3 Multiply(const Mat3& a, const Vec3& v)
+{
+  Vec3 out{0.0, 0.0, 0.0};
+  for (std::size_t i = 0; i < 3; ++i)
+  {
+    for (std::size_t j = 0; j < 3; ++j)
+      out[i] += a[i][j] * v[j];
+  }
+  return out;
+}
+
+double ClampDt(double dt_s)
+{
+  return std::clamp(dt_s, kMinDtS, kMaxDtS);
+}
+} // namespace
+
+void ImuProcessor::RunningStats::Reset()
+{
+  count = 0;
+  mean = 0.0;
+  m2 = 0.0;
+}
+
+void ImuProcessor::RunningStats::Update(double value)
+{
+  ++count;
+
+  const double delta = value - mean;
+  mean += delta / static_cast<double>(count);
+
+  const double delta2 = value - mean;
+  m2 += delta * delta2;
+}
+
+double ImuProcessor::RunningStats::Variance() const
+{
+  if (count < 2)
+    return 0.0;
+
+  const double denom = static_cast<double>(count - 1);
+  return m2 / denom;
+}
+
+void ImuProcessor::EwmaCovariance3::Configure(double tau_s_in, double min_variance_floor_counts2)
+{
+  tau_s = std::max(tau_s_in, kMinTauS);
+  min_variance_floor = std::max(min_variance_floor_counts2, 0.0);
+}
+
+void ImuProcessor::EwmaCovariance3::Reset()
+{
+  initialized = false;
+  mean = {0.0, 0.0, 0.0};
+  cov = ZeroMat3();
+}
+
+void ImuProcessor::EwmaCovariance3::Update(const Vec3& sample, double dt_s)
+{
+  const double dt = ClampDt(dt_s);
+  const double tau = std::max(tau_s, kMinTauS);
+
+  double alpha = 1.0 - std::exp(-dt / tau);
+  alpha = std::clamp(alpha, kMinAlpha, 1.0);
+
+  if (!initialized)
+  {
+    mean = sample;
+    cov = ZeroMat3();
+    for (std::size_t i = 0; i < 3; ++i)
+    {
+      cov[i][i] = std::max(cov[i][i], min_variance_floor);
+      cov[i][i] += kDiagJitter;
+    }
+    initialized = true;
+    return;
+  }
+
+  const Vec3 mean_new = AddScaled(mean, Subtract(sample, mean), alpha);
+  const Vec3 delta = Subtract(sample, mean_new);
+  const Mat3 outer_dd = Outer(delta, delta);
+
+  cov = AddScaledMat3(ScaleMat3(cov, 1.0 - alpha), outer_dd, alpha);
+  cov = SymmetrizeMat3(cov);
+
+  for (std::size_t i = 0; i < 3; ++i)
+  {
+    cov[i][i] = std::max(cov[i][i], min_variance_floor);
+    cov[i][i] += kDiagJitter;
+  }
+
+  mean = mean_new;
+}
+
+Mat3 ImuProcessor::EwmaCovariance3::Covariance() const
+{
+  return cov;
+}
+
+bool ImuProcessor::Initialize(const Config& cfg)
+{
+  if (cfg.gravity_mps2 <= 0.0)
+    return false;
+
+  if (cfg.accel_scale_mps2_per_count <= 0.0)
+    return false;
+
+  if (cfg.gyro_scale_rads_per_count <= 0.0)
+    return false;
+
+  m_cfg = cfg;
+
+  m_temperature.Reset();
+  m_stationaryDetector.Reset();
+  m_solver.Reset();
+  m_gyroBiasEstimator.Reset();
+  m_temperatureStats.Reset();
+  m_accelNoise.Configure(m_cfg.noise_tau_s, m_cfg.noise_floor_accel_counts2);
+  m_gyroNoise.Configure(m_cfg.noise_tau_s, m_cfg.noise_floor_gyro_counts2);
+  m_accelNoise.Reset();
+  m_gyroNoise.Reset();
+
+  m_calibrationReady = false;
+  m_calibrationRecord = {};
+  m_hasCalibrationRecord = false;
+
+  ImuCalibrationFile file;
+  ImuCalibrationRecord record;
+  if (file.Load(m_cfg.calibration_path, record) && record.calib.valid)
+  {
+    m_mode = Mode::Driver;
+    m_calibrationRecord = record;
+    m_hasCalibrationRecord = true;
+  }
+  else
+  {
+    m_mode = Mode::Calibration;
+  }
+
+  return true;
+}
+
+ImuProcessor::Output ImuProcessor::Update(int16_t ax,
+                                          int16_t ay,
+                                          int16_t az,
+                                          int16_t gx,
+                                          int16_t gy,
+                                          int16_t gz,
+                                          int16_t tempRaw,
+                                          double dt_s,
+                                          double stamp_s)
+{
+  Output out{};
+  out.mode = m_mode;
+
+  const double dt_clamped = ClampDt(dt_s);
+
+  const Vec3 accel_counts{static_cast<double>(ax), static_cast<double>(ay),
+                          static_cast<double>(az)};
+  const Vec3 gyro_counts{static_cast<double>(gx), static_cast<double>(gy), static_cast<double>(gz)};
+
+  const Vec3 accel_mps2 = ScaleCounts(accel_counts, m_cfg.accel_scale_mps2_per_count);
+  const Vec3 gyro_rads = ScaleCounts(gyro_counts, m_cfg.gyro_scale_rads_per_count);
+
+  const ImuTemperature::Sample temp_sample = m_temperature.ProcessRaw(tempRaw, dt_clamped);
+
+  ImuSample raw_sample{};
+  raw_sample.accel_mps2 = accel_mps2;
+  raw_sample.gyro_rads = gyro_rads;
+  raw_sample.temperature_c = temp_sample.temperatureC;
+  raw_sample.temperature_var_c2 = temp_sample.varianceC2;
+  raw_sample.stamp_s = stamp_s;
+
+  if (m_mode == Mode::Driver)
+  {
+    raw_sample.accel_cov_mps2_2 = m_calibrationRecord.measurement_noise.accel_cov_mps2_2;
+    raw_sample.gyro_cov_rads2_2 = m_calibrationRecord.measurement_noise.gyro_cov_rads2_2;
+
+    out.raw = raw_sample;
+    out.has_raw = true;
+
+    ImuSample corrected_sample = raw_sample;
+    const Vec3 accel_unbiased = Subtract(accel_mps2, m_calibrationRecord.calib.accel_bias_mps2);
+    corrected_sample.accel_mps2 = Multiply(m_calibrationRecord.calib.accel_A, accel_unbiased);
+    corrected_sample.gyro_rads = Subtract(gyro_rads, m_calibrationRecord.calib.gyro_bias_rads);
+
+    out.corrected = corrected_sample;
+    out.has_corrected = true;
+
+    return out;
+  }
+
+  m_temperatureStats.Update(temp_sample.temperatureC);
+  m_accelNoise.Update(accel_counts, dt_clamped);
+  m_gyroNoise.Update(gyro_counts, dt_clamped);
+
+  const Mat3 accel_cov_counts2 = m_accelNoise.Covariance();
+  const Mat3 gyro_cov_counts2 = m_gyroNoise.Covariance();
+
+  const double accel_scale2 = m_cfg.accel_scale_mps2_per_count * m_cfg.accel_scale_mps2_per_count;
+  const double gyro_scale2 = m_cfg.gyro_scale_rads_per_count * m_cfg.gyro_scale_rads_per_count;
+
+  raw_sample.accel_cov_mps2_2 = ScaleMat3(accel_cov_counts2, accel_scale2);
+  raw_sample.gyro_cov_rads2_2 = ScaleMat3(gyro_cov_counts2, gyro_scale2);
+
+  out.raw = raw_sample;
+  out.has_raw = true;
+
+  StationaryDetector::Noise noise{};
+  noise.accel_cov_mps2_2 = raw_sample.accel_cov_mps2_2;
+  noise.gyro_cov_rads2_2 = raw_sample.gyro_cov_rads2_2;
+
+  const StationaryDetector::Status status = m_stationaryDetector.Update(raw_sample, noise);
+  if (status.stationary)
+  {
+    m_gyroBiasEstimator.Update(status.mean_gyro_rads, status.cov_gyro_rads2_2, status.window_count);
+    m_solver.AddSample(raw_sample.accel_mps2);
+
+    if (!m_calibrationReady)
+    {
+      AccelCalibrationSolver::Result result{};
+      if (m_solver.Solve(m_cfg.gravity_mps2, result))
+      {
+        ImuCalibrationRecord record{};
+
+        const double stamp_ns = std::max(0.0, stamp_s * kNsPerSecond);
+        record.created_unix_ns = static_cast<std::uint64_t>(stamp_ns);
+        record.gravity_mps2 = m_cfg.gravity_mps2;
+        record.fit_sample_count = result.sample_count;
+        record.measurement_noise.accel_cov_mps2_2 = raw_sample.accel_cov_mps2_2;
+        record.measurement_noise.gyro_cov_rads2_2 = raw_sample.gyro_cov_rads2_2;
+        record.accel_ellipsoid = result.ellipsoid;
+
+        record.calib.accel_bias_mps2 = result.accel_bias_mps2;
+        record.calib.accel_A = result.accel_A;
+        record.calib.accel_param_cov = result.accel_param_cov;
+        record.calib.rms_residual_mps2 = result.rms_residual_mps2;
+        if (m_gyroBiasEstimator.IsInitialized())
+        {
+          record.calib.gyro_bias_rads = m_gyroBiasEstimator.GetBias();
+          record.calib.gyro_bias_cov_rads2_2 = m_gyroBiasEstimator.GetCov();
+        }
+        else
+        {
+          const double window_count = std::max(1.0, static_cast<double>(status.window_count));
+          record.calib.gyro_bias_rads = status.mean_gyro_rads;
+          record.calib.gyro_bias_cov_rads2_2 =
+              ScaleMat3(status.cov_gyro_rads2_2, 1.0 / window_count);
+        }
+        record.calib.temperature_c = m_temperatureStats.mean;
+        record.calib.temperature_var_c2 = m_temperatureStats.Variance();
+        record.calib.valid = true;
+
+        m_calibrationRecord = record;
+        m_hasCalibrationRecord = true;
+        m_calibrationReady = true;
+      }
+    }
+  }
+
+  out.calibration_ready = m_calibrationReady;
+  if (m_calibrationReady)
+    out.calibration_record = m_calibrationRecord;
+
+  return out;
+}
+
+ImuProcessor::Mode ImuProcessor::GetMode() const
+{
+  return m_mode;
+}
+
+bool ImuProcessor::HasCalibrationRecord() const
+{
+  return m_hasCalibrationRecord;
+}
+
+const ImuCalibrationRecord& ImuProcessor::GetCalibrationRecord() const
+{
+  return m_calibrationRecord;
+}
+
+void ImuProcessor::Reset()
+{
+  m_temperature.Reset();
+
+  if (m_mode == Mode::Calibration)
+  {
+    ResetCalibrationState();
+    m_calibrationRecord = {};
+    m_hasCalibrationRecord = false;
+  }
+
+  m_calibrationReady = false;
+}
+
+void ImuProcessor::ResetCalibrationState()
+{
+  m_stationaryDetector.Reset();
+  m_solver.Reset();
+  m_gyroBiasEstimator.Reset();
+  m_temperatureStats.Reset();
+  m_accelNoise.Reset();
+  m_gyroNoise.Reset();
+}
+} // namespace OASIS::IMU
+
+./Mpu6050ImuUtils.h:
+
+/*
+ *  Copyright (C) 2025 Garrett Brown
+ *  This file is part of OASIS - https://github.com/eigendude/OASIS
+ *
+ *  SPDX-License-Identifier: Apache-2.0
+ *  See the file LICENSE.txt for more information.
+ */
+
+#pragma once
+
+#include <stdint.h>
+
+namespace OASIS::IMU
+{
+/*!
+ * \brief Utility helpers for converting MPU6050 full-scale ranges to physical units.
+ *
+ * Provides scale factors to convert raw accelerometer counts into m/s^2 and raw gyroscope
+ * counts into rad/s based on the configured full-scale range.
+ */
+class Mpu6050ImuUtils
+{
+public:
+  // Returns the accelerometer scale in meters per second squared per count.
+  // Gravity is the local gravitational acceleration (m/s^2) to interpret ±1 g.
+  static double AccelScaleFromRange(uint8_t range, double gravity);
+
+  // Returns the gyroscope scale in radians per second per count.
+  static double GyroScaleFromRange(uint8_t range);
+};
+} // namespace OASIS::IMU
+
+./io/ImuCalibrationFile.cpp:
+
+/*
+ *  Copyright (C) 2025 Garrett Brown
+ *  This file is part of OASIS - https://github.com/eigendude/OASIS
+ *
+ *  SPDX-License-Identifier: Apache-2.0
+ *  See the file LICENSE.txt for more information.
+ */
+
+#include "imu/io/ImuCalibrationFile.h"
+
+#include <fstream>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
+#include <yaml-cpp/yaml.h>
+
+namespace OASIS::IMU
+{
+namespace
+{
+bool ReadSeqDoubles(const YAML::Node& node, std::size_t n, std::vector<double>& out)
+{
+  if (!node || !node.IsSequence() || node.size() != n)
+    return false;
+
+  out.resize(n);
+  for (std::size_t i = 0; i < n; ++i)
+    out[i] = node[i].as<double>();
+
+  return true;
+}
+
+YAML::Node WriteSeqDoubles(const std::vector<double>& v)
+{
+  YAML::Node seq(YAML::NodeType::Sequence);
+  for (double x : v)
+    seq.push_back(x);
+  return seq;
+}
+
+bool ReadVec3(const YAML::Node& node, Vec3& out)
+{
+  std::vector<double> v;
+  if (!ReadSeqDoubles(node, 3, v))
+    return false;
+
+  out = {v[0], v[1], v[2]};
+  return true;
+}
+
+YAML::Node WriteVec3(const Vec3& v)
+{
+  return WriteSeqDoubles({v[0], v[1], v[2]});
+}
+
+bool ReadMat3RowMajor(const YAML::Node& node, Mat3& out)
+{
+  std::vector<double> v;
+  if (!ReadSeqDoubles(node, 9, v))
+    return false;
+
+  out[0][0] = v[0];
+  out[0][1] = v[1];
+  out[0][2] = v[2];
+
+  out[1][0] = v[3];
+  out[1][1] = v[4];
+  out[1][2] = v[5];
+
+  out[2][0] = v[6];
+  out[2][1] = v[7];
+  out[2][2] = v[8];
+
+  return true;
+}
+
+YAML::Node WriteMat3RowMajor(const Mat3& m)
+{
+  return WriteSeqDoubles({
+      m[0][0],
+      m[0][1],
+      m[0][2],
+      m[1][0],
+      m[1][1],
+      m[1][2],
+      m[2][0],
+      m[2][1],
+      m[2][2],
+  });
+}
+
+bool ReadMat12RowMajor(const YAML::Node& node, std::array<std::array<double, 12>, 12>& out)
+{
+  std::vector<double> v;
+  if (!ReadSeqDoubles(node, 144, v))
+    return false;
+
+  std::size_t k = 0;
+  for (std::size_t r = 0; r < 12; ++r)
+  {
+    for (std::size_t c = 0; c < 12; ++c)
+    {
+      out[r][c] = v[k];
+      ++k;
+    }
+  }
+  return true;
+}
+
+YAML::Node WriteMat12RowMajor(const std::array<std::array<double, 12>, 12>& m)
+{
+  std::vector<double> v;
+  v.reserve(144);
+
+  for (std::size_t r = 0; r < 12; ++r)
+  {
+    for (std::size_t c = 0; c < 12; ++c)
+      v.push_back(m[r][c]);
+  }
+
+  return WriteSeqDoubles(v);
+}
+
+bool ReadAccelA(const YAML::Node& node, Mat3& out)
+{
+  return ReadMat3RowMajor(node, out);
+}
+
+YAML::Node WriteAccelA(const Mat3& A)
+{
+  return WriteMat3RowMajor(A);
+}
+
+bool RequireScalar(const YAML::Node& node)
+{
+  return node && node.IsScalar();
+}
+} // namespace
+
+bool ImuCalibrationFile::Load(const std::filesystem::path& path, ImuCalibrationRecord& out) const
+{
+  out = ImuCalibrationRecord{};
+  out.calib.valid = false;
+
+  if (!std::filesystem::exists(path))
+    return false;
+
+  YAML::Node root;
+  try
+  {
+    root = YAML::LoadFile(path.string());
+  }
+  catch (...)
+  {
+    return false;
+  }
+
+  if (!RequireScalar(root["version"]))
+    return false;
+
+  const int version = root["version"].as<int>();
+  if (version != Version())
+    return false;
+
+  if (!RequireScalar(root["created_unix_ns"]))
+    return false;
+  out.created_unix_ns = root["created_unix_ns"].as<std::uint64_t>();
+
+  if (!RequireScalar(root["gravity_mps2"]))
+    return false;
+  out.gravity_mps2 = root["gravity_mps2"].as<double>();
+
+  if (!RequireScalar(root["fit_sample_count"]))
+    return false;
+  out.fit_sample_count = root["fit_sample_count"].as<std::uint32_t>();
+
+  const YAML::Node calib = root["calib"];
+  if (!calib || !calib.IsMap())
+    return false;
+
+  if (!ReadVec3(calib["accel_bias_mps2"], out.calib.accel_bias_mps2))
+    return false;
+
+  if (!ReadAccelA(calib["accel_A_row_major"], out.calib.accel_A))
+    return false;
+
+  if (!ReadMat12RowMajor(calib["accel_param_cov_row_major_12x12"], out.calib.accel_param_cov))
+    return false;
+
+  if (!RequireScalar(calib["rms_residual_mps2"]))
+    return false;
+  out.calib.rms_residual_mps2 = calib["rms_residual_mps2"].as<double>();
+
+  if (!ReadVec3(calib["gyro_bias_rads"], out.calib.gyro_bias_rads))
+    return false;
+
+  if (!ReadMat3RowMajor(calib["gyro_bias_cov_row_major"], out.calib.gyro_bias_cov_rads2_2))
+    return false;
+
+  if (!RequireScalar(calib["temperature_c"]))
+    return false;
+  out.calib.temperature_c = calib["temperature_c"].as<double>();
+
+  if (!RequireScalar(calib["temperature_var_c2"]))
+    return false;
+  out.calib.temperature_var_c2 = calib["temperature_var_c2"].as<double>();
+
+  const YAML::Node noise = root["measurement_noise"];
+  if (!noise || !noise.IsMap())
+    return false;
+
+  if (!ReadMat3RowMajor(noise["accel_cov_row_major"], out.measurement_noise.accel_cov_mps2_2))
+    return false;
+
+  if (!ReadMat3RowMajor(noise["gyro_cov_row_major"], out.measurement_noise.gyro_cov_rads2_2))
+    return false;
+
+  const YAML::Node ell = root["accel_ellipsoid"];
+  if (!ell || !ell.IsMap())
+    return false;
+
+  if (!ReadVec3(ell["center_mps2"], out.accel_ellipsoid.center_mps2))
+    return false;
+
+  if (!ReadMat3RowMajor(ell["Q_row_major"], out.accel_ellipsoid.Q))
+    return false;
+
+  out.calib.valid = true;
+  return true;
+}
+
+bool ImuCalibrationFile::Save(const std::filesystem::path& path,
+                              const ImuCalibrationRecord& rec) const
+{
+  std::error_code ec;
+  std::filesystem::create_directories(path.parent_path(), ec);
+  if (ec)
+    return false;
+
+  YAML::Node root;
+  root["version"] = Version();
+  root["created_unix_ns"] = rec.created_unix_ns;
+  root["gravity_mps2"] = rec.gravity_mps2;
+  root["fit_sample_count"] = rec.fit_sample_count;
+
+  YAML::Node calib;
+  calib["accel_bias_mps2"] = WriteVec3(rec.calib.accel_bias_mps2);
+  calib["accel_A_row_major"] = WriteAccelA(rec.calib.accel_A);
+  calib["accel_param_cov_row_major_12x12"] = WriteMat12RowMajor(rec.calib.accel_param_cov);
+  calib["rms_residual_mps2"] = rec.calib.rms_residual_mps2;
+  calib["gyro_bias_rads"] = WriteVec3(rec.calib.gyro_bias_rads);
+  calib["gyro_bias_cov_row_major"] = WriteMat3RowMajor(rec.calib.gyro_bias_cov_rads2_2);
+  calib["temperature_c"] = rec.calib.temperature_c;
+  calib["temperature_var_c2"] = rec.calib.temperature_var_c2;
+
+  root["calib"] = calib;
+
+  YAML::Node noise;
+  noise["accel_cov_row_major"] = WriteMat3RowMajor(rec.measurement_noise.accel_cov_mps2_2);
+  noise["gyro_cov_row_major"] = WriteMat3RowMajor(rec.measurement_noise.gyro_cov_rads2_2);
+
+  root["measurement_noise"] = noise;
+
+  YAML::Node ell;
+  ell["center_mps2"] = WriteVec3(rec.accel_ellipsoid.center_mps2);
+  ell["Q_row_major"] = WriteMat3RowMajor(rec.accel_ellipsoid.Q);
+
+  root["accel_ellipsoid"] = ell;
+
+  std::ofstream f(path, std::ios::out | std::ios::trunc);
+  if (!f.is_open())
+    return false;
+
+  f << root;
+  f << "\n";
+  return static_cast<bool>(f);
+}
+
+std::string ImuCalibrationFile::DefaultFilename()
+{
+  return "imu_calibration.yaml";
+}
+} // namespace OASIS::IMU
+
+./io/ImuCalibrationFile.h:
+
+/*
+ *  Copyright (C) 2025 Garrett Brown
+ *  This file is part of OASIS - https://github.com/eigendude/OASIS
+ *
+ *  SPDX-License-Identifier: Apache-2.0
+ *  See the file LICENSE.txt for more information.
+ */
+
+#pragma once
+
+#include "imu/ImuTypes.h"
+
+#include <cstdint>
+#include <filesystem>
+#include <string>
+
+namespace OASIS::IMU
+{
+/*!
+ * \brief Measured short-term measurement-noise statistics
+ *
+ * Intended for sensor_msgs/Imu covariance fields (per-sample noise), not the
+ * systematic calibration parameter covariance.
+ */
+struct ImuMeasurementNoise
+{
+  /*!
+   * \brief Accel measurement-noise covariance
+   *
+   * Units: (m/s^2)^2
+   * Layout: row-major 3x3
+   */
+  Mat3 accel_cov_mps2_2{};
+
+  /*!
+   * \brief Gyro measurement-noise covariance
+   *
+   * Units: (rad/s)^2
+   * Layout: row-major 3x3
+   */
+  Mat3 gyro_cov_rads2_2{};
+};
+
+/*!
+ * \brief Ellipsoid fit for raw accelerometer samples
+ *
+ * Quadratic form:
+ *   (x - c)^T * Q * (x - c) = 1
+ *
+ * Units:
+ * - x, c: m/s^2
+ * - Q: 1/(m/s^2)^2
+ */
+struct AccelEllipsoid
+{
+  /*!
+   * \brief Ellipsoid center c
+   *
+   * Units: m/s^2
+   */
+  Vec3 center_mps2{0.0, 0.0, 0.0};
+
+  /*!
+   * \brief Quadratic form matrix Q
+   *
+   * Units: 1/(m/s^2)^2
+   * Layout: row-major 3x3
+   */
+  Mat3 Q{};
+};
+
+/*!
+ * \brief Complete IMU calibration record stored on disk
+ *
+ * This wraps systematic calibration, measured measurement noise, and metadata.
+ */
+struct ImuCalibrationRecord
+{
+  /*!
+   * \brief File creation timestamp
+   *
+   * Units: Unix time in nanoseconds
+   */
+  std::uint64_t created_unix_ns{0};
+
+  /*!
+   * \brief Gravity used during calibration and scaling
+   *
+   * Units: m/s^2
+   */
+  double gravity_mps2{9.80665};
+
+  /*!
+   * \brief Number of samples used in the fit
+   *
+   * Units: samples
+   */
+  std::uint32_t fit_sample_count{0};
+
+  /*!
+   * \brief Measured measurement noise used for sensor_msgs/Imu covariances
+   */
+  ImuMeasurementNoise measurement_noise{};
+
+  /*!
+   * \brief Raw accelerometer ellipsoid fit
+   */
+  AccelEllipsoid accel_ellipsoid{};
+
+  /*!
+   * \brief Systematic calibration parameters and uncertainty
+   */
+  ImuCalibration calib{};
+};
+
+/*!
+ * \brief Loads and saves IMU calibration to disk
+ *
+ * File I/O is kept ROS-free so nodes can stay thin.
+ */
+class ImuCalibrationFile
+{
+public:
+  bool Load(const std::filesystem::path& path, ImuCalibrationRecord& out) const;
+  bool Save(const std::filesystem::path& path, const ImuCalibrationRecord& rec) const;
+
+  static std::string DefaultFilename();
+  static constexpr int Version() { return 1; }
+};
+} // namespace OASIS::IMU
