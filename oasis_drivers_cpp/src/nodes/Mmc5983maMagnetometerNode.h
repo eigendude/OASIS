@@ -14,6 +14,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <filesystem>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -70,12 +71,15 @@ private:
 
   std::string m_i2cDevice;
   std::string m_frameId;
+  std::string m_systemId;
+  std::string m_magCalibrationBase;
   std::chrono::duration<double> m_publishPeriod;
   std::uint8_t m_i2cAddress{0};
   std::uint8_t m_bandwidthMode{0};
   std::uint16_t m_rawRateHz{0};
   int m_measurementTimeoutMs{0};
   bool m_calibrationMode{false};
+  std::filesystem::path m_calibrationCachePath;
 };
 
 } // namespace ROS
