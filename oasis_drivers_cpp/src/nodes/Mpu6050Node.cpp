@@ -129,28 +129,22 @@ bool Mpu6050Node::Initialize()
   const double accelScale = IMU::Mpu6050ImuUtils::AccelScaleFromRange(accelRange, m_gravity);
   const double gyroScale = IMU::Mpu6050ImuUtils::GyroScaleFromRange(gyroRange);
 
-  /* TODO
-  m_imuProcessor.SetGravity(m_gravity);
-  m_imuProcessor.SetAccelScale(accelScale);
-  m_imuProcessor.SetGyroScale(gyroScale);
-  m_imuProcessor.Reset();
-  */
+  IMU::ImuProcessor::Config cfg;
+  cfg.gravity_mps2 = m_gravity;
+  cfg.accel_scale_mps2_per_count = accelScale;
+  cfg.gyro_scale_rads_per_count = gyroScale;
+  cfg.calibration_path = m_calibrationCachePath;
+
+  if (!m_imuProcessor.Initialize(cfg))
+    return false;
 
   RCLCPP_INFO(get_logger(), "MPU6050 full-scale ranges set (accel=%u, gyro=%u)",
               static_cast<unsigned>(accelRange), static_cast<unsigned>(gyroRange));
 
-  const bool loaded =
-      m_calibFile.Load(m_calibrationCachePath, m_calibRecord) && m_calibRecord.calib.valid;
-
-  if (loaded)
-  {
-    RCLCPP_INFO(get_logger(), "Loaded calibration: %s", m_calibrationCachePath.c_str());
-  }
-  else
-  {
-    RCLCPP_INFO(get_logger(), "Calibration missing/invalid: %s", m_calibrationCachePath.c_str());
-    m_calibrationMode = true;
-  }
+  const char* modeName = m_imuProcessor.GetMode() == IMU::ImuProcessor::Mode::Driver
+                             ? "Driver"
+                             : "Calibration";
+  RCLCPP_INFO(get_logger(), "IMU processor mode: %s", modeName);
 
   // Initialize publishers
   m_imuPublisher = create_publisher<sensor_msgs::msg::Imu>(IMU_TOPIC, rclcpp::QoS{1});
@@ -201,16 +195,9 @@ void Mpu6050Node::PublishImu()
   const double timestamp_s = now.seconds();
   m_lastSampleTime = now;
 
-  // Capture temperature before calibration logic so the sample participates
-  // in the calibration statistics.
   const int16_t tempRaw = m_mpu6050->getTemperature();
-  const auto tempSample = m_imuTemperature.ProcessRaw(tempRaw, dt_s);
-
-  // Process motion
-  /* TODO
-  const auto processed =
-      m_imuProcessor.ProcessRaw(ax, ay, az, gx, gy, gz, dt_s, tempSample.temperatureC, timestamp_s);
-  */
+  const IMU::ImuProcessor::Output out =
+      m_imuProcessor.Update(ax, ay, az, gx, gy, gz, tempRaw, dt_s, timestamp_s);
 
   // Create header for published messages
   std_msgs::msg::Header headerMsg;
@@ -221,9 +208,8 @@ void Mpu6050Node::PublishImu()
   sensor_msgs::msg::Imu imuMsg;
   sensor_msgs::msg::Imu imuRawMsg;
 
-  /* TODO
   auto fillImuMsg =
-      [&](sensor_msgs::msg::Imu& imuMsg, const IMU::Mpu6050ImuProcessor::ImuSample& sample)
+      [&](sensor_msgs::msg::Imu& imuMsg, const IMU::ImuSample& sample)
   {
     // Header
     imuMsg.header = headerMsg;
@@ -274,30 +260,43 @@ void Mpu6050Node::PublishImu()
     imuMsg.angular_velocity_covariance[8] = sample.gyro_cov_rads2_2[2][2];
   };
 
-  // imu_raw: direct sensor measurements with measurement-noise covariances.
-  fillImuMsg(imuRawMsg, processed.imu_raw);
+  if (out.has_raw)
+  {
+    fillImuMsg(imuRawMsg, out.raw);
+    m_imuRawPublisher->publish(imuRawMsg);
+  }
 
-  // imu: calibrated stream for ORB-SLAM3. Acceleration retains gravity
-  // because ORB-SLAM3 expects specific force.
-  fillImuMsg(imuMsg, processed.imu);
-  */
-
-  m_imuPublisher->publish(imuMsg);
-  m_imuRawPublisher->publish(imuRawMsg);
+  if (out.has_corrected)
+  {
+    fillImuMsg(imuMsg, out.corrected);
+    m_imuPublisher->publish(imuMsg);
+  }
 
   // Publish temperature
   sensor_msgs::msg::Temperature temperatureMsg;
 
   temperatureMsg.header = headerMsg;
-  temperatureMsg.temperature = tempSample.temperatureC;
-  temperatureMsg.variance = tempSample.varianceC2;
+  temperatureMsg.temperature = out.raw.temperature_c;
+  temperatureMsg.variance = out.raw.temperature_var_c2;
 
   m_imuTemperaturePublisher->publish(temperatureMsg);
 
-  // Log data
-  /* TODO
-  RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 1000,
-                        "IMU: |a_raw|=%.3f |a_cal|=%.3f m/s^2, temp=%.2fC", a_raw_mps2, a_cal_mps2,
-                        tempSample.temperatureC);
-  */
+  if (out.mode == IMU::ImuProcessor::Mode::Calibration && out.calibration_ready &&
+      !m_savedCalibration)
+  {
+    IMU::ImuCalibrationRecord rec = out.calibration_record;
+    rec.created_unix_ns = static_cast<std::uint64_t>(now.nanoseconds());
+
+    if (m_calibFile.Save(m_calibrationCachePath, rec))
+    {
+      RCLCPP_INFO(get_logger(), "Saved IMU calibration to %s", m_calibrationCachePath.c_str());
+      m_savedCalibration = true;
+      rclcpp::shutdown();
+    }
+    else
+    {
+      RCLCPP_ERROR(get_logger(), "Failed to save IMU calibration to %s",
+                   m_calibrationCachePath.c_str());
+    }
+  }
 }
