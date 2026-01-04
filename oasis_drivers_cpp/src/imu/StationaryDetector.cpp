@@ -142,7 +142,7 @@ StationaryDetector::Status StationaryDetector::Update(const ImuSample& sample, c
   Symmetrize(cov_accel);
   Symmetrize(cov_gyro);
 
-  out.cov_gyro_rads2_2 = cov_gyro_sum;
+  out.cov_gyro_rads2_2 = cov_gyro;
 
   // Units: (m/s^2)^2
   // Meaning: accel variance floor to avoid zero/noise-free gating
