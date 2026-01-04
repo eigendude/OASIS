@@ -128,15 +128,15 @@ private:
     double m2{0.0};
   };
 
-  struct NoiseEstimator
+  struct CovarianceEstimator3
   {
     void Reset();
     void Update(const Vec3& sample);
-    Vec3 Variance() const;
+    Mat3 CovarianceSample() const;
 
     std::size_t count{0};
     Vec3 mean{0.0, 0.0, 0.0};
-    Vec3 m2{0.0, 0.0, 0.0};
+    Mat3 m2{};
   };
 
   void ResetCalibrationState();
@@ -155,7 +155,7 @@ private:
   GyroBiasEstimator m_gyroBiasEstimator;
 
   RunningStats m_temperatureStats;
-  NoiseEstimator m_accelNoise;
-  NoiseEstimator m_gyroNoise;
+  CovarianceEstimator3 m_accelNoise;
+  CovarianceEstimator3 m_gyroNoise;
 };
 } // namespace OASIS::IMU
