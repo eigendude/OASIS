@@ -73,6 +73,51 @@ struct ImuSample
 };
 
 /*!
+ * \brief Measured short-term measurement-noise statistics
+ *
+ * Intended for sensor_msgs/Imu covariance fields (per-sample noise), not the
+ * systematic calibration parameter covariance.
+ */
+struct ImuMeasurementNoise
+{
+  /*!
+   * \brief Accel measurement-noise covariance for raw measurements
+   *
+   * Units: (m/s^2)^2
+   * Layout: row-major 3x3
+   * Raw measurements are published on the imu_raw topic
+   */
+  Mat3 accel_cov_raw_mps2_2{};
+
+  /*!
+   * \brief Gyro measurement-noise covariance for raw measurements
+   *
+   * Units: (rad/s)^2
+   * Layout: row-major 3x3
+   * Raw measurements are published on the imu_raw topic
+   */
+  Mat3 gyro_cov_raw_rads2_2{};
+
+  /*!
+   * \brief Accel measurement-noise covariance for corrected measurements
+   *
+   * Units: (m/s^2)^2
+   * Layout: row-major 3x3
+   * Corrected measurements are published on the imu topic
+   */
+  Mat3 accel_cov_corrected_mps2_2{};
+
+  /*!
+   * \brief Gyro measurement-noise covariance for corrected measurements
+   *
+   * Units: (rad/s)^2
+   * Layout: row-major 3x3
+   * Corrected measurements are published on the imu topic
+   */
+  Mat3 gyro_cov_corrected_rads2_2{};
+};
+
+/*!
  * \brief IMU calibration parameters and systematic uncertainty
  *
  * Model

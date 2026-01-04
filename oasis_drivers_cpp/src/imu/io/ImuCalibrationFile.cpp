@@ -210,10 +210,20 @@ bool ImuCalibrationFile::Load(const std::filesystem::path& path, ImuCalibrationR
   if (!noise || !noise.IsMap())
     return false;
 
-  if (!ReadMat3RowMajor(noise["accel_cov_row_major"], out.measurement_noise.accel_cov_mps2_2))
+  if (!ReadMat3RowMajor(noise["accel_cov_raw_mps2_2"],
+                        out.measurement_noise.accel_cov_raw_mps2_2))
     return false;
 
-  if (!ReadMat3RowMajor(noise["gyro_cov_row_major"], out.measurement_noise.gyro_cov_rads2_2))
+  if (!ReadMat3RowMajor(noise["gyro_cov_raw_rads2_2"],
+                        out.measurement_noise.gyro_cov_raw_rads2_2))
+    return false;
+
+  if (!ReadMat3RowMajor(noise["accel_cov_corrected_mps2_2"],
+                        out.measurement_noise.accel_cov_corrected_mps2_2))
+    return false;
+
+  if (!ReadMat3RowMajor(noise["gyro_cov_corrected_rads2_2"],
+                        out.measurement_noise.gyro_cov_corrected_rads2_2))
     return false;
 
   const YAML::Node ell = root["accel_ellipsoid"];
@@ -257,8 +267,14 @@ bool ImuCalibrationFile::Save(const std::filesystem::path& path,
   root["calib"] = calib;
 
   YAML::Node noise;
-  noise["accel_cov_row_major"] = WriteMat3RowMajor(rec.measurement_noise.accel_cov_mps2_2);
-  noise["gyro_cov_row_major"] = WriteMat3RowMajor(rec.measurement_noise.gyro_cov_rads2_2);
+  noise["accel_cov_raw_mps2_2"] =
+      WriteMat3RowMajor(rec.measurement_noise.accel_cov_raw_mps2_2);
+  noise["gyro_cov_raw_rads2_2"] =
+      WriteMat3RowMajor(rec.measurement_noise.gyro_cov_raw_rads2_2);
+  noise["accel_cov_corrected_mps2_2"] =
+      WriteMat3RowMajor(rec.measurement_noise.accel_cov_corrected_mps2_2);
+  noise["gyro_cov_corrected_rads2_2"] =
+      WriteMat3RowMajor(rec.measurement_noise.gyro_cov_corrected_rads2_2);
 
   root["measurement_noise"] = noise;
 
