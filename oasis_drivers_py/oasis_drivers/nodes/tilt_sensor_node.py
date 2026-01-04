@@ -41,7 +41,8 @@ PARAM_ACCEL_TRUST_THRESHOLD: str = "accel_trust_threshold_mps2"
 PARAM_YAW_VAR_RAD2: str = "yaw_var_rad2"
 PARAM_MIN_ATTITUDE_VAR: str = "min_attitude_variance"
 PARAM_MAX_ACCEL_INFLATION: str = "max_accel_inflation"
-PARAM_GYRO_BIAS_RW_VAR_RAD2: str = "gyro_bias_rw_var_rads2"
+# Units: (rad/s)^2. Meaning: gyro bias random-walk variance parameter.
+PARAM_GYRO_BIAS_RW_VAR_RADS2: str = "gyro_bias_rw_var_rads2"
 PARAM_PUBLISH_TILT_RP: str = "publish_tilt_rp"
 
 DEFAULT_NAMESPACE: str = "oasis"
@@ -50,7 +51,7 @@ DEFAULT_ACCEL_TRUST_THRESHOLD_MPS2: float = 1.5
 DEFAULT_YAW_VAR_RAD2: float = 1.0e6
 DEFAULT_MIN_ATTITUDE_VARIANCE: float = 1.0e-4
 DEFAULT_MAX_ACCEL_INFLATION: float = 100.0
-DEFAULT_GYRO_BIAS_RW_VAR_RAD2: float = 1.0e-6
+DEFAULT_GYRO_BIAS_RW_VAR_RADS2: float = 1.0e-6
 
 # Units: s. Meaning: threshold for rejecting large time deltas.
 MAX_DT_SPIKE_S: float = 0.2
@@ -87,7 +88,7 @@ class TiltSensorNode(rclpy.node.Node):
         self.declare_parameter(PARAM_MIN_ATTITUDE_VAR, DEFAULT_MIN_ATTITUDE_VARIANCE)
         self.declare_parameter(PARAM_MAX_ACCEL_INFLATION, DEFAULT_MAX_ACCEL_INFLATION)
         self.declare_parameter(
-            PARAM_GYRO_BIAS_RW_VAR_RAD2, DEFAULT_GYRO_BIAS_RW_VAR_RAD2
+            PARAM_GYRO_BIAS_RW_VAR_RADS2, DEFAULT_GYRO_BIAS_RW_VAR_RADS2
         )
         self.declare_parameter(PARAM_PUBLISH_TILT_RP, False)
 
@@ -106,8 +107,8 @@ class TiltSensorNode(rclpy.node.Node):
         max_accel_inflation: float = float(
             self.get_parameter(PARAM_MAX_ACCEL_INFLATION).value
         )
-        gyro_bias_rw_var_rad2: float = float(
-            self.get_parameter(PARAM_GYRO_BIAS_RW_VAR_RAD2).value
+        gyro_bias_rw_var_rads2: float = float(
+            self.get_parameter(PARAM_GYRO_BIAS_RW_VAR_RADS2).value
         )
         publish_tilt_rp: bool = bool(self.get_parameter(PARAM_PUBLISH_TILT_RP).value)
 
@@ -120,7 +121,7 @@ class TiltSensorNode(rclpy.node.Node):
             yaw_variance_rad2=yaw_variance,
             min_attitude_variance=min_attitude_variance,
             max_accel_inflation=max_accel_inflation,
-            gyro_bias_rw_var_rads2=gyro_bias_rw_var_rad2,
+            gyro_bias_rw_var_rads2=gyro_bias_rw_var_rads2,
         )
 
         self._tilt_pub: rclpy.publisher.Publisher = self.create_publisher(
@@ -227,6 +228,8 @@ class TiltSensorNode(rclpy.node.Node):
         orientation: tuple[float, float, float, float] = (
             self._estimator.orientation_quaternion()
         )
+        # sensor_msgs/Imu.orientation encodes roll/pitch with yaw set to 0.
+        # Downstream consumers should treat yaw as unobserved.
         tilt_message.orientation.x = orientation[0]
         tilt_message.orientation.y = orientation[1]
         tilt_message.orientation.z = orientation[2]
@@ -234,6 +237,8 @@ class TiltSensorNode(rclpy.node.Node):
         tilt_message.orientation_covariance = (
             self._estimator.orientation_covariance_rpy()
         )
+        # Orientation covariance is 3x3 row-major in rad^2, with a large
+        # yaw variance to reflect the unobserved yaw angle.
 
         tilt_message.angular_velocity = message.angular_velocity
         tilt_message.angular_velocity_covariance = message.angular_velocity_covariance

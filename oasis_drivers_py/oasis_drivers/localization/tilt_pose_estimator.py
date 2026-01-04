@@ -82,16 +82,17 @@ class TiltPoseEstimator:
         accel measurement noise and accel calibration parameter
         uncertainty.
 
-    Accelerometer corrections use soft gating based on | ||a|| - g |.
-    Measurement covariance is inflated when acceleration magnitude
+    Accelerometer corrections use soft gating based on | ||a|| - g |. The
+    measurement covariance is inflated when acceleration magnitude
     diverges from gravity, yielding smaller Kalman gains under vibration.
     Yaw is unobserved, so orientation covariance includes a large yaw
     variance.
 
     Covariance outputs:
         Roll/pitch covariance is 2x2. Orientation covariance is a full
-        3x3 row-major list suitable for sensor_msgs/Imu with yaw variance
-        on the diagonal.
+        3x3 row-major list suitable for sensor_msgs/Imu, with roll and
+        pitch variances in rad^2 and a large yaw variance on the diagonal
+        to express that yaw is unobserved.
     """
 
     def __init__(
@@ -106,12 +107,15 @@ class TiltPoseEstimator:
         Initialize the estimator.
 
         Args:
-            accel_trust_threshold_mps2: Threshold on |\|a\|-g| before
-                rejecting accelerometer corrections in m/s^2.
+            accel_trust_threshold_mps2: Threshold on |\|a\|-g| in m/s^2.
+                Used to accept the startup attitude and to scale the
+                soft-gating inflation for all later measurements.
             yaw_variance_rad2: Variance assigned to yaw in rad^2.
             min_attitude_variance: Lower bound for roll/pitch variance in
                 rad^2. This is higher than the numerical minimum to keep
-                covariance truthful on vibrating platforms.
+                covariance truthful on vibrating platforms, where
+                accelerometers and gyros can look more certain than they
+                truly are.
             max_accel_inflation: Maximum multiplier for accel covariance
                 when | ||a|| - g | is large.
             gyro_bias_rw_var_rads2: Extra gyro variance in (rad/s)^2 used
@@ -234,6 +238,9 @@ class TiltPoseEstimator:
         Return roll/pitch covariance with large yaw variance on the diagonal.
 
         The yaw term remains large because the filter does not observe yaw.
+        The output is a 3x3 row-major covariance in rad^2 suitable for
+        sensor_msgs/Imu.orientation_covariance, with roll and pitch coming
+        from the filter state covariance.
         """
 
         covariance: np.ndarray = np.zeros((3, 3), dtype=float)
@@ -284,7 +291,9 @@ class TiltPoseEstimator:
 
         # P = F P F^T + Q with Q = G Cov_w G^T.
         # F = ∂f/∂x and G = ∂f/∂w from the discrete-time state update.
-        # The Jacobians are computed with central differences
+        # The Jacobians include dt implicitly through f(), which already
+        # applies the discrete-time integration step.
+        # The Jacobians are computed with central differences.
         jac_f: np.ndarray = np.zeros((2, 2), dtype=float)
         delta: np.ndarray
         f_plus: np.ndarray
@@ -318,7 +327,8 @@ class TiltPoseEstimator:
         Build gyro covariance used for process noise.
 
         The bias random-walk term approximates unmodeled bias drift since
-        we do not estimate gyro bias as part of the state.
+        we do not estimate gyro bias as part of the state. It keeps the
+        filter from becoming overconfident when bias evolves over time.
         """
 
         base: Optional[np.ndarray] = self._covariance_matrix(
@@ -410,6 +420,8 @@ class TiltPoseEstimator:
         )
         jac: np.ndarray = np.vstack((j_roll, j_pitch))
 
+        # Project accel covariance into roll/pitch angles (rad^2) through
+        # the measurement Jacobian.
         cov: np.ndarray = jac @ accel_cov @ jac.T
         return self._sanitize_covariance(cov)
 
@@ -420,7 +432,9 @@ class TiltPoseEstimator:
         Inflate accelerometer measurement covariance when dynamics are high.
 
         Alpha = 1 + (| ||a|| - g | / threshold)^2. This keeps updates smooth
-        while reducing their influence under vibration.
+        while reducing their influence under vibration. A larger R reduces
+        the Kalman gain, so the filter trusts the gyro prediction more when
+        acceleration is non-gravitational.
         """
 
         magnitude: float = float(np.linalg.norm(accel))
