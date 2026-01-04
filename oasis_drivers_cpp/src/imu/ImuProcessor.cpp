@@ -22,6 +22,18 @@ constexpr double kMinDtS = 1e-4;
 // Units: seconds
 constexpr double kMaxDtS = 1.0;
 
+// Units: seconds
+// Meaning: minimum EWMA time constant for noise estimation
+constexpr double kMinTauS = 1e-3;
+
+// Units: unitless
+// Meaning: minimum EWMA update fraction to keep filter responsive
+constexpr double kMinAlpha = 1e-6;
+
+// Units: counts^2
+// Meaning: diagonal jitter added to keep covariance invertible
+constexpr double kDiagJitter = 1e-18;
+
 // Units: nanoseconds per second
 constexpr double kNsPerSecond = 1e9;
 
@@ -62,13 +74,13 @@ Mat3 Outer(const Vec3& a, const Vec3& b)
   return out;
 }
 
-Mat3 AddMat3(const Mat3& a, const Mat3& b)
+Mat3 AddScaledMat3(const Mat3& a, const Mat3& b, double scale)
 {
   Mat3 out{};
   for (std::size_t i = 0; i < 3; ++i)
   {
     for (std::size_t j = 0; j < 3; ++j)
-      out[i][j] = a[i][j] + b[i][j];
+      out[i][j] = a[i][j] + b[i][j] * scale;
   }
   return out;
 }
@@ -82,6 +94,11 @@ Mat3 SymmetrizeMat3(const Mat3& m)
       out[i][j] = 0.5 * (m[i][j] + m[j][i]);
   }
   return out;
+}
+
+Mat3 ZeroMat3()
+{
+  return {};
 }
 
 Vec3 Multiply(const Mat3& a, const Vec3& v)
@@ -128,31 +145,60 @@ double ImuProcessor::RunningStats::Variance() const
   return m2 / denom;
 }
 
-void ImuProcessor::CovarianceEstimator3::Reset()
+void ImuProcessor::EwmaCovariance3::Configure(double tau_s_in,
+                                              double min_variance_floor_counts2)
 {
-  count = 0;
+  tau_s = std::max(tau_s_in, kMinTauS);
+  min_variance_floor = std::max(min_variance_floor_counts2, 0.0);
+}
+
+void ImuProcessor::EwmaCovariance3::Reset()
+{
+  initialized = false;
   mean = {0.0, 0.0, 0.0};
-  m2 = {};
+  cov = ZeroMat3();
 }
 
-void ImuProcessor::CovarianceEstimator3::Update(const Vec3& sample)
+void ImuProcessor::EwmaCovariance3::Update(const Vec3& sample, double dt_s)
 {
-  ++count;
+  const double dt = ClampDt(dt_s);
+  const double tau = std::max(tau_s, kMinTauS);
 
-  const Vec3 delta = Subtract(sample, mean);
-  mean = AddScaled(mean, delta, 1.0 / static_cast<double>(count));
+  double alpha = 1.0 - std::exp(-dt / tau);
+  alpha = std::clamp(alpha, kMinAlpha, 1.0);
 
-  const Vec3 delta2 = Subtract(sample, mean);
-  m2 = AddMat3(m2, Outer(delta, delta2));
+  if (!initialized)
+  {
+    mean = sample;
+    cov = ZeroMat3();
+    for (std::size_t i = 0; i < 3; ++i)
+    {
+      cov[i][i] = std::max(cov[i][i], min_variance_floor);
+      cov[i][i] += kDiagJitter;
+    }
+    initialized = true;
+    return;
+  }
+
+  const Vec3 mean_new = AddScaled(mean, Subtract(sample, mean), alpha);
+  const Vec3 delta = Subtract(sample, mean_new);
+  const Mat3 outer_dd = Outer(delta, delta);
+
+  cov = AddScaledMat3(ScaleMat3(cov, 1.0 - alpha), outer_dd, alpha);
+  cov = SymmetrizeMat3(cov);
+
+  for (std::size_t i = 0; i < 3; ++i)
+  {
+    cov[i][i] = std::max(cov[i][i], min_variance_floor);
+    cov[i][i] += kDiagJitter;
+  }
+
+  mean = mean_new;
 }
 
-Mat3 ImuProcessor::CovarianceEstimator3::CovarianceSample() const
+Mat3 ImuProcessor::EwmaCovariance3::Covariance() const
 {
-  if (count < 2)
-    return {};
-
-  const double denom = static_cast<double>(count - 1);
-  return SymmetrizeMat3(ScaleMat3(m2, 1.0 / denom));
+  return cov;
 }
 
 bool ImuProcessor::Initialize(const Config& cfg)
@@ -173,6 +219,8 @@ bool ImuProcessor::Initialize(const Config& cfg)
   m_solver.Reset();
   m_gyroBiasEstimator.Reset();
   m_temperatureStats.Reset();
+  m_accelNoise.Configure(m_cfg.noise_tau_s, m_cfg.noise_floor_accel_counts2);
+  m_gyroNoise.Configure(m_cfg.noise_tau_s, m_cfg.noise_floor_gyro_counts2);
   m_accelNoise.Reset();
   m_gyroNoise.Reset();
 
@@ -247,11 +295,11 @@ ImuProcessor::Output ImuProcessor::Update(int16_t ax,
   }
 
   m_temperatureStats.Update(temp_sample.temperatureC);
-  m_accelNoise.Update(accel_counts);
-  m_gyroNoise.Update(gyro_counts);
+  m_accelNoise.Update(accel_counts, dt_clamped);
+  m_gyroNoise.Update(gyro_counts, dt_clamped);
 
-  const Mat3 accel_cov_counts2 = m_accelNoise.CovarianceSample();
-  const Mat3 gyro_cov_counts2 = m_gyroNoise.CovarianceSample();
+  const Mat3 accel_cov_counts2 = m_accelNoise.Covariance();
+  const Mat3 gyro_cov_counts2 = m_gyroNoise.Covariance();
 
   const double accel_scale2 = m_cfg.accel_scale_mps2_per_count * m_cfg.accel_scale_mps2_per_count;
   const double gyro_scale2 = m_cfg.gyro_scale_rads_per_count * m_cfg.gyro_scale_rads_per_count;
