@@ -101,6 +101,39 @@ Mat3 ZeroMat3()
   return {};
 }
 
+Mat3 TransposeMat3(const Mat3& m)
+{
+  Mat3 out{};
+  for (std::size_t i = 0; i < 3; ++i)
+  {
+    for (std::size_t j = 0; j < 3; ++j)
+      out[i][j] = m[j][i];
+  }
+  return out;
+}
+
+Mat3 MultiplyMat3(const Mat3& a, const Mat3& b)
+{
+  Mat3 out{};
+  for (std::size_t i = 0; i < 3; ++i)
+  {
+    for (std::size_t j = 0; j < 3; ++j)
+    {
+      double sum = 0.0;
+      for (std::size_t k = 0; k < 3; ++k)
+        sum += a[i][k] * b[k][j];
+      out[i][j] = sum;
+    }
+  }
+  return out;
+}
+
+Mat3 CovarianceTransform(const Mat3& A, const Mat3& Sigma)
+{
+  const Mat3 temp = MultiplyMat3(A, Sigma);
+  return MultiplyMat3(temp, TransposeMat3(A));
+}
+
 Vec3 Multiply(const Mat3& a, const Vec3& v)
 {
   Vec3 out{0.0, 0.0, 0.0};
@@ -298,8 +331,8 @@ ImuProcessor::Output ImuProcessor::Update(int16_t ax,
 
   if (m_mode == Mode::Driver)
   {
-    raw_sample.accel_cov_mps2_2 = m_calibrationRecord.measurement_noise.accel_cov_mps2_2;
-    raw_sample.gyro_cov_rads2_2 = m_calibrationRecord.measurement_noise.gyro_cov_rads2_2;
+    raw_sample.accel_cov_mps2_2 = m_calibrationRecord.measurement_noise.accel_cov_raw_mps2_2;
+    raw_sample.gyro_cov_rads2_2 = m_calibrationRecord.measurement_noise.gyro_cov_raw_rads2_2;
 
     out.raw = raw_sample;
     out.has_raw = true;
@@ -308,6 +341,10 @@ ImuProcessor::Output ImuProcessor::Update(int16_t ax,
     const Vec3 accel_unbiased = Subtract(accel_mps2, m_calibrationRecord.calib.accel_bias_mps2);
     corrected_sample.accel_mps2 = Multiply(m_calibrationRecord.calib.accel_A, accel_unbiased);
     corrected_sample.gyro_rads = Subtract(gyro_rads, m_calibrationRecord.calib.gyro_bias_rads);
+    corrected_sample.accel_cov_mps2_2 =
+        m_calibrationRecord.measurement_noise.accel_cov_corrected_mps2_2;
+    corrected_sample.gyro_cov_rads2_2 =
+        m_calibrationRecord.measurement_noise.gyro_cov_corrected_rads2_2;
 
     out.corrected = corrected_sample;
     out.has_corrected = true;
@@ -351,13 +388,18 @@ ImuProcessor::Output ImuProcessor::Update(int16_t ax,
       if (m_solver.Solve(m_cfg.gravity_mps2, result))
       {
         ImuCalibrationRecord record{};
+        const Mat3 accel_cov_raw_mps2_2 = raw_sample.accel_cov_mps2_2;
+        const Mat3 gyro_cov_raw_rads2_2 = raw_sample.gyro_cov_rads2_2;
 
         const double stamp_ns = std::max(0.0, stamp_s * kNsPerSecond);
         record.created_unix_ns = static_cast<std::uint64_t>(stamp_ns);
         record.gravity_mps2 = m_cfg.gravity_mps2;
         record.fit_sample_count = result.sample_count;
-        record.measurement_noise.accel_cov_mps2_2 = raw_sample.accel_cov_mps2_2;
-        record.measurement_noise.gyro_cov_rads2_2 = raw_sample.gyro_cov_rads2_2;
+        record.measurement_noise.accel_cov_raw_mps2_2 = accel_cov_raw_mps2_2;
+        record.measurement_noise.gyro_cov_raw_rads2_2 = gyro_cov_raw_rads2_2;
+        record.measurement_noise.accel_cov_corrected_mps2_2 =
+            CovarianceTransform(result.accel_A, accel_cov_raw_mps2_2);
+        record.measurement_noise.gyro_cov_corrected_rads2_2 = gyro_cov_raw_rads2_2;
         record.accel_ellipsoid = result.ellipsoid;
 
         record.calib.accel_bias_mps2 = result.accel_bias_mps2;
