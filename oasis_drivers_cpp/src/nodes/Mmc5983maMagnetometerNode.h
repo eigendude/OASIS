@@ -65,6 +65,7 @@ private:
 
   std::filesystem::path m_calibrationPath;
   Eigen::Vector3d m_lastOffset = Eigen::Vector3d::Zero();
+  std::optional<rclcpp::Time> m_offsetSpikeInflationUntil;
 
   std::string m_i2cDevice;
   std::string m_frameId;
@@ -80,6 +81,9 @@ private:
   double m_setResetRepeatabilityMg{0.0};
   double m_stationaryAxisStdThresholdT{0.0};
   double m_stationaryMagnitudeStdThresholdT{0.0};
+  double m_offsetSpikeThresholdT{0.0};
+  double m_offsetSpikeInflationFactor{0.0};
+  std::chrono::duration<double> m_offsetSpikeInflationDuration;
   double m_priorStrengthSamples{0.0};
   double m_ewmaTauSec{0.0};
 };

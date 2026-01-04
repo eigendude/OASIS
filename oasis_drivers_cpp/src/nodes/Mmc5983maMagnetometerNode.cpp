@@ -24,7 +24,7 @@ namespace
 
 constexpr const char* NODE_NAME = "mmc5983ma_magnetometer_driver";
 
-constexpr const char* MAG_TOPIC = "mag";
+constexpr const char* MAG_TOPIC = "magnetic_field";
 constexpr const char* DEFAULT_FRAME_ID = "mag_link";
 
 constexpr const char* DEFAULT_I2C_DEVICE = "/dev/i2c-1";
@@ -41,6 +41,9 @@ constexpr double DEFAULT_SET_RESET_REPEATABILITY_MG = 1.0;
 
 constexpr double DEFAULT_STATIONARY_AXIS_STD_THRESHOLD_T = 5e-7;
 constexpr double DEFAULT_STATIONARY_MAG_STD_THRESHOLD_T = 8e-7;
+constexpr double DEFAULT_OFFSET_SPIKE_THRESHOLD_T = 0.0;
+constexpr double DEFAULT_OFFSET_SPIKE_INFLATION_FACTOR = 3.0;
+constexpr double DEFAULT_OFFSET_SPIKE_INFLATION_SEC = 2.0;
 
 constexpr double DEFAULT_CALIBRATION_COOLDOWN_SEC = 1.0;
 constexpr const char* DEFAULT_CALIBRATION_PATH = "~/.ros/oasis/mmc5983ma_covariance.yaml";
@@ -73,6 +76,9 @@ Mmc5983maMagnetometerNode::Mmc5983maMagnetometerNode() : rclcpp::Node(NODE_NAME)
   declare_parameter("set_reset_repeatability_mg", DEFAULT_SET_RESET_REPEATABILITY_MG);
   declare_parameter("stationary_std_threshold_t", DEFAULT_STATIONARY_AXIS_STD_THRESHOLD_T);
   declare_parameter("stationary_mag_std_threshold_t", DEFAULT_STATIONARY_MAG_STD_THRESHOLD_T);
+  declare_parameter("offset_spike_threshold_t", DEFAULT_OFFSET_SPIKE_THRESHOLD_T);
+  declare_parameter("offset_spike_inflation_factor", DEFAULT_OFFSET_SPIKE_INFLATION_FACTOR);
+  declare_parameter("offset_spike_inflation_sec", DEFAULT_OFFSET_SPIKE_INFLATION_SEC);
   declare_parameter("calibration_mode", false);
   declare_parameter("continuous_calibration", false);
   declare_parameter("calibration_write_cooldown_sec", DEFAULT_CALIBRATION_COOLDOWN_SEC);
@@ -106,6 +112,10 @@ Mmc5983maMagnetometerNode::Mmc5983maMagnetometerNode() : rclcpp::Node(NODE_NAME)
   m_setResetRepeatabilityMg = get_parameter("set_reset_repeatability_mg").as_double();
   m_stationaryAxisStdThresholdT = get_parameter("stationary_std_threshold_t").as_double();
   m_stationaryMagnitudeStdThresholdT = get_parameter("stationary_mag_std_threshold_t").as_double();
+  m_offsetSpikeThresholdT = get_parameter("offset_spike_threshold_t").as_double();
+  m_offsetSpikeInflationFactor = get_parameter("offset_spike_inflation_factor").as_double();
+  m_offsetSpikeInflationDuration =
+      std::chrono::duration<double>(get_parameter("offset_spike_inflation_sec").as_double());
 
   m_calibrationMode = get_parameter("calibration_mode").as_bool();
   m_continuousCalibration = get_parameter("continuous_calibration").as_bool();
@@ -186,6 +196,7 @@ void Mmc5983maMagnetometerNode::Deinitialize()
   m_covarianceEstimator.Reset();
   m_hasSetSample = false;
   m_nextIsReset = false;
+  m_offsetSpikeInflationUntil.reset();
 }
 
 void Mmc5983maMagnetometerNode::PollSensor()
@@ -235,7 +246,16 @@ void Mmc5983maMagnetometerNode::PublishSample(const Eigen::Vector3d& field_t,
   msg.magnetic_field.z = field_t.z();
 
   const Magnetometer::CovarianceUpdate update = m_covarianceEstimator.Update(field_t);
-  const Eigen::Matrix3d covariance = update.covariance_t2;
+  Eigen::Matrix3d covariance = update.covariance_t2;
+
+  if (m_offsetSpikeThresholdT > 0.0 && m_offsetSpikeInflationFactor > 1.0)
+  {
+    if (offset_t.norm() >= m_offsetSpikeThresholdT)
+      m_offsetSpikeInflationUntil = now + m_offsetSpikeInflationDuration;
+
+    if (m_offsetSpikeInflationUntil && now < *m_offsetSpikeInflationUntil)
+      covariance *= m_offsetSpikeInflationFactor;
+  }
 
   if (!covariance.allFinite())
   {
@@ -289,20 +309,20 @@ std::uint8_t Mmc5983maMagnetometerNode::EncodeRawRate(std::uint16_t raw_rate_hz)
     case 20:
       return 0x02;
     case 50:
-      return 0x03;
-    case 100:
       return 0x04;
-    case 200:
+    case 100:
       return 0x05;
-    case 1000:
+    case 200:
       return 0x06;
+    case 1000:
+      return 0x07;
     default:
       break;
   }
 
   RCLCPP_WARN(get_logger(), "Unsupported raw_rate_hz=%u, defaulting to 100 Hz",
               static_cast<unsigned>(raw_rate_hz));
-  return 0x04;
+  return 0x05;
 }
 
 double Mmc5983maMagnetometerNode::ResolveDatasheetNoiseMg(std::uint8_t bandwidth_mode) const

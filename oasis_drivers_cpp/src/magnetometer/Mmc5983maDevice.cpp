@@ -23,7 +23,7 @@ namespace
 
 // I2C registers
 constexpr std::uint8_t kRegXout0 = 0x00;
-constexpr std::uint8_t kRegStatus = 0x07;
+constexpr std::uint8_t kRegStatus = 0x08;
 constexpr std::uint8_t kRegControl0 = 0x09;
 constexpr std::uint8_t kRegControl1 = 0x0A;
 constexpr std::uint8_t kRegControl2 = 0x0B;
@@ -42,8 +42,8 @@ constexpr std::uint8_t kControl0Reset = 0x10;
 constexpr std::uint8_t kControl1BandwidthMask = 0x03;
 
 // Control2 fields
-constexpr std::uint8_t kControl2ContinuousEnable = 0x10;
-constexpr std::uint8_t kControl2RateMask = 0x0F;
+constexpr std::uint8_t kControl2ContinuousEnable = 0x08;
+constexpr std::uint8_t kControl2RateMask = 0x07;
 
 // Units: counts
 // Meaning: midpoint for 18-bit unsigned output
@@ -84,7 +84,7 @@ bool Mmc5983maDevice::TakeMeasurement(MeasurementMode mode, Eigen::Vector3d& sam
   if (!WriteRegister(kRegControl0, setReset))
     return false;
 
-  if (!WriteRegister(kRegControl0, static_cast<std::uint8_t>(setReset | kControl0TakeMeasurement)))
+  if (!WriteRegister(kRegControl0, kControl0TakeMeasurement))
     return false;
 
   if (!WaitForMeasurementDone())
