@@ -67,7 +67,15 @@ void AccelCalibrationSolver::Reset()
 
 void AccelCalibrationSolver::AddSample(const Vec3& accel_mps2)
 {
-  m_samples.push_back(accel_mps2);
+  AddWeightedSample(accel_mps2, 1.0);
+}
+
+void AccelCalibrationSolver::AddWeightedSample(const Vec3& accel_mps2, double weight)
+{
+  if (!std::isfinite(weight) || weight <= 0.0)
+    return;
+
+  m_samples.push_back(Sample{accel_mps2, weight});
   if (m_samples.size() > kMaxSamples)
     m_samples.erase(m_samples.begin());
 }
@@ -79,28 +87,42 @@ std::size_t AccelCalibrationSolver::SampleCount() const
 
 bool AccelCalibrationSolver::Solve(double gravity_mps2, Result& out) const
 {
-  if (m_samples.size() < kMinSamples)
+  std::size_t valid_samples = 0;
+  for (const Sample& sample : m_samples)
+  {
+    if (std::isfinite(sample.weight) && sample.weight > 0.0)
+      ++valid_samples;
+  }
+
+  if (valid_samples < kMinSamples)
     return false;
 
-  const std::size_t sample_count = m_samples.size();
+  const std::size_t sample_count = valid_samples;
   Eigen::MatrixXd design(sample_count, 10);
-  for (std::size_t i = 0; i < sample_count; ++i)
+  std::size_t row = 0;
+  for (const Sample& sample : m_samples)
   {
-    const Vec3& sample = m_samples[i];
-    const double x = sample[0];
-    const double y = sample[1];
-    const double z = sample[2];
+    if (!std::isfinite(sample.weight) || sample.weight <= 0.0)
+      continue;
 
-    design(static_cast<Eigen::Index>(i), 0) = x * x;
-    design(static_cast<Eigen::Index>(i), 1) = y * y;
-    design(static_cast<Eigen::Index>(i), 2) = z * z;
-    design(static_cast<Eigen::Index>(i), 3) = 2.0 * x * y;
-    design(static_cast<Eigen::Index>(i), 4) = 2.0 * x * z;
-    design(static_cast<Eigen::Index>(i), 5) = 2.0 * y * z;
-    design(static_cast<Eigen::Index>(i), 6) = 2.0 * x;
-    design(static_cast<Eigen::Index>(i), 7) = 2.0 * y;
-    design(static_cast<Eigen::Index>(i), 8) = 2.0 * z;
-    design(static_cast<Eigen::Index>(i), 9) = 1.0;
+    const double x = sample.accel_mps2[0];
+    const double y = sample.accel_mps2[1];
+    const double z = sample.accel_mps2[2];
+
+    design(static_cast<Eigen::Index>(row), 0) = x * x;
+    design(static_cast<Eigen::Index>(row), 1) = y * y;
+    design(static_cast<Eigen::Index>(row), 2) = z * z;
+    design(static_cast<Eigen::Index>(row), 3) = 2.0 * x * y;
+    design(static_cast<Eigen::Index>(row), 4) = 2.0 * x * z;
+    design(static_cast<Eigen::Index>(row), 5) = 2.0 * y * z;
+    design(static_cast<Eigen::Index>(row), 6) = 2.0 * x;
+    design(static_cast<Eigen::Index>(row), 7) = 2.0 * y;
+    design(static_cast<Eigen::Index>(row), 8) = 2.0 * z;
+    design(static_cast<Eigen::Index>(row), 9) = 1.0;
+
+    const double sqrt_weight = std::sqrt(sample.weight);
+    design.row(static_cast<Eigen::Index>(row)) *= sqrt_weight;
+    ++row;
   }
 
   Eigen::JacobiSVD<Eigen::MatrixXd> svd(design, Eigen::ComputeThinV);
@@ -231,9 +253,12 @@ bool AccelCalibrationSolver::Solve(double gravity_mps2, Result& out) const
   const Eigen::Matrix3d accel_A = gravity_mps2 * sqrt_Q;
 
   double residual_sum_sq = 0.0;
-  for (const Vec3& sample : m_samples)
+  for (const Sample& sample : m_samples)
   {
-    const Eigen::Vector3d centered = ToEigen(sample) - center;
+    if (!std::isfinite(sample.weight) || sample.weight <= 0.0)
+      continue;
+
+    const Eigen::Vector3d centered = ToEigen(sample.accel_mps2) - center;
     const Eigen::Vector3d calibrated = accel_A * centered;
     const double residual = std::abs(calibrated.norm() - gravity_mps2);
     residual_sum_sq += residual * residual;

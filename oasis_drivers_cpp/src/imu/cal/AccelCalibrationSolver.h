@@ -73,11 +73,18 @@ public:
 
   void Reset();
   void AddSample(const Vec3& accel_mps2);
+  void AddWeightedSample(const Vec3& accel_mps2, double weight);
   std::size_t SampleCount() const;
 
   bool Solve(double gravity_mps2, Result& out) const;
 
 private:
-  std::vector<Vec3> m_samples;
+  struct Sample
+  {
+    Vec3 accel_mps2{0.0, 0.0, 0.0};
+    double weight{1.0};
+  };
+
+  std::vector<Sample> m_samples;
 };
 } // namespace OASIS::IMU
