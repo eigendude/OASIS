@@ -256,6 +256,7 @@ class SpeedometerNode(rclpy.node.Node):
         message.twist.twist.linear.y = 0.0
         message.twist.twist.linear.z = 0.0
 
+        # IMU angular rate for HUD convenience
         message.twist.twist.angular = imu_message.angular_velocity
 
         cov: list[float] = [0.0 for _ in range(36)]
@@ -263,10 +264,12 @@ class SpeedometerNode(rclpy.node.Node):
         cov[7] = 1.0e6
         cov[14] = 1.0e6
 
-        angular_cov: Iterable[float] = imu_message.angular_velocity_covariance
-        cov[21] = self._safe_covariance_value(angular_cov, 0)
-        cov[28] = self._safe_covariance_value(angular_cov, 4)
-        cov[35] = self._safe_covariance_value(angular_cov, 8)
+        angular_cov: np.ndarray = self._angular_velocity_covariance_matrix(
+            imu_message.angular_velocity_covariance
+        )
+        for row in range(3):
+            for col in range(3):
+                cov[21 + row * 6 + col] = float(angular_cov[row, col])
 
         message.twist.covariance = cov
         return message
@@ -325,13 +328,21 @@ class SpeedometerNode(rclpy.node.Node):
             return 0.5 * (matrix + matrix.T)
         return matrix
 
-    def _safe_covariance_value(self, covariance: Iterable[float], index: int) -> float:
+    def _angular_velocity_covariance_matrix(
+        self, covariance: Iterable[float]
+    ) -> np.ndarray:
         data: tuple[float, ...] = tuple(float(value) for value in covariance)
-        if len(data) <= index:
-            return 1.0e6
+        if len(data) != 9:
+            return np.diag([1.0e6, 1.0e6, 1.0e6])
 
-        value: float = data[index]
-        if value < 0.0 or not math.isfinite(value):
-            return 1.0e6
+        if data[0] < 0.0:
+            return np.diag([1.0e6, 1.0e6, 1.0e6])
 
-        return value
+        if not all(math.isfinite(value) for value in data):
+            return np.diag([1.0e6, 1.0e6, 1.0e6])
+
+        if any(data[index] < 0.0 for index in (0, 4, 8)):
+            return np.diag([1.0e6, 1.0e6, 1.0e6])
+
+        matrix: np.ndarray = np.array(data, dtype=float).reshape((3, 3))
+        return 0.5 * (matrix + matrix.T)

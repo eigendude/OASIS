@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Iterable
 from typing import Optional
 from typing import TypeGuard
@@ -127,10 +128,15 @@ class SpeedEstimator:
         gravity_body: np.ndarray = self._gravity_body_vector(
             orientation_quaternion, orientation_covariance, gravity
         )
+        gravity_cov: np.ndarray = self._gravity_projection_covariance(
+            orientation_quaternion, orientation_covariance, gravity
+        )
         linear_accel_body: np.ndarray = accel_cal - gravity_body
 
         forward_accel: float = float(linear_accel_body[0])
-        forward_var: float = float(max(accel_cov[0, 0], 0.0))
+
+        accel_lin_cov: np.ndarray = self._symmetrize(accel_cov + gravity_cov)
+        forward_var: float = float(max(accel_lin_cov[0, 0], 0.0))
 
         dt: float = max(0.0, float(dt_s))
         self._speed_mps += forward_accel * dt
@@ -211,13 +217,13 @@ class SpeedEstimator:
         if not self._orientation_valid(orientation_quaternion, orientation_covariance):
             return np.array([0.0, 0.0, gravity_mps2], dtype=float)
 
-        quat: tuple[float, ...] = tuple(
-            float(value) for value in orientation_quaternion
+        quat: Optional[np.ndarray] = self._normalize_quaternion(
+            orientation_quaternion
         )
-        if len(quat) != 4:
+        if quat is None:
             return np.array([0.0, 0.0, gravity_mps2], dtype=float)
 
-        x, y, z, w = quat
+        x, y, z, w = quat.tolist()
 
         # Rotation matrix from body to world frame
         r00: float = 1.0 - 2.0 * (y * y + z * z)
@@ -245,6 +251,116 @@ class SpeedEstimator:
         # Transform gravity from world to body frame
         return rotation.T @ gravity_world
 
+    def _gravity_projection_covariance(
+        self,
+        orientation_quaternion: Optional[Iterable[float]],
+        orientation_covariance: Optional[Iterable[float]],
+        gravity_mps2: float,
+    ) -> np.ndarray:
+        orientation_unknown: bool = not self._orientation_valid(
+            orientation_quaternion, orientation_covariance
+        )
+
+        quat: Optional[np.ndarray] = self._normalize_quaternion(
+            orientation_quaternion
+        )
+        if quat is None:
+            orientation_unknown = True
+
+        if orientation_unknown or quat is None:
+            roll = 0.0
+            pitch = 0.0
+        else:
+            roll, pitch = self._roll_pitch_from_quaternion(quat)
+
+        cov_rp: np.ndarray = self._roll_pitch_covariance(
+            orientation_covariance, orientation_unknown
+        )
+
+        sin_roll: float = math.sin(roll)
+        cos_roll: float = math.cos(roll)
+        sin_pitch: float = math.sin(pitch)
+        cos_pitch: float = math.cos(pitch)
+
+        gravity: float = float(gravity_mps2)
+
+        jac: np.ndarray = np.zeros((3, 2), dtype=float)
+
+        jac[0, 0] = 0.0
+        jac[0, 1] = -gravity * cos_pitch
+
+        jac[1, 0] = gravity * cos_roll * cos_pitch
+        jac[1, 1] = -gravity * sin_roll * sin_pitch
+
+        jac[2, 0] = -gravity * sin_roll * cos_pitch
+        jac[2, 1] = -gravity * cos_roll * sin_pitch
+
+        return self._symmetrize(jac @ cov_rp @ jac.T)
+
+    def _roll_pitch_from_quaternion(self, quat: np.ndarray) -> tuple[float, float]:
+        x, y, z, w = quat.tolist()
+
+        sin_roll: float = 2.0 * (w * x + y * z)
+        cos_roll: float = 1.0 - 2.0 * (x * x + y * y)
+        roll: float = math.atan2(sin_roll, cos_roll)
+
+        sin_pitch: float = 2.0 * (w * y - z * x)
+        sin_pitch = max(-1.0, min(1.0, sin_pitch))
+        pitch: float = math.asin(sin_pitch)
+
+        return roll, pitch
+
+    def _roll_pitch_covariance(
+        self,
+        orientation_covariance: Optional[Iterable[float]],
+        orientation_unknown: bool,
+    ) -> np.ndarray:
+        if orientation_unknown:
+            # Units: rad^2. Meaning: roll/pitch variance when attitude unknown
+            variance: float = math.radians(30.0) ** 2
+            return np.diag([variance, variance])
+
+        if orientation_covariance is None:
+            # Units: rad^2. Meaning: assumed roll/pitch variance when missing
+            variance = math.radians(10.0) ** 2
+            return np.diag([variance, variance])
+
+        if self._orientation_covariance_unknown(orientation_covariance):
+            # Units: rad^2. Meaning: roll/pitch variance when attitude unknown
+            variance = math.radians(30.0) ** 2
+            return np.diag([variance, variance])
+
+        cov_matrix: Optional[np.ndarray] = self._covariance_matrix(
+            orientation_covariance
+        )
+        if cov_matrix is None:
+            # Units: rad^2. Meaning: assumed roll/pitch variance when malformed
+            variance = math.radians(10.0) ** 2
+            return np.diag([variance, variance])
+
+        return cov_matrix[:2, :2]
+
+    def _normalize_quaternion(
+        self, orientation_quaternion: Optional[Iterable[float]]
+    ) -> Optional[np.ndarray]:
+        if orientation_quaternion is None:
+            return None
+
+        quat: tuple[float, ...] = tuple(
+            float(value) for value in orientation_quaternion
+        )
+        if len(quat) != 4:
+            return None
+
+        if not all(math.isfinite(value) for value in quat):
+            return None
+
+        norm: float = float(np.linalg.norm(np.array(quat, dtype=float)))
+        if not math.isfinite(norm) or norm <= 0.0:
+            return None
+
+        return np.array(quat, dtype=float) / norm
+
     def _orientation_valid(
         self,
         orientation_quaternion: Optional[Iterable[float]],
@@ -253,23 +369,25 @@ class SpeedEstimator:
         if orientation_quaternion is None:
             return False
 
-        quat: tuple[float, ...] = tuple(
-            float(value) for value in orientation_quaternion
+        quat: Optional[np.ndarray] = self._normalize_quaternion(
+            orientation_quaternion
         )
-        if len(quat) != 4:
-            return False
-
-        if all(value == 0.0 for value in quat):
+        if quat is None:
             return False
 
         if orientation_covariance is None:
             return True
 
+        return not self._orientation_covariance_unknown(orientation_covariance)
+
+    def _orientation_covariance_unknown(
+        self, orientation_covariance: Iterable[float]
+    ) -> bool:
         cov: tuple[float, ...] = tuple(float(value) for value in orientation_covariance)
         if len(cov) != 9:
-            return True
+            return False
 
-        return cov[0] >= 0.0
+        return cov[0] < 0.0
 
     def _apply_zero_velocity_detection(
         self, linear_accel_body: np.ndarray, gyro: np.ndarray
@@ -305,7 +423,13 @@ class SpeedEstimator:
         if len(data) != 9:
             return None
 
+        if not all(math.isfinite(value) for value in data):
+            return None
+
         if data[0] < 0.0:
+            return None
+
+        if any(data[index] < 0.0 for index in (0, 4, 8)):
             return None
 
         matrix: np.ndarray = np.array(data, dtype=float).reshape((3, 3))
