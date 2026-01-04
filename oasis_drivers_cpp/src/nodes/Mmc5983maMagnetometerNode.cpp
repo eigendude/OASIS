@@ -92,18 +92,11 @@ Mmc5983maMagnetometerNode::Mmc5983maMagnetometerNode() : rclcpp::Node(NODE_NAME)
   const double rawRateHz = get_parameter("raw_rate_hz").as_double();
 
   const double clampedPublishRate = std::max(publishRateHz, 0.1);
-  const double clampedRawRate = std::max(rawRateHz, clampedPublishRate);
+  const double clampedRawRate = std::max(rawRateHz, 0.1);
   m_publishPeriod = std::chrono::duration<double>(1.0 / clampedPublishRate);
-  m_rawPeriod = std::chrono::duration<double>(1.0 / clampedRawRate);
 
   m_rawRateHz = static_cast<std::uint16_t>(std::round(clampedRawRate));
   m_bandwidthMode = static_cast<std::uint8_t>(get_parameter("bandwidth_mode").as_int());
-
-  if (clampedRawRate < 2.0 * clampedPublishRate)
-  {
-    RCLCPP_WARN(get_logger(), "raw_rate_hz should be at least 2x publish_rate_hz for "
-                              "SET/RESET pairing");
-  }
 
   const double stationaryWindowSec = get_parameter("stationary_window_sec").as_double();
   m_ewmaTauSec = get_parameter("ewma_tau_sec").as_double();
@@ -183,7 +176,8 @@ bool Mmc5983maMagnetometerNode::Initialize()
   }
 
   m_publisher = create_publisher<sensor_msgs::msg::MagneticField>(MAG_TOPIC, rclcpp::QoS{1});
-  m_timer = create_wall_timer(m_rawPeriod, std::bind(&Mmc5983maMagnetometerNode::PollSensor, this));
+  m_timer =
+      create_wall_timer(m_publishPeriod, std::bind(&Mmc5983maMagnetometerNode::PollSensor, this));
 
   const char* modeName = m_calibrationMode ? "Calibration" : "Driver";
   RCLCPP_INFO(get_logger(), "MMC5983MA mode: %s", modeName);
@@ -194,41 +188,46 @@ bool Mmc5983maMagnetometerNode::Initialize()
 void Mmc5983maMagnetometerNode::Deinitialize()
 {
   m_covarianceEstimator.Reset();
-  m_hasSetSample = false;
-  m_nextIsReset = false;
   m_offsetSpikeInflationUntil.reset();
 }
 
 void Mmc5983maMagnetometerNode::PollSensor()
 {
-  const Magnetometer::MeasurementMode mode =
-      m_nextIsReset ? Magnetometer::MeasurementMode::Reset : Magnetometer::MeasurementMode::Set;
+  const auto start = std::chrono::steady_clock::now();
 
-  Eigen::Vector3d sample = Eigen::Vector3d::Zero();
-  if (!m_device.TakeMeasurement(mode, sample))
+  Eigen::Vector3d setSample = Eigen::Vector3d::Zero();
+  if (!m_device.TakeMeasurement(Magnetometer::MeasurementMode::Set, setSample))
   {
-    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000, "Failed to read MMC5983MA measurement");
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                         "Failed to read MMC5983MA SET measurement");
     return;
   }
 
-  if (!m_nextIsReset)
+  Eigen::Vector3d resetSample = Eigen::Vector3d::Zero();
+  if (!m_device.TakeMeasurement(Magnetometer::MeasurementMode::Reset, resetSample))
   {
-    m_lastSetSample = sample;
-    m_hasSetSample = true;
-    m_nextIsReset = true;
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                         "Failed to read MMC5983MA RESET measurement");
     return;
   }
 
-  if (!m_hasSetSample)
-    return;
-
-  const Eigen::Vector3d field_t = (m_lastSetSample - sample) * 0.5;
-  const Eigen::Vector3d offset_t = (m_lastSetSample + sample) * 0.5;
+  const Eigen::Vector3d field_t = (setSample - resetSample) * 0.5;
+  const Eigen::Vector3d offset_t = (setSample + resetSample) * 0.5;
 
   PublishSample(field_t, offset_t);
 
-  m_hasSetSample = false;
-  m_nextIsReset = false;
+  const auto duration = std::chrono::steady_clock::now() - start;
+  if (duration > m_publishPeriod)
+  {
+    const double durationMs =
+        std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(duration).count();
+    const double periodMs =
+        std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(m_publishPeriod)
+            .count();
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                         "MMC5983MA poll callback overrun: %.2f ms > %.2f ms", durationMs,
+                         periodMs);
+  }
 }
 
 void Mmc5983maMagnetometerNode::PublishSample(const Eigen::Vector3d& field_t,
@@ -286,7 +285,8 @@ bool Mmc5983maMagnetometerNode::ConfigureDevice()
   Magnetometer::Mmc5983maConfig config;
   config.i2c_device = m_i2cDevice;
   config.i2c_address = m_i2cAddress;
-  config.raw_rate_code = EncodeRawRate(m_rawRateHz);
+  config.raw_rate_code =
+      EncodeRawRate(static_cast<std::uint16_t>(std::round(1.0 / m_publishPeriod.count())));
   config.bandwidth_mode = m_bandwidthMode;
   config.tesla_per_count = kTeslaPerCount;
   config.measurement_timeout_ms = 20;
