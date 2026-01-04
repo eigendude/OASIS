@@ -8,13 +8,15 @@
 
 #include "imu/cal/AccelCalibrationSolver.h"
 
+#include <Eigen/Dense>
+
 #include <cmath>
 
 namespace OASIS::IMU
 {
 namespace
 {
-constexpr std::size_t kMinSamples = 20;
+constexpr std::size_t kMinSamples = 50;
 constexpr std::size_t kMaxSamples = 5000;
 
 // Units: (m/s^2)^2. Conservative variance for accel bias estimate
@@ -23,24 +25,29 @@ constexpr double kAccelBiasVarianceMps2_2 = 0.05 * 0.05;
 // Units: unitless^2. Conservative variance for accel matrix estimate
 constexpr double kAccelMatrixVariance = 0.01 * 0.01;
 
-Vec3 Subtract(const Vec3& a, const Vec3& b)
+// Units: 1/(m/s^2)^2. Minimum eigenvalue for a valid ellipsoid
+constexpr double kMinEllipsoidEigenvalue = 1e-9;
+
+Eigen::Vector3d ToEigen(const Vec3& value)
 {
-  return {a[0] - b[0], a[1] - b[1], a[2] - b[2]};
+  return {value[0], value[1], value[2]};
 }
 
-double Dot(const Vec3& a, const Vec3& b)
+Vec3 ToVec3(const Eigen::Vector3d& value)
 {
-  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  return {value.x(), value.y(), value.z()};
 }
 
-double Norm(const Vec3& a)
+Mat3 ToMat3(const Eigen::Matrix3d& value)
 {
-  return std::sqrt(Dot(a, a));
-}
+  Mat3 out{};
+  for (int row = 0; row < 3; ++row)
+  {
+    for (int col = 0; col < 3; ++col)
+      out[row][col] = value(row, col);
+  }
 
-Mat3 IdentityMatrix()
-{
-  return {{{1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {0.0, 0.0, 1.0}}};
+  return out;
 }
 } // namespace
 
@@ -66,49 +73,93 @@ bool AccelCalibrationSolver::Solve(double gravity_mps2, Result& out) const
   if (m_samples.size() < kMinSamples)
     return false;
 
-  Vec3 mean{0.0, 0.0, 0.0};
-  for (const Vec3& sample : m_samples)
+  const std::size_t sample_count = m_samples.size();
+  Eigen::MatrixXd design(sample_count, 10);
+  for (std::size_t i = 0; i < sample_count; ++i)
   {
-    mean[0] += sample[0];
-    mean[1] += sample[1];
-    mean[2] += sample[2];
+    const Vec3& sample = m_samples[i];
+    const double x = sample[0];
+    const double y = sample[1];
+    const double z = sample[2];
+
+    design(static_cast<Eigen::Index>(i), 0) = x * x;
+    design(static_cast<Eigen::Index>(i), 1) = y * y;
+    design(static_cast<Eigen::Index>(i), 2) = z * z;
+    design(static_cast<Eigen::Index>(i), 3) = 2.0 * x * y;
+    design(static_cast<Eigen::Index>(i), 4) = 2.0 * x * z;
+    design(static_cast<Eigen::Index>(i), 5) = 2.0 * y * z;
+    design(static_cast<Eigen::Index>(i), 6) = 2.0 * x;
+    design(static_cast<Eigen::Index>(i), 7) = 2.0 * y;
+    design(static_cast<Eigen::Index>(i), 8) = 2.0 * z;
+    design(static_cast<Eigen::Index>(i), 9) = 1.0;
   }
 
-  const double sample_count = static_cast<double>(m_samples.size());
-  mean[0] /= sample_count;
-  mean[1] /= sample_count;
-  mean[2] /= sample_count;
+  Eigen::JacobiSVD<Eigen::MatrixXd> svd(design, Eigen::ComputeThinV);
+  if (svd.matrixV().cols() < 10)
+    return false;
 
-  Mat3 accel_A = IdentityMatrix();
+  const Eigen::VectorXd v = svd.matrixV().col(9);
+  if (v.size() != 10)
+    return false;
 
-  Mat3 ellipsoid_Q{};
-  const double gravity_mps2_2 = gravity_mps2 * gravity_mps2;
-  const double inv_gravity_mps2_2 = 1.0 / gravity_mps2_2;
-  ellipsoid_Q[0][0] = inv_gravity_mps2_2;
-  ellipsoid_Q[1][1] = inv_gravity_mps2_2;
-  ellipsoid_Q[2][2] = inv_gravity_mps2_2;
+  Eigen::Matrix3d M;
+  M << v(0), v(3), v(4), v(3), v(1), v(5), v(4), v(5), v(2);
+
+  const Eigen::Vector3d p(v(6), v(7), v(8));
+  const double r = v(9);
+
+  const Eigen::FullPivLU<Eigen::Matrix3d> lu(M);
+  if (!lu.isInvertible())
+    return false;
+
+  const Eigen::Vector3d center = -0.5 * lu.solve(p);
+
+  // Units: (m/s^2)^2. Ellipsoid normalization scale from center substitution
+  const double k = (center.transpose() * M * center)(0, 0) - r;
+  if (k <= 0.0)
+    return false;
+
+  Eigen::Matrix3d Q = M / k;
+  Q = 0.5 * (Q + Q.transpose());
+
+  Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> eigen_solver(Q);
+  if (eigen_solver.info() != Eigen::Success)
+    return false;
+
+  const Eigen::Vector3d eigenvalues = eigen_solver.eigenvalues();
+  if ((eigenvalues.array() <= kMinEllipsoidEigenvalue).any())
+    return false;
+
+  const Eigen::Matrix3d eigenvectors = eigen_solver.eigenvectors();
+  const Eigen::Vector3d sqrt_eigenvalues = eigenvalues.array().sqrt();
+  const Eigen::Matrix3d sqrt_Q =
+      eigenvectors * sqrt_eigenvalues.asDiagonal() * eigenvectors.transpose();
+
+  const Eigen::Matrix3d accel_A = gravity_mps2 * sqrt_Q;
 
   double residual_sum_sq = 0.0;
   for (const Vec3& sample : m_samples)
   {
-    const Vec3 centered = Subtract(sample, mean);
-    const double residual = Norm(centered) - gravity_mps2;
+    const Eigen::Vector3d centered = ToEigen(sample) - center;
+    const Eigen::Vector3d calibrated = accel_A * centered;
+    const double residual = std::abs(calibrated.norm() - gravity_mps2);
     residual_sum_sq += residual * residual;
   }
 
-  const double rms_residual_mps2 = std::sqrt(residual_sum_sq / sample_count);
+  const double rms_residual_mps2 =
+      std::sqrt(residual_sum_sq / static_cast<double>(sample_count));
 
-  out.accel_bias_mps2 = mean;
-  out.accel_A = accel_A;
+  out.accel_bias_mps2 = ToVec3(center);
+  out.accel_A = ToMat3(accel_A);
   out.accel_param_cov = {};
   for (std::size_t i = 0; i < 3; ++i)
     out.accel_param_cov[i][i] = kAccelBiasVarianceMps2_2;
   for (std::size_t i = 3; i < 12; ++i)
     out.accel_param_cov[i][i] = kAccelMatrixVariance;
   out.rms_residual_mps2 = rms_residual_mps2;
-  out.ellipsoid.center_mps2 = mean;
-  out.ellipsoid.Q = ellipsoid_Q;
-  out.sample_count = static_cast<std::uint32_t>(m_samples.size());
+  out.ellipsoid.center_mps2 = ToVec3(center);
+  out.ellipsoid.Q = ToMat3(Q);
+  out.sample_count = static_cast<std::uint32_t>(sample_count);
 
   return true;
 }
