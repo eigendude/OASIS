@@ -312,6 +312,10 @@ ImuProcessor::Output ImuProcessor::Update(int16_t ax,
     out.corrected = corrected_sample;
     out.has_corrected = true;
 
+    out.calibration_ready = m_hasCalibrationRecord;
+    if (m_hasCalibrationRecord)
+      out.calibration_record = m_calibrationRecord;
+
     return out;
   }
 
