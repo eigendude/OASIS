@@ -17,31 +17,6 @@
 namespace OASIS::IMU
 {
 /*!
- * \brief Measured short-term measurement-noise statistics
- *
- * Intended for sensor_msgs/Imu covariance fields (per-sample noise), not the
- * systematic calibration parameter covariance.
- */
-struct ImuMeasurementNoise
-{
-  /*!
-   * \brief Accel measurement-noise covariance
-   *
-   * Units: (m/s^2)^2
-   * Layout: row-major 3x3
-   */
-  Mat3 accel_cov_mps2_2{};
-
-  /*!
-   * \brief Gyro measurement-noise covariance
-   *
-   * Units: (rad/s)^2
-   * Layout: row-major 3x3
-   */
-  Mat3 gyro_cov_rads2_2{};
-};
-
-/*!
  * \brief Ellipsoid fit for raw accelerometer samples
  *
  * Quadratic form:
@@ -98,7 +73,7 @@ struct ImuCalibrationRecord
   std::uint32_t fit_sample_count{0};
 
   /*!
-   * \brief Measured measurement noise used for sensor_msgs/Imu covariances
+   * \brief Measured noise used for sensor_msgs/Imu covariances
    */
   ImuMeasurementNoise measurement_noise{};
 
@@ -125,6 +100,6 @@ public:
   bool Save(const std::filesystem::path& path, const ImuCalibrationRecord& rec) const;
 
   static std::string DefaultFilename();
-  static constexpr int Version() { return 1; }
+  static constexpr int Version() { return 2; }
 };
 } // namespace OASIS::IMU
