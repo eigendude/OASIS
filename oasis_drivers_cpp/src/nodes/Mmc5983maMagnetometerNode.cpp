@@ -14,6 +14,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <stdexcept>
+#include <thread>
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -197,8 +198,12 @@ bool Mmc5983maMagnetometerNode::Initialize()
   }
 
   m_publisher = create_publisher<sensor_msgs::msg::MagneticField>(MAG_TOPIC, rclcpp::QoS{1});
+
+  m_running = true;
+  m_samplerThread = std::thread([this]() { SamplerLoop(); });
+
   m_timer =
-      create_wall_timer(m_publishPeriod, std::bind(&Mmc5983maMagnetometerNode::PollSensor, this));
+      create_wall_timer(m_publishPeriod, std::bind(&Mmc5983maMagnetometerNode::PublishLatest, this));
 
   const char* modeName = m_calibrationMode ? "Calibration" : "Driver";
   RCLCPP_INFO(get_logger(), "MMC5983MA mode: %s", modeName);
@@ -208,51 +213,87 @@ bool Mmc5983maMagnetometerNode::Initialize()
 
 void Mmc5983maMagnetometerNode::Deinitialize()
 {
+  m_running = false;
+
+  if (m_samplerThread.joinable())
+    m_samplerThread.join();
+
   m_processor.reset();
   m_sampler.reset();
 }
 
-void Mmc5983maMagnetometerNode::PollSensor()
+void Mmc5983maMagnetometerNode::SamplerLoop()
 {
-  const auto start = std::chrono::steady_clock::now();
-
   if (m_processor == nullptr)
     return;
 
-  Magnetometer::MagnetometerTickOutput output;
-  if (!m_processor->Tick(output))
-  {
-    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000, "%s", output.warning.c_str());
-    return;
-  }
+  auto nextTick = std::chrono::steady_clock::now();
 
-  if (!output.warning.empty())
+  while (rclcpp::ok() && m_running)
   {
-    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000, "%s", output.warning.c_str());
-  }
+    Magnetometer::MagnetometerTickOutput output;
+    if (!m_processor->Tick(output))
+    {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000, "%s", output.warning.c_str());
+    }
+    else
+    {
+      if (!output.warning.empty())
+      {
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000, "%s", output.warning.c_str());
+      }
 
-  PublishSample(output);
+      if (output.covariance_updated)
+        m_gateReady = true;
 
-  const auto duration = std::chrono::steady_clock::now() - start;
-  if (duration > m_publishPeriod)
-  {
-    const double durationMs =
-        std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(duration).count();
-    const double periodMs =
-        std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(m_publishPeriod)
-            .count();
-    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
-                         "MMC5983MA poll callback overrun: %.2f ms > %.2f ms", durationMs,
-                         periodMs);
+      SampleSnapshot snapshot;
+      snapshot.stamp = get_clock()->now();
+      snapshot.output = output;
+      snapshot.has_sample = true;
+      snapshot.gate_ready = m_gateReady;
+
+      std::lock_guard<std::mutex> lock(m_sampleMutex);
+      m_latestSample = snapshot;
+    }
+
+    nextTick += m_publishPeriod;
+    std::this_thread::sleep_until(nextTick);
   }
 }
 
-void Mmc5983maMagnetometerNode::PublishSample(const Magnetometer::MagnetometerTickOutput& output)
+void Mmc5983maMagnetometerNode::PublishLatest()
 {
-  const rclcpp::Time now = get_clock()->now();
+  SampleSnapshot snapshot;
+  {
+    std::lock_guard<std::mutex> lock(m_sampleMutex);
+    snapshot = m_latestSample;
+  }
 
+  if (!snapshot.has_sample)
+    return;
+
+  const double ageSeconds = (get_clock()->now() - snapshot.stamp).seconds();
+  if (ageSeconds > 2.0 * m_publishPeriod.count())
+  {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                         "Sample age %.2f s exceeds %.2f s (sampler behind)", ageSeconds,
+                         2.0 * m_publishPeriod.count());
+  }
+
+  PublishSample(snapshot.stamp, snapshot.output);
+
+  if (snapshot.gate_ready && !snapshot.output.is_stationary)
+  {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                         "Stationary gating rejected magnetometer window");
+  }
+}
+
+void Mmc5983maMagnetometerNode::PublishSample(
+    const rclcpp::Time& stamp, const Magnetometer::MagnetometerTickOutput& output)
+{
   sensor_msgs::msg::MagneticField msg;
-  msg.header.stamp = now;
+  msg.header.stamp = stamp;
   msg.header.frame_id = m_frameId;
   msg.magnetic_field.x = output.field_t.x();
   msg.magnetic_field.y = output.field_t.y();
@@ -270,12 +311,6 @@ void Mmc5983maMagnetometerNode::PublishSample(const Magnetometer::MagnetometerTi
   }
 
   m_publisher->publish(msg);
-
-  if (!output.is_stationary)
-  {
-    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-                         "Stationary gating rejected magnetometer window");
-  }
 }
 
 bool Mmc5983maMagnetometerNode::ConfigureDevice()

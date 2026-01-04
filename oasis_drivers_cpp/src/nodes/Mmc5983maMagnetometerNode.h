@@ -12,9 +12,12 @@
 #include "magnetometer/Mmc5983maDevice.h"
 #include "magnetometer/Mmc5983maPairSampler.h"
 
+#include <atomic>
 #include <chrono>
+#include <mutex>
 #include <memory>
 #include <string>
+#include <thread>
 
 #include <rclcpp/node.hpp>
 #include <rclcpp/publisher.hpp>
@@ -36,8 +39,18 @@ public:
   void Deinitialize();
 
 private:
-  void PollSensor();
-  void PublishSample(const Magnetometer::MagnetometerTickOutput& output);
+  struct SampleSnapshot
+  {
+    rclcpp::Time stamp{};
+    Magnetometer::MagnetometerTickOutput output{};
+    bool has_sample{false};
+    bool gate_ready{false};
+  };
+
+  void SamplerLoop();
+  void PublishLatest();
+  void PublishSample(const rclcpp::Time& stamp,
+                     const Magnetometer::MagnetometerTickOutput& output);
 
   bool ConfigureDevice();
   std::uint8_t EncodeRawRate(std::uint16_t raw_rate_hz) const;
@@ -49,6 +62,12 @@ private:
   Magnetometer::Mmc5983maDevice m_device;
   std::unique_ptr<Magnetometer::Mmc5983maPairSampler> m_sampler;
   std::unique_ptr<Magnetometer::MagnetometerPairProcessor> m_processor;
+
+  std::thread m_samplerThread;
+  std::atomic<bool> m_running{false};
+  std::mutex m_sampleMutex;
+  SampleSnapshot m_latestSample;
+  bool m_gateReady{false};
 
   std::string m_i2cDevice;
   std::string m_frameId;
