@@ -54,6 +54,27 @@ public:
     double gyro_scale_rads_per_count{0.0};
 
     /*!
+     * \brief EWMA time constant for measurement-noise covariance estimation
+     *
+     * Units: seconds
+     */
+    double noise_tau_s{2.0};
+
+    /*!
+     * \brief Minimum accel variance floor for measurement-noise covariance
+     *
+     * Units: counts^2
+     */
+    double noise_floor_accel_counts2{1.0};
+
+    /*!
+     * \brief Minimum gyro variance floor for measurement-noise covariance
+     *
+     * Units: counts^2
+     */
+    double noise_floor_gyro_counts2{1.0};
+
+    /*!
      * \brief Calibration file path to load
      *
      * Units: path
@@ -128,15 +149,19 @@ private:
     double m2{0.0};
   };
 
-  struct CovarianceEstimator3
+  struct EwmaCovariance3
   {
+    void Configure(double tau_s, double min_variance_floor_counts2);
     void Reset();
-    void Update(const Vec3& sample);
-    Mat3 CovarianceSample() const;
+    void Update(const Vec3& sample, double dt_s);
+    Mat3 Covariance() const;
 
-    std::size_t count{0};
+    bool initialized{false};
+    double tau_s{2.0};
+    double min_variance_floor{1.0};
+
     Vec3 mean{0.0, 0.0, 0.0};
-    Mat3 m2{};
+    Mat3 cov{};
   };
 
   void ResetCalibrationState();
@@ -155,7 +180,7 @@ private:
   GyroBiasEstimator m_gyroBiasEstimator;
 
   RunningStats m_temperatureStats;
-  CovarianceEstimator3 m_accelNoise;
-  CovarianceEstimator3 m_gyroNoise;
+  EwmaCovariance3 m_accelNoise;
+  EwmaCovariance3 m_gyroNoise;
 };
 } // namespace OASIS::IMU
