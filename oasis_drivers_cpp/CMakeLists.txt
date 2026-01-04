@@ -97,6 +97,39 @@ if (UDEV_FOUND)
 endif()
 
 #
+# mmc5983ma_magnetometer_driver
+#
+
+add_executable(mmc5983ma_magnetometer_driver
+  src/cli/mmc5983ma_magnetometer_driver.cpp
+  src/magnetometer/CovarianceEstimator3D.cpp
+  src/magnetometer/Mmc5983maDevice.cpp
+  src/magnetometer/IMagnetometerPairSampler.h
+  src/magnetometer/MagnetometerPairProcessor.cpp
+  src/magnetometer/MagnetometerPairProcessor.h
+  src/magnetometer/Mmc5983maPairSampler.cpp
+  src/magnetometer/Mmc5983maPairSampler.h
+  src/magnetometer/io/MagnetometerCalibrationFile.cpp
+  src/nodes/Mmc5983maMagnetometerNode.cpp
+)
+
+target_link_libraries(mmc5983ma_magnetometer_driver
+  i2cdevlib::mpu6050
+  Eigen3::Eigen
+  rclcpp::rclcpp
+  ${sensor_msgs_TARGETS}
+  ${std_msgs_TARGETS}
+  yaml-cpp
+)
+
+install(
+  TARGETS
+    mmc5983ma_magnetometer_driver
+  DESTINATION
+    lib/${PROJECT_NAME}
+)
+
+#
 # mpu6050_imu_driver
 #
 
@@ -140,6 +173,13 @@ install(
     config/imu_info
   DESTINATION
     share/${PROJECT_NAME}/imu_info
+)
+
+install(
+  DIRECTORY
+    config/magnetometer_info
+  DESTINATION
+    share/${PROJECT_NAME}/magnetometer_info
 )
 
 ################################################################################

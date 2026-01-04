@@ -95,7 +95,7 @@ for OASIS_PACKAGE in \
 done
 
 #
-# Install camera and imu info files
+# Install camera and sensor info files
 #
 
 if [[ "${OSTYPE}" != "darwin"* ]]; then
@@ -105,6 +105,8 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
   CAMERA_INFO_TARGET=""
   IMU_INFO_LINK="${ROS_DIRECTORY}/imu_info"
   IMU_INFO_TARGET=""
+  MAG_INFO_LINK="${ROS_DIRECTORY}/magnetometer_info"
+  MAG_INFO_TARGET=""
 
   # Ensure ~/.ros exists for the symlink
   install -m 0755 -d "${ROS_DIRECTORY}"
@@ -153,6 +155,29 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     rm -rf "${IMU_INFO_LINK}"
 
     ln -sfn "${IMU_INFO_TARGET}" "${IMU_INFO_LINK}"
+  fi
+
+  # Get magnetometer info directory
+  for OASIS_PACKAGE in "${ENABLED_PACKAGES[@]}"; do
+    DIRECTORY="${OASIS_SOURCE_DIRECTORY}/${OASIS_PACKAGE}/config/magnetometer_info"
+
+    # Skip directories that don't exist
+    if [ ! -d "${DIRECTORY}" ]; then
+      continue
+    fi
+
+    MAG_INFO_TARGET="${DIRECTORY}"
+    break
+  done
+
+  # Link magnetometer info directory
+  if [ -n "${MAG_INFO_TARGET}" ]; then
+    echo "Linking magnetometer info directory to ${MAG_INFO_TARGET}"
+
+    # Remove any existing directory
+    rm -rf "${MAG_INFO_LINK}"
+
+    ln -sfn "${MAG_INFO_TARGET}" "${MAG_INFO_LINK}"
   fi
 fi
 
