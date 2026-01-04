@@ -76,6 +76,7 @@ setuptools.setup(
             "lab_manager_firmata = oasis_control.cli.lab_manager_firmata_cli:main",
             "lab_manager_telemetrix = oasis_control.cli.lab_manager_telemetrix_cli:main",
             "leonardo_manager = oasis_control.cli.leonardo_manager_cli:main",
+            "speedometer = oasis_control.cli.speedometer_cli:main",
             "tilt_sensor = oasis_control.cli.tilt_sensor_cli:main",
         ],
     },
