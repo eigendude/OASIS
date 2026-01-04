@@ -66,6 +66,10 @@ def generate_launch_description() -> LaunchDescription:
             HOME_ASSISTANT_ID,
         )
 
+    # Navigation
+    if HOST_ID == "falcon":
+        ControlDescriptions.add_tilt_sensor(ld, HOST_ID)
+
     # Microcontroller nodes
     if HOST_ID == "station":
         # TODO

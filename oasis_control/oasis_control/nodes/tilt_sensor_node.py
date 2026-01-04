@@ -21,8 +21,8 @@ from builtin_interfaces.msg import Time
 from geometry_msgs.msg import Vector3Stamped
 from sensor_msgs.msg import Imu
 
-from oasis_drivers.localization.tilt_pose_estimator import ImuCalibration
-from oasis_drivers.localization.tilt_pose_estimator import TiltPoseEstimator
+from oasis_control.localization.tilt_pose_estimator import ImuCalibration
+from oasis_control.localization.tilt_pose_estimator import TiltPoseEstimator
 from oasis_msgs.msg import ImuCalibration as ImuCalibrationMsg
 
 

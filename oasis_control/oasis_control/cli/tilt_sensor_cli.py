@@ -14,7 +14,7 @@ ROS entry point for estimating roll and pitch from IMU measurements.
 
 import rclpy
 
-from oasis_drivers.nodes.tilt_sensor_node import TiltSensorNode
+from oasis_control.nodes.tilt_sensor_node import TiltSensorNode
 
 
 ################################################################################
