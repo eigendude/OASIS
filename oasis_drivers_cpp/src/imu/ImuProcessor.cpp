@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 
 namespace OASIS::IMU
 {
@@ -23,14 +24,6 @@ constexpr double kMaxDtS = 1.0;
 
 // Units: nanoseconds per second
 constexpr double kNsPerSecond = 1e9;
-
-Mat3 MakeDiagonal(const Vec3& diag)
-{
-  Mat3 out{};
-  for (std::size_t i = 0; i < 3; ++i)
-    out[i][i] = diag[i];
-  return out;
-}
 
 Mat3 ScaleMat3(const Mat3& m, double scale)
 {
@@ -51,6 +44,44 @@ Vec3 ScaleCounts(const Vec3& counts, double scale)
 Vec3 Subtract(const Vec3& a, const Vec3& b)
 {
   return {a[0] - b[0], a[1] - b[1], a[2] - b[2]};
+}
+
+Vec3 AddScaled(const Vec3& a, const Vec3& b, double scale)
+{
+  return {a[0] + b[0] * scale, a[1] + b[1] * scale, a[2] + b[2] * scale};
+}
+
+Mat3 Outer(const Vec3& a, const Vec3& b)
+{
+  Mat3 out{};
+  for (std::size_t i = 0; i < 3; ++i)
+  {
+    for (std::size_t j = 0; j < 3; ++j)
+      out[i][j] = a[i] * b[j];
+  }
+  return out;
+}
+
+Mat3 AddMat3(const Mat3& a, const Mat3& b)
+{
+  Mat3 out{};
+  for (std::size_t i = 0; i < 3; ++i)
+  {
+    for (std::size_t j = 0; j < 3; ++j)
+      out[i][j] = a[i][j] + b[i][j];
+  }
+  return out;
+}
+
+Mat3 SymmetrizeMat3(const Mat3& m)
+{
+  Mat3 out{};
+  for (std::size_t i = 0; i < 3; ++i)
+  {
+    for (std::size_t j = 0; j < 3; ++j)
+      out[i][j] = 0.5 * (m[i][j] + m[j][i]);
+  }
+  return out;
 }
 
 Vec3 Multiply(const Mat3& a, const Vec3& v)
@@ -97,35 +128,31 @@ double ImuProcessor::RunningStats::Variance() const
   return m2 / denom;
 }
 
-void ImuProcessor::NoiseEstimator::Reset()
+void ImuProcessor::CovarianceEstimator3::Reset()
 {
   count = 0;
   mean = {0.0, 0.0, 0.0};
-  m2 = {0.0, 0.0, 0.0};
+  m2 = {};
 }
 
-void ImuProcessor::NoiseEstimator::Update(const Vec3& sample)
+void ImuProcessor::CovarianceEstimator3::Update(const Vec3& sample)
 {
   ++count;
 
-  for (std::size_t axis = 0; axis < 3; ++axis)
-  {
-    const double delta = sample[axis] - mean[axis];
-    mean[axis] += delta / static_cast<double>(count);
+  const Vec3 delta = Subtract(sample, mean);
+  mean = AddScaled(mean, delta, 1.0 / static_cast<double>(count));
 
-    const double delta2 = sample[axis] - mean[axis];
-    m2[axis] += delta * delta2;
-  }
+  const Vec3 delta2 = Subtract(sample, mean);
+  m2 = AddMat3(m2, Outer(delta, delta2));
 }
 
-Vec3 ImuProcessor::NoiseEstimator::Variance() const
+Mat3 ImuProcessor::CovarianceEstimator3::CovarianceSample() const
 {
   if (count < 2)
-    return {0.0, 0.0, 0.0};
+    return {};
 
   const double denom = static_cast<double>(count - 1);
-
-  return {m2[0] / denom, m2[1] / denom, m2[2] / denom};
+  return SymmetrizeMat3(ScaleMat3(m2, 1.0 / denom));
 }
 
 bool ImuProcessor::Initialize(const Config& cfg)
@@ -223,20 +250,14 @@ ImuProcessor::Output ImuProcessor::Update(int16_t ax,
   m_accelNoise.Update(accel_counts);
   m_gyroNoise.Update(gyro_counts);
 
-  const Vec3 accel_var_counts2 = m_accelNoise.Variance();
-  const Vec3 gyro_var_counts2 = m_gyroNoise.Variance();
+  const Mat3 accel_cov_counts2 = m_accelNoise.CovarianceSample();
+  const Mat3 gyro_cov_counts2 = m_gyroNoise.CovarianceSample();
 
   const double accel_scale2 = m_cfg.accel_scale_mps2_per_count * m_cfg.accel_scale_mps2_per_count;
   const double gyro_scale2 = m_cfg.gyro_scale_rads_per_count * m_cfg.gyro_scale_rads_per_count;
 
-  const Vec3 accel_var_mps2_2{accel_var_counts2[0] * accel_scale2,
-                              accel_var_counts2[1] * accel_scale2,
-                              accel_var_counts2[2] * accel_scale2};
-  const Vec3 gyro_var_rads2_2{gyro_var_counts2[0] * gyro_scale2, gyro_var_counts2[1] * gyro_scale2,
-                              gyro_var_counts2[2] * gyro_scale2};
-
-  raw_sample.accel_cov_mps2_2 = MakeDiagonal(accel_var_mps2_2);
-  raw_sample.gyro_cov_rads2_2 = MakeDiagonal(gyro_var_rads2_2);
+  raw_sample.accel_cov_mps2_2 = ScaleMat3(accel_cov_counts2, accel_scale2);
+  raw_sample.gyro_cov_rads2_2 = ScaleMat3(gyro_cov_counts2, gyro_scale2);
 
   out.raw = raw_sample;
   out.has_raw = true;
