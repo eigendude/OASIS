@@ -11,9 +11,9 @@
 cmake_minimum_required(VERSION 3.10)
 project(oasis_drivers_cpp)
 
-#
+################################################################################
 # Build configuration
-#
+################################################################################
 
 # Default to C++20
 if(NOT CMAKE_CXX_STANDARD)
@@ -27,9 +27,9 @@ endif()
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-#
+################################################################################
 # Dependencies
-#
+################################################################################
 
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
@@ -46,8 +46,12 @@ find_package(std_msgs REQUIRED)
 find_package(yaml-cpp REQUIRED)
 find_package(UDEV)
 
-#
+################################################################################
 # C++ nodes
+################################################################################
+
+#
+# cec_server
 #
 
 if (UDEV_FOUND)
@@ -92,6 +96,10 @@ if (UDEV_FOUND)
   )
 endif()
 
+#
+# mpu6050_imu_driver
+#
+
 add_executable(mpu6050_imu_driver
   src/cli/mpu6050_imu_driver.cpp
   src/imu/cal/AccelCalibrationSolver.cpp
@@ -123,9 +131,9 @@ install(
     lib/${PROJECT_NAME}
 )
 
-#
+################################################################################
 # Configuration files
-#
+################################################################################
 
 install(
   DIRECTORY
@@ -134,9 +142,9 @@ install(
     share/${PROJECT_NAME}/imu_info
 )
 
-#
+################################################################################
 # Testing
-#
+################################################################################
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -150,8 +158,8 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 endif()
 
-#
+################################################################################
 # Declare an ament Package
-#
+################################################################################
 
 ament_package()
