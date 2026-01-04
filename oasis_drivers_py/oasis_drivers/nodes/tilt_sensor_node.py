@@ -17,6 +17,7 @@ import rclpy.node
 import rclpy.publisher
 import rclpy.qos
 import rclpy.subscription
+from builtin_interfaces.msg import Time
 from geometry_msgs.msg import Vector3Stamped
 from sensor_msgs.msg import Imu
 
@@ -30,23 +31,23 @@ from oasis_msgs.msg import ImuCalibration as ImuCalibrationMsg
 ################################################################################
 
 
-NODE_NAME = "tilt_sensor"
+NODE_NAME: str = "tilt_sensor"
 
-PARAM_IMU_TOPIC = "imu_topic"
-PARAM_IMU_CALIB_TOPIC = "imu_calib_topic"
-PARAM_TILT_TOPIC = "tilt_topic"
-PARAM_FRAME_ID = "frame_id"
-PARAM_ACCEL_TRUST_THRESHOLD = "accel_trust_threshold_mps2"
-PARAM_YAW_VAR_RAD2 = "yaw_var_rad2"
-PARAM_PUBLISH_TILT_RP = "publish_tilt_rp"
+PARAM_IMU_TOPIC: str = "imu_topic"
+PARAM_IMU_CALIB_TOPIC: str = "imu_calib_topic"
+PARAM_TILT_TOPIC: str = "tilt_topic"
+PARAM_FRAME_ID: str = "frame_id"
+PARAM_ACCEL_TRUST_THRESHOLD: str = "accel_trust_threshold_mps2"
+PARAM_YAW_VAR_RAD2: str = "yaw_var_rad2"
+PARAM_PUBLISH_TILT_RP: str = "publish_tilt_rp"
 
-DEFAULT_NAMESPACE = "oasis"
-DEFAULT_ROBOT_NAME = "falcon"
-DEFAULT_ACCEL_TRUST_THRESHOLD_MPS2 = 1.5
-DEFAULT_YAW_VAR_RAD2 = 1.0e6
+DEFAULT_NAMESPACE: str = "oasis"
+DEFAULT_ROBOT_NAME: str = "falcon"
+DEFAULT_ACCEL_TRUST_THRESHOLD_MPS2: float = 1.5
+DEFAULT_YAW_VAR_RAD2: float = 1.0e6
 
 # Units: s. Meaning: threshold for rejecting large time deltas.
-MAX_DT_SPIKE_S = 0.2
+MAX_DT_SPIKE_S: float = 0.2
 
 
 ################################################################################
@@ -65,9 +66,9 @@ class TiltSensorNode(rclpy.node.Node):
         """
         super().__init__(NODE_NAME)
 
-        imu_topic_default = f"/{namespace}/{robot_name}/imu"
-        imu_calib_topic_default = f"/{namespace}/{robot_name}/imu_calibration"
-        tilt_topic_default = f"/{namespace}/{robot_name}/tilt"
+        imu_topic_default: str = f"/{namespace}/{robot_name}/imu"
+        imu_calib_topic_default: str = f"/{namespace}/{robot_name}/imu_calibration"
+        tilt_topic_default: str = f"/{namespace}/{robot_name}/tilt"
 
         self.declare_parameter(PARAM_IMU_TOPIC, imu_topic_default)
         self.declare_parameter(PARAM_IMU_CALIB_TOPIC, imu_calib_topic_default)
@@ -79,22 +80,22 @@ class TiltSensorNode(rclpy.node.Node):
         self.declare_parameter(PARAM_YAW_VAR_RAD2, DEFAULT_YAW_VAR_RAD2)
         self.declare_parameter(PARAM_PUBLISH_TILT_RP, False)
 
-        imu_topic = str(self.get_parameter(PARAM_IMU_TOPIC).value)
-        imu_calib_topic = str(self.get_parameter(PARAM_IMU_CALIB_TOPIC).value)
-        tilt_topic = str(self.get_parameter(PARAM_TILT_TOPIC).value)
+        imu_topic: str = str(self.get_parameter(PARAM_IMU_TOPIC).value)
+        imu_calib_topic: str = str(self.get_parameter(PARAM_IMU_CALIB_TOPIC).value)
+        tilt_topic: str = str(self.get_parameter(PARAM_TILT_TOPIC).value)
 
-        self._frame_id = str(self.get_parameter(PARAM_FRAME_ID).value)
-        accel_trust_threshold = float(
+        self._frame_id: str = str(self.get_parameter(PARAM_FRAME_ID).value)
+        accel_trust_threshold: float = float(
             self.get_parameter(PARAM_ACCEL_TRUST_THRESHOLD).value
         )
-        yaw_variance = float(self.get_parameter(PARAM_YAW_VAR_RAD2).value)
-        publish_tilt_rp = bool(self.get_parameter(PARAM_PUBLISH_TILT_RP).value)
+        yaw_variance: float = float(self.get_parameter(PARAM_YAW_VAR_RAD2).value)
+        publish_tilt_rp: bool = bool(self.get_parameter(PARAM_PUBLISH_TILT_RP).value)
 
         qos_profile: rclpy.qos.QoSProfile = (
             rclpy.qos.QoSPresetProfiles.SENSOR_DATA.value
         )
 
-        self._estimator = TiltPoseEstimator(
+        self._estimator: TiltPoseEstimator = TiltPoseEstimator(
             accel_trust_threshold_mps2=accel_trust_threshold,
             yaw_variance_rad2=yaw_variance,
         )
@@ -143,7 +144,7 @@ class TiltSensorNode(rclpy.node.Node):
             self.get_logger().warn("Ignoring invalid IMU calibration")
             return
 
-        calibration = self._calibration_from_message(message)
+        calibration: Optional[ImuCalibration] = self._calibration_from_message(message)
         if calibration is None:
             self.get_logger().warn("Invalid IMU calibration payload")
             return
@@ -155,10 +156,10 @@ class TiltSensorNode(rclpy.node.Node):
         if self._calibration is None:
             return
 
-        stamp = message.header.stamp
-        timestamp = float(stamp.sec) + float(stamp.nanosec) * 1.0e-9
+        stamp: Time = message.header.stamp
+        timestamp: float = float(stamp.sec) + float(stamp.nanosec) * 1.0e-9
         if self._last_imu_time is None:
-            dt_s = 0.0
+            dt_s: float = 0.0
         else:
             dt_s = max(0.0, timestamp - self._last_imu_time)
         self._last_imu_time = timestamp
@@ -175,7 +176,7 @@ class TiltSensorNode(rclpy.node.Node):
                 self._last_dt_spike_log_time = timestamp
             dt_s = 0.0
 
-        updated = self._estimator.update(
+        updated: bool = self._estimator.update(
             linear_accel=(
                 message.linear_acceleration.x,
                 message.linear_acceleration.y,
@@ -195,13 +196,15 @@ class TiltSensorNode(rclpy.node.Node):
         if not updated:
             return
 
-        tilt_message = Imu()
+        tilt_message: Imu = Imu()
         tilt_message.header.stamp = message.header.stamp
         tilt_message.header.frame_id = (
             self._frame_id if self._frame_id else message.header.frame_id
         )
 
-        orientation = self._estimator.orientation_quaternion()
+        orientation: tuple[float, float, float, float] = (
+            self._estimator.orientation_quaternion()
+        )
         tilt_message.orientation.x = orientation[0]
         tilt_message.orientation.y = orientation[1]
         tilt_message.orientation.z = orientation[2]
@@ -221,8 +224,10 @@ class TiltSensorNode(rclpy.node.Node):
         self._tilt_pub.publish(tilt_message)
 
         if self._tilt_rp_pub is not None:
+            roll: float
+            pitch: float
             roll, pitch, _ = self._estimator.attitude_rpy()
-            rp_message = Vector3Stamped()
+            rp_message: Vector3Stamped = Vector3Stamped()
             rp_message.header.stamp = message.header.stamp
             rp_message.header.frame_id = tilt_message.header.frame_id
             rp_message.vector.x = roll
@@ -233,11 +238,13 @@ class TiltSensorNode(rclpy.node.Node):
     def _calibration_from_message(
         self, message: ImuCalibrationMsg
     ) -> Optional[ImuCalibration]:
-        accel_a = self._matrix_from_flat(message.accel_a, (3, 3), symmetric=False)
-        accel_param_cov = self._matrix_from_flat(
+        accel_a: Optional[np.ndarray] = self._matrix_from_flat(
+            message.accel_a, (3, 3), symmetric=False
+        )
+        accel_param_cov: Optional[np.ndarray] = self._matrix_from_flat(
             message.accel_param_cov, (12, 12), symmetric=True
         )
-        gyro_bias_cov = self._matrix_from_flat(
+        gyro_bias_cov: Optional[np.ndarray] = self._matrix_from_flat(
             message.gyro_bias_cov, (3, 3), symmetric=True
         )
 
@@ -247,7 +254,7 @@ class TiltSensorNode(rclpy.node.Node):
         if message.gravity_mps2 <= 0.0 or not math.isfinite(message.gravity_mps2):
             return None
 
-        accel_bias = np.array(
+        accel_bias: np.ndarray = np.array(
             [
                 message.accel_bias.x,
                 message.accel_bias.y,
@@ -270,14 +277,14 @@ class TiltSensorNode(rclpy.node.Node):
         shape: tuple[int, int],
         symmetric: bool,
     ) -> Optional[np.ndarray]:
-        data = tuple(float(value) for value in values)
+        data: tuple[float, ...] = tuple(float(value) for value in values)
         if len(data) != shape[0] * shape[1]:
             return None
 
         if not all(math.isfinite(value) for value in data):
             return None
 
-        matrix = np.array(data, dtype=float).reshape(shape)
+        matrix: np.ndarray = np.array(data, dtype=float).reshape(shape)
         if symmetric:
             return 0.5 * (matrix + matrix.T)
         return matrix
