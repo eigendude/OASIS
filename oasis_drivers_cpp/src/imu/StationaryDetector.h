@@ -33,6 +33,20 @@ public:
     std::size_t window_size{20};
 
     /*!
+     * \brief Minimum window duration required before evaluating stationarity
+     *
+     * Units: seconds
+     */
+    double min_window_duration_s{0.25};
+
+    /*!
+     * \brief Maximum gap between consecutive samples before resetting
+     *
+     * Units: seconds
+     */
+    double max_sample_gap_s{0.1};
+
+    /*!
      * \brief Variance gate multiplier on per-axis noise variance
      *
      * Units: unitless
@@ -106,6 +120,13 @@ public:
      * Units: samples
      */
     std::size_t window_count{0};
+
+    /*!
+     * \brief Time span covered by the window
+     *
+     * Units: seconds
+     */
+    double window_duration_s{0.0};
   };
 
   StationaryDetector() = default;
