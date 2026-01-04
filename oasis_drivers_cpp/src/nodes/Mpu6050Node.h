@@ -60,9 +60,8 @@ private:
 
   // Calibration
   std::filesystem::path m_calibrationCachePath;
-  bool m_calibrationMode{false};
   IMU::ImuCalibrationFile m_calibFile;
-  IMU::ImuCalibrationRecord m_calibRecord{};
+  bool m_savedCalibration{false};
 
   // IMU parameters
   std::unique_ptr<MPU6050> m_mpu6050;
