@@ -19,9 +19,8 @@ namespace Magnetometer
 
 namespace
 {
-
+// Minimum diagonal epsilon to keep covariance PSD
 // Units: Tesla^2
-// Meaning: minimum diagonal epsilon to keep covariance PSD
 constexpr double kCovarianceEpsilonT2 = 1e-20;
 } // namespace
 

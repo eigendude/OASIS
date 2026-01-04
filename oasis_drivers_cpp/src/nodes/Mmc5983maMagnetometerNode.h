@@ -69,6 +69,7 @@ private:
   std::uint8_t m_i2cAddress{0};
   std::uint8_t m_bandwidthMode{0};
   std::uint16_t m_rawRateHz{0};
+  int m_measurementTimeoutMs{0};
   bool m_calibrationMode{false};
   bool m_continuousCalibration{false};
   std::chrono::duration<double> m_calibrationCooldown;
