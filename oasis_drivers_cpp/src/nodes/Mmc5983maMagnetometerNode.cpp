@@ -86,11 +86,10 @@ Mmc5983maMagnetometerNode::Mmc5983maMagnetometerNode() : rclcpp::Node(NODE_NAME)
   declare_parameter("offset_spike_threshold_t", DEFAULT_OFFSET_SPIKE_THRESHOLD_T);
   declare_parameter("offset_spike_inflation_factor", DEFAULT_OFFSET_SPIKE_INFLATION_FACTOR);
   declare_parameter("offset_spike_inflation_sec", DEFAULT_OFFSET_SPIKE_INFLATION_SEC);
-  declare_parameter("calibration_mode", false);
-  declare_parameter("continuous_calibration", false);
   declare_parameter("calibration_write_cooldown_sec", DEFAULT_CALIBRATION_COOLDOWN_SEC);
   declare_parameter("system_id", std::string(""));
   declare_parameter("magnetometer_calibration_base", std::string(DEFAULT_MAG_CALIBRATION_BASE));
+  // Deprecated/unused; retained for compatibility
   declare_parameter("calibration_yaml_path", std::string(""));
 
   m_i2cDevice = get_parameter("i2c_device").as_string();
@@ -115,9 +114,6 @@ Mmc5983maMagnetometerNode::Mmc5983maMagnetometerNode() : rclcpp::Node(NODE_NAME)
   m_rawRateHz = static_cast<std::uint16_t>(std::round(clampedRawRate));
   m_bandwidthMode = static_cast<std::uint8_t>(get_parameter("bandwidth_mode").as_int());
   m_measurementTimeoutMs = get_parameter("measurement_timeout_ms").as_int();
-
-  const bool continuousCalibration = get_parameter("continuous_calibration").as_bool();
-  m_calibrationMode = get_parameter("calibration_mode").as_bool();
 
   m_systemId = get_parameter("system_id").as_string();
   m_magCalibrationBase = get_parameter("magnetometer_calibration_base").as_string();
@@ -146,6 +142,9 @@ Mmc5983maMagnetometerNode::Mmc5983maMagnetometerNode() : rclcpp::Node(NODE_NAME)
   m_calibrationCachePath = magInfoDirectory / (m_magCalibrationBase + "_" + m_systemId + ".yaml");
 
   const bool calibrationFileExists = std::filesystem::exists(m_calibrationCachePath);
+
+  m_calibrationMode = !calibrationFileExists;
+  const bool continuousCalibration = !calibrationFileExists;
 
   RCLCPP_INFO(get_logger(), "Magnetometer calibration file %s: %s",
               calibrationFileExists ? "found" : "NOT found", m_calibrationCachePath.c_str());
