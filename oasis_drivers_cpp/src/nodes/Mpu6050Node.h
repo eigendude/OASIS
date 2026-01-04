@@ -13,6 +13,7 @@
 #include "imu/io/ImuCalibrationFile.h"
 
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -69,7 +70,12 @@ private:
   // Calibration
   std::filesystem::path m_calibrationCachePath;
   IMU::ImuCalibrationFile m_calibFile;
-  bool m_savedCalibration{false};
+  rclcpp::Time m_lastCalibrationSaveTime;
+  bool m_hasLastCalibrationSaveTime{false};
+
+  bool m_hasBestCalibration{false};
+  double m_bestRmsMps2{0.0};
+  std::uint32_t m_bestFitSampleCount{0};
 
   // IMU parameters
   std::unique_ptr<MPU6050> m_mpu6050;
