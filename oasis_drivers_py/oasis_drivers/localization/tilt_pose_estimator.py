@@ -204,8 +204,8 @@ class TiltPoseEstimator:
             self._pitch = self._wrap_pi(pitch_upd)
             self._state_cov = upd_cov
         else:
-            self._roll = roll_pred
-            self._pitch = pitch_pred
+            self._roll = self._wrap_pi(roll_pred)
+            self._pitch = self._wrap_pi(pitch_pred)
             self._state_cov = pred_cov
 
         return True
@@ -492,10 +492,10 @@ class TiltPoseEstimator:
         wy: float
         wz: float
         wx, wy, wz = gyro
-        cos_pitch: float = math.cos(pitch)
 
         # Guard against Euler singularity when cos(pitch) approaches zero
-        if abs(cos_pitch) < 1.0e-6:
+        if abs(math.cos(pitch)) < 1.0e-6:
+            # Clamp pitch as part of the process model so Jacobians match
             pitch = math.copysign((math.pi / 2.0) - 1.0e-6, pitch)
 
         tan_pitch: float = math.tan(pitch)
