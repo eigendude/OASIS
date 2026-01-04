@@ -49,7 +49,10 @@ constexpr double DEFAULT_OFFSET_SPIKE_INFLATION_FACTOR = 3.0;
 constexpr double DEFAULT_OFFSET_SPIKE_INFLATION_SEC = 2.0;
 
 constexpr double DEFAULT_CALIBRATION_COOLDOWN_SEC = 1.0;
-constexpr const char* DEFAULT_CALIBRATION_PATH = "~/.ros/oasis/mmc5983ma_covariance.yaml";
+constexpr const char* DEFAULT_MAG_CALIBRATION_BASE = "mag_mmc5983ma_calibration";
+
+constexpr const char* ROS_PROFILE_DIR_NAME = ".ros";
+constexpr const char* MAG_INFO_DIR_NAME = "magnetometer_info";
 
 // Units: Gauss
 // Meaning: default field range for sensitivity conversion
@@ -86,7 +89,9 @@ Mmc5983maMagnetometerNode::Mmc5983maMagnetometerNode() : rclcpp::Node(NODE_NAME)
   declare_parameter("calibration_mode", false);
   declare_parameter("continuous_calibration", false);
   declare_parameter("calibration_write_cooldown_sec", DEFAULT_CALIBRATION_COOLDOWN_SEC);
-  declare_parameter("calibration_yaml_path", std::string(DEFAULT_CALIBRATION_PATH));
+  declare_parameter("system_id", std::string(""));
+  declare_parameter("magnetometer_calibration_base", std::string(DEFAULT_MAG_CALIBRATION_BASE));
+  declare_parameter("calibration_yaml_path", std::string(""));
 
   m_i2cDevice = get_parameter("i2c_device").as_string();
   m_i2cAddress = static_cast<std::uint8_t>(get_parameter("i2c_address").as_int());
@@ -114,6 +119,37 @@ Mmc5983maMagnetometerNode::Mmc5983maMagnetometerNode() : rclcpp::Node(NODE_NAME)
   const bool continuousCalibration = get_parameter("continuous_calibration").as_bool();
   m_calibrationMode = get_parameter("calibration_mode").as_bool();
 
+  m_systemId = get_parameter("system_id").as_string();
+  m_magCalibrationBase = get_parameter("magnetometer_calibration_base").as_string();
+
+  if (m_systemId.empty())
+  {
+    RCLCPP_ERROR(get_logger(), "system_id parameter is empty");
+    throw std::runtime_error("Missing system_id parameter");
+  }
+
+  const char* home = std::getenv("HOME");
+  const std::filesystem::path homePath =
+      home ? std::filesystem::path(home) : std::filesystem::path(".");
+  const std::filesystem::path magInfoDirectory =
+      homePath / ROS_PROFILE_DIR_NAME / MAG_INFO_DIR_NAME;
+
+  std::error_code magInfoError;
+  std::filesystem::create_directories(magInfoDirectory, magInfoError);
+  if (magInfoError)
+  {
+    RCLCPP_ERROR(get_logger(), "Failed to create magnetometer info directory at %s: %s",
+                 magInfoDirectory.c_str(), magInfoError.message().c_str());
+    throw std::runtime_error("Failed to create magnetometer info directory");
+  }
+
+  m_calibrationCachePath = magInfoDirectory / (m_magCalibrationBase + "_" + m_systemId + ".yaml");
+
+  const bool calibrationFileExists = std::filesystem::exists(m_calibrationCachePath);
+
+  RCLCPP_INFO(get_logger(), "Magnetometer calibration file %s: %s",
+              calibrationFileExists ? "found" : "NOT found", m_calibrationCachePath.c_str());
+
   const double stationaryWindowSec = get_parameter("stationary_window_sec").as_double();
   const double ewmaTauSec = get_parameter("ewma_tau_sec").as_double();
   const double priorStrengthSamples = get_parameter("prior_strength_samples").as_double();
@@ -128,24 +164,6 @@ Mmc5983maMagnetometerNode::Mmc5983maMagnetometerNode() : rclcpp::Node(NODE_NAME)
   const double offsetSpikeInflationSec = get_parameter("offset_spike_inflation_sec").as_double();
 
   const double calibrationCooldownSec = get_parameter("calibration_write_cooldown_sec").as_double();
-  const std::string calibrationPathParam = get_parameter("calibration_yaml_path").as_string();
-  std::filesystem::path calibrationPath = calibrationPathParam;
-
-  if (!calibrationPathParam.empty() && calibrationPathParam[0] == '~')
-  {
-    const char* home = std::getenv("HOME");
-    if (home == nullptr)
-    {
-      RCLCPP_WARN(get_logger(),
-                  "Could not resolve HOME for calibration path %s; disabling calibration",
-                  calibrationPathParam.c_str());
-      calibrationPath.clear();
-    }
-    else
-    {
-      calibrationPath = std::filesystem::path(home) / calibrationPathParam.substr(1);
-    }
-  }
 
   const std::size_t windowSamples =
       static_cast<std::size_t>(std::max(2.0, stationaryWindowSec * clampedPublishRate));
@@ -168,7 +186,7 @@ Mmc5983maMagnetometerNode::Mmc5983maMagnetometerNode() : rclcpp::Node(NODE_NAME)
   Magnetometer::MagnetometerCalibrationConfig calibrationConfig;
   calibrationConfig.continuous_calibration = continuousCalibration;
   calibrationConfig.write_cooldown_sec = calibrationCooldownSec;
-  calibrationConfig.calibration_path = calibrationPath;
+  calibrationConfig.calibration_path = m_calibrationCachePath;
   calibrationConfig.bandwidth_mode = m_bandwidthMode;
   calibrationConfig.raw_rate_hz = m_rawRateHz;
 
@@ -256,7 +274,8 @@ void Mmc5983maMagnetometerNode::SamplerLoop()
       m_latestSample = snapshot;
     }
 
-    nextTick += m_publishPeriod;
+    nextTick += std::chrono::duration_cast<std::chrono::steady_clock::duration>(m_publishPeriod);
+
     std::this_thread::sleep_until(nextTick);
   }
 }
