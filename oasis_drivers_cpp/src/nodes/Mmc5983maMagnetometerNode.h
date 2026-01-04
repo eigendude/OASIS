@@ -8,17 +8,14 @@
 
 #pragma once
 
-#include "magnetometer/CovarianceEstimator3D.h"
+#include "magnetometer/MagnetometerPairProcessor.h"
 #include "magnetometer/Mmc5983maDevice.h"
-#include "magnetometer/io/MagnetometerCalibrationFile.h"
+#include "magnetometer/Mmc5983maPairSampler.h"
 
 #include <chrono>
-#include <filesystem>
 #include <memory>
-#include <optional>
 #include <string>
 
-#include <Eigen/Core>
 #include <rclcpp/node.hpp>
 #include <rclcpp/publisher.hpp>
 #include <rclcpp/time.hpp>
@@ -40,28 +37,18 @@ public:
 
 private:
   void PollSensor();
-  void PublishSample(const Eigen::Vector3d& field_t, const Eigen::Vector3d& offset_t);
+  void PublishSample(const Magnetometer::MagnetometerTickOutput& output);
 
   bool ConfigureDevice();
   std::uint8_t EncodeRawRate(std::uint16_t raw_rate_hz) const;
   double ResolveDatasheetNoiseMg(std::uint8_t bandwidth_mode) const;
-  bool MaybeWriteCalibration(const Eigen::Vector3d& offset_t);
 
   rclcpp::Publisher<sensor_msgs::msg::MagneticField>::SharedPtr m_publisher;
   rclcpp::TimerBase::SharedPtr m_timer;
 
   Magnetometer::Mmc5983maDevice m_device;
-  Magnetometer::CovarianceEstimator3D m_covarianceEstimator;
-  Magnetometer::MagnetometerCalibrationFile m_calibrationFile;
-
-  rclcpp::Time m_lastSampleTime;
-  bool m_hasLastSampleTime{false};
-  rclcpp::Time m_lastCalibrationWriteTime;
-  bool m_hasLastCalibrationWrite{false};
-
-  std::filesystem::path m_calibrationPath;
-  Eigen::Vector3d m_lastOffset = Eigen::Vector3d::Zero();
-  std::optional<rclcpp::Time> m_offsetSpikeInflationUntil;
+  std::unique_ptr<Magnetometer::Mmc5983maPairSampler> m_sampler;
+  std::unique_ptr<Magnetometer::MagnetometerPairProcessor> m_processor;
 
   std::string m_i2cDevice;
   std::string m_frameId;
@@ -71,17 +58,6 @@ private:
   std::uint16_t m_rawRateHz{0};
   int m_measurementTimeoutMs{0};
   bool m_calibrationMode{false};
-  bool m_continuousCalibration{false};
-  std::chrono::duration<double> m_calibrationCooldown;
-  double m_datasheetNoiseMg{0.0};
-  double m_setResetRepeatabilityMg{0.0};
-  double m_stationaryAxisStdThresholdT{0.0};
-  double m_stationaryMagnitudeStdThresholdT{0.0};
-  double m_offsetSpikeThresholdT{0.0};
-  double m_offsetSpikeInflationFactor{0.0};
-  std::chrono::duration<double> m_offsetSpikeInflationDuration;
-  double m_priorStrengthSamples{0.0};
-  double m_ewmaTauSec{0.0};
 };
 
 } // namespace ROS

@@ -12,7 +12,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
-#include <optional>
+#include <filesystem>
 #include <stdexcept>
 
 #include <rclcpp/rclcpp.hpp>
@@ -110,63 +110,75 @@ Mmc5983maMagnetometerNode::Mmc5983maMagnetometerNode() : rclcpp::Node(NODE_NAME)
   m_bandwidthMode = static_cast<std::uint8_t>(get_parameter("bandwidth_mode").as_int());
   m_measurementTimeoutMs = get_parameter("measurement_timeout_ms").as_int();
 
-  const double stationaryWindowSec = get_parameter("stationary_window_sec").as_double();
-  m_ewmaTauSec = get_parameter("ewma_tau_sec").as_double();
-  m_priorStrengthSamples = get_parameter("prior_strength_samples").as_double();
-  m_datasheetNoiseMg = get_parameter("datasheet_rms_noise_mg").as_double();
-  m_setResetRepeatabilityMg = get_parameter("set_reset_repeatability_mg").as_double();
-  m_stationaryAxisStdThresholdT = get_parameter("stationary_std_threshold_t").as_double();
-  m_stationaryMagnitudeStdThresholdT = get_parameter("stationary_mag_std_threshold_t").as_double();
-  m_offsetSpikeThresholdT = get_parameter("offset_spike_threshold_t").as_double();
-  m_offsetSpikeInflationFactor = get_parameter("offset_spike_inflation_factor").as_double();
-  m_offsetSpikeInflationDuration =
-      std::chrono::duration<double>(get_parameter("offset_spike_inflation_sec").as_double());
-
+  const bool continuousCalibration = get_parameter("continuous_calibration").as_bool();
   m_calibrationMode = get_parameter("calibration_mode").as_bool();
-  m_continuousCalibration = get_parameter("continuous_calibration").as_bool();
-  m_calibrationCooldown =
-      std::chrono::duration<double>(get_parameter("calibration_write_cooldown_sec").as_double());
 
+  const double stationaryWindowSec = get_parameter("stationary_window_sec").as_double();
+  const double ewmaTauSec = get_parameter("ewma_tau_sec").as_double();
+  const double priorStrengthSamples = get_parameter("prior_strength_samples").as_double();
+  const double setResetRepeatabilityMg =
+      get_parameter("set_reset_repeatability_mg").as_double();
+  const double stationaryAxisStdThresholdT =
+      get_parameter("stationary_std_threshold_t").as_double();
+  const double stationaryMagnitudeStdThresholdT =
+      get_parameter("stationary_mag_std_threshold_t").as_double();
+  const double offsetSpikeThresholdT = get_parameter("offset_spike_threshold_t").as_double();
+  const double offsetSpikeInflationFactor =
+      get_parameter("offset_spike_inflation_factor").as_double();
+  const double offsetSpikeInflationSec = get_parameter("offset_spike_inflation_sec").as_double();
+
+  const double calibrationCooldownSec =
+      get_parameter("calibration_write_cooldown_sec").as_double();
   const std::string calibrationPathParam = get_parameter("calibration_yaml_path").as_string();
-  if (!calibrationPathParam.empty() && calibrationPathParam.front() == '~')
+  std::filesystem::path calibrationPath = calibrationPathParam;
+
+  if (!calibrationPathParam.empty() && calibrationPathParam[0] == '~')
   {
     const char* home = std::getenv("HOME");
-    const std::filesystem::path homePath =
-        home ? std::filesystem::path(home) : std::filesystem::path(".");
-    m_calibrationPath = homePath / calibrationPathParam.substr(2);
-  }
-  else
-  {
-    m_calibrationPath = calibrationPathParam;
+    if (home == nullptr)
+    {
+      RCLCPP_WARN(get_logger(),
+                  "Could not resolve HOME for calibration path %s; disabling calibration",
+                  calibrationPathParam.c_str());
+      calibrationPath.clear();
+    }
+    else
+    {
+      calibrationPath = std::filesystem::path(home) / calibrationPathParam.substr(1);
+    }
   }
 
   const std::size_t windowSamples =
       static_cast<std::size_t>(std::max(2.0, stationaryWindowSec * clampedPublishRate));
 
-  Magnetometer::CovarianceEstimatorConfig covarianceConfig;
-  covarianceConfig.window_size = windowSamples;
-  covarianceConfig.prior_strength_samples = m_priorStrengthSamples;
-  covarianceConfig.ewma_tau_sec = m_ewmaTauSec;
-  covarianceConfig.dt_sec = m_publishPeriod.count();
+  Magnetometer::MagnetometerSamplingConfig samplingConfig;
+  samplingConfig.publish_period_sec = m_publishPeriod.count();
 
-  covarianceConfig.gate.axis_std_threshold_t = m_stationaryAxisStdThresholdT;
-  covarianceConfig.gate.magnitude_std_threshold_t = m_stationaryMagnitudeStdThresholdT;
+  Magnetometer::MagnetometerProcessingConfig processingConfig;
+  processingConfig.stationary_window_size = windowSamples;
+  processingConfig.prior_strength_samples = priorStrengthSamples;
+  processingConfig.ewma_tau_sec = ewmaTauSec;
+  processingConfig.stationary_axis_std_threshold_t = stationaryAxisStdThresholdT;
+  processingConfig.stationary_magnitude_std_threshold_t =
+      stationaryMagnitudeStdThresholdT;
+  processingConfig.datasheet_rms_noise_mg = ResolveDatasheetNoiseMg(m_bandwidthMode);
+  processingConfig.set_reset_repeatability_mg = setResetRepeatabilityMg;
+  processingConfig.offset_spike_threshold_t = offsetSpikeThresholdT;
+  processingConfig.offset_spike_inflation_factor = offsetSpikeInflationFactor;
+  processingConfig.offset_spike_inflation_sec = offsetSpikeInflationSec;
 
-  const double datasheetNoiseMg = ResolveDatasheetNoiseMg(m_bandwidthMode);
-  const double noiseTesla = datasheetNoiseMg * 1e-7;
-  const double repeatTesla = m_setResetRepeatabilityMg * 1e-7;
+  Magnetometer::MagnetometerCalibrationConfig calibrationConfig;
+  calibrationConfig.continuous_calibration = continuousCalibration;
+  calibrationConfig.write_cooldown_sec = calibrationCooldownSec;
+  calibrationConfig.calibration_path = calibrationPath;
+  calibrationConfig.bandwidth_mode = m_bandwidthMode;
+  calibrationConfig.raw_rate_hz = m_rawRateHz;
 
-  // Units: Tesla
-  // Meaning: raw noise standard deviation combining datasheet and set/reset
-  const double sigmaRawT = std::sqrt((noiseTesla * noiseTesla) + (repeatTesla * repeatTesla));
+  m_sampler = std::make_unique<Magnetometer::Mmc5983maPairSampler>(m_device);
+  m_processor = std::make_unique<Magnetometer::MagnetometerPairProcessor>(
+      *m_sampler, samplingConfig, processingConfig, calibrationConfig);
 
-  // Units: Tesla
-  // Meaning: output noise after pairing (S - R) / 2
-  const double sigmaOutT = sigmaRawT / std::sqrt(2.0);
-
-  covarianceConfig.prior_covariance = Eigen::Matrix3d::Identity() * (sigmaOutT * sigmaOutT);
-
-  if (!m_covarianceEstimator.Initialize(covarianceConfig))
+  if (!m_processor->Initialize())
   {
     throw std::runtime_error("Failed to initialize covariance estimator");
   }
@@ -199,34 +211,32 @@ bool Mmc5983maMagnetometerNode::Initialize()
 
 void Mmc5983maMagnetometerNode::Deinitialize()
 {
-  m_covarianceEstimator.Reset();
-  m_offsetSpikeInflationUntil.reset();
+  m_processor.reset();
+  m_sampler.reset();
 }
 
 void Mmc5983maMagnetometerNode::PollSensor()
 {
   const auto start = std::chrono::steady_clock::now();
 
-  Eigen::Vector3d setSample = Eigen::Vector3d::Zero();
-  if (!m_device.TakeMeasurement(Magnetometer::MeasurementMode::Set, setSample))
+  if (m_processor == nullptr)
+    return;
+
+  Magnetometer::MagnetometerTickOutput output;
+  if (!m_processor->Tick(output))
   {
-    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
-                         "Failed to read MMC5983MA SET measurement");
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000, "%s",
+                         output.warning.c_str());
     return;
   }
 
-  Eigen::Vector3d resetSample = Eigen::Vector3d::Zero();
-  if (!m_device.TakeMeasurement(Magnetometer::MeasurementMode::Reset, resetSample))
+  if (!output.warning.empty())
   {
-    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
-                         "Failed to read MMC5983MA RESET measurement");
-    return;
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000, "%s",
+                         output.warning.c_str());
   }
 
-  const Eigen::Vector3d field_t = (setSample - resetSample) * 0.5;
-  const Eigen::Vector3d offset_t = (setSample + resetSample) * 0.5;
-
-  PublishSample(field_t, offset_t);
+  PublishSample(output);
 
   const auto duration = std::chrono::steady_clock::now() - start;
   if (duration > m_publishPeriod)
@@ -242,54 +252,41 @@ void Mmc5983maMagnetometerNode::PollSensor()
   }
 }
 
-void Mmc5983maMagnetometerNode::PublishSample(const Eigen::Vector3d& field_t,
-                                              const Eigen::Vector3d& offset_t)
+void Mmc5983maMagnetometerNode::PublishSample(
+    const Magnetometer::MagnetometerTickOutput& output)
 {
   const rclcpp::Time now = get_clock()->now();
-  m_lastSampleTime = now;
-  m_hasLastSampleTime = true;
 
   sensor_msgs::msg::MagneticField msg;
   msg.header.stamp = now;
   msg.header.frame_id = m_frameId;
-  msg.magnetic_field.x = field_t.x();
-  msg.magnetic_field.y = field_t.y();
-  msg.magnetic_field.z = field_t.z();
+  msg.magnetic_field.x = output.field_t.x();
+  msg.magnetic_field.y = output.field_t.y();
+  msg.magnetic_field.z = output.field_t.z();
 
-  const Magnetometer::CovarianceUpdate update = m_covarianceEstimator.Update(field_t);
-  Eigen::Matrix3d covariance = update.covariance_t2;
+  msg.magnetic_field_covariance = {output.covariance_t2(0, 0),
+                                   output.covariance_t2(0, 1),
+                                   output.covariance_t2(0, 2),
+                                   output.covariance_t2(1, 0),
+                                   output.covariance_t2(1, 1),
+                                   output.covariance_t2(1, 2),
+                                   output.covariance_t2(2, 0),
+                                   output.covariance_t2(2, 1),
+                                   output.covariance_t2(2, 2)};
 
-  if (m_offsetSpikeThresholdT > 0.0 && m_offsetSpikeInflationFactor > 1.0)
-  {
-    if (offset_t.norm() >= m_offsetSpikeThresholdT)
-      m_offsetSpikeInflationUntil = now + m_offsetSpikeInflationDuration;
-
-    if (m_offsetSpikeInflationUntil && now < *m_offsetSpikeInflationUntil)
-      covariance *= m_offsetSpikeInflationFactor;
-  }
-
-  if (!covariance.allFinite())
+  if (!output.covariance_finite)
   {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
                          "Non-finite covariance detected in MMC5983MA driver");
   }
 
-  msg.magnetic_field_covariance = {covariance(0, 0), covariance(0, 1), covariance(0, 2),
-                                   covariance(1, 0), covariance(1, 1), covariance(1, 2),
-                                   covariance(2, 0), covariance(2, 1), covariance(2, 2)};
-
   m_publisher->publish(msg);
 
-  m_lastOffset = offset_t;
-
-  if (!update.is_stationary)
+  if (!output.is_stationary)
   {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
                          "Stationary gating rejected magnetometer window");
   }
-
-  if (update.covariance_updated && m_continuousCalibration)
-    (void)MaybeWriteCalibration(offset_t);
 }
 
 bool Mmc5983maMagnetometerNode::ConfigureDevice()
@@ -338,8 +335,9 @@ std::uint8_t Mmc5983maMagnetometerNode::EncodeRawRate(std::uint16_t raw_rate_hz)
 
 double Mmc5983maMagnetometerNode::ResolveDatasheetNoiseMg(std::uint8_t bandwidth_mode) const
 {
-  if (m_datasheetNoiseMg > 0.0)
-    return m_datasheetNoiseMg;
+  const double configuredNoise = get_parameter("datasheet_rms_noise_mg").as_double();
+  if (configuredNoise > 0.0)
+    return configuredNoise;
 
   switch (bandwidth_mode)
   {
@@ -356,46 +354,4 @@ double Mmc5983maMagnetometerNode::ResolveDatasheetNoiseMg(std::uint8_t bandwidth
   }
 
   return 0.6;
-}
-
-bool Mmc5983maMagnetometerNode::MaybeWriteCalibration(const Eigen::Vector3d& offset_t)
-{
-  if (m_calibrationPath.empty())
-    return false;
-
-  const rclcpp::Time now = get_clock()->now();
-  if (m_hasLastCalibrationWrite)
-  {
-    const double elapsed = (now - m_lastCalibrationWriteTime).seconds();
-    if (elapsed < m_calibrationCooldown.count())
-      return false;
-  }
-
-  Magnetometer::MagnetometerCalibrationRecord record;
-  record.timestamp_s = now.seconds();
-  record.bandwidth_mode = m_bandwidthMode;
-  record.raw_rate_hz = m_rawRateHz;
-  record.covariance_t2 = m_covarianceEstimator.GetCovariance();
-  record.offset_t = offset_t;
-
-  std::error_code error;
-  std::filesystem::create_directories(m_calibrationPath.parent_path(), error);
-  if (error)
-  {
-    RCLCPP_WARN(get_logger(), "Failed to create calibration directory: %s",
-                error.message().c_str());
-  }
-
-  const bool wrote = m_calibrationFile.Write(m_calibrationPath, record);
-  if (!wrote)
-  {
-    RCLCPP_WARN(get_logger(), "Failed to write magnetometer calibration to %s",
-                m_calibrationPath.c_str());
-    return false;
-  }
-
-  m_lastCalibrationWriteTime = now;
-  m_hasLastCalibrationWrite = true;
-
-  return true;
 }

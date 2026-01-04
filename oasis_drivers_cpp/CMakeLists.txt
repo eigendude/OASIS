@@ -104,6 +104,11 @@ add_executable(mmc5983ma_magnetometer_driver
   src/cli/mmc5983ma_magnetometer_driver.cpp
   src/magnetometer/CovarianceEstimator3D.cpp
   src/magnetometer/Mmc5983maDevice.cpp
+  src/magnetometer/IMagnetometerPairSampler.h
+  src/magnetometer/MagnetometerPairProcessor.cpp
+  src/magnetometer/MagnetometerPairProcessor.h
+  src/magnetometer/Mmc5983maPairSampler.cpp
+  src/magnetometer/Mmc5983maPairSampler.h
   src/magnetometer/io/MagnetometerCalibrationFile.cpp
   src/nodes/Mmc5983maMagnetometerNode.cpp
 )
