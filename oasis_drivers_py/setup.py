@@ -99,7 +99,6 @@ setuptools.setup(
             "tilt_sensor = oasis_drivers.cli.tilt_sensor_cli:main",
             "ups_server = oasis_drivers.cli.ups_server_cli:main",
             "wol_server = oasis_drivers.cli.wol_server_cli:main",
-            "train_localization = oasis_drivers.cli.train_localization_cli:main",
         ],
     },
     scripts=[
