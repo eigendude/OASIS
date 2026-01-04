@@ -53,8 +53,12 @@ CPU_FAN_SPEED_PIN: int = 2  # D2
 #
 #   5.02 V on 2025-12-18
 #   4.95 V on 2026-01-03
+#   4.98 V on 2026-01-04
 #
-AREF_VOLTAGE: float = 4.95  # V
+# Let's just use 5 V, which is within 1% of all observed values. The regulator
+# voltage is relatively stable compared to the 12 V train load.
+#
+AREF_VOLTAGE: float = 5.00  # Volts
 VIN_GAIN: float = 0.9887  # Empirical system calibration to match DMM at ~12V
 
 # Voltage dividers
