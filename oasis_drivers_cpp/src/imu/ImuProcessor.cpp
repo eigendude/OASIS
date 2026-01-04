@@ -11,6 +11,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <iomanip>
+#include <iostream>
 
 namespace OASIS::IMU
 {
@@ -44,6 +46,10 @@ constexpr double kPi = 3.14159265358979323846;
 // Units: m/s^2
 // Meaning: improvement threshold for accel RMS residual
 constexpr double kAccelRmsEpsilonMps2 = 1e-4;
+
+#ifndef OASIS_IMU_ACCEL_CAL_DEBUG
+#define OASIS_IMU_ACCEL_CAL_DEBUG 0
+#endif
 
 Mat3 ScaleMat3(const Mat3& m, double scale)
 {
@@ -518,7 +524,6 @@ ImuProcessor::Output ImuProcessor::Update(int16_t ax,
     {
       m_gyroBiasEstimator.Update(status.mean_gyro_rads, status.cov_gyro_rads2_2,
                                  status.window_count);
-      m_solver.AddSample(status.mean_accel_mps2);
 
       const Vec3 dir_unit = NormalizeOrZero(status.mean_accel_mps2);
       bool created = false;
@@ -530,6 +535,26 @@ ImuProcessor::Output ImuProcessor::Update(int16_t ax,
 
       if (HasSufficientCoverage())
       {
+        m_solver.Reset();
+        if constexpr (OASIS_IMU_ACCEL_CAL_DEBUG)
+        {
+          std::cerr << "[AccelCal] Cluster count=" << m_poseClusters.size() << "\n";
+        }
+
+        for (const PoseCluster& cluster : m_poseClusters)
+        {
+          const double weight = 1.0;
+          m_solver.AddWeightedSample(cluster.mean_accel_mps2, weight);
+
+          if constexpr (OASIS_IMU_ACCEL_CAL_DEBUG)
+          {
+            std::cerr << std::fixed << std::setprecision(6);
+            std::cerr << "[AccelCal] Cluster dir=[" << cluster.dir_unit[0] << ", "
+                      << cluster.dir_unit[1] << ", " << cluster.dir_unit[2] << "] count="
+                      << cluster.count << " weight=" << weight << "\n";
+          }
+        }
+
         AccelCalibrationSolver::Result result{};
         if (m_solver.Solve(m_cfg.gravity_mps2, result) && IsCalibrationImproved(result))
         {
