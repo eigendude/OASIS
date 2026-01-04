@@ -169,6 +169,26 @@ class ControlDescriptions:
         ld.add_action(engineer_node)
 
     #
+    # Speedometer
+    #
+
+    @staticmethod
+    def add_speedometer(ld: LaunchDescription, host_id: str) -> None:
+        speedometer_node: Node = Node(
+            namespace=ROS_NAMESPACE,
+            package=CONTROL_PACKAGE_NAME,
+            executable="speedometer",
+            name=f"speedometer_{host_id}",
+            output="screen",
+            remappings=[
+                ("imu", f"{host_id}/imu"),
+                ("imu_calibration", f"{host_id}/imu_calibration"),
+                ("twist", f"{host_id}/twist"),
+            ],
+        )
+        ld.add_action(speedometer_node)
+
+    #
     # Tilt sensor
     #
 
