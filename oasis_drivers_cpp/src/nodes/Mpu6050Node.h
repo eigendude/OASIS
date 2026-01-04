@@ -19,12 +19,14 @@
 #include <string>
 
 #include <MPU6050.h>
+#include <oasis_msgs/msg/imu_calibration.hpp>
 #include <rclcpp/node.hpp>
 #include <rclcpp/publisher.hpp>
 #include <rclcpp/time.hpp>
 #include <rclcpp/timer.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/temperature.hpp>
+#include <std_msgs/msg/header.hpp>
 
 namespace OASIS
 {
@@ -41,12 +43,15 @@ public:
   void Deinitialize();
 
 private:
+  oasis_msgs::msg::ImuCalibration ToImuCalibrationMsg(const std_msgs::msg::Header& header,
+                                                      const IMU::ImuCalibrationRecord& rec) const;
   void PublishImu();
 
   // ROS publishers
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr m_imuPublisher;
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr m_imuRawPublisher;
   rclcpp::Publisher<sensor_msgs::msg::Temperature>::SharedPtr m_imuTemperaturePublisher;
+  rclcpp::Publisher<oasis_msgs::msg::ImuCalibration>::SharedPtr m_imuCalibrationPublisher;
 
   // ROS timers
   rclcpp::TimerBase::SharedPtr m_timer;

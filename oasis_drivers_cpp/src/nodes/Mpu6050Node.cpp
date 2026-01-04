@@ -12,6 +12,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
@@ -33,6 +34,7 @@ constexpr const char* NODE_NAME = "mpu6050_imu_driver";
 constexpr const char* IMU_TOPIC = "imu";
 constexpr const char* IMU_RAW_TOPIC = "imu_raw";
 constexpr const char* IMU_TEMPERATURE_TOPIC = "imu_temperature";
+constexpr const char* IMU_CALIBRATION_TOPIC = "imu_calibration";
 
 // ROS frame IDs
 constexpr const char* FRAME_ID = "imu_link";
@@ -150,6 +152,8 @@ bool Mpu6050Node::Initialize()
   m_imuRawPublisher = create_publisher<sensor_msgs::msg::Imu>(IMU_RAW_TOPIC, rclcpp::QoS{1});
   m_imuTemperaturePublisher =
       create_publisher<sensor_msgs::msg::Temperature>(IMU_TEMPERATURE_TOPIC, rclcpp::QoS{1});
+  m_imuCalibrationPublisher = create_publisher<oasis_msgs::msg::ImuCalibration>(
+      IMU_CALIBRATION_TOPIC, rclcpp::QoS{1}.transient_local().reliable());
 
   // Initialize timers
   m_timer = create_wall_timer(m_publishPeriod, std::bind(&Mpu6050Node::PublishImu, this));
@@ -161,6 +165,60 @@ void Mpu6050Node::Deinitialize()
 {
   m_imuProcessor.Reset();
   m_lastSampleTime.reset();
+}
+
+oasis_msgs::msg::ImuCalibration Mpu6050Node::ToImuCalibrationMsg(
+    const std_msgs::msg::Header& header, const IMU::ImuCalibrationRecord& rec) const
+{
+  oasis_msgs::msg::ImuCalibration msg;
+  msg.header = header;
+  msg.valid = rec.calib.valid;
+  msg.gravity_mps2 = rec.gravity_mps2;
+  msg.fit_sample_count = rec.fit_sample_count;
+
+  msg.accel_bias.x = rec.calib.accel_bias_mps2[0];
+  msg.accel_bias.y = rec.calib.accel_bias_mps2[1];
+  msg.accel_bias.z = rec.calib.accel_bias_mps2[2];
+
+  msg.gyro_bias.x = rec.calib.gyro_bias_rads[0];
+  msg.gyro_bias.y = rec.calib.gyro_bias_rads[1];
+  msg.gyro_bias.z = rec.calib.gyro_bias_rads[2];
+
+  msg.accel_a[0] = rec.calib.accel_A[0][0];
+  msg.accel_a[1] = rec.calib.accel_A[0][1];
+  msg.accel_a[2] = rec.calib.accel_A[0][2];
+  msg.accel_a[3] = rec.calib.accel_A[1][0];
+  msg.accel_a[4] = rec.calib.accel_A[1][1];
+  msg.accel_a[5] = rec.calib.accel_A[1][2];
+  msg.accel_a[6] = rec.calib.accel_A[2][0];
+  msg.accel_a[7] = rec.calib.accel_A[2][1];
+  msg.accel_a[8] = rec.calib.accel_A[2][2];
+
+  std::size_t accelParamIndex = 0;
+  for (const auto& row : rec.calib.accel_param_cov)
+  {
+    for (const double value : row)
+    {
+      msg.accel_param_cov[accelParamIndex] = value;
+      ++accelParamIndex;
+    }
+  }
+
+  msg.gyro_bias_cov[0] = rec.calib.gyro_bias_cov_rads2_2[0][0];
+  msg.gyro_bias_cov[1] = rec.calib.gyro_bias_cov_rads2_2[0][1];
+  msg.gyro_bias_cov[2] = rec.calib.gyro_bias_cov_rads2_2[0][2];
+  msg.gyro_bias_cov[3] = rec.calib.gyro_bias_cov_rads2_2[1][0];
+  msg.gyro_bias_cov[4] = rec.calib.gyro_bias_cov_rads2_2[1][1];
+  msg.gyro_bias_cov[5] = rec.calib.gyro_bias_cov_rads2_2[1][2];
+  msg.gyro_bias_cov[6] = rec.calib.gyro_bias_cov_rads2_2[2][0];
+  msg.gyro_bias_cov[7] = rec.calib.gyro_bias_cov_rads2_2[2][1];
+  msg.gyro_bias_cov[8] = rec.calib.gyro_bias_cov_rads2_2[2][2];
+
+  msg.rms_residual_mps2 = rec.calib.rms_residual_mps2;
+  msg.temperature_c = rec.calib.temperature_c;
+  msg.temperature_var_c2 = rec.calib.temperature_var_c2;
+
+  return msg;
 }
 
 void Mpu6050Node::PublishImu()
@@ -278,6 +336,10 @@ void Mpu6050Node::PublishImu()
   temperatureMsg.variance = out.raw.temperature_var_c2;
 
   m_imuTemperaturePublisher->publish(temperatureMsg);
+
+  const oasis_msgs::msg::ImuCalibration calibrationMsg =
+      ToImuCalibrationMsg(headerMsg, out.calibration_record);
+  m_imuCalibrationPublisher->publish(calibrationMsg);
 
   if (out.mode == IMU::ImuProcessor::Mode::Calibration && out.calibration_ready &&
       !m_savedCalibration)
