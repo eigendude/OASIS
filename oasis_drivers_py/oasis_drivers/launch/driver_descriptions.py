@@ -179,6 +179,7 @@ class DriverDescriptions:
             remappings=[
                 # Topics
                 ("imu", f"{host_id}/imu"),
+                ("imu_calibration", f"{host_id}/imu_calibration"),
                 ("imu_raw", f"{host_id}/imu_raw"),
                 ("imu_temperature", f"{host_id}/imu_temperature"),
             ],

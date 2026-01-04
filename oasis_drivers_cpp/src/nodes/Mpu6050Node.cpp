@@ -1,0 +1,300 @@
+/*
+ *  Copyright (C) 2025 Garrett Brown
+ *  This file is part of OASIS - https://github.com/eigendude/OASIS
+ *
+ *  SPDX-License-Identifier: Apache-2.0
+ *  See the file LICENSE.txt for more information.
+ */
+
+#include "Mpu6050Node.h"
+
+#include "imu/Mpu6050ImuUtils.h"
+
+#include <chrono>
+#include <cmath>
+#include <cstdint>
+#include <cstdlib>
+#include <filesystem>
+#include <stdexcept>
+
+#include <I2Cdev.h>
+#include <rclcpp/rclcpp.hpp>
+
+using namespace OASIS::ROS;
+using namespace std::chrono_literals;
+
+namespace
+{
+
+// Default node name
+constexpr const char* NODE_NAME = "mpu6050_imu_driver";
+
+// ROS topics
+constexpr const char* IMU_TOPIC = "imu";
+constexpr const char* IMU_RAW_TOPIC = "imu_raw";
+constexpr const char* IMU_TEMPERATURE_TOPIC = "imu_temperature";
+
+// ROS frame IDs
+constexpr const char* FRAME_ID = "imu_link";
+
+// ROS parameters
+constexpr const char* DEFAULT_I2C_DEVICE = "/dev/i2c-1";
+constexpr double DEFAULT_PUBLISH_RATE_HZ = 50.0;
+constexpr double DEFAULT_GRAVITY = 9.80665; // m/s^2
+constexpr const char* DEFAULT_IMU_CALIBRATION_BASE = "imu_mpu6050_calibration";
+
+// Filesystem parameters
+constexpr const char* ROS_PROFILE_DIR_NAME = ".ros";
+constexpr const char* IMU_INFO_DIR_NAME = "imu_info";
+} // namespace
+
+Mpu6050Node::Mpu6050Node() : rclcpp::Node(NODE_NAME)
+{
+  declare_parameter("i2c_device", std::string(DEFAULT_I2C_DEVICE));
+  declare_parameter("publish_rate_hz", DEFAULT_PUBLISH_RATE_HZ);
+  declare_parameter("gravity", DEFAULT_GRAVITY);
+  declare_parameter("system_id", std::string(""));
+  declare_parameter("imu_calibration_base", std::string(DEFAULT_IMU_CALIBRATION_BASE));
+
+  m_i2cDevice = get_parameter("i2c_device").as_string();
+
+  const double publishRateHz = get_parameter("publish_rate_hz").as_double();
+  const double clampedRate = std::max(publishRateHz, 0.1);
+  m_publishPeriod = std::chrono::duration<double>(1.0 / clampedRate);
+
+  m_gravity = get_parameter("gravity").as_double();
+
+  m_systemId = get_parameter("system_id").as_string();
+  m_imuCalibrationBase = get_parameter("imu_calibration_base").as_string();
+
+  if (m_systemId.empty())
+  {
+    RCLCPP_ERROR(get_logger(), "system_id parameter is empty");
+    throw std::runtime_error("Missing system_id parameter");
+  }
+
+  // Get IMU info directory
+  const char* home = std::getenv("HOME");
+  const std::filesystem::path homePath =
+      home ? std::filesystem::path(home) : std::filesystem::path(".");
+  const std::filesystem::path imuInfoDirectory =
+      homePath / ROS_PROFILE_DIR_NAME / IMU_INFO_DIR_NAME;
+
+  // Create IMU info directory
+  std::error_code imuInfoError;
+  std::filesystem::create_directories(imuInfoDirectory, imuInfoError);
+  if (imuInfoError)
+  {
+    RCLCPP_ERROR(get_logger(), "Failed to create IMU info directory at %s: %s",
+                 imuInfoDirectory.c_str(), imuInfoError.message().c_str());
+    throw std::runtime_error("Failed to create IMU info directory");
+  }
+
+  m_calibrationCachePath = imuInfoDirectory / (m_imuCalibrationBase + "_" + m_systemId + ".yaml");
+
+  const bool calibrationFileExists = std::filesystem::exists(m_calibrationCachePath);
+
+  RCLCPP_INFO(get_logger(), "IMU calibration file %s: %s",
+              calibrationFileExists ? "found" : "NOT found", m_calibrationCachePath.c_str());
+}
+
+bool Mpu6050Node::Initialize()
+{
+  I2Cdev::initialize(m_i2cDevice.c_str());
+
+  m_mpu6050 = std::make_unique<MPU6050>();
+  m_mpu6050->initialize();
+
+  if (!m_mpu6050->testConnection())
+  {
+    RCLCPP_ERROR(get_logger(), "Failed to connect to MPU6050 on %s", m_i2cDevice.c_str());
+    m_mpu6050.reset();
+    return false;
+  }
+
+  // Query WHO_AM_I
+  const uint8_t whoAmI = m_mpu6050->getDeviceID();
+
+  RCLCPP_INFO(get_logger(), "Connected to MPU6050 on %s with device ID: 0x%02X",
+              m_i2cDevice.c_str(), whoAmI);
+
+  // Ensure full-scale ranges match our scaling assumptions
+  m_mpu6050->setFullScaleAccelRange(MPU6050_ACCEL_FS_2);
+  m_mpu6050->setFullScaleGyroRange(MPU6050_GYRO_FS_250);
+
+  const uint8_t accelRange = m_mpu6050->getFullScaleAccelRange();
+  const uint8_t gyroRange = m_mpu6050->getFullScaleGyroRange();
+
+  // Initialize IMU state based on actual configuration
+  const double accelScale = IMU::Mpu6050ImuUtils::AccelScaleFromRange(accelRange, m_gravity);
+  const double gyroScale = IMU::Mpu6050ImuUtils::GyroScaleFromRange(gyroRange);
+
+  IMU::ImuProcessor::Config cfg;
+  cfg.gravity_mps2 = m_gravity;
+  cfg.accel_scale_mps2_per_count = accelScale;
+  cfg.gyro_scale_rads_per_count = gyroScale;
+  cfg.calibration_path = m_calibrationCachePath;
+
+  if (!m_imuProcessor.Initialize(cfg))
+    return false;
+
+  RCLCPP_INFO(get_logger(), "MPU6050 full-scale ranges set (accel=%u, gyro=%u)",
+              static_cast<unsigned>(accelRange), static_cast<unsigned>(gyroRange));
+
+  const char* modeName =
+      m_imuProcessor.GetMode() == IMU::ImuProcessor::Mode::Driver ? "Driver" : "Calibration";
+  RCLCPP_INFO(get_logger(), "IMU processor mode: %s", modeName);
+
+  // Initialize publishers
+  m_imuPublisher = create_publisher<sensor_msgs::msg::Imu>(IMU_TOPIC, rclcpp::QoS{1});
+  m_imuRawPublisher = create_publisher<sensor_msgs::msg::Imu>(IMU_RAW_TOPIC, rclcpp::QoS{1});
+  m_imuTemperaturePublisher =
+      create_publisher<sensor_msgs::msg::Temperature>(IMU_TEMPERATURE_TOPIC, rclcpp::QoS{1});
+
+  // Initialize timers
+  m_timer = create_wall_timer(m_publishPeriod, std::bind(&Mpu6050Node::PublishImu, this));
+
+  return true;
+}
+
+void Mpu6050Node::Deinitialize()
+{
+  m_imuProcessor.Reset();
+  m_lastSampleTime.reset();
+}
+
+void Mpu6050Node::PublishImu()
+{
+  if (!m_mpu6050)
+  {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "MPU6050 not connected");
+    return;
+  }
+
+  const bool dataReady = m_mpu6050->getIntDataReadyStatus();
+  if (!dataReady)
+  {
+    // Log error and return
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, "MPU6050 data not ready");
+    return;
+  }
+
+  // Capture motion
+  int16_t ax = 0;
+  int16_t ay = 0;
+  int16_t az = 0;
+  int16_t gx = 0;
+  int16_t gy = 0;
+  int16_t gz = 0;
+  m_mpu6050->getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+
+  // Create timestamp
+  const rclcpp::Time now = get_clock()->now();
+  const double dt_s = m_lastSampleTime ? (now - *m_lastSampleTime).seconds() : 0.0;
+  const double timestamp_s = now.seconds();
+  m_lastSampleTime = now;
+
+  const int16_t tempRaw = m_mpu6050->getTemperature();
+  const IMU::ImuProcessor::Output out =
+      m_imuProcessor.Update(ax, ay, az, gx, gy, gz, tempRaw, dt_s, timestamp_s);
+
+  // Create header for published messages
+  std_msgs::msg::Header headerMsg;
+  headerMsg.stamp = now;
+  headerMsg.frame_id = FRAME_ID;
+
+  // Publish motion
+  sensor_msgs::msg::Imu imuMsg;
+  sensor_msgs::msg::Imu imuRawMsg;
+
+  auto fillImuMsg = [&](sensor_msgs::msg::Imu& imuMsg, const IMU::ImuSample& sample)
+  {
+    // Header
+    imuMsg.header = headerMsg;
+
+    // Linear acceleration
+    imuMsg.linear_acceleration.x = sample.accel_mps2[0];
+    imuMsg.linear_acceleration.y = sample.accel_mps2[1];
+    imuMsg.linear_acceleration.z = sample.accel_mps2[2];
+
+    // Angular velocity
+    imuMsg.angular_velocity.x = sample.gyro_rads[0];
+    imuMsg.angular_velocity.y = sample.gyro_rads[1];
+    imuMsg.angular_velocity.z = sample.gyro_rads[2];
+
+    // Orientation not provided, set identity
+    imuMsg.orientation.x = 0.0;
+    imuMsg.orientation.y = 0.0;
+    imuMsg.orientation.z = 0.0;
+    imuMsg.orientation.w = 1.0;
+
+    imuMsg.orientation_covariance.fill(0.0);
+    imuMsg.linear_acceleration_covariance.fill(0.0);
+    imuMsg.angular_velocity_covariance.fill(0.0);
+
+    // Orientation not estimated (set [0,0] to -1 per REP-145)
+    imuMsg.orientation_covariance[0] = -1.0;
+
+    // Linear acceleration covariance (full 3x3 row-major)
+    imuMsg.linear_acceleration_covariance[0] = sample.accel_cov_mps2_2[0][0];
+    imuMsg.linear_acceleration_covariance[1] = sample.accel_cov_mps2_2[0][1];
+    imuMsg.linear_acceleration_covariance[2] = sample.accel_cov_mps2_2[0][2];
+    imuMsg.linear_acceleration_covariance[3] = sample.accel_cov_mps2_2[1][0];
+    imuMsg.linear_acceleration_covariance[4] = sample.accel_cov_mps2_2[1][1];
+    imuMsg.linear_acceleration_covariance[5] = sample.accel_cov_mps2_2[1][2];
+    imuMsg.linear_acceleration_covariance[6] = sample.accel_cov_mps2_2[2][0];
+    imuMsg.linear_acceleration_covariance[7] = sample.accel_cov_mps2_2[2][1];
+    imuMsg.linear_acceleration_covariance[8] = sample.accel_cov_mps2_2[2][2];
+
+    // Angular velocity covariance (full 3x3 row-major)
+    imuMsg.angular_velocity_covariance[0] = sample.gyro_cov_rads2_2[0][0];
+    imuMsg.angular_velocity_covariance[1] = sample.gyro_cov_rads2_2[0][1];
+    imuMsg.angular_velocity_covariance[2] = sample.gyro_cov_rads2_2[0][2];
+    imuMsg.angular_velocity_covariance[3] = sample.gyro_cov_rads2_2[1][0];
+    imuMsg.angular_velocity_covariance[4] = sample.gyro_cov_rads2_2[1][1];
+    imuMsg.angular_velocity_covariance[5] = sample.gyro_cov_rads2_2[1][2];
+    imuMsg.angular_velocity_covariance[6] = sample.gyro_cov_rads2_2[2][0];
+    imuMsg.angular_velocity_covariance[7] = sample.gyro_cov_rads2_2[2][1];
+    imuMsg.angular_velocity_covariance[8] = sample.gyro_cov_rads2_2[2][2];
+  };
+
+  if (out.has_raw)
+  {
+    fillImuMsg(imuRawMsg, out.raw);
+    m_imuRawPublisher->publish(imuRawMsg);
+  }
+
+  if (out.has_corrected)
+  {
+    fillImuMsg(imuMsg, out.corrected);
+    m_imuPublisher->publish(imuMsg);
+  }
+
+  // Publish temperature
+  sensor_msgs::msg::Temperature temperatureMsg;
+
+  temperatureMsg.header = headerMsg;
+  temperatureMsg.temperature = out.raw.temperature_c;
+  temperatureMsg.variance = out.raw.temperature_var_c2;
+
+  m_imuTemperaturePublisher->publish(temperatureMsg);
+
+  if (out.mode == IMU::ImuProcessor::Mode::Calibration && out.calibration_ready &&
+      !m_savedCalibration)
+  {
+    IMU::ImuCalibrationRecord rec = out.calibration_record;
+    rec.created_unix_ns = static_cast<std::uint64_t>(now.nanoseconds());
+
+    if (m_calibFile.Save(m_calibrationCachePath, rec))
+    {
+      RCLCPP_INFO(get_logger(), "Saved IMU calibration to %s", m_calibrationCachePath.c_str());
+      m_savedCalibration = true;
+      rclcpp::shutdown();
+    }
+    else
+    {
+      RCLCPP_ERROR(get_logger(), "Failed to save IMU calibration to %s",
+                   m_calibrationCachePath.c_str());
+    }
+  }
+}
