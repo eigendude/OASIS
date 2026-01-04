@@ -18,6 +18,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <vector>
 
 namespace OASIS::IMU
 {
@@ -80,6 +81,34 @@ public:
      * Units: path
      */
     std::filesystem::path calibration_path;
+
+    /*!
+     * \brief Maximum angle between gravity directions to merge poses
+     *
+     * Units: degrees
+     */
+    double pose_cluster_angle_deg{15.0};
+
+    /*!
+     * \brief Minimum time between accepted stationary poses
+     *
+     * Units: seconds
+     */
+    double pose_min_interval_s{0.5};
+
+    /*!
+     * \brief Minimum number of pose clusters for coverage
+     *
+     * Units: count
+     */
+    std::size_t min_pose_clusters{6};
+
+    /*!
+     * \brief Axis coverage cosine threshold for pose clusters
+     *
+     * Units: unitless
+     */
+    double coverage_axis_cos{0.7};
   };
 
   struct Output
@@ -167,6 +196,40 @@ private:
     Mat3 cov{};
   };
 
+  struct PoseCluster
+  {
+    /*!
+     * \brief Unit gravity direction in the IMU frame
+     *
+     * Units: unitless
+     */
+    Vec3 dir_unit{0.0, 0.0, 0.0};
+
+    /*!
+     * \brief Running mean accel vector for this pose
+     *
+     * Units: m/s^2
+     */
+    Vec3 mean_accel_mps2{0.0, 0.0, 0.0};
+
+    /*!
+     * \brief Number of windows fused into this pose
+     *
+     * Units: count
+     */
+    std::size_t count{0};
+  };
+
+  static double Dot(const Vec3& a, const Vec3& b);
+  static double Norm(const Vec3& a);
+  static Vec3 NormalizeOrZero(const Vec3& v);
+
+  std::size_t FindOrCreatePoseCluster(const Vec3& dir_unit, bool& created);
+  void UpdatePoseCluster(std::size_t idx, const Vec3& mean_accel_mps2);
+
+  bool HasSufficientCoverage() const;
+  bool IsCalibrationImproved(const AccelCalibrationSolver::Result& result) const;
+
   void ResetCalibrationState();
 
   Config m_cfg{};
@@ -174,6 +237,7 @@ private:
 
   bool m_hasCalibrationRecord{false};
   bool m_calibrationReady{false};
+  bool m_calibrationUpdated{false};
 
   ImuCalibrationRecord m_calibrationRecord{};
 
@@ -181,6 +245,15 @@ private:
   StationaryDetector m_stationaryDetector;
   AccelCalibrationSolver m_solver;
   GyroBiasEstimator m_gyroBiasEstimator;
+
+  std::vector<PoseCluster> m_poseClusters;
+
+  bool m_prevStationary{false};
+  double m_lastPoseAcceptStampS{0.0};
+
+  bool m_hasBestAccelFit{false};
+  double m_bestAccelRmsMps2{0.0};
+  std::uint32_t m_bestAccelSampleCount{0};
 
   RunningStats m_temperatureStats;
   EwmaCovariance3 m_accelNoise;

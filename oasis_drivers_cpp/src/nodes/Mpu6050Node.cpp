@@ -48,6 +48,10 @@ constexpr const char* DEFAULT_IMU_CALIBRATION_BASE = "imu_mpu6050_calibration";
 // Filesystem parameters
 constexpr const char* ROS_PROFILE_DIR_NAME = ".ros";
 constexpr const char* IMU_INFO_DIR_NAME = "imu_info";
+
+// Units: m/s^2
+// Meaning: improvement threshold for accel RMS residual
+constexpr double kAccelRmsEpsilonMps2 = 1e-4;
 } // namespace
 
 Mpu6050Node::Mpu6050Node() : rclcpp::Node(NODE_NAME)
@@ -286,26 +290,57 @@ void Mpu6050Node::PublishImu()
 
   m_imuTemperaturePublisher->publish(temperatureMsg);
 
+  IMU::ImuCalibrationRecord publish_record{};
+  if (m_imuProcessor.HasCalibrationRecord())
+    publish_record = m_imuProcessor.GetCalibrationRecord();
+
   const oasis_msgs::msg::ImuCalibration calibrationMsg =
-      ToImuCalibrationMsg(headerMsg, out.calibration_record);
+      ToImuCalibrationMsg(headerMsg, publish_record);
   m_imuCalibrationPublisher->publish(calibrationMsg);
 
-  if (out.mode == IMU::ImuProcessor::Mode::Calibration && out.calibration_ready &&
-      !m_savedCalibration)
+  IMU::ImuCalibrationRecord save_record{};
+  bool has_save_record = false;
+  if (m_imuProcessor.HasCalibrationRecord())
   {
-    IMU::ImuCalibrationRecord rec = out.calibration_record;
-    rec.created_unix_ns = static_cast<std::uint64_t>(now.nanoseconds());
+    save_record = m_imuProcessor.GetCalibrationRecord();
+    has_save_record = true;
+  }
+  else if (out.calibration_record.calib.valid)
+  {
+    save_record = out.calibration_record;
+    has_save_record = true;
+  }
 
-    if (m_calibFile.Save(m_calibrationCachePath, rec))
+  const bool cooldown_ok =
+      !m_hasLastCalibrationSaveTime || (now - m_lastCalibrationSaveTime).seconds() >= 1.0;
+
+  if (out.mode == IMU::ImuProcessor::Mode::Calibration && has_save_record &&
+      save_record.calib.valid && cooldown_ok)
+  {
+    const bool improved =
+        !m_hasBestCalibration ||
+        (save_record.calib.rms_residual_mps2 < (m_bestRmsMps2 - kAccelRmsEpsilonMps2)) ||
+        (save_record.fit_sample_count > m_bestFitSampleCount &&
+         save_record.calib.rms_residual_mps2 <= (m_bestRmsMps2 + kAccelRmsEpsilonMps2));
+
+    if (improved)
     {
-      RCLCPP_INFO(get_logger(), "Saved IMU calibration to %s", m_calibrationCachePath.c_str());
-      m_savedCalibration = true;
-      rclcpp::shutdown();
-    }
-    else
-    {
-      RCLCPP_ERROR(get_logger(), "Failed to save IMU calibration to %s",
-                   m_calibrationCachePath.c_str());
+      save_record.created_unix_ns = static_cast<std::uint64_t>(now.nanoseconds());
+
+      if (m_calibFile.Save(m_calibrationCachePath, save_record))
+      {
+        RCLCPP_INFO(get_logger(), "Saved IMU calibration to %s", m_calibrationCachePath.c_str());
+        m_lastCalibrationSaveTime = now;
+        m_hasLastCalibrationSaveTime = true;
+        m_hasBestCalibration = true;
+        m_bestRmsMps2 = save_record.calib.rms_residual_mps2;
+        m_bestFitSampleCount = save_record.fit_sample_count;
+      }
+      else
+      {
+        RCLCPP_ERROR(get_logger(), "Failed to save IMU calibration to %s",
+                     m_calibrationCachePath.c_str());
+      }
     }
   }
 }
