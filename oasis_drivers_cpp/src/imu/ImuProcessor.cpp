@@ -32,6 +32,17 @@ Mat3 MakeDiagonal(const Vec3& diag)
   return out;
 }
 
+Mat3 ScaleMat3(const Mat3& m, double scale)
+{
+  Mat3 out{};
+  for (std::size_t i = 0; i < 3; ++i)
+  {
+    for (std::size_t j = 0; j < 3; ++j)
+      out[i][j] = m[i][j] * scale;
+  }
+  return out;
+}
+
 Vec3 ScaleCounts(const Vec3& counts, double scale)
 {
   return {counts[0] * scale, counts[1] * scale, counts[2] * scale};
@@ -133,6 +144,7 @@ bool ImuProcessor::Initialize(const Config& cfg)
   m_temperature.Reset();
   m_stationaryDetector.Reset();
   m_solver.Reset();
+  m_gyroBiasEstimator.Reset();
   m_temperatureStats.Reset();
   m_accelNoise.Reset();
   m_gyroNoise.Reset();
@@ -236,6 +248,9 @@ ImuProcessor::Output ImuProcessor::Update(int16_t ax,
   const StationaryDetector::Status status = m_stationaryDetector.Update(raw_sample, noise);
   if (status.stationary)
   {
+    m_gyroBiasEstimator.Update(status.mean_gyro_rads,
+                               status.cov_gyro_rads2_2,
+                               status.window_count);
     m_solver.AddSample(raw_sample.accel_mps2);
 
     if (!m_calibrationReady)
@@ -257,8 +272,19 @@ ImuProcessor::Output ImuProcessor::Update(int16_t ax,
         record.calib.accel_A = result.accel_A;
         record.calib.accel_param_cov = result.accel_param_cov;
         record.calib.rms_residual_mps2 = result.rms_residual_mps2;
-        record.calib.gyro_bias_rads = status.mean_gyro_rads;
-        record.calib.gyro_bias_cov_rads2_2 = raw_sample.gyro_cov_rads2_2;
+        if (m_gyroBiasEstimator.IsInitialized())
+        {
+          record.calib.gyro_bias_rads = m_gyroBiasEstimator.GetBias();
+          record.calib.gyro_bias_cov_rads2_2 = m_gyroBiasEstimator.GetCov();
+        }
+        else
+        {
+          const double window_count =
+              std::max(1.0, static_cast<double>(status.window_count));
+          record.calib.gyro_bias_rads = status.mean_gyro_rads;
+          record.calib.gyro_bias_cov_rads2_2 =
+              ScaleMat3(status.cov_gyro_rads2_2, 1.0 / window_count);
+        }
         record.calib.temperature_c = m_temperatureStats.mean;
         record.calib.temperature_var_c2 = m_temperatureStats.Variance();
         record.calib.valid = true;
@@ -310,6 +336,7 @@ void ImuProcessor::ResetCalibrationState()
 {
   m_stationaryDetector.Reset();
   m_solver.Reset();
+  m_gyroBiasEstimator.Reset();
   m_temperatureStats.Reset();
   m_accelNoise.Reset();
   m_gyroNoise.Reset();

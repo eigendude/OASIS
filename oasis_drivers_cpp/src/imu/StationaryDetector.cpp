@@ -93,6 +93,19 @@ StationaryDetector::Status StationaryDetector::Update(const ImuSample& sample, c
     }
   }
 
+  for (std::size_t i = 0; i < 3; ++i)
+  {
+    for (std::size_t j = i + 1; j < 3; ++j)
+    {
+      const double sym = 0.5 * (cov_gyro[i][j] + cov_gyro[j][i]);
+      cov_gyro[i][j] = sym;
+      cov_gyro[j][i] = sym;
+    }
+  }
+
+  out.cov_gyro_rads2_2 = cov_gyro;
+  out.window_count = m_window.size();
+
   for (std::size_t axis = 0; axis < 3; ++axis)
   {
     const double accel_var_gate =
