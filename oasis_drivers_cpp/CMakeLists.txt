@@ -95,6 +95,7 @@ endif()
 add_executable(mpu6050_imu_driver
   src/cli/mpu6050_imu_driver.cpp
   src/imu/cal/AccelCalibrationSolver.cpp
+  src/imu/cal/GyroBiasEstimator.cpp
   src/imu/ImuProcessor.cpp
   src/imu/ImuTemperature.cpp
   src/imu/io/ImuCalibrationFile.cpp

@@ -12,6 +12,7 @@
 #include "imu/ImuTypes.h"
 #include "imu/StationaryDetector.h"
 #include "imu/cal/AccelCalibrationSolver.h"
+#include "imu/cal/GyroBiasEstimator.h"
 #include "imu/io/ImuCalibrationFile.h"
 
 #include <cstddef>
@@ -151,6 +152,7 @@ private:
   ImuTemperature m_temperature;
   StationaryDetector m_stationaryDetector;
   AccelCalibrationSolver m_solver;
+  GyroBiasEstimator m_gyroBiasEstimator;
 
   RunningStats m_temperatureStats;
   NoiseEstimator m_accelNoise;

@@ -91,6 +91,21 @@ public:
      * Units: rad/s
      */
     Vec3 mean_gyro_rads{0.0, 0.0, 0.0};
+
+    /*!
+     * \brief Gyro sample covariance over window
+     *
+     * Units: (rad/s)^2
+     * Layout: row-major 3x3
+     */
+    Mat3 cov_gyro_rads2_2{};
+
+    /*!
+     * \brief Number of samples in the window
+     *
+     * Units: samples
+     */
+    std::size_t window_count{0};
   };
 
   StationaryDetector() = default;
