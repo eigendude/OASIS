@@ -9,6 +9,7 @@
 #include "Mmc5983maMagnetometerNode.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <optional>
@@ -32,6 +33,7 @@ constexpr std::uint8_t DEFAULT_I2C_ADDRESS = 0x30;
 constexpr double DEFAULT_PUBLISH_RATE_HZ = 50.0;
 constexpr double DEFAULT_RAW_RATE_HZ = 100.0;
 constexpr std::uint8_t DEFAULT_BANDWIDTH_MODE = 1;
+constexpr int DEFAULT_MEASUREMENT_TIMEOUT_MS = 20;
 
 constexpr double DEFAULT_STATIONARY_WINDOW_SEC = 2.0;
 constexpr double DEFAULT_EWMA_TAU_SEC = 10.0;
@@ -69,6 +71,7 @@ Mmc5983maMagnetometerNode::Mmc5983maMagnetometerNode() : rclcpp::Node(NODE_NAME)
   declare_parameter("publish_rate_hz", DEFAULT_PUBLISH_RATE_HZ);
   declare_parameter("raw_rate_hz", DEFAULT_RAW_RATE_HZ);
   declare_parameter("bandwidth_mode", static_cast<int>(DEFAULT_BANDWIDTH_MODE));
+  declare_parameter("measurement_timeout_ms", DEFAULT_MEASUREMENT_TIMEOUT_MS);
   declare_parameter("stationary_window_sec", DEFAULT_STATIONARY_WINDOW_SEC);
   declare_parameter("ewma_tau_sec", DEFAULT_EWMA_TAU_SEC);
   declare_parameter("prior_strength_samples", DEFAULT_PRIOR_STRENGTH_SAMPLES);
@@ -92,11 +95,20 @@ Mmc5983maMagnetometerNode::Mmc5983maMagnetometerNode() : rclcpp::Node(NODE_NAME)
   const double rawRateHz = get_parameter("raw_rate_hz").as_double();
 
   const double clampedPublishRate = std::max(publishRateHz, 0.1);
-  const double clampedRawRate = std::max(rawRateHz, 0.1);
+  const double clampedRawRate = std::max(rawRateHz, clampedPublishRate);
   m_publishPeriod = std::chrono::duration<double>(1.0 / clampedPublishRate);
+
+  if (rawRateHz < publishRateHz)
+  {
+    RCLCPP_WARN(get_logger(),
+                "raw_rate_hz (%.2f) is below publish_rate_hz (%.2f); clamping raw rate to"
+                " match publish rate",
+                rawRateHz, publishRateHz);
+  }
 
   m_rawRateHz = static_cast<std::uint16_t>(std::round(clampedRawRate));
   m_bandwidthMode = static_cast<std::uint8_t>(get_parameter("bandwidth_mode").as_int());
+  m_measurementTimeoutMs = get_parameter("measurement_timeout_ms").as_int();
 
   const double stationaryWindowSec = get_parameter("stationary_window_sec").as_double();
   m_ewmaTauSec = get_parameter("ewma_tau_sec").as_double();
@@ -285,11 +297,10 @@ bool Mmc5983maMagnetometerNode::ConfigureDevice()
   Magnetometer::Mmc5983maConfig config;
   config.i2c_device = m_i2cDevice;
   config.i2c_address = m_i2cAddress;
-  config.raw_rate_code =
-      EncodeRawRate(static_cast<std::uint16_t>(std::round(1.0 / m_publishPeriod.count())));
+  config.raw_rate_code = EncodeRawRate(m_rawRateHz);
   config.bandwidth_mode = m_bandwidthMode;
   config.tesla_per_count = kTeslaPerCount;
-  config.measurement_timeout_ms = 20;
+  config.measurement_timeout_ms = m_measurementTimeoutMs;
 
   if (!m_device.Initialize(config))
   {
