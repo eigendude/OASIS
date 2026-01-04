@@ -46,7 +46,9 @@ class ImuCalibration:
             not needed for parameter uncertainty propagation.
         accel_a: 3x3 scale/misalignment matrix in row-major order.
         accel_param_cov: 12x12 covariance for [bx, by, bz, a00..a22].
+            Propagated into roll/pitch measurement noise.
         gyro_bias_cov: 3x3 covariance of gyroscope bias in (rad/s)^2.
+            Used as process noise when integrating gyro rates.
     """
 
     gravity_mps2: float
@@ -70,8 +72,9 @@ class TiltPoseEstimator:
 
     Process model:
         Propagate roll and pitch by integrating calibrated gyro rates.
-        Process noise Q comes from gyro measurement noise plus gyro bias
-        uncertainty.
+        Process noise Q comes from gyro measurement noise, gyro bias
+        uncertainty, and a small bias random-walk term that approximates
+        unmodeled drift when bias is not in the state.
 
     Measurement model:
         Compute roll and pitch from the gravity direction inferred from
@@ -79,9 +82,11 @@ class TiltPoseEstimator:
         accel measurement noise and accel calibration parameter
         uncertainty.
 
-    Accelerometer corrections are gated when | ||a|| - g | exceeds the
-    configured threshold. Yaw is unobserved, so orientation covariance
-    includes a large yaw variance.
+    Accelerometer corrections use soft gating based on | ||a|| - g |.
+    Measurement covariance is inflated when acceleration magnitude
+    diverges from gravity, yielding smaller Kalman gains under vibration.
+    Yaw is unobserved, so orientation covariance includes a large yaw
+    variance.
 
     Covariance outputs:
         Roll/pitch covariance is 2x2. Orientation covariance is a full
@@ -93,7 +98,9 @@ class TiltPoseEstimator:
         self,
         accel_trust_threshold_mps2: float = 1.5,
         yaw_variance_rad2: float = 1.0e6,
-        min_attitude_variance: float = 1.0e-6,
+        min_attitude_variance: float = 1.0e-4,
+        max_accel_inflation: float = 100.0,
+        gyro_bias_rw_var_rads2: float = 1.0e-6,
     ) -> None:
         r"""
         Initialize the estimator.
@@ -103,12 +110,19 @@ class TiltPoseEstimator:
                 rejecting accelerometer corrections in m/s^2.
             yaw_variance_rad2: Variance assigned to yaw in rad^2.
             min_attitude_variance: Lower bound for roll/pitch variance in
-                rad^2.
+                rad^2. This is higher than the numerical minimum to keep
+                covariance truthful on vibrating platforms.
+            max_accel_inflation: Maximum multiplier for accel covariance
+                when | ||a|| - g | is large.
+            gyro_bias_rw_var_rads2: Extra gyro variance in (rad/s)^2 used
+                to approximate unmodeled bias drift and vibration.
         """
 
         self._accel_trust_threshold_mps2: float = accel_trust_threshold_mps2
         self._yaw_variance_rad2: float = yaw_variance_rad2
         self._min_attitude_variance: float = min_attitude_variance
+        self._max_accel_inflation: float = max_accel_inflation
+        self._gyro_bias_rw_var_rads2: float = gyro_bias_rw_var_rads2
 
         self._gravity_mps2: float = 9.80665
 
@@ -172,13 +186,8 @@ class TiltPoseEstimator:
                 return False
 
             self._roll, self._pitch = self._gravity_to_attitude(accel)
-            self._state_cov = np.array(
-                [
-                    [self._min_attitude_variance, 0.0],
-                    [0.0, self._min_attitude_variance],
-                ],
-                dtype=float,
-            )
+            init_cov: np.ndarray = self._orientation_covariance(accel, accel_cov)
+            self._state_cov = self._sanitize_covariance(init_cov)
             return True
 
         roll_pred: float
@@ -186,27 +195,25 @@ class TiltPoseEstimator:
         roll_pred, pitch_pred = self._predict_attitude(gyro, dt)
         pred_cov: np.ndarray = self._predict_covariance(gyro, gyro_cov, dt)
 
-        if self._accel_is_trusted(accel):
-            roll_meas: float
-            pitch_meas: float
-            roll_meas, pitch_meas = self._gravity_to_attitude(accel)
-            meas_cov: np.ndarray = self._orientation_covariance(accel, accel_cov)
-            roll_upd: float
-            pitch_upd: float
-            upd_cov: np.ndarray
-            roll_upd, pitch_upd, upd_cov = self._kalman_update(
-                (roll_pred, pitch_pred),
-                pred_cov,
-                (roll_meas, pitch_meas),
-                meas_cov,
-            )
-            self._roll = self._wrap_pi(roll_upd)
-            self._pitch = self._wrap_pi(pitch_upd)
-            self._state_cov = upd_cov
-        else:
-            self._roll = self._wrap_pi(roll_pred)
-            self._pitch = self._wrap_pi(pitch_pred)
-            self._state_cov = pred_cov
+        roll_meas: float
+        pitch_meas: float
+        roll_meas, pitch_meas = self._gravity_to_attitude(accel)
+
+        meas_cov: np.ndarray = self._orientation_covariance(accel, accel_cov)
+        meas_cov = self._inflate_measurement_covariance(accel, meas_cov)
+
+        roll_upd: float
+        pitch_upd: float
+        upd_cov: np.ndarray
+        roll_upd, pitch_upd, upd_cov = self._kalman_update(
+            (roll_pred, pitch_pred),
+            pred_cov,
+            (roll_meas, pitch_meas),
+            meas_cov,
+        )
+        self._roll = self._wrap_pi(roll_upd)
+        self._pitch = self._wrap_pi(pitch_upd)
+        self._state_cov = upd_cov
 
         return True
 
@@ -223,6 +230,12 @@ class TiltPoseEstimator:
         return self._rpy_to_quaternion(roll, pitch, yaw)
 
     def orientation_covariance_rpy(self) -> list[float]:
+        """
+        Return roll/pitch covariance with large yaw variance on the diagonal.
+
+        The yaw term remains large because the filter does not observe yaw.
+        """
+
         covariance: np.ndarray = np.zeros((3, 3), dtype=float)
         covariance[0:2, 0:2] = self._state_cov
         covariance[2, 2] = self._yaw_variance_rad2
@@ -301,6 +314,13 @@ class TiltPoseEstimator:
         angular_velocity_covariance: Optional[Iterable[float]],
         gyro_bias_cov: np.ndarray,
     ) -> np.ndarray:
+        """
+        Build gyro covariance used for process noise.
+
+        The bias random-walk term approximates unmodeled bias drift since
+        we do not estimate gyro bias as part of the state.
+        """
+
         base: Optional[np.ndarray] = self._covariance_matrix(
             angular_velocity_covariance
         )
@@ -312,7 +332,11 @@ class TiltPoseEstimator:
         else:
             bias_cov = gyro_bias_cov
 
-        total: np.ndarray = base + bias_cov
+        # Units: (rad/s)^2. Meaning: unmodeled gyro bias drift variance.
+        bias_rw: float = max(0.0, float(self._gyro_bias_rw_var_rads2))
+        bias_rw_cov: np.ndarray = np.eye(3, dtype=float) * bias_rw
+
+        total: np.ndarray = base + bias_cov + bias_rw_cov
         return self._symmetrize(total)
 
     def _accel_covariance(
@@ -388,6 +412,30 @@ class TiltPoseEstimator:
 
         cov: np.ndarray = jac @ accel_cov @ jac.T
         return self._sanitize_covariance(cov)
+
+    def _inflate_measurement_covariance(
+        self, accel: np.ndarray, meas_cov: np.ndarray
+    ) -> np.ndarray:
+        """
+        Inflate accelerometer measurement covariance when dynamics are high.
+
+        Alpha = 1 + (| ||a|| - g | / threshold)^2. This keeps updates smooth
+        while reducing their influence under vibration.
+        """
+
+        magnitude: float = float(np.linalg.norm(accel))
+
+        # Units: m/s^2. Meaning: acceptable deviation from gravity.
+        threshold: float = max(self._accel_trust_threshold_mps2, 1.0e-6)
+
+        err: float = abs(magnitude - self._gravity_mps2)
+
+        # Unitless. Meaning: soft gating factor from acceleration error.
+        alpha: float = 1.0 + (err / threshold) ** 2
+        alpha = min(max(alpha, 1.0), max(1.0, self._max_accel_inflation))
+
+        inflated: np.ndarray = meas_cov * alpha
+        return self._sanitize_covariance(inflated)
 
     def _covariance_matrix(
         self, covariance: Optional[Iterable[float]]

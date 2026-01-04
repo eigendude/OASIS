@@ -39,12 +39,18 @@ PARAM_TILT_TOPIC: str = "tilt_topic"
 PARAM_FRAME_ID: str = "frame_id"
 PARAM_ACCEL_TRUST_THRESHOLD: str = "accel_trust_threshold_mps2"
 PARAM_YAW_VAR_RAD2: str = "yaw_var_rad2"
+PARAM_MIN_ATTITUDE_VAR: str = "min_attitude_variance"
+PARAM_MAX_ACCEL_INFLATION: str = "max_accel_inflation"
+PARAM_GYRO_BIAS_RW_VAR_RAD2: str = "gyro_bias_rw_var_rads2"
 PARAM_PUBLISH_TILT_RP: str = "publish_tilt_rp"
 
 DEFAULT_NAMESPACE: str = "oasis"
 DEFAULT_ROBOT_NAME: str = "falcon"
 DEFAULT_ACCEL_TRUST_THRESHOLD_MPS2: float = 1.5
 DEFAULT_YAW_VAR_RAD2: float = 1.0e6
+DEFAULT_MIN_ATTITUDE_VARIANCE: float = 1.0e-4
+DEFAULT_MAX_ACCEL_INFLATION: float = 100.0
+DEFAULT_GYRO_BIAS_RW_VAR_RAD2: float = 1.0e-6
 
 # Units: s. Meaning: threshold for rejecting large time deltas.
 MAX_DT_SPIKE_S: float = 0.2
@@ -78,6 +84,11 @@ class TiltSensorNode(rclpy.node.Node):
             PARAM_ACCEL_TRUST_THRESHOLD, DEFAULT_ACCEL_TRUST_THRESHOLD_MPS2
         )
         self.declare_parameter(PARAM_YAW_VAR_RAD2, DEFAULT_YAW_VAR_RAD2)
+        self.declare_parameter(PARAM_MIN_ATTITUDE_VAR, DEFAULT_MIN_ATTITUDE_VARIANCE)
+        self.declare_parameter(PARAM_MAX_ACCEL_INFLATION, DEFAULT_MAX_ACCEL_INFLATION)
+        self.declare_parameter(
+            PARAM_GYRO_BIAS_RW_VAR_RAD2, DEFAULT_GYRO_BIAS_RW_VAR_RAD2
+        )
         self.declare_parameter(PARAM_PUBLISH_TILT_RP, False)
 
         imu_topic: str = str(self.get_parameter(PARAM_IMU_TOPIC).value)
@@ -89,6 +100,15 @@ class TiltSensorNode(rclpy.node.Node):
             self.get_parameter(PARAM_ACCEL_TRUST_THRESHOLD).value
         )
         yaw_variance: float = float(self.get_parameter(PARAM_YAW_VAR_RAD2).value)
+        min_attitude_variance: float = float(
+            self.get_parameter(PARAM_MIN_ATTITUDE_VAR).value
+        )
+        max_accel_inflation: float = float(
+            self.get_parameter(PARAM_MAX_ACCEL_INFLATION).value
+        )
+        gyro_bias_rw_var_rad2: float = float(
+            self.get_parameter(PARAM_GYRO_BIAS_RW_VAR_RAD2).value
+        )
         publish_tilt_rp: bool = bool(self.get_parameter(PARAM_PUBLISH_TILT_RP).value)
 
         qos_profile: rclpy.qos.QoSProfile = (
@@ -98,6 +118,9 @@ class TiltSensorNode(rclpy.node.Node):
         self._estimator: TiltPoseEstimator = TiltPoseEstimator(
             accel_trust_threshold_mps2=accel_trust_threshold,
             yaw_variance_rad2=yaw_variance,
+            min_attitude_variance=min_attitude_variance,
+            max_accel_inflation=max_accel_inflation,
+            gyro_bias_rw_var_rads2=gyro_bias_rw_var_rad2,
         )
 
         self._tilt_pub: rclpy.publisher.Publisher = self.create_publisher(
