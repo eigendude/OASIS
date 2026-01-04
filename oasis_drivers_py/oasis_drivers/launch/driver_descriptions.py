@@ -162,6 +162,28 @@ class DriverDescriptions:
             ld.add_action(kinect2_container)
 
     #
+    # MMC5983MA 3-axis magnetometer driver
+    #
+
+    @staticmethod
+    def add_mmc5983ma_magnetometer(ld: LaunchDescription, host_id: str) -> None:
+        magnetometer_node: Node = Node(
+            namespace=ROS_NAMESPACE,
+            package=CPP_PACKAGE_NAME,
+            executable="mmc5983ma_magnetometer_driver",
+            name=f"mmc5983ma_magnetometer_driver_{host_id}",
+            output="screen",
+            parameters=[
+                {"system_id": host_id},
+            ],
+            remappings=[
+                # Topics
+                ("magnetic_field", f"{host_id}/magnetic_field"),
+            ],
+        )
+        ld.add_action(magnetometer_node)
+
+    #
     # MPU 6050 6-DoF IMU driver
     #
 
