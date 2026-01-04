@@ -131,6 +131,33 @@ install(
     lib/${PROJECT_NAME}
 )
 
+#
+# mmc5983ma_magnetometer_driver
+#
+
+add_executable(mmc5983ma_magnetometer_driver
+  src/cli/mmc5983ma_magnetometer_driver.cpp
+  src/magnetometer/CovarianceEstimator3D.cpp
+  src/magnetometer/Mmc5983maDevice.cpp
+  src/magnetometer/io/MagnetometerCalibrationFile.cpp
+  src/nodes/Mmc5983maMagnetometerNode.cpp
+)
+
+target_link_libraries(mmc5983ma_magnetometer_driver
+  i2cdevlib::mpu6050
+  Eigen3::Eigen
+  rclcpp::rclcpp
+  ${sensor_msgs_TARGETS}
+  yaml-cpp
+)
+
+install(
+  TARGETS
+    mmc5983ma_magnetometer_driver
+  DESTINATION
+    lib/${PROJECT_NAME}
+)
+
 ################################################################################
 # Configuration files
 ################################################################################
