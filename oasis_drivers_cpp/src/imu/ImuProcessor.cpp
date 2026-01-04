@@ -160,10 +160,20 @@ void ImuProcessor::EwmaCovariance3::Reset()
 
 void ImuProcessor::EwmaCovariance3::Update(const Vec3& sample, double dt_s)
 {
+  // Units: seconds
+  // Meaning: clamp to keep EWMA dynamics bounded across irregular timing
   const double dt = ClampDt(dt_s);
+
+  // Units: seconds
+  // Meaning: EWMA time constant where step response reaches ~63%
   const double tau = std::max(tau_s, kMinTauS);
 
+  // Units: unitless
+  // Meaning: alpha(dt) = 1 - exp(-dt / tau) for continuous-time EWMA
   double alpha = 1.0 - std::exp(-dt / tau);
+
+  // Units: unitless
+  // Meaning: clamp to avoid near-zero updates and numeric overflows
   alpha = std::clamp(alpha, kMinAlpha, 1.0);
 
   if (!initialized)
@@ -179,16 +189,28 @@ void ImuProcessor::EwmaCovariance3::Update(const Vec3& sample, double dt_s)
     return;
   }
 
+  // Units: counts
+  // Meaning: mean update uses new mean, then covariance uses delta from it
   const Vec3 mean_new = AddScaled(mean, Subtract(sample, mean), alpha);
   const Vec3 delta = Subtract(sample, mean_new);
   const Mat3 outer_dd = Outer(delta, delta);
 
+  // Units: counts^2
+  // Meaning: EWMA covariance with outer(delta, delta) innovation
   cov = AddScaledMat3(ScaleMat3(cov, 1.0 - alpha), outer_dd, alpha);
+
+  // Units: counts^2
+  // Meaning: symmetrize to counter numerical asymmetry
   cov = SymmetrizeMat3(cov);
 
   for (std::size_t i = 0; i < 3; ++i)
   {
+    // Units: counts^2
+    // Meaning: diagonal floor enforces minimum noise variance per axis
     cov[i][i] = std::max(cov[i][i], min_variance_floor);
+
+    // Units: counts^2
+    // Meaning: jitter keeps covariance positive definite for inversion
     cov[i][i] += kDiagJitter;
   }
 

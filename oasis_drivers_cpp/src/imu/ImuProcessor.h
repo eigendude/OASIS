@@ -157,6 +157,9 @@ private:
     Mat3 Covariance() const;
 
     bool initialized{false};
+
+    // Units: seconds
+    // Meaning: EWMA time constant for noise covariance adaptation
     double tau_s{2.0};
     double min_variance_floor{1.0};
 
