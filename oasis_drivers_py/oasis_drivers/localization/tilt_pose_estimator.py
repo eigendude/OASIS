@@ -28,9 +28,22 @@ class ImuCalibration:
     """
     IMU calibration parameters with parameter uncertainty.
 
+    Calibration model:
+        a_cal = A @ (a_raw - b_a)
+        w_cal = w_raw - b_g
+
+    Parameter covariance layout (12 params):
+        [bx, by, bz, a00, a01, a02, a10, a11, a12, a20, a21, a22]
+
+    Per-sample measurement noise covariances come from sensor_msgs/Imu
+    and are independent of the calibration parameter uncertainty.
+
     Attributes:
         gravity_mps2: Gravity magnitude assumed during calibration in m/s^2.
         accel_bias_mps2: Accelerometer bias in m/s^2 for x, y, z axes.
+            Included for completeness of the upstream calibration model.
+            The bias is already applied in calibrated accel, so it is
+            not needed for parameter uncertainty propagation.
         accel_a: 3x3 scale/misalignment matrix in row-major order.
         accel_param_cov: 12x12 covariance for [bx, by, bz, a00..a22].
         gyro_bias_cov: 3x3 covariance of gyroscope bias in (rad/s)^2.
@@ -51,6 +64,29 @@ class ImuCalibration:
 class TiltPoseEstimator:
     """
     Estimate roll and pitch from calibrated IMU data.
+
+    State vector:
+        x = [roll, pitch]
+
+    Process model:
+        Propagate roll and pitch by integrating calibrated gyro rates.
+        Process noise Q comes from gyro measurement noise plus gyro bias
+        uncertainty.
+
+    Measurement model:
+        Compute roll and pitch from the gravity direction inferred from
+        calibrated accelerometer samples. Measurement noise R includes
+        accel measurement noise and accel calibration parameter
+        uncertainty.
+
+    Accelerometer corrections are gated when | ||a|| - g | exceeds the
+    configured threshold. Yaw is unobserved, so orientation covariance
+    includes a large yaw variance.
+
+    Covariance outputs:
+        Roll/pitch covariance is 2x2. Orientation covariance is a full
+        3x3 row-major list suitable for sensor_msgs/Imu with yaw variance
+        on the diagonal.
     """
 
     def __init__(
@@ -146,7 +182,7 @@ class TiltPoseEstimator:
             return True
 
         roll_pred, pitch_pred = self._predict_attitude(gyro, dt)
-        pred_cov = self._predict_covariance(gyro_cov, dt)
+        pred_cov = self._predict_covariance(gyro, gyro_cov, dt)
 
         if self._accel_is_trusted(accel):
             roll_meas, pitch_meas = self._gravity_to_attitude(accel)
@@ -193,36 +229,52 @@ class TiltPoseEstimator:
         roll = 0.0 if self._roll is None else float(self._roll)
         pitch = 0.0 if self._pitch is None else float(self._pitch)
 
-        wx, wy, wz = gyro
-        tan_pitch = math.tan(pitch)
-        cos_roll = math.cos(roll)
-        sin_roll = math.sin(roll)
-
-        roll_rate = wx + sin_roll * tan_pitch * wy + cos_roll * tan_pitch * wz
-        pitch_rate = cos_roll * wy - sin_roll * wz
+        roll_rate, pitch_rate = self._roll_pitch_rate(roll, pitch, gyro)
 
         return roll + roll_rate * dt, pitch + pitch_rate * dt
 
-    def _predict_covariance(self, gyro_cov: np.ndarray, dt: float) -> np.ndarray:
+    def _predict_covariance(
+        self, gyro: np.ndarray, gyro_cov: np.ndarray, dt: float
+    ) -> np.ndarray:
         roll = 0.0 if self._roll is None else float(self._roll)
         pitch = 0.0 if self._pitch is None else float(self._pitch)
 
-        sin_roll = math.sin(roll)
-        cos_roll = math.cos(roll)
-        tan_pitch = math.tan(pitch)
+        def f(state: np.ndarray, omega: np.ndarray) -> np.ndarray:
+            roll_rate, pitch_rate = self._roll_pitch_rate(
+                float(state[0]),
+                float(state[1]),
+                omega,
+            )
+            return state + dt * np.array([roll_rate, pitch_rate], dtype=float)
 
-        jac = np.array(
-            [
-                [1.0, sin_roll * tan_pitch, cos_roll * tan_pitch],
-                [0.0, cos_roll, -sin_roll],
-            ],
-            dtype=float,
-        )
+        state = np.array([roll, pitch], dtype=float)
+        omega = np.array(gyro, dtype=float)
 
-        q = jac @ gyro_cov @ jac.T
-        q *= dt * dt
+        # Unitless. Meaning: step size for numerical Jacobians.
+        epsilon = 1.0e-6
 
-        pred = self._state_cov + q
+        # P = F P F^T + Q with Q = G Cov_w G^T.
+        # F = ∂f/∂x and G = ∂f/∂w from the discrete-time state update.
+        # The Jacobians are computed with central differences
+        jac_f = np.zeros((2, 2), dtype=float)
+        for idx in range(2):
+            delta = np.zeros(2, dtype=float)
+            delta[idx] = epsilon
+            f_plus = f(state + delta, omega)
+            f_minus = f(state - delta, omega)
+            jac_f[:, idx] = (f_plus - f_minus) / (2.0 * epsilon)
+
+        jac_g = np.zeros((2, 3), dtype=float)
+        for idx in range(3):
+            delta = np.zeros(3, dtype=float)
+            delta[idx] = epsilon
+            f_plus = f(state, omega + delta)
+            f_minus = f(state, omega - delta)
+            jac_g[:, idx] = (f_plus - f_minus) / (2.0 * epsilon)
+
+        q = jac_g @ gyro_cov @ jac_g.T
+
+        pred = jac_f @ self._state_cov @ jac_f.T + q
         return self._sanitize_covariance(pred)
 
     def _gyro_covariance(
@@ -267,11 +319,15 @@ class TiltPoseEstimator:
 
         accel_a = calibration.accel_a
 
-        # Unitless. Meaning: inverse of the accelerometer matrix A.
-        accel_a_inv = np.linalg.pinv(accel_a)
+        try:
+            u = np.linalg.solve(accel_a, accel)
+        except np.linalg.LinAlgError:
+            # Fallback to pseudo-inverse when A is singular
+            u = np.linalg.pinv(accel_a) @ accel
 
-        u = accel_a_inv @ accel
-
+        # a_cal = A (a_raw - b), given a_cal we approximate u = A^{-1} a_cal
+        # ∂a_cal/∂b = -A and ∂a_cal_i/∂A_ij = u_j
+        # Cov_param = J_p Cov_params J_p^T
         jac = np.zeros((3, 12), dtype=float)
         jac[:, 0:3] = -accel_a
 
@@ -296,6 +352,9 @@ class TiltPoseEstimator:
         q = d + ax * ax
         q = max(q, eps)
 
+        # roll  = atan2(ay, az)
+        # pitch = atan2(-ax, sqrt(ay^2 + az^2))
+        # R = J Cov_a J^T
         j_roll = np.array([0.0, az / d, -ay / d], dtype=float)
         j_pitch = np.array(
             [-s / q, (ax * ay) / (s * q), (ax * az) / (s * q)],
@@ -394,6 +453,19 @@ class TiltPoseEstimator:
         pitch = math.atan2(-ax, math.sqrt(ay * ay + az * az))
 
         return roll, pitch
+
+    def _roll_pitch_rate(
+        self, roll: float, pitch: float, gyro: np.ndarray
+    ) -> tuple[float, float]:
+        wx, wy, wz = gyro
+        tan_pitch = math.tan(pitch)
+        cos_roll = math.cos(roll)
+        sin_roll = math.sin(roll)
+
+        roll_rate = wx + sin_roll * tan_pitch * wy + cos_roll * tan_pitch * wz
+        pitch_rate = cos_roll * wy - sin_roll * wz
+
+        return roll_rate, pitch_rate
 
     def _rpy_to_quaternion(
         self, roll: float, pitch: float, yaw: float

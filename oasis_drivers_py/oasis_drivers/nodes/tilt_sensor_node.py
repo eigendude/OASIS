@@ -45,6 +45,9 @@ DEFAULT_ROBOT_NAME = "falcon"
 DEFAULT_ACCEL_TRUST_THRESHOLD_MPS2 = 1.5
 DEFAULT_YAW_VAR_RAD2 = 1.0e6
 
+# Units: s. Meaning: threshold for rejecting large time deltas.
+MAX_DT_SPIKE_S = 0.2
+
 
 ################################################################################
 # ROS node
@@ -126,6 +129,7 @@ class TiltSensorNode(rclpy.node.Node):
 
         self._calibration: Optional[ImuCalibration] = None
         self._last_imu_time: Optional[float] = None
+        self._last_dt_spike_log_time: Optional[float] = None
 
         self.get_logger().info("Tilt sensor initialized")
 
@@ -158,6 +162,18 @@ class TiltSensorNode(rclpy.node.Node):
         else:
             dt_s = max(0.0, timestamp - self._last_imu_time)
         self._last_imu_time = timestamp
+
+        # Protect against bag pauses, sim time jumps, and suspend/resume
+        if dt_s > MAX_DT_SPIKE_S:
+            if (
+                self._last_dt_spike_log_time is None
+                or (timestamp - self._last_dt_spike_log_time) >= 1.0
+            ):
+                self.get_logger().warn(
+                    "Large IMU dt detected (%.3fs), skipping propagation", dt_s
+                )
+                self._last_dt_spike_log_time = timestamp
+            dt_s = 0.0
 
         updated = self._estimator.update(
             linear_accel=(
