@@ -166,7 +166,7 @@ bool Mpu6050Node::Initialize()
 
 void Mpu6050Node::Deinitialize()
 {
-  //m_imuProcessor.Reset();
+  m_imuProcessor.Reset();
   m_lastSampleTime.reset();
 }
 
