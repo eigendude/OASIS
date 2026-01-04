@@ -9,6 +9,8 @@
 #include "imu/cal/AccelCalibrationSolver.h"
 
 #include <cmath>
+#include <iomanip>
+#include <iostream>
 
 #include <Eigen/Dense>
 
@@ -26,7 +28,11 @@ constexpr double kAccelBiasVarianceMps2_2 = 0.05 * 0.05;
 constexpr double kAccelMatrixVariance = 0.01 * 0.01;
 
 // Units: 1/(m/s^2)^2. Minimum eigenvalue for a valid ellipsoid
-constexpr double kMinEllipsoidEigenvalue = 1e-9;
+constexpr double kMinEllipsoidEigenvalue = 1e-12;
+
+#ifndef OASIS_IMU_ACCEL_CAL_DEBUG
+#define OASIS_IMU_ACCEL_CAL_DEBUG 0
+#endif
 
 Eigen::Vector3d ToEigen(const Vec3& value)
 {
@@ -102,32 +108,102 @@ bool AccelCalibrationSolver::Solve(double gravity_mps2, Result& out) const
   if (v.size() != 10)
     return false;
 
+  if constexpr (OASIS_IMU_ACCEL_CAL_DEBUG)
+  {
+    const Eigen::VectorXd singular_values = svd.singularValues();
+    const double max_sv = singular_values.size() > 0 ? singular_values(0) : 0.0;
+    const double min_sv =
+        singular_values.size() > 0 ? singular_values(singular_values.size() - 1) : 0.0;
+
+    std::cerr << std::fixed << std::setprecision(6);
+    std::cerr << "[AccelCal] SVD singular values min=" << min_sv << " max=" << max_sv
+              << " count=" << singular_values.size() << "\n";
+  }
+
   Eigen::Matrix3d M;
   M << v(0), v(3), v(4), v(3), v(1), v(5), v(4), v(5), v(2);
 
-  const Eigen::Vector3d p(v(6), v(7), v(8));
+  const Eigen::Vector3d g(v(6), v(7), v(8));
   const double r = v(9);
 
-  const Eigen::FullPivLU<Eigen::Matrix3d> lu(M);
-  if (!lu.isInvertible())
-    return false;
+  auto try_solution = [&](double sign,
+                          Eigen::Vector3d& center_out,
+                          Eigen::Matrix3d& Q_out,
+                          double& k_out,
+                          Eigen::Vector3d& eigenvalues_out) -> bool {
+    const Eigen::Matrix3d M_signed = sign * M;
+    const Eigen::Vector3d g_signed = sign * g;
+    const double r_signed = sign * r;
 
-  const Eigen::Vector3d center = -0.5 * lu.solve(p);
+    const Eigen::FullPivLU<Eigen::Matrix3d> lu(M_signed);
+    if constexpr (OASIS_IMU_ACCEL_CAL_DEBUG)
+    {
+      std::cerr << std::fixed << std::setprecision(6);
+      std::cerr << "[AccelCal] Sign " << sign << " LU rank=" << lu.rank()
+                << " det=" << lu.determinant() << "\n";
+    }
 
-  // Units: (m/s^2)^2. Ellipsoid normalization scale from center substitution
-  const double k = (center.transpose() * M * center)(0, 0) - r;
-  if (k <= 0.0)
-    return false;
+    if (!lu.isInvertible())
+      return false;
 
-  Eigen::Matrix3d Q = M / k;
-  Q = 0.5 * (Q + Q.transpose());
+    center_out = -lu.solve(g_signed);
+
+    // Units: (m/s^2)^2. Ellipsoid normalization scale from center substitution
+    k_out = (center_out.transpose() * M_signed * center_out)(0, 0) - r_signed;
+    if constexpr (OASIS_IMU_ACCEL_CAL_DEBUG)
+    {
+      std::cerr << std::fixed << std::setprecision(6);
+      std::cerr << "[AccelCal] Sign " << sign << " center=[" << center_out.transpose()
+                << "] k=" << k_out << "\n";
+    }
+
+    if (k_out <= 0.0)
+      return false;
+
+    Q_out = M_signed / k_out;
+    Q_out = 0.5 * (Q_out + Q_out.transpose());
+
+    Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> eigen_solver(Q_out);
+    if (eigen_solver.info() != Eigen::Success)
+      return false;
+
+    eigenvalues_out = eigen_solver.eigenvalues();
+    if ((eigenvalues_out.array() <= kMinEllipsoidEigenvalue).any())
+    {
+      if constexpr (OASIS_IMU_ACCEL_CAL_DEBUG)
+      {
+        std::cerr << std::fixed << std::setprecision(6);
+        std::cerr << "[AccelCal] Sign " << sign << " SPD failed eigenvalues=["
+                  << eigenvalues_out.transpose() << "]\n";
+      }
+      return false;
+    }
+
+    if constexpr (OASIS_IMU_ACCEL_CAL_DEBUG)
+    {
+      std::cerr << std::fixed << std::setprecision(6);
+      std::cerr << "[AccelCal] Sign " << sign << " eigenvalues=["
+                << eigenvalues_out.transpose() << "]\n";
+    }
+
+    return true;
+  };
+
+  Eigen::Vector3d center;
+  Eigen::Matrix3d Q;
+  double k = 0.0;
+  Eigen::Vector3d eigenvalues;
+  double chosen_sign = 1.0;
+
+  if (!try_solution(1.0, center, Q, k, eigenvalues))
+  {
+    if (!try_solution(-1.0, center, Q, k, eigenvalues))
+      return false;
+    chosen_sign = -1.0;
+  }
 
   Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> eigen_solver(Q);
   if (eigen_solver.info() != Eigen::Success)
-    return false;
-
-  const Eigen::Vector3d eigenvalues = eigen_solver.eigenvalues();
-  if ((eigenvalues.array() <= kMinEllipsoidEigenvalue).any())
     return false;
 
   const Eigen::Matrix3d eigenvectors = eigen_solver.eigenvectors();
@@ -147,6 +223,14 @@ bool AccelCalibrationSolver::Solve(double gravity_mps2, Result& out) const
   }
 
   const double rms_residual_mps2 = std::sqrt(residual_sum_sq / static_cast<double>(sample_count));
+
+  if constexpr (OASIS_IMU_ACCEL_CAL_DEBUG)
+  {
+    std::cerr << std::fixed << std::setprecision(6);
+    std::cerr << "[AccelCal] Success sign=" << chosen_sign << " k=" << k
+              << " eigenvalues=[" << eigenvalues.transpose()
+              << "] rms=" << rms_residual_mps2 << "\n";
+  }
 
   out.accel_bias_mps2 = ToVec3(center);
   out.accel_A = ToMat3(accel_A);
