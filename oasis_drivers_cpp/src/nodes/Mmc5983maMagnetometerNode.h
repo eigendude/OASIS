@@ -54,10 +54,6 @@ private:
   Magnetometer::CovarianceEstimator3D m_covarianceEstimator;
   Magnetometer::MagnetometerCalibrationFile m_calibrationFile;
 
-  Eigen::Vector3d m_lastSetSample = Eigen::Vector3d::Zero();
-  bool m_hasSetSample{false};
-  bool m_nextIsReset{false};
-
   rclcpp::Time m_lastSampleTime;
   bool m_hasLastSampleTime{false};
   rclcpp::Time m_lastCalibrationWriteTime;
@@ -70,7 +66,6 @@ private:
   std::string m_i2cDevice;
   std::string m_frameId;
   std::chrono::duration<double> m_publishPeriod;
-  std::chrono::duration<double> m_rawPeriod;
   std::uint8_t m_i2cAddress{0};
   std::uint8_t m_bandwidthMode{0};
   std::uint16_t m_rawRateHz{0};
