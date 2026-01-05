@@ -126,7 +126,7 @@ class SpeedEstimator:
             accel_cal = self._apply_calibration(accel_raw, calibration)
 
         accel_cov: np.ndarray = self._calibrated_accel_covariance(
-            accel_raw, linear_accel_covariance, calibration
+            accel_raw, accel_cal, linear_accel_covariance, calibration
         )
 
         gravity_body: np.ndarray = self._gravity_body_vector(
@@ -174,6 +174,7 @@ class SpeedEstimator:
     def _calibrated_accel_covariance(
         self,
         accel_raw: np.ndarray,
+        accel_cal: np.ndarray,
         linear_accel_covariance: Optional[Iterable[float]],
         calibration: ImuCalibration,
     ) -> np.ndarray:
@@ -181,15 +182,24 @@ class SpeedEstimator:
         if base is None:
             base = np.zeros((3, 3), dtype=float)
 
+        # Base covariance is already calibrated when the IMU reports
+        # calibrated acceleration
         if not self._imu_is_calibrated and calibration.accel_a.shape == (3, 3):
             base = calibration.accel_a @ base @ calibration.accel_a.T
 
-        param_cov: np.ndarray = self._accel_param_covariance(accel_raw, calibration)
+        # Units: (m/s^2)^2. Meaning: parameter-induced covariance in
+        # calibrated acceleration.
+        param_cov: np.ndarray = self._accel_param_covariance(
+            accel_raw, accel_cal, calibration
+        )
         total: np.ndarray = base + param_cov
         return self._symmetrize(total)
 
     def _accel_param_covariance(
-        self, accel_raw: np.ndarray, calibration: ImuCalibration
+        self,
+        accel_raw: np.ndarray,
+        accel_cal: np.ndarray,
+        calibration: ImuCalibration,
     ) -> np.ndarray:
         if calibration.accel_a.shape != (3, 3):
             return np.zeros((3, 3), dtype=float)
@@ -200,7 +210,13 @@ class SpeedEstimator:
         accel_a: np.ndarray = calibration.accel_a
 
         bias: np.ndarray = calibration.accel_bias_mps2.reshape((3,))
-        u: np.ndarray = accel_raw - bias
+        if self._imu_is_calibrated:
+            try:
+                u: np.ndarray = np.linalg.solve(accel_a, accel_cal)
+            except np.linalg.LinAlgError:
+                u = np.linalg.pinv(accel_a) @ accel_cal
+        else:
+            u = accel_raw - bias
 
         jac: np.ndarray = np.zeros((3, 12), dtype=float)
         jac[:, 0:3] = -accel_a
@@ -379,13 +395,28 @@ class SpeedEstimator:
         return not self._orientation_covariance_unknown(orientation_covariance)
 
     def _orientation_covariance_unknown(
-        self, orientation_covariance: Iterable[float]
+        self, orientation_covariance: Optional[Iterable[float]]
     ) -> bool:
+        if orientation_covariance is None:
+            return False
+
         cov: tuple[float, ...] = tuple(float(value) for value in orientation_covariance)
         if len(cov) != 9:
             return False
 
-        return cov[0] < 0.0
+        if not all(math.isfinite(value) for value in cov):
+            return True
+
+        if cov[0] < 0.0:
+            return True
+
+        if any(cov[index] < 0.0 for index in (0, 4, 8)):
+            return True
+
+        if self._covariance_matrix(orientation_covariance) is None:
+            return True
+
+        return False
 
     def _apply_zero_velocity_detection(
         self, linear_accel_body: np.ndarray, gyro: np.ndarray
