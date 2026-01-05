@@ -71,6 +71,26 @@ class ControlDescriptions:
         ld.add_action(home_manager_node)
 
     #
+    # IMU fuser
+    #
+
+    @staticmethod
+    def add_imu_fuser(ld: LaunchDescription, host_id: str) -> None:
+        imu_fuser_node: Node = Node(
+            namespace=ROS_NAMESPACE,
+            package=CONTROL_PACKAGE_NAME,
+            executable="imu_fuser",
+            name=f"imu_fuser_{host_id}",
+            output="screen",
+            remappings=[
+                ("imu", f"{host_id}/imu"),
+                ("imu_fused", f"{host_id}/imu_fused"),
+                ("magnetic_field", f"{host_id}/magnetic_field"),
+            ],
+        )
+        ld.add_action(imu_fuser_node)
+
+    #
     # Microcontroller nodes
     #
 
