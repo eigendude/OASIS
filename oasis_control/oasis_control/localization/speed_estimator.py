@@ -13,7 +13,6 @@ from __future__ import annotations
 import math
 from typing import Iterable
 from typing import Optional
-from typing import TypeGuard
 
 import numpy as np
 
@@ -73,6 +72,7 @@ class SpeedEstimator:
         zero_velocity_count: int = 15,
         zero_velocity_alpha: float = 0.2,
         zero_velocity_clamp_mps: float = 0.05,
+        imu_is_calibrated: bool = True,
     ) -> None:
         self._gravity_mps2: float = gravity_mps2
         self._zero_velocity_accel_threshold_mps2: float = (
@@ -84,6 +84,7 @@ class SpeedEstimator:
         self._zero_velocity_count: int = max(1, zero_velocity_count)
         self._zero_velocity_alpha: float = zero_velocity_alpha
         self._zero_velocity_clamp_mps: float = zero_velocity_clamp_mps
+        self._imu_is_calibrated: bool = imu_is_calibrated
 
         self._speed_mps: float = 0.0
         self._speed_variance: float = 0.0
@@ -119,7 +120,10 @@ class SpeedEstimator:
         )
         self._gravity_mps2 = gravity
 
-        accel_cal: np.ndarray = self._apply_calibration(accel_raw, calibration)
+        if self._imu_is_calibrated:
+            accel_cal: np.ndarray = accel_raw
+        else:
+            accel_cal = self._apply_calibration(accel_raw, calibration)
 
         accel_cov: np.ndarray = self._calibrated_accel_covariance(
             accel_raw, linear_accel_covariance, calibration
@@ -177,7 +181,7 @@ class SpeedEstimator:
         if base is None:
             base = np.zeros((3, 3), dtype=float)
 
-        if calibration.accel_a.shape == (3, 3):
+        if not self._imu_is_calibrated and calibration.accel_a.shape == (3, 3):
             base = calibration.accel_a @ base @ calibration.accel_a.T
 
         param_cov: np.ndarray = self._accel_param_covariance(accel_raw, calibration)
@@ -361,7 +365,7 @@ class SpeedEstimator:
         self,
         orientation_quaternion: Optional[Iterable[float]],
         orientation_covariance: Optional[Iterable[float]],
-    ) -> TypeGuard[Iterable[float]]:
+    ) -> bool:
         if orientation_quaternion is None:
             return False
 

@@ -102,6 +102,7 @@ class SpeedometerNode(rclpy.node.Node):
             rclpy.qos.QoSPresetProfiles.SENSOR_DATA.value
         )
 
+        # IMU data is calibrated; imu_calibration adds parameter covariance only
         self._estimator: SpeedEstimator = SpeedEstimator(
             gravity_mps2=gravity_mps2,
             zero_velocity_accel_threshold_mps2=zero_velocity_accel_threshold,
@@ -109,6 +110,7 @@ class SpeedometerNode(rclpy.node.Node):
             zero_velocity_count=zero_velocity_count,
             zero_velocity_alpha=zero_velocity_alpha,
             zero_velocity_clamp_mps=zero_velocity_clamp,
+            imu_is_calibrated=True,
         )
 
         self._publish_period: float = 0.0
