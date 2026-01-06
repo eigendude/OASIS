@@ -8,14 +8,15 @@
 #
 ################################################################################
 
-import math
-from typing import Optional
+from typing import Optional, Sequence
 
 import rclpy.node
 import rclpy.publisher
 import rclpy.qos
 import rclpy.subscription
+import numpy as np
 from builtin_interfaces.msg import Time
+from geometry_msgs.msg import Vector3
 from sensor_msgs.msg import Imu
 from sensor_msgs.msg import MagneticField
 
@@ -179,11 +180,20 @@ class ImuFuserNode(rclpy.node.Node):
             self.get_logger().warn("No magnetometer data yet, using IMU only")
             self._last_mag_stale_log_time = timestamp
 
-        gyro = message.angular_velocity
-        accel = message.linear_acceleration
+        gyro: Vector3 = message.angular_velocity
+        accel: Vector3 = message.linear_acceleration
+        gyro_cov_body: Optional[np.ndarray] = self._parse_covariance(
+            message.angular_velocity_covariance
+        )
+        accel_cov_body: Optional[np.ndarray] = self._parse_covariance(
+            message.linear_acceleration_covariance
+        )
 
         if use_mag and mag_message is not None:
-            mag = mag_message.magnetic_field
+            mag: Vector3 = mag_message.magnetic_field
+            mag_cov_body: Optional[np.ndarray] = self._parse_covariance(
+                mag_message.magnetic_field_covariance
+            )
             self._filter.update(
                 gx=gyro.x,
                 gy=gyro.y,
@@ -195,6 +205,9 @@ class ImuFuserNode(rclpy.node.Node):
                 my=mag.y,
                 mz=mag.z,
                 dt_s=dt_s,
+                cov_gyro_body=gyro_cov_body,
+                cov_accel_body=accel_cov_body,
+                cov_mag_body=mag_cov_body,
             )
         else:
             self._filter.update_imu(
@@ -205,6 +218,8 @@ class ImuFuserNode(rclpy.node.Node):
                 ay=accel.y,
                 az=accel.z,
                 dt_s=dt_s,
+                cov_gyro_body=gyro_cov_body,
+                cov_accel_body=accel_cov_body,
             )
 
         self._update_count += 1
@@ -218,6 +233,10 @@ class ImuFuserNode(rclpy.node.Node):
             self._frame_id if self._frame_id else message.header.frame_id
         )
 
+        qx: float
+        qy: float
+        qz: float
+        qw: float
         qx, qy, qz, qw = self._filter.quaternion
         fused_message.orientation.x = qx
         fused_message.orientation.y = qy
@@ -257,23 +276,20 @@ class ImuFuserNode(rclpy.node.Node):
             if self._update_count < self._stationary_init_samples:
                 return [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
-        # Units: rad. Meaning: roll/pitch standard deviation target
-        roll_pitch_std_rad: float = math.radians(5.0)
+        if not self._filter.has_theta_covariance:
+            return [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
-        # Units: rad. Meaning: yaw standard deviation target
-        yaw_std_rad: float = math.radians(10.0)
+        theta_cov: np.ndarray = self._filter.theta_covariance
+        theta_cov_flat: np.ndarray = theta_cov.reshape(9)
+        return [float(value) for value in theta_cov_flat]
 
-        roll_pitch_var: float = roll_pitch_std_rad * roll_pitch_std_rad
-        yaw_var: float = yaw_std_rad * yaw_std_rad
+    def _parse_covariance(
+        self, covariance: Sequence[float]
+    ) -> Optional[np.ndarray]:
+        if len(covariance) != 9:
+            return None
 
-        return [
-            roll_pitch_var,
-            0.0,
-            0.0,
-            0.0,
-            roll_pitch_var,
-            0.0,
-            0.0,
-            0.0,
-            yaw_var,
-        ]
+        if covariance[0] == -1.0:
+            return None
+
+        return np.array(covariance, dtype=np.float64).reshape((3, 3))

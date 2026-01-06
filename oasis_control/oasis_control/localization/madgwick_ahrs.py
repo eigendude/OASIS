@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import math
+from typing import Optional
 
 import numpy as np
 
@@ -18,6 +19,18 @@ import numpy as np
 ################################################################################
 # Madgwick AHRS
 ################################################################################
+
+
+# Units: rad^2/s. Meaning: small-angle process noise power added as
+# Q = PROCESS_NOISE_THETA_RAD2_PER_S * dt in the discrete-time covariance
+PROCESS_NOISE_THETA_RAD2_PER_S: float = math.radians(0.5) ** 2
+
+# Units: rad^2/s^2. Meaning: conservative default gyro variance when
+# covariance is unknown, roughly (0.5 deg/s)^2 per axis
+DEFAULT_GYRO_VAR_RAD2_PER_S2: float = math.radians(0.5) ** 2
+
+# Units: unitless. Meaning: low-pass gain for the magnetic reference update
+MAG_REF_ALPHA: float = 0.05
 
 
 class MadgwickAhrs:
@@ -89,7 +102,12 @@ class MadgwickAhrs:
         """
 
         self._beta: float = float(beta)
-        self._quaternion: np.ndarray = np.array([0.0, 0.0, 0.0, 1.0], dtype=float)
+        self._quaternion: np.ndarray = np.array(
+            [0.0, 0.0, 0.0, 1.0], dtype=np.float64
+        )
+        self._p_theta_body: np.ndarray = np.zeros((3, 3), dtype=np.float64)
+        self._covariance_valid: bool = False
+        self._mag_ref_world_unit: Optional[np.ndarray] = None
 
     @property
     def quaternion(self) -> tuple[float, float, float, float]:
@@ -104,12 +122,31 @@ class MadgwickAhrs:
             float(self._quaternion[3]),
         )
 
+    @property
+    def theta_covariance(self) -> np.ndarray:
+        """
+        Get the current 3x3 small-angle covariance in the body frame.
+        """
+
+        return np.array(self._p_theta_body, dtype=np.float64, copy=True)
+
+    @property
+    def has_theta_covariance(self) -> bool:
+        """
+        Return True once a covariance propagation has occurred.
+        """
+
+        return self._covariance_valid
+
     def reset(self) -> None:
         """
         Reset the filter orientation to the identity quaternion.
         """
 
-        self._quaternion = np.array([0.0, 0.0, 0.0, 1.0], dtype=float)
+        self._quaternion = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float64)
+        self._p_theta_body = np.zeros((3, 3), dtype=np.float64)
+        self._covariance_valid = False
+        self._mag_ref_world_unit = None
 
     def update_imu(
         self,
@@ -120,6 +157,8 @@ class MadgwickAhrs:
         ay: float,
         az: float,
         dt_s: float,
+        cov_gyro_body: Optional[np.ndarray] = None,
+        cov_accel_body: Optional[np.ndarray] = None,
     ) -> None:
         """
         Update the filter with gyro and accelerometer data.
@@ -132,20 +171,36 @@ class MadgwickAhrs:
             ay: Accelerometer y-axis measurement in m/s^2.
             az: Accelerometer z-axis measurement in m/s^2.
             dt_s: Time delta in seconds.
+            cov_gyro_body: Gyro covariance (3x3) in (rad/s)^2.
+            cov_accel_body: Accel covariance (3x3) in (m/s^2)^2.
         """
 
         dt: float = max(0.0, float(dt_s))
         if dt <= 0.0:
             return
 
-        accel_norm: float = math.sqrt(ax * ax + ay * ay + az * az)
+        ax_raw: float = float(ax)
+        ay_raw: float = float(ay)
+        az_raw: float = float(az)
+
+        accel_norm: float = math.sqrt(ax_raw * ax_raw + ay_raw * ay_raw + az_raw * az_raw)
         if accel_norm <= 0.0:
-            self._integrate_gyro(gx, gy, gz, dt)
+            self.update_imu(
+                gx=gx,
+                gy=gy,
+                gz=gz,
+                ax=ax,
+                ay=ay,
+                az=az,
+                dt_s=dt,
+                cov_gyro_body=cov_gyro_body,
+                cov_accel_body=cov_accel_body,
+            )
             return
 
-        ax /= accel_norm
-        ay /= accel_norm
-        az /= accel_norm
+        ax = ax_raw / accel_norm
+        ay = ay_raw / accel_norm
+        az = az_raw / accel_norm
 
         q1: float
         q2: float
@@ -193,9 +248,15 @@ class MadgwickAhrs:
 
         self._quaternion = np.array(
             [q2 + q_dot2 * dt, q3 + q_dot3 * dt, q4 + q_dot4 * dt, q1 + q_dot1 * dt],
-            dtype=float,
+            dtype=np.float64,
         )
         self._normalize_quaternion()
+        self._update_accel_covariance(
+            ax=ax_raw,
+            ay=ay_raw,
+            az=az_raw,
+            cov_accel_body=cov_accel_body,
+        )
 
     def update(
         self,
@@ -209,6 +270,9 @@ class MadgwickAhrs:
         my: float,
         mz: float,
         dt_s: float,
+        cov_gyro_body: Optional[np.ndarray] = None,
+        cov_accel_body: Optional[np.ndarray] = None,
+        cov_mag_body: Optional[np.ndarray] = None,
     ) -> None:
         """
         Update the filter with gyro, accelerometer, and magnetometer data.
@@ -224,6 +288,9 @@ class MadgwickAhrs:
             my: Magnetometer y-axis measurement in tesla.
             mz: Magnetometer z-axis measurement in tesla.
             dt_s: Time delta in seconds.
+            cov_gyro_body: Gyro covariance (3x3) in (rad/s)^2.
+            cov_accel_body: Accel covariance (3x3) in (m/s^2)^2.
+            cov_mag_body: Mag covariance (3x3) in tesla^2.
 
         See the class-level diagram for the full signal flow.
         """
@@ -232,23 +299,45 @@ class MadgwickAhrs:
         if dt <= 0.0:
             return
 
-        accel_norm: float = math.sqrt(ax * ax + ay * ay + az * az)
+        self._propagate_covariance(dt, cov_gyro_body)
+
+        ax_raw: float = float(ax)
+        ay_raw: float = float(ay)
+        az_raw: float = float(az)
+
+        accel_norm: float = math.sqrt(ax_raw * ax_raw + ay_raw * ay_raw + az_raw * az_raw)
         if accel_norm <= 0.0:
             self._integrate_gyro(gx, gy, gz, dt)
             return
 
-        mag_norm: float = math.sqrt(mx * mx + my * my + mz * mz)
+        mx_raw: float = float(mx)
+        my_raw: float = float(my)
+        mz_raw: float = float(mz)
+
+        mag_norm: float = math.sqrt(mx_raw * mx_raw + my_raw * my_raw + mz_raw * mz_raw)
         if mag_norm <= 0.0:
-            self.update_imu(gx, gy, gz, ax, ay, az, dt)
+            self.update_imu(
+                gx=gx,
+                gy=gy,
+                gz=gz,
+                ax=ax,
+                ay=ay,
+                az=az,
+                dt_s=dt,
+                cov_gyro_body=cov_gyro_body,
+                cov_accel_body=cov_accel_body,
+            )
             return
 
-        ax /= accel_norm
-        ay /= accel_norm
-        az /= accel_norm
+        self._propagate_covariance(dt, cov_gyro_body)
 
-        mx /= mag_norm
-        my /= mag_norm
-        mz /= mag_norm
+        ax = ax_raw / accel_norm
+        ay = ay_raw / accel_norm
+        az = az_raw / accel_norm
+
+        mx = mx_raw / mag_norm
+        my = my_raw / mag_norm
+        mz = mz_raw / mag_norm
 
         q1: float
         q2: float
@@ -355,11 +444,28 @@ class MadgwickAhrs:
 
         self._quaternion = np.array(
             [q2 + q_dot2 * dt, q3 + q_dot3 * dt, q4 + q_dot4 * dt, q1 + q_dot1 * dt],
-            dtype=float,
+            dtype=np.float64,
         )
         self._normalize_quaternion()
+        self._update_accel_covariance(
+            ax=ax_raw,
+            ay=ay_raw,
+            az=az_raw,
+            cov_accel_body=cov_accel_body,
+        )
+        self._update_mag_reference(mx=mx_raw, my=my_raw, mz=mz_raw)
+        self._update_mag_covariance(
+            mx=mx_raw,
+            my=my_raw,
+            mz=mz_raw,
+            cov_mag_body=cov_mag_body,
+        )
 
     def _integrate_gyro(self, gx: float, gy: float, gz: float, dt: float) -> None:
+        q1: float
+        q2: float
+        q3: float
+        q4: float
         q2, q3, q4, q1 = (
             float(self._quaternion[0]),
             float(self._quaternion[1]),
@@ -377,14 +483,255 @@ class MadgwickAhrs:
 
         self._quaternion = np.array(
             [q2 + q_dot2 * dt, q3 + q_dot3 * dt, q4 + q_dot4 * dt, q1 + q_dot1 * dt],
-            dtype=float,
+            dtype=np.float64,
         )
         self._normalize_quaternion()
 
     def _normalize_quaternion(self) -> None:
         norm: float = float(np.linalg.norm(self._quaternion))
         if norm <= 0.0:
-            self._quaternion = np.array([0.0, 0.0, 0.0, 1.0], dtype=float)
+            self._quaternion = np.array(
+                [0.0, 0.0, 0.0, 1.0], dtype=np.float64
+            )
             return
 
         self._quaternion /= norm
+
+    def _normalized_quaternion(self) -> np.ndarray:
+        quaternion: np.ndarray = np.array(self._quaternion, dtype=np.float64, copy=True)
+        norm: float = float(np.linalg.norm(quaternion))
+        if norm <= 0.0:
+            return np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float64)
+
+        return quaternion / norm
+
+    def _propagate_covariance(
+        self, dt: float, cov_gyro_body: Optional[np.ndarray]
+    ) -> None:
+        cov_gyro: np.ndarray = self._gyro_covariance(cov_gyro_body)
+
+        dt_sq: float = dt * dt
+
+        # Units: rad^2. Meaning: process covariance from white-noise model
+        q_process: float = PROCESS_NOISE_THETA_RAD2_PER_S * dt
+
+        q_process_matrix: np.ndarray = np.eye(3, dtype=np.float64) * q_process
+
+        self._p_theta_body = self._p_theta_body + dt_sq * cov_gyro + q_process_matrix
+        self._p_theta_body = _symmetrize(self._p_theta_body)
+        self._covariance_valid = True
+
+    def _gyro_covariance(self, cov_gyro_body: Optional[np.ndarray]) -> np.ndarray:
+        cov_body: Optional[np.ndarray] = _as_covariance(cov_gyro_body)
+        if cov_body is None:
+            default_cov: np.ndarray = (
+                np.eye(3, dtype=np.float64) * DEFAULT_GYRO_VAR_RAD2_PER_S2
+            )
+            return default_cov
+
+        return _symmetrize(cov_body)
+
+    def _update_accel_covariance(
+        self,
+        ax: float,
+        ay: float,
+        az: float,
+        cov_accel_body: Optional[np.ndarray],
+    ) -> None:
+        cov_body: Optional[np.ndarray] = _as_covariance(cov_accel_body)
+        if cov_body is None:
+            return
+        cov_body = _symmetrize(cov_body)
+
+        accel: np.ndarray = np.array([ax, ay, az], dtype=np.float64)
+        accel_norm: float = float(np.linalg.norm(accel))
+        if accel_norm <= 0.0:
+            return
+
+        a_meas_unit: np.ndarray = accel / accel_norm
+
+        quaternion: np.ndarray = self._normalized_quaternion()
+        rot_world_to_body: np.ndarray = _rotation_matrix_world_to_body(quaternion)
+
+        g_world_unit: np.ndarray = np.array([0.0, 0.0, 1.0], dtype=np.float64)
+        a_pred_body_unit: np.ndarray = rot_world_to_body @ g_world_unit
+
+        self._update_direction_covariance(
+            measured_unit=a_meas_unit,
+            predicted_unit=a_pred_body_unit,
+            measurement_vector=accel,
+            cov_body=cov_body,
+        )
+
+    def _update_mag_reference(self, mx: float, my: float, mz: float) -> None:
+        mag: np.ndarray = np.array([mx, my, mz], dtype=np.float64)
+        mag_norm: float = float(np.linalg.norm(mag))
+        if mag_norm <= 0.0:
+            return
+
+        m_body_unit: np.ndarray = mag / mag_norm
+        quaternion: np.ndarray = self._normalized_quaternion()
+        rot_body_to_world: np.ndarray = _rotation_matrix_body_to_world(quaternion)
+
+        m_world_meas_unit: np.ndarray = rot_body_to_world @ m_body_unit
+        m_world_meas_unit = _normalize_vector(m_world_meas_unit)
+
+        if self._mag_ref_world_unit is None:
+            self._mag_ref_world_unit = m_world_meas_unit
+            return
+
+        # Units: unitless. Meaning: low-pass blend in world frame
+        alpha: float = MAG_REF_ALPHA
+
+        blended: np.ndarray = (
+            (1.0 - alpha) * self._mag_ref_world_unit + alpha * m_world_meas_unit
+        )
+        self._mag_ref_world_unit = _normalize_vector(blended)
+
+    def _update_mag_covariance(
+        self,
+        mx: float,
+        my: float,
+        mz: float,
+        cov_mag_body: Optional[np.ndarray],
+    ) -> None:
+        cov_body: Optional[np.ndarray] = _as_covariance(cov_mag_body)
+        if cov_body is None:
+            return
+        cov_body = _symmetrize(cov_body)
+
+        if self._mag_ref_world_unit is None:
+            return
+
+        mag: np.ndarray = np.array([mx, my, mz], dtype=np.float64)
+        mag_norm: float = float(np.linalg.norm(mag))
+        if mag_norm <= 0.0:
+            return
+
+        m_body_unit: np.ndarray = mag / mag_norm
+        quaternion: np.ndarray = self._normalized_quaternion()
+        rot_world_to_body: np.ndarray = _rotation_matrix_world_to_body(quaternion)
+
+        m_pred_body_unit: np.ndarray = rot_world_to_body @ self._mag_ref_world_unit
+
+        self._update_direction_covariance(
+            measured_unit=m_body_unit,
+            predicted_unit=m_pred_body_unit,
+            measurement_vector=mag,
+            cov_body=cov_body,
+        )
+
+    def _update_direction_covariance(
+        self,
+        measured_unit: np.ndarray,
+        predicted_unit: np.ndarray,
+        measurement_vector: np.ndarray,
+        cov_body: np.ndarray,
+    ) -> None:
+        predicted_unit = _normalize_vector(predicted_unit)
+        measured_unit = _normalize_vector(measured_unit)
+
+        residual: np.ndarray = measured_unit - predicted_unit
+
+        # Units: unitless. Meaning: residual uses r = z - h(x) for EKF
+        _ = residual
+
+        # Units: unitless. Meaning: small-angle error rotates vector by
+        # -[v]_x * theta, hence the negative sign in H
+        h_matrix: np.ndarray = -_skew(predicted_unit)
+
+        measurement_norm: float = float(np.linalg.norm(measurement_vector))
+        if measurement_norm <= 0.0:
+            return
+
+        # Units: 1/units. Meaning: Jacobian of normalize(v) with respect to v
+        inv_norm: float = 1.0 / measurement_norm
+        inv_norm_cubed: float = inv_norm / (measurement_norm * measurement_norm)
+
+        outer: np.ndarray = np.outer(measurement_vector, measurement_vector)
+        j_norm: np.ndarray = (
+            np.eye(3, dtype=np.float64) * inv_norm - outer * inv_norm_cubed
+        )
+
+        # Units: unitless. Meaning: covariance of the normalized direction
+        r_meas: np.ndarray = j_norm @ cov_body @ j_norm.T
+        r_meas = _symmetrize(r_meas)
+
+        p_matrix: np.ndarray = self._p_theta_body
+        s_matrix: np.ndarray = h_matrix @ p_matrix @ h_matrix.T + r_meas
+        s_inv: np.ndarray = np.linalg.inv(s_matrix)
+
+        k_matrix: np.ndarray = p_matrix @ h_matrix.T @ s_inv
+        identity: np.ndarray = np.eye(3, dtype=np.float64)
+        kh: np.ndarray = k_matrix @ h_matrix
+
+        # Units: unitless. Meaning: Joseph-form covariance update for symmetry
+        self._p_theta_body = (
+            (identity - kh) @ p_matrix @ (identity - kh).T + k_matrix @ r_meas @ k_matrix.T
+        )
+        self._p_theta_body = _symmetrize(self._p_theta_body)
+
+
+def _as_covariance(covariance: Optional[np.ndarray]) -> Optional[np.ndarray]:
+    if covariance is None:
+        return None
+
+    cov_array: np.ndarray = np.asarray(covariance, dtype=np.float64)
+    if cov_array.shape != (3, 3):
+        return None
+
+    return cov_array
+
+
+def _symmetrize(matrix: np.ndarray) -> np.ndarray:
+    return 0.5 * (matrix + matrix.T)
+
+
+def _normalize_vector(vector: np.ndarray) -> np.ndarray:
+    norm: float = float(np.linalg.norm(vector))
+    if norm <= 0.0:
+        return np.array([0.0, 0.0, 0.0], dtype=np.float64)
+
+    return vector / norm
+
+
+def _skew(vector: np.ndarray) -> np.ndarray:
+    vx: float = float(vector[0])
+    vy: float = float(vector[1])
+    vz: float = float(vector[2])
+
+    return np.array(
+        [[0.0, -vz, vy], [vz, 0.0, -vx], [-vy, vx, 0.0]], dtype=np.float64
+    )
+
+
+def _rotation_matrix_world_to_body(quaternion: np.ndarray) -> np.ndarray:
+    x: float = float(quaternion[0])
+    y: float = float(quaternion[1])
+    z: float = float(quaternion[2])
+    w: float = float(quaternion[3])
+
+    xx: float = x * x
+    yy: float = y * y
+    zz: float = z * z
+
+    xy: float = x * y
+    xz: float = x * z
+    yz: float = y * z
+
+    wx: float = w * x
+    wy: float = w * y
+    wz: float = w * z
+
+    return np.array(
+        [
+            [1.0 - 2.0 * (yy + zz), 2.0 * (xy + wz), 2.0 * (xz - wy)],
+            [2.0 * (xy - wz), 1.0 - 2.0 * (xx + zz), 2.0 * (yz + wx)],
+            [2.0 * (xz + wy), 2.0 * (yz - wx), 1.0 - 2.0 * (xx + yy)],
+        ],
+        dtype=np.float64,
+    )
+
+
+def _rotation_matrix_body_to_world(quaternion: np.ndarray) -> np.ndarray:
+    return _rotation_matrix_world_to_body(quaternion).T
