@@ -9,7 +9,7 @@
 ################################################################################
 
 """
-ROS node that estimates linear velocity from fused IMU data.
+ROS node that estimates linear velocity from fused IMU data
 """
 
 from __future__ import annotations
@@ -58,7 +58,7 @@ MAX_DT_SPIKE_S: float = 0.2
 class SpeedometerNode(rclpy.node.Node):
     def __init__(self) -> None:
         """
-        Initialize resources.
+        Initialize resources
         """
 
         super().__init__(NODE_NAME)
@@ -84,9 +84,13 @@ class SpeedometerNode(rclpy.node.Node):
             qos_profile=qos_profile,
         )
 
-        self._estimator = VelocityEstimator(gravity_mps2=self._gravity_mps2)
+        self._estimator: VelocityEstimator = VelocityEstimator(
+            gravity_mps2=self._gravity_mps2,
+            max_dt_spike_s=MAX_DT_SPIKE_S,
+        )
         self._last_imu_time: Optional[float] = None
         self._last_dt_spike_log_time: Optional[float] = None
+        self._was_stationary: Optional[bool] = None
 
         self.get_logger().info("Speedometer initialized")
 
@@ -120,36 +124,55 @@ class SpeedometerNode(rclpy.node.Node):
                 self._last_dt_spike_log_time = timestamp
             dt_s = 0.0
 
-        quat_body_to_world = np.array(
+        quat_body_to_world: np.ndarray = np.array(
             [
                 message.orientation.x,
                 message.orientation.y,
                 message.orientation.z,
                 message.orientation.w,
-            ]
+            ],
+            dtype=np.float64,
         )
-        accel_body_mps2 = np.array(
+        accel_body_mps2: np.ndarray = np.array(
             [
                 message.linear_acceleration.x,
                 message.linear_acceleration.y,
                 message.linear_acceleration.z,
-            ]
+            ],
+            dtype=np.float64,
+        )
+        gyro_body_rps: np.ndarray = np.array(
+            [
+                message.angular_velocity.x,
+                message.angular_velocity.y,
+                message.angular_velocity.z,
+            ],
+            dtype=np.float64,
         )
 
-        cov_accel_body = np.array(
+        cov_accel_body: np.ndarray = np.array(
             message.linear_acceleration_covariance,
+            dtype=np.float64,
         ).reshape((3, 3))
-        cov_theta_body = np.array(message.orientation_covariance).reshape((3, 3))
+        cov_theta_body: np.ndarray = np.array(
+            message.orientation_covariance,
+            dtype=np.float64,
+        ).reshape((3, 3))
 
-        v_body, cov_v_body = self._estimator.update(
+        v_body: np.ndarray
+        cov_v_body: np.ndarray
+        stationary: bool
+        v_body, cov_v_body, stationary = self._estimator.update(
             dt_s=dt_s,
             quat_body_to_world=quat_body_to_world,
             accel_body_mps2=accel_body_mps2,
+            gyro_body_rps=gyro_body_rps,
             cov_accel_body=cov_accel_body,
             cov_theta_body=cov_theta_body,
         )
+        self._log_stationary_transition(stationary)
 
-        twist_message = TwistWithCovarianceStamped()
+        twist_message: TwistWithCovarianceStamped = TwistWithCovarianceStamped()
         twist_message.header.stamp = message.header.stamp
         twist_message.header.frame_id = message.header.frame_id
 
@@ -159,7 +182,10 @@ class SpeedometerNode(rclpy.node.Node):
         twist_message.twist.twist.linear.z = float(v_body[2])
         twist_message.twist.twist.angular = message.angular_velocity
 
-        cov_angular_body = np.array(message.angular_velocity_covariance).reshape((3, 3))
+        cov_angular_body: np.ndarray = np.array(
+            message.angular_velocity_covariance,
+            dtype=np.float64,
+        ).reshape((3, 3))
         twist_message.twist.covariance = self._build_twist_covariance(
             cov_v_body=cov_v_body,
             cov_w_body=cov_angular_body,
@@ -172,7 +198,23 @@ class SpeedometerNode(rclpy.node.Node):
         cov_v_body: np.ndarray,
         cov_w_body: np.ndarray,
     ) -> List[float]:
-        covariance = np.zeros((6, 6))
+        covariance: np.ndarray = np.zeros((6, 6), dtype=np.float64)
         covariance[0:3, 0:3] = cov_v_body
         covariance[3:6, 3:6] = cov_w_body
         return covariance.reshape(36).tolist()
+
+    def _log_stationary_transition(self, stationary: bool) -> None:
+        """
+        Log when the stationary state changes
+        """
+
+        if self._was_stationary is None:
+            self._was_stationary = stationary
+            return
+
+        if stationary and not self._was_stationary:
+            self.get_logger().info("IMU stationary detected")
+        elif not stationary and self._was_stationary:
+            self.get_logger().info("IMU motion detected")
+
+        self._was_stationary = stationary
