@@ -23,6 +23,61 @@ import numpy as np
 class MadgwickAhrs:
     """
     Minimal Madgwick AHRS implementation for 6-axis and 9-axis IMU data.
+
+    Block diagram (signals map to variable names below):
+
+        gyro (gx, gy, gz)
+             |
+             v
+        [gyro quaternion rate]
+        q_dot_gyro = 0.5 * q ⊗ [0, gx, gy, gz]
+             |
+             |                     accel (ax, ay, az)
+             |                          |
+             |                          v
+             |                    [normalize]
+             |                          |
+             |                          v
+             |                    [gravity residuals]
+             |                    f1..f3 from (q, ax, ay, az)
+             |                          |
+             |                          v
+             |                   [gradient step]
+             |                   s1..s4 = grad(f1..f3)
+             |                          |
+             |                          v
+             |                    [beta gain]
+             |                    beta * s1..s4
+             |                          |
+             |                          v
+             |                    (-) correction
+             |                          |
+             |                          v
+             +-------------------->(+) sum = q_dot
+                                   |
+                                   v
+                              [integrate dt]
+                              q_next = q + q_dot * dt
+                                   |
+                                   v
+                              [normalize]
+                              _quaternion
+
+        magnetometer path (update only):
+
+            mag (mx, my, mz) -> [normalize] -> hx, hy, b_x, b_z
+                                           -> [mag residuals] f4..f6
+                                           -> [gradient step] s1..s4
+
+    Mapping notes:
+      - q1..q4 correspond to (w, x, y, z) but are stored as
+        _quaternion = [x, y, z, w], so q2, q3, q4, q1 read from
+        _quaternion[0..3] in that order
+      - f1..f3 are gravity residuals, f4..f6 are magnetic residuals
+      - s1..s4 are the normalized gradient direction used as the
+        correction term scaled by beta
+      - q_dot1..q_dot4 are the quaternion derivatives used in the
+        integrator
     """
 
     def __init__(self, beta: float = 0.1) -> None:
@@ -169,6 +224,8 @@ class MadgwickAhrs:
             my: Magnetometer y-axis measurement in tesla.
             mz: Magnetometer z-axis measurement in tesla.
             dt_s: Time delta in seconds.
+
+        See the class-level diagram for the full signal flow.
         """
 
         dt: float = max(0.0, float(dt_s))
