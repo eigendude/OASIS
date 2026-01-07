@@ -33,7 +33,10 @@ class EkfBuffer:
     def insert_event(self, event: EkfEvent) -> None:
         self._events.append(event)
         self._events.sort(key=lambda item: item.t_meas)
-        self._latest_time = event.t_meas
+        if self._latest_time is None:
+            self._latest_time = event.t_meas
+        else:
+            self._latest_time = max(self._latest_time, event.t_meas)
 
     def too_old(self, t_meas: float) -> bool:
         if self._latest_time is None:

@@ -314,8 +314,6 @@ class EkfLocalizerNode(rclpy.node.Node):
             )
 
     def _handle_imu_calibration(self, message: ImuCalibrationMsg) -> None:
-        stamp: Time = message.header.stamp
-        timestamp: float = EkfTime.to_seconds(stamp)
         self._latest_calibration = self._build_calibration_data(message)
 
         if not self._logged_imu_sync_todo:
@@ -323,22 +321,6 @@ class EkfLocalizerNode(rclpy.node.Node):
                 "TODO: Add ExactTime sync for imu_raw and imu_calibration"
             )
             self._logged_imu_sync_todo = True
-
-        event: EkfEvent = EkfEvent(
-            t_meas=timestamp,
-            event_type=EkfEventType.IMU,
-            payload=EkfImuPacket(
-                imu=ImuSample(
-                    frame_id=message.header.frame_id,
-                    angular_velocity_rps=[0.0, 0.0, 0.0],
-                    linear_acceleration_mps2=[0.0, 0.0, 0.0],
-                    angular_velocity_cov=[0.0] * 9,
-                    linear_acceleration_cov=[0.0] * 9,
-                ),
-                calibration=self._latest_calibration,
-            ),
-        )
-        self._process_event(event)
 
     def _handle_imu_raw(self, message: Imu) -> None:
         stamp: Time = message.header.stamp
@@ -442,11 +424,13 @@ class EkfLocalizerNode(rclpy.node.Node):
             event_type=EkfEventType.APRILTAG,
             payload=detection_data,
         )
-        self._process_event(event, reject_reason)
+        if reject_reason is not None:
+            self._publish_rejection(event, reject_reason)
+            return
 
-    def _process_event(
-        self, event: EkfEvent, reject_reason: Optional[str] = None
-    ) -> None:
+        self._process_event(event)
+
+    def _process_event(self, event: EkfEvent) -> None:
         if self._buffer.too_old(event.t_meas):
             self.get_logger().warn("EKF event too old for buffer, dropping")
             self._publish_rejection(event, "Event too old for buffer")
@@ -456,6 +440,7 @@ class EkfLocalizerNode(rclpy.node.Node):
             self.get_logger().warn("EKF clock jump detected")
 
         self._buffer.insert_event(event)
+        self._buffer.evict(event.t_meas)
 
         outputs: EkfOutputs = self._core.process_event(event)
 
@@ -467,10 +452,6 @@ class EkfLocalizerNode(rclpy.node.Node):
             self._publish_mag_update(outputs.mag_update)
         if outputs.apriltag_update is not None:
             apriltag_update: EkfAprilTagUpdateData = outputs.apriltag_update
-            if reject_reason is not None:
-                apriltag_update = self._override_apriltag_rejection(
-                    apriltag_update, reject_reason
-                )
             self._publish_apriltag_update(apriltag_update)
 
     def _publish_odom(self, timestamp: float) -> None:

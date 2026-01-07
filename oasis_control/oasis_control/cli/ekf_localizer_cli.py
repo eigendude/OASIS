@@ -12,6 +12,8 @@
 ROS entry point for EKF localization
 """
 
+from typing import Optional
+
 import rclpy
 
 from oasis_control.nodes.ekf_localizer_node import EkfLocalizerNode
@@ -22,10 +24,10 @@ from oasis_control.nodes.ekf_localizer_node import EkfLocalizerNode
 ################################################################################
 
 
-def main(args=None) -> None:
+def main(args: Optional[list[str]] = None) -> None:
     rclpy.init(args=args)
 
-    node = EkfLocalizerNode()
+    node: EkfLocalizerNode = EkfLocalizerNode()
 
     try:
         rclpy.spin(node)
