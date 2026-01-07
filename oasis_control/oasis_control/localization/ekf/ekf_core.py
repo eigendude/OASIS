@@ -20,6 +20,7 @@ from typing import cast
 from oasis_control.localization.ekf.ekf_config import EkfConfig
 from oasis_control.localization.ekf.ekf_types import AprilTagDetection
 from oasis_control.localization.ekf.ekf_types import AprilTagDetectionArrayData
+from oasis_control.localization.ekf.ekf_types import CameraInfoData
 from oasis_control.localization.ekf.ekf_types import EkfAprilTagDetectionUpdate
 from oasis_control.localization.ekf.ekf_types import EkfAprilTagUpdateData
 from oasis_control.localization.ekf.ekf_types import EkfEvent
@@ -52,6 +53,7 @@ class EkfCore:
         self._initialized: bool = False
         self._calibration_initialized: bool = False
         self._last_t_meas: Optional[float] = None
+        self._camera_info: Optional[CameraInfoData] = None
 
     def process_event(self, event: EkfEvent) -> EkfOutputs:
         odom_time_s: Optional[float] = None
@@ -78,7 +80,7 @@ class EkfCore:
             )
             apriltag_update = self.update_with_apriltags(apriltag_data, event.t_meas)
         elif event.event_type == EkfEventType.CAMERA_INFO:
-            pass
+            self._camera_info = cast(CameraInfoData, event.payload)
 
         return EkfOutputs(
             odom_time_s=odom_time_s,

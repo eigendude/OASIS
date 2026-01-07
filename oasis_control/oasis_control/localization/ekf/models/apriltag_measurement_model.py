@@ -12,6 +12,8 @@
 AprilTag measurement model stubs for the EKF
 """
 
+from oasis_control.localization.ekf.ekf_types import CameraInfoData
+
 
 class AprilTagMeasurementModel:
     """
@@ -27,4 +29,12 @@ class AprilTagMeasurementModel:
         """
 
         # TODO: Implement reprojection residuals and Jacobians
+        return None
+
+    def set_camera_info(self, camera_info: CameraInfoData) -> None:
+        """
+        Cache camera intrinsics for future reprojection work
+        """
+
+        # TODO: Use CameraInfoData intrinsics for AprilTag reprojection
         return None

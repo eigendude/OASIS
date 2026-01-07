@@ -300,6 +300,7 @@ class EkfLocalizerNode(rclpy.node.Node):
 
         if self._camera_info is None:
             self._camera_info = data
+            self.get_logger().info("Caching camera_info for AprilTag updates")
             event: EkfEvent = EkfEvent(
                 t_meas=EkfTime.to_seconds(message.header.stamp),
                 event_type=EkfEventType.CAMERA_INFO,
