@@ -14,6 +14,8 @@ Fixed-lag EKF event buffer
 
 from __future__ import annotations
 
+from bisect import bisect_right
+from collections import deque
 from typing import Optional
 
 from oasis_control.localization.ekf.ekf_config import EkfConfig
@@ -27,12 +29,14 @@ class EkfBuffer:
 
     def __init__(self, config: EkfConfig) -> None:
         self._config: EkfConfig = config
-        self._events: list[EkfEvent] = []
+        self._events: deque[EkfEvent] = deque()
+        # Monotonic max of all inserted timestamps, even after eviction
         self._latest_time: Optional[float] = None
 
     def insert_event(self, event: EkfEvent) -> None:
-        self._events.append(event)
-        self._events.sort(key=lambda item: item.t_meas)
+        timestamps: list[float] = [item.t_meas for item in self._events]
+        insert_index: int = bisect_right(timestamps, event.t_meas)
+        self._events.insert(insert_index, event)
         if self._latest_time is None:
             self._latest_time = event.t_meas
         else:
@@ -53,4 +57,5 @@ class EkfBuffer:
 
     def evict(self, t_filter: float) -> None:
         cutoff: float = t_filter - self._config.t_buffer_sec
-        self._events = [event for event in self._events if event.t_meas >= cutoff]
+        while self._events and self._events[0].t_meas < cutoff:
+            self._events.popleft()
