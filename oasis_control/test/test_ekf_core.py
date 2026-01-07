@@ -16,6 +16,7 @@ from oasis_control.localization.ekf.ekf_types import EkfOutputs
 from oasis_control.localization.ekf.ekf_types import EkfUpdateData
 from oasis_control.localization.ekf.ekf_types import ImuSample
 from oasis_control.localization.ekf.ekf_types import MagSample
+from oasis_control.localization.ekf.ekf_types import from_seconds
 
 
 def _build_config(
@@ -110,7 +111,7 @@ def test_checkpoint_inclusive_time() -> None:
     )
 
     event_first: EkfEvent = EkfEvent(
-        t_meas=1.0,
+        t_meas=from_seconds(1.0),
         event_type=EkfEventType.IMU,
         payload=EkfImuPacket(imu=imu_sample, calibration=None),
     )
@@ -118,7 +119,7 @@ def test_checkpoint_inclusive_time() -> None:
     core.process_event(event_first)
 
     event_second: EkfEvent = EkfEvent(
-        t_meas=1.5,
+        t_meas=from_seconds(1.5),
         event_type=EkfEventType.IMU,
         payload=EkfImuPacket(imu=imu_sample, calibration=None),
     )
@@ -126,7 +127,7 @@ def test_checkpoint_inclusive_time() -> None:
     core.process_event(event_second)
 
     checkpoint: Optional[tuple[float, np.ndarray, np.ndarray]] = (
-        core._checkpoint_snapshot(1.5)
+        core._checkpoint_snapshot(from_seconds(1.5))
     )
     assert checkpoint is not None
     checkpoint_time: float
@@ -134,7 +135,7 @@ def test_checkpoint_inclusive_time() -> None:
     checkpoint_cov: np.ndarray
     checkpoint_time, checkpoint_state, checkpoint_cov = checkpoint
 
-    outputs: EkfOutputs = core.replay(buffer, start_time=1.5)
+    outputs: EkfOutputs = core.replay(buffer, start_time=from_seconds(1.5))
     assert outputs is not None
     assert core.frontier_time() == checkpoint_time
     assert np.allclose(core.state(), checkpoint_state, atol=1.0e-12)
@@ -155,7 +156,7 @@ def test_dt_imu_max_gates_dt_total_not_imu_age() -> None:
     )
 
     imu_event: EkfEvent = EkfEvent(
-        t_meas=0.0,
+        t_meas=from_seconds(0.0),
         event_type=EkfEventType.IMU,
         payload=EkfImuPacket(imu=imu_sample, calibration=None),
     )
@@ -163,7 +164,7 @@ def test_dt_imu_max_gates_dt_total_not_imu_age() -> None:
     state_initial: np.ndarray = core.state()
 
     mag_event_skip: EkfEvent = EkfEvent(
-        t_meas=0.5,
+        t_meas=from_seconds(0.5),
         event_type=EkfEventType.MAG,
         payload=_build_mag_sample(),
     )
@@ -172,7 +173,7 @@ def test_dt_imu_max_gates_dt_total_not_imu_age() -> None:
     assert np.allclose(state_after_skip, state_initial, atol=1.0e-12)
 
     mag_event_step: EkfEvent = EkfEvent(
-        t_meas=0.51,
+        t_meas=from_seconds(0.51),
         event_type=EkfEventType.MAG,
         payload=_build_mag_sample(),
     )
@@ -195,7 +196,7 @@ def test_apriltag_mahalanobis_rejection_does_not_update_state() -> None:
         accel_body=[0.0, 0.0, config.gravity_mps2]
     )
     imu_event: EkfEvent = EkfEvent(
-        t_meas=0.0,
+        t_meas=from_seconds(0.0),
         event_type=EkfEventType.IMU,
         payload=EkfImuPacket(imu=imu_sample, calibration=None),
     )
@@ -212,7 +213,7 @@ def test_apriltag_mahalanobis_rejection_does_not_update_state() -> None:
         detections=[far_detection],
     )
     far_event: EkfEvent = EkfEvent(
-        t_meas=0.01,
+        t_meas=from_seconds(0.01),
         event_type=EkfEventType.APRILTAG,
         payload=far_data,
     )
@@ -236,7 +237,7 @@ def test_apriltag_mahalanobis_rejection_does_not_update_state() -> None:
         detections=[near_detection],
     )
     near_event: EkfEvent = EkfEvent(
-        t_meas=0.02,
+        t_meas=from_seconds(0.02),
         event_type=EkfEventType.APRILTAG,
         payload=near_data,
     )

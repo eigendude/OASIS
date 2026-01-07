@@ -33,10 +33,12 @@ from oasis_control.localization.ekf.ekf_types import EkfEventType
 from oasis_control.localization.ekf.ekf_types import EkfImuPacket
 from oasis_control.localization.ekf.ekf_types import EkfMatrix
 from oasis_control.localization.ekf.ekf_types import EkfOutputs
+from oasis_control.localization.ekf.ekf_types import EkfTime
 from oasis_control.localization.ekf.ekf_types import EkfUpdateData
 from oasis_control.localization.ekf.ekf_types import ImuCalibrationData
 from oasis_control.localization.ekf.ekf_types import ImuSample
 from oasis_control.localization.ekf.ekf_types import MagSample
+from oasis_control.localization.ekf.ekf_types import to_seconds
 from oasis_control.localization.ekf.models.apriltag_measurement_model import (
     AprilTagMeasurementModel,
 )
@@ -88,6 +90,7 @@ class EkfCore:
         self._last_checkpoint_time: Optional[float] = None
 
     def process_event(self, event: EkfEvent) -> EkfOutputs:
+        t_meas_s: float = to_seconds(event.t_meas)
         odom_time_s: Optional[float] = None
         world_odom_time_s: Optional[float] = None
         mag_update: Optional[EkfUpdateData] = None
@@ -100,28 +103,28 @@ class EkfCore:
                     self.initialize_from_calibration(imu_packet.calibration)
                     self._calibration_initialized = True
 
-            self._ensure_initialized(event.t_meas)
-            self._process_imu_packet(imu_packet, event.t_meas)
-            odom_time_s = event.t_meas
-            world_odom_time_s = event.t_meas
+            self._ensure_initialized(t_meas_s)
+            self._process_imu_packet(imu_packet, t_meas_s)
+            odom_time_s = t_meas_s
+            world_odom_time_s = t_meas_s
         elif event.event_type == EkfEventType.MAG:
             mag_sample: MagSample = cast(MagSample, event.payload)
-            self._ensure_initialized(event.t_meas)
-            self._propagate_if_needed(event.t_meas)
-            mag_update = self.update_with_mag(mag_sample, event.t_meas)
+            self._ensure_initialized(t_meas_s)
+            self._propagate_if_needed(t_meas_s)
+            mag_update = self.update_with_mag(mag_sample, t_meas_s)
         elif event.event_type == EkfEventType.APRILTAG:
             apriltag_data: AprilTagDetectionArrayData = cast(
                 AprilTagDetectionArrayData, event.payload
             )
-            self._ensure_initialized(event.t_meas)
-            self._propagate_if_needed(event.t_meas)
-            apriltag_update = self.update_with_apriltags(apriltag_data, event.t_meas)
+            self._ensure_initialized(t_meas_s)
+            self._propagate_if_needed(t_meas_s)
+            apriltag_update = self.update_with_apriltags(apriltag_data, t_meas_s)
         elif event.event_type == EkfEventType.CAMERA_INFO:
             self._camera_info = cast(CameraInfoData, event.payload)
             self._apriltag_model.set_camera_info(self._camera_info)
 
-        self._set_frontier(event.t_meas)
-        self._maybe_checkpoint(event.t_meas, event.event_type)
+        self._set_frontier(t_meas_s)
+        self._maybe_checkpoint(t_meas_s, event.event_type)
 
         return EkfOutputs(
             odom_time_s=odom_time_s,
@@ -190,13 +193,14 @@ class EkfCore:
         # TODO: Initialize in-state calibration parameters with covariance
         self._initialized = True
 
-    def is_out_of_order(self, t_meas: float) -> bool:
+    def is_out_of_order(self, t_meas: EkfTime) -> bool:
         if self._t_frontier is None:
             return False
-        return t_meas < (self._t_frontier - 1.0e-9)
+        t_meas_s: float = to_seconds(t_meas)
+        return t_meas_s < (self._t_frontier - 1.0e-9)
 
     def replay(
-        self, buffer: EkfBuffer, start_time: Optional[float] = None
+        self, buffer: EkfBuffer, start_time: Optional[EkfTime] = None
     ) -> EkfOutputs:
         if buffer.earliest_time() is None:
             return EkfOutputs(
@@ -207,7 +211,9 @@ class EkfCore:
             )
 
         earliest_time: float = cast(float, buffer.earliest_time())
-        replay_start: float = start_time if start_time is not None else earliest_time
+        replay_start: float = (
+            to_seconds(start_time) if start_time is not None else earliest_time
+        )
         checkpoint: Optional[_Checkpoint] = self._find_checkpoint(replay_start)
         if checkpoint is None:
             self._reset_state(replay_start)
@@ -225,10 +231,11 @@ class EkfCore:
         current_time: Optional[float] = None
         current_group: list[EkfEvent] = []
         for event in buffer.iter_events_from(replay_start):
-            if current_time is None or event.t_meas != current_time:
+            event_time_s: float = to_seconds(event.t_meas)
+            if current_time is None or event_time_s != current_time:
                 if current_group:
                     grouped_events.append((cast(float, current_time), current_group))
-                current_time = event.t_meas
+                current_time = event_time_s
                 current_group = [event]
             else:
                 current_group.append(event)
@@ -254,9 +261,10 @@ class EkfCore:
         return self._t_frontier
 
     def _checkpoint_snapshot(
-        self, t_meas: float
+        self, t_meas: EkfTime
     ) -> Optional[tuple[float, np.ndarray, np.ndarray]]:
-        checkpoint: Optional[_Checkpoint] = self._find_checkpoint(t_meas)
+        t_meas_s: float = to_seconds(t_meas)
+        checkpoint: Optional[_Checkpoint] = self._find_checkpoint(t_meas_s)
         if checkpoint is None:
             return None
         return (checkpoint.t_meas, checkpoint.x.copy(), checkpoint.p.copy())
