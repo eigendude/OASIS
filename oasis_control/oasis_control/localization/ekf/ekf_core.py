@@ -272,7 +272,7 @@ class EkfCore:
         z_values: list[float] = [] if z is None else z.tolist()
         z_hat_values: list[float] = [] if z_hat is None else z_hat.tolist()
         nu_values: list[float] = [] if residual is None else residual.tolist()
-        z_dim: int = len(z_values) if z_values else 8
+        z_dim: int = len(z_values) if z_values else 4
         zero_matrix: EkfMatrix = self._zero_matrix(z_dim)
         r_matrix: EkfMatrix = (
             zero_matrix
@@ -338,6 +338,17 @@ class EkfCore:
             self._last_imu_time = t_meas
             self._set_frontier(t_meas)
             return
+        imu_dt: float = t_meas - self._last_imu_time
+        if imu_dt <= 0.0:
+            self._last_imu = imu_sample
+            self._last_imu_time = t_meas
+            self._set_frontier(t_meas)
+            return
+        if imu_dt > self._config.dt_imu_max:
+            self._last_imu = imu_sample
+            self._last_imu_time = t_meas
+            self._set_frontier(t_meas)
+            return
         if self._t_frontier is not None:
             self._propagate_with_imu(self._last_imu, self._t_frontier, t_meas)
         self._last_imu = imu_sample
@@ -353,6 +364,10 @@ class EkfCore:
         if self._last_imu is None or self._last_imu_time is None:
             self._t_frontier = t_meas
             return
+        imu_age: float = t_meas - self._last_imu_time
+        if imu_age > self._config.dt_imu_max:
+            self._t_frontier = t_meas
+            return
         self._propagate_with_imu(self._last_imu, self._t_frontier, t_meas)
         self._set_frontier(t_meas)
 
@@ -361,8 +376,6 @@ class EkfCore:
     ) -> None:
         dt_total: float = t_end - t_start
         if dt_total <= 0.0:
-            return
-        if dt_total > self._config.dt_imu_max:
             return
         max_dt: float = self._config.max_dt_sec
         steps: int = max(1, int(math.ceil(dt_total / max_dt)))
@@ -458,7 +471,7 @@ class EkfCore:
         s: np.ndarray = s_hat + r
         maha_d2: float = float(residual.T @ np.linalg.solve(s, residual))
         gate_d2_threshold: float = self._config.apriltag_gate_d2
-        if maha_d2 > gate_d2_threshold:
+        if gate_d2_threshold > 0.0 and maha_d2 > gate_d2_threshold:
             return self.build_rejected_apriltag_detection(
                 detection,
                 frame_id,
@@ -474,7 +487,8 @@ class EkfCore:
                 gate_d2_threshold=gate_d2_threshold,
             )
 
-        k_gain: np.ndarray = np.linalg.solve(s, h @ self._p).T
+        hp: np.ndarray = h @ self._p
+        k_gain: np.ndarray = np.linalg.solve(s.T, hp).T
 
         self._x = self._x + k_gain @ residual
         identity: np.ndarray = np.eye(_STATE_DIM, dtype=float)
