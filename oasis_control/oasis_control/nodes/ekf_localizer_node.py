@@ -53,6 +53,40 @@ from oasis_control.localization.ekf.ekf_types import to_seconds
 from oasis_control.localization.ekf.reporting.update_reporter import UpdateReporter
 from oasis_control.localization.ekf.ros_time_adapter import ekf_time_to_ros_time
 from oasis_control.localization.ekf.ros_time_adapter import ros_time_to_ekf_time
+from oasis_control.nodes.ekf_localizer_params import DEFAULT_ACCEL_NOISE_VAR
+from oasis_control.nodes.ekf_localizer_params import DEFAULT_ANG_VAR
+from oasis_control.nodes.ekf_localizer_params import DEFAULT_APRILTAG_GATE_D2
+from oasis_control.nodes.ekf_localizer_params import DEFAULT_APRILTAG_POS_VAR
+from oasis_control.nodes.ekf_localizer_params import DEFAULT_APRILTAG_YAW_VAR
+from oasis_control.nodes.ekf_localizer_params import DEFAULT_CHECKPOINT_INTERVAL_SEC
+from oasis_control.nodes.ekf_localizer_params import DEFAULT_DT_CLOCK_JUMP_MAX
+from oasis_control.nodes.ekf_localizer_params import DEFAULT_DT_IMU_MAX
+from oasis_control.nodes.ekf_localizer_params import DEFAULT_EPS_WALL_FUTURE
+from oasis_control.nodes.ekf_localizer_params import DEFAULT_GRAVITY_MPS2
+from oasis_control.nodes.ekf_localizer_params import DEFAULT_GYRO_NOISE_VAR
+from oasis_control.nodes.ekf_localizer_params import DEFAULT_MAX_DT_SEC
+from oasis_control.nodes.ekf_localizer_params import DEFAULT_POS_VAR
+from oasis_control.nodes.ekf_localizer_params import DEFAULT_TAG_LANDMARK_PRIOR_SIGMA_ROT_RAD
+from oasis_control.nodes.ekf_localizer_params import DEFAULT_TAG_LANDMARK_PRIOR_SIGMA_T_M
+from oasis_control.nodes.ekf_localizer_params import DEFAULT_T_BUFFER_SEC
+from oasis_control.nodes.ekf_localizer_params import DEFAULT_VEL_VAR
+from oasis_control.nodes.ekf_localizer_params import PARAM_ACCEL_NOISE_VAR
+from oasis_control.nodes.ekf_localizer_params import PARAM_ANG_VAR
+from oasis_control.nodes.ekf_localizer_params import PARAM_APRILTAG_GATE_D2
+from oasis_control.nodes.ekf_localizer_params import PARAM_APRILTAG_POS_VAR
+from oasis_control.nodes.ekf_localizer_params import PARAM_APRILTAG_YAW_VAR
+from oasis_control.nodes.ekf_localizer_params import PARAM_CHECKPOINT_INTERVAL_SEC
+from oasis_control.nodes.ekf_localizer_params import PARAM_DT_CLOCK_JUMP_MAX
+from oasis_control.nodes.ekf_localizer_params import PARAM_DT_IMU_MAX
+from oasis_control.nodes.ekf_localizer_params import PARAM_EPS_WALL_FUTURE
+from oasis_control.nodes.ekf_localizer_params import PARAM_GRAVITY_MPS2
+from oasis_control.nodes.ekf_localizer_params import PARAM_GYRO_NOISE_VAR
+from oasis_control.nodes.ekf_localizer_params import PARAM_MAX_DT_SEC
+from oasis_control.nodes.ekf_localizer_params import PARAM_POS_VAR
+from oasis_control.nodes.ekf_localizer_params import PARAM_TAG_LANDMARK_PRIOR_SIGMA_ROT_RAD
+from oasis_control.nodes.ekf_localizer_params import PARAM_TAG_LANDMARK_PRIOR_SIGMA_T_M
+from oasis_control.nodes.ekf_localizer_params import PARAM_T_BUFFER_SEC
+from oasis_control.nodes.ekf_localizer_params import PARAM_VEL_VAR
 from oasis_msgs.msg import EkfAprilTagUpdateReport as EkfAprilTagUpdateReportMsg
 from oasis_msgs.msg import EkfUpdateReport as EkfUpdateReportMsg
 
@@ -90,53 +124,17 @@ PARAM_WORLD_FRAME_ID: str = "world_frame_id"
 PARAM_ODOM_FRAME_ID: str = "odom_frame_id"
 PARAM_BODY_FRAME_ID: str = "body_frame_id"
 
-PARAM_T_BUFFER_SEC: str = "T_buffer_sec"
-PARAM_EPS_WALL_FUTURE: str = "ε_wall_future"
-PARAM_DT_CLOCK_JUMP_MAX: str = "Δt_clock_jump_max"
-PARAM_DT_IMU_MAX: str = "Δt_imu_max"
-PARAM_POS_VAR: str = "pos_var"
-PARAM_VEL_VAR: str = "vel_var"
-PARAM_ANG_VAR: str = "ang_var"
-PARAM_ACCEL_NOISE_VAR: str = "accel_noise_var"
-PARAM_GYRO_NOISE_VAR: str = "gyro_noise_var"
-PARAM_GRAVITY_MPS2: str = "gravity_mps2"
-PARAM_MAX_DT_SEC: str = "max_dt_sec"
-PARAM_CHECKPOINT_INTERVAL_SEC: str = "checkpoint_interval_sec"
-PARAM_APRILTAG_POS_VAR: str = "apriltag_pos_var"
-PARAM_APRILTAG_YAW_VAR: str = "apriltag_yaw_var"
-PARAM_APRILTAG_GATE_D2: str = "apriltag_gate_d2"
-
 PARAM_TAG_SIZE_M: str = "tag_size_m"
 PARAM_TAG_ANCHOR_FAMILY: str = "tag_anchor_family"
 PARAM_TAG_ANCHOR_ID: str = "tag_anchor_id"
-PARAM_TAG_LANDMARK_PRIOR_SIGMA_T_M: str = "tag_landmark_prior_sigma_t_m"
-PARAM_TAG_LANDMARK_PRIOR_SIGMA_ROT_RAD: str = "tag_landmark_prior_sigma_rot_rad"
 
 DEFAULT_WORLD_FRAME_ID: str = "world"
 DEFAULT_ODOM_FRAME_ID: str = "odom"
 DEFAULT_BODY_FRAME_ID: str = "base_link"
 
-DEFAULT_T_BUFFER_SEC: float = 2.0
-DEFAULT_EPS_WALL_FUTURE: float = 0.05
-DEFAULT_DT_CLOCK_JUMP_MAX: float = 0.5
-DEFAULT_DT_IMU_MAX: float = 0.05
-DEFAULT_POS_VAR: float = 1.0
-DEFAULT_VEL_VAR: float = 1.0
-DEFAULT_ANG_VAR: float = 0.25
-DEFAULT_ACCEL_NOISE_VAR: float = 1.0
-DEFAULT_GYRO_NOISE_VAR: float = 0.01
-DEFAULT_GRAVITY_MPS2: float = 9.80665
-DEFAULT_MAX_DT_SEC: float = 0.05
-DEFAULT_CHECKPOINT_INTERVAL_SEC: float = 0.5
-DEFAULT_APRILTAG_POS_VAR: float = 0.25
-DEFAULT_APRILTAG_YAW_VAR: float = 0.1
-DEFAULT_APRILTAG_GATE_D2: float = 9.49
-
 DEFAULT_TAG_SIZE_M: float = 0.162
 DEFAULT_TAG_ANCHOR_FAMILY: str = "tag36h11"
 DEFAULT_TAG_ANCHOR_ID: int = 0
-DEFAULT_TAG_LANDMARK_PRIOR_SIGMA_T_M: float = 10.0
-DEFAULT_TAG_LANDMARK_PRIOR_SIGMA_ROT_RAD: float = 3.141592653589793
 
 SYNCED_IMU_STAMP_CACHE_SIZE: int = 50
 
