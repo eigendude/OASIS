@@ -21,6 +21,8 @@ from typing import Optional
 
 from oasis_control.localization.ekf.ekf_config import EkfConfig
 from oasis_control.localization.ekf.ekf_types import EkfEvent
+from oasis_control.localization.ekf.ekf_types import EkfTime
+from oasis_control.localization.ekf.ekf_types import to_seconds
 
 
 class EkfBuffer:
@@ -36,31 +38,35 @@ class EkfBuffer:
         self._latest_time: Optional[float] = None
 
     def insert_event(self, event: EkfEvent) -> None:
-        insert_index: int = bisect_right(self._timestamps, event.t_meas)
-        self._timestamps.insert(insert_index, event.t_meas)
+        event_time_s: float = to_seconds(event.t_meas)
+        insert_index: int = bisect_right(self._timestamps, event_time_s)
+        self._timestamps.insert(insert_index, event_time_s)
         self._events.insert(insert_index, event)
         if self._latest_time is None:
-            self._latest_time = event.t_meas
+            self._latest_time = event_time_s
         else:
-            self._latest_time = max(self._latest_time, event.t_meas)
+            self._latest_time = max(self._latest_time, event_time_s)
 
-    def too_old(self, t_meas: float) -> bool:
+    def too_old(self, t_meas: EkfTime) -> bool:
         if self._latest_time is None:
             return False
 
-        return t_meas < (self._latest_time - self._config.t_buffer_sec)
+        t_meas_s: float = to_seconds(t_meas)
+        return t_meas_s < (self._latest_time - self._config.t_buffer_sec)
 
-    def detect_clock_jump(self, t_meas: float) -> bool:
+    def detect_clock_jump(self, t_meas: EkfTime) -> bool:
         if self._latest_time is None:
             return False
 
-        dt: float = t_meas - self._latest_time
+        t_meas_s: float = to_seconds(t_meas)
+        dt: float = t_meas_s - self._latest_time
         return abs(dt) > self._config.dt_clock_jump_max
 
-    def evict(self, t_filter: float) -> None:
-        cutoff: float = t_filter - self._config.t_buffer_sec
+    def evict(self, t_filter: EkfTime) -> None:
+        t_filter_s: float = to_seconds(t_filter)
+        cutoff: float = t_filter_s - self._config.t_buffer_sec
         index: int = 0
-        while index < len(self._events) and self._events[index].t_meas < cutoff:
+        while index < len(self._events) and self._timestamps[index] < cutoff:
             index += 1
         if index > 0:
             del self._events[:index]

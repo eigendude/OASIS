@@ -13,28 +13,49 @@ Types and helpers for EKF localization
 """
 
 import enum
+import math
 from dataclasses import dataclass
 from typing import Optional
 from typing import Union
 
-from builtin_interfaces.msg import Time
+# Nanoseconds per second for converting EKF timestamps
+_NS_PER_S: int = 1_000_000_000
 
 
+@dataclass(frozen=True)
 class EkfTime:
     """
-    Time conversion helpers for EKF data structures
+    EKF timestamp stored as seconds and nanoseconds
+
+    Fields:
+        sec: Whole seconds since the EKF time reference
+        nanosec: Sub-second remainder in nanoseconds [0, 1e9)
     """
 
-    @staticmethod
-    def to_seconds(stamp: Time) -> float:
-        return float(stamp.sec) + float(stamp.nanosec) * 1.0e-9
+    sec: int
+    nanosec: int
 
-    @staticmethod
-    def from_seconds(timestamp: float) -> Time:
-        stamp: Time = Time()
-        stamp.sec = int(timestamp)
-        stamp.nanosec = int((timestamp - float(stamp.sec)) * 1.0e9)
-        return stamp
+
+def to_ns(t: EkfTime) -> int:
+    return t.sec * _NS_PER_S + t.nanosec
+
+
+def from_ns(ns: int) -> EkfTime:
+    sec, nanosec = divmod(ns, _NS_PER_S)
+    return EkfTime(sec=sec, nanosec=nanosec)
+
+
+def to_seconds(t: EkfTime) -> float:
+    return float(t.sec) + float(t.nanosec) * 1.0e-9
+
+
+def from_seconds(timestamp: float) -> EkfTime:
+    sec: int = int(math.floor(timestamp))
+    nanosec: int = int(round((timestamp - float(sec)) * _NS_PER_S))
+    if nanosec >= _NS_PER_S:
+        sec += 1
+        nanosec -= _NS_PER_S
+    return EkfTime(sec=sec, nanosec=nanosec)
 
 
 class EkfEventType(enum.Enum):
@@ -216,12 +237,12 @@ class EkfEvent:
     Time-stamped EKF event in the common filter timeline
 
     Fields:
-        t_meas: Measurement timestamp in seconds
+        t_meas: Measurement timestamp
         event_type: Event category for dispatching updates
         payload: Event data payload for the selected type
     """
 
-    t_meas: float
+    t_meas: EkfTime
     event_type: EkfEventType
     payload: EkfEventPayload
 

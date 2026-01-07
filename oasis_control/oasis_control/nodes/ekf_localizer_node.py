@@ -22,7 +22,6 @@ import rclpy.node
 import rclpy.publisher
 import rclpy.qos
 import rclpy.subscription
-from builtin_interfaces.msg import Time
 from nav_msgs.msg import Odometry as OdometryMsg
 from sensor_msgs.msg import CameraInfo as CameraInfoMsg
 from sensor_msgs.msg import Imu as ImuMsg
@@ -45,6 +44,10 @@ from oasis_control.localization.ekf.ekf_types import EkfUpdateData
 from oasis_control.localization.ekf.ekf_types import ImuCalibrationData
 from oasis_control.localization.ekf.ekf_types import ImuSample
 from oasis_control.localization.ekf.ekf_types import MagSample
+from oasis_control.localization.ekf.ekf_types import from_seconds
+from oasis_control.localization.ekf.ekf_types import to_seconds
+from oasis_control.localization.ekf.ros_time_adapter import ekf_time_to_ros_time
+from oasis_control.localization.ekf.ros_time_adapter import ros_time_to_ekf_time
 from oasis_control.localization.ekf.reporting.update_reporter import UpdateReporter
 from oasis_msgs.msg import EkfAprilTagUpdateReport as EkfAprilTagUpdateReportMsg
 from oasis_msgs.msg import EkfUpdateReport as EkfUpdateReportMsg
@@ -372,7 +375,7 @@ class EkfLocalizerNode(rclpy.node.Node):
             self._camera_info = data
             self.get_logger().info("Caching camera_info for AprilTag updates")
             event: EkfEvent = EkfEvent(
-                t_meas=EkfTime.to_seconds(message.header.stamp),
+                t_meas=ros_time_to_ekf_time(message.header.stamp),
                 event_type=EkfEventType.CAMERA_INFO,
                 payload=data,
             )
@@ -394,19 +397,19 @@ class EkfLocalizerNode(rclpy.node.Node):
             self._logged_imu_sync_todo = True
 
     def _handle_imu_raw(self, message: ImuMsg) -> None:
-        stamp: Time = message.header.stamp
-        timestamp: float = EkfTime.to_seconds(stamp)
+        timestamp: EkfTime = ros_time_to_ekf_time(message.header.stamp)
+        timestamp_s: float = to_seconds(timestamp)
 
         if self._last_imu_time is not None:
-            dt_imu: float = timestamp - self._last_imu_time
+            dt_imu: float = timestamp_s - self._last_imu_time
             if dt_imu > self._dt_imu_max:
                 self.get_logger().warn(
                     f"IMU dt exceeded limit ({dt_imu:.3f}s), skipping"
                 )
-                self._last_imu_time = timestamp
+                self._last_imu_time = timestamp_s
                 return
 
-        self._last_imu_time = timestamp
+        self._last_imu_time = timestamp_s
 
         calibration: Optional[ImuCalibrationData] = self._latest_calibration
         if (
@@ -446,7 +449,7 @@ class EkfLocalizerNode(rclpy.node.Node):
         self,
         imu: ImuSample,
         calibration: Optional[ImuCalibrationData],
-        timestamp: float,
+        timestamp: EkfTime,
     ) -> None:
         event: EkfEvent = EkfEvent(
             t_meas=timestamp,
@@ -456,8 +459,7 @@ class EkfLocalizerNode(rclpy.node.Node):
         self._process_event(event)
 
     def _handle_mag(self, message: MagneticFieldMsg) -> None:
-        stamp: Time = message.header.stamp
-        timestamp: float = EkfTime.to_seconds(stamp)
+        timestamp: EkfTime = ros_time_to_ekf_time(message.header.stamp)
         mag_sample: MagSample = MagSample(
             frame_id=message.header.frame_id,
             magnetic_field_t=[
@@ -475,8 +477,7 @@ class EkfLocalizerNode(rclpy.node.Node):
         self._process_event(event)
 
     def _handle_apriltags(self, message: AprilTagDetectionArrayMsg) -> None:
-        stamp: Time = message.header.stamp
-        timestamp: float = EkfTime.to_seconds(stamp)
+        timestamp: EkfTime = ros_time_to_ekf_time(message.header.stamp)
 
         detection_data: AprilTagDetectionArrayData = self._apriltag_data_from_msg(
             message
@@ -554,7 +555,9 @@ class EkfLocalizerNode(rclpy.node.Node):
     def _publish_rejection(self, event: EkfEvent, reason: str) -> None:
         if event.event_type == EkfEventType.MAG:
             mag_sample: MagSample = cast(MagSample, event.payload)
-            update: EkfUpdateData = self._core.update_with_mag(mag_sample, event.t_meas)
+            update: EkfUpdateData = self._core.update_with_mag(
+                mag_sample, to_seconds(event.t_meas)
+            )
             update = replace(update, accepted=False, reject_reason=reason)
             self._publish_mag_update(update)
         elif event.event_type == EkfEventType.APRILTAG:
@@ -562,7 +565,7 @@ class EkfLocalizerNode(rclpy.node.Node):
                 AprilTagDetectionArrayData, event.payload
             )
             update_data: EkfAprilTagUpdateData = self._core.update_with_apriltags(
-                apriltag_data, event.t_meas
+                apriltag_data, to_seconds(event.t_meas)
             )
             update_data = self._override_apriltag_rejection(update_data, reason)
             self._publish_apriltag_update(update_data)
@@ -589,7 +592,7 @@ class EkfLocalizerNode(rclpy.node.Node):
 
     def _build_odom(self, timestamp: float) -> OdometryMsg:
         message: OdometryMsg = OdometryMsg()
-        message.header.stamp = EkfTime.from_seconds(timestamp)
+        message.header.stamp = ekf_time_to_ros_time(from_seconds(timestamp))
         message.header.frame_id = self._odom_frame_id
         message.child_frame_id = self._body_frame_id
         message.pose.pose.orientation.w = 1.0
