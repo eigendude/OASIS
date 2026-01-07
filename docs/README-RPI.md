@@ -27,9 +27,9 @@ sudo sed -i 's/^disable_overscan=1/#disable_overscan=1/' /boot/firmware/config.t
 
 A script is provided to perform the following tasks:
 
-* Create a 16GB swapfile and add it to `/etc/fstab`
-* Disable apt from asking for user input
-* Prevent the system from waiting on a network connection on startup
+- Create a 16GB swapfile and add it to `/etc/fstab`
+- Disable apt from asking for user input
+- Prevent the system from waiting on a network connection on startup
 
 ```bash
 cd oasis_tooling/scripts
@@ -47,11 +47,11 @@ export NEEDRESTART_MODE="a"
 
 A script is provided to install Gnome and Wayland on the Raspberry Pi:
 
-* Installs Gnome, Gnome Terminal and Gnome System Monitor
-* Installs extensions from `oasis_visualization/extensions` folder
-* Configures Gnome for an always-on display
-* Configures Gnome to use the dark theme
-* Disables systemd system suspend
+- Installs Gnome, Gnome Terminal and Gnome System Monitor
+- Installs extensions from `oasis_visualization/extensions` folder
+- Configures Gnome for an always-on display
+- Configures Gnome to use the dark theme
+- Disables systemd system suspend
 
 ```bash
 cd oasis_tooling/scripts
