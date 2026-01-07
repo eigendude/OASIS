@@ -53,40 +53,7 @@ from oasis_control.localization.ekf.ekf_types import to_seconds
 from oasis_control.localization.ekf.reporting.update_reporter import UpdateReporter
 from oasis_control.localization.ekf.ros_time_adapter import ekf_time_to_ros_time
 from oasis_control.localization.ekf.ros_time_adapter import ros_time_to_ekf_time
-from oasis_control.nodes.ekf_localizer_params import DEFAULT_ACCEL_NOISE_VAR
-from oasis_control.nodes.ekf_localizer_params import DEFAULT_ANG_VAR
-from oasis_control.nodes.ekf_localizer_params import DEFAULT_APRILTAG_GATE_D2
-from oasis_control.nodes.ekf_localizer_params import DEFAULT_APRILTAG_POS_VAR
-from oasis_control.nodes.ekf_localizer_params import DEFAULT_APRILTAG_YAW_VAR
-from oasis_control.nodes.ekf_localizer_params import DEFAULT_CHECKPOINT_INTERVAL_SEC
-from oasis_control.nodes.ekf_localizer_params import DEFAULT_DT_CLOCK_JUMP_MAX
-from oasis_control.nodes.ekf_localizer_params import DEFAULT_DT_IMU_MAX
-from oasis_control.nodes.ekf_localizer_params import DEFAULT_EPS_WALL_FUTURE
-from oasis_control.nodes.ekf_localizer_params import DEFAULT_GRAVITY_MPS2
-from oasis_control.nodes.ekf_localizer_params import DEFAULT_GYRO_NOISE_VAR
-from oasis_control.nodes.ekf_localizer_params import DEFAULT_MAX_DT_SEC
-from oasis_control.nodes.ekf_localizer_params import DEFAULT_POS_VAR
-from oasis_control.nodes.ekf_localizer_params import DEFAULT_TAG_LANDMARK_PRIOR_SIGMA_ROT_RAD
-from oasis_control.nodes.ekf_localizer_params import DEFAULT_TAG_LANDMARK_PRIOR_SIGMA_T_M
-from oasis_control.nodes.ekf_localizer_params import DEFAULT_T_BUFFER_SEC
-from oasis_control.nodes.ekf_localizer_params import DEFAULT_VEL_VAR
-from oasis_control.nodes.ekf_localizer_params import PARAM_ACCEL_NOISE_VAR
-from oasis_control.nodes.ekf_localizer_params import PARAM_ANG_VAR
-from oasis_control.nodes.ekf_localizer_params import PARAM_APRILTAG_GATE_D2
-from oasis_control.nodes.ekf_localizer_params import PARAM_APRILTAG_POS_VAR
-from oasis_control.nodes.ekf_localizer_params import PARAM_APRILTAG_YAW_VAR
-from oasis_control.nodes.ekf_localizer_params import PARAM_CHECKPOINT_INTERVAL_SEC
-from oasis_control.nodes.ekf_localizer_params import PARAM_DT_CLOCK_JUMP_MAX
-from oasis_control.nodes.ekf_localizer_params import PARAM_DT_IMU_MAX
-from oasis_control.nodes.ekf_localizer_params import PARAM_EPS_WALL_FUTURE
-from oasis_control.nodes.ekf_localizer_params import PARAM_GRAVITY_MPS2
-from oasis_control.nodes.ekf_localizer_params import PARAM_GYRO_NOISE_VAR
-from oasis_control.nodes.ekf_localizer_params import PARAM_MAX_DT_SEC
-from oasis_control.nodes.ekf_localizer_params import PARAM_POS_VAR
-from oasis_control.nodes.ekf_localizer_params import PARAM_TAG_LANDMARK_PRIOR_SIGMA_ROT_RAD
-from oasis_control.nodes.ekf_localizer_params import PARAM_TAG_LANDMARK_PRIOR_SIGMA_T_M
-from oasis_control.nodes.ekf_localizer_params import PARAM_T_BUFFER_SEC
-from oasis_control.nodes.ekf_localizer_params import PARAM_VEL_VAR
+from oasis_control.nodes import ekf_localizer_params as ekf_params
 from oasis_msgs.msg import EkfAprilTagUpdateReport as EkfAprilTagUpdateReportMsg
 from oasis_msgs.msg import EkfUpdateReport as EkfUpdateReportMsg
 
@@ -155,68 +122,68 @@ class EkfLocalizerNode(rclpy.node.Node):
         self.declare_parameter(PARAM_WORLD_FRAME_ID, DEFAULT_WORLD_FRAME_ID)
         self.declare_parameter(PARAM_ODOM_FRAME_ID, DEFAULT_ODOM_FRAME_ID)
         self.declare_parameter(PARAM_BODY_FRAME_ID, DEFAULT_BODY_FRAME_ID)
-        self.declare_parameter(PARAM_T_BUFFER_SEC, DEFAULT_T_BUFFER_SEC)
-        self.declare_parameter(PARAM_EPS_WALL_FUTURE, DEFAULT_EPS_WALL_FUTURE)
-        self.declare_parameter(PARAM_DT_CLOCK_JUMP_MAX, DEFAULT_DT_CLOCK_JUMP_MAX)
-        self.declare_parameter(PARAM_DT_IMU_MAX, DEFAULT_DT_IMU_MAX)
-        self.declare_parameter(PARAM_POS_VAR, DEFAULT_POS_VAR)
-        self.declare_parameter(PARAM_VEL_VAR, DEFAULT_VEL_VAR)
-        self.declare_parameter(PARAM_ANG_VAR, DEFAULT_ANG_VAR)
-        self.declare_parameter(PARAM_ACCEL_NOISE_VAR, DEFAULT_ACCEL_NOISE_VAR)
-        self.declare_parameter(PARAM_GYRO_NOISE_VAR, DEFAULT_GYRO_NOISE_VAR)
-        self.declare_parameter(PARAM_GRAVITY_MPS2, DEFAULT_GRAVITY_MPS2)
-        self.declare_parameter(PARAM_MAX_DT_SEC, DEFAULT_MAX_DT_SEC)
+        self.declare_parameter(ekf_params.PARAM_T_BUFFER_SEC, ekf_params.DEFAULT_T_BUFFER_SEC)
+        self.declare_parameter(ekf_params.PARAM_EPS_WALL_FUTURE, ekf_params.DEFAULT_EPS_WALL_FUTURE)
+        self.declare_parameter(ekf_params.PARAM_DT_CLOCK_JUMP_MAX, ekf_params.DEFAULT_DT_CLOCK_JUMP_MAX)
+        self.declare_parameter(ekf_params.PARAM_DT_IMU_MAX, ekf_params.DEFAULT_DT_IMU_MAX)
+        self.declare_parameter(ekf_params.PARAM_POS_VAR, ekf_params.DEFAULT_POS_VAR)
+        self.declare_parameter(ekf_params.PARAM_VEL_VAR, ekf_params.DEFAULT_VEL_VAR)
+        self.declare_parameter(ekf_params.PARAM_ANG_VAR, ekf_params.DEFAULT_ANG_VAR)
+        self.declare_parameter(ekf_params.PARAM_ACCEL_NOISE_VAR, ekf_params.DEFAULT_ACCEL_NOISE_VAR)
+        self.declare_parameter(ekf_params.PARAM_GYRO_NOISE_VAR, ekf_params.DEFAULT_GYRO_NOISE_VAR)
+        self.declare_parameter(ekf_params.PARAM_GRAVITY_MPS2, ekf_params.DEFAULT_GRAVITY_MPS2)
+        self.declare_parameter(ekf_params.PARAM_MAX_DT_SEC, ekf_params.DEFAULT_MAX_DT_SEC)
         self.declare_parameter(
-            PARAM_CHECKPOINT_INTERVAL_SEC, DEFAULT_CHECKPOINT_INTERVAL_SEC
+            ekf_params.PARAM_CHECKPOINT_INTERVAL_SEC, ekf_params.DEFAULT_CHECKPOINT_INTERVAL_SEC
         )
-        self.declare_parameter(PARAM_APRILTAG_POS_VAR, DEFAULT_APRILTAG_POS_VAR)
-        self.declare_parameter(PARAM_APRILTAG_YAW_VAR, DEFAULT_APRILTAG_YAW_VAR)
-        self.declare_parameter(PARAM_APRILTAG_GATE_D2, DEFAULT_APRILTAG_GATE_D2)
+        self.declare_parameter(ekf_params.PARAM_APRILTAG_POS_VAR, ekf_params.DEFAULT_APRILTAG_POS_VAR)
+        self.declare_parameter(ekf_params.PARAM_APRILTAG_YAW_VAR, ekf_params.DEFAULT_APRILTAG_YAW_VAR)
+        self.declare_parameter(ekf_params.PARAM_APRILTAG_GATE_D2, ekf_params.DEFAULT_APRILTAG_GATE_D2)
         self.declare_parameter(PARAM_TAG_SIZE_M, DEFAULT_TAG_SIZE_M)
         self.declare_parameter(PARAM_TAG_ANCHOR_FAMILY, DEFAULT_TAG_ANCHOR_FAMILY)
         self.declare_parameter(PARAM_TAG_ANCHOR_ID, DEFAULT_TAG_ANCHOR_ID)
         self.declare_parameter(
-            PARAM_TAG_LANDMARK_PRIOR_SIGMA_T_M,
-            DEFAULT_TAG_LANDMARK_PRIOR_SIGMA_T_M,
+            ekf_params.PARAM_TAG_LANDMARK_PRIOR_SIGMA_T_M,
+            ekf_params.DEFAULT_TAG_LANDMARK_PRIOR_SIGMA_T_M,
         )
         self.declare_parameter(
-            PARAM_TAG_LANDMARK_PRIOR_SIGMA_ROT_RAD,
-            DEFAULT_TAG_LANDMARK_PRIOR_SIGMA_ROT_RAD,
+            ekf_params.PARAM_TAG_LANDMARK_PRIOR_SIGMA_ROT_RAD,
+            ekf_params.DEFAULT_TAG_LANDMARK_PRIOR_SIGMA_ROT_RAD,
         )
 
         self._world_frame_id: str = str(self.get_parameter(PARAM_WORLD_FRAME_ID).value)
         self._odom_frame_id: str = str(self.get_parameter(PARAM_ODOM_FRAME_ID).value)
         self._body_frame_id: str = str(self.get_parameter(PARAM_BODY_FRAME_ID).value)
-        self._t_buffer_sec: float = float(self.get_parameter(PARAM_T_BUFFER_SEC).value)
+        self._t_buffer_sec: float = float(self.get_parameter(ekf_params.PARAM_T_BUFFER_SEC).value)
         self._eps_wall_future: float = float(
-            self.get_parameter(PARAM_EPS_WALL_FUTURE).value
+            self.get_parameter(ekf_params.PARAM_EPS_WALL_FUTURE).value
         )
         self._dt_clock_jump_max: float = float(
-            self.get_parameter(PARAM_DT_CLOCK_JUMP_MAX).value
+            self.get_parameter(ekf_params.PARAM_DT_CLOCK_JUMP_MAX).value
         )
-        self._dt_imu_max: float = float(self.get_parameter(PARAM_DT_IMU_MAX).value)
-        self._pos_var: float = float(self.get_parameter(PARAM_POS_VAR).value)
-        self._vel_var: float = float(self.get_parameter(PARAM_VEL_VAR).value)
-        self._ang_var: float = float(self.get_parameter(PARAM_ANG_VAR).value)
+        self._dt_imu_max: float = float(self.get_parameter(ekf_params.PARAM_DT_IMU_MAX).value)
+        self._pos_var: float = float(self.get_parameter(ekf_params.PARAM_POS_VAR).value)
+        self._vel_var: float = float(self.get_parameter(ekf_params.PARAM_VEL_VAR).value)
+        self._ang_var: float = float(self.get_parameter(ekf_params.PARAM_ANG_VAR).value)
         self._accel_noise_var: float = float(
-            self.get_parameter(PARAM_ACCEL_NOISE_VAR).value
+            self.get_parameter(ekf_params.PARAM_ACCEL_NOISE_VAR).value
         )
         self._gyro_noise_var: float = float(
-            self.get_parameter(PARAM_GYRO_NOISE_VAR).value
+            self.get_parameter(ekf_params.PARAM_GYRO_NOISE_VAR).value
         )
-        self._gravity_mps2: float = float(self.get_parameter(PARAM_GRAVITY_MPS2).value)
-        self._max_dt_sec: float = float(self.get_parameter(PARAM_MAX_DT_SEC).value)
+        self._gravity_mps2: float = float(self.get_parameter(ekf_params.PARAM_GRAVITY_MPS2).value)
+        self._max_dt_sec: float = float(self.get_parameter(ekf_params.PARAM_MAX_DT_SEC).value)
         self._checkpoint_interval_sec: float = float(
-            self.get_parameter(PARAM_CHECKPOINT_INTERVAL_SEC).value
+            self.get_parameter(ekf_params.PARAM_CHECKPOINT_INTERVAL_SEC).value
         )
         self._apriltag_pos_var: float = float(
-            self.get_parameter(PARAM_APRILTAG_POS_VAR).value
+            self.get_parameter(ekf_params.PARAM_APRILTAG_POS_VAR).value
         )
         self._apriltag_yaw_var: float = float(
-            self.get_parameter(PARAM_APRILTAG_YAW_VAR).value
+            self.get_parameter(ekf_params.PARAM_APRILTAG_YAW_VAR).value
         )
         self._apriltag_gate_d2: float = float(
-            self.get_parameter(PARAM_APRILTAG_GATE_D2).value
+            self.get_parameter(ekf_params.PARAM_APRILTAG_GATE_D2).value
         )
         self._tag_size_m: float = float(self.get_parameter(PARAM_TAG_SIZE_M).value)
         self._tag_anchor_family: str = str(
@@ -224,10 +191,10 @@ class EkfLocalizerNode(rclpy.node.Node):
         )
         self._tag_anchor_id: int = int(self.get_parameter(PARAM_TAG_ANCHOR_ID).value)
         self._tag_landmark_prior_sigma_t_m: float = float(
-            self.get_parameter(PARAM_TAG_LANDMARK_PRIOR_SIGMA_T_M).value
+            self.get_parameter(ekf_params.PARAM_TAG_LANDMARK_PRIOR_SIGMA_T_M).value
         )
         self._tag_landmark_prior_sigma_rot_rad: float = float(
-            self.get_parameter(PARAM_TAG_LANDMARK_PRIOR_SIGMA_ROT_RAD).value
+            self.get_parameter(ekf_params.PARAM_TAG_LANDMARK_PRIOR_SIGMA_ROT_RAD).value
         )
 
         config: EkfConfig = EkfConfig(
