@@ -91,6 +91,32 @@ class ControlDescriptions:
         ld.add_action(imu_fuser_node)
 
     #
+    # EKF localizer
+    #
+
+    @staticmethod
+    def add_ekf_localizer(ld: LaunchDescription, host_id: str) -> None:
+        ekf_localizer_node: Node = Node(
+            namespace=ROS_NAMESPACE,
+            package=CONTROL_PACKAGE_NAME,
+            executable="ekf_localizer",
+            name=f"ekf_localizer_{host_id}",
+            output="screen",
+            remappings=[
+                ("apriltags", f"{host_id}/apriltags"),
+                ("camera_info", f"{host_id}/camera_info"),
+                ("ekf/updates/apriltags", f"{host_id}/ekf/updates/apriltags"),
+                ("ekf/updates/mag", f"{host_id}/ekf/updates/mag"),
+                ("imu_calibration", f"{host_id}/imu_calibration"),
+                ("imu_raw", f"{host_id}/imu_raw"),
+                ("magnetic_field", f"{host_id}/magnetic_field"),
+                ("odom", f"{host_id}/odom"),
+                ("world_odom", f"{host_id}/world_odom"),
+            ],
+        )
+        ld.add_action(ekf_localizer_node)
+
+    #
     # Microcontroller nodes
     #
 
