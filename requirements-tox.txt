@@ -20,6 +20,7 @@ platformdirs==4.5.0
 pycodestyle==2.14.0
 pydocstyle==6.3.0
 pyflakes==3.4.0
+pytest==8.4.2
 pytokens==0.2.0
 setuptools==80.9.0
 snowballstemmer==3.0.1

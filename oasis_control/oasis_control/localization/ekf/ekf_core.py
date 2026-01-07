@@ -253,6 +253,14 @@ class EkfCore:
     def frontier_time(self) -> Optional[float]:
         return self._t_frontier
 
+    def _checkpoint_snapshot(
+        self, t_meas: float
+    ) -> Optional[tuple[float, np.ndarray, np.ndarray]]:
+        checkpoint: Optional[_Checkpoint] = self._find_checkpoint(t_meas)
+        if checkpoint is None:
+            return None
+        return (checkpoint.t_meas, checkpoint.x.copy(), checkpoint.p.copy())
+
     def build_rejected_apriltag_detection(
         self,
         detection: AprilTagDetection,
@@ -364,9 +372,8 @@ class EkfCore:
         if self._last_imu is None or self._last_imu_time is None:
             self._t_frontier = t_meas
             return
-        imu_age: float = t_meas - self._last_imu_time
-        if imu_age > self._config.dt_imu_max:
-            self._t_frontier = t_meas
+        dt_total: float = t_meas - self._t_frontier
+        if dt_total > self._config.dt_imu_max:
             return
         self._propagate_with_imu(self._last_imu, self._t_frontier, t_meas)
         self._set_frontier(t_meas)
@@ -376,6 +383,8 @@ class EkfCore:
     ) -> None:
         dt_total: float = t_end - t_start
         if dt_total <= 0.0:
+            return
+        if dt_total > self._config.dt_imu_max:
             return
         max_dt: float = self._config.max_dt_sec
         steps: int = max(1, int(math.ceil(dt_total / max_dt)))
