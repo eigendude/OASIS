@@ -14,6 +14,7 @@ Fixed-lag EKF event buffer
 
 from __future__ import annotations
 
+from bisect import bisect_left
 from bisect import bisect_right
 from typing import Iterator
 from typing import Optional
@@ -67,3 +68,16 @@ class EkfBuffer:
 
     def iter_events(self) -> Iterator[EkfEvent]:
         yield from self._events
+
+    def iter_events_from(self, t_start: float) -> Iterator[EkfEvent]:
+        start_index: int = bisect_left(self._timestamps, t_start)
+        for event in self._events[start_index:]:
+            yield event
+
+    def earliest_time(self) -> Optional[float]:
+        if not self._timestamps:
+            return None
+        return self._timestamps[0]
+
+    def latest_time(self) -> Optional[float]:
+        return self._latest_time

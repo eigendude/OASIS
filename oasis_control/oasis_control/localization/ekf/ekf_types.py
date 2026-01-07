@@ -148,6 +148,7 @@ class AprilTagDetection:
         tag_id: Identifier within the family
         det_index_in_msg: Index in the incoming detection array
         corners_px: Pixel corners in [x0, y0, x1, y1, x2, y2, x3, y3] order
+        pose_world_xyz_yaw: Optional [px, py, pz, yaw] in world frame
         decision_margin: Detector decision margin for gating
         homography: 3x3 homography matrix, row-major
     """
@@ -156,6 +157,7 @@ class AprilTagDetection:
     tag_id: int
     det_index_in_msg: int
     corners_px: list[float]
+    pose_world_xyz_yaw: Optional[list[float]]
     decision_margin: float
     homography: list[float]
 

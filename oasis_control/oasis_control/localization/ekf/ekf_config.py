@@ -28,6 +28,16 @@ class EkfConfig:
         epsilon_wall_future: Max future offset in seconds allowed by wall clock
         dt_clock_jump_max: Threshold in seconds for detecting clock jumps
         dt_imu_max: Max IMU delta in seconds before skipping propagation
+        pos_var: Initial position variance in m^2
+        vel_var: Initial velocity variance in (m/s)^2
+        ang_var: Initial angle variance in rad^2
+        accel_noise_var: Process accel variance in (m/s^2)^2
+        gyro_noise_var: Process gyro variance in (rad/s)^2
+        gravity_mps2: Gravity magnitude in m/s^2
+        max_dt_sec: Max integration step in seconds
+        checkpoint_interval_sec: Replay checkpoint interval in seconds
+        apriltag_pos_var: AprilTag position variance in m^2
+        apriltag_yaw_var: AprilTag yaw variance in rad^2
         tag_size_m: AprilTag edge length in meters
         tag_anchor_family: AprilTag family name for world anchor
         tag_anchor_id: AprilTag identifier for world anchor
@@ -43,6 +53,17 @@ class EkfConfig:
     epsilon_wall_future: float
     dt_clock_jump_max: float
     dt_imu_max: float
+
+    pos_var: float
+    vel_var: float
+    ang_var: float
+    accel_noise_var: float
+    gyro_noise_var: float
+    gravity_mps2: float
+    max_dt_sec: float
+    checkpoint_interval_sec: float
+    apriltag_pos_var: float
+    apriltag_yaw_var: float
 
     tag_size_m: float
     tag_anchor_family: str

@@ -11,6 +11,7 @@
 import importlib
 import importlib.machinery
 import importlib.util
+import math
 from dataclasses import replace
 from types import ModuleType
 from typing import TYPE_CHECKING
@@ -86,6 +87,16 @@ PARAM_T_BUFFER_SEC: str = "T_buffer_sec"
 PARAM_EPS_WALL_FUTURE: str = "ε_wall_future"
 PARAM_DT_CLOCK_JUMP_MAX: str = "Δt_clock_jump_max"
 PARAM_DT_IMU_MAX: str = "Δt_imu_max"
+PARAM_POS_VAR: str = "pos_var"
+PARAM_VEL_VAR: str = "vel_var"
+PARAM_ANG_VAR: str = "ang_var"
+PARAM_ACCEL_NOISE_VAR: str = "accel_noise_var"
+PARAM_GYRO_NOISE_VAR: str = "gyro_noise_var"
+PARAM_GRAVITY_MPS2: str = "gravity_mps2"
+PARAM_MAX_DT_SEC: str = "max_dt_sec"
+PARAM_CHECKPOINT_INTERVAL_SEC: str = "checkpoint_interval_sec"
+PARAM_APRILTAG_POS_VAR: str = "apriltag_pos_var"
+PARAM_APRILTAG_YAW_VAR: str = "apriltag_yaw_var"
 
 PARAM_TAG_SIZE_M: str = "tag_size_m"
 PARAM_TAG_ANCHOR_FAMILY: str = "tag_anchor_family"
@@ -101,6 +112,16 @@ DEFAULT_T_BUFFER_SEC: float = 2.0
 DEFAULT_EPS_WALL_FUTURE: float = 0.05
 DEFAULT_DT_CLOCK_JUMP_MAX: float = 0.5
 DEFAULT_DT_IMU_MAX: float = 0.05
+DEFAULT_POS_VAR: float = 1.0
+DEFAULT_VEL_VAR: float = 1.0
+DEFAULT_ANG_VAR: float = 0.25
+DEFAULT_ACCEL_NOISE_VAR: float = 1.0
+DEFAULT_GYRO_NOISE_VAR: float = 0.01
+DEFAULT_GRAVITY_MPS2: float = 9.80665
+DEFAULT_MAX_DT_SEC: float = 0.05
+DEFAULT_CHECKPOINT_INTERVAL_SEC: float = 0.5
+DEFAULT_APRILTAG_POS_VAR: float = 0.25
+DEFAULT_APRILTAG_YAW_VAR: float = 0.1
 
 DEFAULT_TAG_SIZE_M: float = 0.162
 DEFAULT_TAG_ANCHOR_FAMILY: str = "tag36h11"
@@ -129,6 +150,18 @@ class EkfLocalizerNode(rclpy.node.Node):
         self.declare_parameter(PARAM_EPS_WALL_FUTURE, DEFAULT_EPS_WALL_FUTURE)
         self.declare_parameter(PARAM_DT_CLOCK_JUMP_MAX, DEFAULT_DT_CLOCK_JUMP_MAX)
         self.declare_parameter(PARAM_DT_IMU_MAX, DEFAULT_DT_IMU_MAX)
+        self.declare_parameter(PARAM_POS_VAR, DEFAULT_POS_VAR)
+        self.declare_parameter(PARAM_VEL_VAR, DEFAULT_VEL_VAR)
+        self.declare_parameter(PARAM_ANG_VAR, DEFAULT_ANG_VAR)
+        self.declare_parameter(PARAM_ACCEL_NOISE_VAR, DEFAULT_ACCEL_NOISE_VAR)
+        self.declare_parameter(PARAM_GYRO_NOISE_VAR, DEFAULT_GYRO_NOISE_VAR)
+        self.declare_parameter(PARAM_GRAVITY_MPS2, DEFAULT_GRAVITY_MPS2)
+        self.declare_parameter(PARAM_MAX_DT_SEC, DEFAULT_MAX_DT_SEC)
+        self.declare_parameter(
+            PARAM_CHECKPOINT_INTERVAL_SEC, DEFAULT_CHECKPOINT_INTERVAL_SEC
+        )
+        self.declare_parameter(PARAM_APRILTAG_POS_VAR, DEFAULT_APRILTAG_POS_VAR)
+        self.declare_parameter(PARAM_APRILTAG_YAW_VAR, DEFAULT_APRILTAG_YAW_VAR)
         self.declare_parameter(PARAM_TAG_SIZE_M, DEFAULT_TAG_SIZE_M)
         self.declare_parameter(PARAM_TAG_ANCHOR_FAMILY, DEFAULT_TAG_ANCHOR_FAMILY)
         self.declare_parameter(PARAM_TAG_ANCHOR_ID, DEFAULT_TAG_ANCHOR_ID)
@@ -152,6 +185,28 @@ class EkfLocalizerNode(rclpy.node.Node):
             self.get_parameter(PARAM_DT_CLOCK_JUMP_MAX).value
         )
         self._dt_imu_max: float = float(self.get_parameter(PARAM_DT_IMU_MAX).value)
+        self._pos_var: float = float(self.get_parameter(PARAM_POS_VAR).value)
+        self._vel_var: float = float(self.get_parameter(PARAM_VEL_VAR).value)
+        self._ang_var: float = float(self.get_parameter(PARAM_ANG_VAR).value)
+        self._accel_noise_var: float = float(
+            self.get_parameter(PARAM_ACCEL_NOISE_VAR).value
+        )
+        self._gyro_noise_var: float = float(
+            self.get_parameter(PARAM_GYRO_NOISE_VAR).value
+        )
+        self._gravity_mps2: float = float(
+            self.get_parameter(PARAM_GRAVITY_MPS2).value
+        )
+        self._max_dt_sec: float = float(self.get_parameter(PARAM_MAX_DT_SEC).value)
+        self._checkpoint_interval_sec: float = float(
+            self.get_parameter(PARAM_CHECKPOINT_INTERVAL_SEC).value
+        )
+        self._apriltag_pos_var: float = float(
+            self.get_parameter(PARAM_APRILTAG_POS_VAR).value
+        )
+        self._apriltag_yaw_var: float = float(
+            self.get_parameter(PARAM_APRILTAG_YAW_VAR).value
+        )
         self._tag_size_m: float = float(self.get_parameter(PARAM_TAG_SIZE_M).value)
         self._tag_anchor_family: str = str(
             self.get_parameter(PARAM_TAG_ANCHOR_FAMILY).value
@@ -172,6 +227,16 @@ class EkfLocalizerNode(rclpy.node.Node):
             epsilon_wall_future=self._eps_wall_future,
             dt_clock_jump_max=self._dt_clock_jump_max,
             dt_imu_max=self._dt_imu_max,
+            pos_var=self._pos_var,
+            vel_var=self._vel_var,
+            ang_var=self._ang_var,
+            accel_noise_var=self._accel_noise_var,
+            gyro_noise_var=self._gyro_noise_var,
+            gravity_mps2=self._gravity_mps2,
+            max_dt_sec=self._max_dt_sec,
+            checkpoint_interval_sec=self._checkpoint_interval_sec,
+            apriltag_pos_var=self._apriltag_pos_var,
+            apriltag_yaw_var=self._apriltag_yaw_var,
             tag_size_m=self._tag_size_m,
             tag_anchor_family=self._tag_anchor_family,
             tag_anchor_id=self._tag_anchor_id,
@@ -443,10 +508,10 @@ class EkfLocalizerNode(rclpy.node.Node):
         self._buffer.insert_event(event)
         self._buffer.evict(event.t_meas)
 
-        # TODO: If out-of-order, replay from event.t_meas to frontier
-        # TODO: Use deterministic order for equal timestamps
-
-        outputs: EkfOutputs = self._core.process_event(event)
+        if self._core.is_out_of_order(event.t_meas):
+            outputs: EkfOutputs = self._core.replay(self._buffer, event.t_meas)
+        else:
+            outputs = self._core.process_event(event)
 
         if outputs.odom_time_s is not None:
             self._publish_odom(outputs.odom_time_s)
@@ -574,6 +639,7 @@ class EkfLocalizerNode(rclpy.node.Node):
                     tag_id=int(detection.id),
                     det_index_in_msg=int(index),
                     corners_px=corners_px,
+                    pose_world_xyz_yaw=self._pose_from_apriltag_detection(detection),
                     decision_margin=float(detection.decision_margin),
                     homography=list(detection.homography),
                 )
@@ -610,3 +676,31 @@ class EkfLocalizerNode(rclpy.node.Node):
     def _next_update_seq(self) -> int:
         self._update_seq += 1
         return self._update_seq
+
+    def _pose_from_apriltag_detection(
+        self, detection: object
+    ) -> Optional[list[float]]:
+        pose_field: Optional[object] = getattr(detection, "pose", None)
+        if pose_field is None:
+            return None
+        pose: object = getattr(pose_field, "pose", pose_field)
+        position: Optional[object] = getattr(pose, "position", None)
+        orientation: Optional[object] = getattr(pose, "orientation", None)
+        if position is None or orientation is None:
+            return None
+        yaw: float = self._yaw_from_quaternion(orientation)
+        return [
+            float(getattr(position, "x", 0.0)),
+            float(getattr(position, "y", 0.0)),
+            float(getattr(position, "z", 0.0)),
+            yaw,
+        ]
+
+    def _yaw_from_quaternion(self, orientation: object) -> float:
+        qx: float = float(getattr(orientation, "x", 0.0))
+        qy: float = float(getattr(orientation, "y", 0.0))
+        qz: float = float(getattr(orientation, "z", 0.0))
+        qw: float = float(getattr(orientation, "w", 1.0))
+        siny_cosp: float = 2.0 * (qw * qz + qx * qy)
+        cosy_cosp: float = 1.0 - 2.0 * (qy * qy + qz * qz)
+        return math.atan2(siny_cosp, cosy_cosp)
