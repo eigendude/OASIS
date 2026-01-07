@@ -47,6 +47,9 @@ rosidl_generate_interfaces(
     msg/DiskPartition.msg
     msg/EngineerState.msg
     msg/EngineState.msg
+    msg/EkfAprilTagDetectionReport.msg
+    msg/EkfAprilTagUpdateReport.msg
+    msg/EkfUpdateReport.msg
     msg/I2CDevice.msg
     msg/I2CDeviceType.msg
     msg/I2CImu.msg
@@ -56,6 +59,7 @@ rosidl_generate_interfaces(
     msg/LeonardoState.msg
     msg/MCUMemory.msg
     msg/MCUString.msg
+    msg/Matrix.msg
     msg/MediaItem.msg
     msg/NetworkAddress.msg
     msg/NetworkInterface.msg
