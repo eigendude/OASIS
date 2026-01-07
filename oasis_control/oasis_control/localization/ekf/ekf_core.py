@@ -47,6 +47,12 @@ from oasis_control.localization.ekf.models.mag_measurement_model import (
 
 
 _STATE_DIM: int = 9
+_EVENT_ORDER: dict[EkfEventType, int] = {
+    EkfEventType.IMU: 0,
+    EkfEventType.CAMERA_INFO: 1,
+    EkfEventType.APRILTAG: 2,
+    EkfEventType.MAG: 3,
+}
 
 
 @dataclass
@@ -248,25 +254,56 @@ class EkfCore:
         return self._t_frontier
 
     def build_rejected_apriltag_detection(
-        self, detection: AprilTagDetection, frame_id: str, t_meas: float
+        self,
+        detection: AprilTagDetection,
+        frame_id: str,
+        t_meas: float,
+        *,
+        reject_reason: str = "TODO: AprilTag update not implemented",
+        z: Optional[np.ndarray] = None,
+        z_hat: Optional[np.ndarray] = None,
+        residual: Optional[np.ndarray] = None,
+        r: Optional[np.ndarray] = None,
+        s_hat: Optional[np.ndarray] = None,
+        s: Optional[np.ndarray] = None,
+        maha_d2: float = 0.0,
+        gate_d2_threshold: float = 0.0,
     ) -> EkfAprilTagDetectionUpdate:
-        z_dim: int = 8
+        z_values: list[float] = [] if z is None else z.tolist()
+        z_hat_values: list[float] = [] if z_hat is None else z_hat.tolist()
+        nu_values: list[float] = [] if residual is None else residual.tolist()
+        z_dim: int = len(z_values) if z_values else 8
         zero_matrix: EkfMatrix = self._zero_matrix(z_dim)
+        r_matrix: EkfMatrix = (
+            zero_matrix
+            if r is None
+            else EkfMatrix(rows=z_dim, cols=z_dim, data=r.flatten().tolist())
+        )
+        s_hat_matrix: EkfMatrix = (
+            zero_matrix
+            if s_hat is None
+            else EkfMatrix(rows=z_dim, cols=z_dim, data=s_hat.flatten().tolist())
+        )
+        s_matrix: EkfMatrix = (
+            zero_matrix
+            if s is None
+            else EkfMatrix(rows=z_dim, cols=z_dim, data=s.flatten().tolist())
+        )
         update: EkfUpdateData = EkfUpdateData(
             sensor="apriltags",
             frame_id=frame_id,
             t_meas=t_meas,
             accepted=False,
-            reject_reason="TODO: AprilTag update not implemented",
+            reject_reason=reject_reason,
             z_dim=z_dim,
-            z=[],
-            z_hat=[],
-            nu=[],
-            r=zero_matrix,
-            s_hat=zero_matrix,
-            s=zero_matrix,
-            maha_d2=0.0,
-            gate_d2_threshold=0.0,
+            z=z_values,
+            z_hat=z_hat_values,
+            nu=nu_values,
+            r=r_matrix,
+            s_hat=s_hat_matrix,
+            s=s_matrix,
+            maha_d2=maha_d2,
+            gate_d2_threshold=gate_d2_threshold,
             reproj_rms_px=0.0,
         )
         return EkfAprilTagDetectionUpdate(
@@ -325,6 +362,8 @@ class EkfCore:
         dt_total: float = t_end - t_start
         if dt_total <= 0.0:
             return
+        if dt_total > self._config.dt_imu_max:
+            return
         max_dt: float = self._config.max_dt_sec
         steps: int = max(1, int(math.ceil(dt_total / max_dt)))
         dt: float = dt_total / float(steps)
@@ -363,10 +402,19 @@ class EkfCore:
         # Process gyro variance in (rad/s)^2
         gyro_noise_var: float = self._config.gyro_noise_var
 
+        # Position variance from accel integration in m^2
+        pos_noise: float = accel_noise_var * (dt**3)
+
+        # Velocity variance from accel integration in (m/s)^2
+        vel_noise: float = accel_noise_var * dt
+
+        # Angle variance from gyro integration in rad^2
+        ang_noise: float = gyro_noise_var * dt
+
         for index in range(3):
-            q[index, index] = accel_noise_var * dt
-            q[index + 3, index + 3] = accel_noise_var * dt
-            q[index + 6, index + 6] = gyro_noise_var * dt
+            q[index, index] = pos_noise
+            q[index + 3, index + 3] = vel_noise
+            q[index + 6, index + 6] = ang_noise
         return q
 
     def _rotation_matrix(self, roll: float, pitch: float, yaw: float) -> np.ndarray:
@@ -408,15 +456,31 @@ class EkfCore:
         )
         s_hat: np.ndarray = h @ self._p @ h.T
         s: np.ndarray = s_hat + r
-        s_inv: np.ndarray = np.linalg.inv(s)
-        k_gain: np.ndarray = self._p @ h.T @ s_inv
+        maha_d2: float = float(residual.T @ np.linalg.solve(s, residual))
+        gate_d2_threshold: float = self._config.apriltag_gate_d2
+        if maha_d2 > gate_d2_threshold:
+            return self.build_rejected_apriltag_detection(
+                detection,
+                frame_id,
+                t_meas,
+                reject_reason="mahalanobis_gate",
+                z=z,
+                z_hat=z_hat,
+                residual=residual,
+                r=r,
+                s_hat=s_hat,
+                s=s,
+                maha_d2=maha_d2,
+                gate_d2_threshold=gate_d2_threshold,
+            )
+
+        k_gain: np.ndarray = np.linalg.solve(s, h @ self._p).T
 
         self._x = self._x + k_gain @ residual
         identity: np.ndarray = np.eye(_STATE_DIM, dtype=float)
         temp: np.ndarray = identity - k_gain @ h
         self._p = temp @ self._p @ temp.T + k_gain @ r @ k_gain.T
 
-        maha_d2: float = float(residual.T @ s_inv @ residual)
         update: EkfUpdateData = EkfUpdateData(
             sensor="apriltags",
             frame_id=frame_id,
@@ -431,7 +495,7 @@ class EkfCore:
             s_hat=EkfMatrix(rows=4, cols=4, data=s_hat.flatten().tolist()),
             s=EkfMatrix(rows=4, cols=4, data=s.flatten().tolist()),
             maha_d2=maha_d2,
-            gate_d2_threshold=0.0,
+            gate_d2_threshold=gate_d2_threshold,
             reproj_rms_px=0.0,
         )
         return EkfAprilTagDetectionUpdate(
@@ -446,13 +510,7 @@ class EkfCore:
         return wrapped
 
     def _event_sort_key(self, event: EkfEvent) -> tuple[int, str]:
-        order: dict[EkfEventType, int] = {
-            EkfEventType.IMU: 0,
-            EkfEventType.CAMERA_INFO: 1,
-            EkfEventType.APRILTAG: 2,
-            EkfEventType.MAG: 3,
-        }
-        return (order[event.event_type], event.event_type.value)
+        return (_EVENT_ORDER[event.event_type], event.event_type.value)
 
     def _set_frontier(self, t_meas: float) -> None:
         self._t_frontier = t_meas
@@ -491,7 +549,7 @@ class EkfCore:
     def _find_checkpoint(self, t_meas: float) -> Optional[_Checkpoint]:
         checkpoint: Optional[_Checkpoint] = None
         for candidate in self._checkpoints:
-            if candidate.t_meas < t_meas:
+            if candidate.t_meas <= t_meas:
                 checkpoint = candidate
             else:
                 break
