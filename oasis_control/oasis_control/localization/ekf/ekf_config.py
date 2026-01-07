@@ -38,6 +38,7 @@ class EkfConfig:
         checkpoint_interval_sec: Replay checkpoint interval in seconds
         apriltag_pos_var: AprilTag position variance in m^2
         apriltag_yaw_var: AprilTag yaw variance in rad^2
+        apriltag_gate_d2: AprilTag Mahalanobis gate threshold d^2
         tag_size_m: AprilTag edge length in meters
         tag_anchor_family: AprilTag family name for world anchor
         tag_anchor_id: AprilTag identifier for world anchor
@@ -64,6 +65,7 @@ class EkfConfig:
     checkpoint_interval_sec: float
     apriltag_pos_var: float
     apriltag_yaw_var: float
+    apriltag_gate_d2: float
 
     tag_size_m: float
     tag_anchor_family: str

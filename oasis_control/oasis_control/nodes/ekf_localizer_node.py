@@ -97,6 +97,7 @@ PARAM_MAX_DT_SEC: str = "max_dt_sec"
 PARAM_CHECKPOINT_INTERVAL_SEC: str = "checkpoint_interval_sec"
 PARAM_APRILTAG_POS_VAR: str = "apriltag_pos_var"
 PARAM_APRILTAG_YAW_VAR: str = "apriltag_yaw_var"
+PARAM_APRILTAG_GATE_D2: str = "apriltag_gate_d2"
 
 PARAM_TAG_SIZE_M: str = "tag_size_m"
 PARAM_TAG_ANCHOR_FAMILY: str = "tag_anchor_family"
@@ -122,6 +123,7 @@ DEFAULT_MAX_DT_SEC: float = 0.05
 DEFAULT_CHECKPOINT_INTERVAL_SEC: float = 0.5
 DEFAULT_APRILTAG_POS_VAR: float = 0.25
 DEFAULT_APRILTAG_YAW_VAR: float = 0.1
+DEFAULT_APRILTAG_GATE_D2: float = 9.49
 
 DEFAULT_TAG_SIZE_M: float = 0.162
 DEFAULT_TAG_ANCHOR_FAMILY: str = "tag36h11"
@@ -162,6 +164,7 @@ class EkfLocalizerNode(rclpy.node.Node):
         )
         self.declare_parameter(PARAM_APRILTAG_POS_VAR, DEFAULT_APRILTAG_POS_VAR)
         self.declare_parameter(PARAM_APRILTAG_YAW_VAR, DEFAULT_APRILTAG_YAW_VAR)
+        self.declare_parameter(PARAM_APRILTAG_GATE_D2, DEFAULT_APRILTAG_GATE_D2)
         self.declare_parameter(PARAM_TAG_SIZE_M, DEFAULT_TAG_SIZE_M)
         self.declare_parameter(PARAM_TAG_ANCHOR_FAMILY, DEFAULT_TAG_ANCHOR_FAMILY)
         self.declare_parameter(PARAM_TAG_ANCHOR_ID, DEFAULT_TAG_ANCHOR_ID)
@@ -205,6 +208,9 @@ class EkfLocalizerNode(rclpy.node.Node):
         self._apriltag_yaw_var: float = float(
             self.get_parameter(PARAM_APRILTAG_YAW_VAR).value
         )
+        self._apriltag_gate_d2: float = float(
+            self.get_parameter(PARAM_APRILTAG_GATE_D2).value
+        )
         self._tag_size_m: float = float(self.get_parameter(PARAM_TAG_SIZE_M).value)
         self._tag_anchor_family: str = str(
             self.get_parameter(PARAM_TAG_ANCHOR_FAMILY).value
@@ -235,6 +241,7 @@ class EkfLocalizerNode(rclpy.node.Node):
             checkpoint_interval_sec=self._checkpoint_interval_sec,
             apriltag_pos_var=self._apriltag_pos_var,
             apriltag_yaw_var=self._apriltag_yaw_var,
+            apriltag_gate_d2=self._apriltag_gate_d2,
             tag_size_m=self._tag_size_m,
             tag_anchor_family=self._tag_anchor_family,
             tag_anchor_id=self._tag_anchor_id,
