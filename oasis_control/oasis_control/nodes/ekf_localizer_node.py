@@ -12,12 +12,15 @@ import importlib
 import importlib.machinery
 import importlib.util
 import math
+from collections import deque
 from dataclasses import replace
 from types import ModuleType
 from typing import TYPE_CHECKING
+from typing import Deque
 from typing import Optional
 from typing import cast
 
+import message_filters
 import rclpy.node
 import rclpy.publisher
 import rclpy.qos
@@ -45,6 +48,7 @@ from oasis_control.localization.ekf.ekf_types import ImuCalibrationData
 from oasis_control.localization.ekf.ekf_types import ImuSample
 from oasis_control.localization.ekf.ekf_types import MagSample
 from oasis_control.localization.ekf.ekf_types import from_seconds
+from oasis_control.localization.ekf.ekf_types import to_ns
 from oasis_control.localization.ekf.ekf_types import to_seconds
 from oasis_control.localization.ekf.reporting.update_reporter import UpdateReporter
 from oasis_control.localization.ekf.ros_time_adapter import ekf_time_to_ros_time
@@ -133,6 +137,8 @@ DEFAULT_TAG_ANCHOR_FAMILY: str = "tag36h11"
 DEFAULT_TAG_ANCHOR_ID: int = 0
 DEFAULT_TAG_LANDMARK_PRIOR_SIGMA_T_M: float = 10.0
 DEFAULT_TAG_LANDMARK_PRIOR_SIGMA_ROT_RAD: float = 3.141592653589793
+
+SYNCED_IMU_STAMP_CACHE_SIZE: int = 50
 
 
 ################################################################################
@@ -299,6 +305,9 @@ class EkfLocalizerNode(rclpy.node.Node):
         )
 
         self._imu_cal_sub: Optional[rclpy.subscription.Subscription] = None
+        self._imu_raw_filter_sub: Optional[message_filters.Subscriber] = None
+        self._imu_cal_filter_sub: Optional[message_filters.Subscriber] = None
+        self._imu_sync: Optional[message_filters.TimeSynchronizer] = None
         self._apriltag_sub: Optional[rclpy.subscription.Subscription] = None
 
         self._has_imu_calibration: bool = False
@@ -312,16 +321,31 @@ class EkfLocalizerNode(rclpy.node.Node):
             )
             if imu_cal_msg is not None:
                 self._has_imu_calibration = True
-                self._imu_cal_sub = self.create_subscription(
-                    msg_type=imu_cal_msg,
-                    topic=IMU_CAL_TOPIC,
-                    callback=self._handle_imu_calibration,
+                self._imu_raw_filter_sub = message_filters.Subscriber(
+                    self,
+                    ImuMsg,
+                    IMU_RAW_TOPIC,
                     qos_profile=qos_profile,
+                )
+                self._imu_cal_filter_sub = message_filters.Subscriber(
+                    self,
+                    imu_cal_msg,
+                    IMU_CAL_TOPIC,
+                    qos_profile=qos_profile,
+                )
+                self._imu_sync = message_filters.TimeSynchronizer(
+                    [self._imu_raw_filter_sub, self._imu_cal_filter_sub],
+                    queue_size=20,
+                )
+                self._imu_sync.registerCallback(self._handle_imu_raw_with_calibration)
+
+                self.get_logger().info(
+                    "Using ExactTime sync for imu_raw + imu_calibration"
                 )
 
         if not self._has_imu_calibration:
-            self.get_logger().error(
-                "ImuCalibration message unavailable, skipping imu_calibration"
+            self.get_logger().info(
+                "ImuCalibration message unavailable, running imu_raw unsynced"
             )
 
         self._has_apriltag_msgs: bool = False
@@ -353,9 +377,9 @@ class EkfLocalizerNode(rclpy.node.Node):
 
         self._camera_info: Optional[CameraInfoData] = None
         self._last_imu_time: Optional[float] = None
-        self._latest_calibration: Optional[ImuCalibrationData] = None
         self._update_seq: int = 0
-        self._logged_imu_sync_todo: bool = False
+        self._synced_imu_timestamps_ns: Deque[int] = deque()
+        self._synced_imu_timestamps_set: set[int] = set()
 
         self.get_logger().info("EKF localizer initialized")
 
@@ -387,17 +411,40 @@ class EkfLocalizerNode(rclpy.node.Node):
                 "CameraInfo mismatch detected, ignoring new intrinsics"
             )
 
-    def _handle_imu_calibration(self, message: ImuCalibrationMsg) -> None:
-        self._latest_calibration = self._build_calibration_data(message)
+    def _handle_imu_raw_with_calibration(
+        self, imu_msg: ImuMsg, cal_msg: ImuCalibrationMsg
+    ) -> None:
+        timestamp: EkfTime = ros_time_to_ekf_time(imu_msg.header.stamp)
+        self._record_synced_imu_timestamp(timestamp)
 
-        if not self._logged_imu_sync_todo:
-            self.get_logger().info(
-                "TODO: Add ExactTime sync for imu_raw and imu_calibration"
+        calibration: Optional[ImuCalibrationData] = self._build_calibration_data(
+            cal_msg
+        )
+        if (
+            calibration is not None
+            and calibration.frame_id
+            and calibration.frame_id != imu_msg.header.frame_id
+        ):
+            self.get_logger().warn(
+                "IMU calibration frame mismatch, ignoring calibration"
             )
-            self._logged_imu_sync_todo = True
+            calibration = None
+
+        self._process_imu_message(imu_msg, calibration, timestamp)
 
     def _handle_imu_raw(self, message: ImuMsg) -> None:
         timestamp: EkfTime = ros_time_to_ekf_time(message.header.stamp)
+        if self._is_recent_synced_imu_timestamp(timestamp):
+            return
+
+        self._process_imu_message(message, None, timestamp)
+
+    def _process_imu_message(
+        self,
+        message: ImuMsg,
+        calibration: Optional[ImuCalibrationData],
+        timestamp: EkfTime,
+    ) -> None:
         timestamp_s: float = to_seconds(timestamp)
 
         if self._last_imu_time is not None:
@@ -410,23 +457,6 @@ class EkfLocalizerNode(rclpy.node.Node):
                 return
 
         self._last_imu_time = timestamp_s
-
-        calibration: Optional[ImuCalibrationData] = self._latest_calibration
-        if (
-            calibration is not None
-            and calibration.frame_id
-            and calibration.frame_id != message.header.frame_id
-        ):
-            self.get_logger().warn(
-                "IMU calibration frame mismatch, ignoring calibration"
-            )
-            calibration = None
-
-        if calibration is not None and not self._logged_imu_sync_todo:
-            self.get_logger().info(
-                "TODO: Add ExactTime sync for imu_raw and imu_calibration"
-            )
-            self._logged_imu_sync_todo = True
 
         imu_sample: ImuSample = ImuSample(
             frame_id=message.header.frame_id,
@@ -444,6 +474,18 @@ class EkfLocalizerNode(rclpy.node.Node):
             linear_acceleration_cov=list(message.linear_acceleration_covariance),
         )
         self._handle_imu_packet(imu_sample, calibration, timestamp)
+
+    def _record_synced_imu_timestamp(self, timestamp: EkfTime) -> None:
+        if len(self._synced_imu_timestamps_ns) >= SYNCED_IMU_STAMP_CACHE_SIZE:
+            oldest: int = self._synced_imu_timestamps_ns.popleft()
+            self._synced_imu_timestamps_set.discard(oldest)
+
+        key: int = to_ns(timestamp)
+        self._synced_imu_timestamps_ns.append(key)
+        self._synced_imu_timestamps_set.add(key)
+
+    def _is_recent_synced_imu_timestamp(self, timestamp: EkfTime) -> bool:
+        return to_ns(timestamp) in self._synced_imu_timestamps_set
 
     def _handle_imu_packet(
         self,
