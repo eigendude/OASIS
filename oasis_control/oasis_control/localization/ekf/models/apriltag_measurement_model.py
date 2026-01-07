@@ -12,6 +12,8 @@
 AprilTag measurement model stubs for the EKF
 """
 
+from typing import Optional
+
 from oasis_control.localization.ekf.ekf_types import CameraInfoData
 
 
@@ -21,7 +23,7 @@ class AprilTagMeasurementModel:
     """
 
     def __init__(self) -> None:
-        pass
+        self._camera_info: Optional[CameraInfoData] = None
 
     def update(self) -> None:
         """
@@ -36,5 +38,5 @@ class AprilTagMeasurementModel:
         Cache camera intrinsics for future reprojection work
         """
 
-        # TODO: Use CameraInfoData intrinsics for AprilTag reprojection
-        return None
+        self._camera_info = camera_info
+        # TODO: Use intrinsics for corner reprojection

@@ -81,6 +81,7 @@ class EkfCore:
             apriltag_update = self.update_with_apriltags(apriltag_data, event.t_meas)
         elif event.event_type == EkfEventType.CAMERA_INFO:
             self._camera_info = cast(CameraInfoData, event.payload)
+            self._apriltag_model.set_camera_info(self._camera_info)
 
         return EkfOutputs(
             odom_time_s=odom_time_s,
