@@ -13,25 +13,37 @@ Centralized EKF localizer ROS parameter names and defaults
 """
 
 # Duration of state history buffer used for late sensor fusion, seconds
-PARAM_T_BUFFER_SEC: str = "T_buffer_sec"
+PARAM_T_BUFFER_SEC: str = "t_buffer_sec"
+
+# Deprecated duration of state history buffer, seconds
+PARAM_T_BUFFER_SEC_LEGACY: str = "T_buffer_sec"
 
 # Default duration of state history buffer used for late sensor fusion, seconds
 DEFAULT_T_BUFFER_SEC: float = 2.0
 
 # Allowed future wall-time tolerance for timestamps, seconds
-PARAM_EPS_WALL_FUTURE: str = "ε_wall_future"
+PARAM_EPS_WALL_FUTURE: str = "epsilon_wall_future_sec"
+
+# Deprecated future wall-time tolerance for timestamps, seconds
+PARAM_EPS_WALL_FUTURE_LEGACY: str = "ε_wall_future"
 
 # Default future wall-time tolerance for timestamps, seconds
 DEFAULT_EPS_WALL_FUTURE: float = 0.05
 
 # Maximum acceptable wall-clock jump when timestamping, seconds
-PARAM_DT_CLOCK_JUMP_MAX: str = "Δt_clock_jump_max"
+PARAM_DT_CLOCK_JUMP_MAX: str = "dt_clock_jump_max_sec"
+
+# Deprecated maximum acceptable wall-clock jump when timestamping, seconds
+PARAM_DT_CLOCK_JUMP_MAX_LEGACY: str = "Δt_clock_jump_max"
 
 # Default maximum acceptable wall-clock jump when timestamping, seconds
 DEFAULT_DT_CLOCK_JUMP_MAX: float = 0.5
 
 # Maximum IMU sample delta time before rejecting updates, seconds
-PARAM_DT_IMU_MAX: str = "Δt_imu_max"
+PARAM_DT_IMU_MAX: str = "dt_imu_max_sec"
+
+# Deprecated maximum IMU sample delta time before rejecting updates, seconds
+PARAM_DT_IMU_MAX_LEGACY: str = "Δt_imu_max"
 
 # Default maximum IMU sample delta time before rejecting updates, seconds
 DEFAULT_DT_IMU_MAX: float = 0.05

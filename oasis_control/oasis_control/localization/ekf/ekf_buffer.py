@@ -47,6 +47,11 @@ class EkfBuffer:
         else:
             self._latest_time = max(self._latest_time, event_time_s)
 
+    def reset(self) -> None:
+        self._events = []
+        self._timestamps = []
+        self._latest_time = None
+
     def too_old(self, t_meas: EkfTime) -> bool:
         if self._latest_time is None:
             return False

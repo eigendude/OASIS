@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+from types import ModuleType
 from typing import Optional
 
-import numpy as np
+import pytest
+
+np: ModuleType = pytest.importorskip(
+    "numpy", reason="TODO: requires numpy for EKF tests"
+)
 
 from oasis_control.localization.ekf.ekf_buffer import EkfBuffer
 from oasis_control.localization.ekf.ekf_config import EkfConfig

@@ -348,9 +348,11 @@ class EkfOutputs:
         world_odom_time_s: Timestamp for publishing the world odometry output
         mag_update: Update report payload for magnetometer updates
         apriltag_update: Update report payload for AprilTag updates
+        warnings: Warning identifiers for non-fatal processing skips
     """
 
     odom_time_s: Optional[float]
     world_odom_time_s: Optional[float]
     mag_update: Optional[EkfUpdateData]
     apriltag_update: Optional[EkfAprilTagUpdateData]
+    warnings: list[str]

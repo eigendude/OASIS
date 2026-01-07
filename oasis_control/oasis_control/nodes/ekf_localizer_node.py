@@ -12,6 +12,7 @@ import importlib
 import importlib.machinery
 import importlib.util
 import math
+import time
 from collections import deque
 from dataclasses import replace
 from types import ModuleType
@@ -25,6 +26,7 @@ import rclpy.node
 import rclpy.publisher
 import rclpy.qos
 import rclpy.subscription
+from rclpy.clock import ClockType
 from nav_msgs.msg import Odometry as OdometryMsg
 from sensor_msgs.msg import CameraInfo as CameraInfoMsg
 from sensor_msgs.msg import Imu as ImuMsg
@@ -126,13 +128,27 @@ class EkfLocalizerNode(rclpy.node.Node):
             ekf_params.PARAM_T_BUFFER_SEC, ekf_params.DEFAULT_T_BUFFER_SEC
         )
         self.declare_parameter(
+            ekf_params.PARAM_T_BUFFER_SEC_LEGACY, ekf_params.DEFAULT_T_BUFFER_SEC
+        )
+        self.declare_parameter(
             ekf_params.PARAM_EPS_WALL_FUTURE, ekf_params.DEFAULT_EPS_WALL_FUTURE
+        )
+        self.declare_parameter(
+            ekf_params.PARAM_EPS_WALL_FUTURE_LEGACY,
+            ekf_params.DEFAULT_EPS_WALL_FUTURE,
         )
         self.declare_parameter(
             ekf_params.PARAM_DT_CLOCK_JUMP_MAX, ekf_params.DEFAULT_DT_CLOCK_JUMP_MAX
         )
         self.declare_parameter(
+            ekf_params.PARAM_DT_CLOCK_JUMP_MAX_LEGACY,
+            ekf_params.DEFAULT_DT_CLOCK_JUMP_MAX,
+        )
+        self.declare_parameter(
             ekf_params.PARAM_DT_IMU_MAX, ekf_params.DEFAULT_DT_IMU_MAX
+        )
+        self.declare_parameter(
+            ekf_params.PARAM_DT_IMU_MAX_LEGACY, ekf_params.DEFAULT_DT_IMU_MAX
         )
         self.declare_parameter(ekf_params.PARAM_POS_VAR, ekf_params.DEFAULT_POS_VAR)
         self.declare_parameter(ekf_params.PARAM_VEL_VAR, ekf_params.DEFAULT_VEL_VAR)
@@ -173,21 +189,39 @@ class EkfLocalizerNode(rclpy.node.Node):
             ekf_params.PARAM_TAG_LANDMARK_PRIOR_SIGMA_ROT_RAD,
             ekf_params.DEFAULT_TAG_LANDMARK_PRIOR_SIGMA_ROT_RAD,
         )
+        if not self.has_parameter("use_sim_time"):
+            self.declare_parameter("use_sim_time", False)
 
         self._world_frame_id: str = str(self.get_parameter(PARAM_WORLD_FRAME_ID).value)
         self._odom_frame_id: str = str(self.get_parameter(PARAM_ODOM_FRAME_ID).value)
         self._body_frame_id: str = str(self.get_parameter(PARAM_BODY_FRAME_ID).value)
         self._t_buffer_sec: float = float(
-            self.get_parameter(ekf_params.PARAM_T_BUFFER_SEC).value
+            self._get_param_with_legacy(
+                ekf_params.PARAM_T_BUFFER_SEC,
+                ekf_params.PARAM_T_BUFFER_SEC_LEGACY,
+                ekf_params.DEFAULT_T_BUFFER_SEC,
+            )
         )
         self._eps_wall_future: float = float(
-            self.get_parameter(ekf_params.PARAM_EPS_WALL_FUTURE).value
+            self._get_param_with_legacy(
+                ekf_params.PARAM_EPS_WALL_FUTURE,
+                ekf_params.PARAM_EPS_WALL_FUTURE_LEGACY,
+                ekf_params.DEFAULT_EPS_WALL_FUTURE,
+            )
         )
         self._dt_clock_jump_max: float = float(
-            self.get_parameter(ekf_params.PARAM_DT_CLOCK_JUMP_MAX).value
+            self._get_param_with_legacy(
+                ekf_params.PARAM_DT_CLOCK_JUMP_MAX,
+                ekf_params.PARAM_DT_CLOCK_JUMP_MAX_LEGACY,
+                ekf_params.DEFAULT_DT_CLOCK_JUMP_MAX,
+            )
         )
         self._dt_imu_max: float = float(
-            self.get_parameter(ekf_params.PARAM_DT_IMU_MAX).value
+            self._get_param_with_legacy(
+                ekf_params.PARAM_DT_IMU_MAX,
+                ekf_params.PARAM_DT_IMU_MAX_LEGACY,
+                ekf_params.DEFAULT_DT_IMU_MAX,
+            )
         )
         self._pos_var: float = float(self.get_parameter(ekf_params.PARAM_POS_VAR).value)
         self._vel_var: float = float(self.get_parameter(ekf_params.PARAM_VEL_VAR).value)
@@ -372,10 +406,10 @@ class EkfLocalizerNode(rclpy.node.Node):
         self._reporter: UpdateReporter = UpdateReporter()
 
         self._camera_info: Optional[CameraInfoData] = None
-        self._last_imu_time: Optional[float] = None
         self._update_seq: int = 0
         self._synced_imu_timestamps_ns: Deque[int] = deque()
         self._synced_imu_timestamps_set: set[int] = set()
+        self._future_reject_log_times: dict[str, float] = {}
 
         self.get_logger().info("EKF localizer initialized")
 
@@ -399,7 +433,7 @@ class EkfLocalizerNode(rclpy.node.Node):
                 event_type=EkfEventType.CAMERA_INFO,
                 payload=data,
             )
-            self._process_event(event)
+            self._process_event(event, CAMERA_INFO_TOPIC)
             return
 
         if not self._camera_info_matches(self._camera_info, data):
@@ -441,19 +475,6 @@ class EkfLocalizerNode(rclpy.node.Node):
         calibration: Optional[ImuCalibrationData],
         timestamp: EkfTime,
     ) -> None:
-        timestamp_s: float = to_seconds(timestamp)
-
-        if self._last_imu_time is not None:
-            dt_imu: float = timestamp_s - self._last_imu_time
-            if dt_imu > self._dt_imu_max:
-                self.get_logger().warn(
-                    f"IMU dt exceeded limit ({dt_imu:.3f}s), skipping"
-                )
-                self._last_imu_time = timestamp_s
-                return
-
-        self._last_imu_time = timestamp_s
-
         imu_sample: ImuSample = ImuSample(
             frame_id=message.header.frame_id,
             angular_velocity_rps=[
@@ -494,7 +515,7 @@ class EkfLocalizerNode(rclpy.node.Node):
             event_type=EkfEventType.IMU,
             payload=EkfImuPacket(imu=imu, calibration=calibration),
         )
-        self._process_event(event)
+        self._process_event(event, IMU_RAW_TOPIC)
 
     def _handle_mag(self, message: MagneticFieldMsg) -> None:
         timestamp: EkfTime = ros_time_to_ekf_time(message.header.stamp)
@@ -512,7 +533,7 @@ class EkfLocalizerNode(rclpy.node.Node):
             event_type=EkfEventType.MAG,
             payload=mag_sample,
         )
-        self._process_event(event)
+        self._process_event(event, MAG_TOPIC)
 
     def _handle_apriltags(self, message: AprilTagDetectionArrayMsg) -> None:
         timestamp: EkfTime = ros_time_to_ekf_time(message.header.stamp)
@@ -538,16 +559,29 @@ class EkfLocalizerNode(rclpy.node.Node):
             self._publish_rejection(event, reject_reason)
             return
 
-        self._process_event(event)
+        self._process_event(event, APRILTAG_TOPIC)
 
-    def _process_event(self, event: EkfEvent) -> None:
+    def _process_event(self, event: EkfEvent, topic: str) -> None:
+        if self._should_reject_future_event(event, topic):
+            return
+
+        t_meas_s: float = to_seconds(event.t_meas)
+        latest_time: Optional[float] = self._buffer.latest_time()
+        if latest_time is not None:
+            dt_clock: float = t_meas_s - latest_time
+            if abs(dt_clock) > self._dt_clock_jump_max:
+                self.get_logger().warn(
+                    "EKF clock jump detected: "
+                    f"latest={latest_time:.3f}s t_meas={t_meas_s:.3f}s "
+                    f"dt={dt_clock:.3f}s"
+                )
+                self._buffer.reset()
+                self._core.reset()
+
         if self._buffer.too_old(event.t_meas):
             self.get_logger().warn("EKF event too old for buffer, dropping")
             self._publish_rejection(event, "Event too old for buffer")
             return
-
-        if self._buffer.detect_clock_jump(event.t_meas):
-            self.get_logger().warn("EKF clock jump detected")
 
         self._buffer.insert_event(event)
         self._buffer.evict(event.t_meas)
@@ -566,6 +600,7 @@ class EkfLocalizerNode(rclpy.node.Node):
         if outputs.apriltag_update is not None:
             apriltag_update: EkfAprilTagUpdateData = outputs.apriltag_update
             self._publish_apriltag_update(apriltag_update)
+        self._record_warnings(outputs.warnings)
 
     def _publish_odom(self, timestamp: float) -> None:
         message: OdometryMsg = self._build_odom(timestamp)
@@ -627,6 +662,60 @@ class EkfLocalizerNode(rclpy.node.Node):
             frame_id=update_data.frame_id,
             detections=rejected,
         )
+
+    def _should_reject_future_event(self, event: EkfEvent, topic: str) -> bool:
+        if self._using_sim_time():
+            return False
+
+        t_meas_s: float = to_seconds(event.t_meas)
+        now_s: float = float(self.get_clock().now().nanoseconds) * 1.0e-9
+        if t_meas_s <= now_s + self._eps_wall_future:
+            return False
+
+        delta: float = t_meas_s - now_s
+        self._throttled_future_warning(topic, t_meas_s, now_s, delta)
+        self._publish_rejection(event, "Future timestamp")
+        return True
+
+    def _throttled_future_warning(
+        self, topic: str, t_meas_s: float, now_s: float, delta: float
+    ) -> None:
+        last_time: float = self._future_reject_log_times.get(topic, 0.0)
+        monotonic_now: float = time.monotonic()
+        if monotonic_now - last_time < 1.0:
+            return
+        self._future_reject_log_times[topic] = monotonic_now
+        self.get_logger().warn(
+            "Rejecting future-dated event on "
+            f"{topic}: t_meas={t_meas_s:.3f}s now={now_s:.3f}s "
+            f"delta={delta:.3f}s"
+        )
+
+    def _using_sim_time(self) -> bool:
+        use_sim_time: bool = bool(self.get_parameter("use_sim_time").value)
+        return self.get_clock().clock_type == ClockType.ROS_TIME and use_sim_time
+
+    def _get_param_with_legacy(
+        self, param_name: str, legacy_name: str, default: float
+    ) -> float:
+        current_value: float = float(self.get_parameter(param_name).value)
+        legacy_value: float = float(self.get_parameter(legacy_name).value)
+        if legacy_value != default and current_value == default:
+            self.get_logger().warn(
+                f"Parameter '{legacy_name}' is deprecated, "
+                f"use '{param_name}'"
+            )
+            return legacy_value
+        if legacy_value != default and current_value != default:
+            self.get_logger().warn(
+                f"Parameter '{legacy_name}' is deprecated and ignored in "
+                f"favor of '{param_name}'"
+            )
+        return current_value
+
+    def _record_warnings(self, warnings: list[str]) -> None:
+        for warning in warnings:
+            self._reporter.record_warning(warning)
 
     def _build_odom(self, timestamp: float) -> OdometryMsg:
         message: OdometryMsg = OdometryMsg()

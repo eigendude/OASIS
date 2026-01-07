@@ -52,8 +52,8 @@ _STATE_DIM: int = 9
 _EVENT_ORDER: dict[EkfEventType, int] = {
     EkfEventType.IMU: 0,
     EkfEventType.CAMERA_INFO: 1,
-    EkfEventType.APRILTAG: 2,
-    EkfEventType.MAG: 3,
+    EkfEventType.MAG: 2,
+    EkfEventType.APRILTAG: 3,
 }
 
 
@@ -105,11 +105,13 @@ class EkfCore:
 
     def process_event(self, event: EkfEvent) -> EkfOutputs:
         t_meas_s: float = to_seconds(event.t_meas)
+        prev_frontier: Optional[float] = self._t_frontier
         odom_time_s: Optional[float] = None
         world_odom_time_s: Optional[float] = None
         mag_update: Optional[EkfUpdateData] = None
         apriltag_update: Optional[EkfAprilTagUpdateData] = None
         advance_frontier: bool = True
+        warnings: list[str] = []
 
         if event.event_type == EkfEventType.IMU:
             imu_packet: EkfImuPacket = cast(EkfImuPacket, event.payload)
@@ -119,13 +121,17 @@ class EkfCore:
                     self._calibration_initialized = True
 
             self._ensure_initialized(t_meas_s)
-            self._process_imu_packet(imu_packet, t_meas_s)
-            odom_time_s = t_meas_s
-            world_odom_time_s = t_meas_s
+            imu_warning: Optional[str] = self._process_imu_packet(
+                imu_packet, t_meas_s
+            )
+            if imu_warning is not None:
+                warnings.append(imu_warning)
         elif event.event_type == EkfEventType.MAG:
             mag_sample: MagSample = cast(MagSample, event.payload)
             self._ensure_initialized(t_meas_s)
-            self._propagate_if_needed(t_meas_s)
+            mag_warning: Optional[str] = self._propagate_if_needed(t_meas_s)
+            if mag_warning is not None:
+                warnings.append(mag_warning)
             mag_update = self.update_with_mag(mag_sample, t_meas_s)
         elif event.event_type == EkfEventType.APRILTAG:
             apriltag_data: AprilTagDetectionArrayData = cast(
@@ -133,7 +139,9 @@ class EkfCore:
             )
             snapshot: _StateSnapshot = self._snapshot_state()
             self._ensure_initialized(t_meas_s)
-            self._propagate_if_needed(t_meas_s)
+            apriltag_warning: Optional[str] = self._propagate_if_needed(t_meas_s)
+            if apriltag_warning is not None:
+                warnings.append(apriltag_warning)
             apriltag_update = self.update_with_apriltags(apriltag_data, t_meas_s)
             apriltag_accepted: bool = any(
                 detection.update.accepted for detection in apriltag_update.detections
@@ -144,16 +152,22 @@ class EkfCore:
         elif event.event_type == EkfEventType.CAMERA_INFO:
             self._camera_info = cast(CameraInfoData, event.payload)
             self._apriltag_model.set_camera_info(self._camera_info)
+            advance_frontier = False
 
         if advance_frontier:
             self._set_frontier(t_meas_s)
             self._maybe_checkpoint(t_meas_s, event.event_type)
+
+        if self._frontier_advanced(prev_frontier):
+            odom_time_s = self._t_frontier
+            world_odom_time_s = self._t_frontier
 
         return EkfOutputs(
             odom_time_s=odom_time_s,
             world_odom_time_s=world_odom_time_s,
             mag_update=mag_update,
             apriltag_update=apriltag_update,
+            warnings=warnings,
         )
 
     def update_with_mag(self, mag_sample: MagSample, t_meas: float) -> EkfUpdateData:
@@ -231,6 +245,7 @@ class EkfCore:
                 world_odom_time_s=None,
                 mag_update=None,
                 apriltag_update=None,
+                warnings=[],
             )
 
         earliest_time: float = cast(float, buffer.earliest_time())
@@ -248,7 +263,9 @@ class EkfCore:
             world_odom_time_s=None,
             mag_update=None,
             apriltag_update=None,
+            warnings=[],
         )
+        last_outputs: EkfOutputs = outputs
 
         grouped_events: list[tuple[float, list[EkfEvent]]] = []
         current_time: Optional[float] = None
@@ -270,9 +287,16 @@ class EkfCore:
             sorted_group: list[EkfEvent] = sorted(group, key=self._event_sort_key)
             for event in sorted_group:
                 outputs = self.process_event(event)
-            self._set_frontier(t_meas)
+                if (
+                    outputs.odom_time_s is not None
+                    or outputs.world_odom_time_s is not None
+                    or outputs.mag_update is not None
+                    or outputs.apriltag_update is not None
+                    or outputs.warnings
+                ):
+                    last_outputs = outputs
 
-        return outputs
+        return last_outputs
 
     def state(self) -> np.ndarray:
         return self._x.copy()
@@ -282,6 +306,19 @@ class EkfCore:
 
     def frontier_time(self) -> Optional[float]:
         return self._t_frontier
+
+    def reset(self) -> None:
+        self._initialized = False
+        self._calibration_initialized = False
+        self._t_frontier = None
+        self._x = np.zeros(_STATE_DIM, dtype=float)
+        self._p = np.eye(_STATE_DIM, dtype=float)
+        self._x_frontier = self._x.copy()
+        self._p_frontier = self._p.copy()
+        self._last_imu_time = None
+        self._last_imu = None
+        self._checkpoints = []
+        self._last_checkpoint_time = None
 
     def _checkpoint_snapshot(
         self, t_meas: EkfTime
@@ -396,44 +433,50 @@ class EkfCore:
         self._x_frontier = self._x.copy()
         self._p_frontier = self._p.copy()
 
-    def _process_imu_packet(self, imu_packet: EkfImuPacket, t_meas: float) -> None:
+    def _process_imu_packet(
+        self, imu_packet: EkfImuPacket, t_meas: float
+    ) -> Optional[str]:
         imu_sample: ImuSample = imu_packet.imu
         if self._last_imu is None or self._last_imu_time is None:
             self._last_imu = imu_sample
             self._last_imu_time = t_meas
             self._set_frontier(t_meas)
-            return
+            return None
         imu_dt: float = t_meas - self._last_imu_time
         if imu_dt <= 0.0:
             self._last_imu = imu_sample
             self._last_imu_time = t_meas
             self._set_frontier(t_meas)
-            return
+            return None
         if imu_dt > self._config.dt_imu_max:
+            # Advance time without propagation to keep the frontier consistent
+            warning: str = "skipped_propagation_dt_too_large"
             self._last_imu = imu_sample
             self._last_imu_time = t_meas
             self._set_frontier(t_meas)
-            return
+            return warning
         if self._t_frontier is not None:
             self._propagate_with_imu(self._last_imu, self._t_frontier, t_meas)
         self._last_imu = imu_sample
         self._last_imu_time = t_meas
         self._set_frontier(t_meas)
+        return None
 
-    def _propagate_if_needed(self, t_meas: float) -> None:
+    def _propagate_if_needed(self, t_meas: float) -> Optional[str]:
         if self._t_frontier is None:
-            self._t_frontier = t_meas
-            return
+            self._set_frontier(t_meas)
+            return None
         if t_meas <= self._t_frontier:
-            return
+            return None
         if self._last_imu is None or self._last_imu_time is None:
-            self._t_frontier = t_meas
-            return
+            self._set_frontier(t_meas)
+            return None
         dt_total: float = t_meas - self._t_frontier
         if dt_total > self._config.dt_imu_max:
-            return
+            return "skipped_propagation_dt_too_large"
         self._propagate_with_imu(self._last_imu, self._t_frontier, t_meas)
         self._set_frontier(t_meas)
+        return None
 
     def _propagate_with_imu(
         self, imu_sample: ImuSample, t_start: float, t_end: float
@@ -589,8 +632,15 @@ class EkfCore:
         wrapped: float = (angle + math.pi) % (2.0 * math.pi) - math.pi
         return wrapped
 
-    def _event_sort_key(self, event: EkfEvent) -> tuple[int, str]:
-        return (_EVENT_ORDER[event.event_type], event.event_type.value)
+    def _event_sort_key(self, event: EkfEvent) -> int:
+        return _EVENT_ORDER[event.event_type]
+
+    def _frontier_advanced(self, prev_frontier: Optional[float]) -> bool:
+        if self._t_frontier is None:
+            return False
+        if prev_frontier is None:
+            return True
+        return self._t_frontier > prev_frontier
 
     def _set_frontier(self, t_meas: float) -> None:
         self._t_frontier = t_meas
