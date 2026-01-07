@@ -443,6 +443,9 @@ class EkfLocalizerNode(rclpy.node.Node):
         self._buffer.insert_event(event)
         self._buffer.evict(event.t_meas)
 
+        # TODO: If out-of-order, replay from event.t_meas to frontier
+        # TODO: Use deterministic order for equal timestamps
+
         outputs: EkfOutputs = self._core.process_event(event)
 
         if outputs.odom_time_s is not None:
