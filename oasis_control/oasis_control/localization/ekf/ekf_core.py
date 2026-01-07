@@ -66,6 +66,20 @@ class _Checkpoint:
     last_imu: Optional[ImuSample]
 
 
+@dataclass
+class _StateSnapshot:
+    initialized: bool
+    t_frontier: Optional[float]
+    x: np.ndarray
+    p: np.ndarray
+    x_frontier: np.ndarray
+    p_frontier: np.ndarray
+    last_imu_time: Optional[float]
+    last_imu: Optional[ImuSample]
+    checkpoints: list[_Checkpoint]
+    last_checkpoint_time: Optional[float]
+
+
 class EkfCore:
     """
     Minimal EKF state manager with placeholder updates
@@ -95,6 +109,7 @@ class EkfCore:
         world_odom_time_s: Optional[float] = None
         mag_update: Optional[EkfUpdateData] = None
         apriltag_update: Optional[EkfAprilTagUpdateData] = None
+        advance_frontier: bool = True
 
         if event.event_type == EkfEventType.IMU:
             imu_packet: EkfImuPacket = cast(EkfImuPacket, event.payload)
@@ -116,15 +131,23 @@ class EkfCore:
             apriltag_data: AprilTagDetectionArrayData = cast(
                 AprilTagDetectionArrayData, event.payload
             )
+            snapshot: _StateSnapshot = self._snapshot_state()
             self._ensure_initialized(t_meas_s)
             self._propagate_if_needed(t_meas_s)
             apriltag_update = self.update_with_apriltags(apriltag_data, t_meas_s)
+            apriltag_accepted: bool = any(
+                detection.update.accepted for detection in apriltag_update.detections
+            )
+            if not apriltag_accepted:
+                self._restore_snapshot(snapshot)
+                advance_frontier = False
         elif event.event_type == EkfEventType.CAMERA_INFO:
             self._camera_info = cast(CameraInfoData, event.payload)
             self._apriltag_model.set_camera_info(self._camera_info)
 
-        self._set_frontier(t_meas_s)
-        self._maybe_checkpoint(t_meas_s, event.event_type)
+        if advance_frontier:
+            self._set_frontier(t_meas_s)
+            self._maybe_checkpoint(t_meas_s, event.event_type)
 
         return EkfOutputs(
             odom_time_s=odom_time_s,
@@ -331,6 +354,32 @@ class EkfCore:
 
     def _zero_matrix(self, dim: int) -> EkfMatrix:
         return EkfMatrix(rows=dim, cols=dim, data=[0.0] * (dim * dim))
+
+    def _snapshot_state(self) -> _StateSnapshot:
+        return _StateSnapshot(
+            initialized=self._initialized,
+            t_frontier=self._t_frontier,
+            x=self._x.copy(),
+            p=self._p.copy(),
+            x_frontier=self._x_frontier.copy(),
+            p_frontier=self._p_frontier.copy(),
+            last_imu_time=self._last_imu_time,
+            last_imu=self._last_imu,
+            checkpoints=list(self._checkpoints),
+            last_checkpoint_time=self._last_checkpoint_time,
+        )
+
+    def _restore_snapshot(self, snapshot: _StateSnapshot) -> None:
+        self._initialized = snapshot.initialized
+        self._t_frontier = snapshot.t_frontier
+        self._x = snapshot.x.copy()
+        self._p = snapshot.p.copy()
+        self._x_frontier = snapshot.x_frontier.copy()
+        self._p_frontier = snapshot.p_frontier.copy()
+        self._last_imu_time = snapshot.last_imu_time
+        self._last_imu = snapshot.last_imu
+        self._checkpoints = list(snapshot.checkpoints)
+        self._last_checkpoint_time = snapshot.last_checkpoint_time
 
     def _ensure_initialized(self, t_meas: float) -> None:
         if self._initialized:
