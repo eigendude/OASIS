@@ -25,6 +25,7 @@ import numpy as np
 from oasis_control.localization.ekf.ekf_buffer import EkfBuffer
 from oasis_control.localization.ekf.ekf_config import EkfConfig
 from oasis_control.localization.ekf.ekf_state import EkfState
+from oasis_control.localization.ekf.ekf_state import EkfStateIndex
 from oasis_control.localization.ekf.ekf_state import TagKey
 from oasis_control.localization.ekf.ekf_types import AprilTagDetection
 from oasis_control.localization.ekf.ekf_types import AprilTagDetectionArrayData
@@ -382,6 +383,16 @@ class EkfCore:
     def covariance(self) -> np.ndarray:
         return self._state.covariance.copy()
 
+    def state_index(self) -> EkfStateIndex:
+        return self._state.index.copy()
+
+    def process_noise(self, dt_s: float) -> np.ndarray:
+        if not math.isfinite(dt_s):
+            raise ValueError("dt_s must be finite")
+        if dt_s <= 0.0:
+            raise ValueError("dt_s must be positive")
+        return self._process_model.discrete_process_noise(self._state, dt_s=dt_s)
+
     def frontier_time(self) -> Optional[EkfTime]:
         if self._t_frontier_ns is None:
             return None
@@ -600,11 +611,14 @@ class EkfCore:
                 dt_s=dt_total_s,
                 max_dt_s=self._config.max_dt_sec,
             )
-            q: np.ndarray = self._process_model.discrete_process_noise_substepped(
-                self._state,
-                dt_s=dt_total_s,
-                max_dt_s=self._config.max_dt_sec,
-            )
+            # Sub-step nominal propagation for numerical stability. In v0 we do
+            # not have a state transition matrix, so per-substep Q without Phi
+            # weighting is not equivalent to the closed-form coefficients
+            #
+            # TODO(ekf-v1): add Phi/G and integrate Q via
+            # Q = ∫ Phi(τ) G Qc Gᵀ Phi(τ)ᵀ dτ
+            # across substeps
+            q = self._process_model.discrete_process_noise(self._state, dt_s=dt_total_s)
         except ValueError as exc:
             _LOG.info("Skipping IMU propagation, %s", exc)
             return
