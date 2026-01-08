@@ -146,9 +146,9 @@ def test_process_noise_coefficients() -> None:
     axis_count: int = 3
     axis_index: int
     for axis_index in range(axis_count):
-        pos_index: int = axis_index
-        vel_index: int = axis_index + 3
-        ang_index: int = axis_index + 6
+        pos_index: int = core._state.index.pose.start + axis_index
+        ang_index: int = core._state.index.pose.start + 3 + axis_index
+        vel_index: int = core._state.index.velocity.start + axis_index
         assert math.isclose(noise[pos_index][pos_index], pos_noise, abs_tol=1.0e-12)
         assert math.isclose(noise[pos_index][vel_index], pos_vel_noise, abs_tol=1.0e-12)
         assert math.isclose(noise[vel_index][pos_index], pos_vel_noise, abs_tol=1.0e-12)
