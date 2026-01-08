@@ -528,16 +528,16 @@ class EkfLocalizerNode(rclpy.node.Node):
                 self._buffer.reset()
                 self._core.reset()
 
-        if self._buffer.too_old(event.t_meas):
+        t_filter: Optional[EkfTime] = self._core.frontier_time()
+        t_filter_ns: Optional[int] = None
+        if t_filter is not None:
+            t_filter_ns = to_ns(t_filter)
+        if self._buffer.too_old(event.t_meas, t_filter_ns=t_filter_ns):
             self.get_logger().warn("EKF event too old for buffer, dropping")
             self._publish_rejection(event, "Event too old for buffer")
             return
 
         self._buffer.insert_event(event)
-
-        latest_time_ns = self._buffer.latest_time_ns()
-        if latest_time_ns is not None:
-            self._buffer.evict(latest_time_ns)
 
         if self._core.is_out_of_order(event.t_meas):
             outputs_list: list[EkfOutputs] = self._core.replay(
@@ -545,6 +545,11 @@ class EkfLocalizerNode(rclpy.node.Node):
             )
         else:
             outputs_list = [self._core.process_event(event)]
+
+        t_filter = self._core.frontier_time()
+        if t_filter is not None:
+            t_filter_ns = to_ns(t_filter)
+            self._buffer.evict(t_filter_ns)
 
         for outputs in outputs_list:
             if outputs.odom_time is not None:

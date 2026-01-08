@@ -294,6 +294,7 @@ class EkfCore:
             apriltag_data.detections, key=lambda det: (det.family, det.tag_id)
         )
         detections: list[EkfAprilTagDetectionUpdate] = []
+        # Linearize once per message to keep per-detection updates deterministic
         x_lin: np.ndarray = self._x.copy()
         for detection in detections_sorted:
             detection_update: EkfAprilTagDetectionUpdate = (
@@ -627,22 +628,24 @@ class EkfCore:
         q: np.ndarray = np.zeros((_STATE_DIM, _STATE_DIM), dtype=float)
 
         # Continuous-time white-noise accel/gyro model integrated over dt
+
+        # Accel noise spectral density in (m/s^2)^2/Hz
         accel_noise_var: float = self._config.accel_noise_var
 
-        # Process gyro variance in (rad/s)^2
+        # Gyro noise spectral density in (rad/s)^2/Hz
         gyro_noise_var: float = self._config.gyro_noise_var
 
-        # Position variance in m^2 from accel noise integrated twice (dt^3/3)
-        pos_noise: float = accel_noise_var * (dt**3) / 3.0
+        # Position variance in m^2 from white accel noise (dt^4 / 4)
+        pos_noise: float = accel_noise_var * (dt**4) / 4.0
 
-        # Position/velocity covariance in m^2/s from accel noise (dt^2/2)
-        pos_vel_noise: float = accel_noise_var * (dt**2) / 2.0
+        # Position/velocity covariance in m^2/s from white accel noise (dt^3 / 2)
+        pos_vel_noise: float = accel_noise_var * (dt**3) / 2.0
 
-        # Velocity variance in (m/s)^2 from accel noise
-        vel_noise: float = accel_noise_var * dt
+        # Velocity variance in (m/s)^2 from white accel noise (dt^2)
+        vel_noise: float = accel_noise_var * (dt**2)
 
-        # Angle variance in rad^2 from gyro noise
-        ang_noise: float = gyro_noise_var * dt
+        # Angle variance in rad^2 from white gyro noise (dt^2)
+        ang_noise: float = gyro_noise_var * (dt**2)
 
         for index in range(3):
             pos_index: int = index
@@ -763,11 +766,8 @@ class EkfCore:
             return True
         return self._t_frontier_ns > prev_frontier_ns
 
-    def _set_frontier(self, t_meas: EkfTime | int) -> None:
-        if isinstance(t_meas, EkfTime):
-            self._t_frontier_ns = to_ns(t_meas)
-        else:
-            self._t_frontier_ns = t_meas
+    def _set_frontier(self, t_meas: EkfTime) -> None:
+        self._t_frontier_ns = to_ns(t_meas)
         self._x_frontier = self._x.copy()
         self._p_frontier = self._p.copy()
 
@@ -830,7 +830,7 @@ class EkfCore:
         self._last_checkpoint_time = checkpoint.t_meas_ns
         self._initialized = True
 
-    def _reset_state(self, t_meas: EkfTime | int) -> None:
+    def _reset_state(self, t_meas_ns: int) -> None:
         diag_values: list[float] = (
             [self._config.pos_var] * 3
             + [self._config.vel_var] * 3
@@ -838,7 +838,7 @@ class EkfCore:
         )
         self._x = np.zeros(_STATE_DIM, dtype=float)
         self._p = np.diag(diag_values)
-        self._set_frontier(t_meas)
+        self._t_frontier_ns = t_meas_ns
         self._last_imu_time_ns = None
         self._last_imu = None
         self._x_frontier = self._x.copy()

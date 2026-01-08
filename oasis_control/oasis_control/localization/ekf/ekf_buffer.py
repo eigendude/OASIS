@@ -52,12 +52,13 @@ class EkfBuffer:
         self._timestamps_ns = []
         self._latest_time_ns = None
 
-    def too_old(self, t_meas: EkfTime) -> bool:
-        if self._latest_time_ns is None:
+    def too_old(self, t_meas: EkfTime, *, t_filter_ns: Optional[int]) -> bool:
+        if t_filter_ns is None:
             return False
 
         t_meas_ns: int = to_ns(t_meas)
-        return t_meas_ns < (self._latest_time_ns - self._config.t_buffer_ns)
+        cutoff_ns: int = t_filter_ns - self._config.t_buffer_ns
+        return t_meas_ns < cutoff_ns
 
     def evict(self, t_filter_ns: int) -> None:
         cutoff: int = t_filter_ns - self._config.t_buffer_ns
