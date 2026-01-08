@@ -15,6 +15,7 @@ import math
 from oasis_control.localization.ekf.ekf_buffer import EkfBuffer
 from oasis_control.localization.ekf.ekf_config import EkfConfig
 from oasis_control.localization.ekf.ekf_core import EkfCore
+from oasis_control.localization.ekf.ekf_state import EkfStateIndex
 from oasis_control.localization.ekf.ekf_types import AprilTagDetection
 from oasis_control.localization.ekf.ekf_types import AprilTagDetectionArrayData
 from oasis_control.localization.ekf.ekf_types import CameraInfoData
@@ -129,9 +130,7 @@ def test_process_noise_coefficients() -> None:
     )
     core: EkfCore = EkfCore(config)
     dt: float = 0.2
-    noise: list[list[float]] = core._process_model.discrete_process_noise(
-        core._state, dt_s=dt
-    ).tolist()
+    noise: list[list[float]] = core.process_noise(dt).tolist()
 
     accel_noise_var: float = config.accel_noise_var
     gyro_noise_var: float = config.gyro_noise_var
@@ -151,8 +150,9 @@ def test_process_noise_coefficients() -> None:
     # Dimension of rotation error block (roll, pitch, yaw) in pose slice
     ROTATION_DIM: int = 3
 
-    pose_slice: slice = core._state.index.pose
-    vel_slice: slice = core._state.index.velocity
+    state_index: EkfStateIndex = core.state_index()
+    pose_slice: slice = state_index.pose
+    vel_slice: slice = state_index.velocity
 
     # Pose error slice is [delta_translation(3), delta_rotation(3)] in that order.
     # Indices are derived from EkfStateIndex so extra blocks won't break this test.
