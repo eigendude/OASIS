@@ -611,9 +611,11 @@ class EkfCore:
                 dt_s=dt_total_s,
                 max_dt_s=self._config.max_dt_sec,
             )
-            # Sub-step nominal propagation for numerical stability. In v0 we do
-            # not have a state transition matrix, so per-substep Q without Phi
-            # weighting is not equivalent to the closed-form coefficients
+            # Sub-step nominal propagation for numerical stability. The v0
+            # process noise Q uses closed-form coefficients for dt_total_s and
+            # does not accumulate per-substep values. Without Phi/G weighting,
+            # summing per-step Q is not equivalent to the closed-form dt^4 / 4,
+            # dt^3 / 2, dt^2 terms
             #
             # TODO(ekf-v1): add Phi/G and integrate Q via
             # Q = ∫ Phi(τ) G Qc Gᵀ Phi(τ)ᵀ dτ

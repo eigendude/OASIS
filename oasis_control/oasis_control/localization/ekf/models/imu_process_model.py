@@ -98,6 +98,9 @@ class ImuProcessModel:
         """
         Build discrete-time process noise for the packed error-state
 
+        Returns the v0 closed-form discrete-time Q over dt_s that does not
+        depend on max_dt_s or substepping
+
         Args:
             state: EKF state for indexing
             dt_s: Time step in seconds
