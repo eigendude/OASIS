@@ -541,7 +541,6 @@ class EkfLocalizerNode(rclpy.node.Node):
             if outputs.apriltag_update is not None:
                 apriltag_update: EkfAprilTagUpdateData = outputs.apriltag_update
                 self._publish_apriltag_update(apriltag_update)
-            self._record_warnings(outputs.warnings)
 
     def _publish_odom(self, timestamp: float) -> None:
         message: OdometryMsg = self._build_odom(timestamp)
@@ -626,10 +625,6 @@ class EkfLocalizerNode(rclpy.node.Node):
                 f"favor of '{param_name}'"
             )
         return current_value
-
-    def _record_warnings(self, warnings: list[str]) -> None:
-        for warning in warnings:
-            self._reporter.record_warning(warning)
 
     def _build_odom(self, timestamp: float) -> OdometryMsg:
         message: OdometryMsg = OdometryMsg()
