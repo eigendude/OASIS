@@ -22,16 +22,17 @@ np: ModuleType = pytest.importorskip(
 from oasis_control.localization.ekf.ekf_buffer import EkfBuffer
 from oasis_control.localization.ekf.ekf_config import EkfConfig
 from oasis_control.localization.ekf.ekf_core import EkfCore
-from oasis_control.localization.ekf.ekf_types import AprilTagDetection
-from oasis_control.localization.ekf.ekf_types import AprilTagDetectionArrayData
 from oasis_control.localization.ekf.ekf_types import EkfEvent
 from oasis_control.localization.ekf.ekf_types import EkfEventType
 from oasis_control.localization.ekf.ekf_types import EkfImuPacket
 from oasis_control.localization.ekf.ekf_types import EkfOutputs
 from oasis_control.localization.ekf.ekf_types import EkfTime
+from oasis_control.localization.ekf.ekf_types import EventAprilTagPose
 from oasis_control.localization.ekf.ekf_types import ImuSample
 from oasis_control.localization.ekf.ekf_types import MagSample
 from oasis_control.localization.ekf.ekf_types import from_seconds
+from oasis_control.localization.ekf.ekf_types import to_seconds
+from oasis_control.localization.ekf.pose_math import quaternion_from_rpy
 
 
 class _RecordingEkfCore(EkfCore):
@@ -93,19 +94,35 @@ def _build_mag_sample() -> MagSample:
     )
 
 
-def _build_apriltag_data() -> AprilTagDetectionArrayData:
-    corners_px: list[float] = [0.0] * 8
-    homography: list[float] = [0.0] * 9
-    detection: AprilTagDetection = AprilTagDetection(
-        family="tag36h11",
+def _build_pose_covariance(*, pos_var: float, rot_var: float) -> list[float]:
+    covariance: list[float] = [0.0] * 36
+    for index in range(3):
+        covariance[index * 6 + index] = pos_var
+    for index in range(3):
+        covariance[(index + 3) * 6 + (index + 3)] = rot_var
+    return covariance
+
+
+def _build_apriltag_event(*, timestamp: EkfTime) -> EkfEvent:
+    t_meas: float = to_seconds(timestamp)
+    quat: tuple[float, float, float, float] = quaternion_from_rpy(0.0, 0.0, 0.0)
+    covariance: list[float] = _build_pose_covariance(pos_var=1.0, rot_var=1.0)
+    payload: EventAprilTagPose = EventAprilTagPose(
+        timestamp_s=t_meas,
+        p_meas_world_base_m=[0.0, 0.0, 0.0],
+        q_meas_world_base_xyzw=list(quat),
+        covariance=covariance,
         tag_id=1,
+        frame_id="camera",
+        source_topic="apriltags",
+        family="tag36h11",
         det_index_in_msg=0,
-        corners_px=corners_px,
-        pose_world_xyz_yaw=[0.0, 0.0, 0.0, 0.0],
-        decision_margin=1.0,
-        homography=homography,
     )
-    return AprilTagDetectionArrayData(frame_id="camera", detections=[detection])
+    return EkfEvent(
+        t_meas=timestamp,
+        event_type=EkfEventType.APRILTAG,
+        payload=payload,
+    )
 
 
 def test_replay_applies_events_in_priority_order() -> None:
@@ -114,11 +131,7 @@ def test_replay_applies_events_in_priority_order() -> None:
     buffer: EkfBuffer = EkfBuffer(config)
     timestamp: EkfTime = from_seconds(1.0)
 
-    apriltag_event: EkfEvent = EkfEvent(
-        t_meas=timestamp,
-        event_type=EkfEventType.APRILTAG,
-        payload=_build_apriltag_data(),
-    )
+    apriltag_event: EkfEvent = _build_apriltag_event(timestamp=timestamp)
     mag_event: EkfEvent = EkfEvent(
         t_meas=timestamp,
         event_type=EkfEventType.MAG,

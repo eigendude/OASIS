@@ -20,6 +20,25 @@ The EKF maintains two frames:
 
 TF tree contract: `world -> odom -> base_link`.
 
+**AprilTag world correction policy**
+
+AprilTag pose updates correct drift in the global `world` frame while keeping the
+local `odom` frame continuous. The EKF state represents `T_world_base`, while a
+separate correction transform `T_world_odom` keeps `odom -> base_link` smooth.
+
+On an accepted AprilTag update:
+
+- Let `T_odom_base` be the propagated (continuous) pose before the update.
+- Apply the EKF update to produce `T_world_base_updated`.
+- Update the correction so the odom pose is preserved:
+
+```
+T_world_odom = T_world_base_updated * inverse(T_odom_base)
+```
+
+This guarantees `T_world_odom * T_odom_base == T_world_base_updated` without
+introducing discontinuities in the odom frame.
+
 ---
 
 ## 1. ROS Inputs

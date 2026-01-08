@@ -199,6 +199,34 @@ class AprilTagDetectionArrayData:
 
 
 @dataclass(frozen=True)
+class EventAprilTagPose:
+    """
+    AprilTag pose measurement event payload
+
+    Fields:
+        timestamp_s: Measurement timestamp in seconds
+        p_meas_world_base_m: Position of base in world frame in meters, XYZ order
+        q_meas_world_base_xyzw: Orientation of base in world frame, XYZW order
+        covariance: 6x6 pose covariance in world frame, row-major
+        tag_id: AprilTag identifier within the family
+        frame_id: Measurement frame identifier for the detection
+        source_topic: Topic name that supplied the detection
+        family: AprilTag family name such as tag36h11
+        det_index_in_msg: Index in the incoming detection array
+    """
+
+    timestamp_s: float
+    p_meas_world_base_m: list[float]
+    q_meas_world_base_xyzw: list[float]
+    covariance: list[float]
+    tag_id: int
+    frame_id: str
+    source_topic: str
+    family: str
+    det_index_in_msg: int
+
+
+@dataclass(frozen=True)
 class CameraInfoData:
     """
     Cached camera intrinsic calibration data
@@ -228,6 +256,7 @@ EkfEventPayload = Union[
     EkfImuPacket,
     MagSample,
     AprilTagDetectionArrayData,
+    EventAprilTagPose,
     CameraInfoData,
 ]
 
@@ -262,6 +291,20 @@ class EkfMatrix:
     rows: int
     cols: int
     data: list[float]
+
+
+@dataclass(frozen=True)
+class EkfPose:
+    """
+    Pose represented by translation and quaternion
+
+    Fields:
+        position_m: Translation in meters, XYZ order
+        orientation_xyzw: Quaternion rotation in XYZW order
+    """
+
+    position_m: list[float]
+    orientation_xyzw: list[float]
 
 
 @dataclass(frozen=True)

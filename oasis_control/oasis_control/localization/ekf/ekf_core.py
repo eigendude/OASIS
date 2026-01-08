@@ -23,8 +23,6 @@ import numpy as np
 
 from oasis_control.localization.ekf.ekf_buffer import EkfBuffer
 from oasis_control.localization.ekf.ekf_config import EkfConfig
-from oasis_control.localization.ekf.ekf_types import AprilTagDetection
-from oasis_control.localization.ekf.ekf_types import AprilTagDetectionArrayData
 from oasis_control.localization.ekf.ekf_types import CameraInfoData
 from oasis_control.localization.ekf.ekf_types import EkfAprilTagDetectionUpdate
 from oasis_control.localization.ekf.ekf_types import EkfAprilTagUpdateData
@@ -33,19 +31,25 @@ from oasis_control.localization.ekf.ekf_types import EkfEventType
 from oasis_control.localization.ekf.ekf_types import EkfImuPacket
 from oasis_control.localization.ekf.ekf_types import EkfMatrix
 from oasis_control.localization.ekf.ekf_types import EkfOutputs
+from oasis_control.localization.ekf.ekf_types import EkfPose
 from oasis_control.localization.ekf.ekf_types import EkfTime
 from oasis_control.localization.ekf.ekf_types import EkfUpdateData
+from oasis_control.localization.ekf.ekf_types import EventAprilTagPose
 from oasis_control.localization.ekf.ekf_types import ImuCalibrationData
 from oasis_control.localization.ekf.ekf_types import ImuSample
 from oasis_control.localization.ekf.ekf_types import MagSample
 from oasis_control.localization.ekf.ekf_types import to_seconds
-from oasis_control.localization.ekf.models.apriltag_measurement_model import (
-    AprilTagMeasurementModel,
-)
 from oasis_control.localization.ekf.models.imu_process_model import ImuProcessModel
 from oasis_control.localization.ekf.models.mag_measurement_model import (
     MagMeasurementModel,
 )
+from oasis_control.localization.ekf.pose_math import normalize_quaternion
+from oasis_control.localization.ekf.pose_math import quaternion_from_rpy
+from oasis_control.localization.ekf.pose_math import quaternion_inverse
+from oasis_control.localization.ekf.pose_math import quaternion_log
+from oasis_control.localization.ekf.pose_math import quaternion_multiply
+from oasis_control.localization.ekf.pose_math import rotate_vector
+from oasis_control.localization.ekf.pose_math import rpy_from_quaternion
 
 
 _STATE_DIM: int = 9
@@ -64,6 +68,8 @@ class _Checkpoint:
     p: np.ndarray
     last_imu_time: Optional[float]
     last_imu: Optional[ImuSample]
+    world_odom_p: np.ndarray
+    world_odom_q: np.ndarray
 
 
 @dataclass
@@ -78,6 +84,8 @@ class _StateSnapshot:
     last_imu: Optional[ImuSample]
     checkpoints: list[_Checkpoint]
     last_checkpoint_time: Optional[float]
+    world_odom_p: np.ndarray
+    world_odom_q: np.ndarray
 
 
 class EkfCore:
@@ -89,7 +97,6 @@ class EkfCore:
         self._config: EkfConfig = config
         self._process_model: ImuProcessModel = ImuProcessModel()
         self._mag_model: MagMeasurementModel = MagMeasurementModel()
-        self._apriltag_model: AprilTagMeasurementModel = AprilTagMeasurementModel()
         self._initialized: bool = False
         self._calibration_initialized: bool = False
         self._camera_info: Optional[CameraInfoData] = None
@@ -102,6 +109,8 @@ class EkfCore:
         self._last_imu: Optional[ImuSample] = None
         self._checkpoints: list[_Checkpoint] = []
         self._last_checkpoint_time: Optional[float] = None
+        self._world_odom_p: np.ndarray = np.zeros(3, dtype=float)
+        self._world_odom_q: np.ndarray = np.array([0.0, 0.0, 0.0, 1.0], dtype=float)
 
     def process_event(self, event: EkfEvent) -> EkfOutputs:
         t_meas_s: float = to_seconds(event.t_meas)
@@ -111,6 +120,7 @@ class EkfCore:
         mag_update: Optional[EkfUpdateData] = None
         apriltag_update: Optional[EkfAprilTagUpdateData] = None
         advance_frontier: bool = True
+        world_odom_updated: bool = False
         warnings: list[str] = []
 
         if event.event_type == EkfEventType.IMU:
@@ -132,24 +142,20 @@ class EkfCore:
                 warnings.append(mag_warning)
             mag_update = self.update_with_mag(mag_sample, t_meas_s)
         elif event.event_type == EkfEventType.APRILTAG:
-            apriltag_data: AprilTagDetectionArrayData = cast(
-                AprilTagDetectionArrayData, event.payload
-            )
+            apriltag_pose: EventAprilTagPose = cast(EventAprilTagPose, event.payload)
             snapshot: _StateSnapshot = self._snapshot_state()
             self._ensure_initialized(t_meas_s)
             apriltag_warning: Optional[str] = self._propagate_if_needed(t_meas_s)
             if apriltag_warning is not None:
                 warnings.append(apriltag_warning)
-            apriltag_update = self.update_with_apriltags(apriltag_data, t_meas_s)
-            apriltag_accepted: bool = any(
-                detection.update.accepted for detection in apriltag_update.detections
-            )
+            apriltag_update = self.update_with_apriltag_pose(apriltag_pose, t_meas_s)
+            apriltag_accepted: bool = apriltag_update.detections[0].update.accepted
+            world_odom_updated = apriltag_accepted
             if not apriltag_accepted:
                 self._restore_snapshot(snapshot)
                 advance_frontier = False
         elif event.event_type == EkfEventType.CAMERA_INFO:
             self._camera_info = cast(CameraInfoData, event.payload)
-            self._apriltag_model.set_camera_info(self._camera_info)
             advance_frontier = False
 
         if advance_frontier:
@@ -158,6 +164,7 @@ class EkfCore:
 
         if self._frontier_advanced(prev_frontier):
             odom_time_s = self._t_frontier
+        if world_odom_updated:
             world_odom_time_s = self._t_frontier
 
         return EkfOutputs(
@@ -195,29 +202,20 @@ class EkfCore:
             reproj_rms_px=0.0,
         )
 
-    def update_with_apriltags(
-        self, apriltag_data: AprilTagDetectionArrayData, t_meas: float
+    def update_with_apriltag_pose(
+        self, apriltag_pose: EventAprilTagPose, t_meas: float
     ) -> EkfAprilTagUpdateData:
         """
-        Apply the AprilTag update model
+        Apply the AprilTag pose update model
         """
 
-        detections_sorted: list[AprilTagDetection] = sorted(
-            apriltag_data.detections, key=lambda det: (det.family, det.tag_id)
+        detection_update: EkfAprilTagDetectionUpdate = self._update_with_apriltag_pose(
+            apriltag_pose, t_meas
         )
-        detections: list[EkfAprilTagDetectionUpdate] = []
-        for detection in detections_sorted:
-            detection_update: EkfAprilTagDetectionUpdate = (
-                self._update_with_apriltag_detection(
-                    detection, apriltag_data.frame_id, t_meas
-                )
-            )
-            detections.append(detection_update)
-
         return EkfAprilTagUpdateData(
             t_meas=t_meas,
-            frame_id=apriltag_data.frame_id,
-            detections=detections,
+            frame_id=apriltag_pose.frame_id,
+            detections=[detection_update],
         )
 
     def initialize_from_calibration(self, calibration: ImuCalibrationData) -> None:
@@ -302,8 +300,69 @@ class EkfCore:
     def covariance(self) -> np.ndarray:
         return self._p.copy()
 
+    def world_base_pose(self) -> EkfPose:
+        position: list[float] = self._x[0:3].tolist()
+        quat: tuple[float, float, float, float] = quaternion_from_rpy(
+            float(self._x[6]),
+            float(self._x[7]),
+            float(self._x[8]),
+        )
+        quat_list: list[float] = list(normalize_quaternion(quat))
+        return EkfPose(position_m=position, orientation_xyzw=quat_list)
+
+    def odom_base_pose(self) -> EkfPose:
+        world_base: EkfPose = self.world_base_pose()
+        p_world_base: np.ndarray = np.asarray(world_base.position_m, dtype=float)
+        q_world_base: np.ndarray = np.asarray(world_base.orientation_xyzw, dtype=float)
+        p_odom_world: np.ndarray
+        q_odom_world: np.ndarray
+        p_odom_world, q_odom_world = self._transform_inverse(
+            self._world_odom_p, self._world_odom_q
+        )
+        odom_base_p: np.ndarray
+        odom_base_q: np.ndarray
+        odom_base_p, odom_base_q = self._transform_multiply(
+            p_odom_world, q_odom_world, p_world_base, q_world_base
+        )
+        return EkfPose(
+            position_m=odom_base_p.tolist(),
+            orientation_xyzw=odom_base_q.tolist(),
+        )
+
+    def world_odom_pose(self) -> EkfPose:
+        return EkfPose(
+            position_m=self._world_odom_p.tolist(),
+            orientation_xyzw=self._world_odom_q.tolist(),
+        )
+
     def frontier_time(self) -> Optional[float]:
         return self._t_frontier
+
+    def set_state(
+        self,
+        *,
+        position_m: list[float],
+        velocity_mps: list[float],
+        rpy_rad: list[float],
+        covariance_diag: Optional[list[float]] = None,
+        t_meas: Optional[float] = None,
+    ) -> None:
+        """
+        Override the EKF state for testing or reset workflows
+        """
+
+        x: np.ndarray = np.zeros(_STATE_DIM, dtype=float)
+        x[0:3] = np.asarray(position_m, dtype=float)
+        x[3:6] = np.asarray(velocity_mps, dtype=float)
+        x[6:9] = np.asarray(rpy_rad, dtype=float)
+        self._x = x
+        if covariance_diag is not None:
+            self._p = np.diag(np.asarray(covariance_diag, dtype=float))
+        if t_meas is not None:
+            self._t_frontier = t_meas
+            self._x_frontier = self._x.copy()
+            self._p_frontier = self._p.copy()
+        self._initialized = True
 
     def reset(self) -> None:
         self._initialized = False
@@ -317,6 +376,8 @@ class EkfCore:
         self._last_imu = None
         self._checkpoints = []
         self._last_checkpoint_time = None
+        self._world_odom_p = np.zeros(3, dtype=float)
+        self._world_odom_q = np.array([0.0, 0.0, 0.0, 1.0], dtype=float)
 
     def _checkpoint_snapshot(
         self, t_meas: EkfTime
@@ -327,13 +388,12 @@ class EkfCore:
             return None
         return (checkpoint.t_meas, checkpoint.x.copy(), checkpoint.p.copy())
 
-    def build_rejected_apriltag_detection(
+    def build_rejected_apriltag_pose(
         self,
-        detection: AprilTagDetection,
-        frame_id: str,
+        apriltag_pose: EventAprilTagPose,
         t_meas: float,
         *,
-        reject_reason: str = "TODO: AprilTag update not implemented",
+        reject_reason: str,
         z: Optional[np.ndarray] = None,
         z_hat: Optional[np.ndarray] = None,
         residual: Optional[np.ndarray] = None,
@@ -346,7 +406,7 @@ class EkfCore:
         z_values: list[float] = [] if z is None else z.tolist()
         z_hat_values: list[float] = [] if z_hat is None else z_hat.tolist()
         nu_values: list[float] = [] if residual is None else residual.tolist()
-        z_dim: int = len(z_values) if z_values else 4
+        z_dim: int = len(z_values) if z_values else 6
         zero_matrix: EkfMatrix = self._zero_matrix(z_dim)
         r_matrix: EkfMatrix = (
             zero_matrix
@@ -365,7 +425,7 @@ class EkfCore:
         )
         update: EkfUpdateData = EkfUpdateData(
             sensor="apriltags",
-            frame_id=frame_id,
+            frame_id=apriltag_pose.frame_id,
             t_meas=t_meas,
             accepted=False,
             reject_reason=reject_reason,
@@ -381,9 +441,9 @@ class EkfCore:
             reproj_rms_px=0.0,
         )
         return EkfAprilTagDetectionUpdate(
-            family=detection.family,
-            tag_id=detection.tag_id,
-            det_index_in_msg=detection.det_index_in_msg,
+            family=apriltag_pose.family,
+            tag_id=apriltag_pose.tag_id,
+            det_index_in_msg=apriltag_pose.det_index_in_msg,
             update=update,
         )
 
@@ -402,6 +462,8 @@ class EkfCore:
             last_imu=self._last_imu,
             checkpoints=list(self._checkpoints),
             last_checkpoint_time=self._last_checkpoint_time,
+            world_odom_p=self._world_odom_p.copy(),
+            world_odom_q=self._world_odom_q.copy(),
         )
 
     def _restore_snapshot(self, snapshot: _StateSnapshot) -> None:
@@ -415,6 +477,8 @@ class EkfCore:
         self._last_imu = snapshot.last_imu
         self._checkpoints = list(snapshot.checkpoints)
         self._last_checkpoint_time = snapshot.last_checkpoint_time
+        self._world_odom_p = snapshot.world_odom_p.copy()
+        self._world_odom_q = snapshot.world_odom_q.copy()
 
     def _ensure_initialized(self, t_meas: float) -> None:
         if self._initialized:
@@ -430,6 +494,10 @@ class EkfCore:
         self._t_frontier = t_meas
         self._x_frontier = self._x.copy()
         self._p_frontier = self._p.copy()
+        self._world_odom_p = np.zeros(3, dtype=float)
+        self._world_odom_q = np.array([0.0, 0.0, 0.0, 1.0], dtype=float)
+        self._world_odom_p = np.zeros(3, dtype=float)
+        self._world_odom_q = np.array([0.0, 0.0, 0.0, 1.0], dtype=float)
 
     def _process_imu_packet(
         self, imu_packet: EkfImuPacket, t_meas: float
@@ -553,35 +621,140 @@ class EkfCore:
             dtype=float,
         )
 
-    def _update_with_apriltag_detection(
-        self, detection: AprilTagDetection, frame_id: str, t_meas: float
-    ) -> EkfAprilTagDetectionUpdate:
-        z: Optional[np.ndarray] = self._apriltag_model.pose_measurement(detection)
-        if z is None:
-            return self.build_rejected_apriltag_detection(detection, frame_id, t_meas)
-
-        z_hat: np.ndarray
-        h: np.ndarray
-        z_hat, h = self._apriltag_model.linearize_pose(self._x)
-        residual: np.ndarray = z - z_hat
-        residual[3] = self._wrap_angle(residual[3])
-
-        r: np.ndarray = np.diag(
-            [
-                self._config.apriltag_pos_var,
-                self._config.apriltag_pos_var,
-                self._config.apriltag_pos_var,
-                self._config.apriltag_yaw_var,
-            ]
+    def _state_world_base_pose(self) -> tuple[np.ndarray, np.ndarray]:
+        position: np.ndarray = self._x[0:3].copy()
+        quat: tuple[float, float, float, float] = quaternion_from_rpy(
+            float(self._x[6]),
+            float(self._x[7]),
+            float(self._x[8]),
         )
+        quat_array: np.ndarray = np.asarray(normalize_quaternion(quat), dtype=float)
+        return position, quat_array
+
+    def _odom_base_from_state(self) -> tuple[np.ndarray, np.ndarray]:
+        p_world_base: np.ndarray
+        q_world_base: np.ndarray
+        p_world_base, q_world_base = self._state_world_base_pose()
+        p_odom_world: np.ndarray
+        q_odom_world: np.ndarray
+        p_odom_world, q_odom_world = self._transform_inverse(
+            self._world_odom_p, self._world_odom_q
+        )
+        return self._transform_multiply(
+            p_odom_world, q_odom_world, p_world_base, q_world_base
+        )
+
+    def _update_world_odom_from_odom_base(
+        self, p_odom_base: np.ndarray, q_odom_base: np.ndarray
+    ) -> None:
+        # Keep odom->base_link continuous by solving for world->odom so that
+        # T_world_odom * T_odom_base_pred == T_world_base_updated
+        p_world_base: np.ndarray
+        q_world_base: np.ndarray
+        p_world_base, q_world_base = self._state_world_base_pose()
+        p_base_odom: np.ndarray
+        q_base_odom: np.ndarray
+        p_base_odom, q_base_odom = self._transform_inverse(p_odom_base, q_odom_base)
+        p_world_odom: np.ndarray
+        q_world_odom: np.ndarray
+        p_world_odom, q_world_odom = self._transform_multiply(
+            p_world_base, q_world_base, p_base_odom, q_base_odom
+        )
+        self._world_odom_p = p_world_odom
+        self._world_odom_q = q_world_odom
+
+    def _transform_multiply(
+        self,
+        p_ab: np.ndarray,
+        q_ab: np.ndarray,
+        p_bc: np.ndarray,
+        q_bc: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        rotated: tuple[float, float, float] = rotate_vector(q_ab, p_bc)
+        p_ac: np.ndarray = p_ab + np.asarray(rotated, dtype=float)
+        q_ac: tuple[float, float, float, float] = quaternion_multiply(q_ab, q_bc)
+        return p_ac, np.asarray(normalize_quaternion(q_ac), dtype=float)
+
+    def _transform_inverse(
+        self, p_ab: np.ndarray, q_ab: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
+        q_ba: tuple[float, float, float, float] = quaternion_inverse(q_ab)
+        rotated: tuple[float, float, float] = rotate_vector(q_ba, -p_ab)
+        p_ba: np.ndarray = np.asarray(rotated, dtype=float)
+        return p_ba, np.asarray(normalize_quaternion(q_ba), dtype=float)
+
+    def _update_with_apriltag_pose(
+        self, apriltag_pose: EventAprilTagPose, t_meas: float
+    ) -> EkfAprilTagDetectionUpdate:
+        position_meas: np.ndarray = np.asarray(
+            apriltag_pose.p_meas_world_base_m, dtype=float
+        )
+        quat_meas: tuple[float, float, float, float] = normalize_quaternion(
+            apriltag_pose.q_meas_world_base_xyzw
+        )
+        position_pred: np.ndarray = self._x[0:3]
+        quat_pred: tuple[float, float, float, float] = quaternion_from_rpy(
+            float(self._x[6]),
+            float(self._x[7]),
+            float(self._x[8]),
+        )
+        quat_pred = normalize_quaternion(quat_pred)
+        quat_error: tuple[float, float, float, float] = quaternion_multiply(
+            quat_meas, quaternion_inverse(quat_pred)
+        )
+        r_theta: tuple[float, float, float] = quaternion_log(quat_error)
+
+        residual: np.ndarray = np.concatenate(
+            (
+                position_meas - position_pred,
+                np.asarray(r_theta, dtype=float),
+            )
+        )
+
+        z_roll: float
+        z_pitch: float
+        z_yaw: float
+        z_roll, z_pitch, z_yaw = rpy_from_quaternion(quat_meas)
+        z_hat_roll: float
+        z_hat_pitch: float
+        z_hat_yaw: float
+        z_hat_roll, z_hat_pitch, z_hat_yaw = rpy_from_quaternion(quat_pred)
+
+        z: np.ndarray = np.array(
+            [
+                position_meas[0],
+                position_meas[1],
+                position_meas[2],
+                z_roll,
+                z_pitch,
+                z_yaw,
+            ],
+            dtype=float,
+        )
+        z_hat: np.ndarray = np.array(
+            [
+                position_pred[0],
+                position_pred[1],
+                position_pred[2],
+                z_hat_roll,
+                z_hat_pitch,
+                z_hat_yaw,
+            ],
+            dtype=float,
+        )
+
+        h: np.ndarray = np.zeros((6, _STATE_DIM), dtype=float)
+        h[0:3, 0:3] = np.eye(3, dtype=float)
+        h[3:6, 6:9] = np.eye(3, dtype=float)
+
+        r: np.ndarray = np.asarray(apriltag_pose.covariance, dtype=float).reshape(6, 6)
         s_hat: np.ndarray = h @ self._p @ h.T
         s: np.ndarray = s_hat + r
         maha_d2: float = float(residual.T @ np.linalg.solve(s, residual))
         gate_d2_threshold: float = self._config.apriltag_gate_d2
         if gate_d2_threshold > 0.0 and maha_d2 > gate_d2_threshold:
-            return self.build_rejected_apriltag_detection(
-                detection,
-                frame_id,
+            return self.build_rejected_apriltag_pose(
+                apriltag_pose,
                 t_meas,
                 reject_reason="mahalanobis_gate",
                 z=z,
@@ -594,6 +767,10 @@ class EkfCore:
                 gate_d2_threshold=gate_d2_threshold,
             )
 
+        odom_base_pred_p: np.ndarray
+        odom_base_pred_q: np.ndarray
+        odom_base_pred_p, odom_base_pred_q = self._odom_base_from_state()
+
         hp: np.ndarray = h @ self._p
         k_gain: np.ndarray = np.linalg.solve(s.T, hp).T
 
@@ -602,27 +779,29 @@ class EkfCore:
         temp: np.ndarray = identity - k_gain @ h
         self._p = temp @ self._p @ temp.T + k_gain @ r @ k_gain.T
 
+        self._update_world_odom_from_odom_base(odom_base_pred_p, odom_base_pred_q)
+
         update: EkfUpdateData = EkfUpdateData(
             sensor="apriltags",
-            frame_id=frame_id,
+            frame_id=apriltag_pose.frame_id,
             t_meas=t_meas,
             accepted=True,
             reject_reason="",
-            z_dim=4,
+            z_dim=6,
             z=z.tolist(),
             z_hat=z_hat.tolist(),
             nu=residual.tolist(),
-            r=EkfMatrix(rows=4, cols=4, data=r.flatten().tolist()),
-            s_hat=EkfMatrix(rows=4, cols=4, data=s_hat.flatten().tolist()),
-            s=EkfMatrix(rows=4, cols=4, data=s.flatten().tolist()),
+            r=EkfMatrix(rows=6, cols=6, data=r.flatten().tolist()),
+            s_hat=EkfMatrix(rows=6, cols=6, data=s_hat.flatten().tolist()),
+            s=EkfMatrix(rows=6, cols=6, data=s.flatten().tolist()),
             maha_d2=maha_d2,
             gate_d2_threshold=gate_d2_threshold,
             reproj_rms_px=0.0,
         )
         return EkfAprilTagDetectionUpdate(
-            family=detection.family,
-            tag_id=detection.tag_id,
-            det_index_in_msg=detection.det_index_in_msg,
+            family=apriltag_pose.family,
+            tag_id=apriltag_pose.tag_id,
+            det_index_in_msg=apriltag_pose.det_index_in_msg,
             update=update,
         )
 
@@ -663,6 +842,8 @@ class EkfCore:
                 p=self._p.copy(),
                 last_imu_time=self._last_imu_time,
                 last_imu=self._last_imu,
+                world_odom_p=self._world_odom_p.copy(),
+                world_odom_q=self._world_odom_q.copy(),
             )
         )
         self._last_checkpoint_time = t_meas
@@ -691,6 +872,8 @@ class EkfCore:
         self._t_frontier = checkpoint.t_meas
         self._x_frontier = self._x.copy()
         self._p_frontier = self._p.copy()
+        self._world_odom_p = checkpoint.world_odom_p.copy()
+        self._world_odom_q = checkpoint.world_odom_q.copy()
         self._checkpoints = [checkpoint]
         self._last_checkpoint_time = checkpoint.t_meas
         self._initialized = True
@@ -710,4 +893,6 @@ class EkfCore:
         self._p_frontier = self._p.copy()
         self._checkpoints = []
         self._last_checkpoint_time = None
+        self._world_odom_p = np.zeros(3, dtype=float)
+        self._world_odom_q = np.array([0.0, 0.0, 0.0, 1.0], dtype=float)
         self._initialized = True

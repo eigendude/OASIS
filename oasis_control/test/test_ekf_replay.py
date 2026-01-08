@@ -11,18 +11,26 @@
 from __future__ import annotations
 
 import math
+from types import ModuleType
+
+import pytest
+
+
+np: ModuleType = pytest.importorskip(
+    "numpy", reason="TODO: requires numpy for EKF tests"
+)
 
 from oasis_control.localization.ekf.ekf_buffer import EkfBuffer
 from oasis_control.localization.ekf.ekf_config import EkfConfig
 from oasis_control.localization.ekf.ekf_core import EkfCore
-from oasis_control.localization.ekf.ekf_types import AprilTagDetection
-from oasis_control.localization.ekf.ekf_types import AprilTagDetectionArrayData
 from oasis_control.localization.ekf.ekf_types import EkfEvent
 from oasis_control.localization.ekf.ekf_types import EkfEventType
 from oasis_control.localization.ekf.ekf_types import EkfImuPacket
 from oasis_control.localization.ekf.ekf_types import EkfTime
+from oasis_control.localization.ekf.ekf_types import EventAprilTagPose
 from oasis_control.localization.ekf.ekf_types import ImuSample
 from oasis_control.localization.ekf.ekf_types import from_seconds
+from oasis_control.localization.ekf.pose_math import quaternion_from_rpy
 
 
 def _build_config(
@@ -72,19 +80,42 @@ def _build_imu_sample(*, accel_body: list[float]) -> ImuSample:
     )
 
 
-def _build_apriltag_detection(
-    *, pose_world_xyz_yaw: list[float], tag_id: int
-) -> AprilTagDetection:
-    corners_px: list[float] = [0.0] * 8
-    homography: list[float] = [0.0] * 9
-    return AprilTagDetection(
-        family="tag36h11",
+def _build_pose_covariance(*, pos_var: float, rot_var: float) -> list[float]:
+    covariance: list[float] = [0.0] * 36
+    for index in range(3):
+        covariance[index * 6 + index] = pos_var
+    for index in range(3):
+        covariance[(index + 3) * 6 + (index + 3)] = rot_var
+    return covariance
+
+
+def _build_apriltag_pose_event(
+    *,
+    pose_world_xyz: list[float],
+    yaw_rad: float,
+    tag_id: int,
+    t_meas: float,
+) -> EkfEvent:
+    quat: tuple[float, float, float, float] = quaternion_from_rpy(0.0, 0.0, yaw_rad)
+    covariance: list[float] = _build_pose_covariance(
+        pos_var=0.05,
+        rot_var=0.01,
+    )
+    payload: EventAprilTagPose = EventAprilTagPose(
+        timestamp_s=t_meas,
+        p_meas_world_base_m=pose_world_xyz,
+        q_meas_world_base_xyzw=list(quat),
+        covariance=covariance,
         tag_id=tag_id,
+        frame_id="camera",
+        source_topic="apriltags",
+        family="tag36h11",
         det_index_in_msg=0,
-        corners_px=corners_px,
-        pose_world_xyz_yaw=pose_world_xyz_yaw,
-        decision_margin=1.0,
-        homography=homography,
+    )
+    return EkfEvent(
+        t_meas=from_seconds(t_meas),
+        event_type=EkfEventType.APRILTAG,
+        payload=payload,
     )
 
 
@@ -137,30 +168,17 @@ def test_out_of_order_apriltag_replay_matches_chronological() -> None:
         payload=EkfImuPacket(imu=imu_sample, calibration=None),
     )
 
-    early_detection: AprilTagDetection = _build_apriltag_detection(
-        pose_world_xyz_yaw=[0.2, -0.1, 0.0, 0.05],
+    early_event: EkfEvent = _build_apriltag_pose_event(
+        pose_world_xyz=[0.2, -0.1, 0.0],
+        yaw_rad=0.05,
         tag_id=1,
+        t_meas=0.1,
     )
-    early_event: EkfEvent = EkfEvent(
-        t_meas=from_seconds(0.1),
-        event_type=EkfEventType.APRILTAG,
-        payload=AprilTagDetectionArrayData(
-            frame_id="camera",
-            detections=[early_detection],
-        ),
-    )
-
-    late_detection: AprilTagDetection = _build_apriltag_detection(
-        pose_world_xyz_yaw=[0.5, 0.2, 0.0, -0.1],
+    late_event: EkfEvent = _build_apriltag_pose_event(
+        pose_world_xyz=[0.5, 0.2, 0.0],
+        yaw_rad=-0.1,
         tag_id=2,
-    )
-    late_event: EkfEvent = EkfEvent(
-        t_meas=from_seconds(0.2),
-        event_type=EkfEventType.APRILTAG,
-        payload=AprilTagDetectionArrayData(
-            frame_id="camera",
-            detections=[late_detection],
-        ),
+        t_meas=0.2,
     )
 
     reference_core.process_event(imu_event)
