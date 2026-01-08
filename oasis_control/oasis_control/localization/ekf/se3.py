@@ -17,6 +17,7 @@ from __future__ import annotations
 import math
 from typing import Any
 from typing import Optional
+from typing import Sequence
 
 import numpy as np
 from geometry_msgs.msg import Pose as PoseMsg
@@ -86,9 +87,10 @@ def quat_inverse(quat_wxyz: np.ndarray) -> np.ndarray:
     return quat_conjugate(quat) / norm_sq
 
 
-def quat_from_rotvec(rotvec: np.ndarray) -> np.ndarray:
+def quat_from_rotvec(rotvec: np.ndarray | Sequence[float]) -> np.ndarray:
     """
-    Map a rotation vector into a quaternion in wxyz order
+    Map a rotation vector into a quaternion in wxyz order. Accepts a
+    length-3 sequence or ndarray.
     """
 
     phi: np.ndarray = np.asarray(rotvec, dtype=float).reshape(3)
