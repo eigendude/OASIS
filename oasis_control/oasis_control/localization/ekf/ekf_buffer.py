@@ -22,7 +22,7 @@ from typing import Optional
 from oasis_control.localization.ekf.ekf_config import EkfConfig
 from oasis_control.localization.ekf.ekf_types import EkfEvent
 from oasis_control.localization.ekf.ekf_types import EkfTime
-from oasis_control.localization.ekf.ekf_types import to_ns
+from oasis_control.localization.ekf.ekf_types import to_seconds
 
 
 class EkfBuffer:
@@ -33,69 +33,62 @@ class EkfBuffer:
     def __init__(self, config: EkfConfig) -> None:
         self._config: EkfConfig = config
         self._events: list[EkfEvent] = []
-        self._timestamps_ns: list[int] = []
-        # _latest_time_ns is the max ever inserted, not the max currently in the buffer
-        self._latest_time_ns: Optional[int] = None
+        self._timestamps: list[float] = []
+        # _latest_time is the max ever inserted, not the max currently in the buffer
+        self._latest_time: Optional[float] = None
 
     def insert_event(self, event: EkfEvent) -> None:
-        event_time_ns: int = to_ns(event.t_meas)
-        insert_index: int = bisect_right(self._timestamps_ns, event_time_ns)
-        self._timestamps_ns.insert(insert_index, event_time_ns)
+        event_time_s: float = to_seconds(event.t_meas)
+        insert_index: int = bisect_right(self._timestamps, event_time_s)
+        self._timestamps.insert(insert_index, event_time_s)
         self._events.insert(insert_index, event)
-        if self._latest_time_ns is None:
-            self._latest_time_ns = event_time_ns
+        if self._latest_time is None:
+            self._latest_time = event_time_s
         else:
-            self._latest_time_ns = max(self._latest_time_ns, event_time_ns)
+            self._latest_time = max(self._latest_time, event_time_s)
 
     def reset(self) -> None:
         self._events = []
-        self._timestamps_ns = []
-        self._latest_time_ns = None
+        self._timestamps = []
+        self._latest_time = None
 
     def too_old(self, t_meas: EkfTime) -> bool:
-        if self._latest_time_ns is None:
+        if self._latest_time is None:
             return False
 
-        t_meas_ns: int = to_ns(t_meas)
-        buffer_ns: int = int(round(self._config.t_buffer_sec * 1.0e9))
-        return t_meas_ns < (self._latest_time_ns - buffer_ns)
+        t_meas_s: float = to_seconds(t_meas)
+        return t_meas_s < (self._latest_time - self._config.t_buffer_sec)
 
     def detect_clock_jump(self, t_meas: EkfTime) -> bool:
-        if self._latest_time_ns is None:
+        if self._latest_time is None:
             return False
 
-        t_meas_ns: int = to_ns(t_meas)
-        dt_ns: int = t_meas_ns - self._latest_time_ns
-        jump_ns: int = int(round(self._config.dt_clock_jump_max * 1.0e9))
-        return abs(dt_ns) > jump_ns
+        t_meas_s: float = to_seconds(t_meas)
+        dt: float = t_meas_s - self._latest_time
+        return abs(dt) > self._config.dt_clock_jump_max
 
     def evict(self, t_filter: EkfTime) -> None:
-        t_filter_ns: int = to_ns(t_filter)
-        cutoff: int = t_filter_ns - int(round(self._config.t_buffer_sec * 1.0e9))
+        t_filter_s: float = to_seconds(t_filter)
+        cutoff: float = t_filter_s - self._config.t_buffer_sec
         index: int = 0
-        while index < len(self._events) and self._timestamps_ns[index] < cutoff:
+        while index < len(self._events) and self._timestamps[index] < cutoff:
             index += 1
         if index > 0:
             del self._events[:index]
-            del self._timestamps_ns[:index]
+            del self._timestamps[:index]
 
     def iter_events(self) -> Iterator[EkfEvent]:
         yield from self._events
 
-    def iter_events_from(self, t_start: int) -> Iterator[EkfEvent]:
-        start_index: int = bisect_left(self._timestamps_ns, t_start)
+    def iter_events_from(self, t_start: float) -> Iterator[EkfEvent]:
+        start_index: int = bisect_left(self._timestamps, t_start)
         for event in self._events[start_index:]:
             yield event
 
-    def earliest_time(self) -> Optional[int]:
-        if not self._timestamps_ns:
+    def earliest_time(self) -> Optional[float]:
+        if not self._timestamps:
             return None
-        return self._timestamps_ns[0]
+        return self._timestamps[0]
 
     def latest_time(self) -> Optional[float]:
-        if self._latest_time_ns is None:
-            return None
-        return float(self._latest_time_ns) * 1.0e-9
-
-    def latest_time_ns(self) -> Optional[int]:
-        return self._latest_time_ns
+        return self._latest_time

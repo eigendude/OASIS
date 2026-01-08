@@ -38,6 +38,7 @@ from oasis_control.localization.ekf.ekf_core import EkfCore
 from oasis_control.localization.ekf.ekf_types import AprilTagDetection
 from oasis_control.localization.ekf.ekf_types import AprilTagDetectionArrayData
 from oasis_control.localization.ekf.ekf_types import CameraInfoData
+from oasis_control.localization.ekf.ekf_types import EkfAprilTagDetectionUpdate
 from oasis_control.localization.ekf.ekf_types import EkfAprilTagUpdateData
 from oasis_control.localization.ekf.ekf_types import EkfEvent
 from oasis_control.localization.ekf.ekf_types import EkfEventType
@@ -312,7 +313,12 @@ class EkfLocalizerNode(rclpy.node.Node):
             qos_profile=qos_profile,
         )
 
-        self._imu_raw_sub: Optional[rclpy.subscription.Subscription] = None
+        self._imu_raw_sub: rclpy.subscription.Subscription = self.create_subscription(
+            msg_type=ImuMsg,
+            topic=IMU_RAW_TOPIC,
+            callback=self._handle_imu_raw,
+            qos_profile=qos_profile,
+        )
         self._mag_sub: rclpy.subscription.Subscription = self.create_subscription(
             msg_type=MagneticFieldMsg,
             topic=MAG_TOPIC,
@@ -368,12 +374,6 @@ class EkfLocalizerNode(rclpy.node.Node):
                 )
 
         if not self._has_imu_calibration:
-            self._imu_raw_sub = self.create_subscription(
-                msg_type=ImuMsg,
-                topic=IMU_RAW_TOPIC,
-                callback=self._handle_imu_raw,
-                qos_profile=qos_profile,
-            )
             self.get_logger().info(
                 "ImuCalibration message unavailable, running imu_raw unsynced"
             )
@@ -587,23 +587,20 @@ class EkfLocalizerNode(rclpy.node.Node):
         self._buffer.evict(event.t_meas)
 
         if self._core.is_out_of_order(event.t_meas):
-            outputs_list: list[EkfOutputs] = self._core.replay(
-                self._buffer, event.t_meas
-            )
+            outputs: EkfOutputs = self._core.replay(self._buffer, event.t_meas)
         else:
-            outputs_list = [self._core.process_event(event)]
+            outputs = self._core.process_event(event)
 
-        for outputs in outputs_list:
-            if outputs.odom_time_s is not None:
-                self._publish_odom(outputs.odom_time_s)
-            if outputs.world_odom_time_s is not None:
-                self._publish_world_odom(outputs.world_odom_time_s)
-            if outputs.mag_update is not None:
-                self._publish_mag_update(outputs.mag_update)
-            if outputs.apriltag_update is not None:
-                apriltag_update: EkfAprilTagUpdateData = outputs.apriltag_update
-                self._publish_apriltag_update(apriltag_update)
-            self._record_warnings(outputs.warnings)
+        if outputs.odom_time_s is not None:
+            self._publish_odom(outputs.odom_time_s)
+        if outputs.world_odom_time_s is not None:
+            self._publish_world_odom(outputs.world_odom_time_s)
+        if outputs.mag_update is not None:
+            self._publish_mag_update(outputs.mag_update)
+        if outputs.apriltag_update is not None:
+            apriltag_update: EkfAprilTagUpdateData = outputs.apriltag_update
+            self._publish_apriltag_update(apriltag_update)
+        self._record_warnings(outputs.warnings)
 
     def _publish_odom(self, timestamp: float) -> None:
         message: OdometryMsg = self._build_odom(timestamp)
@@ -640,12 +637,31 @@ class EkfLocalizerNode(rclpy.node.Node):
             apriltag_data: AprilTagDetectionArrayData = cast(
                 AprilTagDetectionArrayData, event.payload
             )
-            update_data: EkfAprilTagUpdateData = (
-                self._core.build_rejected_apriltag_update(
-                    apriltag_data, to_seconds(event.t_meas), reason
+            update_data: EkfAprilTagUpdateData = self._core.update_with_apriltags(
+                apriltag_data, to_seconds(event.t_meas)
+            )
+            update_data = self._override_apriltag_rejection(update_data, reason)
+            self._publish_apriltag_update(update_data)
+
+    def _override_apriltag_rejection(
+        self, update_data: EkfAprilTagUpdateData, reason: str
+    ) -> EkfAprilTagUpdateData:
+        rejected: list[EkfAprilTagDetectionUpdate] = []
+        for detection in update_data.detections:
+            update: EkfUpdateData = replace(
+                detection.update, accepted=False, reject_reason=reason
+            )
+            rejected.append(
+                replace(
+                    detection,
+                    update=update,
                 )
             )
-            self._publish_apriltag_update(update_data)
+        return EkfAprilTagUpdateData(
+            t_meas=update_data.t_meas,
+            frame_id=update_data.frame_id,
+            detections=rejected,
+        )
 
     def _should_reject_future_event(self, event: EkfEvent, topic: str) -> bool:
         if self._using_sim_time():
