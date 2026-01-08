@@ -34,10 +34,7 @@ class UpdateReporter:
     """
 
     def __init__(self) -> None:
-        self.warnings: list[str] = []
-
-    def record_warning(self, warning: str) -> None:
-        self.warnings.append(warning)
+        pass
 
     def build_update_report(
         self, update: EkfUpdateData, update_seq: int, update_index_in_stamp: int

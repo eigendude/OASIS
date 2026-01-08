@@ -63,9 +63,7 @@ class EkfBuffer:
     def evict(self, t_filter: EkfTime) -> None:
         t_filter_ns: int = to_ns(t_filter)
         cutoff: int = t_filter_ns - int(round(self._config.t_buffer_sec * 1.0e9))
-        index: int = 0
-        while index < len(self._events) and self._timestamps_ns[index] < cutoff:
-            index += 1
+        index: int = bisect_left(self._timestamps_ns, cutoff)
         if index > 0:
             del self._events[:index]
             del self._timestamps_ns[:index]

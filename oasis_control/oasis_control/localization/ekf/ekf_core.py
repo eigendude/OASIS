@@ -14,6 +14,7 @@ Core EKF processing logic
 
 from __future__ import annotations
 
+import logging
 import math
 from dataclasses import dataclass
 from typing import Optional
@@ -57,6 +58,8 @@ _EVENT_ORDER: dict[EkfEventType, int] = {
     EkfEventType.MAG: 2,
     EkfEventType.APRILTAG: 3,
 }
+
+_LOG: logging.Logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -109,13 +112,13 @@ class EkfCore:
 
     def process_event(self, event: EkfEvent) -> EkfOutputs:
         t_meas_s: float = to_seconds(event.t_meas)
+        t_meas_ns: int = to_ns(event.t_meas)
         prev_frontier: Optional[float] = self._t_frontier
         odom_time_s: Optional[float] = None
         world_odom_time_s: Optional[float] = None
         mag_update: Optional[EkfUpdateData] = None
         apriltag_update: Optional[EkfAprilTagUpdateData] = None
         advance_frontier: bool = True
-        warnings: list[str] = []
 
         if event.event_type == EkfEventType.IMU:
             imu_packet: EkfImuPacket = cast(EkfImuPacket, event.payload)
@@ -124,26 +127,20 @@ class EkfCore:
                     self.initialize_from_calibration(imu_packet.calibration)
                     self._calibration_initialized = True
 
-            self._ensure_initialized(t_meas_s)
-            imu_warning: Optional[str] = self._process_imu_packet(imu_packet, t_meas_s)
-            if imu_warning is not None:
-                warnings.append(imu_warning)
+            self._ensure_initialized(t_meas_s, t_meas_ns)
+            self._process_imu_packet(imu_packet, t_meas_s, t_meas_ns)
         elif event.event_type == EkfEventType.MAG:
             mag_sample: MagSample = cast(MagSample, event.payload)
-            self._ensure_initialized(t_meas_s)
-            mag_warning: Optional[str] = self._propagate_if_needed(t_meas_s)
-            if mag_warning is not None:
-                warnings.append(mag_warning)
+            self._ensure_initialized(t_meas_s, t_meas_ns)
+            self._propagate_if_needed(t_meas_s, t_meas_ns)
             mag_update = self.update_with_mag(mag_sample, t_meas_s)
         elif event.event_type == EkfEventType.APRILTAG:
             apriltag_data: AprilTagDetectionArrayData = cast(
                 AprilTagDetectionArrayData, event.payload
             )
             snapshot: _StateSnapshot = self._snapshot_state()
-            self._ensure_initialized(t_meas_s)
-            apriltag_warning: Optional[str] = self._propagate_if_needed(t_meas_s)
-            if apriltag_warning is not None:
-                warnings.append(apriltag_warning)
+            self._ensure_initialized(t_meas_s, t_meas_ns)
+            self._propagate_if_needed(t_meas_s, t_meas_ns)
             apriltag_update = self.update_with_apriltags(apriltag_data, t_meas_s)
             apriltag_accepted: bool = any(
                 detection.update.accepted for detection in apriltag_update.detections
@@ -157,7 +154,7 @@ class EkfCore:
             advance_frontier = False
 
         if advance_frontier:
-            self._set_frontier(t_meas_s)
+            self._set_frontier(t_meas_s, t_meas_ns)
             self._maybe_checkpoint(t_meas_s, event.event_type)
 
         if self._frontier_advanced(prev_frontier):
@@ -169,7 +166,6 @@ class EkfCore:
             world_odom_time_s=world_odom_time_s,
             mag_update=mag_update,
             apriltag_update=apriltag_update,
-            warnings=warnings,
         )
 
     def update_with_mag(self, mag_sample: MagSample, t_meas: float) -> EkfUpdateData:
@@ -282,7 +278,6 @@ class EkfCore:
                     or output.world_odom_time_s is not None
                     or output.mag_update is not None
                     or output.apriltag_update is not None
-                    or output.warnings
                 ):
                     outputs.append(output)
 
@@ -433,7 +428,9 @@ class EkfCore:
         self._checkpoints = list(snapshot.checkpoints)
         self._last_checkpoint_time = snapshot.last_checkpoint_time
 
-    def _ensure_initialized(self, t_meas: float) -> None:
+    def _ensure_initialized(
+        self, t_meas: float, t_meas_ns: Optional[int] = None
+    ) -> None:
         if self._initialized:
             return
         diag_values: list[float] = (
@@ -444,52 +441,65 @@ class EkfCore:
         self._x = np.zeros(_STATE_DIM, dtype=float)
         self._p = np.diag(diag_values)
         self._initialized = True
-        self._set_frontier(t_meas)
+        self._set_frontier(t_meas, t_meas_ns)
 
     def _process_imu_packet(
-        self, imu_packet: EkfImuPacket, t_meas: float
-    ) -> Optional[str]:
+        self,
+        imu_packet: EkfImuPacket,
+        t_meas: float,
+        t_meas_ns: Optional[int] = None,
+    ) -> None:
         imu_sample: ImuSample = imu_packet.imu
         if self._last_imu is None or self._last_imu_time is None:
             self._last_imu = imu_sample
             self._last_imu_time = t_meas
-            self._set_frontier(t_meas)
-            return None
+            self._set_frontier(t_meas, t_meas_ns)
+            return
         imu_dt: float = t_meas - self._last_imu_time
         if imu_dt <= 0.0:
             self._last_imu = imu_sample
             self._last_imu_time = t_meas
-            self._set_frontier(t_meas)
-            return None
+            self._set_frontier(t_meas, t_meas_ns)
+            return
         if imu_dt > self._config.dt_imu_max:
             # Advance time without propagation to keep the frontier consistent
-            warning: str = "skipped_propagation_dt_too_large"
+            _LOG.info(
+                "Skipping IMU propagation, dt %.3fs exceeds max %.3fs",
+                imu_dt,
+                self._config.dt_imu_max,
+            )
             self._last_imu = imu_sample
             self._last_imu_time = t_meas
-            self._set_frontier(t_meas)
-            return warning
+            self._set_frontier(t_meas, t_meas_ns)
+            return
         if self._t_frontier is not None:
             self._propagate_with_imu(self._last_imu, self._t_frontier, t_meas)
         self._last_imu = imu_sample
         self._last_imu_time = t_meas
-        self._set_frontier(t_meas)
-        return None
+        self._set_frontier(t_meas, t_meas_ns)
 
-    def _propagate_if_needed(self, t_meas: float) -> Optional[str]:
+    def _propagate_if_needed(
+        self, t_meas: float, t_meas_ns: Optional[int] = None
+    ) -> None:
         if self._t_frontier is None:
-            self._set_frontier(t_meas)
-            return None
+            self._set_frontier(t_meas, t_meas_ns)
+            return
         if t_meas <= self._t_frontier:
-            return None
+            return
         if self._last_imu is None or self._last_imu_time is None:
-            self._set_frontier(t_meas)
-            return None
+            self._set_frontier(t_meas, t_meas_ns)
+            return
         dt_total: float = t_meas - self._t_frontier
         if dt_total > self._config.dt_imu_max:
-            return "skipped_propagation_dt_too_large"
+            _LOG.info(
+                "Skipping propagation, dt %.3fs exceeds max %.3fs",
+                dt_total,
+                self._config.dt_imu_max,
+            )
+            return
         self._propagate_with_imu(self._last_imu, self._t_frontier, t_meas)
-        self._set_frontier(t_meas)
-        return None
+        self._set_frontier(t_meas, t_meas_ns)
+        return
 
     def _propagate_with_imu(
         self, imu_sample: ImuSample, t_start: float, t_end: float
@@ -538,19 +548,27 @@ class EkfCore:
         # Process gyro variance in (rad/s)^2
         gyro_noise_var: float = self._config.gyro_noise_var
 
-        # Position variance from accel integration in m^2
-        pos_noise: float = accel_noise_var * (dt**3)
+        # Position variance in m^2 from accel noise integrated twice (dt^3/3)
+        pos_noise: float = accel_noise_var * (dt**3) / 3.0
 
-        # Velocity variance from accel integration in (m/s)^2
+        # Position/velocity covariance in m^2/s from accel noise (dt^2/2)
+        pos_vel_noise: float = accel_noise_var * (dt**2) / 2.0
+
+        # Velocity variance in (m/s)^2 from accel noise
         vel_noise: float = accel_noise_var * dt
 
-        # Angle variance from gyro integration in rad^2
+        # Angle variance in rad^2 from gyro noise
         ang_noise: float = gyro_noise_var * dt
 
         for index in range(3):
-            q[index, index] = pos_noise
-            q[index + 3, index + 3] = vel_noise
-            q[index + 6, index + 6] = ang_noise
+            pos_index: int = index
+            vel_index: int = index + 3
+            ang_index: int = index + 6
+            q[pos_index, pos_index] = pos_noise
+            q[pos_index, vel_index] = pos_vel_noise
+            q[vel_index, pos_index] = pos_vel_noise
+            q[vel_index, vel_index] = vel_noise
+            q[ang_index, ang_index] = ang_noise
         return q
 
     def _rotation_matrix(self, roll: float, pitch: float, yaw: float) -> np.ndarray:
@@ -657,9 +675,12 @@ class EkfCore:
             return True
         return self._t_frontier > prev_frontier
 
-    def _set_frontier(self, t_meas: float) -> None:
+    def _set_frontier(self, t_meas: float, t_meas_ns: Optional[int] = None) -> None:
         self._t_frontier = t_meas
-        self._t_frontier_ns = int(round(t_meas * 1.0e9))
+        if t_meas_ns is not None:
+            self._t_frontier_ns = t_meas_ns
+        else:
+            self._t_frontier_ns = int(round(t_meas * 1.0e9))
         self._x_frontier = self._x.copy()
         self._p_frontier = self._p.copy()
 

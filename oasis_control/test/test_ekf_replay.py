@@ -115,6 +115,39 @@ def _capture_state(core: EkfCore) -> tuple[list[float], list[float]]:
     return state_list, flattened_cov
 
 
+def test_process_noise_coefficients() -> None:
+    config: EkfConfig = _build_config(
+        t_buffer_sec=1.0,
+        checkpoint_interval_sec=0.1,
+        apriltag_gate_d2=0.0,
+        apriltag_pos_var=1.0,
+        apriltag_yaw_var=1.0,
+    )
+    core: EkfCore = EkfCore(config)
+    dt: float = 0.2
+    noise: list[list[float]] = core._process_noise(dt).tolist()
+
+    accel_noise_var: float = config.accel_noise_var
+    gyro_noise_var: float = config.gyro_noise_var
+
+    pos_noise: float = accel_noise_var * (dt**3) / 3.0
+    pos_vel_noise: float = accel_noise_var * (dt**2) / 2.0
+    vel_noise: float = accel_noise_var * dt
+    ang_noise: float = gyro_noise_var * dt
+
+    axis_count: int = 3
+    axis_index: int
+    for axis_index in range(axis_count):
+        pos_index: int = axis_index
+        vel_index: int = axis_index + 3
+        ang_index: int = axis_index + 6
+        assert math.isclose(noise[pos_index][pos_index], pos_noise, abs_tol=1.0e-12)
+        assert math.isclose(noise[pos_index][vel_index], pos_vel_noise, abs_tol=1.0e-12)
+        assert math.isclose(noise[vel_index][pos_index], pos_vel_noise, abs_tol=1.0e-12)
+        assert math.isclose(noise[vel_index][vel_index], vel_noise, abs_tol=1.0e-12)
+        assert math.isclose(noise[ang_index][ang_index], ang_noise, abs_tol=1.0e-12)
+
+
 def test_out_of_order_apriltag_replay_matches_chronological() -> None:
     config: EkfConfig = _build_config(
         t_buffer_sec=1.0,
