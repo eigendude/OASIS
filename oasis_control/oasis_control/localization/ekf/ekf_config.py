@@ -53,6 +53,8 @@ class EkfConfig:
         tag_anchor_id: AprilTag identifier for world anchor
         tag_landmark_prior_sigma_t_m: Tag translation prior sigma in meters
         tag_landmark_prior_sigma_rot_rad: Tag rotation prior sigma in radians
+        extrinsic_prior_sigma_t_m: Extrinsic translation prior sigma in meters
+        extrinsic_prior_sigma_rot_rad: Extrinsic rotation prior sigma in radians
     """
 
     world_frame_id: str
@@ -86,6 +88,8 @@ class EkfConfig:
     tag_anchor_id: int
     tag_landmark_prior_sigma_t_m: float
     tag_landmark_prior_sigma_rot_rad: float
+    extrinsic_prior_sigma_t_m: float
+    extrinsic_prior_sigma_rot_rad: float
 
     def __post_init__(self) -> None:
         """Post-initialization to convert time-based thresholds from seconds to nanoseconds."""

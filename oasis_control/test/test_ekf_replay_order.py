@@ -69,6 +69,8 @@ def _build_config() -> EkfConfig:
         tag_anchor_id=0,
         tag_landmark_prior_sigma_t_m=0.1,
         tag_landmark_prior_sigma_rot_rad=0.1,
+        extrinsic_prior_sigma_t_m=1.0,
+        extrinsic_prior_sigma_rot_rad=3.141592653589793,
     )
 
 

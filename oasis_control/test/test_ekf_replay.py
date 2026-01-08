@@ -59,6 +59,8 @@ def _build_config(
         tag_anchor_id=0,
         tag_landmark_prior_sigma_t_m=0.1,
         tag_landmark_prior_sigma_rot_rad=0.1,
+        extrinsic_prior_sigma_t_m=1.0,
+        extrinsic_prior_sigma_rot_rad=3.141592653589793,
     )
 
 
@@ -144,9 +146,9 @@ def test_process_noise_coefficients() -> None:
     axis_count: int = 3
     axis_index: int
     for axis_index in range(axis_count):
-        pos_index: int = axis_index
-        vel_index: int = axis_index + 3
-        ang_index: int = axis_index + 6
+        pos_index: int = core._state.index.pose.start + axis_index
+        ang_index: int = core._state.index.pose.start + 3 + axis_index
+        vel_index: int = core._state.index.velocity.start + axis_index
         assert math.isclose(noise[pos_index][pos_index], pos_noise, abs_tol=1.0e-12)
         assert math.isclose(noise[pos_index][vel_index], pos_vel_noise, abs_tol=1.0e-12)
         assert math.isclose(noise[vel_index][pos_index], pos_vel_noise, abs_tol=1.0e-12)

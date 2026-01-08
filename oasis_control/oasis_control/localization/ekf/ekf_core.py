@@ -24,6 +24,8 @@ import numpy as np
 
 from oasis_control.localization.ekf.ekf_buffer import EkfBuffer
 from oasis_control.localization.ekf.ekf_config import EkfConfig
+from oasis_control.localization.ekf.ekf_state import EkfState
+from oasis_control.localization.ekf.ekf_state import TagKey
 from oasis_control.localization.ekf.ekf_types import AprilTagDetection
 from oasis_control.localization.ekf.ekf_types import AprilTagDetectionArrayData
 from oasis_control.localization.ekf.ekf_types import CameraInfoData
@@ -50,9 +52,12 @@ from oasis_control.localization.ekf.models.imu_process_model import ImuProcessMo
 from oasis_control.localization.ekf.models.mag_measurement_model import (
     MagMeasurementModel,
 )
+from oasis_control.localization.ekf.se3 import normalize_quaternion
+from oasis_control.localization.ekf.se3 import quat_from_rotvec
+from oasis_control.localization.ekf.se3 import quat_multiply
+from oasis_control.localization.ekf.se3 import quat_to_rotation_matrix
 
 
-_STATE_DIM: int = 9
 _EVENT_ORDER: dict[EkfEventType, int] = {
     EkfEventType.IMU: 0,
     EkfEventType.CAMERA_INFO: 1,
@@ -69,8 +74,7 @@ _LOG: logging.Logger = logging.getLogger(__name__)
 @dataclass
 class _Checkpoint:
     t_meas_ns: int
-    x: np.ndarray
-    p: np.ndarray
+    state: EkfState
     last_imu_time_ns: Optional[int]
     last_imu: Optional[ImuSample]
 
@@ -79,10 +83,8 @@ class _Checkpoint:
 class _StateSnapshot:
     initialized: bool
     t_frontier_ns: Optional[int]
-    x: np.ndarray
-    p: np.ndarray
-    x_frontier: np.ndarray
-    p_frontier: np.ndarray
+    state: EkfState
+    state_frontier: EkfState
     last_imu_time_ns: Optional[int]
     last_imu: Optional[ImuSample]
     checkpoints: list[_Checkpoint]
@@ -103,10 +105,8 @@ class EkfCore:
         self._calibration_initialized: bool = False
         self._camera_info: Optional[CameraInfoData] = None
         self._t_frontier_ns: Optional[int] = None
-        self._x: np.ndarray = np.zeros(_STATE_DIM, dtype=float)
-        self._p: np.ndarray = np.eye(_STATE_DIM, dtype=float)
-        self._x_frontier: np.ndarray = self._x.copy()
-        self._p_frontier: np.ndarray = self._p.copy()
+        self._state: EkfState = EkfState(config)
+        self._state_frontier: EkfState = self._state.copy()
         self._last_imu_time_ns: Optional[int] = None
         self._last_imu: Optional[ImuSample] = None
         self._checkpoints: list[_Checkpoint] = []
@@ -185,9 +185,11 @@ class EkfCore:
         )
         z_hat: np.ndarray
         h: np.ndarray
-        z_hat, h = self._mag_model.linearize(self._x)
+        state_legacy: np.ndarray = self._state.legacy_state()
+        z_hat, h = self._mag_model.linearize(state_legacy)
+        h = self._state.lift_legacy_jacobian(h)
         residual: np.ndarray = z - z_hat
-        s_hat: np.ndarray = h @ self._p @ h.T
+        s_hat: np.ndarray = h @ self._state.covariance @ h.T
         s: np.ndarray = s_hat + r
         s = 0.5 * (s + s.T)
         base: float = 1e-12
@@ -236,16 +238,18 @@ class EkfCore:
         maha_d2: float = float(residual.T @ x)
         gate_d2_threshold: float = 0.0
 
-        ph_t: np.ndarray = self._p @ h.T
+        ph_t: np.ndarray = self._state.covariance @ h.T
         tmp: np.ndarray = np.linalg.solve(l, ph_t.T)
         s_inv_ph_t: np.ndarray = np.linalg.solve(l.T, tmp)
         k_gain: np.ndarray = s_inv_ph_t.T
 
-        self._x = self._x + k_gain @ residual
-        self._x[8] = self._wrap_angle(float(self._x[8]))
-        identity: np.ndarray = np.eye(_STATE_DIM, dtype=float)
+        delta: np.ndarray = k_gain @ residual
+        self._state.apply_delta(delta)
+        identity: np.ndarray = np.eye(self._state.index.total_dim, dtype=float)
         temp: np.ndarray = identity - k_gain @ h
-        self._p = temp @ self._p @ temp.T + k_gain @ r @ k_gain.T
+        self._state.covariance = (
+            temp @ self._state.covariance @ temp.T + k_gain @ r @ k_gain.T
+        )
 
         mag_accept_update: EkfUpdateData = EkfUpdateData(
             sensor="magnetic_field",
@@ -295,8 +299,10 @@ class EkfCore:
         )
         detections: list[EkfAprilTagDetectionUpdate] = []
         # Linearize once per message to keep per-detection updates deterministic
-        x_lin: np.ndarray = self._x.copy()
+        x_lin: np.ndarray = self._state.legacy_state()
         for detection in detections_sorted:
+            tag_key: TagKey = TagKey(family=detection.family, tag_id=detection.tag_id)
+            self._state.ensure_landmark(tag_key)
             detection_update: EkfAprilTagDetectionUpdate = (
                 self._update_with_apriltag_detection(
                     detection, apriltag_data.frame_id, t_meas, x_lin
@@ -315,8 +321,8 @@ class EkfCore:
         Initialize calibration parameters from a one-shot prior
         """
 
-        # TODO: Initialize in-state calibration parameters with covariance
-        self._initialized = True
+        self._ensure_initialized()
+        self._state.apply_imu_calibration(calibration)
 
     def is_out_of_order(self, t_meas: EkfTime) -> bool:
         if self._t_frontier_ns is None:
@@ -373,10 +379,10 @@ class EkfCore:
         return outputs
 
     def state(self) -> np.ndarray:
-        return self._x.copy()
+        return self._state.legacy_state().copy()
 
     def covariance(self) -> np.ndarray:
-        return self._p.copy()
+        return self._state.covariance.copy()
 
     def frontier_time(self) -> Optional[EkfTime]:
         if self._t_frontier_ns is None:
@@ -392,10 +398,8 @@ class EkfCore:
         self._initialized = False
         self._calibration_initialized = False
         self._t_frontier_ns = None
-        self._x = np.zeros(_STATE_DIM, dtype=float)
-        self._p = np.eye(_STATE_DIM, dtype=float)
-        self._x_frontier = self._x.copy()
-        self._p_frontier = self._p.copy()
+        self._state.reset()
+        self._state_frontier = self._state.copy()
         self._last_imu_time_ns = None
         self._last_imu = None
         self._checkpoints = []
@@ -403,13 +407,13 @@ class EkfCore:
 
     def _checkpoint_snapshot(
         self, t_meas: EkfTime
-    ) -> Optional[tuple[EkfTime, np.ndarray, np.ndarray]]:
+    ) -> Optional[tuple[EkfTime, EkfState]]:
         t_meas_ns: int = to_ns(t_meas)
         checkpoint: Optional[_Checkpoint] = self._find_checkpoint(t_meas_ns)
         if checkpoint is None:
             return None
         checkpoint_time: EkfTime = self._ekf_time_from_ns(checkpoint.t_meas_ns)
-        return (checkpoint_time, checkpoint.x.copy(), checkpoint.p.copy())
+        return (checkpoint_time, checkpoint.state.copy())
 
     def build_rejected_apriltag_detection(
         self,
@@ -500,10 +504,8 @@ class EkfCore:
         return _StateSnapshot(
             initialized=self._initialized,
             t_frontier_ns=self._t_frontier_ns,
-            x=self._x.copy(),
-            p=self._p.copy(),
-            x_frontier=self._x_frontier.copy(),
-            p_frontier=self._p_frontier.copy(),
+            state=self._state.copy(),
+            state_frontier=self._state_frontier.copy(),
             last_imu_time_ns=self._last_imu_time_ns,
             last_imu=self._last_imu,
             checkpoints=list(self._checkpoints),
@@ -513,10 +515,8 @@ class EkfCore:
     def _restore_snapshot(self, snapshot: _StateSnapshot) -> None:
         self._initialized = snapshot.initialized
         self._t_frontier_ns = snapshot.t_frontier_ns
-        self._x = snapshot.x.copy()
-        self._p = snapshot.p.copy()
-        self._x_frontier = snapshot.x_frontier.copy()
-        self._p_frontier = snapshot.p_frontier.copy()
+        self._state = snapshot.state.copy()
+        self._state_frontier = snapshot.state_frontier.copy()
         self._last_imu_time_ns = snapshot.last_imu_time_ns
         self._last_imu = snapshot.last_imu
         self._checkpoints = list(snapshot.checkpoints)
@@ -525,16 +525,9 @@ class EkfCore:
     def _ensure_initialized(self) -> None:
         if self._initialized:
             return
-        diag_values: list[float] = (
-            [self._config.pos_var] * 3
-            + [self._config.vel_var] * 3
-            + [self._config.ang_var] * 3
-        )
-        self._x = np.zeros(_STATE_DIM, dtype=float)
-        self._p = np.diag(diag_values)
+        self._state.reset()
         self._initialized = True
-        self._x_frontier = self._x.copy()
-        self._p_frontier = self._p.copy()
+        self._state_frontier = self._state.copy()
 
     def _process_imu_packet(
         self,
@@ -605,27 +598,33 @@ class EkfCore:
         accel_body_mps2: np.ndarray = np.asarray(
             imu_sample.linear_acceleration_mps2, dtype=float
         )
-        angles: np.ndarray = self._x[6:9]
-        angles = angles + omega_rps * dt
-        rot_world_from_body: np.ndarray = self._rotation_matrix(
-            angles[0], angles[1], angles[2]
+        omega_rps = omega_rps - self._state.imu_bias_gyro_rps
+        accel_body_mps2 = accel_body_mps2 - self._state.imu_bias_accel_mps2
+        accel_body_mps2 = self._state.imu_accel_a @ accel_body_mps2
+
+        delta_rot: np.ndarray = omega_rps * dt
+        delta_quat: np.ndarray = quat_from_rotvec(delta_rot)
+        quat_wb: np.ndarray = quat_multiply(
+            self._state.pose_wb.rotation_wxyz, delta_quat
         )
+        quat_wb = normalize_quaternion(quat_wb)
+        self._state.pose_wb.rotation_wxyz = quat_wb
+        rot_world_from_body: np.ndarray = quat_to_rotation_matrix(quat_wb)
         accel_world_mps2: np.ndarray = rot_world_from_body @ accel_body_mps2
 
         # Gravity magnitude in world frame m/s^2
         gravity_mps2: float = self._config.gravity_mps2
         accel_world_mps2 = accel_world_mps2 - np.array([0.0, 0.0, gravity_mps2])
 
-        vel: np.ndarray = self._x[3:6] + accel_world_mps2 * dt
-        pos: np.ndarray = self._x[0:3] + vel * dt
-        self._x[0:3] = pos
-        self._x[3:6] = vel
-        self._x[6:9] = angles
-        self._x[8] = self._wrap_angle(float(self._x[8]))
-        self._p = self._p + self._process_noise(dt)
+        vel: np.ndarray = self._state.vel_w_mps + accel_world_mps2 * dt
+        pos: np.ndarray = self._state.pose_wb.translation_m + vel * dt
+        self._state.pose_wb.translation_m = pos
+        self._state.vel_w_mps = vel
+        self._state.covariance = self._state.covariance + self._process_noise(dt)
 
     def _process_noise(self, dt: float) -> np.ndarray:
-        q: np.ndarray = np.zeros((_STATE_DIM, _STATE_DIM), dtype=float)
+        total_dim: int = self._state.index.total_dim
+        q: np.ndarray = np.zeros((total_dim, total_dim), dtype=float)
 
         # Continuous-time white-noise accel/gyro model integrated over dt
 
@@ -647,32 +646,19 @@ class EkfCore:
         # Angle variance in rad^2 from white gyro noise (dt^2)
         ang_noise: float = gyro_noise_var * (dt**2)
 
+        pose_start: int = self._state.index.pose.start
+        rot_start: int = pose_start + 3
+        vel_start: int = self._state.index.velocity.start
         for index in range(3):
-            pos_index: int = index
-            vel_index: int = index + 3
-            ang_index: int = index + 6
+            pos_index: int = pose_start + index
+            vel_index: int = vel_start + index
+            ang_index: int = rot_start + index
             q[pos_index, pos_index] = pos_noise
             q[pos_index, vel_index] = pos_vel_noise
             q[vel_index, pos_index] = pos_vel_noise
             q[vel_index, vel_index] = vel_noise
             q[ang_index, ang_index] = ang_noise
         return q
-
-    def _rotation_matrix(self, roll: float, pitch: float, yaw: float) -> np.ndarray:
-        cr: float = math.cos(roll)
-        sr: float = math.sin(roll)
-        cp: float = math.cos(pitch)
-        sp: float = math.sin(pitch)
-        cy: float = math.cos(yaw)
-        sy: float = math.sin(yaw)
-        return np.array(
-            [
-                [cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr],
-                [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr],
-                [-sp, cp * sr, cp * cr],
-            ],
-            dtype=float,
-        )
 
     def _update_with_apriltag_detection(
         self,
@@ -688,6 +674,7 @@ class EkfCore:
         z_hat: np.ndarray
         h: np.ndarray
         z_hat, h = self._apriltag_model.linearize_pose(x_lin)
+        h = self._state.lift_legacy_jacobian(h)
         residual: np.ndarray = z - z_hat
         residual[3] = self._wrap_angle(residual[3])
 
@@ -699,7 +686,7 @@ class EkfCore:
                 self._config.apriltag_yaw_var,
             ]
         )
-        s_hat: np.ndarray = h @ self._p @ h.T
+        s_hat: np.ndarray = h @ self._state.covariance @ h.T
         s: np.ndarray = s_hat + r
         maha_d2: float = float(residual.T @ np.linalg.solve(s, residual))
         gate_d2_threshold: float = self._config.apriltag_gate_d2
@@ -719,14 +706,16 @@ class EkfCore:
                 gate_d2_threshold=gate_d2_threshold,
             )
 
-        hp: np.ndarray = h @ self._p
+        hp: np.ndarray = h @ self._state.covariance
         k_gain: np.ndarray = np.linalg.solve(s.T, hp).T
 
-        self._x = self._x + k_gain @ residual
-        self._x[8] = self._wrap_angle(float(self._x[8]))
-        identity: np.ndarray = np.eye(_STATE_DIM, dtype=float)
+        delta: np.ndarray = k_gain @ residual
+        self._state.apply_delta(delta)
+        identity: np.ndarray = np.eye(self._state.index.total_dim, dtype=float)
         temp: np.ndarray = identity - k_gain @ h
-        self._p = temp @ self._p @ temp.T + k_gain @ r @ k_gain.T
+        self._state.covariance = (
+            temp @ self._state.covariance @ temp.T + k_gain @ r @ k_gain.T
+        )
 
         update: EkfUpdateData = EkfUpdateData(
             sensor="apriltags",
@@ -768,8 +757,7 @@ class EkfCore:
 
     def _set_frontier(self, t_meas: EkfTime) -> None:
         self._t_frontier_ns = to_ns(t_meas)
-        self._x_frontier = self._x.copy()
-        self._p_frontier = self._p.copy()
+        self._state_frontier = self._state.copy()
 
     def _ekf_time_from_ns(self, t_meas_ns: int) -> EkfTime:
         sec: int
@@ -794,8 +782,7 @@ class EkfCore:
         self._checkpoints.append(
             _Checkpoint(
                 t_meas_ns=t_meas_ns,
-                x=self._x.copy(),
-                p=self._p.copy(),
+                state=self._state.copy(),
                 last_imu_time_ns=self._last_imu_time_ns,
                 last_imu=self._last_imu,
             )
@@ -819,30 +806,21 @@ class EkfCore:
         return checkpoint
 
     def _restore_checkpoint(self, checkpoint: _Checkpoint) -> None:
-        self._x = checkpoint.x.copy()
-        self._p = checkpoint.p.copy()
+        self._state = checkpoint.state.copy()
         self._last_imu_time_ns = checkpoint.last_imu_time_ns
         self._last_imu = checkpoint.last_imu
         self._t_frontier_ns = checkpoint.t_meas_ns
-        self._x_frontier = self._x.copy()
-        self._p_frontier = self._p.copy()
+        self._state_frontier = self._state.copy()
         self._checkpoints = [checkpoint]
         self._last_checkpoint_time = checkpoint.t_meas_ns
         self._initialized = True
 
     def _reset_state(self, t_meas_ns: int) -> None:
-        diag_values: list[float] = (
-            [self._config.pos_var] * 3
-            + [self._config.vel_var] * 3
-            + [self._config.ang_var] * 3
-        )
-        self._x = np.zeros(_STATE_DIM, dtype=float)
-        self._p = np.diag(diag_values)
+        self._state.reset()
         self._t_frontier_ns = t_meas_ns
         self._last_imu_time_ns = None
         self._last_imu = None
-        self._x_frontier = self._x.copy()
-        self._p_frontier = self._p.copy()
+        self._state_frontier = self._state.copy()
         self._checkpoints = []
         self._last_checkpoint_time = None
         self._initialized = True
