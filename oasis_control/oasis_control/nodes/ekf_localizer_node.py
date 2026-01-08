@@ -43,10 +43,7 @@ from oasis_control.localization.ekf.ekf_types import EkfUpdateData
 from oasis_control.localization.ekf.ekf_types import ImuCalibrationData
 from oasis_control.localization.ekf.ekf_types import ImuSample
 from oasis_control.localization.ekf.ekf_types import MagSample
-from oasis_control.localization.ekf.ekf_types import from_ns
-from oasis_control.localization.ekf.ekf_types import from_seconds
 from oasis_control.localization.ekf.ekf_types import to_ns
-from oasis_control.localization.ekf.ekf_types import to_seconds
 from oasis_control.localization.ekf.reporting.update_reporter import UpdateReporter
 from oasis_control.localization.ekf.ros_time_adapter import ekf_time_to_ros_time
 from oasis_control.localization.ekf.ros_time_adapter import ros_time_to_ekf_time
@@ -74,6 +71,9 @@ ODOM_TOPIC: str = "odom"
 WORLD_ODOM_TOPIC: str = "world_odom"
 MAG_UPDATE_TOPIC: str = "ekf/updates/mag"
 APRILTAG_UPDATE_TOPIC: str = "ekf/updates/apriltags"
+
+# Nanoseconds per second for time conversions
+_NS_PER_S: int = 1_000_000_000
 
 # ROS parameters
 PARAM_WORLD_FRAME_ID: str = "world_frame_id"
@@ -251,6 +251,12 @@ class EkfLocalizerNode(rclpy.node.Node):
             self.get_parameter(ekf_params.PARAM_TAG_LANDMARK_PRIOR_SIGMA_ROT_RAD).value
         )
 
+        self._t_buffer_ns: int = int(round(self._t_buffer_sec * _NS_PER_S))
+        self._eps_wall_future_ns: int = int(round(self._eps_wall_future * _NS_PER_S))
+        self._dt_clock_jump_max_ns: int = int(
+            round(self._dt_clock_jump_max * _NS_PER_S)
+        )
+
         # Config
         config: EkfConfig = EkfConfig(
             world_frame_id=self._world_frame_id,
@@ -395,6 +401,15 @@ class EkfLocalizerNode(rclpy.node.Node):
     def _handle_imu_raw_with_calibration(
         self, imu_msg: ImuMsg, cal_msg: ImuCalibrationMsg
     ) -> None:
+        if (
+            imu_msg.header.stamp.sec != cal_msg.header.stamp.sec
+            or imu_msg.header.stamp.nanosec != cal_msg.header.stamp.nanosec
+        ):
+            self.get_logger().error(
+                "IMU calibration timestamp mismatch, rejecting packet"
+            )
+            return
+
         timestamp: EkfTime = ros_time_to_ekf_time(imu_msg.header.stamp)
         self._record_synced_imu_timestamp(timestamp)
 
@@ -500,15 +515,15 @@ class EkfLocalizerNode(rclpy.node.Node):
         if self._should_reject_future_event(event, topic):
             return
 
-        t_meas_s: float = to_seconds(event.t_meas)
-        latest_time: Optional[float] = self._buffer.latest_time()
-        if latest_time is not None:
-            dt_clock: float = t_meas_s - latest_time
-            if abs(dt_clock) > self._dt_clock_jump_max:
+        t_meas_ns: int = to_ns(event.t_meas)
+        latest_time_ns: Optional[int] = self._buffer.latest_time_ns()
+        if latest_time_ns is not None:
+            dt_clock_ns: int = t_meas_ns - latest_time_ns
+            if abs(dt_clock_ns) > self._dt_clock_jump_max_ns:
                 self.get_logger().warn(
                     "EKF clock jump detected: "
-                    f"latest={latest_time:.3f}s t_meas={t_meas_s:.3f}s "
-                    f"dt={dt_clock:.3f}s"
+                    f"latest_ns={latest_time_ns} t_meas_ns={t_meas_ns} "
+                    f"dt_ns={dt_clock_ns}"
                 )
                 self._buffer.reset()
                 self._core.reset()
@@ -520,9 +535,9 @@ class EkfLocalizerNode(rclpy.node.Node):
 
         self._buffer.insert_event(event)
 
-        latest_time_ns: Optional[int] = self._buffer.latest_time_ns()
+        latest_time_ns = self._buffer.latest_time_ns()
         if latest_time_ns is not None:
-            self._buffer.evict(from_ns(latest_time_ns))
+            self._buffer.evict(latest_time_ns)
 
         if self._core.is_out_of_order(event.t_meas):
             outputs_list: list[EkfOutputs] = self._core.replay(
@@ -532,21 +547,21 @@ class EkfLocalizerNode(rclpy.node.Node):
             outputs_list = [self._core.process_event(event)]
 
         for outputs in outputs_list:
-            if outputs.odom_time_s is not None:
-                self._publish_odom(outputs.odom_time_s)
-            if outputs.world_odom_time_s is not None:
-                self._publish_world_odom(outputs.world_odom_time_s)
+            if outputs.odom_time is not None:
+                self._publish_odom(outputs.odom_time)
+            if outputs.world_odom_time is not None:
+                self._publish_world_odom(outputs.world_odom_time)
             if outputs.mag_update is not None:
                 self._publish_mag_update(outputs.mag_update)
             if outputs.apriltag_update is not None:
                 apriltag_update: EkfAprilTagUpdateData = outputs.apriltag_update
                 self._publish_apriltag_update(apriltag_update)
 
-    def _publish_odom(self, timestamp: float) -> None:
+    def _publish_odom(self, timestamp: EkfTime) -> None:
         message: OdometryMsg = self._build_odom(timestamp)
         self._odom_pub.publish(message)
 
-    def _publish_world_odom(self, timestamp: float) -> None:
+    def _publish_world_odom(self, timestamp: EkfTime) -> None:
         message: OdometryMsg = self._build_odom(timestamp)
         message.header.frame_id = self._world_frame_id
         self._world_odom_pub.publish(message)
@@ -569,7 +584,7 @@ class EkfLocalizerNode(rclpy.node.Node):
         if event.event_type == EkfEventType.MAG:
             mag_sample: MagSample = cast(MagSample, event.payload)
             update: EkfUpdateData = self._core.update_with_mag(
-                mag_sample, to_seconds(event.t_meas)
+                mag_sample, event.t_meas
             )
             update = replace(update, accepted=False, reject_reason=reason)
             self._publish_mag_update(update)
@@ -579,24 +594,24 @@ class EkfLocalizerNode(rclpy.node.Node):
             )
             update_data: EkfAprilTagUpdateData = (
                 self._core.build_rejected_apriltag_update(
-                    apriltag_data, to_seconds(event.t_meas), reason
+                    apriltag_data, event.t_meas, reason
                 )
             )
             self._publish_apriltag_update(update_data)
 
     def _should_reject_future_event(self, event: EkfEvent, topic: str) -> bool:
-        t_meas_s: float = to_seconds(event.t_meas)
-        now_s: float = float(self.get_clock().now().nanoseconds) * 1.0e-9
-        if t_meas_s <= now_s + self._eps_wall_future:
+        t_meas_ns: int = to_ns(event.t_meas)
+        now_ns: int = int(self.get_clock().now().nanoseconds)
+        if t_meas_ns <= now_ns + self._eps_wall_future_ns:
             return False
 
-        delta: float = t_meas_s - now_s
-        self._throttled_future_warning(topic, t_meas_s, now_s, delta)
+        delta_ns: int = t_meas_ns - now_ns
+        self._throttled_future_warning(topic, t_meas_ns, now_ns, delta_ns)
         self._publish_rejection(event, "Future timestamp")
         return True
 
     def _throttled_future_warning(
-        self, topic: str, t_meas_s: float, now_s: float, delta: float
+        self, topic: str, t_meas_ns: int, now_ns: int, delta_ns: int
     ) -> None:
         last_time: float = self._future_reject_log_times.get(topic, 0.0)
         monotonic_now: float = time.monotonic()
@@ -605,8 +620,8 @@ class EkfLocalizerNode(rclpy.node.Node):
         self._future_reject_log_times[topic] = monotonic_now
         self.get_logger().warn(
             "Rejecting future-dated event on "
-            f"{topic}: t_meas={t_meas_s:.3f}s now={now_s:.3f}s "
-            f"delta={delta:.3f}s"
+            f"{topic}: t_meas_ns={t_meas_ns} now_ns={now_ns} "
+            f"delta_ns={delta_ns}"
         )
 
     def _get_param_with_legacy(
@@ -626,9 +641,9 @@ class EkfLocalizerNode(rclpy.node.Node):
             )
         return current_value
 
-    def _build_odom(self, timestamp: float) -> OdometryMsg:
+    def _build_odom(self, timestamp: EkfTime) -> OdometryMsg:
         message: OdometryMsg = OdometryMsg()
-        message.header.stamp = ekf_time_to_ros_time(from_seconds(timestamp))
+        message.header.stamp = ekf_time_to_ros_time(timestamp)
         message.header.frame_id = self._odom_frame_id
         message.child_frame_id = self._body_frame_id
         message.pose.pose.orientation.w = 1.0

@@ -20,7 +20,7 @@ from oasis_control.localization.ekf.ekf_types import EkfAprilTagDetectionUpdate
 from oasis_control.localization.ekf.ekf_types import EkfAprilTagUpdateData
 from oasis_control.localization.ekf.ekf_types import EkfMatrix
 from oasis_control.localization.ekf.ekf_types import EkfUpdateData
-from oasis_control.localization.ekf.ekf_types import from_seconds
+from oasis_control.localization.ekf.ekf_types import EkfTime
 from oasis_control.localization.ekf.ros_time_adapter import ekf_time_to_ros_time
 from oasis_msgs.msg import EkfAprilTagDetectionReport
 from oasis_msgs.msg import EkfAprilTagUpdateReport
@@ -90,9 +90,9 @@ class UpdateReporter:
         report.num_detections_accepted = accepted_count
         return report
 
-    def _build_header(self, timestamp: float, frame_id: str) -> Header:
+    def _build_header(self, timestamp: EkfTime, frame_id: str) -> Header:
         header: Header = Header()
-        header.stamp = ekf_time_to_ros_time(from_seconds(timestamp))
+        header.stamp = ekf_time_to_ros_time(timestamp)
         header.frame_id = frame_id
         return header
 

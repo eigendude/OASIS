@@ -39,11 +39,12 @@ from oasis_control.localization.ekf.ekf_types import EkfUpdateData
 from oasis_control.localization.ekf.ekf_types import ImuCalibrationData
 from oasis_control.localization.ekf.ekf_types import ImuSample
 from oasis_control.localization.ekf.ekf_types import MagSample
-from oasis_control.localization.ekf.ekf_types import from_ns
 from oasis_control.localization.ekf.ekf_types import to_ns
-from oasis_control.localization.ekf.ekf_types import to_seconds
 from oasis_control.localization.ekf.models.apriltag_measurement_model import (
     AprilTagMeasurementModel,
+)
+from oasis_control.localization.ekf.models.apriltag_measurement_model import (
+    SUPPORTED_DISTORTION_MODELS,
 )
 from oasis_control.localization.ekf.models.imu_process_model import ImuProcessModel
 from oasis_control.localization.ekf.models.mag_measurement_model import (
@@ -59,6 +60,9 @@ _EVENT_ORDER: dict[EkfEventType, int] = {
     EkfEventType.APRILTAG: 3,
 }
 
+# Nanoseconds per second for time conversions
+_NS_PER_S: int = 1_000_000_000
+
 _LOG: logging.Logger = logging.getLogger(__name__)
 
 
@@ -67,20 +71,19 @@ class _Checkpoint:
     t_meas_ns: int
     x: np.ndarray
     p: np.ndarray
-    last_imu_time: Optional[float]
+    last_imu_time_ns: Optional[int]
     last_imu: Optional[ImuSample]
 
 
 @dataclass
 class _StateSnapshot:
     initialized: bool
-    t_frontier: Optional[float]
     t_frontier_ns: Optional[int]
     x: np.ndarray
     p: np.ndarray
     x_frontier: np.ndarray
     p_frontier: np.ndarray
-    last_imu_time: Optional[float]
+    last_imu_time_ns: Optional[int]
     last_imu: Optional[ImuSample]
     checkpoints: list[_Checkpoint]
     last_checkpoint_time: Optional[int]
@@ -99,27 +102,25 @@ class EkfCore:
         self._initialized: bool = False
         self._calibration_initialized: bool = False
         self._camera_info: Optional[CameraInfoData] = None
-        self._t_frontier: Optional[float] = None
         self._t_frontier_ns: Optional[int] = None
         self._x: np.ndarray = np.zeros(_STATE_DIM, dtype=float)
         self._p: np.ndarray = np.eye(_STATE_DIM, dtype=float)
         self._x_frontier: np.ndarray = self._x.copy()
         self._p_frontier: np.ndarray = self._p.copy()
-        self._last_imu_time: Optional[float] = None
+        self._last_imu_time_ns: Optional[int] = None
         self._last_imu: Optional[ImuSample] = None
         self._checkpoints: list[_Checkpoint] = []
         self._last_checkpoint_time: Optional[int] = None
 
     def process_event(self, event: EkfEvent) -> EkfOutputs:
         t_meas: EkfTime = event.t_meas
-        t_meas_s: float = to_seconds(t_meas)
         t_meas_ns: int = to_ns(t_meas)
-        prev_frontier: Optional[float] = self._t_frontier
-        odom_time_s: Optional[float] = None
-        world_odom_time_s: Optional[float] = None
+        prev_frontier_ns: Optional[int] = self._t_frontier_ns
+        odom_time: Optional[EkfTime] = None
+        world_odom_time: Optional[EkfTime] = None
         mag_update: Optional[EkfUpdateData] = None
         apriltag_update: Optional[EkfAprilTagUpdateData] = None
-        advance_frontier: bool = True
+        advance_frontier: bool = False
 
         if event.event_type == EkfEventType.IMU:
             imu_packet: EkfImuPacket = cast(EkfImuPacket, event.payload)
@@ -128,48 +129,51 @@ class EkfCore:
                     self.initialize_from_calibration(imu_packet.calibration)
                     self._calibration_initialized = True
 
-            self._ensure_initialized(t_meas_s, t_meas_ns)
-            self._process_imu_packet(imu_packet, t_meas_s, t_meas_ns)
+            self._ensure_initialized()
+            self._process_imu_packet(imu_packet, t_meas_ns)
+            advance_frontier = True
         elif event.event_type == EkfEventType.MAG:
             mag_sample: MagSample = cast(MagSample, event.payload)
-            self._ensure_initialized(t_meas_s, t_meas_ns)
-            self._propagate_if_needed(t_meas_s, t_meas_ns)
-            mag_update = self.update_with_mag(mag_sample, t_meas_s)
+            self._ensure_initialized()
+            self._propagate_if_needed(t_meas_ns)
+            mag_update = self.update_with_mag(mag_sample, t_meas)
+            advance_frontier = mag_update.accepted
         elif event.event_type == EkfEventType.APRILTAG:
             apriltag_data: AprilTagDetectionArrayData = cast(
                 AprilTagDetectionArrayData, event.payload
             )
             snapshot: _StateSnapshot = self._snapshot_state()
-            self._ensure_initialized(t_meas_s, t_meas_ns)
-            self._propagate_if_needed(t_meas_s, t_meas_ns)
-            apriltag_update = self.update_with_apriltags(apriltag_data, t_meas_s)
+            self._ensure_initialized()
+            self._propagate_if_needed(t_meas_ns)
+            apriltag_update = self.update_with_apriltags(apriltag_data, t_meas)
             apriltag_accepted: bool = any(
                 detection.update.accepted for detection in apriltag_update.detections
             )
-            if not apriltag_accepted:
+            if apriltag_accepted:
+                advance_frontier = True
+            else:
                 self._restore_snapshot(snapshot)
-                advance_frontier = False
         elif event.event_type == EkfEventType.CAMERA_INFO:
             self._camera_info = cast(CameraInfoData, event.payload)
             self._apriltag_model.set_camera_info(self._camera_info)
-            advance_frontier = False
 
         if advance_frontier:
             self._set_frontier(t_meas)
             self._maybe_checkpoint(t_meas, event.event_type)
 
-        if self._frontier_advanced(prev_frontier):
-            odom_time_s = self._t_frontier
-            world_odom_time_s = self._t_frontier
+        if self._frontier_advanced(prev_frontier_ns):
+            frontier_time: EkfTime = self._frontier_time()
+            odom_time = frontier_time
+            world_odom_time = frontier_time
 
         return EkfOutputs(
-            odom_time_s=odom_time_s,
-            world_odom_time_s=world_odom_time_s,
+            odom_time=odom_time,
+            world_odom_time=world_odom_time,
             mag_update=mag_update,
             apriltag_update=apriltag_update,
         )
 
-    def update_with_mag(self, mag_sample: MagSample, t_meas: float) -> EkfUpdateData:
+    def update_with_mag(self, mag_sample: MagSample, t_meas: EkfTime) -> EkfUpdateData:
         """
         Apply the magnetometer update model
         """
@@ -264,20 +268,37 @@ class EkfCore:
         return mag_accept_update
 
     def update_with_apriltags(
-        self, apriltag_data: AprilTagDetectionArrayData, t_meas: float
+        self, apriltag_data: AprilTagDetectionArrayData, t_meas: EkfTime
     ) -> EkfAprilTagUpdateData:
         """
         Apply the AprilTag update model
         """
 
+        if self._camera_info is None:
+            return self.build_rejected_apriltag_update(
+                apriltag_data, t_meas, "No camera_info cached"
+            )
+
+        if apriltag_data.frame_id != self._camera_info.frame_id:
+            return self.build_rejected_apriltag_update(
+                apriltag_data, t_meas, "AprilTag frame mismatch"
+            )
+
+        distortion_model: str = self._camera_info.distortion_model.lower()
+        if distortion_model not in SUPPORTED_DISTORTION_MODELS:
+            return self.build_rejected_apriltag_update(
+                apriltag_data, t_meas, "Unsupported distortion model"
+            )
+
         detections_sorted: list[AprilTagDetection] = sorted(
             apriltag_data.detections, key=lambda det: (det.family, det.tag_id)
         )
         detections: list[EkfAprilTagDetectionUpdate] = []
+        x_lin: np.ndarray = self._x.copy()
         for detection in detections_sorted:
             detection_update: EkfAprilTagDetectionUpdate = (
                 self._update_with_apriltag_detection(
-                    detection, apriltag_data.frame_id, t_meas
+                    detection, apriltag_data.frame_id, t_meas, x_lin
                 )
             )
             detections.append(detection_update)
@@ -314,7 +335,7 @@ class EkfCore:
         )
         checkpoint: Optional[_Checkpoint] = self._find_checkpoint(replay_start_ns)
         if checkpoint is None:
-            self._reset_state(from_ns(replay_start_ns))
+            self._reset_state(replay_start_ns)
         else:
             self._restore_checkpoint(checkpoint)
 
@@ -341,8 +362,8 @@ class EkfCore:
             for event in sorted_group:
                 output: EkfOutputs = self.process_event(event)
                 if (
-                    output.odom_time_s is not None
-                    or output.world_odom_time_s is not None
+                    output.odom_time is not None
+                    or output.world_odom_time is not None
                     or output.mag_update is not None
                     or output.apriltag_update is not None
                 ):
@@ -356,38 +377,44 @@ class EkfCore:
     def covariance(self) -> np.ndarray:
         return self._p.copy()
 
-    def frontier_time(self) -> Optional[float]:
-        return self._t_frontier
+    def frontier_time(self) -> Optional[EkfTime]:
+        if self._t_frontier_ns is None:
+            return None
+        return self._ekf_time_from_ns(self._t_frontier_ns)
+
+    def _frontier_time(self) -> EkfTime:
+        if self._t_frontier_ns is None:
+            raise RuntimeError("Frontier time requested before initialization")
+        return self._ekf_time_from_ns(self._t_frontier_ns)
 
     def reset(self) -> None:
         self._initialized = False
         self._calibration_initialized = False
-        self._t_frontier = None
         self._t_frontier_ns = None
         self._x = np.zeros(_STATE_DIM, dtype=float)
         self._p = np.eye(_STATE_DIM, dtype=float)
         self._x_frontier = self._x.copy()
         self._p_frontier = self._p.copy()
-        self._last_imu_time = None
+        self._last_imu_time_ns = None
         self._last_imu = None
         self._checkpoints = []
         self._last_checkpoint_time = None
 
     def _checkpoint_snapshot(
         self, t_meas: EkfTime
-    ) -> Optional[tuple[float, np.ndarray, np.ndarray]]:
+    ) -> Optional[tuple[EkfTime, np.ndarray, np.ndarray]]:
         t_meas_ns: int = to_ns(t_meas)
         checkpoint: Optional[_Checkpoint] = self._find_checkpoint(t_meas_ns)
         if checkpoint is None:
             return None
-        checkpoint_time: float = to_seconds(from_ns(checkpoint.t_meas_ns))
+        checkpoint_time: EkfTime = self._ekf_time_from_ns(checkpoint.t_meas_ns)
         return (checkpoint_time, checkpoint.x.copy(), checkpoint.p.copy())
 
     def build_rejected_apriltag_detection(
         self,
         detection: AprilTagDetection,
         frame_id: str,
-        t_meas: float,
+        t_meas: EkfTime,
         *,
         reject_reason: str = "TODO: AprilTag update not implemented",
         z: Optional[np.ndarray] = None,
@@ -446,7 +473,7 @@ class EkfCore:
     def build_rejected_apriltag_update(
         self,
         apriltag_data: AprilTagDetectionArrayData,
-        t_meas: float,
+        t_meas: EkfTime,
         reason: str,
     ) -> EkfAprilTagUpdateData:
         detections_sorted: list[AprilTagDetection] = sorted(
@@ -471,13 +498,12 @@ class EkfCore:
     def _snapshot_state(self) -> _StateSnapshot:
         return _StateSnapshot(
             initialized=self._initialized,
-            t_frontier=self._t_frontier,
             t_frontier_ns=self._t_frontier_ns,
             x=self._x.copy(),
             p=self._p.copy(),
             x_frontier=self._x_frontier.copy(),
             p_frontier=self._p_frontier.copy(),
-            last_imu_time=self._last_imu_time,
+            last_imu_time_ns=self._last_imu_time_ns,
             last_imu=self._last_imu,
             checkpoints=list(self._checkpoints),
             last_checkpoint_time=self._last_checkpoint_time,
@@ -485,20 +511,17 @@ class EkfCore:
 
     def _restore_snapshot(self, snapshot: _StateSnapshot) -> None:
         self._initialized = snapshot.initialized
-        self._t_frontier = snapshot.t_frontier
         self._t_frontier_ns = snapshot.t_frontier_ns
         self._x = snapshot.x.copy()
         self._p = snapshot.p.copy()
         self._x_frontier = snapshot.x_frontier.copy()
         self._p_frontier = snapshot.p_frontier.copy()
-        self._last_imu_time = snapshot.last_imu_time
+        self._last_imu_time_ns = snapshot.last_imu_time_ns
         self._last_imu = snapshot.last_imu
         self._checkpoints = list(snapshot.checkpoints)
         self._last_checkpoint_time = snapshot.last_checkpoint_time
 
-    def _ensure_initialized(
-        self, t_meas: float, t_meas_ns: Optional[int] = None
-    ) -> None:
+    def _ensure_initialized(self) -> None:
         if self._initialized:
             return
         diag_values: list[float] = (
@@ -509,79 +532,74 @@ class EkfCore:
         self._x = np.zeros(_STATE_DIM, dtype=float)
         self._p = np.diag(diag_values)
         self._initialized = True
-        self._set_frontier(t_meas, t_meas_ns)
+        self._x_frontier = self._x.copy()
+        self._p_frontier = self._p.copy()
 
     def _process_imu_packet(
         self,
         imu_packet: EkfImuPacket,
-        t_meas: float,
-        t_meas_ns: Optional[int] = None,
+        t_meas_ns: int,
     ) -> None:
         imu_sample: ImuSample = imu_packet.imu
-        if self._last_imu is None or self._last_imu_time is None:
+        if self._last_imu is None or self._last_imu_time_ns is None:
             self._last_imu = imu_sample
-            self._last_imu_time = t_meas
-            self._set_frontier(t_meas, t_meas_ns)
+            self._last_imu_time_ns = t_meas_ns
             return
-        imu_dt: float = t_meas - self._last_imu_time
-        if imu_dt <= 0.0:
+        imu_dt_ns: int = t_meas_ns - self._last_imu_time_ns
+        if imu_dt_ns <= 0:
             self._last_imu = imu_sample
-            self._last_imu_time = t_meas
-            self._set_frontier(t_meas, t_meas_ns)
+            self._last_imu_time_ns = t_meas_ns
             return
-        if imu_dt > self._config.dt_imu_max:
+        if imu_dt_ns > self._config.dt_imu_max_ns:
             # Advance time without propagation to keep the frontier consistent
             _LOG.info(
-                "Skipping IMU propagation, dt %.3fs exceeds max %.3fs",
-                imu_dt,
-                self._config.dt_imu_max,
+                "Skipping IMU propagation, dt_ns %d exceeds max %d",
+                imu_dt_ns,
+                self._config.dt_imu_max_ns,
             )
             self._last_imu = imu_sample
-            self._last_imu_time = t_meas
-            self._set_frontier(t_meas, t_meas_ns)
+            self._last_imu_time_ns = t_meas_ns
             return
-        if self._t_frontier is not None:
-            self._propagate_with_imu(self._last_imu, self._t_frontier, t_meas)
+        if self._t_frontier_ns is not None:
+            self._propagate_with_imu(
+                self._last_imu, self._t_frontier_ns, t_meas_ns
+            )
         self._last_imu = imu_sample
-        self._last_imu_time = t_meas
-        self._set_frontier(t_meas, t_meas_ns)
+        self._last_imu_time_ns = t_meas_ns
 
-    def _propagate_if_needed(
-        self, t_meas: float, t_meas_ns: Optional[int] = None
-    ) -> None:
-        if self._t_frontier is None:
-            self._set_frontier(t_meas, t_meas_ns)
+    def _propagate_if_needed(self, t_meas_ns: int) -> None:
+        if self._t_frontier_ns is None:
             return
-        if t_meas <= self._t_frontier:
+        if t_meas_ns <= self._t_frontier_ns:
             return
-        if self._last_imu is None or self._last_imu_time is None:
-            self._set_frontier(t_meas, t_meas_ns)
+        if self._last_imu is None or self._last_imu_time_ns is None:
             return
-        dt_total: float = t_meas - self._t_frontier
-        if dt_total > self._config.dt_imu_max:
+        dt_total_ns: int = t_meas_ns - self._t_frontier_ns
+        if dt_total_ns > self._config.dt_imu_max_ns:
             _LOG.info(
-                "Skipping propagation, dt %.3fs exceeds max %.3fs",
-                dt_total,
-                self._config.dt_imu_max,
+                "Skipping propagation, dt_ns %d exceeds max %d",
+                dt_total_ns,
+                self._config.dt_imu_max_ns,
             )
             return
-        self._propagate_with_imu(self._last_imu, self._t_frontier, t_meas)
-        self._set_frontier(t_meas, t_meas_ns)
+        self._propagate_with_imu(self._last_imu, self._t_frontier_ns, t_meas_ns)
         return
 
     def _propagate_with_imu(
-        self, imu_sample: ImuSample, t_start: float, t_end: float
+        self, imu_sample: ImuSample, t_start_ns: int, t_end_ns: int
     ) -> None:
-        dt_total: float = t_end - t_start
-        if dt_total <= 0.0:
+        dt_total_ns: int = t_end_ns - t_start_ns
+        if dt_total_ns <= 0:
             return
-        if dt_total > self._config.dt_imu_max:
+        if dt_total_ns > self._config.dt_imu_max_ns:
             return
-        max_dt: float = self._config.max_dt_sec
-        steps: int = max(1, int(math.ceil(dt_total / max_dt)))
-        dt: float = dt_total / float(steps)
+        max_dt_ns: int = self._config.max_dt_ns
+        if max_dt_ns <= 0:
+            return
+        steps: int = max(1, (dt_total_ns + max_dt_ns - 1) // max_dt_ns)
+        dt_sec: float = float(dt_total_ns) * 1.0e-9 / float(steps)
         for _ in range(steps):
-            self._integrate_state(imu_sample, dt)
+            self._integrate_state(imu_sample, dt_sec)
 
     def _integrate_state(self, imu_sample: ImuSample, dt: float) -> None:
         omega_rps: np.ndarray = np.asarray(imu_sample.angular_velocity_rps, dtype=float)
@@ -656,7 +674,11 @@ class EkfCore:
         )
 
     def _update_with_apriltag_detection(
-        self, detection: AprilTagDetection, frame_id: str, t_meas: float
+        self,
+        detection: AprilTagDetection,
+        frame_id: str,
+        t_meas: EkfTime,
+        x_lin: np.ndarray,
     ) -> EkfAprilTagDetectionUpdate:
         z: Optional[np.ndarray] = self._apriltag_model.pose_measurement(detection)
         if z is None:
@@ -664,7 +686,7 @@ class EkfCore:
 
         z_hat: np.ndarray
         h: np.ndarray
-        z_hat, h = self._apriltag_model.linearize_pose(self._x)
+        z_hat, h = self._apriltag_model.linearize_pose(x_lin)
         residual: np.ndarray = z - z_hat
         residual[3] = self._wrap_angle(residual[3])
 
@@ -736,37 +758,37 @@ class EkfCore:
     def _event_sort_key(self, event: EkfEvent) -> int:
         return _EVENT_ORDER[event.event_type]
 
-    def _frontier_advanced(self, prev_frontier: Optional[float]) -> bool:
-        if self._t_frontier is None:
+    def _frontier_advanced(self, prev_frontier_ns: Optional[int]) -> bool:
+        if self._t_frontier_ns is None:
             return False
-        if prev_frontier is None:
+        if prev_frontier_ns is None:
             return True
-        return self._t_frontier > prev_frontier
+        return self._t_frontier_ns > prev_frontier_ns
 
-    def _set_frontier(
-        self, t_meas: EkfTime | float, t_meas_ns: Optional[int] = None
-    ) -> None:
-        # Prefer EkfTime-derived nanoseconds for ordering and buffering
+    def _set_frontier(self, t_meas: EkfTime | int) -> None:
         if isinstance(t_meas, EkfTime):
-            self._t_frontier = to_seconds(t_meas)
             self._t_frontier_ns = to_ns(t_meas)
         else:
-            self._t_frontier = t_meas
-            if t_meas_ns is not None:
-                self._t_frontier_ns = t_meas_ns
-            else:
-                self._t_frontier_ns = int(round(t_meas * 1.0e9))
+            self._t_frontier_ns = t_meas
         self._x_frontier = self._x.copy()
         self._p_frontier = self._p.copy()
 
+    def _ekf_time_from_ns(self, t_meas_ns: int) -> EkfTime:
+        sec: int
+        nanosec: int
+        sec, nanosec = divmod(t_meas_ns, _NS_PER_S)
+        return EkfTime(sec=sec, nanosec=nanosec)
+
     def _maybe_checkpoint(self, t_meas: EkfTime, event_type: EkfEventType) -> None:
-        interval: float = self._config.checkpoint_interval_sec
         t_meas_ns: int = to_ns(t_meas)
         if self._last_checkpoint_time is None:
             self._save_checkpoint(t_meas_ns)
             return
-        dt_since: float = to_seconds(from_ns(t_meas_ns - self._last_checkpoint_time))
-        if dt_since >= interval or event_type != EkfEventType.IMU:
+        dt_since_ns: int = t_meas_ns - self._last_checkpoint_time
+        if (
+            dt_since_ns >= self._config.checkpoint_interval_ns
+            or event_type != EkfEventType.IMU
+        ):
             self._save_checkpoint(t_meas_ns)
         self._evict_checkpoints()
 
@@ -776,7 +798,7 @@ class EkfCore:
                 t_meas_ns=t_meas_ns,
                 x=self._x.copy(),
                 p=self._p.copy(),
-                last_imu_time=self._last_imu_time,
+                last_imu_time_ns=self._last_imu_time_ns,
                 last_imu=self._last_imu,
             )
         )
@@ -785,9 +807,7 @@ class EkfCore:
     def _evict_checkpoints(self) -> None:
         if self._t_frontier_ns is None:
             return
-        cutoff_ns: int = self._t_frontier_ns - int(
-            round(self._config.t_buffer_sec * 1.0e9)
-        )
+        cutoff_ns: int = self._t_frontier_ns - self._config.t_buffer_ns
         while self._checkpoints and self._checkpoints[0].t_meas_ns < cutoff_ns:
             self._checkpoints.pop(0)
 
@@ -803,9 +823,8 @@ class EkfCore:
     def _restore_checkpoint(self, checkpoint: _Checkpoint) -> None:
         self._x = checkpoint.x.copy()
         self._p = checkpoint.p.copy()
-        self._last_imu_time = checkpoint.last_imu_time
+        self._last_imu_time_ns = checkpoint.last_imu_time_ns
         self._last_imu = checkpoint.last_imu
-        self._t_frontier = to_seconds(from_ns(checkpoint.t_meas_ns))
         self._t_frontier_ns = checkpoint.t_meas_ns
         self._x_frontier = self._x.copy()
         self._p_frontier = self._p.copy()
@@ -813,7 +832,7 @@ class EkfCore:
         self._last_checkpoint_time = checkpoint.t_meas_ns
         self._initialized = True
 
-    def _reset_state(self, t_meas: EkfTime | float) -> None:
+    def _reset_state(self, t_meas: EkfTime | int) -> None:
         diag_values: list[float] = (
             [self._config.pos_var] * 3
             + [self._config.vel_var] * 3
@@ -822,7 +841,7 @@ class EkfCore:
         self._x = np.zeros(_STATE_DIM, dtype=float)
         self._p = np.diag(diag_values)
         self._set_frontier(t_meas)
-        self._last_imu_time = None
+        self._last_imu_time_ns = None
         self._last_imu = None
         self._x_frontier = self._x.copy()
         self._p_frontier = self._p.copy()

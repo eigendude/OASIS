@@ -57,12 +57,10 @@ class EkfBuffer:
             return False
 
         t_meas_ns: int = to_ns(t_meas)
-        buffer_ns: int = int(round(self._config.t_buffer_sec * 1.0e9))
-        return t_meas_ns < (self._latest_time_ns - buffer_ns)
+        return t_meas_ns < (self._latest_time_ns - self._config.t_buffer_ns)
 
-    def evict(self, t_filter: EkfTime) -> None:
-        t_filter_ns: int = to_ns(t_filter)
-        cutoff: int = t_filter_ns - int(round(self._config.t_buffer_sec * 1.0e9))
+    def evict(self, t_filter_ns: int) -> None:
+        cutoff: int = t_filter_ns - self._config.t_buffer_ns
         index: int = bisect_left(self._timestamps_ns, cutoff)
         if index > 0:
             del self._events[:index]
@@ -80,11 +78,6 @@ class EkfBuffer:
         if not self._timestamps_ns:
             return None
         return self._timestamps_ns[0]
-
-    def latest_time(self) -> Optional[float]:
-        if self._latest_time_ns is None:
-            return None
-        return float(self._latest_time_ns) * 1.0e-9
 
     def latest_time_ns(self) -> Optional[int]:
         return self._latest_time_ns
