@@ -179,6 +179,14 @@ class EkfLocalizerNode(rclpy.node.Node):
             ekf_params.PARAM_TAG_LANDMARK_PRIOR_SIGMA_ROT_RAD,
             ekf_params.DEFAULT_TAG_LANDMARK_PRIOR_SIGMA_ROT_RAD,
         )
+        self.declare_parameter(
+            ekf_params.PARAM_EXTRINSIC_PRIOR_SIGMA_T_M,
+            ekf_params.DEFAULT_EXTRINSIC_PRIOR_SIGMA_T_M,
+        )
+        self.declare_parameter(
+            ekf_params.PARAM_EXTRINSIC_PRIOR_SIGMA_ROT_RAD,
+            ekf_params.DEFAULT_EXTRINSIC_PRIOR_SIGMA_ROT_RAD,
+        )
 
         # Load parameters
         self._world_frame_id: str = str(self.get_parameter(PARAM_WORLD_FRAME_ID).value)
@@ -250,6 +258,12 @@ class EkfLocalizerNode(rclpy.node.Node):
         self._tag_landmark_prior_sigma_rot_rad: float = float(
             self.get_parameter(ekf_params.PARAM_TAG_LANDMARK_PRIOR_SIGMA_ROT_RAD).value
         )
+        self._extrinsic_prior_sigma_t_m: float = float(
+            self.get_parameter(ekf_params.PARAM_EXTRINSIC_PRIOR_SIGMA_T_M).value
+        )
+        self._extrinsic_prior_sigma_rot_rad: float = float(
+            self.get_parameter(ekf_params.PARAM_EXTRINSIC_PRIOR_SIGMA_ROT_RAD).value
+        )
 
         self._t_buffer_ns: int = int(round(self._t_buffer_sec * _NS_PER_S))
         self._eps_wall_future_ns: int = int(round(self._eps_wall_future * _NS_PER_S))
@@ -279,6 +293,8 @@ class EkfLocalizerNode(rclpy.node.Node):
             tag_anchor_id=self._tag_anchor_id,
             tag_landmark_prior_sigma_t_m=self._tag_landmark_prior_sigma_t_m,
             tag_landmark_prior_sigma_rot_rad=self._tag_landmark_prior_sigma_rot_rad,
+            extrinsic_prior_sigma_t_m=self._extrinsic_prior_sigma_t_m,
+            extrinsic_prior_sigma_rot_rad=self._extrinsic_prior_sigma_rot_rad,
         )
 
         # QoS profile
