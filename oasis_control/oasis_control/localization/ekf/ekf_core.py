@@ -38,6 +38,8 @@ from oasis_control.localization.ekf.ekf_types import EventAprilTagPose
 from oasis_control.localization.ekf.ekf_types import ImuCalibrationData
 from oasis_control.localization.ekf.ekf_types import ImuSample
 from oasis_control.localization.ekf.ekf_types import MagSample
+from oasis_control.localization.ekf.ekf_types import from_seconds
+from oasis_control.localization.ekf.ekf_types import to_ns
 from oasis_control.localization.ekf.ekf_types import to_seconds
 from oasis_control.localization.ekf.models.imu_process_model import ImuProcessModel
 from oasis_control.localization.ekf.models.mag_measurement_model import (
@@ -229,60 +231,51 @@ class EkfCore:
     def is_out_of_order(self, t_meas: EkfTime) -> bool:
         if self._t_frontier is None:
             return False
-        t_meas_s: float = to_seconds(t_meas)
-        return t_meas_s < (self._t_frontier - 1.0e-9)
+        t_meas_ns: int = to_ns(t_meas)
+        frontier_ns: int = to_ns(from_seconds(self._t_frontier))
+        return t_meas_ns < frontier_ns
 
     def replay(
         self, buffer: EkfBuffer, start_time: Optional[EkfTime] = None
-    ) -> EkfOutputs:
+    ) -> list[EkfOutputs]:
         if buffer.earliest_time() is None:
-            return EkfOutputs(
-                odom_time_s=None,
-                world_odom_time_s=None,
-                mag_update=None,
-                apriltag_update=None,
-                warnings=[],
-            )
+            return []
 
-        earliest_time: float = cast(float, buffer.earliest_time())
-        replay_start: float = (
-            to_seconds(start_time) if start_time is not None else earliest_time
+        earliest_time_ns: int = cast(int, buffer.earliest_time())
+        replay_start_ns: int = (
+            to_ns(start_time) if start_time is not None else earliest_time_ns
         )
-        checkpoint: Optional[_Checkpoint] = self._find_checkpoint(replay_start)
+        replay_start_s: float = float(replay_start_ns) * 1.0e-9
+        checkpoint: Optional[_Checkpoint] = self._find_checkpoint(replay_start_s)
         if checkpoint is None:
-            self._reset_state(replay_start)
+            self._reset_state(replay_start_s)
         else:
             self._restore_checkpoint(checkpoint)
 
-        outputs: EkfOutputs = EkfOutputs(
-            odom_time_s=None,
-            world_odom_time_s=None,
-            mag_update=None,
-            apriltag_update=None,
-            warnings=[],
-        )
-        last_outputs: EkfOutputs = outputs
+        outputs_list: list[EkfOutputs] = []
 
-        grouped_events: list[tuple[float, list[EkfEvent]]] = []
-        current_time: Optional[float] = None
+        grouped_events: list[tuple[int, list[EkfEvent]]] = []
+        current_time_ns: Optional[int] = None
         current_group: list[EkfEvent] = []
-        for event in buffer.iter_events_from(replay_start):
-            event_time_s: float = to_seconds(event.t_meas)
-            if current_time is None or event_time_s != current_time:
+        for event in buffer.iter_events_from(replay_start_ns):
+            event_time_ns: int = to_ns(event.t_meas)
+            if current_time_ns is None or event_time_ns != current_time_ns:
                 if current_group:
-                    grouped_events.append((cast(float, current_time), current_group))
-                current_time = event_time_s
+                    grouped_events.append(
+                        (cast(int, current_time_ns), current_group)
+                    )
+                current_time_ns = event_time_ns
                 current_group = [event]
             else:
                 current_group.append(event)
 
         if current_group:
-            grouped_events.append((cast(float, current_time), current_group))
+            grouped_events.append((cast(int, current_time_ns), current_group))
 
-        for t_meas, group in grouped_events:
+        for _, group in grouped_events:
             sorted_group: list[EkfEvent] = sorted(group, key=self._event_sort_key)
             for event in sorted_group:
-                outputs = self.process_event(event)
+                outputs: EkfOutputs = self.process_event(event)
                 if (
                     outputs.odom_time_s is not None
                     or outputs.world_odom_time_s is not None
@@ -290,9 +283,9 @@ class EkfCore:
                     or outputs.apriltag_update is not None
                     or outputs.warnings
                 ):
-                    last_outputs = outputs
+                    outputs_list.append(outputs)
 
-        return last_outputs
+        return outputs_list
 
     def state(self) -> np.ndarray:
         return self._x.copy()
@@ -445,6 +438,26 @@ class EkfCore:
             tag_id=apriltag_pose.tag_id,
             det_index_in_msg=apriltag_pose.det_index_in_msg,
             update=update,
+        )
+
+    def build_rejected_apriltag_update(
+        self,
+        apriltag_pose: EventAprilTagPose,
+        t_meas: float,
+        *,
+        reject_reason: str,
+    ) -> EkfAprilTagUpdateData:
+        detection_update: EkfAprilTagDetectionUpdate = (
+            self.build_rejected_apriltag_pose(
+                apriltag_pose,
+                t_meas,
+                reject_reason=reject_reason,
+            )
+        )
+        return EkfAprilTagUpdateData(
+            t_meas=t_meas,
+            frame_id=apriltag_pose.frame_id,
+            detections=[detection_update],
         )
 
     def _zero_matrix(self, dim: int) -> EkfMatrix:

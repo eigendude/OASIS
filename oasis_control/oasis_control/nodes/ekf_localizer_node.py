@@ -41,7 +41,6 @@ from oasis_control.localization.ekf.ekf_buffer import EkfBuffer
 from oasis_control.localization.ekf.ekf_config import EkfConfig
 from oasis_control.localization.ekf.ekf_core import EkfCore
 from oasis_control.localization.ekf.ekf_types import CameraInfoData
-from oasis_control.localization.ekf.ekf_types import EkfAprilTagDetectionUpdate
 from oasis_control.localization.ekf.ekf_types import EkfAprilTagUpdateData
 from oasis_control.localization.ekf.ekf_types import EkfEvent
 from oasis_control.localization.ekf.ekf_types import EkfEventType
@@ -349,12 +348,9 @@ class EkfLocalizerNode(rclpy.node.Node):
         if _HAS_TF2:
             self._tf_broadcaster = TransformBroadcaster(self)
 
-        self._imu_raw_sub: rclpy.subscription.Subscription = self.create_subscription(
-            msg_type=ImuMsg,
-            topic=IMU_RAW_TOPIC,
-            callback=self._handle_imu_raw,
-            qos_profile=qos_profile,
-        )
+        self._imu_raw_sub: Optional[
+            rclpy.subscription.Subscription
+        ] = None
         self._mag_sub: rclpy.subscription.Subscription = self.create_subscription(
             msg_type=MagneticFieldMsg,
             topic=MAG_TOPIC,
@@ -410,6 +406,12 @@ class EkfLocalizerNode(rclpy.node.Node):
                 )
 
         if not self._has_imu_calibration:
+            self._imu_raw_sub = self.create_subscription(
+                msg_type=ImuMsg,
+                topic=IMU_RAW_TOPIC,
+                callback=self._handle_imu_raw,
+                qos_profile=qos_profile,
+            )
             self.get_logger().info(
                 "ImuCalibration message unavailable, running imu_raw unsynced"
             )
@@ -606,13 +608,14 @@ class EkfLocalizerNode(rclpy.node.Node):
             return
 
         t_meas_s: float = to_seconds(event.t_meas)
-        latest_time: Optional[float] = self._buffer.latest_time()
-        if latest_time is not None:
-            dt_clock: float = t_meas_s - latest_time
+        latest_time_ns: Optional[int] = self._buffer.latest_time()
+        if latest_time_ns is not None:
+            latest_time_s: float = float(latest_time_ns) * 1.0e-9
+            dt_clock: float = t_meas_s - latest_time_s
             if abs(dt_clock) > self._dt_clock_jump_max:
                 self.get_logger().warn(
                     "EKF clock jump detected: "
-                    f"latest={latest_time:.3f}s t_meas={t_meas_s:.3f}s "
+                    f"latest={latest_time_s:.3f}s t_meas={t_meas_s:.3f}s "
                     f"dt={dt_clock:.3f}s"
                 )
                 self._buffer.reset()
@@ -626,23 +629,25 @@ class EkfLocalizerNode(rclpy.node.Node):
         self._buffer.insert_event(event)
         self._buffer.evict(event.t_meas)
 
+        outputs_list: list[EkfOutputs]
         if self._core.is_out_of_order(event.t_meas):
-            outputs: EkfOutputs = self._core.replay(self._buffer, event.t_meas)
+            outputs_list = self._core.replay(self._buffer, event.t_meas)
         else:
-            outputs = self._core.process_event(event)
+            outputs_list = [self._core.process_event(event)]
 
-        if outputs.odom_time_s is not None:
-            self._publish_odom(outputs.odom_time_s)
-            self._publish_tf_odom(outputs.odom_time_s)
-        if outputs.world_odom_time_s is not None:
-            self._publish_world_odom(outputs.world_odom_time_s)
-            self._publish_tf_world_odom(outputs.world_odom_time_s)
-        if outputs.mag_update is not None:
-            self._publish_mag_update(outputs.mag_update)
-        if outputs.apriltag_update is not None:
-            apriltag_update: EkfAprilTagUpdateData = outputs.apriltag_update
-            self._publish_apriltag_update(apriltag_update)
-        self._record_warnings(outputs.warnings)
+        for outputs in outputs_list:
+            if outputs.odom_time_s is not None:
+                self._publish_odom(outputs.odom_time_s)
+                self._publish_tf_odom(outputs.odom_time_s)
+            if outputs.world_odom_time_s is not None:
+                self._publish_world_odom(outputs.world_odom_time_s)
+                self._publish_tf_world_odom(outputs.world_odom_time_s)
+            if outputs.mag_update is not None:
+                self._publish_mag_update(outputs.mag_update)
+            if outputs.apriltag_update is not None:
+                apriltag_update: EkfAprilTagUpdateData = outputs.apriltag_update
+                self._publish_apriltag_update(apriltag_update)
+            self._record_warnings(outputs.warnings)
 
     def _publish_odom(self, timestamp: float) -> None:
         pose: EkfPose = self._core.odom_base_pose()
@@ -727,17 +732,12 @@ class EkfLocalizerNode(rclpy.node.Node):
             self._publish_mag_update(update)
         elif event.event_type == EkfEventType.APRILTAG:
             apriltag_pose: EventAprilTagPose = cast(EventAprilTagPose, event.payload)
-            detection_update: EkfAprilTagDetectionUpdate = (
-                self._core.build_rejected_apriltag_pose(
+            update_data: EkfAprilTagUpdateData = (
+                self._core.build_rejected_apriltag_update(
                     apriltag_pose,
                     to_seconds(event.t_meas),
                     reject_reason=reason,
                 )
-            )
-            update_data: EkfAprilTagUpdateData = EkfAprilTagUpdateData(
-                t_meas=to_seconds(event.t_meas),
-                frame_id=apriltag_pose.frame_id,
-                detections=[detection_update],
             )
             self._publish_apriltag_update(update_data)
 
