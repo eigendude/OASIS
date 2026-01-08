@@ -173,27 +173,48 @@ class EkfCore:
         Apply the magnetometer update model
         """
 
-        # TODO: Compute z, z_hat, and perform EKF update
         z_dim: int = 3
-        z: list[float] = list(mag_sample.magnetic_field_t)
-        zero_matrix: EkfMatrix = self._zero_matrix(z_dim)
-        return EkfUpdateData(
+        z: np.ndarray = np.asarray(mag_sample.magnetic_field_t, dtype=float)
+        r: np.ndarray = np.asarray(mag_sample.magnetic_field_cov, dtype=float).reshape(
+            (z_dim, z_dim)
+        )
+        z_hat: np.ndarray
+        h: np.ndarray
+        z_hat, h = self._mag_model.linearize(self._x)
+        residual: np.ndarray = z - z_hat
+        s_hat: np.ndarray = h @ self._p @ h.T
+        s: np.ndarray = s_hat + r
+        maha_d2: float = float(residual.T @ np.linalg.solve(s, residual))
+        gate_d2_threshold: float = 0.0
+
+        hp: np.ndarray = h @ self._p
+        k_gain: np.ndarray = np.linalg.solve(s.T, hp).T
+
+        self._x = self._x + k_gain @ residual
+        self._x[8] = self._wrap_angle(float(self._x[8]))
+        identity: np.ndarray = np.eye(_STATE_DIM, dtype=float)
+        temp: np.ndarray = identity - k_gain @ h
+        self._p = temp @ self._p @ temp.T + k_gain @ r @ k_gain.T
+
+        mag_update: EkfUpdateData = EkfUpdateData(
             sensor="magnetic_field",
             frame_id=mag_sample.frame_id,
             t_meas=t_meas,
-            accepted=False,
-            reject_reason="TODO: magnetometer update not implemented",
+            accepted=True,
+            reject_reason="",
             z_dim=z_dim,
-            z=z,
-            z_hat=[0.0] * z_dim,
-            nu=[0.0] * z_dim,
-            r=zero_matrix,
-            s_hat=zero_matrix,
-            s=zero_matrix,
-            maha_d2=0.0,
-            gate_d2_threshold=0.0,
+            z=z.tolist(),
+            z_hat=z_hat.tolist(),
+            nu=residual.tolist(),
+            r=EkfMatrix(rows=z_dim, cols=z_dim, data=r.flatten().tolist()),
+            s_hat=EkfMatrix(rows=z_dim, cols=z_dim, data=s_hat.flatten().tolist()),
+            s=EkfMatrix(rows=z_dim, cols=z_dim, data=s.flatten().tolist()),
+            maha_d2=maha_d2,
+            gate_d2_threshold=gate_d2_threshold,
             reproj_rms_px=0.0,
         )
+
+        return mag_update
 
     def update_with_apriltags(
         self, apriltag_data: AprilTagDetectionArrayData, t_meas: float
