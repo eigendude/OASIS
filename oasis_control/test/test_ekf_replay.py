@@ -129,7 +129,9 @@ def test_process_noise_coefficients() -> None:
     )
     core: EkfCore = EkfCore(config)
     dt: float = 0.2
-    noise: list[list[float]] = core._process_noise(dt).tolist()
+    noise: list[list[float]] = core._process_model.discrete_process_noise(
+        core._state, dt_s=dt
+    ).tolist()
 
     accel_noise_var: float = config.accel_noise_var
     gyro_noise_var: float = config.gyro_noise_var

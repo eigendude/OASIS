@@ -52,10 +52,6 @@ from oasis_control.localization.ekf.models.imu_process_model import ImuProcessMo
 from oasis_control.localization.ekf.models.mag_measurement_model import (
     MagMeasurementModel,
 )
-from oasis_control.localization.ekf.se3 import normalize_quaternion
-from oasis_control.localization.ekf.se3 import quat_from_rotvec
-from oasis_control.localization.ekf.se3 import quat_multiply
-from oasis_control.localization.ekf.se3 import quat_to_rotation_matrix
 
 
 _EVENT_ORDER: dict[EkfEventType, int] = {
@@ -98,7 +94,7 @@ class EkfCore:
 
     def __init__(self, config: EkfConfig) -> None:
         self._config: EkfConfig = config
-        self._process_model: ImuProcessModel = ImuProcessModel()
+        self._process_model: ImuProcessModel = ImuProcessModel(config)
         self._mag_model: MagMeasurementModel = MagMeasurementModel()
         self._apriltag_model: AprilTagMeasurementModel = AprilTagMeasurementModel()
         self._initialized: bool = False
@@ -126,6 +122,8 @@ class EkfCore:
             imu_packet: EkfImuPacket = cast(EkfImuPacket, event.payload)
             if imu_packet.calibration is not None:
                 if imu_packet.calibration.valid and not self._calibration_initialized:
+                    # Calibration messages are priors; applying them after init would
+                    # cause nondeterministic jumps
                     self.initialize_from_calibration(imu_packet.calibration)
                     self._calibration_initialized = True
 
@@ -546,6 +544,8 @@ class EkfCore:
             return
         if imu_dt_ns > self._config.dt_imu_max_ns:
             # Advance time without propagation to keep the frontier consistent
+            # Gaps are rejected (not skipped) to avoid silently integrating through
+            # missing dynamics
             _LOG.info(
                 "Skipping IMU propagation, dt_ns %d exceeds max %d",
                 imu_dt_ns,
@@ -585,80 +585,30 @@ class EkfCore:
             return
         if dt_total_ns > self._config.dt_imu_max_ns:
             return
-        max_dt_ns: int = self._config.max_dt_ns
-        if max_dt_ns <= 0:
-            return
-        steps: int = max(1, (dt_total_ns + max_dt_ns - 1) // max_dt_ns)
-        dt_sec: float = float(dt_total_ns) * 1.0e-9 / float(steps)
-        for _ in range(steps):
-            self._integrate_state(imu_sample, dt_sec)
-
-    def _integrate_state(self, imu_sample: ImuSample, dt: float) -> None:
-        omega_rps: np.ndarray = np.asarray(imu_sample.angular_velocity_rps, dtype=float)
-        accel_body_mps2: np.ndarray = np.asarray(
+        dt_total_s: float = float(dt_total_ns) * 1.0e-9
+        omega_raw_rps: np.ndarray = np.asarray(
+            imu_sample.angular_velocity_rps, dtype=float
+        )
+        accel_raw_mps2: np.ndarray = np.asarray(
             imu_sample.linear_acceleration_mps2, dtype=float
         )
-        omega_rps = omega_rps - self._state.imu_bias_gyro_rps
-        accel_body_mps2 = accel_body_mps2 - self._state.imu_bias_accel_mps2
-        accel_body_mps2 = self._state.imu_accel_a @ accel_body_mps2
-
-        delta_rot: np.ndarray = omega_rps * dt
-        delta_quat: np.ndarray = quat_from_rotvec(delta_rot)
-        quat_wb: np.ndarray = quat_multiply(
-            self._state.pose_wb.rotation_wxyz, delta_quat
-        )
-        quat_wb = normalize_quaternion(quat_wb)
-        self._state.pose_wb.rotation_wxyz = quat_wb
-        rot_world_from_body: np.ndarray = quat_to_rotation_matrix(quat_wb)
-        accel_world_mps2: np.ndarray = rot_world_from_body @ accel_body_mps2
-
-        # Gravity magnitude in world frame m/s^2
-        gravity_mps2: float = self._config.gravity_mps2
-        accel_world_mps2 = accel_world_mps2 - np.array([0.0, 0.0, gravity_mps2])
-
-        vel: np.ndarray = self._state.vel_w_mps + accel_world_mps2 * dt
-        pos: np.ndarray = self._state.pose_wb.translation_m + vel * dt
-        self._state.pose_wb.translation_m = pos
-        self._state.vel_w_mps = vel
-        self._state.covariance = self._state.covariance + self._process_noise(dt)
-
-    def _process_noise(self, dt: float) -> np.ndarray:
-        total_dim: int = self._state.index.total_dim
-        q: np.ndarray = np.zeros((total_dim, total_dim), dtype=float)
-
-        # Continuous-time white-noise accel/gyro model integrated over dt
-
-        # Accel noise spectral density in (m/s^2)^2/Hz
-        accel_noise_var: float = self._config.accel_noise_var
-
-        # Gyro noise spectral density in (rad/s)^2/Hz
-        gyro_noise_var: float = self._config.gyro_noise_var
-
-        # Position variance in m^2 from white accel noise (dt^4 / 4)
-        pos_noise: float = accel_noise_var * (dt**4) / 4.0
-
-        # Position/velocity covariance in m^2/s from white accel noise (dt^3 / 2)
-        pos_vel_noise: float = accel_noise_var * (dt**3) / 2.0
-
-        # Velocity variance in (m/s)^2 from white accel noise (dt^2)
-        vel_noise: float = accel_noise_var * (dt**2)
-
-        # Angle variance in rad^2 from white gyro noise (dt^2)
-        ang_noise: float = gyro_noise_var * (dt**2)
-
-        pose_start: int = self._state.index.pose.start
-        rot_start: int = pose_start + 3
-        vel_start: int = self._state.index.velocity.start
-        for index in range(3):
-            pos_index: int = pose_start + index
-            vel_index: int = vel_start + index
-            ang_index: int = rot_start + index
-            q[pos_index, pos_index] = pos_noise
-            q[pos_index, vel_index] = pos_vel_noise
-            q[vel_index, pos_index] = pos_vel_noise
-            q[vel_index, vel_index] = vel_noise
-            q[ang_index, ang_index] = ang_noise
-        return q
+        try:
+            self._process_model.propagate_nominal_substepped(
+                self._state,
+                omega_raw_rps=omega_raw_rps,
+                accel_raw_mps2=accel_raw_mps2,
+                dt_s=dt_total_s,
+                max_dt_s=self._config.max_dt_sec,
+            )
+            q: np.ndarray = self._process_model.discrete_process_noise_substepped(
+                self._state,
+                dt_s=dt_total_s,
+                max_dt_s=self._config.max_dt_sec,
+            )
+        except ValueError as exc:
+            _LOG.info("Skipping IMU propagation, %s", exc)
+            return
+        self._state.covariance = self._state.covariance + q
 
     def _update_with_apriltag_detection(
         self,
