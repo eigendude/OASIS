@@ -64,7 +64,7 @@ _LOG: logging.Logger = logging.getLogger(__name__)
 
 @dataclass
 class _Checkpoint:
-    t_meas: float
+    t_meas_ns: int
     x: np.ndarray
     p: np.ndarray
     last_imu_time: Optional[float]
@@ -83,7 +83,7 @@ class _StateSnapshot:
     last_imu_time: Optional[float]
     last_imu: Optional[ImuSample]
     checkpoints: list[_Checkpoint]
-    last_checkpoint_time: Optional[float]
+    last_checkpoint_time: Optional[int]
 
 
 class EkfCore:
@@ -108,11 +108,12 @@ class EkfCore:
         self._last_imu_time: Optional[float] = None
         self._last_imu: Optional[ImuSample] = None
         self._checkpoints: list[_Checkpoint] = []
-        self._last_checkpoint_time: Optional[float] = None
+        self._last_checkpoint_time: Optional[int] = None
 
     def process_event(self, event: EkfEvent) -> EkfOutputs:
-        t_meas_s: float = to_seconds(event.t_meas)
-        t_meas_ns: int = to_ns(event.t_meas)
+        t_meas: EkfTime = event.t_meas
+        t_meas_s: float = to_seconds(t_meas)
+        t_meas_ns: int = to_ns(t_meas)
         prev_frontier: Optional[float] = self._t_frontier
         odom_time_s: Optional[float] = None
         world_odom_time_s: Optional[float] = None
@@ -154,8 +155,8 @@ class EkfCore:
             advance_frontier = False
 
         if advance_frontier:
-            self._set_frontier(t_meas_s, t_meas_ns)
-            self._maybe_checkpoint(t_meas_s, event.event_type)
+            self._set_frontier(t_meas)
+            self._maybe_checkpoint(t_meas, event.event_type)
 
         if self._frontier_advanced(prev_frontier):
             odom_time_s = self._t_frontier
@@ -311,10 +312,9 @@ class EkfCore:
         replay_start_ns: int = (
             to_ns(start_time) if start_time is not None else earliest_time_ns
         )
-        replay_start: float = to_seconds(from_ns(replay_start_ns))
-        checkpoint: Optional[_Checkpoint] = self._find_checkpoint(replay_start)
+        checkpoint: Optional[_Checkpoint] = self._find_checkpoint(replay_start_ns)
         if checkpoint is None:
-            self._reset_state(replay_start)
+            self._reset_state(from_ns(replay_start_ns))
         else:
             self._restore_checkpoint(checkpoint)
 
@@ -376,11 +376,12 @@ class EkfCore:
     def _checkpoint_snapshot(
         self, t_meas: EkfTime
     ) -> Optional[tuple[float, np.ndarray, np.ndarray]]:
-        t_meas_s: float = to_seconds(t_meas)
-        checkpoint: Optional[_Checkpoint] = self._find_checkpoint(t_meas_s)
+        t_meas_ns: int = to_ns(t_meas)
+        checkpoint: Optional[_Checkpoint] = self._find_checkpoint(t_meas_ns)
         if checkpoint is None:
             return None
-        return (checkpoint.t_meas, checkpoint.x.copy(), checkpoint.p.copy())
+        checkpoint_time: float = to_seconds(from_ns(checkpoint.t_meas_ns))
+        return (checkpoint_time, checkpoint.x.copy(), checkpoint.p.copy())
 
     def build_rejected_apriltag_detection(
         self,
@@ -609,7 +610,7 @@ class EkfCore:
     def _process_noise(self, dt: float) -> np.ndarray:
         q: np.ndarray = np.zeros((_STATE_DIM, _STATE_DIM), dtype=float)
 
-        # Process accel variance in (m/s^2)^2
+        # Continuous-time white-noise accel/gyro model integrated over dt
         accel_noise_var: float = self._config.accel_noise_var
 
         # Process gyro variance in (rad/s)^2
@@ -742,48 +743,58 @@ class EkfCore:
             return True
         return self._t_frontier > prev_frontier
 
-    def _set_frontier(self, t_meas: float, t_meas_ns: Optional[int] = None) -> None:
-        self._t_frontier = t_meas
-        if t_meas_ns is not None:
-            self._t_frontier_ns = t_meas_ns
+    def _set_frontier(
+        self, t_meas: EkfTime | float, t_meas_ns: Optional[int] = None
+    ) -> None:
+        # Prefer EkfTime-derived nanoseconds for ordering and buffering
+        if isinstance(t_meas, EkfTime):
+            self._t_frontier = to_seconds(t_meas)
+            self._t_frontier_ns = to_ns(t_meas)
         else:
-            self._t_frontier_ns = int(round(t_meas * 1.0e9))
+            self._t_frontier = t_meas
+            if t_meas_ns is not None:
+                self._t_frontier_ns = t_meas_ns
+            else:
+                self._t_frontier_ns = int(round(t_meas * 1.0e9))
         self._x_frontier = self._x.copy()
         self._p_frontier = self._p.copy()
 
-    def _maybe_checkpoint(self, t_meas: float, event_type: EkfEventType) -> None:
+    def _maybe_checkpoint(self, t_meas: EkfTime, event_type: EkfEventType) -> None:
         interval: float = self._config.checkpoint_interval_sec
+        t_meas_ns: int = to_ns(t_meas)
         if self._last_checkpoint_time is None:
-            self._save_checkpoint(t_meas)
+            self._save_checkpoint(t_meas_ns)
             return
-        dt_since: float = t_meas - self._last_checkpoint_time
+        dt_since: float = to_seconds(from_ns(t_meas_ns - self._last_checkpoint_time))
         if dt_since >= interval or event_type != EkfEventType.IMU:
-            self._save_checkpoint(t_meas)
+            self._save_checkpoint(t_meas_ns)
         self._evict_checkpoints()
 
-    def _save_checkpoint(self, t_meas: float) -> None:
+    def _save_checkpoint(self, t_meas_ns: int) -> None:
         self._checkpoints.append(
             _Checkpoint(
-                t_meas=t_meas,
+                t_meas_ns=t_meas_ns,
                 x=self._x.copy(),
                 p=self._p.copy(),
                 last_imu_time=self._last_imu_time,
                 last_imu=self._last_imu,
             )
         )
-        self._last_checkpoint_time = t_meas
+        self._last_checkpoint_time = t_meas_ns
 
     def _evict_checkpoints(self) -> None:
-        if self._t_frontier is None:
+        if self._t_frontier_ns is None:
             return
-        cutoff: float = self._t_frontier - self._config.t_buffer_sec
-        while self._checkpoints and self._checkpoints[0].t_meas < cutoff:
+        cutoff_ns: int = self._t_frontier_ns - int(
+            round(self._config.t_buffer_sec * 1.0e9)
+        )
+        while self._checkpoints and self._checkpoints[0].t_meas_ns < cutoff_ns:
             self._checkpoints.pop(0)
 
-    def _find_checkpoint(self, t_meas: float) -> Optional[_Checkpoint]:
+    def _find_checkpoint(self, t_meas_ns: int) -> Optional[_Checkpoint]:
         checkpoint: Optional[_Checkpoint] = None
         for candidate in self._checkpoints:
-            if candidate.t_meas <= t_meas:
+            if candidate.t_meas_ns <= t_meas_ns:
                 checkpoint = candidate
             else:
                 break
@@ -794,15 +805,15 @@ class EkfCore:
         self._p = checkpoint.p.copy()
         self._last_imu_time = checkpoint.last_imu_time
         self._last_imu = checkpoint.last_imu
-        self._t_frontier = checkpoint.t_meas
-        self._t_frontier_ns = int(round(checkpoint.t_meas * 1.0e9))
+        self._t_frontier = to_seconds(from_ns(checkpoint.t_meas_ns))
+        self._t_frontier_ns = checkpoint.t_meas_ns
         self._x_frontier = self._x.copy()
         self._p_frontier = self._p.copy()
         self._checkpoints = [checkpoint]
-        self._last_checkpoint_time = checkpoint.t_meas
+        self._last_checkpoint_time = checkpoint.t_meas_ns
         self._initialized = True
 
-    def _reset_state(self, t_meas: float) -> None:
+    def _reset_state(self, t_meas: EkfTime | float) -> None:
         diag_values: list[float] = (
             [self._config.pos_var] * 3
             + [self._config.vel_var] * 3
@@ -810,8 +821,7 @@ class EkfCore:
         )
         self._x = np.zeros(_STATE_DIM, dtype=float)
         self._p = np.diag(diag_values)
-        self._t_frontier = t_meas
-        self._t_frontier_ns = int(round(t_meas * 1.0e9))
+        self._set_frontier(t_meas)
         self._last_imu_time = None
         self._last_imu = None
         self._x_frontier = self._x.copy()
