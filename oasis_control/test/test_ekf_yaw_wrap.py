@@ -23,6 +23,7 @@ from oasis_control.localization.ekf.ekf_types import EkfImuPacket
 from oasis_control.localization.ekf.ekf_types import EkfTime
 from oasis_control.localization.ekf.ekf_types import ImuSample
 from oasis_control.localization.ekf.ekf_types import from_seconds
+from oasis_control.localization.ekf.se3 import quat_from_rotvec
 
 
 def _build_config(
@@ -52,6 +53,8 @@ def _build_config(
         tag_anchor_id=0,
         tag_landmark_prior_sigma_t_m=0.1,
         tag_landmark_prior_sigma_rot_rad=0.1,
+        extrinsic_prior_sigma_t_m=1.0,
+        extrinsic_prior_sigma_rot_rad=3.141592653589793,
     )
 
 
@@ -87,7 +90,9 @@ def test_yaw_wraps_positive_after_propagation() -> None:
     config: EkfConfig = _build_config()
     core: EkfCore = EkfCore(config)
     core._initialized = True
-    core._x[8] = math.pi - 0.05
+    core._state.pose_wb.rotation_wxyz = quat_from_rotvec(
+        [0.0, 0.0, math.pi - 0.05]
+    )
 
     imu_sample: ImuSample = _build_imu_sample(
         angular_velocity_rps=[0.0, 0.0, 1.0],
@@ -122,7 +127,9 @@ def test_yaw_wraps_negative_after_measurement_update() -> None:
     config: EkfConfig = _build_config(apriltag_pos_var=0.0, apriltag_yaw_var=0.0)
     core: EkfCore = EkfCore(config)
     core._initialized = True
-    core._x[8] = -math.pi + 0.02
+    core._state.pose_wb.rotation_wxyz = quat_from_rotvec(
+        [0.0, 0.0, -math.pi + 0.02]
+    )
 
     camera_info: CameraInfoData = CameraInfoData(
         frame_id="camera",

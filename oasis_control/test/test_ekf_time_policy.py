@@ -10,11 +10,14 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
+from typing import Optional
 from typing import cast
 
 from oasis_control.localization.ekf.ekf_config import EkfConfig
 from oasis_control.localization.ekf.ekf_core import EkfCore
+from oasis_control.localization.ekf.ekf_state import TagKey
 from oasis_control.localization.ekf.ekf_types import AprilTagDetection
 from oasis_control.localization.ekf.ekf_types import AprilTagDetectionArrayData
 from oasis_control.localization.ekf.ekf_types import CameraInfoData
@@ -58,6 +61,8 @@ def _build_config(*, dt_imu_max: float = 0.5) -> EkfConfig:
         tag_anchor_id=0,
         tag_landmark_prior_sigma_t_m=0.1,
         tag_landmark_prior_sigma_rot_rad=0.1,
+        extrinsic_prior_sigma_t_m=1.0,
+        extrinsic_prior_sigma_rot_rad=3.141592653589793,
     )
 
 
@@ -126,6 +131,34 @@ def _build_camera_info() -> CameraInfoData:
             0.0,
         ],
     )
+
+
+def test_landmark_augmentation_expands_covariance() -> None:
+    config: EkfConfig = _build_config()
+    core: EkfCore = EkfCore(config)
+    core._ensure_initialized()
+    initial_dim: int = int(core.covariance().shape[0])
+
+    tag_key: TagKey = TagKey(family="tag36h11", tag_id=5)
+    added: bool = core._state.ensure_landmark(tag_key)
+    assert added
+
+    updated_cov: Any = core.covariance()
+    updated_dim: int = int(updated_cov.shape[0])
+    assert updated_dim == initial_dim + 6
+
+    landmark_slice: Optional[slice] = core._state.landmark_slice(tag_key)
+    assert landmark_slice is not None
+
+    sigma_t: float = config.tag_landmark_prior_sigma_t_m
+    sigma_rot: float = config.tag_landmark_prior_sigma_rot_rad
+    start: int = landmark_slice.start
+    for offset in range(3):
+        value: float = float(updated_cov[start + offset, start + offset])
+        assert math.isclose(value, sigma_t**2, rel_tol=0.0, abs_tol=1.0e-12)
+    for offset in range(3, 6):
+        value: float = float(updated_cov[start + offset, start + offset])
+        assert math.isclose(value, sigma_rot**2, rel_tol=0.0, abs_tol=1.0e-12)
 
 
 class _RejectingMagEkf(EkfCore):
