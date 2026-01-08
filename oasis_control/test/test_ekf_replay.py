@@ -130,10 +130,14 @@ def test_process_noise_coefficients() -> None:
     accel_noise_var: float = config.accel_noise_var
     gyro_noise_var: float = config.gyro_noise_var
 
-    pos_noise: float = accel_noise_var * (dt**3) / 3.0
-    pos_vel_noise: float = accel_noise_var * (dt**2) / 2.0
-    vel_noise: float = accel_noise_var * dt
-    ang_noise: float = gyro_noise_var * dt
+    # Continuous-time white-noise accel model for x=[p,v]:
+    # Qpp = q_a * dt^4 / 4, Qpv = q_a * dt^3 / 2, Qvv = q_a * dt^2
+    pos_noise: float = accel_noise_var * (dt**4) / 4.0
+    pos_vel_noise: float = accel_noise_var * (dt**3) / 2.0
+    vel_noise: float = accel_noise_var * (dt**2)
+
+    # White gyro noise integrated to angle: Qθθ = q_g * dt^2
+    ang_noise: float = gyro_noise_var * (dt**2)
 
     axis_count: int = 3
     axis_index: int

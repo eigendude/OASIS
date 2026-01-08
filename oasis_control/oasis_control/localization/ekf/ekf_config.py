@@ -38,8 +38,8 @@ class EkfConfig:
         pos_var: Initial position variance in m^2
         vel_var: Initial velocity variance in (m/s)^2
         ang_var: Initial angle variance in rad^2
-        accel_noise_var: Process accel variance in (m/s^2)^2
-        gyro_noise_var: Process gyro variance in (rad/s)^2
+        accel_noise_var: Accel noise spectral density in (m/s^2)^2 / Hz
+        gyro_noise_var: Gyro noise spectral density in (rad/s)^2 / Hz
         gravity_mps2: Gravity magnitude in m/s^2
         max_dt_sec: Max integration step in seconds
         max_dt_ns: Max integration step in nanoseconds
