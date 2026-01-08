@@ -143,12 +143,24 @@ def test_process_noise_coefficients() -> None:
     # White gyro noise integrated to angle: Qθθ = q_g * dt^2
     ang_noise: float = gyro_noise_var * (dt**2)
 
-    axis_count: int = 3
+    # Dimension of translation error block (x, y, z) in pose slice
+    TRANSLATION_DIM: int = 3
+
+    # Dimension of rotation error block (roll, pitch, yaw) in pose slice
+    ROTATION_DIM: int = 3
+
+    pose_slice: slice = core._state.index.pose
+    vel_slice: slice = core._state.index.velocity
+    # Pose error slice is [delta_translation(3), delta_rotation(3)] in that order.
+    # Indices are derived from EkfStateIndex so extra blocks won't break this test.
+    rot_start: int = pose_slice.start + TRANSLATION_DIM
+
+    axis_count: int = min(TRANSLATION_DIM, ROTATION_DIM)
     axis_index: int
     for axis_index in range(axis_count):
-        pos_index: int = core._state.index.pose.start + axis_index
-        ang_index: int = core._state.index.pose.start + 3 + axis_index
-        vel_index: int = core._state.index.velocity.start + axis_index
+        pos_index: int = pose_slice.start + axis_index
+        vel_index: int = vel_slice.start + axis_index
+        ang_index: int = rot_start + axis_index
         assert math.isclose(noise[pos_index][pos_index], pos_noise, abs_tol=1.0e-12)
         assert math.isclose(noise[pos_index][vel_index], pos_vel_noise, abs_tol=1.0e-12)
         assert math.isclose(noise[vel_index][pos_index], pos_vel_noise, abs_tol=1.0e-12)
