@@ -272,7 +272,7 @@ class EkfUpdateData:
     Fields:
         sensor: Sensor name such as magnetic_field or apriltags
         frame_id: Measurement frame identifier
-        t_meas: Measurement timestamp in seconds
+        t_meas: Measurement timestamp
         accepted: True when the update is accepted
         reject_reason: Reason for rejection when not accepted
         z_dim: Dimension of the measurement vector
@@ -289,7 +289,7 @@ class EkfUpdateData:
 
     sensor: str
     frame_id: str
-    t_meas: float
+    t_meas: EkfTime
     accepted: bool
     reject_reason: str
     z_dim: int
@@ -328,12 +328,12 @@ class EkfAprilTagUpdateData:
     Update report payload for an AprilTag detection array
 
     Fields:
-        t_meas: Measurement timestamp in seconds
+        t_meas: Measurement timestamp
         frame_id: Camera frame identifier for the detection array
         detections: Per-detection update data payloads
     """
 
-    t_meas: float
+    t_meas: EkfTime
     frame_id: str
     detections: list[EkfAprilTagDetectionUpdate]
 
@@ -344,13 +344,13 @@ class EkfOutputs:
     Outputs produced by EKF event processing
 
     Fields:
-        odom_time_s: Timestamp for publishing the odometry frame output
-        world_odom_time_s: Timestamp for publishing the world odometry output
+        odom_time: Timestamp for publishing the odometry frame output
+        world_odom_time: Timestamp for publishing the world odometry output
         mag_update: Update report payload for magnetometer updates
         apriltag_update: Update report payload for AprilTag updates
     """
 
-    odom_time_s: Optional[float]
-    world_odom_time_s: Optional[float]
+    odom_time: Optional[EkfTime]
+    world_odom_time: Optional[EkfTime]
     mag_update: Optional[EkfUpdateData]
     apriltag_update: Optional[EkfAprilTagUpdateData]

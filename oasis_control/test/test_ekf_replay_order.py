@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 from types import ModuleType
+from typing import Optional
 
 import pytest
 
@@ -24,6 +25,7 @@ from oasis_control.localization.ekf.ekf_config import EkfConfig
 from oasis_control.localization.ekf.ekf_core import EkfCore
 from oasis_control.localization.ekf.ekf_types import AprilTagDetection
 from oasis_control.localization.ekf.ekf_types import AprilTagDetectionArrayData
+from oasis_control.localization.ekf.ekf_types import CameraInfoData
 from oasis_control.localization.ekf.ekf_types import EkfEvent
 from oasis_control.localization.ekf.ekf_types import EkfEventType
 from oasis_control.localization.ekf.ekf_types import EkfImuPacket
@@ -31,7 +33,6 @@ from oasis_control.localization.ekf.ekf_types import EkfOutputs
 from oasis_control.localization.ekf.ekf_types import EkfTime
 from oasis_control.localization.ekf.ekf_types import ImuSample
 from oasis_control.localization.ekf.ekf_types import MagSample
-from oasis_control.localization.ekf.ekf_types import from_seconds
 
 
 class _RecordingEkfCore(EkfCore):
@@ -112,7 +113,7 @@ def test_replay_applies_events_in_priority_order() -> None:
     config: EkfConfig = _build_config()
     core: _RecordingEkfCore = _RecordingEkfCore(config)
     buffer: EkfBuffer = EkfBuffer(config)
-    timestamp: EkfTime = from_seconds(1.0)
+    timestamp: EkfTime = EkfTime(sec=1, nanosec=0)
 
     apriltag_event: EkfEvent = EkfEvent(
         t_meas=timestamp,
@@ -141,3 +142,140 @@ def test_replay_applies_events_in_priority_order() -> None:
         EkfEventType.MAG,
         EkfEventType.APRILTAG,
     ]
+
+
+def test_mag_rejection_does_not_advance_frontier() -> None:
+    config: EkfConfig = _build_config()
+    core: EkfCore = EkfCore(config)
+    imu_time: EkfTime = EkfTime(sec=0, nanosec=0)
+    imu_event: EkfEvent = EkfEvent(
+        t_meas=imu_time,
+        event_type=EkfEventType.IMU,
+        payload=EkfImuPacket(imu=_build_imu_sample(), calibration=None),
+    )
+    core.process_event(imu_event)
+
+    mag_time: EkfTime = EkfTime(sec=1, nanosec=0)
+    mag_cov: list[float] = [
+        -1.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+    ]
+    mag_sample: MagSample = MagSample(
+        frame_id="mag",
+        magnetic_field_t=[0.0, 0.0, 0.0],
+        magnetic_field_cov=mag_cov,
+    )
+    mag_event: EkfEvent = EkfEvent(
+        t_meas=mag_time,
+        event_type=EkfEventType.MAG,
+        payload=mag_sample,
+    )
+    output: EkfOutputs = core.process_event(mag_event)
+
+    assert output.mag_update is not None
+    assert not output.mag_update.accepted
+    assert core.frontier_time() == imu_time
+
+
+def test_imu_dt_over_max_advances_frontier() -> None:
+    config: EkfConfig = _build_config()
+    core: EkfCore = EkfCore(config)
+    first_time: EkfTime = EkfTime(sec=0, nanosec=0)
+    second_time: EkfTime = EkfTime(sec=1, nanosec=0)
+    imu_sample: ImuSample = _build_imu_sample()
+
+    core.process_event(
+        EkfEvent(
+            t_meas=first_time,
+            event_type=EkfEventType.IMU,
+            payload=EkfImuPacket(imu=imu_sample, calibration=None),
+        )
+    )
+    output: EkfOutputs = core.process_event(
+        EkfEvent(
+            t_meas=second_time,
+            event_type=EkfEventType.IMU,
+            payload=EkfImuPacket(imu=imu_sample, calibration=None),
+        )
+    )
+
+    assert output.odom_time == second_time
+
+
+def test_apriltag_linearization_uses_fixed_state() -> None:
+    class RecordingAprilTagModel:
+        def __init__(self) -> None:
+            self.states: list[np.ndarray] = []
+
+        def set_camera_info(self, camera_info: CameraInfoData) -> None:
+            pass
+
+        def pose_measurement(
+            self, detection: AprilTagDetection
+        ) -> Optional[np.ndarray]:
+            return np.asarray(detection.pose_world_xyz_yaw, dtype=float)
+
+        def linearize_pose(self, state: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+            self.states.append(state.copy())
+            z_hat: np.ndarray = np.asarray(
+                [state[0], state[1], state[2], state[8]], dtype=float
+            )
+            h: np.ndarray = np.zeros((4, 9), dtype=float)
+            h[0, 0] = 1.0
+            h[1, 1] = 1.0
+            h[2, 2] = 1.0
+            h[3, 8] = 1.0
+            return z_hat, h
+
+    config: EkfConfig = _build_config()
+    core: EkfCore = EkfCore(config)
+    core._apriltag_model = RecordingAprilTagModel()
+    core._camera_info = CameraInfoData(
+        frame_id="camera",
+        width=640,
+        height=480,
+        distortion_model="plumb_bob",
+        d=[],
+        k=[1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+        r=[1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+        p=[1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+    )
+
+    detections: list[AprilTagDetection] = [
+        AprilTagDetection(
+            family="tag36h11",
+            tag_id=1,
+            det_index_in_msg=0,
+            corners_px=[0.0] * 8,
+            pose_world_xyz_yaw=[1.0, 0.0, 0.0, 0.0],
+            decision_margin=1.0,
+            homography=[0.0] * 9,
+        ),
+        AprilTagDetection(
+            family="tag36h11",
+            tag_id=2,
+            det_index_in_msg=1,
+            corners_px=[0.0] * 8,
+            pose_world_xyz_yaw=[2.0, 0.0, 0.0, 0.0],
+            decision_margin=1.0,
+            homography=[0.0] * 9,
+        ),
+    ]
+    apriltag_event: EkfEvent = EkfEvent(
+        t_meas=EkfTime(sec=2, nanosec=0),
+        event_type=EkfEventType.APRILTAG,
+        payload=AprilTagDetectionArrayData(frame_id="camera", detections=detections),
+    )
+
+    core.process_event(apriltag_event)
+
+    states: list[np.ndarray] = core._apriltag_model.states
+    assert len(states) == 2
+    assert np.allclose(states[0], states[1])
