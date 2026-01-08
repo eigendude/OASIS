@@ -13,12 +13,28 @@ AprilTag measurement model helpers for the EKF
 """
 
 from typing import Optional
-from typing import Tuple
 
 import numpy as np
 
 from oasis_control.localization.ekf.ekf_types import AprilTagDetection
 from oasis_control.localization.ekf.ekf_types import CameraInfoData
+
+
+# Minimum valid depth in meters for camera frame projections
+MIN_DEPTH_M: float = 1.0e-6
+
+# Meters step used for translation numerical derivatives
+POS_EPS_M: float = 1.0e-4
+
+# Radians step used for rotation numerical derivatives
+ROT_EPS_RAD: float = 1.0e-4
+
+SUPPORTED_DISTORTION_MODELS: set[str] = {
+    "",
+    "none",
+    "plumb_bob",
+    "rational_polynomial",
+}
 
 
 class AprilTagMeasurementModel:
@@ -28,6 +44,14 @@ class AprilTagMeasurementModel:
 
     def __init__(self) -> None:
         self._camera_info: Optional[CameraInfoData] = None
+        self._k_matrix: Optional[np.ndarray] = None
+        self._fx: Optional[float] = None
+        self._fy: Optional[float] = None
+        self._cx: Optional[float] = None
+        self._cy: Optional[float] = None
+        self._skew: Optional[float] = None
+        self._distortion_model: Optional[str] = None
+        self._distortion_coeffs: Optional[np.ndarray] = None
 
     def update(self) -> None:
         """
@@ -41,26 +65,52 @@ class AprilTagMeasurementModel:
         Cache camera intrinsics for future reprojection work
         """
 
+        if len(camera_info.k) != 9:
+            self._camera_info = None
+            self._k_matrix = None
+            self._fx = None
+            self._fy = None
+            self._cx = None
+            self._cy = None
+            self._skew = None
+            self._distortion_model = None
+            self._distortion_coeffs = None
+            return
+
         self._camera_info = camera_info
+        self._k_matrix = np.asarray(camera_info.k, dtype=float).reshape(3, 3)
+        self._fx = float(self._k_matrix[0, 0])
+        self._fy = float(self._k_matrix[1, 1])
+        self._cx = float(self._k_matrix[0, 2])
+        self._cy = float(self._k_matrix[1, 2])
+        self._skew = float(self._k_matrix[0, 1])
+        distortion_model: str = camera_info.distortion_model.lower()
+        self._distortion_model = distortion_model
+        coeffs_list: list[float] = camera_info.d if camera_info.d is not None else []
+        coeffs: np.ndarray = np.asarray(coeffs_list, dtype=float)
+        self._distortion_coeffs = coeffs
 
     def reprojection_residuals(
         self, tag_pose_c: np.ndarray, detection: AprilTagDetection, tag_size_m: float
-    ) -> Optional[tuple[np.ndarray, np.ndarray, np.ndarray]]:
+    ) -> Optional[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]]:
         """
         Compute reprojection residuals and Jacobians for a detection
         """
 
-        if self._camera_info is None:
+        if self._camera_info is None or self._k_matrix is None:
             return None
 
         if len(detection.corners_px) != 8:
+            return None
+
+        if tag_size_m <= 0.0:
             return None
 
         tag_pose_c_array: np.ndarray = np.asarray(tag_pose_c, dtype=float).reshape(-1)
         if tag_pose_c_array.shape[0] < 6:
             return None
 
-        z: np.ndarray = np.asarray(detection.corners_px, dtype=float)
+        z: np.ndarray = np.asarray(detection.corners_px, dtype=float).reshape(-1)
         z_hat: Optional[np.ndarray] = self._project_tag_corners(
             tag_pose_c_array[:6], tag_size_m
         )
@@ -74,7 +124,7 @@ class AprilTagMeasurementModel:
             return None
 
         residual: np.ndarray = z - z_hat
-        return residual, z_hat, h
+        return z, z_hat, residual, h
 
     def pose_measurement(self, detection: AprilTagDetection) -> Optional[np.ndarray]:
         if detection.pose_world_xyz_yaw is None:
@@ -109,9 +159,7 @@ class AprilTagMeasurementModel:
         rotation_c: np.ndarray = self._rotation_matrix(roll, pitch, yaw)
 
         corners_c: np.ndarray = (rotation_c @ tag_corners_t.T).T + translation_c
-        projected: Optional[np.ndarray] = self._project_points(
-            corners_c, self._camera_info
-        )
+        projected: Optional[np.ndarray] = self._project_points(corners_c)
         if projected is None:
             return None
 
@@ -126,15 +174,9 @@ class AprilTagMeasurementModel:
 
         jacobian: np.ndarray = np.zeros((8, 6), dtype=float)
 
-        # Meters step used for translation numerical derivatives
-        pos_eps_m: float = 1.0e-4
-
-        # Radians step used for rotation numerical derivatives
-        rot_eps_rad: float = 1.0e-4
-
         for index in range(6):
             delta: np.ndarray = np.zeros(6, dtype=float)
-            eps: float = pos_eps_m if index < 3 else rot_eps_rad
+            eps: float = POS_EPS_M if index < 3 else ROT_EPS_RAD
             delta[index] = eps
 
             z_plus: Optional[np.ndarray] = self._project_tag_corners(
@@ -178,27 +220,33 @@ class AprilTagMeasurementModel:
             dtype=float,
         )
 
-    def _project_points(
-        self, points_c: np.ndarray, camera_info: CameraInfoData
-    ) -> Optional[np.ndarray]:
+    def _project_points(self, points_c: np.ndarray) -> Optional[np.ndarray]:
         if points_c.ndim != 2 or points_c.shape[1] != 3:
             return None
 
-        k_matrix: np.ndarray = np.asarray(camera_info.k, dtype=float).reshape(3, 3)
-        fx: float = float(k_matrix[0, 0])
-        fy: float = float(k_matrix[1, 1])
-        cx: float = float(k_matrix[0, 2])
-        cy: float = float(k_matrix[1, 2])
+        if (
+            self._k_matrix is None
+            or self._fx is None
+            or self._fy is None
+            or self._cx is None
+            or self._cy is None
+        ):
+            return None
+
+        fx: float = self._fx
+        fy: float = self._fy
+        cx: float = self._cx
+        cy: float = self._cy
 
         z_values: np.ndarray = points_c[:, 2]
-        if np.any(z_values <= 0.0):
+        if np.any(z_values <= MIN_DEPTH_M):
             return None
 
         x_norm: np.ndarray = points_c[:, 0] / z_values
         y_norm: np.ndarray = points_c[:, 1] / z_values
 
-        distorted: Optional[Tuple[np.ndarray, np.ndarray]] = self._distort_points(
-            x_norm, y_norm, camera_info
+        distorted: Optional[tuple[np.ndarray, np.ndarray]] = self._distort_points(
+            x_norm, y_norm
         )
         if distorted is None:
             return None
@@ -212,11 +260,18 @@ class AprilTagMeasurementModel:
         return np.stack((u_vals, v_vals), axis=1)
 
     def _distort_points(
-        self, x_norm: np.ndarray, y_norm: np.ndarray, camera_info: CameraInfoData
-    ) -> Optional[Tuple[np.ndarray, np.ndarray]]:
-        model: str = camera_info.distortion_model
-        coeffs: list[float] = camera_info.d
-        if not model or model == "none" or not coeffs:
+        self, x_norm: np.ndarray, y_norm: np.ndarray
+    ) -> Optional[tuple[np.ndarray, np.ndarray]]:
+        if self._distortion_model is None or self._distortion_coeffs is None:
+            return None
+
+        model: str = self._distortion_model
+        coeffs: np.ndarray = self._distortion_coeffs
+
+        if model not in SUPPORTED_DISTORTION_MODELS:
+            return None
+
+        if model in {"", "none"} or coeffs.size == 0:
             return x_norm, y_norm
 
         if model == "plumb_bob":
@@ -228,8 +283,8 @@ class AprilTagMeasurementModel:
         return None
 
     def _distort_plumb_bob(
-        self, x_norm: np.ndarray, y_norm: np.ndarray, coeffs: list[float]
-    ) -> Tuple[np.ndarray, np.ndarray]:
+        self, x_norm: np.ndarray, y_norm: np.ndarray, coeffs: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
         k1: float = float(coeffs[0]) if len(coeffs) > 0 else 0.0
         k2: float = float(coeffs[1]) if len(coeffs) > 1 else 0.0
         p1: float = float(coeffs[2]) if len(coeffs) > 2 else 0.0
@@ -246,8 +301,8 @@ class AprilTagMeasurementModel:
         return x_norm * radial + x_tan, y_norm * radial + y_tan
 
     def _distort_rational_polynomial(
-        self, x_norm: np.ndarray, y_norm: np.ndarray, coeffs: list[float]
-    ) -> Tuple[np.ndarray, np.ndarray]:
+        self, x_norm: np.ndarray, y_norm: np.ndarray, coeffs: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
         k1: float = float(coeffs[0]) if len(coeffs) > 0 else 0.0
         k2: float = float(coeffs[1]) if len(coeffs) > 1 else 0.0
         p1: float = float(coeffs[2]) if len(coeffs) > 2 else 0.0
