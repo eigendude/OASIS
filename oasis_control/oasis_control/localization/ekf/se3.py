@@ -20,8 +20,6 @@ from typing import Optional
 from typing import Sequence
 
 import numpy as np
-from geometry_msgs.msg import Pose as PoseMsg
-from geometry_msgs.msg import Transform as TransformMsg
 
 
 # Small-angle threshold for rotation vector magnitude in radians
@@ -247,6 +245,11 @@ def to_ros_pose(
     Populate a geometry_msgs/Pose message from translation and quaternion
     """
 
+    try:
+        from geometry_msgs.msg import Pose as PoseMsg
+    except ModuleNotFoundError as exc:
+        raise RuntimeError("geometry_msgs is required for to_ros_pose") from exc
+
     pose_msg = PoseMsg()
     pose_msg.position.x = float(translation_m[0])
     pose_msg.position.y = float(translation_m[1])
@@ -266,6 +269,11 @@ def to_ros_transform(
     """
     Populate a geometry_msgs/Transform message from translation and quaternion
     """
+
+    try:
+        from geometry_msgs.msg import Transform as TransformMsg
+    except ModuleNotFoundError as exc:
+        raise RuntimeError("geometry_msgs is required for to_ros_transform") from exc
 
     transform_msg = TransformMsg()
     transform_msg.translation.x = float(translation_m[0])
