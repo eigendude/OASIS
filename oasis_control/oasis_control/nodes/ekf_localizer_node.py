@@ -253,9 +253,6 @@ class EkfLocalizerNode(rclpy.node.Node):
 
         self._t_buffer_ns: int = int(round(self._t_buffer_sec * _NS_PER_S))
         self._eps_wall_future_ns: int = int(round(self._eps_wall_future * _NS_PER_S))
-        self._dt_clock_jump_max_ns: int = int(
-            round(self._dt_clock_jump_max * _NS_PER_S)
-        )
 
         # Config
         config: EkfConfig = EkfConfig(
@@ -514,19 +511,6 @@ class EkfLocalizerNode(rclpy.node.Node):
     def _process_event(self, event: EkfEvent, topic: str) -> None:
         if self._should_reject_future_event(event, topic):
             return
-
-        t_meas_ns: int = to_ns(event.t_meas)
-        latest_time_ns: Optional[int] = self._buffer.latest_time_ns()
-        if latest_time_ns is not None:
-            dt_clock_ns: int = t_meas_ns - latest_time_ns
-            if abs(dt_clock_ns) > self._dt_clock_jump_max_ns:
-                self.get_logger().warn(
-                    "EKF clock jump detected: "
-                    f"latest_ns={latest_time_ns} t_meas_ns={t_meas_ns} "
-                    f"dt_ns={dt_clock_ns}"
-                )
-                self._buffer.reset()
-                self._core.reset()
 
         t_filter: Optional[EkfTime] = self._core.frontier_time()
         t_filter_ns: Optional[int] = None

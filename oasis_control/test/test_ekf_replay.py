@@ -17,12 +17,14 @@ from oasis_control.localization.ekf.ekf_config import EkfConfig
 from oasis_control.localization.ekf.ekf_core import EkfCore
 from oasis_control.localization.ekf.ekf_types import AprilTagDetection
 from oasis_control.localization.ekf.ekf_types import AprilTagDetectionArrayData
+from oasis_control.localization.ekf.ekf_types import CameraInfoData
 from oasis_control.localization.ekf.ekf_types import EkfEvent
 from oasis_control.localization.ekf.ekf_types import EkfEventType
 from oasis_control.localization.ekf.ekf_types import EkfImuPacket
 from oasis_control.localization.ekf.ekf_types import EkfTime
 from oasis_control.localization.ekf.ekf_types import ImuSample
 from oasis_control.localization.ekf.ekf_types import from_seconds
+from oasis_control.localization.ekf.ekf_types import to_ns
 
 
 def _build_config(
@@ -267,3 +269,70 @@ def test_buffer_stable_ordering_for_equal_times() -> None:
     assert ordered_events[0] is event_middle
     assert ordered_events[1] is event_first
     assert ordered_events[2] is event_second
+
+
+def test_buffer_too_old_relies_on_filter_frontier() -> None:
+    config: EkfConfig = _build_config(
+        t_buffer_sec=2.0,
+        checkpoint_interval_sec=0.1,
+        apriltag_gate_d2=0.0,
+        apriltag_pos_var=1.0,
+        apriltag_yaw_var=1.0,
+    )
+    buffer: EkfBuffer = EkfBuffer(config)
+
+    t_meas: EkfTime = from_seconds(5.0)
+    assert buffer.too_old(t_meas, t_filter_ns=None) is False
+
+    t_filter_ns: int = to_ns(from_seconds(10.0))
+    assert buffer.too_old(from_seconds(7.0), t_filter_ns=t_filter_ns) is True
+    assert buffer.too_old(from_seconds(8.0), t_filter_ns=t_filter_ns) is False
+
+
+def test_replay_eviction_uses_frontier_time() -> None:
+    config: EkfConfig = _build_config(
+        t_buffer_sec=0.5,
+        checkpoint_interval_sec=0.1,
+        apriltag_gate_d2=0.0,
+        apriltag_pos_var=1.0,
+        apriltag_yaw_var=1.0,
+    )
+    core: EkfCore = EkfCore(config)
+    buffer: EkfBuffer = EkfBuffer(config)
+
+    imu_time: EkfTime = from_seconds(1.0)
+    imu_event: EkfEvent = EkfEvent(
+        t_meas=imu_time,
+        event_type=EkfEventType.IMU,
+        payload=EkfImuPacket(
+            imu=_build_imu_sample(accel_body=[0.0, 0.0, 9.81]), calibration=None
+        ),
+    )
+    camera_event: EkfEvent = EkfEvent(
+        t_meas=from_seconds(10.0),
+        event_type=EkfEventType.CAMERA_INFO,
+        payload=CameraInfoData(
+            frame_id="camera",
+            width=640,
+            height=480,
+            distortion_model="plumb_bob",
+            d=[0.0] * 5,
+            k=[0.0] * 9,
+            r=[0.0] * 9,
+            p=[0.0] * 12,
+        ),
+    )
+
+    buffer.insert_event(camera_event)
+    buffer.insert_event(imu_event)
+
+    core.replay(buffer)
+    frontier_time: EkfTime | None = core.frontier_time()
+    assert frontier_time == imu_time
+
+    buffer.evict(to_ns(frontier_time))
+
+    remaining_events: list[EkfEvent] = list(buffer.iter_events())
+    remaining_times: list[int] = [to_ns(event.t_meas) for event in remaining_events]
+    assert len(remaining_times) == 2
+    assert remaining_times[0] == to_ns(imu_time)

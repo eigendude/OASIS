@@ -34,23 +34,16 @@ class EkfBuffer:
         self._config: EkfConfig = config
         self._events: list[EkfEvent] = []
         self._timestamps_ns: list[int] = []
-        # _latest_time_ns is the max ever inserted, not the max currently in the buffer
-        self._latest_time_ns: Optional[int] = None
 
     def insert_event(self, event: EkfEvent) -> None:
         event_time_ns: int = to_ns(event.t_meas)
         insert_index: int = bisect_right(self._timestamps_ns, event_time_ns)
         self._timestamps_ns.insert(insert_index, event_time_ns)
         self._events.insert(insert_index, event)
-        if self._latest_time_ns is None:
-            self._latest_time_ns = event_time_ns
-        else:
-            self._latest_time_ns = max(self._latest_time_ns, event_time_ns)
 
     def reset(self) -> None:
         self._events = []
         self._timestamps_ns = []
-        self._latest_time_ns = None
 
     def too_old(self, t_meas: EkfTime, *, t_filter_ns: Optional[int]) -> bool:
         if t_filter_ns is None:
@@ -79,6 +72,3 @@ class EkfBuffer:
         if not self._timestamps_ns:
             return None
         return self._timestamps_ns[0]
-
-    def latest_time_ns(self) -> Optional[int]:
-        return self._latest_time_ns
