@@ -526,6 +526,7 @@ class EkfCore:
         self._x[0:3] = pos
         self._x[3:6] = vel
         self._x[6:9] = angles
+        self._x[8] = self._wrap_angle(float(self._x[8]))
         self._p = self._p + self._process_noise(dt)
 
     def _process_noise(self, dt: float) -> np.ndarray:
@@ -613,6 +614,7 @@ class EkfCore:
         k_gain: np.ndarray = np.linalg.solve(s.T, hp).T
 
         self._x = self._x + k_gain @ residual
+        self._x[8] = self._wrap_angle(float(self._x[8]))
         identity: np.ndarray = np.eye(_STATE_DIM, dtype=float)
         temp: np.ndarray = identity - k_gain @ h
         self._p = temp @ self._p @ temp.T + k_gain @ r @ k_gain.T
