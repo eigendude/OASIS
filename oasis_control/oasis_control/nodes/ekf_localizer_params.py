@@ -102,11 +102,23 @@ PARAM_APRILTAG_POS_VAR: str = "apriltag_pos_var"
 # Default AprilTag position measurement variance, meters^2
 DEFAULT_APRILTAG_POS_VAR: float = 0.25
 
+# AprilTag position measurement default standard deviation, meters
+PARAM_APRILTAG_POS_STD_M: str = "apriltag_pos_std_m"
+
+# Default AprilTag position measurement standard deviation, meters
+DEFAULT_APRILTAG_POS_STD_M: float = 0.5
+
 # AprilTag yaw measurement variance, radians^2
 PARAM_APRILTAG_YAW_VAR: str = "apriltag_yaw_var"
 
 # Default AprilTag yaw measurement variance, radians^2
 DEFAULT_APRILTAG_YAW_VAR: float = 0.1
+
+# AprilTag rotation measurement default standard deviation, radians
+PARAM_APRILTAG_ROT_STD_RAD: str = "apriltag_rot_std_rad"
+
+# Default AprilTag rotation measurement standard deviation, radians
+DEFAULT_APRILTAG_ROT_STD_RAD: float = 0.31622776601683794
 
 # Squared gating threshold for AprilTag Mahalanobis distance, unitless
 PARAM_APRILTAG_GATE_D2: str = "apriltag_gate_d2"

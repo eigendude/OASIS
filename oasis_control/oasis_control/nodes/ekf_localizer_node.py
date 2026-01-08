@@ -11,7 +11,6 @@
 import importlib
 import importlib.machinery
 import importlib.util
-import math
 import time
 from collections import deque
 from dataclasses import replace
@@ -32,11 +31,15 @@ from sensor_msgs.msg import CameraInfo as CameraInfoMsg
 from sensor_msgs.msg import Imu as ImuMsg
 from sensor_msgs.msg import MagneticField as MagneticFieldMsg
 
+from oasis_control.localization.ekf.apriltag_pose_selector import (
+    AprilTagPoseDetectionCandidate,
+)
+from oasis_control.localization.ekf.apriltag_pose_selector import (
+    select_best_apriltag_candidate,
+)
 from oasis_control.localization.ekf.ekf_buffer import EkfBuffer
 from oasis_control.localization.ekf.ekf_config import EkfConfig
 from oasis_control.localization.ekf.ekf_core import EkfCore
-from oasis_control.localization.ekf.ekf_types import AprilTagDetection
-from oasis_control.localization.ekf.ekf_types import AprilTagDetectionArrayData
 from oasis_control.localization.ekf.ekf_types import CameraInfoData
 from oasis_control.localization.ekf.ekf_types import EkfAprilTagDetectionUpdate
 from oasis_control.localization.ekf.ekf_types import EkfAprilTagUpdateData
@@ -44,14 +47,17 @@ from oasis_control.localization.ekf.ekf_types import EkfEvent
 from oasis_control.localization.ekf.ekf_types import EkfEventType
 from oasis_control.localization.ekf.ekf_types import EkfImuPacket
 from oasis_control.localization.ekf.ekf_types import EkfOutputs
+from oasis_control.localization.ekf.ekf_types import EkfPose
 from oasis_control.localization.ekf.ekf_types import EkfTime
 from oasis_control.localization.ekf.ekf_types import EkfUpdateData
+from oasis_control.localization.ekf.ekf_types import EventAprilTagPose
 from oasis_control.localization.ekf.ekf_types import ImuCalibrationData
 from oasis_control.localization.ekf.ekf_types import ImuSample
 from oasis_control.localization.ekf.ekf_types import MagSample
 from oasis_control.localization.ekf.ekf_types import from_seconds
 from oasis_control.localization.ekf.ekf_types import to_ns
 from oasis_control.localization.ekf.ekf_types import to_seconds
+from oasis_control.localization.ekf.pose_math import is_finite_vector
 from oasis_control.localization.ekf.reporting.update_reporter import UpdateReporter
 from oasis_control.localization.ekf.ros_time_adapter import ekf_time_to_ros_time
 from oasis_control.localization.ekf.ros_time_adapter import ros_time_to_ekf_time
@@ -62,11 +68,25 @@ from oasis_msgs.msg import EkfUpdateReport as EkfUpdateReportMsg
 
 if TYPE_CHECKING:
     from apriltag_msgs.msg import AprilTagDetectionArray as AprilTagDetectionArrayMsg
+    from geometry_msgs.msg import TransformStamped
+    from tf2_ros import TransformBroadcaster
 
     from oasis_msgs.msg import ImuCalibration as ImuCalibrationMsg
 else:
     AprilTagDetectionArrayMsg = object
     ImuCalibrationMsg = object
+
+_HAS_TF2: bool = (
+    importlib.util.find_spec("tf2_ros") is not None
+    and importlib.util.find_spec("geometry_msgs.msg") is not None
+)
+
+if not TYPE_CHECKING and _HAS_TF2:
+    from geometry_msgs.msg import TransformStamped
+    from tf2_ros import TransformBroadcaster
+elif not TYPE_CHECKING:
+    TransformBroadcaster = object
+    TransformStamped = object
 
 
 ################################################################################
@@ -176,6 +196,13 @@ class EkfLocalizerNode(rclpy.node.Node):
             ekf_params.PARAM_APRILTAG_YAW_VAR, ekf_params.DEFAULT_APRILTAG_YAW_VAR
         )
         self.declare_parameter(
+            ekf_params.PARAM_APRILTAG_POS_STD_M, ekf_params.DEFAULT_APRILTAG_POS_STD_M
+        )
+        self.declare_parameter(
+            ekf_params.PARAM_APRILTAG_ROT_STD_RAD,
+            ekf_params.DEFAULT_APRILTAG_ROT_STD_RAD,
+        )
+        self.declare_parameter(
             ekf_params.PARAM_APRILTAG_GATE_D2, ekf_params.DEFAULT_APRILTAG_GATE_D2
         )
         self.declare_parameter(PARAM_TAG_SIZE_M, DEFAULT_TAG_SIZE_M)
@@ -247,6 +274,12 @@ class EkfLocalizerNode(rclpy.node.Node):
         self._apriltag_yaw_var: float = float(
             self.get_parameter(ekf_params.PARAM_APRILTAG_YAW_VAR).value
         )
+        self._apriltag_pos_std_m: float = float(
+            self.get_parameter(ekf_params.PARAM_APRILTAG_POS_STD_M).value
+        )
+        self._apriltag_rot_std_rad: float = float(
+            self.get_parameter(ekf_params.PARAM_APRILTAG_ROT_STD_RAD).value
+        )
         self._apriltag_gate_d2: float = float(
             self.get_parameter(ekf_params.PARAM_APRILTAG_GATE_D2).value
         )
@@ -312,6 +345,9 @@ class EkfLocalizerNode(rclpy.node.Node):
             topic=APRILTAG_UPDATE_TOPIC,
             qos_profile=qos_profile,
         )
+        self._tf_broadcaster: Optional[TransformBroadcaster] = None
+        if _HAS_TF2:
+            self._tf_broadcaster = TransformBroadcaster(self)
 
         self._imu_raw_sub: rclpy.subscription.Subscription = self.create_subscription(
             msg_type=ImuMsg,
@@ -537,28 +573,32 @@ class EkfLocalizerNode(rclpy.node.Node):
 
     def _handle_apriltags(self, message: AprilTagDetectionArrayMsg) -> None:
         timestamp: EkfTime = ros_time_to_ekf_time(message.header.stamp)
-
-        detection_data: AprilTagDetectionArrayData = self._apriltag_data_from_msg(
-            message
+        candidates: list[AprilTagPoseDetectionCandidate] = (
+            self._apriltag_candidates_from_msg(message)
         )
-        reject_reason: Optional[str] = None
+        selected: Optional[AprilTagPoseDetectionCandidate] = (
+            select_best_apriltag_candidate(candidates)
+        )
+        if selected is None:
+            self.get_logger().warn("No valid AprilTag poses in message, dropping")
+            return
 
-        if self._camera_info is None:
-            self.get_logger().warn("No camera_info cached, rejecting apriltags")
-            reject_reason = "No camera_info cached"
-        elif message.header.frame_id != self._camera_info.frame_id:
-            self.get_logger().warn("AprilTag frame does not match cached camera_info")
-            reject_reason = "AprilTag frame mismatch"
-
+        event_payload: EventAprilTagPose = EventAprilTagPose(
+            timestamp_s=to_seconds(timestamp),
+            p_meas_world_base_m=selected.p_world_base_m,
+            q_meas_world_base_xyzw=selected.q_world_base_xyzw,
+            covariance=selected.covariance,
+            tag_id=selected.tag_id,
+            frame_id=selected.frame_id,
+            source_topic=selected.source_topic,
+            family=selected.family,
+            det_index_in_msg=selected.det_index_in_msg,
+        )
         event: EkfEvent = EkfEvent(
             t_meas=timestamp,
             event_type=EkfEventType.APRILTAG,
-            payload=detection_data,
+            payload=event_payload,
         )
-        if reject_reason is not None:
-            self._publish_rejection(event, reject_reason)
-            return
-
         self._process_event(event, APRILTAG_TOPIC)
 
     def _process_event(self, event: EkfEvent, topic: str) -> None:
@@ -593,8 +633,10 @@ class EkfLocalizerNode(rclpy.node.Node):
 
         if outputs.odom_time_s is not None:
             self._publish_odom(outputs.odom_time_s)
+            self._publish_tf_odom(outputs.odom_time_s)
         if outputs.world_odom_time_s is not None:
             self._publish_world_odom(outputs.world_odom_time_s)
+            self._publish_tf_world_odom(outputs.world_odom_time_s)
         if outputs.mag_update is not None:
             self._publish_mag_update(outputs.mag_update)
         if outputs.apriltag_update is not None:
@@ -603,13 +645,63 @@ class EkfLocalizerNode(rclpy.node.Node):
         self._record_warnings(outputs.warnings)
 
     def _publish_odom(self, timestamp: float) -> None:
-        message: OdometryMsg = self._build_odom(timestamp)
+        pose: EkfPose = self._core.odom_base_pose()
+        message: OdometryMsg = self._build_odom(
+            timestamp, frame_id=self._odom_frame_id, pose=pose
+        )
         self._odom_pub.publish(message)
 
     def _publish_world_odom(self, timestamp: float) -> None:
-        message: OdometryMsg = self._build_odom(timestamp)
-        message.header.frame_id = self._world_frame_id
+        pose: EkfPose = self._core.world_base_pose()
+        message: OdometryMsg = self._build_odom(
+            timestamp, frame_id=self._world_frame_id, pose=pose
+        )
         self._world_odom_pub.publish(message)
+
+    def _publish_tf_odom(self, timestamp: float) -> None:
+        if self._tf_broadcaster is None:
+            return
+        pose: EkfPose = self._core.odom_base_pose()
+        self._publish_tf_transform(
+            timestamp,
+            parent_frame=self._odom_frame_id,
+            child_frame=self._body_frame_id,
+            pose=pose,
+        )
+
+    def _publish_tf_world_odom(self, timestamp: float) -> None:
+        if self._tf_broadcaster is None:
+            return
+        pose: EkfPose = self._core.world_odom_pose()
+        self._publish_tf_transform(
+            timestamp,
+            parent_frame=self._world_frame_id,
+            child_frame=self._odom_frame_id,
+            pose=pose,
+        )
+
+    def _publish_tf_transform(
+        self,
+        timestamp: float,
+        *,
+        parent_frame: str,
+        child_frame: str,
+        pose: EkfPose,
+    ) -> None:
+        if self._tf_broadcaster is None:
+            return
+        message: TransformStamped = TransformStamped()
+        message.header.stamp = ekf_time_to_ros_time(from_seconds(timestamp))
+        message.header.frame_id = parent_frame
+        message.child_frame_id = child_frame
+        message.transform.translation.x = pose.position_m[0]
+        message.transform.translation.y = pose.position_m[1]
+        message.transform.translation.z = pose.position_m[2]
+        message.transform.rotation.x = pose.orientation_xyzw[0]
+        message.transform.rotation.y = pose.orientation_xyzw[1]
+        message.transform.rotation.z = pose.orientation_xyzw[2]
+        message.transform.rotation.w = pose.orientation_xyzw[3]
+        self._tf_broadcaster.sendTransform(message)
 
     def _publish_mag_update(self, update: EkfUpdateData) -> None:
         update_seq: int = self._next_update_seq()
@@ -634,34 +726,20 @@ class EkfLocalizerNode(rclpy.node.Node):
             update = replace(update, accepted=False, reject_reason=reason)
             self._publish_mag_update(update)
         elif event.event_type == EkfEventType.APRILTAG:
-            apriltag_data: AprilTagDetectionArrayData = cast(
-                AprilTagDetectionArrayData, event.payload
-            )
-            update_data: EkfAprilTagUpdateData = self._core.update_with_apriltags(
-                apriltag_data, to_seconds(event.t_meas)
-            )
-            update_data = self._override_apriltag_rejection(update_data, reason)
-            self._publish_apriltag_update(update_data)
-
-    def _override_apriltag_rejection(
-        self, update_data: EkfAprilTagUpdateData, reason: str
-    ) -> EkfAprilTagUpdateData:
-        rejected: list[EkfAprilTagDetectionUpdate] = []
-        for detection in update_data.detections:
-            update: EkfUpdateData = replace(
-                detection.update, accepted=False, reject_reason=reason
-            )
-            rejected.append(
-                replace(
-                    detection,
-                    update=update,
+            apriltag_pose: EventAprilTagPose = cast(EventAprilTagPose, event.payload)
+            detection_update: EkfAprilTagDetectionUpdate = (
+                self._core.build_rejected_apriltag_pose(
+                    apriltag_pose,
+                    to_seconds(event.t_meas),
+                    reject_reason=reason,
                 )
             )
-        return EkfAprilTagUpdateData(
-            t_meas=update_data.t_meas,
-            frame_id=update_data.frame_id,
-            detections=rejected,
-        )
+            update_data: EkfAprilTagUpdateData = EkfAprilTagUpdateData(
+                t_meas=to_seconds(event.t_meas),
+                frame_id=apriltag_pose.frame_id,
+                detections=[detection_update],
+            )
+            self._publish_apriltag_update(update_data)
 
     def _should_reject_future_event(self, event: EkfEvent, topic: str) -> bool:
         if self._using_sim_time():
@@ -716,16 +794,22 @@ class EkfLocalizerNode(rclpy.node.Node):
         for warning in warnings:
             self._reporter.record_warning(warning)
 
-    def _build_odom(self, timestamp: float) -> OdometryMsg:
+    def _build_odom(
+        self, timestamp: float, *, frame_id: str, pose: EkfPose
+    ) -> OdometryMsg:
         message: OdometryMsg = OdometryMsg()
         message.header.stamp = ekf_time_to_ros_time(from_seconds(timestamp))
-        message.header.frame_id = self._odom_frame_id
+        message.header.frame_id = frame_id
         message.child_frame_id = self._body_frame_id
-        message.pose.pose.orientation.w = 1.0
+        message.pose.pose.position.x = pose.position_m[0]
+        message.pose.pose.position.y = pose.position_m[1]
+        message.pose.pose.position.z = pose.position_m[2]
+        message.pose.pose.orientation.x = pose.orientation_xyzw[0]
+        message.pose.pose.orientation.y = pose.orientation_xyzw[1]
+        message.pose.pose.orientation.z = pose.orientation_xyzw[2]
+        message.pose.pose.orientation.w = pose.orientation_xyzw[3]
         message.pose.covariance = [0.0] * 36
         message.twist.covariance = [0.0] * 36
-
-        # TODO: Publish TF when EKF state output is implemented
         return message
 
     def _camera_info_to_data(self, message: CameraInfoMsg) -> CameraInfoData:
@@ -759,29 +843,58 @@ class EkfLocalizerNode(rclpy.node.Node):
             return False
         return True
 
-    def _apriltag_data_from_msg(
+    def _apriltag_candidates_from_msg(
         self, message: AprilTagDetectionArrayMsg
-    ) -> AprilTagDetectionArrayData:
-        detections: list[AprilTagDetection] = []
+    ) -> list[AprilTagPoseDetectionCandidate]:
+        candidates: list[AprilTagPoseDetectionCandidate] = []
         for index, detection in enumerate(message.detections):
-            corners_px: list[float] = []
-            for corner in detection.corners:
-                corners_px.extend([float(corner.x), float(corner.y)])
-            detections.append(
-                AprilTagDetection(
+            pose_data: Optional[tuple[list[float], list[float]]] = (
+                self._pose_from_apriltag_detection(detection)
+            )
+            if pose_data is None:
+                continue
+            position: list[float]
+            quaternion: list[float]
+            position, quaternion = pose_data
+            if not self._is_valid_pose(position, quaternion):
+                self.get_logger().warn(
+                    f"Invalid AprilTag pose for tag_id={int(detection.id)}"
+                )
+                continue
+            covariance: Optional[list[float]] = self._covariance_from_apriltag_detection(
+                detection
+            )
+            if covariance is None:
+                covariance = self._default_apriltag_covariance()
+
+            decision_margin_field: Optional[object] = getattr(
+                detection, "decision_margin", None
+            )
+            decision_margin: Optional[float] = (
+                None
+                if decision_margin_field is None
+                else float(decision_margin_field)
+            )
+            pose_error_field: Optional[object] = getattr(detection, "pose_error", None)
+            pose_error: Optional[float] = (
+                None if pose_error_field is None else float(pose_error_field)
+            )
+
+            candidates.append(
+                AprilTagPoseDetectionCandidate(
                     family=str(detection.family),
                     tag_id=int(detection.id),
                     det_index_in_msg=int(index),
-                    corners_px=corners_px,
-                    pose_world_xyz_yaw=self._pose_from_apriltag_detection(detection),
-                    decision_margin=float(detection.decision_margin),
-                    homography=list(detection.homography),
+                    frame_id=str(message.header.frame_id),
+                    source_topic=APRILTAG_TOPIC,
+                    p_world_base_m=position,
+                    q_world_base_xyzw=quaternion,
+                    covariance=covariance,
+                    decision_margin=decision_margin,
+                    pose_error=pose_error,
                 )
             )
-        return AprilTagDetectionArrayData(
-            frame_id=message.header.frame_id,
-            detections=detections,
-        )
+        return candidates
 
     def _build_calibration_data(self, message: ImuCalibrationMsg) -> ImuCalibrationData:
         return ImuCalibrationData(
@@ -811,7 +924,9 @@ class EkfLocalizerNode(rclpy.node.Node):
         self._update_seq += 1
         return self._update_seq
 
-    def _pose_from_apriltag_detection(self, detection: object) -> Optional[list[float]]:
+    def _pose_from_apriltag_detection(
+        self, detection: object
+    ) -> Optional[tuple[list[float], list[float]]]:
         pose_field: Optional[object] = getattr(detection, "pose", None)
         if pose_field is None:
             return None
@@ -820,19 +935,60 @@ class EkfLocalizerNode(rclpy.node.Node):
         orientation: Optional[object] = getattr(pose, "orientation", None)
         if position is None or orientation is None:
             return None
-        yaw: float = self._yaw_from_quaternion(orientation)
-        return [
-            float(getattr(position, "x", 0.0)),
-            float(getattr(position, "y", 0.0)),
-            float(getattr(position, "z", 0.0)),
-            yaw,
-        ]
+        return (
+            [
+                float(getattr(position, "x", 0.0)),
+                float(getattr(position, "y", 0.0)),
+                float(getattr(position, "z", 0.0)),
+            ],
+            [
+                float(getattr(orientation, "x", 0.0)),
+                float(getattr(orientation, "y", 0.0)),
+                float(getattr(orientation, "z", 0.0)),
+                float(getattr(orientation, "w", 1.0)),
+            ],
+        )
 
-    def _yaw_from_quaternion(self, orientation: object) -> float:
-        qx: float = float(getattr(orientation, "x", 0.0))
-        qy: float = float(getattr(orientation, "y", 0.0))
-        qz: float = float(getattr(orientation, "z", 0.0))
-        qw: float = float(getattr(orientation, "w", 1.0))
-        siny_cosp: float = 2.0 * (qw * qz + qx * qy)
-        cosy_cosp: float = 1.0 - 2.0 * (qy * qy + qz * qz)
-        return math.atan2(siny_cosp, cosy_cosp)
+    def _covariance_from_apriltag_detection(
+        self, detection: object
+    ) -> Optional[list[float]]:
+        pose_field: Optional[object] = getattr(detection, "pose", None)
+        if pose_field is None:
+            return None
+        covariance_field: Optional[object] = getattr(pose_field, "covariance", None)
+        if covariance_field is None:
+            pose_container: Optional[object] = getattr(pose_field, "pose", None)
+            if pose_container is not None:
+                covariance_field = getattr(pose_container, "covariance", None)
+        if covariance_field is None:
+            return None
+        covariance: list[float] = [float(value) for value in covariance_field]
+        if len(covariance) != 36:
+            return None
+        if not is_finite_vector(covariance):
+            return None
+        return covariance
+
+    def _default_apriltag_covariance(self) -> list[float]:
+        # Units: m^2. Meaning: position variance from the configured stddev
+        pos_var_m2: float = self._apriltag_pos_std_m**2
+
+        # Units: rad^2. Meaning: rotation variance from the configured stddev
+        rot_var_rad2: float = self._apriltag_rot_std_rad**2
+        covariance: list[float] = [0.0] * 36
+        for index in range(3):
+            covariance[index * 6 + index] = pos_var_m2
+        for index in range(3):
+            covariance[(index + 3) * 6 + (index + 3)] = rot_var_rad2
+        return covariance
+
+    def _is_valid_pose(self, position: list[float], quaternion: list[float]) -> bool:
+        if not is_finite_vector(position) or not is_finite_vector(quaternion):
+            return False
+        norm_sq: float = (
+            quaternion[0] * quaternion[0]
+            + quaternion[1] * quaternion[1]
+            + quaternion[2] * quaternion[2]
+            + quaternion[3] * quaternion[3]
+        )
+        return norm_sq > 0.0
