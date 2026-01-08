@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 from typing import cast
 
@@ -58,6 +59,8 @@ def _build_config(*, dt_imu_max: float = 0.5) -> EkfConfig:
         tag_anchor_id=0,
         tag_landmark_prior_sigma_t_m=0.1,
         tag_landmark_prior_sigma_rot_rad=0.1,
+        extrinsic_prior_sigma_t_m=1.0,
+        extrinsic_prior_sigma_rot_rad=math.pi,
     )
 
 
@@ -251,11 +254,12 @@ def test_apriltag_linearization_uses_fixed_state() -> None:
         event_type=EkfEventType.APRILTAG,
         payload=AprilTagDetectionArrayData(frame_id="camera", detections=detections),
     )
+    initial_measurement_state: list[float] = core._measurement_state().tolist()
     initial_state: list[float] = core.state().tolist()
     core.process_event(apriltag_event)
 
     model: _RecordingAprilTagModel = cast(_RecordingAprilTagModel, core._apriltag_model)
     assert len(model.linearize_inputs) == 2
-    assert model.linearize_inputs[0] == initial_state
-    assert model.linearize_inputs[1] == initial_state
+    assert model.linearize_inputs[0] == initial_measurement_state
+    assert model.linearize_inputs[1] == initial_measurement_state
     assert core.state().tolist() != initial_state

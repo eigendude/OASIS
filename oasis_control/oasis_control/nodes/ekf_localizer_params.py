@@ -125,3 +125,15 @@ PARAM_TAG_LANDMARK_PRIOR_SIGMA_ROT_RAD: str = "tag_landmark_prior_sigma_rot_rad"
 
 # Default prior rotation sigma for tag landmarks, radians
 DEFAULT_TAG_LANDMARK_PRIOR_SIGMA_ROT_RAD: float = 3.141592653589793
+
+# Prior translation sigma for extrinsics, meters
+PARAM_EXTRINSIC_PRIOR_SIGMA_T_M: str = "extrinsic_prior_sigma_t_m"
+
+# Default prior translation sigma for extrinsics, meters
+DEFAULT_EXTRINSIC_PRIOR_SIGMA_T_M: float = 1.0
+
+# Prior rotation sigma for extrinsics, radians
+PARAM_EXTRINSIC_PRIOR_SIGMA_ROT_RAD: str = "extrinsic_prior_sigma_rot_rad"
+
+# Default prior rotation sigma for extrinsics, radians
+DEFAULT_EXTRINSIC_PRIOR_SIGMA_ROT_RAD: float = 3.141592653589793
