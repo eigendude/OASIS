@@ -11,13 +11,10 @@
 from __future__ import annotations
 
 import math
-from typing import Any
 from typing import Optional
-from typing import cast
 
 from oasis_control.localization.ekf.core.ekf_core import EkfCore
 from oasis_control.localization.ekf.ekf_config import EkfConfig
-from oasis_control.localization.ekf.ekf_state import Pose3
 from oasis_control.localization.ekf.ekf_state import TagKey
 from oasis_control.localization.ekf.ekf_types import AprilTagDetection
 from oasis_control.localization.ekf.ekf_types import AprilTagDetectionArrayData
@@ -32,9 +29,6 @@ from oasis_control.localization.ekf.ekf_types import EkfUpdateData
 from oasis_control.localization.ekf.ekf_types import ImuSample
 from oasis_control.localization.ekf.ekf_types import MagSample
 from oasis_control.localization.ekf.ekf_types import from_seconds
-from oasis_control.localization.ekf.models.apriltag_measurement_model import (
-    AprilTagMeasurementModel,
-)
 
 
 def _build_config(*, dt_imu_max: float = 0.5) -> EkfConfig:
@@ -186,22 +180,6 @@ class _RejectingMagEkf(EkfCore):
         )
 
 
-class _RecordingAprilTagModel(AprilTagMeasurementModel):
-    def __init__(self) -> None:
-        super().__init__()
-        self.linearize_inputs: list[list[float]] = []
-
-    def linearize_pose(self, state: Any) -> tuple[Any, Any]:
-        self.linearize_inputs.append(list(state.tolist()))
-        return super().linearize_pose(state)
-
-
-class _RecordingAprilTagEkf(EkfCore):
-    def __init__(self, config: EkfConfig) -> None:
-        super().__init__(config)
-        self._apriltag_model = _RecordingAprilTagModel()
-
-
 def test_mag_rejection_does_not_advance_frontier() -> None:
     config: EkfConfig = _build_config()
     core: _RejectingMagEkf = _RejectingMagEkf(config)
@@ -250,9 +228,9 @@ def test_imu_max_dt_advances_frontier() -> None:
     assert core.frontier_time() == imu_event_1.t_meas
 
 
-def test_apriltag_linearization_uses_fixed_state() -> None:
+def test_apriltag_updates_are_sorted() -> None:
     config: EkfConfig = _build_config()
-    core: _RecordingAprilTagEkf = _RecordingAprilTagEkf(config)
+    core: EkfCore = EkfCore(config)
 
     camera_event: EkfEvent = EkfEvent(
         t_meas=from_seconds(0.0),
@@ -264,21 +242,21 @@ def test_apriltag_linearization_uses_fixed_state() -> None:
     detections: list[AprilTagDetection] = [
         AprilTagDetection(
             family="tag36h11",
-            tag_id=1,
-            det_index_in_msg=0,
-            corners_px=[0.0] * 8,
-            pose_world_xyz_yaw=[1.0, 0.0, 0.0, 0.1],
-            decision_margin=1.0,
-            homography=[0.0] * 9,
-        ),
-        AprilTagDetection(
-            family="tag36h11",
             tag_id=2,
             det_index_in_msg=1,
             corners_px=[0.0] * 8,
             pose_world_xyz_yaw=[2.0, 0.5, 0.0, -0.2],
             decision_margin=1.0,
-            homography=[0.0] * 9,
+            homography=[1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+        ),
+        AprilTagDetection(
+            family="tag36h11",
+            tag_id=1,
+            det_index_in_msg=0,
+            corners_px=[0.0] * 8,
+            pose_world_xyz_yaw=[1.0, 0.0, 0.0, 0.1],
+            decision_margin=1.0,
+            homography=[1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
         ),
     ]
     apriltag_event: EkfEvent = EkfEvent(
@@ -286,13 +264,10 @@ def test_apriltag_linearization_uses_fixed_state() -> None:
         event_type=EkfEventType.APRILTAG,
         payload=AprilTagDetectionArrayData(frame_id="camera", detections=detections),
     )
-    initial_state: list[float] = core.state().tolist()
-    core.process_event(apriltag_event)
+    outputs: EkfOutputs = core.process_event(apriltag_event)
 
-    model: _RecordingAprilTagModel = cast(_RecordingAprilTagModel, core._apriltag_model)
-    assert len(model.linearize_inputs) == 2
-    assert model.linearize_inputs[0] == initial_state
-    assert model.linearize_inputs[1] == initial_state
-    assert core.state().tolist() == initial_state
-    world_odom: Pose3 = core.world_odom_pose()
-    assert abs(float(world_odom.translation_m[0])) > 0.0
+    assert outputs.apriltag_update is not None
+    ordered_keys: list[tuple[str, int]] = [
+        (det.family, det.tag_id) for det in outputs.apriltag_update.detections
+    ]
+    assert ordered_keys == sorted(ordered_keys)

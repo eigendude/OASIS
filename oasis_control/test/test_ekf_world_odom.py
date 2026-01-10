@@ -23,6 +23,8 @@ from oasis_control.localization.ekf.ekf_types import EkfEvent
 from oasis_control.localization.ekf.ekf_types import EkfEventType
 from oasis_control.localization.ekf.ekf_types import EkfFrameOutputs
 from oasis_control.localization.ekf.ekf_types import EkfImuPacket
+from oasis_control.localization.ekf.ekf_types import EkfOutputs
+from oasis_control.localization.ekf.ekf_types import EkfUpdateData
 from oasis_control.localization.ekf.ekf_types import ImuSample
 from oasis_control.localization.ekf.ekf_types import from_seconds
 
@@ -107,7 +109,17 @@ def _build_imu_sample(*, accel_body: list[float]) -> ImuSample:
 
 def _build_apriltag_detection(*, pose_world_xyz_yaw: list[float]) -> AprilTagDetection:
     corners_px: list[float] = [0.0] * 8
-    homography: list[float] = [0.0] * 9
+    homography: list[float] = [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+    ]
     return AprilTagDetection(
         family="tag36h11",
         tag_id=1,
@@ -221,6 +233,7 @@ def test_global_update_does_not_teleport_odom() -> None:
     )
 
     odom_before: list[float] = core.state().tolist()
+    world_odom_before: Pose3 = core.world_odom_pose()
 
     detection: AprilTagDetection = _build_apriltag_detection(
         pose_world_xyz_yaw=[1.0, 0.0, 0.0, 0.1]
@@ -233,14 +246,27 @@ def test_global_update_does_not_teleport_odom() -> None:
             detections=[detection],
         ),
     )
-    core.process_event(apriltag_event)
+    outputs: EkfOutputs = core.process_event(apriltag_event)
 
     odom_after: list[float] = core.state().tolist()
     _assert_close_sequence(expected=odom_before, actual=odom_after, tol=1.0e-9)
 
     world_odom_after: Pose3 = core.world_odom_pose()
-    assert math.isfinite(float(world_odom_after.translation_m[0]))
-    assert abs(float(world_odom_after.translation_m[0])) > 0.0
+    _assert_close_sequence(
+        expected=world_odom_before.translation_m.tolist(),
+        actual=world_odom_after.translation_m.tolist(),
+        tol=1.0e-9,
+    )
+    _assert_close_sequence(
+        expected=world_odom_before.rotation_wxyz.tolist(),
+        actual=world_odom_after.rotation_wxyz.tolist(),
+        tol=1.0e-9,
+    )
+
+    assert outputs.apriltag_update is not None
+    detection_update: EkfUpdateData = outputs.apriltag_update.detections[0].update
+    assert not detection_update.accepted
+    assert detection_update.reject_reason == "reprojection_rms"
 
 
 def test_world_correction_updates_world_odom_only() -> None:
@@ -286,15 +312,27 @@ def test_world_correction_updates_world_odom_only() -> None:
             detections=[detection],
         ),
     )
-    core.process_event(apriltag_event)
+    outputs: EkfOutputs = core.process_event(apriltag_event)
 
     odom_after: list[float] = core.state().tolist()
     _assert_close_sequence(expected=odom_before, actual=odom_after, tol=1.0e-9)
 
     world_odom_after: Pose3 = core.world_odom_pose()
-    assert abs(float(world_odom_after.translation_m[0])) > abs(
-        float(world_odom_before.translation_m[0])
+    _assert_close_sequence(
+        expected=world_odom_before.translation_m.tolist(),
+        actual=world_odom_after.translation_m.tolist(),
+        tol=1.0e-9,
     )
+    _assert_close_sequence(
+        expected=world_odom_before.rotation_wxyz.tolist(),
+        actual=world_odom_after.rotation_wxyz.tolist(),
+        tol=1.0e-9,
+    )
+
+    assert outputs.apriltag_update is not None
+    detection_update: EkfUpdateData = outputs.apriltag_update.detections[0].update
+    assert not detection_update.accepted
+    assert detection_update.reject_reason == "reprojection_rms"
 
 
 def test_world_base_composition_matches_outputs() -> None:
@@ -325,19 +363,6 @@ def test_world_base_composition_matches_outputs() -> None:
             payload=EkfImuPacket(imu=imu_sample, calibration=None),
         )
     )
-    core.process_event(
-        EkfEvent(
-            t_meas=from_seconds(0.5),
-            event_type=EkfEventType.APRILTAG,
-            payload=AprilTagDetectionArrayData(
-                frame_id="camera",
-                detections=[
-                    _build_apriltag_detection(pose_world_xyz_yaw=[0.2, 0.1, 0.0, 0.05])
-                ],
-            ),
-        )
-    )
-
     transforms: EkfFrameOutputs = core.frame_transforms()
     composed_t: list[float]
     composed_q: list[float]

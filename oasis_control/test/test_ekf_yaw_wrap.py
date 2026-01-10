@@ -17,10 +17,12 @@ from oasis_control.localization.ekf.ekf_config import EkfConfig
 from oasis_control.localization.ekf.ekf_types import AprilTagDetection
 from oasis_control.localization.ekf.ekf_types import AprilTagDetectionArrayData
 from oasis_control.localization.ekf.ekf_types import CameraInfoData
+from oasis_control.localization.ekf.ekf_types import EkfAprilTagUpdateData
 from oasis_control.localization.ekf.ekf_types import EkfEvent
 from oasis_control.localization.ekf.ekf_types import EkfEventType
 from oasis_control.localization.ekf.ekf_types import EkfImuPacket
 from oasis_control.localization.ekf.ekf_types import EkfTime
+from oasis_control.localization.ekf.ekf_types import EkfUpdateData
 from oasis_control.localization.ekf.ekf_types import ImuSample
 from oasis_control.localization.ekf.ekf_types import from_seconds
 from oasis_control.localization.ekf.se3 import quat_from_rotvec
@@ -75,7 +77,17 @@ def _build_imu_sample(
 
 def _build_apriltag_detection(*, pose_world_xyz_yaw: list[float]) -> AprilTagDetection:
     corners_px: list[float] = [0.0] * 8
-    homography: list[float] = [0.0] * 9
+    homography: list[float] = [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+    ]
     return AprilTagDetection(
         family="tag36h11",
         tag_id=1,
@@ -122,7 +134,7 @@ def test_yaw_wraps_positive_after_propagation() -> None:
     assert math.isclose(yaw, expected_wrapped, abs_tol=1.0e-9)
 
 
-def test_yaw_wraps_negative_after_measurement_update() -> None:
+def test_apriltag_rejection_keeps_wrapped_yaw() -> None:
     config: EkfConfig = _build_config(apriltag_pos_var=0.0, apriltag_yaw_var=0.0)
     core: EkfCore = EkfCore(config)
     core._initialized = True
@@ -149,10 +161,15 @@ def test_yaw_wraps_negative_after_measurement_update() -> None:
         detections=[detection],
     )
 
-    core.update_with_apriltags(apriltag_data, t_meas=from_seconds(0.0))
+    yaw_before: float = float(quat_to_rpy(core.world_pose().rotation_wxyz)[2])
+    update: EkfAprilTagUpdateData = core.update_with_apriltags(
+        apriltag_data, t_meas=from_seconds(0.0)
+    )
 
     yaw: float = float(quat_to_rpy(core.world_pose().rotation_wxyz)[2])
-    expected_wrapped: float = math.pi - 0.2
+    detection_update: EkfUpdateData = update.detections[0].update
 
     assert -math.pi <= yaw < math.pi
-    assert math.isclose(yaw, expected_wrapped, abs_tol=1.0e-9)
+    assert math.isclose(yaw, yaw_before, abs_tol=1.0e-9)
+    assert not detection_update.accepted
+    assert detection_update.reject_reason == "reprojection_rms"

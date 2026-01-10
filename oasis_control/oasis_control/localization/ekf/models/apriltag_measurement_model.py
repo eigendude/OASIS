@@ -12,12 +12,16 @@
 AprilTag measurement model helpers for the EKF
 """
 
+import importlib.util
+from typing import Any
 from typing import Optional
 
 import numpy as np
 
 from oasis_control.localization.ekf.ekf_types import AprilTagDetection
 from oasis_control.localization.ekf.ekf_types import CameraInfoData
+from oasis_control.localization.ekf.se3 import quat_from_rotation_matrix
+from oasis_control.localization.ekf.se3 import quat_to_rpy
 
 
 # Minimum valid depth in meters for camera frame projections
@@ -144,6 +148,49 @@ class AprilTagMeasurementModel:
         h[3, 8] = 1.0
         return z_hat, h
 
+    def project_tag_corners(
+        self,
+        translation_c_m: np.ndarray,
+        rotation_c_wxyz: np.ndarray,
+        tag_size_m: float,
+    ) -> Optional[np.ndarray]:
+        """
+        Project tag corners into pixel coordinates for a camera-frame pose
+        """
+
+        translation: np.ndarray = np.asarray(translation_c_m, dtype=float).reshape(3)
+        rpy: np.ndarray = quat_to_rpy(rotation_c_wxyz)
+        tag_pose_c: np.ndarray = np.concatenate((translation, rpy), axis=0)
+        return self._project_tag_corners(tag_pose_c, tag_size_m)
+
+    def estimate_tag_pose_c(
+        self, detection: AprilTagDetection, tag_size_m: float
+    ) -> Optional[tuple[np.ndarray, np.ndarray]]:
+        """
+        Estimate the tag pose in the camera frame from corners or homography
+        """
+
+        if self._camera_info is None or self._k_matrix is None:
+            return None
+
+        if tag_size_m <= 0.0:
+            return None
+
+        if len(detection.corners_px) != 8:
+            return None
+
+        cv2_module: Optional[Any] = self._load_cv2()
+        if cv2_module is not None:
+            return self._solve_pnp(cv2_module, detection, tag_size_m)
+
+        if len(detection.homography) != 9:
+            return None
+
+        homography: np.ndarray = np.asarray(detection.homography, dtype=float).reshape(
+            3, 3
+        )
+        return self._pose_from_homography(homography)
+
     def _project_tag_corners(
         self, tag_pose_c: np.ndarray, tag_size_m: float
     ) -> Optional[np.ndarray]:
@@ -203,6 +250,88 @@ class AprilTagMeasurementModel:
             ],
             dtype=float,
         )
+
+    def _load_cv2(self) -> Optional[Any]:
+        spec: Optional[Any] = importlib.util.find_spec("cv2")
+        if spec is None:
+            return None
+        import cv2
+
+        return cv2
+
+    def _solve_pnp(
+        self, cv2_module: Any, detection: AprilTagDetection, tag_size_m: float
+    ) -> Optional[tuple[np.ndarray, np.ndarray]]:
+        if self._k_matrix is None:
+            return None
+
+        object_points: np.ndarray = self._tag_corners(tag_size_m).astype(np.float32)
+        image_points: np.ndarray = np.asarray(
+            detection.corners_px, dtype=np.float32
+        ).reshape(4, 2)
+        dist_coeffs: np.ndarray = (
+            self._distortion_coeffs.astype(np.float32)
+            if self._distortion_coeffs is not None
+            else np.zeros(5, dtype=np.float32)
+        )
+
+        flags: int = (
+            cv2_module.SOLVEPNP_IPPE_SQUARE
+            if hasattr(cv2_module, "SOLVEPNP_IPPE_SQUARE")
+            else cv2_module.SOLVEPNP_ITERATIVE
+        )
+
+        success: bool
+        rvec: np.ndarray
+        tvec: np.ndarray
+        success, rvec, tvec = cv2_module.solvePnP(
+            object_points,
+            image_points,
+            self._k_matrix.astype(np.float32),
+            dist_coeffs,
+            flags=flags,
+        )
+        if not success:
+            return None
+
+        rotation_c: np.ndarray
+        rotation_c, _ = cv2_module.Rodrigues(rvec)
+        translation_c: np.ndarray = np.asarray(tvec, dtype=float).reshape(3)
+        quat_c: np.ndarray = quat_from_rotation_matrix(rotation_c)
+        return translation_c, quat_c
+
+    def _pose_from_homography(
+        self, homography: np.ndarray
+    ) -> Optional[tuple[np.ndarray, np.ndarray]]:
+        if self._k_matrix is None:
+            return None
+
+        h_matrix: np.ndarray = np.asarray(homography, dtype=float).reshape(3, 3)
+        inv_k: np.ndarray = np.linalg.inv(self._k_matrix)
+        normalized: np.ndarray = inv_k @ h_matrix
+        h1: np.ndarray = normalized[:, 0]
+        h2: np.ndarray = normalized[:, 1]
+        h3: np.ndarray = normalized[:, 2]
+        norm_h1: float = float(np.linalg.norm(h1))
+        if norm_h1 <= 0.0:
+            return None
+
+        scale: float = 1.0 / norm_h1
+        r1: np.ndarray = h1 * scale
+        r2: np.ndarray = h2 * scale
+        r3: np.ndarray = np.cross(r1, r2)
+        rotation_raw: np.ndarray = np.stack((r1, r2, r3), axis=1)
+        u_mat: np.ndarray
+        v_mat: np.ndarray
+        u_mat, _, v_mat = np.linalg.svd(rotation_raw)
+        rotation_c: np.ndarray = u_mat @ v_mat
+        if float(np.linalg.det(rotation_c)) < 0.0:
+            u_mat[:, 2] = -u_mat[:, 2]
+            rotation_c = u_mat @ v_mat
+
+        translation_c: np.ndarray = h3 * scale
+        quat_c: np.ndarray = quat_from_rotation_matrix(rotation_c)
+        return translation_c, quat_c
 
     def _rotation_matrix(self, roll: float, pitch: float, yaw: float) -> np.ndarray:
         cr: float = float(np.cos(roll))
