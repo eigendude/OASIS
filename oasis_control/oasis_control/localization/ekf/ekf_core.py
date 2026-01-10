@@ -143,6 +143,13 @@ class EkfCore:
         self._imu_times_ns: list[int] = []
         self._imu_gaps: list[_ImuGap] = []
         self._imu_gap_reject_count: int = 0
+        # Nanoseconds of IMU history to cover buffer + checkpoint interval
+        # with 0.5 s slack for ordering jitter
+        self._imu_retention_ns: int = (
+            self._config.t_buffer_ns
+            + self._config.checkpoint_interval_ns
+            + int(0.5 * _NS_PER_S)
+        )
         self._checkpoints: list[_Checkpoint] = []
         self._last_checkpoint_time: Optional[int] = None
 
@@ -538,9 +545,15 @@ class EkfCore:
         gate_d2_threshold: float = 0.0,
     ) -> EkfAprilTagDetectionUpdate:
         z_values: list[float] = [] if z is None else z.tolist()
-        z_hat_values: list[float] = [] if z_hat is None else z_hat.tolist()
-        nu_values: list[float] = [] if residual is None else residual.tolist()
         z_dim: int = len(z_values) if z_values else 4
+        if not z_values:
+            z_values = self._nan_list(z_dim)
+        z_hat_values: list[float] = (
+            self._nan_list(z_dim) if z_hat is None else z_hat.tolist()
+        )
+        nu_values: list[float] = (
+            self._nan_list(z_dim) if residual is None else residual.tolist()
+        )
         zero_matrix: EkfMatrix = self._zero_matrix(z_dim)
         r_matrix: EkfMatrix = (
             zero_matrix
@@ -607,6 +620,7 @@ class EkfCore:
         self, mag_sample: MagSample, t_meas: EkfTime, *, reject_reason: str
     ) -> EkfUpdateData:
         z_dim: int = 3
+        nan_values: list[float] = self._nan_list(z_dim)
         zero_matrix: EkfMatrix = EkfMatrix(rows=z_dim, cols=z_dim, data=[0.0] * 9)
         r: EkfMatrix = EkfMatrix(
             rows=z_dim, cols=z_dim, data=list(mag_sample.magnetic_field_cov)
@@ -619,8 +633,8 @@ class EkfCore:
             reject_reason=reject_reason,
             z_dim=z_dim,
             z=list(mag_sample.magnetic_field_t),
-            z_hat=[],
-            nu=[],
+            z_hat=nan_values,
+            nu=nan_values,
             r=r,
             s_hat=zero_matrix,
             s=zero_matrix,
@@ -631,6 +645,9 @@ class EkfCore:
 
     def _zero_matrix(self, dim: int) -> EkfMatrix:
         return EkfMatrix(rows=dim, cols=dim, data=[0.0] * (dim * dim))
+
+    def _nan_list(self, length: int) -> list[float]:
+        return [math.nan] * length
 
     def _snapshot_state(self) -> _StateSnapshot:
         return _StateSnapshot(
@@ -672,8 +689,27 @@ class EkfCore:
         self._world_odom_cov = self._build_world_odom_covariance()
 
     def _record_imu_time(self, t_meas_ns: int) -> None:
-        insert_index: int = bisect_right(self._imu_times_ns, t_meas_ns)
-        self._imu_times_ns.insert(insert_index, t_meas_ns)
+        if not self._imu_times_ns or t_meas_ns >= self._imu_times_ns[-1]:
+            self._imu_times_ns.append(t_meas_ns)
+        else:
+            insert_index: int = bisect_right(self._imu_times_ns, t_meas_ns)
+            self._imu_times_ns.insert(insert_index, t_meas_ns)
+        self._prune_imu_history(t_meas_ns)
+
+    def _prune_imu_history(self, t_meas_ns: int) -> None:
+        reference_ns: int = t_meas_ns
+        if self._t_frontier_ns is not None:
+            reference_ns = min(reference_ns, self._t_frontier_ns)
+        if self._last_checkpoint_time is not None:
+            reference_ns = min(reference_ns, self._last_checkpoint_time)
+        cutoff_ns: int = reference_ns - self._imu_retention_ns
+        if cutoff_ns <= 0:
+            return
+        prune_index: int = bisect_right(self._imu_times_ns, cutoff_ns)
+        if prune_index > 0:
+            self._imu_times_ns = self._imu_times_ns[prune_index:]
+        while self._imu_gaps and self._imu_gaps[0].end_ns < cutoff_ns:
+            self._imu_gaps.pop(0)
 
     def _record_imu_gap(self, start_ns: int, end_ns: int, dt_ns: int) -> None:
         self._imu_gaps.append(_ImuGap(start_ns=start_ns, end_ns=end_ns, dt_ns=dt_ns))
@@ -774,6 +810,7 @@ class EkfCore:
             return
         if imu_dt_ns > self._config.dt_imu_max_ns:
             self._record_imu_gap(self._last_imu_time_ns, t_meas_ns, imu_dt_ns)
+            self._reset_frontier_after_gap(t_meas_ns)
             self._last_imu = imu_sample
             self._last_imu_time_ns = t_meas_ns
             return
@@ -781,6 +818,10 @@ class EkfCore:
             self._propagate_with_imu(self._last_imu, self._t_frontier_ns, t_meas_ns)
         self._last_imu = imu_sample
         self._last_imu_time_ns = t_meas_ns
+
+    def _reset_frontier_after_gap(self, t_meas_ns: int) -> None:
+        self._t_frontier_ns = t_meas_ns
+        self._state_frontier = self._state.copy()
 
     def _propagate_if_needed(self, t_meas_ns: int) -> _ImuCoverageCheck:
         if self._t_frontier_ns is None:

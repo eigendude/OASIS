@@ -141,6 +141,26 @@ def test_mag_imu_coverage_rejects_gap() -> None:
     assert updates[0].reject_reason == "imu_gap"
 
 
+def test_mag_imu_coverage_recovers_after_gap() -> None:
+    config: EkfConfig = _build_config(dt_imu_max=0.05)
+    events: list[EkfEvent] = [
+        _build_imu_event(from_seconds(0.0)),
+        _build_imu_event(from_seconds(0.01)),
+        _build_mag_event(from_seconds(0.20)),
+        _build_imu_event(from_seconds(0.21)),
+        _build_imu_event(from_seconds(0.22)),
+        _build_imu_event(from_seconds(0.23)),
+        _build_mag_event(from_seconds(0.235)),
+    ]
+
+    updates: list[EkfUpdateData] = _run_replay(events, config)
+
+    assert len(updates) == 2
+    assert not updates[0].accepted
+    assert updates[0].reject_reason == "imu_gap"
+    assert updates[1].accepted
+
+
 def test_out_of_order_replay_rejects_gap() -> None:
     config: EkfConfig = _build_config(dt_imu_max=0.05)
     mag_event: EkfEvent = _build_mag_event(from_seconds(0.20))
