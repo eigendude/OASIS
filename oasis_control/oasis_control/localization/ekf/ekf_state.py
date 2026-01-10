@@ -288,6 +288,17 @@ class EkfState:
     def landmark_slice(self, tag_key: TagKey) -> Optional[slice]:
         return self._index.landmarks.get(tag_key)
 
+    def landmark_pose(self, tag_key: TagKey) -> Optional[Pose3]:
+        pose: Optional[Pose3] = self._landmarks.get(tag_key)
+        if pose is None:
+            return None
+        return pose.copy()
+
+    def set_landmark_pose(self, tag_key: TagKey, pose: Pose3) -> None:
+        if tag_key not in self._landmarks:
+            raise KeyError(f"Tag landmark missing for {tag_key}")
+        self._landmarks[tag_key] = pose.copy()
+
     def legacy_state(self) -> np.ndarray:
         rpy: np.ndarray = quat_to_rpy(self.pose_ob.rotation_wxyz)
         return np.concatenate(

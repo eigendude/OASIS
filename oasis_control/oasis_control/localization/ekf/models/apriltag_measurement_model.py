@@ -18,6 +18,7 @@ import numpy as np
 
 from oasis_control.localization.ekf.ekf_types import AprilTagDetection
 from oasis_control.localization.ekf.ekf_types import CameraInfoData
+from oasis_control.localization.ekf.se3 import quat_to_rpy
 
 
 # Minimum valid depth in meters for camera frame projections
@@ -90,6 +91,24 @@ class AprilTagMeasurementModel:
         coeffs: np.ndarray = np.asarray(coeffs_list, dtype=float)
         self._distortion_coeffs = coeffs
 
+    def camera_matrix(self) -> Optional[np.ndarray]:
+        """
+        Return a copy of the cached camera intrinsic matrix
+        """
+
+        if self._k_matrix is None:
+            return None
+        return self._k_matrix.copy()
+
+    def distortion_coeffs(self) -> Optional[np.ndarray]:
+        """
+        Return a copy of the cached distortion coefficients
+        """
+
+        if self._distortion_coeffs is None:
+            return None
+        return self._distortion_coeffs.copy()
+
     def reprojection_residuals(
         self, tag_pose_c: np.ndarray, detection: AprilTagDetection, tag_size_m: float
     ) -> Optional[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]]:
@@ -143,6 +162,33 @@ class AprilTagMeasurementModel:
         h[2, 2] = 1.0
         h[3, 8] = 1.0
         return z_hat, h
+
+    def project_tag_corners(
+        self,
+        translation_c_m: np.ndarray,
+        rotation_c_wxyz: np.ndarray,
+        tag_size_m: float,
+    ) -> Optional[np.ndarray]:
+        """
+        Project tag corners from a camera-frame pose into pixel space
+        """
+
+        rpy: np.ndarray = quat_to_rpy(rotation_c_wxyz)
+        tag_pose_c: np.ndarray = np.concatenate(
+            (
+                np.asarray(translation_c_m, dtype=float).reshape(3),
+                rpy.reshape(3),
+            ),
+            axis=0,
+        )
+        return self._project_tag_corners(tag_pose_c, tag_size_m)
+
+    def tag_corners(self, tag_size_m: float) -> np.ndarray:
+        """
+        Return tag corner coordinates in the tag frame
+        """
+
+        return self._tag_corners(tag_size_m)
 
     def _project_tag_corners(
         self, tag_pose_c: np.ndarray, tag_size_m: float
