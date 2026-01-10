@@ -13,6 +13,7 @@ AprilTag measurement model helpers for the EKF
 """
 
 from typing import Optional
+from typing import Sequence
 
 import numpy as np
 
@@ -28,6 +29,18 @@ POS_EPS_M: float = 1.0e-4
 
 # Radians step used for rotation numerical derivatives
 ROT_EPS_RAD: float = 1.0e-4
+
+# Levenberg-Marquardt damping for reprojection pose refinement, unitless
+REPROJECTION_LM_DAMPING: float = 1.0e-3
+
+# Maximum iterations for reprojection pose refinement
+REPROJECTION_MAX_ITERS: int = 6
+
+# Convergence threshold on the pose update norm, meters/radians
+REPROJECTION_STEP_NORM_EPS: float = 1.0e-6
+
+# Convergence threshold on reprojection cost reduction, px^2
+REPROJECTION_COST_EPS: float = 1.0e-6
 
 SUPPORTED_DISTORTION_MODELS: set[str] = {
     "",
@@ -91,7 +104,10 @@ class AprilTagMeasurementModel:
         self._distortion_coeffs = coeffs
 
     def reprojection_residuals(
-        self, tag_pose_c: np.ndarray, detection: AprilTagDetection, tag_size_m: float
+        self,
+        tag_pose_c: np.ndarray | Sequence[float],
+        detection: AprilTagDetection,
+        tag_size_m: float,
     ) -> Optional[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]]:
         """
         Compute reprojection residuals and Jacobians for a detection
@@ -125,6 +141,67 @@ class AprilTagMeasurementModel:
 
         residual: np.ndarray = z - z_hat
         return z, z_hat, residual, h
+
+    def refine_pose_from_corners(
+        self,
+        tag_pose_c: np.ndarray | Sequence[float],
+        detection: AprilTagDetection,
+        tag_size_m: float,
+    ) -> Optional[np.ndarray]:
+        """
+        Refine a tag pose using corner reprojection residuals
+
+        The pose update uses a damped Gauss-Newton step to keep the
+        reprojection-based update lightweight and deterministic
+        """
+
+        pose: np.ndarray = np.asarray(tag_pose_c, dtype=float).reshape(-1)
+        if pose.shape[0] < 6:
+            return None
+
+        pose = pose[:6].copy()
+        damping: float = REPROJECTION_LM_DAMPING
+        last_cost: Optional[float] = None
+
+        iter_index: int
+        for iter_index in range(REPROJECTION_MAX_ITERS):
+            residuals: Optional[
+                tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+            ] = self.reprojection_residuals(pose, detection, tag_size_m)
+            if residuals is None:
+                return None
+
+            residual: np.ndarray = residuals[2]
+            h: np.ndarray = residuals[3]
+
+            cost: float = float(residual.T @ residual)
+            if last_cost is not None and abs(last_cost - cost) <= REPROJECTION_COST_EPS:
+                break
+
+            h_transpose: np.ndarray = h.T
+            normal: np.ndarray = h_transpose @ h + damping * np.eye(6, dtype=float)
+            step: np.ndarray = np.linalg.solve(normal, h_transpose @ residual)
+            step_norm: float = float(np.linalg.norm(step))
+            if step_norm <= REPROJECTION_STEP_NORM_EPS:
+                break
+
+            candidate: np.ndarray = pose + step
+            candidate_residuals: Optional[
+                tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+            ] = self.reprojection_residuals(candidate, detection, tag_size_m)
+            if candidate_residuals is None:
+                return None
+
+            candidate_residual: np.ndarray = candidate_residuals[2]
+            candidate_cost: float = float(candidate_residual.T @ candidate_residual)
+            if candidate_cost < cost:
+                pose = candidate
+                last_cost = candidate_cost
+                damping = max(damping * 0.5, REPROJECTION_LM_DAMPING * 0.1)
+            else:
+                damping = damping * 2.0
+
+        return pose
 
     def pose_measurement(self, detection: AprilTagDetection) -> Optional[np.ndarray]:
         if detection.pose_world_xyz_yaw is None:

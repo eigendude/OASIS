@@ -14,6 +14,7 @@ AprilTag update handling for the EKF core
 
 from __future__ import annotations
 
+import math
 from typing import Optional
 
 import numpy as np
@@ -39,6 +40,10 @@ from oasis_control.localization.ekf.models.apriltag_measurement_model import (
     AprilTagMeasurementModel,
 )
 from oasis_control.localization.ekf.se3 import pose_plus
+
+
+# Nominal pixel noise used to scale AprilTag measurement variance, pixels
+APRILTAG_REPROJ_NOISE_PX: float = 1.0
 
 
 class EkfCoreAprilTagMixin(EkfCoreStateMixin, EkfCoreUtilsMixin):
@@ -109,6 +114,7 @@ class EkfCoreAprilTagMixin(EkfCoreStateMixin, EkfCoreUtilsMixin):
         s: Optional[np.ndarray] = None,
         maha_d2: float = 0.0,
         gate_d2_threshold: float = 0.0,
+        reproj_rms_px: float = 0.0,
     ) -> EkfAprilTagDetectionUpdate:
         z_values: list[float] = [] if z is None else z.tolist()
         z_dim: int = len(z_values) if z_values else 4
@@ -151,7 +157,7 @@ class EkfCoreAprilTagMixin(EkfCoreStateMixin, EkfCoreUtilsMixin):
             s=s_matrix,
             maha_d2=maha_d2,
             gate_d2_threshold=gate_d2_threshold,
-            reproj_rms_px=0.0,
+            reproj_rms_px=reproj_rms_px,
         )
         return EkfAprilTagDetectionUpdate(
             family=detection.family,
@@ -189,9 +195,66 @@ class EkfCoreAprilTagMixin(EkfCoreStateMixin, EkfCoreUtilsMixin):
         t_meas: EkfTime,
         x_lin: np.ndarray,
     ) -> EkfAprilTagDetectionUpdate:
-        z: Optional[np.ndarray] = self._apriltag_model.pose_measurement(detection)
-        if z is None:
+        z_initial: Optional[np.ndarray] = self._apriltag_model.pose_measurement(
+            detection
+        )
+        if z_initial is None:
             return self.build_rejected_apriltag_detection(detection, frame_id, t_meas)
+
+        tag_pose_c: np.ndarray = np.array(
+            [
+                z_initial[0],
+                z_initial[1],
+                z_initial[2],
+                0.0,
+                0.0,
+                z_initial[3],
+            ],
+            dtype=float,
+        )
+
+        # AprilTag updates are driven by reprojection of the detected corners so
+        # the refined pose aligns with the full image-space measurement
+        refined_pose_c: Optional[np.ndarray] = (
+            self._apriltag_model.refine_pose_from_corners(
+                tag_pose_c, detection, self._config.tag_size_m
+            )
+        )
+        if refined_pose_c is None:
+            return self.build_rejected_apriltag_detection(detection, frame_id, t_meas)
+
+        reprojection: Optional[
+            tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+        ] = self._apriltag_model.reprojection_residuals(
+            refined_pose_c, detection, self._config.tag_size_m
+        )
+        if reprojection is None:
+            return self.build_rejected_apriltag_detection(detection, frame_id, t_meas)
+
+        residual_corners: np.ndarray = reprojection[2]
+        reproj_rms_px: float = math.sqrt(
+            float(residual_corners.T @ residual_corners) / residual_corners.size
+        )
+
+        gate_reproj_px: float = self._config.apriltag_reproj_rms_gate_px
+        if gate_reproj_px > 0.0 and reproj_rms_px > gate_reproj_px:
+            return self.build_rejected_apriltag_detection(
+                detection,
+                frame_id,
+                t_meas,
+                reject_reason="reprojection_gate",
+                reproj_rms_px=reproj_rms_px,
+            )
+
+        z: np.ndarray = np.array(
+            [
+                refined_pose_c[0],
+                refined_pose_c[1],
+                refined_pose_c[2],
+                refined_pose_c[5],
+            ],
+            dtype=float,
+        )
 
         z_hat: np.ndarray
         h: np.ndarray
@@ -200,12 +263,13 @@ class EkfCoreAprilTagMixin(EkfCoreStateMixin, EkfCoreUtilsMixin):
         residual: np.ndarray = z - z_hat
         residual[3] = self._wrap_angle(residual[3])
 
+        reproj_scale: float = max(1.0, reproj_rms_px / APRILTAG_REPROJ_NOISE_PX)
         r: np.ndarray = np.diag(
             [
-                self._config.apriltag_pos_var,
-                self._config.apriltag_pos_var,
-                self._config.apriltag_pos_var,
-                self._config.apriltag_yaw_var,
+                self._config.apriltag_pos_var * reproj_scale**2,
+                self._config.apriltag_pos_var * reproj_scale**2,
+                self._config.apriltag_pos_var * reproj_scale**2,
+                self._config.apriltag_yaw_var * reproj_scale**2,
             ]
         )
         s_hat: np.ndarray = h @ self._world_odom_cov @ h.T
@@ -226,6 +290,7 @@ class EkfCoreAprilTagMixin(EkfCoreStateMixin, EkfCoreUtilsMixin):
                 s=s,
                 maha_d2=maha_d2,
                 gate_d2_threshold=gate_d2_threshold,
+                reproj_rms_px=reproj_rms_px,
             )
 
         hp: np.ndarray = h @ self._world_odom_cov
@@ -258,7 +323,7 @@ class EkfCoreAprilTagMixin(EkfCoreStateMixin, EkfCoreUtilsMixin):
             s=EkfMatrix(rows=4, cols=4, data=s.flatten().tolist()),
             maha_d2=maha_d2,
             gate_d2_threshold=gate_d2_threshold,
-            reproj_rms_px=0.0,
+            reproj_rms_px=reproj_rms_px,
         )
         return EkfAprilTagDetectionUpdate(
             family=detection.family,

@@ -57,6 +57,7 @@ def _build_config(*, dt_imu_max: float = 0.5) -> EkfConfig:
         apriltag_pos_var=1.0,
         apriltag_yaw_var=1.0,
         apriltag_gate_d2=0.0,
+        apriltag_reproj_rms_gate_px=0.0,
         tag_size_m=0.16,
         tag_anchor_family="tag36h11",
         tag_anchor_id=0,
@@ -132,6 +133,45 @@ def _build_camera_info() -> CameraInfoData:
             0.0,
         ],
     )
+
+
+def _project_tag_corners(
+    *,
+    pose_world_xyz_yaw: list[float],
+    tag_size_m: float,
+    camera_info: CameraInfoData,
+) -> list[float]:
+    half_size_m: float = 0.5 * tag_size_m
+    tag_corners_t: list[list[float]] = [
+        [-half_size_m, -half_size_m, 0.0],
+        [half_size_m, -half_size_m, 0.0],
+        [half_size_m, half_size_m, 0.0],
+        [-half_size_m, half_size_m, 0.0],
+    ]
+
+    x_t: float = pose_world_xyz_yaw[0]
+    y_t: float = pose_world_xyz_yaw[1]
+    z_t: float = pose_world_xyz_yaw[2]
+    yaw: float = pose_world_xyz_yaw[3]
+    cos_yaw: float = math.cos(yaw)
+    sin_yaw: float = math.sin(yaw)
+
+    fx: float = camera_info.k[0]
+    fy: float = camera_info.k[4]
+    cx: float = camera_info.k[2]
+    cy: float = camera_info.k[5]
+
+    corners_px: list[float] = []
+    corner: list[float]
+    for corner in tag_corners_t:
+        x_c: float = cos_yaw * corner[0] - sin_yaw * corner[1] + x_t
+        y_c: float = sin_yaw * corner[0] + cos_yaw * corner[1] + y_t
+        z_c: float = corner[2] + z_t
+        u_val: float = fx * (x_c / z_c) + cx
+        v_val: float = fy * (y_c / z_c) + cy
+        corners_px.extend([u_val, v_val])
+
+    return corners_px
 
 
 def test_landmark_augmentation_expands_covariance() -> None:
@@ -254,10 +294,11 @@ def test_apriltag_linearization_uses_fixed_state() -> None:
     config: EkfConfig = _build_config()
     core: _RecordingAprilTagEkf = _RecordingAprilTagEkf(config)
 
+    camera_info: CameraInfoData = _build_camera_info()
     camera_event: EkfEvent = EkfEvent(
         t_meas=from_seconds(0.0),
         event_type=EkfEventType.CAMERA_INFO,
-        payload=_build_camera_info(),
+        payload=camera_info,
     )
     core.process_event(camera_event)
 
@@ -266,8 +307,12 @@ def test_apriltag_linearization_uses_fixed_state() -> None:
             family="tag36h11",
             tag_id=1,
             det_index_in_msg=0,
-            corners_px=[0.0] * 8,
-            pose_world_xyz_yaw=[1.0, 0.0, 0.0, 0.1],
+            corners_px=_project_tag_corners(
+                pose_world_xyz_yaw=[1.0, 0.0, 1.0, 0.1],
+                tag_size_m=config.tag_size_m,
+                camera_info=camera_info,
+            ),
+            pose_world_xyz_yaw=[1.0, 0.0, 1.0, 0.1],
             decision_margin=1.0,
             homography=[0.0] * 9,
         ),
@@ -275,8 +320,12 @@ def test_apriltag_linearization_uses_fixed_state() -> None:
             family="tag36h11",
             tag_id=2,
             det_index_in_msg=1,
-            corners_px=[0.0] * 8,
-            pose_world_xyz_yaw=[2.0, 0.5, 0.0, -0.2],
+            corners_px=_project_tag_corners(
+                pose_world_xyz_yaw=[2.0, 0.5, 1.0, -0.2],
+                tag_size_m=config.tag_size_m,
+                camera_info=camera_info,
+            ),
+            pose_world_xyz_yaw=[2.0, 0.5, 1.0, -0.2],
             decision_margin=1.0,
             homography=[0.0] * 9,
         ),

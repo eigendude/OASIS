@@ -64,6 +64,7 @@ def _build_config() -> EkfConfig:
         apriltag_pos_var=1.0,
         apriltag_yaw_var=1.0,
         apriltag_gate_d2=0.0,
+        apriltag_reproj_rms_gate_px=0.0,
         tag_size_m=0.16,
         tag_anchor_family="tag36h11",
         tag_anchor_id=0,

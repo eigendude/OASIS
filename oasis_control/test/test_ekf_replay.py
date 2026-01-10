@@ -36,6 +36,7 @@ def _build_config(
     apriltag_gate_d2: float,
     apriltag_pos_var: float,
     apriltag_yaw_var: float,
+    apriltag_reproj_rms_gate_px: float = 0.0,
 ) -> EkfConfig:
     return EkfConfig(
         world_frame_id="world",
@@ -56,6 +57,7 @@ def _build_config(
         apriltag_pos_var=apriltag_pos_var,
         apriltag_yaw_var=apriltag_yaw_var,
         apriltag_gate_d2=apriltag_gate_d2,
+        apriltag_reproj_rms_gate_px=apriltag_reproj_rms_gate_px,
         tag_size_m=0.16,
         tag_anchor_family="tag36h11",
         tag_anchor_id=0,

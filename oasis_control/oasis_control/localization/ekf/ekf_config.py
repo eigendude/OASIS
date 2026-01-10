@@ -48,6 +48,7 @@ class EkfConfig:
         apriltag_pos_var: AprilTag position variance in m^2
         apriltag_yaw_var: AprilTag yaw variance in rad^2
         apriltag_gate_d2: AprilTag Mahalanobis gate threshold d^2
+        apriltag_reproj_rms_gate_px: AprilTag reprojection RMS gate, pixels
         tag_size_m: AprilTag edge length in meters
         tag_anchor_family: AprilTag family name for world anchor
         tag_anchor_id: AprilTag identifier for world anchor
@@ -82,6 +83,7 @@ class EkfConfig:
     apriltag_pos_var: float
     apriltag_yaw_var: float
     apriltag_gate_d2: float
+    apriltag_reproj_rms_gate_px: float
 
     tag_size_m: float
     tag_anchor_family: str

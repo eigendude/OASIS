@@ -27,6 +27,45 @@ from oasis_control.localization.ekf.se3 import quat_from_rotvec
 from oasis_control.localization.ekf.se3 import quat_to_rpy
 
 
+def _project_tag_corners(
+    *,
+    pose_world_xyz_yaw: list[float],
+    tag_size_m: float,
+    camera_info: CameraInfoData,
+) -> list[float]:
+    half_size_m: float = 0.5 * tag_size_m
+    tag_corners_t: list[list[float]] = [
+        [-half_size_m, -half_size_m, 0.0],
+        [half_size_m, -half_size_m, 0.0],
+        [half_size_m, half_size_m, 0.0],
+        [-half_size_m, half_size_m, 0.0],
+    ]
+
+    x_t: float = pose_world_xyz_yaw[0]
+    y_t: float = pose_world_xyz_yaw[1]
+    z_t: float = pose_world_xyz_yaw[2]
+    yaw: float = pose_world_xyz_yaw[3]
+    cos_yaw: float = math.cos(yaw)
+    sin_yaw: float = math.sin(yaw)
+
+    fx: float = camera_info.k[0]
+    fy: float = camera_info.k[4]
+    cx: float = camera_info.k[2]
+    cy: float = camera_info.k[5]
+
+    corners_px: list[float] = []
+    corner: list[float]
+    for corner in tag_corners_t:
+        x_c: float = cos_yaw * corner[0] - sin_yaw * corner[1] + x_t
+        y_c: float = sin_yaw * corner[0] + cos_yaw * corner[1] + y_t
+        z_c: float = corner[2] + z_t
+        u_val: float = fx * (x_c / z_c) + cx
+        v_val: float = fy * (y_c / z_c) + cy
+        corners_px.extend([u_val, v_val])
+
+    return corners_px
+
+
 def _build_config(
     *, apriltag_pos_var: float = 0.1, apriltag_yaw_var: float = 0.1
 ) -> EkfConfig:
@@ -49,6 +88,7 @@ def _build_config(
         apriltag_pos_var=apriltag_pos_var,
         apriltag_yaw_var=apriltag_yaw_var,
         apriltag_gate_d2=0.0,
+        apriltag_reproj_rms_gate_px=0.0,
         tag_size_m=0.16,
         tag_anchor_family="tag36h11",
         tag_anchor_id=0,
@@ -73,8 +113,17 @@ def _build_imu_sample(
     )
 
 
-def _build_apriltag_detection(*, pose_world_xyz_yaw: list[float]) -> AprilTagDetection:
-    corners_px: list[float] = [0.0] * 8
+def _build_apriltag_detection(
+    *,
+    pose_world_xyz_yaw: list[float],
+    tag_size_m: float,
+    camera_info: CameraInfoData,
+) -> AprilTagDetection:
+    corners_px: list[float] = _project_tag_corners(
+        pose_world_xyz_yaw=pose_world_xyz_yaw,
+        tag_size_m=tag_size_m,
+        camera_info=camera_info,
+    )
     homography: list[float] = [0.0] * 9
     return AprilTagDetection(
         family="tag36h11",
@@ -142,7 +191,9 @@ def test_yaw_wraps_negative_after_measurement_update() -> None:
     core._apriltag_model.set_camera_info(camera_info)
 
     detection: AprilTagDetection = _build_apriltag_detection(
-        pose_world_xyz_yaw=[0.0, 0.0, 0.0, -math.pi - 0.2]
+        pose_world_xyz_yaw=[0.0, 0.0, 1.0, -math.pi - 0.2],
+        tag_size_m=config.tag_size_m,
+        camera_info=camera_info,
     )
     apriltag_data: AprilTagDetectionArrayData = AprilTagDetectionArrayData(
         frame_id="camera",
