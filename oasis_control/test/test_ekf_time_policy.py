@@ -16,7 +16,7 @@ from typing import Optional
 from typing import cast
 
 from oasis_control.localization.ekf.ekf_config import EkfConfig
-from oasis_control.localization.ekf.ekf_core import EkfCore
+from oasis_control.localization.ekf.core.ekf_core import EkfCore
 from oasis_control.localization.ekf.ekf_state import Pose3
 from oasis_control.localization.ekf.ekf_state import TagKey
 from oasis_control.localization.ekf.ekf_types import AprilTagDetection

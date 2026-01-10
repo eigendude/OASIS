@@ -14,7 +14,7 @@ from typing import Iterable
 
 from oasis_control.localization.ekf.ekf_buffer import EkfBuffer
 from oasis_control.localization.ekf.ekf_config import EkfConfig
-from oasis_control.localization.ekf.ekf_core import EkfCore
+from oasis_control.localization.ekf.core.ekf_core import EkfCore
 from oasis_control.localization.ekf.ekf_types import EkfEvent
 from oasis_control.localization.ekf.ekf_types import EkfEventType
 from oasis_control.localization.ekf.ekf_types import EkfImuPacket

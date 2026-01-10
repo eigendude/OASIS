@@ -14,7 +14,7 @@ import math
 
 from oasis_control.localization.ekf.ekf_buffer import EkfBuffer
 from oasis_control.localization.ekf.ekf_config import EkfConfig
-from oasis_control.localization.ekf.ekf_core import EkfCore
+from oasis_control.localization.ekf.core.ekf_core import EkfCore
 from oasis_control.localization.ekf.ekf_state import EkfStateIndex
 from oasis_control.localization.ekf.ekf_state import Pose3
 from oasis_control.localization.ekf.ekf_types import AprilTagDetection

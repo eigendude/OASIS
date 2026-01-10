@@ -29,7 +29,7 @@ from sensor_msgs.msg import MagneticField as MagneticFieldMsg
 
 from oasis_control.localization.ekf.ekf_buffer import EkfBuffer
 from oasis_control.localization.ekf.ekf_config import EkfConfig
-from oasis_control.localization.ekf.ekf_core import EkfCore
+from oasis_control.localization.ekf.core.ekf_core import EkfCore
 from oasis_control.localization.ekf.ekf_types import AprilTagDetection
 from oasis_control.localization.ekf.ekf_types import AprilTagDetectionArrayData
 from oasis_control.localization.ekf.ekf_types import CameraInfoData

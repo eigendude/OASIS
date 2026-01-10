@@ -13,7 +13,7 @@ from __future__ import annotations
 import math
 
 from oasis_control.localization.ekf.ekf_config import EkfConfig
-from oasis_control.localization.ekf.ekf_core import EkfCore
+from oasis_control.localization.ekf.core.ekf_core import EkfCore
 from oasis_control.localization.ekf.ekf_types import AprilTagDetection
 from oasis_control.localization.ekf.ekf_types import AprilTagDetectionArrayData
 from oasis_control.localization.ekf.ekf_types import CameraInfoData

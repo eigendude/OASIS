@@ -9,7 +9,7 @@
 ################################################################################
 
 """
-Compatibility import for EKF core
+Core EKF processing modules
 """
 
 from __future__ import annotations
