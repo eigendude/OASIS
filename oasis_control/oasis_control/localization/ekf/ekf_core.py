@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import math
+from bisect import bisect_right
 from dataclasses import dataclass
 from typing import Optional
 from typing import cast
@@ -74,6 +75,8 @@ class _Checkpoint:
     state: EkfState
     last_imu_time_ns: Optional[int]
     last_imu: Optional[ImuSample]
+    imu_times_ns: list[int]
+    imu_gaps: list["_ImuGap"]
 
 
 @dataclass
@@ -84,8 +87,26 @@ class _StateSnapshot:
     state_frontier: EkfState
     last_imu_time_ns: Optional[int]
     last_imu: Optional[ImuSample]
+    imu_times_ns: list[int]
+    imu_gaps: list["_ImuGap"]
     checkpoints: list[_Checkpoint]
     last_checkpoint_time: Optional[int]
+
+
+@dataclass(frozen=True)
+class _ImuGap:
+    start_ns: int
+    end_ns: int
+    dt_ns: int
+
+
+@dataclass(frozen=True)
+class _ImuCoverageCheck:
+    covered: bool
+    reason: str
+    max_gap_ns: int
+    gap_start_ns: Optional[int]
+    gap_end_ns: Optional[int]
 
 
 class EkfCore:
@@ -106,6 +127,9 @@ class EkfCore:
         self._state_frontier: EkfState = self._state.copy()
         self._last_imu_time_ns: Optional[int] = None
         self._last_imu: Optional[ImuSample] = None
+        self._imu_times_ns: list[int] = []
+        self._imu_gaps: list[_ImuGap] = []
+        self._imu_gap_reject_count: int = 0
         self._checkpoints: list[_Checkpoint] = []
         self._last_checkpoint_time: Optional[int] = None
 
@@ -134,24 +158,36 @@ class EkfCore:
         elif event.event_type == EkfEventType.MAG:
             mag_sample: MagSample = cast(MagSample, event.payload)
             self._ensure_initialized()
-            self._propagate_if_needed(t_meas_ns)
-            mag_update = self.update_with_mag(mag_sample, t_meas)
-            advance_frontier = mag_update.accepted
+            coverage: _ImuCoverageCheck = self._propagate_if_needed(t_meas_ns)
+            if not coverage.covered:
+                mag_update = self._build_rejected_mag_update(
+                    mag_sample, t_meas, reject_reason="imu_gap"
+                )
+            else:
+                mag_update = self.update_with_mag(mag_sample, t_meas)
+                advance_frontier = mag_update.accepted
         elif event.event_type == EkfEventType.APRILTAG:
             apriltag_data: AprilTagDetectionArrayData = cast(
                 AprilTagDetectionArrayData, event.payload
             )
             snapshot: _StateSnapshot = self._snapshot_state()
             self._ensure_initialized()
-            self._propagate_if_needed(t_meas_ns)
-            apriltag_update = self.update_with_apriltags(apriltag_data, t_meas)
-            apriltag_accepted: bool = any(
-                detection.update.accepted for detection in apriltag_update.detections
-            )
-            if apriltag_accepted:
-                advance_frontier = True
-            else:
+            coverage = self._propagate_if_needed(t_meas_ns)
+            if not coverage.covered:
+                apriltag_update = self.build_rejected_apriltag_update(
+                    apriltag_data, t_meas, "imu_gap"
+                )
                 self._restore_snapshot(snapshot)
+            else:
+                apriltag_update = self.update_with_apriltags(apriltag_data, t_meas)
+                apriltag_accepted = any(
+                    detection.update.accepted
+                    for detection in apriltag_update.detections
+                )
+                if apriltag_accepted:
+                    advance_frontier = True
+                else:
+                    self._restore_snapshot(snapshot)
         elif event.event_type == EkfEventType.CAMERA_INFO:
             self._camera_info = cast(CameraInfoData, event.payload)
             self._apriltag_model.set_camera_info(self._camera_info)
@@ -411,6 +447,9 @@ class EkfCore:
         self._state_frontier = self._state.copy()
         self._last_imu_time_ns = None
         self._last_imu = None
+        self._imu_times_ns = []
+        self._imu_gaps = []
+        self._imu_gap_reject_count = 0
         self._checkpoints = []
         self._last_checkpoint_time = None
 
@@ -506,6 +545,32 @@ class EkfCore:
             detections=detections,
         )
 
+    def _build_rejected_mag_update(
+        self, mag_sample: MagSample, t_meas: EkfTime, *, reject_reason: str
+    ) -> EkfUpdateData:
+        z_dim: int = 3
+        zero_matrix: EkfMatrix = EkfMatrix(rows=z_dim, cols=z_dim, data=[0.0] * 9)
+        r: EkfMatrix = EkfMatrix(
+            rows=z_dim, cols=z_dim, data=list(mag_sample.magnetic_field_cov)
+        )
+        return EkfUpdateData(
+            sensor="magnetic_field",
+            frame_id=mag_sample.frame_id,
+            t_meas=t_meas,
+            accepted=False,
+            reject_reason=reject_reason,
+            z_dim=z_dim,
+            z=list(mag_sample.magnetic_field_t),
+            z_hat=[],
+            nu=[],
+            r=r,
+            s_hat=zero_matrix,
+            s=zero_matrix,
+            maha_d2=0.0,
+            gate_d2_threshold=0.0,
+            reproj_rms_px=0.0,
+        )
+
     def _zero_matrix(self, dim: int) -> EkfMatrix:
         return EkfMatrix(rows=dim, cols=dim, data=[0.0] * (dim * dim))
 
@@ -517,6 +582,8 @@ class EkfCore:
             state_frontier=self._state_frontier.copy(),
             last_imu_time_ns=self._last_imu_time_ns,
             last_imu=self._last_imu,
+            imu_times_ns=list(self._imu_times_ns),
+            imu_gaps=list(self._imu_gaps),
             checkpoints=list(self._checkpoints),
             last_checkpoint_time=self._last_checkpoint_time,
         )
@@ -528,6 +595,8 @@ class EkfCore:
         self._state_frontier = snapshot.state_frontier.copy()
         self._last_imu_time_ns = snapshot.last_imu_time_ns
         self._last_imu = snapshot.last_imu
+        self._imu_times_ns = list(snapshot.imu_times_ns)
+        self._imu_gaps = list(snapshot.imu_gaps)
         self._checkpoints = list(snapshot.checkpoints)
         self._last_checkpoint_time = snapshot.last_checkpoint_time
 
@@ -538,12 +607,102 @@ class EkfCore:
         self._initialized = True
         self._state_frontier = self._state.copy()
 
+    def _record_imu_time(self, t_meas_ns: int) -> None:
+        insert_index: int = bisect_right(self._imu_times_ns, t_meas_ns)
+        self._imu_times_ns.insert(insert_index, t_meas_ns)
+
+    def _record_imu_gap(self, start_ns: int, end_ns: int, dt_ns: int) -> None:
+        self._imu_gaps.append(_ImuGap(start_ns=start_ns, end_ns=end_ns, dt_ns=dt_ns))
+        _LOG.warning(
+            "IMU gap detected start_ns=%d end_ns=%d dt_ns=%d max_ns=%d",
+            start_ns,
+            end_ns,
+            dt_ns,
+            self._config.dt_imu_max_ns,
+        )
+
+    def _record_imu_coverage_failure(
+        self, t_start_ns: int, t_end_ns: int, coverage: _ImuCoverageCheck
+    ) -> None:
+        self._imu_gap_reject_count += 1
+        _LOG.warning(
+            (
+                "IMU coverage failed start_ns=%d end_ns=%d max_gap_ns=%d "
+                "gap_start_ns=%s gap_end_ns=%s reason=%s count=%d"
+            ),
+            t_start_ns,
+            t_end_ns,
+            coverage.max_gap_ns,
+            coverage.gap_start_ns,
+            coverage.gap_end_ns,
+            coverage.reason,
+            self._imu_gap_reject_count,
+        )
+
+    def _ensure_imu_coverage(
+        self, t_start_ns: int, t_end_ns: int
+    ) -> _ImuCoverageCheck:
+        if t_end_ns <= t_start_ns:
+            return _ImuCoverageCheck(True, "", 0, None, None)
+        if not self._imu_times_ns:
+            return _ImuCoverageCheck(
+                False, "missing_imu", 0, t_start_ns, t_end_ns
+            )
+        start_index: int = bisect_right(self._imu_times_ns, t_start_ns) - 1
+        if start_index < 0:
+            return _ImuCoverageCheck(
+                False, "missing_imu_before_start", 0, t_start_ns, t_end_ns
+            )
+        prev_time_ns: int = self._imu_times_ns[start_index]
+        lead_gap_ns: int = t_start_ns - prev_time_ns
+        if lead_gap_ns > self._config.dt_imu_max_ns:
+            return _ImuCoverageCheck(
+                False, "imu_gap", lead_gap_ns, prev_time_ns, t_start_ns
+            )
+        max_gap_ns: int = lead_gap_ns
+        gap_start_ns: Optional[int] = prev_time_ns
+        gap_end_ns: Optional[int] = t_start_ns
+        next_index: int = start_index + 1
+        while (
+            next_index < len(self._imu_times_ns)
+            and self._imu_times_ns[next_index] <= t_end_ns
+        ):
+            next_time_ns: int = self._imu_times_ns[next_index]
+            gap_ns: int = next_time_ns - prev_time_ns
+            if gap_ns > max_gap_ns:
+                max_gap_ns = gap_ns
+                gap_start_ns = prev_time_ns
+                gap_end_ns = next_time_ns
+            if gap_ns > self._config.dt_imu_max_ns:
+                return _ImuCoverageCheck(
+                    False, "imu_gap", gap_ns, prev_time_ns, next_time_ns
+                )
+            prev_time_ns = next_time_ns
+            next_index += 1
+        tail_gap_ns: int = t_end_ns - prev_time_ns
+        if tail_gap_ns > max_gap_ns:
+            max_gap_ns = tail_gap_ns
+            gap_start_ns = prev_time_ns
+            gap_end_ns = t_end_ns
+        if tail_gap_ns > self._config.dt_imu_max_ns:
+            return _ImuCoverageCheck(
+                False, "imu_gap", tail_gap_ns, prev_time_ns, t_end_ns
+            )
+        return _ImuCoverageCheck(
+            True,
+            "",
+            max_gap_ns,
+            gap_start_ns,
+            gap_end_ns,
+        )
+
     def _process_imu_packet(
         self,
         imu_packet: EkfImuPacket,
         t_meas_ns: int,
     ) -> None:
         imu_sample: ImuSample = imu_packet.imu
+        self._record_imu_time(t_meas_ns)
         if self._last_imu is None or self._last_imu_time_ns is None:
             self._last_imu = imu_sample
             self._last_imu_time_ns = t_meas_ns
@@ -554,14 +713,7 @@ class EkfCore:
             self._last_imu_time_ns = t_meas_ns
             return
         if imu_dt_ns > self._config.dt_imu_max_ns:
-            # Advance time without propagation to keep the frontier consistent
-            # Gaps are rejected (not skipped) to avoid silently integrating through
-            # missing dynamics
-            _LOG.info(
-                "Skipping IMU propagation, dt_ns %d exceeds max %d",
-                imu_dt_ns,
-                self._config.dt_imu_max_ns,
-            )
+            self._record_imu_gap(self._last_imu_time_ns, t_meas_ns, imu_dt_ns)
             self._last_imu = imu_sample
             self._last_imu_time_ns = t_meas_ns
             return
@@ -570,23 +722,29 @@ class EkfCore:
         self._last_imu = imu_sample
         self._last_imu_time_ns = t_meas_ns
 
-    def _propagate_if_needed(self, t_meas_ns: int) -> None:
+    def _propagate_if_needed(self, t_meas_ns: int) -> _ImuCoverageCheck:
         if self._t_frontier_ns is None:
-            return
+            return _ImuCoverageCheck(True, "", 0, None, None)
         if t_meas_ns <= self._t_frontier_ns:
-            return
-        if self._last_imu is None or self._last_imu_time_ns is None:
-            return
-        dt_total_ns: int = t_meas_ns - self._t_frontier_ns
-        if dt_total_ns > self._config.dt_imu_max_ns:
-            _LOG.info(
-                "Skipping propagation, dt_ns %d exceeds max %d",
-                dt_total_ns,
-                self._config.dt_imu_max_ns,
+            return _ImuCoverageCheck(True, "", 0, None, None)
+        coverage: _ImuCoverageCheck = self._ensure_imu_coverage(
+            self._t_frontier_ns, t_meas_ns
+        )
+        if not coverage.covered:
+            self._record_imu_coverage_failure(
+                self._t_frontier_ns, t_meas_ns, coverage
             )
-            return
+            return coverage
+        if self._last_imu is None or self._last_imu_time_ns is None:
+            coverage = _ImuCoverageCheck(
+                False, "missing_imu", 0, self._t_frontier_ns, t_meas_ns
+            )
+            self._record_imu_coverage_failure(
+                self._t_frontier_ns, t_meas_ns, coverage
+            )
+            return coverage
         self._propagate_with_imu(self._last_imu, self._t_frontier_ns, t_meas_ns)
-        return
+        return coverage
 
     def _propagate_with_imu(
         self, imu_sample: ImuSample, t_start_ns: int, t_end_ns: int
@@ -751,6 +909,8 @@ class EkfCore:
                 state=self._state.copy(),
                 last_imu_time_ns=self._last_imu_time_ns,
                 last_imu=self._last_imu,
+                imu_times_ns=list(self._imu_times_ns),
+                imu_gaps=list(self._imu_gaps),
             )
         )
         self._last_checkpoint_time = t_meas_ns
@@ -775,6 +935,8 @@ class EkfCore:
         self._state = checkpoint.state.copy()
         self._last_imu_time_ns = checkpoint.last_imu_time_ns
         self._last_imu = checkpoint.last_imu
+        self._imu_times_ns = list(checkpoint.imu_times_ns)
+        self._imu_gaps = list(checkpoint.imu_gaps)
         self._t_frontier_ns = checkpoint.t_meas_ns
         self._state_frontier = self._state.copy()
         self._checkpoints = [checkpoint]
@@ -786,6 +948,9 @@ class EkfCore:
         self._t_frontier_ns = t_meas_ns
         self._last_imu_time_ns = None
         self._last_imu = None
+        self._imu_times_ns = []
+        self._imu_gaps = []
+        self._imu_gap_reject_count = 0
         self._state_frontier = self._state.copy()
         self._checkpoints = []
         self._last_checkpoint_time = None
