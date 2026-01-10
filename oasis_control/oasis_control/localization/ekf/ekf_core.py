@@ -14,10 +14,12 @@ Core EKF processing logic
 
 from __future__ import annotations
 
+import importlib.util
 import logging
 import math
 from bisect import bisect_right
 from dataclasses import dataclass
+from types import ModuleType
 from typing import Optional
 from typing import cast
 
@@ -59,8 +61,11 @@ from oasis_control.localization.ekf.models.mag_measurement_model import (
     MagMeasurementModel,
 )
 from oasis_control.localization.ekf.se3 import pose_compose
+from oasis_control.localization.ekf.se3 import pose_inverse
 from oasis_control.localization.ekf.se3 import pose_plus
+from oasis_control.localization.ekf.se3 import quat_from_rotation_matrix
 from oasis_control.localization.ekf.se3 import quat_to_rpy
+from oasis_control.localization.ekf.se3 import rotvec_from_quat
 
 
 _EVENT_ORDER: dict[EkfEventType, int] = {
@@ -73,7 +78,33 @@ _EVENT_ORDER: dict[EkfEventType, int] = {
 # Nanoseconds per second for time conversions
 _NS_PER_S: int = 1_000_000_000
 
+# Pixel noise standard deviation for AprilTag corners in pixels
+_APRILTAG_BASE_SIGMA_PX: float = 1.0
+
+# Decision margin reference for inflating pixel noise
+_APRILTAG_DECISION_MARGIN_REF: float = 10.0
+
+# Minimum absolute homography determinant for gating
+_APRILTAG_HOMOGRAPHY_DET_MIN: float = 1.0e-12
+
+# Maximum RMS reprojection error allowed for AprilTag updates in pixels
+_APRILTAG_REPROJ_RMS_MAX_PX: float = 5.0
+
+# Finite-difference translation step for AprilTag Jacobians in meters
+_APRILTAG_FD_POS_EPS_M: float = 1.0e-4
+
+# Finite-difference rotation step for AprilTag Jacobians in radians
+_APRILTAG_FD_ROT_EPS_RAD: float = 1.0e-4
+
 _LOG: logging.Logger = logging.getLogger(__name__)
+
+_CV2_AVAILABLE: bool = importlib.util.find_spec("cv2") is not None
+if _CV2_AVAILABLE:
+    import cv2 as _cv2
+
+    cv2: ModuleType = _cv2
+else:
+    cv2 = None
 
 
 @dataclass
@@ -118,6 +149,17 @@ class _ImuCoverageCheck:
     max_gap_ns: int
     gap_start_ns: Optional[int]
     gap_end_ns: Optional[int]
+
+
+@dataclass(frozen=True)
+class _AprilTagLinearization:
+    tag_key: TagKey
+    z: np.ndarray
+    z_hat: np.ndarray
+    residual: np.ndarray
+    h: np.ndarray
+    r: np.ndarray
+    reproj_rms_px: float
 
 
 class EkfCore:
@@ -211,8 +253,9 @@ class EkfCore:
                 else:
                     self._restore_snapshot(snapshot)
         elif event.event_type == EkfEventType.CAMERA_INFO:
-            self._camera_info = cast(CameraInfoData, event.payload)
-            self._apriltag_model.set_camera_info(self._camera_info)
+            if self._camera_info is None:
+                self._camera_info = cast(CameraInfoData, event.payload)
+                self._apriltag_model.set_camera_info(self._camera_info)
 
         if advance_frontier:
             self._set_frontier(t_meas)
@@ -357,19 +400,36 @@ class EkfCore:
                 apriltag_data, t_meas, "Unsupported distortion model"
             )
 
+        if self._config.tag_size_m <= 0.0:
+            return self.build_rejected_apriltag_update(
+                apriltag_data, t_meas, "Invalid tag size"
+            )
+
+        anchor_key: TagKey = TagKey(
+            family=self._config.tag_anchor_family,
+            tag_id=self._config.tag_anchor_id,
+        )
+        _ = self._state.ensure_landmark(anchor_key)
+
+        x_lin_state: EkfState = self._state.copy()
+
         detections_sorted: list[AprilTagDetection] = sorted(
             apriltag_data.detections, key=lambda det: (det.family, det.tag_id)
         )
         detections: list[EkfAprilTagDetectionUpdate] = []
-        # Linearize once per message to keep per-detection updates deterministic
-        x_lin: np.ndarray = self._world_base_legacy_state()
         for detection in detections_sorted:
             tag_key: TagKey = TagKey(family=detection.family, tag_id=detection.tag_id)
-            self._state.ensure_landmark(tag_key)
-            detection_update: EkfAprilTagDetectionUpdate = (
-                self._update_with_apriltag_detection(
-                    detection, apriltag_data.frame_id, t_meas, x_lin
-                )
+            linearization: Optional[_AprilTagLinearization]
+            rejected: Optional[EkfAprilTagDetectionUpdate]
+            linearization, rejected = self._linearize_apriltag_detection(
+                detection, apriltag_data.frame_id, t_meas, x_lin_state, tag_key
+            )
+            if linearization is None:
+                detections.append(cast(EkfAprilTagDetectionUpdate, rejected))
+                continue
+
+            detection_update: EkfAprilTagDetectionUpdate = self._apply_apriltag_update(
+                detection, apriltag_data.frame_id, t_meas, linearization
             )
             detections.append(detection_update)
 
@@ -543,9 +603,10 @@ class EkfCore:
         s: Optional[np.ndarray] = None,
         maha_d2: float = 0.0,
         gate_d2_threshold: float = 0.0,
+        reproj_rms_px: float = 0.0,
     ) -> EkfAprilTagDetectionUpdate:
         z_values: list[float] = [] if z is None else z.tolist()
-        z_dim: int = len(z_values) if z_values else 4
+        z_dim: int = len(z_values) if z_values else 8
         if not z_values:
             z_values = self._nan_list(z_dim)
         z_hat_values: list[float] = (
@@ -585,7 +646,7 @@ class EkfCore:
             s=s_matrix,
             maha_d2=maha_d2,
             gate_d2_threshold=gate_d2_threshold,
-            reproj_rms_px=0.0,
+            reproj_rms_px=reproj_rms_px,
         )
         return EkfAprilTagDetectionUpdate(
             family=detection.family,
@@ -881,34 +942,149 @@ class EkfCore:
             return
         self._state.covariance = self._state.covariance + q
 
-    def _update_with_apriltag_detection(
+    def _linearize_apriltag_detection(
         self,
         detection: AprilTagDetection,
         frame_id: str,
         t_meas: EkfTime,
-        x_lin: np.ndarray,
-    ) -> EkfAprilTagDetectionUpdate:
-        z: Optional[np.ndarray] = self._apriltag_model.pose_measurement(detection)
-        if z is None:
-            return self.build_rejected_apriltag_detection(detection, frame_id, t_meas)
+        x_lin_state: EkfState,
+        tag_key: TagKey,
+    ) -> tuple[Optional[_AprilTagLinearization], Optional[EkfAprilTagDetectionUpdate]]:
+        if len(detection.corners_px) != 8:
+            rejected: EkfAprilTagDetectionUpdate = (
+                self.build_rejected_apriltag_detection(
+                    detection,
+                    frame_id,
+                    t_meas,
+                    reject_reason="invalid_corners",
+                )
+            )
+            return None, rejected
 
-        z_hat: np.ndarray
-        h: np.ndarray
-        z_hat, h = self._apriltag_model.linearize_pose(x_lin)
-        h = self._lift_world_odom_jacobian(h)
-        residual: np.ndarray = z - z_hat
-        residual[3] = self._wrap_angle(residual[3])
+        z: np.ndarray = np.asarray(detection.corners_px, dtype=float).reshape(-1)
+        if not np.all(np.isfinite(z)):
+            rejected = self.build_rejected_apriltag_detection(
+                detection,
+                frame_id,
+                t_meas,
+                reject_reason="invalid_corners",
+                z=z,
+            )
+            return None, rejected
+        homography: Optional[np.ndarray] = self._homography_matrix(detection)
+        if homography is None:
+            rejected = self.build_rejected_apriltag_detection(
+                detection,
+                frame_id,
+                t_meas,
+                reject_reason="invalid_homography",
+                z=z,
+            )
+            return None, rejected
 
-        r: np.ndarray = np.diag(
-            [
-                self._config.apriltag_pos_var,
-                self._config.apriltag_pos_var,
-                self._config.apriltag_pos_var,
-                self._config.apriltag_yaw_var,
-            ]
+        det_value: float = float(np.linalg.det(homography))
+        if abs(det_value) < _APRILTAG_HOMOGRAPHY_DET_MIN:
+            rejected = self.build_rejected_apriltag_detection(
+                detection,
+                frame_id,
+                t_meas,
+                reject_reason="homography_singular",
+                z=z,
+            )
+            return None, rejected
+
+        if x_lin_state.landmark_pose(tag_key) is None:
+            init_pose: Optional[Pose3] = self._initialize_tag_from_detection(
+                detection, x_lin_state
+            )
+            if init_pose is None:
+                rejected = self.build_rejected_apriltag_detection(
+                    detection,
+                    frame_id,
+                    t_meas,
+                    reject_reason="landmark_init_failed",
+                    z=z,
+                )
+                return None, rejected
+            if self._state.ensure_landmark(tag_key):
+                self._state.set_landmark_pose(tag_key, init_pose)
+            else:
+                self._state.set_landmark_pose(tag_key, init_pose)
+            if x_lin_state.ensure_landmark(tag_key):
+                x_lin_state.set_landmark_pose(tag_key, init_pose)
+            else:
+                x_lin_state.set_landmark_pose(tag_key, init_pose)
+
+        z_hat: Optional[np.ndarray] = self._predict_apriltag_corners(
+            x_lin_state, tag_key
         )
-        s_hat: np.ndarray = h @ self._world_odom_cov @ h.T
+        if z_hat is None:
+            rejected = self.build_rejected_apriltag_detection(
+                detection,
+                frame_id,
+                t_meas,
+                reject_reason="projection_failed",
+                z=z,
+            )
+            return None, rejected
+
+        residual: np.ndarray = z - z_hat
+        reproj_rms_px: float = self._reprojection_rms(residual)
+        if reproj_rms_px > _APRILTAG_REPROJ_RMS_MAX_PX:
+            rejected = self.build_rejected_apriltag_detection(
+                detection,
+                frame_id,
+                t_meas,
+                reject_reason="reprojection_rms",
+                z=z,
+                z_hat=z_hat,
+                residual=residual,
+                reproj_rms_px=reproj_rms_px,
+            )
+            return None, rejected
+
+        h: Optional[np.ndarray] = self._apriltag_jacobian_fd(x_lin_state, tag_key)
+        if h is None:
+            rejected = self.build_rejected_apriltag_detection(
+                detection,
+                frame_id,
+                t_meas,
+                reject_reason="jacobian_failed",
+                z=z,
+                z_hat=z_hat,
+                residual=residual,
+                reproj_rms_px=reproj_rms_px,
+            )
+            return None, rejected
+
+        sigma_px: float = self._apriltag_sigma_px(detection)
+        r: np.ndarray = np.eye(8, dtype=float) * (sigma_px**2)
+
+        linearization = _AprilTagLinearization(
+            tag_key=tag_key,
+            z=z,
+            z_hat=z_hat,
+            residual=residual,
+            h=h,
+            r=r,
+            reproj_rms_px=reproj_rms_px,
+        )
+        return linearization, None
+
+    def _apply_apriltag_update(
+        self,
+        detection: AprilTagDetection,
+        frame_id: str,
+        t_meas: EkfTime,
+        linearization: _AprilTagLinearization,
+    ) -> EkfAprilTagDetectionUpdate:
+        h: np.ndarray = linearization.h
+        r: np.ndarray = linearization.r
+        residual: np.ndarray = linearization.residual
+        s_hat: np.ndarray = h @ self._state.covariance @ h.T
+        s_hat = 0.5 * (s_hat + s_hat.T)
         s: np.ndarray = s_hat + r
+        s = 0.5 * (s + s.T)
         maha_d2: float = float(residual.T @ np.linalg.solve(s, residual))
         gate_d2_threshold: float = self._config.apriltag_gate_d2
         if gate_d2_threshold > 0.0 and maha_d2 > gate_d2_threshold:
@@ -917,29 +1093,25 @@ class EkfCore:
                 frame_id,
                 t_meas,
                 reject_reason="mahalanobis_gate",
-                z=z,
-                z_hat=z_hat,
-                residual=residual,
+                z=linearization.z,
+                z_hat=linearization.z_hat,
+                residual=linearization.residual,
                 r=r,
                 s_hat=s_hat,
                 s=s,
                 maha_d2=maha_d2,
                 gate_d2_threshold=gate_d2_threshold,
+                reproj_rms_px=linearization.reproj_rms_px,
             )
 
-        hp: np.ndarray = h @ self._world_odom_cov
+        hp: np.ndarray = h @ self._state.covariance
         k_gain: np.ndarray = np.linalg.solve(s.T, hp).T
-
         delta: np.ndarray = k_gain @ residual
-        self._world_odom.translation_m, self._world_odom.rotation_wxyz = pose_plus(
-            self._world_odom.translation_m,
-            self._world_odom.rotation_wxyz,
-            delta,
-        )
-        identity: np.ndarray = np.eye(6, dtype=float)
+        self._state.apply_delta(delta)
+        identity: np.ndarray = np.eye(self._state.index.total_dim, dtype=float)
         temp: np.ndarray = identity - k_gain @ h
-        self._world_odom_cov = (
-            temp @ self._world_odom_cov @ temp.T + k_gain @ r @ k_gain.T
+        self._state.covariance = (
+            temp @ self._state.covariance @ temp.T + k_gain @ r @ k_gain.T
         )
 
         update: EkfUpdateData = EkfUpdateData(
@@ -948,16 +1120,16 @@ class EkfCore:
             t_meas=t_meas,
             accepted=True,
             reject_reason="",
-            z_dim=4,
-            z=z.tolist(),
-            z_hat=z_hat.tolist(),
-            nu=residual.tolist(),
-            r=EkfMatrix(rows=4, cols=4, data=r.flatten().tolist()),
-            s_hat=EkfMatrix(rows=4, cols=4, data=s_hat.flatten().tolist()),
-            s=EkfMatrix(rows=4, cols=4, data=s.flatten().tolist()),
+            z_dim=8,
+            z=linearization.z.tolist(),
+            z_hat=linearization.z_hat.tolist(),
+            nu=linearization.residual.tolist(),
+            r=EkfMatrix(rows=8, cols=8, data=r.flatten().tolist()),
+            s_hat=EkfMatrix(rows=8, cols=8, data=s_hat.flatten().tolist()),
+            s=EkfMatrix(rows=8, cols=8, data=s.flatten().tolist()),
             maha_d2=maha_d2,
             gate_d2_threshold=gate_d2_threshold,
-            reproj_rms_px=0.0,
+            reproj_rms_px=linearization.reproj_rms_px,
         )
         return EkfAprilTagDetectionUpdate(
             family=detection.family,
@@ -965,6 +1137,242 @@ class EkfCore:
             det_index_in_msg=detection.det_index_in_msg,
             update=update,
         )
+
+    def _homography_matrix(self, detection: AprilTagDetection) -> Optional[np.ndarray]:
+        if len(detection.homography) != 9:
+            return None
+        homography: np.ndarray = np.asarray(detection.homography, dtype=float).reshape(
+            3, 3
+        )
+        if not np.all(np.isfinite(homography)):
+            return None
+        return homography
+
+    def _initialize_tag_from_detection(
+        self, detection: AprilTagDetection, x_lin_state: EkfState
+    ) -> Optional[Pose3]:
+        if self._camera_info is None:
+            return None
+        homography: Optional[np.ndarray] = self._homography_matrix(detection)
+        if homography is None:
+            return None
+
+        t_ctag: np.ndarray
+        q_ctag: np.ndarray
+        pose_ctag: Optional[tuple[np.ndarray, np.ndarray]] = (
+            self._solve_pnp_pose(detection, homography)
+        )
+        if pose_ctag is None:
+            return None
+        t_ctag, q_ctag = pose_ctag
+
+        t_wb: np.ndarray = x_lin_state.pose_ob.translation_m
+        q_wb: np.ndarray = x_lin_state.pose_ob.rotation_wxyz
+        t_bc: np.ndarray = x_lin_state.extrinsic_bc.translation_m
+        q_bc: np.ndarray = x_lin_state.extrinsic_bc.rotation_wxyz
+        t_cb: np.ndarray
+        q_cb: np.ndarray
+        t_cb, q_cb = pose_inverse(t_bc, q_bc)
+        t_wc: np.ndarray
+        q_wc: np.ndarray
+        t_wc, q_wc = pose_compose(t_wb, q_wb, t_cb, q_cb)
+        t_wtag: np.ndarray
+        q_wtag: np.ndarray
+        t_wtag, q_wtag = pose_compose(t_wc, q_wc, t_ctag, q_ctag)
+        return Pose3(translation_m=t_wtag, rotation_wxyz=q_wtag)
+
+    def _solve_pnp_pose(
+        self, detection: AprilTagDetection, homography: np.ndarray
+    ) -> Optional[tuple[np.ndarray, np.ndarray]]:
+        camera_matrix: Optional[np.ndarray] = self._apriltag_model.camera_matrix()
+        if camera_matrix is None:
+            return None
+
+        if _CV2_AVAILABLE and cv2 is not None:
+            pose: Optional[tuple[np.ndarray, np.ndarray]] = (
+                self._solve_pnp_pose_cv(detection, homography, camera_matrix)
+            )
+            if pose is not None:
+                return pose
+
+        return self._solve_pnp_pose_homography(homography, camera_matrix)
+
+    def _solve_pnp_pose_cv(
+        self,
+        detection: AprilTagDetection,
+        homography: np.ndarray,
+        camera_matrix: np.ndarray,
+    ) -> Optional[tuple[np.ndarray, np.ndarray]]:
+        tag_corners: Optional[np.ndarray] = self._apriltag_model.tag_corners(
+            self._config.tag_size_m
+        )
+        if tag_corners is None:
+            return None
+        image_points: np.ndarray = np.asarray(
+            detection.corners_px, dtype=float
+        ).reshape(4, 2)
+        dist_coeffs: Optional[np.ndarray] = self._apriltag_model.distortion_coeffs()
+        if dist_coeffs is None:
+            dist_coeffs = np.zeros(0, dtype=float)
+
+        initial_pose: Optional[tuple[np.ndarray, np.ndarray]] = (
+            self._solve_pnp_pose_homography(homography, camera_matrix)
+        )
+        use_guess: bool = initial_pose is not None
+        rvec: Optional[np.ndarray] = None
+        tvec: Optional[np.ndarray] = None
+        if initial_pose is not None:
+            tvec = initial_pose[0].reshape(3, 1)
+            rotvec: np.ndarray = rotvec_from_quat(initial_pose[1])
+            rvec = rotvec.reshape(3, 1)
+
+        success: bool
+        rvec_out: np.ndarray
+        tvec_out: np.ndarray
+        success, rvec_out, tvec_out = cv2.solvePnP(
+            tag_corners,
+            image_points,
+            camera_matrix,
+            dist_coeffs,
+            rvec=rvec,
+            tvec=tvec,
+            useExtrinsicGuess=use_guess,
+            flags=cv2.SOLVEPNP_ITERATIVE,
+        )
+        if not success:
+            return None
+
+        rot_mat: np.ndarray
+        rot_mat, _ = cv2.Rodrigues(rvec_out)
+        q_ctag: np.ndarray = quat_from_rotation_matrix(rot_mat)
+        t_ctag: np.ndarray = tvec_out.reshape(3)
+        return t_ctag, q_ctag
+
+    def _solve_pnp_pose_homography(
+        self, homography: np.ndarray, camera_matrix: np.ndarray
+    ) -> Optional[tuple[np.ndarray, np.ndarray]]:
+        if self._config.tag_size_m <= 0.0:
+            return None
+        h_scaled: np.ndarray = homography.copy()
+
+        # Homography tag units assume [-1, 1] corners, scale to meters
+        tag_half_size_m: float = 0.5 * self._config.tag_size_m
+        h_scaled[:, 0] *= tag_half_size_m
+        h_scaled[:, 1] *= tag_half_size_m
+
+        k_inv: np.ndarray = np.linalg.inv(camera_matrix)
+        b_mat: np.ndarray = k_inv @ h_scaled
+        b1: np.ndarray = b_mat[:, 0]
+        b2: np.ndarray = b_mat[:, 1]
+        b3: np.ndarray = b_mat[:, 2]
+        norm: float = 0.5 * (float(np.linalg.norm(b1)) + float(np.linalg.norm(b2)))
+        if norm <= 0.0:
+            return None
+
+        r1: np.ndarray = b1 / norm
+        r2: np.ndarray = b2 / norm
+        r3: np.ndarray = np.cross(r1, r2)
+        t_ctag: np.ndarray = b3 / norm
+        rot_mat: np.ndarray = np.column_stack((r1, r2, r3))
+        u_mat: np.ndarray
+        vt_mat: np.ndarray
+        u_mat, _, vt_mat = np.linalg.svd(rot_mat)
+        rot_mat = u_mat @ vt_mat
+        if float(np.linalg.det(rot_mat)) < 0.0:
+            rot_mat = u_mat @ np.diag([1.0, 1.0, -1.0]) @ vt_mat
+        q_ctag: np.ndarray = quat_from_rotation_matrix(rot_mat)
+        return t_ctag, q_ctag
+
+    def _predict_apriltag_corners(
+        self, state: EkfState, tag_key: TagKey
+    ) -> Optional[np.ndarray]:
+        tag_pose: Optional[Pose3] = state.landmark_pose(tag_key)
+        if tag_pose is None:
+            return None
+
+        t_wb: np.ndarray = state.pose_ob.translation_m
+        q_wb: np.ndarray = state.pose_ob.rotation_wxyz
+        t_bc: np.ndarray = state.extrinsic_bc.translation_m
+        q_bc: np.ndarray = state.extrinsic_bc.rotation_wxyz
+        t_cb: np.ndarray
+        q_cb: np.ndarray
+        t_cb, q_cb = pose_inverse(t_bc, q_bc)
+        t_wc: np.ndarray
+        q_wc: np.ndarray
+        t_wc, q_wc = pose_compose(t_wb, q_wb, t_cb, q_cb)
+        t_cw: np.ndarray
+        q_cw: np.ndarray
+        t_cw, q_cw = pose_inverse(t_wc, q_wc)
+        t_ctag: np.ndarray
+        q_ctag: np.ndarray
+        t_ctag, q_ctag = pose_compose(
+            t_cw,
+            q_cw,
+            tag_pose.translation_m,
+            tag_pose.rotation_wxyz,
+        )
+        rpy_ctag: np.ndarray = quat_to_rpy(q_ctag)
+        tag_pose_c: np.ndarray = np.concatenate((t_ctag, rpy_ctag), axis=0)
+        return self._apriltag_model.project_tag_corners(
+            tag_pose_c, self._config.tag_size_m
+        )
+
+    def _apriltag_jacobian_fd(
+        self, x_lin_state: EkfState, tag_key: TagKey
+    ) -> Optional[np.ndarray]:
+        base_prediction: Optional[np.ndarray] = self._predict_apriltag_corners(
+            x_lin_state, tag_key
+        )
+        if base_prediction is None:
+            return None
+
+        total_dim: int = x_lin_state.index.total_dim
+        jacobian: np.ndarray = np.zeros((8, total_dim), dtype=float)
+
+        pose_slice: slice = x_lin_state.index.pose
+        extrinsic_slice: slice = x_lin_state.index.extrinsic_bc
+        landmark_slice: Optional[slice] = x_lin_state.landmark_slice(tag_key)
+        if landmark_slice is None:
+            return None
+
+        slices: list[slice] = [pose_slice, extrinsic_slice, landmark_slice]
+        for tag_slice in slices:
+            for offset in range(6):
+                eps: float = (
+                    _APRILTAG_FD_POS_EPS_M
+                    if offset < 3
+                    else _APRILTAG_FD_ROT_EPS_RAD
+                )
+                delta_vec: np.ndarray = np.zeros(total_dim, dtype=float)
+                delta_vec[tag_slice.start + offset] = eps
+                state_plus: EkfState = x_lin_state.copy()
+                state_minus: EkfState = x_lin_state.copy()
+                state_plus.apply_delta(delta_vec)
+                state_minus.apply_delta(-delta_vec)
+                z_plus: Optional[np.ndarray] = self._predict_apriltag_corners(
+                    state_plus, tag_key
+                )
+                z_minus: Optional[np.ndarray] = self._predict_apriltag_corners(
+                    state_minus, tag_key
+                )
+                if z_plus is None or z_minus is None:
+                    return None
+                jacobian[:, tag_slice.start + offset] = (z_plus - z_minus) / (
+                    2.0 * eps
+                )
+        return jacobian
+
+    def _apriltag_sigma_px(self, detection: AprilTagDetection) -> float:
+        sigma_px: float = _APRILTAG_BASE_SIGMA_PX
+        decision_margin: float = detection.decision_margin
+        if math.isfinite(decision_margin) and decision_margin > 0.0:
+            scale: float = _APRILTAG_DECISION_MARGIN_REF / decision_margin
+            sigma_px = sigma_px * max(1.0, scale)
+        return sigma_px
+
+    def _reprojection_rms(self, residual: np.ndarray) -> float:
+        residual_vec: np.ndarray = np.asarray(residual, dtype=float).reshape(-1)
+        return float(np.sqrt(np.mean(residual_vec**2)))
 
     def _wrap_angle(self, angle: float) -> float:
         wrapped: float = (angle + math.pi) % (2.0 * math.pi) - math.pi

@@ -163,6 +163,47 @@ def quat_to_rotation_matrix(quat_wxyz: np.ndarray) -> np.ndarray:
     )
 
 
+def quat_from_rotation_matrix(rotation: np.ndarray) -> np.ndarray:
+    """
+    Convert a rotation matrix to a quaternion in wxyz order
+    """
+
+    rot: np.ndarray = np.asarray(rotation, dtype=float).reshape(3, 3)
+    trace: float = float(np.trace(rot))
+    w: float = 0.0
+    x: float = 0.0
+    y: float = 0.0
+    z: float = 0.0
+    scale: float = 0.0
+    if trace > 0.0:
+        scale = math.sqrt(trace + 1.0) * 2.0
+        w = 0.25 * scale
+        x = (rot[2, 1] - rot[1, 2]) / scale
+        y = (rot[0, 2] - rot[2, 0]) / scale
+        z = (rot[1, 0] - rot[0, 1]) / scale
+    elif rot[0, 0] > rot[1, 1] and rot[0, 0] > rot[2, 2]:
+        scale = math.sqrt(1.0 + rot[0, 0] - rot[1, 1] - rot[2, 2]) * 2.0
+        w = (rot[2, 1] - rot[1, 2]) / scale
+        x = 0.25 * scale
+        y = (rot[0, 1] + rot[1, 0]) / scale
+        z = (rot[0, 2] + rot[2, 0]) / scale
+    elif rot[1, 1] > rot[2, 2]:
+        scale = math.sqrt(1.0 + rot[1, 1] - rot[0, 0] - rot[2, 2]) * 2.0
+        w = (rot[0, 2] - rot[2, 0]) / scale
+        x = (rot[0, 1] + rot[1, 0]) / scale
+        y = 0.25 * scale
+        z = (rot[1, 2] + rot[2, 1]) / scale
+    else:
+        scale = math.sqrt(1.0 + rot[2, 2] - rot[0, 0] - rot[1, 1]) * 2.0
+        w = (rot[1, 0] - rot[0, 1]) / scale
+        x = (rot[0, 2] + rot[2, 0]) / scale
+        y = (rot[1, 2] + rot[2, 1]) / scale
+        z = 0.25 * scale
+
+    quat: np.ndarray = np.array([w, x, y, z], dtype=float)
+    return normalize_quaternion(quat)
+
+
 def quat_to_rpy(quat_wxyz: np.ndarray) -> np.ndarray:
     """
     Convert quaternion in wxyz order to roll, pitch, yaw

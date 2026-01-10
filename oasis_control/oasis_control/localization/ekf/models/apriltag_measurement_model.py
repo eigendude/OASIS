@@ -90,6 +90,35 @@ class AprilTagMeasurementModel:
         coeffs: np.ndarray = np.asarray(coeffs_list, dtype=float)
         self._distortion_coeffs = coeffs
 
+    def camera_matrix(self) -> Optional[np.ndarray]:
+        if self._k_matrix is None:
+            return None
+        return self._k_matrix.copy()
+
+    def distortion_coeffs(self) -> Optional[np.ndarray]:
+        if self._distortion_coeffs is None:
+            return None
+        return self._distortion_coeffs.copy()
+
+    def tag_corners(self, tag_size_m: float) -> Optional[np.ndarray]:
+        if tag_size_m <= 0.0:
+            return None
+        return self._tag_corners(tag_size_m)
+
+    def project_tag_corners(
+        self, tag_pose_c: np.ndarray, tag_size_m: float
+    ) -> Optional[np.ndarray]:
+        """
+        Project tag corners in the camera frame into pixel coordinates
+        """
+
+        if tag_size_m <= 0.0:
+            return None
+        tag_pose_c_array: np.ndarray = np.asarray(tag_pose_c, dtype=float).reshape(-1)
+        if tag_pose_c_array.shape[0] < 6:
+            return None
+        return self._project_tag_corners(tag_pose_c_array[:6], tag_size_m)
+
     def reprojection_residuals(
         self, tag_pose_c: np.ndarray, detection: AprilTagDetection, tag_size_m: float
     ) -> Optional[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]]:
