@@ -118,8 +118,8 @@ class EkfState:
 
     def __init__(self, config: EkfConfig) -> None:
         self._config: EkfConfig = config
-        self.pose_wb: Pose3 = self._identity_pose()
-        self.vel_w_mps: np.ndarray = np.zeros(3, dtype=float)
+        self.pose_ob: Pose3 = self._identity_pose()
+        self.vel_o_mps: np.ndarray = np.zeros(3, dtype=float)
         self.imu_bias_accel_mps2: np.ndarray = np.zeros(3, dtype=float)
         self.imu_accel_a: np.ndarray = np.eye(3, dtype=float)
         self.imu_bias_gyro_rps: np.ndarray = np.zeros(3, dtype=float)
@@ -162,8 +162,8 @@ class EkfState:
     def copy(self) -> EkfState:
         new_state: EkfState = EkfState.__new__(EkfState)
         new_state._config = self._config
-        new_state.pose_wb = self.pose_wb.copy()
-        new_state.vel_w_mps = self.vel_w_mps.copy()
+        new_state.pose_ob = self.pose_ob.copy()
+        new_state.vel_o_mps = self.vel_o_mps.copy()
         new_state.imu_bias_accel_mps2 = self.imu_bias_accel_mps2.copy()
         new_state.imu_accel_a = self.imu_accel_a.copy()
         new_state.imu_bias_gyro_rps = self.imu_bias_gyro_rps.copy()
@@ -179,8 +179,8 @@ class EkfState:
         return new_state
 
     def reset(self) -> None:
-        self.pose_wb = self._identity_pose()
-        self.vel_w_mps = np.zeros(3, dtype=float)
+        self.pose_ob = self._identity_pose()
+        self.vel_o_mps = np.zeros(3, dtype=float)
         self.imu_bias_accel_mps2 = np.zeros(3, dtype=float)
         self.imu_accel_a = np.eye(3, dtype=float)
         self.imu_bias_gyro_rps = np.zeros(3, dtype=float)
@@ -202,12 +202,12 @@ class EkfState:
             self._index.total_dim
         )
         pose_delta: np.ndarray = delta_vec[self._index.pose]
-        self.pose_wb.translation_m, self.pose_wb.rotation_wxyz = pose_plus(
-            self.pose_wb.translation_m,
-            self.pose_wb.rotation_wxyz,
+        self.pose_ob.translation_m, self.pose_ob.rotation_wxyz = pose_plus(
+            self.pose_ob.translation_m,
+            self.pose_ob.rotation_wxyz,
             pose_delta,
         )
-        self.vel_w_mps = self.vel_w_mps + delta_vec[self._index.velocity]
+        self.vel_o_mps = self.vel_o_mps + delta_vec[self._index.velocity]
         self.imu_bias_accel_mps2 = (
             self.imu_bias_accel_mps2 + delta_vec[self._index.accel_bias]
         )
@@ -287,11 +287,11 @@ class EkfState:
         return self._index.landmarks.get(tag_key)
 
     def legacy_state(self) -> np.ndarray:
-        rpy: np.ndarray = quat_to_rpy(self.pose_wb.rotation_wxyz)
+        rpy: np.ndarray = quat_to_rpy(self.pose_ob.rotation_wxyz)
         return np.concatenate(
             (
-                self.pose_wb.translation_m,
-                self.vel_w_mps,
+                self.pose_ob.translation_m,
+                self.vel_o_mps,
                 rpy,
             ),
             axis=0,

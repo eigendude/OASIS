@@ -15,6 +15,7 @@ Types and helpers for EKF localization
 import enum
 import math
 from dataclasses import dataclass
+from typing import Literal
 from typing import Optional
 from typing import Union
 
@@ -232,6 +233,27 @@ EkfEventPayload = Union[
 ]
 
 
+FrameId = Literal["world", "odom", "base"]
+
+
+@dataclass(frozen=True)
+class FrameTransform:
+    """
+    Rigid transform between two frames
+
+    Fields:
+        parent_frame: Semantic parent frame identifier
+        child_frame: Semantic child frame identifier
+        translation_m: Translation in meters, XYZ order
+        rotation_wxyz: Quaternion rotation in wxyz order, unit length
+    """
+
+    parent_frame: FrameId
+    child_frame: FrameId
+    translation_m: list[float]
+    rotation_wxyz: list[float]
+
+
 @dataclass(frozen=True)
 class EkfEvent:
     """
@@ -346,11 +368,17 @@ class EkfOutputs:
     Fields:
         odom_time: Timestamp for publishing the odometry frame output
         world_odom_time: Timestamp for publishing the world odometry output
+        odom_base: Transform from odom to base in the local frame
+        world_odom: Transform from world to odom in the global frame
+        world_base: Transform from world to base derived by composition
         mag_update: Update report payload for magnetometer updates
         apriltag_update: Update report payload for AprilTag updates
     """
 
     odom_time: Optional[EkfTime]
     world_odom_time: Optional[EkfTime]
+    odom_base: Optional[FrameTransform]
+    world_odom: Optional[FrameTransform]
+    world_base: Optional[FrameTransform]
     mag_update: Optional[EkfUpdateData]
     apriltag_update: Optional[EkfAprilTagUpdateData]

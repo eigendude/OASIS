@@ -13,7 +13,6 @@ from __future__ import annotations
 import math
 from typing import Any
 from typing import Optional
-from typing import cast
 
 from oasis_control.localization.ekf.ekf_config import EkfConfig
 from oasis_control.localization.ekf.ekf_core import EkfCore
@@ -28,12 +27,10 @@ from oasis_control.localization.ekf.ekf_types import EkfMatrix
 from oasis_control.localization.ekf.ekf_types import EkfOutputs
 from oasis_control.localization.ekf.ekf_types import EkfTime
 from oasis_control.localization.ekf.ekf_types import EkfUpdateData
+from oasis_control.localization.ekf.ekf_types import FrameTransform
 from oasis_control.localization.ekf.ekf_types import ImuSample
 from oasis_control.localization.ekf.ekf_types import MagSample
 from oasis_control.localization.ekf.ekf_types import from_seconds
-from oasis_control.localization.ekf.models.apriltag_measurement_model import (
-    AprilTagMeasurementModel,
-)
 
 
 def _build_config(*, dt_imu_max: float = 0.5) -> EkfConfig:
@@ -185,22 +182,6 @@ class _RejectingMagEkf(EkfCore):
         )
 
 
-class _RecordingAprilTagModel(AprilTagMeasurementModel):
-    def __init__(self) -> None:
-        super().__init__()
-        self.linearize_inputs: list[list[float]] = []
-
-    def linearize_pose(self, state: Any) -> tuple[Any, Any]:
-        self.linearize_inputs.append(list(state.tolist()))
-        return super().linearize_pose(state)
-
-
-class _RecordingAprilTagEkf(EkfCore):
-    def __init__(self, config: EkfConfig) -> None:
-        super().__init__(config)
-        self._apriltag_model = _RecordingAprilTagModel()
-
-
 def test_mag_rejection_does_not_advance_frontier() -> None:
     config: EkfConfig = _build_config()
     core: _RejectingMagEkf = _RejectingMagEkf(config)
@@ -249,9 +230,9 @@ def test_imu_max_dt_advances_frontier() -> None:
     assert core.frontier_time() == imu_event_1.t_meas
 
 
-def test_apriltag_linearization_uses_fixed_state() -> None:
+def test_apriltag_update_does_not_move_odom_state() -> None:
     config: EkfConfig = _build_config()
-    core: _RecordingAprilTagEkf = _RecordingAprilTagEkf(config)
+    core: EkfCore = EkfCore(config)
 
     camera_event: EkfEvent = EkfEvent(
         t_meas=from_seconds(0.0),
@@ -286,10 +267,21 @@ def test_apriltag_linearization_uses_fixed_state() -> None:
         payload=AprilTagDetectionArrayData(frame_id="camera", detections=detections),
     )
     initial_state: list[float] = core.state().tolist()
+    transforms_before: tuple[FrameTransform, FrameTransform, FrameTransform] = (
+        core.current_transforms()
+    )
+    odom_before: list[float] = transforms_before[0].translation_m
+    world_odom_before: list[float] = transforms_before[1].translation_m
+    world_base_before: list[float] = transforms_before[2].translation_m
     core.process_event(apriltag_event)
 
-    model: _RecordingAprilTagModel = cast(_RecordingAprilTagModel, core._apriltag_model)
-    assert len(model.linearize_inputs) == 2
-    assert model.linearize_inputs[0] == initial_state
-    assert model.linearize_inputs[1] == initial_state
-    assert core.state().tolist() != initial_state
+    transforms_after: tuple[FrameTransform, FrameTransform, FrameTransform] = (
+        core.current_transforms()
+    )
+    odom_after: list[float] = transforms_after[0].translation_m
+    world_odom_after: list[float] = transforms_after[1].translation_m
+    world_base_after: list[float] = transforms_after[2].translation_m
+    assert core.state().tolist() == initial_state
+    assert odom_before == odom_after
+    assert world_odom_before != world_odom_after
+    assert world_base_before != world_base_after

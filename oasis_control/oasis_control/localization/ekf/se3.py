@@ -220,6 +220,25 @@ def pose_plus(
     return new_translation, normalize_quaternion(new_quat)
 
 
+def pose_compose(
+    translation_a: np.ndarray,
+    quat_a_wxyz: np.ndarray,
+    translation_b: np.ndarray,
+    quat_b_wxyz: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Compose two poses with left-multiplication
+    """
+
+    rot_a: np.ndarray = quat_to_rotation_matrix(quat_a_wxyz)
+    translated: np.ndarray = (
+        np.asarray(translation_a, dtype=float).reshape(3)
+        + rot_a @ np.asarray(translation_b, dtype=float).reshape(3)
+    )
+    quat: np.ndarray = quat_multiply(quat_a_wxyz, quat_b_wxyz)
+    return translated, normalize_quaternion(quat)
+
+
 def pose_minus(
     t1_m: np.ndarray,
     q1_wxyz: np.ndarray,

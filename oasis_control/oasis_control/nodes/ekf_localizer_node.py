@@ -22,10 +22,13 @@ import rclpy.publisher
 import rclpy.qos
 import rclpy.subscription
 from apriltag_msgs.msg import AprilTagDetectionArray as AprilTagDetectionArrayMsg
+from builtin_interfaces.msg import Time as RosTime
+from geometry_msgs.msg import TransformStamped as TransformStampedMsg
 from nav_msgs.msg import Odometry as OdometryMsg
 from sensor_msgs.msg import CameraInfo as CameraInfoMsg
 from sensor_msgs.msg import Imu as ImuMsg
 from sensor_msgs.msg import MagneticField as MagneticFieldMsg
+from tf2_ros import TransformBroadcaster
 
 from oasis_control.localization.ekf.ekf_buffer import EkfBuffer
 from oasis_control.localization.ekf.ekf_config import EkfConfig
@@ -40,6 +43,7 @@ from oasis_control.localization.ekf.ekf_types import EkfImuPacket
 from oasis_control.localization.ekf.ekf_types import EkfOutputs
 from oasis_control.localization.ekf.ekf_types import EkfTime
 from oasis_control.localization.ekf.ekf_types import EkfUpdateData
+from oasis_control.localization.ekf.ekf_types import FrameTransform
 from oasis_control.localization.ekf.ekf_types import ImuCalibrationData
 from oasis_control.localization.ekf.ekf_types import ImuSample
 from oasis_control.localization.ekf.ekf_types import MagSample
@@ -323,6 +327,7 @@ class EkfLocalizerNode(rclpy.node.Node):
             topic=APRILTAG_UPDATE_TOPIC,
             qos_profile=qos_profile,
         )
+        self._tf_broadcaster: TransformBroadcaster = TransformBroadcaster(self)
 
         # ROS Subscribers
         self._mag_sub: rclpy.subscription.Subscription = self.create_subscription(
@@ -552,24 +557,64 @@ class EkfLocalizerNode(rclpy.node.Node):
             self._buffer.evict(t_filter_ns)
 
         for outputs in outputs_list:
-            if outputs.odom_time is not None:
-                self._publish_odom(outputs.odom_time)
-            if outputs.world_odom_time is not None:
-                self._publish_world_odom(outputs.world_odom_time)
+            if outputs.odom_time is not None and outputs.odom_base is not None:
+                self._publish_odom(outputs.odom_time, outputs.odom_base)
+            if outputs.world_odom_time is not None and outputs.world_base is not None:
+                self._publish_world_odom(outputs.world_odom_time, outputs.world_base)
+            if (
+                outputs.world_odom is not None
+                and outputs.odom_base is not None
+                and outputs.odom_time is not None
+            ):
+                self._publish_tf(
+                    outputs.odom_time, outputs.world_odom, outputs.odom_base
+                )
             if outputs.mag_update is not None:
                 self._publish_mag_update(outputs.mag_update)
             if outputs.apriltag_update is not None:
                 apriltag_update: EkfAprilTagUpdateData = outputs.apriltag_update
                 self._publish_apriltag_update(apriltag_update)
 
-    def _publish_odom(self, timestamp: EkfTime) -> None:
-        message: OdometryMsg = self._build_odom(timestamp)
+    def _publish_odom(self, timestamp: EkfTime, transform: FrameTransform) -> None:
+        message: OdometryMsg = self._build_odom(
+            timestamp,
+            transform=transform,
+            parent_frame_id=self._odom_frame_id,
+            child_frame_id=self._body_frame_id,
+        )
         self._odom_pub.publish(message)
 
-    def _publish_world_odom(self, timestamp: EkfTime) -> None:
-        message: OdometryMsg = self._build_odom(timestamp)
-        message.header.frame_id = self._world_frame_id
+    def _publish_world_odom(
+        self, timestamp: EkfTime, transform: FrameTransform
+    ) -> None:
+        message: OdometryMsg = self._build_odom(
+            timestamp,
+            transform=transform,
+            parent_frame_id=self._world_frame_id,
+            child_frame_id=self._body_frame_id,
+        )
         self._world_odom_pub.publish(message)
+
+    def _publish_tf(
+        self,
+        timestamp: EkfTime,
+        world_odom: FrameTransform,
+        odom_base: FrameTransform,
+    ) -> None:
+        stamp_msg: RosTime = ekf_time_to_ros_time(timestamp)
+        world_to_odom: TransformStampedMsg = self._build_transform(
+            stamp_msg,
+            parent_frame_id=self._world_frame_id,
+            child_frame_id=self._odom_frame_id,
+            transform=world_odom,
+        )
+        odom_to_base: TransformStampedMsg = self._build_transform(
+            stamp_msg,
+            parent_frame_id=self._odom_frame_id,
+            child_frame_id=self._body_frame_id,
+            transform=odom_base,
+        )
+        self._tf_broadcaster.sendTransform([world_to_odom, odom_to_base])
 
     def _publish_mag_update(self, update: EkfUpdateData) -> None:
         update_seq: int = self._next_update_seq()
@@ -644,17 +689,50 @@ class EkfLocalizerNode(rclpy.node.Node):
             )
         return current_value
 
-    def _build_odom(self, timestamp: EkfTime) -> OdometryMsg:
+    def _build_odom(
+        self,
+        timestamp: EkfTime,
+        *,
+        transform: FrameTransform,
+        parent_frame_id: str,
+        child_frame_id: str,
+    ) -> OdometryMsg:
         message: OdometryMsg = OdometryMsg()
         message.header.stamp = ekf_time_to_ros_time(timestamp)
-        message.header.frame_id = self._odom_frame_id
-        message.child_frame_id = self._body_frame_id
-        message.pose.pose.orientation.w = 1.0
+        message.header.frame_id = parent_frame_id
+        message.child_frame_id = child_frame_id
+        message.pose.pose.position.x = float(transform.translation_m[0])
+        message.pose.pose.position.y = float(transform.translation_m[1])
+        message.pose.pose.position.z = float(transform.translation_m[2])
+        message.pose.pose.orientation.w = float(transform.rotation_wxyz[0])
+        message.pose.pose.orientation.x = float(transform.rotation_wxyz[1])
+        message.pose.pose.orientation.y = float(transform.rotation_wxyz[2])
+        message.pose.pose.orientation.z = float(transform.rotation_wxyz[3])
         message.pose.covariance = [0.0] * 36
         message.twist.covariance = [0.0] * 36
 
-        # TODO: Publish TF when EKF state output is implemented
         return message
+
+    def _build_transform(
+        self,
+        stamp_msg: RosTime,
+        *,
+        parent_frame_id: str,
+        child_frame_id: str,
+        transform: FrameTransform,
+    ) -> TransformStampedMsg:
+        transform_msg: TransformStampedMsg = TransformStampedMsg()
+        transform_msg.header.stamp = stamp_msg
+        transform_msg.header.frame_id = parent_frame_id
+        transform_msg.child_frame_id = child_frame_id
+        transform_msg.transform.translation.x = float(transform.translation_m[0])
+        transform_msg.transform.translation.y = float(transform.translation_m[1])
+        transform_msg.transform.translation.z = float(transform.translation_m[2])
+        transform_msg.transform.rotation.w = float(transform.rotation_wxyz[0])
+        transform_msg.transform.rotation.x = float(transform.rotation_wxyz[1])
+        transform_msg.transform.rotation.y = float(transform.rotation_wxyz[2])
+        transform_msg.transform.rotation.z = float(transform.rotation_wxyz[3])
+        return transform_msg
 
     def _camera_info_to_data(self, message: CameraInfoMsg) -> CameraInfoData:
         return CameraInfoData(
