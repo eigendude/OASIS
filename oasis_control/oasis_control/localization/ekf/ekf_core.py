@@ -27,6 +27,7 @@ from oasis_control.localization.ekf.ekf_buffer import EkfBuffer
 from oasis_control.localization.ekf.ekf_config import EkfConfig
 from oasis_control.localization.ekf.ekf_state import EkfState
 from oasis_control.localization.ekf.ekf_state import EkfStateIndex
+from oasis_control.localization.ekf.ekf_state import Pose3
 from oasis_control.localization.ekf.ekf_state import TagKey
 from oasis_control.localization.ekf.ekf_types import AprilTagDetection
 from oasis_control.localization.ekf.ekf_types import AprilTagDetectionArrayData
@@ -35,11 +36,14 @@ from oasis_control.localization.ekf.ekf_types import EkfAprilTagDetectionUpdate
 from oasis_control.localization.ekf.ekf_types import EkfAprilTagUpdateData
 from oasis_control.localization.ekf.ekf_types import EkfEvent
 from oasis_control.localization.ekf.ekf_types import EkfEventType
+from oasis_control.localization.ekf.ekf_types import EkfFrameOutputs
+from oasis_control.localization.ekf.ekf_types import EkfFrameTransform
 from oasis_control.localization.ekf.ekf_types import EkfImuPacket
 from oasis_control.localization.ekf.ekf_types import EkfMatrix
 from oasis_control.localization.ekf.ekf_types import EkfOutputs
 from oasis_control.localization.ekf.ekf_types import EkfTime
 from oasis_control.localization.ekf.ekf_types import EkfUpdateData
+from oasis_control.localization.ekf.ekf_types import FrameId
 from oasis_control.localization.ekf.ekf_types import ImuCalibrationData
 from oasis_control.localization.ekf.ekf_types import ImuSample
 from oasis_control.localization.ekf.ekf_types import MagSample
@@ -54,6 +58,9 @@ from oasis_control.localization.ekf.models.imu_process_model import ImuProcessMo
 from oasis_control.localization.ekf.models.mag_measurement_model import (
     MagMeasurementModel,
 )
+from oasis_control.localization.ekf.se3 import pose_compose
+from oasis_control.localization.ekf.se3 import pose_plus
+from oasis_control.localization.ekf.se3 import quat_to_rpy
 
 
 _EVENT_ORDER: dict[EkfEventType, int] = {
@@ -73,6 +80,8 @@ _LOG: logging.Logger = logging.getLogger(__name__)
 class _Checkpoint:
     t_meas_ns: int
     state: EkfState
+    world_odom: Pose3
+    world_odom_cov: np.ndarray
     last_imu_time_ns: Optional[int]
     last_imu: Optional[ImuSample]
     imu_times_ns: list[int]
@@ -85,6 +94,8 @@ class _StateSnapshot:
     t_frontier_ns: Optional[int]
     state: EkfState
     state_frontier: EkfState
+    world_odom: Pose3
+    world_odom_cov: np.ndarray
     last_imu_time_ns: Optional[int]
     last_imu: Optional[ImuSample]
     imu_times_ns: list[int]
@@ -125,6 +136,8 @@ class EkfCore:
         self._t_frontier_ns: Optional[int] = None
         self._state: EkfState = EkfState(config)
         self._state_frontier: EkfState = self._state.copy()
+        self._world_odom: Pose3 = self._identity_pose()
+        self._world_odom_cov: np.ndarray = self._build_world_odom_covariance()
         self._last_imu_time_ns: Optional[int] = None
         self._last_imu: Optional[ImuSample] = None
         self._imu_times_ns: list[int] = []
@@ -139,9 +152,11 @@ class EkfCore:
         prev_frontier_ns: Optional[int] = self._t_frontier_ns
         odom_time: Optional[EkfTime] = None
         world_odom_time: Optional[EkfTime] = None
+        frame_transforms: Optional[EkfFrameOutputs] = None
         mag_update: Optional[EkfUpdateData] = None
         apriltag_update: Optional[EkfAprilTagUpdateData] = None
         advance_frontier: bool = False
+        apriltag_accepted: bool = False
 
         if event.event_type == EkfEventType.IMU:
             imu_packet: EkfImuPacket = cast(EkfImuPacket, event.payload)
@@ -196,14 +211,20 @@ class EkfCore:
             self._set_frontier(t_meas)
             self._maybe_checkpoint(t_meas, event.event_type)
 
-        if self._frontier_advanced(prev_frontier_ns):
+        publish_transforms: bool = self._frontier_advanced(prev_frontier_ns)
+        if not publish_transforms and apriltag_accepted:
+            publish_transforms = True
+
+        if publish_transforms:
             frontier_time: EkfTime = self._frontier_time()
             odom_time = frontier_time
             world_odom_time = frontier_time
+            frame_transforms = self._frame_outputs()
 
         return EkfOutputs(
             odom_time=odom_time,
             world_odom_time=world_odom_time,
+            frame_transforms=frame_transforms,
             mag_update=mag_update,
             apriltag_update=apriltag_update,
         )
@@ -334,7 +355,7 @@ class EkfCore:
         )
         detections: list[EkfAprilTagDetectionUpdate] = []
         # Linearize once per message to keep per-detection updates deterministic
-        x_lin: np.ndarray = self._state.legacy_state()
+        x_lin: np.ndarray = self._world_base_legacy_state()
         for detection in detections_sorted:
             tag_key: TagKey = TagKey(family=detection.family, tag_id=detection.tag_id)
             self._state.ensure_landmark(tag_key)
@@ -419,6 +440,41 @@ class EkfCore:
     def covariance(self) -> np.ndarray:
         return self._state.covariance.copy()
 
+    def world_odom_covariance(self) -> np.ndarray:
+        """
+        Return the world-to-odom covariance in tangent-space coordinates
+        """
+
+        return self._world_odom_cov.copy()
+
+    def odom_pose(self) -> Pose3:
+        """
+        Return the odom-to-base pose from the canonical EKF state
+        """
+
+        return self._state.pose_ob.copy()
+
+    def world_odom_pose(self) -> Pose3:
+        """
+        Return the world-to-odom pose used for global alignment
+        """
+
+        return self._world_odom.copy()
+
+    def world_pose(self) -> Pose3:
+        """
+        Return the world-to-base pose composed from world and odom frames
+        """
+
+        return self._compose_world_base()
+
+    def frame_transforms(self) -> EkfFrameOutputs:
+        """
+        Return the current frame transforms derived from EKF state
+        """
+
+        return self._frame_outputs()
+
     def state_index(self) -> EkfStateIndex:
         return self._state.index.copy()
 
@@ -445,6 +501,8 @@ class EkfCore:
         self._t_frontier_ns = None
         self._state.reset()
         self._state_frontier = self._state.copy()
+        self._world_odom = self._identity_pose()
+        self._world_odom_cov = self._build_world_odom_covariance()
         self._last_imu_time_ns = None
         self._last_imu = None
         self._imu_times_ns = []
@@ -580,6 +638,8 @@ class EkfCore:
             t_frontier_ns=self._t_frontier_ns,
             state=self._state.copy(),
             state_frontier=self._state_frontier.copy(),
+            world_odom=self._world_odom.copy(),
+            world_odom_cov=self._world_odom_cov.copy(),
             last_imu_time_ns=self._last_imu_time_ns,
             last_imu=self._last_imu,
             imu_times_ns=list(self._imu_times_ns),
@@ -593,6 +653,8 @@ class EkfCore:
         self._t_frontier_ns = snapshot.t_frontier_ns
         self._state = snapshot.state.copy()
         self._state_frontier = snapshot.state_frontier.copy()
+        self._world_odom = snapshot.world_odom.copy()
+        self._world_odom_cov = snapshot.world_odom_cov.copy()
         self._last_imu_time_ns = snapshot.last_imu_time_ns
         self._last_imu = snapshot.last_imu
         self._imu_times_ns = list(snapshot.imu_times_ns)
@@ -606,6 +668,8 @@ class EkfCore:
         self._state.reset()
         self._initialized = True
         self._state_frontier = self._state.copy()
+        self._world_odom = self._identity_pose()
+        self._world_odom_cov = self._build_world_odom_covariance()
 
     def _record_imu_time(self, t_meas_ns: int) -> None:
         insert_index: int = bisect_right(self._imu_times_ns, t_meas_ns)
@@ -798,7 +862,7 @@ class EkfCore:
         z_hat: np.ndarray
         h: np.ndarray
         z_hat, h = self._apriltag_model.linearize_pose(x_lin)
-        h = self._state.lift_legacy_jacobian(h)
+        h = self._lift_world_odom_jacobian(h)
         residual: np.ndarray = z - z_hat
         residual[3] = self._wrap_angle(residual[3])
 
@@ -810,7 +874,7 @@ class EkfCore:
                 self._config.apriltag_yaw_var,
             ]
         )
-        s_hat: np.ndarray = h @ self._state.covariance @ h.T
+        s_hat: np.ndarray = h @ self._world_odom_cov @ h.T
         s: np.ndarray = s_hat + r
         maha_d2: float = float(residual.T @ np.linalg.solve(s, residual))
         gate_d2_threshold: float = self._config.apriltag_gate_d2
@@ -830,15 +894,19 @@ class EkfCore:
                 gate_d2_threshold=gate_d2_threshold,
             )
 
-        hp: np.ndarray = h @ self._state.covariance
+        hp: np.ndarray = h @ self._world_odom_cov
         k_gain: np.ndarray = np.linalg.solve(s.T, hp).T
 
         delta: np.ndarray = k_gain @ residual
-        self._state.apply_delta(delta)
-        identity: np.ndarray = np.eye(self._state.index.total_dim, dtype=float)
+        self._world_odom.translation_m, self._world_odom.rotation_wxyz = pose_plus(
+            self._world_odom.translation_m,
+            self._world_odom.rotation_wxyz,
+            delta,
+        )
+        identity: np.ndarray = np.eye(6, dtype=float)
         temp: np.ndarray = identity - k_gain @ h
-        self._state.covariance = (
-            temp @ self._state.covariance @ temp.T + k_gain @ r @ k_gain.T
+        self._world_odom_cov = (
+            temp @ self._world_odom_cov @ temp.T + k_gain @ r @ k_gain.T
         )
 
         update: EkfUpdateData = EkfUpdateData(
@@ -907,6 +975,8 @@ class EkfCore:
             _Checkpoint(
                 t_meas_ns=t_meas_ns,
                 state=self._state.copy(),
+                world_odom=self._world_odom.copy(),
+                world_odom_cov=self._world_odom_cov.copy(),
                 last_imu_time_ns=self._last_imu_time_ns,
                 last_imu=self._last_imu,
                 imu_times_ns=list(self._imu_times_ns),
@@ -939,6 +1009,8 @@ class EkfCore:
         self._imu_gaps = list(checkpoint.imu_gaps)
         self._t_frontier_ns = checkpoint.t_meas_ns
         self._state_frontier = self._state.copy()
+        self._world_odom = checkpoint.world_odom.copy()
+        self._world_odom_cov = checkpoint.world_odom_cov.copy()
         self._checkpoints = [checkpoint]
         self._last_checkpoint_time = checkpoint.t_meas_ns
         self._initialized = True
@@ -952,6 +1024,85 @@ class EkfCore:
         self._imu_gaps = []
         self._imu_gap_reject_count = 0
         self._state_frontier = self._state.copy()
+        self._world_odom = self._identity_pose()
+        self._world_odom_cov = self._build_world_odom_covariance()
         self._checkpoints = []
         self._last_checkpoint_time = None
         self._initialized = True
+
+    def _identity_pose(self) -> Pose3:
+        return Pose3(
+            translation_m=np.zeros(3, dtype=float),
+            rotation_wxyz=np.array([1.0, 0.0, 0.0, 0.0], dtype=float),
+        )
+
+    def _build_world_odom_covariance(self) -> np.ndarray:
+        cov: np.ndarray = np.zeros((6, 6), dtype=float)
+        cov[0:3, 0:3] = np.eye(3, dtype=float) * self._config.pos_var
+        cov[3:6, 3:6] = np.eye(3, dtype=float) * self._config.ang_var
+        return cov
+
+    def _frame_outputs(self) -> EkfFrameOutputs:
+        t_odom_base: EkfFrameTransform = self._pose_to_transform(
+            self._state.pose_ob,
+            parent_frame="odom",
+            child_frame="base",
+        )
+        t_world_odom: EkfFrameTransform = self._pose_to_transform(
+            self._world_odom,
+            parent_frame="world",
+            child_frame="odom",
+        )
+        t_world_base_pose: Pose3 = self._compose_world_base()
+        t_world_base: EkfFrameTransform = self._pose_to_transform(
+            t_world_base_pose,
+            parent_frame="world",
+            child_frame="base",
+        )
+        return EkfFrameOutputs(
+            t_odom_base=t_odom_base,
+            t_world_odom=t_world_odom,
+            t_world_base=t_world_base,
+        )
+
+    def _pose_to_transform(
+        self, pose: Pose3, *, parent_frame: FrameId, child_frame: FrameId
+    ) -> EkfFrameTransform:
+        return EkfFrameTransform(
+            parent_frame=parent_frame,
+            child_frame=child_frame,
+            translation_m=pose.translation_m.tolist(),
+            rotation_wxyz=pose.rotation_wxyz.tolist(),
+        )
+
+    def _world_base_legacy_state(self) -> np.ndarray:
+        world_base: Pose3 = self._compose_world_base()
+        rpy: np.ndarray = quat_to_rpy(world_base.rotation_wxyz)
+        zero_velocity: np.ndarray = np.zeros(3, dtype=float)
+        return np.concatenate(
+            (
+                world_base.translation_m,
+                zero_velocity,
+                rpy,
+            ),
+            axis=0,
+        )
+
+    def _compose_world_base(self) -> Pose3:
+        t_world_base: np.ndarray
+        q_world_base: np.ndarray
+        t_world_base, q_world_base = pose_compose(
+            self._world_odom.translation_m,
+            self._world_odom.rotation_wxyz,
+            self._state.pose_ob.translation_m,
+            self._state.pose_ob.rotation_wxyz,
+        )
+        return Pose3(translation_m=t_world_base, rotation_wxyz=q_world_base)
+
+    def _lift_world_odom_jacobian(self, legacy_h: np.ndarray) -> np.ndarray:
+        if legacy_h.shape[1] != 9:
+            raise ValueError("Expected legacy Jacobian with 9 columns")
+        lifted: np.ndarray = np.zeros((legacy_h.shape[0], 6), dtype=float)
+        lifted[:, 0:3] = legacy_h[:, 0:3]
+        lifted[:, 3:6] = legacy_h[:, 6:9]
+        return lifted

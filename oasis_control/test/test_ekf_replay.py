@@ -15,6 +15,7 @@ import math
 from oasis_control.localization.ekf.ekf_buffer import EkfBuffer
 from oasis_control.localization.ekf.ekf_config import EkfConfig
 from oasis_control.localization.ekf.ekf_core import EkfCore
+from oasis_control.localization.ekf.ekf_state import Pose3
 from oasis_control.localization.ekf.ekf_state import EkfStateIndex
 from oasis_control.localization.ekf.ekf_types import AprilTagDetection
 from oasis_control.localization.ekf.ekf_types import AprilTagDetectionArrayData
@@ -113,11 +114,19 @@ def _assert_close_sequence(
         assert math.isclose(actual_value, expected_value, abs_tol=tol)
 
 
-def _capture_state(core: EkfCore) -> tuple[list[float], list[float]]:
+def _capture_state(
+    core: EkfCore,
+) -> tuple[list[float], list[float], list[float], list[float]]:
     state_list: list[float] = core.state().tolist()
     covariance_list: list[list[float]] = core.covariance().tolist()
     flattened_cov: list[float] = _flatten_matrix(covariance_list)
-    return state_list, flattened_cov
+    world_odom: Pose3 = core.world_odom_pose()
+    world_odom_list: list[float] = (
+        world_odom.translation_m.tolist() + world_odom.rotation_wxyz.tolist()
+    )
+    world_odom_cov_list: list[list[float]] = core.world_odom_covariance().tolist()
+    flattened_world_cov: list[float] = _flatten_matrix(world_odom_cov_list)
+    return state_list, flattened_cov, world_odom_list, flattened_world_cov
 
 
 def test_process_noise_coefficients() -> None:
@@ -224,7 +233,9 @@ def test_out_of_order_apriltag_replay_matches_chronological() -> None:
     reference_core.process_event(late_event)
     ref_state: list[float]
     ref_cov: list[float]
-    ref_state, ref_cov = _capture_state(reference_core)
+    ref_world_odom: list[float]
+    ref_world_cov: list[float]
+    ref_state, ref_cov, ref_world_odom, ref_world_cov = _capture_state(reference_core)
 
     buffer.insert_event(imu_event)
     sut_core.process_event(imu_event)
@@ -234,10 +245,18 @@ def test_out_of_order_apriltag_replay_matches_chronological() -> None:
     sut_core.replay(buffer, start_time=early_event.t_meas)
     sut_state: list[float]
     sut_cov: list[float]
-    sut_state, sut_cov = _capture_state(sut_core)
+    sut_world_odom: list[float]
+    sut_world_cov: list[float]
+    sut_state, sut_cov, sut_world_odom, sut_world_cov = _capture_state(sut_core)
 
     _assert_close_sequence(expected=ref_state, actual=sut_state, tol=1.0e-9)
     _assert_close_sequence(expected=ref_cov, actual=sut_cov, tol=1.0e-9)
+    _assert_close_sequence(
+        expected=ref_world_odom, actual=sut_world_odom, tol=1.0e-9
+    )
+    _assert_close_sequence(
+        expected=ref_world_cov, actual=sut_world_cov, tol=1.0e-9
+    )
 
 
 def test_buffer_stable_ordering_for_equal_times() -> None:
