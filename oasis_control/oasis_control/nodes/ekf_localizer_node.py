@@ -36,6 +36,8 @@ from oasis_control.localization.ekf.ekf_types import CameraInfoData
 from oasis_control.localization.ekf.ekf_types import EkfAprilTagUpdateData
 from oasis_control.localization.ekf.ekf_types import EkfEvent
 from oasis_control.localization.ekf.ekf_types import EkfEventType
+from oasis_control.localization.ekf.ekf_types import EkfFrameOutputs
+from oasis_control.localization.ekf.ekf_types import EkfFrameTransform
 from oasis_control.localization.ekf.ekf_types import EkfImuPacket
 from oasis_control.localization.ekf.ekf_types import EkfOutputs
 from oasis_control.localization.ekf.ekf_types import EkfTime
@@ -552,23 +554,41 @@ class EkfLocalizerNode(rclpy.node.Node):
             self._buffer.evict(t_filter_ns)
 
         for outputs in outputs_list:
-            if outputs.odom_time is not None:
-                self._publish_odom(outputs.odom_time)
-            if outputs.world_odom_time is not None:
-                self._publish_world_odom(outputs.world_odom_time)
+            if outputs.odom_time is not None and outputs.frame_transforms is not None:
+                self._publish_odom(outputs.odom_time, outputs.frame_transforms)
+            if (
+                outputs.world_odom_time is not None
+                and outputs.frame_transforms is not None
+            ):
+                self._publish_world_odom(
+                    outputs.world_odom_time, outputs.frame_transforms
+                )
             if outputs.mag_update is not None:
                 self._publish_mag_update(outputs.mag_update)
             if outputs.apriltag_update is not None:
                 apriltag_update: EkfAprilTagUpdateData = outputs.apriltag_update
                 self._publish_apriltag_update(apriltag_update)
 
-    def _publish_odom(self, timestamp: EkfTime) -> None:
-        message: OdometryMsg = self._build_odom(timestamp)
+    def _publish_odom(
+        self, timestamp: EkfTime, frame_transforms: EkfFrameOutputs
+    ) -> None:
+        message: OdometryMsg = self._build_odom(
+            timestamp,
+            frame_transforms.t_odom_base,
+            frame_id=self._odom_frame_id,
+            child_frame_id=self._body_frame_id,
+        )
         self._odom_pub.publish(message)
 
-    def _publish_world_odom(self, timestamp: EkfTime) -> None:
-        message: OdometryMsg = self._build_odom(timestamp)
-        message.header.frame_id = self._world_frame_id
+    def _publish_world_odom(
+        self, timestamp: EkfTime, frame_transforms: EkfFrameOutputs
+    ) -> None:
+        message: OdometryMsg = self._build_odom(
+            timestamp,
+            frame_transforms.t_world_odom,
+            frame_id=self._world_frame_id,
+            child_frame_id=self._odom_frame_id,
+        )
         self._world_odom_pub.publish(message)
 
     def _publish_mag_update(self, update: EkfUpdateData) -> None:
@@ -644,16 +664,28 @@ class EkfLocalizerNode(rclpy.node.Node):
             )
         return current_value
 
-    def _build_odom(self, timestamp: EkfTime) -> OdometryMsg:
+    def _build_odom(
+        self,
+        timestamp: EkfTime,
+        transform: EkfFrameTransform,
+        *,
+        frame_id: str,
+        child_frame_id: str,
+    ) -> OdometryMsg:
         message: OdometryMsg = OdometryMsg()
         message.header.stamp = ekf_time_to_ros_time(timestamp)
-        message.header.frame_id = self._odom_frame_id
-        message.child_frame_id = self._body_frame_id
-        message.pose.pose.orientation.w = 1.0
+        message.header.frame_id = frame_id
+        message.child_frame_id = child_frame_id
+        message.pose.pose.position.x = transform.translation_m[0]
+        message.pose.pose.position.y = transform.translation_m[1]
+        message.pose.pose.position.z = transform.translation_m[2]
+        message.pose.pose.orientation.w = transform.rotation_wxyz[0]
+        message.pose.pose.orientation.x = transform.rotation_wxyz[1]
+        message.pose.pose.orientation.y = transform.rotation_wxyz[2]
+        message.pose.pose.orientation.z = transform.rotation_wxyz[3]
         message.pose.covariance = [0.0] * 36
         message.twist.covariance = [0.0] * 36
 
-        # TODO: Publish TF when EKF state output is implemented
         return message
 
     def _camera_info_to_data(self, message: CameraInfoMsg) -> CameraInfoData:

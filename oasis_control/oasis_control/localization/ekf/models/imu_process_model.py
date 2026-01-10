@@ -47,8 +47,8 @@ class ImuProcessModel:
 
         Args:
             state: EKF nominal state to update in-place
-            omega_raw_rps: Angular velocity in {I} (rad/s)
-            accel_raw_mps2: Linear acceleration in {I} (m/s^2)
+            omega_raw_rps: Angular velocity in the IMU frame (rad/s)
+            accel_raw_mps2: Linear acceleration in the IMU frame (m/s^2)
             dt_s: Time step in seconds
         """
 
@@ -77,22 +77,22 @@ class ImuProcessModel:
 
         delta_rot: np.ndarray = omega_corr * dt_s
         delta_quat: np.ndarray = quat_from_rotvec(delta_rot)
-        quat_wb: np.ndarray = quat_multiply(state.pose_wb.rotation_wxyz, delta_quat)
-        quat_wb = normalize_quaternion(quat_wb)
-        state.pose_wb.rotation_wxyz = quat_wb
+        quat_ob: np.ndarray = quat_multiply(state.pose_ob.rotation_wxyz, delta_quat)
+        quat_ob = normalize_quaternion(quat_ob)
+        state.pose_ob.rotation_wxyz = quat_ob
 
-        rot_world_from_body: np.ndarray = quat_to_rotation_matrix(quat_wb)
-        accel_world_mps2: np.ndarray = rot_world_from_body @ accel_corr
+        rot_odom_from_body: np.ndarray = quat_to_rotation_matrix(quat_ob)
+        accel_odom_mps2: np.ndarray = rot_odom_from_body @ accel_corr
 
         gravity_mps2: float = self._config.gravity_mps2
-        accel_world_mps2 = accel_world_mps2 - np.array(
+        accel_odom_mps2 = accel_odom_mps2 - np.array(
             [0.0, 0.0, gravity_mps2], dtype=float
         )
 
-        vel: np.ndarray = state.vel_w_mps + accel_world_mps2 * dt_s
-        pos: np.ndarray = state.pose_wb.translation_m + vel * dt_s
-        state.pose_wb.translation_m = pos
-        state.vel_w_mps = vel
+        vel: np.ndarray = state.vel_o_mps + accel_odom_mps2 * dt_s
+        pos: np.ndarray = state.pose_ob.translation_m + vel * dt_s
+        state.pose_ob.translation_m = pos
+        state.vel_o_mps = vel
 
     def discrete_process_noise(self, state: EkfState, *, dt_s: float) -> np.ndarray:
         """

@@ -17,6 +17,7 @@ from typing import cast
 
 from oasis_control.localization.ekf.ekf_config import EkfConfig
 from oasis_control.localization.ekf.ekf_core import EkfCore
+from oasis_control.localization.ekf.ekf_state import Pose3
 from oasis_control.localization.ekf.ekf_state import TagKey
 from oasis_control.localization.ekf.ekf_types import AprilTagDetection
 from oasis_control.localization.ekf.ekf_types import AprilTagDetectionArrayData
@@ -292,4 +293,6 @@ def test_apriltag_linearization_uses_fixed_state() -> None:
     assert len(model.linearize_inputs) == 2
     assert model.linearize_inputs[0] == initial_state
     assert model.linearize_inputs[1] == initial_state
-    assert core.state().tolist() != initial_state
+    assert core.state().tolist() == initial_state
+    world_odom: Pose3 = core.world_odom_pose()
+    assert abs(float(world_odom.translation_m[0])) > 0.0

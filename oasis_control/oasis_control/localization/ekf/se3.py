@@ -238,6 +238,37 @@ def pose_minus(
     return np.concatenate((delta_t, delta_rot), axis=0)
 
 
+def pose_compose(
+    t_ab_m: np.ndarray,
+    q_ab_wxyz: np.ndarray,
+    t_bc_m: np.ndarray,
+    q_bc_wxyz: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Compose two poses T_ab and T_bc to obtain T_ac
+    """
+
+    rot_ab: np.ndarray = quat_to_rotation_matrix(q_ab_wxyz)
+    t_ac: np.ndarray = np.asarray(t_ab_m, dtype=float).reshape(3) + rot_ab @ np.asarray(
+        t_bc_m, dtype=float
+    ).reshape(3)
+    q_ac: np.ndarray = quat_multiply(q_ab_wxyz, q_bc_wxyz)
+    return t_ac, normalize_quaternion(q_ac)
+
+
+def pose_inverse(
+    t_ab_m: np.ndarray, q_ab_wxyz: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Invert pose T_ab to obtain T_ba
+    """
+
+    q_ba: np.ndarray = quat_inverse(q_ab_wxyz)
+    rot_ba: np.ndarray = quat_to_rotation_matrix(q_ba)
+    t_ba: np.ndarray = -(rot_ba @ np.asarray(t_ab_m, dtype=float).reshape(3))
+    return t_ba, normalize_quaternion(q_ba)
+
+
 def to_ros_pose(
     translation_m: np.ndarray, quat_wxyz: np.ndarray, pose_msg: Optional[Any] = None
 ) -> Any:
