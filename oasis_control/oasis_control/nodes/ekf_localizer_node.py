@@ -170,6 +170,10 @@ class EkfLocalizerNode(rclpy.node.Node):
         self.declare_parameter(
             ekf_params.PARAM_APRILTAG_GATE_D2, ekf_params.DEFAULT_APRILTAG_GATE_D2
         )
+        self.declare_parameter(
+            ekf_params.PARAM_APRILTAG_REPROJ_RMS_GATE_PX,
+            ekf_params.DEFAULT_APRILTAG_REPROJ_RMS_GATE_PX,
+        )
         self.declare_parameter(PARAM_TAG_SIZE_M, DEFAULT_TAG_SIZE_M)
         self.declare_parameter(PARAM_TAG_ANCHOR_FAMILY, DEFAULT_TAG_ANCHOR_FAMILY)
         self.declare_parameter(PARAM_TAG_ANCHOR_ID, DEFAULT_TAG_ANCHOR_ID)
@@ -249,6 +253,9 @@ class EkfLocalizerNode(rclpy.node.Node):
         self._apriltag_gate_d2: float = float(
             self.get_parameter(ekf_params.PARAM_APRILTAG_GATE_D2).value
         )
+        self._apriltag_reproj_rms_gate_px: float = float(
+            self.get_parameter(ekf_params.PARAM_APRILTAG_REPROJ_RMS_GATE_PX).value
+        )
         self._tag_size_m: float = float(self.get_parameter(PARAM_TAG_SIZE_M).value)
         self._tag_anchor_family: str = str(
             self.get_parameter(PARAM_TAG_ANCHOR_FAMILY).value
@@ -290,6 +297,7 @@ class EkfLocalizerNode(rclpy.node.Node):
             apriltag_pos_var=self._apriltag_pos_var,
             apriltag_yaw_var=self._apriltag_yaw_var,
             apriltag_gate_d2=self._apriltag_gate_d2,
+            apriltag_reproj_rms_gate_px=self._apriltag_reproj_rms_gate_px,
             tag_size_m=self._tag_size_m,
             tag_anchor_family=self._tag_anchor_family,
             tag_anchor_id=self._tag_anchor_id,

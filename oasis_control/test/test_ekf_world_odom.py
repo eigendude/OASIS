@@ -47,6 +47,7 @@ def _build_config() -> EkfConfig:
         apriltag_pos_var=0.05,
         apriltag_yaw_var=0.01,
         apriltag_gate_d2=0.0,
+        apriltag_reproj_rms_gate_px=0.0,
         tag_size_m=0.16,
         tag_anchor_family="tag36h11",
         tag_anchor_id=0,
@@ -93,6 +94,45 @@ def _build_camera_info() -> CameraInfoData:
     )
 
 
+def _project_tag_corners(
+    *,
+    pose_world_xyz_yaw: list[float],
+    tag_size_m: float,
+    camera_info: CameraInfoData,
+) -> list[float]:
+    half_size_m: float = 0.5 * tag_size_m
+    tag_corners_t: list[list[float]] = [
+        [-half_size_m, -half_size_m, 0.0],
+        [half_size_m, -half_size_m, 0.0],
+        [half_size_m, half_size_m, 0.0],
+        [-half_size_m, half_size_m, 0.0],
+    ]
+
+    x_t: float = pose_world_xyz_yaw[0]
+    y_t: float = pose_world_xyz_yaw[1]
+    z_t: float = pose_world_xyz_yaw[2]
+    yaw: float = pose_world_xyz_yaw[3]
+    cos_yaw: float = math.cos(yaw)
+    sin_yaw: float = math.sin(yaw)
+
+    fx: float = camera_info.k[0]
+    fy: float = camera_info.k[4]
+    cx: float = camera_info.k[2]
+    cy: float = camera_info.k[5]
+
+    corners_px: list[float] = []
+    corner: list[float]
+    for corner in tag_corners_t:
+        x_c: float = cos_yaw * corner[0] - sin_yaw * corner[1] + x_t
+        y_c: float = sin_yaw * corner[0] + cos_yaw * corner[1] + y_t
+        z_c: float = corner[2] + z_t
+        u_val: float = fx * (x_c / z_c) + cx
+        v_val: float = fy * (y_c / z_c) + cy
+        corners_px.extend([u_val, v_val])
+
+    return corners_px
+
+
 def _build_imu_sample(*, accel_body: list[float]) -> ImuSample:
     accel_cov: list[float] = [0.0] * 9
     gyro_cov: list[float] = [0.0] * 9
@@ -105,8 +145,17 @@ def _build_imu_sample(*, accel_body: list[float]) -> ImuSample:
     )
 
 
-def _build_apriltag_detection(*, pose_world_xyz_yaw: list[float]) -> AprilTagDetection:
-    corners_px: list[float] = [0.0] * 8
+def _build_apriltag_detection(
+    *,
+    pose_world_xyz_yaw: list[float],
+    tag_size_m: float,
+    camera_info: CameraInfoData,
+) -> AprilTagDetection:
+    corners_px: list[float] = _project_tag_corners(
+        pose_world_xyz_yaw=pose_world_xyz_yaw,
+        tag_size_m=tag_size_m,
+        camera_info=camera_info,
+    )
     homography: list[float] = [0.0] * 9
     return AprilTagDetection(
         family="tag36h11",
@@ -195,10 +244,11 @@ def test_global_update_does_not_teleport_odom() -> None:
     config: EkfConfig = _build_config()
     core: EkfCore = EkfCore(config)
 
+    camera_info: CameraInfoData = _build_camera_info()
     camera_event: EkfEvent = EkfEvent(
         t_meas=from_seconds(0.0),
         event_type=EkfEventType.CAMERA_INFO,
-        payload=_build_camera_info(),
+        payload=camera_info,
     )
     core.process_event(camera_event)
 
@@ -223,7 +273,9 @@ def test_global_update_does_not_teleport_odom() -> None:
     odom_before: list[float] = core.state().tolist()
 
     detection: AprilTagDetection = _build_apriltag_detection(
-        pose_world_xyz_yaw=[1.0, 0.0, 0.0, 0.1]
+        pose_world_xyz_yaw=[1.0, 0.0, 1.0, 0.1],
+        tag_size_m=config.tag_size_m,
+        camera_info=camera_info,
     )
     apriltag_event: EkfEvent = EkfEvent(
         t_meas=from_seconds(0.5),
@@ -247,10 +299,11 @@ def test_world_correction_updates_world_odom_only() -> None:
     config: EkfConfig = _build_config()
     core: EkfCore = EkfCore(config)
 
+    camera_info: CameraInfoData = _build_camera_info()
     camera_event: EkfEvent = EkfEvent(
         t_meas=from_seconds(0.0),
         event_type=EkfEventType.CAMERA_INFO,
-        payload=_build_camera_info(),
+        payload=camera_info,
     )
     core.process_event(camera_event)
 
@@ -276,7 +329,9 @@ def test_world_correction_updates_world_odom_only() -> None:
     world_odom_before: Pose3 = core.world_odom_pose()
 
     detection: AprilTagDetection = _build_apriltag_detection(
-        pose_world_xyz_yaw=[0.5, -0.2, 0.0, -0.1]
+        pose_world_xyz_yaw=[0.5, -0.2, 1.0, -0.1],
+        tag_size_m=config.tag_size_m,
+        camera_info=camera_info,
     )
     apriltag_event: EkfEvent = EkfEvent(
         t_meas=from_seconds(0.5),
@@ -301,10 +356,11 @@ def test_world_base_composition_matches_outputs() -> None:
     config: EkfConfig = _build_config()
     core: EkfCore = EkfCore(config)
 
+    camera_info: CameraInfoData = _build_camera_info()
     camera_event: EkfEvent = EkfEvent(
         t_meas=from_seconds(0.0),
         event_type=EkfEventType.CAMERA_INFO,
-        payload=_build_camera_info(),
+        payload=camera_info,
     )
     core.process_event(camera_event)
 
@@ -332,7 +388,11 @@ def test_world_base_composition_matches_outputs() -> None:
             payload=AprilTagDetectionArrayData(
                 frame_id="camera",
                 detections=[
-                    _build_apriltag_detection(pose_world_xyz_yaw=[0.2, 0.1, 0.0, 0.05])
+                    _build_apriltag_detection(
+                        pose_world_xyz_yaw=[0.2, 0.1, 1.0, 0.05],
+                        tag_size_m=config.tag_size_m,
+                        camera_info=camera_info,
+                    )
                 ],
             ),
         )
@@ -365,10 +425,11 @@ def test_replay_updates_world_odom_deterministically() -> None:
     sut_core: EkfCore = EkfCore(config)
     buffer: EkfBuffer = EkfBuffer(config)
 
+    camera_info: CameraInfoData = _build_camera_info()
     camera_event: EkfEvent = EkfEvent(
         t_meas=from_seconds(0.0),
         event_type=EkfEventType.CAMERA_INFO,
-        payload=_build_camera_info(),
+        payload=camera_info,
     )
     reference_core.process_event(camera_event)
     sut_core.process_event(camera_event)
@@ -390,7 +451,11 @@ def test_replay_updates_world_odom_deterministically() -> None:
         payload=AprilTagDetectionArrayData(
             frame_id="camera",
             detections=[
-                _build_apriltag_detection(pose_world_xyz_yaw=[0.4, 0.0, 0.0, 0.1])
+                _build_apriltag_detection(
+                    pose_world_xyz_yaw=[0.4, 0.0, 1.0, 0.1],
+                    tag_size_m=config.tag_size_m,
+                    camera_info=camera_info,
+                )
             ],
         ),
     )
@@ -400,7 +465,11 @@ def test_replay_updates_world_odom_deterministically() -> None:
         payload=AprilTagDetectionArrayData(
             frame_id="camera",
             detections=[
-                _build_apriltag_detection(pose_world_xyz_yaw=[0.6, 0.1, 0.0, -0.1])
+                _build_apriltag_detection(
+                    pose_world_xyz_yaw=[0.6, 0.1, 1.0, -0.1],
+                    tag_size_m=config.tag_size_m,
+                    camera_info=camera_info,
+                )
             ],
         ),
     )

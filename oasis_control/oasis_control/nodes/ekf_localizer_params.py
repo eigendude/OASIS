@@ -114,6 +114,12 @@ PARAM_APRILTAG_GATE_D2: str = "apriltag_gate_d2"
 # Default squared gating threshold for AprilTag Mahalanobis distance, unitless
 DEFAULT_APRILTAG_GATE_D2: float = 9.49
 
+# RMS reprojection gate for AprilTag corner residuals, pixels
+PARAM_APRILTAG_REPROJ_RMS_GATE_PX: str = "apriltag_reproj_rms_gate_px"
+
+# Default RMS reprojection gate for AprilTag corner residuals, pixels
+DEFAULT_APRILTAG_REPROJ_RMS_GATE_PX: float = 5.0
+
 # Prior translation sigma for tag landmarks, meters
 PARAM_TAG_LANDMARK_PRIOR_SIGMA_T_M: str = "tag_landmark_prior_sigma_t_m"
 
