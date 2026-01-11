@@ -103,15 +103,18 @@ class EkfCore(
         if event.event_type == EkfEventType.IMU:
             imu_packet: EkfImuPacket = cast(EkfImuPacket, event.payload)
             if imu_packet.calibration is not None:
-                if imu_packet.calibration.valid and not self._calibration_initialized:
+                if (
+                    imu_packet.calibration.valid
+                    and not self._calibration_initialized
+                    and not self._initialized
+                ):
                     # Calibration messages are priors; applying them after init would
                     # cause nondeterministic jumps
                     self.initialize_from_calibration(imu_packet.calibration)
                     self._calibration_initialized = True
 
             self._ensure_initialized()
-            self._process_imu_packet(imu_packet, t_meas_ns)
-            advance_frontier = True
+            advance_frontier = self._process_imu_packet(imu_packet, t_meas_ns)
         elif event.event_type == EkfEventType.MAG:
             mag_sample: MagSample = cast(MagSample, event.payload)
             self._ensure_initialized()

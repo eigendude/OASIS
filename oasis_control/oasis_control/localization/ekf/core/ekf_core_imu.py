@@ -154,28 +154,27 @@ class EkfCoreImuMixin:
         self,
         imu_packet: EkfImuPacket,
         t_meas_ns: int,
-    ) -> None:
+    ) -> bool:
         imu_sample: ImuSample = imu_packet.imu
         self._record_imu_time(t_meas_ns)
         if self._last_imu is None or self._last_imu_time_ns is None:
             self._last_imu = imu_sample
             self._last_imu_time_ns = t_meas_ns
-            return
+            return True
         imu_dt_ns: int = t_meas_ns - self._last_imu_time_ns
         if imu_dt_ns <= 0:
-            self._last_imu = imu_sample
-            self._last_imu_time_ns = t_meas_ns
-            return
+            return False
         if imu_dt_ns > self._config.dt_imu_max_ns:
             self._record_imu_gap(self._last_imu_time_ns, t_meas_ns, imu_dt_ns)
             self._reset_frontier_after_gap(t_meas_ns)
             self._last_imu = imu_sample
             self._last_imu_time_ns = t_meas_ns
-            return
+            return True
         if self._t_frontier_ns is not None:
             self._propagate_with_imu(self._last_imu, self._t_frontier_ns, t_meas_ns)
         self._last_imu = imu_sample
         self._last_imu_time_ns = t_meas_ns
+        return True
 
     def _reset_frontier_after_gap(self, t_meas_ns: int) -> None:
         self._t_frontier_ns = t_meas_ns
