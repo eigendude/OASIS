@@ -216,29 +216,17 @@ class EkfCoreImuMixin:
             imu_sample.linear_acceleration_mps2, dtype=float
         )
         try:
-            self._process_model.propagate_nominal_substepped(
-                self._state,
-                omega_raw_rps=omega_raw_rps,
-                accel_raw_mps2=accel_raw_mps2,
-                dt_ns=dt_total_ns,
-                max_dt_ns=self._config.max_dt_ns,
-            )
-            # Sub-step nominal propagation for numerical stability. The v0
-            # process noise Q uses closed-form coefficients for dt_total_ns and
-            # does not accumulate per-substep values. Without Phi/G weighting,
-            # summing per-step Q is not equivalent to the closed-form dt^4 / 4,
-            # dt^3 / 2, dt^2 terms
-            #
-            # TODO(ekf-v1): add Phi/G and integrate Q via
-            # Q = ∫ Phi(τ) G Qc Gᵀ Phi(τ)ᵀ dτ
-            # across substeps
-            q = self._process_model.discrete_process_noise(
-                self._state, dt_ns=dt_total_ns
+            covariance: np.ndarray = (
+                self._process_model.propagate_nominal_and_covariance_substepped(
+                    self._state,
+                    self._state.covariance,
+                    omega_raw_rps=omega_raw_rps,
+                    accel_raw_mps2=accel_raw_mps2,
+                    dt_ns=dt_total_ns,
+                    max_dt_ns=self._config.max_dt_ns,
+                )
             )
         except ValueError as exc:
             _LOG.info("Skipping IMU propagation, %s", exc)
             return
-        self._state.covariance = self._state.covariance + q
-        self._state.covariance = 0.5 * (
-            self._state.covariance + self._state.covariance.T
-        )
+        self._state.covariance = covariance
