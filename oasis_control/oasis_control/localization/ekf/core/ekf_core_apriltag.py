@@ -274,7 +274,43 @@ class EkfCoreAprilTagMixin(EkfCoreStateMixin, EkfCoreUtilsMixin):
         )
         s_hat: np.ndarray = h @ self._world_odom_cov @ h.T
         s: np.ndarray = s_hat + r
-        maha_d2: float = float(residual.T @ np.linalg.solve(s, residual))
+        s = 0.5 * (s + s.T)
+        base: float = 1e-12
+        scale: float = max(1.0, float(np.max(np.abs(np.diag(s)))))
+        jitter: float = base * scale
+        s = s + jitter * np.eye(s.shape[0], dtype=float)
+        l: Optional[np.ndarray]
+        try:
+            l = np.linalg.cholesky(s)
+        except np.linalg.LinAlgError:
+            l = None
+            for factor in (1e-10, 1e-8, 1e-6, 1e-4):
+                s_try: np.ndarray = 0.5 * (s + s.T) + (factor * scale) * np.eye(
+                    s.shape[0], dtype=float
+                )
+                try:
+                    l = np.linalg.cholesky(s_try)
+                    s = s_try
+                    break
+                except np.linalg.LinAlgError:
+                    continue
+            else:
+                return self.build_rejected_apriltag_detection(
+                    detection,
+                    frame_id,
+                    t_meas,
+                    reject_reason="singular S",
+                    z=z,
+                    z_hat=z_hat,
+                    residual=residual,
+                    r=r,
+                    s_hat=s_hat,
+                    s=s,
+                )
+
+        y: np.ndarray = np.linalg.solve(l, residual)
+        x: np.ndarray = np.linalg.solve(l.T, y)
+        maha_d2: float = float(residual.T @ x)
         gate_d2_threshold: float = self._config.apriltag_gate_d2
         if gate_d2_threshold > 0.0 and maha_d2 > gate_d2_threshold:
             return self.build_rejected_apriltag_detection(
@@ -293,8 +329,10 @@ class EkfCoreAprilTagMixin(EkfCoreStateMixin, EkfCoreUtilsMixin):
                 reproj_rms_px=reproj_rms_px,
             )
 
-        hp: np.ndarray = h @ self._world_odom_cov
-        k_gain: np.ndarray = np.linalg.solve(s.T, hp).T
+        ph_t: np.ndarray = self._world_odom_cov @ h.T
+        tmp: np.ndarray = np.linalg.solve(l, ph_t.T)
+        s_inv_ph_t: np.ndarray = np.linalg.solve(l.T, tmp)
+        k_gain: np.ndarray = s_inv_ph_t.T
 
         delta: np.ndarray = k_gain @ residual
         self._world_odom.translation_m, self._world_odom.rotation_wxyz = pose_plus(
@@ -307,6 +345,7 @@ class EkfCoreAprilTagMixin(EkfCoreStateMixin, EkfCoreUtilsMixin):
         self._world_odom_cov = (
             temp @ self._world_odom_cov @ temp.T + k_gain @ r @ k_gain.T
         )
+        self._world_odom_cov = 0.5 * (self._world_odom_cov + self._world_odom_cov.T)
 
         update: EkfUpdateData = EkfUpdateData(
             sensor="apriltags",

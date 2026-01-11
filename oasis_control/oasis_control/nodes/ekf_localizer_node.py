@@ -11,7 +11,6 @@
 import math
 import time
 from collections import deque
-from dataclasses import replace
 from typing import Deque
 from typing import Optional
 from typing import cast
@@ -578,8 +577,9 @@ class EkfLocalizerNode(rclpy.node.Node):
     def _publish_rejection(self, event: EkfEvent, reason: str) -> None:
         if event.event_type == EkfEventType.MAG:
             mag_sample: MagSample = cast(MagSample, event.payload)
-            update: EkfUpdateData = self._core.update_with_mag(mag_sample, event.t_meas)
-            update = replace(update, accepted=False, reject_reason=reason)
+            update: EkfUpdateData = self._core.build_rejected_mag_update(
+                mag_sample, event.t_meas, reject_reason=reason
+            )
             self._publish_mag_update(update)
         elif event.event_type == EkfEventType.APRILTAG:
             apriltag_data: AprilTagDetectionArrayData = cast(

@@ -239,3 +239,6 @@ class EkfCoreImuMixin:
             _LOG.info("Skipping IMU propagation, %s", exc)
             return
         self._state.covariance = self._state.covariance + q
+        self._state.covariance = 0.5 * (
+            self._state.covariance + self._state.covariance.T
+        )

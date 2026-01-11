@@ -110,6 +110,9 @@ class EkfCoreMagMixin(EkfCoreUtilsMixin):
         self._state.covariance = (
             temp @ self._state.covariance @ temp.T + k_gain @ r @ k_gain.T
         )
+        self._state.covariance = 0.5 * (
+            self._state.covariance + self._state.covariance.T
+        )
 
         mag_accept_update: EkfUpdateData = EkfUpdateData(
             sensor="magnetic_field",
@@ -130,6 +133,13 @@ class EkfCoreMagMixin(EkfCoreUtilsMixin):
         )
 
         return mag_accept_update
+
+    def build_rejected_mag_update(
+        self, mag_sample: MagSample, t_meas: EkfTime, *, reject_reason: str
+    ) -> EkfUpdateData:
+        return self._build_rejected_mag_update(
+            mag_sample, t_meas, reject_reason=reject_reason
+        )
 
     def _build_rejected_mag_update(
         self, mag_sample: MagSample, t_meas: EkfTime, *, reject_reason: str

@@ -83,6 +83,15 @@ def from_ns(ns: int) -> EkfTime:
     return EkfTime(sec=sec, nanosec=nanosec)
 
 
+def to_seconds(t: EkfTime) -> float:
+    return float(t.sec) + float(t.nanosec) / _NS_PER_S
+
+
+def from_seconds(seconds: float) -> EkfTime:
+    total_ns: int = int(round(seconds * _NS_PER_S))
+    return from_ns(total_ns)
+
+
 class EkfEventType(enum.Enum):
     """
     Enumerates the kinds of time-ordered EKF events
