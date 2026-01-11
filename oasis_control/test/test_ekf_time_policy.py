@@ -149,7 +149,7 @@ def _build_camera_info() -> CameraInfoData:
 
 def _project_tag_corners(
     *,
-    pose_world_xyz_yaw: list[float],
+    pose_cam_xyz_yaw: list[float],
     tag_size_m: float,
     camera_info: CameraInfoData,
 ) -> list[float]:
@@ -161,10 +161,10 @@ def _project_tag_corners(
         [-half_size_m, half_size_m, 0.0],
     ]
 
-    x_t: float = pose_world_xyz_yaw[0]
-    y_t: float = pose_world_xyz_yaw[1]
-    z_t: float = pose_world_xyz_yaw[2]
-    yaw: float = pose_world_xyz_yaw[3]
+    x_t: float = pose_cam_xyz_yaw[0]
+    y_t: float = pose_cam_xyz_yaw[1]
+    z_t: float = pose_cam_xyz_yaw[2]
+    yaw: float = pose_cam_xyz_yaw[3]
     cos_yaw: float = math.cos(yaw)
     sin_yaw: float = math.sin(yaw)
 
@@ -320,11 +320,11 @@ def test_apriltag_linearization_uses_fixed_state() -> None:
             tag_id=1,
             det_index_in_msg=0,
             corners_px=_project_tag_corners(
-                pose_world_xyz_yaw=[1.0, 0.0, 1.0, 0.1],
+                pose_cam_xyz_yaw=[1.0, 0.0, 1.0, 0.1],
                 tag_size_m=config.tag_size_m,
                 camera_info=camera_info,
             ),
-            pose_world_xyz_yaw=[1.0, 0.0, 1.0, 0.1],
+            pose_cam_xyz_yaw=[1.0, 0.0, 1.0, 0.1],
             decision_margin=1.0,
             homography=[0.0] * 9,
         ),
@@ -333,11 +333,11 @@ def test_apriltag_linearization_uses_fixed_state() -> None:
             tag_id=2,
             det_index_in_msg=1,
             corners_px=_project_tag_corners(
-                pose_world_xyz_yaw=[2.0, 0.5, 1.0, -0.2],
+                pose_cam_xyz_yaw=[2.0, 0.5, 1.0, -0.2],
                 tag_size_m=config.tag_size_m,
                 camera_info=camera_info,
             ),
-            pose_world_xyz_yaw=[2.0, 0.5, 1.0, -0.2],
+            pose_cam_xyz_yaw=[2.0, 0.5, 1.0, -0.2],
             decision_margin=1.0,
             homography=[0.0] * 9,
         ),

@@ -225,7 +225,7 @@ def _build_detection(
         tag_id=5,
         det_index_in_msg=0,
         corners_px=corners_px,
-        pose_world_xyz_yaw=[
+        pose_cam_xyz_yaw=[
             tag_pose_c[0],
             tag_pose_c[1],
             tag_pose_c[2],

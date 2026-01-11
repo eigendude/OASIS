@@ -131,7 +131,7 @@ def test_reprojection_refines_pose() -> None:
         tag_id=1,
         det_index_in_msg=0,
         corners_px=noisy_corners,
-        pose_world_xyz_yaw=None,
+        pose_cam_xyz_yaw=None,
         decision_margin=1.0,
         homography=[0.0] * 9,
     )

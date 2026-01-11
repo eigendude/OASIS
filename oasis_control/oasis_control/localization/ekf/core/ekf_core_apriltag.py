@@ -90,9 +90,10 @@ class EkfCoreAprilTagMixin(EkfCoreStateMixin, EkfCoreUtilsMixin):
             apriltag_data.detections, key=lambda det: (det.family, det.tag_id)
         )
         detections: list[EkfAprilTagDetectionUpdate] = []
-        # Linearize once per message to keep per-detection updates deterministic
-        x_lin: np.ndarray = self._world_base_legacy_state()
         for detection in detections_sorted:
+            # Re-linearize per detection so updates remain consistent with state
+            # changes while keeping detection ordering deterministic
+            x_lin: np.ndarray = self._world_base_legacy_state()
             tag_key: TagKey = TagKey(family=detection.family, tag_id=detection.tag_id)
             self._state.ensure_landmark(tag_key)
             detection_update: EkfAprilTagDetectionUpdate = (
@@ -497,12 +498,18 @@ class EkfCoreAprilTagMixin(EkfCoreStateMixin, EkfCoreUtilsMixin):
         reset_jacobian: np.ndarray = self._odom_reset_jacobian(
             world_odom_after, odom_after, odom_before, world_odom_reset
         )
+        if reset_jacobian.shape != (12, 12):
+            raise ValueError("Expected reset Jacobian with shape (12, 12)")
         index: EkfStateIndex = self._state.index
         world_odom_indices: list[int] = list(
             range(index.world_odom.start, index.world_odom.stop)
         )
         pose_indices: list[int] = list(range(index.pose.start, index.pose.stop))
         reset_indices: list[int] = world_odom_indices + pose_indices
+        if len(reset_indices) != 12:
+            raise ValueError("Expected 12 reset indices for world_odom and pose")
+        if len(set(reset_indices)) != len(reset_indices):
+            raise ValueError("Reset indices must be unique")
         full_jacobian: np.ndarray = np.eye(index.total_dim, dtype=float)
         full_jacobian[np.ix_(reset_indices, reset_indices)] = reset_jacobian
         covariance_after: np.ndarray = self._state.covariance
@@ -521,6 +528,14 @@ class EkfCoreAprilTagMixin(EkfCoreStateMixin, EkfCoreUtilsMixin):
             self._state.covariance = 0.5 * (
                 self._state.covariance + self._state.covariance.T
             )
+        # Symmetry tolerance for covariance numerical roundoff, unitless
+        if not np.allclose(
+            self._state.covariance, self._state.covariance.T, atol=1e-9
+        ):
+            raise ValueError("Reset covariance lost symmetry")
+        # Negative variance tolerance for numerical roundoff, variance units
+        if np.any(np.diag(self._state.covariance) < -1e-12):
+            raise ValueError("Reset covariance has negative variances")
         self._state.vel_o_mps = vel_before.copy()
 
     def _reset_world_odom(
