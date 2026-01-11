@@ -14,6 +14,7 @@ State container and indexing for EKF localization
 
 from __future__ import annotations
 
+import math
 from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Optional
@@ -34,6 +35,9 @@ _DEFAULT_ACCEL_A_SIGMA: float = 1.0
 
 # Default gyroscope bias sigma in rad/s
 _DEFAULT_GYRO_BIAS_SIGMA_RPS: float = 0.1
+
+# World-odom prior variance scale relative to local pose variance
+_WORLD_ODOM_PRIOR_SCALE: float = 10.0
 
 
 @dataclass(frozen=True)
@@ -74,6 +78,7 @@ class EkfStateIndex:
 
     Fields:
         pose: Pose error slice (delta translation, delta rotation)
+        world_odom: World-to-odom pose error slice
         velocity: Velocity error slice
         accel_bias: Accelerometer bias error slice
         accel_a: Accelerometer scale/misalignment error slice
@@ -86,6 +91,7 @@ class EkfStateIndex:
     """
 
     pose: slice
+    world_odom: slice
     velocity: slice
     accel_bias: slice
     accel_a: slice
@@ -99,6 +105,7 @@ class EkfStateIndex:
     def copy(self) -> EkfStateIndex:
         return EkfStateIndex(
             pose=self.pose,
+            world_odom=self.world_odom,
             velocity=self.velocity,
             accel_bias=self.accel_bias,
             accel_a=self.accel_a,
@@ -116,11 +123,13 @@ class EkfState:
     Container for nominal state and packed error-state covariance
 
     The pose and velocity are expressed in the local odometry frame
+    The shared state also tracks the world-to-odom alignment for global updates
     """
 
     def __init__(self, config: EkfConfig) -> None:
         self._config: EkfConfig = config
         self.pose_ob: Pose3 = self._identity_pose()
+        self.world_odom: Pose3 = self._identity_pose()
         self.vel_o_mps: np.ndarray = np.zeros(3, dtype=float)
         self.imu_bias_accel_mps2: np.ndarray = np.zeros(3, dtype=float)
         self.imu_accel_a: np.ndarray = np.eye(3, dtype=float)
@@ -165,6 +174,7 @@ class EkfState:
         new_state: EkfState = EkfState.__new__(EkfState)
         new_state._config = self._config
         new_state.pose_ob = self.pose_ob.copy()
+        new_state.world_odom = self.world_odom.copy()
         new_state.vel_o_mps = self.vel_o_mps.copy()
         new_state.imu_bias_accel_mps2 = self.imu_bias_accel_mps2.copy()
         new_state.imu_accel_a = self.imu_accel_a.copy()
@@ -182,6 +192,7 @@ class EkfState:
 
     def reset(self) -> None:
         self.pose_ob = self._identity_pose()
+        self.world_odom = self._identity_pose()
         self.vel_o_mps = np.zeros(3, dtype=float)
         self.imu_bias_accel_mps2 = np.zeros(3, dtype=float)
         self.imu_accel_a = np.eye(3, dtype=float)
@@ -208,6 +219,15 @@ class EkfState:
             self.pose_ob.translation_m,
             self.pose_ob.rotation_wxyz,
             pose_delta,
+        )
+        world_odom_delta: np.ndarray = delta_vec[self._index.world_odom]
+        (
+            self.world_odom.translation_m,
+            self.world_odom.rotation_wxyz,
+        ) = pose_plus(
+            self.world_odom.translation_m,
+            self.world_odom.rotation_wxyz,
+            world_odom_delta,
         )
         self.vel_o_mps = self.vel_o_mps + delta_vec[self._index.velocity]
         self.imu_bias_accel_mps2 = (
@@ -321,6 +341,8 @@ class EkfState:
         cursor: int = 0
         pose_slice: slice = slice(cursor, cursor + 6)
         cursor += 6
+        world_odom_slice: slice = slice(cursor, cursor + 6)
+        cursor += 6
         velocity_slice: slice = slice(cursor, cursor + 3)
         cursor += 3
         accel_bias_slice: slice = slice(cursor, cursor + 3)
@@ -341,6 +363,7 @@ class EkfState:
             cursor += 6
         return EkfStateIndex(
             pose=pose_slice,
+            world_odom=world_odom_slice,
             velocity=velocity_slice,
             accel_bias=accel_bias_slice,
             accel_a=accel_a_slice,
@@ -372,6 +395,17 @@ class EkfState:
         )
         covariance[self._index.pose.start + 5, self._index.pose.start + 5] = (
             self._config.ang_var
+        )
+        # World-odom translation variance in m^2 scaled from local pose variance
+        world_odom_pos_var: float = self._config.pos_var * _WORLD_ODOM_PRIOR_SCALE
+
+        # World-odom rotation variance in rad^2 scaled from local pose variance
+        world_odom_ang_var: float = self._config.ang_var * _WORLD_ODOM_PRIOR_SCALE
+        covariance[self._index.world_odom, self._index.world_odom] = (
+            self._pose_prior_covariance(
+                sigma_t=math.sqrt(world_odom_pos_var),
+                sigma_rot=math.sqrt(world_odom_ang_var),
+            )
         )
         covariance[self._index.velocity, self._index.velocity] = (
             np.eye(3, dtype=float) * self._config.vel_var

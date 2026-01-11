@@ -60,8 +60,6 @@ class EkfCoreStateMixin:
     _state: EkfState
     _state_frontier: EkfState
     _t_frontier_ns: Optional[int]
-    _world_odom: Pose3
-    _world_odom_cov: np.ndarray
 
     def process_event(self, event: EkfEvent) -> EkfOutputs:
         raise NotImplementedError
@@ -139,7 +137,8 @@ class EkfCoreStateMixin:
         Return the world-to-odom covariance in tangent-space coordinates
         """
 
-        return self._world_odom_cov.copy()
+        world_odom_slice: slice = self._state.index.world_odom
+        return self._state.covariance[world_odom_slice, world_odom_slice].copy()
 
     def odom_pose(self) -> Pose3:
         """
@@ -153,7 +152,7 @@ class EkfCoreStateMixin:
         Return the world-to-odom pose used for global alignment
         """
 
-        return self._world_odom.copy()
+        return self._state.world_odom.copy()
 
     def world_pose(self) -> Pose3:
         """
@@ -193,8 +192,6 @@ class EkfCoreStateMixin:
         self._t_frontier_ns = None
         self._state.reset()
         self._state_frontier = self._state.copy()
-        self._world_odom = self._identity_pose()
-        self._world_odom_cov = self._build_world_odom_covariance()
         self._last_imu_time_ns = None
         self._last_imu = None
         self._imu_times_ns = []
@@ -219,8 +216,6 @@ class EkfCoreStateMixin:
             t_frontier_ns=self._t_frontier_ns,
             state=self._state.copy(),
             state_frontier=self._state_frontier.copy(),
-            world_odom=self._world_odom.copy(),
-            world_odom_cov=self._world_odom_cov.copy(),
             last_imu_time_ns=self._last_imu_time_ns,
             last_imu=self._last_imu,
             imu_times_ns=list(self._imu_times_ns),
@@ -234,8 +229,6 @@ class EkfCoreStateMixin:
         self._t_frontier_ns = snapshot.t_frontier_ns
         self._state = snapshot.state.copy()
         self._state_frontier = snapshot.state_frontier.copy()
-        self._world_odom = snapshot.world_odom.copy()
-        self._world_odom_cov = snapshot.world_odom_cov.copy()
         self._last_imu_time_ns = snapshot.last_imu_time_ns
         self._last_imu = snapshot.last_imu
         self._imu_times_ns = list(snapshot.imu_times_ns)
@@ -249,8 +242,6 @@ class EkfCoreStateMixin:
         self._state.reset()
         self._initialized = True
         self._state_frontier = self._state.copy()
-        self._world_odom = self._identity_pose()
-        self._world_odom_cov = self._build_world_odom_covariance()
 
     def _event_sort_key(self, event: EkfEvent) -> int:
         return _EVENT_ORDER[event.event_type]
@@ -290,8 +281,6 @@ class EkfCoreStateMixin:
             _Checkpoint(
                 t_meas_ns=t_meas_ns,
                 state=self._state.copy(),
-                world_odom=self._world_odom.copy(),
-                world_odom_cov=self._world_odom_cov.copy(),
                 last_imu_time_ns=self._last_imu_time_ns,
                 last_imu=self._last_imu,
                 imu_times_ns=list(self._imu_times_ns),
@@ -324,8 +313,6 @@ class EkfCoreStateMixin:
         self._imu_gaps = list(checkpoint.imu_gaps)
         self._t_frontier_ns = checkpoint.t_meas_ns
         self._state_frontier = self._state.copy()
-        self._world_odom = checkpoint.world_odom.copy()
-        self._world_odom_cov = checkpoint.world_odom_cov.copy()
         self._checkpoints = [checkpoint]
         self._last_checkpoint_time = checkpoint.t_meas_ns
         self._initialized = True
@@ -339,23 +326,9 @@ class EkfCoreStateMixin:
         self._imu_gaps = []
         self._imu_gap_reject_count = 0
         self._state_frontier = self._state.copy()
-        self._world_odom = self._identity_pose()
-        self._world_odom_cov = self._build_world_odom_covariance()
         self._checkpoints = []
         self._last_checkpoint_time = None
         self._initialized = True
-
-    def _identity_pose(self) -> Pose3:
-        return Pose3(
-            translation_m=np.zeros(3, dtype=float),
-            rotation_wxyz=np.array([1.0, 0.0, 0.0, 0.0], dtype=float),
-        )
-
-    def _build_world_odom_covariance(self) -> np.ndarray:
-        cov: np.ndarray = np.zeros((6, 6), dtype=float)
-        cov[0:3, 0:3] = np.eye(3, dtype=float) * self._config.pos_var
-        cov[3:6, 3:6] = np.eye(3, dtype=float) * self._config.ang_var
-        return cov
 
     def _frame_outputs(self) -> EkfFrameOutputs:
         t_odom_base: EkfFrameTransform = self._pose_to_transform(
@@ -364,7 +337,7 @@ class EkfCoreStateMixin:
             child_frame="base",
         )
         t_world_odom: EkfFrameTransform = self._pose_to_transform(
-            self._world_odom,
+            self._state.world_odom,
             parent_frame="world",
             child_frame="odom",
         )
@@ -407,8 +380,8 @@ class EkfCoreStateMixin:
         t_world_base: np.ndarray
         q_world_base: np.ndarray
         t_world_base, q_world_base = pose_compose(
-            self._world_odom.translation_m,
-            self._world_odom.rotation_wxyz,
+            self._state.world_odom.translation_m,
+            self._state.world_odom.rotation_wxyz,
             self._state.pose_ob.translation_m,
             self._state.pose_ob.rotation_wxyz,
         )

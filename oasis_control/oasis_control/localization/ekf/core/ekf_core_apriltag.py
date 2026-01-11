@@ -23,6 +23,7 @@ from oasis_control.localization.ekf.core.ekf_core_state import EkfCoreStateMixin
 from oasis_control.localization.ekf.core.ekf_core_utils import EkfCoreUtilsMixin
 from oasis_control.localization.ekf.ekf_config import EkfConfig
 from oasis_control.localization.ekf.ekf_state import EkfState
+from oasis_control.localization.ekf.ekf_state import EkfStateIndex
 from oasis_control.localization.ekf.ekf_state import Pose3
 from oasis_control.localization.ekf.ekf_state import TagKey
 from oasis_control.localization.ekf.ekf_types import AprilTagDetection
@@ -39,11 +40,20 @@ from oasis_control.localization.ekf.models.apriltag_measurement_model import (
 from oasis_control.localization.ekf.models.apriltag_measurement_model import (
     AprilTagMeasurementModel,
 )
+from oasis_control.localization.ekf.se3 import pose_compose
+from oasis_control.localization.ekf.se3 import pose_inverse
+from oasis_control.localization.ekf.se3 import pose_minus
 from oasis_control.localization.ekf.se3 import pose_plus
 
 
 # Nominal pixel noise used to scale AprilTag measurement variance, pixels
 APRILTAG_REPROJ_NOISE_PX: float = 1.0
+
+# Translation finite-difference step for AprilTag Jacobians, meters
+_APRILTAG_JAC_EPS_M: float = 1.0e-4
+
+# Rotation finite-difference step for AprilTag Jacobians, radians
+_APRILTAG_JAC_EPS_RAD: float = 1.0e-4
 
 
 class EkfCoreAprilTagMixin(EkfCoreStateMixin, EkfCoreUtilsMixin):
@@ -51,8 +61,6 @@ class EkfCoreAprilTagMixin(EkfCoreStateMixin, EkfCoreUtilsMixin):
     _camera_info: Optional[CameraInfoData]
     _config: EkfConfig
     _state: EkfState
-    _world_odom: Pose3
-    _world_odom_cov: np.ndarray
 
     def update_with_apriltags(
         self, apriltag_data: AprilTagDetectionArrayData, t_meas: EkfTime
@@ -257,9 +265,17 @@ class EkfCoreAprilTagMixin(EkfCoreStateMixin, EkfCoreUtilsMixin):
         )
 
         z_hat: np.ndarray
-        h: np.ndarray
-        z_hat, h = self._apriltag_model.linearize_pose(x_lin)
-        h = self._lift_world_odom_jacobian(h)
+        h_legacy: np.ndarray
+        z_hat, h_legacy = self._apriltag_model.linearize_pose(x_lin)
+        h_pose: np.ndarray = self._lift_world_base_jacobian(h_legacy)
+        world_odom_jacobian: np.ndarray
+        odom_base_jacobian: np.ndarray
+        world_odom_jacobian, odom_base_jacobian = self._world_base_error_jacobians()
+        h: np.ndarray = np.zeros(
+            (h_pose.shape[0], self._state.index.total_dim), dtype=float
+        )
+        h[:, self._state.index.world_odom] = h_pose @ world_odom_jacobian
+        h[:, self._state.index.pose] = h_pose @ odom_base_jacobian
         residual: np.ndarray = z - z_hat
         residual[3] = self._wrap_angle(residual[3])
 
@@ -272,7 +288,8 @@ class EkfCoreAprilTagMixin(EkfCoreStateMixin, EkfCoreUtilsMixin):
                 self._config.apriltag_yaw_var * reproj_scale**2,
             ]
         )
-        s_hat: np.ndarray = h @ self._world_odom_cov @ h.T
+        p_prior: np.ndarray = self._state.covariance
+        s_hat: np.ndarray = h @ p_prior @ h.T
         s: np.ndarray = s_hat + r
         s = 0.5 * (s + s.T)
         base: float = 1e-12
@@ -329,23 +346,25 @@ class EkfCoreAprilTagMixin(EkfCoreStateMixin, EkfCoreUtilsMixin):
                 reproj_rms_px=reproj_rms_px,
             )
 
-        ph_t: np.ndarray = self._world_odom_cov @ h.T
+        ph_t: np.ndarray = p_prior @ h.T
         tmp: np.ndarray = np.linalg.solve(l, ph_t.T)
         s_inv_ph_t: np.ndarray = np.linalg.solve(l.T, tmp)
         k_gain: np.ndarray = s_inv_ph_t.T
 
         delta: np.ndarray = k_gain @ residual
-        self._world_odom.translation_m, self._world_odom.rotation_wxyz = pose_plus(
-            self._world_odom.translation_m,
-            self._world_odom.rotation_wxyz,
-            delta,
-        )
-        identity: np.ndarray = np.eye(6, dtype=float)
+        odom_before: Pose3 = self._state.pose_ob.copy()
+        vel_before: np.ndarray = self._state.vel_o_mps.copy()
+        self._state.apply_delta(delta)
+        identity: np.ndarray = np.eye(self._state.index.total_dim, dtype=float)
         temp: np.ndarray = identity - k_gain @ h
-        self._world_odom_cov = (
-            temp @ self._world_odom_cov @ temp.T + k_gain @ r @ k_gain.T
+        self._state.covariance = temp @ p_prior @ temp.T + k_gain @ r @ k_gain.T
+        self._state.covariance = 0.5 * (
+            self._state.covariance + self._state.covariance.T
         )
-        self._world_odom_cov = 0.5 * (self._world_odom_cov + self._world_odom_cov.T)
+
+        # AprilTag updates must not teleport odom so we reset deterministically
+        # This keeps world-base fixed while shifting the world-to-odom estimate
+        self._apply_odom_continuity_reset(odom_before, vel_before)
 
         update: EkfUpdateData = EkfUpdateData(
             sensor="apriltags",
@@ -371,10 +390,199 @@ class EkfCoreAprilTagMixin(EkfCoreStateMixin, EkfCoreUtilsMixin):
             update=update,
         )
 
-    def _lift_world_odom_jacobian(self, legacy_h: np.ndarray) -> np.ndarray:
+    def _lift_world_base_jacobian(self, legacy_h: np.ndarray) -> np.ndarray:
         if legacy_h.shape[1] != 9:
             raise ValueError("Expected legacy Jacobian with 9 columns")
         lifted: np.ndarray = np.zeros((legacy_h.shape[0], 6), dtype=float)
         lifted[:, 0:3] = legacy_h[:, 0:3]
         lifted[:, 3:6] = legacy_h[:, 6:9]
         return lifted
+
+    def _world_base_error_jacobians(self) -> tuple[np.ndarray, np.ndarray]:
+        world_odom: Pose3 = self._state.world_odom
+        odom_base: Pose3 = self._state.pose_ob
+        t_world_base: np.ndarray
+        q_world_base: np.ndarray
+        t_world_base, q_world_base = pose_compose(
+            world_odom.translation_m,
+            world_odom.rotation_wxyz,
+            odom_base.translation_m,
+            odom_base.rotation_wxyz,
+        )
+        world_odom_jacobian: np.ndarray = np.zeros((6, 6), dtype=float)
+        odom_base_jacobian: np.ndarray = np.zeros((6, 6), dtype=float)
+        axis: int
+        for axis in range(6):
+            step_world_odom: float = (
+                _APRILTAG_JAC_EPS_M if axis < 3 else _APRILTAG_JAC_EPS_RAD
+            )
+            delta_world_odom: np.ndarray = np.zeros(6, dtype=float)
+            delta_world_odom[axis] = step_world_odom
+            t_world_odom_pert: np.ndarray
+            q_world_odom_pert: np.ndarray
+            t_world_odom_pert, q_world_odom_pert = pose_plus(
+                world_odom.translation_m,
+                world_odom.rotation_wxyz,
+                delta_world_odom,
+            )
+            t_world_base_pert: np.ndarray
+            q_world_base_pert: np.ndarray
+            t_world_base_pert, q_world_base_pert = pose_compose(
+                t_world_odom_pert,
+                q_world_odom_pert,
+                odom_base.translation_m,
+                odom_base.rotation_wxyz,
+            )
+            delta_world_base: np.ndarray = pose_minus(
+                t_world_base_pert,
+                q_world_base_pert,
+                t_world_base,
+                q_world_base,
+            )
+            world_odom_jacobian[:, axis] = delta_world_base / step_world_odom
+
+        for axis in range(6):
+            step_odom: float = (
+                _APRILTAG_JAC_EPS_M if axis < 3 else _APRILTAG_JAC_EPS_RAD
+            )
+            delta_odom: np.ndarray = np.zeros(6, dtype=float)
+            delta_odom[axis] = step_odom
+            t_odom_base_pert: np.ndarray
+            q_odom_base_pert: np.ndarray
+            t_odom_base_pert, q_odom_base_pert = pose_plus(
+                odom_base.translation_m,
+                odom_base.rotation_wxyz,
+                delta_odom,
+            )
+            t_world_base_pert_odom: np.ndarray
+            q_world_base_pert_odom: np.ndarray
+            t_world_base_pert_odom, q_world_base_pert_odom = pose_compose(
+                world_odom.translation_m,
+                world_odom.rotation_wxyz,
+                t_odom_base_pert,
+                q_odom_base_pert,
+            )
+            delta_world_base_odom: np.ndarray = pose_minus(
+                t_world_base_pert_odom,
+                q_world_base_pert_odom,
+                t_world_base,
+                q_world_base,
+            )
+            odom_base_jacobian[:, axis] = delta_world_base_odom / step_odom
+
+        return world_odom_jacobian, odom_base_jacobian
+
+    def _apply_odom_continuity_reset(
+        self, odom_before: Pose3, vel_before: np.ndarray
+    ) -> None:
+        """
+        Restore odom pose and velocity while shifting world-odom to preserve
+        world-base
+        """
+
+        world_odom_after: Pose3 = self._state.world_odom.copy()
+        odom_after: Pose3 = self._state.pose_ob.copy()
+        world_odom_reset: Pose3 = self._reset_world_odom(
+            world_odom_after, odom_after, odom_before
+        )
+        self._state.pose_ob = odom_before.copy()
+        self._state.world_odom = world_odom_reset
+
+        reset_jacobian: np.ndarray = self._odom_reset_jacobian(
+            world_odom_after, odom_after, odom_before, world_odom_reset
+        )
+        index: EkfStateIndex = self._state.index
+        world_odom_indices: list[int] = list(
+            range(index.world_odom.start, index.world_odom.stop)
+        )
+        pose_indices: list[int] = list(range(index.pose.start, index.pose.stop))
+        reset_indices: list[int] = world_odom_indices + pose_indices
+        full_jacobian: np.ndarray = np.eye(index.total_dim, dtype=float)
+        full_jacobian[np.ix_(reset_indices, reset_indices)] = reset_jacobian
+        covariance_after: np.ndarray = self._state.covariance
+        # Change-of-variables update keeps the shared covariance consistent
+        self._state.covariance = full_jacobian @ covariance_after @ full_jacobian.T
+        self._state.covariance = 0.5 * (
+            self._state.covariance + self._state.covariance.T
+        )
+        self._state.vel_o_mps = vel_before.copy()
+
+    def _reset_world_odom(
+        self, world_odom: Pose3, odom_after: Pose3, odom_before: Pose3
+    ) -> Pose3:
+        t_world_base: np.ndarray
+        q_world_base: np.ndarray
+        t_world_base, q_world_base = pose_compose(
+            world_odom.translation_m,
+            world_odom.rotation_wxyz,
+            odom_after.translation_m,
+            odom_after.rotation_wxyz,
+        )
+        t_odom_inv: np.ndarray
+        q_odom_inv: np.ndarray
+        t_odom_inv, q_odom_inv = pose_inverse(
+            odom_before.translation_m,
+            odom_before.rotation_wxyz,
+        )
+        t_world_odom: np.ndarray
+        q_world_odom: np.ndarray
+        t_world_odom, q_world_odom = pose_compose(
+            t_world_base,
+            q_world_base,
+            t_odom_inv,
+            q_odom_inv,
+        )
+        return Pose3(translation_m=t_world_odom, rotation_wxyz=q_world_odom)
+
+    def _odom_reset_jacobian(
+        self,
+        world_odom_after: Pose3,
+        odom_after: Pose3,
+        odom_before: Pose3,
+        world_odom_reset: Pose3,
+    ) -> np.ndarray:
+        jacobian: np.ndarray = np.zeros((12, 12), dtype=float)
+        axis: int
+        for axis in range(12):
+            step: float = _APRILTAG_JAC_EPS_M if axis % 6 < 3 else _APRILTAG_JAC_EPS_RAD
+            delta: np.ndarray = np.zeros(6, dtype=float)
+            delta[axis % 6] = step
+            world_odom_pert: Pose3
+            odom_base_pert: Pose3
+            if axis < 6:
+                t_world_odom_pert: np.ndarray
+                q_world_odom_pert: np.ndarray
+                t_world_odom_pert, q_world_odom_pert = pose_plus(
+                    world_odom_after.translation_m,
+                    world_odom_after.rotation_wxyz,
+                    delta,
+                )
+                odom_base_pert = odom_after
+                world_odom_pert = Pose3(
+                    translation_m=t_world_odom_pert,
+                    rotation_wxyz=q_world_odom_pert,
+                )
+            else:
+                t_odom_base_pert: np.ndarray
+                q_odom_base_pert: np.ndarray
+                t_odom_base_pert, q_odom_base_pert = pose_plus(
+                    odom_after.translation_m,
+                    odom_after.rotation_wxyz,
+                    delta,
+                )
+                odom_base_pert = Pose3(
+                    translation_m=t_odom_base_pert,
+                    rotation_wxyz=q_odom_base_pert,
+                )
+                world_odom_pert = world_odom_after
+            world_odom_reset_pert: Pose3 = self._reset_world_odom(
+                world_odom_pert, odom_base_pert, odom_before
+            )
+            delta_world_odom: np.ndarray = pose_minus(
+                world_odom_reset_pert.translation_m,
+                world_odom_reset_pert.rotation_wxyz,
+                world_odom_reset.translation_m,
+                world_odom_reset.rotation_wxyz,
+            )
+            jacobian[:6, axis] = delta_world_odom / step
+        return jacobian
