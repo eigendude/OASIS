@@ -90,10 +90,8 @@ class EkfCoreAprilTagMixin(EkfCoreStateMixin, EkfCoreUtilsMixin):
             apriltag_data.detections, key=lambda det: (det.family, det.tag_id)
         )
         detections: list[EkfAprilTagDetectionUpdate] = []
+        x_lin: np.ndarray = self._world_base_legacy_state()
         for detection in detections_sorted:
-            # Re-linearize per detection so updates remain consistent with state
-            # changes while keeping detection ordering deterministic
-            x_lin: np.ndarray = self._world_base_legacy_state()
             tag_key: TagKey = TagKey(family=detection.family, tag_id=detection.tag_id)
             self._state.ensure_landmark(tag_key)
             detection_update: EkfAprilTagDetectionUpdate = (
@@ -529,9 +527,7 @@ class EkfCoreAprilTagMixin(EkfCoreStateMixin, EkfCoreUtilsMixin):
                 self._state.covariance + self._state.covariance.T
             )
         # Symmetry tolerance for covariance numerical roundoff, unitless
-        if not np.allclose(
-            self._state.covariance, self._state.covariance.T, atol=1e-9
-        ):
+        if not np.allclose(self._state.covariance, self._state.covariance.T, atol=1e-9):
             raise ValueError("Reset covariance lost symmetry")
         # Negative variance tolerance for numerical roundoff, variance units
         if np.any(np.diag(self._state.covariance) < -1e-12):

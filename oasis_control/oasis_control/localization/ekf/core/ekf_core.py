@@ -70,6 +70,7 @@ class EkfCore(
         self._initialized: bool = False
         self._calibration_initialized: bool = False
         self._camera_info: Optional[CameraInfoData] = None
+        self._camera_info_mismatch_count: int = 0
         self._t_frontier_ns: Optional[int] = None
         self._state: EkfState = EkfState(config)
         self._state_frontier: EkfState = self._state.copy()
@@ -146,8 +147,8 @@ class EkfCore(
                 else:
                     self._restore_snapshot(snapshot)
         elif event.event_type == EkfEventType.CAMERA_INFO:
-            self._camera_info = cast(CameraInfoData, event.payload)
-            self._apriltag_model.set_camera_info(self._camera_info)
+            camera_info: CameraInfoData = cast(CameraInfoData, event.payload)
+            self._cache_camera_info(camera_info)
 
         if advance_frontier:
             self._set_frontier(t_meas)
@@ -170,3 +171,36 @@ class EkfCore(
             mag_update=mag_update,
             apriltag_update=apriltag_update,
         )
+
+    def _cache_camera_info(self, camera_info: CameraInfoData) -> None:
+        if not self._camera_info_is_valid(camera_info):
+            return
+
+        if self._camera_info is None:
+            self._camera_info = camera_info
+            self._apriltag_model.set_camera_info(camera_info)
+            return
+
+        if self._camera_info_intrinsics_match(self._camera_info, camera_info):
+            return
+
+        if self._camera_info_mismatch_count == 0:
+            self._camera_info_mismatch_count = 1
+
+    def _camera_info_is_valid(self, camera_info: CameraInfoData) -> bool:
+        return len(camera_info.k) == 9
+
+    def _camera_info_intrinsics_match(
+        self, cached: CameraInfoData, incoming: CameraInfoData
+    ) -> bool:
+        if cached.frame_id != incoming.frame_id:
+            return False
+        if cached.k != incoming.k:
+            return False
+        if cached.d != incoming.d:
+            return False
+        if cached.distortion_model.lower() != incoming.distortion_model.lower():
+            return False
+        if cached.p != incoming.p:
+            return False
+        return True
