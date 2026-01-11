@@ -363,7 +363,8 @@ class EkfCoreAprilTagMixin(EkfCoreStateMixin, EkfCoreUtilsMixin):
         )
 
         # AprilTag updates must not teleport odom so we reset deterministically
-        # This keeps world-base fixed while shifting the world-to-odom estimate
+        # This applies a gauge transformation that keeps world-base fixed while
+        # re-parameterizing the world-to-odom estimate
         self._apply_odom_continuity_reset(odom_before, vel_before)
 
         update: EkfUpdateData = EkfUpdateData(
@@ -477,7 +478,10 @@ class EkfCoreAprilTagMixin(EkfCoreStateMixin, EkfCoreUtilsMixin):
     ) -> None:
         """
         Restore odom pose and velocity while shifting world-odom to preserve
-        world-base
+        world-base.
+
+        This deterministic gauge reset keeps odom continuous while still
+        applying the shared EKF correction to world-odom.
         """
 
         world_odom_after: Pose3 = self._state.world_odom.copy()
@@ -585,4 +589,5 @@ class EkfCoreAprilTagMixin(EkfCoreStateMixin, EkfCoreUtilsMixin):
                 world_odom_reset.rotation_wxyz,
             )
             jacobian[:6, axis] = delta_world_odom / step
+        jacobian[6:12, 6:12] = np.eye(6, dtype=float)
         return jacobian
