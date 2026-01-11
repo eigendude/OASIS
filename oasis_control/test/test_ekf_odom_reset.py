@@ -62,6 +62,11 @@ def _build_config() -> EkfConfig:
         tag_landmark_prior_sigma_rot_rad=0.1,
         extrinsic_prior_sigma_t_m=1.0,
         extrinsic_prior_sigma_rot_rad=3.141592653589793,
+        mag_alpha=0.01,
+        mag_r_min_t2=[1.0e-12, 1.0e-12, 1.0e-12],
+        mag_r_max_t2=[2.5e-9, 2.5e-9, 2.5e-9],
+        mag_r0_t2=[4.0e-10, 4.0e-10, 4.0e-10],
+        mag_world_t=[1.0, 0.0, 0.0],
     )
 
 

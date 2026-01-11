@@ -187,6 +187,17 @@ class EkfLocalizerNode(rclpy.node.Node):
             ekf_params.PARAM_EXTRINSIC_PRIOR_SIGMA_ROT_RAD,
             ekf_params.DEFAULT_EXTRINSIC_PRIOR_SIGMA_ROT_RAD,
         )
+        self.declare_parameter(ekf_params.PARAM_MAG_ALPHA, ekf_params.DEFAULT_MAG_ALPHA)
+        self.declare_parameter(
+            ekf_params.PARAM_MAG_R_MIN_T2, ekf_params.DEFAULT_MAG_R_MIN_T2
+        )
+        self.declare_parameter(
+            ekf_params.PARAM_MAG_R_MAX_T2, ekf_params.DEFAULT_MAG_R_MAX_T2
+        )
+        self.declare_parameter(ekf_params.PARAM_MAG_R0_T2, ekf_params.DEFAULT_MAG_R0_T2)
+        self.declare_parameter(
+            ekf_params.PARAM_MAG_WORLD_T, ekf_params.DEFAULT_MAG_WORLD_T
+        )
 
         # Load parameters
         self._world_frame_id: str = str(self.get_parameter(PARAM_WORLD_FRAME_ID).value)
@@ -251,6 +262,25 @@ class EkfLocalizerNode(rclpy.node.Node):
         self._extrinsic_prior_sigma_rot_rad: float = float(
             self.get_parameter(ekf_params.PARAM_EXTRINSIC_PRIOR_SIGMA_ROT_RAD).value
         )
+        self._mag_alpha: float = float(
+            self.get_parameter(ekf_params.PARAM_MAG_ALPHA).value
+        )
+        self._mag_r_min_t2: list[float] = [
+            float(value)
+            for value in self.get_parameter(ekf_params.PARAM_MAG_R_MIN_T2).value
+        ]
+        self._mag_r_max_t2: list[float] = [
+            float(value)
+            for value in self.get_parameter(ekf_params.PARAM_MAG_R_MAX_T2).value
+        ]
+        self._mag_r0_t2: list[float] = [
+            float(value)
+            for value in self.get_parameter(ekf_params.PARAM_MAG_R0_T2).value
+        ]
+        self._mag_world_t: list[float] = [
+            float(value)
+            for value in self.get_parameter(ekf_params.PARAM_MAG_WORLD_T).value
+        ]
 
         # Config
         config: EkfConfig = EkfConfig(
@@ -280,6 +310,11 @@ class EkfLocalizerNode(rclpy.node.Node):
             tag_landmark_prior_sigma_rot_rad=self._tag_landmark_prior_sigma_rot_rad,
             extrinsic_prior_sigma_t_m=self._extrinsic_prior_sigma_t_m,
             extrinsic_prior_sigma_rot_rad=self._extrinsic_prior_sigma_rot_rad,
+            mag_alpha=self._mag_alpha,
+            mag_r_min_t2=self._mag_r_min_t2,
+            mag_r_max_t2=self._mag_r_max_t2,
+            mag_r0_t2=self._mag_r0_t2,
+            mag_world_t=self._mag_world_t,
         )
 
         # QoS profile

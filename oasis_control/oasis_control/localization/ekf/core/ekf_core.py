@@ -67,6 +67,7 @@ class EkfCore(
         self._process_model: ImuProcessModel = ImuProcessModel(config)
         self._mag_model: MagMeasurementModel = MagMeasurementModel()
         self._apriltag_model: AprilTagMeasurementModel = AprilTagMeasurementModel()
+        self._mag_model.set_world_field(config.mag_world_t)
         self._initialized: bool = False
         self._calibration_initialized: bool = False
         self._camera_info: Optional[CameraInfoData] = None

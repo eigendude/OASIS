@@ -131,3 +131,33 @@ PARAM_EXTRINSIC_PRIOR_SIGMA_ROT_RAD: str = "extrinsic_prior_sigma_rot_rad"
 
 # Default prior rotation sigma for extrinsics, radians
 DEFAULT_EXTRINSIC_PRIOR_SIGMA_ROT_RAD: float = 3.141592653589793
+
+# Magnetometer covariance matching factor, unitless
+PARAM_MAG_ALPHA: str = "mag_alpha"
+
+# Default magnetometer covariance matching factor, unitless
+DEFAULT_MAG_ALPHA: float = 0.01
+
+# Minimum magnetometer covariance diagonal, tesla^2
+PARAM_MAG_R_MIN_T2: str = "mag_r_min_t2"
+
+# Default minimum magnetometer covariance diagonal, tesla^2
+DEFAULT_MAG_R_MIN_T2: list[float] = [1.0e-12, 1.0e-12, 1.0e-12]
+
+# Maximum magnetometer covariance diagonal, tesla^2
+PARAM_MAG_R_MAX_T2: str = "mag_r_max_t2"
+
+# Default maximum magnetometer covariance diagonal, tesla^2
+DEFAULT_MAG_R_MAX_T2: list[float] = [2.5e-9, 2.5e-9, 2.5e-9]
+
+# Default magnetometer covariance diagonal, tesla^2
+PARAM_MAG_R0_T2: str = "mag_r0_t2"
+
+# Default magnetometer covariance diagonal, tesla^2
+DEFAULT_MAG_R0_T2: list[float] = [4.0e-10, 4.0e-10, 4.0e-10]
+
+# Expected magnetic field vector in world frame, tesla
+PARAM_MAG_WORLD_T: str = "mag_world_t"
+
+# Default expected magnetic field vector in world frame, tesla
+DEFAULT_MAG_WORLD_T: list[float] = [1.0, 0.0, 0.0]

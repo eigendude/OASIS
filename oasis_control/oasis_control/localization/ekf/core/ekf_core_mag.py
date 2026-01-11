@@ -19,6 +19,7 @@ from typing import Optional
 import numpy as np
 
 from oasis_control.localization.ekf.core.ekf_core_utils import EkfCoreUtilsMixin
+from oasis_control.localization.ekf.ekf_config import EkfConfig
 from oasis_control.localization.ekf.ekf_state import EkfState
 from oasis_control.localization.ekf.ekf_types import EkfMatrix
 from oasis_control.localization.ekf.ekf_types import EkfTime
@@ -27,9 +28,11 @@ from oasis_control.localization.ekf.ekf_types import MagSample
 from oasis_control.localization.ekf.models.mag_measurement_model import (
     MagMeasurementModel,
 )
+from oasis_control.localization.ekf.se3 import quat_to_rotation_matrix
 
 
 class EkfCoreMagMixin(EkfCoreUtilsMixin):
+    _config: EkfConfig
     _mag_model: MagMeasurementModel
     _state: EkfState
 
@@ -40,11 +43,13 @@ class EkfCoreMagMixin(EkfCoreUtilsMixin):
 
         z_dim: int = 3
         z: np.ndarray = np.asarray(mag_sample.magnetic_field_t, dtype=float)
-        r: np.ndarray = np.asarray(mag_sample.magnetic_field_cov, dtype=float).reshape(
-            (z_dim, z_dim)
-        )
+        r: np.ndarray = self._mag_covariance_from_sample(mag_sample)
         z_hat: np.ndarray
         h: np.ndarray
+        rot_bm: np.ndarray = quat_to_rotation_matrix(
+            self._state.extrinsic_bm.rotation_wxyz
+        )
+        self._mag_model.set_mag_to_body_rotation(rot_bm)
         state_legacy: np.ndarray = self._state.legacy_state()
         z_hat, h = self._mag_model.linearize(state_legacy)
         h = self._state.lift_legacy_jacobian(h)
@@ -113,6 +118,7 @@ class EkfCoreMagMixin(EkfCoreUtilsMixin):
         self._state.covariance = 0.5 * (
             self._state.covariance + self._state.covariance.T
         )
+        self._update_mag_covariance(residual, s_hat)
 
         mag_accept_update: EkfUpdateData = EkfUpdateData(
             sensor="magnetic_field",
@@ -133,6 +139,60 @@ class EkfCoreMagMixin(EkfCoreUtilsMixin):
         )
 
         return mag_accept_update
+
+    def _mag_covariance_from_sample(self, mag_sample: MagSample) -> np.ndarray:
+        r: Optional[np.ndarray] = self._state.mag_covariance
+        if r is not None:
+            return r.copy()
+
+        z_dim: int = 3
+        sample_cov: np.ndarray = np.asarray(
+            mag_sample.magnetic_field_cov, dtype=float
+        ).reshape((z_dim, z_dim))
+        if self._is_valid_mag_covariance(sample_cov):
+            self._state.mag_covariance = sample_cov
+            return sample_cov.copy()
+
+        default_cov: np.ndarray = np.diag(self._config.mag_r0_t2)
+        self._state.mag_covariance = default_cov
+        return default_cov.copy()
+
+    def _is_valid_mag_covariance(self, covariance: np.ndarray) -> bool:
+        if covariance.shape != (3, 3):
+            return False
+        if not np.all(np.isfinite(covariance)):
+            return False
+        symmetric: np.ndarray = 0.5 * (covariance + covariance.T)
+        if not np.allclose(symmetric, covariance, atol=1.0e-9):
+            return False
+        eigenvalues: np.ndarray = np.linalg.eigvalsh(symmetric)
+        return bool(np.min(eigenvalues) > 0.0)
+
+    def _update_mag_covariance(self, residual: np.ndarray, s_hat: np.ndarray) -> None:
+        r: Optional[np.ndarray] = self._state.mag_covariance
+        if r is None:
+            return
+        alpha: float = self._config.mag_alpha
+        innovation_cov: np.ndarray = np.outer(residual, residual)
+        blended: np.ndarray = (1.0 - alpha) * r + alpha * (innovation_cov - s_hat)
+        r_min: np.ndarray = np.diag(self._config.mag_r_min_t2)
+        r_max: np.ndarray = np.diag(self._config.mag_r_max_t2)
+        self._state.mag_covariance = self._clamp_spd(blended, r_min, r_max)
+
+    def _clamp_spd(
+        self, covariance: np.ndarray, r_min: np.ndarray, r_max: np.ndarray
+    ) -> np.ndarray:
+        symmetric: np.ndarray = 0.5 * (covariance + covariance.T)
+        eigvals: np.ndarray
+        eigvecs: np.ndarray
+        eigvals, eigvecs = np.linalg.eigh(symmetric)
+        min_eig: float = float(np.min(np.diag(r_min)))
+        max_eig: float = float(np.max(np.diag(r_max)))
+        min_eig = max(min_eig, 1.0e-18)
+        max_eig = max(max_eig, min_eig)
+        eigvals = np.clip(eigvals, min_eig, max_eig)
+        clamped: np.ndarray = eigvecs @ np.diag(eigvals) @ eigvecs.T
+        return 0.5 * (clamped + clamped.T)
 
     def build_rejected_mag_update(
         self, mag_sample: MagSample, t_meas: EkfTime, *, reject_reason: str

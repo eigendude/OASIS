@@ -47,6 +47,11 @@ class EkfConfig:
         tag_landmark_prior_sigma_rot_rad: Tag rotation prior sigma in radians
         extrinsic_prior_sigma_t_m: Extrinsic translation prior sigma in meters
         extrinsic_prior_sigma_rot_rad: Extrinsic rotation prior sigma in radians
+        mag_alpha: Magnetometer covariance matching factor, unitless
+        mag_r_min_t2: Minimum magnetometer covariance diagonal in tesla^2
+        mag_r_max_t2: Maximum magnetometer covariance diagonal in tesla^2
+        mag_r0_t2: Default initial magnetometer covariance diagonal in tesla^2
+        mag_world_t: Expected magnetic field vector in world frame, tesla
     """
 
     world_frame_id: str
@@ -78,3 +83,8 @@ class EkfConfig:
     tag_landmark_prior_sigma_rot_rad: float
     extrinsic_prior_sigma_t_m: float
     extrinsic_prior_sigma_rot_rad: float
+    mag_alpha: float
+    mag_r_min_t2: list[float]
+    mag_r_max_t2: list[float]
+    mag_r0_t2: list[float]
+    mag_world_t: list[float]
