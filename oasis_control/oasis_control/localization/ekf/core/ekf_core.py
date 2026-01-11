@@ -17,8 +17,6 @@ from __future__ import annotations
 from typing import Optional
 from typing import cast
 
-import numpy as np
-
 from oasis_control.localization.ekf.core.ekf_core_apriltag import EkfCoreAprilTagMixin
 from oasis_control.localization.ekf.core.ekf_core_constants import NS_PER_S
 from oasis_control.localization.ekf.core.ekf_core_imu import EkfCoreImuMixin
@@ -31,7 +29,6 @@ from oasis_control.localization.ekf.core.ekf_core_types import _StateSnapshot
 from oasis_control.localization.ekf.core.ekf_core_utils import EkfCoreUtilsMixin
 from oasis_control.localization.ekf.ekf_config import EkfConfig
 from oasis_control.localization.ekf.ekf_state import EkfState
-from oasis_control.localization.ekf.ekf_state import Pose3
 from oasis_control.localization.ekf.ekf_types import AprilTagDetectionArrayData
 from oasis_control.localization.ekf.ekf_types import CameraInfoData
 from oasis_control.localization.ekf.ekf_types import EkfAprilTagUpdateData
@@ -76,8 +73,6 @@ class EkfCore(
         self._t_frontier_ns: Optional[int] = None
         self._state: EkfState = EkfState(config)
         self._state_frontier: EkfState = self._state.copy()
-        self._world_odom: Pose3 = self._identity_pose()
-        self._world_odom_cov: np.ndarray = self._build_world_odom_covariance()
         self._last_imu_time_ns: Optional[int] = None
         self._last_imu: Optional[ImuSample] = None
         self._imu_times_ns: list[int] = []

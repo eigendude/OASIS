@@ -17,10 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-import numpy as np
-
 from oasis_control.localization.ekf.ekf_state import EkfState
-from oasis_control.localization.ekf.ekf_state import Pose3
 from oasis_control.localization.ekf.ekf_types import ImuSample
 
 
@@ -28,8 +25,6 @@ from oasis_control.localization.ekf.ekf_types import ImuSample
 class _Checkpoint:
     t_meas_ns: int
     state: EkfState
-    world_odom: Pose3
-    world_odom_cov: np.ndarray
     last_imu_time_ns: Optional[int]
     last_imu: Optional[ImuSample]
     imu_times_ns: list[int]
@@ -42,8 +37,6 @@ class _StateSnapshot:
     t_frontier_ns: Optional[int]
     state: EkfState
     state_frontier: EkfState
-    world_odom: Pose3
-    world_odom_cov: np.ndarray
     last_imu_time_ns: Optional[int]
     last_imu: Optional[ImuSample]
     imu_times_ns: list[int]
