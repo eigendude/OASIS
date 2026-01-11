@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import math
 from typing import Optional
+from typing import cast
 
 import numpy as np
 
@@ -480,8 +481,9 @@ class EkfCoreAprilTagMixin(EkfCoreStateMixin, EkfCoreUtilsMixin):
         Restore odom pose and velocity while shifting world-odom to preserve
         world-base.
 
-        This deterministic gauge reset keeps odom continuous while still
-        applying the shared EKF correction to world-odom.
+        This deterministic gauge reset is a coordinate transformation that
+        re-parameterizes world->odom so the correction lives in the global
+        alignment while odom remains continuous.
         """
 
         world_odom_after: Pose3 = self._state.world_odom.copy()
@@ -509,11 +511,25 @@ class EkfCoreAprilTagMixin(EkfCoreStateMixin, EkfCoreUtilsMixin):
         self._state.covariance = 0.5 * (
             self._state.covariance + self._state.covariance.T
         )
+        diag_variances: np.ndarray = np.diag(self._state.covariance)
+        if np.any(diag_variances < 0.0):
+            diag_indices: tuple[np.ndarray, np.ndarray] = cast(
+                tuple[np.ndarray, np.ndarray],
+                np.diag_indices_from(self._state.covariance),
+            )
+            self._state.covariance[diag_indices] = np.maximum(diag_variances, 0.0)
+            self._state.covariance = 0.5 * (
+                self._state.covariance + self._state.covariance.T
+            )
         self._state.vel_o_mps = vel_before.copy()
 
     def _reset_world_odom(
         self, world_odom: Pose3, odom_after: Pose3, odom_before: Pose3
     ) -> Pose3:
+        """
+        Shift world->odom to keep world->base fixed while odom stays continuous
+        """
+
         t_world_base: np.ndarray
         q_world_base: np.ndarray
         t_world_base, q_world_base = pose_compose(
@@ -545,6 +561,10 @@ class EkfCoreAprilTagMixin(EkfCoreStateMixin, EkfCoreUtilsMixin):
         odom_before: Pose3,
         world_odom_reset: Pose3,
     ) -> np.ndarray:
+        """
+        Return the gauge reset Jacobian over [world_odom, odom] perturbations
+        """
+
         jacobian: np.ndarray = np.zeros((12, 12), dtype=float)
         axis: int
         for axis in range(12):
@@ -589,5 +609,8 @@ class EkfCoreAprilTagMixin(EkfCoreStateMixin, EkfCoreUtilsMixin):
                 world_odom_reset.rotation_wxyz,
             )
             jacobian[:6, axis] = delta_world_odom / step
+        # Bottom-left block is zero because odom perturbations are reset away
+        # Bottom-right block is identity because odom error coordinates remain
+        # unchanged by the gauge transform
         jacobian[6:12, 6:12] = np.eye(6, dtype=float)
         return jacobian
