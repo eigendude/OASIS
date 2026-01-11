@@ -686,7 +686,7 @@ class EkfLocalizerNode(rclpy.node.Node):
                     tag_id=int(detection.id),
                     det_index_in_msg=int(index),
                     corners_px=corners_px,
-                    pose_world_xyz_yaw=self._pose_from_apriltag_detection(detection),
+                    pose_cam_xyz_yaw=self._pose_from_apriltag_detection(detection),
                     decision_margin=float(detection.decision_margin),
                     homography=list(detection.homography),
                 )

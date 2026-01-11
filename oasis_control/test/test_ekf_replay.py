@@ -93,7 +93,7 @@ def _build_imu_sample(*, accel_body: list[float]) -> ImuSample:
 
 
 def _build_apriltag_detection(
-    *, pose_world_xyz_yaw: list[float], tag_id: int
+    *, pose_cam_xyz_yaw: list[float], tag_id: int
 ) -> AprilTagDetection:
     corners_px: list[float] = [0.0] * 8
     homography: list[float] = [0.0] * 9
@@ -102,7 +102,7 @@ def _build_apriltag_detection(
         tag_id=tag_id,
         det_index_in_msg=0,
         corners_px=corners_px,
-        pose_world_xyz_yaw=pose_world_xyz_yaw,
+        pose_cam_xyz_yaw=pose_cam_xyz_yaw,
         decision_margin=1.0,
         homography=homography,
     )
@@ -218,7 +218,7 @@ def test_out_of_order_apriltag_replay_matches_chronological() -> None:
     )
 
     early_detection: AprilTagDetection = _build_apriltag_detection(
-        pose_world_xyz_yaw=[0.2, -0.1, 0.0, 0.05],
+        pose_cam_xyz_yaw=[0.2, -0.1, 0.0, 0.05],
         tag_id=1,
     )
     early_event: EkfEvent = EkfEvent(
@@ -231,7 +231,7 @@ def test_out_of_order_apriltag_replay_matches_chronological() -> None:
     )
 
     late_detection: AprilTagDetection = _build_apriltag_detection(
-        pose_world_xyz_yaw=[0.5, 0.2, 0.0, -0.1],
+        pose_cam_xyz_yaw=[0.5, 0.2, 0.0, -0.1],
         tag_id=2,
     )
     late_event: EkfEvent = EkfEvent(

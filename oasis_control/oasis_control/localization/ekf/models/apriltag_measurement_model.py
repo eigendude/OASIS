@@ -204,11 +204,11 @@ class AprilTagMeasurementModel:
         return pose
 
     def pose_measurement(self, detection: AprilTagDetection) -> Optional[np.ndarray]:
-        if detection.pose_world_xyz_yaw is None:
+        if detection.pose_cam_xyz_yaw is None:
             return None
-        if len(detection.pose_world_xyz_yaw) != 4:
+        if len(detection.pose_cam_xyz_yaw) != 4:
             return None
-        return np.asarray(detection.pose_world_xyz_yaw, dtype=float)
+        return np.asarray(detection.pose_cam_xyz_yaw, dtype=float)
 
     def linearize_pose(self, state: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         z_hat: np.ndarray = np.asarray(

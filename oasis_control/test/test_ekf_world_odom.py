@@ -108,7 +108,7 @@ def _build_camera_info() -> CameraInfoData:
 
 def _project_tag_corners(
     *,
-    pose_world_xyz_yaw: list[float],
+    pose_cam_xyz_yaw: list[float],
     tag_size_m: float,
     camera_info: CameraInfoData,
 ) -> list[float]:
@@ -120,10 +120,10 @@ def _project_tag_corners(
         [-half_size_m, half_size_m, 0.0],
     ]
 
-    x_t: float = pose_world_xyz_yaw[0]
-    y_t: float = pose_world_xyz_yaw[1]
-    z_t: float = pose_world_xyz_yaw[2]
-    yaw: float = pose_world_xyz_yaw[3]
+    x_t: float = pose_cam_xyz_yaw[0]
+    y_t: float = pose_cam_xyz_yaw[1]
+    z_t: float = pose_cam_xyz_yaw[2]
+    yaw: float = pose_cam_xyz_yaw[3]
     cos_yaw: float = math.cos(yaw)
     sin_yaw: float = math.sin(yaw)
 
@@ -159,12 +159,12 @@ def _build_imu_sample(*, accel_body: list[float]) -> ImuSample:
 
 def _build_apriltag_detection(
     *,
-    pose_world_xyz_yaw: list[float],
+    pose_cam_xyz_yaw: list[float],
     tag_size_m: float,
     camera_info: CameraInfoData,
 ) -> AprilTagDetection:
     corners_px: list[float] = _project_tag_corners(
-        pose_world_xyz_yaw=pose_world_xyz_yaw,
+        pose_cam_xyz_yaw=pose_cam_xyz_yaw,
         tag_size_m=tag_size_m,
         camera_info=camera_info,
     )
@@ -174,7 +174,7 @@ def _build_apriltag_detection(
         tag_id=1,
         det_index_in_msg=0,
         corners_px=corners_px,
-        pose_world_xyz_yaw=pose_world_xyz_yaw,
+        pose_cam_xyz_yaw=pose_cam_xyz_yaw,
         decision_margin=1.0,
         homography=homography,
     )
@@ -285,7 +285,7 @@ def test_global_update_does_not_teleport_odom() -> None:
     odom_before: list[float] = core.state().tolist()
 
     detection: AprilTagDetection = _build_apriltag_detection(
-        pose_world_xyz_yaw=[1.0, 0.0, 1.0, 0.1],
+        pose_cam_xyz_yaw=[1.0, 0.0, 1.0, 0.1],
         tag_size_m=config.tag_size_m,
         camera_info=camera_info,
     )
@@ -341,7 +341,7 @@ def test_world_correction_updates_world_odom_only() -> None:
     world_odom_before: Pose3 = core.world_odom_pose()
 
     detection: AprilTagDetection = _build_apriltag_detection(
-        pose_world_xyz_yaw=[0.5, -0.2, 1.0, -0.1],
+        pose_cam_xyz_yaw=[0.5, -0.2, 1.0, -0.1],
         tag_size_m=config.tag_size_m,
         camera_info=camera_info,
     )
@@ -401,7 +401,7 @@ def test_world_base_composition_matches_outputs() -> None:
                 frame_id="camera",
                 detections=[
                     _build_apriltag_detection(
-                        pose_world_xyz_yaw=[0.2, 0.1, 1.0, 0.05],
+                        pose_cam_xyz_yaw=[0.2, 0.1, 1.0, 0.05],
                         tag_size_m=config.tag_size_m,
                         camera_info=camera_info,
                     )
@@ -464,7 +464,7 @@ def test_replay_updates_world_odom_deterministically() -> None:
             frame_id="camera",
             detections=[
                 _build_apriltag_detection(
-                    pose_world_xyz_yaw=[0.4, 0.0, 1.0, 0.1],
+                    pose_cam_xyz_yaw=[0.4, 0.0, 1.0, 0.1],
                     tag_size_m=config.tag_size_m,
                     camera_info=camera_info,
                 )
@@ -478,7 +478,7 @@ def test_replay_updates_world_odom_deterministically() -> None:
             frame_id="camera",
             detections=[
                 _build_apriltag_detection(
-                    pose_world_xyz_yaw=[0.6, 0.1, 1.0, -0.1],
+                    pose_cam_xyz_yaw=[0.6, 0.1, 1.0, -0.1],
                     tag_size_m=config.tag_size_m,
                     camera_info=camera_info,
                 )

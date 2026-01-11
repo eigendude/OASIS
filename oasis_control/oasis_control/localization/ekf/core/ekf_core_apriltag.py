@@ -89,9 +89,8 @@ class EkfCoreAprilTagMixin(EkfCoreStateMixin, EkfCoreUtilsMixin):
             apriltag_data.detections, key=lambda det: (det.family, det.tag_id)
         )
         detections: list[EkfAprilTagDetectionUpdate] = []
-        # Linearize once per message to keep per-detection updates deterministic
-        x_lin: np.ndarray = self._world_base_legacy_state()
         for detection in detections_sorted:
+            x_lin: np.ndarray = self._world_base_legacy_state()
             tag_key: TagKey = TagKey(family=detection.family, tag_id=detection.tag_id)
             self._state.ensure_landmark(tag_key)
             detection_update: EkfAprilTagDetectionUpdate = (
@@ -501,6 +500,12 @@ class EkfCoreAprilTagMixin(EkfCoreStateMixin, EkfCoreUtilsMixin):
         )
         pose_indices: list[int] = list(range(index.pose.start, index.pose.stop))
         reset_indices: list[int] = world_odom_indices + pose_indices
+        if reset_jacobian.shape != (12, 12):
+            raise ValueError("Expected 12x12 odom reset Jacobian")
+        if len(reset_indices) != 12:
+            raise ValueError("Expected 12 reset indices")
+        if len(set(reset_indices)) != len(reset_indices):
+            raise ValueError("Reset indices must be unique")
         full_jacobian: np.ndarray = np.eye(index.total_dim, dtype=float)
         full_jacobian[np.ix_(reset_indices, reset_indices)] = reset_jacobian
         covariance_after: np.ndarray = self._state.covariance
@@ -509,6 +514,18 @@ class EkfCoreAprilTagMixin(EkfCoreStateMixin, EkfCoreUtilsMixin):
         self._state.covariance = 0.5 * (
             self._state.covariance + self._state.covariance.T
         )
+        # Symmetry tolerance for covariance consistency checks
+        symmetry_tol: float = 1.0e-9
+
+        # Minimum allowed diagonal variance in covariance
+        min_diag_tol: float = -1.0e-9
+        if not np.allclose(
+            self._state.covariance, self._state.covariance.T, atol=symmetry_tol
+        ):
+            raise ValueError("Odom reset covariance not symmetric")
+        min_diag: float = float(np.min(np.diag(self._state.covariance)))
+        if min_diag < min_diag_tol:
+            raise ValueError("Odom reset covariance has negative diagonal")
         self._state.vel_o_mps = vel_before.copy()
 
     def _reset_world_odom(
