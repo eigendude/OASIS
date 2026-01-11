@@ -38,6 +38,7 @@ from oasis_control.localization.ekf.ekf_types import EkfEventType
 from oasis_control.localization.ekf.ekf_types import EkfFrameOutputs
 from oasis_control.localization.ekf.ekf_types import EkfFrameTransform
 from oasis_control.localization.ekf.ekf_types import EkfImuPacket
+from oasis_control.localization.ekf.ekf_types import EkfMatrix
 from oasis_control.localization.ekf.ekf_types import EkfOutputs
 from oasis_control.localization.ekf.ekf_types import EkfTime
 from oasis_control.localization.ekf.ekf_types import EkfUpdateData
@@ -45,6 +46,9 @@ from oasis_control.localization.ekf.ekf_types import ImuCalibrationData
 from oasis_control.localization.ekf.ekf_types import ImuSample
 from oasis_control.localization.ekf.ekf_types import MagSample
 from oasis_control.localization.ekf.ekf_types import to_ns
+from oasis_control.localization.ekf.imu_packet_validation import (
+    imu_calibration_stamp_reject_reason,
+)
 from oasis_control.localization.ekf.reporting.update_reporter import UpdateReporter
 from oasis_control.localization.ekf.ros_time_adapter import ekf_time_to_ros_time
 from oasis_control.localization.ekf.ros_time_adapter import ros_time_to_ekf_time
@@ -72,6 +76,7 @@ ODOM_TOPIC: str = "odom"
 WORLD_ODOM_TOPIC: str = "world_odom"
 MAG_UPDATE_TOPIC: str = "ekf/updates/mag"
 APRILTAG_UPDATE_TOPIC: str = "ekf/updates/apriltags"
+IMU_UPDATE_TOPIC: str = "ekf/updates/imu"
 
 # ROS parameters
 PARAM_WORLD_FRAME_ID: str = "world_frame_id"
@@ -94,6 +99,13 @@ DEFAULT_TAG_ANCHOR_ID: int = 0
 
 SYNCED_IMU_STAMP_CACHE_SIZE: int = 50
 
+# Nanoseconds per second for converting ROS params to EKF nanoseconds
+NS_PER_S: int = 1_000_000_000
+
+
+def _ns_from_seconds(seconds: float) -> int:
+    return int(round(seconds * NS_PER_S))
+
 
 ################################################################################
 # ROS node
@@ -113,18 +125,18 @@ class EkfLocalizerNode(rclpy.node.Node):
         self.declare_parameter(PARAM_ODOM_FRAME_ID, DEFAULT_ODOM_FRAME_ID)
         self.declare_parameter(PARAM_BODY_FRAME_ID, DEFAULT_BODY_FRAME_ID)
         self.declare_parameter(
-            ekf_params.PARAM_T_BUFFER_NS, ekf_params.DEFAULT_T_BUFFER_NS
+            ekf_params.PARAM_T_BUFFER_S, ekf_params.DEFAULT_T_BUFFER_S
         )
         self.declare_parameter(
-            ekf_params.PARAM_EPS_WALL_FUTURE_NS,
-            ekf_params.DEFAULT_EPS_WALL_FUTURE_NS,
+            ekf_params.PARAM_EPS_WALL_FUTURE_S,
+            ekf_params.DEFAULT_EPS_WALL_FUTURE_S,
         )
         self.declare_parameter(
-            ekf_params.PARAM_DT_CLOCK_JUMP_MAX_NS,
-            ekf_params.DEFAULT_DT_CLOCK_JUMP_MAX_NS,
+            ekf_params.PARAM_DT_CLOCK_JUMP_MAX_S,
+            ekf_params.DEFAULT_DT_CLOCK_JUMP_MAX_S,
         )
         self.declare_parameter(
-            ekf_params.PARAM_DT_IMU_MAX_NS, ekf_params.DEFAULT_DT_IMU_MAX_NS
+            ekf_params.PARAM_DT_IMU_MAX_S, ekf_params.DEFAULT_DT_IMU_MAX_S
         )
         self.declare_parameter(ekf_params.PARAM_POS_VAR, ekf_params.DEFAULT_POS_VAR)
         self.declare_parameter(ekf_params.PARAM_VEL_VAR, ekf_params.DEFAULT_VEL_VAR)
@@ -138,10 +150,10 @@ class EkfLocalizerNode(rclpy.node.Node):
         self.declare_parameter(
             ekf_params.PARAM_GRAVITY_MPS2, ekf_params.DEFAULT_GRAVITY_MPS2
         )
-        self.declare_parameter(ekf_params.PARAM_MAX_DT_NS, ekf_params.DEFAULT_MAX_DT_NS)
+        self.declare_parameter(ekf_params.PARAM_MAX_DT_S, ekf_params.DEFAULT_MAX_DT_S)
         self.declare_parameter(
-            ekf_params.PARAM_CHECKPOINT_INTERVAL_NS,
-            ekf_params.DEFAULT_CHECKPOINT_INTERVAL_NS,
+            ekf_params.PARAM_CHECKPOINT_INTERVAL_S,
+            ekf_params.DEFAULT_CHECKPOINT_INTERVAL_S,
         )
         self.declare_parameter(
             ekf_params.PARAM_APRILTAG_POS_VAR, ekf_params.DEFAULT_APRILTAG_POS_VAR
@@ -180,17 +192,17 @@ class EkfLocalizerNode(rclpy.node.Node):
         self._world_frame_id: str = str(self.get_parameter(PARAM_WORLD_FRAME_ID).value)
         self._odom_frame_id: str = str(self.get_parameter(PARAM_ODOM_FRAME_ID).value)
         self._body_frame_id: str = str(self.get_parameter(PARAM_BODY_FRAME_ID).value)
-        self._t_buffer_ns: int = int(
-            self.get_parameter(ekf_params.PARAM_T_BUFFER_NS).value
+        self._t_buffer_ns: int = _ns_from_seconds(
+            float(self.get_parameter(ekf_params.PARAM_T_BUFFER_S).value)
         )
-        self._eps_wall_future_ns: int = int(
-            self.get_parameter(ekf_params.PARAM_EPS_WALL_FUTURE_NS).value
+        self._eps_wall_future_ns: int = _ns_from_seconds(
+            float(self.get_parameter(ekf_params.PARAM_EPS_WALL_FUTURE_S).value)
         )
-        self._dt_clock_jump_max_ns: int = int(
-            self.get_parameter(ekf_params.PARAM_DT_CLOCK_JUMP_MAX_NS).value
+        self._dt_clock_jump_max_ns: int = _ns_from_seconds(
+            float(self.get_parameter(ekf_params.PARAM_DT_CLOCK_JUMP_MAX_S).value)
         )
-        self._dt_imu_max_ns: int = int(
-            self.get_parameter(ekf_params.PARAM_DT_IMU_MAX_NS).value
+        self._dt_imu_max_ns: int = _ns_from_seconds(
+            float(self.get_parameter(ekf_params.PARAM_DT_IMU_MAX_S).value)
         )
         self._pos_var: float = float(self.get_parameter(ekf_params.PARAM_POS_VAR).value)
         self._vel_var: float = float(self.get_parameter(ekf_params.PARAM_VEL_VAR).value)
@@ -204,9 +216,11 @@ class EkfLocalizerNode(rclpy.node.Node):
         self._gravity_mps2: float = float(
             self.get_parameter(ekf_params.PARAM_GRAVITY_MPS2).value
         )
-        self._max_dt_ns: int = int(self.get_parameter(ekf_params.PARAM_MAX_DT_NS).value)
-        self._checkpoint_interval_ns: int = int(
-            self.get_parameter(ekf_params.PARAM_CHECKPOINT_INTERVAL_NS).value
+        self._max_dt_ns: int = _ns_from_seconds(
+            float(self.get_parameter(ekf_params.PARAM_MAX_DT_S).value)
+        )
+        self._checkpoint_interval_ns: int = _ns_from_seconds(
+            float(self.get_parameter(ekf_params.PARAM_CHECKPOINT_INTERVAL_S).value)
         )
         self._apriltag_pos_var: float = float(
             self.get_parameter(ekf_params.PARAM_APRILTAG_POS_VAR).value
@@ -287,6 +301,11 @@ class EkfLocalizerNode(rclpy.node.Node):
         self._mag_update_pub: rclpy.publisher.Publisher = self.create_publisher(
             msg_type=EkfUpdateReportMsg,
             topic=MAG_UPDATE_TOPIC,
+            qos_profile=qos_profile,
+        )
+        self._imu_update_pub: rclpy.publisher.Publisher = self.create_publisher(
+            msg_type=EkfUpdateReportMsg,
+            topic=IMU_UPDATE_TOPIC,
             qos_profile=qos_profile,
         )
         self._apriltag_update_pub: rclpy.publisher.Publisher = self.create_publisher(
@@ -385,26 +404,33 @@ class EkfLocalizerNode(rclpy.node.Node):
     def _handle_imu_raw_with_calibration(
         self, imu_msg: ImuMsg, cal_msg: ImuCalibrationMsg
     ) -> None:
-        if (
-            imu_msg.header.stamp.sec != cal_msg.header.stamp.sec
-            or imu_msg.header.stamp.nanosec != cal_msg.header.stamp.nanosec
-        ):
+        timestamp: EkfTime = ros_time_to_ekf_time(imu_msg.header.stamp)
+        cal_timestamp: EkfTime = ros_time_to_ekf_time(cal_msg.header.stamp)
+        reject_reason: Optional[str] = imu_calibration_stamp_reject_reason(
+            timestamp, cal_timestamp
+        )
+        if reject_reason is not None:
             self.get_logger().error(
                 "IMU calibration timestamp mismatch, rejecting packet"
             )
-            return
-
-        timestamp: EkfTime = ros_time_to_ekf_time(imu_msg.header.stamp)
-        self._record_synced_imu_timestamp(timestamp)
-
-        calibration: ImuCalibrationData = self._build_calibration_data(cal_msg)
-        if calibration.frame_id and calibration.frame_id != imu_msg.header.frame_id:
-            self.get_logger().error(
-                "IMU calibration frame mismatch, ignoring calibration"
+            self._publish_imu_rejection(
+                timestamp,
+                imu_msg.header.frame_id,
+                reject_reason,
             )
             return
 
-        self._process_imu_message(imu_msg, calibration, timestamp)
+        self._record_synced_imu_timestamp(timestamp)
+
+        calibration: ImuCalibrationData = self._build_calibration_data(cal_msg)
+        calibration_data: Optional[ImuCalibrationData] = calibration
+        if calibration.frame_id and calibration.frame_id != imu_msg.header.frame_id:
+            self.get_logger().warn(
+                "IMU calibration frame mismatch, ignoring calibration"
+            )
+            calibration_data = None
+
+        self._process_imu_message(imu_msg, calibration_data, timestamp)
 
     def _process_imu_message(
         self,
@@ -567,12 +593,49 @@ class EkfLocalizerNode(rclpy.node.Node):
         )
         self._mag_update_pub.publish(report)
 
+    def _publish_imu_update(self, update: EkfUpdateData) -> None:
+        update_seq: int = self._next_update_seq()
+        report: EkfUpdateReportMsg = self._reporter.build_update_report(
+            update, update_seq, 0
+        )
+        self._imu_update_pub.publish(report)
+
     def _publish_apriltag_update(self, update: EkfAprilTagUpdateData) -> None:
         update_seq: int = self._next_update_seq()
         report: EkfAprilTagUpdateReportMsg = self._reporter.build_apriltag_report(
             update, update_seq
         )
         self._apriltag_update_pub.publish(report)
+
+    def _publish_imu_rejection(
+        self, timestamp: EkfTime, frame_id: str, reason: str
+    ) -> None:
+        update: EkfUpdateData = self._build_imu_rejection_update(
+            timestamp, frame_id, reason
+        )
+        self._publish_imu_update(update)
+
+    def _build_imu_rejection_update(
+        self, timestamp: EkfTime, frame_id: str, reason: str
+    ) -> EkfUpdateData:
+        zero_matrix: EkfMatrix = EkfMatrix(rows=0, cols=0, data=[])
+        return EkfUpdateData(
+            sensor="imu",
+            frame_id=frame_id,
+            t_meas=timestamp,
+            accepted=False,
+            reject_reason=reason,
+            z_dim=0,
+            z=[],
+            z_hat=[],
+            nu=[],
+            r=zero_matrix,
+            s_hat=zero_matrix,
+            s=zero_matrix,
+            maha_d2=0.0,
+            gate_d2_threshold=0.0,
+            reproj_rms_px=0.0,
+        )
 
     def _publish_rejection(self, event: EkfEvent, reason: str) -> None:
         if event.event_type == EkfEventType.MAG:
@@ -591,6 +654,13 @@ class EkfLocalizerNode(rclpy.node.Node):
                 )
             )
             self._publish_apriltag_update(update_data)
+        elif event.event_type == EkfEventType.IMU:
+            imu_packet: EkfImuPacket = cast(EkfImuPacket, event.payload)
+            self._publish_imu_rejection(
+                event.t_meas,
+                imu_packet.imu.frame_id,
+                reason,
+            )
 
     def _should_reject_future_event(self, event: EkfEvent, topic: str) -> bool:
         t_meas_ns: int = to_ns(event.t_meas)

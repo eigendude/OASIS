@@ -46,6 +46,7 @@ class ControlDescriptions:
                 ("apriltags", f"{host_id}/{apriltag_resolution}/apriltags"),
                 ("camera_info", f"{host_id}/{apriltag_resolution}/camera_info"),
                 ("ekf/updates/apriltags", f"{host_id}/ekf/updates/apriltags"),
+                ("ekf/updates/imu", f"{host_id}/ekf/updates/imu"),
                 ("ekf/updates/mag", f"{host_id}/ekf/updates/mag"),
                 ("imu_calibration", f"{host_id}/imu_calibration"),
                 ("imu_raw", f"{host_id}/imu_raw"),

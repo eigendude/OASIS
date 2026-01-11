@@ -183,9 +183,7 @@ class ImuProcessModel:
                 accel_raw_mps2=accel_raw,
             )
             phi: np.ndarray = self._discrete_state_transition(f_mat, step_dt_s)
-            q_d: np.ndarray = self._discrete_process_noise(
-                f_mat, g_mat, q_c, step_dt_s
-            )
+            q_d: np.ndarray = self._discrete_process_noise(f_mat, g_mat, q_c, step_dt_s)
             p = phi @ p @ phi.T + q_d
             p = 0.5 * (p + p.T)
             self.propagate_nominal(
@@ -305,20 +303,18 @@ class ImuProcessModel:
         f_mat[
             vel_start : vel_start + 3,
             accel_bias_start : accel_bias_start + 3,
-        ] = -rot_odom_from_body @ accel_a
+        ] = (
+            -rot_odom_from_body @ accel_a
+        )
         f_mat[rot_start : rot_start + 3, rot_start : rot_start + 3] = -skew_omega
-        f_mat[
-            rot_start : rot_start + 3, gyro_bias_start : gyro_bias_start + 3
-        ] = -np.eye(3, dtype=float)
+        f_mat[rot_start : rot_start + 3, gyro_bias_start : gyro_bias_start + 3] = (
+            -np.eye(3, dtype=float)
+        )
 
         g_mat[rot_start : rot_start + 3, 0:3] = -np.eye(3, dtype=float)
         g_mat[vel_start : vel_start + 3, 3:6] = -rot_odom_from_body
-        g_mat[
-            gyro_bias_start : gyro_bias_start + 3, 6:9
-        ] = np.eye(3, dtype=float)
-        g_mat[
-            accel_bias_start : accel_bias_start + 3, 9:12
-        ] = np.eye(3, dtype=float)
+        g_mat[gyro_bias_start : gyro_bias_start + 3, 6:9] = np.eye(3, dtype=float)
+        g_mat[accel_bias_start : accel_bias_start + 3, 9:12] = np.eye(3, dtype=float)
 
         accel_noise_var: float = float(self._config.accel_noise_var)
         gyro_noise_var: float = float(self._config.gyro_noise_var)
@@ -332,9 +328,7 @@ class ImuProcessModel:
         q_c[3:6, 3:6] = np.eye(3, dtype=float) * accel_noise_var
         return f_mat, g_mat, q_c
 
-    def _discrete_state_transition(
-        self, f_mat: np.ndarray, dt_s: float
-    ) -> np.ndarray:
+    def _discrete_state_transition(self, f_mat: np.ndarray, dt_s: float) -> np.ndarray:
         total_dim: int = f_mat.shape[0]
         identity: np.ndarray = np.eye(total_dim, dtype=float)
         f_dt: np.ndarray = f_mat * dt_s
@@ -364,9 +358,7 @@ class ImuProcessModel:
 
         # Units: seconds^3. Meaning: third-order integration weight
         term_3: np.ndarray = (
-            (1.0 / 6.0)
-            * (f_mat @ f_q + q_f @ f_mat.T + f_mat @ q_f)
-            * dt_3
+            (1.0 / 6.0) * (f_mat @ f_q + q_f @ f_mat.T + f_mat @ q_f) * dt_3
         )
         q_d: np.ndarray = term_1 + term_2 + term_3
         return 0.5 * (q_d + q_d.T)
