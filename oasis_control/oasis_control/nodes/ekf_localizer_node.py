@@ -366,6 +366,7 @@ class EkfLocalizerNode(rclpy.node.Node):
 
         # State
         self._camera_info: Optional[CameraInfoData] = None
+        self._camera_info_mismatch_warned: bool = False
         self._update_seq: int = 0
         self._synced_imu_timestamps_ns: Deque[int] = deque()
         self._synced_imu_timestamps_set: set[int] = set()
@@ -382,6 +383,9 @@ class EkfLocalizerNode(rclpy.node.Node):
         if message.width == 0 or message.height == 0:
             self.get_logger().warn("CameraInfo message is missing image dimensions")
             return
+        if len(message.k) != 9:
+            self.get_logger().warn("CameraInfo message has invalid K matrix length")
+            return
 
         data: CameraInfoData = self._camera_info_to_data(message)
 
@@ -397,9 +401,11 @@ class EkfLocalizerNode(rclpy.node.Node):
             return
 
         if not self._camera_info_matches(self._camera_info, data):
-            self.get_logger().warn(
-                "CameraInfo mismatch detected, ignoring new intrinsics"
-            )
+            if not self._camera_info_mismatch_warned:
+                self.get_logger().warn(
+                    "CameraInfo mismatch detected, ignoring new intrinsics"
+                )
+                self._camera_info_mismatch_warned = True
 
     def _handle_imu_raw_with_calibration(
         self, imu_msg: ImuMsg, cal_msg: ImuCalibrationMsg
@@ -728,15 +734,11 @@ class EkfLocalizerNode(rclpy.node.Node):
     ) -> bool:
         if cached.frame_id != incoming.frame_id:
             return False
-        if cached.width != incoming.width or cached.height != incoming.height:
-            return False
-        if cached.distortion_model != incoming.distortion_model:
+        if cached.distortion_model.lower() != incoming.distortion_model.lower():
             return False
         if cached.d != incoming.d:
             return False
         if cached.k != incoming.k:
-            return False
-        if cached.r != incoming.r:
             return False
         if cached.p != incoming.p:
             return False
