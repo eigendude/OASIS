@@ -74,9 +74,6 @@ WORLD_ODOM_TOPIC: str = "world_odom"
 MAG_UPDATE_TOPIC: str = "ekf/updates/mag"
 APRILTAG_UPDATE_TOPIC: str = "ekf/updates/apriltags"
 
-# Nanoseconds per second for time conversions
-_NS_PER_S: int = 1_000_000_000
-
 # ROS parameters
 PARAM_WORLD_FRAME_ID: str = "world_frame_id"
 PARAM_ODOM_FRAME_ID: str = "odom_frame_id"
@@ -117,30 +114,18 @@ class EkfLocalizerNode(rclpy.node.Node):
         self.declare_parameter(PARAM_ODOM_FRAME_ID, DEFAULT_ODOM_FRAME_ID)
         self.declare_parameter(PARAM_BODY_FRAME_ID, DEFAULT_BODY_FRAME_ID)
         self.declare_parameter(
-            ekf_params.PARAM_T_BUFFER_SEC, ekf_params.DEFAULT_T_BUFFER_SEC
+            ekf_params.PARAM_T_BUFFER_NS, ekf_params.DEFAULT_T_BUFFER_NS
         )
         self.declare_parameter(
-            ekf_params.PARAM_T_BUFFER_SEC_LEGACY, ekf_params.DEFAULT_T_BUFFER_SEC
+            ekf_params.PARAM_EPS_WALL_FUTURE_NS,
+            ekf_params.DEFAULT_EPS_WALL_FUTURE_NS,
         )
         self.declare_parameter(
-            ekf_params.PARAM_EPS_WALL_FUTURE, ekf_params.DEFAULT_EPS_WALL_FUTURE
+            ekf_params.PARAM_DT_CLOCK_JUMP_MAX_NS,
+            ekf_params.DEFAULT_DT_CLOCK_JUMP_MAX_NS,
         )
         self.declare_parameter(
-            ekf_params.PARAM_EPS_WALL_FUTURE_LEGACY,
-            ekf_params.DEFAULT_EPS_WALL_FUTURE,
-        )
-        self.declare_parameter(
-            ekf_params.PARAM_DT_CLOCK_JUMP_MAX, ekf_params.DEFAULT_DT_CLOCK_JUMP_MAX
-        )
-        self.declare_parameter(
-            ekf_params.PARAM_DT_CLOCK_JUMP_MAX_LEGACY,
-            ekf_params.DEFAULT_DT_CLOCK_JUMP_MAX,
-        )
-        self.declare_parameter(
-            ekf_params.PARAM_DT_IMU_MAX, ekf_params.DEFAULT_DT_IMU_MAX
-        )
-        self.declare_parameter(
-            ekf_params.PARAM_DT_IMU_MAX_LEGACY, ekf_params.DEFAULT_DT_IMU_MAX
+            ekf_params.PARAM_DT_IMU_MAX_NS, ekf_params.DEFAULT_DT_IMU_MAX_NS
         )
         self.declare_parameter(ekf_params.PARAM_POS_VAR, ekf_params.DEFAULT_POS_VAR)
         self.declare_parameter(ekf_params.PARAM_VEL_VAR, ekf_params.DEFAULT_VEL_VAR)
@@ -154,12 +139,10 @@ class EkfLocalizerNode(rclpy.node.Node):
         self.declare_parameter(
             ekf_params.PARAM_GRAVITY_MPS2, ekf_params.DEFAULT_GRAVITY_MPS2
         )
+        self.declare_parameter(ekf_params.PARAM_MAX_DT_NS, ekf_params.DEFAULT_MAX_DT_NS)
         self.declare_parameter(
-            ekf_params.PARAM_MAX_DT_SEC, ekf_params.DEFAULT_MAX_DT_SEC
-        )
-        self.declare_parameter(
-            ekf_params.PARAM_CHECKPOINT_INTERVAL_SEC,
-            ekf_params.DEFAULT_CHECKPOINT_INTERVAL_SEC,
+            ekf_params.PARAM_CHECKPOINT_INTERVAL_NS,
+            ekf_params.DEFAULT_CHECKPOINT_INTERVAL_NS,
         )
         self.declare_parameter(
             ekf_params.PARAM_APRILTAG_POS_VAR, ekf_params.DEFAULT_APRILTAG_POS_VAR
@@ -198,33 +181,17 @@ class EkfLocalizerNode(rclpy.node.Node):
         self._world_frame_id: str = str(self.get_parameter(PARAM_WORLD_FRAME_ID).value)
         self._odom_frame_id: str = str(self.get_parameter(PARAM_ODOM_FRAME_ID).value)
         self._body_frame_id: str = str(self.get_parameter(PARAM_BODY_FRAME_ID).value)
-        self._t_buffer_sec: float = float(
-            self._get_param_with_legacy(
-                ekf_params.PARAM_T_BUFFER_SEC,
-                ekf_params.PARAM_T_BUFFER_SEC_LEGACY,
-                ekf_params.DEFAULT_T_BUFFER_SEC,
-            )
+        self._t_buffer_ns: int = int(
+            self.get_parameter(ekf_params.PARAM_T_BUFFER_NS).value
         )
-        self._eps_wall_future: float = float(
-            self._get_param_with_legacy(
-                ekf_params.PARAM_EPS_WALL_FUTURE,
-                ekf_params.PARAM_EPS_WALL_FUTURE_LEGACY,
-                ekf_params.DEFAULT_EPS_WALL_FUTURE,
-            )
+        self._eps_wall_future_ns: int = int(
+            self.get_parameter(ekf_params.PARAM_EPS_WALL_FUTURE_NS).value
         )
-        self._dt_clock_jump_max: float = float(
-            self._get_param_with_legacy(
-                ekf_params.PARAM_DT_CLOCK_JUMP_MAX,
-                ekf_params.PARAM_DT_CLOCK_JUMP_MAX_LEGACY,
-                ekf_params.DEFAULT_DT_CLOCK_JUMP_MAX,
-            )
+        self._dt_clock_jump_max_ns: int = int(
+            self.get_parameter(ekf_params.PARAM_DT_CLOCK_JUMP_MAX_NS).value
         )
-        self._dt_imu_max: float = float(
-            self._get_param_with_legacy(
-                ekf_params.PARAM_DT_IMU_MAX,
-                ekf_params.PARAM_DT_IMU_MAX_LEGACY,
-                ekf_params.DEFAULT_DT_IMU_MAX,
-            )
+        self._dt_imu_max_ns: int = int(
+            self.get_parameter(ekf_params.PARAM_DT_IMU_MAX_NS).value
         )
         self._pos_var: float = float(self.get_parameter(ekf_params.PARAM_POS_VAR).value)
         self._vel_var: float = float(self.get_parameter(ekf_params.PARAM_VEL_VAR).value)
@@ -238,11 +205,9 @@ class EkfLocalizerNode(rclpy.node.Node):
         self._gravity_mps2: float = float(
             self.get_parameter(ekf_params.PARAM_GRAVITY_MPS2).value
         )
-        self._max_dt_sec: float = float(
-            self.get_parameter(ekf_params.PARAM_MAX_DT_SEC).value
-        )
-        self._checkpoint_interval_sec: float = float(
-            self.get_parameter(ekf_params.PARAM_CHECKPOINT_INTERVAL_SEC).value
+        self._max_dt_ns: int = int(self.get_parameter(ekf_params.PARAM_MAX_DT_NS).value)
+        self._checkpoint_interval_ns: int = int(
+            self.get_parameter(ekf_params.PARAM_CHECKPOINT_INTERVAL_NS).value
         )
         self._apriltag_pos_var: float = float(
             self.get_parameter(ekf_params.PARAM_APRILTAG_POS_VAR).value
@@ -274,26 +239,23 @@ class EkfLocalizerNode(rclpy.node.Node):
             self.get_parameter(ekf_params.PARAM_EXTRINSIC_PRIOR_SIGMA_ROT_RAD).value
         )
 
-        self._t_buffer_ns: int = int(round(self._t_buffer_sec * _NS_PER_S))
-        self._eps_wall_future_ns: int = int(round(self._eps_wall_future * _NS_PER_S))
-
         # Config
         config: EkfConfig = EkfConfig(
             world_frame_id=self._world_frame_id,
             odom_frame_id=self._odom_frame_id,
             body_frame_id=self._body_frame_id,
-            t_buffer_sec=self._t_buffer_sec,
-            epsilon_wall_future=self._eps_wall_future,
-            dt_clock_jump_max=self._dt_clock_jump_max,
-            dt_imu_max=self._dt_imu_max,
+            t_buffer_ns=self._t_buffer_ns,
+            epsilon_wall_future_ns=self._eps_wall_future_ns,
+            dt_clock_jump_max_ns=self._dt_clock_jump_max_ns,
+            dt_imu_max_ns=self._dt_imu_max_ns,
             pos_var=self._pos_var,
             vel_var=self._vel_var,
             ang_var=self._ang_var,
             accel_noise_var=self._accel_noise_var,
             gyro_noise_var=self._gyro_noise_var,
             gravity_mps2=self._gravity_mps2,
-            max_dt_sec=self._max_dt_sec,
-            checkpoint_interval_sec=self._checkpoint_interval_sec,
+            max_dt_ns=self._max_dt_ns,
+            checkpoint_interval_ns=self._checkpoint_interval_ns,
             apriltag_pos_var=self._apriltag_pos_var,
             apriltag_yaw_var=self._apriltag_yaw_var,
             apriltag_gate_d2=self._apriltag_gate_d2,
@@ -389,7 +351,7 @@ class EkfLocalizerNode(rclpy.node.Node):
         self._update_seq: int = 0
         self._synced_imu_timestamps_ns: Deque[int] = deque()
         self._synced_imu_timestamps_set: set[int] = set()
-        self._future_reject_log_times: dict[str, float] = {}
+        self._future_reject_log_times: dict[str, int] = {}
 
         self.get_logger().info("EKF localizer initialized")
 
@@ -644,33 +606,16 @@ class EkfLocalizerNode(rclpy.node.Node):
     def _throttled_future_warning(
         self, topic: str, t_meas_ns: int, now_ns: int, delta_ns: int
     ) -> None:
-        last_time: float = self._future_reject_log_times.get(topic, 0.0)
-        monotonic_now: float = time.monotonic()
-        if monotonic_now - last_time < 1.0:
+        last_time_ns: int = self._future_reject_log_times.get(topic, 0)
+        monotonic_now_ns: int = time.monotonic_ns()
+        if monotonic_now_ns - last_time_ns < 1_000_000_000:
             return
-        self._future_reject_log_times[topic] = monotonic_now
+        self._future_reject_log_times[topic] = monotonic_now_ns
         self.get_logger().warn(
             "Rejecting future-dated event on "
             f"{topic}: t_meas_ns={t_meas_ns} now_ns={now_ns} "
             f"delta_ns={delta_ns}"
         )
-
-    def _get_param_with_legacy(
-        self, param_name: str, legacy_name: str, default: float
-    ) -> float:
-        current_value: float = float(self.get_parameter(param_name).value)
-        legacy_value: float = float(self.get_parameter(legacy_name).value)
-        if legacy_value != default and current_value == default:
-            self.get_logger().warn(
-                f"Parameter '{legacy_name}' is deprecated, " f"use '{param_name}'"
-            )
-            return legacy_value
-        if legacy_value != default and current_value != default:
-            self.get_logger().warn(
-                f"Parameter '{legacy_name}' is deprecated and ignored in "
-                f"favor of '{param_name}'"
-            )
-        return current_value
 
     def _build_odom(
         self,

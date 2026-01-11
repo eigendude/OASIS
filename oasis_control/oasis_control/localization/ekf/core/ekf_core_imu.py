@@ -209,7 +209,6 @@ class EkfCoreImuMixin:
             return
         if dt_total_ns > self._config.dt_imu_max_ns:
             return
-        dt_total_s: float = float(dt_total_ns) * 1.0e-9
         omega_raw_rps: np.ndarray = np.asarray(
             imu_sample.angular_velocity_rps, dtype=float
         )
@@ -221,11 +220,11 @@ class EkfCoreImuMixin:
                 self._state,
                 omega_raw_rps=omega_raw_rps,
                 accel_raw_mps2=accel_raw_mps2,
-                dt_s=dt_total_s,
-                max_dt_s=self._config.max_dt_sec,
+                dt_ns=dt_total_ns,
+                max_dt_ns=self._config.max_dt_ns,
             )
             # Sub-step nominal propagation for numerical stability. The v0
-            # process noise Q uses closed-form coefficients for dt_total_s and
+            # process noise Q uses closed-form coefficients for dt_total_ns and
             # does not accumulate per-substep values. Without Phi/G weighting,
             # summing per-step Q is not equivalent to the closed-form dt^4 / 4,
             # dt^3 / 2, dt^2 terms
@@ -233,7 +232,9 @@ class EkfCoreImuMixin:
             # TODO(ekf-v1): add Phi/G and integrate Q via
             # Q = ∫ Phi(τ) G Qc Gᵀ Phi(τ)ᵀ dτ
             # across substeps
-            q = self._process_model.discrete_process_noise(self._state, dt_s=dt_total_s)
+            q = self._process_model.discrete_process_noise(
+                self._state, dt_ns=dt_total_ns
+            )
         except ValueError as exc:
             _LOG.info("Skipping IMU propagation, %s", exc)
             return

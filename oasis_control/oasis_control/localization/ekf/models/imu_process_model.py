@@ -26,6 +26,10 @@ from oasis_control.localization.ekf.se3 import quat_multiply
 from oasis_control.localization.ekf.se3 import quat_to_rotation_matrix
 
 
+# Seconds per nanosecond for time conversions
+_NS_TO_S: float = 1.0e-9
+
+
 class ImuProcessModel:
     """
     IMU-driven propagation and process noise model
@@ -40,7 +44,7 @@ class ImuProcessModel:
         *,
         omega_raw_rps: np.ndarray,
         accel_raw_mps2: np.ndarray,
-        dt_s: float,
+        dt_ns: int,
     ) -> None:
         """
         Propagate the nominal state with IMU inputs
@@ -49,12 +53,11 @@ class ImuProcessModel:
             state: EKF nominal state to update in-place
             omega_raw_rps: Angular velocity in the IMU frame (rad/s)
             accel_raw_mps2: Linear acceleration in the IMU frame (m/s^2)
-            dt_s: Time step in seconds
+            dt_ns: Time step in nanoseconds
         """
 
-        self._assert_finite_scalar("dt_s", dt_s)
-        if dt_s <= 0.0:
-            raise ValueError("dt_s must be positive")
+        self._assert_positive_ns("dt_ns", dt_ns)
+        dt_s: float = float(dt_ns) * _NS_TO_S
 
         omega_raw: np.ndarray = np.asarray(omega_raw_rps, dtype=float).reshape(3)
         accel_raw: np.ndarray = np.asarray(accel_raw_mps2, dtype=float).reshape(3)
@@ -94,24 +97,23 @@ class ImuProcessModel:
         state.pose_ob.translation_m = pos
         state.vel_o_mps = vel
 
-    def discrete_process_noise(self, state: EkfState, *, dt_s: float) -> np.ndarray:
+    def discrete_process_noise(self, state: EkfState, *, dt_ns: int) -> np.ndarray:
         """
         Build discrete-time process noise for the packed error-state
 
-        Returns the v0 closed-form discrete-time Q over dt_s that does not
-        depend on max_dt_s or substepping
+        Returns the v0 closed-form discrete-time Q over dt_ns that does not
+        depend on max_dt_ns or substepping
 
         Args:
             state: EKF state for indexing
-            dt_s: Time step in seconds
+            dt_ns: Time step in nanoseconds
 
         Returns:
             Symmetric process noise matrix Q in packed error-state coordinates
         """
 
-        self._assert_finite_scalar("dt_s", dt_s)
-        if dt_s <= 0.0:
-            raise ValueError("dt_s must be positive")
+        self._assert_positive_ns("dt_ns", dt_ns)
+        dt_s: float = float(dt_ns) * _NS_TO_S
 
         total_dim: int = state.index.total_dim
         q: np.ndarray = np.zeros((total_dim, total_dim), dtype=float)
@@ -147,26 +149,22 @@ class ImuProcessModel:
             q[ang_index, ang_index] += ang_noise
         return q
 
-    def substep_count(self, dt_s: float, max_dt_s: float) -> int:
+    def substep_count(self, dt_ns: int, max_dt_ns: int) -> int:
         """
         Compute the number of substeps for a time interval
 
         Args:
-            dt_s: Total time step in seconds
-            max_dt_s: Max allowed step size in seconds
+            dt_ns: Total time step in nanoseconds
+            max_dt_ns: Max allowed step size in nanoseconds
 
         Returns:
             Number of substeps N >= 1
         """
 
-        self._assert_finite_scalar("dt_s", dt_s)
-        self._assert_finite_scalar("max_dt_s", max_dt_s)
-        if dt_s <= 0.0:
-            raise ValueError("dt_s must be positive")
-        if max_dt_s <= 0.0:
-            raise ValueError("max_dt_s must be positive")
+        self._assert_positive_ns("dt_ns", dt_ns)
+        self._assert_positive_ns("max_dt_ns", max_dt_ns)
 
-        steps: int = int(math.ceil(dt_s / max_dt_s))
+        steps: int = (dt_ns + max_dt_ns - 1) // max_dt_ns
         return max(1, steps)
 
     def propagate_nominal_substepped(
@@ -175,39 +173,43 @@ class ImuProcessModel:
         *,
         omega_raw_rps: np.ndarray,
         accel_raw_mps2: np.ndarray,
-        dt_s: float,
-        max_dt_s: float,
+        dt_ns: int,
+        max_dt_ns: int,
     ) -> None:
         """
         Propagate the nominal state with optional substeps
         """
 
-        steps: int = self.substep_count(dt_s, max_dt_s)
-        step_dt: float = dt_s / float(steps)
+        steps: int = self.substep_count(dt_ns, max_dt_ns)
+        base_step_ns: int = dt_ns // steps
+        remainder_ns: int = dt_ns - base_step_ns * steps
         # Propagation uses previous-sample inputs (ZOH) to ensure replay is
         # order-invariant
-        for _ in range(steps):
+        for step_index in range(steps):
+            step_dt_ns: int = base_step_ns + (1 if step_index < remainder_ns else 0)
             self.propagate_nominal(
                 state,
                 omega_raw_rps=omega_raw_rps,
                 accel_raw_mps2=accel_raw_mps2,
-                dt_s=step_dt,
+                dt_ns=step_dt_ns,
             )
 
     def discrete_process_noise_substepped(
-        self, state: EkfState, *, dt_s: float, max_dt_s: float
+        self, state: EkfState, *, dt_ns: int, max_dt_ns: int
     ) -> np.ndarray:
         """
         Integrate process noise over substeps
         """
 
-        steps: int = self.substep_count(dt_s, max_dt_s)
-        step_dt: float = dt_s / float(steps)
+        steps: int = self.substep_count(dt_ns, max_dt_ns)
+        base_step_ns: int = dt_ns // steps
+        remainder_ns: int = dt_ns - base_step_ns * steps
         q_total: np.ndarray = np.zeros(
             (state.index.total_dim, state.index.total_dim), dtype=float
         )
-        for _ in range(steps):
-            q_total = q_total + self.discrete_process_noise(state, dt_s=step_dt)
+        for step_index in range(steps):
+            step_dt_ns: int = base_step_ns + (1 if step_index < remainder_ns else 0)
+            q_total = q_total + self.discrete_process_noise(state, dt_ns=step_dt_ns)
         return q_total
 
     def _assert_finite_array(self, name: str, value: np.ndarray) -> None:
@@ -217,3 +219,7 @@ class ImuProcessModel:
     def _assert_finite_scalar(self, name: str, value: float) -> None:
         if not math.isfinite(value):
             raise ValueError(f"{name} must be finite")
+
+    def _assert_positive_ns(self, name: str, value: int) -> None:
+        if value <= 0:
+            raise ValueError(f"{name} must be positive")

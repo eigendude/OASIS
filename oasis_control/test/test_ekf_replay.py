@@ -25,14 +25,26 @@ from oasis_control.localization.ekf.ekf_types import EkfEventType
 from oasis_control.localization.ekf.ekf_types import EkfImuPacket
 from oasis_control.localization.ekf.ekf_types import EkfTime
 from oasis_control.localization.ekf.ekf_types import ImuSample
-from oasis_control.localization.ekf.ekf_types import from_seconds
+from oasis_control.localization.ekf.ekf_types import from_ns
 from oasis_control.localization.ekf.ekf_types import to_ns
+
+
+_NS_PER_S: int = 1_000_000_000
+_NS_PER_MS: int = 1_000_000
+
+
+def _ns_from_s(seconds: int) -> int:
+    return seconds * _NS_PER_S
+
+
+def _ns_from_ms(milliseconds: int) -> int:
+    return milliseconds * _NS_PER_MS
 
 
 def _build_config(
     *,
-    t_buffer_sec: float,
-    checkpoint_interval_sec: float,
+    t_buffer_ns: int,
+    checkpoint_interval_ns: int,
     apriltag_gate_d2: float,
     apriltag_pos_var: float,
     apriltag_yaw_var: float,
@@ -42,18 +54,18 @@ def _build_config(
         world_frame_id="world",
         odom_frame_id="odom",
         body_frame_id="base_link",
-        t_buffer_sec=t_buffer_sec,
-        epsilon_wall_future=0.1,
-        dt_clock_jump_max=5.0,
-        dt_imu_max=1.0,
+        t_buffer_ns=t_buffer_ns,
+        epsilon_wall_future_ns=_ns_from_ms(100),
+        dt_clock_jump_max_ns=_ns_from_s(5),
+        dt_imu_max_ns=_ns_from_s(1),
         pos_var=1.0,
         vel_var=1.0,
         ang_var=1.0,
         accel_noise_var=0.1,
         gyro_noise_var=0.1,
         gravity_mps2=9.81,
-        max_dt_sec=0.01,
-        checkpoint_interval_sec=checkpoint_interval_sec,
+        max_dt_ns=_ns_from_ms(10),
+        checkpoint_interval_ns=checkpoint_interval_ns,
         apriltag_pos_var=apriltag_pos_var,
         apriltag_yaw_var=apriltag_yaw_var,
         apriltag_gate_d2=apriltag_gate_d2,
@@ -133,27 +145,28 @@ def _capture_state(
 
 def test_process_noise_coefficients() -> None:
     config: EkfConfig = _build_config(
-        t_buffer_sec=1.0,
-        checkpoint_interval_sec=0.1,
+        t_buffer_ns=_ns_from_s(1),
+        checkpoint_interval_ns=_ns_from_ms(100),
         apriltag_gate_d2=0.0,
         apriltag_pos_var=1.0,
         apriltag_yaw_var=1.0,
     )
     core: EkfCore = EkfCore(config)
-    dt: float = 0.2
-    noise: list[list[float]] = core.process_noise(dt).tolist()
+    dt_ns: int = _ns_from_ms(200)
+    dt_s: float = float(dt_ns) * 1.0e-9
+    noise: list[list[float]] = core.process_noise(dt_ns).tolist()
 
     accel_noise_var: float = config.accel_noise_var
     gyro_noise_var: float = config.gyro_noise_var
 
     # Continuous-time white-noise accel model for x=[p,v]:
     # Qpp = q_a * dt^4 / 4, Qpv = q_a * dt^3 / 2, Qvv = q_a * dt^2
-    pos_noise: float = accel_noise_var * (dt**4) / 4.0
-    pos_vel_noise: float = accel_noise_var * (dt**3) / 2.0
-    vel_noise: float = accel_noise_var * (dt**2)
+    pos_noise: float = accel_noise_var * (dt_s**4) / 4.0
+    pos_vel_noise: float = accel_noise_var * (dt_s**3) / 2.0
+    vel_noise: float = accel_noise_var * (dt_s**2)
 
     # White gyro noise integrated to angle: Qθθ = q_g * dt^2
-    ang_noise: float = gyro_noise_var * (dt**2)
+    ang_noise: float = gyro_noise_var * (dt_s**2)
 
     # Dimension of translation error block (x, y, z) in pose slice
     TRANSLATION_DIM: int = 3
@@ -184,8 +197,8 @@ def test_process_noise_coefficients() -> None:
 
 def test_out_of_order_apriltag_replay_matches_chronological() -> None:
     config: EkfConfig = _build_config(
-        t_buffer_sec=1.0,
-        checkpoint_interval_sec=0.05,
+        t_buffer_ns=_ns_from_s(1),
+        checkpoint_interval_ns=_ns_from_ms(50),
         apriltag_gate_d2=0.0,
         apriltag_pos_var=0.05,
         apriltag_yaw_var=0.01,
@@ -197,7 +210,7 @@ def test_out_of_order_apriltag_replay_matches_chronological() -> None:
     imu_sample: ImuSample = _build_imu_sample(
         accel_body=[0.5, 0.0, config.gravity_mps2]
     )
-    imu_time: EkfTime = from_seconds(0.0)
+    imu_time: EkfTime = from_ns(0)
     imu_event: EkfEvent = EkfEvent(
         t_meas=imu_time,
         event_type=EkfEventType.IMU,
@@ -209,7 +222,7 @@ def test_out_of_order_apriltag_replay_matches_chronological() -> None:
         tag_id=1,
     )
     early_event: EkfEvent = EkfEvent(
-        t_meas=from_seconds(0.1),
+        t_meas=from_ns(_ns_from_ms(100)),
         event_type=EkfEventType.APRILTAG,
         payload=AprilTagDetectionArrayData(
             frame_id="camera",
@@ -222,7 +235,7 @@ def test_out_of_order_apriltag_replay_matches_chronological() -> None:
         tag_id=2,
     )
     late_event: EkfEvent = EkfEvent(
-        t_meas=from_seconds(0.2),
+        t_meas=from_ns(_ns_from_ms(200)),
         event_type=EkfEventType.APRILTAG,
         payload=AprilTagDetectionArrayData(
             frame_id="camera",
@@ -259,8 +272,8 @@ def test_out_of_order_apriltag_replay_matches_chronological() -> None:
 
 def test_buffer_stable_ordering_for_equal_times() -> None:
     config: EkfConfig = _build_config(
-        t_buffer_sec=1.0,
-        checkpoint_interval_sec=0.1,
+        t_buffer_ns=_ns_from_s(1),
+        checkpoint_interval_ns=_ns_from_ms(100),
         apriltag_gate_d2=0.0,
         apriltag_pos_var=1.0,
         apriltag_yaw_var=1.0,
@@ -278,17 +291,17 @@ def test_buffer_stable_ordering_for_equal_times() -> None:
     )
 
     event_first: EkfEvent = EkfEvent(
-        t_meas=from_seconds(1.0),
+        t_meas=from_ns(_ns_from_s(1)),
         event_type=EkfEventType.IMU,
         payload=EkfImuPacket(imu=imu_sample_a, calibration=None),
     )
     event_middle: EkfEvent = EkfEvent(
-        t_meas=from_seconds(0.5),
+        t_meas=from_ns(_ns_from_ms(500)),
         event_type=EkfEventType.IMU,
         payload=EkfImuPacket(imu=imu_sample_b, calibration=None),
     )
     event_second: EkfEvent = EkfEvent(
-        t_meas=from_seconds(1.0),
+        t_meas=from_ns(_ns_from_s(1)),
         event_type=EkfEventType.IMU,
         payload=EkfImuPacket(imu=imu_sample_c, calibration=None),
     )
@@ -307,26 +320,26 @@ def test_buffer_stable_ordering_for_equal_times() -> None:
 
 def test_buffer_too_old_relies_on_filter_frontier() -> None:
     config: EkfConfig = _build_config(
-        t_buffer_sec=2.0,
-        checkpoint_interval_sec=0.1,
+        t_buffer_ns=_ns_from_s(2),
+        checkpoint_interval_ns=_ns_from_ms(100),
         apriltag_gate_d2=0.0,
         apriltag_pos_var=1.0,
         apriltag_yaw_var=1.0,
     )
     buffer: EkfBuffer = EkfBuffer(config)
 
-    t_meas: EkfTime = from_seconds(5.0)
+    t_meas: EkfTime = from_ns(_ns_from_s(5))
     assert buffer.too_old(t_meas, t_filter_ns=None) is False
 
-    t_filter_ns: int = to_ns(from_seconds(10.0))
-    assert buffer.too_old(from_seconds(7.0), t_filter_ns=t_filter_ns) is True
-    assert buffer.too_old(from_seconds(8.0), t_filter_ns=t_filter_ns) is False
+    t_filter_ns: int = to_ns(from_ns(_ns_from_s(10)))
+    assert buffer.too_old(from_ns(_ns_from_s(7)), t_filter_ns=t_filter_ns) is True
+    assert buffer.too_old(from_ns(_ns_from_s(8)), t_filter_ns=t_filter_ns) is False
 
 
 def test_replay_eviction_uses_frontier_time() -> None:
     config: EkfConfig = _build_config(
-        t_buffer_sec=0.5,
-        checkpoint_interval_sec=0.1,
+        t_buffer_ns=_ns_from_ms(500),
+        checkpoint_interval_ns=_ns_from_ms(100),
         apriltag_gate_d2=0.0,
         apriltag_pos_var=1.0,
         apriltag_yaw_var=1.0,
@@ -334,7 +347,7 @@ def test_replay_eviction_uses_frontier_time() -> None:
     core: EkfCore = EkfCore(config)
     buffer: EkfBuffer = EkfBuffer(config)
 
-    imu_time: EkfTime = from_seconds(1.0)
+    imu_time: EkfTime = from_ns(_ns_from_s(1))
     imu_event: EkfEvent = EkfEvent(
         t_meas=imu_time,
         event_type=EkfEventType.IMU,
@@ -343,7 +356,7 @@ def test_replay_eviction_uses_frontier_time() -> None:
         ),
     )
     camera_event: EkfEvent = EkfEvent(
-        t_meas=from_seconds(10.0),
+        t_meas=from_ns(_ns_from_s(10)),
         event_type=EkfEventType.CAMERA_INFO,
         payload=CameraInfoData(
             frame_id="camera",

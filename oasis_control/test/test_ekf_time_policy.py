@@ -31,29 +31,41 @@ from oasis_control.localization.ekf.ekf_types import EkfTime
 from oasis_control.localization.ekf.ekf_types import EkfUpdateData
 from oasis_control.localization.ekf.ekf_types import ImuSample
 from oasis_control.localization.ekf.ekf_types import MagSample
-from oasis_control.localization.ekf.ekf_types import from_seconds
+from oasis_control.localization.ekf.ekf_types import from_ns
 from oasis_control.localization.ekf.models.apriltag_measurement_model import (
     AprilTagMeasurementModel,
 )
 
 
-def _build_config(*, dt_imu_max: float = 0.5) -> EkfConfig:
+_NS_PER_S: int = 1_000_000_000
+_NS_PER_MS: int = 1_000_000
+
+
+def _ns_from_s(seconds: int) -> int:
+    return seconds * _NS_PER_S
+
+
+def _ns_from_ms(milliseconds: int) -> int:
+    return milliseconds * _NS_PER_MS
+
+
+def _build_config(*, dt_imu_max_ns: int = _ns_from_ms(500)) -> EkfConfig:
     return EkfConfig(
         world_frame_id="world",
         odom_frame_id="odom",
         body_frame_id="base_link",
-        t_buffer_sec=2.0,
-        epsilon_wall_future=0.1,
-        dt_clock_jump_max=1.0,
-        dt_imu_max=dt_imu_max,
+        t_buffer_ns=_ns_from_s(2),
+        epsilon_wall_future_ns=_ns_from_ms(100),
+        dt_clock_jump_max_ns=_ns_from_s(1),
+        dt_imu_max_ns=dt_imu_max_ns,
         pos_var=1.0,
         vel_var=1.0,
         ang_var=1.0,
         accel_noise_var=0.1,
         gyro_noise_var=0.1,
         gravity_mps2=9.81,
-        max_dt_sec=0.01,
-        checkpoint_interval_sec=0.5,
+        max_dt_ns=_ns_from_ms(10),
+        checkpoint_interval_ns=_ns_from_ms(500),
         apriltag_pos_var=1.0,
         apriltag_yaw_var=1.0,
         apriltag_gate_d2=0.0,
@@ -247,7 +259,7 @@ def test_mag_rejection_does_not_advance_frontier() -> None:
     core: _RejectingMagEkf = _RejectingMagEkf(config)
 
     imu_event: EkfEvent = EkfEvent(
-        t_meas=from_seconds(0.0),
+        t_meas=from_ns(0),
         event_type=EkfEventType.IMU,
         payload=EkfImuPacket(imu=_build_imu_sample(), calibration=None),
     )
@@ -256,7 +268,7 @@ def test_mag_rejection_does_not_advance_frontier() -> None:
     assert frontier_before is not None
 
     mag_event: EkfEvent = EkfEvent(
-        t_meas=from_seconds(1.0),
+        t_meas=from_ns(_ns_from_s(1)),
         event_type=EkfEventType.MAG,
         payload=_build_mag_sample(),
     )
@@ -269,18 +281,18 @@ def test_mag_rejection_does_not_advance_frontier() -> None:
 
 
 def test_imu_max_dt_advances_frontier() -> None:
-    config: EkfConfig = _build_config(dt_imu_max=0.1)
+    config: EkfConfig = _build_config(dt_imu_max_ns=_ns_from_ms(100))
     core: EkfCore = EkfCore(config)
 
     imu_event_0: EkfEvent = EkfEvent(
-        t_meas=from_seconds(0.0),
+        t_meas=from_ns(0),
         event_type=EkfEventType.IMU,
         payload=EkfImuPacket(imu=_build_imu_sample(), calibration=None),
     )
     core.process_event(imu_event_0)
 
     imu_event_1: EkfEvent = EkfEvent(
-        t_meas=from_seconds(1.0),
+        t_meas=from_ns(_ns_from_s(1)),
         event_type=EkfEventType.IMU,
         payload=EkfImuPacket(imu=_build_imu_sample(), calibration=None),
     )
@@ -296,7 +308,7 @@ def test_apriltag_linearization_uses_fixed_state() -> None:
 
     camera_info: CameraInfoData = _build_camera_info()
     camera_event: EkfEvent = EkfEvent(
-        t_meas=from_seconds(0.0),
+        t_meas=from_ns(0),
         event_type=EkfEventType.CAMERA_INFO,
         payload=camera_info,
     )
@@ -331,7 +343,7 @@ def test_apriltag_linearization_uses_fixed_state() -> None:
         ),
     ]
     apriltag_event: EkfEvent = EkfEvent(
-        t_meas=from_seconds(1.0),
+        t_meas=from_ns(_ns_from_s(1)),
         event_type=EkfEventType.APRILTAG,
         payload=AprilTagDetectionArrayData(frame_id="camera", detections=detections),
     )

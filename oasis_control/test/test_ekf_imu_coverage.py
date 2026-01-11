@@ -23,26 +23,38 @@ from oasis_control.localization.ekf.ekf_types import EkfTime
 from oasis_control.localization.ekf.ekf_types import EkfUpdateData
 from oasis_control.localization.ekf.ekf_types import ImuSample
 from oasis_control.localization.ekf.ekf_types import MagSample
-from oasis_control.localization.ekf.ekf_types import from_seconds
+from oasis_control.localization.ekf.ekf_types import from_ns
 
 
-def _build_config(*, dt_imu_max: float) -> EkfConfig:
+_NS_PER_S: int = 1_000_000_000
+_NS_PER_MS: int = 1_000_000
+
+
+def _ns_from_s(seconds: int) -> int:
+    return seconds * _NS_PER_S
+
+
+def _ns_from_ms(milliseconds: int) -> int:
+    return milliseconds * _NS_PER_MS
+
+
+def _build_config(*, dt_imu_max_ns: int) -> EkfConfig:
     return EkfConfig(
         world_frame_id="world",
         odom_frame_id="odom",
         body_frame_id="base_link",
-        t_buffer_sec=1.0,
-        epsilon_wall_future=0.1,
-        dt_clock_jump_max=1.0,
-        dt_imu_max=dt_imu_max,
+        t_buffer_ns=_ns_from_s(1),
+        epsilon_wall_future_ns=_ns_from_ms(100),
+        dt_clock_jump_max_ns=_ns_from_s(1),
+        dt_imu_max_ns=dt_imu_max_ns,
         pos_var=1.0,
         vel_var=1.0,
         ang_var=1.0,
         accel_noise_var=0.1,
         gyro_noise_var=0.1,
         gravity_mps2=9.81,
-        max_dt_sec=0.01,
-        checkpoint_interval_sec=0.25,
+        max_dt_ns=_ns_from_ms(10),
+        checkpoint_interval_ns=_ns_from_ms(250),
         apriltag_pos_var=1.0,
         apriltag_yaw_var=1.0,
         apriltag_gate_d2=0.0,
@@ -112,12 +124,12 @@ def _run_replay(events: list[EkfEvent], config: EkfConfig) -> list[EkfUpdateData
 
 
 def test_mag_imu_coverage_accepts_dense_samples() -> None:
-    config: EkfConfig = _build_config(dt_imu_max=0.05)
+    config: EkfConfig = _build_config(dt_imu_max_ns=_ns_from_ms(50))
     events: list[EkfEvent] = [
-        _build_imu_event(from_seconds(0.0)),
-        _build_imu_event(from_seconds(0.01)),
-        _build_mag_event(from_seconds(0.015)),
-        _build_imu_event(from_seconds(0.02)),
+        _build_imu_event(from_ns(0)),
+        _build_imu_event(from_ns(_ns_from_ms(10))),
+        _build_mag_event(from_ns(_ns_from_ms(15))),
+        _build_imu_event(from_ns(_ns_from_ms(20))),
     ]
 
     updates: list[EkfUpdateData] = _run_replay(events, config)
@@ -127,12 +139,12 @@ def test_mag_imu_coverage_accepts_dense_samples() -> None:
 
 
 def test_mag_imu_coverage_rejects_gap() -> None:
-    config: EkfConfig = _build_config(dt_imu_max=0.05)
+    config: EkfConfig = _build_config(dt_imu_max_ns=_ns_from_ms(50))
     events: list[EkfEvent] = [
-        _build_imu_event(from_seconds(0.0)),
-        _build_imu_event(from_seconds(0.01)),
-        _build_mag_event(from_seconds(0.20)),
-        _build_imu_event(from_seconds(0.50)),
+        _build_imu_event(from_ns(0)),
+        _build_imu_event(from_ns(_ns_from_ms(10))),
+        _build_mag_event(from_ns(_ns_from_ms(200))),
+        _build_imu_event(from_ns(_ns_from_ms(500))),
     ]
 
     updates: list[EkfUpdateData] = _run_replay(events, config)
@@ -143,15 +155,15 @@ def test_mag_imu_coverage_rejects_gap() -> None:
 
 
 def test_mag_imu_coverage_recovers_after_gap() -> None:
-    config: EkfConfig = _build_config(dt_imu_max=0.05)
+    config: EkfConfig = _build_config(dt_imu_max_ns=_ns_from_ms(50))
     events: list[EkfEvent] = [
-        _build_imu_event(from_seconds(0.0)),
-        _build_imu_event(from_seconds(0.01)),
-        _build_mag_event(from_seconds(0.20)),
-        _build_imu_event(from_seconds(0.21)),
-        _build_imu_event(from_seconds(0.22)),
-        _build_imu_event(from_seconds(0.23)),
-        _build_mag_event(from_seconds(0.235)),
+        _build_imu_event(from_ns(0)),
+        _build_imu_event(from_ns(_ns_from_ms(10))),
+        _build_mag_event(from_ns(_ns_from_ms(200))),
+        _build_imu_event(from_ns(_ns_from_ms(210))),
+        _build_imu_event(from_ns(_ns_from_ms(220))),
+        _build_imu_event(from_ns(_ns_from_ms(230))),
+        _build_mag_event(from_ns(_ns_from_ms(235))),
     ]
 
     updates: list[EkfUpdateData] = _run_replay(events, config)
@@ -163,12 +175,12 @@ def test_mag_imu_coverage_recovers_after_gap() -> None:
 
 
 def test_out_of_order_replay_rejects_gap() -> None:
-    config: EkfConfig = _build_config(dt_imu_max=0.05)
-    mag_event: EkfEvent = _build_mag_event(from_seconds(0.20))
+    config: EkfConfig = _build_config(dt_imu_max_ns=_ns_from_ms(50))
+    mag_event: EkfEvent = _build_mag_event(from_ns(_ns_from_ms(200)))
     imu_events: list[EkfEvent] = [
-        _build_imu_event(from_seconds(0.0)),
-        _build_imu_event(from_seconds(0.01)),
-        _build_imu_event(from_seconds(0.50)),
+        _build_imu_event(from_ns(0)),
+        _build_imu_event(from_ns(_ns_from_ms(10))),
+        _build_imu_event(from_ns(_ns_from_ms(500))),
     ]
     events: list[EkfEvent] = [mag_event] + imu_events
 
@@ -180,14 +192,14 @@ def test_out_of_order_replay_rejects_gap() -> None:
 
 
 def test_out_of_order_replay_accepts_covered_interval() -> None:
-    config: EkfConfig = _build_config(dt_imu_max=0.05)
-    mag_event: EkfEvent = _build_mag_event(from_seconds(0.20))
+    config: EkfConfig = _build_config(dt_imu_max_ns=_ns_from_ms(50))
+    mag_event: EkfEvent = _build_mag_event(from_ns(_ns_from_ms(200)))
     imu_events: list[EkfEvent] = [
-        _build_imu_event(from_seconds(0.0)),
-        _build_imu_event(from_seconds(0.05)),
-        _build_imu_event(from_seconds(0.10)),
-        _build_imu_event(from_seconds(0.15)),
-        _build_imu_event(from_seconds(0.19)),
+        _build_imu_event(from_ns(0)),
+        _build_imu_event(from_ns(_ns_from_ms(50))),
+        _build_imu_event(from_ns(_ns_from_ms(100))),
+        _build_imu_event(from_ns(_ns_from_ms(150))),
+        _build_imu_event(from_ns(_ns_from_ms(190))),
     ]
     events: list[EkfEvent] = [mag_event] + imu_events
 

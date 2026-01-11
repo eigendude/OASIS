@@ -24,7 +24,19 @@ from oasis_control.localization.ekf.ekf_types import EkfEventType
 from oasis_control.localization.ekf.ekf_types import EkfFrameOutputs
 from oasis_control.localization.ekf.ekf_types import EkfImuPacket
 from oasis_control.localization.ekf.ekf_types import ImuSample
-from oasis_control.localization.ekf.ekf_types import from_seconds
+from oasis_control.localization.ekf.ekf_types import from_ns
+
+
+_NS_PER_S: int = 1_000_000_000
+_NS_PER_MS: int = 1_000_000
+
+
+def _ns_from_s(seconds: int) -> int:
+    return seconds * _NS_PER_S
+
+
+def _ns_from_ms(milliseconds: int) -> int:
+    return milliseconds * _NS_PER_MS
 
 
 def _build_config() -> EkfConfig:
@@ -32,18 +44,18 @@ def _build_config() -> EkfConfig:
         world_frame_id="world",
         odom_frame_id="odom",
         body_frame_id="base_link",
-        t_buffer_sec=1.0,
-        epsilon_wall_future=0.1,
-        dt_clock_jump_max=5.0,
-        dt_imu_max=1.0,
+        t_buffer_ns=_ns_from_s(1),
+        epsilon_wall_future_ns=_ns_from_ms(100),
+        dt_clock_jump_max_ns=_ns_from_s(5),
+        dt_imu_max_ns=_ns_from_s(1),
         pos_var=1.0,
         vel_var=1.0,
         ang_var=1.0,
         accel_noise_var=0.1,
         gyro_noise_var=0.1,
         gravity_mps2=9.81,
-        max_dt_sec=0.01,
-        checkpoint_interval_sec=0.1,
+        max_dt_ns=_ns_from_ms(10),
+        checkpoint_interval_ns=_ns_from_ms(100),
         apriltag_pos_var=0.05,
         apriltag_yaw_var=0.01,
         apriltag_gate_d2=0.0,
@@ -246,7 +258,7 @@ def test_global_update_does_not_teleport_odom() -> None:
 
     camera_info: CameraInfoData = _build_camera_info()
     camera_event: EkfEvent = EkfEvent(
-        t_meas=from_seconds(0.0),
+        t_meas=from_ns(0),
         event_type=EkfEventType.CAMERA_INFO,
         payload=camera_info,
     )
@@ -257,14 +269,14 @@ def test_global_update_does_not_teleport_odom() -> None:
     )
     core.process_event(
         EkfEvent(
-            t_meas=from_seconds(0.0),
+            t_meas=from_ns(0),
             event_type=EkfEventType.IMU,
             payload=EkfImuPacket(imu=imu_sample, calibration=None),
         )
     )
     core.process_event(
         EkfEvent(
-            t_meas=from_seconds(0.5),
+            t_meas=from_ns(_ns_from_ms(500)),
             event_type=EkfEventType.IMU,
             payload=EkfImuPacket(imu=imu_sample, calibration=None),
         )
@@ -278,7 +290,7 @@ def test_global_update_does_not_teleport_odom() -> None:
         camera_info=camera_info,
     )
     apriltag_event: EkfEvent = EkfEvent(
-        t_meas=from_seconds(0.5),
+        t_meas=from_ns(_ns_from_ms(500)),
         event_type=EkfEventType.APRILTAG,
         payload=AprilTagDetectionArrayData(
             frame_id="camera",
@@ -301,7 +313,7 @@ def test_world_correction_updates_world_odom_only() -> None:
 
     camera_info: CameraInfoData = _build_camera_info()
     camera_event: EkfEvent = EkfEvent(
-        t_meas=from_seconds(0.0),
+        t_meas=from_ns(0),
         event_type=EkfEventType.CAMERA_INFO,
         payload=camera_info,
     )
@@ -312,14 +324,14 @@ def test_world_correction_updates_world_odom_only() -> None:
     )
     core.process_event(
         EkfEvent(
-            t_meas=from_seconds(0.0),
+            t_meas=from_ns(0),
             event_type=EkfEventType.IMU,
             payload=EkfImuPacket(imu=imu_sample, calibration=None),
         )
     )
     core.process_event(
         EkfEvent(
-            t_meas=from_seconds(0.5),
+            t_meas=from_ns(_ns_from_ms(500)),
             event_type=EkfEventType.IMU,
             payload=EkfImuPacket(imu=imu_sample, calibration=None),
         )
@@ -334,7 +346,7 @@ def test_world_correction_updates_world_odom_only() -> None:
         camera_info=camera_info,
     )
     apriltag_event: EkfEvent = EkfEvent(
-        t_meas=from_seconds(0.5),
+        t_meas=from_ns(_ns_from_ms(500)),
         event_type=EkfEventType.APRILTAG,
         payload=AprilTagDetectionArrayData(
             frame_id="camera",
@@ -358,7 +370,7 @@ def test_world_base_composition_matches_outputs() -> None:
 
     camera_info: CameraInfoData = _build_camera_info()
     camera_event: EkfEvent = EkfEvent(
-        t_meas=from_seconds(0.0),
+        t_meas=from_ns(0),
         event_type=EkfEventType.CAMERA_INFO,
         payload=camera_info,
     )
@@ -369,21 +381,21 @@ def test_world_base_composition_matches_outputs() -> None:
     )
     core.process_event(
         EkfEvent(
-            t_meas=from_seconds(0.0),
+            t_meas=from_ns(0),
             event_type=EkfEventType.IMU,
             payload=EkfImuPacket(imu=imu_sample, calibration=None),
         )
     )
     core.process_event(
         EkfEvent(
-            t_meas=from_seconds(0.5),
+            t_meas=from_ns(_ns_from_ms(500)),
             event_type=EkfEventType.IMU,
             payload=EkfImuPacket(imu=imu_sample, calibration=None),
         )
     )
     core.process_event(
         EkfEvent(
-            t_meas=from_seconds(0.5),
+            t_meas=from_ns(_ns_from_ms(500)),
             event_type=EkfEventType.APRILTAG,
             payload=AprilTagDetectionArrayData(
                 frame_id="camera",
@@ -427,7 +439,7 @@ def test_replay_updates_world_odom_deterministically() -> None:
 
     camera_info: CameraInfoData = _build_camera_info()
     camera_event: EkfEvent = EkfEvent(
-        t_meas=from_seconds(0.0),
+        t_meas=from_ns(0),
         event_type=EkfEventType.CAMERA_INFO,
         payload=camera_info,
     )
@@ -438,7 +450,7 @@ def test_replay_updates_world_odom_deterministically() -> None:
         accel_body=[0.0, 0.0, config.gravity_mps2]
     )
     imu_event: EkfEvent = EkfEvent(
-        t_meas=from_seconds(0.0),
+        t_meas=from_ns(0),
         event_type=EkfEventType.IMU,
         payload=EkfImuPacket(imu=imu_sample, calibration=None),
     )
@@ -446,7 +458,7 @@ def test_replay_updates_world_odom_deterministically() -> None:
     sut_core.process_event(imu_event)
 
     early_event: EkfEvent = EkfEvent(
-        t_meas=from_seconds(0.1),
+        t_meas=from_ns(_ns_from_ms(100)),
         event_type=EkfEventType.APRILTAG,
         payload=AprilTagDetectionArrayData(
             frame_id="camera",
@@ -460,7 +472,7 @@ def test_replay_updates_world_odom_deterministically() -> None:
         ),
     )
     late_event: EkfEvent = EkfEvent(
-        t_meas=from_seconds(0.2),
+        t_meas=from_ns(_ns_from_ms(200)),
         event_type=EkfEventType.APRILTAG,
         payload=AprilTagDetectionArrayData(
             frame_id="camera",

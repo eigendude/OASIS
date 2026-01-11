@@ -31,7 +31,19 @@ from oasis_control.localization.ekf.ekf_types import EkfOutputs
 from oasis_control.localization.ekf.ekf_types import EkfTime
 from oasis_control.localization.ekf.ekf_types import ImuSample
 from oasis_control.localization.ekf.ekf_types import MagSample
-from oasis_control.localization.ekf.ekf_types import from_seconds
+from oasis_control.localization.ekf.ekf_types import from_ns
+
+
+_NS_PER_S: int = 1_000_000_000
+_NS_PER_MS: int = 1_000_000
+
+
+def _ns_from_s(seconds: int) -> int:
+    return seconds * _NS_PER_S
+
+
+def _ns_from_ms(milliseconds: int) -> int:
+    return milliseconds * _NS_PER_MS
 
 
 class _RecordingEkfCore(EkfCore):
@@ -49,18 +61,18 @@ def _build_config() -> EkfConfig:
         world_frame_id="world",
         odom_frame_id="odom",
         body_frame_id="base_link",
-        t_buffer_sec=2.0,
-        epsilon_wall_future=0.1,
-        dt_clock_jump_max=1.0,
-        dt_imu_max=0.5,
+        t_buffer_ns=_ns_from_s(2),
+        epsilon_wall_future_ns=_ns_from_ms(100),
+        dt_clock_jump_max_ns=_ns_from_s(1),
+        dt_imu_max_ns=_ns_from_ms(500),
         pos_var=1.0,
         vel_var=1.0,
         ang_var=1.0,
         accel_noise_var=0.1,
         gyro_noise_var=0.1,
         gravity_mps2=9.81,
-        max_dt_sec=0.01,
-        checkpoint_interval_sec=0.5,
+        max_dt_ns=_ns_from_ms(10),
+        checkpoint_interval_ns=_ns_from_ms(500),
         apriltag_pos_var=1.0,
         apriltag_yaw_var=1.0,
         apriltag_gate_d2=0.0,
@@ -115,7 +127,7 @@ def test_replay_applies_events_in_priority_order() -> None:
     config: EkfConfig = _build_config()
     core: _RecordingEkfCore = _RecordingEkfCore(config)
     buffer: EkfBuffer = EkfBuffer(config)
-    timestamp: EkfTime = from_seconds(1.0)
+    timestamp: EkfTime = from_ns(_ns_from_s(1))
 
     apriltag_event: EkfEvent = EkfEvent(
         t_meas=timestamp,

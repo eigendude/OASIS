@@ -14,7 +14,6 @@ State and replay helpers for the EKF core
 
 from __future__ import annotations
 
-import math
 from typing import Optional
 from typing import cast
 
@@ -173,12 +172,10 @@ class EkfCoreStateMixin:
     def state_index(self) -> EkfStateIndex:
         return self._state.index.copy()
 
-    def process_noise(self, dt_s: float) -> np.ndarray:
-        if not math.isfinite(dt_s):
-            raise ValueError("dt_s must be finite")
-        if dt_s <= 0.0:
-            raise ValueError("dt_s must be positive")
-        return self._process_model.discrete_process_noise(self._state, dt_s=dt_s)
+    def process_noise(self, dt_ns: int) -> np.ndarray:
+        if dt_ns <= 0:
+            raise ValueError("dt_ns must be positive")
+        return self._process_model.discrete_process_noise(self._state, dt_ns=dt_ns)
 
     def frontier_time(self) -> Optional[EkfTime]:
         if self._t_frontier_ns is None:

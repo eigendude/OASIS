@@ -13,11 +13,6 @@ Configuration data for EKF localization
 """
 
 from dataclasses import dataclass
-from dataclasses import field
-
-
-# Nanoseconds per second for time conversions
-_NS_PER_S: int = 1_000_000_000
 
 
 @dataclass(frozen=True)
@@ -29,21 +24,17 @@ class EkfConfig:
         world_frame_id: Global drift-corrected frame name
         odom_frame_id: Local continuous frame name
         body_frame_id: Body frame name for state output
-        t_buffer_sec: Buffer span in seconds used for fixed-lag replay
-        epsilon_wall_future: Max future offset in seconds allowed by wall clock
-        dt_clock_jump_max: Threshold in seconds for detecting clock jumps
-        dt_imu_max: Max IMU delta in seconds before skipping propagation
         t_buffer_ns: Buffer span in nanoseconds used for fixed-lag replay
-        dt_imu_max_ns: Max IMU delta in nanoseconds before skipping propagation
+        epsilon_wall_future_ns: Max future offset in ns allowed by wall clock
+        dt_clock_jump_max_ns: Threshold in ns for detecting clock jumps
+        dt_imu_max_ns: Max IMU delta in ns before skipping propagation
         pos_var: Initial position variance in m^2
         vel_var: Initial velocity variance in (m/s)^2
         ang_var: Initial angle variance in rad^2
         accel_noise_var: Accel noise spectral density in (m/s^2)^2 / Hz
         gyro_noise_var: Gyro noise spectral density in (rad/s)^2 / Hz
         gravity_mps2: Gravity magnitude in m/s^2
-        max_dt_sec: Max integration step in seconds
         max_dt_ns: Max integration step in nanoseconds
-        checkpoint_interval_sec: Replay checkpoint interval in seconds
         checkpoint_interval_ns: Replay checkpoint interval in nanoseconds
         apriltag_pos_var: AprilTag position variance in m^2
         apriltag_yaw_var: AprilTag yaw variance in rad^2
@@ -62,13 +53,10 @@ class EkfConfig:
     odom_frame_id: str
     body_frame_id: str
 
-    t_buffer_sec: float
-    epsilon_wall_future: float
-    dt_clock_jump_max: float
-    dt_imu_max: float
-
-    t_buffer_ns: int = field(init=False)
-    dt_imu_max_ns: int = field(init=False)
+    t_buffer_ns: int
+    epsilon_wall_future_ns: int
+    dt_clock_jump_max_ns: int
+    dt_imu_max_ns: int
 
     pos_var: float
     vel_var: float
@@ -76,10 +64,8 @@ class EkfConfig:
     accel_noise_var: float
     gyro_noise_var: float
     gravity_mps2: float
-    max_dt_sec: float
-    max_dt_ns: int = field(init=False)
-    checkpoint_interval_sec: float
-    checkpoint_interval_ns: int = field(init=False)
+    max_dt_ns: int
+    checkpoint_interval_ns: int
     apriltag_pos_var: float
     apriltag_yaw_var: float
     apriltag_gate_d2: float
@@ -92,19 +78,3 @@ class EkfConfig:
     tag_landmark_prior_sigma_rot_rad: float
     extrinsic_prior_sigma_t_m: float
     extrinsic_prior_sigma_rot_rad: float
-
-    def __post_init__(self) -> None:
-        """Post-initialization to convert time-based thresholds from seconds to nanoseconds."""
-        # Convert seconds-based thresholds into nanoseconds
-        object.__setattr__(
-            self, "t_buffer_ns", int(round(self.t_buffer_sec * _NS_PER_S))
-        )
-        object.__setattr__(
-            self, "dt_imu_max_ns", int(round(self.dt_imu_max * _NS_PER_S))
-        )
-        object.__setattr__(self, "max_dt_ns", int(round(self.max_dt_sec * _NS_PER_S)))
-        object.__setattr__(
-            self,
-            "checkpoint_interval_ns",
-            int(round(self.checkpoint_interval_sec * _NS_PER_S)),
-        )

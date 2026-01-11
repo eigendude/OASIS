@@ -13,7 +13,6 @@ Types and helpers for EKF localization
 """
 
 import enum
-import math
 from dataclasses import dataclass
 from typing import Literal
 from typing import Optional
@@ -81,19 +80,6 @@ def to_ns(t: EkfTime) -> int:
 
 def from_ns(ns: int) -> EkfTime:
     sec, nanosec = divmod(ns, _NS_PER_S)
-    return EkfTime(sec=sec, nanosec=nanosec)
-
-
-def to_seconds(t: EkfTime) -> float:
-    return float(t.sec) + float(t.nanosec) * 1.0e-9
-
-
-def from_seconds(timestamp: float) -> EkfTime:
-    sec: int = int(math.floor(timestamp))
-    nanosec: int = int(round((timestamp - float(sec)) * _NS_PER_S))
-    if nanosec >= _NS_PER_S:
-        sec += 1
-        nanosec -= _NS_PER_S
     return EkfTime(sec=sec, nanosec=nanosec)
 
 

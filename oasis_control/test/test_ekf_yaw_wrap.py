@@ -22,9 +22,21 @@ from oasis_control.localization.ekf.ekf_types import EkfEventType
 from oasis_control.localization.ekf.ekf_types import EkfImuPacket
 from oasis_control.localization.ekf.ekf_types import EkfTime
 from oasis_control.localization.ekf.ekf_types import ImuSample
-from oasis_control.localization.ekf.ekf_types import from_seconds
+from oasis_control.localization.ekf.ekf_types import from_ns
 from oasis_control.localization.ekf.se3 import quat_from_rotvec
 from oasis_control.localization.ekf.se3 import quat_to_rpy
+
+
+_NS_PER_S: int = 1_000_000_000
+_NS_PER_MS: int = 1_000_000
+
+
+def _ns_from_s(seconds: int) -> int:
+    return seconds * _NS_PER_S
+
+
+def _ns_from_ms(milliseconds: int) -> int:
+    return milliseconds * _NS_PER_MS
 
 
 def _project_tag_corners(
@@ -73,18 +85,18 @@ def _build_config(
         world_frame_id="world",
         odom_frame_id="odom",
         body_frame_id="base_link",
-        t_buffer_sec=1.0,
-        epsilon_wall_future=0.1,
-        dt_clock_jump_max=5.0,
-        dt_imu_max=1.0,
+        t_buffer_ns=_ns_from_s(1),
+        epsilon_wall_future_ns=_ns_from_ms(100),
+        dt_clock_jump_max_ns=_ns_from_s(5),
+        dt_imu_max_ns=_ns_from_s(1),
         pos_var=1.0,
         vel_var=1.0,
         ang_var=1.0,
         accel_noise_var=0.1,
         gyro_noise_var=0.1,
         gravity_mps2=9.81,
-        max_dt_sec=0.1,
-        checkpoint_interval_sec=0.1,
+        max_dt_ns=_ns_from_ms(100),
+        checkpoint_interval_ns=_ns_from_ms(100),
         apriltag_pos_var=apriltag_pos_var,
         apriltag_yaw_var=apriltag_yaw_var,
         apriltag_gate_d2=0.0,
@@ -146,8 +158,8 @@ def test_yaw_wraps_positive_after_propagation() -> None:
         angular_velocity_rps=[0.0, 0.0, 1.0],
         accel_body=[0.0, 0.0, config.gravity_mps2],
     )
-    start_time: EkfTime = from_seconds(0.0)
-    next_time: EkfTime = from_seconds(0.1)
+    start_time: EkfTime = from_ns(0)
+    next_time: EkfTime = from_ns(_ns_from_ms(100))
 
     start_event: EkfEvent = EkfEvent(
         t_meas=start_time,
@@ -200,7 +212,7 @@ def test_yaw_wraps_negative_after_measurement_update() -> None:
         detections=[detection],
     )
 
-    core.update_with_apriltags(apriltag_data, t_meas=from_seconds(0.0))
+    core.update_with_apriltags(apriltag_data, t_meas=from_ns(0))
 
     yaw: float = float(quat_to_rpy(core.world_pose().rotation_wxyz)[2])
     expected_wrapped: float = math.pi - 0.2

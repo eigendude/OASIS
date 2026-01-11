@@ -12,41 +12,29 @@
 Centralized EKF localizer ROS parameter names and defaults
 """
 
-# Duration of state history buffer used for late sensor fusion, seconds
-PARAM_T_BUFFER_SEC: str = "t_buffer_sec"
+# Duration of state history buffer used for late sensor fusion, nanoseconds
+PARAM_T_BUFFER_NS: str = "t_buffer_ns"
 
-# Deprecated duration of state history buffer, seconds
-PARAM_T_BUFFER_SEC_LEGACY: str = "T_buffer_sec"
+# Default duration of state history buffer used for late sensor fusion, nanoseconds
+DEFAULT_T_BUFFER_NS: int = 2_000_000_000
 
-# Default duration of state history buffer used for late sensor fusion, seconds
-DEFAULT_T_BUFFER_SEC: float = 2.0
+# Allowed future wall-time tolerance for timestamps, nanoseconds
+PARAM_EPS_WALL_FUTURE_NS: str = "epsilon_wall_future_ns"
 
-# Allowed future wall-time tolerance for timestamps, seconds
-PARAM_EPS_WALL_FUTURE: str = "epsilon_wall_future_sec"
+# Default future wall-time tolerance for timestamps, nanoseconds
+DEFAULT_EPS_WALL_FUTURE_NS: int = 50_000_000
 
-# Deprecated future wall-time tolerance for timestamps, seconds
-PARAM_EPS_WALL_FUTURE_LEGACY: str = "ε_wall_future"
+# Maximum acceptable wall-clock jump when timestamping, nanoseconds
+PARAM_DT_CLOCK_JUMP_MAX_NS: str = "dt_clock_jump_max_ns"
 
-# Default future wall-time tolerance for timestamps, seconds
-DEFAULT_EPS_WALL_FUTURE: float = 0.05
+# Default maximum acceptable wall-clock jump when timestamping, nanoseconds
+DEFAULT_DT_CLOCK_JUMP_MAX_NS: int = 500_000_000
 
-# Maximum acceptable wall-clock jump when timestamping, seconds
-PARAM_DT_CLOCK_JUMP_MAX: str = "dt_clock_jump_max_sec"
+# Maximum IMU sample delta time before rejecting updates, nanoseconds
+PARAM_DT_IMU_MAX_NS: str = "dt_imu_max_ns"
 
-# Deprecated maximum acceptable wall-clock jump when timestamping, seconds
-PARAM_DT_CLOCK_JUMP_MAX_LEGACY: str = "Δt_clock_jump_max"
-
-# Default maximum acceptable wall-clock jump when timestamping, seconds
-DEFAULT_DT_CLOCK_JUMP_MAX: float = 0.5
-
-# Maximum IMU sample delta time before rejecting updates, seconds
-PARAM_DT_IMU_MAX: str = "dt_imu_max_sec"
-
-# Deprecated maximum IMU sample delta time before rejecting updates, seconds
-PARAM_DT_IMU_MAX_LEGACY: str = "Δt_imu_max"
-
-# Default maximum IMU sample delta time before rejecting updates, seconds
-DEFAULT_DT_IMU_MAX: float = 0.05
+# Default maximum IMU sample delta time before rejecting updates, nanoseconds
+DEFAULT_DT_IMU_MAX_NS: int = 50_000_000
 
 # Position measurement variance for EKF updates, meters^2
 PARAM_POS_VAR: str = "pos_var"
@@ -84,17 +72,17 @@ PARAM_GRAVITY_MPS2: str = "gravity_mps2"
 # Default gravity magnitude used in the IMU model, meters/seconds^2
 DEFAULT_GRAVITY_MPS2: float = 9.80665
 
-# Maximum integration step for EKF propagation, seconds
-PARAM_MAX_DT_SEC: str = "max_dt_sec"
+# Maximum integration step for EKF propagation, nanoseconds
+PARAM_MAX_DT_NS: str = "max_dt_ns"
 
-# Default maximum integration step for EKF propagation, seconds
-DEFAULT_MAX_DT_SEC: float = 0.05
+# Default maximum integration step for EKF propagation, nanoseconds
+DEFAULT_MAX_DT_NS: int = 50_000_000
 
-# Interval between state checkpoints in the buffer, seconds
-PARAM_CHECKPOINT_INTERVAL_SEC: str = "checkpoint_interval_sec"
+# Interval between state checkpoints in the buffer, nanoseconds
+PARAM_CHECKPOINT_INTERVAL_NS: str = "checkpoint_interval_ns"
 
-# Default interval between state checkpoints in the buffer, seconds
-DEFAULT_CHECKPOINT_INTERVAL_SEC: float = 0.5
+# Default interval between state checkpoints in the buffer, nanoseconds
+DEFAULT_CHECKPOINT_INTERVAL_NS: int = 500_000_000
 
 # AprilTag position measurement variance, meters^2
 PARAM_APRILTAG_POS_VAR: str = "apriltag_pos_var"
