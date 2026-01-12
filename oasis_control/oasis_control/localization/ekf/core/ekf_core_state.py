@@ -132,6 +132,9 @@ class EkfCoreStateMixin:
     def covariance(self) -> np.ndarray:
         return self._state.covariance.copy()
 
+    def mag_covariance(self) -> np.ndarray:
+        return self._state.mag_covariance.copy()
+
     def world_odom_covariance(self) -> np.ndarray:
         """
         Return the world-to-odom covariance in tangent-space coordinates

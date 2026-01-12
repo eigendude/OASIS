@@ -17,6 +17,8 @@ from __future__ import annotations
 from typing import Optional
 from typing import cast
 
+import numpy as np
+
 from oasis_control.localization.ekf.core.ekf_core_apriltag import EkfCoreAprilTagMixin
 from oasis_control.localization.ekf.core.ekf_core_constants import NS_PER_S
 from oasis_control.localization.ekf.core.ekf_core_imu import EkfCoreImuMixin
@@ -67,6 +69,17 @@ class EkfCore(
         self._process_model: ImuProcessModel = ImuProcessModel(config)
         self._mag_model: MagMeasurementModel = MagMeasurementModel()
         self._apriltag_model: AprilTagMeasurementModel = AprilTagMeasurementModel()
+        self._mag_model.set_world_field(config.mag_world_t)
+        self._mag_alpha: float = config.mag_alpha
+        self._mag_r_min: np.ndarray = np.asarray(config.mag_r_min, dtype=float).reshape(
+            3, 3
+        )
+        self._mag_r_max: np.ndarray = np.asarray(config.mag_r_max, dtype=float).reshape(
+            3, 3
+        )
+        self._mag_r0_default: np.ndarray = np.asarray(
+            config.mag_r0_default, dtype=float
+        ).reshape(3, 3)
         self._initialized: bool = False
         self._calibration_initialized: bool = False
         self._camera_info: Optional[CameraInfoData] = None

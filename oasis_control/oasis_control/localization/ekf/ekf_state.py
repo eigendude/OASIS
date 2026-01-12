@@ -145,6 +145,8 @@ class EkfState:
         self._index: EkfStateIndex = self._build_index(self._landmarks)
         self._p: np.ndarray = self._build_initial_covariance()
         self._error_state: np.ndarray = np.zeros(self._index.total_dim, dtype=float)
+        self._mag_covariance: np.ndarray = np.zeros((3, 3), dtype=float)
+        self._mag_covariance_initialized: bool = False
 
     @property
     def covariance(self) -> np.ndarray:
@@ -157,6 +159,22 @@ class EkfState:
     @property
     def error_state(self) -> np.ndarray:
         return self._error_state
+
+    @property
+    def mag_covariance(self) -> np.ndarray:
+        return self._mag_covariance
+
+    @mag_covariance.setter
+    def mag_covariance(self, value: np.ndarray) -> None:
+        self._mag_covariance = value
+
+    @property
+    def mag_covariance_initialized(self) -> bool:
+        return self._mag_covariance_initialized
+
+    @mag_covariance_initialized.setter
+    def mag_covariance_initialized(self, value: bool) -> None:
+        self._mag_covariance_initialized = value
 
     @property
     def index(self) -> EkfStateIndex:
@@ -188,6 +206,8 @@ class EkfState:
         new_state._index = self._index.copy()
         new_state._p = self._p.copy()
         new_state._error_state = self._error_state.copy()
+        new_state._mag_covariance = self._mag_covariance.copy()
+        new_state._mag_covariance_initialized = self._mag_covariance_initialized
         return new_state
 
     def reset(self) -> None:
@@ -209,6 +229,8 @@ class EkfState:
         self._index = self._build_index(self._landmarks)
         self._p = self._build_initial_covariance()
         self._error_state = np.zeros(self._index.total_dim, dtype=float)
+        self._mag_covariance = np.zeros((3, 3), dtype=float)
+        self._mag_covariance_initialized = False
 
     def apply_delta(self, delta: np.ndarray) -> None:
         delta_vec: np.ndarray = np.asarray(delta, dtype=float).reshape(

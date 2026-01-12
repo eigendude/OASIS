@@ -27,10 +27,15 @@ from oasis_control.localization.ekf.ekf_types import MagSample
 from oasis_control.localization.ekf.models.mag_measurement_model import (
     MagMeasurementModel,
 )
+from oasis_control.localization.ekf.se3 import quat_to_rotation_matrix
 
 
 class EkfCoreMagMixin(EkfCoreUtilsMixin):
     _mag_model: MagMeasurementModel
+    _mag_alpha: float
+    _mag_r_min: np.ndarray
+    _mag_r_max: np.ndarray
+    _mag_r0_default: np.ndarray
     _state: EkfState
 
     def update_with_mag(self, mag_sample: MagSample, t_meas: EkfTime) -> EkfUpdateData:
@@ -40,9 +45,11 @@ class EkfCoreMagMixin(EkfCoreUtilsMixin):
 
         z_dim: int = 3
         z: np.ndarray = np.asarray(mag_sample.magnetic_field_t, dtype=float)
-        r: np.ndarray = np.asarray(mag_sample.magnetic_field_cov, dtype=float).reshape(
-            (z_dim, z_dim)
+        r: np.ndarray = self._ensure_mag_covariance(mag_sample)
+        rot_bm: np.ndarray = quat_to_rotation_matrix(
+            self._state.extrinsic_bm.rotation_wxyz
         )
+        self._mag_model.set_mag_to_body_rotation(rot_bm)
         z_hat: np.ndarray
         h: np.ndarray
         state_legacy: np.ndarray = self._state.legacy_state()
@@ -113,6 +120,7 @@ class EkfCoreMagMixin(EkfCoreUtilsMixin):
         self._state.covariance = 0.5 * (
             self._state.covariance + self._state.covariance.T
         )
+        self._update_mag_covariance(residual, s_hat)
 
         mag_accept_update: EkfUpdateData = EkfUpdateData(
             sensor="magnetic_field",
@@ -133,6 +141,64 @@ class EkfCoreMagMixin(EkfCoreUtilsMixin):
         )
 
         return mag_accept_update
+
+    def _ensure_mag_covariance(self, mag_sample: MagSample) -> np.ndarray:
+        if self._state.mag_covariance_initialized:
+            return self._state.mag_covariance
+        r_init: np.ndarray = self._mag_r0_default.copy()
+        r_candidate: Optional[np.ndarray] = self._validated_mag_covariance(mag_sample)
+        if r_candidate is not None:
+            r_init = r_candidate
+        self._state.mag_covariance = r_init
+        self._state.mag_covariance_initialized = True
+        return r_init
+
+    def _validated_mag_covariance(
+        self, mag_sample: MagSample
+    ) -> Optional[np.ndarray]:
+        r_raw: np.ndarray = np.asarray(mag_sample.magnetic_field_cov, dtype=float)
+        if r_raw.size != 9:
+            return None
+        r_candidate: np.ndarray = r_raw.reshape(3, 3)
+        if not np.all(np.isfinite(r_candidate)):
+            return None
+        if np.any(np.diag(r_candidate) <= 0.0):
+            return None
+        r_sym: np.ndarray = 0.5 * (r_candidate + r_candidate.T)
+        try:
+            np.linalg.cholesky(r_sym)
+        except np.linalg.LinAlgError:
+            return None
+        return r_sym
+
+    def _update_mag_covariance(self, residual: np.ndarray, s_hat: np.ndarray) -> None:
+        if not self._state.mag_covariance_initialized:
+            return
+        residual_vec: np.ndarray = residual.reshape(3)
+        r_prior: np.ndarray = self._state.mag_covariance
+        residual_outer: np.ndarray = np.outer(residual_vec, residual_vec)
+        r_update: np.ndarray = (1.0 - self._mag_alpha) * r_prior + self._mag_alpha * (
+            residual_outer - s_hat
+        )
+        self._state.mag_covariance = self._clamp_spd(
+            r_update, r_min=self._mag_r_min, r_max=self._mag_r_max
+        )
+
+    def _clamp_spd(
+        self, matrix: np.ndarray, *, r_min: np.ndarray, r_max: np.ndarray
+    ) -> np.ndarray:
+        sym: np.ndarray = 0.5 * (matrix + matrix.T)
+        evals: np.ndarray
+        evecs: np.ndarray
+        evals, evecs = np.linalg.eigh(sym)
+        min_eig: float = float(np.min(np.linalg.eigvalsh(r_min)))
+        max_eig: float = float(np.max(np.linalg.eigvalsh(r_max)))
+
+        # Unitless eigenvalue floor to keep SPD when bounds are degenerate
+        min_eig = max(min_eig, 1.0e-18)
+        evals_clamped: np.ndarray = np.clip(evals, min_eig, max_eig)
+        clamped: np.ndarray = evecs @ np.diag(evals_clamped) @ evecs.T
+        return 0.5 * (clamped + clamped.T)
 
     def build_rejected_mag_update(
         self, mag_sample: MagSample, t_meas: EkfTime, *, reject_reason: str
