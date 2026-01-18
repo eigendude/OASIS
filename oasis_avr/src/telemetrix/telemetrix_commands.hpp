@@ -87,6 +87,7 @@
 #define I2C_CCS811_END 63
 #define I2C_MPU6050_BEGIN 64
 #define I2C_MPU6050_END 65
+#define GET_UPTIME 66
 
 // Maximum length of a command in bytes
 #define MAX_COMMAND_LENGTH 30
@@ -137,6 +138,9 @@ public:
 
   // Query the firmware for the Arduino ID in use
   static void are_you_there();
+
+  // Query the firmware for its uptime
+  static void get_uptime();
 
   //////////////////////////////////////////////////////////////////////////////
   // Servo commands

@@ -17,6 +17,7 @@ from typing import Any
 from typing import Awaitable
 from typing import Coroutine
 from typing import List
+from typing import Optional
 from typing import Tuple
 from typing import TypeVar
 from typing import cast
@@ -84,6 +85,9 @@ class TelemetrixBridge:
             close_loop_on_shutdown=False,
         )
 
+        self._uptime_lock = threading.Lock()
+        self._uptime_waiter: Optional[Future[int]] = None
+
         # Install custom report handlers
         self._board.report_dispatch.update(
             {TelemetrixConstants.MEMORY_REPORT: self._memory_report}
@@ -96,6 +100,9 @@ class TelemetrixBridge:
         )
         self._board.report_dispatch.update(
             {TelemetrixConstants.IMU_6_AXIS_REPORT: self._on_imu_6_axis}
+        )
+        self._board.report_dispatch.update(
+            {TelemetrixConstants.UPTIME_REPORT: self._on_uptime_report}
         )
 
     def initialize(self) -> bool:
@@ -587,6 +594,37 @@ class TelemetrixBridge:
         # Wait for completion
         future.result()
 
+    def ping_uptime_ms(self, timeout_s: float = 0.5) -> int:
+        """
+        Ping the microcontroller for its uptime.
+
+        :param timeout_s: Timeout in seconds for send + response
+
+        :return: Uptime, in milliseconds
+        """
+        waiter: Future[int] = Future()
+
+        with self._uptime_lock:
+            self._uptime_waiter = waiter
+
+        coroutine: Awaitable[None] = self._board._send_command(
+            [TelemetrixConstants.GET_UPTIME_COMMAND]
+        )
+        send_future: Future = asyncio.run_coroutine_threadsafe(
+            _to_coroutine(coroutine), self._loop
+        )
+
+        try:
+            send_future.result(timeout=timeout_s)
+            uptime_ms: int = waiter.result(timeout=timeout_s)
+        except Exception:
+            with self._uptime_lock:
+                if self._uptime_waiter is waiter:
+                    self._uptime_waiter = None
+            raise
+
+        return uptime_ms
+
     def servo_write(self, digital_pin: int, position: float) -> None:
         """
         Retrieve the last data update for the specified PWM pin.
@@ -659,6 +697,34 @@ class TelemetrixBridge:
 
         # Dispatch callback
         self._callback.on_cpu_fan_rpm(timestamp, digital_pin, fan_rpm)
+
+    async def _on_uptime_report(self, data: List[int]) -> None:
+        """
+        Handle reports of the microcontroller uptime.
+
+        :param data: The report message
+        """
+        index: int
+        if len(data) >= 5 and data[0] == TelemetrixConstants.UPTIME_REPORT:
+            index = 1
+        elif len(data) >= 4:
+            index = 0
+        else:
+            return
+
+        uptime_ms: int = (
+            (data[index] << 24)
+            | (data[index + 1] << 16)
+            | (data[index + 2] << 8)
+            | data[index + 3]
+        )
+
+        # Fulfill the future waiting for the uptime report
+        with self._uptime_lock:
+            waiter: Optional[Future[int]] = self._uptime_waiter
+            if waiter is not None and not waiter.done():
+                waiter.set_result(uptime_ms)
+                self._uptime_waiter = None
 
     async def _on_air_quality(self, data: List[int]) -> None:
         """
