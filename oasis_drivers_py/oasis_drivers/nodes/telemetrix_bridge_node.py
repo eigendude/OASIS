@@ -17,6 +17,7 @@ import rclpy.node
 import rclpy.publisher
 import rclpy.qos
 import rclpy.service
+import rclpy.timer
 from builtin_interfaces.msg import Time as TimeMsg
 from geometry_msgs.msg import Vector3 as Vector3Msg
 from sensor_msgs.msg import Imu as ImuMsg
@@ -62,6 +63,8 @@ NODE_NAME = "telemetrix_bridge"
 
 # ROS parameters
 PARAM_COM_PORT = "com_port"
+PARAM_PING_PERIOD_S = "ping_period_s"
+PARAM_PING_TIMEOUT_S = "ping_timeout_s"
 
 # ROS topics
 AIR_QUALITY_TOPIC = "air_quality"
@@ -100,6 +103,8 @@ SET_SAMPLING_INTERVAL_SERVICE = "set_sampling_interval"
 
 
 DEFAULT_COM_PORT = "/dev/ttyACM0"
+DEFAULT_PING_PERIOD_S = 1.0
+DEFAULT_PING_TIMEOUT_S = 0.5
 
 
 ################################################################################
@@ -115,11 +120,18 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         # Initialize rclpy.node.NODE
         super().__init__(NODE_NAME)
         self.declare_parameter(PARAM_COM_PORT, DEFAULT_COM_PORT)
+        self.declare_parameter(PARAM_PING_PERIOD_S, DEFAULT_PING_PERIOD_S)
+        self.declare_parameter(PARAM_PING_TIMEOUT_S, DEFAULT_PING_TIMEOUT_S)
 
         # Initialize members
         com_port: str = str(self.get_parameter(PARAM_COM_PORT).value)
+        ping_period_s: float = float(self.get_parameter(PARAM_PING_PERIOD_S).value)
+        self._ping_timeout_s: float = float(
+            self.get_parameter(PARAM_PING_TIMEOUT_S).value
+        )
         self._bridge = TelemetrixBridge(self, com_port)
         self._initialized: bool = True
+        self._ping_failed: bool = False
 
         # Reliable listener QOS profile for subscribers
         qos_profile: rclpy.qos.QoSProfile = (
@@ -172,6 +184,10 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
 
         # Once the publishers are set up, start the bridge
         self._bridge.initialize()
+
+        self._ping_timer: rclpy.timer.Timer = self.create_timer(
+            ping_period_s, self._on_ping_timer
+        )
 
         # Command topic subscriptions
         self._cpu_fan_write_sub = self.create_subscription(
@@ -271,6 +287,19 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         )
 
         self.get_logger().info("Telemetrix bridge initialized")
+
+    def _on_ping_timer(self) -> None:
+        try:
+            self._bridge.ping_uptime_ms(timeout_s=self._ping_timeout_s)
+        except Exception as exc:
+            if not self._ping_failed:
+                self._ping_failed = True
+                self.get_logger().error(f"Uptime ping failed: {exc!r}")
+            return
+
+        if self._ping_failed:
+            self._ping_failed = False
+            self.get_logger().info("Uptime ping recovered")
 
     def stop(self) -> None:
         """Stop the bridge and cleanup ROS resources"""

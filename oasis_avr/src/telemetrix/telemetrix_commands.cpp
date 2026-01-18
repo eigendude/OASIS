@@ -127,6 +127,7 @@ static const command_descriptor commandTable[] = {
     (&TelemetrixCommands::i2c_ccs811_end),
     (&TelemetrixCommands::i2c_mpu6050_begin),
     (&TelemetrixCommands::i2c_mpu6050_end),
+    (&TelemetrixCommands::get_uptime),
 };
 
 } // namespace
@@ -267,6 +268,21 @@ void TelemetrixCommands::are_you_there()
 
   // Synchronize input to avoid interleaving for the early part of the handshake
   Serial.flush();
+}
+
+void TelemetrixCommands::get_uptime()
+{
+  const uint32_t uptime_ms = static_cast<uint32_t>(millis());
+  const uint8_t report_message[6] = {
+      5,
+      UPTIME_REPORT,
+      static_cast<uint8_t>((uptime_ms >> 24) & 0xFF),
+      static_cast<uint8_t>((uptime_ms >> 16) & 0xFF),
+      static_cast<uint8_t>((uptime_ms >> 8) & 0xFF),
+      static_cast<uint8_t>(uptime_ms & 0xFF),
+  };
+
+  Serial.write(report_message, 6);
 }
 
 void TelemetrixCommands::servo_attach()
