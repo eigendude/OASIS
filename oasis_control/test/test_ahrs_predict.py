@@ -44,6 +44,7 @@ def _config(**overrides: float) -> AhrsConfig:
         epsilon_wall_future_sec=0.0,
         dt_clock_jump_max_sec=0.0,
         dt_imu_max_sec=0.0,
+        gyro_gate_d2_threshold=9.0,
         mag_alpha=1.0,
         mag_r_min=[0.0] * 9,
         mag_r_max=[0.0] * 9,

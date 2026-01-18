@@ -41,6 +41,7 @@ from oasis_control.localization.ahrs.ahrs_types import AhrsStateData
 from oasis_control.localization.ahrs.ahrs_types import AhrsTime
 from oasis_control.localization.ahrs.ahrs_types import AhrsUpdateData
 from oasis_control.localization.ahrs.ahrs_types import MagSample
+from oasis_control.localization.ahrs.ahrs_update_gyro import update_gyro
 
 
 class AhrsFilter:
@@ -73,29 +74,30 @@ class AhrsFilter:
         self._x: Optional[AhrsNominalState] = None
         self._p: Optional[list[float]] = None
         self._t_state: Optional[AhrsTime] = None
+        self._last_update_reports: dict[str, Optional[AhrsUpdateData]] = {
+            "gyro": None,
+            "accel": None,
+            "mag": None,
+        }
 
     def handle_event(self, event: AhrsEvent) -> AhrsOutputs:
-        update_reports: dict[str, Optional[AhrsUpdateData]] = (
-            self._build_update_reports(event)
-        )
-
         if self._clock.is_future_stamp(
             event.t_meas, self._config.epsilon_wall_future_sec
         ):
             self._dropped_future_stamp += 1
-            return self._outputs_for_drop(update_reports)
+            return self._outputs_for_drop(self._build_update_reports(event))
 
         if self._has_nan_covariance(event):
             self._dropped_nan_cov += 1
-            return self._outputs_for_drop(update_reports)
+            return self._outputs_for_drop(self._build_update_reports(event))
 
         if self._is_clock_jump(event.t_meas):
             self._reset_for_clock_jump()
-            return self._outputs_for_drop(update_reports)
+            return self._outputs_for_drop(self._build_update_reports(event))
 
         if self._is_too_old(event.t_meas):
             self._dropped_too_old += 1
-            return self._outputs_for_drop(update_reports)
+            return self._outputs_for_drop(self._build_update_reports(event))
 
         self._buffer.insert_event(event)
 
@@ -104,7 +106,7 @@ class AhrsFilter:
                 start_time=self._t_filter, end_time=event.t_meas
             ):
                 self._dropped_imu_gap += 1
-                return self._outputs_for_drop(update_reports)
+                return self._outputs_for_drop(self._build_update_reports(event))
 
             self._t_filter = event.t_meas
             self._initialized = True
@@ -121,6 +123,10 @@ class AhrsFilter:
             )
             self._replay_happened_since_publish = False
             frame_transforms: AhrsFrameOutputs = self._build_frame_outputs()
+
+            update_reports: dict[str, Optional[AhrsUpdateData]] = (
+                self._update_reports_for_event(event)
+            )
 
             return AhrsOutputs(
                 frontier_advanced=True,
@@ -142,7 +148,7 @@ class AhrsFilter:
             if replayed:
                 self._replay_happened_since_publish = True
 
-        return self._outputs_for_drop(update_reports)
+        return self._outputs_for_drop(self._build_update_reports(event))
 
     def _frontier_advances(self, t_meas: AhrsTime) -> bool:
         if self._t_filter is None:
@@ -204,6 +210,11 @@ class AhrsFilter:
         self._x = None
         self._p = None
         self._t_state = None
+        self._last_update_reports = {
+            "gyro": None,
+            "accel": None,
+            "mag": None,
+        }
 
     def _reset_for_invalid_dt(self) -> None:
         self._reset_count += 1
@@ -216,6 +227,11 @@ class AhrsFilter:
         self._x = None
         self._p = None
         self._t_state = None
+        self._last_update_reports = {
+            "gyro": None,
+            "accel": None,
+            "mag": None,
+        }
 
     def _replay_has_imu_gap(
         self, start_time: Optional[AhrsTime], end_time: Optional[AhrsTime]
@@ -298,25 +314,42 @@ class AhrsFilter:
 
     def _apply_event(self, event: AhrsEvent) -> None:
         if event.event_type == AhrsEventType.IMU:
-            self._build_update(
-                sensor="gyro",
-                frame_id=event.frame_id,
-                t_meas=event.t_meas,
-            )
-            self._build_update(
+            payload_imu: AhrsImuPacket = cast(AhrsImuPacket, event.payload)
+            gyro_report: AhrsUpdateData
+            if self._x is None or self._p is None:
+                gyro_report = self._build_update(
+                    sensor="gyro",
+                    frame_id=event.frame_id,
+                    t_meas=event.t_meas,
+                    reject_reason="not_applied",
+                )
+            else:
+                self._x, self._p, gyro_report = update_gyro(
+                    self._layout,
+                    self._x,
+                    self._p,
+                    payload_imu.imu,
+                    self._config,
+                    frame_id=event.frame_id,
+                    t_meas=event.t_meas,
+                )
+            self._last_update_reports["gyro"] = gyro_report
+            accel_report: AhrsUpdateData = self._build_update(
                 sensor="accel",
                 frame_id=event.frame_id,
                 t_meas=event.t_meas,
             )
+            self._last_update_reports["accel"] = accel_report
             self._last_imu_time = event.t_meas
             return
 
         if event.event_type == AhrsEventType.MAG:
-            self._build_update(
+            mag_report: AhrsUpdateData = self._build_update(
                 sensor="mag",
                 frame_id=event.frame_id,
                 t_meas=event.t_meas,
             )
+            self._last_update_reports["mag"] = mag_report
 
     def _evict_before(self, t_filter: AhrsTime) -> None:
         if self._config.t_buffer_sec <= 0.0:
@@ -356,6 +389,7 @@ class AhrsFilter:
                 sensor="gyro",
                 frame_id=event.frame_id,
                 t_meas=event.t_meas,
+                reject_reason="not_applied",
             )
             update_reports["accel"] = self._build_update(
                 sensor="accel",
@@ -371,8 +405,49 @@ class AhrsFilter:
 
         return update_reports
 
+    def _update_reports_for_event(
+        self, event: AhrsEvent
+    ) -> dict[str, Optional[AhrsUpdateData]]:
+        update_reports: dict[str, Optional[AhrsUpdateData]] = {
+            "gyro": None,
+            "accel": None,
+            "mag": None,
+        }
+
+        if event.event_type == AhrsEventType.IMU:
+            update_reports["gyro"] = self._last_update_reports["gyro"]
+            if update_reports["gyro"] is None:
+                update_reports["gyro"] = self._build_update(
+                    sensor="gyro",
+                    frame_id=event.frame_id,
+                    t_meas=event.t_meas,
+                    reject_reason="not_applied",
+                )
+            update_reports["accel"] = self._last_update_reports["accel"]
+            if update_reports["accel"] is None:
+                update_reports["accel"] = self._build_update(
+                    sensor="accel",
+                    frame_id=event.frame_id,
+                    t_meas=event.t_meas,
+                )
+        elif event.event_type == AhrsEventType.MAG:
+            update_reports["mag"] = self._last_update_reports["mag"]
+            if update_reports["mag"] is None:
+                update_reports["mag"] = self._build_update(
+                    sensor="mag",
+                    frame_id=event.frame_id,
+                    t_meas=event.t_meas,
+                )
+
+        return update_reports
+
     def _build_update(
-        self, sensor: str, frame_id: str, t_meas: AhrsTime
+        self,
+        sensor: str,
+        frame_id: str,
+        t_meas: AhrsTime,
+        *,
+        reject_reason: str = "not_implemented",
     ) -> AhrsUpdateData:
         empty_matrix: AhrsMatrix = AhrsMatrix(rows=0, cols=0, data=[])
 
@@ -381,7 +456,7 @@ class AhrsFilter:
             frame_id=frame_id,
             t_meas=t_meas,
             accepted=False,
-            reject_reason="not_implemented",
+            reject_reason=reject_reason,
             z=[],
             z_hat=[],
             nu=[],
@@ -506,6 +581,11 @@ class AhrsFilter:
             self._x = None
             self._p = None
             self._t_state = None
+            self._last_update_reports = {
+                "gyro": None,
+                "accel": None,
+                "mag": None,
+            }
             return
 
         self._x = default_nominal_state(
@@ -515,6 +595,11 @@ class AhrsFilter:
         )
         self._p = self._initial_covariance()
         self._t_state = t_state
+        self._last_update_reports = {
+            "gyro": None,
+            "accel": None,
+            "mag": None,
+        }
 
     def _initial_covariance(self) -> list[float]:
         dim: int = self._layout.dim
