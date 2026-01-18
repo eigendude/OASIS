@@ -55,6 +55,24 @@ class AhrsFrameTransform:
 
 
 @dataclass(frozen=True)
+class AhrsSe3Transform:
+    """
+    Rigid transform between arbitrary frames
+
+    Fields:
+        parent_frame: Parent frame name for the transform
+        child_frame: Child frame name for the transform
+        translation_m: Translation in meters, XYZ order
+        rotation_wxyz: Quaternion rotation in wxyz order, unit length
+    """
+
+    parent_frame: str
+    child_frame: str
+    translation_m: list[float]
+    rotation_wxyz: list[float]
+
+
+@dataclass(frozen=True)
 class AhrsFrameOutputs:
     """
     Frame outputs derived from the canonical odom state
@@ -211,16 +229,112 @@ class AhrsUpdateData:
     Generic update report payload
 
     Fields:
-        sensor: Sensor name such as magnetic_field or apriltags
+        sensor: Sensor name such as gyro, accel, or mag
         frame_id: Measurement frame identifier
         t_meas: Measurement timestamp
-        (TODO)
+        accepted: True when the update was accepted by the filter
+        reject_reason: Optional reason string when the update is rejected
+        z: Measurement vector in sensor units, as received
+        z_hat: Predicted measurement vector in sensor units
+        nu: Innovation vector (z - z_hat) in sensor units
+        r: Measurement covariance in sensor units, row-major
+        s_hat: Predicted innovation covariance, row-major
+        s: Innovation covariance after conditioning, row-major
+        maha_d2: Mahalanobis distance squared for gating
+        gate_threshold: Gate threshold for the Mahalanobis distance
     """
 
     sensor: str
     frame_id: str
     t_meas: AhrsTime
-    # TODO
+    accepted: bool
+    reject_reason: Optional[str]
+    z: list[float]
+    z_hat: list[float]
+    nu: list[float]
+    r: AhrsMatrix
+    s_hat: AhrsMatrix
+    s: AhrsMatrix
+    maha_d2: float
+    gate_threshold: float
+
+
+@dataclass(frozen=True)
+class AhrsStateData:
+    """
+    Filter state output payload for AhrsState publication
+
+    Fields:
+        t_filter: Filter frontier timestamp for this state
+        initialized: True when the filter has a valid initial state
+        world_frame_id: World frame identifier for the state
+        odom_frame_id: Odometry frame identifier for the state
+        body_frame_id: Body frame identifier for the state
+        p_wb_m: Position of the body in world in meters, XYZ order
+        v_wb_mps: Velocity of the body in world in m/s, XYZ order
+        q_wb_wxyz: Orientation of the body in world, quaternion wxyz order
+        b_g_rps: Gyro bias in rad/s, XYZ order
+        b_a_mps2: Accel bias in m/s^2, XYZ order
+        a_a: Accel scale/misalignment matrix, 3x3 row-major
+        t_bi: Body to IMU transform
+        t_bm: Body to magnetometer transform
+        g_w_mps2: Gravity vector in world in m/s^2, XYZ order
+        m_w_t: Magnetic field vector in world in tesla, XYZ order
+        error_state_names: Names of error-state entries in the covariance
+        p_cov: Full error-state covariance, row-major
+    """
+
+    t_filter: AhrsTime
+    initialized: bool
+    world_frame_id: str
+    odom_frame_id: str
+    body_frame_id: str
+    p_wb_m: list[float]
+    v_wb_mps: list[float]
+    q_wb_wxyz: list[float]
+    b_g_rps: list[float]
+    b_a_mps2: list[float]
+    a_a: list[float]
+    t_bi: AhrsSe3Transform
+    t_bm: AhrsSe3Transform
+    g_w_mps2: list[float]
+    m_w_t: list[float]
+    error_state_names: list[str]
+    p_cov: AhrsMatrix
+
+
+@dataclass(frozen=True)
+class AhrsDiagnosticsData:
+    """
+    Diagnostics output payload for AhrsDiagnostics publication
+
+    Fields:
+        t_filter: Filter frontier timestamp if an output was published
+        buffer_node_count: Number of events currently buffered
+        buffer_span_sec: Time span of buffered events in seconds
+        replay_happened: True when a replay was triggered
+        dropped_missing_stamp: Count of updates dropped for missing stamps
+        dropped_future_stamp: Count of updates dropped for future stamps
+        dropped_too_old: Count of updates dropped for being too old
+        dropped_nan_cov: Count of updates dropped for NaN covariance entries
+        dropped_imu_gap: Count of updates dropped for IMU gap detection
+        dropped_clock_jump_reset: Count of updates dropped for clock jump reset
+        reset_count: Number of filter resets performed
+        last_reset_reason: Latest reset reason description
+    """
+
+    t_filter: Optional[AhrsTime]
+    buffer_node_count: int
+    buffer_span_sec: float
+    replay_happened: bool
+    dropped_missing_stamp: int
+    dropped_future_stamp: int
+    dropped_too_old: int
+    dropped_nan_cov: int
+    dropped_imu_gap: int
+    dropped_clock_jump_reset: int
+    reset_count: int
+    last_reset_reason: str
 
 
 @dataclass(frozen=True)
@@ -229,13 +343,21 @@ class AhrsOutputs:
     Outputs produced by AHRS event processing
 
     Fields:
-        odom_time: Timestamp for publishing the odometry frame output
-        world_odom_time: Timestamp for publishing the world odometry output
+        frontier_advanced: True when the filter frontier advanced on this event
+        t_filter: Frontier timestamp for the current estimate outputs
         frame_transforms: Frame transforms derived from the AHRS state
+        state: State output payload for AhrsState publication
+        diagnostics: Diagnostics output payload for AhrsDiagnostics publication
+        gyro_update: Update report payload for gyro updates
+        accel_update: Update report payload for accel updates
         mag_update: Update report payload for magnetometer updates
     """
 
-    odom_time: Optional[AhrsTime]
-    world_odom_time: Optional[AhrsTime]
+    frontier_advanced: bool
+    t_filter: Optional[AhrsTime]
     frame_transforms: Optional[AhrsFrameOutputs]
+    state: Optional[AhrsStateData]
+    diagnostics: Optional[AhrsDiagnosticsData]
+    gyro_update: Optional[AhrsUpdateData]
+    accel_update: Optional[AhrsUpdateData]
     mag_update: Optional[AhrsUpdateData]
