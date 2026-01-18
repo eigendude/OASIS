@@ -198,11 +198,15 @@ class AhrsEvent:
 
     Fields:
         t_meas: Measurement timestamp
+        topic: Topic name that produced the event
+        frame_id: Frame identifier from the event header
         event_type: Event category for dispatching updates
         payload: Event data payload for the selected type
     """
 
     t_meas: AhrsTime
+    topic: str
+    frame_id: str
     event_type: AhrsEventType
     payload: AhrsEventPayload
 
@@ -266,6 +270,7 @@ class AhrsStateData:
 
     Fields:
         t_filter: Filter frontier timestamp for this state
+        state_seq: Monotonic state sequence identifier
         initialized: True when the filter has a valid initial state
         world_frame_id: World frame identifier for the state
         odom_frame_id: Odometry frame identifier for the state
@@ -276,8 +281,8 @@ class AhrsStateData:
         b_g_rps: Gyro bias in rad/s, XYZ order
         b_a_mps2: Accel bias in m/s^2, XYZ order
         a_a: Accel scale/misalignment matrix, 3x3 row-major
-        t_bi: Body to IMU transform
-        t_bm: Body to magnetometer transform
+        t_bi: IMU -> body transform (T_BI)
+        t_bm: Magnetometer -> body transform (T_BM)
         g_w_mps2: Gravity vector in world in m/s^2, XYZ order
         m_w_t: Magnetic field vector in world in tesla, XYZ order
         error_state_names: Names of error-state entries in the covariance
@@ -285,6 +290,7 @@ class AhrsStateData:
     """
 
     t_filter: AhrsTime
+    state_seq: int
     initialized: bool
     world_frame_id: str
     odom_frame_id: str
@@ -310,7 +316,8 @@ class AhrsDiagnosticsData:
 
     Fields:
         t_filter: Filter frontier timestamp if an output was published
-        buffer_node_count: Number of events currently buffered
+        diag_seq: Monotonic diagnostics sequence identifier
+        buffer_node_count: Number of time nodes currently buffered
         buffer_span_sec: Time span of buffered events in seconds
         replay_happened: True when a replay was triggered
         dropped_missing_stamp: Count of updates dropped for missing stamps
@@ -324,6 +331,7 @@ class AhrsDiagnosticsData:
     """
 
     t_filter: Optional[AhrsTime]
+    diag_seq: int
     buffer_node_count: int
     buffer_span_sec: float
     replay_happened: bool
