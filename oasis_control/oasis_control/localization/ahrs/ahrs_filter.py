@@ -23,6 +23,9 @@ from oasis_control.localization.ahrs.ahrs_clock import AhrsClock
 from oasis_control.localization.ahrs.ahrs_config import AhrsConfig
 from oasis_control.localization.ahrs.ahrs_error_state import AhrsErrorStateLayout
 from oasis_control.localization.ahrs.ahrs_error_state import error_state_names
+from oasis_control.localization.ahrs.ahrs_predict import predict_step
+from oasis_control.localization.ahrs.ahrs_state import AhrsNominalState
+from oasis_control.localization.ahrs.ahrs_state import default_nominal_state
 from oasis_control.localization.ahrs.ahrs_timeline import AhrsTimeBuffer
 from oasis_control.localization.ahrs.ahrs_timeline import AhrsTimeNode
 from oasis_control.localization.ahrs.ahrs_types import AhrsDiagnosticsData
@@ -67,6 +70,9 @@ class AhrsFilter:
         self._buffer: AhrsTimeBuffer = AhrsTimeBuffer()
         self._replay_happened_since_publish: bool = False
         self._layout: AhrsErrorStateLayout = AhrsErrorStateLayout()
+        self._x: Optional[AhrsNominalState] = None
+        self._p: Optional[list[float]] = None
+        self._t_state: Optional[AhrsTime] = None
 
     def handle_event(self, event: AhrsEvent) -> AhrsOutputs:
         update_reports: dict[str, Optional[AhrsUpdateData]] = (
@@ -195,6 +201,9 @@ class AhrsFilter:
         self._last_imu_time = None
         self._buffer = AhrsTimeBuffer()
         self._replay_happened_since_publish = False
+        self._x = None
+        self._p = None
+        self._t_state = None
 
     def _replay_has_imu_gap(
         self, start_time: Optional[AhrsTime], end_time: Optional[AhrsTime]
@@ -246,9 +255,17 @@ class AhrsFilter:
         if end_time is None:
             return False
 
+        if start_time is None:
+            self._reset_replay_state(None)
+        elif self._t_state is None or self._time_key(start_time) < self._time_key(
+            self._t_state
+        ):
+            self._reset_replay_state(start_time)
+
         replayed: bool = False
         for node in self._iter_nodes_for_replay(start_time, end_time):
             replayed = True
+            self._propagate_to(node.t)
             for event in self._sorted_events(node):
                 self._apply_event(event)
         return replayed
@@ -360,28 +377,30 @@ class AhrsFilter:
         )
 
     def _build_state(self, t_filter: AhrsTime) -> AhrsStateData:
-        zero_vector: list[float] = [0.0, 0.0, 0.0]
-        zero_quaternion: list[float] = [1.0, 0.0, 0.0, 0.0]
         error_names: list[str] = error_state_names(self._layout)
         error_dim: int = self._layout.dim
+        p_data: list[float]
+        if self._p is None:
+            p_data = [0.0] * (error_dim * error_dim)
+        else:
+            p_data = list(self._p)
         p_cov: AhrsMatrix = AhrsMatrix(
             rows=error_dim,
             cols=error_dim,
-            data=[0.0] * (error_dim * error_dim),
+            data=p_data,
         )
 
-        t_bi: AhrsSe3Transform = AhrsSe3Transform(
-            parent_frame=self._config.body_frame_id,
-            child_frame="imu",
-            translation_m=zero_vector,
-            rotation_wxyz=zero_quaternion,
-        )
-        t_bm: AhrsSe3Transform = AhrsSe3Transform(
-            parent_frame=self._config.body_frame_id,
-            child_frame="mag",
-            translation_m=zero_vector,
-            rotation_wxyz=zero_quaternion,
-        )
+        if self._x is None:
+            x: AhrsNominalState = default_nominal_state(
+                body_frame_id=self._config.body_frame_id,
+                imu_frame_id="imu",
+                mag_frame_id="mag",
+            )
+        else:
+            x = self._x
+
+        t_bi: AhrsSe3Transform = x.t_bi
+        t_bm: AhrsSe3Transform = x.t_bm
 
         return AhrsStateData(
             t_filter=t_filter,
@@ -390,16 +409,16 @@ class AhrsFilter:
             world_frame_id=self._config.world_frame_id,
             odom_frame_id=self._config.odom_frame_id,
             body_frame_id=self._config.body_frame_id,
-            p_wb_m=zero_vector,
-            v_wb_mps=zero_vector,
-            q_wb_wxyz=zero_quaternion,
-            b_g_rps=zero_vector,
-            b_a_mps2=zero_vector,
-            a_a=[0.0] * 9,
+            p_wb_m=list(x.p_wb_m),
+            v_wb_mps=list(x.v_wb_mps),
+            q_wb_wxyz=list(x.q_wb_wxyz),
+            b_g_rps=list(x.b_g_rps),
+            b_a_mps2=list(x.b_a_mps2),
+            a_a=list(x.a_a),
             t_bi=t_bi,
             t_bm=t_bm,
-            g_w_mps2=zero_vector,
-            m_w_t=zero_vector,
+            g_w_mps2=list(x.g_w_mps2),
+            m_w_t=list(x.m_w_t),
             error_state_names=error_names,
             p_cov=p_cov,
         )
@@ -465,3 +484,45 @@ class AhrsFilter:
             accel_update=update_reports["accel"],
             mag_update=update_reports["mag"],
         )
+
+    def _reset_replay_state(self, t_state: Optional[AhrsTime]) -> None:
+        if t_state is None:
+            self._x = None
+            self._p = None
+            self._t_state = None
+            return
+
+        self._x = default_nominal_state(
+            body_frame_id=self._config.body_frame_id,
+            imu_frame_id="imu",
+            mag_frame_id="mag",
+        )
+        self._p = self._initial_covariance()
+        self._t_state = t_state
+
+    def _initial_covariance(self) -> list[float]:
+        dim: int = self._layout.dim
+        p: list[float] = [0.0] * (dim * dim)
+        # Initial covariance diagonal in nominal state units
+        prior_var: float = 1.0e-3
+        for i in range(dim):
+            p[i * dim + i] = prior_var
+        return p
+
+    def _propagate_to(self, t_target: AhrsTime) -> None:
+        if self._x is None or self._p is None or self._t_state is None:
+            self._reset_replay_state(t_target)
+            return
+
+        dt_ns: int = self._time_to_ns(t_target) - self._time_to_ns(self._t_state)
+        # 1e-9 converts nanoseconds to seconds for propagation
+        dt_sec: float = float(dt_ns) * 1.0e-9
+        if dt_sec < 0.0:
+            dt_sec = 0.0
+
+        if dt_sec > 0.0:
+            self._x, self._p = predict_step(
+                self._layout, self._x, self._p, dt_sec, self._config
+            )
+
+        self._t_state = t_target
