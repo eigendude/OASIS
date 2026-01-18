@@ -29,6 +29,7 @@ from std_msgs.msg import Header as HeaderMsg
 from oasis_drivers.ros.ros_translator import RosTranslator
 from oasis_drivers.telemetrix.telemetrix_bridge import TelemetrixBridge
 from oasis_drivers.telemetrix.telemetrix_callback import TelemetrixCallback
+from oasis_drivers.telemetrix.telemetrix_config_cache import TelemetrixConfigCache
 from oasis_drivers.telemetrix.telemetrix_types import AnalogMode
 from oasis_drivers.telemetrix.telemetrix_types import DigitalMode
 from oasis_msgs.msg import AirQuality as AirQualityMsg
@@ -144,6 +145,7 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         self._connected: bool = self._initialized
         self._reconnecting: bool = False
         self._reconnect_thread: Optional[threading.Thread] = None
+        self._config_cache: TelemetrixConfigCache = TelemetrixConfigCache()
 
         # Reliable listener QOS profile for subscribers
         qos_profile: rclpy.qos.QoSProfile = (
@@ -363,11 +365,29 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
                         continue
 
                     bridge.ping_uptime_ms(timeout_s=self._ping_timeout_s)
+                    self.get_logger().info(
+                        "Replaying Telemetrix config after reconnect"
+                    )
+                    try:
+                        self._config_cache.replay(bridge, self.get_logger())
+                    except RuntimeError as exc:
+                        self.get_logger().warning(
+                            "Config replay failed; restarting reconnect loop: "
+                            f"{exc!r}"
+                        )
+                        try:
+                            bridge.deinitialize()
+                        except Exception:
+                            pass
+                        time.sleep(self._reconnect_delay_s)
+                        continue
                     self._bridge = bridge
                     self._initialized = True
                     self._ping_failed = False
                     self._connected = True
-                    self.get_logger().info("Telemetrix reconnected")
+                    self.get_logger().info(
+                        "Telemetrix reconnected and config restored"
+                    )
                     return
                 except Exception as exc:
                     self.get_logger().warning(f"Reconnect cycle failed: {exc!r}")
@@ -719,6 +739,21 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         i2c_port: int = request.i2c_port
         i2c_devices: List[I2CDeviceMsg] = request.i2c_devices
 
+        self._config_cache.record_i2c_begin(i2c_port)
+        for i2c_device in i2c_devices:
+            i2c_device_type: int = i2c_device.i2c_device_type
+            i2c_address: int = i2c_device.i2c_address
+            if i2c_device_type == I2CDeviceTypeMsg.CCS811:
+                self._config_cache.record_ccs811_begin(i2c_port, i2c_address)
+            elif i2c_device_type == I2CDeviceTypeMsg.MPU6050:
+                self._config_cache.record_mpu6050_begin(i2c_port, i2c_address)
+
+        if not self._initialized or self._reconnecting:
+            self.get_logger().warning(
+                "I2C begin requested while Telemetrix is disconnected"
+            )
+            return response
+
         # Debug logging
         self.get_logger().info(f"Beginning I2C on port {i2c_port}")
 
@@ -747,6 +782,20 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         # Translate parameters
         i2c_port: int = request.i2c_port
         i2c_devices: List[I2CDeviceMsg] = request.i2c_devices
+
+        for i2c_device in i2c_devices:
+            i2c_device_type: int = i2c_device.i2c_device_type
+            i2c_address: int = i2c_device.i2c_address
+            if i2c_device_type == I2CDeviceTypeMsg.CCS811:
+                self._config_cache.record_ccs811_end(i2c_port, i2c_address)
+            elif i2c_device_type == I2CDeviceTypeMsg.MPU6050:
+                self._config_cache.record_mpu6050_end(i2c_port, i2c_address)
+
+        if not self._initialized or self._reconnecting:
+            self.get_logger().warning(
+                "I2C end requested while Telemetrix is disconnected"
+            )
+            return response
 
         # Debug logging
         self.get_logger().info(f"Ending I2C on port {i2c_port}")
@@ -790,6 +839,14 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         """Handle request to enable/disable MCU memory reporting"""
         # Translate parameters
         reporting_period_ms: int = request.reporting_period_ms
+
+        self._config_cache.record_memory_reporting_interval(reporting_period_ms)
+
+        if not self._initialized or self._reconnecting:
+            self.get_logger().warning(
+                "MCU memory reporting request while Telemetrix is disconnected"
+            )
+            return response
 
         # Debug logging
         if reporting_period_ms != 0:
@@ -836,6 +893,14 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
             )
             analog_mode = AnalogMode.DISABLED
 
+        self._config_cache.record_analog_mode(analog_pin, analog_mode)
+
+        if not self._initialized or self._reconnecting:
+            self.get_logger().warning(
+                "Analog mode change requested while Telemetrix is disconnected"
+            )
+            return response
+
         # Debug logging
         self.get_logger().info(f"Setting analog pin {analog_pin} to mode {analog_mode}")
 
@@ -852,6 +917,14 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         """Handle ROS 2 CPU fan sampling interval changes"""
         # Translate parameters
         sampling_interval_ms: int = request.sampling_interval_ms
+
+        self._config_cache.record_cpu_fan_sampling_interval(sampling_interval_ms)
+
+        if not self._initialized or self._reconnecting:
+            self.get_logger().warning(
+                "CPU fan sampling interval requested while Telemetrix is disconnected"
+            )
+            return response
 
         # Debug logging
         self.get_logger().info(
@@ -881,6 +954,14 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
             )
             digital_mode = DigitalMode.DISABLED
 
+        self._config_cache.record_digital_mode(digital_pin, digital_mode)
+
+        if not self._initialized or self._reconnecting:
+            self.get_logger().warning(
+                "Digital mode change requested while Telemetrix is disconnected"
+            )
+            return response
+
         # Debug logging
         self.get_logger().info(
             f"Setting digital pin {digital_pin} to mode {digital_mode}"
@@ -899,6 +980,14 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         """Handle ROS 2 sampling interval changes"""
         # Translate parameters
         sampling_interval_ms: int = request.sampling_interval_ms
+
+        self._config_cache.record_sampling_interval(sampling_interval_ms)
+
+        if not self._initialized or self._reconnecting:
+            self.get_logger().warning(
+                "Sampling interval requested while Telemetrix is disconnected"
+            )
+            return response
 
         # Debug logging
         self.get_logger().info(
