@@ -21,6 +21,8 @@ from typing import cast
 
 from oasis_control.localization.ahrs.ahrs_clock import AhrsClock
 from oasis_control.localization.ahrs.ahrs_config import AhrsConfig
+from oasis_control.localization.ahrs.ahrs_error_state import AhrsErrorStateLayout
+from oasis_control.localization.ahrs.ahrs_error_state import error_state_names
 from oasis_control.localization.ahrs.ahrs_timeline import AhrsTimeBuffer
 from oasis_control.localization.ahrs.ahrs_timeline import AhrsTimeNode
 from oasis_control.localization.ahrs.ahrs_types import AhrsDiagnosticsData
@@ -64,6 +66,7 @@ class AhrsFilter:
         self._last_imu_time: Optional[AhrsTime] = None
         self._buffer: AhrsTimeBuffer = AhrsTimeBuffer()
         self._replay_happened_since_publish: bool = False
+        self._layout: AhrsErrorStateLayout = AhrsErrorStateLayout()
 
     def handle_event(self, event: AhrsEvent) -> AhrsOutputs:
         update_reports: dict[str, Optional[AhrsUpdateData]] = (
@@ -357,9 +360,15 @@ class AhrsFilter:
         )
 
     def _build_state(self, t_filter: AhrsTime) -> AhrsStateData:
-        empty_matrix: AhrsMatrix = AhrsMatrix(rows=0, cols=0, data=[])
         zero_vector: list[float] = [0.0, 0.0, 0.0]
         zero_quaternion: list[float] = [1.0, 0.0, 0.0, 0.0]
+        error_names: list[str] = error_state_names(self._layout)
+        error_dim: int = self._layout.dim
+        p_cov: AhrsMatrix = AhrsMatrix(
+            rows=error_dim,
+            cols=error_dim,
+            data=[0.0] * (error_dim * error_dim),
+        )
 
         t_bi: AhrsSe3Transform = AhrsSe3Transform(
             parent_frame=self._config.body_frame_id,
@@ -391,8 +400,8 @@ class AhrsFilter:
             t_bm=t_bm,
             g_w_mps2=zero_vector,
             m_w_t=zero_vector,
-            error_state_names=[],
-            p_cov=empty_matrix,
+            error_state_names=error_names,
+            p_cov=p_cov,
         )
 
     def _build_diagnostics(
