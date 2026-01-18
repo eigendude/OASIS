@@ -205,6 +205,18 @@ class AhrsFilter:
         self._p = None
         self._t_state = None
 
+    def _reset_for_invalid_dt(self) -> None:
+        self._reset_count += 1
+        self._last_reset_reason = "invalid_dt"
+        self._initialized = False
+        self._t_filter = None
+        self._last_imu_time = None
+        self._buffer = AhrsTimeBuffer()
+        self._replay_happened_since_publish = False
+        self._x = None
+        self._p = None
+        self._t_state = None
+
     def _replay_has_imu_gap(
         self, start_time: Optional[AhrsTime], end_time: Optional[AhrsTime]
     ) -> bool:
@@ -265,7 +277,11 @@ class AhrsFilter:
         replayed: bool = False
         for node in self._iter_nodes_for_replay(start_time, end_time):
             replayed = True
-            self._propagate_to(node.t)
+            try:
+                self._propagate_to(node.t)
+            except ValueError:
+                self._reset_for_invalid_dt()
+                return False
             for event in self._sorted_events(node):
                 self._apply_event(event)
         return replayed
@@ -518,7 +534,8 @@ class AhrsFilter:
         # 1e-9 converts nanoseconds to seconds for propagation
         dt_sec: float = float(dt_ns) * 1.0e-9
         if dt_sec < 0.0:
-            dt_sec = 0.0
+            # Negative dt implies a replay ordering error
+            raise ValueError("dt_sec must be non-negative")
 
         if dt_sec > 0.0:
             self._x, self._p = predict_step(

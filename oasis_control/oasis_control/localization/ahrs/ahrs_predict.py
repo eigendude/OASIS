@@ -85,7 +85,9 @@ def _quat_from_rotvec(rotvec: list[float]) -> list[float]:
     Build a quaternion from a rotation vector using Exp(omega * dt)
 
     The rotation vector magnitude is the rotation angle in radians. For small
-    angles, the series expansion keeps the result numerically stable.
+    angles, the series expansion keeps the result numerically stable. The
+    small-angle branch can drift slightly from unit length, so we normalize the
+    result before returning it.
     """
 
     rx: float = rotvec[0]
@@ -98,7 +100,8 @@ def _quat_from_rotvec(rotvec: list[float]) -> list[float]:
 
     if angle < small_angle_rad:
         # Small-angle approximation for sin(theta/2) ~= theta/2
-        return [1.0, 0.5 * rx, 0.5 * ry, 0.5 * rz]
+        dq_wb: list[float] = [1.0, 0.5 * rx, 0.5 * ry, 0.5 * rz]
+        return _quat_normalize(dq_wb)
 
     # Half-angle term used in quaternion exponential
     half_angle: float = 0.5 * angle
@@ -155,6 +158,7 @@ def predict_nominal(state: AhrsNominalState, dt_sec: float) -> AhrsNominalState:
         state.omega_wb_rps[2] * dt_sec,
     ]
     dq_wb: list[float] = _quat_from_rotvec(rotvec)
+    # Normalize after composition to remove any residual numerical drift
     q_wb_wxyz: list[float] = _quat_normalize(_quat_mul(state.q_wb_wxyz, dq_wb))
 
     return AhrsNominalState(
@@ -222,6 +226,7 @@ def predict_covariance(
     sl_omega: slice = layout.sl_omega()
     sl_g: slice = layout.sl_g()
 
+    # Minimal model: p <- v, v <- g, theta <- omega, coupling deferred
     for i in range(3):
         f[(sl_p.start + i) * dim + (sl_v.start + i)] += dt_sec
         f[(sl_v.start + i) * dim + (sl_g.start + i)] += dt_sec

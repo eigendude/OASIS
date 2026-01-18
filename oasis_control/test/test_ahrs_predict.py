@@ -14,6 +14,7 @@ import math
 
 from oasis_control.localization.ahrs.ahrs_config import AhrsConfig
 from oasis_control.localization.ahrs.ahrs_error_state import AhrsErrorStateLayout
+from oasis_control.localization.ahrs.ahrs_predict import _quat_from_rotvec
 from oasis_control.localization.ahrs.ahrs_predict import predict_covariance
 from oasis_control.localization.ahrs.ahrs_predict import predict_nominal
 from oasis_control.localization.ahrs.ahrs_state import AhrsNominalState
@@ -86,6 +87,27 @@ def test_ahrs_predict_quaternion_small_angle_normalized() -> None:
 
     norm: float = math.sqrt(sum(value * value for value in predicted.q_wb_wxyz))
     assert math.isclose(norm, 1.0, rel_tol=0.0, abs_tol=1.0e-12)
+
+
+def test_ahrs_predict_small_angle_exp_map_is_normalized() -> None:
+    dq_wb: list[float] = _quat_from_rotvec([1.0e-15, 0.0, 0.0])
+
+    norm: float = math.sqrt(sum(value * value for value in dq_wb))
+    assert math.isclose(norm, 1.0, rel_tol=0.0, abs_tol=1.0e-15)
+
+
+def test_ahrs_predict_covariance_zero_dt_returns_copy() -> None:
+    layout: AhrsErrorStateLayout = AhrsErrorStateLayout()
+    dim: int = layout.dim
+    p: list[float] = [0.0] * (dim * dim)
+    p[0] = 0.25
+    p[1] = -0.1
+    p[dim] = -0.1
+
+    predicted: list[float] = predict_covariance(layout, p, dt_sec=0.0, config=_config())
+
+    assert predicted == p
+    assert predicted is not p
 
 
 def test_ahrs_predict_covariance_symmetry() -> None:
