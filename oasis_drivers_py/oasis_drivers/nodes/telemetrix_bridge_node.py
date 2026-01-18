@@ -15,6 +15,7 @@ from typing import List
 from typing import Optional
 from typing import Tuple
 
+import rclpy
 import rclpy.node
 import rclpy.publisher
 import rclpy.qos
@@ -67,7 +68,6 @@ NODE_NAME = "telemetrix_bridge"
 PARAM_COM_PORT = "com_port"
 PARAM_PING_PERIOD_S = "ping_period_s"
 PARAM_PING_TIMEOUT_S = "ping_timeout_s"
-PARAM_RECONNECT_ATTEMPTS = "reconnect_attempts"
 PARAM_RECONNECT_DELAY_S = "reconnect_delay_s"
 
 # ROS topics
@@ -109,7 +109,6 @@ SET_SAMPLING_INTERVAL_SERVICE = "set_sampling_interval"
 DEFAULT_COM_PORT = "/dev/ttyACM0"
 DEFAULT_PING_PERIOD_S = 1.0
 DEFAULT_PING_TIMEOUT_S = 0.5
-DEFAULT_RECONNECT_ATTEMPTS = 5
 DEFAULT_RECONNECT_DELAY_S = 1.0
 
 
@@ -128,7 +127,6 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         self.declare_parameter(PARAM_COM_PORT, DEFAULT_COM_PORT)
         self.declare_parameter(PARAM_PING_PERIOD_S, DEFAULT_PING_PERIOD_S)
         self.declare_parameter(PARAM_PING_TIMEOUT_S, DEFAULT_PING_TIMEOUT_S)
-        self.declare_parameter(PARAM_RECONNECT_ATTEMPTS, DEFAULT_RECONNECT_ATTEMPTS)
         self.declare_parameter(PARAM_RECONNECT_DELAY_S, DEFAULT_RECONNECT_DELAY_S)
 
         # Initialize members
@@ -136,9 +134,6 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         ping_period_s: float = float(self.get_parameter(PARAM_PING_PERIOD_S).value)
         self._ping_timeout_s: float = float(
             self.get_parameter(PARAM_PING_TIMEOUT_S).value
-        )
-        self._reconnect_attempts: int = int(
-            self.get_parameter(PARAM_RECONNECT_ATTEMPTS).value
         )
         self._reconnect_delay_s: float = float(
             self.get_parameter(PARAM_RECONNECT_DELAY_S).value
@@ -329,7 +324,6 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         if self._ping_failed:
             self._ping_failed = False
             self._connected = True
-            self.get_logger().info("Uptime ping recovered")
 
     def _start_reconnect_thread(self, reason: str) -> None:
         if self._reconnecting:
@@ -337,11 +331,11 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
 
         self._reconnecting = True
         self._reconnect_thread = threading.Thread(
-            target=self._reconnect, args=(reason,), daemon=True
+            target=self._reconnect_worker, args=(reason,), daemon=True
         )
         self._reconnect_thread.start()
 
-    def _reconnect(self, reason: str) -> None:
+    def _reconnect_worker(self, reason: str) -> None:
         try:
             self.get_logger().warning(
                 f"Reconnecting Telemetrix on {self._com_port} (reason={reason})"
@@ -352,32 +346,37 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
             except Exception:
                 pass
 
-            for attempt in range(1, self._reconnect_attempts + 1):
+            while rclpy.ok():
+                bridge: Optional[TelemetrixBridge] = None
                 try:
-                    self._bridge = TelemetrixBridge(self, self._com_port)
-                    if self._bridge.initialize_with_retries():
-                        self._bridge.ping_uptime_ms(timeout_s=self._ping_timeout_s)
-                        self._initialized = True
-                        self._ping_failed = False
-                        self._connected = True
-                        self.get_logger().info("Telemetrix reconnected")
-                        return
-                    self.get_logger().warning(
-                        "Reconnect attempt "
-                        f"{attempt}/{self._reconnect_attempts} failed"
-                    )
+                    bridge = TelemetrixBridge(self, self._com_port)
+                    ok: bool = bridge.initialize_with_retries()
+                    if not ok:
+                        self.get_logger().warning(
+                            "Telemetrix init retries exhausted; will retry after delay"
+                        )
+                        try:
+                            bridge.deinitialize()
+                        except Exception:
+                            pass
+                        time.sleep(self._reconnect_delay_s)
+                        continue
+
+                    bridge.ping_uptime_ms(timeout_s=self._ping_timeout_s)
+                    self._bridge = bridge
+                    self._initialized = True
+                    self._ping_failed = False
+                    self._connected = True
+                    self.get_logger().info("Telemetrix reconnected")
+                    return
                 except Exception as exc:
-                    self.get_logger().warning(
-                        "Reconnect attempt "
-                        f"{attempt}/{self._reconnect_attempts} failed: {exc!r}"
-                    )
-
-                if attempt < self._reconnect_attempts:
+                    self.get_logger().warning(f"Reconnect cycle failed: {exc!r}")
+                    if bridge is not None:
+                        try:
+                            bridge.deinitialize()
+                        except Exception:
+                            pass
                     time.sleep(self._reconnect_delay_s)
-
-            self.get_logger().warning(
-                "Reconnect attempts exhausted, will keep pinging for recovery"
-            )
         finally:
             self._reconnecting = False
 
