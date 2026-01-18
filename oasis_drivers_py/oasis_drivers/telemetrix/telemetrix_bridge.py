@@ -16,7 +16,9 @@ from datetime import timezone
 from typing import Any
 from typing import Awaitable
 from typing import Coroutine
+from typing import Callable
 from typing import List
+from typing import Optional
 from typing import Tuple
 from typing import TypeVar
 from typing import cast
@@ -53,6 +55,10 @@ class TelemetrixBridge:
     ARDUINO_INSTANCE_ID = 1
     ARDUINO_WAIT_SECS = 4  # Wait time changed from 2s in Firmata to 4s in Telemetrix
 
+    # Telemetrix handshake
+    I_AM_HERE_REPORT = 6
+    ARE_YOU_THERE_COMMAND = 6
+
     # Telemetrix callback data indices
     CB_PIN_MODE = 0
     CB_PIN = 1
@@ -73,6 +79,10 @@ class TelemetrixBridge:
         self._loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
         self._thread = threading.Thread(target=self._run_thread)
 
+        self._uptime_lock = threading.Lock()
+        self._last_uptime_ms: Optional[int] = None
+        self._uptime_waiter: Optional[Future[int]] = None
+
         # Initialize telemetrix
         self._board = telemetrix_aio.TelemetrixAIO(
             com_port=com_port,
@@ -82,6 +92,10 @@ class TelemetrixBridge:
             loop=self._loop,
             shutdown_on_exception=True,
             close_loop_on_shutdown=False,
+        )
+
+        self._i_am_here_handler: Optional[Callable[[List[int]], Awaitable[None]]] = (
+            self._board.report_dispatch.get(self.I_AM_HERE_REPORT)
         )
 
         # Install custom report handlers
@@ -96,6 +110,9 @@ class TelemetrixBridge:
         )
         self._board.report_dispatch.update(
             {TelemetrixConstants.IMU_6_AXIS_REPORT: self._on_imu_6_axis}
+        )
+        self._board.report_dispatch.update(
+            {self.I_AM_HERE_REPORT: self._on_i_am_here}
         )
 
     def initialize(self) -> bool:
@@ -194,6 +211,34 @@ class TelemetrixBridge:
             self._thread.join()
 
         self._loop.close()
+
+    def ping_uptime_ms(self, timeout_s: float = 0.5) -> int:
+        """
+        Send an are-you-there ping and return the board uptime.
+
+        :param timeout_s: How long to wait for a response
+        """
+        waiter: Future[int] = Future()
+        with self._uptime_lock:
+            self._uptime_waiter = waiter
+
+        coroutine: Awaitable[None] = self._board._send_command(
+            [self.ARE_YOU_THERE_COMMAND]
+        )
+        send_future: Future = asyncio.run_coroutine_threadsafe(
+            _to_coroutine(coroutine), self._loop
+        )
+
+        try:
+            send_future.result()
+            uptime_ms: int = waiter.result(timeout=timeout_s)
+        except Exception:
+            with self._uptime_lock:
+                if self._uptime_waiter is waiter:
+                    self._uptime_waiter = None
+            raise
+
+        return uptime_ms
 
     def _run_thread(self) -> None:
         """Run the asyncio event loop in a thread to process Telemetrix coroutines"""
@@ -641,6 +686,29 @@ class TelemetrixBridge:
         timestamp: datetime = self._get_timestamp(data[self.CB_TIME])
 
         self._callback.on_digital_reading(timestamp, digital_pin, digital_value)
+
+    async def _on_i_am_here(self, data: List[int]) -> None:
+        """
+        Handle Telemetrix I_AM_HERE reports and capture uptime.
+
+        :param data: The report message
+        """
+        if self._i_am_here_handler is not None:
+            await _to_coroutine(self._i_am_here_handler(data))
+
+        try:
+            uptime_ms: int = (
+                (data[2] << 24) | (data[3] << 16) | (data[4] << 8) | data[5]
+            )
+        except IndexError:
+            return
+
+        with self._uptime_lock:
+            self._last_uptime_ms = uptime_ms
+            waiter = self._uptime_waiter
+            if waiter is not None and not waiter.done():
+                waiter.set_result(uptime_ms)
+                self._uptime_waiter = None
 
     async def _on_cpu_fan_rpm(self, data: List[int]) -> None:
         """

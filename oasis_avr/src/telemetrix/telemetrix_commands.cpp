@@ -261,9 +261,16 @@ void TelemetrixCommands::get_firmware_version()
 
 void TelemetrixCommands::are_you_there()
 {
-  const uint8_t report_message[3] = {2, I_AM_HERE, ARDUINO_ID};
+  const uint32_t uptime_ms = static_cast<uint32_t>(millis());
+  const uint8_t report_message[7] = {6,
+                                     I_AM_HERE,
+                                     ARDUINO_ID,
+                                     static_cast<uint8_t>((uptime_ms >> 24) & 0xFF),
+                                     static_cast<uint8_t>((uptime_ms >> 16) & 0xFF),
+                                     static_cast<uint8_t>((uptime_ms >> 8) & 0xFF),
+                                     static_cast<uint8_t>(uptime_ms & 0xFF)};
 
-  Serial.write(report_message, 3);
+  Serial.write(report_message, 7);
 
   // Synchronize input to avoid interleaving for the early part of the handshake
   Serial.flush();
