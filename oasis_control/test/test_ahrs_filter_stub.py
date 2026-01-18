@@ -15,6 +15,9 @@ from oasis_control.localization.ahrs.ahrs_config import AhrsConfig
 from oasis_control.localization.ahrs.ahrs_filter import AhrsFilter
 from oasis_control.localization.ahrs.ahrs_types import AhrsEvent
 from oasis_control.localization.ahrs.ahrs_types import AhrsEventType
+from oasis_control.localization.ahrs.ahrs_types import AhrsImuPacket
+from oasis_control.localization.ahrs.ahrs_types import ImuCalibrationData
+from oasis_control.localization.ahrs.ahrs_types import ImuSample
 from oasis_control.localization.ahrs.ahrs_types import AhrsOutputs
 from oasis_control.localization.ahrs.ahrs_types import AhrsTime
 from oasis_control.localization.ahrs.ahrs_types import MagSample
@@ -72,6 +75,39 @@ def _event_at(sec: int, nanosec: int) -> AhrsEvent:
         frame_id="mag",
         event_type=AhrsEventType.MAG,
         payload=sample,
+    )
+
+
+def _imu_event_at(sec: int, nanosec: int) -> AhrsEvent:
+    imu: ImuSample = ImuSample(
+        frame_id="imu",
+        angular_velocity_rps=[0.0, 0.0, 0.0],
+        linear_acceleration_mps2=[0.0, 0.0, 0.0],
+        angular_velocity_cov=[0.0] * 9,
+        linear_acceleration_cov=[0.0] * 9,
+    )
+    calibration: ImuCalibrationData = ImuCalibrationData(
+        valid=True,
+        frame_id="imu",
+        accel_bias_mps2=[0.0, 0.0, 0.0],
+        accel_a=[0.0] * 9,
+        accel_param_cov=[0.0] * 144,
+        gyro_bias_rps=[0.0, 0.0, 0.0],
+        gyro_bias_cov=[0.0] * 9,
+        gravity_mps2=9.81,
+        fit_sample_count=0,
+        rms_residual_mps2=0.0,
+        temperature_c=20.0,
+        temperature_var_c2=0.0,
+    )
+    packet: AhrsImuPacket = AhrsImuPacket(imu=imu, calibration=calibration)
+
+    return AhrsEvent(
+        t_meas=AhrsTime(sec=sec, nanosec=nanosec),
+        topic="imu",
+        frame_id="imu",
+        event_type=AhrsEventType.IMU,
+        payload=packet,
     )
 
 
@@ -144,3 +180,43 @@ def test_buffer_node_count_and_span_reported() -> None:
     assert second.diagnostics is not None
     assert second.diagnostics.buffer_node_count == 2
     assert second.diagnostics.buffer_span_sec == 1.0
+
+
+def test_replay_flag_set_after_out_of_order_event() -> None:
+    clock: FixedClock = FixedClock(now_sec=10, now_nanosec=0)
+    filt: AhrsFilter = AhrsFilter(config=_config(t_buffer_sec=5.0), clock=clock)
+
+    first: AhrsOutputs = filt.handle_event(_event_at(2, 0))
+    assert first.diagnostics is not None
+    assert first.diagnostics.replay_happened is False
+
+    out_of_order: AhrsOutputs = filt.handle_event(_event_at(1, 0))
+    assert out_of_order.frontier_advanced is False
+    assert out_of_order.diagnostics is None
+
+    second: AhrsOutputs = filt.handle_event(_event_at(3, 0))
+    assert second.diagnostics is not None
+    assert second.diagnostics.replay_happened is True
+
+    third: AhrsOutputs = filt.handle_event(_event_at(4, 0))
+    assert third.diagnostics is not None
+    assert third.diagnostics.replay_happened is False
+
+
+def test_imu_gap_detection_ignores_mag_only_nodes() -> None:
+    clock: FixedClock = FixedClock(now_sec=10, now_nanosec=0)
+    filt: AhrsFilter = AhrsFilter(
+        config=_config(t_buffer_sec=20.0, dt_imu_max_sec=0.15),
+        clock=clock,
+    )
+
+    first_imu: AhrsOutputs = filt.handle_event(_imu_event_at(1, 0))
+    second_imu: AhrsOutputs = filt.handle_event(_imu_event_at(1, 100_000_000))
+    mag_late: AhrsOutputs = filt.handle_event(_event_at(10, 0))
+    out_of_order_imu: AhrsOutputs = filt.handle_event(_imu_event_at(1, 200_000_000))
+
+    assert first_imu.frontier_advanced is True
+    assert second_imu.frontier_advanced is True
+    assert mag_late.frontier_advanced is True
+    assert out_of_order_imu.frontier_advanced is False
+    assert filt._dropped_imu_gap == 0
