@@ -63,6 +63,7 @@ class AhrsFilter:
 
         self._last_imu_time: Optional[AhrsTime] = None
         self._buffer: AhrsTimeBuffer = AhrsTimeBuffer()
+        self._replay_happened_since_publish: bool = False
 
     def handle_event(self, event: AhrsEvent) -> AhrsOutputs:
         update_reports: dict[str, Optional[AhrsUpdateData]] = (
@@ -104,10 +105,12 @@ class AhrsFilter:
             self._replay_events(start_time=None, end_time=self._t_filter)
 
             state: AhrsStateData = self._build_state(event.t_meas)
+            replay_happened: bool = self._replay_happened_since_publish
             diagnostics: AhrsDiagnosticsData = self._build_diagnostics(
                 t_filter=event.t_meas,
-                replay_happened=False,
+                replay_happened=replay_happened,
             )
+            self._replay_happened_since_publish = False
             frame_transforms: AhrsFrameOutputs = self._build_frame_outputs()
 
             return AhrsOutputs(
@@ -124,7 +127,11 @@ class AhrsFilter:
         if self._replay_has_imu_gap(start_time=event.t_meas, end_time=self._t_filter):
             self._dropped_imu_gap += 1
         else:
-            self._replay_events(start_time=event.t_meas, end_time=self._t_filter)
+            replayed: bool = self._replay_events(
+                start_time=event.t_meas, end_time=self._t_filter
+            )
+            if replayed:
+                self._replay_happened_since_publish = True
 
         return self._outputs_for_drop(update_reports)
 
@@ -184,6 +191,7 @@ class AhrsFilter:
         self._t_filter = None
         self._last_imu_time = None
         self._buffer = AhrsTimeBuffer()
+        self._replay_happened_since_publish = False
 
     def _replay_has_imu_gap(
         self, start_time: Optional[AhrsTime], end_time: Optional[AhrsTime]
@@ -196,13 +204,21 @@ class AhrsFilter:
 
         # dt_imu_max_sec converted to nanoseconds for gap detection
         gap_threshold_ns: int = int(self._config.dt_imu_max_sec * 1_000_000_000)
-        previous: Optional[AhrsTime] = None
+        previous_imu_time: Optional[AhrsTime] = None
         for node in self._iter_nodes_for_replay(start_time, end_time):
-            if previous is not None:
-                dt_ns: int = self._time_to_ns(node.t) - self._time_to_ns(previous)
+            has_imu_event: bool = any(
+                event.event_type == AhrsEventType.IMU for event in node.events
+            )
+            if not has_imu_event:
+                continue
+
+            if previous_imu_time is not None:
+                dt_ns: int = self._time_to_ns(node.t) - self._time_to_ns(
+                    previous_imu_time
+                )
                 if dt_ns > gap_threshold_ns:
                     return True
-            previous = node.t
+            previous_imu_time = node.t
 
         return False
 
@@ -223,13 +239,16 @@ class AhrsFilter:
 
     def _replay_events(
         self, start_time: Optional[AhrsTime], end_time: Optional[AhrsTime]
-    ) -> None:
+    ) -> bool:
         if end_time is None:
-            return
+            return False
 
+        replayed: bool = False
         for node in self._iter_nodes_for_replay(start_time, end_time):
+            replayed = True
             for event in self._sorted_events(node):
                 self._apply_event(event)
+        return replayed
 
     def _sorted_events(self, node: AhrsTimeNode) -> list[AhrsEvent]:
         return sorted(
