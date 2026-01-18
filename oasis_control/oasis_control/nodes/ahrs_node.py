@@ -13,10 +13,24 @@ import rclpy.node
 import rclpy.publisher
 import rclpy.qos
 import rclpy.subscription
-from nav_msgs.msg import Odometry as OdometryMsg
+from oasis_msgs.msg import ImuCalibration as ImuCalibrationMsg
 from sensor_msgs.msg import Imu as ImuMsg
 from sensor_msgs.msg import MagneticField as MagneticFieldMsg
-from oasis_msgs.msg import ImuCalibration as ImuCalibrationMsg
+
+from oasis_control.localization.ahrs.ahrs_clock import RosAhrsClock
+from oasis_control.localization.ahrs.ahrs_conversions import ahrs_time_from_ros
+from oasis_control.localization.ahrs.ahrs_conversions import cov3x3_from_ros
+from oasis_control.localization.ahrs.ahrs_conversions import vector3_from_ros
+from oasis_control.localization.ahrs.ahrs_filter import AhrsFilter
+from oasis_control.localization.ahrs.ahrs_params import declare_ahrs_params
+from oasis_control.localization.ahrs.ahrs_params import load_ahrs_config
+from oasis_control.localization.ahrs.ahrs_publishers import AhrsPublishers
+from oasis_control.localization.ahrs.ahrs_types import AhrsEvent
+from oasis_control.localization.ahrs.ahrs_types import AhrsEventType
+from oasis_control.localization.ahrs.ahrs_types import AhrsImuPacket
+from oasis_control.localization.ahrs.ahrs_types import ImuCalibrationData
+from oasis_control.localization.ahrs.ahrs_types import ImuSample
+from oasis_control.localization.ahrs.ahrs_types import MagSample
 
 
 ################################################################################
@@ -38,34 +52,6 @@ MAG_UPDATE_TOPIC: str = "ahrs/updates/mag"
 EXTRINSICS_T_BI_TOPIC: str = "ahrs/extrinsics/t_bi"
 EXTRINSICS_T_BM_TOPIC: str = "ahrs/extrinsics/t_bm"
 
-# ROS parameters and defaults
-PARAM_WORLD_FRAME_ID: str = "world_frame_id"
-PARAM_ODOM_FRAME_ID: str = "odom_frame_id"
-PARAM_BODY_FRAME_ID: str = "body_frame_id"
-
-DEFAULT_WORLD_FRAME_ID: str = "world"
-DEFAULT_ODOM_FRAME_ID: str = "odom"
-DEFAULT_BODY_FRAME_ID: str = "base_link"
-
-# TODO: AHRS parameters and defaults
-PARAM_GRAVITY_MPS2: str = "gravity_mps2"
-
-DEFAULT_GRAVITY_MPS2: float = 9.80665
-
-
-################################################################################
-# Utilities
-################################################################################
-
-
-# Nanoseconds per second for converting ROS params to AHRS nanoseconds
-NS_PER_S: int = 1_000_000_000
-
-
-# Convert seconds to nanoseconds
-def _ns_from_seconds(seconds: float) -> int:
-    return int(round(seconds * NS_PER_S))
-
 
 ################################################################################
 # ROS node
@@ -81,20 +67,8 @@ class AhrsNode(rclpy.node.Node):
         super().__init__(NODE_NAME)
 
         # Declare parameters
-        self.declare_parameter(PARAM_WORLD_FRAME_ID, DEFAULT_WORLD_FRAME_ID)
-        self.declare_parameter(PARAM_ODOM_FRAME_ID, DEFAULT_ODOM_FRAME_ID)
-        self.declare_parameter(PARAM_BODY_FRAME_ID, DEFAULT_BODY_FRAME_ID)
-
-        # TODO: AHRS parameters
-        self.declare_parameter(PARAM_GRAVITY_MPS2, DEFAULT_GRAVITY_MPS2)
-
-        # Load parameters
-        self._world_frame_id: str = str(self.get_parameter(PARAM_WORLD_FRAME_ID).value)
-        self._odom_frame_id: str = str(self.get_parameter(PARAM_ODOM_FRAME_ID).value)
-        self._body_frame_id: str = str(self.get_parameter(PARAM_BODY_FRAME_ID).value)
-
-        # TODO: AHRS parameters
-        self._gravity_mps2: float = float(self.get_parameter(PARAM_GRAVITY_MPS2).value)
+        declare_ahrs_params(self)
+        config = load_ahrs_config(self)
 
         # QoS profile
         qos_profile: rclpy.qos.QoSProfile = (
@@ -102,7 +76,14 @@ class AhrsNode(rclpy.node.Node):
         )
 
         # ROS Publishers
-        # TODO
+        self._publishers: AhrsPublishers = AhrsPublishers(
+            self, config, qos_profile
+        )
+
+        # AHRS filter
+        self._filter: AhrsFilter = AhrsFilter(
+            config=config, clock=RosAhrsClock(self)
+        )
 
         # ROS Subscribers
         self._mag_sub: rclpy.subscription.Subscription = self.create_subscription(
@@ -137,10 +118,6 @@ class AhrsNode(rclpy.node.Node):
         )
         self._imu_sync.registerCallback(self._handle_imu_raw_with_calibration)
 
-        # TODO: AHRS parameters
-
-        # TODO: State
-
         self.get_logger().info("AHRS node initialized")
 
     def stop(self) -> None:
@@ -151,9 +128,82 @@ class AhrsNode(rclpy.node.Node):
     def _handle_imu_raw_with_calibration(
         self, imu_msg: ImuMsg, cal_msg: ImuCalibrationMsg
     ) -> None:
-        # TODO
-        pass
+        if (
+            imu_msg.header.stamp.sec != cal_msg.header.stamp.sec
+            or imu_msg.header.stamp.nanosec != cal_msg.header.stamp.nanosec
+        ):
+            self.get_logger().warning(
+                "IMU sample and calibration have mismatched timestamps"
+            )
+            return
+
+        try:
+            imu_sample: ImuSample = ImuSample(
+                frame_id=imu_msg.header.frame_id,
+                angular_velocity_rps=vector3_from_ros(imu_msg.angular_velocity),
+                linear_acceleration_mps2=vector3_from_ros(
+                    imu_msg.linear_acceleration
+                ),
+                angular_velocity_cov=cov3x3_from_ros(
+                    imu_msg.angular_velocity_covariance
+                ),
+                linear_acceleration_cov=cov3x3_from_ros(
+                    imu_msg.linear_acceleration_covariance
+                ),
+            )
+            calibration: ImuCalibrationData = ImuCalibrationData(
+                valid=bool(cal_msg.valid),
+                frame_id=cal_msg.header.frame_id,
+                accel_bias_mps2=vector3_from_ros(cal_msg.accel_bias),
+                accel_a=[float(value) for value in cal_msg.accel_a],
+                accel_param_cov=[float(value) for value in cal_msg.accel_param_cov],
+                gyro_bias_rps=vector3_from_ros(cal_msg.gyro_bias),
+                gyro_bias_cov=cov3x3_from_ros(cal_msg.gyro_bias_cov),
+                gravity_mps2=float(cal_msg.gravity_mps2),
+                fit_sample_count=int(cal_msg.fit_sample_count),
+                rms_residual_mps2=float(cal_msg.rms_residual_mps2),
+                temperature_c=float(cal_msg.temperature_c),
+                temperature_var_c2=float(cal_msg.temperature_var_c2),
+            )
+        except ValueError as exc:
+            self.get_logger().warning(f"Invalid IMU covariance data: {exc}")
+            return
+
+        packet: AhrsImuPacket = AhrsImuPacket(
+            imu=imu_sample,
+            calibration=calibration,
+        )
+        event: AhrsEvent = AhrsEvent(
+            t_meas=ahrs_time_from_ros(imu_msg.header.stamp),
+            topic=IMU_RAW_TOPIC,
+            frame_id=imu_msg.header.frame_id,
+            event_type=AhrsEventType.IMU,
+            payload=packet,
+        )
+
+        outputs = self._filter.handle_event(event)
+        self._publishers.publish_outputs(outputs)
 
     def _handle_mag(self, message: MagneticFieldMsg) -> None:
-        # TODO
-        pass
+        try:
+            sample: MagSample = MagSample(
+                frame_id=message.header.frame_id,
+                magnetic_field_t=vector3_from_ros(message.magnetic_field),
+                magnetic_field_cov=cov3x3_from_ros(
+                    message.magnetic_field_covariance
+                ),
+            )
+        except ValueError as exc:
+            self.get_logger().warning(f"Invalid magnetometer covariance data: {exc}")
+            return
+
+        event: AhrsEvent = AhrsEvent(
+            t_meas=ahrs_time_from_ros(message.header.stamp),
+            topic=MAG_TOPIC,
+            frame_id=message.header.frame_id,
+            event_type=AhrsEventType.MAG,
+            payload=sample,
+        )
+
+        outputs = self._filter.handle_event(event)
+        self._publishers.publish_outputs(outputs)
