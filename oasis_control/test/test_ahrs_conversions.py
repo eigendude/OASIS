@@ -13,33 +13,36 @@ from __future__ import annotations
 import math
 
 import pytest
-from builtin_interfaces.msg import Time as TimeMsg
 
-from oasis_control.localization.ahrs.ahrs_conversions import ahrs_time_from_ros
-from oasis_control.localization.ahrs.ahrs_conversions import cov3x3_from_ros
-from oasis_control.localization.ahrs.ahrs_conversions import ros_time_from_ahrs
+from oasis_control.localization.ahrs.ahrs_conversions import ahrs_time_from_pair
+from oasis_control.localization.ahrs.ahrs_conversions import cov3x3_from_seq
+from oasis_control.localization.ahrs.ahrs_conversions import normalize_ahrs_time
 from oasis_control.localization.ahrs.ahrs_types import AhrsTime
 
 
-def test_cov3x3_from_ros_rejects_length() -> None:
+def test_cov3x3_from_seq_rejects_length() -> None:
     with pytest.raises(ValueError):
-        cov3x3_from_ros([0.0] * 8)
+        cov3x3_from_seq([0.0] * 8)
 
 
-def test_cov3x3_from_ros_rejects_nan() -> None:
+def test_cov3x3_from_seq_rejects_nan() -> None:
     cov: list[float] = [0.0] * 8 + [math.nan]
 
     with pytest.raises(ValueError):
-        cov3x3_from_ros(cov)
+        cov3x3_from_seq(cov)
 
 
-def test_ahrs_time_round_trip() -> None:
-    stamp: TimeMsg = TimeMsg()
-    stamp.sec = 123
-    stamp.nanosec = 456_789_123
+def test_normalize_ahrs_time_carries_nanoseconds() -> None:
+    t_raw: AhrsTime = AhrsTime(sec=123, nanosec=1_500_000_000)
 
-    ahrs_time: AhrsTime = ahrs_time_from_ros(stamp)
-    round_trip: TimeMsg = ros_time_from_ahrs(ahrs_time)
+    normalized: AhrsTime = normalize_ahrs_time(t_raw)
 
-    assert round_trip.sec == stamp.sec
-    assert round_trip.nanosec == stamp.nanosec
+    assert normalized.sec == 124
+    assert normalized.nanosec == 500_000_000
+
+
+def test_ahrs_time_from_pair_normalizes_input() -> None:
+    normalized: AhrsTime = ahrs_time_from_pair(sec=10, nanosec=2_000_000_001)
+
+    assert normalized.sec == 12
+    assert normalized.nanosec == 1

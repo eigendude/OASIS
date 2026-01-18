@@ -29,7 +29,8 @@ from geometry_msgs.msg import Vector3
 from nav_msgs.msg import Odometry as OdometryMsg
 
 from oasis_control.localization.ahrs.ahrs_config import AhrsConfig
-from oasis_control.localization.ahrs.ahrs_conversions import ros_time_from_ahrs
+from oasis_control.localization.ahrs.ahrs_conversions import seconds_from_ahrs
+from oasis_control.localization.ahrs.ahrs_ros_conversions import ros_time_from_ahrs
 from oasis_control.localization.ahrs.ahrs_types import AhrsDiagnosticsData
 from oasis_control.localization.ahrs.ahrs_types import AhrsFrameOutputs
 from oasis_control.localization.ahrs.ahrs_types import AhrsFrameTransform
@@ -97,7 +98,7 @@ def to_diag_msg(diag: AhrsDiagnosticsData) -> AhrsDiagnosticsMsg:
     msg: AhrsDiagnosticsMsg = AhrsDiagnosticsMsg()
     if diag.t_filter is not None:
         msg.header.stamp = ros_time_from_ahrs(diag.t_filter)
-        msg.t_filter_sec = _seconds_from_ahrs(diag.t_filter)
+        msg.t_filter_sec = seconds_from_ahrs(diag.t_filter)
     else:
         msg.t_filter_sec = 0.0
     msg.diag_seq = diag.diag_seq
@@ -275,7 +276,3 @@ def _to_covariance_6x6(covariance: Optional[list[float]]) -> list[float]:
         raise ValueError("Expected 36 covariance entries")
 
     return list(covariance)
-
-
-def _seconds_from_ahrs(t: AhrsTime) -> float:
-    return float(t.sec) + float(t.nanosec) * 1e-9

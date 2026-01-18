@@ -14,21 +14,18 @@ Clock abstraction for AHRS localization
 
 from __future__ import annotations
 
-import rclpy.node
-from builtin_interfaces.msg import Time as TimeMsg
-
-from oasis_control.localization.ahrs.ahrs_conversions import ahrs_time_from_ros
+from oasis_control.localization.ahrs.ahrs_conversions import seconds_from_ahrs
 from oasis_control.localization.ahrs.ahrs_types import AhrsTime
 
 
 class AhrsClock:
     """
-    Clock abstraction for retrieving ROS time
+    Clock abstraction for retrieving AHRS time
     """
 
-    def now_ros_time(self) -> TimeMsg:
+    def now(self) -> AhrsTime:
         """
-        Return the current ROS time
+        Return the current AHRS time
         """
 
         raise NotImplementedError
@@ -38,20 +35,8 @@ class AhrsClock:
         True when the measurement stamp is ahead of the wall clock
         """
 
-        now: AhrsTime = ahrs_time_from_ros(self.now_ros_time())
-        now_sec: float = float(now.sec) + float(now.nanosec) * 1e-9
-        meas_sec: float = float(t_meas.sec) + float(t_meas.nanosec) * 1e-9
+        now: AhrsTime = self.now()
+        now_sec: float = seconds_from_ahrs(now)
+        meas_sec: float = seconds_from_ahrs(t_meas)
 
         return meas_sec > now_sec + epsilon_sec
-
-
-class RosAhrsClock(AhrsClock):
-    """
-    ROS clock implementation backed by a node's time source
-    """
-
-    def __init__(self, node: rclpy.node.Node) -> None:
-        self._node: rclpy.node.Node = node
-
-    def now_ros_time(self) -> TimeMsg:
-        return self._node.get_clock().now().to_msg()

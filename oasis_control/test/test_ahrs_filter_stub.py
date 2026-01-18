@@ -10,8 +10,6 @@
 
 from __future__ import annotations
 
-from builtin_interfaces.msg import Time as TimeMsg
-
 from oasis_control.localization.ahrs.ahrs_clock import AhrsClock
 from oasis_control.localization.ahrs.ahrs_config import AhrsConfig
 from oasis_control.localization.ahrs.ahrs_filter import AhrsFilter
@@ -26,12 +24,8 @@ class FixedClock(AhrsClock):
         self._now_sec: int = now_sec
         self._now_nanosec: int = now_nanosec
 
-    def now_ros_time(self) -> TimeMsg:
-        stamp: TimeMsg = TimeMsg()
-        stamp.sec = self._now_sec
-        stamp.nanosec = self._now_nanosec
-
-        return stamp
+    def now(self) -> AhrsTime:
+        return AhrsTime(sec=self._now_sec, nanosec=self._now_nanosec)
 
 
 def _config() -> AhrsConfig:

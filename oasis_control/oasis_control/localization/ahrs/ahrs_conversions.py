@@ -9,57 +9,41 @@
 ################################################################################
 
 """
-Conversion helpers between ROS messages and AHRS types
+Conversion helpers between core AHRS types
 """
 
 from __future__ import annotations
 
 import math
 from collections.abc import Sequence
-from typing import Protocol
-
-from builtin_interfaces.msg import Time as TimeMsg
 
 from oasis_control.localization.ahrs.ahrs_types import AhrsTime
 
 
-class Vector3Like(Protocol):
+def ahrs_time_from_pair(sec: int, nanosec: int) -> AhrsTime:
     """
-    Protocol for geometry messages with x/y/z fields
-    """
-
-    x: float
-    y: float
-    z: float
-
-
-def ahrs_time_from_ros(stamp: TimeMsg) -> AhrsTime:
-    """
-    Convert a ROS time stamp into an AHRS time
+    Build an AHRS time from a seconds/nanoseconds pair
     """
 
-    return AhrsTime(sec=int(stamp.sec), nanosec=int(stamp.nanosec))
+    return normalize_ahrs_time(AhrsTime(sec=int(sec), nanosec=int(nanosec)))
 
 
-def ros_time_from_ahrs(t: AhrsTime) -> TimeMsg:
+def normalize_ahrs_time(t: AhrsTime) -> AhrsTime:
     """
-    Convert an AHRS time into a ROS time stamp
+    Normalize nanoseconds so they always live in [0, 1e9)
     """
 
-    carry_sec: int = t.nanosec // 1_000_000_000
-    nanosec: int = t.nanosec % 1_000_000_000
+    carry_sec: int
+    nanosec: int
+    carry_sec, nanosec = divmod(t.nanosec, 1_000_000_000)
     sec: int = t.sec + carry_sec
 
-    stamp: TimeMsg = TimeMsg()
-    stamp.sec = sec
-    stamp.nanosec = nanosec
-
-    return stamp
+    return AhrsTime(sec=sec, nanosec=nanosec)
 
 
-def cov3x3_from_ros(cov: Sequence[float]) -> list[float]:
+def cov3x3_from_seq(cov: Sequence[float]) -> list[float]:
     """
-    Convert a ROS covariance list into a validated 3x3 covariance
+    Validate and convert a covariance sequence into a 3x3 covariance
     """
 
     if len(cov) != 9:
@@ -73,9 +57,17 @@ def cov3x3_from_ros(cov: Sequence[float]) -> list[float]:
     return values
 
 
-def vector3_from_ros(msg: Vector3Like) -> list[float]:
+def vector3_from_xyz(x: float, y: float, z: float) -> list[float]:
     """
-    Convert a ROS Vector3-like message into a list
+    Convert XYZ components into a vector list
     """
 
-    return [float(msg.x), float(msg.y), float(msg.z)]
+    return [float(x), float(y), float(z)]
+
+
+def seconds_from_ahrs(t: AhrsTime) -> float:
+    """
+    Convert an AHRS timestamp into seconds
+    """
+
+    return float(t.sec) + float(t.nanosec) * 1e-9
