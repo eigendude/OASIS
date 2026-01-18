@@ -28,6 +28,7 @@ class AhrsConfig:
         epsilon_wall_future_sec: Max future offset in seconds allowed by wall clock
         dt_clock_jump_max_sec: Threshold in seconds for detecting clock jumps
         dt_imu_max_sec: Max IMU delta in seconds before skipping propagation
+        gyro_gate_d2_threshold: Mahalanobis gate threshold for gyro updates
         mag_alpha: Magnetometer covariance matching factor, unitless
         mag_r_min: Minimum magnetometer covariance matrix, row-major
         mag_r_max: Maximum magnetometer covariance matrix, row-major
@@ -51,6 +52,7 @@ class AhrsConfig:
     epsilon_wall_future_sec: float
     dt_clock_jump_max_sec: float
     dt_imu_max_sec: float
+    gyro_gate_d2_threshold: float
 
     mag_alpha: float
     mag_r_min: list[float]
