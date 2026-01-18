@@ -10,6 +10,7 @@
 
 import asyncio
 import threading
+import time
 from concurrent.futures import Future
 from datetime import datetime
 from datetime import timezone
@@ -53,6 +54,9 @@ class TelemetrixBridge:
     BAUD_RATE = 115200
     ARDUINO_INSTANCE_ID = 1
     ARDUINO_WAIT_SECS = 4  # Wait time changed from 2s in Firmata to 4s in Telemetrix
+    HANDSHAKE_ATTEMPTS = 5
+    HANDSHAKE_RETRY_DELAY_S = 1.0
+    SHUTDOWN_TIMEOUT_S = 2.0
 
     # Telemetrix callback data indices
     CB_PIN_MODE = 0
@@ -69,14 +73,21 @@ class TelemetrixBridge:
     def __init__(self, callback: TelemetrixCallback, com_port: str) -> None:
         # Construction parameters
         self._callback = callback
+        self._com_port = com_port
 
         # Initialize asyncio event loop for running bridge in a new thread
         self._loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
         self._thread = threading.Thread(target=self._run_thread)
 
         # Initialize telemetrix
-        self._board = telemetrix_aio.TelemetrixAIO(
-            com_port=com_port,
+        self._board = self._create_board()
+
+        self._uptime_lock = threading.Lock()
+        self._uptime_waiter: Optional[Future[int]] = None
+
+    def _create_board(self) -> telemetrix_aio.TelemetrixAIO:
+        board = telemetrix_aio.TelemetrixAIO(
+            com_port=self._com_port,
             arduino_instance_id=self.ARDUINO_INSTANCE_ID,
             arduino_wait=self.ARDUINO_WAIT_SECS,
             autostart=False,
@@ -85,25 +96,23 @@ class TelemetrixBridge:
             close_loop_on_shutdown=False,
         )
 
-        self._uptime_lock = threading.Lock()
-        self._uptime_waiter: Optional[Future[int]] = None
-
         # Install custom report handlers
-        self._board.report_dispatch.update(
+        board.report_dispatch.update(
             {TelemetrixConstants.MEMORY_REPORT: self._memory_report}
         )
-        self._board.report_dispatch.update(
+        board.report_dispatch.update(
             {TelemetrixConstants.CPU_FAN_TACH_REPORT: self._on_cpu_fan_rpm}
         )
-        self._board.report_dispatch.update(
+        board.report_dispatch.update(
             {TelemetrixConstants.AQ_CO2_TVOC_REPORT: self._on_air_quality}
         )
-        self._board.report_dispatch.update(
+        board.report_dispatch.update(
             {TelemetrixConstants.IMU_6_AXIS_REPORT: self._on_imu_6_axis}
         )
-        self._board.report_dispatch.update(
+        board.report_dispatch.update(
             {TelemetrixConstants.UPTIME_REPORT: self._on_uptime_report}
         )
+        return board
 
     def initialize(self) -> bool:
         """Initialize the bridge and start communicating via Telemetrix"""
@@ -117,6 +126,32 @@ class TelemetrixBridge:
             self.deinitialize()
             raise e
 
+        self._log_reported_features()
+
+        return True
+
+    def initialize_with_retries(self) -> bool:
+        """Initialize the bridge with retry logic for USB reconnects"""
+        if not self._thread.is_alive():
+            self._thread.start()
+
+        for attempt in range(1, self.HANDSHAKE_ATTEMPTS + 1):
+            try:
+                future: Future = asyncio.run_coroutine_threadsafe(
+                    self._board.start_aio(), self._loop
+                )
+                future.result(timeout=self.ARDUINO_WAIT_SECS + 2.0)
+                self._log_reported_features()
+                return True
+            except Exception:
+                self._shutdown_board_best_effort()
+                self._board = self._create_board()
+                if attempt < self.HANDSHAKE_ATTEMPTS:
+                    time.sleep(self.HANDSHAKE_RETRY_DELAY_S)
+
+        return False
+
+    def _log_reported_features(self) -> None:
         # Get the reported features
         # TODO: Proper logging
         print("Reported features:")
@@ -156,24 +191,26 @@ class TelemetrixBridge:
         ):
             print("  - I2C")
 
-        return True
+    def _shutdown_board_best_effort(self) -> None:
+        if self._loop.is_closed() or not self._loop.is_running():
+            return
+
+        try:
+            future: Future = asyncio.run_coroutine_threadsafe(
+                self._board.shutdown(), self._loop
+            )
+            future.result(timeout=self.SHUTDOWN_TIMEOUT_S)
+        except Exception:
+            # Best-effort shutdown. Any exceptions or timeouts are ignored so
+            # that teardown can continue.
+            pass
 
     def deinitialize(self) -> None:
         """Stop communicating and deinitialize the bridge"""
         if self._loop.is_closed():
             return
 
-        # Attempt an orderly shutdown of the Telemetrix board so that serial
-        # operations unblock quickly even when the MCU is disconnected.
-        try:
-            future: Future = asyncio.run_coroutine_threadsafe(
-                self._board.shutdown(), self._loop
-            )
-            future.result(timeout=5.0)
-        except Exception:
-            # Best-effort shutdown. Any exceptions or timeouts are ignored so
-            # that teardown can continue.
-            pass
+        self._shutdown_board_best_effort()
 
         def _cancel_tasks_and_stop() -> None:
             pending = asyncio.all_tasks(loop=self._loop)
@@ -188,17 +225,10 @@ class TelemetrixBridge:
             pass
 
         if self._thread.is_alive():
-            self._thread.join(timeout=5.0)
+            self._thread.join(timeout=self.SHUTDOWN_TIMEOUT_S)
 
         if self._thread.is_alive():
-            # As a last resort, ask the loop to stop again and wait without a
-            # timeout so that the thread is guaranteed to finish before
-            # closing the loop.
-            try:
-                self._loop.call_soon_threadsafe(self._loop.stop)
-            except RuntimeError:
-                pass
-            self._thread.join()
+            return
 
         self._loop.close()
 
