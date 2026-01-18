@@ -26,9 +26,11 @@ class TelemetrixConstants:
     I2C_CCS811_END: int = 63
     I2C_MPU6050_BEGIN: int = 64
     I2C_MPU6050_END: int = 65
+    GET_UPTIME_COMMAND: int = 66
 
     # Reports
     MEMORY_REPORT: int = 21
     CPU_FAN_TACH_REPORT: int = 22
     AQ_CO2_TVOC_REPORT: int = 23
     IMU_6_AXIS_REPORT: int = 24
+    UPTIME_REPORT: int = 25
