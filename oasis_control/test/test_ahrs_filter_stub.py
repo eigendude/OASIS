@@ -10,6 +10,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from oasis_control.localization.ahrs.ahrs_clock import AhrsClock
 from oasis_control.localization.ahrs.ahrs_config import AhrsConfig
 from oasis_control.localization.ahrs.ahrs_filter import AhrsFilter
@@ -167,6 +169,18 @@ def test_ahrs_filter_clock_jump_resets_on_large_abs_dt() -> None:
     assert filt._initialized is False
     assert filt._reset_count == 1
     assert filt._dropped_clock_jump_reset == 1
+
+
+def test_ahrs_filter_negative_dt_raises() -> None:
+    clock: FixedClock = FixedClock(now_sec=30, now_nanosec=0)
+    filt: AhrsFilter = AhrsFilter(config=_config(), clock=clock)
+    start_time: AhrsTime = AhrsTime(sec=2, nanosec=0)
+    earlier_time: AhrsTime = AhrsTime(sec=1, nanosec=0)
+
+    filt._reset_replay_state(start_time)
+
+    with pytest.raises(ValueError, match="dt_sec must be non-negative"):
+        filt._propagate_to(earlier_time)
 
 
 def test_buffer_node_count_and_span_reported() -> None:
