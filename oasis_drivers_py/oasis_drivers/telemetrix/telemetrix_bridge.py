@@ -54,7 +54,7 @@ class TelemetrixBridge:
     BAUD_RATE = 115200
     ARDUINO_INSTANCE_ID = 1
     ARDUINO_WAIT_SECS = 4  # Wait time changed from 2s in Firmata to 4s in Telemetrix
-    HANDSHAKE_ATTEMPTS = 5
+    HANDSHAKE_ATTEMPTS = 3
     HANDSHAKE_RETRY_DELAY_S = 1.0
     SHUTDOWN_TIMEOUT_S = 2.0
 
@@ -113,22 +113,6 @@ class TelemetrixBridge:
             {TelemetrixConstants.UPTIME_REPORT: self._on_uptime_report}
         )
         return board
-
-    def initialize(self) -> bool:
-        """Initialize the bridge and start communicating via Telemetrix"""
-        self._thread.start()
-
-        try:
-            asyncio.run_coroutine_threadsafe(
-                self._board.start_aio(), self._loop
-            ).result()
-        except Exception as e:
-            self.deinitialize()
-            raise e
-
-        self._log_reported_features()
-
-        return True
 
     def initialize_with_retries(self) -> bool:
         """Initialize the bridge with retry logic for USB reconnects"""
