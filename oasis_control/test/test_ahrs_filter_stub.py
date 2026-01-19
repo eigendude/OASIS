@@ -49,6 +49,7 @@ def _config(
         dt_clock_jump_max_sec=dt_clock_jump_max_sec,
         dt_imu_max_sec=dt_imu_max_sec,
         gyro_gate_d2_threshold=9.0,
+        accel_gate_d2_threshold=9.0,
         mag_alpha=1.0,
         mag_r_min=[0.0] * 9,
         mag_r_max=[0.0] * 9,
