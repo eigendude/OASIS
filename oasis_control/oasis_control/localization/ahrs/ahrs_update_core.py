@@ -124,6 +124,8 @@ def kalman_update(
 ) -> tuple[list[float], AhrsUpdateData, bool, list[float]]:
     """
     Apply a measurement update to the covariance using the Joseph form
+
+    Note: layout is used for layout.dim only
     """
 
     dim: int = layout.dim
@@ -135,6 +137,9 @@ def kalman_update(
         raise ValueError("nu must be non-empty")
 
     if len(z) != m or len(z_hat) != m:
+        r_report: AhrsMatrix = (
+            _matrix(m, m, r) if len(r) == m * m else _empty_matrix()
+        )
         return (
             list(p),
             _build_reject_report(
@@ -145,7 +150,7 @@ def kalman_update(
                 z=list(z),
                 z_hat=list(z_hat),
                 nu=list(nu),
-                r=_empty_matrix(),
+                r=r_report,
                 s_hat=_empty_matrix(),
                 s=_empty_matrix(),
                 maha_d2=0.0,
