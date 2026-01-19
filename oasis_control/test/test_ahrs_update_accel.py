@@ -39,7 +39,11 @@ class FixedClock(AhrsClock):
         return AhrsTime(sec=self._now_sec, nanosec=self._now_nanosec)
 
 
-def _config(*, accel_gate_d2_threshold: float) -> AhrsConfig:
+def _config(
+    *,
+    accel_gate_d2_threshold: float,
+    accel_use_direction_only: bool = False,
+) -> AhrsConfig:
     return AhrsConfig(
         world_frame_id="world",
         odom_frame_id="odom",
@@ -50,6 +54,7 @@ def _config(*, accel_gate_d2_threshold: float) -> AhrsConfig:
         dt_imu_max_sec=0.0,
         gyro_gate_d2_threshold=9.0,
         accel_gate_d2_threshold=accel_gate_d2_threshold,
+        accel_use_direction_only=accel_use_direction_only,
         mag_alpha=1.0,
         mag_r_min=[0.0] * 9,
         mag_r_max=[0.0] * 9,
@@ -206,6 +211,86 @@ def test_accel_update_rejects_large_innovation() -> None:
     assert updated_p == p
 
 
+def test_accel_update_rejects_uninitialized_gravity() -> None:
+    layout: AhrsErrorStateLayout = AhrsErrorStateLayout()
+    state: AhrsNominalState = default_nominal_state(
+        body_frame_id="base_link",
+        imu_frame_id="imu",
+        mag_frame_id="mag",
+    )
+    state.g_w_mps2 = [0.0, 0.0, 0.0]
+    p: list[float] = _initial_covariance(layout, value=0.1)
+    imu: ImuSample = ImuSample(
+        frame_id="imu",
+        angular_velocity_rps=[0.0, 0.0, 0.0],
+        linear_acceleration_mps2=[0.0, 0.0, -9.81],
+        angular_velocity_cov=[0.0] * 9,
+        linear_acceleration_cov=_cov_diag(0.01),
+    )
+
+    updated_state: AhrsNominalState
+    updated_p: list[float]
+    update_report: AhrsUpdateData
+    updated_state, updated_p, update_report = update_accel(
+        layout,
+        state,
+        p,
+        imu,
+        _config(accel_gate_d2_threshold=9.0),
+        frame_id="imu",
+        t_meas=AhrsTime(sec=1, nanosec=0),
+    )
+
+    assert update_report.accepted is False
+    assert update_report.reject_reason == "uninitialized_gravity"
+    assert updated_state == state
+    assert updated_p == p
+
+
+def test_accel_update_direction_only_accepts_magnitude_mismatch() -> None:
+    layout: AhrsErrorStateLayout = AhrsErrorStateLayout()
+    state: AhrsNominalState = default_nominal_state(
+        body_frame_id="base_link",
+        imu_frame_id="imu",
+        mag_frame_id="mag",
+    )
+    state.g_w_mps2 = [0.0, 0.0, -9.81]
+    p: list[float] = _initial_covariance(layout, value=0.1)
+    imu: ImuSample = ImuSample(
+        frame_id="imu",
+        angular_velocity_rps=[0.0, 0.0, 0.0],
+        linear_acceleration_mps2=[0.0, 0.0, -19.62],
+        angular_velocity_cov=[0.0] * 9,
+        linear_acceleration_cov=_cov_diag(0.01),
+    )
+
+    config: AhrsConfig = _config(
+        accel_gate_d2_threshold=9.0,
+        accel_use_direction_only=True,
+    )
+
+    updated_state: AhrsNominalState
+    updated_p: list[float]
+    update_report: AhrsUpdateData
+    updated_state, updated_p, update_report = update_accel(
+        layout,
+        state,
+        p,
+        imu,
+        config,
+        frame_id="imu",
+        t_meas=AhrsTime(sec=1, nanosec=0),
+    )
+
+    assert update_report.accepted is True
+    assert all(
+        math.isclose(value, 0.0, rel_tol=0.0, abs_tol=1.0e-6)
+        for value in update_report.nu
+    )
+    assert updated_state.q_wb_wxyz == state.q_wb_wxyz
+    assert updated_p != p
+
+
 def _imu_event_at(sec: int, nanosec: int) -> AhrsEvent:
     imu: ImuSample = ImuSample(
         frame_id="imu",
@@ -251,7 +336,8 @@ def test_filter_reports_accel_update() -> None:
     accel_update: AhrsUpdateData
     assert outputs.accel_update is not None
     accel_update = outputs.accel_update
-    assert accel_update.accepted is True
+    assert accel_update.accepted is False
+    assert accel_update.reject_reason == "uninitialized_gravity"
     assert accel_update.z == [0.0, 0.0, 0.0]
     assert accel_update.r.rows == 3
-    assert accel_update.s.rows == 3
+    assert accel_update.s.rows == 0

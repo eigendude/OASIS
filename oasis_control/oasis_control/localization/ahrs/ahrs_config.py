@@ -30,6 +30,7 @@ class AhrsConfig:
         dt_imu_max_sec: Max IMU delta in seconds before skipping propagation
         gyro_gate_d2_threshold: Mahalanobis gate threshold for gyro updates
         accel_gate_d2_threshold: Mahalanobis gate threshold for accel updates
+        accel_use_direction_only: Use unit-vector accel update when True
         mag_alpha: Magnetometer covariance matching factor, unitless
         mag_r_min: Minimum magnetometer covariance matrix, row-major
         mag_r_max: Maximum magnetometer covariance matrix, row-major
@@ -55,6 +56,7 @@ class AhrsConfig:
     dt_imu_max_sec: float
     gyro_gate_d2_threshold: float
     accel_gate_d2_threshold: float
+    accel_use_direction_only: bool
 
     mag_alpha: float
     mag_r_min: list[float]

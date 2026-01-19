@@ -33,6 +33,7 @@ def _config(*, gyro_gate_d2_threshold: float) -> AhrsConfig:
         dt_imu_max_sec=0.0,
         gyro_gate_d2_threshold=gyro_gate_d2_threshold,
         accel_gate_d2_threshold=9.0,
+        accel_use_direction_only=False,
         mag_alpha=1.0,
         mag_r_min=[0.0] * 9,
         mag_r_max=[0.0] * 9,
