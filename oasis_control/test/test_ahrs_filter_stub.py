@@ -85,11 +85,27 @@ def _event_at(sec: int, nanosec: int) -> AhrsEvent:
     )
 
 
+def _mag_event_at(sec: int, nanosec: int, field_t: list[float]) -> AhrsEvent:
+    sample: MagSample = MagSample(
+        frame_id="mag",
+        magnetic_field_t=list(field_t),
+        magnetic_field_cov=[0.01, 0.0, 0.0, 0.0, 0.01, 0.0, 0.0, 0.0, 0.01],
+    )
+
+    return AhrsEvent(
+        t_meas=AhrsTime(sec=sec, nanosec=nanosec),
+        topic="magnetic_field",
+        frame_id="mag",
+        event_type=AhrsEventType.MAG,
+        payload=sample,
+    )
+
+
 def _imu_event_at(sec: int, nanosec: int) -> AhrsEvent:
     imu: ImuSample = ImuSample(
         frame_id="imu",
         angular_velocity_rps=[0.0, 0.0, 0.0],
-        linear_acceleration_mps2=[0.0, 0.0, 0.0],
+        linear_acceleration_mps2=[0.0, 0.0, -9.81],
         angular_velocity_cov=[0.0] * 9,
         linear_acceleration_cov=[0.0] * 9,
     )
@@ -239,3 +255,21 @@ def test_imu_gap_detection_ignores_mag_only_nodes() -> None:
     assert mag_late.frontier_advanced is True
     assert out_of_order_imu.frontier_advanced is False
     assert filt._dropped_imu_gap == 0
+
+
+def test_mag_update_initializes_field_after_gravity() -> None:
+    clock: FixedClock = FixedClock(now_sec=10, now_nanosec=0)
+    filt: AhrsFilter = AhrsFilter(config=_config(t_buffer_sec=5.0), clock=clock)
+
+    imu_outputs: AhrsOutputs = filt.handle_event(_imu_event_at(1, 0))
+    assert imu_outputs.accel_update is not None
+    assert imu_outputs.accel_update.accepted is True
+
+    mag_event: AhrsEvent = _mag_event_at(2, 0, [0.3, 0.1, -0.2])
+    mag_outputs: AhrsOutputs = filt.handle_event(mag_event)
+
+    assert mag_outputs.mag_update is not None
+    assert mag_outputs.mag_update.accepted is True
+    assert mag_outputs.mag_update.reject_reason is None
+    assert mag_outputs.state is not None
+    assert any(abs(value) > 0.0 for value in mag_outputs.state.m_w_t)

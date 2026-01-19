@@ -297,7 +297,7 @@ def _imu_event_at(sec: int, nanosec: int) -> AhrsEvent:
     imu: ImuSample = ImuSample(
         frame_id="imu",
         angular_velocity_rps=[0.0, 0.0, 0.0],
-        linear_acceleration_mps2=[0.0, 0.0, 0.0],
+        linear_acceleration_mps2=[0.0, 0.0, -9.81],
         angular_velocity_cov=_cov_diag(0.01),
         linear_acceleration_cov=_cov_diag(0.01),
     )
@@ -338,8 +338,8 @@ def test_filter_reports_accel_update() -> None:
     accel_update: AhrsUpdateData
     assert outputs.accel_update is not None
     accel_update = outputs.accel_update
-    assert accel_update.accepted is False
-    assert accel_update.reject_reason == "uninitialized_gravity"
-    assert accel_update.z == [0.0, 0.0, 0.0]
+    assert accel_update.accepted is True
+    assert accel_update.reject_reason is None
+    assert accel_update.z == [0.0, 0.0, -9.81]
     assert accel_update.r.rows == 3
-    assert accel_update.s.rows == 0
+    assert accel_update.s.rows == 3
