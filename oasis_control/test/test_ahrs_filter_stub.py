@@ -10,15 +10,21 @@
 
 from __future__ import annotations
 
+import math
+
 import pytest
 
 from oasis_control.localization.ahrs.ahrs_clock import AhrsClock
 from oasis_control.localization.ahrs.ahrs_config import AhrsConfig
 from oasis_control.localization.ahrs.ahrs_filter import AhrsFilter
+from oasis_control.localization.ahrs.ahrs_quat import quat_conj_wxyz
+from oasis_control.localization.ahrs.ahrs_quat import quat_rotate_wxyz
+from oasis_control.localization.ahrs.ahrs_state import AhrsNominalState
 from oasis_control.localization.ahrs.ahrs_types import AhrsEvent
 from oasis_control.localization.ahrs.ahrs_types import AhrsEventType
 from oasis_control.localization.ahrs.ahrs_types import AhrsImuPacket
 from oasis_control.localization.ahrs.ahrs_types import AhrsOutputs
+from oasis_control.localization.ahrs.ahrs_types import AhrsSe3Transform
 from oasis_control.localization.ahrs.ahrs_types import AhrsTime
 from oasis_control.localization.ahrs.ahrs_types import ImuCalibrationData
 from oasis_control.localization.ahrs.ahrs_types import ImuSample
@@ -101,11 +107,17 @@ def _mag_event_at(sec: int, nanosec: int, field_t: list[float]) -> AhrsEvent:
     )
 
 
-def _imu_event_at(sec: int, nanosec: int) -> AhrsEvent:
+def _imu_event_at_with(
+    sec: int,
+    nanosec: int,
+    *,
+    angular_velocity_rps: list[float],
+    linear_acceleration_mps2: list[float],
+) -> AhrsEvent:
     imu: ImuSample = ImuSample(
         frame_id="imu",
-        angular_velocity_rps=[0.0, 0.0, 0.0],
-        linear_acceleration_mps2=[0.0, 0.0, -9.81],
+        angular_velocity_rps=list(angular_velocity_rps),
+        linear_acceleration_mps2=list(linear_acceleration_mps2),
         angular_velocity_cov=[0.0] * 9,
         linear_acceleration_cov=[0.0] * 9,
     )
@@ -131,6 +143,15 @@ def _imu_event_at(sec: int, nanosec: int) -> AhrsEvent:
         frame_id="imu",
         event_type=AhrsEventType.IMU,
         payload=packet,
+    )
+
+
+def _imu_event_at(sec: int, nanosec: int) -> AhrsEvent:
+    return _imu_event_at_with(
+        sec,
+        nanosec,
+        angular_velocity_rps=[0.0, 0.0, 0.0],
+        linear_acceleration_mps2=[0.0, 0.0, -9.81],
     )
 
 
@@ -261,11 +282,58 @@ def test_mag_update_initializes_field_after_gravity() -> None:
     clock: FixedClock = FixedClock(now_sec=10, now_nanosec=0)
     filt: AhrsFilter = AhrsFilter(config=_config(t_buffer_sec=5.0), clock=clock)
 
-    imu_outputs: AhrsOutputs = filt.handle_event(_imu_event_at(1, 0))
+    first_outputs: AhrsOutputs = filt.handle_event(_event_at(0, 0))
+    assert first_outputs.frontier_advanced is True
+    assert filt._x is not None
+
+    state: AhrsNominalState = filt._x
+    t_bi: AhrsSe3Transform = state.t_bi
+    t_bm: AhrsSe3Transform = state.t_bm
+
+    half_sqrt: float = math.sqrt(0.5)
+    q_bi: list[float] = [half_sqrt, half_sqrt, 0.0, 0.0]
+    q_bm: list[float] = [half_sqrt, 0.0, 0.0, half_sqrt]
+
+    state.t_bi = AhrsSe3Transform(
+        parent_frame=t_bi.parent_frame,
+        child_frame=t_bi.child_frame,
+        translation_m=list(t_bi.translation_m),
+        rotation_wxyz=q_bi,
+    )
+    state.t_bm = AhrsSe3Transform(
+        parent_frame=t_bm.parent_frame,
+        child_frame=t_bm.child_frame,
+        translation_m=list(t_bm.translation_m),
+        rotation_wxyz=q_bm,
+    )
+
+    accel_body: list[float] = [0.0, 0.0, -9.81]
+    q_ib: list[float] = quat_conj_wxyz(q_bi)
+    accel_imu: list[float] = quat_rotate_wxyz(q_ib, accel_body)
+
+    imu_outputs: AhrsOutputs = filt.handle_event(
+        _imu_event_at_with(
+            1,
+            0,
+            angular_velocity_rps=[0.0, 0.0, 0.0],
+            linear_acceleration_mps2=accel_imu,
+        )
+    )
     assert imu_outputs.accel_update is not None
     assert imu_outputs.accel_update.accepted is True
+    assert imu_outputs.state is not None
+    assert any(abs(value) > 0.0 for value in imu_outputs.state.g_w_mps2)
 
-    mag_event: AhrsEvent = _mag_event_at(2, 0, [0.3, 0.1, -0.2])
+    q_wb: list[float] = list(imu_outputs.state.q_wb_wxyz)
+    q_wb_norm: float = math.sqrt(sum(value * value for value in q_wb))
+    assert q_wb_norm == pytest.approx(1.0, rel=1.0e-6, abs=1.0e-6)
+
+    magnetic_world: list[float] = [0.3, 0.1, -0.2]
+    magnetic_body: list[float] = quat_rotate_wxyz(q_wb, magnetic_world)
+    q_mb: list[float] = quat_conj_wxyz(q_bm)
+    magnetic_mag: list[float] = quat_rotate_wxyz(q_mb, magnetic_body)
+
+    mag_event: AhrsEvent = _mag_event_at(2, 0, magnetic_mag)
     mag_outputs: AhrsOutputs = filt.handle_event(mag_event)
 
     assert mag_outputs.mag_update is not None
@@ -273,3 +341,39 @@ def test_mag_update_initializes_field_after_gravity() -> None:
     assert mag_outputs.mag_update.reject_reason is None
     assert mag_outputs.state is not None
     assert any(abs(value) > 0.0 for value in mag_outputs.state.m_w_t)
+    assert all(math.isfinite(value) for value in mag_outputs.state.m_w_t)
+
+
+def test_gravity_bootstrap_rejects_when_rotating() -> None:
+    clock: FixedClock = FixedClock(now_sec=10, now_nanosec=0)
+    filt: AhrsFilter = AhrsFilter(config=_config(t_buffer_sec=5.0), clock=clock)
+
+    accel: list[float] = [0.0, 0.0, -9.81]
+    rotating_imu: AhrsOutputs = filt.handle_event(
+        _imu_event_at_with(
+            1,
+            0,
+            angular_velocity_rps=[0.0, 0.0, 1.0],
+            linear_acceleration_mps2=accel,
+        )
+    )
+
+    assert rotating_imu.accel_update is not None
+    assert rotating_imu.accel_update.accepted is False
+    assert rotating_imu.accel_update.reject_reason == "uninitialized_gravity"
+    assert filt._x is not None
+    assert all(abs(value) == 0.0 for value in filt._x.g_w_mps2)
+
+    stationary_imu: AhrsOutputs = filt.handle_event(
+        _imu_event_at_with(
+            2,
+            0,
+            angular_velocity_rps=[0.0, 0.0, 0.0],
+            linear_acceleration_mps2=accel,
+        )
+    )
+
+    assert stationary_imu.accel_update is not None
+    assert stationary_imu.accel_update.accepted is True
+    assert stationary_imu.state is not None
+    assert any(abs(value) > 0.0 for value in stationary_imu.state.g_w_mps2)
