@@ -12,23 +12,23 @@
 Magnetometer measurement update for the AHRS core
 
 Measurement model:
-    z: Magnetic field in tesla, magnetometer aligned with body for now
-    z_hat: Predicted body-frame field, R(q_wb) * m_w
+    z: Magnetic field in tesla, magnetometer frame
+    z_hat: Predicted magnetometer-frame field, R(q_wm) * m_w
     nu: Innovation nu = z - z_hat
     R: Mag measurement covariance in tesla^2, row-major 3x3
     S_hat: Predicted innovation covariance H P H^T, row-major 3x3
     S: Innovation covariance S = S_hat + R, row-major 3x3
 
 Linearization:
-    q_wb represents the world-to-body rotation. With right-multiplied
+    q_wm represents the world-to-magnetometer rotation. With right-multiplied
     error-state perturbations q_new = q_nominal ⊗ Exp(delta_theta), the
-    first-order perturbation of the predicted body vector is
+    first-order perturbation of the predicted magnetometer vector is
 
         d z_hat / d delta_theta ≈ -[z_hat]×
 
     The update supports the magnetic field error-state block with
 
-        d z_hat / d delta_m = R(q_wb)
+        d z_hat / d delta_m = R(q_wm)
 
 Direction-only mode:
     When mag_use_direction_only is enabled, the update uses unit vectors for
@@ -51,6 +51,8 @@ from oasis_control.localization.ahrs.ahrs_inject import inject_error_state
 from oasis_control.localization.ahrs.ahrs_linalg import is_finite_seq
 from oasis_control.localization.ahrs.ahrs_linalg import mat3_det
 from oasis_control.localization.ahrs.ahrs_linalg import symmetrize
+from oasis_control.localization.ahrs.ahrs_quat import quat_conj_wxyz
+from oasis_control.localization.ahrs.ahrs_quat import quat_mul_wxyz
 from oasis_control.localization.ahrs.ahrs_quat import quat_rotate_wxyz
 from oasis_control.localization.ahrs.ahrs_state import AhrsNominalState
 from oasis_control.localization.ahrs.ahrs_types import AhrsMatrix
@@ -141,10 +143,10 @@ def _unit3(v: list[float], eps: float) -> tuple[list[float], bool]:
     return _scale3(v, 1.0 / norm), True
 
 
-def _rotation_matrix_wb(q_wb_wxyz: list[float]) -> list[float]:
-    col0: Vector3 = quat_rotate_wxyz(q_wb_wxyz, [1.0, 0.0, 0.0])
-    col1: Vector3 = quat_rotate_wxyz(q_wb_wxyz, [0.0, 1.0, 0.0])
-    col2: Vector3 = quat_rotate_wxyz(q_wb_wxyz, [0.0, 0.0, 1.0])
+def _rotation_matrix_from_quat(q_wxyz: list[float]) -> list[float]:
+    col0: Vector3 = quat_rotate_wxyz(q_wxyz, [1.0, 0.0, 0.0])
+    col1: Vector3 = quat_rotate_wxyz(q_wxyz, [0.0, 1.0, 0.0])
+    col2: Vector3 = quat_rotate_wxyz(q_wxyz, [0.0, 0.0, 1.0])
     return [
         col0[0],
         col1[0],
@@ -349,7 +351,10 @@ def update_mag(
             r_cov,
         )
 
-    z_hat: list[float] = quat_rotate_wxyz(state.q_wb_wxyz, state.m_w_t)
+    q_bm: list[float] = list(state.t_bm.rotation_wxyz)
+    q_mb: list[float] = quat_conj_wxyz(q_bm)
+    q_wm: list[float] = quat_mul_wxyz(q_mb, state.q_wb_wxyz)
+    z_hat: list[float] = quat_rotate_wxyz(q_wm, state.m_w_t)
     if not is_finite_seq(z_hat):
         return (
             state,
@@ -469,10 +474,10 @@ def update_mag(
         for col in range(3):
             h[row * dim + sl_theta.start + col] = -skew_z_hat[row * 3 + col]
 
-    r_wb: list[float] = _rotation_matrix_wb(state.q_wb_wxyz)
+    r_wm: list[float] = _rotation_matrix_from_quat(q_wm)
     for row in range(3):
         for col in range(3):
-            h[row * dim + sl_m.start + col] = r_wb[row * 3 + col] * m_scale
+            h[row * dim + sl_m.start + col] = r_wm[row * 3 + col] * m_scale
 
     updated_p: list[float]
     report: AhrsUpdateData

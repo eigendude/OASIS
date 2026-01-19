@@ -103,13 +103,20 @@ def test_ahrs_predict_small_angle_exp_map_is_normalized() -> None:
 
 def test_ahrs_predict_covariance_zero_dt_returns_copy() -> None:
     layout: AhrsErrorStateLayout = AhrsErrorStateLayout()
+    state: AhrsNominalState = default_nominal_state(
+        body_frame_id="base_link",
+        imu_frame_id="imu",
+        mag_frame_id="mag",
+    )
     dim: int = layout.dim
     p: list[float] = [0.0] * (dim * dim)
     p[0] = 0.25
     p[1] = -0.1
     p[dim] = -0.1
 
-    predicted: list[float] = predict_covariance(layout, p, dt_sec=0.0, config=_config())
+    predicted: list[float] = predict_covariance(
+        layout, state, p, dt_sec=0.0, config=_config()
+    )
 
     assert predicted == p
     assert predicted is not p
@@ -117,6 +124,11 @@ def test_ahrs_predict_covariance_zero_dt_returns_copy() -> None:
 
 def test_ahrs_predict_covariance_symmetry() -> None:
     layout: AhrsErrorStateLayout = AhrsErrorStateLayout()
+    state: AhrsNominalState = default_nominal_state(
+        body_frame_id="base_link",
+        imu_frame_id="imu",
+        mag_frame_id="mag",
+    )
     dim: int = layout.dim
     p: list[float] = [0.0] * (dim * dim)
     p[0] = 1.0
@@ -124,7 +136,7 @@ def test_ahrs_predict_covariance_symmetry() -> None:
     p[dim] = 0.2
 
     predicted: list[float] = predict_covariance(
-        layout, p, dt_sec=0.5, config=_config(q_v=0.1)
+        layout, state, p, dt_sec=0.5, config=_config(q_v=0.1)
     )
 
     for r in range(dim):
@@ -134,13 +146,67 @@ def test_ahrs_predict_covariance_symmetry() -> None:
 
 def test_ahrs_predict_covariance_has_process_noise_on_expected_blocks() -> None:
     layout: AhrsErrorStateLayout = AhrsErrorStateLayout()
+    state: AhrsNominalState = default_nominal_state(
+        body_frame_id="base_link",
+        imu_frame_id="imu",
+        mag_frame_id="mag",
+    )
     dim: int = layout.dim
     p: list[float] = [0.0] * (dim * dim)
 
     predicted: list[float] = predict_covariance(
-        layout, p, dt_sec=0.5, config=_config(q_v=0.3)
+        layout, state, p, dt_sec=0.5, config=_config(q_v=0.3)
     )
 
     sl_v: slice = layout.sl_v()
     for i in range(sl_v.start, sl_v.stop):
         assert predicted[i * dim + i] > 0.0
+
+
+def test_ahrs_predict_covariance_cross_terms_from_attitude_coupling() -> None:
+    layout: AhrsErrorStateLayout = AhrsErrorStateLayout()
+    state: AhrsNominalState = default_nominal_state(
+        body_frame_id="base_link",
+        imu_frame_id="imu",
+        mag_frame_id="mag",
+    )
+    state.omega_wb_rps = [0.0, 0.0, 1.0]
+    dim: int = layout.dim
+    p: list[float] = [0.0] * (dim * dim)
+    for i in range(dim):
+        p[i * dim + i] = 0.1
+
+    predicted: list[float] = predict_covariance(
+        layout, state, p, dt_sec=0.5, config=_config()
+    )
+
+    sl_theta: slice = layout.sl_theta()
+    sl_omega: slice = layout.sl_omega()
+    idx_theta_omega: int = (sl_theta.start + 0) * dim + (sl_omega.start + 0)
+    assert abs(predicted[idx_theta_omega]) > 0.0
+
+    sl_bg: slice = layout.sl_bg()
+    idx_theta_bg: int = (sl_theta.start + 0) * dim + (sl_bg.start + 0)
+    assert abs(predicted[idx_theta_bg]) > 0.0
+
+
+def test_ahrs_predict_covariance_grows_with_process_noise() -> None:
+    layout: AhrsErrorStateLayout = AhrsErrorStateLayout()
+    state: AhrsNominalState = default_nominal_state(
+        body_frame_id="base_link",
+        imu_frame_id="imu",
+        mag_frame_id="mag",
+    )
+    dim: int = layout.dim
+    p: list[float] = [0.0] * (dim * dim)
+
+    predicted_no_noise: list[float] = predict_covariance(
+        layout, state, p, dt_sec=0.25, config=_config(q_v=0.0)
+    )
+    predicted_with_noise: list[float] = predict_covariance(
+        layout, state, p, dt_sec=0.25, config=_config(q_v=0.2)
+    )
+
+    sl_v: slice = layout.sl_v()
+    diag_index: int = sl_v.start * dim + sl_v.start
+    assert predicted_with_noise[diag_index] > predicted_no_noise[diag_index]
