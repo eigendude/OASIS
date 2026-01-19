@@ -14,9 +14,9 @@ import math
 
 from oasis_control.localization.ahrs.ahrs_config import AhrsConfig
 from oasis_control.localization.ahrs.ahrs_error_state import AhrsErrorStateLayout
-from oasis_control.localization.ahrs.ahrs_predict import _quat_from_rotvec
 from oasis_control.localization.ahrs.ahrs_predict import predict_covariance
 from oasis_control.localization.ahrs.ahrs_predict import predict_nominal
+from oasis_control.localization.ahrs.ahrs_quat import quat_from_rotvec_wxyz
 from oasis_control.localization.ahrs.ahrs_state import AhrsNominalState
 from oasis_control.localization.ahrs.ahrs_state import default_nominal_state
 
@@ -91,7 +91,7 @@ def test_ahrs_predict_quaternion_small_angle_normalized() -> None:
 
 
 def test_ahrs_predict_small_angle_exp_map_is_normalized() -> None:
-    dq_wb: list[float] = _quat_from_rotvec([1.0e-15, 0.0, 0.0])
+    dq_wb: list[float] = quat_from_rotvec_wxyz([1.0e-15, 0.0, 0.0])
 
     norm: float = math.sqrt(sum(value * value for value in dq_wb))
     assert math.isclose(norm, 1.0, rel_tol=0.0, abs_tol=1.0e-15)

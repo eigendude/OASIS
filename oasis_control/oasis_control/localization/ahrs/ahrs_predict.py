@@ -24,95 +24,16 @@ Quaternion conventions:
 
 from __future__ import annotations
 
-import math
-
 from oasis_control.localization.ahrs.ahrs_config import AhrsConfig
 from oasis_control.localization.ahrs.ahrs_error_state import AhrsErrorStateLayout
 from oasis_control.localization.ahrs.ahrs_linalg import mat_add
 from oasis_control.localization.ahrs.ahrs_linalg import mat_mul
 from oasis_control.localization.ahrs.ahrs_linalg import mat_transpose
 from oasis_control.localization.ahrs.ahrs_linalg import symmetrize
+from oasis_control.localization.ahrs.ahrs_quat import quat_from_rotvec_wxyz
+from oasis_control.localization.ahrs.ahrs_quat import quat_mul_wxyz
+from oasis_control.localization.ahrs.ahrs_quat import quat_normalize_wxyz
 from oasis_control.localization.ahrs.ahrs_state import AhrsNominalState
-
-
-def _quat_mul(q_left: list[float], q_right: list[float]) -> list[float]:
-    """
-    Multiply two quaternions in wxyz order
-    """
-
-    w1: float = q_left[0]
-    x1: float = q_left[1]
-    y1: float = q_left[2]
-    z1: float = q_left[3]
-
-    w2: float = q_right[0]
-    x2: float = q_right[1]
-    y2: float = q_right[2]
-    z2: float = q_right[3]
-
-    return [
-        w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
-        w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
-        w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
-        w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
-    ]
-
-
-def _quat_normalize(q_wxyz: list[float]) -> list[float]:
-    """
-    Normalize a quaternion in wxyz order
-    """
-
-    norm: float = math.sqrt(
-        q_wxyz[0] * q_wxyz[0]
-        + q_wxyz[1] * q_wxyz[1]
-        + q_wxyz[2] * q_wxyz[2]
-        + q_wxyz[3] * q_wxyz[3]
-    )
-    if norm <= 0.0:
-        raise ValueError("Quaternion norm must be positive")
-    inv: float = 1.0 / norm
-    return [
-        q_wxyz[0] * inv,
-        q_wxyz[1] * inv,
-        q_wxyz[2] * inv,
-        q_wxyz[3] * inv,
-    ]
-
-
-def _quat_from_rotvec(rotvec: list[float]) -> list[float]:
-    """
-    Build a quaternion from a rotation vector using Exp(omega * dt)
-
-    The rotation vector magnitude is the rotation angle in radians. For small
-    angles, the series expansion keeps the result numerically stable. The
-    small-angle branch can drift slightly from unit length, so we normalize the
-    result before returning it.
-    """
-
-    rx: float = rotvec[0]
-    ry: float = rotvec[1]
-    rz: float = rotvec[2]
-    angle: float = math.sqrt(rx * rx + ry * ry + rz * rz)
-
-    # Rotation magnitude threshold in rad for small-angle series
-    small_angle_rad: float = 1.0e-12
-
-    if angle < small_angle_rad:
-        # Small-angle approximation for sin(theta/2) ~= theta/2
-        dq_wb: list[float] = [1.0, 0.5 * rx, 0.5 * ry, 0.5 * rz]
-        return _quat_normalize(dq_wb)
-
-    # Half-angle term used in quaternion exponential
-    half_angle: float = 0.5 * angle
-    sin_half: float = math.sin(half_angle)
-    inv_angle: float = 1.0 / angle
-    return [
-        math.cos(half_angle),
-        rx * inv_angle * sin_half,
-        ry * inv_angle * sin_half,
-        rz * inv_angle * sin_half,
-    ]
 
 
 def predict_nominal(state: AhrsNominalState, dt_sec: float) -> AhrsNominalState:
@@ -157,9 +78,9 @@ def predict_nominal(state: AhrsNominalState, dt_sec: float) -> AhrsNominalState:
         state.omega_wb_rps[1] * dt_sec,
         state.omega_wb_rps[2] * dt_sec,
     ]
-    dq_wb: list[float] = _quat_from_rotvec(rotvec)
+    dq_wb: list[float] = quat_from_rotvec_wxyz(rotvec)
     # Normalize after composition to remove any residual numerical drift
-    q_wb_wxyz: list[float] = _quat_normalize(_quat_mul(state.q_wb_wxyz, dq_wb))
+    q_wb_wxyz: list[float] = quat_normalize_wxyz(quat_mul_wxyz(state.q_wb_wxyz, dq_wb))
 
     return AhrsNominalState(
         p_wb_m=p_wb_m,
