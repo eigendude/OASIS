@@ -36,6 +36,23 @@ from oasis_control.localization.ahrs.ahrs_quat import quat_normalize_wxyz
 from oasis_control.localization.ahrs.ahrs_state import AhrsNominalState
 
 
+def _skew(v: list[float]) -> list[float]:
+    vx: float = v[0]
+    vy: float = v[1]
+    vz: float = v[2]
+    return [
+        0.0,
+        -vz,
+        vy,
+        vz,
+        0.0,
+        -vx,
+        -vy,
+        vx,
+        0.0,
+    ]
+
+
 def predict_nominal(state: AhrsNominalState, dt_sec: float) -> AhrsNominalState:
     """
     Propagate the nominal AHRS state forward in time
@@ -115,6 +132,7 @@ def _add_isotropic_noise(
 
 def predict_covariance(
     layout: AhrsErrorStateLayout,
+    state: AhrsNominalState,
     p: list[float],
     dt_sec: float,
     config: AhrsConfig,
@@ -145,13 +163,23 @@ def predict_covariance(
     sl_v: slice = layout.sl_v()
     sl_theta: slice = layout.sl_theta()
     sl_omega: slice = layout.sl_omega()
+    sl_bg: slice = layout.sl_bg()
     sl_g: slice = layout.sl_g()
 
-    # Minimal model: p <- v, v <- g, theta <- omega, coupling deferred
+    # Linearized error-state dynamics
     for i in range(3):
         f[(sl_p.start + i) * dim + (sl_v.start + i)] += dt_sec
         f[(sl_v.start + i) * dim + (sl_g.start + i)] += dt_sec
         f[(sl_theta.start + i) * dim + (sl_omega.start + i)] += dt_sec
+        f[(sl_theta.start + i) * dim + (sl_bg.start + i)] += -dt_sec
+
+    # rad/s, nominal angular rate used for first-order attitude coupling
+    skew_omega: list[float] = _skew(state.omega_wb_rps)
+    for row in range(3):
+        for col in range(3):
+            f[(sl_theta.start + row) * dim + (sl_theta.start + col)] += (
+                -skew_omega[row * 3 + col] * dt_sec
+            )
 
     temp: list[float] = mat_mul(f, dim, dim, p, dim, dim)
     f_t: list[float] = mat_transpose(f, dim, dim)
@@ -184,5 +212,5 @@ def predict_step(
     """
 
     x_next: AhrsNominalState = predict_nominal(state, dt_sec)
-    p_next: list[float] = predict_covariance(layout, p, dt_sec, config)
+    p_next: list[float] = predict_covariance(layout, state, p, dt_sec, config)
     return x_next, p_next

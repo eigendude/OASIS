@@ -16,13 +16,16 @@ from oasis_control.localization.ahrs.ahrs_clock import AhrsClock
 from oasis_control.localization.ahrs.ahrs_config import AhrsConfig
 from oasis_control.localization.ahrs.ahrs_error_state import AhrsErrorStateLayout
 from oasis_control.localization.ahrs.ahrs_filter import AhrsFilter
+from oasis_control.localization.ahrs.ahrs_quat import quat_conj_wxyz
 from oasis_control.localization.ahrs.ahrs_quat import quat_from_rotvec_wxyz
+from oasis_control.localization.ahrs.ahrs_quat import quat_rotate_wxyz
 from oasis_control.localization.ahrs.ahrs_state import AhrsNominalState
 from oasis_control.localization.ahrs.ahrs_state import default_nominal_state
 from oasis_control.localization.ahrs.ahrs_types import AhrsEvent
 from oasis_control.localization.ahrs.ahrs_types import AhrsEventType
 from oasis_control.localization.ahrs.ahrs_types import AhrsImuPacket
 from oasis_control.localization.ahrs.ahrs_types import AhrsOutputs
+from oasis_control.localization.ahrs.ahrs_types import AhrsSe3Transform
 from oasis_control.localization.ahrs.ahrs_types import AhrsTime
 from oasis_control.localization.ahrs.ahrs_types import AhrsUpdateData
 from oasis_control.localization.ahrs.ahrs_types import ImuCalibrationData
@@ -175,6 +178,105 @@ def test_accel_update_adjusts_attitude_for_misaligned_gravity() -> None:
     norm: float = math.sqrt(sum(value * value for value in updated_state.q_wb_wxyz))
     assert math.isclose(norm, 1.0, rel_tol=0.0, abs_tol=1.0e-9)
     assert updated_p != p
+
+
+def test_accel_update_handles_extrinsic_rotation() -> None:
+    layout: AhrsErrorStateLayout = AhrsErrorStateLayout()
+    state: AhrsNominalState = default_nominal_state(
+        body_frame_id="base_link",
+        imu_frame_id="imu",
+        mag_frame_id="mag",
+    )
+    state.g_w_mps2 = [0.0, 0.0, -9.81]
+    q_bi: list[float] = quat_from_rotvec_wxyz([0.0, math.pi / 2.0, 0.0])
+    state.t_bi = AhrsSe3Transform(
+        parent_frame="base_link",
+        child_frame="imu",
+        translation_m=[0.0, 0.0, 0.0],
+        rotation_wxyz=q_bi,
+    )
+    p: list[float] = _initial_covariance(layout, value=0.1)
+
+    q_ib: list[float] = quat_conj_wxyz(q_bi)
+    g_body: list[float] = quat_rotate_wxyz(state.q_wb_wxyz, state.g_w_mps2)
+    z_imu: list[float] = quat_rotate_wxyz(q_ib, g_body)
+    imu: ImuSample = ImuSample(
+        frame_id="imu",
+        angular_velocity_rps=[0.0, 0.0, 0.0],
+        linear_acceleration_mps2=z_imu,
+        angular_velocity_cov=[0.0] * 9,
+        linear_acceleration_cov=_cov_diag(0.01),
+    )
+
+    updated_state: AhrsNominalState
+    updated_p: list[float]
+    update_report: AhrsUpdateData
+    updated_state, updated_p, update_report = update_accel(
+        layout,
+        state,
+        p,
+        imu,
+        _config(accel_gate_d2_threshold=9.0),
+        frame_id="imu",
+        t_meas=AhrsTime(sec=1, nanosec=0),
+    )
+
+    assert update_report.accepted is True
+    assert all(
+        math.isclose(value, 0.0, rel_tol=0.0, abs_tol=1.0e-9)
+        for value in update_report.nu
+    )
+    assert updated_state.q_wb_wxyz == state.q_wb_wxyz
+    assert updated_p != p
+
+
+def test_accel_update_corrects_attitude_with_extrinsic_rotation() -> None:
+    layout: AhrsErrorStateLayout = AhrsErrorStateLayout()
+    state: AhrsNominalState = default_nominal_state(
+        body_frame_id="base_link",
+        imu_frame_id="imu",
+        mag_frame_id="mag",
+    )
+    state.g_w_mps2 = [0.0, 0.0, -9.81]
+    state.q_wb_wxyz = quat_from_rotvec_wxyz([0.1, 0.0, 0.0])
+    q_bi: list[float] = quat_from_rotvec_wxyz([0.0, math.pi / 2.0, 0.0])
+    state.t_bi = AhrsSe3Transform(
+        parent_frame="base_link",
+        child_frame="imu",
+        translation_m=[0.0, 0.0, 0.0],
+        rotation_wxyz=q_bi,
+    )
+    p: list[float] = _initial_covariance(layout, value=0.1)
+
+    q_ib: list[float] = quat_conj_wxyz(q_bi)
+    z_imu: list[float] = quat_rotate_wxyz(q_ib, state.g_w_mps2)
+    imu: ImuSample = ImuSample(
+        frame_id="imu",
+        angular_velocity_rps=[0.0, 0.0, 0.0],
+        linear_acceleration_mps2=z_imu,
+        angular_velocity_cov=[0.0] * 9,
+        linear_acceleration_cov=_cov_diag(0.01),
+    )
+
+    updated_state: AhrsNominalState
+    updated_p: list[float]
+    update_report: AhrsUpdateData
+    updated_state, updated_p, update_report = update_accel(
+        layout,
+        state,
+        p,
+        imu,
+        _config(accel_gate_d2_threshold=9.0),
+        frame_id="imu",
+        t_meas=AhrsTime(sec=1, nanosec=0),
+    )
+
+    assert update_report.accepted is True
+    quat_delta: float = sum(
+        abs(a - b)
+        for a, b in zip(updated_state.q_wb_wxyz, state.q_wb_wxyz, strict=True)
+    )
+    assert quat_delta > 1.0e-6
 
 
 def test_accel_update_rejects_large_innovation() -> None:

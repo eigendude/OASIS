@@ -14,8 +14,12 @@ import math
 
 from oasis_control.localization.ahrs.ahrs_config import AhrsConfig
 from oasis_control.localization.ahrs.ahrs_error_state import AhrsErrorStateLayout
+from oasis_control.localization.ahrs.ahrs_quat import quat_conj_wxyz
+from oasis_control.localization.ahrs.ahrs_quat import quat_from_rotvec_wxyz
+from oasis_control.localization.ahrs.ahrs_quat import quat_rotate_wxyz
 from oasis_control.localization.ahrs.ahrs_state import AhrsNominalState
 from oasis_control.localization.ahrs.ahrs_state import default_nominal_state
+from oasis_control.localization.ahrs.ahrs_types import AhrsSe3Transform
 from oasis_control.localization.ahrs.ahrs_types import AhrsTime
 from oasis_control.localization.ahrs.ahrs_types import AhrsUpdateData
 from oasis_control.localization.ahrs.ahrs_types import MagSample
@@ -148,6 +152,101 @@ def test_mag_update_rejects_large_innovation() -> None:
     assert update_report.reject_reason == "mahalanobis_gate"
     assert updated_state == state
     assert updated_p == p
+
+
+def test_mag_update_handles_extrinsic_rotation() -> None:
+    layout: AhrsErrorStateLayout = AhrsErrorStateLayout()
+    state: AhrsNominalState = default_nominal_state(
+        body_frame_id="base_link",
+        imu_frame_id="imu",
+        mag_frame_id="mag",
+    )
+    state.m_w_t = [0.2, -0.1, 0.05]
+    q_bm: list[float] = quat_from_rotvec_wxyz([0.0, 0.0, math.pi / 2.0])
+    state.t_bm = AhrsSe3Transform(
+        parent_frame="base_link",
+        child_frame="mag",
+        translation_m=[0.0, 0.0, 0.0],
+        rotation_wxyz=q_bm,
+    )
+    p: list[float] = _initial_covariance(layout, value=0.1)
+
+    q_mb: list[float] = quat_conj_wxyz(q_bm)
+    m_body: list[float] = quat_rotate_wxyz(state.q_wb_wxyz, state.m_w_t)
+    z_mag: list[float] = quat_rotate_wxyz(q_mb, m_body)
+    mag: MagSample = MagSample(
+        frame_id="mag",
+        magnetic_field_t=z_mag,
+        magnetic_field_cov=_cov_diag(0.01),
+    )
+
+    updated_state: AhrsNominalState
+    updated_p: list[float]
+    update_report: AhrsUpdateData
+    updated_state, updated_p, update_report, _ = update_mag(
+        layout,
+        state,
+        p,
+        mag,
+        _config(mag_gate_d2_threshold=9.0),
+        frame_id="mag",
+        t_meas=AhrsTime(sec=1, nanosec=0),
+    )
+
+    assert update_report.accepted is True
+    assert all(
+        math.isclose(value, 0.0, rel_tol=0.0, abs_tol=1.0e-9)
+        for value in update_report.nu
+    )
+    assert updated_state.q_wb_wxyz == state.q_wb_wxyz
+    assert updated_p != p
+
+
+def test_mag_update_corrects_attitude_with_extrinsic_rotation() -> None:
+    layout: AhrsErrorStateLayout = AhrsErrorStateLayout()
+    state: AhrsNominalState = default_nominal_state(
+        body_frame_id="base_link",
+        imu_frame_id="imu",
+        mag_frame_id="mag",
+    )
+    state.m_w_t = [0.2, -0.1, 0.05]
+    state.q_wb_wxyz = quat_from_rotvec_wxyz([0.0, 0.0, 0.1])
+    q_bm: list[float] = quat_from_rotvec_wxyz([0.0, 0.0, math.pi / 2.0])
+    state.t_bm = AhrsSe3Transform(
+        parent_frame="base_link",
+        child_frame="mag",
+        translation_m=[0.0, 0.0, 0.0],
+        rotation_wxyz=q_bm,
+    )
+    p: list[float] = _initial_covariance(layout, value=0.1)
+
+    q_mb: list[float] = quat_conj_wxyz(q_bm)
+    z_mag: list[float] = quat_rotate_wxyz(q_mb, state.m_w_t)
+    mag: MagSample = MagSample(
+        frame_id="mag",
+        magnetic_field_t=z_mag,
+        magnetic_field_cov=_cov_diag(0.01),
+    )
+
+    updated_state: AhrsNominalState
+    updated_p: list[float]
+    update_report: AhrsUpdateData
+    updated_state, updated_p, update_report, _ = update_mag(
+        layout,
+        state,
+        p,
+        mag,
+        _config(mag_gate_d2_threshold=9.0),
+        frame_id="mag",
+        t_meas=AhrsTime(sec=1, nanosec=0),
+    )
+
+    assert update_report.accepted is True
+    quat_delta: float = sum(
+        abs(a - b)
+        for a, b in zip(updated_state.q_wb_wxyz, state.q_wb_wxyz, strict=True)
+    )
+    assert quat_delta > 1.0e-6
 
 
 def test_mag_update_direction_only_handles_magnitude_mismatch() -> None:
