@@ -185,3 +185,133 @@ def test_mag_update_direction_only_handles_magnitude_mismatch() -> None:
     )
     assert updated_state.q_wb_wxyz == state.q_wb_wxyz
     assert updated_p != p
+
+
+def test_mag_update_rejects_uninitialized_field_and_preserves_covariance() -> None:
+    layout: AhrsErrorStateLayout = AhrsErrorStateLayout()
+    state: AhrsNominalState = default_nominal_state(
+        body_frame_id="base_link",
+        imu_frame_id="imu",
+        mag_frame_id="mag",
+    )
+    state.m_w_t = [0.0, 0.0, 0.0]
+    p: list[float] = _initial_covariance(layout, value=0.1)
+    r_raw: list[float] = _cov_diag(0.02)
+    mag: MagSample = MagSample(
+        frame_id="mag",
+        magnetic_field_t=[0.1, 0.0, -0.2],
+        magnetic_field_cov=r_raw,
+    )
+
+    updated_state: AhrsNominalState
+    updated_p: list[float]
+    update_report: AhrsUpdateData
+    r_next: list[float]
+    updated_state, updated_p, update_report, r_next = update_mag(
+        layout,
+        state,
+        p,
+        mag,
+        _config(mag_gate_d2_threshold=9.0),
+        frame_id="mag",
+        t_meas=AhrsTime(sec=1, nanosec=0),
+    )
+
+    assert update_report.accepted is False
+    assert update_report.reject_reason == "uninitialized_magnetic_field"
+    assert updated_state == state
+    assert updated_p == p
+    assert update_report.r.data == r_raw
+    assert r_next[0] > 0.0
+    assert r_next[4] > 0.0
+    assert r_next[8] > 0.0
+    assert math.isclose(r_next[1], r_next[3], rel_tol=0.0, abs_tol=1.0e-9)
+    assert math.isclose(r_next[2], r_next[6], rel_tol=0.0, abs_tol=1.0e-9)
+    assert math.isclose(r_next[5], r_next[7], rel_tol=0.0, abs_tol=1.0e-9)
+
+
+def test_mag_update_prefers_r_state_over_raw_covariance() -> None:
+    layout: AhrsErrorStateLayout = AhrsErrorStateLayout()
+    state: AhrsNominalState = default_nominal_state(
+        body_frame_id="base_link",
+        imu_frame_id="imu",
+        mag_frame_id="mag",
+    )
+    state.m_w_t = [0.3, 0.0, 0.0]
+    p: list[float] = _initial_covariance(layout, value=0.1)
+    mag: MagSample = MagSample(
+        frame_id="mag",
+        magnetic_field_t=[0.3, 0.0, 0.0],
+        magnetic_field_cov=_cov_diag(9.999),
+    )
+    r_state: list[float] = _cov_diag(0.123)
+
+    updated_state: AhrsNominalState
+    updated_p: list[float]
+    update_report: AhrsUpdateData
+    updated_state, updated_p, update_report, _ = update_mag(
+        layout,
+        state,
+        p,
+        mag,
+        _config(mag_gate_d2_threshold=9.0, mag_use_direction_only=True),
+        frame_id="mag",
+        t_meas=AhrsTime(sec=1, nanosec=0),
+        r_state=r_state,
+    )
+
+    r_scale: float = 1.0 / (0.3 * 0.3)
+    expected_r: list[float] = [value * r_scale for value in r_state]
+    assert update_report.accepted is True
+    assert updated_state.q_wb_wxyz == state.q_wb_wxyz
+    assert updated_p != p
+    assert all(
+        math.isclose(value, expected_r[index], rel_tol=0.0, abs_tol=1.0e-9)
+        for index, value in enumerate(update_report.r.data)
+    )
+
+
+def test_mag_update_rejects_non_spd_covariance() -> None:
+    layout: AhrsErrorStateLayout = AhrsErrorStateLayout()
+    state: AhrsNominalState = default_nominal_state(
+        body_frame_id="base_link",
+        imu_frame_id="imu",
+        mag_frame_id="mag",
+    )
+    state.m_w_t = [0.4, 0.1, -0.1]
+    p: list[float] = _initial_covariance(layout, value=0.1)
+    r_raw: list[float] = [
+        1.0,
+        2.0,
+        0.0,
+        2.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+    ]
+    mag: MagSample = MagSample(
+        frame_id="mag",
+        magnetic_field_t=[0.4, 0.1, -0.1],
+        magnetic_field_cov=r_raw,
+    )
+    config: AhrsConfig = _config(mag_gate_d2_threshold=9.0)
+
+    updated_state: AhrsNominalState
+    updated_p: list[float]
+    update_report: AhrsUpdateData
+    updated_state, updated_p, update_report, _ = update_mag(
+        layout,
+        state,
+        p,
+        mag,
+        config,
+        frame_id="mag",
+        t_meas=AhrsTime(sec=1, nanosec=0),
+    )
+
+    assert update_report.accepted is True
+    assert updated_state.q_wb_wxyz == state.q_wb_wxyz
+    assert updated_p != p
+    assert update_report.r.data == config.mag_r0

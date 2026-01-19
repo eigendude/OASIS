@@ -33,7 +33,7 @@ Linearization:
 Direction-only mode:
     When mag_use_direction_only is enabled, the update uses unit vectors for
     z and z_hat. The covariance is scaled by 1 / |z|^2 and the field Jacobian
-    is scaled by 1 / |m_w| to approximate the unit-vector normalization
+    is scaled by 1 / |z_hat| to approximate the unit-vector normalization
 
 Gating:
     Mahalanobis distance d^2 = nu^T S^{-1} nu is compared against the
@@ -50,7 +50,6 @@ from oasis_control.localization.ahrs.ahrs_error_state import AhrsErrorStateLayou
 from oasis_control.localization.ahrs.ahrs_inject import inject_error_state
 from oasis_control.localization.ahrs.ahrs_linalg import is_finite_seq
 from oasis_control.localization.ahrs.ahrs_linalg import mat3_det
-from oasis_control.localization.ahrs.ahrs_linalg import mat3_inv
 from oasis_control.localization.ahrs.ahrs_linalg import symmetrize
 from oasis_control.localization.ahrs.ahrs_quat import quat_rotate_wxyz
 from oasis_control.localization.ahrs.ahrs_state import AhrsNominalState
@@ -185,14 +184,18 @@ def _is_valid_covariance(matrix: list[float]) -> bool:
     for i in range(9):
         if abs(symmetric[i] - matrix[i]) > 1.0e-9:
             return False
-    if symmetric[0] <= 0.0 or symmetric[4] <= 0.0 or symmetric[8] <= 0.0:
+    a00: float = symmetric[0]
+    a01: float = symmetric[1]
+    a10: float = symmetric[3]
+    a11: float = symmetric[4]
+
+    if a00 <= 0.0:
+        return False
+    det2: float = a00 * a11 - a01 * a10
+    if det2 <= 0.0:
         return False
     det: float = mat3_det(symmetric)
     if det <= 0.0:
-        return False
-    try:
-        mat3_inv(symmetric)
-    except ValueError:
         return False
     return True
 
@@ -279,8 +282,10 @@ def update_mag(
 
     z: list[float] = list(mag.magnetic_field_t)
     r_raw: list[float] = list(mag.magnetic_field_cov)
+    r_next: list[float]
 
     if len(z) != 3 or len(r_raw) != 9:
+        r_next = _select_mag_covariance(r_state, r_raw, config.mag_r0)
         return (
             state,
             list(p),
@@ -291,16 +296,17 @@ def update_mag(
                 z=[],
                 z_hat=[],
                 nu=[],
-                r=_empty_matrix(),
+                r=_matrix3(r_next),
                 s_hat=_empty_matrix(),
                 s=_empty_matrix(),
                 maha_d2=0.0,
                 gate_threshold=config.mag_gate_d2_threshold,
             ),
-            list(r_state) if r_state is not None else [0.0] * 9,
+            r_next,
         )
 
     if not is_finite_seq(z) or not is_finite_seq(r_raw):
+        r_next = _select_mag_covariance(r_state, r_raw, config.mag_r0)
         return (
             state,
             list(p),
@@ -311,13 +317,13 @@ def update_mag(
                 z=list(z),
                 z_hat=[],
                 nu=[],
-                r=_matrix3(r_raw),
+                r=_matrix3(r_next),
                 s_hat=_empty_matrix(),
                 s=_empty_matrix(),
                 maha_d2=0.0,
                 gate_threshold=config.mag_gate_d2_threshold,
             ),
-            list(r_state) if r_state is not None else [0.0] * 9,
+            r_next,
         )
 
     m_norm: float = _norm3(state.m_w_t)
@@ -491,7 +497,7 @@ def update_mag(
 
     updated_state: AhrsNominalState = inject_error_state(layout, state, delta_x)
 
-    r_next: list[float] = r_cov
+    r_next = r_cov
     if report.s_hat.rows == 3 and report.s_hat.cols == 3:
         s_hat: list[float] = list(report.s_hat.data)
         r_next = _update_mag_covariance(r_cov, nu=nu, s_hat=s_hat, config=config)
