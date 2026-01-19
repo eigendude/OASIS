@@ -14,7 +14,7 @@ Gyro measurement update for the AHRS core
 Measurement model:
     z: Gyro angular velocity in rad/s, IMU frame assumed aligned with body
        and body frame for this update
-    z_hat: Predicted angular velocity from omega_wb_rps in the nominal state
+    z_hat: Predicted angular velocity from omega_wb_rps plus gyro bias
     nu: Innovation nu = z - z_hat
     R: Gyro measurement covariance in (rad/s)^2, row-major 3x3
     S_hat: Predicted innovation covariance H P H^T, row-major 3x3
@@ -25,45 +25,24 @@ Gating:
     configured gyro_gate_d2_threshold
 
 Error-state mapping:
-    The gyro update uses only the omega error-state block at layout.sl_omega
-    This v1 update corrects omega_wb_rps and the omega covariance block only
-    Cross-covariances are left unchanged and should be updated in a future
-    full-state correction pass
+    The gyro update uses omega and gyro-bias error-state blocks. The update
+    applies a full-state Joseph covariance update and injects the resulting
+    correction into the nominal state.
 """
 
 from __future__ import annotations
 
 from oasis_control.localization.ahrs.ahrs_config import AhrsConfig
 from oasis_control.localization.ahrs.ahrs_error_state import AhrsErrorStateLayout
-from oasis_control.localization.ahrs.ahrs_linalg import innovation_covariance
+from oasis_control.localization.ahrs.ahrs_inject import inject_error_state
 from oasis_control.localization.ahrs.ahrs_linalg import is_finite_seq
-from oasis_control.localization.ahrs.ahrs_linalg import mahalanobis_d2_3
-from oasis_control.localization.ahrs.ahrs_linalg import mat3_inv
-from oasis_control.localization.ahrs.ahrs_linalg import mat_mul
-from oasis_control.localization.ahrs.ahrs_linalg import mat_transpose
-from oasis_control.localization.ahrs.ahrs_linalg import mat_vec_mul
 from oasis_control.localization.ahrs.ahrs_linalg import symmetrize
 from oasis_control.localization.ahrs.ahrs_state import AhrsNominalState
 from oasis_control.localization.ahrs.ahrs_types import AhrsMatrix
 from oasis_control.localization.ahrs.ahrs_types import AhrsTime
 from oasis_control.localization.ahrs.ahrs_types import AhrsUpdateData
 from oasis_control.localization.ahrs.ahrs_types import ImuSample
-
-
-def _copy_state(state: AhrsNominalState) -> AhrsNominalState:
-    return AhrsNominalState(
-        p_wb_m=list(state.p_wb_m),
-        v_wb_mps=list(state.v_wb_mps),
-        q_wb_wxyz=list(state.q_wb_wxyz),
-        omega_wb_rps=list(state.omega_wb_rps),
-        b_g_rps=list(state.b_g_rps),
-        b_a_mps2=list(state.b_a_mps2),
-        a_a=list(state.a_a),
-        t_bi=state.t_bi,
-        t_bm=state.t_bm,
-        g_w_mps2=list(state.g_w_mps2),
-        m_w_t=list(state.m_w_t),
-    )
+from oasis_control.localization.ahrs.ahrs_update_core import kalman_update
 
 
 def _empty_matrix() -> AhrsMatrix:
@@ -72,40 +51,6 @@ def _empty_matrix() -> AhrsMatrix:
 
 def _matrix3(data: list[float]) -> AhrsMatrix:
     return AhrsMatrix(rows=3, cols=3, data=list(data))
-
-
-def _extract_block(
-    p: list[float], dim: int, sl_rows: slice, sl_cols: slice
-) -> list[float]:
-    rows: int = sl_rows.stop - sl_rows.start
-    cols: int = sl_cols.stop - sl_cols.start
-    if rows != 3 or cols != 3:
-        raise ValueError("gyro update expects a 3x3 block")
-    block: list[float] = [0.0] * (rows * cols)
-    for r in range(rows):
-        row_idx: int = sl_rows.start + r
-        base: int = row_idx * dim + sl_cols.start
-        for c in range(cols):
-            block[r * cols + c] = p[base + c]
-    return block
-
-
-def _set_block(
-    p: list[float],
-    dim: int,
-    sl_rows: slice,
-    sl_cols: slice,
-    block: list[float],
-) -> None:
-    rows: int = sl_rows.stop - sl_rows.start
-    cols: int = sl_cols.stop - sl_cols.start
-    if len(block) != rows * cols:
-        raise ValueError("block size does not match slice dimensions")
-    for r in range(rows):
-        row_idx: int = sl_rows.start + r
-        base: int = row_idx * dim + sl_cols.start
-        for c in range(cols):
-            p[base + c] = block[r * cols + c]
 
 
 def _build_reject_report(
@@ -198,7 +143,11 @@ def update_gyro(
             ),
         )
 
-    z_hat: list[float] = list(state.omega_wb_rps)
+    z_hat: list[float] = [
+        state.omega_wb_rps[0] + state.b_g_rps[0],
+        state.omega_wb_rps[1] + state.b_g_rps[1],
+        state.omega_wb_rps[2] + state.b_g_rps[2],
+    ]
     nu: list[float] = [
         z[0] - z_hat[0],
         z[1] - z_hat[1],
@@ -225,144 +174,34 @@ def update_gyro(
         )
 
     sl_omega: slice = layout.sl_omega()
-    s_hat_raw: list[float] = _extract_block(p, dim, sl_omega, sl_omega)
-    s_hat: list[float] = symmetrize(s_hat_raw, 3)
+    sl_bg: slice = layout.sl_bg()
+    h: list[float] = [0.0] * (3 * dim)
+    for i in range(3):
+        h[i * dim + sl_omega.start + i] = 1.0
+        h[i * dim + sl_bg.start + i] = 1.0
+
     r: list[float] = symmetrize(r_raw, 3)
-    s: list[float] = innovation_covariance(s_hat, r)
-    s = symmetrize(s, 3)
 
-    maha_d2: float
-    try:
-        maha_d2 = mahalanobis_d2_3(nu, s)
-    except ValueError:
-        return (
-            state,
-            list(p),
-            _build_reject_report(
-                frame_id=frame_id,
-                t_meas=t_meas,
-                reason="singular_innovation_covariance",
-                z=list(z),
-                z_hat=list(z_hat),
-                nu=list(nu),
-                r=_matrix3(r),
-                s_hat=_matrix3(s_hat),
-                s=_matrix3(s),
-                maha_d2=0.0,
-                gate_threshold=config.gyro_gate_d2_threshold,
-            ),
-        )
-
-    gate_threshold: float = config.gyro_gate_d2_threshold
-    if gate_threshold > 0.0 and maha_d2 > gate_threshold:
-        return (
-            state,
-            list(p),
-            _build_reject_report(
-                frame_id=frame_id,
-                t_meas=t_meas,
-                reason="mahalanobis_gate",
-                z=list(z),
-                z_hat=list(z_hat),
-                nu=list(nu),
-                r=_matrix3(r),
-                s_hat=_matrix3(s_hat),
-                s=_matrix3(s),
-                maha_d2=maha_d2,
-                gate_threshold=gate_threshold,
-            ),
-        )
-
-    s_inv: list[float]
-    try:
-        s_inv = mat3_inv(s)
-    except ValueError:
-        return (
-            state,
-            list(p),
-            _build_reject_report(
-                frame_id=frame_id,
-                t_meas=t_meas,
-                reason="singular_innovation_covariance",
-                z=list(z),
-                z_hat=list(z_hat),
-                nu=list(nu),
-                r=_matrix3(r),
-                s_hat=_matrix3(s_hat),
-                s=_matrix3(s),
-                maha_d2=maha_d2,
-                gate_threshold=gate_threshold,
-            ),
-        )
-
-    k: list[float] = mat_mul(s_hat, 3, 3, s_inv, 3, 3)
-    delta_omega: list[float] = mat_vec_mul(k, 3, 3, nu)
-
-    updated_state: AhrsNominalState = _copy_state(state)
-    updated_state.omega_wb_rps = [
-        state.omega_wb_rps[0] + delta_omega[0],
-        state.omega_wb_rps[1] + delta_omega[1],
-        state.omega_wb_rps[2] + delta_omega[2],
-    ]
-
-    identity: list[float] = [
-        1.0,
-        0.0,
-        0.0,
-        0.0,
-        1.0,
-        0.0,
-        0.0,
-        0.0,
-        1.0,
-    ]
-    i_minus_k: list[float] = [
-        identity[0] - k[0],
-        identity[1] - k[1],
-        identity[2] - k[2],
-        identity[3] - k[3],
-        identity[4] - k[4],
-        identity[5] - k[5],
-        identity[6] - k[6],
-        identity[7] - k[7],
-        identity[8] - k[8],
-    ]
-
-    temp: list[float] = mat_mul(i_minus_k, 3, 3, s_hat, 3, 3)
-    temp = mat_mul(temp, 3, 3, mat_transpose(i_minus_k, 3, 3), 3, 3)
-    k_r: list[float] = mat_mul(k, 3, 3, r, 3, 3)
-    k_r_kt: list[float] = mat_mul(k_r, 3, 3, mat_transpose(k, 3, 3), 3, 3)
-    p_omega_updated: list[float] = [
-        temp[0] + k_r_kt[0],
-        temp[1] + k_r_kt[1],
-        temp[2] + k_r_kt[2],
-        temp[3] + k_r_kt[3],
-        temp[4] + k_r_kt[4],
-        temp[5] + k_r_kt[5],
-        temp[6] + k_r_kt[6],
-        temp[7] + k_r_kt[7],
-        temp[8] + k_r_kt[8],
-    ]
-    p_omega_updated = symmetrize(p_omega_updated, 3)
-
-    updated_p: list[float] = list(p)
-    _set_block(updated_p, dim, sl_omega, sl_omega, p_omega_updated)
-    updated_p = symmetrize(updated_p, dim)
-
-    report: AhrsUpdateData = AhrsUpdateData(
+    updated_p: list[float]
+    report: AhrsUpdateData
+    accepted: bool
+    delta_x: list[float]
+    updated_p, report, accepted, delta_x = kalman_update(
+        layout,
+        p,
+        z=z,
+        z_hat=z_hat,
+        nu=nu,
+        h=h,
+        r=r,
+        gate_threshold=config.gyro_gate_d2_threshold,
         sensor="gyro",
         frame_id=frame_id,
         t_meas=t_meas,
-        accepted=True,
-        reject_reason=None,
-        z=list(z),
-        z_hat=list(z_hat),
-        nu=list(nu),
-        r=_matrix3(r),
-        s_hat=_matrix3(s_hat),
-        s=_matrix3(s),
-        maha_d2=maha_d2,
-        gate_threshold=gate_threshold,
     )
 
+    if not accepted:
+        return state, list(p), report
+
+    updated_state: AhrsNominalState = inject_error_state(layout, state, delta_x)
     return updated_state, updated_p, report

@@ -103,13 +103,22 @@ def test_gyro_update_accepts_and_updates_omega() -> None:
         t_meas=AhrsTime(sec=1, nanosec=0),
     )
 
-    expected_gain: float = 0.1 / (0.1 + 0.01)
-    expected_omega: float = expected_gain
+    expected_s: float = 0.1 + 0.1 + 0.01
+    expected_gain_omega: float = 0.1 / expected_s
+    expected_gain_bg: float = 0.1 / expected_s
+    expected_omega: float = expected_gain_omega
+    expected_bg: float = expected_gain_bg
     assert update_report.accepted is True
     assert update_report.reject_reason is None
     assert math.isclose(
         updated_state.omega_wb_rps[0],
         expected_omega,
+        rel_tol=0.0,
+        abs_tol=1.0e-6,
+    )
+    assert math.isclose(
+        updated_state.b_g_rps[0],
+        expected_bg,
         rel_tol=0.0,
         abs_tol=1.0e-6,
     )
