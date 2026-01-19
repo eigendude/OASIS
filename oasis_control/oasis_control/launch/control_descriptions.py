@@ -29,6 +29,31 @@ CONTROL_PACKAGE_NAME: str = "oasis_control"
 
 class ControlDescriptions:
     #
+    # AHRS
+    #
+
+    @staticmethod
+    def add_ahrs(ld: LaunchDescription, host_id: str) -> None:
+        ahrs_node: Node = Node(
+            namespace=ROS_NAMESPACE,
+            package=CONTROL_PACKAGE_NAME,
+            executable="ahrs",
+            name=f"ahrs_{host_id}",
+            output="screen",
+            remappings=[
+                ("ahrs/extrinsics/t_bi", f"{host_id}/ahrs/extrinsics/t_bi"),
+                ("ahrs/extrinsics/t_bm", f"{host_id}/ahrs/extrinsics/t_bm"),
+                ("ahrs/updates/accel", f"{host_id}/ahrs/updates/accel"),
+                ("ahrs/updates/gyro", f"{host_id}/ahrs/updates/gyro"),
+                ("ahrs/updates/mag", f"{host_id}/ahrs/updates/mag"),
+                ("imu_calibration", f"{host_id}/imu_calibration"),
+                ("imu_raw", f"{host_id}/imu_raw"),
+                ("magnetic_field", f"{host_id}/magnetic_field"),
+            ],
+        )
+        ld.add_action(ahrs_node)
+
+    #
     # EKF localizer
     #
 
