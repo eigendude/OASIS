@@ -18,11 +18,15 @@ from oasis_control.localization.ahrs.ahrs_state import AhrsNominalState
 from oasis_control.localization.ahrs.ahrs_state import default_nominal_state
 from oasis_control.localization.ahrs.ahrs_types import AhrsTime
 from oasis_control.localization.ahrs.ahrs_types import AhrsUpdateData
-from oasis_control.localization.ahrs.ahrs_types import ImuSample
-from oasis_control.localization.ahrs.ahrs_update_gyro import update_gyro
+from oasis_control.localization.ahrs.ahrs_types import MagSample
+from oasis_control.localization.ahrs.ahrs_update_mag import update_mag
 
 
-def _config(*, gyro_gate_d2_threshold: float) -> AhrsConfig:
+def _config(
+    *,
+    mag_gate_d2_threshold: float,
+    mag_use_direction_only: bool = False,
+) -> AhrsConfig:
     return AhrsConfig(
         world_frame_id="world",
         odom_frame_id="odom",
@@ -31,15 +35,15 @@ def _config(*, gyro_gate_d2_threshold: float) -> AhrsConfig:
         epsilon_wall_future_sec=0.0,
         dt_clock_jump_max_sec=0.0,
         dt_imu_max_sec=0.0,
-        gyro_gate_d2_threshold=gyro_gate_d2_threshold,
+        gyro_gate_d2_threshold=9.0,
         accel_gate_d2_threshold=9.0,
         accel_use_direction_only=False,
-        mag_gate_d2_threshold=9.0,
-        mag_use_direction_only=True,
-        mag_alpha=1.0,
-        mag_r_min=[0.0] * 9,
-        mag_r_max=[0.0] * 9,
-        mag_r0=[0.0] * 9,
+        mag_gate_d2_threshold=mag_gate_d2_threshold,
+        mag_use_direction_only=mag_use_direction_only,
+        mag_alpha=0.0,
+        mag_r_min=_cov_diag(0.0),
+        mag_r_max=_cov_diag(10.0),
+        mag_r0=_cov_diag(0.01),
         q_v=0.0,
         q_w=0.0,
         q_bg=0.0,
@@ -49,16 +53,6 @@ def _config(*, gyro_gate_d2_threshold: float) -> AhrsConfig:
         q_bm=0.0,
         q_g=0.0,
         q_m=0.0,
-    )
-
-
-def _imu_sample(omega_rps: list[float], cov: list[float]) -> ImuSample:
-    return ImuSample(
-        frame_id="imu",
-        angular_velocity_rps=list(omega_rps),
-        linear_acceleration_mps2=[0.0, 0.0, 0.0],
-        angular_velocity_cov=list(cov),
-        linear_acceleration_cov=[0.0] * 9,
     )
 
 
@@ -84,77 +78,110 @@ def _initial_covariance(layout: AhrsErrorStateLayout, value: float) -> list[floa
     return p
 
 
-def test_gyro_update_accepts_and_updates_omega() -> None:
+def test_mag_update_accepts_consistent_measurement() -> None:
     layout: AhrsErrorStateLayout = AhrsErrorStateLayout()
     state: AhrsNominalState = default_nominal_state(
         body_frame_id="base_link",
         imu_frame_id="imu",
         mag_frame_id="mag",
     )
+    state.m_w_t = [0.2, -0.1, 0.05]
     p: list[float] = _initial_covariance(layout, value=0.1)
-    imu: ImuSample = _imu_sample([1.0, 0.0, 0.0], _cov_diag(0.01))
+    mag: MagSample = MagSample(
+        frame_id="mag",
+        magnetic_field_t=[0.2, -0.1, 0.05],
+        magnetic_field_cov=_cov_diag(0.01),
+    )
 
     updated_state: AhrsNominalState
     updated_p: list[float]
     update_report: AhrsUpdateData
-    updated_state, updated_p, update_report = update_gyro(
+    updated_state, updated_p, update_report, _ = update_mag(
         layout,
         state,
         p,
-        imu,
-        _config(gyro_gate_d2_threshold=10.0),
-        frame_id="imu",
+        mag,
+        _config(mag_gate_d2_threshold=9.0),
+        frame_id="mag",
         t_meas=AhrsTime(sec=1, nanosec=0),
     )
 
-    expected_s: float = 0.1 + 0.1 + 0.01
-    expected_gain_omega: float = 0.1 / expected_s
-    expected_gain_bg: float = 0.1 / expected_s
-    expected_omega: float = expected_gain_omega
-    expected_bg: float = expected_gain_bg
     assert update_report.accepted is True
     assert update_report.reject_reason is None
-    assert math.isclose(
-        updated_state.omega_wb_rps[0],
-        expected_omega,
-        rel_tol=0.0,
-        abs_tol=1.0e-6,
+    assert all(
+        math.isclose(value, 0.0, rel_tol=0.0, abs_tol=1.0e-9)
+        for value in update_report.nu
     )
-    assert math.isclose(
-        updated_state.b_g_rps[0],
-        expected_bg,
-        rel_tol=0.0,
-        abs_tol=1.0e-6,
-    )
-    sl_omega: slice = layout.sl_omega()
-    omega_diag_index: int = sl_omega.start * layout.dim + sl_omega.start
-    assert updated_p[omega_diag_index] < 0.1
+    assert updated_state.q_wb_wxyz == state.q_wb_wxyz
+    assert updated_p != p
 
 
-def test_gyro_update_rejects_large_innovation() -> None:
+def test_mag_update_rejects_large_innovation() -> None:
     layout: AhrsErrorStateLayout = AhrsErrorStateLayout()
     state: AhrsNominalState = default_nominal_state(
         body_frame_id="base_link",
         imu_frame_id="imu",
         mag_frame_id="mag",
     )
+    state.m_w_t = [1.0, 0.0, 0.0]
     p: list[float] = _initial_covariance(layout, value=0.1)
-    imu: ImuSample = _imu_sample([10.0, 0.0, 0.0], _cov_diag(0.01))
+    mag: MagSample = MagSample(
+        frame_id="mag",
+        magnetic_field_t=[0.0, 1.0, 0.0],
+        magnetic_field_cov=_cov_diag(0.01),
+    )
 
     updated_state: AhrsNominalState
     updated_p: list[float]
     update_report: AhrsUpdateData
-    updated_state, updated_p, update_report = update_gyro(
+    updated_state, updated_p, update_report, _ = update_mag(
         layout,
         state,
         p,
-        imu,
-        _config(gyro_gate_d2_threshold=1.0),
-        frame_id="imu",
+        mag,
+        _config(mag_gate_d2_threshold=0.1),
+        frame_id="mag",
         t_meas=AhrsTime(sec=1, nanosec=0),
     )
 
     assert update_report.accepted is False
     assert update_report.reject_reason == "mahalanobis_gate"
-    assert updated_state.omega_wb_rps == state.omega_wb_rps
+    assert updated_state == state
     assert updated_p == p
+
+
+def test_mag_update_direction_only_handles_magnitude_mismatch() -> None:
+    layout: AhrsErrorStateLayout = AhrsErrorStateLayout()
+    state: AhrsNominalState = default_nominal_state(
+        body_frame_id="base_link",
+        imu_frame_id="imu",
+        mag_frame_id="mag",
+    )
+    state.m_w_t = [1.0, 0.0, 0.0]
+    p: list[float] = _initial_covariance(layout, value=0.1)
+    mag: MagSample = MagSample(
+        frame_id="mag",
+        magnetic_field_t=[10.0, 0.0, 0.0],
+        magnetic_field_cov=_cov_diag(0.01),
+    )
+
+    updated_state: AhrsNominalState
+    updated_p: list[float]
+    update_report: AhrsUpdateData
+    updated_state, updated_p, update_report, _ = update_mag(
+        layout,
+        state,
+        p,
+        mag,
+        _config(mag_gate_d2_threshold=9.0, mag_use_direction_only=True),
+        frame_id="mag",
+        t_meas=AhrsTime(sec=1, nanosec=0),
+    )
+
+    assert update_report.accepted is True
+    assert all(
+        math.isclose(value, 0.0, rel_tol=0.0, abs_tol=1.0e-9)
+        for value in update_report.nu
+    )
+    assert updated_state.q_wb_wxyz == state.q_wb_wxyz
+    assert updated_p != p

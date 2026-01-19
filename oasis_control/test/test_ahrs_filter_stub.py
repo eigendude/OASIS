@@ -51,6 +51,8 @@ def _config(
         gyro_gate_d2_threshold=9.0,
         accel_gate_d2_threshold=9.0,
         accel_use_direction_only=False,
+        mag_gate_d2_threshold=9.0,
+        mag_use_direction_only=True,
         mag_alpha=1.0,
         mag_r_min=[0.0] * 9,
         mag_r_max=[0.0] * 9,

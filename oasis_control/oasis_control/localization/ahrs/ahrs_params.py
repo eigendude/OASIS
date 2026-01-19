@@ -30,6 +30,8 @@ PARAM_DT_IMU_MAX_SEC: str = "dt_imu_max_sec"
 PARAM_GYRO_GATE_D2_THRESHOLD: str = "gyro_gate_d2_threshold"
 PARAM_ACCEL_GATE_D2_THRESHOLD: str = "accel_gate_d2_threshold"
 PARAM_ACCEL_USE_DIRECTION_ONLY: str = "accel_use_direction_only"
+PARAM_MAG_GATE_D2_THRESHOLD: str = "mag_gate_d2_threshold"
+PARAM_MAG_USE_DIRECTION_ONLY: str = "mag_use_direction_only"
 
 PARAM_MAG_ALPHA: str = "mag_alpha"
 PARAM_MAG_R_MIN: str = "mag_r_min"
@@ -57,6 +59,8 @@ DEFAULT_DT_IMU_MAX_SEC: float = 0.5
 DEFAULT_GYRO_GATE_D2_THRESHOLD: float = 9.0
 DEFAULT_ACCEL_GATE_D2_THRESHOLD: float = 9.0
 DEFAULT_ACCEL_USE_DIRECTION_ONLY: bool = False
+DEFAULT_MAG_GATE_D2_THRESHOLD: float = 9.0
+DEFAULT_MAG_USE_DIRECTION_ONLY: bool = True
 
 DEFAULT_MAG_ALPHA: float = 1.0
 DEFAULT_MAG_R_MIN: list[float] = [0.0] * 9
@@ -98,6 +102,14 @@ def declare_ahrs_params(node: rclpy.node.Node) -> None:
     node.declare_parameter(
         PARAM_ACCEL_USE_DIRECTION_ONLY,
         DEFAULT_ACCEL_USE_DIRECTION_ONLY,
+    )
+    node.declare_parameter(
+        PARAM_MAG_GATE_D2_THRESHOLD,
+        DEFAULT_MAG_GATE_D2_THRESHOLD,
+    )
+    node.declare_parameter(
+        PARAM_MAG_USE_DIRECTION_ONLY,
+        DEFAULT_MAG_USE_DIRECTION_ONLY,
     )
 
     node.declare_parameter(PARAM_MAG_ALPHA, DEFAULT_MAG_ALPHA)
@@ -142,6 +154,12 @@ def load_ahrs_config(node: rclpy.node.Node) -> AhrsConfig:
     accel_use_direction_only: bool = bool(
         node.get_parameter(PARAM_ACCEL_USE_DIRECTION_ONLY).value
     )
+    mag_gate_d2_threshold: float = float(
+        node.get_parameter(PARAM_MAG_GATE_D2_THRESHOLD).value
+    )
+    mag_use_direction_only: bool = bool(
+        node.get_parameter(PARAM_MAG_USE_DIRECTION_ONLY).value
+    )
 
     mag_alpha: float = float(node.get_parameter(PARAM_MAG_ALPHA).value)
     mag_r_min: list[float] = [
@@ -175,6 +193,8 @@ def load_ahrs_config(node: rclpy.node.Node) -> AhrsConfig:
         gyro_gate_d2_threshold=gyro_gate_d2_threshold,
         accel_gate_d2_threshold=accel_gate_d2_threshold,
         accel_use_direction_only=accel_use_direction_only,
+        mag_gate_d2_threshold=mag_gate_d2_threshold,
+        mag_use_direction_only=mag_use_direction_only,
         mag_alpha=mag_alpha,
         mag_r_min=mag_r_min,
         mag_r_max=mag_r_max,

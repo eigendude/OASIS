@@ -43,6 +43,7 @@ from oasis_control.localization.ahrs.ahrs_types import AhrsUpdateData
 from oasis_control.localization.ahrs.ahrs_types import MagSample
 from oasis_control.localization.ahrs.ahrs_update_accel import update_accel
 from oasis_control.localization.ahrs.ahrs_update_gyro import update_gyro
+from oasis_control.localization.ahrs.ahrs_update_mag import update_mag
 
 
 class AhrsFilter:
@@ -75,6 +76,7 @@ class AhrsFilter:
         self._x: Optional[AhrsNominalState] = None
         self._p: Optional[list[float]] = None
         self._t_state: Optional[AhrsTime] = None
+        self._mag_r_cov: Optional[list[float]] = None
         self._last_update_reports: dict[str, Optional[AhrsUpdateData]] = {
             "gyro": None,
             "accel": None,
@@ -211,6 +213,7 @@ class AhrsFilter:
         self._x = None
         self._p = None
         self._t_state = None
+        self._mag_r_cov = None
         self._last_update_reports = {
             "gyro": None,
             "accel": None,
@@ -228,6 +231,7 @@ class AhrsFilter:
         self._x = None
         self._p = None
         self._t_state = None
+        self._mag_r_cov = None
         self._last_update_reports = {
             "gyro": None,
             "accel": None,
@@ -358,11 +362,26 @@ class AhrsFilter:
             return
 
         if event.event_type == AhrsEventType.MAG:
-            mag_report: AhrsUpdateData = self._build_update(
-                sensor="mag",
-                frame_id=event.frame_id,
-                t_meas=event.t_meas,
-            )
+            payload_mag: MagSample = cast(MagSample, event.payload)
+            mag_report: AhrsUpdateData
+            if self._x is None or self._p is None:
+                mag_report = self._build_update(
+                    sensor="mag",
+                    frame_id=event.frame_id,
+                    t_meas=event.t_meas,
+                    reject_reason="not_applied",
+                )
+            else:
+                self._x, self._p, mag_report, self._mag_r_cov = update_mag(
+                    self._layout,
+                    self._x,
+                    self._p,
+                    payload_mag,
+                    self._config,
+                    frame_id=event.frame_id,
+                    t_meas=event.t_meas,
+                    r_state=self._mag_r_cov,
+                )
             self._last_update_reports["mag"] = mag_report
 
     def _evict_before(self, t_filter: AhrsTime) -> None:
@@ -595,6 +614,7 @@ class AhrsFilter:
             self._x = None
             self._p = None
             self._t_state = None
+            self._mag_r_cov = None
             self._last_update_reports = {
                 "gyro": None,
                 "accel": None,
@@ -609,6 +629,7 @@ class AhrsFilter:
         )
         self._p = self._initial_covariance()
         self._t_state = t_state
+        self._mag_r_cov = None
         self._last_update_reports = {
             "gyro": None,
             "accel": None,
