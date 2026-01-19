@@ -97,3 +97,23 @@ def quat_from_rotvec_wxyz(rotvec: list[float]) -> list[float]:
         ry * inv_angle * sin_half,
         rz * inv_angle * sin_half,
     ]
+
+
+def quat_conj_wxyz(q_wxyz: list[float]) -> list[float]:
+    """
+    Return the quaternion conjugate in wxyz order
+    """
+
+    return [q_wxyz[0], -q_wxyz[1], -q_wxyz[2], -q_wxyz[3]]
+
+
+def quat_rotate_wxyz(q_wxyz: list[float], v: list[float]) -> list[float]:
+    """
+    Rotate a 3D vector using a wxyz quaternion
+    """
+
+    v_quat: list[float] = [0.0, v[0], v[1], v[2]]
+    qv: list[float] = quat_mul_wxyz(q_wxyz, v_quat)
+    q_conj: list[float] = quat_conj_wxyz(q_wxyz)
+    rotated: list[float] = quat_mul_wxyz(qv, q_conj)
+    return [rotated[1], rotated[2], rotated[3]]
