@@ -29,6 +29,7 @@ class AhrsConfig:
         dt_clock_jump_max_sec: Threshold in seconds for detecting clock jumps
         dt_imu_max_sec: Max IMU delta in seconds before skipping propagation
         gyro_gate_d2_threshold: Mahalanobis gate threshold for gyro updates
+        accel_gate_d2_threshold: Mahalanobis gate threshold for accel updates
         mag_alpha: Magnetometer covariance matching factor, unitless
         mag_r_min: Minimum magnetometer covariance matrix, row-major
         mag_r_max: Maximum magnetometer covariance matrix, row-major
@@ -53,6 +54,7 @@ class AhrsConfig:
     dt_clock_jump_max_sec: float
     dt_imu_max_sec: float
     gyro_gate_d2_threshold: float
+    accel_gate_d2_threshold: float
 
     mag_alpha: float
     mag_r_min: list[float]

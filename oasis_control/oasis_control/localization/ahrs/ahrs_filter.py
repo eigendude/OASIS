@@ -41,6 +41,7 @@ from oasis_control.localization.ahrs.ahrs_types import AhrsStateData
 from oasis_control.localization.ahrs.ahrs_types import AhrsTime
 from oasis_control.localization.ahrs.ahrs_types import AhrsUpdateData
 from oasis_control.localization.ahrs.ahrs_types import MagSample
+from oasis_control.localization.ahrs.ahrs_update_accel import update_accel
 from oasis_control.localization.ahrs.ahrs_update_gyro import update_gyro
 
 
@@ -334,11 +335,24 @@ class AhrsFilter:
                     t_meas=event.t_meas,
                 )
             self._last_update_reports["gyro"] = gyro_report
-            accel_report: AhrsUpdateData = self._build_update(
-                sensor="accel",
-                frame_id=event.frame_id,
-                t_meas=event.t_meas,
-            )
+            accel_report: AhrsUpdateData
+            if self._x is None or self._p is None:
+                accel_report = self._build_update(
+                    sensor="accel",
+                    frame_id=event.frame_id,
+                    t_meas=event.t_meas,
+                    reject_reason="not_applied",
+                )
+            else:
+                self._x, self._p, accel_report = update_accel(
+                    self._layout,
+                    self._x,
+                    self._p,
+                    payload_imu.imu,
+                    self._config,
+                    frame_id=event.frame_id,
+                    t_meas=event.t_meas,
+                )
             self._last_update_reports["accel"] = accel_report
             self._last_imu_time = event.t_meas
             return
