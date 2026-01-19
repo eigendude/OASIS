@@ -22,86 +22,18 @@ sensor transform corrections.
 
 from __future__ import annotations
 
-import math
-
 from oasis_control.localization.ahrs.ahrs_error_state import AhrsErrorStateLayout
 from oasis_control.localization.ahrs.ahrs_linalg import is_finite_seq
+from oasis_control.localization.ahrs.ahrs_quat import quat_from_rotvec_wxyz
+from oasis_control.localization.ahrs.ahrs_quat import quat_mul_wxyz
+from oasis_control.localization.ahrs.ahrs_quat import quat_normalize_wxyz
 from oasis_control.localization.ahrs.ahrs_state import AhrsNominalState
 from oasis_control.localization.ahrs.ahrs_types import AhrsSe3Transform
 
 
-def _quat_mul(q_left: list[float], q_right: list[float]) -> list[float]:
-    """
-    Multiply two quaternions in wxyz order
-    """
-
-    w1: float = q_left[0]
-    x1: float = q_left[1]
-    y1: float = q_left[2]
-    z1: float = q_left[3]
-
-    w2: float = q_right[0]
-    x2: float = q_right[1]
-    y2: float = q_right[2]
-    z2: float = q_right[3]
-
-    return [
-        w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
-        w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
-        w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
-        w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
-    ]
-
-
-def _quat_normalize(q_wxyz: list[float]) -> list[float]:
-    """
-    Normalize a quaternion in wxyz order
-    """
-
-    norm: float = math.sqrt(
-        q_wxyz[0] * q_wxyz[0]
-        + q_wxyz[1] * q_wxyz[1]
-        + q_wxyz[2] * q_wxyz[2]
-        + q_wxyz[3] * q_wxyz[3]
-    )
-    if norm <= 0.0:
-        raise ValueError("Quaternion norm must be positive")
-    inv: float = 1.0 / norm
-    return [
-        q_wxyz[0] * inv,
-        q_wxyz[1] * inv,
-        q_wxyz[2] * inv,
-        q_wxyz[3] * inv,
-    ]
-
-
-def _quat_from_rotvec(rotvec: list[float]) -> list[float]:
-    """
-    Build a quaternion from a rotation vector using Exp(delta_theta)
-    """
-
-    rx: float = rotvec[0]
-    ry: float = rotvec[1]
-    rz: float = rotvec[2]
-    angle: float = math.sqrt(rx * rx + ry * ry + rz * rz)
-
-    # Rotation magnitude threshold in rad for small-angle series
-    small_angle_rad: float = 1.0e-12
-
-    if angle < small_angle_rad:
-        dq_wb: list[float] = [1.0, 0.5 * rx, 0.5 * ry, 0.5 * rz]
-        return _quat_normalize(dq_wb)
-
-    # Half-angle term used in quaternion exponential
-    half_angle: float = 0.5 * angle
-    sin_half: float = math.sin(half_angle)
-    inv_angle: float = 1.0 / angle
-    return [
-        math.cos(half_angle),
-        rx * inv_angle * sin_half,
-        ry * inv_angle * sin_half,
-        rz * inv_angle * sin_half,
-    ]
+def _validate_block_size(name: str, block: list[float], expected: int) -> None:
+    if len(block) != expected:
+        raise ValueError(f"{name} must be length {expected}, got {len(block)}")
 
 
 def _apply_se3_delta(
@@ -109,12 +41,12 @@ def _apply_se3_delta(
     delta_rho: list[float],
     delta_theta: list[float],
 ) -> AhrsSe3Transform:
-    rotation_delta: list[float] = _quat_from_rotvec(delta_theta)
-    rotation_wxyz: list[float] = _quat_mul(
+    rotation_delta: list[float] = quat_from_rotvec_wxyz(delta_theta)
+    rotation_wxyz: list[float] = quat_mul_wxyz(
         list(transform.rotation_wxyz),
         rotation_delta,
     )
-    rotation_wxyz = _quat_normalize(rotation_wxyz)
+    rotation_wxyz = quat_normalize_wxyz(rotation_wxyz)
     return AhrsSe3Transform(
         parent_frame=transform.parent_frame,
         child_frame=transform.child_frame,
@@ -165,9 +97,21 @@ def inject_error_state(
     delta_g: list[float] = delta_x[sl_g]
     delta_m: list[float] = delta_x[sl_m]
 
-    dq_wb: list[float] = _quat_from_rotvec(delta_theta)
-    q_wb: list[float] = _quat_mul(list(state.q_wb_wxyz), dq_wb)
-    q_wb = _quat_normalize(q_wb)
+    _validate_block_size("delta_p", delta_p, 3)
+    _validate_block_size("delta_v", delta_v, 3)
+    _validate_block_size("delta_theta", delta_theta, 3)
+    _validate_block_size("delta_omega", delta_omega, 3)
+    _validate_block_size("delta_bg", delta_bg, 3)
+    _validate_block_size("delta_ba", delta_ba, 3)
+    _validate_block_size("delta_aa", delta_aa, 9)
+    _validate_block_size("delta_xi_bi", delta_xi_bi, 6)
+    _validate_block_size("delta_xi_bm", delta_xi_bm, 6)
+    _validate_block_size("delta_g", delta_g, 3)
+    _validate_block_size("delta_m", delta_m, 3)
+
+    dq_wb: list[float] = quat_from_rotvec_wxyz(delta_theta)
+    q_wb: list[float] = quat_mul_wxyz(list(state.q_wb_wxyz), dq_wb)
+    q_wb = quat_normalize_wxyz(q_wb)
 
     t_bi: AhrsSe3Transform = _apply_se3_delta(
         state.t_bi,
@@ -207,7 +151,7 @@ def inject_error_state(
             state.b_a_mps2[1] + delta_ba[1],
             state.b_a_mps2[2] + delta_ba[2],
         ],
-        a_a=[state.a_a[i] + delta_aa[i] for i in range(len(state.a_a))],
+        a_a=[state.a_a[i] + delta_aa[i] for i in range(9)],
         t_bi=t_bi,
         t_bm=t_bm,
         g_w_mps2=[
