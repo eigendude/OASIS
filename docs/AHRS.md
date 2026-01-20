@@ -41,12 +41,12 @@ This keeps the TF tree compatible with a future localization EKF that may later 
 - Single `message_filters` combination (ExactTime) producing an **IMU packet**:
   - `imu_raw` (`sensor_msgs/Imu`): inertial sample stream (time-stamped)
   - `imu_calibration` (`oasis_msgs/ImuCalibration`): calibration priors + uncertainty
-    - **Deterministic contract:** IMU processing requires an ExactTime pair
-      `(imu_raw, imu_calibration)` at the same `t_meas_ns`. Any `imu_raw`
+    - **Deterministic contract:** IMU processing requires ExactTime pairing of
+      `(imu_raw, imu_calibration)` at identical `t_meas_ns`. Any `imu_raw`
       without a matching `imu_calibration` at the exact same timestamp MUST be
-      rejected. This is intentional even if calibration is static.
+      rejected/dropped. This is intentional even if calibration is static.
     - `imu_calibration` MAY change over time (recalibration events), and the
-      synchronized pair requirement still applies.
+      pairing requirement still applies.
     - **Semantic rule:** used **only once** to initialize in-state calibration
       parameters (initial prior).
     - After initialization, `imu_calibration` does NOT modify in-state
@@ -98,8 +98,9 @@ Models (parameter meaning):
 
 Requirements:
 
-- IMU processing requires ExactTime pairing with `imu_raw` at the same
-  `t_meas_ns`. Any unpaired `imu_raw` must be dropped, even when calibration is
+- IMU processing requires ExactTime pairing of `(imu_raw, imu_calibration)` at
+  identical `t_meas_ns`. Any `imu_raw` without a matching `imu_calibration` at
+  the exact same timestamp MUST be rejected/dropped, even when calibration is
   static and unchanged.
 - Consume **only while uninitialized**:
   - The **first** valid calibration observed is applied as an initial prior on
@@ -416,7 +417,8 @@ messages are supported via fixed-lag replay.
 ### 4.2 Message roles
 
 - **Measurement updates (high-rate):** `imu_raw` (gyro + accel updates), only
-  accepted when ExactTime-paired with `imu_calibration`
+  accepted when ExactTime-paired with `imu_calibration` at identical
+  `t_meas_ns`
 - **Initialization prior (one-shot):** `imu_calibration` (paired with
   `imu_raw`, then used for diagnostics after initialization)
 - **Measurement updates:** `magnetic_field`
@@ -433,10 +435,11 @@ Timestamp policy:
 
 - Packet time: `t_meas_ns := imu_raw.header.stamp`
 - Require `imu_calibration.header.stamp == imu_raw.header.stamp`; reject the
-  packet if not. This pairing requirement is intentional even if calibration
-  is static and unchanged.
+  packet if not. Any `imu_raw` without a matching `imu_calibration` at the
+  exact same timestamp MUST be rejected/dropped. This pairing requirement is
+  intentional even if calibration is static and unchanged.
 - `imu_calibration` MAY change over time (recalibration events), and the
-  synchronized pair requirement still applies.
+  pairing requirement still applies.
 
 Semantic policy:
 
@@ -446,8 +449,8 @@ Semantic policy:
 - After initialization, `imu_calibration` does not modify in-state parameters,
   but it still records diagnostics/consistency checks and provides a future
   policy hook for re-init or reset on calibration change (TODO, policy only).
-- `imu_raw` produces measurement updates (gyro + accel) only when the ExactTime
-  pair is accepted.
+- `imu_raw` produces measurement updates (gyro + accel) only when the
+  ExactTime pair is accepted.
 
 ### 4.4 Buffer model
 
