@@ -8,7 +8,23 @@
 #
 ################################################################################
 
+from __future__ import annotations
 
+from dataclasses import dataclass
+from dataclasses import field
+from typing import Optional
+
+from oasis_control.localization.ahrs.ahrs_types.imu_packet import ImuPacket
+from oasis_control.localization.ahrs.ahrs_types.mag_packet import MagPacket
+from oasis_control.localization.ahrs.ahrs_types.stationary_packet import (
+    StationaryPacket,
+)
+from oasis_control.localization.ahrs.state.ahrs_state import AhrsState
+from oasis_control.localization.ahrs.state.covariance import AhrsCovariance
+from oasis_control.localization.ahrs.timing.time_base import TimeBase
+
+
+@dataclass(slots=True)
 class TimelineNode:
     """Time-keyed node containing measurements for a single timestamp.
 
@@ -75,4 +91,61 @@ class TimelineNode:
           t_meas_ns.
     """
 
-    pass
+    t_meas_ns: int
+    state: Optional[AhrsState] = None
+    covariance: Optional[AhrsCovariance] = None
+    imu_packet: Optional[ImuPacket] = None
+    mag_packet: Optional[MagPacket] = None
+    stationary_packet: Optional[StationaryPacket] = None
+    diagnostics: dict[str, int] = field(
+        default_factory=lambda: {
+            "duplicate_imu": 0,
+            "duplicate_mag": 0,
+            "duplicate_stationary": 0,
+        }
+    )
+
+    def __post_init__(self) -> None:
+        """Validate the node timestamp."""
+        TimeBase.validate_non_negative(self.t_meas_ns)
+
+    def insert_imu(self, packet: ImuPacket) -> bool:
+        """Insert an IMU packet if the slot is empty."""
+        TimeBase.validate_non_negative(packet.t_meas_ns)
+        if packet.t_meas_ns != self.t_meas_ns:
+            raise ValueError("t_meas_ns mismatch")
+        if self.imu_packet is not None:
+            self.diagnostics["duplicate_imu"] += 1
+            return False
+        self.imu_packet = packet
+        return True
+
+    def insert_mag(self, packet: MagPacket) -> bool:
+        """Insert a magnetometer packet if the slot is empty."""
+        TimeBase.validate_non_negative(packet.t_meas_ns)
+        if packet.t_meas_ns != self.t_meas_ns:
+            raise ValueError("t_meas_ns mismatch")
+        if self.mag_packet is not None:
+            self.diagnostics["duplicate_mag"] += 1
+            return False
+        self.mag_packet = packet
+        return True
+
+    def insert_stationary(self, packet: StationaryPacket) -> bool:
+        """Insert a stationary packet if the slot is empty."""
+        TimeBase.validate_non_negative(packet.t_meas_ns)
+        if packet.t_meas_ns != self.t_meas_ns:
+            raise ValueError("t_meas_ns mismatch")
+        if self.stationary_packet is not None:
+            self.diagnostics["duplicate_stationary"] += 1
+            return False
+        self.stationary_packet = packet
+        return True
+
+    def is_complete(self) -> bool:
+        """Return True when state and covariance are present."""
+        return self.state is not None and self.covariance is not None
+
+    def time_ns(self) -> int:
+        """Return the measurement timestamp in nanoseconds."""
+        return self.t_meas_ns

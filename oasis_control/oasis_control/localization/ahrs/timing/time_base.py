@@ -8,6 +8,8 @@
 #
 ################################################################################
 
+from __future__ import annotations
+
 
 class TimeBase:
     """Time base helpers for AHRS buffering and replay logic.
@@ -62,4 +64,33 @@ class TimeBase:
         - validate_monotonic rejects negative or decreasing timestamps.
     """
 
-    pass
+    @staticmethod
+    def validate_non_negative(t_ns: int) -> None:
+        """Validate that t_ns is an int nanoseconds value >= 0."""
+        if not TimeBase._is_int(t_ns) or t_ns < 0:
+            raise ValueError("t_ns must be non-negative")
+
+    @staticmethod
+    def validate_monotonic(t_prev_ns: int, t_next_ns: int) -> None:
+        """Validate that timestamps are non-negative and monotonic."""
+        TimeBase.validate_non_negative(t_prev_ns)
+        TimeBase.validate_non_negative(t_next_ns)
+        if t_next_ns < t_prev_ns:
+            raise ValueError("timestamps must be monotonic")
+
+    @staticmethod
+    def stamp_to_ns(sec: int, nanosec: int) -> int:
+        """Convert a (sec, nanosec) tuple to int nanoseconds."""
+        if not TimeBase._is_int(sec):
+            raise ValueError("sec must be int")
+        if sec < 0:
+            raise ValueError("sec must be non-negative")
+        if not TimeBase._is_int(nanosec):
+            raise ValueError("nanosec must be int")
+        if nanosec < 0 or nanosec >= 1_000_000_000:
+            raise ValueError("nanosec must be in [0, 1_000_000_000)")
+        return sec * 1_000_000_000 + nanosec
+
+    @staticmethod
+    def _is_int(value: object) -> bool:
+        return isinstance(value, int) and not isinstance(value, bool)
