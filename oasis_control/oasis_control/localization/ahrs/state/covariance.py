@@ -114,7 +114,8 @@ class AhrsCovariance:
             raise ValueError("block_slice must have unit step")
         if block_slice.stop - block_slice.start != 6:
             raise ValueError("block_slice must select 6 elements")
-        _assert_square(self.P, StateMapping.dimension())
+        size: int = StateMapping.dimension()
+        _assert_square(self.P, size)
         start: int = block_slice.start
         end: int = block_slice.stop
         block: List[List[float]] = [
@@ -128,6 +129,20 @@ class AhrsCovariance:
             for j in range(6):
                 updated[start + i][start + j] = mapped[i][j]
                 updated[start + j][start + i] = mapped[j][i]
+        other_indices: List[int] = [
+            idx for idx in range(size) if idx < start or idx >= end
+        ]
+        if other_indices:
+            cross_block: List[List[float]] = [
+                [self.P[start + row][col] for col in other_indices] for row in range(6)
+            ]
+            mapped_cross: List[List[float]] = _matmul(Ad_T, cross_block)
+            row: int
+            for row in range(6):
+                col_idx: int
+                for col_idx, col in enumerate(other_indices):
+                    updated[start + row][col] = mapped_cross[row][col_idx]
+                    updated[col][start + row] = mapped_cross[row][col_idx]
         return AhrsCovariance(P=LinearAlgebra.symmetrize(updated))
 
 
