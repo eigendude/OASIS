@@ -44,6 +44,15 @@ def _identity3() -> List[List[float]]:
     ]
 
 
+def _matvec3(A: List[List[float]], v: List[float]) -> List[float]:
+    """Return A * v for 3x3 A and length-3 v"""
+    return [
+        A[0][0] * v[0] + A[0][1] * v[1] + A[0][2] * v[2],
+        A[1][0] * v[0] + A[1][1] * v[1] + A[1][2] * v[2],
+        A[2][0] * v[0] + A[2][1] * v[1] + A[2][2] * v[2],
+    ]
+
+
 class TestMagModel(unittest.TestCase):
     """Tests for magnetometer model."""
 
@@ -101,6 +110,52 @@ class TestMagModel(unittest.TestCase):
                 in_m = m_slice.start <= j < m_slice.stop
                 if not (in_theta or in_m):
                     self.assertEqual(H[i][j], 0.0)
+
+    def test_jacobian_theta_sign(self) -> None:
+        """Jacobian matches small-angle rotation sign"""
+        m_W: List[float] = [0.1, -0.2, 0.3]
+        state: AhrsState = AhrsState(
+            p_WB=[0.0, 0.0, 0.0],
+            v_WB=[0.0, 0.0, 0.0],
+            q_WB=[1.0, 0.0, 0.0, 0.0],
+            omega_WB=[0.0, 0.0, 0.0],
+            b_g=[0.0, 0.0, 0.0],
+            b_a=[0.0, 0.0, 0.0],
+            A_a=_identity3(),
+            T_BI=(_identity3(), [0.0, 0.0, 0.0]),
+            T_BM=(_identity3(), [0.0, 0.0, 0.0]),
+            g_W=[0.0, 0.0, -9.81],
+            m_W=m_W,
+        )
+        H: List[List[float]] = MagModel.jacobian(state)
+        theta_slice: slice = StateMapping.slice_delta_theta()
+        H_theta: List[List[float]] = [
+            [
+                H[row][theta_slice.start + col]
+                for col in range(theta_slice.stop - theta_slice.start)
+            ]
+            for row in range(3)
+        ]
+        eps: float = 1.0e-6
+        delta_theta: List[float] = [eps, 0.0, 0.0]
+        delta_x: List[float] = [0.0 for _ in range(StateMapping.dimension())]
+        delta_x[theta_slice.start] = delta_theta[0]
+        state_rot: AhrsState = state.apply_error(delta_x)
+        mag_base: List[float] = MagModel.predict(state)
+        mag_rot: List[float] = MagModel.predict(state_rot)
+        delta_mag: List[float] = [
+            mag_rot[0] - mag_base[0],
+            mag_rot[1] - mag_base[1],
+            mag_rot[2] - mag_base[2],
+        ]
+        delta_linear: List[float] = _matvec3(H_theta, delta_theta)
+        i: int
+        for i in range(3):
+            if abs(delta_linear[i]) < 1.0e-12:
+                self.assertAlmostEqual(delta_mag[i], 0.0, delta=1.0e-12)
+                continue
+            self.assertGreater(delta_mag[i] * delta_linear[i], 0.0)
+            self.assertAlmostEqual(delta_mag[i], delta_linear[i], delta=1.0e-9)
 
 
 if __name__ == "__main__":

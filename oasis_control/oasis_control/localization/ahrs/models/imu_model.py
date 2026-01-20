@@ -14,6 +14,11 @@ from typing import List
 from typing import Sequence
 
 from oasis_control.localization.ahrs.math_utils.quat import Quaternion
+from oasis_control.localization.ahrs.math_utils.small_linalg3 import matmul3
+from oasis_control.localization.ahrs.math_utils.small_linalg3 import matvec3
+from oasis_control.localization.ahrs.math_utils.small_linalg3 import scale_mat
+from oasis_control.localization.ahrs.math_utils.small_linalg3 import skew
+from oasis_control.localization.ahrs.math_utils.small_linalg3 import transpose3
 from oasis_control.localization.ahrs.state.ahrs_state import AhrsState
 from oasis_control.localization.ahrs.state.state_mapping import StateMapping
 
@@ -96,20 +101,20 @@ class ImuModel:
     def predict_gyro(state: AhrsState) -> List[float]:
         """Return predicted gyro measurement in {I}."""
         R_BI: List[List[float]] = state.T_BI[0]
-        R_IB: List[List[float]] = _transpose3(R_BI)
-        omega_I: List[float] = _matvec3(R_IB, state.omega_WB)
+        R_IB: List[List[float]] = transpose3(R_BI)
+        omega_I: List[float] = matvec3(R_IB, state.omega_WB)
         return _add_vec(omega_I, state.b_g)
 
     @staticmethod
     def predict_accel(state: AhrsState) -> List[float]:
         """Return predicted accel measurement in {I}."""
         R_WB: List[List[float]] = Quaternion.to_matrix(state.q_WB)
-        f_B: List[float] = _matvec3(R_WB, _scale_vec(state.g_W, -1.0))
+        f_B: List[float] = matvec3(R_WB, _scale_vec(state.g_W, -1.0))
         R_BI: List[List[float]] = state.T_BI[0]
-        R_IB: List[List[float]] = _transpose3(R_BI)
-        f_I: List[float] = _matvec3(R_IB, f_B)
+        R_IB: List[List[float]] = transpose3(R_BI)
+        f_I: List[float] = matvec3(R_IB, f_B)
         A_inv: List[List[float]] = _invert_3x3(state.A_a)
-        a_pred: List[float] = _matvec3(A_inv, f_I)
+        a_pred: List[float] = matvec3(A_inv, f_I)
         return _add_vec(a_pred, state.b_a)
 
     @staticmethod
@@ -138,7 +143,7 @@ class ImuModel:
     def jacobian_gyro(state: AhrsState) -> List[List[float]]:
         """Return gyro Jacobian H for δω and δb_g blocks."""
         R_BI: List[List[float]] = state.T_BI[0]
-        R_IB: List[List[float]] = _transpose3(R_BI)
+        R_IB: List[List[float]] = transpose3(R_BI)
         H: List[List[float]] = [
             [0.0 for _ in range(StateMapping.dimension())] for _ in range(3)
         ]
@@ -158,19 +163,19 @@ class ImuModel:
         """Return accel Jacobian H for δθ, δA_a, δb_a, and δg_W blocks."""
         R_WB: List[List[float]] = Quaternion.to_matrix(state.q_WB)
         R_BI: List[List[float]] = state.T_BI[0]
-        R_IB: List[List[float]] = _transpose3(R_BI)
+        R_IB: List[List[float]] = transpose3(R_BI)
         A_inv: List[List[float]] = _invert_3x3(state.A_a)
-        f_B: List[float] = _matvec3(R_WB, _scale_vec(state.g_W, -1.0))
-        f_I: List[float] = _matvec3(R_IB, f_B)
-        A_inv_f: List[float] = _matvec3(A_inv, f_I)
+        f_B: List[float] = matvec3(R_WB, _scale_vec(state.g_W, -1.0))
+        f_I: List[float] = matvec3(R_IB, f_B)
+        A_inv_f: List[float] = matvec3(A_inv, f_I)
         H: List[List[float]] = [
             [0.0 for _ in range(StateMapping.dimension())] for _ in range(3)
         ]
         theta_slice: slice = StateMapping.slice_delta_theta()
-        skew_g: List[List[float]] = _skew(state.g_W)
-        R_WB_skew: List[List[float]] = _matmul3(R_WB, skew_g)
-        theta_block: List[List[float]] = _matmul3(R_IB, R_WB_skew)
-        H_theta: List[List[float]] = _matmul3(A_inv, theta_block)
+        skew_g: List[List[float]] = skew(state.g_W)
+        R_WB_skew: List[List[float]] = matmul3(R_WB, skew_g)
+        theta_block: List[List[float]] = matmul3(R_IB, R_WB_skew)
+        H_theta: List[List[float]] = matmul3(A_inv, theta_block)
         i: int
         j: int
         for i in range(3):
@@ -188,8 +193,8 @@ class ImuModel:
         for i in range(3):
             H[i][b_a_slice.start + i] = 1.0
         g_slice: slice = StateMapping.slice_delta_g_W()
-        g_block: List[List[float]] = _matmul3(R_IB, R_WB)
-        H_g: List[List[float]] = _matmul3(A_inv, _scale_mat(g_block, -1.0))
+        g_block: List[List[float]] = matmul3(R_IB, R_WB)
+        H_g: List[List[float]] = matmul3(A_inv, scale_mat(g_block, -1.0))
         for i in range(3):
             for j in range(3):
                 H[i][g_slice.start + j] = H_g[i][j]
@@ -210,65 +215,6 @@ def _add_vec(a: Sequence[float], b: Sequence[float]) -> List[float]:
 def _scale_vec(v: Sequence[float], scale: float) -> List[float]:
     """Return scale * v for length-3 vectors."""
     return [v[0] * scale, v[1] * scale, v[2] * scale]
-
-
-def _matvec3(A: Sequence[Sequence[float]], v: Sequence[float]) -> List[float]:
-    """Return A * v for 3x3 A and 3x1 v."""
-    return [
-        A[0][0] * v[0] + A[0][1] * v[1] + A[0][2] * v[2],
-        A[1][0] * v[0] + A[1][1] * v[1] + A[1][2] * v[2],
-        A[2][0] * v[0] + A[2][1] * v[1] + A[2][2] * v[2],
-    ]
-
-
-def _matmul3(
-    A: Sequence[Sequence[float]], B: Sequence[Sequence[float]]
-) -> List[List[float]]:
-    """Return A * B for 3x3 matrices."""
-    return [
-        [
-            A[0][0] * B[0][0] + A[0][1] * B[1][0] + A[0][2] * B[2][0],
-            A[0][0] * B[0][1] + A[0][1] * B[1][1] + A[0][2] * B[2][1],
-            A[0][0] * B[0][2] + A[0][1] * B[1][2] + A[0][2] * B[2][2],
-        ],
-        [
-            A[1][0] * B[0][0] + A[1][1] * B[1][0] + A[1][2] * B[2][0],
-            A[1][0] * B[0][1] + A[1][1] * B[1][1] + A[1][2] * B[2][1],
-            A[1][0] * B[0][2] + A[1][1] * B[1][2] + A[1][2] * B[2][2],
-        ],
-        [
-            A[2][0] * B[0][0] + A[2][1] * B[1][0] + A[2][2] * B[2][0],
-            A[2][0] * B[0][1] + A[2][1] * B[1][1] + A[2][2] * B[2][1],
-            A[2][0] * B[0][2] + A[2][1] * B[1][2] + A[2][2] * B[2][2],
-        ],
-    ]
-
-
-def _transpose3(A: Sequence[Sequence[float]]) -> List[List[float]]:
-    """Return transpose of a 3x3 matrix."""
-    return [
-        [A[0][0], A[1][0], A[2][0]],
-        [A[0][1], A[1][1], A[2][1]],
-        [A[0][2], A[1][2], A[2][2]],
-    ]
-
-
-def _skew(v: Sequence[float]) -> List[List[float]]:
-    """Return the 3x3 skew-symmetric matrix [v]_×."""
-    return [
-        [0.0, -v[2], v[1]],
-        [v[2], 0.0, -v[0]],
-        [-v[1], v[0], 0.0],
-    ]
-
-
-def _scale_mat(A: Sequence[Sequence[float]], scale: float) -> List[List[float]]:
-    """Return scaled 3x3 matrix."""
-    return [
-        [A[0][0] * scale, A[0][1] * scale, A[0][2] * scale],
-        [A[1][0] * scale, A[1][1] * scale, A[1][2] * scale],
-        [A[2][0] * scale, A[2][1] * scale, A[2][2] * scale],
-    ]
 
 
 def _invert_3x3(A: Sequence[Sequence[float]]) -> List[List[float]]:
