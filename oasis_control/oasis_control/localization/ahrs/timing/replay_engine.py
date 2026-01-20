@@ -49,7 +49,10 @@ class ReplayEngine:
           deterministically (no replacement/merge) and diagnosed.
         - A node may contain an IMU packet and mag packet together when
           they share the same t_meas_ns.
-        - Replay recomputes mean state/covariance node-by-node in time order.
+        - Node state/covariance store the posterior after updates at
+          t_meas_ns.
+        - Replay recomputes posterior state/covariance node-by-node in time
+          order.
 
     Frames and units:
         - All timestamps follow TimeBase (int nanoseconds).

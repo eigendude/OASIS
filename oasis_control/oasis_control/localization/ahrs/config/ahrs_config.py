@@ -34,6 +34,8 @@ class AhrsConfig:
     Data contract:
         - Contains all fields defined in AhrsParams.
         - May precompute derived values (e.g., noise variances).
+        - Converts any seconds-based timing inputs into integer nanosecond
+          thresholds once, then exposes only ns for core comparisons.
 
     Frames and units:
         - Frame identifiers are stored as strings.

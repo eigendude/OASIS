@@ -58,15 +58,17 @@ class ProcessModel:
         - IMU/mag measurements are updates, not inputs to propagation.
 
     Equations:
-        Navigation kinematics:
+        Mean propagation (zero-mean noise, no sampled injection):
             ṗ_WB = v_WB
-            v̇_WB = w_v
+            v̇_WB := 0
 
-        Attitude kinematics:
             q̇_WB = 0.5 * Ω(ω_WB) * q_WB
+            ω̇_WB := 0
+
+        Continuous-time noise model (covariance only, E[w_v] = 0, E[w_ω] = 0):
+            v̇_WB = w_v
             ω̇_WB = w_ω
 
-        Random walks:
             ḃ_g = w_bg
             ḃ_a = w_ba
             vec(Ȧ_a) = w_A

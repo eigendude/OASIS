@@ -22,8 +22,8 @@ class RingBuffer:
 
     Inputs/outputs:
         - Inputs: measurement packets with t_meas_ns keys.
-        - Outputs: ordered TimelineNode instances containing state/cov +
-          measurements.
+        - Outputs: ordered TimelineNode instances containing posterior
+          state/cov + measurements.
 
     Dependencies:
         - Uses TimelineNode instances for storage.
@@ -38,6 +38,8 @@ class RingBuffer:
     Data contract:
         - Nodes are keyed by exact t_meas_ns values.
         - A node may include <=1 IMU packet and <=1 mag packet.
+        - Node state/covariance store the posterior after updates at
+          t_meas_ns.
         - Eviction drops nodes older than
           (t_filter_ns - t_buffer_sec * 1e9).
 

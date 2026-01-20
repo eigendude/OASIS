@@ -178,18 +178,19 @@ magnetometer are applied as **measurement updates**.
 Navigation kinematics:
 
 - `ṗ_WB = v_WB`
-- `v̇_WB = w_v`
+- `v̇_WB := 0` (mean propagation; `E[w_v] = 0`)
 
 Interpretation:
 
-- `w_v` is a zero-mean smoothness prior on world-frame linear acceleration (units: m/s²).
-  In the mean propagation, `v̇_WB` is typically integrated with `E[w_v] = 0`.
+- `w_v` is a zero-mean smoothness prior on world-frame linear acceleration
+  (units: m/s²) and is used only for covariance propagation.
 
 Attitude kinematics (driven by latent angular rate):
 
 - `q̇_WB = 0.5 * Ω(ω_WB) * q_WB`
-- `ω̇_WB = w_ω`
-- `w_ω` is a zero-mean smoothness prior on angular-rate change (units: rad/s²).
+- `ω̇_WB := 0` (mean propagation; `E[w_ω] = 0`)
+- `w_ω` is a zero-mean smoothness prior on angular-rate change (units: rad/s²)
+  and is used only for covariance propagation.
 
 Definition of `Ω(ω)`:
 
@@ -221,6 +222,7 @@ Notes:
 - This process is intentionally weak: it encodes “motion is smooth” and “rate is
   smooth”. The gyro measurement update provides the primary constraint on `ω_WB`
   (and indirectly on `q_WB` through propagation).
+- Do not inject sampled `w_v` or `w_ω` into the mean propagation.
 
 ### 4.2 Noise intensities
 
@@ -304,10 +306,10 @@ Residual:
 
 Notes:
 
-- `a_WB := 0` reflects the process model mean (smoothness prior with zero mean),
-  supports gravity initialization, and avoids introducing a separate
-  acceleration state. The process model still uses `v̇_WB = w_v` for
-  propagation.
+- `a_WB := 0` reflects the process model mean (smoothness prior with zero
+  mean), supports gravity initialization, and avoids introducing a separate
+  acceleration state. The stochastic model still uses `v̇_WB = w_v` for
+  covariance propagation, but sampled noise is not injected into the mean.
 - A future extension may introduce an explicit acceleration state or a
   deterministic finite-difference policy, but the current spec uses
   `a_WB := 0`.
@@ -404,7 +406,8 @@ Implement a fixed-lag deterministic replay system.
 
 Maintain a time-ordered ring buffer of nodes. Each node stores:
 
-- mean state and covariance at that time
+- posterior mean state and covariance after applying all updates at that
+  timestamp
 - attached measurements and metadata
 
 Nodes are keyed by timestamp. Messages with the same timestamp attach to the
@@ -413,6 +416,9 @@ same node.
 Canonical keying uses integer nanoseconds `t_meas_ns` sourced from ROS header
 stamps (`sec`, `nsec`). Float seconds conversions are convenience only and MUST
 NOT be used for node keying, equality, ordering, or buffer attachment.
+Seconds inputs are converted once in configuration into integer nanosecond
+thresholds (e.g., `ε_wall_future_ns`, `Δt_clock_jump_max_ns`,
+`Δt_imu_max_ns`). Core logic only compares int nanoseconds.
 
 Rules:
 

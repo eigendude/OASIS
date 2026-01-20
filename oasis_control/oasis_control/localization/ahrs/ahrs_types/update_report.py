@@ -39,6 +39,8 @@ class UpdateReport:
         - z_hat: predicted measurement vector.
         - nu: residual vector.
         - R: measurement covariance.
+        - S_hat: optional but recommended predicted innovation covariance
+          excluding measurement noise (Ŝ = H P Hᵀ).
         - S: innovation covariance.
         - mahalanobis2: scalar νᵀ S⁻¹ ν.
         - accepted: boolean.
@@ -58,6 +60,8 @@ class UpdateReport:
         - Rejections are no-ops on state and covariance (no partial update).
 
     Equations:
+        - S_hat = H P Hᵀ (innovation covariance excluding measurement noise).
+        - S = S_hat + R.
         - mahalanobis2 = νᵀ S⁻¹ ν.
 
     Numerical stability notes:
