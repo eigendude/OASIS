@@ -46,7 +46,7 @@ oasis_control/oasis_control/localization/ahrs/
 
   timing/
     time_base.py
-    timeline.py
+    timeline_node.py
     ring_buffer.py
     replay_engine.py
 
@@ -68,7 +68,7 @@ oasis_control/oasis_control/nodes/ahrs/
   ros_time.py
 
 oasis_control/test/ahrs/
-  math/
+  math_utils/
   models/
   state/
   filter/
@@ -119,7 +119,7 @@ For any transform `T_AB = (R_AB, p_AB)`:
   - `R ≈ Exp(δθ) * R_hat`
 
 Implement standard `Exp`/`Log` and `Adjoint` operators in
-`oasis_control/oasis_control/localization/ahrs/math/se3.py`.
+`oasis_control/oasis_control/localization/ahrs/math_utils/se3.py`.
 
 ### 2.4 Covariances
 
@@ -141,8 +141,8 @@ extrinsics, and environment reference vectors.
 - `p_WB ∈ ℝ³` Position of body in world
 - `v_WB ∈ ℝ³` Velocity of body in world
 - `q_WB` Unit quaternion (world → body)
-- `ω_WB ∈ ℝ³` Body angular rate expressed in `{B}` (rad/s), the angular
-  velocity of `{B}` relative to `{W}` expressed in `{B}`
+- Body angular rate: `ω_WB ∈ ℝ³` in `{B}` (rad/s), the angular velocity of
+  `{B}` relative to `{W}` expressed in `{B}`
 - `b_g ∈ ℝ³` Gyro bias (in `{I}`)
 - `b_a ∈ ℝ³` Accel bias (in `{I}`)
 - `A_a ∈ ℝ^{3×3}` Accel scale/misalignment matrix (acts in `{I}`)
@@ -459,12 +459,13 @@ parameters, QoS, and logging. All math and state logic must reside in
 
 IMU synchronization contract:
 
-- IMU processing requires an ExactTime-synchronized pair
-  `(imu_raw, imu_calibration)` at the same `t_meas_ns`.
+- IMU processing requires ExactTime pairing of `(imu_raw, imu_calibration)` at
+  identical `t_meas_ns`.
 - Any `imu_raw` without a matching `imu_calibration` at the exact same
-  timestamp MUST be rejected, even when calibration is static and unchanged.
+  timestamp MUST be rejected/dropped, even when calibration is static and
+  unchanged.
 - `imu_calibration` MAY change over time (recalibration events), and the
-  synchronized pair requirement still applies.
+  pairing requirement still applies.
 - `imu_calibration` is used **only before initialization** as an initial prior
   on `(b_a, A_a, b_g)` with full covariance.
 - After initialization, `imu_calibration` does not modify in-state parameters,

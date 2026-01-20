@@ -65,8 +65,9 @@ class TimeBase:
         - Avoid float rounding when converting between units.
 
     Suggested unit tests:
-        - to_seconds/from_seconds round-trip consistency.
-        - validate_monotonic rejects decreasing timestamps.
+        - stamp-to-ns formula uses sec * 1_000_000_000 + nanosec.
+        - validate_monotonic rejects negative, NaN, or decreasing timestamps.
+        - float conversions are lossy and never used for keying.
     """
 
     pass

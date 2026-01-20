@@ -8,28 +8,8 @@
 #
 ################################################################################
 
-"""Mean-state container for the AHRS core.
-
-Responsibility:
-    Define the nominal (mean) AHRS state elements and their ordering, units,
-    and frames without any ROS types.
-
-Inputs/outputs:
-    - Inputs are plain vectors/matrices representing state components.
-    - Outputs are the same components, typically passed to process or
-      measurement models.
-
-Dependencies:
-    - Used by process_model, imu_model, mag_model, and filter steps.
-    - Coupled with error_state and state_mapping for covariance operations.
-
-Determinism:
-    State storage is deterministic; no hidden time or parameter lookups.
-"""
-
-
 class AhrsState:
-    """Mean AHRS state for navigation, calibration, and environment.
+    """Mean-state container for the AHRS core.
 
     Purpose:
         Represent the nominal state that is propagated by the process model
@@ -47,7 +27,8 @@ class AhrsState:
         - p_WB: position of body in world, shape (3,).
         - v_WB: velocity of body in world, shape (3,).
         - q_WB: unit quaternion [w, x, y, z].
-        - omega_WB: body angular rate in {B}, shape (3,).
+        - omega_WB: Body angular rate: `ω_WB ∈ ℝ³` in `{B}` (rad/s), the angular
+          velocity of `{B}` relative to `{W}` expressed in `{B}`.
         - b_g: gyro bias in {I}, shape (3,).
         - b_a: accel bias in {I}, shape (3,).
         - A_a: accel calibration matrix, shape (3, 3).
@@ -59,11 +40,27 @@ class AhrsState:
     Frames and units:
         - p_WB in meters, v_WB in meters per second.
         - q_WB rotates {W} -> {B}.
-        - omega_WB in rad/s in {B}.
         - b_g in rad/s in {I}, b_a in m/s^2 in {I}.
         - A_a is unitless scale/misalignment.
         - T_BI, T_BM translations in meters, rotations unitless.
         - g_W in m/s^2, m_W in tesla.
+
+    Responsibility:
+        Define the nominal (mean) AHRS state elements and their ordering,
+        units, and frames without any ROS types.
+
+    Inputs/outputs:
+        - Inputs are plain vectors/matrices representing state components.
+        - Outputs are the same components, typically passed to process or
+          measurement models.
+
+    Dependencies:
+        - Used by process_model, imu_model, mag_model, and filter steps.
+        - Coupled with error_state and state_mapping for covariance
+          operations.
+
+    Determinism:
+        State storage is deterministic; no hidden time or parameter lookups.
 
     Determinism and edge cases:
         - apply_error must use the canonical error-state ordering from
