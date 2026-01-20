@@ -67,6 +67,13 @@ class AhrsParams:
         - R_max: maximum SPD covariance (tesla^2).
         - R_m0_policy: initial R_m policy for startup.
 
+        Stationary detection and pseudo-measurements:
+        - t_stationary_window_ns: stationary window length in nanoseconds.
+        - tau_omega: gyro whitened threshold (dimensionless).
+        - tau_accel: accel whitened threshold (dimensionless).
+        - R_v0: baseline ZUPT covariance (3, 3), full SPD.
+        - R_omega0: baseline no-turn covariance (3, 3), full SPD.
+
         Frame identifiers:
         - world_frame, odom_frame, base_frame, imu_frame, mag_frame.
         - Used only by higher-level integration; core is ROS-agnostic.

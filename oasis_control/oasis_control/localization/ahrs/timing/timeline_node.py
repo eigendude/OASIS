@@ -9,6 +9,11 @@
 ################################################################################
 
 
+from oasis_control.localization.ahrs.ahrs_types.stationary_packet import (
+    StationaryPacket,
+)
+
+
 class TimelineNode:
     """Time-keyed node containing measurements for a single timestamp.
 
@@ -33,6 +38,7 @@ class TimelineNode:
     Public API (to be implemented):
         - insert_imu(imu_packet)
         - insert_mag(mag_packet)
+        - insert_stationary(stationary_packet)
         - is_complete()
         - t_meas_ns()
 
@@ -42,7 +48,9 @@ class TimelineNode:
         - covariance: AhrsCovariance posterior after updates at t_meas_ns.
         - imu_packet: Optional[ImuPacket].
         - mag_packet: Optional[MagPacket].
+        - stationary_packet: Optional[StationaryPacket].
         - Each node holds at most one IMU packet and one mag packet.
+        - Each node holds at most one stationary packet.
         - IMU and mag can share a node when t_meas_ns matches exactly.
         - Duplicate same-type measurements at the same t_meas_ns are rejected
           deterministically (no replacement/merge).
@@ -68,6 +76,9 @@ class TimelineNode:
     Suggested unit tests:
         - insert_imu rejects second IMU at the same t_meas_ns.
         - insert_mag rejects second mag at the same t_meas_ns.
+        - insert_stationary rejects second stationary packet at the same
+          t_meas_ns.
     """
 
-    pass
+    def insert_stationary(self, stationary_packet: StationaryPacket) -> None:
+        pass

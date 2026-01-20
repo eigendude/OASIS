@@ -35,11 +35,11 @@ class UpdateReport:
         Required fields:
         - t_meas_ns: measurement timestamp in int nanoseconds since an
           arbitrary epoch.
-        - measurement_type: enum or string (gyro, accel, mag).
+        - measurement_type: enum or string (gyro, accel, mag, zupt, no_turn).
         - z: raw measurement vector.
         - z_hat: predicted measurement vector.
         - nu: residual vector.
-        - R: measurement covariance.
+        - R: full measurement covariance (never diagonalized).
         - S_hat: optional but recommended predicted innovation covariance
           excluding measurement noise (Ŝ = H P Hᵀ).
         - S: innovation covariance.

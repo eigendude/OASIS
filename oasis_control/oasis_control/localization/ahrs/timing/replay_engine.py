@@ -9,6 +9,11 @@
 ################################################################################
 
 
+from oasis_control.localization.ahrs.ahrs_types.stationary_packet import (
+    StationaryPacket,
+)
+
+
 class ReplayEngine:
     """Replay logic for time-ordered AHRS measurements.
 
@@ -41,6 +46,7 @@ class ReplayEngine:
     Public API (to be implemented):
         - insert_imu(imu_packet)
         - insert_mag(mag_packet)
+        - insert_stationary(stationary_packet)
         - replay_from(t_meas_ns)
         - frontier_time()
 
@@ -50,6 +56,8 @@ class ReplayEngine:
           deterministically (no replacement/merge) and diagnosed.
         - A node may contain an IMU packet and mag packet together when
           they share the same t_meas_ns.
+        - A node may contain a stationary packet keyed by the same
+          t_meas_ns.
         - Node state/covariance store the posterior after updates at
           t_meas_ns.
         - Replay recomputes posterior state/covariance node-by-node in time
@@ -69,6 +77,14 @@ class ReplayEngine:
         - Exact t_meas_ns match determines node attachment.
         - No epsilon merging, rounding, or "close enough" matching is
           allowed.
+        - Update order within a node:
+            1) priors once
+            2) gyro update
+            3) accel update
+            4) mag update
+            5) if stationary packet present and is_stationary:
+               5a) no-turn update (if enabled)
+               5b) ZUPT update
 
     Equations:
         - No equations; procedural replay rules are specified above.
@@ -81,4 +97,5 @@ class ReplayEngine:
         - Duplicate measurements are rejected with diagnostics.
     """
 
-    pass
+    def insert_stationary(self, stationary_packet: StationaryPacket) -> None:
+        pass

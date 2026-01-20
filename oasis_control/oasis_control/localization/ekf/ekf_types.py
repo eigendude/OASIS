@@ -8,10 +8,6 @@
 #
 ################################################################################
 
-"""
-Types and helpers for EKF localization
-"""
-
 import enum
 from dataclasses import dataclass
 from typing import Literal
@@ -79,17 +75,10 @@ def to_ns(t: EkfTime) -> int:
 
 
 def from_ns(ns: int) -> EkfTime:
+    sec: int
+    nanosec: int
     sec, nanosec = divmod(ns, _NS_PER_S)
     return EkfTime(sec=sec, nanosec=nanosec)
-
-
-def to_seconds(t: EkfTime) -> float:
-    return float(t.sec) + float(t.nanosec) / _NS_PER_S
-
-
-def from_seconds(seconds: float) -> EkfTime:
-    total_ns: int = int(round(seconds * _NS_PER_S))
-    return from_ns(total_ns)
 
 
 class EkfEventType(enum.Enum):

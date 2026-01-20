@@ -9,6 +9,11 @@
 ################################################################################
 
 
+from oasis_control.localization.ahrs.ahrs_types.stationary_packet import (
+    StationaryPacket,
+)
+
+
 class AhrsEkf:
     """AHRS EKF orchestrator and measurement ordering rules.
 
@@ -33,6 +38,8 @@ class AhrsEkf:
         - update_gyro(imu_packet)
         - update_accel(imu_packet)
         - update_mag(mag_packet)
+        - update_no_turn(stationary_packet)
+        - update_zupt(stationary_packet)
         - reset()
         - state()
         - covariance()
@@ -52,6 +59,9 @@ class AhrsEkf:
             2) gyro update
             3) accel update
             4) mag update
+            5) if stationary packet present and is_stationary:
+               5a) no-turn update (if enabled)
+               5b) ZUPT update
         - At a given timestamp, apply updates in the specified order.
         - Do not treat IMU or mag samples as process inputs.
 
@@ -72,4 +82,8 @@ class AhrsEkf:
         - Update reports capture accepted/rejected status.
     """
 
-    pass
+    def update_no_turn(self, stationary_packet: StationaryPacket) -> None:
+        pass
+
+    def update_zupt(self, stationary_packet: StationaryPacket) -> None:
+        pass
