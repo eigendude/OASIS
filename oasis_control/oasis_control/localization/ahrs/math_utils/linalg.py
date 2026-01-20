@@ -13,6 +13,7 @@ from __future__ import annotations
 from math import sqrt
 from typing import List
 from typing import Sequence
+from typing import overload
 
 
 class LinearAlgebra:
@@ -112,6 +113,22 @@ class LinearAlgebra:
         except ValueError:
             return False
         return True
+
+    @staticmethod
+    @overload
+    def solve_spd(
+        A: Sequence[Sequence[float]],
+        b: Sequence[float],
+    ) -> List[float]:
+        ...
+
+    @staticmethod
+    @overload
+    def solve_spd(
+        A: Sequence[Sequence[float]],
+        b: Sequence[Sequence[float]],
+    ) -> List[List[float]]:
+        ...
 
     @staticmethod
     def solve_spd(
