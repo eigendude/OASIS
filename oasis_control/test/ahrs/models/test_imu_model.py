@@ -122,6 +122,58 @@ class TestImuModel(unittest.TestCase):
                 if not (in_theta or in_A or in_b_a or in_g):
                     self.assertEqual(H_accel[i][j], 0.0)
 
+    def test_accel_jacobian_gravity_sign(self) -> None:
+        """Gravity Jacobian sign matches finite-difference prediction."""
+        state: AhrsState = AhrsState(
+            p_WB=[0.0, 0.0, 0.0],
+            v_WB=[0.0, 0.0, 0.0],
+            q_WB=[1.0, 0.0, 0.0, 0.0],
+            omega_WB=[0.0, 0.0, 0.0],
+            b_g=[0.0, 0.0, 0.0],
+            b_a=[0.0, 0.0, 0.0],
+            A_a=_identity3(),
+            T_BI=(_identity3(), [0.0, 0.0, 0.0]),
+            T_BM=(_identity3(), [0.0, 0.0, 0.0]),
+            g_W=[0.0, 0.0, -9.81],
+            m_W=[1.0, 0.0, 0.0],
+        )
+        H: List[List[float]] = ImuModel.jacobian_accel(state)
+        g_slice: slice = StateMapping.slice_delta_g_W()
+        H_g: List[List[float]] = [
+            H[0][g_slice.start : g_slice.stop],
+            H[1][g_slice.start : g_slice.stop],
+            H[2][g_slice.start : g_slice.stop],
+        ]
+        eps: float = 1.0e-6
+        state2: AhrsState = AhrsState(
+            p_WB=state.p_WB,
+            v_WB=state.v_WB,
+            q_WB=state.q_WB,
+            omega_WB=state.omega_WB,
+            b_g=state.b_g,
+            b_a=state.b_a,
+            A_a=state.A_a,
+            T_BI=state.T_BI,
+            T_BM=state.T_BM,
+            g_W=[0.0, 0.0, state.g_W[2] + eps],
+            m_W=state.m_W,
+        )
+        accel: List[float] = ImuModel.predict_accel(state)
+        accel_perturbed: List[float] = ImuModel.predict_accel(state2)
+        delta_pred: List[float] = [
+            accel_perturbed[0] - accel[0],
+            accel_perturbed[1] - accel[1],
+            accel_perturbed[2] - accel[2],
+        ]
+        delta_lin: List[float] = [
+            H_g[0][2] * eps,
+            H_g[1][2] * eps,
+            H_g[2][2] * eps,
+        ]
+        self.assertLess(delta_pred[2], 0.0)
+        self.assertLess(delta_lin[2], 0.0)
+        self.assertAlmostEqual(delta_pred[2], delta_lin[2], delta=1.0e-9)
+
 
 if __name__ == "__main__":
     unittest.main()

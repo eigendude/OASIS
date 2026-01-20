@@ -51,10 +51,10 @@ class TestNoiseAdaptation(unittest.TestCase):
         R_m = _diag(1.0)
         nu: List[float] = [0.1, -0.2, 0.3]
         S_hat = _diag(0.1)
-        R_min = _diag(0.01)
-        R_max = _diag(10.0)
+        min_eig: float = 0.01
+        max_eig: float = 10.0
         R_new: List[List[float]] = NoiseAdaptation.update_mag_covariance(
-            R_m, nu, S_hat, 0.5, R_min, R_max
+            R_m, nu, S_hat, 0.5, min_eig, max_eig
         )
         self.assertEqual(R_new, LinearAlgebra.symmetrize(R_new))
 
@@ -63,15 +63,37 @@ class TestNoiseAdaptation(unittest.TestCase):
         R_m = _diag(1.0)
         nu: List[float] = [10.0, 0.0, 0.0]
         S_hat = _diag(0.0)
-        R_min = _diag(0.1)
-        R_max = _diag(1.5)
+        min_eig: float = 0.1
+        max_eig: float = 1.5
         R_new: List[List[float]] = NoiseAdaptation.update_mag_covariance(
-            R_m, nu, S_hat, 1.0, R_min, R_max
+            R_m, nu, S_hat, 1.0, min_eig, max_eig
         )
         self.assertTrue(LinearAlgebra.is_spd(R_new))
         for i in range(3):
             self.assertGreaterEqual(R_new[i][i], 0.1)
             self.assertLessEqual(R_new[i][i], 1.5)
+
+    def test_alpha_validation(self) -> None:
+        """Alpha bounds are enforced."""
+        R_m = _diag(1.0)
+        nu: List[float] = [0.1, -0.2, 0.3]
+        S_hat = _diag(0.1)
+        min_eig: float = 0.01
+        max_eig: float = 10.0
+        with self.assertRaisesRegex(ValueError, "alpha must be in \\[0, 1\\]"):
+            NoiseAdaptation.update_mag_covariance(
+                R_m, nu, S_hat, -0.1, min_eig, max_eig
+            )
+        with self.assertRaisesRegex(ValueError, "alpha must be in \\[0, 1\\]"):
+            NoiseAdaptation.update_mag_covariance(R_m, nu, S_hat, 1.1, min_eig, max_eig)
+        R_zero: List[List[float]] = NoiseAdaptation.update_mag_covariance(
+            R_m, nu, S_hat, 0.0, min_eig, max_eig
+        )
+        R_one: List[List[float]] = NoiseAdaptation.update_mag_covariance(
+            R_m, nu, S_hat, 1.0, min_eig, max_eig
+        )
+        self.assertTrue(LinearAlgebra.is_spd(R_zero))
+        self.assertTrue(LinearAlgebra.is_spd(R_one))
 
 
 if __name__ == "__main__":
