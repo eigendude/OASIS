@@ -40,7 +40,8 @@ class StationaryPacket:
     Determinism and edge cases:
         - window_start_ns must be <= window_end_ns
         - t_meas_ns must equal window_end_ns for exact alignment
-        - Covariances must be full SPD matrices and are never diagonalized
+        - Covariance clamping, if any, happens upstream (for example in a
+          StationaryDetector) and this packet only validates SPD
     """
 
     t_meas_ns: int

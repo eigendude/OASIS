@@ -70,6 +70,15 @@ class UpdateReport:
         m: int = len(self.z)
         if len(self.z_hat) != m or len(self.nu) != m:
             raise ValueError("z, z_hat, and nu must have matching lengths")
+        for value in self.z:
+            if not math.isfinite(value):
+                raise ValueError("z contains non-finite value")
+        for value in self.z_hat:
+            if not math.isfinite(value):
+                raise ValueError("z_hat contains non-finite value")
+        for value in self.nu:
+            if not math.isfinite(value):
+                raise ValueError("nu contains non-finite value")
         self._validate_matrix("R", self.R, m)
         self._validate_matrix("S", self.S, m)
         if self.S_hat is not None:

@@ -61,61 +61,60 @@ class TestImuPacket(unittest.TestCase):
 
     def test_validate_rejects_missing_calibration(self) -> None:
         """Validate rejects missing calibration prior for ExactTime sync."""
-        packet: ImuPacket = ImuPacket(
-            t_meas_ns=1,
-            frame_id="imu",
-            z_omega=[0.0, 0.0, 0.0],
-            R_omega=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
-            z_accel=[0.0, 0.0, 0.0],
-            R_accel=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
-            calibration_prior=None,
-            calibration_meta={},
-        )
-        with self.assertRaises(ValueError):
-            packet.validate()
+        with self.assertRaisesRegex(
+            ValueError,
+            "missing calibration_prior for ExactTime sync",
+        ):
+            ImuPacket(
+                t_meas_ns=1,
+                frame_id="imu",
+                z_omega=[0.0, 0.0, 0.0],
+                R_omega=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+                z_accel=[0.0, 0.0, 0.0],
+                R_accel=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+                calibration_prior=None,
+                calibration_meta={},
+            )
 
     def test_validate_rejects_bad_shapes(self) -> None:
         """Validate rejects incorrect vector and matrix shapes."""
         packet: ImuPacket = self._make_packet()
-        bad_packet: ImuPacket = ImuPacket(
-            t_meas_ns=packet.t_meas_ns,
-            frame_id=packet.frame_id,
-            z_omega=[0.0, 0.0],
-            R_omega=packet.R_omega,
-            z_accel=packet.z_accel,
-            R_accel=packet.R_accel,
-            calibration_prior=packet.calibration_prior,
-            calibration_meta=packet.calibration_meta,
-        )
-        with self.assertRaises(ValueError):
-            bad_packet.validate()
-        bad_packet = ImuPacket(
-            t_meas_ns=packet.t_meas_ns,
-            frame_id=packet.frame_id,
-            z_omega=packet.z_omega,
-            R_omega=[[1.0, 0.0], [0.0, 1.0]],
-            z_accel=packet.z_accel,
-            R_accel=packet.R_accel,
-            calibration_prior=packet.calibration_prior,
-            calibration_meta=packet.calibration_meta,
-        )
-        with self.assertRaises(ValueError):
-            bad_packet.validate()
+        with self.assertRaisesRegex(ValueError, "z_omega must have length 3"):
+            ImuPacket(
+                t_meas_ns=packet.t_meas_ns,
+                frame_id=packet.frame_id,
+                z_omega=[0.0, 0.0],
+                R_omega=packet.R_omega,
+                z_accel=packet.z_accel,
+                R_accel=packet.R_accel,
+                calibration_prior=packet.calibration_prior,
+                calibration_meta=packet.calibration_meta,
+            )
+        with self.assertRaisesRegex(ValueError, "R_omega must be 3x3"):
+            ImuPacket(
+                t_meas_ns=packet.t_meas_ns,
+                frame_id=packet.frame_id,
+                z_omega=packet.z_omega,
+                R_omega=[[1.0, 0.0], [0.0, 1.0]],
+                z_accel=packet.z_accel,
+                R_accel=packet.R_accel,
+                calibration_prior=packet.calibration_prior,
+                calibration_meta=packet.calibration_meta,
+            )
 
     def test_validate_rejects_non_spd(self) -> None:
         """Validate rejects non-SPD covariance."""
-        packet: ImuPacket = ImuPacket(
-            t_meas_ns=1,
-            frame_id="imu",
-            z_omega=[0.0, 0.0, 0.0],
-            R_omega=[[1.0, 2.0, 0.0], [2.0, 1.0, 0.0], [0.0, 0.0, -1.0]],
-            z_accel=[0.0, 0.0, 0.0],
-            R_accel=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
-            calibration_prior={"bias": [0.0, 0.0, 0.0]},
-            calibration_meta={},
-        )
-        with self.assertRaises(ValueError):
-            packet.validate()
+        with self.assertRaisesRegex(ValueError, "R_omega must be SPD"):
+            ImuPacket(
+                t_meas_ns=1,
+                frame_id="imu",
+                z_omega=[0.0, 0.0, 0.0],
+                R_omega=[[1.0, 2.0, 0.0], [2.0, 1.0, 0.0], [0.0, 0.0, -1.0]],
+                z_accel=[0.0, 0.0, 0.0],
+                R_accel=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+                calibration_prior={"bias": [0.0, 0.0, 0.0]},
+                calibration_meta={},
+            )
 
     def test_as_dict_json_serializable(self) -> None:
         """as_dict returns JSON-serializable data."""

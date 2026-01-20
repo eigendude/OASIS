@@ -68,6 +68,7 @@ class ImuPacket:
         if self.calibration_prior is not None:
             fingerprint = self._fingerprint_payload(self.calibration_prior)
         object.__setattr__(self, "calibration_fingerprint", fingerprint)
+        self.validate()
 
     def validate(self) -> None:
         """Validate packet fields and raise ValueError on failure."""

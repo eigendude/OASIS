@@ -132,6 +132,55 @@ class TestUpdateReport(unittest.TestCase):
         with self.assertRaises(ValueError):
             report.validate()
 
+    def test_validate_rejects_non_finite_vectors(self) -> None:
+        """Validate rejects non-finite z, z_hat, and nu values."""
+        report: UpdateReport = self._make_report()
+        report = UpdateReport(
+            t_meas_ns=report.t_meas_ns,
+            measurement_type=report.measurement_type,
+            z=[1.0, float("inf"), 3.0],
+            z_hat=report.z_hat,
+            nu=report.nu,
+            R=report.R,
+            S_hat=report.S_hat,
+            S=report.S,
+            mahalanobis2=report.mahalanobis2,
+            accepted=report.accepted,
+            rejection_reason=report.rejection_reason,
+        )
+        with self.assertRaisesRegex(ValueError, "z contains non-finite value"):
+            report.validate()
+        report = UpdateReport(
+            t_meas_ns=report.t_meas_ns,
+            measurement_type=report.measurement_type,
+            z=[1.0, 2.0, 3.0],
+            z_hat=[float("nan"), 2.1, 3.1],
+            nu=[0.1, -0.1, -0.1],
+            R=report.R,
+            S_hat=report.S_hat,
+            S=report.S,
+            mahalanobis2=report.mahalanobis2,
+            accepted=report.accepted,
+            rejection_reason=report.rejection_reason,
+        )
+        with self.assertRaisesRegex(ValueError, "z_hat contains non-finite value"):
+            report.validate()
+        report = UpdateReport(
+            t_meas_ns=report.t_meas_ns,
+            measurement_type=report.measurement_type,
+            z=[1.0, 2.0, 3.0],
+            z_hat=[0.9, 2.1, 3.1],
+            nu=[0.1, float("-inf"), -0.1],
+            R=report.R,
+            S_hat=report.S_hat,
+            S=report.S,
+            mahalanobis2=report.mahalanobis2,
+            accepted=report.accepted,
+            rejection_reason=report.rejection_reason,
+        )
+        with self.assertRaisesRegex(ValueError, "nu contains non-finite value"):
+            report.validate()
+
     def test_as_dict_json_serializable(self) -> None:
         """as_dict returns JSON-serializable data."""
         report: UpdateReport = self._make_report()

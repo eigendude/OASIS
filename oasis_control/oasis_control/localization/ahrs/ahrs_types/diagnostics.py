@@ -65,6 +65,8 @@ class AhrsDiagnostics:
         """Validate counters and timestamps and raise ValueError on failure."""
         if not self._is_int(self.buffer_size):
             raise ValueError("buffer_size must be int")
+        if self.buffer_size < 0:
+            raise ValueError("buffer_size must be non-negative")
         if not self._is_int(self.t_filter_ns):
             raise ValueError("t_filter_ns must be int nanoseconds")
         if not self._is_int(self.last_replay_from_ns):

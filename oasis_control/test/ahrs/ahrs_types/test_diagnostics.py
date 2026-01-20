@@ -77,6 +77,25 @@ class TestAhrsDiagnostics(unittest.TestCase):
         with self.assertRaises(ValueError):
             diagnostics.validate()
 
+    def test_validate_rejects_negative_buffer_size(self) -> None:
+        """Validate rejects negative buffer size."""
+        diagnostics: AhrsDiagnostics = AhrsDiagnostics(
+            buffer_size=-1,
+            t_filter_ns=1,
+            drop_count=0,
+            duplicate_count=0,
+            replay_count=0,
+            last_replay_from_ns=0,
+            rejected_old_count=0,
+            rejected_future_count=0,
+            duplicate_imu_count=0,
+            duplicate_mag_count=0,
+            out_of_order_insert_count=0,
+            evicted_node_count=0,
+        )
+        with self.assertRaisesRegex(ValueError, "buffer_size must be non-negative"):
+            diagnostics.validate()
+
     def test_reset_counters(self) -> None:
         """reset_counters preserves state while zeroing counters."""
         diagnostics: AhrsDiagnostics = self._make_diagnostics()
