@@ -21,21 +21,21 @@ class PredictStep:
         continuous-time process model and first-order discretization.
 
     Inputs/outputs:
-        - Inputs: AhrsState, AhrsCovariance, time step Δt.
+        - Inputs: AhrsState, AhrsCovariance, time step Δt_ns.
         - Outputs: propagated state and covariance.
 
     Dependencies:
         - Depends on ProcessModel, StateMapping, and LinearAlgebra.
 
     Public API (to be implemented):
-        - propagate(state, covariance, dt)
+        - propagate(state, covariance, dt_ns)
         - compute_jacobians(state)
-        - discretize(A, G, Q_c, dt)
+        - discretize(A, G, Q_c, dt_ns)
 
     Data contract:
         - state is an AhrsState instance.
         - covariance P is N x N with N from StateMapping.
-        - dt is a positive float in seconds.
+        - dt_ns is a positive integer nanoseconds time step.
         - Canonical process noise ordering (q = 39):
           [w_v, w_ω, w_bg, w_ba, w_A, w_BI, w_BM, w_g, w_m]
         - Ordering is canonical and must never change.
@@ -46,7 +46,7 @@ class PredictStep:
         - G has shape (N, q) with N = StateMapping.dimension().
 
     Frames and units:
-        - dt in seconds.
+        - dt_ns in nanoseconds.
         - State units follow Units.
 
     Determinism and edge cases:
@@ -54,12 +54,12 @@ class PredictStep:
           any measurement updates at the same timestamp.
         - IMU and magnetometer samples are not process inputs.
         - Random-walk mean states are held constant during propagation.
-        - dt <= 0 should result in a no-op or a rejected step.
+        - dt_ns <= 0 should result in a no-op or a rejected step.
 
     Equations:
         First-order discretization:
-            F ≈ I + AΔt
-            Q ≈ G Q_c Gᵀ Δt
+            F ≈ I + AΔt_ns
+            Q ≈ G Q_c Gᵀ Δt_ns
 
         Mean state propagation (zero-mean noise, no sampled injection):
             ṗ = v
@@ -76,7 +76,7 @@ class PredictStep:
         - Ensure Q remains SPD.
 
     Suggested unit tests:
-        - dt=0 leaves state unchanged.
+        - dt_ns=0 leaves state unchanged.
         - F and Q shapes are consistent with StateMapping.
     """
 

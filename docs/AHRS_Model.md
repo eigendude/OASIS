@@ -72,7 +72,7 @@ oasis_control/test/ahrs/
   models/
   state/
   filter/
-  time/
+  timing/
 ```
 
 All modules under `oasis_control/oasis_control/` should have `__init__.py` files.
@@ -141,8 +141,8 @@ extrinsics, and environment reference vectors.
 - `p_WB ∈ ℝ³` Position of body in world
 - `v_WB ∈ ℝ³` Velocity of body in world
 - `q_WB` Unit quaternion (world → body)
-- Body angular rate: `ω_WB ∈ ℝ³` in `{B}` (rad/s), the angular velocity of
-  `{B}` relative to `{W}` expressed in `{B}`
+- `ω_WB`: body angular rate in {B} (rad/s); angular velocity of {B} relative
+  to {W} expressed in {B}
 - `b_g ∈ ℝ³` Gyro bias (in `{I}`)
 - `b_a ∈ ℝ³` Accel bias (in `{I}`)
 - `A_a ∈ ℝ^{3×3}` Accel scale/misalignment matrix (acts in `{I}`)
@@ -416,6 +416,7 @@ same node.
 Canonical keying uses integer nanoseconds `t_meas_ns` sourced from ROS header
 stamps (`sec`, `nsec`). Core logic uses integer nanoseconds for ordering,
 equality, and buffer attachment, with no float conversions.
+The epoch is irrelevant because only differences and exact equality are used.
 The only seconds input is `t_buffer_sec`, which is converted once in
 configuration into `t_buffer_ns`. All other thresholds are specified as
 integer nanoseconds (e.g., `ε_wall_future_ns`, `Δt_clock_jump_max_ns`,
@@ -478,6 +479,9 @@ IMU synchronization contract:
 - After initialization, `imu_calibration` does not modify in-state parameters,
   but it still records diagnostics/consistency checks and provides a future
   policy hook for re-init or reset on calibration change (TODO, policy only).
+- After initialization, store calibration_meta and a deterministic
+  hash/fingerprint of calibration fields for change detection. Do not apply
+  it to state unless a future policy triggers reset or re-init (TODO).
 
 ### 8.2 Outputs
 
@@ -600,7 +604,7 @@ small steps, with tests before integration.
 - Exposes a stable API: `predict(dt)`, `update_gyro(...)`,
   `update_accel(...)`, `update_mag(...)`
 
-### 9.9 `time/replay_engine.py`
+### 9.9 `timing/replay_engine.py`
 
 **Responsibilities**:
 

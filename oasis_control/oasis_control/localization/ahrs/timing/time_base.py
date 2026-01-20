@@ -21,8 +21,9 @@ class TimeBase:
         - validate_non_negative(t_ns)
 
     Responsibility:
-        Define the timestamp terms used by the AHRS core and provide conversion
-        utilities without relying on ROS time types.
+        Define the timestamp terms used by the AHRS core and validate or
+        compare integer nanosecond timestamps without relying on ROS time
+        types.
 
     Inputs/outputs:
         - Inputs: raw timestamps in integer nanoseconds.
@@ -35,6 +36,8 @@ class TimeBase:
         - t_meas_ns: measurement timestamp in integer nanoseconds.
         - t_now_ns: current wall-clock timestamp (provided externally).
         - t_filter_ns: filter frontier timestamp after processing.
+        - t_buffer_sec: configuration input in seconds, converted once to
+          t_buffer_ns outside the core.
 
     Frames and units:
         - Canonical internal time is int nanoseconds (t_ns) sourced from ROS
@@ -42,8 +45,7 @@ class TimeBase:
         - Canonical formula:
             t_meas_ns = stamp.sec * 1_000_000_000 + stamp.nanosec
           with nanosec in [0, 1e9).
-        - No float conversions exist in the core; any UI or diagnostics
-          conversions must occur outside the core.
+        - No float conversions exist in the core.
 
     Determinism and edge cases:
         - Timestamp equality is exact integer equality for keying.
@@ -54,9 +56,6 @@ class TimeBase:
 
     Equations:
         - No equations; this module defines time terminology.
-
-    Numerical stability notes:
-        - Avoid float rounding when converting between units.
 
     Suggested unit tests:
         - stamp-to-ns formula uses sec * 1_000_000_000 + nanosec.
