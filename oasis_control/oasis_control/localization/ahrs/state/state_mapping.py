@@ -8,6 +8,11 @@
 #
 ################################################################################
 
+from __future__ import annotations
+
+from typing import List
+from typing import Sequence
+
 
 class StateMapping:
     """Canonical ordering of the AHRS error-state vector.
@@ -27,7 +32,7 @@ class StateMapping:
     Dependencies:
         - Used by AhrsErrorState, AhrsCovariance, and filter steps.
 
-    Public API (to be implemented):
+    Public API:
         - dimension()
         - slice_delta_p()
         - slice_delta_v()
@@ -74,4 +79,117 @@ class StateMapping:
         - Slices are contiguous and cover [0, 45).
     """
 
-    pass
+    _DELTA_P: slice = slice(0, 3)
+    _DELTA_V: slice = slice(3, 6)
+    _DELTA_THETA: slice = slice(6, 9)
+    _DELTA_OMEGA: slice = slice(9, 12)
+    _DELTA_B_G: slice = slice(12, 15)
+    _DELTA_B_A: slice = slice(15, 18)
+    _DELTA_A_A: slice = slice(18, 27)
+    _DELTA_XI_BI: slice = slice(27, 33)
+    _DELTA_XI_BM: slice = slice(33, 39)
+    _DELTA_G_W: slice = slice(39, 42)
+    _DELTA_M_W: slice = slice(42, 45)
+
+    @staticmethod
+    def dimension() -> int:
+        """Return the dimension of the error-state vector."""
+        StateMapping._assert_layout()
+        return 45
+
+    @staticmethod
+    def slice_delta_p() -> slice:
+        """Return the slice for δp."""
+        return StateMapping._DELTA_P
+
+    @staticmethod
+    def slice_delta_v() -> slice:
+        """Return the slice for δv."""
+        return StateMapping._DELTA_V
+
+    @staticmethod
+    def slice_delta_theta() -> slice:
+        """Return the slice for δθ."""
+        return StateMapping._DELTA_THETA
+
+    @staticmethod
+    def slice_delta_omega() -> slice:
+        """Return the slice for δω."""
+        return StateMapping._DELTA_OMEGA
+
+    @staticmethod
+    def slice_delta_b_g() -> slice:
+        """Return the slice for δb_g."""
+        return StateMapping._DELTA_B_G
+
+    @staticmethod
+    def slice_delta_b_a() -> slice:
+        """Return the slice for δb_a."""
+        return StateMapping._DELTA_B_A
+
+    @staticmethod
+    def slice_delta_A_a() -> slice:
+        """Return the slice for δA_a."""
+        return StateMapping._DELTA_A_A
+
+    @staticmethod
+    def slice_delta_xi_BI() -> slice:
+        """Return the slice for δξ_BI."""
+        return StateMapping._DELTA_XI_BI
+
+    @staticmethod
+    def slice_delta_xi_BM() -> slice:
+        """Return the slice for δξ_BM."""
+        return StateMapping._DELTA_XI_BM
+
+    @staticmethod
+    def slice_delta_g_W() -> slice:
+        """Return the slice for δg_W."""
+        return StateMapping._DELTA_G_W
+
+    @staticmethod
+    def slice_delta_m_W() -> slice:
+        """Return the slice for δm_W."""
+        return StateMapping._DELTA_M_W
+
+    @staticmethod
+    def _assert_layout() -> None:
+        """Validate the state layout is contiguous and complete."""
+        slices: List[slice] = [
+            StateMapping._DELTA_P,
+            StateMapping._DELTA_V,
+            StateMapping._DELTA_THETA,
+            StateMapping._DELTA_OMEGA,
+            StateMapping._DELTA_B_G,
+            StateMapping._DELTA_B_A,
+            StateMapping._DELTA_A_A,
+            StateMapping._DELTA_XI_BI,
+            StateMapping._DELTA_XI_BM,
+            StateMapping._DELTA_G_W,
+            StateMapping._DELTA_M_W,
+        ]
+        expected_start: int = 0
+        for slc in slices:
+            if slc.step not in (None, 1):
+                raise ValueError("StateMapping layout invalid")
+            if slc.start != expected_start:
+                raise ValueError("StateMapping layout invalid")
+            if slc.stop is None:
+                raise ValueError("StateMapping layout invalid")
+            if slc.stop < slc.start:
+                raise ValueError("StateMapping layout invalid")
+            expected_start = slc.stop
+        if expected_start != 45:
+            raise ValueError("StateMapping layout invalid")
+        _ = _slice_lengths(slices)
+
+
+def _slice_lengths(slices: Sequence[slice]) -> List[int]:
+    """Return lengths of slices for validation."""
+    lengths: List[int] = []
+    slc: slice
+    for slc in slices:
+        if slc.start is None or slc.stop is None:
+            raise ValueError("StateMapping layout invalid")
+        lengths.append(slc.stop - slc.start)
+    return lengths
