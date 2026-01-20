@@ -112,6 +112,21 @@ class TestProcessModel(unittest.TestCase):
                 -1,
             )
 
+    def test_discretize_shape_validation(self) -> None:
+        """Invalid matrix shapes raise ValueError"""
+        state: AhrsState = AhrsState.reset()
+        A: List[List[float]] = ProcessModel.linearize(state)
+        G: List[List[float]] = ProcessModel.noise_jacobian(state)
+        Q_c: List[List[float]] = _identity(39)
+        with self.assertRaisesRegex(ValueError, "invalid matrix shape"):
+            ProcessModel.discretize(A[:-1], G, Q_c, 1)
+        G_bad: List[List[float]] = [row[:-1] for row in G]
+        with self.assertRaisesRegex(ValueError, "invalid matrix shape"):
+            ProcessModel.discretize(A, G_bad, Q_c, 1)
+        Q_bad: List[List[float]] = _identity(38)
+        with self.assertRaisesRegex(ValueError, "invalid matrix shape"):
+            ProcessModel.discretize(A, G, Q_bad, 1)
+
 
 if __name__ == "__main__":
     unittest.main()
