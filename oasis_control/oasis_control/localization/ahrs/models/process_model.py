@@ -213,15 +213,12 @@ class ProcessModel:
         if not _is_int(dt_ns) or dt_ns <= 0:
             raise ValueError("dt_ns must be positive")
         size_expected: int = StateMapping.dimension()
-        if (
-            len(A) != size_expected
-            or any(len(row) != size_expected for row in A)
-            or len(G) != size_expected
-            or any(len(row) != 39 for row in G)
-            or len(Q_c) != 39
-            or any(len(row) != 39 for row in Q_c)
-        ):
-            raise ValueError("invalid matrix shape")
+        if len(A) != size_expected or any(len(row) != size_expected for row in A):
+            raise ValueError("A must be NxN where N = StateMapping.dimension()")
+        if len(G) != size_expected or any(len(row) != 39 for row in G):
+            raise ValueError("G must be Nx39 where N = StateMapping.dimension()")
+        if len(Q_c) != 39 or any(len(row) != 39 for row in Q_c):
+            raise ValueError("Q_c must be 39x39")
         dt_sec: float = dt_ns * 1e-9
         size: int = size_expected
         F: List[List[float]] = [[0.0 for _ in range(size)] for _ in range(size)]
