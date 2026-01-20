@@ -15,4 +15,3 @@
 - Comments: If only one sentence, don't use a trailing period. 2 or more sentences can use periods in comments.
 - **Copyright/SPDX headers in new files**: every new source file must start with the project’s standard copyright + SPDX header, using the correct year range for when the file is created/modified (e.g., `2026` or `2025-2026`)
 - **Python typing required**: all new/modified Python must have full type annotations (functions/methods + return types + all variables), no untyped defs; use `typing`/`collections.abc` types and keep mypy clean
-- Avoid numpy in tests, as it might not be available on CI
