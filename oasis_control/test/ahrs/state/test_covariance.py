@@ -117,13 +117,15 @@ class TestAhrsCovariance(unittest.TestCase):
         self.assertEqual(mapped, expected)
 
     def test_apply_adjoint(self) -> None:
-        """apply_adjoint updates only the target block."""
+        """apply_adjoint updates block and cross-covariances."""
         size: int = StateMapping.dimension()
         P: List[List[float]] = [[0.0 for _ in range(size)] for _ in range(size)]
         block_start: int = StateMapping.slice_delta_xi_BI().start or 0
         i: int
         for i in range(6):
             P[block_start + i][block_start + i] = float(i + 1)
+        P[block_start][0] = 3.0
+        P[0][block_start] = 3.0
         cov: AhrsCovariance = AhrsCovariance.from_matrix(P)
         Ad_T: List[List[float]] = _identity(6)
         Ad_T[0][0] = 2.0
@@ -131,6 +133,8 @@ class TestAhrsCovariance(unittest.TestCase):
             Ad_T, StateMapping.slice_delta_xi_BI()
         )
         self.assertEqual(updated.P[block_start][block_start], 4.0)
+        self.assertEqual(updated.P[block_start][0], 6.0)
+        self.assertEqual(updated.P[0][block_start], 6.0)
         self.assertEqual(updated.P[0][0], 0.0)
         self.assertEqual(updated.P[1][1], 0.0)
 
