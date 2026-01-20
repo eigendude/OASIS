@@ -8,6 +8,21 @@
 #
 ################################################################################
 
+from __future__ import annotations
+
+from typing import Iterable
+from typing import List
+from typing import Mapping
+from typing import Sequence
+
+from oasis_control.localization.ahrs.ahrs_types.imu_packet import ImuPacket
+from oasis_control.localization.ahrs.ahrs_types.stationary_packet import (
+    StationaryPacket,
+)
+from oasis_control.localization.ahrs.math_utils.linalg import LinearAlgebra
+from oasis_control.localization.ahrs.models.imu_model import ImuModel
+from oasis_control.localization.ahrs.state.ahrs_state import AhrsState
+
 
 class StationaryDetector:
     """Covariance-aware stationary detector for deterministic AHRS replay.
@@ -80,4 +95,138 @@ class StationaryDetector:
         - Reject window when any covariance is non-SPD.
     """
 
-    pass
+    @staticmethod
+    def detect(
+        window_imu_packets: Iterable[ImuPacket],
+        state: AhrsState,
+        *,
+        tau_omega: float,
+        tau_accel: float,
+        R_v_base: Sequence[Sequence[float]],
+        R_omega_base: Sequence[Sequence[float]],
+    ) -> StationaryPacket:
+        """Return deterministic stationary decision for an IMU window."""
+        packets: List[ImuPacket] = list(window_imu_packets)
+        if not packets:
+            metadata_empty: Mapping[str, object] = {"reason": "empty window"}
+            R_v_empty: List[List[float]] = _clamp_base_covariance(R_v_base)
+            R_omega_empty: List[List[float]] = _clamp_base_covariance(R_omega_base)
+            result_packet: StationaryPacket = StationaryPacket(
+                t_meas_ns=0,
+                window_start_ns=0,
+                window_end_ns=0,
+                is_stationary=False,
+                R_v=R_v_empty,
+                R_omega=R_omega_empty,
+                metadata=metadata_empty,
+            )
+            result_packet.validate()
+            return result_packet
+        packets.sort(key=lambda item: item.t_meas_ns)
+        window_start_ns: int = packets[0].t_meas_ns
+        window_end_ns: int = packets[-1].t_meas_ns
+        R_v: List[List[float]] = _clamp_base_covariance(R_v_base)
+        R_omega: List[List[float]] = _clamp_base_covariance(R_omega_base)
+        d2_omega: List[float] = []
+        d2_accel: List[float] = []
+        imu_packet: ImuPacket
+        for imu_packet in packets:
+            if not LinearAlgebra.is_spd(imu_packet.R_omega):
+                return _reject_window(
+                    window_start_ns,
+                    window_end_ns,
+                    R_v,
+                    R_omega,
+                    "R_omega is not SPD",
+                )
+            if not LinearAlgebra.is_spd(imu_packet.R_accel):
+                return _reject_window(
+                    window_start_ns,
+                    window_end_ns,
+                    R_v,
+                    R_omega,
+                    "R_accel is not SPD",
+                )
+            z_hat_omega: List[float] = ImuModel.predict_gyro(state)
+            nu_omega: List[float] = ImuModel.residual_gyro(
+                imu_packet.z_omega, z_hat_omega
+            )
+            z_hat_accel: List[float] = ImuModel.predict_accel(state)
+            nu_accel: List[float] = ImuModel.residual_accel(
+                imu_packet.z_accel, z_hat_accel
+            )
+            d2_omega.append(_whitened_distance(imu_packet.R_omega, nu_omega))
+            d2_accel.append(_whitened_distance(imu_packet.R_accel, nu_accel))
+        D_omega: float = _mean(d2_omega)
+        D_accel: float = _mean(d2_accel)
+        is_stationary: bool = D_omega < tau_omega and D_accel < tau_accel
+        metadata: Mapping[str, object] = {
+            "D_omega": D_omega,
+            "D_accel": D_accel,
+            "tau_omega": tau_omega,
+            "tau_accel": tau_accel,
+        }
+        result_packet = StationaryPacket(
+            t_meas_ns=window_end_ns,
+            window_start_ns=window_start_ns,
+            window_end_ns=window_end_ns,
+            is_stationary=is_stationary,
+            R_v=R_v,
+            R_omega=R_omega,
+            metadata=metadata,
+        )
+        result_packet.validate()
+        return result_packet
+
+
+def _reject_window(
+    window_start_ns: int,
+    window_end_ns: int,
+    R_v: List[List[float]],
+    R_omega: List[List[float]],
+    reason: str,
+) -> StationaryPacket:
+    """Return a rejected stationary packet with metadata."""
+    packet: StationaryPacket = StationaryPacket(
+        t_meas_ns=window_end_ns,
+        window_start_ns=window_start_ns,
+        window_end_ns=window_end_ns,
+        is_stationary=False,
+        R_v=R_v,
+        R_omega=R_omega,
+        metadata={"reason": reason},
+    )
+    packet.validate()
+    return packet
+
+
+def _whitened_distance(R: Sequence[Sequence[float]], nu: Sequence[float]) -> float:
+    """Return νᵀ R⁻¹ ν using SPD solve."""
+    x: List[float] = LinearAlgebra.solve_spd(R, nu)
+    return _dot(nu, x)
+
+
+def _mean(values: Sequence[float]) -> float:
+    """Return the arithmetic mean of a non-empty sequence."""
+    if not values:
+        raise ValueError("values must be non-empty")
+    return sum(values) / float(len(values))
+
+
+def _dot(a: Sequence[float], b: Sequence[float]) -> float:
+    """Return dot product of two vectors."""
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+
+
+def _clamp_base_covariance(
+    P: Sequence[Sequence[float]],
+) -> List[List[float]]:
+    """Clamp a base covariance to SPD bounds."""
+    max_abs: float = 0.0
+    row: Sequence[float]
+    value: float
+    for row in P:
+        for value in row:
+            max_abs = max(max_abs, abs(value))
+    max_eig: float = max(1e-12, max_abs * 10.0)
+    return LinearAlgebra.clamp_spd(P, 1e-12, max_eig)
