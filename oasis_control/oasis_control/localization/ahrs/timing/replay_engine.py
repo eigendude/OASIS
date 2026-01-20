@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Callable
 from typing import Optional
 from typing import Protocol
+from typing import cast
 
 from oasis_control.localization.ahrs.ahrs_types.imu_packet import ImuPacket
 from oasis_control.localization.ahrs.ahrs_types.mag_packet import MagPacket
@@ -202,20 +203,23 @@ class ReplayEngine:
             if not inserted:
                 return False
         inserted_slot: bool = False
-        if kind == "imu" and isinstance(packet, ImuPacket):
-            inserted_slot = node.insert_imu(packet)
+        if kind == "imu":
+            imu_packet: ImuPacket = cast(ImuPacket, packet)
+            inserted_slot = node.insert_imu(imu_packet)
             if not inserted_slot:
                 self.diagnostics["duplicate_imu"] += 1
-        elif kind == "mag" and isinstance(packet, MagPacket):
-            inserted_slot = node.insert_mag(packet)
+        elif kind == "mag":
+            mag_packet: MagPacket = cast(MagPacket, packet)
+            inserted_slot = node.insert_mag(mag_packet)
             if not inserted_slot:
                 self.diagnostics["duplicate_mag"] += 1
-        elif kind == "stationary" and isinstance(packet, StationaryPacket):
-            inserted_slot = node.insert_stationary(packet)
+        elif kind == "stationary":
+            stationary_packet: StationaryPacket = cast(StationaryPacket, packet)
+            inserted_slot = node.insert_stationary(stationary_packet)
             if not inserted_slot:
                 self.diagnostics["duplicate_stationary"] += 1
         else:
-            raise ValueError("unsupported packet type")
+            raise ValueError("packet_type must be imu, mag, or stationary")
         if not inserted_slot:
             return False
         previous_frontier: int = self._t_filter_ns

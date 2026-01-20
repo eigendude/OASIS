@@ -111,9 +111,7 @@ class TimelineNode:
 
     def insert_imu(self, packet: ImuPacket) -> bool:
         """Insert an IMU packet for this timestamp."""
-        self._validate_packet_time(packet.t_meas_ns)
-        if packet.t_meas_ns != self.t_meas_ns:
-            raise ValueError("t_meas_ns mismatch")
+        self._validate_packet_time_match(packet.t_meas_ns)
         if self.imu_packet is not None:
             self.diagnostics["duplicate_imu"] += 1
             return False
@@ -122,9 +120,7 @@ class TimelineNode:
 
     def insert_mag(self, packet: MagPacket) -> bool:
         """Insert a magnetometer packet for this timestamp."""
-        self._validate_packet_time(packet.t_meas_ns)
-        if packet.t_meas_ns != self.t_meas_ns:
-            raise ValueError("t_meas_ns mismatch")
+        self._validate_packet_time_match(packet.t_meas_ns)
         if self.mag_packet is not None:
             self.diagnostics["duplicate_mag"] += 1
             return False
@@ -133,9 +129,7 @@ class TimelineNode:
 
     def insert_stationary(self, packet: StationaryPacket) -> bool:
         """Insert a stationary packet for this timestamp."""
-        self._validate_packet_time(packet.t_meas_ns)
-        if packet.t_meas_ns != self.t_meas_ns:
-            raise ValueError("t_meas_ns mismatch")
+        self._validate_packet_time_match(packet.t_meas_ns)
         if self.stationary_packet is not None:
             self.diagnostics["duplicate_stationary"] += 1
             return False
@@ -150,6 +144,7 @@ class TimelineNode:
         """Return the timestamp key in nanoseconds."""
         return self.t_meas_ns
 
-    @staticmethod
-    def _validate_packet_time(t_meas_ns: int) -> None:
+    def _validate_packet_time_match(self, t_meas_ns: int) -> None:
         TimeBase.validate_non_negative(t_meas_ns)
+        if t_meas_ns != self.t_meas_ns:
+            raise ValueError("t_meas_ns mismatch")
