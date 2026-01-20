@@ -8,16 +8,64 @@
 #
 ################################################################################
 
-"""AHRS imu packet definitions."""
+"""IMU measurement packet definition for the AHRS core.
+
+Responsibility:
+    Document the IMU measurement fields required by the AHRS filter without
+    introducing ROS message types.
+
+Inputs/outputs:
+    - Inputs: raw gyro and accel measurements with covariances.
+    - Outputs: structured packet used by ImuModel and AhrsEkf.
+
+Dependencies:
+    - Consumed by ImuModel and ReplayEngine.
+
+Determinism:
+    IMU packets are immutable once created; fields must not change during
+    replay.
+"""
 
 
 class ImuPacket:
-    """
-    Synchronized IMU packet data for AHRS updates.
+    """IMU measurement packet for gyro and accelerometer updates.
 
-    Contains imu_raw and imu_calibration measurements with a shared timestamp.
-    The packet is validated for frame agreement and is used to apply gyro and
-    accelerometer updates in a fixed order.
+    Purpose:
+        Provide a single data container for gyro and accelerometer samples
+        with covariances and frame identifiers.
+
+    Public API (to be implemented):
+        - validate()
+        - as_dict()
+
+    Data contract:
+        Required fields:
+        - t_meas: measurement timestamp.
+        - frame_id: sensor frame identifier for {I}.
+        - z_omega: gyro measurement vector (3,).
+        - R_omega: gyro covariance matrix (3, 3).
+        - z_accel: accel measurement vector (3,).
+        - R_accel: accel covariance matrix (3, 3).
+        - calibration_meta: optional metadata for calibration source.
+
+    Frames and units:
+        - z_omega in rad/s, frame {I}.
+        - z_accel in m/s^2, frame {I} (specific force, a - g).
+        - Covariances use squared units.
+
+    Determinism and edge cases:
+        - t_meas equality is exact for buffer keying.
+        - Missing covariances must be rejected.
+
+    Equations:
+        - No equations; this is a data container.
+
+    Numerical stability notes:
+        - Ensure R_omega and R_accel are SPD.
+
+    Suggested unit tests:
+        - validate rejects wrong shapes.
+        - validate rejects non-SPD covariances.
     """
 
     pass

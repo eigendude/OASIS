@@ -8,20 +8,61 @@
 #
 ################################################################################
 
-"""AHRS mag model definitions."""
+"""Magnetometer measurement model for the AHRS core.
+
+Responsibility:
+    Define the magnetometer prediction, residual, and Jacobian used during
+    EKF updates.
+
+Inputs/outputs:
+    - Inputs: AhrsState, MagPacket (z_m), extrinsics T_BM.
+    - Outputs: predicted mag measurement and residual in {M}.
+
+Dependencies:
+    - Uses Quaternion utilities for R_WB and SE(3) for R_MB.
+    - Works with NoiseAdaptation for adaptive R_m.
+
+Determinism:
+    Deterministic mapping from state to predicted magnetometer measurement.
+"""
 
 
 class MagModel:
-    """
-    Magnetometer measurement model in the magnetometer frame {M}.
+    """Magnetometer measurement model for the AHRS EKF.
 
-    Prediction and residual are formed directly in {M}:
+    Purpose:
+        Provide predicted magnetometer measurements and Jacobians in the
+        magnetometer frame for EKF updates.
 
-        m̂_M = R_MB * R_WB * m_W
-        ν_m = z_m - m̂_M
+    Public API (to be implemented):
+        - predict(state)
+        - residual(z_m, z_hat)
+        - jacobian(state)
 
-    The model uses an adaptive measurement covariance R_m(t) and does not rotate
-    raw measurements into the body frame.
+    Data contract:
+        - z_m is a 3x1 magnetometer measurement in {M}.
+        - R_m is a 3x3 covariance in {M}.
+
+    Frames and units:
+        - Residual ν is in {M}, units tesla.
+        - Raw measurements are not rotated into {B}; prediction is in {M}.
+
+    Determinism and edge cases:
+        - Residual sign convention is ν = z - z_hat.
+        - If the magnetic field vector is near zero, reject the update.
+
+    Equations:
+        Prediction:
+            m_hat_M = R_MB * R_WB * m_W
+            ν = z_m - m_hat_M
+
+    Numerical stability notes:
+        - Normalize quaternions before forming R_WB.
+        - Ensure R_m remains SPD if adapted.
+
+    Suggested unit tests:
+        - Residual uses ν = z - z_hat.
+        - Prediction matches expected frame chain R_MB * R_WB.
     """
 
     pass

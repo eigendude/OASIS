@@ -8,30 +8,80 @@
 #
 ################################################################################
 
-"""AHRS quat definitions."""
+"""Quaternion utilities for the AHRS core.
+
+Responsibility:
+    Define the quaternion conventions used across the AHRS core and document
+    the operations the math layer must provide.
+
+Inputs/outputs:
+    - Quaternions are stored as 4x1 vectors [w, x, y, z].
+    - Rotation matrices are 3x3 with R(q_WB) mapping {W} -> {B}.
+    - Angular rates are 3x1 vectors in rad/s.
+
+Dependencies:
+    - Used by process, IMU, and magnetometer models.
+    - Used by state mapping and EKF steps for attitude propagation.
+
+Determinism:
+    Pure math utilities with deterministic outputs for identical inputs.
+    Normalization must be well-defined and avoid data-dependent branching.
+"""
 
 
 class Quaternion:
-    """
-    Quaternion math utilities for world-to-body rotations.
+    """Quaternion math utilities for world-to-body rotations.
 
-    The AHRS uses quaternions that rotate vectors from frame {W} to {B}:
+    Purpose:
+        Provide quaternion conventions and helper operations used by the AHRS
+        core without tying the implementation to a specific math backend.
 
-        v_B = R(q_WB) * v_W
+    Public API (to be implemented):
+        - normalize(q)
+        - multiply(q_left, q_right)
+        - to_matrix(q)
+        - from_matrix(R)
+        - omega_matrix(omega)
+        - integrate(q, omega, dt)
+        - small_angle_quat(delta_theta)
+        - conjugate(q)
 
-    Composition follows Hamilton product with the convention:
+    Data contract:
+        - q is a length-4 vector [w, x, y, z].
+        - R is a 3x3 rotation matrix.
+        - omega and delta_theta are length-3 vectors.
 
-        q_AB = q_CB ⊗ q_AC
-        R(q_AB) = R(q_CB) * R(q_AC)
+    Frames and units:
+        - q_WB rotates world vectors into the body: v_B = R(q_WB) * v_W.
+        - omega is body angular rate in {B} with units rad/s.
 
-    The continuous-time attitude kinematics use the angular-rate matrix:
+    Determinism and edge cases:
+        - normalize() must handle near-zero norm with a deterministic fallback
+          (for example, identity quaternion) and should record diagnostics.
+        - small_angle_quat() must be valid for ||delta_theta|| << 1 rad.
 
-        Ω(ω) = [ 0   -ωx  -ωy  -ωz
-                 ωx   0    ωz  -ωy
-                 ωy  -ωz   0    ωx
-                 ωz   ωy  -ωx   0 ]
+    Equations:
+        Composition uses the Hamilton product with the convention:
+            q_AB = q_CB ⊗ q_AC
+            R(q_AB) = R(q_CB) * R(q_AC)
 
-        q̇ = 0.5 * Ω(ω) * q
+        Angular-rate matrix:
+            Ω(ω) = [ 0   -ωx  -ωy  -ωz
+                     ωx   0    ωz  -ωy
+                     ωy  -ωz   0    ωx
+                     ωz   ωy  -ωx   0 ]
+
+            q̇ = 0.5 * Ω(ω) * q
+
+    Numerical stability notes:
+        - Always re-normalize after integration or composition.
+        - Avoid explicit matrix inversion when possible.
+
+    Suggested unit tests:
+        - Identity quaternion yields identity rotation matrix.
+        - Composition matches matrix multiplication order.
+        - Small-angle integration matches first-order approximation.
+        - Normalization handles very small norms deterministically.
     """
 
     pass

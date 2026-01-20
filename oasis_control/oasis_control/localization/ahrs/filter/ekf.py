@@ -8,27 +8,72 @@
 #
 ################################################################################
 
-"""AHRS ekf definitions."""
+"""AHRS EKF orchestrator and measurement ordering rules.
+
+Responsibility:
+    Coordinate prediction and measurement updates while enforcing deterministic
+    update ordering and interface contracts for the AHRS core.
+
+Inputs/outputs:
+    - Inputs: time steps, ImuPacket, MagPacket, and configuration.
+    - Outputs: updated AhrsState, AhrsCovariance, and UpdateReport entries.
+
+Dependencies:
+    - Depends on PredictStep, UpdateStep, and measurement models.
+
+Determinism:
+    Enforces deterministic update order at identical timestamps:
+        1) priors once
+        2) gyro update
+        3) accel update
+        4) mag update
+"""
 
 
 class AhrsEkf:
-    """
-    Extended Kalman filter orchestrator for the AHRS.
+    """Extended Kalman filter orchestrator for the AHRS.
 
-    Core API:
+    Purpose:
+        Provide a single entry point for prediction and measurement updates
+        that respects deterministic ordering and measurement contracts.
 
-    - predict(Δt): propagate the mean and covariance via the process model
-    - update_gyro(...): apply gyro measurement update
-    - update_accel(...): apply accelerometer update
-    - update_mag(...): apply magnetometer update
+    Public API (to be implemented):
+        - predict(dt)
+        - update_gyro(imu_packet)
+        - update_accel(imu_packet)
+        - update_mag(mag_packet)
+        - reset()
+        - state()
+        - covariance()
 
-    The update step uses the standard EKF equations:
+    Data contract:
+        - Maintains an AhrsState and AhrsCovariance instance.
+        - Accepts ImuPacket and MagPacket measurements.
+        - Produces UpdateReport entries per measurement.
 
-        S = H P Hᵀ + R
-        K = P Hᵀ S⁻¹
-        δx = K ν
-        x ← x ⊕ δx
-        P ← (I - K H) P (I - K H)ᵀ + K R Kᵀ
+    Frames and units:
+        - Measurement residuals are in {I} for IMU, {M} for mag.
+        - State units follow Units.
+
+    Determinism and edge cases:
+        - At a given timestamp, apply updates in the specified order.
+        - Do not treat IMU or mag samples as process inputs.
+
+    Equations:
+        EKF update equations:
+            S = H P Hᵀ + R
+            K = P Hᵀ S⁻¹
+            δx = K ν
+            x ← x ⊕ δx
+            P ← (I - K H) P (I - K H)ᵀ + K R Kᵀ
+
+    Numerical stability notes:
+        - Symmetrize covariance after each update.
+        - Reject updates when S is not SPD.
+
+    Suggested unit tests:
+        - Deterministic ordering of updates at same timestamp.
+        - Update reports capture accepted/rejected status.
     """
 
     pass

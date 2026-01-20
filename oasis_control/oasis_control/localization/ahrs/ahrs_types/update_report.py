@@ -8,16 +8,64 @@
 #
 ################################################################################
 
-"""AHRS update report definitions."""
+"""Update report definition for AHRS measurement updates.
+
+Responsibility:
+    Document the diagnostics payload produced for each measurement update.
+
+Inputs/outputs:
+    - Inputs: measurement residuals, covariances, and acceptance status.
+    - Outputs: structured report for logging and diagnostics.
+
+Dependencies:
+    - Produced by UpdateStep and AhrsEkf.
+
+Determinism:
+    Reports must faithfully reflect deterministic update decisions.
+"""
 
 
 class UpdateReport:
-    """
-    Per-measurement update report for innovation statistics.
+    """Report structure for a single measurement update.
 
-    Stores measurement z, prediction z_hat, innovation ν, noise covariance R,
-    innovation covariance S, and gating decisions. The report is published for
-    both accepted and rejected updates.
+    Purpose:
+        Provide a stable contract for logging EKF update information and
+        diagnosing rejected measurements.
+
+    Public API (to be implemented):
+        - as_dict()
+        - summarize()
+
+    Data contract:
+        Required fields:
+        - t_meas: measurement timestamp.
+        - measurement_type: enum or string (gyro, accel, mag).
+        - z: raw measurement vector.
+        - z_hat: predicted measurement vector.
+        - nu: residual vector.
+        - R: measurement covariance.
+        - S: innovation covariance.
+        - mahalanobis2: scalar νᵀ S⁻¹ ν.
+        - accepted: boolean.
+        - rejection_reason: string or empty when accepted.
+
+    Frames and units:
+        - nu and z are in the measurement frame ({I} or {M}).
+        - Covariances use squared measurement units.
+
+    Determinism and edge cases:
+        - rejection_reason must be deterministic for a given failure mode.
+        - S not SPD or inversion failure must set accepted = False.
+
+    Equations:
+        - mahalanobis2 = νᵀ S⁻¹ ν.
+
+    Numerical stability notes:
+        - Store symmetrized S for reporting.
+
+    Suggested unit tests:
+        - accepted flag matches gating decision.
+        - rejection_reason populated on failure.
     """
 
     pass
