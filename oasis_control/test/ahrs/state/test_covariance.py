@@ -124,19 +124,27 @@ class TestAhrsCovariance(unittest.TestCase):
         i: int
         for i in range(6):
             P[block_start + i][block_start + i] = float(i + 1)
-        P[block_start][0] = 3.0
-        P[0][block_start] = 3.0
+        P[block_start][0] = 2.0
+        P[block_start + 1][0] = 5.0
+        P[0][block_start] = 2.0
+        P[0][block_start + 1] = 5.0
+        P[1][2] = 9.0
+        P[2][1] = 9.0
         cov: AhrsCovariance = AhrsCovariance.from_matrix(P)
         Ad_T: List[List[float]] = _identity(6)
-        Ad_T[0][0] = 2.0
+        Ad_T[0][1] = 1.0
         updated: AhrsCovariance = cov.apply_adjoint(
             Ad_T, StateMapping.slice_delta_xi_BI()
         )
-        self.assertEqual(updated.P[block_start][block_start], 4.0)
-        self.assertEqual(updated.P[block_start][0], 6.0)
-        self.assertEqual(updated.P[0][block_start], 6.0)
+        self.assertEqual(updated.P[block_start][block_start], 3.0)
+        self.assertEqual(updated.P[block_start][0], 7.0)
+        self.assertEqual(updated.P[0][block_start], 7.0)
+        self.assertEqual(updated.P[block_start + 1][0], 5.0)
+        self.assertEqual(updated.P[0][block_start + 1], 5.0)
         self.assertEqual(updated.P[0][0], 0.0)
         self.assertEqual(updated.P[1][1], 0.0)
+        self.assertEqual(updated.P[1][2], 9.0)
+        self.assertEqual(updated.P[2][1], 9.0)
 
     def test_validation(self) -> None:
         """Validation rejects bad input."""

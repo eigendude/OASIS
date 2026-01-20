@@ -109,11 +109,11 @@ class AhrsCovariance:
         _assert_square(Ad_T, 6)
         _assert_finite_matrix(Ad_T)
         if block_slice.start is None or block_slice.stop is None:
-            raise ValueError("block_slice must have explicit bounds")
+            raise ValueError("block_slice must have explicit bounds for 6x6 block")
         if block_slice.step not in (None, 1):
-            raise ValueError("block_slice must have unit step")
+            raise ValueError("block_slice must have unit step for 6x6 block")
         if block_slice.stop - block_slice.start != 6:
-            raise ValueError("block_slice must select 6 elements")
+            raise ValueError("block_slice must select exactly 6 elements")
         size: int = StateMapping.dimension()
         _assert_square(self.P, size)
         start: int = block_slice.start
@@ -137,19 +137,20 @@ class AhrsCovariance:
                 [self.P[start + row][col] for col in other_indices] for row in range(6)
             ]
             mapped_cross: List[List[float]] = _matmul(Ad_T, cross_block)
+            mapped_cross_t: List[List[float]] = _transpose(mapped_cross)
             row: int
             for row in range(6):
                 col_idx: int
                 for col_idx, col in enumerate(other_indices):
                     updated[start + row][col] = mapped_cross[row][col_idx]
-                    updated[col][start + row] = mapped_cross[row][col_idx]
+                    updated[col][start + row] = mapped_cross_t[col_idx][row]
         return AhrsCovariance(P=LinearAlgebra.symmetrize(updated))
 
 
 def _assert_square(P: Sequence[Sequence[float]], size: int) -> None:
     """Validate matrix is square with specified size."""
     if len(P) != size or any(len(row) != size for row in P):
-        raise ValueError("Matrix must be square")
+        raise ValueError(f"Matrix must be {size}x{size}")
 
 
 def _assert_finite_matrix(P: Sequence[Sequence[float]]) -> None:
