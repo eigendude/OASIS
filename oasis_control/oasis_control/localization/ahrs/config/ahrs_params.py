@@ -146,7 +146,7 @@ class AhrsParams:
     @staticmethod
     def defaults() -> AhrsParams:
         """Return a stable default parameter set."""
-        return AhrsParams(
+        params: AhrsParams = AhrsParams(
             t_buffer_sec=2.0,
             ε_wall_future_ns=50_000_000,
             Δt_clock_jump_max_ns=500_000_000,
@@ -177,6 +177,8 @@ class AhrsParams:
             imu_frame="imu",
             mag_frame="mag",
         )
+        params.validate()
+        return params
 
     @classmethod
     def from_dict(cls, params: Mapping[str, object]) -> AhrsParams:
@@ -397,7 +399,12 @@ class AhrsParams:
         for row in value:
             if not isinstance(row, Sequence) or isinstance(row, (str, bytes)):
                 raise ValueError("matrix must be a sequence")
-            matrix.append([float(item) for item in row])
+            float_row: list[float] = []
+            for item in row:
+                if isinstance(item, bool) or not isinstance(item, (int, float)):
+                    raise ValueError("matrix entries must be float")
+                float_row.append(float(item))
+            matrix.append(float_row)
         return matrix
 
     @staticmethod

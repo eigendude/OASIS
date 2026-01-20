@@ -15,6 +15,7 @@ import sys
 import unittest
 from pathlib import Path
 from typing import List
+from typing import cast
 
 
 ROOT: Path = Path(__file__).resolve().parents[4]
@@ -42,12 +43,13 @@ class TestAhrsConfig(unittest.TestCase):
         """from_params converts t_buffer_sec to nanoseconds."""
         params: AhrsParams = AhrsParams.defaults()
         config: AhrsConfig = AhrsConfig.from_params(params)
-        self.assertEqual(config.t_buffer_ns, int(params.t_buffer_sec * 1_000_000_000))
+        expected_ns: int = int(params.t_buffer_sec * 1_000_000_000 + 0.5)
+        self.assertEqual(config.t_buffer_ns, expected_ns)
 
     def test_from_params_mapping(self) -> None:
         """from_params accepts a mapping input."""
         config: AhrsConfig = AhrsConfig.from_params({"t_buffer_sec": 3.0})
-        self.assertEqual(config.t_buffer_sec, 3.0)
+        self.assertEqual(config.params.t_buffer_sec, 3.0)
         self.assertEqual(config.t_buffer_ns, 3_000_000_000)
 
     def test_as_dict_round_trip(self) -> None:
@@ -56,6 +58,8 @@ class TestAhrsConfig(unittest.TestCase):
         payload: dict[str, object] = config.as_dict()
         json.dumps(payload)
         self.assertEqual(payload["t_buffer_ns"], config.t_buffer_ns)
+        params_payload: dict[str, object] = cast(dict[str, object], payload["params"])
+        self.assertEqual(params_payload["t_buffer_sec"], config.params.t_buffer_sec)
 
 
 if __name__ == "__main__":

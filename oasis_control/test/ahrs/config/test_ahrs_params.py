@@ -44,6 +44,12 @@ class TestAhrsParams(unittest.TestCase):
         payload: dict[str, object] = params.as_dict()
         json.dumps(payload)
 
+    def test_round_trip(self) -> None:
+        """Defaults round-trip through as_dict and from_dict."""
+        params: AhrsParams = AhrsParams.defaults()
+        params2: AhrsParams = AhrsParams.from_dict(params.as_dict())
+        self.assertEqual(params2, params)
+
     def test_from_dict_overrides(self) -> None:
         """from_dict merges overrides with defaults."""
         params: AhrsParams = AhrsParams.from_dict(
@@ -99,6 +105,58 @@ class TestAhrsParams(unittest.TestCase):
         with self.assertRaises(ValueError) as context:
             bad_params.validate()
         self.assertEqual(str(context.exception), "t_buffer_sec must be > 0")
+
+    def test_validate_negative_variance(self) -> None:
+        """Validation rejects negative variances deterministically."""
+        params: AhrsParams = AhrsParams.defaults()
+        bad_params: AhrsParams = AhrsParams(
+            t_buffer_sec=params.t_buffer_sec,
+            ε_wall_future_ns=params.ε_wall_future_ns,
+            Δt_clock_jump_max_ns=params.Δt_clock_jump_max_ns,
+            Δt_imu_max_ns=params.Δt_imu_max_ns,
+            sigma_w_v=-1.0,
+            sigma_w_omega=params.sigma_w_omega,
+            sigma_w_bg=params.sigma_w_bg,
+            sigma_w_ba=params.sigma_w_ba,
+            sigma_w_Aa=params.sigma_w_Aa,
+            sigma_w_BI_rho=params.sigma_w_BI_rho,
+            sigma_w_BI_theta=params.sigma_w_BI_theta,
+            sigma_w_BM_rho=params.sigma_w_BM_rho,
+            sigma_w_BM_theta=params.sigma_w_BM_theta,
+            sigma_w_g=params.sigma_w_g,
+            sigma_w_m=params.sigma_w_m,
+            alpha=params.alpha,
+            R_min=params.R_min,
+            R_max=params.R_max,
+            R_m0_policy=params.R_m0_policy,
+            t_stationary_window_ns=params.t_stationary_window_ns,
+            tau_omega=params.tau_omega,
+            tau_accel=params.tau_accel,
+            R_v0=params.R_v0,
+            R_omega0=params.R_omega0,
+            world_frame=params.world_frame,
+            odom_frame=params.odom_frame,
+            base_frame=params.base_frame,
+            imu_frame=params.imu_frame,
+            mag_frame=params.mag_frame,
+        )
+        with self.assertRaises(ValueError) as context:
+            bad_params.validate()
+        self.assertEqual(str(context.exception), "sigma_w_v must be >= 0")
+
+    def test_from_dict_rejects_bool_matrix_entries(self) -> None:
+        """from_dict rejects bool matrix entries deterministically."""
+        with self.assertRaises(ValueError) as context:
+            AhrsParams.from_dict(
+                {
+                    "R_min": [
+                        [True, 0.0, 0.0],
+                        [0.0, 1.0, 0.0],
+                        [0.0, 0.0, 1.0],
+                    ]
+                }
+            )
+        self.assertEqual(str(context.exception), "matrix entries must be float")
 
     def test_validate_alpha_bounds(self) -> None:
         """Validation rejects alpha outside [0, 1]."""
