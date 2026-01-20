@@ -8,6 +8,14 @@
 #
 ################################################################################
 
+from __future__ import annotations
+
+from collections import OrderedDict
+from typing import Optional
+
+from oasis_control.localization.ahrs.timing.time_base import TimeBase
+from oasis_control.localization.ahrs.timing.timeline_node import TimelineNode
+
 
 class RingBuffer:
     """Bounded ring buffer of measurement timeline nodes.
@@ -70,4 +78,60 @@ class RingBuffer:
         - Old nodes are dropped when older than the buffer horizon.
     """
 
-    pass
+    def __init__(self, t_buffer_ns: int) -> None:
+        if not self._is_int(t_buffer_ns) or t_buffer_ns <= 0:
+            raise ValueError("t_buffer_ns must be positive")
+        self._t_buffer_ns: int = t_buffer_ns
+        self._nodes: OrderedDict[int, TimelineNode] = OrderedDict()
+        self.diagnostics: dict[str, int] = {
+            "reject_too_old": 0,
+            "duplicate_node": 0,
+            "evicted": 0,
+        }
+
+    @property
+    def t_buffer_ns(self) -> int:
+        """Return the configured buffer horizon in nanoseconds."""
+        return self._t_buffer_ns
+
+    def size(self) -> int:
+        """Return the number of stored nodes."""
+        return len(self._nodes)
+
+    def get(self, t_meas_ns: int) -> Optional[TimelineNode]:
+        """Return the node at t_meas_ns, or None."""
+        TimeBase.validate_non_negative(t_meas_ns)
+        return self._nodes.get(t_meas_ns)
+
+    def drop_before(self, t_cutoff_ns: int) -> int:
+        """Drop nodes with timestamps strictly less than t_cutoff_ns."""
+        TimeBase.validate_non_negative(t_cutoff_ns)
+        keys_to_drop: list[int] = [
+            t_ns for t_ns in self._nodes.keys() if t_ns < t_cutoff_ns
+        ]
+        for t_ns in keys_to_drop:
+            del self._nodes[t_ns]
+        return len(keys_to_drop)
+
+    def insert(self, node: TimelineNode, *, t_filter_ns: int) -> bool:
+        """Insert a node if within the buffer horizon."""
+        TimeBase.validate_non_negative(t_filter_ns)
+        TimeBase.validate_non_negative(node.t_meas_ns)
+        cutoff_ns: int = t_filter_ns - self._t_buffer_ns
+        if node.t_meas_ns < cutoff_ns:
+            self.diagnostics["reject_too_old"] += 1
+            return False
+        if node.t_meas_ns in self._nodes:
+            self.diagnostics["duplicate_node"] += 1
+            return False
+        self._nodes[node.t_meas_ns] = node
+        self._nodes = OrderedDict(sorted(self._nodes.items()))
+        if cutoff_ns > 0:
+            evicted: int = self.drop_before(cutoff_ns)
+            if evicted:
+                self.diagnostics["evicted"] += evicted
+        return True
+
+    @staticmethod
+    def _is_int(value: object) -> bool:
+        return isinstance(value, int) and not isinstance(value, bool)
