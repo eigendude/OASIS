@@ -26,6 +26,8 @@ Determinism:
     - Out-of-order insert triggers replay forward to the frontier.
     - Publish only when the frontier advances.
     - Duplicate-slot insertion is rejected without modification.
+    - Per-node update ordering is fixed (priors, gyro, accel, mag) and does
+      not depend on arrival order.
 """
 
 
@@ -55,6 +57,8 @@ class ReplayEngine:
         - Nodes are keyed by t_meas_ns and contain <=1 measurement per type.
         - Duplicate same-type at same t_meas_ns must be rejected and
           diagnosed.
+        - A node may contain an IMU packet and mag packet together when
+          they share the same t_meas_ns.
         - Replay recomputes mean state/covariance node-by-node in time order.
 
     Frames and units:

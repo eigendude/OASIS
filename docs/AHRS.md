@@ -177,6 +177,7 @@ Navigation (in `{W}` unless noted):
 - Position: `p_WB ∈ ℝ³`
 - Velocity: `v_WB ∈ ℝ³`
 - Attitude: `q_WB` (unit quaternion, world → body rotation)
+- Body angular rate: `ω_WB ∈ ℝ³` in `{B}` (rad/s)
 
 IMU systematic parameters:
 
@@ -212,6 +213,7 @@ Representative error coordinates:
 
 - `δp, δv ∈ ℝ³`
 - `δθ ∈ ℝ³` small-angle attitude error s.t. `q_WB ≈ Exp(δθ) ⊗ q̂_WB`
+- `δω_WB ∈ ℝ³` body angular rate error in `{B}` (rad/s)
 - `δb_g, δb_a ∈ ℝ³`
 - `δA_a ∈ ℝ⁹` (row-major perturbation of `A_a`) or an equivalent minimal parameterization
 - `δξ_BI ∈ ℝ⁶`, `δξ_BM ∈ ℝ⁶` (SE(3) tangent: translation + rotation)
@@ -231,13 +233,12 @@ Define continuous-time dynamics:
 Navigation kinematics:
 
 - `ṗ_WB = v_WB`
-- `v̇_WB = g_W + w_v`
+- `v̇_WB = w_v`
 - `q̇_WB = 1/2 * Ω(ω_WB) * q_WB`
+- `ω̇_WB = w_ω`
 
 where:
 - `ω_WB` is the body angular rate (world → body) treated as **latent** (not directly measured in the process model),
-  modeled as:
-  - `ω_WB = w_ω`
 - `w_v`, `w_ω` are zero-mean white noises (continuous-time) representing smoothness priors.
 
 Systematic parameter drift (random walks):
@@ -257,6 +258,8 @@ Notes:
 
 - This process is intentionally **weak**: it encodes “motion is smooth” and “parameters drift slowly”.
 - The IMU measurements will strongly constrain the state at high rate.
+- Gravity `g_W` is used by the accelerometer measurement model and for
+  initialization; it is not injected into `v̇_WB`.
 
 Process noise covariance:
 
@@ -309,9 +312,9 @@ Measurement:
 Specific-force prediction:
 
 - Compute world-frame acceleration of the body origin from kinematics:
-  - `a_WB := v̇_WB` (from process state; in the mean model, `v̇_WB ≈ g_W`, but this is refined by measurements)
+  - `a_WB := v̇_WB` (from process state)
 - Specific force in body frame is:
-  - `f_B = R_BW * (a_WB - g_W)` where `R_BW` is world → body rotation from `q_WB`
+  - `f_B = R_WB * (a_WB - g_W)` where `R_WB` is world → body rotation from `q_WB`
 - Convert to IMU frame:
   - `f_I = R_IB * f_B`
 
@@ -335,6 +338,8 @@ Notes:
 - The above uses a full 3×3 `A_a`. If `A_a` is near-singular, the state/prior must prevent it (bounded parameterization
   recommended). The covariance remains full regardless of parameterization.
 - `R_a` is always taken as the provided full covariance (or a configured fallback if invalid).
+- `a_raw` is treated as raw specific force: at rest, the expected reading
+  is approximately `-R_IB * R_WB * g_W` in `{I}`.
 
 ---
 
@@ -348,9 +353,9 @@ At each `magnetic_field` timestamp `t_k`:
 Prediction (in `{M}`; residual always formed in `{M}`):
 
 - Let `R_BM` be the rotation of `T_BM` (mag → body), so body→mag is `R_MB = R_BMᵀ`.
-- Let `R_BW` be world → body rotation from `q_WB`.
+- Let `R_WB` be world → body rotation from `q_WB` (so `R_BW = R_WBᵀ`).
 - Predict:
-  - `m̂_M = R_MB * R_BW * m_W`
+  - `m̂_M = R_MB * R_WB * m_W`
 
 Residual:
 
@@ -412,6 +417,10 @@ Node rules:
 
 - One node per distinct timestamp.
 - Multiple messages may attach to the same node.
+- A node may hold multiple measurement types at the same `t_meas_ns` (IMU
+  packet and mag packet), but at most one per type slot is allowed.
+- Duplicate same-type arrivals at a fixed `t_meas_ns` are rejected
+  deterministically with diagnostics.
 - Evict nodes older than `t_filter_ns - t_buffer_sec * 1e9` (with diagnostics).
 
 ### 4.5 Propagation convention
@@ -444,12 +453,14 @@ On message arrival:
 
 Per-node application order (stable):
 
-1. Apply any priors/parameter constraints at `t_k` (including one-shot calibration prior if first valid)
-2. Apply measurement updates at `t_k` in stable tie-break order:
-   - lexicographic `(message_type, topic, frame_id)`
-   - Within IMU: apply gyro update then accel update (fixed order)
+1. Apply priors/parameter constraints at `t_k` (including one-shot calibration
+   prior if first valid)
+2. If IMU packet present: gyro update
+3. If IMU packet present: accel update
+4. If mag packet present: mag update
 
-Replay must never depend on arrival order.
+Ordering is deterministic and independent of arrival order. No lexicographic
+or topic/frame ordering is used.
 
 ### 4.7 Drop / reset rules
 

@@ -52,7 +52,8 @@ class Timeline:
         - mag_packet: Optional[MagPacket].
         - Each node holds at most one IMU packet and one mag packet.
         - IMU and mag can share a node when t_meas_ns matches exactly.
-        - Duplicate same-type measurements at the same t_meas_ns are rejected.
+        - Duplicate same-type measurements at the same t_meas_ns are rejected
+          deterministically.
 
     Frames and units:
         - t_meas_ns uses TimeBase canonical int nanoseconds.
