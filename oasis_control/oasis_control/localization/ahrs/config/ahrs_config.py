@@ -35,9 +35,8 @@ class AhrsConfig:
     Data contract:
         - Contains all fields defined in AhrsParams.
         - May precompute derived values (e.g., noise variances).
-        - Converts t_buffer_sec into t_buffer_ns once using
-          int(round(t_buffer_sec * 1_000_000_000)), then exposes only ns
-          for core comparisons.
+        - Converts t_buffer_sec once in configuration into t_buffer_ns
+          deterministically.
 
     Frames and units:
         - Frame identifiers are stored as strings.

@@ -41,7 +41,7 @@ class TimeBase:
 
     Frames and units:
         - Canonical internal time is int nanoseconds (t_ns) sourced from ROS
-          header stamps (sec, nsec).
+          header stamps (sec, nanosec).
         - Canonical formula:
             t_meas_ns = stamp.sec * 1_000_000_000 + stamp.nanosec
           with nanosec in [0, 1e9).

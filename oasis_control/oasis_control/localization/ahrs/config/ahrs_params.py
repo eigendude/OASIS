@@ -81,7 +81,7 @@ class AhrsParams:
         Naming + conversion:
         - ns everywhere except buffer length.
         - The only seconds input is t_buffer_sec, which is converted once in
-          AhrsConfig into t_buffer_ns using a deterministic rounding rule.
+          configuration into t_buffer_ns deterministically.
         - No float seconds are used for keying, ordering, equality,
           attachment, or replay.
 

@@ -45,7 +45,10 @@ class AhrsEkf:
         - Produces UpdateReport entries per measurement.
 
     Frames and units:
-        - Measurement residuals are in {I} for IMU, {M} for mag.
+        - gyro/accel: {I}
+        - mag: {M}
+        - zupt: {W}
+        - no_turn: {B}
         - State units follow Units.
 
     Determinism and edge cases:

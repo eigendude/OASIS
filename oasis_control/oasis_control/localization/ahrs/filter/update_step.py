@@ -42,7 +42,10 @@ class UpdateStep:
         - z and z_hat: length-m measurement and prediction.
 
     Frames and units:
-        - nu shares the measurement frame ({I} for IMU, {M} for mag).
+        - gyro/accel: {I}
+        - mag: {M}
+        - zupt: {W}
+        - no_turn: {B}
         - Covariance units align with Units.
 
     Determinism and edge cases:
