@@ -8,6 +8,10 @@
 #
 ################################################################################
 
+from __future__ import annotations
+
+from typing import Dict
+
 
 class Units:
     """Unit conventions for AHRS state and measurements.
@@ -70,4 +74,52 @@ class Units:
           enumerations if implemented.
     """
 
-    pass
+    @staticmethod
+    def state_units() -> Dict[str, str]:
+        return {
+            "p_WB": "m",
+            "v_WB": "m/s",
+            "q_WB": "unitless",
+            "omega_WB": "rad/s",
+            "b_g": "rad/s",
+            "b_a": "m/s^2",
+            "A_a": "unitless",
+            "T_BI": "rotation unitless, translation m",
+            "T_BM": "rotation unitless, translation m",
+            "g_W": "m/s^2",
+            "m_W": "tesla",
+        }
+
+    @staticmethod
+    def imu_units() -> Dict[str, str]:
+        return {
+            "z_omega": "rad/s",
+            "R_omega": "(rad/s)^2",
+            "z_accel": "m/s^2",
+            "R_accel": "(m/s^2)^2",
+        }
+
+    @staticmethod
+    def mag_units() -> Dict[str, str]:
+        return {
+            "z_m": "tesla",
+            "R_m_raw": "tesla^2",
+        }
+
+    @staticmethod
+    def noise_units() -> Dict[str, str]:
+        return {
+            "sigma_w_v": "m/s^2/sqrt(s)",
+            "sigma_w_omega": "rad/s^2/sqrt(s)",
+            "sigma_w_bg": "rad/s/sqrt(s)",
+            "sigma_w_ba": "m/s^2/sqrt(s)",
+            "sigma_w_Aa": "1/sqrt(s)",
+            "sigma_w_BI": "m/sqrt(s), rad/sqrt(s)",
+            "sigma_w_BM": "m/sqrt(s), rad/sqrt(s)",
+            "sigma_w_BI_rho": "m/sqrt(s)",
+            "sigma_w_BI_theta": "rad/sqrt(s)",
+            "sigma_w_BM_rho": "m/sqrt(s)",
+            "sigma_w_BM_theta": "rad/sqrt(s)",
+            "sigma_w_g": "m/s^2/sqrt(s)",
+            "sigma_w_m": "tesla/sqrt(s)",
+        }

@@ -8,6 +8,13 @@
 #
 ################################################################################
 
+from __future__ import annotations
+
+from typing import List
+from typing import Sequence
+
+from oasis_control.localization.ahrs.math_utils.linalg import LinearAlgebra
+
 
 class Statistics:
     """Statistical utilities for innovation metrics and gating.
@@ -64,4 +71,79 @@ class Statistics:
         - gating_passes rejects when d² exceeds the threshold.
     """
 
-    pass
+    @staticmethod
+    def innovation_covariance(
+        h: Sequence[Sequence[float]],
+        p: Sequence[Sequence[float]],
+        r: Sequence[Sequence[float]],
+    ) -> List[List[float]]:
+        Statistics._validate_matrix(h, "innovation_covariance")
+        Statistics._validate_matrix(p, "innovation_covariance")
+        Statistics._validate_matrix(r, "innovation_covariance")
+        hp: List[List[float]] = Statistics._matmul(h, p)
+        hph_t: List[List[float]] = Statistics._matmul(hp, Statistics._transpose(h))
+        return Statistics._matadd(hph_t, r)
+
+    @staticmethod
+    def mahalanobis_squared(nu: Sequence[float], s: Sequence[Sequence[float]]) -> float:
+        Statistics._validate_vector(nu, "mahalanobis_squared")
+        Statistics._validate_matrix(s, "mahalanobis_squared")
+        x: List[float] = LinearAlgebra.solve_spd(s, nu)  # type: ignore[assignment]
+        return sum(nu[i] * x[i] for i in range(len(nu)))
+
+    @staticmethod
+    def gating_passes(
+        nu: Sequence[float],
+        s: Sequence[Sequence[float]],
+        threshold: float,
+    ) -> bool:
+        try:
+            d2: float = Statistics.mahalanobis_squared(nu, s)
+        except ValueError:
+            return False
+        return d2 <= threshold
+
+    @staticmethod
+    def _matmul(
+        left: Sequence[Sequence[float]],
+        right: Sequence[Sequence[float]],
+    ) -> List[List[float]]:
+        rows: int = len(left)
+        cols: int = len(right[0])
+        inner: int = len(right)
+        result: List[List[float]] = [[0.0 for _ in range(cols)] for _ in range(rows)]
+        for i in range(rows):
+            for k in range(inner):
+                for j in range(cols):
+                    result[i][j] += left[i][k] * right[k][j]
+        return result
+
+    @staticmethod
+    def _transpose(matrix: Sequence[Sequence[float]]) -> List[List[float]]:
+        return [list(row) for row in zip(*matrix)]
+
+    @staticmethod
+    def _matadd(
+        left: Sequence[Sequence[float]],
+        right: Sequence[Sequence[float]],
+    ) -> List[List[float]]:
+        if len(left) != len(right):
+            raise ValueError("innovation_covariance dimension mismatch")
+        return [
+            [left[i][j] + right[i][j] for j in range(len(left[0]))]
+            for i in range(len(left))
+        ]
+
+    @staticmethod
+    def _validate_vector(vec: Sequence[float], name: str) -> None:
+        if not vec:
+            raise ValueError(f"{name} expects a non-empty vector")
+
+    @staticmethod
+    def _validate_matrix(matrix: Sequence[Sequence[float]], name: str) -> None:
+        if not matrix:
+            raise ValueError(f"{name} expects a non-empty matrix")
+        cols: int = len(matrix[0])
+        for row in matrix:
+            if len(row) != cols:
+                raise ValueError(f"{name} expects rectangular matrix")
