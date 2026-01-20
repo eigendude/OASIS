@@ -101,7 +101,10 @@ class RingBuffer:
 
     def drop_before(self, t_cutoff_ns: int) -> int:
         """Drop nodes strictly older than the cutoff time."""
-        TimeBase.validate_non_negative(t_cutoff_ns)
+        if not self._is_int(t_cutoff_ns):
+            raise ValueError("t_cutoff_ns must be int")
+        if t_cutoff_ns <= 0:
+            return 0
         keys_to_drop: List[int] = [
             key for key in self._nodes.keys() if key < t_cutoff_ns
         ]
