@@ -8,31 +8,24 @@
 #
 ################################################################################
 
-"""Statistical utilities for innovation metrics and gating.
-
-Responsibility:
-    Document innovation covariance, Mahalanobis distance, and gating rules
-    used during measurement updates.
-
-Inputs/outputs:
-    - Innovation residual ν is length m.
-    - Innovation covariance S is m x m.
-    - Mahalanobis distance is a scalar νᵀ S⁻¹ ν.
-
-Dependencies:
-    - Used by update_step and noise_adaptation.
-
-Determinism:
-    Gating decisions must be deterministic for identical S and ν.
-"""
-
-
 class Statistics:
-    """Innovation statistics for the AHRS measurement updates.
+    """Statistical utilities for innovation metrics and gating.
+
+    Responsibility:
+        Document innovation covariance, Mahalanobis distance, and gating
+        rules used during measurement updates.
 
     Purpose:
         Provide the equations and helper operations for innovation covariance
         and Mahalanobis distance used in gating decisions.
+
+    Inputs/outputs:
+        - Innovation residual ν is length m.
+        - Innovation covariance S is m x m.
+        - Mahalanobis distance is a scalar νᵀ S⁻¹ ν.
+
+    Dependencies:
+        - Used by update_step and noise_adaptation.
 
     Public API (to be implemented):
         - innovation_covariance(H, P, R)
@@ -50,6 +43,7 @@ class Statistics:
         - S units are squared measurement units.
 
     Determinism and edge cases:
+        - Gating decisions are deterministic for identical S and ν.
         - If S is not SPD or inversion fails, gating must reject the update.
         - Thresholds are provided explicitly by configuration.
 

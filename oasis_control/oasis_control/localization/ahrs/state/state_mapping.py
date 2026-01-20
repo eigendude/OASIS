@@ -8,30 +8,23 @@
 #
 ################################################################################
 
-"""Canonical ordering of the AHRS error-state vector.
-
-Responsibility:
-    Define the deterministic layout of the error-state vector used for
-    covariance storage, serialization, and Jacobian construction.
-
-Inputs/outputs:
-    - Inputs are structured error-state fields.
-    - Outputs are vector indices and slices into the error-state vector.
-
-Dependencies:
-    - Used by AhrsErrorState, AhrsCovariance, and filter steps.
-
-Determinism:
-    Ordering is fixed and must be identical across all modules.
-"""
-
-
 class StateMapping:
-    """Canonical mapping between structured fields and the error-state vector.
+    """Canonical ordering of the AHRS error-state vector.
+
+    Responsibility:
+        Define the deterministic layout of the error-state vector used for
+        covariance storage, serialization, and Jacobian construction.
 
     Purpose:
         Provide deterministic index ranges for each error-state block so that
         all covariance and Jacobian math uses the same ordering.
+
+    Inputs/outputs:
+        - Inputs are structured error-state fields.
+        - Outputs are vector indices and slices into the error-state vector.
+
+    Dependencies:
+        - Used by AhrsErrorState, AhrsCovariance, and filter steps.
 
     Public API (to be implemented):
         - dimension()
@@ -65,6 +58,7 @@ class StateMapping:
         - See AhrsErrorState and Units for units of each block.
 
     Determinism and edge cases:
+        - Ordering is fixed and must be identical across all modules.
         - This mapping is the canonical ordering for covariance serialization.
         - Index ranges must not change without a migration path.
 

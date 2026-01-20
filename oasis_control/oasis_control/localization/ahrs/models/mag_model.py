@@ -8,31 +8,24 @@
 #
 ################################################################################
 
-"""Magnetometer measurement model for the AHRS core.
-
-Responsibility:
-    Define the magnetometer prediction, residual, and Jacobian used during
-    EKF updates.
-
-Inputs/outputs:
-    - Inputs: AhrsState, MagPacket (z_m), extrinsics T_BM.
-    - Outputs: predicted mag measurement and residual in {M}.
-
-Dependencies:
-    - Uses Quaternion utilities for R_WB and SE(3) for R_MB.
-    - Works with NoiseAdaptation for adaptive R_m.
-
-Determinism:
-    Deterministic mapping from state to predicted magnetometer measurement.
-"""
-
-
 class MagModel:
-    """Magnetometer measurement model for the AHRS EKF.
+    """Magnetometer measurement model for the AHRS core and EKF.
+
+    Responsibility:
+        Define the magnetometer prediction, residual, and Jacobian used
+        during EKF updates.
 
     Purpose:
         Provide predicted magnetometer measurements and Jacobians in the
         magnetometer frame for EKF updates.
+
+    Inputs/outputs:
+        - Inputs: AhrsState, MagPacket (z_m), extrinsics T_BM.
+        - Outputs: predicted mag measurement and residual in {M}.
+
+    Dependencies:
+        - Uses Quaternion utilities for R_WB and SE(3) for R_MB.
+        - Works with NoiseAdaptation for adaptive R_m.
 
     Public API (to be implemented):
         - predict(state)
@@ -48,6 +41,8 @@ class MagModel:
         - Raw measurements are not rotated into {B}; prediction is in {M}.
 
     Determinism and edge cases:
+        - Deterministic mapping from state to predicted magnetometer
+          measurement.
         - Residual sign convention is ν = z - z_hat.
         - If the magnetic field vector is near zero, reject the update.
 

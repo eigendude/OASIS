@@ -8,33 +8,25 @@
 #
 ################################################################################
 
-"""Quaternion utilities for the AHRS core.
-
-Responsibility:
-    Define the quaternion conventions used across the AHRS core and document
-    the operations the math layer must provide.
-
-Inputs/outputs:
-    - Quaternions are stored as 4x1 vectors [w, x, y, z].
-    - Rotation matrices are 3x3 with R(q_WB) mapping {W} -> {B}.
-    - Angular rates are 3x1 vectors in rad/s.
-
-Dependencies:
-    - Used by process, IMU, and magnetometer models.
-    - Used by state mapping and EKF steps for attitude propagation.
-
-Determinism:
-    Pure math utilities with deterministic outputs for identical inputs.
-    Normalization must be well-defined and avoid data-dependent branching.
-"""
-
-
 class Quaternion:
-    """Quaternion math utilities for world-to-body rotations.
+    """Quaternion utilities for the AHRS core.
+
+    Responsibility:
+        Define the quaternion conventions used across the AHRS core and
+        document the operations the math layer must provide.
 
     Purpose:
         Provide quaternion conventions and helper operations used by the AHRS
         core without tying the implementation to a specific math backend.
+
+    Inputs/outputs:
+        - Quaternions are stored as 4x1 vectors [w, x, y, z].
+        - Rotation matrices are 3x3 with R(q_WB) mapping {W} -> {B}.
+        - Angular rates are 3x1 vectors in rad/s.
+
+    Dependencies:
+        - Used by process, IMU, and magnetometer models.
+        - Used by state mapping and EKF steps for attitude propagation.
 
     Public API (to be implemented):
         - normalize(q)
@@ -56,6 +48,10 @@ class Quaternion:
         - omega is body angular rate in {B} with units rad/s.
 
     Determinism and edge cases:
+        - Pure math utilities with deterministic outputs for identical
+          inputs.
+        - Normalization must be well-defined and avoid data-dependent
+          branching.
         - normalize() must handle near-zero norm with a deterministic fallback
           (for example, identity quaternion) and should record diagnostics.
         - After normalize(), from_matrix(), or integrate(), enforce a

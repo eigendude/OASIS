@@ -8,30 +8,23 @@
 #
 ################################################################################
 
-"""Configuration parameter definitions for the AHRS core.
-
-Responsibility:
-    Document the configuration parameters used by the AHRS core, grouped by
-    functional area (buffering, process noise, adaptation, frames).
-
-Inputs/outputs:
-    - Inputs: parameter dictionaries or configuration objects.
-    - Outputs: validated parameter values for AHRS modules.
-
-Dependencies:
-    - Used by AhrsConfig, ProcessModel, and ReplayEngine.
-
-Determinism:
-    Parameters are explicit inputs; no implicit ROS parameter access.
-"""
-
-
 class AhrsParams:
-    """Parameter schema for configuring the AHRS core.
+    """Configuration parameter definitions for the AHRS core.
+
+    Responsibility:
+        Document the configuration parameters used by the AHRS core, grouped
+        by functional area (buffering, process noise, adaptation, frames).
 
     Purpose:
         Provide a structured list of parameters with units and expected ranges
         for the AHRS core components.
+
+    Inputs/outputs:
+        - Inputs: parameter dictionaries or configuration objects.
+        - Outputs: validated parameter values for AHRS modules.
+
+    Dependencies:
+        - Used by AhrsConfig, ProcessModel, and ReplayEngine.
 
     Public API (to be implemented):
         - defaults()
@@ -77,6 +70,7 @@ class AhrsParams:
         - Units match Units definitions and process noise conventions.
 
     Determinism and edge cases:
+        - Parameters are explicit inputs; no implicit ROS parameter access.
         - validate() must reject invalid ranges (negative variances).
         - alpha outside [0, 1] should be rejected.
 

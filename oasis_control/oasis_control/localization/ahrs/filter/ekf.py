@@ -8,34 +8,24 @@
 #
 ################################################################################
 
-"""AHRS EKF orchestrator and measurement ordering rules.
-
-Responsibility:
-    Coordinate prediction and measurement updates while enforcing deterministic
-    update ordering and interface contracts for the AHRS core.
-
-Inputs/outputs:
-    - Inputs: time steps, ImuPacket, MagPacket, and configuration.
-    - Outputs: updated AhrsState, AhrsCovariance, and UpdateReport entries.
-
-Dependencies:
-    - Depends on PredictStep, UpdateStep, and measurement models.
-
-Determinism:
-    Enforces deterministic update order at identical timestamps:
-        1) priors once
-        2) gyro update
-        3) accel update
-        4) mag update
-"""
-
-
 class AhrsEkf:
-    """Extended Kalman filter orchestrator for the AHRS.
+    """AHRS EKF orchestrator and measurement ordering rules.
+
+    Responsibility:
+        Coordinate prediction and measurement updates while enforcing
+        deterministic update ordering and interface contracts for the AHRS
+        core.
 
     Purpose:
         Provide a single entry point for prediction and measurement updates
         that respects deterministic ordering and measurement contracts.
+
+    Inputs/outputs:
+        - Inputs: time steps, ImuPacket, MagPacket, and configuration.
+        - Outputs: updated AhrsState, AhrsCovariance, and UpdateReport entries.
+
+    Dependencies:
+        - Depends on PredictStep, UpdateStep, and measurement models.
 
     Public API (to be implemented):
         - predict(dt)
@@ -56,6 +46,11 @@ class AhrsEkf:
         - State units follow Units.
 
     Determinism and edge cases:
+        - Enforce deterministic update order at identical timestamps:
+            1) priors once
+            2) gyro update
+            3) accel update
+            4) mag update
         - At a given timestamp, apply updates in the specified order.
         - Do not treat IMU or mag samples as process inputs.
 

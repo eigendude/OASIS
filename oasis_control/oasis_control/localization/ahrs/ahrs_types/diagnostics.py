@@ -8,30 +8,23 @@
 #
 ################################################################################
 
-"""Diagnostics payload definitions for the AHRS core.
-
-Responsibility:
-    Document the diagnostics fields produced by buffering and replay logic.
-
-Inputs/outputs:
-    - Inputs: internal counters and timing state.
-    - Outputs: structured diagnostics for integration layers.
-
-Dependencies:
-    - Produced by RingBuffer and ReplayEngine.
-
-Determinism:
-    Diagnostics counters must increment deterministically for identical input
-    sequences.
-"""
-
-
 class AhrsDiagnostics:
-    """Diagnostics data for AHRS buffering and replay.
+    """Diagnostics payload definitions for the AHRS core.
+
+    Responsibility:
+        Document the diagnostics fields produced by buffering and replay
+        logic.
 
     Purpose:
         Provide a structured summary of buffer and replay behavior for logging
         and monitoring.
+
+    Inputs/outputs:
+        - Inputs: internal counters and timing state.
+        - Outputs: structured diagnostics for integration layers.
+
+    Dependencies:
+        - Produced by RingBuffer and ReplayEngine.
 
     Public API (to be implemented):
         - as_dict()
@@ -61,6 +54,7 @@ class AhrsDiagnostics:
         - Time fields use TimeBase canonical int nanoseconds.
 
     Determinism and edge cases:
+        - Counters increment deterministically for identical input sequences.
         - Counters are monotonic and updated deterministically.
         - Duplicate-slot insertion increments duplicate counters and is
           rejected with no merging or rounding.

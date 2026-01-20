@@ -8,29 +8,23 @@
 #
 ################################################################################
 
-"""Unit conventions for AHRS state and measurements.
-
-Responsibility:
-    Declare the canonical units for every state element and measurement used
-    by the AHRS core. These units are the contract for all modules.
-
-Inputs/outputs:
-    No runtime inputs; this module is purely documentation and shared constants.
-
-Dependencies:
-    - Referenced by state, models, filter, and ahrs_types modules.
-
-Determinism:
-    Units are fixed and must not change across runs.
-"""
-
-
 class Units:
-    """Unit definitions for the AHRS state, inputs, and measurements.
+    """Unit conventions for AHRS state and measurements.
+
+    Responsibility:
+        Declare the canonical units for every state element and measurement
+        used by the AHRS core. These units are the contract for all modules.
 
     Purpose:
         Provide a single, stable reference for units so that all modules use
         consistent scaling and interpretation of the AHRS state.
+
+    Inputs/outputs:
+        No runtime inputs; this module is purely documentation and shared
+        constants.
+
+    Dependencies:
+        - Referenced by state, models, filter, and ahrs_types modules.
 
     Public API (to be implemented):
         - state_units()
@@ -60,6 +54,7 @@ class Units:
         - All vectors carry the frame indicated by their subscript.
 
     Determinism and edge cases:
+        - Units are fixed and must not change across runs.
         - Unit definitions are constant and must be applied uniformly.
 
     Equations:

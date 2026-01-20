@@ -8,30 +8,23 @@
 #
 ################################################################################
 
-"""Error-state representation for the AHRS EKF.
-
-Responsibility:
-    Define the small perturbation state used by the error-state EKF and the
-    ordering contract shared with StateMapping and AhrsCovariance.
-
-Inputs/outputs:
-    - Inputs are error vectors delta_x of length N.
-    - Outputs are structured views of delta_x for specific state blocks.
-
-Dependencies:
-    - Used by state_mapping, covariance, and filter update logic.
-
-Determinism:
-    Error-state ordering is fixed and deterministic across all modules.
-"""
-
-
 class AhrsErrorState:
-    """Small perturbation state for the AHRS EKF.
+    """Error-state representation for the AHRS EKF.
+
+    Responsibility:
+        Define the small perturbation state used by the error-state EKF and
+        the ordering contract shared with StateMapping and AhrsCovariance.
 
     Purpose:
         Provide a typed view of the error-state vector used to update the
         mean state and covariance.
+
+    Inputs/outputs:
+        - Inputs are error vectors delta_x of length N.
+        - Outputs are structured views of delta_x for specific state blocks.
+
+    Dependencies:
+        - Used by state_mapping, covariance, and filter update logic.
 
     Public API (to be implemented):
         - zero()
@@ -56,6 +49,7 @@ class AhrsErrorState:
         - delta_g_W in m/s^2, delta_m_W in tesla.
 
     Determinism and edge cases:
+        - Error-state ordering is fixed and deterministic across all modules.
         - Conversion between vector and structured fields must be stable and
           lossless.
         - Delta-theta assumes small-angle approximation.

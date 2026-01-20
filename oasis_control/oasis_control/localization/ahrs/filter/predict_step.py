@@ -8,31 +8,23 @@
 #
 ################################################################################
 
-"""Prediction step for the AHRS EKF.
-
-Responsibility:
-    Document the propagation of the mean state and covariance using the
-    process model and first-order discretization.
-
-Inputs/outputs:
-    - Inputs: AhrsState, AhrsCovariance, time step Δt.
-    - Outputs: propagated state and covariance.
-
-Dependencies:
-    - Depends on ProcessModel, StateMapping, and LinearAlgebra.
-
-Determinism:
-    Prediction uses deterministic ordering and must be applied before any
-    measurement updates at the same timestamp.
-"""
-
-
 class PredictStep:
-    """EKF prediction step for the AHRS state and covariance.
+    """Prediction step for the AHRS EKF.
+
+    Responsibility:
+        Document the propagation of the mean state and covariance using the
+        process model and first-order discretization.
 
     Purpose:
         Propagate the mean state and covariance forward in time using the
         continuous-time process model and first-order discretization.
+
+    Inputs/outputs:
+        - Inputs: AhrsState, AhrsCovariance, time step Δt.
+        - Outputs: propagated state and covariance.
+
+    Dependencies:
+        - Depends on ProcessModel, StateMapping, and LinearAlgebra.
 
     Public API (to be implemented):
         - propagate(state, covariance, dt)
@@ -57,6 +49,8 @@ class PredictStep:
         - State units follow Units.
 
     Determinism and edge cases:
+        - Prediction uses deterministic ordering and must be applied before
+          any measurement updates at the same timestamp.
         - IMU and magnetometer samples are not process inputs.
         - Random-walk mean states are held constant during propagation.
         - dt <= 0 should result in a no-op or a rejected step.

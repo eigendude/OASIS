@@ -8,32 +8,24 @@
 #
 ################################################################################
 
-"""Continuous-time process model for the AHRS core.
-
-Responsibility:
-    Specify the deterministic continuous-time dynamics and random-walk
-    assumptions used to propagate the AHRS mean state and covariance.
-
-Inputs/outputs:
-    - Inputs: AhrsState, process noise intensities, dt.
-    - Outputs: continuous-time Jacobians A, G and discrete F, Q.
-
-Dependencies:
-    - Uses Quaternion for attitude kinematics.
-    - Coupled with StateMapping and AhrsState definitions.
-
-Determinism:
-    Dynamics are deterministic given the current state and dt. IMU and mag
-    measurements are not process inputs by design.
-"""
-
-
 class ProcessModel:
-    """Continuous-time process model for smooth motion and drift.
+    """Continuous-time process model for the AHRS core.
+
+    Responsibility:
+        Specify the deterministic continuous-time dynamics and random-walk
+        assumptions used to propagate the AHRS mean state and covariance.
 
     Purpose:
         Define the AHRS process dynamics and noise injection used by the EKF
         prediction step.
+
+    Inputs/outputs:
+        - Inputs: AhrsState, process noise intensities, dt.
+        - Outputs: continuous-time Jacobians A, G and discrete F, Q.
+
+    Dependencies:
+        - Uses Quaternion for attitude kinematics.
+        - Coupled with StateMapping and AhrsState definitions.
 
     Public API (to be implemented):
         - propagate_mean(state, dt)
@@ -59,6 +51,8 @@ class ProcessModel:
         - Noise intensities follow Units and config definitions.
 
     Determinism and edge cases:
+        - Dynamics are deterministic given the current state and dt.
+        - IMU and mag measurements are not process inputs by design.
         - Random-walk mean states remain constant in propagation.
         - dt must be positive; dt <= 0 should be handled explicitly.
         - IMU/mag measurements are updates, not inputs to propagation.

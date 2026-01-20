@@ -8,30 +8,24 @@
 #
 ################################################################################
 
-"""Measurement update step for the AHRS EKF.
-
-Responsibility:
-    Document the generic EKF update equations, Joseph-form covariance update,
-    and rejection policies for invalid innovation covariance.
-
-Inputs/outputs:
-    - Inputs: P (N x N), H (m x N), R (m x m), nu (m,), z, z_hat.
-    - Outputs: updated state correction and covariance, plus UpdateReport.
-
-Dependencies:
-    - Uses Statistics for innovation metrics and LinearAlgebra for SPD checks.
-
-Determinism:
-    Updates must be deterministic and applied in the prescribed order.
-"""
-
-
 class UpdateStep:
-    """Generic EKF measurement update for AHRS.
+    """Measurement update step for the AHRS EKF.
+
+    Responsibility:
+        Document the generic EKF update equations, Joseph-form covariance
+        update, and rejection policies for invalid innovation covariance.
 
     Purpose:
         Apply a measurement update using the EKF equations with a Joseph-form
         covariance update and explicit rejection rules.
+
+    Inputs/outputs:
+        - Inputs: P (N x N), H (m x N), R (m x m), nu (m,), z, z_hat.
+        - Outputs: updated state correction and covariance, plus UpdateReport.
+
+    Dependencies:
+        - Uses Statistics for innovation metrics and LinearAlgebra for SPD
+          checks.
 
     Public API (to be implemented):
         - compute_innovation(H, P, R, nu)
@@ -51,6 +45,7 @@ class UpdateStep:
         - Covariance units align with Units.
 
     Determinism and edge cases:
+        - Updates are deterministic and applied in the prescribed order.
         - If S is not SPD or solving fails, reject the update and record it
           in UpdateReport.
         - On rejection, state and covariance remain unchanged (no partial

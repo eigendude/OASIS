@@ -8,30 +8,23 @@
 #
 ################################################################################
 
-"""Covariance container and operations for the AHRS EKF.
-
-Responsibility:
-    Store and document the full error-state covariance matrix used by the
-    EKF, including symmetrization and mapping rules.
-
-Inputs/outputs:
-    - P is an N x N full covariance matrix.
-    - Jacobian-based output covariance uses Σ_y = J P J^T.
-
-Dependencies:
-    - Uses StateMapping for ordering and LinearAlgebra for symmetrization.
-
-Determinism:
-    Symmetrization must be applied deterministically after any update.
-"""
-
-
 class AhrsCovariance:
-    """Full covariance matrix for the AHRS error state.
+    """Covariance container and operations for the AHRS EKF.
+
+    Responsibility:
+        Store and document the full error-state covariance matrix used by the
+        EKF, including symmetrization and mapping rules.
 
     Purpose:
         Maintain the error-state covariance matrix with explicit symmetrization
         and mapping rules between coordinate frames.
+
+    Inputs/outputs:
+        - P is an N x N full covariance matrix.
+        - Jacobian-based output covariance uses Σ_y = J P J^T.
+
+    Dependencies:
+        - Uses StateMapping for ordering and LinearAlgebra for symmetrization.
 
     Public API (to be implemented):
         - symmetrize()
@@ -49,6 +42,7 @@ class AhrsCovariance:
         - SE(3) covariance mapping uses the adjoint of the transform.
 
     Determinism and edge cases:
+        - Symmetrization must be applied deterministically after any update.
         - Always apply P <- 0.5 * (P + P^T) after updates.
         - Mapping with Jacobians must preserve symmetry.
 

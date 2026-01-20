@@ -8,33 +8,25 @@
 #
 ################################################################################
 
-"""SE(3) utilities for AHRS extrinsics and perturbations.
-
-Responsibility:
-    Define rigid-body transforms and adjoint mappings for extrinsics used in
-    the AHRS state and error-state models.
-
-Inputs/outputs:
-    - Transform T_AB = (R_AB, p_AB) maps vectors from {B} to {A}.
-    - Rotation matrices are 3x3, translations are 3x1.
-    - Tangent vectors δξ are 6x1 with [δρ; δθ].
-
-Dependencies:
-    - Used by extrinsics_model, state_mapping, and covariance transforms.
-    - Works with Quaternion and LinearAlgebra utilities for consistency.
-
-Determinism:
-    Transform composition and adjoint calculations must be deterministic and
-    numerically stable for small perturbations.
-"""
-
-
 class Se3:
-    """SE(3) utilities for extrinsics and pose perturbations.
+    """SE(3) utilities for AHRS extrinsics and perturbations.
+
+    Responsibility:
+        Define rigid-body transforms and adjoint mappings for extrinsics used
+        in the AHRS state and error-state models.
 
     Purpose:
         Provide the rigid-body transform conventions and operators needed to
         express IMU/magnetometer extrinsics in a ROS-agnostic core.
+
+    Inputs/outputs:
+        - Transform T_AB = (R_AB, p_AB) maps vectors from {B} to {A}.
+        - Rotation matrices are 3x3, translations are 3x1.
+        - Tangent vectors δξ are 6x1 with [δρ; δθ].
+
+    Dependencies:
+        - Used by extrinsics_model, state_mapping, and covariance transforms.
+        - Works with Quaternion and LinearAlgebra utilities for consistency.
 
     Public API (to be implemented):
         - compose(T_ab, T_bc)
@@ -58,6 +50,8 @@ class Se3:
         - delta_rho in meters, delta_theta in radians.
 
     Determinism and edge cases:
+        - Transform composition and adjoint calculations are deterministic
+          and numerically stable for small perturbations.
         - exp/log must be consistent for small-angle perturbations.
         - adjoint must be defined for any valid T_AB.
 

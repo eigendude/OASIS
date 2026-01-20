@@ -8,31 +8,23 @@
 #
 ################################################################################
 
-"""Magnetometer measurement packet definition for the AHRS core.
-
-Responsibility:
-    Document the magnetometer measurement fields required by the AHRS filter
-    without introducing ROS message types.
-
-Inputs/outputs:
-    - Inputs: raw magnetometer measurements with covariance.
-    - Outputs: structured packet used by MagModel and AhrsEkf.
-
-Dependencies:
-    - Consumed by MagModel and ReplayEngine.
-
-Determinism:
-    Mag packets are immutable once created; fields must not change during
-    replay.
-"""
-
-
 class MagPacket:
-    """Magnetometer measurement packet for AHRS updates.
+    """Magnetometer measurement packet definition for the AHRS core.
+
+    Responsibility:
+        Document the magnetometer measurement fields required by the AHRS
+        filter without introducing ROS message types.
 
     Purpose:
         Provide a data container for magnetometer samples with covariance and
         frame identifiers.
+
+    Inputs/outputs:
+        - Inputs: raw magnetometer measurements with covariance.
+        - Outputs: structured packet used by MagModel and AhrsEkf.
+
+    Dependencies:
+        - Consumed by MagModel and ReplayEngine.
 
     Public API (to be implemented):
         - validate()
@@ -51,6 +43,8 @@ class MagPacket:
         - R_m_raw in tesla^2.
 
     Determinism and edge cases:
+        - Packets are immutable once created; fields must not change during
+          replay.
         - All timestamps are int nanoseconds since an arbitrary epoch.
           The epoch is irrelevant because only differences and exact
           equality are used.

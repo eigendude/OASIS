@@ -8,30 +8,23 @@
 #
 ################################################################################
 
-"""High-level configuration container for the AHRS core.
-
-Responsibility:
-    Provide a cohesive configuration object that aggregates AhrsParams and
-    exposes settings to the filter, models, and timing components.
-
-Inputs/outputs:
-    - Inputs: AhrsParams or configuration dictionaries.
-    - Outputs: validated, immutable configuration used by the core.
-
-Dependencies:
-    - Uses AhrsParams for schema and validation.
-
-Determinism:
-    Configuration is immutable once constructed for deterministic behavior.
-"""
-
-
 class AhrsConfig:
-    """AHRS configuration container and validation rules.
+    """High-level configuration container for the AHRS core.
+
+    Responsibility:
+        Provide a cohesive configuration object that aggregates AhrsParams
+        and exposes settings to the filter, models, and timing components.
 
     Purpose:
         Aggregate all AHRS parameters into a single object passed throughout
         the core, ensuring validation and immutability.
+
+    Inputs/outputs:
+        - Inputs: AhrsParams or configuration dictionaries.
+        - Outputs: validated, immutable configuration used by the core.
+
+    Dependencies:
+        - Uses AhrsParams for schema and validation.
 
     Public API (to be implemented):
         - from_params(params)
@@ -47,6 +40,8 @@ class AhrsConfig:
         - Numeric fields use Units-defined scales.
 
     Determinism and edge cases:
+        - Configuration is immutable once constructed for deterministic
+          behavior.
         - Construction must not read ROS params or clocks.
         - Invalid parameters should raise validation errors.
 

@@ -8,32 +8,24 @@
 #
 ################################################################################
 
-"""Adaptive measurement noise handling for magnetometer updates.
-
-Responsibility:
-    Specify the adaptive covariance update for magnetometer measurements and
-    document the SPD clamping requirements.
-
-Inputs/outputs:
-    - Inputs: residual nu, predicted innovation covariance S_hat.
-    - Outputs: adapted R_m covariance.
-
-Dependencies:
-    - Uses LinearAlgebra for SPD checks and clamping.
-    - Consumed by MagModel and UpdateStep.
-
-Determinism:
-    Adaptive updates must be deterministic for identical inputs and clamp
-    limits.
-"""
-
-
 class NoiseAdaptation:
-    """Adaptive magnetometer covariance update logic.
+    """Adaptive measurement noise handling for magnetometer updates.
+
+    Responsibility:
+        Specify the adaptive covariance update for magnetometer measurements
+        and document the SPD clamping requirements.
 
     Purpose:
         Provide the R_m adaptation rule and SPD clamping behavior used during
         magnetometer updates.
+
+    Inputs/outputs:
+        - Inputs: residual nu, predicted innovation covariance S_hat.
+        - Outputs: adapted R_m covariance.
+
+    Dependencies:
+        - Uses LinearAlgebra for SPD checks and clamping.
+        - Consumed by MagModel and UpdateStep.
 
     Public API (to be implemented):
         - update_mag_covariance(R_m, nu, S_hat, alpha, R_min, R_max)
@@ -49,6 +41,8 @@ class NoiseAdaptation:
         - R_m is in tesla^2.
 
     Determinism and edge cases:
+        - Adaptive updates are deterministic for identical inputs and clamp
+          limits.
         - clamp_SPD preserves symmetry and clamps eigenvalues.
         - If nu nu^T - S_hat is not SPD, clamping still enforces SPD bounds.
 

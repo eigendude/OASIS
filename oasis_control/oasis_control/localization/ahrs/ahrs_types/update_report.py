@@ -8,29 +8,23 @@
 #
 ################################################################################
 
-"""Update report definition for AHRS measurement updates.
-
-Responsibility:
-    Document the diagnostics payload produced for each measurement update.
-
-Inputs/outputs:
-    - Inputs: measurement residuals, covariances, and acceptance status.
-    - Outputs: structured report for logging and diagnostics.
-
-Dependencies:
-    - Produced by UpdateStep and AhrsEkf.
-
-Determinism:
-    Reports must faithfully reflect deterministic update decisions.
-"""
-
-
 class UpdateReport:
-    """Report structure for a single measurement update.
+    """Update report definition for AHRS measurement updates.
+
+    Responsibility:
+        Document the diagnostics payload produced for each measurement
+        update.
 
     Purpose:
         Provide a stable contract for logging EKF update information and
         diagnosing rejected measurements.
+
+    Inputs/outputs:
+        - Inputs: measurement residuals, covariances, and acceptance status.
+        - Outputs: structured report for logging and diagnostics.
+
+    Dependencies:
+        - Produced by UpdateStep and AhrsEkf.
 
     Public API (to be implemented):
         - as_dict()
@@ -55,6 +49,7 @@ class UpdateReport:
         - Covariances use squared measurement units.
 
     Determinism and edge cases:
+        - Reports faithfully reflect deterministic update decisions.
         - All timestamps are int nanoseconds since an arbitrary epoch.
           The epoch is irrelevant because only differences and exact
           equality are used.
