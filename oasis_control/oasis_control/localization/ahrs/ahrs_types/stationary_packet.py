@@ -35,7 +35,7 @@ class StationaryPacket:
 
     Data contract:
         Required fields:
-        - t_meas_ns: representative timestamp in int nanoseconds.
+        - t_meas_ns: window_end_ns in exact int nanoseconds.
         - window_start_ns: inclusive window start in int nanoseconds.
         - window_end_ns: inclusive window end in int nanoseconds.
         - is_stationary: boolean decision for the window.

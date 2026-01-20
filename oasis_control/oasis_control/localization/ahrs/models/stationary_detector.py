@@ -37,6 +37,7 @@ class StationaryDetector:
         - window_imu_packets are sorted deterministically by t_meas_ns.
         - Each packet supplies full R_omega and R_accel (3, 3) covariances.
         - R_v and R_omega outputs are full SPD matrices.
+        - t_meas_ns is defined as window_end_ns using exact int nanoseconds.
 
     Frames and units:
         - Gyro residual ν_ω in {I}, units rad/s.
@@ -63,8 +64,8 @@ class StationaryDetector:
             d2_a,i = ν_a,iᵀ R_a^{-1} ν_a,i
 
         Aggregate deterministically:
-            D_ω = mean(d2_ω,i) or sum(d2_ω,i)
-            D_a = mean(d2_a,i) or sum(d2_a,i)
+            D_ω = mean(d2_ω,i)
+            D_a = mean(d2_a,i)
 
         Stationary decision:
             is_stationary = (D_ω < τ_ω) AND (D_a < τ_a)

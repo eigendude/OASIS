@@ -58,8 +58,10 @@ class PredictStep:
 
     Equations:
         First-order discretization:
-            F ≈ I + AΔt_ns
-            Q ≈ G Q_c Gᵀ Δt_ns
+            Define Δt_sec := dt_ns * 1e-9 (deterministic scale; not used
+            for keying).
+            F ≈ I + AΔt_sec
+            Q ≈ G Q_c Gᵀ Δt_sec
 
         Mean state propagation (zero-mean noise, no sampled injection):
             ṗ = v

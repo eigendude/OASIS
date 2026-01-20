@@ -29,7 +29,7 @@ class AhrsEkf:
         - Depends on PredictStep, UpdateStep, and measurement models.
 
     Public API (to be implemented):
-        - predict(dt)
+        - predict(dt_ns)
         - update_gyro(imu_packet)
         - update_accel(imu_packet)
         - update_mag(mag_packet)

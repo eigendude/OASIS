@@ -239,8 +239,10 @@ Rules:
 
 For each interval `Δt` between time nodes:
 
-- `F ≈ I + AΔt`
-- `Q ≈ G Q_c Gᵀ Δt`
+Define `Δt_sec := dt_ns * 1e-9` (deterministic scale; not used for keying).
+
+- `F ≈ I + AΔt_sec`
+- `Q ≈ G Q_c Gᵀ Δt_sec`
 
 These are first-order approximations suitable for replay. The design must
 allow upgrading to higher-order methods without changing interfaces.
@@ -601,7 +603,7 @@ small steps, with tests before integration.
 
 - Orchestrates predict and update
 - Owns state and covariance
-- Exposes a stable API: `predict(dt)`, `update_gyro(...)`,
+- Exposes a stable API: `predict(dt_ns)`, `update_gyro(...)`,
   `update_accel(...)`, `update_mag(...)`
 
 ### 9.9 `timing/replay_engine.py`

@@ -21,7 +21,7 @@ class ProcessModel:
         prediction step.
 
     Inputs/outputs:
-        - Inputs: AhrsState, process noise intensities, dt.
+        - Inputs: AhrsState, process noise intensities, dt_ns.
         - Outputs: continuous-time Jacobians A, G and discrete F, Q.
 
     Dependencies:
@@ -29,10 +29,10 @@ class ProcessModel:
         - Coupled with StateMapping and AhrsState definitions.
 
     Public API (to be implemented):
-        - propagate_mean(state, dt)
+        - propagate_mean(state, dt_ns)
         - linearize(state)
         - noise_jacobian(state)
-        - discretize(A, G, Q_c, dt)
+        - discretize(A, G, Q_c, dt_ns)
 
     Data contract:
         - state is an AhrsState instance.
@@ -52,10 +52,10 @@ class ProcessModel:
         - Noise intensities follow Units and config definitions.
 
     Determinism and edge cases:
-        - Dynamics are deterministic given the current state and dt.
+        - Dynamics are deterministic given the current state and dt_ns.
         - IMU and mag measurements are not process inputs by design.
         - Random-walk mean states remain constant in propagation.
-        - dt must be positive; dt <= 0 should be handled explicitly.
+        - dt_ns must be positive; dt_ns <= 0 should be handled explicitly.
         - IMU/mag measurements are updates, not inputs to propagation.
 
     Equations:
@@ -79,8 +79,10 @@ class ProcessModel:
             ṁ_W = w_m
 
         First-order discretization:
-            F ≈ I + AΔt
-            Q ≈ G Q_c Gᵀ Δt
+            Define Δt_sec := dt_ns * 1e-9 (deterministic scale; not used
+            for keying).
+            F ≈ I + AΔt_sec
+            Q ≈ G Q_c Gᵀ Δt_sec
 
     Numerical stability notes:
         - Ensure F and Q are consistent with StateMapping.

@@ -48,7 +48,10 @@ class UpdateReport:
         - rejection_reason: string or empty when accepted.
 
     Frames and units:
-        - nu and z are in the measurement frame ({I} or {M}).
+        - gyro/accel: {I}
+        - mag: {M}
+        - zupt: {W}
+        - no_turn: {B}
         - Covariances use squared measurement units.
 
     Determinism and edge cases:
