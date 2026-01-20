@@ -30,6 +30,7 @@ if "oasis_control" in sys.modules:
             module_paths.append(str(PACKAGE_SRC))
             sys.modules["oasis_control"].__path__ = module_paths
 
+from oasis_control.localization.ahrs.math_utils.small_linalg3 import matvec3
 from oasis_control.localization.ahrs.models.mag_model import MagModel
 from oasis_control.localization.ahrs.state.ahrs_state import AhrsState
 from oasis_control.localization.ahrs.state.state_mapping import StateMapping
@@ -41,15 +42,6 @@ def _identity3() -> List[List[float]]:
         [1.0, 0.0, 0.0],
         [0.0, 1.0, 0.0],
         [0.0, 0.0, 1.0],
-    ]
-
-
-def _matvec3(A: List[List[float]], v: List[float]) -> List[float]:
-    """Return A * v for 3x3 A and 3x1 v."""
-    return [
-        A[0][0] * v[0] + A[0][1] * v[1] + A[0][2] * v[2],
-        A[1][0] * v[0] + A[1][1] * v[1] + A[1][2] * v[2],
-        A[2][0] * v[0] + A[2][1] * v[1] + A[2][2] * v[2],
     ]
 
 
@@ -146,7 +138,7 @@ class TestMagModel(unittest.TestCase):
             pred2[1] - pred[1],
             pred2[2] - pred[2],
         ]
-        delta_lin: List[float] = _matvec3(H_theta, delta_theta)
+        delta_lin: List[float] = matvec3(H_theta, delta_theta)
         i: int
         for i in range(3):
             if abs(delta_lin[i]) > 1.0e-12:

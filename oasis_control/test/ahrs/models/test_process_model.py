@@ -118,11 +118,17 @@ class TestProcessModel(unittest.TestCase):
         A: List[List[float]] = ProcessModel.linearize(state)
         G: List[List[float]] = ProcessModel.noise_jacobian(state)
         Q_c: List[List[float]] = _identity(39)
-        with self.assertRaisesRegex(ValueError, "invalid matrix shape"):
+        with self.assertRaisesRegex(
+            ValueError,
+            r"A must be NxN where N = StateMapping\.dimension\(\)",
+        ):
             ProcessModel.discretize([[0.0]], G, Q_c, 1_000_000_000)
-        with self.assertRaisesRegex(ValueError, "invalid matrix shape"):
+        with self.assertRaisesRegex(
+            ValueError,
+            r"G must be Nx39 where N = StateMapping\.dimension\(\)",
+        ):
             ProcessModel.discretize(A, [[0.0]], Q_c, 1_000_000_000)
-        with self.assertRaisesRegex(ValueError, "invalid matrix shape"):
+        with self.assertRaisesRegex(ValueError, "Q_c must be 39x39"):
             ProcessModel.discretize(A, G, [[0.0]], 1_000_000_000)
 
 

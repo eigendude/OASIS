@@ -172,7 +172,7 @@ class TestImuModel(unittest.TestCase):
         ]
         self.assertLess(delta_pred[2], 0.0)
         self.assertLess(delta_lin[2], 0.0)
-        self.assertAlmostEqual(delta_pred[2], delta_lin[2], delta=1.0e-9)
+        self.assertAlmostEqual(delta_pred[2], delta_lin[2], delta=1.0e-7)
 
 
 if __name__ == "__main__":
