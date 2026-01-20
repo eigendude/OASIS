@@ -8,6 +8,15 @@
 #
 ################################################################################
 
+from __future__ import annotations
+
+from typing import Dict
+from typing import List
+from typing import Optional
+
+from oasis_control.localization.ahrs.timing.time_base import TimeBase
+from oasis_control.localization.ahrs.timing.timeline_node import TimelineNode
+
 
 class RingBuffer:
     """Bounded ring buffer of measurement timeline nodes.
@@ -30,7 +39,7 @@ class RingBuffer:
         - Uses TimelineNode instances for storage.
         - Depends on TimeBase for timestamp handling.
 
-    Public API (to be implemented):
+    Public API:
         - insert(node)
         - get(t_meas_ns)
         - drop_before(t_cutoff_ns)
@@ -70,4 +79,63 @@ class RingBuffer:
         - Old nodes are dropped when older than the buffer horizon.
     """
 
-    pass
+    def __init__(self, t_buffer_ns: int) -> None:
+        if not self._is_int(t_buffer_ns) or t_buffer_ns <= 0:
+            raise ValueError("t_buffer_ns must be positive")
+        self.t_buffer_ns: int = t_buffer_ns
+        self._nodes: Dict[int, TimelineNode] = {}
+        self.diagnostics: dict[str, int] = {
+            "reject_too_old": 0,
+            "duplicate_node": 0,
+            "evicted": 0,
+        }
+
+    def size(self) -> int:
+        """Return the number of nodes stored."""
+        return len(self._nodes)
+
+    def get(self, t_meas_ns: int) -> Optional[TimelineNode]:
+        """Return the node for the given timestamp."""
+        TimeBase.validate_non_negative(t_meas_ns)
+        return self._nodes.get(t_meas_ns)
+
+    def drop_before(self, t_cutoff_ns: int) -> int:
+        """Drop nodes strictly older than the cutoff time."""
+        if not self._is_int(t_cutoff_ns):
+            raise ValueError("t_cutoff_ns must be int")
+        if t_cutoff_ns <= 0:
+            return 0
+        keys_to_drop: List[int] = [
+            key for key in self._nodes.keys() if key < t_cutoff_ns
+        ]
+        key: int
+        for key in keys_to_drop:
+            del self._nodes[key]
+        return len(keys_to_drop)
+
+    def insert(self, node: TimelineNode, *, t_filter_ns: int) -> bool:
+        """Insert a node keyed by t_meas_ns and evict old nodes."""
+        TimeBase.validate_non_negative(t_filter_ns)
+        TimeBase.validate_non_negative(node.t_meas_ns)
+        cutoff_ns: int = t_filter_ns - self.t_buffer_ns
+        if node.t_meas_ns < cutoff_ns:
+            self.diagnostics["reject_too_old"] += 1
+            return False
+        if node.t_meas_ns in self._nodes:
+            self.diagnostics["duplicate_node"] += 1
+            return False
+        self._nodes[node.t_meas_ns] = node
+        evicted: int = self.drop_before(cutoff_ns)
+        if evicted:
+            self.diagnostics["evicted"] += evicted
+        return True
+
+    def nodes_from(self, t_start_ns: int) -> List[TimelineNode]:
+        """Return nodes at or after the given timestamp in order."""
+        TimeBase.validate_non_negative(t_start_ns)
+        keys: List[int] = sorted(key for key in self._nodes.keys() if key >= t_start_ns)
+        return [self._nodes[key] for key in keys]
+
+    @staticmethod
+    def _is_int(value: object) -> bool:
+        return isinstance(value, int) and not isinstance(value, bool)
