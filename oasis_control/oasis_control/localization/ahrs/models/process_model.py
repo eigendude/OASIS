@@ -212,8 +212,18 @@ class ProcessModel:
         """Return discretized F and Q using first-order approximation."""
         if not _is_int(dt_ns) or dt_ns <= 0:
             raise ValueError("dt_ns must be positive")
+        size_expected: int = StateMapping.dimension()
+        if (
+            len(A) != size_expected
+            or any(len(row) != size_expected for row in A)
+            or len(G) != size_expected
+            or any(len(row) != 39 for row in G)
+            or len(Q_c) != 39
+            or any(len(row) != 39 for row in Q_c)
+        ):
+            raise ValueError("invalid matrix shape")
         dt_sec: float = dt_ns * 1e-9
-        size: int = len(A)
+        size: int = size_expected
         F: List[List[float]] = [[0.0 for _ in range(size)] for _ in range(size)]
         i: int
         j: int

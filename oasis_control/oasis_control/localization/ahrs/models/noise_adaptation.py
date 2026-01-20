@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import List
 from typing import Sequence
 
@@ -36,13 +37,14 @@ class NoiseAdaptation:
         - Consumed by MagModel and UpdateStep.
 
     Public API (to be implemented):
-        - update_mag_covariance(R_m, nu, S_hat, alpha, R_min, R_max)
+        - update_mag_covariance(R_m, nu, S_hat, alpha, min_eig, max_eig)
         - clamp_spd(P, min_eig, max_eig)
 
     Data contract:
-        - R_m, R_min, R_max are 3x3 SPD matrices.
+        - R_m is a 3x3 SPD matrix.
         - nu is a length-3 residual in {M}.
         - S_hat is innovation covariance without R_m.
+        - min_eig and max_eig are scalar eigenvalue bounds.
 
     Frames and units:
         - nu is in {M}, units tesla.
@@ -56,7 +58,7 @@ class NoiseAdaptation:
 
     Equations:
         Adaptive update:
-            R_m <- clamp_SPD((1-α) R_m + α (ν νᵀ - S_hat), R_min, R_max)
+            R_m <- clamp_SPD((1-α) R_m + α (ν νᵀ - S_hat), min_eig, max_eig)
 
     Numerical stability notes:
         - Symmetrize before clamping.
@@ -73,16 +75,23 @@ class NoiseAdaptation:
         nu: Sequence[float],
         S_hat: Sequence[Sequence[float]],
         alpha: float,
-        R_min: Sequence[Sequence[float]],
-        R_max: Sequence[Sequence[float]],
+        min_eig: float,
+        max_eig: float,
     ) -> List[List[float]]:
         """Return adapted magnetometer covariance."""
         _assert_matrix_shape("R_m", R_m, 3)
         _assert_matrix_shape("S_hat", S_hat, 3)
-        _assert_matrix_shape("R_min", R_min, 3)
-        _assert_matrix_shape("R_max", R_max, 3)
         if len(nu) != 3:
             raise ValueError("nu must have length 3")
+        if not math.isfinite(alpha) or alpha < 0.0 or alpha > 1.0:
+            raise ValueError("alpha must be in [0, 1]")
+        if (
+            not math.isfinite(min_eig)
+            or not math.isfinite(max_eig)
+            or min_eig <= 0.0
+            or max_eig < min_eig
+        ):
+            raise ValueError("eigenvalue bounds invalid")
         nu_outer: List[List[float]] = [
             [nu[0] * nu[0], nu[0] * nu[1], nu[0] * nu[2]],
             [nu[1] * nu[0], nu[1] * nu[1], nu[1] * nu[2]],
@@ -93,8 +102,6 @@ class NoiseAdaptation:
         innovation_scaled: List[List[float]] = _scale_mat(innovation_term, alpha)
         R_new: List[List[float]] = _add_mat(weighted_R, innovation_scaled)
         R_new = LinearAlgebra.symmetrize(R_new)
-        min_eig: float = _min_diag(R_min)
-        max_eig: float = _max_diag(R_max)
         return NoiseAdaptation.clamp_spd(R_new, min_eig, max_eig)
 
     @staticmethod
@@ -142,13 +149,3 @@ def _scale_mat(A: Sequence[Sequence[float]], scale: float) -> List[List[float]]:
         [A[1][0] * scale, A[1][1] * scale, A[1][2] * scale],
         [A[2][0] * scale, A[2][1] * scale, A[2][2] * scale],
     ]
-
-
-def _min_diag(A: Sequence[Sequence[float]]) -> float:
-    """Return minimum diagonal entry."""
-    return min(A[0][0], A[1][1], A[2][2])
-
-
-def _max_diag(A: Sequence[Sequence[float]]) -> float:
-    """Return maximum diagonal entry."""
-    return max(A[0][0], A[1][1], A[2][2])
