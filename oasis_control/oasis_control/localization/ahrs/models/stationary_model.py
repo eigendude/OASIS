@@ -8,6 +8,14 @@
 #
 ################################################################################
 
+from __future__ import annotations
+
+from typing import List
+from typing import Sequence
+
+from oasis_control.localization.ahrs.state.ahrs_state import AhrsState
+from oasis_control.localization.ahrs.state.state_mapping import StateMapping
+
 
 class StationaryModel:
     """Pseudo-measurement models for stationary updates in the AHRS EKF.
@@ -73,4 +81,62 @@ class StationaryModel:
         - No-turn residual equals -omega_WB.
     """
 
-    pass
+    @staticmethod
+    def predict_zupt(state: AhrsState) -> List[float]:
+        """Return the ZUPT predicted measurement z_hat = v_WB."""
+        return list(state.v_WB)
+
+    @staticmethod
+    def residual_zupt(z_v: Sequence[float], z_hat: Sequence[float]) -> List[float]:
+        """Return the ZUPT residual ν = z - z_hat."""
+        _assert_vector_length("z_v", z_v, 3)
+        _assert_vector_length("z_hat", z_hat, 3)
+        return [z_v[0] - z_hat[0], z_v[1] - z_hat[1], z_v[2] - z_hat[2]]
+
+    @staticmethod
+    def jacobian_zupt(state: AhrsState) -> List[List[float]]:
+        """Return the ZUPT Jacobian selecting the δv block."""
+        _ = state
+        H: List[List[float]] = _zeros_matrix(3, StateMapping.dimension())
+        delta_v: slice = StateMapping.slice_delta_v()
+        for i in range(3):
+            H[i][delta_v.start + i] = 1.0
+        return H
+
+    @staticmethod
+    def predict_no_turn(state: AhrsState) -> List[float]:
+        """Return the no-turn predicted measurement z_hat = ω_WB."""
+        return list(state.omega_WB)
+
+    @staticmethod
+    def residual_no_turn(
+        z_omega: Sequence[float],
+        z_hat: Sequence[float],
+    ) -> List[float]:
+        """Return the no-turn residual ν = z - z_hat."""
+        _assert_vector_length("z_omega", z_omega, 3)
+        _assert_vector_length("z_hat", z_hat, 3)
+        return [
+            z_omega[0] - z_hat[0],
+            z_omega[1] - z_hat[1],
+            z_omega[2] - z_hat[2],
+        ]
+
+    @staticmethod
+    def jacobian_no_turn(state: AhrsState) -> List[List[float]]:
+        """Return the no-turn Jacobian selecting the δω block."""
+        _ = state
+        H: List[List[float]] = _zeros_matrix(3, StateMapping.dimension())
+        delta_omega: slice = StateMapping.slice_delta_omega()
+        for i in range(3):
+            H[i][delta_omega.start + i] = 1.0
+        return H
+
+
+def _assert_vector_length(name: str, vec: Sequence[float], length: int) -> None:
+    if len(vec) != length:
+        raise ValueError(f"{name} must have length {length}")
+
+
+def _zeros_matrix(rows: int, cols: int) -> List[List[float]]:
+    return [[0.0 for _ in range(cols)] for _ in range(rows)]

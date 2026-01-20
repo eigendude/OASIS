@@ -8,6 +8,21 @@
 #
 ################################################################################
 
+from __future__ import annotations
+
+from typing import Iterable
+from typing import List
+from typing import Mapping
+from typing import Sequence
+
+from oasis_control.localization.ahrs.ahrs_types.imu_packet import ImuPacket
+from oasis_control.localization.ahrs.ahrs_types.stationary_packet import (
+    StationaryPacket,
+)
+from oasis_control.localization.ahrs.math_utils.linalg import LinearAlgebra
+from oasis_control.localization.ahrs.models.imu_model import ImuModel
+from oasis_control.localization.ahrs.state.ahrs_state import AhrsState
+
 
 class StationaryDetector:
     """Covariance-aware stationary detector for deterministic AHRS replay.
@@ -80,4 +95,136 @@ class StationaryDetector:
         - Reject window when any covariance is non-SPD.
     """
 
-    pass
+    @staticmethod
+    def detect(
+        window_imu_packets: Sequence[ImuPacket],
+        state: AhrsState,
+        *,
+        tau_omega: float,
+        tau_accel: float,
+        R_v_base: Sequence[Sequence[float]],
+        R_omega_base: Sequence[Sequence[float]],
+    ) -> StationaryPacket:
+        """Return a deterministic stationary decision for the IMU window."""
+        if not window_imu_packets:
+            metadata_empty: Mapping[str, object] = {
+                "reason": "empty window",
+                "tau_omega": tau_omega,
+                "tau_accel": tau_accel,
+                "sample_count": 0,
+            }
+            return StationaryPacket(
+                t_meas_ns=0,
+                window_start_ns=0,
+                window_end_ns=0,
+                is_stationary=False,
+                R_v=_clamp_base_covariance(R_v_base),
+                R_omega=_clamp_base_covariance(R_omega_base),
+                metadata=metadata_empty,
+            )
+
+        packets: List[ImuPacket] = sorted(
+            window_imu_packets,
+            key=lambda packet: packet.t_meas_ns,
+        )
+        window_start_ns: int = packets[0].t_meas_ns
+        window_end_ns: int = packets[-1].t_meas_ns
+
+        if not _all_covariances_spd(packets):
+            metadata_reject: Mapping[str, object] = {
+                "reason": "non-spd covariance in window",
+                "tau_omega": tau_omega,
+                "tau_accel": tau_accel,
+                "sample_count": len(packets),
+            }
+            return StationaryPacket(
+                t_meas_ns=window_end_ns,
+                window_start_ns=window_start_ns,
+                window_end_ns=window_end_ns,
+                is_stationary=False,
+                R_v=_clamp_base_covariance(R_v_base),
+                R_omega=_clamp_base_covariance(R_omega_base),
+                metadata=metadata_reject,
+            )
+
+        d2_omega: List[float] = []
+        d2_accel: List[float] = []
+        packet: ImuPacket
+        for packet in packets:
+            z_hat_omega: List[float] = ImuModel.predict_gyro(state)
+            nu_omega: List[float] = ImuModel.residual_gyro(packet.z_omega, z_hat_omega)
+            d2_omega.append(_whitened_d2(packet.R_omega, nu_omega))
+
+            z_hat_accel: List[float] = ImuModel.predict_accel(state)
+            nu_accel: List[float] = ImuModel.residual_accel(packet.z_accel, z_hat_accel)
+            d2_accel.append(_whitened_d2(packet.R_accel, nu_accel))
+
+        D_omega: float = _mean(d2_omega)
+        D_accel: float = _mean(d2_accel)
+        is_stationary: bool = (D_omega < tau_omega) and (D_accel < tau_accel)
+
+        metadata_final: Mapping[str, object] = {
+            "D_omega": D_omega,
+            "D_accel": D_accel,
+            "tau_omega": tau_omega,
+            "tau_accel": tau_accel,
+            "sample_count": len(packets),
+        }
+        return StationaryPacket(
+            t_meas_ns=window_end_ns,
+            window_start_ns=window_start_ns,
+            window_end_ns=window_end_ns,
+            is_stationary=is_stationary,
+            R_v=_clamp_base_covariance(R_v_base),
+            R_omega=_clamp_base_covariance(R_omega_base),
+            metadata=metadata_final,
+        )
+
+
+def _all_covariances_spd(packets: Iterable[ImuPacket]) -> bool:
+    packet: ImuPacket
+    for packet in packets:
+        if not LinearAlgebra.is_spd(packet.R_omega):
+            return False
+        if not LinearAlgebra.is_spd(packet.R_accel):
+            return False
+    return True
+
+
+def _whitened_d2(R: Sequence[Sequence[float]], nu: Sequence[float]) -> float:
+    x: List[float] = LinearAlgebra.solve_spd(R, nu)
+    d2: float = 0.0
+    for i in range(3):
+        d2 += nu[i] * x[i]
+    return d2
+
+
+def _mean(values: Sequence[float]) -> float:
+    if not values:
+        raise ValueError("values must be non-empty")
+    acc: float = 0.0
+    for value in values:
+        acc += value
+    return acc / float(len(values))
+
+
+def _clamp_base_covariance(
+    R_base: Sequence[Sequence[float]],
+) -> List[List[float]]:
+    min_diag: float = _min_diagonal(R_base)
+    max_diag: float = _max_diagonal(R_base)
+    min_eig: float = max(min_diag, 1e-12)
+    max_eig: float = max(max_diag, min_eig)
+    return LinearAlgebra.clamp_spd(R_base, min_eig, max_eig)
+
+
+def _min_diagonal(R: Sequence[Sequence[float]]) -> float:
+    if len(R) != 3 or any(len(row) != 3 for row in R):
+        raise ValueError("Covariance must be 3x3")
+    return min(R[0][0], R[1][1], R[2][2])
+
+
+def _max_diagonal(R: Sequence[Sequence[float]]) -> float:
+    if len(R) != 3 or any(len(row) != 3 for row in R):
+        raise ValueError("Covariance must be 3x3")
+    return max(R[0][0], R[1][1], R[2][2])
