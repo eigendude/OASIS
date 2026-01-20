@@ -141,7 +141,8 @@ extrinsics, and environment reference vectors.
 - `p_WB ∈ ℝ³` Position of body in world
 - `v_WB ∈ ℝ³` Velocity of body in world
 - `q_WB` Unit quaternion (world → body)
-- `ω_WB ∈ ℝ³` Body angular rate (world → body), expressed in `{B}`
+- `ω_WB ∈ ℝ³` Body angular rate expressed in `{B}` (rad/s), the angular
+  velocity of `{B}` relative to `{W}` expressed in `{B}`
 - `b_g ∈ ℝ³` Gyro bias (in `{I}`)
 - `b_a ∈ ℝ³` Accel bias (in `{I}`)
 - `A_a ∈ ℝ^{3×3}` Accel scale/misalignment matrix (acts in `{I}`)
@@ -277,7 +278,7 @@ Convention:
 of specific force (i.e., it measures `a - g`, so at rest it measures approximately `-g`
 in the sensor frame, up to calibration and noise).
 
-- `a_WB ≈ 0`
+- `a_WB := 0` (deterministic mean of the process prior)
 - `f_B ≈ R_WB * (0 - g_W)`
 - `z_a` measures `f_I` (up to calibration and noise)
 
@@ -287,7 +288,7 @@ Definitions:
 
 Compute specific force:
 
-- `a_WB = v̇_WB`
+- `a_WB := 0` (deterministic mean of the process prior)
 - `f_B = R_WB * (a_WB - g_W)`
 - `f_I = R_IB * f_B`
 
@@ -300,6 +301,16 @@ Apply accel calibration model:
 Residual:
 
 - `ν_a = z_a - â_I`
+
+Notes:
+
+- `a_WB := 0` reflects the process model mean (smoothness prior with zero mean),
+  supports gravity initialization, and avoids introducing a separate
+  acceleration state. The process model still uses `v̇_WB = w_v` for
+  propagation.
+- A future extension may introduce an explicit acceleration state or a
+  deterministic finite-difference policy, but the current spec uses
+  `a_WB := 0`.
 
 ### 5.3 Magnetometer measurement
 
@@ -399,6 +410,10 @@ Maintain a time-ordered ring buffer of nodes. Each node stores:
 Nodes are keyed by timestamp. Messages with the same timestamp attach to the
 same node.
 
+Canonical keying uses integer nanoseconds `t_meas_ns` sourced from ROS header
+stamps (`sec`, `nsec`). Float seconds conversions are convenience only and MUST
+NOT be used for node keying, equality, ordering, or buffer attachment.
+
 Rules:
 
 - A node may contain **multiple measurement types** at the same timestamp
@@ -440,6 +455,20 @@ parameters, QoS, and logging. All math and state logic must reside in
 - `imu_raw` (`sensor_msgs/Imu`)
 - `imu_calibration` (`oasis_msgs/ImuCalibration`)
 - `magnetic_field` (`sensor_msgs/MagneticField`)
+
+IMU synchronization contract:
+
+- IMU processing requires an ExactTime-synchronized pair
+  `(imu_raw, imu_calibration)` at the same `t_meas_ns`.
+- Any `imu_raw` without a matching `imu_calibration` at the exact same
+  timestamp MUST be rejected, even when calibration is static and unchanged.
+- `imu_calibration` MAY change over time (recalibration events), and the
+  synchronized pair requirement still applies.
+- `imu_calibration` is used **only before initialization** as an initial prior
+  on `(b_a, A_a, b_g)` with full covariance.
+- After initialization, `imu_calibration` does not modify in-state parameters,
+  but it still records diagnostics/consistency checks and provides a future
+  policy hook for re-init or reset on calibration change (TODO, policy only).
 
 ### 8.2 Outputs
 

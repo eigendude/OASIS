@@ -24,6 +24,8 @@ Dependencies:
 Determinism:
     IMU packets are immutable once created; fields must not change during
     replay.
+    IMU packets are created only from an ExactTime-synchronized
+    (imu_raw, imu_calibration) pair.
 """
 
 
@@ -47,7 +49,9 @@ class ImuPacket:
         - R_omega: gyro covariance matrix (3, 3).
         - z_accel: accel measurement vector (3,).
         - R_accel: accel covariance matrix (3, 3).
-        - calibration_meta: optional metadata for calibration source.
+        - calibration_prior: calibration payload paired with the measurement,
+          including (b_a, A_a, b_g) and the associated full covariance.
+        - calibration_meta: metadata for calibration source and validity.
 
     Frames and units:
         - z_omega in rad/s, frame {I}.
@@ -61,6 +65,8 @@ class ImuPacket:
         - t_meas_ns equality is exact for buffer keying.
         - No epsilon merging or rounding-based matching is permitted.
         - Packets must contain both z_omega and z_accel with covariances.
+        - Packets must be dropped if an ExactTime-synchronized calibration
+          payload is missing for the same t_meas_ns.
         - validate() rejects missing z_omega/z_accel or missing covariances.
 
     Equations:

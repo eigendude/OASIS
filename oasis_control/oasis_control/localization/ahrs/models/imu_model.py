@@ -65,11 +65,19 @@ class ImuModel:
             ν = z_ω - ω_hat_I
 
         Accel prediction in {I}:
-            a_WB = v̇_WB
+            a_WB := 0 (deterministic mean of the process prior)
             f_B = R_WB * (a_WB - g_W)
             f_I = R_IB * f_B
             a_hat_I = A_a^{-1} * f_I + b_a
             ν = z_a - a_hat_I
+
+        Notes:
+            a_WB := 0 reflects the process model mean (smoothness prior with
+            zero mean), supports gravity initialization, and avoids
+            introducing a separate acceleration state. The process model uses
+            v̇_WB = w_v for propagation. A future extension may introduce an
+            explicit acceleration state or a deterministic finite-difference
+            policy, but the current spec uses a_WB := 0.
 
     Numerical stability notes:
         - Use a stable inversion for A_a.

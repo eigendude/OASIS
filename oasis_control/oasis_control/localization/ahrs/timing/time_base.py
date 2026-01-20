@@ -22,9 +22,10 @@ Dependencies:
     - Used by RingBuffer, Timeline, and ReplayEngine.
 
 Determinism:
-    Canonical internal representation is int nanoseconds (t_ns).
-    Equality for keying uses exact integer equality with no epsilon.
-    The epoch is irrelevant because only differences and equality are used.
+    Canonical internal representation is int nanoseconds (t_ns) derived from
+    ROS header stamps (sec, nsec). Equality for keying uses exact integer
+    equality with no epsilon. The epoch is irrelevant because only
+    differences and equality are used.
 """
 
 
@@ -46,10 +47,11 @@ class TimeBase:
         - t_filter_ns: filter frontier timestamp after processing.
 
     Frames and units:
-        - Canonical storage is int nanoseconds (t_ns).
+        - Canonical storage is int nanoseconds (t_ns) sourced from ROS header
+          stamps (sec, nsec).
         - Boundary helpers may convert to/from float seconds for
-          convenience. Float seconds must never be used for keying or
-          storage.
+          convenience. Float seconds must never be used for keying,
+          ordering, equality, or buffer attachment.
 
     Determinism and edge cases:
         - Timestamp equality is exact integer equality for keying.
@@ -63,7 +65,7 @@ class TimeBase:
         - to_seconds(t_ns) converts int nanoseconds to float seconds and is
           lossy.
         - Float conversions must be explicit and never used for key
-          comparisons.
+          comparisons or buffer attachment.
 
     Equations:
         - No equations; this module defines time terminology.

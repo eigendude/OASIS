@@ -41,8 +41,18 @@ This keeps the TF tree compatible with a future localization EKF that may later 
 - Single `message_filters` combination (ExactTime) producing an **IMU packet**:
   - `imu_raw` (`sensor_msgs/Imu`): inertial sample stream (time-stamped)
   - `imu_calibration` (`oasis_msgs/ImuCalibration`): calibration priors + uncertainty
-    - **Semantic rule:** used **only once** to initialize in-state calibration parameters (initial prior).
-    - After initialization, `imu_calibration` contents are ignored (except diagnostics / consistency checks).
+    - **Deterministic contract:** IMU processing requires an ExactTime pair
+      `(imu_raw, imu_calibration)` at the same `t_meas_ns`. Any `imu_raw`
+      without a matching `imu_calibration` at the exact same timestamp MUST be
+      rejected. This is intentional even if calibration is static.
+    - `imu_calibration` MAY change over time (recalibration events), and the
+      synchronized pair requirement still applies.
+    - **Semantic rule:** used **only once** to initialize in-state calibration
+      parameters (initial prior).
+    - After initialization, `imu_calibration` does NOT modify in-state
+      parameters. It still records diagnostics/consistency checks and provides
+      a future policy hook for re-init or reset on calibration change (TODO,
+      policy only).
 - `magnetic_field` (`sensor_msgs/MagneticField`): magnetometer samples (time-stamped)
 
 ---
@@ -70,7 +80,8 @@ Requirements:
 
 ### 1.3 `imu_calibration` — `oasis_msgs/ImuCalibration`
 
-Role: **one-shot initialization prior** for systematic parameters that live in the shared state.
+Role: **one-shot initialization prior** for systematic parameters that live in
+the shared state.
 
 Validity:
 
@@ -87,9 +98,16 @@ Models (parameter meaning):
 
 Requirements:
 
+- IMU processing requires ExactTime pairing with `imu_raw` at the same
+  `t_meas_ns`. Any unpaired `imu_raw` must be dropped, even when calibration is
+  static and unchanged.
 - Consume **only while uninitialized**:
-  - The **first** valid calibration observed is applied as an initial prior on `(b_a, A_a, b_g)` with its covariance.
-  - After initialization, ignore subsequent calibration messages (except diagnostics).
+  - The **first** valid calibration observed is applied as an initial prior on
+    `(b_a, A_a, b_g)` with its covariance.
+  - After initialization, do not modify in-state parameters from subsequent
+    calibration messages. Still record diagnostics/consistency checks and allow
+    a future policy hook for re-init or reset on calibration change (TODO,
+    policy only).
 - Calibration uncertainty is **systematic parameter uncertainty**, not per-sample noise.
 - Always use full covariance matrices when provided (do not diagonalize).
 
@@ -177,7 +195,8 @@ Navigation (in `{W}` unless noted):
 - Position: `p_WB ∈ ℝ³`
 - Velocity: `v_WB ∈ ℝ³`
 - Attitude: `q_WB` (unit quaternion, world → body rotation)
-- Body angular rate: `ω_WB ∈ ℝ³` in `{B}` (rad/s)
+- Body angular rate: `ω_WB ∈ ℝ³` in `{B}` (rad/s), the angular velocity of
+  `{B}` relative to `{W}` expressed in `{B}`
 
 IMU systematic parameters:
 
@@ -238,8 +257,11 @@ Navigation kinematics:
 - `ω̇_WB = w_ω`
 
 where:
-- `ω_WB` is the body angular rate (world → body) treated as **latent** (not directly measured in the process model),
-- `w_v`, `w_ω` are zero-mean white noises (continuous-time) representing smoothness priors.
+- `ω_WB` is the body angular rate expressed in `{B}` (rad/s), the angular
+  velocity of `{B}` relative to `{W}` expressed in `{B}`. It is treated as
+  **latent** (not directly measured in the process model).
+- `w_v`, `w_ω` are zero-mean white noises (continuous-time) representing
+  smoothness priors.
 
 Systematic parameter drift (random walks):
 
@@ -311,8 +333,8 @@ Measurement:
 
 Specific-force prediction:
 
-- Compute world-frame acceleration of the body origin from kinematics:
-  - `a_WB := v̇_WB` (from process state)
+- Define the world-frame body acceleration mean as:
+  - `a_WB := 0` (deterministic mean of the process prior)
 - Specific force in body frame is:
   - `f_B = R_WB * (a_WB - g_W)` where `R_WB` is world → body rotation from `q_WB`
 - Convert to IMU frame:
@@ -335,6 +357,13 @@ Residual:
 
 Notes:
 
+- `a_WB := 0` reflects the process model mean (smoothness prior with zero mean),
+  supports gravity initialization, and avoids introducing a separate
+  acceleration state. The process model still uses `v̇_WB = w_v` for
+  propagation.
+- A future extension may introduce an explicit acceleration state or a
+  deterministic finite-difference policy, but the current spec uses
+  `a_WB := 0`.
 - The above uses a full 3×3 `A_a`. If `A_a` is near-singular, the state/prior must prevent it (bounded parameterization
   recommended). The covariance remains full regardless of parameterization.
 - `R_a` is always taken as the provided full covariance (or a configured fallback if invalid).
@@ -377,12 +406,19 @@ This AHRS uses the same deterministic fixed-lag design as the EKF spec.
 - `t_now_ns`: receipt time (diagnostics only)
 - `t_filter_ns`: max `t_meas_ns` among **accepted** messages (frontier)
 
-Event-driven: each accepted message attaches at `t_meas_ns`. Out-of-order messages are supported via fixed-lag replay.
+Canonical keying uses integer nanoseconds `t_meas_ns` from ROS header stamps
+(`sec`, `nsec`). Float seconds conversions are convenience only and MUST NOT be
+used for node keying, equality, ordering, or buffer attachment.
+
+Event-driven: each accepted message attaches at `t_meas_ns`. Out-of-order
+messages are supported via fixed-lag replay.
 
 ### 4.2 Message roles
 
-- **Measurement updates (high-rate):** `imu_raw` (gyro + accel updates)
-- **Initialization prior (one-shot):** `imu_calibration`
+- **Measurement updates (high-rate):** `imu_raw` (gyro + accel updates), only
+  accepted when ExactTime-paired with `imu_calibration`
+- **Initialization prior (one-shot):** `imu_calibration` (paired with
+  `imu_raw`, then used for diagnostics after initialization)
 - **Measurement updates:** `magnetic_field`
 - **Process model:** runs continuously between time nodes as the kinematic prior and slow parameter drift.
 
@@ -390,18 +426,28 @@ Event-driven: each accepted message attaches at `t_meas_ns`. Out-of-order messag
 
 The AHRS consumes IMU as a synchronized pair:
 
-- `imu_pkt = (imu_raw, imu_calibration)` produced by `message_filters` using **ExactTime**.
+- `imu_pkt = (imu_raw, imu_calibration)` produced by `message_filters` using
+  **ExactTime**.
 
 Timestamp policy:
 
 - Packet time: `t_meas_ns := imu_raw.header.stamp`
-- Require `imu_calibration.header.stamp == imu_raw.header.stamp`; reject packet if not.
+- Require `imu_calibration.header.stamp == imu_raw.header.stamp`; reject the
+  packet if not. This pairing requirement is intentional even if calibration
+  is static and unchanged.
+- `imu_calibration` MAY change over time (recalibration events), and the
+  synchronized pair requirement still applies.
 
 Semantic policy:
 
-- `imu_calibration` is used **only before initialization** to set priors on `(b_a, A_a, b_g)` with full covariance.
-- After initialization, `imu_calibration` is ignored (except diagnostics).
-- `imu_raw` always produces measurement updates (gyro + accel) when accepted.
+- `imu_calibration` always arrives paired with `imu_raw`.
+- `imu_calibration` is used **only before initialization** to set priors on
+  `(b_a, A_a, b_g)` with full covariance.
+- After initialization, `imu_calibration` does not modify in-state parameters,
+  but it still records diagnostics/consistency checks and provides a future
+  policy hook for re-init or reset on calibration change (TODO, policy only).
+- `imu_raw` produces measurement updates (gyro + accel) only when the ExactTime
+  pair is accepted.
 
 ### 4.4 Buffer model
 
