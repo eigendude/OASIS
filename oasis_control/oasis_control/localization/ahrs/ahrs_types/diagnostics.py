@@ -45,6 +45,12 @@ class AhrsDiagnostics:
         - duplicate_count: number of rejected duplicates.
         - replay_count: number of replay operations.
         - last_replay_from: timestamp of the last replay start.
+        - rejected_old_count: inserts older than buffer horizon.
+        - rejected_future_count: inserts too far in the future.
+        - duplicate_imu_count: rejected duplicate IMU slots.
+        - duplicate_mag_count: rejected duplicate mag slots.
+        - out_of_order_insert_count: count of inserts before frontier.
+        - evicted_node_count: number of nodes evicted by horizon.
 
     Frames and units:
         - Time fields use TimeBase units.

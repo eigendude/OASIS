@@ -16,13 +16,14 @@ Responsibility:
 
 Inputs/outputs:
     - Inputs: raw timestamps or floating-point seconds.
-    - Outputs: normalized timestamps used by buffers and replay.
+    - Outputs: canonical integer nanoseconds (t_ns) used by buffers/replay.
 
 Dependencies:
     - Used by RingBuffer, Timeline, and ReplayEngine.
 
 Determinism:
-    Time conversions must be deterministic; no implicit wall clock access.
+    Canonical internal representation is int nanoseconds (t_ns).
+    Equality for keying uses exact integer equality with no epsilon.
 """
 
 
@@ -39,16 +40,18 @@ class TimeBase:
         - validate_monotonic(t_prev, t_next)
 
     Data contract:
-        - t_meas: measurement timestamp associated with a sensor packet.
-        - t_now: current wall-clock timestamp (provided externally).
-        - t_filter: filter frontier timestamp after processing.
+        - t_meas_ns: measurement timestamp in integer nanoseconds.
+        - t_now_ns: current wall-clock timestamp (provided externally).
+        - t_filter_ns: filter frontier timestamp after processing.
 
     Frames and units:
-        - All time values are seconds as float or integer nanoseconds.
+        - Canonical storage is int nanoseconds (t_ns).
+        - Boundary helpers may convert to/from float seconds for convenience.
 
     Determinism and edge cases:
-        - Timestamp equality is exact; no epsilon-based merging.
+        - Timestamp equality is exact integer equality for keying.
         - Validation should reject negative or NaN timestamps.
+        - Float conversions must be explicit and loss-aware.
 
     Equations:
         - No equations; this module defines time terminology.

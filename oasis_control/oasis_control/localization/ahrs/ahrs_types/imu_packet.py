@@ -55,7 +55,8 @@ class ImuPacket:
 
     Determinism and edge cases:
         - t_meas equality is exact for buffer keying.
-        - Missing covariances must be rejected.
+        - Packets must contain both z_omega and z_accel with covariances.
+        - validate() rejects missing z_omega/z_accel or missing covariances.
 
     Equations:
         - No equations; this is a data container.

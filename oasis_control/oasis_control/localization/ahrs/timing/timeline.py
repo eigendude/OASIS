@@ -8,21 +8,23 @@
 #
 ################################################################################
 
-"""Timeline node definition for AHRS measurements.
+"""Timeline node definition for AHRS measurements and state snapshots.
 
 Responsibility:
     Define a time-keyed node that can hold multiple measurement types at a
-    single t_meas without merging across timestamps.
+    single t_meas_ns without merging across timestamps, plus the mean state
+    and covariance stored at that time.
 
 Inputs/outputs:
-    - Inputs: ImuPacket or MagPacket instances.
-    - Outputs: node with optional imu_packet and mag_packet slots.
+    - Inputs: ImuPacket or MagPacket instances keyed by t_meas_ns.
+    - Outputs: node with AhrsState/AhrsCovariance and optional measurement
+      slots.
 
 Dependencies:
     - Used by RingBuffer and ReplayEngine.
 
 Determinism:
-    - Nodes are keyed by exact t_meas equality.
+    - Nodes are keyed by exact t_meas_ns integer equality.
     - At most one measurement per type slot is allowed.
 """
 
@@ -32,7 +34,8 @@ class Timeline:
 
     Purpose:
         Aggregate IMU and magnetometer measurements that share the same
-        t_meas into a single node for replay.
+        t_meas_ns into a single node for replay, while holding the mean state
+        and covariance at that timestamp.
 
     Public API (to be implemented):
         - insert_imu(imu_packet)
@@ -41,15 +44,22 @@ class Timeline:
         - t_meas()
 
     Data contract:
+        - t_meas_ns: timestamp key in integer nanoseconds.
+        - state: AhrsState mean at t_meas_ns.
+        - covariance: AhrsCovariance at t_meas_ns.
+        - imu_packet: Optional[ImuPacket].
+        - mag_packet: Optional[MagPacket].
         - Each node holds at most one IMU packet and one mag packet.
-        - Duplicate same-type measurements at the same t_meas are rejected.
+        - IMU and mag can share a node when t_meas_ns matches exactly.
+        - Duplicate same-type measurements at the same t_meas_ns are rejected.
 
     Frames and units:
-        - t_meas is in the units defined by TimeBase.
+        - t_meas_ns uses TimeBase canonical int nanoseconds.
 
     Determinism and edge cases:
-        - No merging of different t_meas values.
-        - Duplicate insert attempts must trigger diagnostics hooks.
+        - No merging of different t_meas_ns values.
+        - Duplicate insert attempts must be rejected and increment
+          diagnostics. Never merge duplicates.
 
     Equations:
         - None; this module defines storage behavior.
@@ -58,8 +68,8 @@ class Timeline:
         - None.
 
     Suggested unit tests:
-        - insert_imu rejects second IMU at the same t_meas.
-        - insert_mag rejects second mag at the same t_meas.
+        - insert_imu rejects second IMU at the same t_meas_ns.
+        - insert_mag rejects second mag at the same t_meas_ns.
     """
 
     pass

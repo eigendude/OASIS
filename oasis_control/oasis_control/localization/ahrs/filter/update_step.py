@@ -51,8 +51,10 @@ class UpdateStep:
         - Covariance units align with Units.
 
     Determinism and edge cases:
-        - If S is not SPD or inversion fails, reject the update and record it
+        - If S is not SPD or solving fails, reject the update and record it
           in UpdateReport.
+        - On rejection, state and covariance remain unchanged (no partial
+          update).
         - Symmetrize P after applying the Joseph-form update.
 
     Equations:

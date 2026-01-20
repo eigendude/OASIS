@@ -58,6 +58,9 @@ class Quaternion:
     Determinism and edge cases:
         - normalize() must handle near-zero norm with a deterministic fallback
           (for example, identity quaternion) and should record diagnostics.
+        - After normalize(), from_matrix(), or integrate(), enforce a
+          canonical sign with w >= 0. If w < 0, multiply q by -1 so q and
+          -q map to the same rotation but yield deterministic outputs.
         - small_angle_quat() must be valid for ||delta_theta|| << 1 rad.
 
     Equations:

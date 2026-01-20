@@ -8,23 +8,24 @@
 #
 ################################################################################
 
-"""Ring buffer for time-ordered AHRS measurement nodes.
+"""Ring buffer for time-ordered AHRS timeline nodes.
 
 Responsibility:
-    Provide bounded storage for measurement nodes keyed by t_meas, including
-    duplicate rejection and diagnostics hooks.
+    Provide bounded storage for timeline nodes keyed by t_meas_ns, including
+    duplicate rejection, eviction, and diagnostics hooks.
 
 Inputs/outputs:
-    - Inputs: measurement packets with t_meas keys.
-    - Outputs: ordered nodes suitable for replay to the filter frontier.
+    - Inputs: measurement packets with t_meas_ns keys.
+    - Outputs: ordered Timeline nodes containing state/cov + measurements.
 
 Dependencies:
     - Uses Timeline nodes for storage.
     - Depends on TimeBase for timestamp handling.
 
 Determinism:
-    - Equality is exact on t_meas; nodes are not merged across timestamps.
-    - Duplicate same-type at identical t_meas must be rejected deterministically.
+    - Equality is exact on t_meas_ns; nodes are not merged across timestamps.
+    - Duplicate same-type at identical t_meas_ns must be rejected
+      deterministically.
 """
 
 
@@ -32,8 +33,9 @@ class RingBuffer:
     """Bounded ring buffer of measurement timeline nodes.
 
     Purpose:
-        Store time-keyed measurement nodes and enforce duplicate rejection and
-        drop policies prior to replay.
+        Store time-keyed timeline nodes containing state/covariance plus
+        measurements and enforce duplicate rejection and eviction policies
+        prior to replay.
 
     Public API (to be implemented):
         - insert(node)
@@ -42,14 +44,20 @@ class RingBuffer:
         - size()
 
     Data contract:
-        - Nodes are keyed by exact t_meas values.
+        - Nodes are keyed by exact t_meas_ns values.
         - A node may include <=1 IMU packet and <=1 mag packet.
+        - Eviction drops nodes older than
+          (t_filter_ns - T_buffer_sec * 1e9).
 
     Frames and units:
-        - Times are in seconds or integer nanoseconds as defined by TimeBase.
+        - Times are int nanoseconds as defined by TimeBase.
 
     Determinism and edge cases:
-        - Duplicate same-type at identical t_meas is rejected and diagnosed.
+        - Duplicate same-type at identical t_meas_ns is rejected and
+          diagnosed.
+        - Duplicate slot insertion in an existing node is rejected.
+        - Inserts older than the buffer horizon are rejected and increment
+          diagnostics counters.
         - Out-of-order inserts trigger replay in ReplayEngine.
 
     Equations:
@@ -59,8 +67,8 @@ class RingBuffer:
         - None; operations are discrete and deterministic.
 
     Suggested unit tests:
-        - Duplicate IMU at same t_meas is rejected.
-        - Old nodes are dropped when capacity is exceeded.
+        - Duplicate IMU at same t_meas_ns is rejected.
+        - Old nodes are dropped when older than the buffer horizon.
     """
 
     pass

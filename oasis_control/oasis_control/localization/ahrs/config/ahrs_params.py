@@ -50,8 +50,16 @@ class AhrsParams:
         - sigma_w_bg: gyro bias random walk (rad/s / sqrt(s)).
         - sigma_w_ba: accel bias random walk (m/s^2 / sqrt(s)).
         - sigma_w_Aa: accel calibration random walk (1 / sqrt(s)).
-        - sigma_w_BI: IMU extrinsics random walk (m/rad / sqrt(s)).
-        - sigma_w_BM: mag extrinsics random walk (m/rad / sqrt(s)).
+        - sigma_w_BI: IMU extrinsics random walk placeholder.
+          Temporary 6D noise uses diag([sigma_rho^2 I3,
+          sigma_theta^2 I3]) with sigma_rho in m / sqrt(s) and
+          sigma_theta in rad / sqrt(s).
+        - sigma_w_BM: mag extrinsics random walk placeholder.
+          Temporary 6D noise uses diag([sigma_rho^2 I3,
+          sigma_theta^2 I3]) with sigma_rho in m / sqrt(s) and
+          sigma_theta in rad / sqrt(s).
+        - Preferred split parameters: sigma_w_BI_rho, sigma_w_BI_theta,
+          sigma_w_BM_rho, sigma_w_BM_theta.
         - sigma_w_g: gravity random walk (m/s^2 / sqrt(s)).
         - sigma_w_m: magnetic field random walk (tesla / sqrt(s)).
 

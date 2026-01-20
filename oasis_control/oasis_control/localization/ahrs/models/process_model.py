@@ -44,7 +44,14 @@ class ProcessModel:
     Data contract:
         - state is an AhrsState instance.
         - A and G are N x N and N x q Jacobians, respectively.
-        - Q_c is a continuous-time noise covariance.
+        - Q_c is a continuous-time noise covariance with shape (q, q).
+        - Canonical noise vector ordering (q = 39):
+          [w_v, w_ω, w_bg, w_ba, w_A, w_BI, w_BM, w_g, w_m]
+        - Ordering is canonical and must never change.
+        - Block dimensions:
+          w_v(3), w_ω(3), w_bg(3), w_ba(3), w_A(9),
+          w_BI(6), w_BM(6), w_g(3), w_m(3)
+        - G has shape (N, q) with N = StateMapping.dimension().
 
     Frames and units:
         - p_WB in meters, v_WB in meters per second.

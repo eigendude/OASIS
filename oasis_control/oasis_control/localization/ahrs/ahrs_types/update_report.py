@@ -55,7 +55,8 @@ class UpdateReport:
 
     Determinism and edge cases:
         - rejection_reason must be deterministic for a given failure mode.
-        - S not SPD or inversion failure must set accepted = False.
+        - S not SPD or solver failure must set accepted = False.
+        - Rejections are no-ops on state and covariance (no partial update).
 
     Equations:
         - mahalanobis2 = νᵀ S⁻¹ ν.
