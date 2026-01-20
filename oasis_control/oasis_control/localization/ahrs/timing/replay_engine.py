@@ -8,6 +8,39 @@
 #
 ################################################################################
 
+from __future__ import annotations
+
+from typing import Callable
+from typing import Optional
+from typing import Protocol
+
+from oasis_control.localization.ahrs.ahrs_types.imu_packet import ImuPacket
+from oasis_control.localization.ahrs.ahrs_types.mag_packet import MagPacket
+from oasis_control.localization.ahrs.ahrs_types.stationary_packet import (
+    StationaryPacket,
+)
+from oasis_control.localization.ahrs.state.ahrs_state import AhrsState
+from oasis_control.localization.ahrs.state.covariance import AhrsCovariance
+from oasis_control.localization.ahrs.timing.ring_buffer import RingBuffer
+from oasis_control.localization.ahrs.timing.time_base import TimeBase
+from oasis_control.localization.ahrs.timing.timeline_node import TimelineNode
+
+
+class EkfProtocol(Protocol):
+    """Minimal EKF protocol used by ReplayEngine."""
+
+    def propagate_to(self, t_ns: int) -> None: ...
+
+    def update_imu(self, imu_packet: ImuPacket) -> None: ...
+
+    def update_mag(self, mag_packet: MagPacket) -> None: ...
+
+    def update_stationary(self, stationary_packet: StationaryPacket) -> None: ...
+
+    def get_state(self) -> AhrsState: ...
+
+    def get_covariance(self) -> AhrsCovariance: ...
+
 
 class ReplayEngine:
     """Replay logic for time-ordered AHRS measurements.
@@ -38,7 +71,7 @@ class ReplayEngine:
         5) Publish only when frontier advances; out-of-order updates do not
            republish.
 
-    Public API (to be implemented):
+    Public API:
         - insert_imu(imu_packet)
         - insert_mag(mag_packet)
         - insert_stationary(stationary_packet)
@@ -92,4 +125,102 @@ class ReplayEngine:
         - Duplicate measurements are rejected with diagnostics.
     """
 
-    pass
+    def __init__(
+        self,
+        *,
+        t_buffer_ns: int,
+        ekf: EkfProtocol,
+        publish_callback: Optional[Callable[[int], None]] = None,
+    ) -> None:
+        self.ring_buffer: RingBuffer = RingBuffer(t_buffer_ns)
+        self._ekf: EkfProtocol = ekf
+        self._publish_callback: Optional[Callable[[int], None]] = publish_callback
+        self._t_filter_ns: int = 0
+        self.diagnostics: dict[str, int] = {
+            "reject_too_old": 0,
+            "duplicate_imu": 0,
+            "duplicate_mag": 0,
+            "duplicate_stationary": 0,
+        }
+
+    def frontier_time(self) -> int:
+        """Return the current filter frontier time in nanoseconds."""
+        return self._t_filter_ns
+
+    def insert_imu(self, packet: ImuPacket) -> bool:
+        """Insert an IMU packet and replay deterministically."""
+        return self._insert_packet(packet, packet.t_meas_ns, "imu")
+
+    def insert_mag(self, packet: MagPacket) -> bool:
+        """Insert a magnetometer packet and replay deterministically."""
+        return self._insert_packet(packet, packet.t_meas_ns, "mag")
+
+    def insert_stationary(self, packet: StationaryPacket) -> bool:
+        """Insert a stationary packet and replay deterministically."""
+        return self._insert_packet(packet, packet.t_meas_ns, "stationary")
+
+    def replay_from(self, t_start_ns: int) -> None:
+        """Replay buffered nodes starting at the provided timestamp."""
+        TimeBase.validate_non_negative(t_start_ns)
+        nodes: list[TimelineNode] = self.ring_buffer.nodes_from(t_start_ns)
+        if not nodes:
+            return
+        node: TimelineNode
+        for node in nodes:
+            self._ekf.propagate_to(node.t_meas_ns)
+            if node.imu_packet is not None:
+                self._ekf.update_imu(node.imu_packet)
+            if node.mag_packet is not None:
+                self._ekf.update_mag(node.mag_packet)
+            if node.stationary_packet is not None:
+                if node.stationary_packet.is_stationary:
+                    self._ekf.update_stationary(node.stationary_packet)
+            node.state = self._ekf.get_state()
+            node.covariance = self._ekf.get_covariance()
+        last_time: int = nodes[-1].t_meas_ns
+        if last_time > self._t_filter_ns:
+            self._t_filter_ns = last_time
+
+    def _insert_packet(
+        self,
+        packet: ImuPacket | MagPacket | StationaryPacket,
+        t_meas_ns: int,
+        kind: str,
+    ) -> bool:
+        TimeBase.validate_non_negative(t_meas_ns)
+        cutoff_ns: int = self._t_filter_ns - self.ring_buffer.t_buffer_ns
+        if t_meas_ns < cutoff_ns:
+            self.diagnostics["reject_too_old"] += 1
+            return False
+        node: Optional[TimelineNode] = self.ring_buffer.get(t_meas_ns)
+        if node is None:
+            node = TimelineNode(t_meas_ns=t_meas_ns)
+            inserted: bool = self.ring_buffer.insert(
+                node,
+                t_filter_ns=self._t_filter_ns,
+            )
+            if not inserted:
+                return False
+        inserted_slot: bool = False
+        if kind == "imu" and isinstance(packet, ImuPacket):
+            inserted_slot = node.insert_imu(packet)
+            if not inserted_slot:
+                self.diagnostics["duplicate_imu"] += 1
+        elif kind == "mag" and isinstance(packet, MagPacket):
+            inserted_slot = node.insert_mag(packet)
+            if not inserted_slot:
+                self.diagnostics["duplicate_mag"] += 1
+        elif kind == "stationary" and isinstance(packet, StationaryPacket):
+            inserted_slot = node.insert_stationary(packet)
+            if not inserted_slot:
+                self.diagnostics["duplicate_stationary"] += 1
+        else:
+            raise ValueError("unsupported packet type")
+        if not inserted_slot:
+            return False
+        previous_frontier: int = self._t_filter_ns
+        self.replay_from(t_meas_ns)
+        if self._t_filter_ns > previous_frontier:
+            if self._publish_callback is not None:
+                self._publish_callback(self._t_filter_ns)
+        return True
