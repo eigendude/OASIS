@@ -8,15 +8,60 @@
 #
 ################################################################################
 
-"""AHRS mag packet definitions."""
+"""Magnetometer measurement packet definition for the AHRS core.
+
+Responsibility:
+    Document the magnetometer measurement fields required by the AHRS filter
+    without introducing ROS message types.
+
+Inputs/outputs:
+    - Inputs: raw magnetometer measurements with covariance.
+    - Outputs: structured packet used by MagModel and AhrsEkf.
+
+Dependencies:
+    - Consumed by MagModel and ReplayEngine.
+
+Determinism:
+    Mag packets are immutable once created; fields must not change during
+    replay.
+"""
 
 
 class MagPacket:
-    """
-    Magnetometer sample container for AHRS updates.
+    """Magnetometer measurement packet for AHRS updates.
 
-    Stores the raw magnetic field measurement and covariance in frame {M} with
-    its measurement timestamp.
+    Purpose:
+        Provide a data container for magnetometer samples with covariance and
+        frame identifiers.
+
+    Public API (to be implemented):
+        - validate()
+        - as_dict()
+
+    Data contract:
+        Required fields:
+        - t_meas: measurement timestamp.
+        - frame_id: sensor frame identifier for {M}.
+        - z_m: magnetometer measurement vector (3,).
+        - R_m_raw: raw measurement covariance (3, 3).
+
+    Frames and units:
+        - z_m in tesla, frame {M}.
+        - R_m_raw in tesla^2.
+
+    Determinism and edge cases:
+        - t_meas equality is exact for buffer keying.
+        - Missing covariance must be rejected.
+
+    Equations:
+        - No equations; this is a data container.
+
+    Numerical stability notes:
+        - Ensure R_m_raw is SPD.
+
+    Suggested unit tests:
+        - validate rejects wrong shapes.
+        - validate rejects non-SPD covariance.
     """
 
     pass
