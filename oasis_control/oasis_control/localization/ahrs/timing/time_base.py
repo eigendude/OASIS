@@ -8,27 +8,6 @@
 #
 ################################################################################
 
-"""Time base definitions for AHRS buffering and replay.
-
-Responsibility:
-    Define the timestamp terms used by the AHRS core and provide conversion
-    utilities without relying on ROS time types.
-
-Inputs/outputs:
-    - Inputs: raw timestamps or floating-point seconds for conversion.
-    - Outputs: canonical integer nanoseconds (t_ns) used by buffers/replay.
-
-Dependencies:
-    - Used by RingBuffer, Timeline, and ReplayEngine.
-
-Determinism:
-    Canonical internal representation is int nanoseconds (t_ns) derived from
-    ROS header stamps (sec, nsec). Equality for keying uses exact integer
-    equality with no epsilon. The epoch is irrelevant because only
-    differences and equality are used.
-"""
-
-
 class TimeBase:
     """Time base helpers for AHRS buffering and replay logic.
 
@@ -41,16 +20,30 @@ class TimeBase:
         - from_seconds(t_sec)
         - validate_monotonic(t_prev_ns, t_next_ns)
 
+    Responsibility:
+        Define the timestamp terms used by the AHRS core and provide conversion
+        utilities without relying on ROS time types.
+
+    Inputs/outputs:
+        - Inputs: raw timestamps or floating-point seconds for conversion.
+        - Outputs: canonical integer nanoseconds (t_ns) used by buffers/replay.
+
+    Dependencies:
+        - Used by RingBuffer, TimelineNode, and ReplayEngine.
+
     Data contract:
         - t_meas_ns: measurement timestamp in integer nanoseconds.
         - t_now_ns: current wall-clock timestamp (provided externally).
         - t_filter_ns: filter frontier timestamp after processing.
 
     Frames and units:
-        - Canonical storage is int nanoseconds (t_ns) sourced from ROS header
-          stamps (sec, nsec).
-        - Boundary helpers may convert to/from float seconds for
-          convenience. Float seconds must never be used for keying,
+        - Canonical internal time is int nanoseconds (t_ns) sourced from ROS
+          header stamps (sec, nsec).
+        - Canonical formula:
+            t_meas_ns = stamp.sec * 1_000_000_000 + stamp.nanosec
+          with nanosec in [0, 1e9).
+        - Boundary helpers may convert to/from float seconds for convenience
+          only (diagnostics/UI). Float seconds MUST NOT be used for keying,
           ordering, equality, or buffer attachment.
 
     Determinism and edge cases:
@@ -60,12 +53,10 @@ class TimeBase:
           equality are used.
         - Validation should reject negative timestamps and NaN seconds
           inputs.
-        - from_seconds(t_sec) converts float seconds to int nanoseconds by
-          rounding to the nearest integer with ties to even.
-        - to_seconds(t_ns) converts int nanoseconds to float seconds and is
-          lossy.
-        - Float conversions must be explicit and never used for key
-          comparisons or buffer attachment.
+        - from_seconds(t_sec) and to_seconds(t_ns) are convenience-only
+          conversions and are lossy.
+        - Float conversions must be explicit and MUST NOT be used for key
+          comparisons, ordering, or buffer attachment.
 
     Equations:
         - No equations; this module defines time terminology.

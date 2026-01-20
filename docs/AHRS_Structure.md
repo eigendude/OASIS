@@ -391,8 +391,8 @@ If an IMU packet and a magnetometer sample share the same `t_meas_ns`, they atta
 to the same node and are both applied using the fixed ordering above.
 
 If a second measurement of the same type arrives for an existing node
-(same `t_meas_ns`), it must be rejected (or replace-with-diagnostics) according to
-an explicit policy. Default: reject as a duplicate and emit diagnostics.
+(same `t_meas_ns`), it must be rejected deterministically (no
+replacement/merge) and emit diagnostics.
 
 ---
 
@@ -421,8 +421,9 @@ Rules:
 - By contract, each node stores at most one instance per measurement type:
   - `imu_pkt` slot: ≤ 1 IMU packet per `t_meas_ns`
   - `mag` slot: ≤ 1 magnetometer sample per `t_meas_ns`
-- If a message arrives for a type slot that is already occupied at that `t_meas_ns`,
-  it is treated as a duplicate per Section 6.3 (default: reject + diagnostics).
+- If a message arrives for a type slot that is already occupied at that
+  `t_meas_ns`, it is treated as a duplicate per Section 6.3 (reject
+  deterministically with diagnostics).
 
 ### 7.2 Replay rules
 
@@ -431,8 +432,8 @@ On insertion of a message:
 1. Validate timestamp
 2. Reject if older than `t_filter_ns - t_buffer_sec` * 1e9
 3. Attach to node (create if missing); if the node already exists, attach the
-   measurement into its type slot (IMU packet or mag sample). Reject duplicates
-   per Section 6.3.
+   measurement into its type slot (IMU packet or mag sample). Reject
+   duplicates per Section 6.3.
 4. If inserted into the past, replay forward to the frontier
 
 Replay must be deterministic and not depend on arrival order.

@@ -8,28 +8,6 @@
 #
 ################################################################################
 
-"""Ring buffer for time-ordered AHRS timeline nodes.
-
-Responsibility:
-    Provide bounded storage for timeline nodes keyed by t_meas_ns, including
-    duplicate rejection, eviction, and diagnostics hooks.
-
-Inputs/outputs:
-    - Inputs: measurement packets with t_meas_ns keys.
-    - Outputs: ordered Timeline nodes containing state/cov + measurements.
-
-Dependencies:
-    - Uses Timeline nodes for storage.
-    - Depends on TimeBase for timestamp handling.
-
-Determinism:
-    - Equality is exact on t_meas_ns; nodes are not merged across timestamps.
-    - Duplicate same-type at identical t_meas_ns must be rejected
-      deterministically.
-    - No epsilon merging, rounding, or "close enough" matching is allowed.
-"""
-
-
 class RingBuffer:
     """Bounded ring buffer of measurement timeline nodes.
 
@@ -37,6 +15,19 @@ class RingBuffer:
         Store time-keyed timeline nodes containing state/covariance plus
         measurements and enforce duplicate rejection and eviction policies
         prior to replay.
+
+    Responsibility:
+        Provide bounded storage for timeline nodes keyed by t_meas_ns,
+        including duplicate rejection, eviction, and diagnostics hooks.
+
+    Inputs/outputs:
+        - Inputs: measurement packets with t_meas_ns keys.
+        - Outputs: ordered TimelineNode instances containing state/cov +
+          measurements.
+
+    Dependencies:
+        - Uses TimelineNode instances for storage.
+        - Depends on TimeBase for timestamp handling.
 
     Public API (to be implemented):
         - insert(node)
@@ -57,8 +48,8 @@ class RingBuffer:
         - Times are int nanoseconds as defined by TimeBase.
 
     Determinism and edge cases:
-        - Duplicate same-type at identical t_meas_ns is rejected and
-          diagnosed.
+        - Duplicate same-type at identical t_meas_ns is rejected
+          deterministically (no replacement/merge) and diagnosed.
         - Duplicate slot insertion in an existing node is rejected and
           increments diagnostics counters.
         - Inserts older than the buffer horizon are rejected and increment

@@ -8,35 +8,26 @@
 #
 ################################################################################
 
-"""Timeline node definition for AHRS measurements and state snapshots.
-
-Responsibility:
-    Define a time-keyed node that can hold multiple measurement types at a
-    single t_meas_ns without merging across timestamps, plus the mean state
-    and covariance stored at that time.
-
-Inputs/outputs:
-    - Inputs: ImuPacket or MagPacket instances keyed by t_meas_ns.
-    - Outputs: node with AhrsState/AhrsCovariance and optional measurement
-      slots.
-
-Dependencies:
-    - Used by RingBuffer and ReplayEngine.
-
-Determinism:
-    - Nodes are keyed by exact t_meas_ns integer equality.
-    - At most one measurement per type slot is allowed.
-    - No epsilon merging, rounding, or "close enough" matching is allowed.
-"""
-
-
-class Timeline:
+class TimelineNode:
     """Time-keyed node containing measurements for a single timestamp.
 
     Purpose:
         Aggregate IMU and magnetometer measurements that share the same
         t_meas_ns into a single node for replay, while holding the mean state
         and covariance at that timestamp.
+
+    Responsibility:
+        Define a time-keyed node that can hold multiple measurement types at a
+        single t_meas_ns without merging across timestamps, plus the mean
+        state and covariance stored at that time.
+
+    Inputs/outputs:
+        - Inputs: ImuPacket or MagPacket instances keyed by t_meas_ns.
+        - Outputs: node with AhrsState/AhrsCovariance and optional measurement
+          slots.
+
+    Dependencies:
+        - Used by RingBuffer and ReplayEngine.
 
     Public API (to be implemented):
         - insert_imu(imu_packet)
@@ -53,7 +44,7 @@ class Timeline:
         - Each node holds at most one IMU packet and one mag packet.
         - IMU and mag can share a node when t_meas_ns matches exactly.
         - Duplicate same-type measurements at the same t_meas_ns are rejected
-          deterministically.
+          deterministically (no replacement/merge).
 
     Frames and units:
         - t_meas_ns uses TimeBase canonical int nanoseconds.

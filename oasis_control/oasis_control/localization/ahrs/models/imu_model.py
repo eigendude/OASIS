@@ -8,31 +8,24 @@
 #
 ################################################################################
 
-"""IMU measurement models for the AHRS core.
-
-Responsibility:
-    Define the gyro and accelerometer measurement predictions and residuals
-    used during EKF updates.
-
-Inputs/outputs:
-    - Inputs: AhrsState, ImuPacket (z_ω, z_a), and extrinsics T_BI.
-    - Outputs: predicted measurements, residuals, and Jacobians.
-
-Dependencies:
-    - Uses Quaternion utilities and SE(3) extrinsics.
-    - Consumed by UpdateStep for gyro/accel updates.
-
-Determinism:
-    Deterministic mapping from state to predicted IMU measurements.
-"""
-
-
 class ImuModel:
     """Gyro and accelerometer measurement models for the AHRS EKF.
 
     Purpose:
         Provide predicted IMU measurements and Jacobians for gyro and accel
         updates without treating IMU data as process inputs.
+
+    Responsibility:
+        Define the gyro and accelerometer measurement predictions and
+        residuals used during EKF updates.
+
+    Inputs/outputs:
+        - Inputs: AhrsState, ImuPacket (z_ω, z_a), and extrinsics T_BI.
+        - Outputs: predicted measurements, residuals, and Jacobians.
+
+    Dependencies:
+        - Uses Quaternion utilities and SE(3) extrinsics.
+        - Consumed by UpdateStep for gyro/accel updates.
 
     Public API (to be implemented):
         - predict_gyro(state)
@@ -56,7 +49,9 @@ class ImuModel:
     Determinism and edge cases:
         - Residual sign convention is ν = z - z_hat.
         - Gyro update primarily touches omega_WB and b_g.
-        - Accel update primarily touches v_dot, g_W, q_WB, b_a, A_a.
+        - Accel update primarily constrains gravity g_W, attitude q_WB, and
+          systematic accel parameters (b_a, A_a), with other states affected
+          only through cross-covariances.
         - If A_a is near-singular, reject or condition the update.
 
     Equations:
@@ -74,17 +69,16 @@ class ImuModel:
         Notes:
             a_WB := 0 reflects the process model mean (smoothness prior with
             zero mean), supports gravity initialization, and avoids
-            introducing a separate acceleration state. The process model uses
-            v̇_WB = w_v for propagation. A future extension may introduce an
-            explicit acceleration state or a deterministic finite-difference
-            policy, but the current spec uses a_WB := 0.
+            introducing a separate acceleration state. A future extension may
+            introduce an explicit acceleration state or a deterministic
+            finite-difference policy, but the current spec uses a_WB := 0.
 
     Numerical stability notes:
         - Use a stable inversion for A_a.
         - Keep quaternion normalized when computing R_WB.
 
     Suggested unit tests:
-        - At rest with v̇=0, z_accel matches -g in sensor frame.
+        - At rest, z_accel matches -g in sensor frame.
         - Residual sign convention matches ν = z - z_hat.
     """
 

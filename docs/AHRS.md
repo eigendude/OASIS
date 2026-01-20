@@ -466,7 +466,7 @@ Node rules:
 - A node may hold multiple measurement types at the same `t_meas_ns` (IMU
   packet and mag packet), but at most one per type slot is allowed.
 - Duplicate same-type arrivals at a fixed `t_meas_ns` are rejected
-  deterministically with diagnostics.
+  deterministically (no replacement/merge) with diagnostics.
 - Evict nodes older than `t_filter_ns - t_buffer_sec * 1e9` (with diagnostics).
 
 ### 4.5 Propagation convention
