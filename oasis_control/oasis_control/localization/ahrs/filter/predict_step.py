@@ -60,12 +60,15 @@ class PredictStep:
             F ≈ I + AΔt
             Q ≈ G Q_c Gᵀ Δt
 
-        Mean state propagation (random walks hold mean constant):
+        Mean state propagation (zero-mean noise, no sampled injection):
             ṗ = v
-            v̇ = w_v
+            v̇ := 0
             q̇ = 0.5 * Ω(ω) * q
-            ω̇ = w_ω
-            b_g, b_a, A_a, T_BI, T_BM, g_W, m_W are random walks
+            ω̇ := 0
+            b_g, b_a, A_a, T_BI, T_BM, g_W, m_W hold mean constant
+
+        Continuous-time process noise (covariance only):
+            v̇ = w_v, ω̇ = w_ω with E[w_v] = 0, E[w_ω] = 0
 
     Numerical stability notes:
         - Symmetrize covariance after propagation.

@@ -13,13 +13,13 @@ class TimelineNode:
 
     Purpose:
         Aggregate IMU and magnetometer measurements that share the same
-        t_meas_ns into a single node for replay, while holding the mean state
-        and covariance at that timestamp.
+        t_meas_ns into a single node for replay, while holding the posterior
+        mean state and covariance after applying all updates at t_meas_ns.
 
     Responsibility:
         Define a time-keyed node that can hold multiple measurement types at a
-        single t_meas_ns without merging across timestamps, plus the mean
-        state and covariance stored at that time.
+        single t_meas_ns without merging across timestamps, plus the
+        posterior state and covariance stored at that time.
 
     Inputs/outputs:
         - Inputs: ImuPacket or MagPacket instances keyed by t_meas_ns.
@@ -37,8 +37,8 @@ class TimelineNode:
 
     Data contract:
         - t_meas_ns: timestamp key in integer nanoseconds.
-        - state: AhrsState mean at t_meas_ns.
-        - covariance: AhrsCovariance at t_meas_ns.
+        - state: AhrsState posterior mean after updates at t_meas_ns.
+        - covariance: AhrsCovariance posterior after updates at t_meas_ns.
         - imu_packet: Optional[ImuPacket].
         - mag_packet: Optional[MagPacket].
         - Each node holds at most one IMU packet and one mag packet.

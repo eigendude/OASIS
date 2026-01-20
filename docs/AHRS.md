@@ -248,21 +248,21 @@ Representative error coordinates:
 The process model provides time evolution between measurements. Sensor data does **not** drive propagation in this option;
 IMU and mag are measurement updates.
 
-Define continuous-time dynamics:
+Define continuous-time dynamics (zero-mean noise for covariance only):
 
 Navigation kinematics:
 
 - `ṗ_WB = v_WB`
-- `v̇_WB = w_v`
 - `q̇_WB = 1/2 * Ω(ω_WB) * q_WB`
-- `ω̇_WB = w_ω`
+- `v̇_WB := 0` (mean propagation; `E[w_v] = 0`)
+- `ω̇_WB := 0` (mean propagation; `E[w_ω] = 0`)
 
 where:
 - `ω_WB` is the body angular rate expressed in `{B}` (rad/s), the angular
   velocity of `{B}` relative to `{W}` expressed in `{B}`. It is treated as
   **latent** (not directly measured in the process model).
 - `w_v`, `w_ω` are zero-mean white noises (continuous-time) representing
-  smoothness priors.
+  smoothness priors and are used only for covariance propagation.
 
 Systematic parameter drift (random walks):
 
@@ -279,10 +279,14 @@ Reference vector drift (slow):
 
 Notes:
 
-- This process is intentionally **weak**: it encodes “motion is smooth” and “parameters drift slowly”.
+- This process is intentionally **weak**: it encodes “motion is smooth” and
+  “parameters drift slowly”.
 - The IMU measurements will strongly constrain the state at high rate.
 - Gravity `g_W` is used by the accelerometer measurement model and for
   initialization; it is not injected into `v̇_WB`.
+- For covariance propagation, the stochastic model uses
+  `v̇_WB = w_v`, `ω̇_WB = w_ω` with zero mean. Do not inject sampled noise into
+  the mean.
 
 Process noise covariance:
 
@@ -358,10 +362,10 @@ Residual:
 
 Notes:
 
-- `a_WB := 0` reflects the process model mean (smoothness prior with zero mean),
-  supports gravity initialization, and avoids introducing a separate
-  acceleration state. The process model still uses `v̇_WB = w_v` for
-  propagation.
+- `a_WB := 0` reflects the process model mean (smoothness prior with zero
+  mean), supports gravity initialization, and avoids introducing a separate
+  acceleration state. The stochastic model for covariance still uses
+  `v̇_WB = w_v`, but sampled noise is not injected into the mean.
 - A future extension may introduce an explicit acceleration state or a
   deterministic finite-difference policy, but the current spec uses
   `a_WB := 0`.
@@ -410,6 +414,9 @@ This AHRS uses the same deterministic fixed-lag design as the EKF spec.
 Canonical keying uses integer nanoseconds `t_meas_ns` from ROS header stamps
 (`sec`, `nsec`). Float seconds conversions are convenience only and MUST NOT be
 used for node keying, equality, ordering, or buffer attachment.
+Seconds inputs are converted once in configuration into integer nanosecond
+thresholds (e.g., `ε_wall_future_ns`, `Δt_clock_jump_max_ns`,
+`Δt_imu_max_ns`). Core logic only compares int nanoseconds.
 
 Event-driven: each accepted message attaches at `t_meas_ns`. Out-of-order
 messages are supported via fixed-lag replay.
@@ -458,7 +465,8 @@ Maintain a time-ordered ring buffer of time nodes over fixed lag `t_buffer_sec`.
 
 Each node at `t_k` stores:
 
-- state mean `x_k`, covariance `P_k`
+- posterior state mean `x_k`, covariance `P_k` after applying all updates at
+  `t_k`
 - messages attached at `t_k` (IMU packet, mag)
 - sufficient metadata to re-run deterministic replay
 
@@ -615,7 +623,8 @@ Contents (recommended):
 - `header.stamp = t_meas_ns`
 - `z`, `z_hat`, innovation `ν`
 - measurement noise used `R` (full)
-- predicted innovation covariance excluding R: `Ŝ = HPHᵀ`
+- predicted innovation covariance excluding R: `Ŝ = HPHᵀ` (S_hat, optional
+  but recommended)
 - total innovation covariance `S = Ŝ + R`
 - Mahalanobis distance `d² = νᵀ S^{-1} ν`
 - gating threshold + accept/reject flag
@@ -653,6 +662,8 @@ Time / buffering:
 - `ε_wall_future_ns`
 - `Δt_clock_jump_max_ns`
 - `Δt_imu_max_ns`
+  - seconds inputs are converted once in configuration into these
+    nanosecond thresholds
 
 Process noise intensities (continuous-time):
 
