@@ -38,7 +38,8 @@ class UpdateReport:
 
     Data contract:
         Required fields:
-        - t_meas: measurement timestamp.
+        - t_meas_ns: measurement timestamp in int nanoseconds since an
+          arbitrary epoch.
         - measurement_type: enum or string (gyro, accel, mag).
         - z: raw measurement vector.
         - z_hat: predicted measurement vector.
@@ -54,6 +55,9 @@ class UpdateReport:
         - Covariances use squared measurement units.
 
     Determinism and edge cases:
+        - All timestamps are int nanoseconds since an arbitrary epoch.
+          The epoch is irrelevant because only differences and exact
+          equality are used.
         - rejection_reason must be deterministic for a given failure mode.
         - S not SPD or solver failure must set accepted = False.
         - Rejections are no-ops on state and covariance (no partial update).

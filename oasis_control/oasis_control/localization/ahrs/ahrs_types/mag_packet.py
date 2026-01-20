@@ -40,7 +40,8 @@ class MagPacket:
 
     Data contract:
         Required fields:
-        - t_meas: measurement timestamp.
+        - t_meas_ns: measurement timestamp in int nanoseconds since an
+          arbitrary epoch.
         - frame_id: sensor frame identifier for {M}.
         - z_m: magnetometer measurement vector (3,).
         - R_m_raw: raw measurement covariance (3, 3).
@@ -50,7 +51,11 @@ class MagPacket:
         - R_m_raw in tesla^2.
 
     Determinism and edge cases:
-        - t_meas equality is exact for buffer keying.
+        - All timestamps are int nanoseconds since an arbitrary epoch.
+          The epoch is irrelevant because only differences and exact
+          equality are used.
+        - t_meas_ns equality is exact for buffer keying.
+        - No epsilon merging or rounding-based matching is permitted.
         - Missing covariance must be rejected.
 
     Equations:

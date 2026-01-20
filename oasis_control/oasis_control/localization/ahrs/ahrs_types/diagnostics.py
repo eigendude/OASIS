@@ -40,23 +40,30 @@ class AhrsDiagnostics:
     Data contract:
         Required fields:
         - buffer_size: current number of nodes in the buffer.
-        - t_filter: current filter frontier timestamp.
+        - t_filter_ns: current filter frontier timestamp in int nanoseconds.
         - drop_count: number of dropped measurements.
         - duplicate_count: number of rejected duplicates.
         - replay_count: number of replay operations.
-        - last_replay_from: timestamp of the last replay start.
-        - rejected_old_count: inserts older than buffer horizon.
-        - rejected_future_count: inserts too far in the future.
+        - last_replay_from_ns: last replay start in int nanoseconds.
+        - rejected_old_count: inserts older than
+          (t_filter_ns - T_buffer_sec * 1e9).
+        - rejected_future_count: inserts too far in the future in
+          nanoseconds.
         - duplicate_imu_count: rejected duplicate IMU slots.
         - duplicate_mag_count: rejected duplicate mag slots.
-        - out_of_order_insert_count: count of inserts before frontier.
+        - out_of_order_insert_count: inserts earlier than t_filter_ns.
         - evicted_node_count: number of nodes evicted by horizon.
 
     Frames and units:
-        - Time fields use TimeBase units.
+        - All timestamps are int nanoseconds since an arbitrary epoch.
+          The epoch is irrelevant because only differences and exact
+          equality are used.
+        - Time fields use TimeBase canonical int nanoseconds.
 
     Determinism and edge cases:
         - Counters are monotonic and updated deterministically.
+        - Duplicate-slot insertion increments duplicate counters and is
+          rejected with no merging or rounding.
 
     Equations:
         - None; this is a diagnostics container.

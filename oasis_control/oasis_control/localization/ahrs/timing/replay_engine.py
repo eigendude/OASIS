@@ -25,6 +25,7 @@ Dependencies:
 Determinism:
     - Out-of-order insert triggers replay forward to the frontier.
     - Publish only when the frontier advances.
+    - Duplicate-slot insertion is rejected without modification.
 """
 
 
@@ -47,7 +48,7 @@ class ReplayEngine:
     Public API (to be implemented):
         - insert_imu(imu_packet)
         - insert_mag(mag_packet)
-        - replay_from(t_meas)
+        - replay_from(t_meas_ns)
         - frontier_time()
 
     Data contract:
@@ -58,12 +59,18 @@ class ReplayEngine:
 
     Frames and units:
         - All timestamps follow TimeBase (int nanoseconds).
+        - All timestamps are int nanoseconds since an arbitrary epoch.
+          The epoch is irrelevant because only differences and exact
+          equality are used.
 
     Determinism and edge cases:
         - Out-of-order insert => replay forward to frontier.
         - Out-of-order insert does not trigger immediate publish.
         - Publish only when frontier advances.
         - Duplicate inserts are rejected without modifying the node.
+        - Exact t_meas_ns match determines node attachment.
+        - No epsilon merging, rounding, or "close enough" matching is
+          allowed.
 
     Equations:
         - No equations; procedural replay rules are specified above.

@@ -26,6 +26,7 @@ Determinism:
     - Equality is exact on t_meas_ns; nodes are not merged across timestamps.
     - Duplicate same-type at identical t_meas_ns must be rejected
       deterministically.
+    - No epsilon merging, rounding, or "close enough" matching is allowed.
 """
 
 
@@ -39,8 +40,8 @@ class RingBuffer:
 
     Public API (to be implemented):
         - insert(node)
-        - get(t_meas)
-        - drop_before(t_cutoff)
+        - get(t_meas_ns)
+        - drop_before(t_cutoff_ns)
         - size()
 
     Data contract:
@@ -50,12 +51,16 @@ class RingBuffer:
           (t_filter_ns - T_buffer_sec * 1e9).
 
     Frames and units:
+        - All timestamps are int nanoseconds since an arbitrary epoch.
+          The epoch is irrelevant because only differences and exact
+          equality are used.
         - Times are int nanoseconds as defined by TimeBase.
 
     Determinism and edge cases:
         - Duplicate same-type at identical t_meas_ns is rejected and
           diagnosed.
-        - Duplicate slot insertion in an existing node is rejected.
+        - Duplicate slot insertion in an existing node is rejected and
+          increments diagnostics counters.
         - Inserts older than the buffer horizon are rejected and increment
           diagnostics counters.
         - Out-of-order inserts trigger replay in ReplayEngine.

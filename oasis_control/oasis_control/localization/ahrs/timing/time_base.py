@@ -15,7 +15,7 @@ Responsibility:
     utilities without relying on ROS time types.
 
 Inputs/outputs:
-    - Inputs: raw timestamps or floating-point seconds.
+    - Inputs: raw timestamps or floating-point seconds for conversion.
     - Outputs: canonical integer nanoseconds (t_ns) used by buffers/replay.
 
 Dependencies:
@@ -24,6 +24,7 @@ Dependencies:
 Determinism:
     Canonical internal representation is int nanoseconds (t_ns).
     Equality for keying uses exact integer equality with no epsilon.
+    The epoch is irrelevant because only differences and equality are used.
 """
 
 
@@ -35,9 +36,9 @@ class TimeBase:
         filter frontier time used by buffering and replay.
 
     Public API (to be implemented):
-        - to_seconds(t)
+        - to_seconds(t_ns)
         - from_seconds(t_sec)
-        - validate_monotonic(t_prev, t_next)
+        - validate_monotonic(t_prev_ns, t_next_ns)
 
     Data contract:
         - t_meas_ns: measurement timestamp in integer nanoseconds.
@@ -46,12 +47,23 @@ class TimeBase:
 
     Frames and units:
         - Canonical storage is int nanoseconds (t_ns).
-        - Boundary helpers may convert to/from float seconds for convenience.
+        - Boundary helpers may convert to/from float seconds for
+          convenience. Float seconds must never be used for keying or
+          storage.
 
     Determinism and edge cases:
         - Timestamp equality is exact integer equality for keying.
-        - Validation should reject negative or NaN timestamps.
-        - Float conversions must be explicit and loss-aware.
+        - All timestamps are int nanoseconds since an arbitrary epoch.
+          The epoch is irrelevant because only differences and exact
+          equality are used.
+        - Validation should reject negative timestamps and NaN seconds
+          inputs.
+        - from_seconds(t_sec) converts float seconds to int nanoseconds by
+          rounding to the nearest integer with ties to even.
+        - to_seconds(t_ns) converts int nanoseconds to float seconds and is
+          lossy.
+        - Float conversions must be explicit and never used for key
+          comparisons.
 
     Equations:
         - No equations; this module defines time terminology.
