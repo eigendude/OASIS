@@ -26,6 +26,7 @@ Dependencies:
 Determinism:
     - Nodes are keyed by exact t_meas_ns integer equality.
     - At most one measurement per type slot is allowed.
+    - No epsilon merging, rounding, or "close enough" matching is allowed.
 """
 
 
@@ -41,7 +42,7 @@ class Timeline:
         - insert_imu(imu_packet)
         - insert_mag(mag_packet)
         - is_complete()
-        - t_meas()
+        - t_meas_ns()
 
     Data contract:
         - t_meas_ns: timestamp key in integer nanoseconds.
@@ -57,6 +58,10 @@ class Timeline:
         - t_meas_ns uses TimeBase canonical int nanoseconds.
 
     Determinism and edge cases:
+        - All timestamps are int nanoseconds since an arbitrary epoch.
+          The epoch is irrelevant because only differences and exact
+          equality are used.
+        - Exact t_meas_ns match determines node attachment.
         - No merging of different t_meas_ns values.
         - Duplicate insert attempts must be rejected and increment
           diagnostics. Never merge duplicates.
