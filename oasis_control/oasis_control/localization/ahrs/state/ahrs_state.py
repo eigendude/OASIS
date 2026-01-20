@@ -28,7 +28,7 @@ class AhrsState:
         - p_WB: position of body in world, shape (3,).
         - v_WB: velocity of body in world, shape (3,).
         - q_WB: unit quaternion [w, x, y, z].
-        - omega_WB: ω_WB: body angular rate in {B} (rad/s); angular
+        - omega_WB: body angular rate in {B} (rad/s); angular
           velocity of {B} relative to {W} expressed in {B}.
         - b_g: gyro bias in {I}, shape (3,).
         - b_a: accel bias in {I}, shape (3,).

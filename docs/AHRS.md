@@ -298,9 +298,10 @@ Process noise covariance:
 
 Discretization:
 
-- Over interval `Δt`, compute discrete `F_k` and `Q_k` using a standard EKF discretization
-  (e.g., first-order: `Q_k ≈ G Q_c Gᵀ Δt`, with `F_k ≈ I + AΔt`),
-  keeping full matrices.
+Define `Δt_sec := dt_ns * 1e-9` (deterministic scale; not used for keying).
+
+- `F ≈ I + AΔt_sec`
+- `Q ≈ G Q_c Gᵀ Δt_sec`
 
 ---
 
@@ -412,7 +413,7 @@ This AHRS uses the same deterministic fixed-lag design as the EKF spec.
 - `t_filter_ns`: max `t_meas_ns` among **accepted** messages (frontier)
 
 Canonical keying uses integer nanoseconds `t_meas_ns` from ROS header stamps
-(`sec`, `nsec`). Core logic uses integer nanoseconds for ordering, equality,
+(`sec`, `nanosec`). Core logic uses integer nanoseconds for ordering, equality,
 and buffer attachment, with no float conversions.
 The only seconds input is `t_buffer_sec`, which is converted once in
 configuration into `t_buffer_ns`. All other thresholds are specified as

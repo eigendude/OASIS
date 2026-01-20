@@ -416,7 +416,7 @@ Nodes are keyed by timestamp. Messages with the same timestamp attach to the
 same node.
 
 Canonical keying uses integer nanoseconds `t_meas_ns` sourced from ROS header
-stamps (`sec`, `nsec`). Core logic uses integer nanoseconds for ordering,
+stamps (`sec`, `nanosec`). Core logic uses integer nanoseconds for ordering,
 equality, and buffer attachment, with no float conversions.
 The epoch is irrelevant because only differences and exact equality are used.
 The only seconds input is `t_buffer_sec`, which is converted once in
