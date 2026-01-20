@@ -412,11 +412,12 @@ This AHRS uses the same deterministic fixed-lag design as the EKF spec.
 - `t_filter_ns`: max `t_meas_ns` among **accepted** messages (frontier)
 
 Canonical keying uses integer nanoseconds `t_meas_ns` from ROS header stamps
-(`sec`, `nsec`). Float seconds conversions are convenience only and MUST NOT be
-used for node keying, equality, ordering, or buffer attachment.
-Seconds inputs are converted once in configuration into integer nanosecond
-thresholds (e.g., `ε_wall_future_ns`, `Δt_clock_jump_max_ns`,
-`Δt_imu_max_ns`). Core logic only compares int nanoseconds.
+(`sec`, `nsec`). Core logic uses integer nanoseconds for ordering, equality,
+and buffer attachment, with no float conversions.
+The only seconds input is `t_buffer_sec`, which is converted once in
+configuration into `t_buffer_ns`. All other thresholds are specified as
+integer nanoseconds (e.g., `ε_wall_future_ns`, `Δt_clock_jump_max_ns`,
+`Δt_imu_max_ns`).
 
 Event-driven: each accepted message attaches at `t_meas_ns`. Out-of-order
 messages are supported via fixed-lag replay.
@@ -461,7 +462,8 @@ Semantic policy:
 
 ### 4.4 Buffer model
 
-Maintain a time-ordered ring buffer of time nodes over fixed lag `t_buffer_sec`.
+Maintain a time-ordered ring buffer of time nodes over fixed lag
+`t_buffer_ns`.
 
 Each node at `t_k` stores:
 
@@ -478,7 +480,7 @@ Node rules:
   packet and mag packet), but at most one per type slot is allowed.
 - Duplicate same-type arrivals at a fixed `t_meas_ns` are rejected
   deterministically (no replacement/merge) with diagnostics.
-- Evict nodes older than `t_filter_ns - t_buffer_sec * 1e9` (with diagnostics).
+- Evict nodes older than `t_filter_ns - t_buffer_ns` (with diagnostics).
 
 ### 4.5 Propagation convention
 
@@ -499,7 +501,8 @@ On message arrival:
    - reject `t_meas_ns > t_now_ns + ε_wall_future_ns`
 
 2. Fixed-lag window
-   - if `t_filter_ns` exists and `t_meas_ns < t_filter_ns - t_buffer_sec * 1e9`, reject as too old
+   - if `t_filter_ns` exists and `t_meas_ns < t_filter_ns - t_buffer_ns`,
+     reject as too old
 
 3. Attach
    - insert/attach message to node `t_meas_ns` (create node if needed)
@@ -662,8 +665,8 @@ Time / buffering:
 - `ε_wall_future_ns`
 - `Δt_clock_jump_max_ns`
 - `Δt_imu_max_ns`
-  - seconds inputs are converted once in configuration into these
-    nanosecond thresholds
+  - `t_buffer_sec` is converted once in configuration into `t_buffer_ns`
+  - all other thresholds are specified directly in integer nanoseconds
 
 Process noise intensities (continuous-time):
 

@@ -30,7 +30,7 @@ class ReplayEngine:
 
     Replay algorithm (spec 7.2/7.3):
         1) Validate timestamp against TimeBase rules.
-        2) Reject if older than t_filter_ns - t_buffer_sec * 1e9.
+        2) Reject if older than t_filter_ns - t_buffer_ns.
         3) Attach to node (create if missing); reject duplicate slot
            inserts.
         4) If inserted in the past, replay node-by-node forward to frontier.

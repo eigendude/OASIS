@@ -39,7 +39,7 @@ class AhrsDiagnostics:
         - replay_count: number of replay operations.
         - last_replay_from_ns: last replay start in int nanoseconds.
         - rejected_old_count: inserts older than
-          (t_filter_ns - t_buffer_sec * 1e9).
+          (t_filter_ns - t_buffer_ns).
         - rejected_future_count: inserts too far in the future in
           nanoseconds.
         - duplicate_imu_count: rejected duplicate IMU slots.

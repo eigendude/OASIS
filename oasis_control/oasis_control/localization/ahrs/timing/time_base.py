@@ -16,17 +16,16 @@ class TimeBase:
         filter frontier time used by buffering and replay.
 
     Public API (to be implemented):
-        - to_seconds(t_ns)
-        - from_seconds(t_sec)
         - validate_monotonic(t_prev_ns, t_next_ns)
+        - validate_non_negative(t_ns)
 
     Responsibility:
         Define the timestamp terms used by the AHRS core and provide conversion
         utilities without relying on ROS time types.
 
     Inputs/outputs:
-        - Inputs: raw timestamps or floating-point seconds for conversion.
-        - Outputs: canonical integer nanoseconds (t_ns) used by buffers/replay.
+        - Inputs: raw timestamps in integer nanoseconds.
+        - Outputs: validated integer nanoseconds (t_ns) used by buffers/replay.
 
     Dependencies:
         - Used by RingBuffer, TimelineNode, and ReplayEngine.
@@ -42,21 +41,15 @@ class TimeBase:
         - Canonical formula:
             t_meas_ns = stamp.sec * 1_000_000_000 + stamp.nanosec
           with nanosec in [0, 1e9).
-        - Boundary helpers may convert to/from float seconds for convenience
-          only (diagnostics/UI). Float seconds MUST NOT be used for keying,
-          ordering, equality, or buffer attachment.
+        - No float conversions exist in the core; any UI or diagnostics
+          conversions must occur outside the core.
 
     Determinism and edge cases:
         - Timestamp equality is exact integer equality for keying.
         - All timestamps are int nanoseconds since an arbitrary epoch.
           The epoch is irrelevant because only differences and exact
           equality are used.
-        - Validation should reject negative timestamps and NaN seconds
-          inputs.
-        - from_seconds(t_sec) and to_seconds(t_ns) are convenience-only
-          conversions and are lossy.
-        - Float conversions must be explicit and MUST NOT be used for key
-          comparisons, ordering, or buffer attachment.
+        - Validation should reject negative timestamps.
 
     Equations:
         - No equations; this module defines time terminology.
@@ -66,8 +59,7 @@ class TimeBase:
 
     Suggested unit tests:
         - stamp-to-ns formula uses sec * 1_000_000_000 + nanosec.
-        - validate_monotonic rejects negative, NaN, or decreasing timestamps.
-        - float conversions are lossy and never used for keying.
+        - validate_monotonic rejects negative or decreasing timestamps.
     """
 
     pass

@@ -414,11 +414,12 @@ Nodes are keyed by timestamp. Messages with the same timestamp attach to the
 same node.
 
 Canonical keying uses integer nanoseconds `t_meas_ns` sourced from ROS header
-stamps (`sec`, `nsec`). Float seconds conversions are convenience only and MUST
-NOT be used for node keying, equality, ordering, or buffer attachment.
-Seconds inputs are converted once in configuration into integer nanosecond
-thresholds (e.g., `ε_wall_future_ns`, `Δt_clock_jump_max_ns`,
-`Δt_imu_max_ns`). Core logic only compares int nanoseconds.
+stamps (`sec`, `nsec`). Core logic uses integer nanoseconds for ordering,
+equality, and buffer attachment, with no float conversions.
+The only seconds input is `t_buffer_sec`, which is converted once in
+configuration into `t_buffer_ns`. All other thresholds are specified as
+integer nanoseconds (e.g., `ε_wall_future_ns`, `Δt_clock_jump_max_ns`,
+`Δt_imu_max_ns`).
 
 Rules:
 
@@ -436,7 +437,7 @@ Rules:
 On insertion of a message:
 
 1. Validate timestamp
-2. Reject if older than `t_filter_ns - t_buffer_sec` * 1e9
+2. Reject if older than `t_filter_ns - t_buffer_ns`
 3. Attach to node (create if missing); if the node already exists, attach the
    measurement into its type slot (IMU packet or mag sample). Reject
    duplicates per Section 6.3.

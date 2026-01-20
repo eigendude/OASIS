@@ -41,7 +41,7 @@ class RingBuffer:
         - Node state/covariance store the posterior after updates at
           t_meas_ns.
         - Eviction drops nodes older than
-          (t_filter_ns - t_buffer_sec * 1e9).
+          (t_filter_ns - t_buffer_ns).
 
     Frames and units:
         - All timestamps are int nanoseconds since an arbitrary epoch.

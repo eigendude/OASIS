@@ -34,8 +34,12 @@ class AhrsParams:
     Data contract:
         Buffer/replay parameters:
         - t_buffer_sec: buffer horizon in seconds.
-        - t_future_tol_sec: allowable future timestamp tolerance.
-        - t_past_tol_sec: allowable past timestamp tolerance.
+        - ε_wall_future_ns: allowable future timestamp tolerance in
+          nanoseconds.
+        - Δt_clock_jump_max_ns: clock jump detection threshold in
+          nanoseconds.
+        - Δt_imu_max_ns: maximum IMU time gap allowed for replay coverage
+          in nanoseconds.
 
         Process noise intensities:
         - sigma_w_v: accel smoothness prior (m/s^2 / sqrt(s)).
@@ -67,13 +71,11 @@ class AhrsParams:
         - Used only by higher-level integration; core is ROS-agnostic.
 
         Naming + conversion:
-        - Inputs specified in seconds: t_buffer_sec, t_future_tol_sec,
-          t_past_tol_sec.
-        - AhrsConfig converts these once into integer nanosecond thresholds
-          (e.g., t_buffer_ns, ε_wall_future_ns, Δt_clock_jump_max_ns,
-          Δt_imu_max_ns) for all comparisons and keying.
-        - Canonical time for ordering/equality is int nanoseconds; float
-          seconds are never used for core keying or ordering.
+        - ns everywhere except buffer length.
+        - The only seconds input is t_buffer_sec, which is converted once in
+          AhrsConfig into t_buffer_ns using a deterministic rounding rule.
+        - No float seconds are used for keying, ordering, equality,
+          attachment, or replay.
 
     Frames and units:
         - Units match Units definitions and process noise conventions.
