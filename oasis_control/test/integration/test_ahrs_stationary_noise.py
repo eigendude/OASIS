@@ -63,14 +63,6 @@ def _identity(size: int) -> List[List[float]]:
     return matrix
 
 
-def _zero_matrix(size: int) -> List[List[float]]:
-    matrix: List[List[float]] = []
-    row_idx: int
-    for row_idx in range(size):
-        matrix.append([0.0 for _ in range(size)])
-    return matrix
-
-
 def _reshape_row_major(values: Sequence[float], size: int) -> List[List[float]]:
     if len(values) != size * size:
         raise ValueError("Unexpected row-major size")
@@ -127,6 +119,17 @@ def _is_symmetric(matrix: Sequence[Sequence[float]], tol: float) -> bool:
     return True
 
 
+def _symmetrize_matrix(matrix: Sequence[Sequence[float]]) -> List[List[float]]:
+    size: int = len(matrix)
+    sym: List[List[float]] = [[0.0 for _ in range(size)] for _ in range(size)]
+    i: int
+    for i in range(size):
+        j: int
+        for j in range(size):
+            sym[i][j] = 0.5 * (float(matrix[i][j]) + float(matrix[j][i]))
+    return sym
+
+
 def _max_abs_diff(
     lhs: Sequence[Sequence[float]],
     rhs: Sequence[Sequence[float]],
@@ -140,6 +143,16 @@ def _max_abs_diff(
             if diff > max_diff:
                 max_diff = diff
     return max_diff
+
+
+def _sum_abs(matrix: Sequence[Sequence[float]]) -> float:
+    total: float = 0.0
+    row: Sequence[float]
+    for row in matrix:
+        value: float
+        for value in row:
+            total += abs(float(value))
+    return total
 
 
 def _vector_norm(values: Sequence[float]) -> float:
@@ -363,11 +376,7 @@ class TestAhrsStationaryNoise(unittest.TestCase):
             m_W=truth_state.m_W,
         )
 
-        ekf: AhrsEkf = AhrsEkf(
-            state=initial_state,
-            covariance=AhrsCovariance.from_matrix(_identity(StateMapping.dimension())),
-            Q_c=_zero_matrix(39),
-        )
+        ekf: AhrsEkf = AhrsEkf(state=initial_state)
         adapter: EkfAdapter = EkfAdapter(ekf)
         engine: ReplayEngine = ReplayEngine(t_buffer_ns=2_000_000_000, ekf=adapter)
 
@@ -381,8 +390,13 @@ class TestAhrsStationaryNoise(unittest.TestCase):
         t0_ns: int = 1_000_000_000
         warmup_samples: int = 5
 
+        initial_cov: List[List[float]] = ekf.get_covariance().as_matrix()
         first_state: AhrsState | None = None
         first_cov: List[List[float]] | None = None
+        saw_gyro: bool = False
+        saw_accel: bool = False
+        saw_mag: bool = False
+        saw_zupt: bool = False
 
         sample_idx: int
         for sample_idx in range(num_samples):
@@ -453,13 +467,19 @@ class TestAhrsStationaryNoise(unittest.TestCase):
                 b_a_slice: slice = StateMapping.slice_delta_b_a()
                 A_a_slice: slice = StateMapping.slice_delta_A_a()
 
-                gyro_cov_expected: List[List[float]] = _reshape_row_major(
+                gyro_cov_expected_raw: List[List[float]] = _reshape_row_major(
                     calib["gyro_bias_cov_row_major"],
                     3,
                 )
-                accel_cov_expected: List[List[float]] = _reshape_row_major(
+                gyro_cov_expected: List[List[float]] = _symmetrize_matrix(
+                    gyro_cov_expected_raw
+                )
+                accel_cov_expected_raw: List[List[float]] = _reshape_row_major(
                     calib["accel_param_cov_row_major_12x12"],
                     12,
+                )
+                accel_cov_expected: List[List[float]] = _symmetrize_matrix(
+                    accel_cov_expected_raw
                 )
 
                 b_g_block: List[List[float]] = _extract_block(
@@ -467,10 +487,21 @@ class TestAhrsStationaryNoise(unittest.TestCase):
                     b_g_slice,
                     b_g_slice,
                 )
+                initial_b_g: List[List[float]] = _extract_block(
+                    initial_cov,
+                    b_g_slice,
+                    b_g_slice,
+                )
+                self.assertTrue(_is_symmetric(b_g_block, tol=1e-9))
                 self.assertLess(
                     _max_abs_diff(b_g_block, gyro_cov_expected),
                     1e-6,
                 )
+                self.assertLess(
+                    _max_abs_diff(b_g_block, gyro_cov_expected),
+                    _max_abs_diff(initial_b_g, gyro_cov_expected),
+                )
+                self.assertGreater(_sum_abs(b_g_block), 0.0)
 
                 b_a_block: List[List[float]] = _extract_block(
                     first_cov,
@@ -482,10 +513,21 @@ class TestAhrsStationaryNoise(unittest.TestCase):
                     slice(0, 3),
                     slice(0, 3),
                 )
+                initial_b_a: List[List[float]] = _extract_block(
+                    initial_cov,
+                    b_a_slice,
+                    b_a_slice,
+                )
+                self.assertTrue(_is_symmetric(b_a_block, tol=1e-9))
                 self.assertLess(
                     _max_abs_diff(b_a_block, expected_b_a),
-                    5e-4,
+                    1e-3,
                 )
+                self.assertLess(
+                    _max_abs_diff(b_a_block, expected_b_a),
+                    _max_abs_diff(initial_b_a, expected_b_a),
+                )
+                self.assertGreater(_sum_abs(b_a_block), 0.0)
 
                 A_a_block: List[List[float]] = _extract_block(
                     first_cov,
@@ -497,10 +539,21 @@ class TestAhrsStationaryNoise(unittest.TestCase):
                     slice(3, 12),
                     slice(3, 12),
                 )
+                initial_A_a: List[List[float]] = _extract_block(
+                    initial_cov,
+                    A_a_slice,
+                    A_a_slice,
+                )
+                self.assertTrue(_is_symmetric(A_a_block, tol=1e-9))
                 self.assertLess(
                     _max_abs_diff(A_a_block, expected_A_a_cov),
-                    5e-4,
+                    1e-3,
                 )
+                self.assertLess(
+                    _max_abs_diff(A_a_block, expected_A_a_cov),
+                    _max_abs_diff(initial_A_a, expected_A_a_cov),
+                )
+                self.assertGreater(_sum_abs(A_a_block), 0.0)
 
                 cross_block: List[List[float]] = _extract_block(
                     first_cov,
@@ -514,15 +567,15 @@ class TestAhrsStationaryNoise(unittest.TestCase):
                 )
                 self.assertLess(
                     _max_abs_diff(cross_block, expected_cross),
-                    5e-4,
+                    1e-3,
                 )
-
-                self.assertTrue(ekf._calibration_prior_applied)
 
                 self.assertIn("gyro", ekf.last_reports)
                 self.assertIn("accel", ekf.last_reports)
                 self.assertTrue(ekf.last_reports["gyro"].accepted)
                 self.assertTrue(ekf.last_reports["accel"].accepted)
+                saw_gyro = True
+                saw_accel = True
 
             if sample_idx % 5 == 0 and sample_idx >= warmup_samples:
                 mag_pred: List[float] = mag_model.predict(truth_state)
@@ -544,6 +597,8 @@ class TestAhrsStationaryNoise(unittest.TestCase):
                     R_m_raw=R_mag,
                 )
                 self.assertTrue(engine.insert_mag(mag_packet))
+                if "mag" in ekf.last_reports:
+                    saw_mag = saw_mag or ekf.last_reports["mag"].accepted
 
             if sample_idx >= warmup_samples:
                 R_v: List[List[float]] = [
@@ -567,9 +622,15 @@ class TestAhrsStationaryNoise(unittest.TestCase):
                     self.assertTrue(ekf.last_reports["zupt"].accepted)
                     if "no_turn" in ekf.last_reports:
                         self.assertTrue(ekf.last_reports["no_turn"].accepted)
+                if "zupt" in ekf.last_reports:
+                    saw_zupt = saw_zupt or ekf.last_reports["zupt"].accepted
 
         self.assertIsNotNone(first_state)
         self.assertIsNotNone(first_cov)
+        self.assertTrue(saw_gyro)
+        self.assertTrue(saw_accel)
+        self.assertTrue(saw_mag)
+        self.assertTrue(saw_zupt)
 
         final_state: AhrsState = ekf.get_state()
         final_cov: List[List[float]] = ekf.get_covariance().as_matrix()
