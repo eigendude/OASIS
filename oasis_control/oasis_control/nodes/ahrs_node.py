@@ -8,6 +8,7 @@
 #
 ################################################################################
 
+import math
 from typing import Sequence
 
 import message_filters
@@ -130,6 +131,7 @@ class AhrsNode(rclpy.node.Node):
         self._dropped_clock_jump_reset: int = 0
         self._last_reset_reason: str = ""
         self._last_replay_happened: bool = False
+        self._calibration_prior_applied: bool = False
 
         # ROS Subscribers
         self._imu_raw_filter_sub: message_filters.Subscriber = (
@@ -193,6 +195,10 @@ class AhrsNode(rclpy.node.Node):
             self._dropped_missing_stamp += 1
             self.get_logger().warning("IMU sample has invalid timestamp")
             return
+        if self._is_future_stamp(t_meas_ns):
+            self._dropped_future_stamp += 1
+            self.get_logger().warning("IMU sample too far in the future")
+            return
 
         frame_id: str = imu_msg.header.frame_id
         z_omega: list[float] = [
@@ -213,6 +219,12 @@ class AhrsNode(rclpy.node.Node):
             imu_msg.linear_acceleration_covariance,
             3,
         )
+        if not _is_matrix_finite(R_omega) or not _is_matrix_finite(R_accel):
+            self._dropped_nan_cov += 1
+            self.get_logger().warning(
+                "IMU packet rejected: covariance matrix has NaN or Inf"
+            )
+            return
         calibration_prior: dict[str, object] = {
             "valid": bool(cal_msg.valid),
             "gyro_bias_rads": [
@@ -228,16 +240,16 @@ class AhrsNode(rclpy.node.Node):
             ],
             "accel_A_row_major": list(cal_msg.accel_a),
             "accel_param_cov_row_major_12x12": list(cal_msg.accel_param_cov),
-            "gravity_mps2": float(cal_msg.gravity_mps2),
-            "fit_sample_count": int(cal_msg.fit_sample_count),
-            "rms_residual_mps2": float(cal_msg.rms_residual_mps2),
-            "temperature_c": float(cal_msg.temperature_c),
-            "temperature_var_c2": float(cal_msg.temperature_var_c2),
         }
         calibration_meta: dict[str, object] = {
             "source": "imu_calibration",
             "frame_id": cal_msg.header.frame_id,
             "t_meas_ns": t_meas_ns,
+            "gravity_mps2": float(cal_msg.gravity_mps2),
+            "fit_sample_count": int(cal_msg.fit_sample_count),
+            "rms_residual_mps2": float(cal_msg.rms_residual_mps2),
+            "temperature_c": float(cal_msg.temperature_c),
+            "temperature_var_c2": float(cal_msg.temperature_var_c2),
         }
         packet: ImuPacket
         try:
@@ -261,6 +273,8 @@ class AhrsNode(rclpy.node.Node):
         self._last_replay_happened = t_meas_ns < previous_frontier
         if not inserted:
             return
+        if calibration_prior["valid"]:
+            self._calibration_prior_applied = True
 
         report_gyro: UpdateReport | None = self._ekf.last_reports.get("gyro")
         if report_gyro is not None:
@@ -298,6 +312,10 @@ class AhrsNode(rclpy.node.Node):
             self._dropped_missing_stamp += 1
             self.get_logger().warning("Mag sample has invalid timestamp")
             return
+        if self._is_future_stamp(t_meas_ns):
+            self._dropped_future_stamp += 1
+            self.get_logger().warning("Mag sample too far in the future")
+            return
         frame_id: str = message.header.frame_id
         z_m: list[float] = [
             float(message.magnetic_field.x),
@@ -308,6 +326,12 @@ class AhrsNode(rclpy.node.Node):
             message.magnetic_field_covariance,
             3,
         )
+        if not _is_matrix_finite(R_m_raw):
+            self._dropped_nan_cov += 1
+            self.get_logger().warning(
+                "Mag packet rejected: covariance matrix has NaN or Inf"
+            )
+            return
         packet: MagPacket
         try:
             packet = MagPacket(
@@ -370,7 +394,13 @@ class AhrsNode(rclpy.node.Node):
         msg.odom_frame_id = self._params.odom_frame
         msg.body_frame_id = self._params.base_frame
         msg.state_seq = self._state_seq
-        msg.initialized = bool(getattr(self._ekf, "_calibration_prior_applied", False))
+        msg.initialized = bool(
+            getattr(
+                self._ekf,
+                "_calibration_prior_applied",
+                self._calibration_prior_applied,
+            )
+        )
         msg.position_wb_m = _vector3_to_point(state.p_WB)
         msg.velocity_wb_mps = _vector3_to_msg(state.v_WB)
         msg.orientation_wb = _quat_to_msg(state.q_WB)
@@ -450,6 +480,11 @@ class AhrsNode(rclpy.node.Node):
         msg.gate_d2_threshold = 0.0
         msg.reproj_rms_px = 0.0
         publisher.publish(msg)
+
+    def _is_future_stamp(self, t_meas_ns: int) -> bool:
+        now_ns: int = int(self.get_clock().now().nanoseconds)
+        epsilon_ns: int = int(self._config.params.epsilon_wall_future_ns)
+        return t_meas_ns - now_ns > epsilon_ns
 
 
 def _reshape_row_major(values: Sequence[float], size: int) -> list[list[float]]:
@@ -575,6 +610,16 @@ def _error_state_names() -> list[str]:
     if len(names) != StateMapping.dimension():
         raise ValueError("error_state_names length mismatch")
     return names
+
+
+def _is_matrix_finite(values: Sequence[Sequence[float]]) -> bool:
+    row: Sequence[float]
+    for row in values:
+        value: float
+        for value in row:
+            if not math.isfinite(float(value)):
+                return False
+    return True
 
 
 def _buffer_span_sec(buffer_nodes: Sequence[TimelineNode]) -> float:
