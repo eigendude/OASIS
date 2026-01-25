@@ -275,6 +275,24 @@ class EkfAdapter:
     def get_covariance(self) -> AhrsCovariance:
         return self._ekf.get_covariance()
 
+    def restore(
+        self,
+        *,
+        t_ns: int,
+        state: AhrsState,
+        covariance: AhrsCovariance,
+        calibration_prior_applied: bool,
+    ) -> None:
+        self._ekf.restore(
+            t_ns=t_ns,
+            state=state,
+            covariance=covariance,
+            calibration_prior_applied=calibration_prior_applied,
+        )
+
+    def get_calibration_prior_applied(self) -> bool:
+        return self._ekf.get_calibration_prior_applied()
+
 
 class TestAhrsStationaryNoise(unittest.TestCase):
     """Integration-ish test for stationary IMU+mag with calibration prior."""

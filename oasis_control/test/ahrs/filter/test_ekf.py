@@ -519,6 +519,18 @@ class TestAhrsEkf(unittest.TestCase):
         self.assertEqual(state_after_second, state_after_first)
         self.assertEqual(cov_after_second, cov_after_first)
 
+    def test_restore_resets_time_anchor(self) -> None:
+        """Restore resets the propagation time anchor."""
+        ekf: AhrsEkf = AhrsEkf(Q_c=_zero_matrix(39))
+        ekf.propagate_to(10)
+        ekf.restore(
+            t_ns=5,
+            state=AhrsState.reset(),
+            covariance=AhrsCovariance.from_matrix(_identity(StateMapping.dimension())),
+            calibration_prior_applied=False,
+        )
+        ekf.propagate_to(6)
+
     def test_calibration_prior_skips_invalid_then_applies(self) -> None:
         """Invalid calibration priors do not block later valid priors."""
         ekf: AhrsEkf = AhrsEkf(
