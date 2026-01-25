@@ -272,13 +272,7 @@ void TelemetrixCommands::are_you_there()
 
 void TelemetrixCommands::get_uptime()
 {
-  // Hack: Loop uptime after 1 minute
-  //
-  // Milliseconds per minute (60 s * 1000 ms/s)
-  const uint32_t uptime_modulus_ms = 60000U;
-
-  const uint32_t uptime_ms = static_cast<uint32_t>(millis()) % uptime_modulus_ms;
-
+  const uint32_t uptime_ms = static_cast<uint32_t>(millis());
   const uint8_t report_message[6] = {
       5,
       UPTIME_REPORT,
