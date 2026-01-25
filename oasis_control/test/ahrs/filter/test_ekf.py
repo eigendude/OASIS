@@ -80,6 +80,18 @@ def _reshape_row_major(values: Sequence[float], rows: int) -> List[List[float]]:
     return matrix
 
 
+def _symmetrize_square(matrix: Sequence[Sequence[float]]) -> List[List[float]]:
+    """Return the symmetric part of a square matrix."""
+    size: int = len(matrix)
+    sym: List[List[float]] = [[0.0 for _ in range(size)] for _ in range(size)]
+    i: int
+    for i in range(size):
+        j: int
+        for j in range(size):
+            sym[i][j] = 0.5 * (float(matrix[i][j]) + float(matrix[j][i]))
+    return sym
+
+
 def _extract_block(
     matrix: Sequence[Sequence[float]],
     row_slice: slice,
@@ -327,7 +339,7 @@ class TestAhrsEkf(unittest.TestCase):
             0.1,
             0.01,
             0.02,
-            0.01,
+            0.04,
             0.2,
             0.03,
             0.02,
@@ -369,7 +381,9 @@ class TestAhrsEkf(unittest.TestCase):
         self.assertEqual(state.A_a, _reshape_row_major(accel_A_row_major, 3))
 
         P: List[List[float]] = ekf.get_covariance().as_matrix()
-        gyro_cov: List[List[float]] = _reshape_row_major(gyro_cov_row_major, 3)
+        gyro_cov: List[List[float]] = _symmetrize_square(
+            _reshape_row_major(gyro_cov_row_major, 3)
+        )
         accel_cov: List[List[float]] = _reshape_row_major(accel_cov_row_major, 12)
 
         b_g_slice: slice = StateMapping.slice_delta_b_g()
@@ -504,6 +518,71 @@ class TestAhrsEkf(unittest.TestCase):
 
         self.assertEqual(state_after_second, state_after_first)
         self.assertEqual(cov_after_second, cov_after_first)
+
+    def test_calibration_prior_skips_invalid_then_applies(self) -> None:
+        """Invalid calibration priors do not block later valid priors."""
+        ekf: AhrsEkf = AhrsEkf(
+            state=AhrsState.reset(),
+            covariance=AhrsCovariance.from_matrix(
+                _zero_matrix(StateMapping.dimension())
+            ),
+            Q_c=_zero_matrix(39),
+            imu_model=FakeImuModel(),
+            update_step=FakeUpdateStep([]),
+        )
+        initial_state: AhrsState = ekf.get_state()
+        invalid_packet: ImuPacket = ImuPacket(
+            t_meas_ns=0,
+            frame_id="imu",
+            z_omega=[0.0, 0.0, 0.0],
+            R_omega=_identity(3),
+            z_accel=[0.0, 0.0, 0.0],
+            R_accel=_identity(3),
+            calibration_prior={
+                "valid": True,
+                "gyro_bias_rads": [1.0, 2.0],
+            },
+            calibration_meta={},
+        )
+        ekf.update_imu(invalid_packet)
+
+        self.assertEqual(ekf.get_state(), initial_state)
+
+        gyro_cov_row_major: List[float] = [
+            0.2,
+            0.0,
+            0.0,
+            0.0,
+            0.4,
+            0.0,
+            0.0,
+            0.0,
+            0.6,
+        ]
+        valid_packet: ImuPacket = ImuPacket(
+            t_meas_ns=1,
+            frame_id="imu",
+            z_omega=[0.0, 0.0, 0.0],
+            R_omega=_identity(3),
+            z_accel=[0.0, 0.0, 0.0],
+            R_accel=_identity(3),
+            calibration_prior={
+                "valid": True,
+                "gyro_bias_rads": [1.0, 2.0, 3.0],
+                "gyro_bias_cov_row_major": gyro_cov_row_major,
+            },
+            calibration_meta={},
+        )
+        ekf.update_imu(valid_packet)
+
+        state_after_valid: AhrsState = ekf.get_state()
+        self.assertEqual(state_after_valid.b_g, [1.0, 2.0, 3.0])
+        P: List[List[float]] = ekf.get_covariance().as_matrix()
+        b_g_slice: slice = StateMapping.slice_delta_b_g()
+        self.assertEqual(
+            _extract_block(P, b_g_slice, b_g_slice),
+            _reshape_row_major(gyro_cov_row_major, 3),
+        )
 
 
 if __name__ == "__main__":
