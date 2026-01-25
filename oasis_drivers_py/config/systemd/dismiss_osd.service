@@ -1,0 +1,8 @@
+[Unit]
+Description=Dismiss power OSD
+After=basic.target
+Wants=basic.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/pkill -x gsd-power
