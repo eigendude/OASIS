@@ -57,6 +57,8 @@ class TimelineNode:
         - t_meas_ns: timestamp key in integer nanoseconds.
         - state: AhrsState posterior mean after updates at t_meas_ns.
         - covariance: AhrsCovariance posterior after updates at t_meas_ns.
+        - calibration_prior_applied: whether calibration prior was applied
+          by the EKF when computing this node's posterior.
         - imu_packet: Optional[ImuPacket].
         - mag_packet: Optional[MagPacket].
         - stationary_packet: Optional[StationaryPacket].
@@ -94,6 +96,7 @@ class TimelineNode:
     t_meas_ns: int
     state: Optional[AhrsState] = None
     covariance: Optional[AhrsCovariance] = None
+    calibration_prior_applied: Optional[bool] = None
     imu_packet: Optional[ImuPacket] = None
     mag_packet: Optional[MagPacket] = None
     stationary_packet: Optional[StationaryPacket] = None

@@ -125,6 +125,7 @@ class AhrsEkf:
         - update_no_turn(stationary_packet)
         - update_zupt(stationary_packet)
         - reset()
+        - restore(t_ns, state, covariance, calibration_prior_applied)
         - state()
         - covariance()
 
@@ -228,6 +229,22 @@ class AhrsEkf:
         )
         self._last_time_ns = t_ns
 
+    def restore(
+        self,
+        *,
+        t_ns: int,
+        state: AhrsState,
+        covariance: AhrsCovariance,
+        calibration_prior_applied: bool,
+    ) -> None:
+        """Restore filter state at a specific timestamp."""
+        TimeBase.validate_non_negative(t_ns)
+        self._state = state.copy()
+        self._covariance = AhrsCovariance.from_matrix(covariance.as_matrix())
+        self._last_time_ns = t_ns
+        self._calibration_prior_applied = calibration_prior_applied
+        self.last_reports = {}
+
     def update_imu(self, imu_packet: ImuPacket) -> None:
         """Apply gyro then accel updates from the IMU packet."""
         self._apply_calibration_prior_once(imu_packet)
@@ -321,6 +338,10 @@ class AhrsEkf:
     def get_covariance(self) -> AhrsCovariance:
         """Return the current covariance."""
         return self._covariance
+
+    def get_calibration_prior_applied(self) -> bool:
+        """Return True if calibration prior has been applied."""
+        return self._calibration_prior_applied
 
     def _apply_calibration_prior_once(self, imu_packet: ImuPacket) -> None:
         """Apply calibration prior from the first valid IMU packet once."""
