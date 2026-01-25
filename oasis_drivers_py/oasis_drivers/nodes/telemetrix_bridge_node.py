@@ -146,6 +146,7 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         self._connected: bool = self._initialized
         self._reconnecting: bool = False
         self._reconnect_thread: Optional[threading.Thread] = None
+        self._last_uptime_ms: Optional[int] = None
 
         # Reliable listener QOS profile for subscribers
         qos_profile: rclpy.qos.QoSProfile = (
@@ -314,13 +315,24 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
             return
 
         try:
-            self._bridge.ping_uptime_ms(timeout_s=self._ping_timeout_s)
+            uptime_ms: int = self._bridge.ping_uptime_ms(timeout_s=self._ping_timeout_s)
         except Exception as exc:
             if not self._ping_failed:
                 self._ping_failed = True
                 self._connected = False
                 self.get_logger().error(f"Uptime ping failed: {exc!r}")
                 self._start_reconnect_thread(reason="ping failure")
+            return
+
+        if not self._uptime_ok(uptime_ms):
+            previous_uptime_ms: Optional[int] = self._last_uptime_ms
+            self._connected = False
+            self.get_logger().warning(
+                "Uptime went backwards (previous=%s ms, current=%s ms)",
+                previous_uptime_ms,
+                uptime_ms,
+            )
+            self._start_reconnect_thread(reason="uptime went backwards")
             return
 
         if self._ping_failed:
@@ -332,6 +344,7 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
             return
 
         self._reconnecting = True
+        self._last_uptime_ms = None
         self._reconnect_thread = threading.Thread(
             target=self._reconnect_worker, args=(reason,), daemon=True
         )
@@ -364,7 +377,23 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
                         time.sleep(self._reconnect_delay_s)
                         continue
 
-                    bridge.ping_uptime_ms(timeout_s=self._ping_timeout_s)
+                    uptime_ms: int = bridge.ping_uptime_ms(
+                        timeout_s=self._ping_timeout_s
+                    )
+                    if not self._uptime_ok(uptime_ms):
+                        previous_uptime_ms = self._last_uptime_ms
+                        self.get_logger().warning(
+                            "Uptime went backwards during reconnect "
+                            "(previous=%s ms, current=%s ms)",
+                            previous_uptime_ms,
+                            uptime_ms,
+                        )
+                        try:
+                            bridge.deinitialize()
+                        except Exception:
+                            pass
+                        time.sleep(self._reconnect_delay_s)
+                        continue
                     self.get_logger().info(
                         "Replaying Telemetrix config after reconnect"
                     )
@@ -397,6 +426,16 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
                     time.sleep(self._reconnect_delay_s)
         finally:
             self._reconnecting = False
+
+    def _uptime_ok(self, uptime_ms: int) -> bool:
+        previous_uptime_ms: Optional[int] = self._last_uptime_ms
+        if previous_uptime_ms is None:
+            self._last_uptime_ms = uptime_ms
+            return True
+        if uptime_ms < previous_uptime_ms:
+            return False
+        self._last_uptime_ms = uptime_ms
+        return True
 
     def stop(self) -> None:
         """Stop the bridge and cleanup ROS resources"""
