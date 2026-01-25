@@ -216,6 +216,59 @@ class FakeEkfMonotonic:
         return self._calibration_prior_applied
 
 
+class FakeEkfAliasing:
+    """EKF stub that returns mutable internals for aliasing tests."""
+
+    def __init__(self) -> None:
+        self.calls: List[str] = []
+        self.last_time_ns: int = 0
+        self._calibration_prior_applied: bool = False
+        self._state: AhrsState = AhrsState.reset()
+        size: int = StateMapping.dimension()
+        self._covariance_matrix: List[List[float]] = _identity(size)
+        self._covariance: AhrsCovariance = AhrsCovariance(P=self._covariance_matrix)
+
+    def propagate_to(self, t_ns: int) -> None:
+        self.last_time_ns = t_ns
+        self._state.p_WB[0] = float(t_ns)
+        self._covariance_matrix[0][0] = float(t_ns)
+        self.calls.append(f"prop:{t_ns}")
+
+    def update_imu(self, imu_packet: ImuPacket) -> None:
+        self.calls.append(f"imu:{imu_packet.t_meas_ns}")
+
+    def update_mag(self, mag_packet: MagPacket) -> None:
+        self.calls.append(f"mag:{mag_packet.t_meas_ns}")
+
+    def update_stationary(self, stationary_packet: StationaryPacket) -> None:
+        self.calls.append(f"stationary:{stationary_packet.t_meas_ns}")
+
+    def get_state(self) -> AhrsState:
+        return self._state
+
+    def get_covariance(self) -> AhrsCovariance:
+        return self._covariance
+
+    def restore(
+        self,
+        *,
+        t_ns: int,
+        state: AhrsState,
+        covariance: AhrsCovariance,
+        calibration_prior_applied: bool,
+    ) -> None:
+        _ = state
+        _ = covariance
+        self.last_time_ns = t_ns
+        self._state.p_WB[0] = float(t_ns)
+        self._covariance_matrix[0][0] = float(t_ns)
+        self._calibration_prior_applied = calibration_prior_applied
+        self.calls.append(f"restore:{t_ns}")
+
+    def get_calibration_prior_applied(self) -> bool:
+        return self._calibration_prior_applied
+
+
 class TestReplayEngine(unittest.TestCase):
     """Tests for ReplayEngine."""
 
@@ -304,14 +357,22 @@ class TestReplayEngine(unittest.TestCase):
         imu_200: ImuPacket = _make_imu_packet(200)
         mag_100: MagPacket = _make_mag_packet(100)
         self.assertTrue(engine.insert_imu(imu_200))
+        first_calls: int = len(ekf.calls)
         self.assertTrue(engine.insert_mag(mag_100))
+        new_calls: List[str] = ekf.calls[first_calls:]
 
-        restore_index: int = ekf.calls.index("restore:0")
+        restore_index: int = new_calls.index("restore:0")
+        restore_time: int = int(new_calls[restore_index].split(":")[1])
         prop_times: List[int] = []
         call: str
-        for call in ekf.calls[restore_index + 1 :]:
+        for call in new_calls[restore_index + 1 :]:
             if call.startswith("prop:"):
                 prop_times.append(int(call.split(":")[1]))
+        self.assertFalse(
+            any(call.startswith("prop:") for call in new_calls[:restore_index])
+        )
+        self.assertTrue(prop_times)
+        self.assertGreaterEqual(prop_times[0], restore_time)
         self.assertEqual(prop_times, sorted(prop_times))
         self.assertEqual(engine.frontier_time(), 200)
 
@@ -365,3 +426,26 @@ class TestReplayEngine(unittest.TestCase):
             if call.startswith("prop:"):
                 replay_props.append(int(call.split(":")[1]))
         self.assertEqual(replay_props, [100, 200])
+
+    def test_snapshots_do_not_alias_ekf_internals(self) -> None:
+        """Replay snapshots do not alias EKF internal state or covariance."""
+        ekf: FakeEkfAliasing = FakeEkfAliasing()
+        engine: ReplayEngine = ReplayEngine(t_buffer_ns=1_000, ekf=ekf)
+        imu_100: ImuPacket = _make_imu_packet(100)
+        imu_200: ImuPacket = _make_imu_packet(200)
+
+        self.assertTrue(engine.insert_imu(imu_100))
+        node_100: TimelineNode | None = engine.ring_buffer.get(100)
+        self.assertIsNotNone(node_100)
+        if node_100 is None:
+            self.fail("Expected node at 100 ns")
+        self.assertIsNotNone(node_100.state)
+        self.assertIsNotNone(node_100.covariance)
+        if node_100.state is None or node_100.covariance is None:
+            self.fail("Expected snapshot data at 100 ns")
+        state_snapshot: float = node_100.state.p_WB[0]
+        covariance_snapshot: float = node_100.covariance.as_matrix()[0][0]
+
+        self.assertTrue(engine.insert_imu(imu_200))
+        self.assertEqual(node_100.state.p_WB[0], state_snapshot)
+        self.assertEqual(node_100.covariance.as_matrix()[0][0], covariance_snapshot)

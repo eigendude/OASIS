@@ -255,8 +255,10 @@ class ReplayEngine:
             if node.stationary_packet is not None:
                 if node.stationary_packet.is_stationary:
                     self._ekf.update_stationary(node.stationary_packet)
-            node.state = self._ekf.get_state()
-            node.covariance = self._ekf.get_covariance()
+            node.state = self._ekf.get_state().copy()
+            node.covariance = AhrsCovariance.from_matrix(
+                self._ekf.get_covariance().as_matrix()
+            )
             node.calibration_prior_applied = self._get_calibration_prior_applied()
 
     def _restore_for_replay(self, t_start_ns: int) -> int | None:
