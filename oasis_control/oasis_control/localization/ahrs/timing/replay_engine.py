@@ -42,6 +42,17 @@ class EkfProtocol(Protocol):
 
     def get_covariance(self) -> AhrsCovariance: ...
 
+    def restore(
+        self,
+        *,
+        t_ns: int,
+        state: AhrsState,
+        covariance: AhrsCovariance,
+        calibration_prior_applied: bool,
+    ) -> None: ...
+
+    def get_calibration_prior_applied(self) -> bool: ...
+
 
 class ReplayEngine:
     """Replay logic for time-ordered AHRS measurements.
@@ -100,6 +111,8 @@ class ReplayEngine:
 
     Determinism and edge cases:
         - Out-of-order insert => replay forward to frontier.
+        - Out-of-order replay restores the EKF before replay to ensure
+          monotonic propagation.
         - Out-of-order insert does not trigger immediate publish.
         - Publish only when frontier advances.
         - Duplicate inserts are rejected without modifying the node.
@@ -137,6 +150,13 @@ class ReplayEngine:
         self._ekf: EkfProtocol = ekf
         self._publish_callback: Optional[Callable[[int], None]] = publish_callback
         self._t_filter_ns: int = 0
+        self._initial_state: AhrsState = ekf.get_state().copy()
+        self._initial_covariance: AhrsCovariance = AhrsCovariance.from_matrix(
+            ekf.get_covariance().as_matrix()
+        )
+        self._initial_calibration_prior_applied: bool = (
+            self._get_calibration_prior_applied()
+        )
         self.diagnostics: dict[str, int] = {
             "reject_too_old": 0,
             "duplicate_imu": 0,
@@ -163,21 +183,16 @@ class ReplayEngine:
     def replay_from(self, t_start_ns: int) -> None:
         """Replay buffered nodes starting at the provided timestamp."""
         TimeBase.validate_non_negative(t_start_ns)
-        nodes: list[TimelineNode] = self.ring_buffer.nodes_from(t_start_ns)
+        if t_start_ns < self._t_filter_ns:
+            replay_start_ns: int | None = self._restore_for_replay(t_start_ns)
+            if replay_start_ns is None:
+                return
+            nodes: list[TimelineNode] = self.ring_buffer.nodes_from(replay_start_ns)
+        else:
+            nodes = self.ring_buffer.nodes_from(t_start_ns)
         if not nodes:
             return
-        node: TimelineNode
-        for node in nodes:
-            self._ekf.propagate_to(node.t_meas_ns)
-            if node.imu_packet is not None:
-                self._ekf.update_imu(node.imu_packet)
-            if node.mag_packet is not None:
-                self._ekf.update_mag(node.mag_packet)
-            if node.stationary_packet is not None:
-                if node.stationary_packet.is_stationary:
-                    self._ekf.update_stationary(node.stationary_packet)
-            node.state = self._ekf.get_state()
-            node.covariance = self._ekf.get_covariance()
+        self._replay_nodes(nodes)
         last_time: int = nodes[-1].t_meas_ns
         if last_time > self._t_filter_ns:
             self._t_filter_ns = last_time
@@ -228,3 +243,60 @@ class ReplayEngine:
             if self._publish_callback is not None:
                 self._publish_callback(self._t_filter_ns)
         return True
+
+    def _replay_nodes(self, nodes: list[TimelineNode]) -> None:
+        node: TimelineNode
+        for node in nodes:
+            self._ekf.propagate_to(node.t_meas_ns)
+            if node.imu_packet is not None:
+                self._ekf.update_imu(node.imu_packet)
+            if node.mag_packet is not None:
+                self._ekf.update_mag(node.mag_packet)
+            if node.stationary_packet is not None:
+                if node.stationary_packet.is_stationary:
+                    self._ekf.update_stationary(node.stationary_packet)
+            node.state = self._ekf.get_state()
+            node.covariance = self._ekf.get_covariance()
+            node.calibration_prior_applied = self._get_calibration_prior_applied()
+
+    def _restore_for_replay(self, t_start_ns: int) -> int | None:
+        nodes: list[TimelineNode] = self.ring_buffer.nodes_from(0)
+        if not nodes:
+            return None
+        restore_node: TimelineNode | None = None
+        node: TimelineNode
+        for node in nodes:
+            if node.t_meas_ns >= t_start_ns:
+                break
+            if node.is_complete():
+                restore_node = node
+        if restore_node is not None:
+            restore_state: AhrsState = cast(AhrsState, restore_node.state)
+            restore_covariance: AhrsCovariance = cast(
+                AhrsCovariance, restore_node.covariance
+            )
+            calibration_prior_applied: bool = (
+                restore_node.calibration_prior_applied
+                if restore_node.calibration_prior_applied is not None
+                else self._initial_calibration_prior_applied
+            )
+            self._ekf.restore(
+                t_ns=restore_node.t_meas_ns,
+                state=restore_state,
+                covariance=restore_covariance,
+                calibration_prior_applied=calibration_prior_applied,
+            )
+            return t_start_ns
+        self._ekf.restore(
+            t_ns=0,
+            state=self._initial_state,
+            covariance=self._initial_covariance,
+            calibration_prior_applied=self._initial_calibration_prior_applied,
+        )
+        return nodes[0].t_meas_ns
+
+    def _get_calibration_prior_applied(self) -> bool:
+        getter: object = getattr(self._ekf, "get_calibration_prior_applied", None)
+        if callable(getter):
+            return bool(getter())
+        return bool(getattr(self._ekf, "_calibration_prior_applied", False))

@@ -124,6 +124,7 @@ class FakeEkf:
     def __init__(self) -> None:
         self.calls: List[str] = []
         self.last_time_ns: int = 0
+        self._calibration_prior_applied: bool = False
 
     def propagate_to(self, t_ns: int) -> None:
         self.last_time_ns = t_ns
@@ -143,6 +144,76 @@ class FakeEkf:
 
     def get_covariance(self) -> AhrsCovariance:
         return _covariance_for_time(self.last_time_ns)
+
+    def restore(
+        self,
+        *,
+        t_ns: int,
+        state: AhrsState,
+        covariance: AhrsCovariance,
+        calibration_prior_applied: bool,
+    ) -> None:
+        _ = state
+        _ = covariance
+        self.last_time_ns = t_ns
+        self._calibration_prior_applied = calibration_prior_applied
+        self.calls.append(f"restore:{t_ns}")
+
+    def get_calibration_prior_applied(self) -> bool:
+        return self._calibration_prior_applied
+
+
+class FakeEkfMonotonic:
+    """EKF stub that enforces monotonic propagation and records restores."""
+
+    def __init__(self) -> None:
+        self.calls: List[str] = []
+        self.restore_calls: List[int] = []
+        self.last_time_ns: int = 0
+        self._calibration_prior_applied: bool = False
+        self._state: AhrsState = AhrsState.reset()
+        self._covariance: AhrsCovariance = AhrsCovariance.from_matrix(
+            _identity(StateMapping.dimension())
+        )
+
+    def propagate_to(self, t_ns: int) -> None:
+        if t_ns < self.last_time_ns:
+            raise ValueError("timestamps must be monotonic")
+        self.last_time_ns = t_ns
+        self.calls.append(f"prop:{t_ns}")
+
+    def update_imu(self, imu_packet: ImuPacket) -> None:
+        self.calls.append(f"imu:{imu_packet.t_meas_ns}")
+
+    def update_mag(self, mag_packet: MagPacket) -> None:
+        self.calls.append(f"mag:{mag_packet.t_meas_ns}")
+
+    def update_stationary(self, stationary_packet: StationaryPacket) -> None:
+        self.calls.append(f"stationary:{stationary_packet.t_meas_ns}")
+
+    def get_state(self) -> AhrsState:
+        return _state_for_time(self.last_time_ns)
+
+    def get_covariance(self) -> AhrsCovariance:
+        return _covariance_for_time(self.last_time_ns)
+
+    def restore(
+        self,
+        *,
+        t_ns: int,
+        state: AhrsState,
+        covariance: AhrsCovariance,
+        calibration_prior_applied: bool,
+    ) -> None:
+        self.last_time_ns = t_ns
+        self._state = state
+        self._covariance = covariance
+        self._calibration_prior_applied = calibration_prior_applied
+        self.restore_calls.append(t_ns)
+        self.calls.append(f"restore:{t_ns}")
+
+    def get_calibration_prior_applied(self) -> bool:
+        return self._calibration_prior_applied
 
 
 class TestReplayEngine(unittest.TestCase):
@@ -170,6 +241,7 @@ class TestReplayEngine(unittest.TestCase):
             [
                 "prop:200",
                 "imu:200",
+                "restore:0",
                 "prop:100",
                 "mag:100",
                 "prop:200",
@@ -224,3 +296,72 @@ class TestReplayEngine(unittest.TestCase):
         self.assertTrue(engine.insert_imu(imu_300))
         self.assertTrue(engine.insert_imu(imu_200))
         self.assertEqual(published, [300])
+
+    def test_out_of_order_insert_does_not_raise_and_replays_forward(self) -> None:
+        """Out-of-order inserts restore and replay forward without errors."""
+        ekf: FakeEkfMonotonic = FakeEkfMonotonic()
+        engine: ReplayEngine = ReplayEngine(t_buffer_ns=1_000, ekf=ekf)
+        imu_200: ImuPacket = _make_imu_packet(200)
+        mag_100: MagPacket = _make_mag_packet(100)
+        self.assertTrue(engine.insert_imu(imu_200))
+        self.assertTrue(engine.insert_mag(mag_100))
+
+        restore_index: int = ekf.calls.index("restore:0")
+        prop_times: List[int] = []
+        call: str
+        for call in ekf.calls[restore_index + 1 :]:
+            if call.startswith("prop:"):
+                prop_times.append(int(call.split(":")[1]))
+        self.assertEqual(prop_times, sorted(prop_times))
+        self.assertEqual(engine.frontier_time(), 200)
+
+        node_100: TimelineNode | None = engine.ring_buffer.get(100)
+        node_200: TimelineNode | None = engine.ring_buffer.get(200)
+        self.assertIsNotNone(node_100)
+        self.assertIsNotNone(node_200)
+        if node_100 is not None and node_200 is not None:
+            self.assertIsNotNone(node_100.state)
+            self.assertIsNotNone(node_100.covariance)
+            self.assertIsNotNone(node_200.state)
+            self.assertIsNotNone(node_200.covariance)
+
+    def test_restore_uses_previous_complete_node_when_available(self) -> None:
+        """Restore uses the latest complete node before the replay window."""
+        ekf: FakeEkfMonotonic = FakeEkfMonotonic()
+        engine: ReplayEngine = ReplayEngine(t_buffer_ns=1_000, ekf=ekf)
+        imu_100: ImuPacket = _make_imu_packet(100)
+        imu_200: ImuPacket = _make_imu_packet(200)
+        mag_150: MagPacket = _make_mag_packet(150)
+
+        self.assertTrue(engine.insert_imu(imu_100))
+        self.assertTrue(engine.insert_imu(imu_200))
+        self.assertTrue(engine.insert_mag(mag_150))
+
+        self.assertIn(100, ekf.restore_calls)
+        restore_index: int = ekf.calls.index("restore:100")
+        replay_props: List[int] = []
+        call: str
+        for call in ekf.calls[restore_index + 1 :]:
+            if call.startswith("prop:"):
+                replay_props.append(int(call.split(":")[1]))
+        self.assertEqual(replay_props[0], 150)
+        self.assertEqual(replay_props[-1], 200)
+
+    def test_restore_falls_back_to_initial_when_no_complete_prior(self) -> None:
+        """Restore falls back to the initial snapshot when needed."""
+        ekf: FakeEkfMonotonic = FakeEkfMonotonic()
+        engine: ReplayEngine = ReplayEngine(t_buffer_ns=1_000, ekf=ekf)
+        imu_200: ImuPacket = _make_imu_packet(200)
+        mag_100: MagPacket = _make_mag_packet(100)
+
+        self.assertTrue(engine.insert_imu(imu_200))
+        self.assertTrue(engine.insert_mag(mag_100))
+
+        self.assertIn(0, ekf.restore_calls)
+        restore_index: int = ekf.calls.index("restore:0")
+        replay_props: List[int] = []
+        call: str
+        for call in ekf.calls[restore_index + 1 :]:
+            if call.startswith("prop:"):
+                replay_props.append(int(call.split(":")[1]))
+        self.assertEqual(replay_props, [100, 200])
