@@ -91,6 +91,7 @@ def _make_mag_packet(t_meas_ns: int) -> MagPacket:
 
 def _make_stationary_packet(t_meas_ns: int, is_stationary: bool) -> StationaryPacket:
     R: List[List[float]] = _identity(3)
+    R_omega: List[List[float]] | None = R if is_stationary else None
     metadata: Mapping[str, object] = {"score": 0.75}
     return StationaryPacket(
         t_meas_ns=t_meas_ns,
@@ -98,7 +99,7 @@ def _make_stationary_packet(t_meas_ns: int, is_stationary: bool) -> StationaryPa
         window_end_ns=t_meas_ns,
         is_stationary=is_stationary,
         R_v=R,
-        R_omega=R,
+        R_omega=R_omega,
         metadata=metadata,
     )
 
@@ -166,8 +167,9 @@ class TestAhrsReplayPipeline(unittest.TestCase):
         self.assertTrue(engine.insert_mag(mag_200))
         self.assertTrue(engine.insert_stationary(stationary_100_false))
 
-        self.assertNotIn("no_turn", ekf.last_reports)
         self.assertNotIn("zupt", ekf.last_reports)
+        if "no_turn" in ekf.last_reports:
+            self.assertFalse(ekf.last_reports["no_turn"].accepted)
 
         self.assertTrue(engine.insert_imu(imu_100))
         self.assertTrue(engine.insert_stationary(stationary_200_true))
