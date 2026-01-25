@@ -65,6 +65,38 @@ def _make_H(tag: float) -> List[List[float]]:
     return H
 
 
+def _reshape_row_major(values: Sequence[float], rows: int) -> List[List[float]]:
+    """Return a square matrix from row-major values."""
+    matrix: List[List[float]] = []
+    index: int = 0
+    row_index: int
+    for row_index in range(rows):
+        row: List[float] = []
+        col_index: int
+        for col_index in range(rows):
+            row.append(float(values[index + col_index]))
+        matrix.append(row)
+        index += rows
+    return matrix
+
+
+def _extract_block(
+    matrix: Sequence[Sequence[float]],
+    row_slice: slice,
+    col_slice: slice,
+) -> List[List[float]]:
+    """Return a submatrix for the specified slices."""
+    if row_slice.start is None or row_slice.stop is None:
+        raise ValueError("row_slice must be bounded")
+    if col_slice.start is None or col_slice.stop is None:
+        raise ValueError("col_slice must be bounded")
+    rows: List[List[float]] = []
+    row_index: int
+    for row_index in range(row_slice.start, row_slice.stop):
+        rows.append(list(matrix[row_index][col_slice.start : col_slice.stop]))
+    return rows
+
+
 class FakeImuModel:
     """Fake IMU model for order testing."""
 
@@ -265,6 +297,213 @@ class TestAhrsEkf(unittest.TestCase):
         ekf.update_stationary(packet)
 
         self.assertEqual(order, [])
+
+    def test_calibration_prior_applied_once_sets_mean_and_covariance(self) -> None:
+        """Calibration prior seeds mean and covariance once."""
+        order: List[str] = []
+        ekf: AhrsEkf = AhrsEkf(
+            state=AhrsState.reset(),
+            covariance=AhrsCovariance.from_matrix(
+                _zero_matrix(StateMapping.dimension())
+            ),
+            Q_c=_zero_matrix(39),
+            imu_model=FakeImuModel(),
+            update_step=FakeUpdateStep(order),
+        )
+        gyro_bias: List[float] = [1.0, 2.0, 3.0]
+        accel_bias: List[float] = [4.0, 5.0, 6.0]
+        accel_A_row_major: List[float] = [
+            1.1,
+            0.1,
+            0.0,
+            0.0,
+            0.9,
+            0.2,
+            0.0,
+            0.0,
+            1.05,
+        ]
+        gyro_cov_row_major: List[float] = [
+            0.1,
+            0.01,
+            0.02,
+            0.01,
+            0.2,
+            0.03,
+            0.02,
+            0.03,
+            0.3,
+        ]
+        accel_cov_row_major: List[float] = []
+        i: int
+        for i in range(12):
+            j: int
+            for j in range(12):
+                if i == j:
+                    accel_cov_row_major.append(10.0 + float(i))
+                else:
+                    accel_cov_row_major.append((i + j) * 0.1)
+        imu_packet: ImuPacket = ImuPacket(
+            t_meas_ns=0,
+            frame_id="imu",
+            z_omega=[0.0, 0.0, 0.0],
+            R_omega=_identity(3),
+            z_accel=[0.0, 0.0, 0.0],
+            R_accel=_identity(3),
+            calibration_prior={
+                "valid": True,
+                "gyro_bias_rads": gyro_bias,
+                "gyro_bias_cov_row_major": gyro_cov_row_major,
+                "accel_bias_mps2": accel_bias,
+                "accel_A_row_major": accel_A_row_major,
+                "accel_param_cov_row_major_12x12": accel_cov_row_major,
+            },
+            calibration_meta={},
+        )
+
+        ekf.update_imu(imu_packet)
+
+        state: AhrsState = ekf.get_state()
+        self.assertEqual(state.b_g, gyro_bias)
+        self.assertEqual(state.b_a, accel_bias)
+        self.assertEqual(state.A_a, _reshape_row_major(accel_A_row_major, 3))
+
+        P: List[List[float]] = ekf.get_covariance().as_matrix()
+        gyro_cov: List[List[float]] = _reshape_row_major(gyro_cov_row_major, 3)
+        accel_cov: List[List[float]] = _reshape_row_major(accel_cov_row_major, 12)
+
+        b_g_slice: slice = StateMapping.slice_delta_b_g()
+        b_a_slice: slice = StateMapping.slice_delta_b_a()
+        A_a_slice: slice = StateMapping.slice_delta_A_a()
+
+        self.assertEqual(
+            _extract_block(P, b_g_slice, b_g_slice),
+            gyro_cov,
+        )
+        self.assertEqual(
+            _extract_block(P, b_a_slice, b_a_slice),
+            _extract_block(accel_cov, slice(0, 3), slice(0, 3)),
+        )
+        self.assertEqual(
+            _extract_block(P, A_a_slice, A_a_slice),
+            _extract_block(accel_cov, slice(3, 12), slice(3, 12)),
+        )
+        self.assertEqual(
+            _extract_block(P, b_a_slice, A_a_slice),
+            _extract_block(accel_cov, slice(0, 3), slice(3, 12)),
+        )
+        self.assertEqual(
+            _extract_block(P, A_a_slice, b_a_slice),
+            _extract_block(accel_cov, slice(3, 12), slice(0, 3)),
+        )
+
+    def test_calibration_prior_not_overwritten_on_second_imu(self) -> None:
+        """Calibration prior applies only once."""
+        ekf: AhrsEkf = AhrsEkf(
+            state=AhrsState.reset(),
+            covariance=AhrsCovariance.from_matrix(
+                _zero_matrix(StateMapping.dimension())
+            ),
+            Q_c=_zero_matrix(39),
+            imu_model=FakeImuModel(),
+            update_step=FakeUpdateStep([]),
+        )
+        accel_cov_row_major: List[float] = []
+        i: int
+        for i in range(12):
+            j: int
+            for j in range(12):
+                if i == j:
+                    accel_cov_row_major.append(1.0 + float(i))
+                else:
+                    accel_cov_row_major.append((i + j) * 0.05)
+        first_packet: ImuPacket = ImuPacket(
+            t_meas_ns=0,
+            frame_id="imu",
+            z_omega=[0.0, 0.0, 0.0],
+            R_omega=_identity(3),
+            z_accel=[0.0, 0.0, 0.0],
+            R_accel=_identity(3),
+            calibration_prior={
+                "valid": True,
+                "gyro_bias_rads": [1.0, 2.0, 3.0],
+                "gyro_bias_cov_row_major": [
+                    0.1,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.2,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.3,
+                ],
+                "accel_bias_mps2": [4.0, 5.0, 6.0],
+                "accel_A_row_major": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0,
+                ],
+                "accel_param_cov_row_major_12x12": accel_cov_row_major,
+            },
+            calibration_meta={},
+        )
+        ekf.update_imu(first_packet)
+
+        state_after_first: AhrsState = ekf.get_state()
+        cov_after_first: List[List[float]] = ekf.get_covariance().as_matrix()
+
+        second_packet: ImuPacket = ImuPacket(
+            t_meas_ns=1,
+            frame_id="imu",
+            z_omega=[0.0, 0.0, 0.0],
+            R_omega=_identity(3),
+            z_accel=[0.0, 0.0, 0.0],
+            R_accel=_identity(3),
+            calibration_prior={
+                "valid": True,
+                "gyro_bias_rads": [7.0, 8.0, 9.0],
+                "gyro_bias_cov_row_major": [
+                    9.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    9.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    9.0,
+                ],
+                "accel_bias_mps2": [10.0, 11.0, 12.0],
+                "accel_A_row_major": [
+                    2.0,
+                    0.1,
+                    0.0,
+                    0.0,
+                    2.0,
+                    0.1,
+                    0.0,
+                    0.0,
+                    2.0,
+                ],
+                "accel_param_cov_row_major_12x12": [2.0 for _ in range(144)],
+            },
+            calibration_meta={},
+        )
+
+        ekf.update_imu(second_packet)
+
+        state_after_second: AhrsState = ekf.get_state()
+        cov_after_second: List[List[float]] = ekf.get_covariance().as_matrix()
+
+        self.assertEqual(state_after_second, state_after_first)
+        self.assertEqual(cov_after_second, cov_after_first)
 
 
 if __name__ == "__main__":

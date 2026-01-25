@@ -10,7 +10,9 @@
 
 from __future__ import annotations
 
+import math
 from typing import List
+from typing import Mapping
 from typing import Protocol
 from typing import Sequence
 
@@ -210,6 +212,7 @@ class AhrsEkf:
         )
         self._last_time_ns: int = 0
         self.last_reports: dict[str, UpdateReport] = {}
+        self._calibration_prior_applied: bool = False
 
     def propagate_to(self, t_ns: int) -> None:
         """Propagate the filter to the requested timestamp."""
@@ -227,6 +230,7 @@ class AhrsEkf:
 
     def update_imu(self, imu_packet: ImuPacket) -> None:
         """Apply gyro then accel updates from the IMU packet."""
+        self._apply_calibration_prior_once(imu_packet)
         z_hat_omega: List[float] = self._imu_model.predict_gyro(self._state)
         nu_omega: List[float] = self._imu_model.residual_gyro(
             imu_packet.z_omega,
@@ -318,6 +322,69 @@ class AhrsEkf:
         """Return the current covariance."""
         return self._covariance
 
+    def _apply_calibration_prior_once(self, imu_packet: ImuPacket) -> None:
+        """Apply calibration prior from the first valid IMU packet once."""
+        if self._calibration_prior_applied:
+            return
+        prior_raw: object = imu_packet.calibration_prior
+        if not isinstance(prior_raw, Mapping):
+            return
+        if prior_raw.get("valid") is not True:
+            return
+        prior: Mapping[str, object] = prior_raw
+
+        b_g: List[float] | None = _parse_float_list(
+            prior.get("gyro_bias_rads"),
+            3,
+        )
+        b_a: List[float] | None = _parse_float_list(
+            prior.get("accel_bias_mps2"),
+            3,
+        )
+        A_a: List[List[float]] | None = _parse_square_row_major(
+            prior.get("accel_A_row_major"),
+            3,
+        )
+        if b_g is not None or b_a is not None or A_a is not None:
+            state: AhrsState = self._state
+            self._state = AhrsState(
+                p_WB=state.p_WB,
+                v_WB=state.v_WB,
+                q_WB=state.q_WB,
+                omega_WB=state.omega_WB,
+                b_g=b_g if b_g is not None else state.b_g,
+                b_a=b_a if b_a is not None else state.b_a,
+                A_a=A_a if A_a is not None else state.A_a,
+                T_BI=state.T_BI,
+                T_BM=state.T_BM,
+                g_W=state.g_W,
+                m_W=state.m_W,
+            )
+
+        covariance_updated: bool = False
+        P: List[List[float]] = self._covariance.as_matrix()
+
+        gyro_cov: List[List[float]] | None = _parse_square_row_major(
+            prior.get("gyro_bias_cov_row_major"),
+            3,
+        )
+        if gyro_cov is not None:
+            _write_cov_block(P, StateMapping.slice_delta_b_g(), gyro_cov)
+            covariance_updated = True
+
+        accel_cov: List[List[float]] | None = _parse_square_row_major(
+            prior.get("accel_param_cov_row_major_12x12"),
+            12,
+        )
+        if accel_cov is not None:
+            _write_accel_param_cov(P, accel_cov)
+            covariance_updated = True
+
+        if covariance_updated:
+            self._covariance = AhrsCovariance.from_matrix(P)
+
+        self._calibration_prior_applied = True
+
 
 def _build_process_noise(params: AhrsParams) -> List[List[float]]:
     """Return the canonical 39x39 process noise covariance."""
@@ -406,3 +473,97 @@ def _identity(size: int) -> List[List[float]]:
 def _copy_matrix(matrix: Sequence[Sequence[float]]) -> List[List[float]]:
     """Return a deep copy of a matrix."""
     return [[float(value) for value in row] for row in matrix]
+
+
+def _parse_float_list(value: object, length: int) -> List[float] | None:
+    """Return a float list if value is a finite list of the right length."""
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        return None
+    if len(value) != length:
+        return None
+    output: List[float] = []
+    item: object
+    for item in value:
+        if isinstance(item, bool) or not isinstance(item, (int, float)):
+            return None
+        item_f: float = float(item)
+        if not math.isfinite(item_f):
+            return None
+        output.append(item_f)
+    return output
+
+
+def _parse_square_row_major(value: object, size: int) -> List[List[float]] | None:
+    """Return a square matrix from a row-major list if valid."""
+    values: List[float] | None = _parse_float_list(value, size * size)
+    if values is None:
+        return None
+    return _reshape_row_major(values, size)
+
+
+def _reshape_row_major(values: Sequence[float], size: int) -> List[List[float]]:
+    """Return a square matrix from row-major values."""
+    matrix: List[List[float]] = []
+    index: int = 0
+    row_index: int
+    for row_index in range(size):
+        row: List[float] = []
+        col_index: int
+        for col_index in range(size):
+            row.append(float(values[index + col_index]))
+        matrix.append(row)
+        index += size
+    return matrix
+
+
+def _write_cov_block(
+    P: List[List[float]],
+    block_slice: slice,
+    block: Sequence[Sequence[float]],
+) -> None:
+    """Write a symmetric covariance block into P."""
+    if block_slice.start is None or block_slice.stop is None:
+        return
+    size: int = block_slice.stop - block_slice.start
+    if len(block) != size or any(len(row) != size for row in block):
+        return
+    i: int
+    for i in range(size):
+        j: int
+        for j in range(size):
+            P[block_slice.start + i][block_slice.start + j] = float(block[i][j])
+            P[block_slice.start + j][block_slice.start + i] = float(block[j][i])
+
+
+def _write_accel_param_cov(P: List[List[float]], accel_cov: List[List[float]]) -> None:
+    """Write the 12x12 accel bias/A covariance blocks into P."""
+    if len(accel_cov) != 12 or any(len(row) != 12 for row in accel_cov):
+        return
+    b_a_slice: slice = StateMapping.slice_delta_b_a()
+    A_a_slice: slice = StateMapping.slice_delta_A_a()
+    if (
+        b_a_slice.start is None
+        or b_a_slice.stop is None
+        or A_a_slice.start is None
+        or A_a_slice.stop is None
+    ):
+        return
+    b_a_start: int = b_a_slice.start
+    A_a_start: int = A_a_slice.start
+
+    i: int
+    for i in range(3):
+        j_bias: int
+        for j_bias in range(3):
+            P[b_a_start + i][b_a_start + j_bias] = float(accel_cov[i][j_bias])
+            P[b_a_start + j_bias][b_a_start + i] = float(accel_cov[j_bias][i])
+    for i in range(9):
+        j_A: int
+        for j_A in range(9):
+            P[A_a_start + i][A_a_start + j_A] = float(accel_cov[3 + i][3 + j_A])
+            P[A_a_start + j_A][A_a_start + i] = float(accel_cov[3 + j_A][3 + i])
+    for i in range(3):
+        j_cross: int
+        for j_cross in range(9):
+            P[b_a_start + i][A_a_start + j_cross] = float(accel_cov[i][3 + j_cross])
+            P[A_a_start + j_cross][b_a_start + i] = float(accel_cov[3 + j_cross][i])
