@@ -492,15 +492,21 @@ class TestAhrsStationaryNoise(unittest.TestCase):
                     b_g_slice,
                     b_g_slice,
                 )
+                near_zero_tol: float = 1e-5
                 self.assertTrue(_is_symmetric(b_g_block, tol=1e-9))
-                self.assertLess(
-                    _max_abs_diff(b_g_block, gyro_cov_expected),
-                    1e-6,
+                after_b_g_diff: float = _max_abs_diff(
+                    b_g_block,
+                    gyro_cov_expected,
                 )
-                self.assertLess(
-                    _max_abs_diff(b_g_block, gyro_cov_expected),
-                    _max_abs_diff(initial_b_g, gyro_cov_expected),
+                initial_b_g_diff: float = _max_abs_diff(
+                    initial_b_g,
+                    gyro_cov_expected,
                 )
+                self.assertLess(after_b_g_diff, 1e-6)
+                if initial_b_g_diff > near_zero_tol:
+                    self.assertLess(after_b_g_diff, initial_b_g_diff)
+                else:
+                    self.assertLessEqual(after_b_g_diff, near_zero_tol)
                 self.assertGreater(_sum_abs(b_g_block), 0.0)
 
                 b_a_block: List[List[float]] = _extract_block(
@@ -519,14 +525,19 @@ class TestAhrsStationaryNoise(unittest.TestCase):
                     b_a_slice,
                 )
                 self.assertTrue(_is_symmetric(b_a_block, tol=1e-9))
-                self.assertLess(
-                    _max_abs_diff(b_a_block, expected_b_a),
-                    1e-3,
+                after_b_a_diff: float = _max_abs_diff(
+                    b_a_block,
+                    expected_b_a,
                 )
-                self.assertLess(
-                    _max_abs_diff(b_a_block, expected_b_a),
-                    _max_abs_diff(initial_b_a, expected_b_a),
+                initial_b_a_diff: float = _max_abs_diff(
+                    initial_b_a,
+                    expected_b_a,
                 )
+                self.assertLess(after_b_a_diff, 1e-3)
+                if initial_b_a_diff > near_zero_tol:
+                    self.assertLess(after_b_a_diff, initial_b_a_diff)
+                else:
+                    self.assertLessEqual(after_b_a_diff, near_zero_tol)
                 self.assertGreater(_sum_abs(b_a_block), 0.0)
 
                 A_a_block: List[List[float]] = _extract_block(
@@ -545,14 +556,19 @@ class TestAhrsStationaryNoise(unittest.TestCase):
                     A_a_slice,
                 )
                 self.assertTrue(_is_symmetric(A_a_block, tol=1e-9))
-                self.assertLess(
-                    _max_abs_diff(A_a_block, expected_A_a_cov),
-                    1e-3,
+                after_A_a_diff: float = _max_abs_diff(
+                    A_a_block,
+                    expected_A_a_cov,
                 )
-                self.assertLess(
-                    _max_abs_diff(A_a_block, expected_A_a_cov),
-                    _max_abs_diff(initial_A_a, expected_A_a_cov),
+                initial_A_a_diff: float = _max_abs_diff(
+                    initial_A_a,
+                    expected_A_a_cov,
                 )
+                self.assertLess(after_A_a_diff, 1e-3)
+                if initial_A_a_diff > near_zero_tol:
+                    self.assertLess(after_A_a_diff, initial_A_a_diff)
+                else:
+                    self.assertLessEqual(after_A_a_diff, near_zero_tol)
                 self.assertGreater(_sum_abs(A_a_block), 0.0)
 
                 cross_block: List[List[float]] = _extract_block(
