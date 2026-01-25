@@ -333,6 +333,7 @@ class AhrsEkf:
             return
         prior: Mapping[str, object] = prior_raw
 
+        applied_any: bool = False
         b_g: List[float] | None = _parse_float_list(
             prior.get("gyro_bias_rads"),
             3,
@@ -346,6 +347,7 @@ class AhrsEkf:
             3,
         )
         if b_g is not None or b_a is not None or A_a is not None:
+            applied_any = True
             state: AhrsState = self._state
             self._state = AhrsState(
                 p_WB=state.p_WB,
@@ -369,21 +371,27 @@ class AhrsEkf:
             3,
         )
         if gyro_cov is not None:
-            _write_cov_block(P, StateMapping.slice_delta_b_g(), gyro_cov)
-            covariance_updated = True
+            covariance_updated = _write_cov_block(
+                P,
+                StateMapping.slice_delta_b_g(),
+                gyro_cov,
+            )
 
         accel_cov: List[List[float]] | None = _parse_square_row_major(
             prior.get("accel_param_cov_row_major_12x12"),
             12,
         )
         if accel_cov is not None:
-            _write_accel_param_cov(P, accel_cov)
-            covariance_updated = True
+            covariance_updated = (
+                _write_accel_param_cov(P, accel_cov) or covariance_updated
+            )
 
         if covariance_updated:
             self._covariance = AhrsCovariance.from_matrix(P)
 
-        self._calibration_prior_applied = True
+        applied_any = applied_any or covariance_updated
+        if applied_any:
+            self._calibration_prior_applied = True
 
 
 def _build_process_noise(params: AhrsParams) -> List[List[float]]:
@@ -520,25 +528,27 @@ def _write_cov_block(
     P: List[List[float]],
     block_slice: slice,
     block: Sequence[Sequence[float]],
-) -> None:
+) -> bool:
     """Write a symmetric covariance block into P."""
     if block_slice.start is None or block_slice.stop is None:
-        return
+        return False
     size: int = block_slice.stop - block_slice.start
     if len(block) != size or any(len(row) != size for row in block):
-        return
+        return False
     i: int
     for i in range(size):
         j: int
-        for j in range(size):
-            P[block_slice.start + i][block_slice.start + j] = float(block[i][j])
-            P[block_slice.start + j][block_slice.start + i] = float(block[j][i])
+        for j in range(i, size):
+            value: float = 0.5 * (float(block[i][j]) + float(block[j][i]))
+            P[block_slice.start + i][block_slice.start + j] = value
+            P[block_slice.start + j][block_slice.start + i] = value
+    return True
 
 
-def _write_accel_param_cov(P: List[List[float]], accel_cov: List[List[float]]) -> None:
+def _write_accel_param_cov(P: List[List[float]], accel_cov: List[List[float]]) -> bool:
     """Write the 12x12 accel bias/A covariance blocks into P."""
     if len(accel_cov) != 12 or any(len(row) != 12 for row in accel_cov):
-        return
+        return False
     b_a_slice: slice = StateMapping.slice_delta_b_a()
     A_a_slice: slice = StateMapping.slice_delta_A_a()
     if (
@@ -547,23 +557,35 @@ def _write_accel_param_cov(P: List[List[float]], accel_cov: List[List[float]]) -
         or A_a_slice.start is None
         or A_a_slice.stop is None
     ):
-        return
+        return False
     b_a_start: int = b_a_slice.start
     A_a_start: int = A_a_slice.start
 
     i: int
     for i in range(3):
         j_bias: int
-        for j_bias in range(3):
-            P[b_a_start + i][b_a_start + j_bias] = float(accel_cov[i][j_bias])
-            P[b_a_start + j_bias][b_a_start + i] = float(accel_cov[j_bias][i])
+        for j_bias in range(i, 3):
+            value: float = 0.5 * (
+                float(accel_cov[i][j_bias]) + float(accel_cov[j_bias][i])
+            )
+            P[b_a_start + i][b_a_start + j_bias] = value
+            P[b_a_start + j_bias][b_a_start + i] = value
     for i in range(9):
         j_A: int
-        for j_A in range(9):
-            P[A_a_start + i][A_a_start + j_A] = float(accel_cov[3 + i][3 + j_A])
-            P[A_a_start + j_A][A_a_start + i] = float(accel_cov[3 + j_A][3 + i])
+        for j_A in range(i, 9):
+            value: float = 0.5 * (
+                float(accel_cov[3 + i][3 + j_A])
+                + float(accel_cov[3 + j_A][3 + i])
+            )
+            P[A_a_start + i][A_a_start + j_A] = value
+            P[A_a_start + j_A][A_a_start + i] = value
     for i in range(3):
         j_cross: int
         for j_cross in range(9):
-            P[b_a_start + i][A_a_start + j_cross] = float(accel_cov[i][3 + j_cross])
-            P[A_a_start + j_cross][b_a_start + i] = float(accel_cov[3 + j_cross][i])
+            value: float = 0.5 * (
+                float(accel_cov[i][3 + j_cross])
+                + float(accel_cov[3 + j_cross][i])
+            )
+            P[b_a_start + i][A_a_start + j_cross] = value
+            P[A_a_start + j_cross][b_a_start + i] = value
+    return True
