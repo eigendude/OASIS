@@ -19,11 +19,12 @@ from oasis_control.localization.mounting.math_utils.linalg import SO3
 from oasis_control.localization.mounting.tf.stability import RotationStabilityTracker
 from oasis_control.localization.mounting.tf.stability import StabilityError
 from oasis_control.localization.mounting.tf.stability import StabilityStatus
+from oasis_control.localization.mounting.timing.time_base import sec_to_ns
 
 
 def _ns(seconds: float) -> int:
     """Convert seconds to integer nanoseconds."""
-    return int(seconds * 1e9)
+    return sec_to_ns(seconds)
 
 
 def _identity_rotation() -> NDArray[np.float64]:
@@ -68,6 +69,36 @@ def test_stability_window_fill_requirement() -> None:
         mag_used_for_yaw=True,
     )
     assert status2.is_stable
+
+
+def test_stability_window_boundary_ns() -> None:
+    """Consider the window filled at exact nanosecond boundaries."""
+    stable_window_sec: float = 0.3
+    tracker: RotationStabilityTracker = RotationStabilityTracker(
+        stable_window_sec=stable_window_sec,
+        stable_rot_thresh_rad=0.1,
+    )
+    R_identity: NDArray[np.float64] = _identity_rotation()
+    start_ns: int = sec_to_ns(0.0)
+    boundary_ns: int = sec_to_ns(stable_window_sec)
+
+    tracker.update(
+        t_ns=start_ns,
+        R_BI=R_identity,
+        R_BM=R_identity,
+        need_more_tilt=False,
+        need_more_yaw=False,
+        mag_used_for_yaw=True,
+    )
+    status: StabilityStatus = tracker.update(
+        t_ns=boundary_ns,
+        R_BI=R_identity,
+        R_BM=R_identity,
+        need_more_tilt=False,
+        need_more_yaw=False,
+        mag_used_for_yaw=True,
+    )
+    assert status.is_stable
 
 
 def test_stability_delta_computation() -> None:

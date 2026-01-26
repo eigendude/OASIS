@@ -20,6 +20,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from oasis_control.localization.mounting.math_utils.linalg import SO3
+from oasis_control.localization.mounting.timing.time_base import sec_to_ns
 
 
 _NS_PER_SEC: float = 1e9
@@ -118,7 +119,7 @@ class RotationStabilityTracker:
         self._samples.append(_RotationSample(t_ns=t_ns, R_BI=R_BI_mat, R_BM=R_BM_mat))
         self._last_t_ns = t_ns
 
-        window_ns: float = self._stable_window_sec * _NS_PER_SEC
+        window_ns: int = sec_to_ns(self._stable_window_sec)
         while self._samples and (t_ns - self._samples[0].t_ns) > window_ns:
             self._samples.popleft()
 
@@ -134,7 +135,8 @@ class RotationStabilityTracker:
             lambda sample: sample.R_BM,
         )
 
-        is_stable: bool = window_duration_sec >= self._stable_window_sec
+        window_filled: bool = (t_ns - oldest_t_ns) >= window_ns
+        is_stable: bool = window_filled
         if is_stable:
             if delta_theta_BI_rad >= self._stable_rot_thresh_rad:
                 is_stable = False

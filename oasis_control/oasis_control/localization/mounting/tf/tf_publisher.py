@@ -168,11 +168,13 @@ class TfPublisher:
         publish_static: bool = False
         if self._publish_static_when_stable:
             transitioned: bool = is_stable and not self._was_stable
-            republish: bool = self._republish_static_on_save and saved
-            if transitioned and not self._published_static:
-                publish_static = True
-            elif republish:
-                publish_static = True
+            republish: bool = (
+                self._republish_static_on_save
+                and saved
+                and is_stable
+                and self._published_static
+            )
+            publish_static = (transitioned and not self._published_static) or republish
 
         if publish_static:
             outputs.extend(

@@ -108,6 +108,46 @@ def test_tf_publisher_republish_on_save() -> None:
     assert all(transform.is_static for transform in transforms)
 
 
+def test_tf_publisher_save_requires_stability() -> None:
+    """Avoid publishing static transforms before stability even if saved."""
+    publisher: TfPublisher = TfPublisher(
+        base_frame="base_link",
+        imu_frame="imu_link",
+        mag_frame="mag_link",
+        publish_dynamic=False,
+        publish_static_when_stable=True,
+        republish_static_on_save=True,
+    )
+    transforms_unstable: list[PublishedTransform] = publisher.update(
+        t_ns=0,
+        T_BI=_identity_se3(),
+        T_BM=_identity_se3(),
+        is_stable=False,
+        saved=True,
+    )
+    assert not transforms_unstable
+
+    transforms_stable: list[PublishedTransform] = publisher.update(
+        t_ns=1,
+        T_BI=_identity_se3(),
+        T_BM=_identity_se3(),
+        is_stable=True,
+        saved=False,
+    )
+    assert len(transforms_stable) == 2
+    assert all(transform.is_static for transform in transforms_stable)
+
+    transforms_republish: list[PublishedTransform] = publisher.update(
+        t_ns=2,
+        T_BI=_identity_se3(),
+        T_BM=_identity_se3(),
+        is_stable=True,
+        saved=True,
+    )
+    assert len(transforms_republish) == 2
+    assert all(transform.is_static for transform in transforms_republish)
+
+
 def test_tf_publisher_frame_validation() -> None:
     """Reject empty frame names."""
     with pytest.raises(TfPublisherError):
