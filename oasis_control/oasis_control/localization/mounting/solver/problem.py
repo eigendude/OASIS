@@ -27,6 +27,10 @@ from oasis_control.localization.mounting.solver.residuals import (
 )
 from oasis_control.localization.mounting.solver.robust_loss import robust_weight
 from oasis_control.localization.mounting.state.mounting_state import MountingState
+from oasis_control.localization.mounting.state.state_mapping import BLOCK_NAME_A_A
+from oasis_control.localization.mounting.state.state_mapping import BLOCK_NAME_B_A
+from oasis_control.localization.mounting.state.state_mapping import BLOCK_NAME_B_G
+from oasis_control.localization.mounting.state.state_mapping import BLOCK_NAME_B_M
 from oasis_control.localization.mounting.state.state_mapping import BLOCK_NAME_G_W
 from oasis_control.localization.mounting.state.state_mapping import BLOCK_NAME_M_W
 from oasis_control.localization.mounting.state.state_mapping import BLOCK_NAME_R_BI
@@ -40,6 +44,12 @@ from oasis_control.localization.mounting.state.state_mapping import StateMapping
 
 # Units: unitless. Meaning: diagonal jitter for covariance inversion
 _COV_EPS: float = 1e-9
+
+# Units: unitless. Meaning: weak diagonal prior for nuisance blocks
+_NUISANCE_PRIOR_LAMBDA: float = 1e-6
+
+# Units: unitless. Meaning: weak diagonal prior for direction blocks
+_DIRECTION_PRIOR_LAMBDA: float = 1e-6
 
 
 def _info_from_cov(cov: NDArray[np.float64]) -> NDArray[np.float64]:
@@ -74,19 +84,35 @@ def _accumulate_factor(
     mapping: StateMapping,
     weight: float,
 ) -> tuple[float, float, int]:
-    r_w: NDArray[np.float64] = residual * weight
+    sqrt_weight: float = float(np.sqrt(weight))
+    r_w: NDArray[np.float64] = residual * sqrt_weight
     cost: float = float(0.5 * r_w.T @ info @ r_w)
     res_sq: float = float(r_w @ r_w)
     res_count: int = int(r_w.size)
     for name_i, J_i in jacobians.items():
         block_i: StateBlock = mapping.block(name_i)
         sl_i: slice = block_i.sl()
-        b[sl_i] += J_i.T @ info @ r_w
+        Jw_i: NDArray[np.float64] = J_i * sqrt_weight
+        b[sl_i] += Jw_i.T @ info @ r_w
         for name_j, J_j in jacobians.items():
             block_j: StateBlock = mapping.block(name_j)
             sl_j: slice = block_j.sl()
-            H[sl_i, sl_j] += J_i.T @ info @ J_j
+            Jw_j: NDArray[np.float64] = J_j * sqrt_weight
+            H[sl_i, sl_j] += Jw_i.T @ info @ Jw_j
     return cost, res_sq, res_count
+
+
+def _apply_weak_prior(
+    H: NDArray[np.float64],
+    mapping: StateMapping,
+    name: str,
+    weight: float,
+) -> None:
+    if not mapping.has(name):
+        return
+    block: StateBlock = mapping.block(name)
+    sl: slice = block.sl()
+    H[sl, sl] += np.eye(block.dim, dtype=np.float64) * weight
 
 
 def build_linearization(
@@ -140,6 +166,9 @@ def build_linearization(
             robust_type,
             robust_scale_a,
         )
+        total_accel_weight: float = float(keyframe.gravity_weight) * accel_weight
+        if total_accel_weight <= 0.0:
+            continue
         jacobians: dict[str, NDArray[np.float64]] = {
             BLOCK_NAME_R_BI: accel.J_bi,
             BLOCK_NAME_G_W: accel.J_gw,
@@ -152,7 +181,7 @@ def build_linearization(
             jacobians,
             accel_info,
             mapping,
-            accel_weight,
+            total_accel_weight,
         )
         cost += factor_cost
         res_sq_sum += factor_sq
@@ -178,6 +207,9 @@ def build_linearization(
             robust_type,
             robust_scale_m,
         )
+        total_mag_weight: float = float(keyframe.mag_weight) * mag_weight
+        if total_mag_weight <= 0.0:
+            continue
         mag_jacobians: dict[str, NDArray[np.float64]] = {
             BLOCK_NAME_R_BM: mag.J_bm,
             BLOCK_NAME_M_W: mag.J_mw,
@@ -190,7 +222,7 @@ def build_linearization(
             mag_jacobians,
             mag_info,
             mapping,
-            mag_weight,
+            total_mag_weight,
         )
         cost += factor_cost
         res_sq_sum += factor_sq
@@ -205,4 +237,10 @@ def build_linearization(
         "rms": rms,
         "residual_count": res_count,
     }
+    _apply_weak_prior(H, mapping, BLOCK_NAME_G_W, _DIRECTION_PRIOR_LAMBDA)
+    _apply_weak_prior(H, mapping, BLOCK_NAME_M_W, _DIRECTION_PRIOR_LAMBDA)
+    _apply_weak_prior(H, mapping, BLOCK_NAME_B_A, _NUISANCE_PRIOR_LAMBDA)
+    _apply_weak_prior(H, mapping, BLOCK_NAME_A_A, _NUISANCE_PRIOR_LAMBDA)
+    _apply_weak_prior(H, mapping, BLOCK_NAME_B_G, _NUISANCE_PRIOR_LAMBDA)
+    _apply_weak_prior(H, mapping, BLOCK_NAME_B_M, _NUISANCE_PRIOR_LAMBDA)
     return H, b, cost, metrics
