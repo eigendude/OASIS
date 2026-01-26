@@ -89,7 +89,7 @@ class TfPublisher:
         *,
         base_frame: str,
         imu_frame: str,
-        mag_frame: str,
+        mag_frame: str | None,
         publish_dynamic: bool = True,
         publish_static_when_stable: bool = True,
         republish_static_on_save: bool = True,
@@ -97,7 +97,8 @@ class TfPublisher:
         """Initialize the TF publisher policy."""
         _require_frame(base_frame, "base_frame")
         _require_frame(imu_frame, "imu_frame")
-        _require_frame(mag_frame, "mag_frame")
+        if mag_frame is not None:
+            _require_frame(mag_frame, "mag_frame")
         if not isinstance(publish_dynamic, bool):
             raise TfPublisherError("publish_dynamic must be a bool")
         if not isinstance(publish_static_when_stable, bool):
@@ -106,18 +107,23 @@ class TfPublisher:
             raise TfPublisherError("republish_static_on_save must be a bool")
         self._base_frame: str = base_frame
         self._imu_frame: str = imu_frame
-        self._mag_frame: str = mag_frame
+        self._mag_frame: str | None = mag_frame
         self._publish_dynamic: bool = publish_dynamic
         self._publish_static_when_stable: bool = publish_static_when_stable
         self._republish_static_on_save: bool = republish_static_on_save
-        self._published_static: bool = False
-        self._was_stable: bool = False
+        self._published_static_children: set[str] = set()
         self._last_t_ns: int | None = None
+
+    def set_mag_frame(self, mag_frame: str | None) -> None:
+        """Set the magnetometer frame identifier when it becomes available."""
+        if mag_frame is None:
+            return
+        _require_frame(mag_frame, "mag_frame")
+        self._mag_frame = mag_frame
 
     def reset(self) -> None:
         """Reset the static publication state."""
-        self._published_static = False
-        self._was_stable = False
+        self._published_static_children.clear()
         self._last_t_ns = None
 
     def update(
@@ -143,10 +149,12 @@ class TfPublisher:
 
         R_BI: NDArray[np.float64]
         p_BI: NDArray[np.float64]
-        R_BM: NDArray[np.float64]
-        p_BM: NDArray[np.float64]
         R_BI, p_BI = _extract_transform(T_BI, "T_BI")
-        R_BM, p_BM = _extract_transform(T_BM, "T_BM")
+        mag_frame: str | None = self._mag_frame
+        R_BM: NDArray[np.float64] | None = None
+        p_BM: NDArray[np.float64] | None = None
+        if mag_frame is not None:
+            R_BM, p_BM = _extract_transform(T_BM, "T_BM")
 
         outputs: list[PublishedTransform] = []
 
@@ -156,7 +164,7 @@ class TfPublisher:
                     t_ns=t_ns,
                     parent_frame=self._base_frame,
                     imu_frame=self._imu_frame,
-                    mag_frame=self._mag_frame,
+                    mag_frame=mag_frame,
                     R_BI=R_BI,
                     p_BI=p_BI,
                     R_BM=R_BM,
@@ -165,34 +173,43 @@ class TfPublisher:
                 )
             )
 
-        publish_static: bool = False
-        if self._publish_static_when_stable:
-            transitioned: bool = is_stable and not self._was_stable
-            republish: bool = (
-                self._republish_static_on_save
-                and saved
-                and is_stable
-                and self._published_static
-            )
-            publish_static = (transitioned and not self._published_static) or republish
-
-        if publish_static:
-            outputs.extend(
-                _build_transforms(
-                    t_ns=t_ns,
-                    parent_frame=self._base_frame,
-                    imu_frame=self._imu_frame,
-                    mag_frame=self._mag_frame,
-                    R_BI=R_BI,
-                    p_BI=p_BI,
-                    R_BM=R_BM,
-                    p_BM=p_BM,
-                    is_static=True,
+        republish: bool = (
+            self._publish_static_when_stable
+            and self._republish_static_on_save
+            and saved
+            and is_stable
+        )
+        if self._publish_static_when_stable and is_stable:
+            imu_frame: str = self._imu_frame
+            if republish or imu_frame not in self._published_static_children:
+                outputs.append(
+                    _transform_to_published(
+                        t_ns=t_ns,
+                        parent_frame=self._base_frame,
+                        child_frame=imu_frame,
+                        R=R_BI,
+                        p=p_BI,
+                        is_static=True,
+                    )
                 )
-            )
-            self._published_static = True
+                self._published_static_children.add(imu_frame)
+            if mag_frame is not None and (
+                republish or mag_frame not in self._published_static_children
+            ):
+                if R_BM is None or p_BM is None:
+                    raise TfPublisherError("R_BM and p_BM are required with mag_frame")
+                outputs.append(
+                    _transform_to_published(
+                        t_ns=t_ns,
+                        parent_frame=self._base_frame,
+                        child_frame=mag_frame,
+                        R=R_BM,
+                        p=p_BM,
+                        is_static=True,
+                    )
+                )
+                self._published_static_children.add(mag_frame)
 
-        self._was_stable = is_stable
         self._last_t_ns = t_ns
         return outputs
 
@@ -202,11 +219,11 @@ def _build_transforms(
     t_ns: int,
     parent_frame: str,
     imu_frame: str,
-    mag_frame: str,
+    mag_frame: str | None,
     R_BI: NDArray[np.float64],
     p_BI: NDArray[np.float64],
-    R_BM: NDArray[np.float64],
-    p_BM: NDArray[np.float64],
+    R_BM: NDArray[np.float64] | None,
+    p_BM: NDArray[np.float64] | None,
     is_static: bool,
 ) -> list[PublishedTransform]:
     """Build published transforms for IMU and magnetometer frames."""
@@ -221,16 +238,19 @@ def _build_transforms(
             is_static=is_static,
         )
     )
-    transforms.append(
-        _transform_to_published(
-            t_ns=t_ns,
-            parent_frame=parent_frame,
-            child_frame=mag_frame,
-            R=R_BM,
-            p=p_BM,
-            is_static=is_static,
+    if mag_frame is not None:
+        if R_BM is None or p_BM is None:
+            raise TfPublisherError("R_BM and p_BM are required with mag_frame")
+        transforms.append(
+            _transform_to_published(
+                t_ns=t_ns,
+                parent_frame=parent_frame,
+                child_frame=mag_frame,
+                R=R_BM,
+                p=p_BM,
+                is_static=is_static,
+            )
         )
-    )
     return transforms
 
 
