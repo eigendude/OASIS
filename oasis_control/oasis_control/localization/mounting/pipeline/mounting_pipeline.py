@@ -470,10 +470,15 @@ class MountingPipeline:
     def _consume_mag_for_steady(self, t_ns: int) -> MagPacket | None:
         """Return the newest magnetometer sample for steady detection."""
         latest: MagPacket | None = None
-        items: list[tuple[int, MagPacket]] = [
-            (item.t_ns, item.value) for item in self._mag_buffer.iter_time_order()
-        ]
-        for mag_t_ns, mag in items:
+        latest_t_ns: int | None = None
+        for item in self._mag_buffer.iter_time_order():
+            mag_t_ns: int
+            mag: MagPacket
+            if isinstance(item, tuple):
+                mag_t_ns, mag = item
+            else:
+                mag_t_ns = int(item.t_ns)
+                mag = item.value
             if mag_t_ns > t_ns:
                 continue
             if (
@@ -482,10 +487,12 @@ class MountingPipeline:
             ):
                 continue
             latest = mag
+            latest_t_ns = mag_t_ns
         if latest is None:
             return None
         self._last_mag_used_ns = latest.t_meas_ns
-        self._mag_buffer.pop_older_than(latest.t_meas_ns + 1)
+        if latest_t_ns is not None:
+            self._mag_buffer.pop_older_than(latest_t_ns + 1)
         return latest
 
     def _maybe_complete_bootstrap(self, t_now_ns: int) -> None:
@@ -616,20 +623,20 @@ class MountingPipeline:
 
     def _ensure_tf_publisher(self) -> None:
         """Create the TF publisher once frame identifiers are known."""
-        if self._tf_publisher is not None:
+        if self._tf_publisher is None:
+            if self._imu_frame_id is None or not self._imu_frame_id:
+                return
+            self._tf_publisher = TfPublisher(
+                base_frame=self._params.frames.base_frame,
+                imu_frame=self._imu_frame_id,
+                mag_frame=self._mag_frame_id,
+                publish_dynamic=self._params.tf.publish_dynamic,
+                publish_static_when_stable=self._params.tf.publish_static_when_stable,
+                republish_static_on_save=self._params.tf.republish_static_on_save,
+            )
             return
-        if self._imu_frame_id is None or self._mag_frame_id is None:
-            return
-        if not self._imu_frame_id or not self._mag_frame_id:
-            return
-        self._tf_publisher = TfPublisher(
-            base_frame=self._params.frames.base_frame,
-            imu_frame=self._imu_frame_id,
-            mag_frame=self._mag_frame_id,
-            publish_dynamic=self._params.tf.publish_dynamic,
-            publish_static_when_stable=self._params.tf.publish_static_when_stable,
-            republish_static_on_save=self._params.tf.republish_static_on_save,
-        )
+        if self._mag_frame_id:
+            self._tf_publisher.set_mag_frame(self._mag_frame_id)
 
     def _process_pending_segments(self) -> int:
         """Process steady segments into keyframes and state."""
@@ -823,7 +830,7 @@ class MountingPipeline:
     ) -> tuple[bool, str | None]:
         """Persist a calibration snapshot when the save policy triggers."""
         output_path: str | None = self._params.save.output_path
-        if output_path is None:
+        if output_path is None or output_path == "":
             return False, None
         period_ns: int = sec_to_ns(self._params.save.save_period_sec)
         if self._last_save_time_ns is not None:
