@@ -220,7 +220,13 @@ def optimize(
             initial_cost = cost
         delta: NDArray[np.float64] = _solve(H, b)
         current = _apply_delta(current, delta, mapping)
-        final_cost = cost
+
+    _, _, final_cost, metrics = build_linearization(
+        current,
+        keyframes,
+        params,
+        include_translation_vars=include_translation_vars,
+    )
 
     report: dict[str, Any] = {
         "initial_cost": initial_cost,
