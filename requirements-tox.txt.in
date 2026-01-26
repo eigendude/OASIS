@@ -11,6 +11,7 @@ flake8-quotes
 isort
 mypy
 numpy
+PyYAML
 pytest
 types-paho-mqtt
 types-psutil

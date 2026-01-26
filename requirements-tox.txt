@@ -25,6 +25,7 @@ pydocstyle==6.3.0
 pyflakes==3.4.0
 Pygments==2.19.2
 pytest==9.0.2
+PyYAML==6.0.2
 pytokens==0.3.0
 setuptools==80.9.0
 snowballstemmer==3.0.1
