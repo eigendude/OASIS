@@ -41,6 +41,8 @@ class ControlDescriptions:
             name=f"ahrs_{host_id}",
             output="screen",
             remappings=[
+                ("ahrs/state", f"{host_id}/ahrs/state"),
+                ("ahrs/diagnostics", f"{host_id}/ahrs/diagnostics"),
                 ("ahrs/extrinsics/t_bi", f"{host_id}/ahrs/extrinsics/t_bi"),
                 ("ahrs/extrinsics/t_bm", f"{host_id}/ahrs/extrinsics/t_bm"),
                 ("ahrs/updates/accel", f"{host_id}/ahrs/updates/accel"),
