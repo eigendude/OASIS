@@ -61,6 +61,30 @@ def _push_sample(
     )
 
 
+def test_requires_full_window_span() -> None:
+    """Ensure the window spans steady_sec before steady checks apply."""
+    params: MountingParams = _steady_params()
+    detector: SteadyDetector = SteadyDetector(params)
+    omega: np.ndarray = np.zeros(3, dtype=np.float64)
+    accel: np.ndarray = np.array([0.0, 0.0, -9.81], dtype=np.float64)
+
+    segment: SteadySegment | None = detector.push(
+        t_ns=0,
+        omega_corr_rads=omega,
+        a_corr_mps2=accel,
+        imu_frame_id="imu",
+    )
+    assert segment is None
+
+    segment = detector.push(
+        t_ns=int(0.8e9),
+        omega_corr_rads=omega,
+        a_corr_mps2=accel,
+        imu_frame_id="imu",
+    )
+    assert segment is None
+
+
 def test_sliding_window_emits_once() -> None:
     """Ensure the detector emits once after steady duration."""
     params: MountingParams = _steady_params()
@@ -90,7 +114,7 @@ def test_sliding_window_emits_once() -> None:
         a_corr_mps2=accel,
         imu_frame_id="imu",
     )
-    assert segment is not None
+    assert segment is None
 
     segment_again: SteadySegment | None = detector.push(
         t_ns=int(1.5e9),
@@ -99,6 +123,14 @@ def test_sliding_window_emits_once() -> None:
         imu_frame_id="imu",
     )
     assert segment_again is None
+
+    segment = detector.push(
+        t_ns=int(2.0e9),
+        omega_corr_rads=omega,
+        a_corr_mps2=accel,
+        imu_frame_id="imu",
+    )
+    assert segment is not None
 
 
 def test_exit_and_reenter_steady() -> None:
@@ -110,8 +142,9 @@ def test_exit_and_reenter_steady() -> None:
     omega_bad: np.ndarray = np.array([1.0, 0.0, 0.0], dtype=np.float64)
 
     _push_sample(detector, t_ns=0, omega=omega_ok, accel=accel_ok)
+    _push_sample(detector, t_ns=int(1.0e9), omega=omega_ok, accel=accel_ok)
     segment: SteadySegment | None = detector.push(
-        t_ns=int(1.0e9),
+        t_ns=int(2.0e9),
         omega_corr_rads=omega_ok,
         a_corr_mps2=accel_ok,
         imu_frame_id="imu",
@@ -119,16 +152,17 @@ def test_exit_and_reenter_steady() -> None:
     assert segment is not None
 
     segment = detector.push(
-        t_ns=int(1.5e9),
+        t_ns=int(2.5e9),
         omega_corr_rads=omega_bad,
         a_corr_mps2=accel_ok,
         imu_frame_id="imu",
     )
     assert segment is None
 
-    _push_sample(detector, t_ns=int(2.6e9), omega=omega_ok, accel=accel_ok)
+    _push_sample(detector, t_ns=int(3.0e9), omega=omega_ok, accel=accel_ok)
+    _push_sample(detector, t_ns=int(4.0e9), omega=omega_ok, accel=accel_ok)
     segment = detector.push(
-        t_ns=int(3.6e9),
+        t_ns=int(5.0e9),
         omega_corr_rads=omega_ok,
         a_corr_mps2=accel_ok,
         imu_frame_id="imu",
@@ -162,13 +196,13 @@ def test_mag_samples_included() -> None:
     mag_cov: np.ndarray = np.eye(3, dtype=np.float64) * 0.01
 
     mag0: MagPacket = MagPacket(
-        t_meas_ns=0,
+        t_meas_ns=int(1.0e9),
         frame_id="mag",
         m_raw_T=np.array([0.1, 0.0, 0.0], dtype=np.float64),
         cov_m_raw_T2=mag_cov,
     )
     mag1: MagPacket = MagPacket(
-        t_meas_ns=int(1.0e9),
+        t_meas_ns=int(2.0e9),
         frame_id="mag",
         m_raw_T=np.array([0.2, 0.0, 0.0], dtype=np.float64),
         cov_m_raw_T2=mag_cov,
@@ -179,10 +213,16 @@ def test_mag_samples_included() -> None:
         omega_corr_rads=omega,
         a_corr_mps2=accel,
         imu_frame_id="imu",
+    )
+    detector.push(
+        t_ns=int(1.0e9),
+        omega_corr_rads=omega,
+        a_corr_mps2=accel,
+        imu_frame_id="imu",
         mag=mag0,
     )
     segment = detector.push(
-        t_ns=int(1.0e9),
+        t_ns=int(2.0e9),
         omega_corr_rads=omega,
         a_corr_mps2=accel,
         imu_frame_id="imu",
