@@ -61,3 +61,21 @@ def test_validate_non_decreasing_strict() -> None:
     with pytest.raises(TimeBaseError):
         base.validate_non_decreasing(5, 5)
     base.validate_non_decreasing(5, 6)
+
+
+def test_clamp_monotonic_allows_equal_and_clamps_decrease() -> None:
+    """Ensure clamp allows equality and clamps decreasing timestamps."""
+    base: TimeBase = TimeBase(allow_equal=True)
+    assert base.clamp_monotonic(None, 10) == 10
+    assert base.clamp_monotonic(10, 10) == 10
+    assert base.clamp_monotonic(10, 9) == 10
+
+
+def test_clamp_monotonic_strict_raises_on_non_increasing() -> None:
+    """Ensure clamp rejects non-increasing values when strict."""
+    base: TimeBase = TimeBase(allow_equal=False)
+    assert base.clamp_monotonic(10, 11) == 11
+    with pytest.raises(TimeBaseError):
+        base.clamp_monotonic(10, 10)
+    with pytest.raises(TimeBaseError):
+        base.clamp_monotonic(10, 9)

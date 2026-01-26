@@ -79,3 +79,10 @@ def test_find_latest_at_or_before() -> None:
     item: Timestamped[str] | None = buffer.find_latest_at_or_before(4)
     assert item is not None
     assert item.value == "b"
+
+
+def test_push_rejects_negative_timestamp() -> None:
+    """Ensure negative timestamps are rejected."""
+    buffer: TimestampRingBuffer[int] = TimestampRingBuffer(capacity=2)
+    with pytest.raises(RingBufferError):
+        buffer.push(-1, 123)
