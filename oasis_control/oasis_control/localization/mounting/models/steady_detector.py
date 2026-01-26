@@ -85,6 +85,7 @@ class SteadyDetector:
         self._last_mag_t_ns: int | None = None
         self._steady_enter_ns: int | None = None
         self._has_emitted: bool = False
+        self._is_steady: bool = False
 
     def reset(self) -> None:
         """Reset internal buffers and emission state."""
@@ -94,6 +95,7 @@ class SteadyDetector:
         self._last_mag_t_ns = None
         self._steady_enter_ns = None
         self._has_emitted = False
+        self._is_steady = False
 
     def push(
         self,
@@ -139,13 +141,19 @@ class SteadyDetector:
         if not is_steady:
             self._steady_enter_ns = None
             self._has_emitted = False
+            self._is_steady = False
             return None
 
-        if self._steady_enter_ns is None:
+        if not self._is_steady:
             self._steady_enter_ns = t_ns
+            self._has_emitted = False
+            self._is_steady = True
 
         if self._has_emitted:
             return None
+
+        if self._steady_enter_ns is None:
+            raise SteadyDetectorError("steady_enter_ns must be set before emitting")
 
         if t_ns - self._steady_enter_ns < self._steady_ns:
             return None
@@ -167,6 +175,9 @@ class SteadyDetector:
     def _window_is_steady(self) -> bool:
         """Return True when the current window satisfies steady criteria."""
         if not self._imu_samples:
+            return False
+        window_span_ns: int = self._imu_samples[-1].t_ns - self._imu_samples[0].t_ns
+        if window_span_ns < self._steady_ns:
             return False
         omega_samples: list[np.ndarray] = [
             sample.omega_corr_rads for sample in self._imu_samples
