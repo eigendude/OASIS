@@ -29,36 +29,6 @@ CONTROL_PACKAGE_NAME: str = "oasis_control"
 
 class ControlDescriptions:
     #
-    # AHRS
-    #
-
-    @staticmethod
-    def add_ahrs_node(ld: LaunchDescription, host_id: str) -> None:
-        ahrs_node: Node = Node(
-            namespace=ROS_NAMESPACE,
-            package=CONTROL_PACKAGE_NAME,
-            executable="ahrs",
-            name=f"ahrs_{host_id}",
-            output="screen",
-            remappings=[
-                ("ahrs/state", f"{host_id}/ahrs/state"),
-                ("ahrs/diagnostics", f"{host_id}/ahrs/diagnostics"),
-                ("ahrs/extrinsics/t_bi", f"{host_id}/ahrs/extrinsics/t_bi"),
-                ("ahrs/extrinsics/t_bm", f"{host_id}/ahrs/extrinsics/t_bm"),
-                ("ahrs/updates/accel", f"{host_id}/ahrs/updates/accel"),
-                ("ahrs/updates/gyro", f"{host_id}/ahrs/updates/gyro"),
-                ("ahrs/updates/mag", f"{host_id}/ahrs/updates/mag"),
-                ("imu_calibration", f"{host_id}/imu_calibration"),
-                ("imu_fused", f"{host_id}/imu_fused"),
-                ("imu_raw", f"{host_id}/imu_raw"),
-                ("magnetic_field", f"{host_id}/magnetic_field"),
-                ("odom", f"{host_id}/odom"),
-                ("world_odom", f"{host_id}/world_odom"),
-            ],
-        )
-        ld.add_action(ahrs_node)
-
-    #
     # Home manager
     #
 
