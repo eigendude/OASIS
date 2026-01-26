@@ -9,6 +9,7 @@
 ################################################################################
 
 import math
+from typing import Protocol
 from typing import Sequence
 
 import message_filters
@@ -16,10 +17,12 @@ import rclpy.node
 import rclpy.publisher
 import rclpy.qos
 import rclpy.subscription
+import tf2_ros
 from builtin_interfaces.msg import Time as TimeMsg
 from geometry_msgs.msg import Point as PointMsg
 from geometry_msgs.msg import Pose as PoseMsg
 from geometry_msgs.msg import Quaternion as QuaternionMsg
+from geometry_msgs.msg import TransformStamped as TransformStampedMsg
 from geometry_msgs.msg import Vector3 as Vector3Msg
 from sensor_msgs.msg import Imu as ImuMsg
 from sensor_msgs.msg import MagneticField as MagneticFieldMsg
@@ -72,7 +75,10 @@ EXTRINSICS_T_BM_TOPIC: str = "ahrs/extrinsics/t_bm"
 
 
 class AhrsNode(rclpy.node.Node):
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        broadcaster: "TransformBroadcasterProtocol | None" = None,
+    ) -> None:
         """
         Initialize resources
         """
@@ -121,6 +127,10 @@ class AhrsNode(rclpy.node.Node):
             publish_callback=self._publish_frontier,
         )
 
+        if broadcaster is None:
+            broadcaster = tf2_ros.TransformBroadcaster(self)
+        self._tf_broadcaster: TransformBroadcasterProtocol = broadcaster
+
         self._state_seq: int = 0
         self._diag_seq: int = 0
         self._update_seq: int = 0
@@ -132,6 +142,8 @@ class AhrsNode(rclpy.node.Node):
         self._last_reset_reason: str = ""
         self._last_replay_happened: bool = False
         self._calibration_prior_applied: bool = False
+        self._imu_frame_id: str = self._params.imu_frame
+        self._mag_frame_id: str = self._params.mag_frame
 
         # ROS Subscribers
         self._imu_raw_filter_sub: message_filters.Subscriber = (
@@ -201,6 +213,8 @@ class AhrsNode(rclpy.node.Node):
             return
 
         frame_id: str = imu_msg.header.frame_id
+        if frame_id:
+            self._imu_frame_id = frame_id
         z_omega: list[float] = [
             float(imu_msg.angular_velocity.x),
             float(imu_msg.angular_velocity.y),
@@ -317,6 +331,8 @@ class AhrsNode(rclpy.node.Node):
             self.get_logger().warning("Mag sample too far in the future")
             return
         frame_id: str = message.header.frame_id
+        if frame_id:
+            self._mag_frame_id = frame_id
         z_m: list[float] = [
             float(message.magnetic_field.x),
             float(message.magnetic_field.y),
@@ -378,6 +394,7 @@ class AhrsNode(rclpy.node.Node):
         )
         self._state_pub.publish(state_msg)
         self._diagnostics_pub.publish(diag_msg)
+        self._broadcast_tf(stamp=stamp, state=state)
 
     def _make_state_msg(
         self,
@@ -481,10 +498,60 @@ class AhrsNode(rclpy.node.Node):
         msg.reproj_rms_px = 0.0
         publisher.publish(msg)
 
+    def _broadcast_tf(self, *, stamp: TimeMsg, state: AhrsState) -> None:
+        transforms: list[TransformStampedMsg] = []
+        transforms.append(
+            _to_transform_stamped(
+                stamp=stamp,
+                parent=self._params.world_frame,
+                child=self._params.base_frame,
+                translation=state.p_WB,
+                quat_wxyz=state.q_WB,
+            )
+        )
+
+        rotation_bi: Sequence[Sequence[float]]
+        translation_bi: Sequence[float]
+        rotation_bi, translation_bi = state.T_BI
+        quat_bi: list[float] = MathQuaternion.from_matrix(rotation_bi)
+        transforms.append(
+            _to_transform_stamped(
+                stamp=stamp,
+                parent=self._params.base_frame,
+                child=self._imu_frame_id,
+                translation=translation_bi,
+                quat_wxyz=quat_bi,
+            )
+        )
+
+        rotation_bm: Sequence[Sequence[float]]
+        translation_bm: Sequence[float]
+        rotation_bm, translation_bm = state.T_BM
+        quat_bm: list[float] = MathQuaternion.from_matrix(rotation_bm)
+        transforms.append(
+            _to_transform_stamped(
+                stamp=stamp,
+                parent=self._params.base_frame,
+                child=self._mag_frame_id,
+                translation=translation_bm,
+                quat_wxyz=quat_bm,
+            )
+        )
+
+        self._tf_broadcaster.sendTransform(transforms)
+
     def _is_future_stamp(self, t_meas_ns: int) -> bool:
         now_ns: int = int(self.get_clock().now().nanoseconds)
         epsilon_ns: int = int(self._config.params.epsilon_wall_future_ns)
         return t_meas_ns - now_ns > epsilon_ns
+
+
+class TransformBroadcasterProtocol(Protocol):
+    def sendTransform(
+        self,
+        transform: TransformStampedMsg | Sequence[TransformStampedMsg],
+    ) -> None:
+        """Publish transforms"""
 
 
 def _reshape_row_major(values: Sequence[float], size: int) -> list[list[float]]:
@@ -528,6 +595,25 @@ def _quat_to_msg(values: Sequence[float]) -> QuaternionMsg:
         z=float(values[3]),
         w=float(values[0]),
     )
+
+
+def _to_transform_stamped(
+    *,
+    stamp: TimeMsg,
+    parent: str,
+    child: str,
+    translation: Sequence[float],
+    quat_wxyz: Sequence[float],
+) -> TransformStampedMsg:
+    msg: TransformStampedMsg = TransformStampedMsg()
+    msg.header.stamp = stamp
+    msg.header.frame_id = parent
+    msg.child_frame_id = child
+    msg.transform.translation.x = float(translation[0])
+    msg.transform.translation.y = float(translation[1])
+    msg.transform.translation.z = float(translation[2])
+    msg.transform.rotation = _quat_to_msg(quat_wxyz)
+    return msg
 
 
 def _se3_to_pose(
