@@ -12,6 +12,7 @@ isort
 mypy
 numpy
 pytest
+PyYAML
 types-paho-mqtt
 types-psutil
 types-pyserial
