@@ -69,8 +69,8 @@ def generate_launch_description() -> LaunchDescription:
     # Navigation
     if HOST_ID == "falcon":
         ControlDescriptions.add_ahrs_node(ld, HOST_ID)
-        ControlDescriptions.add_imu_fuser(ld, HOST_ID)
-        ControlDescriptions.add_speedometer(ld, HOST_ID)
+        # ControlDescriptions.add_imu_fuser(ld, HOST_ID)
+        # ControlDescriptions.add_speedometer(ld, HOST_ID)
         ControlDescriptions.add_tilt_sensor(ld, HOST_ID)
 
     # Microcontroller nodes
