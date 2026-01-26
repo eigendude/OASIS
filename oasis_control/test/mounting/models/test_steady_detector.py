@@ -77,7 +77,7 @@ def test_sliding_window_emits_once() -> None:
     assert segment is None
 
     segment = detector.push(
-        t_ns=int(0.5e9),
+        t_ns=int(0.9e9),
         omega_corr_rads=omega,
         a_corr_mps2=accel,
         imu_frame_id="imu",
@@ -90,10 +90,26 @@ def test_sliding_window_emits_once() -> None:
         a_corr_mps2=accel,
         imu_frame_id="imu",
     )
+    assert segment is None
+
+    segment = detector.push(
+        t_ns=int(1.5e9),
+        omega_corr_rads=omega,
+        a_corr_mps2=accel,
+        imu_frame_id="imu",
+    )
+    assert segment is None
+
+    segment = detector.push(
+        t_ns=int(2.0e9),
+        omega_corr_rads=omega,
+        a_corr_mps2=accel,
+        imu_frame_id="imu",
+    )
     assert segment is not None
 
     segment_again: SteadySegment | None = detector.push(
-        t_ns=int(1.5e9),
+        t_ns=int(2.5e9),
         omega_corr_rads=omega,
         a_corr_mps2=accel,
         imu_frame_id="imu",
@@ -116,19 +132,35 @@ def test_exit_and_reenter_steady() -> None:
         a_corr_mps2=accel_ok,
         imu_frame_id="imu",
     )
+    assert segment is None
+
+    segment = detector.push(
+        t_ns=int(2.0e9),
+        omega_corr_rads=omega_ok,
+        a_corr_mps2=accel_ok,
+        imu_frame_id="imu",
+    )
     assert segment is not None
 
     segment = detector.push(
-        t_ns=int(1.5e9),
+        t_ns=int(2.5e9),
         omega_corr_rads=omega_bad,
         a_corr_mps2=accel_ok,
         imu_frame_id="imu",
     )
     assert segment is None
 
-    _push_sample(detector, t_ns=int(2.6e9), omega=omega_ok, accel=accel_ok)
+    _push_sample(detector, t_ns=int(3.6e9), omega=omega_ok, accel=accel_ok)
     segment = detector.push(
-        t_ns=int(3.6e9),
+        t_ns=int(4.6e9),
+        omega_corr_rads=omega_ok,
+        a_corr_mps2=accel_ok,
+        imu_frame_id="imu",
+    )
+    assert segment is None
+
+    segment = detector.push(
+        t_ns=int(5.6e9),
         omega_corr_rads=omega_ok,
         a_corr_mps2=accel_ok,
         imu_frame_id="imu",
@@ -146,6 +178,14 @@ def test_threshold_failure_prevents_emission() -> None:
     _push_sample(detector, t_ns=0, omega=omega, accel=accel)
     segment = detector.push(
         t_ns=int(1.0e9),
+        omega_corr_rads=omega,
+        a_corr_mps2=accel,
+        imu_frame_id="imu",
+    )
+    assert segment is None
+
+    segment = detector.push(
+        t_ns=int(2.0e9),
         omega_corr_rads=omega,
         a_corr_mps2=accel,
         imu_frame_id="imu",
@@ -188,10 +228,18 @@ def test_mag_samples_included() -> None:
         imu_frame_id="imu",
         mag=mag1,
     )
+    assert segment is None
+
+    segment = detector.push(
+        t_ns=int(2.0e9),
+        omega_corr_rads=omega,
+        a_corr_mps2=accel,
+        imu_frame_id="imu",
+    )
     assert segment is not None
     assert segment.mag_frame_id == "mag"
     assert segment.m_mean_T is not None
-    np.testing.assert_allclose(segment.m_mean_T, np.array([0.15, 0.0, 0.0]))
+    np.testing.assert_allclose(segment.m_mean_T, np.array([0.2, 0.0, 0.0]))
 
 
 def test_non_monotonic_time_raises() -> None:
