@@ -57,6 +57,7 @@ NODE_NAME: str = "ahrs"
 # ROS topics
 IMU_RAW_TOPIC: str = "imu_raw"
 IMU_CAL_TOPIC: str = "imu_calibration"
+IMU_FUSED_TOPIC: str = "imu_fused"
 MAG_TOPIC: str = "magnetic_field"
 
 ACCEL_UPDATE_TOPIC: str = "ahrs/updates/accel"
@@ -94,6 +95,11 @@ class AhrsNode(rclpy.node.Node):
         self._state_pub: rclpy.publisher.Publisher = self.create_publisher(
             msg_type=AhrsStateMsg,
             topic=STATE_TOPIC,
+            qos_profile=qos_profile,
+        )
+        self._imu_fused_pub: rclpy.publisher.Publisher = self.create_publisher(
+            msg_type=ImuMsg,
+            topic=IMU_FUSED_TOPIC,
             qos_profile=qos_profile,
         )
         self._diagnostics_pub: rclpy.publisher.Publisher = self.create_publisher(
@@ -392,6 +398,19 @@ class AhrsNode(rclpy.node.Node):
             stamp=stamp,
             t_filter_ns=t_filter_ns,
         )
+        node: TimelineNode | None = self._replay_engine.ring_buffer.get(t_filter_ns)
+        if node is not None and node.imu_packet is not None:
+            imu_frame_id: str = (
+                self._imu_frame_id if self._imu_frame_id else self._params.imu_frame
+            )
+            imu_msg: ImuMsg = _make_imu_fused_msg(
+                stamp=stamp,
+                frame_id=imu_frame_id,
+                state=state,
+                covariance=covariance,
+                imu_packet=node.imu_packet,
+            )
+            self._imu_fused_pub.publish(imu_msg)
         self._state_pub.publish(state_msg)
         self._diagnostics_pub.publish(diag_msg)
         self._broadcast_tf(stamp=stamp, state=state)
@@ -574,6 +593,39 @@ def _flatten_row_major(matrix: Sequence[Sequence[float]]) -> list[float]:
     return flattened
 
 
+def _add_matrices(
+    left: Sequence[Sequence[float]],
+    right: Sequence[Sequence[float]],
+) -> list[list[float]]:
+    rows: int = len(left)
+    if rows != len(right) or any(len(row) != rows for row in left):
+        raise ValueError("matrices must have matching square dimensions")
+    if any(len(row) != rows for row in right):
+        raise ValueError("matrices must have matching square dimensions")
+    summed: list[list[float]] = []
+    row_idx: int
+    for row_idx in range(rows):
+        row: list[float] = []
+        col_idx: int
+        for col_idx in range(rows):
+            row.append(float(left[row_idx][col_idx] + right[row_idx][col_idx]))
+        summed.append(row)
+    return summed
+
+
+def _covariance_block(
+    matrix: Sequence[Sequence[float]],
+    block_slice: slice,
+) -> list[list[float]]:
+    if block_slice.start is None or block_slice.stop is None:
+        raise ValueError("block_slice must have explicit bounds")
+    if block_slice.step not in (None, 1):
+        raise ValueError("block_slice must have unit step")
+    start: int = block_slice.start
+    stop: int = block_slice.stop
+    return [list(row[start:stop]) for row in matrix[start:stop]]
+
+
 def _stamp_from_ns(t_ns: int) -> TimeMsg:
     sec: int = int(t_ns // 1_000_000_000)
     nanosec: int = int(t_ns % 1_000_000_000)
@@ -595,6 +647,57 @@ def _quat_to_msg(values: Sequence[float]) -> QuaternionMsg:
         z=float(values[3]),
         w=float(values[0]),
     )
+
+
+def _make_imu_fused_msg(
+    *,
+    stamp: TimeMsg,
+    frame_id: str,
+    state: AhrsState,
+    covariance: AhrsCovariance,
+    imu_packet: ImuPacket,
+) -> ImuMsg:
+    msg: ImuMsg = ImuMsg()
+    msg.header.stamp = stamp
+    msg.header.frame_id = frame_id
+
+    rotation_bi: Sequence[Sequence[float]]
+    rotation_bi, _ = state.T_BI
+    quat_bi: list[float] = MathQuaternion.from_matrix(rotation_bi)
+    quat_wi: list[float] = MathQuaternion.multiply(state.q_WB, quat_bi)
+    msg.orientation = _quat_to_msg(quat_wi)
+
+    omega: list[float] = [
+        float(imu_packet.z_omega[idx] - state.b_g[idx]) for idx in range(3)
+    ]
+    accel: list[float] = [
+        float(imu_packet.z_accel[idx] - state.b_a[idx]) for idx in range(3)
+    ]
+    msg.angular_velocity = _vector3_to_msg(omega)
+    msg.linear_acceleration = _vector3_to_msg(accel)
+
+    P: list[list[float]] = covariance.as_matrix()
+    dtheta_cov: list[list[float]] = _covariance_block(
+        P,
+        StateMapping.slice_delta_theta(),
+    )
+    dbg_cov: list[list[float]] = _covariance_block(
+        P,
+        StateMapping.slice_delta_b_g(),
+    )
+    dba_cov: list[list[float]] = _covariance_block(
+        P,
+        StateMapping.slice_delta_b_a(),
+    )
+
+    msg.orientation_covariance = _flatten_row_major(dtheta_cov)
+    msg.angular_velocity_covariance = _flatten_row_major(
+        _add_matrices(dbg_cov, imu_packet.R_omega)
+    )
+    msg.linear_acceleration_covariance = _flatten_row_major(
+        _add_matrices(dba_cov, imu_packet.R_accel)
+    )
+    return msg
 
 
 def _to_transform_stamped(

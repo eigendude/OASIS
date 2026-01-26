@@ -49,6 +49,7 @@ class ControlDescriptions:
                 ("ahrs/updates/gyro", f"{host_id}/ahrs/updates/gyro"),
                 ("ahrs/updates/mag", f"{host_id}/ahrs/updates/mag"),
                 ("imu_calibration", f"{host_id}/imu_calibration"),
+                ("imu_fused", f"{host_id}/imu_fused"),
                 ("imu_raw", f"{host_id}/imu_raw"),
                 ("magnetic_field", f"{host_id}/magnetic_field"),
                 ("odom", f"{host_id}/odom"),
