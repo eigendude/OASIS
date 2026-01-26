@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+from oasis_control.localization.mounting.math_utils.se3 import SE3
 from oasis_control.localization.mounting.mounting_types.diagnostics import Diagnostics
 from oasis_control.localization.mounting.mounting_types.imu_packet import (
     ImuCalibrationPrior,
@@ -19,7 +20,6 @@ from oasis_control.localization.mounting.mounting_types.imu_packet import (
 from oasis_control.localization.mounting.mounting_types.imu_packet import ImuPacket
 from oasis_control.localization.mounting.mounting_types.keyframe import Keyframe
 from oasis_control.localization.mounting.mounting_types.mag_packet import MagPacket
-from oasis_control.localization.mounting.mounting_types.result_snapshot import SE3
 from oasis_control.localization.mounting.mounting_types.result_snapshot import (
     ResultSnapshot,
 )

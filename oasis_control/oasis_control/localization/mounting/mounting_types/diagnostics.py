@@ -108,7 +108,7 @@ class Diagnostics:
             "dropped_packets": self.dropped_packets,
         }
         if self.update_report is not None:
-            data["update_report"] = self.update_report
+            data["update_report"] = self.update_report.to_dict()
         return data
 
 

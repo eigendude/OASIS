@@ -78,6 +78,29 @@ def test_imu_packet_shape_validation() -> None:
         )
 
 
+def test_imu_packet_calibration_frame_mismatch() -> None:
+    """Ensure calibration frame mismatch raises an error."""
+    prior: ImuCalibrationPrior = ImuCalibrationPrior(
+        valid=True,
+        frame_id="imu_other",
+        b_a_mps2=np.array([0.1, -0.2, 0.05], dtype=np.float64),
+        A_a=np.eye(3, dtype=np.float64),
+        b_g_rads=np.array([0.01, 0.02, -0.01], dtype=np.float64),
+        cov_a_params=np.eye(12, dtype=np.float64),
+        cov_b_g=np.eye(3, dtype=np.float64),
+    )
+    with pytest.raises(ValueError):
+        ImuPacket(
+            t_meas_ns=100,
+            frame_id="imu",
+            omega_raw_rads=np.array([0.0, 0.1, 0.2], dtype=np.float64),
+            cov_omega_raw=np.eye(3, dtype=np.float64),
+            a_raw_mps2=np.array([0.0, 0.0, 9.81], dtype=np.float64),
+            cov_a_raw=np.eye(3, dtype=np.float64),
+            calibration=prior,
+        )
+
+
 def test_imu_calibration_prior_finite_validation() -> None:
     """Ensure finite validation rejects NaN values."""
     A_a: np.ndarray = np.eye(3, dtype=np.float64)

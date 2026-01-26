@@ -15,7 +15,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from oasis_control.localization.mounting.mounting_types.result_snapshot import SE3
+from oasis_control.localization.mounting.math_utils.se3 import SE3
 from oasis_control.localization.mounting.mounting_types.result_snapshot import (
     ResultSnapshot,
 )
@@ -23,7 +23,7 @@ from oasis_control.localization.mounting.mounting_types.result_snapshot import (
 
 def _make_se3() -> SE3:
     """Create a valid SE3 pose for tests."""
-    return SE3(R=np.eye(3, dtype=np.float64), t_m=np.zeros(3, dtype=np.float64))
+    return SE3(R=np.eye(3, dtype=np.float64), p=np.zeros(3, dtype=np.float64))
 
 
 def test_result_snapshot_validation() -> None:

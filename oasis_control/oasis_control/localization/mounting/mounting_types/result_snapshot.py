@@ -17,32 +17,7 @@ from typing import Any
 
 import numpy as np
 
-
-@dataclass(frozen=True)
-class SE3:
-    """Rigid transform with rotation matrix and translation vector.
-
-    Attributes:
-        R: Rotation matrix from source to target
-        t_m: Translation vector in meters
-    """
-
-    R: np.ndarray
-    t_m: np.ndarray
-
-    def __post_init__(self) -> None:
-        """Validate rotation and translation shapes."""
-        R: np.ndarray = _as_float_array(self.R, "R", (3, 3))
-        t_m: np.ndarray = _as_float_array(self.t_m, "t_m", (3,))
-        object.__setattr__(self, "R", R)
-        object.__setattr__(self, "t_m", t_m)
-
-    def as_matrix(self) -> np.ndarray:
-        """Return a 4x4 homogeneous transform matrix."""
-        matrix: np.ndarray = np.eye(4, dtype=np.float64)
-        matrix[:3, :3] = self.R
-        matrix[:3, 3] = self.t_m
-        return matrix
+from oasis_control.localization.mounting.math_utils.se3 import SE3
 
 
 @dataclass(frozen=True)
@@ -64,7 +39,8 @@ class ResultSnapshot:
         A_a: Accelerometer scale/misalignment estimate
         b_g_rads: Gyroscope bias estimate in rad/s
         b_m_T: Magnetometer bias estimate in tesla when available
-        R_m: Magnetometer soft-iron matrix when available
+        R_m: Adaptive magnetometer direction-residual noise covariance (unitless^2
+            ≈ rad^2) when available
         segment_count: Number of steady segments processed
         keyframe_count: Number of keyframes in the estimate
         diversity_tilt_deg: Tilt diversity in degrees when available

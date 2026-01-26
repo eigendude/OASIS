@@ -74,6 +74,20 @@ class UpdateReport:
         if self.message is not None and not isinstance(self.message, str):
             raise ValueError("message must be a str or None")
 
+    def to_dict(self) -> dict[str, object]:
+        """Return a dictionary representation of the update report."""
+        return {
+            "did_update": self.did_update,
+            "iterations": self.iterations,
+            "step_norm": self.step_norm,
+            "residual_rms": self.residual_rms,
+            "need_more_tilt": self.need_more_tilt,
+            "need_more_yaw": self.need_more_yaw,
+            "dropped_segments": self.dropped_segments,
+            "dropped_mags": self.dropped_mags,
+            "message": self.message,
+        }
+
 
 def _require_finite_non_negative(value: float, name: str) -> None:
     """Require a finite, non-negative scalar value."""

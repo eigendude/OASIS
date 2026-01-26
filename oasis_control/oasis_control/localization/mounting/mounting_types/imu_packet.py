@@ -90,6 +90,8 @@ class ImuPacket:
             raise ValueError("t_meas_ns must be an int")
         if not isinstance(self.frame_id, str):
             raise ValueError("frame_id must be a str")
+        if self.calibration is not None and self.calibration.frame_id != self.frame_id:
+            raise ValueError("calibration frame_id must match frame_id")
 
         omega_raw_rads: np.ndarray = _as_float_array(
             self.omega_raw_rads,

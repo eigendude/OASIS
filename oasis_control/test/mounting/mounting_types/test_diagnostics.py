@@ -50,7 +50,7 @@ def test_diagnostics_to_dict() -> None:
     )
     data: dict[str, object] = diag.to_dict()
     assert data["pipeline_state"] == "running"
-    assert data["update_report"] == report
+    assert data["update_report"] == report.to_dict()
 
 
 def test_diagnostics_validation() -> None:
