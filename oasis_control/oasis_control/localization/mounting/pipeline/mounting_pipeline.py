@@ -432,6 +432,27 @@ class MountingPipeline:
         """Return True when initialization has completed."""
         return self._initialized
 
+    def steady_window_is_steady(self) -> bool:
+        """Return True when the steady detector window is steady."""
+        return self._steady_detector.window_is_steady()
+
+    def gravity_direction_W_unit(self) -> np.ndarray | None:
+        """Return the current gravity direction estimate in the world frame."""
+        if not self._initialized:
+            return None
+        return np.array(self._state.g_W_unit, dtype=np.float64)
+
+    def current_flags(self) -> FlagsYaml | None:
+        """Return the current snapshot flags when initialized."""
+        if not self._initialized:
+            return None
+        return FlagsYaml(
+            anchored=self._state.anchored,
+            mag_reference_invalid=self._state.mag_reference_invalid,
+            mag_disturbance_detected=False,
+            mag_dir_prior_from_driver_cov=self._params.mag.use_driver_cov_as_prior,
+        )
+
     def keyframe_count(self) -> int:
         """Return the current number of keyframes."""
         return len(self._keyframe_cluster.keyframes())

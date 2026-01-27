@@ -97,6 +97,10 @@ class SteadyDetector:
         self._steady_enter_ns = None
         self._has_emitted = False
 
+    def window_is_steady(self) -> bool:
+        """Return True when the current window satisfies steady criteria."""
+        return self._window_is_steady()
+
     def push(
         self,
         *,
