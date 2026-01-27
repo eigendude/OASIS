@@ -633,6 +633,25 @@ class MountingPipeline:
             anchored=anchored,
             mag_reference_invalid=mag_reference_invalid,
         )
+        # Seed keyframe attitudes for segments captured during bootstrap
+        keyframes: tuple[Keyframe, ...] = self._keyframe_cluster.keyframes()
+        if keyframes:
+            attitudes: list[KeyframeAttitude] = []
+            keyframe: Keyframe
+            for keyframe in keyframes:
+                q_wb: np.ndarray = seed_keyframe_attitude_from_measurements(
+                    keyframe.gravity_unit_mean_dir_I(),
+                    keyframe.mag_mean_dir_M,
+                    self._state.mount.q_BI_wxyz,
+                    self._state.mount.q_BM_wxyz,
+                )
+                attitudes.append(
+                    KeyframeAttitude(
+                        keyframe_id=keyframe.keyframe_id,
+                        q_WB_wxyz=q_wb,
+                    )
+                )
+            self._state = self._state.replace(keyframes=tuple(attitudes))
         self._initialized = True
 
     def _ensure_tf_publisher(self) -> None:
