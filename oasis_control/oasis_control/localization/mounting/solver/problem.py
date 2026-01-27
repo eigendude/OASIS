@@ -119,14 +119,9 @@ def build_linearization(
     state: MountingState,
     keyframes: tuple[Keyframe, ...],
     params: MountingParams | None,
-    *,
-    include_translation_vars: bool,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], float, dict[str, Any]]:
     """Build the Gauss-Newton linearization for the current state."""
-    mapping: StateMapping = StateMapping.from_state(
-        state,
-        include_translation_vars=include_translation_vars,
-    )
+    mapping: StateMapping = StateMapping.from_state(state)
     dim: int = mapping.dim()
     H: NDArray[np.float64] = np.zeros((dim, dim), dtype=np.float64)
     b: NDArray[np.float64] = np.zeros(dim, dtype=np.float64)

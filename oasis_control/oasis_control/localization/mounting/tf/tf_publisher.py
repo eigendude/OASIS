@@ -17,7 +17,6 @@ import numpy as np
 from numpy.typing import NDArray
 
 from oasis_control.localization.mounting.math_utils.quat import Quaternion
-from oasis_control.localization.mounting.math_utils.se3 import SE3
 
 
 _ROT_DET_TOL: float = 1e-6
@@ -36,7 +35,7 @@ class PublishedTransform:
         t_ns: Timestamp for the transform in nanoseconds
         parent_frame: Parent frame ID
         child_frame: Child frame ID
-        translation_m: Translation vector in meters
+        translation_m: Translation vector in meters, always zeros
         quaternion_wxyz: Unit quaternion in [w, x, y, z] order
         is_static: True when the transform should be latched as static
     """
@@ -61,6 +60,8 @@ class PublishedTransform:
             raise TfPublisherError("translation_m must be shape (3,)")
         if not np.all(np.isfinite(translation_m)):
             raise TfPublisherError("translation_m must be finite")
+        if np.any(translation_m != 0.0):
+            raise TfPublisherError("translation_m must be zero")
         quaternion_wxyz: NDArray[np.float64] = np.asarray(
             self.quaternion_wxyz,
             dtype=float,
@@ -130,8 +131,8 @@ class TfPublisher:
         self,
         *,
         t_ns: int,
-        T_BI: object,
-        T_BM: object,
+        R_BI: object,
+        R_BM: object,
         is_stable: bool,
         saved: bool,
     ) -> list[PublishedTransform]:
@@ -147,14 +148,11 @@ class TfPublisher:
         if not isinstance(saved, bool):
             raise TfPublisherError("saved must be a bool")
 
-        R_BI: NDArray[np.float64]
-        p_BI: NDArray[np.float64]
-        R_BI, p_BI = _extract_transform(T_BI, "T_BI")
+        R_BI_mat: NDArray[np.float64] = _extract_rotation(R_BI, "R_BI")
         mag_frame: str | None = self._mag_frame
-        R_BM: NDArray[np.float64] | None = None
-        p_BM: NDArray[np.float64] | None = None
+        R_BM_mat: NDArray[np.float64] | None = None
         if mag_frame is not None:
-            R_BM, p_BM = _extract_transform(T_BM, "T_BM")
+            R_BM_mat = _extract_rotation(R_BM, "R_BM")
 
         outputs: list[PublishedTransform] = []
 
@@ -165,10 +163,8 @@ class TfPublisher:
                     parent_frame=self._base_frame,
                     imu_frame=self._imu_frame,
                     mag_frame=mag_frame,
-                    R_BI=R_BI,
-                    p_BI=p_BI,
-                    R_BM=R_BM,
-                    p_BM=p_BM,
+                    R_BI=R_BI_mat,
+                    R_BM=R_BM_mat,
                     is_static=False,
                 )
             )
@@ -187,8 +183,7 @@ class TfPublisher:
                         t_ns=t_ns,
                         parent_frame=self._base_frame,
                         child_frame=imu_frame,
-                        R=R_BI,
-                        p=p_BI,
+                        R=R_BI_mat,
                         is_static=True,
                     )
                 )
@@ -196,15 +191,14 @@ class TfPublisher:
             if mag_frame is not None and (
                 republish or mag_frame not in self._published_static_children
             ):
-                if R_BM is None or p_BM is None:
-                    raise TfPublisherError("R_BM and p_BM are required with mag_frame")
+                if R_BM_mat is None:
+                    raise TfPublisherError("R_BM is required with mag_frame")
                 outputs.append(
                     _transform_to_published(
                         t_ns=t_ns,
                         parent_frame=self._base_frame,
                         child_frame=mag_frame,
-                        R=R_BM,
-                        p=p_BM,
+                        R=R_BM_mat,
                         is_static=True,
                     )
                 )
@@ -221,9 +215,7 @@ def _build_transforms(
     imu_frame: str,
     mag_frame: str | None,
     R_BI: NDArray[np.float64],
-    p_BI: NDArray[np.float64],
     R_BM: NDArray[np.float64] | None,
-    p_BM: NDArray[np.float64] | None,
     is_static: bool,
 ) -> list[PublishedTransform]:
     """Build published transforms for IMU and magnetometer frames."""
@@ -234,20 +226,18 @@ def _build_transforms(
             parent_frame=parent_frame,
             child_frame=imu_frame,
             R=R_BI,
-            p=p_BI,
             is_static=is_static,
         )
     )
     if mag_frame is not None:
-        if R_BM is None or p_BM is None:
-            raise TfPublisherError("R_BM and p_BM are required with mag_frame")
+        if R_BM is None:
+            raise TfPublisherError("R_BM is required with mag_frame")
         transforms.append(
             _transform_to_published(
                 t_ns=t_ns,
                 parent_frame=parent_frame,
                 child_frame=mag_frame,
                 R=R_BM,
-                p=p_BM,
                 is_static=is_static,
             )
         )
@@ -260,61 +250,52 @@ def _transform_to_published(
     parent_frame: str,
     child_frame: str,
     R: NDArray[np.float64],
-    p: NDArray[np.float64],
     is_static: bool,
 ) -> PublishedTransform:
-    """Convert rotation and translation to a PublishedTransform."""
+    """Convert rotation to a PublishedTransform with zero translation."""
     quaternion: Quaternion = Quaternion.from_matrix(R).normalized()
     wxyz: NDArray[np.float64] = quaternion.to_wxyz()
     return PublishedTransform(
         t_ns=t_ns,
         parent_frame=parent_frame,
         child_frame=child_frame,
-        translation_m=p,
+        translation_m=np.zeros(3, dtype=np.float64),
         quaternion_wxyz=wxyz,
         is_static=is_static,
     )
 
 
-def _extract_transform(
+def _extract_rotation(
     transform: object,
     name: str,
-) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-    """Extract rotation and translation arrays from a transform-like object."""
-    if isinstance(transform, SE3):
-        R: NDArray[np.float64] = transform.R
-        p: NDArray[np.float64] = transform.p
-        return _validate_transform(R, p, name)
-    if hasattr(transform, "R") and hasattr(transform, "p"):
+) -> NDArray[np.float64]:
+    """Extract a rotation matrix from a transform-like object."""
+    if hasattr(transform, "R"):
         R_attr: NDArray[np.float64] = np.asarray(getattr(transform, "R"), dtype=float)
-        p_attr: NDArray[np.float64] = np.asarray(getattr(transform, "p"), dtype=float)
-        return _validate_transform(R_attr, p_attr, name)
-    raise TfPublisherError(f"{name} must provide R and p attributes")
+        return _validate_rotation(R_attr, name)
+    R_direct: NDArray[np.float64] = np.asarray(transform, dtype=float)
+    if R_direct.shape != (3, 3):
+        raise TfPublisherError(f"{name} must be a 3x3 rotation matrix")
+    return _validate_rotation(R_direct, name)
 
 
-def _validate_transform(
+def _validate_rotation(
     R: NDArray[np.float64],
-    p: NDArray[np.float64],
     name: str,
-) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-    """Validate rotation and translation arrays for a transform."""
+) -> NDArray[np.float64]:
+    """Validate rotation arrays for a transform."""
     R_mat: NDArray[np.float64] = np.asarray(R, dtype=float)
-    p_vec: NDArray[np.float64] = np.asarray(p, dtype=float)
     if R_mat.shape != (3, 3):
         raise TfPublisherError(f"{name}.R must be shape (3, 3)")
-    if p_vec.shape != (3,):
-        raise TfPublisherError(f"{name}.p must be shape (3,)")
     if not np.all(np.isfinite(R_mat)):
         raise TfPublisherError(f"{name}.R must be finite")
-    if not np.all(np.isfinite(p_vec)):
-        raise TfPublisherError(f"{name}.p must be finite")
     det: float = float(np.linalg.det(R_mat))
     if abs(det - 1.0) > _ROT_DET_TOL:
         raise TfPublisherError(f"{name}.R must have determinant 1")
     ident: NDArray[np.float64] = R_mat @ R_mat.T
     if not np.allclose(ident, np.eye(3), rtol=0.0, atol=_ROT_ORTH_TOL):
         raise TfPublisherError(f"{name}.R must be orthonormal")
-    return R_mat, p_vec
+    return R_mat
 
 
 def _require_frame(frame: str, name: str) -> None:

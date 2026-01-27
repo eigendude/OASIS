@@ -132,25 +132,17 @@ class MountEstimate:
     Attributes:
         q_BI_wxyz: IMU-to-body quaternion (w, x, y, z)
         q_BM_wxyz: Magnetometer-to-body quaternion (w, x, y, z)
-        p_BI_m: IMU position in the body frame (meters)
-        p_BM_m: Magnetometer position in the body frame (meters)
     """
 
     q_BI_wxyz: np.ndarray
     q_BM_wxyz: np.ndarray
-    p_BI_m: np.ndarray
-    p_BM_m: np.ndarray
 
     def __post_init__(self) -> None:
         """Validate mounting estimate parameters."""
         q_BI_wxyz: np.ndarray = _unit_quat_wxyz("q_BI_wxyz", self.q_BI_wxyz)
         q_BM_wxyz: np.ndarray = _unit_quat_wxyz("q_BM_wxyz", self.q_BM_wxyz)
-        p_BI_m: np.ndarray = _as_f64("p_BI_m", self.p_BI_m, (3,))
-        p_BM_m: np.ndarray = _as_f64("p_BM_m", self.p_BM_m, (3,))
         object.__setattr__(self, "q_BI_wxyz", q_BI_wxyz)
         object.__setattr__(self, "q_BM_wxyz", q_BM_wxyz)
-        object.__setattr__(self, "p_BI_m", p_BI_m)
-        object.__setattr__(self, "p_BM_m", p_BM_m)
 
 
 @dataclass(frozen=True)
@@ -229,8 +221,6 @@ class MountingState:
         mount: MountEstimate = MountEstimate(
             q_BI_wxyz=np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64),
             q_BM_wxyz=np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64),
-            p_BI_m=np.zeros(3, dtype=np.float64),
-            p_BM_m=np.zeros(3, dtype=np.float64),
         )
         imu: ImuNuisance = ImuNuisance(
             b_a_mps2=np.zeros(3, dtype=np.float64),

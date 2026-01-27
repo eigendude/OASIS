@@ -99,29 +99,23 @@ class FlagsYaml:
 
 
 @dataclass(frozen=True)
-class TransformYaml:
-    """Rigid-body transform from a sensor frame into the body frame.
+class MountRotationYaml:
+    """Rotation from a sensor frame into the body frame.
 
     Attributes:
-        translation_m: Translation in meters, ordered [x, y, z]
         quaternion_wxyz: Unit quaternion in [w, x, y, z] order
         rot_cov_rad2: 3x3 rotation covariance in tangent space, rad^2
     """
 
-    translation_m: np.ndarray
     quaternion_wxyz: np.ndarray
     rot_cov_rad2: np.ndarray
 
     def __post_init__(self) -> None:
         """Coerce array types and validate shapes."""
-        translation: np.ndarray = _coerce_array(
-            self.translation_m, "translation_m", (3,)
-        )
         quaternion: np.ndarray = _coerce_array(
             self.quaternion_wxyz, "quaternion_wxyz", (4,)
         )
         rot_cov: np.ndarray = _coerce_array(self.rot_cov_rad2, "rot_cov_rad2", (3, 3))
-        object.__setattr__(self, "translation_m", translation)
         object.__setattr__(self, "quaternion_wxyz", quaternion)
         object.__setattr__(self, "rot_cov_rad2", rot_cov)
 
@@ -293,8 +287,8 @@ class MountingSnapshotYaml:
         format_version: Snapshot format version, must be 1
         frames: Frame identifiers for body, IMU, and mag
         flags: Boolean flags describing solver state
-        T_BI: IMU-to-body transform
-        T_BM: Magnetometer-to-body transform
+        R_BI: IMU-to-body rotation
+        R_BM: Magnetometer-to-body rotation
         imu: IMU nuisance parameters
         mag: Magnetometer nuisance parameters
         quality: Quality metadata
@@ -303,8 +297,8 @@ class MountingSnapshotYaml:
     format_version: int
     frames: FramesYaml
     flags: FlagsYaml
-    T_BI: TransformYaml
-    T_BM: TransformYaml
+    R_BI: MountRotationYaml
+    R_BM: MountRotationYaml
     imu: ImuNuisanceYaml
     mag: MagNuisanceYaml
     quality: QualityYaml
@@ -318,8 +312,8 @@ class MountingSnapshotYaml:
             raise MountingYamlError("format_version must be 1")
         object.__setattr__(self, "frames", _require_frames(self.frames))
         object.__setattr__(self, "flags", _require_flags(self.flags))
-        object.__setattr__(self, "T_BI", _require_transform(self.T_BI, "T_BI"))
-        object.__setattr__(self, "T_BM", _require_transform(self.T_BM, "T_BM"))
+        object.__setattr__(self, "R_BI", _require_mount(self.R_BI, "R_BI"))
+        object.__setattr__(self, "R_BM", _require_mount(self.R_BM, "R_BM"))
         object.__setattr__(self, "imu", _require_imu(self.imu))
         object.__setattr__(self, "mag", _require_mag(self.mag))
         object.__setattr__(self, "quality", _require_quality(self.quality))
@@ -328,8 +322,8 @@ class MountingSnapshotYaml:
 def snapshot_to_dict(snapshot: MountingSnapshotYaml) -> dict[str, object]:
     """Convert a snapshot to a YAML-safe dictionary."""
     mounts: dict[str, object] = {
-        "T_BI": _transform_to_dict(snapshot.T_BI),
-        "T_BM": _transform_to_dict(snapshot.T_BM),
+        "R_BI": _mount_to_dict(snapshot.R_BI),
+        "R_BM": _mount_to_dict(snapshot.R_BM),
     }
     nuisance: dict[str, object] = {
         "imu": _imu_to_dict(snapshot.imu),
@@ -380,14 +374,14 @@ def snapshot_from_dict(data: dict[str, object]) -> MountingSnapshotYaml:
     frames: FramesYaml = _frames_from_dict(_require_mapping(data["frames"], "frames"))
     flags: FlagsYaml = _flags_from_dict(_require_mapping(data["flags"], "flags"))
     mounts_data: dict[str, object] = _require_mapping(data["mounts"], "mounts")
-    _require_keys("mounts", mounts_data, {"T_BI", "T_BM"})
-    t_bi: TransformYaml = _transform_from_dict(
-        _require_mapping(mounts_data["T_BI"], "mounts.T_BI"),
-        "mounts.T_BI",
+    _require_keys("mounts", mounts_data, {"R_BI", "R_BM"})
+    r_bi: MountRotationYaml = _mount_from_dict(
+        _require_mapping(mounts_data["R_BI"], "mounts.R_BI"),
+        "mounts.R_BI",
     )
-    t_bm: TransformYaml = _transform_from_dict(
-        _require_mapping(mounts_data["T_BM"], "mounts.T_BM"),
-        "mounts.T_BM",
+    r_bm: MountRotationYaml = _mount_from_dict(
+        _require_mapping(mounts_data["R_BM"], "mounts.R_BM"),
+        "mounts.R_BM",
     )
     nuisance_data: dict[str, object] = _require_mapping(data["nuisance"], "nuisance")
     _require_keys("nuisance", nuisance_data, {"imu", "mag"})
@@ -405,8 +399,8 @@ def snapshot_from_dict(data: dict[str, object]) -> MountingSnapshotYaml:
         format_version=format_version,
         frames=frames,
         flags=flags,
-        T_BI=t_bi,
-        T_BM=t_bm,
+        R_BI=r_bi,
+        R_BM=r_bm,
         imu=imu,
         mag=mag,
         quality=quality,
@@ -512,10 +506,10 @@ def _require_flags(value: FlagsYaml) -> FlagsYaml:
     return value
 
 
-def _require_transform(value: TransformYaml, name: str) -> TransformYaml:
-    """Ensure the value is a TransformYaml instance."""
-    if not isinstance(value, TransformYaml):
-        raise MountingYamlError(f"{name} must be TransformYaml")
+def _require_mount(value: MountRotationYaml, name: str) -> MountRotationYaml:
+    """Ensure the value is a MountRotationYaml instance."""
+    if not isinstance(value, MountRotationYaml):
+        raise MountingYamlError(f"{name} must be MountRotationYaml")
     return value
 
 
@@ -584,20 +578,16 @@ def _flags_from_dict(data: dict[str, object]) -> FlagsYaml:
     )
 
 
-def _transform_from_dict(data: dict[str, object], scope: str) -> TransformYaml:
-    """Parse a transform from a dictionary."""
-    _require_keys(scope, data, {"translation_m", "quaternion_wxyz", "rot_cov_rad2"})
-    translation: np.ndarray = _coerce_array(
-        data["translation_m"], f"{scope}.translation_m", (3,)
-    )
+def _mount_from_dict(data: dict[str, object], scope: str) -> MountRotationYaml:
+    """Parse a mount rotation from a dictionary."""
+    _require_keys(scope, data, {"quaternion_wxyz", "rot_cov_rad2"})
     quaternion: np.ndarray = _coerce_array(
         data["quaternion_wxyz"], f"{scope}.quaternion_wxyz", (4,)
     )
     rot_cov: np.ndarray = _coerce_array(
         data["rot_cov_rad2"], f"{scope}.rot_cov_rad2", (3, 3)
     )
-    return TransformYaml(
-        translation_m=translation,
+    return MountRotationYaml(
         quaternion_wxyz=quaternion,
         rot_cov_rad2=rot_cov,
     )
@@ -736,12 +726,11 @@ def _diversity_from_dict(data: dict[str, object]) -> DiversityYaml:
     )
 
 
-def _transform_to_dict(transform: TransformYaml) -> dict[str, object]:
-    """Convert a transform to a YAML-safe dictionary."""
+def _mount_to_dict(mount: MountRotationYaml) -> dict[str, object]:
+    """Convert a mount rotation to a YAML-safe dictionary."""
     return {
-        "translation_m": transform.translation_m.tolist(),
-        "quaternion_wxyz": transform.quaternion_wxyz.tolist(),
-        "rot_cov_rad2": transform.rot_cov_rad2.tolist(),
+        "quaternion_wxyz": mount.quaternion_wxyz.tolist(),
+        "rot_cov_rad2": mount.rot_cov_rad2.tolist(),
     }
 
 

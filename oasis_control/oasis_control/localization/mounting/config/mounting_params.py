@@ -133,18 +133,6 @@ SOLVER_ROBUST_SCALE_A: float | None = None
 SOLVER_ROBUST_SCALE_M: float | None = None
 # Regularization against mount absorbing bias
 SOLVER_REG_MOUNT_VS_BIAS: float | None = None
-# Regularization strength toward translation priors
-SOLVER_REG_TRANSLATION: float | None = None
-
-# IMU translation prior in body frame in meters
-MOUNT_P_BI_PRIOR_M: np.ndarray = np.array([0.0, 0.0, 0.0], dtype=np.float64)
-# Mag translation prior in body frame in meters
-MOUNT_P_BM_PRIOR_M: np.ndarray = np.array([0.0, 0.0, 0.0], dtype=np.float64)
-# Baseline between IMU and mag origins in meters
-MOUNT_BASELINE_IM_TO_MAG_M: float | None = None
-# Enable hard baseline constraint
-MOUNT_BASELINE_HARD_ENABLED: bool = False
-
 # Diagnostics publish rate in Hz
 DIAG_PUBLISH_RATE_HZ: float | None = None
 # Track and report time sync slop
@@ -409,35 +397,6 @@ class SolverParams:
     robust_scale_m: float | None = SOLVER_ROBUST_SCALE_M
     # Regularization against mount absorbing bias
     reg_mount_vs_bias: float | None = SOLVER_REG_MOUNT_VS_BIAS
-    # Regularization strength toward translation priors
-    reg_translation: float | None = SOLVER_REG_TRANSLATION
-
-
-@dataclass(frozen=True)
-class MountParams:
-    """Translation priors and baseline constraints."""
-
-    # IMU translation prior in body frame in meters
-    p_BI_prior_m: np.ndarray = field(default_factory=lambda: MOUNT_P_BI_PRIOR_M.copy())
-    # Mag translation prior in body frame in meters
-    p_BM_prior_m: np.ndarray = field(default_factory=lambda: MOUNT_P_BM_PRIOR_M.copy())
-    # Baseline distance between IMU and mag in meters
-    baseline_im_to_mag_m: float | None = MOUNT_BASELINE_IM_TO_MAG_M
-    # Enable hard baseline constraint
-    baseline_hard_enabled: bool = MOUNT_BASELINE_HARD_ENABLED
-
-    def __post_init__(self) -> None:
-        """Coerce translation priors into float64 numpy arrays."""
-        object.__setattr__(
-            self,
-            "p_BI_prior_m",
-            _as_float_array(self.p_BI_prior_m, "mount.p_BI_prior_m"),
-        )
-        object.__setattr__(
-            self,
-            "p_BM_prior_m",
-            _as_float_array(self.p_BM_prior_m, "mount.p_BM_prior_m"),
-        )
 
 
 @dataclass(frozen=True)
@@ -465,7 +424,6 @@ class MountingParams:
     stability: StabilityParams
     save: SaveParams
     solver: SolverParams
-    mount: MountParams
     diag: DiagParams
 
     @classmethod
@@ -483,7 +441,6 @@ class MountingParams:
             stability=StabilityParams(),
             save=SaveParams(),
             solver=SolverParams(),
-            mount=MountParams(),
             diag=DiagParams(),
         )
 
@@ -555,28 +512,6 @@ class MountingParams:
         _validate_optional_non_negative(
             self.solver.reg_mount_vs_bias, "solver.reg_mount_vs_bias"
         )
-        _validate_optional_non_negative(
-            self.solver.reg_translation, "solver.reg_translation"
-        )
-
-        _as_float_array(self.mount.p_BI_prior_m, "mount.p_BI_prior_m")
-        _as_float_array(self.mount.p_BM_prior_m, "mount.p_BM_prior_m")
-        if self.mount.baseline_hard_enabled:
-            if self.mount.baseline_im_to_mag_m is None:
-                raise MountingParamsError(
-                    "mount.baseline_im_to_mag_m must be set when "
-                    "mount.baseline_hard_enabled is true"
-                )
-            _require_positive(
-                self.mount.baseline_im_to_mag_m,
-                "mount.baseline_im_to_mag_m",
-            )
-        else:
-            if self.mount.baseline_im_to_mag_m is not None:
-                _require_positive(
-                    self.mount.baseline_im_to_mag_m,
-                    "mount.baseline_im_to_mag_m",
-                )
 
         _validate_optional_positive(self.diag.publish_rate_hz, "diag.publish_rate_hz")
 

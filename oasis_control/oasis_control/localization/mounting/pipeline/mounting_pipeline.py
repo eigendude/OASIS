@@ -25,7 +25,6 @@ from oasis_control.localization.mounting.config.mounting_config import MountingC
 from oasis_control.localization.mounting.config.mounting_params import MountingParams
 from oasis_control.localization.mounting.config.mounting_params import SteadyParams
 from oasis_control.localization.mounting.math_utils.quat import Quaternion
-from oasis_control.localization.mounting.math_utils.se3 import SE3
 from oasis_control.localization.mounting.models.anchor_model import AnchorModel
 from oasis_control.localization.mounting.models.diversity_metrics import (
     gravity_max_angle_deg,
@@ -73,8 +72,8 @@ from oasis_control.localization.mounting.storage.yaml_format import FramesYaml
 from oasis_control.localization.mounting.storage.yaml_format import ImuNuisanceYaml
 from oasis_control.localization.mounting.storage.yaml_format import MagNuisanceYaml
 from oasis_control.localization.mounting.storage.yaml_format import MountingSnapshotYaml
+from oasis_control.localization.mounting.storage.yaml_format import MountRotationYaml
 from oasis_control.localization.mounting.storage.yaml_format import QualityYaml
-from oasis_control.localization.mounting.storage.yaml_format import TransformYaml
 from oasis_control.localization.mounting.storage.yaml_format import snapshot_to_dict
 from oasis_control.localization.mounting.tf.stability import RotationStabilityTracker
 from oasis_control.localization.mounting.tf.stability import StabilityStatus
@@ -387,18 +386,12 @@ class MountingPipeline:
         if self._initialized:
             self._ensure_tf_publisher()
         if self._initialized and self._tf_publisher is not None:
-            T_BI: SE3 = self._transform_from_state(
-                self._state.mount.q_BI_wxyz,
-                self._state.mount.p_BI_m,
-            )
-            T_BM: SE3 = self._transform_from_state(
-                self._state.mount.q_BM_wxyz,
-                self._state.mount.p_BM_m,
-            )
+            R_BI: np.ndarray = self._rotation_from_state(self._state.mount.q_BI_wxyz)
+            R_BM: np.ndarray = self._rotation_from_state(self._state.mount.q_BM_wxyz)
             published_transforms = self._tf_publisher.update(
                 t_ns=t_now_ns,
-                T_BI=T_BI,
-                T_BM=T_BM,
+                R_BI=R_BI,
+                R_BM=R_BM,
                 is_stable=is_stable,
                 saved=did_save,
             )
@@ -597,8 +590,6 @@ class MountingPipeline:
         mount: MountEstimate = MountEstimate(
             q_BI_wxyz=self._state.mount.q_BI_wxyz,
             q_BM_wxyz=self._state.mount.q_BM_wxyz,
-            p_BI_m=np.array(self._params.mount.p_BI_prior_m, dtype=np.float64),
-            p_BM_m=np.array(self._params.mount.p_BM_prior_m, dtype=np.float64),
         )
         g_ref: np.ndarray = self._anchor.gravity_ref_W()
         m_ref: np.ndarray | None
@@ -748,7 +739,6 @@ class MountingPipeline:
             self._state,
             keyframes,
             self._params,
-            include_translation_vars=False,
         )
         self._state = updated_state
         self._last_update_metrics = metrics
@@ -761,10 +751,10 @@ class MountingPipeline:
         quat: Quaternion = Quaternion(q_wxyz).normalized()
         return quat.as_matrix()
 
-    def _transform_from_state(self, q_wxyz: np.ndarray, p_m: np.ndarray) -> SE3:
-        """Build an SE3 transform from quaternion and translation."""
+    def _rotation_from_state(self, q_wxyz: np.ndarray) -> np.ndarray:
+        """Return a rotation matrix from a quaternion."""
         quat: Quaternion = Quaternion(q_wxyz).normalized()
-        return SE3.from_quat_translation(quat, p_m)
+        return quat.as_matrix()
 
     def _build_snapshot(
         self,
@@ -775,16 +765,14 @@ class MountingPipeline:
         is_stable: bool,
     ) -> ResultSnapshot:
         """Build a ResultSnapshot from the current state."""
-        T_BI: SE3 = self._transform_from_state(
+        R_BI: np.ndarray = self._rotation_from_state(
             self._state.mount.q_BI_wxyz,
-            self._state.mount.p_BI_m,
         )
-        T_BM: SE3 | None = None
+        R_BM: np.ndarray | None = None
         frame_mag: str | None = None
         if self._mag_frame_id is not None:
-            T_BM = self._transform_from_state(
+            R_BM = self._rotation_from_state(
                 self._state.mount.q_BM_wxyz,
-                self._state.mount.p_BM_m,
             )
             frame_mag = self._mag_frame_id
 
@@ -803,12 +791,10 @@ class MountingPipeline:
             frame_base=self._params.frames.base_frame,
             frame_imu=self._imu_frame_id or "",
             frame_mag=frame_mag,
-            T_BI=T_BI,
-            T_BM=T_BM,
+            R_BI=R_BI,
+            R_BM=R_BM,
             cov_rot_BI=cov_zero,
-            cov_trans_BI=cov_zero,
             cov_rot_BM=cov_zero if frame_mag is not None else None,
-            cov_trans_BM=cov_zero if frame_mag is not None else None,
             b_a_mps2=self._state.imu.b_a_mps2,
             A_a=self._state.imu.A_a,
             b_g_rads=self._state.imu.b_g_rads,
@@ -896,13 +882,11 @@ class MountingPipeline:
         imu_frame: str = self._imu_frame_id or ""
         mag_frame: str = self._mag_frame_id or ""
 
-        T_BI: TransformYaml = TransformYaml(
-            translation_m=self._state.mount.p_BI_m,
+        R_BI: MountRotationYaml = MountRotationYaml(
             quaternion_wxyz=self._state.mount.q_BI_wxyz,
             rot_cov_rad2=np.zeros((3, 3), dtype=np.float64),
         )
-        T_BM: TransformYaml = TransformYaml(
-            translation_m=self._state.mount.p_BM_m,
+        R_BM: MountRotationYaml = MountRotationYaml(
             quaternion_wxyz=self._state.mount.q_BM_wxyz,
             rot_cov_rad2=np.zeros((3, 3), dtype=np.float64),
         )
@@ -958,8 +942,8 @@ class MountingPipeline:
             format_version=1,
             frames=frames,
             flags=flags,
-            T_BI=T_BI,
-            T_BM=T_BM,
+            R_BI=R_BI,
+            R_BM=R_BM,
             imu=imu_yaml,
             mag=mag_yaml,
             quality=quality,

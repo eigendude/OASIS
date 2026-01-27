@@ -41,12 +41,6 @@ BLOCK_NAME_B_G: str = "b_g"
 # Block name for magnetometer bias increment
 BLOCK_NAME_B_M: str = "b_m"
 
-# Block name for IMU translation increment
-BLOCK_NAME_P_BI: str = "p_BI"
-
-# Block name for magnetometer translation increment
-BLOCK_NAME_P_BM: str = "p_BM"
-
 # Prefix for keyframe attitude block names
 BLOCK_NAME_R_WB_PREFIX: str = "R_WB"
 
@@ -98,8 +92,6 @@ class StateMapping:
     def from_state(
         cls,
         state: MountingState,
-        *,
-        include_translation_vars: bool,
     ) -> StateMapping:
         """Construct a state mapping from a mounting state."""
         if not isinstance(state, MountingState):
@@ -124,9 +116,6 @@ class StateMapping:
         _add_block(BLOCK_NAME_B_G, 3)
         if state.mag.b_m_T is not None:
             _add_block(BLOCK_NAME_B_M, 3)
-        if include_translation_vars:
-            _add_block(BLOCK_NAME_P_BI, 3)
-            _add_block(BLOCK_NAME_P_BM, 3)
         keyframe_ids: tuple[int, ...] = state.keyframe_ids()
         for keyframe_id in keyframe_ids:
             _add_block(f"{BLOCK_NAME_R_WB_PREFIX}_{keyframe_id}", 3)
