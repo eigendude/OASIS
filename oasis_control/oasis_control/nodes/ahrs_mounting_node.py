@@ -30,6 +30,15 @@ from sensor_msgs.msg import MagneticField as MagneticFieldMsg
 from oasis_control.localization.mounting.config.mounting_config import MountingConfig
 from oasis_control.localization.mounting.config.mounting_params import MountingParams
 from oasis_control.localization.mounting.math_utils.quat import Quaternion
+from oasis_control.localization.mounting.math_utils.validation import (
+    normalize_quaternion_wxyz,
+)
+from oasis_control.localization.mounting.math_utils.validation import (
+    reshape_covariance as _reshape_covariance,
+)
+from oasis_control.localization.mounting.math_utils.validation import (
+    reshape_matrix as _reshape_matrix,
+)
 from oasis_control.localization.mounting.mounting_types import ImuCalibrationPrior
 from oasis_control.localization.mounting.mounting_types import ImuPacket
 from oasis_control.localization.mounting.mounting_types import MagPacket
@@ -77,6 +86,8 @@ DEFAULT_BOOTSTRAP_SEC: float = 5.0
 # Default persistence save period in seconds
 DEFAULT_SAVE_PERIOD_SEC: float = 2.0
 
+# Pending IMU queue horizon in seconds
+PENDING_DROP_HORIZON_SEC: float = 2.0
 
 ################################################################################
 # ROS node
@@ -178,12 +189,12 @@ class AhrsMountingNode(rclpy.node.Node):
         self._imu_raw_filter_sub.registerCallback(self._record_imu_raw)
         self._imu_cal_filter_sub.registerCallback(self._record_imu_calibration)
 
-
         # Pending IMU messages
         self._pending_raw_stamps: Deque[int] = deque()
         self._pending_raw_counts: Dict[int, int] = {}
         self._pending_cal_stamps: Deque[int] = deque()
         self._pending_cal_counts: Dict[int, int] = {}
+        self._last_seen_time_ns: int | None = None
 
         # Statistics
         self._imu_raw_dropped_no_calibration: int = 0
@@ -205,12 +216,8 @@ class AhrsMountingNode(rclpy.node.Node):
             self._pending_raw_counts,
             t_ns,
         )
-        self._drop_pending_older_than(
-            self._pending_cal_stamps,
-            self._pending_cal_counts,
-            t_ns,
-            count_raw_drops=False,
-        )
+        self._update_last_seen_time(t_ns)
+        self._prune_pending_by_time()
 
     def _record_imu_calibration(self, message: ImuCalibrationMsg) -> None:
         t_ns: int = _time_to_ns(message.header.stamp)
@@ -220,12 +227,8 @@ class AhrsMountingNode(rclpy.node.Node):
             self._pending_cal_counts,
             t_ns,
         )
-        self._drop_pending_older_than(
-            self._pending_raw_stamps,
-            self._pending_raw_counts,
-            t_ns,
-            count_raw_drops=True,
-        )
+        self._update_last_seen_time(t_ns)
+        self._prune_pending_by_time()
 
     def _add_pending_stamp(
         self,
@@ -236,7 +239,33 @@ class AhrsMountingNode(rclpy.node.Node):
         counts[t_ns] = counts.get(t_ns, 0) + 1
         stamps.append(t_ns)
 
-    def _drop_pending_older_than(
+    def _update_last_seen_time(self, t_ns: int) -> None:
+        if self._last_seen_time_ns is None or t_ns > self._last_seen_time_ns:
+            self._last_seen_time_ns = t_ns
+
+    def _prune_pending_by_time(self) -> None:
+        if self._last_seen_time_ns is None:
+            return
+
+        horizon_ns: int = int(PENDING_DROP_HORIZON_SEC * 1e9)
+        cutoff_ns: int = self._last_seen_time_ns - horizon_ns
+        if cutoff_ns <= 0:
+            return
+
+        self._drop_pending_before(
+            self._pending_raw_stamps,
+            self._pending_raw_counts,
+            cutoff_ns,
+            count_raw_drops=True,
+        )
+        self._drop_pending_before(
+            self._pending_cal_stamps,
+            self._pending_cal_counts,
+            cutoff_ns,
+            count_raw_drops=False,
+        )
+
+    def _drop_pending_before(
         self,
         stamps: Deque[int],
         counts: Dict[int, int],
@@ -250,8 +279,8 @@ class AhrsMountingNode(rclpy.node.Node):
                 counts[t_ns] -= 1
                 if counts[t_ns] <= 0:
                     counts.pop(t_ns, None)
-            if count_raw_drops:
-                self._imu_raw_dropped_no_calibration += 1
+                if count_raw_drops:
+                    self._imu_raw_dropped_no_calibration += 1
 
         self._prune_pending(stamps, counts)
 
@@ -277,6 +306,7 @@ class AhrsMountingNode(rclpy.node.Node):
     ) -> None:
         t_imu_ns: int = _time_to_ns(imu_msg.header.stamp)
         t_cal_ns: int = _time_to_ns(cal_msg.header.stamp)
+        self._update_last_seen_time(max(t_imu_ns, t_cal_ns))
 
         slop_ns: int = abs(t_imu_ns - t_cal_ns)
         if slop_ns > self._time_sync_slop_max_ns:
@@ -292,6 +322,7 @@ class AhrsMountingNode(rclpy.node.Node):
             self._pending_cal_counts,
             t_cal_ns,
         )
+        self._prune_pending_by_time()
 
         imu_frame: str = imu_msg.header.frame_id
         cal_frame: str = cal_msg.header.frame_id
@@ -355,7 +386,8 @@ class AhrsMountingNode(rclpy.node.Node):
             bool(flags.mag_dir_prior_from_driver_cov) if flags is not None else False
         )
 
-        residual_rms: float = float(outputs.report.residual_rms or 0.0)
+        # RMS is shared across accel and mag factors when reported
+        shared_residual_rms: float = float(outputs.report.residual_rms or 0.0)
         if snapshot is not None:
             mount_msg: AhrsMountMsg = AhrsMountMsg()
             mount_msg.header.stamp = _ns_to_time_msg(t_ns)
@@ -417,9 +449,9 @@ class AhrsMountingNode(rclpy.node.Node):
             mount_msg.raw_samples = int(self._pipeline.raw_sample_count())
             mount_msg.steady_segments = int(snapshot.segment_count)
             mount_msg.keyframes = int(snapshot.keyframe_count)
-            mount_msg.accel_residual_rms = residual_rms
+            mount_msg.accel_residual_rms = shared_residual_rms
             mount_msg.mag_residual_rms = (
-                residual_rms if snapshot.R_BM is not None else 0.0
+                shared_residual_rms if snapshot.R_BM is not None else 0.0
             )
             mount_msg.gravity_max_angle_deg = float(snapshot.diversity_tilt_deg or 0.0)
             mount_msg.mag_proj_max_angle_deg = float(snapshot.diversity_yaw_deg or 0.0)
@@ -473,9 +505,9 @@ class AhrsMountingNode(rclpy.node.Node):
         diag_msg.mag_factors_dropped = 0
         diag_msg.optimizer_iterations_last = int(outputs.report.iterations)
         diag_msg.optimizer_step_norm_last = float(outputs.report.step_norm or 0.0)
-        diag_msg.accel_residual_rms = residual_rms
+        diag_msg.accel_residual_rms = shared_residual_rms
         diag_msg.mag_residual_rms = (
-            residual_rms if snapshot and snapshot.R_BM is not None else 0.0
+            shared_residual_rms if snapshot and snapshot.R_BM is not None else 0.0
         )
         last_save_ns: int = int(self._pipeline.last_save_time_ns() or 0)
         diag_msg.last_save_unix_ns = last_save_ns
@@ -501,12 +533,13 @@ def _ns_to_time_msg(t_ns: int) -> TimeMsg:
 
 
 def _quat_wxyz_to_msg(wxyz: Sequence[float]) -> QuaternionMsg:
-    quat: QuaternionMsg = QuaternionMsg()
+    array: np.ndarray = normalize_quaternion_wxyz(wxyz)
 
-    quat.w = float(wxyz[0])
-    quat.x = float(wxyz[1])
-    quat.y = float(wxyz[2])
-    quat.z = float(wxyz[3])
+    quat: QuaternionMsg = QuaternionMsg()
+    quat.w = float(array[0])
+    quat.x = float(array[1])
+    quat.y = float(array[2])
+    quat.z = float(array[3])
 
     return quat
 
@@ -549,11 +582,7 @@ def _build_imu_packet(imu_msg: ImuMsg, cal_msg: ImuCalibrationMsg) -> ImuPacket:
         ],
         dtype=np.float64,
     )
-    A_a: np.ndarray = _reshape_covariance(
-        cal_msg.accel_a,
-        (3, 3),
-        "accel_a",
-    )
+    A_a: np.ndarray = _reshape_matrix(cal_msg.accel_a, (3, 3), "accel_a")
     b_g_rads: np.ndarray = np.array(
         [
             cal_msg.gyro_bias.x,
@@ -617,24 +646,6 @@ def _build_mag_packet(message: MagneticFieldMsg) -> MagPacket:
         m_raw_T=m_raw,
         cov_m_raw_T2=cov_m_raw,
     )
-
-
-def _reshape_covariance(
-    values: Sequence[float],
-    shape: tuple[int, int],
-    name: str,
-) -> np.ndarray:
-    array: np.ndarray = np.asarray(values, dtype=np.float64)
-    if array.shape[0] != shape[0] * shape[1]:
-        raise ValueError(f"{name} must have {shape[0] * shape[1]} elements")
-
-    matrix: np.ndarray = array.reshape(shape)
-    if not np.all(np.isfinite(matrix)):
-        raise ValueError(f"{name} must be finite")
-    if np.any(np.diag(matrix) < 0.0):
-        raise ValueError(f"{name} diagonal must be non-negative")
-
-    return matrix
 
 
 def _published_transform_to_msg(transform: PublishedTransform) -> TransformStampedMsg:
