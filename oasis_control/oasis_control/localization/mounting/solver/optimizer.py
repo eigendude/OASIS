@@ -34,8 +34,6 @@ from oasis_control.localization.mounting.state.state_mapping import BLOCK_NAME_B
 from oasis_control.localization.mounting.state.state_mapping import BLOCK_NAME_B_M
 from oasis_control.localization.mounting.state.state_mapping import BLOCK_NAME_G_W
 from oasis_control.localization.mounting.state.state_mapping import BLOCK_NAME_M_W
-from oasis_control.localization.mounting.state.state_mapping import BLOCK_NAME_P_BI
-from oasis_control.localization.mounting.state.state_mapping import BLOCK_NAME_P_BM
 from oasis_control.localization.mounting.state.state_mapping import BLOCK_NAME_R_BI
 from oasis_control.localization.mounting.state.state_mapping import BLOCK_NAME_R_BM
 from oasis_control.localization.mounting.state.state_mapping import StateBlock
@@ -135,16 +133,6 @@ def _apply_delta(
         block_b_m: StateBlock = mapping.block(BLOCK_NAME_B_M)
         b_m_T = b_m_T + delta[block_b_m.sl()]
 
-    p_BI_m: NDArray[np.float64] = state.mount.p_BI_m
-    if mapping.has(BLOCK_NAME_P_BI):
-        block_p_bi: StateBlock = mapping.block(BLOCK_NAME_P_BI)
-        p_BI_m = p_BI_m + delta[block_p_bi.sl()]
-
-    p_BM_m: NDArray[np.float64] = state.mount.p_BM_m
-    if mapping.has(BLOCK_NAME_P_BM):
-        block_p_bm: StateBlock = mapping.block(BLOCK_NAME_P_BM)
-        p_BM_m = p_BM_m + delta[block_p_bm.sl()]
-
     updated_keyframes: list[KeyframeAttitude] = []
     for attitude in state.keyframes:
         block_wb: StateBlock = mapping.keyframe_block(attitude.keyframe_id)
@@ -162,8 +150,6 @@ def _apply_delta(
     mount: MountEstimate = MountEstimate(
         q_BI_wxyz=q_BI_wxyz,
         q_BM_wxyz=q_BM_wxyz,
-        p_BI_m=p_BI_m,
-        p_BM_m=p_BM_m,
     )
     imu: ImuNuisance = ImuNuisance(
         b_a_mps2=b_a_mps2,
@@ -189,12 +175,8 @@ def optimize(
     state: MountingState,
     keyframes: tuple[Keyframe, ...],
     params: MountingParams | None,
-    *,
-    include_translation_vars: bool,
 ) -> tuple[MountingState, dict[str, Any]]:
     """Run Gauss-Newton iterations and return the updated state."""
-    if params is not None and params.mount.baseline_hard_enabled:
-        raise NotImplementedError("TODO: hard baseline constraint is not implemented")
     max_iters: int = 1
     if params is not None and params.solver.max_iters is not None:
         max_iters = int(params.solver.max_iters)
@@ -206,15 +188,11 @@ def optimize(
     metrics: dict[str, Any] = {}
 
     for iteration in range(max_iters):
-        mapping: StateMapping = StateMapping.from_state(
-            current,
-            include_translation_vars=include_translation_vars,
-        )
+        mapping: StateMapping = StateMapping.from_state(current)
         H, b, cost, metrics = build_linearization(
             current,
             keyframes,
             params,
-            include_translation_vars=include_translation_vars,
         )
         if iteration == 0:
             initial_cost = cost
@@ -225,7 +203,6 @@ def optimize(
         current,
         keyframes,
         params,
-        include_translation_vars=include_translation_vars,
     )
 
     report: dict[str, Any] = {

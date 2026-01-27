@@ -56,21 +56,6 @@ class MountingConfig:
         if self.params.steady.window_type not in {"sliding", "tumbling"}:
             raise MountingConfigError("steady.window_type must be sliding or tumbling")
 
-        if self.params.mount.baseline_hard_enabled:
-            if self.params.mount.baseline_im_to_mag_m is None:
-                raise MountingConfigError(
-                    "mount.baseline_im_to_mag_m must be set when "
-                    "mount.baseline_hard_enabled is true"
-                )
-            if self.params.mount.baseline_im_to_mag_m <= 0.0:
-                raise MountingConfigError("mount.baseline_im_to_mag_m must be positive")
-        else:
-            if self.params.mount.baseline_im_to_mag_m is not None:
-                if self.params.mount.baseline_im_to_mag_m <= 0.0:
-                    raise MountingConfigError(
-                        "mount.baseline_im_to_mag_m must be positive"
-                    )
-
     def base_frame(self) -> str:
         """Return the configured base frame name."""
         return self.params.frames.base_frame
@@ -82,11 +67,3 @@ class MountingConfig:
     def mag_topic(self) -> str:
         """Return the configured magnetometer topic name."""
         return self.params.topics.magnetic_field
-
-    def baseline_enabled(self) -> bool:
-        """Return whether the hard baseline constraint is enabled."""
-        return self.params.mount.baseline_hard_enabled
-
-    def baseline_distance_m(self) -> float | None:
-        """Return the IMU-mag baseline distance in meters."""
-        return self.params.mount.baseline_im_to_mag_m

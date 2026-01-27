@@ -34,8 +34,6 @@ def test_mount_estimate_normalizes_quaternion() -> None:
     mount: MountEstimate = MountEstimate(
         q_BI_wxyz=np.array([2.0, 0.0, 0.0, 0.0], dtype=np.float64),
         q_BM_wxyz=np.array([0.0, 0.0, 0.0, -3.0], dtype=np.float64),
-        p_BI_m=np.zeros(3, dtype=np.float64),
-        p_BM_m=np.zeros(3, dtype=np.float64),
     )
     assert np.isclose(np.linalg.norm(mount.q_BI_wxyz), 1.0)
     assert np.isclose(np.linalg.norm(mount.q_BM_wxyz), 1.0)
