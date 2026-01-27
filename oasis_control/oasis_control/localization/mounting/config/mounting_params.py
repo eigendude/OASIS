@@ -58,11 +58,13 @@ STEADY_A_NORM_MAX: float | None = None
 # Scale factor applied to bootstrap gyro covariance
 STEADY_K_OMEGA: float | None = None
 
-# Default gyro noise covariance diagonal in (rad/s)^2
-IMU_OMEGA_COV_DIAG: np.ndarray = np.array([1e-4, 1e-4, 1e-4], dtype=np.float64)
+# Observed driver gyro covariance diag
+# ~[2.30e-06, 3.55e-06, 2.78e-06] (rad/s)^2
+IMU_OMEGA_COV_DIAG: np.ndarray = np.array([5e-06, 5e-06, 5e-06], dtype=np.float64)
 
-# Default accel noise covariance diagonal in (m/s^2)^2
-IMU_ACCEL_COV_DIAG: np.ndarray = np.array([1e-2, 1e-2, 1e-2], dtype=np.float64)
+# Observed driver accel covariance diag
+# ~[2.67e-03, 1.23e-03, 2.20e-03] (m/s^2)^2
+IMU_ACCEL_COV_DIAG: np.ndarray = np.array([3.5e-03, 3.5e-03, 3.5e-03], dtype=np.float64)
 
 # Gravity direction cluster threshold in degrees
 CLUSTER_G_DEG: float = 7.5
