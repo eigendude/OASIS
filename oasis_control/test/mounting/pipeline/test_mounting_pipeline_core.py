@@ -16,6 +16,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
+from typing import cast
 
 import numpy as np
 import pytest
@@ -286,15 +287,84 @@ def test_ring_buffer_tuple_iteration(monkeypatch: pytest.MonkeyPatch) -> None:
         self: TimestampRingBuffer[MagPacket],
     ) -> list[tuple[int, MagPacket]]:
         items: list[Any] = original_iter(self)
-        return [(item.t_ns, item.value) for item in items]
+        return [(cast(int, np.int64(item.t_ns)), item.value) for item in items]
 
     monkeypatch.setattr(TimestampRingBuffer, "iter_time_order", _iter_time_order_tuple)
 
     mag_t_ns: int = 0
     pipeline.ingest_mag(mag_packet=_mag_packet(mag_t_ns))
-    pipeline.ingest_imu_pair(imu_packet=_imu_packet(mag_t_ns))
 
-    assert pipeline._last_mag_used_ns == mag_t_ns
+    times_ns: list[int] = [
+        0,
+        int(0.05e9),
+        int(0.1e9),
+        int(0.15e9),
+        int(0.2e9),
+    ]
+    published: list[PublishedTransform] = []
+    for t_ns in times_ns:
+        pipeline.ingest_imu_pair(imu_packet=_imu_packet(t_ns))
+        result: PipelineOutputs = pipeline.step(t_now_ns=t_ns)
+        published.extend(result.published_transforms)
+
+    assert published
+    child_frames: set[str] = {transform.child_frame for transform in published}
+    assert "mag" in child_frames
+
+
+def test_mag_frame_late_arrival_publishes_static_once() -> None:
+    """Ensure static mag TF publishes after the frame arrives."""
+    params: MountingParams = _pipeline_params(
+        bootstrap_sec=0.05,
+        steady_sec=0.05,
+        stable_window_sec=0.1,
+        stable_rot_thresh_rad=1.0,
+        save_path=None,
+        save_period_sec=10.0,
+    )
+    pipeline: MountingPipeline = MountingPipeline(config=MountingConfig(params))
+
+    imu_times_ns: list[int] = [
+        0,
+        int(0.05e9),
+        int(0.1e9),
+        int(0.15e9),
+        int(0.2e9),
+    ]
+    outputs_before_mag: list[PipelineOutputs] = []
+    for t_ns in imu_times_ns:
+        pipeline.ingest_imu_pair(imu_packet=_imu_packet(t_ns))
+        outputs_before_mag.append(pipeline.step(t_now_ns=t_ns))
+
+    imu_static_transforms: list[PublishedTransform] = [
+        transform
+        for output in outputs_before_mag
+        for transform in output.published_transforms
+        if transform.is_static and transform.child_frame == "imu"
+    ]
+    assert imu_static_transforms
+
+    mag_start_ns: int = int(0.25e9)
+    pipeline.ingest_mag(mag_packet=_mag_packet(mag_start_ns))
+
+    mag_times_ns: list[int] = [
+        mag_start_ns,
+        int(0.3e9),
+        int(0.35e9),
+        int(0.4e9),
+    ]
+    outputs_after_mag: list[PipelineOutputs] = []
+    for t_ns in mag_times_ns:
+        pipeline.ingest_imu_pair(imu_packet=_imu_packet(t_ns))
+        outputs_after_mag.append(pipeline.step(t_now_ns=t_ns))
+
+    mag_static_transforms: list[PublishedTransform] = [
+        transform
+        for output in outputs_after_mag
+        for transform in output.published_transforms
+        if transform.is_static and transform.child_frame == "mag"
+    ]
+    assert len(mag_static_transforms) == 1
 
 
 def test_empty_output_path_disables_save() -> None:

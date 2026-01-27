@@ -475,7 +475,8 @@ class MountingPipeline:
             mag_t_ns: int
             mag: MagPacket
             if isinstance(item, tuple):
-                mag_t_ns, mag = item
+                mag_t_ns_raw, mag = item
+                mag_t_ns = int(mag_t_ns_raw)
             else:
                 mag_t_ns = int(item.t_ns)
                 mag = item.value
