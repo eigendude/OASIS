@@ -68,6 +68,9 @@ IMU_OMEGA_COV_DIAG: np.ndarray = np.array([1e-4, 1e-4, 1e-4], dtype=np.float64)
 # ~[2.67e-03, 1.23e-03, 2.20e-03] (m/s^2)^2
 IMU_ACCEL_COV_DIAG: np.ndarray = np.array([1e-2, 1e-2, 1e-2], dtype=np.float64)
 
+# Units: m/s^2. Meaning: reference gravitational acceleration magnitude
+IMU_GRAVITY_MPS2: float = 9.80665
+
 # Gravity direction cluster threshold in degrees
 CLUSTER_G_DEG: float = 7.5
 # Mag direction cluster threshold in degrees
@@ -298,6 +301,8 @@ class ImuParams:
     accel_cov_diag: np.ndarray = field(
         default_factory=lambda: IMU_ACCEL_COV_DIAG.copy()
     )
+    # Reference gravitational acceleration magnitude in m/s^2
+    gravity_mps2: float = IMU_GRAVITY_MPS2
 
     def __post_init__(self) -> None:
         """Coerce covariance diagonals into float64 numpy arrays."""
@@ -517,6 +522,7 @@ class MountingParams:
 
         _validate_non_negative_array(self.imu.omega_cov_diag, "imu.omega_cov_diag")
         _validate_non_negative_array(self.imu.accel_cov_diag, "imu.accel_cov_diag")
+        _require_positive(self.imu.gravity_mps2, "imu.gravity_mps2")
 
         _validate_optional_non_negative(
             self.cluster.cluster_g_deg, "cluster.cluster_g_deg"

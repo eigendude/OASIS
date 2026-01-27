@@ -38,6 +38,9 @@ def _segment_from_dirs(
     gravity_unit: np.ndarray = gravity_dir_I / float(np.linalg.norm(gravity_dir_I))
     a_mean: np.ndarray = -gravity_unit * 9.81
     cov: np.ndarray = np.eye(3, dtype=np.float64) * 1e-3
+    omega_raw: np.ndarray = np.zeros(3, dtype=np.float64)
+    accel_raw: np.ndarray = a_mean.copy()
+    cov_raw: np.ndarray = np.eye(3, dtype=np.float64) * 1e-3
     if mag_dir_M is None:
         m_mean: np.ndarray | None = None
         cov_m: np.ndarray | None = None
@@ -55,6 +58,10 @@ def _segment_from_dirs(
         mag_frame_id=mag_frame_id,
         a_mean_mps2=a_mean,
         cov_a=cov,
+        omega_mean_rads_raw=omega_raw,
+        cov_omega_raw=cov_raw,
+        accel_mean_mps2_raw=accel_raw,
+        cov_accel_raw=cov_raw,
         m_mean_T=m_mean,
         cov_m=cov_m,
         sample_count=10,
