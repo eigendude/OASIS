@@ -32,6 +32,12 @@ class Keyframe:
         gravity_mean_dir_I: Mean of unit gravity directions in the IMU frame
         gravity_cov_dir_I: Covariance of gravity directions in the IMU frame
         gravity_weight: Number of segments contributing to gravity statistics
+        omega_mean_rads_raw: Mean raw gyro sample in rad/s
+        cov_omega_raw: Raw gyro covariance in (rad/s)^2
+        omega_weight: Number of segments contributing to gyro statistics
+        accel_mean_mps2_raw: Mean raw accelerometer sample in m/s^2
+        cov_accel_raw: Raw accelerometer covariance in (m/s^2)^2
+        accel_weight: Number of segments contributing to accel statistics
         mag_mean_dir_M: Mean of unit magnetic directions in the mag frame
         mag_cov_dir_M: Covariance of magnetic directions in the mag frame
         mag_weight: Number of segments contributing to mag statistics
@@ -42,6 +48,12 @@ class Keyframe:
     gravity_mean_dir_I: np.ndarray
     gravity_cov_dir_I: np.ndarray
     gravity_weight: int
+    omega_mean_rads_raw: np.ndarray
+    cov_omega_raw: np.ndarray
+    omega_weight: int
+    accel_mean_mps2_raw: np.ndarray
+    cov_accel_raw: np.ndarray
+    accel_weight: int
     mag_mean_dir_M: np.ndarray | None
     mag_cov_dir_M: np.ndarray | None
     mag_weight: int
@@ -61,6 +73,18 @@ class Keyframe:
             raise ValueError("mag_weight must be an int")
         if self.mag_weight < 0:
             raise ValueError("mag_weight must be non-negative")
+        if not isinstance(self.omega_weight, int) or isinstance(
+            self.omega_weight, bool
+        ):
+            raise ValueError("omega_weight must be an int")
+        if self.omega_weight < 0:
+            raise ValueError("omega_weight must be non-negative")
+        if not isinstance(self.accel_weight, int) or isinstance(
+            self.accel_weight, bool
+        ):
+            raise ValueError("accel_weight must be an int")
+        if self.accel_weight < 0:
+            raise ValueError("accel_weight must be non-negative")
         if not isinstance(self.segment_count, int) or isinstance(
             self.segment_count, bool
         ):
@@ -83,6 +107,31 @@ class Keyframe:
 
         object.__setattr__(self, "gravity_mean_dir_I", gravity_mean_dir_I)
         object.__setattr__(self, "gravity_cov_dir_I", gravity_cov_dir_I)
+
+        omega_mean_rads_raw: np.ndarray = _as_float_array(
+            self.omega_mean_rads_raw,
+            "omega_mean_rads_raw",
+            (3,),
+        )
+        cov_omega_raw: np.ndarray = _as_float_array(
+            self.cov_omega_raw,
+            "cov_omega_raw",
+            (3, 3),
+        )
+        accel_mean_mps2_raw: np.ndarray = _as_float_array(
+            self.accel_mean_mps2_raw,
+            "accel_mean_mps2_raw",
+            (3,),
+        )
+        cov_accel_raw: np.ndarray = _as_float_array(
+            self.cov_accel_raw,
+            "cov_accel_raw",
+            (3, 3),
+        )
+        object.__setattr__(self, "omega_mean_rads_raw", omega_mean_rads_raw)
+        object.__setattr__(self, "cov_omega_raw", cov_omega_raw)
+        object.__setattr__(self, "accel_mean_mps2_raw", accel_mean_mps2_raw)
+        object.__setattr__(self, "cov_accel_raw", cov_accel_raw)
 
         if self.mag_mean_dir_M is None:
             if self.mag_cov_dir_M is not None or self.mag_weight != 0:
@@ -112,7 +161,42 @@ class Keyframe:
             mag_dir_M = None
         else:
             mag_dir_M = _unit_vector(segment.m_mean_T, "m_mean_T")
-        return self.update_with_directions(gravity_dir_I, mag_dir_M)
+        updated: Keyframe = self.update_with_directions(gravity_dir_I, mag_dir_M)
+        omega_mean_raw: np.ndarray
+        cov_omega_raw: np.ndarray
+        omega_weight: int
+        (
+            omega_mean_raw,
+            cov_omega_raw,
+            omega_weight,
+        ) = _update_vector_stats(
+            updated.omega_mean_rads_raw,
+            updated.cov_omega_raw,
+            updated.omega_weight,
+            segment.omega_mean_rads_raw,
+        )
+        accel_mean_raw: np.ndarray
+        cov_accel_raw: np.ndarray
+        accel_weight: int
+        (
+            accel_mean_raw,
+            cov_accel_raw,
+            accel_weight,
+        ) = _update_vector_stats(
+            updated.accel_mean_mps2_raw,
+            updated.cov_accel_raw,
+            updated.accel_weight,
+            segment.accel_mean_mps2_raw,
+        )
+        return replace(
+            updated,
+            omega_mean_rads_raw=omega_mean_raw,
+            cov_omega_raw=cov_omega_raw,
+            omega_weight=omega_weight,
+            accel_mean_mps2_raw=accel_mean_raw,
+            cov_accel_raw=cov_accel_raw,
+            accel_weight=accel_weight,
+        )
 
     def update_with_directions(
         self,
@@ -160,6 +244,12 @@ class Keyframe:
             gravity_mean_dir_I=gravity_mean_dir_I,
             gravity_cov_dir_I=gravity_cov_dir_I,
             gravity_weight=gravity_weight,
+            omega_mean_rads_raw=self.omega_mean_rads_raw,
+            cov_omega_raw=self.cov_omega_raw,
+            omega_weight=self.omega_weight,
+            accel_mean_mps2_raw=self.accel_mean_mps2_raw,
+            cov_accel_raw=self.cov_accel_raw,
+            accel_weight=self.accel_weight,
             mag_mean_dir_M=mag_mean_dir_M,
             mag_cov_dir_M=mag_cov_dir_M,
             mag_weight=mag_weight,
@@ -192,6 +282,27 @@ def _update_dir_stats(
     mean_new: np.ndarray = mean_dir + delta / float(new_weight)
     delta2: np.ndarray = direction - mean_new
     m2_old: np.ndarray = cov_dir * float(weight)
+    m2_new: np.ndarray = m2_old + np.outer(delta, delta2)
+    cov_new: np.ndarray = m2_new / float(new_weight)
+
+    return mean_new, cov_new, new_weight
+
+
+def _update_vector_stats(
+    mean_vec: np.ndarray,
+    cov_vec: np.ndarray,
+    weight: int,
+    sample: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, int]:
+    """Update mean and covariance for unnormalized vector statistics."""
+    if weight == 0:
+        return sample, np.zeros((3, 3), dtype=np.float64), 1
+
+    new_weight: int = weight + 1
+    delta: np.ndarray = sample - mean_vec
+    mean_new: np.ndarray = mean_vec + delta / float(new_weight)
+    delta2: np.ndarray = sample - mean_new
+    m2_old: np.ndarray = cov_vec * float(weight)
     m2_new: np.ndarray = m2_old + np.outer(delta, delta2)
     cov_new: np.ndarray = m2_new / float(new_weight)
 
