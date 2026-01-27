@@ -60,6 +60,9 @@ from oasis_control.localization.mounting.solver.initialization import (
     seed_keyframe_attitude_from_measurements,
 )
 from oasis_control.localization.mounting.solver.optimizer import optimize
+from oasis_control.localization.mounting.state.mounting_state import (
+    ImuCalibrationPriorState,
+)
 from oasis_control.localization.mounting.state.mounting_state import ImuNuisance
 from oasis_control.localization.mounting.state.mounting_state import KeyframeAttitude
 from oasis_control.localization.mounting.state.mounting_state import MagNuisance
@@ -127,6 +130,7 @@ class MountingPipeline:
         self._anchor: AnchorModel = AnchorModel()
 
         self._imu_nuisance: ImuNuisanceState = ImuCalibrationModel.default_state()
+        self._imu_prior: ImuCalibrationPriorState | None = None
         self._mag_adapter: DirectionNoiseAdapter = DirectionNoiseAdapter(
             R_init=np.diag(self._params.mag.Rm_init_diag),
             R_min=np.diag(self._params.mag.Rm_min_diag),
@@ -212,6 +216,7 @@ class MountingPipeline:
         self._bootstrap_mag = []
         self._bootstrap_stats = {}
         self._imu_nuisance = ImuCalibrationModel.default_state()
+        self._imu_prior = None
 
         self._state = MountingState.default()
         self._imu_frame_id = None
@@ -259,6 +264,14 @@ class MountingPipeline:
             self._imu_nuisance = ImuCalibrationModel.state_from_prior(
                 imu_packet.calibration
             )
+        if imu_packet.calibration.valid and self._imu_prior is None:
+            self._imu_prior = ImuCalibrationPriorState(
+                b_a_mps2=imu_packet.calibration.b_a_mps2,
+                A_a=imu_packet.calibration.A_a,
+                b_g_rads=imu_packet.calibration.b_g_rads,
+                cov_a_params=imu_packet.calibration.cov_a_params,
+                cov_b_g=imu_packet.calibration.cov_b_g,
+            )
 
         omega_corr: np.ndarray = self._imu_nuisance.correct_gyro(
             imu_packet.omega_raw_rads
@@ -278,7 +291,9 @@ class MountingPipeline:
         try:
             segment: SteadySegment | None = self._steady_detector.push(
                 t_ns=imu_packet.t_meas_ns,
+                omega_raw_rads=imu_packet.omega_raw_rads,
                 omega_corr_rads=omega_corr,
+                a_raw_mps2=imu_packet.a_raw_mps2,
                 a_corr_mps2=accel_corr,
                 imu_frame_id=imu_packet.frame_id,
                 mag=mag_packet,
@@ -650,6 +665,7 @@ class MountingPipeline:
             g_W_unit=g_ref,
             m_W_unit=m_ref,
             imu=imu_nuisance,
+            imu_prior=self._imu_prior,
             mag=mag_nuisance,
             keyframes=(),
             anchored=anchored,
@@ -954,12 +970,23 @@ class MountingPipeline:
             rot_cov_rad2=np.zeros((3, 3), dtype=np.float64),
         )
 
+        accel_param_cov: np.ndarray | None = self._last_update_metrics.get(
+            "accel_param_cov"
+        )
+        if accel_param_cov is None or accel_param_cov.shape != (12, 12):
+            accel_param_cov = np.zeros((12, 12), dtype=np.float64)
+        gyro_bias_cov: np.ndarray | None = self._last_update_metrics.get(
+            "gyro_bias_cov"
+        )
+        if gyro_bias_cov is None or gyro_bias_cov.shape != (3, 3):
+            gyro_bias_cov = np.zeros((3, 3), dtype=np.float64)
+
         imu_yaml: ImuNuisanceYaml = ImuNuisanceYaml(
             accel_bias_mps2=self._state.imu.b_a_mps2,
             accel_A_row_major=self._state.imu.A_a.flatten(),
-            accel_param_cov_row_major_12x12=np.zeros(144, dtype=np.float64),
+            accel_param_cov_row_major_12x12=accel_param_cov.flatten(),
             gyro_bias_rads=self._state.imu.b_g_rads,
-            gyro_bias_cov_row_major_3x3=np.zeros(9, dtype=np.float64),
+            gyro_bias_cov_row_major_3x3=gyro_bias_cov.flatten(),
         )
         mag_yaml: MagNuisanceYaml = MagNuisanceYaml(
             offset_t=np.zeros(3, dtype=np.float64),

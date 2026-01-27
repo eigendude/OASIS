@@ -99,6 +99,45 @@ class ImuNuisance:
 
 
 @dataclass(frozen=True)
+class ImuCalibrationPriorState:
+    """Calibration prior for IMU nuisance parameters.
+
+    Attributes:
+        b_a_mps2: Accelerometer bias prior in meters per second squared
+        A_a: Accelerometer scale/misalignment prior (unitless)
+        b_g_rads: Gyroscope bias prior in radians per second
+        cov_a_params: Covariance of [b_a, vec(A_a)] in (m/s^2)^2
+        cov_b_g: Covariance of gyro bias in (rad/s)^2
+    """
+
+    b_a_mps2: np.ndarray
+    A_a: np.ndarray
+    b_g_rads: np.ndarray
+    cov_a_params: np.ndarray | None
+    cov_b_g: np.ndarray | None
+
+    def __post_init__(self) -> None:
+        """Validate prior mean and covariance shapes."""
+        b_a_mps2: np.ndarray = _as_f64("b_a_mps2", self.b_a_mps2, (3,))
+        A_a: np.ndarray = _as_f64("A_a", self.A_a, (3, 3))
+        b_g_rads: np.ndarray = _as_f64("b_g_rads", self.b_g_rads, (3,))
+        object.__setattr__(self, "b_a_mps2", b_a_mps2)
+        object.__setattr__(self, "A_a", A_a)
+        object.__setattr__(self, "b_g_rads", b_g_rads)
+
+        if self.cov_a_params is None:
+            cov_a_params: np.ndarray | None = None
+        else:
+            cov_a_params = _as_f64("cov_a_params", self.cov_a_params, (12, 12))
+        if self.cov_b_g is None:
+            cov_b_g: np.ndarray | None = None
+        else:
+            cov_b_g = _as_f64("cov_b_g", self.cov_b_g, (3, 3))
+        object.__setattr__(self, "cov_a_params", cov_a_params)
+        object.__setattr__(self, "cov_b_g", cov_b_g)
+
+
+@dataclass(frozen=True)
 class MagNuisance:
     """Magnetometer nuisance parameters.
 
@@ -178,6 +217,7 @@ class MountingState:
         g_W_unit: Unit gravity direction in the world frame
         m_W_unit: Unit magnetic direction in the world frame
         imu: IMU nuisance parameters
+        imu_prior: IMU calibration prior parameters
         mag: Magnetometer nuisance parameters
         keyframes: Keyframe attitude states
         anchored: True when the state is anchored
@@ -188,6 +228,7 @@ class MountingState:
     g_W_unit: np.ndarray
     m_W_unit: np.ndarray | None
     imu: ImuNuisance
+    imu_prior: ImuCalibrationPriorState | None
     mag: MagNuisance
     keyframes: tuple[KeyframeAttitude, ...]
     anchored: bool
@@ -236,6 +277,7 @@ class MountingState:
             g_W_unit=np.array([0.0, 0.0, -1.0], dtype=np.float64),
             m_W_unit=None,
             imu=imu,
+            imu_prior=None,
             mag=mag,
             keyframes=(),
             anchored=False,
@@ -252,6 +294,10 @@ class MountingState:
             raise MountingStateError("mount must be MountEstimate")
         if not isinstance(self.imu, ImuNuisance):
             raise MountingStateError("imu must be ImuNuisance")
+        if self.imu_prior is not None and not isinstance(
+            self.imu_prior, ImuCalibrationPriorState
+        ):
+            raise MountingStateError("imu_prior must be ImuCalibrationPriorState")
         if not isinstance(self.mag, MagNuisance):
             raise MountingStateError("mag must be MagNuisance")
         _unit3("g_W_unit", self.g_W_unit)

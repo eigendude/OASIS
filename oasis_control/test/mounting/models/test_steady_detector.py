@@ -54,7 +54,9 @@ def _push_sample(
     """Push a sample and ignore the result."""
     detector.push(
         t_ns=t_ns,
+        omega_raw_rads=omega,
         omega_corr_rads=omega,
+        a_raw_mps2=accel,
         a_corr_mps2=accel,
         imu_frame_id="imu",
         mag=mag,
@@ -70,7 +72,9 @@ def test_sliding_window_emits_once() -> None:
 
     segment: SteadySegment | None = detector.push(
         t_ns=0,
+        omega_raw_rads=omega,
         omega_corr_rads=omega,
+        a_raw_mps2=accel,
         a_corr_mps2=accel,
         imu_frame_id="imu",
     )
@@ -78,7 +82,9 @@ def test_sliding_window_emits_once() -> None:
 
     segment = detector.push(
         t_ns=int(0.5e9),
+        omega_raw_rads=omega,
         omega_corr_rads=omega,
+        a_raw_mps2=accel,
         a_corr_mps2=accel,
         imu_frame_id="imu",
     )
@@ -86,7 +92,9 @@ def test_sliding_window_emits_once() -> None:
 
     segment = detector.push(
         t_ns=int(1.0e9),
+        omega_raw_rads=omega,
         omega_corr_rads=omega,
+        a_raw_mps2=accel,
         a_corr_mps2=accel,
         imu_frame_id="imu",
     )
@@ -94,7 +102,9 @@ def test_sliding_window_emits_once() -> None:
 
     segment = detector.push(
         t_ns=int(1.5e9),
+        omega_raw_rads=omega,
         omega_corr_rads=omega,
+        a_raw_mps2=accel,
         a_corr_mps2=accel,
         imu_frame_id="imu",
     )
@@ -102,7 +112,9 @@ def test_sliding_window_emits_once() -> None:
 
     segment = detector.push(
         t_ns=int(2.0e9),
+        omega_raw_rads=omega,
         omega_corr_rads=omega,
+        a_raw_mps2=accel,
         a_corr_mps2=accel,
         imu_frame_id="imu",
     )
@@ -110,7 +122,9 @@ def test_sliding_window_emits_once() -> None:
 
     segment_again: SteadySegment | None = detector.push(
         t_ns=int(2.5e9),
+        omega_raw_rads=omega,
         omega_corr_rads=omega,
+        a_raw_mps2=accel,
         a_corr_mps2=accel,
         imu_frame_id="imu",
     )
@@ -129,7 +143,9 @@ def test_exit_and_reenter_steady() -> None:
     _push_sample(detector, t_ns=int(1.0e9), omega=omega_ok, accel=accel_ok)
     segment: SteadySegment | None = detector.push(
         t_ns=int(2.0e9),
+        omega_raw_rads=omega_ok,
         omega_corr_rads=omega_ok,
+        a_raw_mps2=accel_ok,
         a_corr_mps2=accel_ok,
         imu_frame_id="imu",
     )
@@ -137,7 +153,9 @@ def test_exit_and_reenter_steady() -> None:
 
     segment = detector.push(
         t_ns=int(2.5e9),
+        omega_raw_rads=omega_bad,
         omega_corr_rads=omega_bad,
+        a_raw_mps2=accel_ok,
         a_corr_mps2=accel_ok,
         imu_frame_id="imu",
     )
@@ -147,7 +165,9 @@ def test_exit_and_reenter_steady() -> None:
     _push_sample(detector, t_ns=int(4.6e9), omega=omega_ok, accel=accel_ok)
     segment = detector.push(
         t_ns=int(5.6e9),
+        omega_raw_rads=omega_ok,
         omega_corr_rads=omega_ok,
+        a_raw_mps2=accel_ok,
         a_corr_mps2=accel_ok,
         imu_frame_id="imu",
     )
@@ -164,7 +184,9 @@ def test_threshold_failure_prevents_emission() -> None:
     _push_sample(detector, t_ns=0, omega=omega, accel=accel)
     segment = detector.push(
         t_ns=int(1.0e9),
+        omega_raw_rads=omega,
         omega_corr_rads=omega,
+        a_raw_mps2=accel,
         a_corr_mps2=accel,
         imu_frame_id="imu",
     )
@@ -194,21 +216,27 @@ def test_mag_samples_included() -> None:
 
     detector.push(
         t_ns=0,
+        omega_raw_rads=omega,
         omega_corr_rads=omega,
+        a_raw_mps2=accel,
         a_corr_mps2=accel,
         imu_frame_id="imu",
         mag=mag0,
     )
     detector.push(
         t_ns=int(1.0e9),
+        omega_raw_rads=omega,
         omega_corr_rads=omega,
+        a_raw_mps2=accel,
         a_corr_mps2=accel,
         imu_frame_id="imu",
         mag=mag1,
     )
     segment = detector.push(
         t_ns=int(2.0e9),
+        omega_raw_rads=omega,
         omega_corr_rads=omega,
+        a_raw_mps2=accel,
         a_corr_mps2=accel,
         imu_frame_id="imu",
         mag=MagPacket(
@@ -221,6 +249,7 @@ def test_mag_samples_included() -> None:
     assert segment is not None
     assert segment.mag_frame_id == "mag"
     assert segment.m_mean_T is not None
+    np.testing.assert_allclose(segment.accel_mean_mps2_raw, accel)
     np.testing.assert_allclose(segment.m_mean_T, np.array([0.25, 0.0, 0.0]))
 
 
