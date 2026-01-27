@@ -431,6 +431,27 @@ class MountingPipeline:
         """Return True when initialization has completed."""
         return self._initialized
 
+    def steady_window_is_steady(self) -> bool:
+        """Return True when the steady detector window is steady."""
+        return self._steady_detector.window_is_steady()
+
+    def gravity_direction_W_unit(self) -> np.ndarray | None:
+        """Return the current gravity direction estimate in the world frame."""
+        if not self._initialized:
+            return None
+        return np.array(self._state.g_W_unit, dtype=np.float64)
+
+    def current_flags(self) -> FlagsYaml | None:
+        """Return the current snapshot flags when initialized."""
+        if not self._initialized:
+            return None
+        return FlagsYaml(
+            anchored=self._state.anchored,
+            mag_reference_invalid=self._state.mag_reference_invalid,
+            mag_disturbance_detected=False,
+            mag_dir_prior_from_driver_cov=self._params.mag.use_driver_cov_as_prior,
+        )
+
     def keyframe_count(self) -> int:
         """Return the current number of keyframes."""
         return len(self._keyframe_cluster.keyframes())
@@ -611,6 +632,25 @@ class MountingPipeline:
             anchored=anchored,
             mag_reference_invalid=mag_reference_invalid,
         )
+        # Seed keyframe attitudes for segments captured during bootstrap
+        keyframes: tuple[Keyframe, ...] = self._keyframe_cluster.keyframes()
+        if keyframes:
+            attitudes: list[KeyframeAttitude] = []
+            keyframe: Keyframe
+            for keyframe in keyframes:
+                q_wb: np.ndarray = seed_keyframe_attitude_from_measurements(
+                    keyframe.gravity_unit_mean_dir_I(),
+                    keyframe.mag_mean_dir_M,
+                    self._state.mount.q_BI_wxyz,
+                    self._state.mount.q_BM_wxyz,
+                )
+                attitudes.append(
+                    KeyframeAttitude(
+                        keyframe_id=keyframe.keyframe_id,
+                        q_WB_wxyz=q_wb,
+                    )
+                )
+            self._state = self._state.replace(keyframes=tuple(attitudes))
         self._initialized = True
 
     def _ensure_tf_publisher(self) -> None:
