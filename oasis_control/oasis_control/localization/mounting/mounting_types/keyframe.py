@@ -23,6 +23,10 @@ from oasis_control.localization.mounting.mounting_types.steady_segment import (
 )
 
 
+# Units: unitless. Meaning: diagonal jitter for covariance inversion
+_COV_EPS: float = 1e-9
+
+
 @dataclass(frozen=True)
 class Keyframe:
     """Running aggregate of steady segments.
@@ -33,10 +37,10 @@ class Keyframe:
         gravity_cov_dir_I: Covariance of gravity directions in the IMU frame
         gravity_weight: Number of segments contributing to gravity statistics
         omega_mean_rads_raw: Mean raw gyro sample in rad/s
-        cov_omega_raw: Raw gyro covariance in (rad/s)^2
+        cov_omega_raw: Fused raw gyro mean covariance in (rad/s)^2
         omega_weight: Number of segments contributing to gyro statistics
         accel_mean_mps2_raw: Mean raw accelerometer sample in m/s^2
-        cov_accel_raw: Raw accelerometer covariance in (m/s^2)^2
+        cov_accel_raw: Fused raw accelerometer mean covariance in (m/s^2)^2
         accel_weight: Number of segments contributing to accel statistics
         mag_mean_dir_M: Mean of unit magnetic directions in the mag frame
         mag_cov_dir_M: Covariance of magnetic directions in the mag frame
@@ -169,11 +173,12 @@ class Keyframe:
             omega_mean_raw,
             cov_omega_raw,
             omega_weight,
-        ) = _update_vector_stats(
+        ) = _fuse_vector_stats(
             updated.omega_mean_rads_raw,
             updated.cov_omega_raw,
             updated.omega_weight,
             segment.omega_mean_rads_raw,
+            segment.cov_omega_raw,
         )
         accel_mean_raw: np.ndarray
         cov_accel_raw: np.ndarray
@@ -182,11 +187,12 @@ class Keyframe:
             accel_mean_raw,
             cov_accel_raw,
             accel_weight,
-        ) = _update_vector_stats(
+        ) = _fuse_vector_stats(
             updated.accel_mean_mps2_raw,
             updated.cov_accel_raw,
             updated.accel_weight,
             segment.accel_mean_mps2_raw,
+            segment.cov_accel_raw,
         )
         return replace(
             updated,
@@ -288,25 +294,20 @@ def _update_dir_stats(
     return mean_new, cov_new, new_weight
 
 
-def _update_vector_stats(
+def _fuse_vector_stats(
     mean_vec: np.ndarray,
     cov_vec: np.ndarray,
     weight: int,
     sample: np.ndarray,
+    sample_cov: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray, int]:
-    """Update mean and covariance for unnormalized vector statistics."""
+    """Update mean and covariance using information-form fusion."""
     if weight == 0:
-        return sample, np.zeros((3, 3), dtype=np.float64), 1
-
-    new_weight: int = weight + 1
-    delta: np.ndarray = sample - mean_vec
-    mean_new: np.ndarray = mean_vec + delta / float(new_weight)
-    delta2: np.ndarray = sample - mean_new
-    m2_old: np.ndarray = cov_vec * float(weight)
-    m2_new: np.ndarray = m2_old + np.outer(delta, delta2)
-    cov_new: np.ndarray = m2_new / float(new_weight)
-
-    return mean_new, cov_new, new_weight
+        return sample, sample_cov, 1
+    mean_new: np.ndarray
+    cov_new: np.ndarray
+    mean_new, cov_new = _fuse_gaussian(mean_vec, cov_vec, sample, sample_cov)
+    return mean_new, cov_new, weight + 1
 
 
 def _as_float_array(value: Any, name: str, shape: tuple[int, ...]) -> np.ndarray:
@@ -317,6 +318,36 @@ def _as_float_array(value: Any, name: str, shape: tuple[int, ...]) -> np.ndarray
     if not np.all(np.isfinite(array)):
         raise ValueError(f"{name} must contain finite values")
     return array
+
+
+def _fuse_gaussian(
+    mean: np.ndarray,
+    cov: np.ndarray,
+    mean_i: np.ndarray,
+    cov_i: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Fuse two Gaussians in information form."""
+    dim: int = int(cov.shape[0])
+    cov_sym: np.ndarray = 0.5 * (cov + cov.T)
+    cov_i_sym: np.ndarray = 0.5 * (cov_i + cov_i.T)
+    cov_sym = cov_sym + np.eye(dim, dtype=np.float64) * _COV_EPS
+    cov_i_sym = cov_i_sym + np.eye(dim, dtype=np.float64) * _COV_EPS
+    try:
+        info: np.ndarray = np.linalg.inv(cov_sym)
+    except np.linalg.LinAlgError:
+        info = np.linalg.pinv(cov_sym)
+    try:
+        info_i: np.ndarray = np.linalg.inv(cov_i_sym)
+    except np.linalg.LinAlgError:
+        info_i = np.linalg.pinv(cov_i_sym)
+    info_sum: np.ndarray = info + info_i
+    try:
+        cov_new: np.ndarray = np.linalg.inv(info_sum)
+    except np.linalg.LinAlgError:
+        cov_new = np.linalg.pinv(info_sum)
+    mean_new: np.ndarray = cov_new @ (info @ mean + info_i @ mean_i)
+    cov_new = 0.5 * (cov_new + cov_new.T)
+    return mean_new, cov_new
 
 
 def _require_non_zero(vector: np.ndarray, name: str) -> None:

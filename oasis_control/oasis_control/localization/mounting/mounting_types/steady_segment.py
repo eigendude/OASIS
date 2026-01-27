@@ -29,11 +29,11 @@ class SteadySegment:
         imu_frame_id: IMU frame associated with the segment
         mag_frame_id: Magnetometer frame, if magnetometer data was present
         a_mean_mps2: Mean accelerometer sample in m/s^2
-        cov_a: Accelerometer covariance in (m/s^2)^2
+        cov_a: Accelerometer mean covariance in (m/s^2)^2
         omega_mean_rads_raw: Mean raw gyro sample in rad/s
-        cov_omega_raw: Raw gyro covariance in (rad/s)^2
+        cov_omega_raw: Raw gyro mean covariance in (rad/s)^2
         accel_mean_mps2_raw: Mean raw accelerometer sample in m/s^2
-        cov_accel_raw: Raw accelerometer covariance in (m/s^2)^2
+        cov_accel_raw: Raw accelerometer mean covariance in (m/s^2)^2
         m_mean_T: Mean magnetometer sample in tesla when available
         cov_m: Magnetometer covariance in tesla^2 when available
         sample_count: Number of samples included in the segment

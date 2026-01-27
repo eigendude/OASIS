@@ -253,6 +253,34 @@ def test_mag_samples_included() -> None:
     np.testing.assert_allclose(segment.m_mean_T, np.array([0.25, 0.0, 0.0]))
 
 
+def test_segment_covariance_is_mean_covariance() -> None:
+    """Ensure segment covariances reflect mean statistics."""
+    params: MountingParams = _steady_params()
+    detector: SteadyDetector = SteadyDetector(params)
+    omega_0: np.ndarray = np.zeros(3, dtype=np.float64)
+    omega_1: np.ndarray = np.array([-0.05, 0.0, 0.0], dtype=np.float64)
+    omega_2: np.ndarray = np.array([0.05, 0.0, 0.0], dtype=np.float64)
+    accel_0: np.ndarray = np.array([0.0, 0.0, -9.81], dtype=np.float64)
+    accel_1: np.ndarray = np.array([-0.05, 0.0, -9.81], dtype=np.float64)
+    accel_2: np.ndarray = np.array([0.05, 0.0, -9.81], dtype=np.float64)
+
+    _push_sample(detector, t_ns=0, omega=omega_0, accel=accel_0)
+    _push_sample(detector, t_ns=int(1.0e9), omega=omega_1, accel=accel_1)
+    segment: SteadySegment | None = detector.push(
+        t_ns=int(2.0e9),
+        omega_raw_rads=omega_2,
+        omega_corr_rads=omega_2,
+        a_raw_mps2=accel_2,
+        a_corr_mps2=accel_2,
+        imu_frame_id="imu",
+    )
+
+    assert segment is not None
+    expected_cov_mean: np.ndarray = np.diag([0.00125, 0.0, 0.0])
+    np.testing.assert_allclose(segment.cov_omega_raw, expected_cov_mean)
+    np.testing.assert_allclose(segment.cov_accel_raw, expected_cov_mean)
+
+
 def test_non_monotonic_time_raises() -> None:
     """Ensure non-monotonic time raises a detector error."""
     params: MountingParams = _steady_params()

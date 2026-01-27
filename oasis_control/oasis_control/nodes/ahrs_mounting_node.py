@@ -343,9 +343,13 @@ class AhrsMountingNode(rclpy.node.Node):
 
             mount_msg.accel_bias_mps2 = snapshot.b_a_mps2.tolist()
             mount_msg.accel_a_row_major_3x3 = snapshot.A_a.reshape(-1).tolist()
-            mount_msg.accel_param_cov_row_major_12x12 = [0.0] * 144
+            mount_msg.accel_param_cov_row_major_12x12 = (
+                snapshot.accel_param_cov.reshape(-1).tolist()
+            )
             mount_msg.gyro_bias_rads = snapshot.b_g_rads.tolist()
-            mount_msg.gyro_bias_cov_row_major_3x3 = [0.0] * 9
+            mount_msg.gyro_bias_cov_row_major_3x3 = snapshot.gyro_bias_cov.reshape(
+                -1
+            ).tolist()
 
             if snapshot.b_m_T is not None:
                 mount_msg.mag_offset_t = snapshot.b_m_T.tolist()

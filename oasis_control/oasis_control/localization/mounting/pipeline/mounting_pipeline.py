@@ -865,6 +865,16 @@ class MountingPipeline:
             R_m = self._state.mag.R_m_unitless2
 
         cov_zero: np.ndarray = np.zeros((3, 3), dtype=np.float64)
+        accel_param_cov: np.ndarray | None = self._last_update_metrics.get(
+            "accel_param_cov"
+        )
+        if accel_param_cov is None or accel_param_cov.shape != (12, 12):
+            accel_param_cov = np.zeros((12, 12), dtype=np.float64)
+        gyro_bias_cov: np.ndarray | None = self._last_update_metrics.get(
+            "gyro_bias_cov"
+        )
+        if gyro_bias_cov is None or gyro_bias_cov.shape != (3, 3):
+            gyro_bias_cov = np.zeros((3, 3), dtype=np.float64)
         return ResultSnapshot(
             t_meas_ns=t_ns,
             frame_base=self._params.frames.base_frame,
@@ -876,7 +886,9 @@ class MountingPipeline:
             cov_rot_BM=cov_zero if frame_mag is not None else None,
             b_a_mps2=self._state.imu.b_a_mps2,
             A_a=self._state.imu.A_a,
+            accel_param_cov=accel_param_cov,
             b_g_rads=self._state.imu.b_g_rads,
+            gyro_bias_cov=gyro_bias_cov,
             b_m_T=b_m_T,
             R_m=R_m,
             segment_count=self._segment_count,

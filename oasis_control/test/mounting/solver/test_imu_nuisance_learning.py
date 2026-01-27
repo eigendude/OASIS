@@ -45,6 +45,7 @@ def _raw_keyframe(
     g0_mps2: float,
     accel_weight: int,
     omega_weight: int,
+    cov_scale: float = 1.0,
 ) -> Keyframe:
     R_WB: NDArray[np.float64] = Quaternion(q_WB_wxyz).as_matrix()
     R_BI: NDArray[np.float64] = np.eye(3, dtype=np.float64)
@@ -52,8 +53,15 @@ def _raw_keyframe(
     a_corr: NDArray[np.float64] = -g0_mps2 * g_I
     a_raw: NDArray[np.float64] = b_a_true + a_corr
     omega_raw: NDArray[np.float64] = b_g_true
-    accel_cov: NDArray[np.float64] = np.eye(3, dtype=np.float64) * _ACCEL_COV_DIAG
-    omega_cov: NDArray[np.float64] = np.eye(3, dtype=np.float64) * _OMEGA_COV_DIAG
+    cov_scale = float(cov_scale)
+    if not np.isfinite(cov_scale) or cov_scale <= 0.0:
+        cov_scale = 1.0
+    accel_cov: NDArray[np.float64] = (
+        np.eye(3, dtype=np.float64) * _ACCEL_COV_DIAG / cov_scale
+    )
+    omega_cov: NDArray[np.float64] = (
+        np.eye(3, dtype=np.float64) * _OMEGA_COV_DIAG / cov_scale
+    )
     return Keyframe(
         keyframe_id=keyframe_id,
         gravity_mean_dir_I=np.zeros(3, dtype=np.float64),
@@ -157,8 +165,8 @@ def test_steady_factors_update_nuisance_estimates() -> None:
     assert a_scale_error_final < a_scale_error_initial
 
 
-def test_posterior_covariance_shrinks_with_weight() -> None:
-    """Ensure posterior covariance shrinks as steady weight increases."""
+def test_posterior_covariance_shrinks_with_covariance() -> None:
+    """Ensure posterior covariance shrinks as measurement covariances tighten."""
     params: MountingParams = MountingParams.defaults()
     solver_params = replace(params.solver, max_iters=1)
     params = replace(params, solver=solver_params)
@@ -170,7 +178,7 @@ def test_posterior_covariance_shrinks_with_weight() -> None:
 
     q_WB: NDArray[np.float64] = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64)
 
-    def _run_with_weight(weight: int) -> dict[str, NDArray[np.float64]]:
+    def _run_with_scale(scale: float) -> dict[str, NDArray[np.float64]]:
         keyframes: tuple[Keyframe, ...] = (
             _raw_keyframe(
                 0,
@@ -179,8 +187,9 @@ def test_posterior_covariance_shrinks_with_weight() -> None:
                 b_a_true,
                 b_g_true,
                 g0_mps2=g0_mps2,
-                accel_weight=weight,
-                omega_weight=weight,
+                accel_weight=1,
+                omega_weight=1,
+                cov_scale=scale,
             ),
         )
         mount: MountEstimate = MountEstimate(
@@ -210,8 +219,8 @@ def test_posterior_covariance_shrinks_with_weight() -> None:
         _, metrics = optimize(state, keyframes, params)
         return metrics
 
-    metrics_low: dict[str, NDArray[np.float64]] = _run_with_weight(1)
-    metrics_high: dict[str, NDArray[np.float64]] = _run_with_weight(5)
+    metrics_low: dict[str, NDArray[np.float64]] = _run_with_scale(1.0)
+    metrics_high: dict[str, NDArray[np.float64]] = _run_with_scale(5.0)
 
     cov_low: NDArray[np.float64] = metrics_low["gyro_bias_cov"]
     cov_high: NDArray[np.float64] = metrics_high["gyro_bias_cov"]

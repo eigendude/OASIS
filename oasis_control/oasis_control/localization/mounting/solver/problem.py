@@ -229,8 +229,7 @@ def build_linearization(
                 robust_type,
                 robust_scale_a,
             )
-            total_omega_weight: float = float(keyframe.omega_weight) * omega_weight
-            if total_omega_weight > 0.0:
+            if omega_weight > 0.0:
                 gyro_jacobians: dict[str, NDArray[np.float64]] = {
                     BLOCK_NAME_B_G: gyro.J_bg,
                 }
@@ -241,7 +240,7 @@ def build_linearization(
                     gyro_jacobians,
                     omega_info,
                     mapping,
-                    total_omega_weight,
+                    omega_weight,
                 )
                 cost += factor_cost
                 res_sq_sum += factor_sq
@@ -271,10 +270,7 @@ def build_linearization(
                     robust_type,
                     robust_scale_a,
                 )
-                total_accel_raw_weight: float = (
-                    float(keyframe.accel_weight) * accel_raw_weight
-                )
-                if total_accel_raw_weight > 0.0:
+                if accel_raw_weight > 0.0:
                     accel_jacobians = {
                         BLOCK_NAME_R_BI: accel_raw.J_bi_dir,
                         BLOCK_NAME_G_W: accel_raw.J_gw_dir,
@@ -291,7 +287,7 @@ def build_linearization(
                         accel_jacobians,
                         accel_raw_info,
                         mapping,
-                        total_accel_raw_weight,
+                        accel_raw_weight,
                     )
                     cost += factor_cost
                     res_sq_sum += factor_sq
@@ -307,8 +303,7 @@ def build_linearization(
                         robust_type,
                         robust_scale_a,
                     )
-                    total_mag_raw_weight = float(keyframe.accel_weight) * mag_raw_weight
-                    if total_mag_raw_weight > 0.0:
+                    if mag_raw_weight > 0.0:
                         mag_raw_jacobians = {
                             BLOCK_NAME_B_A: accel_raw.J_ba_mag,
                             BLOCK_NAME_A_A: accel_raw.J_Aa_mag,
@@ -320,7 +315,7 @@ def build_linearization(
                             mag_raw_jacobians,
                             mag_raw_info,
                             mapping,
-                            total_mag_raw_weight,
+                            mag_raw_weight,
                         )
                         cost += factor_cost
                         res_sq_sum += factor_sq
