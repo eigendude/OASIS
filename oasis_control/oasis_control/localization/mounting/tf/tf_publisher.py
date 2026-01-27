@@ -17,7 +17,6 @@ import numpy as np
 from numpy.typing import NDArray
 
 from oasis_control.localization.mounting.math_utils.quat import Quaternion
-from oasis_control.localization.mounting.math_utils.se3 import SE3
 
 
 _ROT_DET_TOL: float = 1e-6
@@ -132,8 +131,8 @@ class TfPublisher:
         self,
         *,
         t_ns: int,
-        T_BI: object,
-        T_BM: object,
+        R_BI: object,
+        R_BM: object,
         is_stable: bool,
         saved: bool,
     ) -> list[PublishedTransform]:
@@ -149,11 +148,11 @@ class TfPublisher:
         if not isinstance(saved, bool):
             raise TfPublisherError("saved must be a bool")
 
-        R_BI: NDArray[np.float64] = _extract_rotation(T_BI, "T_BI")
+        R_BI_mat: NDArray[np.float64] = _extract_rotation(R_BI, "R_BI")
         mag_frame: str | None = self._mag_frame
-        R_BM: NDArray[np.float64] | None = None
+        R_BM_mat: NDArray[np.float64] | None = None
         if mag_frame is not None:
-            R_BM = _extract_rotation(T_BM, "T_BM")
+            R_BM_mat = _extract_rotation(R_BM, "R_BM")
 
         outputs: list[PublishedTransform] = []
 
@@ -164,8 +163,8 @@ class TfPublisher:
                     parent_frame=self._base_frame,
                     imu_frame=self._imu_frame,
                     mag_frame=mag_frame,
-                    R_BI=R_BI,
-                    R_BM=R_BM,
+                    R_BI=R_BI_mat,
+                    R_BM=R_BM_mat,
                     is_static=False,
                 )
             )
@@ -184,7 +183,7 @@ class TfPublisher:
                         t_ns=t_ns,
                         parent_frame=self._base_frame,
                         child_frame=imu_frame,
-                        R=R_BI,
+                        R=R_BI_mat,
                         is_static=True,
                     )
                 )
@@ -192,14 +191,14 @@ class TfPublisher:
             if mag_frame is not None and (
                 republish or mag_frame not in self._published_static_children
             ):
-                if R_BM is None:
+                if R_BM_mat is None:
                     raise TfPublisherError("R_BM is required with mag_frame")
                 outputs.append(
                     _transform_to_published(
                         t_ns=t_ns,
                         parent_frame=self._base_frame,
                         child_frame=mag_frame,
-                        R=R_BM,
+                        R=R_BM_mat,
                         is_static=True,
                     )
                 )
@@ -271,8 +270,6 @@ def _extract_rotation(
     name: str,
 ) -> NDArray[np.float64]:
     """Extract a rotation matrix from a transform-like object."""
-    if isinstance(transform, SE3):
-        return _validate_rotation(transform.R, name)
     if hasattr(transform, "R"):
         R_attr: NDArray[np.float64] = np.asarray(getattr(transform, "R"), dtype=float)
         return _validate_rotation(R_attr, name)
