@@ -36,13 +36,6 @@ from oasis_control.localization.mounting.math_utils.validation import (
 from oasis_control.localization.mounting.math_utils.validation import (
     normalize_quaternion_wxyz,
 )
-from oasis_control.localization.mounting.math_utils.validation import (
-    reshape_covariance as _reshape_covariance,
-)
-from oasis_control.localization.mounting.math_utils.validation import (
-    reshape_matrix as _reshape_matrix,
-)
-from oasis_control.localization.mounting.mounting_types import ImuCalibrationPrior
 from oasis_control.localization.mounting.mounting_types import ImuPacket
 from oasis_control.localization.mounting.mounting_types import MagPacket
 from oasis_control.localization.mounting.mounting_types import ResultSnapshot
@@ -54,6 +47,12 @@ from oasis_control.localization.mounting.pipeline.mounting_pipeline import (
 )
 from oasis_control.localization.mounting.pipeline.mounting_pipeline import (
     PipelineOutputs,
+)
+from oasis_control.localization.mounting.ros.imu_packet_builder import (
+    build_imu_packet as _build_imu_packet,
+)
+from oasis_control.localization.mounting.ros.imu_packet_builder import (
+    build_mag_packet as _build_mag_packet,
 )
 from oasis_control.localization.mounting.storage.yaml_format import FlagsYaml
 from oasis_control.localization.mounting.tf.tf_publisher import PublishedTransform
@@ -486,124 +485,6 @@ def _quat_wxyz_to_msg(wxyz: Sequence[float]) -> QuaternionMsg:
     quat.z = float(array[3])
 
     return quat
-
-
-def _build_imu_packet(
-    imu_msg: ImuMsg,
-    cal_msg: ImuCalibrationMsg,
-    *,
-    params: MountingParams,
-) -> ImuPacket:
-    imu_frame: str = imu_msg.header.frame_id
-    t_ns: int = _time_to_ns(imu_msg.header.stamp)
-
-    omega_raw: np.ndarray = np.array(
-        [
-            imu_msg.angular_velocity.x,
-            imu_msg.angular_velocity.y,
-            imu_msg.angular_velocity.z,
-        ],
-        dtype=np.float64,
-    )
-    accel_raw: np.ndarray = np.array(
-        [
-            imu_msg.linear_acceleration.x,
-            imu_msg.linear_acceleration.y,
-            imu_msg.linear_acceleration.z,
-        ],
-        dtype=np.float64,
-    )
-
-    b_a_mps2: np.ndarray = np.array(
-        [
-            cal_msg.accel_bias.x,
-            cal_msg.accel_bias.y,
-            cal_msg.accel_bias.z,
-        ],
-        dtype=np.float64,
-    )
-    A_a: np.ndarray = _reshape_matrix(cal_msg.accel_a, (3, 3), "accel_a")
-    b_g_rads: np.ndarray = np.array(
-        [
-            cal_msg.gyro_bias.x,
-            cal_msg.gyro_bias.y,
-            cal_msg.gyro_bias.z,
-        ],
-        dtype=np.float64,
-    )
-
-    cov_a_params: np.ndarray = _reshape_covariance(
-        cal_msg.accel_param_cov,
-        (12, 12),
-        "accel_param_cov",
-    )
-    cov_b_g: np.ndarray = _reshape_covariance(
-        cal_msg.gyro_bias_cov,
-        (3, 3),
-        "gyro_bias_cov",
-    )
-
-    omega_cov_default: np.ndarray = np.diag(params.imu.omega_cov_diag)
-    accel_cov_default: np.ndarray = np.diag(params.imu.accel_cov_diag)
-    omega_cov_fallback: np.ndarray = cov_b_g
-    accel_cov_fallback: np.ndarray = cov_a_params[:3, :3]
-
-    cov_omega_raw: np.ndarray = _reshape_covariance(
-        imu_msg.angular_velocity_covariance,
-        (3, 3),
-        "angular_velocity_covariance",
-        fallback=omega_cov_fallback if cal_msg.valid else omega_cov_default,
-    )
-    cov_accel_raw: np.ndarray = _reshape_covariance(
-        imu_msg.linear_acceleration_covariance,
-        (3, 3),
-        "linear_acceleration_covariance",
-        fallback=accel_cov_fallback if cal_msg.valid else accel_cov_default,
-    )
-
-    calibration: ImuCalibrationPrior = ImuCalibrationPrior(
-        valid=bool(cal_msg.valid),
-        frame_id=imu_frame,
-        b_a_mps2=b_a_mps2,
-        A_a=A_a,
-        b_g_rads=b_g_rads,
-        cov_a_params=cov_a_params,
-        cov_b_g=cov_b_g,
-    )
-
-    return ImuPacket(
-        t_meas_ns=t_ns,
-        frame_id=imu_frame,
-        omega_raw_rads=omega_raw,
-        cov_omega_raw=cov_omega_raw,
-        a_raw_mps2=accel_raw,
-        cov_a_raw=cov_accel_raw,
-        calibration=calibration,
-    )
-
-
-def _build_mag_packet(message: MagneticFieldMsg) -> MagPacket:
-    t_ns: int = _time_to_ns(message.header.stamp)
-    m_raw: np.ndarray = np.array(
-        [
-            message.magnetic_field.x,
-            message.magnetic_field.y,
-            message.magnetic_field.z,
-        ],
-        dtype=np.float64,
-    )
-    cov_m_raw: np.ndarray = _reshape_covariance(
-        message.magnetic_field_covariance,
-        (3, 3),
-        "magnetic_field_covariance",
-    )
-
-    return MagPacket(
-        t_meas_ns=t_ns,
-        frame_id=message.header.frame_id,
-        m_raw_T=m_raw,
-        cov_m_raw_T2=cov_m_raw,
-    )
 
 
 def _published_transform_to_msg(transform: PublishedTransform) -> TransformStampedMsg:
