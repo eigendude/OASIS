@@ -150,6 +150,16 @@ def _apply_weak_prior(
     H[sl, sl] += np.eye(block.dim, dtype=np.float64) * weight
 
 
+def _prior_metrics(
+    residual: NDArray[np.float64],
+    info: NDArray[np.float64],
+) -> tuple[float, float, int]:
+    cost: float = float(0.5 * residual.T @ info @ residual)
+    res_sq: float = float(residual @ residual)
+    res_count: int = int(residual.size)
+    return cost, res_sq, res_count
+
+
 def build_linearization(
     state: MountingState,
     keyframes: tuple[Keyframe, ...],
@@ -161,6 +171,7 @@ def build_linearization(
     H: NDArray[np.float64] = np.zeros((dim, dim), dtype=np.float64)
     b: NDArray[np.float64] = np.zeros(dim, dtype=np.float64)
     cost: float = 0.0
+    prior_cost: float = 0.0
     res_sq_sum: float = 0.0
     res_count: int = 0
 
@@ -362,15 +373,6 @@ def build_linearization(
         res_sq_sum += factor_sq
         res_count += factor_count
 
-    rms: float
-    if res_count <= 0:
-        rms = 0.0
-    else:
-        rms = float(np.sqrt(res_sq_sum / float(res_count)))
-    metrics: dict[str, Any] = {
-        "rms": rms,
-        "residual_count": res_count,
-    }
     if state.imu_prior is not None:
         if state.imu_prior.cov_b_g is not None:
             b_g_residual: NDArray[np.float64] = (
@@ -385,6 +387,13 @@ def build_linearization(
                 b_g_residual,
                 b_g_info,
             )
+            factor_cost, factor_sq, factor_count = _prior_metrics(
+                b_g_residual,
+                b_g_info,
+            )
+            prior_cost += factor_cost
+            res_sq_sum += factor_sq
+            res_count += factor_count
         if state.imu_prior.cov_a_params is not None:
             a_prior: NDArray[np.float64] = np.concatenate(
                 [
@@ -408,6 +417,13 @@ def build_linearization(
                 a_residual,
                 a_info,
             )
+            factor_cost, factor_sq, factor_count = _prior_metrics(
+                a_residual,
+                a_info,
+            )
+            prior_cost += factor_cost
+            res_sq_sum += factor_sq
+            res_count += factor_count
 
     if state.imu_prior is None or state.imu_prior.cov_a_params is None:
         A_a_target: NDArray[np.float64] = np.eye(3, dtype=np.float64).reshape(9)
@@ -424,9 +440,27 @@ def build_linearization(
             A_a_residual,
             A_a_info,
         )
+        factor_cost, factor_sq, factor_count = _prior_metrics(
+            A_a_residual,
+            A_a_info,
+        )
+        prior_cost += factor_cost
+        res_sq_sum += factor_sq
+        res_count += factor_count
     _apply_weak_prior(H, mapping, BLOCK_NAME_G_W, _DIRECTION_PRIOR_LAMBDA)
     _apply_weak_prior(H, mapping, BLOCK_NAME_M_W, _DIRECTION_PRIOR_LAMBDA)
     _apply_weak_prior(H, mapping, BLOCK_NAME_B_A, _NUISANCE_PRIOR_LAMBDA)
     _apply_weak_prior(H, mapping, BLOCK_NAME_B_G, _NUISANCE_PRIOR_LAMBDA)
     _apply_weak_prior(H, mapping, BLOCK_NAME_B_M, _NUISANCE_PRIOR_LAMBDA)
+    cost += prior_cost
+    rms: float
+    if res_count <= 0:
+        rms = 0.0
+    else:
+        rms = float(np.sqrt(res_sq_sum / float(res_count)))
+    metrics: dict[str, Any] = {
+        "rms": rms,
+        "residual_count": res_count,
+        "prior_cost": prior_cost,
+    }
     return H, b, cost, metrics
