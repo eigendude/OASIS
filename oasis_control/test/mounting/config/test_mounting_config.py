@@ -68,18 +68,3 @@ def test_accessors() -> None:
     assert config.base_frame() == params.frames.base_frame
     assert config.imu_raw_topic() == params.topics.imu_raw
     assert config.mag_topic() == params.topics.magnetic_field
-    assert config.baseline_enabled() == params.mount.baseline_hard_enabled
-    assert config.baseline_distance_m() == params.mount.baseline_im_to_mag_m
-
-
-def test_baseline_defense_in_depth() -> None:
-    """Baseline constraint should be enforced in MountingConfig too."""
-    params: MountingParams = MountingParams.defaults().replace(
-        mount=dataclasses.replace(
-            MountingParams.defaults().mount,
-            baseline_hard_enabled=True,
-            baseline_im_to_mag_m=None,
-        )
-    )
-    with pytest.raises(MountingConfigError):
-        MountingConfig(params)

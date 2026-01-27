@@ -32,9 +32,7 @@ class ResultSnapshot:
         T_BI: Estimated base-to-IMU pose
         T_BM: Estimated base-to-mag pose when available
         cov_rot_BI: Rotation covariance for T_BI in tangent space
-        cov_trans_BI: Translation covariance for T_BI in meters^2
         cov_rot_BM: Rotation covariance for T_BM in tangent space
-        cov_trans_BM: Translation covariance for T_BM in meters^2
         b_a_mps2: Accelerometer bias estimate in m/s^2
         A_a: Accelerometer scale/misalignment estimate
         b_g_rads: Gyroscope bias estimate in rad/s
@@ -56,9 +54,7 @@ class ResultSnapshot:
     T_BI: SE3
     T_BM: SE3 | None
     cov_rot_BI: np.ndarray
-    cov_trans_BI: np.ndarray
     cov_rot_BM: np.ndarray | None
-    cov_trans_BM: np.ndarray | None
     b_a_mps2: np.ndarray
     A_a: np.ndarray
     b_g_rads: np.ndarray
@@ -101,17 +97,11 @@ class ResultSnapshot:
             "cov_rot_BI",
             (3, 3),
         )
-        cov_trans_BI: np.ndarray = _as_float_array(
-            self.cov_trans_BI,
-            "cov_trans_BI",
-            (3, 3),
-        )
         b_a_mps2: np.ndarray = _as_float_array(self.b_a_mps2, "b_a_mps2", (3,))
         A_a: np.ndarray = _as_float_array(self.A_a, "A_a", (3, 3))
         b_g_rads: np.ndarray = _as_float_array(self.b_g_rads, "b_g_rads", (3,))
 
         object.__setattr__(self, "cov_rot_BI", cov_rot_BI)
-        object.__setattr__(self, "cov_trans_BI", cov_trans_BI)
         object.__setattr__(self, "b_a_mps2", b_a_mps2)
         object.__setattr__(self, "A_a", A_a)
         object.__setattr__(self, "b_g_rads", b_g_rads)
@@ -127,33 +117,25 @@ class ResultSnapshot:
             if (
                 self.T_BM is not None
                 or self.cov_rot_BM is not None
-                or self.cov_trans_BM is not None
                 or self.b_m_T is not None
                 or self.R_m is not None
             ):
                 raise ValueError("mag fields must be None when frame_mag is None")
             object.__setattr__(self, "T_BM", None)
             object.__setattr__(self, "cov_rot_BM", None)
-            object.__setattr__(self, "cov_trans_BM", None)
             object.__setattr__(self, "b_m_T", None)
             object.__setattr__(self, "R_m", None)
         else:
             if self.T_BM is None:
                 raise ValueError("T_BM is required when frame_mag is set")
-            if self.cov_rot_BM is None or self.cov_trans_BM is None:
+            if self.cov_rot_BM is None:
                 raise ValueError("mag covariances are required when frame_mag is set")
             cov_rot_BM: np.ndarray = _as_float_array(
                 self.cov_rot_BM,
                 "cov_rot_BM",
                 (3, 3),
             )
-            cov_trans_BM: np.ndarray = _as_float_array(
-                self.cov_trans_BM,
-                "cov_trans_BM",
-                (3, 3),
-            )
             object.__setattr__(self, "cov_rot_BM", cov_rot_BM)
-            object.__setattr__(self, "cov_trans_BM", cov_trans_BM)
 
             if self.b_m_T is not None:
                 b_m_T: np.ndarray = _as_float_array(self.b_m_T, "b_m_T", (3,))

@@ -112,8 +112,6 @@ def test_optimizer_reduces_cost_and_handles_mag_optional() -> None:
     mount: MountEstimate = MountEstimate(
         q_BI_wxyz=q_BI_init,
         q_BM_wxyz=np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64),
-        p_BI_m=np.zeros(3, dtype=np.float64),
-        p_BM_m=np.zeros(3, dtype=np.float64),
     )
     imu: ImuNuisance = ImuNuisance(
         b_a_mps2=np.zeros(3, dtype=np.float64),
@@ -147,21 +145,18 @@ def test_optimizer_reduces_cost_and_handles_mag_optional() -> None:
         state,
         keyframes,
         params,
-        include_translation_vars=False,
     )
     updated_state: MountingState
     updated_state, _ = optimize(
         state,
         keyframes,
         params,
-        include_translation_vars=False,
     )
     cost_updated: float
     _, _, cost_updated, _ = build_linearization(
         updated_state,
         keyframes,
         params,
-        include_translation_vars=False,
     )
 
     assert cost_initial > 0.0
@@ -212,8 +207,6 @@ def test_optimizer_robust_loss_reduces_outlier_cost() -> None:
     mount: MountEstimate = MountEstimate(
         q_BI_wxyz=q_BI_init,
         q_BM_wxyz=np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64),
-        p_BI_m=np.zeros(3, dtype=np.float64),
-        p_BM_m=np.zeros(3, dtype=np.float64),
     )
     imu: ImuNuisance = ImuNuisance(
         b_a_mps2=np.zeros(3, dtype=np.float64),
@@ -251,21 +244,18 @@ def test_optimizer_robust_loss_reduces_outlier_cost() -> None:
         state,
         keyframes,
         params,
-        include_translation_vars=False,
     )
     updated_state: MountingState
     updated_state, _ = optimize(
         state,
         keyframes,
         params,
-        include_translation_vars=False,
     )
     cost_updated: float
     _, _, cost_updated, _ = build_linearization(
         updated_state,
         keyframes,
         params,
-        include_translation_vars=False,
     )
 
     assert cost_initial > 0.0
@@ -291,8 +281,6 @@ def test_gravity_weight_scales_cost() -> None:
     mount: MountEstimate = MountEstimate(
         q_BI_wxyz=q_BI_init,
         q_BM_wxyz=np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64),
-        p_BI_m=np.zeros(3, dtype=np.float64),
-        p_BM_m=np.zeros(3, dtype=np.float64),
     )
     imu: ImuNuisance = ImuNuisance(
         b_a_mps2=np.zeros(3, dtype=np.float64),
@@ -319,14 +307,12 @@ def test_gravity_weight_scales_cost() -> None:
         state,
         (keyframe_low,),
         params,
-        include_translation_vars=False,
     )
     cost_high: float
     _, _, cost_high, _ = build_linearization(
         state,
         (keyframe_high,),
         params,
-        include_translation_vars=False,
     )
 
     assert cost_low > 0.0
@@ -365,8 +351,6 @@ def test_build_linearization_hessian_is_solvable() -> None:
     mount: MountEstimate = MountEstimate(
         q_BI_wxyz=q_BI_init,
         q_BM_wxyz=q_BM_init,
-        p_BI_m=np.zeros(3, dtype=np.float64),
-        p_BM_m=np.zeros(3, dtype=np.float64),
     )
     imu: ImuNuisance = ImuNuisance(
         b_a_mps2=np.zeros(3, dtype=np.float64),
@@ -397,7 +381,6 @@ def test_build_linearization_hessian_is_solvable() -> None:
         state,
         keyframes,
         params,
-        include_translation_vars=False,
     )
     delta: NDArray[np.float64] = np.asarray(
         np.linalg.solve(H, -b),

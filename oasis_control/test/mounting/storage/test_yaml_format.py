@@ -22,8 +22,8 @@ from oasis_control.localization.mounting.storage.yaml_format import ImuNuisanceY
 from oasis_control.localization.mounting.storage.yaml_format import MagNuisanceYaml
 from oasis_control.localization.mounting.storage.yaml_format import MountingSnapshotYaml
 from oasis_control.localization.mounting.storage.yaml_format import MountingYamlError
+from oasis_control.localization.mounting.storage.yaml_format import MountRotationYaml
 from oasis_control.localization.mounting.storage.yaml_format import QualityYaml
-from oasis_control.localization.mounting.storage.yaml_format import TransformYaml
 from oasis_control.localization.mounting.storage.yaml_format import dumps_yaml
 from oasis_control.localization.mounting.storage.yaml_format import loads_yaml
 from oasis_control.localization.mounting.storage.yaml_format import snapshot_to_dict
@@ -42,13 +42,11 @@ def _build_snapshot() -> MountingSnapshotYaml:
         mag_disturbance_detected=True,
         mag_dir_prior_from_driver_cov=False,
     )
-    t_bi: TransformYaml = TransformYaml(
-        translation_m=np.array([0.1, -0.2, 0.3], dtype=np.float64),
+    r_bi: MountRotationYaml = MountRotationYaml(
         quaternion_wxyz=np.array([0.707, 0.0, 0.707, 0.0], dtype=np.float64),
         rot_cov_rad2=np.eye(3, dtype=np.float64) * 0.01,
     )
-    t_bm: TransformYaml = TransformYaml(
-        translation_m=np.array([0.4, 0.5, -0.6], dtype=np.float64),
+    r_bm: MountRotationYaml = MountRotationYaml(
         quaternion_wxyz=np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64),
         rot_cov_rad2=np.eye(3, dtype=np.float64) * 0.02,
     )
@@ -82,8 +80,8 @@ def _build_snapshot() -> MountingSnapshotYaml:
         format_version=1,
         frames=frames,
         flags=flags,
-        T_BI=t_bi,
-        T_BM=t_bm,
+        R_BI=r_bi,
+        R_BM=r_bm,
         imu=imu,
         mag=mag,
         quality=quality,
@@ -97,12 +95,10 @@ def _assert_snapshots_equal(
     assert left.format_version == right.format_version
     assert left.frames == right.frames
     assert left.flags == right.flags
-    np.testing.assert_allclose(left.T_BI.translation_m, right.T_BI.translation_m)
-    np.testing.assert_allclose(left.T_BI.quaternion_wxyz, right.T_BI.quaternion_wxyz)
-    np.testing.assert_allclose(left.T_BI.rot_cov_rad2, right.T_BI.rot_cov_rad2)
-    np.testing.assert_allclose(left.T_BM.translation_m, right.T_BM.translation_m)
-    np.testing.assert_allclose(left.T_BM.quaternion_wxyz, right.T_BM.quaternion_wxyz)
-    np.testing.assert_allclose(left.T_BM.rot_cov_rad2, right.T_BM.rot_cov_rad2)
+    np.testing.assert_allclose(left.R_BI.quaternion_wxyz, right.R_BI.quaternion_wxyz)
+    np.testing.assert_allclose(left.R_BI.rot_cov_rad2, right.R_BI.rot_cov_rad2)
+    np.testing.assert_allclose(left.R_BM.quaternion_wxyz, right.R_BM.quaternion_wxyz)
+    np.testing.assert_allclose(left.R_BM.rot_cov_rad2, right.R_BM.rot_cov_rad2)
     np.testing.assert_allclose(left.imu.accel_bias_mps2, right.imu.accel_bias_mps2)
     np.testing.assert_allclose(left.imu.accel_A_row_major, right.imu.accel_A_row_major)
     np.testing.assert_allclose(
@@ -154,24 +150,21 @@ def test_schema_missing_key() -> None:
 def test_schema_wrong_shapes() -> None:
     """Ensure wrong shapes raise errors."""
     with pytest.raises(MountingYamlError):
-        TransformYaml(
-            translation_m=np.array([0.0, 0.0], dtype=np.float64),
-            quaternion_wxyz=np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64),
-            rot_cov_rad2=np.eye(3, dtype=np.float64),
-        )
-
-    with pytest.raises(MountingYamlError):
-        TransformYaml(
-            translation_m=np.array([0.0, 0.0, 0.0], dtype=np.float64),
+        MountRotationYaml(
             quaternion_wxyz=np.array([1.0, 0.0, 0.0], dtype=np.float64),
             rot_cov_rad2=np.eye(3, dtype=np.float64),
         )
 
     with pytest.raises(MountingYamlError):
-        TransformYaml(
-            translation_m=np.array([0.0, 0.0, 0.0], dtype=np.float64),
+        MountRotationYaml(
             quaternion_wxyz=np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64),
             rot_cov_rad2=np.eye(2, dtype=np.float64),
+        )
+
+    with pytest.raises(MountingYamlError):
+        MountRotationYaml(
+            quaternion_wxyz=np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64),
+            rot_cov_rad2=np.zeros(3, dtype=np.float64),
         )
 
 
