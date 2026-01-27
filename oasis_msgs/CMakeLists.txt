@@ -31,8 +31,6 @@ ament_export_dependencies(rosidl_default_runtime)
 rosidl_generate_interfaces(
   ${PROJECT_NAME}
     msg/Accelerometer.msg
-    msg/AhrsDiagnostics.msg
-    msg/AhrsState.msg
     msg/AirQuality.msg
     msg/AnalogButton.msg
     msg/AnalogReading.msg
