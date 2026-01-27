@@ -16,8 +16,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
-
-from oasis_control.localization.mounting.math_utils.se3 import SE3
+from numpy.typing import NDArray
 
 
 @dataclass(frozen=True)
@@ -29,10 +28,10 @@ class ResultSnapshot:
         frame_base: Base frame name
         frame_imu: IMU frame name
         frame_mag: Magnetometer frame name when available
-        T_BI: Estimated base-to-IMU pose
-        T_BM: Estimated base-to-mag pose when available
-        cov_rot_BI: Rotation covariance for T_BI in tangent space
-        cov_rot_BM: Rotation covariance for T_BM in tangent space
+        R_BI: Estimated base-to-IMU rotation matrix, unitless
+        R_BM: Estimated base-to-mag rotation matrix, unitless, when available
+        cov_rot_BI: Rotation covariance for R_BI in tangent space
+        cov_rot_BM: Rotation covariance for R_BM in tangent space
         b_a_mps2: Accelerometer bias estimate in m/s^2
         A_a: Accelerometer scale/misalignment estimate
         b_g_rads: Gyroscope bias estimate in rad/s
@@ -51,8 +50,8 @@ class ResultSnapshot:
     frame_base: str
     frame_imu: str
     frame_mag: str | None
-    T_BI: SE3
-    T_BM: SE3 | None
+    R_BI: NDArray[np.float64]
+    R_BM: NDArray[np.float64] | None
     cov_rot_BI: np.ndarray
     cov_rot_BM: np.ndarray | None
     b_a_mps2: np.ndarray
@@ -92,15 +91,13 @@ class ResultSnapshot:
         if not isinstance(self.is_stable, bool):
             raise ValueError("is_stable must be a bool")
 
-        cov_rot_BI: np.ndarray = _as_float_array(
-            self.cov_rot_BI,
-            "cov_rot_BI",
-            (3, 3),
-        )
+        R_BI: NDArray[np.float64] = _as_rotation_matrix(self.R_BI, "R_BI")
+        cov_rot_BI: np.ndarray = _as_float_array(self.cov_rot_BI, "cov_rot_BI", (3, 3))
         b_a_mps2: np.ndarray = _as_float_array(self.b_a_mps2, "b_a_mps2", (3,))
         A_a: np.ndarray = _as_float_array(self.A_a, "A_a", (3, 3))
         b_g_rads: np.ndarray = _as_float_array(self.b_g_rads, "b_g_rads", (3,))
 
+        object.__setattr__(self, "R_BI", R_BI)
         object.__setattr__(self, "cov_rot_BI", cov_rot_BI)
         object.__setattr__(self, "b_a_mps2", b_a_mps2)
         object.__setattr__(self, "A_a", A_a)
@@ -115,19 +112,21 @@ class ResultSnapshot:
 
         if self.frame_mag is None:
             if (
-                self.T_BM is not None
+                self.R_BM is not None
                 or self.cov_rot_BM is not None
                 or self.b_m_T is not None
                 or self.R_m is not None
             ):
                 raise ValueError("mag fields must be None when frame_mag is None")
-            object.__setattr__(self, "T_BM", None)
+            object.__setattr__(self, "R_BM", None)
             object.__setattr__(self, "cov_rot_BM", None)
             object.__setattr__(self, "b_m_T", None)
             object.__setattr__(self, "R_m", None)
         else:
-            if self.T_BM is None:
-                raise ValueError("T_BM is required when frame_mag is set")
+            if self.R_BM is None:
+                raise ValueError("R_BM is required when frame_mag is set")
+            R_BM: NDArray[np.float64] = _as_rotation_matrix(self.R_BM, "R_BM")
+            object.__setattr__(self, "R_BM", R_BM)
             if self.cov_rot_BM is None:
                 raise ValueError("mag covariances are required when frame_mag is set")
             cov_rot_BM: np.ndarray = _as_float_array(
@@ -145,9 +144,23 @@ class ResultSnapshot:
                 object.__setattr__(self, "R_m", R_m)
 
 
-def _as_float_array(value: Any, name: str, shape: tuple[int, ...]) -> np.ndarray:
+def _as_rotation_matrix(value: Any, name: str) -> NDArray[np.float64]:
+    """Coerce a value to a float64 rotation matrix."""
+    array: NDArray[np.float64] = np.asarray(value, dtype=np.float64)
+    if array.shape != (3, 3):
+        raise ValueError(f"{name} must have shape (3, 3)")
+    if not np.all(np.isfinite(array)):
+        raise ValueError(f"{name} must contain finite values")
+    return array
+
+
+def _as_float_array(
+    value: Any,
+    name: str,
+    shape: tuple[int, ...],
+) -> NDArray[np.float64]:
     """Coerce a value to a float64 numpy array with a specific shape."""
-    array: np.ndarray = np.asarray(value, dtype=np.float64)
+    array: NDArray[np.float64] = np.asarray(value, dtype=np.float64)
     if array.shape != shape:
         raise ValueError(f"{name} must have shape {shape}")
     if not np.all(np.isfinite(array)):

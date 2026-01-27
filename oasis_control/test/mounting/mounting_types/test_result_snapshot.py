@@ -14,29 +14,29 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from numpy.typing import NDArray
 
-from oasis_control.localization.mounting.math_utils.se3 import SE3
 from oasis_control.localization.mounting.mounting_types.result_snapshot import (
     ResultSnapshot,
 )
 
 
-def _make_se3() -> SE3:
-    """Create a valid SE3 pose for tests."""
-    return SE3(R=np.eye(3, dtype=np.float64), p=np.zeros(3, dtype=np.float64))
+def _make_rotation() -> NDArray[np.float64]:
+    """Create a valid rotation matrix for tests."""
+    return np.eye(3, dtype=np.float64)
 
 
 def test_result_snapshot_validation() -> None:
     """Ensure snapshot validates required shapes."""
-    T_BI: SE3 = _make_se3()
+    R_BI: NDArray[np.float64] = _make_rotation()
     with pytest.raises(ValueError):
         ResultSnapshot(
             t_meas_ns=0,
             frame_base="base",
             frame_imu="imu",
             frame_mag=None,
-            T_BI=T_BI,
-            T_BM=None,
+            R_BI=R_BI,
+            R_BM=None,
             cov_rot_BI=np.eye(2, dtype=np.float64),
             cov_rot_BM=None,
             b_a_mps2=np.zeros(3, dtype=np.float64),
@@ -55,15 +55,15 @@ def test_result_snapshot_validation() -> None:
 
 def test_result_snapshot_mag_consistency() -> None:
     """Ensure mag fields are consistent with mag frame."""
-    T_BI: SE3 = _make_se3()
-    T_BM: SE3 = _make_se3()
+    R_BI: NDArray[np.float64] = _make_rotation()
+    R_BM: NDArray[np.float64] = _make_rotation()
     snapshot: ResultSnapshot = ResultSnapshot(
         t_meas_ns=0,
         frame_base="base",
         frame_imu="imu",
         frame_mag="mag",
-        T_BI=T_BI,
-        T_BM=T_BM,
+        R_BI=R_BI,
+        R_BM=R_BM,
         cov_rot_BI=np.eye(3, dtype=np.float64),
         cov_rot_BM=np.eye(3, dtype=np.float64),
         b_a_mps2=np.zeros(3, dtype=np.float64),
@@ -86,8 +86,8 @@ def test_result_snapshot_mag_consistency() -> None:
             frame_base="base",
             frame_imu="imu",
             frame_mag=None,
-            T_BI=T_BI,
-            T_BM=T_BM,
+            R_BI=R_BI,
+            R_BM=R_BM,
             cov_rot_BI=np.eye(3, dtype=np.float64),
             cov_rot_BM=np.eye(3, dtype=np.float64),
             b_a_mps2=np.zeros(3, dtype=np.float64),

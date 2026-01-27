@@ -15,24 +15,28 @@ import numpy as np
 import pytest
 from numpy.typing import NDArray
 
-from oasis_control.localization.mounting.math_utils.se3 import SE3
 from oasis_control.localization.mounting.tf.tf_publisher import PublishedTransform
 from oasis_control.localization.mounting.tf.tf_publisher import TfPublisher
 from oasis_control.localization.mounting.tf.tf_publisher import TfPublisherError
 
 
-def _identity_se3() -> SE3:
-    """Return an identity SE(3) transform."""
-    R: NDArray[np.float64] = np.eye(3, dtype=np.float64)
-    p: NDArray[np.float64] = np.zeros(3, dtype=np.float64)
-    return SE3(R, p)
+def _identity_rotation() -> NDArray[np.float64]:
+    """Return an identity rotation matrix."""
+    return np.eye(3, dtype=np.float64)
 
 
-def _offset_se3() -> SE3:
-    """Return a transform with non-zero translation."""
-    R: NDArray[np.float64] = np.eye(3, dtype=np.float64)
-    p: NDArray[np.float64] = np.array([1.0, -2.0, 3.0], dtype=np.float64)
-    return SE3(R, p)
+def _yaw_rotation(angle_rad: float) -> NDArray[np.float64]:
+    """Return a rotation matrix about +Z by the given angle."""
+    cos_angle: float = float(np.cos(angle_rad))
+    sin_angle: float = float(np.sin(angle_rad))
+    return np.array(
+        [
+            [cos_angle, -sin_angle, 0.0],
+            [sin_angle, cos_angle, 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
 
 
 def test_tf_publisher_dynamic_publishing() -> None:
@@ -46,8 +50,8 @@ def test_tf_publisher_dynamic_publishing() -> None:
     )
     transforms: list[PublishedTransform] = publisher.update(
         t_ns=0,
-        T_BI=_offset_se3(),
-        T_BM=_offset_se3(),
+        R_BI=_yaw_rotation(0.3),
+        R_BM=_yaw_rotation(-0.2),
         is_stable=False,
         saved=False,
     )
@@ -73,15 +77,15 @@ def test_tf_publisher_static_on_transition() -> None:
     )
     publisher.update(
         t_ns=0,
-        T_BI=_identity_se3(),
-        T_BM=_identity_se3(),
+        R_BI=_identity_rotation(),
+        R_BM=_identity_rotation(),
         is_stable=False,
         saved=False,
     )
     transforms: list[PublishedTransform] = publisher.update(
         t_ns=1,
-        T_BI=_identity_se3(),
-        T_BM=_identity_se3(),
+        R_BI=_identity_rotation(),
+        R_BM=_identity_rotation(),
         is_stable=True,
         saved=False,
     )
@@ -103,15 +107,15 @@ def test_tf_publisher_republish_on_save() -> None:
     )
     publisher.update(
         t_ns=0,
-        T_BI=_identity_se3(),
-        T_BM=_identity_se3(),
+        R_BI=_identity_rotation(),
+        R_BM=_identity_rotation(),
         is_stable=True,
         saved=False,
     )
     transforms: list[PublishedTransform] = publisher.update(
         t_ns=1,
-        T_BI=_identity_se3(),
-        T_BM=_identity_se3(),
+        R_BI=_identity_rotation(),
+        R_BM=_identity_rotation(),
         is_stable=True,
         saved=True,
     )
@@ -131,8 +135,8 @@ def test_tf_publisher_save_requires_stability() -> None:
     )
     transforms_unstable: list[PublishedTransform] = publisher.update(
         t_ns=0,
-        T_BI=_identity_se3(),
-        T_BM=_identity_se3(),
+        R_BI=_identity_rotation(),
+        R_BM=_identity_rotation(),
         is_stable=False,
         saved=True,
     )
@@ -140,8 +144,8 @@ def test_tf_publisher_save_requires_stability() -> None:
 
     transforms_stable: list[PublishedTransform] = publisher.update(
         t_ns=1,
-        T_BI=_identity_se3(),
-        T_BM=_identity_se3(),
+        R_BI=_identity_rotation(),
+        R_BM=_identity_rotation(),
         is_stable=True,
         saved=False,
     )
@@ -150,8 +154,8 @@ def test_tf_publisher_save_requires_stability() -> None:
 
     transforms_republish: list[PublishedTransform] = publisher.update(
         t_ns=2,
-        T_BI=_identity_se3(),
-        T_BM=_identity_se3(),
+        R_BI=_identity_rotation(),
+        R_BM=_identity_rotation(),
         is_stable=True,
         saved=True,
     )
@@ -180,8 +184,8 @@ def test_tf_publisher_quaternion_normalization() -> None:
     )
     transforms: list[PublishedTransform] = publisher.update(
         t_ns=0,
-        T_BI=_identity_se3(),
-        T_BM=_identity_se3(),
+        R_BI=_identity_rotation(),
+        R_BM=_identity_rotation(),
         is_stable=False,
         saved=False,
     )

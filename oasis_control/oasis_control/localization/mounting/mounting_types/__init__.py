@@ -12,7 +12,6 @@
 
 from __future__ import annotations
 
-from oasis_control.localization.mounting.math_utils.se3 import SE3
 from oasis_control.localization.mounting.mounting_types.diagnostics import Diagnostics
 from oasis_control.localization.mounting.mounting_types.imu_packet import (
     ImuCalibrationPrior,
@@ -38,7 +37,6 @@ __all__ = [
     "Keyframe",
     "MagPacket",
     "ResultSnapshot",
-    "SE3",
     "SteadySegment",
     "UpdateReport",
 ]

@@ -38,8 +38,8 @@ class StabilityStatus:
 
     Attributes:
         is_stable: True when the estimate is stable enough
-        delta_theta_BI_rad: Max rotation change for T_BI over the window in radians
-        delta_theta_BM_rad: Max rotation change for T_BM over the window in radians
+        delta_theta_BI_rad: Max rotation change for R_BI over the window in radians
+        delta_theta_BM_rad: Max rotation change for R_BM over the window in radians
         window_duration_sec: Duration covered by the current window in seconds
     """
 
