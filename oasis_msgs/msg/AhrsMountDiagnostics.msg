@@ -22,7 +22,26 @@ std_msgs/Header header
 # -----------------------------
 
 # Count of imu_raw messages dropped because no ExactTime imu_calibration matched
+# (legacy alias for imu_raw_unpaired_dropped)
 uint32 imu_raw_dropped_no_calibration
+
+# Count of ExactTime imu_raw + imu_calibration pairs received
+uint32 imu_pairs_received
+
+# Count of pairs rejected because calibration msg.valid was false
+uint32 imu_pairs_rejected_invalid_cal
+
+# Count of pairs rejected due to missing/mismatched frame_ids
+uint32 imu_pairs_rejected_frame_mismatch
+
+# Count of pairs rejected due to invalid or unknown covariance
+uint32 imu_pairs_rejected_bad_cov
+
+# Count of pairs rejected due to other exceptions
+uint32 imu_pairs_rejected_other
+
+# Count of imu_raw messages that never matched a calibration
+uint32 imu_raw_unpaired_dropped
 
 # Count of magnetometer samples dropped due to invalid/NaN covariance or bad norm
 uint32 mag_dropped_bad_cov
@@ -49,6 +68,9 @@ bool anchored
 
 # True when current steady detector window satisfies STEADY criteria
 bool steady_detected
+
+# Count of raw IMU samples ingested
+uint32 raw_samples
 
 # Count of emitted steady segments
 uint32 steady_segments

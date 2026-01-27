@@ -8,10 +8,7 @@
 #
 ################################################################################
 
-from collections import deque
 from dataclasses import replace
-from typing import Deque
-from typing import Dict
 from typing import Sequence
 
 import message_filters
@@ -29,7 +26,13 @@ from sensor_msgs.msg import MagneticField as MagneticFieldMsg
 
 from oasis_control.localization.mounting.config.mounting_config import MountingConfig
 from oasis_control.localization.mounting.config.mounting_params import MountingParams
+from oasis_control.localization.mounting.diagnostics.imu_pair_tracker import (
+    ImuPairTracker,
+)
 from oasis_control.localization.mounting.math_utils.quat import Quaternion
+from oasis_control.localization.mounting.math_utils.validation import (
+    CovarianceValidationError,
+)
 from oasis_control.localization.mounting.math_utils.validation import (
     normalize_quaternion_wxyz,
 )
@@ -86,8 +89,11 @@ DEFAULT_BOOTSTRAP_SEC: float = 5.0
 # Default persistence save period in seconds
 DEFAULT_SAVE_PERIOD_SEC: float = 2.0
 
-# Pending IMU queue horizon in seconds
-PENDING_DROP_HORIZON_SEC: float = 2.0
+# IMU pairing warmup duration in seconds
+IMU_PAIR_WARMUP_SEC: float = 2.0
+
+# Steady detector logging throttle in seconds
+STEADY_LOG_THROTTLE_SEC: float = 5.0
 
 ################################################################################
 # ROS node
@@ -189,17 +195,13 @@ class AhrsMountingNode(rclpy.node.Node):
         self._imu_raw_filter_sub.registerCallback(self._record_imu_raw)
         self._imu_cal_filter_sub.registerCallback(self._record_imu_calibration)
 
-        # Pending IMU messages
-        self._pending_raw_stamps: Deque[int] = deque()
-        self._pending_raw_counts: Dict[int, int] = {}
-        self._pending_cal_stamps: Deque[int] = deque()
-        self._pending_cal_counts: Dict[int, int] = {}
-        self._last_seen_time_ns: int | None = None
-
         # Statistics
-        self._imu_raw_dropped_no_calibration: int = 0
+        self._imu_pair_tracker: ImuPairTracker = ImuPairTracker(
+            warmup_sec=IMU_PAIR_WARMUP_SEC
+        )
         self._mag_dropped_bad_cov: int = 0
         self._time_sync_slop_max_ns: int = 0
+        self._last_steady_log_ns: int | None = None
 
         self.get_logger().info("AHRS mounting node initialized")
 
@@ -211,134 +213,47 @@ class AhrsMountingNode(rclpy.node.Node):
     def _record_imu_raw(self, message: ImuMsg) -> None:
         t_ns: int = _time_to_ns(message.header.stamp)
 
-        self._add_pending_stamp(
-            self._pending_raw_stamps,
-            self._pending_raw_counts,
-            t_ns,
-        )
-        self._update_last_seen_time(t_ns)
-        self._prune_pending_by_time()
+        self._imu_pair_tracker.record_raw(t_ns)
 
     def _record_imu_calibration(self, message: ImuCalibrationMsg) -> None:
         t_ns: int = _time_to_ns(message.header.stamp)
 
-        self._add_pending_stamp(
-            self._pending_cal_stamps,
-            self._pending_cal_counts,
-            t_ns,
-        )
-        self._update_last_seen_time(t_ns)
-        self._prune_pending_by_time()
-
-    def _add_pending_stamp(
-        self,
-        stamps: Deque[int],
-        counts: Dict[int, int],
-        t_ns: int,
-    ) -> None:
-        counts[t_ns] = counts.get(t_ns, 0) + 1
-        stamps.append(t_ns)
-
-    def _update_last_seen_time(self, t_ns: int) -> None:
-        if self._last_seen_time_ns is None or t_ns > self._last_seen_time_ns:
-            self._last_seen_time_ns = t_ns
-
-    def _prune_pending_by_time(self) -> None:
-        if self._last_seen_time_ns is None:
-            return
-
-        horizon_ns: int = int(PENDING_DROP_HORIZON_SEC * 1e9)
-        cutoff_ns: int = self._last_seen_time_ns - horizon_ns
-        if cutoff_ns <= 0:
-            return
-
-        self._drop_pending_before(
-            self._pending_raw_stamps,
-            self._pending_raw_counts,
-            cutoff_ns,
-            count_raw_drops=True,
-        )
-        self._drop_pending_before(
-            self._pending_cal_stamps,
-            self._pending_cal_counts,
-            cutoff_ns,
-            count_raw_drops=False,
-        )
-
-    def _drop_pending_before(
-        self,
-        stamps: Deque[int],
-        counts: Dict[int, int],
-        cutoff_ns: int,
-        *,
-        count_raw_drops: bool,
-    ) -> None:
-        while stamps and stamps[0] < cutoff_ns:
-            t_ns: int = stamps.popleft()
-            if t_ns in counts:
-                counts[t_ns] -= 1
-                if counts[t_ns] <= 0:
-                    counts.pop(t_ns, None)
-                if count_raw_drops:
-                    self._imu_raw_dropped_no_calibration += 1
-
-        self._prune_pending(stamps, counts)
-
-    def _prune_pending(self, stamps: Deque[int], counts: Dict[int, int]) -> None:
-        while stamps and stamps[0] not in counts:
-            stamps.popleft()
-
-    def _consume_pending_stamp(
-        self,
-        stamps: Deque[int],
-        counts: Dict[int, int],
-        t_ns: int,
-    ) -> None:
-        if t_ns in counts:
-            counts[t_ns] -= 1
-            if counts[t_ns] <= 0:
-                counts.pop(t_ns, None)
-
-        self._prune_pending(stamps, counts)
+        self._imu_pair_tracker.record_calibration(t_ns)
 
     def _handle_imu_raw_with_calibration(
         self, imu_msg: ImuMsg, cal_msg: ImuCalibrationMsg
     ) -> None:
         t_imu_ns: int = _time_to_ns(imu_msg.header.stamp)
         t_cal_ns: int = _time_to_ns(cal_msg.header.stamp)
-        self._update_last_seen_time(max(t_imu_ns, t_cal_ns))
+        self._imu_pair_tracker.record_pair(max(t_imu_ns, t_cal_ns))
 
         slop_ns: int = abs(t_imu_ns - t_cal_ns)
         if slop_ns > self._time_sync_slop_max_ns:
             self._time_sync_slop_max_ns = slop_ns
 
-        self._consume_pending_stamp(
-            self._pending_raw_stamps,
-            self._pending_raw_counts,
-            t_imu_ns,
-        )
-        self._consume_pending_stamp(
-            self._pending_cal_stamps,
-            self._pending_cal_counts,
-            t_cal_ns,
-        )
-        self._prune_pending_by_time()
-
         imu_frame: str = imu_msg.header.frame_id
         cal_frame: str = cal_msg.header.frame_id
 
         if not cal_msg.valid:
-            self._imu_raw_dropped_no_calibration += 1
+            self._imu_pair_tracker.reject_invalid_cal()
             return
         if not imu_frame or not cal_frame or cal_frame != imu_frame:
-            self._imu_raw_dropped_no_calibration += 1
+            self._imu_pair_tracker.reject_frame_mismatch()
             return
 
         try:
-            imu_packet: ImuPacket = _build_imu_packet(imu_msg, cal_msg)
+            imu_packet: ImuPacket = _build_imu_packet(
+                imu_msg,
+                cal_msg,
+                params=self._params,
+            )
+        except CovarianceValidationError as exc:
+            self.get_logger().warn(f"Dropping IMU pair: {exc}")
+            self._imu_pair_tracker.reject_bad_cov()
+            return
         except ValueError as exc:
             self.get_logger().warn(f"Dropping IMU pair: {exc}")
-            self._imu_raw_dropped_no_calibration += 1
+            self._imu_pair_tracker.reject_other()
             return
 
         try:
@@ -370,6 +285,16 @@ class AhrsMountingNode(rclpy.node.Node):
             self._pipeline.ingest_mag(mag_packet=mag_packet)
         except MountingPipelineError as exc:
             self.get_logger().warn(f"Mounting pipeline error: {exc}")
+
+    def _log_unsteady_window(self, *, t_ns: int, steady_detected: bool) -> None:
+        if steady_detected:
+            return
+
+        throttle_ns: int = int(STEADY_LOG_THROTTLE_SEC * 1e9)
+        last_log_ns: int | None = self._last_steady_log_ns
+        if last_log_ns is None or t_ns - last_log_ns >= throttle_ns:
+            self.get_logger().info("Steady detector false")
+            self._last_steady_log_ns = t_ns
 
     def _publish_outputs(self, outputs: PipelineOutputs) -> None:
         snapshot: ResultSnapshot | None = outputs.snapshot
@@ -477,21 +402,40 @@ class AhrsMountingNode(rclpy.node.Node):
             tf_msg: TransformStampedMsg = _published_transform_to_msg(published)
 
             if published.is_static:
+                tf_msg.header.stamp = _ns_to_time_msg(0)
                 self._tf_static_broadcaster.sendTransform(tf_msg)
             else:
                 self._tf_broadcaster.sendTransform(tf_msg)
 
+        steady_detected: bool = bool(self._pipeline.steady_window_is_steady())
+        self._log_unsteady_window(t_ns=t_ns, steady_detected=steady_detected)
+        raw_samples: int = int(self._pipeline.raw_sample_count())
+        unpaired_raw: int = self._imu_pair_tracker.unpaired_raw(t_ns)
+
         diag_msg: AhrsMountDiagnosticsMsg = AhrsMountDiagnosticsMsg()
         diag_msg.header.stamp = _ns_to_time_msg(t_ns)
-        diag_msg.imu_raw_dropped_no_calibration = int(
-            self._imu_raw_dropped_no_calibration
+        diag_msg.imu_raw_dropped_no_calibration = int(unpaired_raw)
+        diag_msg.imu_pairs_received = int(self._imu_pair_tracker.imu_pairs_received)
+        diag_msg.imu_pairs_rejected_invalid_cal = int(
+            self._imu_pair_tracker.imu_pairs_rejected_invalid_cal
         )
+        diag_msg.imu_pairs_rejected_frame_mismatch = int(
+            self._imu_pair_tracker.imu_pairs_rejected_frame_mismatch
+        )
+        diag_msg.imu_pairs_rejected_bad_cov = int(
+            self._imu_pair_tracker.imu_pairs_rejected_bad_cov
+        )
+        diag_msg.imu_pairs_rejected_other = int(
+            self._imu_pair_tracker.imu_pairs_rejected_other
+        )
+        diag_msg.imu_raw_unpaired_dropped = int(unpaired_raw)
         diag_msg.mag_dropped_bad_cov = int(self._mag_dropped_bad_cov)
         diag_msg.time_sync_slop_max_ns = int(self._time_sync_slop_max_ns)
         diag_msg.bootstrap_active = bool(self._pipeline.is_bootstrapping())
         diag_msg.bootstrap_remaining_sec = self._pipeline.bootstrap_remaining_sec(t_ns)
         diag_msg.anchored = anchored
-        diag_msg.steady_detected = bool(self._pipeline.steady_window_is_steady())
+        diag_msg.steady_detected = steady_detected
+        diag_msg.raw_samples = raw_samples
         diag_msg.steady_segments = int(self._pipeline.segment_count())
         diag_msg.keyframes = int(self._pipeline.keyframe_count())
         diag_msg.need_more_tilt = bool(outputs.report.need_more_tilt)
@@ -544,7 +488,12 @@ def _quat_wxyz_to_msg(wxyz: Sequence[float]) -> QuaternionMsg:
     return quat
 
 
-def _build_imu_packet(imu_msg: ImuMsg, cal_msg: ImuCalibrationMsg) -> ImuPacket:
+def _build_imu_packet(
+    imu_msg: ImuMsg,
+    cal_msg: ImuCalibrationMsg,
+    *,
+    params: MountingParams,
+) -> ImuPacket:
     imu_frame: str = imu_msg.header.frame_id
     t_ns: int = _time_to_ns(imu_msg.header.stamp)
 
@@ -563,15 +512,6 @@ def _build_imu_packet(imu_msg: ImuMsg, cal_msg: ImuCalibrationMsg) -> ImuPacket:
             imu_msg.linear_acceleration.z,
         ],
         dtype=np.float64,
-    )
-
-    cov_omega_raw: np.ndarray = _reshape_covariance(
-        imu_msg.angular_velocity_covariance, (3, 3), "angular_velocity_covariance"
-    )
-    cov_accel_raw: np.ndarray = _reshape_covariance(
-        imu_msg.linear_acceleration_covariance,
-        (3, 3),
-        "linear_acceleration_covariance",
     )
 
     b_a_mps2: np.ndarray = np.array(
@@ -601,6 +541,24 @@ def _build_imu_packet(imu_msg: ImuMsg, cal_msg: ImuCalibrationMsg) -> ImuPacket:
         cal_msg.gyro_bias_cov,
         (3, 3),
         "gyro_bias_cov",
+    )
+
+    omega_cov_default: np.ndarray = np.diag(params.imu.omega_cov_diag)
+    accel_cov_default: np.ndarray = np.diag(params.imu.accel_cov_diag)
+    omega_cov_fallback: np.ndarray = cov_b_g
+    accel_cov_fallback: np.ndarray = cov_a_params[:3, :3]
+
+    cov_omega_raw: np.ndarray = _reshape_covariance(
+        imu_msg.angular_velocity_covariance,
+        (3, 3),
+        "angular_velocity_covariance",
+        fallback=omega_cov_fallback if cal_msg.valid else omega_cov_default,
+    )
+    cov_accel_raw: np.ndarray = _reshape_covariance(
+        imu_msg.linear_acceleration_covariance,
+        (3, 3),
+        "linear_acceleration_covariance",
+        fallback=accel_cov_fallback if cal_msg.valid else accel_cov_default,
     )
 
     calibration: ImuCalibrationPrior = ImuCalibrationPrior(
