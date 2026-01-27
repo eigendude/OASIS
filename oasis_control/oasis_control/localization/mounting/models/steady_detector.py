@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Iterable
 
@@ -85,6 +86,7 @@ class SteadyDetector:
     def __init__(self, params: MountingParams) -> None:
         """Create a steady detector from mounting parameters."""
         self._params: MountingParams = params
+        self._logger: logging.Logger = logging.getLogger(__name__)
         self._steady_ns: int = int(round(params.steady.steady_sec * 1e9))
         if self._steady_ns <= 0:
             raise SteadyDetectorError("steady_sec must be positive")
@@ -189,12 +191,10 @@ class SteadyDetector:
     def _trim_buffers(self, t_ns: int) -> None:
         """Trim samples outside the current steady window."""
         window_start: int = t_ns - self._steady_ns
-        self._imu_samples = [
-            sample for sample in self._imu_samples if sample.t_ns >= window_start
-        ]
-        self._mag_samples = [
-            sample for sample in self._mag_samples if sample.t_ns >= window_start
-        ]
+        while len(self._imu_samples) > 1 and self._imu_samples[1].t_ns < window_start:
+            self._imu_samples.pop(0)
+        while len(self._mag_samples) > 1 and self._mag_samples[1].t_ns < window_start:
+            self._mag_samples.pop(0)
 
     def _window_is_steady(self) -> bool:
         """Return True when the current window satisfies steady criteria."""
@@ -202,6 +202,12 @@ class SteadyDetector:
             return False
         window_span_ns: int = self._imu_samples[-1].t_ns - self._imu_samples[0].t_ns
         if window_span_ns < self._steady_ns:
+            if self._logger.isEnabledFor(logging.DEBUG):
+                self._logger.debug(
+                    "Steady window span %d ns below required %d ns",
+                    window_span_ns,
+                    self._steady_ns,
+                )
             return False
         omega_samples: list[np.ndarray] = [
             sample.omega_corr_rads for sample in self._imu_samples
@@ -220,25 +226,54 @@ class SteadyDetector:
 
         omega_mean_thresh: float | None = self._params.steady.omega_mean_thresh
         if omega_mean_thresh is not None and omega_mean_norm >= omega_mean_thresh:
+            if self._logger.isEnabledFor(logging.DEBUG):
+                self._logger.debug(
+                    "Omega mean %.6f rad/s exceeds threshold %.6f rad/s",
+                    omega_mean_norm,
+                    omega_mean_thresh,
+                )
             return False
 
         omega_cov_thresh: float | None = self._params.steady.omega_cov_thresh
-        if (
-            omega_cov_thresh is not None
-            and float(np.trace(omega_cov)) >= omega_cov_thresh
-        ):
+        omega_cov_trace: float = float(np.trace(omega_cov))
+        if omega_cov_thresh is not None and omega_cov_trace >= omega_cov_thresh:
+            if self._logger.isEnabledFor(logging.DEBUG):
+                self._logger.debug(
+                    "Omega covariance trace %.6f exceeds threshold %.6f",
+                    omega_cov_trace,
+                    omega_cov_thresh,
+                )
             return False
 
         a_cov_thresh: float | None = self._params.steady.a_cov_thresh
-        if a_cov_thresh is not None and float(np.trace(a_cov)) >= a_cov_thresh:
+        a_cov_trace: float = float(np.trace(a_cov))
+        if a_cov_thresh is not None and a_cov_trace >= a_cov_thresh:
+            if self._logger.isEnabledFor(logging.DEBUG):
+                self._logger.debug(
+                    "Accel covariance trace %.6f exceeds threshold %.6f",
+                    a_cov_trace,
+                    a_cov_thresh,
+                )
             return False
 
         a_norm_min: float | None = self._params.steady.a_norm_min
         if a_norm_min is not None and a_mean_norm <= a_norm_min:
+            if self._logger.isEnabledFor(logging.DEBUG):
+                self._logger.debug(
+                    "Accel norm %.6f m/s^2 below minimum %.6f m/s^2",
+                    a_mean_norm,
+                    a_norm_min,
+                )
             return False
 
         a_norm_max: float | None = self._params.steady.a_norm_max
         if a_norm_max is not None and a_mean_norm >= a_norm_max:
+            if self._logger.isEnabledFor(logging.DEBUG):
+                self._logger.debug(
+                    "Accel norm %.6f m/s^2 exceeds maximum %.6f m/s^2",
+                    a_mean_norm,
+                    a_norm_max,
+                )
             return False
 
         return True
