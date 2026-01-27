@@ -456,9 +456,32 @@ class MountingPipeline:
         """Return the current number of keyframes."""
         return len(self._keyframe_cluster.keyframes())
 
+    def raw_sample_count(self) -> int:
+        """Return the total number of IMU samples ingested."""
+        return self._raw_sample_count
+
+    def segment_count(self) -> int:
+        """Return the number of steady segments processed."""
+        return self._segment_count
+
     def last_save_time_ns(self) -> int | None:
         """Return the last save timestamp in nanoseconds."""
         return self._last_save_time_ns
+
+    def save_fail_count(self) -> int:
+        """Return the total number of snapshot save failures."""
+        return self._save_fail_count
+
+    def bootstrap_remaining_sec(self, t_now_ns: int) -> float:
+        """Return remaining bootstrap time in seconds."""
+        if not self._bootstrapping or self._bootstrap_start_ns is None:
+            return 0.0
+        elapsed_ns: int = max(0, t_now_ns - self._bootstrap_start_ns)
+        remaining_ns: int = max(
+            0,
+            sec_to_ns(self._params.bootstrap.bootstrap_sec) - elapsed_ns,
+        )
+        return float(remaining_ns) / 1e9
 
     def _drop_packet(self, message: str) -> None:
         """Record a dropped packet diagnostic."""
