@@ -28,6 +28,13 @@ def _identity_se3() -> SE3:
     return SE3(R, p)
 
 
+def _offset_se3() -> SE3:
+    """Return a transform with non-zero translation."""
+    R: NDArray[np.float64] = np.eye(3, dtype=np.float64)
+    p: NDArray[np.float64] = np.array([1.0, -2.0, 3.0], dtype=np.float64)
+    return SE3(R, p)
+
+
 def test_tf_publisher_dynamic_publishing() -> None:
     """Emit dynamic transforms on each update when enabled."""
     publisher: TfPublisher = TfPublisher(
@@ -39,8 +46,8 @@ def test_tf_publisher_dynamic_publishing() -> None:
     )
     transforms: list[PublishedTransform] = publisher.update(
         t_ns=0,
-        T_BI=_identity_se3(),
-        T_BM=_identity_se3(),
+        T_BI=_offset_se3(),
+        T_BM=_offset_se3(),
         is_stable=False,
         saved=False,
     )
@@ -49,6 +56,10 @@ def test_tf_publisher_dynamic_publishing() -> None:
         assert not transform.is_static
         assert transform.parent_frame == "base_link"
         assert transform.child_frame in {"imu_link", "mag_link"}
+        np.testing.assert_allclose(
+            transform.translation_m,
+            np.zeros(3, dtype=np.float64),
+        )
 
 
 def test_tf_publisher_static_on_transition() -> None:
@@ -177,3 +188,7 @@ def test_tf_publisher_quaternion_normalization() -> None:
     for transform in transforms:
         norm: float = float(np.linalg.norm(transform.quaternion_wxyz))
         assert np.isclose(norm, 1.0)
+        np.testing.assert_allclose(
+            transform.translation_m,
+            np.zeros(3, dtype=np.float64),
+        )
