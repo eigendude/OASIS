@@ -28,6 +28,12 @@ def _empty_keyframe() -> Keyframe:
         gravity_mean_dir_I=np.zeros(3, dtype=np.float64),
         gravity_cov_dir_I=np.zeros((3, 3), dtype=np.float64),
         gravity_weight=0,
+        omega_mean_rads_raw=np.zeros(3, dtype=np.float64),
+        cov_omega_raw=np.zeros((3, 3), dtype=np.float64),
+        omega_weight=0,
+        accel_mean_mps2_raw=np.zeros(3, dtype=np.float64),
+        cov_accel_raw=np.zeros((3, 3), dtype=np.float64),
+        accel_weight=0,
         mag_mean_dir_M=None,
         mag_cov_dir_M=None,
         mag_weight=0,
@@ -68,6 +74,10 @@ def test_keyframe_update_with_segment() -> None:
         mag_frame_id="mag",
         a_mean_mps2=np.array([0.0, 0.0, 9.81], dtype=np.float64),
         cov_a=np.eye(3, dtype=np.float64),
+        omega_mean_rads_raw=np.zeros(3, dtype=np.float64),
+        cov_omega_raw=np.eye(3, dtype=np.float64),
+        accel_mean_mps2_raw=np.array([0.0, 0.0, 9.81], dtype=np.float64),
+        cov_accel_raw=np.eye(3, dtype=np.float64),
         m_mean_T=np.array([1.0, 0.0, 0.0], dtype=np.float64),
         cov_m=np.eye(3, dtype=np.float64),
         sample_count=2,
@@ -88,8 +98,60 @@ def test_keyframe_requires_non_zero_mean_when_weighted() -> None:
             gravity_mean_dir_I=np.zeros(3, dtype=np.float64),
             gravity_cov_dir_I=np.zeros((3, 3), dtype=np.float64),
             gravity_weight=1,
+            omega_mean_rads_raw=np.zeros(3, dtype=np.float64),
+            cov_omega_raw=np.zeros((3, 3), dtype=np.float64),
+            omega_weight=0,
+            accel_mean_mps2_raw=np.zeros(3, dtype=np.float64),
+            cov_accel_raw=np.zeros((3, 3), dtype=np.float64),
+            accel_weight=0,
             mag_mean_dir_M=None,
             mag_cov_dir_M=None,
             mag_weight=0,
             segment_count=0,
         )
+
+
+def test_keyframe_fuses_covariance_weighted_means() -> None:
+    """Ensure fused means favor lower covariance segments."""
+    keyframe: Keyframe = _empty_keyframe()
+    segment_loose: SteadySegment = SteadySegment(
+        t_start_ns=0,
+        t_end_ns=10,
+        t_meas_ns=5,
+        imu_frame_id="imu",
+        mag_frame_id=None,
+        a_mean_mps2=np.array([0.0, 0.0, 9.81], dtype=np.float64),
+        cov_a=np.eye(3, dtype=np.float64),
+        omega_mean_rads_raw=np.array([0.0, 0.0, 0.0], dtype=np.float64),
+        cov_omega_raw=np.eye(3, dtype=np.float64),
+        accel_mean_mps2_raw=np.array([0.0, 0.0, 9.81], dtype=np.float64),
+        cov_accel_raw=np.eye(3, dtype=np.float64),
+        m_mean_T=None,
+        cov_m=None,
+        sample_count=2,
+        duration_ns=10,
+    )
+    segment_tight: SteadySegment = SteadySegment(
+        t_start_ns=20,
+        t_end_ns=30,
+        t_meas_ns=25,
+        imu_frame_id="imu",
+        mag_frame_id=None,
+        a_mean_mps2=np.array([0.0, 0.0, 9.81], dtype=np.float64),
+        cov_a=np.eye(3, dtype=np.float64),
+        omega_mean_rads_raw=np.array([10.0, 0.0, 0.0], dtype=np.float64),
+        cov_omega_raw=np.eye(3, dtype=np.float64) * 0.01,
+        accel_mean_mps2_raw=np.array([0.0, 0.0, 9.81], dtype=np.float64),
+        cov_accel_raw=np.eye(3, dtype=np.float64),
+        m_mean_T=None,
+        cov_m=None,
+        sample_count=2,
+        duration_ns=10,
+    )
+
+    keyframe = keyframe.update_with_segment(segment_loose)
+    keyframe = keyframe.update_with_segment(segment_tight)
+
+    assert keyframe.omega_weight == 2
+    assert float(keyframe.omega_mean_rads_raw[0]) > 9.0
+    assert float(np.trace(keyframe.cov_omega_raw)) < 1.0

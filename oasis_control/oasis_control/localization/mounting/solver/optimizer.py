@@ -43,6 +43,9 @@ from oasis_control.localization.mounting.state.state_mapping import StateMapping
 # Units: unitless. Meaning: Levenberg-Marquardt diagonal damping
 _LM_DAMPING: float = 1e-6
 
+# Units: unitless. Meaning: diagonal jitter for posterior covariance
+_POSTERIOR_JITTER: float = 1e-9
+
 
 def _apply_rotation(
     q_wxyz: NDArray[np.float64],
@@ -85,6 +88,40 @@ def _solve(H: NDArray[np.float64], b: NDArray[np.float64]) -> NDArray[np.float64
                 dtype=np.float64,
             )
     return delta
+
+
+def _posterior_covariances(
+    H: NDArray[np.float64],
+    mapping: StateMapping,
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    H_sym: NDArray[np.float64] = 0.5 * (H + H.T)
+    dim: int = int(H_sym.shape[0])
+    H_reg: NDArray[np.float64] = (
+        H_sym + np.eye(dim, dtype=np.float64) * _POSTERIOR_JITTER
+    )
+    try:
+        H_inv: NDArray[np.float64] = np.asarray(
+            np.linalg.inv(H_reg),
+            dtype=np.float64,
+        )
+    except np.linalg.LinAlgError:
+        H_inv = np.asarray(
+            np.linalg.pinv(H_reg),
+            dtype=np.float64,
+        )
+    block_b_g: StateBlock = mapping.block(BLOCK_NAME_B_G)
+    P_bg: NDArray[np.float64] = H_inv[block_b_g.sl(), block_b_g.sl()]
+    block_b_a: StateBlock = mapping.block(BLOCK_NAME_B_A)
+    block_A_a: StateBlock = mapping.block(BLOCK_NAME_A_A)
+    indices: list[int] = list(range(block_b_a.start, block_b_a.stop()))
+    indices.extend(range(block_A_a.start, block_A_a.stop()))
+    idx: NDArray[np.int64] = np.asarray(indices, dtype=np.int64)
+    P_accel: NDArray[np.float64] = H_inv[np.ix_(idx, idx)]
+    P_bg = 0.5 * (P_bg + P_bg.T) + np.eye(3, dtype=np.float64) * _POSTERIOR_JITTER
+    P_accel = (
+        0.5 * (P_accel + P_accel.T) + np.eye(12, dtype=np.float64) * _POSTERIOR_JITTER
+    )
+    return P_bg.astype(np.float64), P_accel.astype(np.float64)
 
 
 def _apply_delta(
@@ -199,11 +236,18 @@ def optimize(
         delta: NDArray[np.float64] = _solve(H, b)
         current = _apply_delta(current, delta, mapping)
 
-    _, _, final_cost, metrics = build_linearization(
+    H_final: NDArray[np.float64]
+    H_final, _, final_cost, metrics = build_linearization(
         current,
         keyframes,
         params,
     )
+    final_mapping: StateMapping = StateMapping.from_state(current)
+    P_bg: NDArray[np.float64]
+    P_accel: NDArray[np.float64]
+    P_bg, P_accel = _posterior_covariances(H_final, final_mapping)
+    metrics["gyro_bias_cov"] = P_bg
+    metrics["accel_param_cov"] = P_accel
 
     report: dict[str, Any] = {
         "initial_cost": initial_cost,

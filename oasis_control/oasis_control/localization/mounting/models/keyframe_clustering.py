@@ -121,6 +121,12 @@ class KeyframeClustering:
             gravity_mean_dir_I=gravity_dir_I,
             gravity_cov_dir_I=np.zeros((3, 3), dtype=np.float64),
             gravity_weight=1,
+            omega_mean_rads_raw=segment.omega_mean_rads_raw,
+            cov_omega_raw=segment.cov_omega_raw,
+            omega_weight=1,
+            accel_mean_mps2_raw=segment.accel_mean_mps2_raw,
+            cov_accel_raw=segment.cov_accel_raw,
+            accel_weight=1,
             mag_mean_dir_M=mag_dir_M,
             mag_cov_dir_M=(
                 np.zeros((3, 3), dtype=np.float64) if mag_dir_M is not None else None

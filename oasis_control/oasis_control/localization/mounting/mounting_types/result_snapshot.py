@@ -34,7 +34,9 @@ class ResultSnapshot:
         cov_rot_BM: Rotation covariance for R_BM in tangent space
         b_a_mps2: Accelerometer bias estimate in m/s^2
         A_a: Accelerometer scale/misalignment estimate
+        accel_param_cov: Covariance for [b_a, vec(A_a)] in (m/s^2)^2
         b_g_rads: Gyroscope bias estimate in rad/s
+        gyro_bias_cov: Covariance of gyroscope bias in (rad/s)^2
         b_m_T: Magnetometer bias estimate in tesla when available
         R_m: Adaptive magnetometer direction-residual noise covariance (unitless^2
             ≈ rad^2) when available
@@ -56,7 +58,9 @@ class ResultSnapshot:
     cov_rot_BM: np.ndarray | None
     b_a_mps2: np.ndarray
     A_a: np.ndarray
+    accel_param_cov: np.ndarray
     b_g_rads: np.ndarray
+    gyro_bias_cov: np.ndarray
     b_m_T: np.ndarray | None
     R_m: np.ndarray | None
     segment_count: int
@@ -95,13 +99,25 @@ class ResultSnapshot:
         cov_rot_BI: np.ndarray = _as_float_array(self.cov_rot_BI, "cov_rot_BI", (3, 3))
         b_a_mps2: np.ndarray = _as_float_array(self.b_a_mps2, "b_a_mps2", (3,))
         A_a: np.ndarray = _as_float_array(self.A_a, "A_a", (3, 3))
+        accel_param_cov: np.ndarray = _as_float_array(
+            self.accel_param_cov,
+            "accel_param_cov",
+            (12, 12),
+        )
         b_g_rads: np.ndarray = _as_float_array(self.b_g_rads, "b_g_rads", (3,))
+        gyro_bias_cov: np.ndarray = _as_float_array(
+            self.gyro_bias_cov,
+            "gyro_bias_cov",
+            (3, 3),
+        )
 
         object.__setattr__(self, "R_BI", R_BI)
         object.__setattr__(self, "cov_rot_BI", cov_rot_BI)
         object.__setattr__(self, "b_a_mps2", b_a_mps2)
         object.__setattr__(self, "A_a", A_a)
+        object.__setattr__(self, "accel_param_cov", accel_param_cov)
         object.__setattr__(self, "b_g_rads", b_g_rads)
+        object.__setattr__(self, "gyro_bias_cov", gyro_bias_cov)
 
         if self.quality_score is not None:
             _require_finite(self.quality_score, "quality_score")

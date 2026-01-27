@@ -50,11 +50,22 @@ def _covariance(samples: Iterable[np.ndarray]) -> np.ndarray:
     return 0.5 * (cov + cov.T)
 
 
+def _covariance_of_mean(cov: np.ndarray, sample_count: int) -> np.ndarray:
+    """Return the covariance of the sample mean."""
+    if not isinstance(sample_count, int) or isinstance(sample_count, bool):
+        raise SteadyDetectorError("sample_count must be an int")
+    if sample_count <= 0:
+        raise SteadyDetectorError("sample_count must be positive")
+    return cov / float(sample_count)
+
+
 @dataclass(frozen=True)
 class _ImuSample:
     """Internal representation of an IMU sample."""
 
     t_ns: int
+    omega_raw_rads: np.ndarray
+    a_raw_mps2: np.ndarray
     omega_corr_rads: np.ndarray
     a_corr_mps2: np.ndarray
 
@@ -105,7 +116,9 @@ class SteadyDetector:
         self,
         *,
         t_ns: int,
+        omega_raw_rads: np.ndarray,
         omega_corr_rads: np.ndarray,
+        a_raw_mps2: np.ndarray,
         a_corr_mps2: np.ndarray,
         imu_frame_id: str,
         mag: MagPacket | None = None,
@@ -118,14 +131,22 @@ class SteadyDetector:
         if not isinstance(imu_frame_id, str):
             raise SteadyDetectorError("imu_frame_id must be a str")
 
+        omega_raw: np.ndarray = _as_float_array(omega_raw_rads, "omega_raw_rads", (3,))
         omega_corr: np.ndarray = _as_float_array(
             omega_corr_rads, "omega_corr_rads", (3,)
         )
+        a_raw: np.ndarray = _as_float_array(a_raw_mps2, "a_raw_mps2", (3,))
         a_corr: np.ndarray = _as_float_array(a_corr_mps2, "a_corr_mps2", (3,))
 
         self._last_t_ns = t_ns
         self._imu_samples.append(
-            _ImuSample(t_ns=t_ns, omega_corr_rads=omega_corr, a_corr_mps2=a_corr)
+            _ImuSample(
+                t_ns=t_ns,
+                omega_raw_rads=omega_raw,
+                a_raw_mps2=a_raw,
+                omega_corr_rads=omega_corr,
+                a_corr_mps2=a_corr,
+            )
         )
 
         if mag is not None:
@@ -227,12 +248,31 @@ class SteadyDetector:
         samples: list[_ImuSample] = list(self._imu_samples)
         if not samples:
             raise SteadyDetectorError("no samples available for segment")
+        sample_count: int = len(samples)
         t_start_ns: int = samples[0].t_ns
         t_end_ns: int = samples[-1].t_ns
         t_meas_ns: int = (t_start_ns + t_end_ns) // 2
         a_samples: list[np.ndarray] = [sample.a_corr_mps2 for sample in samples]
         a_mean: np.ndarray = np.mean(np.stack(a_samples, axis=0), axis=0)
-        cov_a: np.ndarray = _covariance(a_samples)
+        cov_a: np.ndarray = _covariance_of_mean(_covariance(a_samples), sample_count)
+        omega_raw_samples: list[np.ndarray] = [
+            sample.omega_raw_rads for sample in samples
+        ]
+        omega_raw_mean: np.ndarray = np.mean(
+            np.stack(omega_raw_samples, axis=0), axis=0
+        )
+        cov_omega_raw: np.ndarray = _covariance_of_mean(
+            _covariance(omega_raw_samples),
+            sample_count,
+        )
+        accel_raw_samples: list[np.ndarray] = [sample.a_raw_mps2 for sample in samples]
+        accel_raw_mean: np.ndarray = np.mean(
+            np.stack(accel_raw_samples, axis=0), axis=0
+        )
+        cov_accel_raw: np.ndarray = _covariance_of_mean(
+            _covariance(accel_raw_samples),
+            sample_count,
+        )
 
         mag_samples: list[_MagSample] = [
             sample
@@ -262,8 +302,12 @@ class SteadyDetector:
             mag_frame_id=mag_frame_id,
             a_mean_mps2=a_mean,
             cov_a=cov_a,
+            omega_mean_rads_raw=omega_raw_mean,
+            cov_omega_raw=cov_omega_raw,
+            accel_mean_mps2_raw=accel_raw_mean,
+            cov_accel_raw=cov_accel_raw,
             m_mean_T=m_mean,
             cov_m=cov_m,
-            sample_count=len(samples),
+            sample_count=sample_count,
             duration_ns=t_end_ns - t_start_ns,
         )
