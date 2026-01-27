@@ -233,6 +233,58 @@ class MountingPipeline:
         self._segment_count = 0
         self._dropped_packets = 0
         self._save_fail_count = 0
+
+    def load_snapshot(self, snapshot: MountingSnapshotYaml) -> None:
+        """Seed the pipeline state from a persisted snapshot."""
+        if not isinstance(snapshot, MountingSnapshotYaml):
+            raise MountingPipelineError("snapshot must be a MountingSnapshotYaml")
+
+        try:
+            mount: MountEstimate = MountEstimate(
+                q_BI_wxyz=snapshot.R_BI.quaternion_wxyz,
+                q_BM_wxyz=snapshot.R_BM.quaternion_wxyz,
+            )
+            imu_nuisance_state: ImuNuisanceState = ImuNuisanceState(
+                b_a_mps2=snapshot.imu.accel_bias_mps2,
+                A_a=snapshot.imu.accel_A_row_major.reshape((3, 3)),
+                b_g_rads=snapshot.imu.gyro_bias_rads,
+            )
+            imu_nuisance: ImuNuisance = ImuNuisance(
+                b_a_mps2=imu_nuisance_state.b_a_mps2,
+                A_a=imu_nuisance_state.A_a,
+                b_g_rads=imu_nuisance_state.b_g_rads,
+            )
+            mag_nuisance: MagNuisance = MagNuisance(
+                b_m_T=snapshot.mag.offset_t,
+                R_m_unitless2=snapshot.mag.R_m_unitless2_row_major_3x3.reshape((3, 3)),
+            )
+        except Exception as exc:
+            raise MountingPipelineError("Invalid mounting snapshot data") from exc
+
+        self._imu_nuisance = imu_nuisance_state
+        self._mag_adapter = DirectionNoiseAdapter(
+            R_init=mag_nuisance.R_m_unitless2,
+            R_min=np.diag(self._params.mag.Rm_min_diag),
+            R_max=np.diag(self._params.mag.Rm_max_diag),
+            alpha=float(self._params.mag.Rm_alpha),
+        )
+        self._state = self._state.replace(
+            mount=mount,
+            imu=imu_nuisance,
+            mag=mag_nuisance,
+            anchored=bool(snapshot.flags.anchored),
+            mag_reference_invalid=bool(snapshot.flags.mag_reference_invalid),
+        )
+        self._imu_frame_id = snapshot.frames.imu_frame
+        self._mag_frame_id = snapshot.frames.mag_frame
+        self._bootstrapping = False
+        self._bootstrap_start_ns = None
+        self._bootstrap_omega = []
+        self._bootstrap_accel = []
+        self._bootstrap_mag = []
+        self._bootstrap_stats = {}
+        self._initialized = True
+        self._tf_publisher = None
         self._last_stability = None
 
     def ingest_imu_pair(self, *, imu_packet: ImuPacket) -> PipelineOutputs | None:

@@ -40,6 +40,7 @@ class ControlDescriptions:
             executable="ahrs_mounting",
             name=f"ahrs_mounting_{host_id}",
             output="screen",
+            parameters=[{"system_id": host_id}],
             remappings=[
                 ("ahrs_mount", f"{host_id}/ahrs_mount"),
                 ("ahrs_mount_diagnostics", f"{host_id}/ahrs_mount_diagnostics"),
