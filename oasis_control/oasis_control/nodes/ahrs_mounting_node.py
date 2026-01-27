@@ -8,7 +8,9 @@
 #
 ################################################################################
 
+import os
 from dataclasses import replace
+from pathlib import Path
 from typing import Sequence
 
 import message_filters
@@ -54,7 +56,16 @@ from oasis_control.localization.mounting.ros.imu_packet_builder import (
 from oasis_control.localization.mounting.ros.imu_packet_builder import (
     build_mag_packet as _build_mag_packet,
 )
+from oasis_control.localization.mounting.storage.path_utils import (
+    mount_calibration_path,
+)
+from oasis_control.localization.mounting.storage.path_utils import mount_info_directory
+from oasis_control.localization.mounting.storage.persistence import (
+    MountingPersistenceError,
+)
+from oasis_control.localization.mounting.storage.persistence import load_yaml_snapshot
 from oasis_control.localization.mounting.storage.yaml_format import FlagsYaml
+from oasis_control.localization.mounting.storage.yaml_format import MountingSnapshotYaml
 from oasis_control.localization.mounting.tf.tf_publisher import PublishedTransform
 from oasis_msgs.msg import AhrsMount as AhrsMountMsg
 from oasis_msgs.msg import AhrsMountDiagnostics as AhrsMountDiagnosticsMsg
@@ -88,6 +99,9 @@ DEFAULT_BOOTSTRAP_SEC: float = 5.0
 # Default persistence save period in seconds
 DEFAULT_SAVE_PERIOD_SEC: float = 2.0
 
+# Default calibration base name
+DEFAULT_MOUNT_CALIBRATION_BASE: str = "ahrs_mount_calibration"
+
 # Steady detector logging throttle in seconds
 STEADY_LOG_THROTTLE_SEC: float = 5.0
 
@@ -103,6 +117,49 @@ class AhrsMountingNode(rclpy.node.Node):
         """
 
         super().__init__(NODE_NAME)
+
+        self.declare_parameter("system_id", "")
+        self.declare_parameter(
+            "mount_calibration_base",
+            DEFAULT_MOUNT_CALIBRATION_BASE,
+        )
+
+        system_id: str = str(self.get_parameter("system_id").value)
+        if not system_id:
+            self.get_logger().error("system_id parameter is empty")
+            raise RuntimeError("Missing system_id parameter")
+
+        calibration_base: str = str(self.get_parameter("mount_calibration_base").value)
+        home_env: str | None = os.getenv("HOME")
+        mount_info_dir: Path = mount_info_directory(home_env)
+        try:
+            mount_info_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            self.get_logger().error(
+                "Failed to create mount info directory at %s: %s",
+                mount_info_dir,
+                exc,
+            )
+            raise RuntimeError("Failed to create mount info directory") from exc
+
+        try:
+            calibration_path: Path = mount_calibration_path(
+                base=calibration_base,
+                system_id=system_id,
+                directory=mount_info_dir,
+            )
+        except ValueError as exc:
+            self.get_logger().error(str(exc))
+            raise RuntimeError(str(exc)) from exc
+
+        calibration_exists: bool = calibration_path.exists()
+        self.get_logger().info(
+            "AHRS mount calibration file %s: %s",
+            "found" if calibration_exists else "NOT found",
+            calibration_path,
+        )
+
+        self._mount_calibration_path: Path = calibration_path
 
         # QoS profile
         qos_profile: rclpy.qos.QoSProfile = (
@@ -147,6 +204,7 @@ class AhrsMountingNode(rclpy.node.Node):
             save=replace(
                 params.save,
                 save_period_sec=DEFAULT_SAVE_PERIOD_SEC,
+                output_path=str(self._mount_calibration_path),
             ),
         )
         self._params: MountingParams = params
@@ -155,6 +213,21 @@ class AhrsMountingNode(rclpy.node.Node):
 
         if not self._params.save.output_path:
             self.get_logger().info("Persistence disabled for AHRS mounting calibration")
+        elif calibration_exists:
+            try:
+                snapshot: MountingSnapshotYaml = load_yaml_snapshot(
+                    self._mount_calibration_path
+                )
+                self._pipeline.load_snapshot(snapshot)
+            except MountingPersistenceError as exc:
+                self.get_logger().error(
+                    "Failed to load mounting calibration from %s: %s",
+                    self._mount_calibration_path,
+                    exc,
+                )
+                raise RuntimeError(
+                    "Failed to load mounting calibration snapshot"
+                ) from exc
 
         # ROS Subscribers
         self._imu_cal_filter_sub: message_filters.Subscriber = (
