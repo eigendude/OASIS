@@ -58,6 +58,12 @@ STEADY_A_NORM_MAX: float | None = None
 # Scale factor applied to bootstrap gyro covariance
 STEADY_K_OMEGA: float | None = None
 
+# Default gyro noise covariance diagonal in (rad/s)^2
+IMU_OMEGA_COV_DIAG: np.ndarray = np.array([1e-4, 1e-4, 1e-4], dtype=np.float64)
+
+# Default accel noise covariance diagonal in (m/s^2)^2
+IMU_ACCEL_COV_DIAG: np.ndarray = np.array([1e-2, 1e-2, 1e-2], dtype=np.float64)
+
 # Gravity direction cluster threshold in degrees
 CLUSTER_G_DEG: float = 7.5
 # Mag direction cluster threshold in degrees
@@ -213,6 +219,12 @@ def _validate_positive_array(values: np.ndarray, name: str) -> None:
         raise MountingParamsError(f"{name} must be positive")
 
 
+def _validate_non_negative_array(values: np.ndarray, name: str) -> None:
+    """Validate that an array contains non-negative values."""
+    if np.any(values < 0.0):
+        raise MountingParamsError(f"{name} must be non-negative")
+
+
 @dataclass(frozen=True)
 class TopicsParams:
     """Topic names used by mounting calibration."""
@@ -268,6 +280,33 @@ class SteadyParams:
     a_norm_max: float | None = STEADY_A_NORM_MAX
     # Scale factor applied to bootstrap gyro covariance
     k_omega: float | None = STEADY_K_OMEGA
+
+
+@dataclass(frozen=True)
+class ImuParams:
+    """IMU covariance defaults used when drivers report unknown values."""
+
+    # Default gyro noise covariance diagonal in (rad/s)^2
+    omega_cov_diag: np.ndarray = field(
+        default_factory=lambda: IMU_OMEGA_COV_DIAG.copy()
+    )
+    # Default accel noise covariance diagonal in (m/s^2)^2
+    accel_cov_diag: np.ndarray = field(
+        default_factory=lambda: IMU_ACCEL_COV_DIAG.copy()
+    )
+
+    def __post_init__(self) -> None:
+        """Coerce covariance diagonals into float64 numpy arrays."""
+        object.__setattr__(
+            self,
+            "omega_cov_diag",
+            _as_float_array(self.omega_cov_diag, "imu.omega_cov_diag"),
+        )
+        object.__setattr__(
+            self,
+            "accel_cov_diag",
+            _as_float_array(self.accel_cov_diag, "imu.accel_cov_diag"),
+        )
 
 
 @dataclass(frozen=True)
@@ -417,6 +456,7 @@ class MountingParams:
     frames: FramesParams
     bootstrap: BootstrapParams
     steady: SteadyParams
+    imu: ImuParams
     cluster: ClusterParams
     diversity: DiversityParams
     mag: MagParams
@@ -434,6 +474,7 @@ class MountingParams:
             frames=FramesParams(),
             bootstrap=BootstrapParams(),
             steady=SteadyParams(),
+            imu=ImuParams(),
             cluster=ClusterParams(),
             diversity=DiversityParams(),
             mag=MagParams(),
@@ -469,6 +510,9 @@ class MountingParams:
         _validate_optional_positive(self.steady.a_norm_min, "steady.a_norm_min")
         _validate_optional_positive(self.steady.a_norm_max, "steady.a_norm_max")
         _validate_optional_positive(self.steady.k_omega, "steady.k_omega")
+
+        _validate_non_negative_array(self.imu.omega_cov_diag, "imu.omega_cov_diag")
+        _validate_non_negative_array(self.imu.accel_cov_diag, "imu.accel_cov_diag")
 
         _validate_optional_non_negative(
             self.cluster.cluster_g_deg, "cluster.cluster_g_deg"

@@ -25,6 +25,10 @@ COV_SYMMETRY_ATOL: float = 1e-8
 COV_SYMMETRY_RTOL: float = 1e-5
 
 
+class CovarianceValidationError(ValueError):
+    """Raised when covariance validation fails."""
+
+
 def reshape_matrix(
     values: Sequence[float],
     shape: tuple[int, int],
@@ -46,11 +50,17 @@ def reshape_covariance(
     values: Sequence[float],
     shape: tuple[int, int],
     name: str,
+    *,
+    fallback: np.ndarray | None = None,
 ) -> np.ndarray:
     """Return a finite covariance matrix with basic validation."""
     matrix: np.ndarray = reshape_matrix(values, shape, name)
-    if np.all(matrix == -1.0) or np.all(np.diag(matrix) == -1.0):
-        raise ValueError(f"{name} unknown (-1); full covariance required")
+    if _covariance_is_unknown(matrix):
+        if fallback is None:
+            raise CovarianceValidationError(
+                f"{name} unknown (-1); full covariance required"
+            )
+        matrix = _coerce_covariance_fallback(fallback, shape, name)
 
     if not np.allclose(
         matrix,
@@ -62,8 +72,27 @@ def reshape_covariance(
         matrix = 0.5 * (matrix + matrix.T)
 
     if np.any(np.diag(matrix) < 0.0):
-        raise ValueError(f"{name} diagonal must be non-negative")
+        raise CovarianceValidationError(f"{name} diagonal must be non-negative")
 
+    return matrix
+
+
+def _covariance_is_unknown(matrix: np.ndarray) -> bool:
+    if matrix.shape[0] != matrix.shape[1]:
+        raise CovarianceValidationError("Covariance matrix must be square")
+    return bool(np.all(matrix == -1.0) or np.all(np.diag(matrix) == -1.0))
+
+
+def _coerce_covariance_fallback(
+    fallback: np.ndarray,
+    shape: tuple[int, int],
+    name: str,
+) -> np.ndarray:
+    matrix: np.ndarray = np.asarray(fallback, dtype=np.float64)
+    if matrix.shape != shape:
+        raise CovarianceValidationError(f"{name} fallback must have shape {shape}")
+    if not np.all(np.isfinite(matrix)):
+        raise CovarianceValidationError(f"{name} fallback must be finite")
     return matrix
 
 
