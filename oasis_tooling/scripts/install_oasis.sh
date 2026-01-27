@@ -107,6 +107,8 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
   IMU_INFO_TARGET=""
   MAG_INFO_LINK="${ROS_DIRECTORY}/magnetometer_info"
   MAG_INFO_TARGET=""
+  MOUNT_INFO_LINK="${ROS_DIRECTORY}/mount_info"
+  MOUNT_INFO_TARGET=""
 
   # Ensure ~/.ros exists for the symlink
   install -m 0755 -d "${ROS_DIRECTORY}"
@@ -178,6 +180,29 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     rm -rf "${MAG_INFO_LINK}"
 
     ln -sfn "${MAG_INFO_TARGET}" "${MAG_INFO_LINK}"
+  fi
+
+  # Get mount info directory
+  for OASIS_PACKAGE in "${ENABLED_PACKAGES[@]}"; do
+    DIRECTORY="${OASIS_SOURCE_DIRECTORY}/${OASIS_PACKAGE}/config/mount_info"
+
+    # Skip directories that don't exist
+    if [ ! -d "${DIRECTORY}" ]; then
+      continue
+    fi
+
+    MOUNT_INFO_TARGET="${DIRECTORY}"
+    break
+  done
+
+  # Link mount info directory
+  if [ -n "${MOUNT_INFO_TARGET}" ]; then
+    echo "Linking mount info directory to ${MOUNT_INFO_TARGET}"
+
+    # Remove any existing directory
+    rm -rf "${MOUNT_INFO_LINK}"
+
+    ln -sfn "${MOUNT_INFO_TARGET}" "${MOUNT_INFO_LINK}"
   fi
 fi
 
