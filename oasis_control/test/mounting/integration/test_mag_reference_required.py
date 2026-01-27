@@ -8,7 +8,7 @@
 #
 ################################################################################
 
-"""Integration test for bootstrapping gravity direction in the mounting pipeline."""
+"""Integration test for mag reference requirements during bootstrap."""
 
 from __future__ import annotations
 
@@ -37,6 +37,19 @@ from oasis_control.localization.mounting.storage.yaml_format import FlagsYaml
 TRANSIENT_SEC: float = 0.5
 
 
+def _steady_params(base: MountingParams) -> SteadyParams:
+    """Return steady parameters tuned for the Falcon simulation."""
+    return replace(
+        base.steady,
+        steady_sec=1.0,
+        omega_mean_thresh=0.05,
+        omega_cov_thresh=1e-3,
+        a_cov_thresh=0.05,
+        a_norm_min=8.0,
+        a_norm_max=13.0,
+    )
+
+
 def _angle_deg(unit_a: np.ndarray, unit_b: np.ndarray) -> float:
     """Return the angle between two unit vectors in degrees."""
     dot: float = float(np.clip(np.dot(unit_a, unit_b), -1.0, 1.0))
@@ -52,21 +65,8 @@ def _unit_vector(vector: np.ndarray) -> np.ndarray:
     return array / norm
 
 
-def _steady_params(base: MountingParams) -> SteadyParams:
-    """Return steady parameters tuned for the Falcon simulation."""
-    return replace(
-        base.steady,
-        steady_sec=1.0,
-        omega_mean_thresh=0.05,
-        omega_cov_thresh=1e-3,
-        a_cov_thresh=0.05,
-        a_norm_min=8.0,
-        a_norm_max=13.0,
-    )
-
-
-def test_bootstrap_learns_gravity_stationary_startup() -> None:
-    """Verify gravity bootstraps within 2 seconds for a stationary startup."""
+def test_bootstrap_requires_mag_reference_when_configured() -> None:
+    """Ensure anchoring waits on mag reference when required."""
     imu_frame: str = "imu"
     mag_frame: str = "mag"
 
@@ -80,7 +80,11 @@ def test_bootstrap_learns_gravity_stationary_startup() -> None:
 
     params: MountingParams = MountingParams.defaults()
     params = params.replace(
-        bootstrap=replace(params.bootstrap, bootstrap_sec=2.0),
+        bootstrap=replace(
+            params.bootstrap,
+            bootstrap_sec=2.0,
+            mag_reference_required=True,
+        ),
         steady=_steady_params(params),
         mag=replace(params.mag, use_driver_cov_as_prior=False),
     )
@@ -98,31 +102,30 @@ def test_bootstrap_learns_gravity_stationary_startup() -> None:
         mag_cov=mag_cov,
         imu_frame_id=imu_frame,
         mag_frame_id=mag_frame,
+        include_mag=False,
     )
 
-    steady_seen: bool = False
-    transient_ns: int = int(round(TRANSIENT_SEC * 1e9))
     sample: FalconSample
     for sample in samples:
-        if sample.mag_packet is not None:
-            pipeline.ingest_mag(mag_packet=sample.mag_packet)
         pipeline.ingest_imu_pair(imu_packet=sample.imu_packet)
         pipeline.step(t_now_ns=sample.t_ns)
-
-        if sample.t_ns >= transient_ns:
-            steady_seen = steady_seen or pipeline.steady_window_is_steady()
 
     final_time_ns: int = int(round(2.0 * 1e9))
     pipeline.step(t_now_ns=final_time_ns)
 
-    assert steady_seen
     assert not pipeline.is_bootstrapping()
     assert pipeline.is_initialized()
-    assert pipeline.steady_window_is_steady()
+
+    flags: FlagsYaml | None = pipeline.current_flags()
+    assert flags is not None
+    assert flags.anchored is False
+    assert flags.mag_reference_invalid is True
+    assert flags.mag_dir_prior_from_driver_cov is False
 
     gravity_est: np.ndarray | None = pipeline.gravity_direction_W_unit()
     assert gravity_est is not None
 
+    transient_ns: int = int(round(TRANSIENT_SEC * 1e9))
     ref_samples: list[np.ndarray] = [
         sample.gravity_unit for sample in samples if sample.t_ns >= transient_ns
     ]
@@ -131,10 +134,3 @@ def test_bootstrap_learns_gravity_stationary_startup() -> None:
 
     gravity_error_deg: float = _angle_deg(gravity_est, gravity_ref)
     assert gravity_error_deg < 5.0
-
-    flags: FlagsYaml | None = pipeline.current_flags()
-    assert flags is not None
-    assert flags.anchored is True
-    assert flags.mag_reference_invalid is False
-    assert flags.mag_disturbance_detected is False
-    assert flags.mag_dir_prior_from_driver_cov is False
