@@ -29,6 +29,30 @@ CONTROL_PACKAGE_NAME: str = "oasis_control"
 
 class ControlDescriptions:
     #
+    # AHRS mounting
+    #
+
+    @staticmethod
+    def add_ahrs_mounting_node(ld: LaunchDescription, host_id: str) -> None:
+        ahrs_mounting_node: Node = Node(
+            namespace=ROS_NAMESPACE,
+            package=CONTROL_PACKAGE_NAME,
+            executable="ahrs_mounting",
+            name=f"ahrs_mounting_{host_id}",
+            output="screen",
+            parameters=[{"system_id": host_id}],
+            remappings=[
+                ("ahrs_mount", f"{host_id}/ahrs_mount"),
+                ("ahrs_mount_diagnostics", f"{host_id}/ahrs_mount_diagnostics"),
+                ("ahrs_mount_transform", f"{host_id}/ahrs_mount_transform"),
+                ("imu_calibration", f"{host_id}/imu_calibration"),
+                ("imu_raw", f"{host_id}/imu_raw"),
+                ("magnetic_field", f"{host_id}/magnetic_field"),
+            ],
+        )
+        ld.add_action(ahrs_mounting_node)
+
+    #
     # Home manager
     #
 
