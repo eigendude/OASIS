@@ -79,6 +79,7 @@ setuptools.setup(
             "lab_manager_telemetrix = oasis_control.cli.lab_manager_telemetrix_cli:main",
             "leonardo_manager = oasis_control.cli.leonardo_manager_cli:main",
             "tilt_sensor = oasis_control.cli.tilt_sensor_cli:main",
+            "zupt_detector = oasis_control.cli.zupt_detector_cli:main",
         ],
     },
 )
