@@ -314,15 +314,18 @@ class ZuptDetectorNode(rclpy.node.Node):
 
         if stationary != self._last_stationary:
             state_name: str = "enter" if stationary else "exit"
-            now_ns: int = int(self.get_clock().now().nanoseconds)
-            throttle_ns: int = int(TRANSITION_LOG_THROTTLE_SEC * 1e9)
+            now_ns_transition: int = int(self.get_clock().now().nanoseconds)
+            throttle_ns_transition: int = int(TRANSITION_LOG_THROTTLE_SEC * 1e9)
             last_log_ns: int | None = self._last_transition_log_ns
-            if last_log_ns is None or now_ns - last_log_ns >= throttle_ns:
+            if (
+                last_log_ns is None
+                or now_ns_transition - last_log_ns >= throttle_ns_transition
+            ):
                 self.get_logger().debug(
                     "ZUPT %s stationary (dwell=%.3f sec, reason=%s)"
                     % (state_name, stationary_dwell_sec, reason)
                 )
-                self._last_transition_log_ns = now_ns
+                self._last_transition_log_ns = now_ns_transition
             self._last_stationary = stationary
 
         self._zupt_flag_pub.publish(BoolMsg(data=stationary))
