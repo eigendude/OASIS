@@ -207,3 +207,27 @@ class ControlDescriptions:
             ],
         )
         ld.add_action(localization_node)
+
+    #
+    # ZUPT detector
+    #
+
+    @staticmethod
+    def add_zupt_detector(
+        ld: LaunchDescription, host_id: str, conductor_host: str
+    ) -> None:
+        zupt_detector_node: Node = Node(
+            namespace=ROS_NAMESPACE,
+            package=CONTROL_PACKAGE_NAME,
+            executable="zupt_detector",
+            name=f"zupt_detector_{host_id}",
+            output="screen",
+            remappings=[
+                ("conductor_state", f"{conductor_host}/conductor_state"),
+                ("imu_calibration", f"{host_id}/imu_calibration"),
+                ("imu_raw", f"{host_id}/imu_raw"),
+                ("zupt_flag", f"{host_id}/zupt_flag"),
+                ("zupt", f"{host_id}/zupt"),
+            ],
+        )
+        ld.add_action(zupt_detector_node)
