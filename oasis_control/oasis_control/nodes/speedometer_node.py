@@ -8,14 +8,24 @@
 #
 ################################################################################
 
+"""ROS 2 node that estimates forward velocity from IMU and ZUPT updates."""
+
+from __future__ import annotations
+
+import math
+from typing import Optional
 
 import message_filters
 import rclpy.node
+import rclpy.qos
+from builtin_interfaces.msg import Time as TimeMsg
 from geometry_msgs.msg import (
     TwistWithCovarianceStamped as TwistWithCovarianceStampedMsg,
 )
 from sensor_msgs.msg import Imu as ImuMsg
 
+from oasis_control.localization.speedometer_core import SpeedometerCore
+from oasis_control.localization.speedometer_core import SpeedometerCoreConfig
 from oasis_msgs.msg import ImuCalibration as ImuCalibrationMsg
 
 
@@ -43,13 +53,17 @@ DEFAULT_BASE_FRAME: str = "base_link"
 
 class SpeedometerNode(rclpy.node.Node):
     def __init__(self) -> None:
-        """
-        Initialize resources
-        """
+        """Initialize resources."""
 
         super().__init__(NODE_NAME)
 
         self.declare_parameter("base_frame", DEFAULT_BASE_FRAME)
+        self.declare_parameter("process_noise_v", 0.4)
+        self.declare_parameter("process_noise_b", 0.04)
+        self.declare_parameter("initial_speed_sigma", 0.5)
+        self.declare_parameter("initial_bias_sigma", 0.2)
+        self.declare_parameter("max_dt_sec", 0.2)
+        self.declare_parameter("min_dt_sec", 0.0)
 
         base_frame: str = str(self.get_parameter("base_frame").value)
         if not base_frame:
@@ -58,8 +72,18 @@ class SpeedometerNode(rclpy.node.Node):
 
         self._base_frame: str = base_frame
 
-        # Velocity estimator
-        # TODO
+        core_config: SpeedometerCoreConfig = SpeedometerCoreConfig(
+            process_noise_v=float(self.get_parameter("process_noise_v").value),
+            process_noise_b=float(self.get_parameter("process_noise_b").value),
+            initial_speed_sigma=float(self.get_parameter("initial_speed_sigma").value),
+            initial_bias_sigma=float(self.get_parameter("initial_bias_sigma").value),
+            max_dt_sec=float(self.get_parameter("max_dt_sec").value),
+            min_dt_sec=float(self.get_parameter("min_dt_sec").value),
+        )
+
+        self._core: SpeedometerCore = SpeedometerCore(core_config)
+        self._zupt_var_floor: float = core_config.zupt_var_floor
+        self._bias_priors_applied: bool = False
 
         # QoS profiles
         sensor_data_qos: rclpy.qos.QoSProfile = (
@@ -112,3 +136,66 @@ class SpeedometerNode(rclpy.node.Node):
         self.get_logger().info("Speedometer node deinitialized")
 
         self.destroy_node()
+
+    def _handle_imu_raw_with_calibration(
+        self, imu_raw_msg: ImuMsg, imu_cal_msg: ImuCalibrationMsg
+    ) -> None:
+        timestamp_sec: float = _stamp_to_sec(imu_raw_msg.header.stamp)
+        accel: float = float(imu_raw_msg.linear_acceleration.x)
+
+        accel_var: Optional[float] = None
+        accel_cov: float = float(imu_raw_msg.linear_acceleration_covariance[0])
+        if math.isfinite(accel_cov) and accel_cov >= 0.0:
+            accel_var = accel_cov
+
+        if not self._bias_priors_applied:
+            self._try_apply_bias_priors(imu_cal_msg)
+
+        self._core.predict(timestamp_sec, accel, accel_var)
+        self._publish_forward_twist(imu_raw_msg.header.stamp)
+
+    def _handle_zupt(self, zupt_msg: TwistWithCovarianceStampedMsg) -> None:
+        timestamp_sec: float = _stamp_to_sec(zupt_msg.header.stamp)
+        zupt_var: float = float(zupt_msg.twist.covariance[0])
+        if not math.isfinite(zupt_var) or zupt_var <= 0.0:
+            zupt_var = self._zupt_var_floor
+
+        self._core.apply_zupt(timestamp_sec, zupt_var)
+        self._publish_forward_twist(zupt_msg.header.stamp)
+
+    def _try_apply_bias_priors(self, imu_cal_msg: ImuCalibrationMsg) -> None:
+        if not imu_cal_msg.valid:
+            return
+
+        bias_mean: float = float(imu_cal_msg.accel_bias.x)
+        bias_var: float = float(imu_cal_msg.accel_param_cov[0])
+        if not math.isfinite(bias_mean):
+            return
+        if not math.isfinite(bias_var) or bias_var <= 0.0:
+            return
+
+        self._core.set_bias_priors(bias_mean, bias_var)
+        self._bias_priors_applied = True
+        self.get_logger().info(
+            "Applied accel bias priors mean=%.6f var=%.6f",
+            bias_mean,
+            bias_var,
+        )
+
+    def _publish_forward_twist(self, stamp: TimeMsg) -> None:
+        msg: TwistWithCovarianceStampedMsg = TwistWithCovarianceStampedMsg()
+        msg.header.stamp = stamp
+        msg.header.frame_id = self._base_frame
+        msg.twist.twist.linear.x = self._core.get_velocity_mps()
+
+        covariance: list[float] = [1e6] * 36
+        P_vv: float = float(self._core.get_covariance()[0, 0])
+        if math.isfinite(P_vv) and P_vv >= 0.0:
+            covariance[0] = P_vv
+        msg.twist.covariance = covariance
+
+        self._forward_twist_pub.publish(msg)
+
+
+def _stamp_to_sec(stamp: TimeMsg) -> float:
+    return float(stamp.sec) + float(stamp.nanosec) * 1e-9
