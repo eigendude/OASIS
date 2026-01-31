@@ -216,7 +216,8 @@ bool Mmc5983maMagnetometerNode::Initialize()
     RCLCPP_INFO(get_logger(), "MMC5983MA product ID: 0x%02X", productId);
   }
 
-  m_publisher = create_publisher<sensor_msgs::msg::MagneticField>(MAG_TOPIC, rclcpp::QoS{1});
+  m_publisher =
+      create_publisher<sensor_msgs::msg::MagneticField>(MAG_TOPIC, rclcpp::SensorDataQoS{});
 
   m_running = true;
   m_samplerThread = std::thread([this]() { SamplerLoop(); });

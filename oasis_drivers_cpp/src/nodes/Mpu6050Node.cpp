@@ -152,12 +152,13 @@ bool Mpu6050Node::Initialize()
   RCLCPP_INFO(get_logger(), "IMU processor mode: %s", modeName);
 
   // Initialize publishers
-  m_imuPublisher = create_publisher<sensor_msgs::msg::Imu>(IMU_TOPIC, rclcpp::QoS{1});
-  m_imuRawPublisher = create_publisher<sensor_msgs::msg::Imu>(IMU_RAW_TOPIC, rclcpp::QoS{1});
-  m_imuTemperaturePublisher =
-      create_publisher<sensor_msgs::msg::Temperature>(IMU_TEMPERATURE_TOPIC, rclcpp::QoS{1});
+  m_imuPublisher = create_publisher<sensor_msgs::msg::Imu>(IMU_TOPIC, rclcpp::SensorDataQoS{});
+  m_imuRawPublisher =
+      create_publisher<sensor_msgs::msg::Imu>(IMU_RAW_TOPIC, rclcpp::SensorDataQoS{});
+  m_imuTemperaturePublisher = create_publisher<sensor_msgs::msg::Temperature>(
+      IMU_TEMPERATURE_TOPIC, rclcpp::SensorDataQoS{});
   m_imuCalibrationPublisher = create_publisher<oasis_msgs::msg::ImuCalibration>(
-      IMU_CALIBRATION_TOPIC, rclcpp::QoS{1}.transient_local().reliable());
+      IMU_CALIBRATION_TOPIC, rclcpp::SensorDataQoS{});
 
   // Initialize timers
   m_timer = create_wall_timer(m_publishPeriod, std::bind(&Mpu6050Node::PublishImu, this));
