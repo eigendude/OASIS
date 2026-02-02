@@ -2,7 +2,7 @@
 Description=Dismiss power OSD daily at 3 AM
 
 [Timer]
-OnCalendar=*-*-* 03:00:00
+OnCalender=hourly
 Persistent=False
 
 [Install]
