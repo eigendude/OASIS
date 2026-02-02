@@ -33,8 +33,8 @@ install(
 #
 
 install(
-  FILES
-    config/systemd/kodi_visualizer.service
+  DIRECTORY
+    config/systemd/
   DESTINATION
     share/${PROJECT_NAME}/systemd
 )
