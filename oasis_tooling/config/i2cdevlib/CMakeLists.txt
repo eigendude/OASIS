@@ -31,12 +31,12 @@ endif()
 #
 
 add_library(
-  mpu6050
+  i2cdevlib
   LinuxI2CDev/I2Cdev/I2Cdev.cpp
   LinuxI2CDev/MPU6050/MPU6050.cpp
 )
 
-target_include_directories(mpu6050 PUBLIC
+target_include_directories(i2cdevlib PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/LinuxI2CDev/I2Cdev>
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/LinuxI2CDev/MPU6050>
   $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
@@ -51,7 +51,7 @@ install(
 )
 
 install(
-  TARGETS mpu6050
+  TARGETS i2cdevlib
   EXPORT ${PROJECT_NAME}Targets
   INCLUDES DESTINATION include/${PROJECT_NAME}
   ARCHIVE DESTINATION lib/${PROJECT_NAME}

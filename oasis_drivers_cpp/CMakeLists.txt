@@ -35,16 +35,16 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
 find_package(ament_cmake REQUIRED)
 find_package(CEC REQUIRED)
-find_package(i2cdevlib REQUIRED)
-find_package(geometry_msgs REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(i2cdevlib REQUIRED)
 find_package(oasis_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rcutils REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
-find_package(yaml-cpp REQUIRED)
 find_package(UDEV)
+find_package(yaml-cpp REQUIRED)
 
 ################################################################################
 # C++ nodes
@@ -114,7 +114,7 @@ add_executable(mmc5983ma_magnetometer_driver
 )
 
 target_link_libraries(mmc5983ma_magnetometer_driver
-  i2cdevlib::mpu6050
+  i2cdevlib::i2cdevlib
   Eigen3::Eigen
   rclcpp::rclcpp
   ${sensor_msgs_TARGETS}
@@ -146,7 +146,7 @@ add_executable(mpu6050_imu_driver
 )
 
 target_link_libraries(mpu6050_imu_driver
-  i2cdevlib::mpu6050
+  i2cdevlib::i2cdevlib
   Eigen3::Eigen
   ${geometry_msgs_TARGETS}
   ${oasis_msgs_TARGETS}
