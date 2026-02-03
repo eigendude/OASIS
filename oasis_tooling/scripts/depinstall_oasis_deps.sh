@@ -28,6 +28,7 @@ source "${SCRIPT_DIR}/env_oasis_deps.sh"
 ROSDEP_IGNORE_KEYS=" \
   ament_black \
   ament_cmake_black \
+  clang-format \
   image_view \
   launch_testing \
   launch_testing_ament_cmake \
