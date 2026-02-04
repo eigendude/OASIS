@@ -39,8 +39,9 @@ elif [ "${ROS2_DISTRO}" = "kilted" ]; then
   "
 fi
 
-# Testing ignorables
+# Testing/development ignorables
 ROSDEP_IGNORE_KEYS+=" \
+  clang-format \
   launch_testing \
   launch_testing_ament_cmake \
   launch_testing_ros \

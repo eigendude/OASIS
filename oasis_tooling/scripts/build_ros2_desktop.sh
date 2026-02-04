@@ -34,7 +34,6 @@ source "${SCRIPT_DIR}/env_ros2_desktop.sh"
 # Default values
 MAKE_FLAGS=
 COLCON_FLAGS="--merge-install"
-CMAKE_PREFIX_PATH=
 
 # macOS flags
 if [[ "${OSTYPE}" == "darwin"* ]]; then
@@ -47,6 +46,7 @@ else
       -DBUILD_TESTING=OFF \
       -DCMAKE_C_COMPILER_LAUNCHER=ccache \
       -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+      -DCMAKE_PREFIX_PATH=${ROS2_CMAKE_PREFIX_PATH}${CMAKE_PREFIX_PATH:+;${CMAKE_PREFIX_PATH}} \
   "
 
   # Skip Qt dependencies, Shiboken is too old on Ubuntu 18.04
@@ -71,7 +71,6 @@ echo "Building ROS 2..."
   cd "${ROS2_DESKTOP_DIRECTORY}"
 
   MAKE_FLAGS="${MAKE_FLAGS}" \
-    CMAKE_PREFIX_PATH="${CMAKE_PREFIX_PATH}" \
     colcon build \
       ${COLCON_FLAGS}
 )

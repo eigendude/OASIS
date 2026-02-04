@@ -46,3 +46,47 @@ ROS2_INSTALL_DIRECTORY="${ROS2_DESKTOP_DIRECTORY}/install"
 
 # Ament installs into "local" subdirectory
 AMENT_INSTALL_DIRECTORY="${ROS2_INSTALL_DIRECTORY}/local"
+
+#
+# CMake environment
+#
+
+# Packages that install into ${ROS2_INSTALL_DIRECTORY}/opt/<pkg>.
+# These directories may not exist yet when this script is sourced, and that's
+# fine. CMake will ignore missing prefixes until they appear later in the build.
+ROS2_OPT_PACKAGES=(
+  gz_cmake_vendor
+  gz_math_vendor
+  gz_utils_vendor
+)
+
+ROS2_CMAKE_PREFIX_PATH="${AMENT_INSTALL_DIRECTORY};${ROS2_INSTALL_DIRECTORY}"
+
+for pkg in "${ROS2_OPT_PACKAGES[@]}"; do
+  ROS2_CMAKE_PREFIX_PATH="${ROS2_INSTALL_DIRECTORY}/opt/${pkg};${ROS2_CMAKE_PREFIX_PATH}"
+done
+
+#
+# Shared library environment
+#
+
+# Ensure runtime-built tools can find freshly-built shared libs during colcon
+# builds (e.g. cyclonedds runs idlc which links against libiceoryx_posh.so).
+ROS_LIBDIR="${ROS2_INSTALL_DIRECTORY}/lib"
+AMENT_LIBDIR="${AMENT_INSTALL_DIRECTORY}/lib"
+
+export LD_LIBRARY_PATH="${AMENT_LIBDIR}:${ROS_LIBDIR}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+
+#
+# Python environment
+#
+
+# Ensure ROS Python packages are importable in all CI environments. Some runners
+# end up with PYTHONPATH missing the ROS install site-packages when CMake runs
+# execute_process() during colcon builds.
+PYTHON_VERSION="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+
+ROS_SITE_PACKAGES="${ROS2_INSTALL_DIRECTORY}/lib/python${PYTHON_VERSION}/site-packages"
+AMENT_SITE_PACKAGES="${AMENT_INSTALL_DIRECTORY}/lib/python${PYTHON_VERSION}/site-packages"
+
+export PYTHONPATH="${AMENT_SITE_PACKAGES}:${ROS_SITE_PACKAGES}${PYTHONPATH:+:${PYTHONPATH}}"
