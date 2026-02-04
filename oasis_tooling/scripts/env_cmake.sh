@@ -19,7 +19,7 @@ set -o nounset
 #
 
 # Version
-CMAKE_VERSION="3.31.10"
+CMAKE_VERSION="3.31.11"
 
 # URL
 CMAKE_URL="https://codeload.github.com/Kitware/CMake/tar.gz/refs/tags/v${CMAKE_VERSION}"
