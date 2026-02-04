@@ -31,7 +31,7 @@ if [ "${ROS2_DISTRO}" = "iron" ] || [ "${ROS2_DISTRO}" = "jazzy" ]; then
     rti-connext-dds-6.0.1 \
     urdfdom_headers \
   "
-elif [ "${ROS2_DISTRO}" = "kilted" ]; then
+elif [ "${ROS2_DISTRO}" = "kilted" ] || [ "${ROS2_DISTRO}" = "rolling" ]; then
   ROSDEP_IGNORE_KEYS=" \
     fastcdr \
     rti-connext-dds-7.3.0 \
@@ -42,6 +42,9 @@ fi
 # Testing/development ignorables
 ROSDEP_IGNORE_KEYS+=" \
   clang-format \
+  clang-tidy \
+  cppcheck \
+  google-mock \
   launch_testing \
   launch_testing_ament_cmake \
   launch_testing_ros \

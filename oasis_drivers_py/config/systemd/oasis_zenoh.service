@@ -22,7 +22,7 @@ User=ubuntu
 #
 
 # ROS 2 distro and middleware
-Environment=ROS2_DISTRO=kilted
+Environment=ROS2_DISTRO=rolling
 Environment=RMW_IMPLEMENTATION=rmw_zenoh_cpp
 
 # Match your other OASIS services: short, timestamp-free logs
