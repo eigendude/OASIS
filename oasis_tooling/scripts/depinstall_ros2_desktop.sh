@@ -200,8 +200,9 @@ if [[ -d "${ROS2_SOURCE_DIRECTORY}" ]]; then
     git -C "${repo_dir}" clean -fdx
   done
 fi
-mkdir -p "${ROS2_INSTALL_DIRECTORY}"
 
+# Create install directories
+mkdir -p "${ROS2_INSTALL_DIRECTORY}"
 if [[ "${OSTYPE}" != "darwin"* ]]; then
   # After updating to Ubuntu 22.04, ament packages couldn't be found because
   # they were installed to a different directory
