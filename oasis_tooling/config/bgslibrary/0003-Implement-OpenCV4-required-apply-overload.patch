@@ -1,0 +1,161 @@
+From e50015edd252f5aef9fb3b09d7d1c0a58d7c9774 Mon Sep 17 00:00:00 2001
+From: Garrett Brown <garrett.brown@aclima.earth>
+Date: Sat, 7 Feb 2026 12:07:04 -0800
+Subject: [PATCH 3/3] Implement OpenCV4 required apply() overload
+
+---
+ bgslibrary/algorithms/LBSP/BackgroundSubtractorLBSP.h | 11 +++++++++++
+ .../algorithms/LBSP/BackgroundSubtractorLBSP_.h       | 11 +++++++++++
+ .../algorithms/LBSP/BackgroundSubtractorLOBSTER.h     | 11 +++++++++++
+ .../algorithms/LBSP/BackgroundSubtractorPAWCS.h       | 11 +++++++++++
+ .../algorithms/LBSP/BackgroundSubtractorSuBSENSE.h    | 11 +++++++++++
+ 5 files changed, 55 insertions(+)
+
+diff --git a/bgslibrary/algorithms/LBSP/BackgroundSubtractorLBSP.h b/bgslibrary/algorithms/LBSP/BackgroundSubtractorLBSP.h
+index 3744b8c..be5bfee 100644
+--- a/bgslibrary/algorithms/LBSP/BackgroundSubtractorLBSP.h
++++ b/bgslibrary/algorithms/LBSP/BackgroundSubtractorLBSP.h
+@@ -22,6 +22,8 @@ namespace bgslibrary
+       */
+       class BackgroundSubtractorLBSP : public cv::BackgroundSubtractor {
+       public:
++        using cv::BackgroundSubtractor::apply;
++
+         //! full constructor
+         BackgroundSubtractorLBSP(float fRelLBSPThreshold, size_t nLBSPThresholdOffset = 0);
+         //! default destructor
+@@ -32,6 +34,15 @@ namespace bgslibrary
+         virtual void initialize(const cv::Mat& oInitImg, const cv::Mat& oROI) = 0;
+         //! primary model update function; the learning param is used to override the internal learning speed (ignored when <= 0)
+         virtual void apply(cv::InputArray image, cv::OutputArray fgmask, double learningRate = 0) = 0;
++        // add OpenCV4 overloaded apply that takes a knownForegroundMask
++        void apply(cv::InputArray image,
++                   cv::InputArray knownForegroundMask,
++                   cv::OutputArray fgmask,
++                   double learningRate = -1) CV_OVERRIDE
++        {
++            (void)knownForegroundMask; // ignore this mask by default
++            apply(image, fgmask, learningRate); // forward to existing implementation
++        }
+         //! unused, always returns nullptr
+         //virtual cv::AlgorithmInfo* info() const;
+         //! returns a copy of the ROI used for descriptor extraction
+diff --git a/bgslibrary/algorithms/LBSP/BackgroundSubtractorLBSP_.h b/bgslibrary/algorithms/LBSP/BackgroundSubtractorLBSP_.h
+index 79d6df9..04eb4ac 100644
+--- a/bgslibrary/algorithms/LBSP/BackgroundSubtractorLBSP_.h
++++ b/bgslibrary/algorithms/LBSP/BackgroundSubtractorLBSP_.h
+@@ -22,6 +22,8 @@ namespace bgslibrary
+       */
+       class BackgroundSubtractorLBSP_ : public cv::BackgroundSubtractor {
+       public:
++        using cv::BackgroundSubtractor::apply;
++
+         //! full constructor
+         BackgroundSubtractorLBSP_(float fRelLBSPThreshold, size_t nLBSPThresholdOffset = 0);
+         //! default destructor
+@@ -32,6 +34,15 @@ namespace bgslibrary
+         virtual void initialize(const cv::Mat& oInitImg, const cv::Mat& oROI) = 0;
+         //! primary model update function; the learning param is used to override the internal learning speed (ignored when <= 0)
+         virtual void apply(cv::InputArray image, cv::OutputArray fgmask, double learningRate = 0) = 0;
++        // add OpenCV4 overloaded apply that takes a knownForegroundMask
++        void apply(cv::InputArray image,
++                   cv::InputArray knownForegroundMask,
++                   cv::OutputArray fgmask,
++                   double learningRate = -1) CV_OVERRIDE
++        {
++            (void)knownForegroundMask; // ignore this mask by default
++            apply(image, fgmask, learningRate); // forward to existing implementation
++        }
+         //! unused, always returns nullptr
+         //virtual cv::AlgorithmInfo* info() const;
+         //! returns a copy of the ROI used for descriptor extraction
+diff --git a/bgslibrary/algorithms/LBSP/BackgroundSubtractorLOBSTER.h b/bgslibrary/algorithms/LBSP/BackgroundSubtractorLOBSTER.h
+index b7860a1..3dd38fd 100644
+--- a/bgslibrary/algorithms/LBSP/BackgroundSubtractorLOBSTER.h
++++ b/bgslibrary/algorithms/LBSP/BackgroundSubtractorLOBSTER.h
+@@ -36,6 +36,8 @@ namespace bgslibrary
+       */
+       class BackgroundSubtractorLOBSTER : public BackgroundSubtractorLBSP {
+       public:
++        using cv::BackgroundSubtractor::apply;
++
+         //! full constructor
+         BackgroundSubtractorLOBSTER(float fRelLBSPThreshold = BGSLOBSTER_DEFAULT_LBSP_REL_SIMILARITY_THRESHOLD,
+           size_t nLBSPThresholdOffset = BGSLOBSTER_DEFAULT_LBSP_OFFSET_SIMILARITY_THRESHOLD,
+@@ -51,6 +53,15 @@ namespace bgslibrary
+         virtual void refreshModel(float fSamplesRefreshFrac, bool bForceFGUpdate = false);
+         //! primary model update function; the learning param is reinterpreted as an integer and should be > 0 (smaller values == faster adaptation)
+         virtual void apply(cv::InputArray image, cv::OutputArray fgmask, double learningRateOverride = BGSLOBSTER_DEFAULT_LEARNING_RATE);
++        // add OpenCV4 overloaded apply that takes a knownForegroundMask
++        void apply(cv::InputArray image,
++                   cv::InputArray knownForegroundMask,
++                   cv::OutputArray fgmask,
++                   double learningRate = -1) CV_OVERRIDE
++        {
++            (void)knownForegroundMask; // ignore this mask by default
++            apply(image, fgmask, learningRate); // forward to existing implementation
++        }
+         //! returns a copy of the latest reconstructed background image
+         void getBackgroundImage(cv::OutputArray backgroundImage) const;
+         //! returns a copy of the latest reconstructed background descriptors image
+diff --git a/bgslibrary/algorithms/LBSP/BackgroundSubtractorPAWCS.h b/bgslibrary/algorithms/LBSP/BackgroundSubtractorPAWCS.h
+index e81736d..925e601 100644
+--- a/bgslibrary/algorithms/LBSP/BackgroundSubtractorPAWCS.h
++++ b/bgslibrary/algorithms/LBSP/BackgroundSubtractorPAWCS.h
+@@ -32,6 +32,8 @@ namespace bgslibrary
+       */
+       class BackgroundSubtractorPAWCS : public BackgroundSubtractorLBSP_ {
+       public:
++        using cv::BackgroundSubtractor::apply;
++
+         //! full constructor
+         BackgroundSubtractorPAWCS(float fRelLBSPThreshold = BGSPAWCS_DEFAULT_LBSP_REL_SIMILARITY_THRESHOLD,
+           size_t nDescDistThresholdOffset = BGSPAWCS_DEFAULT_DESC_DIST_THRESHOLD_OFFSET,
+@@ -46,6 +48,15 @@ namespace bgslibrary
+         virtual void refreshModel(size_t nBaseOccCount, float fOccDecrFrac, bool bForceFGUpdate = false);
+         //! primary model update function; the learning param is used to override the internal learning speed (ignored when <= 0)
+         virtual void apply(cv::InputArray image, cv::OutputArray fgmask, double learningRateOverride = 0);
++        // add OpenCV4 overloaded apply that takes a knownForegroundMask
++        void apply(cv::InputArray image,
++                   cv::InputArray knownForegroundMask,
++                   cv::OutputArray fgmask,
++                   double learningRate = -1) CV_OVERRIDE
++        {
++            (void)knownForegroundMask; // ignore this mask by default
++            apply(image, fgmask, learningRate); // forward to existing implementation
++        }
+         //! returns a copy of the latest reconstructed background image
+         virtual void getBackgroundImage(cv::OutputArray backgroundImage) const;
+         //! returns a copy of the latest reconstructed background descriptors image
+diff --git a/bgslibrary/algorithms/LBSP/BackgroundSubtractorSuBSENSE.h b/bgslibrary/algorithms/LBSP/BackgroundSubtractorSuBSENSE.h
+index 9ec95e1..aabe129 100644
+--- a/bgslibrary/algorithms/LBSP/BackgroundSubtractorSuBSENSE.h
++++ b/bgslibrary/algorithms/LBSP/BackgroundSubtractorSuBSENSE.h
+@@ -34,6 +34,8 @@ namespace bgslibrary
+       */
+       class BackgroundSubtractorSuBSENSE : public BackgroundSubtractorLBSP {
+       public:
++        using cv::BackgroundSubtractor::apply;
++
+         //! full constructor
+         BackgroundSubtractorSuBSENSE(float fRelLBSPThreshold = BGSSUBSENSE_DEFAULT_LBSP_REL_SIMILARITY_THRESHOLD,
+           size_t nDescDistThresholdOffset = BGSSUBSENSE_DEFAULT_DESC_DIST_THRESHOLD_OFFSET,
+@@ -49,6 +51,15 @@ namespace bgslibrary
+         virtual void refreshModel(float fSamplesRefreshFrac, bool bForceFGUpdate = false);
+         //! primary model update function; the learning param is used to override the internal learning thresholds (ignored when <= 0)
+         virtual void apply(cv::InputArray image, cv::OutputArray fgmask, double learningRateOverride = 0);
++        // add OpenCV4 overloaded apply that takes a knownForegroundMask
++        void apply(cv::InputArray image,
++                   cv::InputArray knownForegroundMask,
++                   cv::OutputArray fgmask,
++                   double learningRate = -1) CV_OVERRIDE
++        {
++            (void)knownForegroundMask; // ignore this mask by default
++            apply(image, fgmask, learningRate); // forward to existing implementation
++        }
+         //! returns a copy of the latest reconstructed background image
+         void getBackgroundImage(cv::OutputArray backgroundImage) const;
+         //! returns a copy of the latest reconstructed background descriptors image
+-- 
+2.43.0
+

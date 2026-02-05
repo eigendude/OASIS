@@ -222,6 +222,12 @@ patch \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/bgslibrary" \
   < "${CONFIG_DIRECTORY}/bgslibrary/0002-CMake-Fix-locating-libs-via-_ROOT-variables.patch"
+patch \
+  -p1 \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/bgslibrary" \
+  < "${CONFIG_DIRECTORY}/bgslibrary/0003-Implement-OpenCV4-required-apply-overload.patch"
 
 # camera_ros
 echo "Patching camera_ros..."
