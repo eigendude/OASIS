@@ -45,7 +45,7 @@ repositories:
   ros-perception/bgslibrary:
     type: git
     url: https://github.com/andrewssobral/bgslibrary.git
-    version: c4e35fb310798ccf859cc12e1571a8f0854e554c
+    version: 4622bc9cded1c5504cec6db47db07b3e3c782ecc
   ros-perception/camera_ros:
     type: git
     url: https://github.com/christianrauch/camera_ros.git
