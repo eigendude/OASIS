@@ -82,7 +82,7 @@ sudo python3 -m pip install \
   --upgrade \
   --ignore-installed \
   --break-system-packages \
-  mediapipe \
+  mediapipe==0.10.21 \
   psutil \
   git+https://github.com/eigendude/pymata-express@master#egg=pymata-express \
   pyserial \
