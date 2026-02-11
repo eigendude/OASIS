@@ -86,7 +86,7 @@ if (HOST_NAME STREQUAL station)
   set(ENABLE_STEPPER OFF)
 elseif (HOST_NAME STREQUAL falcon)
   # Building engineer
-  set(ARDUINO_VARIANT unowifi)
+  set(ARDUINO_VARIANT uno)
 
   set(ENABLE_AIR_QUALITY OFF)
   set(ENABLE_ANALOG OFF)
