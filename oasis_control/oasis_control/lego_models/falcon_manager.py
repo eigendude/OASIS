@@ -31,6 +31,12 @@ from oasis_msgs.srv import SetDigitalMode as SetDigitalModeSvc
 
 THRUST_LED_PIN: int = 3  # D3
 
+#
+# LED noodle: 5V source, 22.1 Ohm resistor
+#
+# Thrust LED ping to 540 Ohm resistor, to base of BC337 NPN transistor. Emitter
+# goes to ground, collector to the LED noodle.
+#
 
 ################################################################################
 # ROS parameters
