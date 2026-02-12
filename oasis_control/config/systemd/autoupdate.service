@@ -4,7 +4,15 @@ After=network-online.target packagekit.service
 
 [Service]
 Type=oneshot
+
+# If PackageKit is wedged, this clears it before we try updating.
+ExecStartPre=/usr/bin/systemctl restart packagekit.service
+ExecStartPre=/usr/bin/pkcon refresh force
+
 ExecStart=/usr/bin/pkcon update -y
 
 # PackageKit and pkcon treat "no updates" as a "special exit code" (5)
 SuccessExitStatus=5
+
+# Don't hang forever
+TimeoutStartSec=30min
