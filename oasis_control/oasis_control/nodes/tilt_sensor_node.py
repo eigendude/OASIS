@@ -17,9 +17,9 @@ import rclpy.node
 import rclpy.publisher
 import rclpy.qos
 import rclpy.subscription
-from builtin_interfaces.msg import Time
-from geometry_msgs.msg import Vector3Stamped
-from sensor_msgs.msg import Imu
+from builtin_interfaces.msg import Time as TimeMsg
+from geometry_msgs.msg import Vector3Stamped as Vector3StampedMsg
+from sensor_msgs.msg import Imu as ImuMsg
 
 from oasis_control.localization.tilt_pose_estimator import ImuCalibration
 from oasis_control.localization.tilt_pose_estimator import TiltPoseEstimator
@@ -34,6 +34,7 @@ from oasis_msgs.msg import ImuCalibration as ImuCalibrationMsg
 NODE_NAME: str = "tilt_sensor"
 
 # ROS topics
+ATTITUDE_TOPIC: str = "attitude"
 IMU_TOPIC: str = "imu"
 IMU_CALIBRATION_TOPIC: str = "imu_calibration"
 TILT_TOPIC: str = "tilt"
@@ -46,7 +47,6 @@ PARAM_MIN_ATTITUDE_VAR: str = "min_attitude_variance"
 PARAM_MAX_ACCEL_INFLATION: str = "max_accel_inflation"
 # Units: (rad/s)^2. Meaning: gyro bias random-walk variance parameter.
 PARAM_GYRO_BIAS_RW_VAR_RADS2: str = "gyro_bias_rw_var_rads2"
-PARAM_PUBLISH_TILT_RP: str = "publish_tilt_rp"
 
 DEFAULT_NAMESPACE: str = "oasis"
 DEFAULT_ROBOT_NAME: str = "falcon"
@@ -72,6 +72,7 @@ class TiltSensorNode(rclpy.node.Node):
         """
         super().__init__(NODE_NAME)
 
+        # ROS parameter definitions
         self.declare_parameter(PARAM_FRAME_ID, "")
         self.declare_parameter(
             PARAM_ACCEL_TRUST_THRESHOLD, DEFAULT_ACCEL_TRUST_THRESHOLD_MPS2
@@ -82,12 +83,8 @@ class TiltSensorNode(rclpy.node.Node):
         self.declare_parameter(
             PARAM_GYRO_BIAS_RW_VAR_RADS2, DEFAULT_GYRO_BIAS_RW_VAR_RADS2
         )
-        self.declare_parameter(PARAM_PUBLISH_TILT_RP, False)
 
-        imu_topic: str = IMU_TOPIC
-        imu_calib_topic: str = IMU_CALIBRATION_TOPIC
-        tilt_topic: str = TILT_TOPIC
-
+        # ROS parameter state
         self._frame_id: str = str(self.get_parameter(PARAM_FRAME_ID).value)
         accel_trust_threshold: float = float(
             self.get_parameter(PARAM_ACCEL_TRUST_THRESHOLD).value
@@ -102,12 +99,13 @@ class TiltSensorNode(rclpy.node.Node):
         gyro_bias_rw_var_rads2: float = float(
             self.get_parameter(PARAM_GYRO_BIAS_RW_VAR_RADS2).value
         )
-        publish_tilt_rp: bool = bool(self.get_parameter(PARAM_PUBLISH_TILT_RP).value)
 
-        qos_profile: rclpy.qos.QoSProfile = (
-            rclpy.qos.QoSPresetProfiles.SENSOR_DATA.value
-        )
+        # Node state
+        self._calibration: Optional[ImuCalibration] = None
+        self._last_imu_time: Optional[float] = None
+        self._last_dt_spike_log_time: Optional[float] = None
 
+        # Tilt estimator
         self._estimator: TiltPoseEstimator = TiltPoseEstimator(
             accel_trust_threshold_mps2=accel_trust_threshold,
             yaw_variance_rad2=yaw_variance,
@@ -116,37 +114,36 @@ class TiltSensorNode(rclpy.node.Node):
             gyro_bias_rw_var_rads2=gyro_bias_rw_var_rads2,
         )
 
+        # ROS QoS profile
+        qos_profile: rclpy.qos.QoSProfile = (
+            rclpy.qos.QoSPresetProfiles.SENSOR_DATA.value
+        )
+
+        # ROS publishers
+        self._attitude_pub: rclpy.publisher.Publisher = self.create_publisher(
+            msg_type=Vector3StampedMsg,
+            topic=ATTITUDE_TOPIC,
+            qos_profile=qos_profile,
+        )
         self._tilt_pub: rclpy.publisher.Publisher = self.create_publisher(
-            msg_type=Imu,
-            topic=tilt_topic,
+            msg_type=ImuMsg,
+            topic=TILT_TOPIC,
             qos_profile=qos_profile,
         )
 
-        self._tilt_rp_pub: Optional[rclpy.publisher.Publisher] = None
-        if publish_tilt_rp:
-            self._tilt_rp_pub = self.create_publisher(
-                msg_type=Vector3Stamped,
-                topic=f"{tilt_topic}_rp",
-                qos_profile=qos_profile,
-            )
-
-        self._imu_calib_sub: rclpy.subscription.Subscription = self.create_subscription(
-            msg_type=ImuCalibrationMsg,
-            topic=imu_calib_topic,
-            callback=self._handle_calibration,
-            qos_profile=qos_profile,
-        )
-
+        # ROS subscribers
         self._imu_sub: rclpy.subscription.Subscription = self.create_subscription(
-            msg_type=Imu,
-            topic=imu_topic,
+            msg_type=ImuMsg,
+            topic=IMU_TOPIC,
             callback=self._handle_imu,
             qos_profile=qos_profile,
         )
-
-        self._calibration: Optional[ImuCalibration] = None
-        self._last_imu_time: Optional[float] = None
-        self._last_dt_spike_log_time: Optional[float] = None
+        self._imu_calib_sub: rclpy.subscription.Subscription = self.create_subscription(
+            msg_type=ImuCalibrationMsg,
+            topic=IMU_CALIBRATION_TOPIC,
+            callback=self._handle_calibration,
+            qos_profile=qos_profile,
+        )
 
         self.get_logger().info("Tilt sensor initialized")
 
@@ -167,11 +164,11 @@ class TiltSensorNode(rclpy.node.Node):
 
         self._calibration = calibration
 
-    def _handle_imu(self, message: Imu) -> None:
+    def _handle_imu(self, message: ImuMsg) -> None:
         if self._calibration is None:
             return
 
-        stamp: Time = message.header.stamp
+        stamp: TimeMsg = message.header.stamp
         timestamp: float = float(stamp.sec) + float(stamp.nanosec) * 1.0e-9
         if self._last_imu_time is None:
             dt_s: float = 0.0
@@ -211,7 +208,7 @@ class TiltSensorNode(rclpy.node.Node):
         if not updated:
             return
 
-        tilt_message: Imu = Imu()
+        tilt_message: ImuMsg = ImuMsg()
         tilt_message.header.stamp = message.header.stamp
         tilt_message.header.frame_id = (
             self._frame_id if self._frame_id else message.header.frame_id
@@ -242,17 +239,16 @@ class TiltSensorNode(rclpy.node.Node):
 
         self._tilt_pub.publish(tilt_message)
 
-        if self._tilt_rp_pub is not None:
-            roll: float
-            pitch: float
-            roll, pitch, _ = self._estimator.attitude_rpy()
-            rp_message: Vector3Stamped = Vector3Stamped()
-            rp_message.header.stamp = message.header.stamp
-            rp_message.header.frame_id = tilt_message.header.frame_id
-            rp_message.vector.x = roll
-            rp_message.vector.y = pitch
-            rp_message.vector.z = 0.0
-            self._tilt_rp_pub.publish(rp_message)
+        roll: float
+        pitch: float
+        roll, pitch, _ = self._estimator.attitude_rpy()
+        attitude_message: Vector3StampedMsg = Vector3StampedMsg()
+        attitude_message.header.stamp = message.header.stamp
+        attitude_message.header.frame_id = tilt_message.header.frame_id
+        attitude_message.vector.x = roll
+        attitude_message.vector.y = pitch
+        attitude_message.vector.z = 0.0
+        self._attitude_pub.publish(attitude_message)
 
     def _calibration_from_message(
         self, message: ImuCalibrationMsg

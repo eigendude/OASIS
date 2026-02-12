@@ -222,6 +222,7 @@ class ControlDescriptions:
             name=f"tilt_sensor_{host_id}",
             output="screen",
             remappings=[
+                ("attitude", f"{host_id}/attitude"),
                 ("imu", f"{host_id}/imu"),
                 ("imu_calibration", f"{host_id}/imu_calibration"),
                 ("tilt", f"{host_id}/tilt"),
