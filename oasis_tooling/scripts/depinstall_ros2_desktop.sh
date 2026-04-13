@@ -150,7 +150,7 @@ if [[ "${OSTYPE}" == "darwin"* ]]; then
     colcon-common-extensions \
     coverage \
     cryptography \
-    empy \
+    empy==3.3.4 \
     flake8 \
     flake8-blind-except==0.1.1 \
     flake8-builtins \

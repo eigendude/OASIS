@@ -34,25 +34,25 @@ jobs:
       # Check-out the repository under $GITHUB_WORKSPACE, so the job can
       # access it
       - name: Checkout main repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Restore oasis_msgs
         id: restore-oasis-msgs
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ros-ws/oasis-${{ matrix.ros2_distro }}/install
           key: oasis-msgs-${{ runner.os }}-${{ matrix.ros2_distro }}-${{ hashFiles('oasis_msgs/msg/**', 'oasis_msgs/srv/**', 'oasis_msgs/CMakeLists.txt', 'oasis_msgs/package.xml') }}
 
       - name: Restore tox environment
         id: restore-tox
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             .tox
           key: tox-env-${{ hashFiles('tox.ini', 'requirements-tox.txt') }}
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -80,7 +80,7 @@ jobs:
         run: |
           python3 -m pip install \
             catkin_pkg \
-            empy \
+            empy==3.3.4 \
             lark \
             numpy
 

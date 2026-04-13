@@ -70,6 +70,10 @@ done
 # Shared library environment
 #
 
+# Required for builtin_interfaces
+export ROS_DISTRO="${ROS2_DISTRO}"
+export ROS_VERSION=2
+
 # Ensure runtime-built tools can find freshly-built shared libs during colcon
 # builds (e.g. cyclonedds runs idlc which links against libiceoryx_posh.so).
 ROS_LIBDIR="${ROS2_INSTALL_DIRECTORY}/lib"

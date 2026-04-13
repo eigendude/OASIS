@@ -38,11 +38,11 @@ jobs:
       # Check-out the repository under $GITHUB_WORKSPACE, so the job can
       # access it
       - name: Checkout main repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # Compute all cache hashes once
       - name: Compute cache hashes
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           # Include messages with perception_cpp as keys can't be longer than
           # 512 characters
@@ -121,7 +121,7 @@ jobs:
       - name: Restore CMake
         id: restore-cmake
         if: matrix.os != 'macbook'
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ros-ws/cmake/install
@@ -132,7 +132,7 @@ jobs:
 
       - name: Restore OpenCV
         id: restore-opencv
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ros-ws/cv/install
@@ -172,7 +172,7 @@ jobs:
 
       - name: Restore MediaPipe
         id: restore-mediapipe
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ros-ws/abseil/install
