@@ -21,6 +21,7 @@ from rclpy.logging import LoggingSeverity
 from std_msgs.msg import Header as HeaderMsg
 
 from oasis_control.input.station_input import StationInput
+from oasis_control.lego_models.helipad_manager import HelipadManager
 from oasis_control.lego_models.station_manager import StationManager
 from oasis_control.managers.sampling_manager import SamplingManager
 from oasis_control.managers.wol_manager import WolManager
@@ -46,6 +47,9 @@ MOTOR_DIR_PIN: int = 4  # D4
 MOTOR_FF1_PIN: int = 8  # D8
 MOTOR_FF2_PIN: int = 7  # D7
 MOTOR_CURRENT_PIN: int = 1  # A1
+HELIPAD_IR_PIN: int = 2  # A2
+HELIPAD_LED_PAIR_A_PIN: int = 10  # D10
+HELIPAD_LED_PAIR_B_PIN: int = 11  # D11
 
 # External AREF is tied to a 5.02 V regulator for stable ADC scaling
 AREF_VOLTAGE: float = 5.02  # V
@@ -113,6 +117,12 @@ class ConductorManagerNode(rclpy.node.Node):
         self._mcu_memory_manager: McuMemoryManager = McuMemoryManager(self)
         self._sampling_manager: SamplingManager = SamplingManager(self)
         self._station_manager: StationManager = StationManager(self)
+        self._helipad_manager: HelipadManager = HelipadManager(
+            self,
+            HELIPAD_IR_PIN,
+            HELIPAD_LED_PAIR_A_PIN,
+            HELIPAD_LED_PAIR_B_PIN,
+        )
         self._station_input: StationInput = StationInput(self, self._station_manager)
         self._wol_manager_input: Optional[WolManager] = WolManager(self, INPUT_HOSTNAME)
         self._wol_manager_vision: Optional[WolManager] = WolManager(
@@ -161,6 +171,9 @@ class ConductorManagerNode(rclpy.node.Node):
 
         # Initialize LEGO model control
         if not self._station_manager.initialize():
+            return False
+
+        if not self._helipad_manager.initialize():
             return False
 
         # Initialize input
