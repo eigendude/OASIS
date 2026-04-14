@@ -90,6 +90,8 @@ def generate_launch_description() -> LaunchDescription:
     elif HOST_ID == "jetson":
         ControlDescriptions.add_mcu_manager(ld, HOST_ID, "engine")
     elif HOST_ID == "falcon":
-        ControlDescriptions.add_mcu_manager_with_pwm(ld, HOST_ID, "engineer")
+        ControlDescriptions.add_mcu_manager_with_pwm(
+            ld, HOST_ID, "engineer", conductor_host="station"
+        )
 
     return ld

@@ -172,21 +172,28 @@ class ControlDescriptions:
         ld: LaunchDescription,
         host_id: str,
         mcu_node: str,
+        conductor_host: str = "",
     ) -> None:
+        remappings: list[tuple[str, str]] = [
+            (f"{mcu_node}_state", f"{host_id}/{mcu_node}_state"),
+            ("configure_effect", f"{mcu_node}/configure_effect"),
+            ("mcu_memory", f"{mcu_node}/mcu_memory"),
+            ("pwm_write_cmd", f"{mcu_node}/pwm_write_cmd"),
+            ("report_mcu_memory", f"{mcu_node}/report_mcu_memory"),
+            ("set_digital_mode", f"{mcu_node}/set_digital_mode"),
+            ("set_effect", f"{mcu_node}/set_effect"),
+            ("set_sampling_interval", f"{mcu_node}/set_sampling_interval"),
+        ]
+        if conductor_host:
+            remappings.append(("conductor_state", f"{conductor_host}/conductor_state"))
+
         engineer_node: Node = Node(
             namespace=ROS_NAMESPACE,
             package=CONTROL_PACKAGE_NAME,
             executable=f"{mcu_node}_manager",
             name=f"{mcu_node}_manager_{host_id}",
             output="screen",
-            remappings=[
-                (f"{mcu_node}_state", f"{host_id}/{mcu_node}_state"),
-                ("mcu_memory", f"{mcu_node}/mcu_memory"),
-                ("pwm_write_cmd", f"{mcu_node}/pwm_write_cmd"),
-                ("report_mcu_memory", f"{mcu_node}/report_mcu_memory"),
-                ("set_digital_mode", f"{mcu_node}/set_digital_mode"),
-                ("set_sampling_interval", f"{mcu_node}/set_sampling_interval"),
-            ],
+            remappings=remappings,
         )
         ld.add_action(engineer_node)
 

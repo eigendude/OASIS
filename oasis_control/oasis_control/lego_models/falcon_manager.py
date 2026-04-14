@@ -12,16 +12,16 @@
 # anager for a LEGO Millenium Falcon model
 #
 
+from typing import Optional
+
 import rclpy.client
 import rclpy.node
-import rclpy.publisher
-import rclpy.qos
 import rclpy.task
 
-from oasis_drivers.ros.ros_translator import RosTranslator
-from oasis_drivers.telemetrix.telemetrix_types import DigitalMode
-from oasis_msgs.msg import PWMWriteCommand as PWMWriteCommandMsg
-from oasis_msgs.srv import SetDigitalMode as SetDigitalModeSvc
+from oasis_msgs.msg import EffectKind as EffectKindMsg
+from oasis_msgs.msg import EffectMode as EffectModeMsg
+from oasis_msgs.srv import ConfigureEffect as ConfigureEffectSvc
+from oasis_msgs.srv import SetEffect as SetEffectSvc
 
 
 ################################################################################
@@ -44,11 +44,8 @@ THRUST_LED_PIN: int = 3  # D3
 
 
 # Service clients
-CLIENT_SET_DIGITAL_MODE = "set_digital_mode"
-
-# Command publishers
-PUBLISH_PWM_CMD = "pwm_write_cmd"
-
+CLIENT_CONFIGURE_EFFECT = "configure_effect"
+CLIENT_SET_EFFECT = "set_effect"
 
 ################################################################################
 # Manager
@@ -67,61 +64,95 @@ class FalconManager:
         # Construction parameters
         self._node = node
 
-        # Publishers
-        cmd_qos = rclpy.qos.QoSProfile(
-            depth=10,
-            reliability=rclpy.qos.QoSReliabilityPolicy.RELIABLE,
-            history=rclpy.qos.QoSHistoryPolicy.KEEP_LAST,
-        )
-        self._pwm_cmd_pub: rclpy.publisher.Publisher = self._node.create_publisher(
-            msg_type=PWMWriteCommandMsg,
-            topic=PUBLISH_PWM_CMD,
-            qos_profile=cmd_qos,
-        )
-
         # Service clients
-        self._set_digital_mode_client: rclpy.client.Client = self._node.create_client(
-            srv_type=SetDigitalModeSvc, srv_name=CLIENT_SET_DIGITAL_MODE
+        self._configure_effect_client: rclpy.client.Client = self._node.create_client(
+            srv_type=ConfigureEffectSvc, srv_name=CLIENT_CONFIGURE_EFFECT
         )
+        self._set_effect_client: rclpy.client.Client = self._node.create_client(
+            srv_type=SetEffectSvc, srv_name=CLIENT_SET_EFFECT
+        )
+        self._last_thruster_mode: Optional[int] = None
 
     def initialize(self) -> bool:
         self._node.get_logger().debug("Waiting for falcon services")
-        self._node.get_logger().debug("  - Waiting for set_digital_mode...")
-        self._set_digital_mode_client.wait_for_service()
+        self._node.get_logger().debug("  - Waiting for configure_effect...")
+        self._configure_effect_client.wait_for_service()
+        self._node.get_logger().debug("  - Waiting for set_effect...")
+        self._set_effect_client.wait_for_service()
 
         self._node.get_logger().debug("Starting falcon configuration")
 
-        # Initialize thrust LED
-        self._node.get_logger().debug(f"Enabling thrust LED on D{THRUST_LED_PIN}")
-        if not self._set_digital_mode(THRUST_LED_PIN, DigitalMode.PWM):
+        self._node.get_logger().debug(
+            f"Attaching LED thruster effect on D{THRUST_LED_PIN}"
+        )
+        if not self._configure_thrust_led_effect():
             return False
 
-        # Turn thrust LED fully on
-        self._node.get_logger().debug("Turning thrust LED on")
-        self.set_thrust_led_pwm(1.0)
+        self._node.get_logger().debug("Setting LED thruster to idle")
+        if not self._set_thrust_led_effect(0.0):
+            return False
 
         self._node.get_logger().info("Station manager initialized successfully")
 
         return True
 
-    def set_thrust_led_pwm(self, target_magnitude: float) -> None:
-        """Publish command for motor PWM"""
-        pwm_cmd = PWMWriteCommandMsg()
-        pwm_cmd.digital_pin = THRUST_LED_PIN
-        pwm_cmd.duty_cycle = target_magnitude
+    def set_thrust_led_effect(self, duty_magnitude: float) -> None:
+        """Set runtime mode for the MCU-managed Falcon thrust LED effect."""
+        self._node.get_logger().debug(
+            f"Falcon conductor duty magnitude update: {duty_magnitude:.3f}"
+        )
 
-        self._pwm_cmd_pub.publish(pwm_cmd)
+        if not self._set_thrust_led_effect(duty_magnitude):
+            self._node.get_logger().warning("Failed to set Falcon LED thruster effect")
 
-    def _set_digital_mode(self, digital_pin: int, digital_mode: DigitalMode) -> bool:
-        # Create message
-        motor_pwm_svc = SetDigitalModeSvc.Request()
-        motor_pwm_svc.digital_pin = digital_pin
-        motor_pwm_svc.digital_mode = RosTranslator.digital_mode_to_ros(digital_mode)
+    def _configure_thrust_led_effect(self) -> bool:
+        configure_req: ConfigureEffectSvc.Request = ConfigureEffectSvc.Request()
+        configure_req.effect_kind = EffectKindMsg.LED_THRUSTER
+        configure_req.instance_id = 0
+        configure_req.analog_pins = []
+        configure_req.digital_pins = []
+        configure_req.pwm_pins = [THRUST_LED_PIN]
+        configure_req.config_values = []
+
+        future: rclpy.task.Future = self._configure_effect_client.call_async(
+            configure_req
+        )
+
+        rclpy.spin_until_future_complete(self._node, future)
+        if future.result() is None:
+            self._node.get_logger().error(
+                f"Exception while calling service: {future.exception()}"
+            )
+            return False
+
+        return True
+
+    def _set_thrust_led_effect(self, target_magnitude: float) -> bool:
+        clamped_magnitude: float = max(0.0, min(target_magnitude, 1.0))
+
+        mode: int = EffectModeMsg.LED_THRUSTER_IDLE
+        if clamped_magnitude > 0.0:
+            mode = EffectModeMsg.LED_THRUSTER_MOVING
+        else:
+            mode = EffectModeMsg.LED_THRUSTER_IDLE
+
+        if self._last_thruster_mode != mode:
+            mode_name: str = (
+                "idle" if mode == EffectModeMsg.LED_THRUSTER_IDLE else "moving"
+            )
+            self._node.get_logger().info(
+                f"Setting Falcon LED thruster mode to {mode_name}"
+            )
+            self._last_thruster_mode = mode
+
+        set_effect_req: SetEffectSvc.Request = SetEffectSvc.Request()
+        set_effect_req.effect_kind = EffectKindMsg.LED_THRUSTER
+        set_effect_req.instance_id = 0
+        set_effect_req.mode = mode
+        set_effect_req.values = []
 
         # Call service
-        future: rclpy.task.Future = self._set_digital_mode_client.call_async(
-            motor_pwm_svc
-        )
+        future: rclpy.task.Future = self._set_effect_client.call_async(set_effect_req)
 
         # Wait for result
         rclpy.spin_until_future_complete(self._node, future)

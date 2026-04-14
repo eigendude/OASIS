@@ -17,12 +17,14 @@ from typing import Optional
 import rclpy.node
 import rclpy.publisher
 import rclpy.qos
+import rclpy.subscription
 from rclpy.logging import LoggingSeverity
 from std_msgs.msg import Header as HeaderMsg
 
 from oasis_control.lego_models.falcon_manager import FalconManager
 from oasis_control.managers.sampling_manager import SamplingManager
 from oasis_control.mcu.mcu_memory_manager import McuMemoryManager
+from oasis_msgs.msg import ConductorState as ConductorStateMsg
 from oasis_msgs.msg import EngineerState as EngineerStateMsg
 
 
@@ -52,6 +54,9 @@ PUBLISH_STATE_PERIOD_SECS = 0.1
 # Publisher
 PUBLISH_ENGINEER_STATE = "engineer_state"
 
+# Subscribers
+CONDUCTOR_STATE_TOPIC = "conductor_state"
+
 
 ################################################################################
 # ROS node
@@ -76,9 +81,15 @@ class EngineerManagerNode(rclpy.node.Node):
         self._mcu_memory_manager: McuMemoryManager = McuMemoryManager(self)
         self._sampling_manager: SamplingManager = SamplingManager(self)
         self._falcon_manager: FalconManager = FalconManager(self)
+        self._falcon_ready: bool = False
+        self._pending_falcon_duty_magnitude: Optional[float] = None
+        self._falcon_defer_logged: bool = False
 
         # Reliable listener QOS profile for publishers
         qos_profile: rclpy.qos.QoSProfile = (
+            rclpy.qos.QoSPresetProfiles.SYSTEM_DEFAULT.value
+        )
+        conductor_qos_profile: rclpy.qos.QoSProfile = (
             rclpy.qos.QoSPresetProfiles.SYSTEM_DEFAULT.value
         )
 
@@ -87,6 +98,16 @@ class EngineerManagerNode(rclpy.node.Node):
             msg_type=EngineerStateMsg,
             topic=PUBLISH_ENGINEER_STATE,
             qos_profile=qos_profile,
+        )
+
+        # Subscribers
+        self._conductor_state_sub: rclpy.subscription.Subscription = (
+            self.create_subscription(
+                msg_type=ConductorStateMsg,
+                topic=CONDUCTOR_STATE_TOPIC,
+                callback=self._handle_conductor_state,
+                qos_profile=conductor_qos_profile,
+            )
         )
 
         # Timer parameters
@@ -106,6 +127,16 @@ class EngineerManagerNode(rclpy.node.Node):
         # Initialize LEGO model
         if not self._falcon_manager.initialize():
             return False
+        self._falcon_ready = True
+
+        if self._pending_falcon_duty_magnitude is not None:
+            pending_duty_magnitude: float = self._pending_falcon_duty_magnitude
+            self.get_logger().debug(
+                "Applying deferred Falcon conductor duty magnitude="
+                f"{pending_duty_magnitude:.3f} after initialization"
+            )
+            self._falcon_manager.set_thrust_led_effect(pending_duty_magnitude)
+            self._pending_falcon_duty_magnitude = None
 
         # Now that the manager is initialized, start the publishing timer
         self._publish_state_timer = self.create_timer(
@@ -127,3 +158,21 @@ class EngineerManagerNode(rclpy.node.Node):
         msg.ram_utilization = self._mcu_memory_manager.ram_utilization
 
         self._engineer_state_pub.publish(msg)
+
+    def _handle_conductor_state(self, msg: ConductorStateMsg) -> None:
+        duty_magnitude: float = min(max(abs(float(msg.duty_cycle)), 0.0), 1.0)
+        if not self._falcon_ready:
+            self._pending_falcon_duty_magnitude = duty_magnitude
+            if not self._falcon_defer_logged:
+                self.get_logger().debug(
+                    "Deferring Falcon conductor duty update until Falcon "
+                    "initialization completes"
+                )
+                self._falcon_defer_logged = True
+            return
+
+        self.get_logger().debug(
+            "Received conductor_state duty_cycle="
+            f"{float(msg.duty_cycle):.3f}, forwarding magnitude={duty_magnitude:.3f}"
+        )
+        self._falcon_manager.set_thrust_led_effect(duty_magnitude)
