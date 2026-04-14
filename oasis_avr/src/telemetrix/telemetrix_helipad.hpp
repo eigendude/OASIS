@@ -43,16 +43,7 @@ private:
     LANDED_FADE = 2,
   };
 
-  enum GuidancePhase : uint8_t
-  {
-    PAIR_A_PULSE = 0,
-    SHORT_GAP = 1,
-    PAIR_B_PULSE = 2,
-    LONG_GAP = 3,
-  };
-
   void UpdateGuidanceOutputs(uint32_t nowMs);
-  float GetGuidancePulseDutyCycle(uint32_t phaseElapsedMs, uint32_t pulseDurationMs) const;
   void StartLandedFade(uint32_t nowMs);
   void UpdateLandedFade(uint32_t nowMs);
   void SetOutputs(float pairADutyCycle, float pairBDutyCycle);
@@ -63,7 +54,6 @@ private:
   uint8_t m_ledPairBPin{0};
   uint8_t m_mode{DISABLED};
   uint8_t m_animationState{OFF};
-  uint8_t m_guidancePhase{PAIR_A_PULSE};
   uint32_t m_guidanceStartedMs{0};
   uint32_t m_landedFadeStartedMs{0};
   float m_outputPairADutyCycle{0.0F};
