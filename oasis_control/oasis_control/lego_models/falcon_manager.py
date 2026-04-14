@@ -69,7 +69,7 @@ class FalconManager:
 
         # Publishers
         cmd_qos = rclpy.qos.QoSProfile(
-            depth=1,
+            depth=10,
             reliability=rclpy.qos.QoSReliabilityPolicy.RELIABLE,
             history=rclpy.qos.QoSHistoryPolicy.KEEP_LAST,
         )
