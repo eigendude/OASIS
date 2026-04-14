@@ -45,6 +45,8 @@ class TelemetrixConfigCache:
         self._mpu6050_devices: Set[Tuple[int, int]] = set()
         self._helipad_config: Optional[Tuple[int, int, int]] = None
         self._helipad_mode: Optional[int] = None
+        self._led_thruster_config: Optional[Tuple[int, int]] = None
+        self._led_thruster_mode: Optional[int] = None
 
     def record_sampling_interval(self, ms: int) -> None:
         with self._lock:
@@ -101,6 +103,19 @@ class TelemetrixConfigCache:
         with self._lock:
             self._helipad_mode = mode
 
+    def record_led_thruster_attach(self, instance_id: int, led_pin: int) -> None:
+        with self._lock:
+            self._led_thruster_config = (instance_id, led_pin)
+
+    def record_led_thruster_detach(self) -> None:
+        with self._lock:
+            self._led_thruster_config = None
+            self._led_thruster_mode = None
+
+    def record_led_thruster_state(self, mode: int) -> None:
+        with self._lock:
+            self._led_thruster_mode = mode
+
     def replay(self, bridge: TelemetrixBridge, logger: TelemetrixLogger) -> None:
         with self._lock:
             sampling_interval_ms: Optional[int] = self._sampling_interval_ms
@@ -117,6 +132,8 @@ class TelemetrixConfigCache:
             mpu6050_devices: Set[Tuple[int, int]] = set(self._mpu6050_devices)
             helipad_config: Optional[Tuple[int, int, int]] = self._helipad_config
             helipad_mode: Optional[int] = self._helipad_mode
+            led_thruster_config: Optional[Tuple[int, int]] = self._led_thruster_config
+            led_thruster_mode: Optional[int] = self._led_thruster_mode
 
         logger.info(f"Replaying Telemetrix config: {self.dump()}")
         failures: bool = False
@@ -221,6 +238,43 @@ class TelemetrixConfigCache:
                 failures = True
                 logger.warning(f"Failed to replay helipad mode {helipad_mode}: {exc!r}")
 
+        if led_thruster_config is not None:
+            instance_id, led_pin = led_thruster_config
+            try:
+                bridge.configure_effect(
+                    effect_kind=2,
+                    instance_id=instance_id,
+                    analog_pins=[],
+                    digital_pins=[],
+                    pwm_pins=[led_pin],
+                    config_values=[],
+                )
+            except Exception as exc:
+                failures = True
+                logger.warning(
+                    "Failed to replay LED thruster attach on "
+                    f"instance {instance_id} pin D{led_pin}: {exc!r}"
+                )
+
+        if led_thruster_mode is not None:
+            instance_id = 0
+            if led_thruster_config is not None:
+                instance_id = led_thruster_config[0]
+
+            try:
+                bridge.set_effect(
+                    effect_kind=2,
+                    instance_id=instance_id,
+                    mode=led_thruster_mode,
+                    values=[],
+                )
+            except Exception as exc:
+                failures = True
+                logger.warning(
+                    "Failed to replay LED thruster mode "
+                    f"{led_thruster_mode}: {exc!r}"
+                )
+
         logger.info("Finished replaying Telemetrix config")
 
         if failures:
@@ -242,6 +296,8 @@ class TelemetrixConfigCache:
             mpu6050_devices_count: int = len(self._mpu6050_devices)
             helipad_attached: bool = self._helipad_config is not None
             helipad_mode: Optional[int] = self._helipad_mode
+            led_thruster_attached: bool = self._led_thruster_config is not None
+            led_thruster_mode: Optional[int] = self._led_thruster_mode
 
         return (
             "intervals="
@@ -257,5 +313,8 @@ class TelemetrixConfigCache:
             f"mpu6050:{mpu6050_devices_count} "
             "helipad="
             f"attached:{helipad_attached},"
-            f"mode:{helipad_mode}"
+            f"mode:{helipad_mode} "
+            "led_thruster="
+            f"attached:{led_thruster_attached},"
+            f"mode:{led_thruster_mode}"
         )

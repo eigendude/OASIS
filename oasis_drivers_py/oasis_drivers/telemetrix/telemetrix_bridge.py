@@ -574,16 +574,24 @@ class TelemetrixBridge:
         """
         Set runtime mode for an effect instance on the microcontroller.
         """
-        if values:
-            raise ValueError("set_effect currently does not support values")
+        value_count: int = len(values)
+        if value_count > 0xFF:
+            raise ValueError(f"Too many effect values: {value_count}")
+
+        value_ints: List[int] = []
+        value: float
+        for value in values:
+            clamped_value: float = max(0.0, min(value, 1.0))
+            value_ints.append(int(round(clamped_value * 255.0)))
 
         command: List[int] = [
             TelemetrixConstants.SET_EFFECT,
             effect_kind & 0xFF,
             instance_id & 0xFF,
             mode & 0xFF,
-            0,  # value_count
+            value_count & 0xFF,
         ]
+        command.extend(value_ints)
 
         coroutine: Awaitable[None] = self._board._send_command(command)
         future: Future = asyncio.run_coroutine_threadsafe(

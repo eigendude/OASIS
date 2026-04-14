@@ -124,9 +124,19 @@ HELIPAD_MODE_NAMES: dict[int, str] = {
     EffectModeMsg.HELIPAD_LANDED: "landed",
 }
 
+LED_THRUSTER_MODE_NAMES: dict[int, str] = {
+    EffectModeMsg.LED_THRUSTER_DISABLED: "disabled",
+    EffectModeMsg.LED_THRUSTER_IDLE: "idle",
+    EffectModeMsg.LED_THRUSTER_MOVING: "moving",
+}
+
 
 def _helipad_mode_name(mode: int) -> str:
     return HELIPAD_MODE_NAMES.get(mode, f"unknown({mode})")
+
+
+def _led_thruster_mode_name(mode: int) -> str:
+    return LED_THRUSTER_MODE_NAMES.get(mode, f"unknown({mode})")
 
 
 ################################################################################
@@ -898,42 +908,75 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         """Handle ROS 2 effect configuration requests."""
         effect_kind: int = request.effect_kind
         analog_pins: List[int] = request.analog_pins
+        digital_pins: List[int] = request.digital_pins
         pwm_pins: List[int] = request.pwm_pins
 
-        if effect_kind != EffectKindMsg.HELIPAD:
+        if effect_kind not in (EffectKindMsg.HELIPAD, EffectKindMsg.LED_THRUSTER):
             self.get_logger().warning(
                 "Unsupported effect kind for configure_effect "
                 f"({effect_kind}), ignoring request"
             )
             return response
 
-        if len(analog_pins) < 1 or len(pwm_pins) < 2:
+        if effect_kind == EffectKindMsg.HELIPAD:
+            if len(analog_pins) < 1 or len(pwm_pins) < 2:
+                self.get_logger().error(
+                    "Invalid HELIPAD configuration, expected analog_pins[1] and "
+                    "pwm_pins[2]"
+                )
+                return response
+
+            ir_pin: int = int(analog_pins[0])
+            led_pair_a_pin: int = int(pwm_pins[0])
+            led_pair_b_pin: int = int(pwm_pins[1])
+
+            self.get_logger().info(
+                "Attaching helipad on "
+                f"A{ir_pin}, D{led_pair_a_pin}, D{led_pair_b_pin}"
+            )
+
+            self._config_cache.record_helipad_attach(
+                ir_pin, led_pair_a_pin, led_pair_b_pin
+            )
+
+            if not self._initialized or self._reconnecting:
+                self.get_logger().warning("Skipping helipad attach while disconnected")
+                return response
+
+            self._bridge.configure_effect(
+                effect_kind=effect_kind,
+                instance_id=request.instance_id,
+                analog_pins=[ir_pin],
+                digital_pins=[],
+                pwm_pins=[led_pair_a_pin, led_pair_b_pin],
+                config_values=[],
+            )
+
+            return response
+
+        if len(analog_pins) != 0 or len(digital_pins) != 0 or len(pwm_pins) != 1:
             self.get_logger().error(
-                "Invalid HELIPAD configuration, expected analog_pins[1] and "
-                "pwm_pins[2]"
+                "Invalid LED_THRUSTER configuration, expected "
+                "analog_pins=[], digital_pins=[], pwm_pins=[led_pin]"
             )
             return response
 
-        ir_pin: int = int(analog_pins[0])
-        led_pair_a_pin: int = int(pwm_pins[0])
-        led_pair_b_pin: int = int(pwm_pins[1])
+        led_pin: int = int(pwm_pins[0])
 
-        self.get_logger().info(
-            "Attaching helipad on " f"A{ir_pin}, D{led_pair_a_pin}, D{led_pair_b_pin}"
-        )
+        self.get_logger().info(f"Attaching LED thruster on D{led_pin}")
 
-        self._config_cache.record_helipad_attach(ir_pin, led_pair_a_pin, led_pair_b_pin)
+        self._config_cache.record_led_thruster_attach(request.instance_id, led_pin)
 
         if not self._initialized or self._reconnecting:
-            self.get_logger().warning("Skipping helipad attach while disconnected")
+            self.get_logger().warning("Skipping LED thruster attach while disconnected")
             return response
 
         self._bridge.configure_effect(
             effect_kind=effect_kind,
             instance_id=request.instance_id,
-            analog_pins=[ir_pin],
+            analog_pins=[],
             digital_pins=[],
-            pwm_pins=[led_pair_a_pin, led_pair_b_pin],
+            pwm_pins=[led_pin],
             config_values=[],
         )
 
@@ -1082,38 +1125,79 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         """Handle ROS 2 effect mode changes."""
         effect_kind: int = request.effect_kind
 
-        if effect_kind != EffectKindMsg.HELIPAD:
+        if effect_kind == EffectKindMsg.HELIPAD:
+            mode: int = request.mode
+
+            if mode not in (
+                EffectModeMsg.HELIPAD_DISABLED,
+                EffectModeMsg.HELIPAD_GUIDANCE,
+                EffectModeMsg.HELIPAD_LANDED,
+            ):
+                self.get_logger().error(
+                    f"Invalid helipad mode ({mode}), defaulting to disabled"
+                )
+                mode = EffectModeMsg.HELIPAD_DISABLED
+
+            self.get_logger().info(
+                f"Setting helipad mode to {_helipad_mode_name(mode)}"
+            )
+
+            self._config_cache.record_helipad_mode(mode)
+
+            if not self._initialized or self._reconnecting:
+                self.get_logger().warning(
+                    "Skipping helipad mode change while disconnected"
+                )
+                return response
+
+            self._bridge.set_effect(
+                effect_kind=effect_kind,
+                instance_id=request.instance_id,
+                mode=mode,
+                values=[],
+            )
+
+            return response
+
+        if effect_kind == EffectKindMsg.LED_THRUSTER:
+            mode = request.mode
+
+            if mode not in (
+                EffectModeMsg.LED_THRUSTER_DISABLED,
+                EffectModeMsg.LED_THRUSTER_IDLE,
+                EffectModeMsg.LED_THRUSTER_MOVING,
+            ):
+                self.get_logger().error(
+                    f"Invalid LED_THRUSTER mode ({mode}), defaulting to disabled"
+                )
+                mode = EffectModeMsg.LED_THRUSTER_DISABLED
+
+            self.get_logger().info(
+                f"Setting LED thruster mode to {_led_thruster_mode_name(mode)}"
+            )
+
+            self._config_cache.record_led_thruster_state(mode)
+
+            if not self._initialized or self._reconnecting:
+                self.get_logger().warning(
+                    "Skipping LED thruster mode change while disconnected"
+                )
+                return response
+
+            self._bridge.set_effect(
+                effect_kind=effect_kind,
+                instance_id=request.instance_id,
+                mode=mode,
+                values=[],
+            )
+
+            return response
+
+        if effect_kind not in (EffectKindMsg.HELIPAD, EffectKindMsg.LED_THRUSTER):
             self.get_logger().warning(
                 f"Unsupported effect kind for set_effect ({effect_kind})"
             )
             return response
-
-        mode: int = request.mode
-
-        if mode not in (
-            EffectModeMsg.HELIPAD_DISABLED,
-            EffectModeMsg.HELIPAD_GUIDANCE,
-            EffectModeMsg.HELIPAD_LANDED,
-        ):
-            self.get_logger().error(
-                f"Invalid helipad mode ({mode}), defaulting to disabled"
-            )
-            mode = EffectModeMsg.HELIPAD_DISABLED
-
-        self.get_logger().info(f"Setting helipad mode to {_helipad_mode_name(mode)}")
-
-        self._config_cache.record_helipad_mode(mode)
-
-        if not self._initialized or self._reconnecting:
-            self.get_logger().warning("Skipping helipad mode change while disconnected")
-            return response
-
-        self._bridge.set_effect(
-            effect_kind=effect_kind,
-            instance_id=request.instance_id,
-            mode=mode,
-            values=[],
-        )
 
         return response
 
