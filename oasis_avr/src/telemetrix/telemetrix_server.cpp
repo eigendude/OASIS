@@ -16,6 +16,7 @@
 #include "telemetrix_cpu_fan.hpp"
 #include "telemetrix_dht.hpp"
 #include "telemetrix_features.hpp"
+#include "telemetrix_helipad.hpp"
 #include "telemetrix_i2c.hpp"
 #include "telemetrix_memory.hpp"
 #include "telemetrix_one_wire.hpp"
@@ -49,6 +50,11 @@ void TelemetrixServer::Setup()
   static TelemetrixDHT dht;
   m_dht = &dht;
   m_features |= DHT_FEATURE;
+#endif
+
+#if defined(ENABLE_HELIPAD)
+  static TelemetrixHelipad helipad;
+  m_helipad = &helipad;
 #endif
 
 #if defined(ENABLE_I2C)
@@ -104,7 +110,8 @@ void TelemetrixServer::ScanSensors()
   using ScanFunction = void (TelemetrixServer::*)();
 
   static const ScanFunction scanFunctions[] = {
-      &ScanCPUFans, &ScanDHTs, &ScanI2C, &ScanMemory, &ScanPins, &ScanSonars, &ScanSteppers,
+      &ScanCPUFans, &ScanDHTs, &ScanHelipad, &ScanI2C,
+      &ScanMemory,  &ScanPins, &ScanSonars,  &ScanSteppers,
   };
 
   for (auto scanFunction : scanFunctions)
@@ -131,6 +138,13 @@ void TelemetrixServer::ScanDHTs()
 {
 #if defined(ENABLE_DHT)
   m_dht->ScanDHTs();
+#endif
+}
+
+void TelemetrixServer::ScanHelipad()
+{
+#if defined(ENABLE_HELIPAD)
+  m_helipad->Scan();
 #endif
 }
 

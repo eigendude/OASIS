@@ -14,6 +14,7 @@
 #include "scheduler/task_scheduler.hpp"
 #include "telemetrix_cpu_fan.hpp"
 #include "telemetrix_dht.hpp"
+#include "telemetrix_helipad.hpp"
 #include "telemetrix_i2c.hpp"
 #include "telemetrix_memory.hpp"
 #include "telemetrix_one_wire.hpp"
@@ -128,6 +129,9 @@ static const command_descriptor commandTable[] = {
     (&TelemetrixCommands::i2c_mpu6050_begin),
     (&TelemetrixCommands::i2c_mpu6050_end),
     (&TelemetrixCommands::get_uptime),
+    (&TelemetrixCommands::helipad_attach),
+    (&TelemetrixCommands::helipad_set_mode),
+    (&TelemetrixCommands::helipad_detach),
 };
 
 } // namespace
@@ -418,6 +422,11 @@ void TelemetrixCommands::reset_data()
 #if defined(ENABLE_DHT)
   TelemetrixDHT* dht = m_server->GetDHT();
   dht->ResetData();
+#endif
+
+#if defined(ENABLE_HELIPAD)
+  TelemetrixHelipad* helipad = m_server->GetHelipad();
+  helipad->ResetData();
 #endif
 
   enable_all_reports();
@@ -934,5 +943,35 @@ void TelemetrixCommands::i2c_mpu6050_end()
 
   TelemetrixI2C* i2c = m_server->GetI2C();
   i2c->EndMPU6050(i2cPort, i2cAddress);
+#endif
+}
+
+void TelemetrixCommands::helipad_attach()
+{
+#if defined(ENABLE_HELIPAD)
+  const uint8_t irPin = commandBuffer[0];
+  const uint8_t ledPairAPin = commandBuffer[1];
+  const uint8_t ledPairBPin = commandBuffer[2];
+
+  TelemetrixHelipad* helipad = m_server->GetHelipad();
+  helipad->Attach(irPin, ledPairAPin, ledPairBPin);
+#endif
+}
+
+void TelemetrixCommands::helipad_set_mode()
+{
+#if defined(ENABLE_HELIPAD)
+  const uint8_t mode = commandBuffer[0];
+
+  TelemetrixHelipad* helipad = m_server->GetHelipad();
+  helipad->SetMode(mode);
+#endif
+}
+
+void TelemetrixCommands::helipad_detach()
+{
+#if defined(ENABLE_HELIPAD)
+  TelemetrixHelipad* helipad = m_server->GetHelipad();
+  helipad->Detach();
 #endif
 }

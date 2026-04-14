@@ -17,6 +17,7 @@ namespace OASIS
 {
 class TelemetrixCPUFan;
 class TelemetrixDHT;
+class TelemetrixHelipad;
 class TelemetrixI2C;
 class TelemetrixMemory;
 class TelemetrixOneWire;
@@ -40,6 +41,7 @@ public:
   // Subsystems
   TelemetrixCPUFan* GetCPUFan() const { return m_cpuFan; }
   TelemetrixDHT* GetDHT() const { return m_dht; }
+  TelemetrixHelipad* GetHelipad() const { return m_helipad; }
   TelemetrixI2C* GetI2C() const { return m_i2c; }
   TelemetrixMemory* GetMemory() const { return m_memory; }
   TelemetrixOneWire* GetOneWire() const { return m_oneWire; }
@@ -52,6 +54,7 @@ public:
 private:
   void ScanCPUFans();
   void ScanDHTs();
+  void ScanHelipad();
   void ScanI2C();
   void ScanMemory();
   void ScanPins();
@@ -61,6 +64,7 @@ private:
   // Subsystems
   TelemetrixCPUFan* m_cpuFan{nullptr};
   TelemetrixDHT* m_dht{nullptr};
+  TelemetrixHelipad* m_helipad{nullptr};
   TelemetrixI2C* m_i2c{nullptr};
   TelemetrixMemory* m_memory{nullptr};
   TelemetrixOneWire* m_oneWire{nullptr};
