@@ -47,6 +47,7 @@ rosidl_generate_interfaces(
     msg/DiskPartition.msg
     msg/EngineerState.msg
     msg/EngineState.msg
+    msg/HelipadMode.msg
     msg/I2CDevice.msg
     msg/I2CDeviceType.msg
     msg/I2CImu.msg
@@ -85,6 +86,7 @@ rosidl_generate_interfaces(
     srv/DigitalRead.srv
     srv/DigitalWrite.srv
     srv/GetMACAddress.srv
+    srv/HelipadAttach.srv
     srv/I2CBegin.srv
     srv/I2CEnd.srv
     srv/PowerControl.srv
@@ -94,6 +96,7 @@ rosidl_generate_interfaces(
     srv/SetAnalogMode.srv
     srv/SetDigitalMode.srv
     srv/SetDisplay.srv
+    srv/SetHelipadMode.srv
     srv/SetPlug.srv
     srv/SetRGB.srv
     srv/SetSamplingInterval.srv
