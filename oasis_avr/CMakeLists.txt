@@ -471,6 +471,8 @@ endif()
 
 if (ENABLE_EFFECTS)
   list(APPEND TELEMETRIX_SOURCES
+    src/effects/effect_primitives.cpp
+    src/effects/helipad_effect.cpp
     src/telemetrix/telemetrix_effects.cpp
   )
   list(APPEND TELEMETRIX_DEFINITIONS

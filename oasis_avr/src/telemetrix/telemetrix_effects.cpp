@@ -8,24 +8,10 @@
 
 #include "telemetrix_effects.hpp"
 
-#include <math.h>
-
 #include <Arduino.h>
 
 using namespace OASIS;
-
-namespace
-{
-constexpr uint32_t GUIDANCE_PERIOD_MS = 1200;
-
-// Fixed landed fade duration in milliseconds
-constexpr uint32_t LANDED_FADE_DURATION_MS = 200;
-
-constexpr float HALF_CYCLE = 0.5F;
-constexpr float MAX_DUTY_CYCLE = 1.0F;
-constexpr float PI_F = 3.14159265358979323846F;
-constexpr float PWM_MAX = 255.0F;
-} // namespace
+using namespace OASIS::EFFECTS;
 
 void TelemetrixEffects::ConfigureEffect(uint8_t effectKind,
                                         uint8_t instanceId,
@@ -34,181 +20,165 @@ void TelemetrixEffects::ConfigureEffect(uint8_t effectKind,
                                         uint8_t pwmPinCount,
                                         const uint8_t* pinData)
 {
-  if (effectKind != HELIPAD || instanceId != 0)
-    return;
-
-  if (analogPinCount < 1 || pwmPinCount < 2)
-    return;
-
-  const uint8_t analogPinOffset = 0;
-  const uint8_t pwmPinOffset = static_cast<uint8_t>(analogPinCount + digitalPinCount);
-
-  m_irPin = pinData[analogPinOffset];
-  m_ledPairAPin = pinData[pwmPinOffset];
-  m_ledPairBPin = pinData[pwmPinOffset + 1];
-  m_guidanceStartedMs = millis();
-  m_landedFadeStartedMs = 0;
-  m_mode = DISABLED;
-  m_animationState = OFF;
-  m_attached = true;
-
-  pinMode(m_ledPairAPin, OUTPUT);
-  pinMode(m_ledPairBPin, OUTPUT);
-  SetOutputsOff();
+  switch (effectKind)
+  {
+    case HELIPAD:
+      ConfigureHelipad(instanceId, analogPinCount, digitalPinCount, pwmPinCount, pinData);
+      return;
+    case LED_THRUSTER:
+      return;
+    default:
+      return;
+  }
 }
 
 void TelemetrixEffects::SetEffect(
     uint8_t effectKind, uint8_t instanceId, uint8_t mode, uint8_t valueCount, const uint8_t* values)
 {
-  if (effectKind != HELIPAD || instanceId != 0)
-    return;
+  switch (effectKind)
+  {
+    case HELIPAD:
+      SetHelipad(instanceId, mode, valueCount, values);
+      return;
+    case LED_THRUSTER:
+      return;
+    default:
+      return;
+  }
+}
 
-  if (!m_attached)
-    return;
-
+void TelemetrixEffects::Scan()
+{
   const uint32_t nowMs = millis();
+
+  for (uint8_t i = 0; i < kMaxHelipadInstances; ++i)
+    ScanHelipad(m_helipadInstances[i], nowMs);
+}
+
+void TelemetrixEffects::ResetData()
+{
+  for (uint8_t i = 0; i < kMaxHelipadInstances; ++i)
+    ResetHelipad(m_helipadInstances[i]);
+
+  for (uint8_t i = 0; i < kMaxLedThrusterInstances; ++i)
+    m_ledThrusterInstances[i].attached = false;
+}
+
+void TelemetrixEffects::ConfigureHelipad(uint8_t instanceId,
+                                         uint8_t analogPinCount,
+                                         uint8_t digitalPinCount,
+                                         uint8_t pwmPinCount,
+                                         const uint8_t* pinData)
+{
+  if (instanceId >= kMaxHelipadInstances)
+    return;
+
+  if (analogPinCount < kHelipadAnalogPinCount || pwmPinCount < kHelipadPwmPinCount)
+    return;
+
+  if (pinData == nullptr)
+    return;
+
+  HelipadInstance& instance = m_helipadInstances[instanceId];
+
+  const uint8_t analogPinOffset = 0;
+  const uint8_t pwmPinOffset = static_cast<uint8_t>(analogPinCount + digitalPinCount);
+
+  instance.irPin = pinData[analogPinOffset];
+  instance.pwmPins[0] = pinData[pwmPinOffset];
+  instance.pwmPins[1] = pinData[pwmPinOffset + 1];
+  instance.effect.Reset();
+  instance.mode = DISABLED;
+  instance.attached = true;
+
+  pinMode(instance.pwmPins[0], OUTPUT);
+  pinMode(instance.pwmPins[1], OUTPUT);
+  SetOutputsOff(instance.pwmPins, kHelipadPwmPinCount, instance.attached);
+}
+
+void TelemetrixEffects::SetHelipad(uint8_t instanceId,
+                                   uint8_t mode,
+                                   uint8_t valueCount,
+                                   const uint8_t* values)
+{
+  if (instanceId >= kMaxHelipadInstances)
+    return;
+
+  HelipadInstance& instance = m_helipadInstances[instanceId];
+
+  if (!instance.attached)
+    return;
 
   if (valueCount > 0 && values == nullptr)
     return;
 
+  const uint32_t nowMs = millis();
+
   if (mode == GUIDANCE)
   {
-    m_guidanceStartedMs = nowMs;
-    m_mode = GUIDANCE;
-    m_animationState = GUIDANCE_ACTIVE;
+    instance.effect.StartGuidance(nowMs);
+    instance.mode = GUIDANCE;
     return;
   }
 
   if (mode == LANDED)
   {
-    m_mode = LANDED;
+    instance.mode = LANDED;
 
-    if (m_animationState == GUIDANCE_ACTIVE)
-      StartLandedFade(nowMs);
-    else if (m_animationState != LANDED_FADE)
-      SetOutputsOff();
+    if (instance.effect.StartLanded(nowMs))
+      SetOutputs(instance.pwmPins, kHelipadPwmPinCount, instance.effect.GetOutputs());
 
     return;
   }
 
-  m_mode = DISABLED;
-  SetOutputsOff();
+  instance.mode = DISABLED;
+  instance.effect.Disable();
+  SetOutputsOff(instance.pwmPins, kHelipadPwmPinCount, instance.attached);
 }
 
-void TelemetrixEffects::Scan()
+void TelemetrixEffects::ScanHelipad(HelipadInstance& instance, uint32_t nowMs)
 {
-  if (!m_attached)
+  if (!instance.attached)
     return;
 
-  const uint32_t nowMs = millis();
+  if (instance.effect.Tick(nowMs))
+    SetOutputs(instance.pwmPins, kHelipadPwmPinCount, instance.effect.GetOutputs());
+}
 
-  if (m_animationState == GUIDANCE_ACTIVE)
+void TelemetrixEffects::ResetHelipad(HelipadInstance& instance)
+{
+  SetOutputsOff(instance.pwmPins, kHelipadPwmPinCount, instance.attached);
+  instance.mode = DISABLED;
+  instance.effect.Reset();
+  instance.attached = false;
+}
+
+void TelemetrixEffects::SetOutputs(const uint8_t* pwmPins,
+                                   uint8_t pwmPinCount,
+                                   const EffectOutputs& outputs)
+{
+  if (pwmPins == nullptr)
+    return;
+
+  const float pwmMax = 255.0F;
+  const uint8_t outputCount =
+      outputs.outputCount > kMaxEffectOutputs ? kMaxEffectOutputs : outputs.outputCount;
+
+  for (uint8_t i = 0; i < pwmPinCount; ++i)
   {
-    UpdateGuidanceOutputs(nowMs);
-    return;
+    const float dutyCycle =
+        i < outputCount ? EffectPrimitives::ClampDutyCycle(outputs.dutyCycles[i]) : 0.0F;
+    const int pwm = static_cast<int>(dutyCycle * pwmMax);
+
+    analogWrite(pwmPins[i], pwm);
   }
-
-  if (m_animationState == LANDED_FADE)
-    UpdateLandedFade(nowMs);
 }
 
-void TelemetrixEffects::ResetData()
+void TelemetrixEffects::SetOutputsOff(const uint8_t* pwmPins, uint8_t pwmPinCount, bool attached)
 {
-  SetOutputsOff();
-  m_mode = DISABLED;
-  m_animationState = OFF;
-  m_guidanceStartedMs = 0;
-  m_landedFadeStartedMs = 0;
-  m_attached = false;
-}
-
-void TelemetrixEffects::UpdateGuidanceOutputs(uint32_t nowMs)
-{
-  const uint32_t elapsedMs = nowMs - m_guidanceStartedMs;
-
-  // One full beacon cycle spans both LED pairs. Each half-cycle drives one
-  // pair with a sine pulse matching the previous host-side animation.
-  const float cyclePhase =
-      static_cast<float>(elapsedMs % GUIDANCE_PERIOD_MS) / static_cast<float>(GUIDANCE_PERIOD_MS);
-
-  float pairADutyCycle = 0.0F;
-  float pairBDutyCycle = 0.0F;
-
-  if (cyclePhase < HALF_CYCLE)
-  {
-    const float localPhase = cyclePhase / HALF_CYCLE;
-    pairADutyCycle = sinf(PI_F * localPhase) * MAX_DUTY_CYCLE;
-  }
-  else
-  {
-    const float localPhase = (cyclePhase - HALF_CYCLE) / HALF_CYCLE;
-    pairBDutyCycle = sinf(PI_F * localPhase) * MAX_DUTY_CYCLE;
-  }
-
-  SetOutputs(pairADutyCycle, pairBDutyCycle);
-}
-
-void TelemetrixEffects::StartLandedFade(uint32_t nowMs)
-{
-  UpdateGuidanceOutputs(nowMs);
-
-  m_landedFadeStartedMs = nowMs;
-  m_landedFadeStartPairADutyCycle = m_outputPairADutyCycle;
-  m_landedFadeStartPairBDutyCycle = m_outputPairBDutyCycle;
-
-  if (m_landedFadeStartPairADutyCycle <= 0.0F && m_landedFadeStartPairBDutyCycle <= 0.0F)
-  {
-    SetOutputsOff();
-    return;
-  }
-
-  m_animationState = LANDED_FADE;
-}
-
-void TelemetrixEffects::UpdateLandedFade(uint32_t nowMs)
-{
-  const uint32_t elapsedMs = nowMs - m_landedFadeStartedMs;
-
-  if (elapsedMs >= LANDED_FADE_DURATION_MS)
-  {
-    SetOutputsOff();
-    return;
-  }
-
-  // The landed animation uses a fixed-duration linear fade so the MCU owns
-  // the full transition without depending on host-side frame timing.
-  const float fadeProgress =
-      static_cast<float>(elapsedMs) / static_cast<float>(LANDED_FADE_DURATION_MS);
-  const float remainingScale = MAX_DUTY_CYCLE - fadeProgress;
-
-  SetOutputs(m_landedFadeStartPairADutyCycle * remainingScale,
-             m_landedFadeStartPairBDutyCycle * remainingScale);
-}
-
-void TelemetrixEffects::SetOutputs(float pairADutyCycle, float pairBDutyCycle)
-{
-  const float clampedPairA = constrain(pairADutyCycle, 0.0F, MAX_DUTY_CYCLE);
-  const float clampedPairB = constrain(pairBDutyCycle, 0.0F, MAX_DUTY_CYCLE);
-
-  m_outputPairADutyCycle = clampedPairA;
-  m_outputPairBDutyCycle = clampedPairB;
-
-  const int pairAPwm = static_cast<int>(clampedPairA * PWM_MAX);
-  const int pairBPwm = static_cast<int>(clampedPairB * PWM_MAX);
-
-  analogWrite(m_ledPairAPin, pairAPwm);
-  analogWrite(m_ledPairBPin, pairBPwm);
-}
-
-void TelemetrixEffects::SetOutputsOff()
-{
-  if (!m_attached)
+  if (!attached || pwmPins == nullptr)
     return;
 
-  m_animationState = OFF;
-  m_outputPairADutyCycle = 0.0F;
-  m_outputPairBDutyCycle = 0.0F;
-
-  analogWrite(m_ledPairAPin, 0);
-  analogWrite(m_ledPairBPin, 0);
+  for (uint8_t i = 0; i < pwmPinCount; ++i)
+    analogWrite(pwmPins[i], 0);
 }
