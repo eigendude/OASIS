@@ -12,29 +12,25 @@
 
 from __future__ import annotations
 
+import enum
+import math
+from functools import partial
+
 import rclpy.client
 import rclpy.node
-import rclpy.publisher
 import rclpy.qos
 import rclpy.subscription
 import rclpy.task
 
-from oasis_control.helipad.helipad_controller import HelipadController
 from oasis_drivers.ros.ros_translator import RosTranslator
 from oasis_drivers.telemetrix.telemetrix_types import AnalogMode
 from oasis_drivers.telemetrix.telemetrix_types import DigitalMode
 from oasis_msgs.msg import AnalogReading as AnalogReadingMsg
-from oasis_msgs.msg import PWMWriteCommand as PWMWriteCommandMsg
+from oasis_msgs.msg import HelipadMode as HelipadModeMsg
+from oasis_msgs.srv import HelipadAttach as HelipadAttachSvc
 from oasis_msgs.srv import SetAnalogMode as SetAnalogModeSvc
 from oasis_msgs.srv import SetDigitalMode as SetDigitalModeSvc
-
-
-################################################################################
-# Timing parameters
-################################################################################
-
-
-ANIMATION_TIMER_PERIOD_SECS: float = 0.1
+from oasis_msgs.srv import SetHelipadMode as SetHelipadModeSvc
 
 
 ################################################################################
@@ -46,11 +42,103 @@ ANIMATION_TIMER_PERIOD_SECS: float = 0.1
 SUBSCRIBE_ANALOG_READING = "analog_reading"
 
 # Service clients
+CLIENT_HELIPAD_ATTACH = "helipad_attach"
 CLIENT_SET_ANALOG_MODE = "set_analog_mode"
 CLIENT_SET_DIGITAL_MODE = "set_digital_mode"
+CLIENT_SET_HELIPAD_MODE = "set_helipad_mode"
 
-# Command publishers
-PUBLISH_PWM_CMD = "pwm_write_cmd"
+
+################################################################################
+# Helipad control
+################################################################################
+
+
+LAND_THRESHOLD_VOLTS: float = 4.6
+LAND_DEBOUNCE_SECS: float = 0.2
+
+
+class HelipadMode(enum.IntEnum):
+    """High-level helipad guidance modes."""
+
+    DISABLED = 0
+    GUIDANCE = 1
+    LANDED = 2
+
+
+class HelipadModeTracker:
+    """Track helipad guidance mode from reflectance sensor voltage."""
+
+    def __init__(
+        self,
+        land_threshold_volts: float = LAND_THRESHOLD_VOLTS,
+        debounce_secs: float = LAND_DEBOUNCE_SECS,
+    ) -> None:
+        if not math.isfinite(land_threshold_volts):
+            raise ValueError("land_threshold_volts must be finite")
+        if not math.isfinite(debounce_secs) or debounce_secs < 0.0:
+            raise ValueError("debounce_secs must be finite and non-negative")
+
+        self._land_threshold_volts: float = land_threshold_volts
+        self._debounce_secs: float = debounce_secs
+        self._landed: bool = False
+        self._candidate_landed: bool = False
+        self._candidate_since_sec: float | None = None
+        self._last_timestamp_sec: float | None = None
+
+    @property
+    def landed(self) -> bool:
+        """Return whether the helicopter is currently considered landed."""
+
+        return self._landed
+
+    def update_mode(self, timestamp_sec: float, sensor_voltage: float) -> HelipadMode:
+        """Advance the tracker and return the high-level guidance mode."""
+
+        current_timestamp_sec: float = self._normalize_timestamp(timestamp_sec)
+        self._update_landing_state(current_timestamp_sec, sensor_voltage)
+
+        if self._landed:
+            return HelipadMode.LANDED
+
+        return HelipadMode.GUIDANCE
+
+    def _normalize_timestamp(self, timestamp_sec: float) -> float:
+        if not math.isfinite(timestamp_sec):
+            if self._last_timestamp_sec is not None:
+                return self._last_timestamp_sec
+            return 0.0
+
+        current_timestamp_sec: float = timestamp_sec
+        if self._last_timestamp_sec is not None:
+            current_timestamp_sec = max(current_timestamp_sec, self._last_timestamp_sec)
+
+        self._last_timestamp_sec = current_timestamp_sec
+        return current_timestamp_sec
+
+    def _update_landing_state(
+        self, timestamp_sec: float, sensor_voltage: float
+    ) -> None:
+        sensed_voltage: float = sensor_voltage if math.isfinite(sensor_voltage) else 0.0
+        observed_landed: bool = sensed_voltage <= self._land_threshold_volts
+
+        if observed_landed == self._landed:
+            self._candidate_landed = observed_landed
+            self._candidate_since_sec = None
+            return
+
+        if (
+            self._candidate_since_sec is None
+            or self._candidate_landed != observed_landed
+        ):
+            self._candidate_landed = observed_landed
+            self._candidate_since_sec = timestamp_sec
+            return
+
+        if timestamp_sec - self._candidate_since_sec < self._debounce_secs:
+            return
+
+        self._landed = observed_landed
+        self._candidate_since_sec = None
 
 
 ################################################################################
@@ -59,7 +147,7 @@ PUBLISH_PWM_CMD = "pwm_write_cmd"
 
 
 class HelipadManager:
-    """ROS glue for helipad sensor input and LED guidance output."""
+    """ROS glue for helipad sensor input and high-level LED state changes."""
 
     def __init__(
         self,
@@ -72,25 +160,17 @@ class HelipadManager:
         self._ir_pin: int = ir_pin
         self._led_pair_a_pin: int = led_pair_a_pin
         self._led_pair_b_pin: int = led_pair_b_pin
-        self._last_pwm_duty_cycle_by_pin: dict[int, float] = {}
         self._sensor_voltage: float = 0.0
-        self._controller: HelipadController = HelipadController()
-        self._animation_timer: rclpy.node.Timer | None = None
+        self._mode_tracker: HelipadModeTracker = HelipadModeTracker()
+        self._mode: HelipadMode = HelipadMode.DISABLED
+        self._initializing: bool = False
+        self._mode_request_future: rclpy.task.Future | None = None
+        self._pending_mode: HelipadMode | None = None
 
         qos_profile: rclpy.qos.QoSProfile = (
             rclpy.qos.QoSPresetProfiles.SYSTEM_DEFAULT.value
         )
-        cmd_qos: rclpy.qos.QoSProfile = rclpy.qos.QoSProfile(
-            depth=10,
-            reliability=rclpy.qos.QoSReliabilityPolicy.RELIABLE,
-            history=rclpy.qos.QoSHistoryPolicy.KEEP_LAST,
-        )
 
-        self._pwm_cmd_pub: rclpy.publisher.Publisher = self._node.create_publisher(
-            msg_type=PWMWriteCommandMsg,
-            topic=PUBLISH_PWM_CMD,
-            qos_profile=cmd_qos,
-        )
         self._analog_reading_sub: rclpy.subscription.Subscription = (
             self._node.create_subscription(
                 msg_type=AnalogReadingMsg,
@@ -98,6 +178,10 @@ class HelipadManager:
                 callback=self._on_analog_reading,
                 qos_profile=qos_profile,
             )
+        )
+        self._helipad_attach_client: rclpy.client.Client = self._node.create_client(
+            srv_type=HelipadAttachSvc,
+            srv_name=CLIENT_HELIPAD_ATTACH,
         )
         self._set_analog_mode_client: rclpy.client.Client = self._node.create_client(
             srv_type=SetAnalogModeSvc,
@@ -107,40 +191,74 @@ class HelipadManager:
             srv_type=SetDigitalModeSvc,
             srv_name=CLIENT_SET_DIGITAL_MODE,
         )
+        self._set_helipad_mode_client: rclpy.client.Client = self._node.create_client(
+            srv_type=SetHelipadModeSvc,
+            srv_name=CLIENT_SET_HELIPAD_MODE,
+        )
 
     def initialize(self) -> bool:
+        self._initializing = True
+
         self._node.get_logger().debug("Waiting for helipad services")
+        self._node.get_logger().debug("  - Waiting for helipad_attach...")
+        self._helipad_attach_client.wait_for_service()
         self._node.get_logger().debug("  - Waiting for set_analog_mode...")
         self._set_analog_mode_client.wait_for_service()
         self._node.get_logger().debug("  - Waiting for set_digital_mode...")
         self._set_digital_mode_client.wait_for_service()
+        self._node.get_logger().debug("  - Waiting for set_helipad_mode...")
+        self._set_helipad_mode_client.wait_for_service()
 
-        self._node.get_logger().debug("Starting helipad configuration")
+        try:
+            self._node.get_logger().debug("Starting helipad configuration")
 
-        self._node.get_logger().debug(f"Enabling helipad IR sensor on A{self._ir_pin}")
-        if not self._set_analog_mode(self._ir_pin, AnalogMode.INPUT):
-            return False
+            self._node.get_logger().debug(
+                f"Enabling helipad IR sensor on A{self._ir_pin}"
+            )
+            if not self._set_analog_mode(self._ir_pin, AnalogMode.INPUT):
+                return False
 
-        self._node.get_logger().debug(
-            f"Enabling helipad LED pair A PWM on D{self._led_pair_a_pin}"
+            self._node.get_logger().debug(
+                f"Enabling helipad LED pair A PWM on D{self._led_pair_a_pin}"
+            )
+            if not self._set_digital_mode(self._led_pair_a_pin, DigitalMode.PWM):
+                return False
+
+            self._node.get_logger().debug(
+                f"Enabling helipad LED pair B PWM on D{self._led_pair_b_pin}"
+            )
+            if not self._set_digital_mode(self._led_pair_b_pin, DigitalMode.PWM):
+                return False
+
+            self._node.get_logger().debug("Attaching helipad feature on the MCU")
+            if not self._attach_helipad():
+                return False
+
+            if not self._set_mode(HelipadMode.DISABLED):
+                return False
+
+            self._node.get_logger().info("Helipad manager initialized successfully")
+
+            return True
+        finally:
+            self._initializing = False
+
+    def _attach_helipad(self) -> bool:
+        helipad_attach_req: HelipadAttachSvc.Request = HelipadAttachSvc.Request()
+        helipad_attach_req.ir_pin = self._ir_pin
+        helipad_attach_req.led_pair_a_pin = self._led_pair_a_pin
+        helipad_attach_req.led_pair_b_pin = self._led_pair_b_pin
+
+        future: rclpy.task.Future = self._helipad_attach_client.call_async(
+            helipad_attach_req
         )
-        if not self._set_digital_mode(self._led_pair_a_pin, DigitalMode.PWM):
+
+        rclpy.spin_until_future_complete(self._node, future)
+        if future.result() is None:
+            self._node.get_logger().error(
+                f"Exception while calling service: {future.exception()}"
+            )
             return False
-
-        self._node.get_logger().debug(
-            f"Enabling helipad LED pair B PWM on D{self._led_pair_b_pin}"
-        )
-        if not self._set_digital_mode(self._led_pair_b_pin, DigitalMode.PWM):
-            return False
-
-        self._publish_pwm(self._led_pair_a_pin, 0.0)
-        self._publish_pwm(self._led_pair_b_pin, 0.0)
-        self._animation_timer = self._node.create_timer(
-            timer_period_sec=ANIMATION_TIMER_PERIOD_SECS,
-            callback=self._on_animation_timer,
-        )
-
-        self._node.get_logger().info("Helipad manager initialized successfully")
 
         return True
 
@@ -180,6 +298,64 @@ class HelipadManager:
 
         return True
 
+    def _set_mode(self, mode: HelipadMode) -> bool:
+        if self._mode == mode:
+            return True
+
+        helipad_mode_req: SetHelipadModeSvc.Request = SetHelipadModeSvc.Request()
+        helipad_mode_req.mode = self._mode_to_ros(mode)
+
+        future: rclpy.task.Future = self._set_helipad_mode_client.call_async(
+            helipad_mode_req
+        )
+
+        rclpy.spin_until_future_complete(self._node, future)
+        if future.result() is None:
+            self._node.get_logger().error(
+                f"Exception while calling service: {future.exception()}"
+            )
+            return False
+
+        self._mode = mode
+        return True
+
+    def _set_mode_async(self, mode: HelipadMode) -> None:
+        if self._mode == mode and self._mode_request_future is None:
+            return
+
+        if self._mode_request_future is not None:
+            self._pending_mode = mode
+            return
+
+        self._dispatch_mode_request(mode)
+
+    def _dispatch_mode_request(self, mode: HelipadMode) -> None:
+        helipad_mode_req: SetHelipadModeSvc.Request = SetHelipadModeSvc.Request()
+        helipad_mode_req.mode = self._mode_to_ros(mode)
+
+        future: rclpy.task.Future = self._set_helipad_mode_client.call_async(
+            helipad_mode_req
+        )
+        future.add_done_callback(partial(self._on_set_mode_done, mode=mode))
+
+        self._mode_request_future = future
+
+    def _on_set_mode_done(self, future: rclpy.task.Future, mode: HelipadMode) -> None:
+        self._mode_request_future = None
+
+        if future.result() is None:
+            self._node.get_logger().error(
+                f"Exception while calling service: {future.exception()}"
+            )
+        else:
+            self._mode = mode
+
+        next_mode: HelipadMode | None = self._pending_mode
+        self._pending_mode = None
+
+        if next_mode is not None and next_mode != self._mode:
+            self._dispatch_mode_request(next_mode)
+
     def _on_analog_reading(self, analog_reading_msg: AnalogReadingMsg) -> None:
         if analog_reading_msg.analog_pin != self._ir_pin:
             return
@@ -194,25 +370,21 @@ class HelipadManager:
         normalized_value: float = max(0.0, min(analog_value, 1.0))
         self._sensor_voltage = normalized_value * analog_reading_msg.reference_voltage
 
-    def _on_animation_timer(self) -> None:
+        if self._initializing:
+            return
+
         timestamp_sec: float = self._node.get_clock().now().nanoseconds / 1e9
-        pair_a_duty, pair_b_duty = self._controller.update(
+        mode: HelipadMode = self._mode_tracker.update_mode(
             timestamp_sec,
             self._sensor_voltage,
         )
+        self._set_mode_async(mode)
 
-        self._publish_pwm(self._led_pair_a_pin, pair_a_duty)
-        self._publish_pwm(self._led_pair_b_pin, pair_b_duty)
-
-    def _publish_pwm(self, digital_pin: int, duty_cycle: float) -> None:
-        last_duty_cycle: float | None = self._last_pwm_duty_cycle_by_pin.get(
-            digital_pin
-        )
-        if last_duty_cycle == duty_cycle:
-            return
-
-        pwm_cmd: PWMWriteCommandMsg = PWMWriteCommandMsg()
-        pwm_cmd.digital_pin = digital_pin
-        pwm_cmd.duty_cycle = duty_cycle
-        self._pwm_cmd_pub.publish(pwm_cmd)
-        self._last_pwm_duty_cycle_by_pin[digital_pin] = duty_cycle
+    @staticmethod
+    def _mode_to_ros(mode: HelipadMode) -> int:
+        mode_map: dict[HelipadMode, int] = {
+            HelipadMode.DISABLED: HelipadModeMsg.DISABLED,
+            HelipadMode.GUIDANCE: HelipadModeMsg.GUIDANCE,
+            HelipadMode.LANDED: HelipadModeMsg.LANDED,
+        }
+        return mode_map[mode]
