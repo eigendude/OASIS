@@ -6,7 +6,7 @@
  *  See DOCS/LICENSING.md for more information.
  */
 
-#include "telemetrix_helipad.hpp"
+#include "telemetrix_effects.hpp"
 
 #include <math.h>
 
@@ -27,11 +27,25 @@ constexpr float PI_F = 3.14159265358979323846F;
 constexpr float PWM_MAX = 255.0F;
 } // namespace
 
-void TelemetrixHelipad::Attach(uint8_t irPin, uint8_t ledPairAPin, uint8_t ledPairBPin)
+void TelemetrixEffects::ConfigureEffect(uint8_t effectKind,
+                                        uint8_t instanceId,
+                                        uint8_t analogPinCount,
+                                        uint8_t digitalPinCount,
+                                        uint8_t pwmPinCount,
+                                        const uint8_t* pinData)
 {
-  m_irPin = irPin;
-  m_ledPairAPin = ledPairAPin;
-  m_ledPairBPin = ledPairBPin;
+  if (effectKind != HELIPAD || instanceId != 0)
+    return;
+
+  if (analogPinCount < 1 || pwmPinCount < 2)
+    return;
+
+  const uint8_t analogPinOffset = 0;
+  const uint8_t pwmPinOffset = static_cast<uint8_t>(analogPinCount + digitalPinCount);
+
+  m_irPin = pinData[analogPinOffset];
+  m_ledPairAPin = pinData[pwmPinOffset];
+  m_ledPairBPin = pinData[pwmPinOffset + 1];
   m_guidanceStartedMs = millis();
   m_landedFadeStartedMs = 0;
   m_mode = DISABLED;
@@ -43,23 +57,19 @@ void TelemetrixHelipad::Attach(uint8_t irPin, uint8_t ledPairAPin, uint8_t ledPa
   SetOutputsOff();
 }
 
-void TelemetrixHelipad::Detach()
+void TelemetrixEffects::SetEffect(
+    uint8_t effectKind, uint8_t instanceId, uint8_t mode, uint8_t valueCount, const uint8_t* values)
 {
-  if (!m_attached)
+  if (effectKind != HELIPAD || instanceId != 0)
     return;
 
-  SetOutputsOff();
-  m_mode = DISABLED;
-  m_animationState = OFF;
-  m_attached = false;
-}
-
-void TelemetrixHelipad::SetMode(uint8_t mode)
-{
   if (!m_attached)
     return;
 
   const uint32_t nowMs = millis();
+
+  if (valueCount > 0 && values == nullptr)
+    return;
 
   if (mode == GUIDANCE)
   {
@@ -85,7 +95,7 @@ void TelemetrixHelipad::SetMode(uint8_t mode)
   SetOutputsOff();
 }
 
-void TelemetrixHelipad::Scan()
+void TelemetrixEffects::Scan()
 {
   if (!m_attached)
     return;
@@ -102,7 +112,7 @@ void TelemetrixHelipad::Scan()
     UpdateLandedFade(nowMs);
 }
 
-void TelemetrixHelipad::ResetData()
+void TelemetrixEffects::ResetData()
 {
   SetOutputsOff();
   m_mode = DISABLED;
@@ -112,7 +122,7 @@ void TelemetrixHelipad::ResetData()
   m_attached = false;
 }
 
-void TelemetrixHelipad::UpdateGuidanceOutputs(uint32_t nowMs)
+void TelemetrixEffects::UpdateGuidanceOutputs(uint32_t nowMs)
 {
   const uint32_t elapsedMs = nowMs - m_guidanceStartedMs;
 
@@ -138,7 +148,7 @@ void TelemetrixHelipad::UpdateGuidanceOutputs(uint32_t nowMs)
   SetOutputs(pairADutyCycle, pairBDutyCycle);
 }
 
-void TelemetrixHelipad::StartLandedFade(uint32_t nowMs)
+void TelemetrixEffects::StartLandedFade(uint32_t nowMs)
 {
   UpdateGuidanceOutputs(nowMs);
 
@@ -155,7 +165,7 @@ void TelemetrixHelipad::StartLandedFade(uint32_t nowMs)
   m_animationState = LANDED_FADE;
 }
 
-void TelemetrixHelipad::UpdateLandedFade(uint32_t nowMs)
+void TelemetrixEffects::UpdateLandedFade(uint32_t nowMs)
 {
   const uint32_t elapsedMs = nowMs - m_landedFadeStartedMs;
 
@@ -175,7 +185,7 @@ void TelemetrixHelipad::UpdateLandedFade(uint32_t nowMs)
              m_landedFadeStartPairBDutyCycle * remainingScale);
 }
 
-void TelemetrixHelipad::SetOutputs(float pairADutyCycle, float pairBDutyCycle)
+void TelemetrixEffects::SetOutputs(float pairADutyCycle, float pairBDutyCycle)
 {
   const float clampedPairA = constrain(pairADutyCycle, 0.0F, MAX_DUTY_CYCLE);
   const float clampedPairB = constrain(pairBDutyCycle, 0.0F, MAX_DUTY_CYCLE);
@@ -190,7 +200,7 @@ void TelemetrixHelipad::SetOutputs(float pairADutyCycle, float pairBDutyCycle)
   analogWrite(m_ledPairBPin, pairBPwm);
 }
 
-void TelemetrixHelipad::SetOutputsOff()
+void TelemetrixEffects::SetOutputsOff()
 {
   if (!m_attached)
     return;

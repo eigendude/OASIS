@@ -14,7 +14,7 @@
 #include "scheduler/task_scheduler.hpp"
 #include "telemetrix_cpu_fan.hpp"
 #include "telemetrix_dht.hpp"
-#include "telemetrix_helipad.hpp"
+#include "telemetrix_effects.hpp"
 #include "telemetrix_i2c.hpp"
 #include "telemetrix_memory.hpp"
 #include "telemetrix_one_wire.hpp"
@@ -129,9 +129,8 @@ static const command_descriptor commandTable[] = {
     (&TelemetrixCommands::i2c_mpu6050_begin),
     (&TelemetrixCommands::i2c_mpu6050_end),
     (&TelemetrixCommands::get_uptime),
-    (&TelemetrixCommands::helipad_attach),
-    (&TelemetrixCommands::helipad_set_mode),
-    (&TelemetrixCommands::helipad_detach),
+    (&TelemetrixCommands::configure_effect),
+    (&TelemetrixCommands::set_effect),
 };
 
 } // namespace
@@ -424,9 +423,9 @@ void TelemetrixCommands::reset_data()
   dht->ResetData();
 #endif
 
-#if defined(ENABLE_HELIPAD)
-  TelemetrixHelipad* helipad = m_server->GetHelipad();
-  helipad->ResetData();
+#if defined(ENABLE_EFFECTS)
+  TelemetrixEffects* effects = m_server->GetEffects();
+  effects->ResetData();
 #endif
 
   enable_all_reports();
@@ -946,32 +945,32 @@ void TelemetrixCommands::i2c_mpu6050_end()
 #endif
 }
 
-void TelemetrixCommands::helipad_attach()
+void TelemetrixCommands::configure_effect()
 {
-#if defined(ENABLE_HELIPAD)
-  const uint8_t irPin = commandBuffer[0];
-  const uint8_t ledPairAPin = commandBuffer[1];
-  const uint8_t ledPairBPin = commandBuffer[2];
+#if defined(ENABLE_EFFECTS)
+  const uint8_t effectKind = commandBuffer[0];
+  const uint8_t instanceId = commandBuffer[1];
+  const uint8_t analogPinCount = commandBuffer[2];
+  const uint8_t digitalPinCount = commandBuffer[3];
+  const uint8_t pwmPinCount = commandBuffer[4];
+  const uint8_t* pinData = commandBuffer + 6;
 
-  TelemetrixHelipad* helipad = m_server->GetHelipad();
-  helipad->Attach(irPin, ledPairAPin, ledPairBPin);
+  TelemetrixEffects* effects = m_server->GetEffects();
+  effects->ConfigureEffect(effectKind, instanceId, analogPinCount, digitalPinCount, pwmPinCount,
+                           pinData);
 #endif
 }
 
-void TelemetrixCommands::helipad_set_mode()
+void TelemetrixCommands::set_effect()
 {
-#if defined(ENABLE_HELIPAD)
-  const uint8_t mode = commandBuffer[0];
+#if defined(ENABLE_EFFECTS)
+  const uint8_t effectKind = commandBuffer[0];
+  const uint8_t instanceId = commandBuffer[1];
+  const uint8_t mode = commandBuffer[2];
+  const uint8_t valueCount = commandBuffer[3];
+  const uint8_t* values = commandBuffer + 4;
 
-  TelemetrixHelipad* helipad = m_server->GetHelipad();
-  helipad->SetMode(mode);
-#endif
-}
-
-void TelemetrixCommands::helipad_detach()
-{
-#if defined(ENABLE_HELIPAD)
-  TelemetrixHelipad* helipad = m_server->GetHelipad();
-  helipad->Detach();
+  TelemetrixEffects* effects = m_server->GetEffects();
+  effects->SetEffect(effectKind, instanceId, mode, valueCount, values);
 #endif
 }

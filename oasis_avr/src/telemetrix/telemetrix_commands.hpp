@@ -88,9 +88,8 @@
 #define I2C_MPU6050_BEGIN 64
 #define I2C_MPU6050_END 65
 #define GET_UPTIME 66
-#define HELIPAD_ATTACH 67
-#define HELIPAD_SET_MODE 68
-#define HELIPAD_DETACH 69
+#define CONFIGURE_EFFECT 67
+#define SET_EFFECT 68
 
 // Maximum length of a command in bytes
 #define MAX_COMMAND_LENGTH 30
@@ -144,9 +143,8 @@ public:
 
   // Query the firmware for its uptime
   static void get_uptime();
-  static void helipad_attach();
-  static void helipad_set_mode();
-  static void helipad_detach();
+  static void configure_effect();
+  static void set_effect();
 
   //////////////////////////////////////////////////////////////////////////////
   // Servo commands

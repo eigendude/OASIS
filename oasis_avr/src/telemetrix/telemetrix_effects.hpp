@@ -12,25 +12,34 @@
 
 namespace OASIS
 {
-/*!
- * \brief Telemetrix subsystem to control helipad guidance LEDs
- */
-class TelemetrixHelipad
+/*!\brief Telemetrix subsystem for MCU-managed effects */
+class TelemetrixEffects
 {
 public:
-  /*!
-   * \brief High-level helipad modes driven by the host
-   */
-  enum Mode : uint8_t
+  enum EffectKind : uint8_t
   {
-    DISABLED = 0,
-    GUIDANCE = 1,
-    LANDED = 2,
+    HELIPAD = 1,
   };
 
-  void Attach(uint8_t irPin, uint8_t ledPairAPin, uint8_t ledPairBPin);
-  void Detach();
-  void SetMode(uint8_t mode);
+  enum EffectMode : uint8_t
+  {
+    DISABLED = 1,
+    GUIDANCE = 2,
+    LANDED = 3,
+  };
+
+  void ConfigureEffect(uint8_t effectKind,
+                       uint8_t instanceId,
+                       uint8_t analogPinCount,
+                       uint8_t digitalPinCount,
+                       uint8_t pwmPinCount,
+                       const uint8_t* pinData);
+
+  void SetEffect(uint8_t effectKind,
+                 uint8_t instanceId,
+                 uint8_t mode,
+                 uint8_t valueCount,
+                 const uint8_t* values);
 
   void Scan();
   void ResetData();

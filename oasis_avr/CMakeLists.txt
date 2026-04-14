@@ -77,7 +77,7 @@ if (HOST_NAME STREQUAL station)
   set(ENABLE_DHT OFF)
   set(ENABLE_DIAGNOSTICS ON)
   set(ENABLE_DIGITAL ON)
-  set(ENABLE_HELIPAD ON)
+  set(ENABLE_EFFECTS ON)
   set(ENABLE_I2C OFF)
   set(ENABLE_IMU OFF)
   set(ENABLE_ONE_WIRE OFF)
@@ -96,7 +96,7 @@ elseif (HOST_NAME STREQUAL falcon)
   set(ENABLE_DHT OFF)
   set(ENABLE_DIAGNOSTICS ON)
   set(ENABLE_DIGITAL ON)
-  set(ENABLE_HELIPAD OFF)
+  set(ENABLE_EFFECTS OFF)
   set(ENABLE_I2C OFF)
   set(ENABLE_IMU OFF)
   set(ENABLE_ONE_WIRE OFF)
@@ -160,7 +160,7 @@ else()
   set(ENABLE_DHT ON)
   set(ENABLE_DIAGNOSTICS ON)
   set(ENABLE_DIGITAL ON)
-  set(ENABLE_HELIPAD ON)
+  set(ENABLE_EFFECTS ON)
   set(ENABLE_I2C ON)
   set(ENABLE_IMU ON)
   set(ENABLE_ONE_WIRE ON)
@@ -469,12 +469,12 @@ if (ENABLE_DIGITAL)
   )
 endif()
 
-if (ENABLE_HELIPAD)
+if (ENABLE_EFFECTS)
   list(APPEND TELEMETRIX_SOURCES
-    src/telemetrix/telemetrix_helipad.cpp
+    src/telemetrix/telemetrix_effects.cpp
   )
   list(APPEND TELEMETRIX_DEFINITIONS
-    -DENABLE_HELIPAD
+    -DENABLE_EFFECTS
   )
 endif()
 
