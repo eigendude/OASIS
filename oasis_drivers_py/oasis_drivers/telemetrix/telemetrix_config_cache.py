@@ -43,6 +43,8 @@ class TelemetrixConfigCache:
         self._i2c_ports_started: Set[int] = set()
         self._ccs811_devices: Set[Tuple[int, int]] = set()
         self._mpu6050_devices: Set[Tuple[int, int]] = set()
+        self._helipad_config: Optional[Tuple[int, int, int]] = None
+        self._helipad_mode: Optional[int] = None
 
     def record_sampling_interval(self, ms: int) -> None:
         with self._lock:
@@ -84,6 +86,21 @@ class TelemetrixConfigCache:
         with self._lock:
             self._mpu6050_devices.discard((port, address))
 
+    def record_helipad_attach(
+        self, ir_pin: int, led_pair_a_pin: int, led_pair_b_pin: int
+    ) -> None:
+        with self._lock:
+            self._helipad_config = (ir_pin, led_pair_a_pin, led_pair_b_pin)
+
+    def record_helipad_detach(self) -> None:
+        with self._lock:
+            self._helipad_config = None
+            self._helipad_mode = None
+
+    def record_helipad_mode(self, mode: int) -> None:
+        with self._lock:
+            self._helipad_mode = mode
+
     def replay(self, bridge: TelemetrixBridge, logger: TelemetrixLogger) -> None:
         with self._lock:
             sampling_interval_ms: Optional[int] = self._sampling_interval_ms
@@ -98,6 +115,8 @@ class TelemetrixConfigCache:
             analog_modes: Dict[int, AnalogMode] = dict(self._analog_modes)
             ccs811_devices: Set[Tuple[int, int]] = set(self._ccs811_devices)
             mpu6050_devices: Set[Tuple[int, int]] = set(self._mpu6050_devices)
+            helipad_config: Optional[Tuple[int, int, int]] = self._helipad_config
+            helipad_mode: Optional[int] = self._helipad_mode
 
         logger.info(f"Replaying Telemetrix config: {self.dump()}")
         failures: bool = False
@@ -172,6 +191,24 @@ class TelemetrixConfigCache:
                     f"{port} address {hex(address)}: {exc!r}"
                 )
 
+        if helipad_config is not None:
+            ir_pin, led_pair_a_pin, led_pair_b_pin = helipad_config
+            try:
+                bridge.helipad_attach(ir_pin, led_pair_a_pin, led_pair_b_pin)
+            except Exception as exc:
+                failures = True
+                logger.warning(
+                    "Failed to replay helipad attach on pins "
+                    f"A{ir_pin}, D{led_pair_a_pin}, D{led_pair_b_pin}: {exc!r}"
+                )
+
+        if helipad_mode is not None:
+            try:
+                bridge.helipad_set_mode(helipad_mode)
+            except Exception as exc:
+                failures = True
+                logger.warning(f"Failed to replay helipad mode {helipad_mode}: {exc!r}")
+
         logger.info("Finished replaying Telemetrix config")
 
         if failures:
@@ -191,6 +228,8 @@ class TelemetrixConfigCache:
             i2c_ports_count: int = len(self._i2c_ports_started)
             ccs811_devices_count: int = len(self._ccs811_devices)
             mpu6050_devices_count: int = len(self._mpu6050_devices)
+            helipad_attached: bool = self._helipad_config is not None
+            helipad_mode: Optional[int] = self._helipad_mode
 
         return (
             "intervals="
@@ -203,5 +242,8 @@ class TelemetrixConfigCache:
             "i2c="
             f"ports:{i2c_ports_count},"
             f"ccs811:{ccs811_devices_count},"
-            f"mpu6050:{mpu6050_devices_count}"
+            f"mpu6050:{mpu6050_devices_count} "
+            "helipad="
+            f"attached:{helipad_attached},"
+            f"mode:{helipad_mode}"
         )

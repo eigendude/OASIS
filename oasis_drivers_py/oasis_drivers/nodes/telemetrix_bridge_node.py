@@ -38,6 +38,7 @@ from oasis_msgs.msg import AVRConstants as AVRConstantsMsg
 from oasis_msgs.msg import CPUFanSpeed as CPUFanSpeedMsg
 from oasis_msgs.msg import DigitalReading as DigitalReadingMsg
 from oasis_msgs.msg import DigitalWriteCommand as DigitalWriteCommandMsg
+from oasis_msgs.msg import HelipadMode as HelipadModeMsg
 from oasis_msgs.msg import I2CDevice as I2CDeviceMsg
 from oasis_msgs.msg import I2CDeviceType as I2CDeviceTypeMsg
 from oasis_msgs.msg import I2CImu as I2CImuMsg
@@ -48,6 +49,7 @@ from oasis_msgs.msg import ServoWriteCommand as ServoWriteCommandMsg
 from oasis_msgs.srv import AnalogRead as AnalogReadSvc
 from oasis_msgs.srv import DigitalRead as DigitalReadSvc
 from oasis_msgs.srv import DigitalWrite as DigitalWriteSvc
+from oasis_msgs.srv import HelipadAttach as HelipadAttachSvc
 from oasis_msgs.srv import I2CBegin as I2CBeginSvc
 from oasis_msgs.srv import I2CEnd as I2CEndSvc
 from oasis_msgs.srv import PWMWrite as PWMWriteSvc
@@ -55,6 +57,7 @@ from oasis_msgs.srv import ReportMCUMemory as ReportMCUMemorySvc
 from oasis_msgs.srv import ServoWrite as ServoWriteSvc
 from oasis_msgs.srv import SetAnalogMode as SetAnalogModeSvc
 from oasis_msgs.srv import SetDigitalMode as SetDigitalModeSvc
+from oasis_msgs.srv import SetHelipadMode as SetHelipadModeSvc
 from oasis_msgs.srv import SetSamplingInterval as SetSamplingIntervalSvc
 
 
@@ -91,6 +94,7 @@ ANALOG_READ_SERVICE = "analog_read"
 CPU_FAN_WRITE_SERVICE = "cpu_fan_write"
 DIGITAL_READ_SERVICE = "digital_read"
 DIGITAL_WRITE_SERVICE = "digital_write"
+HELIPAD_ATTACH_SERVICE = "helipad_attach"
 I2C_BEGIN_SERVICE = "i2c_begin"
 I2C_END_SERVICE = "i2c_end"
 PWM_WRITE_SERVICE = "pwm_write"
@@ -99,6 +103,7 @@ SERVO_WRITE_SERVICE = "servo_write"
 SET_ANALOG_MODE_SERVICE = "set_analog_mode"
 SET_CPU_FAN_SAMPLING_INTERVAL_SERVICE = "set_cpu_fan_sampling_interval"
 SET_DIGITAL_MODE_SERVICE = "set_digital_mode"
+SET_HELIPAD_MODE_SERVICE = "set_helipad_mode"
 SET_SAMPLING_INTERVAL_SERVICE = "set_sampling_interval"
 
 
@@ -249,6 +254,11 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
             srv_name=DIGITAL_WRITE_SERVICE,
             callback=self._handle_digital_write,
         )
+        self._helipad_attach_service: rclpy.service.Service = self.create_service(
+            srv_type=HelipadAttachSvc,
+            srv_name=HELIPAD_ATTACH_SERVICE,
+            callback=self._handle_helipad_attach,
+        )
         self._i2c_begin_service: rclpy.service.Service = self.create_service(
             srv_type=I2CBeginSvc,
             srv_name=I2C_BEGIN_SERVICE,
@@ -290,6 +300,11 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
             srv_type=SetDigitalModeSvc,
             srv_name=SET_DIGITAL_MODE_SERVICE,
             callback=self._handle_set_digital_mode,
+        )
+        self._set_helipad_mode_service: rclpy.service.Service = self.create_service(
+            srv_type=SetHelipadModeSvc,
+            srv_name=SET_HELIPAD_MODE_SERVICE,
+            callback=self._handle_set_helipad_mode,
         )
         self._set_sampling_interval_service: rclpy.service.Service = (
             self.create_service(
@@ -864,6 +879,30 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
 
         return response
 
+    def _handle_helipad_attach(
+        self,
+        request: HelipadAttachSvc.Request,
+        response: HelipadAttachSvc.Response,
+    ) -> HelipadAttachSvc.Response:
+        """Handle ROS 2 helipad attachment requests."""
+        ir_pin: int = request.ir_pin
+        led_pair_a_pin: int = request.led_pair_a_pin
+        led_pair_b_pin: int = request.led_pair_b_pin
+
+        self.get_logger().info(
+            "Attaching helipad on " f"A{ir_pin}, D{led_pair_a_pin}, D{led_pair_b_pin}"
+        )
+
+        self._config_cache.record_helipad_attach(ir_pin, led_pair_a_pin, led_pair_b_pin)
+
+        if not self._initialized or self._reconnecting:
+            self.get_logger().warning("Skipping helipad attach while disconnected")
+            return response
+
+        self._bridge.helipad_attach(ir_pin, led_pair_a_pin, led_pair_b_pin)
+
+        return response
+
     def _handle_report_mcu_memory(
         self, request: ReportMCUMemorySvc.Request, response: ReportMCUMemorySvc.Response
     ) -> ReportMCUMemorySvc.Response:
@@ -996,6 +1035,36 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
 
         # Perform service
         self._bridge.set_digital_mode(digital_pin, digital_mode)
+
+        return response
+
+    def _handle_set_helipad_mode(
+        self,
+        request: SetHelipadModeSvc.Request,
+        response: SetHelipadModeSvc.Response,
+    ) -> SetHelipadModeSvc.Response:
+        """Handle ROS 2 helipad mode changes."""
+        mode: int = request.mode
+
+        if mode not in (
+            HelipadModeMsg.DISABLED,
+            HelipadModeMsg.GUIDANCE,
+            HelipadModeMsg.LANDED,
+        ):
+            self.get_logger().error(
+                f"Invalid helipad mode ({mode}), defaulting to disabled"
+            )
+            mode = HelipadModeMsg.DISABLED
+
+        self.get_logger().info(f"Setting helipad mode to {mode}")
+
+        self._config_cache.record_helipad_mode(mode)
+
+        if not self._initialized or self._reconnecting:
+            self.get_logger().warning("Skipping helipad mode change while disconnected")
+            return response
+
+        self._bridge.helipad_set_mode(mode)
 
         return response
 

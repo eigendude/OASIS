@@ -517,6 +517,56 @@ class TelemetrixBridge:
         # Wait for completion
         future.result()
 
+    def helipad_attach(
+        self,
+        ir_pin: int,
+        led_pair_a_pin: int,
+        led_pair_b_pin: int,
+    ) -> None:
+        """
+        Attach a helipad feature to the microcontroller.
+
+        :param ir_pin: Analog IR sensor pin
+        :param led_pair_a_pin: PWM pin for LED pair A
+        :param led_pair_b_pin: PWM pin for LED pair B
+        """
+        command: List[int] = [
+            TelemetrixConstants.HELIPAD_ATTACH,
+            ir_pin,
+            led_pair_a_pin,
+            led_pair_b_pin,
+        ]
+
+        coroutine: Awaitable[None] = self._board._send_command(command)
+        future: Future = asyncio.run_coroutine_threadsafe(
+            _to_coroutine(coroutine), self._loop
+        )
+        future.result()
+
+    def helipad_set_mode(self, mode: int) -> None:
+        """
+        Set the high-level helipad guidance mode.
+
+        :param mode: Helipad mode byte understood by the MCU
+        """
+        command: List[int] = [TelemetrixConstants.HELIPAD_SET_MODE, mode]
+
+        coroutine: Awaitable[None] = self._board._send_command(command)
+        future: Future = asyncio.run_coroutine_threadsafe(
+            _to_coroutine(coroutine), self._loop
+        )
+        future.result()
+
+    def helipad_detach(self) -> None:
+        """Detach the helipad feature from the microcontroller."""
+        coroutine: Awaitable[None] = self._board._send_command(
+            [TelemetrixConstants.HELIPAD_DETACH]
+        )
+        future: Future = asyncio.run_coroutine_threadsafe(
+            _to_coroutine(coroutine), self._loop
+        )
+        future.result()
+
     def pwm_write_async(self, digital_pin: int, duty_cycle: float) -> Future:
         """
         Queue a PWM write on the Telemetrix asyncio loop.
