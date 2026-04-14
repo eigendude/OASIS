@@ -139,7 +139,11 @@ class SystemMonitor:
 
     @staticmethod
     def _read_cpu_temperature() -> Optional[float]:
-        for sensor, shwtemps in psutil.sensors_temperatures().items():
+        sensors_temperatures = getattr(psutil, "sensors_temperatures", None)
+        if sensors_temperatures is None:
+            return None
+
+        for sensor, shwtemps in sensors_temperatures().items():
             max_temp: float = float(
                 max([float(shwtemp.current) for shwtemp in shwtemps])
             )

@@ -18,15 +18,18 @@ import socket
 
 class NetworkUtils:
     @staticmethod
-    def get_network_address_family(socket_kind: socket.AddressFamily) -> str:
-        try:
-            return {
-                socket.AddressFamily.AF_INET: "IPv4",
-                socket.AddressFamily.AF_INET6: "IPv6",
-                socket.AddressFamily.AF_PACKET: "MAC",
-            }[socket_kind]
-        except KeyError:
-            pass
+    def get_network_address_family(socket_kind: int | socket.AddressFamily) -> str:
+        address_families: dict[int, str] = {
+            socket.AF_INET: "IPv4",
+            socket.AF_INET6: "IPv6",
+        }
+        af_packet: int | None = getattr(socket, "AF_PACKET", None)
+        if af_packet is not None:
+            address_families[af_packet] = "MAC"
+
+        family = address_families.get(int(socket_kind))
+        if family is not None:
+            return family
 
         # Stringify constant for discovery in logs
         return str(socket_kind)
