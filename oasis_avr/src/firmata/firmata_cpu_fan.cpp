@@ -70,8 +70,8 @@ bool FirmataCPUFan::SupportsPWM(uint8_t digitalPin)
     if (digitalPin == 9 || digitalPin == 10)
       return true;
 
-      // Leonardo undefines timer 2 constants because "iom32u4.h" apparently has
-      // the wrong values. See the file "pins_arduino.h" in the Arduino IDE.
+    // Leonardo undefines timer 2 constants because "iom32u4.h" apparently has
+    // the wrong values. See the file "pins_arduino.h" in the Arduino IDE.
 #if defined(OCR2A)
     if (digitalPin == 3)
       return true;
