@@ -117,6 +117,16 @@ DEFAULT_PING_PERIOD_S = 1.0
 DEFAULT_PING_TIMEOUT_S = 0.5
 DEFAULT_RECONNECT_DELAY_S = 1.0
 
+HELIPAD_MODE_NAMES: dict[int, str] = {
+    HelipadModeMsg.DISABLED: "disabled",
+    HelipadModeMsg.GUIDANCE: "guidance",
+    HelipadModeMsg.LANDED: "landed",
+}
+
+
+def _helipad_mode_name(mode: int) -> str:
+    return HELIPAD_MODE_NAMES.get(mode, f"unknown({mode})")
+
 
 ################################################################################
 # ROS node
@@ -1056,7 +1066,7 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
             )
             mode = HelipadModeMsg.DISABLED
 
-        self.get_logger().info(f"Setting helipad mode to {mode}")
+        self.get_logger().info(f"Setting helipad mode to {_helipad_mode_name(mode)}")
 
         self._config_cache.record_helipad_mode(mode)
 
