@@ -194,7 +194,14 @@ class TelemetrixConfigCache:
         if helipad_config is not None:
             ir_pin, led_pair_a_pin, led_pair_b_pin = helipad_config
             try:
-                bridge.helipad_attach(ir_pin, led_pair_a_pin, led_pair_b_pin)
+                bridge.configure_effect(
+                    effect_kind=1,
+                    instance_id=0,
+                    analog_pins=[ir_pin],
+                    digital_pins=[],
+                    pwm_pins=[led_pair_a_pin, led_pair_b_pin],
+                    config_values=[],
+                )
             except Exception as exc:
                 failures = True
                 logger.warning(
@@ -204,7 +211,12 @@ class TelemetrixConfigCache:
 
         if helipad_mode is not None:
             try:
-                bridge.helipad_set_mode(helipad_mode)
+                bridge.set_effect(
+                    effect_kind=1,
+                    instance_id=0,
+                    mode=helipad_mode,
+                    values=[],
+                )
             except Exception as exc:
                 failures = True
                 logger.warning(f"Failed to replay helipad mode {helipad_mode}: {exc!r}")

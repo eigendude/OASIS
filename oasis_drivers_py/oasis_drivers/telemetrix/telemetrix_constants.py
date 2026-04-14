@@ -27,9 +27,8 @@ class TelemetrixConstants:
     I2C_MPU6050_BEGIN: int = 64
     I2C_MPU6050_END: int = 65
     GET_UPTIME_COMMAND: int = 66
-    HELIPAD_ATTACH: int = 67
-    HELIPAD_SET_MODE: int = 68
-    HELIPAD_DETACH: int = 69
+    CONFIGURE_EFFECT: int = 67
+    SET_EFFECT: int = 68
 
     # Reports
     MEMORY_REPORT: int = 21

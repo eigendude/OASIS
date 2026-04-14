@@ -517,51 +517,75 @@ class TelemetrixBridge:
         # Wait for completion
         future.result()
 
-    def helipad_attach(
+    def configure_effect(
         self,
-        ir_pin: int,
-        led_pair_a_pin: int,
-        led_pair_b_pin: int,
+        effect_kind: int,
+        instance_id: int,
+        analog_pins: List[int],
+        digital_pins: List[int],
+        pwm_pins: List[int],
+        config_values: List[float],
     ) -> None:
         """
-        Attach a helipad feature to the microcontroller.
+        Configure an effect instance on the microcontroller.
 
-        :param ir_pin: Analog IR sensor pin
-        :param led_pair_a_pin: PWM pin for LED pair A
-        :param led_pair_b_pin: PWM pin for LED pair B
+        Pin values are encoded as uint8 to match AVR pin numbering.
         """
+        if config_values:
+            raise ValueError(
+                "configure_effect currently does not support config_values"
+            )
+
+        analog_pin_count: int = len(analog_pins)
+        digital_pin_count: int = len(digital_pins)
+        pwm_pin_count: int = len(pwm_pins)
+
+        pin: int
+        for pin in analog_pins + digital_pins + pwm_pins:
+            if pin < 0 or pin > 0xFF:
+                raise ValueError(f"Invalid pin value: {pin}")
+
         command: List[int] = [
-            TelemetrixConstants.HELIPAD_ATTACH,
-            ir_pin,
-            led_pair_a_pin,
-            led_pair_b_pin,
+            TelemetrixConstants.CONFIGURE_EFFECT,
+            effect_kind & 0xFF,
+            instance_id & 0xFF,
+            analog_pin_count & 0xFF,
+            digital_pin_count & 0xFF,
+            pwm_pin_count & 0xFF,
+            0,  # config_value_count
+        ]
+        command.extend(analog_pins)
+        command.extend(digital_pins)
+        command.extend(pwm_pins)
+
+        coroutine: Awaitable[None] = self._board._send_command(command)
+        future: Future = asyncio.run_coroutine_threadsafe(
+            _to_coroutine(coroutine), self._loop
+        )
+        future.result()
+
+    def set_effect(
+        self,
+        effect_kind: int,
+        instance_id: int,
+        mode: int,
+        values: List[float],
+    ) -> None:
+        """
+        Set runtime mode for an effect instance on the microcontroller.
+        """
+        if values:
+            raise ValueError("set_effect currently does not support values")
+
+        command: List[int] = [
+            TelemetrixConstants.SET_EFFECT,
+            effect_kind & 0xFF,
+            instance_id & 0xFF,
+            mode & 0xFF,
+            0,  # value_count
         ]
 
         coroutine: Awaitable[None] = self._board._send_command(command)
-        future: Future = asyncio.run_coroutine_threadsafe(
-            _to_coroutine(coroutine), self._loop
-        )
-        future.result()
-
-    def helipad_set_mode(self, mode: int) -> None:
-        """
-        Set the high-level helipad guidance mode.
-
-        :param mode: Helipad mode byte understood by the MCU
-        """
-        command: List[int] = [TelemetrixConstants.HELIPAD_SET_MODE, mode]
-
-        coroutine: Awaitable[None] = self._board._send_command(command)
-        future: Future = asyncio.run_coroutine_threadsafe(
-            _to_coroutine(coroutine), self._loop
-        )
-        future.result()
-
-    def helipad_detach(self) -> None:
-        """Detach the helipad feature from the microcontroller."""
-        coroutine: Awaitable[None] = self._board._send_command(
-            [TelemetrixConstants.HELIPAD_DETACH]
-        )
         future: Future = asyncio.run_coroutine_threadsafe(
             _to_coroutine(coroutine), self._loop
         )

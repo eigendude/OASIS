@@ -90,7 +90,7 @@ class MCUDescriptions:
                 ("digital_reading", f"{mcu_name}/digital_reading"),
                 ("digital_write", f"{mcu_name}/digital_write"),
                 ("digital_write_cmd", f"{mcu_name}/digital_write_cmd"),
-                ("helipad_attach", f"{mcu_name}/helipad_attach"),
+                ("configure_effect", f"{mcu_name}/configure_effect"),
                 ("i2c_begin", f"{mcu_name}/i2c_begin"),
                 ("i2c_end", f"{mcu_name}/i2c_end"),
                 ("i2c_imu", f"{mcu_name}/i2c_imu"),
@@ -107,7 +107,7 @@ class MCUDescriptions:
                     f"{mcu_name}/set_cpu_fan_sampling_interval",
                 ),
                 ("set_digital_mode", f"{mcu_name}/set_digital_mode"),
-                ("set_helipad_mode", f"{mcu_name}/set_helipad_mode"),
+                ("set_effect", f"{mcu_name}/set_effect"),
                 ("set_sampling_interval", f"{mcu_name}/set_sampling_interval"),
             ],
         )

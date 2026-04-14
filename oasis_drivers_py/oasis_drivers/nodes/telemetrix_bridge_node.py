@@ -38,7 +38,8 @@ from oasis_msgs.msg import AVRConstants as AVRConstantsMsg
 from oasis_msgs.msg import CPUFanSpeed as CPUFanSpeedMsg
 from oasis_msgs.msg import DigitalReading as DigitalReadingMsg
 from oasis_msgs.msg import DigitalWriteCommand as DigitalWriteCommandMsg
-from oasis_msgs.msg import HelipadMode as HelipadModeMsg
+from oasis_msgs.msg import EffectKind as EffectKindMsg
+from oasis_msgs.msg import EffectMode as EffectModeMsg
 from oasis_msgs.msg import I2CDevice as I2CDeviceMsg
 from oasis_msgs.msg import I2CDeviceType as I2CDeviceTypeMsg
 from oasis_msgs.msg import I2CImu as I2CImuMsg
@@ -47,9 +48,9 @@ from oasis_msgs.msg import MCUString as MCUStringMsg
 from oasis_msgs.msg import PWMWriteCommand as PWMWriteCommandMsg
 from oasis_msgs.msg import ServoWriteCommand as ServoWriteCommandMsg
 from oasis_msgs.srv import AnalogRead as AnalogReadSvc
+from oasis_msgs.srv import ConfigureEffect as ConfigureEffectSvc
 from oasis_msgs.srv import DigitalRead as DigitalReadSvc
 from oasis_msgs.srv import DigitalWrite as DigitalWriteSvc
-from oasis_msgs.srv import HelipadAttach as HelipadAttachSvc
 from oasis_msgs.srv import I2CBegin as I2CBeginSvc
 from oasis_msgs.srv import I2CEnd as I2CEndSvc
 from oasis_msgs.srv import PWMWrite as PWMWriteSvc
@@ -57,7 +58,7 @@ from oasis_msgs.srv import ReportMCUMemory as ReportMCUMemorySvc
 from oasis_msgs.srv import ServoWrite as ServoWriteSvc
 from oasis_msgs.srv import SetAnalogMode as SetAnalogModeSvc
 from oasis_msgs.srv import SetDigitalMode as SetDigitalModeSvc
-from oasis_msgs.srv import SetHelipadMode as SetHelipadModeSvc
+from oasis_msgs.srv import SetEffect as SetEffectSvc
 from oasis_msgs.srv import SetSamplingInterval as SetSamplingIntervalSvc
 
 
@@ -94,7 +95,7 @@ ANALOG_READ_SERVICE = "analog_read"
 CPU_FAN_WRITE_SERVICE = "cpu_fan_write"
 DIGITAL_READ_SERVICE = "digital_read"
 DIGITAL_WRITE_SERVICE = "digital_write"
-HELIPAD_ATTACH_SERVICE = "helipad_attach"
+CONFIGURE_EFFECT_SERVICE = "configure_effect"
 I2C_BEGIN_SERVICE = "i2c_begin"
 I2C_END_SERVICE = "i2c_end"
 PWM_WRITE_SERVICE = "pwm_write"
@@ -103,7 +104,7 @@ SERVO_WRITE_SERVICE = "servo_write"
 SET_ANALOG_MODE_SERVICE = "set_analog_mode"
 SET_CPU_FAN_SAMPLING_INTERVAL_SERVICE = "set_cpu_fan_sampling_interval"
 SET_DIGITAL_MODE_SERVICE = "set_digital_mode"
-SET_HELIPAD_MODE_SERVICE = "set_helipad_mode"
+SET_EFFECT_SERVICE = "set_effect"
 SET_SAMPLING_INTERVAL_SERVICE = "set_sampling_interval"
 
 
@@ -118,9 +119,9 @@ DEFAULT_PING_TIMEOUT_S = 0.5
 DEFAULT_RECONNECT_DELAY_S = 1.0
 
 HELIPAD_MODE_NAMES: dict[int, str] = {
-    HelipadModeMsg.DISABLED: "disabled",
-    HelipadModeMsg.GUIDANCE: "guidance",
-    HelipadModeMsg.LANDED: "landed",
+    EffectModeMsg.HELIPAD_DISABLED: "disabled",
+    EffectModeMsg.HELIPAD_GUIDANCE: "guidance",
+    EffectModeMsg.HELIPAD_LANDED: "landed",
 }
 
 
@@ -264,10 +265,10 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
             srv_name=DIGITAL_WRITE_SERVICE,
             callback=self._handle_digital_write,
         )
-        self._helipad_attach_service: rclpy.service.Service = self.create_service(
-            srv_type=HelipadAttachSvc,
-            srv_name=HELIPAD_ATTACH_SERVICE,
-            callback=self._handle_helipad_attach,
+        self._configure_effect_service: rclpy.service.Service = self.create_service(
+            srv_type=ConfigureEffectSvc,
+            srv_name=CONFIGURE_EFFECT_SERVICE,
+            callback=self._handle_configure_effect,
         )
         self._i2c_begin_service: rclpy.service.Service = self.create_service(
             srv_type=I2CBeginSvc,
@@ -311,10 +312,10 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
             srv_name=SET_DIGITAL_MODE_SERVICE,
             callback=self._handle_set_digital_mode,
         )
-        self._set_helipad_mode_service: rclpy.service.Service = self.create_service(
-            srv_type=SetHelipadModeSvc,
-            srv_name=SET_HELIPAD_MODE_SERVICE,
-            callback=self._handle_set_helipad_mode,
+        self._set_effect_service: rclpy.service.Service = self.create_service(
+            srv_type=SetEffectSvc,
+            srv_name=SET_EFFECT_SERVICE,
+            callback=self._handle_set_effect,
         )
         self._set_sampling_interval_service: rclpy.service.Service = (
             self.create_service(
@@ -889,15 +890,33 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
 
         return response
 
-    def _handle_helipad_attach(
+    def _handle_configure_effect(
         self,
-        request: HelipadAttachSvc.Request,
-        response: HelipadAttachSvc.Response,
-    ) -> HelipadAttachSvc.Response:
-        """Handle ROS 2 helipad attachment requests."""
-        ir_pin: int = request.ir_pin
-        led_pair_a_pin: int = request.led_pair_a_pin
-        led_pair_b_pin: int = request.led_pair_b_pin
+        request: ConfigureEffectSvc.Request,
+        response: ConfigureEffectSvc.Response,
+    ) -> ConfigureEffectSvc.Response:
+        """Handle ROS 2 effect configuration requests."""
+        effect_kind: int = request.effect_kind
+        analog_pins: List[int] = request.analog_pins
+        pwm_pins: List[int] = request.pwm_pins
+
+        if effect_kind != EffectKindMsg.HELIPAD:
+            self.get_logger().warning(
+                "Unsupported effect kind for configure_effect "
+                f"({effect_kind}), ignoring request"
+            )
+            return response
+
+        if len(analog_pins) < 1 or len(pwm_pins) < 2:
+            self.get_logger().error(
+                "Invalid HELIPAD configuration, expected analog_pins[1] and "
+                "pwm_pins[2]"
+            )
+            return response
+
+        ir_pin: int = int(analog_pins[0])
+        led_pair_a_pin: int = int(pwm_pins[0])
+        led_pair_b_pin: int = int(pwm_pins[1])
 
         self.get_logger().info(
             "Attaching helipad on " f"A{ir_pin}, D{led_pair_a_pin}, D{led_pair_b_pin}"
@@ -909,7 +928,14 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
             self.get_logger().warning("Skipping helipad attach while disconnected")
             return response
 
-        self._bridge.helipad_attach(ir_pin, led_pair_a_pin, led_pair_b_pin)
+        self._bridge.configure_effect(
+            effect_kind=effect_kind,
+            instance_id=request.instance_id,
+            analog_pins=[ir_pin],
+            digital_pins=[],
+            pwm_pins=[led_pair_a_pin, led_pair_b_pin],
+            config_values=[],
+        )
 
         return response
 
@@ -1048,23 +1074,31 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
 
         return response
 
-    def _handle_set_helipad_mode(
+    def _handle_set_effect(
         self,
-        request: SetHelipadModeSvc.Request,
-        response: SetHelipadModeSvc.Response,
-    ) -> SetHelipadModeSvc.Response:
-        """Handle ROS 2 helipad mode changes."""
+        request: SetEffectSvc.Request,
+        response: SetEffectSvc.Response,
+    ) -> SetEffectSvc.Response:
+        """Handle ROS 2 effect mode changes."""
+        effect_kind: int = request.effect_kind
+
+        if effect_kind != EffectKindMsg.HELIPAD:
+            self.get_logger().warning(
+                f"Unsupported effect kind for set_effect ({effect_kind})"
+            )
+            return response
+
         mode: int = request.mode
 
         if mode not in (
-            HelipadModeMsg.DISABLED,
-            HelipadModeMsg.GUIDANCE,
-            HelipadModeMsg.LANDED,
+            EffectModeMsg.HELIPAD_DISABLED,
+            EffectModeMsg.HELIPAD_GUIDANCE,
+            EffectModeMsg.HELIPAD_LANDED,
         ):
             self.get_logger().error(
                 f"Invalid helipad mode ({mode}), defaulting to disabled"
             )
-            mode = HelipadModeMsg.DISABLED
+            mode = EffectModeMsg.HELIPAD_DISABLED
 
         self.get_logger().info(f"Setting helipad mode to {_helipad_mode_name(mode)}")
 
@@ -1074,7 +1108,12 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
             self.get_logger().warning("Skipping helipad mode change while disconnected")
             return response
 
-        self._bridge.helipad_set_mode(mode)
+        self._bridge.set_effect(
+            effect_kind=effect_kind,
+            instance_id=request.instance_id,
+            mode=mode,
+            values=[],
+        )
 
         return response
 
