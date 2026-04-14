@@ -471,7 +471,7 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
             f"[cmd] Setting PWM on pin {digital_pin} to duty cycle {duty_cycle}"
         )
 
-        self._bridge.pwm_write(digital_pin, duty_cycle)
+        self._bridge.pwm_write_async(digital_pin, duty_cycle)
 
     def _on_servo_write_cmd(self, msg: ServoWriteCommandMsg) -> None:
         if not self._initialized:

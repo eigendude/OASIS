@@ -517,12 +517,14 @@ class TelemetrixBridge:
         # Wait for completion
         future.result()
 
-    def pwm_write(self, digital_pin: int, duty_cycle: float) -> None:
+    def pwm_write_async(self, digital_pin: int, duty_cycle: float) -> Future:
         """
-        Set the specified PWM pin to the specified value.
+        Queue a PWM write on the Telemetrix asyncio loop.
 
         :param digital_pin: Digital pin number
         :param duty_cycle: PWM duty cycle (0.0 - 1.0)
+
+        :return: Future for the queued PWM write
         """
         # Scale value to integer expected by Telemetrix
         value_int: int = int(duty_cycle * self.PWM_MAX)
@@ -531,11 +533,17 @@ class TelemetrixBridge:
         coroutine: Awaitable[None] = self._board.analog_write(digital_pin, value_int)
 
         # Dispatch to asyncio
-        future: Future = asyncio.run_coroutine_threadsafe(
-            _to_coroutine(coroutine), self._loop
-        )
+        return asyncio.run_coroutine_threadsafe(_to_coroutine(coroutine), self._loop)
 
+    def pwm_write(self, digital_pin: int, duty_cycle: float) -> None:
+        """
+        Set the specified PWM pin to the specified value.
+
+        :param digital_pin: Digital pin number
+        :param duty_cycle: PWM duty cycle (0.0 - 1.0)
+        """
         # Wait for completion
+        future: Future = self.pwm_write_async(digital_pin, duty_cycle)
         future.result()
 
     def set_sampling_interval(self, sampling_interval_ms: int) -> None:
