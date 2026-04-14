@@ -31,6 +31,26 @@ float EffectPrimitives::ClampDutyCycle(float value)
   return value;
 }
 
+float EffectPrimitives::ComputeSinePulse(uint32_t elapsedMs,
+                                         uint32_t periodMs,
+                                         float minDutyCycle,
+                                         float maxDutyCycle)
+{
+  if (periodMs == 0)
+    return ClampDutyCycle(minDutyCycle);
+
+  // Phase in [0, 1) over one pulse period
+  const float cyclePhase = static_cast<float>(elapsedMs % periodMs) / static_cast<float>(periodMs);
+
+  // Map sin() output from [-1, 1] to [0, 1]
+  const float normalizedSine = (sinf(cyclePhase * 2.0F * kPi) + kMaxDutyCycle) * kHalfCycle;
+
+  // Pulse between configured lower and upper duty-cycle limits
+  const float pulseDutyCycle = minDutyCycle + (maxDutyCycle - minDutyCycle) * normalizedSine;
+
+  return ClampDutyCycle(pulseDutyCycle);
+}
+
 EffectOutputs EffectPrimitives::ComputeAlternatingHalfSine(uint32_t elapsedMs, uint32_t periodMs)
 {
   EffectOutputs output;

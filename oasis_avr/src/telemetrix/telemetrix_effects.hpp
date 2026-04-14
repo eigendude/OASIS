@@ -9,6 +9,7 @@
 #pragma once
 
 #include "effects/helipad_effect.hpp"
+#include "effects/led_thruster_effect.hpp"
 
 #include <stdint.h>
 
@@ -48,9 +49,10 @@ public:
   void ResetData();
 
 private:
-  static constexpr uint8_t kMaxEffectOutputs = 2;
+  static constexpr uint8_t kMaxEffectOutputs = EFFECTS::EffectPrimitives::kMaxOutputCount;
   static constexpr uint8_t kHelipadAnalogPinCount = 1;
   static constexpr uint8_t kHelipadPwmPinCount = 2;
+  static constexpr uint8_t kLedThrusterPwmPinCount = 1;
   static constexpr uint8_t kMaxHelipadInstances = 1;
   static constexpr uint8_t kMaxLedThrusterInstances = 1;
 
@@ -65,7 +67,9 @@ private:
 
   struct LedThrusterInstance
   {
-    // Placeholder instance record for future LED thruster integration
+    uint8_t pwmPin{0};
+    uint8_t mode{0};
+    EFFECTS::LedThrusterEffect effect{};
     bool attached{false};
   };
 
@@ -77,9 +81,18 @@ private:
   void SetHelipad(uint8_t instanceId, uint8_t mode, uint8_t valueCount, const uint8_t* values);
   void ScanHelipad(HelipadInstance& instance, uint32_t nowMs);
   void ResetHelipad(HelipadInstance& instance);
+  void ConfigureLedThruster(uint8_t instanceId,
+                            uint8_t analogPinCount,
+                            uint8_t digitalPinCount,
+                            uint8_t pwmPinCount,
+                            const uint8_t* pinData);
+  void SetLedThruster(uint8_t instanceId, uint8_t mode);
+  void ScanLedThruster(LedThrusterInstance& instance, uint32_t nowMs);
+  void ResetLedThruster(LedThrusterInstance& instance);
   void SetOutputs(const uint8_t* pwmPins,
                   uint8_t pwmPinCount,
                   const EFFECTS::EffectOutputs& outputs);
+  void SetOutput(uint8_t pwmPin, const EFFECTS::EffectOutputs& outputs);
   void SetOutputsOff(const uint8_t* pwmPins, uint8_t pwmPinCount, bool attached);
 
   HelipadInstance m_helipadInstances[kMaxHelipadInstances]{};

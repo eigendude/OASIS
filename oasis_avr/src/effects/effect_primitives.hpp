@@ -31,7 +31,13 @@ class EffectPrimitives
 public:
   EffectPrimitives() = delete;
 
+  static constexpr uint8_t kMaxOutputCount = 2;
+
   static float ClampDutyCycle(float value);
+  static float ComputeSinePulse(uint32_t elapsedMs,
+                                uint32_t periodMs,
+                                float minDutyCycle,
+                                float maxDutyCycle);
   static EffectOutputs ComputeAlternatingHalfSine(uint32_t elapsedMs, uint32_t periodMs);
   static EffectOutputs ScaleDutyCycles(const EffectOutputs& dutyCycles, float scale);
   static float MaxDutyCycle();
