@@ -45,6 +45,8 @@ rosidl_generate_interfaces(
     msg/DigitalReading.msg
     msg/DigitalWriteCommand.msg
     msg/DiskPartition.msg
+    msg/EffectKind.msg
+    msg/EffectMode.msg
     msg/EngineerState.msg
     msg/EngineState.msg
     msg/HelipadMode.msg
@@ -83,6 +85,7 @@ rosidl_generate_interfaces(
     msg/Wheel.msg
     srv/AnalogRead.srv
     srv/CaptureInput.srv
+    srv/ConfigureEffect.srv
     srv/DigitalRead.srv
     srv/DigitalWrite.srv
     srv/GetMACAddress.srv
@@ -96,6 +99,7 @@ rosidl_generate_interfaces(
     srv/SetAnalogMode.srv
     srv/SetDigitalMode.srv
     srv/SetDisplay.srv
+    srv/SetEffect.srv
     srv/SetHelipadMode.srv
     srv/SetPlug.srv
     srv/SetRGB.srv

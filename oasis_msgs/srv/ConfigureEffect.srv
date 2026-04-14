@@ -1,0 +1,36 @@
+################################################################################
+#
+#  Copyright (C) 2026 Garrett Brown
+#  This file is part of OASIS - https://github.com/eigendude/OASIS
+#
+#  SPDX-License-Identifier: Apache-2.0
+#  See DOCS/LICENSING.md for more information.
+#
+################################################################################
+
+#
+# Attach and configure an effect instance on the microcontroller
+#
+# Common mappings:
+# - HELIPAD: analog_pins=[ir_pin], pwm_pins=[led_pair_a_pin, led_pair_b_pin]
+# - LED_THRUSTER: pwm_pins=[led_pin]
+#
+# The effect kind uses constants defined in EffectKind.msg
+uint8 effect_kind
+
+# Optional instance identifier for multiple effects of the same kind
+uint8 instance_id
+
+# Analog pin numbers associated with this effect instance
+uint32[] analog_pins
+
+# Digital pin numbers associated with this effect instance
+uint32[] digital_pins
+
+# PWM pin numbers associated with this effect instance
+uint32[] pwm_pins
+
+# Optional effect-specific configuration scalars
+float32[] config_values
+
+---

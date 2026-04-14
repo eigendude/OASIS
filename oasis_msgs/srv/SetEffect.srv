@@ -1,0 +1,31 @@
+################################################################################
+#
+#  Copyright (C) 2026 Garrett Brown
+#  This file is part of OASIS - https://github.com/eigendude/OASIS
+#
+#  SPDX-License-Identifier: Apache-2.0
+#  See DOCS/LICENSING.md for more information.
+#
+################################################################################
+
+#
+# Set runtime state for an effect instance on the microcontroller
+#
+# Common mappings:
+# - HELIPAD: mode uses EffectMode HELIPAD_* constants, values=[]
+# - LED_THRUSTER: mode uses EffectMode LED_THRUSTER_* constants
+#   values=[thrust_duty]
+#
+# The effect kind uses constants defined in EffectKind.msg
+uint8 effect_kind
+
+# Optional instance identifier for multiple effects of the same kind
+uint8 instance_id
+
+# Effect mode interpreted by the selected effect kind
+uint8 mode
+
+# Optional effect-specific runtime values
+float32[] values
+
+---
