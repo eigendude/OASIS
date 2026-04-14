@@ -18,13 +18,13 @@ from typing import Callable
 
 import rclpy
 
-from oasis_control.lego_models.helipad_manager import CLIENT_HELIPAD_ATTACH
+from oasis_control.lego_models.helipad_manager import CLIENT_CONFIGURE_EFFECT
 from oasis_control.lego_models.helipad_manager import CLIENT_SET_ANALOG_MODE
 from oasis_control.lego_models.helipad_manager import CLIENT_SET_DIGITAL_MODE
-from oasis_control.lego_models.helipad_manager import CLIENT_SET_HELIPAD_MODE
+from oasis_control.lego_models.helipad_manager import CLIENT_SET_EFFECT
 from oasis_control.lego_models.helipad_manager import HelipadManager
 from oasis_msgs.msg import AnalogReading as AnalogReadingMsg
-from oasis_msgs.msg import HelipadMode as HelipadModeMsg
+from oasis_msgs.msg import EffectMode as EffectModeMsg
 
 
 @dataclass
@@ -150,14 +150,14 @@ def test_initialize_uses_services_and_not_pwm_animation(monkeypatch: Any) -> Non
 
     assert node.publisher_calls == 0
     assert node.timer_calls == 0
-    assert node.clients[CLIENT_HELIPAD_ATTACH].wait_calls == 1
+    assert node.clients[CLIENT_CONFIGURE_EFFECT].wait_calls == 1
     assert node.clients[CLIENT_SET_ANALOG_MODE].wait_calls == 1
     assert node.clients[CLIENT_SET_DIGITAL_MODE].wait_calls == 1
-    assert node.clients[CLIENT_SET_HELIPAD_MODE].wait_calls == 1
-    assert len(node.clients[CLIENT_HELIPAD_ATTACH].requests) == 1
+    assert node.clients[CLIENT_SET_EFFECT].wait_calls == 1
+    assert len(node.clients[CLIENT_CONFIGURE_EFFECT].requests) == 1
     assert len(node.clients[CLIENT_SET_ANALOG_MODE].requests) == 1
     assert len(node.clients[CLIENT_SET_DIGITAL_MODE].requests) == 2
-    assert len(node.clients[CLIENT_SET_HELIPAD_MODE].requests) == 0
+    assert len(node.clients[CLIENT_SET_EFFECT].requests) == 0
 
 
 def test_guidance_mode_is_sent_once_for_repeated_active_readings(
@@ -184,10 +184,10 @@ def test_guidance_mode_is_sent_once_for_repeated_active_readings(
     node.clock.nanoseconds = int(0.1 * 1e9)
     manager._on_analog_reading(_make_reading(2, 1.0))
 
-    mode_requests: list[Any] = node.clients[CLIENT_SET_HELIPAD_MODE].requests
+    mode_requests: list[Any] = node.clients[CLIENT_SET_EFFECT].requests
 
     assert len(mode_requests) == 1
-    assert mode_requests[0].mode == HelipadModeMsg.GUIDANCE
+    assert mode_requests[0].mode == EffectModeMsg.HELIPAD_GUIDANCE
 
 
 def test_landed_mode_is_sent_after_debounce(monkeypatch: Any) -> None:
@@ -207,11 +207,11 @@ def test_landed_mode_is_sent_after_debounce(monkeypatch: Any) -> None:
     node.clock.nanoseconds = int(0.30 * 1e9)
     manager._on_analog_reading(_make_reading(2, 0.0))
 
-    mode_requests: list[Any] = node.clients[CLIENT_SET_HELIPAD_MODE].requests
+    mode_requests: list[Any] = node.clients[CLIENT_SET_EFFECT].requests
 
     assert [request.mode for request in mode_requests] == [
-        HelipadModeMsg.GUIDANCE,
-        HelipadModeMsg.LANDED,
+        EffectModeMsg.HELIPAD_GUIDANCE,
+        EffectModeMsg.HELIPAD_LANDED,
     ]
 
 
@@ -225,4 +225,4 @@ def test_analog_reading_during_initialize_does_not_set_mode(monkeypatch: Any) ->
     node.clock.nanoseconds = 0
     manager._on_analog_reading(_make_reading(2, 1.0))
 
-    assert len(node.clients[CLIENT_SET_HELIPAD_MODE].requests) == 0
+    assert len(node.clients[CLIENT_SET_EFFECT].requests) == 0

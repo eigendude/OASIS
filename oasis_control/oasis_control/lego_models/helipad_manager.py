@@ -26,11 +26,12 @@ from oasis_drivers.ros.ros_translator import RosTranslator
 from oasis_drivers.telemetrix.telemetrix_types import AnalogMode
 from oasis_drivers.telemetrix.telemetrix_types import DigitalMode
 from oasis_msgs.msg import AnalogReading as AnalogReadingMsg
-from oasis_msgs.msg import HelipadMode as HelipadModeMsg
-from oasis_msgs.srv import HelipadAttach as HelipadAttachSvc
+from oasis_msgs.msg import EffectKind as EffectKindMsg
+from oasis_msgs.msg import EffectMode as EffectModeMsg
+from oasis_msgs.srv import ConfigureEffect as ConfigureEffectSvc
 from oasis_msgs.srv import SetAnalogMode as SetAnalogModeSvc
 from oasis_msgs.srv import SetDigitalMode as SetDigitalModeSvc
-from oasis_msgs.srv import SetHelipadMode as SetHelipadModeSvc
+from oasis_msgs.srv import SetEffect as SetEffectSvc
 
 
 ################################################################################
@@ -42,10 +43,10 @@ from oasis_msgs.srv import SetHelipadMode as SetHelipadModeSvc
 SUBSCRIBE_ANALOG_READING = "analog_reading"
 
 # Service clients
-CLIENT_HELIPAD_ATTACH = "helipad_attach"
+CLIENT_CONFIGURE_EFFECT = "configure_effect"
 CLIENT_SET_ANALOG_MODE = "set_analog_mode"
 CLIENT_SET_DIGITAL_MODE = "set_digital_mode"
-CLIENT_SET_HELIPAD_MODE = "set_helipad_mode"
+CLIENT_SET_EFFECT = "set_effect"
 
 
 ################################################################################
@@ -179,9 +180,9 @@ class HelipadManager:
                 qos_profile=qos_profile,
             )
         )
-        self._helipad_attach_client: rclpy.client.Client = self._node.create_client(
-            srv_type=HelipadAttachSvc,
-            srv_name=CLIENT_HELIPAD_ATTACH,
+        self._configure_effect_client: rclpy.client.Client = self._node.create_client(
+            srv_type=ConfigureEffectSvc,
+            srv_name=CLIENT_CONFIGURE_EFFECT,
         )
         self._set_analog_mode_client: rclpy.client.Client = self._node.create_client(
             srv_type=SetAnalogModeSvc,
@@ -191,23 +192,23 @@ class HelipadManager:
             srv_type=SetDigitalModeSvc,
             srv_name=CLIENT_SET_DIGITAL_MODE,
         )
-        self._set_helipad_mode_client: rclpy.client.Client = self._node.create_client(
-            srv_type=SetHelipadModeSvc,
-            srv_name=CLIENT_SET_HELIPAD_MODE,
+        self._set_effect_client: rclpy.client.Client = self._node.create_client(
+            srv_type=SetEffectSvc,
+            srv_name=CLIENT_SET_EFFECT,
         )
 
     def initialize(self) -> bool:
         self._initializing = True
 
         self._node.get_logger().debug("Waiting for helipad services")
-        self._node.get_logger().debug("  - Waiting for helipad_attach...")
-        self._helipad_attach_client.wait_for_service()
+        self._node.get_logger().debug("  - Waiting for configure_effect...")
+        self._configure_effect_client.wait_for_service()
         self._node.get_logger().debug("  - Waiting for set_analog_mode...")
         self._set_analog_mode_client.wait_for_service()
         self._node.get_logger().debug("  - Waiting for set_digital_mode...")
         self._set_digital_mode_client.wait_for_service()
-        self._node.get_logger().debug("  - Waiting for set_helipad_mode...")
-        self._set_helipad_mode_client.wait_for_service()
+        self._node.get_logger().debug("  - Waiting for set_effect...")
+        self._set_effect_client.wait_for_service()
 
         try:
             self._node.get_logger().debug("Starting helipad configuration")
@@ -244,13 +245,14 @@ class HelipadManager:
             self._initializing = False
 
     def _attach_helipad(self) -> bool:
-        helipad_attach_req: HelipadAttachSvc.Request = HelipadAttachSvc.Request()
-        helipad_attach_req.ir_pin = self._ir_pin
-        helipad_attach_req.led_pair_a_pin = self._led_pair_a_pin
-        helipad_attach_req.led_pair_b_pin = self._led_pair_b_pin
+        configure_req: ConfigureEffectSvc.Request = ConfigureEffectSvc.Request()
+        configure_req.effect_kind = EffectKindMsg.HELIPAD
+        configure_req.instance_id = 0
+        configure_req.analog_pins = [self._ir_pin]
+        configure_req.pwm_pins = [self._led_pair_a_pin, self._led_pair_b_pin]
 
-        future: rclpy.task.Future = self._helipad_attach_client.call_async(
-            helipad_attach_req
+        future: rclpy.task.Future = self._configure_effect_client.call_async(
+            configure_req
         )
 
         rclpy.spin_until_future_complete(self._node, future)
@@ -302,12 +304,12 @@ class HelipadManager:
         if self._mode == mode:
             return True
 
-        helipad_mode_req: SetHelipadModeSvc.Request = SetHelipadModeSvc.Request()
-        helipad_mode_req.mode = self._mode_to_ros(mode)
+        set_effect_req: SetEffectSvc.Request = SetEffectSvc.Request()
+        set_effect_req.effect_kind = EffectKindMsg.HELIPAD
+        set_effect_req.instance_id = 0
+        set_effect_req.mode = self._mode_to_ros(mode)
 
-        future: rclpy.task.Future = self._set_helipad_mode_client.call_async(
-            helipad_mode_req
-        )
+        future: rclpy.task.Future = self._set_effect_client.call_async(set_effect_req)
 
         rclpy.spin_until_future_complete(self._node, future)
         if future.result() is None:
@@ -330,12 +332,12 @@ class HelipadManager:
         self._dispatch_mode_request(mode)
 
     def _dispatch_mode_request(self, mode: HelipadMode) -> None:
-        helipad_mode_req: SetHelipadModeSvc.Request = SetHelipadModeSvc.Request()
-        helipad_mode_req.mode = self._mode_to_ros(mode)
+        set_effect_req: SetEffectSvc.Request = SetEffectSvc.Request()
+        set_effect_req.effect_kind = EffectKindMsg.HELIPAD
+        set_effect_req.instance_id = 0
+        set_effect_req.mode = self._mode_to_ros(mode)
 
-        future: rclpy.task.Future = self._set_helipad_mode_client.call_async(
-            helipad_mode_req
-        )
+        future: rclpy.task.Future = self._set_effect_client.call_async(set_effect_req)
         future.add_done_callback(partial(self._on_set_mode_done, mode=mode))
 
         self._mode_request_future = future
@@ -383,8 +385,8 @@ class HelipadManager:
     @staticmethod
     def _mode_to_ros(mode: HelipadMode) -> int:
         mode_map: dict[HelipadMode, int] = {
-            HelipadMode.DISABLED: HelipadModeMsg.DISABLED,
-            HelipadMode.GUIDANCE: HelipadModeMsg.GUIDANCE,
-            HelipadMode.LANDED: HelipadModeMsg.LANDED,
+            HelipadMode.DISABLED: EffectModeMsg.HELIPAD_DISABLED,
+            HelipadMode.GUIDANCE: EffectModeMsg.HELIPAD_GUIDANCE,
+            HelipadMode.LANDED: EffectModeMsg.HELIPAD_LANDED,
         }
         return mode_map[mode]
