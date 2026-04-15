@@ -19,6 +19,9 @@ import rclpy.publisher
 import rclpy.qos
 import rclpy.subscription
 from rclpy.logging import LoggingSeverity
+from rclpy.qos import DurabilityPolicy
+from rclpy.qos import HistoryPolicy
+from rclpy.qos import ReliabilityPolicy
 from std_msgs.msg import Header as HeaderMsg
 
 from oasis_control.lego_models.falcon_manager import FalconManager
@@ -85,19 +88,19 @@ class EngineerManagerNode(rclpy.node.Node):
         self._pending_falcon_duty_magnitude: Optional[float] = None
         self._falcon_defer_logged: bool = False
 
-        # Reliable listener QOS profile for publishers
-        qos_profile: rclpy.qos.QoSProfile = (
-            rclpy.qos.QoSPresetProfiles.SYSTEM_DEFAULT.value
-        )
-        conductor_qos_profile: rclpy.qos.QoSProfile = (
-            rclpy.qos.QoSPresetProfiles.SYSTEM_DEFAULT.value
+        # Reliable QOS profile for state topics
+        state_qos_profile: rclpy.qos.QoSProfile = rclpy.qos.QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
         )
 
         # Publishers
         self._engineer_state_pub: rclpy.publisher.Publisher = self.create_publisher(
             msg_type=EngineerStateMsg,
             topic=PUBLISH_ENGINEER_STATE,
-            qos_profile=qos_profile,
+            qos_profile=state_qos_profile,
         )
 
         # Subscribers
@@ -106,7 +109,7 @@ class EngineerManagerNode(rclpy.node.Node):
                 msg_type=ConductorStateMsg,
                 topic=CONDUCTOR_STATE_TOPIC,
                 callback=self._handle_conductor_state,
-                qos_profile=conductor_qos_profile,
+                qos_profile=state_qos_profile,
             )
         )
 

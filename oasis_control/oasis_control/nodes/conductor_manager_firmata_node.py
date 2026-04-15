@@ -21,6 +21,9 @@ import rclpy.qos
 import rclpy.subscription
 import rclpy.task
 from rclpy.logging import LoggingSeverity
+from rclpy.qos import DurabilityPolicy
+from rclpy.qos import HistoryPolicy
+from rclpy.qos import ReliabilityPolicy
 from std_msgs.msg import Header as HeaderMsg
 
 from oasis_drivers.firmata.firmata_types import AnalogMode
@@ -167,12 +170,19 @@ class ConductorManagerNode(rclpy.node.Node):
         qos_profile: rclpy.qos.QoSProfile = (
             rclpy.qos.QoSPresetProfiles.SYSTEM_DEFAULT.value
         )
+        # Reliable QOS profile for state topics
+        state_qos_profile: rclpy.qos.QoSProfile = rclpy.qos.QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+        )
 
         # Publishers
         self._conductor_state_pub: rclpy.publisher.Publisher = self.create_publisher(
             msg_type=ConductorStateMsg,
             topic=PUBLISH_CONDUCTOR_STATE,
-            qos_profile=qos_profile,
+            qos_profile=state_qos_profile,
         )
 
         # Subscribers
