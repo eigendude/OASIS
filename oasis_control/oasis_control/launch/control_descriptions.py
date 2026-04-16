@@ -198,6 +198,27 @@ class ControlDescriptions:
         ld.add_action(engineer_node)
 
     #
+    # AHRS mounting learner
+    #
+
+    @staticmethod
+    def add_ahrs_mounting_node(ld: LaunchDescription, host_id: str) -> None:
+        ahrs_mounting_node: Node = Node(
+            namespace=ROS_NAMESPACE,
+            package=CONTROL_PACKAGE_NAME,
+            executable="ahrs_mounting",
+            name=f"ahrs_mounting_{host_id}",
+            output="screen",
+            remappings=[
+                ("imu", f"{host_id}/imu"),
+                ("gravity", f"{host_id}/gravity"),
+                ("accel", f"{host_id}/accel"),
+                ("tilt", f"{host_id}/tilt"),
+            ],
+        )
+        ld.add_action(ahrs_mounting_node)
+
+    #
     # Speedometer
     #
 
