@@ -164,6 +164,31 @@ install(
     lib/${PROJECT_NAME}
 )
 
+#
+# bno086_imu_driver
+#
+
+add_executable(bno086_imu_driver
+  src/cli/bno086_imu_driver.cpp
+  src/imu/bno086/Bno086Gpio.cpp
+  src/imu/bno086/Bno086Shtp.cpp
+  src/imu/bno086/Bno086Transport.cpp
+  src/nodes/Bno086ImuNode.cpp
+)
+
+target_link_libraries(bno086_imu_driver
+  ${geometry_msgs_TARGETS}
+  rclcpp::rclcpp
+  ${sensor_msgs_TARGETS}
+)
+
+install(
+  TARGETS
+    bno086_imu_driver
+  DESTINATION
+    lib/${PROJECT_NAME}
+)
+
 ################################################################################
 # Configuration files
 ################################################################################
