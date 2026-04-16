@@ -68,9 +68,10 @@ def generate_launch_description() -> LaunchDescription:
 
     # Navigation
     if HOST_ID == "falcon":
-        ControlDescriptions.add_speedometer_node(ld, HOST_ID)
-        ControlDescriptions.add_tilt_sensor(ld, HOST_ID)
-        ControlDescriptions.add_zupt_detector(ld, HOST_ID, "station")
+        # ControlDescriptions.add_speedometer_node(ld, HOST_ID)
+        # ControlDescriptions.add_tilt_sensor(ld, HOST_ID)
+        # ControlDescriptions.add_zupt_detector(ld, HOST_ID, "station")
+        pass
 
     # Microcontroller nodes
     if HOST_ID == "station":

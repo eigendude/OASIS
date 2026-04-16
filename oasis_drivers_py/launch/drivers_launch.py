@@ -183,8 +183,6 @@ def generate_launch_description() -> LaunchDescription:
             jpeg_quality=60,
             libcamera_params=LIBCAMERA_PARAMS,
         )
-        Drivers.add_mpu_6050_imu(ld, HOST_ID)
-        Drivers.add_mmc5983ma_magnetometer(ld, HOST_ID)
     if HOST_ID == "station":
         Drivers.add_ros2_camera(
             composable_nodes,
