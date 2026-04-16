@@ -112,6 +112,9 @@ else:
 MCU_NODE: Optional[str] = None
 MCU_TYPE: Optional[str] = None
 
+# BNO086 interrupt line on the Falcon's GPIO header
+FALCON_BNO086_INT_GPIO: int = 23
+
 
 class MCUType:
     FIRMATA: str = "firmata"
@@ -182,6 +185,11 @@ def generate_launch_description() -> LaunchDescription:
             # Lower JPEG quality to cap Wi-Fi bandwidth from the Falcon
             jpeg_quality=60,
             libcamera_params=LIBCAMERA_PARAMS,
+        )
+        Drivers.add_bno086_imu(
+            ld,
+            HOST_ID,
+            int_gpio=FALCON_BNO086_INT_GPIO,
         )
     if HOST_ID == "station":
         Drivers.add_ros2_camera(

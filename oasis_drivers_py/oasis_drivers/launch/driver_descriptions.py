@@ -93,6 +93,41 @@ class DriverDescriptions:
         ld.add_action(driver_container)
 
     #
+    # BNO086 9-DoF IMU driver
+    #
+
+    @staticmethod
+    def add_bno086_imu(
+        ld: LaunchDescription,
+        host_id: str,
+        int_gpio: int,
+    ) -> None:
+        bno_node: Node = Node(
+            namespace=ROS_NAMESPACE,
+            package=CPP_PACKAGE_NAME,
+            executable="bno086_imu_driver",
+            name=f"bno086_imu_driver_{host_id}",
+            output="screen",
+            arguments=[
+                "--ros-args",
+                "--log-level",
+                f"bno086_imu_driver_{host_id}:=debug",
+            ],
+            parameters=[
+                {"int_gpio": int_gpio},
+            ],
+            remappings=[
+                # Topics
+                ("accel", f"{host_id}/accel"),
+                ("gravity", f"{host_id}/gravity"),
+                ("imu_predicted", f"{host_id}/imu_predicted"),
+                ("imu_vr", f"{host_id}/imu_vr"),
+                ("imu", f"{host_id}/imu"),
+            ],
+        )
+        ld.add_action(bno_node)
+
+    #
     # Display server
     #
 
