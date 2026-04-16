@@ -12,6 +12,7 @@
 # anager for a LEGO Millenium Falcon model
 #
 
+from functools import partial
 from typing import Optional
 
 import rclpy.client
@@ -136,14 +137,12 @@ class FalconManager:
         else:
             mode = EffectModeMsg.LED_THRUSTER_IDLE
 
-        if self._last_thruster_mode != mode:
-            mode_name: str = (
-                "idle" if mode == EffectModeMsg.LED_THRUSTER_IDLE else "moving"
-            )
-            self._node.get_logger().info(
-                f"Setting Falcon LED thruster mode to {mode_name}"
-            )
-            self._last_thruster_mode = mode
+        if self._last_thruster_mode == mode:
+            return True
+
+        mode_name: str = "idle" if mode == EffectModeMsg.LED_THRUSTER_IDLE else "moving"
+        self._node.get_logger().info(f"Setting Falcon LED thruster mode to {mode_name}")
+        self._last_thruster_mode = mode
 
         set_effect_req: SetEffectSvc.Request = SetEffectSvc.Request()
         set_effect_req.effect_kind = EffectKindMsg.LED_THRUSTER
@@ -151,15 +150,40 @@ class FalconManager:
         set_effect_req.mode = mode
         set_effect_req.values = []
 
-        # Call service
-        future: rclpy.task.Future = self._set_effect_client.call_async(set_effect_req)
-
-        # Wait for result
-        rclpy.spin_until_future_complete(self._node, future)
-        if future.result() is None:
-            self._node.get_logger().error(
-                f"Exception while calling service: {future.exception()}"
+        try:
+            future: rclpy.task.Future = self._set_effect_client.call_async(
+                set_effect_req
             )
+        except Exception as ex:
+            self._node.get_logger().error(f"Exception while calling service: {ex}")
+            self._last_thruster_mode = None
             return False
 
+        future.add_done_callback(
+            partial(self._on_set_thrust_led_effect_complete, mode=mode)
+        )
         return True
+
+    def _on_set_thrust_led_effect_complete(
+        self, future: rclpy.task.Future, mode: int
+    ) -> None:
+        try:
+            response: Optional[SetEffectSvc.Response] = future.result()
+        except Exception as ex:
+            self._node.get_logger().error(f"Exception while calling service: {ex}")
+            if self._last_thruster_mode == mode:
+                self._last_thruster_mode = None
+            return
+
+        if response is None:
+            self._node.get_logger().error(
+                "Set effect call completed with no response for Falcon LED thruster"
+            )
+            if self._last_thruster_mode == mode:
+                self._last_thruster_mode = None
+            return
+
+        mode_name: str = "idle" if mode == EffectModeMsg.LED_THRUSTER_IDLE else "moving"
+        self._node.get_logger().debug(
+            f"Falcon LED thruster mode request completed: {mode_name}"
+        )
