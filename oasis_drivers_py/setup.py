@@ -11,20 +11,26 @@
 import glob
 import os
 import xml.etree.ElementTree
+from typing import Any
 
-import setuptools
+import setuptools  # type: ignore[import-untyped]
 
 
 # Colcon symlinks setup.py to an out-of-source build directory
-SCRIPT_PATH = os.path.realpath(__file__)
-SCRIPT_DIRECTORY = os.path.abspath(os.path.dirname(SCRIPT_PATH))
-PACKAGE_MANIFEST = os.path.join(SCRIPT_DIRECTORY, "package.xml")
+SCRIPT_PATH: str = os.path.realpath(__file__)
+SCRIPT_DIRECTORY: str = os.path.abspath(os.path.dirname(SCRIPT_PATH))
+PACKAGE_MANIFEST: str = os.path.join(SCRIPT_DIRECTORY, "package.xml")
 
-tree = xml.etree.ElementTree.parse(PACKAGE_MANIFEST)
-root = tree.getroot()
+tree: Any = xml.etree.ElementTree.parse(PACKAGE_MANIFEST)
+root: Any = tree.getroot()
 
-CAMERA_INFO_FILES = sorted(glob.glob(os.path.join("config", "camera_info", "*.yaml")))
-SYSTEMD_FILES = sorted(glob.glob(os.path.join("config", "systemd", "*")))
+CAMERA_INFO_FILES: list[str] = sorted(
+    glob.glob(os.path.join("config", "camera_info", "*.yaml"))
+)
+SYSTEMD_FILES: list[str] = sorted(glob.glob(os.path.join("config", "systemd", "*")))
+UDEV_RULE_FILES: list[str] = sorted(
+    glob.glob(os.path.join("config", "udev", "*.rules"))
+)
 
 PACKAGE_NAME: str = root.find("name").text  # type: ignore
 
@@ -78,9 +84,7 @@ setuptools.setup(
         # udev rules
         (
             os.path.join("share", PACKAGE_NAME, "udev"),
-            [
-                "config/udev/60-nut-ups.rules",
-            ],
+            UDEV_RULE_FILES,
         ),
     ],
     install_requires=[

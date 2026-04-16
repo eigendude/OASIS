@@ -1,0 +1,21 @@
+#
+#  Copyright (C) 2026 Garrett Brown
+#  This file is part of OASIS - https://github.com/eigendude/OASIS
+#
+#  SPDX-License-Identifier: Apache-2.0
+#  See the file LICENSE.txt for more information.
+#
+
+# OASIS GPIO access for character-device GPIO users such as the BNO086 INT
+# line
+#
+# The BNO086 interrupt path uses the Linux GPIO character-device interface
+# through /dev/gpiochip* instead of the legacy sysfs GPIO API.
+#
+# Grant gpiochip devices to the gpio group with read/write access for
+# root+group. Add the runtime user to the gpio group, for example:
+#   sudo groupadd -f gpio
+#   sudo usermod -aG gpio ubuntu
+#
+# Then relogin or reboot so the new group membership takes effect.
+KERNEL=="gpiochip*", GROUP="gpio", MODE="0660"

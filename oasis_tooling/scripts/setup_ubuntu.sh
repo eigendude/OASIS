@@ -30,6 +30,14 @@ sudo usermod -a -G plugdev ${USER}
 # Grant the user permission to work with I2C devices
 sudo usermod -a -G i2c ${USER}
 
+# Create the GPIO access group if it does not already exist. OASIS installs a
+# udev rule that maps /dev/gpiochip* to root:gpio with mode 0660 for the
+# BNO086 interrupt path.
+sudo groupadd -f gpio
+
+# Grant the user permission to work with GPIO devices
+sudo usermod -a -G gpio ${USER}
+
 ################################################################################
 # Disable and mask ModemManager to prevent it from grabbing serial interfaces
 # needed by AVR programming tools such as avrdude. Masking ensures it cannot be
@@ -47,3 +55,10 @@ sudo systemctl mask ModemManager.service
 
 sudo systemctl disable systemd-networkd-wait-online.service
 sudo systemctl mask systemd-networkd-wait-online.service
+
+echo
+echo "If you install new OASIS udev rules, reload them with:"
+echo "  sudo udevadm control --reload-rules"
+echo "  sudo udevadm trigger"
+echo
+echo "After group membership changes, relogin or reboot before running OASIS"

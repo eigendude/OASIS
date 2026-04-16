@@ -30,10 +30,12 @@ A script is provided to perform the following tasks:
 - Create a 16GB swapfile and add it to `/etc/fstab`
 - Disable apt from asking for user input
 - Prevent the system from waiting on a network connection on startup
+- Add the current user to hardware access groups such as `gpio`
 
 ```bash
 cd oasis_tooling/scripts
 ./setup_rpi.sh
+./setup_ubuntu.sh
 ```
 
 Make sure to add the following line to .bashrc to disable apt from asking for
@@ -42,6 +44,23 @@ user input:
 ```bash
 export NEEDRESTART_MODE="a"
 ```
+
+For the BNO086 GPIO interrupt path, OASIS installs
+`oasis_drivers_py/config/udev/99-oasis-gpio.rules` to
+`/etc/udev/rules.d/99-oasis-gpio.rules` through
+`oasis_tooling/scripts/install_oasis.sh`.
+
+If the runtime user is `ubuntu`, the one-time setup commands are:
+
+```bash
+sudo groupadd -f gpio
+sudo usermod -aG gpio ubuntu
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+```
+
+Relogin or reboot after changing group membership so `ubuntu` picks up the
+`gpio` group.
 
 ## Install Gnome and Wayland
 
