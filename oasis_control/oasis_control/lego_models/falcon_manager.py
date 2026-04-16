@@ -9,7 +9,7 @@
 ################################################################################
 
 #
-# anager for a LEGO Millenium Falcon model
+# Manager for a LEGO Millenium Falcon model
 #
 
 from functools import partial
@@ -35,9 +35,10 @@ THRUST_LED_PIN: int = 3  # D3
 #
 # LED noodle: 5V source, 22.1 Ohm resistor
 #
-# Thrust LED ping to 540 Ohm resistor, to base of BC337 NPN transistor. Emitter
+# Thrust LED pin to 540 Ohm resistor, to base of BC337 NPN transistor. Emitter
 # goes to ground, collector to the LED noodle.
 #
+
 
 ################################################################################
 # ROS parameters
@@ -47,6 +48,7 @@ THRUST_LED_PIN: int = 3  # D3
 # Service clients
 CLIENT_CONFIGURE_EFFECT = "configure_effect"
 CLIENT_SET_EFFECT = "set_effect"
+
 
 ################################################################################
 # Manager
@@ -99,10 +101,6 @@ class FalconManager:
 
     def set_thrust_led_effect(self, duty_magnitude: float) -> None:
         """Set runtime mode for the MCU-managed Falcon thrust LED effect."""
-        self._node.get_logger().debug(
-            f"Falcon conductor duty magnitude update: {duty_magnitude:.3f}"
-        )
-
         if not self._set_thrust_led_effect(duty_magnitude):
             self._node.get_logger().warning("Failed to set Falcon LED thruster effect")
 
@@ -131,17 +129,19 @@ class FalconManager:
     def _set_thrust_led_effect(self, target_magnitude: float) -> bool:
         clamped_magnitude: float = max(0.0, min(target_magnitude, 1.0))
 
-        mode: int = EffectModeMsg.LED_THRUSTER_IDLE
-        if clamped_magnitude > 0.0:
-            mode = EffectModeMsg.LED_THRUSTER_MOVING
-        else:
-            mode = EffectModeMsg.LED_THRUSTER_IDLE
+        mode: int = (
+            EffectModeMsg.LED_THRUSTER_MOVING
+            if clamped_magnitude > 0.0
+            else EffectModeMsg.LED_THRUSTER_IDLE
+        )
 
         if self._last_thruster_mode == mode:
             return True
 
         mode_name: str = "idle" if mode == EffectModeMsg.LED_THRUSTER_IDLE else "moving"
-        self._node.get_logger().info(f"Setting Falcon LED thruster mode to {mode_name}")
+        self._node.get_logger().debug(
+            f"Setting Falcon LED thruster mode to {mode_name}"
+        )
         self._last_thruster_mode = mode
 
         set_effect_req: SetEffectSvc.Request = SetEffectSvc.Request()
@@ -181,9 +181,3 @@ class FalconManager:
             )
             if self._last_thruster_mode == mode:
                 self._last_thruster_mode = None
-            return
-
-        mode_name: str = "idle" if mode == EffectModeMsg.LED_THRUSTER_IDLE else "moving"
-        self._node.get_logger().debug(
-            f"Falcon LED thruster mode request completed: {mode_name}"
-        )

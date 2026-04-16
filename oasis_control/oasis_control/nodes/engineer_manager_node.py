@@ -174,8 +174,4 @@ class EngineerManagerNode(rclpy.node.Node):
                 self._falcon_defer_logged = True
             return
 
-        self.get_logger().debug(
-            "Received conductor_state duty_cycle="
-            f"{float(msg.duty_cycle):.3f}, forwarding magnitude={duty_magnitude:.3f}"
-        )
         self._falcon_manager.set_thrust_led_effect(duty_magnitude)
