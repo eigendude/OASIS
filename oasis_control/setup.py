@@ -80,7 +80,6 @@ setuptools.setup(
             "leonardo_manager = oasis_control.cli.leonardo_manager_cli:main",
             "speedometer = oasis_control.cli.speedometer_cli:main",
             "tilt_sensor = oasis_control.cli.tilt_sensor_cli:main",
-            "zupt_detector = oasis_control.cli.zupt_detector_cli:main",
         ],
     },
 )
