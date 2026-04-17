@@ -219,6 +219,25 @@ class ControlDescriptions:
         ld.add_action(speedometer_node)
 
     #
+    # Tilt sensor
+    #
+
+    @staticmethod
+    def add_tilt_sensor(ld: LaunchDescription, host_id: str) -> None:
+        localization_node: Node = Node(
+            namespace=ROS_NAMESPACE,
+            package=CONTROL_PACKAGE_NAME,
+            executable="tilt_sensor",
+            name=f"tilt_sensor_{host_id}",
+            output="screen",
+            remappings=[
+                ("gravity", f"{host_id}/gravity"),
+                ("tilt", f"{host_id}/tilt"),
+            ],
+        )
+        ld.add_action(localization_node)
+
+    #
     # ZUPT detector
     #
 
