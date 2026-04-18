@@ -71,26 +71,6 @@ class ControlDescriptions:
         ld.add_action(home_manager_node)
 
     #
-    # IMU fuser
-    #
-
-    @staticmethod
-    def add_imu_fuser(ld: LaunchDescription, host_id: str) -> None:
-        imu_fuser_node: Node = Node(
-            namespace=ROS_NAMESPACE,
-            package=CONTROL_PACKAGE_NAME,
-            executable="imu_fuser",
-            name=f"imu_fuser_{host_id}",
-            output="screen",
-            remappings=[
-                ("imu", f"{host_id}/imu"),
-                ("imu_fused", f"{host_id}/imu_fused"),
-                ("magnetic_field", f"{host_id}/magnetic_field"),
-            ],
-        )
-        ld.add_action(imu_fuser_node)
-
-    #
     # Microcontroller nodes
     #
 
@@ -196,27 +176,6 @@ class ControlDescriptions:
             remappings=remappings,
         )
         ld.add_action(engineer_node)
-
-    #
-    # Speedometer
-    #
-
-    @staticmethod
-    def add_speedometer_node(ld: LaunchDescription, host_id: str) -> None:
-        speedometer_node: Node = Node(
-            namespace=ROS_NAMESPACE,
-            package=CONTROL_PACKAGE_NAME,
-            executable="speedometer",
-            name=f"speedometer_{host_id}",
-            output="screen",
-            remappings=[
-                ("forward_twist", f"{host_id}/forward_twist"),
-                ("imu_calibration", f"{host_id}/imu_calibration"),
-                ("imu_raw", f"{host_id}/imu_raw"),
-                ("zupt", f"{host_id}/zupt"),
-            ],
-        )
-        ld.add_action(speedometer_node)
 
     #
     # Tilt sensor
