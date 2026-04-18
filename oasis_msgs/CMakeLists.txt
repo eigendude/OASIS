@@ -16,7 +16,9 @@ project(oasis_msgs)
 #
 
 find_package(ament_cmake REQUIRED)
+find_package(apriltag_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(rosidl_default_runtime REQUIRED)
 find_package(sensor_msgs REQUIRED)
@@ -30,7 +32,12 @@ ament_export_dependencies(rosidl_default_runtime)
 
 rosidl_generate_interfaces(
   ${PROJECT_NAME}
+    msg/AprilTagDetectionReport.msg
+    msg/AprilTagFrameReport.msg
+    msg/AprilTagMap.msg
+    msg/AprilTagMapEntry.msg
     msg/Accelerometer.msg
+    msg/AhrsStatus.msg
     msg/AirQuality.msg
     msg/AnalogButton.msg
     msg/AnalogReading.msg
@@ -45,6 +52,8 @@ rosidl_generate_interfaces(
     msg/DigitalReading.msg
     msg/DigitalWriteCommand.msg
     msg/DiskPartition.msg
+    msg/EkfState.msg
+    msg/EkfUpdateReport.msg
     msg/EffectKind.msg
     msg/EffectMode.msg
     msg/EngineerState.msg
@@ -60,6 +69,8 @@ rosidl_generate_interfaces(
     msg/MCUMemory.msg
     msg/MCUString.msg
     msg/MediaItem.msg
+    msg/MountingCalibrationResult.msg
+    msg/MountingCalibrationStatus.msg
     msg/NetworkAddress.msg
     msg/NetworkInterface.msg
     msg/PeripheralConstants.msg
@@ -105,7 +116,9 @@ rosidl_generate_interfaces(
     srv/UPSCommand.srv
     srv/WoLCommand.srv
   DEPENDENCIES
+    apriltag_msgs
     geometry_msgs
+    nav_msgs
     sensor_msgs
     std_msgs
 )
