@@ -56,11 +56,13 @@ protected:
                         ORB_SLAM3::System::eSensor sensorType);
   void DeinitializeSystem();
 
-  virtual Eigen::Isometry3f TrackFrame(const cv::Mat& rgbImage, double timestamp) = 0;
+  virtual std::optional<Eigen::Isometry3f> TrackFrame(const cv::Mat& rgbImage,
+                                                      double timestamp) = 0;
   virtual void OnPostTrack() {}
 
   bool HasSlam() const;
   ORB_SLAM3::System* GetSlam();
+  void ResetActiveMap();
   rclcpp::Logger& Logger();
   const rclcpp::Logger& Logger() const;
 

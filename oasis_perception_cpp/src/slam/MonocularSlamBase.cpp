@@ -11,6 +11,7 @@
 #include "ros/RosUtils.h"
 
 #include <cmath>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -29,6 +30,27 @@ using namespace SLAM;
 namespace
 {
 constexpr char MAP_FRAME_ID[] = "map";
+
+bool IsFiniteVec3(const Eigen::Vector3f& vector)
+{
+  return vector.allFinite();
+}
+
+bool IsFiniteMat33(const Eigen::Matrix3f& matrix)
+{
+  return matrix.allFinite();
+}
+
+bool IsFiniteQuaternion(const Eigen::Quaternionf& quaternion)
+{
+  return quaternion.coeffs().allFinite();
+}
+
+bool IsFinitePose(const Eigen::Isometry3f& pose)
+{
+  return IsFiniteMat33(pose.linear()) && IsFiniteVec3(pose.translation()) &&
+         pose.matrix().allFinite();
+}
 } // namespace
 
 MonocularSlamBase::MonocularSlamBase(rclcpp::Node& node,
@@ -130,6 +152,12 @@ ORB_SLAM3::System* MonocularSlamBase::GetSlam()
   return m_slam.get();
 }
 
+void MonocularSlamBase::ResetActiveMap()
+{
+  if (m_slam)
+    m_slam->ResetActiveMap();
+}
+
 rclcpp::Logger& MonocularSlamBase::Logger()
 {
   return *m_logger;
@@ -175,32 +203,11 @@ void MonocularSlamBase::MapPublisherLoop()
 
     m_lastTimestamp = timestamp;
 
-    const Eigen::Isometry3f cameraPose = TrackFrame(rgbImage, timestamp);
-
     ORB_SLAM3::System* slam = GetSlam();
     if (slam == nullptr)
       continue;
 
-    if (m_posePublisher)
-    {
-      geometry_msgs::msg::PoseStamped poseMsg;
-      poseMsg.header = header;
-      poseMsg.header.frame_id = MAP_FRAME_ID;
-
-      const Eigen::Vector3f& translation = cameraPose.translation();
-      poseMsg.pose.position.x = static_cast<double>(translation.x());
-      poseMsg.pose.position.y = static_cast<double>(translation.y());
-      poseMsg.pose.position.z = static_cast<double>(translation.z());
-
-      Eigen::Quaternionf quaternion(cameraPose.linear());
-      quaternion.normalize();
-      poseMsg.pose.orientation.x = static_cast<double>(quaternion.x());
-      poseMsg.pose.orientation.y = static_cast<double>(quaternion.y());
-      poseMsg.pose.orientation.z = static_cast<double>(quaternion.z());
-      poseMsg.pose.orientation.w = static_cast<double>(quaternion.w());
-
-      m_posePublisher->publish(poseMsg);
-    }
+    const std::optional<Eigen::Isometry3f> cameraPose = TrackFrame(rgbImage, timestamp);
 
     // Get SLAM state
     const int trackingState = slam->GetTrackingState();
@@ -211,6 +218,71 @@ void MonocularSlamBase::MapPublisherLoop()
     ORB_SLAM3::Atlas* atlas = slam->GetAtlas();
     if (atlas != nullptr)
       mapPoints = atlas->GetAllMapPoints();
+
+    if (!cameraPose)
+    {
+      RCLCPP_WARN(Logger(),
+                  "Skipping rejected SLAM frame at %.6f (state=%d, tracked points=%zu, "
+                  "map points=%zu)",
+                  timestamp, trackingState, trackedMapPoints.size(), mapPoints.size());
+      OnPostTrack();
+      continue;
+    }
+
+    if (!IsFinitePose(*cameraPose))
+    {
+      RCLCPP_ERROR(Logger(),
+                   "Rejecting non-finite camera pose after tracking at %.6f "
+                   "(state=%d, tracked points=%zu, map points=%zu)",
+                   timestamp, trackingState, trackedMapPoints.size(), mapPoints.size());
+      ResetActiveMap();
+      OnPostTrack();
+      continue;
+    }
+
+    if (m_posePublisher)
+    {
+      geometry_msgs::msg::PoseStamped poseMsg;
+      poseMsg.header = header;
+      poseMsg.header.frame_id = MAP_FRAME_ID;
+
+      const Eigen::Vector3f& translation = cameraPose->translation();
+      poseMsg.pose.position.x = static_cast<double>(translation.x());
+      poseMsg.pose.position.y = static_cast<double>(translation.y());
+      poseMsg.pose.position.z = static_cast<double>(translation.z());
+
+      Eigen::Quaternionf quaternion(cameraPose->linear());
+      if (!IsFiniteQuaternion(quaternion) ||
+          quaternion.norm() <= std::numeric_limits<float>::epsilon())
+      {
+        RCLCPP_ERROR(Logger(),
+                     "Rejecting invalid camera orientation at %.6f (state=%d, tracked "
+                     "points=%zu, map points=%zu)",
+                     timestamp, trackingState, trackedMapPoints.size(), mapPoints.size());
+        ResetActiveMap();
+        OnPostTrack();
+        continue;
+      }
+
+      quaternion.normalize();
+      if (!IsFiniteQuaternion(quaternion))
+      {
+        RCLCPP_ERROR(Logger(),
+                     "Rejecting non-finite normalized camera orientation at %.6f "
+                     "(state=%d, tracked points=%zu, map points=%zu)",
+                     timestamp, trackingState, trackedMapPoints.size(), mapPoints.size());
+        ResetActiveMap();
+        OnPostTrack();
+        continue;
+      }
+
+      poseMsg.pose.orientation.x = static_cast<double>(quaternion.x());
+      poseMsg.pose.orientation.y = static_cast<double>(quaternion.y());
+      poseMsg.pose.orientation.z = static_cast<double>(quaternion.z());
+      poseMsg.pose.orientation.w = static_cast<double>(quaternion.w());
+
+      m_posePublisher->publish(poseMsg);
+    }
 
     RCLCPP_INFO(Logger(), "Tracking state: %d, tracked points: %zu, map points: %zu", trackingState,
                 trackedMapPoints.size(), mapPoints.size());

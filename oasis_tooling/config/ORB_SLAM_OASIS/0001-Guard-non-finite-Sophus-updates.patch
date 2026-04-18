@@ -1,0 +1,337 @@
+diff --git a/include/Sim3Solver.h b/include/Sim3Solver.h
+index 66a8b3d..7778a75 100644
+--- a/include/Sim3Solver.h
++++ b/include/Sim3Solver.h
+@@ -53,7 +53,7 @@ protected:
+ 
+     void ComputeCentroid(Eigen::Matrix3f &P, Eigen::Matrix3f &Pr, Eigen::Vector3f &C);
+ 
+-    void ComputeSim3(Eigen::Matrix3f &P1, Eigen::Matrix3f &P2);
++    bool ComputeSim3(Eigen::Matrix3f &P1, Eigen::Matrix3f &P2);
+ 
+     void CheckInliers();
+ 
+diff --git a/src/Optimizer.cc b/src/Optimizer.cc
+index 22d55a5..70edffd 100644
+--- a/src/Optimizer.cc
++++ b/src/Optimizer.cc
+@@ -38,12 +38,39 @@
+ #include "Converter.h"
+ 
+ #include<mutex>
++#include <cmath>
++#include <iostream>
+ 
+ #include "OptimizableTypes.h"
+ 
+ 
+ namespace ORB_SLAM3
+ {
++namespace
++{
++bool IsFiniteVector3(const Eigen::Vector3d &vector)
++{
++    return vector.allFinite();
++}
++
++bool IsFiniteQuaternion(const Eigen::Quaterniond &quaternion)
++{
++    return quaternion.coeffs().allFinite();
++}
++
++bool IsFiniteSophusPose(const Sophus::SE3f &pose)
++{
++    return pose.matrix().allFinite();
++}
++
++void LogInvalidPoseOptimizationState(const char *stage, const Frame *pFrame)
++{
++    std::cerr << "ORB_SLAM_OASIS rejected invalid pose optimization result in " << stage
++              << " for frame " << pFrame->mnId
++              << " at t=" << pFrame->mTimeStamp << std::endl;
++}
++} // namespace
++
+ bool sortByVal(const pair<MapPoint*, int> &a, const pair<MapPoint*, int> &b)
+ {
+     return (a.second < b.second);
+@@ -828,6 +855,13 @@ int Optimizer::PoseOptimization(Frame *pFrame)
+     // Set Frame vertex
+     g2o::VertexSE3Expmap * vSE3 = new g2o::VertexSE3Expmap();
+     Sophus::SE3<float> Tcw = pFrame->GetPose();
++    if(!IsFiniteQuaternion(Tcw.unit_quaternion().cast<double>()) ||
++       !IsFiniteVector3(Tcw.translation().cast<double>()) ||
++       !IsFiniteSophusPose(Tcw))
++    {
++        LogInvalidPoseOptimizationState("PoseOptimization/input", pFrame);
++        return 0;
++    }
+     vSE3->setEstimate(g2o::SE3Quat(Tcw.unit_quaternion().cast<double>(),Tcw.translation().cast<double>()));
+     vSE3->setId(0);
+     vSE3->setFixed(false);
+@@ -1006,6 +1040,13 @@ int Optimizer::PoseOptimization(Frame *pFrame)
+     for(size_t it=0; it<4; it++)
+     {
+         Tcw = pFrame->GetPose();
++        if(!IsFiniteQuaternion(Tcw.unit_quaternion().cast<double>()) ||
++           !IsFiniteVector3(Tcw.translation().cast<double>()) ||
++           !IsFiniteSophusPose(Tcw))
++        {
++            LogInvalidPoseOptimizationState("PoseOptimization/iteration_input", pFrame);
++            return 0;
++        }
+         vSE3->setEstimate(g2o::SE3Quat(Tcw.unit_quaternion().cast<double>(),Tcw.translation().cast<double>()));
+ 
+         optimizer.initializeOptimization(0);
+@@ -1106,8 +1147,21 @@ int Optimizer::PoseOptimization(Frame *pFrame)
+     // Recover optimized pose and return number of inliers
+     g2o::VertexSE3Expmap* vSE3_recov = static_cast<g2o::VertexSE3Expmap*>(optimizer.vertex(0));
+     g2o::SE3Quat SE3quat_recov = vSE3_recov->estimate();
++    if(!IsFiniteQuaternion(SE3quat_recov.rotation()) ||
++       !IsFiniteVector3(SE3quat_recov.translation()))
++    {
++        LogInvalidPoseOptimizationState("PoseOptimization/recover", pFrame);
++        return 0;
++    }
++
+     Sophus::SE3<float> pose(SE3quat_recov.rotation().cast<float>(),
+             SE3quat_recov.translation().cast<float>());
++    if(!IsFiniteSophusPose(pose))
++    {
++        LogInvalidPoseOptimizationState("PoseOptimization/recover_pose", pFrame);
++        return 0;
++    }
++
+     pFrame->SetPose(pose);
+ 
+     return nInitialCorrespondences-nBad;
+diff --git a/src/Sim3Solver.cc b/src/Sim3Solver.cc
+index 983e9c9..6444960 100644
+--- a/src/Sim3Solver.cc
++++ b/src/Sim3Solver.cc
+@@ -22,6 +22,7 @@
+ #include <vector>
+ #include <cmath>
+ #include <opencv2/opencv.hpp>
++#include <iostream>
+ 
+ #include "KeyFrame.h"
+ #include "ORBmatcher.h"
+@@ -30,6 +31,35 @@
+ 
+ namespace ORB_SLAM3
+ {
++namespace
++{
++bool IsFiniteVec3(const Eigen::Vector3f &vector)
++{
++    return vector.allFinite();
++}
++
++bool IsFiniteMat33(const Eigen::Matrix3f &matrix)
++{
++    return matrix.allFinite();
++}
++
++bool IsFiniteMat44(const Eigen::Matrix4f &matrix)
++{
++    return matrix.allFinite();
++}
++
++void LogInvalidSim3Estimate(const KeyFrame *pKF1,
++                           const KeyFrame *pKF2,
++                           const char *stage,
++                           const Eigen::Vector3f &omega)
++{
++    std::cerr << "ORB_SLAM_OASIS rejected non-finite Sim3 rotation update in " << stage
++              << " between keyframes " << pKF1->mnId
++              << " and " << pKF2->mnId
++              << " omega=[" << omega(0) << ", " << omega(1) << ", " << omega(2) << "]"
++              << std::endl;
++}
++} // namespace
+ 
+ 
+ Sim3Solver::Sim3Solver(KeyFrame *pKF1, KeyFrame *pKF2, const vector<MapPoint *> &vpMatched12, const bool bFixScale,
+@@ -185,7 +215,10 @@ Eigen::Matrix4f Sim3Solver::iterate(int nIterations, bool &bNoMore, vector<bool>
+             vAvailableIndices.pop_back();
+         }
+ 
+-        ComputeSim3(P3Dc1i,P3Dc2i);
++        if(!ComputeSim3(P3Dc1i,P3Dc2i))
++        {
++            continue;
++        }
+ 
+         CheckInliers();
+ 
+@@ -258,7 +291,10 @@ Eigen::Matrix4f Sim3Solver::iterate(int nIterations, bool &bNoMore, vector<bool>
+             vAvailableIndices.pop_back();
+         }
+ 
+-        ComputeSim3(P3Dc1i,P3Dc2i);
++        if(!ComputeSim3(P3Dc1i,P3Dc2i))
++        {
++            continue;
++        }
+ 
+         CheckInliers();
+ 
+@@ -308,7 +344,7 @@ void Sim3Solver::ComputeCentroid(Eigen::Matrix3f &P, Eigen::Matrix3f &Pr, Eigen:
+ }
+ 
+ 
+-void Sim3Solver::ComputeSim3(Eigen::Matrix3f &P1, Eigen::Matrix3f &P2)
++bool Sim3Solver::ComputeSim3(Eigen::Matrix3f &P1, Eigen::Matrix3f &P2)
+ {
+     // Custom implementation of:
+     // Horn 1987, Closed-form solution of absolute orientataion using unit quaternions
+@@ -356,6 +392,12 @@ void Sim3Solver::ComputeSim3(Eigen::Matrix3f &P1, Eigen::Matrix3f &P2)
+     Eigen::Vector4f eval = eigSolver.eigenvalues().real();
+     Eigen::Matrix4f evec = eigSolver.eigenvectors().real(); //evec[0] is the quaternion of the desired rotation
+ 
++    if(!eval.allFinite() || !evec.allFinite())
++    {
++        LogInvalidSim3Estimate(mpKF1, mpKF2, "Sim3Solver/eigensolver", Eigen::Vector3f::Zero());
++        return false;
++    }
++
+     int maxIndex; // should be zero
+     eval.maxCoeff(&maxIndex);
+ 
+@@ -363,13 +405,37 @@ void Sim3Solver::ComputeSim3(Eigen::Matrix3f &P1, Eigen::Matrix3f &P2)
+ 
+     // Rotation angle. sin is the norm of the imaginary part, cos is the real part
+     double ang=atan2(vec.norm(),evec(0,maxIndex));
++    const float vecNorm = vec.norm();
++
++    if(!std::isfinite(ang) || !std::isfinite(vecNorm) || vecNorm <= 1e-6f)
++    {
++        LogInvalidSim3Estimate(mpKF1, mpKF2, "Sim3Solver/angle_axis", vec);
++        return false;
++    }
++
++    vec = 2*ang*vec/vecNorm; //Angle-axis representation. quaternion angle is the half
++    if(!IsFiniteVec3(vec))
++    {
++        LogInvalidSim3Estimate(mpKF1, mpKF2, "Sim3Solver/omega", vec);
++        return false;
++    }
+ 
+-    vec = 2*ang*vec/vec.norm(); //Angle-axis representation. quaternion angle is the half
+     mR12i = Sophus::SO3f::exp(vec).matrix();
++    if(!IsFiniteMat33(mR12i))
++    {
++        LogInvalidSim3Estimate(mpKF1, mpKF2, "Sim3Solver/rotation", vec);
++        return false;
++    }
+ 
+     // Step 5: Rotate set 2
+     Eigen::Matrix3f P3 = mR12i*Pr2;
+ 
++    if(!IsFiniteMat33(P3))
++    {
++        LogInvalidSim3Estimate(mpKF1, mpKF2, "Sim3Solver/rotated_points", vec);
++        return false;
++    }
++
+     // Step 6: Scale
+ 
+     if(!mbFixScale)
+@@ -382,6 +448,12 @@ void Sim3Solver::ComputeSim3(Eigen::Matrix3f &P1, Eigen::Matrix3f &P2)
+         aux_P3 = P3.array() * P3.array();
+         double den = aux_P3.sum();
+ 
++        if(!std::isfinite(nom) || !std::isfinite(den) || den <= 1e-9)
++        {
++            LogInvalidSim3Estimate(mpKF1, mpKF2, "Sim3Solver/scale", vec);
++            return false;
++        }
++
+         ms12i = nom/den;
+     }
+     else
+@@ -389,6 +461,11 @@ void Sim3Solver::ComputeSim3(Eigen::Matrix3f &P1, Eigen::Matrix3f &P2)
+ 
+     // Step 7: Translation
+     mt12i = O1 - ms12i * mR12i * O2;
++    if(!std::isfinite(ms12i) || !IsFiniteVec3(mt12i))
++    {
++        LogInvalidSim3Estimate(mpKF1, mpKF2, "Sim3Solver/translation", vec);
++        return false;
++    }
+ 
+     // Step 8: Transformation
+ 
+@@ -409,6 +486,14 @@ void Sim3Solver::ComputeSim3(Eigen::Matrix3f &P1, Eigen::Matrix3f &P2)
+ 
+     Eigen::Vector3f tinv = -sRinv * mt12i;
+     mT21i.block<3,1>(0,3) = tinv;
++
++    if(!IsFiniteMat44(mT12i) || !IsFiniteMat44(mT21i))
++    {
++        LogInvalidSim3Estimate(mpKF1, mpKF2, "Sim3Solver/transform", vec);
++        return false;
++    }
++
++    return true;
+ }
+ 
+ 
+diff --git a/src/Tracking.cc b/src/Tracking.cc
+index b5b0f70..1437f4f 100644
+--- a/src/Tracking.cc
++++ b/src/Tracking.cc
+@@ -31,12 +31,33 @@
+ 
+ #include <iostream>
+ 
++#include <cmath>
+ #include <mutex>
+ #include <chrono>
+ 
+ 
+ using namespace std;
+ 
++namespace
++{
++bool IsFinitePoseMatrix(const Eigen::Matrix4f &matrix)
++{
++    return matrix.allFinite();
++}
++
++void LogInvalidTrackingPose(const char *stage,
++                            const ORB_SLAM3::Frame &frame,
++                            const Eigen::Matrix4f &matrix)
++{
++    std::cerr << "ORB_SLAM_OASIS rejected invalid tracking pose in " << stage
++              << " for frame " << frame.mnId
++              << " at t=" << frame.mTimeStamp
++              << " tx=" << matrix(0,3)
++              << " ty=" << matrix(1,3)
++              << " tz=" << matrix(2,3) << std::endl;
++}
++} // namespace
++
+ namespace ORB_SLAM3
+ {
+ 
+@@ -3692,7 +3713,18 @@ bool Tracking::Relocalization()
+             // If a Camera Pose is computed, optimize
+             if(bTcw)
+             {
++                if(!IsFinitePoseMatrix(eigTcw))
++                {
++                    LogInvalidTrackingPose("Tracking::Relocalization/MLPnP", mCurrentFrame, eigTcw);
++                    continue;
++                }
++
+                 Sophus::SE3f Tcw(eigTcw);
++                if(!Tcw.matrix().allFinite())
++                {
++                    LogInvalidTrackingPose("Tracking::Relocalization/Sophus", mCurrentFrame, Tcw.matrix());
++                    continue;
++                }
+                 mCurrentFrame.SetPose(Tcw);
+                 // Tcw.copyTo(mCurrentFrame.mTcw);
+ 

@@ -319,6 +319,12 @@ echo "Patching ORB_SLAM_OASIS..."
 cp -v \
   "${CONFIG_DIRECTORY}/ORB_SLAM_OASIS/package.xml" \
   "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/ORB_SLAM_OASIS"
+patch \
+  -p1 \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/ORB_SLAM_OASIS" \
+  < "${CONFIG_DIRECTORY}/ORB_SLAM_OASIS/0001-Guard-non-finite-Sophus-updates.patch"
 
 # Disable ORB_SLAM_OASIS on systems with <= 4GiB memory
 if (( $(echo "${PHYSICAL_MEMORY_GB} <= 4" | bc -l) )); then

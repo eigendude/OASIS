@@ -10,11 +10,32 @@
 
 #include "ros/RosUtils.h"
 
+#include <iomanip>
+#include <optional>
+#include <sstream>
+
 #include <geometry_msgs/msg/vector3.hpp>
 #include <sophus/se3.hpp>
 
 using namespace OASIS;
 using namespace SLAM;
+
+namespace
+{
+bool IsFiniteMatrix4(const Eigen::Matrix4f& matrix)
+{
+  return matrix.allFinite();
+}
+
+std::string SummarizePoseMatrix(const Eigen::Matrix4f& matrix)
+{
+  std::ostringstream stream;
+  stream << std::fixed << std::setprecision(3) << "[r00=" << matrix(0, 0)
+         << ", r11=" << matrix(1, 1) << ", r22=" << matrix(2, 2) << ", tx=" << matrix(0, 3)
+         << ", ty=" << matrix(1, 3) << ", tz=" << matrix(2, 3) << "]";
+  return stream.str();
+}
+} // namespace
 
 MonocularInertialSlam::MonocularInertialSlam(rclcpp::Node& node,
                                              const std::string& pointCloudTopic,
@@ -61,18 +82,53 @@ void MonocularInertialSlam::ImuCallback(const sensor_msgs::msg::Imu::ConstShared
   m_imuMeasurements.push_back(ORB_SLAM3::IMU::Point(acc, gyr, timestamp));
 }
 
-Eigen::Isometry3f MonocularInertialSlam::TrackFrame(const cv::Mat& rgbImage, double timestamp)
+std::optional<Eigen::Isometry3f> MonocularInertialSlam::TrackFrame(const cv::Mat& rgbImage,
+                                                                   double timestamp)
 {
   ORB_SLAM3::System* slam = GetSlam();
   if (slam == nullptr)
-    return Eigen::Isometry3f::Identity();
+    return std::nullopt;
 
-  const Sophus::SE3f sophusPose = slam->TrackMonocular(rgbImage, timestamp, m_imuMeasurements);
+  try
+  {
+    const Sophus::SE3f sophusPose = slam->TrackMonocular(rgbImage, timestamp, m_imuMeasurements);
+    const Eigen::Matrix4f poseMatrix = sophusPose.matrix();
 
-  Eigen::Isometry3f pose = Eigen::Isometry3f::Identity();
-  pose.matrix() = sophusPose.matrix();
+    if (!IsFiniteMatrix4(poseMatrix))
+    {
+      const int trackingState = slam->GetTrackingState();
+      const std::size_t trackedPoints = slam->GetTrackedMapPoints().size();
 
-  return pose;
+      RCLCPP_ERROR(Logger(),
+                   "Rejecting non-finite inertial SLAM pose in TrackMonocular at %.6f "
+                   "(state=%d, tracked_points=%zu, pose=%s)",
+                   timestamp, trackingState, trackedPoints,
+                   SummarizePoseMatrix(poseMatrix).c_str());
+      ResetActiveMap();
+      return std::nullopt;
+    }
+
+    Eigen::Isometry3f pose = Eigen::Isometry3f::Identity();
+    pose.matrix() = poseMatrix;
+
+    return pose;
+  }
+  catch (const std::exception& ex)
+  {
+    RCLCPP_ERROR(Logger(), "Recoverable inertial SLAM failure in TrackMonocular at %.6f: %s",
+                 timestamp, ex.what());
+    ResetActiveMap();
+    return std::nullopt;
+  }
+  catch (...)
+  {
+    RCLCPP_ERROR(Logger(),
+                 "Recoverable inertial SLAM failure in TrackMonocular at %.6f: "
+                 "unknown exception",
+                 timestamp);
+    ResetActiveMap();
+    return std::nullopt;
+  }
 }
 
 void MonocularInertialSlam::OnPostTrack()

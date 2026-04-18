@@ -41,7 +41,7 @@ public:
   void ImuCallback(const sensor_msgs::msg::Imu::ConstSharedPtr& msg);
 
 protected:
-  Eigen::Isometry3f TrackFrame(const cv::Mat& rgbImage, double timestamp) override;
+  std::optional<Eigen::Isometry3f> TrackFrame(const cv::Mat& rgbImage, double timestamp) override;
   void OnPostTrack() override;
 
 private:

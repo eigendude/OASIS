@@ -27,7 +27,7 @@ public:
   void Deinitialize();
 
 protected:
-  Eigen::Isometry3f TrackFrame(const cv::Mat& rgbImage, double timestamp) override;
+  std::optional<Eigen::Isometry3f> TrackFrame(const cv::Mat& rgbImage, double timestamp) override;
 };
 
 } // namespace SLAM
