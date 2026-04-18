@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2025 Garrett Brown
+ *  Copyright (C) 2020-2026 Garrett Brown
  *  This file is part of OASIS - https://github.com/eigendude/OASIS
  *
  *  SPDX-License-Identifier: Apache-2.0
