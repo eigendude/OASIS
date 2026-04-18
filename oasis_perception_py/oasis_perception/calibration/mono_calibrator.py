@@ -11,11 +11,16 @@
 #
 ################################################################################
 
+import logging
+
 import cv2
 import numpy as np
 from camera_calibration.calibrator import CalibrationException
 from camera_calibration.mono_calibrator import MonoCalibrator as BaseMonoCalibrator
 from sensor_msgs.msg import Image as ImageMsg
+
+
+LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
 class MonoCalibrator(BaseMonoCalibrator):
@@ -26,6 +31,25 @@ class MonoCalibrator(BaseMonoCalibrator):
     raw sensor_msgs/Image buffer for common encodings. For any encoding
     we don't explicitly handle, we fall back to the base implementation.
     """
+
+    def _log_mkgray_path_once(self, path_name: str, msg: ImageMsg) -> None:
+        logged_paths: set[str] = getattr(self, "_logged_mkgray_paths", set())
+        if path_name in logged_paths:
+            return
+
+        logged_paths.add(path_name)
+        self._logged_mkgray_paths = logged_paths
+
+        LOGGER.warning(
+            "MonoCalibrator.mkgray: using %s path "
+            "(encoding=%r, height=%d, width=%d, step=%d, len(data)=%d)",
+            path_name,
+            msg.encoding,
+            msg.height,
+            msg.width,
+            msg.step,
+            len(msg.data),
+        )
 
     def mkgray(self, msg: ImageMsg) -> np.ndarray:
         """
@@ -61,10 +85,11 @@ class MonoCalibrator(BaseMonoCalibrator):
                 f"buf.size={buf.size}, expected>={expected_min_size})"
             )
 
-        gray: np.ndarray
+        gray: np.ndarray | None = None
 
         # Fast-path: mono8
         if encoding == "mono8":
+            self._log_mkgray_path_once("mono8-fast", msg)
             try:
                 reshaped: np.ndarray = buf.reshape(height, step)
             except ValueError as exc:
@@ -76,6 +101,7 @@ class MonoCalibrator(BaseMonoCalibrator):
 
         # Fast-path: bgr8 / rgb8
         elif encoding in ("bgr8", "rgb8"):
+            self._log_mkgray_path_once(f"{encoding}-fast", msg)
             channels: int = 3
             row_bytes: int = width * channels
             if step < row_bytes:
@@ -110,12 +136,15 @@ class MonoCalibrator(BaseMonoCalibrator):
 
         # Fallback: let the base class (cv_bridge-based) handle all other encodings
         if gray is None:
+            self._log_mkgray_path_once("base-fallback", msg)
             try:
                 gray = super().mkgray(msg)
             except Exception as exc:
                 raise CalibrationException(
-                    "MonoCalibrator.mkgray: fallback to BaseMonoCalibrator.mkgray "
-                    f"failed for encoding={encoding!r}: {exc}"
+                    "MonoCalibrator.mkgray: fallback to "
+                    "BaseMonoCalibrator.mkgray failed "
+                    f"(encoding={encoding!r}, height={height}, width={width}, "
+                    f"step={step}, len(data)={len(data_bytes)}): {exc}"
                 )
 
         return gray

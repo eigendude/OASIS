@@ -476,6 +476,13 @@ class CameraCalibratorNode(rclpy.node.Node):
         self.q_stereo.put((lmsg, rmsg))
 
     def handle_monocular(self, msg: ImageMsg) -> None:
+        def format_image_metadata(image_msg: ImageMsg) -> str:
+            return (
+                f"encoding={image_msg.encoding!r}, "
+                f"height={image_msg.height}, width={image_msg.width}, "
+                f"step={image_msg.step}, len(data)={len(image_msg.data)}"
+            )
+
         # Skip obviously invalid/empty images
         if msg.height == 0 or msg.width == 0 or not msg.data:
             self.get_logger().warn(
@@ -511,24 +518,16 @@ class CameraCalibratorNode(rclpy.node.Node):
         try:
             drawable: ImageDrawable = self.c.handle_msg(msg)
         except cv_bridge.CvBridgeError as e:
-            # Extra introspection for debugging empty cv::Mat / cvtColor failures
-            try:
-                data_len = len(msg.data)
-            except Exception:
-                data_len = -1
-
             self.get_logger().warn(
                 "camera_calibrator: CvBridgeError on monocular frame, skipping. "
                 f"Error={e}; "
-                f"encoding={msg.encoding!r}, "
-                f"height={msg.height}, width={msg.width}, "
-                f"step={msg.step}, len(data)={data_len}"
+                f"{format_image_metadata(msg)}"
             )
             return
         except Exception as e:
             self.get_logger().error(
                 "camera_calibrator: unexpected error in handle_monocular, "
-                f"skipping frame: {e}"
+                f"skipping frame. Error={e}; {format_image_metadata(msg)}"
             )
             return
 
