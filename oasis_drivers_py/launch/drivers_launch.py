@@ -191,6 +191,7 @@ def generate_launch_description() -> LaunchDescription:
             HOST_ID,
             int_gpio=FALCON_BNO086_INT_GPIO,
         )
+        Drivers.add_mmc5983ma_magnetometer(ld, HOST_ID)
     if HOST_ID == "station":
         Drivers.add_ros2_camera(
             composable_nodes,
