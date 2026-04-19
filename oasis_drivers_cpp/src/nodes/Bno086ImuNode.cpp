@@ -497,11 +497,14 @@ void Bno086ImuNode::ApplyEvent(const SensorEvent& event, const rclcpp::Time& sam
       m_orientationState.sequence = event.sequence;
       m_orientationState.accuracy = event.accuracy;
 
-      // The policy module owns how SH-2 Rotation Vector becomes the published
-      // ROS orientation covariance contract:
+      // The policy module owns the driver-boundary heuristic that turns the
+      // SH-2 Rotation Vector report into the published ROS orientation
+      // covariance contract:
       //
       // - prefer the report's own estimated accuracy field when it is present
-      // - otherwise fall back to a documented SH-2 accuracy-bucket heuristic
+      //   and sane
+      // - otherwise fall back to a documented, intentionally tighter SH-2
+      //   accuracy-bucket heuristic for usable fused-attitude uncertainty
       // - publish an axis-aligned covariance because SH-2 does not expose a
       //   full 3x3 orientation covariance
       //

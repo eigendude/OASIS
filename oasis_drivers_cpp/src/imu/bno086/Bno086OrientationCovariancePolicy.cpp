@@ -17,12 +17,12 @@ namespace
 {
 constexpr double kRotationVectorAccuracyQ12Scale = 1.0 / 4096.0;
 
-constexpr double kFallbackSigmaUnreliableRad = 0.35;
-constexpr double kFallbackSigmaLowRad = 0.18;
-constexpr double kFallbackSigmaMediumRad = 0.09;
-constexpr double kFallbackSigmaHighRad = 0.045;
+constexpr double kFallbackSigmaUnreliableRad = 0.20;
+constexpr double kFallbackSigmaLowRad = 0.08;
+constexpr double kFallbackSigmaMediumRad = 0.03;
+constexpr double kFallbackSigmaHighRad = 0.012;
 
-constexpr double kMinimumPublishedSigmaRad = 0.02;
+constexpr double kMinimumPublishedSigmaRad = 0.012;
 constexpr double kMaximumReasonableAccuracyEstimateRad = 3.14159265358979323846;
 
 double RotationVectorAccuracyEstimateRad(std::int16_t raw_accuracy_estimate_q12)
@@ -68,9 +68,11 @@ OrientationCovariancePolicyResult ResolveOrientationCovariancePolicy(
     result.has_accuracy_estimate = true;
     result.accuracy_estimate_rad = decoded_accuracy_estimate_rad;
 
-    // Prefer the Rotation Vector estimated accuracy when SH-2 provides it, but
-    // keep a small floor so the published covariance does not imply
-    // unrealistically perfect attitude at rest.
+    // This is still a driver-boundary heuristic rather than a native SH-2 3x3
+    // covariance. Prefer the Rotation Vector estimated accuracy whenever SH-2
+    // provides a sane value, then clamp to a small resting floor so the
+    // published covariance stays useful without implying a perfect attitude
+    // solution.
     result.sigma_rad = std::max(decoded_accuracy_estimate_rad, kMinimumPublishedSigmaRad);
     result.source = OrientationCovarianceSource::RotationVectorAccuracyEstimate;
   }

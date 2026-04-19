@@ -26,9 +26,12 @@ enum class OrientationCovarianceSource : std::uint8_t
 /*!
  * \brief Driver-owned orientation covariance decision for one SH-2 sample
  *
- * The policy module owns how Rotation Vector accuracy signals are converted
- * into the published orientation covariance. The node consumes this result and
- * reports which source was selected.
+ * The policy module owns the driver-boundary heuristic that turns SH-2
+ * Rotation Vector accuracy signals into the published orientation covariance.
+ * Rotation Vector estimated accuracy is preferred when present and sane;
+ * otherwise a tighter fallback bucket table is used. The node consumes this
+ * result and reports which source was selected, while downstream AHRS only
+ * preserves and rotates the published covariance.
  */
 struct OrientationCovariancePolicyResult
 {

@@ -14,16 +14,16 @@ namespace OASIS::IMU::BNO086
 {
 TEST(Bno086OrientationCovariancePolicy, mapsEachAccuracyBucketToExpectedFallbackSigma)
 {
-  EXPECT_DOUBLE_EQ(OrientationAccuracyBucketToSigmaRad(0), 0.35);
-  EXPECT_DOUBLE_EQ(OrientationAccuracyBucketToSigmaRad(1), 0.18);
-  EXPECT_DOUBLE_EQ(OrientationAccuracyBucketToSigmaRad(2), 0.09);
-  EXPECT_DOUBLE_EQ(OrientationAccuracyBucketToSigmaRad(3), 0.045);
+  EXPECT_DOUBLE_EQ(OrientationAccuracyBucketToSigmaRad(0), 0.20);
+  EXPECT_DOUBLE_EQ(OrientationAccuracyBucketToSigmaRad(1), 0.08);
+  EXPECT_DOUBLE_EQ(OrientationAccuracyBucketToSigmaRad(2), 0.03);
+  EXPECT_DOUBLE_EQ(OrientationAccuracyBucketToSigmaRad(3), 0.012);
 }
 
 TEST(Bno086OrientationCovariancePolicy, invalidAccuracyBucketFallsBackToUnreliableSigma)
 {
-  EXPECT_DOUBLE_EQ(OrientationAccuracyBucketToSigmaRad(4), 0.35);
-  EXPECT_DOUBLE_EQ(OrientationAccuracyBucketToSigmaRad(255), 0.35);
+  EXPECT_DOUBLE_EQ(OrientationAccuracyBucketToSigmaRad(4), 0.20);
+  EXPECT_DOUBLE_EQ(OrientationAccuracyBucketToSigmaRad(255), 0.20);
 }
 
 TEST(Bno086OrientationCovariancePolicy, usesRotationVectorAccuracyEstimateWhenPresent)
@@ -49,10 +49,10 @@ TEST(Bno086OrientationCovariancePolicy, enforcesMinimumSigmaWhenEstimateIsTooSma
   EXPECT_TRUE(result.has_accuracy_estimate);
   EXPECT_NEAR(result.accuracy_estimate_rad, 1.0 / 4096.0, 1e-12);
   EXPECT_EQ(result.source, OrientationCovarianceSource::RotationVectorAccuracyEstimate);
-  EXPECT_DOUBLE_EQ(result.sigma_rad, 0.02);
-  EXPECT_DOUBLE_EQ(result.covariance_rad2[0][0], 0.0004);
-  EXPECT_DOUBLE_EQ(result.covariance_rad2[1][1], 0.0004);
-  EXPECT_DOUBLE_EQ(result.covariance_rad2[2][2], 0.0004);
+  EXPECT_DOUBLE_EQ(result.sigma_rad, 0.012);
+  EXPECT_DOUBLE_EQ(result.covariance_rad2[0][0], 0.000144);
+  EXPECT_DOUBLE_EQ(result.covariance_rad2[1][1], 0.000144);
+  EXPECT_DOUBLE_EQ(result.covariance_rad2[2][2], 0.000144);
 }
 
 TEST(Bno086OrientationCovariancePolicy, fallsBackToBucketSigmaWhenAccuracyEstimateIsInvalid)
@@ -62,10 +62,10 @@ TEST(Bno086OrientationCovariancePolicy, fallsBackToBucketSigmaWhenAccuracyEstima
   EXPECT_FALSE(result.has_accuracy_estimate);
   EXPECT_DOUBLE_EQ(result.accuracy_estimate_rad, 0.0);
   EXPECT_EQ(result.source, OrientationCovarianceSource::AccuracyBucketFallback);
-  EXPECT_DOUBLE_EQ(result.sigma_rad, 0.09);
-  EXPECT_DOUBLE_EQ(result.covariance_rad2[0][0], 0.0081);
-  EXPECT_DOUBLE_EQ(result.covariance_rad2[1][1], 0.0081);
-  EXPECT_DOUBLE_EQ(result.covariance_rad2[2][2], 0.0081);
+  EXPECT_DOUBLE_EQ(result.sigma_rad, 0.03);
+  EXPECT_DOUBLE_EQ(result.covariance_rad2[0][0], 0.0009);
+  EXPECT_DOUBLE_EQ(result.covariance_rad2[1][1], 0.0009);
+  EXPECT_DOUBLE_EQ(result.covariance_rad2[2][2], 0.0009);
 }
 
 TEST(Bno086OrientationCovariancePolicy,
@@ -76,8 +76,8 @@ TEST(Bno086OrientationCovariancePolicy,
   EXPECT_FALSE(result.has_accuracy_estimate);
   EXPECT_DOUBLE_EQ(result.accuracy_estimate_rad, 0.0);
   EXPECT_EQ(result.source, OrientationCovarianceSource::AccuracyBucketFallback);
-  EXPECT_DOUBLE_EQ(result.sigma_rad, 0.045);
-  EXPECT_DOUBLE_EQ(result.covariance_rad2[0][0], 0.002025);
+  EXPECT_DOUBLE_EQ(result.sigma_rad, 0.012);
+  EXPECT_DOUBLE_EQ(result.covariance_rad2[0][0], 0.000144);
 }
 
 TEST(Bno086OrientationCovariancePolicy, sourceNamesAreStable)
