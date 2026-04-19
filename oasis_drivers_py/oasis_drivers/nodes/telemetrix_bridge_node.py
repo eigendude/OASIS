@@ -11,6 +11,7 @@
 import threading
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import List
 from typing import Optional
 from typing import Tuple
@@ -30,6 +31,7 @@ from oasis_drivers.ros.ros_translator import RosTranslator
 from oasis_drivers.telemetrix.telemetrix_bridge import TelemetrixBridge
 from oasis_drivers.telemetrix.telemetrix_callback import TelemetrixCallback
 from oasis_drivers.telemetrix.telemetrix_config_cache import TelemetrixConfigCache
+from oasis_drivers.telemetrix.telemetrix_config_store import TelemetrixConfigStore
 from oasis_drivers.telemetrix.telemetrix_types import AnalogMode
 from oasis_drivers.telemetrix.telemetrix_types import DigitalMode
 from oasis_msgs.msg import AirQuality as AirQualityMsg
@@ -71,6 +73,7 @@ NODE_NAME = "telemetrix_bridge"
 
 # ROS parameters
 PARAM_COM_PORT = "com_port"
+PARAM_CACHE_PATH = "cache_path"
 PARAM_PING_PERIOD_S = "ping_period_s"
 PARAM_PING_TIMEOUT_S = "ping_timeout_s"
 PARAM_RECONNECT_DELAY_S = "reconnect_delay_s"
@@ -152,12 +155,14 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         # Initialize rclpy.node.NODE
         super().__init__(NODE_NAME)
         self.declare_parameter(PARAM_COM_PORT, DEFAULT_COM_PORT)
+        self.declare_parameter(PARAM_CACHE_PATH, "")
         self.declare_parameter(PARAM_PING_PERIOD_S, DEFAULT_PING_PERIOD_S)
         self.declare_parameter(PARAM_PING_TIMEOUT_S, DEFAULT_PING_TIMEOUT_S)
         self.declare_parameter(PARAM_RECONNECT_DELAY_S, DEFAULT_RECONNECT_DELAY_S)
 
         # Initialize members
         self._com_port: str = str(self.get_parameter(PARAM_COM_PORT).value)
+        configured_cache_path: str = str(self.get_parameter(PARAM_CACHE_PATH).value)
         ping_period_s: float = float(self.get_parameter(PARAM_PING_PERIOD_S).value)
         self._ping_timeout_s: float = float(
             self.get_parameter(PARAM_PING_TIMEOUT_S).value
@@ -165,7 +170,15 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         self._reconnect_delay_s: float = float(
             self.get_parameter(PARAM_RECONNECT_DELAY_S).value
         )
-        self._config_cache: TelemetrixConfigCache = TelemetrixConfigCache()
+        cache_store: TelemetrixConfigStore = TelemetrixConfigStore(
+            (
+                TelemetrixConfigStore.default_path(self._com_port)
+                if configured_cache_path == ""
+                else Path(configured_cache_path)
+            )
+        )
+        self._config_cache: TelemetrixConfigCache = TelemetrixConfigCache(cache_store)
+        self._config_cache.load(self.get_logger())
         self._bridge = TelemetrixBridge(self, self._com_port)
         self._initialized: bool = self._bridge.initialize_with_retries()
         self._ping_failed: bool = False
@@ -227,6 +240,15 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
             self.get_logger().error(
                 "Telemetrix bridge failed to initialize, will retry on ping"
             )
+        else:
+            try:
+                self.get_logger().info("Replaying persisted Telemetrix config")
+                self._config_cache.replay(self._bridge, self.get_logger())
+            except RuntimeError as exc:
+                self.get_logger().warning(
+                    "Persisted Telemetrix config replay had failures"
+                )
+                self.get_logger().warning(f"Replay failure: {exc!r}")
 
         # Command topic subscriptions
         self._cpu_fan_write_sub = self.create_subscription(
@@ -484,11 +506,13 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         self.destroy_node()
 
     def _on_digital_write_cmd(self, msg: DigitalWriteCommandMsg) -> None:
-        if not self._initialized:
-            return
-
         digital_pin: int = msg.digital_pin
         digital_value: bool = msg.digital_value
+
+        self._config_cache.record_digital_write(digital_pin, digital_value)
+
+        if not self._initialized:
+            return
 
         self.get_logger().debug(
             f"[cmd] Setting digital pin {digital_pin} to {'HIGH' if digital_value else 'LOW'}"
@@ -497,11 +521,13 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         self._bridge.digital_write(digital_pin, digital_value)
 
     def _on_pwm_write_cmd(self, msg: PWMWriteCommandMsg) -> None:
-        if not self._initialized:
-            return
-
         digital_pin: int = msg.digital_pin
         duty_cycle: float = msg.duty_cycle
+
+        self._config_cache.record_pwm_write(digital_pin, duty_cycle)
+
+        if not self._initialized:
+            return
 
         self.get_logger().debug(
             f"[cmd] Setting PWM on pin {digital_pin} to duty cycle {duty_cycle}"
@@ -510,11 +536,13 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         self._bridge.pwm_write_async(digital_pin, duty_cycle)
 
     def _on_servo_write_cmd(self, msg: ServoWriteCommandMsg) -> None:
-        if not self._initialized:
-            return
-
         digital_pin: int = msg.digital_pin
         position: float = msg.position
+
+        self._config_cache.record_servo_write(digital_pin, position)
+
+        if not self._initialized:
+            return
 
         self.get_logger().debug(
             f"[cmd] Setting servo on pin {digital_pin} to position {position}"
@@ -523,11 +551,13 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         self._bridge.servo_write(digital_pin, position)
 
     def _on_cpu_fan_write_cmd(self, msg: PWMWriteCommandMsg) -> None:
-        if not self._initialized:
-            return
-
         digital_pin: int = msg.digital_pin
         duty_cycle: float = msg.duty_cycle
+
+        self._config_cache.record_cpu_fan_write(digital_pin, duty_cycle)
+
+        if not self._initialized:
+            return
 
         self.get_logger().debug(
             f"[cmd] Setting CPU fan on pin {digital_pin} to duty cycle {duty_cycle}"
@@ -755,6 +785,8 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
             f"Setting CPU fan on pin {digital_pin} to duty cycle {duty_cycle}"
         )
 
+        self._config_cache.record_cpu_fan_write(digital_pin, duty_cycle)
+
         # Perform service
         self._bridge.cpu_fan_write(digital_pin, duty_cycle)
 
@@ -793,6 +825,8 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         self.get_logger().info(
             f"Setting digital pin {digital_pin} value to {'HIGH' if digital_value else 'LOW'}"
         )
+
+        self._config_cache.record_digital_write(digital_pin, digital_value)
 
         # Perform service
         self._bridge.digital_write(digital_pin, digital_value)
@@ -894,6 +928,8 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         self.get_logger().info(
             f"Setting PWM on pin {digital_pin} to duty cycle {duty_cycle}"
         )
+
+        self._config_cache.record_pwm_write(digital_pin, duty_cycle)
 
         # Perform service
         self._bridge.pwm_write(digital_pin, duty_cycle)
@@ -1020,6 +1056,8 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         self.get_logger().info(
             f"Setting servo on pin {digital_pin} to position {position}"
         )
+
+        self._config_cache.record_servo_write(digital_pin, position)
 
         # Perform service
         self._bridge.servo_write(digital_pin, position)
