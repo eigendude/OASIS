@@ -71,6 +71,9 @@ Requirements:
 - full covariances are preserved when valid
 - if `orientation_covariance[0] == -1`, orientation covariance is treated as
   unknown per ROS convention
+- upstream IMU orientation covariance is driver-owned; the current BNO086
+  driver maps SH-2 orientation accuracy into the ROS covariance contract
+  before AHRS sees the sample
 
 Reject the sample if quaternion or covariance data is non-finite, or if the IMU
 frame does not match the expected `imu_link` policy.
@@ -138,6 +141,23 @@ Covariance mapping uses the same rotation:
 - `Σ_qB = R_BI * Σ_qI * R_BIᵀ`
 - `Σ_ωB = R_BI * Σ_ωI * R_BIᵀ`
 - `Σ_aB = R_BI * Σ_aI * R_BIᵀ`
+
+If mounted roll or pitch uncertainty looks too loose or too tight, adjust the
+driver covariance policy first. AHRS preserves and rotates upstream covariance;
+it does not reinterpret SH-2 quality signals into a different orientation
+noise model.
+
+Policy boundary:
+
+- AHRS treats driver-provided `orientation_covariance` as the upstream sensor
+  contract
+- when mounting is applied, AHRS rotates that full `3 x 3` covariance from
+  `imu_link` into `base_link`
+- AHRS does not diagonalize, tighten, rescale, or replace orientation
+  covariance for convenience
+- if the upstream orientation covariance is poor, that is an upstream
+  sensor/driver issue to fix explicitly rather than something AHRS silently
+  "corrects"
 
 Because `imu` and `gravity` are both expected in `imu_link`, the same mounting
 rotation is used to express the gravity vector and its covariance in `{B}`
@@ -235,6 +255,8 @@ Recommended primary topic:
 - `header.frame_id = "base_link"`
 - `orientation = q_WB`
 - `orientation_covariance = Σ_qB` when known
+- if `imu.orientation_covariance[0] == -1`, `ahrs/imu` preserves the ROS
+  "unknown orientation covariance" sentinel
 - `angular_velocity = ω_B`
 - `angular_velocity_covariance = Σ_ωB` when known
 - `linear_acceleration = a_B`
@@ -259,6 +281,7 @@ wrapper around the same attitude sample:
 
 - pose position = zero
 - pose orientation = `q_WB`
+- pose orientation covariance block reuses the same rotated `Σ_qB` when known
 - twist angular = `ω_B`
 - linear velocity = unknown or explicit zero by policy
 

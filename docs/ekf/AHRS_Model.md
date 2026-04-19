@@ -135,6 +135,10 @@ Covariances:
 - publish transformed covariance via Jacobians or frame rotation as required
 - rotate IMU and gravity covariance blocks when measurements are mapped through
   mounting transforms
+- treat upstream IMU orientation covariance as driver-owned policy data; AHRS
+  should preserve and rotate it rather than remapping SH-2 quality buckets
+- treat driver-provided orientation covariance as the upstream contract rather
+  than silently tightening or replacing it in AHRS
 
 ---
 
@@ -247,6 +251,11 @@ Given `g_I`:
 - `g_B = R_BI * g_I`
 
 Covariances rotate the same way and remain full.
+
+For orientation in particular, AHRS should rotate the `imu_link` covariance
+into `base_link` under `T_BI` and then publish that rotated matrix unchanged.
+If the incoming orientation covariance is poor or unknown, the runtime should
+preserve that fact instead of inventing a new covariance model.
 
 This model assumes `T_BI` has already been sourced before runtime processing.
 Boot-time mounting solve behavior belongs in `AHRS_Mounting.md`, not here.
