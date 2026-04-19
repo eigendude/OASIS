@@ -8,6 +8,8 @@
 #
 ################################################################################
 
+# mypy: disable-error-code=import-not-found
+
 """Tests for the ROS-facing AHRS tilt node contract."""
 
 from __future__ import annotations
@@ -16,12 +18,17 @@ import math
 from typing import Any
 
 import pytest
-
-
-rclpy = pytest.importorskip("rclpy")
-
+import rclpy
+from geometry_msgs.msg import (
+    AccelWithCovarianceStamped as AccelWithCovarianceStampedMsg,
+)
+from geometry_msgs.msg import TransformStamped as TransformStampedMsg
 from sensor_msgs.msg import Imu as ImuMsg
+from tf2_ros import TransformException
 
+from oasis_control.localization.common.measurements.tilt_covariance import (
+    gravity_covariance_to_tilt_variance_rad2,
+)
 from oasis_control.nodes.ahrs_tilt_node import AhrsTiltNode
 
 
@@ -36,6 +43,21 @@ class FakePublisher:
         self.messages.append(message)
 
 
+class FakeTfBuffer:
+    def __init__(self, transform_message: TransformStampedMsg | None) -> None:
+        self._transform_message: TransformStampedMsg | None = transform_message
+
+    def lookup_transform(
+        self, target_frame: str, source_frame: str, time: Any
+    ) -> TransformStampedMsg:
+        if self._transform_message is None:
+            raise TransformException(
+                f"missing transform {target_frame} <- {source_frame}"
+            )
+
+        return self._transform_message
+
+
 @pytest.fixture(scope="module", autouse=True)
 def rclpy_context() -> Any:
     rclpy.init()
@@ -45,93 +67,131 @@ def rclpy_context() -> Any:
         rclpy.shutdown()
 
 
-def test_level_input_publishes_level_tilt_in_base_link() -> None:
-    node: AhrsTiltNode = AhrsTiltNode()
+def test_tilt_mean_still_comes_from_ahrs_orientation() -> None:
+    node: AhrsTiltNode = AhrsTiltNode(tf_buffer=FakeTfBuffer(make_mounting_transform()))
     fake_pub: FakePublisher = FakePublisher()
     node._tilt_pub = fake_pub
 
     try:
+        node._handle_gravity(
+            make_gravity_message(
+                gravity_vector=(3.0, 1.0, -9.2),
+                covariance=gravity_covariance_3x3_to_row_major(
+                    (
+                        (0.04, 0.0, 0.0),
+                        (0.0, 0.04, 0.0),
+                        (0.0, 0.0, 0.04),
+                    )
+                ),
+            )
+        )
         node._handle_imu(
             make_imu_message(
                 orientation_xyzw=quaternion_from_roll_pitch_yaw(
-                    roll_rad=0.0,
-                    pitch_rad=0.0,
-                    yaw_rad=0.0,
+                    roll_rad=math.radians(15.0),
+                    pitch_rad=math.radians(-10.0),
+                    yaw_rad=math.radians(75.0),
                 )
             )
         )
 
         assert len(fake_pub.messages) == 1
 
-        tilt_message: ImuMsg = fake_pub.messages[-1]
-        assert tilt_message.header.frame_id == "base_link"
-        assert math.isclose(tilt_message.orientation.x, 0.0, abs_tol=1.0e-9)
-        assert math.isclose(tilt_message.orientation.y, 0.0, abs_tol=1.0e-9)
-        assert math.isclose(tilt_message.orientation.z, 0.0, abs_tol=1.0e-9)
-        assert math.isclose(tilt_message.orientation.w, 1.0, abs_tol=1.0e-9)
-        assert tilt_message.orientation_covariance[8] == 1.0e6
-        assert tilt_message.angular_velocity_covariance == UNKNOWN_COVARIANCE
-        assert tilt_message.linear_acceleration_covariance == UNKNOWN_COVARIANCE
-    finally:
-        node.stop()
-
-
-def test_roll_input_publishes_expected_roll_with_near_zero_pitch() -> None:
-    node: AhrsTiltNode = AhrsTiltNode()
-    fake_pub: FakePublisher = FakePublisher()
-    node._tilt_pub = fake_pub
-
-    try:
-        roll_angle_rad: float = math.radians(30.0)
-        node._handle_imu(
-            make_imu_message(
-                orientation_xyzw=quaternion_from_roll_pitch_yaw(
-                    roll_rad=roll_angle_rad,
-                    pitch_rad=0.0,
-                    yaw_rad=0.0,
-                )
-            )
-        )
-
-        assert len(fake_pub.messages) == 1
-
+        roll_rad: float
+        pitch_rad: float
+        yaw_rad: float
         roll_rad, pitch_rad, yaw_rad = quaternion_to_euler(fake_pub.messages[-1])
-        assert math.isclose(roll_rad, roll_angle_rad, abs_tol=1.0e-6)
-        assert math.isclose(pitch_rad, 0.0, abs_tol=1.0e-6)
+        assert math.isclose(roll_rad, math.radians(15.0), abs_tol=1.0e-6)
+        assert math.isclose(pitch_rad, math.radians(-10.0), abs_tol=1.0e-6)
         assert math.isclose(yaw_rad, 0.0, abs_tol=1.0e-6)
     finally:
         node.stop()
 
 
-def test_pitch_input_publishes_expected_pitch_with_near_zero_roll() -> None:
-    node: AhrsTiltNode = AhrsTiltNode()
+def test_tilt_covariance_comes_from_gravity_not_full_ahrs_covariance() -> None:
+    node: AhrsTiltNode = AhrsTiltNode(tf_buffer=FakeTfBuffer(make_mounting_transform()))
+    fake_pub: FakePublisher = FakePublisher()
+    node._tilt_pub = fake_pub
+
+    gravity_covariance: tuple[tuple[float, float, float], ...] = (
+        (0.04, 0.0, 0.0),
+        (0.0, 0.01, 0.0),
+        (0.0, 0.0, 0.09),
+    )
+    expected_variance_rad2: float = gravity_covariance_to_tilt_variance_rad2(
+        gravity_mps2=(0.0, 0.0, -9.81),
+        gravity_covariance_mps2_2=gravity_covariance,
+    )
+
+    try:
+        node._handle_gravity(
+            make_gravity_message(
+                covariance=gravity_covariance_3x3_to_row_major(gravity_covariance)
+            )
+        )
+        node._handle_imu(
+            make_imu_message(
+                orientation_xyzw=quaternion_from_roll_pitch_yaw(
+                    roll_rad=math.radians(20.0),
+                    pitch_rad=math.radians(-5.0),
+                    yaw_rad=math.radians(30.0),
+                ),
+                orientation_covariance=[
+                    10.0,
+                    1.0,
+                    2.0,
+                    1.0,
+                    20.0,
+                    3.0,
+                    2.0,
+                    3.0,
+                    40.0,
+                ],
+            )
+        )
+
+        assert len(fake_pub.messages) == 1
+        assert math.isclose(
+            fake_pub.messages[-1].orientation_covariance[0],
+            expected_variance_rad2,
+            abs_tol=1.0e-12,
+        )
+        assert math.isclose(
+            fake_pub.messages[-1].orientation_covariance[4],
+            expected_variance_rad2,
+            abs_tol=1.0e-12,
+        )
+        assert fake_pub.messages[-1].orientation_covariance[1] == 0.0
+        assert fake_pub.messages[-1].orientation_covariance[3] == 0.0
+    finally:
+        node.stop()
+
+
+def test_yaw_covariance_remains_large_and_unobserved() -> None:
+    node: AhrsTiltNode = AhrsTiltNode(tf_buffer=FakeTfBuffer(make_mounting_transform()))
     fake_pub: FakePublisher = FakePublisher()
     node._tilt_pub = fake_pub
 
     try:
-        pitch_angle_rad: float = math.radians(20.0)
+        node._handle_gravity(make_gravity_message())
         node._handle_imu(
             make_imu_message(
                 orientation_xyzw=quaternion_from_roll_pitch_yaw(
                     roll_rad=0.0,
-                    pitch_rad=pitch_angle_rad,
+                    pitch_rad=0.0,
                     yaw_rad=0.0,
                 )
             )
         )
 
         assert len(fake_pub.messages) == 1
-
-        roll_rad, pitch_rad, yaw_rad = quaternion_to_euler(fake_pub.messages[-1])
-        assert math.isclose(roll_rad, 0.0, abs_tol=1.0e-6)
-        assert math.isclose(pitch_rad, pitch_angle_rad, abs_tol=1.0e-6)
-        assert math.isclose(yaw_rad, 0.0, abs_tol=1.0e-6)
+        assert fake_pub.messages[-1].orientation_covariance[8] == 1.0e6
     finally:
         node.stop()
 
 
-def test_yaw_only_input_publishes_level_tilt() -> None:
-    node: AhrsTiltNode = AhrsTiltNode()
+def test_missing_gravity_publishes_unknown_covariance() -> None:
+    node: AhrsTiltNode = AhrsTiltNode(tf_buffer=FakeTfBuffer(make_mounting_transform()))
     fake_pub: FakePublisher = FakePublisher()
     node._tilt_pub = fake_pub
 
@@ -139,67 +199,144 @@ def test_yaw_only_input_publishes_level_tilt() -> None:
         node._handle_imu(
             make_imu_message(
                 orientation_xyzw=quaternion_from_roll_pitch_yaw(
-                    roll_rad=0.0,
-                    pitch_rad=0.0,
+                    roll_rad=math.radians(5.0),
+                    pitch_rad=math.radians(3.0),
                     yaw_rad=math.radians(45.0),
                 )
             )
         )
 
         assert len(fake_pub.messages) == 1
-
-        roll_rad, pitch_rad, yaw_rad = quaternion_to_euler(fake_pub.messages[-1])
-        assert math.isclose(roll_rad, 0.0, abs_tol=1.0e-6)
-        assert math.isclose(pitch_rad, 0.0, abs_tol=1.0e-6)
-        assert math.isclose(yaw_rad, 0.0, abs_tol=1.0e-6)
+        assert fake_pub.messages[-1].orientation_covariance == UNKNOWN_COVARIANCE
     finally:
         node.stop()
 
 
-def test_roll_pitch_tilt_is_invariant_to_input_yaw() -> None:
-    node: AhrsTiltNode = AhrsTiltNode()
+def test_stale_gravity_publishes_unknown_covariance() -> None:
+    node: AhrsTiltNode = AhrsTiltNode(tf_buffer=FakeTfBuffer(make_mounting_transform()))
     fake_pub: FakePublisher = FakePublisher()
     node._tilt_pub = fake_pub
 
     try:
+        node._handle_gravity(make_gravity_message(timestamp_ns=0))
         node._handle_imu(
             make_imu_message(
+                timestamp_ns=1_000_000_000,
                 orientation_xyzw=quaternion_from_roll_pitch_yaw(
-                    roll_rad=math.radians(15.0),
-                    pitch_rad=math.radians(-10.0),
+                    roll_rad=0.0,
+                    pitch_rad=0.0,
                     yaw_rad=0.0,
-                )
-            )
-        )
-        node._handle_imu(
-            make_imu_message(
-                orientation_xyzw=quaternion_from_roll_pitch_yaw(
-                    roll_rad=math.radians(15.0),
-                    pitch_rad=math.radians(-10.0),
-                    yaw_rad=math.radians(120.0),
-                )
+                ),
             )
         )
 
-        assert len(fake_pub.messages) == 2
-
-        first_roll_rad, first_pitch_rad, first_yaw_rad = quaternion_to_euler(
-            fake_pub.messages[0]
-        )
-        second_roll_rad, second_pitch_rad, second_yaw_rad = quaternion_to_euler(
-            fake_pub.messages[1]
-        )
-
-        assert math.isclose(first_roll_rad, second_roll_rad, abs_tol=1.0e-6)
-        assert math.isclose(first_pitch_rad, second_pitch_rad, abs_tol=1.0e-6)
-        assert math.isclose(first_yaw_rad, 0.0, abs_tol=1.0e-6)
-        assert math.isclose(second_yaw_rad, 0.0, abs_tol=1.0e-6)
+        assert len(fake_pub.messages) == 1
+        assert fake_pub.messages[-1].orientation_covariance == UNKNOWN_COVARIANCE
     finally:
         node.stop()
 
 
-def test_wrong_frame_is_rejected() -> None:
-    node: AhrsTiltNode = AhrsTiltNode()
+def test_level_case_covariance_matches_gravity_tilt_scale() -> None:
+    node: AhrsTiltNode = AhrsTiltNode(tf_buffer=FakeTfBuffer(make_mounting_transform()))
+    fake_pub: FakePublisher = FakePublisher()
+    node._tilt_pub = fake_pub
+
+    gravity_covariance: tuple[tuple[float, float, float], ...] = (
+        (0.04, 0.0, 0.0),
+        (0.0, 0.04, 0.0),
+        (0.0, 0.0, 0.04),
+    )
+    expected_variance_rad2: float = gravity_covariance_to_tilt_variance_rad2(
+        gravity_mps2=(0.0, 0.0, -9.81),
+        gravity_covariance_mps2_2=gravity_covariance,
+    )
+
+    try:
+        node._handle_gravity(
+            make_gravity_message(
+                covariance=gravity_covariance_3x3_to_row_major(gravity_covariance)
+            )
+        )
+        node._handle_imu(
+            make_imu_message(
+                orientation_xyzw=quaternion_from_roll_pitch_yaw(
+                    roll_rad=0.0,
+                    pitch_rad=0.0,
+                    yaw_rad=0.0,
+                )
+            )
+        )
+
+        assert len(fake_pub.messages) == 1
+        assert math.isclose(
+            fake_pub.messages[-1].orientation_covariance[0],
+            expected_variance_rad2,
+            abs_tol=1.0e-12,
+        )
+        assert math.isclose(
+            fake_pub.messages[-1].orientation_covariance[4],
+            expected_variance_rad2,
+            abs_tol=1.0e-12,
+        )
+    finally:
+        node.stop()
+
+
+def test_gravity_covariance_is_rotated_into_base_link_before_scaling() -> None:
+    node: AhrsTiltNode = AhrsTiltNode(
+        tf_buffer=FakeTfBuffer(make_mounting_transform(yaw_rad=math.radians(45.0)))
+    )
+    fake_pub: FakePublisher = FakePublisher()
+    node._tilt_pub = fake_pub
+
+    gravity_covariance_imu: tuple[tuple[float, float, float], ...] = (
+        (0.09, 0.0, 0.0),
+        (0.0, 0.01, 0.0),
+        (0.0, 0.0, 0.01),
+    )
+    rotated_gravity_covariance_base: tuple[tuple[float, float, float], ...] = (
+        (0.05, 0.04, 0.0),
+        (0.04, 0.05, 0.0),
+        (0.0, 0.0, 0.01),
+    )
+    expected_variance_rad2: float = gravity_covariance_to_tilt_variance_rad2(
+        gravity_mps2=(0.0, 0.0, -9.81),
+        gravity_covariance_mps2_2=rotated_gravity_covariance_base,
+    )
+
+    try:
+        node._handle_gravity(
+            make_gravity_message(
+                covariance=gravity_covariance_3x3_to_row_major(gravity_covariance_imu)
+            )
+        )
+        node._handle_imu(
+            make_imu_message(
+                orientation_xyzw=quaternion_from_roll_pitch_yaw(
+                    roll_rad=0.0,
+                    pitch_rad=0.0,
+                    yaw_rad=0.0,
+                )
+            )
+        )
+
+        assert len(fake_pub.messages) == 1
+        assert math.isclose(
+            fake_pub.messages[-1].orientation_covariance[0],
+            expected_variance_rad2,
+            abs_tol=1.0e-12,
+        )
+        assert math.isclose(
+            fake_pub.messages[-1].orientation_covariance[4],
+            expected_variance_rad2,
+            abs_tol=1.0e-12,
+        )
+    finally:
+        node.stop()
+
+
+def test_wrong_imu_frame_is_rejected() -> None:
+    node: AhrsTiltNode = AhrsTiltNode(tf_buffer=FakeTfBuffer(make_mounting_transform()))
     fake_pub: FakePublisher = FakePublisher()
     node._tilt_pub = fake_pub
 
@@ -220,103 +357,61 @@ def test_wrong_frame_is_rejected() -> None:
         node.stop()
 
 
-def test_yaw_covariance_remains_large_and_unobserved() -> None:
-    node: AhrsTiltNode = AhrsTiltNode()
-    fake_pub: FakePublisher = FakePublisher()
-    node._tilt_pub = fake_pub
+def make_mounting_transform(yaw_rad: float = 0.0) -> TransformStampedMsg:
+    transform_message: TransformStampedMsg = TransformStampedMsg()
+    transform_message.header.frame_id = "base_link"
+    transform_message.child_frame_id = "imu_link"
+    quaternion_xyzw: tuple[float, float, float, float] = quaternion_from_roll_pitch_yaw(
+        roll_rad=0.0,
+        pitch_rad=0.0,
+        yaw_rad=yaw_rad,
+    )
+    transform_message.transform.rotation.x = quaternion_xyzw[0]
+    transform_message.transform.rotation.y = quaternion_xyzw[1]
+    transform_message.transform.rotation.z = quaternion_xyzw[2]
+    transform_message.transform.rotation.w = quaternion_xyzw[3]
+    return transform_message
 
-    try:
-        node._handle_imu(
-            make_imu_message(
-                orientation_xyzw=quaternion_from_roll_pitch_yaw(
-                    roll_rad=0.0,
-                    pitch_rad=0.0,
-                    yaw_rad=0.0,
-                )
+
+def make_gravity_message(
+    *,
+    frame_id: str = "imu_link",
+    gravity_vector: tuple[float, float, float] = (0.0, 0.0, -9.81),
+    timestamp_ns: int = 950_000_000,
+    covariance: list[float] | None = None,
+) -> AccelWithCovarianceStampedMsg:
+    message: AccelWithCovarianceStampedMsg = AccelWithCovarianceStampedMsg()
+    message.header.frame_id = frame_id
+    message.header.stamp.sec = int(timestamp_ns // 1_000_000_000)
+    message.header.stamp.nanosec = int(timestamp_ns % 1_000_000_000)
+    message.accel.accel.linear.x = gravity_vector[0]
+    message.accel.accel.linear.y = gravity_vector[1]
+    message.accel.accel.linear.z = gravity_vector[2]
+    message.accel.covariance = (
+        covariance
+        if covariance is not None
+        else gravity_covariance_3x3_to_row_major(
+            (
+                (0.04, 0.0, 0.0),
+                (0.0, 0.04, 0.0),
+                (0.0, 0.0, 0.04),
             )
         )
-
-        assert len(fake_pub.messages) == 1
-        assert fake_pub.messages[-1].orientation_covariance[8] == 1.0e6
-    finally:
-        node.stop()
-
-
-def test_roll_and_pitch_covariance_are_preserved_from_input() -> None:
-    node: AhrsTiltNode = AhrsTiltNode()
-    fake_pub: FakePublisher = FakePublisher()
-    node._tilt_pub = fake_pub
-
-    try:
-        input_covariance: list[float] = [
-            0.1,
-            0.01,
-            0.02,
-            0.01,
-            0.2,
-            0.03,
-            0.02,
-            0.03,
-            0.4,
-        ]
-        node._handle_imu(
-            make_imu_message(
-                orientation_xyzw=quaternion_from_roll_pitch_yaw(
-                    roll_rad=math.radians(10.0),
-                    pitch_rad=math.radians(-5.0),
-                    yaw_rad=math.radians(15.0),
-                ),
-                orientation_covariance=input_covariance,
-            )
-        )
-
-        assert len(fake_pub.messages) == 1
-        assert fake_pub.messages[-1].orientation_covariance == [
-            0.1,
-            0.01,
-            0.0,
-            0.01,
-            0.2,
-            0.0,
-            0.0,
-            0.0,
-            1.0e6,
-        ]
-    finally:
-        node.stop()
-
-
-def test_unknown_input_orientation_covariance_stays_honest() -> None:
-    node: AhrsTiltNode = AhrsTiltNode()
-    fake_pub: FakePublisher = FakePublisher()
-    node._tilt_pub = fake_pub
-
-    try:
-        node._handle_imu(
-            make_imu_message(
-                orientation_xyzw=quaternion_from_roll_pitch_yaw(
-                    roll_rad=0.0,
-                    pitch_rad=0.0,
-                    yaw_rad=0.0,
-                ),
-                orientation_covariance=UNKNOWN_COVARIANCE,
-            )
-        )
-
-        assert len(fake_pub.messages) == 1
-        assert fake_pub.messages[-1].orientation_covariance == UNKNOWN_COVARIANCE
-    finally:
-        node.stop()
+    )
+    return message
 
 
 def make_imu_message(
     *,
     frame_id: str = "base_link",
     orientation_xyzw: tuple[float, float, float, float],
+    timestamp_ns: int = 1_000_000_000,
     orientation_covariance: list[float] | None = None,
 ) -> ImuMsg:
     message: ImuMsg = ImuMsg()
     message.header.frame_id = frame_id
+    message.header.stamp.sec = int(timestamp_ns // 1_000_000_000)
+    message.header.stamp.nanosec = int(timestamp_ns % 1_000_000_000)
     message.orientation.x = orientation_xyzw[0]
     message.orientation.y = orientation_xyzw[1]
     message.orientation.z = orientation_xyzw[2]
@@ -326,13 +421,13 @@ def make_imu_message(
         if orientation_covariance is not None
         else [
             0.1,
-            0.0,
-            0.0,
-            0.0,
+            0.01,
+            0.02,
+            0.01,
             0.2,
-            0.0,
-            0.0,
-            0.0,
+            0.03,
+            0.02,
+            0.03,
             0.3,
         ]
     )
@@ -364,6 +459,22 @@ def make_imu_message(
     return message
 
 
+def gravity_covariance_3x3_to_row_major(
+    covariance_3x3: tuple[tuple[float, float, float], ...],
+) -> list[float]:
+    row_major_covariance: list[float] = [0.0] * 36
+    row_major_covariance[0] = covariance_3x3[0][0]
+    row_major_covariance[1] = covariance_3x3[0][1]
+    row_major_covariance[2] = covariance_3x3[0][2]
+    row_major_covariance[6] = covariance_3x3[1][0]
+    row_major_covariance[7] = covariance_3x3[1][1]
+    row_major_covariance[8] = covariance_3x3[1][2]
+    row_major_covariance[12] = covariance_3x3[2][0]
+    row_major_covariance[13] = covariance_3x3[2][1]
+    row_major_covariance[14] = covariance_3x3[2][2]
+    return row_major_covariance
+
+
 def quaternion_from_roll_pitch_yaw(
     *, roll_rad: float, pitch_rad: float, yaw_rad: float
 ) -> tuple[float, float, float, float]:
@@ -391,23 +502,29 @@ def quaternion_from_roll_pitch_yaw(
 
 
 def quaternion_to_euler(message: ImuMsg) -> tuple[float, float, float]:
-    qx: float = float(message.orientation.x)
-    qy: float = float(message.orientation.y)
-    qz: float = float(message.orientation.z)
-    qw: float = float(message.orientation.w)
+    quaternion_x: float = float(message.orientation.x)
+    quaternion_y: float = float(message.orientation.y)
+    quaternion_z: float = float(message.orientation.z)
+    quaternion_w: float = float(message.orientation.w)
 
-    sinr_cosp: float = 2.0 * (qw * qx + qy * qz)
-    cosr_cosp: float = 1.0 - 2.0 * (qx * qx + qy * qy)
-    roll_rad: float = math.atan2(sinr_cosp, cosr_cosp)
+    sin_roll_cos_pitch: float = 2.0 * (
+        quaternion_w * quaternion_x + quaternion_y * quaternion_z
+    )
+    cos_roll_cos_pitch: float = 1.0 - 2.0 * (
+        quaternion_x * quaternion_x + quaternion_y * quaternion_y
+    )
+    roll_rad: float = math.atan2(sin_roll_cos_pitch, cos_roll_cos_pitch)
 
-    sinp: float = 2.0 * (qw * qy - qz * qx)
-    if abs(sinp) >= 1.0:
-        pitch_rad: float = math.copysign(math.pi / 2.0, sinp)
-    else:
-        pitch_rad = math.asin(sinp)
+    sin_pitch: float = 2.0 * (quaternion_w * quaternion_y - quaternion_z * quaternion_x)
+    clamped_sin_pitch: float = max(-1.0, min(1.0, sin_pitch))
+    pitch_rad: float = math.asin(clamped_sin_pitch)
 
-    siny_cosp: float = 2.0 * (qw * qz + qx * qy)
-    cosy_cosp: float = 1.0 - 2.0 * (qy * qy + qz * qz)
-    yaw_rad: float = math.atan2(siny_cosp, cosy_cosp)
+    sin_yaw_cos_pitch: float = 2.0 * (
+        quaternion_w * quaternion_z + quaternion_x * quaternion_y
+    )
+    cos_yaw_cos_pitch: float = 1.0 - 2.0 * (
+        quaternion_y * quaternion_y + quaternion_z * quaternion_z
+    )
+    yaw_rad: float = math.atan2(sin_yaw_cos_pitch, cos_yaw_cos_pitch)
 
     return (roll_rad, pitch_rad, yaw_rad)

@@ -16,10 +16,7 @@ import math
 from typing import Any
 
 import pytest  # type: ignore[import-not-found]
-
-
-rclpy = pytest.importorskip("rclpy")
-
+import rclpy
 from sensor_msgs.msg import Imu as ImuMsg
 
 from oasis_control.localization.ahrs.processing.boot_mounting_calibrator import (
@@ -198,8 +195,26 @@ def test_boot_mounting_calibration_publishes_measured_fixed_tf() -> None:
             0.0,
             abs_tol=1.0e-6,
         )
+
+        solved_mounting_yaw_rad = math.atan2(
+            2.0
+            * (
+                mounting_transform.transform.rotation.w
+                * mounting_transform.transform.rotation.z
+                + mounting_transform.transform.rotation.x
+                * mounting_transform.transform.rotation.y
+            ),
+            1.0
+            - 2.0
+            * (
+                mounting_transform.transform.rotation.y
+                * mounting_transform.transform.rotation.y
+                + mounting_transform.transform.rotation.z
+                * mounting_transform.transform.rotation.z
+            ),
+        )
         assert math.isclose(
-            mounting_transform.transform.rotation.z,
+            solved_mounting_yaw_rad,
             0.0,
             abs_tol=1.0e-6,
         )
@@ -289,8 +304,6 @@ def test_runtime_mounting_reduces_raw_driver_tilt_for_level_base() -> None:
 
         raw_tilt = tilt_estimator.update(
             orientation_xyzw=raw_driver_orientation_xyzw,
-            orientation_covariance_rad2=None,
-            orientation_covariance_unknown=True,
         )
         mounted_message: ImuMsg = imu_pub.messages[-1]
         mounted_tilt = tilt_estimator.update(
@@ -300,8 +313,6 @@ def test_runtime_mounting_reduces_raw_driver_tilt_for_level_base() -> None:
                 float(mounted_message.orientation.z),
                 float(mounted_message.orientation.w),
             ),
-            orientation_covariance_rad2=None,
-            orientation_covariance_unknown=True,
         )
 
         assert raw_tilt is not None
@@ -609,9 +620,9 @@ def test_imu_output_publishes_mapped_orientation_covariance_unchanged() -> None:
             )
         )
 
-        assert (
-            imu_pub.messages[-1].orientation_covariance
-            == ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR
+        assert imu_pub.messages[-1].orientation_covariance == pytest.approx(
+            ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR,
+            abs=1.0e-12,
         )
     finally:
         node.stop()
@@ -637,14 +648,41 @@ def test_odom_output_reuses_mapped_orientation_covariance_block() -> None:
         )
 
         pose_covariance = odom_pub.messages[-1].pose.covariance
-        assert pose_covariance[21] == ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR[0]
-        assert pose_covariance[22] == ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR[1]
-        assert pose_covariance[23] == ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR[2]
-        assert pose_covariance[27] == ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR[3]
-        assert pose_covariance[28] == ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR[4]
-        assert pose_covariance[29] == ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR[5]
-        assert pose_covariance[33] == ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR[6]
-        assert pose_covariance[34] == ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR[7]
-        assert pose_covariance[35] == ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR[8]
+        assert pose_covariance[21] == pytest.approx(
+            ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR[0],
+            abs=1.0e-12,
+        )
+        assert pose_covariance[22] == pytest.approx(
+            ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR[1],
+            abs=1.0e-12,
+        )
+        assert pose_covariance[23] == pytest.approx(
+            ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR[2],
+            abs=1.0e-12,
+        )
+        assert pose_covariance[27] == pytest.approx(
+            ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR[3],
+            abs=1.0e-12,
+        )
+        assert pose_covariance[28] == pytest.approx(
+            ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR[4],
+            abs=1.0e-12,
+        )
+        assert pose_covariance[29] == pytest.approx(
+            ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR[5],
+            abs=1.0e-12,
+        )
+        assert pose_covariance[33] == pytest.approx(
+            ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR[6],
+            abs=1.0e-12,
+        )
+        assert pose_covariance[34] == pytest.approx(
+            ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR[7],
+            abs=1.0e-12,
+        )
+        assert pose_covariance[35] == pytest.approx(
+            ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR[8],
+            abs=1.0e-12,
+        )
     finally:
         node.stop()

@@ -63,9 +63,6 @@ class _FakeLaunchDescription:
 def test_add_ahrs_node_configures_boot_mounting_calibration_params(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    pytest.importorskip("launch")
-    pytest.importorskip("launch_ros")
-
     import oasis_control.launch.control_descriptions as control_descriptions
 
     monkeypatch.setattr(control_descriptions, "Node", _FakeNode)
@@ -104,9 +101,6 @@ def test_add_ahrs_node_configures_boot_mounting_calibration_params(
 def test_add_speedometer_node_uses_mounted_ahrs_imu_remap(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    pytest.importorskip("launch")
-    pytest.importorskip("launch_ros")
-
     import oasis_control.launch.control_descriptions as control_descriptions
 
     monkeypatch.setattr(control_descriptions, "Node", _FakeNode)
@@ -128,9 +122,6 @@ def test_add_speedometer_node_uses_mounted_ahrs_imu_remap(
 def test_add_tilt_sensor_uses_raw_gravity_remap(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    pytest.importorskip("launch")
-    pytest.importorskip("launch_ros")
-
     import oasis_control.launch.control_descriptions as control_descriptions
 
     monkeypatch.setattr(control_descriptions, "Node", _FakeNode)
@@ -148,12 +139,9 @@ def test_add_tilt_sensor_uses_raw_gravity_remap(
     ]
 
 
-def test_add_ahrs_tilt_sensor_uses_mounted_ahrs_imu_remap(
+def test_add_ahrs_tilt_sensor_uses_mounted_ahrs_imu_and_raw_gravity_remaps(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    pytest.importorskip("launch")
-    pytest.importorskip("launch_ros")
-
     import oasis_control.launch.control_descriptions as control_descriptions
 
     monkeypatch.setattr(control_descriptions, "Node", _FakeNode)
@@ -166,6 +154,7 @@ def test_add_ahrs_tilt_sensor_uses_mounted_ahrs_imu_remap(
 
     tilt_action = launch_description.actions[0].kwargs
     assert tilt_action["remappings"] == [
+        ("gravity", "falcon/gravity"),
         ("imu", "falcon/ahrs/imu"),
         ("tilt", "falcon/ahrs/tilt"),
     ]

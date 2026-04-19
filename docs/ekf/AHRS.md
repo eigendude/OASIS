@@ -75,6 +75,11 @@ Requirements:
 - upstream IMU orientation covariance is driver-owned; the current BNO086
   driver maps SH-2 orientation accuracy into the ROS covariance contract
   before AHRS sees the sample
+- when the BNO086 Rotation Vector estimated-accuracy field is unavailable or
+  unusable, that upstream covariance may come from an explicit heuristic
+  fallback bucket table; those provisional values may be refined later from
+  real robot resting data, and AHRS preserves them rather than reinterpreting
+  them
 
 Reject the sample if quaternion or covariance data is non-finite, or if the IMU
 frame does not match the expected `imu_link` policy.
@@ -273,13 +278,38 @@ as tilt and speedometer may treat orientation, angular velocity, and linear
 acceleration as body-frame signals and should not compensate
 `imu_link -> base_link` mounting internally.
 
+The `ahrs/imu.orientation_covariance` topic contract remains full mounted AHRS
+attitude covariance. Downstream consumers must not reinterpret that matrix as a
+tilt-only uncertainty product.
+
 ### 5.3 Gravity-facing output or status
 
 The AHRS may publish a gravity status or debug topic, but the minimum contract
 is that gravity consistency results are reflected in diagnostics and any
 accept/reject policy.
 
-### 5.4 Optional odometry wrapper
+### 5.4 Tilt product
+
+The optional `ahrs/tilt` product is intentionally narrower than `ahrs/imu`:
+
+- the tilt mean comes from `ahrs/imu.orientation`
+- the published quaternion suppresses yaw by policy
+- the published roll/pitch covariance comes from the latest fresh raw
+  `gravity` measurement covariance after rotating `imu_link -> base_link`
+- the node keeps the latest valid gravity sample and uses it only when its
+  timestamp is not in the future and is no older than the current
+  `ahrs/imu` sample by the configured freshness window
+- if no fresh gravity covariance is available, `ahrs/tilt` publishes unknown
+  orientation covariance instead of reusing full `ahrs/imu` attitude
+  covariance
+- yaw remains intentionally unobserved and should carry a large variance
+
+`ahrs/tilt.orientation_covariance` must not be interpreted as full `3 x 3`
+attitude covariance. HUD or display code that only needs tilt should consume
+`ahrs/tilt` directly instead of collapsing `ahrs/imu.orientation_covariance`
+down to a 2D tilt sigma.
+
+### 5.5 Optional odometry wrapper
 
 Downstream consumers may still want `nav_msgs/Odometry`, so it should be a thin
 wrapper around the same attitude sample:
@@ -290,7 +320,7 @@ wrapper around the same attitude sample:
 - twist angular = `ω_B`
 - linear velocity = unknown or explicit zero by policy
 
-### 5.5 Diagnostics
+### 5.6 Diagnostics
 
 Recommended diagnostics fields:
 

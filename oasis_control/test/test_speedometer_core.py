@@ -45,6 +45,7 @@ def _make_core(
     axis_learning_min_samples: int = 3,
     axis_learning_min_confidence: float = 0.75,
     unlocked_speed_std_mps: float = 8.0,
+    stationary_zupt_measurement_variance_scale: float = 0.25,
     max_predict_timestamp_jitter_sec: float = 0.003,
 ) -> SpeedometerCore:
     return SpeedometerCore(
@@ -58,6 +59,9 @@ def _make_core(
             process_bias_walk_std_mps2=0.01,
             initial_speed_std_mps=0.5,
             initial_bias_std_mps2=0.2,
+            stationary_zupt_measurement_variance_scale=(
+                stationary_zupt_measurement_variance_scale
+            ),
             max_predict_timestamp_jitter_sec=max_predict_timestamp_jitter_sec,
         )
     )
@@ -216,6 +220,90 @@ def test_zupt_correction_reduces_speed_magnitude() -> None:
     assert after_correction.speed_mps < before_correction.speed_mps
     assert math.isfinite(after_correction.speed_variance_mps2)
     assert after_correction.speed_variance_mps2 > 0.0
+
+
+def test_stationary_zupt_scaling_pulls_speed_down_faster() -> None:
+    baseline_core: SpeedometerCore = _make_core(
+        stationary_zupt_measurement_variance_scale=1.0
+    )
+    aggressive_core: SpeedometerCore = _make_core(
+        stationary_zupt_measurement_variance_scale=0.25
+    )
+
+    _lock_axis(baseline_core)
+    _lock_axis(aggressive_core)
+
+    _accepted(
+        baseline_core.handle_imu_sample(
+            0.4,
+            FORWARD_ACCEL_MPS2,
+            QUIET_GYRO_RADS,
+            VALID_ACCEL_COVARIANCE_MPS2_2,
+        )
+    )
+    _accepted(
+        aggressive_core.handle_imu_sample(
+            0.4,
+            FORWARD_ACCEL_MPS2,
+            QUIET_GYRO_RADS,
+            VALID_ACCEL_COVARIANCE_MPS2_2,
+        )
+    )
+
+    baseline_after_zupt: SpeedometerEstimate = _accepted(
+        baseline_core.handle_zupt(0.45, 0.01)
+    )
+    aggressive_after_zupt: SpeedometerEstimate = _accepted(
+        aggressive_core.handle_zupt(0.45, 0.01)
+    )
+
+    assert aggressive_after_zupt.speed_mps < baseline_after_zupt.speed_mps
+    assert aggressive_after_zupt.speed_mps > 0.0
+
+
+def test_non_stationary_zupt_is_unaffected_by_stationary_scaling() -> None:
+    baseline_core: SpeedometerCore = _make_core(
+        stationary_zupt_measurement_variance_scale=1.0
+    )
+    aggressive_core: SpeedometerCore = _make_core(
+        stationary_zupt_measurement_variance_scale=0.25
+    )
+
+    _lock_axis(baseline_core)
+    _lock_axis(aggressive_core)
+
+    _accepted(
+        baseline_core.handle_imu_sample(
+            0.4,
+            FORWARD_ACCEL_MPS2,
+            QUIET_GYRO_RADS,
+            VALID_ACCEL_COVARIANCE_MPS2_2,
+        )
+    )
+    _accepted(
+        aggressive_core.handle_imu_sample(
+            0.4,
+            FORWARD_ACCEL_MPS2,
+            QUIET_GYRO_RADS,
+            VALID_ACCEL_COVARIANCE_MPS2_2,
+        )
+    )
+
+    baseline_after_zupt: SpeedometerEstimate = _accepted(
+        baseline_core.handle_zupt(0.45, 1.5)
+    )
+    aggressive_after_zupt: SpeedometerEstimate = _accepted(
+        aggressive_core.handle_zupt(0.45, 1.5)
+    )
+
+    assert math.isclose(
+        baseline_after_zupt.speed_mps,
+        aggressive_after_zupt.speed_mps,
+        rel_tol=0.0,
+        abs_tol=1.0e-12,
+    )
+    assert baseline_core.state.stationary_hint is False
+    assert aggressive_core.state.stationary_hint is False
 
 
 def test_invalid_imu_timestamp_is_rejected() -> None:

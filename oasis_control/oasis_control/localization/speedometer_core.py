@@ -56,6 +56,9 @@ class SpeedometerConfig:
         initial_speed_std_mps: initial 1-sigma uncertainty on signed speed
         initial_bias_std_mps2: initial 1-sigma uncertainty on acceleration
             bias projected onto the learned axis
+        stationary_zupt_measurement_variance_scale: scale factor applied to
+            stationary ZUPT measurement variance so clear stops act like a
+            stronger Kalman correction without snapping to zero
         max_predict_timestamp_jitter_sec: maximum tolerated backward IMU
             timestamp jitter that is dropped as a no-op instead of rejected
     """
@@ -69,6 +72,7 @@ class SpeedometerConfig:
     process_bias_walk_std_mps2: float = 0.02
     initial_speed_std_mps: float = 5.0
     initial_bias_std_mps2: float = 0.4
+    stationary_zupt_measurement_variance_scale: float = 0.25
     max_predict_timestamp_jitter_sec: float = 0.003
 
 
@@ -255,9 +259,16 @@ class SpeedometerCore:
         self._state.stationary_hint = (
             measurement_variance_mps2 <= STATIONARY_ZUPT_THRESHOLD_MPS2
         )
+        effective_measurement_variance_mps2: float = measurement_variance_mps2
+        if self._state.stationary_hint:
+            effective_measurement_variance_mps2 = max(
+                MIN_SPEED_VARIANCE_MPS2,
+                measurement_variance_mps2
+                * self._config.stationary_zupt_measurement_variance_scale,
+            )
 
         innovation_variance_mps2: float = (
-            self._state.speed_variance_mps2 + measurement_variance_mps2
+            self._state.speed_variance_mps2 + effective_measurement_variance_mps2
         )
         if innovation_variance_mps2 <= 0.0:
             return self.get_estimate()

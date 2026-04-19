@@ -266,6 +266,7 @@ class ControlDescriptions:
             name=f"ahrs_tilt_{host_id}",
             output="screen",
             remappings=[
+                ("gravity", f"{host_id}/gravity"),
                 ("imu", f"{host_id}/ahrs/imu"),
                 ("tilt", f"{host_id}/ahrs/tilt"),
             ],

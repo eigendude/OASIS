@@ -18,12 +18,13 @@ from typing import Optional
 from oasis_control.localization.common.algebra.covariance import (
     UNKNOWN_ORIENTATION_COVARIANCE,
 )
-from oasis_control.localization.common.algebra.covariance import (
-    flatten_matrix3_row_major,
-)
 from oasis_control.localization.common.algebra.quat import normalize_quaternion_xyzw
 from oasis_control.localization.common.algebra.quat import quaternion_to_rotation_matrix
 from oasis_control.localization.common.algebra.quat import rotate_vector
+from oasis_control.localization.common.algebra.quat import transpose_matrix
+from oasis_control.localization.common.measurements.tilt_covariance import (
+    gravity_covariance_to_tilt_variance_rad2,
+)
 
 
 ################################################################################
@@ -34,6 +35,11 @@ from oasis_control.localization.common.algebra.quat import rotate_vector
 # Units: rad^2
 # Meaning: large yaw variance because tilt output intentionally suppresses yaw
 YAW_VARIANCE_RAD2: float = 1.0e6
+
+# Units: rad^2
+# Meaning: tiny covariance floor to avoid publishing degenerate zero tilt
+# variance when a valid gravity covariance collapses numerically
+MIN_TILT_VARIANCE_RAD2: float = 1.0e-12
 
 # Meaning: world down direction expressed in world coordinates
 WORLD_DOWN_DIRECTION: tuple[float, float, float] = (0.0, 0.0, -1.0)
@@ -71,11 +77,16 @@ class AhrsTiltEstimator:
         self,
         *,
         orientation_xyzw: Iterable[float],
-        orientation_covariance_rad2: Optional[Iterable[Iterable[float]]],
-        orientation_covariance_unknown: bool,
+        gravity_mps2: Optional[Iterable[float]] = None,
+        gravity_covariance_mps2_2: Optional[Iterable[Iterable[float]]] = None,
     ) -> Optional[AhrsTiltEstimate]:
         """
         Convert one mounted AHRS orientation sample into a tilt estimate.
+
+        The published tilt mean always comes from the mounted AHRS orientation.
+        When a fresh gravity covariance is available in the same `base_link`
+        frame, it provides the roll/pitch covariance scale for the mixed
+        `ahrs/tilt` output.
         """
 
         quaternion_xyzw: Optional[tuple[float, float, float, float]] = (
@@ -88,7 +99,7 @@ class AhrsTiltEstimator:
         # Why yaw-invariant: rotating world down into body removes dependence
         # on heading and keeps only the body tilt relative to gravity
         down_direction_body: tuple[float, float, float] = rotate_vector(
-            quaternion_to_rotation_matrix(quaternion_xyzw),
+            transpose_matrix(quaternion_to_rotation_matrix(quaternion_xyzw)),
             WORLD_DOWN_DIRECTION,
         )
 
@@ -105,64 +116,52 @@ class AhrsTiltEstimator:
                 yaw_rad=0.0,
             ),
             orientation_covariance=_make_tilt_orientation_covariance(
-                orientation_covariance_rad2=orientation_covariance_rad2,
-                orientation_covariance_unknown=orientation_covariance_unknown,
+                gravity_mps2=gravity_mps2,
+                gravity_covariance_mps2_2=gravity_covariance_mps2_2,
             ),
         )
 
 
 def _make_tilt_orientation_covariance(
     *,
-    orientation_covariance_rad2: Optional[Iterable[Iterable[float]]],
-    orientation_covariance_unknown: bool,
+    gravity_mps2: Optional[Iterable[float]],
+    gravity_covariance_mps2_2: Optional[Iterable[Iterable[float]]],
 ) -> list[float]:
     """
-    Preserve roll/pitch covariance while marking yaw as intentionally unknown.
+    Publish tilt covariance from the gravity-observable measurement scale.
+
+    `ahrs/tilt` intentionally mixes sources: the mean comes from AHRS
+    orientation while roll/pitch covariance comes from the latest paired raw
+    gravity measurement. If no usable gravity covariance is available, publish
+    unknown orientation covariance rather than reusing full AHRS attitude
+    covariance.
     """
 
-    if orientation_covariance_unknown:
+    if gravity_mps2 is None or gravity_covariance_mps2_2 is None:
         return list(UNKNOWN_ORIENTATION_COVARIANCE)
 
-    if orientation_covariance_rad2 is None:
-        return list(UNKNOWN_ORIENTATION_COVARIANCE)
-
-    try:
-        covariance_rows_rad2: tuple[tuple[float, ...], ...] = tuple(
-            tuple(float(value) for value in row) for row in orientation_covariance_rad2
-        )
-    except (TypeError, ValueError):
-        return list(UNKNOWN_ORIENTATION_COVARIANCE)
-
-    if len(covariance_rows_rad2) != 3:
-        return list(UNKNOWN_ORIENTATION_COVARIANCE)
-
-    row_values_rad2: tuple[float, ...]
-    for row_values_rad2 in covariance_rows_rad2:
-        if len(row_values_rad2) != 3:
-            return list(UNKNOWN_ORIENTATION_COVARIANCE)
-
-        if not all(math.isfinite(value) for value in row_values_rad2):
-            return list(UNKNOWN_ORIENTATION_COVARIANCE)
-
-    return flatten_matrix3_row_major(
-        (
-            (
-                covariance_rows_rad2[0][0],
-                covariance_rows_rad2[0][1],
-                0.0,
-            ),
-            (
-                covariance_rows_rad2[1][0],
-                covariance_rows_rad2[1][1],
-                0.0,
-            ),
-            (
-                0.0,
-                0.0,
-                YAW_VARIANCE_RAD2,
-            ),
-        )
+    roll_pitch_variance_rad2: float = gravity_covariance_to_tilt_variance_rad2(
+        gravity_mps2=gravity_mps2,
+        gravity_covariance_mps2_2=gravity_covariance_mps2_2,
     )
+    if roll_pitch_variance_rad2 <= 0.0:
+        return list(UNKNOWN_ORIENTATION_COVARIANCE)
+
+    roll_pitch_variance_rad2 = max(
+        MIN_TILT_VARIANCE_RAD2,
+        roll_pitch_variance_rad2,
+    )
+    return [
+        roll_pitch_variance_rad2,
+        0.0,
+        0.0,
+        0.0,
+        roll_pitch_variance_rad2,
+        0.0,
+        0.0,
+        0.0,
+        YAW_VARIANCE_RAD2,
+    ]
 
 
 def _roll_pitch_from_down_direction_body(
@@ -177,13 +176,13 @@ def _roll_pitch_from_down_direction_body(
     down_z: float = down_direction_body[2]
 
     # Units: rad
-    # Meaning: roll from the lateral down component relative to body Z
-    roll_rad: float = math.atan2(down_y, -down_z)
+    # Meaning: roll from the lateral gravity component in base_link
+    roll_rad: float = math.atan2(-down_y, -down_z)
 
     # Units: rad
-    # Meaning: pitch from the forward down component relative to the YZ-plane
+    # Meaning: pitch from the forward gravity component in base_link
     pitch_rad: float = math.atan2(
-        -down_x,
+        down_x,
         math.sqrt(down_y * down_y + down_z * down_z),
     )
 
@@ -197,7 +196,7 @@ def _quaternion_from_roll_pitch_yaw(
     yaw_rad: float,
 ) -> tuple[float, float, float, float]:
     """
-    Convert roll, pitch, yaw into a quaternion in ROS xyzw order.
+    Build a quaternion from intrinsic XYZ roll/pitch/yaw Euler angles.
     """
 
     half_roll_rad: float = roll_rad * 0.5
@@ -211,7 +210,7 @@ def _quaternion_from_roll_pitch_yaw(
     sin_half_yaw: float = math.sin(half_yaw_rad)
     cos_half_yaw: float = math.cos(half_yaw_rad)
 
-    return (
+    quaternion_xyzw: tuple[float, float, float, float] = (
         sin_half_roll * cos_half_pitch * cos_half_yaw
         - cos_half_roll * sin_half_pitch * sin_half_yaw,
         cos_half_roll * sin_half_pitch * cos_half_yaw
@@ -221,3 +220,11 @@ def _quaternion_from_roll_pitch_yaw(
         cos_half_roll * cos_half_pitch * cos_half_yaw
         + sin_half_roll * sin_half_pitch * sin_half_yaw,
     )
+
+    normalized_quaternion_xyzw: Optional[tuple[float, float, float, float]] = (
+        normalize_quaternion_xyzw(quaternion_xyzw)
+    )
+    if normalized_quaternion_xyzw is None:
+        return (0.0, 0.0, 0.0, 1.0)
+
+    return normalized_quaternion_xyzw

@@ -15,6 +15,10 @@ from dataclasses import dataclass
 from typing import Iterable
 from typing import Optional
 
+from oasis_control.localization.common.measurements.tilt_covariance import (
+    gravity_covariance_to_tilt_variance_rad2,
+)
+
 
 ################################################################################
 # Tilt estimator
@@ -245,60 +249,13 @@ def _gravity_covariance_to_tilt_variance_rad2(
     gravity_covariance_mps2_2: Optional[Iterable[Iterable[float]]],
 ) -> float:
     """
-    Approximate tilt variance from gravity covariance with a small-angle model.
-
-    The runtime contribution uses the largest gravity linear covariance term as
-    a conservative direction-noise scale:
-
-        sigma_tilt^2 ~= sigma_gravity^2 / |g|^2
-
-    Invalid or unusable covariance inputs fall back to zero so calibration
-    scatter remains the dominant source.
+    Backward-compatible wrapper around the shared gravity tilt scale helper.
     """
 
-    if gravity_covariance_mps2_2 is None:
-        return 0.0
-
-    gravity_values_mps2: tuple[float, ...] = tuple(
-        float(value) for value in gravity_mps2
+    return gravity_covariance_to_tilt_variance_rad2(
+        gravity_mps2=gravity_mps2,
+        gravity_covariance_mps2_2=gravity_covariance_mps2_2,
     )
-    if len(gravity_values_mps2) != 3:
-        return 0.0
-
-    gravity_norm_mps2: float = math.sqrt(
-        sum(value * value for value in gravity_values_mps2)
-    )
-    if gravity_norm_mps2 < MIN_GRAVITY_NORM_MPS2:
-        return 0.0
-
-    try:
-        covariance_rows_mps2_2: tuple[tuple[float, ...], ...] = tuple(
-            tuple(float(value) for value in row) for row in gravity_covariance_mps2_2
-        )
-    except (TypeError, ValueError):
-        return 0.0
-
-    if len(covariance_rows_mps2_2) != 3:
-        return 0.0
-
-    diagonal_variances_mps2_2: list[float] = []
-    row_index: int
-    row_values_mps2_2: tuple[float, ...]
-    for row_index, row_values_mps2_2 in enumerate(covariance_rows_mps2_2):
-        if len(row_values_mps2_2) != 3:
-            return 0.0
-
-        diagonal_variance_mps2_2: float = row_values_mps2_2[row_index]
-        if not math.isfinite(diagonal_variance_mps2_2):
-            return 0.0
-
-        if diagonal_variance_mps2_2 < 0.0:
-            return 0.0
-
-        diagonal_variances_mps2_2.append(diagonal_variance_mps2_2)
-
-    sigma_gravity_mps2_2: float = max(diagonal_variances_mps2_2)
-    return sigma_gravity_mps2_2 / (gravity_norm_mps2 * gravity_norm_mps2)
 
 
 def _quaternion_from_two_unit_vectors(

@@ -39,6 +39,9 @@ from oasis_control.localization.common.frames.mounting import make_mounting_tran
 from oasis_control.localization.common.measurements.gravity_direction import (
     compute_gravity_direction_residual,
 )
+from oasis_control.localization.common.measurements.tilt_covariance import (
+    gravity_covariance_to_tilt_variance_rad2,
+)
 
 
 FULL_ORIENTATION_COVARIANCE: tuple[
@@ -334,8 +337,6 @@ def test_boot_mounting_and_runtime_mapping_keep_level_base_level() -> None:
     )
     tilt_estimate = AhrsTiltEstimator().update(
         orientation_xyzw=mounted_imu_sample.orientation_xyzw,
-        orientation_covariance_rad2=mounted_imu_sample.orientation_covariance_rad2,
-        orientation_covariance_unknown=mounted_imu_sample.orientation_covariance_unknown,
     )
 
     assert tilt_estimate is not None
@@ -388,16 +389,12 @@ def test_map_imu_to_base_does_not_relabel_unmounted_orientation() -> None:
 
     raw_tilt_estimate = AhrsTiltEstimator().update(
         orientation_xyzw=imu_sample.orientation_xyzw,
-        orientation_covariance_rad2=imu_sample.orientation_covariance_rad2,
-        orientation_covariance_unknown=imu_sample.orientation_covariance_unknown,
     )
     mounted_tilt_estimate = AhrsTiltEstimator().update(
         orientation_xyzw=map_imu_to_base(
             imu_sample,
             mounting_transform,
         ).orientation_xyzw,
-        orientation_covariance_rad2=imu_sample.orientation_covariance_rad2,
-        orientation_covariance_unknown=imu_sample.orientation_covariance_unknown,
     )
 
     assert raw_tilt_estimate is not None
@@ -406,6 +403,117 @@ def test_map_imu_to_base_does_not_relabel_unmounted_orientation() -> None:
     assert abs(raw_tilt_estimate.pitch_rad) > math.radians(5.0)
     assert math.isclose(mounted_tilt_estimate.roll_rad, 0.0, abs_tol=1.0e-6)
     assert math.isclose(mounted_tilt_estimate.pitch_rad, 0.0, abs_tol=1.0e-6)
+
+
+def test_ahrs_tilt_covariance_ignores_ahrs_yaw_uncertainty() -> None:
+    tilt_estimate = AhrsTiltEstimator().update(
+        orientation_xyzw=(0.0, 0.0, 0.0, 1.0),
+        gravity_mps2=(0.0, 0.0, -9.81),
+        gravity_covariance_mps2_2=(
+            (0.01 * 9.81 * 9.81, 0.0, 0.0),
+            (0.0, 0.01 * 9.81 * 9.81, 0.0),
+            (0.0, 0.0, 0.02 * 9.81 * 9.81),
+        ),
+    )
+
+    assert tilt_estimate is not None
+    assert math.isclose(tilt_estimate.orientation_covariance[0], 0.02, abs_tol=1.0e-9)
+    assert math.isclose(tilt_estimate.orientation_covariance[1], 0.0, abs_tol=1.0e-9)
+    assert math.isclose(tilt_estimate.orientation_covariance[3], 0.0, abs_tol=1.0e-9)
+    assert math.isclose(tilt_estimate.orientation_covariance[4], 0.02, abs_tol=1.0e-9)
+    assert tilt_estimate.orientation_covariance[8] == 1.0e6
+
+
+def test_ahrs_tilt_covariance_is_not_copied_from_full_attitude() -> None:
+    tilt_estimate = AhrsTiltEstimator().update(
+        orientation_xyzw=(
+            0.189307857412,
+            -0.03813457647485,
+            0.26853582275157,
+            0.94371436414749,
+        ),
+        gravity_mps2=(0.0, 0.0, -9.81),
+        gravity_covariance_mps2_2=(
+            (0.04, 0.01, 0.0),
+            (0.01, 0.02, 0.0),
+            (0.0, 0.0, 0.03),
+        ),
+    )
+
+    assert tilt_estimate is not None
+    assert tilt_estimate.orientation_covariance != [
+        4.0,
+        1.0,
+        0.0,
+        1.0,
+        3.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0e6,
+    ]
+    assert math.isclose(
+        tilt_estimate.orientation_covariance[0],
+        0.04 / (9.81 * 9.81),
+        abs_tol=1.0e-9,
+    )
+    assert math.isclose(
+        tilt_estimate.orientation_covariance[4],
+        0.04 / (9.81 * 9.81),
+        abs_tol=1.0e-9,
+    )
+    assert math.isclose(tilt_estimate.orientation_covariance[1], 0.0, abs_tol=1.0e-9)
+    assert math.isclose(tilt_estimate.orientation_covariance[3], 0.0, abs_tol=1.0e-9)
+    assert tilt_estimate.orientation_covariance[8] == 1.0e6
+
+
+def test_ahrs_tilt_covariance_matches_gravity_tilt_scale_for_level_case() -> None:
+    gravity_covariance_mps2_2 = (
+        (0.04, 0.0, 0.0),
+        (0.0, 0.04, 0.0),
+        (0.0, 0.0, 0.04),
+    )
+    expected_tilt_variance_rad2 = gravity_covariance_to_tilt_variance_rad2(
+        gravity_mps2=(0.0, 0.0, -9.81),
+        gravity_covariance_mps2_2=gravity_covariance_mps2_2,
+    )
+
+    tilt_estimate = AhrsTiltEstimator().update(
+        orientation_xyzw=(0.0, 0.0, 0.0, 1.0),
+        gravity_mps2=(0.0, 0.0, -9.81),
+        gravity_covariance_mps2_2=gravity_covariance_mps2_2,
+    )
+
+    assert tilt_estimate is not None
+    assert math.isclose(
+        tilt_estimate.orientation_covariance[0],
+        expected_tilt_variance_rad2,
+        abs_tol=2.0e-12,
+    )
+    assert math.isclose(
+        tilt_estimate.orientation_covariance[4],
+        expected_tilt_variance_rad2,
+        abs_tol=2.0e-12,
+    )
+
+
+def test_ahrs_tilt_covariance_is_unknown_without_gravity_covariance() -> None:
+    tilt_estimate = AhrsTiltEstimator().update(
+        orientation_xyzw=(0.0, 0.0, 0.0, 1.0),
+    )
+
+    assert tilt_estimate is not None
+    assert tilt_estimate.orientation_covariance == [
+        -1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+    ]
 
 
 def test_map_imu_to_base_keeps_identity_orientation_covariance_unchanged() -> None:
