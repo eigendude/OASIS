@@ -9,6 +9,7 @@
 #pragma once
 
 #include "imu/bno086/Bno086Gpio.hpp"
+#include "imu/bno086/Bno086GravityUtils.hpp"
 #include "imu/bno086/Bno086Reports.hpp"
 #include "imu/bno086/Bno086Shtp.hpp"
 #include "imu/bno086/Bno086Transport.hpp"
@@ -35,7 +36,8 @@ namespace OASIS::ROS
  * - imu: fused orientation + calibrated gyro + gravity-removed linear accel
  * - imu_predicted: predicted orientation + present-time gyro + linear accel
  * - imu_vr: predicted orientation plus explicit prediction metadata
- * - gravity (optional): fused gravity vector with linear covariance
+ * - gravity (optional): fused gravity vector expressed in imu_link and
+ *   pointing down with magnitude near 9.81 m/s^2 at rest
  * - accel (optional): gravity-included calibrated acceleration with
  *   linear covariance
  *
@@ -112,8 +114,6 @@ private:
   static void SetCovariance(std::array<double, 9>& dst, const OASIS::IMU::Mat3& src);
   static void SetLinearAccelCovariance(std::array<double, 36>& dst,
                                        const OASIS::IMU::Mat3& linear_cov);
-  static void SetGravityCovariance(std::array<double, 36>& dst,
-                                   const OASIS::IMU::Mat3& gravity_cov);
 
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr m_imuPublisher;
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr m_imuPredictedPublisher;

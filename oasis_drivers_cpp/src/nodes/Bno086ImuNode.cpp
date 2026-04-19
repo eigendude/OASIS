@@ -281,29 +281,32 @@ void Bno086ImuNode::PublishLatestFrame(const rclcpp::Time& stamp)
 
   if (m_latestFrame.has_gravity)
   {
+    std::optional<OASIS::IMU::Mat3> gravityCovariance;
+    if (m_latestFrame.has_gravity_covariance)
+      gravityCovariance = m_latestFrame.gravity_cov_mps2_2;
+
+    const PublishedGravityMeasurement gravityMeasurement =
+        MakePublishedGravityMeasurement(m_latestFrame.gravity_mps2, gravityCovariance);
+
     geometry_msgs::msg::AccelWithCovarianceStamped gravityMsg;
     gravityMsg.header = imuMsg.header;
-    gravityMsg.accel.accel.linear.x = m_latestFrame.gravity_mps2[0];
-    gravityMsg.accel.accel.linear.y = m_latestFrame.gravity_mps2[1];
-    gravityMsg.accel.accel.linear.z = m_latestFrame.gravity_mps2[2];
+    gravityMsg.accel.accel.linear.x = gravityMeasurement.gravity_mps2[0];
+    gravityMsg.accel.accel.linear.y = gravityMeasurement.gravity_mps2[1];
+    gravityMsg.accel.accel.linear.z = gravityMeasurement.gravity_mps2[2];
 
     gravityMsg.accel.accel.angular.x = 0.0;
     gravityMsg.accel.accel.angular.y = 0.0;
     gravityMsg.accel.accel.angular.z = 0.0;
 
-    gravityMsg.accel.covariance.fill(0.0);
-
-    // `gravity` publishes the fused gravity vector in
-    // `accel.accel.linear`. Angular acceleration is intentionally not
-    // estimated and is marked unknown by covariance[21] = -1.0.
-    if (m_latestFrame.has_gravity_covariance)
-    {
-      SetGravityCovariance(gravityMsg.accel.covariance, m_latestFrame.gravity_cov_mps2_2);
-    }
-    else
-    {
-      gravityMsg.accel.covariance[21] = -1.0;
-    }
+    // `gravity` publishes the canonical OASIS gravity vector in
+    // `accel.accel.linear`: expressed in `imu_link`, pointing down, and near
+    // 9.81 m/s^2 at rest. This is a physical gravity vector, not an "up"
+    // vector and not a normalized direction-only unit vector.
+    //
+    // The rotational covariance block in geometry_msgs/AccelWithCovariance is
+    // reserved for angular acceleration. The BNO086 does not estimate angular
+    // acceleration on this topic, so covariance[21] remains -1.0 by policy.
+    gravityMsg.accel.covariance = gravityMeasurement.covariance;
 
     m_gravityPublisher->publish(gravityMsg);
   }
@@ -536,14 +539,25 @@ void Bno086ImuNode::ApplyEvent(const SensorEvent& event, const rclcpp::Time& sam
       break;
 
     case ReportId::Gravity:
-      m_latestFrame.gravity_mps2[0] = QToDouble(event.values[0], 8);
-      m_latestFrame.gravity_mps2[1] = QToDouble(event.values[1], 8);
-      m_latestFrame.gravity_mps2[2] = QToDouble(event.values[2], 8);
+    {
+      const OASIS::IMU::Vec3 rawGravityMps2{
+          QToDouble(event.values[0], 8),
+          QToDouble(event.values[1], 8),
+          QToDouble(event.values[2], 8),
+      };
+
+      // SH-2 gravity is ingested here and converted immediately into the
+      // canonical OASIS gravity convention. The public `gravity` topic must
+      // carry a gravity vector in `imu_link` that points down in the direction
+      // of gravitational acceleration, so the raw BNO sign is flipped once at
+      // ingestion and the rest of the stack can treat gravity consistently.
+      m_latestFrame.gravity_mps2 = CanonicalizeGravityVector(rawGravityMps2);
       m_latestFrame.gravity_cov_mps2_2 =
           CovarianceFromAccuracy(event.accuracy, 1.0, 0.5, 0.2, 0.08);
       m_latestFrame.has_gravity = true;
       m_latestFrame.has_gravity_covariance = true;
       break;
+    }
 
     default:
       break;
@@ -744,28 +758,5 @@ void Bno086ImuNode::SetLinearAccelCovariance(std::array<double, 36>& dst,
   // geometry_msgs/AccelWithCovariance uses the rotational block for
   // angular acceleration. Mark it unknown because this topic carries
   // only linear acceleration.
-  dst[21] = -1.0;
-}
-
-void Bno086ImuNode::SetGravityCovariance(std::array<double, 36>& dst,
-                                         const OASIS::IMU::Mat3& gravity_cov)
-{
-  dst.fill(0.0);
-
-  dst[0] = gravity_cov[0][0];
-  dst[1] = gravity_cov[0][1];
-  dst[2] = gravity_cov[0][2];
-
-  dst[6] = gravity_cov[1][0];
-  dst[7] = gravity_cov[1][1];
-  dst[8] = gravity_cov[1][2];
-
-  dst[12] = gravity_cov[2][0];
-  dst[13] = gravity_cov[2][1];
-  dst[14] = gravity_cov[2][2];
-
-  // geometry_msgs/AccelWithCovariance uses the rotational block for
-  // angular acceleration. Mark it unknown because this topic carries
-  // only the fused gravity vector.
   dst[21] = -1.0;
 }

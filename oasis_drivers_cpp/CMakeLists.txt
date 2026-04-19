@@ -51,6 +51,37 @@ find_package(yaml-cpp REQUIRED)
 ################################################################################
 
 #
+# bno086_imu_driver
+#
+
+add_library(bno086_gravity_utils
+  src/imu/bno086/Bno086GravityUtils.cpp
+)
+
+add_executable(bno086_imu_driver
+  src/cli/bno086_imu_driver.cpp
+  src/imu/bno086/Bno086Gpio.cpp
+  src/imu/bno086/Bno086Shtp.cpp
+  src/imu/bno086/Bno086Transport.cpp
+  src/nodes/Bno086ImuNode.cpp
+)
+
+target_link_libraries(bno086_imu_driver
+  bno086_gravity_utils
+  ${geometry_msgs_TARGETS}
+  ${oasis_msgs_TARGETS}
+  rclcpp::rclcpp
+  ${sensor_msgs_TARGETS}
+)
+
+install(
+  TARGETS
+    bno086_imu_driver
+  DESTINATION
+    lib/${PROJECT_NAME}
+)
+
+#
 # cec_server
 #
 
@@ -164,32 +195,6 @@ install(
     lib/${PROJECT_NAME}
 )
 
-#
-# bno086_imu_driver
-#
-
-add_executable(bno086_imu_driver
-  src/cli/bno086_imu_driver.cpp
-  src/imu/bno086/Bno086Gpio.cpp
-  src/imu/bno086/Bno086Shtp.cpp
-  src/imu/bno086/Bno086Transport.cpp
-  src/nodes/Bno086ImuNode.cpp
-)
-
-target_link_libraries(bno086_imu_driver
-  ${geometry_msgs_TARGETS}
-  ${oasis_msgs_TARGETS}
-  rclcpp::rclcpp
-  ${sensor_msgs_TARGETS}
-)
-
-install(
-  TARGETS
-    bno086_imu_driver
-  DESTINATION
-    lib/${PROJECT_NAME}
-)
-
 ################################################################################
 # Configuration files
 ################################################################################
@@ -213,6 +218,7 @@ install(
 ################################################################################
 
 if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
   find_package(ament_lint_auto REQUIRED)
   # Copyright and license must be present in all source files
   set(ament_cmake_copyright_FOUND TRUE)
@@ -220,6 +226,13 @@ if(BUILD_TESTING)
   # The following line skips cpplint (only works in a git repo)
   # Uncomment the line when this package is not in a git repo
   #set(ament_cmake_cpplint_FOUND TRUE)
+
+  ament_add_gtest(test_bno086_gravity_utils
+    test/imu/bno086/test_Bno086GravityUtils.cpp
+  )
+  target_link_libraries(test_bno086_gravity_utils
+    bno086_gravity_utils
+  )
 
   ament_lint_auto_find_test_dependencies()
 endif()
