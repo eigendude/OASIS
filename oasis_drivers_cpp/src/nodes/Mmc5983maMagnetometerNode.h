@@ -43,6 +43,7 @@ private:
   struct SampleSnapshot
   {
     rclcpp::Time stamp{};
+    std::uint64_t sequence{0};
     Magnetometer::MagnetometerTickOutput output{};
     bool has_sample{false};
     bool gate_ready{false};
@@ -67,6 +68,8 @@ private:
   std::atomic<bool> m_running{false};
   std::mutex m_sampleMutex;
   SampleSnapshot m_latestSample;
+  std::uint64_t m_sampleSequence{0};
+  std::uint64_t m_lastPublishedSequence{0};
   bool m_gateReady{false};
 
   std::string m_i2cDevice;

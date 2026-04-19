@@ -268,6 +268,7 @@ void Mmc5983maMagnetometerNode::SamplerLoop()
 
       SampleSnapshot snapshot;
       snapshot.stamp = get_clock()->now();
+      snapshot.sequence = ++m_sampleSequence;
       snapshot.output = output;
       snapshot.has_sample = true;
       snapshot.gate_ready = m_gateReady;
@@ -293,13 +294,10 @@ void Mmc5983maMagnetometerNode::PublishLatest()
   if (!snapshot.has_sample)
     return;
 
-  const double ageSeconds = (get_clock()->now() - snapshot.stamp).seconds();
-  if (ageSeconds > 2.0 * m_publishPeriod.count())
-  {
-    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
-                         "Sample age %.2f s exceeds %.2f s (sampler behind)", ageSeconds,
-                         2.0 * m_publishPeriod.count());
-  }
+  if (snapshot.sequence == m_lastPublishedSequence)
+    return;
+
+  m_lastPublishedSequence = snapshot.sequence;
 
   PublishSample(snapshot.stamp, snapshot.output);
 
