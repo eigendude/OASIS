@@ -21,6 +21,11 @@ def map_imu_to_base(
 ) -> MountedImuSample:
     """
     Apply the fixed IMU mounting transform to one validated IMU sample.
+
+    AHRS treats the driver-provided IMU covariance as the upstream sensor
+    contract. When mounting is applied, the covariance is rotated into
+    `base_link` without diagonalizing, tightening, or otherwise reinterpreting
+    the full `3 x 3` structure.
     """
 
     return apply_mounting_to_imu(imu_sample, mounting_transform)

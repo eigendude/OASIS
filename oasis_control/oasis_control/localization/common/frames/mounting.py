@@ -117,6 +117,8 @@ def apply_mounting_to_imu(
         imu_sample.orientation_covariance_rad2 is not None
         and not imu_sample.orientation_covariance_unknown
     ):
+        # Preserve the full upstream orientation covariance and only rotate it
+        # through the fixed IMU-to-base mounting transform.
         orientation_covariance_rad2 = rotate_covariance(
             mounting_transform.rotation_matrix,
             imu_sample.orientation_covariance_rad2,

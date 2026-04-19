@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import math
+from typing import Iterable
 
 from oasis_control.localization.ahrs.data.diagnostics import AhrsDiagnosticsState
 from oasis_control.localization.ahrs.data.diagnostics import snapshot_diagnostics
@@ -33,6 +34,17 @@ from oasis_control.localization.common.measurements.gravity_direction import (
 )
 
 
+FULL_ORIENTATION_COVARIANCE: tuple[
+    tuple[float, float, float],
+    tuple[float, float, float],
+    tuple[float, float, float],
+] = (
+    (4.0, 1.0, 0.5),
+    (1.0, 3.0, -0.25),
+    (0.5, -0.25, 2.0),
+)
+
+
 def _make_mounting_transform() -> MountingTransform:
     return make_mounting_transform(
         parent_frame_id="base_link",
@@ -46,7 +58,11 @@ def _make_imu_sample() -> ImuSample:
         timestamp_ns=100,
         frame_id="imu_link",
         orientation_xyzw=(0.0, 0.0, 0.0, 1.0),
-        orientation_covariance_rad2=((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)),
+        orientation_covariance_rad2=(
+            (1.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0),
+            (0.0, 0.0, 1.0),
+        ),
         orientation_covariance_unknown=False,
         angular_velocity_rads=(0.1, 0.2, 0.3),
         angular_velocity_covariance_rads2=(
@@ -61,6 +77,83 @@ def _make_imu_sample() -> ImuSample:
             (0.0, 0.0, 1.0),
         ),
     )
+
+
+def _make_full_covariance_imu_sample() -> ImuSample:
+    return ImuSample(
+        timestamp_ns=100,
+        frame_id="imu_link",
+        orientation_xyzw=(0.0, 0.0, 0.0, 1.0),
+        orientation_covariance_rad2=FULL_ORIENTATION_COVARIANCE,
+        orientation_covariance_unknown=False,
+        angular_velocity_rads=(0.1, 0.2, 0.3),
+        angular_velocity_covariance_rads2=(
+            (1.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0),
+            (0.0, 0.0, 1.0),
+        ),
+        linear_acceleration_mps2=(0.0, 0.0, -9.81),
+        linear_acceleration_covariance_mps2_2=(
+            (1.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0),
+            (0.0, 0.0, 1.0),
+        ),
+    )
+
+
+def _quarter_turn_about_z_mounting_transform() -> MountingTransform:
+    return make_mounting_transform(
+        parent_frame_id="base_link",
+        child_frame_id="imu_link",
+        quaternion_xyzw=(
+            0.0,
+            0.0,
+            math.sin(math.pi / 4.0),
+            math.cos(math.pi / 4.0),
+        ),
+    )
+
+
+def _assert_matrix_close(
+    lhs_matrix: Iterable[Iterable[float]],
+    rhs_matrix: Iterable[Iterable[float]],
+    *,
+    abs_tol: float = 1.0e-9,
+) -> None:
+    lhs_rows: tuple[tuple[float, ...], ...] = tuple(
+        tuple(float(value) for value in row) for row in lhs_matrix
+    )
+    rhs_rows: tuple[tuple[float, ...], ...] = tuple(
+        tuple(float(value) for value in row) for row in rhs_matrix
+    )
+    assert len(lhs_rows) == len(rhs_rows)
+
+    for lhs_row, rhs_row in zip(lhs_rows, rhs_rows):
+        assert len(lhs_row) == len(rhs_row)
+        for lhs_value, rhs_value in zip(lhs_row, rhs_row):
+            assert math.isclose(lhs_value, rhs_value, abs_tol=abs_tol)
+
+
+def _trace(matrix: tuple[tuple[float, ...], ...]) -> float:
+    return float(matrix[0][0] + matrix[1][1] + matrix[2][2])
+
+
+def _determinant(matrix: tuple[tuple[float, ...], ...]) -> float:
+    return float(
+        matrix[0][0] * (matrix[1][1] * matrix[2][2] - matrix[1][2] * matrix[2][1])
+        - matrix[0][1] * (matrix[1][0] * matrix[2][2] - matrix[1][2] * matrix[2][0])
+        + matrix[0][2] * (matrix[1][0] * matrix[2][1] - matrix[1][1] * matrix[2][0])
+    )
+
+
+def _sum_of_principal_minors(matrix: tuple[tuple[float, ...], ...]) -> float:
+    trace_value: float = _trace(matrix)
+    trace_of_square: float = sum(
+        matrix[row_index][column_index] * matrix[column_index][row_index]
+        for row_index in range(3)
+        for column_index in range(3)
+    )
+    return 0.5 * (trace_value * trace_value - trace_of_square)
 
 
 def test_snapshot_diagnostics_uses_nan_without_residual() -> None:
@@ -141,6 +234,114 @@ def test_map_imu_to_base_wraps_mounting_behavior() -> None:
 
     assert mounted_sample.frame_id == "base_link"
     assert mounted_sample.orientation_xyzw == (0.0, 0.0, 0.0, 1.0)
+
+
+def test_map_imu_to_base_keeps_identity_orientation_covariance_unchanged() -> None:
+    mounted_sample = map_imu_to_base(
+        _make_full_covariance_imu_sample(),
+        _make_mounting_transform(),
+    )
+
+    assert mounted_sample.orientation_covariance_rad2 is not None
+    _assert_matrix_close(
+        mounted_sample.orientation_covariance_rad2,
+        FULL_ORIENTATION_COVARIANCE,
+    )
+
+
+def test_map_imu_to_base_rotates_full_orientation_covariance() -> None:
+    mounted_sample = map_imu_to_base(
+        _make_full_covariance_imu_sample(),
+        _quarter_turn_about_z_mounting_transform(),
+    )
+
+    expected_covariance = (
+        (3.0, -1.0, 0.25),
+        (-1.0, 4.0, 0.5),
+        (0.25, 0.5, 2.0),
+    )
+
+    assert mounted_sample.orientation_covariance_rad2 is not None
+    _assert_matrix_close(
+        mounted_sample.orientation_covariance_rad2,
+        expected_covariance,
+    )
+
+
+def test_map_imu_to_base_preserves_full_covariance_invariants() -> None:
+    mounted_sample = map_imu_to_base(
+        _make_full_covariance_imu_sample(),
+        _quarter_turn_about_z_mounting_transform(),
+    )
+
+    assert mounted_sample.orientation_covariance_rad2 is not None
+    rotated_covariance = mounted_sample.orientation_covariance_rad2
+
+    _assert_matrix_close(
+        rotated_covariance,
+        (
+            (
+                rotated_covariance[0][0],
+                rotated_covariance[1][0],
+                rotated_covariance[2][0],
+            ),
+            (
+                rotated_covariance[0][1],
+                rotated_covariance[1][1],
+                rotated_covariance[2][1],
+            ),
+            (
+                rotated_covariance[0][2],
+                rotated_covariance[1][2],
+                rotated_covariance[2][2],
+            ),
+        ),
+    )
+    assert math.isclose(
+        _trace(rotated_covariance),
+        _trace(FULL_ORIENTATION_COVARIANCE),
+        abs_tol=1.0e-9,
+    )
+    assert math.isclose(
+        _sum_of_principal_minors(rotated_covariance),
+        _sum_of_principal_minors(FULL_ORIENTATION_COVARIANCE),
+        abs_tol=1.0e-9,
+    )
+    assert math.isclose(
+        _determinant(rotated_covariance),
+        _determinant(FULL_ORIENTATION_COVARIANCE),
+        abs_tol=1.0e-9,
+    )
+
+
+def test_map_imu_to_base_preserves_unknown_orientation_covariance() -> None:
+    unknown_covariance_sample = ImuSample(
+        timestamp_ns=100,
+        frame_id="imu_link",
+        orientation_xyzw=(0.0, 0.0, 0.0, 1.0),
+        orientation_covariance_rad2=None,
+        orientation_covariance_unknown=True,
+        angular_velocity_rads=(0.1, 0.2, 0.3),
+        angular_velocity_covariance_rads2=(
+            (1.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0),
+            (0.0, 0.0, 1.0),
+        ),
+        linear_acceleration_mps2=(0.0, 0.0, -9.81),
+        linear_acceleration_covariance_mps2_2=(
+            (1.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0),
+            (0.0, 0.0, 1.0),
+        ),
+    )
+
+    mounted_sample = map_imu_to_base(
+        unknown_covariance_sample,
+        _quarter_turn_about_z_mounting_transform(),
+    )
+
+    assert mounted_sample.orientation_covariance_unknown is True
+    assert mounted_sample.orientation_covariance_rad2 is None
 
 
 def test_gravity_consistency_accepts_low_residual() -> None:

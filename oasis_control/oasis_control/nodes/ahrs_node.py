@@ -521,6 +521,8 @@ class AhrsNode(rclpy.node.Node):
         if ahrs_output.mounted_imu.orientation_covariance_unknown:
             imu_message.orientation_covariance = list(UNKNOWN_ORIENTATION_COVARIANCE)
         elif ahrs_output.mounted_imu.orientation_covariance_rad2 is not None:
+            # Publish the mounted covariance exactly as produced by the frame
+            # mapping stage.
             imu_message.orientation_covariance = flatten_matrix3_row_major(
                 ahrs_output.mounted_imu.orientation_covariance_rad2
             )
@@ -580,6 +582,8 @@ class AhrsNode(rclpy.node.Node):
         ]
 
         if ahrs_output.mounted_imu.orientation_covariance_rad2 is not None:
+            # The odom wrapper reuses the same rotated base-frame orientation
+            # covariance block rather than inventing a separate model.
             odom_message.pose.covariance[21] = (
                 ahrs_output.mounted_imu.orientation_covariance_rad2[0][0]
             )

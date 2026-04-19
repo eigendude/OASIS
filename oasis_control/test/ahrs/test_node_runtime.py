@@ -15,7 +15,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
-import pytest
+import pytest  # type: ignore[import-not-found]
 
 
 rclpy = pytest.importorskip("rclpy")
@@ -30,6 +30,32 @@ from ._node_test_helpers import make_gravity_message
 from ._node_test_helpers import make_imu_message
 from ._node_test_helpers import make_mounting_transform
 from ._node_test_helpers import make_node
+
+
+FULL_ORIENTATION_COVARIANCE_ROW_MAJOR: list[float] = [
+    4.0,
+    1.0,
+    0.5,
+    1.0,
+    3.0,
+    -0.25,
+    0.5,
+    -0.25,
+    2.0,
+]
+
+
+ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR: list[float] = [
+    3.0,
+    -1.0,
+    0.25,
+    -1.0,
+    4.0,
+    0.5,
+    0.25,
+    0.5,
+    2.0,
+]
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -360,5 +386,65 @@ def test_imu_output_preserves_unknown_orientation_covariance_semantics() -> None
         )
 
         assert imu_pub.messages[-1].orientation_covariance[0] == -1.0
+    finally:
+        node.stop()
+
+
+def test_imu_output_publishes_mapped_orientation_covariance_unchanged() -> None:
+    quarter_turn_about_z_xyzw: tuple[float, float, float, float] = (
+        0.0,
+        0.0,
+        math.sin(math.pi / 4.0),
+        math.cos(math.pi / 4.0),
+    )
+    node, _, imu_pub, _, _ = make_node(
+        FakeTfBuffer(make_mounting_transform(quarter_turn_about_z_xyzw))
+    )
+
+    try:
+        node._handle_gravity(make_gravity_message())
+        node._handle_imu(
+            make_imu_message(
+                orientation_covariance=FULL_ORIENTATION_COVARIANCE_ROW_MAJOR
+            )
+        )
+
+        assert (
+            imu_pub.messages[-1].orientation_covariance
+            == ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR
+        )
+    finally:
+        node.stop()
+
+
+def test_odom_output_reuses_mapped_orientation_covariance_block() -> None:
+    quarter_turn_about_z_xyzw: tuple[float, float, float, float] = (
+        0.0,
+        0.0,
+        math.sin(math.pi / 4.0),
+        math.cos(math.pi / 4.0),
+    )
+    node, _, _, odom_pub, _ = make_node(
+        FakeTfBuffer(make_mounting_transform(quarter_turn_about_z_xyzw))
+    )
+
+    try:
+        node._handle_gravity(make_gravity_message())
+        node._handle_imu(
+            make_imu_message(
+                orientation_covariance=FULL_ORIENTATION_COVARIANCE_ROW_MAJOR
+            )
+        )
+
+        pose_covariance = odom_pub.messages[-1].pose.covariance
+        assert pose_covariance[21] == ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR[0]
+        assert pose_covariance[22] == ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR[1]
+        assert pose_covariance[23] == ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR[2]
+        assert pose_covariance[27] == ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR[3]
+        assert pose_covariance[28] == ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR[4]
+        assert pose_covariance[29] == ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR[5]
+        assert pose_covariance[33] == ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR[6]
+        assert pose_covariance[34] == ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR[7]
+        assert pose_covariance[35] == ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR[8]
     finally:
         node.stop()
