@@ -78,11 +78,14 @@ private:
   struct OrientationCovarianceDebugState
   {
     std::uint8_t accuracy_bucket{0};
+    std::int16_t raw_accuracy_estimate_q12{0};
     double sigma_rad{0.0};
     OASIS::IMU::BNO086::OrientationCovarianceSource source{
         OASIS::IMU::BNO086::OrientationCovarianceSource::AccuracyBucketFallback};
     bool has_accuracy_estimate{false};
     double accuracy_estimate_rad{0.0};
+    OASIS::IMU::BNO086::OrientationCovarianceEstimateRejectionReason rejection_reason{
+        OASIS::IMU::BNO086::OrientationCovarianceEstimateRejectionReason::None};
   };
 
   void InterruptLoop();

@@ -89,6 +89,23 @@ struct SensorEvent
   std::array<std::int16_t, 5> values{};
 };
 
+/*!
+ * \brief Rotation Vector payload slots after the 4-byte SH-2 sensor header
+ *
+ * The BNO08X datasheet's Rotation Vector metadata declares quaternion samples
+ * at Q14 and the additional accuracy field at Q12. The SH-2 Rotation Vector
+ * input report then maps those five signed 16-bit values to payload bytes
+ * 4-13 as quaternion i/j/k/real followed by the accuracy estimate.
+ */
+enum class RotationVectorValueIndex : std::size_t
+{
+  QuaternionI = 0,
+  QuaternionJ = 1,
+  QuaternionK = 2,
+  QuaternionReal = 3,
+  AccuracyEstimate = 4,
+};
+
 /*!\brief Incremental fused sample cache built from BNO086 events */
 struct ImuSampleFrame
 {

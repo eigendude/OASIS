@@ -35,6 +35,7 @@ TEST(Bno086OrientationCovariancePolicy, usesRotationVectorAccuracyEstimateWhenPr
   EXPECT_TRUE(result.has_accuracy_estimate);
   EXPECT_NEAR(result.accuracy_estimate_rad, 96.0 / 4096.0, 1e-12);
   EXPECT_EQ(result.source, OrientationCovarianceSource::RotationVectorAccuracyEstimate);
+  EXPECT_EQ(result.rejection_reason, OrientationCovarianceEstimateRejectionReason::None);
   EXPECT_NEAR(result.sigma_rad, 96.0 / 4096.0, 1e-12);
   EXPECT_NEAR(result.covariance_rad2[0][0], result.sigma_rad * result.sigma_rad, 1e-12);
   EXPECT_DOUBLE_EQ(result.covariance_rad2[0][1], 0.0);
@@ -49,6 +50,7 @@ TEST(Bno086OrientationCovariancePolicy, enforcesMinimumSigmaWhenEstimateIsTooSma
   EXPECT_TRUE(result.has_accuracy_estimate);
   EXPECT_NEAR(result.accuracy_estimate_rad, 1.0 / 4096.0, 1e-12);
   EXPECT_EQ(result.source, OrientationCovarianceSource::RotationVectorAccuracyEstimate);
+  EXPECT_EQ(result.rejection_reason, OrientationCovarianceEstimateRejectionReason::None);
   EXPECT_DOUBLE_EQ(result.sigma_rad, 0.012);
   EXPECT_DOUBLE_EQ(result.covariance_rad2[0][0], 0.000144);
   EXPECT_DOUBLE_EQ(result.covariance_rad2[1][1], 0.000144);
@@ -62,10 +64,24 @@ TEST(Bno086OrientationCovariancePolicy, fallsBackToBucketSigmaWhenAccuracyEstima
   EXPECT_FALSE(result.has_accuracy_estimate);
   EXPECT_DOUBLE_EQ(result.accuracy_estimate_rad, 0.0);
   EXPECT_EQ(result.source, OrientationCovarianceSource::AccuracyBucketFallback);
+  EXPECT_EQ(result.rejection_reason,
+            OrientationCovarianceEstimateRejectionReason::RawEstimateNonPositive);
   EXPECT_DOUBLE_EQ(result.sigma_rad, 0.03);
   EXPECT_DOUBLE_EQ(result.covariance_rad2[0][0], 0.0009);
   EXPECT_DOUBLE_EQ(result.covariance_rad2[1][1], 0.0009);
   EXPECT_DOUBLE_EQ(result.covariance_rad2[2][2], 0.0009);
+}
+
+TEST(Bno086OrientationCovariancePolicy, fallsBackToBucketSigmaWhenAccuracyEstimateIsNegative)
+{
+  const OrientationCovariancePolicyResult result = ResolveOrientationCovariancePolicy(1, -32);
+
+  EXPECT_FALSE(result.has_accuracy_estimate);
+  EXPECT_NEAR(result.accuracy_estimate_rad, -32.0 / 4096.0, 1e-12);
+  EXPECT_EQ(result.source, OrientationCovarianceSource::AccuracyBucketFallback);
+  EXPECT_EQ(result.rejection_reason,
+            OrientationCovarianceEstimateRejectionReason::RawEstimateNonPositive);
+  EXPECT_DOUBLE_EQ(result.sigma_rad, 0.08);
 }
 
 TEST(Bno086OrientationCovariancePolicy,
@@ -74,8 +90,10 @@ TEST(Bno086OrientationCovariancePolicy,
   const OrientationCovariancePolicyResult result = ResolveOrientationCovariancePolicy(3, 13000);
 
   EXPECT_FALSE(result.has_accuracy_estimate);
-  EXPECT_DOUBLE_EQ(result.accuracy_estimate_rad, 0.0);
+  EXPECT_NEAR(result.accuracy_estimate_rad, 13000.0 / 4096.0, 1e-12);
   EXPECT_EQ(result.source, OrientationCovarianceSource::AccuracyBucketFallback);
+  EXPECT_EQ(result.rejection_reason,
+            OrientationCovarianceEstimateRejectionReason::RawEstimateOutOfRange);
   EXPECT_DOUBLE_EQ(result.sigma_rad, 0.012);
   EXPECT_DOUBLE_EQ(result.covariance_rad2[0][0], 0.000144);
 }
@@ -87,5 +105,18 @@ TEST(Bno086OrientationCovariancePolicy, sourceNamesAreStable)
       "rotation_vector_accuracy_estimate");
   EXPECT_STREQ(OrientationCovarianceSourceName(OrientationCovarianceSource::AccuracyBucketFallback),
                "accuracy_bucket_fallback");
+}
+
+TEST(Bno086OrientationCovariancePolicy, rejectionReasonNamesAreStable)
+{
+  EXPECT_STREQ(OrientationCovarianceEstimateRejectionReasonName(
+                   OrientationCovarianceEstimateRejectionReason::None),
+               "none");
+  EXPECT_STREQ(OrientationCovarianceEstimateRejectionReasonName(
+                   OrientationCovarianceEstimateRejectionReason::RawEstimateNonPositive),
+               "raw_estimate_non_positive");
+  EXPECT_STREQ(OrientationCovarianceEstimateRejectionReasonName(
+                   OrientationCovarianceEstimateRejectionReason::RawEstimateOutOfRange),
+               "raw_estimate_out_of_range");
 }
 } // namespace OASIS::IMU::BNO086

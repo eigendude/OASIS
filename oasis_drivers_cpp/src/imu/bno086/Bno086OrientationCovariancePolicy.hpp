@@ -24,14 +24,33 @@ enum class OrientationCovarianceSource : std::uint8_t
 };
 
 /*!
+ * \brief Reason the Rotation Vector estimated-accuracy field was not used
+ */
+enum class OrientationCovarianceEstimateRejectionReason : std::uint8_t
+{
+  None,
+  RawEstimateNonPositive,
+  RawEstimateOutOfRange,
+};
+
+/*!
  * \brief Driver-owned orientation covariance decision for one SH-2 sample
  *
  * The policy module owns the driver-boundary heuristic that turns SH-2
  * Rotation Vector accuracy signals into the published orientation covariance.
- * Rotation Vector estimated accuracy is preferred when present and sane;
- * otherwise a tighter fallback bucket table is used. The node consumes this
- * result and reports which source was selected, while downstream AHRS only
- * preserves and rotates the published covariance.
+ * Rotation Vector estimated accuracy is preferred when present and sane.
+ *
+ * When that estimated-accuracy field is unusable, the driver falls back to an
+ * explicit heuristic bucket table keyed by the coarse SH-2 accuracy bucket.
+ * That fallback is a provisional policy rather than hidden magic: the bucket
+ * sigmas are engineering heuristics chosen to provide a conservative ROS
+ * covariance contract, not a rigorous physical covariance model derived from
+ * the datasheet alone.
+ *
+ * The node consumes this result and reports which source was selected, while
+ * downstream AHRS only preserves and rotates the published covariance. Future
+ * tuning may calibrate the fallback table empirically from real robot resting
+ * data without changing that contract boundary.
  */
 struct OrientationCovariancePolicyResult
 {
@@ -57,11 +76,19 @@ struct OrientationCovariancePolicyResult
   bool has_accuracy_estimate{false};
 
   /*!
-   * \brief Decoded SH-2 estimated accuracy in radians when available
+   * \brief Decoded SH-2 estimated accuracy in radians from the raw Q12 field
    *
    * Units: rad
    */
   double accuracy_estimate_rad{0.0};
+
+  /*!
+   * \brief Why the estimated-accuracy field was rejected by policy
+   *
+   * Units: enum code
+   */
+  OrientationCovarianceEstimateRejectionReason rejection_reason{
+      OrientationCovarianceEstimateRejectionReason::None};
 
   /*!
    * \brief Final published 1-sigma orientation uncertainty per axis
@@ -90,4 +117,7 @@ OrientationCovariancePolicyResult ResolveOrientationCovariancePolicy(
 double OrientationAccuracyBucketToSigmaRad(std::uint8_t accuracy_bucket);
 
 const char* OrientationCovarianceSourceName(OrientationCovarianceSource source);
+
+const char* OrientationCovarianceEstimateRejectionReasonName(
+    OrientationCovarianceEstimateRejectionReason reason);
 } // namespace OASIS::IMU::BNO086

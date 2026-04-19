@@ -17,6 +17,15 @@ namespace
 {
 constexpr double kRotationVectorAccuracyQ12Scale = 1.0 / 4096.0;
 
+// SH-2 exposes only a coarse orientation quality bucket here rather than a
+// native full 3x3 orientation covariance estimate.
+//
+// These fallback 1-sigma buckets are provisional engineering heuristics used
+// to publish a conservative ROS covariance contract when the Rotation Vector
+// estimated-accuracy field is unusable.
+//
+// They are not strongly justified as a physical covariance model from the
+// datasheet alone, and may be calibrated later from real robot resting data.
 constexpr double kFallbackSigmaUnreliableRad = 0.20;
 constexpr double kFallbackSigmaLowRad = 0.08;
 constexpr double kFallbackSigmaMediumRad = 0.03;
@@ -59,14 +68,18 @@ OrientationCovariancePolicyResult ResolveOrientationCovariancePolicy(
   result.sigma_rad = OrientationAccuracyBucketToSigmaRad(accuracy_bucket);
   result.source = OrientationCovarianceSource::AccuracyBucketFallback;
 
+  // The Rotation Vector report carries a fifth 16-bit field after the
+  // quaternion terms. BNO08X metadata marks that auxiliary term as Q12, and
+  // the SH-2 Rotation Vector input report defines it as the accuracy estimate
+  // in radians.
   const double decoded_accuracy_estimate_rad =
       RotationVectorAccuracyEstimateRad(raw_accuracy_estimate_q12);
+  result.accuracy_estimate_rad = decoded_accuracy_estimate_rad;
 
   if (std::isfinite(decoded_accuracy_estimate_rad) && decoded_accuracy_estimate_rad > 0.0 &&
       decoded_accuracy_estimate_rad <= kMaximumReasonableAccuracyEstimateRad)
   {
     result.has_accuracy_estimate = true;
-    result.accuracy_estimate_rad = decoded_accuracy_estimate_rad;
 
     // This is still a driver-boundary heuristic rather than a native SH-2 3x3
     // covariance. Prefer the Rotation Vector estimated accuracy whenever SH-2
@@ -75,6 +88,18 @@ OrientationCovariancePolicyResult ResolveOrientationCovariancePolicy(
     // solution.
     result.sigma_rad = std::max(decoded_accuracy_estimate_rad, kMinimumPublishedSigmaRad);
     result.source = OrientationCovarianceSource::RotationVectorAccuracyEstimate;
+  }
+  else if (!(decoded_accuracy_estimate_rad > 0.0))
+  {
+    // Fall back to the explicit bucket heuristic table when SH-2 does not
+    // provide a usable estimated-accuracy value.
+    result.rejection_reason = OrientationCovarianceEstimateRejectionReason::RawEstimateNonPositive;
+  }
+  else
+  {
+    // Fall back to the explicit bucket heuristic table when SH-2 does not
+    // provide a usable estimated-accuracy value.
+    result.rejection_reason = OrientationCovarianceEstimateRejectionReason::RawEstimateOutOfRange;
   }
 
   result.covariance_rad2 = DiagonalCovarianceFromSigma(result.sigma_rad);
@@ -110,6 +135,25 @@ const char* OrientationCovarianceSourceName(OrientationCovarianceSource source)
     case OrientationCovarianceSource::AccuracyBucketFallback:
     default:
       return "accuracy_bucket_fallback";
+  }
+}
+
+const char* OrientationCovarianceEstimateRejectionReasonName(
+    OrientationCovarianceEstimateRejectionReason reason)
+{
+  switch (reason)
+  {
+    case OrientationCovarianceEstimateRejectionReason::None:
+      return "none";
+
+    case OrientationCovarianceEstimateRejectionReason::RawEstimateNonPositive:
+      return "raw_estimate_non_positive";
+
+    case OrientationCovarianceEstimateRejectionReason::RawEstimateOutOfRange:
+      return "raw_estimate_out_of_range";
+
+    default:
+      return "unknown";
   }
 }
 } // namespace OASIS::IMU::BNO086

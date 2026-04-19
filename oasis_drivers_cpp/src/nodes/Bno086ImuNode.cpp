@@ -483,13 +483,19 @@ void Bno086ImuNode::ApplyEvent(const SensorEvent& event, const rclcpp::Time& sam
   {
     case ReportId::RotationVector:
     {
+      const auto accuracyEstimateIndex =
+          static_cast<std::size_t>(RotationVectorValueIndex::AccuracyEstimate);
       const OrientationCovariancePolicyResult covariancePolicy =
-          ResolveOrientationCovariancePolicy(event.accuracy, event.values[4]);
+          ResolveOrientationCovariancePolicy(event.accuracy, event.values[accuracyEstimateIndex]);
 
-      m_latestFrame.orientation_xyzw[0] = QToDouble(event.values[0], 14);
-      m_latestFrame.orientation_xyzw[1] = QToDouble(event.values[1], 14);
-      m_latestFrame.orientation_xyzw[2] = QToDouble(event.values[2], 14);
-      m_latestFrame.orientation_xyzw[3] = QToDouble(event.values[3], 14);
+      m_latestFrame.orientation_xyzw[0] = QToDouble(
+          event.values[static_cast<std::size_t>(RotationVectorValueIndex::QuaternionI)], 14);
+      m_latestFrame.orientation_xyzw[1] = QToDouble(
+          event.values[static_cast<std::size_t>(RotationVectorValueIndex::QuaternionJ)], 14);
+      m_latestFrame.orientation_xyzw[2] = QToDouble(
+          event.values[static_cast<std::size_t>(RotationVectorValueIndex::QuaternionK)], 14);
+      m_latestFrame.orientation_xyzw[3] = QToDouble(
+          event.values[static_cast<std::size_t>(RotationVectorValueIndex::QuaternionReal)], 14);
       NormalizeQuaternion(m_latestFrame.orientation_xyzw);
       m_latestFrame.has_orientation = true;
       m_orientationState.has_sample = true;
@@ -513,10 +519,13 @@ void Bno086ImuNode::ApplyEvent(const SensorEvent& event, const rclcpp::Time& sam
       m_latestFrame.orientation_cov_rad2 = covariancePolicy.covariance_rad2;
       m_latestFrame.has_orientation_covariance = true;
       m_orientationCovarianceDebug.accuracy_bucket = covariancePolicy.accuracy_bucket;
+      m_orientationCovarianceDebug.raw_accuracy_estimate_q12 =
+          covariancePolicy.raw_accuracy_estimate_q12;
       m_orientationCovarianceDebug.sigma_rad = covariancePolicy.sigma_rad;
       m_orientationCovarianceDebug.source = covariancePolicy.source;
       m_orientationCovarianceDebug.has_accuracy_estimate = covariancePolicy.has_accuracy_estimate;
       m_orientationCovarianceDebug.accuracy_estimate_rad = covariancePolicy.accuracy_estimate_rad;
+      m_orientationCovarianceDebug.rejection_reason = covariancePolicy.rejection_reason;
       MaybeLogOrientationCovariancePolicy();
       break;
     }
@@ -800,15 +809,17 @@ void Bno086ImuNode::MaybeLogOrientationCovariancePolicy()
   {
     RCLCPP_INFO(get_logger(),
                 "BNO086 orientation covariance policy: report=%s bucket=%u source=%s "
-                "sigma_rad=%.4f sigma_deg=%.2f estimate_rad=%.4f",
+                "raw_estimate_q12=%d estimate_rad=%.4f rejection=%s sigma_rad=%.4f "
+                "sigma_deg=%.2f",
                 ORIENTATION_REPORT_SOURCE,
                 static_cast<unsigned>(m_orientationCovarianceDebug.accuracy_bucket),
                 OrientationCovarianceSourceName(m_orientationCovarianceDebug.source),
+                static_cast<int>(m_orientationCovarianceDebug.raw_accuracy_estimate_q12),
+                m_orientationCovarianceDebug.accuracy_estimate_rad,
+                OrientationCovarianceEstimateRejectionReasonName(
+                    m_orientationCovarianceDebug.rejection_reason),
                 m_orientationCovarianceDebug.sigma_rad,
-                m_orientationCovarianceDebug.sigma_rad * 180.0 / PI_RAD,
-                m_orientationCovarianceDebug.has_accuracy_estimate
-                    ? m_orientationCovarianceDebug.accuracy_estimate_rad
-                    : 0.0);
+                m_orientationCovarianceDebug.sigma_rad * 180.0 / PI_RAD);
 
     m_loggedOrientationCovarianceSource = true;
     m_lastOrientationCovarianceSource = m_orientationCovarianceDebug.source;
@@ -817,14 +828,16 @@ void Bno086ImuNode::MaybeLogOrientationCovariancePolicy()
 
   RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), ORIENTATION_COVARIANCE_LOG_THROTTLE_MS,
                         "BNO086 orientation covariance status: report=%s bucket=%u source=%s "
-                        "sigma_rad=%.4f sigma_deg=%.2f variance_rad2=%.6f estimate_rad=%.4f",
+                        "raw_estimate_q12=%d estimate_rad=%.4f rejection=%s sigma_rad=%.4f "
+                        "sigma_deg=%.2f variance_rad2=%.6f",
                         ORIENTATION_REPORT_SOURCE,
                         static_cast<unsigned>(m_orientationCovarianceDebug.accuracy_bucket),
                         OrientationCovarianceSourceName(m_orientationCovarianceDebug.source),
+                        static_cast<int>(m_orientationCovarianceDebug.raw_accuracy_estimate_q12),
+                        m_orientationCovarianceDebug.accuracy_estimate_rad,
+                        OrientationCovarianceEstimateRejectionReasonName(
+                            m_orientationCovarianceDebug.rejection_reason),
                         m_orientationCovarianceDebug.sigma_rad,
                         m_orientationCovarianceDebug.sigma_rad * 180.0 / PI_RAD,
-                        m_latestFrame.orientation_cov_rad2[0][0],
-                        m_orientationCovarianceDebug.has_accuracy_estimate
-                            ? m_orientationCovarianceDebug.accuracy_estimate_rad
-                            : 0.0);
+                        m_latestFrame.orientation_cov_rad2[0][0]);
 }
