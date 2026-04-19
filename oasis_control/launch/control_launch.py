@@ -85,8 +85,8 @@ def generate_launch_description() -> LaunchDescription:
         )
         ControlDescriptions.add_ahrs_tilt_sensor(ld, HOST_ID)
         ControlDescriptions.add_forward_twist_node(ld, HOST_ID)
-        ControlDescriptions.add_speedometer_node(ld, HOST_ID)
-        ControlDescriptions.add_tilt_sensor(ld, HOST_ID)
+        # ControlDescriptions.add_speedometer_node(ld, HOST_ID)
+        # ControlDescriptions.add_tilt_sensor(ld, HOST_ID)
         ControlDescriptions.add_zupt_detector(ld, HOST_ID)
 
     # Microcontroller nodes

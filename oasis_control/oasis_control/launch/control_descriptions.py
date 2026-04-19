@@ -231,7 +231,7 @@ class ControlDescriptions:
             name=f"forward_twist_{host_id}",
             output="screen",
             remappings=[
-                ("forward_twist", f"{host_id}/ahrs/forward_twist"),
+                ("forward_twist", f"{host_id}/forward_twist"),
                 (
                     "forward_twist/diag",
                     f"{host_id}/ahrs/forward_twist/diag",
@@ -273,7 +273,7 @@ class ControlDescriptions:
             output="screen",
             remappings=[
                 ("gravity", f"{host_id}/gravity"),
-                ("tilt", f"{host_id}/tilt"),
+                ("tilt", f"{host_id}/gravity/tilt"),
             ],
         )
         ld.add_action(localization_node)
@@ -289,7 +289,7 @@ class ControlDescriptions:
             remappings=[
                 ("gravity", f"{host_id}/gravity"),
                 ("imu", f"{host_id}/ahrs/imu"),
-                ("tilt", f"{host_id}/ahrs/tilt"),
+                ("tilt", f"{host_id}/tilt"),
             ],
         )
         ld.add_action(ahrs_tilt_node)
