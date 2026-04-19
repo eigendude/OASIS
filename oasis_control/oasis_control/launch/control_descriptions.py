@@ -213,7 +213,7 @@ class ControlDescriptions:
             output="screen",
             remappings=[
                 ("forward_twist", f"{host_id}/forward_twist"),
-                ("imu", f"{host_id}/imu"),
+                ("imu", f"{host_id}/ahrs/imu"),
                 ("zupt", f"{host_id}/zupt"),
             ],
         )

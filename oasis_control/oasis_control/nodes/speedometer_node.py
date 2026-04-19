@@ -8,7 +8,7 @@
 #
 ################################################################################
 
-"""ROS 2 node that estimates HUD speed from IMU and ZUPT updates."""
+"""ROS 2 node that estimates HUD speed from mounted IMU and ZUPT updates."""
 
 from __future__ import annotations
 
@@ -195,7 +195,7 @@ class SpeedometerNode(rclpy.node.Node):
 
     def _handle_imu(self, message: ImuMsg) -> None:
         """
-        Update the speed estimate from one IMU sample.
+        Update the speed estimate from one mounted base-frame IMU sample.
         """
 
         timestamp_sec: float = _time_to_float_sec(message.header.stamp)
@@ -270,21 +270,23 @@ class SpeedometerNode(rclpy.node.Node):
 
     def _maybe_log_axis_lock(self, estimate: SpeedometerEstimate) -> None:
         """
-        Log once when the boot-relative motion axis locks in.
+        Log once when the boot-relative body motion axis locks in.
         """
 
         if not estimate.axis_learned or self._axis_was_learned:
             return
 
         self._axis_was_learned = True
-        motion_axis_imu: Optional[tuple[float, float, float]] = estimate.motion_axis_imu
-        if motion_axis_imu is None:
+        motion_axis_body: Optional[tuple[float, float, float]] = (
+            estimate.motion_axis_body
+        )
+        if motion_axis_body is None:
             return
 
         self.get_logger().info(
-            "Learned boot-relative motion axis "
-            f"({motion_axis_imu[0]:.3f}, {motion_axis_imu[1]:.3f}, "
-            f"{motion_axis_imu[2]:.3f}) with confidence "
+            "Learned boot-relative body motion axis "
+            f"({motion_axis_body[0]:.3f}, {motion_axis_body[1]:.3f}, "
+            f"{motion_axis_body[2]:.3f}) with confidence "
             f"{estimate.axis_confidence:.3f}"
         )
 

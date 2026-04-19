@@ -139,10 +139,10 @@ def test_axis_does_not_lock_before_minimum_samples() -> None:
     )
 
     assert estimate.axis_learned is False
-    assert estimate.motion_axis_imu is None
+    assert estimate.motion_axis_body is None
 
 
-def test_axis_locks_after_enough_aligned_samples() -> None:
+def test_axis_locks_after_enough_aligned_body_samples() -> None:
     axis_learning_min_confidence: float = 0.75
     core: SpeedometerCore = _make_core(
         axis_learning_accel_threshold_mps2=0.05,
@@ -151,12 +151,12 @@ def test_axis_locks_after_enough_aligned_samples() -> None:
     )
 
     estimate: SpeedometerEstimate = _lock_axis(core)
-    motion_axis_imu: tuple[float, float, float] | None = estimate.motion_axis_imu
+    motion_axis_body: tuple[float, float, float] | None = estimate.motion_axis_body
 
     assert estimate.axis_learned is True
-    assert motion_axis_imu is not None
+    assert motion_axis_body is not None
     assert math.isclose(
-        abs(_dot(motion_axis_imu, EXPECTED_FORWARD_AXIS)),
+        abs(_dot(motion_axis_body, EXPECTED_FORWARD_AXIS)),
         1.0,
         abs_tol=2.0e-2,
     )
@@ -164,19 +164,19 @@ def test_axis_locks_after_enough_aligned_samples() -> None:
     assert estimate.axis_confidence >= axis_learning_min_confidence
 
 
-def test_axis_learning_uses_direct_linear_acceleration_signal() -> None:
+def test_axis_learning_uses_mounted_body_acceleration_signal() -> None:
     core: SpeedometerCore = _make_core(
         axis_learning_accel_threshold_mps2=0.5,
         axis_learning_min_samples=3,
     )
 
     estimate: SpeedometerEstimate = _lock_axis(core)
-    motion_axis_imu: tuple[float, float, float] | None = estimate.motion_axis_imu
+    motion_axis_body: tuple[float, float, float] | None = estimate.motion_axis_body
 
     assert estimate.axis_learned is True
-    assert motion_axis_imu is not None
-    assert math.isclose(abs(motion_axis_imu[0]), 1.0, abs_tol=2.0e-2)
-    assert math.isclose(abs(motion_axis_imu[2]), 0.0, abs_tol=2.0e-2)
+    assert motion_axis_body is not None
+    assert math.isclose(abs(motion_axis_body[0]), 1.0, abs_tol=2.0e-2)
+    assert math.isclose(abs(motion_axis_body[2]), 0.0, abs_tol=2.0e-2)
 
 
 def test_predict_step_grows_speed_after_axis_lock() -> None:

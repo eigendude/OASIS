@@ -22,7 +22,7 @@ from typing import Optional
 
 
 # Units: m/s^2
-# Meaning: reject degenerate acceleration and gravity vectors
+# Meaning: reject degenerate acceleration vectors during axis learning
 MIN_VECTOR_NORM_MPS2: float = 1.0e-6
 
 # Units: m/s^2
@@ -40,8 +40,8 @@ class SpeedometerConfig:
     Tunable parameters for the HUD-focused speed estimator.
 
     Fields:
-        axis_learning_accel_threshold_mps2: minimum gravity-removed
-            acceleration magnitude used as motion-axis evidence
+        axis_learning_accel_threshold_mps2: minimum body-frame acceleration
+            magnitude used as motion-axis evidence
         axis_learning_max_gyro_threshold_rads: maximum gyro magnitude accepted
             during axis learning, or a nonpositive value to disable the gate
         axis_learning_min_samples: minimum accepted motion samples before axis
@@ -49,7 +49,7 @@ class SpeedometerConfig:
         axis_learning_min_confidence: minimum alignment confidence in [0, 1]
             from the sign-aligned acceleration accumulator
         unlocked_speed_std_mps: published 1-sigma speed uncertainty before the
-            motion axis is learned and the estimator becomes informative
+            body motion axis is learned and the estimator becomes informative
         default_forward_accel_std_mps2: fallback 1-sigma acceleration noise
             used when IMU covariance is unknown
         process_bias_walk_std_mps2: 1-sigma bias random walk per sqrt(second)
@@ -78,14 +78,15 @@ class SpeedometerState:
     Mutable estimator state.
 
     Fields:
-        speed_mps: signed speed estimate along the learned boot-relative axis
+        speed_mps: signed speed estimate along the learned boot-relative body
+            axis
         accel_bias_mps2: signed projected acceleration bias along that axis
         speed_variance_mps2: variance of the signed speed state
         speed_bias_covariance_mps3: covariance between speed and bias states
         bias_variance_mps2_2: variance of the projected acceleration bias
         last_predict_timestamp_sec: last accepted IMU timestamp
-        learned_motion_axis_imu: learned unit motion axis in IMU coordinates,
-            up to sign
+        learned_motion_axis_body: learned unit body-frame motion axis in
+            `base_link`, up to sign
         axis_sample_count: accepted motion-evidence sample count
         axis_evidence_direction_sum: sign-aligned sum of normalized dynamic
             acceleration directions used for axis lock-in
@@ -99,7 +100,7 @@ class SpeedometerState:
     speed_bias_covariance_mps3: float
     bias_variance_mps2_2: float
     last_predict_timestamp_sec: Optional[float]
-    learned_motion_axis_imu: Optional[tuple[float, float, float]]
+    learned_motion_axis_body: Optional[tuple[float, float, float]]
     axis_sample_count: int
     axis_evidence_direction_sum: tuple[float, float, float]
     axis_confidence: float
@@ -114,16 +115,16 @@ class SpeedometerEstimate:
     Fields:
         speed_mps: nonnegative scalar speed magnitude for HUD display
         speed_variance_mps2: variance of the published scalar speed magnitude
-        axis_learned: true once the boot-relative motion axis has locked
-        motion_axis_imu: learned unit motion axis in IMU coordinates, or None
-            before lock-in
+        axis_learned: true once the boot-relative body motion axis has locked
+        motion_axis_body: learned unit body-frame motion axis, or None before
+            lock-in
         axis_confidence: current axis-learning confidence in [0, 1]
     """
 
     speed_mps: float
     speed_variance_mps2: float
     axis_learned: bool
-    motion_axis_imu: Optional[tuple[float, float, float]]
+    motion_axis_body: Optional[tuple[float, float, float]]
     axis_confidence: float
 
 
@@ -131,10 +132,10 @@ class SpeedometerCore:
     """
     Estimate HUD speed magnitude from IMU and ZUPT measurements.
 
-    The estimator learns a fixed motion axis in the IMU frame after boot from
-    gravity-removed acceleration samples. Once the axis is available, it tracks
-    a signed speed and projected acceleration bias along that axis, then
-    publishes the unsigned magnitude for the HUD.
+    The estimator learns a fixed body-frame motion axis after boot from mounted
+    acceleration samples. Once the axis is available, it tracks a signed speed
+    and projected acceleration bias along that axis, then publishes the
+    unsigned magnitude for the HUD.
     """
 
     def __init__(self, config: SpeedometerConfig) -> None:
@@ -152,7 +153,7 @@ class SpeedometerCore:
                 MIN_SPEED_VARIANCE_MPS2, config.initial_bias_std_mps2**2
             ),
             last_predict_timestamp_sec=None,
-            learned_motion_axis_imu=None,
+            learned_motion_axis_body=None,
             axis_sample_count=0,
             axis_evidence_direction_sum=(0.0, 0.0, 0.0),
             axis_confidence=0.0,
@@ -207,24 +208,24 @@ class SpeedometerCore:
         )
         self._state.last_predict_timestamp_sec = timestamp_sec
 
-        if self._state.learned_motion_axis_imu is None:
+        if self._state.learned_motion_axis_body is None:
             self._update_axis_learning(
-                dynamic_accel_mps2=linear_accel_vector_mps2,
+                body_accel_mps2=linear_accel_vector_mps2,
                 angular_velocity_rads=angular_velocity_vector_rads,
             )
 
         if dt_sec is None or dt_sec <= 0.0:
             return self.get_estimate()
 
-        if self._state.learned_motion_axis_imu is None:
+        if self._state.learned_motion_axis_body is None:
             return self.get_estimate()
 
-        motion_axis_imu: tuple[float, float, float] = (
-            self._state.learned_motion_axis_imu
+        motion_axis_body: tuple[float, float, float] = (
+            self._state.learned_motion_axis_body
         )
-        projected_accel_mps2: float = _dot(linear_accel_vector_mps2, motion_axis_imu)
+        projected_accel_mps2: float = _dot(linear_accel_vector_mps2, motion_axis_body)
         accel_variance_mps2_2: float = self._project_accel_variance_mps2_2(
-            motion_axis_imu=motion_axis_imu,
+            motion_axis_body=motion_axis_body,
             linear_accel_covariance_mps2_2=linear_accel_covariance_mps2_2,
         )
         self._predict_state(
@@ -300,12 +301,12 @@ class SpeedometerCore:
         return SpeedometerEstimate(
             speed_mps=(
                 abs(self._state.speed_mps)
-                if self._state.learned_motion_axis_imu is not None
+                if self._state.learned_motion_axis_body is not None
                 else 0.0
             ),
             speed_variance_mps2=self._published_speed_variance_mps2(),
-            axis_learned=self._state.learned_motion_axis_imu is not None,
-            motion_axis_imu=self._state.learned_motion_axis_imu,
+            axis_learned=self._state.learned_motion_axis_body is not None,
+            motion_axis_body=self._state.learned_motion_axis_body,
             axis_confidence=float(self._state.axis_confidence),
         )
 
@@ -314,7 +315,7 @@ class SpeedometerCore:
         Return the HUD-facing speed variance with an honest pre-lock policy.
         """
 
-        if self._state.learned_motion_axis_imu is None:
+        if self._state.learned_motion_axis_body is None:
             return max(
                 MIN_SPEED_VARIANCE_MPS2,
                 self._config.unlocked_speed_std_mps**2,
@@ -324,15 +325,15 @@ class SpeedometerCore:
 
     def _update_axis_learning(
         self,
-        dynamic_accel_mps2: tuple[float, float, float],
+        body_accel_mps2: tuple[float, float, float],
         angular_velocity_rads: tuple[float, float, float],
     ) -> None:
         """
-        Accumulate motion evidence for the boot-relative longitudinal axis.
+        Accumulate motion evidence for the boot-relative body longitudinal axis.
         """
 
-        dynamic_norm_mps2: float = _norm(dynamic_accel_mps2)
-        if dynamic_norm_mps2 < self._config.axis_learning_accel_threshold_mps2:
+        body_accel_norm_mps2: float = _norm(body_accel_mps2)
+        if body_accel_norm_mps2 < self._config.axis_learning_accel_threshold_mps2:
             return
 
         if self._state.stationary_hint:
@@ -343,9 +344,9 @@ class SpeedometerCore:
             return
 
         candidate_direction: tuple[float, float, float] = (
-            dynamic_accel_mps2[0] / dynamic_norm_mps2,
-            dynamic_accel_mps2[1] / dynamic_norm_mps2,
-            dynamic_accel_mps2[2] / dynamic_norm_mps2,
+            body_accel_mps2[0] / body_accel_norm_mps2,
+            body_accel_mps2[1] / body_accel_norm_mps2,
+            body_accel_mps2[2] / body_accel_norm_mps2,
         )
         evidence_direction_sum: tuple[float, float, float] = (
             self._state.axis_evidence_direction_sum
@@ -376,13 +377,13 @@ class SpeedometerCore:
         if self._state.axis_confidence < self._config.axis_learning_min_confidence:
             return
 
-        learned_axis_imu: Optional[tuple[float, float, float]] = _normalized_vector(
+        learned_axis_body: Optional[tuple[float, float, float]] = _normalized_vector(
             evidence_direction_sum
         )
-        if learned_axis_imu is None:
+        if learned_axis_body is None:
             return
 
-        self._state.learned_motion_axis_imu = learned_axis_imu
+        self._state.learned_motion_axis_body = learned_axis_body
 
     def _predict_state(
         self,
@@ -429,11 +430,11 @@ class SpeedometerCore:
 
     def _project_accel_variance_mps2_2(
         self,
-        motion_axis_imu: tuple[float, float, float],
+        motion_axis_body: tuple[float, float, float],
         linear_accel_covariance_mps2_2: Optional[Iterable[Iterable[float]]],
     ) -> float:
         """
-        Project the IMU acceleration covariance onto the learned motion axis.
+        Project mounted body-frame acceleration covariance onto the motion axis.
         """
 
         covariance_rows_mps2_2: Optional[tuple[tuple[float, float, float], ...]] = (
@@ -450,9 +451,9 @@ class SpeedometerCore:
             col_index: int
             for col_index in range(3):
                 projected_variance_mps2_2 += (
-                    motion_axis_imu[row_index]
+                    motion_axis_body[row_index]
                     * covariance_rows_mps2_2[row_index][col_index]
-                    * motion_axis_imu[col_index]
+                    * motion_axis_body[col_index]
                 )
 
         if projected_variance_mps2_2 <= 0.0 or not math.isfinite(
