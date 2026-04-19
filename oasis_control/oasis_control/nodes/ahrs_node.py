@@ -10,8 +10,7 @@
 
 from __future__ import annotations
 
-import math
-from dataclasses import dataclass
+from typing import Optional
 
 import rclpy.node
 import rclpy.publisher
@@ -24,9 +23,48 @@ from geometry_msgs.msg import (
 )
 from geometry_msgs.msg import TransformStamped as TransformStampedMsg
 from nav_msgs.msg import Odometry as OdometryMsg
+from rclpy.time import Time
 from sensor_msgs.msg import Imu as ImuMsg
+from tf2_ros import Buffer
 from tf2_ros import TransformBroadcaster
+from tf2_ros import TransformException
+from tf2_ros import TransformListener
 
+from oasis_control.localization.ahrs.data.ahrs_output import AhrsOutput
+from oasis_control.localization.ahrs.data.diagnostics import AhrsDiagnosticsSnapshot
+from oasis_control.localization.ahrs.data.diagnostics import AhrsDiagnosticsState
+from oasis_control.localization.ahrs.data.diagnostics import snapshot_diagnostics
+from oasis_control.localization.ahrs.processing.attitude_mapper import map_imu_to_base
+from oasis_control.localization.ahrs.processing.gravity_consistency import (
+    GravityConsistencyDecision,
+)
+from oasis_control.localization.ahrs.processing.gravity_consistency import (
+    GravityConsistencyPolicy,
+)
+from oasis_control.localization.ahrs.processing.gravity_consistency import (
+    evaluate_gravity_consistency,
+)
+from oasis_control.localization.ahrs.processing.output_adapter import make_ahrs_output
+from oasis_control.localization.common.algebra.covariance import (
+    UNKNOWN_ORIENTATION_COVARIANCE,
+)
+from oasis_control.localization.common.algebra.covariance import (
+    embed_linear_covariance_3x3,
+)
+from oasis_control.localization.common.algebra.covariance import (
+    flatten_matrix3_row_major,
+)
+from oasis_control.localization.common.algebra.quat import normalize_quaternion_xyzw
+from oasis_control.localization.common.data.gravity_sample import GravitySample
+from oasis_control.localization.common.frames.mounting import MountedImuSample
+from oasis_control.localization.common.frames.mounting import MountingTransform
+from oasis_control.localization.common.frames.mounting import make_mounting_transform
+from oasis_control.localization.common.validation.gravity_validation import (
+    validate_gravity_sample,
+)
+from oasis_control.localization.common.validation.imu_validation import (
+    validate_imu_sample,
+)
 from oasis_msgs.msg import AhrsStatus as AhrsStatusMsg
 
 
@@ -49,13 +87,17 @@ PARAM_BASE_FRAME_ID: str = "base_frame_id"
 PARAM_IMU_FRAME_ID: str = "imu_frame_id"
 PARAM_ODOM_FRAME_ID: str = "odom_frame_id"
 PARAM_WORLD_FRAME_ID: str = "world_frame_id"
+PARAM_GRAVITY_RESIDUAL_REJECT_THRESHOLD: str = "gravity_residual_reject_threshold"
+PARAM_GRAVITY_MAHALANOBIS_REJECT_THRESHOLD: str = "gravity_mahalanobis_reject_threshold"
 
 DEFAULT_BASE_FRAME_ID: str = "base_link"
 DEFAULT_IMU_FRAME_ID: str = "imu_link"
 DEFAULT_ODOM_FRAME_ID: str = "odom"
 DEFAULT_WORLD_FRAME_ID: str = "world"
+DEFAULT_GRAVITY_RESIDUAL_REJECT_THRESHOLD: float = 0.35
+DEFAULT_GRAVITY_MAHALANOBIS_REJECT_THRESHOLD: float = 5.0
 
-# Timer period for publishing placeholder TF edges and runtime diagnostics
+# Timer period for diagnostics and TF heartbeat
 #
 # Units: s
 #
@@ -67,26 +109,18 @@ STATUS_TIMER_PERIOD_SEC: float = 0.1
 ################################################################################
 
 
-@dataclass
-class AhrsDiagnosticsState:
-    accepted_imu_count: int = 0
-    accepted_gravity_count: int = 0
-    rejected_imu_count: int = 0
-    rejected_gravity_count: int = 0
-    has_gravity: bool = False
-    has_mounting: bool = False
-    last_bad_imu_frame_id: str = ""
-    last_bad_gravity_frame_id: str = ""
-
-
 class AhrsNode(rclpy.node.Node):
     """
-    Skeleton ROS node for fusing IMU and gravity into an AHRS estimate
+    Lightweight event-driven AHRS runtime for mounted attitude publication.
     """
 
-    def __init__(self) -> None:
-        """Initialize resources."""
-
+    def __init__(
+        self,
+        *,
+        tf_buffer: Optional[Buffer] = None,
+        tf_broadcaster: Optional[TransformBroadcaster] = None,
+        enable_status_timer: bool = True,
+    ) -> None:
         super().__init__(NODE_NAME)
 
         # ROS parameters
@@ -94,14 +128,35 @@ class AhrsNode(rclpy.node.Node):
         self.declare_parameter(PARAM_IMU_FRAME_ID, DEFAULT_IMU_FRAME_ID)
         self.declare_parameter(PARAM_ODOM_FRAME_ID, DEFAULT_ODOM_FRAME_ID)
         self.declare_parameter(PARAM_WORLD_FRAME_ID, DEFAULT_WORLD_FRAME_ID)
+        self.declare_parameter(
+            PARAM_GRAVITY_RESIDUAL_REJECT_THRESHOLD,
+            DEFAULT_GRAVITY_RESIDUAL_REJECT_THRESHOLD,
+        )
+        self.declare_parameter(
+            PARAM_GRAVITY_MAHALANOBIS_REJECT_THRESHOLD,
+            DEFAULT_GRAVITY_MAHALANOBIS_REJECT_THRESHOLD,
+        )
 
         self._base_frame_id: str = str(self.get_parameter(PARAM_BASE_FRAME_ID).value)
         self._imu_frame_id: str = str(self.get_parameter(PARAM_IMU_FRAME_ID).value)
         self._odom_frame_id: str = str(self.get_parameter(PARAM_ODOM_FRAME_ID).value)
         self._world_frame_id: str = str(self.get_parameter(PARAM_WORLD_FRAME_ID).value)
+        self._gravity_consistency_policy: GravityConsistencyPolicy = (
+            GravityConsistencyPolicy(
+                residual_norm_threshold=float(
+                    self.get_parameter(PARAM_GRAVITY_RESIDUAL_REJECT_THRESHOLD).value
+                ),
+                mahalanobis_distance_threshold=float(
+                    self.get_parameter(PARAM_GRAVITY_MAHALANOBIS_REJECT_THRESHOLD).value
+                ),
+            )
+        )
 
         # AHRS state
         self._diagnostics: AhrsDiagnosticsState = AhrsDiagnosticsState()
+        self._latest_gravity_sample: Optional[GravitySample] = None
+        self._latest_output: Optional[AhrsOutput] = None
+        self._mounting_transform: Optional[MountingTransform] = None
 
         # ROS QoS profiles
         sensor_qos_profile: rclpy.qos.QoSProfile = (
@@ -139,14 +194,24 @@ class AhrsNode(rclpy.node.Node):
             qos_profile=sensor_qos_profile,
         )
 
-        # ROS TF broadcaster
-        self._tf_broadcaster: TransformBroadcaster = TransformBroadcaster(self)
+        # TF buffer and listener
+        self._tf_buffer: Buffer = tf_buffer if tf_buffer is not None else Buffer()
+        self._transform_listener: Optional[TransformListener] = None
+        if tf_buffer is None:
+            self._transform_listener = TransformListener(self._tf_buffer, self)
+
+        # TF broadcaster
+        self._tf_broadcaster: TransformBroadcaster = (
+            tf_broadcaster if tf_broadcaster is not None else TransformBroadcaster(self)
+        )
 
         # ROS timers
-        self._status_timer: rclpy.timer.Timer = self.create_timer(
-            STATUS_TIMER_PERIOD_SEC,
-            self._publish_runtime_outputs,
-        )
+        self._status_timer: Optional[rclpy.timer.Timer] = None
+        if enable_status_timer:
+            self._status_timer = self.create_timer(
+                STATUS_TIMER_PERIOD_SEC,
+                self._publish_runtime_outputs,
+            )
 
         # Publish initial message
         self._publish_runtime_outputs()
@@ -154,75 +219,215 @@ class AhrsNode(rclpy.node.Node):
         self.get_logger().info("AHRS node initialized")
 
     def stop(self) -> None:
-        """Destroy the node."""
-
         self.get_logger().info("AHRS node deinitialized")
-
         self.destroy_node()
 
     def _handle_gravity(self, message: AccelWithCovarianceStampedMsg) -> None:
-        if message.header.frame_id != self._imu_frame_id:
+        validation_result = validate_gravity_sample(
+            timestamp_ns=_time_msg_to_ns(message.header.stamp),
+            frame_id=message.header.frame_id,
+            expected_frame_id=self._imu_frame_id,
+            gravity_mps2=(
+                float(message.accel.accel.linear.x),
+                float(message.accel.accel.linear.y),
+                float(message.accel.accel.linear.z),
+            ),
+            gravity_covariance_row_major=tuple(
+                float(value) for value in message.accel.covariance
+            ),
+        )
+        if not validation_result.accepted or validation_result.sample is None:
             self._diagnostics.rejected_gravity_count += 1
-            self._diagnostics.last_bad_gravity_frame_id = message.header.frame_id
+            if validation_result.rejection_reason == "bad_frame":
+                self._diagnostics.last_bad_gravity_frame_id = message.header.frame_id
             self._publish_runtime_outputs()
             return
 
+        if self._is_stale_gravity(validation_result.sample.timestamp_ns):
+            self._diagnostics.dropped_stale_gravity_count += 1
+            self._diagnostics.last_bad_gravity_frame_id = ""
+            self._publish_runtime_outputs()
+            return
+
+        self._latest_gravity_sample = validation_result.sample
         self._diagnostics.accepted_gravity_count += 1
         self._diagnostics.has_gravity = True
         self._diagnostics.last_bad_gravity_frame_id = ""
-
+        self._diagnostics.last_accepted_gravity_timestamp_ns = (
+            validation_result.sample.timestamp_ns
+        )
         self._publish_runtime_outputs()
 
     def _handle_imu(self, message: ImuMsg) -> None:
-        if message.header.frame_id != self._imu_frame_id:
+        validation_result = validate_imu_sample(
+            timestamp_ns=_time_msg_to_ns(message.header.stamp),
+            frame_id=message.header.frame_id,
+            expected_frame_id=self._imu_frame_id,
+            orientation_xyzw=(
+                float(message.orientation.x),
+                float(message.orientation.y),
+                float(message.orientation.z),
+                float(message.orientation.w),
+            ),
+            orientation_covariance_row_major=tuple(
+                float(value) for value in message.orientation_covariance
+            ),
+            angular_velocity_rads=(
+                float(message.angular_velocity.x),
+                float(message.angular_velocity.y),
+                float(message.angular_velocity.z),
+            ),
+            angular_velocity_covariance_row_major=tuple(
+                float(value) for value in message.angular_velocity_covariance
+            ),
+            linear_acceleration_mps2=(
+                float(message.linear_acceleration.x),
+                float(message.linear_acceleration.y),
+                float(message.linear_acceleration.z),
+            ),
+            linear_acceleration_covariance_row_major=tuple(
+                float(value) for value in message.linear_acceleration_covariance
+            ),
+        )
+        if not validation_result.accepted or validation_result.sample is None:
             self._diagnostics.rejected_imu_count += 1
-            self._diagnostics.last_bad_imu_frame_id = message.header.frame_id
+            if validation_result.rejection_reason == "bad_frame":
+                self._diagnostics.last_bad_imu_frame_id = message.header.frame_id
+            self._publish_runtime_outputs()
+            return
+
+        if self._is_stale_imu(validation_result.sample.timestamp_ns):
+            self._diagnostics.dropped_stale_imu_count += 1
+            self._diagnostics.last_bad_imu_frame_id = ""
             self._publish_runtime_outputs()
             return
 
         self._diagnostics.accepted_imu_count += 1
         self._diagnostics.last_bad_imu_frame_id = ""
+        self._diagnostics.last_accepted_imu_timestamp_ns = (
+            validation_result.sample.timestamp_ns
+        )
 
+        mounting_transform: Optional[MountingTransform] = self._resolve_mounting()
+        if mounting_transform is None:
+            self._latest_output = None
+            self._publish_runtime_outputs()
+            return
+
+        mounted_imu_sample: MountedImuSample = map_imu_to_base(
+            validation_result.sample,
+            mounting_transform,
+        )
+
+        gravity_residual = None
+        if self._latest_gravity_sample is not None:
+            gravity_consistency_decision: GravityConsistencyDecision = (
+                evaluate_gravity_consistency(
+                    gravity_sample=self._latest_gravity_sample,
+                    mounted_imu_sample=mounted_imu_sample,
+                    mounting_transform=mounting_transform,
+                    policy=self._gravity_consistency_policy,
+                )
+            )
+            gravity_residual = gravity_consistency_decision.residual
+            self._diagnostics.gravity_gated_in = gravity_consistency_decision.accepted
+            self._diagnostics.gravity_rejected = (
+                not gravity_consistency_decision.accepted
+            )
+            self._diagnostics.last_gravity_rejection_reason = (
+                gravity_consistency_decision.rejection_reason
+            )
+            if not gravity_consistency_decision.accepted:
+                self._diagnostics.gravity_rejection_count += 1
+        else:
+            self._diagnostics.gravity_gated_in = False
+            self._diagnostics.gravity_rejected = False
+            self._diagnostics.last_gravity_rejection_reason = ""
+
+        self._diagnostics.last_gravity_residual = gravity_residual
+
+        self._latest_output = make_ahrs_output(mounted_imu_sample, gravity_residual)
+        self._imu_pub.publish(self._build_imu_message(self._latest_output))
+        self._odom_pub.publish(self._build_odom_message(self._latest_output))
         self._publish_runtime_outputs()
 
+    def _is_stale_imu(self, timestamp_ns: int) -> bool:
+        last_timestamp_ns: Optional[int] = (
+            self._diagnostics.last_accepted_imu_timestamp_ns
+        )
+        return last_timestamp_ns is not None and timestamp_ns < last_timestamp_ns
+
+    def _is_stale_gravity(self, timestamp_ns: int) -> bool:
+        last_timestamp_ns: Optional[int] = (
+            self._diagnostics.last_accepted_gravity_timestamp_ns
+        )
+        return last_timestamp_ns is not None and timestamp_ns < last_timestamp_ns
+
     def _publish_runtime_outputs(self) -> None:
-        self._publish_dummy_tf()
+        self._publish_tf()
         self._publish_status()
 
-    def _publish_dummy_tf(self) -> None:
-        stamp: TimeMsg = self.get_clock().now().to_msg()
+    def _publish_tf(self) -> None:
+        transforms: list[TransformStampedMsg] = [
+            self._make_identity_transform(
+                parent_frame_id=self._world_frame_id,
+                child_frame_id=self._odom_frame_id,
+                stamp=self._current_stamp(),
+            )
+        ]
 
-        world_to_odom: TransformStampedMsg = self._make_identity_transform(
-            parent_frame_id=self._world_frame_id,
-            child_frame_id=self._odom_frame_id,
-            stamp=stamp,
-        )
-        odom_to_base: TransformStampedMsg = self._make_identity_transform(
-            parent_frame_id=self._odom_frame_id,
-            child_frame_id=self._base_frame_id,
-            stamp=stamp,
-        )
+        if self._latest_output is not None:
+            transforms.append(self._build_odom_to_base_transform(self._latest_output))
 
-        self._tf_broadcaster.sendTransform([world_to_odom, odom_to_base])
+        self._tf_broadcaster.sendTransform(transforms)
 
     def _publish_status(self) -> None:
+        status_snapshot: AhrsDiagnosticsSnapshot = snapshot_diagnostics(
+            self._diagnostics
+        )
+
+        # The status enum is intentionally coarse. Consumers should use the
+        # structured diagnostics fields below for finer-grained interpretation.
         status_message: AhrsStatusMsg = AhrsStatusMsg()
-        status_message.header.stamp = self.get_clock().now().to_msg()
+        status_message.header.stamp = self._current_stamp()
         status_message.header.frame_id = self._world_frame_id
         status_message.status = self._compute_status_code()
-        status_message.accepted_imu_count = self._diagnostics.accepted_imu_count
-        status_message.accepted_gravity_count = self._diagnostics.accepted_gravity_count
-        status_message.rejected_imu_count = self._diagnostics.rejected_imu_count
-        status_message.rejected_gravity_count = self._diagnostics.rejected_gravity_count
-        status_message.gravity_residual_norm = math.nan
-        status_message.gravity_mahalanobis_distance = math.nan
-        status_message.has_gravity = self._diagnostics.has_gravity
-        status_message.has_mounting = self._diagnostics.has_mounting
+        status_message.accepted_imu_count = status_snapshot.accepted_imu_count
+        status_message.accepted_gravity_count = status_snapshot.accepted_gravity_count
+        status_message.rejected_imu_count = status_snapshot.rejected_imu_count
+        status_message.rejected_gravity_count = status_snapshot.rejected_gravity_count
+        status_message.dropped_stale_imu_count = status_snapshot.dropped_stale_imu_count
+        status_message.dropped_stale_gravity_count = (
+            status_snapshot.dropped_stale_gravity_count
+        )
+        status_message.gravity_rejection_count = status_snapshot.gravity_rejection_count
+        status_message.gravity_residual_norm = status_snapshot.gravity_residual_norm
+        status_message.gravity_mahalanobis_distance = (
+            status_snapshot.gravity_mahalanobis_distance
+        )
+        status_message.has_gravity = status_snapshot.has_gravity
+        status_message.has_mounting = status_snapshot.has_mounting
+        status_message.gravity_gated_in = status_snapshot.gravity_gated_in
+        status_message.gravity_rejected = status_snapshot.gravity_rejected
+        status_message.transform_lookup_failure_count = (
+            status_snapshot.transform_lookup_failure_count
+        )
+        status_message.invalid_mounting_transform_count = (
+            status_snapshot.invalid_mounting_transform_count
+        )
+        status_message.last_mounting_lookup_error = (
+            status_snapshot.last_mounting_lookup_error
+        )
+        status_message.last_gravity_rejection_reason = (
+            status_snapshot.last_gravity_rejection_reason
+        )
         status_message.status_text = self._compute_status_text()
 
         self._diag_pub.publish(status_message)
 
     def _compute_status_code(self) -> int:
+        # Keep the public status code coarse and stable. Detailed runtime
+        # meaning belongs in the structured AhrsStatus diagnostics fields.
         if self._diagnostics.last_bad_imu_frame_id:
             return AhrsStatusMsg.STATUS_BAD_IMU_FRAME
 
@@ -242,18 +447,10 @@ class AhrsNode(rclpy.node.Node):
 
     def _compute_status_text(self) -> str:
         if self._diagnostics.last_bad_imu_frame_id:
-            return (
-                "Received IMU frame "
-                f"'{self._diagnostics.last_bad_imu_frame_id}' but expected "
-                f"'{self._imu_frame_id}'"
-            )
+            return "Bad IMU frame"
 
         if self._diagnostics.last_bad_gravity_frame_id:
-            return (
-                "Received gravity frame "
-                f"'{self._diagnostics.last_bad_gravity_frame_id}' but expected "
-                f"'{self._imu_frame_id}'"
-            )
+            return "Bad gravity frame"
 
         if self._diagnostics.accepted_imu_count == 0:
             return "Waiting for IMU samples"
@@ -262,9 +459,209 @@ class AhrsNode(rclpy.node.Node):
             return "Waiting for gravity samples"
 
         if not self._diagnostics.has_mounting:
-            return "Waiting for mounting transform implementation"
+            return "Mounting transform unavailable"
 
-        return "AHRS runtime inputs available"
+        if self._diagnostics.gravity_rejected:
+            return "Gravity consistency rejected"
+
+        return "Mounted attitude output available"
+
+    def _resolve_mounting(self) -> Optional[MountingTransform]:
+        if self._mounting_transform is not None:
+            self._diagnostics.has_mounting = True
+            return self._mounting_transform
+
+        try:
+            transform_message = self._tf_buffer.lookup_transform(
+                self._base_frame_id,
+                self._imu_frame_id,
+                Time(),
+            )
+        except TransformException as error:
+            self._diagnostics.transform_lookup_failure_count += 1
+            self._diagnostics.has_mounting = False
+            self._diagnostics.last_mounting_lookup_error = str(error)
+            return None
+
+        quaternion_xyzw = normalize_quaternion_xyzw(
+            (
+                float(transform_message.transform.rotation.x),
+                float(transform_message.transform.rotation.y),
+                float(transform_message.transform.rotation.z),
+                float(transform_message.transform.rotation.w),
+            )
+        )
+        if quaternion_xyzw is None:
+            self._diagnostics.invalid_mounting_transform_count += 1
+            self._diagnostics.has_mounting = False
+            self._diagnostics.last_mounting_lookup_error = (
+                "mounting quaternion is non-finite or zero-norm"
+            )
+            return None
+
+        self._mounting_transform = make_mounting_transform(
+            parent_frame_id=self._base_frame_id,
+            child_frame_id=self._imu_frame_id,
+            quaternion_xyzw=quaternion_xyzw,
+        )
+        self._diagnostics.has_mounting = True
+        self._diagnostics.last_mounting_lookup_error = ""
+        return self._mounting_transform
+
+    def _build_imu_message(self, ahrs_output: AhrsOutput) -> ImuMsg:
+        imu_message: ImuMsg = ImuMsg()
+        imu_message.header.stamp = _ns_to_time_msg(ahrs_output.mounted_imu.timestamp_ns)
+        imu_message.header.frame_id = self._base_frame_id
+
+        imu_message.orientation.x = ahrs_output.mounted_imu.orientation_xyzw[0]
+        imu_message.orientation.y = ahrs_output.mounted_imu.orientation_xyzw[1]
+        imu_message.orientation.z = ahrs_output.mounted_imu.orientation_xyzw[2]
+        imu_message.orientation.w = ahrs_output.mounted_imu.orientation_xyzw[3]
+
+        if ahrs_output.mounted_imu.orientation_covariance_unknown:
+            imu_message.orientation_covariance = list(UNKNOWN_ORIENTATION_COVARIANCE)
+        elif ahrs_output.mounted_imu.orientation_covariance_rad2 is not None:
+            imu_message.orientation_covariance = flatten_matrix3_row_major(
+                ahrs_output.mounted_imu.orientation_covariance_rad2
+            )
+
+        imu_message.angular_velocity.x = ahrs_output.mounted_imu.angular_velocity_rads[
+            0
+        ]
+        imu_message.angular_velocity.y = ahrs_output.mounted_imu.angular_velocity_rads[
+            1
+        ]
+        imu_message.angular_velocity.z = ahrs_output.mounted_imu.angular_velocity_rads[
+            2
+        ]
+        if ahrs_output.mounted_imu.angular_velocity_covariance_rads2 is not None:
+            imu_message.angular_velocity_covariance = flatten_matrix3_row_major(
+                ahrs_output.mounted_imu.angular_velocity_covariance_rads2
+            )
+
+        imu_message.linear_acceleration.x = (
+            ahrs_output.mounted_imu.linear_acceleration_mps2[0]
+        )
+        imu_message.linear_acceleration.y = (
+            ahrs_output.mounted_imu.linear_acceleration_mps2[1]
+        )
+        imu_message.linear_acceleration.z = (
+            ahrs_output.mounted_imu.linear_acceleration_mps2[2]
+        )
+        if ahrs_output.mounted_imu.linear_acceleration_covariance_mps2_2 is not None:
+            imu_message.linear_acceleration_covariance = flatten_matrix3_row_major(
+                ahrs_output.mounted_imu.linear_acceleration_covariance_mps2_2
+            )
+
+        return imu_message
+
+    def _build_odom_message(self, ahrs_output: AhrsOutput) -> OdometryMsg:
+        odom_message: OdometryMsg = OdometryMsg()
+        odom_message.header.stamp = _ns_to_time_msg(
+            ahrs_output.mounted_imu.timestamp_ns
+        )
+        odom_message.header.frame_id = self._odom_frame_id
+        odom_message.child_frame_id = self._base_frame_id
+
+        odom_message.pose.pose.position.x = 0.0
+        odom_message.pose.pose.position.y = 0.0
+        odom_message.pose.pose.position.z = 0.0
+        odom_message.pose.pose.orientation.x = ahrs_output.mounted_imu.orientation_xyzw[
+            0
+        ]
+        odom_message.pose.pose.orientation.y = ahrs_output.mounted_imu.orientation_xyzw[
+            1
+        ]
+        odom_message.pose.pose.orientation.z = ahrs_output.mounted_imu.orientation_xyzw[
+            2
+        ]
+        odom_message.pose.pose.orientation.w = ahrs_output.mounted_imu.orientation_xyzw[
+            3
+        ]
+
+        if ahrs_output.mounted_imu.orientation_covariance_rad2 is not None:
+            odom_message.pose.covariance[21] = (
+                ahrs_output.mounted_imu.orientation_covariance_rad2[0][0]
+            )
+            odom_message.pose.covariance[22] = (
+                ahrs_output.mounted_imu.orientation_covariance_rad2[0][1]
+            )
+            odom_message.pose.covariance[23] = (
+                ahrs_output.mounted_imu.orientation_covariance_rad2[0][2]
+            )
+            odom_message.pose.covariance[27] = (
+                ahrs_output.mounted_imu.orientation_covariance_rad2[1][0]
+            )
+            odom_message.pose.covariance[28] = (
+                ahrs_output.mounted_imu.orientation_covariance_rad2[1][1]
+            )
+            odom_message.pose.covariance[29] = (
+                ahrs_output.mounted_imu.orientation_covariance_rad2[1][2]
+            )
+            odom_message.pose.covariance[33] = (
+                ahrs_output.mounted_imu.orientation_covariance_rad2[2][0]
+            )
+            odom_message.pose.covariance[34] = (
+                ahrs_output.mounted_imu.orientation_covariance_rad2[2][1]
+            )
+            odom_message.pose.covariance[35] = (
+                ahrs_output.mounted_imu.orientation_covariance_rad2[2][2]
+            )
+
+        odom_message.twist.twist.linear.x = 0.0
+        odom_message.twist.twist.linear.y = 0.0
+        odom_message.twist.twist.linear.z = 0.0
+        odom_message.twist.twist.angular.x = (
+            ahrs_output.mounted_imu.angular_velocity_rads[0]
+        )
+        odom_message.twist.twist.angular.y = (
+            ahrs_output.mounted_imu.angular_velocity_rads[1]
+        )
+        odom_message.twist.twist.angular.z = (
+            ahrs_output.mounted_imu.angular_velocity_rads[2]
+        )
+
+        if ahrs_output.mounted_imu.angular_velocity_covariance_rads2 is not None:
+            angular_twist_covariance = embed_linear_covariance_3x3(
+                ahrs_output.mounted_imu.angular_velocity_covariance_rads2
+            )
+            odom_message.twist.covariance[21] = angular_twist_covariance[0]
+            odom_message.twist.covariance[22] = angular_twist_covariance[1]
+            odom_message.twist.covariance[23] = angular_twist_covariance[2]
+            odom_message.twist.covariance[27] = angular_twist_covariance[6]
+            odom_message.twist.covariance[28] = angular_twist_covariance[7]
+            odom_message.twist.covariance[29] = angular_twist_covariance[8]
+            odom_message.twist.covariance[33] = angular_twist_covariance[12]
+            odom_message.twist.covariance[34] = angular_twist_covariance[13]
+            odom_message.twist.covariance[35] = angular_twist_covariance[14]
+
+        return odom_message
+
+    def _build_odom_to_base_transform(
+        self, ahrs_output: AhrsOutput
+    ) -> TransformStampedMsg:
+        transform_message: TransformStampedMsg = TransformStampedMsg()
+        transform_message.header.stamp = _ns_to_time_msg(
+            ahrs_output.mounted_imu.timestamp_ns
+        )
+        transform_message.header.frame_id = self._odom_frame_id
+        transform_message.child_frame_id = self._base_frame_id
+        transform_message.transform.translation.x = 0.0
+        transform_message.transform.translation.y = 0.0
+        transform_message.transform.translation.z = 0.0
+        transform_message.transform.rotation.x = (
+            ahrs_output.mounted_imu.orientation_xyzw[0]
+        )
+        transform_message.transform.rotation.y = (
+            ahrs_output.mounted_imu.orientation_xyzw[1]
+        )
+        transform_message.transform.rotation.z = (
+            ahrs_output.mounted_imu.orientation_xyzw[2]
+        )
+        transform_message.transform.rotation.w = (
+            ahrs_output.mounted_imu.orientation_xyzw[3]
+        )
+        return transform_message
 
     def _make_identity_transform(
         self,
@@ -283,5 +680,18 @@ class AhrsNode(rclpy.node.Node):
         transform_message.transform.rotation.y = 0.0
         transform_message.transform.rotation.z = 0.0
         transform_message.transform.rotation.w = 1.0
-
         return transform_message
+
+    def _current_stamp(self) -> TimeMsg:
+        return self.get_clock().now().to_msg()
+
+
+def _time_msg_to_ns(stamp: TimeMsg) -> int:
+    return int(stamp.sec) * 1_000_000_000 + int(stamp.nanosec)
+
+
+def _ns_to_time_msg(timestamp_ns: int) -> TimeMsg:
+    time_message: TimeMsg = TimeMsg()
+    time_message.sec = int(timestamp_ns // 1_000_000_000)
+    time_message.nanosec = int(timestamp_ns % 1_000_000_000)
+    return time_message
