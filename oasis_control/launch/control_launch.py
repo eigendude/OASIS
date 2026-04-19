@@ -10,6 +10,7 @@
 
 from launch.launch_description import LaunchDescription
 
+from oasis_control.launch.ahrs_mounting import AhrsMountingConfig
 from oasis_control.launch.control_descriptions import ControlDescriptions
 from oasis_drivers.launch.driver_descriptions import DriverDescriptions as Drivers
 from oasis_hass.utils.smarthome_config import SmarthomeConfig
@@ -46,6 +47,15 @@ HOME_ASSISTANT_ID: str = CONFIG.HOME_ASSISTANT_ID
 # Machine that broadcasts peripheral input
 INPUT_PROVIDER: str = "megapegasus"  # TODO
 
+# Default Falcon boot-time AHRS mounting calibration policy
+FALCON_AHRS_MOUNTING: AhrsMountingConfig = AhrsMountingConfig(
+    parent_frame_id="base_link",
+    child_frame_id="imu_link",
+    calibration_duration_sec=2.0,
+    stationary_angular_speed_threshold_rads=0.35,
+    min_sample_count=10,
+)
+
 print(f"Launching on {HOSTNAME} in zone {ZONE_ID}")
 
 
@@ -68,7 +78,11 @@ def generate_launch_description() -> LaunchDescription:
 
     # Navigation
     if HOST_ID == "falcon":
-        ControlDescriptions.add_ahrs_node(ld, HOST_ID)
+        ControlDescriptions.add_ahrs_node(
+            ld,
+            HOST_ID,
+            mounting_config=FALCON_AHRS_MOUNTING,
+        )
         ControlDescriptions.add_ahrs_tilt_sensor(ld, HOST_ID)
         ControlDescriptions.add_speedometer_node(ld, HOST_ID)
         ControlDescriptions.add_tilt_sensor(ld, HOST_ID)

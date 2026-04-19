@@ -22,6 +22,10 @@ rclpy = pytest.importorskip("rclpy")
 
 from sensor_msgs.msg import Imu as ImuMsg
 
+from oasis_control.localization.ahrs.processing.boot_mounting_calibrator import (
+    BootMountingCalibrator,
+)
+from oasis_control.localization.ahrs_tilt_estimator import AhrsTiltEstimator
 from oasis_msgs.msg import AhrsStatus as AhrsStatusMsg
 
 from ._node_test_helpers import FakeTfBuffer
@@ -110,6 +114,202 @@ def test_valid_imu_publishes_mounted_outputs_and_tf() -> None:
             odom_to_base_transform.transform.rotation.w,
             quarter_turn_about_z_xyzw[3],
         )
+    finally:
+        node.stop()
+
+
+def test_boot_mounting_calibration_publishes_measured_fixed_tf() -> None:
+    node, diag_pub, imu_pub, odom_pub, tf_broadcaster = make_node(FakeTfBuffer(None))
+    node._mounting_calibrator = BootMountingCalibrator(
+        parent_frame_id="base_link",
+        child_frame_id="imu_link",
+        calibration_duration_sec=2.0,
+        min_sample_count=3,
+    )
+
+    try:
+        gravity_vector = (
+            9.81 * math.sin(math.radians(20.0)),
+            -9.81 * math.sin(math.radians(30.0)) * math.cos(math.radians(20.0)),
+            -9.81 * math.cos(math.radians(30.0)) * math.cos(math.radians(20.0)),
+        )
+
+        node._handle_gravity(
+            make_gravity_message(
+                gravity_vector=gravity_vector,
+                timestamp_ns=0,
+            )
+        )
+        node._handle_gravity(
+            make_gravity_message(
+                gravity_vector=gravity_vector,
+                timestamp_ns=1_000_000_000,
+            )
+        )
+        node._handle_gravity(
+            make_gravity_message(
+                gravity_vector=gravity_vector,
+                timestamp_ns=2_000_000_000,
+            )
+        )
+        published_mounting_messages = tf_broadcaster.transforms[-1]
+        published_mounting_transform = next(
+            transform
+            for transform in published_mounting_messages
+            if transform.header.frame_id == "base_link"
+            and transform.child_frame_id == "imu_link"
+        )
+        solved_mounting_quaternion = (
+            float(published_mounting_transform.transform.rotation.x),
+            float(published_mounting_transform.transform.rotation.y),
+            float(published_mounting_transform.transform.rotation.z),
+            float(published_mounting_transform.transform.rotation.w),
+        )
+
+        # At boot `base_link` is level by policy, so the raw BNO086 driver
+        # sample is physically `q_IW = q_BI`. AHRS canonicalizes that to
+        # `q_WI = q_IB` before applying mounting.
+        node._handle_imu(
+            make_imu_message(
+                quaternion_xyzw=solved_mounting_quaternion,
+                timestamp_ns=2_100_000_000,
+            )
+        )
+
+        assert len(imu_pub.messages) == 1
+        assert len(odom_pub.messages) == 1
+        assert last_diag(diag_pub).has_mounting is True
+        assert last_diag(diag_pub).status == AhrsStatusMsg.STATUS_OK
+
+        tf_messages = tf_broadcaster.transforms[-1]
+        mounting_transform = next(
+            transform
+            for transform in tf_messages
+            if transform.header.frame_id == "base_link"
+            and transform.child_frame_id == "imu_link"
+        )
+        assert not math.isclose(
+            mounting_transform.transform.rotation.x,
+            0.0,
+            abs_tol=1.0e-6,
+        )
+        assert not math.isclose(
+            mounting_transform.transform.rotation.y,
+            0.0,
+            abs_tol=1.0e-6,
+        )
+        assert math.isclose(
+            mounting_transform.transform.rotation.z,
+            0.0,
+            abs_tol=1.0e-6,
+        )
+
+        odom_to_base_transform = next(
+            transform
+            for transform in tf_messages
+            if transform.header.frame_id == "odom"
+            and transform.child_frame_id == "base_link"
+        )
+        assert math.isclose(
+            odom_to_base_transform.transform.rotation.x,
+            0.0,
+            abs_tol=1.0e-6,
+        )
+        assert math.isclose(
+            odom_to_base_transform.transform.rotation.y,
+            0.0,
+            abs_tol=1.0e-6,
+        )
+        assert math.isclose(
+            odom_to_base_transform.transform.rotation.z,
+            0.0,
+            abs_tol=1.0e-6,
+        )
+        assert math.isclose(
+            odom_to_base_transform.transform.rotation.w,
+            1.0,
+            abs_tol=1.0e-6,
+        )
+
+        imu_message: ImuMsg = imu_pub.messages[-1]
+        assert imu_message.header.frame_id == "base_link"
+        assert math.isclose(imu_message.orientation.x, 0.0, abs_tol=1.0e-6)
+        assert math.isclose(imu_message.orientation.y, 0.0, abs_tol=1.0e-6)
+    finally:
+        node.stop()
+
+
+def test_runtime_mounting_reduces_raw_driver_tilt_for_level_base() -> None:
+    node, _, imu_pub, _, _ = make_node(FakeTfBuffer(None))
+    node._mounting_calibrator = BootMountingCalibrator(
+        parent_frame_id="base_link",
+        child_frame_id="imu_link",
+        calibration_duration_sec=2.0,
+        min_sample_count=3,
+    )
+    tilt_estimator = AhrsTiltEstimator()
+
+    try:
+        gravity_vector = (
+            -0.21263461167016393,
+            0.2315803810024176,
+            -9.804960838731313,
+        )
+        raw_driver_orientation_xyzw = (
+            -0.011806184567030423,
+            -0.010837526983655135,
+            -0.00012796627922305811,
+            0.99987156457191,
+        )
+
+        node._handle_gravity(
+            make_gravity_message(
+                gravity_vector=gravity_vector,
+                timestamp_ns=0,
+            )
+        )
+        node._handle_gravity(
+            make_gravity_message(
+                gravity_vector=gravity_vector,
+                timestamp_ns=1_000_000_000,
+            )
+        )
+        node._handle_gravity(
+            make_gravity_message(
+                gravity_vector=gravity_vector,
+                timestamp_ns=2_000_000_000,
+            )
+        )
+        node._handle_imu(
+            make_imu_message(
+                quaternion_xyzw=raw_driver_orientation_xyzw,
+                timestamp_ns=2_100_000_000,
+            )
+        )
+
+        raw_tilt = tilt_estimator.update(
+            orientation_xyzw=raw_driver_orientation_xyzw,
+            orientation_covariance_rad2=None,
+            orientation_covariance_unknown=True,
+        )
+        mounted_message: ImuMsg = imu_pub.messages[-1]
+        mounted_tilt = tilt_estimator.update(
+            orientation_xyzw=(
+                float(mounted_message.orientation.x),
+                float(mounted_message.orientation.y),
+                float(mounted_message.orientation.z),
+                float(mounted_message.orientation.w),
+            ),
+            orientation_covariance_rad2=None,
+            orientation_covariance_unknown=True,
+        )
+
+        assert raw_tilt is not None
+        assert mounted_tilt is not None
+        assert abs(raw_tilt.roll_rad) > math.radians(1.0)
+        assert abs(raw_tilt.pitch_rad) > math.radians(1.0)
+        assert math.isclose(mounted_tilt.roll_rad, 0.0, abs_tol=1.0e-6)
+        assert math.isclose(mounted_tilt.pitch_rad, 0.0, abs_tol=1.0e-6)
     finally:
         node.stop()
 

@@ -29,6 +29,7 @@ from oasis_control.localization.common.algebra.covariance import (
 from oasis_control.localization.common.algebra.covariance import parse_row_major_matrix3
 from oasis_control.localization.common.algebra.covariance import rotate_covariance
 from oasis_control.localization.common.algebra.quat import normalize_quaternion_xyzw
+from oasis_control.localization.common.algebra.quat import quaternion_conjugate_xyzw
 from oasis_control.localization.common.algebra.quat import quaternion_multiply_xyzw
 from oasis_control.localization.common.algebra.quat import quaternion_to_rotation_matrix
 from oasis_control.localization.common.algebra.quat import rotate_vector
@@ -73,6 +74,25 @@ def test_quaternion_multiply_xyzw_composes_rotations() -> None:
 
     assert math.isclose(composed_quaternion[2], 1.0, abs_tol=1.0e-9)
     assert math.isclose(composed_quaternion[3], 0.0, abs_tol=1.0e-9)
+
+
+def test_quaternion_conjugate_xyzw_inverts_unit_rotation() -> None:
+    quarter_turn_about_z_xyzw: tuple[float, float, float, float] = (
+        0.0,
+        0.0,
+        math.sin(math.pi / 4.0),
+        math.cos(math.pi / 4.0),
+    )
+
+    identity_quaternion = quaternion_multiply_xyzw(
+        quarter_turn_about_z_xyzw,
+        quaternion_conjugate_xyzw(quarter_turn_about_z_xyzw),
+    )
+
+    assert math.isclose(identity_quaternion[0], 0.0, abs_tol=1.0e-9)
+    assert math.isclose(identity_quaternion[1], 0.0, abs_tol=1.0e-9)
+    assert math.isclose(identity_quaternion[2], 0.0, abs_tol=1.0e-9)
+    assert math.isclose(identity_quaternion[3], 1.0, abs_tol=1.0e-9)
 
 
 def test_quaternion_to_rotation_matrix_rotates_about_z() -> None:

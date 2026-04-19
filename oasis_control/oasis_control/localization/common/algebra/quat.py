@@ -65,6 +65,19 @@ def quaternion_multiply_xyzw(
     )
 
 
+def quaternion_conjugate_xyzw(quaternion_xyzw: Quaternion) -> Quaternion:
+    """
+    Return the quaternion conjugate in ROS xyzw order.
+    """
+
+    return (
+        -quaternion_xyzw[0],
+        -quaternion_xyzw[1],
+        -quaternion_xyzw[2],
+        quaternion_xyzw[3],
+    )
+
+
 def quaternion_to_rotation_matrix(quaternion_xyzw: Quaternion) -> Matrix3:
     """
     Convert an xyzw quaternion into a 3x3 rotation matrix.

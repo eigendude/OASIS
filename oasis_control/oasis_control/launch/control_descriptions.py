@@ -11,6 +11,8 @@
 from launch.launch_description import LaunchDescription
 from launch_ros.actions import Node
 
+from oasis_control.launch.ahrs_mounting import AhrsMountingConfig
+
 
 ################################################################################
 # ROS parameters
@@ -33,13 +35,30 @@ class ControlDescriptions:
     #
 
     @staticmethod
-    def add_ahrs_node(ld: LaunchDescription, host_id: str) -> None:
+    def add_ahrs_node(
+        ld: LaunchDescription,
+        host_id: str,
+        mounting_config: AhrsMountingConfig = AhrsMountingConfig(),
+    ) -> None:
         ahrs_node: Node = Node(
             namespace=ROS_NAMESPACE,
             package=CONTROL_PACKAGE_NAME,
             executable="ahrs",
             name=f"ahrs_{host_id}",
             output="screen",
+            parameters=[
+                {
+                    "base_frame_id": mounting_config.parent_frame_id,
+                    "imu_frame_id": mounting_config.child_frame_id,
+                    "mounting_calibration_duration_sec": (
+                        mounting_config.calibration_duration_sec
+                    ),
+                    "mounting_stationary_angular_speed_threshold_rads": (
+                        mounting_config.stationary_angular_speed_threshold_rads
+                    ),
+                    "mounting_min_sample_count": mounting_config.min_sample_count,
+                }
+            ],
             remappings=[
                 ("ahrs/diag", f"{host_id}/ahrs/diag"),
                 ("ahrs/imu", f"{host_id}/ahrs/imu"),

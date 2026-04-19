@@ -2,8 +2,8 @@
 
 This document specifies IMU mounting calibration for the current fused IMU.
 
-The node estimates the fixed rotation from `imu_link` to `base_link`,
-publishes that transform, and persists it for the AHRS and EKF.
+The node estimates the fixed rotation from `imu_link` to `base_link` and
+publishes that transform for runtime AHRS and EKF use.
 
 This document is the calibration contract for solving fixed `T_BI`. It does
 not define the runtime AHRS behavior contract or the AHRS code layout.
@@ -18,7 +18,6 @@ not define the runtime AHRS behavior contract or the AHRS code layout.
 - use a short stationary boot window with deterministic averaging and windowing
 - estimate the fixed mounting rotation `R_BI`
 - publish `base_link -> imu_link` as TF with zero translation
-- persist the solved rotation in a deterministic file format
 - use gravity as a first-class calibration input
 - solve only the observable tilt-alignment part of `R_BI` in the default boot
   mode
@@ -108,6 +107,11 @@ TF direction:
 So:
 
 - `v_B = R_BI v_I`
+- the stored quaternion is `q_BI`, so `lookup_transform(base_link, imu_link)`
+  returns the same IMU-to-base rotation used by runtime mounting
+- a level boot pose therefore implies `q_WB = identity`,
+  canonical `q_WI = q_IB = q_BI^-1`, and raw BNO086 driver
+  `q_IW = q_BI`
 
 Persisted quaternions must declare ordering explicitly.
 
@@ -118,14 +122,15 @@ Persisted quaternions must declare ordering explicitly.
 The default mounting mode is an automatic boot-time solve over a stationary
 `2.0`-second window.
 
-The solver collects fused `imu` and `gravity` samples during that boot window
-and estimates one fixed transform:
+The solver collects accepted gravity samples during that boot window and may
+use low angular-rate IMU samples only to reject obviously non-stationary
+windows. It estimates one fixed transform:
 
 - `T_BI = (R_BI, 0)`
 
 The boot solver is observability-limited.
 
-From a short stationary window with fused IMU attitude and gravity:
+From a short stationary window with gravity:
 
 - roll and pitch alignment between `imu_link` and `base_link` are observable
 - the mounting yaw component is not observable from gravity in this mode
@@ -136,9 +141,11 @@ The default contract is therefore:
 - fix the unobservable yaw component by policy
 - use zero relative yaw between `imu_link` and `base_link` by default
 
-Equivalently, the solver aligns roll and pitch between `imu_link` and
-`base_link` and sets mounting yaw to zero unless additional heading
-information is intentionally introduced in a future mode.
+Equivalently, the solver averages the boot gravity direction in `imu_link`,
+solves the roll/pitch rotation that maps that vector to the expected level
+body-frame gravity direction `(0, 0, -1)`, and sets mounting yaw to zero
+unless additional heading information is intentionally introduced in a future
+mode.
 
 The exact optimization method is implementation-defined, but the public
 contract is one fixed rotation `R_BI` and the corresponding fixed transform
@@ -160,19 +167,16 @@ outside the current default contract.
 
 A sample window is usable when:
 
-- quaternion data is valid
 - gravity data is valid
 - the boot window spans the configured `2.0`-second default, unless overridden
 - the IMU is sufficiently stationary or low angular-rate for deterministic
   averaging
-- measured gravity is consistent with the fused attitude over the accepted
-  window
 - enough valid samples remain after rejection to support a stable tilt solve
 
-Within an accepted window, full covariance from `imu` and `gravity` should be
-preserved when valid. When vectors are mapped through a candidate `R_BI`, the
-solver should rotate or otherwise transport the corresponding covariance
-explicitly instead of diagonalizing it.
+Within an accepted window, full gravity covariance should be preserved when
+valid. When vectors are mapped through a candidate `R_BI`, the solver should
+rotate or otherwise transport the corresponding covariance explicitly instead
+of diagonalizing it.
 
 ### 4.2 Stability rules
 
@@ -180,8 +184,6 @@ The solution is stable when:
 
 - the accepted boot window yields a bounded tilt solution with deterministic
   output
-- the gravity residual and fused-attitude residual remain within configured
-  thresholds across the accepted window
 - the yaw component is fixed by policy rather than inferred from unobservable
   gravity information
 
@@ -201,8 +203,6 @@ The solution is stable when:
 ### 5.3 Outputs
 
 - TF for `base_link -> imu_link`
-- calibration result topic or service
-- persisted calibration file
 - diagnostics for accepted windows, rejected windows, and boot calibration
   status
 - gravity residual or consistency summary in calibration diagnostics
@@ -213,24 +213,11 @@ localization outputs.
 
 ---
 
-## 6. Persistence format
+## 6. Runtime ownership
 
-The saved result should include:
-
-- IMU frame name
-- base frame name
-- quaternion with explicit ordering
-- timestamp of calibration
-- optional fit metrics
-
-Example shape:
-
-```yaml
-imu:
-  parent_frame: base_link
-  child_frame: imu_link
-  quaternion_wxyz: [1.0, 0.0, 0.0, 0.0]
-```
+The current implementation keeps the solved result in memory and republishes it
+as runtime TF. Persistence can be added later without changing the rotational
+solve contract described here.
 
 ---
 
@@ -251,6 +238,4 @@ Calibration policy:
 - boot calibration window duration default `2.0` seconds
 - stationary or low angular-rate acceptance thresholds
 - minimum valid sample count within the boot window
-- fused-attitude and gravity consistency thresholds
 - yaw-fix policy for unobservable mounting yaw, default zero relative yaw
-- output file path

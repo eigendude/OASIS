@@ -31,7 +31,8 @@ class MountingTransform:
     Fields:
         parent_frame_id: target base frame that receives rotated data
         child_frame_id: source IMU frame that provides data to rotate
-        quaternion_xyzw: fixed rotation from IMU frame to base frame
+        quaternion_xyzw: fixed quaternion `q_BI` that rotates vectors from
+            `imu_link` into `base_link`
         rotation_matrix: 3x3 equivalent of quaternion_xyzw
     """
 
@@ -94,7 +95,12 @@ def make_mounting_transform(
     quaternion_xyzw: Quaternion,
 ) -> MountingTransform:
     """
-    Build a fixed mounting transform from a normalized quaternion.
+    Build a fixed `T_BI` mounting transform from a normalized quaternion.
+
+    The stored quaternion is `q_BI`, so `parent_frame_id` is the target frame
+    (`base_link`) and `child_frame_id` is the source frame (`imu_link`). The
+    matching ROS TF is therefore published as `base_link -> imu_link`, and
+    `lookup_transform(base_link, imu_link, ...)` returns the same `q_BI`.
     """
 
     return MountingTransform(
@@ -110,6 +116,9 @@ def apply_mounting_to_imu(
 ) -> MountedImuSample:
     """
     Express an IMU sample in the configured base frame.
+
+    `imu_sample.orientation_xyzw` is expected to be `q_WI`. Applying the fixed
+    mounting `q_BI` yields the mounted base attitude `q_WB = q_BI ⊗ q_WI`.
     """
 
     orientation_covariance_rad2: Matrix3 | None = None
@@ -138,13 +147,15 @@ def apply_mounting_to_imu(
             imu_sample.linear_acceleration_covariance_mps2_2,
         )
 
+    mounted_orientation_xyzw: Quaternion = quaternion_multiply_xyzw(
+        mounting_transform.quaternion_xyzw,
+        imu_sample.orientation_xyzw,
+    )
+
     return MountedImuSample(
         timestamp_ns=imu_sample.timestamp_ns,
         frame_id=mounting_transform.parent_frame_id,
-        orientation_xyzw=quaternion_multiply_xyzw(
-            mounting_transform.quaternion_xyzw,
-            imu_sample.orientation_xyzw,
-        ),
+        orientation_xyzw=mounted_orientation_xyzw,
         orientation_covariance_rad2=orientation_covariance_rad2,
         orientation_covariance_unknown=imu_sample.orientation_covariance_unknown,
         angular_velocity_rads=rotate_vector(
@@ -164,6 +175,9 @@ def apply_mounting_to_gravity(
 ) -> MountedGravitySample:
     """
     Express a gravity-direction sample in the configured base frame.
+
+    The stored rotation matrix is `R_BI`, so the mounted gravity vector is
+    `g_B = R_BI g_I`.
     """
 
     gravity_covariance_mps2_2: Matrix3 | None = None

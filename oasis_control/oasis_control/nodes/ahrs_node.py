@@ -35,6 +35,21 @@ from oasis_control.localization.ahrs.data.diagnostics import AhrsDiagnosticsSnap
 from oasis_control.localization.ahrs.data.diagnostics import AhrsDiagnosticsState
 from oasis_control.localization.ahrs.data.diagnostics import snapshot_diagnostics
 from oasis_control.localization.ahrs.processing.attitude_mapper import map_imu_to_base
+from oasis_control.localization.ahrs.processing.boot_mounting_calibrator import (
+    DEFAULT_CALIBRATION_DURATION_SEC as DEFAULT_BOOT_MOUNTING_CALIBRATION_DURATION_SEC,
+)
+from oasis_control.localization.ahrs.processing.boot_mounting_calibrator import (
+    DEFAULT_MIN_SAMPLE_COUNT as DEFAULT_BOOT_MOUNTING_MIN_SAMPLE_COUNT,
+)
+from oasis_control.localization.ahrs.processing.boot_mounting_calibrator import (
+    DEFAULT_STATIONARY_ANGULAR_SPEED_THRESHOLD_RADS as DEFAULT_BOOT_MOUNTING_STATIONARY_ANGULAR_SPEED_THRESHOLD_RADS,
+)
+from oasis_control.localization.ahrs.processing.boot_mounting_calibrator import (
+    BootMountingCalibrator,
+)
+from oasis_control.localization.ahrs.processing.boot_mounting_calibrator import (
+    BootMountingSolution,
+)
 from oasis_control.localization.ahrs.processing.gravity_consistency import (
     GravityConsistencyDecision,
 )
@@ -54,6 +69,7 @@ from oasis_control.localization.common.algebra.covariance import (
 from oasis_control.localization.common.algebra.covariance import (
     flatten_matrix3_row_major,
 )
+from oasis_control.localization.common.algebra.quat import Vector3
 from oasis_control.localization.common.algebra.quat import normalize_quaternion_xyzw
 from oasis_control.localization.common.data.gravity_sample import GravitySample
 from oasis_control.localization.common.frames.mounting import MountedImuSample
@@ -89,6 +105,11 @@ PARAM_ODOM_FRAME_ID: str = "odom_frame_id"
 PARAM_WORLD_FRAME_ID: str = "world_frame_id"
 PARAM_GRAVITY_RESIDUAL_REJECT_THRESHOLD: str = "gravity_residual_reject_threshold"
 PARAM_GRAVITY_MAHALANOBIS_REJECT_THRESHOLD: str = "gravity_mahalanobis_reject_threshold"
+PARAM_MOUNTING_CALIBRATION_DURATION_SEC: str = "mounting_calibration_duration_sec"
+PARAM_MOUNTING_STATIONARY_ANGULAR_SPEED_THRESHOLD_RADS: str = (
+    "mounting_stationary_angular_speed_threshold_rads"
+)
+PARAM_MOUNTING_MIN_SAMPLE_COUNT: str = "mounting_min_sample_count"
 
 DEFAULT_BASE_FRAME_ID: str = "base_link"
 DEFAULT_IMU_FRAME_ID: str = "imu_link"
@@ -96,6 +117,13 @@ DEFAULT_ODOM_FRAME_ID: str = "odom"
 DEFAULT_WORLD_FRAME_ID: str = "world"
 DEFAULT_GRAVITY_RESIDUAL_REJECT_THRESHOLD: float = 0.35
 DEFAULT_GRAVITY_MAHALANOBIS_REJECT_THRESHOLD: float = 5.0
+DEFAULT_MOUNTING_CALIBRATION_DURATION_SEC: float = (
+    DEFAULT_BOOT_MOUNTING_CALIBRATION_DURATION_SEC
+)
+DEFAULT_MOUNTING_STATIONARY_ANGULAR_SPEED_THRESHOLD_RADS: float = (
+    DEFAULT_BOOT_MOUNTING_STATIONARY_ANGULAR_SPEED_THRESHOLD_RADS
+)
+DEFAULT_MOUNTING_MIN_SAMPLE_COUNT: int = DEFAULT_BOOT_MOUNTING_MIN_SAMPLE_COUNT
 
 # Timer period for diagnostics and TF heartbeat
 #
@@ -136,6 +164,18 @@ class AhrsNode(rclpy.node.Node):
             PARAM_GRAVITY_MAHALANOBIS_REJECT_THRESHOLD,
             DEFAULT_GRAVITY_MAHALANOBIS_REJECT_THRESHOLD,
         )
+        self.declare_parameter(
+            PARAM_MOUNTING_CALIBRATION_DURATION_SEC,
+            DEFAULT_MOUNTING_CALIBRATION_DURATION_SEC,
+        )
+        self.declare_parameter(
+            PARAM_MOUNTING_STATIONARY_ANGULAR_SPEED_THRESHOLD_RADS,
+            DEFAULT_MOUNTING_STATIONARY_ANGULAR_SPEED_THRESHOLD_RADS,
+        )
+        self.declare_parameter(
+            PARAM_MOUNTING_MIN_SAMPLE_COUNT,
+            DEFAULT_MOUNTING_MIN_SAMPLE_COUNT,
+        )
 
         self._base_frame_id: str = str(self.get_parameter(PARAM_BASE_FRAME_ID).value)
         self._imu_frame_id: str = str(self.get_parameter(PARAM_IMU_FRAME_ID).value)
@@ -151,11 +191,27 @@ class AhrsNode(rclpy.node.Node):
                 ),
             )
         )
+        self._mounting_calibrator: BootMountingCalibrator = BootMountingCalibrator(
+            parent_frame_id=self._base_frame_id,
+            child_frame_id=self._imu_frame_id,
+            calibration_duration_sec=float(
+                self.get_parameter(PARAM_MOUNTING_CALIBRATION_DURATION_SEC).value
+            ),
+            stationary_angular_speed_threshold_rads=float(
+                self.get_parameter(
+                    PARAM_MOUNTING_STATIONARY_ANGULAR_SPEED_THRESHOLD_RADS
+                ).value
+            ),
+            min_sample_count=int(
+                self.get_parameter(PARAM_MOUNTING_MIN_SAMPLE_COUNT).value
+            ),
+        )
 
         # AHRS state
         self._diagnostics: AhrsDiagnosticsState = AhrsDiagnosticsState()
         self._latest_gravity_sample: Optional[GravitySample] = None
         self._latest_output: Optional[AhrsOutput] = None
+        self._latest_imu_angular_velocity_rads: Optional[Vector3] = None
         self._mounting_transform: Optional[MountingTransform] = None
 
         # ROS QoS profiles
@@ -256,6 +312,7 @@ class AhrsNode(rclpy.node.Node):
         self._diagnostics.last_accepted_gravity_timestamp_ns = (
             validation_result.sample.timestamp_ns
         )
+        self._update_mounting_calibration(validation_result.sample)
         self._publish_runtime_outputs()
 
     def _handle_imu(self, message: ImuMsg) -> None:
@@ -306,6 +363,9 @@ class AhrsNode(rclpy.node.Node):
         self._diagnostics.last_bad_imu_frame_id = ""
         self._diagnostics.last_accepted_imu_timestamp_ns = (
             validation_result.sample.timestamp_ns
+        )
+        self._latest_imu_angular_velocity_rads = (
+            validation_result.sample.angular_velocity_rads
         )
 
         mounting_transform: Optional[MountingTransform] = self._resolve_mounting()
@@ -375,6 +435,14 @@ class AhrsNode(rclpy.node.Node):
                 stamp=self._current_stamp(),
             )
         ]
+
+        if self._mounting_transform is not None:
+            transforms.append(
+                self._build_mounting_transform(
+                    mounting_transform=self._mounting_transform,
+                    stamp=self._current_stamp(),
+                )
+            )
 
         if self._latest_output is not None:
             transforms.append(self._build_odom_to_base_transform(self._latest_output))
@@ -469,6 +537,7 @@ class AhrsNode(rclpy.node.Node):
     def _resolve_mounting(self) -> Optional[MountingTransform]:
         if self._mounting_transform is not None:
             self._diagnostics.has_mounting = True
+            self._diagnostics.last_mounting_lookup_error = ""
             return self._mounting_transform
 
         try:
@@ -507,6 +576,32 @@ class AhrsNode(rclpy.node.Node):
         self._diagnostics.has_mounting = True
         self._diagnostics.last_mounting_lookup_error = ""
         return self._mounting_transform
+
+    def _update_mounting_calibration(self, gravity_sample: GravitySample) -> None:
+        if self._mounting_transform is not None:
+            return
+
+        solution: Optional[BootMountingSolution] = (
+            self._mounting_calibrator.add_gravity_sample(
+                gravity_sample=gravity_sample,
+                angular_velocity_rads=self._latest_imu_angular_velocity_rads,
+            )
+        )
+        if solution is None:
+            self._diagnostics.has_mounting = False
+            self._diagnostics.last_mounting_lookup_error = (
+                "boot mounting calibration in progress"
+            )
+            return
+
+        self._mounting_transform = solution.mounting_transform
+        self._diagnostics.has_mounting = True
+        self._diagnostics.last_mounting_lookup_error = ""
+        self.get_logger().info(
+            "Solved boot AHRS mounting q_BI for TF base_link -> imu_link with roll "
+            f"{solution.roll_rad:.4f} rad, pitch {solution.pitch_rad:.4f} rad, "
+            f"yaw fixed to {solution.yaw_rad:.4f} rad"
+        )
 
     def _build_imu_message(self, ahrs_output: AhrsOutput) -> ImuMsg:
         imu_message: ImuMsg = ImuMsg()
@@ -665,6 +760,28 @@ class AhrsNode(rclpy.node.Node):
         transform_message.transform.rotation.w = (
             ahrs_output.mounted_imu.orientation_xyzw[3]
         )
+        return transform_message
+
+    def _build_mounting_transform(
+        self,
+        *,
+        mounting_transform: MountingTransform,
+        stamp: TimeMsg,
+    ) -> TransformStampedMsg:
+        transform_message: TransformStampedMsg = TransformStampedMsg()
+        transform_message.header.stamp = stamp
+        transform_message.header.frame_id = mounting_transform.parent_frame_id
+        transform_message.child_frame_id = mounting_transform.child_frame_id
+        # Publish the stored `q_BI` directly on the `base_link -> imu_link` TF.
+        # TF lookup `lookup_transform(base_link, imu_link, ...)` then returns the
+        # same IMU-to-base rotation used by runtime mounting.
+        transform_message.transform.translation.x = 0.0
+        transform_message.transform.translation.y = 0.0
+        transform_message.transform.translation.z = 0.0
+        transform_message.transform.rotation.x = mounting_transform.quaternion_xyzw[0]
+        transform_message.transform.rotation.y = mounting_transform.quaternion_xyzw[1]
+        transform_message.transform.rotation.z = mounting_transform.quaternion_xyzw[2]
+        transform_message.transform.rotation.w = mounting_transform.quaternion_xyzw[3]
         return transform_message
 
     def _make_identity_transform(

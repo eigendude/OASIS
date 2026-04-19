@@ -26,7 +26,8 @@ class ImuSample:
     Fields:
         timestamp_ns: measurement timestamp in integer nanoseconds
         frame_id: source IMU frame, expected to be imu_link
-        orientation_xyzw: normalized world-to-IMU quaternion in ROS xyzw order
+        orientation_xyzw: canonical world-to-IMU quaternion `q_WI` in ROS
+            xyzw order after driver-boundary normalization
         orientation_covariance_rad2: 3x3 orientation covariance in source frame
         orientation_covariance_unknown: true when ROS marks orientation
             covariance unknown with covariance[0] == -1

@@ -18,6 +18,9 @@ from typing import Iterable
 from oasis_control.localization.ahrs.data.diagnostics import AhrsDiagnosticsState
 from oasis_control.localization.ahrs.data.diagnostics import snapshot_diagnostics
 from oasis_control.localization.ahrs.processing.attitude_mapper import map_imu_to_base
+from oasis_control.localization.ahrs.processing.boot_mounting_calibrator import (
+    BootMountingCalibrator,
+)
 from oasis_control.localization.ahrs.processing.gravity_consistency import (
     GravityConsistencyPolicy,
 )
@@ -25,9 +28,13 @@ from oasis_control.localization.ahrs.processing.gravity_consistency import (
     evaluate_gravity_consistency,
 )
 from oasis_control.localization.ahrs.processing.output_adapter import make_ahrs_output
+from oasis_control.localization.ahrs_tilt_estimator import AhrsTiltEstimator
+from oasis_control.localization.common.algebra.quat import rotate_vector
+from oasis_control.localization.common.algebra.quat import transpose_matrix
 from oasis_control.localization.common.data.gravity_sample import GravitySample
 from oasis_control.localization.common.data.imu_sample import ImuSample
 from oasis_control.localization.common.frames.mounting import MountingTransform
+from oasis_control.localization.common.frames.mounting import apply_mounting_to_gravity
 from oasis_control.localization.common.frames.mounting import make_mounting_transform
 from oasis_control.localization.common.measurements.gravity_direction import (
     compute_gravity_direction_residual,
@@ -111,6 +118,26 @@ def _quarter_turn_about_z_mounting_transform() -> MountingTransform:
             math.sin(math.pi / 4.0),
             math.cos(math.pi / 4.0),
         ),
+    )
+
+
+def _quaternion_inverse(
+    quaternion_xyzw: tuple[float, float, float, float],
+) -> tuple[float, float, float, float]:
+    return (
+        -quaternion_xyzw[0],
+        -quaternion_xyzw[1],
+        -quaternion_xyzw[2],
+        quaternion_xyzw[3],
+    )
+
+
+def _gravity_in_imu_for_level_base(
+    mounting_transform: MountingTransform,
+) -> tuple[float, float, float]:
+    return rotate_vector(
+        transpose_matrix(mounting_transform.rotation_matrix),
+        (0.0, 0.0, -9.81),
     )
 
 
@@ -234,6 +261,151 @@ def test_map_imu_to_base_wraps_mounting_behavior() -> None:
 
     assert mounted_sample.frame_id == "base_link"
     assert mounted_sample.orientation_xyzw == (0.0, 0.0, 0.0, 1.0)
+
+
+def test_boot_mounting_and_runtime_mapping_keep_level_base_level() -> None:
+    mounting_transform = make_mounting_transform(
+        parent_frame_id="base_link",
+        child_frame_id="imu_link",
+        quaternion_xyzw=(
+            0.25488700224417876,
+            0.16773125949652065,
+            -0.044943455527547777,
+            0.9512512425641978,
+        ),
+    )
+    gravity_imu = _gravity_in_imu_for_level_base(mounting_transform)
+
+    calibrator = BootMountingCalibrator(
+        parent_frame_id="base_link",
+        child_frame_id="imu_link",
+        calibration_duration_sec=0.0,
+        min_sample_count=1,
+    )
+    solution = calibrator.add_gravity_sample(
+        GravitySample(
+            timestamp_ns=1,
+            frame_id="imu_link",
+            gravity_mps2=gravity_imu,
+            gravity_covariance_mps2_2=None,
+        )
+    )
+
+    assert solution is not None
+
+    level_boot_imu_sample = ImuSample(
+        timestamp_ns=2,
+        frame_id="imu_link",
+        orientation_xyzw=_quaternion_inverse(
+            solution.mounting_transform.quaternion_xyzw
+        ),
+        orientation_covariance_rad2=(
+            (1.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0),
+            (0.0, 0.0, 1.0),
+        ),
+        orientation_covariance_unknown=False,
+        angular_velocity_rads=(0.0, 0.0, 0.0),
+        angular_velocity_covariance_rads2=(
+            (1.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0),
+            (0.0, 0.0, 1.0),
+        ),
+        linear_acceleration_mps2=gravity_imu,
+        linear_acceleration_covariance_mps2_2=(
+            (1.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0),
+            (0.0, 0.0, 1.0),
+        ),
+    )
+
+    mounted_imu_sample = map_imu_to_base(
+        level_boot_imu_sample,
+        solution.mounting_transform,
+    )
+    mounted_gravity_sample = apply_mounting_to_gravity(
+        GravitySample(
+            timestamp_ns=1,
+            frame_id="imu_link",
+            gravity_mps2=gravity_imu,
+            gravity_covariance_mps2_2=None,
+        ),
+        solution.mounting_transform,
+    )
+    tilt_estimate = AhrsTiltEstimator().update(
+        orientation_xyzw=mounted_imu_sample.orientation_xyzw,
+        orientation_covariance_rad2=mounted_imu_sample.orientation_covariance_rad2,
+        orientation_covariance_unknown=mounted_imu_sample.orientation_covariance_unknown,
+    )
+
+    assert tilt_estimate is not None
+    assert math.isclose(mounted_gravity_sample.gravity_mps2[0], 0.0, abs_tol=1.0e-6)
+    assert math.isclose(mounted_gravity_sample.gravity_mps2[1], 0.0, abs_tol=1.0e-6)
+    assert math.isclose(mounted_gravity_sample.gravity_mps2[2], -9.81, abs_tol=1.0e-6)
+    assert math.isclose(mounted_imu_sample.orientation_xyzw[0], 0.0, abs_tol=1.0e-6)
+    assert math.isclose(mounted_imu_sample.orientation_xyzw[1], 0.0, abs_tol=1.0e-6)
+    assert math.isclose(mounted_imu_sample.orientation_xyzw[2], 0.0, abs_tol=1.0e-6)
+    assert math.isclose(mounted_imu_sample.orientation_xyzw[3], 1.0, abs_tol=1.0e-6)
+    assert math.isclose(tilt_estimate.roll_rad, 0.0, abs_tol=1.0e-6)
+    assert math.isclose(tilt_estimate.pitch_rad, 0.0, abs_tol=1.0e-6)
+
+
+def test_map_imu_to_base_does_not_relabel_unmounted_orientation() -> None:
+    mounting_transform = make_mounting_transform(
+        parent_frame_id="base_link",
+        child_frame_id="imu_link",
+        quaternion_xyzw=(
+            0.25488700224417876,
+            0.16773125949652065,
+            -0.044943455527547777,
+            0.9512512425641978,
+        ),
+    )
+    imu_orientation_xyzw = _quaternion_inverse(mounting_transform.quaternion_xyzw)
+    imu_sample = ImuSample(
+        timestamp_ns=3,
+        frame_id="imu_link",
+        orientation_xyzw=imu_orientation_xyzw,
+        orientation_covariance_rad2=(
+            (1.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0),
+            (0.0, 0.0, 1.0),
+        ),
+        orientation_covariance_unknown=False,
+        angular_velocity_rads=(0.0, 0.0, 0.0),
+        angular_velocity_covariance_rads2=(
+            (1.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0),
+            (0.0, 0.0, 1.0),
+        ),
+        linear_acceleration_mps2=_gravity_in_imu_for_level_base(mounting_transform),
+        linear_acceleration_covariance_mps2_2=(
+            (1.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0),
+            (0.0, 0.0, 1.0),
+        ),
+    )
+
+    raw_tilt_estimate = AhrsTiltEstimator().update(
+        orientation_xyzw=imu_sample.orientation_xyzw,
+        orientation_covariance_rad2=imu_sample.orientation_covariance_rad2,
+        orientation_covariance_unknown=imu_sample.orientation_covariance_unknown,
+    )
+    mounted_tilt_estimate = AhrsTiltEstimator().update(
+        orientation_xyzw=map_imu_to_base(
+            imu_sample,
+            mounting_transform,
+        ).orientation_xyzw,
+        orientation_covariance_rad2=imu_sample.orientation_covariance_rad2,
+        orientation_covariance_unknown=imu_sample.orientation_covariance_unknown,
+    )
+
+    assert raw_tilt_estimate is not None
+    assert mounted_tilt_estimate is not None
+    assert abs(raw_tilt_estimate.roll_rad) > math.radians(5.0)
+    assert abs(raw_tilt_estimate.pitch_rad) > math.radians(5.0)
+    assert math.isclose(mounted_tilt_estimate.roll_rad, 0.0, abs_tol=1.0e-6)
+    assert math.isclose(mounted_tilt_estimate.pitch_rad, 0.0, abs_tol=1.0e-6)
 
 
 def test_map_imu_to_base_keeps_identity_orientation_covariance_unchanged() -> None:

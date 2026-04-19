@@ -56,7 +56,7 @@ By policy:
 
 - `header.stamp` as `t_meas_ns`
 - `header.frame_id` as IMU frame `{I}`
-- `orientation` as `q_WI`
+- `orientation` from the BNO086 driver as `q_IW`
 - `orientation_covariance` as `Σ_qI`
 - `angular_velocity` as `ω_I`
 - `angular_velocity_covariance` as `Σ_ωI`
@@ -66,7 +66,8 @@ By policy:
 Requirements:
 
 - quaternion data must be finite and non-zero norm
-- the AHRS normalizes `q_WI` before use
+- the AHRS normalizes the incoming driver quaternion and canonicalizes it to
+  `q_WI = q_IW*` before applying mounting
 - vectors are interpreted in `{I}`
 - full covariances are preserved when valid
 - if `orientation_covariance[0] == -1`, orientation covariance is treated as
@@ -114,21 +115,20 @@ Frames:
 
 The AHRS uses a fixed transform `T_BI` from `imu_link` to `base_link`.
 
-- `T_BI` is supplied by static TF or persisted boot-time mounting calibration
+- `T_BI` is supplied by boot-time mounting calibration or an explicit external
+  calibration source
 - `T_BI` is not estimated online here
 - translation is ignored for this attitude-only contract
 
-The current default runtime source is a launch-managed
-`tf2_ros/static_transform_publisher` for `base_link -> imu_link`. The default
-launch configuration publishes identity mounting unless a different transform is
-configured.
+The current default runtime source is the boot-time stationary solve in
+`AHRS_Mounting.md`. `ahrs_node` learns the fixed quaternion `q_BI`, which
+rotates vectors from `imu_link` into `base_link`, from a short gravity window
+at boot. That same `q_BI` is then broadcast on the TF edge with
+parent=`base_link`, child=`imu_link`, so `lookup_transform(base_link, imu_link)`
+returns the runtime mounting used by AHRS.
 
-The current default calibration source is the boot-time stationary solve in
-`AHRS_Mounting.md`, which uses a `2.0`-second window and fixes unobservable
-mounting yaw by policy. How `T_BI` is solved belongs in
-`AHRS_Mounting.md`, not this runtime behavior contract.
-
-Let `R_WI` come from `q_WI` and `R_BI` come from `T_BI`.
+Let `R_WI` come from the canonicalized `q_WI = q_IW*` and let `R_BI` come from
+`T_BI`.
 Then:
 
 - `R_WB = R_BI * R_WI`
@@ -166,6 +166,10 @@ before any consistency check:
 - `g_B_meas = R_BI * g_I_meas`
 - `Σ_gB = R_BI * Σ_g * R_BIᵀ`
 
+By design, the raw `imu` topic may show non-zero roll/pitch in `imu_link` when
+the sensor is physically mounted at a tilt. That is expected. The AHRS contract
+is that the mounted `ahrs/imu` output in `base_link` removes that fixed tilt.
+
 The gravity measurement is first-class because it provides an external check on
 the fused quaternion after mounting is applied:
 
@@ -178,7 +182,8 @@ the fused quaternion after mounting is applied:
   policy is enabled later
 
 Gravity does not provide absolute yaw observability and the AHRS must not claim
-otherwise.
+otherwise. The boot mounting solve only measures roll/pitch alignment and keeps
+mounting yaw fixed by policy.
 
 ### 3.1 Gravity consistency
 

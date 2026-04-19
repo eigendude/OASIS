@@ -17,6 +17,7 @@ from typing import Optional
 
 from oasis_control.localization.common.algebra.covariance import parse_row_major_matrix3
 from oasis_control.localization.common.algebra.quat import normalize_quaternion_xyzw
+from oasis_control.localization.common.algebra.quat import quaternion_conjugate_xyzw
 from oasis_control.localization.common.data.imu_sample import ImuSample
 from oasis_control.localization.common.frames.frame_policy import frame_matches
 
@@ -51,14 +52,23 @@ def validate_imu_sample(
 ) -> ImuValidationResult:
     """
     Validate one incoming IMU sample against the AHRS contract.
+
+    The current BNO086 ROS driver publishes its fused orientation as the
+    IMU-to-world quaternion `q_IW`. AHRS canonicalizes that packet to the
+    world-to-IMU quaternion `q_WI = q_IW*` at the validation boundary so the
+    downstream mounting math can stay frame-consistent.
     """
 
     if not frame_matches(frame_id, expected_frame_id):
         return ImuValidationResult(False, None, "bad_frame")
 
-    normalized_quaternion_xyzw = normalize_quaternion_xyzw(orientation_xyzw)
-    if normalized_quaternion_xyzw is None:
+    normalized_driver_quaternion_xyzw = normalize_quaternion_xyzw(orientation_xyzw)
+    if normalized_driver_quaternion_xyzw is None:
         return ImuValidationResult(False, None, "bad_orientation")
+
+    canonical_orientation_xyzw = quaternion_conjugate_xyzw(
+        normalized_driver_quaternion_xyzw
+    )
 
     angular_velocity_vector_rads = _coerce_finite_vector3(angular_velocity_rads)
     if angular_velocity_vector_rads is None:
@@ -100,7 +110,7 @@ def validate_imu_sample(
         sample=ImuSample(
             timestamp_ns=int(timestamp_ns),
             frame_id=frame_id,
-            orientation_xyzw=normalized_quaternion_xyzw,
+            orientation_xyzw=canonical_orientation_xyzw,
             orientation_covariance_rad2=orientation_covariance_rad2,
             orientation_covariance_unknown=orientation_covariance_unknown,
             angular_velocity_rads=angular_velocity_vector_rads,

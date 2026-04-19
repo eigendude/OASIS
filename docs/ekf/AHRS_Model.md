@@ -118,15 +118,19 @@ Policy:
 - `gravity` samples are expected from `imu_link`
 - the fixed mounting transform is `T_BI` from `imu_link` to `base_link`
 - mounting is expected to come from the boot-time calibration contract in
-  `AHRS_Mounting.md` or from a configured static TF source
-- the default launch path provides that TF through a launch-managed
-  `static_transform_publisher`, with identity mounting unless configured
+  `AHRS_Mounting.md`
+- the default runtime path solves `T_BI` from boot gravity samples inside
+  `ahrs_node` and publishes `base_link -> imu_link` as the fixed TF
 - frame-policy enforcement belongs in `localization/common/frames/`
 
 Quaternion convention:
 
 - `q_WB` rotates world-frame vectors into `{B}` coordinates
 - composition follows Hamilton product
+- the fixed mounting quaternion is `q_BI`, which rotates vectors from
+  `imu_link` into `base_link`
+- publishing TF as parent=`base_link`, child=`imu_link` carries that same
+  `q_BI`, not its inverse
 
 Covariances:
 
@@ -163,7 +167,9 @@ Fields:
 
 - timestamp in integer nanoseconds
 - IMU frame id, expected to be `imu_link`
-- normalized quaternion `q_WI`
+- canonicalized quaternion `q_WI`
+- the current BNO086 driver publishes `q_IW`, so AHRS conjugates that packet
+  to `q_WI` at the validation boundary
 - optional orientation covariance
 - angular velocity vector and covariance
 - linear acceleration vector and covariance
@@ -257,7 +263,9 @@ into `base_link` under `T_BI` and then publish that rotated matrix unchanged.
 If the incoming orientation covariance is poor or unknown, the runtime should
 preserve that fact instead of inventing a new covariance model.
 
-This model assumes `T_BI` has already been sourced before runtime processing.
+This model assumes `T_BI` has already been solved from the boot gravity window
+or provided by an explicit external calibration source before runtime
+processing.
 Boot-time mounting solve behavior belongs in `AHRS_Mounting.md`, not here.
 
 The low-level `T_BI` application helper belongs in

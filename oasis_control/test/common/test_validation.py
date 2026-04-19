@@ -229,6 +229,34 @@ def test_imu_validation_accepts_and_normalizes_good_sample() -> None:
     assert validation_result.sample.orientation_xyzw == (0.0, 0.0, 0.0, 1.0)
 
 
+def test_imu_validation_canonicalizes_driver_quaternion_to_world_to_imu() -> None:
+    raw_driver_orientation_xyzw: tuple[float, float, float, float] = (
+        0.1,
+        -0.2,
+        0.3,
+        0.9,
+    )
+
+    validation_result = validate_imu_sample(
+        timestamp_ns=9,
+        frame_id="imu_link",
+        expected_frame_id="imu_link",
+        orientation_xyzw=raw_driver_orientation_xyzw,
+        orientation_covariance_row_major=IDENTITY_COVARIANCE,
+        angular_velocity_rads=(0.1, 0.2, 0.3),
+        angular_velocity_covariance_row_major=IDENTITY_COVARIANCE,
+        linear_acceleration_mps2=(0.0, 0.0, -9.81),
+        linear_acceleration_covariance_row_major=IDENTITY_COVARIANCE,
+    )
+
+    assert validation_result.accepted is True
+    assert validation_result.sample is not None
+    assert math.isclose(validation_result.sample.orientation_xyzw[0], -0.1025978352)
+    assert math.isclose(validation_result.sample.orientation_xyzw[1], 0.2051956704)
+    assert math.isclose(validation_result.sample.orientation_xyzw[2], -0.3077935056)
+    assert math.isclose(validation_result.sample.orientation_xyzw[3], 0.9233805169)
+
+
 def test_gravity_validation_rejects_non_finite_vector() -> None:
     validation_result = validate_gravity_sample(
         timestamp_ns=10,
