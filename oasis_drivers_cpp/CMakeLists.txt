@@ -58,6 +58,10 @@ add_library(bno086_gravity_utils
   src/imu/bno086/Bno086GravityUtils.cpp
 )
 
+add_library(bno086_orientation_covariance_policy
+  src/imu/bno086/Bno086OrientationCovariancePolicy.cpp
+)
+
 add_executable(bno086_imu_driver
   src/cli/bno086_imu_driver.cpp
   src/imu/bno086/Bno086Gpio.cpp
@@ -68,6 +72,7 @@ add_executable(bno086_imu_driver
 
 target_link_libraries(bno086_imu_driver
   bno086_gravity_utils
+  bno086_orientation_covariance_policy
   ${geometry_msgs_TARGETS}
   ${oasis_msgs_TARGETS}
   rclcpp::rclcpp
@@ -232,6 +237,13 @@ if(BUILD_TESTING)
   )
   target_link_libraries(test_bno086_gravity_utils
     bno086_gravity_utils
+  )
+
+  ament_add_gtest(test_bno086_orientation_covariance_policy
+    test/imu/bno086/test_Bno086OrientationCovariancePolicy.cpp
+  )
+  target_link_libraries(test_bno086_orientation_covariance_policy
+    bno086_orientation_covariance_policy
   )
 
   ament_lint_auto_find_test_dependencies()

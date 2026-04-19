@@ -10,6 +10,7 @@
 
 #include "imu/bno086/Bno086Gpio.hpp"
 #include "imu/bno086/Bno086GravityUtils.hpp"
+#include "imu/bno086/Bno086OrientationCovariancePolicy.hpp"
 #include "imu/bno086/Bno086Reports.hpp"
 #include "imu/bno086/Bno086Shtp.hpp"
 #include "imu/bno086/Bno086Transport.hpp"
@@ -74,6 +75,16 @@ private:
     int64_t linear_accel_stamp_ns{0};
   };
 
+  struct OrientationCovarianceDebugState
+  {
+    std::uint8_t accuracy_bucket{0};
+    double sigma_rad{0.0};
+    OASIS::IMU::BNO086::OrientationCovarianceSource source{
+        OASIS::IMU::BNO086::OrientationCovarianceSource::AccuracyBucketFallback};
+    bool has_accuracy_estimate{false};
+    double accuracy_estimate_rad{0.0};
+  };
+
   void InterruptLoop();
   void DrainPacketsForInterrupt(const std::chrono::steady_clock::time_point& interrupt_steady_at,
                                 const rclcpp::Time& interrupt_ros_at);
@@ -92,17 +103,18 @@ private:
   oasis_msgs::msg::ImuVr BuildPredictedVrMessage(const sensor_msgs::msg::Imu& present_imu,
                                                  const sensor_msgs::msg::Imu& predicted_imu) const;
 
-  static OASIS::IMU::Mat3 CovarianceFromAccuracy(std::uint8_t accuracy,
-                                                 double sigma_unreliable,
-                                                 double sigma_low,
-                                                 double sigma_medium,
-                                                 double sigma_high);
   static std::array<double, 9> PredictedCovarianceFromPresent(
       const std::array<double, 9>& present_orientation_covariance,
       double prediction_horizon_sec,
       double& sigma_noise_rad,
       double& sigma_rms_rad,
       double& sigma_bound_rad);
+  static rclcpp::Duration DurationFromUs(std::uint32_t microseconds);
+  static OASIS::IMU::Mat3 CovarianceFromAccuracyBucket(std::uint8_t accuracy,
+                                                       double sigma_unreliable,
+                                                       double sigma_low,
+                                                       double sigma_medium,
+                                                       double sigma_high);
 
   static double QToDouble(std::int16_t value, unsigned q_point);
   static void NormalizeQuaternion(std::array<double, 4>& q);
@@ -114,6 +126,7 @@ private:
   static void SetCovariance(std::array<double, 9>& dst, const OASIS::IMU::Mat3& src);
   static void SetLinearAccelCovariance(std::array<double, 36>& dst,
                                        const OASIS::IMU::Mat3& linear_cov);
+  void MaybeLogOrientationCovariancePolicy();
 
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr m_imuPublisher;
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr m_imuPredictedPublisher;
@@ -128,6 +141,7 @@ private:
   SampleState m_orientationState{};
   SampleState m_gyroState{};
   SampleState m_linearAccelState{};
+  OrientationCovarianceDebugState m_orientationCovarianceDebug{};
 
   std::string m_frameId;
   double m_predictionHorizonSec{0.0};
@@ -144,5 +158,9 @@ private:
   bool m_loggedCommEstablished{false};
   bool m_loggedSetFeature{false};
   bool m_warnedMissingImuFields{false};
+  bool m_loggedOrientationCovarianceSource{false};
+  OASIS::IMU::BNO086::OrientationCovarianceSource m_lastOrientationCovarianceSource{
+      OASIS::IMU::BNO086::OrientationCovarianceSource::AccuracyBucketFallback};
+  std::uint8_t m_lastOrientationAccuracyBucket{0};
 };
 } // namespace OASIS::ROS

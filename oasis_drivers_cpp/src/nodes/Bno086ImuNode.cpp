@@ -44,11 +44,9 @@ constexpr std::uint32_t MAX_BASE_TIMESTAMP_STEP_US = 1'000'000;
 constexpr std::uint32_t MIN_COHERENT_SAMPLE_SPAN_US = 3'000;
 constexpr std::uint32_t MAX_COHERENT_SAMPLE_SPAN_US = 20'000;
 constexpr double DEFAULT_PREDICTION_HORIZON_SEC = 0.0;
-
-rclcpp::Duration DurationFromUs(std::uint32_t microseconds)
-{
-  return rclcpp::Duration(0, static_cast<int64_t>(microseconds) * 1000);
-}
+constexpr double PI_RAD = 3.14159265358979323846;
+constexpr const char* ORIENTATION_REPORT_SOURCE = "rotation_vector";
+constexpr int ORIENTATION_COVARIANCE_LOG_THROTTLE_MS = 5'000;
 } // namespace
 
 Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
@@ -484,6 +482,10 @@ void Bno086ImuNode::ApplyEvent(const SensorEvent& event, const rclcpp::Time& sam
   switch (event.report_id)
   {
     case ReportId::RotationVector:
+    {
+      const OrientationCovariancePolicyResult covariancePolicy =
+          ResolveOrientationCovariancePolicy(event.accuracy, event.values[4]);
+
       m_latestFrame.orientation_xyzw[0] = QToDouble(event.values[0], 14);
       m_latestFrame.orientation_xyzw[1] = QToDouble(event.values[1], 14);
       m_latestFrame.orientation_xyzw[2] = QToDouble(event.values[2], 14);
@@ -495,12 +497,26 @@ void Bno086ImuNode::ApplyEvent(const SensorEvent& event, const rclcpp::Time& sam
       m_orientationState.sequence = event.sequence;
       m_orientationState.accuracy = event.accuracy;
 
-      // SH-2 accuracy remains a runtime quality bucket, but Falcon has shown
-      // accuracy=0 to be overly pessimistic for stable fused orientation
-      m_latestFrame.orientation_cov_rad2 =
-          CovarianceFromAccuracy(event.accuracy, 0.5, 0.25, 0.12, 0.06);
+      // The policy module owns how SH-2 Rotation Vector becomes the published
+      // ROS orientation covariance contract:
+      //
+      // - prefer the report's own estimated accuracy field when it is present
+      // - otherwise fall back to a documented SH-2 accuracy-bucket heuristic
+      // - publish an axis-aligned covariance because SH-2 does not expose a
+      //   full 3x3 orientation covariance
+      //
+      // The node only applies that result and reports which source was used.
+      // Downstream AHRS preserves and rotates the published covariance.
+      m_latestFrame.orientation_cov_rad2 = covariancePolicy.covariance_rad2;
       m_latestFrame.has_orientation_covariance = true;
+      m_orientationCovarianceDebug.accuracy_bucket = covariancePolicy.accuracy_bucket;
+      m_orientationCovarianceDebug.sigma_rad = covariancePolicy.sigma_rad;
+      m_orientationCovarianceDebug.source = covariancePolicy.source;
+      m_orientationCovarianceDebug.has_accuracy_estimate = covariancePolicy.has_accuracy_estimate;
+      m_orientationCovarianceDebug.accuracy_estimate_rad = covariancePolicy.accuracy_estimate_rad;
+      MaybeLogOrientationCovariancePolicy();
       break;
+    }
 
     case ReportId::GyroscopeCalibrated:
       m_latestFrame.gyro_rads[0] = QToDouble(event.values[0], 9);
@@ -512,7 +528,8 @@ void Bno086ImuNode::ApplyEvent(const SensorEvent& event, const rclcpp::Time& sam
       m_gyroState.sequence = event.sequence;
       m_gyroState.accuracy = event.accuracy;
 
-      m_latestFrame.gyro_cov_rads2_2 = CovarianceFromAccuracy(event.accuracy, 1.2, 0.5, 0.18, 0.06);
+      m_latestFrame.gyro_cov_rads2_2 =
+          Bno086ImuNode::CovarianceFromAccuracyBucket(event.accuracy, 1.2, 0.5, 0.18, 0.06);
       m_latestFrame.has_gyro_covariance = true;
       break;
 
@@ -527,7 +544,7 @@ void Bno086ImuNode::ApplyEvent(const SensorEvent& event, const rclcpp::Time& sam
       m_linearAccelState.accuracy = event.accuracy;
 
       m_latestFrame.linear_accel_cov_mps2_2 =
-          CovarianceFromAccuracy(event.accuracy, 4.0, 2.0, 0.8, 0.25);
+          Bno086ImuNode::CovarianceFromAccuracyBucket(event.accuracy, 4.0, 2.0, 0.8, 0.25);
       m_latestFrame.has_linear_accel_covariance = true;
       break;
 
@@ -553,7 +570,7 @@ void Bno086ImuNode::ApplyEvent(const SensorEvent& event, const rclcpp::Time& sam
       // ingestion and the rest of the stack can treat gravity consistently.
       m_latestFrame.gravity_mps2 = CanonicalizeGravityVector(rawGravityMps2);
       m_latestFrame.gravity_cov_mps2_2 =
-          CovarianceFromAccuracy(event.accuracy, 1.0, 0.5, 0.2, 0.08);
+          Bno086ImuNode::CovarianceFromAccuracyBucket(event.accuracy, 1.0, 0.5, 0.2, 0.08);
       m_latestFrame.has_gravity = true;
       m_latestFrame.has_gravity_covariance = true;
       break;
@@ -589,35 +606,6 @@ rclcpp::Time Bno086ImuNode::EstimateEventStamp(const SensorEvent& event,
   return estimatedStamp;
 }
 
-OASIS::IMU::Mat3 Bno086ImuNode::CovarianceFromAccuracy(std::uint8_t accuracy,
-                                                       double sigma_unreliable,
-                                                       double sigma_low,
-                                                       double sigma_medium,
-                                                       double sigma_high)
-{
-  // SH-2 exposes only an accuracy class, not a full covariance model.
-  // Map that class to an axis-aligned 3x3 covariance and reserve larger
-  // uncertainty for accuracy=0 so "unreliable" is distinct from "low".
-  const double sigma = (accuracy >= 3)   ? sigma_high
-                       : (accuracy == 2) ? sigma_medium
-                       : (accuracy == 1) ? sigma_low
-                                         : sigma_unreliable;
-
-  OASIS::IMU::Mat3 covariance{};
-  covariance[0][0] = sigma * sigma;
-  covariance[0][1] = 0.0;
-  covariance[0][2] = 0.0;
-
-  covariance[1][0] = 0.0;
-  covariance[1][1] = sigma * sigma;
-  covariance[1][2] = 0.0;
-
-  covariance[2][0] = 0.0;
-  covariance[2][1] = 0.0;
-  covariance[2][2] = sigma * sigma;
-  return covariance;
-}
-
 std::array<double, 9> Bno086ImuNode::PredictedCovarianceFromPresent(
     const std::array<double, 9>& present_orientation_covariance,
     double prediction_horizon_sec,
@@ -625,9 +613,11 @@ std::array<double, 9> Bno086ImuNode::PredictedCovarianceFromPresent(
     double& sigma_rms_rad,
     double& sigma_bound_rad)
 {
-  // Present orientation covariance comes from the SH-2 accuracy bucket.
-  // Host prediction should never be more confident than that estimate, so
-  // start from the present-time diagonal and add only nonnegative growth.
+  // Present orientation covariance comes from the driver-owned SH-2 policy:
+  // Rotation Vector estimated accuracy when available, otherwise the fallback
+  // accuracy bucket table. Host prediction should never be more confident than
+  // that estimate, so start from the present-time diagonal and add only
+  // nonnegative growth.
   //
   // The growth term models additional small-angle variance that accumulates
   // while integrating gyro forward in time:
@@ -660,6 +650,39 @@ std::array<double, 9> Bno086ImuNode::PredictedCovarianceFromPresent(
   sigma_rms_rad = std::sqrt(maxPredictedVarianceRad2);
   sigma_bound_rad = sigma_rms_rad;
   return predictedCovariance;
+}
+
+rclcpp::Duration Bno086ImuNode::DurationFromUs(std::uint32_t microseconds)
+{
+  return rclcpp::Duration(0, static_cast<int64_t>(microseconds) * 1000);
+}
+
+OASIS::IMU::Mat3 Bno086ImuNode::CovarianceFromAccuracyBucket(std::uint8_t accuracy,
+                                                             double sigma_unreliable,
+                                                             double sigma_low,
+                                                             double sigma_medium,
+                                                             double sigma_high)
+{
+  const double sigma = (accuracy >= 3)   ? sigma_high
+                       : (accuracy == 2) ? sigma_medium
+                       : (accuracy == 1) ? sigma_low
+                                         : sigma_unreliable;
+
+  const double variance = sigma * sigma;
+
+  OASIS::IMU::Mat3 covariance{};
+  covariance[0][0] = variance;
+  covariance[0][1] = 0.0;
+  covariance[0][2] = 0.0;
+
+  covariance[1][0] = 0.0;
+  covariance[1][1] = variance;
+  covariance[1][2] = 0.0;
+
+  covariance[2][0] = 0.0;
+  covariance[2][1] = 0.0;
+  covariance[2][2] = variance;
+  return covariance;
 }
 
 double Bno086ImuNode::QToDouble(std::int16_t value, unsigned q_point)
@@ -759,4 +782,46 @@ void Bno086ImuNode::SetLinearAccelCovariance(std::array<double, 36>& dst,
   // angular acceleration. Mark it unknown because this topic carries
   // only linear acceleration.
   dst[21] = -1.0;
+}
+
+void Bno086ImuNode::MaybeLogOrientationCovariancePolicy()
+{
+  const bool sourceChanged =
+      !m_loggedOrientationCovarianceSource ||
+      m_orientationCovarianceDebug.source != m_lastOrientationCovarianceSource;
+  const bool bucketChanged =
+      !m_loggedOrientationCovarianceSource ||
+      m_orientationCovarianceDebug.accuracy_bucket != m_lastOrientationAccuracyBucket;
+
+  if (sourceChanged || bucketChanged)
+  {
+    RCLCPP_INFO(get_logger(),
+                "BNO086 orientation covariance policy: report=%s bucket=%u source=%s "
+                "sigma_rad=%.4f sigma_deg=%.2f estimate_rad=%.4f",
+                ORIENTATION_REPORT_SOURCE,
+                static_cast<unsigned>(m_orientationCovarianceDebug.accuracy_bucket),
+                OrientationCovarianceSourceName(m_orientationCovarianceDebug.source),
+                m_orientationCovarianceDebug.sigma_rad,
+                m_orientationCovarianceDebug.sigma_rad * 180.0 / PI_RAD,
+                m_orientationCovarianceDebug.has_accuracy_estimate
+                    ? m_orientationCovarianceDebug.accuracy_estimate_rad
+                    : 0.0);
+
+    m_loggedOrientationCovarianceSource = true;
+    m_lastOrientationCovarianceSource = m_orientationCovarianceDebug.source;
+    m_lastOrientationAccuracyBucket = m_orientationCovarianceDebug.accuracy_bucket;
+  }
+
+  RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), ORIENTATION_COVARIANCE_LOG_THROTTLE_MS,
+                        "BNO086 orientation covariance status: report=%s bucket=%u source=%s "
+                        "sigma_rad=%.4f sigma_deg=%.2f variance_rad2=%.6f estimate_rad=%.4f",
+                        ORIENTATION_REPORT_SOURCE,
+                        static_cast<unsigned>(m_orientationCovarianceDebug.accuracy_bucket),
+                        OrientationCovarianceSourceName(m_orientationCovarianceDebug.source),
+                        m_orientationCovarianceDebug.sigma_rad,
+                        m_orientationCovarianceDebug.sigma_rad * 180.0 / PI_RAD,
+                        m_latestFrame.orientation_cov_rad2[0][0],
+                        m_orientationCovarianceDebug.has_accuracy_estimate
+                            ? m_orientationCovarianceDebug.accuracy_estimate_rad
+                            : 0.0);
 }
