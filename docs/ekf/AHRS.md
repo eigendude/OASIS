@@ -240,6 +240,12 @@ Recommended primary topic:
 - `linear_acceleration = a_B`
 - `linear_acceleration_covariance = Σ_aB` when known
 
+Downstream body-motion consumers should prefer `ahrs/imu` over the raw `imu`
+topic. Because `ahrs/imu` is already mounted into `base_link`, consumers such
+as tilt and speedometer may treat orientation, angular velocity, and linear
+acceleration as body-frame signals and should not compensate
+`imu_link -> base_link` mounting internally.
+
 ### 5.3 Gravity-facing output or status
 
 The AHRS may publish a gravity status or debug topic, but the minimum contract
