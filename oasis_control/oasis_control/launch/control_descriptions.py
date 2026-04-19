@@ -238,6 +238,21 @@ class ControlDescriptions:
         )
         ld.add_action(localization_node)
 
+    @staticmethod
+    def add_ahrs_tilt_sensor(ld: LaunchDescription, host_id: str) -> None:
+        ahrs_tilt_node: Node = Node(
+            namespace=ROS_NAMESPACE,
+            package=CONTROL_PACKAGE_NAME,
+            executable="ahrs_tilt",
+            name=f"ahrs_tilt_{host_id}",
+            output="screen",
+            remappings=[
+                ("imu", f"{host_id}/ahrs/imu"),
+                ("tilt", f"{host_id}/ahrs/tilt"),
+            ],
+        )
+        ld.add_action(ahrs_tilt_node)
+
     #
     # ZUPT detector
     #
