@@ -46,6 +46,7 @@ PARAM_ACCEL_ENTER_THRESHOLD_MPS2: str = "accel_enter_threshold_mps2"
 PARAM_ACCEL_EXIT_THRESHOLD_MPS2: str = "accel_exit_threshold_mps2"
 PARAM_MIN_STATIONARY_SEC: str = "min_stationary_sec"
 PARAM_MIN_MOVING_SEC: str = "min_moving_sec"
+PARAM_ENTER_SMOOTHING_TIME_CONSTANT_SEC: str = "enter_smoothing_time_constant_sec"
 PARAM_ZUPT_VELOCITY_SIGMA_MPS: str = "zupt_velocity_sigma_mps"
 PARAM_MOVING_ZUPT_VARIANCE_MPS2: str = "moving_zupt_variance_mps2"
 PARAM_STATIONARY_VARIANCE_INFLATION: str = "stationary_variance_inflation"
@@ -131,6 +132,10 @@ class ZuptDetectorNode(rclpy.node.Node):
             ZuptDetectorConfig.min_moving_sec,
         )
         self.declare_parameter(
+            PARAM_ENTER_SMOOTHING_TIME_CONSTANT_SEC,
+            ZuptDetectorConfig.enter_smoothing_time_constant_sec,
+        )
+        self.declare_parameter(
             PARAM_ZUPT_VELOCITY_SIGMA_MPS,
             ZuptDetectorConfig.zupt_velocity_sigma_mps,
         )
@@ -160,6 +165,9 @@ class ZuptDetectorNode(rclpy.node.Node):
                 self.get_parameter(PARAM_MIN_STATIONARY_SEC).value
             ),
             min_moving_sec=float(self.get_parameter(PARAM_MIN_MOVING_SEC).value),
+            enter_smoothing_time_constant_sec=float(
+                self.get_parameter(PARAM_ENTER_SMOOTHING_TIME_CONSTANT_SEC).value
+            ),
             zupt_velocity_sigma_mps=float(
                 self.get_parameter(PARAM_ZUPT_VELOCITY_SIGMA_MPS).value
             ),
@@ -191,6 +199,19 @@ class ZuptDetectorNode(rclpy.node.Node):
         )
         if decision is None:
             return
+
+        self.get_logger().debug(
+            "ZUPT "
+            f"stationary={decision.stationary} "
+            f"reason={decision.reason} "
+            f"enter_source={decision.enter_evidence_source} "
+            f"gyro_raw={decision.gyro_norm_rads:.4f} "
+            f"accel_raw={decision.accel_norm_mps2:.4f} "
+            f"gyro_filtered={decision.filtered_gyro_norm_rads:.4f} "
+            f"accel_filtered={decision.filtered_accel_norm_mps2:.4f} "
+            f"enter_dwell={decision.enter_dwell_sec:.3f} "
+            f"exit_dwell={decision.exit_dwell_sec:.3f}"
+        )
 
         flag_message: BoolMsg = BoolMsg()
         flag_message.data = decision.stationary
