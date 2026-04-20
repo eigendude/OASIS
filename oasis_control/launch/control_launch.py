@@ -83,6 +83,7 @@ def generate_launch_description() -> LaunchDescription:
             HOST_ID,
             mounting_config=FALCON_AHRS_MOUNTING,
         )
+        ControlDescriptions.add_ahrs_speedometer(ld, HOST_ID)
         ControlDescriptions.add_ahrs_tilt_sensor(ld, HOST_ID)
         ControlDescriptions.add_zupt_detector(ld, HOST_ID)
 

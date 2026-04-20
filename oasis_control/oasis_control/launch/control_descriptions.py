@@ -70,6 +70,27 @@ class ControlDescriptions:
         ld.add_action(ahrs_node)
 
     @staticmethod
+    def add_ahrs_speedometer(ld: LaunchDescription, host_id: str) -> None:
+        ahrs_speedometer_node: Node = Node(
+            namespace=ROS_NAMESPACE,
+            package=CONTROL_PACKAGE_NAME,
+            executable="ahrs_speedometer",
+            name=f"ahrs_speedometer_{host_id}",
+            output="screen",
+            remappings=[
+                ("forward_twist", f"{host_id}/ahrs/forward_twist"),
+                (
+                    "forward_twist/diag",
+                    f"{host_id}/ahrs/forward_twist/diag",
+                ),
+                ("imu", f"{host_id}/ahrs/imu"),
+                ("zupt", f"{host_id}/zupt"),
+                ("zupt_flag", f"{host_id}/zupt_flag"),
+            ],
+        )
+        ld.add_action(ahrs_speedometer_node)
+
+    @staticmethod
     def add_ahrs_tilt_sensor(ld: LaunchDescription, host_id: str) -> None:
         ahrs_tilt_node: Node = Node(
             namespace=ROS_NAMESPACE,
