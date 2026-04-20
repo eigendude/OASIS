@@ -223,6 +223,27 @@ class ControlDescriptions:
     #
 
     @staticmethod
+    def add_forward_twist_node(ld: LaunchDescription, host_id: str) -> None:
+        forward_twist_node: Node = Node(
+            namespace=ROS_NAMESPACE,
+            package=CONTROL_PACKAGE_NAME,
+            executable="forward_twist",
+            name=f"forward_twist_{host_id}",
+            output="screen",
+            remappings=[
+                ("forward_twist", f"{host_id}/ahrs/forward_twist"),
+                (
+                    "forward_twist/diag",
+                    f"{host_id}/ahrs/forward_twist/diag",
+                ),
+                ("imu", f"{host_id}/ahrs/imu"),
+                ("zupt", f"{host_id}/zupt"),
+                ("zupt_flag", f"{host_id}/zupt_flag"),
+            ],
+        )
+        ld.add_action(forward_twist_node)
+
+    @staticmethod
     def add_speedometer_node(ld: LaunchDescription, host_id: str) -> None:
         speedometer_node: Node = Node(
             namespace=ROS_NAMESPACE,
