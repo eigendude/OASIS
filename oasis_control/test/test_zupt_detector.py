@@ -8,7 +8,7 @@
 #
 ################################################################################
 
-"""Tests for the IMU-only ZUPT detector."""
+"""Tests for the IMU-only stationary-twist detector."""
 
 from __future__ import annotations
 
@@ -31,9 +31,12 @@ def _make_detector() -> ZuptDetector:
             min_stationary_sec=0.18,
             min_moving_sec=0.05,
             enter_smoothing_time_constant_sec=0.12,
-            zupt_velocity_sigma_mps=0.06,
-            moving_zupt_variance_mps2=1.0e6,
-            stationary_variance_inflation=4.0,
+            linear_velocity_sigma_mps=0.06,
+            moving_linear_variance_mps2=1.0e6,
+            stationary_linear_variance_inflation=4.0,
+            angular_velocity_sigma_rads=0.05,
+            moving_angular_variance_rads2=5.0e5,
+            stationary_angular_variance_inflation=3.0,
         )
     )
 
@@ -50,9 +53,12 @@ def test_quiet_stop_asserts_earlier_with_filtered_enter_evidence() -> None:
             min_stationary_sec=0.18,
             min_moving_sec=0.05,
             enter_smoothing_time_constant_sec=0.0,
-            zupt_velocity_sigma_mps=0.06,
-            moving_zupt_variance_mps2=1.0e6,
-            stationary_variance_inflation=4.0,
+            linear_velocity_sigma_mps=0.06,
+            moving_linear_variance_mps2=1.0e6,
+            stationary_linear_variance_inflation=4.0,
+            angular_velocity_sigma_rads=0.05,
+            moving_angular_variance_rads2=5.0e5,
+            stationary_angular_variance_inflation=3.0,
         )
     )
 
@@ -154,7 +160,7 @@ def test_exits_stationary_with_loud_accel() -> None:
     assert result.reason == "stationary_cleared"
 
 
-def test_stationary_variance_inflates_near_exit_threshold() -> None:
+def test_stationary_twist_variance_inflates_near_exit_threshold() -> None:
     detector: ZuptDetector = _make_detector()
 
     _accepted(detector.update(0.0, QUIET_GYRO_RADS, QUIET_ACCEL_MPS2))
@@ -168,7 +174,26 @@ def test_stationary_variance_inflates_near_exit_threshold() -> None:
 
     assert quiet_result.stationary is True
     assert inflated_result.stationary is True
-    assert inflated_result.zupt_variance_mps2 > quiet_result.zupt_variance_mps2
+    assert (
+        inflated_result.linear_zupt_variance_mps2
+        > quiet_result.linear_zupt_variance_mps2
+    )
+    assert (
+        inflated_result.angular_zupt_variance_rads2
+        > quiet_result.angular_zupt_variance_rads2
+    )
+
+
+def test_moving_twist_variances_use_explicit_moving_defaults() -> None:
+    detector: ZuptDetector = _make_detector()
+
+    result: ZuptDecision = _accepted(
+        detector.update(0.0, LOUD_GYRO_RADS, LOUD_ACCEL_MPS2)
+    )
+
+    assert result.stationary is False
+    assert result.linear_zupt_variance_mps2 == 1.0e6
+    assert result.angular_zupt_variance_rads2 == 5.0e5
 
 
 def test_filtered_norms_are_deterministic() -> None:

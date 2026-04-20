@@ -8,7 +8,7 @@
 #
 ################################################################################
 
-"""Zero-velocity update (ZUPT) detector based on IMU data."""
+"""Stationary-twist detector based on IMU data."""
 
 from __future__ import annotations
 
@@ -51,16 +51,28 @@ class ZuptDetectorConfig:
     # smoothing and make entry depend on the raw norms.
     enter_smoothing_time_constant_sec: float = 0.12
 
-    # Base zero-velocity measurement sigma in m/s while stationary
-    zupt_velocity_sigma_mps: float = 0.06
+    # Base stationary linear-velocity sigma in m/s
+    linear_velocity_sigma_mps: float = 0.06
 
-    # Non-stationary covariance published in (m/s)^2 so downstream ZUPT
-    # updates become negligible while state remains explicit
-    moving_zupt_variance_mps2: float = 1.0e6
+    # Non-stationary linear-velocity variance in (m/s)^2 so downstream
+    # stationary-twist updates become negligible while the state remains explicit
+    moving_linear_variance_mps2: float = 1.0e6
 
-    # Maximum multiplier applied to stationary variance when the IMU
-    # norms approach the exit thresholds
-    stationary_variance_inflation: float = 4.0
+    # Maximum multiplier applied to stationary linear variance when the
+    # IMU norms approach the exit thresholds
+    stationary_linear_variance_inflation: float = 4.0
+
+    # Base stationary angular-velocity sigma in rad/s
+    angular_velocity_sigma_rads: float = 0.06
+
+    # Non-stationary angular-velocity variance in (rad/s)^2 so
+    # downstream stationary-twist updates become negligible while the
+    # state remains explicit
+    moving_angular_variance_rads2: float = 1.0e6
+
+    # Maximum multiplier applied to stationary angular variance when
+    # gyro norms approach the exit threshold
+    stationary_angular_variance_inflation: float = 4.0
 
 
 @dataclass
@@ -92,8 +104,11 @@ class ZuptDetectorState:
     # for stationary entry
     last_filtered_accel_norm_mps2: float = 0.0
 
-    # Current published ZUPT variance in (m/s)^2
-    current_zupt_variance_mps2: float = 0.0
+    # Current published linear stationary-twist variance in (m/s)^2
+    current_linear_zupt_variance_mps2: float = 0.0
+
+    # Current published angular stationary-twist variance in (rad/s)^2
+    current_angular_zupt_variance_rads2: float = 0.0
 
     # Short reason describing the last state transition decision
     last_reason: str = "init"
@@ -124,8 +139,14 @@ class ZuptDecision:
     # stationary entry decisions
     filtered_accel_norm_mps2: float
 
-    # Published ZUPT variance in (m/s)^2 carried in covariance[0]
-    zupt_variance_mps2: float
+    # Published linear stationary-twist variance in (m/s)^2 carried in the
+    # leading
+    # `3 x 3` covariance block
+    linear_zupt_variance_mps2: float
+
+    # Published angular stationary-twist variance in (rad/s)^2 carried in the
+    # trailing `3 x 3` covariance block
+    angular_zupt_variance_rads2: float
 
     # Time in seconds that the current enter candidate has been active
     enter_dwell_sec: float
@@ -141,12 +162,13 @@ class ZuptDecision:
 
 
 class ZuptDetector:
-    """Detects zero-velocity intervals using IMU data."""
+    """Detects stationary intervals and publishes body-twist covariance."""
 
     def __init__(self, config: ZuptDetectorConfig) -> None:
         self._config: ZuptDetectorConfig = config
         self._state: ZuptDetectorState = ZuptDetectorState(
-            current_zupt_variance_mps2=config.moving_zupt_variance_mps2
+            current_linear_zupt_variance_mps2=config.moving_linear_variance_mps2,
+            current_angular_zupt_variance_rads2=(config.moving_angular_variance_rads2),
         )
 
     @property
@@ -232,7 +254,12 @@ class ZuptDetector:
         else:
             self._update_enter_candidate(timestamp, stationary_candidate)
 
-        self._state.current_zupt_variance_mps2 = self._compute_zupt_variance_mps2()
+        self._state.current_linear_zupt_variance_mps2 = (
+            self._compute_linear_zupt_variance_mps2()
+        )
+        self._state.current_angular_zupt_variance_rads2 = (
+            self._compute_angular_zupt_variance_rads2()
+        )
         return self._build_decision(self._state.last_reason)
 
     def _update_enter_candidate(
@@ -300,11 +327,11 @@ class ZuptDetector:
         self._state.exit_candidate_start_sec = None
         self._state.last_reason = "stationary_held"
 
-    def _compute_zupt_variance_mps2(self) -> float:
+    def _compute_linear_zupt_variance_mps2(self) -> float:
         if not self._state.stationary:
-            return float(self._config.moving_zupt_variance_mps2)
+            return float(self._config.moving_linear_variance_mps2)
 
-        base_variance_mps2: float = self._config.zupt_velocity_sigma_mps**2
+        base_variance_mps2: float = self._config.linear_velocity_sigma_mps**2
 
         gyro_ratio: float = _normalized_ratio(
             self._state.last_gyro_norm_rads,
@@ -317,10 +344,25 @@ class ZuptDetector:
         normalized_margin: float = max(gyro_ratio, accel_ratio)
 
         inflation: float = 1.0 + (
-            max(self._config.stationary_variance_inflation - 1.0, 0.0)
+            max(self._config.stationary_linear_variance_inflation - 1.0, 0.0)
             * normalized_margin
         )
         return base_variance_mps2 * inflation
+
+    def _compute_angular_zupt_variance_rads2(self) -> float:
+        if not self._state.stationary:
+            return float(self._config.moving_angular_variance_rads2)
+
+        base_variance_rads2: float = self._config.angular_velocity_sigma_rads**2
+        gyro_ratio: float = _normalized_ratio(
+            self._state.last_gyro_norm_rads,
+            self._config.gyro_exit_threshold_rads,
+        )
+        inflation: float = 1.0 + (
+            max(self._config.stationary_angular_variance_inflation - 1.0, 0.0)
+            * gyro_ratio
+        )
+        return base_variance_rads2 * inflation
 
     def _build_decision(self, reason: str) -> ZuptDecision:
         timestamp_sec: Optional[float] = self._state.last_timestamp_sec
@@ -336,7 +378,10 @@ class ZuptDetector:
             accel_norm_mps2=self._state.last_accel_norm_mps2,
             filtered_gyro_norm_rads=self._state.last_filtered_gyro_norm_rads,
             filtered_accel_norm_mps2=self._state.last_filtered_accel_norm_mps2,
-            zupt_variance_mps2=self._state.current_zupt_variance_mps2,
+            linear_zupt_variance_mps2=(self._state.current_linear_zupt_variance_mps2),
+            angular_zupt_variance_rads2=(
+                self._state.current_angular_zupt_variance_rads2
+            ),
             enter_dwell_sec=enter_dwell_sec,
             exit_dwell_sec=exit_dwell_sec,
             reason=reason,

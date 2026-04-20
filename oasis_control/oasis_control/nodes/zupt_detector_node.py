@@ -47,11 +47,17 @@ PARAM_ACCEL_EXIT_THRESHOLD_MPS2: str = "accel_exit_threshold_mps2"
 PARAM_MIN_STATIONARY_SEC: str = "min_stationary_sec"
 PARAM_MIN_MOVING_SEC: str = "min_moving_sec"
 PARAM_ENTER_SMOOTHING_TIME_CONSTANT_SEC: str = "enter_smoothing_time_constant_sec"
-PARAM_ZUPT_VELOCITY_SIGMA_MPS: str = "zupt_velocity_sigma_mps"
-PARAM_MOVING_ZUPT_VARIANCE_MPS2: str = "moving_zupt_variance_mps2"
-PARAM_STATIONARY_VARIANCE_INFLATION: str = "stationary_variance_inflation"
+PARAM_LINEAR_VELOCITY_SIGMA_MPS: str = "linear_velocity_sigma_mps"
+PARAM_MOVING_LINEAR_VARIANCE_MPS2: str = "moving_linear_variance_mps2"
+PARAM_STATIONARY_LINEAR_VARIANCE_INFLATION: str = "stationary_linear_variance_inflation"
+PARAM_ANGULAR_VELOCITY_SIGMA_RADS: str = "angular_velocity_sigma_rads"
+PARAM_MOVING_ANGULAR_VARIANCE_RADS2: str = "moving_angular_variance_rads2"
+PARAM_STATIONARY_ANGULAR_VARIANCE_INFLATION: str = (
+    "stationary_angular_variance_inflation"
+)
 
-DEFAULT_COVARIANCE: list[float] = [1.0e6] * 36
+LINEAR_COVARIANCE_DIAGONAL_INDICES: tuple[int, int, int] = (0, 7, 14)
+ANGULAR_COVARIANCE_DIAGONAL_INDICES: tuple[int, int, int] = (21, 28, 35)
 
 
 ################################################################################
@@ -136,16 +142,28 @@ class ZuptDetectorNode(rclpy.node.Node):
             ZuptDetectorConfig.enter_smoothing_time_constant_sec,
         )
         self.declare_parameter(
-            PARAM_ZUPT_VELOCITY_SIGMA_MPS,
-            ZuptDetectorConfig.zupt_velocity_sigma_mps,
+            PARAM_LINEAR_VELOCITY_SIGMA_MPS,
+            ZuptDetectorConfig.linear_velocity_sigma_mps,
         )
         self.declare_parameter(
-            PARAM_MOVING_ZUPT_VARIANCE_MPS2,
-            ZuptDetectorConfig.moving_zupt_variance_mps2,
+            PARAM_MOVING_LINEAR_VARIANCE_MPS2,
+            ZuptDetectorConfig.moving_linear_variance_mps2,
         )
         self.declare_parameter(
-            PARAM_STATIONARY_VARIANCE_INFLATION,
-            ZuptDetectorConfig.stationary_variance_inflation,
+            PARAM_STATIONARY_LINEAR_VARIANCE_INFLATION,
+            ZuptDetectorConfig.stationary_linear_variance_inflation,
+        )
+        self.declare_parameter(
+            PARAM_ANGULAR_VELOCITY_SIGMA_RADS,
+            ZuptDetectorConfig.angular_velocity_sigma_rads,
+        )
+        self.declare_parameter(
+            PARAM_MOVING_ANGULAR_VARIANCE_RADS2,
+            ZuptDetectorConfig.moving_angular_variance_rads2,
+        )
+        self.declare_parameter(
+            PARAM_STATIONARY_ANGULAR_VARIANCE_INFLATION,
+            ZuptDetectorConfig.stationary_angular_variance_inflation,
         )
 
         config: ZuptDetectorConfig = ZuptDetectorConfig(
@@ -168,14 +186,23 @@ class ZuptDetectorNode(rclpy.node.Node):
             enter_smoothing_time_constant_sec=float(
                 self.get_parameter(PARAM_ENTER_SMOOTHING_TIME_CONSTANT_SEC).value
             ),
-            zupt_velocity_sigma_mps=float(
-                self.get_parameter(PARAM_ZUPT_VELOCITY_SIGMA_MPS).value
+            linear_velocity_sigma_mps=float(
+                self.get_parameter(PARAM_LINEAR_VELOCITY_SIGMA_MPS).value
             ),
-            moving_zupt_variance_mps2=float(
-                self.get_parameter(PARAM_MOVING_ZUPT_VARIANCE_MPS2).value
+            moving_linear_variance_mps2=float(
+                self.get_parameter(PARAM_MOVING_LINEAR_VARIANCE_MPS2).value
             ),
-            stationary_variance_inflation=float(
-                self.get_parameter(PARAM_STATIONARY_VARIANCE_INFLATION).value
+            stationary_linear_variance_inflation=float(
+                self.get_parameter(PARAM_STATIONARY_LINEAR_VARIANCE_INFLATION).value
+            ),
+            angular_velocity_sigma_rads=float(
+                self.get_parameter(PARAM_ANGULAR_VELOCITY_SIGMA_RADS).value
+            ),
+            moving_angular_variance_rads2=float(
+                self.get_parameter(PARAM_MOVING_ANGULAR_VARIANCE_RADS2).value
+            ),
+            stationary_angular_variance_inflation=float(
+                self.get_parameter(PARAM_STATIONARY_ANGULAR_VARIANCE_INFLATION).value
             ),
         )
         return config
@@ -209,6 +236,8 @@ class ZuptDetectorNode(rclpy.node.Node):
             f"accel_raw={decision.accel_norm_mps2:.4f} "
             f"gyro_filtered={decision.filtered_gyro_norm_rads:.4f} "
             f"accel_filtered={decision.filtered_accel_norm_mps2:.4f} "
+            f"linear_var={decision.linear_zupt_variance_mps2:.6f} "
+            f"angular_var={decision.angular_zupt_variance_rads2:.6f} "
             f"enter_dwell={decision.enter_dwell_sec:.3f} "
             f"exit_dwell={decision.exit_dwell_sec:.3f}"
         )
@@ -226,9 +255,10 @@ class ZuptDetectorNode(rclpy.node.Node):
         zupt_message.twist.twist.angular.y = 0.0
         zupt_message.twist.twist.angular.z = 0.0
 
-        covariance: list[float] = list(DEFAULT_COVARIANCE)
-        covariance[0] = _sanitize_variance(decision.zupt_variance_mps2)
-        zupt_message.twist.covariance = covariance
+        zupt_message.twist.covariance = _build_zupt_covariance(
+            linear_variance_mps2=decision.linear_zupt_variance_mps2,
+            angular_variance_rads2=decision.angular_zupt_variance_rads2,
+        )
 
         self._zupt_pub.publish(zupt_message)
 
@@ -239,10 +269,37 @@ def _time_to_float_sec(stamp: TimeMsg) -> float:
     return float(stamp.sec) + float(stamp.nanosec) * 1.0e-9
 
 
-def _sanitize_variance(variance_mps2: float) -> float:
-    """Clamp published ZUPT variance to a finite positive scalar."""
+def _sanitize_positive_variance(variance: float, default_variance: float) -> float:
+    """Clamp published variance to a finite positive scalar."""
 
-    variance: float = float(variance_mps2)
+    variance = float(variance)
     if not math.isfinite(variance) or variance <= 0.0:
-        return DEFAULT_COVARIANCE[0]
+        return float(default_variance)
     return variance
+
+
+def _build_zupt_covariance(
+    linear_variance_mps2: float, angular_variance_rads2: float
+) -> list[float]:
+    """Build the published stationary-twist covariance.
+
+    The detector owns a stationary body-twist measurement, so the
+    leading `3 x 3` block is an isotropic linear covariance and the
+    trailing `3 x 3` block is an isotropic angular covariance.
+    """
+
+    published_linear_variance_mps2: float = _sanitize_positive_variance(
+        linear_variance_mps2,
+        ZuptDetectorConfig.moving_linear_variance_mps2,
+    )
+    published_angular_variance_rads2: float = _sanitize_positive_variance(
+        angular_variance_rads2,
+        ZuptDetectorConfig.moving_angular_variance_rads2,
+    )
+    covariance: list[float] = [0.0] * 36
+    diagonal_index: int
+    for diagonal_index in LINEAR_COVARIANCE_DIAGONAL_INDICES:
+        covariance[diagonal_index] = published_linear_variance_mps2
+    for diagonal_index in ANGULAR_COVARIANCE_DIAGONAL_INDICES:
+        covariance[diagonal_index] = published_angular_variance_rads2
+    return covariance

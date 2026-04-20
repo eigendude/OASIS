@@ -24,6 +24,7 @@ def install_test_stubs() -> None:
     _install_builtin_interfaces_stub()
     _install_geometry_msgs_stub()
     _install_sensor_msgs_stub()
+    _install_std_msgs_stub()
     _install_nav_msgs_stub()
     _install_tf2_ros_stub()
     _install_oasis_msgs_stub()
@@ -65,6 +66,16 @@ class _Header:
     def __init__(self) -> None:
         self.stamp: _Time = _Time()
         self.frame_id: str = ""
+
+
+class _Bool:
+    def __init__(self) -> None:
+        self.data: bool = False
+
+
+class _String:
+    def __init__(self) -> None:
+        self.data: str = ""
 
 
 class _Vector3:
@@ -154,6 +165,12 @@ class _TwistWithCovariance:
         self.covariance: list[float] = [0.0] * 36
 
 
+class _TwistWithCovarianceStamped:
+    def __init__(self) -> None:
+        self.header: _Header = _Header()
+        self.twist: _TwistWithCovariance = _TwistWithCovariance()
+
+
 class _Odometry:
     def __init__(self) -> None:
         self.header: _Header = _Header()
@@ -220,6 +237,9 @@ class _Parameter:
 class _Logger:
     def __init__(self) -> None:
         self.messages: list[tuple[str, str]] = []
+
+    def debug(self, message: str) -> None:
+        self.messages.append(("debug", message))
 
     def info(self, message: str) -> None:
         self.messages.append(("info", message))
@@ -363,6 +383,11 @@ def _install_geometry_msgs_stub() -> None:
         _AccelWithCovarianceStamped,
     )
     _set_module_attr(geometry_msgs_msg_module, "TransformStamped", _TransformStamped)
+    _set_module_attr(
+        geometry_msgs_msg_module,
+        "TwistWithCovarianceStamped",
+        _TwistWithCovarianceStamped,
+    )
     _set_module_attr(geometry_msgs_module, "msg", geometry_msgs_msg_module)
     _register_module("geometry_msgs", geometry_msgs_module)
     _register_module("geometry_msgs.msg", geometry_msgs_msg_module)
@@ -378,6 +403,19 @@ def _install_sensor_msgs_stub() -> None:
     _set_module_attr(sensor_msgs_module, "msg", sensor_msgs_msg_module)
     _register_module("sensor_msgs", sensor_msgs_module)
     _register_module("sensor_msgs.msg", sensor_msgs_msg_module)
+
+
+def _install_std_msgs_stub() -> None:
+    if _module_exists("std_msgs.msg"):
+        return
+
+    std_msgs_module: ModuleType = _make_package("std_msgs")
+    std_msgs_msg_module: ModuleType = ModuleType("std_msgs.msg")
+    _set_module_attr(std_msgs_msg_module, "Bool", _Bool)
+    _set_module_attr(std_msgs_msg_module, "String", _String)
+    _set_module_attr(std_msgs_module, "msg", std_msgs_msg_module)
+    _register_module("std_msgs", std_msgs_module)
+    _register_module("std_msgs.msg", std_msgs_msg_module)
 
 
 def _install_nav_msgs_stub() -> None:
