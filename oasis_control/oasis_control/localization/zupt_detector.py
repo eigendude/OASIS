@@ -40,11 +40,16 @@ class ZuptDetectorConfig:
 
     # Minimum time in seconds that quiet IMU conditions must hold before
     # asserting stationary
-    min_stationary_sec: float = 0.3
+    min_stationary_sec: float = 0.18
 
     # Minimum time in seconds that motion conditions must hold before
     # clearing stationary
     min_moving_sec: float = 0.1
+
+    # Exponential smoothing time constant in seconds used for
+    # stationary-enter evidence. Non-positive values disable
+    # smoothing and make entry depend on the raw norms.
+    enter_smoothing_time_constant_sec: float = 0.12
 
     # Base zero-velocity measurement sigma in m/s while stationary
     zupt_velocity_sigma_mps: float = 0.06
@@ -80,11 +85,21 @@ class ZuptDetectorState:
     # Last gravity-removed acceleration norm in m/s^2
     last_accel_norm_mps2: float = 0.0
 
+    # Last filtered gyro norm in rad/s used for stationary entry
+    last_filtered_gyro_norm_rads: float = 0.0
+
+    # Last filtered gravity-removed acceleration norm in m/s^2 used
+    # for stationary entry
+    last_filtered_accel_norm_mps2: float = 0.0
+
     # Current published ZUPT variance in (m/s)^2
     current_zupt_variance_mps2: float = 0.0
 
     # Short reason describing the last state transition decision
     last_reason: str = "init"
+
+    # Evidence source used for the current stationary-enter decision
+    enter_evidence_source: str = "raw"
 
 
 @dataclass(frozen=True)
@@ -101,6 +116,14 @@ class ZuptDecision:
     # current IMU sample
     accel_norm_mps2: float
 
+    # Filtered angular-velocity norm in rad/s used for stationary
+    # entry decisions
+    filtered_gyro_norm_rads: float
+
+    # Filtered gravity-removed acceleration norm in m/s^2 used for
+    # stationary entry decisions
+    filtered_accel_norm_mps2: float
+
     # Published ZUPT variance in (m/s)^2 carried in covariance[0]
     zupt_variance_mps2: float
 
@@ -112,6 +135,9 @@ class ZuptDecision:
 
     # Short reason describing the current detector decision
     reason: str
+
+    # Evidence source used for stationary-enter decisions
+    enter_evidence_source: str
 
 
 class ZuptDetector:
@@ -165,14 +191,32 @@ class ZuptDetector:
 
         gyro_norm_rads: float = _norm3(gyro_vector_rads)
         accel_norm_mps2: float = _norm3(accel_vector_mps2)
+        enter_dt_sec: float = _sample_dt_sec(timestamp, previous_timestamp_sec)
+        filtered_gyro_norm_rads: float = _ema_update(
+            sample=gyro_norm_rads,
+            previous=self._state.last_filtered_gyro_norm_rads,
+            dt_sec=enter_dt_sec,
+            time_constant_sec=self._config.enter_smoothing_time_constant_sec,
+        )
+        filtered_accel_norm_mps2: float = _ema_update(
+            sample=accel_norm_mps2,
+            previous=self._state.last_filtered_accel_norm_mps2,
+            dt_sec=enter_dt_sec,
+            time_constant_sec=self._config.enter_smoothing_time_constant_sec,
+        )
 
         self._state.last_timestamp_sec = timestamp
         self._state.last_gyro_norm_rads = gyro_norm_rads
         self._state.last_accel_norm_mps2 = accel_norm_mps2
+        self._state.last_filtered_gyro_norm_rads = filtered_gyro_norm_rads
+        self._state.last_filtered_accel_norm_mps2 = filtered_accel_norm_mps2
+        self._state.enter_evidence_source = _enter_evidence_source(
+            self._config.enter_smoothing_time_constant_sec
+        )
 
         stationary_candidate: bool = (
-            gyro_norm_rads <= self._config.gyro_enter_threshold_rads
-            and accel_norm_mps2 <= self._config.accel_enter_threshold_mps2
+            filtered_gyro_norm_rads <= self._config.gyro_enter_threshold_rads
+            and filtered_accel_norm_mps2 <= self._config.accel_enter_threshold_mps2
         )
         moving_candidate: bool = (
             gyro_norm_rads >= self._config.gyro_exit_threshold_rads
@@ -207,10 +251,14 @@ class ZuptDetector:
                 self._state.stationary = True
                 self._state.enter_candidate_start_sec = None
                 self._state.exit_candidate_start_sec = None
-                self._state.last_reason = "stationary_asserted"
+                self._state.last_reason = (
+                    "stationary_asserted_" f"{self._state.enter_evidence_source}"
+                )
                 return
 
-            self._state.last_reason = "enter_candidate_pending"
+            self._state.last_reason = (
+                "enter_candidate_pending_" f"{self._state.enter_evidence_source}"
+            )
             return
 
         self._state.enter_candidate_start_sec = None
@@ -286,10 +334,13 @@ class ZuptDetector:
             stationary=self._state.stationary,
             gyro_norm_rads=self._state.last_gyro_norm_rads,
             accel_norm_mps2=self._state.last_accel_norm_mps2,
+            filtered_gyro_norm_rads=self._state.last_filtered_gyro_norm_rads,
+            filtered_accel_norm_mps2=self._state.last_filtered_accel_norm_mps2,
             zupt_variance_mps2=self._state.current_zupt_variance_mps2,
             enter_dwell_sec=enter_dwell_sec,
             exit_dwell_sec=exit_dwell_sec,
             reason=reason,
+            enter_evidence_source=self._state.enter_evidence_source,
         )
 
 
@@ -316,6 +367,40 @@ def _normalized_ratio(value: float, threshold: float) -> float:
         return 1.0
 
     return min(max(value / threshold, 0.0), 1.0)
+
+
+def _sample_dt_sec(
+    timestamp_sec: float, previous_timestamp_sec: Optional[float]
+) -> float:
+    if previous_timestamp_sec is None:
+        return 0.0
+    if timestamp_sec <= previous_timestamp_sec:
+        return 0.0
+    return timestamp_sec - previous_timestamp_sec
+
+
+def _ema_update(
+    *, sample: float, previous: float, dt_sec: float, time_constant_sec: float
+) -> float:
+    if not math.isfinite(sample):
+        return sample
+
+    if (
+        not math.isfinite(previous)
+        or dt_sec <= 0.0
+        or not math.isfinite(time_constant_sec)
+        or time_constant_sec <= 0.0
+    ):
+        return sample
+
+    alpha: float = 1.0 - math.exp(-dt_sec / time_constant_sec)
+    return previous + alpha * (sample - previous)
+
+
+def _enter_evidence_source(time_constant_sec: float) -> str:
+    if math.isfinite(time_constant_sec) and time_constant_sec > 0.0:
+        return "filtered"
+    return "raw"
 
 
 def _elapsed_sec(
