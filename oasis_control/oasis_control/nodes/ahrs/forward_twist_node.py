@@ -330,7 +330,18 @@ class ForwardTwistNode(rclpy.node.Node):
 
         self._publish_status()
 
-        self.get_logger().info("Forward twist node initialized")
+        if self._estimator.startup_loaded_from_persistence:
+            self.get_logger().info(
+                "Forward twist node initialized with persisted yaw from "
+                f"{self._estimator.persistence_path}"
+            )
+        elif self._estimator.persistence_load_error:
+            self.get_logger().info(
+                "Forward twist node initialized without persisted yaw: "
+                f"{self._estimator.persistence_load_error}"
+            )
+        else:
+            self.get_logger().info("Forward twist node initialized")
 
     def stop(self) -> None:
         """Destroy the node."""
@@ -495,6 +506,15 @@ class ForwardTwistNode(rclpy.node.Node):
             f"candidate_yaw={latest_estimate.learning_state.candidate_forward_yaw_rad:.3f} rad, "
             f"committed_yaw={latest_estimate.learning_state.committed_forward_yaw_rad:.3f} rad, "
             f"learned={latest_estimate.forward_axis.learned}, "
+            f"startup_loaded={latest_estimate.startup_loaded_from_persistence}, "
+            f"load_valid={latest_estimate.persistence_load_valid}, "
+            f"commit_source={latest_estimate.learning_state.committed_source}, "
+            f"candidate_conf={latest_estimate.learning_state.candidate_confidence:.3f}, "
+            f"committed_conf={latest_estimate.learning_state.committed_confidence:.3f}, "
+            f"candidate_score={latest_estimate.learning_state.candidate_score:.3f}, "
+            f"committed_score={latest_estimate.learning_state.committed_score:.3f}, "
+            f"candidate_beats={latest_estimate.learning_state.candidate_beats_committed}, "
+            f"last_commit_reason={latest_estimate.learning_state.last_commit_reason}, "
             f"turn_detected={latest_estimate.turn_detected}, "
             f"learning_gated={latest_estimate.learning_state.learning_gated_by_turn}, "
             f"checkpoint_commits={latest_estimate.learning_state.checkpoint_commit_count}, "
@@ -509,8 +529,11 @@ class ForwardTwistNode(rclpy.node.Node):
             f"zupt_applied_count={latest_estimate.zupt_applied_count}, "
             f"zupt_reject_stale_count={latest_estimate.zupt_rejected_stale_count}, "
             f"zupt_reject_motion_count={latest_estimate.zupt_rejected_motion_count}, "
+            f"load_path={latest_estimate.persistence_load_path}, "
+            f"load_error={latest_estimate.persistence_load_error or 'n/a'}, "
             f"persistence_ok={self._estimator.persistence_success_count}, "
             f"persistence_fail={self._estimator.persistence_failure_count}, "
+            f"last_persistence_reason={latest_estimate.last_persistence_reason}, "
             f"imu_drops={self._estimator.imu_drop_count}, "
             f"zupt_drops={self._estimator.zupt_drop_count}"
             f"{persistence_suffix})"

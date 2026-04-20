@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import math
 import time
+from pathlib import Path
 from typing import Optional
 
 from oasis_control.localization.speedometer.contracts import ForwardAxisState
@@ -33,15 +34,46 @@ from oasis_control.localization.speedometer.turn_detector import TurnDetector
 
 MIN_DIRECTION_NORM: float = 1.0e-6
 
+# Units: score
+# Meaning: minimum score improvement required before a candidate replaces the
+# current committed estimate. This prevents noisy tiny fluctuations from
+# rewriting the persisted yaw continuously.
+BETTER_SCORE_MARGIN: float = 0.05
+
+# Units: confidence
+# Meaning: a better candidate may be slightly noisier than the current
+# committed estimate, but not materially worse.
+CONFIDENCE_TOLERANCE: float = 0.02
+
+# Units: rad
+# Meaning: a better candidate may have slightly larger uncertainty than the
+# current committed estimate, but not by more than this tolerance.
+UNCERTAINTY_TOLERANCE_RAD: float = 0.02
+
+# Units: samples
+# Meaning: sample-count improvement that by itself counts as meaningful once the
+# main score gate is already passed.
+MEANINGFUL_SAMPLE_DELTA: int = 2
+
+# Units: confidence
+# Meaning: confidence improvement that counts as meaningful once the main score
+# gate is already passed.
+MEANINGFUL_CONFIDENCE_DELTA: float = 0.01
+
+# Units: rad
+# Meaning: uncertainty improvement that counts as meaningful once the main
+# score gate is already passed.
+MEANINGFUL_UNCERTAINTY_DELTA_RAD: float = 0.002
+
 
 class ForwardTwistEstimator:
     """
     Estimate a learned forward axis plus signed scalar forward speed.
 
-    The estimator keeps candidate and committed forward-axis evidence
-    separately. Uncommitted evidence may be discarded when turn detection says
-    the current motion is no longer suitable for learning one fixed axis in
-    `base_link`.
+    The estimator continuously refines a committed forward axis during runtime.
+    It may initialize that committed state from disk on startup. New candidate
+    evidence only replaces the committed estimate when a deterministic quality
+    rule says the candidate is genuinely better.
     """
 
     def __init__(
@@ -63,6 +95,14 @@ class ForwardTwistEstimator:
         self._committed_sample_count: int = 0
         self._uncommitted_sample_count: int = 0
         self._candidate_confidence: float = 0.0
+        self._committed_confidence: float = 0.0
+        self._candidate_score: float = 0.0
+        self._committed_score: float = 0.0
+        self._candidate_residual: float = 1.0
+        self._committed_residual: float = 1.0
+        self._candidate_uncertainty_forward_yaw_rad: float = math.pi
+        self._committed_uncertainty_forward_yaw_rad: float = math.pi
+        self._candidate_beats_committed: bool = False
         self._checkpoint_commit_count: int = 0
         self._checkpoint_discard_count: int = 0
         self._fit_sample_count: int = 0
@@ -97,27 +137,85 @@ class ForwardTwistEstimator:
         self._last_zupt_rejected_motion_contradiction: bool = False
         self._last_zupt_measurement_variance_used_mps2: Optional[float] = None
         self._last_zupt_kalman_gain: float = 0.0
+
+        self._startup_loaded_from_persistence: bool = False
+        self._persistence_load_valid: bool = False
+        self._persistence_load_error: str = ""
+        self._current_commit_from_persistence: bool = False
+        self._last_commit_reason: str = "waiting_for_learning"
+        self._last_persistence_reason: str = "not_written_yet"
+
         self._persistence_failure_count: int = 0
         self._persistence_success_count: int = 0
         self._last_persistence_error: str = ""
 
+        self._load_committed_forward_yaw()
+
     @property
     def persistence_success_count(self) -> int:
-        """Return the number of successful checkpoint persistence writes."""
+        """Return the number of successful committed-estimate writes."""
 
         return self._persistence_success_count
 
     @property
     def persistence_failure_count(self) -> int:
-        """Return the number of failed checkpoint persistence writes."""
+        """Return the number of failed committed-estimate writes."""
 
         return self._persistence_failure_count
+
+    @property
+    def persistence_write_count(self) -> int:
+        """Return the cumulative count of successful persistence writes."""
+
+        return self._persistence_success_count
 
     @property
     def last_persistence_error(self) -> str:
         """Return the latest persistence failure text, if any."""
 
         return self._last_persistence_error
+
+    @property
+    def last_persistence_reason(self) -> str:
+        """Return the latest persistence load/write reason string."""
+
+        return self._last_persistence_reason
+
+    @property
+    def persistence_load_valid(self) -> bool:
+        """Return true when startup load succeeded."""
+
+        return self._persistence_load_valid
+
+    @property
+    def persistence_load_error(self) -> str:
+        """Return the startup load failure reason, if any."""
+
+        return self._persistence_load_error
+
+    @property
+    def startup_loaded_from_persistence(self) -> bool:
+        """Return true when startup initialized from a persisted value."""
+
+        return self._startup_loaded_from_persistence
+
+    @property
+    def current_commit_from_persistence(self) -> bool:
+        """Return true when the active committed yaw still originates from disk."""
+
+        return self._current_commit_from_persistence
+
+    @property
+    def persistence_path(self) -> Path:
+        """Return the host-specific persistence path."""
+
+        return self._persistence.path
+
+    @property
+    def last_commit_reason(self) -> str:
+        """Return the latest commit or candidate-rejection reason."""
+
+        return self._last_commit_reason
 
     @property
     def imu_drop_count(self) -> int:
@@ -143,7 +241,6 @@ class ForwardTwistEstimator:
         Update the estimator from one mounted AHRS IMU sample.
         """
 
-        imu_sample_rejected: bool = False
         self._last_timestamp_ns = int(timestamp_ns)
 
         if not _quaternion_is_finite(orientation_xyzw):
@@ -209,11 +306,8 @@ class ForwardTwistEstimator:
                 * self._config.forward_accel_process_sigma_mps2,
             )
 
-        if checkpoint_just_committed and self._config.persistence_write_on_checkpoint:
-            self.store_committed_forward_yaw(hostname=self._persistence.hostname)
-
         return self._build_estimate(
-            imu_sample_rejected=imu_sample_rejected,
+            imu_sample_rejected=False,
             zupt_sample_rejected=False,
             checkpoint_just_committed=checkpoint_just_committed,
         )
@@ -311,7 +405,18 @@ class ForwardTwistEstimator:
             checkpoint_just_committed=False,
         )
 
-    def store_committed_forward_yaw(self, *, hostname: str) -> bool:
+    def get_estimate(self) -> ForwardTwistEstimate:
+        """
+        Return the current forward-twist estimate.
+        """
+
+        return self._build_estimate(
+            imu_sample_rejected=False,
+            zupt_sample_rejected=False,
+            checkpoint_just_committed=False,
+        )
+
+    def store_committed_forward_yaw(self, *, hostname: str, reason: str) -> bool:
         """
         Persist the current committed forward yaw using the repo convention.
         """
@@ -329,27 +434,77 @@ class ForwardTwistEstimator:
             ),
             fit_sample_count=self._committed_sample_count,
             checkpoint_count=self._checkpoint_commit_count,
+            confidence=self._committed_confidence,
+            score=self._committed_score,
+            residual=self._committed_residual,
+            uncertainty_forward_yaw_rad=self._committed_uncertainty_forward_yaw_rad,
+            loaded_startup_capable=True,
+            last_update_reason=reason,
         )
         try:
             self._persistence.store(record=record)
         except OSError as exc:
             self._persistence_failure_count += 1
             self._last_persistence_error = str(exc)
+            self._last_persistence_reason = f"write_failed:{exc}"
             return False
 
         self._persistence_success_count += 1
         self._last_persistence_error = ""
+        self._last_persistence_reason = reason
         return True
 
-    def get_estimate(self) -> ForwardTwistEstimate:
-        """
-        Return the current forward-twist estimate.
-        """
+    def _load_committed_forward_yaw(self) -> None:
+        """Load the persisted committed forward yaw for direct startup use."""
 
-        return self._build_estimate(
-            imu_sample_rejected=False,
-            zupt_sample_rejected=False,
-            checkpoint_just_committed=False,
+        self._persistence_load_valid = False
+        self._persistence_load_error = ""
+        self._startup_loaded_from_persistence = False
+        self._current_commit_from_persistence = False
+
+        try:
+            record: PersistenceRecord = self._persistence.load()
+        except FileNotFoundError:
+            self._persistence_load_error = "missing_persistence_file"
+            self._last_persistence_reason = "startup_fallback_missing_file"
+            return
+        except (OSError, ValueError, TypeError, KeyError) as exc:
+            self._persistence_load_error = str(exc)
+            self._last_persistence_reason = "startup_fallback_invalid_file"
+            return
+
+        self._committed_forward_yaw_rad = _wrap_angle_rad(record.forward_yaw_rad)
+        self._candidate_forward_yaw_rad = self._committed_forward_yaw_rad
+        self._committed_sample_count = max(0, int(record.fit_sample_count))
+        self._candidate_sample_count = self._committed_sample_count
+        self._committed_confidence = max(0.0, min(1.0, float(record.confidence)))
+        self._candidate_confidence = self._committed_confidence
+        self._committed_score = float(record.score)
+        self._candidate_score = self._committed_score
+        self._committed_residual = max(0.0, float(record.residual))
+        self._candidate_residual = self._committed_residual
+        self._committed_uncertainty_forward_yaw_rad = max(
+            0.0,
+            float(record.uncertainty_forward_yaw_rad),
+        )
+        self._candidate_uncertainty_forward_yaw_rad = (
+            self._committed_uncertainty_forward_yaw_rad
+        )
+        self._checkpoint_commit_count = max(0, int(record.checkpoint_count))
+        self._fit_sample_count = self._committed_sample_count
+        self._startup_loaded_from_persistence = True
+        self._persistence_load_valid = True
+        self._current_commit_from_persistence = True
+        self._last_commit_reason = "startup_loaded_persistence"
+        self._last_persistence_reason = "startup_loaded_persistence"
+        axis_xy: tuple[float, float] = _yaw_to_axis_xy(self._committed_forward_yaw_rad)
+        self._forward_sign_reference_xy = axis_xy
+        evidence_norm: float = self._committed_confidence * float(
+            self._committed_sample_count
+        )
+        self._committed_direction_sum_xy = (
+            evidence_norm * axis_xy[0],
+            evidence_norm * axis_xy[1],
         )
 
     def _update_learning(
@@ -371,12 +526,16 @@ class ForwardTwistEstimator:
             )
         )
         if candidate_direction_xy is None:
+            self._candidate_beats_committed = False
+            self._last_commit_reason = "candidate_rejected_low_excitation"
             return False
 
         if self._last_stationary_flag is True:
             if self._stationary_flag_is_stale():
                 self._last_stationary_flag = False
             else:
+                self._candidate_beats_committed = False
+                self._last_commit_reason = "candidate_rejected_stationary"
                 return False
 
         if self._forward_sign_reference_xy is None:
@@ -395,6 +554,11 @@ class ForwardTwistEstimator:
         )
         self._uncommitted_sample_count += 1
         self._fit_sample_count += 1
+        self._update_candidate_metrics()
+        return self._maybe_commit_checkpoint()
+
+    def _update_candidate_metrics(self) -> None:
+        """Update candidate yaw and quality metrics from accumulated evidence."""
 
         candidate_sum_xy: tuple[float, float] = (
             self._committed_direction_sum_xy[0] + self._uncommitted_direction_sum_xy[0],
@@ -403,53 +567,135 @@ class ForwardTwistEstimator:
         self._candidate_sample_count = (
             self._committed_sample_count + self._uncommitted_sample_count
         )
+        candidate_norm: float = math.hypot(candidate_sum_xy[0], candidate_sum_xy[1])
         if self._candidate_sample_count > 0:
             self._candidate_confidence = min(
                 1.0,
-                math.hypot(candidate_sum_xy[0], candidate_sum_xy[1])
-                / float(self._candidate_sample_count),
+                candidate_norm / float(self._candidate_sample_count),
             )
-            if (
-                math.hypot(candidate_sum_xy[0], candidate_sum_xy[1])
-                >= MIN_DIRECTION_NORM
-            ):
-                self._candidate_forward_yaw_rad = math.atan2(
-                    candidate_sum_xy[1], candidate_sum_xy[0]
-                )
+        else:
+            self._candidate_confidence = 0.0
 
-        return self._maybe_commit_checkpoint()
+        if candidate_norm >= MIN_DIRECTION_NORM:
+            self._candidate_forward_yaw_rad = math.atan2(
+                candidate_sum_xy[1],
+                candidate_sum_xy[0],
+            )
+
+        self._candidate_residual = max(0.0, 1.0 - self._candidate_confidence)
+        self._candidate_uncertainty_forward_yaw_rad = _estimate_uncertainty_rad(
+            sample_count=self._candidate_sample_count,
+            residual=self._candidate_residual,
+        )
+        self._candidate_score = _compute_score(
+            sample_count=self._candidate_sample_count,
+            confidence=self._candidate_confidence,
+        )
 
     def _maybe_commit_checkpoint(self) -> bool:
-        """Commit the current candidate buffer when it is stable enough."""
+        """
+        Commit the current candidate buffer when it is genuinely better.
+
+        Better-value rule:
+        1. The candidate must satisfy the basic minimum sample and confidence
+           gates.
+        2. Its primary score `confidence * log1p(sample_count)` must beat the
+           committed score by at least `BETTER_SCORE_MARGIN`.
+        3. The candidate cannot be materially worse in confidence or yaw
+           uncertainty.
+        4. The improvement must also be meaningful in at least one explicit
+           dimension: more accepted samples, better confidence, or lower yaw
+           uncertainty.
+        """
 
         if self._candidate_sample_count < self._config.learning_min_samples:
+            self._candidate_beats_committed = False
+            self._last_commit_reason = "candidate_rejected_min_samples"
             return False
 
         if self._uncommitted_sample_count < self._config.checkpoint_min_samples:
+            self._candidate_beats_committed = False
+            self._last_commit_reason = "candidate_rejected_checkpoint_window"
             return False
 
         if self._candidate_confidence < self._config.learning_min_confidence:
+            self._candidate_beats_committed = False
+            self._last_commit_reason = "candidate_rejected_confidence"
             return False
 
-        if self._committed_sample_count > 0:
-            yaw_delta_rad: float = abs(
-                _wrap_angle_rad(
-                    self._candidate_forward_yaw_rad - self._committed_forward_yaw_rad
-                )
+        if self._committed_sample_count <= 0:
+            self._candidate_beats_committed = True
+            return self._accept_candidate(reason="first_committed_estimate")
+
+        yaw_delta_rad: float = abs(
+            _wrap_angle_rad(
+                self._candidate_forward_yaw_rad - self._committed_forward_yaw_rad
             )
-            if yaw_delta_rad > self._config.checkpoint_max_candidate_delta_rad:
-                return False
+        )
+        if yaw_delta_rad > self._config.checkpoint_max_candidate_delta_rad:
+            self._candidate_beats_committed = False
+            self._last_commit_reason = "candidate_rejected_large_delta"
+            return False
+
+        score_improvement: float = self._candidate_score - self._committed_score
+        confidence_improvement: float = (
+            self._candidate_confidence - self._committed_confidence
+        )
+        uncertainty_improvement_rad: float = (
+            self._committed_uncertainty_forward_yaw_rad
+            - self._candidate_uncertainty_forward_yaw_rad
+        )
+        sample_improvement: int = (
+            self._candidate_sample_count - self._committed_sample_count
+        )
+
+        meaningful_improvement: bool = (
+            sample_improvement >= MEANINGFUL_SAMPLE_DELTA
+            or confidence_improvement >= MEANINGFUL_CONFIDENCE_DELTA
+            or uncertainty_improvement_rad >= MEANINGFUL_UNCERTAINTY_DELTA_RAD
+        )
+        better_enough: bool = (
+            score_improvement >= BETTER_SCORE_MARGIN
+            and self._candidate_confidence
+            >= self._committed_confidence - CONFIDENCE_TOLERANCE
+            and self._candidate_uncertainty_forward_yaw_rad
+            <= self._committed_uncertainty_forward_yaw_rad + UNCERTAINTY_TOLERANCE_RAD
+            and meaningful_improvement
+        )
+        self._candidate_beats_committed = better_enough
+        if not better_enough:
+            self._last_commit_reason = "candidate_kept_as_weaker_than_committed"
+            return False
+
+        return self._accept_candidate(reason="candidate_score_beat_committed")
+
+    def _accept_candidate(self, *, reason: str) -> bool:
+        """Accept the current candidate as the new committed estimate."""
 
         self._committed_direction_sum_xy = (
             self._committed_direction_sum_xy[0] + self._uncommitted_direction_sum_xy[0],
             self._committed_direction_sum_xy[1] + self._uncommitted_direction_sum_xy[1],
         )
-        self._committed_sample_count += self._uncommitted_sample_count
+        self._committed_sample_count = self._candidate_sample_count
         self._committed_forward_yaw_rad = self._candidate_forward_yaw_rad
+        self._committed_confidence = self._candidate_confidence
+        self._committed_score = self._candidate_score
+        self._committed_residual = self._candidate_residual
+        self._committed_uncertainty_forward_yaw_rad = (
+            self._candidate_uncertainty_forward_yaw_rad
+        )
         self._checkpoint_commit_count += 1
         self._uncommitted_direction_sum_xy = (0.0, 0.0)
         self._uncommitted_sample_count = 0
         self._candidate_sample_count = self._committed_sample_count
+        self._current_commit_from_persistence = False
+        self._last_commit_reason = reason
+
+        if self._config.persistence_write_on_checkpoint:
+            self.store_committed_forward_yaw(
+                hostname=self._persistence.hostname,
+                reason=reason,
+            )
         return True
 
     def _discard_uncommitted_learning(self) -> None:
@@ -458,14 +704,29 @@ class ForwardTwistEstimator:
         if self._uncommitted_sample_count <= 0:
             self._candidate_sample_count = self._committed_sample_count
             self._candidate_forward_yaw_rad = self._committed_forward_yaw_rad
+            self._candidate_confidence = self._committed_confidence
+            self._candidate_score = self._committed_score
+            self._candidate_residual = self._committed_residual
+            self._candidate_uncertainty_forward_yaw_rad = (
+                self._committed_uncertainty_forward_yaw_rad
+            )
+            self._candidate_beats_committed = False
+            self._last_commit_reason = "no_uncommitted_evidence_to_discard"
             return
 
         self._checkpoint_discard_count += 1
         self._uncommitted_direction_sum_xy = (0.0, 0.0)
         self._uncommitted_sample_count = 0
         self._candidate_sample_count = self._committed_sample_count
-        self._candidate_confidence = 1.0 if self._committed_sample_count > 0 else 0.0
         self._candidate_forward_yaw_rad = self._committed_forward_yaw_rad
+        self._candidate_confidence = self._committed_confidence
+        self._candidate_score = self._committed_score
+        self._candidate_residual = self._committed_residual
+        self._candidate_uncertainty_forward_yaw_rad = (
+            self._committed_uncertainty_forward_yaw_rad
+        )
+        self._candidate_beats_committed = False
+        self._last_commit_reason = "discarded_uncommitted_due_to_turn"
 
     def _build_estimate(
         self,
@@ -511,6 +772,24 @@ class ForwardTwistEstimator:
                 checkpoint_commit_count=self._checkpoint_commit_count,
                 checkpoint_discard_count=self._checkpoint_discard_count,
                 checkpoint_just_committed=checkpoint_just_committed,
+                committed_confidence=self._committed_confidence,
+                committed_score=self._committed_score,
+                candidate_score=self._candidate_score,
+                committed_residual=self._committed_residual,
+                candidate_residual=self._candidate_residual,
+                committed_uncertainty_forward_yaw_rad=(
+                    self._committed_uncertainty_forward_yaw_rad
+                ),
+                candidate_uncertainty_forward_yaw_rad=(
+                    self._candidate_uncertainty_forward_yaw_rad
+                ),
+                candidate_beats_committed=self._candidate_beats_committed,
+                last_commit_reason=self._last_commit_reason,
+                committed_source=(
+                    "persistence"
+                    if self._current_commit_from_persistence
+                    else "learning"
+                ),
             ),
             turn_detected=self._last_turn_detected,
             latest_zupt_flag_age_sec=self._latest_zupt_flag_age_sec(),
@@ -527,6 +806,13 @@ class ForwardTwistEstimator:
             zupt_applied_count=self._zupt_applied_count,
             zupt_rejected_stale_count=self._zupt_rejected_stale_count,
             zupt_rejected_motion_count=self._zupt_rejected_motion_count,
+            startup_loaded_from_persistence=self._startup_loaded_from_persistence,
+            persistence_load_path=str(self._persistence.path),
+            persistence_load_valid=self._persistence_load_valid,
+            persistence_load_error=self._persistence_load_error,
+            current_commit_from_persistence=self._current_commit_from_persistence,
+            persistence_write_count=self._persistence_success_count,
+            last_persistence_reason=self._last_persistence_reason,
             imu_sample_rejected=imu_sample_rejected,
             zupt_sample_rejected=zupt_sample_rejected,
         )
@@ -605,6 +891,19 @@ class ForwardTwistEstimator:
             0.0,
             float(self._last_imu_timestamp_ns - self._last_zupt_timestamp_ns) * 1.0e-9,
         )
+
+
+def _compute_score(*, sample_count: int, confidence: float) -> float:
+    """Return the deterministic better-value score."""
+
+    return max(0.0, confidence) * math.log1p(max(0, sample_count))
+
+
+def _estimate_uncertainty_rad(*, sample_count: int, residual: float) -> float:
+    """Return a simple yaw-uncertainty proxy from residual and sample count."""
+
+    sample_term: float = 1.0 / math.sqrt(max(1, sample_count))
+    return max(0.01, math.sqrt(max(0.0, residual)) * sample_term)
 
 
 def _horizontal_direction_xy(

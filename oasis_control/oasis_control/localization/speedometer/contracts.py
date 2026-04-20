@@ -125,6 +125,23 @@ class LearningState:
             discarded due to turn gating
         checkpoint_just_committed: true only on the estimate emitted by a new
             checkpoint commit
+        committed_confidence: confidence of the active committed estimate in
+            [0, 1]
+        committed_score: long-term score used to decide whether a candidate is
+            genuinely better than the current committed estimate
+        candidate_score: score of the latest candidate estimate
+        committed_residual: residual mismatch proxy for the committed estimate
+        candidate_residual: residual mismatch proxy for the latest candidate
+            estimate
+        committed_uncertainty_forward_yaw_rad: approximate 1-sigma yaw
+            uncertainty of the committed estimate in radians
+        candidate_uncertainty_forward_yaw_rad: approximate 1-sigma yaw
+            uncertainty of the candidate estimate in radians
+        candidate_beats_committed: true when the latest candidate score passes
+            the deterministic "better estimate" rule
+        last_commit_reason: short explanation for why the last committed value
+            was accepted or preserved
+        committed_source: one of `learning` or `persistence`
     """
 
     candidate_forward_yaw_rad: float
@@ -138,6 +155,16 @@ class LearningState:
     checkpoint_commit_count: int
     checkpoint_discard_count: int
     checkpoint_just_committed: bool
+    committed_confidence: float
+    committed_score: float
+    candidate_score: float
+    committed_residual: float
+    candidate_residual: float
+    committed_uncertainty_forward_yaw_rad: float
+    candidate_uncertainty_forward_yaw_rad: float
+    candidate_beats_committed: bool
+    last_commit_reason: str
+    committed_source: str
 
 
 @dataclass(frozen=True)
@@ -173,6 +200,17 @@ class ForwardTwistEstimate:
         zupt_rejected_stale_count: cumulative count of stale ZUPT rejections
         zupt_rejected_motion_count: cumulative count of contradictory-motion
             ZUPT rejections
+        startup_loaded_from_persistence: true when the current committed value
+            was initialized from a persisted file on boot
+        persistence_load_path: path of the attempted startup load file
+        persistence_load_valid: true when startup load succeeded
+        persistence_load_error: load failure reason, if any
+        current_commit_from_persistence: true when the current committed yaw
+            still originates from the loaded persisted estimate
+        persistence_write_count: cumulative count of successful persistence
+            writes for committed improvements
+        last_persistence_reason: explanation for the last persistence write or
+            startup-load fallback
         imu_sample_rejected: true when the triggering IMU update was rejected
             or deterministically dropped
         zupt_sample_rejected: true when the triggering ZUPT update was
@@ -196,6 +234,13 @@ class ForwardTwistEstimate:
     zupt_applied_count: int
     zupt_rejected_stale_count: int
     zupt_rejected_motion_count: int
+    startup_loaded_from_persistence: bool
+    persistence_load_path: str
+    persistence_load_valid: bool
+    persistence_load_error: str
+    current_commit_from_persistence: bool
+    persistence_write_count: int
+    last_persistence_reason: str
     imu_sample_rejected: bool
     zupt_sample_rejected: bool
 
@@ -240,6 +285,15 @@ class PersistenceRecord:
             committed fit
         checkpoint_count: number of committed checkpoints represented by this
             payload
+        confidence: confidence of the committed estimate in [0, 1]
+        score: deterministic quality score for the committed estimate
+        residual: residual mismatch proxy for the committed estimate
+        uncertainty_forward_yaw_rad: approximate committed 1-sigma yaw
+            uncertainty in radians
+        loaded_startup_capable: true when the payload is suitable for direct
+            startup use
+        last_update_reason: explanation for why this persisted value replaced
+            the prior committed estimate
     """
 
     version: int
@@ -251,6 +305,12 @@ class PersistenceRecord:
     forward_axis_xyz: tuple[float, float, float]
     fit_sample_count: int
     checkpoint_count: int
+    confidence: float = 0.0
+    score: float = 0.0
+    residual: float = 1.0
+    uncertainty_forward_yaw_rad: float = 3.141592653589793
+    loaded_startup_capable: bool = True
+    last_update_reason: str = ""
 
 
 @dataclass(frozen=True)
