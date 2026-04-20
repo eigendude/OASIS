@@ -66,23 +66,31 @@ PARAM_OUTPUT_FRAME_ID: str = "output_frame_id"
 PARAM_MOUNT_INFO_DIRECTORY: str = "mount_info_directory"
 PARAM_STATUS_TIMER_PERIOD_SEC: str = "status_timer_period_sec"
 PARAM_TURN_RATE_THRESHOLD_RADS: str = "turn_rate_threshold_rads"
-PARAM_CANDIDATE_LEARNING_GAIN: str = "candidate_learning_gain"
-PARAM_COMMITTED_LEARNING_GAIN: str = "committed_learning_gain"
+PARAM_TURN_ACCEL_THRESHOLD_MPS2: str = "turn_accel_threshold_mps2"
+PARAM_TURN_DIRECTION_ALIGNMENT_THRESHOLD: str = "turn_direction_alignment_threshold"
+PARAM_LEARNING_ACCEL_THRESHOLD_MPS2: str = "learning_accel_threshold_mps2"
+PARAM_LEARNING_MIN_SAMPLES: str = "learning_min_samples"
+PARAM_LEARNING_MIN_CONFIDENCE: str = "learning_min_confidence"
+PARAM_CHECKPOINT_MIN_SAMPLES: str = "checkpoint_min_samples"
+PARAM_CHECKPOINT_MAX_CANDIDATE_DELTA_RAD: str = "checkpoint_max_candidate_delta_rad"
+PARAM_INITIAL_FORWARD_SPEED_SIGMA_MPS: str = "initial_forward_speed_sigma_mps"
 PARAM_MIN_FORWARD_SPEED_VARIANCE_MPS2: str = "min_forward_speed_variance_mps2"
+PARAM_FORWARD_ACCEL_PROCESS_SIGMA_MPS2: str = "forward_accel_process_sigma_mps2"
+PARAM_MAX_IMU_DT_SEC: str = "max_imu_dt_sec"
 
 DEFAULT_BASE_FRAME_ID: str = "base_link"
 DEFAULT_IMU_FRAME_ID: str = "imu_link"
 DEFAULT_OUTPUT_FRAME_ID: str = "base_link"
 
-# Timer period for publishing placeholder diagnostics when inputs are missing
+# Timer period for publishing diagnostics when inputs are missing
 #
 # Units: s
 #
 STATUS_TIMER_PERIOD_SEC: float = 0.1
 
 # Units: m^2/s^2
-# Meaning: placeholder variance for unused twist dimensions until the full
-# covariance model is implemented
+# Meaning: large placeholder variance for angular twist dimensions because this
+# node does not estimate angular velocity covariance
 DEFAULT_UNUSED_VARIANCE_MPS2: float = 1.0e6
 
 
@@ -134,16 +142,48 @@ class ForwardTwistNode(rclpy.node.Node):
             ForwardTwistConfig.turn_rate_threshold_rads,
         )
         self.declare_parameter(
-            PARAM_CANDIDATE_LEARNING_GAIN,
-            ForwardTwistConfig.candidate_learning_gain,
+            PARAM_TURN_ACCEL_THRESHOLD_MPS2,
+            ForwardTwistConfig.turn_accel_threshold_mps2,
         )
         self.declare_parameter(
-            PARAM_COMMITTED_LEARNING_GAIN,
-            ForwardTwistConfig.committed_learning_gain,
+            PARAM_TURN_DIRECTION_ALIGNMENT_THRESHOLD,
+            ForwardTwistConfig.turn_direction_alignment_threshold,
+        )
+        self.declare_parameter(
+            PARAM_LEARNING_ACCEL_THRESHOLD_MPS2,
+            ForwardTwistConfig.learning_accel_threshold_mps2,
+        )
+        self.declare_parameter(
+            PARAM_LEARNING_MIN_SAMPLES,
+            ForwardTwistConfig.learning_min_samples,
+        )
+        self.declare_parameter(
+            PARAM_LEARNING_MIN_CONFIDENCE,
+            ForwardTwistConfig.learning_min_confidence,
+        )
+        self.declare_parameter(
+            PARAM_CHECKPOINT_MIN_SAMPLES,
+            ForwardTwistConfig.checkpoint_min_samples,
+        )
+        self.declare_parameter(
+            PARAM_CHECKPOINT_MAX_CANDIDATE_DELTA_RAD,
+            ForwardTwistConfig.checkpoint_max_candidate_delta_rad,
+        )
+        self.declare_parameter(
+            PARAM_INITIAL_FORWARD_SPEED_SIGMA_MPS,
+            ForwardTwistConfig.initial_forward_speed_sigma_mps,
         )
         self.declare_parameter(
             PARAM_MIN_FORWARD_SPEED_VARIANCE_MPS2,
             ForwardTwistConfig.min_forward_speed_variance_mps2,
+        )
+        self.declare_parameter(
+            PARAM_FORWARD_ACCEL_PROCESS_SIGMA_MPS2,
+            ForwardTwistConfig.forward_accel_process_sigma_mps2,
+        )
+        self.declare_parameter(
+            PARAM_MAX_IMU_DT_SEC,
+            ForwardTwistConfig.max_imu_dt_sec,
         )
 
         self._base_frame_id: str = str(self.get_parameter(PARAM_BASE_FRAME_ID).value)
@@ -162,24 +202,50 @@ class ForwardTwistNode(rclpy.node.Node):
         estimator_config: ForwardTwistConfig = ForwardTwistConfig(
             expected_imu_frame_id=self._base_frame_id,
             output_frame_id=self._output_frame_id,
-            committed_learning_gain=float(
-                self.get_parameter(PARAM_COMMITTED_LEARNING_GAIN).value
+            learning_accel_threshold_mps2=float(
+                self.get_parameter(PARAM_LEARNING_ACCEL_THRESHOLD_MPS2).value
             ),
-            candidate_learning_gain=float(
-                self.get_parameter(PARAM_CANDIDATE_LEARNING_GAIN).value
+            learning_min_samples=int(
+                self.get_parameter(PARAM_LEARNING_MIN_SAMPLES).value
+            ),
+            learning_min_confidence=float(
+                self.get_parameter(PARAM_LEARNING_MIN_CONFIDENCE).value
+            ),
+            checkpoint_min_samples=int(
+                self.get_parameter(PARAM_CHECKPOINT_MIN_SAMPLES).value
+            ),
+            checkpoint_max_candidate_delta_rad=float(
+                self.get_parameter(PARAM_CHECKPOINT_MAX_CANDIDATE_DELTA_RAD).value
+            ),
+            initial_forward_speed_sigma_mps=float(
+                self.get_parameter(PARAM_INITIAL_FORWARD_SPEED_SIGMA_MPS).value
             ),
             min_forward_speed_variance_mps2=float(
                 self.get_parameter(PARAM_MIN_FORWARD_SPEED_VARIANCE_MPS2).value
             ),
+            forward_accel_process_sigma_mps2=float(
+                self.get_parameter(PARAM_FORWARD_ACCEL_PROCESS_SIGMA_MPS2).value
+            ),
+            max_imu_dt_sec=float(self.get_parameter(PARAM_MAX_IMU_DT_SEC).value),
             turn_rate_threshold_rads=float(
                 self.get_parameter(PARAM_TURN_RATE_THRESHOLD_RADS).value
+            ),
+            turn_accel_threshold_mps2=float(
+                self.get_parameter(PARAM_TURN_ACCEL_THRESHOLD_MPS2).value
+            ),
+            turn_direction_alignment_threshold=float(
+                self.get_parameter(PARAM_TURN_DIRECTION_ALIGNMENT_THRESHOLD).value
             ),
         )
 
         self._diagnostics: ForwardTwistDiagnosticsState = ForwardTwistDiagnosticsState()
         self._runtime_state: ForwardTwistRuntimeState = ForwardTwistRuntimeState()
         self._turn_detector: TurnDetector = TurnDetector(
-            turn_rate_threshold_rads=estimator_config.turn_rate_threshold_rads
+            turn_rate_threshold_rads=estimator_config.turn_rate_threshold_rads,
+            turn_accel_threshold_mps2=estimator_config.turn_accel_threshold_mps2,
+            turn_direction_alignment_threshold=(
+                estimator_config.turn_direction_alignment_threshold
+            ),
         )
         self._persistence: ForwardYawPersistence = ForwardYawPersistence(
             hostname=self._hostname,
@@ -274,13 +340,10 @@ class ForwardTwistNode(rclpy.node.Node):
                 float(message.linear_acceleration.z),
             ),
         )
+        if estimate.imu_sample_rejected:
+            self._diagnostics.rejected_imu_count += 1
         self._runtime_state.latest_estimate = estimate
         self._diagnostics.has_estimate = True
-
-        # Persist only the committed public yaw. Startup loading is deliberately
-        # disabled in this skeleton until the file format and trust policy are
-        # finalized.
-        self._estimator.store_committed_forward_yaw(hostname=self._hostname)
 
         self._publish_estimate(message, estimate)
         self._publish_status()
@@ -297,10 +360,12 @@ class ForwardTwistNode(rclpy.node.Node):
                 stationary_flag=self._runtime_state.latest_zupt_flag,
             )
         )
+        if estimate.zupt_sample_rejected:
+            self._diagnostics.rejected_zupt_count += 1
         self._runtime_state.latest_estimate = estimate
         self._diagnostics.has_estimate = True
 
-        self._publish_placeholder_twist(
+        self._publish_twist(
             stamp=message.header.stamp,
             estimate=estimate,
         )
@@ -318,12 +383,12 @@ class ForwardTwistNode(rclpy.node.Node):
         message: ImuMsg,
         estimate: ForwardTwistEstimate,
     ) -> None:
-        self._publish_placeholder_twist(
+        self._publish_twist(
             stamp=message.header.stamp,
             estimate=estimate,
         )
 
-    def _publish_placeholder_twist(
+    def _publish_twist(
         self,
         *,
         stamp: TimeMsg,
@@ -346,9 +411,6 @@ class ForwardTwistNode(rclpy.node.Node):
             estimate.forward_speed_mps * forward_axis_xyz[2]
         )
 
-        # TODO: Replace this placeholder runtime twist and covariance with the
-        # real speedometer output model once forward-speed estimation and full
-        # covariance propagation are implemented.
         twist_message.twist.twist.angular.x = 0.0
         twist_message.twist.twist.angular.y = 0.0
         twist_message.twist.twist.angular.z = 0.0
@@ -387,11 +449,27 @@ class ForwardTwistNode(rclpy.node.Node):
             return "Waiting for forward twist estimate"
 
         latest_estimate: ForwardTwistEstimate = self._runtime_state.latest_estimate
+        persistence_suffix: str = ""
+        if self._estimator.last_persistence_error:
+            persistence_suffix = (
+                f", last_persistence_error={self._estimator.last_persistence_error}"
+            )
         return (
-            "Forward twist runtime inputs available "
-            f"(forward_speed={latest_estimate.forward_speed_mps:.3f} m/s, "
-            f"forward_yaw={latest_estimate.forward_axis.forward_yaw_rad:.3f} rad, "
-            f"turn_detected={latest_estimate.turn_detected})"
+            "Forward twist running "
+            f"(speed={latest_estimate.forward_speed_mps:.3f} m/s, "
+            f"sigma={latest_estimate.forward_speed_sigma_mps:.3f} m/s, "
+            f"candidate_yaw={latest_estimate.learning_state.candidate_forward_yaw_rad:.3f} rad, "
+            f"committed_yaw={latest_estimate.learning_state.committed_forward_yaw_rad:.3f} rad, "
+            f"learned={latest_estimate.forward_axis.learned}, "
+            f"turn_detected={latest_estimate.turn_detected}, "
+            f"learning_gated={latest_estimate.learning_state.learning_gated_by_turn}, "
+            f"checkpoint_commits={latest_estimate.learning_state.checkpoint_commit_count}, "
+            f"checkpoint_discards={latest_estimate.learning_state.checkpoint_discard_count}, "
+            f"persistence_ok={self._estimator.persistence_success_count}, "
+            f"persistence_fail={self._estimator.persistence_failure_count}, "
+            f"imu_drops={self._estimator.imu_drop_count}, "
+            f"zupt_drops={self._estimator.zupt_drop_count}"
+            f"{persistence_suffix})"
         )
 
 

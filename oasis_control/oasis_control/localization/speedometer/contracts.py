@@ -17,29 +17,58 @@ from typing import Optional
 @dataclass(frozen=True)
 class ForwardTwistConfig:
     """
-    Placeholder configuration for the forward-twist skeleton.
+    Tunable parameters for the AHRS forward-twist estimator.
 
     Fields:
         expected_imu_frame_id: frame_id expected on incoming `ahrs/imu`
             samples
         output_frame_id: frame_id used for published `ahrs/forward_twist`
             messages
-        committed_learning_gain: placeholder scalar in [0, 1] that controls
-            how quickly candidate yaw is promoted toward the committed state
-        candidate_learning_gain: placeholder scalar in [0, 1] that controls
-            how quickly online samples nudge the candidate forward yaw
+        learning_accel_threshold_mps2: minimum horizontal body-frame
+            acceleration magnitude accepted as learning evidence
+        learning_min_samples: minimum accepted samples required before a
+            checkpoint may commit
+        learning_min_confidence: minimum sign-aligned directional consistency
+            in [0, 1] required for candidate checkpoint commits
+        checkpoint_min_samples: minimum uncommitted sample count required for a
+            new checkpoint commit
+        checkpoint_max_candidate_delta_rad: maximum allowed yaw change between
+            the committed and candidate axes for an incremental checkpoint
+        initial_forward_speed_sigma_mps: initial 1-sigma uncertainty on the
+            scalar forward speed state
         min_forward_speed_variance_mps2: minimum published scalar speed
             variance in m^2/s^2
-        turn_rate_threshold_rads: yaw-rate magnitude above which learning is
-            gated as "in turn"
+        forward_accel_process_sigma_mps2: owned 1-sigma acceleration process
+            noise projected along the learned forward axis
+        max_imu_dt_sec: maximum positive IMU propagation interval in seconds
+            accepted by the deterministic speed propagation step
+        turn_rate_threshold_rads: yaw-rate magnitude above which the fused turn
+            detector immediately gates learning
+        turn_accel_threshold_mps2: minimum horizontal acceleration magnitude
+            required before acceleration-direction evidence contributes to turn
+            gating
+        turn_direction_alignment_threshold: minimum sign-aligned horizontal
+            acceleration directional agreement in [0, 1] before the fused
+            detector treats motion as inconsistent with straight-axis learning
+        persistence_write_on_checkpoint: true when committed checkpoints should
+            be persisted to disk
     """
 
     expected_imu_frame_id: str = "base_link"
     output_frame_id: str = "base_link"
-    committed_learning_gain: float = 0.05
-    candidate_learning_gain: float = 0.10
+    learning_accel_threshold_mps2: float = 0.10
+    learning_min_samples: int = 4
+    learning_min_confidence: float = 0.70
+    checkpoint_min_samples: int = 3
+    checkpoint_max_candidate_delta_rad: float = 0.80
+    initial_forward_speed_sigma_mps: float = 3.0
     min_forward_speed_variance_mps2: float = 1.0e-4
+    forward_accel_process_sigma_mps2: float = 0.75
+    max_imu_dt_sec: float = 0.25
     turn_rate_threshold_rads: float = 0.35
+    turn_accel_threshold_mps2: float = 0.35
+    turn_direction_alignment_threshold: float = 0.55
+    persistence_write_on_checkpoint: bool = True
 
 
 @dataclass(frozen=True)
@@ -67,17 +96,37 @@ class LearningState:
     Fields:
         candidate_forward_yaw_rad: tentative online yaw estimate in radians
         committed_forward_yaw_rad: public persisted yaw estimate in radians
-        candidate_sample_count: number of accepted online learning updates
-        committed_sample_count: number of candidate promotions committed so far
+        candidate_sample_count: total accepted samples represented by the
+            current candidate yaw
+        committed_sample_count: total samples represented by committed
+            checkpoints
+        uncommitted_sample_count: accepted samples buffered since the last
+            checkpoint
+        candidate_confidence: directional consistency of the candidate evidence
+            in [0, 1]
+        forward_sign_locked: true once the first accepted motion sample has
+            defined positive forward direction
         learning_gated_by_turn: true when turns are currently blocking
             candidate updates
+        checkpoint_commit_count: number of committed checkpoints published so
+            far
+        checkpoint_discard_count: number of uncommitted checkpoint buffers
+            discarded due to turn gating
+        checkpoint_just_committed: true only on the estimate emitted by a new
+            checkpoint commit
     """
 
     candidate_forward_yaw_rad: float
     committed_forward_yaw_rad: float
     candidate_sample_count: int
     committed_sample_count: int
+    uncommitted_sample_count: int
+    candidate_confidence: float
+    forward_sign_locked: bool
     learning_gated_by_turn: bool
+    checkpoint_commit_count: int
+    checkpoint_discard_count: int
+    checkpoint_just_committed: bool
 
 
 @dataclass(frozen=True)
@@ -89,47 +138,78 @@ class ForwardTwistEstimate:
         timestamp_ns: source sample timestamp in ns
         forward_speed_mps: scalar speed along the public forward axis in m/s
         forward_speed_variance_mps2: scalar speed variance in m^2/s^2
+        forward_speed_sigma_mps: scalar speed 1-sigma in m/s for HUD use
         forward_axis: learned public forward-axis state
         learning_state: candidate-versus-committed learning snapshot
         turn_detected: true when the latest IMU sample was classified as a turn
+        imu_sample_rejected: true when the triggering IMU update was rejected
+            or deterministically dropped
+        zupt_sample_rejected: true when the triggering ZUPT update was
+            rejected or ignored
     """
 
     timestamp_ns: int
     forward_speed_mps: float
     forward_speed_variance_mps2: float
+    forward_speed_sigma_mps: float
     forward_axis: ForwardAxisState
     learning_state: LearningState
     turn_detected: bool
+    imu_sample_rejected: bool
+    zupt_sample_rejected: bool
 
 
 @dataclass(frozen=True)
 class TurnDetection:
     """
-    Placeholder turn-detector output.
+    Fused turn-detector output.
 
     Fields:
         turn_detected: true when learning should currently be gated
         yaw_rate_rads: measured yaw rate in rad/s used by the gate
-        threshold_rads: configured turn threshold in rad/s
+        horizontal_accel_mps2: horizontal body-frame acceleration magnitude in
+            m/s^2 used by the acceleration-behavior check
+        reference_alignment: sign-aligned agreement in [0, 1] between the
+            recent horizontal acceleration direction and the running reference
+        threshold_rads: configured yaw-rate threshold in rad/s
     """
 
     turn_detected: bool
     yaw_rate_rads: float
+    horizontal_accel_mps2: float
+    reference_alignment: float
     threshold_rads: float
 
 
 @dataclass(frozen=True)
 class PersistenceRecord:
     """
-    Minimal persisted forward-yaw payload.
+    Persisted committed forward-yaw payload.
 
     Fields:
+        version: persistence schema version
+        created_unix_ns: write timestamp in Unix nanoseconds
         hostname: host identifier encoded in the persistence filename/payload
+        estimator: producer identifier for debugging and future migrations
+        valid: true when the committed forward axis should be treated as usable
         forward_yaw_rad: committed public yaw in radians
+        forward_axis_xyz: committed public forward axis `[cos(yaw), sin(yaw),
+            0]`
+        fit_sample_count: total accepted learning samples represented by the
+            committed fit
+        checkpoint_count: number of committed checkpoints represented by this
+            payload
     """
 
+    version: int
+    created_unix_ns: int
     hostname: str
+    estimator: str
+    valid: bool
     forward_yaw_rad: float
+    forward_axis_xyz: tuple[float, float, float]
+    fit_sample_count: int
+    checkpoint_count: int
 
 
 @dataclass(frozen=True)
