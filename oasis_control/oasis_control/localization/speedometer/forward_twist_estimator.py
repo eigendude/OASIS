@@ -34,11 +34,46 @@ from oasis_control.localization.speedometer.turn_detector import TurnDetector
 
 MIN_DIRECTION_NORM: float = 1.0e-6
 
+# Units: samples
+# Meaning: floor on first-commit evidence depth so the first committed fit is
+# materially stronger than the relaxed ongoing-learning threshold.
+FIRST_COMMIT_MIN_SAMPLES_FLOOR: int = 8
+
+# Units: checkpoint windows
+# Meaning: minimum number of checkpoint-sized evidence windows that must agree
+# before the first fit becomes authoritative.
+FIRST_COMMIT_MIN_CHECKPOINTS: int = 2
+
+# Units: confidence
+# Meaning: first committed fit confidence floor.
+FIRST_COMMIT_MIN_CONFIDENCE: float = 0.88
+
+# Units: residual
+# Meaning: first committed fit residual ceiling.
+FIRST_COMMIT_MAX_RESIDUAL: float = 0.12
+
+# Units: rad
+# Meaning: first committed fit yaw-uncertainty ceiling.
+FIRST_COMMIT_MAX_UNCERTAINTY_RAD: float = 0.12
+
+# Units: alignment
+# Meaning: recent-window stability floor for the first committed fit.
+FIRST_COMMIT_MIN_RECENT_STABILITY: float = 0.95
+
+# Units: alignment
+# Meaning: recent-window stability floor before a later candidate may replace
+# the committed fit.
+REPLACEMENT_MIN_RECENT_STABILITY: float = 0.82
+
 # Units: score
-# Meaning: minimum score improvement required before a candidate replaces the
-# current committed estimate. This prevents noisy tiny fluctuations from
-# rewriting the persisted yaw continuously.
-BETTER_SCORE_MARGIN: float = 0.05
+# Meaning: minimum score improvement required for an unambiguous better-fit
+# replacement.
+BETTER_SCORE_MARGIN: float = 0.08
+
+# Units: score
+# Meaning: allowable score slack when a candidate wins via materially lower
+# uncertainty or materially lower residual instead of raw score.
+COMPARABLE_SCORE_TOLERANCE: float = 0.02
 
 # Units: confidence
 # Meaning: a better candidate may be slightly noisier than the current
@@ -55,15 +90,29 @@ UNCERTAINTY_TOLERANCE_RAD: float = 0.02
 # main score gate is already passed.
 MEANINGFUL_SAMPLE_DELTA: int = 2
 
+# Units: checkpoint windows
+# Meaning: checkpoint-depth improvement that counts as meaningful when deciding
+# whether a candidate fit is genuinely better.
+MEANINGFUL_CHECKPOINT_DELTA: int = 1
+
 # Units: confidence
 # Meaning: confidence improvement that counts as meaningful once the main score
 # gate is already passed.
 MEANINGFUL_CONFIDENCE_DELTA: float = 0.01
 
+# Units: residual
+# Meaning: residual improvement that counts as a materially better fit.
+MEANINGFUL_RESIDUAL_DELTA: float = 0.03
+
 # Units: rad
 # Meaning: uncertainty improvement that counts as meaningful once the main
 # score gate is already passed.
 MEANINGFUL_UNCERTAINTY_DELTA_RAD: float = 0.002
+
+# Units: samples
+# Meaning: recent evidence window length used to ensure the candidate fit is
+# stable over more than one brief transient.
+RECENT_STABILITY_WINDOW_SIZE: int = 8
 
 
 class ForwardTwistEstimator:
@@ -103,6 +152,7 @@ class ForwardTwistEstimator:
         self._candidate_uncertainty_forward_yaw_rad: float = math.pi
         self._committed_uncertainty_forward_yaw_rad: float = math.pi
         self._candidate_beats_committed: bool = False
+        self._candidate_recent_stability: float = 0.0
         self._checkpoint_commit_count: int = 0
         self._checkpoint_discard_count: int = 0
         self._fit_sample_count: int = 0
@@ -110,6 +160,7 @@ class ForwardTwistEstimator:
         self._committed_direction_sum_xy: tuple[float, float] = (0.0, 0.0)
         self._uncommitted_direction_sum_xy: tuple[float, float] = (0.0, 0.0)
         self._forward_sign_reference_xy: Optional[tuple[float, float]] = None
+        self._recent_aligned_directions_xy: list[tuple[float, float]] = []
 
         self._forward_speed_mps: float = 0.0
         self._forward_speed_variance_mps2: float = max(
@@ -479,8 +530,6 @@ class ForwardTwistEstimator:
         self._candidate_sample_count = self._committed_sample_count
         self._committed_confidence = max(0.0, min(1.0, float(record.confidence)))
         self._candidate_confidence = self._committed_confidence
-        self._committed_score = float(record.score)
-        self._candidate_score = self._committed_score
         self._committed_residual = max(0.0, float(record.residual))
         self._candidate_residual = self._committed_residual
         self._committed_uncertainty_forward_yaw_rad = max(
@@ -490,7 +539,16 @@ class ForwardTwistEstimator:
         self._candidate_uncertainty_forward_yaw_rad = (
             self._committed_uncertainty_forward_yaw_rad
         )
-        self._checkpoint_commit_count = max(0, int(record.checkpoint_count))
+        committed_checkpoint_count: int = max(0, int(record.checkpoint_count))
+        self._committed_score = _compute_score(
+            sample_count=self._committed_sample_count,
+            checkpoint_count=committed_checkpoint_count,
+            confidence=self._committed_confidence,
+            residual=self._committed_residual,
+            uncertainty_forward_yaw_rad=(self._committed_uncertainty_forward_yaw_rad),
+        )
+        self._candidate_score = self._committed_score
+        self._checkpoint_commit_count = committed_checkpoint_count
         self._fit_sample_count = self._committed_sample_count
         self._startup_loaded_from_persistence = True
         self._persistence_load_valid = True
@@ -552,6 +610,7 @@ class ForwardTwistEstimator:
             self._uncommitted_direction_sum_xy[0] + aligned_direction_xy[0],
             self._uncommitted_direction_sum_xy[1] + aligned_direction_xy[1],
         )
+        self._append_recent_direction(aligned_direction_xy)
         self._uncommitted_sample_count += 1
         self._fit_sample_count += 1
         self._update_candidate_metrics()
@@ -587,9 +646,15 @@ class ForwardTwistEstimator:
             sample_count=self._candidate_sample_count,
             residual=self._candidate_residual,
         )
+        self._candidate_recent_stability = _compute_recent_stability(
+            directions_xy=self._recent_aligned_directions_xy
+        )
         self._candidate_score = _compute_score(
             sample_count=self._candidate_sample_count,
+            checkpoint_count=self._candidate_checkpoint_count(),
             confidence=self._candidate_confidence,
+            residual=self._candidate_residual,
+            uncertainty_forward_yaw_rad=self._candidate_uncertainty_forward_yaw_rad,
         )
 
     def _maybe_commit_checkpoint(self) -> bool:
@@ -597,15 +662,16 @@ class ForwardTwistEstimator:
         Commit the current candidate buffer when it is genuinely better.
 
         Better-value rule:
-        1. The candidate must satisfy the basic minimum sample and confidence
-           gates.
-        2. Its primary score `confidence * log1p(sample_count)` must beat the
-           committed score by at least `BETTER_SCORE_MARGIN`.
-        3. The candidate cannot be materially worse in confidence or yaw
-           uncertainty.
-        4. The improvement must also be meaningful in at least one explicit
-           dimension: more accepted samples, better confidence, or lower yaw
-           uncertainty.
+        1. The first committed fit uses a stricter gate than steady-state
+           refinement. It must have deeper evidence, lower residual, lower yaw
+           uncertainty, and strong recent-window stability.
+        2. Later candidates may replace the committed fit when one of three
+           deterministic wins applies:
+           a. materially better total score
+           b. materially lower uncertainty with comparable score
+           c. materially lower residual with comparable confidence and score
+        3. Replacement candidates must also be stable over the recent evidence
+           window and must not be materially worse in confidence.
         """
 
         if self._candidate_sample_count < self._config.learning_min_samples:
@@ -624,8 +690,7 @@ class ForwardTwistEstimator:
             return False
 
         if self._committed_sample_count <= 0:
-            self._candidate_beats_committed = True
-            return self._accept_candidate(reason="first_committed_estimate")
+            return self._maybe_accept_first_commit()
 
         yaw_delta_rad: float = abs(
             _wrap_angle_rad(
@@ -641,6 +706,9 @@ class ForwardTwistEstimator:
         confidence_improvement: float = (
             self._candidate_confidence - self._committed_confidence
         )
+        residual_improvement: float = (
+            self._committed_residual - self._candidate_residual
+        )
         uncertainty_improvement_rad: float = (
             self._committed_uncertainty_forward_yaw_rad
             - self._candidate_uncertainty_forward_yaw_rad
@@ -648,26 +716,97 @@ class ForwardTwistEstimator:
         sample_improvement: int = (
             self._candidate_sample_count - self._committed_sample_count
         )
+        checkpoint_improvement: int = (
+            self._candidate_checkpoint_count() - self._checkpoint_commit_count
+        )
 
         meaningful_improvement: bool = (
             sample_improvement >= MEANINGFUL_SAMPLE_DELTA
+            or checkpoint_improvement >= MEANINGFUL_CHECKPOINT_DELTA
             or confidence_improvement >= MEANINGFUL_CONFIDENCE_DELTA
+            or residual_improvement >= MEANINGFUL_RESIDUAL_DELTA
             or uncertainty_improvement_rad >= MEANINGFUL_UNCERTAINTY_DELTA_RAD
         )
+        wins_by_score: bool = score_improvement >= BETTER_SCORE_MARGIN
+        wins_by_uncertainty: bool = (
+            uncertainty_improvement_rad >= MEANINGFUL_UNCERTAINTY_DELTA_RAD
+            and score_improvement >= -COMPARABLE_SCORE_TOLERANCE
+        )
+        wins_by_residual: bool = (
+            residual_improvement >= MEANINGFUL_RESIDUAL_DELTA
+            and score_improvement >= -COMPARABLE_SCORE_TOLERANCE
+            and self._candidate_confidence
+            >= self._committed_confidence - CONFIDENCE_TOLERANCE
+        )
         better_enough: bool = (
-            score_improvement >= BETTER_SCORE_MARGIN
+            (wins_by_score or wins_by_uncertainty or wins_by_residual)
             and self._candidate_confidence
             >= self._committed_confidence - CONFIDENCE_TOLERANCE
             and self._candidate_uncertainty_forward_yaw_rad
             <= self._committed_uncertainty_forward_yaw_rad + UNCERTAINTY_TOLERANCE_RAD
+            and self._candidate_recent_stability >= REPLACEMENT_MIN_RECENT_STABILITY
             and meaningful_improvement
         )
         self._candidate_beats_committed = better_enough
         if not better_enough:
-            self._last_commit_reason = "candidate_kept_as_weaker_than_committed"
+            if self._candidate_recent_stability < REPLACEMENT_MIN_RECENT_STABILITY:
+                self._last_commit_reason = "candidate_rejected_recent_instability"
+            else:
+                self._last_commit_reason = "candidate_kept_as_weaker_than_committed"
             return False
 
-        return self._accept_candidate(reason="candidate_score_beat_committed")
+        if wins_by_score:
+            return self._accept_candidate(reason="candidate_score_beat_committed")
+        if wins_by_uncertainty:
+            return self._accept_candidate(reason="candidate_uncertainty_beat_committed")
+
+        return self._accept_candidate(reason="candidate_residual_beat_committed")
+
+    def _maybe_accept_first_commit(self) -> bool:
+        """Return true when the first committed fit is strong enough."""
+
+        first_commit_min_samples: int = max(
+            FIRST_COMMIT_MIN_SAMPLES_FLOOR,
+            2 * self._config.learning_min_samples,
+        )
+        if self._candidate_sample_count < first_commit_min_samples:
+            self._candidate_beats_committed = False
+            self._last_commit_reason = "candidate_rejected_first_commit_samples"
+            return False
+
+        if self._candidate_checkpoint_count() < FIRST_COMMIT_MIN_CHECKPOINTS:
+            self._candidate_beats_committed = False
+            self._last_commit_reason = "candidate_rejected_first_commit_checkpoints"
+            return False
+
+        if self._candidate_confidence < max(
+            FIRST_COMMIT_MIN_CONFIDENCE,
+            self._config.learning_min_confidence,
+        ):
+            self._candidate_beats_committed = False
+            self._last_commit_reason = "candidate_rejected_first_commit_confidence"
+            return False
+
+        if self._candidate_residual > FIRST_COMMIT_MAX_RESIDUAL:
+            self._candidate_beats_committed = False
+            self._last_commit_reason = "candidate_rejected_first_commit_residual"
+            return False
+
+        if (
+            self._candidate_uncertainty_forward_yaw_rad
+            > FIRST_COMMIT_MAX_UNCERTAINTY_RAD
+        ):
+            self._candidate_beats_committed = False
+            self._last_commit_reason = "candidate_rejected_first_commit_uncertainty"
+            return False
+
+        if self._candidate_recent_stability < FIRST_COMMIT_MIN_RECENT_STABILITY:
+            self._candidate_beats_committed = False
+            self._last_commit_reason = "candidate_rejected_first_commit_stability"
+            return False
+
+        self._candidate_beats_committed = True
+        return self._accept_candidate(reason="first_committed_estimate")
 
     def _accept_candidate(self, *, reason: str) -> bool:
         """Accept the current candidate as the new committed estimate."""
@@ -690,6 +829,7 @@ class ForwardTwistEstimator:
         self._candidate_sample_count = self._committed_sample_count
         self._current_commit_from_persistence = False
         self._last_commit_reason = reason
+        self._candidate_beats_committed = True
 
         if self._config.persistence_write_on_checkpoint:
             self.store_committed_forward_yaw(
@@ -710,6 +850,7 @@ class ForwardTwistEstimator:
             self._candidate_uncertainty_forward_yaw_rad = (
                 self._committed_uncertainty_forward_yaw_rad
             )
+            self._candidate_recent_stability = 0.0
             self._candidate_beats_committed = False
             self._last_commit_reason = "no_uncommitted_evidence_to_discard"
             return
@@ -717,6 +858,7 @@ class ForwardTwistEstimator:
         self._checkpoint_discard_count += 1
         self._uncommitted_direction_sum_xy = (0.0, 0.0)
         self._uncommitted_sample_count = 0
+        self._recent_aligned_directions_xy.clear()
         self._candidate_sample_count = self._committed_sample_count
         self._candidate_forward_yaw_rad = self._committed_forward_yaw_rad
         self._candidate_confidence = self._committed_confidence
@@ -725,8 +867,26 @@ class ForwardTwistEstimator:
         self._candidate_uncertainty_forward_yaw_rad = (
             self._committed_uncertainty_forward_yaw_rad
         )
+        self._candidate_recent_stability = 0.0
         self._candidate_beats_committed = False
         self._last_commit_reason = "discarded_uncommitted_due_to_turn"
+
+    def _append_recent_direction(
+        self,
+        aligned_direction_xy: tuple[float, float],
+    ) -> None:
+        """Append one aligned direction to the recent stability window."""
+
+        self._recent_aligned_directions_xy.append(aligned_direction_xy)
+        if len(self._recent_aligned_directions_xy) > RECENT_STABILITY_WINDOW_SIZE:
+            self._recent_aligned_directions_xy.pop(0)
+
+    def _candidate_checkpoint_count(self) -> int:
+        """Return the current candidate checkpoint-depth proxy."""
+
+        return self._checkpoint_commit_count + (
+            self._uncommitted_sample_count // self._config.checkpoint_min_samples
+        )
 
     def _build_estimate(
         self,
@@ -893,10 +1053,23 @@ class ForwardTwistEstimator:
         )
 
 
-def _compute_score(*, sample_count: int, confidence: float) -> float:
+def _compute_score(
+    *,
+    sample_count: int,
+    checkpoint_count: int,
+    confidence: float,
+    residual: float,
+    uncertainty_forward_yaw_rad: float,
+) -> float:
     """Return the deterministic better-value score."""
 
-    return max(0.0, confidence) * math.log1p(max(0, sample_count))
+    return (
+        3.0 * max(0.0, confidence)
+        + 0.35 * math.log1p(max(0, sample_count))
+        + 0.25 * math.log1p(max(0, checkpoint_count))
+        - 1.75 * max(0.0, residual)
+        - 1.25 * max(0.0, uncertainty_forward_yaw_rad)
+    )
 
 
 def _estimate_uncertainty_rad(*, sample_count: int, residual: float) -> float:
@@ -904,6 +1077,24 @@ def _estimate_uncertainty_rad(*, sample_count: int, residual: float) -> float:
 
     sample_term: float = 1.0 / math.sqrt(max(1, sample_count))
     return max(0.01, math.sqrt(max(0.0, residual)) * sample_term)
+
+
+def _compute_recent_stability(
+    *,
+    directions_xy: list[tuple[float, float]],
+) -> float:
+    """Return sign-aligned stability of the recent direction window."""
+
+    if not directions_xy:
+        return 0.0
+
+    sum_x: float = 0.0
+    sum_y: float = 0.0
+    for direction_xy in directions_xy:
+        sum_x += direction_xy[0]
+        sum_y += direction_xy[1]
+
+    return min(1.0, math.hypot(sum_x, sum_y) / float(len(directions_xy)))
 
 
 def _horizontal_direction_xy(
