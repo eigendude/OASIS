@@ -227,6 +227,17 @@ def test_valid_persisted_file_loads_directly_on_startup(tmp_path: Path) -> None:
     assert math.isclose(estimate.forward_axis.forward_yaw_rad, 0.25, abs_tol=1.0e-6)
     assert estimate.learning_state.committed_source == "persistence"
     assert estimate.learning_state.last_commit_reason == "startup_loaded_persistence"
+    assert estimate.learning_state.learning_enabled is False
+    assert estimate.learning_state.loaded_fit_locked is True
+    assert (
+        estimate.learning_state.learning_disabled_reason
+        == "startup_loaded_persistence_fit_locked"
+    )
+    assert estimate.persistence_writes_enabled is False
+    assert (
+        estimate.persistence_writes_disabled_reason
+        == "startup_loaded_persistence_fit_locked"
+    )
 
 
 def test_missing_persisted_file_falls_back_to_fresh_learning(tmp_path: Path) -> None:
@@ -237,6 +248,11 @@ def test_missing_persisted_file_falls_back_to_fresh_learning(tmp_path: Path) -> 
     assert estimate.persistence_load_valid is False
     assert estimate.forward_axis.learned is False
     assert estimate.persistence_load_error == "missing_persistence_file"
+    assert estimate.learning_state.learning_enabled is True
+    assert estimate.learning_state.loaded_fit_locked is False
+    assert estimate.learning_state.learning_disabled_reason == ""
+    assert estimate.persistence_writes_enabled is True
+    assert estimate.persistence_writes_disabled_reason == ""
 
 
 def test_malformed_persisted_file_is_ignored_safely(tmp_path: Path) -> None:
@@ -251,6 +267,8 @@ def test_malformed_persisted_file_is_ignored_safely(tmp_path: Path) -> None:
     assert estimate.persistence_load_valid is False
     assert estimate.forward_axis.learned is False
     assert estimate.persistence_load_error != ""
+    assert estimate.learning_state.learning_enabled is True
+    assert estimate.learning_state.loaded_fit_locked is False
 
 
 def test_turn_discards_uncommitted_learning_and_keeps_committed_axis(
@@ -497,7 +515,9 @@ def test_persistence_payload_matches_expected_shape(tmp_path: Path) -> None:
     assert payload["forward_axis"] == [1.0, 0.0, 0.0]
 
 
-def test_better_candidate_replaces_loaded_committed_value(tmp_path: Path) -> None:
+def test_loaded_startup_fit_disables_online_learning_for_process_lifetime(
+    tmp_path: Path,
+) -> None:
     _write_persistence_payload(
         tmp_path,
         forward_yaw_rad=0.35,
@@ -520,14 +540,20 @@ def test_better_candidate_replaces_loaded_committed_value(tmp_path: Path) -> Non
         )
 
     assert committed_estimate is not None
-    assert committed_estimate.learning_state.committed_source == "learning"
-    assert committed_estimate.current_commit_from_persistence is False
-    assert committed_estimate.learning_state.checkpoint_commit_count >= 2
-    assert committed_estimate.learning_state.last_commit_reason in {
-        "candidate_score_beat_committed",
-        "candidate_rejected_checkpoint_window",
-    }
-    assert abs(committed_estimate.forward_axis.forward_yaw_rad) < 0.20
+    assert committed_estimate.learning_state.committed_source == "persistence"
+    assert committed_estimate.current_commit_from_persistence is True
+    assert committed_estimate.learning_state.checkpoint_commit_count == 1
+    assert committed_estimate.learning_state.uncommitted_sample_count == 0
+    assert committed_estimate.learning_state.learning_enabled is False
+    assert committed_estimate.learning_state.loaded_fit_locked is True
+    assert (
+        committed_estimate.learning_state.learning_disabled_reason
+        == "startup_loaded_persistence_fit_locked"
+    )
+    assert math.isclose(
+        committed_estimate.forward_axis.forward_yaw_rad, 0.35, abs_tol=1.0e-6
+    )
+    assert estimator.persistence_success_count == 0
 
 
 def test_weaker_candidate_does_not_replace_loaded_committed_value(
@@ -573,14 +599,15 @@ def test_weaker_candidate_does_not_replace_loaded_committed_value(
     assert weak_estimate.learning_state.committed_source == "persistence"
     assert weak_estimate.current_commit_from_persistence is True
     assert weak_estimate.learning_state.candidate_beats_committed is False
-    assert weak_estimate.learning_state.last_commit_reason in {
-        "candidate_rejected_checkpoint_window",
-        "candidate_kept_as_weaker_than_committed",
-        "candidate_rejected_recent_instability",
-    }
+    assert (
+        weak_estimate.learning_state.last_commit_reason
+        == "startup_loaded_persistence_fit_locked"
+    )
     assert math.isclose(
         weak_estimate.forward_axis.forward_yaw_rad, 0.15, abs_tol=1.0e-6
     )
+    assert weak_estimate.learning_state.uncommitted_sample_count == 0
+    assert weak_estimate.persistence_write_count == 0
 
 
 def test_weak_early_evidence_does_not_immediately_commit(tmp_path: Path) -> None:
@@ -606,7 +633,7 @@ def test_weak_early_evidence_does_not_immediately_commit(tmp_path: Path) -> None
     }
 
 
-def test_persistence_file_updates_when_commit_improves(tmp_path: Path) -> None:
+def test_loaded_startup_fit_does_not_rewrite_persistence_file(tmp_path: Path) -> None:
     _write_persistence_payload(
         tmp_path,
         forward_yaw_rad=0.35,
@@ -618,6 +645,8 @@ def test_persistence_file_updates_when_commit_improves(tmp_path: Path) -> None:
         uncertainty_forward_yaw_rad=0.25,
     )
     estimator: ForwardTwistEstimator = _make_estimator(tmp_path)
+    persistence_path: Path = tmp_path / "forward_twist_falcon.yaml"
+    initial_payload_text: str = persistence_path.read_text(encoding="utf-8")
 
     for sample_index in range(9):
         estimator.update_imu(
@@ -628,10 +657,13 @@ def test_persistence_file_updates_when_commit_improves(tmp_path: Path) -> None:
         )
 
     payload: dict[str, object] = yaml.safe_load(
-        (tmp_path / "forward_twist_falcon.yaml").read_text(encoding="utf-8")
+        persistence_path.read_text(encoding="utf-8")
     )
-    assert payload["last_update_reason"] == "candidate_score_beat_committed"
-    assert float(cast(float | int | str, payload["score"])) > 1.10
+    assert persistence_path.read_text(encoding="utf-8") == initial_payload_text
+    assert payload["created_unix_ns"] == 123
+    assert payload["checkpoint_count"] == 1
+    assert payload["last_update_reason"] == "test_seed"
+    assert estimator.persistence_success_count == 0
 
 
 def test_continuous_learning_refines_committed_yaw_over_time(tmp_path: Path) -> None:
@@ -668,12 +700,12 @@ def test_continuous_learning_refines_committed_yaw_over_time(tmp_path: Path) -> 
     )
 
 
-def test_persisted_value_stays_active_until_better_runtime_evidence_replaces_it(
+def test_runtime_speed_estimation_still_works_with_loaded_frozen_axis(
     tmp_path: Path,
 ) -> None:
     _write_persistence_payload(
         tmp_path,
-        forward_yaw_rad=0.20,
+        forward_yaw_rad=(0.5 * math.pi),
         fit_sample_count=20,
         checkpoint_count=3,
         confidence=0.90,
@@ -687,22 +719,28 @@ def test_persisted_value_stays_active_until_better_runtime_evidence_replaces_it(
         timestamp_ns=100_000_000,
         orientation_xyzw=IDENTITY_QUATERNION_XYZW,
         angular_velocity_rads=QUIET_GYRO_RADS,
-        linear_acceleration_mps2=SLIGHT_RIGHT_ACCEL_MPS2,
+        linear_acceleration_mps2=(0.0, 1.0, 0.0),
     )
     retained_estimate = estimator.update_imu(
         timestamp_ns=200_000_000,
         orientation_xyzw=IDENTITY_QUATERNION_XYZW,
         angular_velocity_rads=QUIET_GYRO_RADS,
-        linear_acceleration_mps2=SLIGHT_RIGHT_ACCEL_MPS2,
+        linear_acceleration_mps2=(0.0, 1.0, 0.0),
     )
     retained_estimate = estimator.update_imu(
         timestamp_ns=300_000_000,
         orientation_xyzw=IDENTITY_QUATERNION_XYZW,
         angular_velocity_rads=QUIET_GYRO_RADS,
-        linear_acceleration_mps2=SLIGHT_RIGHT_ACCEL_MPS2,
+        linear_acceleration_mps2=(0.0, 1.0, 0.0),
     )
 
     assert retained_estimate.current_commit_from_persistence is True
     assert math.isclose(
-        retained_estimate.forward_axis.forward_yaw_rad, 0.20, abs_tol=1.0e-6
+        retained_estimate.forward_axis.forward_yaw_rad,
+        0.5 * math.pi,
+        abs_tol=1.0e-6,
     )
+    assert retained_estimate.forward_speed_mps > 0.0
+    assert retained_estimate.forward_speed_variance_mps2 > 0.0
+    assert retained_estimate.learning_state.learning_enabled is False
+    assert retained_estimate.persistence_write_count == 0

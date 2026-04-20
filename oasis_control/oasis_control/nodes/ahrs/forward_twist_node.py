@@ -499,8 +499,13 @@ class ForwardTwistNode(rclpy.node.Node):
             persistence_suffix = (
                 f", last_persistence_error={self._estimator.last_persistence_error}"
             )
+        lock_summary: str = (
+            "LOCKED persisted startup fit"
+            if latest_estimate.learning_state.loaded_fit_locked
+            else "learning active"
+        )
         return (
-            "Forward twist running "
+            f"Forward twist running [{lock_summary}] "
             f"(speed={latest_estimate.forward_speed_mps:.3f} m/s, "
             f"sigma={latest_estimate.forward_speed_sigma_mps:.3f} m/s, "
             f"candidate_yaw={latest_estimate.learning_state.candidate_forward_yaw_rad:.3f} rad, "
@@ -509,6 +514,9 @@ class ForwardTwistNode(rclpy.node.Node):
             f"startup_loaded={latest_estimate.startup_loaded_from_persistence}, "
             f"load_valid={latest_estimate.persistence_load_valid}, "
             f"commit_source={latest_estimate.learning_state.committed_source}, "
+            f"learning_enabled={latest_estimate.learning_state.learning_enabled}, "
+            f"loaded_fit_locked={latest_estimate.learning_state.loaded_fit_locked}, "
+            f"learning_disabled_reason={latest_estimate.learning_state.learning_disabled_reason or 'n/a'}, "
             f"candidate_conf={latest_estimate.learning_state.candidate_confidence:.3f}, "
             f"committed_conf={latest_estimate.learning_state.committed_confidence:.3f}, "
             f"candidate_score={latest_estimate.learning_state.candidate_score:.3f}, "
@@ -543,6 +551,8 @@ class ForwardTwistNode(rclpy.node.Node):
             f"load_error={latest_estimate.persistence_load_error or 'n/a'}, "
             f"persistence_ok={self._estimator.persistence_success_count}, "
             f"persistence_fail={self._estimator.persistence_failure_count}, "
+            f"persistence_writes_enabled={latest_estimate.persistence_writes_enabled}, "
+            f"persistence_writes_disabled_reason={latest_estimate.persistence_writes_disabled_reason or 'n/a'}, "
             f"last_persistence_reason={latest_estimate.last_persistence_reason}, "
             f"imu_drops={self._estimator.imu_drop_count}, "
             f"zupt_drops={self._estimator.zupt_drop_count}"

@@ -150,6 +150,12 @@ class LearningState:
         last_commit_reason: short explanation for why the last committed value
             was accepted or preserved
         committed_source: one of `learning` or `persistence`
+        learning_enabled: true when online forward-axis learning may still
+            update candidate or committed state
+        loaded_fit_locked: true when a startup-loaded persisted fit has frozen
+            further forward-axis learning for this process lifetime
+        learning_disabled_reason: explanation for why online learning is
+            disabled, or empty when it remains enabled
     """
 
     candidate_forward_yaw_rad: float
@@ -177,6 +183,9 @@ class LearningState:
     motion_proxy_speed_mps: float
     last_commit_reason: str
     committed_source: str
+    learning_enabled: bool
+    loaded_fit_locked: bool
+    learning_disabled_reason: str
 
 
 @dataclass(frozen=True)
@@ -223,6 +232,10 @@ class ForwardTwistEstimate:
             writes for committed improvements
         last_persistence_reason: explanation for the last persistence write or
             startup-load fallback
+        persistence_writes_enabled: true when committed-fit persistence writes
+            may still occur during this process lifetime
+        persistence_writes_disabled_reason: explanation for why persistence
+            writes are disabled, or empty when they remain enabled
         imu_sample_rejected: true when the triggering IMU update was rejected
             or deterministically dropped
         zupt_sample_rejected: true when the triggering ZUPT update was
@@ -253,6 +266,8 @@ class ForwardTwistEstimate:
     current_commit_from_persistence: bool
     persistence_write_count: int
     last_persistence_reason: str
+    persistence_writes_enabled: bool
+    persistence_writes_disabled_reason: str
     imu_sample_rejected: bool
     zupt_sample_rejected: bool
 

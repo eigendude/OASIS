@@ -210,8 +210,19 @@ class ForwardTwistEstimator:
         self._persistence_load_valid: bool = False
         self._persistence_load_error: str = ""
         self._current_commit_from_persistence: bool = False
+        self._learning_enabled: bool = True
+        self._loaded_fit_locked: bool = False
+        self._learning_disabled_reason: str = ""
         self._last_commit_reason: str = "waiting_for_learning"
         self._last_persistence_reason: str = "not_written_yet"
+        self._persistence_writes_enabled: bool = bool(
+            self._config.persistence_write_on_checkpoint
+        )
+        self._persistence_writes_disabled_reason: str = (
+            ""
+            if self._persistence_writes_enabled
+            else "config_disabled_persistence_write_on_checkpoint"
+        )
 
         self._persistence_failure_count: int = 0
         self._persistence_success_count: int = 0
@@ -353,12 +364,17 @@ class ForwardTwistEstimator:
 
         checkpoint_just_committed: bool = False
         if turn_detection.turn_detected:
-            self._discard_uncommitted_learning()
+            if self._learning_enabled:
+                self._discard_uncommitted_learning()
         else:
-            checkpoint_just_committed = self._update_learning(
-                orientation_xyzw=orientation_xyzw,
-                linear_acceleration_mps2=linear_acceleration_mps2,
-            )
+            if self._learning_enabled:
+                checkpoint_just_committed = self._update_learning(
+                    orientation_xyzw=orientation_xyzw,
+                    linear_acceleration_mps2=linear_acceleration_mps2,
+                )
+            else:
+                self._candidate_beats_committed = False
+                self._last_commit_reason = self._learning_disabled_reason
 
         if dt_sec is not None and dt_sec > 0.0 and self._committed_sample_count > 0:
             forward_axis_xy: tuple[float, float] = _yaw_to_axis_xy(
@@ -495,6 +511,11 @@ class ForwardTwistEstimator:
         Persist the current committed forward yaw using the repo convention.
         """
 
+        if not self._persistence_writes_enabled:
+            self._last_persistence_reason = self._persistence_writes_disabled_reason
+            self._last_persistence_error = ""
+            return False
+
         record: PersistenceRecord = PersistenceRecord(
             version=1,
             created_unix_ns=time.time_ns(),
@@ -535,6 +556,17 @@ class ForwardTwistEstimator:
         self._persistence_load_error = ""
         self._startup_loaded_from_persistence = False
         self._current_commit_from_persistence = False
+        self._learning_enabled = True
+        self._loaded_fit_locked = False
+        self._learning_disabled_reason = ""
+        self._persistence_writes_enabled = bool(
+            self._config.persistence_write_on_checkpoint
+        )
+        self._persistence_writes_disabled_reason = (
+            ""
+            if self._persistence_writes_enabled
+            else "config_disabled_persistence_write_on_checkpoint"
+        )
 
         try:
             record: PersistenceRecord = self._persistence.load()
@@ -576,8 +608,15 @@ class ForwardTwistEstimator:
         self._startup_loaded_from_persistence = True
         self._persistence_load_valid = True
         self._current_commit_from_persistence = True
+        self._learning_enabled = False
+        self._loaded_fit_locked = True
+        self._learning_disabled_reason = "startup_loaded_persistence_fit_locked"
         self._last_commit_reason = "startup_loaded_persistence"
         self._last_persistence_reason = "startup_loaded_persistence"
+        self._persistence_writes_enabled = False
+        self._persistence_writes_disabled_reason = (
+            "startup_loaded_persistence_fit_locked"
+        )
         axis_xy: tuple[float, float] = _yaw_to_axis_xy(self._committed_forward_yaw_rad)
         self._candidate_motion_direction_xy = axis_xy
         self._candidate_recent_stability = 1.0
@@ -589,6 +628,9 @@ class ForwardTwistEstimator:
             evidence_norm * axis_xy[0],
             evidence_norm * axis_xy[1],
         )
+        self._recent_aligned_directions_xy.clear()
+        self._uncommitted_direction_sum_xy = (0.0, 0.0)
+        self._uncommitted_sample_count = 0
 
     def _update_learning(
         self,
@@ -1035,6 +1077,9 @@ class ForwardTwistEstimator:
                     if self._current_commit_from_persistence
                     else "learning"
                 ),
+                learning_enabled=self._learning_enabled,
+                loaded_fit_locked=self._loaded_fit_locked,
+                learning_disabled_reason=self._learning_disabled_reason,
             ),
             turn_detected=self._last_turn_detected,
             latest_zupt_flag_age_sec=self._latest_zupt_flag_age_sec(),
@@ -1058,6 +1103,10 @@ class ForwardTwistEstimator:
             current_commit_from_persistence=self._current_commit_from_persistence,
             persistence_write_count=self._persistence_success_count,
             last_persistence_reason=self._last_persistence_reason,
+            persistence_writes_enabled=self._persistence_writes_enabled,
+            persistence_writes_disabled_reason=(
+                self._persistence_writes_disabled_reason
+            ),
             imu_sample_rejected=imu_sample_rejected,
             zupt_sample_rejected=zupt_sample_rejected,
         )
