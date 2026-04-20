@@ -1,0 +1,18 @@
+checkpoint_count: 6
+confidence: 0.9760652970026236
+created_unix_ns: 1776716461782914283
+estimator: ahrs_forward_twist
+fit_sample_count: 26
+forward_axis:
+- 0.9812643984499502
+- -0.192665981259426
+- 0.0
+forward_yaw_rad: -0.19387830931119357
+host: falcon
+last_update_reason: candidate_score_beat_committed
+loaded_startup_capable: true
+residual: 0.023934702997376434
+score: 4.521787421366524
+uncertainty_forward_yaw_rad: 0.030340822333929807
+valid: true
+version: 1
