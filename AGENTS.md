@@ -1,21 +1,54 @@
 # Agent Guidelines
 
-- When adding a new feature, place the implementation in a subfolder of `src/`, creating the subfolder if necessary, instead of the ros-based `nodes/` folder
-- Avoid simply appending large amounts of code into existing files (often node files); prefer organizing new functionality into appropriately named subdirectories.
-- Using ROS dependencies outside of the `nodes/` folder is barely acceptable but should be minimized when possible.
-- **Keep new classes generic and reusable**: put algorithm/processing code in `src/<domain>/...` with **no ROS types/logging**; expose a small, ROS-agnostic API (e.g., `Update(sample, dt)`, `GetBias()`, `Reset()`). Only the ROS `nodes/` layer should translate to/from messages, manage parameters/QoS, and do `RCLCPP_*` logging. Also if theres ros stuff needed then `ros/` is appropriate.
-- **Keep new classes generic**: prefer small, domain-agnostic utility classes (math/filters/estimators/parsers) that can be reused across drivers and nodes; keep ROS glue thin and localized.
-- **Separate “core” from “integration”**: put algorithms/state machines/data transforms in `src/<area>/...` with no ROS includes when possible; have `nodes/` only adapt parameters/topics/timers to the core API.
-- **Stable, message-driven APIs**: design core classes around plain inputs/outputs (structs, spans, arrays) that map cleanly to messages; avoid parameter-heavy constructors or ROS parameter lookups inside the core.
-- **Document public structs/interfaces**: any public `struct`/`enum` must have brief field docs (meaning + units + expected range + how it’s computed/used), so downstream users can treat it as a contract.
-- **Minimize hidden coupling**: avoid implicit dependencies on global state/time/ROS clocks; pass time stamps and configuration explicitly.
-- **Document mathematical parameters**: any constant/denominator/derived factor in algorithms must be documented with its meaning or derivation. Math explanations can be dense, so try to use comment style and whitespace to optimize readability.
+- When adding a new feature, place the implementation in a subfolder of
+  `src/`, creating the subfolder if necessary, instead of the ROS-based
+  `nodes/` folder
+- Avoid simply appending large amounts of code into existing files (often node
+  files); prefer organizing new functionality into appropriately named
+  subdirectories
+- Using ROS dependencies outside of the `nodes/` folder is barely acceptable
+  but should be minimized when possible
+- **Keep new classes generic and reusable**: put algorithm/processing code in
+  `src/<domain>/...` with **no ROS types/logging**; expose a small,
+  ROS-agnostic API (e.g., `Update(sample, dt)`, `GetBias()`, `Reset()`). Only
+  the ROS `nodes/` layer should translate to/from messages, manage
+  parameters/QoS, and do `RCLCPP_*` logging. If ROS-specific support code is
+  needed outside `nodes/`, then `ros/` is appropriate
+- **Keep new classes generic**: prefer small, domain-agnostic utility classes
+  (math/filters/estimators/parsers) that can be reused across drivers and
+  nodes; keep ROS glue thin and localized
+- **Separate “core” from “integration”**: put algorithms/state
+  machines/data transforms in `src/<area>/...` with no ROS includes when
+  possible; have `nodes/` only adapt parameters/topics/timers to the core API
+- **Stable, message-driven APIs**: design core classes around plain
+  inputs/outputs (structs, spans, arrays) that map cleanly to messages; avoid
+  parameter-heavy constructors or ROS parameter lookups inside the core
+- **Document public structs/interfaces**: any public `struct`/`enum` must have
+  brief field docs (meaning + units + expected range + how it’s computed/used),
+  so downstream users can treat it as a contract
+- **Minimize hidden coupling**: avoid implicit dependencies on global
+  state/time/ROS clocks; pass time stamps and configuration explicitly
+- **Document mathematical parameters**: any constant/denominator/derived factor
+  in algorithms must be documented with its meaning or derivation. Math
+  explanations can be dense, so use comment style and whitespace to optimize
+  readability
 - Wrap comments at 80 chars
-- **Math params**: comment on the line above (units + meaning and derivation); no end-of-line comments; blank line between blocks.
-- Comments: If only one sentence, don't use a trailing period. 2 or more sentences can use periods in comments.
-- **Copyright/SPDX headers in new files**: every new source file must start with the project’s standard copyright + SPDX header, using the correct year range for when the file is created/modified (e.g., `2026` or `2025-2026`)
-- **Python typing required**: all new/modified Python must have full type annotations (functions/methods + return types + all variables), no untyped defs; use `typing`/`collections.abc` types and keep mypy clean
-- Keep `__init__.py` files **empty** (no imports, exports, side effects, or runtime code). They should exist only to mark the directory as a package; expose symbols via explicit module imports instead.
-- For changes to Python packages, run `black` first and `isort` second; they conflict here, and `isort` wins.
-- For changes to Python packages, pass `black --check`, `flake8`, `isort --check-only`, and `mypy` before finishing; do not run `pytest`.
-- For changes to C++ packages, pass `clang-format` checks before finishing.
+- **Math params**: comment on the line above (units + meaning and derivation);
+  no end-of-line comments; blank line between blocks
+- Comments: if only one sentence, don't use a trailing period. Two or more
+  sentences can use periods in comments
+- **Copyright/SPDX headers in new files**: every new source file must start
+  with the project’s standard copyright + SPDX header, using the correct year
+  range for when the file is created/modified (e.g., `2026` or `2025-2026`)
+- **Python typing required**: all new/modified Python must have full type
+  annotations (functions/methods + return types + all variables), no untyped
+  defs; use `typing`/`collections.abc` types and keep mypy clean
+- Keep `__init__.py` files **empty** (no imports, exports, side effects, or
+  runtime code). They should exist only to mark the directory as a package;
+  expose symbols via explicit module imports instead
+- For changes to Python packages, run `black` first and `isort` second; they
+  conflict here, and `isort` wins
+- For changes to Python packages, pass `black --check`, `flake8`,
+  `isort --check-only`, `mypy`, and `pytest` before finishing
+- For changes to C++ packages, pass `clang-format` checks before finishing
+- In deliverables, never include diffs or patch-style output; summarize file changes in prose instead
