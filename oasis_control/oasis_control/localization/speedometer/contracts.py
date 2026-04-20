@@ -139,6 +139,14 @@ class LearningState:
             uncertainty of the candidate estimate in radians
         candidate_beats_committed: true when the latest candidate score passes
             the deterministic "better estimate" rule
+        candidate_recent_stability: motion-window directional stability of the
+            recent candidate evidence in [0, 1]
+        candidate_motion_direction_xy: current sign-aligned short-window motion
+            direction proxy in the body x-y plane
+        motion_proxy_velocity_xy: bounded short-window horizontal motion proxy
+            vector in m/s-like units
+        motion_proxy_speed_mps: magnitude of the short-window motion proxy in
+            m/s-like units
         last_commit_reason: short explanation for why the last committed value
             was accepted or preserved
         committed_source: one of `learning` or `persistence`
@@ -163,6 +171,10 @@ class LearningState:
     committed_uncertainty_forward_yaw_rad: float
     candidate_uncertainty_forward_yaw_rad: float
     candidate_beats_committed: bool
+    candidate_recent_stability: float
+    candidate_motion_direction_xy: tuple[float, float]
+    motion_proxy_velocity_xy: tuple[float, float]
+    motion_proxy_speed_mps: float
     last_commit_reason: str
     committed_source: str
 

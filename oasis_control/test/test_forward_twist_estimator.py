@@ -36,7 +36,8 @@ FORWARD_ACCEL_MPS2: tuple[float, float, float] = (1.2, 0.0, 0.0)
 TURN_ACCEL_MPS2: tuple[float, float, float] = (0.0, 1.2, 0.0)
 REVERSE_ACCEL_MPS2: tuple[float, float, float] = (-1.2, 0.0, 0.0)
 SLIGHT_RIGHT_ACCEL_MPS2: tuple[float, float, float] = (1.0, 0.18, 0.0)
-COMMITTED_LEARNING_END_TIMESTAMP_NS: int = 800_000_000
+LATERAL_TRANSIENT_ACCEL_MPS2: tuple[float, float, float] = (0.0, 1.5, 0.0)
+COMMITTED_LEARNING_END_TIMESTAMP_NS: int = 900_000_000
 
 
 def _make_estimator(mount_info_directory: Path) -> ForwardTwistEstimator:
@@ -73,7 +74,7 @@ def _make_estimator(mount_info_directory: Path) -> ForwardTwistEstimator:
 
 def _learn_committed_axis(estimator: ForwardTwistEstimator) -> ForwardTwistEstimate:
     estimate: ForwardTwistEstimate | None = None
-    for sample_index in range(8):
+    for sample_index in range(9):
         estimate = estimator.update_imu(
             timestamp_ns=(sample_index + 1) * 100_000_000,
             orientation_xyzw=IDENTITY_QUATERNION_XYZW,
@@ -87,19 +88,19 @@ def _learn_committed_axis(estimator: ForwardTwistEstimator) -> ForwardTwistEstim
 
 def _build_negative_speed(estimator: ForwardTwistEstimator) -> ForwardTwistEstimate:
     estimator.update_imu(
-        timestamp_ns=900_000_000,
-        orientation_xyzw=IDENTITY_QUATERNION_XYZW,
-        angular_velocity_rads=QUIET_GYRO_RADS,
-        linear_acceleration_mps2=REVERSE_ACCEL_MPS2,
-    )
-    estimator.update_imu(
         timestamp_ns=1_000_000_000,
         orientation_xyzw=IDENTITY_QUATERNION_XYZW,
         angular_velocity_rads=QUIET_GYRO_RADS,
         linear_acceleration_mps2=REVERSE_ACCEL_MPS2,
     )
-    return estimator.update_imu(
+    estimator.update_imu(
         timestamp_ns=1_100_000_000,
+        orientation_xyzw=IDENTITY_QUATERNION_XYZW,
+        angular_velocity_rads=QUIET_GYRO_RADS,
+        linear_acceleration_mps2=REVERSE_ACCEL_MPS2,
+    )
+    return estimator.update_imu(
+        timestamp_ns=1_200_000_000,
         orientation_xyzw=IDENTITY_QUATERNION_XYZW,
         angular_velocity_rads=QUIET_GYRO_RADS,
         linear_acceleration_mps2=REVERSE_ACCEL_MPS2,
@@ -166,7 +167,41 @@ def test_first_motion_sign_locks_forward_axis_and_commits(
     assert math.isclose(estimate.forward_axis.forward_yaw_rad, 0.0, abs_tol=1.0e-3)
     assert math.isclose(estimate.forward_axis.forward_axis_xyz[0], 1.0, abs_tol=1.0e-3)
     assert math.isclose(estimate.forward_axis.forward_axis_xyz[1], 0.0, abs_tol=1.0e-3)
+    assert estimate.learning_state.motion_proxy_speed_mps > 0.0
     assert estimator.persistence_success_count == 1
+
+
+def test_transient_accel_does_not_dominate_motion_direction_fit(tmp_path: Path) -> None:
+    estimator: ForwardTwistEstimator = _make_estimator(tmp_path)
+
+    estimate: ForwardTwistEstimate | None = None
+    input_samples: tuple[tuple[float, float, float], ...] = (
+        LATERAL_TRANSIENT_ACCEL_MPS2,
+        LATERAL_TRANSIENT_ACCEL_MPS2,
+        FORWARD_ACCEL_MPS2,
+        FORWARD_ACCEL_MPS2,
+        FORWARD_ACCEL_MPS2,
+        FORWARD_ACCEL_MPS2,
+        FORWARD_ACCEL_MPS2,
+        FORWARD_ACCEL_MPS2,
+        FORWARD_ACCEL_MPS2,
+        FORWARD_ACCEL_MPS2,
+        FORWARD_ACCEL_MPS2,
+        FORWARD_ACCEL_MPS2,
+    )
+    for sample_index, accel_mps2 in enumerate(input_samples):
+        estimate = estimator.update_imu(
+            timestamp_ns=(sample_index + 1) * 100_000_000,
+            orientation_xyzw=IDENTITY_QUATERNION_XYZW,
+            angular_velocity_rads=QUIET_GYRO_RADS,
+            linear_acceleration_mps2=accel_mps2,
+        )
+
+    assert estimate is not None
+    assert estimate.forward_axis.learned is True
+    assert abs(estimate.forward_axis.forward_yaw_rad) < 0.45
+    assert estimate.learning_state.candidate_recent_stability > 0.8
+    assert estimate.learning_state.candidate_motion_direction_xy[0] > 0.8
 
 
 def test_valid_persisted_file_loads_directly_on_startup(tmp_path: Path) -> None:
@@ -361,10 +396,10 @@ def test_contradictory_motion_rejects_bad_zupt(tmp_path: Path) -> None:
     reverse_estimate: ForwardTwistEstimate = _build_negative_speed(estimator)
     rejected_estimate: ForwardTwistEstimate = estimator.update_zupt(
         measurement=ZuptMeasurement(
-            timestamp_ns=1_120_000_000,
+            timestamp_ns=1_220_000_000,
             zero_velocity_variance_mps2=0.01,
             stationary_flag=True,
-            stationary_flag_timestamp_ns=1_120_000_000,
+            stationary_flag_timestamp_ns=1_220_000_000,
         )
     )
 
@@ -374,6 +409,31 @@ def test_contradictory_motion_rejects_bad_zupt(tmp_path: Path) -> None:
     assert rejected_estimate.zupt_update_applied is False
     assert rejected_estimate.forward_speed_mps == reverse_estimate.forward_speed_mps
     assert rejected_estimate.zupt_rejected_motion_count == 1
+
+
+def test_reverse_motion_reinforces_same_learned_axis(tmp_path: Path) -> None:
+    estimator: ForwardTwistEstimator = _make_estimator(tmp_path)
+
+    forward_estimate: ForwardTwistEstimate = _learn_committed_axis(estimator)
+    reverse_learning_estimate: ForwardTwistEstimate | None = None
+    for sample_index in range(8):
+        reverse_learning_estimate = estimator.update_imu(
+            timestamp_ns=COMMITTED_LEARNING_END_TIMESTAMP_NS
+            + (sample_index + 1) * 100_000_000,
+            orientation_xyzw=IDENTITY_QUATERNION_XYZW,
+            angular_velocity_rads=QUIET_GYRO_RADS,
+            linear_acceleration_mps2=REVERSE_ACCEL_MPS2,
+        )
+
+    assert reverse_learning_estimate is not None
+    assert math.isclose(
+        reverse_learning_estimate.forward_axis.forward_yaw_rad,
+        forward_estimate.forward_axis.forward_yaw_rad,
+        abs_tol=0.15,
+    )
+    assert (
+        reverse_learning_estimate.learning_state.candidate_motion_direction_xy[0] > 0.8
+    )
 
 
 def test_reverse_motion_is_not_collapsed_by_mistimed_zupt(tmp_path: Path) -> None:
@@ -451,7 +511,7 @@ def test_better_candidate_replaces_loaded_committed_value(tmp_path: Path) -> Non
     estimator: ForwardTwistEstimator = _make_estimator(tmp_path)
 
     committed_estimate: ForwardTwistEstimate | None = None
-    for sample_index in range(8):
+    for sample_index in range(9):
         committed_estimate = estimator.update_imu(
             timestamp_ns=(sample_index + 1) * 100_000_000,
             orientation_xyzw=IDENTITY_QUATERNION_XYZW,
@@ -514,6 +574,7 @@ def test_weaker_candidate_does_not_replace_loaded_committed_value(
     assert weak_estimate.current_commit_from_persistence is True
     assert weak_estimate.learning_state.candidate_beats_committed is False
     assert weak_estimate.learning_state.last_commit_reason in {
+        "candidate_rejected_checkpoint_window",
         "candidate_kept_as_weaker_than_committed",
         "candidate_rejected_recent_instability",
     }
@@ -538,6 +599,7 @@ def test_weak_early_evidence_does_not_immediately_commit(tmp_path: Path) -> None
     assert weak_estimate.forward_axis.learned is False
     assert weak_estimate.learning_state.checkpoint_commit_count == 0
     assert weak_estimate.learning_state.last_commit_reason in {
+        "candidate_rejected_min_samples",
         "candidate_rejected_first_commit_samples",
         "candidate_rejected_first_commit_checkpoints",
         "candidate_rejected_first_commit_uncertainty",
@@ -557,7 +619,7 @@ def test_persistence_file_updates_when_commit_improves(tmp_path: Path) -> None:
     )
     estimator: ForwardTwistEstimator = _make_estimator(tmp_path)
 
-    for sample_index in range(8):
+    for sample_index in range(9):
         estimator.update_imu(
             timestamp_ns=(sample_index + 1) * 100_000_000,
             orientation_xyzw=IDENTITY_QUATERNION_XYZW,
@@ -576,7 +638,7 @@ def test_continuous_learning_refines_committed_yaw_over_time(tmp_path: Path) -> 
     estimator: ForwardTwistEstimator = _make_estimator(tmp_path)
 
     first_commit: ForwardTwistEstimate | None = None
-    for sample_index in range(8):
+    for sample_index in range(9):
         first_commit = estimator.update_imu(
             timestamp_ns=(sample_index + 1) * 100_000_000,
             orientation_xyzw=IDENTITY_QUATERNION_XYZW,

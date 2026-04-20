@@ -34,6 +34,21 @@ from oasis_control.localization.speedometer.turn_detector import TurnDetector
 
 MIN_DIRECTION_NORM: float = 1.0e-6
 
+# Units: s
+# Meaning: leaky integration time constant for the horizontal motion-direction
+# proxy. This lets sustained travel dominate launch/brake jerk.
+MOTION_PROXY_WINDOW_SEC: float = 0.75
+
+# Units: m/s
+# Meaning: maximum magnitude retained in the short-window motion proxy so old
+# transients cannot dominate the learner indefinitely.
+MOTION_PROXY_MAX_SPEED_MPS: float = 1.5
+
+# Units: m/s
+# Meaning: minimum short-window motion-proxy magnitude required before a
+# direction is considered suitable learning evidence.
+MOTION_PROXY_MIN_SPEED_MPS: float = 0.08
+
 # Units: samples
 # Meaning: floor on first-commit evidence depth so the first committed fit is
 # materially stronger than the relaxed ongoing-learning threshold.
@@ -161,6 +176,8 @@ class ForwardTwistEstimator:
         self._uncommitted_direction_sum_xy: tuple[float, float] = (0.0, 0.0)
         self._forward_sign_reference_xy: Optional[tuple[float, float]] = None
         self._recent_aligned_directions_xy: list[tuple[float, float]] = []
+        self._motion_proxy_velocity_xy: tuple[float, float] = (0.0, 0.0)
+        self._candidate_motion_direction_xy: tuple[float, float] = (1.0, 0.0)
 
         self._forward_speed_mps: float = 0.0
         self._forward_speed_variance_mps2: float = max(
@@ -320,6 +337,11 @@ class ForwardTwistEstimator:
             if dt_sec > self._config.max_imu_dt_sec:
                 dt_sec = self._config.max_imu_dt_sec
 
+            self._update_motion_proxy(
+                dt_sec=dt_sec,
+                linear_acceleration_mps2=linear_acceleration_mps2,
+            )
+
         self._last_imu_timestamp_ns = int(timestamp_ns)
         self._have_imu_timestamp = True
 
@@ -448,6 +470,7 @@ class ForwardTwistEstimator:
             self._config.min_forward_speed_variance_mps2,
             (1.0 - kalman_gain) * self._forward_speed_variance_mps2,
         )
+        self._motion_proxy_velocity_xy = (0.0, 0.0)
         self._zupt_applied_count += 1
         self._last_zupt_update_applied = True
         return self._build_estimate(
@@ -556,6 +579,8 @@ class ForwardTwistEstimator:
         self._last_commit_reason = "startup_loaded_persistence"
         self._last_persistence_reason = "startup_loaded_persistence"
         axis_xy: tuple[float, float] = _yaw_to_axis_xy(self._committed_forward_yaw_rad)
+        self._candidate_motion_direction_xy = axis_xy
+        self._candidate_recent_stability = 1.0
         self._forward_sign_reference_xy = axis_xy
         evidence_norm: float = self._committed_confidence * float(
             self._committed_sample_count
@@ -572,20 +597,17 @@ class ForwardTwistEstimator:
         linear_acceleration_mps2: tuple[float, float, float],
     ) -> bool:
         """
-        Update candidate checkpoint evidence from straight-motion IMU samples.
+        Update candidate checkpoint evidence from short-window motion direction.
         """
 
         _ = _yaw_from_quaternion_xyzw(orientation_xyzw)
 
         candidate_direction_xy: Optional[tuple[float, float]] = (
-            _horizontal_direction_xy(
-                linear_acceleration_mps2=linear_acceleration_mps2,
-                min_norm_mps2=self._config.learning_accel_threshold_mps2,
-            )
+            self._motion_direction_proxy_xy()
         )
         if candidate_direction_xy is None:
             self._candidate_beats_committed = False
-            self._last_commit_reason = "candidate_rejected_low_excitation"
+            self._last_commit_reason = "candidate_rejected_low_motion_proxy"
             return False
 
         if self._last_stationary_flag is True:
@@ -640,14 +662,21 @@ class ForwardTwistEstimator:
                 candidate_sum_xy[1],
                 candidate_sum_xy[0],
             )
+            self._candidate_motion_direction_xy = (
+                candidate_sum_xy[0] / candidate_norm,
+                candidate_sum_xy[1] / candidate_norm,
+            )
 
-        self._candidate_residual = max(0.0, 1.0 - self._candidate_confidence)
+        self._candidate_recent_stability = _compute_recent_stability(
+            directions_xy=self._recent_aligned_directions_xy
+        )
+        self._candidate_residual = max(
+            0.0,
+            1.0 - 0.5 * (self._candidate_confidence + self._candidate_recent_stability),
+        )
         self._candidate_uncertainty_forward_yaw_rad = _estimate_uncertainty_rad(
             sample_count=self._candidate_sample_count,
             residual=self._candidate_residual,
-        )
-        self._candidate_recent_stability = _compute_recent_stability(
-            directions_xy=self._recent_aligned_directions_xy
         )
         self._candidate_score = _compute_score(
             sample_count=self._candidate_sample_count,
@@ -859,6 +888,7 @@ class ForwardTwistEstimator:
         self._uncommitted_direction_sum_xy = (0.0, 0.0)
         self._uncommitted_sample_count = 0
         self._recent_aligned_directions_xy.clear()
+        self._motion_proxy_velocity_xy = (0.0, 0.0)
         self._candidate_sample_count = self._committed_sample_count
         self._candidate_forward_yaw_rad = self._committed_forward_yaw_rad
         self._candidate_confidence = self._committed_confidence
@@ -886,6 +916,54 @@ class ForwardTwistEstimator:
 
         return self._checkpoint_commit_count + (
             self._uncommitted_sample_count // self._config.checkpoint_min_samples
+        )
+
+    def _update_motion_proxy(
+        self,
+        *,
+        dt_sec: float,
+        linear_acceleration_mps2: tuple[float, float, float],
+    ) -> None:
+        """Update the leaky short-window horizontal motion proxy."""
+
+        decay: float = math.exp(-dt_sec / MOTION_PROXY_WINDOW_SEC)
+        next_velocity_x_mps: float = decay * self._motion_proxy_velocity_xy[0] + (
+            float(linear_acceleration_mps2[0]) * dt_sec
+        )
+        next_velocity_y_mps: float = decay * self._motion_proxy_velocity_xy[1] + (
+            float(linear_acceleration_mps2[1]) * dt_sec
+        )
+        next_speed_mps: float = math.hypot(
+            next_velocity_x_mps,
+            next_velocity_y_mps,
+        )
+        if next_speed_mps > MOTION_PROXY_MAX_SPEED_MPS:
+            scale: float = MOTION_PROXY_MAX_SPEED_MPS / next_speed_mps
+            next_velocity_x_mps *= scale
+            next_velocity_y_mps *= scale
+
+        self._motion_proxy_velocity_xy = (
+            next_velocity_x_mps,
+            next_velocity_y_mps,
+        )
+
+    def _motion_direction_proxy_xy(self) -> Optional[tuple[float, float]]:
+        """Return the current short-window motion direction proxy."""
+
+        motion_proxy_speed_mps: float = math.hypot(
+            self._motion_proxy_velocity_xy[0],
+            self._motion_proxy_velocity_xy[1],
+        )
+        min_motion_proxy_speed_mps: float = max(
+            MOTION_PROXY_MIN_SPEED_MPS,
+            self._config.learning_accel_threshold_mps2 * MOTION_PROXY_WINDOW_SEC,
+        )
+        if motion_proxy_speed_mps < min_motion_proxy_speed_mps:
+            return None
+
+        return (
+            self._motion_proxy_velocity_xy[0] / motion_proxy_speed_mps,
+            self._motion_proxy_velocity_xy[1] / motion_proxy_speed_mps,
         )
 
     def _build_estimate(
@@ -944,6 +1022,13 @@ class ForwardTwistEstimator:
                     self._candidate_uncertainty_forward_yaw_rad
                 ),
                 candidate_beats_committed=self._candidate_beats_committed,
+                candidate_recent_stability=self._candidate_recent_stability,
+                candidate_motion_direction_xy=self._candidate_motion_direction_xy,
+                motion_proxy_velocity_xy=self._motion_proxy_velocity_xy,
+                motion_proxy_speed_mps=math.hypot(
+                    self._motion_proxy_velocity_xy[0],
+                    self._motion_proxy_velocity_xy[1],
+                ),
                 last_commit_reason=self._last_commit_reason,
                 committed_source=(
                     "persistence"
