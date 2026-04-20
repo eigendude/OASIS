@@ -79,13 +79,24 @@ class ForwardTwistEstimator:
 
         self._last_turn_detected: bool = False
         self._last_stationary_flag: Optional[bool] = None
+        self._last_stationary_flag_timestamp_ns: Optional[int] = None
         self._last_timestamp_ns: int = 0
         self._last_imu_timestamp_ns: int = 0
         self._last_zupt_timestamp_ns: int = 0
         self._have_imu_timestamp: bool = False
         self._have_zupt_timestamp: bool = False
+        self._last_projected_forward_accel_mps2: float = 0.0
+        self._have_projected_forward_accel: bool = False
         self._imu_drop_count: int = 0
         self._zupt_drop_count: int = 0
+        self._zupt_applied_count: int = 0
+        self._zupt_rejected_stale_count: int = 0
+        self._zupt_rejected_motion_count: int = 0
+        self._last_zupt_update_applied: bool = False
+        self._last_zupt_rejected_stale: bool = False
+        self._last_zupt_rejected_motion_contradiction: bool = False
+        self._last_zupt_measurement_variance_used_mps2: Optional[float] = None
+        self._last_zupt_kalman_gain: float = 0.0
         self._persistence_failure_count: int = 0
         self._persistence_success_count: int = 0
         self._last_persistence_error: str = ""
@@ -186,6 +197,8 @@ class ForwardTwistEstimator:
             projected_forward_accel_mps2: float = forward_axis_xy[0] * float(
                 linear_acceleration_mps2[0]
             ) + forward_axis_xy[1] * float(linear_acceleration_mps2[1])
+            self._last_projected_forward_accel_mps2 = projected_forward_accel_mps2
+            self._have_projected_forward_accel = True
             self._forward_speed_mps += projected_forward_accel_mps2 * dt_sec
             self._forward_speed_variance_mps2 = max(
                 self._config.min_forward_speed_variance_mps2,
@@ -211,13 +224,23 @@ class ForwardTwistEstimator:
         """
 
         self._last_stationary_flag = measurement.stationary_flag
+        self._last_stationary_flag_timestamp_ns = (
+            measurement.stationary_flag_timestamp_ns
+        )
         self._last_timestamp_ns = int(measurement.timestamp_ns)
+        self._last_zupt_update_applied = False
+        self._last_zupt_rejected_stale = False
+        self._last_zupt_rejected_motion_contradiction = False
+        self._last_zupt_measurement_variance_used_mps2 = None
+        self._last_zupt_kalman_gain = 0.0
 
         if (
             self._have_zupt_timestamp
             and measurement.timestamp_ns <= self._last_zupt_timestamp_ns
         ):
             self._zupt_drop_count += 1
+            self._zupt_rejected_stale_count += 1
+            self._last_zupt_rejected_stale = True
             self._last_timestamp_ns = self._last_zupt_timestamp_ns
             return self._build_estimate(
                 imu_sample_rejected=False,
@@ -236,21 +259,52 @@ class ForwardTwistEstimator:
                 checkpoint_just_committed=False,
             )
 
+        if self._have_imu_timestamp:
+            if (
+                self._zupt_is_stale(
+                    timestamp_ns=measurement.timestamp_ns,
+                    reference_timestamp_ns=self._last_imu_timestamp_ns,
+                )
+                or self._stationary_flag_is_stale()
+            ):
+                self._zupt_drop_count += 1
+                self._zupt_rejected_stale_count += 1
+                self._last_zupt_rejected_stale = True
+                return self._build_estimate(
+                    imu_sample_rejected=False,
+                    zupt_sample_rejected=True,
+                    checkpoint_just_committed=False,
+                )
+
+        if self._motion_contradicts_stationarity():
+            self._zupt_drop_count += 1
+            self._zupt_rejected_motion_count += 1
+            self._last_zupt_rejected_motion_contradiction = True
+            return self._build_estimate(
+                imu_sample_rejected=False,
+                zupt_sample_rejected=True,
+                checkpoint_just_committed=False,
+            )
+
         measurement_variance_mps2: float = max(
             self._config.min_forward_speed_variance_mps2,
             float(measurement.zero_velocity_variance_mps2),
         )
+        self._last_zupt_measurement_variance_used_mps2 = measurement_variance_mps2
         innovation_variance_mps2: float = (
             self._forward_speed_variance_mps2 + measurement_variance_mps2
         )
         kalman_gain: float = (
             self._forward_speed_variance_mps2 / innovation_variance_mps2
         )
+        self._last_zupt_kalman_gain = kalman_gain
         self._forward_speed_mps += kalman_gain * (0.0 - self._forward_speed_mps)
         self._forward_speed_variance_mps2 = max(
             self._config.min_forward_speed_variance_mps2,
             (1.0 - kalman_gain) * self._forward_speed_variance_mps2,
         )
+        self._zupt_applied_count += 1
+        self._last_zupt_update_applied = True
         return self._build_estimate(
             imu_sample_rejected=False,
             zupt_sample_rejected=False,
@@ -320,7 +374,10 @@ class ForwardTwistEstimator:
             return False
 
         if self._last_stationary_flag is True:
-            return False
+            if self._stationary_flag_is_stale():
+                self._last_stationary_flag = False
+            else:
+                return False
 
         if self._forward_sign_reference_xy is None:
             self._forward_sign_reference_xy = candidate_direction_xy
@@ -456,8 +513,97 @@ class ForwardTwistEstimator:
                 checkpoint_just_committed=checkpoint_just_committed,
             ),
             turn_detected=self._last_turn_detected,
+            latest_zupt_flag_age_sec=self._latest_zupt_flag_age_sec(),
+            latest_zupt_age_sec=self._latest_zupt_age_sec(),
+            zupt_update_applied=self._last_zupt_update_applied,
+            zupt_rejected_stale=self._last_zupt_rejected_stale,
+            zupt_rejected_motion_contradiction=(
+                self._last_zupt_rejected_motion_contradiction
+            ),
+            zupt_measurement_variance_used_mps2=(
+                self._last_zupt_measurement_variance_used_mps2
+            ),
+            zupt_kalman_gain=self._last_zupt_kalman_gain,
+            zupt_applied_count=self._zupt_applied_count,
+            zupt_rejected_stale_count=self._zupt_rejected_stale_count,
+            zupt_rejected_motion_count=self._zupt_rejected_motion_count,
             imu_sample_rejected=imu_sample_rejected,
             zupt_sample_rejected=zupt_sample_rejected,
+        )
+
+    def _zupt_is_stale(self, *, timestamp_ns: int, reference_timestamp_ns: int) -> bool:
+        """Return true when one timestamp is too old relative to another."""
+
+        age_sec: float = max(
+            0.0,
+            float(reference_timestamp_ns - timestamp_ns) * 1.0e-9,
+        )
+        return age_sec > self._config.zupt_freshness_window_sec
+
+    def _stationary_flag_is_stale(self) -> bool:
+        """Return true when the latest paired stationary flag is too old."""
+
+        if (
+            self._last_stationary_flag_timestamp_ns is None
+            or not self._have_imu_timestamp
+        ):
+            return True
+
+        return self._zupt_is_stale(
+            timestamp_ns=self._last_stationary_flag_timestamp_ns,
+            reference_timestamp_ns=self._last_imu_timestamp_ns,
+        )
+
+    def _motion_contradicts_stationarity(self) -> bool:
+        """Return true when recent IMU motion strongly contradicts stationarity."""
+
+        if not self._have_projected_forward_accel:
+            return False
+
+        if not self._have_imu_timestamp or not self._have_zupt_timestamp:
+            return False
+
+        if self._zupt_is_stale(
+            timestamp_ns=self._last_zupt_timestamp_ns,
+            reference_timestamp_ns=self._last_imu_timestamp_ns,
+        ):
+            return False
+
+        projected_accel_mps2: float = abs(self._last_projected_forward_accel_mps2)
+        if projected_accel_mps2 >= self._config.zupt_motion_reject_accel_threshold_mps2:
+            return True
+
+        return (
+            projected_accel_mps2
+            >= 0.5 * self._config.zupt_motion_reject_accel_threshold_mps2
+            and abs(self._forward_speed_mps)
+            >= self._config.zupt_motion_reject_speed_threshold_mps
+        )
+
+    def _latest_zupt_flag_age_sec(self) -> Optional[float]:
+        """Return the age of the latest `zupt_flag` relative to the newest IMU."""
+
+        if (
+            self._last_stationary_flag_timestamp_ns is None
+            or not self._have_imu_timestamp
+        ):
+            return None
+
+        return max(
+            0.0,
+            float(self._last_imu_timestamp_ns - self._last_stationary_flag_timestamp_ns)
+            * 1.0e-9,
+        )
+
+    def _latest_zupt_age_sec(self) -> Optional[float]:
+        """Return the age of the latest `zupt` relative to the newest IMU."""
+
+        if not self._have_zupt_timestamp or not self._have_imu_timestamp:
+            return None
+
+        return max(
+            0.0,
+            float(self._last_imu_timestamp_ns - self._last_zupt_timestamp_ns) * 1.0e-9,
         )
 
 

@@ -77,6 +77,13 @@ PARAM_INITIAL_FORWARD_SPEED_SIGMA_MPS: str = "initial_forward_speed_sigma_mps"
 PARAM_MIN_FORWARD_SPEED_VARIANCE_MPS2: str = "min_forward_speed_variance_mps2"
 PARAM_FORWARD_ACCEL_PROCESS_SIGMA_MPS2: str = "forward_accel_process_sigma_mps2"
 PARAM_MAX_IMU_DT_SEC: str = "max_imu_dt_sec"
+PARAM_ZUPT_FRESHNESS_WINDOW_SEC: str = "zupt_freshness_window_sec"
+PARAM_ZUPT_MOTION_REJECT_ACCEL_THRESHOLD_MPS2: str = (
+    "zupt_motion_reject_accel_threshold_mps2"
+)
+PARAM_ZUPT_MOTION_REJECT_SPEED_THRESHOLD_MPS: str = (
+    "zupt_motion_reject_speed_threshold_mps"
+)
 
 DEFAULT_BASE_FRAME_ID: str = "base_link"
 DEFAULT_IMU_FRAME_ID: str = "imu_link"
@@ -185,6 +192,18 @@ class ForwardTwistNode(rclpy.node.Node):
             PARAM_MAX_IMU_DT_SEC,
             ForwardTwistConfig.max_imu_dt_sec,
         )
+        self.declare_parameter(
+            PARAM_ZUPT_FRESHNESS_WINDOW_SEC,
+            ForwardTwistConfig.zupt_freshness_window_sec,
+        )
+        self.declare_parameter(
+            PARAM_ZUPT_MOTION_REJECT_ACCEL_THRESHOLD_MPS2,
+            ForwardTwistConfig.zupt_motion_reject_accel_threshold_mps2,
+        )
+        self.declare_parameter(
+            PARAM_ZUPT_MOTION_REJECT_SPEED_THRESHOLD_MPS,
+            ForwardTwistConfig.zupt_motion_reject_speed_threshold_mps,
+        )
 
         self._base_frame_id: str = str(self.get_parameter(PARAM_BASE_FRAME_ID).value)
         self._imu_frame_id: str = str(self.get_parameter(PARAM_IMU_FRAME_ID).value)
@@ -227,6 +246,15 @@ class ForwardTwistNode(rclpy.node.Node):
                 self.get_parameter(PARAM_FORWARD_ACCEL_PROCESS_SIGMA_MPS2).value
             ),
             max_imu_dt_sec=float(self.get_parameter(PARAM_MAX_IMU_DT_SEC).value),
+            zupt_freshness_window_sec=float(
+                self.get_parameter(PARAM_ZUPT_FRESHNESS_WINDOW_SEC).value
+            ),
+            zupt_motion_reject_accel_threshold_mps2=float(
+                self.get_parameter(PARAM_ZUPT_MOTION_REJECT_ACCEL_THRESHOLD_MPS2).value
+            ),
+            zupt_motion_reject_speed_threshold_mps=float(
+                self.get_parameter(PARAM_ZUPT_MOTION_REJECT_SPEED_THRESHOLD_MPS).value
+            ),
             turn_rate_threshold_rads=float(
                 self.get_parameter(PARAM_TURN_RATE_THRESHOLD_RADS).value
             ),
@@ -358,8 +386,14 @@ class ForwardTwistNode(rclpy.node.Node):
                     float(message.twist.covariance[0])
                 ),
                 stationary_flag=self._runtime_state.latest_zupt_flag,
+                stationary_flag_timestamp_ns=(
+                    _time_msg_to_ns(message.header.stamp)
+                    if self._runtime_state.latest_zupt_flag is not None
+                    else None
+                ),
             )
         )
+        self._runtime_state.latest_zupt_flag = None
         if estimate.zupt_sample_rejected:
             self._diagnostics.rejected_zupt_count += 1
         self._runtime_state.latest_estimate = estimate
@@ -465,6 +499,16 @@ class ForwardTwistNode(rclpy.node.Node):
             f"learning_gated={latest_estimate.learning_state.learning_gated_by_turn}, "
             f"checkpoint_commits={latest_estimate.learning_state.checkpoint_commit_count}, "
             f"checkpoint_discards={latest_estimate.learning_state.checkpoint_discard_count}, "
+            f"zupt_applied={latest_estimate.zupt_update_applied}, "
+            f"zupt_flag_age={_format_optional_age_sec(latest_estimate.latest_zupt_flag_age_sec)}, "
+            f"zupt_age={_format_optional_age_sec(latest_estimate.latest_zupt_age_sec)}, "
+            f"zupt_R={_format_optional_variance(latest_estimate.zupt_measurement_variance_used_mps2)}, "
+            f"zupt_K={latest_estimate.zupt_kalman_gain:.3f}, "
+            f"zupt_reject_stale={latest_estimate.zupt_rejected_stale}, "
+            f"zupt_reject_motion={latest_estimate.zupt_rejected_motion_contradiction}, "
+            f"zupt_applied_count={latest_estimate.zupt_applied_count}, "
+            f"zupt_reject_stale_count={latest_estimate.zupt_rejected_stale_count}, "
+            f"zupt_reject_motion_count={latest_estimate.zupt_rejected_motion_count}, "
             f"persistence_ok={self._estimator.persistence_success_count}, "
             f"persistence_fail={self._estimator.persistence_failure_count}, "
             f"imu_drops={self._estimator.imu_drop_count}, "
@@ -519,3 +563,19 @@ def _make_placeholder_covariance(
     covariance[28] = DEFAULT_UNUSED_VARIANCE_MPS2
     covariance[35] = DEFAULT_UNUSED_VARIANCE_MPS2
     return covariance
+
+
+def _format_optional_age_sec(age_sec: Optional[float]) -> str:
+    """Render one optional age value for diagnostics."""
+
+    if age_sec is None:
+        return "n/a"
+    return f"{age_sec:.3f}s"
+
+
+def _format_optional_variance(variance_mps2: Optional[float]) -> str:
+    """Render one optional variance value for diagnostics."""
+
+    if variance_mps2 is None:
+        return "n/a"
+    return f"{variance_mps2:.4f}"

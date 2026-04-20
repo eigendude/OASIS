@@ -34,6 +34,7 @@ IDENTITY_QUATERNION_XYZW: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.
 QUIET_GYRO_RADS: tuple[float, float, float] = (0.0, 0.0, 0.0)
 FORWARD_ACCEL_MPS2: tuple[float, float, float] = (1.2, 0.0, 0.0)
 TURN_ACCEL_MPS2: tuple[float, float, float] = (0.0, 1.2, 0.0)
+REVERSE_ACCEL_MPS2: tuple[float, float, float] = (-1.2, 0.0, 0.0)
 
 
 def _make_estimator(mount_info_directory: Path) -> ForwardTwistEstimator:
@@ -95,6 +96,27 @@ def _learn_committed_axis(estimator: ForwardTwistEstimator) -> ForwardTwistEstim
     )
 
 
+def _build_negative_speed(estimator: ForwardTwistEstimator) -> ForwardTwistEstimate:
+    estimator.update_imu(
+        timestamp_ns=500_000_000,
+        orientation_xyzw=IDENTITY_QUATERNION_XYZW,
+        angular_velocity_rads=QUIET_GYRO_RADS,
+        linear_acceleration_mps2=REVERSE_ACCEL_MPS2,
+    )
+    estimator.update_imu(
+        timestamp_ns=600_000_000,
+        orientation_xyzw=IDENTITY_QUATERNION_XYZW,
+        angular_velocity_rads=QUIET_GYRO_RADS,
+        linear_acceleration_mps2=REVERSE_ACCEL_MPS2,
+    )
+    return estimator.update_imu(
+        timestamp_ns=700_000_000,
+        orientation_xyzw=IDENTITY_QUATERNION_XYZW,
+        angular_velocity_rads=QUIET_GYRO_RADS,
+        linear_acceleration_mps2=REVERSE_ACCEL_MPS2,
+    )
+
+
 def test_first_motion_sign_locks_forward_axis_and_commits(
     tmp_path: Path,
 ) -> None:
@@ -119,13 +141,13 @@ def test_turn_discards_uncommitted_learning_and_keeps_committed_axis(
     committed_estimate: ForwardTwistEstimate = _learn_committed_axis(estimator)
 
     estimator.update_imu(
-        timestamp_ns=400_000_000,
+        timestamp_ns=500_000_000,
         orientation_xyzw=IDENTITY_QUATERNION_XYZW,
         angular_velocity_rads=QUIET_GYRO_RADS,
         linear_acceleration_mps2=(1.0, 0.2, 0.0),
     )
     discarded_estimate: ForwardTwistEstimate = estimator.update_imu(
-        timestamp_ns=500_000_000,
+        timestamp_ns=600_000_000,
         orientation_xyzw=IDENTITY_QUATERNION_XYZW,
         angular_velocity_rads=(0.0, 0.0, 0.5),
         linear_acceleration_mps2=TURN_ACCEL_MPS2,
@@ -150,13 +172,14 @@ def test_zupt_reduces_speed_magnitude_and_variance(tmp_path: Path) -> None:
         timestamp_ns=500_000_000,
         orientation_xyzw=IDENTITY_QUATERNION_XYZW,
         angular_velocity_rads=QUIET_GYRO_RADS,
-        linear_acceleration_mps2=FORWARD_ACCEL_MPS2,
+        linear_acceleration_mps2=(0.1, 0.0, 0.0),
     )
     after_zupt: ForwardTwistEstimate = estimator.update_zupt(
         measurement=ZuptMeasurement(
             timestamp_ns=450_000_000,
             zero_velocity_variance_mps2=0.01,
             stationary_flag=True,
+            stationary_flag_timestamp_ns=450_000_000,
         )
     )
 
@@ -170,6 +193,11 @@ def test_zupt_reduces_speed_magnitude_and_variance(tmp_path: Path) -> None:
         math.sqrt(after_zupt.forward_speed_variance_mps2),
         rel_tol=1.0e-6,
     )
+    assert after_zupt.zupt_update_applied is True
+    assert after_zupt.zupt_rejected_stale is False
+    assert after_zupt.zupt_rejected_motion_contradiction is False
+    assert after_zupt.zupt_measurement_variance_used_mps2 == 0.01
+    assert after_zupt.zupt_kalman_gain > 0.0
 
 
 def test_non_stationary_zupt_is_ignored(tmp_path: Path) -> None:
@@ -182,12 +210,110 @@ def test_non_stationary_zupt_is_ignored(tmp_path: Path) -> None:
             timestamp_ns=350_000_000,
             zero_velocity_variance_mps2=0.01,
             stationary_flag=False,
+            stationary_flag_timestamp_ns=350_000_000,
         )
     )
 
     assert after_zupt.zupt_sample_rejected is True
     assert after_zupt.forward_speed_mps == before_zupt.forward_speed_mps
     assert estimator.zupt_drop_count == 1
+
+
+def test_stale_zupt_flag_does_not_zero_speed(tmp_path: Path) -> None:
+    estimator: ForwardTwistEstimator = _make_estimator(tmp_path)
+
+    _learn_committed_axis(estimator)
+    before_zupt: ForwardTwistEstimate = estimator.update_imu(
+        timestamp_ns=500_000_000,
+        orientation_xyzw=IDENTITY_QUATERNION_XYZW,
+        angular_velocity_rads=QUIET_GYRO_RADS,
+        linear_acceleration_mps2=FORWARD_ACCEL_MPS2,
+    )
+    after_zupt: ForwardTwistEstimate = estimator.update_zupt(
+        measurement=ZuptMeasurement(
+            timestamp_ns=520_000_000,
+            zero_velocity_variance_mps2=0.01,
+            stationary_flag=True,
+            stationary_flag_timestamp_ns=250_000_000,
+        )
+    )
+
+    assert after_zupt.zupt_sample_rejected is True
+    assert after_zupt.zupt_rejected_stale is True
+    assert after_zupt.zupt_update_applied is False
+    assert after_zupt.forward_speed_mps == before_zupt.forward_speed_mps
+    assert after_zupt.zupt_rejected_stale_count == 1
+
+
+def test_stale_zupt_does_not_zero_speed(tmp_path: Path) -> None:
+    estimator: ForwardTwistEstimator = _make_estimator(tmp_path)
+
+    _learn_committed_axis(estimator)
+    before_zupt: ForwardTwistEstimate = estimator.update_imu(
+        timestamp_ns=800_000_000,
+        orientation_xyzw=IDENTITY_QUATERNION_XYZW,
+        angular_velocity_rads=QUIET_GYRO_RADS,
+        linear_acceleration_mps2=FORWARD_ACCEL_MPS2,
+    )
+    after_zupt: ForwardTwistEstimate = estimator.update_zupt(
+        measurement=ZuptMeasurement(
+            timestamp_ns=500_000_000,
+            zero_velocity_variance_mps2=0.01,
+            stationary_flag=True,
+            stationary_flag_timestamp_ns=500_000_000,
+        )
+    )
+
+    assert after_zupt.zupt_sample_rejected is True
+    assert after_zupt.zupt_rejected_stale is True
+    assert after_zupt.forward_speed_mps == before_zupt.forward_speed_mps
+
+
+def test_contradictory_motion_rejects_bad_zupt(tmp_path: Path) -> None:
+    estimator: ForwardTwistEstimator = _make_estimator(tmp_path)
+
+    _learn_committed_axis(estimator)
+    reverse_estimate: ForwardTwistEstimate = _build_negative_speed(estimator)
+    rejected_estimate: ForwardTwistEstimate = estimator.update_zupt(
+        measurement=ZuptMeasurement(
+            timestamp_ns=710_000_000,
+            zero_velocity_variance_mps2=0.01,
+            stationary_flag=True,
+            stationary_flag_timestamp_ns=710_000_000,
+        )
+    )
+
+    assert reverse_estimate.forward_speed_mps < 0.0
+    assert rejected_estimate.zupt_sample_rejected is True
+    assert rejected_estimate.zupt_rejected_motion_contradiction is True
+    assert rejected_estimate.zupt_update_applied is False
+    assert rejected_estimate.forward_speed_mps == reverse_estimate.forward_speed_mps
+    assert rejected_estimate.zupt_rejected_motion_count == 1
+
+
+def test_reverse_motion_is_not_collapsed_by_mistimed_zupt(tmp_path: Path) -> None:
+    estimator: ForwardTwistEstimator = _make_estimator(tmp_path)
+
+    _learn_committed_axis(estimator)
+    reverse_estimate: ForwardTwistEstimate = _build_negative_speed(estimator)
+    after_stale_zupt: ForwardTwistEstimate = estimator.update_zupt(
+        measurement=ZuptMeasurement(
+            timestamp_ns=450_000_000,
+            zero_velocity_variance_mps2=0.01,
+            stationary_flag=True,
+            stationary_flag_timestamp_ns=450_000_000,
+        )
+    )
+
+    assert reverse_estimate.forward_speed_mps < -0.1
+    assert after_stale_zupt.zupt_sample_rejected is True
+    assert after_stale_zupt.zupt_rejected_stale is True
+    assert after_stale_zupt.forward_speed_mps < -0.1
+    assert math.isclose(
+        after_stale_zupt.forward_speed_mps,
+        reverse_estimate.forward_speed_mps,
+        abs_tol=1.0e-9,
+    )
 
 
 def test_persistence_payload_matches_expected_shape(tmp_path: Path) -> None:

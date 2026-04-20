@@ -50,6 +50,14 @@ class ForwardTwistConfig:
         turn_direction_alignment_threshold: minimum sign-aligned horizontal
             acceleration directional agreement in [0, 1] before the fused
             detector treats motion as inconsistent with straight-axis learning
+        zupt_freshness_window_sec: maximum allowed age between the latest IMU
+            sample and a candidate ZUPT or `zupt_flag` sample before the
+            zero-speed correction is rejected as stale
+        zupt_motion_reject_accel_threshold_mps2: projected forward-axis
+            acceleration magnitude above which a fresh ZUPT is treated as
+            contradictory to current motion and rejected
+        zupt_motion_reject_speed_threshold_mps: signed speed magnitude above
+            which a contradictory fresh ZUPT is rejected more aggressively
         persistence_write_on_checkpoint: true when committed checkpoints should
             be persisted to disk
     """
@@ -68,6 +76,9 @@ class ForwardTwistConfig:
     turn_rate_threshold_rads: float = 0.35
     turn_accel_threshold_mps2: float = 0.35
     turn_direction_alignment_threshold: float = 0.55
+    zupt_freshness_window_sec: float = 0.20
+    zupt_motion_reject_accel_threshold_mps2: float = 0.35
+    zupt_motion_reject_speed_threshold_mps: float = 0.15
     persistence_write_on_checkpoint: bool = True
 
 
@@ -142,6 +153,26 @@ class ForwardTwistEstimate:
         forward_axis: learned public forward-axis state
         learning_state: candidate-versus-committed learning snapshot
         turn_detected: true when the latest IMU sample was classified as a turn
+        latest_zupt_flag_age_sec: age in seconds between the newest IMU sample
+            and the most recent `zupt_flag`, or None when unavailable
+        latest_zupt_age_sec: age in seconds between the newest IMU sample and
+            the most recent `zupt`, or None when unavailable
+        zupt_update_applied: true when the latest ZUPT correction changed the
+            scalar speed state
+        zupt_rejected_stale: true when the latest candidate ZUPT correction was
+            rejected because the `zupt` or its paired flag were too old
+        zupt_rejected_motion_contradiction: true when the latest candidate ZUPT
+            correction was rejected because recent IMU motion contradicted
+            stationarity
+        zupt_measurement_variance_used_mps2: effective scalar zero-speed
+            variance used for the latest candidate correction, or None when no
+            fresh candidate was available
+        zupt_kalman_gain: scalar Kalman gain used for the latest applied
+            zero-speed correction, or 0 when none was applied
+        zupt_applied_count: cumulative count of applied zero-speed corrections
+        zupt_rejected_stale_count: cumulative count of stale ZUPT rejections
+        zupt_rejected_motion_count: cumulative count of contradictory-motion
+            ZUPT rejections
         imu_sample_rejected: true when the triggering IMU update was rejected
             or deterministically dropped
         zupt_sample_rejected: true when the triggering ZUPT update was
@@ -155,6 +186,16 @@ class ForwardTwistEstimate:
     forward_axis: ForwardAxisState
     learning_state: LearningState
     turn_detected: bool
+    latest_zupt_flag_age_sec: Optional[float]
+    latest_zupt_age_sec: Optional[float]
+    zupt_update_applied: bool
+    zupt_rejected_stale: bool
+    zupt_rejected_motion_contradiction: bool
+    zupt_measurement_variance_used_mps2: Optional[float]
+    zupt_kalman_gain: float
+    zupt_applied_count: int
+    zupt_rejected_stale_count: int
+    zupt_rejected_motion_count: int
     imu_sample_rejected: bool
     zupt_sample_rejected: bool
 
@@ -221,8 +262,11 @@ class ZuptMeasurement:
         timestamp_ns: measurement timestamp in ns
         zero_velocity_variance_mps2: scalar zero-velocity variance in m^2/s^2
         stationary_flag: optional stationarity flag paired from `zupt_flag`
+        stationary_flag_timestamp_ns: timestamp of the paired `zupt_flag`, or
+            None when unavailable
     """
 
     timestamp_ns: int
     zero_velocity_variance_mps2: float
     stationary_flag: Optional[bool]
+    stationary_flag_timestamp_ns: Optional[int] = None
