@@ -19,8 +19,11 @@ from oasis_control.localization.ahrs.processing.attitude_uncertainty import (
 from oasis_control.localization.ahrs.processing.attitude_uncertainty import (
     AttitudeUncertaintyEstimate,
 )
-from oasis_control.localization.common.measurements.tilt_covariance import (
-    gravity_covariance_to_tilt_variance_rad2,
+from oasis_control.localization.common.measurements.gravity_observable_attitude import (
+    GravityObservableAttitudeVariance,
+)
+from oasis_control.localization.common.measurements.gravity_observable_attitude import (
+    gravity_covariance_to_roll_pitch_variance_rad2,
 )
 
 
@@ -42,21 +45,45 @@ def test_roll_and_pitch_variance_comes_from_gravity_covariance() -> None:
         gravity_covariance_mps2_2=gravity_covariance_mps2_2,
     )
 
-    expected_variance_rad2: float = gravity_covariance_to_tilt_variance_rad2(
-        gravity_mps2=gravity_mps2,
-        gravity_covariance_mps2_2=gravity_covariance_mps2_2,
+    expected_variance: GravityObservableAttitudeVariance = (
+        gravity_covariance_to_roll_pitch_variance_rad2(
+            gravity_mps2=gravity_mps2,
+            gravity_covariance_mps2_2=gravity_covariance_mps2_2,
+        )
     )
 
     assert estimate.orientation_covariance_rad2 is not None
     assert estimate.orientation_covariance_unknown is False
     assert math.isclose(
         estimate.orientation_covariance_rad2[0][0],
-        expected_variance_rad2,
+        expected_variance.roll_variance_rad2,
         abs_tol=1.0e-12,
     )
     assert math.isclose(
         estimate.orientation_covariance_rad2[1][1],
-        expected_variance_rad2,
+        expected_variance.pitch_variance_rad2,
+        abs_tol=1.0e-12,
+    )
+
+
+def test_gravity_covariance_maps_to_shared_roll_pitch_variance() -> None:
+    gravity_mps2: tuple[float, float, float] = (0.0, 0.0, -9.81)
+    gravity_covariance_mps2_2: tuple[tuple[float, float, float], ...] = (
+        (0.04, 0.0, 0.0),
+        (0.0, 0.09, 0.0),
+        (0.0, 0.0, 0.01),
+    )
+
+    expected_variance: GravityObservableAttitudeVariance = (
+        gravity_covariance_to_roll_pitch_variance_rad2(
+            gravity_mps2=gravity_mps2,
+            gravity_covariance_mps2_2=gravity_covariance_mps2_2,
+        )
+    )
+
+    assert math.isclose(
+        expected_variance.roll_variance_rad2,
+        expected_variance.pitch_variance_rad2,
         abs_tol=1.0e-12,
     )
 
