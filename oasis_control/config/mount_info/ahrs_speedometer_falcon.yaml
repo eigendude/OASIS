@@ -1,18 +1,18 @@
 version: 1
-created_unix_ns: 1776735758306888494
+created_unix_ns: 1776800408515919164
 host: falcon
 estimator: ahrs_speedometer
 valid: true
-forward_yaw_rad: 0.031076045848440207
+forward_yaw_rad: -0.0034412762464555804
 forward_axis:
-- 0.9995171785449756
-- 0.031071044293545364
+- 0.9999940788147412
+- -0.003441269454308172
 - 0.0
 fit_sample_count: 10
-checkpoint_count: 68
-confidence: 0.8577302501361397
-residual: 0.07113487493193014
-score: 0.7967157160673722
-uncertainty_forward_yaw_rad: 0.08434149330663415
+checkpoint_count: 47
+confidence: 0.7647845702175129
+residual: 0.11760771489124358
+score: 0.6748400045301494
+uncertainty_forward_yaw_rad: 0.10844709073610209
 loaded_startup_capable: true
 last_update_reason: candidate_axis_checkpoint_commit
