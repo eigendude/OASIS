@@ -822,8 +822,8 @@ class AhrsNode(rclpy.node.Node):
             )
 
         session_zeroed_orientation_xyzw: Quaternion = quaternion_multiply_xyzw(
-            self._session_yaw_offset_xyzw,
             mounted_imu_sample.orientation_xyzw,
+            self._session_yaw_offset_xyzw,
         )
         normalized_orientation_xyzw: Optional[Quaternion] = normalize_quaternion_xyzw(
             session_zeroed_orientation_xyzw

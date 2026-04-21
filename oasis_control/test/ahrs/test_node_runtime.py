@@ -23,6 +23,7 @@ from oasis_control.localization.ahrs.processing.boot_mounting_calibrator import 
     BootMountingCalibrator,
 )
 from oasis_control.localization.ahrs_tilt_estimator import AhrsTiltEstimator
+from oasis_control.localization.common.algebra.quat import quaternion_conjugate_xyzw
 from oasis_msgs.msg import AhrsStatus as AhrsStatusMsg
 
 from ._node_test_helpers import FakeTfBuffer
@@ -468,7 +469,7 @@ def test_runtime_mounting_reduces_raw_driver_tilt_for_level_base() -> None:
         )
 
         raw_tilt = tilt_estimator.update(
-            orientation_xyzw=raw_driver_orientation_xyzw,
+            orientation_xyzw=quaternion_conjugate_xyzw(raw_driver_orientation_xyzw),
         )
         mounted_message: ImuMsg = imu_pub.messages[-1]
         mounted_tilt = tilt_estimator.update(
@@ -486,6 +487,44 @@ def test_runtime_mounting_reduces_raw_driver_tilt_for_level_base() -> None:
         assert abs(raw_tilt.pitch_rad) > math.radians(1.0)
         assert math.isclose(mounted_tilt.roll_rad, 0.0, abs_tol=1.0e-6)
         assert math.isclose(mounted_tilt.pitch_rad, 0.0, abs_tol=1.0e-6)
+    finally:
+        node.stop()
+
+
+def test_session_yaw_zero_preserves_tilt_roll_pitch_for_ahrs_tilt() -> None:
+    node, _, imu_pub, _, _ = make_node(
+        FakeTfBuffer(make_mounting_transform((0.0, 0.0, 0.0, 1.0)))
+    )
+    tilt_estimator = AhrsTiltEstimator()
+
+    try:
+        node._handle_gravity(make_gravity_message())
+        node._handle_imu(
+            make_imu_message(
+                quaternion_xyzw=_driver_quaternion_from_mounted_roll_pitch_yaw_rad(
+                    roll_rad=math.radians(7.9),
+                    pitch_rad=math.radians(3.0),
+                    yaw_rad=math.radians(40.0),
+                ),
+                timestamp_ns=1_000_000_000,
+            )
+        )
+
+        assert len(imu_pub.messages) == 1
+
+        mounted_message: ImuMsg = imu_pub.messages[-1]
+        mounted_tilt = tilt_estimator.update(
+            orientation_xyzw=(
+                float(mounted_message.orientation.x),
+                float(mounted_message.orientation.y),
+                float(mounted_message.orientation.z),
+                float(mounted_message.orientation.w),
+            ),
+        )
+
+        assert mounted_tilt is not None
+        assert math.isclose(mounted_tilt.roll_rad, math.radians(7.9), abs_tol=1.0e-6)
+        assert math.isclose(mounted_tilt.pitch_rad, math.radians(3.0), abs_tol=1.0e-6)
     finally:
         node.stop()
 
@@ -854,7 +893,11 @@ def test_odom_output_reuses_mapped_orientation_covariance_block() -> None:
 
 
 def _yaw_from_xyzw(quaternion_xyzw: tuple[float, float, float, float]) -> float:
-    x_value, y_value, z_value, w_value = quaternion_xyzw
+    x_value: float
+    y_value: float
+    z_value: float
+    w_value: float
+    x_value, y_value, z_value, w_value = quaternion_conjugate_xyzw(quaternion_xyzw)
     return math.atan2(
         2.0 * (w_value * z_value + x_value * y_value),
         1.0 - 2.0 * (y_value * y_value + z_value * z_value),
@@ -874,4 +917,33 @@ def _quaternion_from_yaw_rad(yaw_rad: float) -> tuple[float, float, float, float
 def _driver_quaternion_from_mounted_yaw_rad(
     mounted_yaw_rad: float,
 ) -> tuple[float, float, float, float]:
-    return _quaternion_from_yaw_rad(-mounted_yaw_rad)
+    return _quaternion_from_yaw_rad(mounted_yaw_rad)
+
+
+def _driver_quaternion_from_mounted_roll_pitch_yaw_rad(
+    *,
+    roll_rad: float,
+    pitch_rad: float,
+    yaw_rad: float,
+) -> tuple[float, float, float, float]:
+    half_roll_rad: float = roll_rad * 0.5
+    half_pitch_rad: float = pitch_rad * 0.5
+    half_yaw_rad: float = yaw_rad * 0.5
+
+    sin_half_roll: float = math.sin(half_roll_rad)
+    cos_half_roll: float = math.cos(half_roll_rad)
+    sin_half_pitch: float = math.sin(half_pitch_rad)
+    cos_half_pitch: float = math.cos(half_pitch_rad)
+    sin_half_yaw: float = math.sin(half_yaw_rad)
+    cos_half_yaw: float = math.cos(half_yaw_rad)
+
+    return (
+        sin_half_roll * cos_half_pitch * cos_half_yaw
+        - cos_half_roll * sin_half_pitch * sin_half_yaw,
+        cos_half_roll * sin_half_pitch * cos_half_yaw
+        + sin_half_roll * cos_half_pitch * sin_half_yaw,
+        cos_half_roll * cos_half_pitch * sin_half_yaw
+        - sin_half_roll * sin_half_pitch * cos_half_yaw,
+        cos_half_roll * cos_half_pitch * cos_half_yaw
+        + sin_half_roll * sin_half_pitch * sin_half_yaw,
+    )

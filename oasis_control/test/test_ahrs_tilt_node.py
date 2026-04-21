@@ -26,6 +26,7 @@ from geometry_msgs.msg import TransformStamped as TransformStampedMsg
 from sensor_msgs.msg import Imu as ImuMsg
 from tf2_ros import TransformException
 
+from oasis_control.localization.common.algebra.quat import quaternion_conjugate_xyzw
 from oasis_control.localization.common.measurements.tilt_covariance import (
     gravity_covariance_to_tilt_variance_rad2,
 )
@@ -87,7 +88,7 @@ def test_tilt_mean_still_comes_from_ahrs_orientation() -> None:
         )
         node._handle_imu(
             make_imu_message(
-                orientation_xyzw=quaternion_from_roll_pitch_yaw(
+                orientation_xyzw=world_to_body_quaternion_from_roll_pitch_yaw(
                     roll_rad=math.radians(15.0),
                     pitch_rad=math.radians(-10.0),
                     yaw_rad=math.radians(75.0),
@@ -103,6 +104,64 @@ def test_tilt_mean_still_comes_from_ahrs_orientation() -> None:
         roll_rad, pitch_rad, yaw_rad = quaternion_to_euler(fake_pub.messages[-1])
         assert math.isclose(roll_rad, math.radians(15.0), abs_tol=1.0e-6)
         assert math.isclose(pitch_rad, math.radians(-10.0), abs_tol=1.0e-6)
+        assert math.isclose(yaw_rad, 0.0, abs_tol=1.0e-6)
+    finally:
+        node.stop()
+
+
+def test_yaw_removal_preserves_roll_pitch_for_world_to_body_ahrs_input() -> None:
+    node: AhrsTiltNode = AhrsTiltNode(tf_buffer=FakeTfBuffer(make_mounting_transform()))
+    fake_pub: FakePublisher = FakePublisher()
+    node._tilt_pub = fake_pub
+
+    try:
+        node._handle_imu(
+            make_imu_message(
+                orientation_xyzw=world_to_body_quaternion_from_roll_pitch_yaw(
+                    roll_rad=math.radians(7.9),
+                    pitch_rad=math.radians(3.0),
+                    yaw_rad=math.radians(40.0),
+                )
+            )
+        )
+
+        assert len(fake_pub.messages) == 1
+
+        roll_rad: float
+        pitch_rad: float
+        yaw_rad: float
+        roll_rad, pitch_rad, yaw_rad = quaternion_to_euler(fake_pub.messages[-1])
+        assert math.isclose(roll_rad, math.radians(7.9), abs_tol=1.0e-6)
+        assert math.isclose(pitch_rad, math.radians(3.0), abs_tol=1.0e-6)
+        assert math.isclose(yaw_rad, 0.0, abs_tol=1.0e-6)
+    finally:
+        node.stop()
+
+
+def test_prior_fake_79_degree_tilt_case_is_fixed() -> None:
+    node: AhrsTiltNode = AhrsTiltNode(tf_buffer=FakeTfBuffer(make_mounting_transform()))
+    fake_pub: FakePublisher = FakePublisher()
+    node._tilt_pub = fake_pub
+
+    try:
+        node._handle_imu(
+            make_imu_message(
+                orientation_xyzw=world_to_body_quaternion_from_roll_pitch_yaw(
+                    roll_rad=math.radians(7.9),
+                    pitch_rad=0.0,
+                    yaw_rad=math.radians(30.0),
+                )
+            )
+        )
+
+        assert len(fake_pub.messages) == 1
+
+        roll_rad: float
+        pitch_rad: float
+        yaw_rad: float
+        roll_rad, pitch_rad, yaw_rad = quaternion_to_euler(fake_pub.messages[-1])
+        assert math.isclose(roll_rad, math.radians(7.9), abs_tol=1.0e-6)
+        assert math.isclose(pitch_rad, 0.0, abs_tol=1.0e-6)
         assert math.isclose(yaw_rad, 0.0, abs_tol=1.0e-6)
     finally:
         node.stop()
@@ -131,7 +190,7 @@ def test_tilt_covariance_comes_from_gravity_not_full_ahrs_covariance() -> None:
         )
         node._handle_imu(
             make_imu_message(
-                orientation_xyzw=quaternion_from_roll_pitch_yaw(
+                orientation_xyzw=world_to_body_quaternion_from_roll_pitch_yaw(
                     roll_rad=math.radians(20.0),
                     pitch_rad=math.radians(-5.0),
                     yaw_rad=math.radians(30.0),
@@ -176,7 +235,7 @@ def test_yaw_covariance_remains_large_and_unobserved() -> None:
         node._handle_gravity(make_gravity_message())
         node._handle_imu(
             make_imu_message(
-                orientation_xyzw=quaternion_from_roll_pitch_yaw(
+                orientation_xyzw=world_to_body_quaternion_from_roll_pitch_yaw(
                     roll_rad=0.0,
                     pitch_rad=0.0,
                     yaw_rad=0.0,
@@ -198,7 +257,7 @@ def test_missing_gravity_publishes_unknown_covariance() -> None:
     try:
         node._handle_imu(
             make_imu_message(
-                orientation_xyzw=quaternion_from_roll_pitch_yaw(
+                orientation_xyzw=world_to_body_quaternion_from_roll_pitch_yaw(
                     roll_rad=math.radians(5.0),
                     pitch_rad=math.radians(3.0),
                     yaw_rad=math.radians(45.0),
@@ -222,7 +281,7 @@ def test_stale_gravity_publishes_unknown_covariance() -> None:
         node._handle_imu(
             make_imu_message(
                 timestamp_ns=1_000_000_000,
-                orientation_xyzw=quaternion_from_roll_pitch_yaw(
+                orientation_xyzw=world_to_body_quaternion_from_roll_pitch_yaw(
                     roll_rad=0.0,
                     pitch_rad=0.0,
                     yaw_rad=0.0,
@@ -259,7 +318,7 @@ def test_level_case_covariance_matches_gravity_tilt_scale() -> None:
         )
         node._handle_imu(
             make_imu_message(
-                orientation_xyzw=quaternion_from_roll_pitch_yaw(
+                orientation_xyzw=world_to_body_quaternion_from_roll_pitch_yaw(
                     roll_rad=0.0,
                     pitch_rad=0.0,
                     yaw_rad=0.0,
@@ -312,7 +371,7 @@ def test_gravity_covariance_is_rotated_into_base_link_before_scaling() -> None:
         )
         node._handle_imu(
             make_imu_message(
-                orientation_xyzw=quaternion_from_roll_pitch_yaw(
+                orientation_xyzw=world_to_body_quaternion_from_roll_pitch_yaw(
                     roll_rad=0.0,
                     pitch_rad=0.0,
                     yaw_rad=0.0,
@@ -344,7 +403,7 @@ def test_wrong_imu_frame_is_rejected() -> None:
         node._handle_imu(
             make_imu_message(
                 frame_id="imu_link",
-                orientation_xyzw=quaternion_from_roll_pitch_yaw(
+                orientation_xyzw=world_to_body_quaternion_from_roll_pitch_yaw(
                     roll_rad=0.0,
                     pitch_rad=0.0,
                     yaw_rad=0.0,
@@ -501,11 +560,31 @@ def quaternion_from_roll_pitch_yaw(
     )
 
 
+def world_to_body_quaternion_from_roll_pitch_yaw(
+    *, roll_rad: float, pitch_rad: float, yaw_rad: float
+) -> tuple[float, float, float, float]:
+    return quaternion_conjugate_xyzw(
+        quaternion_from_roll_pitch_yaw(
+            roll_rad=roll_rad,
+            pitch_rad=pitch_rad,
+            yaw_rad=yaw_rad,
+        )
+    )
+
+
 def quaternion_to_euler(message: ImuMsg) -> tuple[float, float, float]:
-    quaternion_x: float = float(message.orientation.x)
-    quaternion_y: float = float(message.orientation.y)
-    quaternion_z: float = float(message.orientation.z)
-    quaternion_w: float = float(message.orientation.w)
+    quaternion_x: float
+    quaternion_y: float
+    quaternion_z: float
+    quaternion_w: float
+    quaternion_x, quaternion_y, quaternion_z, quaternion_w = quaternion_conjugate_xyzw(
+        (
+            float(message.orientation.x),
+            float(message.orientation.y),
+            float(message.orientation.z),
+            float(message.orientation.w),
+        )
+    )
 
     sin_roll_cos_pitch: float = 2.0 * (
         quaternion_w * quaternion_x + quaternion_y * quaternion_z

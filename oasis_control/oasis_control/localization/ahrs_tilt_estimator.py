@@ -19,9 +19,9 @@ from oasis_control.localization.common.algebra.covariance import (
     UNKNOWN_ORIENTATION_COVARIANCE,
 )
 from oasis_control.localization.common.algebra.quat import normalize_quaternion_xyzw
+from oasis_control.localization.common.algebra.quat import quaternion_conjugate_xyzw
 from oasis_control.localization.common.algebra.quat import quaternion_to_rotation_matrix
 from oasis_control.localization.common.algebra.quat import rotate_vector
-from oasis_control.localization.common.algebra.quat import transpose_matrix
 from oasis_control.localization.common.measurements.tilt_covariance import (
     gravity_covariance_to_tilt_variance_rad2,
 )
@@ -96,10 +96,11 @@ class AhrsTiltEstimator:
             return None
 
         # Meaning: world down direction expressed in base_link coordinates
-        # Why yaw-invariant: rotating world down into body removes dependence
-        # on heading and keeps only the body tilt relative to gravity
+        # Why yaw-invariant: rotating world down through canonical `q_WB`
+        # removes heading dependence and keeps only body tilt relative to
+        # gravity
         down_direction_body: tuple[float, float, float] = rotate_vector(
-            transpose_matrix(quaternion_to_rotation_matrix(quaternion_xyzw)),
+            quaternion_to_rotation_matrix(quaternion_xyzw),
             WORLD_DOWN_DIRECTION,
         )
 
@@ -110,10 +111,12 @@ class AhrsTiltEstimator:
         return AhrsTiltEstimate(
             roll_rad=roll_rad,
             pitch_rad=pitch_rad,
-            quaternion_xyzw=_quaternion_from_roll_pitch_yaw(
-                roll_rad=roll_rad,
-                pitch_rad=pitch_rad,
-                yaw_rad=0.0,
+            quaternion_xyzw=quaternion_conjugate_xyzw(
+                _quaternion_from_roll_pitch_yaw(
+                    roll_rad=roll_rad,
+                    pitch_rad=pitch_rad,
+                    yaw_rad=0.0,
+                )
             ),
             orientation_covariance=_make_tilt_orientation_covariance(
                 gravity_mps2=gravity_mps2,
