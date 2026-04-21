@@ -35,19 +35,15 @@ class AhrsDiagnosticsState:
         gravity_rejection_count: count of gravity consistency checks rejected by
             policy
         has_gravity: true once a valid gravity sample has been cached
-        has_mounting: true once T_BI has been resolved and cached
+        has_mounting: true once T_BI has been solved and cached
         gravity_gated_in: true when the latest gravity consistency check passed
         gravity_rejected: true when the latest gravity consistency check failed
         last_bad_imu_frame_id: most recent IMU frame mismatch
         last_bad_gravity_frame_id: most recent gravity frame mismatch
         last_accepted_imu_timestamp_ns: newest accepted IMU timestamp
         last_accepted_gravity_timestamp_ns: newest accepted gravity timestamp
-        transform_lookup_failure_count: count of TF lookup failures while
-            sourcing T_BI
-        invalid_mounting_transform_count: count of invalid mounting transforms
-            returned by TF
-        last_mounting_lookup_error: short text from the most recent lookup or
-            transform validity failure
+        last_mounting_lookup_error: short text from the latest mounting
+            availability state
         last_gravity_rejection_reason: short text from the latest gravity
             consistency rejection
         last_gravity_residual: most recent gravity consistency summary
@@ -68,8 +64,6 @@ class AhrsDiagnosticsState:
     last_bad_gravity_frame_id: str = ""
     last_accepted_imu_timestamp_ns: Optional[int] = None
     last_accepted_gravity_timestamp_ns: Optional[int] = None
-    transform_lookup_failure_count: int = 0
-    invalid_mounting_transform_count: int = 0
     last_mounting_lookup_error: str = ""
     last_gravity_rejection_reason: str = ""
     last_gravity_residual: Optional[GravityDirectionResidual] = None
@@ -90,16 +84,13 @@ class AhrsDiagnosticsSnapshot:
             policy
         gravity_rejection_count: count of gravity consistency rejections
         has_gravity: true when a valid gravity sample is cached
-        has_mounting: true when T_BI has been resolved and cached
+        has_mounting: true when T_BI has been solved and cached
         gravity_gated_in: true when the latest gravity consistency check passed
         gravity_rejected: true when the latest gravity consistency check failed
         gravity_residual_norm: latest gravity residual norm or NaN
         gravity_mahalanobis_distance: latest gravity Mahalanobis distance or NaN
-        transform_lookup_failure_count: count of T_BI TF lookup failures
-        invalid_mounting_transform_count: count of invalid transforms returned
-            by TF
-        last_mounting_lookup_error: short text from the latest mounting lookup
-            problem
+        last_mounting_lookup_error: short text from the latest mounting
+            availability state
         last_gravity_rejection_reason: short text from the latest gravity
             consistency rejection
     """
@@ -117,8 +108,6 @@ class AhrsDiagnosticsSnapshot:
     gravity_rejected: bool
     gravity_residual_norm: float
     gravity_mahalanobis_distance: float
-    transform_lookup_failure_count: int
-    invalid_mounting_transform_count: int
     last_mounting_lookup_error: str
     last_gravity_rejection_reason: str
 
@@ -148,8 +137,6 @@ def snapshot_diagnostics(state: AhrsDiagnosticsState) -> AhrsDiagnosticsSnapshot
         gravity_rejected=state.gravity_rejected,
         gravity_residual_norm=gravity_residual_norm,
         gravity_mahalanobis_distance=gravity_mahalanobis_distance,
-        transform_lookup_failure_count=state.transform_lookup_failure_count,
-        invalid_mounting_transform_count=state.invalid_mounting_transform_count,
         last_mounting_lookup_error=state.last_mounting_lookup_error,
         last_gravity_rejection_reason=state.last_gravity_rejection_reason,
     )

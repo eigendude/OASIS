@@ -19,8 +19,9 @@ from geometry_msgs.msg import (
 )
 from geometry_msgs.msg import TransformStamped as TransformStampedMsg
 from sensor_msgs.msg import Imu as ImuMsg
-from tf2_ros import TransformException
 
+from oasis_control.localization.common.frames.mounting import MountingTransform
+from oasis_control.localization.common.frames.mounting import make_mounting_transform
 from oasis_control.nodes.ahrs_node import AhrsNode
 from oasis_msgs.msg import AhrsStatus as AhrsStatusMsg
 
@@ -45,34 +46,14 @@ class FakeTransformBroadcaster:
         self.transforms.append([transforms])
 
 
-class FakeTfBuffer:
-    def __init__(self, transform_message: TransformStampedMsg | None) -> None:
-        self._transform_message: TransformStampedMsg | None = transform_message
-        self.lookup_count: int = 0
-
-    def lookup_transform(
-        self, target_frame: str, source_frame: str, time: Any
-    ) -> TransformStampedMsg:
-        self.lookup_count += 1
-        if self._transform_message is None:
-            raise TransformException(
-                f"missing transform {target_frame} <- {source_frame}"
-            )
-
-        return self._transform_message
-
-
-def make_mounting_transform(
+def make_cached_mounting_transform(
     quaternion_xyzw: tuple[float, float, float, float],
-) -> TransformStampedMsg:
-    transform_message: TransformStampedMsg = TransformStampedMsg()
-    transform_message.header.frame_id = "base_link"
-    transform_message.child_frame_id = "imu_link"
-    transform_message.transform.rotation.x = quaternion_xyzw[0]
-    transform_message.transform.rotation.y = quaternion_xyzw[1]
-    transform_message.transform.rotation.z = quaternion_xyzw[2]
-    transform_message.transform.rotation.w = quaternion_xyzw[3]
-    return transform_message
+) -> MountingTransform:
+    return make_mounting_transform(
+        parent_frame_id="base_link",
+        child_frame_id="imu_link",
+        quaternion_xyzw=quaternion_xyzw,
+    )
 
 
 def make_imu_message(
@@ -186,7 +167,7 @@ def make_gravity_message(
 
 
 def make_node(
-    fake_tf_buffer: FakeTfBuffer,
+    mounting_transform: MountingTransform | None = None,
 ) -> tuple[
     AhrsNode,
     FakePublisher,
@@ -202,10 +183,11 @@ def make_node(
     fake_tf_broadcaster: FakeTransformBroadcaster = FakeTransformBroadcaster()
 
     node: AhrsNode = AhrsNode(
-        tf_buffer=fake_tf_buffer,
         tf_broadcaster=fake_tf_broadcaster,
         enable_status_timer=False,
     )
+    node._mounting_transform = mounting_transform
+    node._diagnostics.has_mounting = mounting_transform is not None
     node._diag_pub = fake_diag_pub
     node._gravity_pub = fake_gravity_pub
     node._imu_pub = fake_imu_pub

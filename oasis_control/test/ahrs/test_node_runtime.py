@@ -31,11 +31,10 @@ from oasis_control.localization.common.measurements.tilt_covariance import (
 )
 from oasis_msgs.msg import AhrsStatus as AhrsStatusMsg
 
-from ._node_test_helpers import FakeTfBuffer
 from ._node_test_helpers import last_diag
+from ._node_test_helpers import make_cached_mounting_transform
 from ._node_test_helpers import make_gravity_message
 from ._node_test_helpers import make_imu_message
-from ._node_test_helpers import make_mounting_transform
 from ._node_test_helpers import make_node
 
 
@@ -82,7 +81,7 @@ def test_valid_imu_publishes_mounted_outputs_and_tf() -> None:
         math.cos(math.pi / 4.0),
     )
     node, diag_pub, gravity_pub, imu_pub, odom_pub, tf_broadcaster = make_node(
-        FakeTfBuffer(make_mounting_transform(quarter_turn_about_z_xyzw))
+        make_cached_mounting_transform(quarter_turn_about_z_xyzw)
     )
 
     try:
@@ -152,7 +151,7 @@ def test_valid_imu_publishes_mounted_outputs_and_tf() -> None:
 
 def test_session_yaw_zero_tracks_subsequent_yaw_relative_to_startup() -> None:
     node, _, _, imu_pub, odom_pub, tf_broadcaster = make_node(
-        FakeTfBuffer(make_mounting_transform((0.0, 0.0, 0.0, 1.0)))
+        make_cached_mounting_transform((0.0, 0.0, 0.0, 1.0))
     )
 
     try:
@@ -297,7 +296,7 @@ def test_gravity_output_is_rotated_into_base_link_with_source_timestamp() -> Non
         math.cos(math.pi / 4.0),
     )
     node, _, gravity_pub, _, _, _ = make_node(
-        FakeTfBuffer(make_mounting_transform(quarter_turn_about_z_xyzw))
+        make_cached_mounting_transform(quarter_turn_about_z_xyzw)
     )
 
     try:
@@ -329,7 +328,7 @@ def test_gravity_output_rotates_linear_covariance_block_into_base_link() -> None
         math.cos(math.pi / 4.0),
     )
     node, _, gravity_pub, _, _, _ = make_node(
-        FakeTfBuffer(make_mounting_transform(quarter_turn_about_z_xyzw))
+        make_cached_mounting_transform(quarter_turn_about_z_xyzw)
     )
 
     try:
@@ -400,7 +399,7 @@ def test_gravity_output_rotates_linear_covariance_block_into_base_link() -> None
 
 def test_stale_or_missing_gravity_does_not_publish_mounted_gravity() -> None:
     node, _, gravity_pub, _, _, _ = make_node(
-        FakeTfBuffer(make_mounting_transform((0.0, 0.0, 0.0, 1.0)))
+        make_cached_mounting_transform((0.0, 0.0, 0.0, 1.0))
     )
 
     try:
@@ -416,7 +415,7 @@ def test_stale_or_missing_gravity_does_not_publish_mounted_gravity() -> None:
 
 
 def test_boot_mounting_calibration_publishes_measured_fixed_tf() -> None:
-    node, diag_pub, _, imu_pub, odom_pub, tf_broadcaster = make_node(FakeTfBuffer(None))
+    node, diag_pub, _, imu_pub, odom_pub, tf_broadcaster = make_node()
     node._mounting_calibrator = BootMountingCalibrator(
         parent_frame_id="base_link",
         child_frame_id="imu_link",
@@ -555,7 +554,7 @@ def test_boot_mounting_calibration_publishes_measured_fixed_tf() -> None:
 
 
 def test_runtime_mounting_reduces_raw_driver_tilt_for_level_base() -> None:
-    node, _, _, imu_pub, _, _ = make_node(FakeTfBuffer(None))
+    node, _, _, imu_pub, _, _ = make_node()
     node._mounting_calibrator = BootMountingCalibrator(
         parent_frame_id="base_link",
         child_frame_id="imu_link",
@@ -612,7 +611,7 @@ def test_runtime_mounting_reduces_raw_driver_tilt_for_level_base() -> None:
 
 def test_diag_status_changes_as_inputs_arrive() -> None:
     node, diag_pub, _, _, _, _ = make_node(
-        FakeTfBuffer(make_mounting_transform((0.0, 0.0, 0.0, 1.0)))
+        make_cached_mounting_transform((0.0, 0.0, 0.0, 1.0))
     )
 
     try:
@@ -638,7 +637,7 @@ def test_diag_status_changes_as_inputs_arrive() -> None:
 
 def test_bad_frame_updates_diagnostics_message() -> None:
     node, diag_pub, _, _, _, _ = make_node(
-        FakeTfBuffer(make_mounting_transform((0.0, 0.0, 0.0, 1.0)))
+        make_cached_mounting_transform((0.0, 0.0, 0.0, 1.0))
     )
 
     try:
@@ -656,7 +655,7 @@ def test_bad_frame_updates_diagnostics_message() -> None:
 
 def test_latest_gravity_sample_is_used_deterministically() -> None:
     node, diag_pub, _, _, _, _ = make_node(
-        FakeTfBuffer(make_mounting_transform((0.0, 0.0, 0.0, 1.0)))
+        make_cached_mounting_transform((0.0, 0.0, 0.0, 1.0))
     )
 
     try:
@@ -671,7 +670,7 @@ def test_latest_gravity_sample_is_used_deterministically() -> None:
 
 
 def test_mounting_unavailable_is_reported_without_outputs() -> None:
-    node, diag_pub, gravity_pub, imu_pub, odom_pub, _ = make_node(FakeTfBuffer(None))
+    node, diag_pub, gravity_pub, imu_pub, odom_pub, _ = make_node()
 
     try:
         node._handle_gravity(make_gravity_message())
@@ -682,15 +681,18 @@ def test_mounting_unavailable_is_reported_without_outputs() -> None:
         assert len(odom_pub.messages) == 0
         assert last_diag(diag_pub).status == AhrsStatusMsg.STATUS_MOUNTING_UNAVAILABLE
         assert last_diag(diag_pub).has_mounting is False
-        assert last_diag(diag_pub).transform_lookup_failure_count == 1
-        assert last_diag(diag_pub).status_text == "Mounting transform unavailable"
+        assert (
+            last_diag(diag_pub).last_mounting_lookup_error
+            == "boot mounting calibration in progress"
+        )
+        assert last_diag(diag_pub).status_text == "Mounting calibration not solved"
     finally:
         node.stop()
 
 
 def test_stale_imu_does_not_publish_new_output() -> None:
     node, diag_pub, gravity_pub, imu_pub, odom_pub, _ = make_node(
-        FakeTfBuffer(make_mounting_transform((0.0, 0.0, 0.0, 1.0)))
+        make_cached_mounting_transform((0.0, 0.0, 0.0, 1.0))
     )
 
     try:
@@ -713,7 +715,7 @@ def test_stale_imu_does_not_publish_new_output() -> None:
 
 def test_stale_gravity_does_not_overwrite_latest_sample() -> None:
     node, diag_pub, _, _, _, _ = make_node(
-        FakeTfBuffer(make_mounting_transform((0.0, 0.0, 0.0, 1.0)))
+        make_cached_mounting_transform((0.0, 0.0, 0.0, 1.0))
     )
 
     try:
@@ -739,7 +741,7 @@ def test_stale_gravity_does_not_overwrite_latest_sample() -> None:
 
 def test_gravity_rejection_updates_diagnostics_message() -> None:
     node, diag_pub, _, _, _, _ = make_node(
-        FakeTfBuffer(make_mounting_transform((0.0, 0.0, 0.0, 1.0)))
+        make_cached_mounting_transform((0.0, 0.0, 0.0, 1.0))
     )
 
     try:
@@ -757,7 +759,7 @@ def test_gravity_rejection_updates_diagnostics_message() -> None:
 
 def test_resting_gravity_with_overconfident_covariance_gates_in() -> None:
     node, diag_pub, _, _, _, _ = make_node(
-        FakeTfBuffer(make_mounting_transform((0.0, 0.0, 0.0, 1.0)))
+        make_cached_mounting_transform((0.0, 0.0, 0.0, 1.0))
     )
 
     try:
@@ -816,65 +818,24 @@ def test_resting_gravity_with_overconfident_covariance_gates_in() -> None:
         node.stop()
 
 
-def test_repeated_mounting_lookup_failures_increment_diagnostics_message() -> None:
-    fake_tf_buffer: FakeTfBuffer = FakeTfBuffer(None)
-    node, diag_pub, _, _, _, _ = make_node(fake_tf_buffer)
+def test_unsolved_mounting_reports_calibration_progress() -> None:
+    node, diag_pub, _, _, _, _ = make_node()
 
     try:
-        node._handle_gravity(make_gravity_message())
-        node._handle_imu(make_imu_message(timestamp_ns=1_000_000_000))
-        node._handle_imu(make_imu_message(timestamp_ns=2_000_000_000))
+        node._handle_gravity(make_gravity_message(timestamp_ns=1_000_000_000))
+        node._handle_imu(make_imu_message(timestamp_ns=1_100_000_000))
 
-        assert fake_tf_buffer.lookup_count == 2
-        assert last_diag(diag_pub).transform_lookup_failure_count == 2
-        assert "missing transform" in last_diag(diag_pub).last_mounting_lookup_error
-    finally:
-        node.stop()
-
-
-def test_invalid_mounting_quaternion_is_accounted_for() -> None:
-    node, diag_pub, gravity_pub, imu_pub, odom_pub, _ = make_node(
-        FakeTfBuffer(make_mounting_transform((0.0, 0.0, 0.0, 0.0)))
-    )
-
-    try:
-        node._handle_gravity(make_gravity_message())
-        node._handle_imu(make_imu_message())
-
-        assert len(gravity_pub.messages) == 0
-        assert len(imu_pub.messages) == 0
-        assert len(odom_pub.messages) == 0
-        assert last_diag(diag_pub).invalid_mounting_transform_count == 1
         assert (
             last_diag(diag_pub).last_mounting_lookup_error
-            == "mounting quaternion is non-finite or zero-norm"
+            == "boot mounting calibration in progress"
         )
-        assert last_diag(diag_pub).status_text == "Mounting transform unavailable"
-    finally:
-        node.stop()
-
-
-def test_successful_mounting_lookup_is_cached() -> None:
-    fake_tf_buffer: FakeTfBuffer = FakeTfBuffer(
-        make_mounting_transform((0.0, 0.0, 0.0, 1.0))
-    )
-    node, diag_pub, _, _, _, _ = make_node(fake_tf_buffer)
-
-    try:
-        node._handle_gravity(make_gravity_message())
-        node._handle_imu(make_imu_message(timestamp_ns=1_000_000_000))
-        node._handle_imu(make_imu_message(timestamp_ns=2_000_000_000))
-
-        assert fake_tf_buffer.lookup_count == 1
-        assert last_diag(diag_pub).has_mounting is True
-        assert last_diag(diag_pub).transform_lookup_failure_count == 0
     finally:
         node.stop()
 
 
 def test_imu_output_replaces_unknown_upstream_covariance_with_honest_split() -> None:
     node, _, _, imu_pub, _, _ = make_node(
-        FakeTfBuffer(make_mounting_transform((0.0, 0.0, 0.0, 1.0)))
+        make_cached_mounting_transform((0.0, 0.0, 0.0, 1.0))
     )
 
     try:
@@ -918,7 +879,7 @@ def test_imu_output_uses_gravity_tilt_scale_not_upstream_orientation_buckets() -
         math.cos(math.pi / 4.0),
     )
     node, _, _, imu_pub, _, _ = make_node(
-        FakeTfBuffer(make_mounting_transform(quarter_turn_about_z_xyzw))
+        make_cached_mounting_transform(quarter_turn_about_z_xyzw)
     )
 
     try:
@@ -964,7 +925,7 @@ def test_odom_output_reuses_honest_published_orientation_covariance_block() -> N
         math.cos(math.pi / 4.0),
     )
     node, _, _, _, odom_pub, _ = make_node(
-        FakeTfBuffer(make_mounting_transform(quarter_turn_about_z_xyzw))
+        make_cached_mounting_transform(quarter_turn_about_z_xyzw)
     )
 
     try:
@@ -1026,7 +987,7 @@ def test_odom_output_reuses_honest_published_orientation_covariance_block() -> N
 
 def test_imu_output_yaw_variance_tracks_recent_yaw_jitter_with_wrap() -> None:
     node, _, _, imu_pub, _, _ = make_node(
-        FakeTfBuffer(make_mounting_transform((0.0, 0.0, 0.0, 1.0)))
+        make_cached_mounting_transform((0.0, 0.0, 0.0, 1.0))
     )
 
     try:

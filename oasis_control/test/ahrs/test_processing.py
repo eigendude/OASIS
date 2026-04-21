@@ -189,8 +189,6 @@ def test_snapshot_diagnostics_uses_nan_without_residual() -> None:
         gravity_rejection_count=3,
         gravity_gated_in=False,
         gravity_rejected=True,
-        transform_lookup_failure_count=4,
-        invalid_mounting_transform_count=5,
         last_mounting_lookup_error="lookup_error",
         last_gravity_rejection_reason="residual_norm",
     )
@@ -204,8 +202,6 @@ def test_snapshot_diagnostics_uses_nan_without_residual() -> None:
     assert snapshot.gravity_rejection_count == 3
     assert snapshot.gravity_gated_in is False
     assert snapshot.gravity_rejected is True
-    assert snapshot.transform_lookup_failure_count == 4
-    assert snapshot.invalid_mounting_transform_count == 5
     assert snapshot.last_mounting_lookup_error == "lookup_error"
     assert snapshot.last_gravity_rejection_reason == "residual_norm"
 

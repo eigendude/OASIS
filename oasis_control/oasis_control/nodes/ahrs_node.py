@@ -24,12 +24,8 @@ from geometry_msgs.msg import (
 )
 from geometry_msgs.msg import TransformStamped as TransformStampedMsg
 from nav_msgs.msg import Odometry as OdometryMsg
-from rclpy.time import Time
 from sensor_msgs.msg import Imu as ImuMsg
-from tf2_ros import Buffer
 from tf2_ros import TransformBroadcaster
-from tf2_ros import TransformException
-from tf2_ros import TransformListener
 
 from oasis_control.localization.ahrs.data.ahrs_output import AhrsOutput
 from oasis_control.localization.ahrs.data.diagnostics import AhrsDiagnosticsSnapshot
@@ -85,7 +81,6 @@ from oasis_control.localization.common.frames.mounting import MountedGravitySamp
 from oasis_control.localization.common.frames.mounting import MountedImuSample
 from oasis_control.localization.common.frames.mounting import MountingTransform
 from oasis_control.localization.common.frames.mounting import apply_mounting_to_gravity
-from oasis_control.localization.common.frames.mounting import make_mounting_transform
 from oasis_control.localization.common.measurements.gravity_direction import (
     GravityDirectionResidual,
 )
@@ -165,7 +160,6 @@ class AhrsNode(rclpy.node.Node):
     def __init__(
         self,
         *,
-        tf_buffer: Optional[Buffer] = None,
         tf_broadcaster: Optional[TransformBroadcaster] = None,
         enable_status_timer: bool = True,
     ) -> None:
@@ -279,12 +273,6 @@ class AhrsNode(rclpy.node.Node):
             callback=self._handle_imu,
             qos_profile=sensor_qos_profile,
         )
-
-        # TF buffer and listener
-        self._tf_buffer: Buffer = tf_buffer if tf_buffer is not None else Buffer()
-        self._transform_listener: Optional[TransformListener] = None
-        if tf_buffer is None:
-            self._transform_listener = TransformListener(self._tf_buffer, self)
 
         # TF broadcaster
         self._tf_broadcaster: TransformBroadcaster = (
@@ -521,12 +509,6 @@ class AhrsNode(rclpy.node.Node):
         status_message.has_mounting = status_snapshot.has_mounting
         status_message.gravity_gated_in = status_snapshot.gravity_gated_in
         status_message.gravity_rejected = status_snapshot.gravity_rejected
-        status_message.transform_lookup_failure_count = (
-            status_snapshot.transform_lookup_failure_count
-        )
-        status_message.invalid_mounting_transform_count = (
-            status_snapshot.invalid_mounting_transform_count
-        )
         status_message.last_mounting_lookup_error = (
             status_snapshot.last_mounting_lookup_error
         )
@@ -571,7 +553,7 @@ class AhrsNode(rclpy.node.Node):
             return "Waiting for gravity samples"
 
         if not self._diagnostics.has_mounting:
-            return "Mounting transform unavailable"
+            return "Mounting calibration not solved"
 
         if self._diagnostics.gravity_rejected:
             return "Gravity consistency rejected"
@@ -579,44 +561,18 @@ class AhrsNode(rclpy.node.Node):
         return "Mounted attitude output available"
 
     def _resolve_mounting(self) -> Optional[MountingTransform]:
-        if self._mounting_transform is not None:
-            self._diagnostics.has_mounting = True
-            self._diagnostics.last_mounting_lookup_error = ""
-            return self._mounting_transform
-
-        try:
-            transform_message = self._tf_buffer.lookup_transform(
-                self._base_frame_id,
-                self._imu_frame_id,
-                Time(),
-            )
-        except TransformException as error:
-            self._diagnostics.transform_lookup_failure_count += 1
+        if self._mounting_transform is None:
             self._diagnostics.has_mounting = False
-            self._diagnostics.last_mounting_lookup_error = str(error)
+            if self._diagnostics.accepted_gravity_count == 0:
+                self._diagnostics.last_mounting_lookup_error = (
+                    "waiting for boot mounting calibration"
+                )
+            else:
+                self._diagnostics.last_mounting_lookup_error = (
+                    "boot mounting calibration in progress"
+                )
             return None
 
-        quaternion_xyzw = normalize_quaternion_xyzw(
-            (
-                float(transform_message.transform.rotation.x),
-                float(transform_message.transform.rotation.y),
-                float(transform_message.transform.rotation.z),
-                float(transform_message.transform.rotation.w),
-            )
-        )
-        if quaternion_xyzw is None:
-            self._diagnostics.invalid_mounting_transform_count += 1
-            self._diagnostics.has_mounting = False
-            self._diagnostics.last_mounting_lookup_error = (
-                "mounting quaternion is non-finite or zero-norm"
-            )
-            return None
-
-        self._mounting_transform = make_mounting_transform(
-            parent_frame_id=self._base_frame_id,
-            child_frame_id=self._imu_frame_id,
-            quaternion_xyzw=quaternion_xyzw,
-        )
         self._diagnostics.has_mounting = True
         self._diagnostics.last_mounting_lookup_error = ""
         return self._mounting_transform
@@ -856,9 +812,7 @@ class AhrsNode(rclpy.node.Node):
         transform_message.header.stamp = stamp
         transform_message.header.frame_id = mounting_transform.parent_frame_id
         transform_message.child_frame_id = mounting_transform.child_frame_id
-        # Publish the stored `q_BI` directly on the `base_link -> imu_link` TF.
-        # TF lookup `lookup_transform(base_link, imu_link, ...)` then returns the
-        # same IMU-to-base rotation used by runtime mounting.
+        # Publish the stored `q_BI` directly from node-owned mounting state.
         transform_message.transform.translation.x = 0.0
         transform_message.transform.translation.y = 0.0
         transform_message.transform.translation.z = 0.0
