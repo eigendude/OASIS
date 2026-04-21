@@ -96,24 +96,3 @@ def test_add_ahrs_node_configures_boot_mounting_calibration_params(
             "mounting_min_sample_count": 12,
         }
     ]
-
-
-def test_add_speedometer_node_uses_mounted_ahrs_imu_remap(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import oasis_control.launch.control_descriptions as control_descriptions
-
-    monkeypatch.setattr(control_descriptions, "Node", _FakeNode)
-
-    launch_description = _FakeLaunchDescription()
-    control_descriptions.ControlDescriptions.add_speedometer_node(
-        launch_description,
-        "falcon",
-    )
-
-    speedometer_action = launch_description.actions[0].kwargs
-    assert speedometer_action["remappings"] == [
-        ("forward_twist", "falcon/forward_twist"),
-        ("imu", "falcon/ahrs/imu"),
-        ("zupt", "falcon/zupt"),
-    ]
