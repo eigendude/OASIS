@@ -29,14 +29,11 @@ def _make_detector() -> ZuptDetector:
     return ZuptDetector(
         ZuptDetectorConfig(
             min_stationary_sec=0.18,
-            min_moving_sec=0.05,
-            enter_smoothing_time_constant_sec=0.12,
-            linear_velocity_sigma_mps=0.06,
+            min_moving_sec=0.01,
+            stationary_linear_velocity_sigma_mps=0.06,
+            stationary_angular_velocity_sigma_rads=0.05,
             moving_linear_variance_mps2=1.0e6,
-            stationary_linear_variance_inflation=4.0,
-            angular_velocity_sigma_rads=0.05,
             moving_angular_variance_rads2=5.0e5,
-            stationary_angular_variance_inflation=3.0,
         )
     )
 
@@ -46,60 +43,37 @@ def _accepted(decision: ZuptDecision | None) -> ZuptDecision:
     return decision
 
 
-def test_quiet_stop_asserts_earlier_with_filtered_enter_evidence() -> None:
-    filtered_detector: ZuptDetector = _make_detector()
-    raw_detector: ZuptDetector = ZuptDetector(
-        ZuptDetectorConfig(
-            min_stationary_sec=0.18,
-            min_moving_sec=0.05,
-            enter_smoothing_time_constant_sec=0.0,
-            linear_velocity_sigma_mps=0.06,
-            moving_linear_variance_mps2=1.0e6,
-            stationary_linear_variance_inflation=4.0,
-            angular_velocity_sigma_rads=0.05,
-            moving_angular_variance_rads2=5.0e5,
-            stationary_angular_variance_inflation=3.0,
-        )
-    )
-
-    samples: list[
-        tuple[float, tuple[float, float, float], tuple[float, float, float]]
-    ] = [
-        (0.00, QUIET_GYRO_RADS, QUIET_ACCEL_MPS2),
-        (0.06, QUIET_GYRO_RADS, QUIET_ACCEL_MPS2),
-        (0.12, (0.07, 0.0, 0.0), QUIET_ACCEL_MPS2),
-        (0.18, QUIET_GYRO_RADS, QUIET_ACCEL_MPS2),
-    ]
-
-    filtered_result: ZuptDecision | None = None
-    raw_result: ZuptDecision | None = None
-    for timestamp_sec, gyro_rads, accel_mps2 in samples:
-        filtered_result = filtered_detector.update(timestamp_sec, gyro_rads, accel_mps2)
-        raw_result = raw_detector.update(timestamp_sec, gyro_rads, accel_mps2)
-
-    filtered_decision: ZuptDecision = _accepted(filtered_result)
-    raw_decision: ZuptDecision = _accepted(raw_result)
-
-    assert filtered_decision.stationary is True
-    assert filtered_decision.reason == "stationary_asserted_filtered"
-    assert filtered_decision.enter_evidence_source == "filtered"
-    assert filtered_decision.filtered_gyro_norm_rads < 0.06
-    assert raw_decision.stationary is False
-    assert raw_decision.reason == "enter_candidate_started"
-    assert raw_decision.enter_evidence_source == "raw"
-
-
-def test_enters_stationary_with_quiet_imu() -> None:
+def test_enters_stationary_after_quiet_dwell() -> None:
     detector: ZuptDetector = _make_detector()
 
-    _accepted(detector.update(0.0, QUIET_GYRO_RADS, QUIET_ACCEL_MPS2))
-    result: ZuptDecision = _accepted(
+    first_result: ZuptDecision = _accepted(
+        detector.update(0.0, QUIET_GYRO_RADS, QUIET_ACCEL_MPS2)
+    )
+    second_result: ZuptDecision = _accepted(
         detector.update(0.18, QUIET_GYRO_RADS, QUIET_ACCEL_MPS2)
     )
 
-    assert result.stationary is True
-    assert result.reason == "stationary_asserted_filtered"
-    assert result.enter_evidence_source == "filtered"
+    assert first_result.stationary is False
+    assert first_result.reason == "enter_candidate_started"
+    assert second_result.stationary is True
+    assert second_result.reason == "stationary_asserted"
+
+
+def test_quiet_dwell_resets_when_sample_exceeds_enter_threshold() -> None:
+    detector: ZuptDetector = _make_detector()
+
+    _accepted(detector.update(0.0, QUIET_GYRO_RADS, QUIET_ACCEL_MPS2))
+    interrupted_result: ZuptDecision = _accepted(
+        detector.update(0.10, (0.07, 0.0, 0.0), QUIET_ACCEL_MPS2)
+    )
+    final_result: ZuptDecision = _accepted(
+        detector.update(0.28, QUIET_GYRO_RADS, QUIET_ACCEL_MPS2)
+    )
+
+    assert interrupted_result.stationary is False
+    assert interrupted_result.reason == "moving"
+    assert final_result.stationary is False
+    assert final_result.reason == "enter_candidate_started"
 
 
 def test_moving_vibration_does_not_false_assert_stationary() -> None:
@@ -108,7 +82,7 @@ def test_moving_vibration_does_not_false_assert_stationary() -> None:
     samples: list[
         tuple[float, tuple[float, float, float], tuple[float, float, float]]
     ] = [
-        (0.00, (0.11, 0.0, 0.0), (0.20, 0.0, 0.0)),
+        (0.00, (0.07, 0.0, 0.0), (0.20, 0.0, 0.0)),
         (0.05, QUIET_GYRO_RADS, QUIET_ACCEL_MPS2),
         (0.10, (0.10, 0.0, 0.0), (0.24, 0.0, 0.0)),
         (0.15, QUIET_GYRO_RADS, QUIET_ACCEL_MPS2),
@@ -125,25 +99,23 @@ def test_moving_vibration_does_not_false_assert_stationary() -> None:
         )
 
     assert all(decision.stationary is False for decision in decisions)
-    assert decisions[-1].reason in {
-        "moving",
-        "enter_candidate_started",
-        "enter_candidate_pending_filtered",
-    }
+    assert decisions[-1].reason in {"moving", "enter_candidate_started"}
 
 
-def test_exits_stationary_with_loud_gyro() -> None:
+def test_exits_stationary_with_short_moving_dwell() -> None:
     detector: ZuptDetector = _make_detector()
 
     _accepted(detector.update(0.0, QUIET_GYRO_RADS, QUIET_ACCEL_MPS2))
     _accepted(detector.update(0.18, QUIET_GYRO_RADS, QUIET_ACCEL_MPS2))
 
     result: ZuptDecision = _accepted(
-        detector.update(0.23, LOUD_GYRO_RADS, QUIET_ACCEL_MPS2)
+        detector.update(0.19, LOUD_GYRO_RADS, QUIET_ACCEL_MPS2)
     )
 
     assert result.stationary is False
     assert result.reason == "stationary_cleared"
+    assert result.linear_zupt_variance_mps2 == 1.0e6
+    assert result.angular_zupt_variance_rads2 == 5.0e5
 
 
 def test_exits_stationary_with_loud_accel() -> None:
@@ -153,38 +125,52 @@ def test_exits_stationary_with_loud_accel() -> None:
     _accepted(detector.update(0.18, QUIET_GYRO_RADS, QUIET_ACCEL_MPS2))
 
     result: ZuptDecision = _accepted(
-        detector.update(0.23, QUIET_GYRO_RADS, LOUD_ACCEL_MPS2)
+        detector.update(0.19, QUIET_GYRO_RADS, LOUD_ACCEL_MPS2)
     )
 
     assert result.stationary is False
     assert result.reason == "stationary_cleared"
 
 
-def test_stationary_twist_variance_inflates_near_exit_threshold() -> None:
+def test_exit_happens_faster_than_enter() -> None:
+    detector: ZuptDetector = _make_detector()
+
+    initial_result: ZuptDecision = _accepted(
+        detector.update(0.0, QUIET_GYRO_RADS, QUIET_ACCEL_MPS2)
+    )
+    pending_enter_result: ZuptDecision = _accepted(
+        detector.update(0.01, QUIET_GYRO_RADS, QUIET_ACCEL_MPS2)
+    )
+    stationary_result: ZuptDecision = _accepted(
+        detector.update(0.18, QUIET_GYRO_RADS, QUIET_ACCEL_MPS2)
+    )
+    cleared_result: ZuptDecision = _accepted(
+        detector.update(0.19, LOUD_GYRO_RADS, QUIET_ACCEL_MPS2)
+    )
+
+    assert initial_result.reason == "enter_candidate_started"
+    assert pending_enter_result.stationary is False
+    assert pending_enter_result.reason == "enter_candidate_pending"
+    assert stationary_result.stationary is True
+    assert cleared_result.stationary is False
+    assert detector.state.stationary is False
+    assert detector.state.last_reason == "stationary_cleared"
+
+
+def test_stationary_variances_are_fixed_isotropic_values() -> None:
     detector: ZuptDetector = _make_detector()
 
     _accepted(detector.update(0.0, QUIET_GYRO_RADS, QUIET_ACCEL_MPS2))
-    _accepted(detector.update(0.18, QUIET_GYRO_RADS, QUIET_ACCEL_MPS2))
-    quiet_result: ZuptDecision = _accepted(
-        detector.update(0.19, QUIET_GYRO_RADS, QUIET_ACCEL_MPS2)
-    )
-    inflated_result: ZuptDecision = _accepted(
-        detector.update(0.20, (0.08, 0.0, 0.0), QUIET_ACCEL_MPS2)
+    result: ZuptDecision = _accepted(
+        detector.update(0.18, QUIET_GYRO_RADS, QUIET_ACCEL_MPS2)
     )
 
-    assert quiet_result.stationary is True
-    assert inflated_result.stationary is True
-    assert (
-        inflated_result.linear_zupt_variance_mps2
-        > quiet_result.linear_zupt_variance_mps2
-    )
-    assert (
-        inflated_result.angular_zupt_variance_rads2
-        > quiet_result.angular_zupt_variance_rads2
-    )
+    assert result.stationary is True
+    assert result.linear_zupt_variance_mps2 == 0.06**2
+    assert result.angular_zupt_variance_rads2 == 0.05**2
 
 
-def test_moving_twist_variances_use_explicit_moving_defaults() -> None:
+def test_moving_variances_use_explicit_moving_defaults() -> None:
     detector: ZuptDetector = _make_detector()
 
     result: ZuptDecision = _accepted(
@@ -194,49 +180,6 @@ def test_moving_twist_variances_use_explicit_moving_defaults() -> None:
     assert result.stationary is False
     assert result.linear_zupt_variance_mps2 == 1.0e6
     assert result.angular_zupt_variance_rads2 == 5.0e5
-
-
-def test_filtered_norms_are_deterministic() -> None:
-    detector: ZuptDetector = ZuptDetector(
-        ZuptDetectorConfig(
-            min_stationary_sec=1.0,
-            enter_smoothing_time_constant_sec=0.1,
-        )
-    )
-
-    first_result: ZuptDecision = _accepted(
-        detector.update(0.0, QUIET_GYRO_RADS, QUIET_ACCEL_MPS2)
-    )
-    second_result: ZuptDecision = _accepted(
-        detector.update(0.1, (0.1, 0.0, 0.0), (0.2, 0.0, 0.0))
-    )
-    alpha: float = 1.0 - math.exp(-1.0)
-
-    assert first_result.filtered_gyro_norm_rads == 0.0
-    assert first_result.filtered_accel_norm_mps2 == 0.0
-    assert second_result.enter_evidence_source == "filtered"
-    assert math.isclose(second_result.filtered_gyro_norm_rads, alpha * 0.1)
-    assert math.isclose(second_result.filtered_accel_norm_mps2, alpha * 0.2)
-
-
-def test_raw_enter_evidence_is_reported_when_smoothing_disabled() -> None:
-    detector: ZuptDetector = ZuptDetector(
-        ZuptDetectorConfig(
-            min_stationary_sec=0.18,
-            enter_smoothing_time_constant_sec=0.0,
-        )
-    )
-
-    _accepted(detector.update(0.0, QUIET_GYRO_RADS, QUIET_ACCEL_MPS2))
-    result: ZuptDecision = _accepted(
-        detector.update(0.18, QUIET_GYRO_RADS, QUIET_ACCEL_MPS2)
-    )
-
-    assert result.stationary is True
-    assert result.reason == "stationary_asserted_raw"
-    assert result.enter_evidence_source == "raw"
-    assert result.filtered_gyro_norm_rads == result.gyro_norm_rads
-    assert result.filtered_accel_norm_mps2 == result.accel_norm_mps2
 
 
 def test_invalid_imu_sample_is_reported_without_state_change() -> None:
@@ -253,34 +196,22 @@ def test_invalid_imu_sample_is_reported_without_state_change() -> None:
     assert invalid_result.stationary is False
     assert invalid_result.reason == "invalid_imu_sample"
     assert detector.state.last_timestamp_sec == 0.1
-    assert invalid_result.enter_evidence_source == "filtered"
 
 
 def test_invalid_timestamp_is_rejected() -> None:
     detector: ZuptDetector = _make_detector()
 
-    result: ZuptDecision | None = detector.update(
-        math.nan, QUIET_GYRO_RADS, QUIET_ACCEL_MPS2
-    )
-
-    assert result is None
+    assert detector.update(math.nan, QUIET_GYRO_RADS, QUIET_ACCEL_MPS2) is None
     assert detector.state.last_reason == "invalid_timestamp"
-    assert detector.state.last_timestamp_sec is None
 
 
-def test_non_monotonic_timestamp_is_rejected_and_resets_candidates() -> None:
+def test_non_monotonic_timestamp_is_rejected_and_clears_candidates() -> None:
     detector: ZuptDetector = _make_detector()
 
-    _accepted(detector.update(1.0, QUIET_GYRO_RADS, QUIET_ACCEL_MPS2))
+    _accepted(detector.update(0.0, QUIET_GYRO_RADS, QUIET_ACCEL_MPS2))
+    assert detector.state.enter_candidate_start_sec == 0.0
 
-    assert detector.state.enter_candidate_start_sec == 1.0
-
-    result: ZuptDecision | None = detector.update(
-        0.9, QUIET_GYRO_RADS, QUIET_ACCEL_MPS2
-    )
-
-    assert result is None
+    assert detector.update(-0.1, QUIET_GYRO_RADS, QUIET_ACCEL_MPS2) is None
     assert detector.state.last_reason == "non_monotonic_timestamp"
     assert detector.state.enter_candidate_start_sec is None
     assert detector.state.exit_candidate_start_sec is None
-    assert detector.state.last_timestamp_sec == 1.0

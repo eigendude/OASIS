@@ -46,15 +46,12 @@ PARAM_ACCEL_ENTER_THRESHOLD_MPS2: str = "accel_enter_threshold_mps2"
 PARAM_ACCEL_EXIT_THRESHOLD_MPS2: str = "accel_exit_threshold_mps2"
 PARAM_MIN_STATIONARY_SEC: str = "min_stationary_sec"
 PARAM_MIN_MOVING_SEC: str = "min_moving_sec"
-PARAM_ENTER_SMOOTHING_TIME_CONSTANT_SEC: str = "enter_smoothing_time_constant_sec"
-PARAM_LINEAR_VELOCITY_SIGMA_MPS: str = "linear_velocity_sigma_mps"
-PARAM_MOVING_LINEAR_VARIANCE_MPS2: str = "moving_linear_variance_mps2"
-PARAM_STATIONARY_LINEAR_VARIANCE_INFLATION: str = "stationary_linear_variance_inflation"
-PARAM_ANGULAR_VELOCITY_SIGMA_RADS: str = "angular_velocity_sigma_rads"
-PARAM_MOVING_ANGULAR_VARIANCE_RADS2: str = "moving_angular_variance_rads2"
-PARAM_STATIONARY_ANGULAR_VARIANCE_INFLATION: str = (
-    "stationary_angular_variance_inflation"
+PARAM_STATIONARY_LINEAR_VELOCITY_SIGMA_MPS: str = "stationary_linear_velocity_sigma_mps"
+PARAM_STATIONARY_ANGULAR_VELOCITY_SIGMA_RADS: str = (
+    "stationary_angular_velocity_sigma_rads"
 )
+PARAM_MOVING_LINEAR_VARIANCE_MPS2: str = "moving_linear_variance_mps2"
+PARAM_MOVING_ANGULAR_VARIANCE_RADS2: str = "moving_angular_variance_rads2"
 
 LINEAR_COVARIANCE_DIAGONAL_INDICES: tuple[int, int, int] = (0, 7, 14)
 ANGULAR_COVARIANCE_DIAGONAL_INDICES: tuple[int, int, int] = (21, 28, 35)
@@ -102,7 +99,9 @@ class ZuptDetectorNode(rclpy.node.Node):
         self.get_logger().info(
             "ZUPT detector node initialized "
             f"(gyro enter={detector_config.gyro_enter_threshold_rads:.3f} rad/s, "
-            f"accel enter={detector_config.accel_enter_threshold_mps2:.3f} m/s^2)"
+            f"accel enter={detector_config.accel_enter_threshold_mps2:.3f} m/s^2, "
+            f"stationary linear sigma="
+            f"{detector_config.stationary_linear_velocity_sigma_mps:.3f} m/s)"
         )
 
     def stop(self) -> None:
@@ -138,32 +137,20 @@ class ZuptDetectorNode(rclpy.node.Node):
             ZuptDetectorConfig.min_moving_sec,
         )
         self.declare_parameter(
-            PARAM_ENTER_SMOOTHING_TIME_CONSTANT_SEC,
-            ZuptDetectorConfig.enter_smoothing_time_constant_sec,
-        )
-        self.declare_parameter(
-            PARAM_LINEAR_VELOCITY_SIGMA_MPS,
-            ZuptDetectorConfig.linear_velocity_sigma_mps,
+            PARAM_STATIONARY_LINEAR_VELOCITY_SIGMA_MPS,
+            ZuptDetectorConfig.stationary_linear_velocity_sigma_mps,
         )
         self.declare_parameter(
             PARAM_MOVING_LINEAR_VARIANCE_MPS2,
             ZuptDetectorConfig.moving_linear_variance_mps2,
         )
         self.declare_parameter(
-            PARAM_STATIONARY_LINEAR_VARIANCE_INFLATION,
-            ZuptDetectorConfig.stationary_linear_variance_inflation,
-        )
-        self.declare_parameter(
-            PARAM_ANGULAR_VELOCITY_SIGMA_RADS,
-            ZuptDetectorConfig.angular_velocity_sigma_rads,
+            PARAM_STATIONARY_ANGULAR_VELOCITY_SIGMA_RADS,
+            ZuptDetectorConfig.stationary_angular_velocity_sigma_rads,
         )
         self.declare_parameter(
             PARAM_MOVING_ANGULAR_VARIANCE_RADS2,
             ZuptDetectorConfig.moving_angular_variance_rads2,
-        )
-        self.declare_parameter(
-            PARAM_STATIONARY_ANGULAR_VARIANCE_INFLATION,
-            ZuptDetectorConfig.stationary_angular_variance_inflation,
         )
 
         config: ZuptDetectorConfig = ZuptDetectorConfig(
@@ -183,26 +170,17 @@ class ZuptDetectorNode(rclpy.node.Node):
                 self.get_parameter(PARAM_MIN_STATIONARY_SEC).value
             ),
             min_moving_sec=float(self.get_parameter(PARAM_MIN_MOVING_SEC).value),
-            enter_smoothing_time_constant_sec=float(
-                self.get_parameter(PARAM_ENTER_SMOOTHING_TIME_CONSTANT_SEC).value
-            ),
-            linear_velocity_sigma_mps=float(
-                self.get_parameter(PARAM_LINEAR_VELOCITY_SIGMA_MPS).value
+            stationary_linear_velocity_sigma_mps=float(
+                self.get_parameter(PARAM_STATIONARY_LINEAR_VELOCITY_SIGMA_MPS).value
             ),
             moving_linear_variance_mps2=float(
                 self.get_parameter(PARAM_MOVING_LINEAR_VARIANCE_MPS2).value
             ),
-            stationary_linear_variance_inflation=float(
-                self.get_parameter(PARAM_STATIONARY_LINEAR_VARIANCE_INFLATION).value
-            ),
-            angular_velocity_sigma_rads=float(
-                self.get_parameter(PARAM_ANGULAR_VELOCITY_SIGMA_RADS).value
+            stationary_angular_velocity_sigma_rads=float(
+                self.get_parameter(PARAM_STATIONARY_ANGULAR_VELOCITY_SIGMA_RADS).value
             ),
             moving_angular_variance_rads2=float(
                 self.get_parameter(PARAM_MOVING_ANGULAR_VARIANCE_RADS2).value
-            ),
-            stationary_angular_variance_inflation=float(
-                self.get_parameter(PARAM_STATIONARY_ANGULAR_VARIANCE_INFLATION).value
             ),
         )
         return config
@@ -231,11 +209,8 @@ class ZuptDetectorNode(rclpy.node.Node):
             "ZUPT "
             f"stationary={decision.stationary} "
             f"reason={decision.reason} "
-            f"enter_source={decision.enter_evidence_source} "
-            f"gyro_raw={decision.gyro_norm_rads:.4f} "
-            f"accel_raw={decision.accel_norm_mps2:.4f} "
-            f"gyro_filtered={decision.filtered_gyro_norm_rads:.4f} "
-            f"accel_filtered={decision.filtered_accel_norm_mps2:.4f} "
+            f"gyro_norm={decision.gyro_norm_rads:.4f} "
+            f"accel_norm={decision.accel_norm_mps2:.4f} "
             f"linear_var={decision.linear_zupt_variance_mps2:.6f} "
             f"angular_var={decision.angular_zupt_variance_rads2:.6f} "
             f"enter_dwell={decision.enter_dwell_sec:.3f} "

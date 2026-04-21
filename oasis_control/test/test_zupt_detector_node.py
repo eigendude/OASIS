@@ -32,14 +32,31 @@ def rclpy_context() -> Any:
         rclpy.shutdown()
 
 
-def test_zupt_message_publishes_full_stationary_twist_covariance() -> None:
+def test_each_published_flag_state_has_a_matching_zupt_message() -> None:
     node: ZuptDetectorNode = ZuptDetectorNode()
 
     try:
         node._handle_imu(make_imu_message(timestamp_sec=0.0))
         node._handle_imu(make_imu_message(timestamp_sec=0.18))
+        node._handle_imu(make_imu_message(timestamp_sec=0.19, gyro_x_rads=0.2))
 
-        assert len(node._zupt_pub.messages) == 2
+        assert len(node._zupt_flag_pub.messages) == 3
+        assert len(node._zupt_pub.messages) == 3
+        assert [message.data for message in node._zupt_flag_pub.messages] == [
+            False,
+            True,
+            False,
+        ]
+    finally:
+        node.stop()
+
+
+def test_stationary_zupt_message_publishes_small_isotropic_covariance() -> None:
+    node: ZuptDetectorNode = ZuptDetectorNode()
+
+    try:
+        node._handle_imu(make_imu_message(timestamp_sec=0.0))
+        node._handle_imu(make_imu_message(timestamp_sec=0.18))
 
         zupt_message: Any = node._zupt_pub.messages[-1]
         covariance: list[float] = list(zupt_message.twist.covariance)
@@ -50,6 +67,7 @@ def test_zupt_message_publishes_full_stationary_twist_covariance() -> None:
             node._detector.state.current_angular_zupt_variance_rads2
         )
 
+        assert node._zupt_flag_pub.messages[-1].data is True
         assert zupt_message.twist.twist.linear.x == 0.0
         assert zupt_message.twist.twist.linear.y == 0.0
         assert zupt_message.twist.twist.linear.z == 0.0
@@ -62,52 +80,95 @@ def test_zupt_message_publishes_full_stationary_twist_covariance() -> None:
         assert covariance[21] == angular_variance_rads2
         assert covariance[28] == angular_variance_rads2
         assert covariance[35] == angular_variance_rads2
-        assert covariance[1] == 0.0
-        assert covariance[6] == 0.0
-        assert covariance[2] == 0.0
-        assert covariance[12] == 0.0
-        assert covariance[8] == 0.0
-        assert covariance[13] == 0.0
-        assert covariance[3] == 0.0
-        assert covariance[4] == 0.0
-        assert covariance[5] == 0.0
-        assert covariance[18] == 0.0
-        assert covariance[24] == 0.0
-        assert covariance[30] == 0.0
+        assert_block_diagonal_covariance(covariance)
     finally:
         node.stop()
 
 
-def test_zupt_message_uses_block_diagonal_stationary_twist_covariance() -> None:
+def test_moving_zupt_message_publishes_large_isotropic_covariance() -> None:
+    node: ZuptDetectorNode = ZuptDetectorNode()
+
+    try:
+        node._handle_imu(make_imu_message(timestamp_sec=0.0, gyro_x_rads=0.2))
+
+        covariance: list[float] = list(node._zupt_pub.messages[-1].twist.covariance)
+
+        assert node._zupt_flag_pub.messages[-1].data is False
+        assert covariance[0] == node._detector.state.current_linear_zupt_variance_mps2
+        assert covariance[7] == covariance[0]
+        assert covariance[14] == covariance[0]
+        assert covariance[21] == (
+            node._detector.state.current_angular_zupt_variance_rads2
+        )
+        assert covariance[28] == covariance[21]
+        assert covariance[35] == covariance[21]
+        assert_block_diagonal_covariance(covariance)
+    finally:
+        node.stop()
+
+
+def test_fast_exit_publishes_moving_pair_immediately() -> None:
     node: ZuptDetectorNode = ZuptDetectorNode()
 
     try:
         node._handle_imu(make_imu_message(timestamp_sec=0.0))
-
-        assert len(node._zupt_pub.messages) == 1
+        node._handle_imu(make_imu_message(timestamp_sec=0.18))
+        node._handle_imu(make_imu_message(timestamp_sec=0.19, gyro_x_rads=0.2))
 
         covariance: list[float] = list(node._zupt_pub.messages[-1].twist.covariance)
 
-        assert covariance[0] > 0.0
-        assert covariance[7] == covariance[0]
-        assert covariance[14] == covariance[0]
-        assert covariance[21] > 0.0
-        assert covariance[28] == covariance[21]
-        assert covariance[35] == covariance[21]
-        assert covariance[15] == 0.0
-        assert covariance[20] == 0.0
+        assert node._detector.state.stationary is False
+        assert node._zupt_flag_pub.messages[-1].data is False
+        assert covariance[0] == node._detector.state.current_linear_zupt_variance_mps2
+        assert covariance[21] == (
+            node._detector.state.current_angular_zupt_variance_rads2
+        )
+        assert covariance[0] == node._detector._config.moving_linear_variance_mps2
+        assert covariance[21] == node._detector._config.moving_angular_variance_rads2
     finally:
         node.stop()
 
 
-def make_imu_message(timestamp_sec: float) -> ImuMsg:
+def assert_block_diagonal_covariance(covariance: list[float]) -> None:
+    linear_off_diagonal_indices: tuple[tuple[int, int], ...] = (
+        (0, 1),
+        (0, 2),
+        (1, 2),
+    )
+    angular_off_diagonal_indices: tuple[tuple[int, int], ...] = (
+        (3, 4),
+        (3, 5),
+        (4, 5),
+    )
+    row_index: int
+    column_index: int
+
+    for row_index, column_index in linear_off_diagonal_indices:
+        assert covariance[_covariance_index(row_index, column_index)] == 0.0
+        assert covariance[_covariance_index(column_index, row_index)] == 0.0
+
+    for row_index, column_index in angular_off_diagonal_indices:
+        assert covariance[_covariance_index(row_index, column_index)] == 0.0
+        assert covariance[_covariance_index(column_index, row_index)] == 0.0
+
+    for row_index in range(3):
+        for column_index in range(3, 6):
+            assert covariance[_covariance_index(row_index, column_index)] == 0.0
+            assert covariance[_covariance_index(column_index, row_index)] == 0.0
+
+
+def _covariance_index(row_index: int, column_index: int) -> int:
+    return row_index * 6 + column_index
+
+
+def make_imu_message(timestamp_sec: float, gyro_x_rads: float = 0.0) -> ImuMsg:
     message: ImuMsg = ImuMsg()
     whole_seconds: int = int(timestamp_sec)
     nanoseconds: int = int((timestamp_sec - whole_seconds) * 1.0e9)
     message.header.stamp.sec = whole_seconds
     message.header.stamp.nanosec = nanoseconds
     message.header.frame_id = "imu_link"
-    message.angular_velocity.x = 0.0
+    message.angular_velocity.x = gyro_x_rads
     message.angular_velocity.y = 0.0
     message.angular_velocity.z = 0.0
     message.linear_acceleration.x = 0.0
