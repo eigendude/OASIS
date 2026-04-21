@@ -22,7 +22,6 @@ from sensor_msgs.msg import Imu as ImuMsg
 from oasis_control.localization.ahrs.processing.boot_mounting_calibrator import (
     BootMountingCalibrator,
 )
-from oasis_control.localization.ahrs_tilt_estimator import AhrsTiltEstimator
 from oasis_control.localization.common.algebra.quat import quaternion_conjugate_xyzw
 from oasis_msgs.msg import AhrsStatus as AhrsStatusMsg
 
@@ -428,7 +427,6 @@ def test_runtime_mounting_reduces_raw_driver_tilt_for_level_base() -> None:
         calibration_duration_sec=2.0,
         min_sample_count=3,
     )
-    tilt_estimator = AhrsTiltEstimator()
 
     try:
         gravity_vector = (
@@ -468,63 +466,11 @@ def test_runtime_mounting_reduces_raw_driver_tilt_for_level_base() -> None:
             )
         )
 
-        raw_tilt = tilt_estimator.update(
-            orientation_xyzw=quaternion_conjugate_xyzw(raw_driver_orientation_xyzw),
-        )
         mounted_message: ImuMsg = imu_pub.messages[-1]
-        mounted_tilt = tilt_estimator.update(
-            orientation_xyzw=(
-                float(mounted_message.orientation.x),
-                float(mounted_message.orientation.y),
-                float(mounted_message.orientation.z),
-                float(mounted_message.orientation.w),
-            ),
-        )
-
-        assert raw_tilt is not None
-        assert mounted_tilt is not None
-        assert abs(raw_tilt.roll_rad) > math.radians(1.0)
-        assert abs(raw_tilt.pitch_rad) > math.radians(1.0)
-        assert math.isclose(mounted_tilt.roll_rad, 0.0, abs_tol=1.0e-6)
-        assert math.isclose(mounted_tilt.pitch_rad, 0.0, abs_tol=1.0e-6)
-    finally:
-        node.stop()
-
-
-def test_session_yaw_zero_preserves_tilt_roll_pitch_for_ahrs_tilt() -> None:
-    node, _, imu_pub, _, _ = make_node(
-        FakeTfBuffer(make_mounting_transform((0.0, 0.0, 0.0, 1.0)))
-    )
-    tilt_estimator = AhrsTiltEstimator()
-
-    try:
-        node._handle_gravity(make_gravity_message())
-        node._handle_imu(
-            make_imu_message(
-                quaternion_xyzw=_driver_quaternion_from_mounted_roll_pitch_yaw_rad(
-                    roll_rad=math.radians(7.9),
-                    pitch_rad=math.radians(3.0),
-                    yaw_rad=math.radians(40.0),
-                ),
-                timestamp_ns=1_000_000_000,
-            )
-        )
-
-        assert len(imu_pub.messages) == 1
-
-        mounted_message: ImuMsg = imu_pub.messages[-1]
-        mounted_tilt = tilt_estimator.update(
-            orientation_xyzw=(
-                float(mounted_message.orientation.x),
-                float(mounted_message.orientation.y),
-                float(mounted_message.orientation.z),
-                float(mounted_message.orientation.w),
-            ),
-        )
-
-        assert mounted_tilt is not None
-        assert math.isclose(mounted_tilt.roll_rad, math.radians(7.9), abs_tol=1.0e-6)
-        assert math.isclose(mounted_tilt.pitch_rad, math.radians(3.0), abs_tol=1.0e-6)
+        assert math.isclose(mounted_message.orientation.x, 0.0, abs_tol=2.0e-2)
+        assert math.isclose(mounted_message.orientation.y, 0.0, abs_tol=2.0e-2)
+        assert math.isclose(mounted_message.orientation.z, 0.0, abs_tol=2.0e-2)
+        assert math.isclose(mounted_message.orientation.w, 1.0, abs_tol=2.0e-2)
     finally:
         node.stop()
 

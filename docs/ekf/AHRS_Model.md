@@ -265,12 +265,7 @@ preserve that fact instead of inventing a new covariance model.
 
 If a downstream tilt-only product is published, it should derive its own
 roll/pitch covariance from gravity/down-direction observability rather than
-reusing the full rotated AHRS attitude covariance. In the current contract,
-`ahrs/tilt` is a mixed helper product: its mean comes from `ahrs/imu`
-orientation in `base_link`, while its covariance comes from the latest fresh
-raw `gravity` covariance after rotating `imu_link -> base_link`. That tilt
-product should keep yaw explicitly unobserved and publish unknown covariance
-when no fresh gravity covariance is available.
+reusing the full rotated AHRS attitude covariance.
 
 This model assumes `T_BI` has already been solved from the boot gravity window
 or provided by an explicit external calibration source before runtime

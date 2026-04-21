@@ -302,7 +302,7 @@ Recommended primary topic:
 
 Downstream body-motion consumers should prefer `ahrs/imu` over the raw `imu`
 topic. Because `ahrs/imu` is already mounted into `base_link`, consumers such
-as tilt and speedometer may treat orientation, angular velocity, and linear
+as speedometer may treat orientation, angular velocity, and linear
 acceleration as body-frame signals and should not compensate
 `imu_link -> base_link` mounting internally.
 
@@ -316,28 +316,7 @@ The AHRS may publish a gravity status or debug topic, but the minimum contract
 is that gravity consistency results are reflected in diagnostics and any
 accept/reject policy.
 
-### 5.4 Tilt product
-
-The optional `ahrs/tilt` product is intentionally narrower than `ahrs/imu`:
-
-- the tilt mean comes from `ahrs/imu.orientation`
-- the published quaternion suppresses yaw by policy
-- the published roll/pitch covariance comes from the latest fresh raw
-  `gravity` measurement covariance after rotating `imu_link -> base_link`
-- the node keeps the latest valid gravity sample and uses it only when its
-  timestamp is not in the future and is no older than the current
-  `ahrs/imu` sample by the configured freshness window
-- if no fresh gravity covariance is available, `ahrs/tilt` publishes unknown
-  orientation covariance instead of reusing full `ahrs/imu` attitude
-  covariance
-- yaw remains intentionally unobserved and should carry a large variance
-
-`ahrs/tilt.orientation_covariance` must not be interpreted as full `3 x 3`
-attitude covariance. HUD or display code that only needs tilt should consume
-`ahrs/tilt` directly instead of collapsing `ahrs/imu.orientation_covariance`
-down to a 2D tilt sigma.
-
-### 5.5 Optional odometry wrapper
+### 5.4 Optional odometry wrapper
 
 Downstream consumers may still want `nav_msgs/Odometry`, so it should be a thin
 wrapper around the same attitude sample:
