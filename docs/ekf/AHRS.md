@@ -132,6 +132,18 @@ at boot. That same `q_BI` is then broadcast on the TF edge with
 parent=`base_link`, child=`imu_link`, so `lookup_transform(base_link, imu_link)`
 returns the runtime mounting used by AHRS.
 
+Session yaw policy:
+
+- physical mounting remains the fixed IMU-to-base transform `T_BI`
+- AHRS still does not claim gravity estimated mounting yaw
+- once mounting is available and the first valid mounted attitude sample is
+  accepted, AHRS captures that initial mounted yaw as a runtime-only session
+  yaw zero
+- subsequent published AHRS orientations subtract that session yaw offset for
+  the duration of the node run
+- this session yaw convention does not change the physical
+  `base_link -> imu_link` TF or redefine `q_BI`
+
 Let `R_WI` come from the canonicalized `q_WI = q_IW*` and let `R_BI` come from
 `T_BI`.
 Then:
@@ -140,6 +152,15 @@ Then:
 - `q_WB = q_BI ⊗ q_WI`
 - `ω_B = R_BI * ω_I`
 - `a_B = R_BI * a_I`
+
+After mounting is applied, AHRS defines a runtime session yaw convention for
+published world-facing orientation outputs:
+
+- let `ψ_init` be the yaw of the first valid mounted attitude `q_WB`
+- let `q_zero` be the pure yaw quaternion for `-ψ_init`
+- published orientation outputs use `q_pub = q_zero ⊗ q_WB`
+- this keeps roll/pitch from the mounted attitude while expressing yaw
+  relative to the startup mounted direction
 
 Covariance mapping uses the same rotation:
 
@@ -188,7 +209,9 @@ the fused quaternion after mounting is applied:
 
 Gravity does not provide absolute yaw observability and the AHRS must not claim
 otherwise. The boot mounting solve only measures roll/pitch alignment and keeps
-mounting yaw fixed by policy.
+physical mounting yaw fixed by policy. AHRS may still publish yaw relative to a
+runtime session yaw zero captured from the initial mounted heading, but that is
+a startup heading convention rather than a physical yaw calibration.
 
 ### 3.1 Gravity consistency
 
@@ -255,6 +278,8 @@ Ordering rule:
 
 - `world -> odom`: identity
 - `odom -> base_link`: mounted attitude, zero translation
+- the published yaw on `odom -> base_link` is relative to the initial mounted
+  direction captured for this node run
 
 ### 5.2 Base-frame IMU output
 
@@ -263,7 +288,10 @@ Recommended primary topic:
 - `ahrs/imu`
 - type: `sensor_msgs/Imu`
 - `header.frame_id = "base_link"`
-- `orientation = q_WB`
+- `orientation = q_pub = q_zero ⊗ q_WB`
+- AHRS defines the initial mounted yaw at startup as session yaw zero, so
+  published yaw is relative to that startup direction for the duration of the
+  node run
 - `orientation_covariance = Σ_qB` when known
 - if `imu.orientation_covariance[0] == -1`, `ahrs/imu` preserves the ROS
   "unknown orientation covariance" sentinel
@@ -315,7 +343,8 @@ Downstream consumers may still want `nav_msgs/Odometry`, so it should be a thin
 wrapper around the same attitude sample:
 
 - pose position = zero
-- pose orientation = `q_WB`
+- pose orientation = `q_pub = q_zero ⊗ q_WB`
+- pose yaw is expressed relative to the startup session yaw zero
 - pose orientation covariance block reuses the same rotated `Σ_qB` when known
 - twist angular = `ω_B`
 - linear velocity = unknown or explicit zero by policy

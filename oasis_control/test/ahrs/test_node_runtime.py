@@ -97,6 +97,12 @@ def test_valid_imu_publishes_mounted_outputs_and_tf() -> None:
             transform.header.frame_id == "world" and transform.child_frame_id == "odom"
             for transform in tf_messages
         )
+        mounting_transform = next(
+            transform
+            for transform in tf_messages
+            if transform.header.frame_id == "base_link"
+            and transform.child_frame_id == "imu_link"
+        )
         odom_to_base_transform = next(
             transform
             for transform in tf_messages
@@ -104,12 +110,171 @@ def test_valid_imu_publishes_mounted_outputs_and_tf() -> None:
             and transform.child_frame_id == "base_link"
         )
         assert math.isclose(
-            odom_to_base_transform.transform.rotation.z,
+            mounting_transform.transform.rotation.z,
             quarter_turn_about_z_xyzw[2],
         )
         assert math.isclose(
-            odom_to_base_transform.transform.rotation.w,
+            mounting_transform.transform.rotation.w,
             quarter_turn_about_z_xyzw[3],
+        )
+        assert math.isclose(
+            odom_to_base_transform.transform.rotation.x,
+            0.0,
+            abs_tol=1.0e-6,
+        )
+        assert math.isclose(
+            odom_to_base_transform.transform.rotation.y,
+            0.0,
+            abs_tol=1.0e-6,
+        )
+        assert math.isclose(
+            odom_to_base_transform.transform.rotation.z,
+            0.0,
+            abs_tol=1.0e-6,
+        )
+        assert math.isclose(
+            odom_to_base_transform.transform.rotation.w,
+            1.0,
+            abs_tol=1.0e-6,
+        )
+    finally:
+        node.stop()
+
+
+def test_session_yaw_zero_tracks_subsequent_yaw_relative_to_startup() -> None:
+    node, _, imu_pub, odom_pub, tf_broadcaster = make_node(
+        FakeTfBuffer(make_mounting_transform((0.0, 0.0, 0.0, 1.0)))
+    )
+
+    try:
+        node._handle_gravity(make_gravity_message())
+        node._handle_imu(
+            make_imu_message(
+                quaternion_xyzw=_driver_quaternion_from_mounted_yaw_rad(
+                    math.radians(30.0)
+                ),
+                timestamp_ns=1_000_000_000,
+            )
+        )
+        initial_imu_message: ImuMsg = imu_pub.messages[-1]
+        initial_odom_message = odom_pub.messages[-1]
+        initial_tf_messages = tf_broadcaster.transforms[-1]
+        initial_odom_to_base_transform = next(
+            transform
+            for transform in initial_tf_messages
+            if transform.header.frame_id == "odom"
+            and transform.child_frame_id == "base_link"
+        )
+
+        assert math.isclose(
+            _yaw_from_xyzw(
+                (
+                    float(initial_imu_message.orientation.x),
+                    float(initial_imu_message.orientation.y),
+                    float(initial_imu_message.orientation.z),
+                    float(initial_imu_message.orientation.w),
+                )
+            ),
+            0.0,
+            abs_tol=1.0e-6,
+        )
+        assert math.isclose(
+            _yaw_from_xyzw(
+                (
+                    float(initial_odom_message.pose.pose.orientation.x),
+                    float(initial_odom_message.pose.pose.orientation.y),
+                    float(initial_odom_message.pose.pose.orientation.z),
+                    float(initial_odom_message.pose.pose.orientation.w),
+                )
+            ),
+            0.0,
+            abs_tol=1.0e-6,
+        )
+        assert math.isclose(
+            _yaw_from_xyzw(
+                (
+                    float(initial_odom_to_base_transform.transform.rotation.x),
+                    float(initial_odom_to_base_transform.transform.rotation.y),
+                    float(initial_odom_to_base_transform.transform.rotation.z),
+                    float(initial_odom_to_base_transform.transform.rotation.w),
+                )
+            ),
+            0.0,
+            abs_tol=1.0e-6,
+        )
+
+        node._handle_imu(
+            make_imu_message(
+                quaternion_xyzw=_driver_quaternion_from_mounted_yaw_rad(
+                    math.radians(75.0)
+                ),
+                timestamp_ns=2_000_000_000,
+            )
+        )
+        updated_imu_message: ImuMsg = imu_pub.messages[-1]
+        updated_odom_message = odom_pub.messages[-1]
+        updated_tf_messages = tf_broadcaster.transforms[-1]
+        mounting_transform = next(
+            transform
+            for transform in updated_tf_messages
+            if transform.header.frame_id == "base_link"
+            and transform.child_frame_id == "imu_link"
+        )
+        updated_odom_to_base_transform = next(
+            transform
+            for transform in updated_tf_messages
+            if transform.header.frame_id == "odom"
+            and transform.child_frame_id == "base_link"
+        )
+
+        expected_relative_yaw_rad: float = math.radians(45.0)
+        assert math.isclose(
+            _yaw_from_xyzw(
+                (
+                    float(updated_imu_message.orientation.x),
+                    float(updated_imu_message.orientation.y),
+                    float(updated_imu_message.orientation.z),
+                    float(updated_imu_message.orientation.w),
+                )
+            ),
+            expected_relative_yaw_rad,
+            abs_tol=1.0e-6,
+        )
+        assert math.isclose(
+            _yaw_from_xyzw(
+                (
+                    float(updated_odom_message.pose.pose.orientation.x),
+                    float(updated_odom_message.pose.pose.orientation.y),
+                    float(updated_odom_message.pose.pose.orientation.z),
+                    float(updated_odom_message.pose.pose.orientation.w),
+                )
+            ),
+            expected_relative_yaw_rad,
+            abs_tol=1.0e-6,
+        )
+        assert math.isclose(
+            _yaw_from_xyzw(
+                (
+                    float(updated_odom_to_base_transform.transform.rotation.x),
+                    float(updated_odom_to_base_transform.transform.rotation.y),
+                    float(updated_odom_to_base_transform.transform.rotation.z),
+                    float(updated_odom_to_base_transform.transform.rotation.w),
+                )
+            ),
+            expected_relative_yaw_rad,
+            abs_tol=1.0e-6,
+        )
+        assert math.isclose(
+            _yaw_from_xyzw(
+                (
+                    float(mounting_transform.transform.rotation.x),
+                    float(mounting_transform.transform.rotation.y),
+                    float(mounting_transform.transform.rotation.z),
+                    float(mounting_transform.transform.rotation.w),
+                )
+            ),
+            0.0,
+            abs_tol=1.0e-6,
         )
     finally:
         node.stop()
@@ -686,3 +851,27 @@ def test_odom_output_reuses_mapped_orientation_covariance_block() -> None:
         )
     finally:
         node.stop()
+
+
+def _yaw_from_xyzw(quaternion_xyzw: tuple[float, float, float, float]) -> float:
+    x_value, y_value, z_value, w_value = quaternion_xyzw
+    return math.atan2(
+        2.0 * (w_value * z_value + x_value * y_value),
+        1.0 - 2.0 * (y_value * y_value + z_value * z_value),
+    )
+
+
+def _quaternion_from_yaw_rad(yaw_rad: float) -> tuple[float, float, float, float]:
+    half_yaw_rad: float = 0.5 * yaw_rad
+    return (
+        0.0,
+        0.0,
+        math.sin(half_yaw_rad),
+        math.cos(half_yaw_rad),
+    )
+
+
+def _driver_quaternion_from_mounted_yaw_rad(
+    mounted_yaw_rad: float,
+) -> tuple[float, float, float, float]:
+    return _quaternion_from_yaw_rad(-mounted_yaw_rad)

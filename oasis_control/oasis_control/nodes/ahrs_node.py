@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Optional
 
 import rclpy.node
@@ -69,12 +70,17 @@ from oasis_control.localization.common.algebra.covariance import (
 from oasis_control.localization.common.algebra.covariance import (
     flatten_matrix3_row_major,
 )
+from oasis_control.localization.common.algebra.quat import Quaternion
 from oasis_control.localization.common.algebra.quat import Vector3
 from oasis_control.localization.common.algebra.quat import normalize_quaternion_xyzw
+from oasis_control.localization.common.algebra.quat import quaternion_multiply_xyzw
 from oasis_control.localization.common.data.gravity_sample import GravitySample
 from oasis_control.localization.common.frames.mounting import MountedImuSample
 from oasis_control.localization.common.frames.mounting import MountingTransform
 from oasis_control.localization.common.frames.mounting import make_mounting_transform
+from oasis_control.localization.common.measurements.gravity_direction import (
+    GravityDirectionResidual,
+)
 from oasis_control.localization.common.validation.gravity_validation import (
     validate_gravity_sample,
 )
@@ -213,6 +219,8 @@ class AhrsNode(rclpy.node.Node):
         self._latest_output: Optional[AhrsOutput] = None
         self._latest_imu_angular_velocity_rads: Optional[Vector3] = None
         self._mounting_transform: Optional[MountingTransform] = None
+        self._session_yaw_zero_initialized: bool = False
+        self._session_yaw_offset_xyzw: Quaternion = (0.0, 0.0, 0.0, 1.0)
 
         # ROS QoS profiles
         sensor_qos_profile: rclpy.qos.QoSProfile = (
@@ -406,7 +414,10 @@ class AhrsNode(rclpy.node.Node):
 
         self._diagnostics.last_gravity_residual = gravity_residual
 
-        self._latest_output = make_ahrs_output(mounted_imu_sample, gravity_residual)
+        self._latest_output = self._make_session_yaw_zeroed_output(
+            mounted_imu_sample=mounted_imu_sample,
+            gravity_residual=gravity_residual,
+        )
         self._imu_pub.publish(self._build_imu_message(self._latest_output))
         self._odom_pub.publish(self._build_odom_message(self._latest_output))
         self._publish_runtime_outputs()
@@ -598,7 +609,7 @@ class AhrsNode(rclpy.node.Node):
         self._diagnostics.has_mounting = True
         self._diagnostics.last_mounting_lookup_error = ""
         self.get_logger().info(
-            "Solved boot AHRS mounting q_BI for TF base_link -> imu_link with roll "
+            "Solved boot AHRS mounting: "
             f"{solution.roll_rad:.4f} rad, pitch {solution.pitch_rad:.4f} rad, "
             f"yaw fixed to {solution.yaw_rad:.4f} rad"
         )
@@ -784,6 +795,64 @@ class AhrsNode(rclpy.node.Node):
         transform_message.transform.rotation.w = mounting_transform.quaternion_xyzw[3]
         return transform_message
 
+    def _make_session_yaw_zeroed_output(
+        self,
+        *,
+        mounted_imu_sample: MountedImuSample,
+        gravity_residual: Optional[GravityDirectionResidual],
+    ) -> AhrsOutput:
+        mounted_yaw_rad: float = _yaw_from_quaternion_xyzw(
+            mounted_imu_sample.orientation_xyzw
+        )
+        self.get_logger().debug(
+            "AHRS session yaw pre-offset "
+            f"timestamp_ns={mounted_imu_sample.timestamp_ns} "
+            f"mounted_yaw_rad={mounted_yaw_rad:.4f} "
+            f"session_yaw_initialized={self._session_yaw_zero_initialized}"
+        )
+
+        if not self._session_yaw_zero_initialized:
+            self._session_yaw_offset_xyzw = _quaternion_from_yaw_rad(-mounted_yaw_rad)
+            self._session_yaw_zero_initialized = True
+            self.get_logger().info(
+                "AHRS session yaw initialized: "
+                f"mounted_yaw_rad={mounted_yaw_rad:.4f} "
+                f"session_yaw_offset_rad="
+                f"{_yaw_from_quaternion_xyzw(self._session_yaw_offset_xyzw):.4f}"
+            )
+
+        session_zeroed_orientation_xyzw: Quaternion = quaternion_multiply_xyzw(
+            self._session_yaw_offset_xyzw,
+            mounted_imu_sample.orientation_xyzw,
+        )
+        normalized_orientation_xyzw: Optional[Quaternion] = normalize_quaternion_xyzw(
+            session_zeroed_orientation_xyzw
+        )
+        if normalized_orientation_xyzw is None:
+            normalized_orientation_xyzw = mounted_imu_sample.orientation_xyzw
+
+        session_zeroed_mounted_imu_sample: MountedImuSample = MountedImuSample(
+            timestamp_ns=mounted_imu_sample.timestamp_ns,
+            frame_id=mounted_imu_sample.frame_id,
+            orientation_xyzw=normalized_orientation_xyzw,
+            orientation_covariance_rad2=(
+                mounted_imu_sample.orientation_covariance_rad2
+            ),
+            orientation_covariance_unknown=(
+                mounted_imu_sample.orientation_covariance_unknown
+            ),
+            angular_velocity_rads=mounted_imu_sample.angular_velocity_rads,
+            angular_velocity_covariance_rads2=(
+                mounted_imu_sample.angular_velocity_covariance_rads2
+            ),
+            linear_acceleration_mps2=mounted_imu_sample.linear_acceleration_mps2,
+            linear_acceleration_covariance_mps2_2=(
+                mounted_imu_sample.linear_acceleration_covariance_mps2_2
+            ),
+        )
+
+        return make_ahrs_output(session_zeroed_mounted_imu_sample, gravity_residual)
+
     def _make_identity_transform(
         self,
         parent_frame_id: str,
@@ -816,3 +885,21 @@ def _ns_to_time_msg(timestamp_ns: int) -> TimeMsg:
     time_message.sec = int(timestamp_ns // 1_000_000_000)
     time_message.nanosec = int(timestamp_ns % 1_000_000_000)
     return time_message
+
+
+def _yaw_from_quaternion_xyzw(quaternion_xyzw: Quaternion) -> float:
+    x_value, y_value, z_value, w_value = quaternion_xyzw
+    return math.atan2(
+        2.0 * (w_value * z_value + x_value * y_value),
+        1.0 - 2.0 * (y_value * y_value + z_value * z_value),
+    )
+
+
+def _quaternion_from_yaw_rad(yaw_rad: float) -> Quaternion:
+    half_yaw_rad: float = 0.5 * yaw_rad
+    return (
+        0.0,
+        0.0,
+        math.sin(half_yaw_rad),
+        math.cos(half_yaw_rad),
+    )
