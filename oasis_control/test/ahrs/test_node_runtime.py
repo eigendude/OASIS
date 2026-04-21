@@ -23,6 +23,9 @@ from oasis_control.localization.ahrs.processing.boot_mounting_calibrator import 
     BootMountingCalibrator,
 )
 from oasis_control.localization.common.algebra.quat import quaternion_conjugate_xyzw
+from oasis_control.localization.common.measurements.tilt_covariance import (
+    gravity_covariance_to_tilt_variance_rad2,
+)
 from oasis_msgs.msg import AhrsStatus as AhrsStatusMsg
 
 from ._node_test_helpers import FakeTfBuffer
@@ -733,7 +736,7 @@ def test_successful_mounting_lookup_is_cached() -> None:
         node.stop()
 
 
-def test_imu_output_preserves_unknown_orientation_covariance_semantics() -> None:
+def test_imu_output_replaces_unknown_upstream_covariance_with_honest_split() -> None:
     node, _, imu_pub, _, _ = make_node(
         FakeTfBuffer(make_mounting_transform((0.0, 0.0, 0.0, 1.0)))
     )
@@ -746,12 +749,32 @@ def test_imu_output_preserves_unknown_orientation_covariance_semantics() -> None
             )
         )
 
-        assert imu_pub.messages[-1].orientation_covariance[0] == -1.0
+        published_covariance: list[float] = imu_pub.messages[-1].orientation_covariance
+        expected_tilt_variance_rad2: float = gravity_covariance_to_tilt_variance_rad2(
+            gravity_mps2=(0.0, 0.0, -9.81),
+            gravity_covariance_mps2_2=(
+                (0.04, 0.0, 0.0),
+                (0.0, 0.04, 0.0),
+                (0.0, 0.0, 0.04),
+            ),
+        )
+
+        assert math.isclose(
+            published_covariance[0],
+            expected_tilt_variance_rad2,
+            abs_tol=1.0e-12,
+        )
+        assert math.isclose(
+            published_covariance[4],
+            expected_tilt_variance_rad2,
+            abs_tol=1.0e-12,
+        )
+        assert math.isclose(published_covariance[8], 0.0, abs_tol=1.0e-12)
     finally:
         node.stop()
 
 
-def test_imu_output_publishes_mapped_orientation_covariance_unchanged() -> None:
+def test_imu_output_uses_gravity_tilt_scale_not_upstream_orientation_buckets() -> None:
     quarter_turn_about_z_xyzw: tuple[float, float, float, float] = (
         0.0,
         0.0,
@@ -770,15 +793,34 @@ def test_imu_output_publishes_mapped_orientation_covariance_unchanged() -> None:
             )
         )
 
+        expected_tilt_variance_rad2: float = gravity_covariance_to_tilt_variance_rad2(
+            gravity_mps2=(0.0, 0.0, -9.81),
+            gravity_covariance_mps2_2=(
+                (0.04, 0.0, 0.0),
+                (0.0, 0.04, 0.0),
+                (0.0, 0.0, 0.04),
+            ),
+        )
+
         assert imu_pub.messages[-1].orientation_covariance == pytest.approx(
-            ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR,
+            [
+                expected_tilt_variance_rad2,
+                0.0,
+                0.0,
+                0.0,
+                expected_tilt_variance_rad2,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+            ],
             abs=1.0e-12,
         )
     finally:
         node.stop()
 
 
-def test_odom_output_reuses_mapped_orientation_covariance_block() -> None:
+def test_odom_output_reuses_honest_published_orientation_covariance_block() -> None:
     quarter_turn_about_z_xyzw: tuple[float, float, float, float] = (
         0.0,
         0.0,
@@ -798,42 +840,98 @@ def test_odom_output_reuses_mapped_orientation_covariance_block() -> None:
         )
 
         pose_covariance = odom_pub.messages[-1].pose.covariance
+        expected_tilt_variance_rad2: float = gravity_covariance_to_tilt_variance_rad2(
+            gravity_mps2=(0.0, 0.0, -9.81),
+            gravity_covariance_mps2_2=(
+                (0.04, 0.0, 0.0),
+                (0.0, 0.04, 0.0),
+                (0.0, 0.0, 0.04),
+            ),
+        )
         assert pose_covariance[21] == pytest.approx(
-            ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR[0],
+            expected_tilt_variance_rad2,
             abs=1.0e-12,
         )
         assert pose_covariance[22] == pytest.approx(
-            ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR[1],
+            0.0,
             abs=1.0e-12,
         )
         assert pose_covariance[23] == pytest.approx(
-            ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR[2],
+            0.0,
             abs=1.0e-12,
         )
         assert pose_covariance[27] == pytest.approx(
-            ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR[3],
+            0.0,
             abs=1.0e-12,
         )
         assert pose_covariance[28] == pytest.approx(
-            ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR[4],
+            expected_tilt_variance_rad2,
             abs=1.0e-12,
         )
         assert pose_covariance[29] == pytest.approx(
-            ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR[5],
+            0.0,
             abs=1.0e-12,
         )
         assert pose_covariance[33] == pytest.approx(
-            ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR[6],
+            0.0,
             abs=1.0e-12,
         )
         assert pose_covariance[34] == pytest.approx(
-            ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR[7],
+            0.0,
             abs=1.0e-12,
         )
         assert pose_covariance[35] == pytest.approx(
-            ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR[8],
+            0.0,
             abs=1.0e-12,
         )
+    finally:
+        node.stop()
+
+
+def test_imu_output_yaw_variance_tracks_recent_yaw_jitter_with_wrap() -> None:
+    node, _, imu_pub, _, _ = make_node(
+        FakeTfBuffer(make_mounting_transform((0.0, 0.0, 0.0, 1.0)))
+    )
+
+    try:
+        node._handle_gravity(make_gravity_message(timestamp_ns=900_000_000))
+        node._handle_imu(
+            make_imu_message(
+                quaternion_xyzw=_driver_quaternion_from_mounted_yaw_rad(
+                    math.radians(179.8)
+                ),
+                timestamp_ns=1_000_000_000,
+            )
+        )
+        node._handle_gravity(make_gravity_message(timestamp_ns=1_400_000_000))
+        node._handle_imu(
+            make_imu_message(
+                quaternion_xyzw=_driver_quaternion_from_mounted_yaw_rad(
+                    math.radians(-179.9)
+                ),
+                timestamp_ns=1_500_000_000,
+            )
+        )
+        node._handle_gravity(make_gravity_message(timestamp_ns=1_900_000_000))
+        node._handle_imu(
+            make_imu_message(
+                quaternion_xyzw=_driver_quaternion_from_mounted_yaw_rad(
+                    math.radians(179.9)
+                ),
+                timestamp_ns=2_000_000_000,
+            )
+        )
+        node._handle_gravity(make_gravity_message(timestamp_ns=2_400_000_000))
+        node._handle_imu(
+            make_imu_message(
+                quaternion_xyzw=_driver_quaternion_from_mounted_yaw_rad(
+                    math.radians(-179.8)
+                ),
+                timestamp_ns=2_500_000_000,
+            )
+        )
+
+        assert imu_pub.messages[-1].orientation_covariance[8] < math.radians(0.25) ** 2
     finally:
         node.stop()
 

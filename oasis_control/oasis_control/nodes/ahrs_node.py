@@ -36,6 +36,12 @@ from oasis_control.localization.ahrs.data.diagnostics import AhrsDiagnosticsSnap
 from oasis_control.localization.ahrs.data.diagnostics import AhrsDiagnosticsState
 from oasis_control.localization.ahrs.data.diagnostics import snapshot_diagnostics
 from oasis_control.localization.ahrs.processing.attitude_mapper import map_imu_to_base
+from oasis_control.localization.ahrs.processing.attitude_uncertainty import (
+    AhrsOrientationUncertaintyEstimator,
+)
+from oasis_control.localization.ahrs.processing.attitude_uncertainty import (
+    AttitudeUncertaintyEstimate,
+)
 from oasis_control.localization.ahrs.processing.boot_mounting_calibrator import (
     DEFAULT_CALIBRATION_DURATION_SEC as DEFAULT_BOOT_MOUNTING_CALIBRATION_DURATION_SEC,
 )
@@ -75,8 +81,10 @@ from oasis_control.localization.common.algebra.quat import Vector3
 from oasis_control.localization.common.algebra.quat import normalize_quaternion_xyzw
 from oasis_control.localization.common.algebra.quat import quaternion_multiply_xyzw
 from oasis_control.localization.common.data.gravity_sample import GravitySample
+from oasis_control.localization.common.frames.mounting import MountedGravitySample
 from oasis_control.localization.common.frames.mounting import MountedImuSample
 from oasis_control.localization.common.frames.mounting import MountingTransform
+from oasis_control.localization.common.frames.mounting import apply_mounting_to_gravity
 from oasis_control.localization.common.frames.mounting import make_mounting_transform
 from oasis_control.localization.common.measurements.gravity_direction import (
     GravityDirectionResidual,
@@ -136,6 +144,11 @@ DEFAULT_MOUNTING_MIN_SAMPLE_COUNT: int = DEFAULT_BOOT_MOUNTING_MIN_SAMPLE_COUNT
 # Units: s
 #
 STATUS_TIMER_PERIOD_SEC: float = 0.1
+
+# Units: s
+# Meaning: newest gravity sample age accepted for the published roll/pitch
+# covariance
+MAX_GRAVITY_COVARIANCE_AGE_SEC: float = 0.2
 
 
 ################################################################################
@@ -219,6 +232,9 @@ class AhrsNode(rclpy.node.Node):
         self._latest_output: Optional[AhrsOutput] = None
         self._latest_imu_angular_velocity_rads: Optional[Vector3] = None
         self._mounting_transform: Optional[MountingTransform] = None
+        self._orientation_uncertainty_estimator: AhrsOrientationUncertaintyEstimator = (
+            AhrsOrientationUncertaintyEstimator()
+        )
         self._session_yaw_zero_initialized: bool = False
         self._session_yaw_offset_xyzw: Quaternion = (0.0, 0.0, 0.0, 1.0)
 
@@ -386,6 +402,12 @@ class AhrsNode(rclpy.node.Node):
             validation_result.sample,
             mounting_transform,
         )
+        mounted_gravity_sample: Optional[MountedGravitySample] = (
+            self._resolve_fresh_mounted_gravity_sample(
+                imu_timestamp_ns=mounted_imu_sample.timestamp_ns,
+                mounting_transform=mounting_transform,
+            )
+        )
 
         gravity_residual = None
         if self._latest_gravity_sample is not None:
@@ -416,6 +438,7 @@ class AhrsNode(rclpy.node.Node):
 
         self._latest_output = self._make_session_yaw_zeroed_output(
             mounted_imu_sample=mounted_imu_sample,
+            mounted_gravity_sample=mounted_gravity_sample,
             gravity_residual=gravity_residual,
         )
         self._imu_pub.publish(self._build_imu_message(self._latest_output))
@@ -614,6 +637,27 @@ class AhrsNode(rclpy.node.Node):
             f"yaw fixed to {solution.yaw_rad:.4f} rad"
         )
 
+    def _resolve_fresh_mounted_gravity_sample(
+        self,
+        *,
+        imu_timestamp_ns: int,
+        mounting_transform: MountingTransform,
+    ) -> Optional[MountedGravitySample]:
+        if self._latest_gravity_sample is None:
+            return None
+
+        gravity_age_ns: int = (
+            imu_timestamp_ns - self._latest_gravity_sample.timestamp_ns
+        )
+        max_gravity_age_ns: int = int(MAX_GRAVITY_COVARIANCE_AGE_SEC * 1.0e9)
+        if gravity_age_ns < 0 or gravity_age_ns > max_gravity_age_ns:
+            return None
+
+        return apply_mounting_to_gravity(
+            self._latest_gravity_sample,
+            mounting_transform,
+        )
+
     def _build_imu_message(self, ahrs_output: AhrsOutput) -> ImuMsg:
         imu_message: ImuMsg = ImuMsg()
         imu_message.header.stamp = _ns_to_time_msg(ahrs_output.mounted_imu.timestamp_ns)
@@ -799,6 +843,7 @@ class AhrsNode(rclpy.node.Node):
         self,
         *,
         mounted_imu_sample: MountedImuSample,
+        mounted_gravity_sample: Optional[MountedGravitySample],
         gravity_residual: Optional[GravityDirectionResidual],
     ) -> AhrsOutput:
         mounted_yaw_rad: float = _yaw_from_quaternion_xyzw(
@@ -831,15 +876,30 @@ class AhrsNode(rclpy.node.Node):
         if normalized_orientation_xyzw is None:
             normalized_orientation_xyzw = mounted_imu_sample.orientation_xyzw
 
+        uncertainty_estimate: AttitudeUncertaintyEstimate = (
+            self._orientation_uncertainty_estimator.update(
+                timestamp_ns=mounted_imu_sample.timestamp_ns,
+                orientation_xyzw=normalized_orientation_xyzw,
+                gravity_mps2=(
+                    mounted_gravity_sample.gravity_mps2
+                    if mounted_gravity_sample is not None
+                    else None
+                ),
+                gravity_covariance_mps2_2=(
+                    mounted_gravity_sample.gravity_covariance_mps2_2
+                    if mounted_gravity_sample is not None
+                    else None
+                ),
+            )
+        )
+
         session_zeroed_mounted_imu_sample: MountedImuSample = MountedImuSample(
             timestamp_ns=mounted_imu_sample.timestamp_ns,
             frame_id=mounted_imu_sample.frame_id,
             orientation_xyzw=normalized_orientation_xyzw,
-            orientation_covariance_rad2=(
-                mounted_imu_sample.orientation_covariance_rad2
-            ),
+            orientation_covariance_rad2=uncertainty_estimate.orientation_covariance_rad2,
             orientation_covariance_unknown=(
-                mounted_imu_sample.orientation_covariance_unknown
+                uncertainty_estimate.orientation_covariance_unknown
             ),
             angular_velocity_rads=mounted_imu_sample.angular_velocity_rads,
             angular_velocity_covariance_rads2=(
