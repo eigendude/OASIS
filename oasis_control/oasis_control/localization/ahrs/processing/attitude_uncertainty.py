@@ -19,10 +19,10 @@ from typing import Optional
 from oasis_control.localization.common.algebra.quat import Matrix3
 from oasis_control.localization.common.algebra.quat import Quaternion
 from oasis_control.localization.common.measurements.gravity_observable_attitude import (
-    GravityObservableAttitudeVariance,
+    GravityObservableRollPitchCovariance,
 )
 from oasis_control.localization.common.measurements.gravity_observable_attitude import (
-    gravity_covariance_to_roll_pitch_variance_rad2,
+    gravity_covariance_to_roll_pitch_covariance_rad2,
 )
 
 
@@ -167,9 +167,9 @@ class AhrsOrientationUncertaintyEstimator:
     """
     Build the published AHRS orientation covariance.
 
-    Roll and pitch variance come from the gravity-observable attitude
+    Roll and pitch covariance come from the gravity-observable attitude
     primitive. Yaw variance comes from recent yaw jitter on the published
-    attitude stream.
+    attitude stream, because gravity does not observe heading.
     """
 
     def __init__(self) -> None:
@@ -194,18 +194,15 @@ class AhrsOrientationUncertaintyEstimator:
             yaw_rad=_yaw_from_quaternion_xyzw(orientation_xyzw),
         )
 
-        roll_pitch_variance: GravityObservableAttitudeVariance = (
-            gravity_covariance_to_roll_pitch_variance_rad2(
+        roll_pitch_covariance: Optional[GravityObservableRollPitchCovariance] = (
+            gravity_covariance_to_roll_pitch_covariance_rad2(
                 gravity_mps2=(
                     gravity_mps2 if gravity_mps2 is not None else (0.0, 0.0, 0.0)
                 ),
                 gravity_covariance_mps2_2=gravity_covariance_mps2_2,
             )
         )
-        if (
-            roll_pitch_variance.roll_variance_rad2 <= 0.0
-            or roll_pitch_variance.pitch_variance_rad2 <= 0.0
-        ):
+        if roll_pitch_covariance is None:
             return AttitudeUncertaintyEstimate(
                 orientation_covariance_rad2=None,
                 orientation_covariance_unknown=True,
@@ -214,8 +211,16 @@ class AhrsOrientationUncertaintyEstimator:
         yaw_variance_rad2: float = yaw_stddev_rad * yaw_stddev_rad
         return AttitudeUncertaintyEstimate(
             orientation_covariance_rad2=(
-                (roll_pitch_variance.roll_variance_rad2, 0.0, 0.0),
-                (0.0, roll_pitch_variance.pitch_variance_rad2, 0.0),
+                (
+                    roll_pitch_covariance.roll_variance_rad2,
+                    roll_pitch_covariance.roll_pitch_covariance_rad2,
+                    0.0,
+                ),
+                (
+                    roll_pitch_covariance.roll_pitch_covariance_rad2,
+                    roll_pitch_covariance.pitch_variance_rad2,
+                    0.0,
+                ),
                 (0.0, 0.0, yaw_variance_rad2),
             ),
             orientation_covariance_unknown=False,

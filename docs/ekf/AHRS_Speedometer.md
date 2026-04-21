@@ -640,8 +640,15 @@ convenience.
 
 ### 10.2 Upstream IMU covariance policy
 
-The `ahrs/imu` covariance fields may come from generic driver bucket values and
-should not be treated as a trustworthy physical uncertainty model for this node.
+The `ahrs/imu` covariance fields are an AHRS-owned output contract and should
+not be treated as the authoritative uncertainty model for this node.
+
+Current AHRS semantics are:
+
+* roll/pitch covariance comes from gravity-observable attitude uncertainty
+* yaw variance is handled separately by AHRS
+* the full `ahrs/imu` covariance block is therefore not the speedometer's own
+  uncertainty model
 
 Therefore:
 

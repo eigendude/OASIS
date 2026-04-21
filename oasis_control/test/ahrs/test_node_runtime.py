@@ -27,7 +27,7 @@ from oasis_control.localization.ahrs.processing.boot_mounting_calibrator import 
 )
 from oasis_control.localization.common.algebra.quat import quaternion_conjugate_xyzw
 from oasis_control.localization.common.measurements.gravity_observable_attitude import (
-    gravity_covariance_to_roll_pitch_variance_rad2,
+    gravity_covariance_to_roll_pitch_covariance_rad2,
 )
 from oasis_msgs.msg import AhrsStatus as AhrsStatusMsg
 
@@ -847,25 +847,36 @@ def test_imu_output_replaces_unknown_upstream_covariance_with_honest_split() -> 
         )
 
         published_covariance: list[float] = imu_pub.messages[-1].orientation_covariance
-        expected_roll_pitch_variance_rad2: float = (
-            gravity_covariance_to_roll_pitch_variance_rad2(
+        expected_roll_pitch_covariance = (
+            gravity_covariance_to_roll_pitch_covariance_rad2(
                 gravity_mps2=(0.0, 0.0, -9.81),
                 gravity_covariance_mps2_2=(
                     (0.04, 0.0, 0.0),
                     (0.0, 0.04, 0.0),
                     (0.0, 0.0, 0.04),
                 ),
-            ).roll_variance_rad2
+            )
         )
+        assert expected_roll_pitch_covariance is not None
 
         assert math.isclose(
             published_covariance[0],
-            expected_roll_pitch_variance_rad2,
+            expected_roll_pitch_covariance.roll_variance_rad2,
             abs_tol=1.0e-12,
         )
         assert math.isclose(
             published_covariance[4],
-            expected_roll_pitch_variance_rad2,
+            expected_roll_pitch_covariance.pitch_variance_rad2,
+            abs_tol=1.0e-12,
+        )
+        assert math.isclose(
+            published_covariance[1],
+            expected_roll_pitch_covariance.roll_pitch_covariance_rad2,
+            abs_tol=1.0e-12,
+        )
+        assert math.isclose(
+            published_covariance[3],
+            expected_roll_pitch_covariance.roll_pitch_covariance_rad2,
             abs_tol=1.0e-12,
         )
         assert math.isclose(published_covariance[8], 0.0, abs_tol=1.0e-12)
@@ -894,24 +905,25 @@ def test_imu_output_uses_gravity_roll_pitch_scale_not_upstream_orientation_bucke
             )
         )
 
-        expected_roll_pitch_variance_rad2: float = (
-            gravity_covariance_to_roll_pitch_variance_rad2(
+        expected_roll_pitch_covariance = (
+            gravity_covariance_to_roll_pitch_covariance_rad2(
                 gravity_mps2=(0.0, 0.0, -9.81),
                 gravity_covariance_mps2_2=(
                     (0.04, 0.0, 0.0),
                     (0.0, 0.04, 0.0),
                     (0.0, 0.0, 0.04),
                 ),
-            ).roll_variance_rad2
+            )
         )
+        assert expected_roll_pitch_covariance is not None
 
         assert imu_pub.messages[-1].orientation_covariance == pytest.approx(
             [
-                expected_roll_pitch_variance_rad2,
+                expected_roll_pitch_covariance.roll_variance_rad2,
                 0.0,
                 0.0,
                 0.0,
-                expected_roll_pitch_variance_rad2,
+                expected_roll_pitch_covariance.pitch_variance_rad2,
                 0.0,
                 0.0,
                 0.0,
@@ -943,22 +955,23 @@ def test_odom_output_reuses_honest_published_orientation_covariance_block() -> N
         )
 
         pose_covariance = odom_pub.messages[-1].pose.covariance
-        expected_roll_pitch_variance_rad2: float = (
-            gravity_covariance_to_roll_pitch_variance_rad2(
+        expected_roll_pitch_covariance = (
+            gravity_covariance_to_roll_pitch_covariance_rad2(
                 gravity_mps2=(0.0, 0.0, -9.81),
                 gravity_covariance_mps2_2=(
                     (0.04, 0.0, 0.0),
                     (0.0, 0.04, 0.0),
                     (0.0, 0.0, 0.04),
                 ),
-            ).roll_variance_rad2
+            )
         )
+        assert expected_roll_pitch_covariance is not None
         assert pose_covariance[21] == pytest.approx(
-            expected_roll_pitch_variance_rad2,
+            expected_roll_pitch_covariance.roll_variance_rad2,
             abs=1.0e-12,
         )
         assert pose_covariance[22] == pytest.approx(
-            0.0,
+            expected_roll_pitch_covariance.roll_pitch_covariance_rad2,
             abs=1.0e-12,
         )
         assert pose_covariance[23] == pytest.approx(
@@ -966,11 +979,11 @@ def test_odom_output_reuses_honest_published_orientation_covariance_block() -> N
             abs=1.0e-12,
         )
         assert pose_covariance[27] == pytest.approx(
-            0.0,
+            expected_roll_pitch_covariance.roll_pitch_covariance_rad2,
             abs=1.0e-12,
         )
         assert pose_covariance[28] == pytest.approx(
-            expected_roll_pitch_variance_rad2,
+            expected_roll_pitch_covariance.pitch_variance_rad2,
             abs=1.0e-12,
         )
         assert pose_covariance[29] == pytest.approx(
@@ -988,6 +1001,83 @@ def test_odom_output_reuses_honest_published_orientation_covariance_block() -> N
         assert pose_covariance[35] == pytest.approx(
             0.0,
             abs=1.0e-12,
+        )
+    finally:
+        node.stop()
+
+
+def test_imu_output_embeds_roll_pitch_cross_covariance_from_gravity_model() -> None:
+    node, _, _, imu_pub, _, _ = make_node(
+        make_cached_mounting_transform((0.0, 0.0, 0.0, 1.0))
+    )
+
+    try:
+        node._handle_gravity(
+            make_gravity_message(
+                covariance=[
+                    0.01,
+                    -0.02,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    -0.02,
+                    0.09,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.04,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                ]
+            )
+        )
+        node._handle_imu(make_imu_message())
+
+        expected_roll_pitch_covariance = (
+            gravity_covariance_to_roll_pitch_covariance_rad2(
+                gravity_mps2=(0.0, 0.0, -9.81),
+                gravity_covariance_mps2_2=(
+                    (0.01, -0.02, 0.0),
+                    (-0.02, 0.09, 0.0),
+                    (0.0, 0.0, 0.04),
+                ),
+            )
+        )
+        assert expected_roll_pitch_covariance is not None
+
+        published_covariance: list[float] = imu_pub.messages[-1].orientation_covariance
+        assert math.isclose(
+            published_covariance[1],
+            expected_roll_pitch_covariance.roll_pitch_covariance_rad2,
+            abs_tol=1.0e-12,
+        )
+        assert math.isclose(
+            published_covariance[3],
+            expected_roll_pitch_covariance.roll_pitch_covariance_rad2,
+            abs_tol=1.0e-12,
         )
     finally:
         node.stop()

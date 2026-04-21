@@ -64,7 +64,9 @@ Camera-frame policy:
 Role:
 
 - propagation input for the motion model
-- attitude observation for roll/pitch/yaw consistency
+- attitude observation whose published covariance now has split semantics:
+  gravity-observable roll/pitch covariance plus separately modeled yaw
+  variance
 
 Used fields:
 
@@ -86,6 +88,19 @@ The EKF uses the fixed transform `T_BI` from `imu_link` to `base_link` to map
 measurements into base coordinates. The current default source for `T_BI` is
 the boot-time mounting calibration contract in `AHRS_Mounting.md`, though the
 EKF only assumes that a fixed extrinsic is already available.
+
+For the mounted `ahrs/imu` stream, the published orientation covariance should
+be interpreted as an AHRS-owned downstream contract rather than a simple copy
+of coarse driver orientation buckets:
+
+- the roll/pitch block reflects gravity-observable attitude uncertainty after
+  mounting
+- that roll/pitch block is computed by propagating mounted gravity covariance
+  through the OASIS roll/pitch mapping
+- roll variance and pitch variance may differ
+- roll/pitch cross-covariance may be nonzero
+- the yaw variance entry is modeled separately by AHRS because gravity does not
+  observe heading
 
 ### 2.2 `gravity` — `geometry_msgs/AccelWithCovarianceStamped`
 
@@ -249,8 +264,10 @@ Using the fixed mounting rotation `q_BI`:
 - residual: minimal 3D tangent error between measured and predicted IMU
   attitude
 
-This update is the main source of absolute roll/pitch stabilization and short-
-term yaw consistency.
+This update is the main source of short-term fused attitude consistency coming
+from the published AHRS quaternion. Its covariance should be interpreted with
+the same split semantics described above: gravity-observable roll/pitch block,
+separately modeled yaw variance.
 
 ### 5.2 Gravity measurement
 
@@ -272,6 +289,14 @@ Implementation details may vary, but the contract is:
 - the measurement improves roll/pitch consistency
 - the measurement can help constrain IMU-to-base mounting errors
 - the measurement does not provide absolute yaw
+
+At the AHRS layer, the same gravity measurement also drives the published
+roll/pitch orientation covariance block by covariance propagation through the
+roll/pitch mapping. EKF consumers should therefore not interpret the
+`ahrs/imu.orientation_covariance` roll/pitch entries as generic driver bucket
+values anymore. They now represent gravity-observable attitude uncertainty,
+while the yaw entry remains separately modeled because gravity does not observe
+heading.
 
 If `g_W` is modeled as part of the state, the same residual still applies.
 Otherwise `g_W` is treated as a fixed environment constant.

@@ -20,70 +20,196 @@ from oasis_control.localization.ahrs.processing.attitude_uncertainty import (
     AttitudeUncertaintyEstimate,
 )
 from oasis_control.localization.common.measurements.gravity_observable_attitude import (
-    GravityObservableAttitudeVariance,
+    GravityObservableRollPitchCovariance,
 )
 from oasis_control.localization.common.measurements.gravity_observable_attitude import (
-    gravity_covariance_to_roll_pitch_variance_rad2,
+    gravity_covariance_to_roll_pitch_covariance_rad2,
 )
 
 
-def test_roll_and_pitch_variance_comes_from_gravity_covariance() -> None:
+def test_roll_and_pitch_covariance_comes_from_gravity_covariance() -> None:
     estimator: AhrsOrientationUncertaintyEstimator = (
         AhrsOrientationUncertaintyEstimator()
     )
     gravity_mps2: tuple[float, float, float] = (0.0, 0.0, -9.81)
     gravity_covariance_mps2_2: tuple[tuple[float, float, float], ...] = (
-        (0.04, 0.0, 0.0),
-        (0.0, 0.09, 0.0),
+        (0.04, 0.01, 0.0),
+        (0.01, 0.09, 0.0),
         (0.0, 0.0, 0.01),
     )
 
-    estimate = estimator.update(
+    estimate: AttitudeUncertaintyEstimate = estimator.update(
         timestamp_ns=1_000_000_000,
         orientation_xyzw=(0.0, 0.0, 0.0, 1.0),
         gravity_mps2=gravity_mps2,
         gravity_covariance_mps2_2=gravity_covariance_mps2_2,
     )
 
-    expected_variance: GravityObservableAttitudeVariance = (
-        gravity_covariance_to_roll_pitch_variance_rad2(
+    expected_covariance: Optional[GravityObservableRollPitchCovariance] = (
+        gravity_covariance_to_roll_pitch_covariance_rad2(
             gravity_mps2=gravity_mps2,
             gravity_covariance_mps2_2=gravity_covariance_mps2_2,
         )
     )
 
+    assert expected_covariance is not None
     assert estimate.orientation_covariance_rad2 is not None
     assert estimate.orientation_covariance_unknown is False
     assert math.isclose(
         estimate.orientation_covariance_rad2[0][0],
-        expected_variance.roll_variance_rad2,
+        expected_covariance.roll_variance_rad2,
+        abs_tol=1.0e-12,
+    )
+    assert math.isclose(
+        estimate.orientation_covariance_rad2[0][1],
+        expected_covariance.roll_pitch_covariance_rad2,
+        abs_tol=1.0e-12,
+    )
+    assert math.isclose(
+        estimate.orientation_covariance_rad2[1][0],
+        expected_covariance.roll_pitch_covariance_rad2,
         abs_tol=1.0e-12,
     )
     assert math.isclose(
         estimate.orientation_covariance_rad2[1][1],
-        expected_variance.pitch_variance_rad2,
+        expected_covariance.pitch_variance_rad2,
         abs_tol=1.0e-12,
     )
 
 
-def test_gravity_covariance_maps_to_shared_roll_pitch_variance() -> None:
-    gravity_mps2: tuple[float, float, float] = (0.0, 0.0, -9.81)
-    gravity_covariance_mps2_2: tuple[tuple[float, float, float], ...] = (
-        (0.04, 0.0, 0.0),
-        (0.0, 0.09, 0.0),
-        (0.0, 0.0, 0.01),
-    )
-
-    expected_variance: GravityObservableAttitudeVariance = (
-        gravity_covariance_to_roll_pitch_variance_rad2(
-            gravity_mps2=gravity_mps2,
-            gravity_covariance_mps2_2=gravity_covariance_mps2_2,
+def test_isotropic_level_gravity_covariance_keeps_zero_roll_pitch_cross_term() -> None:
+    roll_pitch_covariance: Optional[GravityObservableRollPitchCovariance] = (
+        gravity_covariance_to_roll_pitch_covariance_rad2(
+            gravity_mps2=(0.0, 0.0, -9.81),
+            gravity_covariance_mps2_2=(
+                (0.04, 0.0, 0.0),
+                (0.0, 0.04, 0.0),
+                (0.0, 0.0, 0.04),
+            ),
         )
     )
 
+    assert roll_pitch_covariance is not None
     assert math.isclose(
-        expected_variance.roll_variance_rad2,
-        expected_variance.pitch_variance_rad2,
+        roll_pitch_covariance.roll_variance_rad2,
+        0.04 / (9.81 * 9.81),
+        abs_tol=1.0e-12,
+    )
+    assert math.isclose(
+        roll_pitch_covariance.pitch_variance_rad2,
+        0.04 / (9.81 * 9.81),
+        abs_tol=1.0e-12,
+    )
+    assert math.isclose(
+        roll_pitch_covariance.roll_pitch_covariance_rad2,
+        0.0,
+        abs_tol=1.0e-12,
+    )
+
+
+def test_anisotropic_level_gravity_covariance_produces_distinct_variances() -> None:
+    roll_pitch_covariance: Optional[GravityObservableRollPitchCovariance] = (
+        gravity_covariance_to_roll_pitch_covariance_rad2(
+            gravity_mps2=(0.0, 0.0, -9.81),
+            gravity_covariance_mps2_2=(
+                (0.01, 0.0, 0.0),
+                (0.0, 0.09, 0.0),
+                (0.0, 0.0, 0.04),
+            ),
+        )
+    )
+
+    assert roll_pitch_covariance is not None
+    assert math.isclose(
+        roll_pitch_covariance.roll_variance_rad2,
+        0.09 / (9.81 * 9.81),
+        abs_tol=1.0e-12,
+    )
+    assert math.isclose(
+        roll_pitch_covariance.pitch_variance_rad2,
+        0.01 / (9.81 * 9.81),
+        abs_tol=1.0e-12,
+    )
+    assert roll_pitch_covariance.roll_variance_rad2 > (
+        roll_pitch_covariance.pitch_variance_rad2
+    )
+
+
+def test_gravity_covariance_can_produce_roll_pitch_cross_covariance() -> None:
+    roll_pitch_covariance: Optional[GravityObservableRollPitchCovariance] = (
+        gravity_covariance_to_roll_pitch_covariance_rad2(
+            gravity_mps2=(0.0, 0.0, -9.81),
+            gravity_covariance_mps2_2=(
+                (0.01, -0.02, 0.0),
+                (-0.02, 0.09, 0.0),
+                (0.0, 0.0, 0.04),
+            ),
+        )
+    )
+
+    assert roll_pitch_covariance is not None
+    assert math.isclose(
+        roll_pitch_covariance.roll_pitch_covariance_rad2,
+        0.02 / (9.81 * 9.81),
+        abs_tol=1.0e-12,
+    )
+    assert not math.isclose(
+        roll_pitch_covariance.roll_pitch_covariance_rad2,
+        0.0,
+        abs_tol=1.0e-12,
+    )
+
+
+def test_pitch_singularity_returns_unknown_covariance() -> None:
+    roll_pitch_covariance: Optional[GravityObservableRollPitchCovariance] = (
+        gravity_covariance_to_roll_pitch_covariance_rad2(
+            gravity_mps2=(9.81, 0.0, 0.0),
+            gravity_covariance_mps2_2=(
+                (0.04, 0.0, 0.0),
+                (0.0, 0.04, 0.0),
+                (0.0, 0.0, 0.04),
+            ),
+        )
+    )
+
+    assert roll_pitch_covariance is None
+
+
+def test_yaw_remains_unobserved_in_orientation_covariance() -> None:
+    estimator: AhrsOrientationUncertaintyEstimator = (
+        AhrsOrientationUncertaintyEstimator()
+    )
+
+    estimate: AttitudeUncertaintyEstimate = estimator.update(
+        timestamp_ns=1_000_000_000,
+        orientation_xyzw=(0.0, 0.0, 0.0, 1.0),
+        gravity_mps2=(0.0, 0.0, -9.81),
+        gravity_covariance_mps2_2=(
+            (0.01, -0.02, 0.0),
+            (-0.02, 0.09, 0.0),
+            (0.0, 0.0, 0.04),
+        ),
+    )
+
+    assert estimate.orientation_covariance_rad2 is not None
+    assert math.isclose(
+        estimate.orientation_covariance_rad2[0][2],
+        0.0,
+        abs_tol=1.0e-12,
+    )
+    assert math.isclose(
+        estimate.orientation_covariance_rad2[1][2],
+        0.0,
+        abs_tol=1.0e-12,
+    )
+    assert math.isclose(
+        estimate.orientation_covariance_rad2[2][0],
+        0.0,
+        abs_tol=1.0e-12,
+    )
+    assert math.isclose(
+        estimate.orientation_covariance_rad2[2][1],
+        0.0,
         abs_tol=1.0e-12,
     )
 

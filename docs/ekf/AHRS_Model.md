@@ -141,8 +141,11 @@ Covariances:
   mounting transforms
 - treat upstream IMU orientation covariance as driver-owned policy data; AHRS
   should preserve and rotate it rather than remapping SH-2 quality buckets
-- treat driver-provided orientation covariance as the upstream contract rather
-  than silently tightening or replacing it in AHRS
+- treat driver-provided orientation covariance as upstream contract data at the
+  validation boundary
+- allow the AHRS output layer to publish a different orientation covariance
+  contract when that contract is deliberately defined in terms of
+  gravity-observable roll/pitch uncertainty plus separately modeled yaw
 
 ---
 
@@ -258,10 +261,24 @@ Given `g_I`:
 
 Covariances rotate the same way and remain full.
 
-For orientation in particular, AHRS should rotate the `imu_link` covariance
-into `base_link` under `T_BI` and then publish that rotated matrix unchanged.
-If the incoming orientation covariance is poor or unknown, the runtime should
-preserve that fact instead of inventing a new covariance model.
+For the published AHRS orientation covariance specifically, runtime output
+policy is now:
+
+- derive the roll/pitch block from mounted gravity covariance using Jacobian-
+  based propagation through the OASIS roll/pitch mapping
+- allow distinct roll and pitch variances
+- allow nonzero roll/pitch cross-covariance
+- keep yaw outside the gravity-derived model because gravity does not observe
+  heading
+
+For orientation in particular, AHRS should preserve the upstream covariance as
+validation-boundary sensor metadata, but the published `ahrs/imu`
+`orientation_covariance` may follow the runtime AHRS output contract instead of
+simply forwarding the mounted upstream matrix unchanged.
+
+If the gravity-observable roll/pitch model is unavailable or invalid, the
+runtime should preserve that fact explicitly rather than inventing fake yaw or
+roll/pitch observability.
 
 If a downstream tilt-only product is published, it should derive its own
 roll/pitch covariance from gravity/down-direction observability rather than

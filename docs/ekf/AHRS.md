@@ -78,8 +78,9 @@ Requirements:
 - when the BNO086 Rotation Vector estimated-accuracy field is unavailable or
   unusable, that upstream covariance may come from an explicit heuristic
   fallback bucket table; those provisional values may be refined later from
-  real robot resting data, and AHRS preserves them rather than reinterpreting
-  them
+  real robot resting data, and AHRS preserves them unless the runtime output
+  policy explicitly replaces the published orientation covariance with the
+  gravity-observable attitude model described below
 
 Reject the sample if quaternion or covariance data is non-finite, or if the IMU
 frame does not match the expected `imu_link` policy.
@@ -162,28 +163,23 @@ published world-facing orientation outputs:
 - this keeps roll/pitch from the mounted attitude while expressing yaw
   relative to the startup mounted direction
 
-Covariance mapping uses the same rotation:
+Angular-velocity and linear-acceleration covariance mapping use the same
+rotation:
 
-- `Σ_qB = R_BI * Σ_qI * R_BIᵀ`
 - `Σ_ωB = R_BI * Σ_ωI * R_BIᵀ`
 - `Σ_aB = R_BI * Σ_aI * R_BIᵀ`
 
-If mounted roll or pitch uncertainty looks too loose or too tight, adjust the
-driver covariance policy first. AHRS preserves and rotates upstream covariance;
-it does not reinterpret SH-2 quality signals into a different orientation
-noise model.
-
 Policy boundary:
 
-- AHRS treats driver-provided `orientation_covariance` as the upstream sensor
-  contract
-- when mounting is applied, AHRS rotates that full `3 x 3` covariance from
-  `imu_link` into `base_link`
-- AHRS does not diagonalize, tighten, rescale, or replace orientation
-  covariance for convenience
-- if the upstream orientation covariance is poor, that is an upstream
-  sensor/driver issue to fix explicitly rather than something AHRS silently
-  "corrects"
+- AHRS still treats driver-provided `orientation_covariance` as meaningful
+  upstream sensor policy data at the validation boundary
+- the mounted runtime output no longer blindly republishes that upstream
+  orientation covariance block
+- instead, `ahrs/imu.orientation_covariance` is owned by the AHRS output
+  contract and is shaped to reflect the current gravity-observable
+  roll/pitch model plus separately modeled yaw uncertainty
+- this is a deliberate downstream reinterpretation for the published AHRS
+  attitude contract, not an accidental byproduct of mounting rotation
 
 Because `imu` and `gravity` are both expected in `imu_link`, the same mounting
 rotation is used to express the gravity vector and its covariance in `{B}`
@@ -213,7 +209,51 @@ physical mounting yaw fixed by policy. AHRS may still publish yaw relative to a
 runtime session yaw zero captured from the initial mounted heading, but that is
 a startup heading convention rather than a physical yaw calibration.
 
-### 3.1 Gravity consistency
+### 3.1 Published orientation covariance semantics
+
+The published `ahrs/imu.orientation_covariance` is the AHRS-facing attitude
+uncertainty contract used later by EKF consumers and HUD/debug tools.
+
+Current semantics:
+
+- the roll/pitch block reflects gravity-observable attitude uncertainty in
+  `base_link`
+- gravity constrains roll and pitch
+- gravity does not observe yaw
+- yaw variance in the published covariance is handled separately from the
+  gravity-derived roll/pitch model
+
+For roll and pitch, AHRS uses the mounted gravity vector and its mounted
+covariance, then propagates that covariance through the same OASIS roll/pitch
+mapping used elsewhere in the stack:
+
+- `roll = atan2(-g_y, -g_z)`
+- `pitch = atan2(g_x, sqrt(g_y^2 + g_z^2))`
+
+The local `2 x 2` roll/pitch covariance is approximated by first-order
+propagation:
+
+- `Σ_roll,pitch ~= J * Σ_gB * Jᵀ`
+
+where `J` is the Jacobian of that roll/pitch mapping with respect to the
+base-frame gravity vector. This is intentionally more exact than the earlier
+shared conservative tilt-style variance approximation.
+
+Consequences:
+
+- roll variance and pitch variance may differ
+- roll/pitch cross-covariance may be nonzero
+- the published `3 x 3` orientation covariance may therefore contain a full
+  symmetric roll/pitch block rather than only diagonal terms
+- yaw cross-covariances remain zero in this model because gravity does not
+  observe heading
+
+For yaw, AHRS publishes a separate uncertainty signal derived from recent yaw
+stability on the mounted attitude stream. That yaw variance is not claimed to
+come from gravity. This separation is intentional and should be preserved in
+downstream interpretation.
+
+### 3.2 Gravity consistency
 
 Let `g_W` denote the world-frame gravity direction used by policy. OASIS keeps
 `g_W = (0, 0, -1)` as the shared direction convention. The AHRS predicts the
