@@ -188,9 +188,15 @@ def make_gravity_message(
 def make_node(
     fake_tf_buffer: FakeTfBuffer,
 ) -> tuple[
-    AhrsNode, FakePublisher, FakePublisher, FakePublisher, FakeTransformBroadcaster
+    AhrsNode,
+    FakePublisher,
+    FakePublisher,
+    FakePublisher,
+    FakePublisher,
+    FakeTransformBroadcaster,
 ]:
     fake_diag_pub: FakePublisher = FakePublisher()
+    fake_gravity_pub: FakePublisher = FakePublisher()
     fake_imu_pub: FakePublisher = FakePublisher()
     fake_odom_pub: FakePublisher = FakePublisher()
     fake_tf_broadcaster: FakeTransformBroadcaster = FakeTransformBroadcaster()
@@ -201,9 +207,17 @@ def make_node(
         enable_status_timer=False,
     )
     node._diag_pub = fake_diag_pub
+    node._gravity_pub = fake_gravity_pub
     node._imu_pub = fake_imu_pub
     node._odom_pub = fake_odom_pub
-    return node, fake_diag_pub, fake_imu_pub, fake_odom_pub, fake_tf_broadcaster
+    return (
+        node,
+        fake_diag_pub,
+        fake_gravity_pub,
+        fake_imu_pub,
+        fake_odom_pub,
+        fake_tf_broadcaster,
+    )
 
 
 def last_diag(diag_pub: FakePublisher) -> AhrsStatusMsg:

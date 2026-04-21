@@ -96,3 +96,4 @@ def test_add_ahrs_node_configures_boot_mounting_calibration_params(
             "mounting_min_sample_count": 12,
         }
     ]
+    assert ("ahrs/gravity", "falcon/ahrs/gravity") in ahrs_action["remappings"]

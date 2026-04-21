@@ -109,6 +109,7 @@ NODE_NAME: str = "ahrs_node"
 GRAVITY_TOPIC: str = "gravity"
 IMU_TOPIC: str = "imu"
 OUTPUT_DIAG_TOPIC: str = "ahrs/diag"
+OUTPUT_GRAVITY_TOPIC: str = "ahrs/gravity"
 OUTPUT_IMU_TOPIC: str = "ahrs/imu"
 OUTPUT_ODOM_TOPIC: str = "ahrs/odom"
 
@@ -247,6 +248,11 @@ class AhrsNode(rclpy.node.Node):
         self._diag_pub: rclpy.publisher.Publisher = self.create_publisher(
             msg_type=AhrsStatusMsg,
             topic=OUTPUT_DIAG_TOPIC,
+            qos_profile=sensor_qos_profile,
+        )
+        self._gravity_pub: rclpy.publisher.Publisher = self.create_publisher(
+            msg_type=AccelWithCovarianceStampedMsg,
+            topic=OUTPUT_GRAVITY_TOPIC,
             qos_profile=sensor_qos_profile,
         )
         self._imu_pub: rclpy.publisher.Publisher = self.create_publisher(
@@ -441,6 +447,10 @@ class AhrsNode(rclpy.node.Node):
             mounted_gravity_sample=mounted_gravity_sample,
             gravity_residual=gravity_residual,
         )
+        if mounted_gravity_sample is not None:
+            self._gravity_pub.publish(
+                self._build_gravity_message(mounted_gravity_sample)
+            )
         self._imu_pub.publish(self._build_imu_message(self._latest_output))
         self._odom_pub.publish(self._build_odom_message(self._latest_output))
         self._publish_runtime_outputs()
@@ -706,6 +716,25 @@ class AhrsNode(rclpy.node.Node):
             )
 
         return imu_message
+
+    def _build_gravity_message(
+        self, mounted_gravity_sample: MountedGravitySample
+    ) -> AccelWithCovarianceStampedMsg:
+        gravity_message: AccelWithCovarianceStampedMsg = AccelWithCovarianceStampedMsg()
+        gravity_message.header.stamp = _ns_to_time_msg(
+            mounted_gravity_sample.timestamp_ns
+        )
+        gravity_message.header.frame_id = mounted_gravity_sample.frame_id
+        gravity_message.accel.accel.linear.x = mounted_gravity_sample.gravity_mps2[0]
+        gravity_message.accel.accel.linear.y = mounted_gravity_sample.gravity_mps2[1]
+        gravity_message.accel.accel.linear.z = mounted_gravity_sample.gravity_mps2[2]
+        if mounted_gravity_sample.gravity_covariance_mps2_2 is not None:
+            gravity_message.accel.covariance = embed_linear_covariance_3x3(
+                mounted_gravity_sample.gravity_covariance_mps2_2
+            )
+        # Mark the angular covariance block unknown on the gravity-only output
+        gravity_message.accel.covariance[21] = -1.0
+        return gravity_message
 
     def _build_odom_message(self, ahrs_output: AhrsOutput) -> OdometryMsg:
         odom_message: OdometryMsg = OdometryMsg()

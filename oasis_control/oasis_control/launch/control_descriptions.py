@@ -61,6 +61,7 @@ class ControlDescriptions:
             ],
             remappings=[
                 ("ahrs/diag", f"{host_id}/ahrs/diag"),
+                ("ahrs/gravity", f"{host_id}/ahrs/gravity"),
                 ("ahrs/imu", f"{host_id}/ahrs/imu"),
                 ("ahrs/odom", f"{host_id}/ahrs/odom"),
                 ("gravity", f"{host_id}/gravity"),
