@@ -60,10 +60,22 @@ PARAM_BASE_FRAME_ID: str = "base_frame_id"
 PARAM_OUTPUT_FRAME_ID: str = "output_frame_id"
 PARAM_STATUS_TIMER_PERIOD_SEC: str = "status_timer_period_sec"
 PARAM_MIN_FORWARD_SPEED_VARIANCE_MPS2: str = "min_forward_speed_variance_mps2"
+PARAM_MIN_FORWARD_ACCEL_BIAS_VARIANCE_MPS2_2: str = (
+    "min_forward_accel_bias_variance_mps2_2"
+)
 PARAM_MIN_FORWARD_YAW_VARIANCE_RAD2: str = "min_forward_yaw_variance_rad2"
 PARAM_MIN_YAW_RATE_VARIANCE_RADS2: str = "min_yaw_rate_variance_rads2"
 PARAM_FORWARD_ACCEL_PROCESS_VARIANCE_MPS2_2: str = (
     "forward_accel_process_variance_mps2_2"
+)
+PARAM_FORWARD_ACCEL_BIAS_PROCESS_VARIANCE_MPS2_2_PER_SEC: str = (
+    "forward_accel_bias_process_variance_mps2_2_per_sec"
+)
+PARAM_STATIONARY_FORWARD_ACCEL_BIAS_MEASUREMENT_VARIANCE_MPS2_2: str = (
+    "stationary_forward_accel_bias_measurement_variance_mps2_2"
+)
+PARAM_STATIONARY_FORWARD_ACCEL_BIAS_MAX_AGE_SEC: str = (
+    "stationary_forward_accel_bias_max_age_sec"
 )
 PARAM_DEFAULT_YAW_RATE_VARIANCE_RADS2: str = "default_yaw_rate_variance_rads2"
 PARAM_YAW_LEARNING_ACCEL_THRESHOLD_MPS2: str = "yaw_learning_accel_threshold_mps2"
@@ -134,6 +146,10 @@ class AhrsSpeedometerNode(rclpy.node.Node):
             ForwardTwistConfig.min_forward_speed_variance_mps2,
         )
         self.declare_parameter(
+            PARAM_MIN_FORWARD_ACCEL_BIAS_VARIANCE_MPS2_2,
+            ForwardTwistConfig.min_forward_accel_bias_variance_mps2_2,
+        )
+        self.declare_parameter(
             PARAM_MIN_FORWARD_YAW_VARIANCE_RAD2,
             ForwardTwistConfig.min_forward_yaw_variance_rad2,
         )
@@ -144,6 +160,18 @@ class AhrsSpeedometerNode(rclpy.node.Node):
         self.declare_parameter(
             PARAM_FORWARD_ACCEL_PROCESS_VARIANCE_MPS2_2,
             ForwardTwistConfig.forward_accel_process_variance_mps2_2,
+        )
+        self.declare_parameter(
+            PARAM_FORWARD_ACCEL_BIAS_PROCESS_VARIANCE_MPS2_2_PER_SEC,
+            ForwardTwistConfig.forward_accel_bias_process_variance_mps2_2_per_sec,
+        )
+        self.declare_parameter(
+            PARAM_STATIONARY_FORWARD_ACCEL_BIAS_MEASUREMENT_VARIANCE_MPS2_2,
+            ForwardTwistConfig.stationary_forward_accel_bias_measurement_variance_mps2_2,
+        )
+        self.declare_parameter(
+            PARAM_STATIONARY_FORWARD_ACCEL_BIAS_MAX_AGE_SEC,
+            ForwardTwistConfig.stationary_forward_accel_bias_max_age_sec,
         )
         self.declare_parameter(
             PARAM_DEFAULT_YAW_RATE_VARIANCE_RADS2,
@@ -189,6 +217,9 @@ class AhrsSpeedometerNode(rclpy.node.Node):
             min_forward_speed_variance_mps2=float(
                 self.get_parameter(PARAM_MIN_FORWARD_SPEED_VARIANCE_MPS2).value
             ),
+            min_forward_accel_bias_variance_mps2_2=float(
+                self.get_parameter(PARAM_MIN_FORWARD_ACCEL_BIAS_VARIANCE_MPS2_2).value
+            ),
             min_forward_yaw_variance_rad2=float(
                 self.get_parameter(PARAM_MIN_FORWARD_YAW_VARIANCE_RAD2).value
             ),
@@ -197,6 +228,21 @@ class AhrsSpeedometerNode(rclpy.node.Node):
             ),
             forward_accel_process_variance_mps2_2=float(
                 self.get_parameter(PARAM_FORWARD_ACCEL_PROCESS_VARIANCE_MPS2_2).value
+            ),
+            forward_accel_bias_process_variance_mps2_2_per_sec=float(
+                self.get_parameter(
+                    PARAM_FORWARD_ACCEL_BIAS_PROCESS_VARIANCE_MPS2_2_PER_SEC
+                ).value
+            ),
+            stationary_forward_accel_bias_measurement_variance_mps2_2=float(
+                self.get_parameter(
+                    PARAM_STATIONARY_FORWARD_ACCEL_BIAS_MEASUREMENT_VARIANCE_MPS2_2
+                ).value
+            ),
+            stationary_forward_accel_bias_max_age_sec=float(
+                self.get_parameter(
+                    PARAM_STATIONARY_FORWARD_ACCEL_BIAS_MAX_AGE_SEC
+                ).value
             ),
             default_yaw_rate_variance_rads2=float(
                 self.get_parameter(PARAM_DEFAULT_YAW_RATE_VARIANCE_RADS2).value
@@ -451,9 +497,13 @@ class AhrsSpeedometerNode(rclpy.node.Node):
             f"(committed_yaw={latest_estimate.committed_forward_yaw_rad:.3f} rad, "
             f"candidate_yaw={candidate_forward_yaw_text} rad, "
             f"forward_speed={latest_estimate.forward_speed_mps:.3f} m/s, "
+            f"forward_accel_bias={latest_estimate.forward_accel_bias_mps2:.3f} m/s^2, "
             f"yaw_rate={latest_estimate.yaw_rate_rads:.3f} rad/s, "
             f"sigma_speed="
             f"{math.sqrt(latest_estimate.forward_speed_variance_mps2):.3f} m/s, "
+            f"sigma_forward_accel_bias="
+            f"{math.sqrt(latest_estimate.forward_accel_bias_variance_mps2_2):.3f} "
+            f"m/s^2, "
             f"sigma_yaw="
             f"{math.sqrt(latest_estimate.committed_forward_yaw_variance_rad2):.3f} "
             f"rad, "

@@ -124,7 +124,7 @@ def test_ahrs_speedometer_uses_linear_block_not_legacy_x_only_entry() -> None:
         node._handle_zupt_flag(make_zupt_flag_message(True))
         node._handle_zupt(
             make_zupt_message(
-                timestamp_sec=1.1,
+                timestamp_sec=2.0,
                 linear_variances_mps2=(0.01, 0.25, 0.49),
                 angular_variances_rads2=(0.0, 0.0, 0.0),
             )
@@ -132,7 +132,7 @@ def test_ahrs_speedometer_uses_linear_block_not_legacy_x_only_entry() -> None:
 
         expected_variance_mps2: float = (0.01 + 0.25 + 0.49) / 3.0
         expected_prior_variance_mps2: float = (
-            1.0 + ForwardTwistConfig.forward_accel_process_variance_mps2_2
+            1.0 + ForwardTwistConfig.forward_accel_process_variance_mps2_2 + 1.0
         )
         estimate = node._runtime_state.latest_estimate
 
@@ -145,6 +145,28 @@ def test_ahrs_speedometer_uses_linear_block_not_legacy_x_only_entry() -> None:
             (expected_prior_variance_mps2 * expected_variance_mps2)
             / (expected_prior_variance_mps2 + expected_variance_mps2)
         )
+    finally:
+        node.stop()
+
+
+def test_ahrs_speedometer_status_reports_forward_accel_bias() -> None:
+    node: AhrsSpeedometerNode = AhrsSpeedometerNode()
+
+    try:
+        node._handle_imu(make_imu_message(timestamp_sec=0.0, linear_accel_x=0.3))
+        node._handle_zupt_flag(make_zupt_flag_message(True))
+        node._handle_zupt(
+            make_zupt_message(
+                timestamp_sec=0.1,
+                linear_variances_mps2=(0.05, 0.05, 0.05),
+                angular_variances_rads2=(0.0, 0.0, 0.0),
+            )
+        )
+
+        status_text: str = node._compute_status_text()
+
+        assert "forward_accel_bias=" in status_text
+        assert "sigma_forward_accel_bias=" in status_text
     finally:
         node.stop()
 

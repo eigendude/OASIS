@@ -15,6 +15,8 @@ from __future__ import annotations
 import math
 from pathlib import Path
 
+import pytest
+
 from oasis_control.localization.speedometer.contracts import ForwardTwistConfig
 from oasis_control.localization.speedometer.contracts import ZuptMeasurement
 from oasis_control.localization.speedometer.forward_twist_estimator import (
@@ -250,6 +252,123 @@ def test_speed_propagation_uses_world_flat_projection_before_body_projection() -
     assert estimate.forward_speed_variance_mps2 > 1.0
 
 
+def test_speed_propagation_subtracts_learned_forward_accel_bias() -> None:
+    estimator: ForwardTwistEstimator = _make_estimator(yaw_learning_min_samples=1)
+
+    estimator.update_imu(
+        timestamp_ns=0,
+        orientation_xyzw=IDENTITY_QUATERNION_XYZW,
+        angular_velocity_rads=ZERO_GYRO_RADS,
+        linear_acceleration_mps2=(0.5, 0.0, 0.0),
+    )
+    estimator.update_zupt(
+        measurement=ZuptMeasurement(
+            timestamp_ns=100_000_000,
+            zero_velocity_variance_mps2=0.01,
+            stationary_flag=True,
+        )
+    )
+
+    biased_estimate = estimator.update_imu(
+        timestamp_ns=1_100_000_000,
+        orientation_xyzw=IDENTITY_QUATERNION_XYZW,
+        angular_velocity_rads=ZERO_GYRO_RADS,
+        linear_acceleration_mps2=(0.5, 0.0, 0.0),
+    )
+
+    assert biased_estimate.forward_accel_bias_mps2 > 0.0
+    assert biased_estimate.forward_speed_mps < 0.3
+
+
+def test_stationary_zupt_learns_persistent_forward_accel_bias() -> None:
+    estimator: ForwardTwistEstimator = _make_estimator(yaw_learning_min_samples=1)
+
+    estimator.update_imu(
+        timestamp_ns=0,
+        orientation_xyzw=IDENTITY_QUATERNION_XYZW,
+        angular_velocity_rads=ZERO_GYRO_RADS,
+        linear_acceleration_mps2=(0.4, 0.0, 0.0),
+    )
+    estimator.update_zupt(
+        measurement=ZuptMeasurement(
+            timestamp_ns=50_000_000,
+            zero_velocity_variance_mps2=0.01,
+            stationary_flag=True,
+        )
+    )
+    estimate = estimator.update_zupt(
+        measurement=ZuptMeasurement(
+            timestamp_ns=100_000_000,
+            zero_velocity_variance_mps2=0.01,
+            stationary_flag=True,
+        )
+    )
+
+    assert estimate.forward_accel_bias_mps2 > 0.2
+    assert estimate.forward_accel_bias_variance_mps2_2 < 1.0
+
+
+def test_negative_process_noise_settings_do_not_break_variance_floors() -> None:
+    estimator: ForwardTwistEstimator = ForwardTwistEstimator(
+        config=ForwardTwistConfig(
+            yaw_learning_min_samples=1,
+            forward_accel_process_variance_mps2_2=-10.0,
+            forward_accel_bias_process_variance_mps2_2_per_sec=-5.0,
+        )
+    )
+
+    estimator.update_imu(
+        timestamp_ns=0,
+        orientation_xyzw=IDENTITY_QUATERNION_XYZW,
+        angular_velocity_rads=ZERO_GYRO_RADS,
+        linear_acceleration_mps2=(0.0, 0.0, 0.0),
+    )
+    estimate = estimator.update_imu(
+        timestamp_ns=1_000_000_000,
+        orientation_xyzw=IDENTITY_QUATERNION_XYZW,
+        angular_velocity_rads=ZERO_GYRO_RADS,
+        linear_acceleration_mps2=(0.0, 0.0, 0.0),
+    )
+
+    assert estimate.forward_speed_variance_mps2 >= (
+        ForwardTwistConfig.min_forward_speed_variance_mps2
+    )
+    assert estimate.forward_accel_bias_variance_mps2_2 >= (
+        ForwardTwistConfig.min_forward_accel_bias_variance_mps2_2
+    )
+
+
+def test_speed_and_bias_variance_floors_remain_distinct_in_propagation() -> None:
+    estimator: ForwardTwistEstimator = ForwardTwistEstimator(
+        config=ForwardTwistConfig(
+            yaw_learning_min_samples=1,
+            min_forward_speed_variance_mps2=0.2,
+            min_forward_accel_bias_variance_mps2_2=0.7,
+            forward_accel_process_variance_mps2_2=-10.0,
+            forward_accel_bias_process_variance_mps2_2_per_sec=-5.0,
+        )
+    )
+
+    estimator._var_forward_speed_mps2 = 0.05
+    estimator._var_forward_accel_bias_mps2_2 = 0.1
+
+    estimator.update_imu(
+        timestamp_ns=0,
+        orientation_xyzw=IDENTITY_QUATERNION_XYZW,
+        angular_velocity_rads=ZERO_GYRO_RADS,
+        linear_acceleration_mps2=(0.0, 0.0, 0.0),
+    )
+    estimate = estimator.update_imu(
+        timestamp_ns=1_000_000_000,
+        orientation_xyzw=IDENTITY_QUATERNION_XYZW,
+        angular_velocity_rads=ZERO_GYRO_RADS,
+        linear_acceleration_mps2=(0.0, 0.0, 0.0),
+    )
+
+    assert estimate.forward_speed_variance_mps2 == pytest.approx(0.2)
+    assert estimate.forward_accel_bias_variance_mps2_2 == pytest.approx(0.7)
+
+
 def test_zupt_reduces_scalar_speed_even_when_learning_is_frozen(tmp_path: Path) -> None:
     persistence_path: Path = tmp_path / "ahrs_speedometer_test-host.yaml"
     persistence_path.write_text(
@@ -293,6 +412,26 @@ def test_zupt_reduces_scalar_speed_even_when_learning_is_frozen(tmp_path: Path) 
     assert (
         after_zupt.forward_speed_variance_mps2 < before_zupt.forward_speed_variance_mps2
     )
+
+
+def test_reverse_motion_remains_possible_with_forward_accel_bias_state() -> None:
+    estimator: ForwardTwistEstimator = _make_estimator(yaw_learning_min_samples=1)
+
+    estimator.update_imu(
+        timestamp_ns=0,
+        orientation_xyzw=IDENTITY_QUATERNION_XYZW,
+        angular_velocity_rads=ZERO_GYRO_RADS,
+        linear_acceleration_mps2=(-1.0, 0.0, 0.0),
+    )
+    estimate = estimator.update_imu(
+        timestamp_ns=1_000_000_000,
+        orientation_xyzw=IDENTITY_QUATERNION_XYZW,
+        angular_velocity_rads=ZERO_GYRO_RADS,
+        linear_acceleration_mps2=(-1.0, 0.0, 0.0),
+    )
+
+    assert estimate.forward_speed_mps < -0.9
+    assert math.isclose(estimate.forward_accel_bias_mps2, 0.0, abs_tol=1.0e-9)
 
 
 def test_covariance_adds_speed_and_yaw_terms_without_fake_z_variance() -> None:

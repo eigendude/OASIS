@@ -67,8 +67,14 @@ class ForwardTwistEstimator:
         self._config: ForwardTwistConfig = config
 
         self._forward_speed_mps: float = 0.0
+        self._forward_accel_bias_mps2: float = 0.0
         self._var_forward_speed_mps2: float = max(
             self._config.min_forward_speed_variance_mps2,
+            1.0,
+        )
+        self._cov_forward_speed_bias_mps3: float = 0.0
+        self._var_forward_accel_bias_mps2_2: float = max(
+            self._config.min_forward_accel_bias_variance_mps2_2,
             1.0,
         )
         self._committed_forward_yaw_rad: float = 0.0
@@ -88,6 +94,8 @@ class ForwardTwistEstimator:
         )
         self._turn_detected: bool = False
         self._last_timestamp_ns: Optional[int] = None
+        self._last_forward_acceleration_timestamp_ns: Optional[int] = None
+        self._last_forward_acceleration_mps2: Optional[float] = None
         self._loaded_from_persistence: bool = False
         self._learning_enabled: bool = True
 
@@ -150,11 +158,20 @@ class ForwardTwistEstimator:
                 _forward_axis_flat(active_forward_yaw_rad),
                 flat_linear_acceleration_mps2,
             )
-            self._forward_speed_mps += dt_sec * forward_acceleration_mps2
-            self._var_forward_speed_mps2 = max(
-                self._config.min_forward_speed_variance_mps2,
-                self._var_forward_speed_mps2
-                + dt_sec * dt_sec * self._config.forward_accel_process_variance_mps2_2,
+            corrected_forward_acceleration_mps2: float = (
+                forward_acceleration_mps2 - self._forward_accel_bias_mps2
+            )
+            self._forward_speed_mps += dt_sec * corrected_forward_acceleration_mps2
+            self._propagate_speed_and_bias_covariance(dt_sec=dt_sec)
+
+            self._last_forward_acceleration_timestamp_ns = measurement_timestamp_ns
+            self._last_forward_acceleration_mps2 = forward_acceleration_mps2
+        else:
+            active_forward_yaw_rad = self._active_forward_yaw_rad()
+            self._last_forward_acceleration_timestamp_ns = measurement_timestamp_ns
+            self._last_forward_acceleration_mps2 = _dot(
+                _forward_axis_flat(active_forward_yaw_rad),
+                flat_linear_acceleration_mps2,
             )
 
         self._last_timestamp_ns = measurement_timestamp_ns
@@ -190,15 +207,13 @@ class ForwardTwistEstimator:
             self._config.min_forward_speed_variance_mps2,
             float(measurement.zero_velocity_variance_mps2),
         )
-        innovation_variance_mps2: float = (
-            self._var_forward_speed_mps2 + measurement_variance_mps2
+        self._apply_speed_measurement_update(
+            measurement_value_mps=0.0,
+            measurement_variance_mps2=measurement_variance_mps2,
         )
-        kalman_gain: float = self._var_forward_speed_mps2 / innovation_variance_mps2
 
-        self._forward_speed_mps -= kalman_gain * self._forward_speed_mps
-        self._var_forward_speed_mps2 = max(
-            self._config.min_forward_speed_variance_mps2,
-            (1.0 - kalman_gain) * self._var_forward_speed_mps2,
+        self._apply_stationary_bias_update(
+            measurement_timestamp_ns=measurement_timestamp_ns
         )
         return self.get_estimate()
 
@@ -219,6 +234,8 @@ class ForwardTwistEstimator:
             candidate_residual_ratio=self._candidate_residual_ratio,
             forward_speed_mps=self._forward_speed_mps,
             forward_speed_variance_mps2=self._var_forward_speed_mps2,
+            forward_accel_bias_mps2=self._forward_accel_bias_mps2,
+            forward_accel_bias_variance_mps2_2=self._var_forward_accel_bias_mps2_2,
             yaw_rate_rads=self._yaw_rate_rads,
             yaw_rate_variance_rads2=self._var_yaw_rate_rads2,
             accepted_learning_sample_count=self._accepted_learning_sample_count,
@@ -319,6 +336,159 @@ class ForwardTwistEstimator:
         self._commit_candidate(
             timestamp_ns=timestamp_ns,
             candidate_state=candidate_state,
+        )
+
+    def _propagate_speed_and_bias_covariance(self, *, dt_sec: float) -> None:
+        previous_var_forward_speed_mps2: float = self._var_forward_speed_mps2
+        previous_cov_speed_bias_mps3: float = self._cov_forward_speed_bias_mps3
+        previous_var_forward_accel_bias_mps2_2: float = (
+            self._var_forward_accel_bias_mps2_2
+        )
+
+        # This is the instantaneous acceleration noise that drives the speed
+        # propagation step. It is sanitized as a nonnegative process term and
+        # is separate from any state-variance minimum.
+        accel_drive_process_variance_mps2_2: float = _sanitize_process_variance(
+            self._config.forward_accel_process_variance_mps2_2
+        )
+
+        # This is the bias random-walk growth over the current propagation
+        # interval. It uses its own nonnegative variance-rate term rather than
+        # borrowing any floor from the speed-driving acceleration noise.
+        bias_random_walk_variance_mps2_2: float = dt_sec * _sanitize_process_variance(
+            self._config.forward_accel_bias_process_variance_mps2_2_per_sec
+        )
+
+        self._var_forward_speed_mps2 = max(
+            self._config.min_forward_speed_variance_mps2,
+            previous_var_forward_speed_mps2
+            - 2.0 * dt_sec * previous_cov_speed_bias_mps3
+            + dt_sec
+            * dt_sec
+            * (
+                previous_var_forward_accel_bias_mps2_2
+                + accel_drive_process_variance_mps2_2
+            ),
+        )
+        self._cov_forward_speed_bias_mps3 = (
+            previous_cov_speed_bias_mps3
+            - dt_sec * previous_var_forward_accel_bias_mps2_2
+        )
+        self._var_forward_accel_bias_mps2_2 = max(
+            self._config.min_forward_accel_bias_variance_mps2_2,
+            previous_var_forward_accel_bias_mps2_2 + bias_random_walk_variance_mps2_2,
+        )
+
+    def _apply_speed_measurement_update(
+        self,
+        *,
+        measurement_value_mps: float,
+        measurement_variance_mps2: float,
+    ) -> None:
+        innovation_mps: float = measurement_value_mps - self._forward_speed_mps
+        innovation_variance_mps2: float = (
+            self._var_forward_speed_mps2 + measurement_variance_mps2
+        )
+        kalman_gain_speed: float = (
+            self._var_forward_speed_mps2 / innovation_variance_mps2
+        )
+        kalman_gain_bias: float = (
+            self._cov_forward_speed_bias_mps3 / innovation_variance_mps2
+        )
+
+        previous_var_forward_speed_mps2: float = self._var_forward_speed_mps2
+        previous_cov_speed_bias_mps3: float = self._cov_forward_speed_bias_mps3
+        previous_var_forward_accel_bias_mps2_2: float = (
+            self._var_forward_accel_bias_mps2_2
+        )
+
+        self._forward_speed_mps += kalman_gain_speed * innovation_mps
+        self._forward_accel_bias_mps2 += kalman_gain_bias * innovation_mps
+        self._var_forward_speed_mps2 = max(
+            self._config.min_forward_speed_variance_mps2,
+            (1.0 - kalman_gain_speed) * previous_var_forward_speed_mps2,
+        )
+        self._cov_forward_speed_bias_mps3 = (
+            1.0 - kalman_gain_speed
+        ) * previous_cov_speed_bias_mps3
+        self._var_forward_accel_bias_mps2_2 = max(
+            self._config.min_forward_accel_bias_variance_mps2_2,
+            previous_var_forward_accel_bias_mps2_2
+            - kalman_gain_bias * previous_cov_speed_bias_mps3,
+        )
+
+    def _apply_stationary_bias_update(self, *, measurement_timestamp_ns: int) -> None:
+        """
+        Apply a compact stationary-bias measurement model during a ZUPT.
+
+        When the platform is declared stationary, a persistent projected
+        forward acceleration is reinterpreted as bias evidence rather than real
+        longitudinal motion. This is an intentionally compact heuristic
+        measurement model rather than a richer inertial derivation. The latest
+        projected acceleration is reused only inside a short recency window so
+        the heuristic stays tied to the same physical stop event.
+        """
+
+        if self._last_forward_acceleration_timestamp_ns is None:
+            return
+
+        if self._last_forward_acceleration_mps2 is None:
+            return
+
+        sample_age_sec: float = (
+            float(
+                measurement_timestamp_ns - self._last_forward_acceleration_timestamp_ns
+            )
+            * 1.0e-9
+        )
+        if sample_age_sec < 0.0:
+            return
+
+        if sample_age_sec > self._config.stationary_forward_accel_bias_max_age_sec:
+            return
+
+        measurement_variance_mps2_2: float = max(
+            self._config.min_forward_accel_bias_variance_mps2_2,
+            self._config.stationary_forward_accel_bias_measurement_variance_mps2_2,
+        )
+        innovation_mps2: float = (
+            self._last_forward_acceleration_mps2 - self._forward_accel_bias_mps2
+        )
+        innovation_variance_mps2_2: float = (
+            self._var_forward_accel_bias_mps2_2 + measurement_variance_mps2_2
+        )
+        # The stationary bias measurement is still coupled to the speed state
+        # through the speed-bias covariance term, so both states can move here
+        # even though the measurement is expressed in acceleration units.
+        kalman_gain_speed_from_bias_measurement_sec: float = (
+            self._cov_forward_speed_bias_mps3 / innovation_variance_mps2_2
+        )
+        kalman_gain_bias: float = (
+            self._var_forward_accel_bias_mps2_2 / innovation_variance_mps2_2
+        )
+
+        previous_var_forward_speed_mps2: float = self._var_forward_speed_mps2
+        previous_cov_speed_bias_mps3: float = self._cov_forward_speed_bias_mps3
+        previous_var_forward_accel_bias_mps2_2: float = (
+            self._var_forward_accel_bias_mps2_2
+        )
+
+        self._forward_speed_mps += (
+            kalman_gain_speed_from_bias_measurement_sec * innovation_mps2
+        )
+        self._forward_accel_bias_mps2 += kalman_gain_bias * innovation_mps2
+        self._var_forward_speed_mps2 = max(
+            self._config.min_forward_speed_variance_mps2,
+            previous_var_forward_speed_mps2
+            - kalman_gain_speed_from_bias_measurement_sec
+            * previous_cov_speed_bias_mps3,
+        )
+        self._cov_forward_speed_bias_mps3 = (
+            1.0 - kalman_gain_bias
+        ) * previous_cov_speed_bias_mps3
+        self._var_forward_accel_bias_mps2_2 = max(
+            self._config.min_forward_accel_bias_variance_mps2_2,
+            (1.0 - kalman_gain_bias) * previous_var_forward_accel_bias_mps2_2,
         )
 
     def _append_evidence_sample(self, sample: _AxisEvidenceSample) -> None:
@@ -608,6 +778,21 @@ def _sanitize_positive_variance(
     sanitized_value: float = float(variance_value)
     if not math.isfinite(sanitized_value) or sanitized_value <= 0.0:
         return float(minimum_variance)
+
+    return sanitized_value
+
+
+def _sanitize_process_variance(variance_value: float) -> float:
+    """
+    Clamp one process-noise variance term to a finite nonnegative value.
+
+    Process-noise terms describe injected uncertainty, not state-variance
+    floors, so invalid values collapse to `0.0` instead of a state minimum.
+    """
+
+    sanitized_value: float = float(variance_value)
+    if not math.isfinite(sanitized_value) or sanitized_value <= 0.0:
+        return 0.0
 
     return sanitized_value
 

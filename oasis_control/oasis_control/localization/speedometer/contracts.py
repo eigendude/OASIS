@@ -26,12 +26,26 @@ class ForwardTwistConfig:
             messages
         min_forward_speed_variance_mps2: minimum published scalar speed
             variance in m^2/s^2
+        min_forward_accel_bias_variance_mps2_2: minimum forward-acceleration
+            bias variance in (m/s^2)^2
         min_forward_yaw_variance_rad2: minimum learned forward-yaw variance in
             rad^2
         min_yaw_rate_variance_rads2: minimum owned yaw-rate variance in
             rad^2/s^2
-        forward_accel_process_variance_mps2_2: scalar forward-acceleration
-            process-noise variance in (m/s^2)^2
+        forward_accel_process_variance_mps2_2: scalar process-noise variance
+            for the forward acceleration that drives speed propagation, in
+            (m/s^2)^2
+        forward_accel_bias_process_variance_mps2_2_per_sec: scalar
+            forward-acceleration-bias random-walk variance growth in
+            (m/s^2)^2 per second
+        stationary_forward_accel_bias_measurement_variance_mps2_2: scalar
+            measurement variance for the compact stationary-bias measurement
+            model that reinterprets persistent projected forward acceleration
+            during a stop as forward-acceleration bias
+        stationary_forward_accel_bias_max_age_sec: maximum age in seconds for
+            reusing the latest projected forward acceleration as stationary
+            bias evidence during a ZUPT update so the stationary-bias
+            measurement model stays local to the current stop event
         default_yaw_rate_variance_rads2: owned default yaw-rate variance in
             rad^2/s^2
         yaw_learning_accel_threshold_mps2: minimum flat-surface acceleration
@@ -53,9 +67,13 @@ class ForwardTwistConfig:
     expected_imu_frame_id: str = "base_link"
     output_frame_id: str = "base_link"
     min_forward_speed_variance_mps2: float = 1.0e-4
+    min_forward_accel_bias_variance_mps2_2: float = 1.0e-4
     min_forward_yaw_variance_rad2: float = 1.0e-4
     min_yaw_rate_variance_rads2: float = 1.0e-4
     forward_accel_process_variance_mps2_2: float = 4.0
+    forward_accel_bias_process_variance_mps2_2_per_sec: float = 0.05
+    stationary_forward_accel_bias_measurement_variance_mps2_2: float = 0.04
+    stationary_forward_accel_bias_max_age_sec: float = 0.25
     default_yaw_rate_variance_rads2: float = 0.05
     yaw_learning_accel_threshold_mps2: float = 0.2
     yaw_learning_window_size: int = 20
@@ -105,6 +123,9 @@ class ForwardTwistEstimate:
             candidate or None when unavailable
         forward_speed_mps: scalar forward speed in m/s
         forward_speed_variance_mps2: scalar forward-speed variance in m^2/s^2
+        forward_accel_bias_mps2: scalar forward-acceleration bias in m/s^2
+        forward_accel_bias_variance_mps2_2: scalar forward-acceleration bias
+            variance in (m/s^2)^2
         yaw_rate_rads: scalar yaw angular velocity in rad/s
         yaw_rate_variance_rads2: scalar yaw-rate variance in rad^2/s^2
         accepted_learning_sample_count: cumulative accepted learning samples
@@ -129,6 +150,8 @@ class ForwardTwistEstimate:
     candidate_residual_ratio: Optional[float]
     forward_speed_mps: float
     forward_speed_variance_mps2: float
+    forward_accel_bias_mps2: float
+    forward_accel_bias_variance_mps2_2: float
     yaw_rate_rads: float
     yaw_rate_variance_rads2: float
     accepted_learning_sample_count: int
