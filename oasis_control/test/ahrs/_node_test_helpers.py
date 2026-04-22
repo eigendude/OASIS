@@ -62,6 +62,8 @@ def make_imu_message(
     quaternion_xyzw: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0),
     timestamp_ns: int = 1_000_000_000,
     orientation_covariance: list[float] | None = None,
+    linear_acceleration: tuple[float, float, float] = (0.0, 0.0, 0.0),
+    linear_acceleration_covariance: list[float] | None = None,
 ) -> ImuMsg:
     message: ImuMsg = ImuMsg()
     message.header.frame_id = frame_id
@@ -90,20 +92,83 @@ def make_imu_message(
         0.0,
         1.0,
     ]
-    message.linear_acceleration.x = 0.0
-    message.linear_acceleration.y = 0.0
-    message.linear_acceleration.z = -9.81
-    message.linear_acceleration_covariance = [
-        1.0,
-        0.0,
-        0.0,
-        0.0,
-        1.0,
-        0.0,
-        0.0,
-        0.0,
-        1.0,
-    ]
+    message.linear_acceleration.x = linear_acceleration[0]
+    message.linear_acceleration.y = linear_acceleration[1]
+    message.linear_acceleration.z = linear_acceleration[2]
+    message.linear_acceleration_covariance = (
+        linear_acceleration_covariance
+        if linear_acceleration_covariance is not None
+        else [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+        ]
+    )
+    return message
+
+
+def make_accel_message(
+    *,
+    frame_id: str = "imu_link",
+    accel_vector: tuple[float, float, float] = (0.0, 0.0, -9.81),
+    timestamp_ns: int = 950_000_000,
+    covariance: list[float] | None = None,
+) -> AccelWithCovarianceStampedMsg:
+    message: AccelWithCovarianceStampedMsg = AccelWithCovarianceStampedMsg()
+    message.header.frame_id = frame_id
+    message.header.stamp.sec = int(timestamp_ns // 1_000_000_000)
+    message.header.stamp.nanosec = int(timestamp_ns % 1_000_000_000)
+    message.accel.accel.linear.x = accel_vector[0]
+    message.accel.accel.linear.y = accel_vector[1]
+    message.accel.accel.linear.z = accel_vector[2]
+    message.accel.covariance = (
+        covariance
+        if covariance is not None
+        else [
+            0.04,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.04,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.04,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+        ]
+    )
     return message
 
 
@@ -174,9 +239,11 @@ def make_node(
     FakePublisher,
     FakePublisher,
     FakePublisher,
+    FakePublisher,
     FakeTransformBroadcaster,
 ]:
     fake_diag_pub: FakePublisher = FakePublisher()
+    fake_accel_pub: FakePublisher = FakePublisher()
     fake_gravity_pub: FakePublisher = FakePublisher()
     fake_imu_pub: FakePublisher = FakePublisher()
     fake_odom_pub: FakePublisher = FakePublisher()
@@ -189,12 +256,14 @@ def make_node(
     node._mounting_transform = mounting_transform
     node._diagnostics.has_mounting = mounting_transform is not None
     node._diag_pub = fake_diag_pub
+    node._accel_pub = fake_accel_pub
     node._gravity_pub = fake_gravity_pub
     node._imu_pub = fake_imu_pub
     node._odom_pub = fake_odom_pub
     return (
         node,
         fake_diag_pub,
+        fake_accel_pub,
         fake_gravity_pub,
         fake_imu_pub,
         fake_odom_pub,

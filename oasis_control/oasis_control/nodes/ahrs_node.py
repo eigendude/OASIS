@@ -77,12 +77,17 @@ from oasis_control.localization.common.algebra.quat import Vector3
 from oasis_control.localization.common.algebra.quat import normalize_quaternion_xyzw
 from oasis_control.localization.common.algebra.quat import quaternion_multiply_xyzw
 from oasis_control.localization.common.data.gravity_sample import GravitySample
+from oasis_control.localization.common.frames.mounting import MountedAccelSample
 from oasis_control.localization.common.frames.mounting import MountedGravitySample
 from oasis_control.localization.common.frames.mounting import MountedImuSample
 from oasis_control.localization.common.frames.mounting import MountingTransform
+from oasis_control.localization.common.frames.mounting import apply_mounting_to_accel
 from oasis_control.localization.common.frames.mounting import apply_mounting_to_gravity
 from oasis_control.localization.common.measurements.gravity_direction import (
     GravityDirectionResidual,
+)
+from oasis_control.localization.common.validation.accel_validation import (
+    validate_accel_sample,
 )
 from oasis_control.localization.common.validation.gravity_validation import (
     validate_gravity_sample,
@@ -101,9 +106,11 @@ from oasis_msgs.msg import AhrsStatus as AhrsStatusMsg
 NODE_NAME: str = "ahrs_node"
 
 # ROS topics
+ACCEL_TOPIC: str = "accel"
 GRAVITY_TOPIC: str = "gravity"
 IMU_TOPIC: str = "imu"
 OUTPUT_DIAG_TOPIC: str = "ahrs/diag"
+OUTPUT_ACCEL_TOPIC: str = "ahrs/accel"
 OUTPUT_GRAVITY_TOPIC: str = "ahrs/gravity"
 OUTPUT_IMU_TOPIC: str = "ahrs/imu"
 OUTPUT_ODOM_TOPIC: str = "ahrs/odom"
@@ -223,6 +230,7 @@ class AhrsNode(rclpy.node.Node):
 
         # AHRS state
         self._diagnostics: AhrsDiagnosticsState = AhrsDiagnosticsState()
+        self._last_accepted_accel_timestamp_ns: Optional[int] = None
         self._latest_gravity_sample: Optional[GravitySample] = None
         self._latest_output: Optional[AhrsOutput] = None
         self._latest_imu_angular_velocity_rads: Optional[Vector3] = None
@@ -242,6 +250,11 @@ class AhrsNode(rclpy.node.Node):
         self._diag_pub: rclpy.publisher.Publisher = self.create_publisher(
             msg_type=AhrsStatusMsg,
             topic=OUTPUT_DIAG_TOPIC,
+            qos_profile=sensor_qos_profile,
+        )
+        self._accel_pub: rclpy.publisher.Publisher = self.create_publisher(
+            msg_type=AccelWithCovarianceStampedMsg,
+            topic=OUTPUT_ACCEL_TOPIC,
             qos_profile=sensor_qos_profile,
         )
         self._gravity_pub: rclpy.publisher.Publisher = self.create_publisher(
@@ -265,6 +278,12 @@ class AhrsNode(rclpy.node.Node):
             msg_type=AccelWithCovarianceStampedMsg,
             topic=GRAVITY_TOPIC,
             callback=self._handle_gravity,
+            qos_profile=sensor_qos_profile,
+        )
+        self._accel_sub: rclpy.subscription.Subscription = self.create_subscription(
+            msg_type=AccelWithCovarianceStampedMsg,
+            topic=ACCEL_TOPIC,
+            callback=self._handle_accel,
             qos_profile=sensor_qos_profile,
         )
         self._imu_sub: rclpy.subscription.Subscription = self.create_subscription(
@@ -331,6 +350,42 @@ class AhrsNode(rclpy.node.Node):
             validation_result.sample.timestamp_ns
         )
         self._update_mounting_calibration(validation_result.sample)
+        self._publish_runtime_outputs()
+
+    def _handle_accel(self, message: AccelWithCovarianceStampedMsg) -> None:
+        validation_result = validate_accel_sample(
+            timestamp_ns=_time_msg_to_ns(message.header.stamp),
+            frame_id=message.header.frame_id,
+            expected_frame_id=self._imu_frame_id,
+            accel_mps2=(
+                float(message.accel.accel.linear.x),
+                float(message.accel.accel.linear.y),
+                float(message.accel.accel.linear.z),
+            ),
+            accel_covariance_row_major=tuple(
+                float(value) for value in message.accel.covariance
+            ),
+        )
+        if not validation_result.accepted or validation_result.sample is None:
+            self._publish_runtime_outputs()
+            return
+
+        if self._is_stale_accel(validation_result.sample.timestamp_ns):
+            self._publish_runtime_outputs()
+            return
+
+        self._last_accepted_accel_timestamp_ns = validation_result.sample.timestamp_ns
+
+        mounting_transform: Optional[MountingTransform] = self._resolve_mounting()
+        if mounting_transform is None:
+            self._publish_runtime_outputs()
+            return
+
+        mounted_accel_sample: MountedAccelSample = apply_mounting_to_accel(
+            validation_result.sample,
+            mounting_transform,
+        )
+        self._accel_pub.publish(self._build_accel_message(mounted_accel_sample))
         self._publish_runtime_outputs()
 
     def _handle_imu(self, message: ImuMsg) -> None:
@@ -442,6 +497,12 @@ class AhrsNode(rclpy.node.Node):
         self._imu_pub.publish(self._build_imu_message(self._latest_output))
         self._odom_pub.publish(self._build_odom_message(self._latest_output))
         self._publish_runtime_outputs()
+
+    def _is_stale_accel(self, timestamp_ns: int) -> bool:
+        return (
+            self._last_accepted_accel_timestamp_ns is not None
+            and timestamp_ns < self._last_accepted_accel_timestamp_ns
+        )
 
     def _is_stale_imu(self, timestamp_ns: int) -> bool:
         last_timestamp_ns: Optional[int] = (
@@ -691,6 +752,23 @@ class AhrsNode(rclpy.node.Node):
         # Mark the angular covariance block unknown on the gravity-only output
         gravity_message.accel.covariance[21] = -1.0
         return gravity_message
+
+    def _build_accel_message(
+        self, mounted_accel_sample: MountedAccelSample
+    ) -> AccelWithCovarianceStampedMsg:
+        accel_message: AccelWithCovarianceStampedMsg = AccelWithCovarianceStampedMsg()
+        accel_message.header.stamp = _ns_to_time_msg(mounted_accel_sample.timestamp_ns)
+        accel_message.header.frame_id = mounted_accel_sample.frame_id
+        accel_message.accel.accel.linear.x = mounted_accel_sample.accel_mps2[0]
+        accel_message.accel.accel.linear.y = mounted_accel_sample.accel_mps2[1]
+        accel_message.accel.accel.linear.z = mounted_accel_sample.accel_mps2[2]
+        if mounted_accel_sample.accel_covariance_mps2_2 is not None:
+            accel_message.accel.covariance = embed_linear_covariance_3x3(
+                mounted_accel_sample.accel_covariance_mps2_2
+            )
+        # Mark the angular covariance block unknown on the accel-only output
+        accel_message.accel.covariance[21] = -1.0
+        return accel_message
 
     def _build_odom_message(self, ahrs_output: AhrsOutput) -> OdometryMsg:
         odom_message: OdometryMsg = OdometryMsg()

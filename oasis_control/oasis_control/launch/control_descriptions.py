@@ -60,6 +60,8 @@ class ControlDescriptions:
                 }
             ],
             remappings=[
+                ("accel", f"{host_id}/accel"),
+                ("ahrs/accel", f"{host_id}/ahrs/accel"),
                 ("ahrs/diag", f"{host_id}/ahrs/diag"),
                 ("ahrs/gravity", f"{host_id}/ahrs/gravity"),
                 ("ahrs/imu", f"{host_id}/ahrs/imu"),

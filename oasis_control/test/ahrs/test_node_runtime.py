@@ -32,6 +32,7 @@ from oasis_control.localization.common.measurements.gravity_observable_attitude 
 from oasis_msgs.msg import AhrsStatus as AhrsStatusMsg
 
 from ._node_test_helpers import last_diag
+from ._node_test_helpers import make_accel_message
 from ._node_test_helpers import make_cached_mounting_transform
 from ._node_test_helpers import make_gravity_message
 from ._node_test_helpers import make_imu_message
@@ -80,19 +81,19 @@ def test_valid_imu_publishes_mounted_outputs_and_tf() -> None:
         math.sin(math.pi / 4.0),
         math.cos(math.pi / 4.0),
     )
-    node, diag_pub, gravity_pub, imu_pub, odom_pub, tf_broadcaster = make_node(
-        make_cached_mounting_transform(quarter_turn_about_z_xyzw)
+    node, diag_pub, accel_pub, gravity_pub, imu_pub, odom_pub, tf_broadcaster = (
+        make_node(make_cached_mounting_transform(quarter_turn_about_z_xyzw))
     )
 
     try:
         node._handle_gravity(make_gravity_message())
         node._handle_imu(make_imu_message())
-
         gravity_message: AccelWithCovarianceStampedMsg = gravity_pub.messages[-1]
         imu_message: ImuMsg = imu_pub.messages[-1]
         odom_message = odom_pub.messages[-1]
         tf_messages = tf_broadcaster.transforms[-1]
 
+        assert len(accel_pub.messages) == 0
         assert len(gravity_pub.messages) == 1
         assert len(imu_pub.messages) == 1
         assert len(odom_pub.messages) == 1
@@ -150,7 +151,7 @@ def test_valid_imu_publishes_mounted_outputs_and_tf() -> None:
 
 
 def test_session_yaw_zero_tracks_subsequent_yaw_relative_to_startup() -> None:
-    node, _, _, imu_pub, odom_pub, tf_broadcaster = make_node(
+    node, _, _, _, imu_pub, odom_pub, tf_broadcaster = make_node(
         make_cached_mounting_transform((0.0, 0.0, 0.0, 1.0))
     )
 
@@ -295,7 +296,7 @@ def test_gravity_output_is_rotated_into_base_link_with_source_timestamp() -> Non
         math.sin(math.pi / 4.0),
         math.cos(math.pi / 4.0),
     )
-    node, _, gravity_pub, _, _, _ = make_node(
+    node, _, _, gravity_pub, _, _, _ = make_node(
         make_cached_mounting_transform(quarter_turn_about_z_xyzw)
     )
 
@@ -327,7 +328,7 @@ def test_gravity_output_rotates_linear_covariance_block_into_base_link() -> None
         math.sin(math.pi / 4.0),
         math.cos(math.pi / 4.0),
     )
-    node, _, gravity_pub, _, _, _ = make_node(
+    node, _, _, gravity_pub, _, _, _ = make_node(
         make_cached_mounting_transform(quarter_turn_about_z_xyzw)
     )
 
@@ -397,8 +398,117 @@ def test_gravity_output_rotates_linear_covariance_block_into_base_link() -> None
         node.stop()
 
 
+def test_accel_output_is_rotated_into_base_link_with_source_timestamp() -> None:
+    quarter_turn_about_z_xyzw: tuple[float, float, float, float] = (
+        0.0,
+        0.0,
+        math.sin(math.pi / 4.0),
+        math.cos(math.pi / 4.0),
+    )
+    node, _, accel_pub, _, _, _, _ = make_node(
+        make_cached_mounting_transform(quarter_turn_about_z_xyzw)
+    )
+
+    try:
+        node._handle_accel(
+            make_accel_message(
+                accel_vector=(2.0, 0.5, -9.81),
+                timestamp_ns=1_234_567_890,
+            )
+        )
+
+        accel_message: AccelWithCovarianceStampedMsg = accel_pub.messages[-1]
+
+        assert accel_message.header.frame_id == "base_link"
+        assert accel_message.header.stamp.sec == 1
+        assert accel_message.header.stamp.nanosec == 234_567_890
+        assert accel_message.accel.accel.linear.x == pytest.approx(-0.5)
+        assert accel_message.accel.accel.linear.y == pytest.approx(2.0)
+        assert accel_message.accel.accel.linear.z == pytest.approx(-9.81)
+        assert accel_message.accel.covariance[21] == pytest.approx(-1.0)
+    finally:
+        node.stop()
+
+
+def test_accel_output_rotates_linear_covariance_block_into_base_link() -> None:
+    quarter_turn_about_z_xyzw: tuple[float, float, float, float] = (
+        0.0,
+        0.0,
+        math.sin(math.pi / 4.0),
+        math.cos(math.pi / 4.0),
+    )
+    node, _, accel_pub, _, _, _, _ = make_node(
+        make_cached_mounting_transform(quarter_turn_about_z_xyzw)
+    )
+
+    try:
+        node._handle_accel(
+            make_accel_message(
+                covariance=[
+                    4.0,
+                    1.0,
+                    0.5,
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0,
+                    3.0,
+                    -0.25,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.5,
+                    -0.25,
+                    2.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                ]
+            )
+        )
+
+        published_covariance: list[float] = accel_pub.messages[-1].accel.covariance
+        linear_covariance_block: list[float] = [
+            published_covariance[0],
+            published_covariance[1],
+            published_covariance[2],
+            published_covariance[6],
+            published_covariance[7],
+            published_covariance[8],
+            published_covariance[12],
+            published_covariance[13],
+            published_covariance[14],
+        ]
+
+        assert linear_covariance_block == pytest.approx(
+            ROTATED_ORIENTATION_COVARIANCE_ROW_MAJOR,
+            abs=1.0e-12,
+        )
+        assert published_covariance[21] == pytest.approx(-1.0)
+    finally:
+        node.stop()
+
+
 def test_stale_or_missing_gravity_does_not_publish_mounted_gravity() -> None:
-    node, _, gravity_pub, _, _, _ = make_node(
+    node, _, _, gravity_pub, _, _, _ = make_node(
         make_cached_mounting_transform((0.0, 0.0, 0.0, 1.0))
     )
 
@@ -414,8 +524,92 @@ def test_stale_or_missing_gravity_does_not_publish_mounted_gravity() -> None:
         node.stop()
 
 
+def test_missing_mounting_does_not_publish_mounted_accel() -> None:
+    node, _, accel_pub, _, _, _, _ = make_node()
+
+    try:
+        node._handle_accel(make_accel_message(timestamp_ns=1_000_000_000))
+
+        assert len(accel_pub.messages) == 0
+    finally:
+        node.stop()
+
+
+def test_stale_accel_does_not_publish_new_mounted_accel() -> None:
+    node, _, accel_pub, _, _, _, _ = make_node(
+        make_cached_mounting_transform((0.0, 0.0, 0.0, 1.0))
+    )
+
+    try:
+        node._handle_accel(make_accel_message(timestamp_ns=1_000_000_000))
+        initial_accel_publish_count: int = len(accel_pub.messages)
+
+        node._handle_accel(make_accel_message(timestamp_ns=100_000_000))
+
+        assert len(accel_pub.messages) == initial_accel_publish_count
+    finally:
+        node.stop()
+
+
+def test_accel_output_comes_from_raw_accel_path_not_gravity_removed_imu() -> None:
+    node, _, accel_pub, _, imu_pub, _, _ = make_node(
+        make_cached_mounting_transform((0.0, 0.0, 0.0, 1.0))
+    )
+
+    try:
+        node._handle_imu(
+            make_imu_message(
+                linear_acceleration=(0.0, 0.0, 0.0),
+                timestamp_ns=1_000_000_000,
+            )
+        )
+        node._handle_accel(
+            make_accel_message(
+                accel_vector=(0.0, 0.0, -9.81),
+                timestamp_ns=1_100_000_000,
+            )
+        )
+
+        published_imu: ImuMsg = imu_pub.messages[-1]
+        published_accel: AccelWithCovarianceStampedMsg = accel_pub.messages[-1]
+
+        imu_norm_mps2: float = math.sqrt(
+            published_imu.linear_acceleration.x * published_imu.linear_acceleration.x
+            + published_imu.linear_acceleration.y * published_imu.linear_acceleration.y
+            + published_imu.linear_acceleration.z * published_imu.linear_acceleration.z
+        )
+        accel_norm_mps2: float = math.sqrt(
+            published_accel.accel.accel.linear.x * published_accel.accel.accel.linear.x
+            + published_accel.accel.accel.linear.y
+            * published_accel.accel.accel.linear.y
+            + published_accel.accel.accel.linear.z
+            * published_accel.accel.accel.linear.z
+        )
+
+        assert imu_norm_mps2 == pytest.approx(0.0, abs=1.0e-12)
+        assert accel_norm_mps2 == pytest.approx(9.81, abs=1.0e-12)
+        assert published_accel.header.stamp.sec == 1
+        assert published_accel.header.stamp.nanosec == 100_000_000
+    finally:
+        node.stop()
+
+
+def test_missing_raw_accel_does_not_publish_mounted_accel() -> None:
+    node, _, accel_pub, _, _, _, _ = make_node(
+        make_cached_mounting_transform((0.0, 0.0, 0.0, 1.0))
+    )
+
+    try:
+        node._handle_gravity(make_gravity_message())
+        node._handle_imu(make_imu_message(timestamp_ns=1_000_000_000))
+
+        assert len(accel_pub.messages) == 0
+    finally:
+        node.stop()
+
+
 def test_boot_mounting_calibration_publishes_measured_fixed_tf() -> None:
-    node, diag_pub, _, imu_pub, odom_pub, tf_broadcaster = make_node()
+    node, diag_pub, _, _, imu_pub, odom_pub, tf_broadcaster = make_node()
     node._mounting_calibrator = BootMountingCalibrator(
         parent_frame_id="base_link",
         child_frame_id="imu_link",
@@ -554,7 +748,7 @@ def test_boot_mounting_calibration_publishes_measured_fixed_tf() -> None:
 
 
 def test_runtime_mounting_reduces_raw_driver_tilt_for_level_base() -> None:
-    node, _, _, imu_pub, _, _ = make_node()
+    node, _, _, _, imu_pub, _, _ = make_node()
     node._mounting_calibrator = BootMountingCalibrator(
         parent_frame_id="base_link",
         child_frame_id="imu_link",
@@ -610,7 +804,7 @@ def test_runtime_mounting_reduces_raw_driver_tilt_for_level_base() -> None:
 
 
 def test_diag_status_changes_as_inputs_arrive() -> None:
-    node, diag_pub, _, _, _, _ = make_node(
+    node, diag_pub, _, _, _, _, _ = make_node(
         make_cached_mounting_transform((0.0, 0.0, 0.0, 1.0))
     )
 
@@ -636,7 +830,7 @@ def test_diag_status_changes_as_inputs_arrive() -> None:
 
 
 def test_bad_frame_updates_diagnostics_message() -> None:
-    node, diag_pub, _, _, _, _ = make_node(
+    node, diag_pub, _, _, _, _, _ = make_node(
         make_cached_mounting_transform((0.0, 0.0, 0.0, 1.0))
     )
 
@@ -654,7 +848,7 @@ def test_bad_frame_updates_diagnostics_message() -> None:
 
 
 def test_latest_gravity_sample_is_used_deterministically() -> None:
-    node, diag_pub, _, _, _, _ = make_node(
+    node, diag_pub, _, _, _, _, _ = make_node(
         make_cached_mounting_transform((0.0, 0.0, 0.0, 1.0))
     )
 
@@ -670,7 +864,7 @@ def test_latest_gravity_sample_is_used_deterministically() -> None:
 
 
 def test_mounting_unavailable_is_reported_without_outputs() -> None:
-    node, diag_pub, gravity_pub, imu_pub, odom_pub, _ = make_node()
+    node, diag_pub, _, gravity_pub, imu_pub, odom_pub, _ = make_node()
 
     try:
         node._handle_gravity(make_gravity_message())
@@ -691,7 +885,7 @@ def test_mounting_unavailable_is_reported_without_outputs() -> None:
 
 
 def test_stale_imu_does_not_publish_new_output() -> None:
-    node, diag_pub, gravity_pub, imu_pub, odom_pub, _ = make_node(
+    node, diag_pub, _, gravity_pub, imu_pub, odom_pub, _ = make_node(
         make_cached_mounting_transform((0.0, 0.0, 0.0, 1.0))
     )
 
@@ -714,7 +908,7 @@ def test_stale_imu_does_not_publish_new_output() -> None:
 
 
 def test_stale_gravity_does_not_overwrite_latest_sample() -> None:
-    node, diag_pub, _, _, _, _ = make_node(
+    node, diag_pub, _, _, _, _, _ = make_node(
         make_cached_mounting_transform((0.0, 0.0, 0.0, 1.0))
     )
 
@@ -740,7 +934,7 @@ def test_stale_gravity_does_not_overwrite_latest_sample() -> None:
 
 
 def test_gravity_rejection_updates_diagnostics_message() -> None:
-    node, diag_pub, _, _, _, _ = make_node(
+    node, diag_pub, _, _, _, _, _ = make_node(
         make_cached_mounting_transform((0.0, 0.0, 0.0, 1.0))
     )
 
@@ -758,7 +952,7 @@ def test_gravity_rejection_updates_diagnostics_message() -> None:
 
 
 def test_resting_gravity_with_overconfident_covariance_gates_in() -> None:
-    node, diag_pub, _, _, _, _ = make_node(
+    node, diag_pub, _, _, _, _, _ = make_node(
         make_cached_mounting_transform((0.0, 0.0, 0.0, 1.0))
     )
 
@@ -819,7 +1013,7 @@ def test_resting_gravity_with_overconfident_covariance_gates_in() -> None:
 
 
 def test_unsolved_mounting_reports_calibration_progress() -> None:
-    node, diag_pub, _, _, _, _ = make_node()
+    node, diag_pub, _, _, _, _, _ = make_node()
 
     try:
         node._handle_gravity(make_gravity_message(timestamp_ns=1_000_000_000))
@@ -834,7 +1028,7 @@ def test_unsolved_mounting_reports_calibration_progress() -> None:
 
 
 def test_imu_output_replaces_unknown_upstream_covariance_with_honest_split() -> None:
-    node, _, _, imu_pub, _, _ = make_node(
+    node, _, _, _, imu_pub, _, _ = make_node(
         make_cached_mounting_transform((0.0, 0.0, 0.0, 1.0))
     )
 
@@ -893,7 +1087,7 @@ def test_imu_output_uses_gravity_roll_pitch_scale_not_upstream_orientation_bucke
         math.sin(math.pi / 4.0),
         math.cos(math.pi / 4.0),
     )
-    node, _, _, imu_pub, _, _ = make_node(
+    node, _, _, _, imu_pub, _, _ = make_node(
         make_cached_mounting_transform(quarter_turn_about_z_xyzw)
     )
 
@@ -942,7 +1136,7 @@ def test_odom_output_reuses_honest_published_orientation_covariance_block() -> N
         math.sin(math.pi / 4.0),
         math.cos(math.pi / 4.0),
     )
-    node, _, _, _, odom_pub, _ = make_node(
+    node, _, _, _, _, odom_pub, _ = make_node(
         make_cached_mounting_transform(quarter_turn_about_z_xyzw)
     )
 
@@ -1007,7 +1201,7 @@ def test_odom_output_reuses_honest_published_orientation_covariance_block() -> N
 
 
 def test_imu_output_embeds_roll_pitch_cross_covariance_from_gravity_model() -> None:
-    node, _, _, imu_pub, _, _ = make_node(
+    node, _, _, _, imu_pub, _, _ = make_node(
         make_cached_mounting_transform((0.0, 0.0, 0.0, 1.0))
     )
 
@@ -1084,7 +1278,7 @@ def test_imu_output_embeds_roll_pitch_cross_covariance_from_gravity_model() -> N
 
 
 def test_imu_output_yaw_variance_tracks_recent_yaw_jitter_with_wrap() -> None:
-    node, _, _, imu_pub, _, _ = make_node(
+    node, _, _, _, imu_pub, _, _ = make_node(
         make_cached_mounting_transform((0.0, 0.0, 0.0, 1.0))
     )
 

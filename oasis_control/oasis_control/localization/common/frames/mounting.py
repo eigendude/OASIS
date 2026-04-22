@@ -19,6 +19,7 @@ from oasis_control.localization.common.algebra.quat import Vector3
 from oasis_control.localization.common.algebra.quat import quaternion_multiply_xyzw
 from oasis_control.localization.common.algebra.quat import quaternion_to_rotation_matrix
 from oasis_control.localization.common.algebra.quat import rotate_vector
+from oasis_control.localization.common.data.accel_sample import AccelSample
 from oasis_control.localization.common.data.gravity_sample import GravitySample
 from oasis_control.localization.common.data.imu_sample import ImuSample
 
@@ -87,6 +88,24 @@ class MountedGravitySample:
     frame_id: str
     gravity_mps2: Vector3
     gravity_covariance_mps2_2: Matrix3 | None
+
+
+@dataclass(frozen=True)
+class MountedAccelSample:
+    """
+    Gravity-included accel sample expressed in the mounted base frame.
+
+    Fields:
+        timestamp_ns: measurement timestamp in integer nanoseconds
+        frame_id: mounted output frame, expected to be base_link
+        accel_mps2: mounted gravity-included acceleration in the base frame
+        accel_covariance_mps2_2: mounted accel covariance when available
+    """
+
+    timestamp_ns: int
+    frame_id: str
+    accel_mps2: Vector3
+    accel_covariance_mps2_2: Matrix3 | None
 
 
 def make_mounting_transform(
@@ -194,4 +213,32 @@ def apply_mounting_to_gravity(
             mounting_transform.rotation_matrix, gravity_sample.gravity_mps2
         ),
         gravity_covariance_mps2_2=gravity_covariance_mps2_2,
+    )
+
+
+def apply_mounting_to_accel(
+    accel_sample: AccelSample,
+    mounting_transform: MountingTransform,
+) -> MountedAccelSample:
+    """
+    Express a gravity-included accel sample in the configured base frame.
+
+    The stored rotation matrix is `R_BI`, so the mounted accel vector is
+    `a_B = R_BI a_I`.
+    """
+
+    accel_covariance_mps2_2: Matrix3 | None = None
+    if accel_sample.accel_covariance_mps2_2 is not None:
+        accel_covariance_mps2_2 = rotate_covariance(
+            mounting_transform.rotation_matrix,
+            accel_sample.accel_covariance_mps2_2,
+        )
+
+    return MountedAccelSample(
+        timestamp_ns=accel_sample.timestamp_ns,
+        frame_id=mounting_transform.parent_frame_id,
+        accel_mps2=rotate_vector(
+            mounting_transform.rotation_matrix, accel_sample.accel_mps2
+        ),
+        accel_covariance_mps2_2=accel_covariance_mps2_2,
     )
