@@ -52,8 +52,6 @@ rosidl_generate_interfaces(
     msg/DigitalReading.msg
     msg/DigitalWriteCommand.msg
     msg/DiskPartition.msg
-    msg/EkfState.msg
-    msg/EkfUpdateReport.msg
     msg/EffectKind.msg
     msg/EffectMode.msg
     msg/EngineerState.msg
