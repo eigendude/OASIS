@@ -181,7 +181,8 @@ if [[ "${OSTYPE}" == "darwin"* ]]; then
 
   brew install \
     boost-python3 \
-    libusb
+    libusb \
+    meson
 fi
 
 #

@@ -74,6 +74,13 @@ COLCON_FLAGS+=" \
     -DOpenCV_ROOT=${OpenCV_ROOT} \
 "
 
+# macOS flags
+if [[ "${OSTYPE}" == "darwin"* ]]; then
+  # macOS packges don't all build, so do a best effort to build as much as
+  # possible
+  COLCON_FLAGS+=" --continue-on-error"
+fi
+
 # Uncomment these to force building in serial
 #MAKE_FLAGS+=" -j1 -l1"
 #COLCON_FLAGS+=" --executor sequential --event-handlers console_direct+"

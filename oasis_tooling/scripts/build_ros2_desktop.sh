@@ -37,8 +37,18 @@ COLCON_FLAGS="--merge-install"
 
 # macOS flags
 if [[ "${OSTYPE}" == "darwin"* ]]; then
-  COLCON_FLAGS+=" --packages-skip-by-dep python_qt_binding"
-  CMAKE_PREFIX_PATH="$(brew --prefix qt@5)/lib/cmake/Qt5"
+  COLCON_FLAGS+=" \
+    --packages-skip-by-dep python_qt_binding \
+    --cmake-args \
+      -DBUILD_TESTING=OFF \
+      -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+      -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+      -DCMAKE_PREFIX_PATH=${ROS2_CMAKE_PREFIX_PATH};$(brew --prefix qt@5)/lib/cmake/Qt5${CMAKE_PREFIX_PATH:+;${CMAKE_PREFIX_PATH}} \
+  "
+
+  # macOS packges don't all build, so do a best effort to build as much as
+  # possible
+  COLCON_FLAGS+=" --continue-on-error"
 else
   # Add ccache support and fix locating Python
   COLCON_FLAGS+=" \

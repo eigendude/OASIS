@@ -32,8 +32,10 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # Build OpenCV
 #
 
-"${SCRIPT_DIR}/depinstall_cv.sh"
-"${SCRIPT_DIR}/build_cv.sh"
+if [[ "${OSTYPE}" != "darwin"* ]]; then
+  "${SCRIPT_DIR}/depinstall_cv.sh"
+  "${SCRIPT_DIR}/build_cv.sh"
+fi
 
 #
 # Build ROS 2

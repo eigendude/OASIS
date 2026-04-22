@@ -112,6 +112,13 @@ COLCON_FLAGS+=" \
     -DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH} \
 "
 
+# macOS flags
+if [[ "${OSTYPE}" == "darwin"* ]]; then
+  # macOS packges don't all build, so do a best effort to build as much as
+  # possible
+  COLCON_FLAGS+=" --continue-on-error"
+fi
+
 PACKAGES_SKIP=()
 
 if [[ "${SKIP_AVR}" == true ]]; then

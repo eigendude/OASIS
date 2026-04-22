@@ -72,7 +72,11 @@ touch "${BUILD_DIRECTORY}/COLCON_IGNORE"
 #
 
 # The physical memory in KiB
-PHYSICAL_MEMORY_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+if [[ "${OSTYPE}" == "darwin"* ]]; then
+  PHYSICAL_MEMORY_KB=$(sysctl -n hw.memsize | awk '{printf "%d", $1/1024}')
+else
+  PHYSICAL_MEMORY_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+fi
 
 # The physical memory in GiB
 # Use awk instead of bc so we don’t depend on the bc package
