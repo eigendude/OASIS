@@ -56,6 +56,16 @@ VIN_GAIN: float = 0.9887  # Empirical system calibration to match DMM at ~12V
 VSS_R1: float = 26.62  # KΩ
 VSS_R2: float = 9.83  # KΩ
 
+# Motor wire A (blue wire) voltage divider
+MOTOR_VOLTAGE_A_R1: float = 17.80  # KΩ
+MOTOR_VOLTAGE_A_R2: float = 9.84  # KΩ
+# R3: 1KΩ resistor to A3 pin, 10nF cap to GND
+
+# Motor wire B (green wire) voltage divider
+MOTOR_VOLTAGE_B_R1: float = 17.78  # KΩ
+MOTOR_VOLTAGE_B_R2: float = 9.89  # KΩ
+# R3: 1KΩ resistor to A4 pin, 10nF cap to GND
+
 
 ################################################################################
 # Filtering parameters
@@ -103,6 +113,8 @@ class StationManager:
         motor_ff1_pin: int,
         motor_ff2_pin: int,
         motor_current_pin: int,
+        motor_voltage_a_pin: int,
+        motor_voltage_b_pin: int,
     ) -> None:
         """
         Initialize resources.
@@ -115,6 +127,8 @@ class StationManager:
         self._motor_ff1_pin: int = motor_ff1_pin
         self._motor_ff2_pin: int = motor_ff2_pin
         self._motor_current_pin: int = motor_current_pin
+        self._motor_voltage_a_pin: int = motor_voltage_a_pin
+        self._motor_voltage_b_pin: int = motor_voltage_b_pin
 
         # Initialize hardware state
         self._supply_voltage: float = 0.0
@@ -122,7 +136,14 @@ class StationManager:
         self._supply_voltage_var: float = 0.0
         self._supply_voltage_initialized: bool = False
         self._supply_voltage_stddev: float = 0.0
+        self._motor_voltage_a: float = 0.0
+        self._motor_voltage_a_initialized: bool = False
+        self._motor_voltage_b: float = 0.0
+        self._motor_voltage_b_initialized: bool = False
         self._motor_voltage: float = 0.0
+        self._motor_voltage_mu: float = 0.0
+        self._motor_voltage_var: float = 0.0
+        self._motor_voltage_initialized: bool = False
         self._motor_voltage_stddev: float = 0.0
         self._motor_duty_cycle: float = 0.0
         self._motor_current: float = 0.0
@@ -264,6 +285,20 @@ class StationManager:
         if not self._set_analog_mode(self._motor_current_pin, AnalogMode.INPUT):
             return False
 
+        # H-bridge output A voltage
+        self._node.get_logger().debug(
+            f"Enabling motor voltage A on A{self._motor_voltage_a_pin}"
+        )
+        if not self._set_analog_mode(self._motor_voltage_a_pin, AnalogMode.INPUT):
+            return False
+
+        # H-bridge output B voltage
+        self._node.get_logger().debug(
+            f"Enabling motor voltage B on A{self._motor_voltage_b_pin}"
+        )
+        if not self._set_analog_mode(self._motor_voltage_b_pin, AnalogMode.INPUT):
+            return False
+
         self._node.get_logger().info("Station manager initialized successfully")
 
         return True
@@ -286,10 +321,45 @@ class StationManager:
 
         # Update state
         self._motor_duty_cycle = -target_magnitude if reverse else target_magnitude
-        self._motor_voltage = self._supply_voltage * self._motor_duty_cycle
-        self._motor_voltage_stddev = (
-            abs(self._motor_duty_cycle) * self._supply_voltage_stddev
-        )
+
+    def _decode_divider_voltage(
+        self,
+        analog_voltage: float,
+        r1_kohm: float,
+        r2_kohm: float,
+    ) -> float:
+        # Reconstruct the source-side voltage from the divider tap voltage
+        return analog_voltage * (r1_kohm + r2_kohm) / r2_kohm
+
+    def _update_motor_voltage(self) -> None:
+        if (
+            not self._motor_voltage_a_initialized
+            or not self._motor_voltage_b_initialized
+        ):
+            return
+
+        # The H-bridge drives the motor from the difference between its two
+        # output wires, so the signed motor voltage is wire A minus wire B
+        motor_voltage: float = self._motor_voltage_a - self._motor_voltage_b
+
+        # The old supply-times-duty estimate was removed because these fields
+        # now report the measured H-bridge output from the ADC stream
+        self._motor_voltage = motor_voltage
+
+        # Update EWMA statistics from the measured differential voltage stream
+        if not self._motor_voltage_initialized:
+            self._motor_voltage_mu = motor_voltage
+            self._motor_voltage_var = 0.0
+            self._motor_voltage_initialized = True
+        else:
+            err: float = motor_voltage - self._motor_voltage_mu
+            self._motor_voltage_mu += STDDEV_BETA * err
+            self._motor_voltage_var = (1 - STDDEV_BETA) * (
+                self._motor_voltage_var + STDDEV_BETA * err * err
+            )
+
+        self._motor_voltage_var = max(self._motor_voltage_var, 0.0)
+        self._motor_voltage_stddev = math.sqrt(self._motor_voltage_var)
 
     def _set_analog_mode(self, analog_pin: int, analog_mode: AnalogMode) -> bool:
         # Create message
@@ -364,10 +434,6 @@ class StationManager:
 
             self._supply_voltage_var = max(self._supply_voltage_var, 0.0)
             self._supply_voltage_stddev = math.sqrt(self._supply_voltage_var)
-            self._motor_voltage = self._supply_voltage * self._motor_duty_cycle
-            self._motor_voltage_stddev = (
-                abs(self._motor_duty_cycle) * self._supply_voltage_stddev
-            )
 
         elif analog_pin == self._motor_current_pin:
             # TODO: Apply Vref and Gain to get current
@@ -375,6 +441,26 @@ class StationManager:
 
             # Record state
             self._motor_current = motor_current
+        elif analog_pin == self._motor_voltage_a_pin:
+            motor_voltage_a: float = self._decode_divider_voltage(
+                analog_voltage,
+                MOTOR_VOLTAGE_A_R1,
+                MOTOR_VOLTAGE_A_R2,
+            )
+
+            self._motor_voltage_a = motor_voltage_a
+            self._motor_voltage_a_initialized = True
+            self._update_motor_voltage()
+        elif analog_pin == self._motor_voltage_b_pin:
+            motor_voltage_b: float = self._decode_divider_voltage(
+                analog_voltage,
+                MOTOR_VOLTAGE_B_R1,
+                MOTOR_VOLTAGE_B_R2,
+            )
+
+            self._motor_voltage_b = motor_voltage_b
+            self._motor_voltage_b_initialized = True
+            self._update_motor_voltage()
 
     def _on_digital_reading(self, digital_reading_msg: DigitalReadingMsg) -> None:
         # Translate parameters

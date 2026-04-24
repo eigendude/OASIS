@@ -50,6 +50,8 @@ MOTOR_DIR_PIN: int = 4  # D4 (white wire)
 MOTOR_FF1_PIN: int = 8  # D8 (white wire)
 MOTOR_FF2_PIN: int = 7  # D7 (white wire)
 MOTOR_CURRENT_PIN: int = 1  # A1 (orange wire)
+MOTOR_VOLTAGE_A_PIN: int = 3  # A3 (blue wire)
+MOTOR_VOLTAGE_B_PIN: int = 4  # A4 (green wire)
 
 # Helipad pin configuration
 HELIPAD_IR_PIN: int = 2  # A2 (green wire)
@@ -119,6 +121,8 @@ class ConductorManagerNode(rclpy.node.Node):
             MOTOR_FF1_PIN,
             MOTOR_FF2_PIN,
             MOTOR_CURRENT_PIN,
+            MOTOR_VOLTAGE_A_PIN,
+            MOTOR_VOLTAGE_B_PIN,
         )
         self._helipad_manager: HelipadManager = HelipadManager(
             self,
