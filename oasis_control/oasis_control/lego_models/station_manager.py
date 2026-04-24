@@ -13,6 +13,7 @@
 #
 
 import math
+from typing import Optional
 
 import rclpy.client
 import rclpy.node
@@ -20,6 +21,7 @@ import rclpy.publisher
 import rclpy.qos
 import rclpy.subscription
 import rclpy.task
+from builtin_interfaces.msg import Time as TimeMsg
 
 from oasis_drivers.ros.ros_translator import RosTranslator
 from oasis_drivers.telemetrix.telemetrix_types import AnalogMode
@@ -75,6 +77,10 @@ MOTOR_VOLTAGE_B_R2: float = 9.89  # KΩ
 # Higher beta adapts faster to changing noise when motors toggle
 STDDEV_BETA: float = 0.2
 
+# Reject motor voltage updates when the A/B sample pair is too stale to
+# represent the same H-bridge state
+MAX_MOTOR_VOLTAGE_SKEW_SECS: float = 0.15
+
 
 ################################################################################
 # ROS parameters
@@ -102,6 +108,14 @@ PUBLISH_MOTOR_PWM_CMD = "pwm_write_cmd"
 class StationManager:
     """
     A ROS node that manages a LEGO train power conductor's conductor.
+
+    Motor voltage is measured as the signed H-bridge differential output,
+    computed from the reconstructed wire-A and wire-B voltages. The reported
+    motor voltage stddev combines two effects: an EWMA-based base variance from
+    the measured differential stream, and an extra uncertainty term for
+    asynchronous A/B ADC sampling. That timing-skew term inflates the stddev
+    when the two channels were sampled at different times while their local
+    slopes indicate the H-bridge output was changing.
     """
 
     def __init__(
@@ -138,11 +152,17 @@ class StationManager:
         self._supply_voltage_stddev: float = 0.0
         self._motor_voltage_a: float = 0.0
         self._motor_voltage_a_initialized: bool = False
+        self._motor_voltage_a_timestamp_sec: Optional[float] = None
+        self._prev_motor_voltage_a: Optional[float] = None
+        self._prev_motor_voltage_a_timestamp_sec: Optional[float] = None
         self._motor_voltage_b: float = 0.0
         self._motor_voltage_b_initialized: bool = False
+        self._motor_voltage_b_timestamp_sec: Optional[float] = None
+        self._prev_motor_voltage_b: Optional[float] = None
+        self._prev_motor_voltage_b_timestamp_sec: Optional[float] = None
         self._motor_voltage: float = 0.0
         self._motor_voltage_mu: float = 0.0
-        self._motor_voltage_var: float = 0.0
+        self._motor_voltage_base_var: float = 0.0
         self._motor_voltage_initialized: bool = False
         self._motor_voltage_stddev: float = 0.0
         self._motor_duty_cycle: float = 0.0
@@ -331,11 +351,45 @@ class StationManager:
         # Reconstruct the source-side voltage from the divider tap voltage
         return analog_voltage * (r1_kohm + r2_kohm) / r2_kohm
 
+    def _time_msg_to_sec(self, stamp: TimeMsg) -> float:
+        sec: int = int(stamp.sec)
+        nanosec: int = int(stamp.nanosec)
+        return float(sec) + float(nanosec) * 1.0e-9
+
+    def _estimate_slope(
+        self,
+        current_value: float,
+        current_timestamp_sec: Optional[float],
+        previous_value: Optional[float],
+        previous_timestamp_sec: Optional[float],
+    ) -> Optional[float]:
+        if (
+            current_timestamp_sec is None
+            or previous_value is None
+            or previous_timestamp_sec is None
+        ):
+            return None
+
+        delta_time_sec: float = current_timestamp_sec - previous_timestamp_sec
+        if delta_time_sec <= 0.0:
+            return None
+
+        return (current_value - previous_value) / delta_time_sec
+
     def _update_motor_voltage(self) -> None:
         if (
             not self._motor_voltage_a_initialized
             or not self._motor_voltage_b_initialized
         ):
+            return
+
+        timestamp_a_sec: Optional[float] = self._motor_voltage_a_timestamp_sec
+        timestamp_b_sec: Optional[float] = self._motor_voltage_b_timestamp_sec
+        if timestamp_a_sec is None or timestamp_b_sec is None:
+            return
+
+        sample_skew_sec: float = abs(timestamp_a_sec - timestamp_b_sec)
+        if sample_skew_sec > MAX_MOTOR_VOLTAGE_SKEW_SECS:
             return
 
         # The H-bridge drives the motor from the difference between its two
@@ -346,20 +400,72 @@ class StationManager:
         # now report the measured H-bridge output from the ADC stream
         self._motor_voltage = motor_voltage
 
-        # Update EWMA statistics from the measured differential voltage stream
+        # Update the base variance from the measured differential voltage
+        # stream before inflating it for asynchronous sampling uncertainty
         if not self._motor_voltage_initialized:
             self._motor_voltage_mu = motor_voltage
-            self._motor_voltage_var = 0.0
+            self._motor_voltage_base_var = 0.0
             self._motor_voltage_initialized = True
         else:
             err: float = motor_voltage - self._motor_voltage_mu
             self._motor_voltage_mu += STDDEV_BETA * err
-            self._motor_voltage_var = (1 - STDDEV_BETA) * (
-                self._motor_voltage_var + STDDEV_BETA * err * err
+            self._motor_voltage_base_var = (1 - STDDEV_BETA) * (
+                self._motor_voltage_base_var + STDDEV_BETA * err * err
             )
 
-        self._motor_voltage_var = max(self._motor_voltage_var, 0.0)
-        self._motor_voltage_stddev = math.sqrt(self._motor_voltage_var)
+        self._motor_voltage_base_var = max(self._motor_voltage_base_var, 0.0)
+
+        # Asynchronous A/B ADC sampling adds uncertainty because the
+        # differential voltage combines two measurements captured at different
+        # times while the H-bridge output may be changing
+        slope_a: Optional[float] = self._estimate_slope(
+            self._motor_voltage_a,
+            self._motor_voltage_a_timestamp_sec,
+            self._prev_motor_voltage_a,
+            self._prev_motor_voltage_a_timestamp_sec,
+        )
+        slope_b: Optional[float] = self._estimate_slope(
+            self._motor_voltage_b,
+            self._motor_voltage_b_timestamp_sec,
+            self._prev_motor_voltage_b,
+            self._prev_motor_voltage_b_timestamp_sec,
+        )
+
+        motor_voltage_var: float = self._motor_voltage_base_var
+
+        # Inflate the uncertainty using the local slope mismatch so fast
+        # changes and larger A/B skew produce a larger measurement sigma
+        if slope_a is not None and slope_b is not None:
+            skew_sigma: float = 0.5 * abs(slope_a - slope_b) * sample_skew_sec
+            motor_voltage_var += skew_sigma * skew_sigma
+
+        self._motor_voltage_stddev = math.sqrt(max(motor_voltage_var, 0.0))
+
+    def _update_motor_voltage_channel_a(
+        self,
+        voltage: float,
+        timestamp_sec: float,
+    ) -> None:
+        self._prev_motor_voltage_a = self._motor_voltage_a
+        self._prev_motor_voltage_a_timestamp_sec = self._motor_voltage_a_timestamp_sec
+        self._motor_voltage_a = voltage
+        self._motor_voltage_a_timestamp_sec = timestamp_sec
+        self._motor_voltage_a_initialized = True
+
+        self._update_motor_voltage()
+
+    def _update_motor_voltage_channel_b(
+        self,
+        voltage: float,
+        timestamp_sec: float,
+    ) -> None:
+        self._prev_motor_voltage_b = self._motor_voltage_b
+        self._prev_motor_voltage_b_timestamp_sec = self._motor_voltage_b_timestamp_sec
+        self._motor_voltage_b = voltage
+        self._motor_voltage_b_timestamp_sec = timestamp_sec
+        self._motor_voltage_b_initialized = True
+
+        self._update_motor_voltage()
 
     def _set_analog_mode(self, analog_pin: int, analog_mode: AnalogMode) -> bool:
         # Create message
@@ -406,6 +512,7 @@ class StationManager:
     def _on_analog_reading(self, analog_reading_msg: AnalogReadingMsg) -> None:
         analog_pin: int = analog_reading_msg.analog_pin
         analog_value: float = analog_reading_msg.analog_value
+        timestamp_sec: float = self._time_msg_to_sec(analog_reading_msg.header.stamp)
 
         # Translate analog value
         analog_voltage: float = analog_value * AREF_VOLTAGE
@@ -448,9 +555,7 @@ class StationManager:
                 MOTOR_VOLTAGE_A_R2,
             )
 
-            self._motor_voltage_a = motor_voltage_a
-            self._motor_voltage_a_initialized = True
-            self._update_motor_voltage()
+            self._update_motor_voltage_channel_a(motor_voltage_a, timestamp_sec)
         elif analog_pin == self._motor_voltage_b_pin:
             motor_voltage_b: float = self._decode_divider_voltage(
                 analog_voltage,
@@ -458,9 +563,7 @@ class StationManager:
                 MOTOR_VOLTAGE_B_R2,
             )
 
-            self._motor_voltage_b = motor_voltage_b
-            self._motor_voltage_b_initialized = True
-            self._update_motor_voltage()
+            self._update_motor_voltage_channel_b(motor_voltage_b, timestamp_sec)
 
     def _on_digital_reading(self, digital_reading_msg: DigitalReadingMsg) -> None:
         # Translate parameters
