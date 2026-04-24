@@ -43,26 +43,18 @@ REPORT_MCU_MEMORY_PERIOD_SECS: float = 1.0
 # Sampling interval, in ms
 SAMPLING_INTERVAL_MS = 100
 
-# Pin configuration
-VSS_PIN: int = 0  # A0
-MOTOR_PWM_PIN: int = 5  # D5
-MOTOR_DIR_PIN: int = 4  # D4
-MOTOR_FF1_PIN: int = 8  # D8
-MOTOR_FF2_PIN: int = 7  # D7
-MOTOR_CURRENT_PIN: int = 1  # A1
-HELIPAD_IR_PIN: int = 2  # A2
-HELIPAD_LED_PAIR_A_PIN: int = 10  # D10
-HELIPAD_LED_PAIR_B_PIN: int = 11  # D11
+# Station pin configuration
+VSS_PIN: int = 0  # A0 (orange wire)
+MOTOR_PWM_PIN: int = 5  # D5 (white wire)
+MOTOR_DIR_PIN: int = 4  # D4 (white wire)
+MOTOR_FF1_PIN: int = 8  # D8 (white wire)
+MOTOR_FF2_PIN: int = 7  # D7 (white wire)
+MOTOR_CURRENT_PIN: int = 1  # A1 (orange wire)
 
-# External AREF is tied to a 5.02 V regulator for stable ADC scaling
-AREF_VOLTAGE: float = 5.02  # V
-VIN_GAIN: float = 0.9887  # Empirical system calibration to match DMM at ~12V
-
-# Voltage dividers
-# R1 is the input-side resistor, R2 is the ground-side resistor
-VSS_R1: float = 26.62  # KΩ
-VSS_R2: float = 9.83  # KΩ
-
+# Helipad pin configuration
+HELIPAD_IR_PIN: int = 2  # A2 (green wire)
+HELIPAD_LED_PAIR_A_PIN: int = 10  # D10 (blue wire)
+HELIPAD_LED_PAIR_B_PIN: int = 11  # D11 (blue wire)
 
 ################################################################################
 # Automation parameters
@@ -119,7 +111,15 @@ class ConductorManagerNode(rclpy.node.Node):
         # Subsystems
         self._mcu_memory_manager: McuMemoryManager = McuMemoryManager(self)
         self._sampling_manager: SamplingManager = SamplingManager(self)
-        self._station_manager: StationManager = StationManager(self)
+        self._station_manager: StationManager = StationManager(
+            self,
+            VSS_PIN,
+            MOTOR_PWM_PIN,
+            MOTOR_DIR_PIN,
+            MOTOR_FF1_PIN,
+            MOTOR_FF2_PIN,
+            MOTOR_CURRENT_PIN,
+        )
         self._helipad_manager: HelipadManager = HelipadManager(
             self,
             HELIPAD_IR_PIN,

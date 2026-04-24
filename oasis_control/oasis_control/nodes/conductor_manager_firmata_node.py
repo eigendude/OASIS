@@ -62,14 +62,14 @@ REPORT_MCU_MEMORY_PERIOD_SECS: float = 10.0  # RAM utilization doesn't change
 SAMPLING_INTERVAL_MS = 100
 
 # Pins
-VSS_PIN: int = 0  # A0
-MOTOR_PWM_PIN: int = 5  # D5
-MOTOR_DIR_PIN: int = 4  # D4
-MOTOR_FF1_PIN: int = 8  # D8
-MOTOR_FF2_PIN: int = 7  # D7
-MOTOR_CURRENT_PIN: int = 1  # A1
-CPU_FAN_PWM_PIN: int = 9  # D9
-CPU_FAN_SPEED_PIN: int = 2  # D2
+VSS_PIN: int = 0  # A0 (orange wire)
+MOTOR_PWM_PIN: int = 5  # D5 (white wire)
+MOTOR_DIR_PIN: int = 4  # D4 (white wire)
+MOTOR_FF1_PIN: int = 8  # D8 (white wire)
+MOTOR_FF2_PIN: int = 7  # D7 (white wire)
+MOTOR_CURRENT_PIN: int = 1  # A1 (orange wire)
+CPU_FAN_PWM_PIN: int = 9  # D9 (white wire)
+CPU_FAN_SPEED_PIN: int = 2  # D2 (orange wire)
 
 # Voltage dividers
 # R1 is the input-side resistor, R2 is the ground-side resistor

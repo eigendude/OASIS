@@ -37,16 +37,6 @@ from oasis_msgs.srv import SetDigitalMode as SetDigitalModeSvc
 ################################################################################
 
 
-# Pin configuration
-VSS_PIN: int = 0  # A0
-MOTOR_PWM_PIN: int = 5  # D5
-MOTOR_DIR_PIN: int = 4  # D4
-MOTOR_FF1_PIN: int = 8  # D8
-MOTOR_FF2_PIN: int = 7  # D7
-MOTOR_CURRENT_PIN: int = 1  # A1
-CPU_FAN_PWM_PIN: int = 9  # D9
-CPU_FAN_SPEED_PIN: int = 2  # D2
-
 # External AREF is tied to a voltage regulator for stable ADC scaling
 #
 # Observed values:
@@ -104,12 +94,27 @@ class StationManager:
     A ROS node that manages a LEGO train power conductor's conductor.
     """
 
-    def __init__(self, node: rclpy.node.Node) -> None:
+    def __init__(
+        self,
+        node: rclpy.node.Node,
+        vss_pin: int,
+        motor_pwm_pin: int,
+        motor_dir_pin: int,
+        motor_ff1_pin: int,
+        motor_ff2_pin: int,
+        motor_current_pin: int,
+    ) -> None:
         """
         Initialize resources.
         """
         # Construction parameters
         self._node = node
+        self._vss_pin: int = vss_pin
+        self._motor_pwm_pin: int = motor_pwm_pin
+        self._motor_dir_pin: int = motor_dir_pin
+        self._motor_ff1_pin: int = motor_ff1_pin
+        self._motor_ff2_pin: int = motor_ff2_pin
+        self._motor_current_pin: int = motor_current_pin
 
         # Initialize hardware state
         self._supply_voltage: float = 0.0
@@ -220,8 +225,8 @@ class StationManager:
         self._node.get_logger().debug("Starting station configuration")
 
         # Voltage supply source (VSS)
-        self._node.get_logger().debug(f"Enabling VSS on A{VSS_PIN}")
-        if not self._set_analog_mode(VSS_PIN, AnalogMode.INPUT):
+        self._node.get_logger().debug(f"Enabling VSS on A{self._vss_pin}")
+        if not self._set_analog_mode(self._vss_pin, AnalogMode.INPUT):
             return False
 
         #
@@ -229,23 +234,23 @@ class StationManager:
         #
 
         # Motor PWM
-        self._node.get_logger().debug(f"Enabling motor PWM on D{MOTOR_PWM_PIN}")
-        if not self._set_digital_mode(MOTOR_PWM_PIN, DigitalMode.PWM):
+        self._node.get_logger().debug(f"Enabling motor PWM on D{self._motor_pwm_pin}")
+        if not self._set_digital_mode(self._motor_pwm_pin, DigitalMode.PWM):
             return False
 
         # Motor DIR
-        self._node.get_logger().debug(f"Enabling motor DIR on D{MOTOR_DIR_PIN}")
-        if not self._set_digital_mode(MOTOR_DIR_PIN, DigitalMode.OUTPUT):
+        self._node.get_logger().debug(f"Enabling motor DIR on D{self._motor_dir_pin}")
+        if not self._set_digital_mode(self._motor_dir_pin, DigitalMode.OUTPUT):
             return False
 
         # Motor FF1
-        self._node.get_logger().debug(f"Enabling motor FF1 on D{MOTOR_FF1_PIN}")
-        if not self._set_digital_mode(MOTOR_FF1_PIN, DigitalMode.INPUT):
+        self._node.get_logger().debug(f"Enabling motor FF1 on D{self._motor_ff1_pin}")
+        if not self._set_digital_mode(self._motor_ff1_pin, DigitalMode.INPUT):
             return False
 
         # Motor FF2
-        self._node.get_logger().debug(f"Enabling motor FF2 on D{MOTOR_FF2_PIN}")
-        if not self._set_digital_mode(MOTOR_FF2_PIN, DigitalMode.INPUT):
+        self._node.get_logger().debug(f"Enabling motor FF2 on D{self._motor_ff2_pin}")
+        if not self._set_digital_mode(self._motor_ff2_pin, DigitalMode.INPUT):
             return False
 
         #
@@ -254,9 +259,9 @@ class StationManager:
 
         # Output voltage (VO)
         self._node.get_logger().debug(
-            f"Enabling current sensor VO on A{MOTOR_CURRENT_PIN}"
+            f"Enabling current sensor VO on A{self._motor_current_pin}"
         )
-        if not self._set_analog_mode(MOTOR_CURRENT_PIN, AnalogMode.INPUT):
+        if not self._set_analog_mode(self._motor_current_pin, AnalogMode.INPUT):
             return False
 
         self._node.get_logger().info("Station manager initialized successfully")
@@ -266,7 +271,7 @@ class StationManager:
     def set_motor_direction(self, reverse: bool) -> None:
         """Publish command for motor direction"""
         dir_cmd = DigitalWriteCommandMsg()
-        dir_cmd.digital_pin = MOTOR_DIR_PIN
+        dir_cmd.digital_pin = self._motor_dir_pin
         dir_cmd.digital_value = reverse
 
         self._motor_dir_cmd_pub.publish(dir_cmd)
@@ -274,7 +279,7 @@ class StationManager:
     def set_motor_pwm(self, target_magnitude: float, reverse: bool) -> None:
         """Publish command for motor PWM"""
         pwm_cmd = PWMWriteCommandMsg()
-        pwm_cmd.digital_pin = MOTOR_PWM_PIN
+        pwm_cmd.digital_pin = self._motor_pwm_pin
         pwm_cmd.duty_cycle = target_magnitude
 
         self._motor_pwm_cmd_pub.publish(pwm_cmd)
@@ -335,7 +340,7 @@ class StationManager:
         # Translate analog value
         analog_voltage: float = analog_value * AREF_VOLTAGE
 
-        if analog_pin == VSS_PIN:
+        if analog_pin == self._vss_pin:
             # Apply voltage divider formula
             supply_voltage: float = analog_voltage * (VSS_R1 + VSS_R2) / VSS_R2
 
@@ -364,7 +369,7 @@ class StationManager:
                 abs(self._motor_duty_cycle) * self._supply_voltage_stddev
             )
 
-        elif analog_pin == MOTOR_CURRENT_PIN:
+        elif analog_pin == self._motor_current_pin:
             # TODO: Apply Vref and Gain to get current
             motor_current: float = analog_voltage
 
@@ -376,7 +381,7 @@ class StationManager:
         digital_pin: int = digital_reading_msg.digital_pin
         digital_value: bool = digital_reading_msg.digital_value == 1
 
-        if digital_pin == MOTOR_FF1_PIN:
+        if digital_pin == self._motor_ff1_pin:
             if digital_value != self._motor_ff1_state:
                 # Increment count on high edge
                 if digital_value:
@@ -384,7 +389,7 @@ class StationManager:
 
                 # Record state
                 self._motor_ff1_state = digital_value
-        elif digital_pin == MOTOR_FF2_PIN:
+        elif digital_pin == self._motor_ff2_pin:
             if digital_value != self._motor_ff2_state:
                 # Increment count on high edge
                 if digital_value:
