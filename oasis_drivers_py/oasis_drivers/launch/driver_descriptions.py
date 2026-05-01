@@ -371,8 +371,9 @@ class DriverDescriptions:
             name=f"ups_server_{system_id}",
             output="screen",
             remappings=[
-                ("ups_status", f"{system_id}/ups_status"),
+                ("battery", f"{system_id}/battery"),
                 ("ups_command", f"{system_id}/ups_command"),
+                ("ups_status", f"{system_id}/ups_status"),
             ],
         )
         ld.add_action(ups_server_node)

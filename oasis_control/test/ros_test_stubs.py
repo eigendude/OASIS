@@ -141,6 +141,50 @@ class _Imu:
         self.linear_acceleration_covariance: list[float] = [0.0] * 9
 
 
+class _BatteryState:
+    POWER_SUPPLY_STATUS_UNKNOWN: int = 0
+    POWER_SUPPLY_STATUS_CHARGING: int = 1
+    POWER_SUPPLY_STATUS_DISCHARGING: int = 2
+    POWER_SUPPLY_STATUS_NOT_CHARGING: int = 3
+    POWER_SUPPLY_STATUS_FULL: int = 4
+
+    POWER_SUPPLY_HEALTH_UNKNOWN: int = 0
+    POWER_SUPPLY_HEALTH_GOOD: int = 1
+    POWER_SUPPLY_HEALTH_OVERHEAT: int = 2
+    POWER_SUPPLY_HEALTH_DEAD: int = 3
+    POWER_SUPPLY_HEALTH_OVERVOLTAGE: int = 4
+    POWER_SUPPLY_HEALTH_UNSPEC_FAILURE: int = 5
+    POWER_SUPPLY_HEALTH_COLD: int = 6
+    POWER_SUPPLY_HEALTH_WATCHDOG_TIMER_EXPIRE: int = 7
+    POWER_SUPPLY_HEALTH_SAFETY_TIMER_EXPIRE: int = 8
+
+    POWER_SUPPLY_TECHNOLOGY_UNKNOWN: int = 0
+    POWER_SUPPLY_TECHNOLOGY_NIMH: int = 1
+    POWER_SUPPLY_TECHNOLOGY_LION: int = 2
+    POWER_SUPPLY_TECHNOLOGY_LIPO: int = 3
+    POWER_SUPPLY_TECHNOLOGY_LIFE: int = 4
+    POWER_SUPPLY_TECHNOLOGY_NICD: int = 5
+    POWER_SUPPLY_TECHNOLOGY_LIMN: int = 6
+
+    def __init__(self) -> None:
+        self.header: _Header = _Header()
+        self.voltage: float = 0.0
+        self.temperature: float = 0.0
+        self.current: float = 0.0
+        self.charge: float = 0.0
+        self.capacity: float = 0.0
+        self.design_capacity: float = 0.0
+        self.percentage: float = 0.0
+        self.power_supply_status: int = self.POWER_SUPPLY_STATUS_UNKNOWN
+        self.power_supply_health: int = self.POWER_SUPPLY_HEALTH_UNKNOWN
+        self.power_supply_technology: int = self.POWER_SUPPLY_TECHNOLOGY_UNKNOWN
+        self.present: bool = False
+        self.cell_voltage: list[float] = []
+        self.cell_temperature: list[float] = []
+        self.location: str = ""
+        self.serial_number: str = ""
+
+
 class _Pose:
     def __init__(self) -> None:
         self.position: _Point = _Point()
@@ -210,6 +254,50 @@ class _AhrsStatus:
         self.status_text: str = ""
 
 
+class _UPSStatus:
+    def __init__(
+        self,
+        manufacturer: str = "",
+        model: str = "",
+        serial_number: str = "",
+        input_voltage: float = 0.0,
+        output_voltage: float = 0.0,
+        battery_voltage: float = 0.0,
+        battery_current: float = 0.0,
+        battery_temperature: float = 0.0,
+        battery_charge: int = 0,
+        battery_runtime: int = 0,
+        load: float = 0.0,
+        load_total: float = 0.0,
+        status: str = "",
+        battery_type: str = "",
+    ) -> None:
+        self.manufacturer: str = manufacturer
+        self.model: str = model
+        self.serial_number: str = serial_number
+        self.input_voltage: float = input_voltage
+        self.output_voltage: float = output_voltage
+        self.battery_voltage: float = battery_voltage
+        self.battery_current: float = battery_current
+        self.battery_temperature: float = battery_temperature
+        self.battery_charge: int = battery_charge
+        self.battery_runtime: int = battery_runtime
+        self.load: float = load
+        self.load_total: float = load_total
+        self.status: str = status
+        self.battery_type: str = battery_type
+
+
+class _UPSCommand:
+    class Request:
+        def __init__(self) -> None:
+            self.command: str = ""
+            self.delay: float = 0.0
+
+    class Response:
+        pass
+
+
 class _Publisher:
     def __init__(self, *_: Any, **__: Any) -> None:
         self.messages: list[Any] = []
@@ -221,6 +309,18 @@ class _Publisher:
 class _Subscription:
     def __init__(self, *_: Any, **__: Any) -> None:
         pass
+
+
+class _Service:
+    def __init__(
+        self,
+        srv_type: type[Any] | None = None,
+        srv_name: str = "",
+        callback: Any = None,
+    ) -> None:
+        self.srv_type: type[Any] | None = srv_type
+        self.srv_name: str = srv_name
+        self.callback: Any = callback
 
 
 class _Timer:
@@ -246,6 +346,9 @@ class _Logger:
 
     def warning(self, message: str) -> None:
         self.messages.append(("warning", message))
+
+    def error(self, message: str) -> None:
+        self.messages.append(("error", message))
 
 
 class _ClockNow:
@@ -291,6 +394,18 @@ class _Node:
         del msg_type, topic, callback, qos_profile
         return _Subscription()
 
+    def create_service(
+        self,
+        srv_type: type[Any],
+        srv_name: str,
+        callback: Any,
+    ) -> _Service:
+        return _Service(
+            srv_type=srv_type,
+            srv_name=srv_name,
+            callback=callback,
+        )
+
     def create_timer(self, period_sec: float, callback: Any) -> _Timer:
         return _Timer(period_sec, callback)
 
@@ -315,6 +430,7 @@ class _PresetProfile:
 
 class _QoSPresetProfiles:
     SENSOR_DATA: _PresetProfile = _PresetProfile()
+    SYSTEM_DEFAULT: _PresetProfile = _PresetProfile()
 
 
 class _TimeHandle:
@@ -443,15 +559,20 @@ def _install_tf2_ros_stub() -> None:
 
 
 def _install_oasis_msgs_stub() -> None:
-    if _module_exists("oasis_msgs.msg"):
+    if _module_exists("oasis_msgs.msg") and _module_exists("oasis_msgs.srv"):
         return
 
     oasis_msgs_module: ModuleType = _make_package("oasis_msgs")
     oasis_msgs_msg_module: ModuleType = ModuleType("oasis_msgs.msg")
+    oasis_msgs_srv_module: ModuleType = ModuleType("oasis_msgs.srv")
     _set_module_attr(oasis_msgs_msg_module, "AhrsStatus", _AhrsStatus)
+    _set_module_attr(oasis_msgs_msg_module, "UPSStatus", _UPSStatus)
+    _set_module_attr(oasis_msgs_srv_module, "UPSCommand", _UPSCommand)
     _set_module_attr(oasis_msgs_module, "msg", oasis_msgs_msg_module)
+    _set_module_attr(oasis_msgs_module, "srv", oasis_msgs_srv_module)
     _register_module("oasis_msgs", oasis_msgs_module)
     _register_module("oasis_msgs.msg", oasis_msgs_msg_module)
+    _register_module("oasis_msgs.srv", oasis_msgs_srv_module)
 
 
 def _install_launch_stub() -> None:
@@ -487,9 +608,11 @@ def _install_rclpy_stub() -> None:
         return
 
     rclpy_module: ModuleType = _make_package("rclpy")
+    rclpy_logging_module: ModuleType = ModuleType("rclpy.logging")
     rclpy_node_module: ModuleType = ModuleType("rclpy.node")
     rclpy_publisher_module: ModuleType = ModuleType("rclpy.publisher")
     rclpy_qos_module: ModuleType = ModuleType("rclpy.qos")
+    rclpy_service_module: ModuleType = ModuleType("rclpy.service")
     rclpy_subscription_module: ModuleType = ModuleType("rclpy.subscription")
     rclpy_time_module: ModuleType = ModuleType("rclpy.time")
     rclpy_timer_module: ModuleType = ModuleType("rclpy.timer")
@@ -500,27 +623,37 @@ def _install_rclpy_stub() -> None:
     def _shutdown(*_: Any, **__: Any) -> None:
         return None
 
+    def _ok() -> bool:
+        return False
+
     _set_module_attr(rclpy_module, "init", _init)
     _set_module_attr(rclpy_module, "shutdown", _shutdown)
+    _set_module_attr(rclpy_module, "ok", _ok)
+    _set_module_attr(rclpy_logging_module, "RcutilsLogger", _Logger)
     _set_module_attr(rclpy_node_module, "Node", _Node)
     _set_module_attr(rclpy_publisher_module, "Publisher", _Publisher)
     _set_module_attr(rclpy_qos_module, "QoSProfile", _QoSProfile)
     _set_module_attr(rclpy_qos_module, "QoSPresetProfiles", _QoSPresetProfiles)
+    _set_module_attr(rclpy_service_module, "Service", _Service)
     _set_module_attr(rclpy_subscription_module, "Subscription", _Subscription)
     _set_module_attr(rclpy_time_module, "Time", _TimeHandle)
     _set_module_attr(rclpy_timer_module, "Timer", _Timer)
 
+    _set_module_attr(rclpy_module, "logging", rclpy_logging_module)
     _set_module_attr(rclpy_module, "node", rclpy_node_module)
     _set_module_attr(rclpy_module, "publisher", rclpy_publisher_module)
     _set_module_attr(rclpy_module, "qos", rclpy_qos_module)
+    _set_module_attr(rclpy_module, "service", rclpy_service_module)
     _set_module_attr(rclpy_module, "subscription", rclpy_subscription_module)
     _set_module_attr(rclpy_module, "time", rclpy_time_module)
     _set_module_attr(rclpy_module, "timer", rclpy_timer_module)
 
     _register_module("rclpy", rclpy_module)
+    _register_module("rclpy.logging", rclpy_logging_module)
     _register_module("rclpy.node", rclpy_node_module)
     _register_module("rclpy.publisher", rclpy_publisher_module)
     _register_module("rclpy.qos", rclpy_qos_module)
+    _register_module("rclpy.service", rclpy_service_module)
     _register_module("rclpy.subscription", rclpy_subscription_module)
     _register_module("rclpy.time", rclpy_time_module)
     _register_module("rclpy.timer", rclpy_timer_module)

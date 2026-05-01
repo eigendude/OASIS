@@ -8,6 +8,7 @@
 #
 ################################################################################
 
+import math
 import os
 import subprocess
 from typing import Optional
@@ -53,19 +54,31 @@ class UpsServer:
                 if ": " in line
             )
 
-            load_total: int = int(values.get("ups.realpower.nominal", 0))
+            load_total: int = cls._int_value(values, "ups.realpower.nominal")
+            ups_load_percent: int = cls._int_value(values, "ups.load")
 
-            msg = UPSStatusMsg(
+            # Convert NUT load percentage to watts using nominal real power
+            load_watts: float = float(ups_load_percent * load_total / 100.0)
+
+            msg: UPSStatusMsg = UPSStatusMsg(
                 manufacturer=values.get("device.mfr", ""),
                 model=values.get("device.model", ""),
                 serial_number=values.get("device.serial", ""),
-                input_voltage=float(values.get("input.voltage", 0.0)),
-                output_voltage=float(values.get("output.voltage", 0.0)),
-                battery_charge=int(values.get("battery.charge", 0)),
-                battery_runtime=int(values.get("battery.runtime", 0)),
-                load=float(int(values.get("ups.load", 0)) * load_total / 100),
+                input_voltage=cls._float_value(values, "input.voltage", 0.0),
+                output_voltage=cls._float_value(values, "output.voltage", 0.0),
+                battery_voltage=cls._float_value(values, "battery.voltage", math.nan),
+                battery_current=cls._float_value(values, "battery.current", math.nan),
+                battery_temperature=cls._float_value(
+                    values,
+                    "battery.temperature",
+                    math.nan,
+                ),
+                battery_charge=cls._int_value(values, "battery.charge"),
+                battery_runtime=cls._int_value(values, "battery.runtime"),
+                load=load_watts,
                 load_total=float(load_total),
                 status=values.get("ups.status", ""),
+                battery_type=values.get("battery.type", ""),
             )
             return msg
 
@@ -110,3 +123,30 @@ class UpsServer:
         env = os.environ.copy()
         env["NUT_QUIET_INIT_SSL"] = "true"
         return env
+
+    @staticmethod
+    def _float_value(
+        values: dict[str, str],
+        key: str,
+        default: float,
+    ) -> float:
+        try:
+            value: float = float(values[key])
+        except (KeyError, TypeError, ValueError):
+            return default
+
+        if not math.isfinite(value):
+            return default
+
+        return value
+
+    @staticmethod
+    def _int_value(
+        values: dict[str, str],
+        key: str,
+        default: int = 0,
+    ) -> int:
+        try:
+            return int(float(values[key]))
+        except (KeyError, TypeError, ValueError):
+            return default
