@@ -11,6 +11,7 @@
 import asyncio
 import threading
 import time
+from collections.abc import Sequence
 from concurrent.futures import Future
 from datetime import datetime
 from datetime import timezone
@@ -26,6 +27,7 @@ from typing import cast
 from telemetrix_aio import private_constants
 from telemetrix_aio import telemetrix_aio
 
+from oasis_drivers.mcu.mcu_readings import AnalogReadingSample
 from oasis_drivers.telemetrix.telemetrix_callback import TelemetrixCallback
 from oasis_drivers.telemetrix.telemetrix_constants import TelemetrixConstants
 from oasis_drivers.telemetrix.telemetrix_types import AnalogMode
@@ -111,6 +113,9 @@ class TelemetrixBridge:
         )
         board.report_dispatch.update(
             {TelemetrixConstants.UPTIME_REPORT: self._on_uptime_report}
+        )
+        board.report_dispatch.update(
+            {TelemetrixConstants.ANALOG_BATCH_REPORT: self._on_analog_readings}
         )
         return board
 
@@ -784,6 +789,40 @@ class TelemetrixBridge:
 
         self._callback.on_digital_reading(timestamp, digital_pin, digital_value)
 
+    async def _on_analog_readings(self, data: List[int]) -> None:
+        """
+        Handle a batched report of analog readings from one scan cycle.
+
+        :param data: The report payload
+        """
+        report_data: Sequence[int] = self._strip_optional_report_type(
+            data, TelemetrixConstants.ANALOG_BATCH_REPORT
+        )
+        if len(report_data) < 1:
+            return
+
+        count: int = report_data[0]
+        if len(report_data) < 1 + (count * 3):
+            return
+
+        timestamp: datetime = datetime.now(timezone.utc)
+        readings: list[AnalogReadingSample] = []
+        offset: int = 1
+        for _ in range(count):
+            analog_pin: int = report_data[offset]
+            raw_value: int = (report_data[offset + 1] << 8) | report_data[offset + 2]
+            analog_value: float = float(raw_value) / self.ANALOG_MAX
+            readings.append(
+                AnalogReadingSample(
+                    analog_pin=analog_pin,
+                    reference_voltage=self.ANALOG_REFERENCE,
+                    analog_value=analog_value,
+                )
+            )
+            offset += 3
+
+        self._callback.on_analog_readings(timestamp, readings)
+
     async def _on_cpu_fan_rpm(self, data: List[int]) -> None:
         """
         Handle reports on the speed of CPU fans.
@@ -943,3 +982,12 @@ class TelemetrixBridge:
             # is timezone-insensitive
             # return datetime.utcfromtimestamp(unix_time)
             return datetime.fromtimestamp(unix_time)
+
+    @staticmethod
+    def _strip_optional_report_type(
+        data: Sequence[int], report_type: int
+    ) -> Sequence[int]:
+        if len(data) > 0 and data[0] == report_type:
+            return data[1:]
+
+        return data

@@ -36,3 +36,4 @@ class TelemetrixConstants:
     AQ_CO2_TVOC_REPORT: int = 23
     IMU_6_AXIS_REPORT: int = 24
     UPTIME_REPORT: int = 25
+    ANALOG_BATCH_REPORT: int = 26

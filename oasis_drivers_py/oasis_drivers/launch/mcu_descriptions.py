@@ -83,6 +83,7 @@ class MCUDescriptions:
                 ("air_quality", f"{mcu_name}/air_quality"),
                 ("analog_read", f"{mcu_name}/analog_read"),
                 ("analog_reading", f"{mcu_name}/analog_reading"),
+                ("analog_readings", f"{mcu_name}/analog_readings"),
                 ("cpu_fan_speed", f"{mcu_name}/cpu_fan_speed"),
                 ("cpu_fan_write", f"{mcu_name}/cpu_fan_write"),
                 ("cpu_fan_write_cmd", f"{mcu_name}/cpu_fan_write_cmd"),

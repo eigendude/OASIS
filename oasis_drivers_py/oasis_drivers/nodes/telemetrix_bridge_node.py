@@ -10,6 +10,7 @@
 
 import threading
 import time
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import List
@@ -27,6 +28,11 @@ from geometry_msgs.msg import Vector3 as Vector3Msg
 from sensor_msgs.msg import Imu as ImuMsg
 from std_msgs.msg import Header as HeaderMsg
 
+from oasis_drivers.mcu.mcu_readings import AnalogReadingSample
+from oasis_drivers.mcu.mcu_readings import DigitalReadingSample
+from oasis_drivers.ros.mcu_reading_messages import make_analog_reading_msg
+from oasis_drivers.ros.mcu_reading_messages import make_analog_readings_msg
+from oasis_drivers.ros.mcu_reading_messages import make_digital_reading_msg
 from oasis_drivers.ros.ros_translator import RosTranslator
 from oasis_drivers.telemetrix.telemetrix_bridge import TelemetrixBridge
 from oasis_drivers.telemetrix.telemetrix_callback import TelemetrixCallback
@@ -36,6 +42,7 @@ from oasis_drivers.telemetrix.telemetrix_types import AnalogMode
 from oasis_drivers.telemetrix.telemetrix_types import DigitalMode
 from oasis_msgs.msg import AirQuality as AirQualityMsg
 from oasis_msgs.msg import AnalogReading as AnalogReadingMsg
+from oasis_msgs.msg import AnalogReadings as AnalogReadingsMsg
 from oasis_msgs.msg import AVRConstants as AVRConstantsMsg
 from oasis_msgs.msg import CPUFanSpeed as CPUFanSpeedMsg
 from oasis_msgs.msg import DigitalReading as DigitalReadingMsg
@@ -81,6 +88,7 @@ PARAM_RECONNECT_DELAY_S = "reconnect_delay_s"
 # ROS topics
 AIR_QUALITY_TOPIC = "air_quality"
 ANALOG_READING_TOPIC = "analog_reading"
+ANALOG_READINGS_TOPIC = "analog_readings"
 CPU_FAN_SPEED_TOPIC = "cpu_fan_speed"
 DIGITAL_READING_TOPIC = "digital_reading"
 IMU_TOPIC = "i2c_imu"
@@ -208,6 +216,11 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         self._analog_reading_pub: rclpy.publisher.Publisher = self.create_publisher(
             msg_type=AnalogReadingMsg,
             topic=ANALOG_READING_TOPIC,
+            qos_profile=qos_profile,
+        )
+        self._analog_readings_pub: rclpy.publisher.Publisher = self.create_publisher(
+            msg_type=AnalogReadingsMsg,
+            topic=ANALOG_READINGS_TOPIC,
             qos_profile=qos_profile,
         )
         self._cpu_fan_speed_pub: rclpy.publisher.Publisher = self.create_publisher(
@@ -607,19 +620,29 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         if not self._initialized:
             return
 
-        msg: AnalogReadingMsg = AnalogReadingMsg()
-
-        # Timestamp in ROS header
-        header = HeaderMsg()
-        header.stamp = RosTranslator.convert_timestamp(timestamp)
-        header.frame_id = ""  # TODO
-
-        msg.header = header
-        msg.analog_pin = analog_pin
-        msg.reference_voltage = reference_voltage
-        msg.analog_value = analog_value
+        sample: AnalogReadingSample = AnalogReadingSample(
+            analog_pin=analog_pin,
+            reference_voltage=reference_voltage,
+            analog_value=analog_value,
+        )
+        msg: AnalogReadingMsg = make_analog_reading_msg(
+            RosTranslator.convert_timestamp(timestamp), sample
+        )
 
         self._analog_reading_pub.publish(msg)
+
+    def on_analog_readings(
+        self, timestamp: datetime, readings: Sequence[AnalogReadingSample]
+    ) -> None:
+        """Implement TelemetrixCallback"""
+        if not self._initialized:
+            return
+
+        msg: AnalogReadingsMsg = make_analog_readings_msg(
+            RosTranslator.convert_timestamp(timestamp), readings
+        )
+
+        self._analog_readings_pub.publish(msg)
 
     def on_cpu_fan_rpm(self, timestamp: datetime, digital_pin: int, rpm: int) -> None:
         """Implement TelemetrixCallback"""
@@ -646,17 +669,12 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         if not self._initialized:
             return
 
-        msg: DigitalReadingMsg = DigitalReadingMsg()
-
-        # Timestamp in ROS header
-        header = HeaderMsg()
-        header.stamp = RosTranslator.convert_timestamp(timestamp)
-        header.frame_id = ""  # TODO
-
-        msg.header = header
-        msg.digital_pin = digital_pin
-        msg.digital_value = (
-            AVRConstantsMsg.HIGH if digital_value else AVRConstantsMsg.LOW
+        sample: DigitalReadingSample = DigitalReadingSample(
+            digital_pin=digital_pin,
+            digital_value=digital_value,
+        )
+        msg: DigitalReadingMsg = make_digital_reading_msg(
+            RosTranslator.convert_timestamp(timestamp), sample
         )
 
         self._digital_reading_pub.publish(msg)

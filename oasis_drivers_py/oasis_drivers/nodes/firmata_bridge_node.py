@@ -23,6 +23,10 @@ from oasis_drivers.firmata.firmata_bridge import FirmataBridge
 from oasis_drivers.firmata.firmata_callback import FirmataCallback
 from oasis_drivers.firmata.firmata_types import AnalogMode
 from oasis_drivers.firmata.firmata_types import DigitalMode
+from oasis_drivers.mcu.mcu_readings import AnalogReadingSample
+from oasis_drivers.mcu.mcu_readings import DigitalReadingSample
+from oasis_drivers.ros.mcu_reading_messages import make_analog_reading_msg
+from oasis_drivers.ros.mcu_reading_messages import make_digital_reading_msg
 from oasis_msgs.msg import AnalogReading as AnalogReadingMsg
 from oasis_msgs.msg import AVRConstants as AVRConstantsMsg
 from oasis_msgs.msg import CPUFanSpeed as CPUFanSpeedMsg
@@ -208,17 +212,14 @@ class FirmataBridgeNode(rclpy.node.Node, FirmataCallback):
         """Implement FirmataCallback"""
 
         def _publish() -> None:
-            msg: AnalogReadingMsg = AnalogReadingMsg()
-
-            # Timestamp in ROS header
-            header = HeaderMsg()
-            header.stamp = self._convert_timestamp(timestamp)
-            header.frame_id = ""  # TODO
-
-            msg.header = header
-            msg.analog_pin = analog_pin
-            msg.reference_voltage = reference_voltage
-            msg.analog_value = analog_value
+            sample: AnalogReadingSample = AnalogReadingSample(
+                analog_pin=analog_pin,
+                reference_voltage=reference_voltage,
+                analog_value=analog_value,
+            )
+            msg: AnalogReadingMsg = make_analog_reading_msg(
+                self._convert_timestamp(timestamp), sample
+            )
 
             self._analog_reading_pub.publish(msg)
 
@@ -249,17 +250,12 @@ class FirmataBridgeNode(rclpy.node.Node, FirmataCallback):
         """Implement FirmataCallback"""
 
         def _publish() -> None:
-            msg: DigitalReadingMsg = DigitalReadingMsg()
-
-            # Timestamp in ROS header
-            header = HeaderMsg()
-            header.stamp = self._convert_timestamp(timestamp)
-            header.frame_id = ""  # TODO
-
-            msg.header = header
-            msg.digital_pin = digital_pin
-            msg.digital_value = (
-                AVRConstantsMsg.HIGH if digital_value else AVRConstantsMsg.LOW
+            sample: DigitalReadingSample = DigitalReadingSample(
+                digital_pin=digital_pin,
+                digital_value=digital_value,
+            )
+            msg: DigitalReadingMsg = make_digital_reading_msg(
+                self._convert_timestamp(timestamp), sample
             )
 
             self._digital_reading_pub.publish(msg)

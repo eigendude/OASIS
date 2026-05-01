@@ -9,7 +9,10 @@
 ################################################################################
 
 import abc
+from collections.abc import Sequence
 from datetime import datetime
+
+from oasis_drivers.mcu.mcu_readings import AnalogReadingSample
 
 
 class TelemetrixCallback:
@@ -34,6 +37,12 @@ class TelemetrixCallback:
         analog_pin: int,
         analog_value: float,
         reference_voltage: float,
+    ) -> None:
+        pass
+
+    @abc.abstractmethod
+    def on_analog_readings(
+        self, timestamp: datetime, readings: Sequence[AnalogReadingSample]
     ) -> None:
         pass
 
