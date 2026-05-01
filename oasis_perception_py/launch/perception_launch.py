@@ -134,6 +134,7 @@ def generate_launch_description() -> LaunchDescription:
             output_resolution="hd",
         )
 
+        """
         # Calibration demo (TODO: separate checkerboard detection)
         PerceptionDescriptions.add_calibration(
             ld,
@@ -142,6 +143,7 @@ def generate_launch_description() -> LaunchDescription:
             input_resolution="sd",
             # TODO: image_transport="compressed",
         )
+        """
 
     # Hallway pipeline
     if ZONE_ID == "hallway":
