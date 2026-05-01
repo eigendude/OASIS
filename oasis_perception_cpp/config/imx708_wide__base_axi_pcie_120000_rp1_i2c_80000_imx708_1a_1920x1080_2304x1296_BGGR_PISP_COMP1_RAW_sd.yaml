@@ -1,0 +1,104 @@
+%YAML:1.0
+
+#--------------------------------------------------------------------------------------------
+# Camera Parameters generated from
+# imx708_wide__base_axi_pcie_120000_rp1_i2c_80000_imx708_1a_1920x1080_2304x1296_BGGR_PISP_COMP1_RAW
+# Downscaled to 640x360 to match the "sd" stream max bounds in launch
+#--------------------------------------------------------------------------------------------
+
+File.version: "1.0"
+
+Camera.type: "KannalaBrandt8"
+
+# Camera resolution
+Camera.width: 640
+Camera.height: 360
+
+# Left Camera calibration and distortion parameters (OpenCV)
+#
+# The downscaler keeps aspect ratio, so 1920x1080 -> 640x360 uses a 1/3 scale.
+Camera1.fx: 276.4865499
+Camera1.fy: 278.6305537
+Camera1.cx: 318.8023627
+Camera1.cy: 180.5736529
+
+# Distortion parameters
+Camera1.k1: 0.67444594
+Camera1.k2: -2.66765432
+Camera1.k3: 7.70263566
+Camera1.k4: -6.625675
+
+# Camera frames per second
+Camera.fps: 30
+
+# Color order of the images (0: BGR, 1: RGB. It is ignored if images are
+# grayscale)
+Camera.RGB: 0
+
+#--------------------------------------------------------------------------------------------
+# ORB Parameters
+#--------------------------------------------------------------------------------------------
+
+# ORB Extractor: Number of features per image
+#
+# Tuned lower than 960x540 to reduce CPU load while keeping enough corners for
+# stable tracking at 640x360.
+ORBextractor.nFeatures: 1800
+
+# ORB Extractor: Scale factor between levels in the scale pyramid
+ORBextractor.scaleFactor: 1.2
+
+# ORB Extractor: Number of levels in the scale pyramid
+ORBextractor.nLevels: 9
+
+# ORB Extractor: FAST thresholds
+#
+# Slightly softer threshold helps recover corners at low resolution.
+ORBextractor.iniThFAST: 12
+ORBextractor.minThFAST: 7
+
+#--------------------------------------------------------------------------------------------
+# Viewer Parameters
+#--------------------------------------------------------------------------------------------
+
+Viewer.KeyFrameSize: 0.06
+Viewer.KeyFrameLineWidth: 2.0
+Viewer.GraphLineWidth: 1.4
+Viewer.PointSize: 2.6
+Viewer.CameraSize: 0.1
+Viewer.CameraLineWidth: 3.0
+Viewer.ViewpointX: 0.0
+Viewer.ViewpointY: -0.8
+Viewer.ViewpointZ: -4.5
+Viewer.ViewpointF: 420.0
+
+# System.LoadAtlasFromFile: "./atlas"
+# System.SaveAtlasToFile: "./atlas"
+
+#--------------------------------------------------------------------------------------------
+# IMU Parameters (REQUIRED for Monocular-Inertial)
+#--------------------------------------------------------------------------------------------
+
+# Must match IMU message rate
+IMU.Frequency: 50.0
+
+# Continuous-time noise densities
+IMU.NoiseAcc: 0.014
+IMU.NoiseGyro: 0.006
+
+# Bias random walk
+IMU.AccWalk: 0.03
+IMU.GyroWalk: 0.001
+
+# Gravity magnitude
+IMU.g: 9.80665
+
+# Transform from body(imu) to camera1
+IMU.T_b_c1: !!opencv-matrix
+  rows: 4
+  cols: 4
+  dt: f
+  data: [1,0,0,0,
+         0,1,0,0,
+         0,0,1,0,
+         0,0,0,1]
