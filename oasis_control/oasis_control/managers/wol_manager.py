@@ -69,11 +69,15 @@ class WolManager:
         self._wol_future: Optional[rclpy.task.Future] = None
 
         # Service clients
-        self._get_mac_address_client: rclpy.client.Client = self._node.create_client(
+        self._get_mac_address_client: rclpy.client.Client[
+            GetMACAddressSvc.Request, GetMACAddressSvc.Response
+        ] = self._node.create_client(
             srv_type=GetMACAddressSvc,
             srv_name=CLIENT_GET_MAC_ADDRESS,
         )
-        self._wol_client: rclpy.client.Client = self._node.create_client(
+        self._wol_client: rclpy.client.Client[
+            WoLCommandSvc.Request, WoLCommandSvc.Response
+        ] = self._node.create_client(
             srv_type=WoLCommandSvc,
             srv_name=CLIENT_WOL,
         )

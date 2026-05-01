@@ -17,7 +17,9 @@ from typing import Optional
 
 import rclpy.client
 import rclpy.node
+import rclpy.publisher
 import rclpy.qos
+import rclpy.service
 import rclpy.subscription
 import rclpy.task
 from rclpy.logging import LoggingSeverity
@@ -179,14 +181,16 @@ class ConductorManagerNode(rclpy.node.Node):
         )
 
         # Publishers
-        self._conductor_state_pub: rclpy.publisher.Publisher = self.create_publisher(
-            msg_type=ConductorStateMsg,
-            topic=PUBLISH_CONDUCTOR_STATE,
-            qos_profile=state_qos_profile,
+        self._conductor_state_pub: rclpy.publisher.Publisher[ConductorStateMsg] = (
+            self.create_publisher(
+                msg_type=ConductorStateMsg,
+                topic=PUBLISH_CONDUCTOR_STATE,
+                qos_profile=state_qos_profile,
+            )
         )
 
         # Subscribers
-        self._analog_reading_sub: rclpy.subscription.Subscription = (
+        self._analog_reading_sub: rclpy.subscription.Subscription[AnalogReadingMsg] = (
             self.create_subscription(
                 msg_type=AnalogReadingMsg,
                 topic=SUBSCRIBE_ANALOG_READING,
@@ -194,7 +198,7 @@ class ConductorManagerNode(rclpy.node.Node):
                 qos_profile=qos_profile,
             )
         )
-        self._cpu_fan_speed_sub: rclpy.subscription.Subscription = (
+        self._cpu_fan_speed_sub: rclpy.subscription.Subscription[CPUFanSpeedMsg] = (
             self.create_subscription(
                 msg_type=CPUFanSpeedMsg,
                 topic=SUBSCRIBE_CPU_FAN_SPEED,
@@ -202,15 +206,15 @@ class ConductorManagerNode(rclpy.node.Node):
                 qos_profile=qos_profile,
             )
         )
-        self._digital_reading_sub: rclpy.subscription.Subscription = (
-            self.create_subscription(
-                msg_type=DigitalReadingMsg,
-                topic=SUBSCRIBE_DIGITAL_READING,
-                callback=self._on_digital_reading,
-                qos_profile=qos_profile,
-            )
+        self._digital_reading_sub: rclpy.subscription.Subscription[
+            DigitalReadingMsg
+        ] = self.create_subscription(
+            msg_type=DigitalReadingMsg,
+            topic=SUBSCRIBE_DIGITAL_READING,
+            callback=self._on_digital_reading,
+            qos_profile=qos_profile,
         )
-        self._mcu_memory_sub: rclpy.subscription.Subscription = (
+        self._mcu_memory_sub: rclpy.subscription.Subscription[MCUMemoryMsg] = (
             self.create_subscription(
                 msg_type=MCUMemoryMsg,
                 topic=SUBSCRIBE_MCU_MEMORY,
@@ -218,7 +222,7 @@ class ConductorManagerNode(rclpy.node.Node):
                 qos_profile=qos_profile,
             )
         )
-        self._mcu_string_sub: rclpy.subscription.Subscription = (
+        self._mcu_string_sub: rclpy.subscription.Subscription[MCUStringMsg] = (
             self.create_subscription(
                 msg_type=MCUStringMsg,
                 topic=SUBSCRIBE_MCU_STRING,
@@ -226,15 +230,15 @@ class ConductorManagerNode(rclpy.node.Node):
                 qos_profile=qos_profile,
             )
         )
-        self._peripheral_input_sub: rclpy.subscription.Subscription = (
-            self.create_subscription(
-                msg_type=PeripheralInputMsg,
-                topic=SUBSCRIBE_PERIPHERAL_INPUT,
-                callback=self._on_peripheral_input,
-                qos_profile=qos_profile,
-            )
+        self._peripheral_input_sub: rclpy.subscription.Subscription[
+            PeripheralInputMsg
+        ] = self.create_subscription(
+            msg_type=PeripheralInputMsg,
+            topic=SUBSCRIBE_PERIPHERAL_INPUT,
+            callback=self._on_peripheral_input,
+            qos_profile=qos_profile,
         )
-        self._peripherals_sub: rclpy.subscription.Subscription = (
+        self._peripherals_sub: rclpy.subscription.Subscription[PeripheralScanMsg] = (
             self.create_subscription(
                 msg_type=PeripheralScanMsg,
                 topic=SUBSCRIBE_PERIPHERALS,
@@ -244,32 +248,42 @@ class ConductorManagerNode(rclpy.node.Node):
         )
 
         # Services
-        self._power_control_service: rclpy.service.Service = self.create_service(
+        self._power_control_service: rclpy.service.Service[
+            PowerControlSvc.Request, PowerControlSvc.Response
+        ] = self.create_service(
             srv_type=PowerControlSvc,
             srv_name=SERVICE_POWER_CONTROL,
             callback=self._handle_power_control,
         )
 
         # Service clients
-        self._capture_input_client: rclpy.client.Client = self.create_client(
-            srv_type=CaptureInputSvc, srv_name=CLIENT_CAPTURE_INPUT
-        )
-        self._digital_write_client: rclpy.client.Client = self.create_client(
-            srv_type=DigitalWriteSvc, srv_name=CLIENT_DIGITAL_WRITE
-        )
-        self._pwm_write_client: rclpy.client.Client = self.create_client(
-            srv_type=PWMWriteSvc, srv_name=CLIENT_PWM_WRITE
-        )
-        self._report_mcu_memory_client: rclpy.client.Client = self.create_client(
+        self._capture_input_client: rclpy.client.Client[
+            CaptureInputSvc.Request, CaptureInputSvc.Response
+        ] = self.create_client(srv_type=CaptureInputSvc, srv_name=CLIENT_CAPTURE_INPUT)
+        self._digital_write_client: rclpy.client.Client[
+            DigitalWriteSvc.Request, DigitalWriteSvc.Response
+        ] = self.create_client(srv_type=DigitalWriteSvc, srv_name=CLIENT_DIGITAL_WRITE)
+        self._pwm_write_client: rclpy.client.Client[
+            PWMWriteSvc.Request, PWMWriteSvc.Response
+        ] = self.create_client(srv_type=PWMWriteSvc, srv_name=CLIENT_PWM_WRITE)
+        self._report_mcu_memory_client: rclpy.client.Client[
+            ReportMCUMemorySvc.Request, ReportMCUMemorySvc.Response
+        ] = self.create_client(
             srv_type=ReportMCUMemorySvc, srv_name=CLIENT_REPORT_MCU_MEMORY
         )
-        self._set_analog_mode_client: rclpy.client.Client = self.create_client(
+        self._set_analog_mode_client: rclpy.client.Client[
+            SetAnalogModeSvc.Request, SetAnalogModeSvc.Response
+        ] = self.create_client(
             srv_type=SetAnalogModeSvc, srv_name=CLIENT_SET_ANALOG_MODE
         )
-        self._set_digital_mode_client: rclpy.client.Client = self.create_client(
+        self._set_digital_mode_client: rclpy.client.Client[
+            SetDigitalModeSvc.Request, SetDigitalModeSvc.Response
+        ] = self.create_client(
             srv_type=SetDigitalModeSvc, srv_name=CLIENT_SET_DIGITAL_MODE
         )
-        self._set_sampling_interval_client: rclpy.client.Client = self.create_client(
+        self._set_sampling_interval_client: rclpy.client.Client[
+            SetSamplingIntervalSvc.Request, SetSamplingIntervalSvc.Response
+        ] = self.create_client(
             srv_type=SetSamplingIntervalSvc, srv_name=CLIENT_SET_SAMPLING_INTERVAL
         )
 

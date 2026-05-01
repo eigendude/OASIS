@@ -66,9 +66,9 @@ class MPU6050Manager(I2CDeviceManager):
         )
 
         # Subscribers
-        self._air_quality_sub: rclpy.subscription.Subscription = (
+        self._air_quality_sub: rclpy.subscription.Subscription[I2CImuMsg] = (
             self._node.create_subscription(
-                msg_type=ImuMsg,
+                msg_type=I2CImuMsg,
                 topic=SUBSCRIBE_IMU,
                 callback=self._on_imu,
                 qos_profile=qos_profile,

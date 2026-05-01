@@ -88,15 +88,15 @@ class StationInput:
         )
 
         # Subscribers
-        self._peripheral_input_sub: rclpy.subscription.Subscription = (
-            self._node.create_subscription(
-                msg_type=PeripheralInputMsg,
-                topic=SUBSCRIBE_PERIPHERAL_INPUT,
-                callback=self._on_peripheral_input,
-                qos_profile=qos_profile,
-            )
+        self._peripheral_input_sub: rclpy.subscription.Subscription[
+            PeripheralInputMsg
+        ] = self._node.create_subscription(
+            msg_type=PeripheralInputMsg,
+            topic=SUBSCRIBE_PERIPHERAL_INPUT,
+            callback=self._on_peripheral_input,
+            qos_profile=qos_profile,
         )
-        self._peripherals_sub: rclpy.subscription.Subscription = (
+        self._peripherals_sub: rclpy.subscription.Subscription[PeripheralScanMsg] = (
             self._node.create_subscription(
                 msg_type=PeripheralScanMsg,
                 topic=SUBSCRIBE_PERIPHERALS,
@@ -106,7 +106,9 @@ class StationInput:
         )
 
         # Service clients
-        self._capture_input_client: rclpy.client.Client = self._node.create_client(
+        self._capture_input_client: rclpy.client.Client[
+            CaptureInputSvc.Request, CaptureInputSvc.Response
+        ] = self._node.create_client(
             srv_type=CaptureInputSvc, srv_name=CLIENT_CAPTURE_INPUT
         )
 

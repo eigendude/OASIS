@@ -12,8 +12,10 @@
 # Manager for RGB lighting
 #
 
+import rclpy.client
 import rclpy.node
 import rclpy.qos
+import rclpy.subscription
 
 from oasis_msgs.msg import RGB as RGBMsg
 from oasis_msgs.msg import CameraScene as CameraSceneMsg
@@ -66,7 +68,9 @@ class PresenceManager:
         self._kitchen_occupied: bool = False
 
         # Service clients
-        self._set_rgb_client: rclpy.client.Client = self._node.create_client(
+        self._set_rgb_client: rclpy.client.Client[
+            SetRGBSvc.Request, SetRGBSvc.Response
+        ] = self._node.create_client(
             srv_type=SetRGBSvc,
             srv_name=SET_RGB_SERVICE,
         )
@@ -77,7 +81,9 @@ class PresenceManager:
         )
 
         # Subscribers
-        self._camera_scene_subs: list[rclpy.subscription.Subscription] = [
+        self._camera_scene_subs: list[
+            rclpy.subscription.Subscription[CameraSceneMsg]
+        ] = [
             self._node.create_subscription(
                 msg_type=CameraSceneMsg,
                 topic=f"{CAMERA_SCENE_TOPIC}_{camera_host}",
@@ -88,11 +94,13 @@ class PresenceManager:
                 "kitchen"
             ]  # ["bar", "door", "hallway", "kitchen", "station"]
         ]
-        self._rgb_sub: rclpy.subscription.Subscription = self._node.create_subscription(
-            msg_type=RGBMsg,
-            topic=RGB_TOPIC,
-            callback=self._on_rgb_status,
-            qos_profile=qos_profile,
+        self._rgb_sub: rclpy.subscription.Subscription[RGBMsg] = (
+            self._node.create_subscription(
+                msg_type=RGBMsg,
+                topic=RGB_TOPIC,
+                callback=self._on_rgb_status,
+                qos_profile=qos_profile,
+            )
         )
 
     def _on_rgb_status(self, msg: RGBMsg) -> None:

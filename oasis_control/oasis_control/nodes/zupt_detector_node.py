@@ -77,23 +77,27 @@ class ZuptDetectorNode(rclpy.node.Node):
         )
 
         # ROS Publishers
-        self._zupt_flag_pub: rclpy.publisher.Publisher = self.create_publisher(
+        self._zupt_flag_pub: rclpy.publisher.Publisher[BoolMsg] = self.create_publisher(
             msg_type=BoolMsg,
             topic=ZUPT_FLAG_TOPIC,
             qos_profile=sensor_qos_profile,
         )
-        self._zupt_pub: rclpy.publisher.Publisher = self.create_publisher(
-            msg_type=TwistWithCovarianceStampedMsg,
-            topic=ZUPT_TOPIC,
-            qos_profile=sensor_qos_profile,
+        self._zupt_pub: rclpy.publisher.Publisher[TwistWithCovarianceStampedMsg] = (
+            self.create_publisher(
+                msg_type=TwistWithCovarianceStampedMsg,
+                topic=ZUPT_TOPIC,
+                qos_profile=sensor_qos_profile,
+            )
         )
 
         # ROS Subscribers
-        self._imu_sub: rclpy.subscription.Subscription = self.create_subscription(
-            msg_type=ImuMsg,
-            topic=IMU_TOPIC,
-            callback=self._handle_imu,
-            qos_profile=sensor_qos_profile,
+        self._imu_sub: rclpy.subscription.Subscription[ImuMsg] = (
+            self.create_subscription(
+                msg_type=ImuMsg,
+                topic=IMU_TOPIC,
+                callback=self._handle_imu,
+                qos_profile=sensor_qos_profile,
+            )
         )
 
         self.get_logger().info(

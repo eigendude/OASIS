@@ -16,6 +16,7 @@ from typing import Optional
 
 import rclpy.client
 import rclpy.node
+import rclpy.publisher
 import rclpy.qos
 import rclpy.subscription
 import rclpy.task
@@ -104,14 +105,16 @@ class EngineManagerNode(rclpy.node.Node):
         )
 
         # Publishers
-        self._engine_state_pub: rclpy.publisher.Publisher = self.create_publisher(
-            msg_type=EngineStateMsg,
-            topic=PUBLISH_ENGINE_STATE,
-            qos_profile=qos_profile,
+        self._engine_state_pub: rclpy.publisher.Publisher[EngineStateMsg] = (
+            self.create_publisher(
+                msg_type=EngineStateMsg,
+                topic=PUBLISH_ENGINE_STATE,
+                qos_profile=qos_profile,
+            )
         )
 
         # Subscribers
-        self._analog_reading_sub: rclpy.subscription.Subscription = (
+        self._analog_reading_sub: rclpy.subscription.Subscription[AnalogReadingMsg] = (
             self.create_subscription(
                 msg_type=AnalogReadingMsg,
                 topic=SUBSCRIBE_ANALOG_READING,
@@ -119,7 +122,7 @@ class EngineManagerNode(rclpy.node.Node):
                 qos_profile=qos_profile,
             )
         )
-        self._mcu_memory_sub: rclpy.subscription.Subscription = (
+        self._mcu_memory_sub: rclpy.subscription.Subscription[MCUMemoryMsg] = (
             self.create_subscription(
                 msg_type=MCUMemoryMsg,
                 topic=SUBSCRIBE_MCU_MEMORY,
@@ -127,7 +130,7 @@ class EngineManagerNode(rclpy.node.Node):
                 qos_profile=qos_profile,
             )
         )
-        self._mcu_string_sub: rclpy.subscription.Subscription = (
+        self._mcu_string_sub: rclpy.subscription.Subscription[MCUStringMsg] = (
             self.create_subscription(
                 msg_type=MCUStringMsg,
                 topic=SUBSCRIBE_MCU_STRING,
@@ -137,13 +140,19 @@ class EngineManagerNode(rclpy.node.Node):
         )
 
         # Service clients
-        self._report_mcu_memory_client: rclpy.client.Client = self.create_client(
+        self._report_mcu_memory_client: rclpy.client.Client[
+            ReportMCUMemorySvc.Request, ReportMCUMemorySvc.Response
+        ] = self.create_client(
             srv_type=ReportMCUMemorySvc, srv_name=CLIENT_REPORT_MCU_MEMORY
         )
-        self._set_analog_mode_client: rclpy.client.Client = self.create_client(
+        self._set_analog_mode_client: rclpy.client.Client[
+            SetAnalogModeSvc.Request, SetAnalogModeSvc.Response
+        ] = self.create_client(
             srv_type=SetAnalogModeSvc, srv_name=CLIENT_SET_ANALOG_MODE
         )
-        self._set_sampling_interval_client: rclpy.client.Client = self.create_client(
+        self._set_sampling_interval_client: rclpy.client.Client[
+            SetSamplingIntervalSvc.Request, SetSamplingIntervalSvc.Response
+        ] = self.create_client(
             srv_type=SetSamplingIntervalSvc, srv_name=CLIENT_SET_SAMPLING_INTERVAL
         )
 

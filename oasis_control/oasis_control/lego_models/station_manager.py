@@ -183,14 +183,14 @@ class StationManager:
             reliability=rclpy.qos.QoSReliabilityPolicy.RELIABLE,
             history=rclpy.qos.QoSHistoryPolicy.KEEP_LAST,
         )
-        self._motor_dir_cmd_pub: rclpy.publisher.Publisher = (
+        self._motor_dir_cmd_pub: rclpy.publisher.Publisher[DigitalWriteCommandMsg] = (
             self._node.create_publisher(
                 msg_type=DigitalWriteCommandMsg,
                 topic=PUBLISH_MOTOR_DIR_CMD,
                 qos_profile=cmd_qos,
             )
         )
-        self._motor_pwm_cmd_pub: rclpy.publisher.Publisher = (
+        self._motor_pwm_cmd_pub: rclpy.publisher.Publisher[PWMWriteCommandMsg] = (
             self._node.create_publisher(
                 msg_type=PWMWriteCommandMsg,
                 topic=PUBLISH_MOTOR_PWM_CMD,
@@ -199,7 +199,7 @@ class StationManager:
         )
 
         # Subscribers
-        self._analog_reading_sub: rclpy.subscription.Subscription = (
+        self._analog_reading_sub: rclpy.subscription.Subscription[AnalogReadingMsg] = (
             self._node.create_subscription(
                 msg_type=AnalogReadingMsg,
                 topic=SUBSCRIBE_ANALOG_READING,
@@ -207,20 +207,24 @@ class StationManager:
                 qos_profile=qos_profile,
             )
         )
-        self._digital_reading_sub: rclpy.subscription.Subscription = (
-            self._node.create_subscription(
-                msg_type=DigitalReadingMsg,
-                topic=SUBSCRIBE_DIGITAL_READING,
-                callback=self._on_digital_reading,
-                qos_profile=qos_profile,
-            )
+        self._digital_reading_sub: rclpy.subscription.Subscription[
+            DigitalReadingMsg
+        ] = self._node.create_subscription(
+            msg_type=DigitalReadingMsg,
+            topic=SUBSCRIBE_DIGITAL_READING,
+            callback=self._on_digital_reading,
+            qos_profile=qos_profile,
         )
 
         # Service clients
-        self._set_analog_mode_client: rclpy.client.Client = self._node.create_client(
+        self._set_analog_mode_client: rclpy.client.Client[
+            SetAnalogModeSvc.Request, SetAnalogModeSvc.Response
+        ] = self._node.create_client(
             srv_type=SetAnalogModeSvc, srv_name=CLIENT_SET_ANALOG_MODE
         )
-        self._set_digital_mode_client: rclpy.client.Client = self._node.create_client(
+        self._set_digital_mode_client: rclpy.client.Client[
+            SetDigitalModeSvc.Request, SetDigitalModeSvc.Response
+        ] = self._node.create_client(
             srv_type=SetDigitalModeSvc, srv_name=CLIENT_SET_DIGITAL_MODE
         )
 

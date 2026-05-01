@@ -16,8 +16,10 @@ import colorsys
 from datetime import datetime
 from datetime import timedelta
 
+import rclpy.client
 import rclpy.node
 import rclpy.qos
+import rclpy.subscription
 
 from oasis_msgs.msg import RGB as RGBMsg
 from oasis_msgs.srv import SetRGB as SetRGBSvc
@@ -89,7 +91,9 @@ class LightingManager:
         self._start_time: datetime = datetime.now()
 
         # Service clients
-        self._set_rgb_client: rclpy.client.Client = self._node.create_client(
+        self._set_rgb_client: rclpy.client.Client[
+            SetRGBSvc.Request, SetRGBSvc.Response
+        ] = self._node.create_client(
             srv_type=SetRGBSvc,
             srv_name=SET_RGB_SERVICE,
         )
@@ -100,11 +104,13 @@ class LightingManager:
         )
 
         # Subscribers
-        self._rgb_sub: rclpy.subscription.Subscription = self._node.create_subscription(
-            msg_type=RGBMsg,
-            topic=RGB_TOPIC,
-            callback=self._on_rgb_status,
-            qos_profile=qos_profile,
+        self._rgb_sub: rclpy.subscription.Subscription[RGBMsg] = (
+            self._node.create_subscription(
+                msg_type=RGBMsg,
+                topic=RGB_TOPIC,
+                callback=self._on_rgb_status,
+                qos_profile=qos_profile,
+            )
         )
 
         # Timer to drive the rainbow update loop

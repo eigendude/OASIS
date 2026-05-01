@@ -61,7 +61,7 @@ class McuMemoryManager:
         )
 
         # Subscribers
-        self._mcu_memory_sub: rclpy.subscription.Subscription = (
+        self._mcu_memory_sub: rclpy.subscription.Subscription[MCUMemoryMsg] = (
             self._node.create_subscription(
                 msg_type=MCUMemoryMsg,
                 topic=SUBSCRIBE_MCU_MEMORY,
@@ -71,7 +71,9 @@ class McuMemoryManager:
         )
 
         # Service clients
-        self._report_mcu_memory_client: rclpy.client.Client = self._node.create_client(
+        self._report_mcu_memory_client: rclpy.client.Client[
+            ReportMCUMemorySvc.Request, ReportMCUMemorySvc.Response
+        ] = self._node.create_client(
             srv_type=ReportMCUMemorySvc, srv_name=CLIENT_REPORT_MCU_MEMORY
         )
 

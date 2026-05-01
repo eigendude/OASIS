@@ -68,12 +68,14 @@ class FalconManager:
         self._node = node
 
         # Service clients
-        self._configure_effect_client: rclpy.client.Client = self._node.create_client(
+        self._configure_effect_client: rclpy.client.Client[
+            ConfigureEffectSvc.Request, ConfigureEffectSvc.Response
+        ] = self._node.create_client(
             srv_type=ConfigureEffectSvc, srv_name=CLIENT_CONFIGURE_EFFECT
         )
-        self._set_effect_client: rclpy.client.Client = self._node.create_client(
-            srv_type=SetEffectSvc, srv_name=CLIENT_SET_EFFECT
-        )
+        self._set_effect_client: rclpy.client.Client[
+            SetEffectSvc.Request, SetEffectSvc.Response
+        ] = self._node.create_client(srv_type=SetEffectSvc, srv_name=CLIENT_SET_EFFECT)
         self._last_thruster_mode: Optional[int] = None
 
     def initialize(self) -> bool:

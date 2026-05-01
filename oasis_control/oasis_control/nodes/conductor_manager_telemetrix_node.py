@@ -145,10 +145,12 @@ class ConductorManagerNode(rclpy.node.Node):
         )
 
         # Publishers
-        self._conductor_state_pub: rclpy.publisher.Publisher = self.create_publisher(
-            msg_type=ConductorStateMsg,
-            topic=PUBLISH_CONDUCTOR_STATE,
-            qos_profile=state_qos_profile,
+        self._conductor_state_pub: rclpy.publisher.Publisher[ConductorStateMsg] = (
+            self.create_publisher(
+                msg_type=ConductorStateMsg,
+                topic=PUBLISH_CONDUCTOR_STATE,
+                qos_profile=state_qos_profile,
+            )
         )
 
         # Timer parameters

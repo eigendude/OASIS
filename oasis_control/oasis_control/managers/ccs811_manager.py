@@ -63,7 +63,7 @@ class CCS811Manager(I2CDeviceManager):
         )
 
         # Subscribers
-        self._air_quality_sub: rclpy.subscription.Subscription = (
+        self._air_quality_sub: rclpy.subscription.Subscription[AirQualityMsg] = (
             self._node.create_subscription(
                 msg_type=AirQualityMsg,
                 topic=SUBSCRIBE_AIR_QUALITY,

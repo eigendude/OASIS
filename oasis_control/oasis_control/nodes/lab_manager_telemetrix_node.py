@@ -16,6 +16,7 @@ from typing import Optional
 
 import rclpy.client
 import rclpy.node
+import rclpy.publisher
 import rclpy.qos
 import rclpy.subscription
 import rclpy.task
@@ -131,14 +132,16 @@ class LabManagerNode(rclpy.node.Node):
         )
 
         # Publishers
-        self._lab_state_pub: rclpy.publisher.Publisher = self.create_publisher(
-            msg_type=LabStateMsg,
-            topic=PUBLISH_LAB_STATE,
-            qos_profile=qos_profile,
+        self._lab_state_pub: rclpy.publisher.Publisher[LabStateMsg] = (
+            self.create_publisher(
+                msg_type=LabStateMsg,
+                topic=PUBLISH_LAB_STATE,
+                qos_profile=qos_profile,
+            )
         )
 
         # Subscribers
-        self._analog_reading_sub: rclpy.subscription.Subscription = (
+        self._analog_reading_sub: rclpy.subscription.Subscription[AnalogReadingMsg] = (
             self.create_subscription(
                 msg_type=AnalogReadingMsg,
                 topic=SUBSCRIBE_ANALOG_READING,
@@ -148,13 +151,17 @@ class LabManagerNode(rclpy.node.Node):
         )
 
         # Service clients
-        self._digital_write_client: rclpy.client.Client = self.create_client(
-            srv_type=DigitalWriteSvc, srv_name=CLIENT_DIGITAL_WRITE
-        )
-        self._set_analog_mode_client: rclpy.client.Client = self.create_client(
+        self._digital_write_client: rclpy.client.Client[
+            DigitalWriteSvc.Request, DigitalWriteSvc.Response
+        ] = self.create_client(srv_type=DigitalWriteSvc, srv_name=CLIENT_DIGITAL_WRITE)
+        self._set_analog_mode_client: rclpy.client.Client[
+            SetAnalogModeSvc.Request, SetAnalogModeSvc.Response
+        ] = self.create_client(
             srv_type=SetAnalogModeSvc, srv_name=CLIENT_SET_ANALOG_MODE
         )
-        self._set_digital_mode_client: rclpy.client.Client = self.create_client(
+        self._set_digital_mode_client: rclpy.client.Client[
+            SetDigitalModeSvc.Request, SetDigitalModeSvc.Response
+        ] = self.create_client(
             srv_type=SetDigitalModeSvc, srv_name=CLIENT_SET_DIGITAL_MODE
         )
 

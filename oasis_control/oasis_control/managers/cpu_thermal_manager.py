@@ -76,7 +76,9 @@ class CPUThermalManager:
         )
 
         # Subscribers
-        self._cpu_fan_speed_sub: rclpy.subscription.Subscription = (
+        self._cpu_fan_speed_sub: rclpy.subscription.Subscription[
+            CPUFanSpeedMsg
+        ] = (
             self._node.create_subscription(
                 msg_type=CPUFanSpeedMsg,
                 topic=SUBSCRIBE_CPU_FAN_SPEED,

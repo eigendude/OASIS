@@ -97,20 +97,22 @@ class EngineerManagerNode(rclpy.node.Node):
         )
 
         # Publishers
-        self._engineer_state_pub: rclpy.publisher.Publisher = self.create_publisher(
-            msg_type=EngineerStateMsg,
-            topic=PUBLISH_ENGINEER_STATE,
-            qos_profile=state_qos_profile,
+        self._engineer_state_pub: rclpy.publisher.Publisher[EngineerStateMsg] = (
+            self.create_publisher(
+                msg_type=EngineerStateMsg,
+                topic=PUBLISH_ENGINEER_STATE,
+                qos_profile=state_qos_profile,
+            )
         )
 
         # Subscribers
-        self._conductor_state_sub: rclpy.subscription.Subscription = (
-            self.create_subscription(
-                msg_type=ConductorStateMsg,
-                topic=CONDUCTOR_STATE_TOPIC,
-                callback=self._handle_conductor_state,
-                qos_profile=state_qos_profile,
-            )
+        self._conductor_state_sub: rclpy.subscription.Subscription[
+            ConductorStateMsg
+        ] = self.create_subscription(
+            msg_type=ConductorStateMsg,
+            topic=CONDUCTOR_STATE_TOPIC,
+            callback=self._handle_conductor_state,
+            qos_profile=state_qos_profile,
         )
 
         # Timer parameters

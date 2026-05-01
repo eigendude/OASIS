@@ -54,12 +54,12 @@ class I2CDeviceManager:
         self._i2c_address: int = i2c_address
 
         # Service clients
-        self._i2c_begin_client: rclpy.client.Client = self._node.create_client(
-            srv_type=I2CBeginSvc, srv_name=CLIENT_I2C_BEGIN
-        )
-        self._i2c_end_client: rclpy.client.Client = self._node.create_client(
-            srv_type=I2CEndSvc, srv_name=CLIENT_I2C_END
-        )
+        self._i2c_begin_client: rclpy.client.Client[
+            I2CBeginSvc.Request, I2CBeginSvc.Response
+        ] = self._node.create_client(srv_type=I2CBeginSvc, srv_name=CLIENT_I2C_BEGIN)
+        self._i2c_end_client: rclpy.client.Client[
+            I2CEndSvc.Request, I2CEndSvc.Response
+        ] = self._node.create_client(srv_type=I2CEndSvc, srv_name=CLIENT_I2C_END)
 
     @property
     def i2c_port(self) -> int:

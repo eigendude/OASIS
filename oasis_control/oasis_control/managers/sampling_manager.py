@@ -47,10 +47,10 @@ class SamplingManager:
         self._logger = node.get_logger()
 
         # Service clients
-        self._set_sampling_interval_client: rclpy.client.Client = (
-            self._node.create_client(
-                srv_type=SetSamplingIntervalSvc, srv_name=CLIENT_SET_SAMPLING_INTERVAL
-            )
+        self._set_sampling_interval_client: rclpy.client.Client[
+            SetSamplingIntervalSvc.Request, SetSamplingIntervalSvc.Response
+        ] = self._node.create_client(
+            srv_type=SetSamplingIntervalSvc, srv_name=CLIENT_SET_SAMPLING_INTERVAL
         )
 
     def initialize(self, sampling_interval_ms: int) -> bool:

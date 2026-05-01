@@ -173,7 +173,7 @@ class HelipadManager:
             rclpy.qos.QoSPresetProfiles.SYSTEM_DEFAULT.value
         )
 
-        self._analog_reading_sub: rclpy.subscription.Subscription = (
+        self._analog_reading_sub: rclpy.subscription.Subscription[AnalogReadingMsg] = (
             self._node.create_subscription(
                 msg_type=AnalogReadingMsg,
                 topic=SUBSCRIBE_ANALOG_READING,
@@ -181,19 +181,27 @@ class HelipadManager:
                 qos_profile=qos_profile,
             )
         )
-        self._configure_effect_client: rclpy.client.Client = self._node.create_client(
+        self._configure_effect_client: rclpy.client.Client[
+            ConfigureEffectSvc.Request, ConfigureEffectSvc.Response
+        ] = self._node.create_client(
             srv_type=ConfigureEffectSvc,
             srv_name=CLIENT_CONFIGURE_EFFECT,
         )
-        self._set_analog_mode_client: rclpy.client.Client = self._node.create_client(
+        self._set_analog_mode_client: rclpy.client.Client[
+            SetAnalogModeSvc.Request, SetAnalogModeSvc.Response
+        ] = self._node.create_client(
             srv_type=SetAnalogModeSvc,
             srv_name=CLIENT_SET_ANALOG_MODE,
         )
-        self._set_digital_mode_client: rclpy.client.Client = self._node.create_client(
+        self._set_digital_mode_client: rclpy.client.Client[
+            SetDigitalModeSvc.Request, SetDigitalModeSvc.Response
+        ] = self._node.create_client(
             srv_type=SetDigitalModeSvc,
             srv_name=CLIENT_SET_DIGITAL_MODE,
         )
-        self._set_effect_client: rclpy.client.Client = self._node.create_client(
+        self._set_effect_client: rclpy.client.Client[
+            SetEffectSvc.Request, SetEffectSvc.Response
+        ] = self._node.create_client(
             srv_type=SetEffectSvc,
             srv_name=CLIENT_SET_EFFECT,
         )

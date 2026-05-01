@@ -12,8 +12,10 @@
 # Manager that controls and senses 4-wire CPU fans
 #
 
+import rclpy.client
 import rclpy.node
 import rclpy.qos
+import rclpy.subscription
 import rclpy.task
 
 from oasis_msgs.msg import Plug as PlugMsg
@@ -61,10 +63,15 @@ class DisplayManager:
         self._logger = node.get_logger()
 
         # Service clients
-        self._service_clients: dict[str, rclpy.client.Client] = {}
+        self._service_clients: dict[
+            str,
+            rclpy.client.Client[SetDisplaySvc.Request, SetDisplaySvc.Response],
+        ] = {}
         for display_host in self._smart_display_zones:
             set_display_service: str = f"{SET_DISPLAY_SERVICE}_{display_host}"
-            set_display_client: rclpy.client.Client = self._node.create_client(
+            set_display_client: rclpy.client.Client[
+                SetDisplaySvc.Request, SetDisplaySvc.Response
+            ] = self._node.create_client(
                 srv_type=SetDisplaySvc,
                 srv_name=set_display_service,
             )
@@ -79,7 +86,7 @@ class DisplayManager:
         )
 
         # Subscribers
-        self._plug_sub: rclpy.subscription.Subscription = (
+        self._plug_sub: rclpy.subscription.Subscription[PlugMsg] = (
             self._node.create_subscription(
                 msg_type=PlugMsg,
                 topic=PLUG_TOPIC,
@@ -111,9 +118,9 @@ class DisplayManager:
             set_display_request.dpms_mode = power_mode
             set_display_request.brightness = 100 if power_mode == PowerModeMsg.ON else 0
 
-            set_display_client: rclpy.client.Client = self._service_clients[
-                display_host
-            ]
+            set_display_client: rclpy.client.Client[
+                SetDisplaySvc.Request, SetDisplaySvc.Response
+            ] = self._service_clients[display_host]
             set_display_service: str = set_display_client.srv_name
 
             self._logger.debug(

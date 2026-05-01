@@ -247,50 +247,62 @@ class AhrsNode(rclpy.node.Node):
         )
 
         # ROS publishers
-        self._diag_pub: rclpy.publisher.Publisher = self.create_publisher(
-            msg_type=AhrsStatusMsg,
-            topic=OUTPUT_DIAG_TOPIC,
-            qos_profile=sensor_qos_profile,
+        self._diag_pub: rclpy.publisher.Publisher[AhrsStatusMsg] = (
+            self.create_publisher(
+                msg_type=AhrsStatusMsg,
+                topic=OUTPUT_DIAG_TOPIC,
+                qos_profile=sensor_qos_profile,
+            )
         )
-        self._accel_pub: rclpy.publisher.Publisher = self.create_publisher(
-            msg_type=AccelWithCovarianceStampedMsg,
-            topic=OUTPUT_ACCEL_TOPIC,
-            qos_profile=sensor_qos_profile,
+        self._accel_pub: rclpy.publisher.Publisher[AccelWithCovarianceStampedMsg] = (
+            self.create_publisher(
+                msg_type=AccelWithCovarianceStampedMsg,
+                topic=OUTPUT_ACCEL_TOPIC,
+                qos_profile=sensor_qos_profile,
+            )
         )
-        self._gravity_pub: rclpy.publisher.Publisher = self.create_publisher(
-            msg_type=AccelWithCovarianceStampedMsg,
-            topic=OUTPUT_GRAVITY_TOPIC,
-            qos_profile=sensor_qos_profile,
+        self._gravity_pub: rclpy.publisher.Publisher[AccelWithCovarianceStampedMsg] = (
+            self.create_publisher(
+                msg_type=AccelWithCovarianceStampedMsg,
+                topic=OUTPUT_GRAVITY_TOPIC,
+                qos_profile=sensor_qos_profile,
+            )
         )
-        self._imu_pub: rclpy.publisher.Publisher = self.create_publisher(
+        self._imu_pub: rclpy.publisher.Publisher[ImuMsg] = self.create_publisher(
             msg_type=ImuMsg,
             topic=OUTPUT_IMU_TOPIC,
             qos_profile=sensor_qos_profile,
         )
-        self._odom_pub: rclpy.publisher.Publisher = self.create_publisher(
+        self._odom_pub: rclpy.publisher.Publisher[OdometryMsg] = self.create_publisher(
             msg_type=OdometryMsg,
             topic=OUTPUT_ODOM_TOPIC,
             qos_profile=sensor_qos_profile,
         )
 
         # ROS subscribers
-        self._gravity_sub: rclpy.subscription.Subscription = self.create_subscription(
+        self._gravity_sub: rclpy.subscription.Subscription[
+            AccelWithCovarianceStampedMsg
+        ] = self.create_subscription(
             msg_type=AccelWithCovarianceStampedMsg,
             topic=GRAVITY_TOPIC,
             callback=self._handle_gravity,
             qos_profile=sensor_qos_profile,
         )
-        self._accel_sub: rclpy.subscription.Subscription = self.create_subscription(
+        self._accel_sub: rclpy.subscription.Subscription[
+            AccelWithCovarianceStampedMsg
+        ] = self.create_subscription(
             msg_type=AccelWithCovarianceStampedMsg,
             topic=ACCEL_TOPIC,
             callback=self._handle_accel,
             qos_profile=sensor_qos_profile,
         )
-        self._imu_sub: rclpy.subscription.Subscription = self.create_subscription(
-            msg_type=ImuMsg,
-            topic=IMU_TOPIC,
-            callback=self._handle_imu,
-            qos_profile=sensor_qos_profile,
+        self._imu_sub: rclpy.subscription.Subscription[ImuMsg] = (
+            self.create_subscription(
+                msg_type=ImuMsg,
+                topic=IMU_TOPIC,
+                callback=self._handle_imu,
+                qos_profile=sensor_qos_profile,
+            )
         )
 
         # TF broadcaster

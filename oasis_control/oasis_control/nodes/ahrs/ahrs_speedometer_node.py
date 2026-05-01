@@ -282,35 +282,43 @@ class AhrsSpeedometerNode(rclpy.node.Node):
         )
 
         # ROS publishers
-        self._diag_pub: rclpy.publisher.Publisher = self.create_publisher(
+        self._diag_pub: rclpy.publisher.Publisher[StringMsg] = self.create_publisher(
             msg_type=StringMsg,
             topic=OUTPUT_DIAG_TOPIC,
             qos_profile=sensor_qos_profile,
         )
-        self._forward_twist_pub: rclpy.publisher.Publisher = self.create_publisher(
+        self._forward_twist_pub: rclpy.publisher.Publisher[
+            TwistWithCovarianceStampedMsg
+        ] = self.create_publisher(
             msg_type=TwistWithCovarianceStampedMsg,
             topic=OUTPUT_FORWARD_TWIST_TOPIC,
             qos_profile=sensor_qos_profile,
         )
 
         # ROS subscribers
-        self._imu_sub: rclpy.subscription.Subscription = self.create_subscription(
-            msg_type=ImuMsg,
-            topic=IMU_TOPIC,
-            callback=self._handle_imu,
-            qos_profile=sensor_qos_profile,
+        self._imu_sub: rclpy.subscription.Subscription[ImuMsg] = (
+            self.create_subscription(
+                msg_type=ImuMsg,
+                topic=IMU_TOPIC,
+                callback=self._handle_imu,
+                qos_profile=sensor_qos_profile,
+            )
         )
-        self._zupt_sub: rclpy.subscription.Subscription = self.create_subscription(
+        self._zupt_sub: rclpy.subscription.Subscription[
+            TwistWithCovarianceStampedMsg
+        ] = self.create_subscription(
             msg_type=TwistWithCovarianceStampedMsg,
             topic=ZUPT_TOPIC,
             callback=self._handle_zupt,
             qos_profile=sensor_qos_profile,
         )
-        self._zupt_flag_sub: rclpy.subscription.Subscription = self.create_subscription(
-            msg_type=BoolMsg,
-            topic=ZUPT_FLAG_TOPIC,
-            callback=self._handle_zupt_flag,
-            qos_profile=sensor_qos_profile,
+        self._zupt_flag_sub: rclpy.subscription.Subscription[BoolMsg] = (
+            self.create_subscription(
+                msg_type=BoolMsg,
+                topic=ZUPT_FLAG_TOPIC,
+                callback=self._handle_zupt_flag,
+                qos_profile=sensor_qos_profile,
+            )
         )
 
         # ROS timers

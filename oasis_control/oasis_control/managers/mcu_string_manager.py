@@ -59,7 +59,7 @@ class McuStringManager:
         )
 
         # Subscribers
-        self._mcu_string_sub: rclpy.subscription.Subscription = (
+        self._mcu_string_sub: rclpy.subscription.Subscription[MCUStringMsg] = (
             self._node.create_subscription(
                 msg_type=MCUStringMsg,
                 topic=SUBSCRIBE_MCU_STRING,
