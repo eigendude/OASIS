@@ -40,6 +40,7 @@
 #define AQ_CO2_TVOC_REPORT 23
 #define IMU_6_AXIS_REPORT 24
 #define UPTIME_REPORT 25
+#define ANALOG_BATCH_REPORT 26
 
 // Input pin reporting control sub commands (modify_reporting)
 #define REPORTING_DISABLE_ALL 0

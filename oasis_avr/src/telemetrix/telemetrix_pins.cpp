@@ -20,7 +20,7 @@ using namespace OASIS;
 
 namespace
 {
-#if defined(ENABLE_ANALOG)
+#if defined(ENABLE_ANALOG) || defined(ENABLE_ANALOG_BATCH)
 // To translate a pin number from an integer value to its analog pin number
 // equivalent, this array is used to look up the value to use for the pin.
 static const int analogReadPins[16] = {A0, A1, A2,  A3,  A4,  A5,  A6,  A7,
@@ -36,7 +36,7 @@ TelemetrixPins::TelemetrixPins()
 
 void TelemetrixPins::SetupAnalogSubsystem()
 {
-#if defined(ENABLE_ANALOG)
+#if defined(ENABLE_ANALOG) || defined(ENABLE_ANALOG_BATCH)
   // Use the external AREF rail for more stable ADC readings
   analogReference(EXTERNAL);
 
@@ -58,7 +58,7 @@ void TelemetrixPins::InitPinStructures()
   }
 #endif
 
-#if defined(ENABLE_ANALOG)
+#if defined(ENABLE_ANALOG) || defined(ENABLE_ANALOG_BATCH)
   // Initialize the analog pin array
   for (unsigned int i = 0; i < MAX_ANALOG_PINS_SUPPORTED; i++)
   {
@@ -95,6 +95,7 @@ void TelemetrixPins::scan_digital_inputs()
         if (value != the_digital_pins[i].last_value)
         {
           the_digital_pins[i].last_value = value;
+
           report_message[2] = static_cast<uint8_t>(i);
           report_message[3] = value;
           Serial.write(report_message, 4);
@@ -107,9 +108,9 @@ void TelemetrixPins::scan_digital_inputs()
 
 void TelemetrixPins::scan_analog_inputs()
 {
+#if defined(ENABLE_ANALOG) || defined(ENABLE_ANALOG_BATCH)
 #if defined(ENABLE_ANALOG)
-  //
-  // Report message
+  // Legacy per-pin reports are controlled by ENABLE_ANALOG
   //
   // byte 0 = packet length
   // byte 1 = report type
@@ -118,6 +119,23 @@ void TelemetrixPins::scan_analog_inputs()
   // byte 4 = low order byte of value
   //
   uint8_t report_message[5] = {4, ANALOG_REPORT, 0, 0, 0};
+#endif
+
+#if defined(ENABLE_ANALOG_BATCH)
+  // Batch reports are controlled by ENABLE_ANALOG_BATCH
+  //
+  // The batch is additive when ENABLE_ANALOG is also defined
+  //
+  // byte 0 = packet length
+  // byte 1 = report type
+  // byte 2 = reading count
+  // byte 3 = pin number
+  // byte 4 = high order byte of value
+  // byte 5 = low order byte of value
+  // ...
+  uint8_t batch_message[3 + (MAX_ANALOG_PINS_SUPPORTED * 3)] = {0, ANALOG_BATCH_REPORT, 0};
+  uint8_t batch_count = 0;
+#endif
 
   const unsigned long current_millis = millis();
   if (current_millis - previous_millis > analog_sampling_interval)
@@ -141,15 +159,34 @@ void TelemetrixPins::scan_analog_inputs()
             // Trigger value achieved, send out the report
             the_analog_pins[i].last_value = value;
 
+#if defined(ENABLE_ANALOG)
             report_message[2] = static_cast<uint8_t>(i);
-            report_message[3] = highByte(value); // Get high order byte
-            report_message[4] = lowByte(value);
-
+            report_message[3] = static_cast<uint8_t>(highByte(value));
+            report_message[4] = static_cast<uint8_t>(lowByte(value));
             Serial.write(report_message, 5);
+#endif
+
+#if defined(ENABLE_ANALOG_BATCH)
+            const uint8_t batch_offset = static_cast<uint8_t>(3 + (batch_count * 3));
+            batch_message[batch_offset] = static_cast<uint8_t>(i);
+            batch_message[batch_offset + 1] = static_cast<uint8_t>(highByte(value));
+            batch_message[batch_offset + 2] = static_cast<uint8_t>(lowByte(value));
+            ++batch_count;
+#endif
           }
         }
       }
     }
+
+#if defined(ENABLE_ANALOG_BATCH)
+    if (batch_count > 0)
+    {
+      const uint8_t packet_length = static_cast<uint8_t>(2 + (batch_count * 3));
+      batch_message[0] = packet_length;
+      batch_message[2] = batch_count;
+      Serial.write(batch_message, static_cast<size_t>(packet_length + 1));
+    }
+#endif
   }
 #endif
 }
@@ -196,7 +233,7 @@ void TelemetrixPins::set_pin_mode_output(uint8_t pin)
 
 void TelemetrixPins::set_pin_mode_analog(uint8_t pin, int differential, bool reportingEnabled)
 {
-#if defined(ENABLE_ANALOG)
+#if defined(ENABLE_ANALOG) || defined(ENABLE_ANALOG_BATCH)
   the_analog_pins[pin].pin_mode = AT_ANALOG;
   the_analog_pins[pin].differential = differential;
   the_analog_pins[pin].reporting_enabled = reportingEnabled;
@@ -205,7 +242,7 @@ void TelemetrixPins::set_pin_mode_analog(uint8_t pin, int differential, bool rep
 
 void TelemetrixPins::set_analog_sampling_interval(uint8_t analogSamplingInterval)
 {
-#if defined(ENABLE_ANALOG)
+#if defined(ENABLE_ANALOG) || defined(ENABLE_ANALOG_BATCH)
   analog_sampling_interval = analogSamplingInterval;
 #endif
 }
@@ -220,7 +257,7 @@ void TelemetrixPins::modify_reporting(uint8_t pin, uint8_t reporting)
       for (unsigned int i = 0; i < MAX_DIGITAL_PINS_SUPPORTED; i++)
         the_digital_pins[i].reporting_enabled = false;
 #endif
-#if defined(ENABLE_ANALOG)
+#if defined(ENABLE_ANALOG) || defined(ENABLE_ANALOG_BATCH)
       for (unsigned int i = 0; i < MAX_ANALOG_PINS_SUPPORTED; i++)
         the_analog_pins[i].reporting_enabled = false;
 #endif
@@ -228,7 +265,7 @@ void TelemetrixPins::modify_reporting(uint8_t pin, uint8_t reporting)
     }
     case REPORTING_ANALOG_ENABLE:
     {
-#if defined(ENABLE_ANALOG)
+#if defined(ENABLE_ANALOG) || defined(ENABLE_ANALOG_BATCH)
       if (the_analog_pins[pin].pin_mode != AT_MODE_NOT_SET)
         the_analog_pins[pin].reporting_enabled = true;
 #endif
@@ -236,7 +273,7 @@ void TelemetrixPins::modify_reporting(uint8_t pin, uint8_t reporting)
     }
     case REPORTING_ANALOG_DISABLE:
     {
-#if defined(ENABLE_ANALOG)
+#if defined(ENABLE_ANALOG) || defined(ENABLE_ANALOG_BATCH)
       if (the_analog_pins[pin].pin_mode != AT_MODE_NOT_SET)
         the_analog_pins[pin].reporting_enabled = false;
 #endif
@@ -265,7 +302,7 @@ void TelemetrixPins::modify_reporting(uint8_t pin, uint8_t reporting)
 
 void TelemetrixPins::reset_data()
 {
-#if defined(ENABLE_ANALOG)
+#if defined(ENABLE_ANALOG) || defined(ENABLE_ANALOG_BATCH)
   previous_millis = 0;
   analog_sampling_interval = 19;
 #endif

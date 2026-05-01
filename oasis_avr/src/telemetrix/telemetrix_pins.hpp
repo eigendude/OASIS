@@ -124,9 +124,9 @@ private:
   pin_descriptor the_digital_pins[MAX_DIGITAL_PINS_SUPPORTED];
 #endif
 
-#if defined(ENABLE_ANALOG)
+#if defined(ENABLE_ANALOG) || defined(ENABLE_ANALOG_BATCH)
   //////////////////////////////////////////////////////////////////////////////
-  // Analog pint
+  // Analog pins
   //////////////////////////////////////////////////////////////////////////////
 
   // A descriptor for analog pins
