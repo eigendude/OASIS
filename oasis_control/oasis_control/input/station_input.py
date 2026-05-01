@@ -36,8 +36,16 @@ from oasis_msgs.srv import CaptureInput as CaptureInputSvc
 # The Kodi controller profile that peripheral input is translated to
 CONTROLLER_PROFILE = "game.controller.default"
 
-# Minimum change in motor duty cycle required to publish an update
+# Motor duty commands below this magnitude are treated as stopped
 MOTOR_EPSILON: float = 0.02
+
+# Unitless duty-cycle cap for a full safe train command, derived from the
+# legacy full-right-trigger, no-B command
+MAX_SAFE_MOTOR_DUTY_CYCLE: float = 0.142
+
+# Unitless B-button command boost, derived from the legacy 1.176
+# boosted/unboosted command ratio
+B_BUTTON_TRAIN_COMMAND_BOOST: float = 0.176  # 17.6% boost when B is pressed
 
 
 ################################################################################
@@ -136,31 +144,32 @@ class StationInput:
             right_trigger: float = 0.0
 
             for digital_button in peripheral_input_msg.digital_buttons:
-                button_name: str = digital_button.name
+                digital_button_name: str = digital_button.name
                 pressed: bool = True if digital_button.pressed else False
 
-                if button_name == "a":
+                if digital_button_name == "a":
                     a_button = pressed
-                if button_name == "b":
+                if digital_button_name == "b":
                     b_button = pressed
-                if button_name == "y":
+                if digital_button_name == "y":
                     y_button = pressed
 
             for analog_button in peripheral_input_msg.analog_buttons:
-                button_name = analog_button.name
+                analog_button_name: str = analog_button.name
                 analog_magnitude: float = analog_button.magnitude
 
-                if button_name == "lefttrigger":
+                if analog_button_name == "lefttrigger":
                     left_trigger = analog_magnitude
-                elif button_name == "righttrigger":
+                elif analog_button_name == "righttrigger":
                     right_trigger = analog_magnitude
 
-            # Calculate throttle
-            throttle: float = right_trigger - left_trigger
+            # Raw controller trigger command, normalized to [-1, 1]
+            trigger_command: float = right_trigger - left_trigger
 
-            # Zero throttle if A or B buttons are not pressed
+            # Zero train command if A or B buttons are not pressed
+            train_command: float = trigger_command
             if not a_button and not b_button:
-                throttle = 0.0
+                train_command = 0.0
 
             # Toggle hold speed when Y button is pressed
             if self._last_y_button != y_button:
@@ -172,19 +181,21 @@ class StationInput:
             if a_button:
                 self._hold_speed = False
 
-            # Max throttle if hold speed is enabled
+            # Full forward train command if hold speed is enabled
             if self._hold_speed:
-                throttle = 1.0
+                train_command = 1.0
 
-            # Reduce throttle if B button is not pressed
-            if not b_button:
-                throttle *= 0.85  # Step 12V down
+            # B retains the legacy boost behavior within the safe duty cap
+            safe_train_command: float = train_command
+            if b_button:
+                safe_train_command *= 1.0 + B_BUTTON_TRAIN_COMMAND_BOOST
 
-            magnitude: float = abs(throttle)
-            reverse: bool = throttle < 0.0
+            safe_train_command = max(-1.0, min(safe_train_command, 1.0))
 
-            # Reduce magnitude by a factor to limit top speed
-            magnitude /= 6.0  # Max 2.0V out of 12V supply
+            reverse: bool = safe_train_command < 0.0
+            motor_duty_command: float = (
+                abs(safe_train_command) * MAX_SAFE_MOTOR_DUTY_CYCLE
+            )
 
             # Update direction
             if self._reverse != reverse:
@@ -197,16 +208,22 @@ class StationInput:
                 self._station_manager.set_motor_direction(reverse)
 
             # Snap magnitude to 0 if nearby
-            target_magnitude: float = magnitude
-            if target_magnitude < MOTOR_EPSILON:
-                target_magnitude = 0.0
+            if motor_duty_command < MOTOR_EPSILON:
+                motor_duty_command = 0.0
 
             # Update magnitude
-            self._magnitude = target_magnitude
+            self._magnitude = motor_duty_command
 
-            self._node.get_logger().debug(f"Throttle: {throttle}")
+            self._node.get_logger().debug(
+                "Train command: "
+                f"trigger={trigger_command:.3f} "
+                f"safe={safe_train_command:.3f} "
+                f"duty={motor_duty_command:.3f}"
+            )
 
-            self._station_manager.set_motor_pwm(target_magnitude, self._reverse)
+            # HUD motor voltage is measured separately from ADC telemetry;
+            # this value is only the H-bridge duty command
+            self._station_manager.set_motor_pwm(motor_duty_command, self._reverse)
 
     def _on_peripheral_scan(self, peripheral_scan_msg: PeripheralScanMsg) -> None:
         peripheral: PeripheralInfoMsg
