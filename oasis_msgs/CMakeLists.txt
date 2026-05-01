@@ -41,6 +41,7 @@ rosidl_generate_interfaces(
     msg/AirQuality.msg
     msg/AnalogButton.msg
     msg/AnalogReading.msg
+    msg/AnalogReadings.msg
     msg/AnalogStick.msg
     msg/AVRConstants.msg
     msg/BoundingBox.msg
