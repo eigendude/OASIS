@@ -140,7 +140,7 @@ class ControlDescriptions:
     #
 
     @staticmethod
-    def add_mcu_manager_telemetrix(
+    def add_conductor_manager(
         ld: LaunchDescription,
         host_id: str,
         mcu_node: str,
@@ -156,14 +156,12 @@ class ControlDescriptions:
             output="screen",
             remappings=[
                 (f"{mcu_node}_state", f"{host_id}/{mcu_node}_state"),
-                ("analog_reading", f"{mcu_node}/analog_reading"),
+                ("analog_readings", f"{mcu_node}/analog_readings"),
                 (
                     "calibration_status",
                     f"{mcu_node}/{calibration_resolution}/calibration_status",
                 ),
                 ("capture_input", f"{input_provider}/capture_input"),
-                ("cpu_fan_speed", f"{mcu_node}/cpu_fan_speed"),
-                ("cpu_fan_write", f"{mcu_node}/cpu_fan_write"),
                 ("digital_reading", f"{mcu_node}/digital_reading"),
                 ("digital_write_cmd", f"{mcu_node}/digital_write_cmd"),
                 ("get_mac_address", f"{wol_server_id}/get_mac_address"),
@@ -172,7 +170,6 @@ class ControlDescriptions:
                 ("mcu_memory", f"{mcu_node}/mcu_memory"),
                 ("mcu_string", f"{mcu_node}/mcu_string"),
                 ("peripherals", f"{input_provider}/peripherals"),
-                ("power_control", f"{host_id}/power_control"),
                 ("pwm_write_cmd", f"{mcu_node}/pwm_write_cmd"),
                 ("report_mcu_memory", f"{mcu_node}/report_mcu_memory"),
                 ("set_analog_mode", f"{mcu_node}/set_analog_mode"),

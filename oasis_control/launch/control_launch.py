@@ -91,7 +91,7 @@ def generate_launch_description() -> LaunchDescription:
         # TODO
         CALIBRATION_RESOLUTION: str = "sd"
 
-        ControlDescriptions.add_mcu_manager_telemetrix(
+        ControlDescriptions.add_conductor_manager(
             ld,
             HOST_ID,
             "conductor",

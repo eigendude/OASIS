@@ -504,7 +504,7 @@ class ConductorManagerNode(rclpy.node.Node):
     def _on_digital_reading(self, digital_reading_msg: DigitalReadingMsg) -> None:
         # Translate parameters
         digital_pin: int = digital_reading_msg.digital_pin
-        digital_value: bool = digital_reading_msg.digital_value == 1
+        digital_value: bool = digital_reading_msg.digital_value == AVRConstantsMsg.HIGH
 
         if digital_pin == MOTOR_FF1_PIN:
             if digital_value != self._motor_ff1_state:

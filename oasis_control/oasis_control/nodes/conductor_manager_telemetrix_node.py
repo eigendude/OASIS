@@ -87,9 +87,6 @@ PUBLISH_STATE_PERIOD_SECS = 0.1
 # Publisher
 PUBLISH_CONDUCTOR_STATE = "conductor_state"
 
-# Services
-SERVICE_POWER_CONTROL = "power_control"
-
 
 ################################################################################
 # ROS node

@@ -27,6 +27,7 @@ from oasis_drivers.ros.ros_translator import RosTranslator
 from oasis_drivers.telemetrix.telemetrix_types import AnalogMode
 from oasis_drivers.telemetrix.telemetrix_types import DigitalMode
 from oasis_msgs.msg import AnalogReading as AnalogReadingMsg
+from oasis_msgs.msg import AnalogReadings as AnalogReadingsMsg
 from oasis_msgs.msg import EffectKind as EffectKindMsg
 from oasis_msgs.msg import EffectMode as EffectModeMsg
 from oasis_msgs.srv import ConfigureEffect as ConfigureEffectSvc
@@ -41,7 +42,7 @@ from oasis_msgs.srv import SetEffect as SetEffectSvc
 
 
 # Subscribers
-SUBSCRIBE_ANALOG_READING = "analog_reading"
+SUBSCRIBE_ANALOG_READINGS = "analog_readings"
 
 # Service clients
 CLIENT_CONFIGURE_EFFECT = "configure_effect"
@@ -173,13 +174,13 @@ class HelipadManager:
             rclpy.qos.QoSPresetProfiles.SYSTEM_DEFAULT.value
         )
 
-        self._analog_reading_sub: rclpy.subscription.Subscription[AnalogReadingMsg] = (
-            self._node.create_subscription(
-                msg_type=AnalogReadingMsg,
-                topic=SUBSCRIBE_ANALOG_READING,
-                callback=self._on_analog_reading,
-                qos_profile=qos_profile,
-            )
+        self._analog_readings_sub: rclpy.subscription.Subscription[
+            AnalogReadingsMsg
+        ] = self._node.create_subscription(
+            msg_type=AnalogReadingsMsg,
+            topic=SUBSCRIBE_ANALOG_READINGS,
+            callback=self._on_analog_readings,
+            qos_profile=qos_profile,
         )
         self._configure_effect_client: rclpy.client.Client[
             ConfigureEffectSvc.Request, ConfigureEffectSvc.Response
@@ -395,7 +396,15 @@ class HelipadManager:
         if will_dispatch and next_mode is not None:
             self._dispatch_mode_request(next_mode)
 
-    def _on_analog_reading(self, analog_reading_msg: AnalogReadingMsg) -> None:
+    def _on_analog_readings(self, analog_readings_msg: AnalogReadingsMsg) -> None:
+        timestamp_sec: float = self._time_msg_to_sec(analog_readings_msg.header.stamp)
+
+        for analog_reading_msg in analog_readings_msg.readings:
+            self._handle_analog_reading(analog_reading_msg, timestamp_sec)
+
+    def _handle_analog_reading(
+        self, analog_reading_msg: AnalogReadingMsg, timestamp_sec: float
+    ) -> None:
         if analog_reading_msg.analog_pin != self._ir_pin:
             return
 
@@ -409,22 +418,19 @@ class HelipadManager:
 
         normalized_value: float = max(0.0, min(analog_value, 1.0))
         self._sensor_voltage = normalized_value * analog_reading_msg.reference_voltage
-        message_timestamp_sec: float = self._time_msg_to_sec(
-            analog_reading_msg.header.stamp
-        )
         node_timestamp_sec: float = self._node_time_sec()
         self._node.get_logger().debug(
             "HELIPAD analog "
             f"pin=A{analog_pin} raw_norm={analog_value:.4f} "
             f"norm={normalized_value:.4f} voltage={self._sensor_voltage:.4f} "
-            f"msg_t={message_timestamp_sec:.6f} node_t={node_timestamp_sec:.6f}"
+            f"msg_t={timestamp_sec:.6f} node_t={node_timestamp_sec:.6f}"
         )
 
         if self._initializing:
             return
 
         mode: HelipadMode = self._mode_tracker.update_mode(
-            node_timestamp_sec,
+            timestamp_sec,
             self._sensor_voltage,
         )
         self._node.get_logger().debug(

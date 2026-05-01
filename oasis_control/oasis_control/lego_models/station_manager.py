@@ -27,6 +27,8 @@ from oasis_drivers.ros.ros_translator import RosTranslator
 from oasis_drivers.telemetrix.telemetrix_types import AnalogMode
 from oasis_drivers.telemetrix.telemetrix_types import DigitalMode
 from oasis_msgs.msg import AnalogReading as AnalogReadingMsg
+from oasis_msgs.msg import AnalogReadings as AnalogReadingsMsg
+from oasis_msgs.msg import AVRConstants as AVRConstantsMsg
 from oasis_msgs.msg import DigitalReading as DigitalReadingMsg
 from oasis_msgs.msg import DigitalWriteCommand as DigitalWriteCommandMsg
 from oasis_msgs.msg import PWMWriteCommand as PWMWriteCommandMsg
@@ -88,7 +90,7 @@ MAX_MOTOR_VOLTAGE_SKEW_SECS: float = 0.15
 
 
 # Subscribers
-SUBSCRIBE_ANALOG_READING = "analog_reading"
+SUBSCRIBE_ANALOG_READINGS = "analog_readings"
 SUBSCRIBE_DIGITAL_READING = "digital_reading"
 
 # Service clients
@@ -199,13 +201,13 @@ class StationManager:
         )
 
         # Subscribers
-        self._analog_reading_sub: rclpy.subscription.Subscription[AnalogReadingMsg] = (
-            self._node.create_subscription(
-                msg_type=AnalogReadingMsg,
-                topic=SUBSCRIBE_ANALOG_READING,
-                callback=self._on_analog_reading,
-                qos_profile=qos_profile,
-            )
+        self._analog_readings_sub: rclpy.subscription.Subscription[
+            AnalogReadingsMsg
+        ] = self._node.create_subscription(
+            msg_type=AnalogReadingsMsg,
+            topic=SUBSCRIBE_ANALOG_READINGS,
+            callback=self._on_analog_readings,
+            qos_profile=qos_profile,
         )
         self._digital_reading_sub: rclpy.subscription.Subscription[
             DigitalReadingMsg
@@ -355,7 +357,8 @@ class StationManager:
         # Reconstruct the source-side voltage from the divider tap voltage
         return analog_voltage * (r1_kohm + r2_kohm) / r2_kohm
 
-    def _time_msg_to_sec(self, stamp: TimeMsg) -> float:
+    @staticmethod
+    def _time_msg_to_sec(stamp: TimeMsg) -> float:
         sec: int = int(stamp.sec)
         nanosec: int = int(stamp.nanosec)
         return float(sec) + float(nanosec) * 1.0e-9
@@ -513,10 +516,17 @@ class StationManager:
 
         return True
 
-    def _on_analog_reading(self, analog_reading_msg: AnalogReadingMsg) -> None:
+    def _on_analog_readings(self, analog_readings_msg: AnalogReadingsMsg) -> None:
+        timestamp_sec: float = self._time_msg_to_sec(analog_readings_msg.header.stamp)
+
+        for analog_reading_msg in analog_readings_msg.readings:
+            self._handle_analog_reading(analog_reading_msg, timestamp_sec)
+
+    def _handle_analog_reading(
+        self, analog_reading_msg: AnalogReadingMsg, timestamp_sec: float
+    ) -> None:
         analog_pin: int = analog_reading_msg.analog_pin
         analog_value: float = analog_reading_msg.analog_value
-        timestamp_sec: float = self._time_msg_to_sec(analog_reading_msg.header.stamp)
 
         # Translate analog value
         analog_voltage: float = analog_value * AREF_VOLTAGE
@@ -572,7 +582,7 @@ class StationManager:
     def _on_digital_reading(self, digital_reading_msg: DigitalReadingMsg) -> None:
         # Translate parameters
         digital_pin: int = digital_reading_msg.digital_pin
-        digital_value: bool = digital_reading_msg.digital_value == 1
+        digital_value: bool = digital_reading_msg.digital_value == AVRConstantsMsg.HIGH
 
         if digital_pin == self._motor_ff1_pin:
             if digital_value != self._motor_ff1_state:
