@@ -17,6 +17,12 @@ import math
 from oasis_control.localization.common.validation.gravity_validation import (
     validate_gravity_sample,
 )
+from oasis_control.localization.common.validation.imu_gravity_validation import (
+    ImuGravityValidationResult,
+)
+from oasis_control.localization.common.validation.imu_gravity_validation import (
+    validate_imu_gravity_sample,
+)
 from oasis_control.localization.common.validation.imu_validation import (
     validate_imu_sample,
 )
@@ -255,6 +261,42 @@ def test_imu_validation_canonicalizes_driver_quaternion_to_world_to_imu() -> Non
     assert math.isclose(validation_result.sample.orientation_xyzw[1], 0.2051956704)
     assert math.isclose(validation_result.sample.orientation_xyzw[2], -0.3077935056)
     assert math.isclose(validation_result.sample.orientation_xyzw[3], 0.9233805169)
+
+
+def test_imu_gravity_validation_accepts_full_imu_sample() -> None:
+    validation_result: ImuGravityValidationResult = validate_imu_gravity_sample(
+        timestamp_ns=10,
+        frame_id="imu_link",
+        expected_frame_id="imu_link",
+        orientation_xyzw=(0.0, 0.0, 0.0, 1.0),
+        orientation_covariance_row_major=IDENTITY_COVARIANCE,
+        angular_velocity_rads=(0.1, 0.2, 0.3),
+        angular_velocity_covariance_row_major=IDENTITY_COVARIANCE,
+        linear_acceleration_mps2=(0.0, 0.0, -9.81),
+        linear_acceleration_covariance_row_major=IDENTITY_COVARIANCE,
+    )
+
+    assert validation_result.accepted is True
+    assert validation_result.sample is not None
+    assert validation_result.sample.angular_velocity_rads == (0.1, 0.2, 0.3)
+    assert validation_result.sample.linear_acceleration_mps2 == (0.0, 0.0, -9.81)
+
+
+def test_imu_gravity_validation_rejects_wrong_frame() -> None:
+    validation_result: ImuGravityValidationResult = validate_imu_gravity_sample(
+        timestamp_ns=11,
+        frame_id="camera_link",
+        expected_frame_id="imu_link",
+        orientation_xyzw=(0.0, 0.0, 0.0, 1.0),
+        orientation_covariance_row_major=IDENTITY_COVARIANCE,
+        angular_velocity_rads=(0.1, 0.2, 0.3),
+        angular_velocity_covariance_row_major=IDENTITY_COVARIANCE,
+        linear_acceleration_mps2=(0.0, 0.0, -9.81),
+        linear_acceleration_covariance_row_major=IDENTITY_COVARIANCE,
+    )
+
+    assert validation_result.accepted is False
+    assert validation_result.rejection_reason == "bad_frame"
 
 
 def test_gravity_validation_rejects_non_finite_vector() -> None:

@@ -39,18 +39,21 @@ This keeps the TF tree compatible with later localization layers that may own
 ### 2.1 Streams
 
 - `imu` (`sensor_msgs/Imu`): fused IMU sample stream
+- `imu_gravity` (`sensor_msgs/Imu`): fused orientation and gyro with
+  gravity-included acceleration
 - `gravity` (`geometry_msgs/AccelWithCovarianceStamped`): gravity-direction
   observation stream
 
-Both streams are part of the AHRS contract. `gravity` is not optional. The
+All streams are part of the AHRS contract. `gravity` is not optional. The
 implementation may process them as separate event streams, but the node should
 not advertise a degraded "IMU-only" operating mode.
 
 By policy:
 
 - `imu.header.frame_id == "imu_link"`
+- `imu_gravity.header.frame_id == "imu_link"`
 - `gravity.header.frame_id == "imu_link"`
-- `imu` and `gravity` are expected in the same sensor frame
+- `imu`, `imu_gravity`, and `gravity` are expected in the same sensor frame
 
 ### 2.2 `imu` used fields
 
@@ -85,7 +88,27 @@ Requirements:
 Reject the sample if quaternion or covariance data is non-finite, or if the IMU
 frame does not match the expected `imu_link` policy.
 
-### 2.3 `gravity` used fields
+### 2.3 `imu_gravity` used fields
+
+- `header.stamp` as `t_meas_ns`
+- `header.frame_id` as IMU frame `{I}`
+- `orientation` from the BNO086 driver as `q_IW`
+- `orientation_covariance` as `Σ_qI`
+- `angular_velocity` as `ω_I`
+- `angular_velocity_covariance` as `Σ_ωI`
+- `linear_acceleration` as gravity-included acceleration `a_I + g_I`
+- `linear_acceleration_covariance` as `Σ_aI`
+
+Requirements:
+
+- quaternion and vector fields must be finite
+- full covariances are preserved when valid
+- `imu_gravity.header.frame_id == "imu_link"`
+- orientation, angular velocity, and acceleration are expressed in `imu_link`
+- this stream uses the BNO086 calibrated acceleration report, not the
+  gravity-removed linear acceleration used by `imu`
+
+### 2.4 `gravity` used fields
 
 - `header.stamp` as `t_meas_ns`
 - `header.frame_id` as IMU frame `{I}`
@@ -350,13 +373,24 @@ The `ahrs/imu.orientation_covariance` topic contract remains full mounted AHRS
 attitude covariance. Downstream consumers must not reinterpret that matrix as a
 tilt-only uncertainty product.
 
-### 5.3 Gravity-facing output or status
+### 5.3 Base-frame gravity-included IMU output
+
+- `ahrs/imu_gravity`
+- type: `sensor_msgs/Imu`
+- `header.frame_id = "base_link"`
+- `orientation`, `angular_velocity`, and `linear_acceleration` are the complete
+  upstream `imu_gravity` sample mounted into `base_link`
+- orientation, angular velocity, and linear acceleration covariances are
+  rotated into `base_link`
+- output timestamp matches the upstream `imu_gravity` sample timestamp
+
+### 5.4 Gravity-facing output or status
 
 The AHRS may publish a gravity status or debug topic, but the minimum contract
 is that gravity consistency results are reflected in diagnostics and any
 accept/reject policy.
 
-### 5.4 Optional odometry wrapper
+### 5.5 Optional odometry wrapper
 
 Downstream consumers may still want `nav_msgs/Odometry`, so it should be a thin
 wrapper around the same attitude sample:
@@ -404,8 +438,10 @@ Frames:
 Topics:
 
 - `topics.imu` default `imu`
+- `topics.imu_gravity` default `imu_gravity`
 - `topics.gravity` default `gravity`
 - `topics.output_imu` default `ahrs/imu`
+- `topics.output_imu_gravity` default `ahrs/imu_gravity`
 - `topics.output_odom` default `ahrs/odom`
 
 Policy:

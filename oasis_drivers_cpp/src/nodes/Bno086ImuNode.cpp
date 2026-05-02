@@ -33,7 +33,7 @@ constexpr const char* IMU_TOPIC = "imu";
 constexpr const char* IMU_PREDICTED_TOPIC = "imu_predicted";
 constexpr const char* IMU_VR_TOPIC = "imu_vr";
 constexpr const char* GRAVITY_TOPIC = "gravity";
-constexpr const char* ACCEL_TOPIC = "accel";
+constexpr const char* IMU_GRAVITY_TOPIC = "imu_gravity";
 constexpr const char* DEFAULT_FRAME_ID = "imu_link";
 
 constexpr int INTERRUPT_WAIT_TIMEOUT_MS = 20;
@@ -125,8 +125,8 @@ bool Bno086ImuNode::Initialize()
       create_publisher<oasis_msgs::msg::ImuVr>(IMU_VR_TOPIC, rclcpp::SensorDataQoS{});
   m_gravityPublisher = create_publisher<geometry_msgs::msg::AccelWithCovarianceStamped>(
       GRAVITY_TOPIC, rclcpp::SensorDataQoS{});
-  m_accelPublisher = create_publisher<geometry_msgs::msg::AccelWithCovarianceStamped>(
-      ACCEL_TOPIC, rclcpp::SensorDataQoS{});
+  m_imuGravityPublisher =
+      create_publisher<sensor_msgs::msg::Imu>(IMU_GRAVITY_TOPIC, rclcpp::SensorDataQoS{});
 
   m_running.store(true);
   m_interruptThread = std::thread(&Bno086ImuNode::InterruptLoop, this);
@@ -269,6 +269,7 @@ void Bno086ImuNode::PublishLatestFrame(const rclcpp::Time& stamp)
 
   m_warnedMissingImuFields = false;
 
+  // `imu` keeps gravity-removed linear acceleration
   const sensor_msgs::msg::Imu imuMsg = BuildPresentImuMessage(stamp);
   const sensor_msgs::msg::Imu predictedImuMsg = BuildPredictedImuMessage(imuMsg);
   const oasis_msgs::msg::ImuVr imuVrMsg = BuildPredictedVrMessage(imuMsg, predictedImuMsg);
@@ -309,33 +310,11 @@ void Bno086ImuNode::PublishLatestFrame(const rclcpp::Time& stamp)
     m_gravityPublisher->publish(gravityMsg);
   }
 
-  if (m_latestFrame.has_accel)
+  if (HasPublishableImuGravityFrame())
   {
-    geometry_msgs::msg::AccelWithCovarianceStamped accelMsg;
-    accelMsg.header = imuMsg.header;
-    accelMsg.accel.accel.linear.x = m_latestFrame.accel_mps2[0];
-    accelMsg.accel.accel.linear.y = m_latestFrame.accel_mps2[1];
-    accelMsg.accel.accel.linear.z = m_latestFrame.accel_mps2[2];
-
-    accelMsg.accel.accel.angular.x = 0.0;
-    accelMsg.accel.accel.angular.y = 0.0;
-    accelMsg.accel.accel.angular.z = 0.0;
-
-    accelMsg.accel.covariance.fill(0.0);
-
-    // `accel` publishes linear acceleration in `accel.accel.linear`.
-    // Angular acceleration is intentionally not estimated and is marked
-    // unknown by covariance[21] = -1.0.
-    if (m_latestFrame.has_linear_accel_covariance)
-    {
-      SetLinearAccelCovariance(accelMsg.accel.covariance, m_latestFrame.linear_accel_cov_mps2_2);
-    }
-    else
-    {
-      accelMsg.accel.covariance[21] = -1.0;
-    }
-
-    m_accelPublisher->publish(accelMsg);
+    // `imu_gravity` reuses fused orientation and gyro with gravity included
+    const sensor_msgs::msg::Imu imuGravityMsg = BuildImuGravityMessage(imuMsg);
+    m_imuGravityPublisher->publish(imuGravityMsg);
   }
 }
 
@@ -374,6 +353,26 @@ sensor_msgs::msg::Imu Bno086ImuNode::BuildPresentImuMessage(const rclcpp::Time& 
   }
 
   return imuMsg;
+}
+
+sensor_msgs::msg::Imu Bno086ImuNode::BuildImuGravityMessage(
+    const sensor_msgs::msg::Imu& present_imu) const
+{
+  sensor_msgs::msg::Imu imuGravityMsg = present_imu;
+  imuGravityMsg.header.stamp = LatestImuGravityCoreStamp();
+
+  imuGravityMsg.linear_acceleration.x = m_latestFrame.accel_mps2[0];
+  imuGravityMsg.linear_acceleration.y = m_latestFrame.accel_mps2[1];
+  imuGravityMsg.linear_acceleration.z = m_latestFrame.accel_mps2[2];
+
+  imuGravityMsg.linear_acceleration_covariance.fill(0.0);
+  if (m_latestFrame.has_linear_accel_covariance)
+  {
+    SetCovariance(imuGravityMsg.linear_acceleration_covariance,
+                  m_latestFrame.linear_accel_cov_mps2_2);
+  }
+
+  return imuGravityMsg;
 }
 
 sensor_msgs::msg::Imu Bno086ImuNode::BuildPredictedImuMessage(
@@ -477,6 +476,32 @@ rclcpp::Time Bno086ImuNode::LatestCoreStamp() const
   return rclcpp::Time(std::max({orientationNs, gyroNs, linearAccelNs}), RCL_ROS_TIME);
 }
 
+bool Bno086ImuNode::HasPublishableImuGravityFrame() const
+{
+  if (!(m_latestFrame.has_orientation && m_latestFrame.has_gyro && m_latestFrame.has_accel))
+    return false;
+
+  if (!(m_orientationState.has_sample && m_gyroState.has_sample && m_imuGravityState.has_sample))
+    return false;
+
+  const int64_t orientationNs = m_orientationState.stamp.nanoseconds();
+  const int64_t gyroNs = m_gyroState.stamp.nanoseconds();
+  const int64_t accelNs = m_imuGravityState.stamp.nanoseconds();
+
+  const int64_t oldestNs = std::min({orientationNs, gyroNs, accelNs});
+  const int64_t newestNs = std::max({orientationNs, gyroNs, accelNs});
+  const int64_t spanNs = newestNs - oldestNs;
+  return spanNs <= DurationFromUs(CoreCoherenceToleranceUs()).nanoseconds();
+}
+
+rclcpp::Time Bno086ImuNode::LatestImuGravityCoreStamp() const
+{
+  const int64_t orientationNs = m_orientationState.stamp.nanoseconds();
+  const int64_t gyroNs = m_gyroState.stamp.nanoseconds();
+  const int64_t accelNs = m_imuGravityState.stamp.nanoseconds();
+  return rclcpp::Time(std::max({orientationNs, gyroNs, accelNs}), RCL_ROS_TIME);
+}
+
 void Bno086ImuNode::ApplyEvent(const SensorEvent& event, const rclcpp::Time& sample_stamp)
 {
   switch (event.report_id)
@@ -565,6 +590,10 @@ void Bno086ImuNode::ApplyEvent(const SensorEvent& event, const rclcpp::Time& sam
       m_latestFrame.accel_mps2[1] = QToDouble(event.values[1], 8);
       m_latestFrame.accel_mps2[2] = QToDouble(event.values[2], 8);
       m_latestFrame.has_accel = true;
+      m_imuGravityState.has_sample = true;
+      m_imuGravityState.stamp = sample_stamp;
+      m_imuGravityState.sequence = event.sequence;
+      m_imuGravityState.accuracy = event.accuracy;
       break;
 
     case ReportId::Gravity:
@@ -771,29 +800,6 @@ void Bno086ImuNode::SetCovariance(std::array<double, 9>& dst, const OASIS::IMU::
   dst[6] = src[2][0];
   dst[7] = src[2][1];
   dst[8] = src[2][2];
-}
-
-void Bno086ImuNode::SetLinearAccelCovariance(std::array<double, 36>& dst,
-                                             const OASIS::IMU::Mat3& linear_cov)
-{
-  dst.fill(0.0);
-
-  dst[0] = linear_cov[0][0];
-  dst[1] = linear_cov[0][1];
-  dst[2] = linear_cov[0][2];
-
-  dst[6] = linear_cov[1][0];
-  dst[7] = linear_cov[1][1];
-  dst[8] = linear_cov[1][2];
-
-  dst[12] = linear_cov[2][0];
-  dst[13] = linear_cov[2][1];
-  dst[14] = linear_cov[2][2];
-
-  // geometry_msgs/AccelWithCovariance uses the rotational block for
-  // angular acceleration. Mark it unknown because this topic carries
-  // only linear acceleration.
-  dst[21] = -1.0;
 }
 
 void Bno086ImuNode::MaybeLogOrientationCovariancePolicy()

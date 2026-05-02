@@ -62,6 +62,8 @@ def make_imu_message(
     quaternion_xyzw: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0),
     timestamp_ns: int = 1_000_000_000,
     orientation_covariance: list[float] | None = None,
+    angular_velocity: tuple[float, float, float] = (0.1, 0.2, 0.3),
+    angular_velocity_covariance: list[float] | None = None,
     linear_acceleration: tuple[float, float, float] = (0.0, 0.0, 0.0),
     linear_acceleration_covariance: list[float] | None = None,
 ) -> ImuMsg:
@@ -78,20 +80,24 @@ def make_imu_message(
         if orientation_covariance is not None
         else [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
     )
-    message.angular_velocity.x = 0.1
-    message.angular_velocity.y = 0.2
-    message.angular_velocity.z = 0.3
-    message.angular_velocity_covariance = [
-        1.0,
-        0.0,
-        0.0,
-        0.0,
-        1.0,
-        0.0,
-        0.0,
-        0.0,
-        1.0,
-    ]
+    message.angular_velocity.x = angular_velocity[0]
+    message.angular_velocity.y = angular_velocity[1]
+    message.angular_velocity.z = angular_velocity[2]
+    message.angular_velocity_covariance = (
+        angular_velocity_covariance
+        if angular_velocity_covariance is not None
+        else [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+        ]
+    )
     message.linear_acceleration.x = linear_acceleration[0]
     message.linear_acceleration.y = linear_acceleration[1]
     message.linear_acceleration.z = linear_acceleration[2]
@@ -113,28 +119,20 @@ def make_imu_message(
     return message
 
 
-def make_accel_message(
+def make_imu_gravity_message(
     *,
     frame_id: str = "imu_link",
-    accel_vector: tuple[float, float, float] = (0.0, 0.0, -9.81),
+    quaternion_xyzw: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0),
+    orientation_covariance: list[float] | None = None,
+    angular_velocity: tuple[float, float, float] = (0.1, 0.2, 0.3),
+    angular_velocity_covariance: list[float] | None = None,
+    linear_acceleration: tuple[float, float, float] = (0.0, 0.0, -9.81),
     timestamp_ns: int = 950_000_000,
     covariance: list[float] | None = None,
-) -> AccelWithCovarianceStampedMsg:
-    message: AccelWithCovarianceStampedMsg = AccelWithCovarianceStampedMsg()
-    message.header.frame_id = frame_id
-    message.header.stamp.sec = int(timestamp_ns // 1_000_000_000)
-    message.header.stamp.nanosec = int(timestamp_ns % 1_000_000_000)
-    message.accel.accel.linear.x = accel_vector[0]
-    message.accel.accel.linear.y = accel_vector[1]
-    message.accel.accel.linear.z = accel_vector[2]
-    message.accel.covariance = (
-        covariance
-        if covariance is not None
-        else [
+) -> ImuMsg:
+    linear_acceleration_covariance: list[float] = (
+        [
             0.04,
-            0.0,
-            0.0,
-            0.0,
             0.0,
             0.0,
             0.0,
@@ -142,34 +140,21 @@ def make_accel_message(
             0.0,
             0.0,
             0.0,
-            0.0,
-            0.0,
-            0.0,
             0.04,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
         ]
+        if covariance is None
+        else covariance
     )
-    return message
+    return make_imu_message(
+        frame_id=frame_id,
+        quaternion_xyzw=quaternion_xyzw,
+        timestamp_ns=timestamp_ns,
+        orientation_covariance=orientation_covariance,
+        angular_velocity=angular_velocity,
+        angular_velocity_covariance=angular_velocity_covariance,
+        linear_acceleration=linear_acceleration,
+        linear_acceleration_covariance=linear_acceleration_covariance,
+    )
 
 
 def make_gravity_message(
@@ -243,7 +228,7 @@ def make_node(
     FakeTransformBroadcaster,
 ]:
     fake_diag_pub: FakePublisher = FakePublisher()
-    fake_accel_pub: FakePublisher = FakePublisher()
+    fake_imu_gravity_pub: FakePublisher = FakePublisher()
     fake_gravity_pub: FakePublisher = FakePublisher()
     fake_imu_pub: FakePublisher = FakePublisher()
     fake_odom_pub: FakePublisher = FakePublisher()
@@ -256,14 +241,14 @@ def make_node(
     node._mounting_transform = mounting_transform
     node._diagnostics.has_mounting = mounting_transform is not None
     node._diag_pub = fake_diag_pub
-    node._accel_pub = fake_accel_pub
+    node._imu_gravity_pub = fake_imu_gravity_pub
     node._gravity_pub = fake_gravity_pub
     node._imu_pub = fake_imu_pub
     node._odom_pub = fake_odom_pub
     return (
         node,
         fake_diag_pub,
-        fake_accel_pub,
+        fake_imu_gravity_pub,
         fake_gravity_pub,
         fake_imu_pub,
         fake_odom_pub,

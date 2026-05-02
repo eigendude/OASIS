@@ -338,8 +338,8 @@ This layer does not require a replay engine or separate measurement scheduler.
 
 Suggested ROS-layer responsibilities:
 
-- `ros_messages.py` maps `sensor_msgs/Imu` and
-  `geometry_msgs/AccelWithCovarianceStamped` into
+- `ros_messages.py` maps `sensor_msgs/Imu` (`imu` and `imu_gravity`) and
+  `geometry_msgs/AccelWithCovarianceStamped` (`gravity`) into
   `localization/common/data/` records and maps `AhrsOutput` from
   `localization/ahrs/data/` back into ROS messages
 - `ros_publishers.py` owns topic publishers, diagnostics publication, and any
@@ -359,14 +359,15 @@ Unit tests should cover:
 - mounting transform application
 - gravity residual and gating behavior
 - deterministic handling of out-of-order timestamps
-- ROS conversion fidelity for `sensor_msgs/Imu` and
-  `geometry_msgs/AccelWithCovarianceStamped`
+- ROS conversion fidelity for `sensor_msgs/Imu` (`imu` and `imu_gravity`) and
+  `geometry_msgs/AccelWithCovarianceStamped` (`gravity`)
 
 ---
 
 ## 6. Parameters
 
 - input topic name for `imu`
+- input topic name for `imu_gravity`
 - input topic name for `gravity`
 - output topic names
 - frame ids

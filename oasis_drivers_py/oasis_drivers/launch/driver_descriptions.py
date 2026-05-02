@@ -118,8 +118,8 @@ class DriverDescriptions:
             ],
             remappings=[
                 # Topics
-                ("accel", f"{host_id}/accel"),
                 ("gravity", f"{host_id}/gravity"),
+                ("imu_gravity", f"{host_id}/imu_gravity"),
                 ("imu_predicted", f"{host_id}/imu_predicted"),
                 ("imu_vr", f"{host_id}/imu_vr"),
                 ("imu", f"{host_id}/imu"),

@@ -39,8 +39,8 @@ namespace OASIS::ROS
  * - imu_vr: predicted orientation plus explicit prediction metadata
  * - gravity (optional): fused gravity vector expressed in imu_link and
  *   pointing down with magnitude near 9.81 m/s^2 at rest
- * - accel (optional): gravity-included calibrated acceleration with
- *   linear covariance
+ * - imu_gravity (optional): fused orientation + calibrated gyro +
+ *   gravity-included calibrated acceleration
  *
  * Publication is interrupt-driven from active-low H_INTN packet drains
  * report_rate_hz configures BNO086 internal report timing only
@@ -97,11 +97,14 @@ private:
   bool HasPublishableCoreFrame() const;
   CoreFrameSignature LatestCoreSignature() const;
   rclcpp::Time LatestCoreStamp() const;
+  bool HasPublishableImuGravityFrame() const;
+  rclcpp::Time LatestImuGravityCoreStamp() const;
 
   void ApplyEvent(const OASIS::IMU::BNO086::SensorEvent& event, const rclcpp::Time& sample_stamp);
   rclcpp::Time EstimateEventStamp(const OASIS::IMU::BNO086::SensorEvent& event,
                                   const rclcpp::Time& interrupt_ros_at);
   sensor_msgs::msg::Imu BuildPresentImuMessage(const rclcpp::Time& stamp) const;
+  sensor_msgs::msg::Imu BuildImuGravityMessage(const sensor_msgs::msg::Imu& present_imu) const;
   sensor_msgs::msg::Imu BuildPredictedImuMessage(const sensor_msgs::msg::Imu& present_imu) const;
   oasis_msgs::msg::ImuVr BuildPredictedVrMessage(const sensor_msgs::msg::Imu& present_imu,
                                                  const sensor_msgs::msg::Imu& predicted_imu) const;
@@ -127,15 +130,13 @@ private:
                                                   const OASIS::IMU::Vec3& gyro_rads,
                                                   double prediction_horizon_sec);
   static void SetCovariance(std::array<double, 9>& dst, const OASIS::IMU::Mat3& src);
-  static void SetLinearAccelCovariance(std::array<double, 36>& dst,
-                                       const OASIS::IMU::Mat3& linear_cov);
   void MaybeLogOrientationCovariancePolicy();
 
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr m_imuPublisher;
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr m_imuPredictedPublisher;
   rclcpp::Publisher<oasis_msgs::msg::ImuVr>::SharedPtr m_imuVrPublisher;
   rclcpp::Publisher<geometry_msgs::msg::AccelWithCovarianceStamped>::SharedPtr m_gravityPublisher;
-  rclcpp::Publisher<geometry_msgs::msg::AccelWithCovarianceStamped>::SharedPtr m_accelPublisher;
+  rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr m_imuGravityPublisher;
 
   OASIS::IMU::BNO086::Bno086Transport m_transport;
   OASIS::IMU::BNO086::Bno086Gpio m_interruptGpio;
@@ -144,6 +145,7 @@ private:
   SampleState m_orientationState{};
   SampleState m_gyroState{};
   SampleState m_linearAccelState{};
+  SampleState m_imuGravityState{};
   OrientationCovarianceDebugState m_orientationCovarianceDebug{};
 
   std::string m_frameId;
