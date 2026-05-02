@@ -668,7 +668,6 @@ class PerceptionDescriptions:
                             ),
                         ),
                         (f"{system_id}_imu", f"{system_id}/imu"),
-                        (f"{system_id}_accel", f"{system_id}/accel"),
                         (
                             f"{system_id}_slam_point_cloud",
                             f"{system_id}/{RESOLUTION_PREFIX}slam_point_cloud",

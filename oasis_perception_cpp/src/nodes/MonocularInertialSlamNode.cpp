@@ -10,16 +10,12 @@
 
 #include "slam/MonocularInertialSlam.h"
 
-#include <array>
-#include <cstddef>
 #include <functional>
 #include <memory>
 #include <string>
 #include <string_view>
 
-#include <builtin_interfaces/msg/time.hpp>
 #include <image_transport/image_transport.hpp>
-#include <rclcpp/clock.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
 #include <rclcpp/qos.hpp>
@@ -33,7 +29,6 @@ namespace
 // Subscribed topics
 constexpr std::string_view IMAGE_TOPIC = "image";
 constexpr std::string_view IMU_TOPIC = "imu";
-constexpr std::string_view ACCEL_TOPIC = "accel";
 
 // Published topics
 constexpr std::string_view MAP_IMAGE_TOPIC = "slam_map_image";
@@ -49,39 +44,6 @@ constexpr std::string_view VOCABULARY_FILE_PARAMETER = "vocabulary_file";
 constexpr std::string_view DEFAULT_VOCABULARY_FILE = "";
 constexpr std::string_view SETTINGS_FILE_PARAMETER = "settings_file";
 constexpr std::string_view DEFAULT_SETTINGS_FILE = "";
-
-bool StampsMatch(const builtin_interfaces::msg::Time& lhs, const builtin_interfaces::msg::Time& rhs)
-{
-  return lhs.sec == rhs.sec && lhs.nanosec == rhs.nanosec;
-}
-
-void CopyLinearAccelerationCovariance(std::array<double, 9>& dst, const std::array<double, 36>& src)
-{
-  for (std::size_t row = 0; row < 3; ++row)
-  {
-    for (std::size_t col = 0; col < 3; ++col)
-      dst[row * 3 + col] = src[row * 6 + col];
-  }
-}
-
-sensor_msgs::msg::Imu BuildSlamImuMessage(
-    const sensor_msgs::msg::Imu& imuMsg,
-    const geometry_msgs::msg::AccelWithCovarianceStamped& accelMsg)
-{
-  sensor_msgs::msg::Imu slamImuMsg;
-
-  slamImuMsg.header = accelMsg.header;
-  slamImuMsg.angular_velocity = imuMsg.angular_velocity;
-  slamImuMsg.angular_velocity_covariance = imuMsg.angular_velocity_covariance;
-  slamImuMsg.linear_acceleration = accelMsg.accel.accel.linear;
-  CopyLinearAccelerationCovariance(slamImuMsg.linear_acceleration_covariance,
-                                   accelMsg.accel.covariance);
-
-  slamImuMsg.orientation_covariance.fill(0.0);
-  slamImuMsg.orientation_covariance[0] = -1.0;
-
-  return slamImuMsg;
-}
 } // namespace
 
 MonocularInertialSlamNode::MonocularInertialSlamNode(rclcpp::Node& node)
@@ -118,10 +80,6 @@ bool MonocularInertialSlamNode::Initialize()
   imuTopic.push_back('_');
   imuTopic.append(IMU_TOPIC);
 
-  std::string accelTopic = systemId;
-  accelTopic.push_back('_');
-  accelTopic.append(ACCEL_TOPIC);
-
   std::string mapImageTopic = systemId;
   mapImageTopic.push_back('_');
   mapImageTopic.append(MAP_IMAGE_TOPIC);
@@ -137,7 +95,6 @@ bool MonocularInertialSlamNode::Initialize()
   RCLCPP_INFO(*m_logger, "System ID: %s", systemId.c_str());
   RCLCPP_INFO(*m_logger, "Image topic: %s", imageTopic.c_str());
   RCLCPP_INFO(*m_logger, "IMU topic: %s", imuTopic.c_str());
-  RCLCPP_INFO(*m_logger, "Accel topic: %s", accelTopic.c_str());
   RCLCPP_INFO(*m_logger, "Map image topic: %s", mapImageTopic.c_str());
   RCLCPP_INFO(*m_logger, "Point cloud topic: %s", pointCloudTopic.c_str());
   RCLCPP_INFO(*m_logger, "Pose topic: %s", poseTopic.c_str());
@@ -176,12 +133,8 @@ bool MonocularInertialSlamNode::Initialize()
       { OnImage(msg); }, imageTransport, rclcpp::QoS{1}.get_rmw_qos_profile());
 
   m_imuSubscriber = m_node.create_subscription<sensor_msgs::msg::Imu>(
-      imuTopic, rclcpp::SensorDataQoS{},
+      imuTopic, rclcpp::QoS{1},
       std::bind(&MonocularInertialSlamNode::OnImu, this, std::placeholders::_1));
-
-  m_accelSubscriber = m_node.create_subscription<geometry_msgs::msg::AccelWithCovarianceStamped>(
-      accelTopic, rclcpp::SensorDataQoS{},
-      std::bind(&MonocularInertialSlamNode::OnAccel, this, std::placeholders::_1));
 
   m_monocularInertialSlam =
       std::make_unique<SLAM::MonocularInertialSlam>(m_node, pointCloudTopic, poseTopic);
@@ -202,9 +155,6 @@ void MonocularInertialSlamNode::Deinitialize()
     m_imgSubscriber->shutdown();
 
   m_imuSubscriber.reset();
-  m_accelSubscriber.reset();
-  m_latestImuMsg.reset();
-  m_latestAccelMsg.reset();
 
   if (m_monocularInertialSlam)
   {
@@ -221,43 +171,6 @@ void MonocularInertialSlamNode::OnImage(const sensor_msgs::msg::Image::ConstShar
 
 void MonocularInertialSlamNode::OnImu(const sensor_msgs::msg::Imu::ConstSharedPtr& msg)
 {
-  m_latestImuMsg = msg;
-  TryPublishSyncedImu();
-}
-
-void MonocularInertialSlamNode::OnAccel(
-    const geometry_msgs::msg::AccelWithCovarianceStamped::ConstSharedPtr& msg)
-{
-  m_latestAccelMsg = msg;
-  TryPublishSyncedImu();
-}
-
-void MonocularInertialSlamNode::TryPublishSyncedImu()
-{
-  if (!m_latestImuMsg || !m_latestAccelMsg)
-    return;
-
-  if (!StampsMatch(m_latestImuMsg->header.stamp, m_latestAccelMsg->header.stamp))
-  {
-    rclcpp::Clock& clock = *m_node.get_clock();
-
-    RCLCPP_WARN_THROTTLE(*m_logger, clock, 5000,
-                         "IMU and accel stamps do not match; waiting for exact pair "
-                         "(imu=%d.%09u, accel=%d.%09u)",
-                         static_cast<int>(m_latestImuMsg->header.stamp.sec),
-                         static_cast<unsigned>(m_latestImuMsg->header.stamp.nanosec),
-                         static_cast<int>(m_latestAccelMsg->header.stamp.sec),
-                         static_cast<unsigned>(m_latestAccelMsg->header.stamp.nanosec));
-    return;
-  }
-
   if (m_monocularInertialSlam)
-  {
-    auto slamImuMsg = std::make_shared<sensor_msgs::msg::Imu>(
-        BuildSlamImuMessage(*m_latestImuMsg, *m_latestAccelMsg));
-    m_monocularInertialSlam->ImuCallback(slamImuMsg);
-  }
-
-  m_latestImuMsg.reset();
-  m_latestAccelMsg.reset();
+    m_monocularInertialSlam->ImuCallback(msg);
 }

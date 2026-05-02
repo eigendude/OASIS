@@ -9,7 +9,6 @@
 
 #include <memory>
 
-#include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <image_transport/subscriber.hpp>
 #include <rclcpp/subscription.hpp>
 #include <sensor_msgs/msg/image.hpp>
@@ -43,8 +42,6 @@ private:
   // ROS interface
   void OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg);
   void OnImu(const sensor_msgs::msg::Imu::ConstSharedPtr& msg);
-  void OnAccel(const geometry_msgs::msg::AccelWithCovarianceStamped::ConstSharedPtr& msg);
-  void TryPublishSyncedImu();
 
   // Construction parameters
   rclcpp::Node& m_node;
@@ -53,11 +50,6 @@ private:
   std::unique_ptr<rclcpp::Logger> m_logger;
   std::unique_ptr<image_transport::Subscriber> m_imgSubscriber;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr m_imuSubscriber;
-  rclcpp::Subscription<geometry_msgs::msg::AccelWithCovarianceStamped>::SharedPtr m_accelSubscriber;
-
-  // IMU pairing state
-  sensor_msgs::msg::Imu::ConstSharedPtr m_latestImuMsg;
-  geometry_msgs::msg::AccelWithCovarianceStamped::ConstSharedPtr m_latestAccelMsg;
 
   // Video parameters
   std::unique_ptr<SLAM::MonocularInertialSlam> m_monocularInertialSlam;
