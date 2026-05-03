@@ -63,12 +63,12 @@ VSS_R2: float = 9.83  # KΩ
 # Motor wire A (blue wire) voltage divider
 MOTOR_VOLTAGE_A_R1: float = 17.80  # KΩ
 MOTOR_VOLTAGE_A_R2: float = 9.84  # KΩ
-# R3: 1KΩ resistor to A3 pin, 10uF cap to GND
+# R3: 1KΩ resistor to A3 pin, 10uF + 10nF caps to GND
 
 # Motor wire B (green wire) voltage divider
 MOTOR_VOLTAGE_B_R1: float = 17.78  # KΩ
 MOTOR_VOLTAGE_B_R2: float = 9.89  # KΩ
-# R3: 1KΩ resistor to A4 pin, 10uF cap to GND
+# R3: 1KΩ resistor to A4 pin, 10uF + 10nF caps to GND
 
 
 ################################################################################
