@@ -18,9 +18,13 @@ from test.ros_test_stubs import install_test_stubs
 
 
 PACKAGE_ROOT: Path = Path(__file__).resolve().parents[1]
+REPO_ROOT: Path = PACKAGE_ROOT.parent
+DRIVERS_PACKAGE_ROOT: Path = REPO_ROOT / "oasis_drivers_py"
 
-if str(PACKAGE_ROOT) not in sys.path:
-    sys.path.insert(0, str(PACKAGE_ROOT))
+for package_root in (PACKAGE_ROOT, DRIVERS_PACKAGE_ROOT):
+    package_root_str: str = str(package_root)
+    if package_root_str not in sys.path:
+        sys.path.insert(0, package_root_str)
 
 
 install_test_stubs()

@@ -83,6 +83,10 @@ STDDEV_BETA: float = 0.2
 # represent the same H-bridge state
 MAX_MOTOR_VOLTAGE_SKEW_SECS: float = 0.15
 
+# Values inside this band are telemetry zero. This prevents signed floating
+# point zero, e.g. -0.0 V, and suppresses ADC noise around zero.
+MOTOR_VOLTAGE_ZERO_EPSILON: float = 0.05
+
 
 ################################################################################
 # ROS parameters
@@ -411,6 +415,9 @@ class StationManager:
             motor_voltage: float = -measured_motor_voltage
         else:
             motor_voltage = measured_motor_voltage
+
+        if abs(motor_voltage) < MOTOR_VOLTAGE_ZERO_EPSILON:
+            motor_voltage = 0.0
 
         # The old supply-times-duty estimate was removed because these fields
         # now report the measured H-bridge output from the ADC stream

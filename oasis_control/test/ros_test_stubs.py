@@ -78,6 +78,78 @@ class _String:
         self.data: str = ""
 
 
+class _AVRConstants:
+    ANALOG_DISABLED: int = 0
+    ANALOG_INPUT: int = 1
+
+    DIGITAL_DISABLED: int = 0
+    DIGITAL_INPUT: int = 1
+    DIGITAL_INPUT_PULLUP: int = 2
+    DIGITAL_OUTPUT: int = 3
+    DIGITAL_PWM: int = 4
+    DIGITAL_SERVO: int = 5
+    DIGITAL_CPU_FAN_PWM: int = 6
+    DIGITAL_CPU_FAN_TACHOMETER: int = 7
+
+    LOW: int = 0
+    HIGH: int = 1
+
+
+class _AnalogReading:
+    def __init__(self) -> None:
+        self.analog_pin: int = 0
+        self.analog_value: float = 0.0
+
+
+class _AnalogReadings:
+    def __init__(self) -> None:
+        self.header: _Header = _Header()
+        self.readings: list[_AnalogReading] = []
+
+
+class _DigitalReading:
+    def __init__(self) -> None:
+        self.digital_pin: int = 0
+        self.digital_value: int = 0
+
+
+class _DigitalWriteCommand:
+    def __init__(self) -> None:
+        self.digital_pin: int = 0
+        self.digital_value: int = 0
+
+
+class _PWMWriteCommand:
+    def __init__(self) -> None:
+        self.digital_pin: int = 0
+        self.pwm_value: float = 0.0
+
+
+class _SerialDevice:
+    def __init__(self) -> None:
+        self.device: str = ""
+        self.name: str = ""
+        self.description: str = ""
+        self.hardware_id: str = ""
+        self.usb_device: list[_UsbDevice] = []
+
+
+class _SerialDeviceScan:
+    def __init__(self) -> None:
+        self.header: _Header = _Header()
+        self.serial_devices: list[_SerialDevice] = []
+
+
+class _UsbDevice:
+    def __init__(self) -> None:
+        self.vendor_id: int = 0
+        self.product_id: int = 0
+        self.serial_number: str = ""
+        self.location: str = ""
+        self.manufacturer: str = ""
+        self.product: str = ""
+
+
 class _Vector3:
     def __init__(self) -> None:
         self.x: float = 0.0
@@ -298,6 +370,43 @@ class _UPSCommand:
         pass
 
 
+class _SetAnalogMode:
+    class Request:
+        def __init__(self) -> None:
+            self.analog_pin: int = 0
+            self.analog_mode: int = 0
+
+    class Response:
+        pass
+
+
+class _SetDigitalMode:
+    class Request:
+        def __init__(self) -> None:
+            self.digital_pin: int = 0
+            self.digital_mode: int = 0
+
+    class Response:
+        pass
+
+
+class _Future:
+    def result(self) -> object:
+        return object()
+
+    def exception(self) -> None:
+        return None
+
+
+class _Client:
+    def __init__(self, *_: Any, **__: Any) -> None:
+        pass
+
+    def call_async(self, request: object) -> _Future:
+        del request
+        return _Future()
+
+
 class _Publisher:
     def __init__(self, *_: Any, **__: Any) -> None:
         self.messages: list[Any] = []
@@ -406,6 +515,14 @@ class _Node:
             callback=callback,
         )
 
+    def create_client(
+        self,
+        srv_type: type[Any],
+        srv_name: str,
+    ) -> _Client:
+        del srv_type, srv_name
+        return _Client()
+
     def create_timer(self, period_sec: float, callback: Any) -> _Timer:
         return _Timer(period_sec, callback)
 
@@ -420,7 +537,8 @@ class _Node:
 
 
 class _QoSProfile:
-    pass
+    def __init__(self, *_: Any, **__: Any) -> None:
+        pass
 
 
 class _PresetProfile:
@@ -431,6 +549,14 @@ class _PresetProfile:
 class _QoSPresetProfiles:
     SENSOR_DATA: _PresetProfile = _PresetProfile()
     SYSTEM_DEFAULT: _PresetProfile = _PresetProfile()
+
+
+class _QoSReliabilityPolicy:
+    RELIABLE: int = 1
+
+
+class _QoSHistoryPolicy:
+    KEEP_LAST: int = 1
 
 
 class _TimeHandle:
@@ -522,12 +648,15 @@ def _install_sensor_msgs_stub() -> None:
 
 
 def _install_std_msgs_stub() -> None:
-    if _module_exists("std_msgs.msg"):
-        return
+    if _module_exists("std_msgs") and _module_exists("std_msgs.msg"):
+        std_msgs_module = importlib.import_module("std_msgs")
+        std_msgs_msg_module = importlib.import_module("std_msgs.msg")
+    else:
+        std_msgs_module = _make_package("std_msgs")
+        std_msgs_msg_module = ModuleType("std_msgs.msg")
 
-    std_msgs_module: ModuleType = _make_package("std_msgs")
-    std_msgs_msg_module: ModuleType = ModuleType("std_msgs.msg")
     _set_module_attr(std_msgs_msg_module, "Bool", _Bool)
+    _set_module_attr(std_msgs_msg_module, "Header", _Header)
     _set_module_attr(std_msgs_msg_module, "String", _String)
     _set_module_attr(std_msgs_module, "msg", std_msgs_msg_module)
     _register_module("std_msgs", std_msgs_module)
@@ -559,14 +688,32 @@ def _install_tf2_ros_stub() -> None:
 
 
 def _install_oasis_msgs_stub() -> None:
-    if _module_exists("oasis_msgs.msg") and _module_exists("oasis_msgs.srv"):
-        return
+    if (
+        _module_exists("oasis_msgs")
+        and _module_exists("oasis_msgs.msg")
+        and _module_exists("oasis_msgs.srv")
+    ):
+        oasis_msgs_module = importlib.import_module("oasis_msgs")
+        oasis_msgs_msg_module = importlib.import_module("oasis_msgs.msg")
+        oasis_msgs_srv_module = importlib.import_module("oasis_msgs.srv")
+    else:
+        oasis_msgs_module = _make_package("oasis_msgs")
+        oasis_msgs_msg_module = ModuleType("oasis_msgs.msg")
+        oasis_msgs_srv_module = ModuleType("oasis_msgs.srv")
 
-    oasis_msgs_module: ModuleType = _make_package("oasis_msgs")
-    oasis_msgs_msg_module: ModuleType = ModuleType("oasis_msgs.msg")
-    oasis_msgs_srv_module: ModuleType = ModuleType("oasis_msgs.srv")
     _set_module_attr(oasis_msgs_msg_module, "AhrsStatus", _AhrsStatus)
+    _set_module_attr(oasis_msgs_msg_module, "AnalogReading", _AnalogReading)
+    _set_module_attr(oasis_msgs_msg_module, "AnalogReadings", _AnalogReadings)
+    _set_module_attr(oasis_msgs_msg_module, "AVRConstants", _AVRConstants)
+    _set_module_attr(oasis_msgs_msg_module, "DigitalReading", _DigitalReading)
+    _set_module_attr(oasis_msgs_msg_module, "DigitalWriteCommand", _DigitalWriteCommand)
+    _set_module_attr(oasis_msgs_msg_module, "PWMWriteCommand", _PWMWriteCommand)
+    _set_module_attr(oasis_msgs_msg_module, "SerialDevice", _SerialDevice)
+    _set_module_attr(oasis_msgs_msg_module, "SerialDeviceScan", _SerialDeviceScan)
     _set_module_attr(oasis_msgs_msg_module, "UPSStatus", _UPSStatus)
+    _set_module_attr(oasis_msgs_msg_module, "UsbDevice", _UsbDevice)
+    _set_module_attr(oasis_msgs_srv_module, "SetAnalogMode", _SetAnalogMode)
+    _set_module_attr(oasis_msgs_srv_module, "SetDigitalMode", _SetDigitalMode)
     _set_module_attr(oasis_msgs_srv_module, "UPSCommand", _UPSCommand)
     _set_module_attr(oasis_msgs_module, "msg", oasis_msgs_msg_module)
     _set_module_attr(oasis_msgs_module, "srv", oasis_msgs_srv_module)
@@ -608,12 +755,14 @@ def _install_rclpy_stub() -> None:
         return
 
     rclpy_module: ModuleType = _make_package("rclpy")
+    rclpy_client_module: ModuleType = ModuleType("rclpy.client")
     rclpy_logging_module: ModuleType = ModuleType("rclpy.logging")
     rclpy_node_module: ModuleType = ModuleType("rclpy.node")
     rclpy_publisher_module: ModuleType = ModuleType("rclpy.publisher")
     rclpy_qos_module: ModuleType = ModuleType("rclpy.qos")
     rclpy_service_module: ModuleType = ModuleType("rclpy.service")
     rclpy_subscription_module: ModuleType = ModuleType("rclpy.subscription")
+    rclpy_task_module: ModuleType = ModuleType("rclpy.task")
     rclpy_time_module: ModuleType = ModuleType("rclpy.time")
     rclpy_timer_module: ModuleType = ModuleType("rclpy.timer")
 
@@ -626,34 +775,55 @@ def _install_rclpy_stub() -> None:
     def _ok() -> bool:
         return False
 
+    def _spin_until_future_complete(node: object, future: _Future) -> None:
+        del node, future
+        return None
+
     _set_module_attr(rclpy_module, "init", _init)
+    _set_module_attr(
+        rclpy_module,
+        "spin_until_future_complete",
+        _spin_until_future_complete,
+    )
     _set_module_attr(rclpy_module, "shutdown", _shutdown)
     _set_module_attr(rclpy_module, "ok", _ok)
+    _set_module_attr(rclpy_client_module, "Client", _Client)
     _set_module_attr(rclpy_logging_module, "RcutilsLogger", _Logger)
     _set_module_attr(rclpy_node_module, "Node", _Node)
     _set_module_attr(rclpy_publisher_module, "Publisher", _Publisher)
+    _set_module_attr(rclpy_qos_module, "QoSHistoryPolicy", _QoSHistoryPolicy)
     _set_module_attr(rclpy_qos_module, "QoSProfile", _QoSProfile)
     _set_module_attr(rclpy_qos_module, "QoSPresetProfiles", _QoSPresetProfiles)
+    _set_module_attr(
+        rclpy_qos_module,
+        "QoSReliabilityPolicy",
+        _QoSReliabilityPolicy,
+    )
     _set_module_attr(rclpy_service_module, "Service", _Service)
     _set_module_attr(rclpy_subscription_module, "Subscription", _Subscription)
+    _set_module_attr(rclpy_task_module, "Future", _Future)
     _set_module_attr(rclpy_time_module, "Time", _TimeHandle)
     _set_module_attr(rclpy_timer_module, "Timer", _Timer)
 
+    _set_module_attr(rclpy_module, "client", rclpy_client_module)
     _set_module_attr(rclpy_module, "logging", rclpy_logging_module)
     _set_module_attr(rclpy_module, "node", rclpy_node_module)
     _set_module_attr(rclpy_module, "publisher", rclpy_publisher_module)
     _set_module_attr(rclpy_module, "qos", rclpy_qos_module)
     _set_module_attr(rclpy_module, "service", rclpy_service_module)
     _set_module_attr(rclpy_module, "subscription", rclpy_subscription_module)
+    _set_module_attr(rclpy_module, "task", rclpy_task_module)
     _set_module_attr(rclpy_module, "time", rclpy_time_module)
     _set_module_attr(rclpy_module, "timer", rclpy_timer_module)
 
     _register_module("rclpy", rclpy_module)
+    _register_module("rclpy.client", rclpy_client_module)
     _register_module("rclpy.logging", rclpy_logging_module)
     _register_module("rclpy.node", rclpy_node_module)
     _register_module("rclpy.publisher", rclpy_publisher_module)
     _register_module("rclpy.qos", rclpy_qos_module)
     _register_module("rclpy.service", rclpy_service_module)
     _register_module("rclpy.subscription", rclpy_subscription_module)
+    _register_module("rclpy.task", rclpy_task_module)
     _register_module("rclpy.time", rclpy_time_module)
     _register_module("rclpy.timer", rclpy_timer_module)
