@@ -131,6 +131,7 @@ class StationManager:
         motor_current_pin: int,
         motor_voltage_a_pin: int,
         motor_voltage_b_pin: int,
+        motor_voltage_reversed: bool = False,
     ) -> None:
         """
         Initialize resources.
@@ -145,6 +146,7 @@ class StationManager:
         self._motor_current_pin: int = motor_current_pin
         self._motor_voltage_a_pin: int = motor_voltage_a_pin
         self._motor_voltage_b_pin: int = motor_voltage_b_pin
+        self._motor_voltage_reversed: bool = motor_voltage_reversed
 
         # Initialize hardware state
         self._supply_voltage: float = 0.0
@@ -400,8 +402,15 @@ class StationManager:
             return
 
         # The H-bridge drives the motor from the difference between its two
-        # output wires, so the signed motor voltage is wire A minus wire B
-        motor_voltage: float = self._motor_voltage_a - self._motor_voltage_b
+        # output wires.
+        measured_motor_voltage: float = self._motor_voltage_a - self._motor_voltage_b
+
+        # Report signed voltage in logical train direction by correcting only
+        # the voltage sensing polarity
+        if self._motor_voltage_reversed:
+            motor_voltage: float = -measured_motor_voltage
+        else:
+            motor_voltage = measured_motor_voltage
 
         # The old supply-times-duty estimate was removed because these fields
         # now report the measured H-bridge output from the ADC stream

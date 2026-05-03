@@ -87,6 +87,10 @@ PUBLISH_STATE_PERIOD_SECS = 0.1
 # Publisher
 PUBLISH_CONDUCTOR_STATE = "conductor_state"
 
+# Parameters
+PARAM_MOTOR_VOLTAGE_REVERSED: str = "motor_voltage_reversed"
+DEFAULT_MOTOR_VOLTAGE_REVERSED: bool = False
+
 
 ################################################################################
 # ROS node
@@ -107,6 +111,14 @@ class ConductorManagerNode(rclpy.node.Node):
         # Enable debug logging
         self.get_logger().set_level(LoggingSeverity.DEBUG)
 
+        self.declare_parameter(
+            PARAM_MOTOR_VOLTAGE_REVERSED,
+            DEFAULT_MOTOR_VOLTAGE_REVERSED,
+        )
+        motor_voltage_reversed: bool = bool(
+            self.get_parameter(PARAM_MOTOR_VOLTAGE_REVERSED).value
+        )
+
         # Subsystems
         self._mcu_memory_manager: McuMemoryManager = McuMemoryManager(self)
         self._sampling_manager: SamplingManager = SamplingManager(self)
@@ -120,6 +132,7 @@ class ConductorManagerNode(rclpy.node.Node):
             MOTOR_CURRENT_PIN,
             MOTOR_VOLTAGE_A_PIN,
             MOTOR_VOLTAGE_B_PIN,
+            motor_voltage_reversed,
         )
         self._helipad_manager: HelipadManager = HelipadManager(
             self,

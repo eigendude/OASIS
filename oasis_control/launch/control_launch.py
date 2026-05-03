@@ -98,6 +98,7 @@ def generate_launch_description() -> LaunchDescription:
             HOST_ID,
             INPUT_PROVIDER,
             CALIBRATION_RESOLUTION,
+            motor_voltage_reversed=True,
         )
 
         Drivers.add_wol_server(ld, HOST_ID)

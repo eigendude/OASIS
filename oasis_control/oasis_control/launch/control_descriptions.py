@@ -147,6 +147,7 @@ class ControlDescriptions:
         wol_server_id: str,
         input_provider: str,
         calibration_resolution: str,
+        motor_voltage_reversed: bool = False,
     ) -> None:
         conductor_node: Node = Node(
             namespace=ROS_NAMESPACE,
@@ -154,6 +155,11 @@ class ControlDescriptions:
             executable=f"{mcu_node}_manager_telemetrix",
             name=f"{mcu_node}_manager_telemetrix_{host_id}",
             output="screen",
+            parameters=[
+                {
+                    "motor_voltage_reversed": motor_voltage_reversed,
+                }
+            ],
             remappings=[
                 (f"{mcu_node}_state", f"{host_id}/{mcu_node}_state"),
                 ("analog_readings", f"{mcu_node}/analog_readings"),
