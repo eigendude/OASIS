@@ -48,6 +48,8 @@ public:
   PollStatus Poll(std::optional<SensorEvent>& event, int timeout_ms);
 
   const StartupStatus& GetStartupStatus() const;
+  const std::vector<FeatureConfiguration>& GetFeatureConfigurations() const;
+  std::vector<FeatureResponse> TakeFeatureResponses();
 
 private:
   struct ContinuationValidation
@@ -64,8 +66,10 @@ private:
 
   bool SendSetFeatureCommands();
   bool ConfigureFeature(ReportId report_id, std::uint32_t interval_us);
+  bool RequestFeature(ReportId report_id);
 
   bool DecodePacket(const Bno086ShtpPacket& packet, std::optional<SensorEvent>& event);
+  void DecodeControlPayload(const std::vector<std::uint8_t>& payload);
   SensorDecodeResult DecodeSensorPayload(const std::vector<std::uint8_t>& payload,
                                          std::uint8_t channel,
                                          std::optional<SensorEvent>& event);
@@ -82,9 +86,12 @@ private:
   void ClearContinuationState(std::uint8_t channel);
 
   static std::uint32_t ToReportIntervalUs(double rate_hz);
+  static std::uint32_t RequestedIntervalForReport(ReportId report_id,
+                                                  std::uint32_t configured_interval_us);
   static std::uint32_t ReadU32(const std::vector<std::uint8_t>& data, std::size_t offset);
   static std::int16_t ReadS16(const std::vector<std::uint8_t>& data, std::size_t offset);
   static bool IsTrackedReport(std::uint8_t report_id);
+  static bool IsConfiguredReport(std::uint8_t report_id);
   static std::size_t SensorPayloadBytes(ReportId report_id);
   static std::optional<std::size_t> SensorRecordBytes(std::uint8_t report_id);
 
@@ -95,6 +102,8 @@ private:
 
   bool m_configRequested{false};
   std::uint32_t m_reportIntervalUs{10'000};
+  std::vector<FeatureConfiguration> m_featureConfigurations;
+  std::vector<FeatureResponse> m_featureResponses;
 
   std::chrono::steady_clock::time_point m_lastConfigAttempt{};
   std::vector<SensorEvent> m_pendingEvents;

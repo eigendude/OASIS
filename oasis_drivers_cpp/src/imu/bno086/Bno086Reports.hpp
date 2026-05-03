@@ -89,6 +89,70 @@ struct SensorEvent
   std::array<std::int16_t, 5> values{};
 };
 
+/*!\brief Requested SH-2 feature configuration for one sensor report */
+struct FeatureConfiguration
+{
+  /*!
+   * \brief Sensor report being configured
+   *
+   * Units: enum code
+   */
+  ReportId report_id{ReportId::Accelerometer};
+
+  /*!
+   * \brief Requested time between generated reports
+   *
+   * Units: microseconds, greater than zero
+   */
+  std::uint32_t requested_interval_us{10'000};
+};
+
+/*!\brief Feature response decoded from an SH-2 Get Feature Response packet */
+struct FeatureResponse
+{
+  /*!
+   * \brief Sensor report described by this response
+   *
+   * Units: enum code
+   */
+  ReportId report_id{ReportId::Accelerometer};
+
+  /*!
+   * \brief Feature flags accepted by the BNO08X
+   *
+   * Units: bit-field
+   */
+  std::uint8_t feature_flags{0};
+
+  /*!
+   * \brief Change threshold configured for reports that support it
+   *
+   * Units: report specific fixed-point threshold
+   */
+  std::uint16_t change_sensitivity{0};
+
+  /*!
+   * \brief Actual time between generated reports returned by the device
+   *
+   * Units: microseconds, zero when the report is disabled
+   */
+  std::uint32_t report_interval_us{0};
+
+  /*!
+   * \brief Actual maximum batch delay returned by the device
+   *
+   * Units: microseconds
+   */
+  std::uint32_t batch_interval_us{0};
+
+  /*!
+   * \brief Sensor-specific configuration word returned by the device
+   *
+   * Units: report specific bit-field
+   */
+  std::uint32_t sensor_specific_config{0};
+};
+
 /*!
  * \brief Rotation Vector payload slots after the 4-byte SH-2 sensor header
  *
@@ -192,6 +256,13 @@ struct ImuSampleFrame
   Mat3 linear_accel_cov_mps2_2{};
 
   /*!
+   * \brief Calibrated acceleration covariance in row-major 3x3 layout
+   *
+   * Units: (m/s^2)^2
+   */
+  Mat3 accel_cov_mps2_2{};
+
+  /*!
    * \brief Gravity covariance in row-major 3x3 layout
    *
    * Units: (m/s^2)^2
@@ -214,6 +285,11 @@ struct ImuSampleFrame
   bool has_linear_accel_covariance{false};
 
   /*!
+   * \brief True when calibrated acceleration covariance is populated
+   */
+  bool has_accel_covariance{false};
+
+  /*!
    * \brief True when gravity covariance is populated
    */
   bool has_gravity_covariance{false};
@@ -222,5 +298,7 @@ struct ImuSampleFrame
 constexpr std::size_t kShtpHeaderBytes = 4;
 constexpr std::uint8_t kShtpReportBaseTimestamp = 0xFB;
 constexpr std::uint8_t kShtpReportTimestampRebase = 0xFA;
+constexpr std::uint8_t kShtpGetFeatureResponse = 0xFC;
 constexpr std::uint8_t kShtpSetFeatureCommand = 0xFD;
+constexpr std::uint8_t kShtpGetFeatureRequest = 0xFE;
 } // namespace OASIS::IMU::BNO086

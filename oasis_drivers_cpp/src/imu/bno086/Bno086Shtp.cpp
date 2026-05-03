@@ -24,8 +24,12 @@ constexpr std::uint8_t kChannelGyroRotationVector = 5;
 constexpr std::uint8_t kSensorFlushCompleted = 0xEF;
 constexpr std::size_t kBaseTimestampHeaderBytes = 5;
 constexpr std::size_t kSensorCommonHeaderBytes = 4;
+constexpr std::size_t kFeatureResponseBytes = 17;
 constexpr std::size_t kGyroIntegratedRotationVectorPayloadBytes = 14;
 constexpr std::size_t kMaxContinuationBytes = 4096;
+
+// Target report interval for the 100 Hz imu_gravity cadence
+constexpr std::uint32_t kTargetReportIntervalUs = 10'000;
 
 constexpr std::array<ReportId, 5> kConfiguredReports = {
     ReportId::RotationVector,
@@ -59,6 +63,17 @@ bool Bno086Shtp::Configure(const Bno086ShtpConfig& config)
   // Set Feature expects report interval in microseconds
   // This configures BNO086 sensor timing, not ROS publish timing
   m_reportIntervalUs = ToReportIntervalUs(m_config.report_rate_hz);
+  m_featureConfigurations.clear();
+  m_featureResponses.clear();
+
+  for (const ReportId reportId : kConfiguredReports)
+  {
+    FeatureConfiguration featureConfiguration;
+    featureConfiguration.report_id = reportId;
+    featureConfiguration.requested_interval_us =
+        RequestedIntervalForReport(reportId, m_reportIntervalUs);
+    m_featureConfigurations.emplace_back(featureConfiguration);
+  }
 
   m_configRequested = true;
   m_startupStatus.set_feature_sent = false;
@@ -96,15 +111,34 @@ const Bno086Shtp::StartupStatus& Bno086Shtp::GetStartupStatus() const
   return m_startupStatus;
 }
 
+const std::vector<FeatureConfiguration>& Bno086Shtp::GetFeatureConfigurations() const
+{
+  return m_featureConfigurations;
+}
+
+std::vector<FeatureResponse> Bno086Shtp::TakeFeatureResponses()
+{
+  std::vector<FeatureResponse> featureResponses;
+  featureResponses.swap(m_featureResponses);
+  return featureResponses;
+}
+
 bool Bno086Shtp::SendSetFeatureCommands()
 {
   if (!m_configRequested)
     return true;
 
   bool allOk = true;
-  for (const ReportId reportId : kConfiguredReports)
+  for (const FeatureConfiguration& featureConfiguration : m_featureConfigurations)
   {
-    if (!ConfigureFeature(reportId, m_reportIntervalUs))
+    if (!ConfigureFeature(featureConfiguration.report_id,
+                          featureConfiguration.requested_interval_us))
+    {
+      allOk = false;
+      continue;
+    }
+
+    if (!RequestFeature(featureConfiguration.report_id))
       allOk = false;
   }
 
@@ -123,6 +157,15 @@ bool Bno086Shtp::ConfigureFeature(ReportId report_id, std::uint32_t interval_us)
   payload[6] = static_cast<std::uint8_t>((interval_us >> 8) & 0xFF);
   payload[7] = static_cast<std::uint8_t>((interval_us >> 16) & 0xFF);
   payload[8] = static_cast<std::uint8_t>((interval_us >> 24) & 0xFF);
+
+  return m_transport.WritePacket(kChannelControl, payload);
+}
+
+bool Bno086Shtp::RequestFeature(ReportId report_id)
+{
+  std::vector<std::uint8_t> payload(2, 0);
+  payload[0] = kShtpGetFeatureRequest;
+  payload[1] = static_cast<std::uint8_t>(report_id);
 
   return m_transport.WritePacket(kChannelControl, payload);
 }
@@ -187,6 +230,9 @@ bool Bno086Shtp::DecodePacket(const Bno086ShtpPacket& packet, std::optional<Sens
 
   if (normalizedPacket.channel < kChannelReports)
   {
+    if (normalizedPacket.channel == kChannelControl)
+      DecodeControlPayload(normalizedPacket.payload);
+
     MaybeSendDeferredConfiguration();
     return true;
   }
@@ -219,6 +265,41 @@ bool Bno086Shtp::DecodePacket(const Bno086ShtpPacket& packet, std::optional<Sens
 
   MaybeSendDeferredConfiguration();
   return true;
+}
+
+void Bno086Shtp::DecodeControlPayload(const std::vector<std::uint8_t>& payload)
+{
+  std::size_t offset = 0;
+
+  while (offset < payload.size())
+  {
+    const std::uint8_t reportCode = payload[offset];
+
+    if (reportCode != kShtpGetFeatureResponse)
+    {
+      ++offset;
+      continue;
+    }
+
+    if (offset + kFeatureResponseBytes > payload.size())
+      return;
+
+    const std::uint8_t featureReportId = payload[offset + 1];
+    if (IsConfiguredReport(featureReportId))
+    {
+      FeatureResponse featureResponse;
+      featureResponse.report_id = static_cast<ReportId>(featureReportId);
+      featureResponse.feature_flags = payload[offset + 2];
+      featureResponse.change_sensitivity = static_cast<std::uint16_t>(payload[offset + 3]) |
+                                           static_cast<std::uint16_t>(payload[offset + 4] << 8);
+      featureResponse.report_interval_us = ReadU32(payload, offset + 5);
+      featureResponse.batch_interval_us = ReadU32(payload, offset + 9);
+      featureResponse.sensor_specific_config = ReadU32(payload, offset + 13);
+      m_featureResponses.emplace_back(featureResponse);
+    }
+
+    offset += kFeatureResponseBytes;
+  }
 }
 
 Bno086Shtp::SensorDecodeResult Bno086Shtp::DecodeSensorPayload(
@@ -492,6 +573,12 @@ std::uint32_t Bno086Shtp::ToReportIntervalUs(double rate_hz)
   return static_cast<std::uint32_t>(std::round(1'000'000.0 / clampedHz));
 }
 
+std::uint32_t Bno086Shtp::RequestedIntervalForReport(ReportId /*report_id*/,
+                                                     std::uint32_t configured_interval_us)
+{
+  return std::min(configured_interval_us, kTargetReportIntervalUs);
+}
+
 std::uint32_t Bno086Shtp::ReadU32(const std::vector<std::uint8_t>& data, std::size_t offset)
 {
   if (offset + 3 >= data.size())
@@ -529,6 +616,12 @@ bool Bno086Shtp::IsTrackedReport(std::uint8_t report_id)
   }
 
   return false;
+}
+
+bool Bno086Shtp::IsConfiguredReport(std::uint8_t report_id)
+{
+  return std::find(kConfiguredReports.begin(), kConfiguredReports.end(),
+                   static_cast<ReportId>(report_id)) != kConfiguredReports.end();
 }
 
 std::size_t Bno086Shtp::SensorPayloadBytes(ReportId report_id)
