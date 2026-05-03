@@ -605,7 +605,6 @@ if (ORB_SLAM_OASIS_FOUND)
     src/ros/RosUtils.cpp
     src/slam/MonocularSlamBase.cpp
     src/slam/MonocularInertialSlam.cpp
-    src/slam/OrbImuSettingsValidator.cpp
   )
   set(MONOCULAR_INERTIAL_SLAM_DEFINITIONS
     ${MONOCULAR_SLAM_DEFINITIONS}
