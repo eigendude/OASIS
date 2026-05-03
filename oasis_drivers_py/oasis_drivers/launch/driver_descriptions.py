@@ -256,6 +256,7 @@ class DriverDescriptions:
         sensor_mode: str,
         jpeg_quality: Optional[int] = None,
         libcamera_params: Optional[dict[str, object]] = None,
+        camera_frame_id: Optional[str] = None,
         rectify: bool = False,
     ) -> None:
         camera_parameters: dict[str, Any] = {
@@ -268,6 +269,9 @@ class DriverDescriptions:
 
         if jpeg_quality is not None:
             camera_parameters["jpeg_quality"] = jpeg_quality
+
+        if camera_frame_id is not None:
+            camera_parameters["frame_id"] = camera_frame_id
 
         # Merge explicit libcamera params from top-level; explicit wins
         if libcamera_params:

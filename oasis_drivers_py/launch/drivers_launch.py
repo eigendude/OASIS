@@ -184,6 +184,7 @@ def generate_launch_description() -> LaunchDescription:
             SENSOR_MODE,
             # Lower JPEG quality to cap Wi-Fi bandwidth from the Falcon
             jpeg_quality=60,
+            camera_frame_id="camera_link",
             libcamera_params=LIBCAMERA_PARAMS,
         )
         Drivers.add_bno086_imu(
