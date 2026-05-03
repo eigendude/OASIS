@@ -9,6 +9,9 @@ File.version: "1.0"
 
 Camera.type: "KannalaBrandt8"
 
+# ORB-SLAM3 uses the camera_link frame with optical camera axes:
+# +x right in image, +y down in image, +z forward through lens
+
 # Camera resolution
 Camera.width: 1920
 Camera.height: 1080
@@ -71,3 +74,45 @@ Viewer.ViewpointF: 420.0
 
 # System.LoadAtlasFromFile: "./atlas"
 # System.SaveAtlasToFile: "./atlas"
+
+#--------------------------------------------------------------------------------------------
+# IMU Parameters (REQUIRED for Monocular-Inertial)
+#--------------------------------------------------------------------------------------------
+
+# Accepted imu_gravity stream rate in hertz
+IMU.Frequency: 100
+
+# Continuous-time accelerometer noise density in m/s^2/sqrt(Hz)
+# Derived as sigma_sample / sqrt(sample_rate_hz)
+IMU.NoiseAcc: 0.014
+
+# Continuous-time gyro noise density in rad/s/sqrt(Hz)
+# Derived as sigma_sample / sqrt(sample_rate_hz)
+IMU.NoiseGyro: 0.006
+
+# Accelerometer bias random walk in m/s^3/sqrt(Hz)
+IMU.AccWalk: 0.03
+
+# Gyro bias random walk in rad/s^2/sqrt(Hz)
+IMU.GyroWalk: 0.001
+
+# Gravity magnitude in m/s^2
+IMU.g: 9.80665
+
+# Transform base_link <- camera_link for ORB-SLAM3 IMU.T_b_c1
+#
+# The body/IMU frame is base_link because monocular-inertial SLAM consumes
+# /oasis/falcon/ahrs/imu_gravity. The camera_link frame keeps optical camera
+# axes: +x right in image, +y down in image, +z forward through lens.
+#
+# This provisional zero-translation transform maps camera_link +z to
+# base_link +x, camera_link +x to base_link -y, and camera_link +y to
+# base_link -z.
+IMU.T_b_c1: !!opencv-matrix
+  rows: 4
+  cols: 4
+  dt: f
+  data: [ 0.0,  0.0,  1.0,  0.0,
+         -1.0,  0.0,  0.0,  0.0,
+          0.0, -1.0,  0.0,  0.0,
+          0.0,  0.0,  0.0,  1.0 ]
