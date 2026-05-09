@@ -19,7 +19,7 @@ set -o nounset
 #
 
 # Define the ROS distro to use
-ROS2_DISTRO=kilted
+ROS2_DISTRO=lyrical
 export ROS2_DISTRO
 
 #

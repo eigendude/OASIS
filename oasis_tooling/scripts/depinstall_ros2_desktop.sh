@@ -37,6 +37,12 @@ elif [ "${ROS2_DISTRO}" = "kilted" ]; then
     rti-connext-dds-7.3.0 \
     urdfdom_headers \
   "
+elif [ "${ROS2_DISTRO}" = "lyrical" ]; then
+  ROSDEP_IGNORE_KEYS=" \
+    fastcdr \
+    rti-connext-dds-7.7.0 \
+    urdfdom_headers \
+  "
 fi
 
 # Testing/development ignorables
