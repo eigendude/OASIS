@@ -667,7 +667,10 @@ class PerceptionDescriptions:
                                 else f"{system_id}/{RESOLUTION_PREFIX}image_raw"
                             ),
                         ),
-                        (f"{system_id}_imu", f"{system_id}/imu"),
+                        (
+                            f"{system_id}_imu",
+                            f"{system_id}/ahrs/imu_gravity",
+                        ),
                         (
                             f"{system_id}_slam_point_cloud",
                             f"{system_id}/{RESOLUTION_PREFIX}slam_point_cloud",
