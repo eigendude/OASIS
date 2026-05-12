@@ -6,7 +6,7 @@
  *  See the file LICENSE.txt for more information.
  */
 
-#include "imu/cal/GyroBiasEstimator.h"
+#include "imu/mpu6050/cal/GyroBiasEstimator.h"
 
 #include <algorithm>
 

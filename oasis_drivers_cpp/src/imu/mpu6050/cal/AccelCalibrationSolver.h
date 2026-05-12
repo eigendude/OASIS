@@ -9,7 +9,7 @@
 #pragma once
 
 #include "imu/ImuTypes.h"
-#include "imu/io/ImuCalibrationFile.h"
+#include "imu/mpu6050/Mpu6050ImuCalibrationTypes.h"
 
 #include <array>
 #include <cstddef>

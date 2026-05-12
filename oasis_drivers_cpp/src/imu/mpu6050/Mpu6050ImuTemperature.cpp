@@ -6,7 +6,7 @@
  *  See the file LICENSE.txt for more information.
  */
 
-#include "imu/ImuTemperature.h"
+#include "imu/mpu6050/Mpu6050ImuTemperature.h"
 
 #include <algorithm>
 #include <cmath>
@@ -29,7 +29,7 @@ constexpr double kMinDtS = 1e-4;
 constexpr double kMaxDtS = 1.0;
 } // namespace
 
-ImuTemperature::Sample ImuTemperature::ProcessRaw(int16_t tempRaw, double dt_s)
+Mpu6050ImuTemperature::Sample Mpu6050ImuTemperature::ProcessRaw(int16_t tempRaw, double dt_s)
 {
   Sample sample{};
 
@@ -102,13 +102,13 @@ ImuTemperature::Sample ImuTemperature::ProcessRaw(int16_t tempRaw, double dt_s)
   return sample;
 }
 
-void ImuTemperature::SetMinStdDev(double min_stddev_c)
+void Mpu6050ImuTemperature::SetMinStdDev(double min_stddev_c)
 {
   const double clamped_stddev = std::max(min_stddev_c, 0.0);
   m_minVarianceC2 = clamped_stddev * clamped_stddev;
 }
 
-void ImuTemperature::Reset()
+void Mpu6050ImuTemperature::Reset()
 {
   m_raw.fill(0);
   m_varCounts2Instant.fill(0.0);

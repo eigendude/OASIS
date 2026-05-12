@@ -37,7 +37,7 @@ namespace OASIS::IMU
  *
  * Note: during warmup/cooldown, nonlinearity can increase the estimate.
  */
-class ImuTemperature
+class Mpu6050ImuTemperature
 {
 public:
   struct Sample
@@ -50,7 +50,7 @@ public:
     double varianceC2{0.0};
   };
 
-  ImuTemperature() = default;
+  Mpu6050ImuTemperature() = default;
 
   // Processes a raw temperature sample and returns the converted temperature
   // with variance.

@@ -6,7 +6,7 @@
  *  See the file LICENSE.txt for more information.
  */
 
-#include "imu/cal/AccelCalibrationSolver.h"
+#include "imu/mpu6050/cal/AccelCalibrationSolver.h"
 
 #include <cmath>
 #include <iomanip>

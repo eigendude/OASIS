@@ -8,7 +8,7 @@
 
 #include "Mpu6050Node.h"
 
-#include "imu/Mpu6050ImuUtils.h"
+#include "imu/mpu6050/Mpu6050ImuUtils.h"
 
 #include <chrono>
 #include <cmath>
@@ -135,7 +135,7 @@ bool Mpu6050Node::Initialize()
   const double accelScale = IMU::Mpu6050ImuUtils::AccelScaleFromRange(accelRange, m_gravity);
   const double gyroScale = IMU::Mpu6050ImuUtils::GyroScaleFromRange(gyroRange);
 
-  IMU::ImuProcessor::Config cfg;
+  IMU::Mpu6050ImuProcessor::Config cfg;
   cfg.gravity_mps2 = m_gravity;
   cfg.accel_scale_mps2_per_count = accelScale;
   cfg.gyro_scale_rads_per_count = gyroScale;
@@ -147,8 +147,9 @@ bool Mpu6050Node::Initialize()
   RCLCPP_INFO(get_logger(), "MPU6050 full-scale ranges set (accel=%u, gyro=%u)",
               static_cast<unsigned>(accelRange), static_cast<unsigned>(gyroRange));
 
-  const char* modeName =
-      m_imuProcessor.GetMode() == IMU::ImuProcessor::Mode::Driver ? "Driver" : "Calibration";
+  const auto mode = m_imuProcessor.GetMode();
+  const bool driverMode = mode == IMU::Mpu6050ImuProcessor::Mode::Driver;
+  const char* modeName = driverMode ? "Driver" : "Calibration";
   RCLCPP_INFO(get_logger(), "IMU processor mode: %s", modeName);
 
   // Initialize publishers
@@ -207,7 +208,7 @@ void Mpu6050Node::PublishImu()
   const int16_t tempRaw = m_mpu6050->getTemperature();
 
   // Process sample
-  const IMU::ImuProcessor::Output out =
+  const IMU::Mpu6050ImuProcessor::Output out =
       m_imuProcessor.Update(ax, ay, az, gx, gy, gz, tempRaw, dt_s, timestamp_s);
 
   // Create header for published messages
@@ -315,7 +316,7 @@ void Mpu6050Node::PublishImu()
   const bool cooldown_ok =
       !m_hasLastCalibrationSaveTime || (now - m_lastCalibrationSaveTime).seconds() >= 1.0;
 
-  if (out.mode == IMU::ImuProcessor::Mode::Calibration && has_save_record &&
+  if (out.mode == IMU::Mpu6050ImuProcessor::Mode::Calibration && has_save_record &&
       save_record.calib.valid && cooldown_ok)
   {
     const bool improved =

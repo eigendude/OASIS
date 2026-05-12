@@ -6,7 +6,7 @@
  *  See the file LICENSE.txt for more information.
  */
 
-#include "imu/io/ImuCalibrationFile.h"
+#include "imu/mpu6050/io/ImuCalibrationFile.h"
 
 #include <fstream>
 #include <stdexcept>

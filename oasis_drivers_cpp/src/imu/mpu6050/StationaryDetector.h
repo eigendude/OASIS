@@ -9,6 +9,7 @@
 #pragma once
 
 #include "imu/ImuTypes.h"
+#include "imu/mpu6050/Mpu6050ImuSample.h"
 
 #include <cstddef>
 #include <vector>

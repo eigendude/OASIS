@@ -171,13 +171,13 @@ install(
 
 add_executable(mpu6050_imu_driver
   src/cli/mpu6050_imu_driver.cpp
-  src/imu/cal/AccelCalibrationSolver.cpp
-  src/imu/cal/GyroBiasEstimator.cpp
-  src/imu/ImuProcessor.cpp
-  src/imu/ImuTemperature.cpp
-  src/imu/io/ImuCalibrationFile.cpp
-  src/imu/Mpu6050ImuUtils.cpp
-  src/imu/StationaryDetector.cpp
+  src/imu/mpu6050/cal/AccelCalibrationSolver.cpp
+  src/imu/mpu6050/cal/GyroBiasEstimator.cpp
+  src/imu/mpu6050/io/ImuCalibrationFile.cpp
+  src/imu/mpu6050/Mpu6050ImuProcessor.cpp
+  src/imu/mpu6050/Mpu6050ImuTemperature.cpp
+  src/imu/mpu6050/Mpu6050ImuUtils.cpp
+  src/imu/mpu6050/StationaryDetector.cpp
   src/nodes/Mpu6050Node.cpp
 )
 

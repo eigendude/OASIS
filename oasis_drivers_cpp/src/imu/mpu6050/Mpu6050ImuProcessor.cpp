@@ -6,7 +6,7 @@
  *  See the file LICENSE.txt for more information.
  */
 
-#include "imu/ImuProcessor.h"
+#include "imu/mpu6050/Mpu6050ImuProcessor.h"
 
 #include <algorithm>
 #include <cmath>
@@ -164,17 +164,17 @@ double ClampDt(double dt_s)
 }
 } // namespace
 
-double ImuProcessor::Dot(const Vec3& a, const Vec3& b)
+double Mpu6050ImuProcessor::Dot(const Vec3& a, const Vec3& b)
 {
   return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 }
 
-double ImuProcessor::Norm(const Vec3& a)
+double Mpu6050ImuProcessor::Norm(const Vec3& a)
 {
   return std::sqrt(Dot(a, a));
 }
 
-Vec3 ImuProcessor::NormalizeOrZero(const Vec3& v)
+Vec3 Mpu6050ImuProcessor::NormalizeOrZero(const Vec3& v)
 {
   const double norm = Norm(v);
   if (norm <= 0.0)
@@ -184,7 +184,7 @@ Vec3 ImuProcessor::NormalizeOrZero(const Vec3& v)
   return {v[0] * inv, v[1] * inv, v[2] * inv};
 }
 
-std::size_t ImuProcessor::FindOrCreatePoseCluster(const Vec3& dir_unit, bool& created)
+std::size_t Mpu6050ImuProcessor::FindOrCreatePoseCluster(const Vec3& dir_unit, bool& created)
 {
   created = false;
 
@@ -223,7 +223,7 @@ std::size_t ImuProcessor::FindOrCreatePoseCluster(const Vec3& dir_unit, bool& cr
   return m_poseClusters.size() - 1;
 }
 
-void ImuProcessor::UpdatePoseCluster(std::size_t idx, const Vec3& mean_accel_mps2)
+void Mpu6050ImuProcessor::UpdatePoseCluster(std::size_t idx, const Vec3& mean_accel_mps2)
 {
   if (idx >= m_poseClusters.size())
     return;
@@ -237,7 +237,7 @@ void ImuProcessor::UpdatePoseCluster(std::size_t idx, const Vec3& mean_accel_mps
   cluster.dir_unit = NormalizeOrZero(cluster.mean_accel_mps2);
 }
 
-bool ImuProcessor::HasSufficientCoverage() const
+bool Mpu6050ImuProcessor::HasSufficientCoverage() const
 {
   if (m_poseClusters.size() < m_cfg.min_pose_clusters)
     return false;
@@ -265,7 +265,7 @@ bool ImuProcessor::HasSufficientCoverage() const
   return true;
 }
 
-bool ImuProcessor::IsCalibrationImproved(const AccelCalibrationSolver::Result& result) const
+bool Mpu6050ImuProcessor::IsCalibrationImproved(const AccelCalibrationSolver::Result& result) const
 {
   if (!m_hasBestAccelFit)
     return true;
@@ -282,14 +282,14 @@ bool ImuProcessor::IsCalibrationImproved(const AccelCalibrationSolver::Result& r
   return false;
 }
 
-void ImuProcessor::RunningStats::Reset()
+void Mpu6050ImuProcessor::RunningStats::Reset()
 {
   count = 0;
   mean = 0.0;
   m2 = 0.0;
 }
 
-void ImuProcessor::RunningStats::Update(double value)
+void Mpu6050ImuProcessor::RunningStats::Update(double value)
 {
   ++count;
 
@@ -300,7 +300,7 @@ void ImuProcessor::RunningStats::Update(double value)
   m2 += delta * delta2;
 }
 
-double ImuProcessor::RunningStats::Variance() const
+double Mpu6050ImuProcessor::RunningStats::Variance() const
 {
   if (count < 2)
     return 0.0;
@@ -309,20 +309,21 @@ double ImuProcessor::RunningStats::Variance() const
   return m2 / denom;
 }
 
-void ImuProcessor::EwmaCovariance3::Configure(double tau_s_in, double min_variance_floor_counts2)
+void Mpu6050ImuProcessor::EwmaCovariance3::Configure(double tau_s_in,
+                                                     double min_variance_floor_counts2)
 {
   tau_s = std::max(tau_s_in, kMinTauS);
   min_variance_floor = std::max(min_variance_floor_counts2, 0.0);
 }
 
-void ImuProcessor::EwmaCovariance3::Reset()
+void Mpu6050ImuProcessor::EwmaCovariance3::Reset()
 {
   initialized = false;
   mean = {0.0, 0.0, 0.0};
   cov = ZeroMat3();
 }
 
-void ImuProcessor::EwmaCovariance3::Update(const Vec3& sample, double dt_s)
+void Mpu6050ImuProcessor::EwmaCovariance3::Update(const Vec3& sample, double dt_s)
 {
   // Units: seconds
   // Meaning: clamp to keep EWMA dynamics bounded across irregular timing
@@ -381,12 +382,12 @@ void ImuProcessor::EwmaCovariance3::Update(const Vec3& sample, double dt_s)
   mean = mean_new;
 }
 
-Mat3 ImuProcessor::EwmaCovariance3::Covariance() const
+Mat3 Mpu6050ImuProcessor::EwmaCovariance3::Covariance() const
 {
   return cov;
 }
 
-bool ImuProcessor::Initialize(const Config& cfg)
+bool Mpu6050ImuProcessor::Initialize(const Config& cfg)
 {
   if (cfg.gravity_mps2 <= 0.0)
     return false;
@@ -436,15 +437,15 @@ bool ImuProcessor::Initialize(const Config& cfg)
   return true;
 }
 
-ImuProcessor::Output ImuProcessor::Update(int16_t ax,
-                                          int16_t ay,
-                                          int16_t az,
-                                          int16_t gx,
-                                          int16_t gy,
-                                          int16_t gz,
-                                          int16_t tempRaw,
-                                          double dt_s,
-                                          double stamp_s)
+Mpu6050ImuProcessor::Output Mpu6050ImuProcessor::Update(int16_t ax,
+                                                        int16_t ay,
+                                                        int16_t az,
+                                                        int16_t gx,
+                                                        int16_t gy,
+                                                        int16_t gz,
+                                                        int16_t tempRaw,
+                                                        double dt_s,
+                                                        double stamp_s)
 {
   Output out{};
   out.mode = m_mode;
@@ -459,7 +460,7 @@ ImuProcessor::Output ImuProcessor::Update(int16_t ax,
   const Vec3 accel_mps2 = ScaleCounts(accel_counts, m_cfg.accel_scale_mps2_per_count);
   const Vec3 gyro_rads = ScaleCounts(gyro_counts, m_cfg.gyro_scale_rads_per_count);
 
-  const ImuTemperature::Sample temp_sample = m_temperature.ProcessRaw(tempRaw, dt_clamped);
+  const Mpu6050ImuTemperature::Sample temp_sample = m_temperature.ProcessRaw(tempRaw, dt_clamped);
 
   ImuSample raw_sample{};
   raw_sample.accel_mps2 = accel_mps2;
@@ -615,22 +616,22 @@ ImuProcessor::Output ImuProcessor::Update(int16_t ax,
   return out;
 }
 
-ImuProcessor::Mode ImuProcessor::GetMode() const
+Mpu6050ImuProcessor::Mode Mpu6050ImuProcessor::GetMode() const
 {
   return m_mode;
 }
 
-bool ImuProcessor::HasCalibrationRecord() const
+bool Mpu6050ImuProcessor::HasCalibrationRecord() const
 {
   return m_hasCalibrationRecord;
 }
 
-const ImuCalibrationRecord& ImuProcessor::GetCalibrationRecord() const
+const ImuCalibrationRecord& Mpu6050ImuProcessor::GetCalibrationRecord() const
 {
   return m_calibrationRecord;
 }
 
-void ImuProcessor::Reset()
+void Mpu6050ImuProcessor::Reset()
 {
   m_temperature.Reset();
 
@@ -645,7 +646,7 @@ void ImuProcessor::Reset()
   m_calibrationUpdated = false;
 }
 
-void ImuProcessor::ResetCalibrationState()
+void Mpu6050ImuProcessor::ResetCalibrationState()
 {
   m_stationaryDetector.Reset();
   m_solver.Reset();

@@ -8,9 +8,8 @@
 
 #pragma once
 
-#include "imu/ImuProcessor.h"
-#include "imu/ImuTemperature.h"
-#include "imu/io/ImuCalibrationFile.h"
+#include "imu/mpu6050/Mpu6050ImuProcessor.h"
+#include "imu/mpu6050/io/ImuCalibrationFile.h"
 
 #include <chrono>
 #include <cstdint>
@@ -79,8 +78,7 @@ private:
 
   // IMU parameters
   std::unique_ptr<MPU6050> m_mpu6050;
-  IMU::ImuProcessor m_imuProcessor;
-  IMU::ImuTemperature m_imuTemperature;
+  IMU::Mpu6050ImuProcessor m_imuProcessor;
   std::optional<rclcpp::Time> m_lastSampleTime;
 };
 

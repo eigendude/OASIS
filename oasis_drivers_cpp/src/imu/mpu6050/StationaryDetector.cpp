@@ -6,7 +6,7 @@
  *  See the file LICENSE.txt for more information.
  */
 
-#include "imu/StationaryDetector.h"
+#include "imu/mpu6050/StationaryDetector.h"
 
 #include <algorithm>
 #include <cmath>

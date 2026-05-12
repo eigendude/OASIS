@@ -8,12 +8,13 @@
 
 #pragma once
 
-#include "imu/ImuTemperature.h"
 #include "imu/ImuTypes.h"
-#include "imu/StationaryDetector.h"
-#include "imu/cal/AccelCalibrationSolver.h"
-#include "imu/cal/GyroBiasEstimator.h"
-#include "imu/io/ImuCalibrationFile.h"
+#include "imu/mpu6050/Mpu6050ImuSample.h"
+#include "imu/mpu6050/Mpu6050ImuTemperature.h"
+#include "imu/mpu6050/StationaryDetector.h"
+#include "imu/mpu6050/cal/AccelCalibrationSolver.h"
+#include "imu/mpu6050/cal/GyroBiasEstimator.h"
+#include "imu/mpu6050/io/ImuCalibrationFile.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -22,7 +23,7 @@
 
 namespace OASIS::IMU
 {
-class ImuProcessor
+class Mpu6050ImuProcessor
 {
 public:
   enum class Mode
@@ -241,7 +242,7 @@ private:
 
   ImuCalibrationRecord m_calibrationRecord{};
 
-  ImuTemperature m_temperature;
+  Mpu6050ImuTemperature m_temperature;
   StationaryDetector m_stationaryDetector;
   AccelCalibrationSolver m_solver;
   GyroBiasEstimator m_gyroBiasEstimator;

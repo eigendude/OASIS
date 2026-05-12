@@ -6,7 +6,7 @@
  *  See the file LICENSE.txt for more information.
  */
 
-#include "imu/Mpu6050ImuUtils.h"
+#include "imu/mpu6050/Mpu6050ImuUtils.h"
 
 #include <numbers>
 
