@@ -27,6 +27,9 @@ sudo usermod -a -G video ${USER}
 # Grant the user permission to open UPS devices
 sudo usermod -a -G plugdev ${USER}
 
+# Create the I2C access group if it does not already exist
+sudo groupadd -f i2c
+
 # Grant the user permission to work with I2C devices
 sudo usermod -a -G i2c ${USER}
 
