@@ -74,7 +74,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     # Needed for ROS message generation
     APT_PACKAGES+=(
       python3-lark
-      python3-numpy
+      # python3-numpy # Installed by pip
     )
   fi
 

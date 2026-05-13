@@ -39,7 +39,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     # Python support is needed for the OpenCV Python bindings that are built during
     # the compilation process
     python3-dev
-    python3-numpy
+    # python3-numpy # Provided by pip
     python3-pip
     python3-setuptools
     python3-wheel
