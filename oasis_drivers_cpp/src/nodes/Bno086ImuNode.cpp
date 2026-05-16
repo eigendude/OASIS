@@ -144,6 +144,8 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   declare_parameter("imu_gravity_max_orientation_age_ms",
                     DEFAULT_IMU_GRAVITY_MAX_ORIENTATION_AGE_MS);
   declare_parameter("imu_gravity_max_gyro_age_ms", DEFAULT_IMU_GRAVITY_MAX_GYRO_AGE_MS);
+  declare_parameter("bno086_packet_read_timeout_ms", PACKET_READ_TIMEOUT_MS);
+  declare_parameter("bno086_max_packets_per_interrupt", MAX_PACKETS_PER_INTERRUPT);
 
   declare_parameter("frame_id", std::string(DEFAULT_FRAME_ID));
 
@@ -156,6 +158,10 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
       std::max(get_parameter("imu_gravity_max_orientation_age_ms").as_double(), 0.0);
   m_imuGravityMaxGyroAgeMs =
       std::max(get_parameter("imu_gravity_max_gyro_age_ms").as_double(), 0.0);
+  m_packetReadTimeoutMs =
+      std::max(0, static_cast<int>(get_parameter("bno086_packet_read_timeout_ms").as_int()));
+  m_maxPacketsPerInterrupt =
+      std::max(1, static_cast<int>(get_parameter("bno086_max_packets_per_interrupt").as_int()));
   m_reportIntervalUs = std::max<std::uint32_t>(
       1U, static_cast<std::uint32_t>(std::round(1'000'000.0 / reportRateHz)));
 
@@ -210,6 +216,10 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
               "BNO086 imu_gravity uses calibrated acceleration cadence with "
               "orientation_max_age_ms=%.1f gyro_max_age_ms=%.1f",
               m_imuGravityMaxOrientationAgeMs, m_imuGravityMaxGyroAgeMs);
+  RCLCPP_INFO(get_logger(),
+              "BNO086 packet drain config: packet_read_timeout_ms=%d "
+              "max_packets_per_interrupt=%d",
+              m_packetReadTimeoutMs, m_maxPacketsPerInterrupt);
 }
 
 bool Bno086ImuNode::Initialize()
@@ -291,7 +301,19 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
     const std::chrono::steady_clock::time_point& interrupt_steady_at,
     const rclcpp::Time& interrupt_ros_at)
 {
-  for (int i = 0; i < MAX_PACKETS_PER_INTERRUPT && m_running.load(); ++i)
+  ++m_interruptDrainDiagnostics.interrupt_received_count;
+  ++m_interruptDrainDiagnostics.drain_cycles_started;
+  m_interruptDrainDiagnostics.latest_interrupt_to_last_packet_ms = 0.0;
+
+  std::uint64_t packetsThisDrain = 0;
+  std::uint64_t sensorEventsThisDrain = 0;
+  bool exitedTimeout = false;
+  bool exitedTransportError = false;
+  bool exitedIntDeasserted = false;
+  bool exitedMaxPackets = false;
+  bool recordedFirstPoll = false;
+
+  for (int i = 0; i < m_maxPacketsPerInterrupt && m_running.load(); ++i)
   {
     const auto packetNowSteady = std::chrono::steady_clock::now();
     const auto packetDeltaNs =
@@ -299,24 +321,59 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
             .count();
     const rclcpp::Time packetRosAt = interrupt_ros_at + rclcpp::Duration(0, packetDeltaNs);
 
+    if (!recordedFirstPoll)
+    {
+      const double interruptToFirstPollMs = static_cast<double>(packetDeltaNs) / 1.0e6;
+      m_interruptDrainDiagnostics.latest_interrupt_to_first_poll_ms = interruptToFirstPollMs;
+      m_interruptDrainDiagnostics.max_interrupt_to_first_poll_ms = std::max(
+          m_interruptDrainDiagnostics.max_interrupt_to_first_poll_ms, interruptToFirstPollMs);
+
+      if (interruptToFirstPollMs > 10.0)
+      {
+        ++m_interruptDrainDiagnostics.interrupt_response_over_10ms;
+        RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), IMU_GRAVITY_DIAGNOSTICS_LOG_MS,
+            "BNO086 interrupt response exceeded 10 ms; delayed H_INTN servicing may cause "
+            "BNO08X retries or processing starvation: interrupt_to_first_poll_ms=%.3f",
+            interruptToFirstPollMs);
+      }
+
+      recordedFirstPoll = true;
+    }
+
     std::vector<TimestampedSensorEvent> events;
     const Bno086Shtp::PollStatus pollStatus =
-        m_shtp->Poll(events, PACKET_READ_TIMEOUT_MS, packetRosAt.nanoseconds());
+        m_shtp->Poll(events, m_packetReadTimeoutMs, packetRosAt.nanoseconds());
 
     if (pollStatus == Bno086Shtp::PollStatus::Timeout)
+    {
+      exitedTimeout = true;
       break;
+    }
 
     if (pollStatus == Bno086Shtp::PollStatus::TransportError)
     {
+      exitedTransportError = true;
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
                            "BNO086 transport error while draining interrupt data");
       break;
     }
 
+    ++packetsThisDrain;
+    const auto packetHandledSteady = std::chrono::steady_clock::now();
+    const auto handledDeltaNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                    packetHandledSteady - interrupt_steady_at)
+                                    .count();
+    const double interruptToLastPacketMs = static_cast<double>(handledDeltaNs) / 1.0e6;
+    m_interruptDrainDiagnostics.latest_interrupt_to_last_packet_ms = interruptToLastPacketMs;
+    m_interruptDrainDiagnostics.max_interrupt_to_last_packet_ms = std::max(
+        m_interruptDrainDiagnostics.max_interrupt_to_last_packet_ms, interruptToLastPacketMs);
+
     MaybeLogFeatureResponses();
 
     if (pollStatus == Bno086Shtp::PollStatus::SensorEvent)
     {
+      sensorEventsThisDrain += events.size();
       for (const TimestampedSensorEvent& timestamped : events)
       {
         const rclcpp::Time rawEventStamp(timestamped.stamp_ns, RCL_ROS_TIME);
@@ -328,8 +385,55 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
     }
 
     if (!m_interruptGpio.IsAssertedLow() && pollStatus == Bno086Shtp::PollStatus::PacketHandled)
+    {
+      exitedIntDeasserted = true;
       break;
+    }
+
+    if (i == m_maxPacketsPerInterrupt - 1)
+      exitedMaxPackets = true;
   }
+
+  const auto drainDoneSteady = std::chrono::steady_clock::now();
+  const double drainCycleMs =
+      static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(drainDoneSteady -
+                                                                               interrupt_steady_at)
+                              .count()) /
+      1.0e6;
+
+  if (drainCycleMs > 1.0)
+    ++m_interruptDrainDiagnostics.drain_cycles_over_1ms;
+  if (drainCycleMs > 5.0)
+    ++m_interruptDrainDiagnostics.drain_cycles_over_5ms;
+  if (drainCycleMs > 10.0)
+    ++m_interruptDrainDiagnostics.drain_cycles_over_10ms;
+  if (drainCycleMs > 20.0)
+    ++m_interruptDrainDiagnostics.drain_cycles_over_20ms;
+
+  ++m_interruptDrainDiagnostics.drain_cycles_completed;
+  m_interruptDrainDiagnostics.packets_per_drain_latest = packetsThisDrain;
+  m_interruptDrainDiagnostics.packets_per_drain_total += packetsThisDrain;
+  m_interruptDrainDiagnostics.packets_per_drain_max =
+      std::max(m_interruptDrainDiagnostics.packets_per_drain_max, packetsThisDrain);
+  m_interruptDrainDiagnostics.sensor_events_per_drain_latest = sensorEventsThisDrain;
+  m_interruptDrainDiagnostics.sensor_events_per_drain_max =
+      std::max(m_interruptDrainDiagnostics.sensor_events_per_drain_max, sensorEventsThisDrain);
+
+  if (exitedTimeout)
+    ++m_interruptDrainDiagnostics.drain_exited_timeout;
+  if (exitedTransportError)
+    ++m_interruptDrainDiagnostics.drain_exited_transport_error;
+  if (exitedIntDeasserted)
+    ++m_interruptDrainDiagnostics.drain_exited_int_deasserted;
+  if (exitedMaxPackets)
+    ++m_interruptDrainDiagnostics.drain_exited_max_packets;
+  if (sensorEventsThisDrain == 0)
+    ++m_interruptDrainDiagnostics.drain_exited_no_events;
+
+  const bool hintnAssertedAtExit = m_interruptGpio.IsAssertedLow();
+  m_interruptDrainDiagnostics.latest_hintn_asserted_at_exit = hintnAssertedAtExit;
+  if (hintnAssertedAtExit)
+    ++m_interruptDrainDiagnostics.count_hintn_still_asserted_at_exit;
 }
 
 void Bno086ImuNode::MaybePublishOnLinearAcceleration(const SensorEvent& event)
@@ -720,6 +824,11 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
   const std::size_t gravityIndex = ReportIndex(ReportId::Gravity);
   const ReportSequenceDiagnostics& accelSequenceDiagnostics =
       shtpDiagnostics.report_sequence[accelIndex];
+  const double packetsPerDrainMean =
+      m_interruptDrainDiagnostics.drain_cycles_completed > 0
+          ? static_cast<double>(m_interruptDrainDiagnostics.packets_per_drain_total) /
+                static_cast<double>(m_interruptDrainDiagnostics.drain_cycles_completed)
+          : 0.0;
 
   if (shtpDiagnostics.continuation_packets_reset > m_lastLoggedShtpContinuationResetCount)
   {
@@ -776,6 +885,18 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
       "shtp_packet_sequence_gaps_channel3=%llu "
       "shtp_packet_sequence_gap_max_channel3=%u "
       "shtp_packet_duplicate_sequences_channel3=%llu "
+      "interrupt_received_count=%llu int_to_first_poll_ms=%.3f "
+      "max_int_to_first_poll_ms=%.3f int_to_last_packet_ms=%.3f "
+      "max_int_to_last_packet_ms=%.3f interrupt_response_over_10ms=%llu "
+      "drain_cycles_started=%llu drain_cycles_completed=%llu "
+      "packets_per_drain_latest=%llu packets_per_drain_max=%llu "
+      "packets_per_drain_mean=%.2f sensor_events_per_drain_latest=%llu "
+      "sensor_events_per_drain_max=%llu drain_exit_timeout=%llu "
+      "drain_exit_int_deasserted=%llu drain_exit_max_packets=%llu "
+      "drain_exit_transport_error=%llu drain_exit_no_events=%llu "
+      "hintn_asserted_at_exit=%s hintn_still_asserted_at_exit_count=%llu "
+      "drain_cycles_over_1ms=%llu drain_cycles_over_5ms=%llu "
+      "drain_cycles_over_10ms=%llu drain_cycles_over_20ms=%llu "
       "timestamp_repaired_nonmonotonic_accel=%llu true_duplicate_accel_stamp=%llu "
       "accel_sequence_gap_count=%llu accel_sequence_gap_max=%llu "
       "latest_accel_raw_delta_ms=%.3f latest_accel_normalized_delta_ms=%.3f "
@@ -832,6 +953,31 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
       static_cast<unsigned long long>(shtpDiagnostics.packet_sequence_gaps_by_channel[3]),
       static_cast<unsigned>(shtpDiagnostics.packet_sequence_gap_max_by_channel[3]),
       static_cast<unsigned long long>(shtpDiagnostics.packet_duplicate_sequences_by_channel[3]),
+      static_cast<unsigned long long>(m_interruptDrainDiagnostics.interrupt_received_count),
+      m_interruptDrainDiagnostics.latest_interrupt_to_first_poll_ms,
+      m_interruptDrainDiagnostics.max_interrupt_to_first_poll_ms,
+      m_interruptDrainDiagnostics.latest_interrupt_to_last_packet_ms,
+      m_interruptDrainDiagnostics.max_interrupt_to_last_packet_ms,
+      static_cast<unsigned long long>(m_interruptDrainDiagnostics.interrupt_response_over_10ms),
+      static_cast<unsigned long long>(m_interruptDrainDiagnostics.drain_cycles_started),
+      static_cast<unsigned long long>(m_interruptDrainDiagnostics.drain_cycles_completed),
+      static_cast<unsigned long long>(m_interruptDrainDiagnostics.packets_per_drain_latest),
+      static_cast<unsigned long long>(m_interruptDrainDiagnostics.packets_per_drain_max),
+      packetsPerDrainMean,
+      static_cast<unsigned long long>(m_interruptDrainDiagnostics.sensor_events_per_drain_latest),
+      static_cast<unsigned long long>(m_interruptDrainDiagnostics.sensor_events_per_drain_max),
+      static_cast<unsigned long long>(m_interruptDrainDiagnostics.drain_exited_timeout),
+      static_cast<unsigned long long>(m_interruptDrainDiagnostics.drain_exited_int_deasserted),
+      static_cast<unsigned long long>(m_interruptDrainDiagnostics.drain_exited_max_packets),
+      static_cast<unsigned long long>(m_interruptDrainDiagnostics.drain_exited_transport_error),
+      static_cast<unsigned long long>(m_interruptDrainDiagnostics.drain_exited_no_events),
+      m_interruptDrainDiagnostics.latest_hintn_asserted_at_exit ? "true" : "false",
+      static_cast<unsigned long long>(
+          m_interruptDrainDiagnostics.count_hintn_still_asserted_at_exit),
+      static_cast<unsigned long long>(m_interruptDrainDiagnostics.drain_cycles_over_1ms),
+      static_cast<unsigned long long>(m_interruptDrainDiagnostics.drain_cycles_over_5ms),
+      static_cast<unsigned long long>(m_interruptDrainDiagnostics.drain_cycles_over_10ms),
+      static_cast<unsigned long long>(m_interruptDrainDiagnostics.drain_cycles_over_20ms),
       static_cast<unsigned long long>(
           m_imuGravityDiagnostics.timestamp_repaired_nonmonotonic_accel),
       static_cast<unsigned long long>(m_imuGravityDiagnostics.true_duplicate_accel_stamp),

@@ -111,6 +111,34 @@ private:
     std::chrono::steady_clock::time_point last_log_at{};
   };
 
+  struct InterruptDrainDiagnostics
+  {
+    std::uint64_t interrupt_received_count{0};
+    double latest_interrupt_to_first_poll_ms{0.0};
+    double max_interrupt_to_first_poll_ms{0.0};
+    double latest_interrupt_to_last_packet_ms{0.0};
+    double max_interrupt_to_last_packet_ms{0.0};
+    std::uint64_t drain_cycles_over_1ms{0};
+    std::uint64_t drain_cycles_over_5ms{0};
+    std::uint64_t drain_cycles_over_10ms{0};
+    std::uint64_t drain_cycles_over_20ms{0};
+    std::uint64_t interrupt_response_over_10ms{0};
+    std::uint64_t drain_cycles_started{0};
+    std::uint64_t drain_cycles_completed{0};
+    std::uint64_t packets_per_drain_latest{0};
+    std::uint64_t packets_per_drain_max{0};
+    std::uint64_t packets_per_drain_total{0};
+    std::uint64_t drain_exited_timeout{0};
+    std::uint64_t drain_exited_int_deasserted{0};
+    std::uint64_t drain_exited_max_packets{0};
+    std::uint64_t drain_exited_transport_error{0};
+    std::uint64_t drain_exited_no_events{0};
+    std::uint64_t sensor_events_per_drain_latest{0};
+    std::uint64_t sensor_events_per_drain_max{0};
+    bool latest_hintn_asserted_at_exit{false};
+    std::uint64_t count_hintn_still_asserted_at_exit{0};
+  };
+
   struct OrientationCovarianceDebugState
   {
     std::uint8_t accuracy_bucket{0};
@@ -212,9 +240,12 @@ private:
   std::array<OASIS::IMU::BNO086::ReportTimestampState, 256> m_reportTimestampStates{};
   std::array<std::optional<std::uint32_t>, 256> m_actualFeatureIntervalUs{};
   std::uint32_t m_reportIntervalUs{10'000};
+  int m_packetReadTimeoutMs{2};
+  int m_maxPacketsPerInterrupt{128};
   double m_imuGravityMaxOrientationAgeMs{25.0};
   double m_imuGravityMaxGyroAgeMs{25.0};
   ImuGravityDiagnostics m_imuGravityDiagnostics{};
+  InterruptDrainDiagnostics m_interruptDrainDiagnostics{};
   std::uint64_t m_lastLoggedShtpContinuationResetCount{0};
 
   bool m_loggedCommEstablished{false};
