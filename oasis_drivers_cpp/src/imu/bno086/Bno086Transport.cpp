@@ -34,6 +34,10 @@ Bno086Transport::~Bno086Transport()
   Close();
 }
 
+Bno086Transport::Bno086Transport(int fd) : m_fd(fd)
+{
+}
+
 bool Bno086Transport::Open(const Bno086TransportConfig& config)
 {
   Close();

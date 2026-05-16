@@ -20,9 +20,52 @@ namespace OASIS::IMU::BNO086
 {
 struct Bno086ShtpConfig
 {
-  // Requested internal BNO086 report generation rate in Hz
-  // Converted to Set Feature report interval in microseconds
+  /*!
+   * \brief Fallback BNO086 report generation rate
+   *
+   * Units: Hz, clamped to at least 1.0
+   */
   double report_rate_hz{100.0};
+
+  /*!
+   * \brief Requested Rotation Vector generation rate
+   *
+   * Units: Hz, clamped to at least 1.0
+   */
+  double rotation_vector_rate_hz{100.0};
+
+  /*!
+   * \brief Requested calibrated gyroscope generation rate
+   *
+   * Units: Hz, clamped to at least 1.0
+   */
+  double gyro_rate_hz{100.0};
+
+  /*!
+   * \brief Requested calibrated accelerometer generation rate
+   *
+   * Units: Hz, clamped to at least 1.0
+   */
+  double accelerometer_rate_hz{100.0};
+
+  /*!
+   * \brief Requested linear acceleration generation rate
+   *
+   * Units: Hz, clamped to at least 1.0
+   */
+  double linear_acceleration_rate_hz{50.0};
+
+  /*!
+   * \brief Requested gravity vector generation rate
+   *
+   * Units: Hz, clamped to at least 1.0 when enabled
+   */
+  double gravity_rate_hz{25.0};
+
+  /*!
+   * \brief True when the BNO086 Gravity report should be configured
+   */
+  bool enable_gravity_report{true};
 };
 
 class Bno086Shtp
@@ -87,7 +130,7 @@ private:
 
   static std::uint32_t ToReportIntervalUs(double rate_hz);
   static std::uint32_t RequestedIntervalForReport(ReportId report_id,
-                                                  std::uint32_t configured_interval_us);
+                                                  const Bno086ShtpConfig& config);
   static std::uint32_t ReadU32(const std::vector<std::uint8_t>& data, std::size_t offset);
   static std::int16_t ReadS16(const std::vector<std::uint8_t>& data, std::size_t offset);
   static bool IsTrackedReport(std::uint8_t report_id);
@@ -101,7 +144,6 @@ private:
   StartupStatus m_startupStatus{};
 
   bool m_configRequested{false};
-  std::uint32_t m_reportIntervalUs{10'000};
   std::vector<FeatureConfiguration> m_featureConfigurations;
   std::vector<FeatureResponse> m_featureResponses;
 

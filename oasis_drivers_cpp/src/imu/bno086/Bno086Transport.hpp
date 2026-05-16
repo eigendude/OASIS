@@ -34,15 +34,18 @@ class Bno086Transport
 {
 public:
   Bno086Transport() = default;
-  ~Bno086Transport();
+  virtual ~Bno086Transport();
 
   bool Open(const Bno086TransportConfig& config);
   void Close();
 
   bool IsOpen() const;
 
-  bool WritePacket(std::uint8_t channel, const std::vector<std::uint8_t>& payload);
-  bool ReadPacket(Bno086ShtpPacket& packet, int timeout_ms);
+  virtual bool WritePacket(std::uint8_t channel, const std::vector<std::uint8_t>& payload);
+  virtual bool ReadPacket(Bno086ShtpPacket& packet, int timeout_ms);
+
+protected:
+  explicit Bno086Transport(int fd);
 
 private:
   struct ShtpHeader

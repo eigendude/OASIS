@@ -41,26 +41,26 @@ constexpr const char* DEFAULT_FRAME_ID = "imu_link";
 constexpr int INTERRUPT_WAIT_TIMEOUT_MS = 20;
 constexpr int PACKET_READ_TIMEOUT_MS = 2;
 constexpr int MAX_PACKETS_PER_INTERRUPT = 128;
+constexpr int MAX_DRAIN_DURATION_MS = 10;
+constexpr std::uint32_t REPEATED_NO_PROGRESS_TIMEOUT_WARN_COUNT = 3;
 
 constexpr std::uint32_t MAX_BASE_TIMESTAMP_STEP_US = 1'000'000;
 constexpr std::uint32_t MIN_COHERENT_SAMPLE_SPAN_US = 3'000;
 constexpr std::uint32_t MAX_COHERENT_SAMPLE_SPAN_US = 20'000;
 constexpr double DEFAULT_PREDICTION_HORIZON_SEC = 0.0;
 
+constexpr double DEFAULT_ROTATION_VECTOR_RATE_HZ = 100.0;
+constexpr double DEFAULT_GYRO_RATE_HZ = 100.0;
+constexpr double DEFAULT_ACCELEROMETER_RATE_HZ = 100.0;
+constexpr double DEFAULT_LINEAR_ACCELERATION_RATE_HZ = 50.0;
+constexpr double DEFAULT_GRAVITY_RATE_HZ = 25.0;
+constexpr bool DEFAULT_ENABLE_GRAVITY_REPORT = true;
+
 // Maximum nearby orientation age accepted for imu_gravity composition
 constexpr double DEFAULT_IMU_GRAVITY_MAX_ORIENTATION_AGE_MS = 25.0;
 
 // Maximum nearby gyro age accepted for imu_gravity composition
 constexpr double DEFAULT_IMU_GRAVITY_MAX_GYRO_AGE_MS = 25.0;
-
-// Practical calibrated acceleration target requested from the BNO08X
-constexpr double IMU_GRAVITY_TARGET_RATE_HZ = 100.0;
-
-// Lower bound used to warn when the accepted feature rate misses 100 Hz
-constexpr double MIN_NEAR_TARGET_FEATURE_RATE_HZ = 95.0;
-
-// Upper bound used to warn when the accepted feature rate misses 100 Hz
-constexpr double MAX_NEAR_TARGET_FEATURE_RATE_HZ = 105.0;
 
 // Plausibility bound for gravity-included calibrated acceleration samples
 constexpr double MAX_IMU_GRAVITY_ACCEL_MAGNITUDE_MPS2 = 200.0;
@@ -71,6 +71,7 @@ constexpr double PI_RAD = 3.14159265358979323846;
 constexpr const char* ORIENTATION_REPORT_SOURCE = "rotation_vector";
 constexpr int ORIENTATION_COVARIANCE_LOG_THROTTLE_MS = 5'000;
 constexpr int IMU_GRAVITY_DIAGNOSTICS_LOG_MS = 5'000;
+constexpr double MIN_HEALTHY_RATE_FRACTION = 0.5;
 
 bool IsFiniteArray(const std::array<double, 9>& values)
 {
@@ -90,6 +91,12 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   declare_parameter("i2c_address", static_cast<int>(DEFAULT_I2C_ADDRESS));
   declare_parameter("int_gpio", DEFAULT_INT_GPIO);
   declare_parameter("report_rate_hz", DEFAULT_REPORT_RATE_HZ);
+  declare_parameter("bno086_rotation_vector_rate_hz", DEFAULT_ROTATION_VECTOR_RATE_HZ);
+  declare_parameter("bno086_gyro_rate_hz", DEFAULT_GYRO_RATE_HZ);
+  declare_parameter("bno086_accelerometer_rate_hz", DEFAULT_ACCELEROMETER_RATE_HZ);
+  declare_parameter("bno086_linear_acceleration_rate_hz", DEFAULT_LINEAR_ACCELERATION_RATE_HZ);
+  declare_parameter("bno086_gravity_rate_hz", DEFAULT_GRAVITY_RATE_HZ);
+  declare_parameter("bno086_enable_gravity_report", DEFAULT_ENABLE_GRAVITY_REPORT);
   declare_parameter("prediction_horizon_sec", DEFAULT_PREDICTION_HORIZON_SEC);
   declare_parameter("imu_gravity_max_orientation_age_ms",
                     DEFAULT_IMU_GRAVITY_MAX_ORIENTATION_AGE_MS);
@@ -101,6 +108,14 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   const std::uint8_t i2cAddress = static_cast<std::uint8_t>(get_parameter("i2c_address").as_int());
   const int intGpio = get_parameter("int_gpio").as_int();
   const double reportRateHz = std::max(get_parameter("report_rate_hz").as_double(), 1.0);
+  m_rotationVectorRateHz =
+      std::max(get_parameter("bno086_rotation_vector_rate_hz").as_double(), 1.0);
+  m_gyroRateHz = std::max(get_parameter("bno086_gyro_rate_hz").as_double(), 1.0);
+  m_accelerometerRateHz = std::max(get_parameter("bno086_accelerometer_rate_hz").as_double(), 1.0);
+  m_linearAccelerationRateHz =
+      std::max(get_parameter("bno086_linear_acceleration_rate_hz").as_double(), 1.0);
+  m_gravityRateHz = std::max(get_parameter("bno086_gravity_rate_hz").as_double(), 1.0);
+  m_enableGravityReport = get_parameter("bno086_enable_gravity_report").as_bool();
   m_predictionHorizonSec = std::max(get_parameter("prediction_horizon_sec").as_double(), 0.0);
   m_imuGravityMaxOrientationAgeMs =
       std::max(get_parameter("imu_gravity_max_orientation_age_ms").as_double(), 0.0);
@@ -136,6 +151,12 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
 
   Bno086ShtpConfig shtpConfig;
   shtpConfig.report_rate_hz = reportRateHz;
+  shtpConfig.rotation_vector_rate_hz = m_rotationVectorRateHz;
+  shtpConfig.gyro_rate_hz = m_gyroRateHz;
+  shtpConfig.accelerometer_rate_hz = m_accelerometerRateHz;
+  shtpConfig.linear_acceleration_rate_hz = m_linearAccelerationRateHz;
+  shtpConfig.gravity_rate_hz = m_gravityRateHz;
+  shtpConfig.enable_gravity_report = m_enableGravityReport;
 
   if (!m_shtp->Configure(shtpConfig))
   {
@@ -150,9 +171,16 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   }
 
   RCLCPP_INFO(get_logger(),
-              "BNO086 opened on %s (0x%02X), int_gpio=%d active_low, report_rate_hz=%.1f "
-              "(requested sensor report rate)",
+              "BNO086 opened on %s (0x%02X), int_gpio=%d active_low, "
+              "fallback_report_rate_hz=%.1f",
               i2cDevice.c_str(), static_cast<unsigned>(i2cAddress), intGpio, reportRateHz);
+  RCLCPP_INFO(get_logger(),
+              "BNO086 static report rates: rotation_vector=%.1f gyro=%.1f "
+              "accelerometer=%.1f linear_acceleration=%.1f gravity=%.1f "
+              "enable_gravity_report=%s",
+              m_rotationVectorRateHz, m_gyroRateHz, m_accelerometerRateHz,
+              m_linearAccelerationRateHz, m_gravityRateHz,
+              m_enableGravityReport ? "true" : "false");
   RCLCPP_INFO(get_logger(), "ROS publication is interrupt-driven from GPIO packet drains");
   RCLCPP_INFO(get_logger(), "Predicted orientation output uses %s with prediction_horizon_sec=%.4f",
               m_predictionSource.c_str(), m_predictionHorizonSec);
@@ -241,13 +269,47 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
     const std::chrono::steady_clock::time_point& interrupt_steady_at,
     const rclcpp::Time& interrupt_ros_at)
 {
+  int packetsHandled = 0;
+  int eventsHandled = 0;
+
   for (int i = 0; i < MAX_PACKETS_PER_INTERRUPT && m_running.load(); ++i)
   {
+    const auto drainElapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                    std::chrono::steady_clock::now() - interrupt_steady_at)
+                                    .count();
+    if (drainElapsedMs >= MAX_DRAIN_DURATION_MS)
+    {
+      if (IsBno086RateUnhealthy())
+      {
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                             "BNO086 interrupt drain duration budget exceeded while report "
+                             "rates are unhealthy");
+      }
+      break;
+    }
+
     std::optional<SensorEvent> event;
     const Bno086Shtp::PollStatus pollStatus = m_shtp->Poll(event, PACKET_READ_TIMEOUT_MS);
 
     if (pollStatus == Bno086Shtp::PollStatus::Timeout)
+    {
+      if ((packetsHandled > 0 || eventsHandled > 0) || !m_interruptGpio.IsAssertedLow())
+      {
+        m_repeatedNoProgressTimeouts = 0;
+        break;
+      }
+
+      ++m_repeatedNoProgressTimeouts;
+      if (m_repeatedNoProgressTimeouts >= REPEATED_NO_PROGRESS_TIMEOUT_WARN_COUNT)
+      {
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                             "BNO086 interrupt asserted but packet reads repeatedly timed out");
+      }
       break;
+    }
+
+    m_repeatedNoProgressTimeouts = 0;
+    ++packetsHandled;
 
     if (pollStatus == Bno086Shtp::PollStatus::TransportError)
     {
@@ -260,6 +322,7 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
 
     if (pollStatus == Bno086Shtp::PollStatus::SensorEvent && event.has_value())
     {
+      ++eventsHandled;
       const auto sampleNowSteady = std::chrono::steady_clock::now();
       const auto sampleDeltaNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
                                      sampleNowSteady - interrupt_steady_at)
@@ -267,13 +330,41 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
       const rclcpp::Time sampleInterruptRosAt =
           interrupt_ros_at + rclcpp::Duration(0, sampleDeltaNs);
       const rclcpp::Time eventStamp = EstimateEventStamp(*event, sampleInterruptRosAt);
-      ApplyEvent(*event, eventStamp);
+      const auto normalizerIndex = static_cast<std::size_t>(event->report_id);
+      const TimestampNormalizationResult normalizedStamp =
+          m_timestampNormalizers[normalizerIndex].Normalize(TimestampSample{
+              event->sequence, eventStamp.nanoseconds(), sampleInterruptRosAt.nanoseconds()});
+
+      if (normalizedStamp.reconstruction_reset)
+        ++m_imuGravityDiagnostics.timestamp_reconstruction_reset_count;
+
+      if (event->report_id == ReportId::Accelerometer)
+      {
+        if (normalizedStamp.repaired_nonmonotonic)
+          ++m_imuGravityDiagnostics.timestamp_repaired_nonmonotonic_accel;
+
+        if (normalizedStamp.sequence_gap)
+          ++m_imuGravityDiagnostics.accel_sequence_gap_count;
+      }
+
+      if (normalizedStamp.duplicate)
+        continue;
+
+      const rclcpp::Time normalizedEventStamp(normalizedStamp.stamp_ns, RCL_ROS_TIME);
+      CountDecodedReport(*event);
+      ApplyEvent(*event, normalizedEventStamp);
       MaybePublishOnLinearAcceleration(*event);
       MaybePublishImuGravityOnAccelerometer(*event);
     }
 
     if (!m_interruptGpio.IsAssertedLow() && pollStatus == Bno086Shtp::PollStatus::PacketHandled)
       break;
+  }
+
+  if (packetsHandled >= MAX_PACKETS_PER_INTERRUPT && m_interruptGpio.IsAssertedLow())
+  {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                         "BNO086 interrupt drain hit packet cap while H_INTN remained asserted");
   }
 }
 
@@ -580,7 +671,7 @@ void Bno086ImuNode::MaybeLogFeatureResponses()
     LogFeatureResponse(featureResponse);
 }
 
-void Bno086ImuNode::LogFeatureResponse(const FeatureResponse& response) const
+void Bno086ImuNode::LogFeatureResponse(const FeatureResponse& response)
 {
   const std::optional<std::uint32_t> requestedIntervalUs =
       RequestedFeatureIntervalUs(response.report_id);
@@ -589,22 +680,9 @@ void Bno086ImuNode::LogFeatureResponse(const FeatureResponse& response) const
                                   ? 1'000'000.0 / static_cast<double>(response.report_interval_us)
                                   : 0.0;
 
-  const bool calibratedAccel = response.report_id == ReportId::Accelerometer;
-  const bool unexpectedCalibratedAccelRate =
-      calibratedAccel && (actualRateHz < MIN_NEAR_TARGET_FEATURE_RATE_HZ ||
-                          actualRateHz > MAX_NEAR_TARGET_FEATURE_RATE_HZ);
-
-  if (unexpectedCalibratedAccelRate)
-  {
-    RCLCPP_WARN(get_logger(),
-                "BNO086 Get Feature Response: report=%s id=0x%02X requested_interval_us=%u "
-                "actual_interval_us=%u actual_rate_hz=%.2f batch_interval_us=%u "
-                "feature_flags=0x%02X sensor_specific_config=0x%08X",
-                ReportName(response.report_id), static_cast<unsigned>(response.report_id),
-                requestedUs, response.report_interval_us, actualRateHz, response.batch_interval_us,
-                static_cast<unsigned>(response.feature_flags), response.sensor_specific_config);
-    return;
-  }
+  const std::optional<std::size_t> reportIndex = DiagnosticReportIndex(response.report_id);
+  if (reportIndex.has_value())
+    m_imuGravityDiagnostics.latest_feature_rate_hz[*reportIndex] = actualRateHz;
 
   RCLCPP_INFO(get_logger(),
               "BNO086 Get Feature Response: report=%s id=0x%02X requested_interval_us=%u "
@@ -636,6 +714,14 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
         static_cast<double>(accelReportDelta) * 1000.0 / static_cast<double>(elapsedMs);
     m_imuGravityDiagnostics.latest_imu_gravity_rate_hz =
         static_cast<double>(imuGravityPublishedDelta) * 1000.0 / static_cast<double>(elapsedMs);
+
+    for (std::size_t i = 0; i < m_imuGravityDiagnostics.latest_decoded_rate_hz.size(); ++i)
+    {
+      const std::uint64_t decodedDelta = m_imuGravityDiagnostics.decoded_reports_received[i] -
+                                         m_imuGravityDiagnostics.last_rate_decoded_reports[i];
+      m_imuGravityDiagnostics.latest_decoded_rate_hz[i] =
+          static_cast<double>(decodedDelta) * 1000.0 / static_cast<double>(elapsedMs);
+    }
   }
 
   RCLCPP_INFO(
@@ -644,9 +730,15 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
       "imu_gravity_published=%llu skipped_missing_orientation=%llu "
       "skipped_missing_gyro=%llu skipped_stale_orientation=%llu "
       "skipped_stale_gyro=%llu skipped_duplicate_stamp=%llu skipped_nonfinite=%llu "
+      "timestamp_repaired_nonmonotonic_accel=%llu accel_sequence_gap_count=%llu "
+      "timestamp_reconstruction_reset_count=%llu "
       "latest_orientation_age_ms=%.2f latest_gyro_age_ms=%.2f "
       "latest_calibrated_accel_rate_hz=%.2f latest_imu_gravity_rate_hz=%.2f "
-      "target_rate_hz=%.1f",
+      "decoded_accel_rate_hz=%.2f decoded_gyro_rate_hz=%.2f "
+      "decoded_rotation_rate_hz=%.2f decoded_linear_rate_hz=%.2f "
+      "decoded_gravity_rate_hz=%.2f feature_accel_rate_hz=%.2f "
+      "feature_gyro_rate_hz=%.2f feature_rotation_rate_hz=%.2f "
+      "feature_linear_rate_hz=%.2f feature_gravity_rate_hz=%.2f",
       static_cast<unsigned long long>(m_imuGravityDiagnostics.calibrated_accel_reports_received),
       static_cast<unsigned long long>(m_imuGravityDiagnostics.imu_gravity_published),
       static_cast<unsigned long long>(
@@ -657,15 +749,31 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
       static_cast<unsigned long long>(m_imuGravityDiagnostics.imu_gravity_skipped_stale_gyro),
       static_cast<unsigned long long>(m_imuGravityDiagnostics.imu_gravity_skipped_duplicate_stamp),
       static_cast<unsigned long long>(m_imuGravityDiagnostics.imu_gravity_skipped_nonfinite),
+      static_cast<unsigned long long>(
+          m_imuGravityDiagnostics.timestamp_repaired_nonmonotonic_accel),
+      static_cast<unsigned long long>(m_imuGravityDiagnostics.accel_sequence_gap_count),
+      static_cast<unsigned long long>(m_imuGravityDiagnostics.timestamp_reconstruction_reset_count),
       m_imuGravityDiagnostics.latest_orientation_age_ms, m_imuGravityDiagnostics.latest_gyro_age_ms,
       m_imuGravityDiagnostics.latest_calibrated_accel_rate_hz,
-      m_imuGravityDiagnostics.latest_imu_gravity_rate_hz, IMU_GRAVITY_TARGET_RATE_HZ);
+      m_imuGravityDiagnostics.latest_imu_gravity_rate_hz,
+      m_imuGravityDiagnostics.latest_decoded_rate_hz[0],
+      m_imuGravityDiagnostics.latest_decoded_rate_hz[1],
+      m_imuGravityDiagnostics.latest_decoded_rate_hz[2],
+      m_imuGravityDiagnostics.latest_decoded_rate_hz[3],
+      m_imuGravityDiagnostics.latest_decoded_rate_hz[4],
+      m_imuGravityDiagnostics.latest_feature_rate_hz[0],
+      m_imuGravityDiagnostics.latest_feature_rate_hz[1],
+      m_imuGravityDiagnostics.latest_feature_rate_hz[2],
+      m_imuGravityDiagnostics.latest_feature_rate_hz[3],
+      m_imuGravityDiagnostics.latest_feature_rate_hz[4]);
 
   m_imuGravityDiagnostics.last_log_at = now;
   m_imuGravityDiagnostics.last_rate_accel_reports =
       m_imuGravityDiagnostics.calibrated_accel_reports_received;
   m_imuGravityDiagnostics.last_rate_imu_gravity_published =
       m_imuGravityDiagnostics.imu_gravity_published;
+  m_imuGravityDiagnostics.last_rate_decoded_reports =
+      m_imuGravityDiagnostics.decoded_reports_received;
 }
 
 bool Bno086ImuNode::IsImuGravitySampleValid(const sensor_msgs::msg::Imu& message,
@@ -746,6 +854,32 @@ std::optional<std::uint32_t> Bno086ImuNode::RequestedFeatureIntervalUs(ReportId 
     return std::nullopt;
 
   return it->requested_interval_us;
+}
+
+bool Bno086ImuNode::IsBno086RateUnhealthy() const
+{
+  if (m_imuGravityDiagnostics.latest_calibrated_accel_rate_hz > 0.0 &&
+      m_imuGravityDiagnostics.latest_calibrated_accel_rate_hz <
+          m_accelerometerRateHz * MIN_HEALTHY_RATE_FRACTION)
+  {
+    return true;
+  }
+
+  if (m_imuGravityDiagnostics.latest_imu_gravity_rate_hz > 0.0 &&
+      m_imuGravityDiagnostics.latest_imu_gravity_rate_hz <
+          m_accelerometerRateHz * MIN_HEALTHY_RATE_FRACTION)
+  {
+    return true;
+  }
+
+  return false;
+}
+
+void Bno086ImuNode::CountDecodedReport(const SensorEvent& event)
+{
+  const std::optional<std::size_t> reportIndex = DiagnosticReportIndex(event.report_id);
+  if (reportIndex.has_value())
+    ++m_imuGravityDiagnostics.decoded_reports_received[*reportIndex];
 }
 
 std::uint32_t Bno086ImuNode::CoreCoherenceToleranceUs() const
@@ -1115,6 +1249,27 @@ void Bno086ImuNode::SetCovariance(std::array<double, 9>& dst, const OASIS::IMU::
   dst[6] = src[2][0];
   dst[7] = src[2][1];
   dst[8] = src[2][2];
+}
+
+std::optional<std::size_t> Bno086ImuNode::DiagnosticReportIndex(ReportId report_id)
+{
+  switch (report_id)
+  {
+    case ReportId::Accelerometer:
+      return 0;
+    case ReportId::GyroscopeCalibrated:
+      return 1;
+    case ReportId::RotationVector:
+      return 2;
+    case ReportId::LinearAcceleration:
+      return 3;
+    case ReportId::Gravity:
+      return 4;
+    default:
+      break;
+  }
+
+  return std::nullopt;
 }
 
 void Bno086ImuNode::MaybeLogOrientationCovariancePolicy()

@@ -13,6 +13,7 @@
 #include "imu/bno086/Bno086OrientationCovariancePolicy.hpp"
 #include "imu/bno086/Bno086Reports.hpp"
 #include "imu/bno086/Bno086Shtp.hpp"
+#include "imu/bno086/Bno086TimestampNormalizer.hpp"
 #include "imu/bno086/Bno086Transport.hpp"
 
 #include <array>
@@ -87,10 +88,17 @@ private:
     std::uint64_t imu_gravity_skipped_stale_gyro{0};
     std::uint64_t imu_gravity_skipped_duplicate_stamp{0};
     std::uint64_t imu_gravity_skipped_nonfinite{0};
+    std::uint64_t timestamp_repaired_nonmonotonic_accel{0};
+    std::uint64_t timestamp_reconstruction_reset_count{0};
+    std::uint64_t accel_sequence_gap_count{0};
     double latest_orientation_age_ms{0.0};
     double latest_gyro_age_ms{0.0};
     double latest_calibrated_accel_rate_hz{0.0};
     double latest_imu_gravity_rate_hz{0.0};
+    std::array<double, 5> latest_decoded_rate_hz{};
+    std::array<double, 5> latest_feature_rate_hz{};
+    std::array<std::uint64_t, 5> decoded_reports_received{};
+    std::array<std::uint64_t, 5> last_rate_decoded_reports{};
     std::uint64_t last_rate_accel_reports{0};
     std::uint64_t last_rate_imu_gravity_published{0};
     std::chrono::steady_clock::time_point last_log_at{};
@@ -129,12 +137,14 @@ private:
   oasis_msgs::msg::ImuVr BuildPredictedVrMessage(const sensor_msgs::msg::Imu& present_imu,
                                                  const sensor_msgs::msg::Imu& predicted_imu) const;
   void MaybeLogFeatureResponses();
-  void LogFeatureResponse(const OASIS::IMU::BNO086::FeatureResponse& response) const;
+  void LogFeatureResponse(const OASIS::IMU::BNO086::FeatureResponse& response);
   void MaybeLogImuGravityDiagnostics();
   bool IsImuGravitySampleValid(const sensor_msgs::msg::Imu& message,
                                std::string& invalid_reason) const;
   std::optional<std::uint32_t> RequestedFeatureIntervalUs(
       OASIS::IMU::BNO086::ReportId report_id) const;
+  bool IsBno086RateUnhealthy() const;
+  void CountDecodedReport(const OASIS::IMU::BNO086::SensorEvent& event);
 
   static std::array<double, 9> PredictedCovarianceFromPresent(
       const std::array<double, 9>& present_orientation_covariance,
@@ -158,6 +168,7 @@ private:
                                                   const OASIS::IMU::Vec3& gyro_rads,
                                                   double prediction_horizon_sec);
   static void SetCovariance(std::array<double, 9>& dst, const OASIS::IMU::Mat3& src);
+  static std::optional<std::size_t> DiagnosticReportIndex(OASIS::IMU::BNO086::ReportId report_id);
   void MaybeLogOrientationCovariancePolicy();
 
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr m_imuPublisher;
@@ -185,11 +196,19 @@ private:
 
   std::optional<std::uint32_t> m_lastBaseTimestampUs;
   std::optional<rclcpp::Time> m_lastBaseRosStamp;
+  std::array<OASIS::IMU::BNO086::Bno086TimestampNormalizer, 256> m_timestampNormalizers{};
   std::optional<CoreFrameSignature> m_lastPublishedCoreSignature;
   std::optional<int64_t> m_lastPublishedImuGravityAccelStampNs;
   std::uint32_t m_reportIntervalUs{10'000};
+  double m_rotationVectorRateHz{100.0};
+  double m_gyroRateHz{100.0};
+  double m_accelerometerRateHz{100.0};
+  double m_linearAccelerationRateHz{50.0};
+  double m_gravityRateHz{25.0};
+  bool m_enableGravityReport{true};
   double m_imuGravityMaxOrientationAgeMs{25.0};
   double m_imuGravityMaxGyroAgeMs{25.0};
+  std::uint32_t m_repeatedNoProgressTimeouts{0};
   ImuGravityDiagnostics m_imuGravityDiagnostics{};
 
   bool m_loggedCommEstablished{false};
