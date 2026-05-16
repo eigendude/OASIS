@@ -15,6 +15,7 @@
 #include <cstdio>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <oasis_msgs/msg/imu_vr.hpp>
@@ -41,8 +42,11 @@ constexpr const char* IMU_GRAVITY_TOPIC = "imu_gravity";
 constexpr const char* DEFAULT_FRAME_ID = "imu_link";
 
 constexpr int INTERRUPT_WAIT_TIMEOUT_MS = 20;
-constexpr int PACKET_READ_TIMEOUT_MS = 2;
+constexpr int PACKET_READ_TIMEOUT_MS = 5;
 constexpr int MAX_PACKETS_PER_INTERRUPT = 128;
+constexpr int TIMEOUT_RETRIES_WHILE_INTERRUPT_ASSERTED = 3;
+constexpr int TIMEOUT_RETRY_SLEEP_US = 100;
+constexpr std::uint64_t STUCK_INTERRUPT_RECOVERY_CANDIDATE_THRESHOLD = 5;
 
 constexpr std::uint32_t MIN_COHERENT_SAMPLE_SPAN_US = 3'000;
 constexpr std::uint32_t MAX_COHERENT_SAMPLE_SPAN_US = 20'000;
@@ -146,6 +150,9 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   declare_parameter("imu_gravity_max_gyro_age_ms", DEFAULT_IMU_GRAVITY_MAX_GYRO_AGE_MS);
   declare_parameter("bno086_packet_read_timeout_ms", PACKET_READ_TIMEOUT_MS);
   declare_parameter("bno086_max_packets_per_interrupt", MAX_PACKETS_PER_INTERRUPT);
+  declare_parameter("bno086_timeout_retries_while_interrupt_asserted",
+                    TIMEOUT_RETRIES_WHILE_INTERRUPT_ASSERTED);
+  declare_parameter("bno086_timeout_retry_sleep_us", TIMEOUT_RETRY_SLEEP_US);
 
   declare_parameter("frame_id", std::string(DEFAULT_FRAME_ID));
 
@@ -162,6 +169,11 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
       std::max(0, static_cast<int>(get_parameter("bno086_packet_read_timeout_ms").as_int()));
   m_maxPacketsPerInterrupt =
       std::max(1, static_cast<int>(get_parameter("bno086_max_packets_per_interrupt").as_int()));
+  m_timeoutRetriesWhileInterruptAsserted = std::max(
+      0,
+      static_cast<int>(get_parameter("bno086_timeout_retries_while_interrupt_asserted").as_int()));
+  m_timeoutRetrySleepUs =
+      std::max(0, static_cast<int>(get_parameter("bno086_timeout_retry_sleep_us").as_int()));
   m_reportIntervalUs = std::max<std::uint32_t>(
       1U, static_cast<std::uint32_t>(std::round(1'000'000.0 / reportRateHz)));
 
@@ -218,8 +230,10 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
               m_imuGravityMaxOrientationAgeMs, m_imuGravityMaxGyroAgeMs);
   RCLCPP_INFO(get_logger(),
               "BNO086 packet drain config: packet_read_timeout_ms=%d "
-              "max_packets_per_interrupt=%d",
-              m_packetReadTimeoutMs, m_maxPacketsPerInterrupt);
+              "max_packets_per_interrupt=%d timeout_retries_while_interrupt_asserted=%d "
+              "timeout_retry_sleep_us=%d",
+              m_packetReadTimeoutMs, m_maxPacketsPerInterrupt,
+              m_timeoutRetriesWhileInterruptAsserted, m_timeoutRetrySleepUs);
 }
 
 bool Bno086ImuNode::Initialize()
@@ -309,9 +323,9 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
   std::uint64_t sensorEventsThisDrain = 0;
   bool exitedTimeout = false;
   bool exitedTransportError = false;
-  bool exitedIntDeasserted = false;
   bool exitedMaxPackets = false;
   bool recordedFirstPoll = false;
+  int timeoutRetriesWhileAsserted = 0;
 
   for (int i = 0; i < m_maxPacketsPerInterrupt && m_running.load(); ++i)
   {
@@ -347,7 +361,22 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
 
     if (pollStatus == Bno086Shtp::PollStatus::Timeout)
     {
-      exitedTimeout = true;
+      const bool hintnAsserted = m_interruptGpio.IsAssertedLow();
+      const TimeoutRetryDecision retryDecision = HandleTimeoutWhileDraining(
+          m_interruptDrainDiagnostics, hintnAsserted, timeoutRetriesWhileAsserted,
+          m_timeoutRetriesWhileInterruptAsserted);
+
+      if (retryDecision.retry)
+      {
+        ++timeoutRetriesWhileAsserted;
+        if (m_timeoutRetrySleepUs > 0)
+          std::this_thread::sleep_for(std::chrono::microseconds(m_timeoutRetrySleepUs));
+
+        --i;
+        continue;
+      }
+
+      exitedTimeout = retryDecision.exit_timeout;
       break;
     }
 
@@ -385,14 +414,14 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
     }
 
     if (!m_interruptGpio.IsAssertedLow() && pollStatus == Bno086Shtp::PollStatus::PacketHandled)
-    {
-      exitedIntDeasserted = true;
       break;
-    }
 
     if (i == m_maxPacketsPerInterrupt - 1)
       exitedMaxPackets = true;
   }
+
+  m_interruptDrainDiagnostics.latest_timeout_retries_while_hintn_asserted =
+      static_cast<std::uint64_t>(timeoutRetriesWhileAsserted);
 
   const auto drainDoneSteady = std::chrono::steady_clock::now();
   const double drainCycleMs =
@@ -419,21 +448,33 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
   m_interruptDrainDiagnostics.sensor_events_per_drain_max =
       std::max(m_interruptDrainDiagnostics.sensor_events_per_drain_max, sensorEventsThisDrain);
 
-  if (exitedTimeout)
-    ++m_interruptDrainDiagnostics.drain_exited_timeout;
   if (exitedTransportError)
     ++m_interruptDrainDiagnostics.drain_exited_transport_error;
-  if (exitedIntDeasserted)
-    ++m_interruptDrainDiagnostics.drain_exited_int_deasserted;
   if (exitedMaxPackets)
     ++m_interruptDrainDiagnostics.drain_exited_max_packets;
   if (sensorEventsThisDrain == 0)
     ++m_interruptDrainDiagnostics.drain_exited_no_events;
 
   const bool hintnAssertedAtExit = m_interruptGpio.IsAssertedLow();
-  m_interruptDrainDiagnostics.latest_hintn_asserted_at_exit = hintnAssertedAtExit;
-  if (hintnAssertedAtExit)
-    ++m_interruptDrainDiagnostics.count_hintn_still_asserted_at_exit;
+  if (!hintnAssertedAtExit)
+    ++m_interruptDrainDiagnostics.drain_exited_int_deasserted;
+
+  RecordDrainExitHintnState(m_interruptDrainDiagnostics, hintnAssertedAtExit,
+                            STUCK_INTERRUPT_RECOVERY_CANDIDATE_THRESHOLD);
+
+  if (hintnAssertedAtExit && (exitedTimeout || exitedMaxPackets))
+  {
+    const char* exitReason = exitedMaxPackets ? "max_packets" : "timeout";
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), IMU_GRAVITY_DIAGNOSTICS_LOG_MS,
+                         "BNO086 drain exited while H_INTN remained asserted: reason=%s "
+                         "packets_this_drain=%llu sensor_events_this_drain=%llu "
+                         "interrupt_to_last_packet_ms=%.3f packet_read_timeout_ms=%d "
+                         "timeout_retries_used=%d",
+                         exitReason, static_cast<unsigned long long>(packetsThisDrain),
+                         static_cast<unsigned long long>(sensorEventsThisDrain),
+                         m_interruptDrainDiagnostics.latest_interrupt_to_last_packet_ms,
+                         m_packetReadTimeoutMs, timeoutRetriesWhileAsserted);
+  }
 }
 
 void Bno086ImuNode::MaybePublishOnLinearAcceleration(const SensorEvent& event)
@@ -892,9 +933,16 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
       "packets_per_drain_latest=%llu packets_per_drain_max=%llu "
       "packets_per_drain_mean=%.2f sensor_events_per_drain_latest=%llu "
       "sensor_events_per_drain_max=%llu drain_exit_timeout=%llu "
+      "drain_exit_timeout_hintn_deasserted=%llu "
+      "drain_exit_timeout_hintn_asserted=%llu latest_timeout_hintn_asserted=%s "
+      "timeout_retries_while_hintn_asserted=%llu "
+      "latest_timeout_retries_while_hintn_asserted=%llu "
       "drain_exit_int_deasserted=%llu drain_exit_max_packets=%llu "
       "drain_exit_transport_error=%llu drain_exit_no_events=%llu "
       "hintn_asserted_at_exit=%s hintn_still_asserted_at_exit_count=%llu "
+      "consecutive_hintn_asserted_drain_exits=%llu "
+      "max_consecutive_hintn_asserted_drain_exits=%llu "
+      "stuck_interrupt_recovery_candidate_count=%llu "
       "drain_cycles_over_1ms=%llu drain_cycles_over_5ms=%llu "
       "drain_cycles_over_10ms=%llu drain_cycles_over_20ms=%llu "
       "timestamp_repaired_nonmonotonic_accel=%llu true_duplicate_accel_stamp=%llu "
@@ -967,6 +1015,15 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
       static_cast<unsigned long long>(m_interruptDrainDiagnostics.sensor_events_per_drain_latest),
       static_cast<unsigned long long>(m_interruptDrainDiagnostics.sensor_events_per_drain_max),
       static_cast<unsigned long long>(m_interruptDrainDiagnostics.drain_exited_timeout),
+      static_cast<unsigned long long>(
+          m_interruptDrainDiagnostics.drain_exited_timeout_hintn_deasserted),
+      static_cast<unsigned long long>(
+          m_interruptDrainDiagnostics.drain_exited_timeout_hintn_asserted),
+      m_interruptDrainDiagnostics.latest_timeout_hintn_asserted ? "true" : "false",
+      static_cast<unsigned long long>(
+          m_interruptDrainDiagnostics.timeout_retries_while_hintn_asserted),
+      static_cast<unsigned long long>(
+          m_interruptDrainDiagnostics.latest_timeout_retries_while_hintn_asserted),
       static_cast<unsigned long long>(m_interruptDrainDiagnostics.drain_exited_int_deasserted),
       static_cast<unsigned long long>(m_interruptDrainDiagnostics.drain_exited_max_packets),
       static_cast<unsigned long long>(m_interruptDrainDiagnostics.drain_exited_transport_error),
@@ -974,6 +1031,12 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
       m_interruptDrainDiagnostics.latest_hintn_asserted_at_exit ? "true" : "false",
       static_cast<unsigned long long>(
           m_interruptDrainDiagnostics.count_hintn_still_asserted_at_exit),
+      static_cast<unsigned long long>(
+          m_interruptDrainDiagnostics.consecutive_hintn_asserted_drain_exits),
+      static_cast<unsigned long long>(
+          m_interruptDrainDiagnostics.max_consecutive_hintn_asserted_drain_exits),
+      static_cast<unsigned long long>(
+          m_interruptDrainDiagnostics.stuck_interrupt_recovery_candidate_count),
       static_cast<unsigned long long>(m_interruptDrainDiagnostics.drain_cycles_over_1ms),
       static_cast<unsigned long long>(m_interruptDrainDiagnostics.drain_cycles_over_5ms),
       static_cast<unsigned long long>(m_interruptDrainDiagnostics.drain_cycles_over_10ms),

@@ -284,6 +284,10 @@ if(BUILD_TESTING)
     bno086_shtp
   )
 
+  ament_add_gtest(test_bno086_drain_diagnostics
+    test/imu/bno086/test_Bno086DrainDiagnostics.cpp
+  )
+
   ament_lint_auto_find_test_dependencies()
 endif()
 
