@@ -333,6 +333,7 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
   std::uint64_t packetsThisDrain = 0;
   std::uint64_t sensorEventsThisDrain = 0;
   bool exitedTimeout = false;
+  bool exitedTimeoutAfterProgress = false;
   bool exitedTransportError = false;
   bool exitedDurationBudget = false;
   bool exitedMaxPackets = false;
@@ -393,9 +394,10 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
     if (pollStatus == Bno086Shtp::PollStatus::Timeout)
     {
       const bool hintnAsserted = m_interruptGpio.IsAssertedLow();
-      const TimeoutRetryDecision retryDecision = HandleTimeoutWhileDraining(
-          m_interruptDrainDiagnostics, hintnAsserted, timeoutRetriesWhileAsserted,
-          m_timeoutRetriesWhileInterruptAsserted);
+      const bool madeProgress = packetsThisDrain > 0 || sensorEventsThisDrain > 0;
+      const TimeoutRetryDecision retryDecision =
+          HandleDrainTimeout(m_interruptDrainDiagnostics, hintnAsserted, madeProgress,
+                             timeoutRetriesWhileAsserted, m_timeoutRetriesWhileInterruptAsserted);
 
       if (retryDecision.retry)
       {
@@ -407,6 +409,7 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
       }
 
       exitedTimeout = retryDecision.exit_timeout;
+      exitedTimeoutAfterProgress = madeProgress && retryDecision.exit_timeout;
       break;
     }
 
@@ -496,7 +499,8 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
   RecordDrainExitHintnState(m_interruptDrainDiagnostics, hintnAssertedAtExit,
                             STUCK_INTERRUPT_RECOVERY_CANDIDATE_THRESHOLD);
 
-  if (hintnAssertedAtExit && (exitedTimeout || exitedMaxPackets || exitedDurationBudget))
+  if (hintnAssertedAtExit &&
+      ((exitedTimeout && !exitedTimeoutAfterProgress) || exitedMaxPackets || exitedDurationBudget))
   {
     const char* exitReason = "timeout";
     if (exitedDurationBudget)
@@ -977,6 +981,8 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
       "packets_per_drain_latest=%llu packets_per_drain_max=%llu "
       "packets_per_drain_mean=%.2f sensor_events_per_drain_latest=%llu "
       "sensor_events_per_drain_max=%llu drain_exit_timeout=%llu "
+      "drain_exit_timeout_after_progress=%llu "
+      "drain_exit_timeout_no_progress=%llu "
       "max_drain_duration_ms_config=%.1f latest_drain_duration_ms=%.3f "
       "max_drain_duration_ms_observed=%.3f packets_per_ms_latest=%.3f "
       "sensor_events_per_ms_latest=%.3f startup_backlog_drains=%llu "
@@ -1063,6 +1069,9 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
       static_cast<unsigned long long>(m_interruptDrainDiagnostics.sensor_events_per_drain_latest),
       static_cast<unsigned long long>(m_interruptDrainDiagnostics.sensor_events_per_drain_max),
       static_cast<unsigned long long>(m_interruptDrainDiagnostics.drain_exited_timeout),
+      static_cast<unsigned long long>(
+          m_interruptDrainDiagnostics.drain_exited_timeout_after_progress),
+      static_cast<unsigned long long>(m_interruptDrainDiagnostics.drain_exited_timeout_no_progress),
       m_interruptDrainDiagnostics.max_drain_duration_ms_config,
       m_interruptDrainDiagnostics.latest_drain_duration_ms,
       m_interruptDrainDiagnostics.max_drain_duration_ms_observed,

@@ -68,6 +68,12 @@ struct InterruptDrainDiagnostics
   //! Drain exits caused by Poll returning Timeout after retry handling
   std::uint64_t drain_exited_timeout{0};
 
+  //! Timeout exits after at least one packet or sensor event was handled
+  std::uint64_t drain_exited_timeout_after_progress{0};
+
+  //! Timeout exits before any packet or sensor event was handled
+  std::uint64_t drain_exited_timeout_no_progress{0};
+
   //! Timeout exits where H_INTN was deasserted when the timeout was handled
   std::uint64_t drain_exited_timeout_hintn_deasserted{0};
 
@@ -186,6 +192,45 @@ inline void RecordDrainDuration(InterruptDrainDiagnostics& diagnostics,
  *
  * \param diagnostics Drain diagnostics updated in place
  * \param hintn_asserted True when H_INTN is active at timeout handling time
+ * \param made_progress True after the drain handled any packets or events
+ * \param timeout_retries_used Retries already consumed in this drain cycle
+ * \param max_timeout_retries Retry budget for asserted-H_INTN timeouts
+ *
+ * \return A retry/exit decision for the caller's drain loop
+ */
+inline TimeoutRetryDecision HandleDrainTimeout(InterruptDrainDiagnostics& diagnostics,
+                                               bool hintn_asserted,
+                                               bool made_progress,
+                                               int timeout_retries_used,
+                                               int max_timeout_retries)
+{
+  diagnostics.latest_timeout_hintn_asserted = hintn_asserted;
+
+  if (!made_progress && hintn_asserted && timeout_retries_used < max_timeout_retries)
+  {
+    ++diagnostics.timeout_retries_while_hintn_asserted;
+    return TimeoutRetryDecision{true, false};
+  }
+
+  ++diagnostics.drain_exited_timeout;
+  if (made_progress)
+    ++diagnostics.drain_exited_timeout_after_progress;
+  else
+    ++diagnostics.drain_exited_timeout_no_progress;
+
+  if (hintn_asserted)
+    ++diagnostics.drain_exited_timeout_hintn_asserted;
+  else
+    ++diagnostics.drain_exited_timeout_hintn_deasserted;
+
+  return TimeoutRetryDecision{false, true};
+}
+
+/*!
+ * \brief Handle a no-progress packet-read timeout during one drain cycle
+ *
+ * \param diagnostics Drain diagnostics updated in place
+ * \param hintn_asserted True when H_INTN is active at timeout handling time
  * \param timeout_retries_used Retries already consumed in this drain cycle
  * \param max_timeout_retries Retry budget for asserted-H_INTN timeouts
  *
@@ -196,21 +241,8 @@ inline TimeoutRetryDecision HandleTimeoutWhileDraining(InterruptDrainDiagnostics
                                                        int timeout_retries_used,
                                                        int max_timeout_retries)
 {
-  diagnostics.latest_timeout_hintn_asserted = hintn_asserted;
-
-  if (hintn_asserted && timeout_retries_used < max_timeout_retries)
-  {
-    ++diagnostics.timeout_retries_while_hintn_asserted;
-    return TimeoutRetryDecision{true, false};
-  }
-
-  ++diagnostics.drain_exited_timeout;
-  if (hintn_asserted)
-    ++diagnostics.drain_exited_timeout_hintn_asserted;
-  else
-    ++diagnostics.drain_exited_timeout_hintn_deasserted;
-
-  return TimeoutRetryDecision{false, true};
+  return HandleDrainTimeout(diagnostics, hintn_asserted, false, timeout_retries_used,
+                            max_timeout_retries);
 }
 
 /*!

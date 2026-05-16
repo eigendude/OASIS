@@ -23,6 +23,8 @@ TEST(Bno086DrainDiagnostics, timeoutWithHintnDeassertedExitsCleanly)
   EXPECT_FALSE(diagnostics.latest_timeout_hintn_asserted);
   EXPECT_EQ(diagnostics.timeout_retries_while_hintn_asserted, 0U);
   EXPECT_EQ(diagnostics.drain_exited_timeout, 1U);
+  EXPECT_EQ(diagnostics.drain_exited_timeout_after_progress, 0U);
+  EXPECT_EQ(diagnostics.drain_exited_timeout_no_progress, 1U);
   EXPECT_EQ(diagnostics.drain_exited_timeout_hintn_deasserted, 1U);
   EXPECT_EQ(diagnostics.drain_exited_timeout_hintn_asserted, 0U);
 }
@@ -38,6 +40,8 @@ TEST(Bno086DrainDiagnostics, timeoutWithHintnAssertedRetriesWithinBudget)
   EXPECT_TRUE(diagnostics.latest_timeout_hintn_asserted);
   EXPECT_EQ(diagnostics.timeout_retries_while_hintn_asserted, 1U);
   EXPECT_EQ(diagnostics.drain_exited_timeout, 0U);
+  EXPECT_EQ(diagnostics.drain_exited_timeout_after_progress, 0U);
+  EXPECT_EQ(diagnostics.drain_exited_timeout_no_progress, 0U);
   EXPECT_EQ(diagnostics.drain_exited_timeout_hintn_asserted, 0U);
 }
 
@@ -52,6 +56,25 @@ TEST(Bno086DrainDiagnostics, assertedTimeoutAfterRetryBudgetCountsAssertedExit)
   EXPECT_TRUE(diagnostics.latest_timeout_hintn_asserted);
   EXPECT_EQ(diagnostics.timeout_retries_while_hintn_asserted, 0U);
   EXPECT_EQ(diagnostics.drain_exited_timeout, 1U);
+  EXPECT_EQ(diagnostics.drain_exited_timeout_after_progress, 0U);
+  EXPECT_EQ(diagnostics.drain_exited_timeout_no_progress, 1U);
+  EXPECT_EQ(diagnostics.drain_exited_timeout_hintn_deasserted, 0U);
+  EXPECT_EQ(diagnostics.drain_exited_timeout_hintn_asserted, 1U);
+}
+
+TEST(Bno086DrainDiagnostics, timeoutAfterProgressExitsWithoutRetry)
+{
+  InterruptDrainDiagnostics diagnostics;
+
+  const TimeoutRetryDecision decision = HandleDrainTimeout(diagnostics, true, true, 0, 3);
+
+  EXPECT_FALSE(decision.retry);
+  EXPECT_TRUE(decision.exit_timeout);
+  EXPECT_TRUE(diagnostics.latest_timeout_hintn_asserted);
+  EXPECT_EQ(diagnostics.timeout_retries_while_hintn_asserted, 0U);
+  EXPECT_EQ(diagnostics.drain_exited_timeout, 1U);
+  EXPECT_EQ(diagnostics.drain_exited_timeout_after_progress, 1U);
+  EXPECT_EQ(diagnostics.drain_exited_timeout_no_progress, 0U);
   EXPECT_EQ(diagnostics.drain_exited_timeout_hintn_deasserted, 0U);
   EXPECT_EQ(diagnostics.drain_exited_timeout_hintn_asserted, 1U);
 }
