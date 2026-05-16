@@ -16,6 +16,7 @@
 #include "imu/bno086/Bno086Shtp.hpp"
 #include "imu/bno086/Bno086TimestampNormalizer.hpp"
 #include "imu/bno086/Bno086Transport.hpp"
+#include "imu/bno086/Bno086WarningPolicy.hpp"
 
 #include <array>
 #include <atomic>
@@ -114,8 +115,21 @@ private:
     double latest_shtp_gravity_decoded_rate_hz{0.0};
     double latest_transport_full_packet_read_bytes_mean{0.0};
     double latest_shtp_events_per_packet_mean{0.0};
+    std::uint64_t latest_accel_sequence_gap_delta{0};
+    std::uint64_t latest_timestamp_repair_delta{0};
+    std::uint64_t latest_stale_orientation_skip_delta{0};
+    std::uint64_t latest_stale_gyro_skip_delta{0};
+    std::uint64_t drain_exit_warnings_suppressed{0};
+    std::uint64_t long_poll_warnings_suppressed{0};
+    std::uint64_t timestamp_repair_warnings_suppressed{0};
+    std::uint64_t continuation_reset_warnings_suppressed{0};
+    std::uint64_t feature_rate_warnings_suppressed{0};
     std::uint64_t last_rate_accel_reports{0};
     std::uint64_t last_rate_imu_gravity_published{0};
+    std::uint64_t last_rate_accel_sequence_gap_count{0};
+    std::uint64_t last_rate_timestamp_repaired_nonmonotonic_accel{0};
+    std::uint64_t last_rate_stale_orientation_skips{0};
+    std::uint64_t last_rate_stale_gyro_skips{0};
     std::uint64_t last_rate_shtp_accel_decoded{0};
     std::uint64_t last_rate_shtp_gyro_decoded{0};
     std::uint64_t last_rate_shtp_rotation_decoded{0};
@@ -159,8 +173,11 @@ private:
   oasis_msgs::msg::ImuVr BuildPredictedVrMessage(const sensor_msgs::msg::Imu& present_imu,
                                                  const sensor_msgs::msg::Imu& predicted_imu) const;
   void MaybeLogFeatureResponses();
-  void LogFeatureResponse(const OASIS::IMU::BNO086::FeatureResponse& response) const;
+  void LogFeatureResponse(const OASIS::IMU::BNO086::FeatureResponse& response);
   void MaybeLogImuGravityDiagnostics();
+  OASIS::IMU::BNO086::Bno086HealthSnapshot CurrentBno086HealthSnapshot() const;
+  bool IsBno086HealthyForWarningSuppression(
+      const OASIS::IMU::BNO086::Bno086HealthSnapshot& health) const;
   bool IsImuGravitySampleValid(const sensor_msgs::msg::Imu& message,
                                std::string& invalid_reason) const;
   rclcpp::Time NormalizeEventStamp(const OASIS::IMU::BNO086::SensorEvent& event,
@@ -238,11 +255,13 @@ private:
   double m_imuGravityMaxGyroAgeMs{25.0};
   ImuGravityDiagnostics m_imuGravityDiagnostics{};
   OASIS::IMU::BNO086::InterruptDrainDiagnostics m_interruptDrainDiagnostics{};
+  OASIS::IMU::BNO086::Bno086HealthSnapshot m_latestBno086HealthSnapshot{};
   std::uint64_t m_lastLoggedShtpContinuationResetCount{0};
 
   bool m_loggedCommEstablished{false};
   bool m_loggedSetFeature{false};
   bool m_warnedMissingImuFields{false};
+  bool m_loggedStartupChannel0ContinuationReset{false};
   bool m_loggedOrientationCovarianceSource{false};
   OASIS::IMU::BNO086::OrientationCovarianceSource m_lastOrientationCovarianceSource{
       OASIS::IMU::BNO086::OrientationCovarianceSource::AccuracyBucketFallback};

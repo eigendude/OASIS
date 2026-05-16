@@ -69,12 +69,6 @@ constexpr double DEFAULT_IMU_GRAVITY_MAX_GYRO_AGE_MS = 25.0;
 // Practical calibrated acceleration target requested from the BNO08X
 constexpr double IMU_GRAVITY_TARGET_RATE_HZ = 100.0;
 
-// Lower bound used to warn when the accepted feature rate misses 100 Hz
-constexpr double MIN_NEAR_TARGET_FEATURE_RATE_HZ = 95.0;
-
-// Upper bound used to warn when the accepted feature rate misses 100 Hz
-constexpr double MAX_NEAR_TARGET_FEATURE_RATE_HZ = 105.0;
-
 // Plausibility bound for gravity-included calibrated acceleration samples
 constexpr double MAX_IMU_GRAVITY_ACCEL_MAGNITUDE_MPS2 = 200.0;
 
@@ -85,6 +79,9 @@ constexpr const char* ORIENTATION_REPORT_SOURCE = "rotation_vector";
 constexpr int ORIENTATION_COVARIANCE_LOG_THROTTLE_MS = 5'000;
 constexpr int IMU_GRAVITY_DIAGNOSTICS_LOG_MS = 5'000;
 constexpr int ACCEL_TIMESTAMP_REPAIR_LOG_MS = 5'000;
+constexpr std::int64_t TIMESTAMP_REPAIR_WARN_OFFSET_NS = 25'000'000;
+constexpr std::uint64_t TIMESTAMP_REPAIR_WARN_DELTA_PER_WINDOW = 10;
+constexpr std::uint64_t CONTINUATION_RESET_WARN_DELTA_PER_WINDOW = 3;
 
 bool IsFiniteArray(const std::array<double, 9>& values)
 {
@@ -150,6 +147,25 @@ const char* PollStatusName(Bno086Shtp::PollStatus status)
   }
 
   return "unknown";
+}
+
+Bno086PollOutcome PollOutcomeFromStatus(Bno086Shtp::PollStatus status)
+{
+  switch (status)
+  {
+    case Bno086Shtp::PollStatus::Timeout:
+      return Bno086PollOutcome::Timeout;
+    case Bno086Shtp::PollStatus::TransportError:
+      return Bno086PollOutcome::TransportError;
+    case Bno086Shtp::PollStatus::PacketHandled:
+      return Bno086PollOutcome::PacketHandled;
+    case Bno086Shtp::PollStatus::SensorEvent:
+      return Bno086PollOutcome::SensorEvent;
+    default:
+      break;
+  }
+
+  return Bno086PollOutcome::TransportError;
 }
 
 std::string ContinuationPayloadPrefixHex(const ShtpDiagnostics& diagnostics)
@@ -468,15 +484,34 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
         std::max(10.0, static_cast<double>(m_packetReadTimeoutMs) + 5.0);
     if (pollDurationMs > longPollThresholdMs)
     {
-      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), IMU_GRAVITY_DIAGNOSTICS_LOG_MS,
-                           "BNO086 Poll exceeded timeout expectation: poll_duration_ms=%.3f "
-                           "packet_read_timeout_ms=%d poll_timeout_ms=%d poll_status=%s "
-                           "hintn_asserted_after_poll=%s packets_this_drain=%llu "
-                           "sensor_events_this_drain=%llu",
-                           pollDurationMs, m_packetReadTimeoutMs, pollTimeoutMs,
-                           PollStatusName(pollStatus), hintnAssertedAfterPoll ? "true" : "false",
-                           static_cast<unsigned long long>(packetsThisDrain),
-                           static_cast<unsigned long long>(sensorEventsThisDrain));
+      const Bno086PollWarningContext pollWarningContext{
+          CurrentBno086HealthSnapshot(),
+          PollOutcomeFromStatus(pollStatus),
+          pollDurationMs,
+          longPollThresholdMs,
+          50.0,
+      };
+
+      if (ShouldWarnBno086LongPoll(pollWarningContext))
+      {
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), IMU_GRAVITY_DIAGNOSTICS_LOG_MS,
+                             "BNO086 Poll exceeded timeout expectation: poll_duration_ms=%.3f "
+                             "packet_read_timeout_ms=%d poll_timeout_ms=%d poll_status=%s "
+                             "hintn_asserted_after_poll=%s packets_this_drain=%llu "
+                             "sensor_events_this_drain=%llu",
+                             pollDurationMs, m_packetReadTimeoutMs, pollTimeoutMs,
+                             PollStatusName(pollStatus), hintnAssertedAfterPoll ? "true" : "false",
+                             static_cast<unsigned long long>(packetsThisDrain),
+                             static_cast<unsigned long long>(sensorEventsThisDrain));
+      }
+      else
+      {
+        ++m_imuGravityDiagnostics.long_poll_warnings_suppressed;
+        RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), IMU_GRAVITY_DIAGNOSTICS_LOG_MS,
+                              "Suppressed healthy BNO086 long Poll warning: "
+                              "poll_duration_ms=%.3f poll_status=%s",
+                              pollDurationMs, PollStatusName(pollStatus));
+      }
     }
 
     if (pollStatus == Bno086Shtp::PollStatus::Timeout)
@@ -595,20 +630,45 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
     else if (exitedMaxPackets)
       exitReason = "max_packets";
 
-    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), IMU_GRAVITY_DIAGNOSTICS_LOG_MS,
-                         "BNO086 drain exited while H_INTN remained asserted: reason=%s "
-                         "packets_this_drain=%llu sensor_events_this_drain=%llu "
-                         "drain_duration_ms=%.3f packets_per_ms=%.3f "
-                         "interrupt_to_last_packet_ms=%.3f packet_read_timeout_ms=%d "
-                         "max_packets_per_interrupt=%d max_drain_duration_ms=%.1f "
-                         "timeout_retries_used=%d",
-                         exitReason, static_cast<unsigned long long>(packetsThisDrain),
-                         static_cast<unsigned long long>(sensorEventsThisDrain),
-                         m_interruptDrainDiagnostics.latest_drain_duration_ms,
-                         m_interruptDrainDiagnostics.packets_per_ms_latest,
-                         m_interruptDrainDiagnostics.latest_interrupt_to_last_packet_ms,
-                         m_packetReadTimeoutMs, m_maxPacketsPerInterrupt, m_maxDrainDurationMs,
-                         timeoutRetriesWhileAsserted);
+    const Bno086DrainExitWarningContext drainWarningContext{
+        CurrentBno086HealthSnapshot(),
+        startupBacklogDrain,
+        hintnAssertedAtExit,
+        exitedTimeout,
+        exitedTimeoutAfterProgress,
+        exitedTransportError,
+        exitedDurationBudget,
+        exitedMaxPackets,
+        m_interruptDrainDiagnostics.latest_drain_duration_ms,
+        m_maxDrainDurationMs,
+    };
+
+    if (ShouldWarnBno086DrainExit(drainWarningContext))
+    {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), IMU_GRAVITY_DIAGNOSTICS_LOG_MS,
+                           "BNO086 drain exited while H_INTN remained asserted: reason=%s "
+                           "packets_this_drain=%llu sensor_events_this_drain=%llu "
+                           "drain_duration_ms=%.3f packets_per_ms=%.3f "
+                           "interrupt_to_last_packet_ms=%.3f packet_read_timeout_ms=%d "
+                           "max_packets_per_interrupt=%d max_drain_duration_ms=%.1f "
+                           "timeout_retries_used=%d",
+                           exitReason, static_cast<unsigned long long>(packetsThisDrain),
+                           static_cast<unsigned long long>(sensorEventsThisDrain),
+                           m_interruptDrainDiagnostics.latest_drain_duration_ms,
+                           m_interruptDrainDiagnostics.packets_per_ms_latest,
+                           m_interruptDrainDiagnostics.latest_interrupt_to_last_packet_ms,
+                           m_packetReadTimeoutMs, m_maxPacketsPerInterrupt, m_maxDrainDurationMs,
+                           timeoutRetriesWhileAsserted);
+    }
+    else
+    {
+      ++m_imuGravityDiagnostics.drain_exit_warnings_suppressed;
+      RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), IMU_GRAVITY_DIAGNOSTICS_LOG_MS,
+                            "Suppressed healthy BNO086 drain-exit warning: reason=%s "
+                            "packets_this_drain=%llu sensor_events_this_drain=%llu",
+                            exitReason, static_cast<unsigned long long>(packetsThisDrain),
+                            static_cast<unsigned long long>(sensorEventsThisDrain));
+    }
   }
 }
 
@@ -927,21 +987,20 @@ void Bno086ImuNode::MaybeLogFeatureResponses()
   }
 }
 
-void Bno086ImuNode::LogFeatureResponse(const FeatureResponse& response) const
+void Bno086ImuNode::LogFeatureResponse(const FeatureResponse& response)
 {
   const std::optional<std::uint32_t> requestedIntervalUs =
       RequestedFeatureIntervalUs(response.report_id);
   const std::uint32_t requestedUs = requestedIntervalUs.value_or(0U);
+  const double requestedRateHz =
+      requestedUs > 0 ? 1'000'000.0 / static_cast<double>(requestedUs) : 0.0;
   const double actualRateHz = response.report_interval_us > 0
                                   ? 1'000'000.0 / static_cast<double>(response.report_interval_us)
                                   : 0.0;
+  const bool shouldWarnFeatureRate =
+      ShouldWarnBno086FeatureRate(Bno086FeatureRateWarningContext{requestedRateHz, actualRateHz});
 
-  const bool calibratedAccel = response.report_id == ReportId::Accelerometer;
-  const bool unexpectedCalibratedAccelRate =
-      calibratedAccel && (actualRateHz < MIN_NEAR_TARGET_FEATURE_RATE_HZ ||
-                          actualRateHz > MAX_NEAR_TARGET_FEATURE_RATE_HZ);
-
-  if (unexpectedCalibratedAccelRate)
+  if (shouldWarnFeatureRate)
   {
     RCLCPP_WARN(get_logger(),
                 "BNO086 Get Feature Response: report=%s id=0x%02X requested_interval_us=%u "
@@ -952,6 +1011,11 @@ void Bno086ImuNode::LogFeatureResponse(const FeatureResponse& response) const
                 static_cast<unsigned>(response.feature_flags), response.sensor_specific_config);
     return;
   }
+
+  const bool suppressedFeatureRateWarning =
+      requestedRateHz > 0.0 && actualRateHz > (requestedRateHz * 1.2);
+  if (suppressedFeatureRateWarning)
+    ++m_imuGravityDiagnostics.feature_rate_warnings_suppressed;
 
   RCLCPP_INFO(get_logger(),
               "BNO086 Get Feature Response: report=%s id=0x%02X requested_interval_us=%u "
@@ -1009,6 +1073,18 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
     const std::uint64_t imuGravityPublishedDelta =
         m_imuGravityDiagnostics.imu_gravity_published -
         m_imuGravityDiagnostics.last_rate_imu_gravity_published;
+    m_imuGravityDiagnostics.latest_accel_sequence_gap_delta =
+        m_imuGravityDiagnostics.accel_sequence_gap_count -
+        m_imuGravityDiagnostics.last_rate_accel_sequence_gap_count;
+    m_imuGravityDiagnostics.latest_timestamp_repair_delta =
+        m_imuGravityDiagnostics.timestamp_repaired_nonmonotonic_accel -
+        m_imuGravityDiagnostics.last_rate_timestamp_repaired_nonmonotonic_accel;
+    m_imuGravityDiagnostics.latest_stale_orientation_skip_delta =
+        m_imuGravityDiagnostics.imu_gravity_skipped_stale_orientation -
+        m_imuGravityDiagnostics.last_rate_stale_orientation_skips;
+    m_imuGravityDiagnostics.latest_stale_gyro_skip_delta =
+        m_imuGravityDiagnostics.imu_gravity_skipped_stale_gyro -
+        m_imuGravityDiagnostics.last_rate_stale_gyro_skips;
     m_imuGravityDiagnostics.latest_calibrated_accel_rate_hz = rateHz(accelReportDelta);
     m_imuGravityDiagnostics.latest_imu_gravity_rate_hz = rateHz(imuGravityPublishedDelta);
 
@@ -1049,25 +1125,90 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
         shtpPacketDelta > 0
             ? static_cast<double>(shtpEventDelta) / static_cast<double>(shtpPacketDelta)
             : 0.0;
+
+    const double expectedAccelRateHz =
+        m_imuGravityDiagnostics.latest_shtp_accel_decoded_rate_hz > 0.0
+            ? m_imuGravityDiagnostics.latest_shtp_accel_decoded_rate_hz
+            : 1'000'000.0 / static_cast<double>(ExpectedFeatureIntervalUs(ReportId::Accelerometer));
+
+    m_latestBno086HealthSnapshot = Bno086HealthSnapshot{
+        true,
+        expectedAccelRateHz,
+        m_imuGravityDiagnostics.latest_imu_gravity_rate_hz,
+        m_imuGravityDiagnostics.latest_calibrated_accel_rate_hz,
+        m_imuGravityDiagnostics.latest_orientation_age_ms,
+        m_imuGravityDiagnostics.latest_gyro_age_ms,
+        m_imuGravityMaxOrientationAgeMs,
+        m_imuGravityMaxGyroAgeMs,
+        m_imuGravityDiagnostics.latest_accel_sequence_gap_delta,
+        m_imuGravityDiagnostics.latest_timestamp_repair_delta,
+        m_imuGravityDiagnostics.latest_stale_orientation_skip_delta,
+        m_imuGravityDiagnostics.latest_stale_gyro_skip_delta,
+    };
   }
 
   if (shtpDiagnostics.continuation_packets_reset > m_lastLoggedShtpContinuationResetCount)
   {
     const std::string payloadPrefix = ContinuationPayloadPrefixHex(shtpDiagnostics);
-    RCLCPP_WARN(get_logger(),
-                "BNO086 SHTP continuation reset: count=%llu channel=%u accumulated_bytes=%u "
-                "incoming_bytes=%u reason=%s raw_length=0x%04X parsed_length=%u sequence=%u "
-                "active_buffer=%s payload_prefix=\"%s\"",
-                static_cast<unsigned long long>(shtpDiagnostics.continuation_packets_reset),
-                static_cast<unsigned>(shtpDiagnostics.latest_continuation_reset_channel),
-                shtpDiagnostics.latest_continuation_reset_accumulated_bytes,
-                shtpDiagnostics.latest_continuation_reset_incoming_bytes,
-                ContinuationResetReasonName(shtpDiagnostics.latest_continuation_reset_reason),
-                static_cast<unsigned>(shtpDiagnostics.latest_continuation_reset_raw_length),
-                static_cast<unsigned>(shtpDiagnostics.latest_continuation_reset_packet_length),
-                static_cast<unsigned>(shtpDiagnostics.latest_continuation_reset_sequence),
-                shtpDiagnostics.latest_continuation_reset_had_active_buffer ? "true" : "false",
-                payloadPrefix.c_str());
+    const std::uint64_t continuationResetDelta =
+        shtpDiagnostics.continuation_packets_reset - m_lastLoggedShtpContinuationResetCount;
+    const bool startupBacklog =
+        m_interruptDrainDiagnostics.drain_cycles_completed <= STARTUP_BACKLOG_DRAIN_COUNT;
+    bool communicationEstablished = m_loggedCommEstablished;
+    if (m_shtp != nullptr)
+      communicationEstablished = m_shtp->GetStartupStatus().communication_established;
+
+    const Bno086ContinuationResetWarningContext continuationWarningContext{
+        CurrentBno086HealthSnapshot(),
+        shtpDiagnostics.latest_continuation_reset_channel,
+        continuationResetDelta,
+        communicationEstablished,
+        startupBacklog,
+        CONTINUATION_RESET_WARN_DELTA_PER_WINDOW,
+    };
+
+    if (ShouldWarnBno086ContinuationReset(continuationWarningContext))
+    {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), IMU_GRAVITY_DIAGNOSTICS_LOG_MS,
+          "BNO086 SHTP continuation reset: count=%llu channel=%u accumulated_bytes=%u "
+          "incoming_bytes=%u reason=%s raw_length=0x%04X parsed_length=%u sequence=%u "
+          "active_buffer=%s payload_prefix=\"%s\"",
+          static_cast<unsigned long long>(shtpDiagnostics.continuation_packets_reset),
+          static_cast<unsigned>(shtpDiagnostics.latest_continuation_reset_channel),
+          shtpDiagnostics.latest_continuation_reset_accumulated_bytes,
+          shtpDiagnostics.latest_continuation_reset_incoming_bytes,
+          ContinuationResetReasonName(shtpDiagnostics.latest_continuation_reset_reason),
+          static_cast<unsigned>(shtpDiagnostics.latest_continuation_reset_raw_length),
+          static_cast<unsigned>(shtpDiagnostics.latest_continuation_reset_packet_length),
+          static_cast<unsigned>(shtpDiagnostics.latest_continuation_reset_sequence),
+          shtpDiagnostics.latest_continuation_reset_had_active_buffer ? "true" : "false",
+          payloadPrefix.c_str());
+    }
+    else
+    {
+      ++m_imuGravityDiagnostics.continuation_reset_warnings_suppressed;
+      if (shtpDiagnostics.latest_continuation_reset_channel == 0 &&
+          !m_loggedStartupChannel0ContinuationReset)
+      {
+        RCLCPP_INFO(get_logger(),
+                    "BNO086 startup SHTP continuation reset observed on channel 0: "
+                    "reason=%s payload_prefix=\"%s\"",
+                    ContinuationResetReasonName(shtpDiagnostics.latest_continuation_reset_reason),
+                    payloadPrefix.c_str());
+        m_loggedStartupChannel0ContinuationReset = true;
+      }
+      else
+      {
+        RCLCPP_DEBUG_THROTTLE(
+            get_logger(), *get_clock(), IMU_GRAVITY_DIAGNOSTICS_LOG_MS,
+            "Suppressed healthy BNO086 continuation-reset warning: "
+            "count=%llu channel=%u reason=%s",
+            static_cast<unsigned long long>(shtpDiagnostics.continuation_packets_reset),
+            static_cast<unsigned>(shtpDiagnostics.latest_continuation_reset_channel),
+            ContinuationResetReasonName(shtpDiagnostics.latest_continuation_reset_reason));
+      }
+    }
     m_lastLoggedShtpContinuationResetCount = shtpDiagnostics.continuation_packets_reset;
   }
 
@@ -1150,11 +1291,16 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
       "drain_cycles_over_1ms=%llu drain_cycles_over_5ms=%llu "
       "drain_cycles_over_10ms=%llu drain_cycles_over_20ms=%llu "
       "timestamp_repaired_nonmonotonic_accel=%llu true_duplicate_accel_stamp=%llu "
-      "accel_sequence_gap_count=%llu accel_sequence_gap_max=%llu "
+      "accel_sequence_gap_count=%llu accel_sequence_gap_delta=%llu "
+      "accel_sequence_gap_max=%llu timestamp_repair_delta=%llu "
       "latest_accel_raw_delta_ms=%.3f latest_accel_normalized_delta_ms=%.3f "
       "latest_accel_repair_offset_ns=%lld latest_accel_sequence_delta=%u "
       "latest_orientation_age_ms=%.2f latest_gyro_age_ms=%.2f "
       "latest_calibrated_accel_rate_hz=%.2f latest_imu_gravity_rate_hz=%.2f "
+      "drain_exit_warnings_suppressed=%llu long_poll_warnings_suppressed=%llu "
+      "timestamp_repair_warnings_suppressed=%llu "
+      "continuation_reset_warnings_suppressed=%llu "
+      "feature_rate_warnings_suppressed=%llu "
       "target_rate_hz=%.1f",
       static_cast<unsigned long long>(m_imuGravityDiagnostics.calibrated_accel_reports_received),
       static_cast<unsigned long long>(m_imuGravityDiagnostics.imu_gravity_published),
@@ -1291,20 +1437,37 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
           m_imuGravityDiagnostics.timestamp_repaired_nonmonotonic_accel),
       static_cast<unsigned long long>(m_imuGravityDiagnostics.true_duplicate_accel_stamp),
       static_cast<unsigned long long>(m_imuGravityDiagnostics.accel_sequence_gap_count),
+      static_cast<unsigned long long>(m_imuGravityDiagnostics.latest_accel_sequence_gap_delta),
       static_cast<unsigned long long>(m_imuGravityDiagnostics.accel_sequence_gap_max),
+      static_cast<unsigned long long>(m_imuGravityDiagnostics.latest_timestamp_repair_delta),
       m_imuGravityDiagnostics.latest_accel_raw_delta_ms,
       m_imuGravityDiagnostics.latest_accel_normalized_delta_ms,
       static_cast<long long>(m_imuGravityDiagnostics.latest_accel_repair_offset_ns),
       static_cast<unsigned>(m_imuGravityDiagnostics.latest_accel_sequence_delta),
       m_imuGravityDiagnostics.latest_orientation_age_ms, m_imuGravityDiagnostics.latest_gyro_age_ms,
       m_imuGravityDiagnostics.latest_calibrated_accel_rate_hz,
-      m_imuGravityDiagnostics.latest_imu_gravity_rate_hz, IMU_GRAVITY_TARGET_RATE_HZ);
+      m_imuGravityDiagnostics.latest_imu_gravity_rate_hz,
+      static_cast<unsigned long long>(m_imuGravityDiagnostics.drain_exit_warnings_suppressed),
+      static_cast<unsigned long long>(m_imuGravityDiagnostics.long_poll_warnings_suppressed),
+      static_cast<unsigned long long>(m_imuGravityDiagnostics.timestamp_repair_warnings_suppressed),
+      static_cast<unsigned long long>(
+          m_imuGravityDiagnostics.continuation_reset_warnings_suppressed),
+      static_cast<unsigned long long>(m_imuGravityDiagnostics.feature_rate_warnings_suppressed),
+      IMU_GRAVITY_TARGET_RATE_HZ);
 
   m_imuGravityDiagnostics.last_log_at = now;
   m_imuGravityDiagnostics.last_rate_accel_reports =
       m_imuGravityDiagnostics.calibrated_accel_reports_received;
   m_imuGravityDiagnostics.last_rate_imu_gravity_published =
       m_imuGravityDiagnostics.imu_gravity_published;
+  m_imuGravityDiagnostics.last_rate_accel_sequence_gap_count =
+      m_imuGravityDiagnostics.accel_sequence_gap_count;
+  m_imuGravityDiagnostics.last_rate_timestamp_repaired_nonmonotonic_accel =
+      m_imuGravityDiagnostics.timestamp_repaired_nonmonotonic_accel;
+  m_imuGravityDiagnostics.last_rate_stale_orientation_skips =
+      m_imuGravityDiagnostics.imu_gravity_skipped_stale_orientation;
+  m_imuGravityDiagnostics.last_rate_stale_gyro_skips =
+      m_imuGravityDiagnostics.imu_gravity_skipped_stale_gyro;
   m_imuGravityDiagnostics.last_rate_shtp_accel_decoded =
       shtpDiagnostics.decoded_report_counts[accelIndex];
   m_imuGravityDiagnostics.last_rate_shtp_gyro_decoded =
@@ -1322,6 +1485,16 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
   m_imuGravityDiagnostics.last_rate_shtp_packets_read = shtpDiagnostics.packets_read;
   m_imuGravityDiagnostics.last_rate_shtp_sensor_events_decoded =
       shtpDiagnostics.sensor_events_decoded;
+}
+
+Bno086HealthSnapshot Bno086ImuNode::CurrentBno086HealthSnapshot() const
+{
+  return m_latestBno086HealthSnapshot;
+}
+
+bool Bno086ImuNode::IsBno086HealthyForWarningSuppression(const Bno086HealthSnapshot& health) const
+{
+  return OASIS::IMU::BNO086::IsBno086HealthyForWarningSuppression(health);
 }
 
 bool Bno086ImuNode::IsImuGravitySampleValid(const sensor_msgs::msg::Imu& message,
@@ -1431,14 +1604,38 @@ void Bno086ImuNode::UpdateTimestampDiagnostics(const SensorEvent& event,
   if (result.status != TimestampNormalizationStatus::RepairedNonmonotonic)
     return;
 
-  RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), ACCEL_TIMESTAMP_REPAIR_LOG_MS,
-                       "Repaired BNO086 calibrated accel timestamp: seq_delta=%u raw_delta_ms=%.3f "
-                       "repaired_delta_ms=%.6f raw_stamp_ns=%lld repaired_stamp_ns=%lld",
-                       static_cast<unsigned>(result.sequence_delta),
-                       static_cast<double>(result.raw_stamp_delta_ns) / 1.0e6,
-                       static_cast<double>(result.normalized_stamp_delta_ns) / 1.0e6,
-                       static_cast<long long>(raw_stamp.nanoseconds()),
-                       static_cast<long long>(normalized_stamp.nanoseconds()));
+  const Bno086TimestampRepairWarningContext repairWarningContext{
+      m_imuGravityDiagnostics.latest_accel_repair_offset_ns,
+      m_imuGravityDiagnostics.latest_timestamp_repair_delta,
+      m_imuGravityDiagnostics.latest_stale_orientation_skip_delta,
+      m_imuGravityDiagnostics.latest_stale_gyro_skip_delta,
+      TIMESTAMP_REPAIR_WARN_OFFSET_NS,
+      TIMESTAMP_REPAIR_WARN_DELTA_PER_WINDOW,
+  };
+
+  if (ShouldWarnBno086TimestampRepair(repairWarningContext))
+  {
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), ACCEL_TIMESTAMP_REPAIR_LOG_MS,
+        "Repaired BNO086 calibrated accel timestamp: seq_delta=%u raw_delta_ms=%.3f "
+        "repaired_delta_ms=%.6f raw_stamp_ns=%lld repaired_stamp_ns=%lld repair_offset_ns=%lld",
+        static_cast<unsigned>(result.sequence_delta),
+        static_cast<double>(result.raw_stamp_delta_ns) / 1.0e6,
+        static_cast<double>(result.normalized_stamp_delta_ns) / 1.0e6,
+        static_cast<long long>(raw_stamp.nanoseconds()),
+        static_cast<long long>(normalized_stamp.nanoseconds()),
+        static_cast<long long>(m_imuGravityDiagnostics.latest_accel_repair_offset_ns));
+  }
+  else
+  {
+    ++m_imuGravityDiagnostics.timestamp_repair_warnings_suppressed;
+    RCLCPP_DEBUG_THROTTLE(
+        get_logger(), *get_clock(), ACCEL_TIMESTAMP_REPAIR_LOG_MS,
+        "Suppressed minimal BNO086 timestamp repair warning: "
+        "seq_delta=%u repair_offset_ns=%lld",
+        static_cast<unsigned>(result.sequence_delta),
+        static_cast<long long>(m_imuGravityDiagnostics.latest_accel_repair_offset_ns));
+  }
 }
 
 std::optional<std::uint32_t> Bno086ImuNode::ActualFeatureIntervalUs(ReportId report_id) const
