@@ -1043,6 +1043,12 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
       "poll_duration_over_50ms=%llu "
       "latest_transport_read_duration_ms=%.3f max_transport_read_duration_ms=%.3f "
       "transport_read_over_timeout_count=%llu transport_read_calls=%llu "
+      "transport_header_read_ms=%.3f transport_packet_read_ms=%.3f "
+      "transport_transaction_ms=%.3f transport_transaction_bytes=%u "
+      "transport_packet_read_over_timeout=%llu transport_invalid_headers=%llu "
+      "transport_pseudo_payloads=%llu transport_zero_length_headers=%llu "
+      "transport_invalid_full_packets=%llu transport_full_read_low_budget=%llu "
+      "transport_transaction_over_timeout=%llu transport_transaction_failures=%llu "
       "drain_exit_int_deasserted=%llu drain_exit_max_packets=%llu "
       "drain_exit_duration_budget=%llu "
       "drain_exit_transport_error=%llu drain_exit_no_events=%llu "
@@ -1150,6 +1156,19 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
       transportDiagnostics.max_transport_read_duration_ms,
       static_cast<unsigned long long>(transportDiagnostics.transport_read_over_timeout_count),
       static_cast<unsigned long long>(transportDiagnostics.transport_read_calls),
+      transportDiagnostics.latest_header_read_duration_ms,
+      transportDiagnostics.latest_packet_read_duration_ms,
+      transportDiagnostics.latest_transaction_duration_ms,
+      static_cast<unsigned>(transportDiagnostics.latest_transaction_bytes),
+      static_cast<unsigned long long>(transportDiagnostics.packet_read_over_timeout_count),
+      static_cast<unsigned long long>(transportDiagnostics.read_packet_invalid_headers),
+      static_cast<unsigned long long>(transportDiagnostics.read_packet_pseudo_payloads),
+      static_cast<unsigned long long>(transportDiagnostics.read_packet_zero_length_headers),
+      static_cast<unsigned long long>(transportDiagnostics.read_packet_invalid_full_packets),
+      static_cast<unsigned long long>(
+          transportDiagnostics.full_packet_read_started_with_low_budget),
+      static_cast<unsigned long long>(transportDiagnostics.transaction_over_timeout_count),
+      static_cast<unsigned long long>(transportDiagnostics.transaction_failures),
       static_cast<unsigned long long>(m_interruptDrainDiagnostics.drain_exited_int_deasserted),
       static_cast<unsigned long long>(m_interruptDrainDiagnostics.drain_exited_max_packets),
       static_cast<unsigned long long>(m_interruptDrainDiagnostics.drain_exited_duration_budget),

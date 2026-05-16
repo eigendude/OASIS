@@ -138,6 +138,11 @@ TEST(Bno086Transport, closedReadPacketUpdatesDurationDiagnostics)
   EXPECT_GE(diagnostics.max_transport_read_duration_ms,
             diagnostics.latest_transport_read_duration_ms);
   EXPECT_EQ(diagnostics.transport_read_over_timeout_count, 0U);
+  EXPECT_EQ(diagnostics.transport_header_read_calls, 0U);
+  EXPECT_EQ(diagnostics.transport_packet_read_calls, 0U);
+  EXPECT_EQ(diagnostics.read_packet_attempts, 0U);
+  EXPECT_EQ(diagnostics.transaction_failures, 0U);
+  EXPECT_EQ(diagnostics.latest_transaction_bytes, 0U);
 }
 
 TEST(Bno086Shtp, pollReturnsMultiReportPayloadAsTimestampedBatch)

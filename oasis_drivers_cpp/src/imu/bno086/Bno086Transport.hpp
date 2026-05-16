@@ -51,6 +51,75 @@ struct Bno086TransportDiagnostics
 
   //! Number of ReadPacket calls made through this transport
   std::uint64_t transport_read_calls{0};
+
+  //! Number of 4-byte SHTP header ReadTransaction calls
+  std::uint64_t transport_header_read_calls{0};
+
+  //! Number of full raw-packet ReadTransaction calls
+  std::uint64_t transport_packet_read_calls{0};
+
+  //! Latest 4-byte header ReadTransaction duration, in ms
+  double latest_header_read_duration_ms{0.0};
+
+  //! Maximum 4-byte header ReadTransaction duration, in ms
+  double max_header_read_duration_ms{0.0};
+
+  //! Latest full raw-packet ReadTransaction duration, in ms
+  double latest_packet_read_duration_ms{0.0};
+
+  //! Maximum full raw-packet ReadTransaction duration, in ms
+  double max_packet_read_duration_ms{0.0};
+
+  //! Header ReadTransaction calls that exceeded remaining timeout plus slop
+  std::uint64_t header_read_over_timeout_count{0};
+
+  //! Full raw-packet ReadTransaction calls that exceeded timeout plus slop
+  std::uint64_t packet_read_over_timeout_count{0};
+
+  //! Number of outer ReadPacket parse/read attempts
+  std::uint64_t read_packet_attempts{0};
+
+  //! ReadPacket attempts that saw a zero-length header
+  std::uint64_t read_packet_zero_length_headers{0};
+
+  //! ReadPacket attempts that saw an invalid probe header
+  std::uint64_t read_packet_invalid_headers{0};
+
+  //! ReadPacket attempts that saw an invalid full packet
+  std::uint64_t read_packet_invalid_full_packets{0};
+
+  //! ReadPacket attempts that discarded a pseudo-payload packet
+  std::uint64_t read_packet_pseudo_payloads{0};
+
+  //! ReadPacket exits because the deadline expired before header read
+  std::uint64_t read_packet_deadline_expired_before_header{0};
+
+  //! ReadPacket exits because the deadline expired before full packet read
+  std::uint64_t read_packet_deadline_expired_before_full_packet{0};
+
+  //! ReadPacket exits because the deadline expired after a pseudo payload
+  std::uint64_t read_packet_deadline_expired_after_pseudo_payload{0};
+
+  //! Full raw-packet reads started with less than the low-budget threshold
+  std::uint64_t full_packet_read_started_with_low_budget{0};
+
+  //! Requested byte count for the latest low-level read call
+  std::uint32_t latest_transaction_requested_bytes{0};
+
+  //! Actual byte count returned by the latest low-level read call
+  std::uint32_t latest_transaction_bytes{0};
+
+  //! Latest low-level read call duration, in ms
+  double latest_transaction_duration_ms{0.0};
+
+  //! Maximum low-level read call duration observed, in ms
+  double max_transaction_duration_ms{0.0};
+
+  //! Low-level read calls that exceeded remaining timeout plus slop
+  std::uint64_t transaction_over_timeout_count{0};
+
+  //! Low-level read calls that failed or returned a short read
+  std::uint64_t transaction_failures{0};
 };
 
 class Bno086Transport
@@ -72,6 +141,12 @@ public:
                                    Bno086ShtpPacket& packet_header);
 
 private:
+  enum class ReadTransactionKind
+  {
+    Header,
+    FullPacket,
+  };
+
   struct ShtpHeader
   {
     std::uint16_t raw_length{0};
@@ -83,7 +158,8 @@ private:
 
   bool ReadTransaction(std::uint8_t* buffer,
                        std::size_t size,
-                       const std::chrono::steady_clock::time_point& deadline) const;
+                       const std::chrono::steady_clock::time_point& deadline,
+                       ReadTransactionKind kind);
   bool WriteExact(const std::uint8_t* buffer, std::size_t size) const;
   bool ParseHeader(const std::uint8_t* header_bytes, ShtpHeader& header) const;
   static bool IsSaneChannel(std::uint8_t channel);
