@@ -104,6 +104,10 @@ const char* ContinuationResetReasonName(ContinuationResetReason reason)
       return "shtp_header_prefix";
     case ContinuationResetReason::MaxBytesExceeded:
       return "max_bytes_exceeded";
+    case ContinuationResetReason::OrphanContinuation:
+      return "orphan_continuation";
+    case ContinuationResetReason::EmbeddedShtpHeader:
+      return "embedded_shtp_header";
     default:
       break;
   }
@@ -761,8 +765,17 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
       "shtp_continuation_resets=%llu shtp_max_events_per_packet=%u "
       "shtp_max_packet_payload_bytes=%u shtp_continuation_flag_packets=%llu "
       "shtp_continuation_without_active_buffer=%llu "
+      "shtp_continuation_flag_on_decodable_payload=%llu "
+      "shtp_continuation_flag_on_control_payload=%llu "
+      "shtp_continuation_flag_on_sensor_payload=%llu "
+      "shtp_active_fragment_buffers_started=%llu "
+      "shtp_active_fragment_buffers_completed=%llu "
+      "shtp_active_fragment_buffers_reset=%llu "
       "shtp_orphan_continuation_decoded=%llu shtp_orphan_continuation_discarded=%llu "
       "shtp_embedded_shtp_header_payloads=%llu "
+      "shtp_packet_sequence_gaps_channel3=%llu "
+      "shtp_packet_sequence_gap_max_channel3=%u "
+      "shtp_packet_duplicate_sequences_channel3=%llu "
       "timestamp_repaired_nonmonotonic_accel=%llu true_duplicate_accel_stamp=%llu "
       "accel_sequence_gap_count=%llu accel_sequence_gap_max=%llu "
       "latest_accel_raw_delta_ms=%.3f latest_accel_normalized_delta_ms=%.3f "
@@ -807,9 +820,18 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
       shtpDiagnostics.max_events_per_packet, shtpDiagnostics.max_packet_payload_bytes,
       static_cast<unsigned long long>(shtpDiagnostics.packets_with_continuation_flag),
       static_cast<unsigned long long>(shtpDiagnostics.continuation_without_active_buffer),
+      static_cast<unsigned long long>(shtpDiagnostics.continuation_flag_on_decodable_payload),
+      static_cast<unsigned long long>(shtpDiagnostics.continuation_flag_on_control_payload),
+      static_cast<unsigned long long>(shtpDiagnostics.continuation_flag_on_sensor_payload),
+      static_cast<unsigned long long>(shtpDiagnostics.active_fragment_buffers_started),
+      static_cast<unsigned long long>(shtpDiagnostics.active_fragment_buffers_completed),
+      static_cast<unsigned long long>(shtpDiagnostics.active_fragment_buffers_reset),
       static_cast<unsigned long long>(shtpDiagnostics.orphan_continuation_decoded),
       static_cast<unsigned long long>(shtpDiagnostics.orphan_continuation_discarded),
       static_cast<unsigned long long>(shtpDiagnostics.embedded_shtp_header_payloads),
+      static_cast<unsigned long long>(shtpDiagnostics.packet_sequence_gaps_by_channel[3]),
+      static_cast<unsigned>(shtpDiagnostics.packet_sequence_gap_max_by_channel[3]),
+      static_cast<unsigned long long>(shtpDiagnostics.packet_duplicate_sequences_by_channel[3]),
       static_cast<unsigned long long>(
           m_imuGravityDiagnostics.timestamp_repaired_nonmonotonic_accel),
       static_cast<unsigned long long>(m_imuGravityDiagnostics.true_duplicate_accel_stamp),

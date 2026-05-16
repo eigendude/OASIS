@@ -165,11 +165,53 @@ struct ShtpDiagnostics
   std::uint64_t continuation_packets_reset{0};
 
   /*!
+   * \brief Count of active fragment buffers started from trailing bytes
+   *
+   * Units: buffers
+   */
+  std::uint64_t active_fragment_buffers_started{0};
+
+  /*!
+   * \brief Count of active fragment buffers completed by a later packet
+   *
+   * Units: buffers
+   */
+  std::uint64_t active_fragment_buffers_completed{0};
+
+  /*!
+   * \brief Count of active fragment buffers reset or discarded
+   *
+   * Units: buffers
+   */
+  std::uint64_t active_fragment_buffers_reset{0};
+
+  /*!
    * \brief Count of packets with the SHTP continuation flag set
    *
    * Units: packets
    */
   std::uint64_t packets_with_continuation_flag{0};
+
+  /*!
+   * \brief Count of continuation-flag packets decoded as complete payloads
+   *
+   * Units: packets
+   */
+  std::uint64_t continuation_flag_on_decodable_payload{0};
+
+  /*!
+   * \brief Count of continuation-flag packets on a control channel
+   *
+   * Units: packets
+   */
+  std::uint64_t continuation_flag_on_control_payload{0};
+
+  /*!
+   * \brief Count of continuation-flag packets on a sensor report channel
+   *
+   * Units: packets
+   */
+  std::uint64_t continuation_flag_on_sensor_payload{0};
 
   /*!
    * \brief Count of continuation packets received without an active buffer
@@ -352,6 +394,27 @@ struct ShtpDiagnostics
    * Units: report-specific counters
    */
   std::array<ReportSequenceDiagnostics, 256> report_sequence{};
+
+  /*!
+   * \brief SHTP packet sequence gaps indexed by channel
+   *
+   * Units: gaps
+   */
+  std::array<std::uint64_t, 6> packet_sequence_gaps_by_channel{};
+
+  /*!
+   * \brief Largest SHTP packet sequence delta indexed by channel
+   *
+   * Units: counter ticks in range [0, 255]
+   */
+  std::array<std::uint8_t, 6> packet_sequence_gap_max_by_channel{};
+
+  /*!
+   * \brief Duplicate SHTP packet sequences indexed by channel
+   *
+   * Units: packets
+   */
+  std::array<std::uint64_t, 6> packet_duplicate_sequences_by_channel{};
 };
 
 class Bno086Shtp
@@ -421,6 +484,7 @@ private:
 
   void RecordPacketRead(const Bno086ShtpPacket& packet);
   void RecordDecodedSensorEvent(const SensorEvent& event);
+  void RecordDecodableContinuationFlag(std::uint8_t channel);
   void RecordContinuationReset(std::uint8_t channel,
                                std::uint8_t sequence,
                                std::uint16_t raw_length,
@@ -434,6 +498,8 @@ private:
   void MarkCommunicationEstablished();
   ContinuationValidation ValidateContinuationFragment(const Bno086ShtpPacket& packet) const;
   bool IsSensorChannel(std::uint8_t channel) const;
+  bool IsControlChannel(std::uint8_t channel) const;
+  bool IsValidControlPayloadStart(const std::vector<std::uint8_t>& payload) const;
   bool IsValidSensorPayloadStart(const std::vector<std::uint8_t>& payload) const;
   void ClearContinuationState(std::uint8_t channel);
 
@@ -463,5 +529,6 @@ private:
 
   std::array<bool, 6> m_continuationActive{};
   std::array<std::vector<std::uint8_t>, 6> m_continuationPayloads{};
+  std::array<ReportSequenceDiagnostics, 6> m_packetSequenceStates{};
 };
 } // namespace OASIS::IMU::BNO086

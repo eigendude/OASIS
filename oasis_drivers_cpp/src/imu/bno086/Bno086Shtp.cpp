@@ -198,10 +198,19 @@ bool Bno086Shtp::DecodePacket(const Bno086ShtpPacket& packet,
   Bno086ShtpPacket normalizedPacket = packet;
   bool shouldDecodeSensorPayload = IsSensorChannel(packet.channel);
   bool payloadCanContinue = packet.continuation;
+  const bool validSensorStart =
+      IsSensorChannel(packet.channel) && IsValidSensorPayloadStart(packet.payload);
+  const bool validControlStart =
+      IsControlChannel(packet.channel) && IsValidControlPayloadStart(packet.payload);
+  const bool validStandalonePayload = validSensorStart || validControlStart;
 
-  const bool embeddedHeader = LooksLikeEmbeddedShtpHeader(packet.payload);
+  const bool embeddedHeader =
+      !validStandalonePayload && LooksLikeEmbeddedShtpHeader(packet.payload);
   if (embeddedHeader)
     ++m_diagnostics.embedded_shtp_header_payloads;
+
+  if (packet.continuation && validStandalonePayload)
+    RecordDecodableContinuationFlag(packet.channel);
 
   if (packet.channel < m_continuationPayloads.size())
   {
@@ -217,10 +226,10 @@ bool Bno086Shtp::DecodePacket(const Bno086ShtpPacket& packet,
       {
         ++m_diagnostics.continuation_without_active_buffer;
 
-        if (IsSensorChannel(packet.channel) && IsValidSensorPayloadStart(packet.payload))
+        if (validStandalonePayload)
         {
           ++m_diagnostics.orphan_continuation_decoded;
-          shouldDecodeSensorPayload = true;
+          shouldDecodeSensorPayload = validSensorStart;
           normalizedPacket.payload = packet.payload;
         }
         else
@@ -251,6 +260,7 @@ bool Bno086Shtp::DecodePacket(const Bno086ShtpPacket& packet,
     {
       auto& continuationPayload = m_continuationPayloads[packet.channel];
       ++m_diagnostics.continuation_packets_completed;
+      ++m_diagnostics.active_fragment_buffers_completed;
       normalizedPacket.payload = continuationPayload;
       normalizedPacket.payload.insert(normalizedPacket.payload.end(), packet.payload.begin(),
                                       packet.payload.end());
@@ -260,7 +270,7 @@ bool Bno086Shtp::DecodePacket(const Bno086ShtpPacket& packet,
       payloadCanContinue = false;
     }
 
-    if (!IsSensorChannel(packet.channel))
+    if (!IsSensorChannel(packet.channel) && !validStandalonePayload)
     {
       const ContinuationValidation validation = ValidateContinuationFragment(packet);
       if (!validation.valid)
@@ -279,7 +289,10 @@ bool Bno086Shtp::DecodePacket(const Bno086ShtpPacket& packet,
       {
         auto& continuationPayload = m_continuationPayloads[packet.channel];
         if (!m_continuationActive[packet.channel])
+        {
           ++m_diagnostics.continuation_packets_started;
+          ++m_diagnostics.active_fragment_buffers_started;
+        }
 
         m_continuationActive[packet.channel] = true;
         continuationPayload.insert(continuationPayload.end(), packet.payload.begin(),
@@ -321,7 +334,10 @@ bool Bno086Shtp::DecodePacket(const Bno086ShtpPacket& packet,
       {
         auto& continuationPayload = m_continuationPayloads[packet.channel];
         if (!m_continuationActive[packet.channel])
+        {
           ++m_diagnostics.continuation_packets_started;
+          ++m_diagnostics.active_fragment_buffers_started;
+        }
 
         continuationPayload.assign(normalizedPacket.payload.end() -
                                        static_cast<std::ptrdiff_t>(decoded.trailing_bytes),
@@ -590,6 +606,30 @@ void Bno086Shtp::RecordPacketRead(const Bno086ShtpPacket& packet)
   m_diagnostics.latest_packet_payload_bytes = static_cast<std::uint32_t>(packet.payload.size());
   m_diagnostics.max_packet_payload_bytes = std::max(
       m_diagnostics.max_packet_payload_bytes, static_cast<std::uint32_t>(packet.payload.size()));
+
+  if (packet.channel >= m_continuationPayloads.size())
+    return;
+
+  ReportSequenceDiagnostics& packetSequence = m_packetSequenceStates[packet.channel];
+  if (packetSequence.has_sequence)
+  {
+    const std::uint8_t delta =
+        static_cast<std::uint8_t>(packet.sequence - packetSequence.last_sequence);
+
+    if (delta == 0)
+    {
+      ++m_diagnostics.packet_duplicate_sequences_by_channel[packet.channel];
+    }
+    else if (delta > 1)
+    {
+      ++m_diagnostics.packet_sequence_gaps_by_channel[packet.channel];
+      m_diagnostics.packet_sequence_gap_max_by_channel[packet.channel] =
+          std::max(m_diagnostics.packet_sequence_gap_max_by_channel[packet.channel], delta);
+    }
+  }
+
+  packetSequence.has_sequence = true;
+  packetSequence.last_sequence = packet.sequence;
 }
 
 void Bno086Shtp::RecordDecodedSensorEvent(const SensorEvent& event)
@@ -619,6 +659,17 @@ void Bno086Shtp::RecordDecodedSensorEvent(const SensorEvent& event)
   sequenceDiagnostics.last_sequence = event.sequence;
 }
 
+void Bno086Shtp::RecordDecodableContinuationFlag(std::uint8_t channel)
+{
+  ++m_diagnostics.continuation_flag_on_decodable_payload;
+
+  if (IsControlChannel(channel))
+    ++m_diagnostics.continuation_flag_on_control_payload;
+
+  if (IsSensorChannel(channel))
+    ++m_diagnostics.continuation_flag_on_sensor_payload;
+}
+
 void Bno086Shtp::RecordContinuationReset(std::uint8_t channel,
                                          std::uint8_t sequence,
                                          std::uint16_t raw_length,
@@ -630,6 +681,8 @@ void Bno086Shtp::RecordContinuationReset(std::uint8_t channel,
                                          const std::vector<std::uint8_t>& payload)
 {
   ++m_diagnostics.continuation_packets_reset;
+  if (had_active_buffer)
+    ++m_diagnostics.active_fragment_buffers_reset;
   m_diagnostics.latest_continuation_reset_channel = channel;
   m_diagnostics.latest_continuation_reset_sequence = sequence;
   m_diagnostics.latest_continuation_reset_raw_length = raw_length;
@@ -658,6 +711,19 @@ bool Bno086Shtp::IsSensorChannel(std::uint8_t channel) const
 {
   return channel == kChannelReports || channel == kChannelWakeReports ||
          channel == kChannelGyroRotationVector;
+}
+
+bool Bno086Shtp::IsControlChannel(std::uint8_t channel) const
+{
+  return channel == kChannelControl;
+}
+
+bool Bno086Shtp::IsValidControlPayloadStart(const std::vector<std::uint8_t>& payload) const
+{
+  if (payload.empty())
+    return false;
+
+  return payload.front() == kShtpGetFeatureResponse;
 }
 
 Bno086Shtp::ContinuationValidation Bno086Shtp::ValidateContinuationFragment(

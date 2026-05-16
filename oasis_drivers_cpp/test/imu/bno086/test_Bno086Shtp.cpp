@@ -143,8 +143,8 @@ TEST(Bno086Shtp, pollReturnsMultiReportPayloadAsTimestampedBatch)
   ASSERT_EQ(events.size(), 2U);
   EXPECT_EQ(events[0].event.report_id, ReportId::Accelerometer);
   EXPECT_EQ(events[1].event.report_id, ReportId::GyroscopeCalibrated);
-  EXPECT_EQ(events[0].stamp_ns, 1'000'000'000);
-  EXPECT_EQ(events[1].stamp_ns, 1'000'000'000);
+  EXPECT_EQ(events[0].stamp_ns, 999'000'000);
+  EXPECT_EQ(events[1].stamp_ns, 999'000'000);
 }
 
 TEST(Bno086Shtp, multiReportPayloadUpdatesDecodeDiagnostics)
@@ -328,8 +328,43 @@ TEST(Bno086Shtp, orphanContinuationWithValidSensorPayloadIsDecoded)
   ASSERT_EQ(events.size(), 1U);
   EXPECT_EQ(events[0].event.report_id, ReportId::Accelerometer);
   EXPECT_EQ(shtp.GetDiagnostics().continuation_without_active_buffer, 1U);
+  EXPECT_EQ(shtp.GetDiagnostics().continuation_flag_on_decodable_payload, 1U);
+  EXPECT_EQ(shtp.GetDiagnostics().continuation_flag_on_sensor_payload, 1U);
   EXPECT_EQ(shtp.GetDiagnostics().orphan_continuation_decoded, 1U);
   EXPECT_EQ(shtp.GetDiagnostics().orphan_continuation_discarded, 0U);
+}
+
+TEST(Bno086Shtp, continuationFlagOnControlFeatureResponseIsHandledNormally)
+{
+  FakeTransport transport;
+  Bno086Shtp shtp(transport);
+
+  std::vector<std::uint8_t> payload(17, 0);
+  payload[0] = kShtpGetFeatureResponse;
+  payload[1] = static_cast<std::uint8_t>(ReportId::Gravity);
+  payload[5] = 0x10;
+  payload[6] = 0x27;
+
+  Bno086ShtpPacket packet;
+  packet.raw_length = static_cast<std::uint16_t>(0x8000U | (payload.size() + kShtpHeaderBytes));
+  packet.packet_length = static_cast<std::uint16_t>(payload.size() + kShtpHeaderBytes);
+  packet.channel = 2;
+  packet.sequence = 79;
+  packet.continuation = true;
+  packet.payload = payload;
+  transport.PushPacket(packet);
+
+  std::vector<TimestampedSensorEvent> events;
+  EXPECT_EQ(shtp.Poll(events, 0, 1'000'000'000), Bno086Shtp::PollStatus::PacketHandled);
+  EXPECT_TRUE(events.empty());
+
+  const std::vector<FeatureResponse> featureResponses = shtp.TakeFeatureResponses();
+  ASSERT_EQ(featureResponses.size(), 1U);
+  EXPECT_EQ(featureResponses[0].report_id, ReportId::Gravity);
+  EXPECT_EQ(featureResponses[0].report_interval_us, 10'000U);
+  EXPECT_EQ(shtp.GetDiagnostics().continuation_packets_reset, 0U);
+  EXPECT_EQ(shtp.GetDiagnostics().continuation_flag_on_control_payload, 1U);
+  EXPECT_EQ(shtp.GetDiagnostics().continuation_flag_on_decodable_payload, 1U);
 }
 
 TEST(Bno086Shtp, validSensorPayloadThatLooksSomewhatLikeHeaderIsNotReset)
@@ -413,6 +448,33 @@ TEST(Bno086Shtp, continuationStartAndFinishDecodesCombinedPayload)
   EXPECT_EQ(events[0].event.sequence, 5);
   EXPECT_EQ(shtp.GetDiagnostics().continuation_packets_started, 1U);
   EXPECT_EQ(shtp.GetDiagnostics().continuation_packets_completed, 1U);
+  EXPECT_EQ(shtp.GetDiagnostics().active_fragment_buffers_started, 1U);
+  EXPECT_EQ(shtp.GetDiagnostics().active_fragment_buffers_completed, 1U);
+}
+
+TEST(Bno086Shtp, packetSequenceGapsAreTrackedPerChannel)
+{
+  FakeTransport transport;
+  Bno086Shtp shtp(transport);
+
+  Bno086ShtpPacket first;
+  first.raw_length = 14;
+  first.packet_length = 14;
+  first.channel = kReportChannel;
+  first.sequence = 10;
+  first.payload = PayloadWithOneReport(ReportId::Accelerometer, 1);
+  transport.PushPacket(first);
+
+  Bno086ShtpPacket second = first;
+  second.sequence = 13;
+  second.payload = PayloadWithOneReport(ReportId::Accelerometer, 2);
+  transport.PushPacket(second);
+
+  PollOnce(shtp, 1'000'000'000);
+  PollOnce(shtp, 1'000'100'000);
+
+  EXPECT_EQ(shtp.GetDiagnostics().packet_sequence_gaps_by_channel[kReportChannel], 1U);
+  EXPECT_EQ(shtp.GetDiagnostics().packet_sequence_gap_max_by_channel[kReportChannel], 3U);
 }
 
 TEST(Bno086Shtp, additionalReportsAreNotReturnedFromPendingQueueLater)
@@ -447,7 +509,7 @@ TEST(Bno086Shtp, perReportDelaySubtractsBeforeEventsLeaveShtp)
   std::vector<TimestampedSensorEvent> events;
   ASSERT_EQ(shtp.Poll(events, 0, 1'000'000'000), Bno086Shtp::PollStatus::SensorEvent);
   ASSERT_EQ(events.size(), 1U);
-  EXPECT_EQ(events[0].stamp_ns, 999'700'000);
+  EXPECT_EQ(events[0].stamp_ns, 999'300'000);
 }
 
 TEST(Bno086Shtp, timestampRebaseAdjustsLaterRecordsInSamePayload)
@@ -465,7 +527,7 @@ TEST(Bno086Shtp, timestampRebaseAdjustsLaterRecordsInSamePayload)
   std::vector<TimestampedSensorEvent> events;
   ASSERT_EQ(shtp.Poll(events, 0, 1'000'000'000), Bno086Shtp::PollStatus::SensorEvent);
   ASSERT_EQ(events.size(), 2U);
-  EXPECT_EQ(events[0].stamp_ns, 1'000'000'000);
-  EXPECT_EQ(events[1].stamp_ns, 1'000'100'000);
+  EXPECT_EQ(events[0].stamp_ns, 999'000'000);
+  EXPECT_EQ(events[1].stamp_ns, 998'900'000);
 }
 } // namespace OASIS::IMU::BNO086
