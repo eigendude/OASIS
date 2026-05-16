@@ -29,9 +29,6 @@ constexpr std::size_t kFeatureResponseBytes = 17;
 constexpr std::size_t kGyroIntegratedRotationVectorPayloadBytes = 14;
 constexpr std::size_t kMaxContinuationBytes = 4096;
 
-// Target report interval for the 100 Hz imu_gravity cadence
-constexpr std::uint32_t kTargetReportIntervalUs = 10'000;
-
 constexpr std::array<ReportId, 5> kConfiguredReports = {
     ReportId::RotationVector,
     ReportId::GyroscopeCalibrated,
@@ -67,20 +64,18 @@ Bno086Shtp::Bno086Shtp(Bno086Transport& transport) : m_transport(transport)
 bool Bno086Shtp::Configure(const Bno086ShtpConfig& config)
 {
   m_config = config;
-  m_config.report_rate_hz = std::max(m_config.report_rate_hz, 1.0);
-
-  // Set Feature expects report interval in microseconds
-  // This configures BNO086 sensor timing, not ROS publish timing
-  m_reportIntervalUs = ToReportIntervalUs(m_config.report_rate_hz);
   m_featureConfigurations.clear();
   m_featureResponses.clear();
 
   for (const ReportId reportId : kConfiguredReports)
   {
+    if (reportId == ReportId::Gravity && !m_config.enable_gravity_report)
+      continue;
+
     FeatureConfiguration featureConfiguration;
     featureConfiguration.report_id = reportId;
     featureConfiguration.requested_interval_us =
-        RequestedIntervalForReport(reportId, m_reportIntervalUs);
+        RequestedIntervalForReport(reportId, m_config.report_rates);
     m_featureConfigurations.emplace_back(featureConfiguration);
   }
 
@@ -837,10 +832,31 @@ std::uint32_t Bno086Shtp::ToReportIntervalUs(double rate_hz)
   return static_cast<std::uint32_t>(std::round(1'000'000.0 / clampedHz));
 }
 
-std::uint32_t Bno086Shtp::RequestedIntervalForReport(ReportId /*report_id*/,
-                                                     std::uint32_t configured_interval_us)
+std::uint32_t Bno086Shtp::RequestedIntervalForReport(ReportId report_id,
+                                                     const Bno086ReportRateConfig& report_rates)
 {
-  return std::min(configured_interval_us, kTargetReportIntervalUs);
+  std::uint32_t intervalUs = report_rates.accelerometer_interval_us;
+
+  switch (report_id)
+  {
+    case ReportId::RotationVector:
+      intervalUs = report_rates.rotation_vector_interval_us;
+      break;
+    case ReportId::GyroscopeCalibrated:
+      intervalUs = report_rates.gyro_interval_us;
+      break;
+    case ReportId::LinearAcceleration:
+      intervalUs = report_rates.linear_acceleration_interval_us;
+      break;
+    case ReportId::Accelerometer:
+      intervalUs = report_rates.accelerometer_interval_us;
+      break;
+    case ReportId::Gravity:
+      intervalUs = report_rates.gravity_interval_us;
+      break;
+  }
+
+  return std::max<std::uint32_t>(intervalUs, 1U);
 }
 
 std::uint32_t Bno086Shtp::ReadU32(const std::vector<std::uint8_t>& data, std::size_t offset)

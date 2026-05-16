@@ -47,7 +47,7 @@ namespace OASIS::ROS
  *   gravity-included calibrated acceleration
  *
  * Publication is interrupt-driven from active-low H_INTN packet drains
- * report_rate_hz configures BNO086 internal report timing only
+ * report_rate_hz is the fallback for per-report BNO086 internal timing
  *
  * Orientation uses the BNO086 Rotation Vector output, which is
  * magnetometer-backed internally for heading. Magnetometer is not published.
@@ -107,8 +107,24 @@ private:
     std::uint8_t latest_accel_sequence_delta{0};
     double latest_calibrated_accel_rate_hz{0.0};
     double latest_imu_gravity_rate_hz{0.0};
+    double latest_shtp_accel_decoded_rate_hz{0.0};
+    double latest_shtp_gyro_decoded_rate_hz{0.0};
+    double latest_shtp_rotation_decoded_rate_hz{0.0};
+    double latest_shtp_linear_accel_decoded_rate_hz{0.0};
+    double latest_shtp_gravity_decoded_rate_hz{0.0};
+    double latest_transport_full_packet_read_bytes_mean{0.0};
+    double latest_shtp_events_per_packet_mean{0.0};
     std::uint64_t last_rate_accel_reports{0};
     std::uint64_t last_rate_imu_gravity_published{0};
+    std::uint64_t last_rate_shtp_accel_decoded{0};
+    std::uint64_t last_rate_shtp_gyro_decoded{0};
+    std::uint64_t last_rate_shtp_rotation_decoded{0};
+    std::uint64_t last_rate_shtp_linear_accel_decoded{0};
+    std::uint64_t last_rate_shtp_gravity_decoded{0};
+    std::uint64_t last_rate_transport_full_packet_read_calls{0};
+    std::uint64_t last_rate_transport_full_packet_read_bytes_total{0};
+    std::uint64_t last_rate_shtp_packets_read{0};
+    std::uint64_t last_rate_shtp_sensor_events_decoded{0};
     std::chrono::steady_clock::time_point last_log_at{};
   };
 

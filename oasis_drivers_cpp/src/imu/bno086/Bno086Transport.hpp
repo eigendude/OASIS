@@ -84,6 +84,9 @@ struct Bno086TransportDiagnostics
   //! Largest byte count requested by any full raw-packet read
   std::uint32_t max_full_packet_read_bytes{0};
 
+  //! Total bytes requested by full raw-packet reads
+  std::uint64_t full_packet_read_bytes_total{0};
+
   //! Number of outer ReadPacket parse/read attempts
   std::uint64_t read_packet_attempts{0};
 

@@ -33,6 +33,11 @@ constexpr std::uint8_t DEFAULT_I2C_ADDRESS = 0x4B;
 constexpr int DEFAULT_INT_GPIO = 23;
 
 constexpr double DEFAULT_REPORT_RATE_HZ = 100.0;
+constexpr double DEFAULT_ROTATION_VECTOR_RATE_HZ = 100.0;
+constexpr double DEFAULT_GYRO_RATE_HZ = 100.0;
+constexpr double DEFAULT_ACCELEROMETER_RATE_HZ = 100.0;
+constexpr double DEFAULT_LINEAR_ACCELERATION_RATE_HZ = 50.0;
+constexpr double DEFAULT_GRAVITY_RATE_HZ = 25.0;
 
 constexpr const char* IMU_TOPIC = "imu";
 constexpr const char* IMU_PREDICTED_TOPIC = "imu_predicted";
@@ -95,6 +100,12 @@ double VectorMagnitude(double x, double y, double z)
 std::size_t ReportIndex(ReportId report_id)
 {
   return static_cast<std::size_t>(static_cast<std::uint8_t>(report_id));
+}
+
+std::uint32_t RateToIntervalUs(double rate_hz)
+{
+  const double clampedHz = std::max(rate_hz, 1.0);
+  return static_cast<std::uint32_t>(std::round(1'000'000.0 / clampedHz));
 }
 
 const char* ContinuationResetReasonName(ContinuationResetReason reason)
@@ -166,6 +177,12 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   declare_parameter("i2c_address", static_cast<int>(DEFAULT_I2C_ADDRESS));
   declare_parameter("int_gpio", DEFAULT_INT_GPIO);
   declare_parameter("report_rate_hz", DEFAULT_REPORT_RATE_HZ);
+  declare_parameter("bno086_rotation_vector_rate_hz", DEFAULT_ROTATION_VECTOR_RATE_HZ);
+  declare_parameter("bno086_gyro_rate_hz", DEFAULT_GYRO_RATE_HZ);
+  declare_parameter("bno086_accelerometer_rate_hz", DEFAULT_ACCELEROMETER_RATE_HZ);
+  declare_parameter("bno086_linear_acceleration_rate_hz", DEFAULT_LINEAR_ACCELERATION_RATE_HZ);
+  declare_parameter("bno086_gravity_rate_hz", DEFAULT_GRAVITY_RATE_HZ);
+  declare_parameter("bno086_enable_gravity_report", true);
   declare_parameter("prediction_horizon_sec", DEFAULT_PREDICTION_HORIZON_SEC);
   declare_parameter("imu_gravity_max_orientation_age_ms",
                     DEFAULT_IMU_GRAVITY_MAX_ORIENTATION_AGE_MS);
@@ -183,6 +200,17 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   const std::uint8_t i2cAddress = static_cast<std::uint8_t>(get_parameter("i2c_address").as_int());
   const int intGpio = get_parameter("int_gpio").as_int();
   const double reportRateHz = std::max(get_parameter("report_rate_hz").as_double(), 1.0);
+  const auto perReportRateHz = [this, reportRateHz](const char* parameter_name)
+  {
+    const double configuredRateHz = get_parameter(parameter_name).as_double();
+    return configuredRateHz > 0.0 ? configuredRateHz : reportRateHz;
+  };
+  const double rotationVectorRateHz = perReportRateHz("bno086_rotation_vector_rate_hz");
+  const double gyroRateHz = perReportRateHz("bno086_gyro_rate_hz");
+  const double accelerometerRateHz = perReportRateHz("bno086_accelerometer_rate_hz");
+  const double linearAccelerationRateHz = perReportRateHz("bno086_linear_acceleration_rate_hz");
+  const double gravityRateHz = perReportRateHz("bno086_gravity_rate_hz");
+  const bool enableGravityReport = get_parameter("bno086_enable_gravity_report").as_bool();
   m_predictionHorizonSec = std::max(get_parameter("prediction_horizon_sec").as_double(), 0.0);
   m_imuGravityMaxOrientationAgeMs =
       std::max(get_parameter("imu_gravity_max_orientation_age_ms").as_double(), 0.0);
@@ -198,8 +226,16 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
       static_cast<int>(get_parameter("bno086_timeout_retries_while_interrupt_asserted").as_int()));
   m_timeoutRetrySleepUs =
       std::max(0, static_cast<int>(get_parameter("bno086_timeout_retry_sleep_us").as_int()));
-  m_reportIntervalUs = std::max<std::uint32_t>(
-      1U, static_cast<std::uint32_t>(std::round(1'000'000.0 / reportRateHz)));
+  Bno086ReportRateConfig reportRates;
+  reportRates.rotation_vector_interval_us = RateToIntervalUs(rotationVectorRateHz);
+  reportRates.gyro_interval_us = RateToIntervalUs(gyroRateHz);
+  reportRates.accelerometer_interval_us = RateToIntervalUs(accelerometerRateHz);
+  reportRates.linear_acceleration_interval_us = RateToIntervalUs(linearAccelerationRateHz);
+  reportRates.gravity_interval_us = RateToIntervalUs(gravityRateHz);
+
+  m_reportIntervalUs =
+      std::max(reportRates.rotation_vector_interval_us,
+               std::max(reportRates.gyro_interval_us, reportRates.linear_acceleration_interval_us));
 
   m_frameId = get_parameter("frame_id").as_string();
 
@@ -227,7 +263,8 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   m_shtp = std::make_unique<Bno086Shtp>(m_transport);
 
   Bno086ShtpConfig shtpConfig;
-  shtpConfig.report_rate_hz = reportRateHz;
+  shtpConfig.report_rates = reportRates;
+  shtpConfig.enable_gravity_report = enableGravityReport;
 
   if (!m_shtp->Configure(shtpConfig))
   {
@@ -242,9 +279,12 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   }
 
   RCLCPP_INFO(get_logger(),
-              "BNO086 opened on %s (0x%02X), int_gpio=%d active_low, report_rate_hz=%.1f "
-              "(requested sensor report rate)",
-              i2cDevice.c_str(), static_cast<unsigned>(i2cAddress), intGpio, reportRateHz);
+              "BNO086 opened on %s (0x%02X), int_gpio=%d active_low, fallback_report_rate_hz=%.1f "
+              "rotation_vector_hz=%.1f gyro_hz=%.1f accelerometer_hz=%.1f "
+              "linear_acceleration_hz=%.1f gravity_hz=%.1f gravity_enabled=%s",
+              i2cDevice.c_str(), static_cast<unsigned>(i2cAddress), intGpio, reportRateHz,
+              rotationVectorRateHz, gyroRateHz, accelerometerRateHz, linearAccelerationRateHz,
+              gravityRateHz, enableGravityReport ? "true" : "false");
   RCLCPP_INFO(get_logger(), "ROS publication is interrupt-driven from GPIO packet drains");
   RCLCPP_INFO(get_logger(), "Predicted orientation output uses %s with prediction_horizon_sec=%.4f",
               m_predictionSource.c_str(), m_predictionHorizonSec);
@@ -925,24 +965,15 @@ void Bno086ImuNode::LogFeatureResponse(const FeatureResponse& response) const
 void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
 {
   const auto now = std::chrono::steady_clock::now();
-  if (m_imuGravityDiagnostics.last_log_at.time_since_epoch().count() != 0)
+  const bool hasPreviousLog = m_imuGravityDiagnostics.last_log_at.time_since_epoch().count() != 0;
+  std::int64_t elapsedMs = 0;
+  if (hasPreviousLog)
   {
-    const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-                               now - m_imuGravityDiagnostics.last_log_at)
-                               .count();
+    elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    now - m_imuGravityDiagnostics.last_log_at)
+                    .count();
     if (elapsedMs < IMU_GRAVITY_DIAGNOSTICS_LOG_MS)
       return;
-
-    const std::uint64_t accelReportDelta =
-        m_imuGravityDiagnostics.calibrated_accel_reports_received -
-        m_imuGravityDiagnostics.last_rate_accel_reports;
-    const std::uint64_t imuGravityPublishedDelta =
-        m_imuGravityDiagnostics.imu_gravity_published -
-        m_imuGravityDiagnostics.last_rate_imu_gravity_published;
-    m_imuGravityDiagnostics.latest_calibrated_accel_rate_hz =
-        static_cast<double>(accelReportDelta) * 1000.0 / static_cast<double>(elapsedMs);
-    m_imuGravityDiagnostics.latest_imu_gravity_rate_hz =
-        static_cast<double>(imuGravityPublishedDelta) * 1000.0 / static_cast<double>(elapsedMs);
   }
 
   TimestampReconstructionDiagnostics reconstructionDiagnostics;
@@ -966,6 +997,59 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
           ? static_cast<double>(m_interruptDrainDiagnostics.packets_per_drain_total) /
                 static_cast<double>(m_interruptDrainDiagnostics.drain_cycles_completed)
           : 0.0;
+
+  if (hasPreviousLog && elapsedMs > 0)
+  {
+    const auto rateHz = [elapsedMs](std::uint64_t delta)
+    { return static_cast<double>(delta) * 1000.0 / static_cast<double>(elapsedMs); };
+
+    const std::uint64_t accelReportDelta =
+        m_imuGravityDiagnostics.calibrated_accel_reports_received -
+        m_imuGravityDiagnostics.last_rate_accel_reports;
+    const std::uint64_t imuGravityPublishedDelta =
+        m_imuGravityDiagnostics.imu_gravity_published -
+        m_imuGravityDiagnostics.last_rate_imu_gravity_published;
+    m_imuGravityDiagnostics.latest_calibrated_accel_rate_hz = rateHz(accelReportDelta);
+    m_imuGravityDiagnostics.latest_imu_gravity_rate_hz = rateHz(imuGravityPublishedDelta);
+
+    const std::uint64_t accelDecoded = shtpDiagnostics.decoded_report_counts[accelIndex];
+    const std::uint64_t gyroDecoded = shtpDiagnostics.decoded_report_counts[gyroIndex];
+    const std::uint64_t rotationDecoded = shtpDiagnostics.decoded_report_counts[rotationIndex];
+    const std::uint64_t linearAccelDecoded =
+        shtpDiagnostics.decoded_report_counts[linearAccelIndex];
+    const std::uint64_t gravityDecoded = shtpDiagnostics.decoded_report_counts[gravityIndex];
+    m_imuGravityDiagnostics.latest_shtp_accel_decoded_rate_hz =
+        rateHz(accelDecoded - m_imuGravityDiagnostics.last_rate_shtp_accel_decoded);
+    m_imuGravityDiagnostics.latest_shtp_gyro_decoded_rate_hz =
+        rateHz(gyroDecoded - m_imuGravityDiagnostics.last_rate_shtp_gyro_decoded);
+    m_imuGravityDiagnostics.latest_shtp_rotation_decoded_rate_hz =
+        rateHz(rotationDecoded - m_imuGravityDiagnostics.last_rate_shtp_rotation_decoded);
+    m_imuGravityDiagnostics.latest_shtp_linear_accel_decoded_rate_hz =
+        rateHz(linearAccelDecoded - m_imuGravityDiagnostics.last_rate_shtp_linear_accel_decoded);
+    m_imuGravityDiagnostics.latest_shtp_gravity_decoded_rate_hz =
+        rateHz(gravityDecoded - m_imuGravityDiagnostics.last_rate_shtp_gravity_decoded);
+
+    const std::uint64_t fullPacketReadDelta =
+        transportDiagnostics.transport_full_packet_read_calls -
+        m_imuGravityDiagnostics.last_rate_transport_full_packet_read_calls;
+    const std::uint64_t fullPacketBytesDelta =
+        transportDiagnostics.full_packet_read_bytes_total -
+        m_imuGravityDiagnostics.last_rate_transport_full_packet_read_bytes_total;
+    m_imuGravityDiagnostics.latest_transport_full_packet_read_bytes_mean =
+        fullPacketReadDelta > 0
+            ? static_cast<double>(fullPacketBytesDelta) / static_cast<double>(fullPacketReadDelta)
+            : 0.0;
+
+    const std::uint64_t shtpPacketDelta =
+        shtpDiagnostics.packets_read - m_imuGravityDiagnostics.last_rate_shtp_packets_read;
+    const std::uint64_t shtpEventDelta =
+        shtpDiagnostics.sensor_events_decoded -
+        m_imuGravityDiagnostics.last_rate_shtp_sensor_events_decoded;
+    m_imuGravityDiagnostics.latest_shtp_events_per_packet_mean =
+        shtpPacketDelta > 0
+            ? static_cast<double>(shtpEventDelta) / static_cast<double>(shtpPacketDelta)
+            : 0.0;
+  }
 
   if (shtpDiagnostics.continuation_packets_reset > m_lastLoggedShtpContinuationResetCount)
   {
@@ -1006,10 +1090,15 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
       "shtp_sensor_events_decoded=%llu shtp_accel_decoded=%llu "
       "shtp_gyro_decoded=%llu shtp_rotation_decoded=%llu "
       "shtp_linear_accel_decoded=%llu shtp_gravity_decoded=%llu "
+      "shtp_accel_decoded_rate_hz=%.2f shtp_gyro_decoded_rate_hz=%.2f "
+      "shtp_rotation_decoded_rate_hz=%.2f "
+      "shtp_linear_accel_decoded_rate_hz=%.2f "
+      "shtp_gravity_decoded_rate_hz=%.2f "
       "shtp_accel_sequence_gaps=%llu shtp_accel_sequence_gap_max=%u "
       "shtp_accel_duplicate_sequences=%llu shtp_decode_errors=%llu "
       "shtp_continuation_resets=%llu shtp_max_events_per_packet=%u "
-      "shtp_max_packet_payload_bytes=%u shtp_continuation_flag_packets=%llu "
+      "shtp_max_packet_payload_bytes=%u shtp_events_per_packet_mean=%.2f "
+      "shtp_continuation_flag_packets=%llu "
       "shtp_continuation_without_active_buffer=%llu "
       "shtp_continuation_flag_on_decodable_payload=%llu "
       "shtp_continuation_flag_on_control_payload=%llu "
@@ -1046,7 +1135,8 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
       "transport_header_read_ms=%.3f transport_full_packet_read_ms=%.3f "
       "transport_transaction_ms=%.3f transport_transaction_bytes=%u "
       "transport_full_packet_read_over_timeout=%llu transport_full_packet_read_bytes=%u "
-      "transport_full_packet_read_bytes_max=%u transport_invalid_headers=%llu "
+      "transport_full_packet_read_bytes_max=%u transport_full_packet_read_bytes_mean=%.2f "
+      "transport_invalid_headers=%llu "
       "transport_pseudo_payloads=%llu transport_zero_length_headers=%llu "
       "transport_invalid_full_packets=%llu transport_full_packet_read_low_budget=%llu "
       "transport_transaction_over_timeout=%llu transport_transaction_failures=%llu "
@@ -1095,12 +1185,18 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
       static_cast<unsigned long long>(shtpDiagnostics.decoded_report_counts[rotationIndex]),
       static_cast<unsigned long long>(shtpDiagnostics.decoded_report_counts[linearAccelIndex]),
       static_cast<unsigned long long>(shtpDiagnostics.decoded_report_counts[gravityIndex]),
+      m_imuGravityDiagnostics.latest_shtp_accel_decoded_rate_hz,
+      m_imuGravityDiagnostics.latest_shtp_gyro_decoded_rate_hz,
+      m_imuGravityDiagnostics.latest_shtp_rotation_decoded_rate_hz,
+      m_imuGravityDiagnostics.latest_shtp_linear_accel_decoded_rate_hz,
+      m_imuGravityDiagnostics.latest_shtp_gravity_decoded_rate_hz,
       static_cast<unsigned long long>(accelSequenceDiagnostics.gap_count),
       static_cast<unsigned>(accelSequenceDiagnostics.gap_max),
       static_cast<unsigned long long>(accelSequenceDiagnostics.duplicate_sequence_count),
       static_cast<unsigned long long>(shtpDiagnostics.decode_errors),
       static_cast<unsigned long long>(shtpDiagnostics.continuation_packets_reset),
       shtpDiagnostics.max_events_per_packet, shtpDiagnostics.max_packet_payload_bytes,
+      m_imuGravityDiagnostics.latest_shtp_events_per_packet_mean,
       static_cast<unsigned long long>(shtpDiagnostics.packets_with_continuation_flag),
       static_cast<unsigned long long>(shtpDiagnostics.continuation_without_active_buffer),
       static_cast<unsigned long long>(shtpDiagnostics.continuation_flag_on_decodable_payload),
@@ -1164,6 +1260,7 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
       static_cast<unsigned long long>(transportDiagnostics.full_packet_read_over_timeout_count),
       static_cast<unsigned>(transportDiagnostics.latest_full_packet_read_bytes),
       static_cast<unsigned>(transportDiagnostics.max_full_packet_read_bytes),
+      m_imuGravityDiagnostics.latest_transport_full_packet_read_bytes_mean,
       static_cast<unsigned long long>(transportDiagnostics.read_packet_invalid_headers),
       static_cast<unsigned long long>(transportDiagnostics.read_packet_pseudo_payloads),
       static_cast<unsigned long long>(transportDiagnostics.read_packet_zero_length_headers),
@@ -1208,6 +1305,23 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
       m_imuGravityDiagnostics.calibrated_accel_reports_received;
   m_imuGravityDiagnostics.last_rate_imu_gravity_published =
       m_imuGravityDiagnostics.imu_gravity_published;
+  m_imuGravityDiagnostics.last_rate_shtp_accel_decoded =
+      shtpDiagnostics.decoded_report_counts[accelIndex];
+  m_imuGravityDiagnostics.last_rate_shtp_gyro_decoded =
+      shtpDiagnostics.decoded_report_counts[gyroIndex];
+  m_imuGravityDiagnostics.last_rate_shtp_rotation_decoded =
+      shtpDiagnostics.decoded_report_counts[rotationIndex];
+  m_imuGravityDiagnostics.last_rate_shtp_linear_accel_decoded =
+      shtpDiagnostics.decoded_report_counts[linearAccelIndex];
+  m_imuGravityDiagnostics.last_rate_shtp_gravity_decoded =
+      shtpDiagnostics.decoded_report_counts[gravityIndex];
+  m_imuGravityDiagnostics.last_rate_transport_full_packet_read_calls =
+      transportDiagnostics.transport_full_packet_read_calls;
+  m_imuGravityDiagnostics.last_rate_transport_full_packet_read_bytes_total =
+      transportDiagnostics.full_packet_read_bytes_total;
+  m_imuGravityDiagnostics.last_rate_shtp_packets_read = shtpDiagnostics.packets_read;
+  m_imuGravityDiagnostics.last_rate_shtp_sensor_events_decoded =
+      shtpDiagnostics.sensor_events_decoded;
 }
 
 bool Bno086ImuNode::IsImuGravitySampleValid(const sensor_msgs::msg::Imu& message,

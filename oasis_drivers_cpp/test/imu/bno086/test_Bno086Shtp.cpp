@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <cstring>
 #include <deque>
+#include <optional>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -25,6 +26,12 @@ constexpr std::uint8_t kReportChannel = 3;
 class FakeTransport : public Bno086Transport
 {
 public:
+  struct Write
+  {
+    std::uint8_t channel{0};
+    std::vector<std::uint8_t> payload;
+  };
+
   void PushPacket(const std::vector<std::uint8_t>& payload)
   {
     Bno086ShtpPacket packet;
@@ -51,13 +58,15 @@ public:
 
   bool WritePacket(std::uint8_t channel, const std::vector<std::uint8_t>& payload) override
   {
-    (void)channel;
-    (void)payload;
+    m_writes.emplace_back(Write{channel, payload});
     return true;
   }
 
+  const std::vector<Write>& Writes() const { return m_writes; }
+
 private:
   std::deque<Bno086ShtpPacket> m_packets;
+  std::vector<Write> m_writes;
 };
 
 class ByteQueueTransport : public Bno086Transport
@@ -138,7 +147,125 @@ void PollOnce(Bno086Shtp& shtp, std::int64_t packet_host_stamp_ns)
   std::vector<TimestampedSensorEvent> events;
   static_cast<void>(shtp.Poll(events, 0, packet_host_stamp_ns));
 }
+
+const FeatureConfiguration* FindFeatureConfiguration(
+    const std::vector<FeatureConfiguration>& configurations, ReportId report_id)
+{
+  for (const FeatureConfiguration& configuration : configurations)
+  {
+    if (configuration.report_id == report_id)
+      return &configuration;
+  }
+
+  return nullptr;
+}
+
+std::optional<std::uint32_t> FindSetFeatureIntervalUs(
+    const std::vector<FakeTransport::Write>& writes, ReportId report_id)
+{
+  for (const FakeTransport::Write& write : writes)
+  {
+    if (write.payload.size() < 9 || write.payload[0] != kShtpSetFeatureCommand ||
+        write.payload[1] != static_cast<std::uint8_t>(report_id))
+    {
+      continue;
+    }
+
+    return static_cast<std::uint32_t>(write.payload[5]) |
+           (static_cast<std::uint32_t>(write.payload[6]) << 8) |
+           (static_cast<std::uint32_t>(write.payload[7]) << 16) |
+           (static_cast<std::uint32_t>(write.payload[8]) << 24);
+  }
+
+  return std::nullopt;
+}
 } // namespace
+
+TEST(Bno086Shtp, defaultReportRatesProduceExpectedFeatureIntervals)
+{
+  FakeTransport transport;
+  Bno086Shtp shtp(transport);
+
+  ASSERT_TRUE(shtp.Configure(Bno086ShtpConfig{}));
+
+  const std::vector<FeatureConfiguration>& configurations = shtp.GetFeatureConfigurations();
+  ASSERT_NE(FindFeatureConfiguration(configurations, ReportId::RotationVector), nullptr);
+  ASSERT_NE(FindFeatureConfiguration(configurations, ReportId::GyroscopeCalibrated), nullptr);
+  ASSERT_NE(FindFeatureConfiguration(configurations, ReportId::Accelerometer), nullptr);
+  ASSERT_NE(FindFeatureConfiguration(configurations, ReportId::LinearAcceleration), nullptr);
+  ASSERT_NE(FindFeatureConfiguration(configurations, ReportId::Gravity), nullptr);
+  EXPECT_EQ(
+      FindFeatureConfiguration(configurations, ReportId::RotationVector)->requested_interval_us,
+      10'000U);
+  EXPECT_EQ(FindFeatureConfiguration(configurations, ReportId::GyroscopeCalibrated)
+                ->requested_interval_us,
+            10'000U);
+  EXPECT_EQ(
+      FindFeatureConfiguration(configurations, ReportId::Accelerometer)->requested_interval_us,
+      10'000U);
+  EXPECT_EQ(
+      FindFeatureConfiguration(configurations, ReportId::LinearAcceleration)->requested_interval_us,
+      20'000U);
+  EXPECT_EQ(FindFeatureConfiguration(configurations, ReportId::Gravity)->requested_interval_us,
+            40'000U);
+  EXPECT_EQ(FindSetFeatureIntervalUs(transport.Writes(), ReportId::LinearAcceleration), 20'000U);
+  EXPECT_EQ(FindSetFeatureIntervalUs(transport.Writes(), ReportId::Gravity), 40'000U);
+}
+
+TEST(Bno086Shtp, explicitReportRateIntervalsAreUsedPerReport)
+{
+  FakeTransport transport;
+  Bno086Shtp shtp(transport);
+
+  Bno086ShtpConfig config;
+  config.report_rates.rotation_vector_interval_us = 5'000;
+  config.report_rates.gyro_interval_us = 8'000;
+  config.report_rates.accelerometer_interval_us = 12'500;
+  config.report_rates.linear_acceleration_interval_us = 25'000;
+  config.report_rates.gravity_interval_us = 50'000;
+
+  ASSERT_TRUE(shtp.Configure(config));
+
+  const std::vector<FeatureConfiguration>& configurations = shtp.GetFeatureConfigurations();
+  EXPECT_EQ(
+      FindFeatureConfiguration(configurations, ReportId::RotationVector)->requested_interval_us,
+      5'000U);
+  EXPECT_EQ(FindFeatureConfiguration(configurations, ReportId::GyroscopeCalibrated)
+                ->requested_interval_us,
+            8'000U);
+  EXPECT_EQ(
+      FindFeatureConfiguration(configurations, ReportId::Accelerometer)->requested_interval_us,
+      12'500U);
+  EXPECT_EQ(
+      FindFeatureConfiguration(configurations, ReportId::LinearAcceleration)->requested_interval_us,
+      25'000U);
+  EXPECT_EQ(FindFeatureConfiguration(configurations, ReportId::Gravity)->requested_interval_us,
+            50'000U);
+  EXPECT_EQ(FindSetFeatureIntervalUs(transport.Writes(), ReportId::RotationVector), 5'000U);
+  EXPECT_EQ(FindSetFeatureIntervalUs(transport.Writes(), ReportId::GyroscopeCalibrated), 8'000U);
+  EXPECT_EQ(FindSetFeatureIntervalUs(transport.Writes(), ReportId::Accelerometer), 12'500U);
+  EXPECT_EQ(FindSetFeatureIntervalUs(transport.Writes(), ReportId::LinearAcceleration), 25'000U);
+  EXPECT_EQ(FindSetFeatureIntervalUs(transport.Writes(), ReportId::Gravity), 50'000U);
+}
+
+TEST(Bno086Shtp, disabledGravityReportIsOmittedFromFeatureConfiguration)
+{
+  FakeTransport transport;
+  Bno086Shtp shtp(transport);
+
+  Bno086ShtpConfig config;
+  config.enable_gravity_report = false;
+
+  ASSERT_TRUE(shtp.Configure(config));
+
+  const std::vector<FeatureConfiguration>& configurations = shtp.GetFeatureConfigurations();
+  EXPECT_EQ(FindFeatureConfiguration(configurations, ReportId::Gravity), nullptr);
+  EXPECT_NE(FindFeatureConfiguration(configurations, ReportId::RotationVector), nullptr);
+  EXPECT_NE(FindFeatureConfiguration(configurations, ReportId::GyroscopeCalibrated), nullptr);
+  EXPECT_NE(FindFeatureConfiguration(configurations, ReportId::Accelerometer), nullptr);
+  EXPECT_NE(FindFeatureConfiguration(configurations, ReportId::LinearAcceleration), nullptr);
+  EXPECT_FALSE(FindSetFeatureIntervalUs(transport.Writes(), ReportId::Gravity).has_value());
+}
 
 TEST(Bno086Transport, headerContinuationBitIsMaskedFromPacketLength)
 {
@@ -215,6 +342,7 @@ TEST(Bno086Transport, readPacketUsesHeaderProbeThenFullPacketRead)
   EXPECT_EQ(diagnostics.transport_full_packet_read_calls, 1U);
   EXPECT_EQ(diagnostics.latest_full_packet_read_bytes, packetLength);
   EXPECT_EQ(diagnostics.max_full_packet_read_bytes, packetLength);
+  EXPECT_EQ(diagnostics.full_packet_read_bytes_total, packetLength);
   EXPECT_EQ(diagnostics.read_packet_invalid_full_packets, 0U);
 }
 

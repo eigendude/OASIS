@@ -319,6 +319,7 @@ bool Bno086Transport::ReadTransaction(std::uint8_t* buffer,
       if (transactionDurationMs > timeoutBudgetMs + kReadTimeoutSlopMs)
         ++m_diagnostics.full_packet_read_over_timeout_count;
       m_diagnostics.latest_full_packet_read_bytes = static_cast<std::uint32_t>(size);
+      m_diagnostics.full_packet_read_bytes_total += size;
       if (m_diagnostics.latest_full_packet_read_bytes > m_diagnostics.max_full_packet_read_bytes)
         m_diagnostics.max_full_packet_read_bytes = m_diagnostics.latest_full_packet_read_bytes;
     }

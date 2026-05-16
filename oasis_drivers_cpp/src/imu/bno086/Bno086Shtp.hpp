@@ -19,11 +19,61 @@
 
 namespace OASIS::IMU::BNO086
 {
+/*!\brief Requested SH-2 report intervals for configured BNO086 streams */
+struct Bno086ReportRateConfig
+{
+  /*!
+   * \brief Requested time between Rotation Vector reports
+   *
+   * Units: microseconds, greater than zero
+   */
+  std::uint32_t rotation_vector_interval_us{10'000};
+
+  /*!
+   * \brief Requested time between calibrated gyroscope reports
+   *
+   * Units: microseconds, greater than zero
+   */
+  std::uint32_t gyro_interval_us{10'000};
+
+  /*!
+   * \brief Requested time between calibrated accelerometer reports
+   *
+   * Units: microseconds, greater than zero
+   */
+  std::uint32_t accelerometer_interval_us{10'000};
+
+  /*!
+   * \brief Requested time between linear acceleration reports
+   *
+   * Units: microseconds, greater than zero
+   */
+  std::uint32_t linear_acceleration_interval_us{20'000};
+
+  /*!
+   * \brief Requested time between gravity vector reports
+   *
+   * Units: microseconds, greater than zero
+   */
+  std::uint32_t gravity_interval_us{40'000};
+};
+
+/*!\brief BNO086 SHTP feature configuration requested by the ROS node */
 struct Bno086ShtpConfig
 {
-  // Requested internal BNO086 report generation rate in Hz
-  // Converted to Set Feature report interval in microseconds
-  double report_rate_hz{100.0};
+  /*!
+   * \brief Per-report Set Feature intervals requested from SH-2
+   *
+   * Units: microseconds, each value must be greater than zero
+   */
+  Bno086ReportRateConfig report_rates{};
+
+  /*!
+   * \brief True when the standalone Gravity report should be requested
+   *
+   * Units: boolean
+   */
+  bool enable_gravity_report{true};
 };
 
 /*!\brief Reason a buffered SHTP continuation payload was discarded */
@@ -505,7 +555,7 @@ private:
 
   static std::uint32_t ToReportIntervalUs(double rate_hz);
   static std::uint32_t RequestedIntervalForReport(ReportId report_id,
-                                                  std::uint32_t configured_interval_us);
+                                                  const Bno086ReportRateConfig& report_rates);
   static std::uint32_t ReadU32(const std::vector<std::uint8_t>& data, std::size_t offset);
   static std::int16_t ReadS16(const std::vector<std::uint8_t>& data, std::size_t offset);
   static bool IsTrackedReport(std::uint8_t report_id);
@@ -519,7 +569,6 @@ private:
   StartupStatus m_startupStatus{};
 
   bool m_configRequested{false};
-  std::uint32_t m_reportIntervalUs{10'000};
   std::vector<FeatureConfiguration> m_featureConfigurations;
   std::vector<FeatureResponse> m_featureResponses;
   Bno086TimestampReconstructor m_timestampReconstructor;
