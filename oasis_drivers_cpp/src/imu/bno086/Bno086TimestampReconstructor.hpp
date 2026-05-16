@@ -28,6 +28,34 @@ struct TimestampReconstructionDiagnostics
   std::uint64_t base_resets{0};
 
   /*!
+   * \brief Count of resets from backward base movement without plausible wrap
+   *
+   * Units: events
+   */
+  std::uint64_t base_resets_negative_delta{0};
+
+  /*!
+   * \brief Count of resets from base deltas larger than the sane bound
+   *
+   * Units: events
+   */
+  std::uint64_t base_resets_large_delta{0};
+
+  /*!
+   * \brief Count of resets from disagreement between base and host deltas
+   *
+   * Units: events
+   */
+  std::uint64_t base_resets_host_mismatch{0};
+
+  /*!
+   * \brief Count of accepted uint32 base timestamp wraparounds
+   *
+   * Units: events
+   */
+  std::uint64_t base_wraps_accepted{0};
+
+  /*!
    * \brief Count of events reconstructed from packet host time without a base
    *
    * Units: events
@@ -40,6 +68,27 @@ struct TimestampReconstructionDiagnostics
    * Units: events
    */
   std::uint64_t delay_applied{0};
+
+  /*!
+   * \brief Latest SH-2 base timestamp delta considered
+   *
+   * Units: microseconds
+   */
+  std::int64_t latest_base_delta_us{0};
+
+  /*!
+   * \brief Latest host timestamp delta between base anchors
+   *
+   * Units: microseconds
+   */
+  std::int64_t latest_host_delta_us{0};
+
+  /*!
+   * \brief Latest difference between SH-2 base delta and host delta
+   *
+   * Units: microseconds
+   */
+  std::int64_t latest_base_host_error_us{0};
 };
 
 /*!

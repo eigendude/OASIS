@@ -672,8 +672,14 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
       "skipped_missing_gyro=%llu skipped_stale_orientation=%llu "
       "skipped_stale_gyro=%llu skipped_duplicate_sequence=%llu skipped_nonfinite=%llu "
       "timestamp_reconstruction_base_resets=%llu "
+      "timestamp_reconstruction_base_resets_negative_delta=%llu "
+      "timestamp_reconstruction_base_resets_large_delta=%llu "
+      "timestamp_reconstruction_base_resets_host_mismatch=%llu "
+      "timestamp_reconstruction_base_wraps_accepted=%llu "
       "timestamp_reconstruction_missing_base=%llu "
       "timestamp_reconstruction_delay_applied=%llu "
+      "latest_base_delta_us=%lld latest_host_delta_us=%lld "
+      "latest_base_host_error_us=%lld "
       "timestamp_repaired_nonmonotonic_accel=%llu true_duplicate_accel_stamp=%llu "
       "accel_sequence_gap_count=%llu accel_sequence_gap_max=%llu "
       "latest_accel_raw_delta_ms=%.3f latest_accel_normalized_delta_ms=%.3f "
@@ -693,8 +699,15 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
           m_imuGravityDiagnostics.imu_gravity_skipped_duplicate_sequence),
       static_cast<unsigned long long>(m_imuGravityDiagnostics.imu_gravity_skipped_nonfinite),
       static_cast<unsigned long long>(reconstructionDiagnostics.base_resets),
+      static_cast<unsigned long long>(reconstructionDiagnostics.base_resets_negative_delta),
+      static_cast<unsigned long long>(reconstructionDiagnostics.base_resets_large_delta),
+      static_cast<unsigned long long>(reconstructionDiagnostics.base_resets_host_mismatch),
+      static_cast<unsigned long long>(reconstructionDiagnostics.base_wraps_accepted),
       static_cast<unsigned long long>(reconstructionDiagnostics.missing_base),
       static_cast<unsigned long long>(reconstructionDiagnostics.delay_applied),
+      static_cast<long long>(reconstructionDiagnostics.latest_base_delta_us),
+      static_cast<long long>(reconstructionDiagnostics.latest_host_delta_us),
+      static_cast<long long>(reconstructionDiagnostics.latest_base_host_error_us),
       static_cast<unsigned long long>(
           m_imuGravityDiagnostics.timestamp_repaired_nonmonotonic_accel),
       static_cast<unsigned long long>(m_imuGravityDiagnostics.true_duplicate_accel_stamp),

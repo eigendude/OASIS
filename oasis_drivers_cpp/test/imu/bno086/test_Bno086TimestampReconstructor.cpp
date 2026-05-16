@@ -37,21 +37,97 @@ TEST(Bno086TimestampReconstructor, perReportDelaySubtractsFromReconstructedStamp
   EXPECT_EQ(reconstructor.GetDiagnostics().delay_applied, 1U);
 }
 
-TEST(Bno086TimestampReconstructor, consecutiveBaseTimestampsUseBaseDelta)
+TEST(Bno086TimestampReconstructor, forwardBaseDeltaAccepted)
 {
   Bno086TimestampReconstructor reconstructor;
 
   EXPECT_EQ(reconstructor.Reconstruct(EventWithBase(1'000), 1'000'000'000), 1'000'000'000);
-  EXPECT_EQ(reconstructor.Reconstruct(EventWithBase(1'100), 2'000'000'000), 1'000'100'000);
+  EXPECT_EQ(reconstructor.Reconstruct(EventWithBase(1'100), 1'000'100'000), 1'000'100'000);
   EXPECT_EQ(reconstructor.GetDiagnostics().base_resets, 0U);
+  EXPECT_EQ(reconstructor.GetDiagnostics().latest_base_delta_us, 100);
+  EXPECT_EQ(reconstructor.GetDiagnostics().latest_host_delta_us, 100);
+  EXPECT_EQ(reconstructor.GetDiagnostics().latest_base_host_error_us, 0);
 }
 
-TEST(Bno086TimestampReconstructor, insaneBaseTimestampJumpResetsAnchor)
+TEST(Bno086TimestampReconstructor, backwardBaseTimestampWithoutWrapResets)
+{
+  Bno086TimestampReconstructor reconstructor;
+
+  EXPECT_EQ(reconstructor.Reconstruct(EventWithBase(2'000), 1'000'000'000), 1'000'000'000);
+  EXPECT_EQ(reconstructor.Reconstruct(EventWithBase(1'000), 1'001'000'000), 1'001'000'000);
+  EXPECT_EQ(reconstructor.GetDiagnostics().base_resets, 1U);
+  EXPECT_EQ(reconstructor.GetDiagnostics().base_resets_negative_delta, 1U);
+}
+
+TEST(Bno086TimestampReconstructor, hugeForwardBaseDeltaResets)
 {
   Bno086TimestampReconstructor reconstructor;
 
   EXPECT_EQ(reconstructor.Reconstruct(EventWithBase(1'000), 1'000'000'000), 1'000'000'000);
   EXPECT_EQ(reconstructor.Reconstruct(EventWithBase(2'000'100), 2'000'000'000), 2'000'000'000);
+  EXPECT_EQ(reconstructor.GetDiagnostics().base_resets, 1U);
+  EXPECT_EQ(reconstructor.GetDiagnostics().base_resets_large_delta, 1U);
+}
+
+TEST(Bno086TimestampReconstructor, plausibleUint32WrapAccepted)
+{
+  Bno086TimestampReconstructor reconstructor;
+
+  constexpr std::uint32_t lastBaseUs = 0xFFFFFF00U;
+  constexpr std::uint32_t currentBaseUs = 100U;
+  constexpr std::int64_t wrappedDeltaUs = 356;
+
+  EXPECT_EQ(reconstructor.Reconstruct(EventWithBase(lastBaseUs), 1'000'000'000), 1'000'000'000);
+  EXPECT_EQ(reconstructor.Reconstruct(EventWithBase(currentBaseUs),
+                                      1'000'000'000 + wrappedDeltaUs * 1000),
+            1'000'000'000 + wrappedDeltaUs * 1000);
+  EXPECT_EQ(reconstructor.GetDiagnostics().base_resets, 0U);
+  EXPECT_EQ(reconstructor.GetDiagnostics().base_wraps_accepted, 1U);
+  EXPECT_EQ(reconstructor.GetDiagnostics().latest_base_delta_us, wrappedDeltaUs);
+}
+
+TEST(Bno086TimestampReconstructor, implausibleWrapResets)
+{
+  Bno086TimestampReconstructor reconstructor;
+
+  EXPECT_EQ(reconstructor.Reconstruct(EventWithBase(0xFFFFFF00U), 1'000'000'000), 1'000'000'000);
+  EXPECT_EQ(reconstructor.Reconstruct(EventWithBase(0x00020000U), 1'001'000'000), 1'001'000'000);
+  EXPECT_EQ(reconstructor.GetDiagnostics().base_resets, 1U);
+  EXPECT_EQ(reconstructor.GetDiagnostics().base_resets_negative_delta, 1U);
+}
+
+TEST(Bno086TimestampReconstructor, baseVsHostMismatchResets)
+{
+  Bno086TimestampReconstructor reconstructor;
+
+  EXPECT_EQ(reconstructor.Reconstruct(EventWithBase(1'000), 1'000'000'000), 1'000'000'000);
+  EXPECT_EQ(reconstructor.Reconstruct(EventWithBase(1'200), 2'000'000'000), 2'000'000'000);
+  EXPECT_EQ(reconstructor.GetDiagnostics().base_resets, 1U);
+  EXPECT_EQ(reconstructor.GetDiagnostics().base_resets_host_mismatch, 1U);
+  EXPECT_EQ(reconstructor.GetDiagnostics().latest_base_delta_us, 200);
+  EXPECT_EQ(reconstructor.GetDiagnostics().latest_host_delta_us, 1'000'000);
+  EXPECT_EQ(reconstructor.GetDiagnostics().latest_base_host_error_us, -999'800);
+}
+
+TEST(Bno086TimestampReconstructor, baseVsHostSmallMismatchAccepted)
+{
+  Bno086TimestampReconstructor reconstructor;
+
+  EXPECT_EQ(reconstructor.Reconstruct(EventWithBase(1'000), 1'000'000'000), 1'000'000'000);
+  EXPECT_EQ(reconstructor.Reconstruct(EventWithBase(1'100), 1'000'150'000), 1'000'100'000);
+  EXPECT_EQ(reconstructor.GetDiagnostics().base_resets, 0U);
+  EXPECT_EQ(reconstructor.GetDiagnostics().latest_base_delta_us, 100);
+  EXPECT_EQ(reconstructor.GetDiagnostics().latest_host_delta_us, 150);
+  EXPECT_EQ(reconstructor.GetDiagnostics().latest_base_host_error_us, -50);
+}
+
+TEST(Bno086TimestampReconstructor, resetAnchorsCurrentBaseToPacketHostStamp)
+{
+  Bno086TimestampReconstructor reconstructor;
+
+  EXPECT_EQ(reconstructor.Reconstruct(EventWithBase(1'000), 1'000'000'000), 1'000'000'000);
+  EXPECT_EQ(reconstructor.Reconstruct(EventWithBase(1'200), 2'000'000'000), 2'000'000'000);
+  EXPECT_EQ(reconstructor.Reconstruct(EventWithBase(1'300), 2'000'100'000), 2'000'100'000);
   EXPECT_EQ(reconstructor.GetDiagnostics().base_resets, 1U);
 }
 
