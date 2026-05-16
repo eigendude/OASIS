@@ -94,13 +94,15 @@ private:
     std::uint64_t imu_gravity_skipped_stale_gyro{0};
     std::uint64_t imu_gravity_skipped_duplicate_sequence{0};
     std::uint64_t imu_gravity_skipped_nonfinite{0};
-    std::uint64_t imu_gravity_repaired_nonmonotonic_accel_stamp{0};
-    std::uint64_t imu_gravity_true_duplicate_accel_stamp{0};
-    std::uint64_t imu_gravity_accel_sequence_gap_count{0};
-    std::uint64_t imu_gravity_accel_sequence_gap_max{0};
+    std::uint64_t timestamp_repaired_nonmonotonic_accel{0};
+    std::uint64_t true_duplicate_accel_stamp{0};
+    std::uint64_t accel_sequence_gap_count{0};
+    std::uint64_t accel_sequence_gap_max{0};
     double latest_orientation_age_ms{0.0};
     double latest_gyro_age_ms{0.0};
-    double latest_accel_stamp_delta_ms{0.0};
+    double latest_accel_raw_delta_ms{0.0};
+    double latest_accel_normalized_delta_ms{0.0};
+    std::int64_t latest_accel_repair_offset_ns{0};
     std::uint8_t latest_accel_sequence_delta{0};
     double latest_calibrated_accel_rate_hz{0.0};
     double latest_imu_gravity_rate_hz{0.0};
@@ -134,8 +136,6 @@ private:
   rclcpp::Time LatestCoreStamp() const;
 
   void ApplyEvent(const OASIS::IMU::BNO086::SensorEvent& event, const rclcpp::Time& sample_stamp);
-  rclcpp::Time EstimateEventStamp(const OASIS::IMU::BNO086::SensorEvent& event,
-                                  const rclcpp::Time& interrupt_ros_at);
   sensor_msgs::msg::Imu BuildPresentImuMessage(const rclcpp::Time& stamp) const;
   sensor_msgs::msg::Imu BuildImuGravityMessage(const rclcpp::Time& stamp) const;
   sensor_msgs::msg::Imu BuildPredictedImuMessage(const sensor_msgs::msg::Imu& present_imu) const;
@@ -207,8 +207,6 @@ private:
   std::atomic<bool> m_running{false};
   std::thread m_interruptThread;
 
-  std::optional<std::uint32_t> m_lastBaseTimestampUs;
-  std::optional<rclcpp::Time> m_lastBaseRosStamp;
   std::optional<CoreFrameSignature> m_lastPublishedCoreSignature;
   std::optional<ImuGravityAccelSignature> m_lastPublishedImuGravityAccelSignature;
   std::array<OASIS::IMU::BNO086::ReportTimestampState, 256> m_reportTimestampStates{};

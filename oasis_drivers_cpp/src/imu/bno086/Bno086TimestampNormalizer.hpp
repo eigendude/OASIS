@@ -75,16 +75,9 @@ struct TimestampNormalizationConfig
   /*!
    * \brief Expected time between consecutive reports
    *
-   * Units: microseconds, clamped to at least 1 us
+   * Units: microseconds, diagnostic context only
    */
   std::uint32_t expected_interval_us{10'000};
-
-  /*!
-   * \brief Largest sequence delta used to extrapolate repaired timestamps
-   *
-   * Units: counter ticks in range [1, 255]
-   */
-  std::uint8_t max_repair_sequence_delta{5};
 };
 
 /*!

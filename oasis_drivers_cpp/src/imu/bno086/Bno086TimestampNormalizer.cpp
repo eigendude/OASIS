@@ -18,6 +18,8 @@ TimestampNormalizationResult NormalizeReportTimestamp(ReportTimestampState& stat
                                                       std::int64_t raw_stamp_ns,
                                                       const TimestampNormalizationConfig& config)
 {
+  (void)config;
+
   TimestampNormalizationResult result;
   result.stamp_ns = raw_stamp_ns;
 
@@ -58,20 +60,7 @@ TimestampNormalizationResult NormalizeReportTimestamp(ReportTimestampState& stat
   {
     ++state.repaired_nonmonotonic;
     result.status = TimestampNormalizationStatus::RepairedNonmonotonic;
-
-    // Expected report interval converted from microseconds to nanoseconds
-    const std::int64_t expectedIntervalNs =
-        static_cast<std::int64_t>(std::max(config.expected_interval_us, 1U)) * 1000;
-
-    // Repair extrapolation is capped so a stale burst cannot jump far ahead
-    const std::uint8_t repairDelta = std::min<std::uint8_t>(
-        std::max(sequenceDelta, static_cast<std::uint8_t>(1)),
-        std::max(config.max_repair_sequence_delta, static_cast<std::uint8_t>(1)));
-    result.stamp_ns = lastStampNs + (static_cast<std::int64_t>(repairDelta) * expectedIntervalNs);
-
-    if (result.stamp_ns <= lastStampNs)
-      result.stamp_ns = lastStampNs + 1;
-
+    result.stamp_ns = lastStampNs + 1;
     result.normalized_stamp_delta_ns = result.stamp_ns - lastStampNs;
   }
 

@@ -43,7 +43,6 @@ constexpr int INTERRUPT_WAIT_TIMEOUT_MS = 20;
 constexpr int PACKET_READ_TIMEOUT_MS = 2;
 constexpr int MAX_PACKETS_PER_INTERRUPT = 128;
 
-constexpr std::uint32_t MAX_BASE_TIMESTAMP_STEP_US = 1'000'000;
 constexpr std::uint32_t MIN_COHERENT_SAMPLE_SPAN_US = 3'000;
 constexpr std::uint32_t MAX_COHERENT_SAMPLE_SPAN_US = 20'000;
 constexpr double DEFAULT_PREDICTION_HORIZON_SEC = 0.0;
@@ -73,9 +72,6 @@ constexpr const char* ORIENTATION_REPORT_SOURCE = "rotation_vector";
 constexpr int ORIENTATION_COVARIANCE_LOG_THROTTLE_MS = 5'000;
 constexpr int IMU_GRAVITY_DIAGNOSTICS_LOG_MS = 5'000;
 constexpr int ACCEL_TIMESTAMP_REPAIR_LOG_MS = 5'000;
-
-// Maximum missing-sample count used when extrapolating repaired timestamps
-constexpr std::uint8_t MAX_TIMESTAMP_REPAIR_SEQUENCE_DELTA = 5;
 
 bool IsFiniteArray(const std::array<double, 9>& values)
 {
@@ -253,8 +249,15 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
 {
   for (int i = 0; i < MAX_PACKETS_PER_INTERRUPT && m_running.load(); ++i)
   {
-    std::optional<SensorEvent> event;
-    const Bno086Shtp::PollStatus pollStatus = m_shtp->Poll(event, PACKET_READ_TIMEOUT_MS);
+    const auto packetNowSteady = std::chrono::steady_clock::now();
+    const auto packetDeltaNs =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(packetNowSteady - interrupt_steady_at)
+            .count();
+    const rclcpp::Time packetRosAt = interrupt_ros_at + rclcpp::Duration(0, packetDeltaNs);
+
+    std::vector<TimestampedSensorEvent> events;
+    const Bno086Shtp::PollStatus pollStatus =
+        m_shtp->Poll(events, PACKET_READ_TIMEOUT_MS, packetRosAt.nanoseconds());
 
     if (pollStatus == Bno086Shtp::PollStatus::Timeout)
       break;
@@ -268,19 +271,16 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
 
     MaybeLogFeatureResponses();
 
-    if (pollStatus == Bno086Shtp::PollStatus::SensorEvent && event.has_value())
+    if (pollStatus == Bno086Shtp::PollStatus::SensorEvent)
     {
-      const auto sampleNowSteady = std::chrono::steady_clock::now();
-      const auto sampleDeltaNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                                     sampleNowSteady - interrupt_steady_at)
-                                     .count();
-      const rclcpp::Time sampleInterruptRosAt =
-          interrupt_ros_at + rclcpp::Duration(0, sampleDeltaNs);
-      const rclcpp::Time rawEventStamp = EstimateEventStamp(*event, sampleInterruptRosAt);
-      const rclcpp::Time eventStamp = NormalizeEventStamp(*event, rawEventStamp);
-      ApplyEvent(*event, eventStamp);
-      MaybePublishOnLinearAcceleration(*event);
-      MaybePublishImuGravityOnAccelerometer(*event);
+      for (const TimestampedSensorEvent& timestamped : events)
+      {
+        const rclcpp::Time rawEventStamp(timestamped.stamp_ns, RCL_ROS_TIME);
+        const rclcpp::Time eventStamp = NormalizeEventStamp(timestamped.event, rawEventStamp);
+        ApplyEvent(timestamped.event, eventStamp);
+        MaybePublishOnLinearAcceleration(timestamped.event);
+        MaybePublishImuGravityOnAccelerometer(timestamped.event);
+      }
     }
 
     if (!m_interruptGpio.IsAssertedLow() && pollStatus == Bno086Shtp::PollStatus::PacketHandled)
@@ -661,15 +661,23 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
         static_cast<double>(imuGravityPublishedDelta) * 1000.0 / static_cast<double>(elapsedMs);
   }
 
+  TimestampReconstructionDiagnostics reconstructionDiagnostics;
+  if (m_shtp != nullptr)
+    reconstructionDiagnostics = m_shtp->GetTimestampReconstructionDiagnostics();
+
   RCLCPP_INFO(
       get_logger(),
       "BNO086 imu_gravity diagnostics: calibrated_accel_reports_received=%llu "
       "imu_gravity_published=%llu skipped_missing_orientation=%llu "
       "skipped_missing_gyro=%llu skipped_stale_orientation=%llu "
       "skipped_stale_gyro=%llu skipped_duplicate_sequence=%llu skipped_nonfinite=%llu "
-      "repaired_nonmonotonic_accel_stamp=%llu true_duplicate_accel_stamp=%llu "
+      "timestamp_reconstruction_base_resets=%llu "
+      "timestamp_reconstruction_missing_base=%llu "
+      "timestamp_reconstruction_delay_applied=%llu "
+      "timestamp_repaired_nonmonotonic_accel=%llu true_duplicate_accel_stamp=%llu "
       "accel_sequence_gap_count=%llu accel_sequence_gap_max=%llu "
-      "latest_accel_stamp_delta_ms=%.3f latest_accel_sequence_delta=%u "
+      "latest_accel_raw_delta_ms=%.3f latest_accel_normalized_delta_ms=%.3f "
+      "latest_accel_repair_offset_ns=%lld latest_accel_sequence_delta=%u "
       "latest_orientation_age_ms=%.2f latest_gyro_age_ms=%.2f "
       "latest_calibrated_accel_rate_hz=%.2f latest_imu_gravity_rate_hz=%.2f "
       "target_rate_hz=%.1f",
@@ -684,13 +692,17 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
       static_cast<unsigned long long>(
           m_imuGravityDiagnostics.imu_gravity_skipped_duplicate_sequence),
       static_cast<unsigned long long>(m_imuGravityDiagnostics.imu_gravity_skipped_nonfinite),
+      static_cast<unsigned long long>(reconstructionDiagnostics.base_resets),
+      static_cast<unsigned long long>(reconstructionDiagnostics.missing_base),
+      static_cast<unsigned long long>(reconstructionDiagnostics.delay_applied),
       static_cast<unsigned long long>(
-          m_imuGravityDiagnostics.imu_gravity_repaired_nonmonotonic_accel_stamp),
-      static_cast<unsigned long long>(
-          m_imuGravityDiagnostics.imu_gravity_true_duplicate_accel_stamp),
-      static_cast<unsigned long long>(m_imuGravityDiagnostics.imu_gravity_accel_sequence_gap_count),
-      static_cast<unsigned long long>(m_imuGravityDiagnostics.imu_gravity_accel_sequence_gap_max),
-      m_imuGravityDiagnostics.latest_accel_stamp_delta_ms,
+          m_imuGravityDiagnostics.timestamp_repaired_nonmonotonic_accel),
+      static_cast<unsigned long long>(m_imuGravityDiagnostics.true_duplicate_accel_stamp),
+      static_cast<unsigned long long>(m_imuGravityDiagnostics.accel_sequence_gap_count),
+      static_cast<unsigned long long>(m_imuGravityDiagnostics.accel_sequence_gap_max),
+      m_imuGravityDiagnostics.latest_accel_raw_delta_ms,
+      m_imuGravityDiagnostics.latest_accel_normalized_delta_ms,
+      static_cast<long long>(m_imuGravityDiagnostics.latest_accel_repair_offset_ns),
       static_cast<unsigned>(m_imuGravityDiagnostics.latest_accel_sequence_delta),
       m_imuGravityDiagnostics.latest_orientation_age_ms, m_imuGravityDiagnostics.latest_gyro_age_ms,
       m_imuGravityDiagnostics.latest_calibrated_accel_rate_hz,
@@ -783,7 +795,6 @@ TimestampNormalizationConfig Bno086ImuNode::TimestampConfigForReport(ReportId re
 {
   TimestampNormalizationConfig config;
   config.expected_interval_us = ExpectedFeatureIntervalUs(report_id);
-  config.max_repair_sequence_delta = MAX_TIMESTAMP_REPAIR_SEQUENCE_DELTA;
   return config;
 }
 
@@ -796,21 +807,24 @@ void Bno086ImuNode::UpdateTimestampDiagnostics(const SensorEvent& event,
     return;
 
   const ReportTimestampState& state = m_reportTimestampStates[ReportIndex(event.report_id)];
-  m_imuGravityDiagnostics.imu_gravity_repaired_nonmonotonic_accel_stamp =
-      state.repaired_nonmonotonic;
-  m_imuGravityDiagnostics.imu_gravity_true_duplicate_accel_stamp = state.true_duplicate;
-  m_imuGravityDiagnostics.imu_gravity_accel_sequence_gap_count = state.sequence_gap_count;
-  m_imuGravityDiagnostics.imu_gravity_accel_sequence_gap_max = state.sequence_gap_max;
+  m_imuGravityDiagnostics.timestamp_repaired_nonmonotonic_accel = state.repaired_nonmonotonic;
+  m_imuGravityDiagnostics.true_duplicate_accel_stamp = state.true_duplicate;
+  m_imuGravityDiagnostics.accel_sequence_gap_count = state.sequence_gap_count;
+  m_imuGravityDiagnostics.accel_sequence_gap_max = state.sequence_gap_max;
   m_imuGravityDiagnostics.latest_accel_sequence_delta = result.sequence_delta;
-  m_imuGravityDiagnostics.latest_accel_stamp_delta_ms =
+  m_imuGravityDiagnostics.latest_accel_raw_delta_ms =
+      static_cast<double>(result.raw_stamp_delta_ns) / 1.0e6;
+  m_imuGravityDiagnostics.latest_accel_normalized_delta_ms =
       static_cast<double>(result.normalized_stamp_delta_ns) / 1.0e6;
+  m_imuGravityDiagnostics.latest_accel_repair_offset_ns =
+      normalized_stamp.nanoseconds() - raw_stamp.nanoseconds();
 
   if (result.status != TimestampNormalizationStatus::RepairedNonmonotonic)
     return;
 
   RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), ACCEL_TIMESTAMP_REPAIR_LOG_MS,
                        "Repaired BNO086 calibrated accel timestamp: seq_delta=%u raw_delta_ms=%.3f "
-                       "repaired_delta_ms=%.3f raw_stamp_ns=%lld repaired_stamp_ns=%lld",
+                       "repaired_delta_ms=%.6f raw_stamp_ns=%lld repaired_stamp_ns=%lld",
                        static_cast<unsigned>(result.sequence_delta),
                        static_cast<double>(result.raw_stamp_delta_ns) / 1.0e6,
                        static_cast<double>(result.normalized_stamp_delta_ns) / 1.0e6,
@@ -1019,31 +1033,6 @@ void Bno086ImuNode::ApplyEvent(const SensorEvent& event, const rclcpp::Time& sam
     default:
       break;
   }
-}
-
-rclcpp::Time Bno086ImuNode::EstimateEventStamp(const SensorEvent& event,
-                                               const rclcpp::Time& interrupt_ros_at)
-{
-  rclcpp::Time estimatedStamp = interrupt_ros_at;
-
-  if (event.has_base_timestamp)
-  {
-    if (m_lastBaseTimestampUs.has_value() && m_lastBaseRosStamp.has_value())
-    {
-      const std::uint32_t deltaUs = event.base_timestamp_us - *m_lastBaseTimestampUs;
-
-      if (deltaUs <= MAX_BASE_TIMESTAMP_STEP_US)
-        estimatedStamp = *m_lastBaseRosStamp + DurationFromUs(deltaUs);
-    }
-
-    m_lastBaseTimestampUs = event.base_timestamp_us;
-    m_lastBaseRosStamp = estimatedStamp;
-  }
-
-  if (event.has_delay)
-    estimatedStamp = estimatedStamp - DurationFromUs(event.delay_us);
-
-  return estimatedStamp;
 }
 
 std::array<double, 9> Bno086ImuNode::PredictedCovarianceFromPresent(

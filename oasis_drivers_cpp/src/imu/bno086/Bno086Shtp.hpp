@@ -9,6 +9,7 @@
 #pragma once
 
 #include "imu/bno086/Bno086Reports.hpp"
+#include "imu/bno086/Bno086TimestampReconstructor.hpp"
 #include "imu/bno086/Bno086Transport.hpp"
 
 #include <array>
@@ -45,9 +46,12 @@ public:
   explicit Bno086Shtp(Bno086Transport& transport);
 
   bool Configure(const Bno086ShtpConfig& config);
-  PollStatus Poll(std::optional<SensorEvent>& event, int timeout_ms);
+  PollStatus Poll(std::vector<TimestampedSensorEvent>& events,
+                  int timeout_ms,
+                  std::int64_t packet_host_stamp_ns);
 
   const StartupStatus& GetStartupStatus() const;
+  const TimestampReconstructionDiagnostics& GetTimestampReconstructionDiagnostics() const;
   const std::vector<FeatureConfiguration>& GetFeatureConfigurations() const;
   std::vector<FeatureResponse> TakeFeatureResponses();
 
@@ -68,11 +72,14 @@ private:
   bool ConfigureFeature(ReportId report_id, std::uint32_t interval_us);
   bool RequestFeature(ReportId report_id);
 
-  bool DecodePacket(const Bno086ShtpPacket& packet, std::optional<SensorEvent>& event);
+  bool DecodePacket(const Bno086ShtpPacket& packet,
+                    std::vector<TimestampedSensorEvent>& events,
+                    std::int64_t packet_host_stamp_ns);
   void DecodeControlPayload(const std::vector<std::uint8_t>& payload);
   SensorDecodeResult DecodeSensorPayload(const std::vector<std::uint8_t>& payload,
                                          std::uint8_t channel,
-                                         std::optional<SensorEvent>& event);
+                                         std::vector<TimestampedSensorEvent>& events,
+                                         std::int64_t packet_host_stamp_ns);
   bool DecodeSingleSensorReport(const std::vector<std::uint8_t>& payload,
                                 std::size_t report_offset,
                                 std::optional<std::uint32_t> base_timestamp_us,
@@ -104,9 +111,9 @@ private:
   std::uint32_t m_reportIntervalUs{10'000};
   std::vector<FeatureConfiguration> m_featureConfigurations;
   std::vector<FeatureResponse> m_featureResponses;
+  Bno086TimestampReconstructor m_timestampReconstructor;
 
   std::chrono::steady_clock::time_point m_lastConfigAttempt{};
-  std::vector<SensorEvent> m_pendingEvents;
 
   std::array<bool, 6> m_continuationActive{};
   std::array<std::vector<std::uint8_t>, 6> m_continuationPayloads{};

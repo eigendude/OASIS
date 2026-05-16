@@ -89,6 +89,24 @@ struct SensorEvent
   std::array<std::int16_t, 5> values{};
 };
 
+/*!\brief Sensor event with a reconstructed host-domain timestamp */
+struct TimestampedSensorEvent
+{
+  /*!
+   * \brief Decoded SH-2 sensor report payload
+   *
+   * Units: report-specific decoded fields
+   */
+  SensorEvent event;
+
+  /*!
+   * \brief Reconstructed report sample timestamp
+   *
+   * Units: nanoseconds in the caller-provided host timestamp domain
+   */
+  std::int64_t stamp_ns{0};
+};
+
 /*!\brief Requested SH-2 feature configuration for one sensor report */
 struct FeatureConfiguration
 {

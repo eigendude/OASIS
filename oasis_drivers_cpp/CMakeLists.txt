@@ -66,18 +66,30 @@ add_library(bno086_timestamp_normalizer
   src/imu/bno086/Bno086TimestampNormalizer.cpp
 )
 
+add_library(bno086_timestamp_reconstructor
+  src/imu/bno086/Bno086TimestampReconstructor.cpp
+)
+
+add_library(bno086_shtp
+  src/imu/bno086/Bno086Shtp.cpp
+  src/imu/bno086/Bno086Transport.cpp
+)
+target_link_libraries(bno086_shtp
+  bno086_timestamp_reconstructor
+)
+
 add_executable(bno086_imu_driver
   src/cli/bno086_imu_driver.cpp
   src/imu/bno086/Bno086Gpio.cpp
-  src/imu/bno086/Bno086Shtp.cpp
-  src/imu/bno086/Bno086Transport.cpp
   src/nodes/Bno086ImuNode.cpp
 )
 
 target_link_libraries(bno086_imu_driver
   bno086_gravity_utils
   bno086_orientation_covariance_policy
+  bno086_shtp
   bno086_timestamp_normalizer
+  bno086_timestamp_reconstructor
   ${geometry_msgs_TARGETS}
   ${oasis_msgs_TARGETS}
   rclcpp::rclcpp
@@ -256,6 +268,20 @@ if(BUILD_TESTING)
   )
   target_link_libraries(test_bno086_timestamp_normalizer
     bno086_timestamp_normalizer
+  )
+
+  ament_add_gtest(test_bno086_timestamp_reconstructor
+    test/imu/bno086/test_Bno086TimestampReconstructor.cpp
+  )
+  target_link_libraries(test_bno086_timestamp_reconstructor
+    bno086_timestamp_reconstructor
+  )
+
+  ament_add_gtest(test_bno086_shtp
+    test/imu/bno086/test_Bno086Shtp.cpp
+  )
+  target_link_libraries(test_bno086_shtp
+    bno086_shtp
   )
 
   ament_lint_auto_find_test_dependencies()

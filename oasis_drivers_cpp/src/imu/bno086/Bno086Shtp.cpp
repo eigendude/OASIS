@@ -82,25 +82,20 @@ bool Bno086Shtp::Configure(const Bno086ShtpConfig& config)
   return SendSetFeatureCommands();
 }
 
-Bno086Shtp::PollStatus Bno086Shtp::Poll(std::optional<SensorEvent>& event, int timeout_ms)
+Bno086Shtp::PollStatus Bno086Shtp::Poll(std::vector<TimestampedSensorEvent>& events,
+                                        int timeout_ms,
+                                        std::int64_t packet_host_stamp_ns)
 {
-  event.reset();
-
-  if (!m_pendingEvents.empty())
-  {
-    event = m_pendingEvents.front();
-    m_pendingEvents.erase(m_pendingEvents.begin());
-    return PollStatus::SensorEvent;
-  }
+  events.clear();
 
   Bno086ShtpPacket packet;
   if (!m_transport.ReadPacket(packet, timeout_ms))
     return PollStatus::Timeout;
 
-  if (!DecodePacket(packet, event))
+  if (!DecodePacket(packet, events, packet_host_stamp_ns))
     return PollStatus::TransportError;
 
-  if (event.has_value())
+  if (!events.empty())
     return PollStatus::SensorEvent;
 
   return PollStatus::PacketHandled;
@@ -109,6 +104,11 @@ Bno086Shtp::PollStatus Bno086Shtp::Poll(std::optional<SensorEvent>& event, int t
 const Bno086Shtp::StartupStatus& Bno086Shtp::GetStartupStatus() const
 {
   return m_startupStatus;
+}
+
+const TimestampReconstructionDiagnostics& Bno086Shtp::GetTimestampReconstructionDiagnostics() const
+{
+  return m_timestampReconstructor.GetDiagnostics();
 }
 
 const std::vector<FeatureConfiguration>& Bno086Shtp::GetFeatureConfigurations() const
@@ -170,7 +170,9 @@ bool Bno086Shtp::RequestFeature(ReportId report_id)
   return m_transport.WritePacket(kChannelControl, payload);
 }
 
-bool Bno086Shtp::DecodePacket(const Bno086ShtpPacket& packet, std::optional<SensorEvent>& event)
+bool Bno086Shtp::DecodePacket(const Bno086ShtpPacket& packet,
+                              std::vector<TimestampedSensorEvent>& events,
+                              std::int64_t packet_host_stamp_ns)
 {
   MarkCommunicationEstablished();
 
@@ -239,8 +241,8 @@ bool Bno086Shtp::DecodePacket(const Bno086ShtpPacket& packet, std::optional<Sens
 
   if (IsSensorChannel(normalizedPacket.channel))
   {
-    const SensorDecodeResult decoded =
-        DecodeSensorPayload(normalizedPacket.payload, normalizedPacket.channel, event);
+    const SensorDecodeResult decoded = DecodeSensorPayload(
+        normalizedPacket.payload, normalizedPacket.channel, events, packet_host_stamp_ns);
 
     if (packet.channel < m_continuationPayloads.size())
     {
@@ -305,10 +307,10 @@ void Bno086Shtp::DecodeControlPayload(const std::vector<std::uint8_t>& payload)
 Bno086Shtp::SensorDecodeResult Bno086Shtp::DecodeSensorPayload(
     const std::vector<std::uint8_t>& payload,
     std::uint8_t channel,
-    std::optional<SensorEvent>& event)
+    std::vector<TimestampedSensorEvent>& events,
+    std::int64_t packet_host_stamp_ns)
 {
   SensorDecodeResult result;
-  event.reset();
 
   if (payload.empty())
     return result;
@@ -390,10 +392,11 @@ Bno086Shtp::SensorDecodeResult Bno086Shtp::DecodeSensorPayload(
       continue;
     }
 
-    if (event.has_value())
-      m_pendingEvents.emplace_back(decodedEvent);
-    else
-      event = decodedEvent;
+    TimestampedSensorEvent timestampedEvent;
+    timestampedEvent.event = decodedEvent;
+    timestampedEvent.stamp_ns =
+        m_timestampReconstructor.Reconstruct(decodedEvent, packet_host_stamp_ns);
+    events.emplace_back(timestampedEvent);
 
     offset += bytesConsumed;
   }

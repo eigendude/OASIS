@@ -20,7 +20,6 @@ TimestampNormalizationConfig TestConfig()
 {
   TimestampNormalizationConfig config;
   config.expected_interval_us = 10'000;
-  config.max_repair_sequence_delta = 5;
   return config;
 }
 } // namespace
@@ -66,8 +65,8 @@ TEST(Bno086TimestampNormalizer, sequenceAdvancesAndEqualRawStampIsRepaired)
   EXPECT_EQ(result.status, TimestampNormalizationStatus::RepairedNonmonotonic);
   EXPECT_EQ(result.sequence_delta, 1);
   EXPECT_EQ(result.raw_stamp_delta_ns, 0);
-  EXPECT_EQ(result.normalized_stamp_delta_ns, 10'000'000);
-  EXPECT_EQ(result.stamp_ns, 1'010'000'000);
+  EXPECT_EQ(result.normalized_stamp_delta_ns, 1);
+  EXPECT_EQ(result.stamp_ns, 1'000'000'001);
   EXPECT_EQ(state.repaired_nonmonotonic, 1U);
 }
 
@@ -82,7 +81,7 @@ TEST(Bno086TimestampNormalizer, sequenceAdvancesAndBackwardRawStampIsRepaired)
   EXPECT_EQ(result.status, TimestampNormalizationStatus::RepairedNonmonotonic);
   EXPECT_EQ(result.raw_stamp_delta_ns, -1'000'000);
   EXPECT_GT(result.stamp_ns, 1'000'000'000);
-  EXPECT_EQ(result.stamp_ns, 1'010'000'000);
+  EXPECT_EQ(result.stamp_ns, 1'000'000'001);
 }
 
 TEST(Bno086TimestampNormalizer, sameSequenceAndNonAdvancingStampIsTrueDuplicate)
