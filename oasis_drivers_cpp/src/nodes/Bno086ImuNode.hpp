@@ -215,6 +215,7 @@ private:
   double m_imuGravityMaxOrientationAgeMs{25.0};
   double m_imuGravityMaxGyroAgeMs{25.0};
   ImuGravityDiagnostics m_imuGravityDiagnostics{};
+  std::uint64_t m_lastLoggedShtpContinuationResetCount{0};
 
   bool m_loggedCommEstablished{false};
   bool m_loggedSetFeature{false};

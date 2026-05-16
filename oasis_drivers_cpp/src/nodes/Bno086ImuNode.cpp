@@ -88,6 +88,27 @@ std::size_t ReportIndex(ReportId report_id)
 {
   return static_cast<std::size_t>(static_cast<std::uint8_t>(report_id));
 }
+
+const char* ContinuationResetReasonName(ContinuationResetReason reason)
+{
+  switch (reason)
+  {
+    case ContinuationResetReason::None:
+      return "none";
+    case ContinuationResetReason::EmptyPayload:
+      return "empty_payload";
+    case ContinuationResetReason::CommandHeaderOnly:
+      return "command_header_only";
+    case ContinuationResetReason::ShtpHeaderPrefix:
+      return "shtp_header_prefix";
+    case ContinuationResetReason::MaxBytesExceeded:
+      return "max_bytes_exceeded";
+    default:
+      break;
+  }
+
+  return "unknown";
+}
 } // namespace
 
 Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
@@ -662,8 +683,33 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
   }
 
   TimestampReconstructionDiagnostics reconstructionDiagnostics;
+  ShtpDiagnostics shtpDiagnostics;
   if (m_shtp != nullptr)
+  {
     reconstructionDiagnostics = m_shtp->GetTimestampReconstructionDiagnostics();
+    shtpDiagnostics = m_shtp->GetDiagnostics();
+  }
+
+  const std::size_t accelIndex = ReportIndex(ReportId::Accelerometer);
+  const std::size_t gyroIndex = ReportIndex(ReportId::GyroscopeCalibrated);
+  const std::size_t rotationIndex = ReportIndex(ReportId::RotationVector);
+  const std::size_t linearAccelIndex = ReportIndex(ReportId::LinearAcceleration);
+  const std::size_t gravityIndex = ReportIndex(ReportId::Gravity);
+  const ReportSequenceDiagnostics& accelSequenceDiagnostics =
+      shtpDiagnostics.report_sequence[accelIndex];
+
+  if (shtpDiagnostics.continuation_packets_reset > m_lastLoggedShtpContinuationResetCount)
+  {
+    RCLCPP_WARN(get_logger(),
+                "BNO086 SHTP continuation reset: count=%llu channel=%u accumulated_bytes=%u "
+                "incoming_bytes=%u reason=%s",
+                static_cast<unsigned long long>(shtpDiagnostics.continuation_packets_reset),
+                static_cast<unsigned>(shtpDiagnostics.latest_continuation_reset_channel),
+                shtpDiagnostics.latest_continuation_reset_accumulated_bytes,
+                shtpDiagnostics.latest_continuation_reset_incoming_bytes,
+                ContinuationResetReasonName(shtpDiagnostics.latest_continuation_reset_reason));
+    m_lastLoggedShtpContinuationResetCount = shtpDiagnostics.continuation_packets_reset;
+  }
 
   RCLCPP_INFO(
       get_logger(),
@@ -680,6 +726,14 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
       "timestamp_reconstruction_delay_applied=%llu "
       "latest_base_delta_us=%lld latest_host_delta_us=%lld "
       "latest_base_host_error_us=%lld "
+      "shtp_packets_read=%llu shtp_sensor_packets_read=%llu "
+      "shtp_sensor_events_decoded=%llu shtp_accel_decoded=%llu "
+      "shtp_gyro_decoded=%llu shtp_rotation_decoded=%llu "
+      "shtp_linear_accel_decoded=%llu shtp_gravity_decoded=%llu "
+      "shtp_accel_sequence_gaps=%llu shtp_accel_sequence_gap_max=%u "
+      "shtp_accel_duplicate_sequences=%llu shtp_decode_errors=%llu "
+      "shtp_continuation_resets=%llu shtp_max_events_per_packet=%u "
+      "shtp_max_packet_payload_bytes=%u "
       "timestamp_repaired_nonmonotonic_accel=%llu true_duplicate_accel_stamp=%llu "
       "accel_sequence_gap_count=%llu accel_sequence_gap_max=%llu "
       "latest_accel_raw_delta_ms=%.3f latest_accel_normalized_delta_ms=%.3f "
@@ -708,6 +762,20 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
       static_cast<long long>(reconstructionDiagnostics.latest_base_delta_us),
       static_cast<long long>(reconstructionDiagnostics.latest_host_delta_us),
       static_cast<long long>(reconstructionDiagnostics.latest_base_host_error_us),
+      static_cast<unsigned long long>(shtpDiagnostics.packets_read),
+      static_cast<unsigned long long>(shtpDiagnostics.sensor_packets_read),
+      static_cast<unsigned long long>(shtpDiagnostics.sensor_events_decoded),
+      static_cast<unsigned long long>(shtpDiagnostics.decoded_report_counts[accelIndex]),
+      static_cast<unsigned long long>(shtpDiagnostics.decoded_report_counts[gyroIndex]),
+      static_cast<unsigned long long>(shtpDiagnostics.decoded_report_counts[rotationIndex]),
+      static_cast<unsigned long long>(shtpDiagnostics.decoded_report_counts[linearAccelIndex]),
+      static_cast<unsigned long long>(shtpDiagnostics.decoded_report_counts[gravityIndex]),
+      static_cast<unsigned long long>(accelSequenceDiagnostics.gap_count),
+      static_cast<unsigned>(accelSequenceDiagnostics.gap_max),
+      static_cast<unsigned long long>(accelSequenceDiagnostics.duplicate_sequence_count),
+      static_cast<unsigned long long>(shtpDiagnostics.decode_errors),
+      static_cast<unsigned long long>(shtpDiagnostics.continuation_packets_reset),
+      shtpDiagnostics.max_events_per_packet, shtpDiagnostics.max_packet_payload_bytes,
       static_cast<unsigned long long>(
           m_imuGravityDiagnostics.timestamp_repaired_nonmonotonic_accel),
       static_cast<unsigned long long>(m_imuGravityDiagnostics.true_duplicate_accel_stamp),

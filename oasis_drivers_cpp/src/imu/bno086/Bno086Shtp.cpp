@@ -16,6 +16,7 @@ namespace OASIS::IMU::BNO086
 namespace
 {
 constexpr std::uint8_t kChannelCommand = 0;
+constexpr std::uint8_t kChannelExecutable = 1;
 constexpr std::uint8_t kChannelControl = 2;
 constexpr std::uint8_t kChannelReports = 3;
 constexpr std::uint8_t kChannelWakeReports = 4;
@@ -92,6 +93,8 @@ Bno086Shtp::PollStatus Bno086Shtp::Poll(std::vector<TimestampedSensorEvent>& eve
   if (!m_transport.ReadPacket(packet, timeout_ms))
     return PollStatus::Timeout;
 
+  RecordPacketRead(packet);
+
   if (!DecodePacket(packet, events, packet_host_stamp_ns))
     return PollStatus::TransportError;
 
@@ -104,6 +107,11 @@ Bno086Shtp::PollStatus Bno086Shtp::Poll(std::vector<TimestampedSensorEvent>& eve
 const Bno086Shtp::StartupStatus& Bno086Shtp::GetStartupStatus() const
 {
   return m_startupStatus;
+}
+
+const ShtpDiagnostics& Bno086Shtp::GetDiagnostics() const
+{
+  return m_diagnostics;
 }
 
 const TimestampReconstructionDiagnostics& Bno086Shtp::GetTimestampReconstructionDiagnostics() const
@@ -176,6 +184,9 @@ bool Bno086Shtp::DecodePacket(const Bno086ShtpPacket& packet,
 {
   MarkCommunicationEstablished();
 
+  const std::size_t eventsBefore = events.size();
+  m_diagnostics.latest_events_per_packet = 0;
+
   Bno086ShtpPacket normalizedPacket = packet;
   if (IsSensorChannel(packet.channel))
   {
@@ -183,6 +194,7 @@ bool Bno086Shtp::DecodePacket(const Bno086ShtpPacket& packet,
     if (packet.channel < m_continuationPayloads.size() && m_continuationActive[packet.channel])
     {
       auto& continuationPayload = m_continuationPayloads[packet.channel];
+      ++m_diagnostics.continuation_packets_completed;
       sensorPayload.reserve(continuationPayload.size() + packet.payload.size());
       sensorPayload.insert(sensorPayload.end(), continuationPayload.begin(),
                            continuationPayload.end());
@@ -204,6 +216,9 @@ bool Bno086Shtp::DecodePacket(const Bno086ShtpPacket& packet,
     const ContinuationValidation validation = ValidateContinuationFragment(packet);
     if (!validation.valid)
     {
+      RecordContinuationReset(packet.channel, m_continuationPayloads[packet.channel].size(),
+                              packet.payload.size(), validation.reset_reason);
+
       if (validation.flush_buffer)
         ClearContinuationState(packet.channel);
 
@@ -213,6 +228,9 @@ bool Bno086Shtp::DecodePacket(const Bno086ShtpPacket& packet,
     if (validation.keep_buffering && !IsSensorChannel(packet.channel))
     {
       auto& continuationPayload = m_continuationPayloads[packet.channel];
+      if (!m_continuationActive[packet.channel])
+        ++m_diagnostics.continuation_packets_started;
+
       m_continuationActive[packet.channel] = true;
       continuationPayload.insert(continuationPayload.end(), packet.payload.begin(),
                                  packet.payload.end());
@@ -222,6 +240,7 @@ bool Bno086Shtp::DecodePacket(const Bno086ShtpPacket& packet,
     if (!IsSensorChannel(packet.channel) && m_continuationActive[packet.channel])
     {
       auto& continuationPayload = m_continuationPayloads[packet.channel];
+      ++m_diagnostics.continuation_packets_completed;
       continuationPayload.insert(continuationPayload.end(), packet.payload.begin(),
                                  packet.payload.end());
       normalizedPacket.payload = continuationPayload;
@@ -241,14 +260,29 @@ bool Bno086Shtp::DecodePacket(const Bno086ShtpPacket& packet,
 
   if (IsSensorChannel(normalizedPacket.channel))
   {
-    const SensorDecodeResult decoded = DecodeSensorPayload(
-        normalizedPacket.payload, normalizedPacket.channel, events, packet_host_stamp_ns);
+    const SensorDecodeResult decoded =
+        DecodeSensorPayload(normalizedPacket.payload, normalizedPacket.channel, events,
+                            packet_host_stamp_ns, packet.continuation);
+
+    if (decoded.malformed_payload)
+      ++m_diagnostics.malformed_sensor_payloads;
+
+    if (decoded.decode_error)
+      ++m_diagnostics.decode_errors;
+
+    const std::size_t eventsThisPacket = events.size() - eventsBefore;
+    m_diagnostics.latest_events_per_packet = static_cast<std::uint32_t>(eventsThisPacket);
+    m_diagnostics.max_events_per_packet =
+        std::max(m_diagnostics.max_events_per_packet, static_cast<std::uint32_t>(eventsThisPacket));
 
     if (packet.channel < m_continuationPayloads.size())
     {
       if (decoded.trailing_bytes > 0)
       {
         auto& continuationPayload = m_continuationPayloads[packet.channel];
+        if (!m_continuationActive[packet.channel])
+          ++m_diagnostics.continuation_packets_started;
+
         continuationPayload.assign(normalizedPacket.payload.end() -
                                        static_cast<std::ptrdiff_t>(decoded.trailing_bytes),
                                    normalizedPacket.payload.end());
@@ -308,7 +342,8 @@ Bno086Shtp::SensorDecodeResult Bno086Shtp::DecodeSensorPayload(
     const std::vector<std::uint8_t>& payload,
     std::uint8_t channel,
     std::vector<TimestampedSensorEvent>& events,
-    std::int64_t packet_host_stamp_ns)
+    std::int64_t packet_host_stamp_ns,
+    bool payload_can_continue)
 {
   SensorDecodeResult result;
 
@@ -335,6 +370,8 @@ Bno086Shtp::SensorDecodeResult Bno086Shtp::DecodeSensorPayload(
       if (offset + kBaseTimestampHeaderBytes > payload.size())
       {
         result.trailing_bytes = payload.size() - offset;
+        result.malformed_payload = !payload_can_continue;
+        result.decode_error = !payload_can_continue;
         break;
       }
 
@@ -348,6 +385,8 @@ Bno086Shtp::SensorDecodeResult Bno086Shtp::DecodeSensorPayload(
       if (offset + kBaseTimestampHeaderBytes > payload.size())
       {
         result.trailing_bytes = payload.size() - offset;
+        result.malformed_payload = !payload_can_continue;
+        result.decode_error = !payload_can_continue;
         break;
       }
 
@@ -364,6 +403,8 @@ Bno086Shtp::SensorDecodeResult Bno086Shtp::DecodeSensorPayload(
       if (offset + kFlushCompletedBytes > payload.size())
       {
         result.trailing_bytes = payload.size() - offset;
+        result.malformed_payload = !payload_can_continue;
+        result.decode_error = !payload_can_continue;
         break;
       }
 
@@ -374,6 +415,7 @@ Bno086Shtp::SensorDecodeResult Bno086Shtp::DecodeSensorPayload(
     const std::optional<std::size_t> recordBytes = SensorRecordBytes(reportCode);
     if (!recordBytes.has_value())
     {
+      ++m_diagnostics.unknown_sensor_reports;
       ++offset;
       continue;
     }
@@ -381,6 +423,8 @@ Bno086Shtp::SensorDecodeResult Bno086Shtp::DecodeSensorPayload(
     if (offset + *recordBytes > payload.size())
     {
       result.trailing_bytes = payload.size() - offset;
+      result.malformed_payload = !payload_can_continue;
+      result.decode_error = !payload_can_continue;
       break;
     }
 
@@ -388,9 +432,12 @@ Bno086Shtp::SensorDecodeResult Bno086Shtp::DecodeSensorPayload(
     std::size_t bytesConsumed = 0;
     if (!DecodeSingleSensorReport(payload, offset, baseTimestampUs, decodedEvent, bytesConsumed))
     {
+      result.decode_error = true;
       offset += *recordBytes;
       continue;
     }
+
+    RecordDecodedSensorEvent(decodedEvent);
 
     TimestampedSensorEvent timestampedEvent;
     timestampedEvent.event = decodedEvent;
@@ -476,6 +523,68 @@ void Bno086Shtp::MaybeSendDeferredConfiguration()
   SendSetFeatureCommands();
 }
 
+void Bno086Shtp::RecordPacketRead(const Bno086ShtpPacket& packet)
+{
+  ++m_diagnostics.packets_read;
+
+  if (IsSensorChannel(packet.channel))
+    ++m_diagnostics.sensor_packets_read;
+
+  if (packet.channel == kChannelControl)
+    ++m_diagnostics.control_packets_read;
+
+  if (packet.channel == kChannelExecutable)
+    ++m_diagnostics.executable_packets_read;
+
+  if (packet.channel == kChannelWakeReports)
+    ++m_diagnostics.wake_packets_read;
+
+  m_diagnostics.latest_packet_payload_bytes = static_cast<std::uint32_t>(packet.payload.size());
+  m_diagnostics.max_packet_payload_bytes = std::max(
+      m_diagnostics.max_packet_payload_bytes, static_cast<std::uint32_t>(packet.payload.size()));
+}
+
+void Bno086Shtp::RecordDecodedSensorEvent(const SensorEvent& event)
+{
+  const std::size_t reportIndex =
+      static_cast<std::size_t>(static_cast<std::uint8_t>(event.report_id));
+
+  ++m_diagnostics.sensor_events_decoded;
+  ++m_diagnostics.decoded_report_counts[reportIndex];
+
+  ReportSequenceDiagnostics& sequenceDiagnostics = m_diagnostics.report_sequence[reportIndex];
+  if (sequenceDiagnostics.has_sequence)
+  {
+    const std::uint8_t delta =
+        static_cast<std::uint8_t>(event.sequence - sequenceDiagnostics.last_sequence);
+
+    if (delta == 0)
+      ++sequenceDiagnostics.duplicate_sequence_count;
+    else if (delta > 1)
+    {
+      ++sequenceDiagnostics.gap_count;
+      sequenceDiagnostics.gap_max = std::max(sequenceDiagnostics.gap_max, delta);
+    }
+  }
+
+  sequenceDiagnostics.has_sequence = true;
+  sequenceDiagnostics.last_sequence = event.sequence;
+}
+
+void Bno086Shtp::RecordContinuationReset(std::uint8_t channel,
+                                         std::size_t accumulated_bytes,
+                                         std::size_t incoming_bytes,
+                                         ContinuationResetReason reason)
+{
+  ++m_diagnostics.continuation_packets_reset;
+  m_diagnostics.latest_continuation_reset_channel = channel;
+  m_diagnostics.latest_continuation_reset_accumulated_bytes =
+      static_cast<std::uint32_t>(accumulated_bytes);
+  m_diagnostics.latest_continuation_reset_incoming_bytes =
+      static_cast<std::uint32_t>(incoming_bytes);
+  m_diagnostics.latest_continuation_reset_reason = reason;
+}
+
 void Bno086Shtp::MarkCommunicationEstablished()
 {
   m_startupStatus.communication_established = true;
@@ -504,6 +613,7 @@ Bno086Shtp::ContinuationValidation Bno086Shtp::ValidateContinuationFragment(
       validation.valid = false;
       validation.keep_buffering = false;
       validation.flush_buffer = active;
+      validation.reset_reason = ContinuationResetReason::EmptyPayload;
       return validation;
     }
 
@@ -512,6 +622,7 @@ Bno086Shtp::ContinuationValidation Bno086Shtp::ValidateContinuationFragment(
       validation.valid = false;
       validation.keep_buffering = false;
       validation.flush_buffer = true;
+      validation.reset_reason = ContinuationResetReason::CommandHeaderOnly;
       return validation;
     }
 
@@ -520,6 +631,7 @@ Bno086Shtp::ContinuationValidation Bno086Shtp::ValidateContinuationFragment(
       validation.valid = false;
       validation.keep_buffering = false;
       validation.flush_buffer = true;
+      validation.reset_reason = ContinuationResetReason::ShtpHeaderPrefix;
       return validation;
     }
 
@@ -528,6 +640,7 @@ Bno086Shtp::ContinuationValidation Bno086Shtp::ValidateContinuationFragment(
       validation.valid = false;
       validation.keep_buffering = false;
       validation.flush_buffer = true;
+      validation.reset_reason = ContinuationResetReason::MaxBytesExceeded;
       return validation;
     }
 
@@ -541,6 +654,7 @@ Bno086Shtp::ContinuationValidation Bno086Shtp::ValidateContinuationFragment(
   {
     validation.valid = false;
     validation.flush_buffer = true;
+    validation.reset_reason = ContinuationResetReason::EmptyPayload;
     return validation;
   }
 
@@ -548,6 +662,7 @@ Bno086Shtp::ContinuationValidation Bno086Shtp::ValidateContinuationFragment(
   {
     validation.valid = false;
     validation.flush_buffer = true;
+    validation.reset_reason = ContinuationResetReason::ShtpHeaderPrefix;
     return validation;
   }
 
@@ -555,6 +670,7 @@ Bno086Shtp::ContinuationValidation Bno086Shtp::ValidateContinuationFragment(
   {
     validation.valid = false;
     validation.flush_buffer = true;
+    validation.reset_reason = ContinuationResetReason::MaxBytesExceeded;
     return validation;
   }
 
