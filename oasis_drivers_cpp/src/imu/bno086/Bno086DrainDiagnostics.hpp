@@ -80,6 +80,9 @@ struct InterruptDrainDiagnostics
   //! Drain exits caused by reaching the per-interrupt packet budget
   std::uint64_t drain_exited_max_packets{0};
 
+  //! Drain exits caused by reaching the per-interrupt duration budget
+  std::uint64_t drain_exited_duration_budget{0};
+
   //! Drain exits caused by a transport error from Poll
   std::uint64_t drain_exited_transport_error{0};
 
@@ -91,6 +94,24 @@ struct InterruptDrainDiagnostics
 
   //! Maximum sensor events decoded during any completed drain cycle
   std::uint64_t sensor_events_per_drain_max{0};
+
+  //! Configured maximum drain duration, in ms
+  double max_drain_duration_ms_config{0.0};
+
+  //! Latest completed drain duration, in ms
+  double latest_drain_duration_ms{0.0};
+
+  //! Maximum completed drain duration observed, in ms
+  double max_drain_duration_ms_observed{0.0};
+
+  //! Packets read per ms during the latest completed drain cycle
+  double packets_per_ms_latest{0.0};
+
+  //! Sensor events decoded per ms during the latest completed drain cycle
+  double sensor_events_per_ms_latest{0.0};
+
+  //! Drain cycles considered part of startup backlog characterization
+  std::uint64_t startup_backlog_drains{0};
 
   //! Whether H_INTN was asserted when the latest drain exit state was sampled
   bool latest_hintn_asserted_at_exit{false};
@@ -126,6 +147,39 @@ struct TimeoutRetryDecision
   //! True when the drain loop should exit through timeout accounting
   bool exit_timeout{false};
 };
+
+/*!
+ * \brief Update drain duration and throughput diagnostics
+ *
+ * \param diagnostics Drain diagnostics updated in place
+ * \param drain_duration_ms Completed drain duration, in ms
+ * \param packets_read Packets read during the drain
+ * \param sensor_events_decoded Sensor events decoded during the drain
+ * \param max_drain_duration_ms Configured drain duration budget, in ms
+ */
+inline void RecordDrainDuration(InterruptDrainDiagnostics& diagnostics,
+                                double drain_duration_ms,
+                                std::uint64_t packets_read,
+                                std::uint64_t sensor_events_decoded,
+                                double max_drain_duration_ms)
+{
+  diagnostics.max_drain_duration_ms_config = max_drain_duration_ms;
+  diagnostics.latest_drain_duration_ms = drain_duration_ms;
+  if (drain_duration_ms > diagnostics.max_drain_duration_ms_observed)
+    diagnostics.max_drain_duration_ms_observed = drain_duration_ms;
+
+  if (drain_duration_ms > 0.0)
+  {
+    diagnostics.packets_per_ms_latest = static_cast<double>(packets_read) / drain_duration_ms;
+    diagnostics.sensor_events_per_ms_latest =
+        static_cast<double>(sensor_events_decoded) / drain_duration_ms;
+  }
+  else
+  {
+    diagnostics.packets_per_ms_latest = 0.0;
+    diagnostics.sensor_events_per_ms_latest = 0.0;
+  }
+}
 
 /*!
  * \brief Update timeout diagnostics and decide whether one drain should retry

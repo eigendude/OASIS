@@ -215,6 +215,7 @@ private:
   std::uint32_t m_reportIntervalUs{10'000};
   int m_packetReadTimeoutMs{2};
   int m_maxPacketsPerInterrupt{128};
+  double m_maxDrainDurationMs{50.0};
   int m_timeoutRetriesWhileInterruptAsserted{3};
   int m_timeoutRetrySleepUs{100};
   double m_imuGravityMaxOrientationAgeMs{25.0};

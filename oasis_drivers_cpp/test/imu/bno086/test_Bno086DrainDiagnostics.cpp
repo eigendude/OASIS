@@ -95,4 +95,29 @@ TEST(Bno086DrainDiagnostics, recoveryCandidateCountsAfterThreshold)
   EXPECT_EQ(diagnostics.max_consecutive_hintn_asserted_drain_exits, 6U);
   EXPECT_EQ(diagnostics.stuck_interrupt_recovery_candidate_count, 1U);
 }
+
+TEST(Bno086DrainDiagnostics, drainDurationUpdatesThroughput)
+{
+  InterruptDrainDiagnostics diagnostics;
+
+  RecordDrainDuration(diagnostics, 10.0, 25, 100, 50.0);
+
+  EXPECT_DOUBLE_EQ(diagnostics.max_drain_duration_ms_config, 50.0);
+  EXPECT_DOUBLE_EQ(diagnostics.latest_drain_duration_ms, 10.0);
+  EXPECT_DOUBLE_EQ(diagnostics.max_drain_duration_ms_observed, 10.0);
+  EXPECT_DOUBLE_EQ(diagnostics.packets_per_ms_latest, 2.5);
+  EXPECT_DOUBLE_EQ(diagnostics.sensor_events_per_ms_latest, 10.0);
+}
+
+TEST(Bno086DrainDiagnostics, drainDurationHandlesZeroDuration)
+{
+  InterruptDrainDiagnostics diagnostics;
+
+  RecordDrainDuration(diagnostics, 0.0, 25, 100, 50.0);
+
+  EXPECT_DOUBLE_EQ(diagnostics.max_drain_duration_ms_config, 50.0);
+  EXPECT_DOUBLE_EQ(diagnostics.latest_drain_duration_ms, 0.0);
+  EXPECT_DOUBLE_EQ(diagnostics.packets_per_ms_latest, 0.0);
+  EXPECT_DOUBLE_EQ(diagnostics.sensor_events_per_ms_latest, 0.0);
+}
 } // namespace OASIS::IMU::BNO086
