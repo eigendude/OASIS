@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -71,6 +72,10 @@ constexpr double PI_RAD = 3.14159265358979323846;
 constexpr const char* ORIENTATION_REPORT_SOURCE = "rotation_vector";
 constexpr int ORIENTATION_COVARIANCE_LOG_THROTTLE_MS = 5'000;
 constexpr int IMU_GRAVITY_DIAGNOSTICS_LOG_MS = 5'000;
+constexpr int ACCEL_TIMESTAMP_REPAIR_LOG_MS = 5'000;
+
+// Maximum missing-sample count used when extrapolating repaired timestamps
+constexpr std::uint8_t MAX_TIMESTAMP_REPAIR_SEQUENCE_DELTA = 5;
 
 bool IsFiniteArray(const std::array<double, 9>& values)
 {
@@ -81,6 +86,11 @@ bool IsFiniteArray(const std::array<double, 9>& values)
 double VectorMagnitude(double x, double y, double z)
 {
   return std::sqrt(x * x + y * y + z * z);
+}
+
+std::size_t ReportIndex(ReportId report_id)
+{
+  return static_cast<std::size_t>(static_cast<std::uint8_t>(report_id));
 }
 } // namespace
 
@@ -266,7 +276,8 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
                                      .count();
       const rclcpp::Time sampleInterruptRosAt =
           interrupt_ros_at + rclcpp::Duration(0, sampleDeltaNs);
-      const rclcpp::Time eventStamp = EstimateEventStamp(*event, sampleInterruptRosAt);
+      const rclcpp::Time rawEventStamp = EstimateEventStamp(*event, sampleInterruptRosAt);
+      const rclcpp::Time eventStamp = NormalizeEventStamp(*event, rawEventStamp);
       ApplyEvent(*event, eventStamp);
       MaybePublishOnLinearAcceleration(*event);
       MaybePublishImuGravityOnAccelerometer(*event);
@@ -350,10 +361,16 @@ void Bno086ImuNode::MaybePublishImuGravityOnAccelerometer(const SensorEvent& eve
     return;
   }
 
-  if (m_lastPublishedImuGravityAccelStampNs.has_value() &&
-      accelStampNs <= *m_lastPublishedImuGravityAccelStampNs)
+  const ImuGravityAccelSignature accelSignature{
+      m_imuGravityState.sequence,
+      accelStampNs,
+  };
+
+  if (m_lastPublishedImuGravityAccelSignature.has_value() &&
+      accelSignature.sequence == m_lastPublishedImuGravityAccelSignature->sequence &&
+      accelSignature.stamp_ns == m_lastPublishedImuGravityAccelSignature->stamp_ns)
   {
-    ++m_imuGravityDiagnostics.imu_gravity_skipped_duplicate_stamp;
+    ++m_imuGravityDiagnostics.imu_gravity_skipped_duplicate_sequence;
     MaybeLogImuGravityDiagnostics();
     return;
   }
@@ -377,7 +394,7 @@ void Bno086ImuNode::MaybePublishImuGravityOnAccelerometer(const SensorEvent& eve
   }
 
   m_imuGravityPublisher->publish(imuGravityMsg);
-  m_lastPublishedImuGravityAccelStampNs = accelStampNs;
+  m_lastPublishedImuGravityAccelSignature = accelSignature;
   ++m_imuGravityDiagnostics.imu_gravity_published;
   MaybeLogImuGravityDiagnostics();
 }
@@ -577,7 +594,13 @@ void Bno086ImuNode::MaybeLogFeatureResponses()
 
   const std::vector<FeatureResponse> featureResponses = m_shtp->TakeFeatureResponses();
   for (const FeatureResponse& featureResponse : featureResponses)
+  {
+    if (featureResponse.report_interval_us > 0)
+      m_actualFeatureIntervalUs[ReportIndex(featureResponse.report_id)] =
+          featureResponse.report_interval_us;
+
     LogFeatureResponse(featureResponse);
+  }
 }
 
 void Bno086ImuNode::LogFeatureResponse(const FeatureResponse& response) const
@@ -643,7 +666,10 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
       "BNO086 imu_gravity diagnostics: calibrated_accel_reports_received=%llu "
       "imu_gravity_published=%llu skipped_missing_orientation=%llu "
       "skipped_missing_gyro=%llu skipped_stale_orientation=%llu "
-      "skipped_stale_gyro=%llu skipped_duplicate_stamp=%llu skipped_nonfinite=%llu "
+      "skipped_stale_gyro=%llu skipped_duplicate_sequence=%llu skipped_nonfinite=%llu "
+      "repaired_nonmonotonic_accel_stamp=%llu true_duplicate_accel_stamp=%llu "
+      "accel_sequence_gap_count=%llu accel_sequence_gap_max=%llu "
+      "latest_accel_stamp_delta_ms=%.3f latest_accel_sequence_delta=%u "
       "latest_orientation_age_ms=%.2f latest_gyro_age_ms=%.2f "
       "latest_calibrated_accel_rate_hz=%.2f latest_imu_gravity_rate_hz=%.2f "
       "target_rate_hz=%.1f",
@@ -655,8 +681,17 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
       static_cast<unsigned long long>(
           m_imuGravityDiagnostics.imu_gravity_skipped_stale_orientation),
       static_cast<unsigned long long>(m_imuGravityDiagnostics.imu_gravity_skipped_stale_gyro),
-      static_cast<unsigned long long>(m_imuGravityDiagnostics.imu_gravity_skipped_duplicate_stamp),
+      static_cast<unsigned long long>(
+          m_imuGravityDiagnostics.imu_gravity_skipped_duplicate_sequence),
       static_cast<unsigned long long>(m_imuGravityDiagnostics.imu_gravity_skipped_nonfinite),
+      static_cast<unsigned long long>(
+          m_imuGravityDiagnostics.imu_gravity_repaired_nonmonotonic_accel_stamp),
+      static_cast<unsigned long long>(
+          m_imuGravityDiagnostics.imu_gravity_true_duplicate_accel_stamp),
+      static_cast<unsigned long long>(m_imuGravityDiagnostics.imu_gravity_accel_sequence_gap_count),
+      static_cast<unsigned long long>(m_imuGravityDiagnostics.imu_gravity_accel_sequence_gap_max),
+      m_imuGravityDiagnostics.latest_accel_stamp_delta_ms,
+      static_cast<unsigned>(m_imuGravityDiagnostics.latest_accel_sequence_delta),
       m_imuGravityDiagnostics.latest_orientation_age_ms, m_imuGravityDiagnostics.latest_gyro_age_ms,
       m_imuGravityDiagnostics.latest_calibrated_accel_rate_hz,
       m_imuGravityDiagnostics.latest_imu_gravity_rate_hz, IMU_GRAVITY_TARGET_RATE_HZ);
@@ -729,6 +764,76 @@ bool Bno086ImuNode::IsImuGravitySampleValid(const sensor_msgs::msg::Imu& message
   }
 
   return true;
+}
+
+rclcpp::Time Bno086ImuNode::NormalizeEventStamp(const SensorEvent& event,
+                                                const rclcpp::Time& raw_stamp)
+{
+  ReportTimestampState& state = m_reportTimestampStates[ReportIndex(event.report_id)];
+  const TimestampNormalizationConfig config = TimestampConfigForReport(event.report_id);
+  const TimestampNormalizationResult result =
+      NormalizeReportTimestamp(state, event.sequence, raw_stamp.nanoseconds(), config);
+  const rclcpp::Time normalizedStamp(result.stamp_ns, raw_stamp.get_clock_type());
+
+  UpdateTimestampDiagnostics(event, result, raw_stamp, normalizedStamp);
+  return normalizedStamp;
+}
+
+TimestampNormalizationConfig Bno086ImuNode::TimestampConfigForReport(ReportId report_id) const
+{
+  TimestampNormalizationConfig config;
+  config.expected_interval_us = ExpectedFeatureIntervalUs(report_id);
+  config.max_repair_sequence_delta = MAX_TIMESTAMP_REPAIR_SEQUENCE_DELTA;
+  return config;
+}
+
+void Bno086ImuNode::UpdateTimestampDiagnostics(const SensorEvent& event,
+                                               const TimestampNormalizationResult& result,
+                                               const rclcpp::Time& raw_stamp,
+                                               const rclcpp::Time& normalized_stamp)
+{
+  if (event.report_id != ReportId::Accelerometer)
+    return;
+
+  const ReportTimestampState& state = m_reportTimestampStates[ReportIndex(event.report_id)];
+  m_imuGravityDiagnostics.imu_gravity_repaired_nonmonotonic_accel_stamp =
+      state.repaired_nonmonotonic;
+  m_imuGravityDiagnostics.imu_gravity_true_duplicate_accel_stamp = state.true_duplicate;
+  m_imuGravityDiagnostics.imu_gravity_accel_sequence_gap_count = state.sequence_gap_count;
+  m_imuGravityDiagnostics.imu_gravity_accel_sequence_gap_max = state.sequence_gap_max;
+  m_imuGravityDiagnostics.latest_accel_sequence_delta = result.sequence_delta;
+  m_imuGravityDiagnostics.latest_accel_stamp_delta_ms =
+      static_cast<double>(result.normalized_stamp_delta_ns) / 1.0e6;
+
+  if (result.status != TimestampNormalizationStatus::RepairedNonmonotonic)
+    return;
+
+  RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), ACCEL_TIMESTAMP_REPAIR_LOG_MS,
+                       "Repaired BNO086 calibrated accel timestamp: seq_delta=%u raw_delta_ms=%.3f "
+                       "repaired_delta_ms=%.3f raw_stamp_ns=%lld repaired_stamp_ns=%lld",
+                       static_cast<unsigned>(result.sequence_delta),
+                       static_cast<double>(result.raw_stamp_delta_ns) / 1.0e6,
+                       static_cast<double>(result.normalized_stamp_delta_ns) / 1.0e6,
+                       static_cast<long long>(raw_stamp.nanoseconds()),
+                       static_cast<long long>(normalized_stamp.nanoseconds()));
+}
+
+std::optional<std::uint32_t> Bno086ImuNode::ActualFeatureIntervalUs(ReportId report_id) const
+{
+  return m_actualFeatureIntervalUs[ReportIndex(report_id)];
+}
+
+std::uint32_t Bno086ImuNode::ExpectedFeatureIntervalUs(ReportId report_id) const
+{
+  const std::optional<std::uint32_t> actualIntervalUs = ActualFeatureIntervalUs(report_id);
+  if (actualIntervalUs.has_value())
+    return *actualIntervalUs;
+
+  const std::optional<std::uint32_t> requestedIntervalUs = RequestedFeatureIntervalUs(report_id);
+  if (requestedIntervalUs.has_value())
+    return *requestedIntervalUs;
+
+  return m_reportIntervalUs;
 }
 
 std::optional<std::uint32_t> Bno086ImuNode::RequestedFeatureIntervalUs(ReportId report_id) const

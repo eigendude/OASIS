@@ -62,6 +62,10 @@ add_library(bno086_orientation_covariance_policy
   src/imu/bno086/Bno086OrientationCovariancePolicy.cpp
 )
 
+add_library(bno086_timestamp_normalizer
+  src/imu/bno086/Bno086TimestampNormalizer.cpp
+)
+
 add_executable(bno086_imu_driver
   src/cli/bno086_imu_driver.cpp
   src/imu/bno086/Bno086Gpio.cpp
@@ -73,6 +77,7 @@ add_executable(bno086_imu_driver
 target_link_libraries(bno086_imu_driver
   bno086_gravity_utils
   bno086_orientation_covariance_policy
+  bno086_timestamp_normalizer
   ${geometry_msgs_TARGETS}
   ${oasis_msgs_TARGETS}
   rclcpp::rclcpp
@@ -244,6 +249,13 @@ if(BUILD_TESTING)
   )
   target_link_libraries(test_bno086_orientation_covariance_policy
     bno086_orientation_covariance_policy
+  )
+
+  ament_add_gtest(test_bno086_timestamp_normalizer
+    test/imu/bno086/test_Bno086TimestampNormalizer.cpp
+  )
+  target_link_libraries(test_bno086_timestamp_normalizer
+    bno086_timestamp_normalizer
   )
 
   ament_lint_auto_find_test_dependencies()

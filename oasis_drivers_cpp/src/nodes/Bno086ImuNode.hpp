@@ -13,6 +13,7 @@
 #include "imu/bno086/Bno086OrientationCovariancePolicy.hpp"
 #include "imu/bno086/Bno086Reports.hpp"
 #include "imu/bno086/Bno086Shtp.hpp"
+#include "imu/bno086/Bno086TimestampNormalizer.hpp"
 #include "imu/bno086/Bno086Transport.hpp"
 
 #include <array>
@@ -77,6 +78,12 @@ private:
     int64_t linear_accel_stamp_ns{0};
   };
 
+  struct ImuGravityAccelSignature
+  {
+    std::uint8_t sequence{0};
+    int64_t stamp_ns{0};
+  };
+
   struct ImuGravityDiagnostics
   {
     std::uint64_t calibrated_accel_reports_received{0};
@@ -85,10 +92,16 @@ private:
     std::uint64_t imu_gravity_skipped_missing_gyro{0};
     std::uint64_t imu_gravity_skipped_stale_orientation{0};
     std::uint64_t imu_gravity_skipped_stale_gyro{0};
-    std::uint64_t imu_gravity_skipped_duplicate_stamp{0};
+    std::uint64_t imu_gravity_skipped_duplicate_sequence{0};
     std::uint64_t imu_gravity_skipped_nonfinite{0};
+    std::uint64_t imu_gravity_repaired_nonmonotonic_accel_stamp{0};
+    std::uint64_t imu_gravity_true_duplicate_accel_stamp{0};
+    std::uint64_t imu_gravity_accel_sequence_gap_count{0};
+    std::uint64_t imu_gravity_accel_sequence_gap_max{0};
     double latest_orientation_age_ms{0.0};
     double latest_gyro_age_ms{0.0};
+    double latest_accel_stamp_delta_ms{0.0};
+    std::uint8_t latest_accel_sequence_delta{0};
     double latest_calibrated_accel_rate_hz{0.0};
     double latest_imu_gravity_rate_hz{0.0};
     std::uint64_t last_rate_accel_reports{0};
@@ -133,6 +146,17 @@ private:
   void MaybeLogImuGravityDiagnostics();
   bool IsImuGravitySampleValid(const sensor_msgs::msg::Imu& message,
                                std::string& invalid_reason) const;
+  rclcpp::Time NormalizeEventStamp(const OASIS::IMU::BNO086::SensorEvent& event,
+                                   const rclcpp::Time& raw_stamp);
+  OASIS::IMU::BNO086::TimestampNormalizationConfig TimestampConfigForReport(
+      OASIS::IMU::BNO086::ReportId report_id) const;
+  void UpdateTimestampDiagnostics(const OASIS::IMU::BNO086::SensorEvent& event,
+                                  const OASIS::IMU::BNO086::TimestampNormalizationResult& result,
+                                  const rclcpp::Time& raw_stamp,
+                                  const rclcpp::Time& normalized_stamp);
+  std::optional<std::uint32_t> ActualFeatureIntervalUs(
+      OASIS::IMU::BNO086::ReportId report_id) const;
+  std::uint32_t ExpectedFeatureIntervalUs(OASIS::IMU::BNO086::ReportId report_id) const;
   std::optional<std::uint32_t> RequestedFeatureIntervalUs(
       OASIS::IMU::BNO086::ReportId report_id) const;
 
@@ -186,7 +210,9 @@ private:
   std::optional<std::uint32_t> m_lastBaseTimestampUs;
   std::optional<rclcpp::Time> m_lastBaseRosStamp;
   std::optional<CoreFrameSignature> m_lastPublishedCoreSignature;
-  std::optional<int64_t> m_lastPublishedImuGravityAccelStampNs;
+  std::optional<ImuGravityAccelSignature> m_lastPublishedImuGravityAccelSignature;
+  std::array<OASIS::IMU::BNO086::ReportTimestampState, 256> m_reportTimestampStates{};
+  std::array<std::optional<std::uint32_t>, 256> m_actualFeatureIntervalUs{};
   std::uint32_t m_reportIntervalUs{10'000};
   double m_imuGravityMaxOrientationAgeMs{25.0};
   double m_imuGravityMaxGyroAgeMs{25.0};
