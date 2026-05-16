@@ -8,7 +8,9 @@
 
 #include "imu/bno086/Bno086Shtp.hpp"
 
+#include <cerrno>
 #include <cstdint>
+#include <cstring>
 #include <deque>
 #include <vector>
 
@@ -56,6 +58,36 @@ public:
 
 private:
   std::deque<Bno086ShtpPacket> m_packets;
+};
+
+class ByteQueueTransport : public Bno086Transport
+{
+public:
+  bool IsOpen() const override { return true; }
+
+  void PushRead(const std::vector<std::uint8_t>& bytes) { m_reads.emplace_back(bytes); }
+
+  const std::vector<std::size_t>& RequestedSizes() const { return m_requestedSizes; }
+
+  ssize_t ReadFromDevice(std::uint8_t* buffer, std::size_t size) const override
+  {
+    m_requestedSizes.emplace_back(size);
+
+    if (m_reads.empty() || m_reads.front().size() != size)
+    {
+      errno = EIO;
+      return -1;
+    }
+
+    const std::vector<std::uint8_t> bytes = m_reads.front();
+    m_reads.pop_front();
+    std::memcpy(buffer, bytes.data(), bytes.size());
+    return static_cast<ssize_t>(bytes.size());
+  }
+
+private:
+  mutable std::deque<std::vector<std::uint8_t>> m_reads;
+  mutable std::vector<std::size_t> m_requestedSizes;
 };
 
 void AppendU32(std::vector<std::uint8_t>& payload, std::uint32_t value)
@@ -139,12 +171,51 @@ TEST(Bno086Transport, closedReadPacketUpdatesDurationDiagnostics)
             diagnostics.latest_transport_read_duration_ms);
   EXPECT_EQ(diagnostics.transport_read_over_timeout_count, 0U);
   EXPECT_EQ(diagnostics.transport_header_read_calls, 0U);
-  EXPECT_EQ(diagnostics.transport_payload_read_calls, 0U);
+  EXPECT_EQ(diagnostics.transport_full_packet_read_calls, 0U);
   EXPECT_EQ(diagnostics.read_packet_attempts, 0U);
   EXPECT_EQ(diagnostics.transaction_failures, 0U);
   EXPECT_EQ(diagnostics.latest_transaction_bytes, 0U);
-  EXPECT_EQ(diagnostics.latest_payload_read_bytes, 0U);
-  EXPECT_EQ(diagnostics.max_payload_read_bytes, 0U);
+  EXPECT_EQ(diagnostics.latest_full_packet_read_bytes, 0U);
+  EXPECT_EQ(diagnostics.max_full_packet_read_bytes, 0U);
+}
+
+TEST(Bno086Transport, readPacketUsesHeaderProbeThenFullPacketRead)
+{
+  const std::vector<std::uint8_t> payload{0x01, 0x02, 0x03};
+  const std::uint16_t packetLength = static_cast<std::uint16_t>(kShtpHeaderBytes + payload.size());
+  const std::vector<std::uint8_t> header{
+      static_cast<std::uint8_t>(packetLength & 0xFFU),
+      static_cast<std::uint8_t>((packetLength >> 8) & 0xFFU),
+      kReportChannel,
+      7,
+  };
+
+  std::vector<std::uint8_t> fullPacket = header;
+  fullPacket.insert(fullPacket.end(), payload.begin(), payload.end());
+
+  ByteQueueTransport transport;
+  transport.PushRead(header);
+  transport.PushRead(fullPacket);
+
+  Bno086ShtpPacket packet;
+  ASSERT_TRUE(transport.ReadPacket(packet, 5));
+
+  EXPECT_EQ(packet.raw_length, packetLength);
+  EXPECT_EQ(packet.packet_length, packetLength);
+  EXPECT_EQ(packet.channel, kReportChannel);
+  EXPECT_EQ(packet.sequence, 7);
+  EXPECT_EQ(packet.payload, payload);
+
+  ASSERT_EQ(transport.RequestedSizes().size(), 2U);
+  EXPECT_EQ(transport.RequestedSizes()[0], kShtpHeaderBytes);
+  EXPECT_EQ(transport.RequestedSizes()[1], packetLength);
+
+  const Bno086TransportDiagnostics& diagnostics = transport.GetDiagnostics();
+  EXPECT_EQ(diagnostics.transport_header_read_calls, 1U);
+  EXPECT_EQ(diagnostics.transport_full_packet_read_calls, 1U);
+  EXPECT_EQ(diagnostics.latest_full_packet_read_bytes, packetLength);
+  EXPECT_EQ(diagnostics.max_full_packet_read_bytes, packetLength);
+  EXPECT_EQ(diagnostics.read_packet_invalid_full_packets, 0U);
 }
 
 TEST(Bno086Shtp, pollReturnsMultiReportPayloadAsTimestampedBatch)
