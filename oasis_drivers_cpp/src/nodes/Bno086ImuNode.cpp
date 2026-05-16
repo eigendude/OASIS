@@ -38,6 +38,8 @@ constexpr double DEFAULT_GYRO_RATE_HZ = 100.0;
 constexpr double DEFAULT_ACCELEROMETER_RATE_HZ = 100.0;
 constexpr double DEFAULT_LINEAR_ACCELERATION_RATE_HZ = 50.0;
 constexpr double DEFAULT_GRAVITY_RATE_HZ = 25.0;
+constexpr double DEFAULT_BACKLOG_LINEAR_ACCELERATION_RATE_HZ = 25.0;
+constexpr double DEFAULT_BACKLOG_GRAVITY_RATE_HZ = 10.0;
 
 constexpr const char* IMU_TOPIC = "imu";
 constexpr const char* IMU_PREDICTED_TOPIC = "imu_predicted";
@@ -103,6 +105,11 @@ std::uint32_t RateToIntervalUs(double rate_hz)
 {
   const double clampedHz = std::max(rate_hz, 1.0);
   return static_cast<std::uint32_t>(std::round(1'000'000.0 / clampedHz));
+}
+
+double IntervalToRateHz(std::uint32_t interval_us)
+{
+  return interval_us > 0 ? 1'000'000.0 / static_cast<double>(interval_us) : 0.0;
 }
 
 const char* ContinuationResetReasonName(ContinuationResetReason reason)
@@ -189,6 +196,8 @@ std::string ContinuationPayloadPrefixHex(const ShtpDiagnostics& diagnostics)
 
 Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
 {
+  m_nodeStartSteady = std::chrono::steady_clock::now();
+
   declare_parameter("i2c_device", std::string(DEFAULT_I2C_DEVICE));
   declare_parameter("i2c_address", static_cast<int>(DEFAULT_I2C_ADDRESS));
   declare_parameter("int_gpio", DEFAULT_INT_GPIO);
@@ -199,6 +208,16 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   declare_parameter("bno086_linear_acceleration_rate_hz", DEFAULT_LINEAR_ACCELERATION_RATE_HZ);
   declare_parameter("bno086_gravity_rate_hz", DEFAULT_GRAVITY_RATE_HZ);
   declare_parameter("bno086_enable_gravity_report", true);
+  declare_parameter("bno086_adaptive_rate_limit_enabled", true);
+  declare_parameter("bno086_backlog_events_per_packet_threshold", 4.0);
+  declare_parameter("bno086_backlog_full_packet_bytes_threshold", 64.0);
+  declare_parameter("bno086_backlog_windows_before_rate_limit", 2);
+  declare_parameter("bno086_recovery_windows_before_restore", 6);
+  declare_parameter("bno086_backlog_linear_acceleration_rate_hz",
+                    DEFAULT_BACKLOG_LINEAR_ACCELERATION_RATE_HZ);
+  declare_parameter("bno086_backlog_gravity_rate_hz", DEFAULT_BACKLOG_GRAVITY_RATE_HZ);
+  declare_parameter("bno086_backlog_disable_gravity", false);
+  declare_parameter("bno086_adaptive_rate_limit_startup_grace_sec", 10.0);
   declare_parameter("prediction_horizon_sec", DEFAULT_PREDICTION_HORIZON_SEC);
   declare_parameter("imu_gravity_max_orientation_age_ms",
                     DEFAULT_IMU_GRAVITY_MAX_ORIENTATION_AGE_MS);
@@ -227,6 +246,22 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   const double linearAccelerationRateHz = perReportRateHz("bno086_linear_acceleration_rate_hz");
   const double gravityRateHz = perReportRateHz("bno086_gravity_rate_hz");
   const bool enableGravityReport = get_parameter("bno086_enable_gravity_report").as_bool();
+  m_adaptiveRateLimitEnabled = get_parameter("bno086_adaptive_rate_limit_enabled").as_bool();
+  m_backlogEventsPerPacketThreshold =
+      std::max(0.0, get_parameter("bno086_backlog_events_per_packet_threshold").as_double());
+  m_backlogFullPacketBytesThreshold =
+      std::max(0.0, get_parameter("bno086_backlog_full_packet_bytes_threshold").as_double());
+  m_backlogWindowsBeforeRateLimit = static_cast<std::uint64_t>(std::max<std::int64_t>(
+      1, get_parameter("bno086_backlog_windows_before_rate_limit").as_int()));
+  m_recoveryWindowsBeforeRestore = static_cast<std::uint64_t>(
+      std::max<std::int64_t>(1, get_parameter("bno086_recovery_windows_before_restore").as_int()));
+  const double backlogLinearAccelerationRateHz =
+      std::max(1.0, get_parameter("bno086_backlog_linear_acceleration_rate_hz").as_double());
+  const double backlogGravityRateHz =
+      std::max(1.0, get_parameter("bno086_backlog_gravity_rate_hz").as_double());
+  m_backlogDisableGravity = get_parameter("bno086_backlog_disable_gravity").as_bool();
+  m_adaptiveRateLimitStartupGraceSec =
+      std::max(0.0, get_parameter("bno086_adaptive_rate_limit_startup_grace_sec").as_double());
   m_predictionHorizonSec = std::max(get_parameter("prediction_horizon_sec").as_double(), 0.0);
   m_imuGravityMaxOrientationAgeMs =
       std::max(get_parameter("imu_gravity_max_orientation_age_ms").as_double(), 0.0);
@@ -248,6 +283,17 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   reportRates.accelerometer_interval_us = RateToIntervalUs(accelerometerRateHz);
   reportRates.linear_acceleration_interval_us = RateToIntervalUs(linearAccelerationRateHz);
   reportRates.gravity_interval_us = RateToIntervalUs(gravityRateHz);
+  m_configuredLinearAccelerationIntervalUs = reportRates.linear_acceleration_interval_us;
+  m_configuredGravityIntervalUs = enableGravityReport ? reportRates.gravity_interval_us : 0U;
+  m_activeLinearAccelerationIntervalUs = m_configuredLinearAccelerationIntervalUs;
+  m_activeGravityIntervalUs = m_configuredGravityIntervalUs;
+  m_backlogLinearAccelerationIntervalUs = RateToIntervalUs(backlogLinearAccelerationRateHz);
+  m_backlogGravityIntervalUs = (!enableGravityReport || m_backlogDisableGravity)
+                                   ? 0U
+                                   : RateToIntervalUs(backlogGravityRateHz);
+  m_imuGravityDiagnostics.active_linear_acceleration_rate_hz =
+      IntervalToRateHz(m_activeLinearAccelerationIntervalUs);
+  m_imuGravityDiagnostics.active_gravity_rate_hz = IntervalToRateHz(m_activeGravityIntervalUs);
 
   m_reportIntervalUs =
       std::max(reportRates.rotation_vector_interval_us,
@@ -314,6 +360,17 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
               "timeout_retries_while_interrupt_asserted=%d timeout_retry_sleep_us=%d",
               m_packetReadTimeoutMs, m_maxPacketsPerInterrupt, m_maxDrainDurationMs,
               m_timeoutRetriesWhileInterruptAsserted, m_timeoutRetrySleepUs);
+  RCLCPP_INFO(get_logger(),
+              "BNO086 adaptive rate limit config: enabled=%s backlog_events_per_packet=%.2f "
+              "backlog_full_packet_bytes=%.1f backlog_windows=%llu recovery_windows=%llu "
+              "startup_grace_sec=%.1f backlog_linear_accel_hz=%.1f backlog_gravity_hz=%.1f "
+              "backlog_disable_gravity=%s",
+              m_adaptiveRateLimitEnabled ? "true" : "false", m_backlogEventsPerPacketThreshold,
+              m_backlogFullPacketBytesThreshold,
+              static_cast<unsigned long long>(m_backlogWindowsBeforeRateLimit),
+              static_cast<unsigned long long>(m_recoveryWindowsBeforeRestore),
+              m_adaptiveRateLimitStartupGraceSec, backlogLinearAccelerationRateHz,
+              backlogGravityRateHz, m_backlogDisableGravity ? "true" : "false");
 }
 
 bool Bno086ImuNode::Initialize()
@@ -1145,6 +1202,8 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
         m_imuGravityDiagnostics.latest_stale_orientation_skip_delta,
         m_imuGravityDiagnostics.latest_stale_gyro_skip_delta,
     };
+
+    MaybeAdaptBno086ReportRates();
   }
 
   if (shtpDiagnostics.continuation_packets_reset > m_lastLoggedShtpContinuationResetCount)
@@ -1301,6 +1360,11 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
       "timestamp_repair_warnings_suppressed=%llu "
       "continuation_reset_warnings_suppressed=%llu "
       "feature_rate_warnings_suppressed=%llu "
+      "backlog_detected=%s backlog_detected_count=%llu "
+      "consecutive_backlog_windows=%llu max_consecutive_backlog_windows=%llu "
+      "adaptive_rate_limit_active=%s adaptive_rate_limit_entries=%llu "
+      "adaptive_rate_limit_exits=%llu active_linear_acceleration_rate_hz=%.2f "
+      "active_gravity_rate_hz=%.2f "
       "target_rate_hz=%.1f",
       static_cast<unsigned long long>(m_imuGravityDiagnostics.calibrated_accel_reports_received),
       static_cast<unsigned long long>(m_imuGravityDiagnostics.imu_gravity_published),
@@ -1453,7 +1517,15 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
       static_cast<unsigned long long>(
           m_imuGravityDiagnostics.continuation_reset_warnings_suppressed),
       static_cast<unsigned long long>(m_imuGravityDiagnostics.feature_rate_warnings_suppressed),
-      IMU_GRAVITY_TARGET_RATE_HZ);
+      m_imuGravityDiagnostics.latest_backlog_detected ? "true" : "false",
+      static_cast<unsigned long long>(m_imuGravityDiagnostics.backlog_detected_count),
+      static_cast<unsigned long long>(m_imuGravityDiagnostics.consecutive_backlog_windows),
+      static_cast<unsigned long long>(m_imuGravityDiagnostics.max_consecutive_backlog_windows),
+      m_imuGravityDiagnostics.adaptive_rate_limit_active ? "true" : "false",
+      static_cast<unsigned long long>(m_imuGravityDiagnostics.adaptive_rate_limit_entries),
+      static_cast<unsigned long long>(m_imuGravityDiagnostics.adaptive_rate_limit_exits),
+      m_imuGravityDiagnostics.active_linear_acceleration_rate_hz,
+      m_imuGravityDiagnostics.active_gravity_rate_hz, IMU_GRAVITY_TARGET_RATE_HZ);
 
   m_imuGravityDiagnostics.last_log_at = now;
   m_imuGravityDiagnostics.last_rate_accel_reports =
@@ -1485,6 +1557,127 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
   m_imuGravityDiagnostics.last_rate_shtp_packets_read = shtpDiagnostics.packets_read;
   m_imuGravityDiagnostics.last_rate_shtp_sensor_events_decoded =
       shtpDiagnostics.sensor_events_decoded;
+}
+
+void Bno086ImuNode::MaybeAdaptBno086ReportRates()
+{
+  const Bno086BacklogSample sample{
+      m_imuGravityDiagnostics.latest_shtp_events_per_packet_mean,
+      m_imuGravityDiagnostics.latest_transport_full_packet_read_bytes_mean,
+      m_imuGravityDiagnostics.latest_imu_gravity_rate_hz,
+      m_imuGravityDiagnostics.latest_shtp_accel_decoded_rate_hz,
+      m_imuGravityDiagnostics.latest_accel_sequence_gap_delta,
+      m_imuGravityDiagnostics.latest_stale_orientation_skip_delta,
+      m_imuGravityDiagnostics.latest_stale_gyro_skip_delta,
+      m_interruptDrainDiagnostics.latest_drain_duration_ms,
+      m_maxDrainDurationMs,
+  };
+  const Bno086BacklogDetectionConfig detectionConfig{
+      m_backlogEventsPerPacketThreshold,
+      m_backlogFullPacketBytesThreshold,
+      0.8,
+      2.0,
+  };
+  const Bno086AdaptiveRateLimitConfig adaptiveConfig{
+      m_adaptiveRateLimitEnabled,
+      m_backlogWindowsBeforeRateLimit,
+      m_recoveryWindowsBeforeRestore,
+      m_adaptiveRateLimitStartupGraceSec,
+  };
+
+  const auto now = std::chrono::steady_clock::now();
+  const double secondsSinceStart =
+      static_cast<double>(
+          std::chrono::duration_cast<std::chrono::nanoseconds>(now - m_nodeStartSteady).count()) /
+      1.0e9;
+  const Bno086AdaptiveRateLimitDecision decision = UpdateBno086AdaptiveRateLimit(
+      m_adaptiveRateLimitState, sample, detectionConfig, adaptiveConfig, secondsSinceStart);
+
+  m_imuGravityDiagnostics.backlog_detected_count = m_adaptiveRateLimitState.backlog_detected_count;
+  m_imuGravityDiagnostics.latest_backlog_detected =
+      m_adaptiveRateLimitState.latest_backlog_detected;
+  m_imuGravityDiagnostics.consecutive_backlog_windows =
+      m_adaptiveRateLimitState.consecutive_backlog_windows;
+  m_imuGravityDiagnostics.max_consecutive_backlog_windows =
+      m_adaptiveRateLimitState.max_consecutive_backlog_windows;
+  m_imuGravityDiagnostics.adaptive_rate_limit_active = m_adaptiveRateLimitState.active;
+  m_imuGravityDiagnostics.adaptive_rate_limit_entries =
+      m_adaptiveRateLimitState.adaptive_rate_limit_entries;
+  m_imuGravityDiagnostics.adaptive_rate_limit_exits =
+      m_adaptiveRateLimitState.adaptive_rate_limit_exits;
+
+  if (decision.enter_adaptive_mode)
+  {
+    if (ApplyAdaptiveReportIntervals(m_backlogLinearAccelerationIntervalUs,
+                                     m_backlogGravityIntervalUs))
+    {
+      RCLCPP_WARN(
+          get_logger(),
+          "BNO086 adaptive rate limit active: events_per_packet_mean=%.2f "
+          "full_packet_read_bytes_mean=%.2f imu_gravity_rate_hz=%.2f "
+          "accel_sequence_gap_delta=%llu stale_orientation_delta=%llu stale_gyro_delta=%llu "
+          "linear_acceleration_rate_hz=%.2f gravity_rate_hz=%.2f",
+          sample.events_per_packet_mean, sample.full_packet_read_bytes_mean,
+          sample.imu_gravity_rate_hz,
+          static_cast<unsigned long long>(sample.accel_sequence_gap_delta),
+          static_cast<unsigned long long>(sample.stale_orientation_skip_delta),
+          static_cast<unsigned long long>(sample.stale_gyro_skip_delta),
+          IntervalToRateHz(m_activeLinearAccelerationIntervalUs),
+          IntervalToRateHz(m_activeGravityIntervalUs));
+    }
+    else
+    {
+      m_adaptiveRateLimitState.active = false;
+      RCLCPP_WARN(get_logger(), "Failed to apply BNO086 adaptive report-rate limit");
+    }
+  }
+  else if (decision.exit_adaptive_mode)
+  {
+    if (ApplyAdaptiveReportIntervals(m_configuredLinearAccelerationIntervalUs,
+                                     m_configuredGravityIntervalUs))
+    {
+      RCLCPP_INFO(get_logger(),
+                  "BNO086 adaptive rate limit restored configured rates: "
+                  "linear_acceleration_rate_hz=%.2f gravity_rate_hz=%.2f",
+                  IntervalToRateHz(m_activeLinearAccelerationIntervalUs),
+                  IntervalToRateHz(m_activeGravityIntervalUs));
+    }
+    else
+    {
+      m_adaptiveRateLimitState.active = true;
+      RCLCPP_WARN(get_logger(), "Failed to restore BNO086 configured report rates");
+    }
+  }
+
+  m_imuGravityDiagnostics.adaptive_rate_limit_active = m_adaptiveRateLimitState.active;
+  m_imuGravityDiagnostics.active_linear_acceleration_rate_hz =
+      IntervalToRateHz(m_activeLinearAccelerationIntervalUs);
+  m_imuGravityDiagnostics.active_gravity_rate_hz = IntervalToRateHz(m_activeGravityIntervalUs);
+}
+
+bool Bno086ImuNode::ApplyAdaptiveReportIntervals(std::uint32_t linear_acceleration_interval_us,
+                                                 std::uint32_t gravity_interval_us)
+{
+  if (m_shtp == nullptr)
+    return false;
+
+  bool ok = true;
+  if (linear_acceleration_interval_us != m_activeLinearAccelerationIntervalUs)
+  {
+    ok = m_shtp->SetReportInterval(ReportId::LinearAcceleration, linear_acceleration_interval_us) &&
+         ok;
+    if (ok)
+      m_activeLinearAccelerationIntervalUs = linear_acceleration_interval_us;
+  }
+
+  if (gravity_interval_us != m_activeGravityIntervalUs)
+  {
+    ok = m_shtp->SetReportInterval(ReportId::Gravity, gravity_interval_us) && ok;
+    if (ok)
+      m_activeGravityIntervalUs = gravity_interval_us;
+  }
+
+  return ok;
 }
 
 Bno086HealthSnapshot Bno086ImuNode::CurrentBno086HealthSnapshot() const

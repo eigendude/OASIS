@@ -86,6 +86,41 @@ bool Bno086Shtp::Configure(const Bno086ShtpConfig& config)
   return SendSetFeatureCommands();
 }
 
+bool Bno086Shtp::SetReportInterval(ReportId report_id,
+                                   std::uint32_t interval_us,
+                                   bool request_feature)
+{
+  FeatureConfiguration* existingConfiguration = nullptr;
+  for (FeatureConfiguration& featureConfiguration : m_featureConfigurations)
+  {
+    if (featureConfiguration.report_id == report_id)
+    {
+      existingConfiguration = &featureConfiguration;
+      break;
+    }
+  }
+
+  if (existingConfiguration == nullptr)
+  {
+    FeatureConfiguration featureConfiguration;
+    featureConfiguration.report_id = report_id;
+    featureConfiguration.requested_interval_us = interval_us;
+    m_featureConfigurations.emplace_back(featureConfiguration);
+  }
+  else
+  {
+    existingConfiguration->requested_interval_us = interval_us;
+  }
+
+  if (!ConfigureFeature(report_id, interval_us))
+    return false;
+
+  if (request_feature && !RequestFeature(report_id))
+    return false;
+
+  return true;
+}
+
 Bno086Shtp::PollStatus Bno086Shtp::Poll(std::vector<TimestampedSensorEvent>& events,
                                         int timeout_ms,
                                         std::int64_t packet_host_stamp_ns)

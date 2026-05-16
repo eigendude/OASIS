@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include "imu/bno086/Bno086BacklogPolicy.hpp"
 #include "imu/bno086/Bno086DrainDiagnostics.hpp"
 #include "imu/bno086/Bno086Gpio.hpp"
 #include "imu/bno086/Bno086GravityUtils.hpp"
@@ -124,6 +125,15 @@ private:
     std::uint64_t timestamp_repair_warnings_suppressed{0};
     std::uint64_t continuation_reset_warnings_suppressed{0};
     std::uint64_t feature_rate_warnings_suppressed{0};
+    std::uint64_t backlog_detected_count{0};
+    bool latest_backlog_detected{false};
+    std::uint64_t consecutive_backlog_windows{0};
+    std::uint64_t max_consecutive_backlog_windows{0};
+    bool adaptive_rate_limit_active{false};
+    std::uint64_t adaptive_rate_limit_entries{0};
+    std::uint64_t adaptive_rate_limit_exits{0};
+    double active_linear_acceleration_rate_hz{0.0};
+    double active_gravity_rate_hz{0.0};
     std::uint64_t last_rate_accel_reports{0};
     std::uint64_t last_rate_imu_gravity_published{0};
     std::uint64_t last_rate_accel_sequence_gap_count{0};
@@ -175,6 +185,9 @@ private:
   void MaybeLogFeatureResponses();
   void LogFeatureResponse(const OASIS::IMU::BNO086::FeatureResponse& response);
   void MaybeLogImuGravityDiagnostics();
+  void MaybeAdaptBno086ReportRates();
+  bool ApplyAdaptiveReportIntervals(std::uint32_t linear_acceleration_interval_us,
+                                    std::uint32_t gravity_interval_us);
   OASIS::IMU::BNO086::Bno086HealthSnapshot CurrentBno086HealthSnapshot() const;
   bool IsBno086HealthyForWarningSuppression(
       const OASIS::IMU::BNO086::Bno086HealthSnapshot& health) const;
@@ -246,6 +259,12 @@ private:
   std::array<OASIS::IMU::BNO086::ReportTimestampState, 256> m_reportTimestampStates{};
   std::array<std::optional<std::uint32_t>, 256> m_actualFeatureIntervalUs{};
   std::uint32_t m_reportIntervalUs{10'000};
+  std::uint32_t m_configuredLinearAccelerationIntervalUs{20'000};
+  std::uint32_t m_configuredGravityIntervalUs{40'000};
+  std::uint32_t m_activeLinearAccelerationIntervalUs{20'000};
+  std::uint32_t m_activeGravityIntervalUs{40'000};
+  std::uint32_t m_backlogLinearAccelerationIntervalUs{40'000};
+  std::uint32_t m_backlogGravityIntervalUs{100'000};
   int m_packetReadTimeoutMs{2};
   int m_maxPacketsPerInterrupt{128};
   double m_maxDrainDurationMs{50.0};
@@ -253,9 +272,18 @@ private:
   int m_timeoutRetrySleepUs{100};
   double m_imuGravityMaxOrientationAgeMs{25.0};
   double m_imuGravityMaxGyroAgeMs{25.0};
+  double m_backlogEventsPerPacketThreshold{4.0};
+  double m_backlogFullPacketBytesThreshold{64.0};
+  bool m_adaptiveRateLimitEnabled{true};
+  bool m_backlogDisableGravity{false};
+  std::uint64_t m_backlogWindowsBeforeRateLimit{2};
+  std::uint64_t m_recoveryWindowsBeforeRestore{6};
+  double m_adaptiveRateLimitStartupGraceSec{10.0};
   ImuGravityDiagnostics m_imuGravityDiagnostics{};
   OASIS::IMU::BNO086::InterruptDrainDiagnostics m_interruptDrainDiagnostics{};
   OASIS::IMU::BNO086::Bno086HealthSnapshot m_latestBno086HealthSnapshot{};
+  OASIS::IMU::BNO086::Bno086AdaptiveRateLimitState m_adaptiveRateLimitState{};
+  std::chrono::steady_clock::time_point m_nodeStartSteady{};
   std::uint64_t m_lastLoggedShtpContinuationResetCount{0};
 
   bool m_loggedCommEstablished{false};

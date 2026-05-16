@@ -288,6 +288,10 @@ if(BUILD_TESTING)
     test/imu/bno086/test_Bno086DrainDiagnostics.cpp
   )
 
+  ament_add_gtest(test_bno086_backlog_policy
+    test/imu/bno086/test_Bno086BacklogPolicy.cpp
+  )
+
   ament_add_gtest(test_bno086_warning_policy
     test/imu/bno086/test_Bno086WarningPolicy.cpp
   )

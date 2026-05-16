@@ -487,6 +487,9 @@ public:
   explicit Bno086Shtp(Bno086Transport& transport);
 
   bool Configure(const Bno086ShtpConfig& config);
+  bool SetReportInterval(ReportId report_id,
+                         std::uint32_t interval_us,
+                         bool request_feature = true);
   PollStatus Poll(std::vector<TimestampedSensorEvent>& events,
                   int timeout_ms,
                   std::int64_t packet_host_stamp_ns);

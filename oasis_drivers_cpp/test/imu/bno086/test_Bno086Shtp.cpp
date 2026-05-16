@@ -63,6 +63,7 @@ public:
   }
 
   const std::vector<Write>& Writes() const { return m_writes; }
+  void ClearWrites() { m_writes.clear(); }
 
 private:
   std::deque<Bno086ShtpPacket> m_packets;
@@ -265,6 +266,44 @@ TEST(Bno086Shtp, disabledGravityReportIsOmittedFromFeatureConfiguration)
   EXPECT_NE(FindFeatureConfiguration(configurations, ReportId::Accelerometer), nullptr);
   EXPECT_NE(FindFeatureConfiguration(configurations, ReportId::LinearAcceleration), nullptr);
   EXPECT_FALSE(FindSetFeatureIntervalUs(transport.Writes(), ReportId::Gravity).has_value());
+}
+
+TEST(Bno086Shtp, setReportIntervalUpdatesOnlyRequestedReport)
+{
+  FakeTransport transport;
+  Bno086Shtp shtp(transport);
+
+  ASSERT_TRUE(shtp.Configure(Bno086ShtpConfig{}));
+  transport.ClearWrites();
+
+  ASSERT_TRUE(shtp.SetReportInterval(ReportId::LinearAcceleration, 40'000U));
+
+  const std::vector<FeatureConfiguration>& configurations = shtp.GetFeatureConfigurations();
+  EXPECT_EQ(
+      FindFeatureConfiguration(configurations, ReportId::LinearAcceleration)->requested_interval_us,
+      40'000U);
+  EXPECT_EQ(FindFeatureConfiguration(configurations, ReportId::Gravity)->requested_interval_us,
+            40'000U);
+  EXPECT_EQ(FindSetFeatureIntervalUs(transport.Writes(), ReportId::LinearAcceleration), 40'000U);
+  EXPECT_FALSE(FindSetFeatureIntervalUs(transport.Writes(), ReportId::Gravity).has_value());
+  EXPECT_FALSE(FindSetFeatureIntervalUs(transport.Writes(), ReportId::Accelerometer).has_value());
+}
+
+TEST(Bno086Shtp, gravityReportCanBeDisabledWithZeroIntervalUpdate)
+{
+  FakeTransport transport;
+  Bno086Shtp shtp(transport);
+
+  ASSERT_TRUE(shtp.Configure(Bno086ShtpConfig{}));
+  transport.ClearWrites();
+
+  ASSERT_TRUE(shtp.SetReportInterval(ReportId::Gravity, 0U));
+
+  const std::vector<FeatureConfiguration>& configurations = shtp.GetFeatureConfigurations();
+  EXPECT_EQ(FindFeatureConfiguration(configurations, ReportId::Gravity)->requested_interval_us, 0U);
+  EXPECT_EQ(FindSetFeatureIntervalUs(transport.Writes(), ReportId::Gravity), 0U);
+  EXPECT_FALSE(
+      FindSetFeatureIntervalUs(transport.Writes(), ReportId::LinearAcceleration).has_value());
 }
 
 TEST(Bno086Transport, headerContinuationBitIsMaskedFromPacketLength)
