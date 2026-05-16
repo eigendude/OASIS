@@ -125,6 +125,21 @@ TEST(Bno086Transport, headerContinuationBitIsMaskedFromPacketLength)
   EXPECT_EQ(packetHeader.sequence, 42);
 }
 
+TEST(Bno086Transport, closedReadPacketUpdatesDurationDiagnostics)
+{
+  Bno086Transport transport;
+  Bno086ShtpPacket packet;
+
+  EXPECT_FALSE(transport.ReadPacket(packet, 5));
+
+  const Bno086TransportDiagnostics& diagnostics = transport.GetDiagnostics();
+  EXPECT_EQ(diagnostics.transport_read_calls, 1U);
+  EXPECT_GE(diagnostics.latest_transport_read_duration_ms, 0.0);
+  EXPECT_GE(diagnostics.max_transport_read_duration_ms,
+            diagnostics.latest_transport_read_duration_ms);
+  EXPECT_EQ(diagnostics.transport_read_over_timeout_count, 0U);
+}
+
 TEST(Bno086Shtp, pollReturnsMultiReportPayloadAsTimestampedBatch)
 {
   FakeTransport transport;

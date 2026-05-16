@@ -143,4 +143,32 @@ TEST(Bno086DrainDiagnostics, drainDurationHandlesZeroDuration)
   EXPECT_DOUBLE_EQ(diagnostics.packets_per_ms_latest, 0.0);
   EXPECT_DOUBLE_EQ(diagnostics.sensor_events_per_ms_latest, 0.0);
 }
+
+TEST(Bno086DrainDiagnostics, pollDurationUpdatesThresholdCounters)
+{
+  InterruptDrainDiagnostics diagnostics;
+
+  RecordPollDuration(diagnostics, 12.0, 5, 1.0);
+  RecordPollDuration(diagnostics, 51.0, 5, 1.0);
+
+  EXPECT_EQ(diagnostics.poll_calls, 2U);
+  EXPECT_DOUBLE_EQ(diagnostics.latest_poll_duration_ms, 51.0);
+  EXPECT_DOUBLE_EQ(diagnostics.max_poll_duration_ms, 51.0);
+  EXPECT_EQ(diagnostics.poll_duration_over_timeout_count, 2U);
+  EXPECT_EQ(diagnostics.poll_duration_over_10ms_count, 2U);
+  EXPECT_EQ(diagnostics.poll_duration_over_50ms_count, 1U);
+}
+
+TEST(Bno086DrainDiagnostics, pollDurationWithinSlopDoesNotCountOverTimeout)
+{
+  InterruptDrainDiagnostics diagnostics;
+
+  RecordPollDuration(diagnostics, 5.5, 5, 1.0);
+
+  EXPECT_EQ(diagnostics.poll_calls, 1U);
+  EXPECT_DOUBLE_EQ(diagnostics.latest_poll_duration_ms, 5.5);
+  EXPECT_EQ(diagnostics.poll_duration_over_timeout_count, 0U);
+  EXPECT_EQ(diagnostics.poll_duration_over_10ms_count, 0U);
+  EXPECT_EQ(diagnostics.poll_duration_over_50ms_count, 0U);
+}
 } // namespace OASIS::IMU::BNO086

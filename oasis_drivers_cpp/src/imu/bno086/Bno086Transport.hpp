@@ -32,6 +32,27 @@ struct Bno086ShtpPacket
   std::vector<std::uint8_t> payload;
 };
 
+/*!
+ * \brief Runtime diagnostics for low-level SHTP transport reads
+ *
+ * Durations are measured around Bno086Transport::ReadPacket. Counters are
+ * cumulative since the transport was opened.
+ */
+struct Bno086TransportDiagnostics
+{
+  //! Latest wall-clock duration of one ReadPacket call, in ms
+  double latest_transport_read_duration_ms{0.0};
+
+  //! Maximum wall-clock duration observed for ReadPacket, in ms
+  double max_transport_read_duration_ms{0.0};
+
+  //! ReadPacket calls whose duration exceeded requested timeout plus slop
+  std::uint64_t transport_read_over_timeout_count{0};
+
+  //! Number of ReadPacket calls made through this transport
+  std::uint64_t transport_read_calls{0};
+};
+
 class Bno086Transport
 {
 public:
@@ -42,6 +63,8 @@ public:
   void Close();
 
   bool IsOpen() const;
+
+  const Bno086TransportDiagnostics& GetDiagnostics() const;
 
   virtual bool WritePacket(std::uint8_t channel, const std::vector<std::uint8_t>& payload);
   virtual bool ReadPacket(Bno086ShtpPacket& packet, int timeout_ms);
@@ -71,5 +94,6 @@ private:
   Bno086TransportConfig m_config{};
   int m_fd{-1};
   std::array<std::uint8_t, 6> m_txSequence{};
+  Bno086TransportDiagnostics m_diagnostics{};
 };
 } // namespace OASIS::IMU::BNO086

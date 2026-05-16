@@ -119,6 +119,24 @@ struct InterruptDrainDiagnostics
   //! Drain cycles considered part of startup backlog characterization
   std::uint64_t startup_backlog_drains{0};
 
+  //! Latest wall-clock duration of a Bno086Shtp::Poll call, in ms
+  double latest_poll_duration_ms{0.0};
+
+  //! Maximum wall-clock duration observed for a Bno086Shtp::Poll call, in ms
+  double max_poll_duration_ms{0.0};
+
+  //! Poll calls whose duration exceeded the requested timeout plus slop
+  std::uint64_t poll_duration_over_timeout_count{0};
+
+  //! Poll calls whose duration exceeded 10 ms
+  std::uint64_t poll_duration_over_10ms_count{0};
+
+  //! Poll calls whose duration exceeded 50 ms
+  std::uint64_t poll_duration_over_50ms_count{0};
+
+  //! Number of Bno086Shtp::Poll calls made during interrupt drains
+  std::uint64_t poll_calls{0};
+
   //! Whether H_INTN was asserted when the latest drain exit state was sampled
   bool latest_hintn_asserted_at_exit{false};
 
@@ -185,6 +203,33 @@ inline void RecordDrainDuration(InterruptDrainDiagnostics& diagnostics,
     diagnostics.packets_per_ms_latest = 0.0;
     diagnostics.sensor_events_per_ms_latest = 0.0;
   }
+}
+
+/*!
+ * \brief Update SHTP Poll duration diagnostics
+ *
+ * \param diagnostics Drain diagnostics updated in place
+ * \param poll_duration_ms Wall-clock duration of one Poll call, in ms
+ * \param requested_timeout_ms Timeout passed to Poll, in ms
+ * \param timeout_slop_ms Allowed scheduler/rounding slack, in ms
+ */
+inline void RecordPollDuration(InterruptDrainDiagnostics& diagnostics,
+                               double poll_duration_ms,
+                               int requested_timeout_ms,
+                               double timeout_slop_ms)
+{
+  ++diagnostics.poll_calls;
+  diagnostics.latest_poll_duration_ms = poll_duration_ms;
+  if (poll_duration_ms > diagnostics.max_poll_duration_ms)
+    diagnostics.max_poll_duration_ms = poll_duration_ms;
+
+  const double timeoutLimitMs = static_cast<double>(requested_timeout_ms) + timeout_slop_ms;
+  if (poll_duration_ms > timeoutLimitMs)
+    ++diagnostics.poll_duration_over_timeout_count;
+  if (poll_duration_ms > 10.0)
+    ++diagnostics.poll_duration_over_10ms_count;
+  if (poll_duration_ms > 50.0)
+    ++diagnostics.poll_duration_over_50ms_count;
 }
 
 /*!

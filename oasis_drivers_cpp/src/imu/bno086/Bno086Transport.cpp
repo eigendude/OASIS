@@ -27,6 +27,15 @@ namespace
 constexpr std::size_t kMaxShtpPacketBytes = 1024;
 constexpr auto kWriteRetryDelay = std::chrono::microseconds(200);
 constexpr auto kWriteRetryTimeout = std::chrono::milliseconds(10);
+constexpr double kReadTimeoutSlopMs = 1.0;
+
+double ElapsedMs(const std::chrono::steady_clock::time_point& start,
+                 const std::chrono::steady_clock::time_point& end)
+{
+  return static_cast<double>(
+             std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count()) /
+         1.0e6;
+}
 } // namespace
 
 Bno086Transport::~Bno086Transport()
@@ -65,6 +74,11 @@ void Bno086Transport::Close()
 bool Bno086Transport::IsOpen() const
 {
   return m_fd >= 0;
+}
+
+const Bno086TransportDiagnostics& Bno086Transport::GetDiagnostics() const
+{
+  return m_diagnostics;
 }
 
 bool Bno086Transport::WritePacket(std::uint8_t channel, const std::vector<std::uint8_t>& payload)
@@ -123,8 +137,25 @@ bool Bno086Transport::ParseShtpHeaderBytes(
 
 bool Bno086Transport::ReadPacket(Bno086ShtpPacket& packet, int timeout_ms)
 {
+  const auto readStart = std::chrono::steady_clock::now();
+  const auto recordReadDuration = [this, readStart, timeout_ms]()
+  {
+    const double readDurationMs = ElapsedMs(readStart, std::chrono::steady_clock::now());
+    ++m_diagnostics.transport_read_calls;
+    m_diagnostics.latest_transport_read_duration_ms = readDurationMs;
+    if (readDurationMs > m_diagnostics.max_transport_read_duration_ms)
+      m_diagnostics.max_transport_read_duration_ms = readDurationMs;
+
+    const double timeoutLimitMs = static_cast<double>(std::max(timeout_ms, 0)) + kReadTimeoutSlopMs;
+    if (readDurationMs > timeoutLimitMs)
+      ++m_diagnostics.transport_read_over_timeout_count;
+  };
+
   if (!IsOpen())
+  {
+    recordReadDuration();
     return false;
+  }
 
   const auto now = std::chrono::steady_clock::now();
   const auto deadline = now + std::chrono::milliseconds(std::max(timeout_ms, 0));
@@ -133,13 +164,19 @@ bool Bno086Transport::ReadPacket(Bno086ShtpPacket& packet, int timeout_ms)
   {
     std::array<std::uint8_t, kShtpHeaderBytes> header{};
     if (!ReadTransaction(header.data(), header.size(), deadline))
+    {
+      recordReadDuration();
       return false;
+    }
 
     ShtpHeader probedHeader;
     if (!ParseHeader(header.data(), probedHeader))
     {
       if (std::chrono::steady_clock::now() >= deadline)
+      {
+        recordReadDuration();
         return false;
+      }
 
       continue;
     }
@@ -147,20 +184,29 @@ bool Bno086Transport::ReadPacket(Bno086ShtpPacket& packet, int timeout_ms)
     if (probedHeader.length == 0)
     {
       if (std::chrono::steady_clock::now() >= deadline)
+      {
+        recordReadDuration();
         return false;
+      }
 
       continue;
     }
 
     std::vector<std::uint8_t> rawPacket(probedHeader.length, 0);
     if (!ReadTransaction(rawPacket.data(), rawPacket.size(), deadline))
+    {
+      recordReadDuration();
       return false;
+    }
 
     ShtpHeader packetHeader;
     if (!ValidateFullPacket(rawPacket, packetHeader))
     {
       if (std::chrono::steady_clock::now() >= deadline)
+      {
+        recordReadDuration();
         return false;
+      }
 
       continue;
     }
@@ -174,7 +220,10 @@ bool Bno086Transport::ReadPacket(Bno086ShtpPacket& packet, int timeout_ms)
     packet.payload.assign(payloadLength, 0);
 
     if (payloadLength == 0)
+    {
+      recordReadDuration();
       return true;
+    }
 
     std::copy(rawPacket.begin() + static_cast<std::ptrdiff_t>(kShtpHeaderBytes), rawPacket.end(),
               packet.payload.begin());
@@ -182,11 +231,15 @@ bool Bno086Transport::ReadPacket(Bno086ShtpPacket& packet, int timeout_ms)
     if (LooksLikePseudoPayload(packet))
     {
       if (std::chrono::steady_clock::now() >= deadline)
+      {
+        recordReadDuration();
         return false;
+      }
 
       continue;
     }
 
+    recordReadDuration();
     return true;
   }
 }

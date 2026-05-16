@@ -49,6 +49,7 @@ constexpr int TIMEOUT_RETRIES_WHILE_INTERRUPT_ASSERTED = 3;
 constexpr int TIMEOUT_RETRY_SLEEP_US = 100;
 constexpr std::uint64_t STARTUP_BACKLOG_DRAIN_COUNT = 5;
 constexpr std::uint64_t STUCK_INTERRUPT_RECOVERY_CANDIDATE_THRESHOLD = 5;
+constexpr double POLL_TIMEOUT_SLOP_MS = 1.0;
 
 constexpr std::uint32_t MIN_COHERENT_SAMPLE_SPAN_US = 3'000;
 constexpr std::uint32_t MAX_COHERENT_SAMPLE_SPAN_US = 20'000;
@@ -114,6 +115,25 @@ const char* ContinuationResetReasonName(ContinuationResetReason reason)
       return "orphan_continuation";
     case ContinuationResetReason::EmbeddedShtpHeader:
       return "embedded_shtp_header";
+    default:
+      break;
+  }
+
+  return "unknown";
+}
+
+const char* PollStatusName(Bno086Shtp::PollStatus status)
+{
+  switch (status)
+  {
+    case Bno086Shtp::PollStatus::Timeout:
+      return "timeout";
+    case Bno086Shtp::PollStatus::TransportError:
+      return "transport_error";
+    case Bno086Shtp::PollStatus::PacketHandled:
+      return "packet_handled";
+    case Bno086Shtp::PollStatus::SensorEvent:
+      return "sensor_event";
     default:
       break;
   }
@@ -348,7 +368,8 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
             std::chrono::duration_cast<std::chrono::nanoseconds>(packetNowSteady - drainStartSteady)
                 .count()) /
         1.0e6;
-    if (drainElapsedMs >= m_maxDrainDurationMs)
+    const double remainingDrainBudgetMs = m_maxDrainDurationMs - drainElapsedMs;
+    if (remainingDrainBudgetMs <= 0.0)
     {
       if (m_interruptGpio.IsAssertedLow())
         exitedDurationBudget = true;
@@ -388,15 +409,41 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
     }
 
     std::vector<TimestampedSensorEvent> events;
+    const int pollTimeoutMs = std::max(
+        0, std::min(m_packetReadTimeoutMs, static_cast<int>(std::ceil(remainingDrainBudgetMs))));
+    const auto pollStartSteady = std::chrono::steady_clock::now();
     const Bno086Shtp::PollStatus pollStatus =
-        m_shtp->Poll(events, m_packetReadTimeoutMs, packetRosAt.nanoseconds());
+        m_shtp->Poll(events, pollTimeoutMs, packetRosAt.nanoseconds());
+    const auto pollDoneSteady = std::chrono::steady_clock::now();
+    const double pollDurationMs =
+        static_cast<double>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(pollDoneSteady - pollStartSteady)
+                .count()) /
+        1.0e6;
+    RecordPollDuration(m_interruptDrainDiagnostics, pollDurationMs, pollTimeoutMs,
+                       POLL_TIMEOUT_SLOP_MS);
+
+    const bool hintnAssertedAfterPoll = m_interruptGpio.IsAssertedLow();
+    const double longPollThresholdMs =
+        std::max(10.0, static_cast<double>(m_packetReadTimeoutMs) + 5.0);
+    if (pollDurationMs > longPollThresholdMs)
+    {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), IMU_GRAVITY_DIAGNOSTICS_LOG_MS,
+                           "BNO086 Poll exceeded timeout expectation: poll_duration_ms=%.3f "
+                           "packet_read_timeout_ms=%d poll_timeout_ms=%d poll_status=%s "
+                           "hintn_asserted_after_poll=%s packets_this_drain=%llu "
+                           "sensor_events_this_drain=%llu",
+                           pollDurationMs, m_packetReadTimeoutMs, pollTimeoutMs,
+                           PollStatusName(pollStatus), hintnAssertedAfterPoll ? "true" : "false",
+                           static_cast<unsigned long long>(packetsThisDrain),
+                           static_cast<unsigned long long>(sensorEventsThisDrain));
+    }
 
     if (pollStatus == Bno086Shtp::PollStatus::Timeout)
     {
-      const bool hintnAsserted = m_interruptGpio.IsAssertedLow();
       const bool madeProgress = packetsThisDrain > 0 || sensorEventsThisDrain > 0;
       const TimeoutRetryDecision retryDecision =
-          HandleDrainTimeout(m_interruptDrainDiagnostics, hintnAsserted, madeProgress,
+          HandleDrainTimeout(m_interruptDrainDiagnostics, hintnAssertedAfterPoll, madeProgress,
                              timeoutRetriesWhileAsserted, m_timeoutRetriesWhileInterruptAsserted);
 
       if (retryDecision.retry)
@@ -900,6 +947,7 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
 
   TimestampReconstructionDiagnostics reconstructionDiagnostics;
   ShtpDiagnostics shtpDiagnostics;
+  const Bno086TransportDiagnostics& transportDiagnostics = m_transport.GetDiagnostics();
   if (m_shtp != nullptr)
   {
     reconstructionDiagnostics = m_shtp->GetTimestampReconstructionDiagnostics();
@@ -990,6 +1038,11 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
       "drain_exit_timeout_hintn_asserted=%llu latest_timeout_hintn_asserted=%s "
       "timeout_retries_while_hintn_asserted=%llu "
       "latest_timeout_retries_while_hintn_asserted=%llu "
+      "poll_calls=%llu latest_poll_duration_ms=%.3f max_poll_duration_ms=%.3f "
+      "poll_duration_over_timeout=%llu poll_duration_over_10ms=%llu "
+      "poll_duration_over_50ms=%llu "
+      "latest_transport_read_duration_ms=%.3f max_transport_read_duration_ms=%.3f "
+      "transport_read_over_timeout_count=%llu transport_read_calls=%llu "
       "drain_exit_int_deasserted=%llu drain_exit_max_packets=%llu "
       "drain_exit_duration_budget=%llu "
       "drain_exit_transport_error=%llu drain_exit_no_events=%llu "
@@ -1087,6 +1140,16 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
           m_interruptDrainDiagnostics.timeout_retries_while_hintn_asserted),
       static_cast<unsigned long long>(
           m_interruptDrainDiagnostics.latest_timeout_retries_while_hintn_asserted),
+      static_cast<unsigned long long>(m_interruptDrainDiagnostics.poll_calls),
+      m_interruptDrainDiagnostics.latest_poll_duration_ms,
+      m_interruptDrainDiagnostics.max_poll_duration_ms,
+      static_cast<unsigned long long>(m_interruptDrainDiagnostics.poll_duration_over_timeout_count),
+      static_cast<unsigned long long>(m_interruptDrainDiagnostics.poll_duration_over_10ms_count),
+      static_cast<unsigned long long>(m_interruptDrainDiagnostics.poll_duration_over_50ms_count),
+      transportDiagnostics.latest_transport_read_duration_ms,
+      transportDiagnostics.max_transport_read_duration_ms,
+      static_cast<unsigned long long>(transportDiagnostics.transport_read_over_timeout_count),
+      static_cast<unsigned long long>(transportDiagnostics.transport_read_calls),
       static_cast<unsigned long long>(m_interruptDrainDiagnostics.drain_exited_int_deasserted),
       static_cast<unsigned long long>(m_interruptDrainDiagnostics.drain_exited_max_packets),
       static_cast<unsigned long long>(m_interruptDrainDiagnostics.drain_exited_duration_budget),
