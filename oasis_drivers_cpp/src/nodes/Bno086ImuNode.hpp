@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include "imu/bno086/Bno086DiagnosticsPolicy.hpp"
 #include "imu/bno086/Bno086Gpio.hpp"
 #include "imu/bno086/Bno086GravityUtils.hpp"
 #include "imu/bno086/Bno086OrientationCovariancePolicy.hpp"
@@ -99,8 +100,16 @@ private:
     std::array<double, 5> latest_feature_rate_hz{};
     std::array<std::uint64_t, 5> decoded_reports_received{};
     std::array<std::uint64_t, 5> last_rate_decoded_reports{};
+    std::uint64_t latest_skipped_stale_orientation_delta{0};
+    std::uint64_t latest_skipped_stale_gyro_delta{0};
+    std::uint64_t latest_accel_sequence_gap_delta{0};
+    std::uint64_t latest_timestamp_reconstruction_reset_delta{0};
     std::uint64_t last_rate_accel_reports{0};
     std::uint64_t last_rate_imu_gravity_published{0};
+    std::uint64_t last_rate_skipped_stale_orientation{0};
+    std::uint64_t last_rate_skipped_stale_gyro{0};
+    std::uint64_t last_rate_accel_sequence_gap_count{0};
+    std::uint64_t last_rate_timestamp_reconstruction_reset_count{0};
     std::chrono::steady_clock::time_point last_log_at{};
   };
 
@@ -139,11 +148,15 @@ private:
   void MaybeLogFeatureResponses();
   void LogFeatureResponse(const OASIS::IMU::BNO086::FeatureResponse& response);
   void MaybeLogImuGravityDiagnostics();
+  void UpdateImuGravityDiagnosticsRates(const std::chrono::steady_clock::time_point& now);
+  void MaybeEmitImuGravityDiagnosticsLog();
+  std::string BuildImuGravityDiagnosticsLogMessage() const;
   bool IsImuGravitySampleValid(const sensor_msgs::msg::Imu& message,
                                std::string& invalid_reason) const;
   std::optional<std::uint32_t> RequestedFeatureIntervalUs(
       OASIS::IMU::BNO086::ReportId report_id) const;
   bool IsBno086RateUnhealthy() const;
+  bool IsBno086DiagnosticsUnhealthy() const;
   void CountDecodedReport(const OASIS::IMU::BNO086::SensorEvent& event);
 
   static std::array<double, 9> PredictedCovarianceFromPresent(
@@ -206,10 +219,14 @@ private:
   double m_linearAccelerationRateHz{50.0};
   double m_gravityRateHz{25.0};
   bool m_enableGravityReport{true};
+  OASIS::IMU::BNO086::Bno086DiagnosticsLogLevel m_diagnosticsLogLevel{
+      OASIS::IMU::BNO086::Bno086DiagnosticsLogLevel::Debug};
+  int m_diagnosticsLogPeriodMs{5000};
   double m_imuGravityMaxOrientationAgeMs{25.0};
   double m_imuGravityMaxGyroAgeMs{25.0};
   std::uint32_t m_repeatedNoProgressTimeouts{0};
   ImuGravityDiagnostics m_imuGravityDiagnostics{};
+  bool m_diagnosticsWasUnhealthy{false};
 
   bool m_loggedCommEstablished{false};
   bool m_loggedSetFeature{false};
