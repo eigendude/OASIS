@@ -34,6 +34,8 @@ enum class ContinuationResetReason : std::uint8_t
   CommandHeaderOnly,
   ShtpHeaderPrefix,
   MaxBytesExceeded,
+  OrphanContinuation,
+  EmbeddedShtpHeader,
 };
 
 /*!\brief Decoded sequence diagnostics for one SH-2 report stream */
@@ -163,6 +165,83 @@ struct ShtpDiagnostics
   std::uint64_t continuation_packets_reset{0};
 
   /*!
+   * \brief Count of packets with the SHTP continuation flag set
+   *
+   * Units: packets
+   */
+  std::uint64_t packets_with_continuation_flag{0};
+
+  /*!
+   * \brief Count of continuation packets received without an active buffer
+   *
+   * Units: packets
+   */
+  std::uint64_t continuation_without_active_buffer{0};
+
+  /*!
+   * \brief Count of continuations seen when the active buffer had zero bytes
+   *
+   * Units: packets
+   */
+  std::uint64_t continuation_with_zero_accumulated_bytes{0};
+
+  /*!
+   * \brief Count of orphan continuations decoded as standalone sensor payloads
+   *
+   * Units: packets
+   */
+  std::uint64_t orphan_continuation_decoded{0};
+
+  /*!
+   * \brief Count of orphan continuations discarded before decode
+   *
+   * Units: packets
+   */
+  std::uint64_t orphan_continuation_discarded{0};
+
+  /*!
+   * \brief Count of payloads with a precise embedded SHTP header signature
+   *
+   * Units: packets
+   */
+  std::uint64_t embedded_shtp_header_payloads{0};
+
+  /*!
+   * \brief Raw SHTP length field from the latest packet
+   *
+   * Units: bytes plus continuation flag in bit 15
+   */
+  std::uint16_t latest_raw_length{0};
+
+  /*!
+   * \brief Parsed SHTP packet length from the latest packet
+   *
+   * Units: bytes, excluding the continuation flag
+   */
+  std::uint16_t latest_packet_length{0};
+
+  /*!
+   * \brief Continuation flag from the latest packet
+   *
+   * Units: boolean
+   */
+  bool latest_continuation_flag{false};
+
+  /*!
+   * \brief Channel id from the latest packet
+   *
+   * Units: SHTP channel id
+   */
+  std::uint8_t latest_channel{0};
+
+  /*!
+   * \brief Sequence from the latest packet header
+   *
+   * Units: uint8 counter ticks
+   */
+  std::uint8_t latest_sequence{0};
+
+  /*!
    * \brief Size of the latest packet payload read
    *
    * Units: bytes
@@ -217,6 +296,48 @@ struct ShtpDiagnostics
    * Units: enum code
    */
   ContinuationResetReason latest_continuation_reset_reason{ContinuationResetReason::None};
+
+  /*!
+   * \brief True when a continuation buffer was active for the latest reset
+   *
+   * Units: boolean
+   */
+  bool latest_continuation_reset_had_active_buffer{false};
+
+  /*!
+   * \brief Raw SHTP length field from the latest continuation reset packet
+   *
+   * Units: bytes plus continuation flag in bit 15
+   */
+  std::uint16_t latest_continuation_reset_raw_length{0};
+
+  /*!
+   * \brief Parsed length from the latest continuation reset packet
+   *
+   * Units: bytes
+   */
+  std::uint16_t latest_continuation_reset_packet_length{0};
+
+  /*!
+   * \brief Sequence from the latest continuation reset packet
+   *
+   * Units: uint8 counter ticks
+   */
+  std::uint8_t latest_continuation_reset_sequence{0};
+
+  /*!
+   * \brief First payload bytes from the latest continuation reset packet
+   *
+   * Units: bytes
+   */
+  std::array<std::uint8_t, 8> latest_continuation_reset_payload_prefix{};
+
+  /*!
+   * \brief Number of valid bytes in latest_continuation_reset_payload_prefix
+   *
+   * Units: bytes
+   */
+  std::uint8_t latest_continuation_reset_payload_prefix_size{0};
 
   /*!
    * \brief Decoded report counts indexed by SH-2 report id
@@ -301,13 +422,19 @@ private:
   void RecordPacketRead(const Bno086ShtpPacket& packet);
   void RecordDecodedSensorEvent(const SensorEvent& event);
   void RecordContinuationReset(std::uint8_t channel,
+                               std::uint8_t sequence,
+                               std::uint16_t raw_length,
+                               std::uint16_t packet_length,
                                std::size_t accumulated_bytes,
                                std::size_t incoming_bytes,
-                               ContinuationResetReason reason);
+                               ContinuationResetReason reason,
+                               bool had_active_buffer,
+                               const std::vector<std::uint8_t>& payload);
   void MaybeSendDeferredConfiguration();
   void MarkCommunicationEstablished();
   ContinuationValidation ValidateContinuationFragment(const Bno086ShtpPacket& packet) const;
   bool IsSensorChannel(std::uint8_t channel) const;
+  bool IsValidSensorPayloadStart(const std::vector<std::uint8_t>& payload) const;
   void ClearContinuationState(std::uint8_t channel);
 
   static std::uint32_t ToReportIntervalUs(double rate_hz);

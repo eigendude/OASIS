@@ -97,6 +97,30 @@ bool Bno086Transport::WritePacket(std::uint8_t channel, const std::vector<std::u
   return writeOk;
 }
 
+bool Bno086Transport::ParseShtpHeaderBytes(
+    const std::array<std::uint8_t, kShtpHeaderBytes>& header_bytes, Bno086ShtpPacket& packet_header)
+{
+  const std::uint16_t rawLength = static_cast<std::uint16_t>(
+      header_bytes[0] | (static_cast<std::uint16_t>(header_bytes[1]) << 8));
+  const std::uint16_t packetLength = static_cast<std::uint16_t>(rawLength & 0x7FFFU);
+  const std::uint8_t channel = header_bytes[2];
+
+  packet_header = Bno086ShtpPacket{};
+  packet_header.raw_length = rawLength;
+  packet_header.packet_length = packetLength;
+  packet_header.channel = channel;
+  packet_header.sequence = header_bytes[3];
+  packet_header.continuation = (rawLength & 0x8000U) != 0U;
+
+  if (packetLength == 0)
+    return true;
+
+  if (packetLength < kShtpHeaderBytes || packetLength > kMaxShtpPacketBytes)
+    return false;
+
+  return IsSaneChannel(channel);
+}
+
 bool Bno086Transport::ReadPacket(Bno086ShtpPacket& packet, int timeout_ms)
 {
   if (!IsOpen())
@@ -142,6 +166,8 @@ bool Bno086Transport::ReadPacket(Bno086ShtpPacket& packet, int timeout_ms)
     }
 
     const std::size_t payloadLength = packetHeader.length - kShtpHeaderBytes;
+    packet.raw_length = packetHeader.raw_length;
+    packet.packet_length = packetHeader.length;
     packet.channel = packetHeader.channel;
     packet.sequence = packetHeader.sequence;
     packet.continuation = packetHeader.continuation;
@@ -234,29 +260,27 @@ bool Bno086Transport::WriteExact(const std::uint8_t* buffer, std::size_t size) c
 
 bool Bno086Transport::ParseHeader(const std::uint8_t* header_bytes, ShtpHeader& header) const
 {
-  const std::uint16_t lengthField = static_cast<std::uint16_t>(
-      header_bytes[0] | (static_cast<std::uint16_t>(header_bytes[1]) << 8));
+  std::array<std::uint8_t, kShtpHeaderBytes> headerBytes{};
+  std::copy(header_bytes, header_bytes + kShtpHeaderBytes, headerBytes.begin());
 
-  header.continuation = (lengthField & 0x8000U) != 0U;
-  header.length = static_cast<std::uint16_t>(lengthField & 0x7FFFU);
-  header.channel = header_bytes[2];
-  header.sequence = header_bytes[3];
+  Bno086ShtpPacket packetHeader;
+  if (!ParseShtpHeaderBytes(headerBytes, packetHeader))
+    return false;
 
+  header.raw_length = packetHeader.raw_length;
+  header.continuation = packetHeader.continuation;
+  header.length = packetHeader.packet_length;
+  header.channel = packetHeader.channel;
+  header.sequence = packetHeader.sequence;
   if (header.length == 0)
     return true;
-
-  if (header.length < kShtpHeaderBytes || header.length > kMaxShtpPacketBytes)
-    return false;
-
-  if (!IsSaneChannel(header.channel))
-    return false;
 
   return true;
 }
 
-bool Bno086Transport::IsSaneChannel(std::uint8_t channel) const
+bool Bno086Transport::IsSaneChannel(std::uint8_t channel)
 {
-  return channel < m_txSequence.size();
+  return channel < 6;
 }
 
 bool Bno086Transport::ValidateFullPacket(const std::vector<std::uint8_t>& raw_packet,

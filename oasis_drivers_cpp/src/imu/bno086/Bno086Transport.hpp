@@ -24,6 +24,8 @@ struct Bno086TransportConfig
 
 struct Bno086ShtpPacket
 {
+  std::uint16_t raw_length{0};
+  std::uint16_t packet_length{0};
   std::uint8_t channel{0};
   std::uint8_t sequence{0};
   bool continuation{false};
@@ -43,10 +45,13 @@ public:
 
   virtual bool WritePacket(std::uint8_t channel, const std::vector<std::uint8_t>& payload);
   virtual bool ReadPacket(Bno086ShtpPacket& packet, int timeout_ms);
+  static bool ParseShtpHeaderBytes(const std::array<std::uint8_t, 4>& header_bytes,
+                                   Bno086ShtpPacket& packet_header);
 
 private:
   struct ShtpHeader
   {
+    std::uint16_t raw_length{0};
     std::uint16_t length{0};
     std::uint8_t channel{0};
     std::uint8_t sequence{0};
@@ -58,7 +63,7 @@ private:
                        const std::chrono::steady_clock::time_point& deadline) const;
   bool WriteExact(const std::uint8_t* buffer, std::size_t size) const;
   bool ParseHeader(const std::uint8_t* header_bytes, ShtpHeader& header) const;
-  bool IsSaneChannel(std::uint8_t channel) const;
+  static bool IsSaneChannel(std::uint8_t channel);
   bool ValidateFullPacket(const std::vector<std::uint8_t>& raw_packet, ShtpHeader& header) const;
   bool LooksLikePseudoPayload(const Bno086ShtpPacket& packet) const;
   bool LooksLikeShtpHeader(const std::uint8_t* header_bytes) const;

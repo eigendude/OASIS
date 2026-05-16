@@ -40,15 +40,23 @@ constexpr std::array<ReportId, 5> kConfiguredReports = {
     ReportId::Gravity,
 };
 
-bool LooksLikeShtpHeaderPrefix(const std::vector<std::uint8_t>& payload)
+bool LooksLikeEmbeddedShtpHeader(const std::vector<std::uint8_t>& payload)
 {
   if (payload.size() < kShtpHeaderBytes)
     return false;
 
-  const std::uint16_t lengthField =
+  const std::uint16_t rawLength =
       static_cast<std::uint16_t>(payload[0] | (static_cast<std::uint16_t>(payload[1]) << 8));
-  const std::size_t packetLength = static_cast<std::size_t>(lengthField & 0x7FFFU);
-  return packetLength >= kShtpHeaderBytes && packetLength <= 1024;
+  const std::size_t packetLength = static_cast<std::size_t>(rawLength & 0x7FFFU);
+  const std::uint8_t channel = payload[2];
+
+  if (packetLength < kShtpHeaderBytes || packetLength > 1024)
+    return false;
+
+  if (channel > kChannelGyroRotationVector)
+    return false;
+
+  return packetLength <= payload.size();
 }
 } // namespace
 
@@ -188,64 +196,96 @@ bool Bno086Shtp::DecodePacket(const Bno086ShtpPacket& packet,
   m_diagnostics.latest_events_per_packet = 0;
 
   Bno086ShtpPacket normalizedPacket = packet;
-  if (IsSensorChannel(packet.channel))
-  {
-    std::vector<std::uint8_t> sensorPayload;
-    if (packet.channel < m_continuationPayloads.size() && m_continuationActive[packet.channel])
-    {
-      auto& continuationPayload = m_continuationPayloads[packet.channel];
-      ++m_diagnostics.continuation_packets_completed;
-      sensorPayload.reserve(continuationPayload.size() + packet.payload.size());
-      sensorPayload.insert(sensorPayload.end(), continuationPayload.begin(),
-                           continuationPayload.end());
-      sensorPayload.insert(sensorPayload.end(), packet.payload.begin(), packet.payload.end());
-    }
-    else
-      sensorPayload = packet.payload;
+  bool shouldDecodeSensorPayload = IsSensorChannel(packet.channel);
+  bool payloadCanContinue = packet.continuation;
 
-    normalizedPacket.payload = sensorPayload;
-    if (packet.channel < m_continuationPayloads.size())
-    {
-      m_continuationActive[packet.channel] = false;
-      m_continuationPayloads[packet.channel].clear();
-    }
-  }
+  const bool embeddedHeader = LooksLikeEmbeddedShtpHeader(packet.payload);
+  if (embeddedHeader)
+    ++m_diagnostics.embedded_shtp_header_payloads;
 
   if (packet.channel < m_continuationPayloads.size())
   {
-    const ContinuationValidation validation = ValidateContinuationFragment(packet);
-    if (!validation.valid)
+    const bool active = m_continuationActive[packet.channel];
+    const std::size_t activeBytes = m_continuationPayloads[packet.channel].size();
+
+    if (packet.continuation)
     {
-      RecordContinuationReset(packet.channel, m_continuationPayloads[packet.channel].size(),
-                              packet.payload.size(), validation.reset_reason);
+      if (activeBytes == 0)
+        ++m_diagnostics.continuation_with_zero_accumulated_bytes;
 
-      if (validation.flush_buffer)
-        ClearContinuationState(packet.channel);
+      if (!active)
+      {
+        ++m_diagnostics.continuation_without_active_buffer;
 
-      return true;
+        if (IsSensorChannel(packet.channel) && IsValidSensorPayloadStart(packet.payload))
+        {
+          ++m_diagnostics.orphan_continuation_decoded;
+          shouldDecodeSensorPayload = true;
+          normalizedPacket.payload = packet.payload;
+        }
+        else
+        {
+          ++m_diagnostics.orphan_continuation_discarded;
+          const ContinuationResetReason resetReason =
+              packet.payload.empty()
+                  ? ContinuationResetReason::EmptyPayload
+                  : (embeddedHeader ? ContinuationResetReason::EmbeddedShtpHeader
+                                    : ContinuationResetReason::OrphanContinuation);
+          RecordContinuationReset(packet.channel, packet.sequence, packet.raw_length,
+                                  packet.packet_length, activeBytes, packet.payload.size(),
+                                  resetReason, active, packet.payload);
+          MaybeSendDeferredConfiguration();
+          return true;
+        }
+      }
+      else
+      {
+        auto& continuationPayload = m_continuationPayloads[packet.channel];
+        normalizedPacket.payload = continuationPayload;
+        normalizedPacket.payload.insert(normalizedPacket.payload.end(), packet.payload.begin(),
+                                        packet.payload.end());
+        shouldDecodeSensorPayload = IsSensorChannel(packet.channel);
+      }
     }
-
-    if (validation.keep_buffering && !IsSensorChannel(packet.channel))
-    {
-      auto& continuationPayload = m_continuationPayloads[packet.channel];
-      if (!m_continuationActive[packet.channel])
-        ++m_diagnostics.continuation_packets_started;
-
-      m_continuationActive[packet.channel] = true;
-      continuationPayload.insert(continuationPayload.end(), packet.payload.begin(),
-                                 packet.payload.end());
-      return true;
-    }
-
-    if (!IsSensorChannel(packet.channel) && m_continuationActive[packet.channel])
+    else if (active)
     {
       auto& continuationPayload = m_continuationPayloads[packet.channel];
       ++m_diagnostics.continuation_packets_completed;
-      continuationPayload.insert(continuationPayload.end(), packet.payload.begin(),
-                                 packet.payload.end());
       normalizedPacket.payload = continuationPayload;
+      normalizedPacket.payload.insert(normalizedPacket.payload.end(), packet.payload.begin(),
+                                      packet.payload.end());
       m_continuationActive[packet.channel] = false;
       continuationPayload.clear();
+      shouldDecodeSensorPayload = IsSensorChannel(packet.channel);
+      payloadCanContinue = false;
+    }
+
+    if (!IsSensorChannel(packet.channel))
+    {
+      const ContinuationValidation validation = ValidateContinuationFragment(packet);
+      if (!validation.valid)
+      {
+        RecordContinuationReset(packet.channel, packet.sequence, packet.raw_length,
+                                packet.packet_length, activeBytes, packet.payload.size(),
+                                validation.reset_reason, active, packet.payload);
+
+        if (validation.flush_buffer)
+          ClearContinuationState(packet.channel);
+
+        return true;
+      }
+
+      if (validation.keep_buffering)
+      {
+        auto& continuationPayload = m_continuationPayloads[packet.channel];
+        if (!m_continuationActive[packet.channel])
+          ++m_diagnostics.continuation_packets_started;
+
+        m_continuationActive[packet.channel] = true;
+        continuationPayload.insert(continuationPayload.end(), packet.payload.begin(),
+                                   packet.payload.end());
+        return true;
+      }
     }
   }
 
@@ -258,11 +298,11 @@ bool Bno086Shtp::DecodePacket(const Bno086ShtpPacket& packet,
     return true;
   }
 
-  if (IsSensorChannel(normalizedPacket.channel))
+  if (shouldDecodeSensorPayload)
   {
     const SensorDecodeResult decoded =
         DecodeSensorPayload(normalizedPacket.payload, normalizedPacket.channel, events,
-                            packet_host_stamp_ns, packet.continuation);
+                            packet_host_stamp_ns, payloadCanContinue);
 
     if (decoded.malformed_payload)
       ++m_diagnostics.malformed_sensor_payloads;
@@ -527,6 +567,9 @@ void Bno086Shtp::RecordPacketRead(const Bno086ShtpPacket& packet)
 {
   ++m_diagnostics.packets_read;
 
+  if (packet.continuation)
+    ++m_diagnostics.packets_with_continuation_flag;
+
   if (IsSensorChannel(packet.channel))
     ++m_diagnostics.sensor_packets_read;
 
@@ -539,6 +582,11 @@ void Bno086Shtp::RecordPacketRead(const Bno086ShtpPacket& packet)
   if (packet.channel == kChannelWakeReports)
     ++m_diagnostics.wake_packets_read;
 
+  m_diagnostics.latest_raw_length = packet.raw_length;
+  m_diagnostics.latest_packet_length = packet.packet_length;
+  m_diagnostics.latest_continuation_flag = packet.continuation;
+  m_diagnostics.latest_channel = packet.channel;
+  m_diagnostics.latest_sequence = packet.sequence;
   m_diagnostics.latest_packet_payload_bytes = static_cast<std::uint32_t>(packet.payload.size());
   m_diagnostics.max_packet_payload_bytes = std::max(
       m_diagnostics.max_packet_payload_bytes, static_cast<std::uint32_t>(packet.payload.size()));
@@ -572,17 +620,33 @@ void Bno086Shtp::RecordDecodedSensorEvent(const SensorEvent& event)
 }
 
 void Bno086Shtp::RecordContinuationReset(std::uint8_t channel,
+                                         std::uint8_t sequence,
+                                         std::uint16_t raw_length,
+                                         std::uint16_t packet_length,
                                          std::size_t accumulated_bytes,
                                          std::size_t incoming_bytes,
-                                         ContinuationResetReason reason)
+                                         ContinuationResetReason reason,
+                                         bool had_active_buffer,
+                                         const std::vector<std::uint8_t>& payload)
 {
   ++m_diagnostics.continuation_packets_reset;
   m_diagnostics.latest_continuation_reset_channel = channel;
+  m_diagnostics.latest_continuation_reset_sequence = sequence;
+  m_diagnostics.latest_continuation_reset_raw_length = raw_length;
+  m_diagnostics.latest_continuation_reset_packet_length = packet_length;
   m_diagnostics.latest_continuation_reset_accumulated_bytes =
       static_cast<std::uint32_t>(accumulated_bytes);
   m_diagnostics.latest_continuation_reset_incoming_bytes =
       static_cast<std::uint32_t>(incoming_bytes);
   m_diagnostics.latest_continuation_reset_reason = reason;
+  m_diagnostics.latest_continuation_reset_had_active_buffer = had_active_buffer;
+  m_diagnostics.latest_continuation_reset_payload_prefix.fill(0);
+  m_diagnostics.latest_continuation_reset_payload_prefix_size =
+      static_cast<std::uint8_t>(std::min<std::size_t>(
+          payload.size(), m_diagnostics.latest_continuation_reset_payload_prefix.size()));
+
+  for (std::size_t i = 0; i < m_diagnostics.latest_continuation_reset_payload_prefix_size; ++i)
+    m_diagnostics.latest_continuation_reset_payload_prefix[i] = payload[i];
 }
 
 void Bno086Shtp::MarkCommunicationEstablished()
@@ -626,7 +690,7 @@ Bno086Shtp::ContinuationValidation Bno086Shtp::ValidateContinuationFragment(
       return validation;
     }
 
-    if (LooksLikeShtpHeaderPrefix(packet.payload))
+    if (LooksLikeEmbeddedShtpHeader(packet.payload))
     {
       validation.valid = false;
       validation.keep_buffering = false;
@@ -658,7 +722,7 @@ Bno086Shtp::ContinuationValidation Bno086Shtp::ValidateContinuationFragment(
     return validation;
   }
 
-  if (LooksLikeShtpHeaderPrefix(packet.payload))
+  if (LooksLikeEmbeddedShtpHeader(packet.payload))
   {
     validation.valid = false;
     validation.flush_buffer = true;
@@ -675,6 +739,21 @@ Bno086Shtp::ContinuationValidation Bno086Shtp::ValidateContinuationFragment(
   }
 
   return validation;
+}
+
+bool Bno086Shtp::IsValidSensorPayloadStart(const std::vector<std::uint8_t>& payload) const
+{
+  if (payload.empty())
+    return false;
+
+  const std::uint8_t reportCode = payload.front();
+  if (reportCode == kShtpReportBaseTimestamp || reportCode == kShtpReportTimestampRebase ||
+      reportCode == kSensorFlushCompleted)
+  {
+    return true;
+  }
+
+  return SensorRecordBytes(reportCode).has_value();
 }
 
 void Bno086Shtp::ClearContinuationState(std::uint8_t channel)

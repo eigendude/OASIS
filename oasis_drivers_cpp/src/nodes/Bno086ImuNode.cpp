@@ -12,6 +12,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdio>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -108,6 +109,24 @@ const char* ContinuationResetReasonName(ContinuationResetReason reason)
   }
 
   return "unknown";
+}
+
+std::string ContinuationPayloadPrefixHex(const ShtpDiagnostics& diagnostics)
+{
+  std::string prefix;
+  for (std::size_t i = 0; i < diagnostics.latest_continuation_reset_payload_prefix_size; ++i)
+  {
+    char byteText[4];
+    std::snprintf(byteText, sizeof(byteText), "%02X",
+                  diagnostics.latest_continuation_reset_payload_prefix[i]);
+
+    if (!prefix.empty())
+      prefix += " ";
+
+    prefix += byteText;
+  }
+
+  return prefix;
 }
 } // namespace
 
@@ -700,14 +719,21 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
 
   if (shtpDiagnostics.continuation_packets_reset > m_lastLoggedShtpContinuationResetCount)
   {
+    const std::string payloadPrefix = ContinuationPayloadPrefixHex(shtpDiagnostics);
     RCLCPP_WARN(get_logger(),
                 "BNO086 SHTP continuation reset: count=%llu channel=%u accumulated_bytes=%u "
-                "incoming_bytes=%u reason=%s",
+                "incoming_bytes=%u reason=%s raw_length=0x%04X parsed_length=%u sequence=%u "
+                "active_buffer=%s payload_prefix=\"%s\"",
                 static_cast<unsigned long long>(shtpDiagnostics.continuation_packets_reset),
                 static_cast<unsigned>(shtpDiagnostics.latest_continuation_reset_channel),
                 shtpDiagnostics.latest_continuation_reset_accumulated_bytes,
                 shtpDiagnostics.latest_continuation_reset_incoming_bytes,
-                ContinuationResetReasonName(shtpDiagnostics.latest_continuation_reset_reason));
+                ContinuationResetReasonName(shtpDiagnostics.latest_continuation_reset_reason),
+                static_cast<unsigned>(shtpDiagnostics.latest_continuation_reset_raw_length),
+                static_cast<unsigned>(shtpDiagnostics.latest_continuation_reset_packet_length),
+                static_cast<unsigned>(shtpDiagnostics.latest_continuation_reset_sequence),
+                shtpDiagnostics.latest_continuation_reset_had_active_buffer ? "true" : "false",
+                payloadPrefix.c_str());
     m_lastLoggedShtpContinuationResetCount = shtpDiagnostics.continuation_packets_reset;
   }
 
@@ -733,7 +759,10 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
       "shtp_accel_sequence_gaps=%llu shtp_accel_sequence_gap_max=%u "
       "shtp_accel_duplicate_sequences=%llu shtp_decode_errors=%llu "
       "shtp_continuation_resets=%llu shtp_max_events_per_packet=%u "
-      "shtp_max_packet_payload_bytes=%u "
+      "shtp_max_packet_payload_bytes=%u shtp_continuation_flag_packets=%llu "
+      "shtp_continuation_without_active_buffer=%llu "
+      "shtp_orphan_continuation_decoded=%llu shtp_orphan_continuation_discarded=%llu "
+      "shtp_embedded_shtp_header_payloads=%llu "
       "timestamp_repaired_nonmonotonic_accel=%llu true_duplicate_accel_stamp=%llu "
       "accel_sequence_gap_count=%llu accel_sequence_gap_max=%llu "
       "latest_accel_raw_delta_ms=%.3f latest_accel_normalized_delta_ms=%.3f "
@@ -776,6 +805,11 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
       static_cast<unsigned long long>(shtpDiagnostics.decode_errors),
       static_cast<unsigned long long>(shtpDiagnostics.continuation_packets_reset),
       shtpDiagnostics.max_events_per_packet, shtpDiagnostics.max_packet_payload_bytes,
+      static_cast<unsigned long long>(shtpDiagnostics.packets_with_continuation_flag),
+      static_cast<unsigned long long>(shtpDiagnostics.continuation_without_active_buffer),
+      static_cast<unsigned long long>(shtpDiagnostics.orphan_continuation_decoded),
+      static_cast<unsigned long long>(shtpDiagnostics.orphan_continuation_discarded),
+      static_cast<unsigned long long>(shtpDiagnostics.embedded_shtp_header_payloads),
       static_cast<unsigned long long>(
           m_imuGravityDiagnostics.timestamp_repaired_nonmonotonic_accel),
       static_cast<unsigned long long>(m_imuGravityDiagnostics.true_duplicate_accel_stamp),

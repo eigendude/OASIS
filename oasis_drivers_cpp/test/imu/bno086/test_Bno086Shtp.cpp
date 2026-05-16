@@ -26,6 +26,8 @@ public:
   void PushPacket(const std::vector<std::uint8_t>& payload)
   {
     Bno086ShtpPacket packet;
+    packet.raw_length = static_cast<std::uint16_t>(payload.size() + kShtpHeaderBytes);
+    packet.packet_length = static_cast<std::uint16_t>(payload.size() + kShtpHeaderBytes);
     packet.channel = kReportChannel;
     packet.payload = payload;
     PushPacket(packet);
@@ -105,6 +107,23 @@ void PollOnce(Bno086Shtp& shtp, std::int64_t packet_host_stamp_ns)
   static_cast<void>(shtp.Poll(events, 0, packet_host_stamp_ns));
 }
 } // namespace
+
+TEST(Bno086Transport, headerContinuationBitIsMaskedFromPacketLength)
+{
+  std::array<std::uint8_t, 4> header{};
+  header[0] = 14;
+  header[1] = 0x80;
+  header[2] = kReportChannel;
+  header[3] = 42;
+
+  Bno086ShtpPacket packetHeader;
+  ASSERT_TRUE(Bno086Transport::ParseShtpHeaderBytes(header, packetHeader));
+  EXPECT_EQ(packetHeader.raw_length, 0x800eU);
+  EXPECT_EQ(packetHeader.packet_length, 14U);
+  EXPECT_TRUE(packetHeader.continuation);
+  EXPECT_EQ(packetHeader.channel, kReportChannel);
+  EXPECT_EQ(packetHeader.sequence, 42);
+}
 
 TEST(Bno086Shtp, pollReturnsMultiReportPayloadAsTimestampedBatch)
 {
@@ -271,7 +290,10 @@ TEST(Bno086Shtp, continuationResetIncrementsDiagnostics)
   Bno086Shtp shtp(transport);
 
   Bno086ShtpPacket packet;
+  packet.raw_length = 0x8004U;
+  packet.packet_length = 4;
   packet.channel = kReportChannel;
+  packet.sequence = 9;
   packet.continuation = true;
   transport.PushPacket(packet);
 
@@ -282,6 +304,115 @@ TEST(Bno086Shtp, continuationResetIncrementsDiagnostics)
   EXPECT_EQ(diagnostics.latest_continuation_reset_channel, kReportChannel);
   EXPECT_EQ(diagnostics.latest_continuation_reset_incoming_bytes, 0U);
   EXPECT_EQ(diagnostics.latest_continuation_reset_reason, ContinuationResetReason::EmptyPayload);
+  EXPECT_EQ(diagnostics.latest_continuation_reset_raw_length, 0x8004U);
+  EXPECT_EQ(diagnostics.latest_continuation_reset_packet_length, 4U);
+  EXPECT_EQ(diagnostics.latest_continuation_reset_sequence, 9U);
+  EXPECT_FALSE(diagnostics.latest_continuation_reset_had_active_buffer);
+}
+
+TEST(Bno086Shtp, orphanContinuationWithValidSensorPayloadIsDecoded)
+{
+  FakeTransport transport;
+  Bno086Shtp shtp(transport);
+
+  Bno086ShtpPacket packet;
+  packet.raw_length = 0x800eU;
+  packet.packet_length = 14;
+  packet.channel = kReportChannel;
+  packet.continuation = true;
+  packet.payload = PayloadWithOneReport(ReportId::Accelerometer, 3);
+  transport.PushPacket(packet);
+
+  std::vector<TimestampedSensorEvent> events;
+  EXPECT_EQ(shtp.Poll(events, 0, 1'000'000'000), Bno086Shtp::PollStatus::SensorEvent);
+  ASSERT_EQ(events.size(), 1U);
+  EXPECT_EQ(events[0].event.report_id, ReportId::Accelerometer);
+  EXPECT_EQ(shtp.GetDiagnostics().continuation_without_active_buffer, 1U);
+  EXPECT_EQ(shtp.GetDiagnostics().orphan_continuation_decoded, 1U);
+  EXPECT_EQ(shtp.GetDiagnostics().orphan_continuation_discarded, 0U);
+}
+
+TEST(Bno086Shtp, validSensorPayloadThatLooksSomewhatLikeHeaderIsNotReset)
+{
+  FakeTransport transport;
+  Bno086Shtp shtp(transport);
+
+  std::vector<std::uint8_t> payload;
+  AppendSensorReport(payload, ReportId::Accelerometer, 1);
+  payload[2] = 0;
+  payload[3] = 0;
+
+  Bno086ShtpPacket packet;
+  packet.raw_length = 0x800eU;
+  packet.packet_length = 14;
+  packet.channel = kReportChannel;
+  packet.continuation = true;
+  packet.payload = payload;
+  transport.PushPacket(packet);
+
+  std::vector<TimestampedSensorEvent> events;
+  EXPECT_EQ(shtp.Poll(events, 0, 1'000'000'000), Bno086Shtp::PollStatus::SensorEvent);
+  EXPECT_EQ(shtp.GetDiagnostics().continuation_packets_reset, 0U);
+  EXPECT_EQ(shtp.GetDiagnostics().embedded_shtp_header_payloads, 0U);
+}
+
+TEST(Bno086Shtp, realEmbeddedHeaderLookingOrphanContinuationIsDiscarded)
+{
+  FakeTransport transport;
+  Bno086Shtp shtp(transport);
+
+  Bno086ShtpPacket packet;
+  packet.raw_length = 0x8010U;
+  packet.packet_length = 16;
+  packet.channel = kReportChannel;
+  packet.sequence = 12;
+  packet.continuation = true;
+  packet.payload = {8, 0, kReportChannel, 44, 0xAA, 0xBB, 0xCC, 0xDD};
+  transport.PushPacket(packet);
+
+  PollOnce(shtp, 1'000'000'000);
+
+  const ShtpDiagnostics& diagnostics = shtp.GetDiagnostics();
+  EXPECT_EQ(diagnostics.embedded_shtp_header_payloads, 1U);
+  EXPECT_EQ(diagnostics.orphan_continuation_discarded, 1U);
+  EXPECT_EQ(diagnostics.continuation_packets_reset, 1U);
+  EXPECT_EQ(diagnostics.latest_continuation_reset_reason,
+            ContinuationResetReason::EmbeddedShtpHeader);
+  EXPECT_EQ(diagnostics.latest_continuation_reset_payload_prefix_size, 8U);
+  EXPECT_EQ(diagnostics.latest_continuation_reset_payload_prefix[0], 8U);
+}
+
+TEST(Bno086Shtp, continuationStartAndFinishDecodesCombinedPayload)
+{
+  FakeTransport transport;
+  Bno086Shtp shtp(transport);
+
+  std::vector<std::uint8_t> payload = PayloadWithOneReport(ReportId::Accelerometer, 5);
+
+  Bno086ShtpPacket first;
+  first.raw_length = 0x8007U;
+  first.packet_length = 7;
+  first.channel = kReportChannel;
+  first.continuation = true;
+  first.payload.assign(payload.begin(), payload.begin() + 3);
+  transport.PushPacket(first);
+
+  Bno086ShtpPacket second;
+  second.raw_length = static_cast<std::uint16_t>(payload.size() - 3 + kShtpHeaderBytes);
+  second.packet_length = second.raw_length;
+  second.channel = kReportChannel;
+  second.payload.assign(payload.begin() + 3, payload.end());
+  transport.PushPacket(second);
+
+  std::vector<TimestampedSensorEvent> events;
+  EXPECT_EQ(shtp.Poll(events, 0, 1'000'000'000), Bno086Shtp::PollStatus::PacketHandled);
+  EXPECT_TRUE(events.empty());
+
+  EXPECT_EQ(shtp.Poll(events, 0, 1'000'100'000), Bno086Shtp::PollStatus::SensorEvent);
+  ASSERT_EQ(events.size(), 1U);
+  EXPECT_EQ(events[0].event.sequence, 5);
+  EXPECT_EQ(shtp.GetDiagnostics().continuation_packets_started, 1U);
+  EXPECT_EQ(shtp.GetDiagnostics().continuation_packets_completed, 1U);
 }
 
 TEST(Bno086Shtp, additionalReportsAreNotReturnedFromPendingQueueLater)
