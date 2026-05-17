@@ -146,21 +146,6 @@ private:
     std::chrono::steady_clock::time_point last_log_at{};
   };
 
-  struct TimestampSummaryStats
-  {
-    std::uint64_t events{0};
-    std::uint64_t has_base_count{0};
-    std::uint64_t has_delay_count{0};
-    std::uint64_t sequence_gap_count{0};
-    std::uint64_t cadence_tracker_gap_count{0};
-    std::uint64_t cadence_tracker_reanchor_count{0};
-    std::uint64_t monotonic_guard_count{0};
-    std::uint64_t sample_delta_count{0};
-    int64_t sample_delta_sum_ns{0};
-    std::optional<int64_t> sample_delta_min_ns;
-    std::optional<int64_t> last_sample_stamp_ns;
-  };
-
   struct DrainThroughputDiagnostics
   {
     std::uint64_t drains{0};
@@ -269,10 +254,6 @@ private:
   bool IsBno086RateUnhealthy() const;
   bool IsBno086DiagnosticsUnhealthy() const;
   void CountDecodedReport(const OASIS::IMU::BNO086::SensorEvent& event);
-  void RecordTimestampSummary(const OASIS::IMU::BNO086::SensorEvent& event,
-                              const FinalizedEventStamp& stamp,
-                              const OASIS::IMU::BNO086::ReportTimestampTrackerResult& tracker);
-  void MaybeEmitTimestampSummaries() const;
 
   static std::array<double, 9> PredictedCovarianceFromPresent(
       const std::array<double, 9>& present_orientation_covariance,
@@ -370,7 +351,6 @@ private:
   OASIS::IMU::BNO086::OrientationCovarianceSource m_lastOrientationCovarianceSource{
       OASIS::IMU::BNO086::OrientationCovarianceSource::AccuracyBucketFallback};
   std::uint8_t m_lastOrientationAccuracyBucket{0};
-  std::array<TimestampSummaryStats, 5> m_timestampSummaryStats{};
   DrainThroughputDiagnostics m_drainDiagnostics{};
   std::chrono::steady_clock::time_point m_featureConfigurationStartedAt{};
   std::vector<OASIS::IMU::BNO086::FeatureResponse> m_latestFeatureResponses;

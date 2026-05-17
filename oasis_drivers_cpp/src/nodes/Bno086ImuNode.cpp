@@ -278,15 +278,8 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
     throw std::runtime_error("Failed to configure BNO086 reports");
   }
   m_featureConfigurationStartedAt = std::chrono::steady_clock::now();
-  const Bno086Shtp::FeatureResponseDrainResult featureDrainResult = m_shtp->DrainFeatureResponses(
-      m_featureResponseStartupDrainMs, m_featureResponseStartupMaxPackets, m_packetReadTimeoutMs);
-  RCLCPP_DEBUG(get_logger(),
-               "BNO086 feature response startup drain: received=%zu expected=%zu "
-               "pre_report_packets=%u sensor_events_ignored_or_seen=%u physical_packets=%u "
-               "elapsed_ms=%u",
-               featureDrainResult.received_responses, featureDrainResult.expected_responses,
-               featureDrainResult.pre_report_packets, featureDrainResult.sensor_events_seen,
-               featureDrainResult.physical_packets, featureDrainResult.elapsed_ms);
+  (void)m_shtp->DrainFeatureResponses(m_featureResponseStartupDrainMs,
+                                      m_featureResponseStartupMaxPackets, m_packetReadTimeoutMs);
   MaybeLogFeatureResponses();
 
   if (intGpio == DEFAULT_INT_GPIO)
@@ -583,7 +576,6 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
           EstimateEventStamp(*pollResult.event, drainReceiveAnchor, expectedIntervalNs);
       const FinalizedEventStamp finalizedStamp =
           FinalizeEventStamp(*pollResult.event, eventStamp, expectedIntervalNs);
-      RecordTimestampSummary(*pollResult.event, finalizedStamp, eventStamp.tracker);
 
       if (pollResult.event->report_id == ReportId::Accelerometer)
       {
@@ -803,18 +795,10 @@ void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& ev
   const SampleFreshnessResult gyroFreshness =
       EvaluateSampleFreshness(orientationStampNs, m_gyroState.stamp.nanoseconds(), maxGyroAgeNs,
                               ReportFutureToleranceNs(ReportId::GyroscopeCalibrated));
-  const double accelAgeMs = static_cast<double>(accelFreshness.age_ns) / 1.0e6;
-  const double gyroAgeMs = static_cast<double>(gyroFreshness.age_ns) / 1.0e6;
 
   if (accelFreshness.status == SampleFreshnessStatus::TooOld)
   {
     ++m_imuGravityDiagnostics.imu_gravity_skipped_stale_accel;
-    RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
-                          "Skipping BNO086 imu_gravity sample: accel older than max age "
-                          "age_ms=%.3f max_age_ms=%.3f orientation_ns=%lld accel_ns=%lld",
-                          accelAgeMs, static_cast<double>(maxAccelAgeNs) / 1.0e6,
-                          static_cast<long long>(orientationStampNs),
-                          static_cast<long long>(accelStampNs));
     MaybeLogImuGravityDiagnostics();
     return;
   }
@@ -822,12 +806,6 @@ void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& ev
   if (accelFreshness.status == SampleFreshnessStatus::TooFuture)
   {
     ++m_imuGravityDiagnostics.imu_gravity_skipped_future_accel;
-    RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
-                          "Skipping BNO086 imu_gravity sample: accel too far after orientation "
-                          "age_ms=%.3f future_tolerance_ms=%.3f orientation_ns=%lld accel_ns=%lld",
-                          accelAgeMs, static_cast<double>(accelFutureToleranceNs) / 1.0e6,
-                          static_cast<long long>(orientationStampNs),
-                          static_cast<long long>(accelStampNs));
     MaybeLogImuGravityDiagnostics();
     return;
   }
@@ -835,12 +813,6 @@ void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& ev
   if (gyroFreshness.status == SampleFreshnessStatus::TooOld)
   {
     ++m_imuGravityDiagnostics.imu_gravity_skipped_stale_gyro;
-    RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
-                          "Skipping BNO086 imu_gravity sample: gyro older than max age "
-                          "age_ms=%.3f max_age_ms=%.3f orientation_ns=%lld gyro_ns=%lld",
-                          gyroAgeMs, static_cast<double>(maxGyroAgeNs) / 1.0e6,
-                          static_cast<long long>(orientationStampNs),
-                          static_cast<long long>(m_gyroState.stamp.nanoseconds()));
     MaybeLogImuGravityDiagnostics();
     return;
   }
@@ -848,14 +820,6 @@ void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& ev
   if (gyroFreshness.status == SampleFreshnessStatus::TooFuture)
   {
     ++m_imuGravityDiagnostics.imu_gravity_skipped_future_gyro;
-    RCLCPP_DEBUG_THROTTLE(
-        get_logger(), *get_clock(), 2000,
-        "Skipping BNO086 imu_gravity sample: gyro too far after orientation "
-        "age_ms=%.3f future_tolerance_ms=%.3f orientation_ns=%lld gyro_ns=%lld",
-        gyroAgeMs,
-        static_cast<double>(ReportFutureToleranceNs(ReportId::GyroscopeCalibrated)) / 1.0e6,
-        static_cast<long long>(orientationStampNs),
-        static_cast<long long>(m_gyroState.stamp.nanoseconds()));
     MaybeLogImuGravityDiagnostics();
     return;
   }
@@ -1121,12 +1085,6 @@ void Bno086ImuNode::MaybeLogFeatureResponses()
 
 void Bno086ImuNode::LogFeatureResponse(const FeatureResponse& response)
 {
-  const std::optional<std::uint32_t> requestedIntervalUs =
-      RequestedFeatureIntervalUs(response.report_id);
-  const std::optional<std::uint32_t> requestedBatchUs =
-      RequestedFeatureBatchIntervalUs(response.report_id);
-  const std::uint32_t requestedUs = requestedIntervalUs.value_or(0U);
-  const std::uint32_t requestedBatch = requestedBatchUs.value_or(0U);
   const double actualRateHz = response.report_interval_us > 0
                                   ? 1'000'000.0 / static_cast<double>(response.report_interval_us)
                                   : 0.0;
@@ -1134,16 +1092,6 @@ void Bno086ImuNode::LogFeatureResponse(const FeatureResponse& response)
   const std::optional<std::size_t> reportIndex = DiagnosticReportIndex(response.report_id);
   if (reportIndex.has_value())
     m_imuGravityDiagnostics.latest_feature_rate_hz[*reportIndex] = actualRateHz;
-
-  RCLCPP_DEBUG(get_logger(),
-               "BNO086 Get Feature Response: report=%s id=0x%02X requested_interval_us=%u "
-               "actual_interval_us=%u actual_rate_hz=%.2f requested_batch_us=%u "
-               "actual_batch_us=%u batching_active=%s feature_flags=0x%02X "
-               "sensor_specific_config=0x%08X",
-               ReportName(response.report_id), static_cast<unsigned>(response.report_id),
-               requestedUs, response.report_interval_us, actualRateHz, requestedBatch,
-               response.batch_interval_us, IsFeatureBatchingActive(response) ? "true" : "false",
-               static_cast<unsigned>(response.feature_flags), response.sensor_specific_config);
 }
 
 void Bno086ImuNode::MaybeLogFeatureSummary()
@@ -1233,7 +1181,6 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
 
   UpdateImuGravityDiagnosticsRates(now);
   MaybeEmitImuGravityDiagnosticsLog();
-  MaybeEmitTimestampSummaries();
   m_imuGravityDiagnostics.last_log_at = now;
 }
 
@@ -1577,93 +1524,6 @@ void Bno086ImuNode::CountDecodedReport(const SensorEvent& event)
   const std::optional<std::size_t> reportIndex = DiagnosticReportIndex(event.report_id);
   if (reportIndex.has_value())
     ++m_imuGravityDiagnostics.decoded_reports_received[*reportIndex];
-}
-
-void Bno086ImuNode::RecordTimestampSummary(const SensorEvent& event,
-                                           const FinalizedEventStamp& stamp,
-                                           const ReportTimestampTrackerResult& tracker)
-{
-  const std::optional<std::size_t> reportIndex = DiagnosticReportIndex(event.report_id);
-  if (!reportIndex.has_value())
-    return;
-
-  TimestampSummaryStats& stats = m_timestampSummaryStats[*reportIndex];
-  ++stats.events;
-
-  if (event.has_base_timestamp)
-    ++stats.has_base_count;
-
-  if (event.has_delay)
-    ++stats.has_delay_count;
-
-  if (stamp.sequence_gap)
-    ++stats.sequence_gap_count;
-
-  if (tracker.gap_detected)
-    ++stats.cadence_tracker_gap_count;
-
-  if (tracker.reanchored)
-    ++stats.cadence_tracker_reanchor_count;
-
-  if (stamp.monotonic_guarded)
-    ++stats.monotonic_guard_count;
-
-  if (stamp.duplicate)
-    return;
-
-  if (stats.last_sample_stamp_ns.has_value())
-  {
-    const int64_t sampleDeltaNs = stamp.stamp_ns - *stats.last_sample_stamp_ns;
-    ++stats.sample_delta_count;
-    stats.sample_delta_sum_ns += sampleDeltaNs;
-    if (!stats.sample_delta_min_ns.has_value() || sampleDeltaNs < *stats.sample_delta_min_ns)
-      stats.sample_delta_min_ns = sampleDeltaNs;
-  }
-
-  stats.last_sample_stamp_ns = stamp.stamp_ns;
-}
-
-void Bno086ImuNode::MaybeEmitTimestampSummaries() const
-{
-  constexpr std::array<ReportId, 5> kSummaryReports = {
-      ReportId::Accelerometer,  ReportId::GyroscopeCalibrated,
-      ReportId::RotationVector, ReportId::LinearAcceleration,
-      ReportId::Gravity,
-  };
-
-  for (const ReportId reportId : kSummaryReports)
-  {
-    const std::optional<std::size_t> reportIndex = DiagnosticReportIndex(reportId);
-    if (!reportIndex.has_value())
-      continue;
-
-    const TimestampSummaryStats& stats = m_timestampSummaryStats[*reportIndex];
-    if (stats.events == 0)
-      continue;
-
-    const double sampleDeltaMinMs = stats.sample_delta_min_ns.has_value()
-                                        ? static_cast<double>(*stats.sample_delta_min_ns) / 1e6
-                                        : 0.0;
-    const double sampleDeltaMeanMs = stats.sample_delta_count > 0
-                                         ? static_cast<double>(stats.sample_delta_sum_ns) /
-                                               static_cast<double>(stats.sample_delta_count) / 1e6
-                                         : 0.0;
-
-    RCLCPP_DEBUG(get_logger(),
-                 "BNO086 timestamp summary: report=%s events=%llu "
-                 "has_base_count=%llu has_delay_count=%llu sequence_gap_count=%llu "
-                 "cadence_tracker_gap_count=%llu cadence_tracker_reanchor_count=%llu "
-                 "monotonic_guard_count=%llu sample_delta_min_ms=%.6f "
-                 "sample_delta_mean_ms=%.6f",
-                 ReportName(reportId), static_cast<unsigned long long>(stats.events),
-                 static_cast<unsigned long long>(stats.has_base_count),
-                 static_cast<unsigned long long>(stats.has_delay_count),
-                 static_cast<unsigned long long>(stats.sequence_gap_count),
-                 static_cast<unsigned long long>(stats.cadence_tracker_gap_count),
-                 static_cast<unsigned long long>(stats.cadence_tracker_reanchor_count),
-                 static_cast<unsigned long long>(stats.monotonic_guard_count), sampleDeltaMinMs,
-                 sampleDeltaMeanMs);
-  }
 }
 
 std::uint32_t Bno086ImuNode::CoreCoherenceToleranceUs() const
