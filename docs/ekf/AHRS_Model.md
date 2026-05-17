@@ -237,7 +237,7 @@ Fields:
 - base-frame quaternion `q_WB`
 - base-frame angular velocity
 - base-frame linear acceleration
-- optional base-frame gravity-included calibrated acceleration
+- base-frame gravity-included calibrated acceleration
 - transformed covariance blocks
 - gravity residual summary for diagnostics
 

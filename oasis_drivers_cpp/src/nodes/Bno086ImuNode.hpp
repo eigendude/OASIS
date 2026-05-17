@@ -51,12 +51,17 @@ namespace OASIS::ROS
  * - imu: fused orientation + calibrated gyro + gravity-removed linear accel
  * - imu_predicted: predicted orientation + present-time gyro + linear accel
  * - imu_vr: predicted orientation plus explicit prediction metadata
- * - gravity (optional): fused gravity vector expressed in imu_link and
- *   pointing down with magnitude near 9.81 m/s^2 at rest
- * - imu_gravity (optional): fused orientation + calibrated gyro +
- *   gravity-included calibrated acceleration
+ * - gravity: fused gravity vector expressed in imu_link and pointing down
+ *   with magnitude near 9.81 m/s^2 at rest
+ * - imu_gravity: fused orientation + calibrated gyro + gravity-included
+ *   calibrated acceleration
  *
  * Publication is interrupt-driven from active-low H_INTN packet drains
+ *
+ * Required driver outputs follow their source report cadences:
+ * - imu: Linear Acceleration
+ * - imu_gravity: Rotation Vector
+ * - gravity: Gravity
  *
  * Orientation uses the BNO086 Rotation Vector output, which is
  * magnetometer-backed internally for heading. Magnetometer is not published.

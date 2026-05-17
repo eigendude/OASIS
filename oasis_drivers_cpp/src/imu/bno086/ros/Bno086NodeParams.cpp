@@ -36,8 +36,6 @@ constexpr double DEFAULT_GYRO_BATCH_MS = 10.0;
 constexpr double DEFAULT_ACCELEROMETER_BATCH_MS = 10.0;
 constexpr double DEFAULT_LINEAR_ACCELERATION_BATCH_MS = 10.0;
 constexpr double DEFAULT_GRAVITY_BATCH_MS = 40.0;
-constexpr bool DEFAULT_ENABLE_LINEAR_ACCELERATION_REPORT = true;
-constexpr bool DEFAULT_ENABLE_GRAVITY_REPORT = true;
 
 constexpr int DEFAULT_BNO086_DIAGNOSTICS_LOG_PERIOD_MS = 5'000;
 constexpr int MIN_BNO086_DIAGNOSTICS_LOG_PERIOD_MS = 1'000;
@@ -68,9 +66,6 @@ void DeclareBno086NodeParameters(rclcpp::Node& node)
   node.declare_parameter("bno086_linear_acceleration_batch_ms",
                          DEFAULT_LINEAR_ACCELERATION_BATCH_MS);
   node.declare_parameter("bno086_gravity_batch_ms", DEFAULT_GRAVITY_BATCH_MS);
-  node.declare_parameter("bno086_enable_linear_acceleration_report",
-                         DEFAULT_ENABLE_LINEAR_ACCELERATION_REPORT);
-  node.declare_parameter("bno086_enable_gravity_report", DEFAULT_ENABLE_GRAVITY_REPORT);
   node.declare_parameter("bno086_all_zero_backoff_us", DEFAULT_ALL_ZERO_BACKOFF_US);
   node.declare_parameter("bno086_diagnostics_log_period_ms",
                          DEFAULT_BNO086_DIAGNOSTICS_LOG_PERIOD_MS);
@@ -112,10 +107,6 @@ Bno086NodeParams LoadBno086NodeParameters(const rclcpp::Node& node)
           node.get_parameter("bno086_linear_acceleration_batch_ms").as_double());
   params.reports.gravity_batch_interval_us = OASIS::IMU::BNO086::MillisecondsToMicroseconds(
       node.get_parameter("bno086_gravity_batch_ms").as_double());
-  params.reports.enable_linear_acceleration_report =
-      node.get_parameter("bno086_enable_linear_acceleration_report").as_bool();
-  params.reports.enable_gravity_report =
-      node.get_parameter("bno086_enable_gravity_report").as_bool();
 
   params.driver.all_zero_backoff_us =
       std::clamp(static_cast<int>(node.get_parameter("bno086_all_zero_backoff_us").as_int()),

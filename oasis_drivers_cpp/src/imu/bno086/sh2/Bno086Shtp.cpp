@@ -62,18 +62,10 @@ bool Bno086Shtp::Configure(const Bno086ShtpConfig& config)
   {
     FeatureConfiguration featureConfiguration;
     featureConfiguration.report_id = reportId;
-    featureConfiguration.enabled = RequestedEnabledForReport(reportId, m_config);
-    if (featureConfiguration.enabled)
-    {
-      featureConfiguration.requested_interval_us = RequestedIntervalForReport(reportId, m_config);
-      featureConfiguration.requested_batch_interval_us =
-          RequestedBatchIntervalForReport(reportId, m_config);
-    }
-    else
-    {
-      featureConfiguration.requested_interval_us = 0;
-      featureConfiguration.requested_batch_interval_us = 0;
-    }
+    featureConfiguration.enabled = true;
+    featureConfiguration.requested_interval_us = RequestedIntervalForReport(reportId, m_config);
+    featureConfiguration.requested_batch_interval_us =
+        RequestedBatchIntervalForReport(reportId, m_config);
     m_featureConfigurations.emplace_back(featureConfiguration);
   }
 
@@ -734,21 +726,6 @@ std::uint32_t Bno086Shtp::RequestedBatchIntervalForReport(ReportId report_id,
   }
 
   return 0;
-}
-
-bool Bno086Shtp::RequestedEnabledForReport(ReportId report_id, const Bno086ShtpConfig& config)
-{
-  switch (report_id)
-  {
-    case ReportId::LinearAcceleration:
-      return config.enable_linear_acceleration_report;
-    case ReportId::Gravity:
-      return config.enable_gravity_report;
-    default:
-      break;
-  }
-
-  return true;
 }
 
 std::uint32_t Bno086Shtp::ReadU32(const std::vector<std::uint8_t>& data, std::size_t offset)

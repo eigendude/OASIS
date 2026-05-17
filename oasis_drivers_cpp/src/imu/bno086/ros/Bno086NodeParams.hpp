@@ -213,16 +213,6 @@ struct Bno086ReportConfig
    * Units: microseconds
    */
   std::uint32_t gravity_batch_interval_us{0};
-
-  /*!
-   * \brief True when the linear acceleration report should be enabled
-   */
-  bool enable_linear_acceleration_report{true};
-
-  /*!
-   * \brief True when the gravity report should be enabled
-   */
-  bool enable_gravity_report{true};
 };
 
 /*!

@@ -178,22 +178,6 @@ std::vector<std::uint8_t> FeatureResponsePayload(ReportId report_id,
   return payload;
 }
 
-std::vector<std::uint8_t> GravityReport(std::uint8_t sequence)
-{
-  return {
-      static_cast<std::uint8_t>(ReportId::Gravity),
-      sequence,
-      0x00,
-      0x00,
-      0x00,
-      0x00,
-      0x00,
-      0x00,
-      0x00,
-      0x00,
-  };
-}
-
 std::vector<std::uint8_t> LinearAccelerationReport(std::uint8_t sequence)
 {
   return {
@@ -450,33 +434,31 @@ TEST(Bno086Shtp, explicitZeroBatchIntervalDisablesBatchingForReport)
   EXPECT_EQ(ReadBatchIntervalUs(transport.payloads[2]), 0U);
 }
 
-TEST(Bno086Shtp, disablesOptionalReportsWithZeroIntervalAndBatch)
+TEST(Bno086Shtp, configuresLinearAccelerationAsRequiredReport)
 {
   RecordingTransport transport;
   Bno086Shtp shtp{transport};
 
   Bno086ShtpConfig config = ExplicitShtpConfig();
-  config.enable_linear_acceleration_report = false;
-  config.enable_gravity_report = false;
 
   ASSERT_TRUE(shtp.Configure(config));
 
   const std::vector<FeatureConfiguration>& features = shtp.GetFeatureConfigurations();
   ASSERT_EQ(features.size(), 5U);
   EXPECT_EQ(features[2].report_id, ReportId::LinearAcceleration);
-  EXPECT_EQ(features[2].requested_interval_us, 0U);
-  EXPECT_EQ(features[2].requested_batch_interval_us, 0U);
-  EXPECT_FALSE(features[2].enabled);
+  EXPECT_EQ(features[2].requested_interval_us, 50'000U);
+  EXPECT_EQ(features[2].requested_batch_interval_us, 5'000U);
+  EXPECT_TRUE(features[2].enabled);
   EXPECT_EQ(features[4].report_id, ReportId::Gravity);
-  EXPECT_EQ(features[4].requested_interval_us, 0U);
-  EXPECT_EQ(features[4].requested_batch_interval_us, 0U);
-  EXPECT_FALSE(features[4].enabled);
+  EXPECT_EQ(features[4].requested_interval_us, 100'000U);
+  EXPECT_EQ(features[4].requested_batch_interval_us, 90'000U);
+  EXPECT_TRUE(features[4].enabled);
 
   ASSERT_EQ(transport.payloads.size(), 10U);
-  EXPECT_EQ(ReadIntervalUs(transport.payloads[4]), 0U);
-  EXPECT_EQ(ReadBatchIntervalUs(transport.payloads[4]), 0U);
-  EXPECT_EQ(ReadIntervalUs(transport.payloads[8]), 0U);
-  EXPECT_EQ(ReadBatchIntervalUs(transport.payloads[8]), 0U);
+  EXPECT_EQ(ReadIntervalUs(transport.payloads[4]), 50'000U);
+  EXPECT_EQ(ReadBatchIntervalUs(transport.payloads[4]), 5'000U);
+  EXPECT_EQ(ReadIntervalUs(transport.payloads[8]), 100'000U);
+  EXPECT_EQ(ReadBatchIntervalUs(transport.payloads[8]), 90'000U);
 }
 
 TEST(Bno086Shtp, parsesFeatureResponseIntervalsAndBatchingState)
@@ -738,31 +720,20 @@ TEST(Bno086Shtp, continuationChannelThreeSensorPacketStillDecodes)
   EXPECT_EQ(secondResult.event->sequence, 7);
 }
 
-TEST(Bno086Shtp, disabledOptionalReportsAreIgnoredIfStalePayloadsArrive)
+TEST(Bno086Shtp, linearAccelerationReportsDecodeAsSensorEvents)
 {
   RecordingTransport transport;
   Bno086Shtp shtp{transport};
 
-  Bno086ShtpConfig config = ExplicitShtpConfig();
-  config.enable_linear_acceleration_report = false;
-  config.enable_gravity_report = false;
-  ASSERT_TRUE(shtp.Configure(config));
+  ASSERT_TRUE(shtp.Configure(ExplicitShtpConfig()));
 
   Bno086ShtpPacket linearPacket;
   linearPacket.channel = 3;
   linearPacket.payload = LinearAccelerationReport(1);
   transport.packets.emplace_back(linearPacket);
 
-  Bno086ShtpPacket gravityPacket;
-  gravityPacket.channel = 3;
-  gravityPacket.payload = GravityReport(1);
-  transport.packets.emplace_back(gravityPacket);
-
   const Bno086Shtp::PollResult linearResult = shtp.Poll(5);
-  EXPECT_EQ(linearResult.status, Bno086Shtp::PollStatus::PacketHandled);
-  EXPECT_FALSE(linearResult.event.has_value());
-
-  const Bno086Shtp::PollResult gravityResult = shtp.Poll(5);
-  EXPECT_EQ(gravityResult.status, Bno086Shtp::PollStatus::PacketHandled);
-  EXPECT_FALSE(gravityResult.event.has_value());
+  ASSERT_EQ(linearResult.status, Bno086Shtp::PollStatus::SensorEvent);
+  ASSERT_TRUE(linearResult.event.has_value());
+  EXPECT_EQ(linearResult.event->report_id, ReportId::LinearAcceleration);
 }

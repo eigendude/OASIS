@@ -96,16 +96,6 @@ struct Bno086ShtpConfig
    * Units: microseconds, zero disables batching
    */
   std::uint32_t gravity_batch_interval_us{0};
-
-  /*!
-   * \brief True when Linear Acceleration should be configured as enabled
-   */
-  bool enable_linear_acceleration_report{true};
-
-  /*!
-   * \brief True when the BNO086 Gravity report should be configured enabled
-   */
-  bool enable_gravity_report{true};
 };
 
 class Bno086Shtp
@@ -268,7 +258,6 @@ private:
                                                   const Bno086ShtpConfig& config);
   static std::uint32_t RequestedBatchIntervalForReport(ReportId report_id,
                                                        const Bno086ShtpConfig& config);
-  static bool RequestedEnabledForReport(ReportId report_id, const Bno086ShtpConfig& config);
   static std::uint32_t ReadU32(const std::vector<std::uint8_t>& data, std::size_t offset);
   static void WriteU32(std::vector<std::uint8_t>& data, std::size_t offset, std::uint32_t value);
   static std::int16_t ReadS16(const std::vector<std::uint8_t>& data, std::size_t offset);

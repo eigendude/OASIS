@@ -137,8 +137,6 @@ Bno086ImuNode::Bno086ImuNode()
   shtpConfig.linear_acceleration_batch_interval_us =
       m_reports.linear_acceleration_batch_interval_us;
   shtpConfig.gravity_batch_interval_us = m_reports.gravity_batch_interval_us;
-  shtpConfig.enable_linear_acceleration_report = m_reports.enable_linear_acceleration_report;
-  shtpConfig.enable_gravity_report = m_reports.enable_gravity_report;
 
   if (!m_shtp->Configure(shtpConfig))
   {
@@ -154,28 +152,23 @@ Bno086ImuNode::Bno086ImuNode()
   RCLCPP_INFO(get_logger(), "BNO086 INT uses GPIO%d, active low", intGpio);
   RCLCPP_INFO(get_logger(), "BNO086 opened on %s (0x%02X), int_gpio=%d active_low",
               i2cDevice.c_str(), static_cast<unsigned>(i2cAddress), intGpio);
-  RCLCPP_INFO(
-      get_logger(),
-      "BNO086 static report rates:\n"
-      "  rotation_vector=%.1f batch_ms=%.0f enabled=true\n"
-      "  gyro=%.1f batch_ms=%.0f enabled=true\n"
-      "  accelerometer=%.1f batch_ms=%.0f enabled=true\n"
-      "  linear_acceleration=%.1f batch_ms=%.0f enabled=%s\n"
-      "  gravity=%.1f batch_ms=%.0f enabled=%s",
-      m_reports.rotation_vector_rate_hz,
-      static_cast<double>(m_reports.rotation_vector_batch_interval_us) / 1000.0,
-      m_reports.gyro_rate_hz, static_cast<double>(m_reports.gyro_batch_interval_us) / 1000.0,
-      m_reports.accelerometer_rate_hz,
-      static_cast<double>(m_reports.accelerometer_batch_interval_us) / 1000.0,
-      m_reports.linear_acceleration_rate_hz,
-      m_reports.enable_linear_acceleration_report
-          ? static_cast<double>(m_reports.linear_acceleration_batch_interval_us) / 1000.0
-          : 0.0,
-      m_reports.enable_linear_acceleration_report ? "true" : "false", m_reports.gravity_rate_hz,
-      m_reports.enable_gravity_report
-          ? static_cast<double>(m_reports.gravity_batch_interval_us) / 1000.0
-          : 0.0,
-      m_reports.enable_gravity_report ? "true" : "false");
+  RCLCPP_INFO(get_logger(),
+              "BNO086 static report rates:\n"
+              "  rotation_vector=%.1f batch_ms=%.0f enabled=true\n"
+              "  gyro=%.1f batch_ms=%.0f enabled=true\n"
+              "  accelerometer=%.1f batch_ms=%.0f enabled=true\n"
+              "  linear_acceleration=%.1f batch_ms=%.0f enabled=true\n"
+              "  gravity=%.1f batch_ms=%.0f enabled=%s",
+              m_reports.rotation_vector_rate_hz,
+              static_cast<double>(m_reports.rotation_vector_batch_interval_us) / 1000.0,
+              m_reports.gyro_rate_hz,
+              static_cast<double>(m_reports.gyro_batch_interval_us) / 1000.0,
+              m_reports.accelerometer_rate_hz,
+              static_cast<double>(m_reports.accelerometer_batch_interval_us) / 1000.0,
+              m_reports.linear_acceleration_rate_hz,
+              static_cast<double>(m_reports.linear_acceleration_batch_interval_us) / 1000.0,
+              m_reports.gravity_rate_hz,
+              static_cast<double>(m_reports.gravity_batch_interval_us) / 1000.0, "true");
   RCLCPP_INFO(get_logger(), "BNO086 publication cadence: imu=linear_acceleration "
                             "imu_gravity=rotation_vector gravity=gravity_report");
   if (m_config.prediction_horizon_sec > 0.0)
