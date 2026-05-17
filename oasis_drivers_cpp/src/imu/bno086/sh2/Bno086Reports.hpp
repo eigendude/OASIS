@@ -82,27 +82,6 @@ struct SensorEvent
   bool has_base_timestamp{false};
 
   /*!
-   * \brief SHTP channel that carried this decoded report
-   *
-   * Units: SHTP channel number
-   */
-  std::uint8_t channel{0};
-
-  /*!
-   * \brief Offset of this report inside the decoded SHTP payload
-   *
-   * Units: bytes from the start of the payload
-   */
-  std::size_t report_offset{0};
-
-  /*!
-   * \brief Number of payload bytes consumed by this report record
-   *
-   * Units: bytes including the SH-2 sensor report header and values
-   */
-  std::size_t bytes_consumed{0};
-
-  /*!
    * \brief Raw Q-format values carried by this report
    *
    * Units: report specific fixed-point values

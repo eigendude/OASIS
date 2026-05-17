@@ -72,8 +72,6 @@ constexpr double DEFAULT_GRAVITY_BATCH_MS = 40.0;
 constexpr bool DEFAULT_ENABLE_LINEAR_ACCELERATION_REPORT = true;
 constexpr bool DEFAULT_ENABLE_GRAVITY_REPORT = true;
 constexpr int DEFAULT_FEATURE_SUMMARY_TIMEOUT_MS = 5'000;
-constexpr int DEFAULT_BNO086_TIMESTAMP_TRACE_COUNT = 0;
-constexpr int MAX_BNO086_TIMESTAMP_TRACE_COUNT = 1'000;
 
 // Maximum nearby orientation age accepted for imu_gravity composition
 constexpr double DEFAULT_IMU_GRAVITY_MAX_ORIENTATION_AGE_MS = 25.0;
@@ -152,7 +150,6 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   declare_parameter("bno086_diagnostics_log_level",
                     std::string(DEFAULT_BNO086_DIAGNOSTICS_LOG_LEVEL));
   declare_parameter("bno086_diagnostics_log_period_ms", DEFAULT_BNO086_DIAGNOSTICS_LOG_PERIOD_MS);
-  declare_parameter("bno086_timestamp_trace_count", DEFAULT_BNO086_TIMESTAMP_TRACE_COUNT);
   declare_parameter("prediction_horizon_sec", DEFAULT_PREDICTION_HORIZON_SEC);
   declare_parameter("imu_gravity_max_orientation_age_ms",
                     DEFAULT_IMU_GRAVITY_MAX_ORIENTATION_AGE_MS);
@@ -210,9 +207,6 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   m_diagnosticsLogPeriodMs =
       std::max(static_cast<int>(get_parameter("bno086_diagnostics_log_period_ms").as_int()),
                MIN_BNO086_DIAGNOSTICS_LOG_PERIOD_MS);
-  m_timestampTraceCount = static_cast<std::uint32_t>(
-      std::clamp(static_cast<int>(get_parameter("bno086_timestamp_trace_count").as_int()), 0,
-                 MAX_BNO086_TIMESTAMP_TRACE_COUNT));
   m_predictionHorizonSec = std::max(get_parameter("prediction_horizon_sec").as_double(), 0.0);
   m_imuGravityMaxOrientationAgeMs =
       std::max(get_parameter("imu_gravity_max_orientation_age_ms").as_double(), 0.0);
@@ -476,8 +470,6 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
               TimestampSample{pollResult.event->sequence, eventStamp.nanoseconds(),
                               drainReceiveAnchor.nanoseconds()},
               expectedIntervalNs);
-      RecordTimestampTrace(*pollResult.event, eventStamp.nanoseconds(),
-                           drainReceiveAnchor.nanoseconds(), normalizedStamp, expectedIntervalUs);
 
       if (normalizedStamp.reconstruction_reset)
         ++m_imuGravityDiagnostics.timestamp_reconstruction_reset_count;
@@ -1043,7 +1035,6 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
 
   UpdateImuGravityDiagnosticsRates(now);
   MaybeEmitImuGravityDiagnosticsLog();
-  MaybeEmitTimestampSummaries();
   m_imuGravityDiagnostics.last_log_at = now;
 }
 
@@ -1404,185 +1395,6 @@ void Bno086ImuNode::CountDecodedReport(const SensorEvent& event)
   const std::optional<std::size_t> reportIndex = DiagnosticReportIndex(event.report_id);
   if (reportIndex.has_value())
     ++m_imuGravityDiagnostics.decoded_reports_received[*reportIndex];
-}
-
-void Bno086ImuNode::RecordTimestampTrace(const SensorEvent& event,
-                                         int64_t raw_stamp_ns,
-                                         int64_t packet_host_stamp_ns,
-                                         const TimestampNormalizationResult& normalized,
-                                         std::optional<std::uint32_t> expected_interval_us)
-{
-  const std::optional<std::size_t> reportIndex = DiagnosticReportIndex(event.report_id);
-  if (!reportIndex.has_value())
-    return;
-
-  TimestampTraceStats& stats = m_timestampTraceStats[*reportIndex];
-  ++stats.events;
-
-  if (event.has_base_timestamp)
-    ++stats.has_base_count;
-
-  if (event.has_delay)
-    ++stats.has_delay_count;
-
-  if (normalized.sequence_gap)
-    ++stats.sequence_gap_count;
-
-  std::optional<int64_t> previousRawDeltaNs;
-  if (stats.last_raw_stamp_ns.has_value())
-  {
-    previousRawDeltaNs = raw_stamp_ns - *stats.last_raw_stamp_ns;
-    ++stats.raw_delta_count;
-    stats.raw_delta_sum_ns += *previousRawDeltaNs;
-    if (!stats.raw_delta_min_ns.has_value() || *previousRawDeltaNs < *stats.raw_delta_min_ns)
-      stats.raw_delta_min_ns = *previousRawDeltaNs;
-
-    if (*previousRawDeltaNs == 0)
-      ++stats.duplicate_raw_stamp_count;
-
-    if (expected_interval_us.has_value() && *previousRawDeltaNs > 0 &&
-        *previousRawDeltaNs < static_cast<int64_t>(*expected_interval_us) * 500)
-    {
-      ++stats.tiny_raw_delta_count;
-    }
-  }
-
-  std::optional<int64_t> previousNormalizedDeltaNs;
-  if (stats.last_normalized_stamp_ns.has_value())
-  {
-    previousNormalizedDeltaNs = normalized.stamp_ns - *stats.last_normalized_stamp_ns;
-    ++stats.normalized_delta_count;
-    stats.normalized_delta_sum_ns += *previousNormalizedDeltaNs;
-    if (!stats.normalized_delta_min_ns.has_value() ||
-        *previousNormalizedDeltaNs < *stats.normalized_delta_min_ns)
-    {
-      stats.normalized_delta_min_ns = *previousNormalizedDeltaNs;
-    }
-
-    if (*previousNormalizedDeltaNs == 0)
-      ++stats.duplicate_normalized_stamp_count;
-
-    if (*previousNormalizedDeltaNs == 1)
-      ++stats.legacy_plus_one_repair_count;
-  }
-
-  const bool repairedToInterval = normalized.repaired_duplicate_to_interval ||
-                                  normalized.repaired_nonmonotonic_to_interval ||
-                                  normalized.repaired_sequence_gap_to_interval;
-  if (repairedToInterval)
-    ++stats.interval_repair_count;
-
-  if (normalized.interval_repair_clamped_to_host)
-    ++stats.host_clamp_count;
-
-  if (normalized.interval_repair_bounded_to_legacy)
-    ++stats.bounded_to_legacy_count;
-
-  MaybeLogTimestampTraceLine(event, raw_stamp_ns, packet_host_stamp_ns, normalized,
-                             expected_interval_us, previousRawDeltaNs, previousNormalizedDeltaNs);
-
-  stats.last_raw_stamp_ns = raw_stamp_ns;
-  stats.last_normalized_stamp_ns = normalized.stamp_ns;
-}
-
-void Bno086ImuNode::MaybeLogTimestampTraceLine(const SensorEvent& event,
-                                               int64_t raw_stamp_ns,
-                                               int64_t packet_host_stamp_ns,
-                                               const TimestampNormalizationResult& normalized,
-                                               std::optional<std::uint32_t> expected_interval_us,
-                                               std::optional<int64_t> previous_raw_delta_ns,
-                                               std::optional<int64_t> previous_normalized_delta_ns)
-{
-  m_timestampTraceCount = static_cast<std::uint32_t>(
-      std::clamp(static_cast<int>(get_parameter("bno086_timestamp_trace_count").as_int()), 0,
-                 MAX_BNO086_TIMESTAMP_TRACE_COUNT));
-
-  if (m_timestampTraceLogged >= m_timestampTraceCount)
-    return;
-
-  ++m_timestampTraceLogged;
-
-  RCLCPP_INFO(get_logger(),
-              "BNO086 timestamp trace: report=%s sequence=%u channel=%u "
-              "payload_offset=%zu payload_record_bytes=%zu "
-              "has_base_timestamp=%s base_timestamp_us=%u has_delay=%s delay_us=%u "
-              "raw_reconstructed_stamp_ns=%ld packet_host_stamp_ns=%ld "
-              "normalized_stamp_ns=%ld normalizer_duplicate=%s sequence_gap=%s "
-              "repaired_nonmonotonic=%s repaired_duplicate_to_interval=%s "
-              "repaired_nonmonotonic_to_interval=%s "
-              "repaired_sequence_gap_to_interval=%s "
-              "interval_repair_clamped_to_host=%s "
-              "interval_repair_bounded_to_legacy=%s expected_interval_us=%u "
-              "previous_normalized_delta_ns=%ld previous_raw_delta_ns=%ld",
-              ReportName(event.report_id), event.sequence, event.channel, event.report_offset,
-              event.bytes_consumed, event.has_base_timestamp ? "true" : "false",
-              event.base_timestamp_us, event.has_delay ? "true" : "false", event.delay_us,
-              raw_stamp_ns, packet_host_stamp_ns, normalized.stamp_ns,
-              normalized.duplicate ? "true" : "false", normalized.sequence_gap ? "true" : "false",
-              normalized.repaired_nonmonotonic ? "true" : "false",
-              normalized.repaired_duplicate_to_interval ? "true" : "false",
-              normalized.repaired_nonmonotonic_to_interval ? "true" : "false",
-              normalized.repaired_sequence_gap_to_interval ? "true" : "false",
-              normalized.interval_repair_clamped_to_host ? "true" : "false",
-              normalized.interval_repair_bounded_to_legacy ? "true" : "false",
-              expected_interval_us.value_or(0), previous_normalized_delta_ns.value_or(0),
-              previous_raw_delta_ns.value_or(0));
-}
-
-void Bno086ImuNode::MaybeEmitTimestampSummaries() const
-{
-  if (m_diagnosticsLogLevel == Bno086DiagnosticsLogLevel::Off)
-    return;
-
-  constexpr std::array<ReportId, 5> kSummaryReports = {
-      ReportId::Accelerometer,  ReportId::GyroscopeCalibrated,
-      ReportId::RotationVector, ReportId::LinearAcceleration,
-      ReportId::Gravity,
-  };
-
-  for (const ReportId reportId : kSummaryReports)
-  {
-    const std::optional<std::size_t> reportIndex = DiagnosticReportIndex(reportId);
-    if (!reportIndex.has_value())
-      continue;
-
-    const TimestampTraceStats& stats = m_timestampTraceStats[*reportIndex];
-    if (stats.events == 0)
-      continue;
-
-    const double rawDeltaMinMs = stats.raw_delta_min_ns.has_value()
-                                     ? static_cast<double>(*stats.raw_delta_min_ns) / 1e6
-                                     : 0.0;
-    const double rawDeltaMeanMs = stats.raw_delta_count > 0
-                                      ? static_cast<double>(stats.raw_delta_sum_ns) /
-                                            static_cast<double>(stats.raw_delta_count) / 1e6
-                                      : 0.0;
-    const double normalizedDeltaMinMs =
-        stats.normalized_delta_min_ns.has_value()
-            ? static_cast<double>(*stats.normalized_delta_min_ns) / 1e6
-            : 0.0;
-    const double normalizedDeltaMeanMs =
-        stats.normalized_delta_count > 0
-            ? static_cast<double>(stats.normalized_delta_sum_ns) /
-                  static_cast<double>(stats.normalized_delta_count) / 1e6
-            : 0.0;
-
-    RCLCPP_INFO(get_logger(),
-                "BNO086 timestamp summary: report=%s events=%lu "
-                "has_base_count=%lu has_delay_count=%lu sequence_gap_count=%lu "
-                "duplicate_raw_stamp_count=%lu tiny_raw_delta_count=%lu "
-                "duplicate_normalized_stamp_count=%lu legacy_plus_one_repair_count=%lu "
-                "interval_repair_count=%lu host_clamp_count=%lu "
-                "bounded_to_legacy_count=%lu raw_delta_min_ms=%.6f "
-                "raw_delta_mean_ms=%.6f normalized_delta_min_ms=%.6f "
-                "normalized_delta_mean_ms=%.6f",
-                ReportName(reportId), stats.events, stats.has_base_count, stats.has_delay_count,
-                stats.sequence_gap_count, stats.duplicate_raw_stamp_count,
-                stats.tiny_raw_delta_count, stats.duplicate_normalized_stamp_count,
-                stats.legacy_plus_one_repair_count, stats.interval_repair_count,
-                stats.host_clamp_count, stats.bounded_to_legacy_count, rawDeltaMinMs,
-                rawDeltaMeanMs, normalizedDeltaMinMs, normalizedDeltaMeanMs);
-  }
 }
 
 std::uint32_t Bno086ImuNode::CoreCoherenceToleranceUs() const
