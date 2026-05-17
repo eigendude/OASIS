@@ -386,8 +386,8 @@ private:
   bool m_enableGravityReport{true};
   int m_featureSummaryTimeoutMs{5000};
   int m_diagnosticsLogPeriodMs{5000};
-  double m_imuGravityMaxOrientationAgeMs{25.0};
-  double m_imuGravityMaxGyroAgeMs{25.0};
+  double m_imuGravityMaxOrientationAgeMs{80.0};
+  double m_imuGravityMaxGyroAgeMs{80.0};
   std::uint32_t m_repeatedNoProgressTimeouts{0};
   ImuGravityDiagnostics m_imuGravityDiagnostics{};
   bool m_diagnosticsWasUnhealthy{false};

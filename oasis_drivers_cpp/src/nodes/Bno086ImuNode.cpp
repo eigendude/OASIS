@@ -73,7 +73,7 @@ constexpr int MIN_MAX_PENDING_EVENTS_FLUSH_PER_DRAIN = 1;
 constexpr int MAX_MAX_PENDING_EVENTS_FLUSH_PER_DRAIN = 16384;
 constexpr std::uint32_t REPEATED_NO_PROGRESS_TIMEOUT_WARN_COUNT = 3;
 
-constexpr std::uint32_t MIN_COHERENT_SAMPLE_SPAN_US = 50'000;
+constexpr std::uint32_t MIN_COHERENT_SAMPLE_SPAN_US = 80'000;
 constexpr double DEFAULT_PREDICTION_HORIZON_SEC = 0.0;
 
 constexpr double DEFAULT_ROTATION_VECTOR_RATE_HZ = 50.0;
@@ -93,10 +93,10 @@ constexpr int DEFAULT_BNO086_TIMESTAMP_TRACE_COUNT = 0;
 constexpr int MAX_BNO086_TIMESTAMP_TRACE_COUNT = 1'000;
 
 // Maximum nearby orientation age accepted for imu_gravity composition
-constexpr double DEFAULT_IMU_GRAVITY_MAX_ORIENTATION_AGE_MS = 50.0;
+constexpr double DEFAULT_IMU_GRAVITY_MAX_ORIENTATION_AGE_MS = 80.0;
 
 // Maximum nearby gyro age accepted for imu_gravity composition
-constexpr double DEFAULT_IMU_GRAVITY_MAX_GYRO_AGE_MS = 50.0;
+constexpr double DEFAULT_IMU_GRAVITY_MAX_GYRO_AGE_MS = 80.0;
 
 // Plausibility bound for gravity-included calibrated acceleration samples
 constexpr double MAX_IMU_GRAVITY_ACCEL_MAGNITUDE_MPS2 = 200.0;
@@ -2127,7 +2127,7 @@ int64_t Bno086ImuNode::ImuGravityMaxOrientationAgeNs() const
       EffectiveReportIntervalUs(ReportId::RotationVector);
   return EffectiveMaxPastAgeNs(
       static_cast<int64_t>(m_imuGravityMaxOrientationAgeMs * 1.0e6),
-      static_cast<int64_t>(intervalUs.value_or(m_reportIntervalUs)) * 1'000, 50'000'000);
+      static_cast<int64_t>(intervalUs.value_or(m_reportIntervalUs)) * 1'000, 80'000'000);
 }
 
 int64_t Bno086ImuNode::ImuGravityMaxGyroAgeNs() const
@@ -2136,7 +2136,7 @@ int64_t Bno086ImuNode::ImuGravityMaxGyroAgeNs() const
       EffectiveReportIntervalUs(ReportId::GyroscopeCalibrated);
   return EffectiveMaxPastAgeNs(
       static_cast<int64_t>(m_imuGravityMaxGyroAgeMs * 1.0e6),
-      static_cast<int64_t>(intervalUs.value_or(m_reportIntervalUs)) * 1'000, 50'000'000);
+      static_cast<int64_t>(intervalUs.value_or(m_reportIntervalUs)) * 1'000, 80'000'000);
 }
 
 int64_t Bno086ImuNode::ReportFutureToleranceNs(ReportId report_id) const
