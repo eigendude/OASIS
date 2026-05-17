@@ -6,7 +6,7 @@
  *  See the file LICENSE.txt for more information.
  */
 
-#include "imu/bno086/Bno086GravityUtils.hpp"
+#include "imu/bno086/utils/Bno086GravityUtils.hpp"
 
 #include <gtest/gtest.h>
 

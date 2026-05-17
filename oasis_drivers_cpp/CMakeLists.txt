@@ -54,14 +54,6 @@ find_package(yaml-cpp REQUIRED)
 # bno086_imu_driver
 #
 
-add_library(bno086_gravity_utils
-  src/imu/bno086/Bno086GravityUtils.cpp
-)
-
-add_library(bno086_orientation_covariance_policy
-  src/imu/bno086/Bno086OrientationCovariancePolicy.cpp
-)
-
 add_library(bno086_drain_policy
   src/imu/bno086/Bno086DrainPolicy.cpp
 )
@@ -75,6 +67,8 @@ add_library(bno086_sample_coherence
 )
 
 add_library(bno086_utils
+  src/imu/bno086/utils/Bno086GravityUtils.cpp
+  src/imu/bno086/utils/Bno086OrientationCovariancePolicy.cpp
   src/imu/bno086/utils/Bno086ReportUtils.cpp
   src/imu/bno086/utils/Bno086TimingUtils.cpp
 )
@@ -99,8 +93,6 @@ add_executable(bno086_imu_driver
 
 target_link_libraries(bno086_imu_driver
   bno086_drain_policy
-  bno086_gravity_utils
-  bno086_orientation_covariance_policy
   bno086_report_timestamp_tracker
   bno086_sample_coherence
   bno086_sh2
@@ -269,14 +261,14 @@ if(BUILD_TESTING)
     test/imu/bno086/test_Bno086GravityUtils.cpp
   )
   target_link_libraries(test_bno086_gravity_utils
-    bno086_gravity_utils
+    bno086_utils
   )
 
   ament_add_gtest(test_bno086_orientation_covariance_policy
     test/imu/bno086/test_Bno086OrientationCovariancePolicy.cpp
   )
   target_link_libraries(test_bno086_orientation_covariance_policy
-    bno086_orientation_covariance_policy
+    bno086_utils
   )
 
   ament_add_gtest(test_bno086_drain_policy
