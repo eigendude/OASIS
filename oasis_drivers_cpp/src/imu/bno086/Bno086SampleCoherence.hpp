@@ -70,6 +70,31 @@ SampleFreshnessResult EvaluateSampleFreshness(int64_t reference_stamp_ns,
                                               int64_t future_tolerance_ns);
 
 /*!
+ * \brief Compute the effective maximum past age for composed samples
+ *
+ * \param configured_max_age_ns Configured age limit in nanoseconds
+ * \param report_interval_ns Expected report period in nanoseconds
+ * \param minimum_max_age_ns Lower bound for normal cadence mismatch in
+ * nanoseconds
+ */
+int64_t EffectiveMaxPastAgeNs(int64_t configured_max_age_ns,
+                              int64_t report_interval_ns,
+                              int64_t minimum_max_age_ns);
+
+/*!
+ * \brief Compute the effective timestamp span limit for IMU core frames
+ *
+ * \param linear_interval_ns Linear acceleration report period in nanoseconds
+ * \param gyro_interval_ns Gyroscope report period in nanoseconds
+ * \param orientation_interval_ns Orientation report period in nanoseconds
+ * \param minimum_span_ns Lower bound for normal cadence mismatch in nanoseconds
+ */
+int64_t EffectiveCoreSpanToleranceNs(int64_t linear_interval_ns,
+                                     int64_t gyro_interval_ns,
+                                     int64_t orientation_interval_ns,
+                                     int64_t minimum_span_ns);
+
+/*!
  * \brief Check whether a multi-sample timestamp span is coherent
  *
  * \param oldest_stamp_ns Oldest timestamp in the frame, nanoseconds

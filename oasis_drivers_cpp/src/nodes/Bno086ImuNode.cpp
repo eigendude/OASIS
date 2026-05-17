@@ -54,8 +54,7 @@ constexpr int MIN_MAX_POLL_ITERATIONS_PER_INTERRUPT = 1;
 constexpr int MAX_MAX_POLL_ITERATIONS_PER_INTERRUPT = 16384;
 constexpr std::uint32_t REPEATED_NO_PROGRESS_TIMEOUT_WARN_COUNT = 3;
 
-constexpr std::uint32_t MIN_COHERENT_SAMPLE_SPAN_US = 3'000;
-constexpr std::uint32_t MAX_COHERENT_SAMPLE_SPAN_US = 20'000;
+constexpr std::uint32_t MIN_COHERENT_SAMPLE_SPAN_US = 50'000;
 constexpr double DEFAULT_PREDICTION_HORIZON_SEC = 0.0;
 
 constexpr double DEFAULT_ROTATION_VECTOR_RATE_HZ = 100.0;
@@ -75,10 +74,10 @@ constexpr int DEFAULT_BNO086_TIMESTAMP_TRACE_COUNT = 0;
 constexpr int MAX_BNO086_TIMESTAMP_TRACE_COUNT = 1'000;
 
 // Maximum nearby orientation age accepted for imu_gravity composition
-constexpr double DEFAULT_IMU_GRAVITY_MAX_ORIENTATION_AGE_MS = 25.0;
+constexpr double DEFAULT_IMU_GRAVITY_MAX_ORIENTATION_AGE_MS = 50.0;
 
 // Maximum nearby gyro age accepted for imu_gravity composition
-constexpr double DEFAULT_IMU_GRAVITY_MAX_GYRO_AGE_MS = 25.0;
+constexpr double DEFAULT_IMU_GRAVITY_MAX_GYRO_AGE_MS = 50.0;
 
 // Plausibility bound for gravity-included calibrated acceleration samples
 constexpr double MAX_IMU_GRAVITY_ACCEL_MAGNITUDE_MPS2 = 200.0;
@@ -692,13 +691,13 @@ void Bno086ImuNode::MaybePublishImuGravityOnAccelerometer(const SensorEvent& eve
   }
 
   const int64_t accelStampNs = m_imuGravityState.stamp.nanoseconds();
-  const SampleFreshnessResult orientationFreshness =
-      EvaluateSampleFreshness(accelStampNs, m_orientationState.stamp.nanoseconds(),
-                              static_cast<int64_t>(m_imuGravityMaxOrientationAgeMs * 1.0e6),
-                              ReportFutureToleranceNs(ReportId::RotationVector));
+  const int64_t maxOrientationAgeNs = ImuGravityMaxOrientationAgeNs();
+  const int64_t maxGyroAgeNs = ImuGravityMaxGyroAgeNs();
+  const SampleFreshnessResult orientationFreshness = EvaluateSampleFreshness(
+      accelStampNs, m_orientationState.stamp.nanoseconds(), maxOrientationAgeNs,
+      ReportFutureToleranceNs(ReportId::RotationVector));
   const SampleFreshnessResult gyroFreshness =
-      EvaluateSampleFreshness(accelStampNs, m_gyroState.stamp.nanoseconds(),
-                              static_cast<int64_t>(m_imuGravityMaxGyroAgeMs * 1.0e6),
+      EvaluateSampleFreshness(accelStampNs, m_gyroState.stamp.nanoseconds(), maxGyroAgeNs,
                               ReportFutureToleranceNs(ReportId::GyroscopeCalibrated));
   m_imuGravityDiagnostics.latest_orientation_age_ms =
       static_cast<double>(orientationFreshness.age_ns) / 1.0e6;
@@ -711,7 +710,8 @@ void Bno086ImuNode::MaybePublishImuGravityOnAccelerometer(const SensorEvent& eve
                           "Skipping BNO086 imu_gravity sample: orientation older than max age "
                           "age_ms=%.3f max_age_ms=%.3f accel_ns=%lld orientation_ns=%lld",
                           m_imuGravityDiagnostics.latest_orientation_age_ms,
-                          m_imuGravityMaxOrientationAgeMs, static_cast<long long>(accelStampNs),
+                          static_cast<double>(maxOrientationAgeNs) / 1.0e6,
+                          static_cast<long long>(accelStampNs),
                           static_cast<long long>(m_orientationState.stamp.nanoseconds()));
     MaybeLogImuGravityDiagnostics();
     return;
@@ -738,7 +738,8 @@ void Bno086ImuNode::MaybePublishImuGravityOnAccelerometer(const SensorEvent& eve
     RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
                           "Skipping BNO086 imu_gravity sample: gyro older than max age "
                           "age_ms=%.3f max_age_ms=%.3f accel_ns=%lld gyro_ns=%lld",
-                          m_imuGravityDiagnostics.latest_gyro_age_ms, m_imuGravityMaxGyroAgeMs,
+                          m_imuGravityDiagnostics.latest_gyro_age_ms,
+                          static_cast<double>(maxGyroAgeNs) / 1.0e6,
                           static_cast<long long>(accelStampNs),
                           static_cast<long long>(m_gyroState.stamp.nanoseconds()));
     MaybeLogImuGravityDiagnostics();
@@ -1677,9 +1678,35 @@ std::uint32_t Bno086ImuNode::CoreCoherenceToleranceUs() const
 {
   const std::optional<std::uint32_t> linearIntervalUs =
       EffectiveReportIntervalUs(ReportId::LinearAcceleration);
-  const std::uint32_t anchorIntervalUs = std::max(m_reportIntervalUs, linearIntervalUs.value_or(0));
-  const std::uint32_t scaledToleranceUs = anchorIntervalUs + (anchorIntervalUs / 2);
-  return std::clamp(scaledToleranceUs, MIN_COHERENT_SAMPLE_SPAN_US, MAX_COHERENT_SAMPLE_SPAN_US);
+  const std::optional<std::uint32_t> gyroIntervalUs =
+      EffectiveReportIntervalUs(ReportId::GyroscopeCalibrated);
+  const std::optional<std::uint32_t> orientationIntervalUs =
+      EffectiveReportIntervalUs(ReportId::RotationVector);
+  const int64_t toleranceNs = EffectiveCoreSpanToleranceNs(
+      static_cast<int64_t>(linearIntervalUs.value_or(m_reportIntervalUs)) * 1'000,
+      static_cast<int64_t>(gyroIntervalUs.value_or(m_reportIntervalUs)) * 1'000,
+      static_cast<int64_t>(orientationIntervalUs.value_or(m_reportIntervalUs)) * 1'000,
+      static_cast<int64_t>(MIN_COHERENT_SAMPLE_SPAN_US) * 1'000);
+
+  return static_cast<std::uint32_t>(toleranceNs / 1'000);
+}
+
+int64_t Bno086ImuNode::ImuGravityMaxOrientationAgeNs() const
+{
+  const std::optional<std::uint32_t> intervalUs =
+      EffectiveReportIntervalUs(ReportId::RotationVector);
+  return EffectiveMaxPastAgeNs(
+      static_cast<int64_t>(m_imuGravityMaxOrientationAgeMs * 1.0e6),
+      static_cast<int64_t>(intervalUs.value_or(m_reportIntervalUs)) * 1'000, 50'000'000);
+}
+
+int64_t Bno086ImuNode::ImuGravityMaxGyroAgeNs() const
+{
+  const std::optional<std::uint32_t> intervalUs =
+      EffectiveReportIntervalUs(ReportId::GyroscopeCalibrated);
+  return EffectiveMaxPastAgeNs(
+      static_cast<int64_t>(m_imuGravityMaxGyroAgeMs * 1.0e6),
+      static_cast<int64_t>(intervalUs.value_or(m_reportIntervalUs)) * 1'000, 50'000'000);
 }
 
 int64_t Bno086ImuNode::ReportFutureToleranceNs(ReportId report_id) const

@@ -190,6 +190,8 @@ private:
   void MaybePublishGravityOnGravityReport(const OASIS::IMU::BNO086::SensorEvent& event);
   void PublishLatestFrame(const rclcpp::Time& stamp);
   std::uint32_t CoreCoherenceToleranceUs() const;
+  int64_t ImuGravityMaxOrientationAgeNs() const;
+  int64_t ImuGravityMaxGyroAgeNs() const;
   int64_t ReportFutureToleranceNs(OASIS::IMU::BNO086::ReportId report_id) const;
   bool HasPublishableCoreFrame() const;
   CoreFrameSignature LatestCoreSignature() const;

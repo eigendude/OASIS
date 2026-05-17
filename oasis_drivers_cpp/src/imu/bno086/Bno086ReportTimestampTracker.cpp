@@ -8,7 +8,6 @@
 
 #include "imu/bno086/Bno086ReportTimestampTracker.hpp"
 
-#include <algorithm>
 #include <cstdint>
 
 namespace OASIS::IMU::BNO086
@@ -18,10 +17,6 @@ namespace
 // Units: ns. Allows cadence-derived samples in one batched packet to land
 // modestly ahead of the host drain anchor
 constexpr int64_t kBatchedTimestampFutureSlopNs = 50'000'000;
-
-// Units: sequence ticks. Larger deltas are treated as stream gaps instead of
-// expanding one missing payload into a long synthetic cadence run
-constexpr std::uint8_t kMaxCadenceSequenceDelta = 16;
 
 std::uint8_t SequenceDelta(std::uint8_t last_sequence, std::uint8_t current_sequence)
 {
@@ -64,24 +59,8 @@ ReportTimestampTrackerResult Bno086ReportTimestampTracker::Update(
       result.gap_detected = result.sequence_delta > 1U;
       const int64_t intervalAdvanceNs =
           *input.expected_interval_ns * static_cast<int64_t>(result.sequence_delta);
-      const int64_t cadenceStampNs = m_lastStampNs + intervalAdvanceNs;
-      const bool cadenceIsPlausible =
-          result.sequence_delta <= kMaxCadenceSequenceDelta &&
-          cadenceStampNs <= input.packet_host_stamp_ns + kBatchedTimestampFutureSlopNs;
-
-      if (cadenceIsPlausible)
-      {
-        result.stamp_ns = cadenceStampNs;
-        result.used_interval_cadence = true;
-      }
-      else
-      {
-        result.stamp_ns = std::max(m_lastStampNs + *input.expected_interval_ns,
-                                   input.packet_host_stamp_ns - kBatchedTimestampFutureSlopNs);
-        result.reanchored = true;
-        result.gap_detected = true;
-        result.used_host_anchor = true;
-      }
+      result.stamp_ns = m_lastStampNs + intervalAdvanceNs;
+      result.used_interval_cadence = true;
     }
   }
   else

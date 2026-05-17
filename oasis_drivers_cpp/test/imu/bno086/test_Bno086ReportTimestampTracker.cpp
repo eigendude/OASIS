@@ -247,19 +247,36 @@ TEST(Bno086ReportTimestampTracker, duplicateSequenceDoesNotCreateInterval)
   EXPECT_FALSE(duplicate.used_interval_cadence);
 }
 
-TEST(Bno086ReportTimestampTracker, largeSequenceJumpReanchorsAndMarksGap)
+TEST(Bno086ReportTimestampTracker, sequenceGapDeltaTwentyUsesCadenceWithoutReanchor)
 {
   Bno086ReportTimestampTracker tracker;
 
   ASSERT_EQ(tracker.Update(Input(1, 8'000'000, 8'000'000'000)).stamp_ns, 8'000'000'000);
 
-  const ReportTimestampTrackerResult result = tracker.Update(Input(40, 8'000'000, 8'200'000'000));
+  const ReportTimestampTrackerResult result = tracker.Update(Input(21, 8'000'000, 8'160'000'000));
 
+  EXPECT_EQ(result.sequence_delta, 20);
+  EXPECT_EQ(result.stamp_ns, 8'160'000'000);
   EXPECT_TRUE(result.gap_detected);
-  EXPECT_TRUE(result.reanchored);
-  EXPECT_TRUE(result.used_host_anchor);
-  EXPECT_FALSE(result.used_interval_cadence);
-  EXPECT_GE(result.stamp_ns, 8'150'000'000);
+  EXPECT_TRUE(result.used_interval_cadence);
+  EXPECT_FALSE(result.reanchored);
+  EXPECT_FALSE(result.used_host_anchor);
+}
+
+TEST(Bno086ReportTimestampTracker, sequenceGapDeltaFiftyUsesCadenceWithoutReanchor)
+{
+  Bno086ReportTimestampTracker tracker;
+
+  ASSERT_EQ(tracker.Update(Input(1, 10'000'000, 8'000'000'000)).stamp_ns, 8'000'000'000);
+
+  const ReportTimestampTrackerResult result = tracker.Update(Input(51, 10'000'000, 8'500'000'000));
+
+  EXPECT_EQ(result.sequence_delta, 50);
+  EXPECT_EQ(result.stamp_ns, 8'500'000'000);
+  EXPECT_TRUE(result.gap_detected);
+  EXPECT_TRUE(result.used_interval_cadence);
+  EXPECT_FALSE(result.reanchored);
+  EXPECT_FALSE(result.used_host_anchor);
 }
 
 TEST(Bno086ReportTimestampTracker, BaseTimestampMovementCannotAffectCadence)
