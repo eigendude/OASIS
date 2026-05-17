@@ -81,26 +81,6 @@ private:
     std::uint8_t accuracy{0};
   };
 
-  enum class ImuGravityAccelSelectionStatus
-  {
-    NoHistory,
-    SelectedPast,
-    SelectedFuture,
-    StalePast,
-    FutureTooFar,
-  };
-
-  struct ImuGravityAccelSelection
-  {
-    ImuGravityAccelSelectionStatus status{ImuGravityAccelSelectionStatus::NoHistory};
-    std::optional<ImuGravityAccelSample> sample;
-    std::size_t history_size{0};
-    int64_t oldest_stamp_ns{0};
-    int64_t newest_stamp_ns{0};
-    int64_t history_span_ns{0};
-    int64_t selected_offset_ns{0};
-  };
-
   struct CoreFrameSignature
   {
     std::uint8_t orientation_sequence{0};
@@ -113,25 +93,17 @@ private:
 
   struct ImuGravityDiagnostics
   {
-    std::uint64_t calibrated_accel_reports_received{0};
-    std::uint64_t rotation_events_seen{0};
     std::uint64_t imu_gravity_published{0};
-    std::uint64_t imu_gravity_skipped_missing_accel{0};
-    std::uint64_t imu_gravity_skipped_missing_gyro{0};
     std::uint64_t imu_gravity_skipped_stale_accel{0};
     std::uint64_t imu_gravity_skipped_stale_gyro{0};
-    std::uint64_t imu_gravity_skipped_future_accel{0};
-    std::uint64_t imu_gravity_skipped_duplicate_stamp{0};
-    std::uint64_t imu_gravity_skipped_nonfinite{0};
-    std::uint64_t linear_accel_events_seen{0};
     std::uint64_t imu_published{0};
-    double latest_core_span_ms{0.0};
     double latest_imu_gravity_rate_hz{0.0};
+    double latest_imu_rate_hz{0.0};
     std::array<double, 5> latest_decoded_rate_hz{};
     std::array<std::uint64_t, 5> decoded_reports_received{};
     std::array<std::uint64_t, 5> last_rate_decoded_reports{};
     std::uint64_t last_rate_imu_gravity_published{0};
-    double selected_accel_offset_ms{0.0};
+    std::uint64_t last_rate_imu_published{0};
     std::chrono::steady_clock::time_point last_log_at{};
   };
 
@@ -147,37 +119,15 @@ private:
     std::uint32_t drain_duration_max_us{0};
     std::uint64_t physical_packet_cap_hit_count{0};
     std::uint64_t poll_iteration_cap_hit_count{0};
-    std::uint64_t drain_duration_budget_hit_count{0};
     std::uint64_t no_progress_drain_count{0};
     std::uint64_t transport_error_count{0};
     std::uint64_t exit_all_zero_budget_count{0};
-  };
-
-  struct EstimatedEventStamp
-  {
-    rclcpp::Time stamp;
-    OASIS::IMU::BNO086::ReportTimestampTrackerResult tracker;
   };
 
   struct FinalizedEventStamp
   {
     int64_t stamp_ns{0};
     bool duplicate{false};
-    bool sequence_gap{false};
-    bool monotonic_guarded{false};
-  };
-
-  struct OrientationCovarianceDebugState
-  {
-    std::uint8_t accuracy_bucket{0};
-    std::int16_t raw_accuracy_estimate_q12{0};
-    double sigma_rad{0.0};
-    OASIS::IMU::BNO086::OrientationCovarianceSource source{
-        OASIS::IMU::BNO086::OrientationCovarianceSource::AccuracyBucketFallback};
-    bool has_accuracy_estimate{false};
-    double accuracy_estimate_rad{0.0};
-    OASIS::IMU::BNO086::OrientationCovarianceEstimateRejectionReason rejection_reason{
-        OASIS::IMU::BNO086::OrientationCovarianceEstimateRejectionReason::None};
   };
 
   void InterruptLoop();
@@ -192,19 +142,14 @@ private:
   int64_t ImuGravityMaxGyroAgeNs() const;
   int64_t ReportFutureToleranceNs(OASIS::IMU::BNO086::ReportId report_id) const;
   void RecordImuGravityAccelSample(const rclcpp::Time& sample_stamp);
-  ImuGravityAccelSelection SelectImuGravityAccelSample(int64_t anchor_stamp_ns,
-                                                       int64_t max_past_age_ns,
-                                                       int64_t future_tolerance_ns) const;
-  bool HasPublishableCoreFrame() const;
+  std::optional<ImuGravityAccelSample> SelectImuGravityAccelSample(
+      int64_t anchor_stamp_ns, int64_t future_tolerance_ns) const;
   CoreFrameSignature LatestCoreSignature() const;
   rclcpp::Time LatestCoreStamp() const;
 
   void ApplyEvent(const OASIS::IMU::BNO086::SensorEvent& event, const rclcpp::Time& sample_stamp);
-  EstimatedEventStamp EstimateEventStamp(const OASIS::IMU::BNO086::SensorEvent& event,
-                                         const rclcpp::Time& interrupt_ros_at,
-                                         std::optional<int64_t> expected_interval_ns);
   FinalizedEventStamp FinalizeEventStamp(const OASIS::IMU::BNO086::SensorEvent& event,
-                                         const EstimatedEventStamp& estimated_stamp,
+                                         const rclcpp::Time& interrupt_ros_at,
                                          std::optional<int64_t> expected_interval_ns);
   sensor_msgs::msg::Imu BuildPresentImuMessage(const rclcpp::Time& stamp) const;
   sensor_msgs::msg::Imu BuildImuGravityMessage(const rclcpp::Time& stamp,
@@ -265,7 +210,8 @@ private:
                                                   double prediction_horizon_sec);
   static void SetCovariance(std::array<double, 9>& dst, const OASIS::IMU::Mat3& src);
   static std::optional<std::size_t> DiagnosticReportIndex(OASIS::IMU::BNO086::ReportId report_id);
-  void MaybeLogOrientationCovariancePolicy();
+  void MaybeLogOrientationCovariancePolicy(
+      const OASIS::IMU::BNO086::OrientationCovariancePolicyResult& covariance_policy);
 
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr m_imuPublisher;
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr m_imuPredictedPublisher;
@@ -285,7 +231,6 @@ private:
   std::array<ImuGravityAccelSample, 1024> m_imuGravityAccelHistory{};
   std::size_t m_imuGravityAccelHistoryNext{0};
   std::size_t m_imuGravityAccelHistoryCount{0};
-  OrientationCovarianceDebugState m_orientationCovarianceDebug{};
 
   std::string m_frameId;
   double m_predictionHorizonSec{0.0};
