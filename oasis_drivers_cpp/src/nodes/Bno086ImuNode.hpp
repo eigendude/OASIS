@@ -13,6 +13,7 @@
 #include "imu/bno086/Bno086GravityUtils.hpp"
 #include "imu/bno086/Bno086OrientationCovariancePolicy.hpp"
 #include "imu/bno086/Bno086ReportTimestampTracker.hpp"
+#include "imu/bno086/Bno086SampleCoherence.hpp"
 #include "imu/bno086/Bno086TimestampMapper.hpp"
 #include "imu/bno086/Bno086TimestampNormalizer.hpp"
 #include "imu/bno086/sh2/Bno086Reports.hpp"
@@ -90,6 +91,8 @@ private:
     std::uint64_t imu_gravity_skipped_missing_gyro{0};
     std::uint64_t imu_gravity_skipped_stale_orientation{0};
     std::uint64_t imu_gravity_skipped_stale_gyro{0};
+    std::uint64_t imu_gravity_skipped_future_orientation{0};
+    std::uint64_t imu_gravity_skipped_future_gyro{0};
     std::uint64_t imu_gravity_skipped_duplicate_stamp{0};
     std::uint64_t imu_gravity_skipped_nonfinite{0};
     std::uint64_t timestamp_repaired_nonmonotonic_accel{0};
@@ -104,6 +107,7 @@ private:
     std::uint64_t imu_published{0};
     std::uint64_t imu_skipped_missing_core_frame{0};
     std::uint64_t imu_skipped_incoherent_core_frame{0};
+    std::uint64_t imu_skipped_incoherent_core_frame_span{0};
     std::uint64_t imu_skipped_duplicate_core_signature{0};
     std::uint32_t latest_timestamp_repair_interval_us{0};
     double latest_orientation_age_ms{0.0};
@@ -186,6 +190,7 @@ private:
   void MaybePublishGravityOnGravityReport(const OASIS::IMU::BNO086::SensorEvent& event);
   void PublishLatestFrame(const rclcpp::Time& stamp);
   std::uint32_t CoreCoherenceToleranceUs() const;
+  int64_t ReportFutureToleranceNs(OASIS::IMU::BNO086::ReportId report_id) const;
   bool HasPublishableCoreFrame() const;
   CoreFrameSignature LatestCoreSignature() const;
   rclcpp::Time LatestCoreStamp() const;
@@ -296,6 +301,7 @@ private:
   std::thread m_interruptThread;
 
   std::array<OASIS::IMU::BNO086::Bno086ReportTimestampTracker, 256> m_timestampTrackers{};
+  std::optional<int64_t> m_bnoCadenceEpochNs;
   OASIS::IMU::BNO086::Bno086TimestampMapper m_timestampMapper;
   std::array<OASIS::IMU::BNO086::Bno086TimestampNormalizer, 256> m_timestampNormalizers{};
   std::array<std::optional<int64_t>, 256> m_lastEmittedTimestampNs{};

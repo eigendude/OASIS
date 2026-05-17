@@ -21,10 +21,12 @@ namespace
 ReportTimestampTrackerInput Input(std::uint8_t sequence,
                                   std::optional<int64_t> expected_interval_ns,
                                   int64_t packet_host_stamp_ns,
-                                  std::uint32_t delay_us = 0)
+                                  std::uint32_t delay_us = 0,
+                                  std::optional<int64_t> shared_epoch_stamp_ns = std::nullopt)
 {
   return ReportTimestampTrackerInput{
-      sequence, expected_interval_ns, packet_host_stamp_ns, delay_us > 0, delay_us,
+      sequence, expected_interval_ns,  packet_host_stamp_ns, delay_us > 0,
+      delay_us, shared_epoch_stamp_ns,
   };
 }
 } // namespace
@@ -39,7 +41,38 @@ TEST(Bno086ReportTimestampTracker, firstAccelerometerSampleAnchorsToHost)
   EXPECT_TRUE(result.initialized);
   EXPECT_TRUE(result.reanchored);
   EXPECT_TRUE(result.used_host_anchor);
+  EXPECT_FALSE(result.used_shared_epoch_anchor);
   EXPECT_FALSE(result.used_interval_cadence);
+}
+
+TEST(Bno086ReportTimestampTracker, firstKnownCadenceSampleUsesSharedEpochGrid)
+{
+  Bno086ReportTimestampTracker tracker;
+
+  const ReportTimestampTrackerResult result =
+      tracker.Update(Input(1, 10'000'000, 1'034'000'000, 0, 1'000'000'000));
+
+  EXPECT_EQ(result.stamp_ns, 1'030'000'000);
+  EXPECT_TRUE(result.initialized);
+  EXPECT_TRUE(result.reanchored);
+  EXPECT_TRUE(result.used_shared_epoch_anchor);
+  EXPECT_FALSE(result.used_host_anchor);
+}
+
+TEST(Bno086ReportTimestampTracker, sharedEpochKeepsLateInitializingStreamsInPhase)
+{
+  Bno086ReportTimestampTracker accelTracker;
+  Bno086ReportTimestampTracker gyroTracker;
+  constexpr int64_t kSharedEpochNs = 2'000'000'000;
+
+  const int64_t accelStampNs =
+      accelTracker.Update(Input(1, 8'000'000, 2'064'000'000, 0, kSharedEpochNs)).stamp_ns;
+  const int64_t gyroStampNs =
+      gyroTracker.Update(Input(1, 10'000'000, 2'066'000'000, 0, kSharedEpochNs)).stamp_ns;
+
+  EXPECT_EQ(accelStampNs, 2'064'000'000);
+  EXPECT_EQ(gyroStampNs, 2'060'000'000);
+  EXPECT_LE(accelStampNs - gyroStampNs, 10'000'000);
 }
 
 TEST(Bno086ReportTimestampTracker, accelerometerSequenceAdvancesByOne)

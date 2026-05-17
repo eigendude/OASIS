@@ -36,10 +36,13 @@ ReportTimestampTrackerResult Bno086ReportTimestampTracker::Update(
 
   if (!m_initialized)
   {
-    result.stamp_ns = HostAnchorNs(input);
+    result.stamp_ns = SharedEpochAnchorNs(input);
     result.initialized = true;
     result.reanchored = true;
-    result.used_host_anchor = true;
+    result.used_shared_epoch_anchor = input.shared_epoch_stamp_ns.has_value() &&
+                                      input.expected_interval_ns.has_value() &&
+                                      *input.expected_interval_ns > 0;
+    result.used_host_anchor = !result.used_shared_epoch_anchor;
 
     m_initialized = true;
     m_lastSequence = input.sequence;
@@ -109,5 +112,25 @@ int64_t Bno086ReportTimestampTracker::HostAnchorNs(const ReportTimestampTrackerI
     return input.packet_host_stamp_ns;
 
   return input.packet_host_stamp_ns - delayNs;
+}
+
+int64_t Bno086ReportTimestampTracker::SharedEpochAnchorNs(
+    const ReportTimestampTrackerInput& input) const
+{
+  if (!input.shared_epoch_stamp_ns.has_value() || !input.expected_interval_ns.has_value() ||
+      *input.expected_interval_ns <= 0)
+  {
+    return HostAnchorNs(input);
+  }
+
+  const int64_t hostAnchorNs = HostAnchorNs(input);
+  const int64_t epochNs = *input.shared_epoch_stamp_ns;
+  if (hostAnchorNs <= epochNs)
+    return epochNs;
+
+  const int64_t elapsedNs = hostAnchorNs - epochNs;
+  const int64_t intervalNs = *input.expected_interval_ns;
+  const int64_t intervalCount = elapsedNs / intervalNs;
+  return epochNs + intervalCount * intervalNs;
 }
 } // namespace OASIS::IMU::BNO086

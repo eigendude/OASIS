@@ -93,6 +93,9 @@ constexpr int DEFAULT_BNO086_DIAGNOSTICS_LOG_PERIOD_MS = 5'000;
 constexpr int MIN_BNO086_DIAGNOSTICS_LOG_PERIOD_MS = 1'000;
 constexpr double MIN_HEALTHY_RATE_FRACTION = 0.5;
 
+// Units: ns. SH-2 delay values above this are not plausible sample latency
+constexpr int64_t MAX_PLAUSIBLE_SAMPLE_DELAY_NS = 50'000'000;
+
 // QoS parameters
 constexpr std::size_t RAW_IMU_GRAVITY_QOS_DEPTH = 256;
 constexpr std::size_t RAW_IMU_QOS_DEPTH = 10;
@@ -118,6 +121,18 @@ bool IsFiniteArray(const std::array<double, 9>& values)
 {
   return std::all_of(values.begin(), values.end(),
                      [](double value) { return std::isfinite(value); });
+}
+
+int64_t HostAnchorNs(const SensorEvent& event, int64_t packet_host_stamp_ns)
+{
+  if (!event.has_delay)
+    return packet_host_stamp_ns;
+
+  const int64_t delayNs = static_cast<int64_t>(event.delay_us) * 1'000;
+  if (delayNs < 0 || delayNs > MAX_PLAUSIBLE_SAMPLE_DELAY_NS)
+    return packet_host_stamp_ns;
+
+  return packet_host_stamp_ns - delayNs;
 }
 
 double VectorMagnitude(double x, double y, double z)
@@ -327,6 +342,13 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
 
 bool Bno086ImuNode::Initialize()
 {
+  for (Bno086ReportTimestampTracker& tracker : m_timestampTrackers)
+    tracker.Reset();
+  m_bnoCadenceEpochNs.reset();
+  m_lastEmittedTimestampNs.fill(std::nullopt);
+  m_lastPublishedCoreSignature.reset();
+  m_lastPublishedImuGravityAccelStampNs.reset();
+
   m_imuPublisher =
       create_publisher<sensor_msgs::msg::Imu>(IMU_TOPIC, BestEffortSensorQos(RAW_IMU_QOS_DEPTH));
   m_imuPredictedPublisher = create_publisher<sensor_msgs::msg::Imu>(
@@ -600,9 +622,19 @@ void Bno086ImuNode::MaybePublishOnLinearAcceleration(const SensorEvent& event)
   m_imuGravityDiagnostics.latest_linear_accel_stamp_ns = linearAccelNs;
   m_imuGravityDiagnostics.latest_core_span_ms = static_cast<double>(spanNs) / 1.0e6;
 
-  if (spanNs > DurationFromUs(CoreCoherenceToleranceUs()).nanoseconds())
+  const int64_t coreThresholdNs = DurationFromUs(CoreCoherenceToleranceUs()).nanoseconds();
+  if (!IsTimestampSpanCoherent(oldestNs, newestNs, coreThresholdNs))
   {
     ++m_imuGravityDiagnostics.imu_skipped_incoherent_core_frame;
+    ++m_imuGravityDiagnostics.imu_skipped_incoherent_core_frame_span;
+    RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
+                          "Skipping BNO086 imu core frame: timestamp span too wide "
+                          "latest_core_span_ms=%.3f threshold_ms=%.3f "
+                          "orientation_ns=%lld gyro_ns=%lld linear_accel_ns=%lld",
+                          m_imuGravityDiagnostics.latest_core_span_ms,
+                          static_cast<double>(coreThresholdNs) / 1.0e6,
+                          static_cast<long long>(orientationNs), static_cast<long long>(gyroNs),
+                          static_cast<long long>(linearAccelNs));
     MaybeLogImuGravityDiagnostics();
     return;
   }
@@ -660,21 +692,70 @@ void Bno086ImuNode::MaybePublishImuGravityOnAccelerometer(const SensorEvent& eve
   }
 
   const int64_t accelStampNs = m_imuGravityState.stamp.nanoseconds();
-  const int64_t orientationAgeNs = accelStampNs - m_orientationState.stamp.nanoseconds();
-  const int64_t gyroAgeNs = accelStampNs - m_gyroState.stamp.nanoseconds();
-  m_imuGravityDiagnostics.latest_orientation_age_ms = static_cast<double>(orientationAgeNs) / 1.0e6;
-  m_imuGravityDiagnostics.latest_gyro_age_ms = static_cast<double>(gyroAgeNs) / 1.0e6;
+  const SampleFreshnessResult orientationFreshness =
+      EvaluateSampleFreshness(accelStampNs, m_orientationState.stamp.nanoseconds(),
+                              static_cast<int64_t>(m_imuGravityMaxOrientationAgeMs * 1.0e6),
+                              ReportFutureToleranceNs(ReportId::RotationVector));
+  const SampleFreshnessResult gyroFreshness =
+      EvaluateSampleFreshness(accelStampNs, m_gyroState.stamp.nanoseconds(),
+                              static_cast<int64_t>(m_imuGravityMaxGyroAgeMs * 1.0e6),
+                              ReportFutureToleranceNs(ReportId::GyroscopeCalibrated));
+  m_imuGravityDiagnostics.latest_orientation_age_ms =
+      static_cast<double>(orientationFreshness.age_ns) / 1.0e6;
+  m_imuGravityDiagnostics.latest_gyro_age_ms = static_cast<double>(gyroFreshness.age_ns) / 1.0e6;
 
-  if (std::abs(m_imuGravityDiagnostics.latest_orientation_age_ms) > m_imuGravityMaxOrientationAgeMs)
+  if (orientationFreshness.status == SampleFreshnessStatus::TooOld)
   {
     ++m_imuGravityDiagnostics.imu_gravity_skipped_stale_orientation;
+    RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
+                          "Skipping BNO086 imu_gravity sample: orientation older than max age "
+                          "age_ms=%.3f max_age_ms=%.3f accel_ns=%lld orientation_ns=%lld",
+                          m_imuGravityDiagnostics.latest_orientation_age_ms,
+                          m_imuGravityMaxOrientationAgeMs, static_cast<long long>(accelStampNs),
+                          static_cast<long long>(m_orientationState.stamp.nanoseconds()));
     MaybeLogImuGravityDiagnostics();
     return;
   }
 
-  if (std::abs(m_imuGravityDiagnostics.latest_gyro_age_ms) > m_imuGravityMaxGyroAgeMs)
+  if (orientationFreshness.status == SampleFreshnessStatus::TooFuture)
+  {
+    ++m_imuGravityDiagnostics.imu_gravity_skipped_future_orientation;
+    RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
+                          "Skipping BNO086 imu_gravity sample: orientation too far after accel "
+                          "age_ms=%.3f future_tolerance_ms=%.3f accel_ns=%lld orientation_ns=%lld",
+                          m_imuGravityDiagnostics.latest_orientation_age_ms,
+                          static_cast<double>(ReportFutureToleranceNs(ReportId::RotationVector)) /
+                              1.0e6,
+                          static_cast<long long>(accelStampNs),
+                          static_cast<long long>(m_orientationState.stamp.nanoseconds()));
+    MaybeLogImuGravityDiagnostics();
+    return;
+  }
+
+  if (gyroFreshness.status == SampleFreshnessStatus::TooOld)
   {
     ++m_imuGravityDiagnostics.imu_gravity_skipped_stale_gyro;
+    RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
+                          "Skipping BNO086 imu_gravity sample: gyro older than max age "
+                          "age_ms=%.3f max_age_ms=%.3f accel_ns=%lld gyro_ns=%lld",
+                          m_imuGravityDiagnostics.latest_gyro_age_ms, m_imuGravityMaxGyroAgeMs,
+                          static_cast<long long>(accelStampNs),
+                          static_cast<long long>(m_gyroState.stamp.nanoseconds()));
+    MaybeLogImuGravityDiagnostics();
+    return;
+  }
+
+  if (gyroFreshness.status == SampleFreshnessStatus::TooFuture)
+  {
+    ++m_imuGravityDiagnostics.imu_gravity_skipped_future_gyro;
+    RCLCPP_DEBUG_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "Skipping BNO086 imu_gravity sample: gyro too far after accel "
+        "age_ms=%.3f future_tolerance_ms=%.3f accel_ns=%lld gyro_ns=%lld",
+        m_imuGravityDiagnostics.latest_gyro_age_ms,
+        static_cast<double>(ReportFutureToleranceNs(ReportId::GyroscopeCalibrated)) / 1.0e6,
+        static_cast<long long>(accelStampNs),
+        static_cast<long long>(m_gyroState.stamp.nanoseconds()));
     MaybeLogImuGravityDiagnostics();
     return;
   }
@@ -1153,6 +1234,9 @@ std::string Bno086ImuNode::BuildImuGravityDiagnosticsLogMessage() const
       << "skipped_stale_orientation="
       << m_imuGravityDiagnostics.imu_gravity_skipped_stale_orientation << " "
       << "skipped_stale_gyro=" << m_imuGravityDiagnostics.imu_gravity_skipped_stale_gyro << " "
+      << "skipped_future_orientation="
+      << m_imuGravityDiagnostics.imu_gravity_skipped_future_orientation << " "
+      << "skipped_future_gyro=" << m_imuGravityDiagnostics.imu_gravity_skipped_future_gyro << " "
       << "skipped_duplicate_stamp=" << m_imuGravityDiagnostics.imu_gravity_skipped_duplicate_stamp
       << " " << "skipped_nonfinite=" << m_imuGravityDiagnostics.imu_gravity_skipped_nonfinite << " "
       << "timestamp_repaired_nonmonotonic_accel="
@@ -1182,6 +1266,8 @@ std::string Bno086ImuNode::BuildImuGravityDiagnosticsLogMessage() const
       << "imu_skipped_missing_core_frame=" << m_imuGravityDiagnostics.imu_skipped_missing_core_frame
       << " " << "imu_skipped_incoherent_core_frame="
       << m_imuGravityDiagnostics.imu_skipped_incoherent_core_frame << " "
+      << "imu_skipped_incoherent_core_frame_span="
+      << m_imuGravityDiagnostics.imu_skipped_incoherent_core_frame_span << " "
       << "imu_skipped_duplicate_core_signature="
       << m_imuGravityDiagnostics.imu_skipped_duplicate_core_signature << " "
       << "latest_core_span_ms=" << m_imuGravityDiagnostics.latest_core_span_ms << " "
@@ -1589,8 +1675,20 @@ void Bno086ImuNode::MaybeEmitTimestampSummaries() const
 
 std::uint32_t Bno086ImuNode::CoreCoherenceToleranceUs() const
 {
-  const std::uint32_t scaledToleranceUs = m_reportIntervalUs + (m_reportIntervalUs / 2);
+  const std::optional<std::uint32_t> linearIntervalUs =
+      EffectiveReportIntervalUs(ReportId::LinearAcceleration);
+  const std::uint32_t anchorIntervalUs = std::max(m_reportIntervalUs, linearIntervalUs.value_or(0));
+  const std::uint32_t scaledToleranceUs = anchorIntervalUs + (anchorIntervalUs / 2);
   return std::clamp(scaledToleranceUs, MIN_COHERENT_SAMPLE_SPAN_US, MAX_COHERENT_SAMPLE_SPAN_US);
+}
+
+int64_t Bno086ImuNode::ReportFutureToleranceNs(ReportId report_id) const
+{
+  const std::optional<std::uint32_t> intervalUs = EffectiveReportIntervalUs(report_id);
+  if (intervalUs.has_value() && *intervalUs > 0)
+    return static_cast<int64_t>(*intervalUs) * 1'000;
+
+  return DurationFromUs(CoreCoherenceToleranceUs()).nanoseconds();
 }
 
 bool Bno086ImuNode::HasPublishableCoreFrame() const
@@ -1607,8 +1705,8 @@ bool Bno086ImuNode::HasPublishableCoreFrame() const
 
   const int64_t oldestNs = std::min({orientationNs, gyroNs, linearAccelNs});
   const int64_t newestNs = std::max({orientationNs, gyroNs, linearAccelNs});
-  const int64_t spanNs = newestNs - oldestNs;
-  return spanNs <= DurationFromUs(CoreCoherenceToleranceUs()).nanoseconds();
+  return IsTimestampSpanCoherent(oldestNs, newestNs,
+                                 DurationFromUs(CoreCoherenceToleranceUs()).nanoseconds());
 }
 
 Bno086ImuNode::CoreFrameSignature Bno086ImuNode::LatestCoreSignature() const
@@ -1765,9 +1863,13 @@ auto Bno086ImuNode::EstimateEventStamp(const SensorEvent& event,
     -> EstimatedEventStamp
 {
   const auto trackerIndex = static_cast<std::size_t>(event.report_id);
-  const ReportTimestampTrackerResult trackedStamp = m_timestampTrackers[trackerIndex].Update(
-      ReportTimestampTrackerInput{event.sequence, expected_interval_ns,
-                                  interrupt_ros_at.nanoseconds(), event.has_delay, event.delay_us});
+  if (!m_bnoCadenceEpochNs.has_value())
+    m_bnoCadenceEpochNs = HostAnchorNs(event, interrupt_ros_at.nanoseconds());
+
+  const ReportTimestampTrackerResult trackedStamp =
+      m_timestampTrackers[trackerIndex].Update(ReportTimestampTrackerInput{
+          event.sequence, expected_interval_ns, interrupt_ros_at.nanoseconds(), event.has_delay,
+          event.delay_us, m_bnoCadenceEpochNs});
 
   if (trackedStamp.reanchored || trackedStamp.gap_detected)
   {
@@ -1776,12 +1878,15 @@ auto Bno086ImuNode::EstimateEventStamp(const SensorEvent& event,
         "BNO086 timestamp tracker state: report=%s initialized=%s "
         "reanchored=%s gap_detected=%s duplicate_sequence=%s "
         "sequence_delta=%u used_interval_cadence=%s "
-        "used_host_anchor=%s",
+        "used_host_anchor=%s used_shared_epoch_anchor=%s "
+        "shared_epoch_ns=%lld",
         ReportName(event.report_id), trackedStamp.initialized ? "true" : "false",
         trackedStamp.reanchored ? "true" : "false", trackedStamp.gap_detected ? "true" : "false",
         trackedStamp.duplicate_sequence ? "true" : "false", trackedStamp.sequence_delta,
         trackedStamp.used_interval_cadence ? "true" : "false",
-        trackedStamp.used_host_anchor ? "true" : "false");
+        trackedStamp.used_host_anchor ? "true" : "false",
+        trackedStamp.used_shared_epoch_anchor ? "true" : "false",
+        static_cast<long long>(m_bnoCadenceEpochNs.value_or(0)));
   }
 
   return EstimatedEventStamp{rclcpp::Time(trackedStamp.stamp_ns, RCL_ROS_TIME), trackedStamp};

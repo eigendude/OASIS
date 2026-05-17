@@ -50,6 +50,15 @@ struct ReportTimestampTrackerInput
    * Units: microseconds, used only when it is small enough to be plausible
    */
   std::uint32_t delay_us{0};
+
+  /*!
+   * \brief Shared timestamp epoch for cadence-aligned report streams
+   *
+   * Units: nanoseconds on the caller's monotonic timeline. When set with a
+   * known interval, the first sample is placed on this epoch's cadence grid
+   * near the packet host anchor so streams share one phase reference.
+   */
+  std::optional<int64_t> shared_epoch_stamp_ns;
 };
 
 /*!
@@ -100,6 +109,11 @@ struct ReportTimestampTrackerResult
    * \brief True when timestamp came from packet host time
    */
   bool used_host_anchor{false};
+
+  /*!
+   * \brief True when the first timestamp used a shared epoch cadence grid
+   */
+  bool used_shared_epoch_anchor{false};
 };
 
 /*!
@@ -113,6 +127,7 @@ public:
 
 private:
   int64_t HostAnchorNs(const ReportTimestampTrackerInput& input) const;
+  int64_t SharedEpochAnchorNs(const ReportTimestampTrackerInput& input) const;
 
   bool m_initialized{false};
   std::uint8_t m_lastSequence{0};
