@@ -115,16 +115,12 @@ private:
   {
     std::uint64_t calibrated_accel_reports_received{0};
     std::uint64_t rotation_events_seen{0};
-    std::uint64_t imu_gravity_publish_attempts{0};
     std::uint64_t imu_gravity_published{0};
     std::uint64_t imu_gravity_skipped_missing_accel{0};
-    std::uint64_t imu_gravity_skipped_missing_orientation{0};
     std::uint64_t imu_gravity_skipped_missing_gyro{0};
     std::uint64_t imu_gravity_skipped_stale_accel{0};
-    std::uint64_t imu_gravity_skipped_stale_orientation{0};
     std::uint64_t imu_gravity_skipped_stale_gyro{0};
     std::uint64_t imu_gravity_skipped_future_accel{0};
-    std::uint64_t imu_gravity_skipped_future_orientation{0};
     std::uint64_t imu_gravity_skipped_future_gyro{0};
     std::uint64_t imu_gravity_skipped_duplicate_stamp{0};
     std::uint64_t imu_gravity_skipped_nonfinite{0};
@@ -135,38 +131,18 @@ private:
     std::uint64_t imu_skipped_incoherent_core_frame{0};
     std::uint64_t imu_skipped_incoherent_core_frame_span{0};
     std::uint64_t imu_skipped_duplicate_core_signature{0};
-    double latest_accel_age_ms{0.0};
-    double latest_orientation_age_ms{0.0};
-    double latest_gyro_age_ms{0.0};
     double latest_core_span_ms{0.0};
-    int64_t latest_accel_stamp_ns{0};
-    int64_t latest_orientation_stamp_ns{0};
-    int64_t latest_gyro_stamp_ns{0};
-    int64_t latest_linear_accel_stamp_ns{0};
     double latest_calibrated_accel_rate_hz{0.0};
     double latest_imu_gravity_rate_hz{0.0};
     std::array<double, 5> latest_decoded_rate_hz{};
     std::array<double, 5> latest_feature_rate_hz{};
     std::array<std::uint64_t, 5> decoded_reports_received{};
     std::array<std::uint64_t, 5> last_rate_decoded_reports{};
-    std::uint64_t latest_skipped_stale_orientation_delta{0};
-    std::uint64_t latest_skipped_stale_gyro_delta{0};
     std::uint64_t latest_accel_sequence_gap_delta{0};
     std::uint64_t last_rate_accel_reports{0};
     std::uint64_t last_rate_imu_gravity_published{0};
-    std::uint64_t last_rate_skipped_stale_orientation{0};
-    std::uint64_t last_rate_skipped_stale_gyro{0};
     std::uint64_t last_rate_accel_sequence_gap_count{0};
-    std::size_t accel_history_size{0};
-    int64_t accel_history_oldest_stamp_ns{0};
-    int64_t accel_history_newest_stamp_ns{0};
-    double accel_history_span_ms{0.0};
-    int64_t selected_accel_stamp_ns{0};
     double selected_accel_offset_ms{0.0};
-    std::uint64_t accel_history_selected_past_count{0};
-    std::uint64_t accel_history_selected_future_count{0};
-    std::uint64_t accel_history_future_too_far_count{0};
-    std::uint64_t accel_history_no_past_count{0};
     std::chrono::steady_clock::time_point last_log_at{};
   };
 
@@ -190,45 +166,17 @@ private:
     std::uint64_t drains{0};
     std::uint64_t physical_packets_sum{0};
     std::uint32_t physical_packets_max{0};
-    std::optional<std::uint32_t> physical_packets_min;
     std::uint64_t sensor_events_sum{0};
     std::uint32_t sensor_events_max{0};
-    std::optional<std::uint32_t> sensor_events_min;
-    std::uint64_t pending_events_sum{0};
-    std::uint32_t pending_events_max{0};
-    std::uint32_t pending_queue_depth_at_exit{0};
-    std::uint32_t pending_queue_depth_max{0};
-    std::uint64_t all_zero_polls_sum{0};
-    std::uint32_t all_zero_polls_this_drain{0};
-    std::uint32_t all_zero_polls_max{0};
-    std::uint32_t consecutive_all_zero_polls{0};
-    std::uint32_t consecutive_all_zero_polls_max{0};
     std::uint64_t all_zero_backoff_count{0};
     std::uint64_t drain_duration_sum_us{0};
     std::uint32_t drain_duration_max_us{0};
-    std::optional<std::uint32_t> drain_duration_min_us;
     std::uint64_t physical_packet_cap_hit_count{0};
     std::uint64_t poll_iteration_cap_hit_count{0};
     std::uint64_t drain_duration_budget_hit_count{0};
-    std::uint64_t sensor_event_budget_hit_count{0};
-    std::uint64_t pending_flush_budget_hit_count{0};
-    std::uint64_t exit_duration_budget_with_pending_count{0};
-    std::uint64_t exit_duration_budget_no_pending_count{0};
-    std::uint64_t hintn_asserted_after_exit_count{0};
-    std::uint64_t hintn_asserted_after_cooperative_budget_exit_count{0};
-    std::uint64_t hintn_asserted_after_safety_or_error_exit_count{0};
     std::uint64_t no_progress_drain_count{0};
     std::uint64_t transport_error_count{0};
-    std::uint64_t complete_int_deasserted_count{0};
-    std::uint64_t exit_no_progress_budget_count{0};
-    std::uint64_t exit_transport_error_count{0};
-    std::uint64_t exit_packet_cap_count{0};
-    std::uint64_t exit_poll_iteration_cap_count{0};
-    std::uint64_t exit_drain_duration_budget_count{0};
-    std::uint64_t exit_sensor_event_budget_count{0};
-    std::uint64_t exit_pending_event_flush_budget_count{0};
     std::uint64_t exit_all_zero_budget_count{0};
-    std::array<std::uint64_t, 6> channel_packet_counts{};
   };
 
   struct EstimatedEventStamp
@@ -302,9 +250,9 @@ private:
   void MaybeLogImuGravityDiagnostics();
   void RecordDrainThroughputDiagnostics(const OASIS::IMU::BNO086::Bno086DrainCounters& counters,
                                         OASIS::IMU::BNO086::Bno086DrainAction exit_action,
-                                        bool hintn_asserted_after_exit,
+                                        bool,
                                         std::uint32_t drain_duration_us,
-                                        std::uint32_t pending_queue_depth_at_exit);
+                                        std::uint32_t);
   void UpdateImuGravityDiagnosticsRates(const std::chrono::steady_clock::time_point& now);
   void MaybeEmitImuGravityDiagnosticsLog();
   std::string BuildImuGravityDiagnosticsLogMessage() const;
@@ -383,7 +331,6 @@ private:
   std::array<std::optional<int64_t>, 256> m_lastEmittedTimestampNs{};
   std::optional<CoreFrameSignature> m_lastPublishedCoreSignature;
   std::optional<int64_t> m_lastPublishedImuGravityAnchorStampNs;
-  std::uint32_t m_reportIntervalUs{10'000};
   int m_packetReadTimeoutMs{5};
   int m_featureResponseStartupDrainMs{250};
   std::uint32_t m_featureResponseStartupMaxPackets{128};

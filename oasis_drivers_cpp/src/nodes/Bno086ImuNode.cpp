@@ -73,6 +73,7 @@ constexpr std::uint32_t REPEATED_NO_PROGRESS_TIMEOUT_WARN_COUNT = 3;
 
 constexpr std::uint32_t MIN_COHERENT_SAMPLE_SPAN_US = 80'000;
 constexpr double DEFAULT_PREDICTION_HORIZON_SEC = 0.0;
+constexpr std::uint32_t DEFAULT_REPORT_INTERVAL_US = 10'000;
 
 constexpr double DEFAULT_ROTATION_VECTOR_RATE_HZ = 50.0;
 constexpr double DEFAULT_GYRO_RATE_HZ = 50.0;
@@ -188,24 +189,7 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   declare_parameter("bno086_enable_linear_acceleration_report",
                     DEFAULT_ENABLE_LINEAR_ACCELERATION_REPORT);
   declare_parameter("bno086_enable_gravity_report", DEFAULT_ENABLE_GRAVITY_REPORT);
-  declare_parameter("bno086_feature_summary_timeout_ms", DEFAULT_FEATURE_SUMMARY_TIMEOUT_MS);
-  declare_parameter("bno086_feature_response_startup_drain_ms",
-                    DEFAULT_FEATURE_RESPONSE_STARTUP_DRAIN_MS);
-  declare_parameter("bno086_feature_response_startup_max_packets",
-                    DEFAULT_FEATURE_RESPONSE_STARTUP_MAX_PACKETS);
-  declare_parameter("bno086_packet_read_timeout_ms", DEFAULT_PACKET_READ_TIMEOUT_MS);
-  declare_parameter("bno086_max_packets_per_interrupt", DEFAULT_MAX_PACKETS_PER_INTERRUPT);
-  declare_parameter("bno086_max_poll_iterations_per_interrupt",
-                    DEFAULT_MAX_POLL_ITERATIONS_PER_INTERRUPT);
-  declare_parameter("bno086_max_no_progress_polls_per_interrupt",
-                    DEFAULT_MAX_NO_PROGRESS_POLLS_PER_INTERRUPT);
-  declare_parameter("bno086_max_all_zero_polls_per_interrupt",
-                    DEFAULT_MAX_ALL_ZERO_POLLS_PER_INTERRUPT);
   declare_parameter("bno086_all_zero_backoff_us", DEFAULT_ALL_ZERO_BACKOFF_US);
-  declare_parameter("bno086_max_drain_duration_ms", DEFAULT_MAX_DRAIN_DURATION_MS);
-  declare_parameter("bno086_max_sensor_events_per_drain", DEFAULT_MAX_SENSOR_EVENTS_PER_DRAIN);
-  declare_parameter("bno086_max_pending_events_flush_per_drain",
-                    DEFAULT_MAX_PENDING_EVENTS_FLUSH_PER_DRAIN);
   declare_parameter("bno086_diagnostics_log_period_ms", DEFAULT_BNO086_DIAGNOSTICS_LOG_PERIOD_MS);
   declare_parameter("prediction_horizon_sec", DEFAULT_PREDICTION_HORIZON_SEC);
   declare_parameter("imu_gravity_max_orientation_age_ms",
@@ -237,39 +221,9 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   m_enableLinearAccelerationReport =
       get_parameter("bno086_enable_linear_acceleration_report").as_bool();
   m_enableGravityReport = get_parameter("bno086_enable_gravity_report").as_bool();
-  m_featureSummaryTimeoutMs =
-      std::max(static_cast<int>(get_parameter("bno086_feature_summary_timeout_ms").as_int()), 0);
-  m_featureResponseStartupDrainMs = std::max(
-      static_cast<int>(get_parameter("bno086_feature_response_startup_drain_ms").as_int()), 0);
-  m_featureResponseStartupMaxPackets = static_cast<std::uint32_t>(std::max(
-      static_cast<int>(get_parameter("bno086_feature_response_startup_max_packets").as_int()), 0));
-  m_packetReadTimeoutMs =
-      std::clamp(static_cast<int>(get_parameter("bno086_packet_read_timeout_ms").as_int()),
-                 MIN_PACKET_READ_TIMEOUT_MS, MAX_PACKET_READ_TIMEOUT_MS);
-  m_maxPacketsPerInterrupt = static_cast<std::uint32_t>(
-      std::clamp(static_cast<int>(get_parameter("bno086_max_packets_per_interrupt").as_int()),
-                 MIN_MAX_PACKETS_PER_INTERRUPT, MAX_MAX_PACKETS_PER_INTERRUPT));
-  m_maxPollIterationsPerInterrupt = static_cast<std::uint32_t>(std::clamp(
-      static_cast<int>(get_parameter("bno086_max_poll_iterations_per_interrupt").as_int()),
-      MIN_MAX_POLL_ITERATIONS_PER_INTERRUPT, MAX_MAX_POLL_ITERATIONS_PER_INTERRUPT));
-  m_maxNoProgressPollsPerInterrupt = static_cast<std::uint32_t>(std::clamp(
-      static_cast<int>(get_parameter("bno086_max_no_progress_polls_per_interrupt").as_int()),
-      MIN_MAX_NO_PROGRESS_POLLS_PER_INTERRUPT, MAX_MAX_NO_PROGRESS_POLLS_PER_INTERRUPT));
-  m_maxAllZeroPollsPerInterrupt = static_cast<std::uint32_t>(std::clamp(
-      static_cast<int>(get_parameter("bno086_max_all_zero_polls_per_interrupt").as_int()),
-      MIN_MAX_ALL_ZERO_POLLS_PER_INTERRUPT, MAX_MAX_ALL_ZERO_POLLS_PER_INTERRUPT));
   m_allZeroBackoffUs =
       std::clamp(static_cast<int>(get_parameter("bno086_all_zero_backoff_us").as_int()),
                  MIN_ALL_ZERO_BACKOFF_US, MAX_ALL_ZERO_BACKOFF_US);
-  m_maxDrainDurationMs =
-      std::clamp(static_cast<int>(get_parameter("bno086_max_drain_duration_ms").as_int()),
-                 MIN_MAX_DRAIN_DURATION_MS, MAX_MAX_DRAIN_DURATION_MS);
-  m_maxSensorEventsPerDrain = static_cast<std::uint32_t>(
-      std::clamp(static_cast<int>(get_parameter("bno086_max_sensor_events_per_drain").as_int()),
-                 MIN_MAX_SENSOR_EVENTS_PER_DRAIN, MAX_MAX_SENSOR_EVENTS_PER_DRAIN));
-  m_maxPendingEventsFlushPerDrain = static_cast<std::uint32_t>(std::clamp(
-      static_cast<int>(get_parameter("bno086_max_pending_events_flush_per_drain").as_int()),
-      MIN_MAX_PENDING_EVENTS_FLUSH_PER_DRAIN, MAX_MAX_PENDING_EVENTS_FLUSH_PER_DRAIN));
   m_diagnosticsLogPeriodMs =
       std::max(static_cast<int>(get_parameter("bno086_diagnostics_log_period_ms").as_int()),
                MIN_BNO086_DIAGNOSTICS_LOG_PERIOD_MS);
@@ -326,13 +280,13 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   m_featureConfigurationStartedAt = std::chrono::steady_clock::now();
   const Bno086Shtp::FeatureResponseDrainResult featureDrainResult = m_shtp->DrainFeatureResponses(
       m_featureResponseStartupDrainMs, m_featureResponseStartupMaxPackets, m_packetReadTimeoutMs);
-  RCLCPP_INFO(get_logger(),
-              "BNO086 feature response startup drain: received=%zu expected=%zu "
-              "pre_report_packets=%u sensor_events_ignored_or_seen=%u physical_packets=%u "
-              "elapsed_ms=%u",
-              featureDrainResult.received_responses, featureDrainResult.expected_responses,
-              featureDrainResult.pre_report_packets, featureDrainResult.sensor_events_seen,
-              featureDrainResult.physical_packets, featureDrainResult.elapsed_ms);
+  RCLCPP_DEBUG(get_logger(),
+               "BNO086 feature response startup drain: received=%zu expected=%zu "
+               "pre_report_packets=%u sensor_events_ignored_or_seen=%u physical_packets=%u "
+               "elapsed_ms=%u",
+               featureDrainResult.received_responses, featureDrainResult.expected_responses,
+               featureDrainResult.pre_report_packets, featureDrainResult.sensor_events_seen,
+               featureDrainResult.physical_packets, featureDrainResult.elapsed_ms);
   MaybeLogFeatureResponses();
 
   if (intGpio == DEFAULT_INT_GPIO)
@@ -522,16 +476,6 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
     if (pendingEventsBeforePoll == 0 && drainCounters.poll_iterations > 0 &&
         elapsedBeforePollMs >= m_maxDrainDurationMs)
     {
-      RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
-                            "BNO086 interrupt drain hit duration budget: "
-                            "physical_packets_this_drain=%u sensor_events_this_drain=%u "
-                            "pending_events_this_drain=%u poll_iterations=%u "
-                            "drain_duration_ms=%lld duration_budget_ms=%d hintn_asserted=%s",
-                            drainCounters.physical_packets_this_drain,
-                            drainCounters.sensor_events_this_drain,
-                            drainCounters.pending_events_this_drain, drainCounters.poll_iterations,
-                            static_cast<long long>(elapsedBeforePollMs), m_maxDrainDurationMs,
-                            hintnAssertedBeforePoll ? "true" : "false");
       drainExitAction = Bno086DrainAction::DrainDurationBudget;
       break;
     }
@@ -540,12 +484,6 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
     const bool hintnAssertedAfterPoll = m_interruptGpio.IsAssertedLow();
     const Bno086DrainDecision afterPollDecision =
         Bno086DrainAfterPoll(pollResult, drainLimits, drainCounters, hintnAssertedAfterPoll);
-    if (pollResult.packet_channel.has_value() &&
-        *pollResult.packet_channel < m_drainDiagnostics.channel_packet_counts.size())
-    {
-      ++m_drainDiagnostics.channel_packet_counts[*pollResult.packet_channel];
-    }
-
     if (afterPollDecision.action == Bno086DrainAction::Complete)
     {
       m_repeatedNoProgressTimeouts = 0;
@@ -734,16 +672,6 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
                                         .count();
     if (m_shtp->PendingEventCount() == 0 && elapsedAfterPollMs >= m_maxDrainDurationMs)
     {
-      RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
-                            "BNO086 interrupt drain hit duration budget: "
-                            "physical_packets_this_drain=%u sensor_events_this_drain=%u "
-                            "pending_events_this_drain=%u poll_iterations=%u "
-                            "drain_duration_ms=%lld duration_budget_ms=%d hintn_asserted=%s",
-                            drainCounters.physical_packets_this_drain,
-                            drainCounters.sensor_events_this_drain,
-                            drainCounters.pending_events_this_drain, drainCounters.poll_iterations,
-                            static_cast<long long>(elapsedAfterPollMs), m_maxDrainDurationMs,
-                            m_interruptGpio.IsAssertedLow() ? "true" : "false");
       drainExitAction = Bno086DrainAction::DrainDurationBudget;
       break;
     }
@@ -768,12 +696,6 @@ void Bno086ImuNode::MaybePublishOnLinearAcceleration(const SensorEvent& event)
     return;
 
   ++m_imuGravityDiagnostics.linear_accel_events_seen;
-  m_imuGravityDiagnostics.latest_orientation_stamp_ns =
-      m_orientationState.has_sample ? m_orientationState.stamp.nanoseconds() : 0;
-  m_imuGravityDiagnostics.latest_gyro_stamp_ns =
-      m_gyroState.has_sample ? m_gyroState.stamp.nanoseconds() : 0;
-  m_imuGravityDiagnostics.latest_linear_accel_stamp_ns =
-      m_linearAccelState.has_sample ? m_linearAccelState.stamp.nanoseconds() : 0;
 
   if (!(m_latestFrame.has_orientation && m_latestFrame.has_gyro &&
         m_latestFrame.has_linear_accel) ||
@@ -790,9 +712,6 @@ void Bno086ImuNode::MaybePublishOnLinearAcceleration(const SensorEvent& event)
   const int64_t oldestNs = std::min({orientationNs, gyroNs, linearAccelNs});
   const int64_t newestNs = std::max({orientationNs, gyroNs, linearAccelNs});
   const int64_t spanNs = newestNs - oldestNs;
-  m_imuGravityDiagnostics.latest_orientation_stamp_ns = orientationNs;
-  m_imuGravityDiagnostics.latest_gyro_stamp_ns = gyroNs;
-  m_imuGravityDiagnostics.latest_linear_accel_stamp_ns = linearAccelNs;
   m_imuGravityDiagnostics.latest_core_span_ms = static_cast<double>(spanNs) / 1.0e6;
 
   const int64_t coreThresholdNs = DurationFromUs(CoreCoherenceToleranceUs()).nanoseconds();
@@ -840,17 +759,9 @@ void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& ev
     return;
 
   ++m_imuGravityDiagnostics.rotation_events_seen;
-  ++m_imuGravityDiagnostics.imu_gravity_publish_attempts;
-  m_imuGravityDiagnostics.latest_accel_stamp_ns =
-      m_imuGravityState.has_sample ? m_imuGravityState.stamp.nanoseconds() : 0;
-  m_imuGravityDiagnostics.latest_orientation_stamp_ns =
-      m_orientationState.has_sample ? m_orientationState.stamp.nanoseconds() : 0;
-  m_imuGravityDiagnostics.latest_gyro_stamp_ns =
-      m_gyroState.has_sample ? m_gyroState.stamp.nanoseconds() : 0;
 
   if (!m_orientationState.has_sample || !m_latestFrame.has_orientation)
   {
-    ++m_imuGravityDiagnostics.imu_gravity_skipped_missing_orientation;
     MaybeLogImuGravityDiagnostics();
     return;
   }
@@ -874,27 +785,8 @@ void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& ev
   const int64_t accelFutureToleranceNs = ReportFutureToleranceNs(ReportId::Accelerometer);
   const ImuGravityAccelSelection accelSelection =
       SelectImuGravityAccelSample(orientationStampNs, maxAccelAgeNs, accelFutureToleranceNs);
-  m_imuGravityDiagnostics.accel_history_size = accelSelection.history_size;
-  m_imuGravityDiagnostics.accel_history_oldest_stamp_ns = accelSelection.oldest_stamp_ns;
-  m_imuGravityDiagnostics.accel_history_newest_stamp_ns = accelSelection.newest_stamp_ns;
-  m_imuGravityDiagnostics.accel_history_span_ms =
-      static_cast<double>(accelSelection.history_span_ns) / 1.0e6;
   m_imuGravityDiagnostics.selected_accel_offset_ms =
       static_cast<double>(accelSelection.selected_offset_ns) / 1.0e6;
-
-  if (accelSelection.status == ImuGravityAccelSelectionStatus::SelectedPast)
-    ++m_imuGravityDiagnostics.accel_history_selected_past_count;
-  else if (accelSelection.status == ImuGravityAccelSelectionStatus::SelectedFuture)
-    ++m_imuGravityDiagnostics.accel_history_selected_future_count;
-  else if (accelSelection.status == ImuGravityAccelSelectionStatus::FutureTooFar)
-    ++m_imuGravityDiagnostics.accel_history_future_too_far_count;
-
-  if (accelSelection.status == ImuGravityAccelSelectionStatus::SelectedFuture ||
-      accelSelection.status == ImuGravityAccelSelectionStatus::FutureTooFar ||
-      accelSelection.status == ImuGravityAccelSelectionStatus::NoHistory)
-  {
-    ++m_imuGravityDiagnostics.accel_history_no_past_count;
-  }
 
   if (!accelSelection.sample.has_value())
   {
@@ -905,27 +797,24 @@ void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& ev
 
   const ImuGravityAccelSample& accelSample = *accelSelection.sample;
   const int64_t accelStampNs = accelSample.stamp.nanoseconds();
-  m_imuGravityDiagnostics.latest_accel_stamp_ns = accelStampNs;
-  m_imuGravityDiagnostics.selected_accel_stamp_ns = accelStampNs;
   const int64_t maxGyroAgeNs = ImuGravityMaxGyroAgeNs();
   const SampleFreshnessResult accelFreshness = EvaluateSampleFreshness(
       orientationStampNs, accelStampNs, maxAccelAgeNs, accelFutureToleranceNs);
   const SampleFreshnessResult gyroFreshness =
       EvaluateSampleFreshness(orientationStampNs, m_gyroState.stamp.nanoseconds(), maxGyroAgeNs,
                               ReportFutureToleranceNs(ReportId::GyroscopeCalibrated));
-  m_imuGravityDiagnostics.latest_accel_age_ms = static_cast<double>(accelFreshness.age_ns) / 1.0e6;
-  m_imuGravityDiagnostics.latest_orientation_age_ms = 0.0;
-  m_imuGravityDiagnostics.latest_gyro_age_ms = static_cast<double>(gyroFreshness.age_ns) / 1.0e6;
+  const double accelAgeMs = static_cast<double>(accelFreshness.age_ns) / 1.0e6;
+  const double gyroAgeMs = static_cast<double>(gyroFreshness.age_ns) / 1.0e6;
 
   if (accelFreshness.status == SampleFreshnessStatus::TooOld)
   {
     ++m_imuGravityDiagnostics.imu_gravity_skipped_stale_accel;
-    RCLCPP_DEBUG_THROTTLE(
-        get_logger(), *get_clock(), 2000,
-        "Skipping BNO086 imu_gravity sample: accel older than max age "
-        "age_ms=%.3f max_age_ms=%.3f orientation_ns=%lld accel_ns=%lld",
-        m_imuGravityDiagnostics.latest_accel_age_ms, static_cast<double>(maxAccelAgeNs) / 1.0e6,
-        static_cast<long long>(orientationStampNs), static_cast<long long>(accelStampNs));
+    RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
+                          "Skipping BNO086 imu_gravity sample: accel older than max age "
+                          "age_ms=%.3f max_age_ms=%.3f orientation_ns=%lld accel_ns=%lld",
+                          accelAgeMs, static_cast<double>(maxAccelAgeNs) / 1.0e6,
+                          static_cast<long long>(orientationStampNs),
+                          static_cast<long long>(accelStampNs));
     MaybeLogImuGravityDiagnostics();
     return;
   }
@@ -936,8 +825,7 @@ void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& ev
     RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
                           "Skipping BNO086 imu_gravity sample: accel too far after orientation "
                           "age_ms=%.3f future_tolerance_ms=%.3f orientation_ns=%lld accel_ns=%lld",
-                          m_imuGravityDiagnostics.latest_accel_age_ms,
-                          static_cast<double>(accelFutureToleranceNs) / 1.0e6,
+                          accelAgeMs, static_cast<double>(accelFutureToleranceNs) / 1.0e6,
                           static_cast<long long>(orientationStampNs),
                           static_cast<long long>(accelStampNs));
     MaybeLogImuGravityDiagnostics();
@@ -950,8 +838,7 @@ void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& ev
     RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
                           "Skipping BNO086 imu_gravity sample: gyro older than max age "
                           "age_ms=%.3f max_age_ms=%.3f orientation_ns=%lld gyro_ns=%lld",
-                          m_imuGravityDiagnostics.latest_gyro_age_ms,
-                          static_cast<double>(maxGyroAgeNs) / 1.0e6,
+                          gyroAgeMs, static_cast<double>(maxGyroAgeNs) / 1.0e6,
                           static_cast<long long>(orientationStampNs),
                           static_cast<long long>(m_gyroState.stamp.nanoseconds()));
     MaybeLogImuGravityDiagnostics();
@@ -965,7 +852,7 @@ void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& ev
         get_logger(), *get_clock(), 2000,
         "Skipping BNO086 imu_gravity sample: gyro too far after orientation "
         "age_ms=%.3f future_tolerance_ms=%.3f orientation_ns=%lld gyro_ns=%lld",
-        m_imuGravityDiagnostics.latest_gyro_age_ms,
+        gyroAgeMs,
         static_cast<double>(ReportFutureToleranceNs(ReportId::GyroscopeCalibrated)) / 1.0e6,
         static_cast<long long>(orientationStampNs),
         static_cast<long long>(m_gyroState.stamp.nanoseconds()));
@@ -1352,119 +1239,41 @@ void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
 
 void Bno086ImuNode::RecordDrainThroughputDiagnostics(const Bno086DrainCounters& counters,
                                                      Bno086DrainAction exit_action,
-                                                     bool hintn_asserted_after_exit,
+                                                     bool /*hintn_asserted_after_exit*/,
                                                      std::uint32_t drain_duration_us,
-                                                     std::uint32_t pending_queue_depth_at_exit)
+                                                     std::uint32_t /*pending_queue_depth_at_exit*/)
 {
   ++m_drainDiagnostics.drains;
 
   m_drainDiagnostics.physical_packets_sum += counters.physical_packets_this_drain;
   m_drainDiagnostics.physical_packets_max =
       std::max(m_drainDiagnostics.physical_packets_max, counters.physical_packets_this_drain);
-  if (!m_drainDiagnostics.physical_packets_min.has_value() ||
-      counters.physical_packets_this_drain < *m_drainDiagnostics.physical_packets_min)
-  {
-    m_drainDiagnostics.physical_packets_min = counters.physical_packets_this_drain;
-  }
 
   m_drainDiagnostics.sensor_events_sum += counters.sensor_events_this_drain;
   m_drainDiagnostics.sensor_events_max =
       std::max(m_drainDiagnostics.sensor_events_max, counters.sensor_events_this_drain);
-  if (!m_drainDiagnostics.sensor_events_min.has_value() ||
-      counters.sensor_events_this_drain < *m_drainDiagnostics.sensor_events_min)
-  {
-    m_drainDiagnostics.sensor_events_min = counters.sensor_events_this_drain;
-  }
-
-  m_drainDiagnostics.pending_events_sum += counters.pending_events_this_drain;
-  m_drainDiagnostics.pending_events_max =
-      std::max(m_drainDiagnostics.pending_events_max, counters.pending_events_this_drain);
-  m_drainDiagnostics.pending_queue_depth_at_exit = pending_queue_depth_at_exit;
-  m_drainDiagnostics.pending_queue_depth_max =
-      std::max(m_drainDiagnostics.pending_queue_depth_max, pending_queue_depth_at_exit);
-  m_drainDiagnostics.all_zero_polls_sum += counters.all_zero_polls_this_drain;
-  m_drainDiagnostics.all_zero_polls_this_drain = counters.all_zero_polls_this_drain;
-  m_drainDiagnostics.all_zero_polls_max =
-      std::max(m_drainDiagnostics.all_zero_polls_max, counters.all_zero_polls_this_drain);
-  m_drainDiagnostics.consecutive_all_zero_polls = counters.consecutive_all_zero_polls;
-  m_drainDiagnostics.consecutive_all_zero_polls_max = std::max(
-      m_drainDiagnostics.consecutive_all_zero_polls_max, counters.consecutive_all_zero_polls);
 
   m_drainDiagnostics.drain_duration_sum_us += drain_duration_us;
   m_drainDiagnostics.drain_duration_max_us =
       std::max(m_drainDiagnostics.drain_duration_max_us, drain_duration_us);
-  if (!m_drainDiagnostics.drain_duration_min_us.has_value() ||
-      drain_duration_us < *m_drainDiagnostics.drain_duration_min_us)
-  {
-    m_drainDiagnostics.drain_duration_min_us = drain_duration_us;
-  }
 
   if (exit_action == Bno086DrainAction::PhysicalPacketCap)
-  {
     ++m_drainDiagnostics.physical_packet_cap_hit_count;
-    ++m_drainDiagnostics.exit_packet_cap_count;
-  }
 
   if (exit_action == Bno086DrainAction::PollIterationCap)
-  {
     ++m_drainDiagnostics.poll_iteration_cap_hit_count;
-    ++m_drainDiagnostics.exit_poll_iteration_cap_count;
-  }
 
   if (exit_action == Bno086DrainAction::DrainDurationBudget)
-  {
     ++m_drainDiagnostics.drain_duration_budget_hit_count;
-    ++m_drainDiagnostics.exit_drain_duration_budget_count;
-    if (pending_queue_depth_at_exit > 0)
-      ++m_drainDiagnostics.exit_duration_budget_with_pending_count;
-    else
-      ++m_drainDiagnostics.exit_duration_budget_no_pending_count;
-  }
-
-  if (exit_action == Bno086DrainAction::SensorEventBudget)
-  {
-    ++m_drainDiagnostics.sensor_event_budget_hit_count;
-    ++m_drainDiagnostics.exit_sensor_event_budget_count;
-  }
-
-  if (exit_action == Bno086DrainAction::PendingEventFlushBudget)
-  {
-    ++m_drainDiagnostics.pending_flush_budget_hit_count;
-    ++m_drainDiagnostics.exit_pending_event_flush_budget_count;
-  }
 
   if (exit_action == Bno086DrainAction::AllZeroBudget)
     ++m_drainDiagnostics.exit_all_zero_budget_count;
 
   if (exit_action == Bno086DrainAction::NoProgressBudget)
-  {
     ++m_drainDiagnostics.no_progress_drain_count;
-    ++m_drainDiagnostics.exit_no_progress_budget_count;
-  }
 
   if (exit_action == Bno086DrainAction::TransportError)
-  {
     ++m_drainDiagnostics.transport_error_count;
-    ++m_drainDiagnostics.exit_transport_error_count;
-  }
-
-  if (exit_action == Bno086DrainAction::Complete && !hintn_asserted_after_exit)
-    ++m_drainDiagnostics.complete_int_deasserted_count;
-
-  if (hintn_asserted_after_exit)
-  {
-    ++m_drainDiagnostics.hintn_asserted_after_exit_count;
-    if (exit_action == Bno086DrainAction::DrainDurationBudget ||
-        exit_action == Bno086DrainAction::SensorEventBudget ||
-        exit_action == Bno086DrainAction::PendingEventFlushBudget)
-    {
-      ++m_drainDiagnostics.hintn_asserted_after_cooperative_budget_exit_count;
-    }
-    else
-    {
-      ++m_drainDiagnostics.hintn_asserted_after_safety_or_error_exit_count;
-    }
-  }
 }
 
 void Bno086ImuNode::UpdateImuGravityDiagnosticsRates(
@@ -1472,8 +1281,6 @@ void Bno086ImuNode::UpdateImuGravityDiagnosticsRates(
 {
   if (m_imuGravityDiagnostics.last_log_at.time_since_epoch().count() == 0)
   {
-    m_imuGravityDiagnostics.latest_skipped_stale_orientation_delta = 0;
-    m_imuGravityDiagnostics.latest_skipped_stale_gyro_delta = 0;
     m_imuGravityDiagnostics.latest_accel_sequence_gap_delta = 0;
   }
   else
@@ -1503,12 +1310,6 @@ void Bno086ImuNode::UpdateImuGravityDiagnosticsRates(
       }
     }
 
-    m_imuGravityDiagnostics.latest_skipped_stale_orientation_delta =
-        m_imuGravityDiagnostics.imu_gravity_skipped_stale_orientation -
-        m_imuGravityDiagnostics.last_rate_skipped_stale_orientation;
-    m_imuGravityDiagnostics.latest_skipped_stale_gyro_delta =
-        m_imuGravityDiagnostics.imu_gravity_skipped_stale_gyro -
-        m_imuGravityDiagnostics.last_rate_skipped_stale_gyro;
     m_imuGravityDiagnostics.latest_accel_sequence_gap_delta =
         m_imuGravityDiagnostics.accel_sequence_gap_count -
         m_imuGravityDiagnostics.last_rate_accel_sequence_gap_count;
@@ -1520,10 +1321,6 @@ void Bno086ImuNode::UpdateImuGravityDiagnosticsRates(
       m_imuGravityDiagnostics.imu_gravity_published;
   m_imuGravityDiagnostics.last_rate_decoded_reports =
       m_imuGravityDiagnostics.decoded_reports_received;
-  m_imuGravityDiagnostics.last_rate_skipped_stale_orientation =
-      m_imuGravityDiagnostics.imu_gravity_skipped_stale_orientation;
-  m_imuGravityDiagnostics.last_rate_skipped_stale_gyro =
-      m_imuGravityDiagnostics.imu_gravity_skipped_stale_gyro;
   m_imuGravityDiagnostics.last_rate_accel_sequence_gap_count =
       m_imuGravityDiagnostics.accel_sequence_gap_count;
 }
@@ -1567,35 +1364,20 @@ std::string Bno086ImuNode::BuildImuGravityDiagnosticsLogMessage() const
   oss << "BNO086 health: calibrated_accel_reports_received="
       << m_imuGravityDiagnostics.calibrated_accel_reports_received << " "
       << "rotation_events_seen=" << m_imuGravityDiagnostics.rotation_events_seen << " "
-      << "imu_gravity_publish_attempts=" << m_imuGravityDiagnostics.imu_gravity_publish_attempts
-      << " " << "imu_gravity_published=" << m_imuGravityDiagnostics.imu_gravity_published << " "
+      << "imu_gravity_published=" << m_imuGravityDiagnostics.imu_gravity_published << " "
+      << "linear_accel_events_seen=" << m_imuGravityDiagnostics.linear_accel_events_seen << " "
+      << "imu_published=" << m_imuGravityDiagnostics.imu_published << " "
       << "skipped_missing_accel=" << m_imuGravityDiagnostics.imu_gravity_skipped_missing_accel
-      << " " << "skipped_missing_orientation="
-      << m_imuGravityDiagnostics.imu_gravity_skipped_missing_orientation << " "
-      << "skipped_missing_gyro=" << m_imuGravityDiagnostics.imu_gravity_skipped_missing_gyro << " "
-      << "skipped_stale_accel=" << m_imuGravityDiagnostics.imu_gravity_skipped_stale_accel << " "
-      << "skipped_stale_orientation="
-      << m_imuGravityDiagnostics.imu_gravity_skipped_stale_orientation << " "
-      << "skipped_stale_gyro=" << m_imuGravityDiagnostics.imu_gravity_skipped_stale_gyro << " "
-      << "skipped_future_accel=" << m_imuGravityDiagnostics.imu_gravity_skipped_future_accel << " "
+      << " " << "skipped_missing_gyro=" << m_imuGravityDiagnostics.imu_gravity_skipped_missing_gyro
+      << " " << "skipped_stale_accel=" << m_imuGravityDiagnostics.imu_gravity_skipped_stale_accel
+      << " " << "skipped_stale_gyro=" << m_imuGravityDiagnostics.imu_gravity_skipped_stale_gyro
+      << " " << "skipped_future_accel=" << m_imuGravityDiagnostics.imu_gravity_skipped_future_accel
+      << " "
       << "skipped_duplicate_stamp=" << m_imuGravityDiagnostics.imu_gravity_skipped_duplicate_stamp
       << " " << "skipped_nonfinite=" << m_imuGravityDiagnostics.imu_gravity_skipped_nonfinite << " "
       << "accel_sequence_gap_count=" << m_imuGravityDiagnostics.accel_sequence_gap_count << " "
-      << "accel_history_size=" << m_imuGravityDiagnostics.accel_history_size << " "
-      << "accel_history_span_ms=" << m_imuGravityDiagnostics.accel_history_span_ms << " "
       << "selected_accel_offset_ms=" << m_imuGravityDiagnostics.selected_accel_offset_ms << " "
-      << "linear_accel_events_seen=" << m_imuGravityDiagnostics.linear_accel_events_seen << " "
-      << "imu_published=" << m_imuGravityDiagnostics.imu_published << " "
-      << "imu_skipped_missing_core_frame=" << m_imuGravityDiagnostics.imu_skipped_missing_core_frame
-      << " " << "imu_skipped_incoherent_core_frame="
-      << m_imuGravityDiagnostics.imu_skipped_incoherent_core_frame << " "
-      << "imu_skipped_incoherent_core_frame_span="
-      << m_imuGravityDiagnostics.imu_skipped_incoherent_core_frame_span << " "
-      << "imu_skipped_duplicate_core_signature="
-      << m_imuGravityDiagnostics.imu_skipped_duplicate_core_signature << " "
       << "latest_core_span_ms=" << m_imuGravityDiagnostics.latest_core_span_ms << " "
-      << "latest_calibrated_accel_rate_hz="
-      << m_imuGravityDiagnostics.latest_calibrated_accel_rate_hz << " "
       << "latest_imu_gravity_rate_hz=" << m_imuGravityDiagnostics.latest_imu_gravity_rate_hz << " "
       << "decoded_accel_rate_hz=" << m_imuGravityDiagnostics.latest_decoded_rate_hz[0] << " "
       << "decoded_gyro_rate_hz=" << m_imuGravityDiagnostics.latest_decoded_rate_hz[1] << " "
@@ -1613,15 +1395,9 @@ std::string Bno086ImuNode::BuildImuGravityDiagnosticsLogMessage() const
       << "physical_packet_cap_hit_count=" << m_drainDiagnostics.physical_packet_cap_hit_count << " "
       << "poll_iteration_cap_hit_count=" << m_drainDiagnostics.poll_iteration_cap_hit_count << " "
       << "drain_duration_budget_hit_count=" << m_drainDiagnostics.drain_duration_budget_hit_count
-      << " " << "sensor_event_budget_hit_count=" << m_drainDiagnostics.sensor_event_budget_hit_count
-      << " "
-      << "pending_flush_budget_hit_count=" << m_drainDiagnostics.pending_flush_budget_hit_count
       << " " << "no_progress_drain_count=" << m_drainDiagnostics.no_progress_drain_count << " "
       << "drain_transport_error_count=" << m_drainDiagnostics.transport_error_count << " "
       << "all_zero_budget_hit_count=" << m_drainDiagnostics.exit_all_zero_budget_count << " "
-      << "i2c_read_error_count=" << transportStats.i2c_read_error_count << " "
-      << "i2c_read_timeout_count=" << transportStats.i2c_read_timeout_count << " "
-      << "invalid_header_count=" << transportStats.invalid_header_count << " "
       << "all_zero_header_count=" << transportStats.all_zero_header_count << " "
       << "invalid_full_packet_count=" << transportStats.invalid_full_packet_count;
   return oss.str();
@@ -1790,12 +1566,6 @@ bool Bno086ImuNode::IsBno086DiagnosticsUnhealthy() const
   if (IsBno086RateUnhealthy())
     return true;
 
-  if (m_imuGravityDiagnostics.latest_skipped_stale_orientation_delta > 0)
-    return true;
-
-  if (m_imuGravityDiagnostics.latest_skipped_stale_gyro_delta > 0)
-    return true;
-
   if (m_imuGravityDiagnostics.latest_accel_sequence_gap_delta > 0)
     return true;
 
@@ -1879,20 +1649,20 @@ void Bno086ImuNode::MaybeEmitTimestampSummaries() const
                                                static_cast<double>(stats.sample_delta_count) / 1e6
                                          : 0.0;
 
-    RCLCPP_INFO(get_logger(),
-                "BNO086 timestamp summary: report=%s events=%llu "
-                "has_base_count=%llu has_delay_count=%llu sequence_gap_count=%llu "
-                "cadence_tracker_gap_count=%llu cadence_tracker_reanchor_count=%llu "
-                "monotonic_guard_count=%llu sample_delta_min_ms=%.6f "
-                "sample_delta_mean_ms=%.6f",
-                ReportName(reportId), static_cast<unsigned long long>(stats.events),
-                static_cast<unsigned long long>(stats.has_base_count),
-                static_cast<unsigned long long>(stats.has_delay_count),
-                static_cast<unsigned long long>(stats.sequence_gap_count),
-                static_cast<unsigned long long>(stats.cadence_tracker_gap_count),
-                static_cast<unsigned long long>(stats.cadence_tracker_reanchor_count),
-                static_cast<unsigned long long>(stats.monotonic_guard_count), sampleDeltaMinMs,
-                sampleDeltaMeanMs);
+    RCLCPP_DEBUG(get_logger(),
+                 "BNO086 timestamp summary: report=%s events=%llu "
+                 "has_base_count=%llu has_delay_count=%llu sequence_gap_count=%llu "
+                 "cadence_tracker_gap_count=%llu cadence_tracker_reanchor_count=%llu "
+                 "monotonic_guard_count=%llu sample_delta_min_ms=%.6f "
+                 "sample_delta_mean_ms=%.6f",
+                 ReportName(reportId), static_cast<unsigned long long>(stats.events),
+                 static_cast<unsigned long long>(stats.has_base_count),
+                 static_cast<unsigned long long>(stats.has_delay_count),
+                 static_cast<unsigned long long>(stats.sequence_gap_count),
+                 static_cast<unsigned long long>(stats.cadence_tracker_gap_count),
+                 static_cast<unsigned long long>(stats.cadence_tracker_reanchor_count),
+                 static_cast<unsigned long long>(stats.monotonic_guard_count), sampleDeltaMinMs,
+                 sampleDeltaMeanMs);
   }
 }
 
@@ -1905,9 +1675,9 @@ std::uint32_t Bno086ImuNode::CoreCoherenceToleranceUs() const
   const std::optional<std::uint32_t> orientationIntervalUs =
       EffectiveReportIntervalUs(ReportId::RotationVector);
   const int64_t toleranceNs = EffectiveCoreSpanToleranceNs(
-      static_cast<int64_t>(linearIntervalUs.value_or(m_reportIntervalUs)) * 1'000,
-      static_cast<int64_t>(gyroIntervalUs.value_or(m_reportIntervalUs)) * 1'000,
-      static_cast<int64_t>(orientationIntervalUs.value_or(m_reportIntervalUs)) * 1'000,
+      static_cast<int64_t>(linearIntervalUs.value_or(DEFAULT_REPORT_INTERVAL_US)) * 1'000,
+      static_cast<int64_t>(gyroIntervalUs.value_or(DEFAULT_REPORT_INTERVAL_US)) * 1'000,
+      static_cast<int64_t>(orientationIntervalUs.value_or(DEFAULT_REPORT_INTERVAL_US)) * 1'000,
       static_cast<int64_t>(MIN_COHERENT_SAMPLE_SPAN_US) * 1'000);
 
   return static_cast<std::uint32_t>(toleranceNs / 1'000);
@@ -1919,7 +1689,7 @@ int64_t Bno086ImuNode::ImuGravityMaxOrientationAgeNs() const
       EffectiveReportIntervalUs(ReportId::RotationVector);
   return EffectiveMaxPastAgeNs(
       static_cast<int64_t>(m_imuGravityMaxOrientationAgeMs * 1.0e6),
-      static_cast<int64_t>(intervalUs.value_or(m_reportIntervalUs)) * 1'000, 80'000'000);
+      static_cast<int64_t>(intervalUs.value_or(DEFAULT_REPORT_INTERVAL_US)) * 1'000, 80'000'000);
 }
 
 int64_t Bno086ImuNode::ImuGravityMaxGyroAgeNs() const
@@ -1928,7 +1698,7 @@ int64_t Bno086ImuNode::ImuGravityMaxGyroAgeNs() const
       EffectiveReportIntervalUs(ReportId::GyroscopeCalibrated);
   return EffectiveMaxPastAgeNs(
       static_cast<int64_t>(m_imuGravityMaxGyroAgeMs * 1.0e6),
-      static_cast<int64_t>(intervalUs.value_or(m_reportIntervalUs)) * 1'000, 80'000'000);
+      static_cast<int64_t>(intervalUs.value_or(DEFAULT_REPORT_INTERVAL_US)) * 1'000, 80'000'000);
 }
 
 int64_t Bno086ImuNode::ReportFutureToleranceNs(ReportId report_id) const
@@ -2212,24 +1982,6 @@ auto Bno086ImuNode::EstimateEventStamp(const SensorEvent& event,
           event.sequence, expected_interval_ns, interrupt_ros_at.nanoseconds(), event.has_delay,
           event.delay_us, m_bnoCadenceEpochNs});
 
-  if (trackedStamp.reanchored || trackedStamp.gap_detected)
-  {
-    RCLCPP_DEBUG_THROTTLE(
-        get_logger(), *get_clock(), 2000,
-        "BNO086 timestamp tracker state: report=%s initialized=%s "
-        "reanchored=%s gap_detected=%s duplicate_sequence=%s "
-        "sequence_delta=%u used_interval_cadence=%s "
-        "used_host_anchor=%s used_shared_epoch_anchor=%s "
-        "shared_epoch_ns=%lld",
-        ReportName(event.report_id), trackedStamp.initialized ? "true" : "false",
-        trackedStamp.reanchored ? "true" : "false", trackedStamp.gap_detected ? "true" : "false",
-        trackedStamp.duplicate_sequence ? "true" : "false", trackedStamp.sequence_delta,
-        trackedStamp.used_interval_cadence ? "true" : "false",
-        trackedStamp.used_host_anchor ? "true" : "false",
-        trackedStamp.used_shared_epoch_anchor ? "true" : "false",
-        static_cast<long long>(m_bnoCadenceEpochNs.value_or(0)));
-  }
-
   return EstimatedEventStamp{rclcpp::Time(trackedStamp.stamp_ns, RCL_ROS_TIME), trackedStamp};
 }
 
@@ -2510,19 +2262,4 @@ void Bno086ImuNode::MaybeLogOrientationCovariancePolicy()
     m_lastOrientationCovarianceSource = m_orientationCovarianceDebug.source;
     m_lastOrientationAccuracyBucket = m_orientationCovarianceDebug.accuracy_bucket;
   }
-
-  RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), ORIENTATION_COVARIANCE_LOG_THROTTLE_MS,
-                        "BNO086 orientation covariance status: report=%s bucket=%u source=%s "
-                        "raw_estimate_q12=%d estimate_rad=%.4f rejection=%s sigma_rad=%.4f "
-                        "sigma_deg=%.2f variance_rad2=%.6f",
-                        ORIENTATION_REPORT_SOURCE,
-                        static_cast<unsigned>(m_orientationCovarianceDebug.accuracy_bucket),
-                        OrientationCovarianceSourceName(m_orientationCovarianceDebug.source),
-                        static_cast<int>(m_orientationCovarianceDebug.raw_accuracy_estimate_q12),
-                        m_orientationCovarianceDebug.accuracy_estimate_rad,
-                        OrientationCovarianceEstimateRejectionReasonName(
-                            m_orientationCovarianceDebug.rejection_reason),
-                        m_orientationCovarianceDebug.sigma_rad,
-                        m_orientationCovarianceDebug.sigma_rad * 180.0 / PI_RAD,
-                        m_latestFrame.orientation_cov_rad2[0][0]);
 }
