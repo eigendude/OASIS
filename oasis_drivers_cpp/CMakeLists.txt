@@ -102,6 +102,20 @@ target_link_libraries(bno086_diagnostics
   bno086_utils
 )
 
+add_library(bno086_ros_helpers
+  src/imu/bno086/ros/Bno086MessageBuilder.cpp
+  src/imu/bno086/ros/Bno086NodeParams.cpp
+  src/imu/bno086/ros/Bno086Qos.cpp
+)
+target_link_libraries(bno086_ros_helpers
+  bno086_gravity_utils
+  bno086_utils
+  ${geometry_msgs_TARGETS}
+  ${oasis_msgs_TARGETS}
+  rclcpp::rclcpp
+  ${sensor_msgs_TARGETS}
+)
+
 add_library(bno086_shtp
   src/imu/bno086/shtp/Bno086ShtpHeader.cpp
   src/imu/bno086/shtp/Bno086Transport.cpp
@@ -127,6 +141,7 @@ target_link_libraries(bno086_imu_driver
   bno086_imu_gravity_accel_history
   bno086_orientation_covariance_policy
   bno086_report_timestamp_tracker
+  bno086_ros_helpers
   bno086_sample_coherence
   bno086_sh2
   bno086_shtp
@@ -335,6 +350,17 @@ if(BUILD_TESTING)
   target_link_libraries(test_bno086_rate_health
     bno086_diagnostics
     bno086_utils
+  )
+
+  ament_add_gtest(test_bno086_message_builder
+    test/imu/bno086/test_Bno086MessageBuilder.cpp
+  )
+  target_link_libraries(test_bno086_message_builder
+    bno086_ros_helpers
+    ${geometry_msgs_TARGETS}
+    ${oasis_msgs_TARGETS}
+    rclcpp::rclcpp
+    ${sensor_msgs_TARGETS}
   )
 
   ament_add_gtest(test_bno086_shtp

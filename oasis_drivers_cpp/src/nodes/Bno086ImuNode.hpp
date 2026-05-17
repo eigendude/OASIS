@@ -15,6 +15,7 @@
 #include "imu/bno086/core/Bno086SampleCoherence.hpp"
 #include "imu/bno086/diagnostics/Bno086DrainHealth.hpp"
 #include "imu/bno086/diagnostics/Bno086RateHealth.hpp"
+#include "imu/bno086/ros/Bno086NodeParams.hpp"
 #include "imu/bno086/sh2/Bno086Reports.hpp"
 
 #include <atomic>
@@ -88,48 +89,6 @@ private:
     int64_t linear_accel_stamp_ns{0};
   };
 
-  struct Bno086DriverConfig
-  {
-    std::string frame_id;
-    double prediction_horizon_sec{0.0};
-    std::string prediction_source{"rotation_vector_plus_host_prediction"};
-    int packet_read_timeout_ms{5};
-    int feature_response_startup_drain_ms{250};
-    std::uint32_t feature_response_startup_max_packets{128};
-    int feature_summary_timeout_ms{5000};
-    int diagnostics_log_period_ms{5000};
-    int all_zero_backoff_us{500};
-    int max_drain_duration_ms{100};
-    double imu_gravity_max_orientation_age_ms{80.0};
-    double imu_gravity_max_gyro_age_ms{80.0};
-  };
-
-  struct Bno086ReportConfig
-  {
-    double rotation_vector_rate_hz{100.0};
-    double gyro_rate_hz{100.0};
-    double accelerometer_rate_hz{100.0};
-    double linear_acceleration_rate_hz{50.0};
-    double gravity_rate_hz{25.0};
-    std::uint32_t rotation_vector_batch_interval_us{0};
-    std::uint32_t gyro_batch_interval_us{0};
-    std::uint32_t accelerometer_batch_interval_us{0};
-    std::uint32_t linear_acceleration_batch_interval_us{0};
-    std::uint32_t gravity_batch_interval_us{0};
-    bool enable_linear_acceleration_report{true};
-    bool enable_gravity_report{true};
-  };
-
-  struct Bno086DrainConfig
-  {
-    std::uint32_t max_packets_per_interrupt{1024};
-    std::uint32_t max_poll_iterations_per_interrupt{4096};
-    std::uint32_t max_no_progress_polls_per_interrupt{64};
-    std::uint32_t max_all_zero_polls_per_interrupt{64};
-    std::uint32_t max_sensor_events_per_drain{4096};
-    std::uint32_t max_pending_events_flush_per_drain{1024};
-  };
-
   struct Bno086StreamState
   {
     OASIS::IMU::BNO086::ImuSampleFrame latest_frame;
@@ -190,15 +149,6 @@ private:
   std::optional<int64_t> FinalizeEventStampNs(const OASIS::IMU::BNO086::SensorEvent& event,
                                               const rclcpp::Time& interrupt_ros_at,
                                               std::optional<int64_t> expected_interval_ns);
-  sensor_msgs::msg::Imu BuildPresentImuMessage(const rclcpp::Time& stamp) const;
-  sensor_msgs::msg::Imu BuildImuGravityMessage(
-      const rclcpp::Time& stamp,
-      const OASIS::IMU::BNO086::Bno086ImuGravityAccelSample& accel_sample) const;
-  geometry_msgs::msg::AccelWithCovarianceStamped BuildGravityMessage(
-      const rclcpp::Time& stamp) const;
-  sensor_msgs::msg::Imu BuildPredictedImuMessage(const sensor_msgs::msg::Imu& present_imu) const;
-  oasis_msgs::msg::ImuVr BuildPredictedVrMessage(const sensor_msgs::msg::Imu& present_imu,
-                                                 const sensor_msgs::msg::Imu& predicted_imu) const;
   void MaybeLogFeatureResponses();
   void MaybeLogFeatureSummary();
   void LogFeatureSummary() const;

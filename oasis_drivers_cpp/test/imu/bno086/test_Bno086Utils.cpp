@@ -18,14 +18,11 @@
 
 using OASIS::IMU::BNO086::CovarianceFromAccuracyBucket;
 using OASIS::IMU::BNO086::DurationNsFromUs;
-using OASIS::IMU::BNO086::MultiplyQuaternion;
 using OASIS::IMU::BNO086::NormalizeQuaternion;
-using OASIS::IMU::BNO086::PredictQuaternion;
 using OASIS::IMU::BNO086::QToDouble;
 using OASIS::IMU::BNO086::RateHzToIntervalUs;
 using OASIS::IMU::BNO086::ReportId;
 using OASIS::IMU::BNO086::ReportName;
-using OASIS::IMU::BNO086::SetCovariance;
 
 TEST(Bno086ReportUtils, ReportNameReturnsKnownNames)
 {
@@ -76,23 +73,6 @@ TEST(Bno086MathUtils, NormalizeQuaternionScalesToUnitLength)
   EXPECT_DOUBLE_EQ(1.0, quaternion[3]);
 }
 
-TEST(Bno086MathUtils, MultiplyQuaternionPreservesIdentity)
-{
-  const std::array<double, 4> quaternion{0.1, 0.2, 0.3, 0.9};
-  const std::array<double, 4> identity{0.0, 0.0, 0.0, 1.0};
-
-  EXPECT_EQ(quaternion, MultiplyQuaternion(quaternion, identity));
-  EXPECT_EQ(quaternion, MultiplyQuaternion(identity, quaternion));
-}
-
-TEST(Bno086MathUtils, PredictQuaternionZeroGyroReturnsInput)
-{
-  const std::array<double, 4> quaternion{0.1, 0.2, 0.3, 0.9};
-  const OASIS::IMU::Vec3 zeroGyro{0.0, 0.0, 0.0};
-
-  EXPECT_EQ(quaternion, PredictQuaternion(quaternion, zeroGyro, 0.1));
-}
-
 TEST(Bno086CovarianceUtils, CovarianceFromAccuracyBucketUsesExpectedDiagonal)
 {
   const OASIS::IMU::Mat3 covariance = CovarianceFromAccuracyBucket(2, 4.0, 2.0, 0.8, 0.25);
@@ -101,18 +81,4 @@ TEST(Bno086CovarianceUtils, CovarianceFromAccuracyBucketUsesExpectedDiagonal)
   EXPECT_DOUBLE_EQ(0.64, covariance[1][1]);
   EXPECT_DOUBLE_EQ(0.64, covariance[2][2]);
   EXPECT_DOUBLE_EQ(0.0, covariance[0][1]);
-}
-
-TEST(Bno086CovarianceUtils, SetCovarianceMapsMat3ToRowMajorArray)
-{
-  const OASIS::IMU::Mat3 covariance{{
-      {1.0, 2.0, 3.0},
-      {4.0, 5.0, 6.0},
-      {7.0, 8.0, 9.0},
-  }};
-  std::array<double, 9> mapped{};
-
-  SetCovariance(mapped, covariance);
-
-  EXPECT_EQ((std::array<double, 9>{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0}), mapped);
 }
