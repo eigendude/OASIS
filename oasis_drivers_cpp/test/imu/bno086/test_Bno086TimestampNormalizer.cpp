@@ -21,13 +21,44 @@ TEST(Bno086TimestampNormalizer, duplicateReconstructedStampUsesExpectedInterval)
   EXPECT_FALSE(first.repaired_nonmonotonic);
 
   const TimestampNormalizationResult second =
-      normalizer.Normalize(TimestampSample{2, 1'000, 1'000}, 8'000'000);
+      normalizer.Normalize(TimestampSample{2, 1'000, 8'001'000}, 8'000'000);
   EXPECT_EQ(second.stamp_ns, 8'001'000);
   EXPECT_TRUE(second.repaired_nonmonotonic);
   EXPECT_TRUE(second.repaired_duplicate_to_interval);
   EXPECT_FALSE(second.repaired_nonmonotonic_to_interval);
   EXPECT_FALSE(second.repaired_sequence_gap_to_interval);
+  EXPECT_FALSE(second.interval_repair_clamped_to_host);
   EXPECT_FALSE(second.duplicate);
+}
+
+TEST(Bno086TimestampNormalizer, duplicateIntervalRepairClampsToHostWhenCandidateIsFuture)
+{
+  Bno086TimestampNormalizer normalizer;
+
+  ASSERT_FALSE(normalizer.Normalize(TimestampSample{1, 1'000, 1'000}).duplicate);
+
+  const TimestampNormalizationResult second =
+      normalizer.Normalize(TimestampSample{2, 1'000, 5'000}, 8'000'000);
+  EXPECT_EQ(second.stamp_ns, 5'000);
+  EXPECT_TRUE(second.repaired_nonmonotonic);
+  EXPECT_TRUE(second.repaired_duplicate_to_interval);
+  EXPECT_TRUE(second.interval_repair_clamped_to_host);
+  EXPECT_FALSE(second.interval_repair_bounded_to_legacy);
+}
+
+TEST(Bno086TimestampNormalizer, duplicateIntervalRepairFallsBackWhenHostCannotAdvance)
+{
+  Bno086TimestampNormalizer normalizer;
+
+  ASSERT_FALSE(normalizer.Normalize(TimestampSample{1, 1'000, 1'000}).duplicate);
+
+  const TimestampNormalizationResult second =
+      normalizer.Normalize(TimestampSample{2, 1'000, 1'000}, 8'000'000);
+  EXPECT_EQ(second.stamp_ns, 1'001);
+  EXPECT_TRUE(second.repaired_nonmonotonic);
+  EXPECT_TRUE(second.repaired_duplicate_to_interval);
+  EXPECT_FALSE(second.interval_repair_clamped_to_host);
+  EXPECT_TRUE(second.interval_repair_bounded_to_legacy);
 }
 
 TEST(Bno086TimestampNormalizer, nonmonotonicStampUsesExpectedInterval)
@@ -37,7 +68,7 @@ TEST(Bno086TimestampNormalizer, nonmonotonicStampUsesExpectedInterval)
   ASSERT_FALSE(normalizer.Normalize(TimestampSample{10, 20'000'000, 20'000'000}).duplicate);
 
   const TimestampNormalizationResult repaired =
-      normalizer.Normalize(TimestampSample{11, 19'000'000, 19'000'000}, 10'000'000);
+      normalizer.Normalize(TimestampSample{11, 19'000'000, 30'000'000}, 10'000'000);
   EXPECT_EQ(repaired.stamp_ns, 30'000'000);
   EXPECT_TRUE(repaired.repaired_nonmonotonic);
   EXPECT_FALSE(repaired.repaired_duplicate_to_interval);
@@ -52,11 +83,27 @@ TEST(Bno086TimestampNormalizer, sequenceGapUsesExpectedIntervalMultiplier)
   ASSERT_FALSE(normalizer.Normalize(TimestampSample{10, 20'000'000, 20'000'000}).duplicate);
 
   const TimestampNormalizationResult repaired =
-      normalizer.Normalize(TimestampSample{13, 20'000'000, 20'000'000}, 8'000'000);
+      normalizer.Normalize(TimestampSample{13, 20'000'000, 44'000'000}, 8'000'000);
   EXPECT_EQ(repaired.stamp_ns, 44'000'000);
   EXPECT_TRUE(repaired.sequence_gap);
   EXPECT_FALSE(repaired.repaired_duplicate_to_interval);
   EXPECT_TRUE(repaired.repaired_sequence_gap_to_interval);
+  EXPECT_FALSE(repaired.interval_repair_clamped_to_host);
+}
+
+TEST(Bno086TimestampNormalizer, sequenceGapRepairClampsToHost)
+{
+  Bno086TimestampNormalizer normalizer;
+
+  ASSERT_FALSE(normalizer.Normalize(TimestampSample{10, 20'000'000, 20'000'000}).duplicate);
+
+  const TimestampNormalizationResult repaired =
+      normalizer.Normalize(TimestampSample{13, 20'000'000, 30'000'000}, 8'000'000);
+  EXPECT_EQ(repaired.stamp_ns, 30'000'000);
+  EXPECT_TRUE(repaired.sequence_gap);
+  EXPECT_TRUE(repaired.repaired_sequence_gap_to_interval);
+  EXPECT_TRUE(repaired.interval_repair_clamped_to_host);
+  EXPECT_LE(repaired.stamp_ns, 30'000'000);
 }
 
 TEST(Bno086TimestampNormalizer, sequenceWrapUsesExpectedInterval)
@@ -66,11 +113,24 @@ TEST(Bno086TimestampNormalizer, sequenceWrapUsesExpectedInterval)
   ASSERT_FALSE(normalizer.Normalize(TimestampSample{255, 20'000'000, 20'000'000}).duplicate);
 
   const TimestampNormalizationResult repaired =
-      normalizer.Normalize(TimestampSample{0, 20'000'000, 20'000'000}, 8'000'000);
+      normalizer.Normalize(TimestampSample{0, 20'000'000, 28'000'000}, 8'000'000);
   EXPECT_EQ(repaired.stamp_ns, 28'000'000);
   EXPECT_FALSE(repaired.sequence_gap);
   EXPECT_TRUE(repaired.repaired_duplicate_to_interval);
   EXPECT_FALSE(repaired.repaired_sequence_gap_to_interval);
+}
+
+TEST(Bno086TimestampNormalizer, linearAccelerationIntervalRepairWorksWhenHostAdvanced)
+{
+  Bno086TimestampNormalizer normalizer;
+
+  ASSERT_FALSE(normalizer.Normalize(TimestampSample{40, 100'000'000, 100'000'000}).duplicate);
+
+  const TimestampNormalizationResult repaired =
+      normalizer.Normalize(TimestampSample{41, 100'000'000, 120'000'000}, 20'000'000);
+  EXPECT_EQ(repaired.stamp_ns, 120'000'000);
+  EXPECT_TRUE(repaired.repaired_duplicate_to_interval);
+  EXPECT_FALSE(repaired.interval_repair_clamped_to_host);
 }
 
 TEST(Bno086TimestampNormalizer, newSequenceNonAdvancingStampUsesLegacyRepairWithoutInterval)

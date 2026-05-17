@@ -71,7 +71,22 @@ TimestampNormalizationResult Bno086TimestampNormalizer::Normalize(
             !result.repaired_sequence_gap_to_interval && result.stamp_ns == m_lastStampNs;
         result.repaired_nonmonotonic_to_interval =
             !result.repaired_sequence_gap_to_interval && result.stamp_ns < m_lastStampNs;
-        result.stamp_ns = m_lastStampNs + (*expected_interval_ns * sequenceDelta);
+
+        const int64_t candidateStampNs = m_lastStampNs + (*expected_interval_ns * sequenceDelta);
+        if (candidateStampNs <= sample.packet_host_stamp_ns)
+        {
+          result.stamp_ns = candidateStampNs;
+        }
+        else if (sample.packet_host_stamp_ns > m_lastStampNs)
+        {
+          result.stamp_ns = sample.packet_host_stamp_ns;
+          result.interval_repair_clamped_to_host = true;
+        }
+        else
+        {
+          result.stamp_ns = m_lastStampNs + 1;
+          result.interval_repair_bounded_to_legacy = true;
+        }
       }
       else
       {

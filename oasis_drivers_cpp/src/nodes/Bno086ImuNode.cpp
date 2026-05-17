@@ -491,6 +491,12 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
         if (normalizedStamp.repaired_sequence_gap_to_interval)
           ++m_imuGravityDiagnostics.timestamp_repaired_sequence_gap_to_interval;
 
+        if (normalizedStamp.interval_repair_clamped_to_host)
+          ++m_imuGravityDiagnostics.timestamp_interval_repair_clamped_to_host;
+
+        if (normalizedStamp.interval_repair_bounded_to_legacy)
+          ++m_imuGravityDiagnostics.timestamp_interval_repair_bounded_to_legacy;
+
         if (!m_loggedTimestampIntervalRepair)
         {
           const char* repairReason =
@@ -552,8 +558,40 @@ void Bno086ImuNode::MaybePublishOnLinearAcceleration(const SensorEvent& event)
   if (event.report_id != ReportId::LinearAcceleration)
     return;
 
-  if (!HasPublishableCoreFrame())
+  ++m_imuGravityDiagnostics.linear_accel_events_seen;
+  m_imuGravityDiagnostics.latest_orientation_stamp_ns =
+      m_orientationState.has_sample ? m_orientationState.stamp.nanoseconds() : 0;
+  m_imuGravityDiagnostics.latest_gyro_stamp_ns =
+      m_gyroState.has_sample ? m_gyroState.stamp.nanoseconds() : 0;
+  m_imuGravityDiagnostics.latest_linear_accel_stamp_ns =
+      m_linearAccelState.has_sample ? m_linearAccelState.stamp.nanoseconds() : 0;
+
+  if (!(m_latestFrame.has_orientation && m_latestFrame.has_gyro &&
+        m_latestFrame.has_linear_accel) ||
+      !(m_orientationState.has_sample && m_gyroState.has_sample && m_linearAccelState.has_sample))
+  {
+    ++m_imuGravityDiagnostics.imu_skipped_missing_core_frame;
+    MaybeLogImuGravityDiagnostics();
     return;
+  }
+
+  const int64_t orientationNs = m_orientationState.stamp.nanoseconds();
+  const int64_t gyroNs = m_gyroState.stamp.nanoseconds();
+  const int64_t linearAccelNs = m_linearAccelState.stamp.nanoseconds();
+  const int64_t oldestNs = std::min({orientationNs, gyroNs, linearAccelNs});
+  const int64_t newestNs = std::max({orientationNs, gyroNs, linearAccelNs});
+  const int64_t spanNs = newestNs - oldestNs;
+  m_imuGravityDiagnostics.latest_orientation_stamp_ns = orientationNs;
+  m_imuGravityDiagnostics.latest_gyro_stamp_ns = gyroNs;
+  m_imuGravityDiagnostics.latest_linear_accel_stamp_ns = linearAccelNs;
+  m_imuGravityDiagnostics.latest_core_span_ms = static_cast<double>(spanNs) / 1.0e6;
+
+  if (spanNs > DurationFromUs(CoreCoherenceToleranceUs()).nanoseconds())
+  {
+    ++m_imuGravityDiagnostics.imu_skipped_incoherent_core_frame;
+    MaybeLogImuGravityDiagnostics();
+    return;
+  }
 
   const CoreFrameSignature signature = LatestCoreSignature();
   if (m_lastPublishedCoreSignature.has_value() &&
@@ -564,11 +602,14 @@ void Bno086ImuNode::MaybePublishOnLinearAcceleration(const SensorEvent& event)
       signature.gyro_stamp_ns == m_lastPublishedCoreSignature->gyro_stamp_ns &&
       signature.linear_accel_stamp_ns == m_lastPublishedCoreSignature->linear_accel_stamp_ns)
   {
+    ++m_imuGravityDiagnostics.imu_skipped_duplicate_core_signature;
+    MaybeLogImuGravityDiagnostics();
     return;
   }
 
   PublishLatestFrame(LatestCoreStamp());
   m_lastPublishedCoreSignature = signature;
+  ++m_imuGravityDiagnostics.imu_published;
 }
 
 void Bno086ImuNode::MaybePublishImuGravityOnAccelerometer(const SensorEvent& event)
@@ -577,6 +618,12 @@ void Bno086ImuNode::MaybePublishImuGravityOnAccelerometer(const SensorEvent& eve
     return;
 
   ++m_imuGravityDiagnostics.calibrated_accel_reports_received;
+  m_imuGravityDiagnostics.latest_accel_stamp_ns =
+      m_imuGravityState.has_sample ? m_imuGravityState.stamp.nanoseconds() : 0;
+  m_imuGravityDiagnostics.latest_orientation_stamp_ns =
+      m_orientationState.has_sample ? m_orientationState.stamp.nanoseconds() : 0;
+  m_imuGravityDiagnostics.latest_gyro_stamp_ns =
+      m_gyroState.has_sample ? m_gyroState.stamp.nanoseconds() : 0;
 
   if (!m_orientationState.has_sample || !m_latestFrame.has_orientation)
   {
@@ -1111,7 +1158,9 @@ void Bno086ImuNode::MaybeEmitImuGravityDiagnosticsLog()
 std::string Bno086ImuNode::BuildImuGravityDiagnosticsLogMessage() const
 {
   std::ostringstream oss;
-  oss << "BNO086 imu_gravity diagnostics: " << "calibrated_accel_reports_received="
+  oss << "BNO086 imu_gravity diagnostics: " << "accel_events_seen="
+      << m_imuGravityDiagnostics.calibrated_accel_reports_received << " "
+      << "calibrated_accel_reports_received="
       << m_imuGravityDiagnostics.calibrated_accel_reports_received << " "
       << "imu_gravity_published=" << m_imuGravityDiagnostics.imu_gravity_published << " "
       << "skipped_missing_orientation="
@@ -1130,14 +1179,30 @@ std::string Bno086ImuNode::BuildImuGravityDiagnosticsLogMessage() const
       << m_imuGravityDiagnostics.timestamp_repaired_nonmonotonic_to_interval << " "
       << "timestamp_repaired_sequence_gap_to_interval="
       << m_imuGravityDiagnostics.timestamp_repaired_sequence_gap_to_interval << " "
+      << "timestamp_interval_repair_clamped_to_host="
+      << m_imuGravityDiagnostics.timestamp_interval_repair_clamped_to_host << " "
+      << "timestamp_interval_repair_bounded_to_legacy="
+      << m_imuGravityDiagnostics.timestamp_interval_repair_bounded_to_legacy << " "
       << "accel_sequence_gap_count=" << m_imuGravityDiagnostics.accel_sequence_gap_count << " "
       << "timestamp_reconstruction_reset_count="
       << m_imuGravityDiagnostics.timestamp_reconstruction_reset_count << " "
       << "latest_timestamp_repair_interval_us="
       << m_imuGravityDiagnostics.latest_timestamp_repair_interval_us << " "
+      << "latest_accel_stamp_ns=" << m_imuGravityDiagnostics.latest_accel_stamp_ns << " "
+      << "latest_orientation_stamp_ns=" << m_imuGravityDiagnostics.latest_orientation_stamp_ns
+      << " " << "latest_gyro_stamp_ns=" << m_imuGravityDiagnostics.latest_gyro_stamp_ns << " "
       << "latest_orientation_age_ms=" << m_imuGravityDiagnostics.latest_orientation_age_ms << " "
       << "latest_gyro_age_ms=" << m_imuGravityDiagnostics.latest_gyro_age_ms << " "
-      << "latest_calibrated_accel_rate_hz="
+      << "linear_accel_events_seen=" << m_imuGravityDiagnostics.linear_accel_events_seen << " "
+      << "imu_published=" << m_imuGravityDiagnostics.imu_published << " "
+      << "imu_skipped_missing_core_frame=" << m_imuGravityDiagnostics.imu_skipped_missing_core_frame
+      << " " << "imu_skipped_incoherent_core_frame="
+      << m_imuGravityDiagnostics.imu_skipped_incoherent_core_frame << " "
+      << "imu_skipped_duplicate_core_signature="
+      << m_imuGravityDiagnostics.imu_skipped_duplicate_core_signature << " "
+      << "latest_core_span_ms=" << m_imuGravityDiagnostics.latest_core_span_ms << " "
+      << "latest_linear_accel_stamp_ns=" << m_imuGravityDiagnostics.latest_linear_accel_stamp_ns
+      << " " << "latest_calibrated_accel_rate_hz="
       << m_imuGravityDiagnostics.latest_calibrated_accel_rate_hz << " "
       << "latest_imu_gravity_rate_hz=" << m_imuGravityDiagnostics.latest_imu_gravity_rate_hz << " "
       << "decoded_accel_rate_hz=" << m_imuGravityDiagnostics.latest_decoded_rate_hz[0] << " "

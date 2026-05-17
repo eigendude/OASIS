@@ -78,6 +78,16 @@ struct TimestampNormalizationResult
   bool repaired_sequence_gap_to_interval{false};
 
   /*!
+   * \brief True when interval repair was bounded to packet host time
+   */
+  bool interval_repair_clamped_to_host{false};
+
+  /*!
+   * \brief True when interval repair could only use legacy monotonic repair
+   */
+  bool interval_repair_bounded_to_legacy{false};
+
+  /*!
    * \brief True when reconstruction was implausible and host time was used
    */
   bool reconstruction_reset{false};
