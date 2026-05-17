@@ -86,11 +86,16 @@ private:
   struct ImuGravityDiagnostics
   {
     std::uint64_t calibrated_accel_reports_received{0};
+    std::uint64_t rotation_events_seen{0};
+    std::uint64_t imu_gravity_publish_attempts{0};
     std::uint64_t imu_gravity_published{0};
+    std::uint64_t imu_gravity_skipped_missing_accel{0};
     std::uint64_t imu_gravity_skipped_missing_orientation{0};
     std::uint64_t imu_gravity_skipped_missing_gyro{0};
+    std::uint64_t imu_gravity_skipped_stale_accel{0};
     std::uint64_t imu_gravity_skipped_stale_orientation{0};
     std::uint64_t imu_gravity_skipped_stale_gyro{0};
+    std::uint64_t imu_gravity_skipped_future_accel{0};
     std::uint64_t imu_gravity_skipped_future_orientation{0};
     std::uint64_t imu_gravity_skipped_future_gyro{0};
     std::uint64_t imu_gravity_skipped_duplicate_stamp{0};
@@ -110,6 +115,7 @@ private:
     std::uint64_t imu_skipped_incoherent_core_frame_span{0};
     std::uint64_t imu_skipped_duplicate_core_signature{0};
     std::uint32_t latest_timestamp_repair_interval_us{0};
+    double latest_accel_age_ms{0.0};
     double latest_orientation_age_ms{0.0};
     double latest_gyro_age_ms{0.0};
     double latest_core_span_ms{0.0};
@@ -232,7 +238,7 @@ private:
   void DrainPacketsForInterrupt(const std::chrono::steady_clock::time_point& interrupt_steady_at,
                                 const rclcpp::Time& interrupt_ros_at);
   void MaybePublishOnLinearAcceleration(const OASIS::IMU::BNO086::SensorEvent& event);
-  void MaybePublishImuGravityOnAccelerometer(const OASIS::IMU::BNO086::SensorEvent& event);
+  void MaybePublishImuGravityOnRotationVector(const OASIS::IMU::BNO086::SensorEvent& event);
   void MaybePublishGravityOnGravityReport(const OASIS::IMU::BNO086::SensorEvent& event);
   void PublishLatestFrame(const rclcpp::Time& stamp);
   std::uint32_t CoreCoherenceToleranceUs() const;
@@ -359,7 +365,7 @@ private:
   std::array<OASIS::IMU::BNO086::Bno086TimestampNormalizer, 256> m_timestampNormalizers{};
   std::array<std::optional<int64_t>, 256> m_lastEmittedTimestampNs{};
   std::optional<CoreFrameSignature> m_lastPublishedCoreSignature;
-  std::optional<int64_t> m_lastPublishedImuGravityAccelStampNs;
+  std::optional<int64_t> m_lastPublishedImuGravityAnchorStampNs;
   std::uint32_t m_reportIntervalUs{10'000};
   int m_packetReadTimeoutMs{5};
   int m_featureResponseStartupDrainMs{250};

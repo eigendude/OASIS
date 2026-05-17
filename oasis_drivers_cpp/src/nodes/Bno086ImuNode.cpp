@@ -380,7 +380,7 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   RCLCPP_INFO(get_logger(), "Predicted orientation output uses %s with prediction_horizon_sec=%.4f",
               m_predictionSource.c_str(), m_predictionHorizonSec);
   RCLCPP_INFO(get_logger(),
-              "BNO086 imu_gravity uses calibrated acceleration cadence with "
+              "BNO086 imu_gravity uses rotation vector cadence with "
               "orientation_max_age_ms=%.1f gyro_max_age_ms=%.1f",
               m_imuGravityMaxOrientationAgeMs, m_imuGravityMaxGyroAgeMs);
 }
@@ -392,7 +392,7 @@ bool Bno086ImuNode::Initialize()
   m_bnoCadenceEpochNs.reset();
   m_lastEmittedTimestampNs.fill(std::nullopt);
   m_lastPublishedCoreSignature.reset();
-  m_lastPublishedImuGravityAccelStampNs.reset();
+  m_lastPublishedImuGravityAnchorStampNs.reset();
   m_drainDiagnostics = DrainThroughputDiagnostics{};
 
   m_imuPublisher =
@@ -714,7 +714,7 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
         CountDecodedReport(*pollResult.event);
         ApplyEvent(*pollResult.event, normalizedEventStamp);
         MaybePublishOnLinearAcceleration(*pollResult.event);
-        MaybePublishImuGravityOnAccelerometer(*pollResult.event);
+        MaybePublishImuGravityOnRotationVector(*pollResult.event);
         MaybePublishGravityOnGravityReport(*pollResult.event);
       }
     }
@@ -886,12 +886,16 @@ void Bno086ImuNode::MaybePublishOnLinearAcceleration(const SensorEvent& event)
   ++m_imuGravityDiagnostics.imu_published;
 }
 
-void Bno086ImuNode::MaybePublishImuGravityOnAccelerometer(const SensorEvent& event)
+void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& event)
 {
-  if (event.report_id != ReportId::Accelerometer)
+  if (event.report_id == ReportId::Accelerometer)
+    ++m_imuGravityDiagnostics.calibrated_accel_reports_received;
+
+  if (event.report_id != ReportId::RotationVector)
     return;
 
-  ++m_imuGravityDiagnostics.calibrated_accel_reports_received;
+  ++m_imuGravityDiagnostics.rotation_events_seen;
+  ++m_imuGravityDiagnostics.imu_gravity_publish_attempts;
   m_imuGravityDiagnostics.latest_accel_stamp_ns =
       m_imuGravityState.has_sample ? m_imuGravityState.stamp.nanoseconds() : 0;
   m_imuGravityDiagnostics.latest_orientation_stamp_ns =
@@ -915,48 +919,48 @@ void Bno086ImuNode::MaybePublishImuGravityOnAccelerometer(const SensorEvent& eve
 
   if (!m_imuGravityState.has_sample || !m_latestFrame.has_accel)
   {
+    ++m_imuGravityDiagnostics.imu_gravity_skipped_missing_accel;
     MaybeLogImuGravityDiagnostics();
     return;
   }
 
+  const int64_t orientationStampNs = m_orientationState.stamp.nanoseconds();
   const int64_t accelStampNs = m_imuGravityState.stamp.nanoseconds();
-  const int64_t maxOrientationAgeNs = ImuGravityMaxOrientationAgeNs();
+  const int64_t maxAccelAgeNs = ImuGravityMaxOrientationAgeNs();
   const int64_t maxGyroAgeNs = ImuGravityMaxGyroAgeNs();
-  const SampleFreshnessResult orientationFreshness = EvaluateSampleFreshness(
-      accelStampNs, m_orientationState.stamp.nanoseconds(), maxOrientationAgeNs,
-      ReportFutureToleranceNs(ReportId::RotationVector));
+  const SampleFreshnessResult accelFreshness =
+      EvaluateSampleFreshness(orientationStampNs, accelStampNs, maxAccelAgeNs,
+                              ReportFutureToleranceNs(ReportId::Accelerometer));
   const SampleFreshnessResult gyroFreshness =
-      EvaluateSampleFreshness(accelStampNs, m_gyroState.stamp.nanoseconds(), maxGyroAgeNs,
+      EvaluateSampleFreshness(orientationStampNs, m_gyroState.stamp.nanoseconds(), maxGyroAgeNs,
                               ReportFutureToleranceNs(ReportId::GyroscopeCalibrated));
-  m_imuGravityDiagnostics.latest_orientation_age_ms =
-      static_cast<double>(orientationFreshness.age_ns) / 1.0e6;
+  m_imuGravityDiagnostics.latest_accel_age_ms = static_cast<double>(accelFreshness.age_ns) / 1.0e6;
+  m_imuGravityDiagnostics.latest_orientation_age_ms = 0.0;
   m_imuGravityDiagnostics.latest_gyro_age_ms = static_cast<double>(gyroFreshness.age_ns) / 1.0e6;
 
-  if (orientationFreshness.status == SampleFreshnessStatus::TooOld)
+  if (accelFreshness.status == SampleFreshnessStatus::TooOld)
   {
-    ++m_imuGravityDiagnostics.imu_gravity_skipped_stale_orientation;
-    RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
-                          "Skipping BNO086 imu_gravity sample: orientation older than max age "
-                          "age_ms=%.3f max_age_ms=%.3f accel_ns=%lld orientation_ns=%lld",
-                          m_imuGravityDiagnostics.latest_orientation_age_ms,
-                          static_cast<double>(maxOrientationAgeNs) / 1.0e6,
-                          static_cast<long long>(accelStampNs),
-                          static_cast<long long>(m_orientationState.stamp.nanoseconds()));
+    ++m_imuGravityDiagnostics.imu_gravity_skipped_stale_accel;
+    RCLCPP_DEBUG_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "Skipping BNO086 imu_gravity sample: accel older than max age "
+        "age_ms=%.3f max_age_ms=%.3f orientation_ns=%lld accel_ns=%lld",
+        m_imuGravityDiagnostics.latest_accel_age_ms, static_cast<double>(maxAccelAgeNs) / 1.0e6,
+        static_cast<long long>(orientationStampNs), static_cast<long long>(accelStampNs));
     MaybeLogImuGravityDiagnostics();
     return;
   }
 
-  if (orientationFreshness.status == SampleFreshnessStatus::TooFuture)
+  if (accelFreshness.status == SampleFreshnessStatus::TooFuture)
   {
-    ++m_imuGravityDiagnostics.imu_gravity_skipped_future_orientation;
-    RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
-                          "Skipping BNO086 imu_gravity sample: orientation too far after accel "
-                          "age_ms=%.3f future_tolerance_ms=%.3f accel_ns=%lld orientation_ns=%lld",
-                          m_imuGravityDiagnostics.latest_orientation_age_ms,
-                          static_cast<double>(ReportFutureToleranceNs(ReportId::RotationVector)) /
-                              1.0e6,
-                          static_cast<long long>(accelStampNs),
-                          static_cast<long long>(m_orientationState.stamp.nanoseconds()));
+    ++m_imuGravityDiagnostics.imu_gravity_skipped_future_accel;
+    RCLCPP_DEBUG_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "Skipping BNO086 imu_gravity sample: accel too far after orientation "
+        "age_ms=%.3f future_tolerance_ms=%.3f orientation_ns=%lld accel_ns=%lld",
+        m_imuGravityDiagnostics.latest_accel_age_ms,
+        static_cast<double>(ReportFutureToleranceNs(ReportId::Accelerometer)) / 1.0e6,
+        static_cast<long long>(orientationStampNs), static_cast<long long>(accelStampNs));
     MaybeLogImuGravityDiagnostics();
     return;
   }
@@ -966,10 +970,10 @@ void Bno086ImuNode::MaybePublishImuGravityOnAccelerometer(const SensorEvent& eve
     ++m_imuGravityDiagnostics.imu_gravity_skipped_stale_gyro;
     RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
                           "Skipping BNO086 imu_gravity sample: gyro older than max age "
-                          "age_ms=%.3f max_age_ms=%.3f accel_ns=%lld gyro_ns=%lld",
+                          "age_ms=%.3f max_age_ms=%.3f orientation_ns=%lld gyro_ns=%lld",
                           m_imuGravityDiagnostics.latest_gyro_age_ms,
                           static_cast<double>(maxGyroAgeNs) / 1.0e6,
-                          static_cast<long long>(accelStampNs),
+                          static_cast<long long>(orientationStampNs),
                           static_cast<long long>(m_gyroState.stamp.nanoseconds()));
     MaybeLogImuGravityDiagnostics();
     return;
@@ -980,32 +984,32 @@ void Bno086ImuNode::MaybePublishImuGravityOnAccelerometer(const SensorEvent& eve
     ++m_imuGravityDiagnostics.imu_gravity_skipped_future_gyro;
     RCLCPP_DEBUG_THROTTLE(
         get_logger(), *get_clock(), 2000,
-        "Skipping BNO086 imu_gravity sample: gyro too far after accel "
-        "age_ms=%.3f future_tolerance_ms=%.3f accel_ns=%lld gyro_ns=%lld",
+        "Skipping BNO086 imu_gravity sample: gyro too far after orientation "
+        "age_ms=%.3f future_tolerance_ms=%.3f orientation_ns=%lld gyro_ns=%lld",
         m_imuGravityDiagnostics.latest_gyro_age_ms,
         static_cast<double>(ReportFutureToleranceNs(ReportId::GyroscopeCalibrated)) / 1.0e6,
-        static_cast<long long>(accelStampNs),
+        static_cast<long long>(orientationStampNs),
         static_cast<long long>(m_gyroState.stamp.nanoseconds()));
     MaybeLogImuGravityDiagnostics();
     return;
   }
 
-  if (m_lastPublishedImuGravityAccelStampNs.has_value() &&
-      accelStampNs <= *m_lastPublishedImuGravityAccelStampNs)
+  if (m_lastPublishedImuGravityAnchorStampNs.has_value() &&
+      orientationStampNs <= *m_lastPublishedImuGravityAnchorStampNs)
   {
     ++m_imuGravityDiagnostics.imu_gravity_skipped_duplicate_stamp;
     MaybeLogImuGravityDiagnostics();
     return;
   }
 
-  // `imu_gravity` publishes a full sensor_msgs/Imu at calibrated
-  // acceleration cadence. Its linear_acceleration field intentionally
+  // `imu_gravity` publishes a full sensor_msgs/Imu at fused orientation
+  // cadence. Its linear_acceleration field intentionally
   // contains calibrated acceleration including gravity. This is the stream
   // used by monocular-inertial SLAM.
   //
   // BNO08X calibrated acceleration includes gravity, while the linear
   // acceleration report used by `imu` has gravity removed.
-  const sensor_msgs::msg::Imu imuGravityMsg = BuildImuGravityMessage(m_imuGravityState.stamp);
+  const sensor_msgs::msg::Imu imuGravityMsg = BuildImuGravityMessage(m_orientationState.stamp);
   std::string invalidReason;
   if (!IsImuGravitySampleValid(imuGravityMsg, invalidReason))
   {
@@ -1017,7 +1021,7 @@ void Bno086ImuNode::MaybePublishImuGravityOnAccelerometer(const SensorEvent& eve
   }
 
   m_imuGravityPublisher->publish(imuGravityMsg);
-  m_lastPublishedImuGravityAccelStampNs = accelStampNs;
+  m_lastPublishedImuGravityAnchorStampNs = orientationStampNs;
   ++m_imuGravityDiagnostics.imu_gravity_published;
   MaybeLogImuGravityDiagnostics();
 }
@@ -1597,13 +1601,18 @@ std::string Bno086ImuNode::BuildImuGravityDiagnosticsLogMessage() const
       << m_imuGravityDiagnostics.calibrated_accel_reports_received << " "
       << "calibrated_accel_reports_received="
       << m_imuGravityDiagnostics.calibrated_accel_reports_received << " "
-      << "imu_gravity_published=" << m_imuGravityDiagnostics.imu_gravity_published << " "
-      << "skipped_missing_orientation="
+      << "rotation_events_seen=" << m_imuGravityDiagnostics.rotation_events_seen << " "
+      << "imu_gravity_publish_attempts=" << m_imuGravityDiagnostics.imu_gravity_publish_attempts
+      << " " << "imu_gravity_published=" << m_imuGravityDiagnostics.imu_gravity_published << " "
+      << "skipped_missing_accel=" << m_imuGravityDiagnostics.imu_gravity_skipped_missing_accel
+      << " " << "skipped_missing_orientation="
       << m_imuGravityDiagnostics.imu_gravity_skipped_missing_orientation << " "
       << "skipped_missing_gyro=" << m_imuGravityDiagnostics.imu_gravity_skipped_missing_gyro << " "
+      << "skipped_stale_accel=" << m_imuGravityDiagnostics.imu_gravity_skipped_stale_accel << " "
       << "skipped_stale_orientation="
       << m_imuGravityDiagnostics.imu_gravity_skipped_stale_orientation << " "
       << "skipped_stale_gyro=" << m_imuGravityDiagnostics.imu_gravity_skipped_stale_gyro << " "
+      << "skipped_future_accel=" << m_imuGravityDiagnostics.imu_gravity_skipped_future_accel << " "
       << "skipped_future_orientation="
       << m_imuGravityDiagnostics.imu_gravity_skipped_future_orientation << " "
       << "skipped_future_gyro=" << m_imuGravityDiagnostics.imu_gravity_skipped_future_gyro << " "
@@ -1629,6 +1638,7 @@ std::string Bno086ImuNode::BuildImuGravityDiagnosticsLogMessage() const
       << "latest_accel_stamp_ns=" << m_imuGravityDiagnostics.latest_accel_stamp_ns << " "
       << "latest_orientation_stamp_ns=" << m_imuGravityDiagnostics.latest_orientation_stamp_ns
       << " " << "latest_gyro_stamp_ns=" << m_imuGravityDiagnostics.latest_gyro_stamp_ns << " "
+      << "latest_accel_age_ms=" << m_imuGravityDiagnostics.latest_accel_age_ms << " "
       << "latest_orientation_age_ms=" << m_imuGravityDiagnostics.latest_orientation_age_ms << " "
       << "latest_gyro_age_ms=" << m_imuGravityDiagnostics.latest_gyro_age_ms << " "
       << "linear_accel_events_seen=" << m_imuGravityDiagnostics.linear_accel_events_seen << " "
@@ -1864,7 +1874,7 @@ bool Bno086ImuNode::IsBno086RateUnhealthy() const
 
   if (m_imuGravityDiagnostics.latest_imu_gravity_rate_hz > 0.0 &&
       m_imuGravityDiagnostics.latest_imu_gravity_rate_hz <
-          m_accelerometerRateHz * MIN_HEALTHY_RATE_FRACTION)
+          m_rotationVectorRateHz * MIN_HEALTHY_RATE_FRACTION)
   {
     return true;
   }
