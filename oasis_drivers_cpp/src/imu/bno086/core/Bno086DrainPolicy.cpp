@@ -6,7 +6,7 @@
  *  See the file LICENSE.txt for more information.
  */
 
-#include "imu/bno086/Bno086DrainPolicy.hpp"
+#include "imu/bno086/core/Bno086DrainPolicy.hpp"
 
 namespace OASIS::IMU::BNO086
 {

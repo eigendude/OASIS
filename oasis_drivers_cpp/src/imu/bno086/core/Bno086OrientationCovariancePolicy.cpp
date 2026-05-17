@@ -6,7 +6,7 @@
  *  See the file LICENSE.txt for more information.
  */
 
-#include "imu/bno086/utils/Bno086OrientationCovariancePolicy.hpp"
+#include "imu/bno086/core/Bno086OrientationCovariancePolicy.hpp"
 
 #include <algorithm>
 #include <cmath>

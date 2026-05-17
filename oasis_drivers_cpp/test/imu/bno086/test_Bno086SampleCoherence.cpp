@@ -6,7 +6,7 @@
  *  See the file LICENSE.txt for more information.
  */
 
-#include "imu/bno086/Bno086SampleCoherence.hpp"
+#include "imu/bno086/core/Bno086SampleCoherence.hpp"
 
 #include <gtest/gtest.h>
 
