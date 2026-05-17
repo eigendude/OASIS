@@ -198,6 +198,78 @@ def test_ahrs_qos_profiles_match_imu_gravity_contract() -> None:
         node.stop()
 
 
+def test_mounted_sensor_outputs_follow_accepted_upstream_samples_one_to_one() -> None:
+    node, _, imu_gravity_pub, gravity_pub, imu_pub, _, _ = make_node(
+        make_cached_mounting_transform((0.0, 0.0, 0.0, 1.0))
+    )
+
+    try:
+        node._handle_imu(make_imu_message(timestamp_ns=1_000_000_000))
+        assert len(imu_pub.messages) == 1
+        assert _stamp_to_ns(imu_pub.messages[-1].header.stamp) == 1_000_000_000
+        assert imu_pub.messages[-1].header.frame_id == "base_link"
+
+        node._handle_imu(make_imu_message(timestamp_ns=1_100_000_000))
+        assert len(imu_pub.messages) == 2
+        assert _stamp_to_ns(imu_pub.messages[-1].header.stamp) == 1_100_000_000
+        assert imu_pub.messages[-1].header.frame_id == "base_link"
+
+        node._handle_imu_gravity(make_imu_gravity_message(timestamp_ns=1_200_000_000))
+        assert len(imu_gravity_pub.messages) == 1
+        assert _stamp_to_ns(imu_gravity_pub.messages[-1].header.stamp) == 1_200_000_000
+        assert imu_gravity_pub.messages[-1].header.frame_id == "base_link"
+
+        node._handle_imu_gravity(make_imu_gravity_message(timestamp_ns=1_300_000_000))
+        assert len(imu_gravity_pub.messages) == 2
+        assert _stamp_to_ns(imu_gravity_pub.messages[-1].header.stamp) == 1_300_000_000
+        assert imu_gravity_pub.messages[-1].header.frame_id == "base_link"
+
+        node._handle_gravity(make_gravity_message(timestamp_ns=1_400_000_000))
+        assert len(gravity_pub.messages) == 1
+        assert _stamp_to_ns(gravity_pub.messages[-1].header.stamp) == 1_400_000_000
+        assert gravity_pub.messages[-1].header.frame_id == "base_link"
+
+        node._handle_gravity(make_gravity_message(timestamp_ns=1_500_000_000))
+        assert len(gravity_pub.messages) == 2
+        assert _stamp_to_ns(gravity_pub.messages[-1].header.stamp) == 1_500_000_000
+        assert gravity_pub.messages[-1].header.frame_id == "base_link"
+
+        node._handle_imu(make_imu_message(timestamp_ns=1_550_000_000))
+        assert len(imu_pub.messages) == 3
+        assert len(gravity_pub.messages) == 2
+    finally:
+        node.stop()
+
+
+def test_gravity_before_mounting_waits_and_solving_sample_can_publish_once() -> None:
+    node, _, _, gravity_pub, _, _, _ = make_node()
+
+    try:
+        node._handle_gravity(make_gravity_message(timestamp_ns=1_000_000_000))
+        assert len(gravity_pub.messages) == 0
+    finally:
+        node.stop()
+
+    solved_node, _, _, solved_gravity_pub, _, _, _ = make_node()
+    solved_node._mounting_calibrator = BootMountingCalibrator(
+        parent_frame_id="base_link",
+        child_frame_id="imu_link",
+        calibration_duration_sec=0.0,
+        min_sample_count=1,
+    )
+
+    try:
+        solved_node._handle_gravity(make_gravity_message(timestamp_ns=2_000_000_000))
+
+        assert len(solved_gravity_pub.messages) == 1
+        assert (
+            _stamp_to_ns(solved_gravity_pub.messages[-1].header.stamp) == 2_000_000_000
+        )
+        assert solved_gravity_pub.messages[-1].header.frame_id == "base_link"
+    finally:
+        solved_node.stop()
+
+
 def test_session_yaw_zero_tracks_subsequent_yaw_relative_to_startup() -> None:
     node, _, _, _, imu_pub, odom_pub, tf_broadcaster = make_node(
         make_cached_mounting_transform((0.0, 0.0, 0.0, 1.0))
@@ -537,7 +609,9 @@ def test_imu_gravity_output_rotates_all_covariance_blocks_into_base_link() -> No
         node.stop()
 
 
-def test_stale_or_missing_gravity_does_not_publish_mounted_gravity() -> None:
+def test_missing_or_stale_gravity_does_not_affect_imu_path_gravity_publication() -> (
+    None
+):
     node, _, _, gravity_pub, _, _, _ = make_node(
         make_cached_mounting_transform((0.0, 0.0, 0.0, 1.0))
     )
@@ -547,9 +621,10 @@ def test_stale_or_missing_gravity_does_not_publish_mounted_gravity() -> None:
         assert len(gravity_pub.messages) == 0
 
         node._handle_gravity(make_gravity_message(timestamp_ns=100_000_000))
+        initial_gravity_publish_count: int = len(gravity_pub.messages)
         node._handle_imu(make_imu_message(timestamp_ns=1_000_000_000))
 
-        assert len(gravity_pub.messages) == 0
+        assert len(gravity_pub.messages) == initial_gravity_publish_count
     finally:
         node.stop()
 
@@ -1382,6 +1457,10 @@ def _driver_quaternion_from_mounted_yaw_rad(
     mounted_yaw_rad: float,
 ) -> tuple[float, float, float, float]:
     return _quaternion_from_yaw_rad(mounted_yaw_rad)
+
+
+def _stamp_to_ns(stamp: Any) -> int:
+    return int(stamp.sec) * 1_000_000_000 + int(stamp.nanosec)
 
 
 def _driver_quaternion_from_mounted_roll_pitch_yaw_rad(

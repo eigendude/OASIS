@@ -322,6 +322,13 @@ navigation filter.
 The node is event-driven on accepted `imu`, `imu_gravity`, and `gravity`
 samples.
 
+After mounting is solved, mounted AHRS streams are 1:1 mounted versions of
+accepted upstream streams. Each accepted upstream `imu`, `imu_gravity`, or
+`gravity` sample publishes at most one sample on its corresponding mounted
+topic. Before mounting is available, accepted upstream samples may update
+diagnostics, calibration, and runtime state, but mounted sensor outputs are not
+published.
+
 Definitions:
 
 - `t_meas_ns`: message timestamp in integer nanoseconds
@@ -421,6 +428,10 @@ propagation acceleration.
 Gravity consistency results are also reflected in diagnostics and any
 accept/reject policy. Gravity consistency uses the latest accepted gravity
 measurement under the documented pairing policy.
+
+`ahrs/gravity` follows the accepted upstream `gravity` cadence. AHRS may use
+the latest gravity sample while handling `imu` for consistency diagnostics and
+orientation covariance, but it does not republish gravity on `imu` cadence.
 
 The downstream-facing `ahrs/imu`, `ahrs/imu_gravity`, and `ahrs/gravity`
 streams use RELIABLE QoS with bounded keep-last history for EKF and replay

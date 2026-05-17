@@ -396,6 +396,17 @@ class AhrsNode(rclpy.node.Node):
             validation_result.sample.timestamp_ns
         )
         self._update_mounting_calibration(validation_result.sample)
+
+        mounting_transform: Optional[MountingTransform] = self._resolve_mounting()
+        if mounting_transform is not None:
+            mounted_gravity_sample: MountedGravitySample = apply_mounting_to_gravity(
+                validation_result.sample,
+                mounting_transform,
+            )
+            self._gravity_pub.publish(
+                self._build_gravity_message(mounted_gravity_sample)
+            )
+
         self._publish_runtime_outputs()
 
     def _handle_imu_gravity(self, message: ImuMsg) -> None:
@@ -557,10 +568,6 @@ class AhrsNode(rclpy.node.Node):
             mounted_gravity_sample=mounted_gravity_sample,
             gravity_residual=gravity_residual,
         )
-        if mounted_gravity_sample is not None:
-            self._gravity_pub.publish(
-                self._build_gravity_message(mounted_gravity_sample)
-            )
         self._imu_pub.publish(self._build_imu_message(self._latest_output))
         self._odom_pub.publish(self._build_odom_message(self._latest_output))
         self._publish_runtime_outputs()
