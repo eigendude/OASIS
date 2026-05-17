@@ -51,4 +51,25 @@
 - For changes to Python packages, pass `black --check`, `flake8`,
   `isort --check-only`, `mypy`, and `pytest` before finishing
 - For changes to C++ packages, pass `clang-format` checks before finishing
+- For `oasis_drivers_cpp` / `oasis_perception_cpp` C++ changes, use the
+  repo-managed ROS environment, not a bare `colcon` shell. Prefer the CI
+  wrapper from the repo root:
+  `./oasis_tooling/scripts/build_oasis.sh`
+- For targeted local C++ package builds/tests, first load the same environment
+  as the wrapper:
+  `source oasis_tooling/scripts/env_oasis.sh && source
+  "${OASIS_DEPENDS_INSTALL_DIRECTORY}/setup.bash" && cd "${OASIS_DIRECTORY}"`
+  Then run:
+  `colcon build --packages-select oasis_drivers_cpp oasis_perception_cpp
+  --cmake-args -DBUILD_TESTING=ON -DCMAKE_PREFIX_PATH="${CMAKE_PREFIX_PATH}"`
+  followed by:
+  `colcon test --packages-select oasis_drivers_cpp oasis_perception_cpp &&
+  colcon test-result --verbose`
+- If `ament_cmake` is not found, the ROS/OASIS dependency environment is not
+  loaded or has not been built/restored; do not interpret that as a C++ compile
+  failure
+- Do not treat ad-hoc direct `g++`/`clang++` test binaries as a substitute for
+  the package's `colcon` build and test flow. They are only useful as a quick
+  local sanity check when the ROS environment is unavailable, and must be
+  reported as such
 - In deliverables, never include diffs or patch-style output; summarize file changes in prose instead
