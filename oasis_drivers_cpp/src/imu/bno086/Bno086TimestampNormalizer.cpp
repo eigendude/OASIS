@@ -73,9 +73,15 @@ TimestampNormalizationResult Bno086TimestampNormalizer::Normalize(
             !result.repaired_sequence_gap_to_interval && result.stamp_ns < m_lastStampNs;
 
         const int64_t candidateStampNs = m_lastStampNs + (*expected_interval_ns * sequenceDelta);
+        const int64_t maxFutureStampNs = sample.packet_host_stamp_ns + maxFutureSkewNs;
         if (candidateStampNs <= sample.packet_host_stamp_ns)
         {
           result.stamp_ns = candidateStampNs;
+        }
+        else if (candidateStampNs <= maxFutureStampNs)
+        {
+          result.stamp_ns = candidateStampNs;
+          result.interval_repair_allowed_by_future_slop = true;
         }
         else if (sample.packet_host_stamp_ns > m_lastStampNs)
         {

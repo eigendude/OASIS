@@ -138,6 +138,28 @@ std::optional<std::uint32_t> RateHzToIntervalUs(double rate_hz)
 
   return static_cast<std::uint32_t>(std::max(1.0, std::round(1'000'000.0 / rate_hz)));
 }
+
+const char* TimestampReanchorReasonName(TimestampReanchorReason reason)
+{
+  switch (reason)
+  {
+    case TimestampReanchorReason::Startup:
+      return "startup";
+    case TimestampReanchorReason::Forward:
+      return "forward";
+    case TimestampReanchorReason::Wrap:
+      return "wrap";
+    case TimestampReanchorReason::Reset:
+      return "reset";
+    case TimestampReanchorReason::ImplausibleDrift:
+      return "implausible_drift";
+    case TimestampReanchorReason::MissingBase:
+      return "missing_base";
+    case TimestampReanchorReason::None:
+    default:
+      return "none";
+  }
+}
 } // namespace
 
 Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
@@ -1497,6 +1519,7 @@ void Bno086ImuNode::MaybeLogTimestampTraceLine(const SensorEvent& event,
               "repaired_nonmonotonic_to_interval=%s "
               "repaired_sequence_gap_to_interval=%s "
               "interval_repair_clamped_to_host=%s "
+              "interval_repair_allowed_by_future_slop=%s "
               "interval_repair_bounded_to_legacy=%s expected_interval_us=%u "
               "previous_normalized_delta_ns=%lld previous_raw_delta_ns=%lld",
               ReportName(event.report_id), event.sequence, event.channel, event.report_offset,
@@ -1510,6 +1533,7 @@ void Bno086ImuNode::MaybeLogTimestampTraceLine(const SensorEvent& event,
               normalized.repaired_nonmonotonic_to_interval ? "true" : "false",
               normalized.repaired_sequence_gap_to_interval ? "true" : "false",
               normalized.interval_repair_clamped_to_host ? "true" : "false",
+              normalized.interval_repair_allowed_by_future_slop ? "true" : "false",
               normalized.interval_repair_bounded_to_legacy ? "true" : "false",
               expected_interval_us.value_or(0),
               static_cast<long long>(previous_normalized_delta_ns.value_or(0)),
@@ -1778,6 +1802,29 @@ rclcpp::Time Bno086ImuNode::EstimateEventStamp(const SensorEvent& event,
                           mappedStamp.reanchored_offset ? "true" : "false",
                           mappedStamp.detected_wrap_or_reset ? "true" : "false",
                           mappedStamp.rejected_implausible_mapping ? "true" : "false");
+  }
+
+  if (mappedStamp.reanchor_reason != TimestampReanchorReason::None &&
+      mappedStamp.reanchor_reason != TimestampReanchorReason::MissingBase)
+  {
+    RCLCPP_DEBUG(get_logger(),
+                 "BNO086 timestamp mapper reanchor: reason=%s "
+                 "previous_base_timestamp_us=%u current_base_timestamp_us=%u "
+                 "raw_base_delta_us=%lld previous_extended_device_time_us=%lld "
+                 "current_extended_device_time_us=%lld packet_host_stamp_ns=%lld "
+                 "old_offset_ns=%lld new_offset_ns=%lld offset_delta_ms=%.3f "
+                 "mapped_stamp_before_reanchor_ns=%lld "
+                 "mapped_stamp_after_reanchor_ns=%lld",
+                 TimestampReanchorReasonName(mappedStamp.reanchor_reason),
+                 mappedStamp.previous_base_timestamp_us, mappedStamp.current_base_timestamp_us,
+                 static_cast<long long>(mappedStamp.raw_base_delta_us),
+                 static_cast<long long>(mappedStamp.previous_extended_device_time_us),
+                 static_cast<long long>(mappedStamp.current_extended_device_time_us),
+                 static_cast<long long>(mappedStamp.packet_host_stamp_ns),
+                 static_cast<long long>(mappedStamp.old_offset_ns),
+                 static_cast<long long>(mappedStamp.new_offset_ns), mappedStamp.offset_delta_ms,
+                 static_cast<long long>(mappedStamp.mapped_stamp_before_reanchor_ns),
+                 static_cast<long long>(mappedStamp.mapped_stamp_after_reanchor_ns));
   }
 
   return rclcpp::Time(mappedStamp.stamp_ns, RCL_ROS_TIME);

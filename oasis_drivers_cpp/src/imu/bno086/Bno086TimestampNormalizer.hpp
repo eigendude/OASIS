@@ -103,6 +103,11 @@ struct TimestampNormalizationResult
   bool interval_repair_clamped_to_host{false};
 
   /*!
+   * \brief True when interval repair was accepted within future slop
+   */
+  bool interval_repair_allowed_by_future_slop{false};
+
+  /*!
    * \brief True when interval repair could only use legacy monotonic repair
    */
   bool interval_repair_bounded_to_legacy{false};

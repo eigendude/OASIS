@@ -8,6 +8,9 @@
 
 #include "imu/bno086/Bno086TimestampNormalizer.hpp"
 
+#include <array>
+#include <cstdint>
+
 #include <gtest/gtest.h>
 
 using namespace OASIS::IMU::BNO086;
@@ -74,6 +77,23 @@ TEST(Bno086TimestampNormalizer, futureIntervalCandidateAndStaleHostProducesLegac
   EXPECT_TRUE(repaired.repaired_nonmonotonic);
   EXPECT_TRUE(repaired.repaired_duplicate_to_interval);
   EXPECT_TRUE(repaired.interval_repair_bounded_to_legacy);
+  EXPECT_FALSE(repaired.interval_repair_clamped_to_host);
+}
+
+TEST(Bno086TimestampNormalizer, futureIntervalCandidateWithinSlopUsesExpectedInterval)
+{
+  Bno086TimestampNormalizer normalizer;
+
+  ASSERT_FALSE(normalizer.Normalize(TimestampSample{4, 1'000'000, 1'000'000}).duplicate);
+
+  const TimestampNormalizationResult repaired =
+      normalizer.Normalize(TimestampSample{5, 1'000'000, 1'000'000, 50'000'000}, 10'000'000);
+
+  EXPECT_EQ(repaired.stamp_ns, 11'000'000);
+  EXPECT_TRUE(repaired.repaired_nonmonotonic);
+  EXPECT_TRUE(repaired.repaired_duplicate_to_interval);
+  EXPECT_TRUE(repaired.interval_repair_allowed_by_future_slop);
+  EXPECT_FALSE(repaired.interval_repair_bounded_to_legacy);
   EXPECT_FALSE(repaired.interval_repair_clamped_to_host);
 }
 
@@ -166,6 +186,70 @@ TEST(Bno086TimestampNormalizer, sequenceWrapUsesExpectedInterval)
   EXPECT_FALSE(repaired.sequence_gap);
   EXPECT_TRUE(repaired.repaired_duplicate_to_interval);
   EXPECT_FALSE(repaired.repaired_sequence_gap_to_interval);
+}
+
+TEST(Bno086TimestampNormalizer, batchedAccelerometerSequenceUsesEightMillisecondCadence)
+{
+  Bno086TimestampNormalizer normalizer;
+
+  constexpr int64_t kPacketHostStampNs = 1'000'000'000;
+  constexpr int64_t kFutureSlopNs = 50'000'000;
+
+  ASSERT_EQ(
+      normalizer
+          .Normalize(TimestampSample{1, kPacketHostStampNs, kPacketHostStampNs, kFutureSlopNs})
+          .stamp_ns,
+      kPacketHostStampNs);
+
+  for (std::uint8_t sequence = 2; sequence < 8; ++sequence)
+  {
+    const TimestampNormalizationResult repaired = normalizer.Normalize(
+        TimestampSample{sequence, kPacketHostStampNs, kPacketHostStampNs, kFutureSlopNs},
+        8'000'000);
+    const int64_t expectedStampNs =
+        kPacketHostStampNs + (static_cast<int64_t>(sequence) - 1) * 8'000'000;
+    EXPECT_EQ(repaired.stamp_ns, expectedStampNs);
+    EXPECT_TRUE(repaired.interval_repair_allowed_by_future_slop);
+    EXPECT_FALSE(repaired.interval_repair_bounded_to_legacy);
+  }
+}
+
+TEST(Bno086TimestampNormalizer, mixedReportCadencesUseIndependentIntervals)
+{
+  struct StreamCase
+  {
+    std::uint8_t first_sequence;
+    int64_t interval_ns;
+  };
+
+  constexpr int64_t kPacketHostStampNs = 2'000'000'000;
+  constexpr int64_t kFutureSlopNs = 50'000'000;
+  const std::array<StreamCase, 5> streams{{
+      {10, 8'000'000},
+      {20, 10'000'000},
+      {30, 10'000'000},
+      {40, 20'000'000},
+      {50, 40'000'000},
+  }};
+
+  for (const StreamCase& stream : streams)
+  {
+    Bno086TimestampNormalizer normalizer;
+    ASSERT_EQ(normalizer
+                  .Normalize(TimestampSample{stream.first_sequence, kPacketHostStampNs,
+                                             kPacketHostStampNs, kFutureSlopNs})
+                  .stamp_ns,
+              kPacketHostStampNs);
+
+    const TimestampNormalizationResult repaired =
+        normalizer.Normalize(TimestampSample{static_cast<std::uint8_t>(stream.first_sequence + 1),
+                                             kPacketHostStampNs, kPacketHostStampNs, kFutureSlopNs},
+                             stream.interval_ns);
+
+    EXPECT_EQ(repaired.stamp_ns, kPacketHostStampNs + stream.interval_ns);
+    EXPECT_TRUE(repaired.interval_repair_allowed_by_future_slop);
+    EXPECT_FALSE(repaired.interval_repair_bounded_to_legacy);
+  }
 }
 
 TEST(Bno086TimestampNormalizer, linearAccelerationIntervalRepairWorksWhenHostAdvanced)

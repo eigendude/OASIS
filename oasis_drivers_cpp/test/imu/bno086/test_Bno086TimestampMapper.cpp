@@ -40,6 +40,7 @@ TEST(Bno086TimestampMapper, initialMappingUsesHostDerivedOffset)
   EXPECT_TRUE(result.used_device_time);
   EXPECT_TRUE(result.initialized_offset);
   EXPECT_TRUE(result.reanchored_offset);
+  EXPECT_EQ(result.reanchor_reason, TimestampReanchorReason::Startup);
   EXPECT_FALSE(result.rejected_implausible_mapping);
 }
 
@@ -63,7 +64,27 @@ TEST(Bno086TimestampMapper, stableOffsetIgnoresBurstyHostReceiveTime)
 
   EXPECT_EQ(second.stamp_ns, 10'008'000'000);
   EXPECT_FALSE(second.reanchored_offset);
+  EXPECT_FALSE(second.detected_wrap_or_reset);
   EXPECT_FALSE(second.rejected_implausible_mapping);
+}
+
+TEST(Bno086TimestampMapper, repeatedLocalBackwardBaseDoesNotReanchorAsReset)
+{
+  Bno086TimestampMapper mapper;
+
+  ASSERT_EQ(mapper.Map(Input(1'000'000, 0, 10'000'000'000, 1)).stamp_ns, 10'000'000'000);
+
+  const TimestampMappingResult second = mapper.Map(Input(995'000, 0, 10'008'000'000, 2));
+  const TimestampMappingResult third = mapper.Map(Input(990'000, 0, 10'016'000'000, 3));
+
+  EXPECT_EQ(second.stamp_ns, 9'995'000'000);
+  EXPECT_EQ(third.stamp_ns, 9'990'000'000);
+  EXPECT_FALSE(second.detected_wrap_or_reset);
+  EXPECT_FALSE(third.detected_wrap_or_reset);
+  EXPECT_FALSE(second.reanchored_offset);
+  EXPECT_FALSE(third.reanchored_offset);
+  EXPECT_EQ(second.reanchor_reason, TimestampReanchorReason::None);
+  EXPECT_EQ(third.reanchor_reason, TimestampReanchorReason::None);
 }
 
 TEST(Bno086TimestampMapper, batchedReportsUseDeviceCadence)
@@ -106,6 +127,7 @@ TEST(Bno086TimestampMapper, largeBackwardJumpReanchorsAsDeviceReset)
   EXPECT_EQ(reset.stamp_ns, 12'000'000'000);
   EXPECT_TRUE(reset.detected_wrap_or_reset);
   EXPECT_TRUE(reset.reanchored_offset);
+  EXPECT_EQ(reset.reanchor_reason, TimestampReanchorReason::Reset);
 }
 
 TEST(Bno086TimestampMapper, smallBackwardModuloStepExtendsWrap)
@@ -120,6 +142,7 @@ TEST(Bno086TimestampMapper, smallBackwardModuloStepExtendsWrap)
   EXPECT_EQ(wrapped.stamp_ns, 10'003'000'000);
   EXPECT_TRUE(wrapped.detected_wrap_or_reset);
   EXPECT_FALSE(wrapped.reanchored_offset);
+  EXPECT_EQ(wrapped.reanchor_reason, TimestampReanchorReason::Wrap);
 }
 
 TEST(Bno086TimestampMapper, missingBaseTimestampFallsBackToHostMinusDelay)
