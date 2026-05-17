@@ -69,8 +69,8 @@ constexpr std::uint32_t REPEATED_NO_PROGRESS_TIMEOUT_WARN_COUNT = 3;
 constexpr std::uint32_t MIN_COHERENT_SAMPLE_SPAN_US = 50'000;
 constexpr double DEFAULT_PREDICTION_HORIZON_SEC = 0.0;
 
-constexpr double DEFAULT_ROTATION_VECTOR_RATE_HZ = 100.0;
-constexpr double DEFAULT_GYRO_RATE_HZ = 100.0;
+constexpr double DEFAULT_ROTATION_VECTOR_RATE_HZ = 50.0;
+constexpr double DEFAULT_GYRO_RATE_HZ = 50.0;
 constexpr double DEFAULT_ACCELEROMETER_RATE_HZ = 100.0;
 constexpr double DEFAULT_LINEAR_ACCELERATION_RATE_HZ = 50.0;
 constexpr double DEFAULT_GRAVITY_RATE_HZ = 25.0;

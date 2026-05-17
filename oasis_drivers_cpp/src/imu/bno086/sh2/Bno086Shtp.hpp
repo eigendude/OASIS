@@ -32,7 +32,7 @@ struct Bno086ShtpConfig
    *
    * Units: Hz, clamped to at least 1.0
    */
-  double rotation_vector_rate_hz{100.0};
+  double rotation_vector_rate_hz{50.0};
 
   /*!
    * \brief Requested Rotation Vector maximum batching delay
@@ -46,7 +46,7 @@ struct Bno086ShtpConfig
    *
    * Units: Hz, clamped to at least 1.0
    */
-  double gyro_rate_hz{100.0};
+  double gyro_rate_hz{50.0};
 
   /*!
    * \brief Requested calibrated gyroscope maximum batching delay

@@ -369,8 +369,8 @@ TEST(Bno086Shtp, configuresStaticPerReportIntervalsAndDefaultBatchIntervals)
 
   Bno086ShtpConfig config;
   config.report_rate_hz = 10.0;
-  config.rotation_vector_rate_hz = 100.0;
-  config.gyro_rate_hz = 100.0;
+  config.rotation_vector_rate_hz = 50.0;
+  config.gyro_rate_hz = 50.0;
   config.accelerometer_rate_hz = 100.0;
   config.linear_acceleration_rate_hz = 50.0;
   config.gravity_rate_hz = 25.0;
@@ -380,11 +380,11 @@ TEST(Bno086Shtp, configuresStaticPerReportIntervalsAndDefaultBatchIntervals)
   const std::vector<FeatureConfiguration>& features = shtp.GetFeatureConfigurations();
   ASSERT_EQ(features.size(), 5U);
   EXPECT_EQ(features[0].report_id, ReportId::RotationVector);
-  EXPECT_EQ(features[0].requested_interval_us, 10'000U);
+  EXPECT_EQ(features[0].requested_interval_us, 20'000U);
   EXPECT_EQ(features[0].requested_batch_interval_us, 50'000U);
   EXPECT_TRUE(features[0].enabled);
   EXPECT_EQ(features[1].report_id, ReportId::GyroscopeCalibrated);
-  EXPECT_EQ(features[1].requested_interval_us, 10'000U);
+  EXPECT_EQ(features[1].requested_interval_us, 20'000U);
   EXPECT_EQ(features[1].requested_batch_interval_us, 50'000U);
   EXPECT_TRUE(features[1].enabled);
   EXPECT_EQ(features[2].report_id, ReportId::LinearAcceleration);
@@ -401,13 +401,13 @@ TEST(Bno086Shtp, configuresStaticPerReportIntervalsAndDefaultBatchIntervals)
   EXPECT_TRUE(features[4].enabled);
 
   ASSERT_EQ(transport.payloads.size(), 10U);
-  EXPECT_EQ(ReadIntervalUs(transport.payloads[0]), 10'000U);
+  EXPECT_EQ(ReadIntervalUs(transport.payloads[0]), 20'000U);
   EXPECT_EQ(ReadBatchIntervalUs(transport.payloads[0]), 50'000U);
   EXPECT_EQ(transport.payloads[1], (std::vector<std::uint8_t>{
                                        kShtpGetFeatureRequest,
                                        static_cast<std::uint8_t>(ReportId::RotationVector),
                                    }));
-  EXPECT_EQ(ReadIntervalUs(transport.payloads[2]), 10'000U);
+  EXPECT_EQ(ReadIntervalUs(transport.payloads[2]), 20'000U);
   EXPECT_EQ(ReadBatchIntervalUs(transport.payloads[2]), 50'000U);
   EXPECT_EQ(ReadIntervalUs(transport.payloads[4]), 20'000U);
   EXPECT_EQ(ReadBatchIntervalUs(transport.payloads[4]), 50'000U);
@@ -430,12 +430,12 @@ TEST(Bno086Shtp, explicitZeroBatchIntervalDisablesBatchingForReport)
   const std::vector<FeatureConfiguration>& features = shtp.GetFeatureConfigurations();
   ASSERT_EQ(features.size(), 5U);
   EXPECT_EQ(features[1].report_id, ReportId::GyroscopeCalibrated);
-  EXPECT_EQ(features[1].requested_interval_us, 10'000U);
+  EXPECT_EQ(features[1].requested_interval_us, 20'000U);
   EXPECT_EQ(features[1].requested_batch_interval_us, 0U);
   EXPECT_TRUE(features[1].enabled);
 
   ASSERT_EQ(transport.payloads.size(), 10U);
-  EXPECT_EQ(ReadIntervalUs(transport.payloads[2]), 10'000U);
+  EXPECT_EQ(ReadIntervalUs(transport.payloads[2]), 20'000U);
   EXPECT_EQ(ReadBatchIntervalUs(transport.payloads[2]), 0U);
 }
 
