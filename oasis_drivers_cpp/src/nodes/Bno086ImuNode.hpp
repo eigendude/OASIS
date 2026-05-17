@@ -14,8 +14,6 @@
 #include "imu/bno086/Bno086OrientationCovariancePolicy.hpp"
 #include "imu/bno086/Bno086ReportTimestampTracker.hpp"
 #include "imu/bno086/Bno086SampleCoherence.hpp"
-#include "imu/bno086/Bno086TimestampMapper.hpp"
-#include "imu/bno086/Bno086TimestampNormalizer.hpp"
 #include "imu/bno086/sh2/Bno086Reports.hpp"
 #include "imu/bno086/sh2/Bno086Shtp.hpp"
 #include "imu/bno086/shtp/Bno086Transport.hpp"
@@ -51,7 +49,6 @@ namespace OASIS::ROS
  *   gravity-included calibrated acceleration
  *
  * Publication is interrupt-driven from active-low H_INTN packet drains
- * report_rate_hz configures BNO086 internal report timing only
  *
  * Orientation uses the BNO086 Rotation Vector output, which is
  * magnetometer-backed internally for heading. Magnetometer is not published.
@@ -131,13 +128,6 @@ private:
     std::uint64_t imu_gravity_skipped_future_gyro{0};
     std::uint64_t imu_gravity_skipped_duplicate_stamp{0};
     std::uint64_t imu_gravity_skipped_nonfinite{0};
-    std::uint64_t timestamp_repaired_nonmonotonic_accel{0};
-    std::uint64_t timestamp_repaired_duplicate_to_interval{0};
-    std::uint64_t timestamp_repaired_nonmonotonic_to_interval{0};
-    std::uint64_t timestamp_repaired_sequence_gap_to_interval{0};
-    std::uint64_t timestamp_interval_repair_clamped_to_host{0};
-    std::uint64_t timestamp_interval_repair_bounded_to_legacy{0};
-    std::uint64_t timestamp_reconstruction_reset_count{0};
     std::uint64_t accel_sequence_gap_count{0};
     std::uint64_t linear_accel_events_seen{0};
     std::uint64_t imu_published{0};
@@ -145,7 +135,6 @@ private:
     std::uint64_t imu_skipped_incoherent_core_frame{0};
     std::uint64_t imu_skipped_incoherent_core_frame_span{0};
     std::uint64_t imu_skipped_duplicate_core_signature{0};
-    std::uint32_t latest_timestamp_repair_interval_us{0};
     double latest_accel_age_ms{0.0};
     double latest_orientation_age_ms{0.0};
     double latest_gyro_age_ms{0.0};
@@ -163,13 +152,11 @@ private:
     std::uint64_t latest_skipped_stale_orientation_delta{0};
     std::uint64_t latest_skipped_stale_gyro_delta{0};
     std::uint64_t latest_accel_sequence_gap_delta{0};
-    std::uint64_t latest_timestamp_reconstruction_reset_delta{0};
     std::uint64_t last_rate_accel_reports{0};
     std::uint64_t last_rate_imu_gravity_published{0};
     std::uint64_t last_rate_skipped_stale_orientation{0};
     std::uint64_t last_rate_skipped_stale_gyro{0};
     std::uint64_t last_rate_accel_sequence_gap_count{0};
-    std::uint64_t last_rate_timestamp_reconstruction_reset_count{0};
     std::size_t accel_history_size{0};
     int64_t accel_history_oldest_stamp_ns{0};
     int64_t accel_history_newest_stamp_ns{0};
@@ -183,7 +170,7 @@ private:
     std::chrono::steady_clock::time_point last_log_at{};
   };
 
-  struct TimestampTraceStats
+  struct TimestampSummaryStats
   {
     std::uint64_t events{0};
     std::uint64_t has_base_count{0};
@@ -192,22 +179,10 @@ private:
     std::uint64_t cadence_tracker_gap_count{0};
     std::uint64_t cadence_tracker_reanchor_count{0};
     std::uint64_t monotonic_guard_count{0};
-    std::uint64_t duplicate_sequence_count{0};
-    std::uint64_t duplicate_raw_stamp_count{0};
-    std::uint64_t tiny_raw_delta_count{0};
-    std::uint64_t duplicate_normalized_stamp_count{0};
-    std::uint64_t legacy_plus_one_repair_count{0};
-    std::uint64_t interval_repair_count{0};
-    std::uint64_t host_clamp_count{0};
-    std::uint64_t bounded_to_legacy_count{0};
-    std::uint64_t raw_delta_count{0};
-    std::uint64_t normalized_delta_count{0};
-    int64_t raw_delta_sum_ns{0};
-    int64_t normalized_delta_sum_ns{0};
-    std::optional<int64_t> raw_delta_min_ns;
-    std::optional<int64_t> normalized_delta_min_ns;
-    std::optional<int64_t> last_raw_stamp_ns;
-    std::optional<int64_t> last_normalized_stamp_ns;
+    std::uint64_t sample_delta_count{0};
+    int64_t sample_delta_sum_ns{0};
+    std::optional<int64_t> sample_delta_min_ns;
+    std::optional<int64_t> last_sample_stamp_ns;
   };
 
   struct DrainThroughputDiagnostics
@@ -262,6 +237,14 @@ private:
     OASIS::IMU::BNO086::ReportTimestampTrackerResult tracker;
   };
 
+  struct FinalizedEventStamp
+  {
+    int64_t stamp_ns{0};
+    bool duplicate{false};
+    bool sequence_gap{false};
+    bool monotonic_guarded{false};
+  };
+
   struct OrientationCovarianceDebugState
   {
     std::uint8_t accuracy_bucket{0};
@@ -298,11 +281,9 @@ private:
   EstimatedEventStamp EstimateEventStamp(const OASIS::IMU::BNO086::SensorEvent& event,
                                          const rclcpp::Time& interrupt_ros_at,
                                          std::optional<int64_t> expected_interval_ns);
-  OASIS::IMU::BNO086::TimestampNormalizationResult FinalizeEventStamp(
-      const OASIS::IMU::BNO086::SensorEvent& event,
-      const EstimatedEventStamp& estimated_stamp,
-      int64_t packet_host_stamp_ns,
-      std::optional<int64_t> expected_interval_ns);
+  FinalizedEventStamp FinalizeEventStamp(const OASIS::IMU::BNO086::SensorEvent& event,
+                                         const EstimatedEventStamp& estimated_stamp,
+                                         std::optional<int64_t> expected_interval_ns);
   sensor_msgs::msg::Imu BuildPresentImuMessage(const rclcpp::Time& stamp) const;
   sensor_msgs::msg::Imu BuildImuGravityMessage(const rclcpp::Time& stamp,
                                                const ImuGravityAccelSample& accel_sample) const;
@@ -340,20 +321,9 @@ private:
   bool IsBno086RateUnhealthy() const;
   bool IsBno086DiagnosticsUnhealthy() const;
   void CountDecodedReport(const OASIS::IMU::BNO086::SensorEvent& event);
-  void RecordTimestampTrace(const OASIS::IMU::BNO086::SensorEvent& event,
-                            int64_t raw_stamp_ns,
-                            int64_t packet_host_stamp_ns,
-                            const OASIS::IMU::BNO086::TimestampNormalizationResult& normalized,
-                            const OASIS::IMU::BNO086::ReportTimestampTrackerResult& tracker,
-                            std::optional<std::uint32_t> expected_interval_us);
-  void MaybeLogTimestampTraceLine(
-      const OASIS::IMU::BNO086::SensorEvent& event,
-      int64_t raw_stamp_ns,
-      int64_t packet_host_stamp_ns,
-      const OASIS::IMU::BNO086::TimestampNormalizationResult& normalized,
-      std::optional<std::uint32_t> expected_interval_us,
-      std::optional<int64_t> previous_raw_delta_ns,
-      std::optional<int64_t> previous_normalized_delta_ns);
+  void RecordTimestampSummary(const OASIS::IMU::BNO086::SensorEvent& event,
+                              const FinalizedEventStamp& stamp,
+                              const OASIS::IMU::BNO086::ReportTimestampTrackerResult& tracker);
   void MaybeEmitTimestampSummaries() const;
 
   static std::array<double, 9> PredictedCovarianceFromPresent(
@@ -410,8 +380,6 @@ private:
 
   std::array<OASIS::IMU::BNO086::Bno086ReportTimestampTracker, 256> m_timestampTrackers{};
   std::optional<int64_t> m_bnoCadenceEpochNs;
-  OASIS::IMU::BNO086::Bno086TimestampMapper m_timestampMapper;
-  std::array<OASIS::IMU::BNO086::Bno086TimestampNormalizer, 256> m_timestampNormalizers{};
   std::array<std::optional<int64_t>, 256> m_lastEmittedTimestampNs{};
   std::optional<CoreFrameSignature> m_lastPublishedCoreSignature;
   std::optional<int64_t> m_lastPublishedImuGravityAnchorStampNs;
@@ -450,15 +418,12 @@ private:
   bool m_loggedCommEstablished{false};
   bool m_loggedSetFeature{false};
   bool m_loggedFeatureSummary{false};
-  bool m_loggedTimestampIntervalRepair{false};
   bool m_warnedMissingImuFields{false};
   bool m_loggedOrientationCovarianceSource{false};
   OASIS::IMU::BNO086::OrientationCovarianceSource m_lastOrientationCovarianceSource{
       OASIS::IMU::BNO086::OrientationCovarianceSource::AccuracyBucketFallback};
   std::uint8_t m_lastOrientationAccuracyBucket{0};
-  std::uint32_t m_timestampTraceCount{0};
-  std::uint32_t m_timestampTraceLogged{0};
-  std::array<TimestampTraceStats, 5> m_timestampTraceStats{};
+  std::array<TimestampSummaryStats, 5> m_timestampSummaryStats{};
   DrainThroughputDiagnostics m_drainDiagnostics{};
   std::chrono::steady_clock::time_point m_featureConfigurationStartedAt{};
   std::vector<OASIS::IMU::BNO086::FeatureResponse> m_latestFeatureResponses;

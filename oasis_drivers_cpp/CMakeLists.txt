@@ -66,20 +66,12 @@ add_library(bno086_drain_policy
   src/imu/bno086/Bno086DrainPolicy.cpp
 )
 
-add_library(bno086_timestamp_normalizer
-  src/imu/bno086/Bno086TimestampNormalizer.cpp
-)
-
 add_library(bno086_report_timestamp_tracker
   src/imu/bno086/Bno086ReportTimestampTracker.cpp
 )
 
 add_library(bno086_sample_coherence
   src/imu/bno086/Bno086SampleCoherence.cpp
-)
-
-add_library(bno086_timestamp_mapper
-  src/imu/bno086/Bno086TimestampMapper.cpp
 )
 
 add_library(bno086_shtp
@@ -108,8 +100,6 @@ target_link_libraries(bno086_imu_driver
   bno086_sample_coherence
   bno086_sh2
   bno086_shtp
-  bno086_timestamp_mapper
-  bno086_timestamp_normalizer
   ${geometry_msgs_TARGETS}
   ${oasis_msgs_TARGETS}
   rclcpp::rclcpp
@@ -307,13 +297,6 @@ if(BUILD_TESTING)
     bno086_shtp
   )
 
-  ament_add_gtest(test_bno086_timestamp_normalizer
-    test/imu/bno086/test_Bno086TimestampNormalizer.cpp
-  )
-  target_link_libraries(test_bno086_timestamp_normalizer
-    bno086_timestamp_normalizer
-  )
-
   ament_add_gtest(test_bno086_report_timestamp_tracker
     test/imu/bno086/test_Bno086ReportTimestampTracker.cpp
   )
@@ -326,14 +309,6 @@ if(BUILD_TESTING)
   )
   target_link_libraries(test_bno086_sample_coherence
     bno086_sample_coherence
-  )
-
-  ament_add_gtest(test_bno086_timestamp_mapper
-    test/imu/bno086/test_Bno086TimestampMapper.cpp
-  )
-  target_link_libraries(test_bno086_timestamp_mapper
-    bno086_timestamp_mapper
-    bno086_timestamp_normalizer
   )
 
   ament_lint_auto_find_test_dependencies()

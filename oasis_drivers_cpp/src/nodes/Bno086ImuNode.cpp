@@ -32,8 +32,6 @@ constexpr const char* DEFAULT_I2C_DEVICE = "/dev/i2c-1";
 constexpr std::uint8_t DEFAULT_I2C_ADDRESS = 0x4B;
 constexpr int DEFAULT_INT_GPIO = 23;
 
-constexpr double DEFAULT_REPORT_RATE_HZ = 100.0;
-
 constexpr const char* IMU_TOPIC = "imu";
 constexpr const char* IMU_PREDICTED_TOPIC = "imu_predicted";
 constexpr const char* IMU_VR_TOPIC = "imu_vr";
@@ -89,8 +87,6 @@ constexpr double DEFAULT_GRAVITY_BATCH_MS = 100.0;
 constexpr bool DEFAULT_ENABLE_LINEAR_ACCELERATION_REPORT = true;
 constexpr bool DEFAULT_ENABLE_GRAVITY_REPORT = true;
 constexpr int DEFAULT_FEATURE_SUMMARY_TIMEOUT_MS = 5'000;
-constexpr int DEFAULT_BNO086_TIMESTAMP_TRACE_COUNT = 0;
-constexpr int MAX_BNO086_TIMESTAMP_TRACE_COUNT = 1'000;
 
 // Maximum nearby orientation age accepted for imu_gravity composition
 constexpr double DEFAULT_IMU_GRAVITY_MAX_ORIENTATION_AGE_MS = 80.0;
@@ -179,7 +175,6 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   declare_parameter("i2c_device", std::string(DEFAULT_I2C_DEVICE));
   declare_parameter("i2c_address", static_cast<int>(DEFAULT_I2C_ADDRESS));
   declare_parameter("int_gpio", DEFAULT_INT_GPIO);
-  declare_parameter("report_rate_hz", DEFAULT_REPORT_RATE_HZ);
   declare_parameter("bno086_rotation_vector_rate_hz", DEFAULT_ROTATION_VECTOR_RATE_HZ);
   declare_parameter("bno086_gyro_rate_hz", DEFAULT_GYRO_RATE_HZ);
   declare_parameter("bno086_accelerometer_rate_hz", DEFAULT_ACCELEROMETER_RATE_HZ);
@@ -212,7 +207,6 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   declare_parameter("bno086_max_pending_events_flush_per_drain",
                     DEFAULT_MAX_PENDING_EVENTS_FLUSH_PER_DRAIN);
   declare_parameter("bno086_diagnostics_log_period_ms", DEFAULT_BNO086_DIAGNOSTICS_LOG_PERIOD_MS);
-  declare_parameter("bno086_timestamp_trace_count", DEFAULT_BNO086_TIMESTAMP_TRACE_COUNT);
   declare_parameter("prediction_horizon_sec", DEFAULT_PREDICTION_HORIZON_SEC);
   declare_parameter("imu_gravity_max_orientation_age_ms",
                     DEFAULT_IMU_GRAVITY_MAX_ORIENTATION_AGE_MS);
@@ -223,7 +217,6 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   const std::string i2cDevice = get_parameter("i2c_device").as_string();
   const std::uint8_t i2cAddress = static_cast<std::uint8_t>(get_parameter("i2c_address").as_int());
   const int intGpio = get_parameter("int_gpio").as_int();
-  const double reportRateHz = std::max(get_parameter("report_rate_hz").as_double(), 1.0);
   m_rotationVectorRateHz =
       std::max(get_parameter("bno086_rotation_vector_rate_hz").as_double(), 1.0);
   m_gyroRateHz = std::max(get_parameter("bno086_gyro_rate_hz").as_double(), 1.0);
@@ -280,16 +273,11 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   m_diagnosticsLogPeriodMs =
       std::max(static_cast<int>(get_parameter("bno086_diagnostics_log_period_ms").as_int()),
                MIN_BNO086_DIAGNOSTICS_LOG_PERIOD_MS);
-  m_timestampTraceCount = static_cast<std::uint32_t>(
-      std::clamp(static_cast<int>(get_parameter("bno086_timestamp_trace_count").as_int()), 0,
-                 MAX_BNO086_TIMESTAMP_TRACE_COUNT));
   m_predictionHorizonSec = std::max(get_parameter("prediction_horizon_sec").as_double(), 0.0);
   m_imuGravityMaxOrientationAgeMs =
       std::max(get_parameter("imu_gravity_max_orientation_age_ms").as_double(), 0.0);
   m_imuGravityMaxGyroAgeMs =
       std::max(get_parameter("imu_gravity_max_gyro_age_ms").as_double(), 0.0);
-  m_reportIntervalUs = std::max<std::uint32_t>(
-      1U, static_cast<std::uint32_t>(std::round(1'000'000.0 / reportRateHz)));
 
   m_frameId = get_parameter("frame_id").as_string();
 
@@ -317,7 +305,6 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   m_shtp = std::make_unique<Bno086Shtp>(m_transport);
 
   Bno086ShtpConfig shtpConfig;
-  shtpConfig.report_rate_hz = reportRateHz;
   shtpConfig.rotation_vector_rate_hz = m_rotationVectorRateHz;
   shtpConfig.gyro_rate_hz = m_gyroRateHz;
   shtpConfig.accelerometer_rate_hz = m_accelerometerRateHz;
@@ -354,10 +341,8 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
                 intGpio);
   }
 
-  RCLCPP_INFO(get_logger(),
-              "BNO086 opened on %s (0x%02X), int_gpio=%d active_low, "
-              "fallback_report_rate_hz=%.1f",
-              i2cDevice.c_str(), static_cast<unsigned>(i2cAddress), intGpio, reportRateHz);
+  RCLCPP_INFO(get_logger(), "BNO086 opened on %s (0x%02X), int_gpio=%d active_low",
+              i2cDevice.c_str(), static_cast<unsigned>(i2cAddress), intGpio);
   RCLCPP_INFO(get_logger(),
               "BNO086 static report rates:\n"
               "  rotation_vector=%.1f batch_ms=%.0f enabled=true\n"
@@ -375,7 +360,8 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
               m_enableLinearAccelerationReport ? "true" : "false", m_gravityRateHz,
               m_enableGravityReport ? static_cast<double>(m_gravityBatchIntervalUs) / 1000.0 : 0.0,
               m_enableGravityReport ? "true" : "false");
-  RCLCPP_INFO(get_logger(), "ROS publication is interrupt-driven from GPIO packet drains");
+  RCLCPP_INFO(get_logger(), "BNO086 publication cadence: imu=linear_acceleration "
+                            "imu_gravity=rotation_vector gravity=gravity_report");
   RCLCPP_INFO(get_logger(), "BNO086 diagnostics period_ms=%d", m_diagnosticsLogPeriodMs);
   RCLCPP_INFO(get_logger(), "Predicted orientation output uses %s with prediction_horizon_sec=%.4f",
               m_predictionSource.c_str(), m_predictionHorizonSec);
@@ -657,63 +643,19 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
               : std::nullopt;
       const EstimatedEventStamp eventStamp =
           EstimateEventStamp(*pollResult.event, drainReceiveAnchor, expectedIntervalNs);
-      const TimestampNormalizationResult normalizedStamp = FinalizeEventStamp(
-          *pollResult.event, eventStamp, drainReceiveAnchor.nanoseconds(), expectedIntervalNs);
-      RecordTimestampTrace(*pollResult.event, eventStamp.stamp.nanoseconds(),
-                           drainReceiveAnchor.nanoseconds(), normalizedStamp, eventStamp.tracker,
-                           expectedIntervalUs);
-
-      if (normalizedStamp.reconstruction_reset)
-        ++m_imuGravityDiagnostics.timestamp_reconstruction_reset_count;
-
-      const bool repairedToInterval = normalizedStamp.repaired_duplicate_to_interval ||
-                                      normalizedStamp.repaired_nonmonotonic_to_interval ||
-                                      normalizedStamp.repaired_sequence_gap_to_interval;
-      if (repairedToInterval && expectedIntervalUs.has_value())
-      {
-        m_imuGravityDiagnostics.latest_timestamp_repair_interval_us = *expectedIntervalUs;
-
-        if (normalizedStamp.repaired_duplicate_to_interval)
-          ++m_imuGravityDiagnostics.timestamp_repaired_duplicate_to_interval;
-
-        if (normalizedStamp.repaired_nonmonotonic_to_interval)
-          ++m_imuGravityDiagnostics.timestamp_repaired_nonmonotonic_to_interval;
-
-        if (normalizedStamp.repaired_sequence_gap_to_interval)
-          ++m_imuGravityDiagnostics.timestamp_repaired_sequence_gap_to_interval;
-
-        if (normalizedStamp.interval_repair_clamped_to_host)
-          ++m_imuGravityDiagnostics.timestamp_interval_repair_clamped_to_host;
-
-        if (normalizedStamp.interval_repair_bounded_to_legacy)
-          ++m_imuGravityDiagnostics.timestamp_interval_repair_bounded_to_legacy;
-
-        if (!m_loggedTimestampIntervalRepair)
-        {
-          const char* repairReason =
-              normalizedStamp.repaired_sequence_gap_to_interval ? "sequence_gap"
-              : normalizedStamp.repaired_duplicate_to_interval  ? "duplicate_stamp"
-                                                                : "nonmonotonic_stamp";
-          RCLCPP_DEBUG(get_logger(),
-                       "BNO086 timestamp repair using report interval: report=%s "
-                       "expected_interval_us=%u reason=%s",
-                       ReportName(pollResult.event->report_id), *expectedIntervalUs, repairReason);
-          m_loggedTimestampIntervalRepair = true;
-        }
-      }
+      const FinalizedEventStamp finalizedStamp =
+          FinalizeEventStamp(*pollResult.event, eventStamp, expectedIntervalNs);
+      RecordTimestampSummary(*pollResult.event, finalizedStamp, eventStamp.tracker);
 
       if (pollResult.event->report_id == ReportId::Accelerometer)
       {
-        if (normalizedStamp.repaired_nonmonotonic)
-          ++m_imuGravityDiagnostics.timestamp_repaired_nonmonotonic_accel;
-
-        if (normalizedStamp.sequence_gap)
+        if (finalizedStamp.sequence_gap)
           ++m_imuGravityDiagnostics.accel_sequence_gap_count;
       }
 
-      if (!normalizedStamp.duplicate)
+      if (!finalizedStamp.duplicate)
       {
-        const rclcpp::Time normalizedEventStamp(normalizedStamp.stamp_ns, RCL_ROS_TIME);
+        const rclcpp::Time normalizedEventStamp(finalizedStamp.stamp_ns, RCL_ROS_TIME);
         CountDecodedReport(*pollResult.event);
         ApplyEvent(*pollResult.event, normalizedEventStamp);
         MaybePublishOnLinearAcceleration(*pollResult.event);
@@ -1306,15 +1248,15 @@ void Bno086ImuNode::LogFeatureResponse(const FeatureResponse& response)
   if (reportIndex.has_value())
     m_imuGravityDiagnostics.latest_feature_rate_hz[*reportIndex] = actualRateHz;
 
-  RCLCPP_INFO(get_logger(),
-              "BNO086 Get Feature Response: report=%s id=0x%02X requested_interval_us=%u "
-              "actual_interval_us=%u actual_rate_hz=%.2f requested_batch_us=%u "
-              "actual_batch_us=%u batching_active=%s feature_flags=0x%02X "
-              "sensor_specific_config=0x%08X",
-              ReportName(response.report_id), static_cast<unsigned>(response.report_id),
-              requestedUs, response.report_interval_us, actualRateHz, requestedBatch,
-              response.batch_interval_us, IsFeatureBatchingActive(response) ? "true" : "false",
-              static_cast<unsigned>(response.feature_flags), response.sensor_specific_config);
+  RCLCPP_DEBUG(get_logger(),
+               "BNO086 Get Feature Response: report=%s id=0x%02X requested_interval_us=%u "
+               "actual_interval_us=%u actual_rate_hz=%.2f requested_batch_us=%u "
+               "actual_batch_us=%u batching_active=%s feature_flags=0x%02X "
+               "sensor_specific_config=0x%08X",
+               ReportName(response.report_id), static_cast<unsigned>(response.report_id),
+               requestedUs, response.report_interval_us, actualRateHz, requestedBatch,
+               response.batch_interval_us, IsFeatureBatchingActive(response) ? "true" : "false",
+               static_cast<unsigned>(response.feature_flags), response.sensor_specific_config);
 }
 
 void Bno086ImuNode::MaybeLogFeatureSummary()
@@ -1533,7 +1475,6 @@ void Bno086ImuNode::UpdateImuGravityDiagnosticsRates(
     m_imuGravityDiagnostics.latest_skipped_stale_orientation_delta = 0;
     m_imuGravityDiagnostics.latest_skipped_stale_gyro_delta = 0;
     m_imuGravityDiagnostics.latest_accel_sequence_gap_delta = 0;
-    m_imuGravityDiagnostics.latest_timestamp_reconstruction_reset_delta = 0;
   }
   else
   {
@@ -1571,9 +1512,6 @@ void Bno086ImuNode::UpdateImuGravityDiagnosticsRates(
     m_imuGravityDiagnostics.latest_accel_sequence_gap_delta =
         m_imuGravityDiagnostics.accel_sequence_gap_count -
         m_imuGravityDiagnostics.last_rate_accel_sequence_gap_count;
-    m_imuGravityDiagnostics.latest_timestamp_reconstruction_reset_delta =
-        m_imuGravityDiagnostics.timestamp_reconstruction_reset_count -
-        m_imuGravityDiagnostics.last_rate_timestamp_reconstruction_reset_count;
   }
 
   m_imuGravityDiagnostics.last_rate_accel_reports =
@@ -1588,8 +1526,6 @@ void Bno086ImuNode::UpdateImuGravityDiagnosticsRates(
       m_imuGravityDiagnostics.imu_gravity_skipped_stale_gyro;
   m_imuGravityDiagnostics.last_rate_accel_sequence_gap_count =
       m_imuGravityDiagnostics.accel_sequence_gap_count;
-  m_imuGravityDiagnostics.last_rate_timestamp_reconstruction_reset_count =
-      m_imuGravityDiagnostics.timestamp_reconstruction_reset_count;
 }
 
 void Bno086ImuNode::MaybeEmitImuGravityDiagnosticsLog()
@@ -1621,14 +1557,6 @@ std::string Bno086ImuNode::BuildImuGravityDiagnosticsLogMessage() const
       m_drainDiagnostics.drains > 0
           ? static_cast<double>(m_drainDiagnostics.sensor_events_sum) / drainCount
           : 0.0;
-  const double pendingEventsMean =
-      m_drainDiagnostics.drains > 0
-          ? static_cast<double>(m_drainDiagnostics.pending_events_sum) / drainCount
-          : 0.0;
-  const double allZeroPollsMean =
-      m_drainDiagnostics.drains > 0
-          ? static_cast<double>(m_drainDiagnostics.all_zero_polls_sum) / drainCount
-          : 0.0;
   const double drainDurationMeanMs =
       m_drainDiagnostics.drains > 0
           ? static_cast<double>(m_drainDiagnostics.drain_duration_sum_us) / drainCount / 1.0e3
@@ -1636,9 +1564,7 @@ std::string Bno086ImuNode::BuildImuGravityDiagnosticsLogMessage() const
   const Bno086TransportStats transportStats = m_transport.GetStats();
 
   std::ostringstream oss;
-  oss << "BNO086 imu_gravity diagnostics: " << "accel_events_seen="
-      << m_imuGravityDiagnostics.calibrated_accel_reports_received << " "
-      << "calibrated_accel_reports_received="
+  oss << "BNO086 health: calibrated_accel_reports_received="
       << m_imuGravityDiagnostics.calibrated_accel_reports_received << " "
       << "rotation_events_seen=" << m_imuGravityDiagnostics.rotation_events_seen << " "
       << "imu_gravity_publish_attempts=" << m_imuGravityDiagnostics.imu_gravity_publish_attempts
@@ -1652,48 +1578,12 @@ std::string Bno086ImuNode::BuildImuGravityDiagnosticsLogMessage() const
       << m_imuGravityDiagnostics.imu_gravity_skipped_stale_orientation << " "
       << "skipped_stale_gyro=" << m_imuGravityDiagnostics.imu_gravity_skipped_stale_gyro << " "
       << "skipped_future_accel=" << m_imuGravityDiagnostics.imu_gravity_skipped_future_accel << " "
-      << "skipped_future_orientation="
-      << m_imuGravityDiagnostics.imu_gravity_skipped_future_orientation << " "
-      << "skipped_future_gyro=" << m_imuGravityDiagnostics.imu_gravity_skipped_future_gyro << " "
       << "skipped_duplicate_stamp=" << m_imuGravityDiagnostics.imu_gravity_skipped_duplicate_stamp
       << " " << "skipped_nonfinite=" << m_imuGravityDiagnostics.imu_gravity_skipped_nonfinite << " "
-      << "timestamp_repaired_nonmonotonic_accel="
-      << m_imuGravityDiagnostics.timestamp_repaired_nonmonotonic_accel << " "
-      << "timestamp_repaired_duplicate_to_interval="
-      << m_imuGravityDiagnostics.timestamp_repaired_duplicate_to_interval << " "
-      << "timestamp_repaired_nonmonotonic_to_interval="
-      << m_imuGravityDiagnostics.timestamp_repaired_nonmonotonic_to_interval << " "
-      << "timestamp_repaired_sequence_gap_to_interval="
-      << m_imuGravityDiagnostics.timestamp_repaired_sequence_gap_to_interval << " "
-      << "timestamp_interval_repair_clamped_to_host="
-      << m_imuGravityDiagnostics.timestamp_interval_repair_clamped_to_host << " "
-      << "timestamp_interval_repair_bounded_to_legacy="
-      << m_imuGravityDiagnostics.timestamp_interval_repair_bounded_to_legacy << " "
       << "accel_sequence_gap_count=" << m_imuGravityDiagnostics.accel_sequence_gap_count << " "
-      << "timestamp_reconstruction_reset_count="
-      << m_imuGravityDiagnostics.timestamp_reconstruction_reset_count << " "
-      << "latest_timestamp_repair_interval_us="
-      << m_imuGravityDiagnostics.latest_timestamp_repair_interval_us << " "
-      << "latest_accel_stamp_ns=" << m_imuGravityDiagnostics.latest_accel_stamp_ns << " "
-      << "latest_orientation_stamp_ns=" << m_imuGravityDiagnostics.latest_orientation_stamp_ns
-      << " " << "latest_gyro_stamp_ns=" << m_imuGravityDiagnostics.latest_gyro_stamp_ns << " "
-      << "latest_accel_age_ms=" << m_imuGravityDiagnostics.latest_accel_age_ms << " "
       << "accel_history_size=" << m_imuGravityDiagnostics.accel_history_size << " "
-      << "accel_history_oldest_stamp_ns=" << m_imuGravityDiagnostics.accel_history_oldest_stamp_ns
-      << " "
-      << "accel_history_newest_stamp_ns=" << m_imuGravityDiagnostics.accel_history_newest_stamp_ns
-      << " " << "accel_history_span_ms=" << m_imuGravityDiagnostics.accel_history_span_ms << " "
-      << "selected_accel_stamp_ns=" << m_imuGravityDiagnostics.selected_accel_stamp_ns << " "
+      << "accel_history_span_ms=" << m_imuGravityDiagnostics.accel_history_span_ms << " "
       << "selected_accel_offset_ms=" << m_imuGravityDiagnostics.selected_accel_offset_ms << " "
-      << "accel_history_selected_past_count="
-      << m_imuGravityDiagnostics.accel_history_selected_past_count << " "
-      << "accel_history_selected_future_count="
-      << m_imuGravityDiagnostics.accel_history_selected_future_count << " "
-      << "accel_history_future_too_far_count="
-      << m_imuGravityDiagnostics.accel_history_future_too_far_count << " "
-      << "accel_history_no_past_count=" << m_imuGravityDiagnostics.accel_history_no_past_count
-      << " " << "latest_orientation_age_ms=" << m_imuGravityDiagnostics.latest_orientation_age_ms
-      << " " << "latest_gyro_age_ms=" << m_imuGravityDiagnostics.latest_gyro_age_ms << " "
       << "linear_accel_events_seen=" << m_imuGravityDiagnostics.linear_accel_events_seen << " "
       << "imu_published=" << m_imuGravityDiagnostics.imu_published << " "
       << "imu_skipped_missing_core_frame=" << m_imuGravityDiagnostics.imu_skipped_missing_core_frame
@@ -1704,8 +1594,7 @@ std::string Bno086ImuNode::BuildImuGravityDiagnosticsLogMessage() const
       << "imu_skipped_duplicate_core_signature="
       << m_imuGravityDiagnostics.imu_skipped_duplicate_core_signature << " "
       << "latest_core_span_ms=" << m_imuGravityDiagnostics.latest_core_span_ms << " "
-      << "latest_linear_accel_stamp_ns=" << m_imuGravityDiagnostics.latest_linear_accel_stamp_ns
-      << " " << "latest_calibrated_accel_rate_hz="
+      << "latest_calibrated_accel_rate_hz="
       << m_imuGravityDiagnostics.latest_calibrated_accel_rate_hz << " "
       << "latest_imu_gravity_rate_hz=" << m_imuGravityDiagnostics.latest_imu_gravity_rate_hz << " "
       << "decoded_accel_rate_hz=" << m_imuGravityDiagnostics.latest_decoded_rate_hz[0] << " "
@@ -1714,24 +1603,11 @@ std::string Bno086ImuNode::BuildImuGravityDiagnosticsLogMessage() const
       << "decoded_linear_rate_hz=" << m_imuGravityDiagnostics.latest_decoded_rate_hz[3] << " "
       << "decoded_gravity_rate_hz=" << m_imuGravityDiagnostics.latest_decoded_rate_hz[4] << " "
       << "drains=" << m_drainDiagnostics.drains << " "
-      << "physical_packets_per_drain_min=" << m_drainDiagnostics.physical_packets_min.value_or(0)
-      << " " << "physical_packets_per_drain_mean=" << physicalPacketsMean << " "
+      << "physical_packets_per_drain_mean=" << physicalPacketsMean << " "
       << "physical_packets_per_drain_max=" << m_drainDiagnostics.physical_packets_max << " "
-      << "sensor_events_per_drain_min=" << m_drainDiagnostics.sensor_events_min.value_or(0) << " "
       << "sensor_events_per_drain_mean=" << sensorEventsMean << " "
       << "sensor_events_per_drain_max=" << m_drainDiagnostics.sensor_events_max << " "
-      << "pending_events_per_drain_mean=" << pendingEventsMean << " "
-      << "pending_events_per_drain_max=" << m_drainDiagnostics.pending_events_max << " "
-      << "pending_queue_depth_at_exit=" << m_drainDiagnostics.pending_queue_depth_at_exit << " "
-      << "pending_queue_depth_max=" << m_drainDiagnostics.pending_queue_depth_max << " "
-      << "all_zero_polls_this_drain=" << m_drainDiagnostics.all_zero_polls_this_drain << " "
-      << "all_zero_polls_per_drain_mean=" << allZeroPollsMean << " "
-      << "all_zero_polls_per_drain_max=" << m_drainDiagnostics.all_zero_polls_max << " "
-      << "consecutive_all_zero_polls=" << m_drainDiagnostics.consecutive_all_zero_polls << " "
-      << "consecutive_all_zero_polls_max=" << m_drainDiagnostics.consecutive_all_zero_polls_max
-      << " " << "all_zero_backoff_count=" << m_drainDiagnostics.all_zero_backoff_count << " "
-      << "drain_duration_ms_min="
-      << static_cast<double>(m_drainDiagnostics.drain_duration_min_us.value_or(0)) / 1.0e3 << " "
+      << "all_zero_backoff_count=" << m_drainDiagnostics.all_zero_backoff_count << " "
       << "drain_duration_ms_mean=" << drainDurationMeanMs << " " << "drain_duration_ms_max="
       << static_cast<double>(m_drainDiagnostics.drain_duration_max_us) / 1.0e3 << " "
       << "physical_packet_cap_hit_count=" << m_drainDiagnostics.physical_packet_cap_hit_count << " "
@@ -1740,40 +1616,14 @@ std::string Bno086ImuNode::BuildImuGravityDiagnosticsLogMessage() const
       << " " << "sensor_event_budget_hit_count=" << m_drainDiagnostics.sensor_event_budget_hit_count
       << " "
       << "pending_flush_budget_hit_count=" << m_drainDiagnostics.pending_flush_budget_hit_count
-      << " " << "exit_duration_budget_with_pending_count="
-      << m_drainDiagnostics.exit_duration_budget_with_pending_count << " "
-      << "exit_duration_budget_no_pending_count="
-      << m_drainDiagnostics.exit_duration_budget_no_pending_count << " "
-      << "hintn_asserted_after_drain_exit_count="
-      << m_drainDiagnostics.hintn_asserted_after_exit_count << " "
-      << "hintn_asserted_after_cooperative_budget_exit_count="
-      << m_drainDiagnostics.hintn_asserted_after_cooperative_budget_exit_count << " "
-      << "hintn_asserted_after_safety_or_error_exit_count="
-      << m_drainDiagnostics.hintn_asserted_after_safety_or_error_exit_count << " "
-      << "no_progress_drain_count=" << m_drainDiagnostics.no_progress_drain_count << " "
+      << " " << "no_progress_drain_count=" << m_drainDiagnostics.no_progress_drain_count << " "
       << "drain_transport_error_count=" << m_drainDiagnostics.transport_error_count << " "
-      << "complete_int_deasserted_count=" << m_drainDiagnostics.complete_int_deasserted_count << " "
-      << "exit_no_progress_budget_count=" << m_drainDiagnostics.exit_no_progress_budget_count << " "
-      << "exit_transport_error_count=" << m_drainDiagnostics.exit_transport_error_count << " "
-      << "exit_packet_cap_count=" << m_drainDiagnostics.exit_packet_cap_count << " "
-      << "exit_poll_iteration_cap_count=" << m_drainDiagnostics.exit_poll_iteration_cap_count << " "
-      << "exit_drain_duration_budget_count=" << m_drainDiagnostics.exit_drain_duration_budget_count
-      << " "
-      << "exit_sensor_event_budget_count=" << m_drainDiagnostics.exit_sensor_event_budget_count
-      << " " << "exit_pending_event_flush_budget_count="
-      << m_drainDiagnostics.exit_pending_event_flush_budget_count << " "
-      << "exit_all_zero_budget_count=" << m_drainDiagnostics.exit_all_zero_budget_count << " "
+      << "all_zero_budget_hit_count=" << m_drainDiagnostics.exit_all_zero_budget_count << " "
       << "i2c_read_error_count=" << transportStats.i2c_read_error_count << " "
       << "i2c_read_timeout_count=" << transportStats.i2c_read_timeout_count << " "
       << "invalid_header_count=" << transportStats.invalid_header_count << " "
       << "all_zero_header_count=" << transportStats.all_zero_header_count << " "
-      << "invalid_full_packet_count=" << transportStats.invalid_full_packet_count << " "
-      << "channel0_packets=" << m_drainDiagnostics.channel_packet_counts[0] << " "
-      << "channel1_packets=" << m_drainDiagnostics.channel_packet_counts[1] << " "
-      << "channel2_packets=" << m_drainDiagnostics.channel_packet_counts[2] << " "
-      << "channel3_packets=" << m_drainDiagnostics.channel_packet_counts[3] << " "
-      << "channel4_packets=" << m_drainDiagnostics.channel_packet_counts[4] << " "
-      << "channel5_packets=" << m_drainDiagnostics.channel_packet_counts[5];
+      << "invalid_full_packet_count=" << transportStats.invalid_full_packet_count;
   return oss.str();
 }
 
@@ -1949,9 +1799,6 @@ bool Bno086ImuNode::IsBno086DiagnosticsUnhealthy() const
   if (m_imuGravityDiagnostics.latest_accel_sequence_gap_delta > 0)
     return true;
 
-  if (m_imuGravityDiagnostics.latest_timestamp_reconstruction_reset_delta > 0)
-    return true;
-
   return false;
 }
 
@@ -1962,18 +1809,15 @@ void Bno086ImuNode::CountDecodedReport(const SensorEvent& event)
     ++m_imuGravityDiagnostics.decoded_reports_received[*reportIndex];
 }
 
-void Bno086ImuNode::RecordTimestampTrace(const SensorEvent& event,
-                                         int64_t raw_stamp_ns,
-                                         int64_t packet_host_stamp_ns,
-                                         const TimestampNormalizationResult& normalized,
-                                         const ReportTimestampTrackerResult& tracker,
-                                         std::optional<std::uint32_t> expected_interval_us)
+void Bno086ImuNode::RecordTimestampSummary(const SensorEvent& event,
+                                           const FinalizedEventStamp& stamp,
+                                           const ReportTimestampTrackerResult& tracker)
 {
   const std::optional<std::size_t> reportIndex = DiagnosticReportIndex(event.report_id);
   if (!reportIndex.has_value())
     return;
 
-  TimestampTraceStats& stats = m_timestampTraceStats[*reportIndex];
+  TimestampSummaryStats& stats = m_timestampSummaryStats[*reportIndex];
   ++stats.events;
 
   if (event.has_base_timestamp)
@@ -1982,7 +1826,7 @@ void Bno086ImuNode::RecordTimestampTrace(const SensorEvent& event,
   if (event.has_delay)
     ++stats.has_delay_count;
 
-  if (normalized.sequence_gap)
+  if (stamp.sequence_gap)
     ++stats.sequence_gap_count;
 
   if (tracker.gap_detected)
@@ -1991,115 +1835,22 @@ void Bno086ImuNode::RecordTimestampTrace(const SensorEvent& event,
   if (tracker.reanchored)
     ++stats.cadence_tracker_reanchor_count;
 
-  if (tracker.duplicate_sequence)
-    ++stats.duplicate_sequence_count;
-
-  if (normalized.repaired_nonmonotonic)
+  if (stamp.monotonic_guarded)
     ++stats.monotonic_guard_count;
 
-  std::optional<int64_t> previousRawDeltaNs;
-  if (stats.last_raw_stamp_ns.has_value())
-  {
-    previousRawDeltaNs = raw_stamp_ns - *stats.last_raw_stamp_ns;
-    ++stats.raw_delta_count;
-    stats.raw_delta_sum_ns += *previousRawDeltaNs;
-    if (!stats.raw_delta_min_ns.has_value() || *previousRawDeltaNs < *stats.raw_delta_min_ns)
-      stats.raw_delta_min_ns = *previousRawDeltaNs;
-
-    if (*previousRawDeltaNs == 0)
-      ++stats.duplicate_raw_stamp_count;
-
-    if (expected_interval_us.has_value() && *previousRawDeltaNs > 0 &&
-        *previousRawDeltaNs < static_cast<int64_t>(*expected_interval_us) * 500)
-    {
-      ++stats.tiny_raw_delta_count;
-    }
-  }
-
-  std::optional<int64_t> previousNormalizedDeltaNs;
-  if (stats.last_normalized_stamp_ns.has_value())
-  {
-    previousNormalizedDeltaNs = normalized.stamp_ns - *stats.last_normalized_stamp_ns;
-    ++stats.normalized_delta_count;
-    stats.normalized_delta_sum_ns += *previousNormalizedDeltaNs;
-    if (!stats.normalized_delta_min_ns.has_value() ||
-        *previousNormalizedDeltaNs < *stats.normalized_delta_min_ns)
-    {
-      stats.normalized_delta_min_ns = *previousNormalizedDeltaNs;
-    }
-
-    if (*previousNormalizedDeltaNs == 0)
-      ++stats.duplicate_normalized_stamp_count;
-
-    if (*previousNormalizedDeltaNs == 1)
-      ++stats.legacy_plus_one_repair_count;
-  }
-
-  const bool repairedToInterval = normalized.repaired_duplicate_to_interval ||
-                                  normalized.repaired_nonmonotonic_to_interval ||
-                                  normalized.repaired_sequence_gap_to_interval;
-  if (repairedToInterval)
-    ++stats.interval_repair_count;
-
-  if (normalized.interval_repair_clamped_to_host)
-    ++stats.host_clamp_count;
-
-  if (normalized.interval_repair_bounded_to_legacy)
-    ++stats.bounded_to_legacy_count;
-
-  MaybeLogTimestampTraceLine(event, raw_stamp_ns, packet_host_stamp_ns, normalized,
-                             expected_interval_us, previousRawDeltaNs, previousNormalizedDeltaNs);
-
-  stats.last_raw_stamp_ns = raw_stamp_ns;
-  stats.last_normalized_stamp_ns = normalized.stamp_ns;
-}
-
-void Bno086ImuNode::MaybeLogTimestampTraceLine(const SensorEvent& event,
-                                               int64_t raw_stamp_ns,
-                                               int64_t packet_host_stamp_ns,
-                                               const TimestampNormalizationResult& normalized,
-                                               std::optional<std::uint32_t> expected_interval_us,
-                                               std::optional<int64_t> previous_raw_delta_ns,
-                                               std::optional<int64_t> previous_normalized_delta_ns)
-{
-  m_timestampTraceCount = static_cast<std::uint32_t>(
-      std::clamp(static_cast<int>(get_parameter("bno086_timestamp_trace_count").as_int()), 0,
-                 MAX_BNO086_TIMESTAMP_TRACE_COUNT));
-
-  if (m_timestampTraceLogged >= m_timestampTraceCount)
+  if (stamp.duplicate)
     return;
 
-  ++m_timestampTraceLogged;
+  if (stats.last_sample_stamp_ns.has_value())
+  {
+    const int64_t sampleDeltaNs = stamp.stamp_ns - *stats.last_sample_stamp_ns;
+    ++stats.sample_delta_count;
+    stats.sample_delta_sum_ns += sampleDeltaNs;
+    if (!stats.sample_delta_min_ns.has_value() || sampleDeltaNs < *stats.sample_delta_min_ns)
+      stats.sample_delta_min_ns = sampleDeltaNs;
+  }
 
-  RCLCPP_INFO(get_logger(),
-              "BNO086 timestamp trace: report=%s sequence=%u channel=%u "
-              "payload_offset=%zu payload_record_bytes=%zu "
-              "has_base_timestamp=%s base_timestamp_us=%u has_delay=%s delay_us=%u "
-              "raw_reconstructed_stamp_ns=%lld packet_host_stamp_ns=%lld "
-              "normalized_stamp_ns=%lld normalizer_duplicate=%s sequence_gap=%s "
-              "repaired_nonmonotonic=%s repaired_duplicate_to_interval=%s "
-              "repaired_nonmonotonic_to_interval=%s "
-              "repaired_sequence_gap_to_interval=%s "
-              "interval_repair_clamped_to_host=%s "
-              "interval_repair_allowed_by_future_slop=%s "
-              "interval_repair_bounded_to_legacy=%s expected_interval_us=%u "
-              "previous_normalized_delta_ns=%lld previous_raw_delta_ns=%lld",
-              ReportName(event.report_id), event.sequence, event.channel, event.report_offset,
-              event.bytes_consumed, event.has_base_timestamp ? "true" : "false",
-              event.base_timestamp_us, event.has_delay ? "true" : "false", event.delay_us,
-              static_cast<long long>(raw_stamp_ns), static_cast<long long>(packet_host_stamp_ns),
-              static_cast<long long>(normalized.stamp_ns), normalized.duplicate ? "true" : "false",
-              normalized.sequence_gap ? "true" : "false",
-              normalized.repaired_nonmonotonic ? "true" : "false",
-              normalized.repaired_duplicate_to_interval ? "true" : "false",
-              normalized.repaired_nonmonotonic_to_interval ? "true" : "false",
-              normalized.repaired_sequence_gap_to_interval ? "true" : "false",
-              normalized.interval_repair_clamped_to_host ? "true" : "false",
-              normalized.interval_repair_allowed_by_future_slop ? "true" : "false",
-              normalized.interval_repair_bounded_to_legacy ? "true" : "false",
-              expected_interval_us.value_or(0),
-              static_cast<long long>(previous_normalized_delta_ns.value_or(0)),
-              static_cast<long long>(previous_raw_delta_ns.value_or(0)));
+  stats.last_sample_stamp_ns = stamp.stamp_ns;
 }
 
 void Bno086ImuNode::MaybeEmitTimestampSummaries() const
@@ -2116,54 +1867,32 @@ void Bno086ImuNode::MaybeEmitTimestampSummaries() const
     if (!reportIndex.has_value())
       continue;
 
-    const TimestampTraceStats& stats = m_timestampTraceStats[*reportIndex];
+    const TimestampSummaryStats& stats = m_timestampSummaryStats[*reportIndex];
     if (stats.events == 0)
       continue;
 
-    const double rawDeltaMinMs = stats.raw_delta_min_ns.has_value()
-                                     ? static_cast<double>(*stats.raw_delta_min_ns) / 1e6
-                                     : 0.0;
-    const double rawDeltaMeanMs = stats.raw_delta_count > 0
-                                      ? static_cast<double>(stats.raw_delta_sum_ns) /
-                                            static_cast<double>(stats.raw_delta_count) / 1e6
-                                      : 0.0;
-    const double normalizedDeltaMinMs =
-        stats.normalized_delta_min_ns.has_value()
-            ? static_cast<double>(*stats.normalized_delta_min_ns) / 1e6
-            : 0.0;
-    const double normalizedDeltaMeanMs =
-        stats.normalized_delta_count > 0
-            ? static_cast<double>(stats.normalized_delta_sum_ns) /
-                  static_cast<double>(stats.normalized_delta_count) / 1e6
-            : 0.0;
+    const double sampleDeltaMinMs = stats.sample_delta_min_ns.has_value()
+                                        ? static_cast<double>(*stats.sample_delta_min_ns) / 1e6
+                                        : 0.0;
+    const double sampleDeltaMeanMs = stats.sample_delta_count > 0
+                                         ? static_cast<double>(stats.sample_delta_sum_ns) /
+                                               static_cast<double>(stats.sample_delta_count) / 1e6
+                                         : 0.0;
 
     RCLCPP_INFO(get_logger(),
                 "BNO086 timestamp summary: report=%s events=%llu "
                 "has_base_count=%llu has_delay_count=%llu sequence_gap_count=%llu "
                 "cadence_tracker_gap_count=%llu cadence_tracker_reanchor_count=%llu "
-                "monotonic_guard_count=%llu duplicate_sequence_count=%llu "
-                "duplicate_raw_stamp_count=%llu tiny_raw_delta_count=%llu "
-                "duplicate_normalized_stamp_count=%llu legacy_plus_one_repair_count=%llu "
-                "interval_repair_count=%llu host_clamp_count=%llu "
-                "bounded_to_legacy_count=%llu raw_delta_min_ms=%.6f "
-                "raw_delta_mean_ms=%.6f normalized_delta_min_ms=%.6f "
-                "normalized_delta_mean_ms=%.6f",
+                "monotonic_guard_count=%llu sample_delta_min_ms=%.6f "
+                "sample_delta_mean_ms=%.6f",
                 ReportName(reportId), static_cast<unsigned long long>(stats.events),
                 static_cast<unsigned long long>(stats.has_base_count),
                 static_cast<unsigned long long>(stats.has_delay_count),
                 static_cast<unsigned long long>(stats.sequence_gap_count),
                 static_cast<unsigned long long>(stats.cadence_tracker_gap_count),
                 static_cast<unsigned long long>(stats.cadence_tracker_reanchor_count),
-                static_cast<unsigned long long>(stats.monotonic_guard_count),
-                static_cast<unsigned long long>(stats.duplicate_sequence_count),
-                static_cast<unsigned long long>(stats.duplicate_raw_stamp_count),
-                static_cast<unsigned long long>(stats.tiny_raw_delta_count),
-                static_cast<unsigned long long>(stats.duplicate_normalized_stamp_count),
-                static_cast<unsigned long long>(stats.legacy_plus_one_repair_count),
-                static_cast<unsigned long long>(stats.interval_repair_count),
-                static_cast<unsigned long long>(stats.host_clamp_count),
-                static_cast<unsigned long long>(stats.bounded_to_legacy_count), rawDeltaMinMs,
-                rawDeltaMeanMs, normalizedDeltaMinMs, normalizedDeltaMeanMs);
+                static_cast<unsigned long long>(stats.monotonic_guard_count), sampleDeltaMinMs,
+                sampleDeltaMeanMs);
   }
 }
 
@@ -2504,62 +2233,53 @@ auto Bno086ImuNode::EstimateEventStamp(const SensorEvent& event,
   return EstimatedEventStamp{rclcpp::Time(trackedStamp.stamp_ns, RCL_ROS_TIME), trackedStamp};
 }
 
-TimestampNormalizationResult Bno086ImuNode::FinalizeEventStamp(
-    const SensorEvent& event,
-    const EstimatedEventStamp& estimated_stamp,
-    int64_t packet_host_stamp_ns,
-    std::optional<int64_t> expected_interval_ns)
+auto Bno086ImuNode::FinalizeEventStamp(const SensorEvent& event,
+                                       const EstimatedEventStamp& estimated_stamp,
+                                       std::optional<int64_t> expected_interval_ns)
+    -> FinalizedEventStamp
 {
   const auto timestampIndex = static_cast<std::size_t>(event.report_id);
+  FinalizedEventStamp result;
+  result.stamp_ns = estimated_stamp.stamp.nanoseconds();
+  result.sequence_gap = estimated_stamp.tracker.gap_detected;
+  result.duplicate = estimated_stamp.tracker.duplicate_sequence;
 
-  if (expected_interval_ns.has_value())
+  const std::optional<int64_t>& lastStampNs = m_lastEmittedTimestampNs[timestampIndex];
+  if (result.duplicate && lastStampNs.has_value())
   {
-    TimestampNormalizationResult result;
-    result.stamp_ns = estimated_stamp.stamp.nanoseconds();
-    result.sequence_gap = estimated_stamp.tracker.gap_detected;
-    result.duplicate = estimated_stamp.tracker.duplicate_sequence;
-
-    const std::optional<int64_t>& lastStampNs = m_lastEmittedTimestampNs[timestampIndex];
-    if (lastStampNs.has_value() && result.stamp_ns <= *lastStampNs)
-    {
-      result.repaired_nonmonotonic = true;
-      if (estimated_stamp.tracker.duplicate_sequence)
-      {
-        result.stamp_ns = *lastStampNs + 1;
-      }
-      else if (*expected_interval_ns > 0)
-      {
-        result.stamp_ns = *lastStampNs + *expected_interval_ns;
-      }
-      else
-      {
-        result.stamp_ns = *lastStampNs + 1;
-      }
-
-      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
-                           "BNO086 cadence timestamp guard repaired report=%s "
-                           "sequence=%u candidate_ns=%lld last_ns=%lld final_ns=%lld "
-                           "duplicate_sequence=%s sequence_delta=%u",
-                           ReportName(event.report_id), event.sequence,
-                           static_cast<long long>(estimated_stamp.stamp.nanoseconds()),
-                           static_cast<long long>(*lastStampNs),
-                           static_cast<long long>(result.stamp_ns),
-                           estimated_stamp.tracker.duplicate_sequence ? "true" : "false",
-                           estimated_stamp.tracker.sequence_delta);
-    }
-
-    m_lastEmittedTimestampNs[timestampIndex] = result.stamp_ns;
+    result.stamp_ns = *lastStampNs;
     return result;
   }
 
-  // Units: ns. Allows fallback reconstructed samples to land just ahead of the
-  // stable host drain anchor
-  constexpr int64_t kFallbackTimestampFutureSlopNs = 50'000'000;
+  if (lastStampNs.has_value() && result.stamp_ns <= *lastStampNs)
+  {
+    result.monotonic_guarded = true;
+    if (estimated_stamp.tracker.duplicate_sequence)
+    {
+      result.duplicate = true;
+      result.stamp_ns = *lastStampNs;
+    }
+    else if (expected_interval_ns.has_value() && *expected_interval_ns > 0)
+    {
+      result.stamp_ns = *lastStampNs + *expected_interval_ns;
+    }
+    else
+    {
+      result.stamp_ns = *lastStampNs + 1;
+    }
 
-  TimestampNormalizationResult result = m_timestampNormalizers[timestampIndex].Normalize(
-      TimestampSample{event.sequence, estimated_stamp.stamp.nanoseconds(), packet_host_stamp_ns,
-                      std::make_optional(kFallbackTimestampFutureSlopNs)},
-      expected_interval_ns);
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                         "BNO086 cadence timestamp guard adjusted report=%s "
+                         "sequence=%u candidate_ns=%lld last_ns=%lld final_ns=%lld "
+                         "duplicate_sequence=%s sequence_delta=%u",
+                         ReportName(event.report_id), event.sequence,
+                         static_cast<long long>(estimated_stamp.stamp.nanoseconds()),
+                         static_cast<long long>(*lastStampNs),
+                         static_cast<long long>(result.stamp_ns),
+                         estimated_stamp.tracker.duplicate_sequence ? "true" : "false",
+                         estimated_stamp.tracker.sequence_delta);
+  }
+
   m_lastEmittedTimestampNs[timestampIndex] = result.stamp_ns;
   return result;
 }
