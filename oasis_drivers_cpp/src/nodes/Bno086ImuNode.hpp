@@ -84,6 +84,87 @@ private:
     int64_t linear_accel_stamp_ns{0};
   };
 
+  struct Bno086DriverConfig
+  {
+    std::string frame_id;
+    double prediction_horizon_sec{0.0};
+    std::string prediction_source{"rotation_vector_plus_host_prediction"};
+    int packet_read_timeout_ms{5};
+    int feature_response_startup_drain_ms{250};
+    std::uint32_t feature_response_startup_max_packets{128};
+    int feature_summary_timeout_ms{5000};
+    int diagnostics_log_period_ms{5000};
+    int all_zero_backoff_us{500};
+    int max_drain_duration_ms{100};
+    double imu_gravity_max_orientation_age_ms{80.0};
+    double imu_gravity_max_gyro_age_ms{80.0};
+  };
+
+  struct Bno086ReportConfig
+  {
+    double rotation_vector_rate_hz{100.0};
+    double gyro_rate_hz{100.0};
+    double accelerometer_rate_hz{100.0};
+    double linear_acceleration_rate_hz{50.0};
+    double gravity_rate_hz{25.0};
+    std::uint32_t rotation_vector_batch_interval_us{0};
+    std::uint32_t gyro_batch_interval_us{0};
+    std::uint32_t accelerometer_batch_interval_us{0};
+    std::uint32_t linear_acceleration_batch_interval_us{0};
+    std::uint32_t gravity_batch_interval_us{0};
+    bool enable_linear_acceleration_report{true};
+    bool enable_gravity_report{true};
+  };
+
+  struct Bno086DrainConfig
+  {
+    std::uint32_t max_packets_per_interrupt{1024};
+    std::uint32_t max_poll_iterations_per_interrupt{4096};
+    std::uint32_t max_no_progress_polls_per_interrupt{64};
+    std::uint32_t max_all_zero_polls_per_interrupt{64};
+    std::uint32_t max_sensor_events_per_drain{4096};
+    std::uint32_t max_pending_events_flush_per_drain{1024};
+  };
+
+  struct Bno086StreamState
+  {
+    OASIS::IMU::BNO086::ImuSampleFrame latest_frame;
+    SampleState orientation{};
+    SampleState gyro{};
+    SampleState linear_accel{};
+    SampleState imu_gravity{};
+    SampleState gravity{};
+    OASIS::IMU::BNO086::Bno086ImuGravityAccelHistory imu_gravity_accel_history;
+    std::optional<CoreFrameSignature> last_published_core_signature;
+    std::optional<int64_t> last_published_imu_gravity_anchor_stamp_ns;
+  };
+
+  struct Bno086DiagnosticsState
+  {
+    OASIS::IMU::BNO086::Bno086RateHealth rate_health;
+    OASIS::IMU::BNO086::Bno086DrainHealth drain_health;
+    bool was_unhealthy{false};
+    std::uint32_t repeated_no_progress_timeouts{0};
+    bool warned_missing_imu_fields{false};
+  };
+
+  struct Bno086StartupLogState
+  {
+    bool logged_comm_established{false};
+    bool logged_set_feature{false};
+    bool logged_feature_summary{false};
+    std::chrono::steady_clock::time_point feature_configuration_started_at{};
+    std::vector<OASIS::IMU::BNO086::FeatureResponse> latest_feature_responses;
+  };
+
+  struct Bno086CovarianceLogState
+  {
+    bool logged_orientation_covariance_source{false};
+    OASIS::IMU::BNO086::OrientationCovarianceSource last_orientation_covariance_source{
+        OASIS::IMU::BNO086::OrientationCovarianceSource::AccuracyBucketFallback};
+    std::uint8_t last_orientation_accuracy_bucket{0};
+  };
+
   void InterruptLoop();
   void DrainPacketsForInterrupt(const std::chrono::steady_clock::time_point& interrupt_steady_at,
                                 const rclcpp::Time& interrupt_ros_at);
@@ -168,65 +249,17 @@ private:
   OASIS::IMU::BNO086::Bno086Transport m_transport;
   OASIS::IMU::BNO086::Bno086Gpio m_interruptGpio;
   std::unique_ptr<OASIS::IMU::BNO086::Bno086Shtp> m_shtp;
-  OASIS::IMU::BNO086::ImuSampleFrame m_latestFrame;
-  SampleState m_orientationState{};
-  SampleState m_gyroState{};
-  SampleState m_linearAccelState{};
-  SampleState m_imuGravityState{};
-  SampleState m_gravityState{};
-  OASIS::IMU::BNO086::Bno086ImuGravityAccelHistory m_imuGravityAccelHistory;
-
-  std::string m_frameId;
-  double m_predictionHorizonSec{0.0};
-  std::string m_predictionSource{"rotation_vector_plus_host_prediction"};
 
   std::atomic<bool> m_running{false};
   std::thread m_interruptThread;
 
   OASIS::IMU::BNO086::Bno086TimestampCadence m_timestampCadence;
-  std::optional<CoreFrameSignature> m_lastPublishedCoreSignature;
-  std::optional<int64_t> m_lastPublishedImuGravityAnchorStampNs;
-  int m_packetReadTimeoutMs{5};
-  int m_featureResponseStartupDrainMs{250};
-  std::uint32_t m_featureResponseStartupMaxPackets{128};
-  std::uint32_t m_maxPacketsPerInterrupt{1024};
-  std::uint32_t m_maxPollIterationsPerInterrupt{4096};
-  std::uint32_t m_maxNoProgressPollsPerInterrupt{64};
-  std::uint32_t m_maxAllZeroPollsPerInterrupt{64};
-  int m_allZeroBackoffUs{500};
-  int m_maxDrainDurationMs{100};
-  std::uint32_t m_maxSensorEventsPerDrain{4096};
-  std::uint32_t m_maxPendingEventsFlushPerDrain{1024};
-  double m_rotationVectorRateHz{100.0};
-  double m_gyroRateHz{100.0};
-  double m_accelerometerRateHz{100.0};
-  double m_linearAccelerationRateHz{50.0};
-  double m_gravityRateHz{25.0};
-  std::uint32_t m_rotationVectorBatchIntervalUs{0};
-  std::uint32_t m_gyroBatchIntervalUs{0};
-  std::uint32_t m_accelerometerBatchIntervalUs{0};
-  std::uint32_t m_linearAccelerationBatchIntervalUs{0};
-  std::uint32_t m_gravityBatchIntervalUs{0};
-  bool m_enableLinearAccelerationReport{true};
-  bool m_enableGravityReport{true};
-  int m_featureSummaryTimeoutMs{5000};
-  int m_diagnosticsLogPeriodMs{5000};
-  double m_imuGravityMaxOrientationAgeMs{80.0};
-  double m_imuGravityMaxGyroAgeMs{80.0};
-  std::uint32_t m_repeatedNoProgressTimeouts{0};
-  OASIS::IMU::BNO086::Bno086RateHealth m_rateHealth;
-  bool m_diagnosticsWasUnhealthy{false};
-
-  bool m_loggedCommEstablished{false};
-  bool m_loggedSetFeature{false};
-  bool m_loggedFeatureSummary{false};
-  bool m_warnedMissingImuFields{false};
-  bool m_loggedOrientationCovarianceSource{false};
-  OASIS::IMU::BNO086::OrientationCovarianceSource m_lastOrientationCovarianceSource{
-      OASIS::IMU::BNO086::OrientationCovarianceSource::AccuracyBucketFallback};
-  std::uint8_t m_lastOrientationAccuracyBucket{0};
-  OASIS::IMU::BNO086::Bno086DrainHealth m_drainHealth;
-  std::chrono::steady_clock::time_point m_featureConfigurationStartedAt{};
-  std::vector<OASIS::IMU::BNO086::FeatureResponse> m_latestFeatureResponses;
+  Bno086DriverConfig m_config;
+  Bno086ReportConfig m_reports;
+  Bno086DrainConfig m_drain_config;
+  Bno086StreamState m_stream;
+  Bno086DiagnosticsState m_diag;
+  Bno086StartupLogState m_startup;
+  Bno086CovarianceLogState m_covariance_log;
 };
 } // namespace OASIS::ROS

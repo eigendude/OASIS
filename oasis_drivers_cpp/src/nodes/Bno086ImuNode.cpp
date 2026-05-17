@@ -182,39 +182,41 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   const std::string i2cDevice = get_parameter("i2c_device").as_string();
   const std::uint8_t i2cAddress = static_cast<std::uint8_t>(get_parameter("i2c_address").as_int());
   const int intGpio = get_parameter("int_gpio").as_int();
-  m_rotationVectorRateHz =
+  m_reports.rotation_vector_rate_hz =
       std::max(get_parameter("bno086_rotation_vector_rate_hz").as_double(), 1.0);
-  m_gyroRateHz = std::max(get_parameter("bno086_gyro_rate_hz").as_double(), 1.0);
-  m_accelerometerRateHz = std::max(get_parameter("bno086_accelerometer_rate_hz").as_double(), 1.0);
-  m_linearAccelerationRateHz =
+  m_reports.gyro_rate_hz = std::max(get_parameter("bno086_gyro_rate_hz").as_double(), 1.0);
+  m_reports.accelerometer_rate_hz =
+      std::max(get_parameter("bno086_accelerometer_rate_hz").as_double(), 1.0);
+  m_reports.linear_acceleration_rate_hz =
       std::max(get_parameter("bno086_linear_acceleration_rate_hz").as_double(), 1.0);
-  m_gravityRateHz = std::max(get_parameter("bno086_gravity_rate_hz").as_double(), 1.0);
-  m_rotationVectorBatchIntervalUs =
+  m_reports.gravity_rate_hz = std::max(get_parameter("bno086_gravity_rate_hz").as_double(), 1.0);
+  m_reports.rotation_vector_batch_interval_us =
       MillisecondsToMicroseconds(get_parameter("bno086_rotation_vector_batch_ms").as_double());
-  m_gyroBatchIntervalUs =
+  m_reports.gyro_batch_interval_us =
       MillisecondsToMicroseconds(get_parameter("bno086_gyro_batch_ms").as_double());
-  m_accelerometerBatchIntervalUs =
+  m_reports.accelerometer_batch_interval_us =
       MillisecondsToMicroseconds(get_parameter("bno086_accelerometer_batch_ms").as_double());
-  m_linearAccelerationBatchIntervalUs =
+  m_reports.linear_acceleration_batch_interval_us =
       MillisecondsToMicroseconds(get_parameter("bno086_linear_acceleration_batch_ms").as_double());
-  m_gravityBatchIntervalUs =
+  m_reports.gravity_batch_interval_us =
       MillisecondsToMicroseconds(get_parameter("bno086_gravity_batch_ms").as_double());
-  m_enableLinearAccelerationReport =
+  m_reports.enable_linear_acceleration_report =
       get_parameter("bno086_enable_linear_acceleration_report").as_bool();
-  m_enableGravityReport = get_parameter("bno086_enable_gravity_report").as_bool();
-  m_allZeroBackoffUs =
+  m_reports.enable_gravity_report = get_parameter("bno086_enable_gravity_report").as_bool();
+  m_config.all_zero_backoff_us =
       std::clamp(static_cast<int>(get_parameter("bno086_all_zero_backoff_us").as_int()),
                  MIN_ALL_ZERO_BACKOFF_US, MAX_ALL_ZERO_BACKOFF_US);
-  m_diagnosticsLogPeriodMs =
+  m_config.diagnostics_log_period_ms =
       std::max(static_cast<int>(get_parameter("bno086_diagnostics_log_period_ms").as_int()),
                MIN_BNO086_DIAGNOSTICS_LOG_PERIOD_MS);
-  m_predictionHorizonSec = std::max(get_parameter("prediction_horizon_sec").as_double(), 0.0);
-  m_imuGravityMaxOrientationAgeMs =
+  m_config.prediction_horizon_sec =
+      std::max(get_parameter("prediction_horizon_sec").as_double(), 0.0);
+  m_config.imu_gravity_max_orientation_age_ms =
       std::max(get_parameter("imu_gravity_max_orientation_age_ms").as_double(), 0.0);
-  m_imuGravityMaxGyroAgeMs =
+  m_config.imu_gravity_max_gyro_age_ms =
       std::max(get_parameter("imu_gravity_max_gyro_age_ms").as_double(), 0.0);
 
-  m_frameId = get_parameter("frame_id").as_string();
+  m_config.frame_id = get_parameter("frame_id").as_string();
 
   Bno086TransportConfig transportConfig;
   transportConfig.i2c_device = i2cDevice;
@@ -240,27 +242,29 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   m_shtp = std::make_unique<Bno086Shtp>(m_transport);
 
   Bno086ShtpConfig shtpConfig;
-  shtpConfig.rotation_vector_rate_hz = m_rotationVectorRateHz;
-  shtpConfig.gyro_rate_hz = m_gyroRateHz;
-  shtpConfig.accelerometer_rate_hz = m_accelerometerRateHz;
-  shtpConfig.linear_acceleration_rate_hz = m_linearAccelerationRateHz;
-  shtpConfig.gravity_rate_hz = m_gravityRateHz;
-  shtpConfig.rotation_vector_batch_interval_us = m_rotationVectorBatchIntervalUs;
-  shtpConfig.gyro_batch_interval_us = m_gyroBatchIntervalUs;
-  shtpConfig.accelerometer_batch_interval_us = m_accelerometerBatchIntervalUs;
-  shtpConfig.linear_acceleration_batch_interval_us = m_linearAccelerationBatchIntervalUs;
-  shtpConfig.gravity_batch_interval_us = m_gravityBatchIntervalUs;
-  shtpConfig.enable_linear_acceleration_report = m_enableLinearAccelerationReport;
-  shtpConfig.enable_gravity_report = m_enableGravityReport;
+  shtpConfig.rotation_vector_rate_hz = m_reports.rotation_vector_rate_hz;
+  shtpConfig.gyro_rate_hz = m_reports.gyro_rate_hz;
+  shtpConfig.accelerometer_rate_hz = m_reports.accelerometer_rate_hz;
+  shtpConfig.linear_acceleration_rate_hz = m_reports.linear_acceleration_rate_hz;
+  shtpConfig.gravity_rate_hz = m_reports.gravity_rate_hz;
+  shtpConfig.rotation_vector_batch_interval_us = m_reports.rotation_vector_batch_interval_us;
+  shtpConfig.gyro_batch_interval_us = m_reports.gyro_batch_interval_us;
+  shtpConfig.accelerometer_batch_interval_us = m_reports.accelerometer_batch_interval_us;
+  shtpConfig.linear_acceleration_batch_interval_us =
+      m_reports.linear_acceleration_batch_interval_us;
+  shtpConfig.gravity_batch_interval_us = m_reports.gravity_batch_interval_us;
+  shtpConfig.enable_linear_acceleration_report = m_reports.enable_linear_acceleration_report;
+  shtpConfig.enable_gravity_report = m_reports.enable_gravity_report;
 
   if (!m_shtp->Configure(shtpConfig))
   {
     RCLCPP_ERROR(get_logger(), "Failed to send initial BNO086 Set Feature commands");
     throw std::runtime_error("Failed to configure BNO086 reports");
   }
-  m_featureConfigurationStartedAt = std::chrono::steady_clock::now();
-  (void)m_shtp->DrainFeatureResponses(m_featureResponseStartupDrainMs,
-                                      m_featureResponseStartupMaxPackets, m_packetReadTimeoutMs);
+  m_startup.feature_configuration_started_at = std::chrono::steady_clock::now();
+  (void)m_shtp->DrainFeatureResponses(m_config.feature_response_startup_drain_ms,
+                                      m_config.feature_response_startup_max_packets,
+                                      m_config.packet_read_timeout_ms);
   MaybeLogFeatureResponses();
 
   if (intGpio == DEFAULT_INT_GPIO)
@@ -271,35 +275,40 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
 
   RCLCPP_INFO(get_logger(), "BNO086 opened on %s (0x%02X), int_gpio=%d active_low",
               i2cDevice.c_str(), static_cast<unsigned>(i2cAddress), intGpio);
-  RCLCPP_INFO(get_logger(),
-              "BNO086 static report rates:\n"
-              "  rotation_vector=%.1f batch_ms=%.0f enabled=true\n"
-              "  gyro=%.1f batch_ms=%.0f enabled=true\n"
-              "  accelerometer=%.1f batch_ms=%.0f enabled=true\n"
-              "  linear_acceleration=%.1f batch_ms=%.0f enabled=%s\n"
-              "  gravity=%.1f batch_ms=%.0f enabled=%s",
-              m_rotationVectorRateHz, static_cast<double>(m_rotationVectorBatchIntervalUs) / 1000.0,
-              m_gyroRateHz, static_cast<double>(m_gyroBatchIntervalUs) / 1000.0,
-              m_accelerometerRateHz, static_cast<double>(m_accelerometerBatchIntervalUs) / 1000.0,
-              m_linearAccelerationRateHz,
-              m_enableLinearAccelerationReport
-                  ? static_cast<double>(m_linearAccelerationBatchIntervalUs) / 1000.0
-                  : 0.0,
-              m_enableLinearAccelerationReport ? "true" : "false", m_gravityRateHz,
-              m_enableGravityReport ? static_cast<double>(m_gravityBatchIntervalUs) / 1000.0 : 0.0,
-              m_enableGravityReport ? "true" : "false");
+  RCLCPP_INFO(
+      get_logger(),
+      "BNO086 static report rates:\n"
+      "  rotation_vector=%.1f batch_ms=%.0f enabled=true\n"
+      "  gyro=%.1f batch_ms=%.0f enabled=true\n"
+      "  accelerometer=%.1f batch_ms=%.0f enabled=true\n"
+      "  linear_acceleration=%.1f batch_ms=%.0f enabled=%s\n"
+      "  gravity=%.1f batch_ms=%.0f enabled=%s",
+      m_reports.rotation_vector_rate_hz,
+      static_cast<double>(m_reports.rotation_vector_batch_interval_us) / 1000.0,
+      m_reports.gyro_rate_hz, static_cast<double>(m_reports.gyro_batch_interval_us) / 1000.0,
+      m_reports.accelerometer_rate_hz,
+      static_cast<double>(m_reports.accelerometer_batch_interval_us) / 1000.0,
+      m_reports.linear_acceleration_rate_hz,
+      m_reports.enable_linear_acceleration_report
+          ? static_cast<double>(m_reports.linear_acceleration_batch_interval_us) / 1000.0
+          : 0.0,
+      m_reports.enable_linear_acceleration_report ? "true" : "false", m_reports.gravity_rate_hz,
+      m_reports.enable_gravity_report
+          ? static_cast<double>(m_reports.gravity_batch_interval_us) / 1000.0
+          : 0.0,
+      m_reports.enable_gravity_report ? "true" : "false");
   RCLCPP_INFO(get_logger(), "BNO086 publication cadence: imu=linear_acceleration "
                             "imu_gravity=rotation_vector gravity=gravity_report");
-  if (m_predictionHorizonSec > 0.0)
+  if (m_config.prediction_horizon_sec > 0.0)
   {
     RCLCPP_INFO(get_logger(),
                 "Predicted orientation output uses %s with prediction_horizon_sec=%.4f",
-                m_predictionSource.c_str(), m_predictionHorizonSec);
+                m_config.prediction_source.c_str(), m_config.prediction_horizon_sec);
   }
   RCLCPP_INFO(get_logger(),
               "BNO086 imu_gravity uses rotation vector cadence with "
               "orientation_max_age_ms=%.1f gyro_max_age_ms=%.1f",
-              m_imuGravityMaxOrientationAgeMs, m_imuGravityMaxGyroAgeMs);
+              m_config.imu_gravity_max_orientation_age_ms, m_config.imu_gravity_max_gyro_age_ms);
 }
 
 Bno086ImuNode::~Bno086ImuNode() = default;
@@ -307,11 +316,11 @@ Bno086ImuNode::~Bno086ImuNode() = default;
 bool Bno086ImuNode::Initialize()
 {
   m_timestampCadence.Reset();
-  m_lastPublishedCoreSignature.reset();
-  m_lastPublishedImuGravityAnchorStampNs.reset();
-  m_imuGravityAccelHistory.Reset();
-  m_drainHealth = Bno086DrainHealth{};
-  m_rateHealth = Bno086RateHealth{};
+  m_stream.last_published_core_signature.reset();
+  m_stream.last_published_imu_gravity_anchor_stamp_ns.reset();
+  m_stream.imu_gravity_accel_history.Reset();
+  m_diag.drain_health = Bno086DrainHealth{};
+  m_diag.rate_health = Bno086RateHealth{};
 
   m_imuPublisher =
       create_publisher<sensor_msgs::msg::Imu>(IMU_TOPIC, ReliableSensorQos(RAW_IMU_QOS_DEPTH));
@@ -373,16 +382,16 @@ void Bno086ImuNode::InterruptLoop()
 
     const Bno086Shtp::StartupStatus& startup = m_shtp->GetStartupStatus();
 
-    if (startup.communication_established && !m_loggedCommEstablished)
+    if (startup.communication_established && !m_startup.logged_comm_established)
     {
       RCLCPP_INFO(get_logger(), "BNO086 communication established");
-      m_loggedCommEstablished = true;
+      m_startup.logged_comm_established = true;
     }
 
-    if (startup.set_feature_sent && !m_loggedSetFeature)
+    if (startup.set_feature_sent && !m_startup.logged_set_feature)
     {
       RCLCPP_INFO(get_logger(), "BNO086 Set Feature commands sent");
-      m_loggedSetFeature = true;
+      m_startup.logged_set_feature = true;
     }
 
     MaybeLogFeatureResponses();
@@ -395,12 +404,14 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
 {
   Bno086DrainCounters drainCounters;
   Bno086DrainLimits drainLimits;
-  drainLimits.max_physical_packets_per_interrupt = m_maxPacketsPerInterrupt;
-  drainLimits.max_poll_iterations_per_interrupt = m_maxPollIterationsPerInterrupt;
-  drainLimits.max_no_progress_polls_per_interrupt = m_maxNoProgressPollsPerInterrupt;
-  drainLimits.max_all_zero_polls_per_interrupt = m_maxAllZeroPollsPerInterrupt;
-  drainLimits.max_sensor_events_per_drain = m_maxSensorEventsPerDrain;
-  drainLimits.max_pending_events_flush_per_drain = m_maxPendingEventsFlushPerDrain;
+  drainLimits.max_physical_packets_per_interrupt = m_drain_config.max_packets_per_interrupt;
+  drainLimits.max_poll_iterations_per_interrupt = m_drain_config.max_poll_iterations_per_interrupt;
+  drainLimits.max_no_progress_polls_per_interrupt =
+      m_drain_config.max_no_progress_polls_per_interrupt;
+  drainLimits.max_all_zero_polls_per_interrupt = m_drain_config.max_all_zero_polls_per_interrupt;
+  drainLimits.max_sensor_events_per_drain = m_drain_config.max_sensor_events_per_drain;
+  drainLimits.max_pending_events_flush_per_drain =
+      m_drain_config.max_pending_events_flush_per_drain;
   const rclcpp::Time drainReceiveAnchor = interrupt_ros_at;
   const auto drainStartedAt = std::chrono::steady_clock::now();
   Bno086DrainAction drainExitAction = Bno086DrainAction::Complete;
@@ -449,26 +460,26 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
                                          std::chrono::steady_clock::now() - drainStartedAt)
                                          .count();
     if (pendingEventsBeforePoll == 0 && drainCounters.poll_iterations > 0 &&
-        elapsedBeforePollMs >= m_maxDrainDurationMs)
+        elapsedBeforePollMs >= m_config.max_drain_duration_ms)
     {
       drainExitAction = Bno086DrainAction::DrainDurationBudget;
       break;
     }
 
-    const Bno086Shtp::PollResult pollResult = m_shtp->Poll(m_packetReadTimeoutMs);
+    const Bno086Shtp::PollResult pollResult = m_shtp->Poll(m_config.packet_read_timeout_ms);
     const bool hintnAssertedAfterPoll = m_interruptGpio.IsAssertedLow();
     const Bno086DrainDecision afterPollDecision =
         Bno086DrainAfterPoll(pollResult, drainLimits, drainCounters, hintnAssertedAfterPoll);
     if (afterPollDecision.action == Bno086DrainAction::Complete)
     {
-      m_repeatedNoProgressTimeouts = 0;
+      m_diag.repeated_no_progress_timeouts = 0;
       drainExitAction = afterPollDecision.action;
       break;
     }
 
     if (afterPollDecision.action == Bno086DrainAction::NoProgressBudget)
     {
-      ++m_repeatedNoProgressTimeouts;
+      ++m_diag.repeated_no_progress_timeouts;
       const auto drainDurationUs =
           static_cast<std::uint32_t>(std::chrono::duration_cast<std::chrono::microseconds>(
                                          std::chrono::steady_clock::now() - drainStartedAt)
@@ -513,7 +524,7 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
           drainCounters.pending_events_this_drain, drainCounters.control_packets_this_drain,
           drainCounters.poll_iterations, drainCounters.all_zero_polls_this_drain,
           drainCounters.consecutive_all_zero_polls, drainLimits.max_all_zero_polls_per_interrupt,
-          m_allZeroBackoffUs, static_cast<double>(drainDurationUs) / 1e3);
+          m_config.all_zero_backoff_us, static_cast<double>(drainDurationUs) / 1e3);
       drainExitAction = afterPollDecision.action;
       break;
     }
@@ -521,7 +532,7 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
     if (pollResult.read_physical_packet || pollResult.event.has_value() ||
         pollResult.dequeued_pending_event || pollResult.handled_control_packet)
     {
-      m_repeatedNoProgressTimeouts = 0;
+      m_diag.repeated_no_progress_timeouts = 0;
     }
 
     if (afterPollDecision.action == Bno086DrainAction::TransportError)
@@ -534,10 +545,10 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
 
     if (pollResult.status == Bno086Shtp::PollStatus::AllZeroHeader &&
         afterPollDecision.action == Bno086DrainAction::Continue &&
-        afterPollDecision.hintn_asserted && m_allZeroBackoffUs > 0)
+        afterPollDecision.hintn_asserted && m_config.all_zero_backoff_us > 0)
     {
-      m_drainHealth.CountAllZeroBackoff();
-      std::this_thread::sleep_for(std::chrono::microseconds(m_allZeroBackoffUs));
+      m_diag.drain_health.CountAllZeroBackoff();
+      std::this_thread::sleep_for(std::chrono::microseconds(m_config.all_zero_backoff_us));
     }
 
     MaybeLogFeatureResponses();
@@ -560,7 +571,7 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
       if (finalizedStampNs.has_value())
       {
         const rclcpp::Time normalizedEventStamp(*finalizedStampNs, RCL_ROS_TIME);
-        m_rateHealth.CountDecodedReport(pollResult.event->report_id);
+        m_diag.rate_health.CountDecodedReport(pollResult.event->report_id);
         ApplyEvent(*pollResult.event, normalizedEventStamp);
         MaybePublishOnLinearAcceleration(*pollResult.event);
         MaybePublishImuGravityOnRotationVector(*pollResult.event);
@@ -636,7 +647,7 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
     const auto elapsedAfterPollMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                                         std::chrono::steady_clock::now() - drainStartedAt)
                                         .count();
-    if (m_shtp->PendingEventCount() == 0 && elapsedAfterPollMs >= m_maxDrainDurationMs)
+    if (m_shtp->PendingEventCount() == 0 && elapsedAfterPollMs >= m_config.max_drain_duration_ms)
     {
       drainExitAction = Bno086DrainAction::DrainDurationBudget;
       break;
@@ -661,17 +672,18 @@ void Bno086ImuNode::MaybePublishOnLinearAcceleration(const SensorEvent& event)
   if (event.report_id != ReportId::LinearAcceleration)
     return;
 
-  if (!(m_latestFrame.has_orientation && m_latestFrame.has_gyro &&
-        m_latestFrame.has_linear_accel) ||
-      !(m_orientationState.has_sample && m_gyroState.has_sample && m_linearAccelState.has_sample))
+  if (!(m_stream.latest_frame.has_orientation && m_stream.latest_frame.has_gyro &&
+        m_stream.latest_frame.has_linear_accel) ||
+      !(m_stream.orientation.has_sample && m_stream.gyro.has_sample &&
+        m_stream.linear_accel.has_sample))
   {
     MaybeLogImuGravityDiagnostics();
     return;
   }
 
-  const int64_t orientationNs = m_orientationState.stamp.nanoseconds();
-  const int64_t gyroNs = m_gyroState.stamp.nanoseconds();
-  const int64_t linearAccelNs = m_linearAccelState.stamp.nanoseconds();
+  const int64_t orientationNs = m_stream.orientation.stamp.nanoseconds();
+  const int64_t gyroNs = m_stream.gyro.stamp.nanoseconds();
+  const int64_t linearAccelNs = m_stream.linear_accel.stamp.nanoseconds();
   const int64_t oldestNs = std::min({orientationNs, gyroNs, linearAccelNs});
   const int64_t newestNs = std::max({orientationNs, gyroNs, linearAccelNs});
 
@@ -683,21 +695,25 @@ void Bno086ImuNode::MaybePublishOnLinearAcceleration(const SensorEvent& event)
   }
 
   const CoreFrameSignature signature = LatestCoreSignature();
-  if (m_lastPublishedCoreSignature.has_value() &&
-      signature.orientation_sequence == m_lastPublishedCoreSignature->orientation_sequence &&
-      signature.gyro_sequence == m_lastPublishedCoreSignature->gyro_sequence &&
-      signature.linear_accel_sequence == m_lastPublishedCoreSignature->linear_accel_sequence &&
-      signature.orientation_stamp_ns == m_lastPublishedCoreSignature->orientation_stamp_ns &&
-      signature.gyro_stamp_ns == m_lastPublishedCoreSignature->gyro_stamp_ns &&
-      signature.linear_accel_stamp_ns == m_lastPublishedCoreSignature->linear_accel_stamp_ns)
+  if (m_stream.last_published_core_signature.has_value() &&
+      signature.orientation_sequence ==
+          m_stream.last_published_core_signature->orientation_sequence &&
+      signature.gyro_sequence == m_stream.last_published_core_signature->gyro_sequence &&
+      signature.linear_accel_sequence ==
+          m_stream.last_published_core_signature->linear_accel_sequence &&
+      signature.orientation_stamp_ns ==
+          m_stream.last_published_core_signature->orientation_stamp_ns &&
+      signature.gyro_stamp_ns == m_stream.last_published_core_signature->gyro_stamp_ns &&
+      signature.linear_accel_stamp_ns ==
+          m_stream.last_published_core_signature->linear_accel_stamp_ns)
   {
     MaybeLogImuGravityDiagnostics();
     return;
   }
 
   PublishLatestFrame(LatestCoreStamp());
-  m_lastPublishedCoreSignature = signature;
-  m_rateHealth.CountImuPublished();
+  m_stream.last_published_core_signature = signature;
+  m_diag.rate_health.CountImuPublished();
 }
 
 void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& event)
@@ -705,25 +721,25 @@ void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& ev
   if (event.report_id != ReportId::RotationVector)
     return;
 
-  if (!m_orientationState.has_sample || !m_latestFrame.has_orientation)
+  if (!m_stream.orientation.has_sample || !m_stream.latest_frame.has_orientation)
   {
     MaybeLogImuGravityDiagnostics();
     return;
   }
 
-  if (!m_gyroState.has_sample || !m_latestFrame.has_gyro)
+  if (!m_stream.gyro.has_sample || !m_stream.latest_frame.has_gyro)
   {
     MaybeLogImuGravityDiagnostics();
     return;
   }
 
-  if (!m_imuGravityState.has_sample || !m_latestFrame.has_accel)
+  if (!m_stream.imu_gravity.has_sample || !m_stream.latest_frame.has_accel)
   {
     MaybeLogImuGravityDiagnostics();
     return;
   }
 
-  const int64_t orientationStampNs = m_orientationState.stamp.nanoseconds();
+  const int64_t orientationStampNs = m_stream.orientation.stamp.nanoseconds();
   const int64_t maxAccelAgeNs = ImuGravityMaxOrientationAgeNs();
   const int64_t accelFutureToleranceNs = ReportFutureToleranceNs(ReportId::Accelerometer);
   const std::optional<Bno086ImuGravityAccelSample> accelSelection =
@@ -741,7 +757,7 @@ void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& ev
   const SampleFreshnessResult accelFreshness = EvaluateSampleFreshness(
       orientationStampNs, accelStampNs, maxAccelAgeNs, accelFutureToleranceNs);
   const SampleFreshnessResult gyroFreshness =
-      EvaluateSampleFreshness(orientationStampNs, m_gyroState.stamp.nanoseconds(), maxGyroAgeNs,
+      EvaluateSampleFreshness(orientationStampNs, m_stream.gyro.stamp.nanoseconds(), maxGyroAgeNs,
                               ReportFutureToleranceNs(ReportId::GyroscopeCalibrated));
 
   if (accelFreshness.status == SampleFreshnessStatus::TooOld)
@@ -768,8 +784,8 @@ void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& ev
     return;
   }
 
-  if (m_lastPublishedImuGravityAnchorStampNs.has_value() &&
-      orientationStampNs <= *m_lastPublishedImuGravityAnchorStampNs)
+  if (m_stream.last_published_imu_gravity_anchor_stamp_ns.has_value() &&
+      orientationStampNs <= *m_stream.last_published_imu_gravity_anchor_stamp_ns)
   {
     MaybeLogImuGravityDiagnostics();
     return;
@@ -783,7 +799,7 @@ void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& ev
   // BNO08X calibrated acceleration includes gravity, while the linear
   // acceleration report used by `imu` has gravity removed.
   const sensor_msgs::msg::Imu imuGravityMsg =
-      BuildImuGravityMessage(m_orientationState.stamp, accelSample);
+      BuildImuGravityMessage(m_stream.orientation.stamp, accelSample);
   std::string invalidReason;
   if (!IsImuGravitySampleValid(imuGravityMsg, invalidReason))
   {
@@ -794,8 +810,8 @@ void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& ev
   }
 
   m_imuGravityPublisher->publish(imuGravityMsg);
-  m_lastPublishedImuGravityAnchorStampNs = orientationStampNs;
-  m_rateHealth.CountImuGravityPublished();
+  m_stream.last_published_imu_gravity_anchor_stamp_ns = orientationStampNs;
+  m_diag.rate_health.CountImuGravityPublished();
   MaybeLogImuGravityDiagnostics();
 }
 
@@ -804,28 +820,29 @@ void Bno086ImuNode::MaybePublishGravityOnGravityReport(const SensorEvent& event)
   if (event.report_id != ReportId::Gravity)
     return;
 
-  if (!m_latestFrame.has_gravity)
+  if (!m_stream.latest_frame.has_gravity)
     return;
 
   const geometry_msgs::msg::AccelWithCovarianceStamped gravityMsg =
-      BuildGravityMessage(m_gravityState.stamp);
+      BuildGravityMessage(m_stream.gravity.stamp);
   m_gravityPublisher->publish(gravityMsg);
 }
 
 void Bno086ImuNode::PublishLatestFrame(const rclcpp::Time& stamp)
 {
-  if (!(m_latestFrame.has_orientation && m_latestFrame.has_gyro && m_latestFrame.has_linear_accel))
+  if (!(m_stream.latest_frame.has_orientation && m_stream.latest_frame.has_gyro &&
+        m_stream.latest_frame.has_linear_accel))
   {
-    if (!m_warnedMissingImuFields)
+    if (!m_diag.warned_missing_imu_fields)
     {
       RCLCPP_WARN(get_logger(), "Waiting for complete BNO086 IMU fields "
                                 "(orientation+gyro+linear_accel)");
-      m_warnedMissingImuFields = true;
+      m_diag.warned_missing_imu_fields = true;
     }
     return;
   }
 
-  m_warnedMissingImuFields = false;
+  m_diag.warned_missing_imu_fields = false;
 
   // `imu` keeps gravity-removed linear acceleration
   const sensor_msgs::msg::Imu imuMsg = BuildPresentImuMessage(stamp);
@@ -841,34 +858,35 @@ sensor_msgs::msg::Imu Bno086ImuNode::BuildPresentImuMessage(const rclcpp::Time& 
 {
   sensor_msgs::msg::Imu imuMsg;
   imuMsg.header.stamp = stamp;
-  imuMsg.header.frame_id = m_frameId;
+  imuMsg.header.frame_id = m_config.frame_id;
 
-  imuMsg.orientation.x = m_latestFrame.orientation_xyzw[0];
-  imuMsg.orientation.y = m_latestFrame.orientation_xyzw[1];
-  imuMsg.orientation.z = m_latestFrame.orientation_xyzw[2];
-  imuMsg.orientation.w = m_latestFrame.orientation_xyzw[3];
+  imuMsg.orientation.x = m_stream.latest_frame.orientation_xyzw[0];
+  imuMsg.orientation.y = m_stream.latest_frame.orientation_xyzw[1];
+  imuMsg.orientation.z = m_stream.latest_frame.orientation_xyzw[2];
+  imuMsg.orientation.w = m_stream.latest_frame.orientation_xyzw[3];
 
-  imuMsg.angular_velocity.x = m_latestFrame.gyro_rads[0];
-  imuMsg.angular_velocity.y = m_latestFrame.gyro_rads[1];
-  imuMsg.angular_velocity.z = m_latestFrame.gyro_rads[2];
+  imuMsg.angular_velocity.x = m_stream.latest_frame.gyro_rads[0];
+  imuMsg.angular_velocity.y = m_stream.latest_frame.gyro_rads[1];
+  imuMsg.angular_velocity.z = m_stream.latest_frame.gyro_rads[2];
 
-  imuMsg.linear_acceleration.x = m_latestFrame.linear_accel_mps2[0];
-  imuMsg.linear_acceleration.y = m_latestFrame.linear_accel_mps2[1];
-  imuMsg.linear_acceleration.z = m_latestFrame.linear_accel_mps2[2];
+  imuMsg.linear_acceleration.x = m_stream.latest_frame.linear_accel_mps2[0];
+  imuMsg.linear_acceleration.y = m_stream.latest_frame.linear_accel_mps2[1];
+  imuMsg.linear_acceleration.z = m_stream.latest_frame.linear_accel_mps2[2];
 
   imuMsg.orientation_covariance.fill(0.0);
   imuMsg.angular_velocity_covariance.fill(0.0);
   imuMsg.linear_acceleration_covariance.fill(0.0);
 
-  if (m_latestFrame.has_orientation_covariance)
-    SetCovariance(imuMsg.orientation_covariance, m_latestFrame.orientation_cov_rad2);
+  if (m_stream.latest_frame.has_orientation_covariance)
+    SetCovariance(imuMsg.orientation_covariance, m_stream.latest_frame.orientation_cov_rad2);
 
-  if (m_latestFrame.has_gyro_covariance)
-    SetCovariance(imuMsg.angular_velocity_covariance, m_latestFrame.gyro_cov_rads2_2);
+  if (m_stream.latest_frame.has_gyro_covariance)
+    SetCovariance(imuMsg.angular_velocity_covariance, m_stream.latest_frame.gyro_cov_rads2_2);
 
-  if (m_latestFrame.has_linear_accel_covariance)
+  if (m_stream.latest_frame.has_linear_accel_covariance)
   {
-    SetCovariance(imuMsg.linear_acceleration_covariance, m_latestFrame.linear_accel_cov_mps2_2);
+    SetCovariance(imuMsg.linear_acceleration_covariance,
+                  m_stream.latest_frame.linear_accel_cov_mps2_2);
   }
 
   return imuMsg;
@@ -879,16 +897,16 @@ sensor_msgs::msg::Imu Bno086ImuNode::BuildImuGravityMessage(
 {
   sensor_msgs::msg::Imu imuGravityMsg;
   imuGravityMsg.header.stamp = stamp;
-  imuGravityMsg.header.frame_id = m_frameId;
+  imuGravityMsg.header.frame_id = m_config.frame_id;
 
-  imuGravityMsg.orientation.x = m_latestFrame.orientation_xyzw[0];
-  imuGravityMsg.orientation.y = m_latestFrame.orientation_xyzw[1];
-  imuGravityMsg.orientation.z = m_latestFrame.orientation_xyzw[2];
-  imuGravityMsg.orientation.w = m_latestFrame.orientation_xyzw[3];
+  imuGravityMsg.orientation.x = m_stream.latest_frame.orientation_xyzw[0];
+  imuGravityMsg.orientation.y = m_stream.latest_frame.orientation_xyzw[1];
+  imuGravityMsg.orientation.z = m_stream.latest_frame.orientation_xyzw[2];
+  imuGravityMsg.orientation.w = m_stream.latest_frame.orientation_xyzw[3];
 
-  imuGravityMsg.angular_velocity.x = m_latestFrame.gyro_rads[0];
-  imuGravityMsg.angular_velocity.y = m_latestFrame.gyro_rads[1];
-  imuGravityMsg.angular_velocity.z = m_latestFrame.gyro_rads[2];
+  imuGravityMsg.angular_velocity.x = m_stream.latest_frame.gyro_rads[0];
+  imuGravityMsg.angular_velocity.y = m_stream.latest_frame.gyro_rads[1];
+  imuGravityMsg.angular_velocity.z = m_stream.latest_frame.gyro_rads[2];
 
   imuGravityMsg.linear_acceleration.x = accel_sample.accel_mps2[0];
   imuGravityMsg.linear_acceleration.y = accel_sample.accel_mps2[1];
@@ -898,11 +916,12 @@ sensor_msgs::msg::Imu Bno086ImuNode::BuildImuGravityMessage(
   imuGravityMsg.angular_velocity_covariance.fill(0.0);
   imuGravityMsg.linear_acceleration_covariance.fill(0.0);
 
-  if (m_latestFrame.has_orientation_covariance)
-    SetCovariance(imuGravityMsg.orientation_covariance, m_latestFrame.orientation_cov_rad2);
+  if (m_stream.latest_frame.has_orientation_covariance)
+    SetCovariance(imuGravityMsg.orientation_covariance, m_stream.latest_frame.orientation_cov_rad2);
 
-  if (m_latestFrame.has_gyro_covariance)
-    SetCovariance(imuGravityMsg.angular_velocity_covariance, m_latestFrame.gyro_cov_rads2_2);
+  if (m_stream.latest_frame.has_gyro_covariance)
+    SetCovariance(imuGravityMsg.angular_velocity_covariance,
+                  m_stream.latest_frame.gyro_cov_rads2_2);
 
   if (accel_sample.has_covariance)
   {
@@ -916,15 +935,15 @@ geometry_msgs::msg::AccelWithCovarianceStamped Bno086ImuNode::BuildGravityMessag
     const rclcpp::Time& stamp) const
 {
   std::optional<OASIS::IMU::Mat3> gravityCovariance;
-  if (m_latestFrame.has_gravity_covariance)
-    gravityCovariance = m_latestFrame.gravity_cov_mps2_2;
+  if (m_stream.latest_frame.has_gravity_covariance)
+    gravityCovariance = m_stream.latest_frame.gravity_cov_mps2_2;
 
   const PublishedGravityMeasurement gravityMeasurement =
-      MakePublishedGravityMeasurement(m_latestFrame.gravity_mps2, gravityCovariance);
+      MakePublishedGravityMeasurement(m_stream.latest_frame.gravity_mps2, gravityCovariance);
 
   geometry_msgs::msg::AccelWithCovarianceStamped gravityMsg;
   gravityMsg.header.stamp = stamp;
-  gravityMsg.header.frame_id = m_frameId;
+  gravityMsg.header.frame_id = m_config.frame_id;
   gravityMsg.accel.accel.linear.x = gravityMeasurement.gravity_mps2[0];
   gravityMsg.accel.accel.linear.y = gravityMeasurement.gravity_mps2[1];
   gravityMsg.accel.accel.linear.z = gravityMeasurement.gravity_mps2[2];
@@ -950,8 +969,9 @@ sensor_msgs::msg::Imu Bno086ImuNode::BuildPredictedImuMessage(
     const sensor_msgs::msg::Imu& present_imu) const
 {
   sensor_msgs::msg::Imu predictedImuMsg = present_imu;
-  const std::array<double, 4> predictedOrientation = PredictOrientation(
-      m_latestFrame.orientation_xyzw, m_latestFrame.gyro_rads, m_predictionHorizonSec);
+  const std::array<double, 4> predictedOrientation =
+      PredictOrientation(m_stream.latest_frame.orientation_xyzw, m_stream.latest_frame.gyro_rads,
+                         m_config.prediction_horizon_sec);
 
   predictedImuMsg.orientation.x = predictedOrientation[0];
   predictedImuMsg.orientation.y = predictedOrientation[1];
@@ -965,9 +985,9 @@ sensor_msgs::msg::Imu Bno086ImuNode::BuildPredictedImuMessage(
   // This covariance is a driver heuristic: SH-2 provides only a coarse
   // accuracy bucket, so the predicted orientation covariance inherits the
   // present-time estimate and only adds host-side horizon growth.
-  predictedImuMsg.orientation_covariance =
-      PredictedCovarianceFromPresent(present_imu.orientation_covariance, m_predictionHorizonSec,
-                                     sigmaNoiseRad, sigmaRmsRad, sigmaBoundRad);
+  predictedImuMsg.orientation_covariance = PredictedCovarianceFromPresent(
+      present_imu.orientation_covariance, m_config.prediction_horizon_sec, sigmaNoiseRad,
+      sigmaRmsRad, sigmaBoundRad);
 
   return predictedImuMsg;
 }
@@ -977,21 +997,22 @@ oasis_msgs::msg::ImuVr Bno086ImuNode::BuildPredictedVrMessage(
 {
   oasis_msgs::msg::ImuVr vrMsg;
   const std::uint8_t predictionAccuracy =
-      std::min(m_orientationState.accuracy, m_gyroState.accuracy);
+      std::min(m_stream.orientation.accuracy, m_stream.gyro.accuracy);
   vrMsg.header = present_imu.header;
-  vrMsg.valid = m_latestFrame.has_orientation && m_latestFrame.has_gyro;
-  vrMsg.source = m_predictionSource;
-  vrMsg.prediction_horizon_sec = m_predictionHorizonSec;
+  vrMsg.valid = m_stream.latest_frame.has_orientation && m_stream.latest_frame.has_gyro;
+  vrMsg.source = m_config.prediction_source;
+  vrMsg.prediction_horizon_sec = m_config.prediction_horizon_sec;
   vrMsg.orientation = predicted_imu.orientation;
   vrMsg.orientation_covariance = predicted_imu.orientation_covariance;
   vrMsg.accuracy_status = predictionAccuracy;
-  vrMsg.covariance_is_prediction_model_based = m_predictionHorizonSec > 0.0;
+  vrMsg.covariance_is_prediction_model_based = m_config.prediction_horizon_sec > 0.0;
 
   double sigmaNoiseRad = 0.0;
   double sigmaRmsRad = 0.0;
   double sigmaBoundRad = 0.0;
-  PredictedCovarianceFromPresent(present_imu.orientation_covariance, m_predictionHorizonSec,
-                                 sigmaNoiseRad, sigmaRmsRad, sigmaBoundRad);
+  PredictedCovarianceFromPresent(present_imu.orientation_covariance,
+                                 m_config.prediction_horizon_sec, sigmaNoiseRad, sigmaRmsRad,
+                                 sigmaBoundRad);
   vrMsg.sigma_noise_rad = sigmaNoiseRad;
   vrMsg.sigma_rms_rad = sigmaRmsRad;
   vrMsg.sigma_bound_rad = sigmaBoundRad;
@@ -1011,11 +1032,12 @@ void Bno086ImuNode::MaybeLogFeatureResponses()
   const std::vector<FeatureResponse> featureResponses = m_shtp->TakeFeatureResponses();
   for (const FeatureResponse& featureResponse : featureResponses)
   {
-    const auto it = std::find_if(m_latestFeatureResponses.begin(), m_latestFeatureResponses.end(),
+    const auto it = std::find_if(m_startup.latest_feature_responses.begin(),
+                                 m_startup.latest_feature_responses.end(),
                                  [&featureResponse](const FeatureResponse& response)
                                  { return response.report_id == featureResponse.report_id; });
-    if (it == m_latestFeatureResponses.end())
-      m_latestFeatureResponses.emplace_back(featureResponse);
+    if (it == m_startup.latest_feature_responses.end())
+      m_startup.latest_feature_responses.emplace_back(featureResponse);
     else
       *it = featureResponse;
   }
@@ -1025,28 +1047,29 @@ void Bno086ImuNode::MaybeLogFeatureResponses()
 
 void Bno086ImuNode::MaybeLogFeatureSummary()
 {
-  if (m_loggedFeatureSummary || m_shtp == nullptr)
+  if (m_startup.logged_feature_summary || m_shtp == nullptr)
     return;
 
   const std::vector<FeatureConfiguration>& configurations = m_shtp->GetFeatureConfigurations();
   if (configurations.empty())
     return;
 
-  const bool receivedAll = m_latestFeatureResponses.size() >= configurations.size();
+  const bool receivedAll = m_startup.latest_feature_responses.size() >= configurations.size();
   bool timedOut = false;
-  if (!receivedAll && m_featureConfigurationStartedAt.time_since_epoch().count() != 0)
+  if (!receivedAll && m_startup.feature_configuration_started_at.time_since_epoch().count() != 0)
   {
-    const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-                               std::chrono::steady_clock::now() - m_featureConfigurationStartedAt)
-                               .count();
-    timedOut = elapsedMs >= m_featureSummaryTimeoutMs;
+    const auto elapsedMs =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - m_startup.feature_configuration_started_at)
+            .count();
+    timedOut = elapsedMs >= m_config.feature_summary_timeout_ms;
   }
 
   if (!receivedAll && !timedOut)
     return;
 
   LogFeatureSummary();
-  m_loggedFeatureSummary = true;
+  m_startup.logged_feature_summary = true;
 }
 
 void Bno086ImuNode::LogFeatureSummary() const
@@ -1055,19 +1078,20 @@ void Bno086ImuNode::LogFeatureSummary() const
     return;
 
   const std::vector<FeatureConfiguration>& configurations = m_shtp->GetFeatureConfigurations();
-  const std::string summary = BuildFeatureSummary(configurations, m_latestFeatureResponses);
+  const std::string summary =
+      BuildFeatureSummary(configurations, m_startup.latest_feature_responses);
   RCLCPP_INFO(get_logger(), "%s", summary.c_str());
 }
 
 void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
 {
   const auto now = std::chrono::steady_clock::now();
-  if (!m_rateHealth.ShouldLog(now, m_diagnosticsLogPeriodMs))
+  if (!m_diag.rate_health.ShouldLog(now, m_config.diagnostics_log_period_ms))
     return;
 
-  const Bno086RateSnapshot rates = m_rateHealth.BuildSnapshot(now);
+  const Bno086RateSnapshot rates = m_diag.rate_health.BuildSnapshot(now);
   MaybeEmitImuGravityDiagnosticsLog(rates);
-  m_rateHealth.MarkSnapshotLogged(now);
+  m_diag.rate_health.MarkSnapshotLogged(now);
 }
 
 void Bno086ImuNode::RecordDrainThroughputDiagnostics(const Bno086DrainCounters& counters,
@@ -1076,7 +1100,7 @@ void Bno086ImuNode::RecordDrainThroughputDiagnostics(const Bno086DrainCounters& 
                                                      std::uint32_t drain_duration_us,
                                                      std::uint32_t /*pending_queue_depth_at_exit*/)
 {
-  m_drainHealth.Record(counters, exit_action, drain_duration_us);
+  m_diag.drain_health.Record(counters, exit_action, drain_duration_us);
 }
 
 void Bno086ImuNode::MaybeEmitImuGravityDiagnosticsLog(const Bno086RateSnapshot& rates)
@@ -1092,26 +1116,26 @@ void Bno086ImuNode::MaybeEmitImuGravityDiagnosticsLog(const Bno086RateSnapshot& 
   RCLCPP_DEBUG(get_logger(),
                "BNO086 drain: n=%llu pkt=%.1f/%u evt=%.1f/%u zero=%llu "
                "dur=%.0f/%.0f cap=%llu/%llu err=%llu/%llu az=%llu bad=%llu",
-               static_cast<unsigned long long>(m_drainHealth.Drains()),
-               m_drainHealth.PhysicalPacketsMean(), m_drainHealth.PhysicalPacketsMax(),
-               m_drainHealth.SensorEventsMean(), m_drainHealth.SensorEventsMax(),
-               static_cast<unsigned long long>(m_drainHealth.AllZeroBackoffCount()),
-               m_drainHealth.DrainDurationMeanMs(),
-               static_cast<double>(m_drainHealth.DrainDurationMaxUs()) / 1.0e3,
-               static_cast<unsigned long long>(m_drainHealth.PhysicalPacketCapHitCount()),
-               static_cast<unsigned long long>(m_drainHealth.PollIterationCapHitCount()),
-               static_cast<unsigned long long>(m_drainHealth.NoProgressDrainCount()),
-               static_cast<unsigned long long>(m_drainHealth.TransportErrorCount()),
-               static_cast<unsigned long long>(m_drainHealth.AllZeroBudgetHitCount()),
+               static_cast<unsigned long long>(m_diag.drain_health.Drains()),
+               m_diag.drain_health.PhysicalPacketsMean(), m_diag.drain_health.PhysicalPacketsMax(),
+               m_diag.drain_health.SensorEventsMean(), m_diag.drain_health.SensorEventsMax(),
+               static_cast<unsigned long long>(m_diag.drain_health.AllZeroBackoffCount()),
+               m_diag.drain_health.DrainDurationMeanMs(),
+               static_cast<double>(m_diag.drain_health.DrainDurationMaxUs()) / 1.0e3,
+               static_cast<unsigned long long>(m_diag.drain_health.PhysicalPacketCapHitCount()),
+               static_cast<unsigned long long>(m_diag.drain_health.PollIterationCapHitCount()),
+               static_cast<unsigned long long>(m_diag.drain_health.NoProgressDrainCount()),
+               static_cast<unsigned long long>(m_diag.drain_health.TransportErrorCount()),
+               static_cast<unsigned long long>(m_diag.drain_health.AllZeroBudgetHitCount()),
                static_cast<unsigned long long>(transportStats.invalid_full_packet_count));
 
-  if (m_diagnosticsWasUnhealthy && !unhealthy)
+  if (m_diag.was_unhealthy && !unhealthy)
   {
     RCLCPP_INFO(get_logger(), "BNO086 imu_gravity recovered: imu_gravity_rate_hz=%.2f",
                 rates.imu_gravity_hz);
   }
 
-  m_diagnosticsWasUnhealthy = unhealthy;
+  m_diag.was_unhealthy = unhealthy;
 }
 
 bool Bno086ImuNode::IsImuGravitySampleValid(const sensor_msgs::msg::Imu& message,
@@ -1225,15 +1249,15 @@ std::optional<std::uint32_t> Bno086ImuNode::EffectiveReportIntervalUs(ReportId r
   switch (report_id)
   {
     case ReportId::Accelerometer:
-      return RateHzToIntervalUs(m_accelerometerRateHz);
+      return RateHzToIntervalUs(m_reports.accelerometer_rate_hz);
     case ReportId::GyroscopeCalibrated:
-      return RateHzToIntervalUs(m_gyroRateHz);
+      return RateHzToIntervalUs(m_reports.gyro_rate_hz);
     case ReportId::RotationVector:
-      return RateHzToIntervalUs(m_rotationVectorRateHz);
+      return RateHzToIntervalUs(m_reports.rotation_vector_rate_hz);
     case ReportId::LinearAcceleration:
-      return RateHzToIntervalUs(m_linearAccelerationRateHz);
+      return RateHzToIntervalUs(m_reports.linear_acceleration_rate_hz);
     case ReportId::Gravity:
-      return RateHzToIntervalUs(m_gravityRateHz);
+      return RateHzToIntervalUs(m_reports.gravity_rate_hz);
     default:
       break;
   }
@@ -1243,11 +1267,11 @@ std::optional<std::uint32_t> Bno086ImuNode::EffectiveReportIntervalUs(ReportId r
 
 std::optional<FeatureResponse> Bno086ImuNode::LatestFeatureResponse(ReportId report_id) const
 {
-  const auto it = std::find_if(m_latestFeatureResponses.begin(), m_latestFeatureResponses.end(),
-                               [report_id](const FeatureResponse& response)
-                               { return response.report_id == report_id; });
+  const auto it = std::find_if(
+      m_startup.latest_feature_responses.begin(), m_startup.latest_feature_responses.end(),
+      [report_id](const FeatureResponse& response) { return response.report_id == report_id; });
 
-  if (it == m_latestFeatureResponses.end())
+  if (it == m_startup.latest_feature_responses.end())
     return std::nullopt;
 
   return *it;
@@ -1255,11 +1279,11 @@ std::optional<FeatureResponse> Bno086ImuNode::LatestFeatureResponse(ReportId rep
 
 bool Bno086ImuNode::IsBno086DiagnosticsUnhealthy(const Bno086RateSnapshot& rates) const
 {
-  const Bno086ExpectedRates expectedRates{m_accelerometerRateHz, m_gyroRateHz,
-                                          m_rotationVectorRateHz, m_linearAccelerationRateHz,
-                                          m_gravityRateHz};
-  return m_rateHealth.HasRateFailure(rates, expectedRates, MIN_HEALTHY_RATE_FRACTION) ||
-         m_drainHealth.HasSafetyFailure();
+  const Bno086ExpectedRates expectedRates{
+      m_reports.accelerometer_rate_hz, m_reports.gyro_rate_hz, m_reports.rotation_vector_rate_hz,
+      m_reports.linear_acceleration_rate_hz, m_reports.gravity_rate_hz};
+  return m_diag.rate_health.HasRateFailure(rates, expectedRates, MIN_HEALTHY_RATE_FRACTION) ||
+         m_diag.drain_health.HasSafetyFailure();
 }
 
 std::uint32_t Bno086ImuNode::CoreCoherenceToleranceUs() const
@@ -1284,7 +1308,7 @@ int64_t Bno086ImuNode::ImuGravityMaxOrientationAgeNs() const
   const std::optional<std::uint32_t> intervalUs =
       EffectiveReportIntervalUs(ReportId::RotationVector);
   return EffectiveMaxPastAgeNs(
-      static_cast<int64_t>(m_imuGravityMaxOrientationAgeMs * 1.0e6),
+      static_cast<int64_t>(m_config.imu_gravity_max_orientation_age_ms * 1.0e6),
       static_cast<int64_t>(intervalUs.value_or(DEFAULT_REPORT_INTERVAL_US)) * 1'000, 80'000'000);
 }
 
@@ -1293,7 +1317,7 @@ int64_t Bno086ImuNode::ImuGravityMaxGyroAgeNs() const
   const std::optional<std::uint32_t> intervalUs =
       EffectiveReportIntervalUs(ReportId::GyroscopeCalibrated);
   return EffectiveMaxPastAgeNs(
-      static_cast<int64_t>(m_imuGravityMaxGyroAgeMs * 1.0e6),
+      static_cast<int64_t>(m_config.imu_gravity_max_gyro_age_ms * 1.0e6),
       static_cast<int64_t>(intervalUs.value_or(DEFAULT_REPORT_INTERVAL_US)) * 1'000, 80'000'000);
 }
 
@@ -1311,38 +1335,38 @@ void Bno086ImuNode::RecordImuGravityAccelSample(const rclcpp::Time& sample_stamp
   Bno086ImuGravityAccelSample sample;
   sample.has_sample = true;
   sample.stamp_ns = sample_stamp.nanoseconds();
-  sample.accel_mps2 = m_latestFrame.accel_mps2;
-  sample.covariance_mps2_2 = m_latestFrame.accel_cov_mps2_2;
-  sample.has_covariance = m_latestFrame.has_accel_covariance;
-  sample.sequence = m_imuGravityState.sequence;
-  sample.accuracy = m_imuGravityState.accuracy;
+  sample.accel_mps2 = m_stream.latest_frame.accel_mps2;
+  sample.covariance_mps2_2 = m_stream.latest_frame.accel_cov_mps2_2;
+  sample.has_covariance = m_stream.latest_frame.has_accel_covariance;
+  sample.sequence = m_stream.imu_gravity.sequence;
+  sample.accuracy = m_stream.imu_gravity.accuracy;
 
-  m_imuGravityAccelHistory.Push(sample);
+  m_stream.imu_gravity_accel_history.Push(sample);
 }
 
 std::optional<Bno086ImuGravityAccelSample> Bno086ImuNode::SelectImuGravityAccelSample(
     int64_t anchor_stamp_ns, int64_t future_tolerance_ns) const
 {
-  return m_imuGravityAccelHistory.SelectAtOrBefore(anchor_stamp_ns, future_tolerance_ns);
+  return m_stream.imu_gravity_accel_history.SelectAtOrBefore(anchor_stamp_ns, future_tolerance_ns);
 }
 
 Bno086ImuNode::CoreFrameSignature Bno086ImuNode::LatestCoreSignature() const
 {
   CoreFrameSignature signature;
-  signature.orientation_sequence = m_orientationState.sequence;
-  signature.gyro_sequence = m_gyroState.sequence;
-  signature.linear_accel_sequence = m_linearAccelState.sequence;
-  signature.orientation_stamp_ns = m_orientationState.stamp.nanoseconds();
-  signature.gyro_stamp_ns = m_gyroState.stamp.nanoseconds();
-  signature.linear_accel_stamp_ns = m_linearAccelState.stamp.nanoseconds();
+  signature.orientation_sequence = m_stream.orientation.sequence;
+  signature.gyro_sequence = m_stream.gyro.sequence;
+  signature.linear_accel_sequence = m_stream.linear_accel.sequence;
+  signature.orientation_stamp_ns = m_stream.orientation.stamp.nanoseconds();
+  signature.gyro_stamp_ns = m_stream.gyro.stamp.nanoseconds();
+  signature.linear_accel_stamp_ns = m_stream.linear_accel.stamp.nanoseconds();
   return signature;
 }
 
 rclcpp::Time Bno086ImuNode::LatestCoreStamp() const
 {
-  const int64_t orientationNs = m_orientationState.stamp.nanoseconds();
-  const int64_t gyroNs = m_gyroState.stamp.nanoseconds();
-  const int64_t linearAccelNs = m_linearAccelState.stamp.nanoseconds();
+  const int64_t orientationNs = m_stream.orientation.stamp.nanoseconds();
+  const int64_t gyroNs = m_stream.gyro.stamp.nanoseconds();
+  const int64_t linearAccelNs = m_stream.linear_accel.stamp.nanoseconds();
   return rclcpp::Time(std::max({orientationNs, gyroNs, linearAccelNs}), RCL_ROS_TIME);
 }
 
@@ -1357,20 +1381,20 @@ void Bno086ImuNode::ApplyEvent(const SensorEvent& event, const rclcpp::Time& sam
       const OrientationCovariancePolicyResult covariancePolicy =
           ResolveOrientationCovariancePolicy(event.accuracy, event.values[accuracyEstimateIndex]);
 
-      m_latestFrame.orientation_xyzw[0] = QToDouble(
+      m_stream.latest_frame.orientation_xyzw[0] = QToDouble(
           event.values[static_cast<std::size_t>(RotationVectorValueIndex::QuaternionI)], 14);
-      m_latestFrame.orientation_xyzw[1] = QToDouble(
+      m_stream.latest_frame.orientation_xyzw[1] = QToDouble(
           event.values[static_cast<std::size_t>(RotationVectorValueIndex::QuaternionJ)], 14);
-      m_latestFrame.orientation_xyzw[2] = QToDouble(
+      m_stream.latest_frame.orientation_xyzw[2] = QToDouble(
           event.values[static_cast<std::size_t>(RotationVectorValueIndex::QuaternionK)], 14);
-      m_latestFrame.orientation_xyzw[3] = QToDouble(
+      m_stream.latest_frame.orientation_xyzw[3] = QToDouble(
           event.values[static_cast<std::size_t>(RotationVectorValueIndex::QuaternionReal)], 14);
-      NormalizeQuaternion(m_latestFrame.orientation_xyzw);
-      m_latestFrame.has_orientation = true;
-      m_orientationState.has_sample = true;
-      m_orientationState.stamp = sample_stamp;
-      m_orientationState.sequence = event.sequence;
-      m_orientationState.accuracy = event.accuracy;
+      NormalizeQuaternion(m_stream.latest_frame.orientation_xyzw);
+      m_stream.latest_frame.has_orientation = true;
+      m_stream.orientation.has_sample = true;
+      m_stream.orientation.stamp = sample_stamp;
+      m_stream.orientation.sequence = event.sequence;
+      m_stream.orientation.accuracy = event.accuracy;
 
       // The policy module owns the driver-boundary heuristic that turns the
       // SH-2 Rotation Vector report into the published ROS orientation
@@ -1385,55 +1409,55 @@ void Bno086ImuNode::ApplyEvent(const SensorEvent& event, const rclcpp::Time& sam
       //
       // The node only applies that result and reports which source was used.
       // Downstream AHRS preserves and rotates the published covariance.
-      m_latestFrame.orientation_cov_rad2 = covariancePolicy.covariance_rad2;
-      m_latestFrame.has_orientation_covariance = true;
+      m_stream.latest_frame.orientation_cov_rad2 = covariancePolicy.covariance_rad2;
+      m_stream.latest_frame.has_orientation_covariance = true;
       MaybeLogOrientationCovariancePolicy(covariancePolicy);
       break;
     }
 
     case ReportId::GyroscopeCalibrated:
-      m_latestFrame.gyro_rads[0] = QToDouble(event.values[0], 9);
-      m_latestFrame.gyro_rads[1] = QToDouble(event.values[1], 9);
-      m_latestFrame.gyro_rads[2] = QToDouble(event.values[2], 9);
-      m_latestFrame.has_gyro = true;
-      m_gyroState.has_sample = true;
-      m_gyroState.stamp = sample_stamp;
-      m_gyroState.sequence = event.sequence;
-      m_gyroState.accuracy = event.accuracy;
+      m_stream.latest_frame.gyro_rads[0] = QToDouble(event.values[0], 9);
+      m_stream.latest_frame.gyro_rads[1] = QToDouble(event.values[1], 9);
+      m_stream.latest_frame.gyro_rads[2] = QToDouble(event.values[2], 9);
+      m_stream.latest_frame.has_gyro = true;
+      m_stream.gyro.has_sample = true;
+      m_stream.gyro.stamp = sample_stamp;
+      m_stream.gyro.sequence = event.sequence;
+      m_stream.gyro.accuracy = event.accuracy;
 
-      m_latestFrame.gyro_cov_rads2_2 =
+      m_stream.latest_frame.gyro_cov_rads2_2 =
           Bno086ImuNode::CovarianceFromAccuracyBucket(event.accuracy, 1.2, 0.5, 0.18, 0.06);
-      m_latestFrame.has_gyro_covariance = true;
+      m_stream.latest_frame.has_gyro_covariance = true;
       break;
 
     case ReportId::LinearAcceleration:
-      m_latestFrame.linear_accel_mps2[0] = QToDouble(event.values[0], 8);
-      m_latestFrame.linear_accel_mps2[1] = QToDouble(event.values[1], 8);
-      m_latestFrame.linear_accel_mps2[2] = QToDouble(event.values[2], 8);
-      m_latestFrame.has_linear_accel = true;
-      m_linearAccelState.has_sample = true;
-      m_linearAccelState.stamp = sample_stamp;
-      m_linearAccelState.sequence = event.sequence;
-      m_linearAccelState.accuracy = event.accuracy;
+      m_stream.latest_frame.linear_accel_mps2[0] = QToDouble(event.values[0], 8);
+      m_stream.latest_frame.linear_accel_mps2[1] = QToDouble(event.values[1], 8);
+      m_stream.latest_frame.linear_accel_mps2[2] = QToDouble(event.values[2], 8);
+      m_stream.latest_frame.has_linear_accel = true;
+      m_stream.linear_accel.has_sample = true;
+      m_stream.linear_accel.stamp = sample_stamp;
+      m_stream.linear_accel.sequence = event.sequence;
+      m_stream.linear_accel.accuracy = event.accuracy;
 
-      m_latestFrame.linear_accel_cov_mps2_2 =
+      m_stream.latest_frame.linear_accel_cov_mps2_2 =
           Bno086ImuNode::CovarianceFromAccuracyBucket(event.accuracy, 4.0, 2.0, 0.8, 0.25);
-      m_latestFrame.has_linear_accel_covariance = true;
+      m_stream.latest_frame.has_linear_accel_covariance = true;
       break;
 
     case ReportId::Accelerometer:
-      m_latestFrame.accel_mps2[0] = QToDouble(event.values[0], 8);
-      m_latestFrame.accel_mps2[1] = QToDouble(event.values[1], 8);
-      m_latestFrame.accel_mps2[2] = QToDouble(event.values[2], 8);
-      m_latestFrame.has_accel = true;
-      m_imuGravityState.has_sample = true;
-      m_imuGravityState.stamp = sample_stamp;
-      m_imuGravityState.sequence = event.sequence;
-      m_imuGravityState.accuracy = event.accuracy;
+      m_stream.latest_frame.accel_mps2[0] = QToDouble(event.values[0], 8);
+      m_stream.latest_frame.accel_mps2[1] = QToDouble(event.values[1], 8);
+      m_stream.latest_frame.accel_mps2[2] = QToDouble(event.values[2], 8);
+      m_stream.latest_frame.has_accel = true;
+      m_stream.imu_gravity.has_sample = true;
+      m_stream.imu_gravity.stamp = sample_stamp;
+      m_stream.imu_gravity.sequence = event.sequence;
+      m_stream.imu_gravity.accuracy = event.accuracy;
 
-      m_latestFrame.accel_cov_mps2_2 =
+      m_stream.latest_frame.accel_cov_mps2_2 =
           Bno086ImuNode::CovarianceFromAccuracyBucket(event.accuracy, 4.0, 2.0, 0.8, 0.25);
-      m_latestFrame.has_accel_covariance = true;
+      m_stream.latest_frame.has_accel_covariance = true;
       RecordImuGravityAccelSample(sample_stamp);
       break;
 
@@ -1450,15 +1474,15 @@ void Bno086ImuNode::ApplyEvent(const SensorEvent& event, const rclcpp::Time& sam
       // carry a gravity vector in `imu_link` that points down in the direction
       // of gravitational acceleration, so the raw BNO sign is flipped once at
       // ingestion and the rest of the stack can treat gravity consistently.
-      m_latestFrame.gravity_mps2 = CanonicalizeGravityVector(rawGravityMps2);
-      m_latestFrame.gravity_cov_mps2_2 =
+      m_stream.latest_frame.gravity_mps2 = CanonicalizeGravityVector(rawGravityMps2);
+      m_stream.latest_frame.gravity_cov_mps2_2 =
           Bno086ImuNode::CovarianceFromAccuracyBucket(event.accuracy, 1.0, 0.5, 0.2, 0.08);
-      m_latestFrame.has_gravity = true;
-      m_latestFrame.has_gravity_covariance = true;
-      m_gravityState.has_sample = true;
-      m_gravityState.stamp = sample_stamp;
-      m_gravityState.sequence = event.sequence;
-      m_gravityState.accuracy = event.accuracy;
+      m_stream.latest_frame.has_gravity = true;
+      m_stream.latest_frame.has_gravity_covariance = true;
+      m_stream.gravity.has_sample = true;
+      m_stream.gravity.stamp = sample_stamp;
+      m_stream.gravity.sequence = event.sequence;
+      m_stream.gravity.accuracy = event.accuracy;
       break;
     }
 
@@ -1644,10 +1668,12 @@ void Bno086ImuNode::SetCovariance(std::array<double, 9>& dst, const OASIS::IMU::
 void Bno086ImuNode::MaybeLogOrientationCovariancePolicy(
     const OrientationCovariancePolicyResult& covariance_policy)
 {
-  const bool sourceChanged = !m_loggedOrientationCovarianceSource ||
-                             covariance_policy.source != m_lastOrientationCovarianceSource;
-  const bool bucketChanged = !m_loggedOrientationCovarianceSource ||
-                             covariance_policy.accuracy_bucket != m_lastOrientationAccuracyBucket;
+  const bool sourceChanged =
+      !m_covariance_log.logged_orientation_covariance_source ||
+      covariance_policy.source != m_covariance_log.last_orientation_covariance_source;
+  const bool bucketChanged =
+      !m_covariance_log.logged_orientation_covariance_source ||
+      covariance_policy.accuracy_bucket != m_covariance_log.last_orientation_accuracy_bucket;
 
   if (sourceChanged || bucketChanged)
   {
@@ -1663,8 +1689,8 @@ void Bno086ImuNode::MaybeLogOrientationCovariancePolicy(
         OrientationCovarianceEstimateRejectionReasonName(covariance_policy.rejection_reason),
         covariance_policy.sigma_rad, covariance_policy.sigma_rad * 180.0 / PI_RAD);
 
-    m_loggedOrientationCovarianceSource = true;
-    m_lastOrientationCovarianceSource = covariance_policy.source;
-    m_lastOrientationAccuracyBucket = covariance_policy.accuracy_bucket;
+    m_covariance_log.logged_orientation_covariance_source = true;
+    m_covariance_log.last_orientation_covariance_source = covariance_policy.source;
+    m_covariance_log.last_orientation_accuracy_bucket = covariance_policy.accuracy_bucket;
   }
 }
