@@ -29,6 +29,7 @@ from oasis_control.localization.common.algebra.quat import quaternion_conjugate_
 from oasis_control.localization.common.measurements.gravity_observable_attitude import (
     gravity_covariance_to_roll_pitch_covariance_rad2,
 )
+from oasis_control.nodes import ahrs_node
 from oasis_msgs.msg import AhrsStatus as AhrsStatusMsg
 
 from ._node_test_helpers import last_diag
@@ -145,6 +146,40 @@ def test_valid_imu_publishes_mounted_outputs_and_tf() -> None:
             odom_to_base_transform.transform.rotation.w,
             1.0,
             abs_tol=1.0e-6,
+        )
+    finally:
+        node.stop()
+
+
+def test_ahrs_qos_profiles_match_imu_gravity_contract() -> None:
+    node, _, _, _, _, _, _ = make_node()
+
+    try:
+        publishers_by_topic: dict[str, Any] = {
+            publisher.topic: publisher for publisher in node.publishers
+        }
+        subscriptions_by_topic: dict[str, Any] = {
+            subscription.topic: subscription for subscription in node.subscriptions
+        }
+
+        raw_imu_gravity_qos = subscriptions_by_topic[
+            ahrs_node.IMU_GRAVITY_TOPIC
+        ].qos_profile
+        raw_gravity_qos = subscriptions_by_topic[ahrs_node.GRAVITY_TOPIC].qos_profile
+        mounted_imu_gravity_qos = publishers_by_topic[
+            ahrs_node.OUTPUT_IMU_GRAVITY_TOPIC
+        ].qos_profile
+
+        assert raw_imu_gravity_qos.depth == ahrs_node.RAW_IMU_GRAVITY_QOS_DEPTH
+        assert (
+            raw_imu_gravity_qos.reliability == rclpy.qos.QoSReliabilityPolicy.RELIABLE
+        )
+        assert raw_gravity_qos.depth == ahrs_node.RAW_GRAVITY_QOS_DEPTH
+        assert raw_gravity_qos.reliability == rclpy.qos.QoSReliabilityPolicy.RELIABLE
+        assert mounted_imu_gravity_qos.depth == ahrs_node.AHRS_IMU_GRAVITY_QOS_DEPTH
+        assert (
+            mounted_imu_gravity_qos.reliability
+            == rclpy.qos.QoSReliabilityPolicy.RELIABLE
         )
     finally:
         node.stop()

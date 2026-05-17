@@ -10,8 +10,11 @@
 
 #include "MonocularSlamBase.h"
 
+#include <mutex>
+#include <optional>
 #include <vector>
 
+#include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 
 namespace ORB_SLAM3
@@ -38,13 +41,26 @@ public:
   bool Initialize(const std::string& vocabularyFile, const std::string& settingsFile);
   void Deinitialize();
 
-  void ImuCallback(const sensor_msgs::msg::Imu::ConstSharedPtr& msg);
+  void ReceiveImageWithImuMeasurements(const sensor_msgs::msg::Image::ConstSharedPtr& imageMsg,
+                                       const std::vector<sensor_msgs::msg::Imu>& imuMessages);
 
 protected:
   std::optional<Eigen::Isometry3f> TrackFrame(const cv::Mat& rgbImage, double timestamp) override;
   void OnPostTrack() override;
 
 private:
+  struct PendingImuBatch
+  {
+    double timestamp = 0.0;
+    std::vector<ORB_SLAM3::IMU::Point> measurements;
+  };
+
+  static ORB_SLAM3::IMU::Point ToOrbImuPoint(const sensor_msgs::msg::Imu& imuMsg);
+
+  std::vector<ORB_SLAM3::IMU::Point> TakePendingImuMeasurements(double timestamp);
+
+  std::mutex m_imuMeasurementsMutex;
+  std::vector<PendingImuBatch> m_pendingImuBatches;
   std::vector<ORB_SLAM3::IMU::Point> m_imuMeasurements;
 };
 

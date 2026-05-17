@@ -408,7 +408,15 @@ class _Client:
 
 
 class _Publisher:
-    def __init__(self, *_: Any, **__: Any) -> None:
+    def __init__(
+        self,
+        *_: Any,
+        topic: str = "",
+        qos_profile: Any = None,
+        **__: Any,
+    ) -> None:
+        self.topic: str = topic
+        self.qos_profile: Any = qos_profile
         self.messages: list[Any] = []
 
     def publish(self, message: Any) -> None:
@@ -416,8 +424,17 @@ class _Publisher:
 
 
 class _Subscription:
-    def __init__(self, *_: Any, **__: Any) -> None:
-        pass
+    def __init__(
+        self,
+        *_: Any,
+        topic: str = "",
+        callback: Any = None,
+        qos_profile: Any = None,
+        **__: Any,
+    ) -> None:
+        self.topic: str = topic
+        self.callback: Any = callback
+        self.qos_profile: Any = qos_profile
 
 
 class _Service:
@@ -475,6 +492,8 @@ class _Node:
         self._name: str = name
         self._parameters: dict[str, _Parameter] = {}
         self._logger: _Logger = _Logger()
+        self.publishers: list[_Publisher] = []
+        self.subscriptions: list[_Subscription] = []
 
     def declare_parameter(self, name: str, default_value: Any) -> _Parameter:
         parameter: _Parameter = _Parameter(default_value)
@@ -490,8 +509,10 @@ class _Node:
         topic: str,
         qos_profile: Any,
     ) -> _Publisher:
-        del msg_type, topic, qos_profile
-        return _Publisher()
+        del msg_type
+        publisher: _Publisher = _Publisher(topic=topic, qos_profile=qos_profile)
+        self.publishers.append(publisher)
+        return publisher
 
     def create_subscription(
         self,
@@ -500,8 +521,14 @@ class _Node:
         callback: Any,
         qos_profile: Any,
     ) -> _Subscription:
-        del msg_type, topic, callback, qos_profile
-        return _Subscription()
+        del msg_type
+        subscription: _Subscription = _Subscription(
+            topic=topic,
+            callback=callback,
+            qos_profile=qos_profile,
+        )
+        self.subscriptions.append(subscription)
+        return subscription
 
     def create_service(
         self,
@@ -537,8 +564,19 @@ class _Node:
 
 
 class _QoSProfile:
-    def __init__(self, *_: Any, **__: Any) -> None:
-        pass
+    def __init__(
+        self,
+        *_: Any,
+        history: Any = None,
+        depth: int | None = None,
+        reliability: Any = None,
+        durability: Any = None,
+        **__: Any,
+    ) -> None:
+        self.history: Any = history
+        self.depth: int | None = depth
+        self.reliability: Any = reliability
+        self.durability: Any = durability
 
 
 class _PresetProfile:
@@ -553,10 +591,15 @@ class _QoSPresetProfiles:
 
 class _QoSReliabilityPolicy:
     RELIABLE: int = 1
+    BEST_EFFORT: int = 2
 
 
 class _QoSHistoryPolicy:
     KEEP_LAST: int = 1
+
+
+class _QoSDurabilityPolicy:
+    VOLATILE: int = 1
 
 
 class _TimeHandle:
@@ -794,6 +837,7 @@ def _install_rclpy_stub() -> None:
     _set_module_attr(rclpy_qos_module, "QoSHistoryPolicy", _QoSHistoryPolicy)
     _set_module_attr(rclpy_qos_module, "QoSProfile", _QoSProfile)
     _set_module_attr(rclpy_qos_module, "QoSPresetProfiles", _QoSPresetProfiles)
+    _set_module_attr(rclpy_qos_module, "QoSDurabilityPolicy", _QoSDurabilityPolicy)
     _set_module_attr(
         rclpy_qos_module,
         "QoSReliabilityPolicy",

@@ -113,6 +113,16 @@ OUTPUT_IMU_TOPIC: str = "ahrs/imu"
 OUTPUT_IMU_GRAVITY_TOPIC: str = "ahrs/imu_gravity"
 OUTPUT_ODOM_TOPIC: str = "ahrs/odom"
 
+# QoS parameters
+RAW_IMU_GRAVITY_QOS_DEPTH: int = 256
+RAW_GRAVITY_QOS_DEPTH: int = 32
+RAW_IMU_QOS_DEPTH: int = 64
+AHRS_IMU_GRAVITY_QOS_DEPTH: int = 512
+AHRS_IMU_QOS_DEPTH: int = 128
+AHRS_GRAVITY_QOS_DEPTH: int = 32
+AHRS_ODOM_QOS_DEPTH: int = 10
+AHRS_DIAG_QOS_DEPTH: int = 10
+
 # ROS parameters
 PARAM_BASE_FRAME_ID: str = "base_frame_id"
 PARAM_IMU_FRAME_ID: str = "imu_frame_id"
@@ -150,6 +160,29 @@ STATUS_TIMER_PERIOD_SEC: float = 0.1
 # Meaning: newest gravity sample age accepted for the published roll/pitch
 # covariance
 MAX_GRAVITY_COVARIANCE_AGE_SEC: float = 0.2
+
+
+################################################################################
+# QoS profiles
+################################################################################
+
+
+def _best_effort_sensor_qos(depth: int) -> rclpy.qos.QoSProfile:
+    return rclpy.qos.QoSProfile(
+        history=rclpy.qos.QoSHistoryPolicy.KEEP_LAST,
+        depth=depth,
+        reliability=rclpy.qos.QoSReliabilityPolicy.BEST_EFFORT,
+        durability=rclpy.qos.QoSDurabilityPolicy.VOLATILE,
+    )
+
+
+def _reliable_sensor_qos(depth: int) -> rclpy.qos.QoSProfile:
+    return rclpy.qos.QoSProfile(
+        history=rclpy.qos.QoSHistoryPolicy.KEEP_LAST,
+        depth=depth,
+        reliability=rclpy.qos.QoSReliabilityPolicy.RELIABLE,
+        durability=rclpy.qos.QoSDurabilityPolicy.VOLATILE,
+    )
 
 
 ################################################################################
@@ -239,42 +272,37 @@ class AhrsNode(rclpy.node.Node):
         self._session_yaw_zero_initialized: bool = False
         self._session_yaw_offset_xyzw: Quaternion = (0.0, 0.0, 0.0, 1.0)
 
-        # ROS QoS profiles
-        sensor_qos_profile: rclpy.qos.QoSProfile = (
-            rclpy.qos.QoSPresetProfiles.SENSOR_DATA.value
-        )
-
         # ROS publishers
         self._diag_pub: rclpy.publisher.Publisher[AhrsStatusMsg] = (
             self.create_publisher(
                 msg_type=AhrsStatusMsg,
                 topic=OUTPUT_DIAG_TOPIC,
-                qos_profile=sensor_qos_profile,
+                qos_profile=_reliable_sensor_qos(AHRS_DIAG_QOS_DEPTH),
             )
         )
         self._imu_gravity_pub: rclpy.publisher.Publisher[ImuMsg] = (
             self.create_publisher(
                 msg_type=ImuMsg,
                 topic=OUTPUT_IMU_GRAVITY_TOPIC,
-                qos_profile=sensor_qos_profile,
+                qos_profile=_reliable_sensor_qos(AHRS_IMU_GRAVITY_QOS_DEPTH),
             )
         )
         self._gravity_pub: rclpy.publisher.Publisher[AccelWithCovarianceStampedMsg] = (
             self.create_publisher(
                 msg_type=AccelWithCovarianceStampedMsg,
                 topic=OUTPUT_GRAVITY_TOPIC,
-                qos_profile=sensor_qos_profile,
+                qos_profile=_reliable_sensor_qos(AHRS_GRAVITY_QOS_DEPTH),
             )
         )
         self._imu_pub: rclpy.publisher.Publisher[ImuMsg] = self.create_publisher(
             msg_type=ImuMsg,
             topic=OUTPUT_IMU_TOPIC,
-            qos_profile=sensor_qos_profile,
+            qos_profile=_reliable_sensor_qos(AHRS_IMU_QOS_DEPTH),
         )
         self._odom_pub: rclpy.publisher.Publisher[OdometryMsg] = self.create_publisher(
             msg_type=OdometryMsg,
             topic=OUTPUT_ODOM_TOPIC,
-            qos_profile=sensor_qos_profile,
+            qos_profile=_best_effort_sensor_qos(AHRS_ODOM_QOS_DEPTH),
         )
 
         # ROS subscribers
@@ -284,14 +312,14 @@ class AhrsNode(rclpy.node.Node):
             msg_type=AccelWithCovarianceStampedMsg,
             topic=GRAVITY_TOPIC,
             callback=self._handle_gravity,
-            qos_profile=sensor_qos_profile,
+            qos_profile=_reliable_sensor_qos(RAW_GRAVITY_QOS_DEPTH),
         )
         self._imu_gravity_sub: rclpy.subscription.Subscription[ImuMsg] = (
             self.create_subscription(
                 msg_type=ImuMsg,
                 topic=IMU_GRAVITY_TOPIC,
                 callback=self._handle_imu_gravity,
-                qos_profile=sensor_qos_profile,
+                qos_profile=_reliable_sensor_qos(RAW_IMU_GRAVITY_QOS_DEPTH),
             )
         )
         self._imu_sub: rclpy.subscription.Subscription[ImuMsg] = (
@@ -299,7 +327,7 @@ class AhrsNode(rclpy.node.Node):
                 msg_type=ImuMsg,
                 topic=IMU_TOPIC,
                 callback=self._handle_imu,
-                qos_profile=sensor_qos_profile,
+                qos_profile=_best_effort_sensor_qos(RAW_IMU_QOS_DEPTH),
             )
         )
 

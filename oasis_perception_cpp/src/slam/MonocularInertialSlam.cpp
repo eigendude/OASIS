@@ -10,9 +10,12 @@
 
 #include "ros/RosUtils.h"
 
+#include <algorithm>
+#include <cmath>
 #include <iomanip>
 #include <optional>
 #include <sstream>
+#include <utility>
 
 #include <geometry_msgs/msg/vector3.hpp>
 #include <sophus/se3.hpp>
@@ -57,29 +60,25 @@ void MonocularInertialSlam::Deinitialize()
   DeinitializeSystem();
 }
 
-void MonocularInertialSlam::ImuCallback(const sensor_msgs::msg::Imu::ConstSharedPtr& imuMsg)
+void MonocularInertialSlam::ReceiveImageWithImuMeasurements(
+    const sensor_msgs::msg::Image::ConstSharedPtr& imageMsg,
+    const std::vector<sensor_msgs::msg::Imu>& imuMessages)
 {
-  if (!imuMsg || !HasSlam())
+  if (!imageMsg)
     return;
 
-  const std_msgs::msg::Header& header = imuMsg->header;
-  const double timestamp = ROS::RosUtils::HeaderStampToSeconds(header);
+  PendingImuBatch batch;
+  batch.timestamp = ROS::RosUtils::HeaderStampToSeconds(imageMsg->header);
+  batch.measurements.reserve(imuMessages.size());
+  for (const sensor_msgs::msg::Imu& imuMsg : imuMessages)
+    batch.measurements.emplace_back(ToOrbImuPoint(imuMsg));
 
-  const geometry_msgs::msg::Vector3& angularVelocity = imuMsg->angular_velocity;
-  const geometry_msgs::msg::Vector3& linearAceleration = imuMsg->linear_acceleration;
+  {
+    std::lock_guard<std::mutex> lock(m_imuMeasurementsMutex);
+    m_pendingImuBatches.emplace_back(std::move(batch));
+  }
 
-  const double ax = linearAceleration.x;
-  const double ay = linearAceleration.y;
-  const double az = linearAceleration.z;
-
-  const double gx = angularVelocity.x;
-  const double gy = angularVelocity.y;
-  const double gz = angularVelocity.z;
-
-  const cv::Point3f acc(ax, ay, az);
-  const cv::Point3f gyr(gx, gy, gz);
-
-  m_imuMeasurements.push_back(ORB_SLAM3::IMU::Point(acc, gyr, timestamp));
+  ReceiveImage(imageMsg);
 }
 
 std::optional<Eigen::Isometry3f> MonocularInertialSlam::TrackFrame(const cv::Mat& rgbImage,
@@ -91,6 +90,7 @@ std::optional<Eigen::Isometry3f> MonocularInertialSlam::TrackFrame(const cv::Mat
 
   try
   {
+    m_imuMeasurements = TakePendingImuMeasurements(timestamp);
     const Sophus::SE3f sophusPose = slam->TrackMonocular(rgbImage, timestamp, m_imuMeasurements);
     const Eigen::Matrix4f poseMatrix = sophusPose.matrix();
 
@@ -134,4 +134,41 @@ std::optional<Eigen::Isometry3f> MonocularInertialSlam::TrackFrame(const cv::Mat
 void MonocularInertialSlam::OnPostTrack()
 {
   m_imuMeasurements.clear();
+}
+
+ORB_SLAM3::IMU::Point MonocularInertialSlam::ToOrbImuPoint(const sensor_msgs::msg::Imu& imuMsg)
+{
+  const std_msgs::msg::Header& header = imuMsg.header;
+  const double timestamp = ROS::RosUtils::HeaderStampToSeconds(header);
+
+  const geometry_msgs::msg::Vector3& angularVelocity = imuMsg.angular_velocity;
+  const geometry_msgs::msg::Vector3& linearAcceleration = imuMsg.linear_acceleration;
+
+  const cv::Point3f acc(linearAcceleration.x, linearAcceleration.y, linearAcceleration.z);
+  const cv::Point3f gyr(angularVelocity.x, angularVelocity.y, angularVelocity.z);
+
+  return ORB_SLAM3::IMU::Point(acc, gyr, timestamp);
+}
+
+std::vector<ORB_SLAM3::IMU::Point> MonocularInertialSlam::TakePendingImuMeasurements(
+    double timestamp)
+{
+  std::lock_guard<std::mutex> lock(m_imuMeasurementsMutex);
+
+  m_pendingImuBatches.erase(std::remove_if(m_pendingImuBatches.begin(), m_pendingImuBatches.end(),
+                                           [timestamp](const PendingImuBatch& batch)
+                                           { return batch.timestamp < timestamp - 1.0e-9; }),
+                            m_pendingImuBatches.end());
+
+  for (auto it = m_pendingImuBatches.begin(); it != m_pendingImuBatches.end(); ++it)
+  {
+    if (std::abs(it->timestamp - timestamp) <= 1.0e-9)
+    {
+      std::vector<ORB_SLAM3::IMU::Point> measurements = std::move(it->measurements);
+      m_pendingImuBatches.erase(it);
+      return measurements;
+    }
+  }
+
+  return {};
 }

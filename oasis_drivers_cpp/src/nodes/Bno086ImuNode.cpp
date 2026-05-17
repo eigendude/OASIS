@@ -92,6 +92,27 @@ constexpr int DEFAULT_BNO086_DIAGNOSTICS_LOG_PERIOD_MS = 5'000;
 constexpr int MIN_BNO086_DIAGNOSTICS_LOG_PERIOD_MS = 1'000;
 constexpr double MIN_HEALTHY_RATE_FRACTION = 0.5;
 
+// QoS parameters
+constexpr std::size_t RAW_IMU_GRAVITY_QOS_DEPTH = 256;
+constexpr std::size_t RAW_IMU_QOS_DEPTH = 10;
+constexpr std::size_t RAW_GRAVITY_QOS_DEPTH = 32;
+
+rclcpp::QoS BestEffortSensorQos(std::size_t depth)
+{
+  rclcpp::QoS qos{rclcpp::KeepLast(depth)};
+  qos.best_effort();
+  qos.durability_volatile();
+  return qos;
+}
+
+rclcpp::QoS ReliableSensorQos(std::size_t depth)
+{
+  rclcpp::QoS qos{rclcpp::KeepLast(depth)};
+  qos.reliable();
+  qos.durability_volatile();
+  return qos;
+}
+
 bool IsFiniteArray(const std::array<double, 9>& values)
 {
   return std::all_of(values.begin(), values.end(),
@@ -312,15 +333,16 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
 
 bool Bno086ImuNode::Initialize()
 {
-  m_imuPublisher = create_publisher<sensor_msgs::msg::Imu>(IMU_TOPIC, rclcpp::SensorDataQoS{});
-  m_imuPredictedPublisher =
-      create_publisher<sensor_msgs::msg::Imu>(IMU_PREDICTED_TOPIC, rclcpp::SensorDataQoS{});
-  m_imuVrPublisher =
-      create_publisher<oasis_msgs::msg::ImuVr>(IMU_VR_TOPIC, rclcpp::SensorDataQoS{});
+  m_imuPublisher =
+      create_publisher<sensor_msgs::msg::Imu>(IMU_TOPIC, BestEffortSensorQos(RAW_IMU_QOS_DEPTH));
+  m_imuPredictedPublisher = create_publisher<sensor_msgs::msg::Imu>(
+      IMU_PREDICTED_TOPIC, BestEffortSensorQos(RAW_IMU_QOS_DEPTH));
+  m_imuVrPublisher = create_publisher<oasis_msgs::msg::ImuVr>(
+      IMU_VR_TOPIC, BestEffortSensorQos(RAW_IMU_QOS_DEPTH));
   m_gravityPublisher = create_publisher<geometry_msgs::msg::AccelWithCovarianceStamped>(
-      GRAVITY_TOPIC, rclcpp::SensorDataQoS{});
-  m_imuGravityPublisher =
-      create_publisher<sensor_msgs::msg::Imu>(IMU_GRAVITY_TOPIC, rclcpp::SensorDataQoS{});
+      GRAVITY_TOPIC, ReliableSensorQos(RAW_GRAVITY_QOS_DEPTH));
+  m_imuGravityPublisher = create_publisher<sensor_msgs::msg::Imu>(
+      IMU_GRAVITY_TOPIC, ReliableSensorQos(RAW_IMU_GRAVITY_QOS_DEPTH));
 
   m_running.store(true);
   m_interruptThread = std::thread(&Bno086ImuNode::InterruptLoop, this);
