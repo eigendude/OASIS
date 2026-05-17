@@ -381,40 +381,40 @@ TEST(Bno086Shtp, configuresStaticPerReportIntervalsAndDefaultBatchIntervals)
   ASSERT_EQ(features.size(), 5U);
   EXPECT_EQ(features[0].report_id, ReportId::RotationVector);
   EXPECT_EQ(features[0].requested_interval_us, 10'000U);
-  EXPECT_EQ(features[0].requested_batch_interval_us, 20'000U);
+  EXPECT_EQ(features[0].requested_batch_interval_us, 50'000U);
   EXPECT_TRUE(features[0].enabled);
   EXPECT_EQ(features[1].report_id, ReportId::GyroscopeCalibrated);
   EXPECT_EQ(features[1].requested_interval_us, 10'000U);
-  EXPECT_EQ(features[1].requested_batch_interval_us, 20'000U);
+  EXPECT_EQ(features[1].requested_batch_interval_us, 50'000U);
   EXPECT_TRUE(features[1].enabled);
   EXPECT_EQ(features[2].report_id, ReportId::LinearAcceleration);
   EXPECT_EQ(features[2].requested_interval_us, 20'000U);
-  EXPECT_EQ(features[2].requested_batch_interval_us, 20'000U);
+  EXPECT_EQ(features[2].requested_batch_interval_us, 50'000U);
   EXPECT_TRUE(features[2].enabled);
   EXPECT_EQ(features[3].report_id, ReportId::Accelerometer);
   EXPECT_EQ(features[3].requested_interval_us, 10'000U);
-  EXPECT_EQ(features[3].requested_batch_interval_us, 20'000U);
+  EXPECT_EQ(features[3].requested_batch_interval_us, 50'000U);
   EXPECT_TRUE(features[3].enabled);
   EXPECT_EQ(features[4].report_id, ReportId::Gravity);
   EXPECT_EQ(features[4].requested_interval_us, 40'000U);
-  EXPECT_EQ(features[4].requested_batch_interval_us, 40'000U);
+  EXPECT_EQ(features[4].requested_batch_interval_us, 100'000U);
   EXPECT_TRUE(features[4].enabled);
 
   ASSERT_EQ(transport.payloads.size(), 10U);
   EXPECT_EQ(ReadIntervalUs(transport.payloads[0]), 10'000U);
-  EXPECT_EQ(ReadBatchIntervalUs(transport.payloads[0]), 20'000U);
+  EXPECT_EQ(ReadBatchIntervalUs(transport.payloads[0]), 50'000U);
   EXPECT_EQ(transport.payloads[1], (std::vector<std::uint8_t>{
                                        kShtpGetFeatureRequest,
                                        static_cast<std::uint8_t>(ReportId::RotationVector),
                                    }));
   EXPECT_EQ(ReadIntervalUs(transport.payloads[2]), 10'000U);
-  EXPECT_EQ(ReadBatchIntervalUs(transport.payloads[2]), 20'000U);
+  EXPECT_EQ(ReadBatchIntervalUs(transport.payloads[2]), 50'000U);
   EXPECT_EQ(ReadIntervalUs(transport.payloads[4]), 20'000U);
-  EXPECT_EQ(ReadBatchIntervalUs(transport.payloads[4]), 20'000U);
+  EXPECT_EQ(ReadBatchIntervalUs(transport.payloads[4]), 50'000U);
   EXPECT_EQ(ReadIntervalUs(transport.payloads[6]), 10'000U);
-  EXPECT_EQ(ReadBatchIntervalUs(transport.payloads[6]), 20'000U);
+  EXPECT_EQ(ReadBatchIntervalUs(transport.payloads[6]), 50'000U);
   EXPECT_EQ(ReadIntervalUs(transport.payloads[8]), 40'000U);
-  EXPECT_EQ(ReadBatchIntervalUs(transport.payloads[8]), 40'000U);
+  EXPECT_EQ(ReadBatchIntervalUs(transport.payloads[8]), 100'000U);
 }
 
 TEST(Bno086Shtp, explicitZeroBatchIntervalDisablesBatchingForReport)

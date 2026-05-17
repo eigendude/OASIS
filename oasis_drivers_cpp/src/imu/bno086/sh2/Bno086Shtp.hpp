@@ -39,7 +39,7 @@ struct Bno086ShtpConfig
    *
    * Units: microseconds, zero disables batching
    */
-  std::uint32_t rotation_vector_batch_interval_us{20'000};
+  std::uint32_t rotation_vector_batch_interval_us{50'000};
 
   /*!
    * \brief Requested calibrated gyroscope generation rate
@@ -53,7 +53,7 @@ struct Bno086ShtpConfig
    *
    * Units: microseconds, zero disables batching
    */
-  std::uint32_t gyro_batch_interval_us{20'000};
+  std::uint32_t gyro_batch_interval_us{50'000};
 
   /*!
    * \brief Requested calibrated accelerometer generation rate
@@ -67,7 +67,7 @@ struct Bno086ShtpConfig
    *
    * Units: microseconds, zero disables batching
    */
-  std::uint32_t accelerometer_batch_interval_us{20'000};
+  std::uint32_t accelerometer_batch_interval_us{50'000};
 
   /*!
    * \brief Requested linear acceleration generation rate
@@ -81,7 +81,7 @@ struct Bno086ShtpConfig
    *
    * Units: microseconds, zero disables batching
    */
-  std::uint32_t linear_acceleration_batch_interval_us{20'000};
+  std::uint32_t linear_acceleration_batch_interval_us{50'000};
 
   /*!
    * \brief Requested gravity vector generation rate
@@ -95,7 +95,7 @@ struct Bno086ShtpConfig
    *
    * Units: microseconds, zero disables batching
    */
-  std::uint32_t gravity_batch_interval_us{40'000};
+  std::uint32_t gravity_batch_interval_us{100'000};
 
   /*!
    * \brief True when Linear Acceleration should be configured as enabled
