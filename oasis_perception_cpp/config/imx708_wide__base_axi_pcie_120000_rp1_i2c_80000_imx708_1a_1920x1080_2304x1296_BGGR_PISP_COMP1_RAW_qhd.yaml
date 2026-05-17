@@ -92,11 +92,12 @@ Viewer.ViewpointF: 420.0
 #--------------------------------------------------------------------------------------------
 
 # Accepted imu_gravity stream rate in hertz
-IMU.Frequency: 100
+IMU.Frequency: 100.0
 
 # Continuous-time accelerometer noise density in m/s^2/sqrt(Hz)
-# Derived as sigma_sample / sqrt(sample_rate_hz)
-IMU.NoiseAcc: 0.014
+# Derived from imu_gravity covariance 0.64 m^2/s^4 at 100 Hz:
+# sigma_sample = sqrt(0.64) = 0.8, then 0.8 / sqrt(100) = 0.08
+IMU.NoiseAcc: 0.08
 
 # Continuous-time gyro noise density in rad/s/sqrt(Hz)
 # Derived as sigma_sample / sqrt(sample_rate_hz)
@@ -120,11 +121,13 @@ IMU.g: 9.80665
 # This provisional zero-translation transform maps camera_link +z to
 # base_link +x, camera_link +x to base_link -y, and camera_link +y to
 # base_link -z.
+#
+# Camera optical center is 9.5 cm above base_link / AHRS IMU origin.
 IMU.T_b_c1: !!opencv-matrix
   rows: 4
   cols: 4
   dt: f
   data: [ 0.0,  0.0,  1.0,  0.0,
          -1.0,  0.0,  0.0,  0.0,
-          0.0, -1.0,  0.0,  0.0,
+          0.0, -1.0,  0.0,  0.095,
           0.0,  0.0,  0.0,  1.0 ]
