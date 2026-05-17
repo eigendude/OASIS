@@ -35,11 +35,25 @@ struct Bno086ShtpConfig
   double rotation_vector_rate_hz{100.0};
 
   /*!
+   * \brief Requested Rotation Vector maximum batching delay
+   *
+   * Units: microseconds, zero disables batching
+   */
+  std::uint32_t rotation_vector_batch_interval_us{20'000};
+
+  /*!
    * \brief Requested calibrated gyroscope generation rate
    *
    * Units: Hz, clamped to at least 1.0
    */
   double gyro_rate_hz{100.0};
+
+  /*!
+   * \brief Requested calibrated gyroscope maximum batching delay
+   *
+   * Units: microseconds, zero disables batching
+   */
+  std::uint32_t gyro_batch_interval_us{20'000};
 
   /*!
    * \brief Requested calibrated accelerometer generation rate
@@ -49,11 +63,25 @@ struct Bno086ShtpConfig
   double accelerometer_rate_hz{100.0};
 
   /*!
+   * \brief Requested calibrated accelerometer maximum batching delay
+   *
+   * Units: microseconds, zero disables batching
+   */
+  std::uint32_t accelerometer_batch_interval_us{20'000};
+
+  /*!
    * \brief Requested linear acceleration generation rate
    *
    * Units: Hz, clamped to at least 1.0
    */
   double linear_acceleration_rate_hz{50.0};
+
+  /*!
+   * \brief Requested linear acceleration maximum batching delay
+   *
+   * Units: microseconds, zero disables batching
+   */
+  std::uint32_t linear_acceleration_batch_interval_us{20'000};
 
   /*!
    * \brief Requested gravity vector generation rate
@@ -63,7 +91,19 @@ struct Bno086ShtpConfig
   double gravity_rate_hz{25.0};
 
   /*!
-   * \brief True when the BNO086 Gravity report should be configured
+   * \brief Requested gravity vector maximum batching delay
+   *
+   * Units: microseconds, zero disables batching
+   */
+  std::uint32_t gravity_batch_interval_us{40'000};
+
+  /*!
+   * \brief True when Linear Acceleration should be configured as enabled
+   */
+  bool enable_linear_acceleration_report{true};
+
+  /*!
+   * \brief True when the BNO086 Gravity report should be configured enabled
    */
   bool enable_gravity_report{true};
 };
@@ -140,7 +180,7 @@ private:
   };
 
   bool SendSetFeatureCommands();
-  bool ConfigureFeature(ReportId report_id, std::uint32_t interval_us);
+  bool ConfigureFeature(const FeatureConfiguration& feature_configuration);
   bool RequestFeature(ReportId report_id);
 
   bool DecodePacket(const Bno086ShtpPacket& packet, std::optional<SensorEvent>& event);
@@ -163,10 +203,15 @@ private:
   static std::uint32_t ToReportIntervalUs(double rate_hz);
   static std::uint32_t RequestedIntervalForReport(ReportId report_id,
                                                   const Bno086ShtpConfig& config);
+  static std::uint32_t RequestedBatchIntervalForReport(ReportId report_id,
+                                                       const Bno086ShtpConfig& config);
+  static bool RequestedEnabledForReport(ReportId report_id, const Bno086ShtpConfig& config);
   static std::uint32_t ReadU32(const std::vector<std::uint8_t>& data, std::size_t offset);
+  static void WriteU32(std::vector<std::uint8_t>& data, std::size_t offset, std::uint32_t value);
   static std::int16_t ReadS16(const std::vector<std::uint8_t>& data, std::size_t offset);
   static bool IsTrackedReport(std::uint8_t report_id);
   static bool IsConfiguredReport(std::uint8_t report_id);
+  bool IsReportEnabled(ReportId report_id) const;
   static std::size_t SensorPayloadBytes(ReportId report_id);
   static std::optional<std::size_t> SensorRecordBytes(std::uint8_t report_id);
 

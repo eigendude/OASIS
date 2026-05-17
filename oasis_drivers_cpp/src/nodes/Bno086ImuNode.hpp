@@ -26,6 +26,7 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <oasis_msgs/msg/imu_vr.hpp>
@@ -148,6 +149,11 @@ private:
                                                  const sensor_msgs::msg::Imu& predicted_imu) const;
   void MaybeLogFeatureResponses();
   void LogFeatureResponse(const OASIS::IMU::BNO086::FeatureResponse& response);
+  void MaybeLogFeatureSummary();
+  void LogFeatureSummary() const;
+  std::string BuildFeatureSummaryLine(
+      const OASIS::IMU::BNO086::FeatureConfiguration& configuration,
+      const std::optional<OASIS::IMU::BNO086::FeatureResponse>& response) const;
   void MaybeLogImuGravityDiagnostics();
   void UpdateImuGravityDiagnosticsRates(const std::chrono::steady_clock::time_point& now);
   void MaybeEmitImuGravityDiagnosticsLog();
@@ -155,6 +161,10 @@ private:
   bool IsImuGravitySampleValid(const sensor_msgs::msg::Imu& message,
                                std::string& invalid_reason) const;
   std::optional<std::uint32_t> RequestedFeatureIntervalUs(
+      OASIS::IMU::BNO086::ReportId report_id) const;
+  std::optional<std::uint32_t> RequestedFeatureBatchIntervalUs(
+      OASIS::IMU::BNO086::ReportId report_id) const;
+  std::optional<OASIS::IMU::BNO086::FeatureResponse> LatestFeatureResponse(
       OASIS::IMU::BNO086::ReportId report_id) const;
   bool IsBno086RateUnhealthy() const;
   bool IsBno086DiagnosticsUnhealthy() const;
@@ -222,7 +232,14 @@ private:
   double m_accelerometerRateHz{100.0};
   double m_linearAccelerationRateHz{50.0};
   double m_gravityRateHz{25.0};
+  std::uint32_t m_rotationVectorBatchIntervalUs{0};
+  std::uint32_t m_gyroBatchIntervalUs{0};
+  std::uint32_t m_accelerometerBatchIntervalUs{0};
+  std::uint32_t m_linearAccelerationBatchIntervalUs{0};
+  std::uint32_t m_gravityBatchIntervalUs{0};
+  bool m_enableLinearAccelerationReport{true};
   bool m_enableGravityReport{true};
+  int m_featureSummaryTimeoutMs{5000};
   OASIS::IMU::BNO086::Bno086DiagnosticsLogLevel m_diagnosticsLogLevel{
       OASIS::IMU::BNO086::Bno086DiagnosticsLogLevel::Debug};
   int m_diagnosticsLogPeriodMs{5000};
@@ -234,10 +251,13 @@ private:
 
   bool m_loggedCommEstablished{false};
   bool m_loggedSetFeature{false};
+  bool m_loggedFeatureSummary{false};
   bool m_warnedMissingImuFields{false};
   bool m_loggedOrientationCovarianceSource{false};
   OASIS::IMU::BNO086::OrientationCovarianceSource m_lastOrientationCovarianceSource{
       OASIS::IMU::BNO086::OrientationCovarianceSource::AccuracyBucketFallback};
   std::uint8_t m_lastOrientationAccuracyBucket{0};
+  std::chrono::steady_clock::time_point m_featureConfigurationStartedAt{};
+  std::vector<OASIS::IMU::BNO086::FeatureResponse> m_latestFeatureResponses;
 };
 } // namespace OASIS::ROS

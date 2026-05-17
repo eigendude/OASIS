@@ -16,9 +16,11 @@ namespace OASIS::IMU::BNO086
 namespace
 {
 constexpr std::uint8_t kSensorFlushCompleted = 0xEF;
+constexpr std::uint8_t kShtpProductIdResponse = 0xF8;
 constexpr std::size_t kBaseTimestampHeaderBytes = 5;
 constexpr std::size_t kSensorCommonHeaderBytes = 4;
 constexpr std::size_t kFeatureResponseBytes = 17;
+constexpr std::size_t kProductIdResponseBytes = 16;
 constexpr std::size_t kGyroIntegratedRotationVectorPayloadBytes = 14;
 constexpr std::size_t kMaxContinuationBytes = 4096;
 
@@ -58,12 +60,20 @@ bool Bno086Shtp::Configure(const Bno086ShtpConfig& config)
 
   for (const ReportId reportId : kConfiguredReports)
   {
-    if (reportId == ReportId::Gravity && !m_config.enable_gravity_report)
-      continue;
-
     FeatureConfiguration featureConfiguration;
     featureConfiguration.report_id = reportId;
-    featureConfiguration.requested_interval_us = RequestedIntervalForReport(reportId, m_config);
+    featureConfiguration.enabled = RequestedEnabledForReport(reportId, m_config);
+    if (featureConfiguration.enabled)
+    {
+      featureConfiguration.requested_interval_us = RequestedIntervalForReport(reportId, m_config);
+      featureConfiguration.requested_batch_interval_us =
+          RequestedBatchIntervalForReport(reportId, m_config);
+    }
+    else
+    {
+      featureConfiguration.requested_interval_us = 0;
+      featureConfiguration.requested_batch_interval_us = 0;
+    }
     m_featureConfigurations.emplace_back(featureConfiguration);
   }
 
@@ -136,8 +146,7 @@ bool Bno086Shtp::SendSetFeatureCommands()
   bool allOk = true;
   for (const FeatureConfiguration& featureConfiguration : m_featureConfigurations)
   {
-    if (!ConfigureFeature(featureConfiguration.report_id,
-                          featureConfiguration.requested_interval_us))
+    if (!ConfigureFeature(featureConfiguration))
     {
       allOk = false;
       continue;
@@ -152,16 +161,14 @@ bool Bno086Shtp::SendSetFeatureCommands()
   return allOk;
 }
 
-bool Bno086Shtp::ConfigureFeature(ReportId report_id, std::uint32_t interval_us)
+bool Bno086Shtp::ConfigureFeature(const FeatureConfiguration& feature_configuration)
 {
   std::vector<std::uint8_t> payload(17, 0);
   payload[0] = kShtpSetFeatureCommand;
-  payload[1] = static_cast<std::uint8_t>(report_id);
+  payload[1] = static_cast<std::uint8_t>(feature_configuration.report_id);
 
-  payload[5] = static_cast<std::uint8_t>(interval_us & 0xFF);
-  payload[6] = static_cast<std::uint8_t>((interval_us >> 8) & 0xFF);
-  payload[7] = static_cast<std::uint8_t>((interval_us >> 16) & 0xFF);
-  payload[8] = static_cast<std::uint8_t>((interval_us >> 24) & 0xFF);
+  WriteU32(payload, 5, feature_configuration.requested_interval_us);
+  WriteU32(payload, 9, feature_configuration.requested_batch_interval_us);
 
   return m_transport.WritePacket(kShtpChannelControl, payload);
 }
@@ -282,6 +289,13 @@ void Bno086Shtp::DecodeControlPayload(const std::vector<std::uint8_t>& payload)
 
     if (reportCode != kShtpGetFeatureResponse)
     {
+      if (reportCode == kShtpProductIdResponse &&
+          offset + kProductIdResponseBytes <= payload.size())
+      {
+        offset += kProductIdResponseBytes;
+        continue;
+      }
+
       ++offset;
       continue;
     }
@@ -422,6 +436,9 @@ bool Bno086Shtp::DecodeSingleSensorReport(const std::vector<std::uint8_t>& paylo
     return false;
 
   const ReportId reportId = static_cast<ReportId>(reportCode);
+  if (!IsReportEnabled(reportId))
+    return false;
+
   const std::size_t payloadBytes = SensorPayloadBytes(reportId);
   const std::size_t recordBytes = kSensorCommonHeaderBytes + payloadBytes;
   if (report_offset + recordBytes > payload.size())
@@ -600,6 +617,43 @@ std::uint32_t Bno086Shtp::RequestedIntervalForReport(ReportId report_id,
   return ToReportIntervalUs(config.report_rate_hz);
 }
 
+std::uint32_t Bno086Shtp::RequestedBatchIntervalForReport(ReportId report_id,
+                                                          const Bno086ShtpConfig& config)
+{
+  switch (report_id)
+  {
+    case ReportId::RotationVector:
+      return config.rotation_vector_batch_interval_us;
+    case ReportId::GyroscopeCalibrated:
+      return config.gyro_batch_interval_us;
+    case ReportId::Accelerometer:
+      return config.accelerometer_batch_interval_us;
+    case ReportId::LinearAcceleration:
+      return config.linear_acceleration_batch_interval_us;
+    case ReportId::Gravity:
+      return config.gravity_batch_interval_us;
+    default:
+      break;
+  }
+
+  return 0;
+}
+
+bool Bno086Shtp::RequestedEnabledForReport(ReportId report_id, const Bno086ShtpConfig& config)
+{
+  switch (report_id)
+  {
+    case ReportId::LinearAcceleration:
+      return config.enable_linear_acceleration_report;
+    case ReportId::Gravity:
+      return config.enable_gravity_report;
+    default:
+      break;
+  }
+
+  return true;
+}
+
 std::uint32_t Bno086Shtp::ReadU32(const std::vector<std::uint8_t>& data, std::size_t offset)
 {
   if (offset + 3 >= data.size())
@@ -610,6 +664,17 @@ std::uint32_t Bno086Shtp::ReadU32(const std::vector<std::uint8_t>& data, std::si
   const std::uint32_t b2 = static_cast<std::uint32_t>(data[offset + 2]) << 16;
   const std::uint32_t b3 = static_cast<std::uint32_t>(data[offset + 3]) << 24;
   return b0 | b1 | b2 | b3;
+}
+
+void Bno086Shtp::WriteU32(std::vector<std::uint8_t>& data, std::size_t offset, std::uint32_t value)
+{
+  if (offset + 3 >= data.size())
+    return;
+
+  data[offset] = static_cast<std::uint8_t>(value & 0xFF);
+  data[offset + 1] = static_cast<std::uint8_t>((value >> 8) & 0xFF);
+  data[offset + 2] = static_cast<std::uint8_t>((value >> 16) & 0xFF);
+  data[offset + 3] = static_cast<std::uint8_t>((value >> 24) & 0xFF);
 }
 
 std::int16_t Bno086Shtp::ReadS16(const std::vector<std::uint8_t>& data, std::size_t offset)
@@ -643,6 +708,18 @@ bool Bno086Shtp::IsConfiguredReport(std::uint8_t report_id)
 {
   return std::find(kConfiguredReports.begin(), kConfiguredReports.end(),
                    static_cast<ReportId>(report_id)) != kConfiguredReports.end();
+}
+
+bool Bno086Shtp::IsReportEnabled(ReportId report_id) const
+{
+  const auto it = std::find_if(m_featureConfigurations.begin(), m_featureConfigurations.end(),
+                               [report_id](const FeatureConfiguration& configuration)
+                               { return configuration.report_id == report_id; });
+
+  if (it == m_featureConfigurations.end())
+    return true;
+
+  return it->enabled;
 }
 
 std::size_t Bno086Shtp::SensorPayloadBytes(ReportId report_id)

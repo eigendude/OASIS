@@ -61,7 +61,14 @@ constexpr double DEFAULT_GYRO_RATE_HZ = 100.0;
 constexpr double DEFAULT_ACCELEROMETER_RATE_HZ = 100.0;
 constexpr double DEFAULT_LINEAR_ACCELERATION_RATE_HZ = 50.0;
 constexpr double DEFAULT_GRAVITY_RATE_HZ = 25.0;
+constexpr double DEFAULT_ROTATION_VECTOR_BATCH_MS = 20.0;
+constexpr double DEFAULT_GYRO_BATCH_MS = 20.0;
+constexpr double DEFAULT_ACCELEROMETER_BATCH_MS = 20.0;
+constexpr double DEFAULT_LINEAR_ACCELERATION_BATCH_MS = 20.0;
+constexpr double DEFAULT_GRAVITY_BATCH_MS = 40.0;
+constexpr bool DEFAULT_ENABLE_LINEAR_ACCELERATION_REPORT = true;
 constexpr bool DEFAULT_ENABLE_GRAVITY_REPORT = true;
+constexpr int DEFAULT_FEATURE_SUMMARY_TIMEOUT_MS = 5'000;
 
 // Maximum nearby orientation age accepted for imu_gravity composition
 constexpr double DEFAULT_IMU_GRAVITY_MAX_ORIENTATION_AGE_MS = 25.0;
@@ -93,6 +100,12 @@ double VectorMagnitude(double x, double y, double z)
 {
   return std::sqrt(x * x + y * y + z * z);
 }
+
+std::uint32_t MillisecondsToMicroseconds(double milliseconds)
+{
+  const double clampedMs = std::max(milliseconds, 0.0);
+  return static_cast<std::uint32_t>(std::round(clampedMs * 1000.0));
+}
 } // namespace
 
 Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
@@ -106,7 +119,15 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   declare_parameter("bno086_accelerometer_rate_hz", DEFAULT_ACCELEROMETER_RATE_HZ);
   declare_parameter("bno086_linear_acceleration_rate_hz", DEFAULT_LINEAR_ACCELERATION_RATE_HZ);
   declare_parameter("bno086_gravity_rate_hz", DEFAULT_GRAVITY_RATE_HZ);
+  declare_parameter("bno086_rotation_vector_batch_ms", DEFAULT_ROTATION_VECTOR_BATCH_MS);
+  declare_parameter("bno086_gyro_batch_ms", DEFAULT_GYRO_BATCH_MS);
+  declare_parameter("bno086_accelerometer_batch_ms", DEFAULT_ACCELEROMETER_BATCH_MS);
+  declare_parameter("bno086_linear_acceleration_batch_ms", DEFAULT_LINEAR_ACCELERATION_BATCH_MS);
+  declare_parameter("bno086_gravity_batch_ms", DEFAULT_GRAVITY_BATCH_MS);
+  declare_parameter("bno086_enable_linear_acceleration_report",
+                    DEFAULT_ENABLE_LINEAR_ACCELERATION_REPORT);
   declare_parameter("bno086_enable_gravity_report", DEFAULT_ENABLE_GRAVITY_REPORT);
+  declare_parameter("bno086_feature_summary_timeout_ms", DEFAULT_FEATURE_SUMMARY_TIMEOUT_MS);
   declare_parameter("bno086_packet_read_timeout_ms", DEFAULT_PACKET_READ_TIMEOUT_MS);
   declare_parameter("bno086_max_packets_per_interrupt", DEFAULT_MAX_PACKETS_PER_INTERRUPT);
   declare_parameter("bno086_max_poll_iterations_per_interrupt",
@@ -132,7 +153,21 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   m_linearAccelerationRateHz =
       std::max(get_parameter("bno086_linear_acceleration_rate_hz").as_double(), 1.0);
   m_gravityRateHz = std::max(get_parameter("bno086_gravity_rate_hz").as_double(), 1.0);
+  m_rotationVectorBatchIntervalUs =
+      MillisecondsToMicroseconds(get_parameter("bno086_rotation_vector_batch_ms").as_double());
+  m_gyroBatchIntervalUs =
+      MillisecondsToMicroseconds(get_parameter("bno086_gyro_batch_ms").as_double());
+  m_accelerometerBatchIntervalUs =
+      MillisecondsToMicroseconds(get_parameter("bno086_accelerometer_batch_ms").as_double());
+  m_linearAccelerationBatchIntervalUs =
+      MillisecondsToMicroseconds(get_parameter("bno086_linear_acceleration_batch_ms").as_double());
+  m_gravityBatchIntervalUs =
+      MillisecondsToMicroseconds(get_parameter("bno086_gravity_batch_ms").as_double());
+  m_enableLinearAccelerationReport =
+      get_parameter("bno086_enable_linear_acceleration_report").as_bool();
   m_enableGravityReport = get_parameter("bno086_enable_gravity_report").as_bool();
+  m_featureSummaryTimeoutMs =
+      std::max(static_cast<int>(get_parameter("bno086_feature_summary_timeout_ms").as_int()), 0);
   m_packetReadTimeoutMs =
       std::clamp(static_cast<int>(get_parameter("bno086_packet_read_timeout_ms").as_int()),
                  MIN_PACKET_READ_TIMEOUT_MS, MAX_PACKET_READ_TIMEOUT_MS);
@@ -193,6 +228,12 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   shtpConfig.accelerometer_rate_hz = m_accelerometerRateHz;
   shtpConfig.linear_acceleration_rate_hz = m_linearAccelerationRateHz;
   shtpConfig.gravity_rate_hz = m_gravityRateHz;
+  shtpConfig.rotation_vector_batch_interval_us = m_rotationVectorBatchIntervalUs;
+  shtpConfig.gyro_batch_interval_us = m_gyroBatchIntervalUs;
+  shtpConfig.accelerometer_batch_interval_us = m_accelerometerBatchIntervalUs;
+  shtpConfig.linear_acceleration_batch_interval_us = m_linearAccelerationBatchIntervalUs;
+  shtpConfig.gravity_batch_interval_us = m_gravityBatchIntervalUs;
+  shtpConfig.enable_linear_acceleration_report = m_enableLinearAccelerationReport;
   shtpConfig.enable_gravity_report = m_enableGravityReport;
 
   if (!m_shtp->Configure(shtpConfig))
@@ -200,6 +241,7 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
     RCLCPP_ERROR(get_logger(), "Failed to send initial BNO086 Set Feature commands");
     throw std::runtime_error("Failed to configure BNO086 reports");
   }
+  m_featureConfigurationStartedAt = std::chrono::steady_clock::now();
 
   if (intGpio == DEFAULT_INT_GPIO)
   {
@@ -212,11 +254,21 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
               "fallback_report_rate_hz=%.1f",
               i2cDevice.c_str(), static_cast<unsigned>(i2cAddress), intGpio, reportRateHz);
   RCLCPP_INFO(get_logger(),
-              "BNO086 static report rates: rotation_vector=%.1f gyro=%.1f "
-              "accelerometer=%.1f linear_acceleration=%.1f gravity=%.1f "
-              "enable_gravity_report=%s",
-              m_rotationVectorRateHz, m_gyroRateHz, m_accelerometerRateHz,
-              m_linearAccelerationRateHz, m_gravityRateHz,
+              "BNO086 static report rates:\n"
+              "  rotation_vector=%.1f batch_ms=%.0f enabled=true\n"
+              "  gyro=%.1f batch_ms=%.0f enabled=true\n"
+              "  accelerometer=%.1f batch_ms=%.0f enabled=true\n"
+              "  linear_acceleration=%.1f batch_ms=%.0f enabled=%s\n"
+              "  gravity=%.1f batch_ms=%.0f enabled=%s",
+              m_rotationVectorRateHz, static_cast<double>(m_rotationVectorBatchIntervalUs) / 1000.0,
+              m_gyroRateHz, static_cast<double>(m_gyroBatchIntervalUs) / 1000.0,
+              m_accelerometerRateHz, static_cast<double>(m_accelerometerBatchIntervalUs) / 1000.0,
+              m_linearAccelerationRateHz,
+              m_enableLinearAccelerationReport
+                  ? static_cast<double>(m_linearAccelerationBatchIntervalUs) / 1000.0
+                  : 0.0,
+              m_enableLinearAccelerationReport ? "true" : "false", m_gravityRateHz,
+              m_enableGravityReport ? static_cast<double>(m_gravityBatchIntervalUs) / 1000.0 : 0.0,
               m_enableGravityReport ? "true" : "false");
   RCLCPP_INFO(get_logger(), "ROS publication is interrupt-driven from GPIO packet drains");
   RCLCPP_INFO(get_logger(), "BNO086 diagnostics log level=%s period_ms=%d",
@@ -302,6 +354,8 @@ void Bno086ImuNode::InterruptLoop()
       RCLCPP_INFO(get_logger(), "BNO086 Set Feature commands sent");
       m_loggedSetFeature = true;
     }
+
+    MaybeLogFeatureResponses();
   }
 }
 
@@ -724,14 +778,29 @@ void Bno086ImuNode::MaybeLogFeatureResponses()
 
   const std::vector<FeatureResponse> featureResponses = m_shtp->TakeFeatureResponses();
   for (const FeatureResponse& featureResponse : featureResponses)
+  {
+    const auto it = std::find_if(m_latestFeatureResponses.begin(), m_latestFeatureResponses.end(),
+                                 [&featureResponse](const FeatureResponse& response)
+                                 { return response.report_id == featureResponse.report_id; });
+    if (it == m_latestFeatureResponses.end())
+      m_latestFeatureResponses.emplace_back(featureResponse);
+    else
+      *it = featureResponse;
+
     LogFeatureResponse(featureResponse);
+  }
+
+  MaybeLogFeatureSummary();
 }
 
 void Bno086ImuNode::LogFeatureResponse(const FeatureResponse& response)
 {
   const std::optional<std::uint32_t> requestedIntervalUs =
       RequestedFeatureIntervalUs(response.report_id);
+  const std::optional<std::uint32_t> requestedBatchUs =
+      RequestedFeatureBatchIntervalUs(response.report_id);
   const std::uint32_t requestedUs = requestedIntervalUs.value_or(0U);
+  const std::uint32_t requestedBatch = requestedBatchUs.value_or(0U);
   const double actualRateHz = response.report_interval_us > 0
                                   ? 1'000'000.0 / static_cast<double>(response.report_interval_us)
                                   : 0.0;
@@ -742,11 +811,86 @@ void Bno086ImuNode::LogFeatureResponse(const FeatureResponse& response)
 
   RCLCPP_INFO(get_logger(),
               "BNO086 Get Feature Response: report=%s id=0x%02X requested_interval_us=%u "
-              "actual_interval_us=%u actual_rate_hz=%.2f batch_interval_us=%u "
-              "feature_flags=0x%02X sensor_specific_config=0x%08X",
+              "actual_interval_us=%u actual_rate_hz=%.2f requested_batch_us=%u "
+              "actual_batch_us=%u batching_active=%s feature_flags=0x%02X "
+              "sensor_specific_config=0x%08X",
               ReportName(response.report_id), static_cast<unsigned>(response.report_id),
-              requestedUs, response.report_interval_us, actualRateHz, response.batch_interval_us,
+              requestedUs, response.report_interval_us, actualRateHz, requestedBatch,
+              response.batch_interval_us, IsFeatureBatchingActive(response) ? "true" : "false",
               static_cast<unsigned>(response.feature_flags), response.sensor_specific_config);
+}
+
+void Bno086ImuNode::MaybeLogFeatureSummary()
+{
+  if (m_loggedFeatureSummary || m_shtp == nullptr)
+    return;
+
+  const std::vector<FeatureConfiguration>& configurations = m_shtp->GetFeatureConfigurations();
+  if (configurations.empty())
+    return;
+
+  const bool receivedAll = m_latestFeatureResponses.size() >= configurations.size();
+  bool timedOut = false;
+  if (!receivedAll && m_featureConfigurationStartedAt.time_since_epoch().count() != 0)
+  {
+    const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                               std::chrono::steady_clock::now() - m_featureConfigurationStartedAt)
+                               .count();
+    timedOut = elapsedMs >= m_featureSummaryTimeoutMs;
+  }
+
+  if (!receivedAll && !timedOut)
+    return;
+
+  LogFeatureSummary();
+  m_loggedFeatureSummary = true;
+}
+
+void Bno086ImuNode::LogFeatureSummary() const
+{
+  if (m_shtp == nullptr)
+    return;
+
+  const std::vector<FeatureConfiguration>& configurations = m_shtp->GetFeatureConfigurations();
+  std::ostringstream oss;
+
+  if (m_latestFeatureResponses.size() >= configurations.size())
+  {
+    oss << "BNO086 feature acceptance summary:";
+  }
+  else
+  {
+    oss << "BNO086 feature acceptance summary incomplete: received="
+        << m_latestFeatureResponses.size() << " expected=" << configurations.size();
+  }
+
+  for (const FeatureConfiguration& configuration : configurations)
+  {
+    oss << "\n  "
+        << BuildFeatureSummaryLine(configuration, LatestFeatureResponse(configuration.report_id));
+  }
+
+  RCLCPP_INFO(get_logger(), "%s", oss.str().c_str());
+}
+
+std::string Bno086ImuNode::BuildFeatureSummaryLine(
+    const FeatureConfiguration& configuration, const std::optional<FeatureResponse>& response) const
+{
+  std::ostringstream oss;
+  oss << ReportName(configuration.report_id)
+      << " requested_interval_us=" << configuration.requested_interval_us
+      << " requested_batch_us=" << configuration.requested_batch_interval_us;
+
+  if (!response.has_value())
+  {
+    oss << " status=missing_response";
+    return oss.str();
+  }
+
+  oss << " actual_interval_us=" << response->report_interval_us
+      << " actual_batch_us=" << response->batch_interval_us
+      << " batching_active=" << (IsFeatureBatchingActive(*response) ? "true" : "false");
+  return oss.str();
 }
 
 void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
@@ -992,6 +1136,36 @@ std::optional<std::uint32_t> Bno086ImuNode::RequestedFeatureIntervalUs(ReportId 
     return std::nullopt;
 
   return it->requested_interval_us;
+}
+
+std::optional<std::uint32_t> Bno086ImuNode::RequestedFeatureBatchIntervalUs(
+    ReportId report_id) const
+{
+  if (m_shtp == nullptr)
+    return std::nullopt;
+
+  const std::vector<FeatureConfiguration>& featureConfigurations =
+      m_shtp->GetFeatureConfigurations();
+  const auto it = std::find_if(featureConfigurations.begin(), featureConfigurations.end(),
+                               [report_id](const FeatureConfiguration& configuration)
+                               { return configuration.report_id == report_id; });
+
+  if (it == featureConfigurations.end())
+    return std::nullopt;
+
+  return it->requested_batch_interval_us;
+}
+
+std::optional<FeatureResponse> Bno086ImuNode::LatestFeatureResponse(ReportId report_id) const
+{
+  const auto it = std::find_if(m_latestFeatureResponses.begin(), m_latestFeatureResponses.end(),
+                               [report_id](const FeatureResponse& response)
+                               { return response.report_id == report_id; });
+
+  if (it == m_latestFeatureResponses.end())
+    return std::nullopt;
+
+  return *it;
 }
 
 bool Bno086ImuNode::IsBno086RateUnhealthy() const
@@ -1317,9 +1491,9 @@ const char* Bno086ImuNode::ReportName(ReportId report_id)
   switch (report_id)
   {
     case ReportId::Accelerometer:
-      return "calibrated_acceleration";
+      return "accelerometer";
     case ReportId::GyroscopeCalibrated:
-      return "calibrated_gyro";
+      return "gyro";
     case ReportId::LinearAcceleration:
       return "linear_acceleration";
     case ReportId::RotationVector:
