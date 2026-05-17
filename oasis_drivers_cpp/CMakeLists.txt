@@ -58,13 +58,6 @@ add_library(bno086_drain_policy
   src/imu/bno086/core/Bno086DrainPolicy.cpp
 )
 
-add_library(bno086_drain_health
-  src/imu/bno086/core/Bno086DrainHealth.cpp
-)
-target_link_libraries(bno086_drain_health
-  bno086_drain_policy
-)
-
 add_library(bno086_gravity_utils
   src/imu/bno086/core/Bno086GravityUtils.cpp
 )
@@ -75,10 +68,6 @@ add_library(bno086_imu_gravity_accel_history
 
 add_library(bno086_orientation_covariance_policy
   src/imu/bno086/core/Bno086OrientationCovariancePolicy.cpp
-)
-
-add_library(bno086_rate_health
-  src/imu/bno086/core/Bno086RateHealth.cpp
 )
 
 add_library(bno086_report_timestamp_tracker
@@ -101,7 +90,13 @@ add_library(bno086_utils
   src/imu/bno086/utils/Bno086ReportUtils.cpp
   src/imu/bno086/utils/Bno086TimingUtils.cpp
 )
-target_link_libraries(bno086_rate_health
+
+add_library(bno086_diagnostics
+  src/imu/bno086/diagnostics/Bno086DrainHealth.cpp
+  src/imu/bno086/diagnostics/Bno086RateHealth.cpp
+)
+target_link_libraries(bno086_diagnostics
+  bno086_drain_policy
   bno086_utils
 )
 
@@ -124,12 +119,11 @@ add_executable(bno086_imu_driver
 )
 
 target_link_libraries(bno086_imu_driver
-  bno086_drain_health
+  bno086_diagnostics
   bno086_drain_policy
   bno086_gravity_utils
   bno086_imu_gravity_accel_history
   bno086_orientation_covariance_policy
-  bno086_rate_health
   bno086_report_timestamp_tracker
   bno086_sample_coherence
   bno086_sh2
@@ -322,7 +316,7 @@ if(BUILD_TESTING)
     test/imu/bno086/test_Bno086DrainHealth.cpp
   )
   target_link_libraries(test_bno086_drain_health
-    bno086_drain_health
+    bno086_diagnostics
     bno086_drain_policy
   )
 
@@ -337,7 +331,7 @@ if(BUILD_TESTING)
     test/imu/bno086/test_Bno086RateHealth.cpp
   )
   target_link_libraries(test_bno086_rate_health
-    bno086_rate_health
+    bno086_diagnostics
     bno086_utils
   )
 

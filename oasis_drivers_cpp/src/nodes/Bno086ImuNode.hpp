@@ -8,14 +8,14 @@
 
 #pragma once
 
-#include "imu/bno086/core/Bno086DrainHealth.hpp"
 #include "imu/bno086/core/Bno086DrainPolicy.hpp"
 #include "imu/bno086/core/Bno086GravityUtils.hpp"
 #include "imu/bno086/core/Bno086ImuGravityAccelHistory.hpp"
 #include "imu/bno086/core/Bno086OrientationCovariancePolicy.hpp"
-#include "imu/bno086/core/Bno086RateHealth.hpp"
 #include "imu/bno086/core/Bno086SampleCoherence.hpp"
 #include "imu/bno086/core/Bno086TimestampCadence.hpp"
+#include "imu/bno086/diagnostics/Bno086DrainHealth.hpp"
+#include "imu/bno086/diagnostics/Bno086RateHealth.hpp"
 #include "imu/bno086/gpio/Bno086Gpio.hpp"
 #include "imu/bno086/sh2/Bno086Reports.hpp"
 #include "imu/bno086/sh2/Bno086Shtp.hpp"

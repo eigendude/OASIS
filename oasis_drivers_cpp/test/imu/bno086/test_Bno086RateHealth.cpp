@@ -6,7 +6,7 @@
  *  See the file LICENSE.txt for more information.
  */
 
-#include "imu/bno086/core/Bno086RateHealth.hpp"
+#include "imu/bno086/diagnostics/Bno086RateHealth.hpp"
 
 #include <chrono>
 
