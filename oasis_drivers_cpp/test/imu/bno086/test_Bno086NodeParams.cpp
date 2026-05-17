@@ -44,17 +44,17 @@ TEST(Bno086NodeParams, loadsStableReportDefaultsFromDeclaredRosParameters)
   EXPECT_EQ(params.transport.gpio_chip_device, "/dev/gpiochip0");
   EXPECT_EQ(params.transport.int_gpio, 23);
 
-  EXPECT_DOUBLE_EQ(params.reports.rotation_vector_rate_hz, 100.0);
-  EXPECT_DOUBLE_EQ(params.reports.gyro_rate_hz, 100.0);
+  EXPECT_DOUBLE_EQ(params.reports.rotation_vector_rate_hz, 50.0);
+  EXPECT_DOUBLE_EQ(params.reports.gyro_rate_hz, 50.0);
   EXPECT_DOUBLE_EQ(params.reports.accelerometer_rate_hz, 100.0);
-  EXPECT_DOUBLE_EQ(params.reports.linear_acceleration_rate_hz, 100.0);
+  EXPECT_DOUBLE_EQ(params.reports.linear_acceleration_rate_hz, 50.0);
   EXPECT_DOUBLE_EQ(params.reports.gravity_rate_hz, 25.0);
 
-  EXPECT_EQ(params.reports.rotation_vector_batch_interval_us, 10'000U);
-  EXPECT_EQ(params.reports.gyro_batch_interval_us, 10'000U);
-  EXPECT_EQ(params.reports.accelerometer_batch_interval_us, 10'000U);
-  EXPECT_EQ(params.reports.linear_acceleration_batch_interval_us, 10'000U);
-  EXPECT_EQ(params.reports.gravity_batch_interval_us, 40'000U);
+  EXPECT_EQ(params.reports.rotation_vector_batch_interval_us, 50'000U);
+  EXPECT_EQ(params.reports.gyro_batch_interval_us, 50'000U);
+  EXPECT_EQ(params.reports.accelerometer_batch_interval_us, 50'000U);
+  EXPECT_EQ(params.reports.linear_acceleration_batch_interval_us, 50'000U);
+  EXPECT_EQ(params.reports.gravity_batch_interval_us, 100'000U);
 }
 
 TEST(Bno086NodeParams, loadsTransportOverridesFromDeclaredRosParameters)
