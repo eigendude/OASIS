@@ -122,6 +122,11 @@ Bno086Shtp::PollResult Bno086Shtp::Poll(int timeout_ms)
   return result;
 }
 
+std::size_t Bno086Shtp::PendingEventCount() const
+{
+  return m_pendingEvents.size();
+}
+
 Bno086Shtp::FeatureResponseDrainResult Bno086Shtp::DrainFeatureResponses(
     int timeout_ms, std::uint32_t max_physical_packets, int poll_timeout_ms)
 {

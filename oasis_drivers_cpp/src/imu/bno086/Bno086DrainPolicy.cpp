@@ -83,7 +83,15 @@ Bno086DrainDecision Bno086DrainAfterPoll(const Bno086Shtp::PollResult& result,
     return decision;
   }
 
-  if (counters.sensor_events_this_drain >= limits.max_sensor_events_per_drain)
+  if (result.dequeued_pending_event &&
+      counters.pending_events_this_drain >= limits.max_pending_events_flush_per_drain)
+  {
+    decision.action = Bno086DrainAction::PendingEventFlushBudget;
+    return decision;
+  }
+
+  if (!result.dequeued_pending_event &&
+      counters.sensor_events_this_drain >= limits.max_sensor_events_per_drain)
   {
     decision.action = Bno086DrainAction::SensorEventBudget;
     return decision;

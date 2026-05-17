@@ -218,6 +218,7 @@ public:
 
   bool Configure(const Bno086ShtpConfig& config);
   PollResult Poll(int timeout_ms);
+  std::size_t PendingEventCount() const;
   FeatureResponseDrainResult DrainFeatureResponses(int timeout_ms,
                                                    std::uint32_t max_physical_packets,
                                                    int poll_timeout_ms);

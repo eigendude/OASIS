@@ -174,6 +174,8 @@ private:
     std::optional<std::uint32_t> sensor_events_min;
     std::uint64_t pending_events_sum{0};
     std::uint32_t pending_events_max{0};
+    std::uint32_t pending_queue_depth_at_exit{0};
+    std::uint32_t pending_queue_depth_max{0};
     std::uint64_t drain_duration_sum_us{0};
     std::uint32_t drain_duration_max_us{0};
     std::optional<std::uint32_t> drain_duration_min_us;
@@ -181,6 +183,9 @@ private:
     std::uint64_t poll_iteration_cap_hit_count{0};
     std::uint64_t drain_duration_budget_hit_count{0};
     std::uint64_t sensor_event_budget_hit_count{0};
+    std::uint64_t pending_flush_budget_hit_count{0};
+    std::uint64_t exit_duration_budget_with_pending_count{0};
+    std::uint64_t exit_duration_budget_no_pending_count{0};
     std::uint64_t hintn_asserted_after_exit_count{0};
     std::uint64_t hintn_asserted_after_cooperative_budget_exit_count{0};
     std::uint64_t hintn_asserted_after_safety_or_error_exit_count{0};
@@ -193,6 +198,7 @@ private:
     std::uint64_t exit_poll_iteration_cap_count{0};
     std::uint64_t exit_drain_duration_budget_count{0};
     std::uint64_t exit_sensor_event_budget_count{0};
+    std::uint64_t exit_pending_event_flush_budget_count{0};
     std::array<std::uint64_t, 6> channel_packet_counts{};
   };
 
@@ -257,7 +263,8 @@ private:
   void RecordDrainThroughputDiagnostics(const OASIS::IMU::BNO086::Bno086DrainCounters& counters,
                                         OASIS::IMU::BNO086::Bno086DrainAction exit_action,
                                         bool hintn_asserted_after_exit,
-                                        std::uint32_t drain_duration_us);
+                                        std::uint32_t drain_duration_us,
+                                        std::uint32_t pending_queue_depth_at_exit);
   void UpdateImuGravityDiagnosticsRates(const std::chrono::steady_clock::time_point& now);
   void MaybeEmitImuGravityDiagnosticsLog();
   std::string BuildImuGravityDiagnosticsLogMessage() const;
@@ -353,8 +360,9 @@ private:
   std::uint32_t m_maxPacketsPerInterrupt{1024};
   std::uint32_t m_maxPollIterationsPerInterrupt{4096};
   std::uint32_t m_maxNoProgressPollsPerInterrupt{64};
-  int m_maxDrainDurationMs{25};
-  std::uint32_t m_maxSensorEventsPerDrain{512};
+  int m_maxDrainDurationMs{100};
+  std::uint32_t m_maxSensorEventsPerDrain{4096};
+  std::uint32_t m_maxPendingEventsFlushPerDrain{1024};
   double m_rotationVectorRateHz{100.0};
   double m_gyroRateHz{100.0};
   double m_accelerometerRateHz{100.0};
