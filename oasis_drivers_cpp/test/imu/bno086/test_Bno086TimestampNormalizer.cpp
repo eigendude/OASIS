@@ -61,6 +61,54 @@ TEST(Bno086TimestampNormalizer, duplicateIntervalRepairFallsBackWhenHostCannotAd
   EXPECT_TRUE(second.interval_repair_bounded_to_legacy);
 }
 
+TEST(Bno086TimestampNormalizer, futureIntervalCandidateAndStaleHostProducesLegacyPlusOne)
+{
+  Bno086TimestampNormalizer normalizer;
+
+  ASSERT_FALSE(normalizer.Normalize(TimestampSample{4, 1'000'000, 1'000'000}).duplicate);
+
+  const TimestampNormalizationResult repaired =
+      normalizer.Normalize(TimestampSample{5, 1'000'000, 1'000'000}, 10'000'000);
+
+  EXPECT_EQ(repaired.stamp_ns, 1'000'001);
+  EXPECT_TRUE(repaired.repaired_nonmonotonic);
+  EXPECT_TRUE(repaired.repaired_duplicate_to_interval);
+  EXPECT_TRUE(repaired.interval_repair_bounded_to_legacy);
+  EXPECT_FALSE(repaired.interval_repair_clamped_to_host);
+}
+
+TEST(Bno086TimestampNormalizer, futureIntervalCandidateAndAdvancingHostClampsToHost)
+{
+  Bno086TimestampNormalizer normalizer;
+
+  ASSERT_FALSE(normalizer.Normalize(TimestampSample{4, 1'000'000, 1'000'000}).duplicate);
+
+  const TimestampNormalizationResult repaired =
+      normalizer.Normalize(TimestampSample{5, 1'000'000, 1'500'000}, 10'000'000);
+
+  EXPECT_EQ(repaired.stamp_ns, 1'500'000);
+  EXPECT_TRUE(repaired.repaired_nonmonotonic);
+  EXPECT_TRUE(repaired.repaired_duplicate_to_interval);
+  EXPECT_TRUE(repaired.interval_repair_clamped_to_host);
+  EXPECT_FALSE(repaired.interval_repair_bounded_to_legacy);
+}
+
+TEST(Bno086TimestampNormalizer, duplicateStampWithAdvancedHostUsesExpectedInterval)
+{
+  Bno086TimestampNormalizer normalizer;
+
+  ASSERT_FALSE(normalizer.Normalize(TimestampSample{4, 1'000'000, 1'000'000}).duplicate);
+
+  const TimestampNormalizationResult repaired =
+      normalizer.Normalize(TimestampSample{5, 1'000'000, 11'000'000}, 10'000'000);
+
+  EXPECT_EQ(repaired.stamp_ns, 11'000'000);
+  EXPECT_TRUE(repaired.repaired_nonmonotonic);
+  EXPECT_TRUE(repaired.repaired_duplicate_to_interval);
+  EXPECT_FALSE(repaired.interval_repair_clamped_to_host);
+  EXPECT_FALSE(repaired.interval_repair_bounded_to_legacy);
+}
+
 TEST(Bno086TimestampNormalizer, nonmonotonicStampUsesExpectedInterval)
 {
   Bno086TimestampNormalizer normalizer;

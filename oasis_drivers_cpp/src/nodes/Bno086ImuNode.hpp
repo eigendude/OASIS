@@ -131,6 +131,29 @@ private:
     std::chrono::steady_clock::time_point last_log_at{};
   };
 
+  struct TimestampTraceStats
+  {
+    std::uint64_t events{0};
+    std::uint64_t has_base_count{0};
+    std::uint64_t has_delay_count{0};
+    std::uint64_t sequence_gap_count{0};
+    std::uint64_t duplicate_raw_stamp_count{0};
+    std::uint64_t tiny_raw_delta_count{0};
+    std::uint64_t duplicate_normalized_stamp_count{0};
+    std::uint64_t legacy_plus_one_repair_count{0};
+    std::uint64_t interval_repair_count{0};
+    std::uint64_t host_clamp_count{0};
+    std::uint64_t bounded_to_legacy_count{0};
+    std::uint64_t raw_delta_count{0};
+    std::uint64_t normalized_delta_count{0};
+    int64_t raw_delta_sum_ns{0};
+    int64_t normalized_delta_sum_ns{0};
+    std::optional<int64_t> raw_delta_min_ns;
+    std::optional<int64_t> normalized_delta_min_ns;
+    std::optional<int64_t> last_raw_stamp_ns;
+    std::optional<int64_t> last_normalized_stamp_ns;
+  };
+
   struct OrientationCovarianceDebugState
   {
     std::uint8_t accuracy_bucket{0};
@@ -190,6 +213,20 @@ private:
   bool IsBno086RateUnhealthy() const;
   bool IsBno086DiagnosticsUnhealthy() const;
   void CountDecodedReport(const OASIS::IMU::BNO086::SensorEvent& event);
+  void RecordTimestampTrace(const OASIS::IMU::BNO086::SensorEvent& event,
+                            int64_t raw_stamp_ns,
+                            int64_t packet_host_stamp_ns,
+                            const OASIS::IMU::BNO086::TimestampNormalizationResult& normalized,
+                            std::optional<std::uint32_t> expected_interval_us);
+  void MaybeLogTimestampTraceLine(
+      const OASIS::IMU::BNO086::SensorEvent& event,
+      int64_t raw_stamp_ns,
+      int64_t packet_host_stamp_ns,
+      const OASIS::IMU::BNO086::TimestampNormalizationResult& normalized,
+      std::optional<std::uint32_t> expected_interval_us,
+      std::optional<int64_t> previous_raw_delta_ns,
+      std::optional<int64_t> previous_normalized_delta_ns);
+  void MaybeEmitTimestampSummaries() const;
 
   static std::array<double, 9> PredictedCovarianceFromPresent(
       const std::array<double, 9>& present_orientation_covariance,
@@ -279,6 +316,9 @@ private:
   OASIS::IMU::BNO086::OrientationCovarianceSource m_lastOrientationCovarianceSource{
       OASIS::IMU::BNO086::OrientationCovarianceSource::AccuracyBucketFallback};
   std::uint8_t m_lastOrientationAccuracyBucket{0};
+  std::uint32_t m_timestampTraceCount{0};
+  std::uint32_t m_timestampTraceLogged{0};
+  std::array<TimestampTraceStats, 5> m_timestampTraceStats{};
   std::chrono::steady_clock::time_point m_featureConfigurationStartedAt{};
   std::vector<OASIS::IMU::BNO086::FeatureResponse> m_latestFeatureResponses;
 };

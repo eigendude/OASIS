@@ -10,6 +10,8 @@
 
 #include <cstdint>
 #include <deque>
+#include <optional>
+#include <tuple>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -60,6 +62,65 @@ std::vector<std::uint8_t> AccelerometerReport(std::uint8_t sequence)
       0x00,
       0x00,
   };
+}
+
+std::size_t ExpectedRecordBytes(ReportId report_id)
+{
+  switch (report_id)
+  {
+    case ReportId::RotationVector:
+      return 14;
+    case ReportId::Accelerometer:
+    case ReportId::GyroscopeCalibrated:
+    case ReportId::LinearAcceleration:
+    case ReportId::Gravity:
+      return 10;
+    default:
+      break;
+  }
+
+  return 0;
+}
+
+std::vector<std::uint8_t> BaseTimestampReport(std::uint32_t base_timestamp_us)
+{
+  std::vector<std::uint8_t> payload(5, 0);
+  const std::uint32_t timestampTicks = base_timestamp_us / 100U;
+  payload[0] = kShtpReportBaseTimestamp;
+  payload[1] = static_cast<std::uint8_t>(timestampTicks & 0xFF);
+  payload[2] = static_cast<std::uint8_t>((timestampTicks >> 8) & 0xFF);
+  payload[3] = static_cast<std::uint8_t>((timestampTicks >> 16) & 0xFF);
+  payload[4] = static_cast<std::uint8_t>((timestampTicks >> 24) & 0xFF);
+  return payload;
+}
+
+std::vector<std::uint8_t> SensorReport(ReportId report_id,
+                                       std::uint8_t sequence,
+                                       std::uint16_t delay_us)
+{
+  std::vector<std::uint8_t> payload(ExpectedRecordBytes(report_id), 0);
+  const std::uint16_t delayTicks = delay_us / 100U;
+  payload[0] = static_cast<std::uint8_t>(report_id);
+  payload[1] = sequence;
+  payload[2] = static_cast<std::uint8_t>((delayTicks >> 8) << 2);
+  payload[3] = static_cast<std::uint8_t>(delayTicks & 0xFF);
+  return payload;
+}
+
+SensorEvent DecodeSingleEvent(const std::vector<std::uint8_t>& payload)
+{
+  RecordingTransport transport;
+  Bno086ShtpPacket packet;
+  packet.channel = 3;
+  packet.payload = payload;
+  transport.packets.emplace_back(packet);
+
+  Bno086Shtp shtp{transport};
+  const Bno086Shtp::PollResult result = shtp.Poll(5);
+
+  EXPECT_EQ(result.status, Bno086Shtp::PollStatus::SensorEvent);
+  EXPECT_TRUE(result.event.has_value());
+  return result.event.value_or(SensorEvent{});
 }
 
 std::uint32_t ReadIntervalUs(const std::vector<std::uint8_t>& payload)
@@ -161,6 +222,124 @@ TEST(Bno086Shtp, pollDistinguishesPhysicalPacketReadFromPendingEvent)
   EXPECT_TRUE(secondResult.dequeued_pending_event);
   EXPECT_EQ(secondResult.event->sequence, 2);
   EXPECT_EQ(transport.read_timeouts.size(), 1U);
+}
+
+class Bno086ShtpTimingFields
+  : public ::testing::TestWithParam<std::tuple<ReportId, std::uint8_t, std::uint16_t>>
+{
+};
+
+TEST_P(Bno086ShtpTimingFields, exposesBaseTimestampDelayAndRecordContext)
+{
+  const ReportId reportId = std::get<0>(GetParam());
+  const std::uint8_t sequence = std::get<1>(GetParam());
+  const std::uint16_t delayUs = std::get<2>(GetParam());
+  constexpr std::uint32_t kBaseTimestampUs = 1'234'500;
+
+  std::vector<std::uint8_t> payload = BaseTimestampReport(kBaseTimestampUs);
+  const std::vector<std::uint8_t> report = SensorReport(reportId, sequence, delayUs);
+  payload.insert(payload.end(), report.begin(), report.end());
+
+  const SensorEvent event = DecodeSingleEvent(payload);
+
+  EXPECT_EQ(event.report_id, reportId);
+  EXPECT_EQ(event.sequence, sequence);
+  EXPECT_TRUE(event.has_base_timestamp);
+  EXPECT_EQ(event.base_timestamp_us, kBaseTimestampUs);
+  EXPECT_TRUE(event.has_delay);
+  EXPECT_EQ(event.delay_us, delayUs);
+  EXPECT_EQ(event.channel, 3);
+  EXPECT_EQ(event.report_offset, 5U);
+  EXPECT_EQ(event.bytes_consumed, ExpectedRecordBytes(reportId));
+}
+
+INSTANTIATE_TEST_SUITE_P(trackedReports,
+                         Bno086ShtpTimingFields,
+                         ::testing::Values(std::make_tuple(ReportId::Accelerometer, 10, 700),
+                                           std::make_tuple(ReportId::GyroscopeCalibrated, 11, 800),
+                                           std::make_tuple(ReportId::RotationVector, 12, 900),
+                                           std::make_tuple(ReportId::LinearAcceleration, 13, 1'000),
+                                           std::make_tuple(ReportId::Gravity, 14, 1'100)));
+
+TEST(Bno086Shtp, multiReportPayloadCarriesBaseTimestampContext)
+{
+  constexpr std::uint32_t kBaseTimestampUs = 2'000'000;
+  std::vector<std::uint8_t> payload = BaseTimestampReport(kBaseTimestampUs);
+  const std::vector<std::uint8_t> first = SensorReport(ReportId::Accelerometer, 20, 1'200);
+  const std::vector<std::uint8_t> second = SensorReport(ReportId::Gravity, 21, 2'400);
+  payload.insert(payload.end(), first.begin(), first.end());
+  payload.insert(payload.end(), second.begin(), second.end());
+
+  RecordingTransport transport;
+  Bno086ShtpPacket packet;
+  packet.channel = 3;
+  packet.payload = payload;
+  transport.packets.emplace_back(packet);
+  Bno086Shtp shtp{transport};
+
+  const Bno086Shtp::PollResult firstResult = shtp.Poll(5);
+  ASSERT_EQ(firstResult.status, Bno086Shtp::PollStatus::SensorEvent);
+  ASSERT_TRUE(firstResult.event.has_value());
+  EXPECT_EQ(firstResult.event->report_id, ReportId::Accelerometer);
+  EXPECT_EQ(firstResult.event->sequence, 20);
+  EXPECT_EQ(firstResult.event->delay_us, 1'200);
+  EXPECT_TRUE(firstResult.event->has_base_timestamp);
+  EXPECT_EQ(firstResult.event->base_timestamp_us, kBaseTimestampUs);
+  EXPECT_EQ(firstResult.event->report_offset, 5U);
+  EXPECT_EQ(firstResult.event->bytes_consumed, 10U);
+
+  const Bno086Shtp::PollResult secondResult = shtp.Poll(5);
+  ASSERT_EQ(secondResult.status, Bno086Shtp::PollStatus::SensorEvent);
+  ASSERT_TRUE(secondResult.event.has_value());
+  EXPECT_EQ(secondResult.event->report_id, ReportId::Gravity);
+  EXPECT_EQ(secondResult.event->sequence, 21);
+  EXPECT_EQ(secondResult.event->delay_us, 2'400);
+  EXPECT_TRUE(secondResult.event->has_base_timestamp);
+  EXPECT_EQ(secondResult.event->base_timestamp_us, kBaseTimestampUs);
+  EXPECT_EQ(secondResult.event->report_offset, 15U);
+  EXPECT_EQ(secondResult.event->bytes_consumed, 10U);
+}
+
+TEST(Bno086Shtp, payloadWithoutBaseTimestampKeepsTimingContextAbsent)
+{
+  const SensorEvent event =
+      DecodeSingleEvent(SensorReport(ReportId::LinearAcceleration, 30, 3'000));
+
+  EXPECT_EQ(event.report_id, ReportId::LinearAcceleration);
+  EXPECT_EQ(event.sequence, 30);
+  EXPECT_FALSE(event.has_base_timestamp);
+  EXPECT_EQ(event.base_timestamp_us, 0U);
+  EXPECT_TRUE(event.has_delay);
+  EXPECT_EQ(event.delay_us, 3'000);
+  EXPECT_EQ(event.report_offset, 0U);
+  EXPECT_EQ(event.bytes_consumed, 10U);
+}
+
+TEST(Bno086Shtp, repeatedZeroDelayIsDecodedAsPresentDelay)
+{
+  std::vector<std::uint8_t> payload = BaseTimestampReport(3'000'000);
+  const std::vector<std::uint8_t> first = SensorReport(ReportId::Accelerometer, 40, 0);
+  const std::vector<std::uint8_t> second = SensorReport(ReportId::Accelerometer, 41, 0);
+  payload.insert(payload.end(), first.begin(), first.end());
+  payload.insert(payload.end(), second.begin(), second.end());
+
+  RecordingTransport transport;
+  Bno086ShtpPacket packet;
+  packet.channel = 3;
+  packet.payload = payload;
+  transport.packets.emplace_back(packet);
+  Bno086Shtp shtp{transport};
+
+  const Bno086Shtp::PollResult firstResult = shtp.Poll(5);
+  ASSERT_TRUE(firstResult.event.has_value());
+  EXPECT_TRUE(firstResult.event->has_delay);
+  EXPECT_EQ(firstResult.event->delay_us, 0U);
+
+  const Bno086Shtp::PollResult secondResult = shtp.Poll(5);
+  ASSERT_TRUE(secondResult.event.has_value());
+  EXPECT_TRUE(secondResult.event->has_delay);
+  EXPECT_EQ(secondResult.event->delay_us, 0U);
+  EXPECT_EQ(secondResult.event->sequence, 41);
 }
 
 TEST(Bno086Shtp, pollMarksPhysicalControlPacketRead)

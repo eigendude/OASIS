@@ -399,6 +399,10 @@ Bno086Shtp::SensorDecodeResult Bno086Shtp::DecodeSensorPayload(
   {
     const std::uint8_t reportCode = payload[offset];
 
+    // SH-2 batches may contain a Base Timestamp control report followed by
+    // several sensor reports. The timestamp value is encoded in 100 us ticks
+    // and applies to each following sensor record until a later Base
+    // Timestamp or Timestamp Rebase changes the local payload context.
     if (reportCode == kShtpReportBaseTimestamp)
     {
       if (offset + kBaseTimestampHeaderBytes > payload.size())
@@ -412,6 +416,9 @@ Bno086Shtp::SensorDecodeResult Bno086Shtp::DecodeSensorPayload(
       continue;
     }
 
+    // Timestamp Rebase uses the same 100 us tick scale and increments the
+    // current base timestamp context. If no base timestamp has appeared in
+    // this decoded payload, the rebase has no context to update.
     if (reportCode == kShtpReportTimestampRebase)
     {
       if (offset + kBaseTimestampHeaderBytes > payload.size())
@@ -460,6 +467,7 @@ Bno086Shtp::SensorDecodeResult Bno086Shtp::DecodeSensorPayload(
       offset += *recordBytes;
       continue;
     }
+    decodedEvent.channel = channel;
 
     if (event.has_value())
       m_pendingEvents.emplace_back(decodedEvent);
@@ -501,9 +509,13 @@ bool Bno086Shtp::DecodeSingleSensorReport(const std::vector<std::uint8_t>& paylo
   event.sequence = payload[report_offset + 1];
   event.status = payload[report_offset + 2];
   event.accuracy = static_cast<std::uint8_t>(event.status & 0x03U);
+  event.report_offset = report_offset;
+  event.bytes_consumed = recordBytes;
 
   // SH-2 combines accuracy in bits 1:0 with the upper six bits of the
   // 14-bit delay field in bits 7:2. Byte 3 contributes the lower eight bits.
+  // This common four-byte report header is shared by the tracked vector and
+  // rotation reports; only the value payload length differs by report type.
   const std::uint16_t delayTicks =
       static_cast<std::uint16_t>((payload[report_offset + 2] >> 2) << 8) |
       static_cast<std::uint16_t>(payload[report_offset + 3]);
