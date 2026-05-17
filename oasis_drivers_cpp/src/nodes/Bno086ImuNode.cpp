@@ -389,13 +389,14 @@ void Bno086ImuNode::InterruptLoop()
 }
 
 void Bno086ImuNode::DrainPacketsForInterrupt(
-    const std::chrono::steady_clock::time_point& interrupt_steady_at,
+    const std::chrono::steady_clock::time_point& /*interrupt_steady_at*/,
     const rclcpp::Time& interrupt_ros_at)
 {
   Bno086DrainCounters drainCounters;
   Bno086DrainLimits drainLimits;
   drainLimits.max_physical_packets_per_interrupt = m_maxPacketsPerInterrupt;
   drainLimits.max_poll_iterations_per_interrupt = m_maxPollIterationsPerInterrupt;
+  const rclcpp::Time drainReceiveAnchor = interrupt_ros_at;
 
   while (m_running.load())
   {
@@ -452,13 +453,11 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
 
     if (pollResult.status == Bno086Shtp::PollStatus::SensorEvent && pollResult.event.has_value())
     {
-      const auto sampleNowSteady = std::chrono::steady_clock::now();
-      const auto sampleDeltaNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                                     sampleNowSteady - interrupt_steady_at)
-                                     .count();
-      const rclcpp::Time sampleInterruptRosAt =
-          interrupt_ros_at + rclcpp::Duration(0, sampleDeltaNs);
-      const rclcpp::Time eventStamp = EstimateEventStamp(*pollResult.event, sampleInterruptRosAt);
+      // For batched SHTP reports, host drain time is transport latency. Use
+      // one stable receive anchor for the interrupt drain so reports in a
+      // batch are not timestamped later merely because they were read later
+      // over I2C.
+      const rclcpp::Time eventStamp = EstimateEventStamp(*pollResult.event, drainReceiveAnchor);
       const auto normalizerIndex = static_cast<std::size_t>(pollResult.event->report_id);
       const std::optional<std::uint32_t> expectedIntervalUs =
           EffectiveReportIntervalUs(pollResult.event->report_id);
@@ -469,7 +468,7 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
       const TimestampNormalizationResult normalizedStamp =
           m_timestampNormalizers[normalizerIndex].Normalize(
               TimestampSample{pollResult.event->sequence, eventStamp.nanoseconds(),
-                              sampleInterruptRosAt.nanoseconds()},
+                              drainReceiveAnchor.nanoseconds()},
               expectedIntervalNs);
 
       if (normalizedStamp.reconstruction_reset)
