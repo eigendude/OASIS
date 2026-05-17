@@ -103,6 +103,7 @@ target_link_libraries(bno086_imu_driver
   bno086_report_timestamp_tracker
   bno086_sh2
   bno086_shtp
+  bno086_timestamp_mapper
   bno086_timestamp_normalizer
   ${geometry_msgs_TARGETS}
   ${oasis_msgs_TARGETS}

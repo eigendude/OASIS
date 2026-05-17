@@ -472,30 +472,19 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
       // one stable receive anchor for the interrupt drain so reports in a
       // batch are not timestamped later merely because they were read later
       // over I2C.
-      const auto normalizerIndex = static_cast<std::size_t>(pollResult.event->report_id);
       const std::optional<std::uint32_t> expectedIntervalUs =
           EffectiveReportIntervalUs(pollResult.event->report_id);
       const std::optional<int64_t> expectedIntervalNs =
           expectedIntervalUs.has_value()
               ? std::make_optional(static_cast<int64_t>(*expectedIntervalUs) * 1'000)
               : std::nullopt;
-      const rclcpp::Time eventStamp =
+      const EstimatedEventStamp eventStamp =
           EstimateEventStamp(*pollResult.event, drainReceiveAnchor, expectedIntervalNs);
-
-      // Units: ns. Allows cadence-derived batched samples to land just ahead
-      // of the stable host drain anchor
-      constexpr int64_t kCadenceTimestampFutureSlopNs = 50'000'000;
-
-      const TimestampNormalizationResult normalizedStamp =
-          m_timestampNormalizers[normalizerIndex].Normalize(
-              TimestampSample{pollResult.event->sequence, eventStamp.nanoseconds(),
-                              drainReceiveAnchor.nanoseconds(),
-                              expectedIntervalNs.has_value()
-                                  ? std::make_optional(kCadenceTimestampFutureSlopNs)
-                                  : std::nullopt},
-              expectedIntervalNs);
-      RecordTimestampTrace(*pollResult.event, eventStamp.nanoseconds(),
-                           drainReceiveAnchor.nanoseconds(), normalizedStamp, expectedIntervalUs);
+      const TimestampNormalizationResult normalizedStamp = FinalizeEventStamp(
+          *pollResult.event, eventStamp, drainReceiveAnchor.nanoseconds(), expectedIntervalNs);
+      RecordTimestampTrace(*pollResult.event, eventStamp.stamp.nanoseconds(),
+                           drainReceiveAnchor.nanoseconds(), normalizedStamp, eventStamp.tracker,
+                           expectedIntervalUs);
 
       if (normalizedStamp.reconstruction_reset)
         ++m_imuGravityDiagnostics.timestamp_reconstruction_reset_count;
@@ -1397,6 +1386,7 @@ void Bno086ImuNode::RecordTimestampTrace(const SensorEvent& event,
                                          int64_t raw_stamp_ns,
                                          int64_t packet_host_stamp_ns,
                                          const TimestampNormalizationResult& normalized,
+                                         const ReportTimestampTrackerResult& tracker,
                                          std::optional<std::uint32_t> expected_interval_us)
 {
   const std::optional<std::size_t> reportIndex = DiagnosticReportIndex(event.report_id);
@@ -1414,6 +1404,18 @@ void Bno086ImuNode::RecordTimestampTrace(const SensorEvent& event,
 
   if (normalized.sequence_gap)
     ++stats.sequence_gap_count;
+
+  if (tracker.gap_detected)
+    ++stats.cadence_tracker_gap_count;
+
+  if (tracker.reanchored)
+    ++stats.cadence_tracker_reanchor_count;
+
+  if (tracker.duplicate_sequence)
+    ++stats.duplicate_sequence_count;
+
+  if (normalized.repaired_nonmonotonic)
+    ++stats.monotonic_guard_count;
 
   std::optional<int64_t> previousRawDeltaNs;
   if (stats.last_raw_stamp_ns.has_value())
@@ -1558,6 +1560,8 @@ void Bno086ImuNode::MaybeEmitTimestampSummaries() const
     RCLCPP_INFO(get_logger(),
                 "BNO086 timestamp summary: report=%s events=%llu "
                 "has_base_count=%llu has_delay_count=%llu sequence_gap_count=%llu "
+                "cadence_tracker_gap_count=%llu cadence_tracker_reanchor_count=%llu "
+                "monotonic_guard_count=%llu duplicate_sequence_count=%llu "
                 "duplicate_raw_stamp_count=%llu tiny_raw_delta_count=%llu "
                 "duplicate_normalized_stamp_count=%llu legacy_plus_one_repair_count=%llu "
                 "interval_repair_count=%llu host_clamp_count=%llu "
@@ -1568,6 +1572,10 @@ void Bno086ImuNode::MaybeEmitTimestampSummaries() const
                 static_cast<unsigned long long>(stats.has_base_count),
                 static_cast<unsigned long long>(stats.has_delay_count),
                 static_cast<unsigned long long>(stats.sequence_gap_count),
+                static_cast<unsigned long long>(stats.cadence_tracker_gap_count),
+                static_cast<unsigned long long>(stats.cadence_tracker_reanchor_count),
+                static_cast<unsigned long long>(stats.monotonic_guard_count),
+                static_cast<unsigned long long>(stats.duplicate_sequence_count),
                 static_cast<unsigned long long>(stats.duplicate_raw_stamp_count),
                 static_cast<unsigned long long>(stats.tiny_raw_delta_count),
                 static_cast<unsigned long long>(stats.duplicate_normalized_stamp_count),
@@ -1751,9 +1759,10 @@ void Bno086ImuNode::ApplyEvent(const SensorEvent& event, const rclcpp::Time& sam
   }
 }
 
-rclcpp::Time Bno086ImuNode::EstimateEventStamp(const SensorEvent& event,
-                                               const rclcpp::Time& interrupt_ros_at,
-                                               std::optional<int64_t> expected_interval_ns)
+auto Bno086ImuNode::EstimateEventStamp(const SensorEvent& event,
+                                       const rclcpp::Time& interrupt_ros_at,
+                                       std::optional<int64_t> expected_interval_ns)
+    -> EstimatedEventStamp
 {
   const auto trackerIndex = static_cast<std::size_t>(event.report_id);
   const ReportTimestampTrackerResult trackedStamp = m_timestampTrackers[trackerIndex].Update(
@@ -1775,7 +1784,67 @@ rclcpp::Time Bno086ImuNode::EstimateEventStamp(const SensorEvent& event,
         trackedStamp.used_host_anchor ? "true" : "false");
   }
 
-  return rclcpp::Time(trackedStamp.stamp_ns, RCL_ROS_TIME);
+  return EstimatedEventStamp{rclcpp::Time(trackedStamp.stamp_ns, RCL_ROS_TIME), trackedStamp};
+}
+
+TimestampNormalizationResult Bno086ImuNode::FinalizeEventStamp(
+    const SensorEvent& event,
+    const EstimatedEventStamp& estimated_stamp,
+    int64_t packet_host_stamp_ns,
+    std::optional<int64_t> expected_interval_ns)
+{
+  const auto timestampIndex = static_cast<std::size_t>(event.report_id);
+
+  if (expected_interval_ns.has_value())
+  {
+    TimestampNormalizationResult result;
+    result.stamp_ns = estimated_stamp.stamp.nanoseconds();
+    result.sequence_gap = estimated_stamp.tracker.gap_detected;
+    result.duplicate = estimated_stamp.tracker.duplicate_sequence;
+
+    const std::optional<int64_t>& lastStampNs = m_lastEmittedTimestampNs[timestampIndex];
+    if (lastStampNs.has_value() && result.stamp_ns <= *lastStampNs)
+    {
+      result.repaired_nonmonotonic = true;
+      if (estimated_stamp.tracker.duplicate_sequence)
+      {
+        result.stamp_ns = *lastStampNs + 1;
+      }
+      else if (*expected_interval_ns > 0)
+      {
+        result.stamp_ns = *lastStampNs + *expected_interval_ns;
+      }
+      else
+      {
+        result.stamp_ns = *lastStampNs + 1;
+      }
+
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                           "BNO086 cadence timestamp guard repaired report=%s "
+                           "sequence=%u candidate_ns=%lld last_ns=%lld final_ns=%lld "
+                           "duplicate_sequence=%s sequence_delta=%u",
+                           ReportName(event.report_id), event.sequence,
+                           static_cast<long long>(estimated_stamp.stamp.nanoseconds()),
+                           static_cast<long long>(*lastStampNs),
+                           static_cast<long long>(result.stamp_ns),
+                           estimated_stamp.tracker.duplicate_sequence ? "true" : "false",
+                           estimated_stamp.tracker.sequence_delta);
+    }
+
+    m_lastEmittedTimestampNs[timestampIndex] = result.stamp_ns;
+    return result;
+  }
+
+  // Units: ns. Allows fallback reconstructed samples to land just ahead of the
+  // stable host drain anchor
+  constexpr int64_t kFallbackTimestampFutureSlopNs = 50'000'000;
+
+  TimestampNormalizationResult result = m_timestampNormalizers[timestampIndex].Normalize(
+      TimestampSample{event.sequence, estimated_stamp.stamp.nanoseconds(), packet_host_stamp_ns,
+                      std::make_optional(kFallbackTimestampFutureSlopNs)},
+      expected_interval_ns);
+  m_lastEmittedTimestampNs[timestampIndex] = result.stamp_ns;
+  return result;
 }
 
 std::array<double, 9> Bno086ImuNode::PredictedCovarianceFromPresent(

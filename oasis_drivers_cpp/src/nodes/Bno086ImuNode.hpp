@@ -13,6 +13,7 @@
 #include "imu/bno086/Bno086GravityUtils.hpp"
 #include "imu/bno086/Bno086OrientationCovariancePolicy.hpp"
 #include "imu/bno086/Bno086ReportTimestampTracker.hpp"
+#include "imu/bno086/Bno086TimestampMapper.hpp"
 #include "imu/bno086/Bno086TimestampNormalizer.hpp"
 #include "imu/bno086/sh2/Bno086Reports.hpp"
 #include "imu/bno086/sh2/Bno086Shtp.hpp"
@@ -137,6 +138,10 @@ private:
     std::uint64_t has_base_count{0};
     std::uint64_t has_delay_count{0};
     std::uint64_t sequence_gap_count{0};
+    std::uint64_t cadence_tracker_gap_count{0};
+    std::uint64_t cadence_tracker_reanchor_count{0};
+    std::uint64_t monotonic_guard_count{0};
+    std::uint64_t duplicate_sequence_count{0};
     std::uint64_t duplicate_raw_stamp_count{0};
     std::uint64_t tiny_raw_delta_count{0};
     std::uint64_t duplicate_normalized_stamp_count{0};
@@ -152,6 +157,12 @@ private:
     std::optional<int64_t> normalized_delta_min_ns;
     std::optional<int64_t> last_raw_stamp_ns;
     std::optional<int64_t> last_normalized_stamp_ns;
+  };
+
+  struct EstimatedEventStamp
+  {
+    rclcpp::Time stamp;
+    OASIS::IMU::BNO086::ReportTimestampTrackerResult tracker;
   };
 
   struct OrientationCovarianceDebugState
@@ -180,9 +191,14 @@ private:
   rclcpp::Time LatestCoreStamp() const;
 
   void ApplyEvent(const OASIS::IMU::BNO086::SensorEvent& event, const rclcpp::Time& sample_stamp);
-  rclcpp::Time EstimateEventStamp(const OASIS::IMU::BNO086::SensorEvent& event,
-                                  const rclcpp::Time& interrupt_ros_at,
-                                  std::optional<int64_t> expected_interval_ns);
+  EstimatedEventStamp EstimateEventStamp(const OASIS::IMU::BNO086::SensorEvent& event,
+                                         const rclcpp::Time& interrupt_ros_at,
+                                         std::optional<int64_t> expected_interval_ns);
+  OASIS::IMU::BNO086::TimestampNormalizationResult FinalizeEventStamp(
+      const OASIS::IMU::BNO086::SensorEvent& event,
+      const EstimatedEventStamp& estimated_stamp,
+      int64_t packet_host_stamp_ns,
+      std::optional<int64_t> expected_interval_ns);
   sensor_msgs::msg::Imu BuildPresentImuMessage(const rclcpp::Time& stamp) const;
   sensor_msgs::msg::Imu BuildImuGravityMessage(const rclcpp::Time& stamp) const;
   geometry_msgs::msg::AccelWithCovarianceStamped BuildGravityMessage(
@@ -218,6 +234,7 @@ private:
                             int64_t raw_stamp_ns,
                             int64_t packet_host_stamp_ns,
                             const OASIS::IMU::BNO086::TimestampNormalizationResult& normalized,
+                            const OASIS::IMU::BNO086::ReportTimestampTrackerResult& tracker,
                             std::optional<std::uint32_t> expected_interval_us);
   void MaybeLogTimestampTraceLine(
       const OASIS::IMU::BNO086::SensorEvent& event,
@@ -279,7 +296,9 @@ private:
   std::thread m_interruptThread;
 
   std::array<OASIS::IMU::BNO086::Bno086ReportTimestampTracker, 256> m_timestampTrackers{};
+  OASIS::IMU::BNO086::Bno086TimestampMapper m_timestampMapper;
   std::array<OASIS::IMU::BNO086::Bno086TimestampNormalizer, 256> m_timestampNormalizers{};
+  std::array<std::optional<int64_t>, 256> m_lastEmittedTimestampNs{};
   std::optional<CoreFrameSignature> m_lastPublishedCoreSignature;
   std::optional<int64_t> m_lastPublishedImuGravityAccelStampNs;
   std::uint32_t m_reportIntervalUs{10'000};

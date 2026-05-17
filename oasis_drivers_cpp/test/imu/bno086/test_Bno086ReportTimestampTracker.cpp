@@ -8,6 +8,7 @@
 
 #include "imu/bno086/Bno086ReportTimestampTracker.hpp"
 
+#include <array>
 #include <cstdint>
 #include <optional>
 
@@ -115,6 +116,88 @@ TEST(Bno086ReportTimestampTracker, batchedAccelerometerSamplesUseCadenceWithStal
         kPacketHostStampNs + (static_cast<int64_t>(sequence) - 1) * 8'000'000;
     EXPECT_EQ(result.stamp_ns, expectedStampNs);
     EXPECT_TRUE(result.used_interval_cadence);
+  }
+}
+
+TEST(Bno086ReportTimestampTracker, accelerometerSequenceOneThroughTenKeepsEightMillisecondDeltas)
+{
+  Bno086ReportTimestampTracker tracker;
+
+  constexpr int64_t kPacketHostStampNs = 10'000'000'000;
+  int64_t previousStampNs = tracker.Update(Input(1, 8'000'000, kPacketHostStampNs)).stamp_ns;
+
+  for (std::uint8_t sequence = 2; sequence <= 10; ++sequence)
+  {
+    const int64_t packetHostStampNs =
+        kPacketHostStampNs + (static_cast<int64_t>(sequence) - 1) * 8'000'000;
+    const ReportTimestampTrackerResult result =
+        tracker.Update(Input(sequence, 8'000'000, packetHostStampNs));
+    EXPECT_EQ(result.stamp_ns - previousStampNs, 8'000'000);
+    EXPECT_TRUE(result.used_interval_cadence);
+    EXPECT_FALSE(result.reanchored);
+    previousStampNs = result.stamp_ns;
+  }
+}
+
+TEST(Bno086ReportTimestampTracker, stalePacketHostDoesNotCollapseCadenceToOneNanosecond)
+{
+  Bno086ReportTimestampTracker tracker;
+
+  constexpr int64_t kPacketHostStampNs = 11'000'000'000;
+
+  ASSERT_EQ(tracker.Update(Input(1, 8'000'000, kPacketHostStampNs)).stamp_ns, kPacketHostStampNs);
+
+  const ReportTimestampTrackerResult second =
+      tracker.Update(Input(2, 8'000'000, kPacketHostStampNs));
+  const ReportTimestampTrackerResult third =
+      tracker.Update(Input(3, 8'000'000, kPacketHostStampNs));
+
+  EXPECT_EQ(second.stamp_ns, kPacketHostStampNs + 8'000'000);
+  EXPECT_EQ(third.stamp_ns, kPacketHostStampNs + 16'000'000);
+  EXPECT_NE(second.stamp_ns, kPacketHostStampNs + 1);
+  EXPECT_NE(third.stamp_ns, second.stamp_ns + 1);
+}
+
+TEST(Bno086ReportTimestampTracker, sequenceGapDeltaSixUsesCadenceWithoutReanchor)
+{
+  Bno086ReportTimestampTracker tracker;
+
+  ASSERT_EQ(tracker.Update(Input(10, 8'000'000, 12'000'000'000)).stamp_ns, 12'000'000'000);
+
+  const ReportTimestampTrackerResult result = tracker.Update(Input(16, 8'000'000, 12'048'000'000));
+
+  EXPECT_EQ(result.sequence_delta, 6);
+  EXPECT_EQ(result.stamp_ns, 12'048'000'000);
+  EXPECT_TRUE(result.gap_detected);
+  EXPECT_TRUE(result.used_interval_cadence);
+  EXPECT_FALSE(result.reanchored);
+}
+
+TEST(Bno086ReportTimestampTracker, mixedCadencesPreserveExpectedDeltas)
+{
+  struct StreamCase
+  {
+    int64_t interval_ns;
+  };
+
+  const std::array<StreamCase, 5> streams{{
+      {8'000'000},
+      {10'000'000},
+      {10'000'000},
+      {20'000'000},
+      {40'000'000},
+  }};
+
+  int64_t hostStampNs = 13'000'000'000;
+  for (const StreamCase& stream : streams)
+  {
+    Bno086ReportTimestampTracker tracker;
+    const int64_t firstStampNs = tracker.Update(Input(1, stream.interval_ns, hostStampNs)).stamp_ns;
+    const int64_t secondStampNs =
+        tracker.Update(Input(2, stream.interval_ns, hostStampNs)).stamp_ns;
+
+    EXPECT_EQ(secondStampNs - firstStampNs, stream.interval_ns);
+    hostStampNs += 1'000'000'000;
   }
 }
 
