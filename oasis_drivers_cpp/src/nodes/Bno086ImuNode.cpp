@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -107,6 +108,14 @@ std::uint32_t MillisecondsToMicroseconds(double milliseconds)
 {
   const double clampedMs = std::max(milliseconds, 0.0);
   return static_cast<std::uint32_t>(std::round(clampedMs * 1000.0));
+}
+
+std::optional<std::uint32_t> RateHzToIntervalUs(double rate_hz)
+{
+  if (!(rate_hz > 0.0))
+    return std::nullopt;
+
+  return static_cast<std::uint32_t>(std::max(1.0, std::round(1'000'000.0 / rate_hz)));
 }
 } // namespace
 
@@ -451,13 +460,50 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
           interrupt_ros_at + rclcpp::Duration(0, sampleDeltaNs);
       const rclcpp::Time eventStamp = EstimateEventStamp(*pollResult.event, sampleInterruptRosAt);
       const auto normalizerIndex = static_cast<std::size_t>(pollResult.event->report_id);
+      const std::optional<std::uint32_t> expectedIntervalUs =
+          EffectiveReportIntervalUs(pollResult.event->report_id);
+      const std::optional<int64_t> expectedIntervalNs =
+          expectedIntervalUs.has_value()
+              ? std::make_optional(static_cast<int64_t>(*expectedIntervalUs) * 1'000)
+              : std::nullopt;
       const TimestampNormalizationResult normalizedStamp =
           m_timestampNormalizers[normalizerIndex].Normalize(
               TimestampSample{pollResult.event->sequence, eventStamp.nanoseconds(),
-                              sampleInterruptRosAt.nanoseconds()});
+                              sampleInterruptRosAt.nanoseconds()},
+              expectedIntervalNs);
 
       if (normalizedStamp.reconstruction_reset)
         ++m_imuGravityDiagnostics.timestamp_reconstruction_reset_count;
+
+      const bool repairedToInterval = normalizedStamp.repaired_duplicate_to_interval ||
+                                      normalizedStamp.repaired_nonmonotonic_to_interval ||
+                                      normalizedStamp.repaired_sequence_gap_to_interval;
+      if (repairedToInterval && expectedIntervalUs.has_value())
+      {
+        m_imuGravityDiagnostics.latest_timestamp_repair_interval_us = *expectedIntervalUs;
+
+        if (normalizedStamp.repaired_duplicate_to_interval)
+          ++m_imuGravityDiagnostics.timestamp_repaired_duplicate_to_interval;
+
+        if (normalizedStamp.repaired_nonmonotonic_to_interval)
+          ++m_imuGravityDiagnostics.timestamp_repaired_nonmonotonic_to_interval;
+
+        if (normalizedStamp.repaired_sequence_gap_to_interval)
+          ++m_imuGravityDiagnostics.timestamp_repaired_sequence_gap_to_interval;
+
+        if (!m_loggedTimestampIntervalRepair)
+        {
+          const char* repairReason =
+              normalizedStamp.repaired_sequence_gap_to_interval ? "sequence_gap"
+              : normalizedStamp.repaired_duplicate_to_interval  ? "duplicate_stamp"
+                                                                : "nonmonotonic_stamp";
+          RCLCPP_DEBUG(get_logger(),
+                       "BNO086 timestamp repair using report interval: report=%s "
+                       "expected_interval_us=%u reason=%s",
+                       ReportName(pollResult.event->report_id), *expectedIntervalUs, repairReason);
+          m_loggedTimestampIntervalRepair = true;
+        }
+      }
 
       if (pollResult.event->report_id == ReportId::Accelerometer)
       {
@@ -1078,9 +1124,17 @@ std::string Bno086ImuNode::BuildImuGravityDiagnosticsLogMessage() const
       << " " << "skipped_nonfinite=" << m_imuGravityDiagnostics.imu_gravity_skipped_nonfinite << " "
       << "timestamp_repaired_nonmonotonic_accel="
       << m_imuGravityDiagnostics.timestamp_repaired_nonmonotonic_accel << " "
+      << "timestamp_repaired_duplicate_to_interval="
+      << m_imuGravityDiagnostics.timestamp_repaired_duplicate_to_interval << " "
+      << "timestamp_repaired_nonmonotonic_to_interval="
+      << m_imuGravityDiagnostics.timestamp_repaired_nonmonotonic_to_interval << " "
+      << "timestamp_repaired_sequence_gap_to_interval="
+      << m_imuGravityDiagnostics.timestamp_repaired_sequence_gap_to_interval << " "
       << "accel_sequence_gap_count=" << m_imuGravityDiagnostics.accel_sequence_gap_count << " "
       << "timestamp_reconstruction_reset_count="
       << m_imuGravityDiagnostics.timestamp_reconstruction_reset_count << " "
+      << "latest_timestamp_repair_interval_us="
+      << m_imuGravityDiagnostics.latest_timestamp_repair_interval_us << " "
       << "latest_orientation_age_ms=" << m_imuGravityDiagnostics.latest_orientation_age_ms << " "
       << "latest_gyro_age_ms=" << m_imuGravityDiagnostics.latest_gyro_age_ms << " "
       << "latest_calibrated_accel_rate_hz="
@@ -1190,6 +1244,35 @@ std::optional<std::uint32_t> Bno086ImuNode::RequestedFeatureBatchIntervalUs(
     return std::nullopt;
 
   return it->requested_batch_interval_us;
+}
+
+std::optional<std::uint32_t> Bno086ImuNode::EffectiveReportIntervalUs(ReportId report_id) const
+{
+  const std::optional<FeatureResponse> response = LatestFeatureResponse(report_id);
+  if (response.has_value() && response->report_interval_us > 0)
+    return response->report_interval_us;
+
+  const std::optional<std::uint32_t> requestedIntervalUs = RequestedFeatureIntervalUs(report_id);
+  if (requestedIntervalUs.has_value() && *requestedIntervalUs > 0)
+    return requestedIntervalUs;
+
+  switch (report_id)
+  {
+    case ReportId::Accelerometer:
+      return RateHzToIntervalUs(m_accelerometerRateHz);
+    case ReportId::GyroscopeCalibrated:
+      return RateHzToIntervalUs(m_gyroRateHz);
+    case ReportId::RotationVector:
+      return RateHzToIntervalUs(m_rotationVectorRateHz);
+    case ReportId::LinearAcceleration:
+      return RateHzToIntervalUs(m_linearAccelerationRateHz);
+    case ReportId::Gravity:
+      return RateHzToIntervalUs(m_gravityRateHz);
+    default:
+      break;
+  }
+
+  return std::nullopt;
 }
 
 std::optional<FeatureResponse> Bno086ImuNode::LatestFeatureResponse(ReportId report_id) const

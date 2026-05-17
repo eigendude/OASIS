@@ -9,6 +9,7 @@
 #include "imu/bno086/Bno086TimestampNormalizer.hpp"
 
 #include <cstdint>
+#include <optional>
 
 namespace OASIS::IMU::BNO086
 {
@@ -28,9 +29,15 @@ bool HasSequenceGap(std::uint8_t last_sequence, std::uint8_t current_sequence)
   const std::uint8_t expected = static_cast<std::uint8_t>(last_sequence + 1U);
   return current_sequence != expected;
 }
+
+std::uint8_t SequenceDelta(std::uint8_t last_sequence, std::uint8_t current_sequence)
+{
+  return static_cast<std::uint8_t>(current_sequence - last_sequence);
+}
 } // namespace
 
-TimestampNormalizationResult Bno086TimestampNormalizer::Normalize(const TimestampSample& sample)
+TimestampNormalizationResult Bno086TimestampNormalizer::Normalize(
+    const TimestampSample& sample, std::optional<int64_t> expected_interval_ns)
 {
   TimestampNormalizationResult result;
   result.stamp_ns = sample.stamp_ns;
@@ -50,12 +57,26 @@ TimestampNormalizationResult Bno086TimestampNormalizer::Normalize(const Timestam
       return result;
     }
 
+    const std::uint8_t sequenceDelta = SequenceDelta(m_lastSequence, sample.sequence);
     result.sequence_gap = HasSequenceGap(m_lastSequence, sample.sequence);
 
     if (result.stamp_ns <= m_lastStampNs)
     {
-      result.stamp_ns = m_lastStampNs + 1;
       result.repaired_nonmonotonic = true;
+
+      if (sequenceDelta > 0 && expected_interval_ns.has_value() && *expected_interval_ns > 0)
+      {
+        result.repaired_sequence_gap_to_interval = sequenceDelta > 1U;
+        result.repaired_duplicate_to_interval =
+            !result.repaired_sequence_gap_to_interval && result.stamp_ns == m_lastStampNs;
+        result.repaired_nonmonotonic_to_interval =
+            !result.repaired_sequence_gap_to_interval && result.stamp_ns < m_lastStampNs;
+        result.stamp_ns = m_lastStampNs + (*expected_interval_ns * sequenceDelta);
+      }
+      else
+      {
+        result.stamp_ns = m_lastStampNs + 1;
+      }
     }
   }
 

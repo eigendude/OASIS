@@ -9,6 +9,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 
 namespace OASIS::IMU::BNO086
 {
@@ -62,6 +63,21 @@ struct TimestampNormalizationResult
   bool repaired_nonmonotonic{false};
 
   /*!
+   * \brief True when an equal stamp was repaired using expected cadence
+   */
+  bool repaired_duplicate_to_interval{false};
+
+  /*!
+   * \brief True when a regressing stamp was repaired using expected cadence
+   */
+  bool repaired_nonmonotonic_to_interval{false};
+
+  /*!
+   * \brief True when a sequence gap was repaired using expected cadence
+   */
+  bool repaired_sequence_gap_to_interval{false};
+
+  /*!
    * \brief True when reconstruction was implausible and host time was used
    */
   bool reconstruction_reset{false};
@@ -78,7 +94,8 @@ struct TimestampNormalizationResult
 class Bno086TimestampNormalizer
 {
 public:
-  TimestampNormalizationResult Normalize(const TimestampSample& sample);
+  TimestampNormalizationResult Normalize(
+      const TimestampSample& sample, std::optional<int64_t> expected_interval_ns = std::nullopt);
   void Reset();
 
 private:

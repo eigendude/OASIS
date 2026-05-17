@@ -92,8 +92,12 @@ private:
     std::uint64_t imu_gravity_skipped_duplicate_stamp{0};
     std::uint64_t imu_gravity_skipped_nonfinite{0};
     std::uint64_t timestamp_repaired_nonmonotonic_accel{0};
+    std::uint64_t timestamp_repaired_duplicate_to_interval{0};
+    std::uint64_t timestamp_repaired_nonmonotonic_to_interval{0};
+    std::uint64_t timestamp_repaired_sequence_gap_to_interval{0};
     std::uint64_t timestamp_reconstruction_reset_count{0};
     std::uint64_t accel_sequence_gap_count{0};
+    std::uint32_t latest_timestamp_repair_interval_us{0};
     double latest_orientation_age_ms{0.0};
     double latest_gyro_age_ms{0.0};
     double latest_calibrated_accel_rate_hz{0.0};
@@ -166,6 +170,8 @@ private:
   std::optional<std::uint32_t> RequestedFeatureIntervalUs(
       OASIS::IMU::BNO086::ReportId report_id) const;
   std::optional<std::uint32_t> RequestedFeatureBatchIntervalUs(
+      OASIS::IMU::BNO086::ReportId report_id) const;
+  std::optional<std::uint32_t> EffectiveReportIntervalUs(
       OASIS::IMU::BNO086::ReportId report_id) const;
   std::optional<OASIS::IMU::BNO086::FeatureResponse> LatestFeatureResponse(
       OASIS::IMU::BNO086::ReportId report_id) const;
@@ -258,6 +264,7 @@ private:
   bool m_loggedCommEstablished{false};
   bool m_loggedSetFeature{false};
   bool m_loggedFeatureSummary{false};
+  bool m_loggedTimestampIntervalRepair{false};
   bool m_warnedMissingImuFields{false};
   bool m_loggedOrientationCovarianceSource{false};
   OASIS::IMU::BNO086::OrientationCovarianceSource m_lastOrientationCovarianceSource{
