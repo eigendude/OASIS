@@ -15,8 +15,6 @@
 
 namespace OASIS::ROS
 {
-constexpr int kBno086DefaultIntGpio = 23;
-
 /*!
  * \brief BNO086 transport configuration loaded from ROS parameters
  */
@@ -34,14 +32,21 @@ struct Bno086TransportParams
    *
    * Units: 7-bit I2C address
    */
-  std::uint8_t i2c_address{0x4B};
+  std::uint8_t i2c_address{0};
+
+  /*!
+   * \brief Linux GPIO chip device used for the BNO086 interrupt line
+   *
+   * Units: filesystem path string
+   */
+  std::string gpio_chip_device;
 
   /*!
    * \brief GPIO line offset connected to active-low H_INTN
    *
    * Units: GPIO line number, expected range [0, +inf)
    */
-  int int_gpio{kBno086DefaultIntGpio};
+  int int_gpio{0};
 };
 
 /*!
@@ -144,35 +149,35 @@ struct Bno086ReportConfig
    *
    * Units: hertz, clamped to at least 1
    */
-  double rotation_vector_rate_hz{100.0};
+  double rotation_vector_rate_hz{0.0};
 
   /*!
    * \brief Requested calibrated gyro report rate
    *
    * Units: hertz, clamped to at least 1
    */
-  double gyro_rate_hz{100.0};
+  double gyro_rate_hz{0.0};
 
   /*!
    * \brief Requested calibrated accelerometer report rate
    *
    * Units: hertz, clamped to at least 1
    */
-  double accelerometer_rate_hz{100.0};
+  double accelerometer_rate_hz{0.0};
 
   /*!
    * \brief Requested linear acceleration report rate
    *
    * Units: hertz, clamped to at least 1
    */
-  double linear_acceleration_rate_hz{50.0};
+  double linear_acceleration_rate_hz{0.0};
 
   /*!
    * \brief Requested gravity report rate
    *
    * Units: hertz, clamped to at least 1
    */
-  double gravity_rate_hz{25.0};
+  double gravity_rate_hz{0.0};
 
   /*!
    * \brief Requested rotation vector maximum batch interval

@@ -25,77 +25,77 @@ struct Bno086ShtpConfig
    *
    * Units: Hz, clamped to at least 1.0
    */
-  double report_rate_hz{100.0};
+  double report_rate_hz{0.0};
 
   /*!
    * \brief Requested Rotation Vector generation rate
    *
    * Units: Hz, clamped to at least 1.0
    */
-  double rotation_vector_rate_hz{50.0};
+  double rotation_vector_rate_hz{0.0};
 
   /*!
    * \brief Requested Rotation Vector maximum batching delay
    *
    * Units: microseconds, zero disables batching
    */
-  std::uint32_t rotation_vector_batch_interval_us{50'000};
+  std::uint32_t rotation_vector_batch_interval_us{0};
 
   /*!
    * \brief Requested calibrated gyroscope generation rate
    *
    * Units: Hz, clamped to at least 1.0
    */
-  double gyro_rate_hz{50.0};
+  double gyro_rate_hz{0.0};
 
   /*!
    * \brief Requested calibrated gyroscope maximum batching delay
    *
    * Units: microseconds, zero disables batching
    */
-  std::uint32_t gyro_batch_interval_us{50'000};
+  std::uint32_t gyro_batch_interval_us{0};
 
   /*!
    * \brief Requested calibrated accelerometer generation rate
    *
    * Units: Hz, clamped to at least 1.0
    */
-  double accelerometer_rate_hz{100.0};
+  double accelerometer_rate_hz{0.0};
 
   /*!
    * \brief Requested calibrated accelerometer maximum batching delay
    *
    * Units: microseconds, zero disables batching
    */
-  std::uint32_t accelerometer_batch_interval_us{50'000};
+  std::uint32_t accelerometer_batch_interval_us{0};
 
   /*!
    * \brief Requested linear acceleration generation rate
    *
    * Units: Hz, clamped to at least 1.0
    */
-  double linear_acceleration_rate_hz{50.0};
+  double linear_acceleration_rate_hz{0.0};
 
   /*!
    * \brief Requested linear acceleration maximum batching delay
    *
    * Units: microseconds, zero disables batching
    */
-  std::uint32_t linear_acceleration_batch_interval_us{50'000};
+  std::uint32_t linear_acceleration_batch_interval_us{0};
 
   /*!
    * \brief Requested gravity vector generation rate
    *
    * Units: Hz, clamped to at least 1.0 when enabled
    */
-  double gravity_rate_hz{25.0};
+  double gravity_rate_hz{0.0};
 
   /*!
    * \brief Requested gravity vector maximum batching delay
    *
    * Units: microseconds, zero disables batching
    */
-  std::uint32_t gravity_batch_interval_us{100'000};
+  std::uint32_t gravity_batch_interval_us{0};
 
   /*!
    * \brief True when Linear Acceleration should be configured as enabled

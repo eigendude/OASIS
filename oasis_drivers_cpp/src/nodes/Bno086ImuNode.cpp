@@ -100,6 +100,7 @@ Bno086ImuNode::Bno086ImuNode()
 
   const std::string& i2cDevice = params.transport.i2c_device;
   const std::uint8_t i2cAddress = params.transport.i2c_address;
+  const std::string& gpioChipDevice = params.transport.gpio_chip_device;
   const int intGpio = params.transport.int_gpio;
 
   Bno086TransportConfig transportConfig;
@@ -114,7 +115,8 @@ Bno086ImuNode::Bno086ImuNode()
   }
 
   Bno086GpioConfig gpioConfig;
-  gpioConfig.line_offset = static_cast<unsigned>(std::max(intGpio, 0));
+  gpioConfig.chip_device = gpioChipDevice;
+  gpioConfig.line_offset = static_cast<unsigned int>(std::max(intGpio, 0));
 
   if (!m_interruptGpio->Open(gpioConfig))
   {
@@ -149,12 +151,7 @@ Bno086ImuNode::Bno086ImuNode()
                                       m_config.packet_read_timeout_ms);
   MaybeLogFeatureResponses();
 
-  if (intGpio == kBno086DefaultIntGpio)
-  {
-    RCLCPP_INFO(get_logger(), "BNO086 INT uses GPIO%d (Raspberry Pi header pin 16), active low",
-                intGpio);
-  }
-
+  RCLCPP_INFO(get_logger(), "BNO086 INT uses GPIO%d, active low", intGpio);
   RCLCPP_INFO(get_logger(), "BNO086 opened on %s (0x%02X), int_gpio=%d active_low",
               i2cDevice.c_str(), static_cast<unsigned>(i2cAddress), intGpio);
   RCLCPP_INFO(

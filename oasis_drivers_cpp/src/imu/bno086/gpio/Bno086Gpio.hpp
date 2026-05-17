@@ -15,8 +15,19 @@ namespace OASIS::IMU::BNO086
 {
 struct Bno086GpioConfig
 {
-  std::string chip_device{"/dev/gpiochip0"};
-  unsigned line_offset{23};
+  /*!
+   * \brief Linux GPIO chip device used for the interrupt line
+   *
+   * Units: filesystem path
+   */
+  std::string chip_device;
+
+  /*!
+   * \brief GPIO line offset connected to active-low H_INTN
+   *
+   * Units: GPIO line number, expected range [0, +inf)
+   */
+  unsigned int line_offset{0};
 };
 
 class Bno086Gpio

@@ -26,14 +26,14 @@ struct Bno086TransportConfig
    *
    * Units: filesystem path
    */
-  std::string i2c_device{"/dev/i2c-1"};
+  std::string i2c_device;
 
   /*!
    * \brief 7-bit BNO086 I2C address passed to the Linux I2C driver
    *
    * Units: address in range [0x00, 0x7F]
    */
-  std::uint8_t i2c_address{0x4B};
+  std::uint8_t i2c_address{0};
 };
 
 struct Bno086TransportStats

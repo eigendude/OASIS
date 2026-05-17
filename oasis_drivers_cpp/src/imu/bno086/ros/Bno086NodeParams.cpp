@@ -17,6 +17,8 @@ namespace
 {
 constexpr const char* DEFAULT_I2C_DEVICE = "/dev/i2c-1";
 constexpr std::uint8_t DEFAULT_I2C_ADDRESS = 0x4B;
+constexpr const char* DEFAULT_GPIO_CHIP_DEVICE = "/dev/gpiochip0";
+constexpr unsigned int DEFAULT_INT_GPIO = 23;
 constexpr const char* DEFAULT_FRAME_ID = "imu_link";
 
 constexpr int DEFAULT_ALL_ZERO_BACKOFF_US = 500;
@@ -53,7 +55,8 @@ void DeclareBno086NodeParameters(rclcpp::Node& node)
 {
   node.declare_parameter("i2c_device", std::string(DEFAULT_I2C_DEVICE));
   node.declare_parameter("i2c_address", static_cast<int>(DEFAULT_I2C_ADDRESS));
-  node.declare_parameter("int_gpio", kBno086DefaultIntGpio);
+  node.declare_parameter("gpio_chip_device", std::string(DEFAULT_GPIO_CHIP_DEVICE));
+  node.declare_parameter("int_gpio", static_cast<int>(DEFAULT_INT_GPIO));
   node.declare_parameter("bno086_rotation_vector_rate_hz", DEFAULT_ROTATION_VECTOR_RATE_HZ);
   node.declare_parameter("bno086_gyro_rate_hz", DEFAULT_GYRO_RATE_HZ);
   node.declare_parameter("bno086_accelerometer_rate_hz", DEFAULT_ACCELEROMETER_RATE_HZ);
@@ -85,6 +88,7 @@ Bno086NodeParams LoadBno086NodeParameters(const rclcpp::Node& node)
   params.transport.i2c_device = node.get_parameter("i2c_device").as_string();
   params.transport.i2c_address =
       static_cast<std::uint8_t>(node.get_parameter("i2c_address").as_int());
+  params.transport.gpio_chip_device = node.get_parameter("gpio_chip_device").as_string();
   params.transport.int_gpio = node.get_parameter("int_gpio").as_int();
 
   params.reports.rotation_vector_rate_hz =

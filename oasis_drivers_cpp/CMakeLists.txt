@@ -363,6 +363,14 @@ if(BUILD_TESTING)
     ${sensor_msgs_TARGETS}
   )
 
+  ament_add_gtest(test_bno086_node_params
+    test/imu/bno086/test_Bno086NodeParams.cpp
+  )
+  target_link_libraries(test_bno086_node_params
+    bno086_ros_helpers
+    rclcpp::rclcpp
+  )
+
   ament_add_gtest(test_bno086_shtp
     test/imu/bno086/test_Bno086Shtp.cpp
   )

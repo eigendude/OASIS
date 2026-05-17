@@ -48,6 +48,23 @@ public:
   std::deque<Bno086ShtpPacket> packets;
 };
 
+Bno086ShtpConfig ExplicitShtpConfig()
+{
+  Bno086ShtpConfig config;
+  config.report_rate_hz = 12.0;
+  config.rotation_vector_rate_hz = 40.0;
+  config.rotation_vector_batch_interval_us = 30'000;
+  config.gyro_rate_hz = 25.0;
+  config.gyro_batch_interval_us = 10'000;
+  config.accelerometer_rate_hz = 80.0;
+  config.accelerometer_batch_interval_us = 70'000;
+  config.linear_acceleration_rate_hz = 20.0;
+  config.linear_acceleration_batch_interval_us = 5'000;
+  config.gravity_rate_hz = 10.0;
+  config.gravity_batch_interval_us = 90'000;
+  return config;
+}
+
 std::vector<std::uint8_t> AccelerometerReport(std::uint8_t sequence)
 {
   return {
@@ -362,59 +379,53 @@ TEST(Bno086Shtp, pollMarksPhysicalControlPacketRead)
 }
 } // namespace
 
-TEST(Bno086Shtp, configuresStaticPerReportIntervalsAndDefaultBatchIntervals)
+TEST(Bno086Shtp, configuresExplicitPerReportIntervalsAndBatchIntervals)
 {
   RecordingTransport transport;
   Bno086Shtp shtp{transport};
 
-  Bno086ShtpConfig config;
-  config.report_rate_hz = 10.0;
-  config.rotation_vector_rate_hz = 50.0;
-  config.gyro_rate_hz = 50.0;
-  config.accelerometer_rate_hz = 100.0;
-  config.linear_acceleration_rate_hz = 50.0;
-  config.gravity_rate_hz = 25.0;
+  const Bno086ShtpConfig config = ExplicitShtpConfig();
 
   ASSERT_TRUE(shtp.Configure(config));
 
   const std::vector<FeatureConfiguration>& features = shtp.GetFeatureConfigurations();
   ASSERT_EQ(features.size(), 5U);
   EXPECT_EQ(features[0].report_id, ReportId::RotationVector);
-  EXPECT_EQ(features[0].requested_interval_us, 20'000U);
-  EXPECT_EQ(features[0].requested_batch_interval_us, 50'000U);
+  EXPECT_EQ(features[0].requested_interval_us, 25'000U);
+  EXPECT_EQ(features[0].requested_batch_interval_us, 30'000U);
   EXPECT_TRUE(features[0].enabled);
   EXPECT_EQ(features[1].report_id, ReportId::GyroscopeCalibrated);
-  EXPECT_EQ(features[1].requested_interval_us, 20'000U);
-  EXPECT_EQ(features[1].requested_batch_interval_us, 50'000U);
+  EXPECT_EQ(features[1].requested_interval_us, 40'000U);
+  EXPECT_EQ(features[1].requested_batch_interval_us, 10'000U);
   EXPECT_TRUE(features[1].enabled);
   EXPECT_EQ(features[2].report_id, ReportId::LinearAcceleration);
-  EXPECT_EQ(features[2].requested_interval_us, 20'000U);
-  EXPECT_EQ(features[2].requested_batch_interval_us, 50'000U);
+  EXPECT_EQ(features[2].requested_interval_us, 50'000U);
+  EXPECT_EQ(features[2].requested_batch_interval_us, 5'000U);
   EXPECT_TRUE(features[2].enabled);
   EXPECT_EQ(features[3].report_id, ReportId::Accelerometer);
-  EXPECT_EQ(features[3].requested_interval_us, 10'000U);
-  EXPECT_EQ(features[3].requested_batch_interval_us, 50'000U);
+  EXPECT_EQ(features[3].requested_interval_us, 12'500U);
+  EXPECT_EQ(features[3].requested_batch_interval_us, 70'000U);
   EXPECT_TRUE(features[3].enabled);
   EXPECT_EQ(features[4].report_id, ReportId::Gravity);
-  EXPECT_EQ(features[4].requested_interval_us, 40'000U);
-  EXPECT_EQ(features[4].requested_batch_interval_us, 100'000U);
+  EXPECT_EQ(features[4].requested_interval_us, 100'000U);
+  EXPECT_EQ(features[4].requested_batch_interval_us, 90'000U);
   EXPECT_TRUE(features[4].enabled);
 
   ASSERT_EQ(transport.payloads.size(), 10U);
-  EXPECT_EQ(ReadIntervalUs(transport.payloads[0]), 20'000U);
-  EXPECT_EQ(ReadBatchIntervalUs(transport.payloads[0]), 50'000U);
+  EXPECT_EQ(ReadIntervalUs(transport.payloads[0]), 25'000U);
+  EXPECT_EQ(ReadBatchIntervalUs(transport.payloads[0]), 30'000U);
   EXPECT_EQ(transport.payloads[1], (std::vector<std::uint8_t>{
                                        kShtpGetFeatureRequest,
                                        static_cast<std::uint8_t>(ReportId::RotationVector),
                                    }));
-  EXPECT_EQ(ReadIntervalUs(transport.payloads[2]), 20'000U);
-  EXPECT_EQ(ReadBatchIntervalUs(transport.payloads[2]), 50'000U);
-  EXPECT_EQ(ReadIntervalUs(transport.payloads[4]), 20'000U);
-  EXPECT_EQ(ReadBatchIntervalUs(transport.payloads[4]), 50'000U);
-  EXPECT_EQ(ReadIntervalUs(transport.payloads[6]), 10'000U);
-  EXPECT_EQ(ReadBatchIntervalUs(transport.payloads[6]), 50'000U);
-  EXPECT_EQ(ReadIntervalUs(transport.payloads[8]), 40'000U);
-  EXPECT_EQ(ReadBatchIntervalUs(transport.payloads[8]), 100'000U);
+  EXPECT_EQ(ReadIntervalUs(transport.payloads[2]), 40'000U);
+  EXPECT_EQ(ReadBatchIntervalUs(transport.payloads[2]), 10'000U);
+  EXPECT_EQ(ReadIntervalUs(transport.payloads[4]), 50'000U);
+  EXPECT_EQ(ReadBatchIntervalUs(transport.payloads[4]), 5'000U);
+  EXPECT_EQ(ReadIntervalUs(transport.payloads[6]), 12'500U);
+  EXPECT_EQ(ReadBatchIntervalUs(transport.payloads[6]), 70'000U);
+  EXPECT_EQ(ReadIntervalUs(transport.payloads[8]), 100'000U);
+  EXPECT_EQ(ReadBatchIntervalUs(transport.payloads[8]), 90'000U);
 }
 
 TEST(Bno086Shtp, explicitZeroBatchIntervalDisablesBatchingForReport)
@@ -422,7 +433,7 @@ TEST(Bno086Shtp, explicitZeroBatchIntervalDisablesBatchingForReport)
   RecordingTransport transport;
   Bno086Shtp shtp{transport};
 
-  Bno086ShtpConfig config;
+  Bno086ShtpConfig config = ExplicitShtpConfig();
   config.gyro_batch_interval_us = 0;
 
   ASSERT_TRUE(shtp.Configure(config));
@@ -430,12 +441,12 @@ TEST(Bno086Shtp, explicitZeroBatchIntervalDisablesBatchingForReport)
   const std::vector<FeatureConfiguration>& features = shtp.GetFeatureConfigurations();
   ASSERT_EQ(features.size(), 5U);
   EXPECT_EQ(features[1].report_id, ReportId::GyroscopeCalibrated);
-  EXPECT_EQ(features[1].requested_interval_us, 20'000U);
+  EXPECT_EQ(features[1].requested_interval_us, 40'000U);
   EXPECT_EQ(features[1].requested_batch_interval_us, 0U);
   EXPECT_TRUE(features[1].enabled);
 
   ASSERT_EQ(transport.payloads.size(), 10U);
-  EXPECT_EQ(ReadIntervalUs(transport.payloads[2]), 20'000U);
+  EXPECT_EQ(ReadIntervalUs(transport.payloads[2]), 40'000U);
   EXPECT_EQ(ReadBatchIntervalUs(transport.payloads[2]), 0U);
 }
 
@@ -444,7 +455,7 @@ TEST(Bno086Shtp, disablesOptionalReportsWithZeroIntervalAndBatch)
   RecordingTransport transport;
   Bno086Shtp shtp{transport};
 
-  Bno086ShtpConfig config;
+  Bno086ShtpConfig config = ExplicitShtpConfig();
   config.enable_linear_acceleration_report = false;
   config.enable_gravity_report = false;
 
@@ -473,7 +484,7 @@ TEST(Bno086Shtp, parsesFeatureResponseIntervalsAndBatchingState)
   RecordingTransport transport;
   Bno086Shtp shtp{transport};
 
-  Bno086ShtpConfig config;
+  const Bno086ShtpConfig config = ExplicitShtpConfig();
   ASSERT_TRUE(shtp.Configure(config));
 
   Bno086ShtpPacket packet;
@@ -500,7 +511,7 @@ TEST(Bno086Shtp, parsesContinuationChannelTwoFeatureResponseAsCompletePayload)
   RecordingTransport transport;
   Bno086Shtp shtp{transport};
 
-  Bno086ShtpConfig config;
+  const Bno086ShtpConfig config = ExplicitShtpConfig();
   ASSERT_TRUE(shtp.Configure(config));
 
   Bno086ShtpPacket packet;
@@ -524,7 +535,7 @@ TEST(Bno086Shtp, parsesObservedContinuationAccelerometerFeatureResponse)
   RecordingTransport transport;
   Bno086Shtp shtp{transport};
 
-  Bno086ShtpConfig config;
+  const Bno086ShtpConfig config = ExplicitShtpConfig();
   ASSERT_TRUE(shtp.Configure(config));
 
   Bno086ShtpPacket packet;
@@ -561,7 +572,7 @@ TEST(Bno086Shtp, controlParserScansFeatureResponseAtOffsetZero)
   RecordingTransport transport;
   Bno086Shtp shtp{transport};
 
-  Bno086ShtpConfig config;
+  const Bno086ShtpConfig config = ExplicitShtpConfig();
   ASSERT_TRUE(shtp.Configure(config));
 
   Bno086ShtpPacket packet;
@@ -580,7 +591,7 @@ TEST(Bno086Shtp, controlParserScansFeatureResponseAfterUnknownByte)
   RecordingTransport transport;
   Bno086Shtp shtp{transport};
 
-  Bno086ShtpConfig config;
+  const Bno086ShtpConfig config = ExplicitShtpConfig();
   ASSERT_TRUE(shtp.Configure(config));
 
   Bno086ShtpPacket packet;
@@ -602,7 +613,7 @@ TEST(Bno086Shtp, controlParserSkipsProductResponseBeforeFeatureResponse)
   RecordingTransport transport;
   Bno086Shtp shtp{transport};
 
-  Bno086ShtpConfig config;
+  const Bno086ShtpConfig config = ExplicitShtpConfig();
   ASSERT_TRUE(shtp.Configure(config));
 
   Bno086ShtpPacket packet;
@@ -624,7 +635,7 @@ TEST(Bno086Shtp, shortFeatureResponseDoesNotCrash)
   RecordingTransport transport;
   Bno086Shtp shtp{transport};
 
-  Bno086ShtpConfig config;
+  const Bno086ShtpConfig config = ExplicitShtpConfig();
   ASSERT_TRUE(shtp.Configure(config));
 
   Bno086ShtpPacket packet;
@@ -641,7 +652,7 @@ TEST(Bno086Shtp, featureResponseDrainCompletesWithContinuationFeatureResponses)
   RecordingTransport transport;
   Bno086Shtp shtp{transport};
 
-  Bno086ShtpConfig config;
+  const Bno086ShtpConfig config = ExplicitShtpConfig();
   ASSERT_TRUE(shtp.Configure(config));
 
   for (const FeatureConfiguration& feature : shtp.GetFeatureConfigurations())
@@ -669,7 +680,7 @@ TEST(Bno086Shtp, featureResponseDrainCountsPreReportPacketsOnly)
   RecordingTransport transport;
   Bno086Shtp shtp{transport};
 
-  Bno086ShtpConfig config;
+  const Bno086ShtpConfig config = ExplicitShtpConfig();
   ASSERT_TRUE(shtp.Configure(config));
 
   Bno086ShtpPacket commandPacket;
@@ -700,7 +711,7 @@ TEST(Bno086Shtp, continuationChannelThreeSensorPacketStillDecodes)
   RecordingTransport transport;
   Bno086Shtp shtp{transport};
 
-  Bno086ShtpConfig config;
+  const Bno086ShtpConfig config = ExplicitShtpConfig();
   ASSERT_TRUE(shtp.Configure(config));
 
   const std::vector<std::uint8_t> report = AccelerometerReport(7);
@@ -732,7 +743,7 @@ TEST(Bno086Shtp, disabledOptionalReportsAreIgnoredIfStalePayloadsArrive)
   RecordingTransport transport;
   Bno086Shtp shtp{transport};
 
-  Bno086ShtpConfig config;
+  Bno086ShtpConfig config = ExplicitShtpConfig();
   config.enable_linear_acceleration_report = false;
   config.enable_gravity_report = false;
   ASSERT_TRUE(shtp.Configure(config));
