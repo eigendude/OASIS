@@ -393,6 +393,9 @@ bool Bno086ImuNode::Initialize()
   m_lastEmittedTimestampNs.fill(std::nullopt);
   m_lastPublishedCoreSignature.reset();
   m_lastPublishedImuGravityAnchorStampNs.reset();
+  m_imuGravityAccelHistory = {};
+  m_imuGravityAccelHistoryNext = 0;
+  m_imuGravityAccelHistoryCount = 0;
   m_drainDiagnostics = DrainThroughputDiagnostics{};
 
   m_imuPublisher =
@@ -925,12 +928,22 @@ void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& ev
   }
 
   const int64_t orientationStampNs = m_orientationState.stamp.nanoseconds();
-  const int64_t accelStampNs = m_imuGravityState.stamp.nanoseconds();
   const int64_t maxAccelAgeNs = ImuGravityMaxOrientationAgeNs();
+  const int64_t accelFutureToleranceNs = ReportFutureToleranceNs(ReportId::Accelerometer);
+  const std::optional<ImuGravityAccelSample> accelSample =
+      SelectImuGravityAccelSample(orientationStampNs, maxAccelAgeNs, accelFutureToleranceNs);
+  if (!accelSample.has_value())
+  {
+    ++m_imuGravityDiagnostics.imu_gravity_skipped_missing_accel;
+    MaybeLogImuGravityDiagnostics();
+    return;
+  }
+
+  const int64_t accelStampNs = accelSample->stamp.nanoseconds();
+  m_imuGravityDiagnostics.latest_accel_stamp_ns = accelStampNs;
   const int64_t maxGyroAgeNs = ImuGravityMaxGyroAgeNs();
-  const SampleFreshnessResult accelFreshness =
-      EvaluateSampleFreshness(orientationStampNs, accelStampNs, maxAccelAgeNs,
-                              ReportFutureToleranceNs(ReportId::Accelerometer));
+  const SampleFreshnessResult accelFreshness = EvaluateSampleFreshness(
+      orientationStampNs, accelStampNs, maxAccelAgeNs, accelFutureToleranceNs);
   const SampleFreshnessResult gyroFreshness =
       EvaluateSampleFreshness(orientationStampNs, m_gyroState.stamp.nanoseconds(), maxGyroAgeNs,
                               ReportFutureToleranceNs(ReportId::GyroscopeCalibrated));
@@ -954,13 +967,13 @@ void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& ev
   if (accelFreshness.status == SampleFreshnessStatus::TooFuture)
   {
     ++m_imuGravityDiagnostics.imu_gravity_skipped_future_accel;
-    RCLCPP_DEBUG_THROTTLE(
-        get_logger(), *get_clock(), 2000,
-        "Skipping BNO086 imu_gravity sample: accel too far after orientation "
-        "age_ms=%.3f future_tolerance_ms=%.3f orientation_ns=%lld accel_ns=%lld",
-        m_imuGravityDiagnostics.latest_accel_age_ms,
-        static_cast<double>(ReportFutureToleranceNs(ReportId::Accelerometer)) / 1.0e6,
-        static_cast<long long>(orientationStampNs), static_cast<long long>(accelStampNs));
+    RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
+                          "Skipping BNO086 imu_gravity sample: accel too far after orientation "
+                          "age_ms=%.3f future_tolerance_ms=%.3f orientation_ns=%lld accel_ns=%lld",
+                          m_imuGravityDiagnostics.latest_accel_age_ms,
+                          static_cast<double>(accelFutureToleranceNs) / 1.0e6,
+                          static_cast<long long>(orientationStampNs),
+                          static_cast<long long>(accelStampNs));
     MaybeLogImuGravityDiagnostics();
     return;
   }
@@ -1009,7 +1022,8 @@ void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& ev
   //
   // BNO08X calibrated acceleration includes gravity, while the linear
   // acceleration report used by `imu` has gravity removed.
-  const sensor_msgs::msg::Imu imuGravityMsg = BuildImuGravityMessage(m_orientationState.stamp);
+  const sensor_msgs::msg::Imu imuGravityMsg =
+      BuildImuGravityMessage(m_orientationState.stamp, *accelSample);
   std::string invalidReason;
   if (!IsImuGravitySampleValid(imuGravityMsg, invalidReason))
   {
@@ -1101,7 +1115,8 @@ sensor_msgs::msg::Imu Bno086ImuNode::BuildPresentImuMessage(const rclcpp::Time& 
   return imuMsg;
 }
 
-sensor_msgs::msg::Imu Bno086ImuNode::BuildImuGravityMessage(const rclcpp::Time& stamp) const
+sensor_msgs::msg::Imu Bno086ImuNode::BuildImuGravityMessage(
+    const rclcpp::Time& stamp, const ImuGravityAccelSample& accel_sample) const
 {
   sensor_msgs::msg::Imu imuGravityMsg;
   imuGravityMsg.header.stamp = stamp;
@@ -1116,9 +1131,9 @@ sensor_msgs::msg::Imu Bno086ImuNode::BuildImuGravityMessage(const rclcpp::Time& 
   imuGravityMsg.angular_velocity.y = m_latestFrame.gyro_rads[1];
   imuGravityMsg.angular_velocity.z = m_latestFrame.gyro_rads[2];
 
-  imuGravityMsg.linear_acceleration.x = m_latestFrame.accel_mps2[0];
-  imuGravityMsg.linear_acceleration.y = m_latestFrame.accel_mps2[1];
-  imuGravityMsg.linear_acceleration.z = m_latestFrame.accel_mps2[2];
+  imuGravityMsg.linear_acceleration.x = accel_sample.accel_mps2[0];
+  imuGravityMsg.linear_acceleration.y = accel_sample.accel_mps2[1];
+  imuGravityMsg.linear_acceleration.z = accel_sample.accel_mps2[2];
 
   imuGravityMsg.orientation_covariance.fill(0.0);
   imuGravityMsg.angular_velocity_covariance.fill(0.0);
@@ -1130,9 +1145,9 @@ sensor_msgs::msg::Imu Bno086ImuNode::BuildImuGravityMessage(const rclcpp::Time& 
   if (m_latestFrame.has_gyro_covariance)
     SetCovariance(imuGravityMsg.angular_velocity_covariance, m_latestFrame.gyro_cov_rads2_2);
 
-  if (m_latestFrame.has_accel_covariance)
+  if (accel_sample.has_covariance)
   {
-    SetCovariance(imuGravityMsg.linear_acceleration_covariance, m_latestFrame.accel_cov_mps2_2);
+    SetCovariance(imuGravityMsg.linear_acceleration_covariance, accel_sample.covariance_mps2_2);
   }
 
   return imuGravityMsg;
@@ -2158,6 +2173,62 @@ int64_t Bno086ImuNode::ReportFutureToleranceNs(ReportId report_id) const
   return DurationFromUs(CoreCoherenceToleranceUs()).nanoseconds();
 }
 
+void Bno086ImuNode::RecordImuGravityAccelSample(const rclcpp::Time& sample_stamp)
+{
+  ImuGravityAccelSample sample;
+  sample.has_sample = true;
+  sample.stamp = sample_stamp;
+  sample.accel_mps2 = m_latestFrame.accel_mps2;
+  sample.covariance_mps2_2 = m_latestFrame.accel_cov_mps2_2;
+  sample.has_covariance = m_latestFrame.has_accel_covariance;
+  sample.sequence = m_imuGravityState.sequence;
+  sample.accuracy = m_imuGravityState.accuracy;
+
+  m_imuGravityAccelHistory[m_imuGravityAccelHistoryNext] = sample;
+  m_imuGravityAccelHistoryNext =
+      (m_imuGravityAccelHistoryNext + 1) % m_imuGravityAccelHistory.size();
+  m_imuGravityAccelHistoryCount =
+      std::min(m_imuGravityAccelHistoryCount + 1, m_imuGravityAccelHistory.size());
+}
+
+std::optional<Bno086ImuNode::ImuGravityAccelSample> Bno086ImuNode::SelectImuGravityAccelSample(
+    int64_t anchor_stamp_ns, int64_t max_past_age_ns, int64_t future_tolerance_ns) const
+{
+  std::optional<ImuGravityAccelSample> bestSample;
+  std::optional<std::uint64_t> bestDistanceNs;
+  std::optional<ImuGravityAccelSample> closestSample;
+  std::optional<std::uint64_t> closestDistanceNs;
+
+  for (std::size_t i = 0; i < m_imuGravityAccelHistoryCount; ++i)
+  {
+    const ImuGravityAccelSample& sample = m_imuGravityAccelHistory[i];
+    if (!sample.has_sample)
+      continue;
+
+    const int64_t sampleStampNs = sample.stamp.nanoseconds();
+    const std::uint64_t distanceNs =
+        anchor_stamp_ns >= sampleStampNs
+            ? static_cast<std::uint64_t>(anchor_stamp_ns - sampleStampNs)
+            : static_cast<std::uint64_t>(sampleStampNs - anchor_stamp_ns);
+    if (!closestDistanceNs.has_value() || distanceNs < *closestDistanceNs)
+    {
+      closestDistanceNs = distanceNs;
+      closestSample = sample;
+    }
+
+    const SampleFreshnessResult freshness = EvaluateSampleFreshness(
+        anchor_stamp_ns, sampleStampNs, max_past_age_ns, future_tolerance_ns);
+    if (freshness.status == SampleFreshnessStatus::Accepted &&
+        (!bestDistanceNs.has_value() || distanceNs < *bestDistanceNs))
+    {
+      bestDistanceNs = distanceNs;
+      bestSample = sample;
+    }
+  }
+
+  return bestSample.has_value() ? bestSample : closestSample;
+}
+
 bool Bno086ImuNode::HasPublishableCoreFrame() const
 {
   if (!(m_latestFrame.has_orientation && m_latestFrame.has_gyro && m_latestFrame.has_linear_accel))
@@ -2292,6 +2363,7 @@ void Bno086ImuNode::ApplyEvent(const SensorEvent& event, const rclcpp::Time& sam
       m_latestFrame.accel_cov_mps2_2 =
           Bno086ImuNode::CovarianceFromAccuracyBucket(event.accuracy, 4.0, 2.0, 0.8, 0.25);
       m_latestFrame.has_accel_covariance = true;
+      RecordImuGravityAccelSample(sample_stamp);
       break;
 
     case ReportId::Gravity:

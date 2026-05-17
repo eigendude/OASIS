@@ -73,6 +73,17 @@ private:
     std::uint8_t accuracy{0};
   };
 
+  struct ImuGravityAccelSample
+  {
+    bool has_sample{false};
+    rclcpp::Time stamp{0, 0, RCL_ROS_TIME};
+    OASIS::IMU::Vec3 accel_mps2{0.0, 0.0, 0.0};
+    OASIS::IMU::Mat3 covariance_mps2_2{};
+    bool has_covariance{false};
+    std::uint8_t sequence{0};
+    std::uint8_t accuracy{0};
+  };
+
   struct CoreFrameSignature
   {
     std::uint8_t orientation_sequence{0};
@@ -245,6 +256,9 @@ private:
   int64_t ImuGravityMaxOrientationAgeNs() const;
   int64_t ImuGravityMaxGyroAgeNs() const;
   int64_t ReportFutureToleranceNs(OASIS::IMU::BNO086::ReportId report_id) const;
+  void RecordImuGravityAccelSample(const rclcpp::Time& sample_stamp);
+  std::optional<ImuGravityAccelSample> SelectImuGravityAccelSample(
+      int64_t anchor_stamp_ns, int64_t max_past_age_ns, int64_t future_tolerance_ns) const;
   bool HasPublishableCoreFrame() const;
   CoreFrameSignature LatestCoreSignature() const;
   rclcpp::Time LatestCoreStamp() const;
@@ -259,7 +273,8 @@ private:
       int64_t packet_host_stamp_ns,
       std::optional<int64_t> expected_interval_ns);
   sensor_msgs::msg::Imu BuildPresentImuMessage(const rclcpp::Time& stamp) const;
-  sensor_msgs::msg::Imu BuildImuGravityMessage(const rclcpp::Time& stamp) const;
+  sensor_msgs::msg::Imu BuildImuGravityMessage(const rclcpp::Time& stamp,
+                                               const ImuGravityAccelSample& accel_sample) const;
   geometry_msgs::msg::AccelWithCovarianceStamped BuildGravityMessage(
       const rclcpp::Time& stamp) const;
   sensor_msgs::msg::Imu BuildPredictedImuMessage(const sensor_msgs::msg::Imu& present_imu) const;
@@ -350,6 +365,9 @@ private:
   SampleState m_linearAccelState{};
   SampleState m_imuGravityState{};
   SampleState m_gravityState{};
+  std::array<ImuGravityAccelSample, 64> m_imuGravityAccelHistory{};
+  std::size_t m_imuGravityAccelHistoryNext{0};
+  std::size_t m_imuGravityAccelHistoryCount{0};
   OrientationCovarianceDebugState m_orientationCovarianceDebug{};
 
   std::string m_frameId;
