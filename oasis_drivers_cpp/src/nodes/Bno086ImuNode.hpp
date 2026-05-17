@@ -180,6 +180,11 @@ private:
     std::uint64_t hintn_asserted_after_exit_count{0};
     std::uint64_t no_progress_drain_count{0};
     std::uint64_t transport_error_count{0};
+    std::uint64_t complete_int_deasserted_count{0};
+    std::uint64_t exit_no_progress_budget_count{0};
+    std::uint64_t exit_transport_error_count{0};
+    std::uint64_t exit_packet_cap_count{0};
+    std::uint64_t exit_poll_iteration_cap_count{0};
     std::array<std::uint64_t, 6> channel_packet_counts{};
   };
 
@@ -339,6 +344,7 @@ private:
   std::uint32_t m_featureResponseStartupMaxPackets{128};
   std::uint32_t m_maxPacketsPerInterrupt{1024};
   std::uint32_t m_maxPollIterationsPerInterrupt{4096};
+  std::uint32_t m_maxNoProgressPollsPerInterrupt{64};
   double m_rotationVectorRateHz{100.0};
   double m_gyroRateHz{100.0};
   double m_accelerometerRateHz{100.0};

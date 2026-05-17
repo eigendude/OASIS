@@ -23,6 +23,7 @@ enum class Bno086DrainAction
   TransportError,
   PhysicalPacketCap,
   PollIterationCap,
+  NoProgressBudget,
 };
 
 struct Bno086DrainLimits
@@ -40,6 +41,13 @@ struct Bno086DrainLimits
    * Units: poll iterations, expected range [1, 16384]
    */
   std::uint32_t max_poll_iterations_per_interrupt{4096};
+
+  /*!
+   * \brief Maximum consecutive no-progress polls while H_INTN is asserted
+   *
+   * Units: poll iterations, expected range [1, 1024]
+   */
+  std::uint32_t max_no_progress_polls_per_interrupt{64};
 };
 
 struct Bno086DrainCounters
@@ -78,6 +86,13 @@ struct Bno086DrainCounters
    * Units: physical packet reads on SHTP command/control channels
    */
   std::uint32_t control_packets_this_drain{0};
+
+  /*!
+   * \brief Consecutive polls that returned no packet or pending event
+   *
+   * Units: poll iterations, reset when any poll makes progress
+   */
+  std::uint32_t consecutive_no_progress_polls{0};
 };
 
 struct Bno086DrainDecision

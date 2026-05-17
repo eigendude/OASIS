@@ -41,10 +41,14 @@ Bno086DrainDecision Bno086DrainAfterPoll(const Bno086Shtp::PollResult& result,
 
   if (result.status == Bno086Shtp::PollStatus::Timeout)
   {
-    if (Bno086DrainMadeProgress(counters) || !hintn_asserted)
+    ++counters.consecutive_no_progress_polls;
+
+    if (!hintn_asserted)
       decision.action = Bno086DrainAction::Complete;
+    else if (counters.consecutive_no_progress_polls >= limits.max_no_progress_polls_per_interrupt)
+      decision.action = Bno086DrainAction::NoProgressBudget;
     else
-      decision.action = Bno086DrainAction::WarnNoProgressTimeout;
+      decision.action = Bno086DrainAction::Continue;
 
     return decision;
   }
@@ -60,6 +64,12 @@ Bno086DrainDecision Bno086DrainAfterPoll(const Bno086Shtp::PollResult& result,
 
   if (result.handled_control_packet)
     ++counters.control_packets_this_drain;
+
+  if (result.read_physical_packet || result.event.has_value() || result.dequeued_pending_event ||
+      result.handled_control_packet)
+  {
+    counters.consecutive_no_progress_polls = 0;
+  }
 
   if (result.status == Bno086Shtp::PollStatus::TransportError)
   {

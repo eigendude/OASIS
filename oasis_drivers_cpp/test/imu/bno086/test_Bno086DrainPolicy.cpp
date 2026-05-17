@@ -62,7 +62,7 @@ TEST(Bno086DrainPolicy, physicalPacketReadsIncrementPhysicalPacketCount)
   EXPECT_EQ(counters.pending_events_this_drain, 0U);
 }
 
-TEST(Bno086DrainPolicy, timeoutAfterProgressCompletesNormally)
+TEST(Bno086DrainPolicy, timeoutAfterProgressContinuesWhenHintnAsserted)
 {
   Bno086DrainLimits limits;
   Bno086DrainCounters counters;
@@ -73,12 +73,13 @@ TEST(Bno086DrainPolicy, timeoutAfterProgressCompletesNormally)
   const Bno086DrainDecision decision =
       Bno086DrainAfterPoll(TimeoutResult(), limits, counters, true);
 
-  EXPECT_EQ(decision.action, Bno086DrainAction::Complete);
+  EXPECT_EQ(decision.action, Bno086DrainAction::Continue);
   EXPECT_TRUE(decision.hintn_asserted);
   EXPECT_EQ(counters.poll_iterations, 2U);
+  EXPECT_EQ(counters.consecutive_no_progress_polls, 1U);
 }
 
-TEST(Bno086DrainPolicy, timeoutBeforeProgressWithHintnAssertedWarns)
+TEST(Bno086DrainPolicy, timeoutBeforeProgressWithHintnAssertedContinuesWithinBudget)
 {
   Bno086DrainLimits limits;
   Bno086DrainCounters counters;
@@ -86,9 +87,46 @@ TEST(Bno086DrainPolicy, timeoutBeforeProgressWithHintnAssertedWarns)
   const Bno086DrainDecision decision =
       Bno086DrainAfterPoll(TimeoutResult(), limits, counters, true);
 
-  EXPECT_EQ(decision.action, Bno086DrainAction::WarnNoProgressTimeout);
+  EXPECT_EQ(decision.action, Bno086DrainAction::Continue);
   EXPECT_TRUE(decision.hintn_asserted);
   EXPECT_EQ(counters.poll_iterations, 1U);
+  EXPECT_EQ(counters.consecutive_no_progress_polls, 1U);
+}
+
+TEST(Bno086DrainPolicy, assertedHintnTimeoutExitsWhenNoProgressBudgetIsExhausted)
+{
+  Bno086DrainLimits limits;
+  limits.max_no_progress_polls_per_interrupt = 2;
+  Bno086DrainCounters counters;
+
+  ASSERT_EQ(Bno086DrainAfterPoll(TimeoutResult(), limits, counters, true).action,
+            Bno086DrainAction::Continue);
+
+  const Bno086DrainDecision decision =
+      Bno086DrainAfterPoll(TimeoutResult(), limits, counters, true);
+
+  EXPECT_EQ(decision.action, Bno086DrainAction::NoProgressBudget);
+  EXPECT_TRUE(decision.hintn_asserted);
+  EXPECT_EQ(counters.poll_iterations, 2U);
+  EXPECT_EQ(counters.consecutive_no_progress_polls, 2U);
+}
+
+TEST(Bno086DrainPolicy, physicalProgressResetsNoProgressBudget)
+{
+  Bno086DrainLimits limits;
+  limits.max_no_progress_polls_per_interrupt = 2;
+  Bno086DrainCounters counters;
+
+  ASSERT_EQ(Bno086DrainAfterPoll(TimeoutResult(), limits, counters, true).action,
+            Bno086DrainAction::Continue);
+  ASSERT_EQ(Bno086DrainAfterPoll(SensorEventResult(true, false), limits, counters, true).action,
+            Bno086DrainAction::Continue);
+
+  const Bno086DrainDecision decision =
+      Bno086DrainAfterPoll(TimeoutResult(), limits, counters, true);
+
+  EXPECT_EQ(decision.action, Bno086DrainAction::Continue);
+  EXPECT_EQ(counters.consecutive_no_progress_polls, 1U);
 }
 
 TEST(Bno086DrainPolicy, timeoutBeforeProgressWithHintnDeassertedCompletes)

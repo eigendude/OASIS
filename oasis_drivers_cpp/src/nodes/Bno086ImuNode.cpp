@@ -52,6 +52,9 @@ constexpr int MAX_MAX_PACKETS_PER_INTERRUPT = 8192;
 constexpr int DEFAULT_MAX_POLL_ITERATIONS_PER_INTERRUPT = 4096;
 constexpr int MIN_MAX_POLL_ITERATIONS_PER_INTERRUPT = 1;
 constexpr int MAX_MAX_POLL_ITERATIONS_PER_INTERRUPT = 16384;
+constexpr int DEFAULT_MAX_NO_PROGRESS_POLLS_PER_INTERRUPT = 64;
+constexpr int MIN_MAX_NO_PROGRESS_POLLS_PER_INTERRUPT = 1;
+constexpr int MAX_MAX_NO_PROGRESS_POLLS_PER_INTERRUPT = 1024;
 constexpr std::uint32_t REPEATED_NO_PROGRESS_TIMEOUT_WARN_COUNT = 3;
 
 constexpr std::uint32_t MIN_COHERENT_SAMPLE_SPAN_US = 50'000;
@@ -183,6 +186,8 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   declare_parameter("bno086_max_packets_per_interrupt", DEFAULT_MAX_PACKETS_PER_INTERRUPT);
   declare_parameter("bno086_max_poll_iterations_per_interrupt",
                     DEFAULT_MAX_POLL_ITERATIONS_PER_INTERRUPT);
+  declare_parameter("bno086_max_no_progress_polls_per_interrupt",
+                    DEFAULT_MAX_NO_PROGRESS_POLLS_PER_INTERRUPT);
   declare_parameter("bno086_diagnostics_log_period_ms", DEFAULT_BNO086_DIAGNOSTICS_LOG_PERIOD_MS);
   declare_parameter("bno086_timestamp_trace_count", DEFAULT_BNO086_TIMESTAMP_TRACE_COUNT);
   declare_parameter("prediction_horizon_sec", DEFAULT_PREDICTION_HORIZON_SEC);
@@ -231,6 +236,9 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   m_maxPollIterationsPerInterrupt = static_cast<std::uint32_t>(std::clamp(
       static_cast<int>(get_parameter("bno086_max_poll_iterations_per_interrupt").as_int()),
       MIN_MAX_POLL_ITERATIONS_PER_INTERRUPT, MAX_MAX_POLL_ITERATIONS_PER_INTERRUPT));
+  m_maxNoProgressPollsPerInterrupt = static_cast<std::uint32_t>(std::clamp(
+      static_cast<int>(get_parameter("bno086_max_no_progress_polls_per_interrupt").as_int()),
+      MIN_MAX_NO_PROGRESS_POLLS_PER_INTERRUPT, MAX_MAX_NO_PROGRESS_POLLS_PER_INTERRUPT));
   m_diagnosticsLogPeriodMs =
       std::max(static_cast<int>(get_parameter("bno086_diagnostics_log_period_ms").as_int()),
                MIN_BNO086_DIAGNOSTICS_LOG_PERIOD_MS);
@@ -433,6 +441,7 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
   Bno086DrainLimits drainLimits;
   drainLimits.max_physical_packets_per_interrupt = m_maxPacketsPerInterrupt;
   drainLimits.max_poll_iterations_per_interrupt = m_maxPollIterationsPerInterrupt;
+  drainLimits.max_no_progress_polls_per_interrupt = m_maxNoProgressPollsPerInterrupt;
   const rclcpp::Time drainReceiveAnchor = interrupt_ros_at;
   const auto drainStartedAt = std::chrono::steady_clock::now();
   Bno086DrainAction drainExitAction = Bno086DrainAction::Complete;
@@ -453,12 +462,16 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
           "BNO086 interrupt drain hit poll iteration cap: "
           "physical_packets_this_drain=%u sensor_events_this_drain=%u "
           "pending_events_this_drain=%u control_packets_this_drain=%u "
-          "poll_iterations=%u packet_cap=%u poll_iteration_cap=%u "
+          "poll_iterations=%u consecutive_no_progress_polls=%u "
+          "packet_cap=%u poll_iteration_cap=%u no_progress_budget=%u "
           "drain_duration_ms=%.3f hintn_asserted=%s",
           drainCounters.physical_packets_this_drain, drainCounters.sensor_events_this_drain,
           drainCounters.pending_events_this_drain, drainCounters.control_packets_this_drain,
-          drainCounters.poll_iterations, drainLimits.max_physical_packets_per_interrupt,
-          drainLimits.max_poll_iterations_per_interrupt, static_cast<double>(drainDurationUs) / 1e3,
+          drainCounters.poll_iterations, drainCounters.consecutive_no_progress_polls,
+          drainLimits.max_physical_packets_per_interrupt,
+          drainLimits.max_poll_iterations_per_interrupt,
+          drainLimits.max_no_progress_polls_per_interrupt,
+          static_cast<double>(drainDurationUs) / 1e3,
           beforePollDecision.hintn_asserted ? "true" : "false");
       drainExitAction = beforePollDecision.action;
       break;
@@ -481,19 +494,38 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
       break;
     }
 
-    if (afterPollDecision.action == Bno086DrainAction::WarnNoProgressTimeout)
+    if (afterPollDecision.action == Bno086DrainAction::NoProgressBudget)
     {
       ++m_repeatedNoProgressTimeouts;
-      if (m_repeatedNoProgressTimeouts >= REPEATED_NO_PROGRESS_TIMEOUT_WARN_COUNT)
-      {
-        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
-                             "BNO086 interrupt asserted but packet reads repeatedly timed out");
-      }
+      const auto drainDurationUs =
+          static_cast<std::uint32_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+                                         std::chrono::steady_clock::now() - drainStartedAt)
+                                         .count());
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "BNO086 interrupt drain exhausted no-progress budget while H_INTN "
+          "remained asserted: physical_packets_this_drain=%u "
+          "sensor_events_this_drain=%u pending_events_this_drain=%u "
+          "control_packets_this_drain=%u poll_iterations=%u "
+          "consecutive_no_progress_polls=%u no_progress_budget=%u "
+          "packet_cap=%u poll_iteration_cap=%u drain_duration_ms=%.3f "
+          "hintn_asserted=true",
+          drainCounters.physical_packets_this_drain, drainCounters.sensor_events_this_drain,
+          drainCounters.pending_events_this_drain, drainCounters.control_packets_this_drain,
+          drainCounters.poll_iterations, drainCounters.consecutive_no_progress_polls,
+          drainLimits.max_no_progress_polls_per_interrupt,
+          drainLimits.max_physical_packets_per_interrupt,
+          drainLimits.max_poll_iterations_per_interrupt,
+          static_cast<double>(drainDurationUs) / 1e3);
       drainExitAction = afterPollDecision.action;
       break;
     }
 
-    m_repeatedNoProgressTimeouts = 0;
+    if (pollResult.read_physical_packet || pollResult.event.has_value() ||
+        pollResult.dequeued_pending_event || pollResult.handled_control_packet)
+    {
+      m_repeatedNoProgressTimeouts = 0;
+    }
 
     if (afterPollDecision.action == Bno086DrainAction::TransportError)
     {
@@ -597,12 +629,16 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
             "BNO086 interrupt drain hit physical packet cap while H_INTN "
             "remained asserted: physical_packets_this_drain=%u "
             "sensor_events_this_drain=%u pending_events_this_drain=%u "
-            "control_packets_this_drain=%u poll_iterations=%u packet_cap=%u "
-            "poll_iteration_cap=%u drain_duration_ms=%.3f hintn_asserted=true",
+            "control_packets_this_drain=%u poll_iterations=%u "
+            "consecutive_no_progress_polls=%u packet_cap=%u "
+            "poll_iteration_cap=%u no_progress_budget=%u drain_duration_ms=%.3f "
+            "hintn_asserted=true",
             drainCounters.physical_packets_this_drain, drainCounters.sensor_events_this_drain,
             drainCounters.pending_events_this_drain, drainCounters.control_packets_this_drain,
-            drainCounters.poll_iterations, drainLimits.max_physical_packets_per_interrupt,
+            drainCounters.poll_iterations, drainCounters.consecutive_no_progress_polls,
+            drainLimits.max_physical_packets_per_interrupt,
             drainLimits.max_poll_iterations_per_interrupt,
+            drainLimits.max_no_progress_polls_per_interrupt,
             static_cast<double>(drainDurationUs) / 1e3);
       }
       drainExitAction = afterPollDecision.action;
@@ -1204,16 +1240,31 @@ void Bno086ImuNode::RecordDrainThroughputDiagnostics(const Bno086DrainCounters& 
   }
 
   if (exit_action == Bno086DrainAction::PhysicalPacketCap)
+  {
     ++m_drainDiagnostics.physical_packet_cap_hit_count;
+    ++m_drainDiagnostics.exit_packet_cap_count;
+  }
 
   if (exit_action == Bno086DrainAction::PollIterationCap)
+  {
     ++m_drainDiagnostics.poll_iteration_cap_hit_count;
+    ++m_drainDiagnostics.exit_poll_iteration_cap_count;
+  }
 
-  if (exit_action == Bno086DrainAction::WarnNoProgressTimeout)
+  if (exit_action == Bno086DrainAction::NoProgressBudget)
+  {
     ++m_drainDiagnostics.no_progress_drain_count;
+    ++m_drainDiagnostics.exit_no_progress_budget_count;
+  }
 
   if (exit_action == Bno086DrainAction::TransportError)
+  {
     ++m_drainDiagnostics.transport_error_count;
+    ++m_drainDiagnostics.exit_transport_error_count;
+  }
+
+  if (exit_action == Bno086DrainAction::Complete && !hintn_asserted_after_exit)
+    ++m_drainDiagnostics.complete_int_deasserted_count;
 
   if (hintn_asserted_after_exit)
     ++m_drainDiagnostics.hintn_asserted_after_exit_count;
@@ -1396,6 +1447,11 @@ std::string Bno086ImuNode::BuildImuGravityDiagnosticsLogMessage() const
       << m_drainDiagnostics.hintn_asserted_after_exit_count << " "
       << "no_progress_drain_count=" << m_drainDiagnostics.no_progress_drain_count << " "
       << "drain_transport_error_count=" << m_drainDiagnostics.transport_error_count << " "
+      << "complete_int_deasserted_count=" << m_drainDiagnostics.complete_int_deasserted_count << " "
+      << "exit_no_progress_budget_count=" << m_drainDiagnostics.exit_no_progress_budget_count << " "
+      << "exit_transport_error_count=" << m_drainDiagnostics.exit_transport_error_count << " "
+      << "exit_packet_cap_count=" << m_drainDiagnostics.exit_packet_cap_count << " "
+      << "exit_poll_iteration_cap_count=" << m_drainDiagnostics.exit_poll_iteration_cap_count << " "
       << "i2c_read_error_count=" << transportStats.i2c_read_error_count << " "
       << "i2c_read_timeout_count=" << transportStats.i2c_read_timeout_count << " "
       << "invalid_header_count=" << transportStats.invalid_header_count << " "
