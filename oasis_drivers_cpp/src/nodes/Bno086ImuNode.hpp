@@ -84,6 +84,26 @@ private:
     std::uint8_t accuracy{0};
   };
 
+  enum class ImuGravityAccelSelectionStatus
+  {
+    NoHistory,
+    SelectedPast,
+    SelectedFuture,
+    StalePast,
+    FutureTooFar,
+  };
+
+  struct ImuGravityAccelSelection
+  {
+    ImuGravityAccelSelectionStatus status{ImuGravityAccelSelectionStatus::NoHistory};
+    std::optional<ImuGravityAccelSample> sample;
+    std::size_t history_size{0};
+    int64_t oldest_stamp_ns{0};
+    int64_t newest_stamp_ns{0};
+    int64_t history_span_ns{0};
+    int64_t selected_offset_ns{0};
+  };
+
   struct CoreFrameSignature
   {
     std::uint8_t orientation_sequence{0};
@@ -150,6 +170,16 @@ private:
     std::uint64_t last_rate_skipped_stale_gyro{0};
     std::uint64_t last_rate_accel_sequence_gap_count{0};
     std::uint64_t last_rate_timestamp_reconstruction_reset_count{0};
+    std::size_t accel_history_size{0};
+    int64_t accel_history_oldest_stamp_ns{0};
+    int64_t accel_history_newest_stamp_ns{0};
+    double accel_history_span_ms{0.0};
+    int64_t selected_accel_stamp_ns{0};
+    double selected_accel_offset_ms{0.0};
+    std::uint64_t accel_history_selected_past_count{0};
+    std::uint64_t accel_history_selected_future_count{0};
+    std::uint64_t accel_history_future_too_far_count{0};
+    std::uint64_t accel_history_no_past_count{0};
     std::chrono::steady_clock::time_point last_log_at{};
   };
 
@@ -257,8 +287,9 @@ private:
   int64_t ImuGravityMaxGyroAgeNs() const;
   int64_t ReportFutureToleranceNs(OASIS::IMU::BNO086::ReportId report_id) const;
   void RecordImuGravityAccelSample(const rclcpp::Time& sample_stamp);
-  std::optional<ImuGravityAccelSample> SelectImuGravityAccelSample(
-      int64_t anchor_stamp_ns, int64_t max_past_age_ns, int64_t future_tolerance_ns) const;
+  ImuGravityAccelSelection SelectImuGravityAccelSample(int64_t anchor_stamp_ns,
+                                                       int64_t max_past_age_ns,
+                                                       int64_t future_tolerance_ns) const;
   bool HasPublishableCoreFrame() const;
   CoreFrameSignature LatestCoreSignature() const;
   rclcpp::Time LatestCoreStamp() const;
@@ -365,7 +396,7 @@ private:
   SampleState m_linearAccelState{};
   SampleState m_imuGravityState{};
   SampleState m_gravityState{};
-  std::array<ImuGravityAccelSample, 64> m_imuGravityAccelHistory{};
+  std::array<ImuGravityAccelSample, 1024> m_imuGravityAccelHistory{};
   std::size_t m_imuGravityAccelHistoryNext{0};
   std::size_t m_imuGravityAccelHistoryCount{0};
   OrientationCovarianceDebugState m_orientationCovarianceDebug{};

@@ -930,17 +930,41 @@ void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& ev
   const int64_t orientationStampNs = m_orientationState.stamp.nanoseconds();
   const int64_t maxAccelAgeNs = ImuGravityMaxOrientationAgeNs();
   const int64_t accelFutureToleranceNs = ReportFutureToleranceNs(ReportId::Accelerometer);
-  const std::optional<ImuGravityAccelSample> accelSample =
+  const ImuGravityAccelSelection accelSelection =
       SelectImuGravityAccelSample(orientationStampNs, maxAccelAgeNs, accelFutureToleranceNs);
-  if (!accelSample.has_value())
+  m_imuGravityDiagnostics.accel_history_size = accelSelection.history_size;
+  m_imuGravityDiagnostics.accel_history_oldest_stamp_ns = accelSelection.oldest_stamp_ns;
+  m_imuGravityDiagnostics.accel_history_newest_stamp_ns = accelSelection.newest_stamp_ns;
+  m_imuGravityDiagnostics.accel_history_span_ms =
+      static_cast<double>(accelSelection.history_span_ns) / 1.0e6;
+  m_imuGravityDiagnostics.selected_accel_offset_ms =
+      static_cast<double>(accelSelection.selected_offset_ns) / 1.0e6;
+
+  if (accelSelection.status == ImuGravityAccelSelectionStatus::SelectedPast)
+    ++m_imuGravityDiagnostics.accel_history_selected_past_count;
+  else if (accelSelection.status == ImuGravityAccelSelectionStatus::SelectedFuture)
+    ++m_imuGravityDiagnostics.accel_history_selected_future_count;
+  else if (accelSelection.status == ImuGravityAccelSelectionStatus::FutureTooFar)
+    ++m_imuGravityDiagnostics.accel_history_future_too_far_count;
+
+  if (accelSelection.status == ImuGravityAccelSelectionStatus::SelectedFuture ||
+      accelSelection.status == ImuGravityAccelSelectionStatus::FutureTooFar ||
+      accelSelection.status == ImuGravityAccelSelectionStatus::NoHistory)
+  {
+    ++m_imuGravityDiagnostics.accel_history_no_past_count;
+  }
+
+  if (!accelSelection.sample.has_value())
   {
     ++m_imuGravityDiagnostics.imu_gravity_skipped_missing_accel;
     MaybeLogImuGravityDiagnostics();
     return;
   }
 
-  const int64_t accelStampNs = accelSample->stamp.nanoseconds();
+  const ImuGravityAccelSample& accelSample = *accelSelection.sample;
+  const int64_t accelStampNs = accelSample.stamp.nanoseconds();
   m_imuGravityDiagnostics.latest_accel_stamp_ns = accelStampNs;
+  m_imuGravityDiagnostics.selected_accel_stamp_ns = accelStampNs;
   const int64_t maxGyroAgeNs = ImuGravityMaxGyroAgeNs();
   const SampleFreshnessResult accelFreshness = EvaluateSampleFreshness(
       orientationStampNs, accelStampNs, maxAccelAgeNs, accelFutureToleranceNs);
@@ -1023,7 +1047,7 @@ void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& ev
   // BNO08X calibrated acceleration includes gravity, while the linear
   // acceleration report used by `imu` has gravity removed.
   const sensor_msgs::msg::Imu imuGravityMsg =
-      BuildImuGravityMessage(m_orientationState.stamp, *accelSample);
+      BuildImuGravityMessage(m_orientationState.stamp, accelSample);
   std::string invalidReason;
   if (!IsImuGravitySampleValid(imuGravityMsg, invalidReason))
   {
@@ -1654,8 +1678,22 @@ std::string Bno086ImuNode::BuildImuGravityDiagnosticsLogMessage() const
       << "latest_orientation_stamp_ns=" << m_imuGravityDiagnostics.latest_orientation_stamp_ns
       << " " << "latest_gyro_stamp_ns=" << m_imuGravityDiagnostics.latest_gyro_stamp_ns << " "
       << "latest_accel_age_ms=" << m_imuGravityDiagnostics.latest_accel_age_ms << " "
-      << "latest_orientation_age_ms=" << m_imuGravityDiagnostics.latest_orientation_age_ms << " "
-      << "latest_gyro_age_ms=" << m_imuGravityDiagnostics.latest_gyro_age_ms << " "
+      << "accel_history_size=" << m_imuGravityDiagnostics.accel_history_size << " "
+      << "accel_history_oldest_stamp_ns=" << m_imuGravityDiagnostics.accel_history_oldest_stamp_ns
+      << " "
+      << "accel_history_newest_stamp_ns=" << m_imuGravityDiagnostics.accel_history_newest_stamp_ns
+      << " " << "accel_history_span_ms=" << m_imuGravityDiagnostics.accel_history_span_ms << " "
+      << "selected_accel_stamp_ns=" << m_imuGravityDiagnostics.selected_accel_stamp_ns << " "
+      << "selected_accel_offset_ms=" << m_imuGravityDiagnostics.selected_accel_offset_ms << " "
+      << "accel_history_selected_past_count="
+      << m_imuGravityDiagnostics.accel_history_selected_past_count << " "
+      << "accel_history_selected_future_count="
+      << m_imuGravityDiagnostics.accel_history_selected_future_count << " "
+      << "accel_history_future_too_far_count="
+      << m_imuGravityDiagnostics.accel_history_future_too_far_count << " "
+      << "accel_history_no_past_count=" << m_imuGravityDiagnostics.accel_history_no_past_count
+      << " " << "latest_orientation_age_ms=" << m_imuGravityDiagnostics.latest_orientation_age_ms
+      << " " << "latest_gyro_age_ms=" << m_imuGravityDiagnostics.latest_gyro_age_ms << " "
       << "linear_accel_events_seen=" << m_imuGravityDiagnostics.linear_accel_events_seen << " "
       << "imu_published=" << m_imuGravityDiagnostics.imu_published << " "
       << "imu_skipped_missing_core_frame=" << m_imuGravityDiagnostics.imu_skipped_missing_core_frame
@@ -2191,13 +2229,15 @@ void Bno086ImuNode::RecordImuGravityAccelSample(const rclcpp::Time& sample_stamp
       std::min(m_imuGravityAccelHistoryCount + 1, m_imuGravityAccelHistory.size());
 }
 
-std::optional<Bno086ImuNode::ImuGravityAccelSample> Bno086ImuNode::SelectImuGravityAccelSample(
+Bno086ImuNode::ImuGravityAccelSelection Bno086ImuNode::SelectImuGravityAccelSample(
     int64_t anchor_stamp_ns, int64_t max_past_age_ns, int64_t future_tolerance_ns) const
 {
-  std::optional<ImuGravityAccelSample> bestSample;
-  std::optional<std::uint64_t> bestDistanceNs;
-  std::optional<ImuGravityAccelSample> closestSample;
-  std::optional<std::uint64_t> closestDistanceNs;
+  ImuGravityAccelSelection selection;
+  selection.history_size = m_imuGravityAccelHistoryCount;
+
+  std::optional<ImuGravityAccelSample> nearestPast;
+  std::optional<ImuGravityAccelSample> nearestFuture;
+  bool hasHistoryBounds = false;
 
   for (std::size_t i = 0; i < m_imuGravityAccelHistoryCount; ++i)
   {
@@ -2206,27 +2246,60 @@ std::optional<Bno086ImuNode::ImuGravityAccelSample> Bno086ImuNode::SelectImuGrav
       continue;
 
     const int64_t sampleStampNs = sample.stamp.nanoseconds();
-    const std::uint64_t distanceNs =
-        anchor_stamp_ns >= sampleStampNs
-            ? static_cast<std::uint64_t>(anchor_stamp_ns - sampleStampNs)
-            : static_cast<std::uint64_t>(sampleStampNs - anchor_stamp_ns);
-    if (!closestDistanceNs.has_value() || distanceNs < *closestDistanceNs)
+    if (!hasHistoryBounds)
     {
-      closestDistanceNs = distanceNs;
-      closestSample = sample;
+      selection.oldest_stamp_ns = sampleStampNs;
+      selection.newest_stamp_ns = sampleStampNs;
+      hasHistoryBounds = true;
+    }
+    else
+    {
+      selection.oldest_stamp_ns = std::min(selection.oldest_stamp_ns, sampleStampNs);
+      selection.newest_stamp_ns = std::max(selection.newest_stamp_ns, sampleStampNs);
     }
 
-    const SampleFreshnessResult freshness = EvaluateSampleFreshness(
-        anchor_stamp_ns, sampleStampNs, max_past_age_ns, future_tolerance_ns);
-    if (freshness.status == SampleFreshnessStatus::Accepted &&
-        (!bestDistanceNs.has_value() || distanceNs < *bestDistanceNs))
+    if (sampleStampNs <= anchor_stamp_ns)
     {
-      bestDistanceNs = distanceNs;
-      bestSample = sample;
+      if (!nearestPast.has_value() || sampleStampNs > nearestPast->stamp.nanoseconds())
+        nearestPast = sample;
+    }
+    else if (!nearestFuture.has_value() || sampleStampNs < nearestFuture->stamp.nanoseconds())
+    {
+      nearestFuture = sample;
     }
   }
 
-  return bestSample.has_value() ? bestSample : closestSample;
+  if (hasHistoryBounds)
+    selection.history_span_ns = selection.newest_stamp_ns - selection.oldest_stamp_ns;
+
+  if (nearestPast.has_value())
+  {
+    const int64_t pastStampNs = nearestPast->stamp.nanoseconds();
+    selection.sample = nearestPast;
+    selection.selected_offset_ns = pastStampNs - anchor_stamp_ns;
+    if (anchor_stamp_ns - pastStampNs <= max_past_age_ns)
+      selection.status = ImuGravityAccelSelectionStatus::SelectedPast;
+    else
+      selection.status = ImuGravityAccelSelectionStatus::StalePast;
+
+    return selection;
+  }
+
+  if (nearestFuture.has_value())
+  {
+    const int64_t futureStampNs = nearestFuture->stamp.nanoseconds();
+    selection.sample = nearestFuture;
+    selection.selected_offset_ns = futureStampNs - anchor_stamp_ns;
+    if (futureStampNs - anchor_stamp_ns <= future_tolerance_ns)
+      selection.status = ImuGravityAccelSelectionStatus::SelectedFuture;
+    else
+      selection.status = ImuGravityAccelSelectionStatus::FutureTooFar;
+
+    return selection;
+  }
+
+  selection.status = ImuGravityAccelSelectionStatus::NoHistory;
+  return selection;
 }
 
 bool Bno086ImuNode::HasPublishableCoreFrame() const
