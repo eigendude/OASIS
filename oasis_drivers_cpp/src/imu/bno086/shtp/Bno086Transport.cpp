@@ -116,10 +116,7 @@ bool Bno086Transport::ReadPacket(Bno086ShtpPacket& packet, int timeout_ms)
     if (std::all_of(header.begin(), header.end(), [](std::uint8_t value) { return value == 0; }))
     {
       ++m_stats.all_zero_header_count;
-      if (std::chrono::steady_clock::now() >= deadline)
-        return false;
-
-      continue;
+      return false;
     }
 
     Bno086ShtpHeader probedHeader;

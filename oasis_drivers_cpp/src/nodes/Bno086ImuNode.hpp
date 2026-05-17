@@ -176,6 +176,12 @@ private:
     std::uint32_t pending_events_max{0};
     std::uint32_t pending_queue_depth_at_exit{0};
     std::uint32_t pending_queue_depth_max{0};
+    std::uint64_t all_zero_polls_sum{0};
+    std::uint32_t all_zero_polls_this_drain{0};
+    std::uint32_t all_zero_polls_max{0};
+    std::uint32_t consecutive_all_zero_polls{0};
+    std::uint32_t consecutive_all_zero_polls_max{0};
+    std::uint64_t all_zero_backoff_count{0};
     std::uint64_t drain_duration_sum_us{0};
     std::uint32_t drain_duration_max_us{0};
     std::optional<std::uint32_t> drain_duration_min_us;
@@ -199,6 +205,7 @@ private:
     std::uint64_t exit_drain_duration_budget_count{0};
     std::uint64_t exit_sensor_event_budget_count{0};
     std::uint64_t exit_pending_event_flush_budget_count{0};
+    std::uint64_t exit_all_zero_budget_count{0};
     std::array<std::uint64_t, 6> channel_packet_counts{};
   };
 
@@ -360,6 +367,8 @@ private:
   std::uint32_t m_maxPacketsPerInterrupt{1024};
   std::uint32_t m_maxPollIterationsPerInterrupt{4096};
   std::uint32_t m_maxNoProgressPollsPerInterrupt{64};
+  std::uint32_t m_maxAllZeroPollsPerInterrupt{64};
+  int m_allZeroBackoffUs{500};
   int m_maxDrainDurationMs{100};
   std::uint32_t m_maxSensorEventsPerDrain{4096};
   std::uint32_t m_maxPendingEventsFlushPerDrain{1024};

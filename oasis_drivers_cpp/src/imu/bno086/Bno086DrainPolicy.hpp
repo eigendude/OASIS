@@ -27,6 +27,7 @@ enum class Bno086DrainAction
   SensorEventBudget,
   PendingEventFlushBudget,
   DrainDurationBudget,
+  AllZeroBudget,
 };
 
 struct Bno086DrainLimits
@@ -51,6 +52,13 @@ struct Bno086DrainLimits
    * Units: poll iterations, expected range [1, 1024]
    */
   std::uint32_t max_no_progress_polls_per_interrupt{64};
+
+  /*!
+   * \brief Maximum consecutive all-zero header polls while H_INTN is asserted
+   *
+   * Units: poll iterations, expected range [1, 1024]
+   */
+  std::uint32_t max_all_zero_polls_per_interrupt{64};
 
   /*!
    * \brief Maximum decoded SensorEvent objects handled in one drain
@@ -110,6 +118,20 @@ struct Bno086DrainCounters
    * Units: poll iterations, reset when any poll makes progress
    */
   std::uint32_t consecutive_no_progress_polls{0};
+
+  /*!
+   * \brief Number of all-zero header polls during this drain
+   *
+   * Units: poll iterations where the probed SHTP header was all zero
+   */
+  std::uint32_t all_zero_polls_this_drain{0};
+
+  /*!
+   * \brief Consecutive all-zero header polls during this drain
+   *
+   * Units: poll iterations, reset when any poll makes progress
+   */
+  std::uint32_t consecutive_all_zero_polls{0};
 };
 
 struct Bno086DrainDecision

@@ -39,12 +39,25 @@ Bno086DrainDecision Bno086DrainAfterPoll(const Bno086Shtp::PollResult& result,
 
   ++counters.poll_iterations;
 
-  if (result.status == Bno086Shtp::PollStatus::Timeout)
+  if (result.status == Bno086Shtp::PollStatus::Timeout ||
+      result.status == Bno086Shtp::PollStatus::AllZeroHeader)
   {
     ++counters.consecutive_no_progress_polls;
+    if (result.status == Bno086Shtp::PollStatus::AllZeroHeader)
+    {
+      ++counters.all_zero_polls_this_drain;
+      ++counters.consecutive_all_zero_polls;
+    }
+    else
+    {
+      counters.consecutive_all_zero_polls = 0;
+    }
 
     if (!hintn_asserted)
       decision.action = Bno086DrainAction::Complete;
+    else if (result.status == Bno086Shtp::PollStatus::AllZeroHeader &&
+             counters.consecutive_all_zero_polls >= limits.max_all_zero_polls_per_interrupt)
+      decision.action = Bno086DrainAction::AllZeroBudget;
     else if (counters.consecutive_no_progress_polls >= limits.max_no_progress_polls_per_interrupt)
       decision.action = Bno086DrainAction::NoProgressBudget;
     else
@@ -69,6 +82,7 @@ Bno086DrainDecision Bno086DrainAfterPoll(const Bno086Shtp::PollResult& result,
       result.handled_control_packet)
   {
     counters.consecutive_no_progress_polls = 0;
+    counters.consecutive_all_zero_polls = 0;
   }
 
   if (result.status == Bno086Shtp::PollStatus::TransportError)

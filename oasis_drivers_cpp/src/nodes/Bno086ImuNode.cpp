@@ -15,6 +15,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <oasis_msgs/msg/imu_vr.hpp>
@@ -55,6 +56,12 @@ constexpr int MAX_MAX_POLL_ITERATIONS_PER_INTERRUPT = 16384;
 constexpr int DEFAULT_MAX_NO_PROGRESS_POLLS_PER_INTERRUPT = 64;
 constexpr int MIN_MAX_NO_PROGRESS_POLLS_PER_INTERRUPT = 1;
 constexpr int MAX_MAX_NO_PROGRESS_POLLS_PER_INTERRUPT = 1024;
+constexpr int DEFAULT_MAX_ALL_ZERO_POLLS_PER_INTERRUPT = 64;
+constexpr int MIN_MAX_ALL_ZERO_POLLS_PER_INTERRUPT = 1;
+constexpr int MAX_MAX_ALL_ZERO_POLLS_PER_INTERRUPT = 1024;
+constexpr int DEFAULT_ALL_ZERO_BACKOFF_US = 500;
+constexpr int MIN_ALL_ZERO_BACKOFF_US = 0;
+constexpr int MAX_ALL_ZERO_BACKOFF_US = 10'000;
 constexpr int DEFAULT_MAX_DRAIN_DURATION_MS = 100;
 constexpr int MIN_MAX_DRAIN_DURATION_MS = 1;
 constexpr int MAX_MAX_DRAIN_DURATION_MS = 1000;
@@ -197,6 +204,9 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
                     DEFAULT_MAX_POLL_ITERATIONS_PER_INTERRUPT);
   declare_parameter("bno086_max_no_progress_polls_per_interrupt",
                     DEFAULT_MAX_NO_PROGRESS_POLLS_PER_INTERRUPT);
+  declare_parameter("bno086_max_all_zero_polls_per_interrupt",
+                    DEFAULT_MAX_ALL_ZERO_POLLS_PER_INTERRUPT);
+  declare_parameter("bno086_all_zero_backoff_us", DEFAULT_ALL_ZERO_BACKOFF_US);
   declare_parameter("bno086_max_drain_duration_ms", DEFAULT_MAX_DRAIN_DURATION_MS);
   declare_parameter("bno086_max_sensor_events_per_drain", DEFAULT_MAX_SENSOR_EVENTS_PER_DRAIN);
   declare_parameter("bno086_max_pending_events_flush_per_drain",
@@ -252,6 +262,12 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   m_maxNoProgressPollsPerInterrupt = static_cast<std::uint32_t>(std::clamp(
       static_cast<int>(get_parameter("bno086_max_no_progress_polls_per_interrupt").as_int()),
       MIN_MAX_NO_PROGRESS_POLLS_PER_INTERRUPT, MAX_MAX_NO_PROGRESS_POLLS_PER_INTERRUPT));
+  m_maxAllZeroPollsPerInterrupt = static_cast<std::uint32_t>(std::clamp(
+      static_cast<int>(get_parameter("bno086_max_all_zero_polls_per_interrupt").as_int()),
+      MIN_MAX_ALL_ZERO_POLLS_PER_INTERRUPT, MAX_MAX_ALL_ZERO_POLLS_PER_INTERRUPT));
+  m_allZeroBackoffUs =
+      std::clamp(static_cast<int>(get_parameter("bno086_all_zero_backoff_us").as_int()),
+                 MIN_ALL_ZERO_BACKOFF_US, MAX_ALL_ZERO_BACKOFF_US);
   m_maxDrainDurationMs =
       std::clamp(static_cast<int>(get_parameter("bno086_max_drain_duration_ms").as_int()),
                  MIN_MAX_DRAIN_DURATION_MS, MAX_MAX_DRAIN_DURATION_MS);
@@ -464,6 +480,7 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
   drainLimits.max_physical_packets_per_interrupt = m_maxPacketsPerInterrupt;
   drainLimits.max_poll_iterations_per_interrupt = m_maxPollIterationsPerInterrupt;
   drainLimits.max_no_progress_polls_per_interrupt = m_maxNoProgressPollsPerInterrupt;
+  drainLimits.max_all_zero_polls_per_interrupt = m_maxAllZeroPollsPerInterrupt;
   drainLimits.max_sensor_events_per_drain = m_maxSensorEventsPerDrain;
   drainLimits.max_pending_events_flush_per_drain = m_maxPendingEventsFlushPerDrain;
   const rclcpp::Time drainReceiveAnchor = interrupt_ros_at;
@@ -473,6 +490,13 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
   while (m_running.load())
   {
     const bool hintnAssertedBeforePoll = m_interruptGpio.IsAssertedLow();
+    const std::size_t pendingEventsBeforePoll = m_shtp->PendingEventCount();
+    if (pendingEventsBeforePoll == 0 && !hintnAssertedBeforePoll)
+    {
+      drainExitAction = Bno086DrainAction::Complete;
+      break;
+    }
+
     const Bno086DrainDecision beforePollDecision =
         Bno086DrainBeforePoll(drainLimits, drainCounters, hintnAssertedBeforePoll);
     if (beforePollDecision.action == Bno086DrainAction::PollIterationCap)
@@ -487,15 +511,17 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
           "physical_packets_this_drain=%u sensor_events_this_drain=%u "
           "pending_events_this_drain=%u control_packets_this_drain=%u "
           "poll_iterations=%u consecutive_no_progress_polls=%u "
-          "packet_cap=%u poll_iteration_cap=%u no_progress_budget=%u "
+          "all_zero_polls_this_drain=%u consecutive_all_zero_polls=%u "
+          "packet_cap=%u poll_iteration_cap=%u no_progress_budget=%u all_zero_budget=%u "
           "drain_duration_ms=%.3f hintn_asserted=%s",
           drainCounters.physical_packets_this_drain, drainCounters.sensor_events_this_drain,
           drainCounters.pending_events_this_drain, drainCounters.control_packets_this_drain,
           drainCounters.poll_iterations, drainCounters.consecutive_no_progress_polls,
+          drainCounters.all_zero_polls_this_drain, drainCounters.consecutive_all_zero_polls,
           drainLimits.max_physical_packets_per_interrupt,
           drainLimits.max_poll_iterations_per_interrupt,
           drainLimits.max_no_progress_polls_per_interrupt,
-          static_cast<double>(drainDurationUs) / 1e3,
+          drainLimits.max_all_zero_polls_per_interrupt, static_cast<double>(drainDurationUs) / 1e3,
           beforePollDecision.hintn_asserted ? "true" : "false");
       drainExitAction = beforePollDecision.action;
       break;
@@ -504,7 +530,6 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
     const auto elapsedBeforePollMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                                          std::chrono::steady_clock::now() - drainStartedAt)
                                          .count();
-    const std::size_t pendingEventsBeforePoll = m_shtp->PendingEventCount();
     if (pendingEventsBeforePoll == 0 && drainCounters.poll_iterations > 0 &&
         elapsedBeforePollMs >= m_maxDrainDurationMs)
     {
@@ -553,15 +578,40 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
           "sensor_events_this_drain=%u pending_events_this_drain=%u "
           "control_packets_this_drain=%u poll_iterations=%u "
           "consecutive_no_progress_polls=%u no_progress_budget=%u "
+          "all_zero_polls_this_drain=%u consecutive_all_zero_polls=%u "
           "packet_cap=%u poll_iteration_cap=%u drain_duration_ms=%.3f "
           "hintn_asserted=true",
           drainCounters.physical_packets_this_drain, drainCounters.sensor_events_this_drain,
           drainCounters.pending_events_this_drain, drainCounters.control_packets_this_drain,
           drainCounters.poll_iterations, drainCounters.consecutive_no_progress_polls,
-          drainLimits.max_no_progress_polls_per_interrupt,
-          drainLimits.max_physical_packets_per_interrupt,
+          drainLimits.max_no_progress_polls_per_interrupt, drainCounters.all_zero_polls_this_drain,
+          drainCounters.consecutive_all_zero_polls, drainLimits.max_physical_packets_per_interrupt,
           drainLimits.max_poll_iterations_per_interrupt,
           static_cast<double>(drainDurationUs) / 1e3);
+      drainExitAction = afterPollDecision.action;
+      break;
+    }
+
+    if (afterPollDecision.action == Bno086DrainAction::AllZeroBudget)
+    {
+      const auto drainDurationUs =
+          static_cast<std::uint32_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+                                         std::chrono::steady_clock::now() - drainStartedAt)
+                                         .count());
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "BNO086 interrupt drain exhausted all-zero retry budget while H_INTN "
+          "remained asserted: physical_packets_this_drain=%u "
+          "sensor_events_this_drain=%u pending_events_this_drain=%u "
+          "control_packets_this_drain=%u poll_iterations=%u "
+          "all_zero_polls_this_drain=%u consecutive_all_zero_polls=%u "
+          "all_zero_budget=%u all_zero_backoff_us=%d drain_duration_ms=%.3f "
+          "hintn_asserted=true",
+          drainCounters.physical_packets_this_drain, drainCounters.sensor_events_this_drain,
+          drainCounters.pending_events_this_drain, drainCounters.control_packets_this_drain,
+          drainCounters.poll_iterations, drainCounters.all_zero_polls_this_drain,
+          drainCounters.consecutive_all_zero_polls, drainLimits.max_all_zero_polls_per_interrupt,
+          m_allZeroBackoffUs, static_cast<double>(drainDurationUs) / 1e3);
       drainExitAction = afterPollDecision.action;
       break;
     }
@@ -578,6 +628,14 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
                            "BNO086 transport error while draining interrupt data");
       drainExitAction = afterPollDecision.action;
       break;
+    }
+
+    if (pollResult.status == Bno086Shtp::PollStatus::AllZeroHeader &&
+        afterPollDecision.action == Bno086DrainAction::Continue &&
+        afterPollDecision.hintn_asserted && m_allZeroBackoffUs > 0)
+    {
+      ++m_drainDiagnostics.all_zero_backoff_count;
+      std::this_thread::sleep_for(std::chrono::microseconds(m_allZeroBackoffUs));
     }
 
     MaybeLogFeatureResponses();
@@ -675,15 +733,19 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
             "remained asserted: physical_packets_this_drain=%u "
             "sensor_events_this_drain=%u pending_events_this_drain=%u "
             "control_packets_this_drain=%u poll_iterations=%u "
-            "consecutive_no_progress_polls=%u packet_cap=%u "
-            "poll_iteration_cap=%u no_progress_budget=%u drain_duration_ms=%.3f "
+            "consecutive_no_progress_polls=%u all_zero_polls_this_drain=%u "
+            "consecutive_all_zero_polls=%u packet_cap=%u "
+            "poll_iteration_cap=%u no_progress_budget=%u all_zero_budget=%u "
+            "drain_duration_ms=%.3f "
             "hintn_asserted=true",
             drainCounters.physical_packets_this_drain, drainCounters.sensor_events_this_drain,
             drainCounters.pending_events_this_drain, drainCounters.control_packets_this_drain,
             drainCounters.poll_iterations, drainCounters.consecutive_no_progress_polls,
+            drainCounters.all_zero_polls_this_drain, drainCounters.consecutive_all_zero_polls,
             drainLimits.max_physical_packets_per_interrupt,
             drainLimits.max_poll_iterations_per_interrupt,
             drainLimits.max_no_progress_polls_per_interrupt,
+            drainLimits.max_all_zero_polls_per_interrupt,
             static_cast<double>(drainDurationUs) / 1e3);
       }
       drainExitAction = afterPollDecision.action;
@@ -1335,6 +1397,13 @@ void Bno086ImuNode::RecordDrainThroughputDiagnostics(const Bno086DrainCounters& 
   m_drainDiagnostics.pending_queue_depth_at_exit = pending_queue_depth_at_exit;
   m_drainDiagnostics.pending_queue_depth_max =
       std::max(m_drainDiagnostics.pending_queue_depth_max, pending_queue_depth_at_exit);
+  m_drainDiagnostics.all_zero_polls_sum += counters.all_zero_polls_this_drain;
+  m_drainDiagnostics.all_zero_polls_this_drain = counters.all_zero_polls_this_drain;
+  m_drainDiagnostics.all_zero_polls_max =
+      std::max(m_drainDiagnostics.all_zero_polls_max, counters.all_zero_polls_this_drain);
+  m_drainDiagnostics.consecutive_all_zero_polls = counters.consecutive_all_zero_polls;
+  m_drainDiagnostics.consecutive_all_zero_polls_max = std::max(
+      m_drainDiagnostics.consecutive_all_zero_polls_max, counters.consecutive_all_zero_polls);
 
   m_drainDiagnostics.drain_duration_sum_us += drain_duration_us;
   m_drainDiagnostics.drain_duration_max_us =
@@ -1378,6 +1447,9 @@ void Bno086ImuNode::RecordDrainThroughputDiagnostics(const Bno086DrainCounters& 
     ++m_drainDiagnostics.pending_flush_budget_hit_count;
     ++m_drainDiagnostics.exit_pending_event_flush_budget_count;
   }
+
+  if (exit_action == Bno086DrainAction::AllZeroBudget)
+    ++m_drainDiagnostics.exit_all_zero_budget_count;
 
   if (exit_action == Bno086DrainAction::NoProgressBudget)
   {
@@ -1510,6 +1582,10 @@ std::string Bno086ImuNode::BuildImuGravityDiagnosticsLogMessage() const
       m_drainDiagnostics.drains > 0
           ? static_cast<double>(m_drainDiagnostics.pending_events_sum) / drainCount
           : 0.0;
+  const double allZeroPollsMean =
+      m_drainDiagnostics.drains > 0
+          ? static_cast<double>(m_drainDiagnostics.all_zero_polls_sum) / drainCount
+          : 0.0;
   const double drainDurationMeanMs =
       m_drainDiagnostics.drains > 0
           ? static_cast<double>(m_drainDiagnostics.drain_duration_sum_us) / drainCount / 1.0e3
@@ -1585,6 +1661,12 @@ std::string Bno086ImuNode::BuildImuGravityDiagnosticsLogMessage() const
       << "pending_events_per_drain_max=" << m_drainDiagnostics.pending_events_max << " "
       << "pending_queue_depth_at_exit=" << m_drainDiagnostics.pending_queue_depth_at_exit << " "
       << "pending_queue_depth_max=" << m_drainDiagnostics.pending_queue_depth_max << " "
+      << "all_zero_polls_this_drain=" << m_drainDiagnostics.all_zero_polls_this_drain << " "
+      << "all_zero_polls_per_drain_mean=" << allZeroPollsMean << " "
+      << "all_zero_polls_per_drain_max=" << m_drainDiagnostics.all_zero_polls_max << " "
+      << "consecutive_all_zero_polls=" << m_drainDiagnostics.consecutive_all_zero_polls << " "
+      << "consecutive_all_zero_polls_max=" << m_drainDiagnostics.consecutive_all_zero_polls_max
+      << " " << "all_zero_backoff_count=" << m_drainDiagnostics.all_zero_backoff_count << " "
       << "drain_duration_ms_min="
       << static_cast<double>(m_drainDiagnostics.drain_duration_min_us.value_or(0)) / 1.0e3 << " "
       << "drain_duration_ms_mean=" << drainDurationMeanMs << " " << "drain_duration_ms_max="
@@ -1617,6 +1699,7 @@ std::string Bno086ImuNode::BuildImuGravityDiagnosticsLogMessage() const
       << "exit_sensor_event_budget_count=" << m_drainDiagnostics.exit_sensor_event_budget_count
       << " " << "exit_pending_event_flush_budget_count="
       << m_drainDiagnostics.exit_pending_event_flush_budget_count << " "
+      << "exit_all_zero_budget_count=" << m_drainDiagnostics.exit_all_zero_budget_count << " "
       << "i2c_read_error_count=" << transportStats.i2c_read_error_count << " "
       << "i2c_read_timeout_count=" << transportStats.i2c_read_timeout_count << " "
       << "invalid_header_count=" << transportStats.invalid_header_count << " "

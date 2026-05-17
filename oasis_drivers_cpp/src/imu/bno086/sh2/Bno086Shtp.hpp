@@ -114,6 +114,7 @@ public:
   enum class PollStatus
   {
     Timeout,
+    AllZeroHeader,
     PacketHandled,
     SensorEvent,
     TransportError,

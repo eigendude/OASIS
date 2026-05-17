@@ -30,6 +30,13 @@ Bno086Shtp::PollResult TimeoutResult()
   result.status = Bno086Shtp::PollStatus::Timeout;
   return result;
 }
+
+Bno086Shtp::PollResult AllZeroResult()
+{
+  Bno086Shtp::PollResult result;
+  result.status = Bno086Shtp::PollStatus::AllZeroHeader;
+  return result;
+}
 } // namespace
 
 TEST(Bno086DrainPolicy, pendingDecodedEventsDoNotIncrementPhysicalPacketCount)
@@ -127,6 +134,47 @@ TEST(Bno086DrainPolicy, physicalProgressResetsNoProgressBudget)
 
   EXPECT_EQ(decision.action, Bno086DrainAction::Continue);
   EXPECT_EQ(counters.consecutive_no_progress_polls, 1U);
+}
+
+TEST(Bno086DrainPolicy, allZeroHeaderTracksSeparateBudget)
+{
+  Bno086DrainLimits limits;
+  limits.max_no_progress_polls_per_interrupt = 16;
+  limits.max_all_zero_polls_per_interrupt = 2;
+  Bno086DrainCounters counters;
+
+  ASSERT_EQ(Bno086DrainAfterPoll(AllZeroResult(), limits, counters, true).action,
+            Bno086DrainAction::Continue);
+
+  const Bno086DrainDecision decision =
+      Bno086DrainAfterPoll(AllZeroResult(), limits, counters, true);
+
+  EXPECT_EQ(decision.action, Bno086DrainAction::AllZeroBudget);
+  EXPECT_TRUE(decision.hintn_asserted);
+  EXPECT_EQ(counters.poll_iterations, 2U);
+  EXPECT_EQ(counters.consecutive_no_progress_polls, 2U);
+  EXPECT_EQ(counters.all_zero_polls_this_drain, 2U);
+  EXPECT_EQ(counters.consecutive_all_zero_polls, 2U);
+}
+
+TEST(Bno086DrainPolicy, physicalProgressResetsAllZeroBudget)
+{
+  Bno086DrainLimits limits;
+  limits.max_no_progress_polls_per_interrupt = 16;
+  limits.max_all_zero_polls_per_interrupt = 2;
+  Bno086DrainCounters counters;
+
+  ASSERT_EQ(Bno086DrainAfterPoll(AllZeroResult(), limits, counters, true).action,
+            Bno086DrainAction::Continue);
+  ASSERT_EQ(Bno086DrainAfterPoll(SensorEventResult(true, false), limits, counters, true).action,
+            Bno086DrainAction::Continue);
+
+  const Bno086DrainDecision decision =
+      Bno086DrainAfterPoll(AllZeroResult(), limits, counters, true);
+
+  EXPECT_EQ(decision.action, Bno086DrainAction::Continue);
+  EXPECT_EQ(counters.all_zero_polls_this_drain, 2U);
+  EXPECT_EQ(counters.consecutive_all_zero_polls, 1U);
 }
 
 TEST(Bno086DrainPolicy, timeoutBeforeProgressWithHintnDeassertedCompletes)

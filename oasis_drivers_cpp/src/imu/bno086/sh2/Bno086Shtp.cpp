@@ -98,8 +98,15 @@ Bno086Shtp::PollResult Bno086Shtp::Poll(int timeout_ms)
   }
 
   Bno086ShtpPacket packet;
+  const Bno086TransportStats statsBefore = m_transport.GetStats();
   if (!m_transport.ReadPacket(packet, timeout_ms))
+  {
+    const Bno086TransportStats statsAfter = m_transport.GetStats();
+    if (statsAfter.all_zero_header_count > statsBefore.all_zero_header_count)
+      result.status = PollStatus::AllZeroHeader;
+
     return result;
+  }
 
   result.read_physical_packet = true;
   result.packet_channel = packet.channel;
