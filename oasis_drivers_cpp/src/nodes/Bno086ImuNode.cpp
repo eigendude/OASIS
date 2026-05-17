@@ -139,27 +139,6 @@ std::optional<std::uint32_t> RateHzToIntervalUs(double rate_hz)
   return static_cast<std::uint32_t>(std::max(1.0, std::round(1'000'000.0 / rate_hz)));
 }
 
-const char* TimestampReanchorReasonName(TimestampReanchorReason reason)
-{
-  switch (reason)
-  {
-    case TimestampReanchorReason::Startup:
-      return "startup";
-    case TimestampReanchorReason::Forward:
-      return "forward";
-    case TimestampReanchorReason::Wrap:
-      return "wrap";
-    case TimestampReanchorReason::Reset:
-      return "reset";
-    case TimestampReanchorReason::ImplausibleDrift:
-      return "implausible_drift";
-    case TimestampReanchorReason::MissingBase:
-      return "missing_base";
-    case TimestampReanchorReason::None:
-    default:
-      return "none";
-  }
-}
 } // namespace
 
 Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
@@ -493,7 +472,6 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
       // one stable receive anchor for the interrupt drain so reports in a
       // batch are not timestamped later merely because they were read later
       // over I2C.
-      const rclcpp::Time eventStamp = EstimateEventStamp(*pollResult.event, drainReceiveAnchor);
       const auto normalizerIndex = static_cast<std::size_t>(pollResult.event->report_id);
       const std::optional<std::uint32_t> expectedIntervalUs =
           EffectiveReportIntervalUs(pollResult.event->report_id);
@@ -501,17 +479,19 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
           expectedIntervalUs.has_value()
               ? std::make_optional(static_cast<int64_t>(*expectedIntervalUs) * 1'000)
               : std::nullopt;
+      const rclcpp::Time eventStamp =
+          EstimateEventStamp(*pollResult.event, drainReceiveAnchor, expectedIntervalNs);
 
-      // Units: ns. Allows mapped batched samples to land just ahead of the
-      // stable host drain anchor; chosen above the 40 ms max batch interval.
-      constexpr int64_t kMappedTimestampFutureSlopNs = 50'000'000;
+      // Units: ns. Allows cadence-derived batched samples to land just ahead
+      // of the stable host drain anchor
+      constexpr int64_t kCadenceTimestampFutureSlopNs = 50'000'000;
 
       const TimestampNormalizationResult normalizedStamp =
           m_timestampNormalizers[normalizerIndex].Normalize(
               TimestampSample{pollResult.event->sequence, eventStamp.nanoseconds(),
                               drainReceiveAnchor.nanoseconds(),
-                              pollResult.event->has_base_timestamp
-                                  ? std::make_optional(kMappedTimestampFutureSlopNs)
+                              expectedIntervalNs.has_value()
+                                  ? std::make_optional(kCadenceTimestampFutureSlopNs)
                                   : std::nullopt},
               expectedIntervalNs);
       RecordTimestampTrace(*pollResult.event, eventStamp.nanoseconds(),
@@ -1772,62 +1752,30 @@ void Bno086ImuNode::ApplyEvent(const SensorEvent& event, const rclcpp::Time& sam
 }
 
 rclcpp::Time Bno086ImuNode::EstimateEventStamp(const SensorEvent& event,
-                                               const rclcpp::Time& interrupt_ros_at)
+                                               const rclcpp::Time& interrupt_ros_at,
+                                               std::optional<int64_t> expected_interval_ns)
 {
-  if (!event.has_base_timestamp)
-  {
-    rclcpp::Time fallbackStamp = interrupt_ros_at;
-    if (event.has_delay)
-      fallbackStamp = fallbackStamp - DurationFromUs(event.delay_us);
+  const auto trackerIndex = static_cast<std::size_t>(event.report_id);
+  const ReportTimestampTrackerResult trackedStamp = m_timestampTrackers[trackerIndex].Update(
+      ReportTimestampTrackerInput{event.sequence, expected_interval_ns,
+                                  interrupt_ros_at.nanoseconds(), event.has_delay, event.delay_us});
 
-    return fallbackStamp;
+  if (trackedStamp.reanchored || trackedStamp.gap_detected)
+  {
+    RCLCPP_DEBUG_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "BNO086 timestamp tracker state: report=%s initialized=%s "
+        "reanchored=%s gap_detected=%s duplicate_sequence=%s "
+        "sequence_delta=%u used_interval_cadence=%s "
+        "used_host_anchor=%s",
+        ReportName(event.report_id), trackedStamp.initialized ? "true" : "false",
+        trackedStamp.reanchored ? "true" : "false", trackedStamp.gap_detected ? "true" : "false",
+        trackedStamp.duplicate_sequence ? "true" : "false", trackedStamp.sequence_delta,
+        trackedStamp.used_interval_cadence ? "true" : "false",
+        trackedStamp.used_host_anchor ? "true" : "false");
   }
 
-  const TimestampMappingResult mappedStamp = m_timestampMapper.Map(TimestampMappingInput{
-      event.has_base_timestamp,
-      event.base_timestamp_us,
-      event.has_delay,
-      event.delay_us,
-      event.sequence,
-      interrupt_ros_at.nanoseconds(),
-  });
-
-  if (mappedStamp.initialized_offset || mappedStamp.reanchored_offset ||
-      mappedStamp.detected_wrap_or_reset || mappedStamp.rejected_implausible_mapping)
-  {
-    RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
-                          "BNO086 timestamp mapper state: initialized=%s reanchored=%s "
-                          "wrap_or_reset=%s rejected_implausible=%s",
-                          mappedStamp.initialized_offset ? "true" : "false",
-                          mappedStamp.reanchored_offset ? "true" : "false",
-                          mappedStamp.detected_wrap_or_reset ? "true" : "false",
-                          mappedStamp.rejected_implausible_mapping ? "true" : "false");
-  }
-
-  if (mappedStamp.reanchor_reason != TimestampReanchorReason::None &&
-      mappedStamp.reanchor_reason != TimestampReanchorReason::MissingBase)
-  {
-    RCLCPP_DEBUG(get_logger(),
-                 "BNO086 timestamp mapper reanchor: reason=%s "
-                 "previous_base_timestamp_us=%u current_base_timestamp_us=%u "
-                 "raw_base_delta_us=%lld previous_extended_device_time_us=%lld "
-                 "current_extended_device_time_us=%lld packet_host_stamp_ns=%lld "
-                 "old_offset_ns=%lld new_offset_ns=%lld offset_delta_ms=%.3f "
-                 "mapped_stamp_before_reanchor_ns=%lld "
-                 "mapped_stamp_after_reanchor_ns=%lld",
-                 TimestampReanchorReasonName(mappedStamp.reanchor_reason),
-                 mappedStamp.previous_base_timestamp_us, mappedStamp.current_base_timestamp_us,
-                 static_cast<long long>(mappedStamp.raw_base_delta_us),
-                 static_cast<long long>(mappedStamp.previous_extended_device_time_us),
-                 static_cast<long long>(mappedStamp.current_extended_device_time_us),
-                 static_cast<long long>(mappedStamp.packet_host_stamp_ns),
-                 static_cast<long long>(mappedStamp.old_offset_ns),
-                 static_cast<long long>(mappedStamp.new_offset_ns), mappedStamp.offset_delta_ms,
-                 static_cast<long long>(mappedStamp.mapped_stamp_before_reanchor_ns),
-                 static_cast<long long>(mappedStamp.mapped_stamp_after_reanchor_ns));
-  }
-
-  return rclcpp::Time(mappedStamp.stamp_ns, RCL_ROS_TIME);
+  return rclcpp::Time(trackedStamp.stamp_ns, RCL_ROS_TIME);
 }
 
 std::array<double, 9> Bno086ImuNode::PredictedCovarianceFromPresent(

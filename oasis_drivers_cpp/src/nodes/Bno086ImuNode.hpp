@@ -12,7 +12,7 @@
 #include "imu/bno086/Bno086Gpio.hpp"
 #include "imu/bno086/Bno086GravityUtils.hpp"
 #include "imu/bno086/Bno086OrientationCovariancePolicy.hpp"
-#include "imu/bno086/Bno086TimestampMapper.hpp"
+#include "imu/bno086/Bno086ReportTimestampTracker.hpp"
 #include "imu/bno086/Bno086TimestampNormalizer.hpp"
 #include "imu/bno086/sh2/Bno086Reports.hpp"
 #include "imu/bno086/sh2/Bno086Shtp.hpp"
@@ -181,7 +181,8 @@ private:
 
   void ApplyEvent(const OASIS::IMU::BNO086::SensorEvent& event, const rclcpp::Time& sample_stamp);
   rclcpp::Time EstimateEventStamp(const OASIS::IMU::BNO086::SensorEvent& event,
-                                  const rclcpp::Time& interrupt_ros_at);
+                                  const rclcpp::Time& interrupt_ros_at,
+                                  std::optional<int64_t> expected_interval_ns);
   sensor_msgs::msg::Imu BuildPresentImuMessage(const rclcpp::Time& stamp) const;
   sensor_msgs::msg::Imu BuildImuGravityMessage(const rclcpp::Time& stamp) const;
   geometry_msgs::msg::AccelWithCovarianceStamped BuildGravityMessage(
@@ -277,7 +278,7 @@ private:
   std::atomic<bool> m_running{false};
   std::thread m_interruptThread;
 
-  OASIS::IMU::BNO086::Bno086TimestampMapper m_timestampMapper;
+  std::array<OASIS::IMU::BNO086::Bno086ReportTimestampTracker, 256> m_timestampTrackers{};
   std::array<OASIS::IMU::BNO086::Bno086TimestampNormalizer, 256> m_timestampNormalizers{};
   std::optional<CoreFrameSignature> m_lastPublishedCoreSignature;
   std::optional<int64_t> m_lastPublishedImuGravityAccelStampNs;
