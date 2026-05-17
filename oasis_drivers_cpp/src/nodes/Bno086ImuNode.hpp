@@ -13,6 +13,7 @@
 #include "imu/bno086/Bno086Gpio.hpp"
 #include "imu/bno086/Bno086GravityUtils.hpp"
 #include "imu/bno086/Bno086OrientationCovariancePolicy.hpp"
+#include "imu/bno086/Bno086TimestampMapper.hpp"
 #include "imu/bno086/Bno086TimestampNormalizer.hpp"
 #include "imu/bno086/sh2/Bno086Reports.hpp"
 #include "imu/bno086/sh2/Bno086Shtp.hpp"
@@ -240,8 +241,7 @@ private:
   std::atomic<bool> m_running{false};
   std::thread m_interruptThread;
 
-  std::optional<std::uint32_t> m_lastBaseTimestampUs;
-  std::optional<rclcpp::Time> m_lastBaseRosStamp;
+  OASIS::IMU::BNO086::Bno086TimestampMapper m_timestampMapper;
   std::array<OASIS::IMU::BNO086::Bno086TimestampNormalizer, 256> m_timestampNormalizers{};
   std::optional<CoreFrameSignature> m_lastPublishedCoreSignature;
   std::optional<int64_t> m_lastPublishedImuGravityAccelStampNs;

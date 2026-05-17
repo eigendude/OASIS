@@ -74,6 +74,10 @@ add_library(bno086_timestamp_normalizer
   src/imu/bno086/Bno086TimestampNormalizer.cpp
 )
 
+add_library(bno086_timestamp_mapper
+  src/imu/bno086/Bno086TimestampMapper.cpp
+)
+
 add_library(bno086_shtp
   src/imu/bno086/shtp/Bno086ShtpHeader.cpp
   src/imu/bno086/shtp/Bno086Transport.cpp
@@ -99,6 +103,7 @@ target_link_libraries(bno086_imu_driver
   bno086_orientation_covariance_policy
   bno086_sh2
   bno086_shtp
+  bno086_timestamp_mapper
   bno086_timestamp_normalizer
   ${geometry_msgs_TARGETS}
   ${oasis_msgs_TARGETS}
@@ -308,6 +313,14 @@ if(BUILD_TESTING)
     test/imu/bno086/test_Bno086TimestampNormalizer.cpp
   )
   target_link_libraries(test_bno086_timestamp_normalizer
+    bno086_timestamp_normalizer
+  )
+
+  ament_add_gtest(test_bno086_timestamp_mapper
+    test/imu/bno086/test_Bno086TimestampMapper.cpp
+  )
+  target_link_libraries(test_bno086_timestamp_mapper
+    bno086_timestamp_mapper
     bno086_timestamp_normalizer
   )
 

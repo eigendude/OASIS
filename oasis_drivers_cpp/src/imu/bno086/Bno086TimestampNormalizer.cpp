@@ -15,13 +15,12 @@ namespace OASIS::IMU::BNO086
 {
 namespace
 {
-// Maximum tolerated age of a reconstructed report stamp relative to the host
-// packet arrival time. Older reconstructions are treated as a timestamp-domain
-// reset and replaced with packet host time.
+// Units: ns. Maximum tolerated age of a reconstructed report stamp relative
+// to host packet arrival before replacing it with packet host time.
 constexpr int64_t kMaxPastSkewNs = 100'000'000;
 
-// Maximum tolerated future skew of a reconstructed report stamp relative to
-// packet host time. Future-biased reconstructions are replaced with host time.
+// Units: ns. Default future skew tolerated before replacing a reconstructed
+// stamp with host time; mapped device-time samples may override this.
 constexpr int64_t kMaxFutureSkewNs = 5'000'000;
 
 bool HasSequenceGap(std::uint8_t last_sequence, std::uint8_t current_sequence)
@@ -42,8 +41,9 @@ TimestampNormalizationResult Bno086TimestampNormalizer::Normalize(
   TimestampNormalizationResult result;
   result.stamp_ns = sample.stamp_ns;
 
+  const int64_t maxFutureSkewNs = sample.max_future_skew_ns.value_or(kMaxFutureSkewNs);
   const int64_t hostDeltaNs = sample.packet_host_stamp_ns - sample.stamp_ns;
-  if (hostDeltaNs > kMaxPastSkewNs || hostDeltaNs < -kMaxFutureSkewNs)
+  if (hostDeltaNs > kMaxPastSkewNs || hostDeltaNs < -maxFutureSkewNs)
   {
     result.stamp_ns = sample.packet_host_stamp_ns;
     result.reconstruction_reset = true;

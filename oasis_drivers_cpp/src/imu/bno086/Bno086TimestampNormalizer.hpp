@@ -18,6 +18,19 @@ namespace OASIS::IMU::BNO086
  */
 struct TimestampSample
 {
+  TimestampSample() = default;
+
+  TimestampSample(std::uint8_t sequence_value,
+                  int64_t stamp_value_ns,
+                  int64_t packet_host_stamp_value_ns,
+                  std::optional<int64_t> max_future_skew_value_ns = std::nullopt)
+    : sequence(sequence_value),
+      stamp_ns(stamp_value_ns),
+      packet_host_stamp_ns(packet_host_stamp_value_ns),
+      max_future_skew_ns(max_future_skew_value_ns)
+  {
+  }
+
   /*!
    * \brief Report sequence value associated with the sample
    *
@@ -38,6 +51,13 @@ struct TimestampSample
    * Units: nanoseconds on the caller's monotonic timeline
    */
   int64_t packet_host_stamp_ns{0};
+
+  /*!
+   * \brief Optional future skew accepted before host-time reset
+   *
+   * Units: nanoseconds, unset uses the normalizer default
+   */
+  std::optional<int64_t> max_future_skew_ns;
 };
 
 /*!

@@ -54,7 +54,6 @@ constexpr int MIN_MAX_POLL_ITERATIONS_PER_INTERRUPT = 1;
 constexpr int MAX_MAX_POLL_ITERATIONS_PER_INTERRUPT = 16384;
 constexpr std::uint32_t REPEATED_NO_PROGRESS_TIMEOUT_WARN_COUNT = 3;
 
-constexpr std::uint32_t MAX_BASE_TIMESTAMP_STEP_US = 1'000'000;
 constexpr std::uint32_t MIN_COHERENT_SAMPLE_SPAN_US = 3'000;
 constexpr std::uint32_t MAX_COHERENT_SAMPLE_SPAN_US = 20'000;
 constexpr double DEFAULT_PREDICTION_HORIZON_SEC = 0.0;
@@ -465,10 +464,18 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
           expectedIntervalUs.has_value()
               ? std::make_optional(static_cast<int64_t>(*expectedIntervalUs) * 1'000)
               : std::nullopt;
+
+      // Units: ns. Allows mapped batched samples to land just ahead of the
+      // stable host drain anchor; chosen above the 40 ms max batch interval.
+      constexpr int64_t kMappedTimestampFutureSlopNs = 50'000'000;
+
       const TimestampNormalizationResult normalizedStamp =
           m_timestampNormalizers[normalizerIndex].Normalize(
               TimestampSample{pollResult.event->sequence, eventStamp.nanoseconds(),
-                              drainReceiveAnchor.nanoseconds()},
+                              drainReceiveAnchor.nanoseconds(),
+                              pollResult.event->has_base_timestamp
+                                  ? std::make_optional(kMappedTimestampFutureSlopNs)
+                                  : std::nullopt},
               expectedIntervalNs);
 
       if (normalizedStamp.reconstruction_reset)
@@ -1572,26 +1579,37 @@ void Bno086ImuNode::ApplyEvent(const SensorEvent& event, const rclcpp::Time& sam
 rclcpp::Time Bno086ImuNode::EstimateEventStamp(const SensorEvent& event,
                                                const rclcpp::Time& interrupt_ros_at)
 {
-  rclcpp::Time estimatedStamp = interrupt_ros_at;
-
-  if (event.has_base_timestamp)
+  if (!event.has_base_timestamp)
   {
-    if (m_lastBaseTimestampUs.has_value() && m_lastBaseRosStamp.has_value())
-    {
-      const std::uint32_t deltaUs = event.base_timestamp_us - *m_lastBaseTimestampUs;
+    rclcpp::Time fallbackStamp = interrupt_ros_at;
+    if (event.has_delay)
+      fallbackStamp = fallbackStamp - DurationFromUs(event.delay_us);
 
-      if (deltaUs <= MAX_BASE_TIMESTAMP_STEP_US)
-        estimatedStamp = *m_lastBaseRosStamp + DurationFromUs(deltaUs);
-    }
-
-    m_lastBaseTimestampUs = event.base_timestamp_us;
-    m_lastBaseRosStamp = estimatedStamp;
+    return fallbackStamp;
   }
 
-  if (event.has_delay)
-    estimatedStamp = estimatedStamp - DurationFromUs(event.delay_us);
+  const TimestampMappingResult mappedStamp = m_timestampMapper.Map(TimestampMappingInput{
+      event.has_base_timestamp,
+      event.base_timestamp_us,
+      event.has_delay,
+      event.delay_us,
+      event.sequence,
+      interrupt_ros_at.nanoseconds(),
+  });
 
-  return estimatedStamp;
+  if (mappedStamp.initialized_offset || mappedStamp.reanchored_offset ||
+      mappedStamp.detected_wrap_or_reset || mappedStamp.rejected_implausible_mapping)
+  {
+    RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
+                          "BNO086 timestamp mapper state: initialized=%s reanchored=%s "
+                          "wrap_or_reset=%s rejected_implausible=%s",
+                          mappedStamp.initialized_offset ? "true" : "false",
+                          mappedStamp.reanchored_offset ? "true" : "false",
+                          mappedStamp.detected_wrap_or_reset ? "true" : "false",
+                          mappedStamp.rejected_implausible_mapping ? "true" : "false");
+  }
+
+  return rclcpp::Time(mappedStamp.stamp_ns, RCL_ROS_TIME);
 }
 
 std::array<double, 9> Bno086ImuNode::PredictedCovarianceFromPresent(
