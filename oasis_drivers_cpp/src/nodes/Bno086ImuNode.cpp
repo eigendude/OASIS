@@ -112,12 +112,18 @@ constexpr double MIN_HEALTHY_RATE_FRACTION = 0.5;
 constexpr int64_t MAX_PLAUSIBLE_SAMPLE_DELAY_NS = 50'000'000;
 
 // QoS parameters
+//
+// RELIABLE for required BNO -> AHRS pipeline streams with bounded history
 constexpr std::size_t RAW_IMU_GRAVITY_QOS_DEPTH = 256;
-constexpr std::size_t RAW_IMU_QOS_DEPTH = 10;
-constexpr std::size_t RAW_GRAVITY_QOS_DEPTH = 32;
+constexpr std::size_t RAW_IMU_QOS_DEPTH = 512;
+constexpr std::size_t RAW_GRAVITY_QOS_DEPTH = 256;
+
+// BEST_EFFORT only for disposable live/debug streams
+constexpr std::size_t DEBUG_IMU_QOS_DEPTH = 10;
 
 rclcpp::QoS BestEffortSensorQos(std::size_t depth)
 {
+  // BEST_EFFORT is reserved for disposable live/debug sensor streams
   rclcpp::QoS qos{rclcpp::KeepLast(depth)};
   qos.best_effort();
   qos.durability_volatile();
@@ -126,6 +132,7 @@ rclcpp::QoS BestEffortSensorQos(std::size_t depth)
 
 rclcpp::QoS ReliableSensorQos(std::size_t depth)
 {
+  // RELIABLE is used for required pipeline and replay-facing streams
   rclcpp::QoS qos{rclcpp::KeepLast(depth)};
   qos.reliable();
   qos.durability_volatile();
@@ -507,11 +514,11 @@ bool Bno086ImuNode::Initialize()
   m_rateDiagnostics = std::make_unique<RateDiagnostics>();
 
   m_imuPublisher =
-      create_publisher<sensor_msgs::msg::Imu>(IMU_TOPIC, BestEffortSensorQos(RAW_IMU_QOS_DEPTH));
+      create_publisher<sensor_msgs::msg::Imu>(IMU_TOPIC, ReliableSensorQos(RAW_IMU_QOS_DEPTH));
   m_imuPredictedPublisher = create_publisher<sensor_msgs::msg::Imu>(
-      IMU_PREDICTED_TOPIC, BestEffortSensorQos(RAW_IMU_QOS_DEPTH));
+      IMU_PREDICTED_TOPIC, BestEffortSensorQos(DEBUG_IMU_QOS_DEPTH));
   m_imuVrPublisher = create_publisher<oasis_msgs::msg::ImuVr>(
-      IMU_VR_TOPIC, BestEffortSensorQos(RAW_IMU_QOS_DEPTH));
+      IMU_VR_TOPIC, BestEffortSensorQos(DEBUG_IMU_QOS_DEPTH));
   m_gravityPublisher = create_publisher<geometry_msgs::msg::AccelWithCovarianceStamped>(
       GRAVITY_TOPIC, ReliableSensorQos(RAW_GRAVITY_QOS_DEPTH));
   m_imuGravityPublisher = create_publisher<sensor_msgs::msg::Imu>(

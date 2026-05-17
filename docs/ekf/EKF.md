@@ -4,8 +4,9 @@ This document defines the localization EKF around the current sensor contract.
 
 The EKF fuses:
 
-- `imu` for high-rate motion and attitude information
-- `gravity` for gravity-direction consistency and roll/pitch stabilization
+- `ahrs/imu` for high-rate motion and attitude information
+- `ahrs/gravity` for gravity-direction consistency and roll/pitch
+  stabilization
 - `apriltags` for global pose correction and landmark constraints
 - `camera_info` for the AprilTag reprojection model
 
@@ -59,7 +60,7 @@ Camera-frame policy:
 
 ## 2. ROS inputs
 
-### 2.1 `imu` — `sensor_msgs/Imu`
+### 2.1 `ahrs/imu` — `sensor_msgs/Imu`
 
 Role:
 
@@ -81,13 +82,17 @@ Requirements:
 - quaternion must be finite and non-zero norm
 - quaternion is normalized before use
 - full covariances are preserved when valid
-- IMU vectors are expressed in `{I}`
-- `imu.header.frame_id == "imu_link"` by policy
+- IMU vectors are expressed in `{B}`
+- `imu.header.frame_id == "base_link"` by policy
 
-The EKF uses the fixed transform `T_BI` from `imu_link` to `base_link` to map
-measurements into base coordinates. The current default source for `T_BI` is
-the boot-time mounting calibration contract in `AHRS_Mounting.md`, though the
-EKF only assumes that a fixed extrinsic is already available.
+The default EKF IMU input is `/oasis/<host>/ahrs/imu`. That stream is already
+mounted into `base_link` by AHRS and carries gravity-removed linear
+acceleration for propagation.
+
+Do not feed both `ahrs/imu` and `ahrs/imu_gravity` as independent propagation
+inputs. `ahrs/imu_gravity` is reserved for VIO/SLAM-facing consumers or an
+estimator model that explicitly expects gravity-included calibrated
+acceleration.
 
 For the mounted `ahrs/imu` stream, the published orientation covariance should
 be interpreted as an AHRS-owned downstream contract rather than a simple copy
@@ -102,7 +107,7 @@ of coarse driver orientation buckets:
 - the yaw variance entry is modeled separately by AHRS because gravity does not
   observe heading
 
-### 2.2 `gravity` — `geometry_msgs/AccelWithCovarianceStamped`
+### 2.2 `ahrs/gravity` — `geometry_msgs/AccelWithCovarianceStamped`
 
 Role:
 
@@ -121,8 +126,8 @@ Requirements:
 
 - gravity is required
 - the vector must be finite and non-zero norm
-- `gravity.header.frame_id == "imu_link"` by policy
-- `gravity.accel.accel.linear` is expressed in `imu_link`
+- `gravity.header.frame_id == "base_link"` by policy
+- `gravity.accel.accel.linear` is expressed in `base_link`
 - the vector points down in the direction of gravitational acceleration
 - the magnitude is expected to be near `9.81 m/s^2` at rest
 - this is a physical gravity vector, not an "up" vector and not a normalized
@@ -131,8 +136,9 @@ Requirements:
 - the measurement is not a source of absolute yaw
 - full covariance from the message is preserved
 
-The EKF maps this measurement from `imu_link` into `base_link` using `T_BI`
-and applies it as a first-class update.
+The default EKF gravity input is `/oasis/<host>/ahrs/gravity`. The EKF applies
+it only as a gravity measurement update or consistency check, not as
+propagation acceleration.
 
 ### 2.3 `apriltags` — `apriltag_msgs/AprilTagDetectionArray`
 
@@ -175,6 +181,17 @@ Contract:
 - `apriltags.header.frame_id` and `camera_info.header.frame_id` are both
   expected to be `camera_link`
 - reject AprilTag updates until intrinsics are available
+
+### 2.5 QoS and replay
+
+Required replay and estimator streams use RELIABLE QoS with bounded keep-last
+history. The BNO -> AHRS required inputs `imu`, `imu_gravity`, and `gravity`
+use RELIABLE transport so AHRS does not silently lose pipeline samples. The
+AHRS -> EKF/replay outputs `ahrs/imu`, `ahrs/imu_gravity`, and `ahrs/gravity`
+also use RELIABLE transport with bounded queues.
+
+Live-only debug streams may remain BEST_EFFORT when losing samples does not
+change estimator state.
 
 ---
 

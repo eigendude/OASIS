@@ -162,24 +162,37 @@ def test_ahrs_qos_profiles_match_imu_gravity_contract() -> None:
             subscription.topic: subscription for subscription in node.subscriptions
         }
 
+        raw_imu_qos = subscriptions_by_topic[ahrs_node.IMU_TOPIC].qos_profile
         raw_imu_gravity_qos = subscriptions_by_topic[
             ahrs_node.IMU_GRAVITY_TOPIC
         ].qos_profile
         raw_gravity_qos = subscriptions_by_topic[ahrs_node.GRAVITY_TOPIC].qos_profile
+        mounted_imu_qos = publishers_by_topic[ahrs_node.OUTPUT_IMU_TOPIC].qos_profile
         mounted_imu_gravity_qos = publishers_by_topic[
             ahrs_node.OUTPUT_IMU_GRAVITY_TOPIC
         ].qos_profile
+        mounted_gravity_qos = publishers_by_topic[
+            ahrs_node.OUTPUT_GRAVITY_TOPIC
+        ].qos_profile
 
+        assert raw_imu_qos.depth == ahrs_node.RAW_IMU_QOS_DEPTH
+        assert raw_imu_qos.reliability == rclpy.qos.QoSReliabilityPolicy.RELIABLE
         assert raw_imu_gravity_qos.depth == ahrs_node.RAW_IMU_GRAVITY_QOS_DEPTH
         assert (
             raw_imu_gravity_qos.reliability == rclpy.qos.QoSReliabilityPolicy.RELIABLE
         )
         assert raw_gravity_qos.depth == ahrs_node.RAW_GRAVITY_QOS_DEPTH
         assert raw_gravity_qos.reliability == rclpy.qos.QoSReliabilityPolicy.RELIABLE
+        assert mounted_imu_qos.depth == ahrs_node.AHRS_IMU_QOS_DEPTH
+        assert mounted_imu_qos.reliability == rclpy.qos.QoSReliabilityPolicy.RELIABLE
         assert mounted_imu_gravity_qos.depth == ahrs_node.AHRS_IMU_GRAVITY_QOS_DEPTH
         assert (
             mounted_imu_gravity_qos.reliability
             == rclpy.qos.QoSReliabilityPolicy.RELIABLE
+        )
+        assert mounted_gravity_qos.depth == ahrs_node.AHRS_GRAVITY_QOS_DEPTH
+        assert (
+            mounted_gravity_qos.reliability == rclpy.qos.QoSReliabilityPolicy.RELIABLE
         )
     finally:
         node.stop()

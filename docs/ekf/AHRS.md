@@ -50,6 +50,10 @@ All streams are part of the AHRS contract. `gravity` is not optional. The
 implementation may process them as separate event streams, but the node should
 not advertise a degraded "IMU-only" operating mode.
 
+Required BNO -> AHRS input streams use RELIABLE QoS with bounded keep-last
+history. AHRS is a required pipeline stage, so raw `imu`, `imu_gravity`, and
+`gravity` should not be treated as disposable live telemetry.
+
 These streams are independent event streams. They are not required to have the
 same cadence, and implementations must not assume `imu` and `imu_gravity`
 publish together.
@@ -391,6 +395,9 @@ tilt-only uncertainty product.
 `ahrs/imu` follows upstream `imu` stream semantics and may publish at a
 different cadence than `ahrs/imu_gravity`.
 
+EKF propagation should default to `ahrs/imu`. Do not feed both `ahrs/imu` and
+`ahrs/imu_gravity` as independent propagation inputs.
+
 ### 5.3 Base-frame gravity-included IMU output
 
 - `ahrs/imu_gravity`
@@ -406,10 +413,19 @@ different cadence than `ahrs/imu_gravity`.
 
 ### 5.4 Gravity-facing output or status
 
-The AHRS may publish a gravity status or debug topic, but the minimum contract
-is that gravity consistency results are reflected in diagnostics and any
+The AHRS publishes mounted physical gravity on `ahrs/gravity` as
+`geometry_msgs/AccelWithCovarianceStamped` in `base_link`. EKF consumers should
+use it only as a gravity measurement update or consistency check, not as
+propagation acceleration.
+
+Gravity consistency results are also reflected in diagnostics and any
 accept/reject policy. Gravity consistency uses the latest accepted gravity
 measurement under the documented pairing policy.
+
+The downstream-facing `ahrs/imu`, `ahrs/imu_gravity`, and `ahrs/gravity`
+streams use RELIABLE QoS with bounded keep-last history for EKF and replay
+consumers. Live-only debug streams may remain BEST_EFFORT when losing samples
+does not change estimator state.
 
 ### 5.5 Optional odometry wrapper
 
@@ -467,6 +483,7 @@ Topics:
 - `topics.gravity` default `gravity`
 - `topics.output_imu` default `ahrs/imu`
 - `topics.output_imu_gravity` default `ahrs/imu_gravity`
+- `topics.output_gravity` default `ahrs/gravity`
 - `topics.output_odom` default `ahrs/odom`
 
 Policy:

@@ -114,14 +114,20 @@ OUTPUT_IMU_GRAVITY_TOPIC: str = "ahrs/imu_gravity"
 OUTPUT_ODOM_TOPIC: str = "ahrs/odom"
 
 # QoS parameters
+#
+# RELIABLE for required BNO -> AHRS pipeline streams with bounded history
 RAW_IMU_GRAVITY_QOS_DEPTH: int = 256
-RAW_GRAVITY_QOS_DEPTH: int = 32
-RAW_IMU_QOS_DEPTH: int = 64
+RAW_GRAVITY_QOS_DEPTH: int = 256
+RAW_IMU_QOS_DEPTH: int = 512
+
+# RELIABLE for AHRS -> EKF/replay streams with bounded history
 AHRS_IMU_GRAVITY_QOS_DEPTH: int = 512
-AHRS_IMU_QOS_DEPTH: int = 128
-AHRS_GRAVITY_QOS_DEPTH: int = 32
-AHRS_ODOM_QOS_DEPTH: int = 10
+AHRS_IMU_QOS_DEPTH: int = 512
+AHRS_GRAVITY_QOS_DEPTH: int = 256
 AHRS_DIAG_QOS_DEPTH: int = 10
+
+# BEST_EFFORT only for disposable live/debug streams
+AHRS_ODOM_QOS_DEPTH: int = 10
 
 # ROS parameters
 PARAM_BASE_FRAME_ID: str = "base_frame_id"
@@ -168,6 +174,7 @@ MAX_GRAVITY_COVARIANCE_AGE_SEC: float = 0.2
 
 
 def _best_effort_sensor_qos(depth: int) -> rclpy.qos.QoSProfile:
+    # BEST_EFFORT is reserved for disposable live/debug sensor streams
     return rclpy.qos.QoSProfile(
         history=rclpy.qos.QoSHistoryPolicy.KEEP_LAST,
         depth=depth,
@@ -177,6 +184,7 @@ def _best_effort_sensor_qos(depth: int) -> rclpy.qos.QoSProfile:
 
 
 def _reliable_sensor_qos(depth: int) -> rclpy.qos.QoSProfile:
+    # RELIABLE is used for required pipeline and replay-facing streams
     return rclpy.qos.QoSProfile(
         history=rclpy.qos.QoSHistoryPolicy.KEEP_LAST,
         depth=depth,
@@ -327,7 +335,7 @@ class AhrsNode(rclpy.node.Node):
                 msg_type=ImuMsg,
                 topic=IMU_TOPIC,
                 callback=self._handle_imu,
-                qos_profile=_best_effort_sensor_qos(RAW_IMU_QOS_DEPTH),
+                qos_profile=_reliable_sensor_qos(RAW_IMU_QOS_DEPTH),
             )
         )
 
