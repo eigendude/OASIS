@@ -377,6 +377,40 @@ jobs:
         if: steps.restore-oasis-runtime.outputs.cache-hit != 'true'
         run: ./oasis_tooling/scripts/rdepinstall_oasis.sh
 
+      - name: Run C++ tests
+        run: |
+          set -euo pipefail
+
+          packages=()
+
+          if [ "${{ steps.restore-oasis-drivers-cpp.outputs.cache-hit }}" != 'true' ]; then
+            packages+=(oasis_drivers_cpp)
+          else
+            echo "Skipping oasis_drivers_cpp tests (cache hit detected)"
+          fi
+
+          if [ "${{ steps.restore-oasis-perception-cpp.outputs.cache-hit }}" != 'true' ]; then
+            packages+=(oasis_perception_cpp)
+          else
+            echo "Skipping oasis_perception_cpp tests (cache hit detected)"
+          fi
+
+          if [ ${#packages[@]} -eq 0 ]; then
+            echo "All C++ test packages were cache-skipped; skipping test run."
+            exit 0
+          fi
+
+          source ./oasis_tooling/scripts/env_oasis.sh
+
+          set +u
+          source "${OASIS_INSTALL_DIRECTORY}/setup.bash"
+          set -u
+
+          cd "${OASIS_DIRECTORY}"
+
+          colcon test --merge-install --packages-select "${packages[@]}" --ctest-args -R '^test_'
+          colcon test-result --verbose
+
       #- name: Upload Ardino hex to /dev/ttyACM0
       #  if: matrix.os == 'cinder'
       #  run: |
