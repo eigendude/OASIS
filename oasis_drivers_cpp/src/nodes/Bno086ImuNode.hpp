@@ -57,6 +57,7 @@ class Bno086ImuNode : public rclcpp::Node
 {
 public:
   Bno086ImuNode();
+  ~Bno086ImuNode() override;
 
   bool Initialize();
   void Deinitialize();
@@ -70,16 +71,7 @@ private:
     std::uint8_t accuracy{0};
   };
 
-  struct ImuGravityAccelSample
-  {
-    bool has_sample{false};
-    rclcpp::Time stamp{0, 0, RCL_ROS_TIME};
-    OASIS::IMU::Vec3 accel_mps2{0.0, 0.0, 0.0};
-    OASIS::IMU::Mat3 covariance_mps2_2{};
-    bool has_covariance{false};
-    std::uint8_t sequence{0};
-    std::uint8_t accuracy{0};
-  };
+  struct ImuGravityAccelSample;
 
   struct CoreFrameSignature
   {
@@ -91,44 +83,10 @@ private:
     int64_t linear_accel_stamp_ns{0};
   };
 
-  struct ImuGravityDiagnostics
-  {
-    std::uint64_t imu_gravity_published{0};
-    std::uint64_t imu_gravity_skipped_stale_accel{0};
-    std::uint64_t imu_gravity_skipped_stale_gyro{0};
-    std::uint64_t imu_published{0};
-    double latest_imu_gravity_rate_hz{0.0};
-    double latest_imu_rate_hz{0.0};
-    std::array<double, 5> latest_decoded_rate_hz{};
-    std::array<std::uint64_t, 5> decoded_reports_received{};
-    std::array<std::uint64_t, 5> last_rate_decoded_reports{};
-    std::uint64_t last_rate_imu_gravity_published{0};
-    std::uint64_t last_rate_imu_published{0};
-    std::chrono::steady_clock::time_point last_log_at{};
-  };
-
-  struct DrainThroughputDiagnostics
-  {
-    std::uint64_t drains{0};
-    std::uint64_t physical_packets_sum{0};
-    std::uint32_t physical_packets_max{0};
-    std::uint64_t sensor_events_sum{0};
-    std::uint32_t sensor_events_max{0};
-    std::uint64_t all_zero_backoff_count{0};
-    std::uint64_t drain_duration_sum_us{0};
-    std::uint32_t drain_duration_max_us{0};
-    std::uint64_t physical_packet_cap_hit_count{0};
-    std::uint64_t poll_iteration_cap_hit_count{0};
-    std::uint64_t no_progress_drain_count{0};
-    std::uint64_t transport_error_count{0};
-    std::uint64_t exit_all_zero_budget_count{0};
-  };
-
-  struct FinalizedEventStamp
-  {
-    int64_t stamp_ns{0};
-    bool duplicate{false};
-  };
+  class ImuGravityAccelHistory;
+  class Bno086DrainHealth;
+  struct RateDiagnostics;
+  struct RateSnapshot;
 
   void InterruptLoop();
   void DrainPacketsForInterrupt(const std::chrono::steady_clock::time_point& interrupt_steady_at,
@@ -148,9 +106,9 @@ private:
   rclcpp::Time LatestCoreStamp() const;
 
   void ApplyEvent(const OASIS::IMU::BNO086::SensorEvent& event, const rclcpp::Time& sample_stamp);
-  FinalizedEventStamp FinalizeEventStamp(const OASIS::IMU::BNO086::SensorEvent& event,
-                                         const rclcpp::Time& interrupt_ros_at,
-                                         std::optional<int64_t> expected_interval_ns);
+  std::optional<int64_t> FinalizeEventStampNs(const OASIS::IMU::BNO086::SensorEvent& event,
+                                              const rclcpp::Time& interrupt_ros_at,
+                                              std::optional<int64_t> expected_interval_ns);
   sensor_msgs::msg::Imu BuildPresentImuMessage(const rclcpp::Time& stamp) const;
   sensor_msgs::msg::Imu BuildImuGravityMessage(const rclcpp::Time& stamp,
                                                const ImuGravityAccelSample& accel_sample) const;
@@ -171,8 +129,8 @@ private:
                                         bool,
                                         std::uint32_t drain_duration_us,
                                         std::uint32_t);
-  void UpdateImuGravityDiagnosticsRates(const std::chrono::steady_clock::time_point& now);
-  void MaybeEmitImuGravityDiagnosticsLog();
+  RateSnapshot UpdateImuGravityDiagnosticsRates(const std::chrono::steady_clock::time_point& now);
+  void MaybeEmitImuGravityDiagnosticsLog(const RateSnapshot& rates);
   bool IsImuGravitySampleValid(const sensor_msgs::msg::Imu& message,
                                std::string& invalid_reason) const;
   std::optional<std::uint32_t> RequestedFeatureIntervalUs(
@@ -183,8 +141,7 @@ private:
       OASIS::IMU::BNO086::ReportId report_id) const;
   std::optional<OASIS::IMU::BNO086::FeatureResponse> LatestFeatureResponse(
       OASIS::IMU::BNO086::ReportId report_id) const;
-  bool IsBno086RateUnhealthy() const;
-  bool IsBno086DiagnosticsUnhealthy() const;
+  bool IsBno086DiagnosticsUnhealthy(const RateSnapshot& rates) const;
   void CountDecodedReport(const OASIS::IMU::BNO086::SensorEvent& event);
 
   static std::array<double, 9> PredictedCovarianceFromPresent(
@@ -228,9 +185,7 @@ private:
   SampleState m_linearAccelState{};
   SampleState m_imuGravityState{};
   SampleState m_gravityState{};
-  std::array<ImuGravityAccelSample, 1024> m_imuGravityAccelHistory{};
-  std::size_t m_imuGravityAccelHistoryNext{0};
-  std::size_t m_imuGravityAccelHistoryCount{0};
+  std::unique_ptr<ImuGravityAccelHistory> m_imuGravityAccelHistory;
 
   std::string m_frameId;
   double m_predictionHorizonSec{0.0};
@@ -272,7 +227,7 @@ private:
   double m_imuGravityMaxOrientationAgeMs{80.0};
   double m_imuGravityMaxGyroAgeMs{80.0};
   std::uint32_t m_repeatedNoProgressTimeouts{0};
-  ImuGravityDiagnostics m_imuGravityDiagnostics{};
+  std::unique_ptr<RateDiagnostics> m_rateDiagnostics;
   bool m_diagnosticsWasUnhealthy{false};
 
   bool m_loggedCommEstablished{false};
@@ -283,7 +238,7 @@ private:
   OASIS::IMU::BNO086::OrientationCovarianceSource m_lastOrientationCovarianceSource{
       OASIS::IMU::BNO086::OrientationCovarianceSource::AccuracyBucketFallback};
   std::uint8_t m_lastOrientationAccuracyBucket{0};
-  DrainThroughputDiagnostics m_drainDiagnostics{};
+  std::unique_ptr<Bno086DrainHealth> m_drainHealth;
   std::chrono::steady_clock::time_point m_featureConfigurationStartedAt{};
   std::vector<OASIS::IMU::BNO086::FeatureResponse> m_latestFeatureResponses;
 };
