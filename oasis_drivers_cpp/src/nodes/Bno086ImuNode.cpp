@@ -87,7 +87,6 @@ constexpr double PI_RAD = 3.14159265358979323846;
 constexpr const char* ORIENTATION_REPORT_SOURCE = "rotation_vector";
 constexpr int ORIENTATION_COVARIANCE_LOG_THROTTLE_MS = 5'000;
 constexpr int IMU_GRAVITY_SAMPLE_WARN_THROTTLE_MS = 5'000;
-constexpr const char* DEFAULT_BNO086_DIAGNOSTICS_LOG_LEVEL = "debug";
 constexpr int DEFAULT_BNO086_DIAGNOSTICS_LOG_PERIOD_MS = 5'000;
 constexpr int MIN_BNO086_DIAGNOSTICS_LOG_PERIOD_MS = 1'000;
 constexpr double MIN_HEALTHY_RATE_FRACTION = 0.5;
@@ -167,8 +166,6 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   declare_parameter("bno086_max_packets_per_interrupt", DEFAULT_MAX_PACKETS_PER_INTERRUPT);
   declare_parameter("bno086_max_poll_iterations_per_interrupt",
                     DEFAULT_MAX_POLL_ITERATIONS_PER_INTERRUPT);
-  declare_parameter("bno086_diagnostics_log_level",
-                    std::string(DEFAULT_BNO086_DIAGNOSTICS_LOG_LEVEL));
   declare_parameter("bno086_diagnostics_log_period_ms", DEFAULT_BNO086_DIAGNOSTICS_LOG_PERIOD_MS);
   declare_parameter("prediction_horizon_sec", DEFAULT_PREDICTION_HORIZON_SEC);
   declare_parameter("imu_gravity_max_orientation_age_ms",
@@ -216,14 +213,6 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   m_maxPollIterationsPerInterrupt = static_cast<std::uint32_t>(std::clamp(
       static_cast<int>(get_parameter("bno086_max_poll_iterations_per_interrupt").as_int()),
       MIN_MAX_POLL_ITERATIONS_PER_INTERRUPT, MAX_MAX_POLL_ITERATIONS_PER_INTERRUPT));
-  const std::string diagnosticsLogLevel = get_parameter("bno086_diagnostics_log_level").as_string();
-  const std::optional<Bno086DiagnosticsLogLevel> parsedDiagnosticsLogLevel =
-      ParseBno086DiagnosticsLogLevel(diagnosticsLogLevel);
-  if (parsedDiagnosticsLogLevel.has_value())
-    m_diagnosticsLogLevel = *parsedDiagnosticsLogLevel;
-  else
-    m_diagnosticsLogLevel = Bno086DiagnosticsLogLevel::Debug;
-
   m_diagnosticsLogPeriodMs =
       std::max(static_cast<int>(get_parameter("bno086_diagnostics_log_period_ms").as_int()),
                MIN_BNO086_DIAGNOSTICS_LOG_PERIOD_MS);
@@ -320,9 +309,7 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
               m_enableGravityReport ? static_cast<double>(m_gravityBatchIntervalUs) / 1000.0 : 0.0,
               m_enableGravityReport ? "true" : "false");
   RCLCPP_INFO(get_logger(), "ROS publication is interrupt-driven from GPIO packet drains");
-  RCLCPP_INFO(get_logger(), "BNO086 diagnostics log level=%s period_ms=%d",
-              parsedDiagnosticsLogLevel.has_value() ? diagnosticsLogLevel.c_str() : "debug",
-              m_diagnosticsLogPeriodMs);
+  RCLCPP_INFO(get_logger(), "BNO086 diagnostics period_ms=%d", m_diagnosticsLogPeriodMs);
   RCLCPP_INFO(get_logger(), "Predicted orientation output uses %s with prediction_horizon_sec=%.4f",
               m_predictionSource.c_str(), m_predictionHorizonSec);
   RCLCPP_INFO(get_logger(),
@@ -1137,39 +1124,8 @@ void Bno086ImuNode::UpdateImuGravityDiagnosticsRates(
 void Bno086ImuNode::MaybeEmitImuGravityDiagnosticsLog()
 {
   const bool unhealthy = IsBno086DiagnosticsUnhealthy();
-  if (!ShouldEmitBno086Diagnostics(m_diagnosticsLogLevel, unhealthy))
-  {
-    if (m_diagnosticsLogLevel != Bno086DiagnosticsLogLevel::Off && m_diagnosticsWasUnhealthy &&
-        !unhealthy)
-    {
-      RCLCPP_INFO(get_logger(),
-                  "BNO086 imu_gravity recovered: imu_gravity_rate_hz=%.2f "
-                  "accel_rate_hz=%.2f",
-                  m_imuGravityDiagnostics.latest_imu_gravity_rate_hz,
-                  m_imuGravityDiagnostics.latest_calibrated_accel_rate_hz);
-    }
-
-    m_diagnosticsWasUnhealthy = unhealthy;
-    return;
-  }
-
   const std::string message = BuildImuGravityDiagnosticsLogMessage();
-  switch (m_diagnosticsLogLevel)
-  {
-    case Bno086DiagnosticsLogLevel::Debug:
-      RCLCPP_DEBUG(get_logger(), "%s", message.c_str());
-      break;
-    case Bno086DiagnosticsLogLevel::Info:
-      RCLCPP_INFO(get_logger(), "%s", message.c_str());
-      break;
-    case Bno086DiagnosticsLogLevel::Warn:
-      RCLCPP_WARN(get_logger(), "%s", message.c_str());
-      break;
-    case Bno086DiagnosticsLogLevel::Off:
-      break;
-    default:
-      break;
-  }
+  RCLCPP_DEBUG(get_logger(), "%s", message.c_str());
 
   if (m_diagnosticsWasUnhealthy && !unhealthy)
   {

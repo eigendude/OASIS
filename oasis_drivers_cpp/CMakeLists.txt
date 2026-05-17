@@ -62,10 +62,6 @@ add_library(bno086_orientation_covariance_policy
   src/imu/bno086/Bno086OrientationCovariancePolicy.cpp
 )
 
-add_library(bno086_diagnostics_policy
-  src/imu/bno086/Bno086DiagnosticsPolicy.cpp
-)
-
 add_library(bno086_drain_policy
   src/imu/bno086/Bno086DrainPolicy.cpp
 )
@@ -97,7 +93,6 @@ add_executable(bno086_imu_driver
 )
 
 target_link_libraries(bno086_imu_driver
-  bno086_diagnostics_policy
   bno086_drain_policy
   bno086_gravity_utils
   bno086_orientation_covariance_policy
@@ -276,13 +271,6 @@ if(BUILD_TESTING)
   )
   target_link_libraries(test_bno086_orientation_covariance_policy
     bno086_orientation_covariance_policy
-  )
-
-  ament_add_gtest(test_bno086_diagnostics_policy
-    test/imu/bno086/test_Bno086DiagnosticsPolicy.cpp
-  )
-  target_link_libraries(test_bno086_diagnostics_policy
-    bno086_diagnostics_policy
   )
 
   ament_add_gtest(test_bno086_drain_policy

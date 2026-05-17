@@ -8,7 +8,6 @@
 
 #pragma once
 
-#include "imu/bno086/Bno086DiagnosticsPolicy.hpp"
 #include "imu/bno086/Bno086DrainPolicy.hpp"
 #include "imu/bno086/Bno086Gpio.hpp"
 #include "imu/bno086/Bno086GravityUtils.hpp"
@@ -264,8 +263,6 @@ private:
   bool m_enableLinearAccelerationReport{true};
   bool m_enableGravityReport{true};
   int m_featureSummaryTimeoutMs{5000};
-  OASIS::IMU::BNO086::Bno086DiagnosticsLogLevel m_diagnosticsLogLevel{
-      OASIS::IMU::BNO086::Bno086DiagnosticsLogLevel::Debug};
   int m_diagnosticsLogPeriodMs{5000};
   double m_imuGravityMaxOrientationAgeMs{25.0};
   double m_imuGravityMaxGyroAgeMs{25.0};
