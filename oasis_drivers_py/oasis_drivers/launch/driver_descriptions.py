@@ -111,7 +111,7 @@ class DriverDescriptions:
             arguments=[
                 "--ros-args",
                 "--log-level",
-                f"{ROS_NAMESPACE}.bno086_imu_driver_{host_id}:=debug",
+                f"{ROS_NAMESPACE}.bno086_imu_driver_{host_id}:=info",
             ],
             parameters=[
                 {"int_gpio": int_gpio},
