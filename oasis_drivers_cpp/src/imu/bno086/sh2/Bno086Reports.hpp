@@ -295,7 +295,6 @@ struct ImuSampleFrame
   bool has_gravity_covariance{false};
 };
 
-constexpr std::size_t kShtpHeaderBytes = 4;
 constexpr std::uint8_t kShtpReportBaseTimestamp = 0xFB;
 constexpr std::uint8_t kShtpReportTimestampRebase = 0xFA;
 constexpr std::uint8_t kShtpGetFeatureResponse = 0xFC;

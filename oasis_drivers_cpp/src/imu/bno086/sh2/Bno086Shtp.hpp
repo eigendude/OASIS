@@ -8,8 +8,8 @@
 
 #pragma once
 
-#include "imu/bno086/Bno086Reports.hpp"
-#include "imu/bno086/Bno086Transport.hpp"
+#include "imu/bno086/sh2/Bno086Reports.hpp"
+#include "imu/bno086/shtp/Bno086Transport.hpp"
 
 #include <array>
 #include <chrono>

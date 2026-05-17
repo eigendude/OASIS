@@ -6,9 +6,7 @@
  *  See the file LICENSE.txt for more information.
  */
 
-#include "imu/bno086/Bno086Transport.hpp"
-
-#include "imu/bno086/Bno086Reports.hpp"
+#include "imu/bno086/shtp/Bno086Transport.hpp"
 
 #include <algorithm>
 #include <cerrno>
@@ -24,7 +22,6 @@ namespace OASIS::IMU::BNO086
 {
 namespace
 {
-constexpr std::size_t kMaxShtpPacketBytes = 1024;
 constexpr auto kWriteRetryDelay = std::chrono::microseconds(200);
 constexpr auto kWriteRetryTimeout = std::chrono::milliseconds(10);
 } // namespace
@@ -115,8 +112,8 @@ bool Bno086Transport::ReadPacket(Bno086ShtpPacket& packet, int timeout_ms)
     if (!ReadTransaction(header.data(), header.size(), deadline))
       return false;
 
-    ShtpHeader probedHeader;
-    if (!ParseHeader(header.data(), probedHeader))
+    Bno086ShtpHeader probedHeader;
+    if (!ParseBno086ShtpHeader(header.data(), probedHeader))
     {
       if (std::chrono::steady_clock::now() >= deadline)
         return false;
@@ -136,7 +133,7 @@ bool Bno086Transport::ReadPacket(Bno086ShtpPacket& packet, int timeout_ms)
     if (!ReadTransaction(rawPacket.data(), rawPacket.size(), deadline))
       return false;
 
-    ShtpHeader packetHeader;
+    Bno086ShtpHeader packetHeader;
     if (!ValidateFullPacket(rawPacket, packetHeader))
     {
       if (std::chrono::steady_clock::now() >= deadline)
@@ -236,40 +233,13 @@ bool Bno086Transport::WriteExact(const std::uint8_t* buffer, std::size_t size) c
   return true;
 }
 
-bool Bno086Transport::ParseHeader(const std::uint8_t* header_bytes, ShtpHeader& header) const
-{
-  const std::uint16_t lengthField = static_cast<std::uint16_t>(
-      header_bytes[0] | (static_cast<std::uint16_t>(header_bytes[1]) << 8));
-
-  header.continuation = (lengthField & 0x8000U) != 0U;
-  header.length = static_cast<std::uint16_t>(lengthField & 0x7FFFU);
-  header.channel = header_bytes[2];
-  header.sequence = header_bytes[3];
-
-  if (header.length == 0)
-    return true;
-
-  if (header.length < kShtpHeaderBytes || header.length > kMaxShtpPacketBytes)
-    return false;
-
-  if (!IsSaneChannel(header.channel))
-    return false;
-
-  return true;
-}
-
-bool Bno086Transport::IsSaneChannel(std::uint8_t channel) const
-{
-  return channel < m_txSequence.size();
-}
-
 bool Bno086Transport::ValidateFullPacket(const std::vector<std::uint8_t>& raw_packet,
-                                         ShtpHeader& header) const
+                                         Bno086ShtpHeader& header) const
 {
   if (raw_packet.size() < kShtpHeaderBytes)
     return false;
 
-  if (!ParseHeader(raw_packet.data(), header))
+  if (!ParseBno086ShtpHeader(raw_packet.data(), header))
     return false;
 
   if (header.length == 0)
@@ -292,14 +262,6 @@ bool Bno086Transport::LooksLikePseudoPayload(const Bno086ShtpPacket& packet) con
   if (packet.channel > 2)
     return false;
 
-  return LooksLikeShtpHeader(packet.payload.data());
-}
-
-bool Bno086Transport::LooksLikeShtpHeader(const std::uint8_t* header_bytes) const
-{
-  const std::uint16_t lengthField = static_cast<std::uint16_t>(
-      header_bytes[0] | (static_cast<std::uint16_t>(header_bytes[1]) << 8));
-  const std::size_t length = static_cast<std::size_t>(lengthField & 0x7FFFU);
-  return length >= kShtpHeaderBytes && length <= kMaxShtpPacketBytes;
+  return LooksLikeBno086ShtpHeaderPrefix(packet.payload.data());
 }
 } // namespace OASIS::IMU::BNO086

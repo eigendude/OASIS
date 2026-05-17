@@ -74,15 +74,16 @@ add_library(bno086_timestamp_normalizer
   src/imu/bno086/Bno086TimestampNormalizer.cpp
 )
 
-add_library(bno086_transport
-  src/imu/bno086/Bno086Transport.cpp
+add_library(bno086_shtp
+  src/imu/bno086/shtp/Bno086ShtpHeader.cpp
+  src/imu/bno086/shtp/Bno086Transport.cpp
 )
 
-add_library(bno086_shtp
-  src/imu/bno086/Bno086Shtp.cpp
+add_library(bno086_sh2
+  src/imu/bno086/sh2/Bno086Shtp.cpp
 )
-target_link_libraries(bno086_shtp
-  bno086_transport
+target_link_libraries(bno086_sh2
+  bno086_shtp
 )
 
 add_executable(bno086_imu_driver
@@ -96,9 +97,9 @@ target_link_libraries(bno086_imu_driver
   bno086_drain_policy
   bno086_gravity_utils
   bno086_orientation_covariance_policy
+  bno086_sh2
   bno086_shtp
   bno086_timestamp_normalizer
-  bno086_transport
   ${geometry_msgs_TARGETS}
   ${oasis_msgs_TARGETS}
   rclcpp::rclcpp
@@ -284,23 +285,23 @@ if(BUILD_TESTING)
   )
   target_link_libraries(test_bno086_drain_policy
     bno086_drain_policy
+    bno086_sh2
     bno086_shtp
-    bno086_transport
   )
 
   ament_add_gtest(test_bno086_shtp
     test/imu/bno086/test_Bno086Shtp.cpp
   )
   target_link_libraries(test_bno086_shtp
+    bno086_sh2
     bno086_shtp
-    bno086_transport
   )
 
   ament_add_gtest(test_bno086_transport
     test/imu/bno086/test_Bno086Transport.cpp
   )
   target_link_libraries(test_bno086_transport
-    bno086_transport
+    bno086_shtp
   )
 
   ament_add_gtest(test_bno086_timestamp_normalizer

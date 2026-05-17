@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include "imu/bno086/Bno086Shtp.hpp"
+#include "imu/bno086/sh2/Bno086Shtp.hpp"
 
 #include <cstdint>
 

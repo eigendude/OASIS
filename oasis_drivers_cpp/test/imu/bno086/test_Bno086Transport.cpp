@@ -6,7 +6,7 @@
  *  See the file LICENSE.txt for more information.
  */
 
-#include "imu/bno086/Bno086Transport.hpp"
+#include "imu/bno086/shtp/Bno086Transport.hpp"
 
 #include <array>
 #include <cstdint>

@@ -6,7 +6,7 @@
  *  See the file LICENSE.txt for more information.
  */
 
-#include "imu/bno086/Bno086Shtp.hpp"
+#include "imu/bno086/sh2/Bno086Shtp.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -15,12 +15,6 @@ namespace OASIS::IMU::BNO086
 {
 namespace
 {
-constexpr std::uint8_t kChannelCommand = 0;
-constexpr std::uint8_t kChannelControl = 2;
-constexpr std::uint8_t kChannelReports = 3;
-constexpr std::uint8_t kChannelWakeReports = 4;
-constexpr std::uint8_t kChannelGyroRotationVector = 5;
-
 constexpr std::uint8_t kSensorFlushCompleted = 0xEF;
 constexpr std::size_t kBaseTimestampHeaderBytes = 5;
 constexpr std::size_t kSensorCommonHeaderBytes = 4;
@@ -41,10 +35,7 @@ bool LooksLikeShtpHeaderPrefix(const std::vector<std::uint8_t>& payload)
   if (payload.size() < kShtpHeaderBytes)
     return false;
 
-  const std::uint16_t lengthField =
-      static_cast<std::uint16_t>(payload[0] | (static_cast<std::uint16_t>(payload[1]) << 8));
-  const std::size_t packetLength = static_cast<std::size_t>(lengthField & 0x7FFFU);
-  return packetLength >= kShtpHeaderBytes && packetLength <= 1024;
+  return LooksLikeBno086ShtpHeaderPrefix(payload.data());
 }
 } // namespace
 
@@ -108,7 +99,7 @@ Bno086Shtp::PollResult Bno086Shtp::Poll(int timeout_ms)
     return result;
   }
 
-  result.handled_control_packet = packet.channel < kChannelReports;
+  result.handled_control_packet = packet.channel < kShtpChannelReports;
 
   if (result.event.has_value())
   {
@@ -172,7 +163,7 @@ bool Bno086Shtp::ConfigureFeature(ReportId report_id, std::uint32_t interval_us)
   payload[7] = static_cast<std::uint8_t>((interval_us >> 16) & 0xFF);
   payload[8] = static_cast<std::uint8_t>((interval_us >> 24) & 0xFF);
 
-  return m_transport.WritePacket(kChannelControl, payload);
+  return m_transport.WritePacket(kShtpChannelControl, payload);
 }
 
 bool Bno086Shtp::RequestFeature(ReportId report_id)
@@ -181,7 +172,7 @@ bool Bno086Shtp::RequestFeature(ReportId report_id)
   payload[0] = kShtpGetFeatureRequest;
   payload[1] = static_cast<std::uint8_t>(report_id);
 
-  return m_transport.WritePacket(kChannelControl, payload);
+  return m_transport.WritePacket(kShtpChannelControl, payload);
 }
 
 bool Bno086Shtp::DecodePacket(const Bno086ShtpPacket& packet, std::optional<SensorEvent>& event)
@@ -242,9 +233,9 @@ bool Bno086Shtp::DecodePacket(const Bno086ShtpPacket& packet, std::optional<Sens
     }
   }
 
-  if (normalizedPacket.channel < kChannelReports)
+  if (normalizedPacket.channel < kShtpChannelReports)
   {
-    if (normalizedPacket.channel == kChannelControl)
+    if (normalizedPacket.channel == kShtpChannelControl)
       DecodeControlPayload(normalizedPacket.payload);
 
     MaybeSendDeferredConfiguration();
@@ -327,7 +318,7 @@ Bno086Shtp::SensorDecodeResult Bno086Shtp::DecodeSensorPayload(
   if (payload.empty())
     return result;
 
-  if (channel == kChannelGyroRotationVector)
+  if (channel == kShtpChannelGyroRotationVector)
   {
     if (payload.size() < kGyroIntegratedRotationVectorPayloadBytes)
       result.trailing_bytes = payload.size();
@@ -494,8 +485,8 @@ void Bno086Shtp::MarkCommunicationEstablished()
 
 bool Bno086Shtp::IsSensorChannel(std::uint8_t channel) const
 {
-  return channel == kChannelReports || channel == kChannelWakeReports ||
-         channel == kChannelGyroRotationVector;
+  return channel == kShtpChannelReports || channel == kShtpChannelWakeReports ||
+         channel == kShtpChannelGyroRotationVector;
 }
 
 Bno086Shtp::ContinuationValidation Bno086Shtp::ValidateContinuationFragment(
@@ -518,7 +509,7 @@ Bno086Shtp::ContinuationValidation Bno086Shtp::ValidateContinuationFragment(
       return validation;
     }
 
-    if (packet.channel == kChannelCommand && packet.payload.size() <= kShtpHeaderBytes)
+    if (packet.channel == kShtpChannelCommand && packet.payload.size() <= kShtpHeaderBytes)
     {
       validation.valid = false;
       validation.keep_buffering = false;
