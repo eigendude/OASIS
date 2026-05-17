@@ -8,6 +8,9 @@
 
 #include "Bno086ImuNode.hpp"
 
+#include "imu/bno086/utils/Bno086ReportUtils.hpp"
+#include "imu/bno086/utils/Bno086TimingUtils.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -160,20 +163,6 @@ int64_t HostAnchorNs(const SensorEvent& event, int64_t packet_host_stamp_ns)
 double VectorMagnitude(double x, double y, double z)
 {
   return std::sqrt(x * x + y * y + z * z);
-}
-
-std::uint32_t MillisecondsToMicroseconds(double milliseconds)
-{
-  const double clampedMs = std::max(milliseconds, 0.0);
-  return static_cast<std::uint32_t>(std::round(clampedMs * 1000.0));
-}
-
-std::optional<std::uint32_t> RateHzToIntervalUs(double rate_hz)
-{
-  if (!(rate_hz > 0.0))
-    return std::nullopt;
-
-  return static_cast<std::uint32_t>(std::max(1.0, std::round(1'000'000.0 / rate_hz)));
 }
 
 } // namespace
@@ -875,7 +864,7 @@ void Bno086ImuNode::MaybePublishOnLinearAcceleration(const SensorEvent& event)
   const int64_t oldestNs = std::min({orientationNs, gyroNs, linearAccelNs});
   const int64_t newestNs = std::max({orientationNs, gyroNs, linearAccelNs});
 
-  const int64_t coreThresholdNs = DurationFromUs(CoreCoherenceToleranceUs()).nanoseconds();
+  const int64_t coreThresholdNs = DurationNsFromUs(CoreCoherenceToleranceUs());
   if (!IsTimestampSpanCoherent(oldestNs, newestNs, coreThresholdNs))
   {
     MaybeLogImuGravityDiagnostics();
@@ -1610,7 +1599,7 @@ int64_t Bno086ImuNode::ReportFutureToleranceNs(ReportId report_id) const
   if (intervalUs.has_value() && *intervalUs > 0)
     return static_cast<int64_t>(*intervalUs) * 1'000;
 
-  return DurationFromUs(CoreCoherenceToleranceUs()).nanoseconds();
+  return DurationNsFromUs(CoreCoherenceToleranceUs());
 }
 
 void Bno086ImuNode::RecordImuGravityAccelSample(const rclcpp::Time& sample_stamp)
@@ -1871,11 +1860,6 @@ std::array<double, 9> Bno086ImuNode::PredictedCovarianceFromPresent(
   return predictedCovariance;
 }
 
-rclcpp::Duration Bno086ImuNode::DurationFromUs(std::uint32_t microseconds)
-{
-  return rclcpp::Duration(0, static_cast<int64_t>(microseconds) * 1000);
-}
-
 OASIS::IMU::Mat3 Bno086ImuNode::CovarianceFromAccuracyBucket(std::uint8_t accuracy,
                                                              double sigma_unreliable,
                                                              double sigma_low,
@@ -1902,27 +1886,6 @@ OASIS::IMU::Mat3 Bno086ImuNode::CovarianceFromAccuracyBucket(std::uint8_t accura
   covariance[2][1] = 0.0;
   covariance[2][2] = variance;
   return covariance;
-}
-
-const char* Bno086ImuNode::ReportName(ReportId report_id)
-{
-  switch (report_id)
-  {
-    case ReportId::Accelerometer:
-      return "accelerometer";
-    case ReportId::GyroscopeCalibrated:
-      return "gyro";
-    case ReportId::LinearAcceleration:
-      return "linear_acceleration";
-    case ReportId::RotationVector:
-      return "rotation_vector";
-    case ReportId::Gravity:
-      return "gravity";
-    default:
-      break;
-  }
-
-  return "unknown";
 }
 
 double Bno086ImuNode::QToDouble(std::int16_t value, unsigned q_point)
@@ -1999,27 +1962,6 @@ void Bno086ImuNode::SetCovariance(std::array<double, 9>& dst, const OASIS::IMU::
   dst[6] = src[2][0];
   dst[7] = src[2][1];
   dst[8] = src[2][2];
-}
-
-std::optional<std::size_t> Bno086ImuNode::DiagnosticReportIndex(ReportId report_id)
-{
-  switch (report_id)
-  {
-    case ReportId::Accelerometer:
-      return 0;
-    case ReportId::GyroscopeCalibrated:
-      return 1;
-    case ReportId::RotationVector:
-      return 2;
-    case ReportId::LinearAcceleration:
-      return 3;
-    case ReportId::Gravity:
-      return 4;
-    default:
-      break;
-  }
-
-  return std::nullopt;
 }
 
 void Bno086ImuNode::MaybeLogOrientationCovariancePolicy(

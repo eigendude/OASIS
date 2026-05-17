@@ -74,6 +74,11 @@ add_library(bno086_sample_coherence
   src/imu/bno086/Bno086SampleCoherence.cpp
 )
 
+add_library(bno086_utils
+  src/imu/bno086/utils/Bno086ReportUtils.cpp
+  src/imu/bno086/utils/Bno086TimingUtils.cpp
+)
+
 add_library(bno086_shtp
   src/imu/bno086/shtp/Bno086ShtpHeader.cpp
   src/imu/bno086/shtp/Bno086Transport.cpp
@@ -100,6 +105,7 @@ target_link_libraries(bno086_imu_driver
   bno086_sample_coherence
   bno086_sh2
   bno086_shtp
+  bno086_utils
   ${geometry_msgs_TARGETS}
   ${oasis_msgs_TARGETS}
   rclcpp::rclcpp
@@ -309,6 +315,13 @@ if(BUILD_TESTING)
   )
   target_link_libraries(test_bno086_sample_coherence
     bno086_sample_coherence
+  )
+
+  ament_add_gtest(test_bno086_utils
+    test/imu/bno086/test_Bno086Utils.cpp
+  )
+  target_link_libraries(test_bno086_utils
+    bno086_utils
   )
 
   ament_lint_auto_find_test_dependencies()

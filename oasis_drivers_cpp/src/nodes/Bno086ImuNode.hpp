@@ -150,13 +150,11 @@ private:
       double& sigma_noise_rad,
       double& sigma_rms_rad,
       double& sigma_bound_rad);
-  static rclcpp::Duration DurationFromUs(std::uint32_t microseconds);
   static OASIS::IMU::Mat3 CovarianceFromAccuracyBucket(std::uint8_t accuracy,
                                                        double sigma_unreliable,
                                                        double sigma_low,
                                                        double sigma_medium,
                                                        double sigma_high);
-  static const char* ReportName(OASIS::IMU::BNO086::ReportId report_id);
 
   static double QToDouble(std::int16_t value, unsigned q_point);
   static void NormalizeQuaternion(std::array<double, 4>& q);
@@ -166,7 +164,6 @@ private:
                                                   const OASIS::IMU::Vec3& gyro_rads,
                                                   double prediction_horizon_sec);
   static void SetCovariance(std::array<double, 9>& dst, const OASIS::IMU::Mat3& src);
-  static std::optional<std::size_t> DiagnosticReportIndex(OASIS::IMU::BNO086::ReportId report_id);
   void MaybeLogOrientationCovariancePolicy(
       const OASIS::IMU::BNO086::OrientationCovariancePolicyResult& covariance_policy);
 
