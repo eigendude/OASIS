@@ -829,7 +829,7 @@ void Bno086ImuNode::MaybeEmitImuGravityDiagnosticsLog(const Bno086RateSnapshot& 
                rates.decoded_hz[4], rates.imu_gravity_hz, rates.imu_hz);
   RCLCPP_DEBUG(get_logger(),
                "BNO086 drain: n=%llu pkt=%.1f/%u evt=%.1f/%u zero=%llu "
-               "dur=%.0f/%.0f cap=%llu/%llu err=%llu/%llu az=%llu bad=%llu",
+               "dur=%.0f/%.0f cap=%llu/%llu err=%llu/%llu az=%llu invpkt=%llu",
                static_cast<unsigned long long>(m_diag.drain_health.Drains()),
                m_diag.drain_health.PhysicalPacketsMean(), m_diag.drain_health.PhysicalPacketsMax(),
                m_diag.drain_health.SensorEventsMean(), m_diag.drain_health.SensorEventsMax(),
