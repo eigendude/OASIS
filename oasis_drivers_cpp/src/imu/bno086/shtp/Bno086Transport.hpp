@@ -36,6 +36,44 @@ struct Bno086TransportConfig
   std::uint8_t i2c_address{0x4B};
 };
 
+struct Bno086TransportStats
+{
+  /*!
+   * \brief Number of I2C read transactions that failed before timeout
+   *
+   * Units: read transaction failures
+   */
+  std::uint64_t i2c_read_error_count{0};
+
+  /*!
+   * \brief Number of I2C read transactions that expired without data
+   *
+   * Units: read transaction timeouts
+   */
+  std::uint64_t i2c_read_timeout_count{0};
+
+  /*!
+   * \brief Number of invalid SHTP header probes observed
+   *
+   * Units: header probes rejected by SHTP header validation
+   */
+  std::uint64_t invalid_header_count{0};
+
+  /*!
+   * \brief Number of all-zero SHTP header probes observed
+   *
+   * Units: header probes where all four bytes were zero
+   */
+  std::uint64_t all_zero_header_count{0};
+
+  /*!
+   * \brief Number of invalid full packet reads observed
+   *
+   * Units: full SHTP packets rejected after reading the probed length
+   */
+  std::uint64_t invalid_full_packet_count{0};
+};
+
 class Bno086Transport
 {
 public:
@@ -49,6 +87,7 @@ public:
 
   virtual bool WritePacket(std::uint8_t channel, const std::vector<std::uint8_t>& payload);
   virtual bool ReadPacket(Bno086ShtpPacket& packet, int timeout_ms);
+  Bno086TransportStats GetStats() const;
 
 protected:
   explicit Bno086Transport(int fd);
@@ -65,5 +104,6 @@ private:
   Bno086TransportConfig m_config{};
   int m_fd{-1};
   std::array<std::uint8_t, 6> m_txSequence{};
+  mutable Bno086TransportStats m_stats{};
 };
 } // namespace OASIS::IMU::BNO086

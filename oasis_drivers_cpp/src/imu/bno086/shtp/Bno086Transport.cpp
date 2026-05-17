@@ -40,6 +40,7 @@ bool Bno086Transport::Open(const Bno086TransportConfig& config)
   Close();
 
   m_config = config;
+  m_stats = Bno086TransportStats{};
   m_fd = ::open(m_config.i2c_device.c_str(), O_RDWR | O_NONBLOCK);
   if (m_fd < 0)
     return false;
@@ -112,9 +113,19 @@ bool Bno086Transport::ReadPacket(Bno086ShtpPacket& packet, int timeout_ms)
     if (!ReadTransaction(header.data(), header.size(), deadline))
       return false;
 
+    if (std::all_of(header.begin(), header.end(), [](std::uint8_t value) { return value == 0; }))
+    {
+      ++m_stats.all_zero_header_count;
+      if (std::chrono::steady_clock::now() >= deadline)
+        return false;
+
+      continue;
+    }
+
     Bno086ShtpHeader probedHeader;
     if (!ParseBno086ShtpHeader(header.data(), probedHeader))
     {
+      ++m_stats.invalid_header_count;
       if (std::chrono::steady_clock::now() >= deadline)
         return false;
 
@@ -136,6 +147,7 @@ bool Bno086Transport::ReadPacket(Bno086ShtpPacket& packet, int timeout_ms)
     Bno086ShtpHeader packetHeader;
     if (!ValidateFullPacket(rawPacket, packetHeader))
     {
+      ++m_stats.invalid_full_packet_count;
       if (std::chrono::steady_clock::now() >= deadline)
         return false;
 
@@ -166,6 +178,11 @@ bool Bno086Transport::ReadPacket(Bno086ShtpPacket& packet, int timeout_ms)
   }
 }
 
+Bno086TransportStats Bno086Transport::GetStats() const
+{
+  return m_stats;
+}
+
 bool Bno086Transport::ReadTransaction(std::uint8_t* buffer,
                                       std::size_t size,
                                       const std::chrono::steady_clock::time_point& deadline) const
@@ -185,7 +202,10 @@ bool Bno086Transport::ReadTransaction(std::uint8_t* buffer,
     if (bytesRead < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
     {
       if (std::chrono::steady_clock::now() >= deadline)
+      {
+        ++m_stats.i2c_read_timeout_count;
         return false;
+      }
 
       std::this_thread::sleep_for(std::chrono::microseconds(200));
       continue;
@@ -196,6 +216,11 @@ bool Bno086Transport::ReadTransaction(std::uint8_t* buffer,
       std::this_thread::sleep_for(std::chrono::microseconds(200));
       continue;
     }
+
+    if (bytesRead == 0)
+      ++m_stats.i2c_read_timeout_count;
+    else
+      ++m_stats.i2c_read_error_count;
 
     return false;
   }

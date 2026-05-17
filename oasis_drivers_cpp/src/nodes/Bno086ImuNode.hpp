@@ -163,6 +163,26 @@ private:
     std::optional<int64_t> last_normalized_stamp_ns;
   };
 
+  struct DrainThroughputDiagnostics
+  {
+    std::uint64_t drains{0};
+    std::uint64_t physical_packets_sum{0};
+    std::uint32_t physical_packets_max{0};
+    std::optional<std::uint32_t> physical_packets_min;
+    std::uint64_t sensor_events_sum{0};
+    std::uint32_t sensor_events_max{0};
+    std::optional<std::uint32_t> sensor_events_min;
+    std::uint64_t drain_duration_sum_us{0};
+    std::uint32_t drain_duration_max_us{0};
+    std::optional<std::uint32_t> drain_duration_min_us;
+    std::uint64_t physical_packet_cap_hit_count{0};
+    std::uint64_t poll_iteration_cap_hit_count{0};
+    std::uint64_t hintn_asserted_after_exit_count{0};
+    std::uint64_t no_progress_drain_count{0};
+    std::uint64_t transport_error_count{0};
+    std::array<std::uint64_t, 6> channel_packet_counts{};
+  };
+
   struct EstimatedEventStamp
   {
     rclcpp::Time stamp;
@@ -221,6 +241,10 @@ private:
       const OASIS::IMU::BNO086::FeatureConfiguration& configuration,
       const std::optional<OASIS::IMU::BNO086::FeatureResponse>& response) const;
   void MaybeLogImuGravityDiagnostics();
+  void RecordDrainThroughputDiagnostics(const OASIS::IMU::BNO086::Bno086DrainCounters& counters,
+                                        OASIS::IMU::BNO086::Bno086DrainAction exit_action,
+                                        bool hintn_asserted_after_exit,
+                                        std::uint32_t drain_duration_us);
   void UpdateImuGravityDiagnosticsRates(const std::chrono::steady_clock::time_point& now);
   void MaybeEmitImuGravityDiagnosticsLog();
   std::string BuildImuGravityDiagnosticsLogMessage() const;
@@ -347,6 +371,7 @@ private:
   std::uint32_t m_timestampTraceCount{0};
   std::uint32_t m_timestampTraceLogged{0};
   std::array<TimestampTraceStats, 5> m_timestampTraceStats{};
+  DrainThroughputDiagnostics m_drainDiagnostics{};
   std::chrono::steady_clock::time_point m_featureConfigurationStartedAt{};
   std::vector<OASIS::IMU::BNO086::FeatureResponse> m_latestFeatureResponses;
 };

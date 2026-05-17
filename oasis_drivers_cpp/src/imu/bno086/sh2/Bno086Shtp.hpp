@@ -149,6 +149,13 @@ public:
      * \brief True when this poll decoded a command/control-channel packet
      */
     bool handled_control_packet{false};
+
+    /*!
+     * \brief SHTP channel for the physical packet read by this poll
+     *
+     * Units: channel id, unset when no physical packet was read
+     */
+    std::optional<std::uint8_t> packet_channel;
   };
 
   struct StartupStatus

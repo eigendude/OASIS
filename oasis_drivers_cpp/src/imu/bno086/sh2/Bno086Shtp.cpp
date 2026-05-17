@@ -102,6 +102,7 @@ Bno086Shtp::PollResult Bno086Shtp::Poll(int timeout_ms)
     return result;
 
   result.read_physical_packet = true;
+  result.packet_channel = packet.channel;
 
   if (!DecodePacket(packet, result.event))
   {
