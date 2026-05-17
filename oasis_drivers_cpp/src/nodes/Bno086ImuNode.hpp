@@ -133,6 +133,7 @@ private:
                                 const rclcpp::Time& interrupt_ros_at);
   void MaybePublishOnLinearAcceleration(const OASIS::IMU::BNO086::SensorEvent& event);
   void MaybePublishImuGravityOnAccelerometer(const OASIS::IMU::BNO086::SensorEvent& event);
+  void MaybePublishGravityOnGravityReport(const OASIS::IMU::BNO086::SensorEvent& event);
   void PublishLatestFrame(const rclcpp::Time& stamp);
   std::uint32_t CoreCoherenceToleranceUs() const;
   bool HasPublishableCoreFrame() const;
@@ -144,6 +145,8 @@ private:
                                   const rclcpp::Time& interrupt_ros_at);
   sensor_msgs::msg::Imu BuildPresentImuMessage(const rclcpp::Time& stamp) const;
   sensor_msgs::msg::Imu BuildImuGravityMessage(const rclcpp::Time& stamp) const;
+  geometry_msgs::msg::AccelWithCovarianceStamped BuildGravityMessage(
+      const rclcpp::Time& stamp) const;
   sensor_msgs::msg::Imu BuildPredictedImuMessage(const sensor_msgs::msg::Imu& present_imu) const;
   oasis_msgs::msg::ImuVr BuildPredictedVrMessage(const sensor_msgs::msg::Imu& present_imu,
                                                  const sensor_msgs::msg::Imu& predicted_imu) const;
@@ -209,6 +212,7 @@ private:
   SampleState m_gyroState{};
   SampleState m_linearAccelState{};
   SampleState m_imuGravityState{};
+  SampleState m_gravityState{};
   OrientationCovarianceDebugState m_orientationCovarianceDebug{};
 
   std::string m_frameId;

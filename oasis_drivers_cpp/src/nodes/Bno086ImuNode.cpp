@@ -475,6 +475,7 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
         ApplyEvent(*pollResult.event, normalizedEventStamp);
         MaybePublishOnLinearAcceleration(*pollResult.event);
         MaybePublishImuGravityOnAccelerometer(*pollResult.event);
+        MaybePublishGravityOnGravityReport(*pollResult.event);
       }
     }
 
@@ -603,6 +604,19 @@ void Bno086ImuNode::MaybePublishImuGravityOnAccelerometer(const SensorEvent& eve
   MaybeLogImuGravityDiagnostics();
 }
 
+void Bno086ImuNode::MaybePublishGravityOnGravityReport(const SensorEvent& event)
+{
+  if (event.report_id != ReportId::Gravity)
+    return;
+
+  if (!m_latestFrame.has_gravity)
+    return;
+
+  const geometry_msgs::msg::AccelWithCovarianceStamped gravityMsg =
+      BuildGravityMessage(m_gravityState.stamp);
+  m_gravityPublisher->publish(gravityMsg);
+}
+
 void Bno086ImuNode::PublishLatestFrame(const rclcpp::Time& stamp)
 {
   if (!(m_latestFrame.has_orientation && m_latestFrame.has_gyro && m_latestFrame.has_linear_accel))
@@ -626,38 +640,6 @@ void Bno086ImuNode::PublishLatestFrame(const rclcpp::Time& stamp)
   m_imuPublisher->publish(imuMsg);
   m_imuPredictedPublisher->publish(predictedImuMsg);
   m_imuVrPublisher->publish(imuVrMsg);
-
-  if (m_latestFrame.has_gravity)
-  {
-    std::optional<OASIS::IMU::Mat3> gravityCovariance;
-    if (m_latestFrame.has_gravity_covariance)
-      gravityCovariance = m_latestFrame.gravity_cov_mps2_2;
-
-    const PublishedGravityMeasurement gravityMeasurement =
-        MakePublishedGravityMeasurement(m_latestFrame.gravity_mps2, gravityCovariance);
-
-    geometry_msgs::msg::AccelWithCovarianceStamped gravityMsg;
-    gravityMsg.header = imuMsg.header;
-    gravityMsg.accel.accel.linear.x = gravityMeasurement.gravity_mps2[0];
-    gravityMsg.accel.accel.linear.y = gravityMeasurement.gravity_mps2[1];
-    gravityMsg.accel.accel.linear.z = gravityMeasurement.gravity_mps2[2];
-
-    gravityMsg.accel.accel.angular.x = 0.0;
-    gravityMsg.accel.accel.angular.y = 0.0;
-    gravityMsg.accel.accel.angular.z = 0.0;
-
-    // `gravity` publishes the canonical OASIS gravity vector in
-    // `accel.accel.linear`: expressed in `imu_link`, pointing down, and near
-    // 9.81 m/s^2 at rest. This is a physical gravity vector, not an "up"
-    // vector and not a normalized direction-only unit vector.
-    //
-    // The rotational covariance block in geometry_msgs/AccelWithCovariance is
-    // reserved for angular acceleration. The BNO086 does not estimate angular
-    // acceleration on this topic, so covariance[21] remains -1.0 by policy.
-    gravityMsg.accel.covariance = gravityMeasurement.covariance;
-
-    m_gravityPublisher->publish(gravityMsg);
-  }
 }
 
 sensor_msgs::msg::Imu Bno086ImuNode::BuildPresentImuMessage(const rclcpp::Time& stamp) const
@@ -732,6 +714,40 @@ sensor_msgs::msg::Imu Bno086ImuNode::BuildImuGravityMessage(const rclcpp::Time& 
   }
 
   return imuGravityMsg;
+}
+
+geometry_msgs::msg::AccelWithCovarianceStamped Bno086ImuNode::BuildGravityMessage(
+    const rclcpp::Time& stamp) const
+{
+  std::optional<OASIS::IMU::Mat3> gravityCovariance;
+  if (m_latestFrame.has_gravity_covariance)
+    gravityCovariance = m_latestFrame.gravity_cov_mps2_2;
+
+  const PublishedGravityMeasurement gravityMeasurement =
+      MakePublishedGravityMeasurement(m_latestFrame.gravity_mps2, gravityCovariance);
+
+  geometry_msgs::msg::AccelWithCovarianceStamped gravityMsg;
+  gravityMsg.header.stamp = stamp;
+  gravityMsg.header.frame_id = m_frameId;
+  gravityMsg.accel.accel.linear.x = gravityMeasurement.gravity_mps2[0];
+  gravityMsg.accel.accel.linear.y = gravityMeasurement.gravity_mps2[1];
+  gravityMsg.accel.accel.linear.z = gravityMeasurement.gravity_mps2[2];
+
+  gravityMsg.accel.accel.angular.x = 0.0;
+  gravityMsg.accel.accel.angular.y = 0.0;
+  gravityMsg.accel.accel.angular.z = 0.0;
+
+  // `gravity` publishes the canonical OASIS gravity vector in
+  // `accel.accel.linear`: expressed in `imu_link`, pointing down, and near
+  // 9.81 m/s^2 at rest. This is a physical gravity vector, not an "up"
+  // vector and not a normalized direction-only unit vector.
+  //
+  // The rotational covariance block in geometry_msgs/AccelWithCovariance is
+  // reserved for angular acceleration. The BNO086 does not estimate angular
+  // acceleration on this topic, so covariance[21] remains -1.0 by policy.
+  gravityMsg.accel.covariance = gravityMeasurement.covariance;
+
+  return gravityMsg;
 }
 
 sensor_msgs::msg::Imu Bno086ImuNode::BuildPredictedImuMessage(
@@ -1394,6 +1410,10 @@ void Bno086ImuNode::ApplyEvent(const SensorEvent& event, const rclcpp::Time& sam
           Bno086ImuNode::CovarianceFromAccuracyBucket(event.accuracy, 1.0, 0.5, 0.2, 0.08);
       m_latestFrame.has_gravity = true;
       m_latestFrame.has_gravity_covariance = true;
+      m_gravityState.has_sample = true;
+      m_gravityState.stamp = sample_stamp;
+      m_gravityState.sequence = event.sequence;
+      m_gravityState.accuracy = event.accuracy;
       break;
     }
 
