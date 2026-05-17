@@ -1,0 +1,78 @@
+/*
+ *  Copyright (C) 2026 Garrett Brown
+ *  This file is part of OASIS - https://github.com/eigendude/OASIS
+ *
+ *  SPDX-License-Identifier: Apache-2.0
+ *  See the file LICENSE.txt for more information.
+ */
+
+#include "imu/bno086/Bno086DrainPolicy.hpp"
+
+namespace OASIS::IMU::BNO086
+{
+bool Bno086DrainMadeProgress(const Bno086DrainCounters& counters)
+{
+  return counters.physical_packets_this_drain > 0 || counters.sensor_events_this_drain > 0 ||
+         counters.control_packets_this_drain > 0;
+}
+
+Bno086DrainDecision Bno086DrainBeforePoll(const Bno086DrainLimits& limits,
+                                          const Bno086DrainCounters& counters,
+                                          bool hintn_asserted)
+{
+  Bno086DrainDecision decision;
+  decision.hintn_asserted = hintn_asserted;
+
+  if (counters.poll_iterations >= limits.max_poll_iterations_per_interrupt)
+    decision.action = Bno086DrainAction::PollIterationCap;
+
+  return decision;
+}
+
+Bno086DrainDecision Bno086DrainAfterPoll(const Bno086Shtp::PollResult& result,
+                                         const Bno086DrainLimits& limits,
+                                         Bno086DrainCounters& counters,
+                                         bool hintn_asserted)
+{
+  Bno086DrainDecision decision;
+  decision.hintn_asserted = hintn_asserted;
+
+  ++counters.poll_iterations;
+
+  if (result.status == Bno086Shtp::PollStatus::Timeout)
+  {
+    if (Bno086DrainMadeProgress(counters) || !hintn_asserted)
+      decision.action = Bno086DrainAction::Complete;
+    else
+      decision.action = Bno086DrainAction::WarnNoProgressTimeout;
+
+    return decision;
+  }
+
+  if (result.read_physical_packet)
+    ++counters.physical_packets_this_drain;
+
+  if (result.event.has_value())
+    ++counters.sensor_events_this_drain;
+
+  if (result.dequeued_pending_event)
+    ++counters.pending_events_this_drain;
+
+  if (result.handled_control_packet)
+    ++counters.control_packets_this_drain;
+
+  if (result.status == Bno086Shtp::PollStatus::TransportError)
+  {
+    decision.action = Bno086DrainAction::TransportError;
+    return decision;
+  }
+
+  if (counters.physical_packets_this_drain >= limits.max_physical_packets_per_interrupt)
+  {
+    decision.action = Bno086DrainAction::PhysicalPacketCap;
+    return decision;
+  }
+
+  return decision;
+}
+} // namespace OASIS::IMU::BNO086

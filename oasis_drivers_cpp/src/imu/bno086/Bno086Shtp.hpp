@@ -79,6 +79,38 @@ public:
     TransportError,
   };
 
+  struct PollResult
+  {
+    /*!
+     * \brief High-level outcome of one polling attempt
+     *
+     * Units: enum code
+     */
+    PollStatus status{PollStatus::Timeout};
+
+    /*!
+     * \brief Decoded sensor event returned by this poll, when present
+     *
+     * Units: SH-2 report payload decoded into fixed-point fields
+     */
+    std::optional<SensorEvent> event;
+
+    /*!
+     * \brief True when this poll performed one physical SHTP/I2C packet read
+     */
+    bool read_physical_packet{false};
+
+    /*!
+     * \brief True when this poll returned an event already queued in memory
+     */
+    bool dequeued_pending_event{false};
+
+    /*!
+     * \brief True when this poll decoded a command/control-channel packet
+     */
+    bool handled_control_packet{false};
+  };
+
   struct StartupStatus
   {
     bool communication_established{false};
@@ -88,7 +120,7 @@ public:
   explicit Bno086Shtp(Bno086Transport& transport);
 
   bool Configure(const Bno086ShtpConfig& config);
-  PollStatus Poll(std::optional<SensorEvent>& event, int timeout_ms);
+  PollResult Poll(int timeout_ms);
 
   const StartupStatus& GetStartupStatus() const;
   const std::vector<FeatureConfiguration>& GetFeatureConfigurations() const;

@@ -40,9 +40,15 @@ constexpr const char* IMU_GRAVITY_TOPIC = "imu_gravity";
 constexpr const char* DEFAULT_FRAME_ID = "imu_link";
 
 constexpr int INTERRUPT_WAIT_TIMEOUT_MS = 20;
-constexpr int PACKET_READ_TIMEOUT_MS = 2;
-constexpr int MAX_PACKETS_PER_INTERRUPT = 128;
-constexpr int MAX_DRAIN_DURATION_MS = 10;
+constexpr int DEFAULT_PACKET_READ_TIMEOUT_MS = 5;
+constexpr int MIN_PACKET_READ_TIMEOUT_MS = 1;
+constexpr int MAX_PACKET_READ_TIMEOUT_MS = 100;
+constexpr int DEFAULT_MAX_PACKETS_PER_INTERRUPT = 1024;
+constexpr int MIN_MAX_PACKETS_PER_INTERRUPT = 1;
+constexpr int MAX_MAX_PACKETS_PER_INTERRUPT = 8192;
+constexpr int DEFAULT_MAX_POLL_ITERATIONS_PER_INTERRUPT = 4096;
+constexpr int MIN_MAX_POLL_ITERATIONS_PER_INTERRUPT = 1;
+constexpr int MAX_MAX_POLL_ITERATIONS_PER_INTERRUPT = 16384;
 constexpr std::uint32_t REPEATED_NO_PROGRESS_TIMEOUT_WARN_COUNT = 3;
 
 constexpr std::uint32_t MAX_BASE_TIMESTAMP_STEP_US = 1'000'000;
@@ -101,6 +107,10 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   declare_parameter("bno086_linear_acceleration_rate_hz", DEFAULT_LINEAR_ACCELERATION_RATE_HZ);
   declare_parameter("bno086_gravity_rate_hz", DEFAULT_GRAVITY_RATE_HZ);
   declare_parameter("bno086_enable_gravity_report", DEFAULT_ENABLE_GRAVITY_REPORT);
+  declare_parameter("bno086_packet_read_timeout_ms", DEFAULT_PACKET_READ_TIMEOUT_MS);
+  declare_parameter("bno086_max_packets_per_interrupt", DEFAULT_MAX_PACKETS_PER_INTERRUPT);
+  declare_parameter("bno086_max_poll_iterations_per_interrupt",
+                    DEFAULT_MAX_POLL_ITERATIONS_PER_INTERRUPT);
   declare_parameter("bno086_diagnostics_log_level",
                     std::string(DEFAULT_BNO086_DIAGNOSTICS_LOG_LEVEL));
   declare_parameter("bno086_diagnostics_log_period_ms", DEFAULT_BNO086_DIAGNOSTICS_LOG_PERIOD_MS);
@@ -123,6 +133,15 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
       std::max(get_parameter("bno086_linear_acceleration_rate_hz").as_double(), 1.0);
   m_gravityRateHz = std::max(get_parameter("bno086_gravity_rate_hz").as_double(), 1.0);
   m_enableGravityReport = get_parameter("bno086_enable_gravity_report").as_bool();
+  m_packetReadTimeoutMs =
+      std::clamp(static_cast<int>(get_parameter("bno086_packet_read_timeout_ms").as_int()),
+                 MIN_PACKET_READ_TIMEOUT_MS, MAX_PACKET_READ_TIMEOUT_MS);
+  m_maxPacketsPerInterrupt = static_cast<std::uint32_t>(
+      std::clamp(static_cast<int>(get_parameter("bno086_max_packets_per_interrupt").as_int()),
+                 MIN_MAX_PACKETS_PER_INTERRUPT, MAX_MAX_PACKETS_PER_INTERRUPT));
+  m_maxPollIterationsPerInterrupt = static_cast<std::uint32_t>(std::clamp(
+      static_cast<int>(get_parameter("bno086_max_poll_iterations_per_interrupt").as_int()),
+      MIN_MAX_POLL_ITERATIONS_PER_INTERRUPT, MAX_MAX_POLL_ITERATIONS_PER_INTERRUPT));
   const std::string diagnosticsLogLevel = get_parameter("bno086_diagnostics_log_level").as_string();
   const std::optional<Bno086DiagnosticsLogLevel> parsedDiagnosticsLogLevel =
       ParseBno086DiagnosticsLogLevel(diagnosticsLogLevel);
@@ -290,36 +309,44 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
     const std::chrono::steady_clock::time_point& interrupt_steady_at,
     const rclcpp::Time& interrupt_ros_at)
 {
-  int packetsHandled = 0;
-  int eventsHandled = 0;
+  Bno086DrainCounters drainCounters;
+  Bno086DrainLimits drainLimits;
+  drainLimits.max_physical_packets_per_interrupt = m_maxPacketsPerInterrupt;
+  drainLimits.max_poll_iterations_per_interrupt = m_maxPollIterationsPerInterrupt;
 
-  for (int i = 0; i < MAX_PACKETS_PER_INTERRUPT && m_running.load(); ++i)
+  while (m_running.load())
   {
-    const auto drainElapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                    std::chrono::steady_clock::now() - interrupt_steady_at)
-                                    .count();
-    if (drainElapsedMs >= MAX_DRAIN_DURATION_MS)
+    const bool hintnAssertedBeforePoll = m_interruptGpio.IsAssertedLow();
+    const Bno086DrainDecision beforePollDecision =
+        Bno086DrainBeforePoll(drainLimits, drainCounters, hintnAssertedBeforePoll);
+    if (beforePollDecision.action == Bno086DrainAction::PollIterationCap)
     {
-      if (IsBno086RateUnhealthy())
-      {
-        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
-                             "BNO086 interrupt drain duration budget exceeded while report "
-                             "rates are unhealthy");
-      }
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "BNO086 interrupt drain hit poll iteration cap: "
+          "physical_packets_this_drain=%u sensor_events_this_drain=%u "
+          "pending_events_this_drain=%u control_packets_this_drain=%u "
+          "poll_iterations=%u poll_iteration_cap=%u hintn_asserted=%s",
+          drainCounters.physical_packets_this_drain, drainCounters.sensor_events_this_drain,
+          drainCounters.pending_events_this_drain, drainCounters.control_packets_this_drain,
+          drainCounters.poll_iterations, drainLimits.max_poll_iterations_per_interrupt,
+          beforePollDecision.hintn_asserted ? "true" : "false");
       break;
     }
 
-    std::optional<SensorEvent> event;
-    const Bno086Shtp::PollStatus pollStatus = m_shtp->Poll(event, PACKET_READ_TIMEOUT_MS);
+    const Bno086Shtp::PollResult pollResult = m_shtp->Poll(m_packetReadTimeoutMs);
+    const bool hintnAssertedAfterPoll = m_interruptGpio.IsAssertedLow();
+    const Bno086DrainDecision afterPollDecision =
+        Bno086DrainAfterPoll(pollResult, drainLimits, drainCounters, hintnAssertedAfterPoll);
 
-    if (pollStatus == Bno086Shtp::PollStatus::Timeout)
+    if (afterPollDecision.action == Bno086DrainAction::Complete)
     {
-      if ((packetsHandled > 0 || eventsHandled > 0) || !m_interruptGpio.IsAssertedLow())
-      {
-        m_repeatedNoProgressTimeouts = 0;
-        break;
-      }
+      m_repeatedNoProgressTimeouts = 0;
+      break;
+    }
 
+    if (afterPollDecision.action == Bno086DrainAction::WarnNoProgressTimeout)
+    {
       ++m_repeatedNoProgressTimeouts;
       if (m_repeatedNoProgressTimeouts >= REPEATED_NO_PROGRESS_TIMEOUT_WARN_COUNT)
       {
@@ -330,9 +357,8 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
     }
 
     m_repeatedNoProgressTimeouts = 0;
-    ++packetsHandled;
 
-    if (pollStatus == Bno086Shtp::PollStatus::TransportError)
+    if (afterPollDecision.action == Bno086DrainAction::TransportError)
     {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
                            "BNO086 transport error while draining interrupt data");
@@ -341,25 +367,25 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
 
     MaybeLogFeatureResponses();
 
-    if (pollStatus == Bno086Shtp::PollStatus::SensorEvent && event.has_value())
+    if (pollResult.status == Bno086Shtp::PollStatus::SensorEvent && pollResult.event.has_value())
     {
-      ++eventsHandled;
       const auto sampleNowSteady = std::chrono::steady_clock::now();
       const auto sampleDeltaNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
                                      sampleNowSteady - interrupt_steady_at)
                                      .count();
       const rclcpp::Time sampleInterruptRosAt =
           interrupt_ros_at + rclcpp::Duration(0, sampleDeltaNs);
-      const rclcpp::Time eventStamp = EstimateEventStamp(*event, sampleInterruptRosAt);
-      const auto normalizerIndex = static_cast<std::size_t>(event->report_id);
+      const rclcpp::Time eventStamp = EstimateEventStamp(*pollResult.event, sampleInterruptRosAt);
+      const auto normalizerIndex = static_cast<std::size_t>(pollResult.event->report_id);
       const TimestampNormalizationResult normalizedStamp =
-          m_timestampNormalizers[normalizerIndex].Normalize(TimestampSample{
-              event->sequence, eventStamp.nanoseconds(), sampleInterruptRosAt.nanoseconds()});
+          m_timestampNormalizers[normalizerIndex].Normalize(
+              TimestampSample{pollResult.event->sequence, eventStamp.nanoseconds(),
+                              sampleInterruptRosAt.nanoseconds()});
 
       if (normalizedStamp.reconstruction_reset)
         ++m_imuGravityDiagnostics.timestamp_reconstruction_reset_count;
 
-      if (event->report_id == ReportId::Accelerometer)
+      if (pollResult.event->report_id == ReportId::Accelerometer)
       {
         if (normalizedStamp.repaired_nonmonotonic)
           ++m_imuGravityDiagnostics.timestamp_repaired_nonmonotonic_accel;
@@ -368,24 +394,33 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
           ++m_imuGravityDiagnostics.accel_sequence_gap_count;
       }
 
-      if (normalizedStamp.duplicate)
-        continue;
-
-      const rclcpp::Time normalizedEventStamp(normalizedStamp.stamp_ns, RCL_ROS_TIME);
-      CountDecodedReport(*event);
-      ApplyEvent(*event, normalizedEventStamp);
-      MaybePublishOnLinearAcceleration(*event);
-      MaybePublishImuGravityOnAccelerometer(*event);
+      if (!normalizedStamp.duplicate)
+      {
+        const rclcpp::Time normalizedEventStamp(normalizedStamp.stamp_ns, RCL_ROS_TIME);
+        CountDecodedReport(*pollResult.event);
+        ApplyEvent(*pollResult.event, normalizedEventStamp);
+        MaybePublishOnLinearAcceleration(*pollResult.event);
+        MaybePublishImuGravityOnAccelerometer(*pollResult.event);
+      }
     }
 
-    if (!m_interruptGpio.IsAssertedLow() && pollStatus == Bno086Shtp::PollStatus::PacketHandled)
+    if (afterPollDecision.action == Bno086DrainAction::PhysicalPacketCap)
+    {
+      if (afterPollDecision.hintn_asserted)
+      {
+        RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 2000,
+            "BNO086 interrupt drain hit physical packet cap while H_INTN "
+            "remained asserted: physical_packets_this_drain=%u "
+            "sensor_events_this_drain=%u pending_events_this_drain=%u "
+            "control_packets_this_drain=%u poll_iterations=%u packet_cap=%u "
+            "hintn_asserted=true",
+            drainCounters.physical_packets_this_drain, drainCounters.sensor_events_this_drain,
+            drainCounters.pending_events_this_drain, drainCounters.control_packets_this_drain,
+            drainCounters.poll_iterations, drainLimits.max_physical_packets_per_interrupt);
+      }
       break;
-  }
-
-  if (packetsHandled >= MAX_PACKETS_PER_INTERRUPT && m_interruptGpio.IsAssertedLow())
-  {
-    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
-                         "BNO086 interrupt drain hit packet cap while H_INTN remained asserted");
+    }
   }
 }
 

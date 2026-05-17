@@ -9,6 +9,7 @@
 #pragma once
 
 #include "imu/bno086/Bno086DiagnosticsPolicy.hpp"
+#include "imu/bno086/Bno086DrainPolicy.hpp"
 #include "imu/bno086/Bno086Gpio.hpp"
 #include "imu/bno086/Bno086GravityUtils.hpp"
 #include "imu/bno086/Bno086OrientationCovariancePolicy.hpp"
@@ -213,6 +214,9 @@ private:
   std::optional<CoreFrameSignature> m_lastPublishedCoreSignature;
   std::optional<int64_t> m_lastPublishedImuGravityAccelStampNs;
   std::uint32_t m_reportIntervalUs{10'000};
+  int m_packetReadTimeoutMs{5};
+  std::uint32_t m_maxPacketsPerInterrupt{1024};
+  std::uint32_t m_maxPollIterationsPerInterrupt{4096};
   double m_rotationVectorRateHz{100.0};
   double m_gyroRateHz{100.0};
   double m_accelerometerRateHz{100.0};

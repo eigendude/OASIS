@@ -83,28 +83,41 @@ bool Bno086Shtp::Configure(const Bno086ShtpConfig& config)
   return SendSetFeatureCommands();
 }
 
-Bno086Shtp::PollStatus Bno086Shtp::Poll(std::optional<SensorEvent>& event, int timeout_ms)
+Bno086Shtp::PollResult Bno086Shtp::Poll(int timeout_ms)
 {
-  event.reset();
+  PollResult result;
 
   if (!m_pendingEvents.empty())
   {
-    event = m_pendingEvents.front();
+    result.event = m_pendingEvents.front();
     m_pendingEvents.erase(m_pendingEvents.begin());
-    return PollStatus::SensorEvent;
+    result.status = PollStatus::SensorEvent;
+    result.dequeued_pending_event = true;
+    return result;
   }
 
   Bno086ShtpPacket packet;
   if (!m_transport.ReadPacket(packet, timeout_ms))
-    return PollStatus::Timeout;
+    return result;
 
-  if (!DecodePacket(packet, event))
-    return PollStatus::TransportError;
+  result.read_physical_packet = true;
 
-  if (event.has_value())
-    return PollStatus::SensorEvent;
+  if (!DecodePacket(packet, result.event))
+  {
+    result.status = PollStatus::TransportError;
+    return result;
+  }
 
-  return PollStatus::PacketHandled;
+  result.handled_control_packet = packet.channel < kChannelReports;
+
+  if (result.event.has_value())
+  {
+    result.status = PollStatus::SensorEvent;
+    return result;
+  }
+
+  result.status = PollStatus::PacketHandled;
+  return result;
 }
 
 const Bno086Shtp::StartupStatus& Bno086Shtp::GetStartupStatus() const
