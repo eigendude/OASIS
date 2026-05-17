@@ -577,12 +577,6 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
       const FinalizedEventStamp finalizedStamp =
           FinalizeEventStamp(*pollResult.event, eventStamp, expectedIntervalNs);
 
-      if (pollResult.event->report_id == ReportId::Accelerometer)
-      {
-        if (finalizedStamp.sequence_gap)
-          ++m_imuGravityDiagnostics.accel_sequence_gap_count;
-      }
-
       if (!finalizedStamp.duplicate)
       {
         const rclcpp::Time normalizedEventStamp(finalizedStamp.stamp_ns, RCL_ROS_TIME);
@@ -693,7 +687,6 @@ void Bno086ImuNode::MaybePublishOnLinearAcceleration(const SensorEvent& event)
         m_latestFrame.has_linear_accel) ||
       !(m_orientationState.has_sample && m_gyroState.has_sample && m_linearAccelState.has_sample))
   {
-    ++m_imuGravityDiagnostics.imu_skipped_missing_core_frame;
     MaybeLogImuGravityDiagnostics();
     return;
   }
@@ -709,8 +702,6 @@ void Bno086ImuNode::MaybePublishOnLinearAcceleration(const SensorEvent& event)
   const int64_t coreThresholdNs = DurationFromUs(CoreCoherenceToleranceUs()).nanoseconds();
   if (!IsTimestampSpanCoherent(oldestNs, newestNs, coreThresholdNs))
   {
-    ++m_imuGravityDiagnostics.imu_skipped_incoherent_core_frame;
-    ++m_imuGravityDiagnostics.imu_skipped_incoherent_core_frame_span;
     RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
                           "Skipping BNO086 imu core frame: timestamp span too wide "
                           "latest_core_span_ms=%.3f threshold_ms=%.3f "
@@ -732,7 +723,6 @@ void Bno086ImuNode::MaybePublishOnLinearAcceleration(const SensorEvent& event)
       signature.gyro_stamp_ns == m_lastPublishedCoreSignature->gyro_stamp_ns &&
       signature.linear_accel_stamp_ns == m_lastPublishedCoreSignature->linear_accel_stamp_ns)
   {
-    ++m_imuGravityDiagnostics.imu_skipped_duplicate_core_signature;
     MaybeLogImuGravityDiagnostics();
     return;
   }
@@ -819,7 +809,6 @@ void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& ev
 
   if (gyroFreshness.status == SampleFreshnessStatus::TooFuture)
   {
-    ++m_imuGravityDiagnostics.imu_gravity_skipped_future_gyro;
     MaybeLogImuGravityDiagnostics();
     return;
   }
@@ -1076,22 +1065,9 @@ void Bno086ImuNode::MaybeLogFeatureResponses()
       m_latestFeatureResponses.emplace_back(featureResponse);
     else
       *it = featureResponse;
-
-    LogFeatureResponse(featureResponse);
   }
 
   MaybeLogFeatureSummary();
-}
-
-void Bno086ImuNode::LogFeatureResponse(const FeatureResponse& response)
-{
-  const double actualRateHz = response.report_interval_us > 0
-                                  ? 1'000'000.0 / static_cast<double>(response.report_interval_us)
-                                  : 0.0;
-
-  const std::optional<std::size_t> reportIndex = DiagnosticReportIndex(response.report_id);
-  if (reportIndex.has_value())
-    m_imuGravityDiagnostics.latest_feature_rate_hz[*reportIndex] = actualRateHz;
 }
 
 void Bno086ImuNode::MaybeLogFeatureSummary()
@@ -1226,25 +1202,16 @@ void Bno086ImuNode::RecordDrainThroughputDiagnostics(const Bno086DrainCounters& 
 void Bno086ImuNode::UpdateImuGravityDiagnosticsRates(
     const std::chrono::steady_clock::time_point& now)
 {
-  if (m_imuGravityDiagnostics.last_log_at.time_since_epoch().count() == 0)
-  {
-    m_imuGravityDiagnostics.latest_accel_sequence_gap_delta = 0;
-  }
-  else
+  if (m_imuGravityDiagnostics.last_log_at.time_since_epoch().count() != 0)
   {
     const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                                now - m_imuGravityDiagnostics.last_log_at)
                                .count();
     if (elapsedMs > 0)
     {
-      const std::uint64_t accelReportDelta =
-          m_imuGravityDiagnostics.calibrated_accel_reports_received -
-          m_imuGravityDiagnostics.last_rate_accel_reports;
       const std::uint64_t imuGravityPublishedDelta =
           m_imuGravityDiagnostics.imu_gravity_published -
           m_imuGravityDiagnostics.last_rate_imu_gravity_published;
-      m_imuGravityDiagnostics.latest_calibrated_accel_rate_hz =
-          static_cast<double>(accelReportDelta) * 1000.0 / static_cast<double>(elapsedMs);
       m_imuGravityDiagnostics.latest_imu_gravity_rate_hz =
           static_cast<double>(imuGravityPublishedDelta) * 1000.0 / static_cast<double>(elapsedMs);
 
@@ -1256,42 +1223,17 @@ void Bno086ImuNode::UpdateImuGravityDiagnosticsRates(
             static_cast<double>(decodedDelta) * 1000.0 / static_cast<double>(elapsedMs);
       }
     }
-
-    m_imuGravityDiagnostics.latest_accel_sequence_gap_delta =
-        m_imuGravityDiagnostics.accel_sequence_gap_count -
-        m_imuGravityDiagnostics.last_rate_accel_sequence_gap_count;
   }
 
-  m_imuGravityDiagnostics.last_rate_accel_reports =
-      m_imuGravityDiagnostics.calibrated_accel_reports_received;
   m_imuGravityDiagnostics.last_rate_imu_gravity_published =
       m_imuGravityDiagnostics.imu_gravity_published;
   m_imuGravityDiagnostics.last_rate_decoded_reports =
       m_imuGravityDiagnostics.decoded_reports_received;
-  m_imuGravityDiagnostics.last_rate_accel_sequence_gap_count =
-      m_imuGravityDiagnostics.accel_sequence_gap_count;
 }
 
 void Bno086ImuNode::MaybeEmitImuGravityDiagnosticsLog()
 {
   const bool unhealthy = IsBno086DiagnosticsUnhealthy();
-  const std::string message = BuildImuGravityDiagnosticsLogMessage();
-  RCLCPP_DEBUG(get_logger(), "%s", message.c_str());
-
-  if (m_diagnosticsWasUnhealthy && !unhealthy)
-  {
-    RCLCPP_INFO(get_logger(),
-                "BNO086 imu_gravity recovered: imu_gravity_rate_hz=%.2f "
-                "accel_rate_hz=%.2f",
-                m_imuGravityDiagnostics.latest_imu_gravity_rate_hz,
-                m_imuGravityDiagnostics.latest_calibrated_accel_rate_hz);
-  }
-
-  m_diagnosticsWasUnhealthy = unhealthy;
-}
-
-std::string Bno086ImuNode::BuildImuGravityDiagnosticsLogMessage() const
-{
   const double drainCount = static_cast<double>(m_drainDiagnostics.drains);
   const double physicalPacketsMean =
       m_drainDiagnostics.drains > 0
@@ -1307,47 +1249,68 @@ std::string Bno086ImuNode::BuildImuGravityDiagnosticsLogMessage() const
           : 0.0;
   const Bno086TransportStats transportStats = m_transport.GetStats();
 
-  std::ostringstream oss;
-  oss << "BNO086 health: calibrated_accel_reports_received="
-      << m_imuGravityDiagnostics.calibrated_accel_reports_received << " "
-      << "rotation_events_seen=" << m_imuGravityDiagnostics.rotation_events_seen << " "
-      << "imu_gravity_published=" << m_imuGravityDiagnostics.imu_gravity_published << " "
-      << "linear_accel_events_seen=" << m_imuGravityDiagnostics.linear_accel_events_seen << " "
-      << "imu_published=" << m_imuGravityDiagnostics.imu_published << " "
-      << "skipped_missing_accel=" << m_imuGravityDiagnostics.imu_gravity_skipped_missing_accel
-      << " " << "skipped_missing_gyro=" << m_imuGravityDiagnostics.imu_gravity_skipped_missing_gyro
-      << " " << "skipped_stale_accel=" << m_imuGravityDiagnostics.imu_gravity_skipped_stale_accel
-      << " " << "skipped_stale_gyro=" << m_imuGravityDiagnostics.imu_gravity_skipped_stale_gyro
-      << " " << "skipped_future_accel=" << m_imuGravityDiagnostics.imu_gravity_skipped_future_accel
-      << " "
-      << "skipped_duplicate_stamp=" << m_imuGravityDiagnostics.imu_gravity_skipped_duplicate_stamp
-      << " " << "skipped_nonfinite=" << m_imuGravityDiagnostics.imu_gravity_skipped_nonfinite << " "
-      << "accel_sequence_gap_count=" << m_imuGravityDiagnostics.accel_sequence_gap_count << " "
-      << "selected_accel_offset_ms=" << m_imuGravityDiagnostics.selected_accel_offset_ms << " "
-      << "latest_core_span_ms=" << m_imuGravityDiagnostics.latest_core_span_ms << " "
-      << "latest_imu_gravity_rate_hz=" << m_imuGravityDiagnostics.latest_imu_gravity_rate_hz << " "
-      << "decoded_accel_rate_hz=" << m_imuGravityDiagnostics.latest_decoded_rate_hz[0] << " "
-      << "decoded_gyro_rate_hz=" << m_imuGravityDiagnostics.latest_decoded_rate_hz[1] << " "
-      << "decoded_rotation_rate_hz=" << m_imuGravityDiagnostics.latest_decoded_rate_hz[2] << " "
-      << "decoded_linear_rate_hz=" << m_imuGravityDiagnostics.latest_decoded_rate_hz[3] << " "
-      << "decoded_gravity_rate_hz=" << m_imuGravityDiagnostics.latest_decoded_rate_hz[4] << " "
-      << "drains=" << m_drainDiagnostics.drains << " "
-      << "physical_packets_per_drain_mean=" << physicalPacketsMean << " "
-      << "physical_packets_per_drain_max=" << m_drainDiagnostics.physical_packets_max << " "
-      << "sensor_events_per_drain_mean=" << sensorEventsMean << " "
-      << "sensor_events_per_drain_max=" << m_drainDiagnostics.sensor_events_max << " "
-      << "all_zero_backoff_count=" << m_drainDiagnostics.all_zero_backoff_count << " "
-      << "drain_duration_ms_mean=" << drainDurationMeanMs << " " << "drain_duration_ms_max="
-      << static_cast<double>(m_drainDiagnostics.drain_duration_max_us) / 1.0e3 << " "
-      << "physical_packet_cap_hit_count=" << m_drainDiagnostics.physical_packet_cap_hit_count << " "
-      << "poll_iteration_cap_hit_count=" << m_drainDiagnostics.poll_iteration_cap_hit_count << " "
-      << "drain_duration_budget_hit_count=" << m_drainDiagnostics.drain_duration_budget_hit_count
-      << " " << "no_progress_drain_count=" << m_drainDiagnostics.no_progress_drain_count << " "
-      << "drain_transport_error_count=" << m_drainDiagnostics.transport_error_count << " "
-      << "all_zero_budget_hit_count=" << m_drainDiagnostics.exit_all_zero_budget_count << " "
-      << "all_zero_header_count=" << transportStats.all_zero_header_count << " "
-      << "invalid_full_packet_count=" << transportStats.invalid_full_packet_count;
-  return oss.str();
+  RCLCPP_DEBUG(get_logger(),
+               "BNO086 rates: accel_hz=%.2f gyro_hz=%.2f rotation_hz=%.2f "
+               "linear_hz=%.2f gravity_hz=%.2f imu_gravity_hz=%.2f",
+               m_imuGravityDiagnostics.latest_decoded_rate_hz[0],
+               m_imuGravityDiagnostics.latest_decoded_rate_hz[1],
+               m_imuGravityDiagnostics.latest_decoded_rate_hz[2],
+               m_imuGravityDiagnostics.latest_decoded_rate_hz[3],
+               m_imuGravityDiagnostics.latest_decoded_rate_hz[4],
+               m_imuGravityDiagnostics.latest_imu_gravity_rate_hz);
+  RCLCPP_DEBUG(
+      get_logger(),
+      "BNO086 publish: accel_count=%llu rotation_count=%llu "
+      "imu_gravity_count=%llu linear_count=%llu imu_count=%llu "
+      "skip_missing_accel=%llu skip_missing_gyro=%llu "
+      "skip_stale_accel=%llu skip_stale_gyro=%llu "
+      "skip_future_accel=%llu skip_duplicate_stamp=%llu "
+      "skip_nonfinite=%llu selected_accel_offset_ms=%.3f "
+      "core_span_ms=%.3f",
+      static_cast<unsigned long long>(m_imuGravityDiagnostics.calibrated_accel_reports_received),
+      static_cast<unsigned long long>(m_imuGravityDiagnostics.rotation_events_seen),
+      static_cast<unsigned long long>(m_imuGravityDiagnostics.imu_gravity_published),
+      static_cast<unsigned long long>(m_imuGravityDiagnostics.linear_accel_events_seen),
+      static_cast<unsigned long long>(m_imuGravityDiagnostics.imu_published),
+      static_cast<unsigned long long>(m_imuGravityDiagnostics.imu_gravity_skipped_missing_accel),
+      static_cast<unsigned long long>(m_imuGravityDiagnostics.imu_gravity_skipped_missing_gyro),
+      static_cast<unsigned long long>(m_imuGravityDiagnostics.imu_gravity_skipped_stale_accel),
+      static_cast<unsigned long long>(m_imuGravityDiagnostics.imu_gravity_skipped_stale_gyro),
+      static_cast<unsigned long long>(m_imuGravityDiagnostics.imu_gravity_skipped_future_accel),
+      static_cast<unsigned long long>(m_imuGravityDiagnostics.imu_gravity_skipped_duplicate_stamp),
+      static_cast<unsigned long long>(m_imuGravityDiagnostics.imu_gravity_skipped_nonfinite),
+      m_imuGravityDiagnostics.selected_accel_offset_ms,
+      m_imuGravityDiagnostics.latest_core_span_ms);
+  RCLCPP_DEBUG(get_logger(),
+               "BNO086 drain: drains=%llu packets_mean=%.2f packets_max=%u "
+               "events_mean=%.2f events_max=%u zero_backoffs=%llu "
+               "duration_mean_ms=%.3f duration_max_ms=%.3f "
+               "packet_cap_hits=%llu poll_cap_hits=%llu "
+               "duration_budget_hits=%llu no_progress=%llu "
+               "transport_errors=%llu all_zero_budget_hits=%llu "
+               "all_zero_headers=%llu invalid_packets=%llu",
+               static_cast<unsigned long long>(m_drainDiagnostics.drains), physicalPacketsMean,
+               m_drainDiagnostics.physical_packets_max, sensorEventsMean,
+               m_drainDiagnostics.sensor_events_max,
+               static_cast<unsigned long long>(m_drainDiagnostics.all_zero_backoff_count),
+               drainDurationMeanMs,
+               static_cast<double>(m_drainDiagnostics.drain_duration_max_us) / 1.0e3,
+               static_cast<unsigned long long>(m_drainDiagnostics.physical_packet_cap_hit_count),
+               static_cast<unsigned long long>(m_drainDiagnostics.poll_iteration_cap_hit_count),
+               static_cast<unsigned long long>(m_drainDiagnostics.drain_duration_budget_hit_count),
+               static_cast<unsigned long long>(m_drainDiagnostics.no_progress_drain_count),
+               static_cast<unsigned long long>(m_drainDiagnostics.transport_error_count),
+               static_cast<unsigned long long>(m_drainDiagnostics.exit_all_zero_budget_count),
+               static_cast<unsigned long long>(transportStats.all_zero_header_count),
+               static_cast<unsigned long long>(transportStats.invalid_full_packet_count));
+
+  if (m_diagnosticsWasUnhealthy && !unhealthy)
+  {
+    RCLCPP_INFO(get_logger(), "BNO086 imu_gravity recovered: imu_gravity_rate_hz=%.2f",
+                m_imuGravityDiagnostics.latest_imu_gravity_rate_hz);
+  }
+
+  m_diagnosticsWasUnhealthy = unhealthy;
 }
 
 bool Bno086ImuNode::IsImuGravitySampleValid(const sensor_msgs::msg::Imu& message,
@@ -1491,8 +1454,8 @@ std::optional<FeatureResponse> Bno086ImuNode::LatestFeatureResponse(ReportId rep
 
 bool Bno086ImuNode::IsBno086RateUnhealthy() const
 {
-  if (m_imuGravityDiagnostics.latest_calibrated_accel_rate_hz > 0.0 &&
-      m_imuGravityDiagnostics.latest_calibrated_accel_rate_hz <
+  if (m_imuGravityDiagnostics.latest_decoded_rate_hz[0] > 0.0 &&
+      m_imuGravityDiagnostics.latest_decoded_rate_hz[0] <
           m_accelerometerRateHz * MIN_HEALTHY_RATE_FRACTION)
   {
     return true;
@@ -1513,7 +1476,19 @@ bool Bno086ImuNode::IsBno086DiagnosticsUnhealthy() const
   if (IsBno086RateUnhealthy())
     return true;
 
-  if (m_imuGravityDiagnostics.latest_accel_sequence_gap_delta > 0)
+  if (m_drainDiagnostics.physical_packet_cap_hit_count > 0)
+    return true;
+
+  if (m_drainDiagnostics.poll_iteration_cap_hit_count > 0)
+    return true;
+
+  if (m_drainDiagnostics.no_progress_drain_count > 0)
+    return true;
+
+  if (m_drainDiagnostics.transport_error_count > 0)
+    return true;
+
+  if (m_drainDiagnostics.exit_all_zero_budget_count > 0)
     return true;
 
   return false;

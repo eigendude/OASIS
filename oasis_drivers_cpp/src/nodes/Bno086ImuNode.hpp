@@ -121,27 +121,16 @@ private:
     std::uint64_t imu_gravity_skipped_stale_accel{0};
     std::uint64_t imu_gravity_skipped_stale_gyro{0};
     std::uint64_t imu_gravity_skipped_future_accel{0};
-    std::uint64_t imu_gravity_skipped_future_gyro{0};
     std::uint64_t imu_gravity_skipped_duplicate_stamp{0};
     std::uint64_t imu_gravity_skipped_nonfinite{0};
-    std::uint64_t accel_sequence_gap_count{0};
     std::uint64_t linear_accel_events_seen{0};
     std::uint64_t imu_published{0};
-    std::uint64_t imu_skipped_missing_core_frame{0};
-    std::uint64_t imu_skipped_incoherent_core_frame{0};
-    std::uint64_t imu_skipped_incoherent_core_frame_span{0};
-    std::uint64_t imu_skipped_duplicate_core_signature{0};
     double latest_core_span_ms{0.0};
-    double latest_calibrated_accel_rate_hz{0.0};
     double latest_imu_gravity_rate_hz{0.0};
     std::array<double, 5> latest_decoded_rate_hz{};
-    std::array<double, 5> latest_feature_rate_hz{};
     std::array<std::uint64_t, 5> decoded_reports_received{};
     std::array<std::uint64_t, 5> last_rate_decoded_reports{};
-    std::uint64_t latest_accel_sequence_gap_delta{0};
-    std::uint64_t last_rate_accel_reports{0};
     std::uint64_t last_rate_imu_gravity_published{0};
-    std::uint64_t last_rate_accel_sequence_gap_count{0};
     double selected_accel_offset_ms{0.0};
     std::chrono::steady_clock::time_point last_log_at{};
   };
@@ -226,7 +215,6 @@ private:
   oasis_msgs::msg::ImuVr BuildPredictedVrMessage(const sensor_msgs::msg::Imu& present_imu,
                                                  const sensor_msgs::msg::Imu& predicted_imu) const;
   void MaybeLogFeatureResponses();
-  void LogFeatureResponse(const OASIS::IMU::BNO086::FeatureResponse& response);
   void MaybeLogFeatureSummary();
   void LogFeatureSummary() const;
   std::string BuildFeatureSummaryLine(
@@ -240,7 +228,6 @@ private:
                                         std::uint32_t);
   void UpdateImuGravityDiagnosticsRates(const std::chrono::steady_clock::time_point& now);
   void MaybeEmitImuGravityDiagnosticsLog();
-  std::string BuildImuGravityDiagnosticsLogMessage() const;
   bool IsImuGravitySampleValid(const sensor_msgs::msg::Imu& message,
                                std::string& invalid_reason) const;
   std::optional<std::uint32_t> RequestedFeatureIntervalUs(
