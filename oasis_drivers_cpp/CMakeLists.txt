@@ -86,7 +86,9 @@ target_link_libraries(bno086_timestamp_cadence
 )
 
 add_library(bno086_utils
+  src/imu/bno086/utils/Bno086CovarianceUtils.cpp
   src/imu/bno086/utils/Bno086FeatureSummary.cpp
+  src/imu/bno086/utils/Bno086MathUtils.cpp
   src/imu/bno086/utils/Bno086ReportUtils.cpp
   src/imu/bno086/utils/Bno086TimingUtils.cpp
 )

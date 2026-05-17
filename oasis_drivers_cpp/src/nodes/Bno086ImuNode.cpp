@@ -8,7 +8,9 @@
 
 #include "Bno086ImuNode.hpp"
 
+#include "imu/bno086/utils/Bno086CovarianceUtils.hpp"
 #include "imu/bno086/utils/Bno086FeatureSummary.hpp"
+#include "imu/bno086/utils/Bno086MathUtils.hpp"
 #include "imu/bno086/utils/Bno086ReportUtils.hpp"
 #include "imu/bno086/utils/Bno086TimingUtils.hpp"
 
@@ -970,8 +972,8 @@ sensor_msgs::msg::Imu Bno086ImuNode::BuildPredictedImuMessage(
 {
   sensor_msgs::msg::Imu predictedImuMsg = present_imu;
   const std::array<double, 4> predictedOrientation =
-      PredictOrientation(m_stream.latest_frame.orientation_xyzw, m_stream.latest_frame.gyro_rads,
-                         m_config.prediction_horizon_sec);
+      PredictQuaternion(m_stream.latest_frame.orientation_xyzw, m_stream.latest_frame.gyro_rads,
+                        m_config.prediction_horizon_sec);
 
   predictedImuMsg.orientation.x = predictedOrientation[0];
   predictedImuMsg.orientation.y = predictedOrientation[1];
@@ -1426,7 +1428,7 @@ void Bno086ImuNode::ApplyEvent(const SensorEvent& event, const rclcpp::Time& sam
       m_stream.gyro.accuracy = event.accuracy;
 
       m_stream.latest_frame.gyro_cov_rads2_2 =
-          Bno086ImuNode::CovarianceFromAccuracyBucket(event.accuracy, 1.2, 0.5, 0.18, 0.06);
+          CovarianceFromAccuracyBucket(event.accuracy, 1.2, 0.5, 0.18, 0.06);
       m_stream.latest_frame.has_gyro_covariance = true;
       break;
 
@@ -1441,7 +1443,7 @@ void Bno086ImuNode::ApplyEvent(const SensorEvent& event, const rclcpp::Time& sam
       m_stream.linear_accel.accuracy = event.accuracy;
 
       m_stream.latest_frame.linear_accel_cov_mps2_2 =
-          Bno086ImuNode::CovarianceFromAccuracyBucket(event.accuracy, 4.0, 2.0, 0.8, 0.25);
+          CovarianceFromAccuracyBucket(event.accuracy, 4.0, 2.0, 0.8, 0.25);
       m_stream.latest_frame.has_linear_accel_covariance = true;
       break;
 
@@ -1456,7 +1458,7 @@ void Bno086ImuNode::ApplyEvent(const SensorEvent& event, const rclcpp::Time& sam
       m_stream.imu_gravity.accuracy = event.accuracy;
 
       m_stream.latest_frame.accel_cov_mps2_2 =
-          Bno086ImuNode::CovarianceFromAccuracyBucket(event.accuracy, 4.0, 2.0, 0.8, 0.25);
+          CovarianceFromAccuracyBucket(event.accuracy, 4.0, 2.0, 0.8, 0.25);
       m_stream.latest_frame.has_accel_covariance = true;
       RecordImuGravityAccelSample(sample_stamp);
       break;
@@ -1476,7 +1478,7 @@ void Bno086ImuNode::ApplyEvent(const SensorEvent& event, const rclcpp::Time& sam
       // ingestion and the rest of the stack can treat gravity consistently.
       m_stream.latest_frame.gravity_mps2 = CanonicalizeGravityVector(rawGravityMps2);
       m_stream.latest_frame.gravity_cov_mps2_2 =
-          Bno086ImuNode::CovarianceFromAccuracyBucket(event.accuracy, 1.0, 0.5, 0.2, 0.08);
+          CovarianceFromAccuracyBucket(event.accuracy, 1.0, 0.5, 0.2, 0.08);
       m_stream.latest_frame.has_gravity = true;
       m_stream.latest_frame.has_gravity_covariance = true;
       m_stream.gravity.has_sample = true;
@@ -1513,156 +1515,6 @@ std::optional<int64_t> Bno086ImuNode::FinalizeEventStampNs(
   }
 
   return result.stamp_ns;
-}
-
-std::array<double, 9> Bno086ImuNode::PredictedCovarianceFromPresent(
-    const std::array<double, 9>& present_orientation_covariance,
-    double prediction_horizon_sec,
-    double& sigma_noise_rad,
-    double& sigma_rms_rad,
-    double& sigma_bound_rad)
-{
-  // Present orientation covariance comes from the driver-owned SH-2 policy:
-  // Rotation Vector estimated accuracy when available, otherwise the fallback
-  // accuracy bucket table. Host prediction should never be more confident than
-  // that estimate, so start from the present-time diagonal and add only
-  // nonnegative growth.
-  //
-  // The growth term models additional small-angle variance that accumulates
-  // while integrating gyro forward in time:
-  //
-  //   sigma_growth = k_prediction_sigma_rate_rad_per_sec * horizon
-  //   variance_growth = sigma_growth^2
-  //
-  // This keeps Sigma_pred(h=0) == Sigma_present and makes the diagonal grow
-  // monotonically for h > 0.
-  constexpr double kPredictionSigmaRateRadPerSec = 0.05;
-
-  std::array<double, 9> predictedCovariance{};
-  predictedCovariance.fill(0.0);
-
-  const double clampedHorizonSec = std::max(prediction_horizon_sec, 0.0);
-  sigma_noise_rad = kPredictionSigmaRateRadPerSec * clampedHorizonSec;
-
-  const double growthVarianceRad2 = sigma_noise_rad * sigma_noise_rad;
-  double maxPredictedVarianceRad2 = 0.0;
-
-  for (std::size_t axis = 0; axis < 3; ++axis)
-  {
-    const std::size_t diagonalIndex = (axis * 3) + axis;
-    const double presentVarianceRad2 = std::max(present_orientation_covariance[diagonalIndex], 0.0);
-    const double predictedVarianceRad2 = presentVarianceRad2 + growthVarianceRad2;
-    predictedCovariance[diagonalIndex] = predictedVarianceRad2;
-    maxPredictedVarianceRad2 = std::max(maxPredictedVarianceRad2, predictedVarianceRad2);
-  }
-
-  sigma_rms_rad = std::sqrt(maxPredictedVarianceRad2);
-  sigma_bound_rad = sigma_rms_rad;
-  return predictedCovariance;
-}
-
-OASIS::IMU::Mat3 Bno086ImuNode::CovarianceFromAccuracyBucket(std::uint8_t accuracy,
-                                                             double sigma_unreliable,
-                                                             double sigma_low,
-                                                             double sigma_medium,
-                                                             double sigma_high)
-{
-  const double sigma = (accuracy >= 3)   ? sigma_high
-                       : (accuracy == 2) ? sigma_medium
-                       : (accuracy == 1) ? sigma_low
-                                         : sigma_unreliable;
-
-  const double variance = sigma * sigma;
-
-  OASIS::IMU::Mat3 covariance{};
-  covariance[0][0] = variance;
-  covariance[0][1] = 0.0;
-  covariance[0][2] = 0.0;
-
-  covariance[1][0] = 0.0;
-  covariance[1][1] = variance;
-  covariance[1][2] = 0.0;
-
-  covariance[2][0] = 0.0;
-  covariance[2][1] = 0.0;
-  covariance[2][2] = variance;
-  return covariance;
-}
-
-double Bno086ImuNode::QToDouble(std::int16_t value, unsigned q_point)
-{
-  return static_cast<double>(value) / static_cast<double>(1U << q_point);
-}
-
-void Bno086ImuNode::NormalizeQuaternion(std::array<double, 4>& q)
-{
-  const double norm = std::sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
-
-  if (norm <= 0.0)
-  {
-    q = {0.0, 0.0, 0.0, 1.0};
-    return;
-  }
-
-  q[0] /= norm;
-  q[1] /= norm;
-  q[2] /= norm;
-  q[3] /= norm;
-}
-
-std::array<double, 4> Bno086ImuNode::MultiplyQuaternion(const std::array<double, 4>& lhs,
-                                                        const std::array<double, 4>& rhs)
-{
-  return {
-      lhs[3] * rhs[0] + lhs[0] * rhs[3] + lhs[1] * rhs[2] - lhs[2] * rhs[1],
-      lhs[3] * rhs[1] - lhs[0] * rhs[2] + lhs[1] * rhs[3] + lhs[2] * rhs[0],
-      lhs[3] * rhs[2] + lhs[0] * rhs[1] - lhs[1] * rhs[0] + lhs[2] * rhs[3],
-      lhs[3] * rhs[3] - lhs[0] * rhs[0] - lhs[1] * rhs[1] - lhs[2] * rhs[2],
-  };
-}
-
-std::array<double, 4> Bno086ImuNode::PredictOrientation(
-    const std::array<double, 4>& orientation_xyzw,
-    const OASIS::IMU::Vec3& gyro_rads,
-    double prediction_horizon_sec)
-{
-  if (prediction_horizon_sec <= 0.0)
-    return orientation_xyzw;
-
-  const double angularSpeed = std::sqrt(gyro_rads[0] * gyro_rads[0] + gyro_rads[1] * gyro_rads[1] +
-                                        gyro_rads[2] * gyro_rads[2]);
-  if (angularSpeed <= 1e-9)
-    return orientation_xyzw;
-
-  const double halfAngle = 0.5 * angularSpeed * prediction_horizon_sec;
-  const double sinHalfAngle = std::sin(halfAngle);
-  const double invAngularSpeed = 1.0 / angularSpeed;
-  std::array<double, 4> deltaQuaternion{
-      gyro_rads[0] * invAngularSpeed * sinHalfAngle,
-      gyro_rads[1] * invAngularSpeed * sinHalfAngle,
-      gyro_rads[2] * invAngularSpeed * sinHalfAngle,
-      std::cos(halfAngle),
-  };
-
-  std::array<double, 4> predictedOrientation =
-      MultiplyQuaternion(orientation_xyzw, deltaQuaternion);
-  NormalizeQuaternion(predictedOrientation);
-  return predictedOrientation;
-}
-
-void Bno086ImuNode::SetCovariance(std::array<double, 9>& dst, const OASIS::IMU::Mat3& src)
-{
-  dst[0] = src[0][0];
-  dst[1] = src[0][1];
-  dst[2] = src[0][2];
-
-  dst[3] = src[1][0];
-  dst[4] = src[1][1];
-  dst[5] = src[1][2];
-
-  dst[6] = src[2][0];
-  dst[7] = src[2][1];
-  dst[8] = src[2][2];
 }
 
 void Bno086ImuNode::MaybeLogOrientationCovariancePolicy(

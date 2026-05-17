@@ -21,7 +21,6 @@
 #include "imu/bno086/sh2/Bno086Shtp.hpp"
 #include "imu/bno086/shtp/Bno086Transport.hpp"
 
-#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -217,26 +216,6 @@ private:
       OASIS::IMU::BNO086::ReportId report_id) const;
   bool IsBno086DiagnosticsUnhealthy(const OASIS::IMU::BNO086::Bno086RateSnapshot& rates) const;
 
-  static std::array<double, 9> PredictedCovarianceFromPresent(
-      const std::array<double, 9>& present_orientation_covariance,
-      double prediction_horizon_sec,
-      double& sigma_noise_rad,
-      double& sigma_rms_rad,
-      double& sigma_bound_rad);
-  static OASIS::IMU::Mat3 CovarianceFromAccuracyBucket(std::uint8_t accuracy,
-                                                       double sigma_unreliable,
-                                                       double sigma_low,
-                                                       double sigma_medium,
-                                                       double sigma_high);
-
-  static double QToDouble(std::int16_t value, unsigned q_point);
-  static void NormalizeQuaternion(std::array<double, 4>& q);
-  static std::array<double, 4> MultiplyQuaternion(const std::array<double, 4>& lhs,
-                                                  const std::array<double, 4>& rhs);
-  static std::array<double, 4> PredictOrientation(const std::array<double, 4>& orientation_xyzw,
-                                                  const OASIS::IMU::Vec3& gyro_rads,
-                                                  double prediction_horizon_sec);
-  static void SetCovariance(std::array<double, 9>& dst, const OASIS::IMU::Mat3& src);
   void MaybeLogOrientationCovariancePolicy(
       const OASIS::IMU::BNO086::OrientationCovariancePolicyResult& covariance_policy);
 
