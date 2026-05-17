@@ -2,12 +2,13 @@
 
 This document defines the AHRS contract for the current 9-DoF IMU.
 
-The AHRS consumes a fused `sensor_msgs/Imu` stream on `imu` plus a required
-gravity-direction observation on `gravity`. The IMU message already includes an
-accurate quaternion orientation estimate, so this node does not re-fuse
-separate inertial or magnetic sources. Its job is to validate both inputs,
-apply the fixed IMU-to-base mounting rotation, check gravity consistency, and
-publish ROS-friendly attitude outputs.
+The AHRS consumes three raw driver streams: `imu`, `imu_gravity`, and
+`gravity`. It consumes both gravity-removed and gravity-included IMU forms,
+while `gravity` remains a required physical gravity-vector observation. The
+IMU messages already include accurate quaternion orientation estimates, so
+this node does not re-fuse separate inertial or magnetic sources. Its job is
+to validate inputs, apply the fixed IMU-to-base mounting rotation, check
+gravity consistency, and publish ROS-friendly attitude outputs.
 
 The AHRS is the attitude-layer component. It owns mounted IMU/gravity
 interpretation and standalone attitude publication, but it does not own global
@@ -38,7 +39,8 @@ This keeps the TF tree compatible with later localization layers that may own
 
 ### 2.1 Streams
 
-- `imu` (`sensor_msgs/Imu`): fused IMU sample stream
+- `imu` (`sensor_msgs/Imu`): fused IMU sample stream with gravity-removed
+  linear acceleration
 - `imu_gravity` (`sensor_msgs/Imu`): fused orientation and gyro with
   gravity-included acceleration
 - `gravity` (`geometry_msgs/AccelWithCovarianceStamped`): gravity-direction
@@ -47,6 +49,10 @@ This keeps the TF tree compatible with later localization layers that may own
 All streams are part of the AHRS contract. `gravity` is not optional. The
 implementation may process them as separate event streams, but the node should
 not advertise a degraded "IMU-only" operating mode.
+
+These streams are independent event streams. They are not required to have the
+same cadence, and implementations must not assume `imu` and `imu_gravity`
+publish together.
 
 By policy:
 
@@ -59,7 +65,7 @@ By policy:
 
 - `header.stamp` as `t_meas_ns`
 - `header.frame_id` as IMU frame `{I}`
-- `orientation` from the BNO086 driver as `q_IW`
+- `orientation` as driver-frame quaternion `q_IW`
 - `orientation_covariance` as `Σ_qI`
 - `angular_velocity` as `ω_I`
 - `angular_velocity_covariance` as `Σ_ωI`
@@ -68,6 +74,7 @@ By policy:
 
 Requirements:
 
+- `imu.linear_acceleration` is gravity-removed acceleration
 - quaternion data must be finite and non-zero norm
 - the AHRS normalizes the incoming driver quaternion and canonicalizes it to
   `q_WI = q_IW*` before applying mounting
@@ -75,13 +82,9 @@ Requirements:
 - full covariances are preserved when valid
 - if `orientation_covariance[0] == -1`, orientation covariance is treated as
   unknown per ROS convention
-- upstream IMU orientation covariance is driver-owned; the current BNO086
-  driver maps SH-2 orientation accuracy into the ROS covariance contract
-  before AHRS sees the sample
-- when the BNO086 Rotation Vector estimated-accuracy field is unavailable or
-  unusable, that upstream covariance may come from an explicit heuristic
-  fallback bucket table; those provisional values may be refined later from
-  real robot resting data, and AHRS preserves them unless the runtime output
+- upstream IMU orientation covariance is driver-owned policy data before AHRS
+  sees the sample
+- AHRS preserves upstream orientation covariance unless the runtime output
   policy explicitly replaces the published orientation covariance with the
   gravity-observable attitude model described below
 
@@ -92,7 +95,7 @@ frame does not match the expected `imu_link` policy.
 
 - `header.stamp` as `t_meas_ns`
 - `header.frame_id` as IMU frame `{I}`
-- `orientation` from the BNO086 driver as `q_IW`
+- `orientation` as driver-frame quaternion `q_IW`
 - `orientation_covariance` as `Σ_qI`
 - `angular_velocity` as `ω_I`
 - `angular_velocity_covariance` as `Σ_ωI`
@@ -101,11 +104,15 @@ frame does not match the expected `imu_link` policy.
 
 Requirements:
 
+- `imu_gravity` is the preferred high-rate gravity-included IMU stream for
+  VIO/SLAM-style consumers
+- its acceleration cadence may differ from `imu` because the two streams have
+  different acceleration semantics
 - quaternion and vector fields must be finite
 - full covariances are preserved when valid
 - `imu_gravity.header.frame_id == "imu_link"`
 - orientation, angular velocity, and acceleration are expressed in `imu_link`
-- this stream uses the BNO086 calibrated acceleration report, not the
+- this stream uses calibrated acceleration including gravity, not the
   gravity-removed linear acceleration used by `imu`
 
 ### 2.4 `gravity` used fields
@@ -127,6 +134,7 @@ Requirements:
 - the vector is interpreted as a first-class gravity measurement, not a
   propagation input
 - the full `3 x 3` covariance is preserved when valid
+- `gravity` cadence is independent of `imu` and `imu_gravity`
 
 Reject the sample if the vector or covariance is non-finite, or if the gravity
 frame does not match the expected IMU frame policy.
@@ -204,9 +212,9 @@ Policy boundary:
 - this is a deliberate downstream reinterpretation for the published AHRS
   attitude contract, not an accidental byproduct of mounting rotation
 
-Because `imu` and `gravity` are both expected in `imu_link`, the same mounting
-rotation is used to express the gravity vector and its covariance in `{B}`
-before any consistency check:
+Because `imu`, `imu_gravity`, and `gravity` are all expected in `imu_link`,
+the same mounting rotation is used to express the gravity vector and its
+covariance in `{B}` before any consistency check:
 
 - `g_B_meas = R_BI * g_I_meas`
 - `Σ_gB = R_BI * Σ_g * R_BIᵀ`
@@ -307,18 +315,24 @@ navigation filter.
 
 ## 4. Time handling
 
-The node is event-driven on accepted `imu` and `gravity` samples.
+The node is event-driven on accepted `imu`, `imu_gravity`, and `gravity`
+samples.
 
 Definitions:
 
 - `t_meas_ns`: message timestamp in integer nanoseconds
 - `t_now_ns`: receipt time for diagnostics
-- `t_last_ns`: last accepted sample time
+- `t_last_ns`: last accepted sample time for the relevant stream
+
+Upstream drivers may deliver samples in bursts. AHRS must treat `header.stamp`
+as measurement time and `t_now_ns` only as receipt/diagnostic time. Pairing
+with latest samples is allowed, but the policy must be deterministic and
+diagnosable.
 
 Processing rule:
 
 1. Validate timestamp and numeric fields for the incoming sample
-2. Normalize the IMU quaternion when an `imu` sample arrives
+2. Normalize the IMU quaternion when an `imu` or `imu_gravity` sample arrives
 3. Resolve required mounting transform(s)
 4. Rotate orientation, angular velocity, acceleration, gravity, and known
    covariances into `{B}` as needed
@@ -330,8 +344,9 @@ Ordering rule:
 - if `t_meas_ns < t_last_ns`, the message may be dropped deterministically
 - no fixed-lag buffer is maintained
 - no replay logic is required
-- gravity and IMU need not be exactly synchronized, but the implementation must
-  make the pairing or latest-sample policy deterministic and diagnosable
+- `imu`, `imu_gravity`, and `gravity` need not be exactly synchronized, but
+  the implementation must make the pairing or latest-sample policy
+  deterministic and diagnosable
 
 ---
 
@@ -373,6 +388,9 @@ The `ahrs/imu.orientation_covariance` topic contract remains full mounted AHRS
 attitude covariance. Downstream consumers must not reinterpret that matrix as a
 tilt-only uncertainty product.
 
+`ahrs/imu` follows upstream `imu` stream semantics and may publish at a
+different cadence than `ahrs/imu_gravity`.
+
 ### 5.3 Base-frame gravity-included IMU output
 
 - `ahrs/imu_gravity`
@@ -383,12 +401,15 @@ tilt-only uncertainty product.
 - orientation, angular velocity, and linear acceleration covariances are
   rotated into `base_link`
 - output timestamp matches the upstream `imu_gravity` sample timestamp
+- `ahrs/imu_gravity` follows upstream `imu_gravity` measurement timestamps and
+  should not be downsampled to `imu` cadence merely for synchronization
 
 ### 5.4 Gravity-facing output or status
 
 The AHRS may publish a gravity status or debug topic, but the minimum contract
 is that gravity consistency results are reflected in diagnostics and any
-accept/reject policy.
+accept/reject policy. Gravity consistency uses the latest accepted gravity
+measurement under the documented pairing policy.
 
 ### 5.5 Optional odometry wrapper
 
@@ -406,16 +427,20 @@ wrapper around the same attitude sample:
 
 Recommended diagnostics fields:
 
-- accepted sample count
-- dropped sample count
+- last accepted `imu` timestamp
+- last accepted `imu_gravity` timestamp
+- last accepted `gravity` timestamp
+- accepted sample count per stream
+- dropped sample count per stream
 - invalid quaternion count
 - invalid gravity count
 - transform lookup failure count
+- latest stream age or pairing age
+- out-of-order count per stream
 - gravity residual norm
 - gravity Mahalanobis distance when covariance is available
 - gravity gating or rejection count
 - mounting consistency failure count
-- last accepted timestamp
 - clock-jump reset count
 
 If the implementation applies correction or refinement hooks from gravity, it
@@ -450,4 +475,5 @@ Policy:
 - clock-jump reset threshold
 - required transform source for `T_BI`
 - gravity residual gating thresholds
-- gravity/IMU pairing policy when timestamps do not match exactly
+- `gravity`, `imu`, and `imu_gravity` pairing policy when timestamps do not
+  match exactly

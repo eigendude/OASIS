@@ -3,8 +3,8 @@
 This document defines the target structure for the current AHRS rewrite.
 
 The current AHRS is a fused-IMU pipeline, not a raw multi-sensor optimizer.
-Core logic should stay ROS-agnostic and operate on normalized `imu` and
-`gravity` samples plus fixed mounting transforms.
+Core logic should stay ROS-agnostic and operate on normalized `imu`,
+`imu_gravity`, and `gravity` samples plus fixed mounting transforms.
 
 This document is about implementation structure. Runtime behavior, published
 contracts, and standalone TF policy belong in `AHRS.md`. Mounting-calibration
@@ -33,6 +33,7 @@ oasis_control/oasis_control/localization/common/
 
   data/
     imu_sample.py
+    imu_gravity_sample.py
     gravity_sample.py
 
   validation/
@@ -76,12 +77,12 @@ Why this split is better:
 
 - `localization/common/` gives AHRS and EKF one shared home for low-level
   estimator-adjacent code that should not be reimplemented twice
-- `common/data/` owns the canonical IMU and gravity packet types used by both
-  components
+- `common/data/` owns the canonical IMU, IMU-gravity, and gravity packet types
+  used by both components
 - `common/frames/` owns frame-policy checks and fixed mounting helpers for
   `T_BI`
-- `common/validation/` owns reusable IMU and gravity acceptance logic tied to
-  the shared sensor contract
+- `common/validation/` owns reusable IMU, IMU-gravity, and gravity acceptance
+  logic tied to the shared sensor contract
 - `common/measurements/` owns gravity-direction residual math that both AHRS
   and EKF need, while leaving component-specific orchestration outside
 - `localization/ahrs/` stays focused on AHRS outputs, AHRS-specific processing,
@@ -115,7 +116,10 @@ Concrete public frame names:
 Policy:
 
 - `imu` samples are expected from `imu_link`
+- `imu_gravity` samples are expected from `imu_link`
 - `gravity` samples are expected from `imu_link`
+- all three raw streams are interpreted in the same sensor frame before
+  mounting
 - the fixed mounting transform is `T_BI` from `imu_link` to `base_link`
 - mounting is expected to come from the boot-time calibration contract in
   `AHRS_Mounting.md`
@@ -137,10 +141,11 @@ Covariances:
 - preserve full matrices
 - never diagonalize incoming covariance by convenience
 - publish transformed covariance via Jacobians or frame rotation as required
-- rotate IMU and gravity covariance blocks when measurements are mapped through
-  mounting transforms
+- rotate IMU, IMU-gravity, and gravity covariance blocks when measurements are
+  mapped through mounting transforms
 - treat upstream IMU orientation covariance as driver-owned policy data; AHRS
-  should preserve and rotate it rather than remapping SH-2 quality buckets
+  should preserve and rotate it rather than remapping driver-specific quality
+  metadata
 - treat driver-provided orientation covariance as upstream contract data at the
   validation boundary
 - allow the AHRS output layer to publish a different orientation covariance
@@ -153,11 +158,12 @@ Covariances:
 
 The package boundary should read as:
 
-- `localization/common/data/` holds the canonical IMU and gravity records
-  shared by AHRS and EKF
+- `localization/common/data/` holds the canonical IMU, IMU-gravity, and
+  gravity records shared by AHRS and EKF
 - `localization/common/frames/` holds frame and mounting helpers that apply
   `T_BI`
-- `localization/common/validation/` holds reusable IMU and gravity validation
+- `localization/common/validation/` holds reusable IMU, IMU-gravity, and
+  gravity validation
 - `localization/common/measurements/` holds reusable gravity-direction
   measurement math
 - `localization/ahrs/data/` holds AHRS-specific outputs and diagnostic payloads
@@ -171,13 +177,35 @@ Fields:
 - timestamp in integer nanoseconds
 - IMU frame id, expected to be `imu_link`
 - canonicalized quaternion `q_WI`
-- the current BNO086 driver publishes `q_IW`, so AHRS conjugates that packet
-  to `q_WI` at the validation boundary
 - optional orientation covariance
 - angular velocity vector and covariance
-- linear acceleration vector and covariance
+- gravity-removed linear acceleration vector and covariance
 
-### 3.2 `GravitySample`
+Semantics:
+
+- uses gravity-removed linear acceleration
+- does not represent the gravity-included acceleration stream
+
+### 3.2 `ImuGravitySample`
+
+Fields:
+
+- timestamp in integer nanoseconds
+- IMU frame id, expected to be `imu_link`
+- canonicalized quaternion `q_WI`
+- optional orientation covariance
+- angular velocity vector and covariance
+- gravity-included calibrated acceleration vector and covariance
+
+Semantics:
+
+- uses calibrated acceleration including gravity
+- does not represent the gravity-removed acceleration stream
+- may publish at a different cadence than `ImuSample`
+- suitable for mounted `ahrs/imu_gravity` output and VIO/SLAM-facing
+  consumers
+
+### 3.3 `GravitySample`
 
 Fields:
 
@@ -191,7 +219,7 @@ This type is a first-class gravity measurement packet. It is not an "up"
 vector, not a normalized unit vector, and not an acceleration used for
 propagation.
 
-### 3.3 `MountingTransform`
+### 3.4 `MountingTransform`
 
 Fields:
 
@@ -201,7 +229,7 @@ Fields:
 
 This is the fixed transform from `imu_link` to `base_link`.
 
-### 3.4 `AhrsOutput`
+### 3.5 `AhrsOutput`
 
 Fields:
 
@@ -209,6 +237,7 @@ Fields:
 - base-frame quaternion `q_WB`
 - base-frame angular velocity
 - base-frame linear acceleration
+- optional base-frame gravity-included calibrated acceleration
 - transformed covariance blocks
 - gravity residual summary for diagnostics
 
@@ -358,6 +387,8 @@ Unit tests should cover:
 - frame rotation of vectors and covariance blocks
 - mounting transform application
 - gravity residual and gating behavior
+- independent cadence for `imu`, `imu_gravity`, and `gravity`
+- preservation of measurement timestamps from all three streams
 - deterministic handling of out-of-order timestamps
 - ROS conversion fidelity for `sensor_msgs/Imu` (`imu` and `imu_gravity`) and
   `geometry_msgs/AccelWithCovarianceStamped` (`gravity`)

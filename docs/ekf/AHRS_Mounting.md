@@ -110,8 +110,7 @@ So:
 - the stored quaternion is `q_BI`, so `lookup_transform(base_link, imu_link)`
   returns the same IMU-to-base rotation used by runtime mounting
 - a level boot pose therefore implies `q_WB = identity`,
-  canonical `q_WI = q_IB = q_BI^-1`, and raw BNO086 driver
-  `q_IW = q_BI`
+  canonical `q_WI = q_IB = q_BI^-1`
 
 Persisted quaternions must declare ordering explicitly.
 
@@ -150,6 +149,11 @@ mode.
 The exact optimization method is implementation-defined, but the public
 contract is one fixed rotation `R_BI` and the corresponding fixed transform
 `T_BI = (R_BI, 0)`.
+
+The default mounting solve does not require `imu_gravity`. It uses `gravity`
+for tilt alignment and may use `imu` angular velocity to reject
+non-stationary windows. `imu_gravity` remains a runtime AHRS/VIO stream unless
+a future mounting policy explicitly opts in.
 
 Gravity is first-class in this calibration because it helps:
 
