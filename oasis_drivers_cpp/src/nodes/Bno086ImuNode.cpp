@@ -55,6 +55,12 @@ constexpr int MAX_MAX_POLL_ITERATIONS_PER_INTERRUPT = 16384;
 constexpr int DEFAULT_MAX_NO_PROGRESS_POLLS_PER_INTERRUPT = 64;
 constexpr int MIN_MAX_NO_PROGRESS_POLLS_PER_INTERRUPT = 1;
 constexpr int MAX_MAX_NO_PROGRESS_POLLS_PER_INTERRUPT = 1024;
+constexpr int DEFAULT_MAX_DRAIN_DURATION_MS = 25;
+constexpr int MIN_MAX_DRAIN_DURATION_MS = 1;
+constexpr int MAX_MAX_DRAIN_DURATION_MS = 1000;
+constexpr int DEFAULT_MAX_SENSOR_EVENTS_PER_DRAIN = 512;
+constexpr int MIN_MAX_SENSOR_EVENTS_PER_DRAIN = 1;
+constexpr int MAX_MAX_SENSOR_EVENTS_PER_DRAIN = 4096;
 constexpr std::uint32_t REPEATED_NO_PROGRESS_TIMEOUT_WARN_COUNT = 3;
 
 constexpr std::uint32_t MIN_COHERENT_SAMPLE_SPAN_US = 50'000;
@@ -188,6 +194,8 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
                     DEFAULT_MAX_POLL_ITERATIONS_PER_INTERRUPT);
   declare_parameter("bno086_max_no_progress_polls_per_interrupt",
                     DEFAULT_MAX_NO_PROGRESS_POLLS_PER_INTERRUPT);
+  declare_parameter("bno086_max_drain_duration_ms", DEFAULT_MAX_DRAIN_DURATION_MS);
+  declare_parameter("bno086_max_sensor_events_per_drain", DEFAULT_MAX_SENSOR_EVENTS_PER_DRAIN);
   declare_parameter("bno086_diagnostics_log_period_ms", DEFAULT_BNO086_DIAGNOSTICS_LOG_PERIOD_MS);
   declare_parameter("bno086_timestamp_trace_count", DEFAULT_BNO086_TIMESTAMP_TRACE_COUNT);
   declare_parameter("prediction_horizon_sec", DEFAULT_PREDICTION_HORIZON_SEC);
@@ -239,6 +247,12 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   m_maxNoProgressPollsPerInterrupt = static_cast<std::uint32_t>(std::clamp(
       static_cast<int>(get_parameter("bno086_max_no_progress_polls_per_interrupt").as_int()),
       MIN_MAX_NO_PROGRESS_POLLS_PER_INTERRUPT, MAX_MAX_NO_PROGRESS_POLLS_PER_INTERRUPT));
+  m_maxDrainDurationMs =
+      std::clamp(static_cast<int>(get_parameter("bno086_max_drain_duration_ms").as_int()),
+                 MIN_MAX_DRAIN_DURATION_MS, MAX_MAX_DRAIN_DURATION_MS);
+  m_maxSensorEventsPerDrain = static_cast<std::uint32_t>(
+      std::clamp(static_cast<int>(get_parameter("bno086_max_sensor_events_per_drain").as_int()),
+                 MIN_MAX_SENSOR_EVENTS_PER_DRAIN, MAX_MAX_SENSOR_EVENTS_PER_DRAIN));
   m_diagnosticsLogPeriodMs =
       std::max(static_cast<int>(get_parameter("bno086_diagnostics_log_period_ms").as_int()),
                MIN_BNO086_DIAGNOSTICS_LOG_PERIOD_MS);
@@ -442,6 +456,7 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
   drainLimits.max_physical_packets_per_interrupt = m_maxPacketsPerInterrupt;
   drainLimits.max_poll_iterations_per_interrupt = m_maxPollIterationsPerInterrupt;
   drainLimits.max_no_progress_polls_per_interrupt = m_maxNoProgressPollsPerInterrupt;
+  drainLimits.max_sensor_events_per_drain = m_maxSensorEventsPerDrain;
   const rclcpp::Time drainReceiveAnchor = interrupt_ros_at;
   const auto drainStartedAt = std::chrono::steady_clock::now();
   Bno086DrainAction drainExitAction = Bno086DrainAction::Complete;
@@ -474,6 +489,25 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
           static_cast<double>(drainDurationUs) / 1e3,
           beforePollDecision.hintn_asserted ? "true" : "false");
       drainExitAction = beforePollDecision.action;
+      break;
+    }
+
+    const auto elapsedBeforePollMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                         std::chrono::steady_clock::now() - drainStartedAt)
+                                         .count();
+    if (drainCounters.poll_iterations > 0 && elapsedBeforePollMs >= m_maxDrainDurationMs)
+    {
+      RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
+                            "BNO086 interrupt drain hit duration budget: "
+                            "physical_packets_this_drain=%u sensor_events_this_drain=%u "
+                            "pending_events_this_drain=%u poll_iterations=%u "
+                            "drain_duration_ms=%lld duration_budget_ms=%d hintn_asserted=%s",
+                            drainCounters.physical_packets_this_drain,
+                            drainCounters.sensor_events_this_drain,
+                            drainCounters.pending_events_this_drain, drainCounters.poll_iterations,
+                            static_cast<long long>(elapsedBeforePollMs), m_maxDrainDurationMs,
+                            hintnAssertedBeforePoll ? "true" : "false");
+      drainExitAction = Bno086DrainAction::DrainDurationBudget;
       break;
     }
 
@@ -642,6 +676,41 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
             static_cast<double>(drainDurationUs) / 1e3);
       }
       drainExitAction = afterPollDecision.action;
+      break;
+    }
+
+    if (afterPollDecision.action == Bno086DrainAction::SensorEventBudget)
+    {
+      RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
+                            "BNO086 interrupt drain hit sensor event budget: "
+                            "physical_packets_this_drain=%u sensor_events_this_drain=%u "
+                            "pending_events_this_drain=%u poll_iterations=%u "
+                            "sensor_event_budget=%u hintn_asserted=%s",
+                            drainCounters.physical_packets_this_drain,
+                            drainCounters.sensor_events_this_drain,
+                            drainCounters.pending_events_this_drain, drainCounters.poll_iterations,
+                            drainLimits.max_sensor_events_per_drain,
+                            afterPollDecision.hintn_asserted ? "true" : "false");
+      drainExitAction = afterPollDecision.action;
+      break;
+    }
+
+    const auto elapsedAfterPollMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                        std::chrono::steady_clock::now() - drainStartedAt)
+                                        .count();
+    if (elapsedAfterPollMs >= m_maxDrainDurationMs)
+    {
+      RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
+                            "BNO086 interrupt drain hit duration budget: "
+                            "physical_packets_this_drain=%u sensor_events_this_drain=%u "
+                            "pending_events_this_drain=%u poll_iterations=%u "
+                            "drain_duration_ms=%lld duration_budget_ms=%d hintn_asserted=%s",
+                            drainCounters.physical_packets_this_drain,
+                            drainCounters.sensor_events_this_drain,
+                            drainCounters.pending_events_this_drain, drainCounters.poll_iterations,
+                            static_cast<long long>(elapsedAfterPollMs), m_maxDrainDurationMs,
+                            m_interruptGpio.IsAssertedLow() ? "true" : "false");
+      drainExitAction = Bno086DrainAction::DrainDurationBudget;
       break;
     }
   }
@@ -1230,6 +1299,10 @@ void Bno086ImuNode::RecordDrainThroughputDiagnostics(const Bno086DrainCounters& 
     m_drainDiagnostics.sensor_events_min = counters.sensor_events_this_drain;
   }
 
+  m_drainDiagnostics.pending_events_sum += counters.pending_events_this_drain;
+  m_drainDiagnostics.pending_events_max =
+      std::max(m_drainDiagnostics.pending_events_max, counters.pending_events_this_drain);
+
   m_drainDiagnostics.drain_duration_sum_us += drain_duration_us;
   m_drainDiagnostics.drain_duration_max_us =
       std::max(m_drainDiagnostics.drain_duration_max_us, drain_duration_us);
@@ -1251,6 +1324,18 @@ void Bno086ImuNode::RecordDrainThroughputDiagnostics(const Bno086DrainCounters& 
     ++m_drainDiagnostics.exit_poll_iteration_cap_count;
   }
 
+  if (exit_action == Bno086DrainAction::DrainDurationBudget)
+  {
+    ++m_drainDiagnostics.drain_duration_budget_hit_count;
+    ++m_drainDiagnostics.exit_drain_duration_budget_count;
+  }
+
+  if (exit_action == Bno086DrainAction::SensorEventBudget)
+  {
+    ++m_drainDiagnostics.sensor_event_budget_hit_count;
+    ++m_drainDiagnostics.exit_sensor_event_budget_count;
+  }
+
   if (exit_action == Bno086DrainAction::NoProgressBudget)
   {
     ++m_drainDiagnostics.no_progress_drain_count;
@@ -1267,7 +1352,18 @@ void Bno086ImuNode::RecordDrainThroughputDiagnostics(const Bno086DrainCounters& 
     ++m_drainDiagnostics.complete_int_deasserted_count;
 
   if (hintn_asserted_after_exit)
+  {
     ++m_drainDiagnostics.hintn_asserted_after_exit_count;
+    if (exit_action == Bno086DrainAction::DrainDurationBudget ||
+        exit_action == Bno086DrainAction::SensorEventBudget)
+    {
+      ++m_drainDiagnostics.hintn_asserted_after_cooperative_budget_exit_count;
+    }
+    else
+    {
+      ++m_drainDiagnostics.hintn_asserted_after_safety_or_error_exit_count;
+    }
+  }
 }
 
 void Bno086ImuNode::UpdateImuGravityDiagnosticsRates(
@@ -1366,6 +1462,10 @@ std::string Bno086ImuNode::BuildImuGravityDiagnosticsLogMessage() const
       m_drainDiagnostics.drains > 0
           ? static_cast<double>(m_drainDiagnostics.sensor_events_sum) / drainCount
           : 0.0;
+  const double pendingEventsMean =
+      m_drainDiagnostics.drains > 0
+          ? static_cast<double>(m_drainDiagnostics.pending_events_sum) / drainCount
+          : 0.0;
   const double drainDurationMeanMs =
       m_drainDiagnostics.drains > 0
           ? static_cast<double>(m_drainDiagnostics.drain_duration_sum_us) / drainCount / 1.0e3
@@ -1437,14 +1537,22 @@ std::string Bno086ImuNode::BuildImuGravityDiagnosticsLogMessage() const
       << "sensor_events_per_drain_min=" << m_drainDiagnostics.sensor_events_min.value_or(0) << " "
       << "sensor_events_per_drain_mean=" << sensorEventsMean << " "
       << "sensor_events_per_drain_max=" << m_drainDiagnostics.sensor_events_max << " "
+      << "pending_events_per_drain_mean=" << pendingEventsMean << " "
+      << "pending_events_per_drain_max=" << m_drainDiagnostics.pending_events_max << " "
       << "drain_duration_ms_min="
       << static_cast<double>(m_drainDiagnostics.drain_duration_min_us.value_or(0)) / 1.0e3 << " "
       << "drain_duration_ms_mean=" << drainDurationMeanMs << " " << "drain_duration_ms_max="
       << static_cast<double>(m_drainDiagnostics.drain_duration_max_us) / 1.0e3 << " "
       << "physical_packet_cap_hit_count=" << m_drainDiagnostics.physical_packet_cap_hit_count << " "
       << "poll_iteration_cap_hit_count=" << m_drainDiagnostics.poll_iteration_cap_hit_count << " "
-      << "hintn_asserted_after_drain_exit_count="
+      << "drain_duration_budget_hit_count=" << m_drainDiagnostics.drain_duration_budget_hit_count
+      << " " << "sensor_event_budget_hit_count=" << m_drainDiagnostics.sensor_event_budget_hit_count
+      << " " << "hintn_asserted_after_drain_exit_count="
       << m_drainDiagnostics.hintn_asserted_after_exit_count << " "
+      << "hintn_asserted_after_cooperative_budget_exit_count="
+      << m_drainDiagnostics.hintn_asserted_after_cooperative_budget_exit_count << " "
+      << "hintn_asserted_after_safety_or_error_exit_count="
+      << m_drainDiagnostics.hintn_asserted_after_safety_or_error_exit_count << " "
       << "no_progress_drain_count=" << m_drainDiagnostics.no_progress_drain_count << " "
       << "drain_transport_error_count=" << m_drainDiagnostics.transport_error_count << " "
       << "complete_int_deasserted_count=" << m_drainDiagnostics.complete_int_deasserted_count << " "
@@ -1452,7 +1560,10 @@ std::string Bno086ImuNode::BuildImuGravityDiagnosticsLogMessage() const
       << "exit_transport_error_count=" << m_drainDiagnostics.exit_transport_error_count << " "
       << "exit_packet_cap_count=" << m_drainDiagnostics.exit_packet_cap_count << " "
       << "exit_poll_iteration_cap_count=" << m_drainDiagnostics.exit_poll_iteration_cap_count << " "
-      << "i2c_read_error_count=" << transportStats.i2c_read_error_count << " "
+      << "exit_drain_duration_budget_count=" << m_drainDiagnostics.exit_drain_duration_budget_count
+      << " "
+      << "exit_sensor_event_budget_count=" << m_drainDiagnostics.exit_sensor_event_budget_count
+      << " " << "i2c_read_error_count=" << transportStats.i2c_read_error_count << " "
       << "i2c_read_timeout_count=" << transportStats.i2c_read_timeout_count << " "
       << "invalid_header_count=" << transportStats.invalid_header_count << " "
       << "all_zero_header_count=" << transportStats.all_zero_header_count << " "

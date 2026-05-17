@@ -186,3 +186,21 @@ TEST(Bno086DrainPolicy, pollIterationCapPreventsInfiniteLoops)
   EXPECT_EQ(decision.action, Bno086DrainAction::PollIterationCap);
   EXPECT_TRUE(decision.hintn_asserted);
 }
+
+TEST(Bno086DrainPolicy, sensorEventBudgetBoundsOneDrain)
+{
+  Bno086DrainLimits limits;
+  limits.max_sensor_events_per_drain = 2;
+  Bno086DrainCounters counters;
+
+  ASSERT_EQ(Bno086DrainAfterPoll(SensorEventResult(true, false), limits, counters, true).action,
+            Bno086DrainAction::Continue);
+
+  const Bno086DrainDecision decision =
+      Bno086DrainAfterPoll(SensorEventResult(false, true), limits, counters, true);
+
+  EXPECT_EQ(decision.action, Bno086DrainAction::SensorEventBudget);
+  EXPECT_TRUE(decision.hintn_asserted);
+  EXPECT_EQ(counters.sensor_events_this_drain, 2U);
+  EXPECT_EQ(counters.pending_events_this_drain, 1U);
+}

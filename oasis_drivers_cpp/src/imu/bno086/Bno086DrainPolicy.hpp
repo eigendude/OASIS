@@ -24,6 +24,8 @@ enum class Bno086DrainAction
   PhysicalPacketCap,
   PollIterationCap,
   NoProgressBudget,
+  SensorEventBudget,
+  DrainDurationBudget,
 };
 
 struct Bno086DrainLimits
@@ -48,6 +50,13 @@ struct Bno086DrainLimits
    * Units: poll iterations, expected range [1, 1024]
    */
   std::uint32_t max_no_progress_polls_per_interrupt{64};
+
+  /*!
+   * \brief Maximum decoded SensorEvent objects handled in one drain
+   *
+   * Units: decoded events, expected range [1, 4096]
+   */
+  std::uint32_t max_sensor_events_per_drain{512};
 };
 
 struct Bno086DrainCounters

@@ -83,6 +83,12 @@ Bno086DrainDecision Bno086DrainAfterPoll(const Bno086Shtp::PollResult& result,
     return decision;
   }
 
+  if (counters.sensor_events_this_drain >= limits.max_sensor_events_per_drain)
+  {
+    decision.action = Bno086DrainAction::SensorEventBudget;
+    return decision;
+  }
+
   return decision;
 }
 } // namespace OASIS::IMU::BNO086
