@@ -8,6 +8,7 @@
 
 #include "Bno086ImuNode.hpp"
 
+#include "imu/bno086/utils/Bno086FeatureSummary.hpp"
 #include "imu/bno086/utils/Bno086ReportUtils.hpp"
 #include "imu/bno086/utils/Bno086TimingUtils.hpp"
 
@@ -15,7 +16,6 @@
 #include <array>
 #include <cmath>
 #include <optional>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -111,9 +111,6 @@ constexpr int DEFAULT_BNO086_DIAGNOSTICS_LOG_PERIOD_MS = 5'000;
 constexpr int MIN_BNO086_DIAGNOSTICS_LOG_PERIOD_MS = 1'000;
 constexpr double MIN_HEALTHY_RATE_FRACTION = 0.5;
 
-// Units: ns. SH-2 delay values above this are not plausible sample latency
-constexpr int64_t MAX_PLAUSIBLE_SAMPLE_DELAY_NS = 50'000'000;
-
 // QoS parameters
 //
 // RELIABLE for required BNO -> AHRS pipeline streams with bounded history
@@ -148,193 +145,12 @@ bool IsFiniteArray(const std::array<double, 9>& values)
                      [](double value) { return std::isfinite(value); });
 }
 
-int64_t HostAnchorNs(const SensorEvent& event, int64_t packet_host_stamp_ns)
-{
-  if (!event.has_delay)
-    return packet_host_stamp_ns;
-
-  const int64_t delayNs = static_cast<int64_t>(event.delay_us) * 1'000;
-  if (delayNs < 0 || delayNs > MAX_PLAUSIBLE_SAMPLE_DELAY_NS)
-    return packet_host_stamp_ns;
-
-  return packet_host_stamp_ns - delayNs;
-}
-
 double VectorMagnitude(double x, double y, double z)
 {
   return std::sqrt(x * x + y * y + z * z);
 }
 
 } // namespace
-
-struct Bno086ImuNode::ImuGravityAccelSample
-{
-  bool has_sample{false};
-  rclcpp::Time stamp{0, 0, RCL_ROS_TIME};
-  OASIS::IMU::Vec3 accel_mps2{0.0, 0.0, 0.0};
-  OASIS::IMU::Mat3 covariance_mps2_2{};
-  bool has_covariance{false};
-  std::uint8_t sequence{0};
-  std::uint8_t accuracy{0};
-};
-
-class Bno086ImuNode::ImuGravityAccelHistory
-{
-public:
-  void Push(const ImuGravityAccelSample& sample)
-  {
-    m_samples[m_next] = sample;
-    m_next = (m_next + 1) % m_samples.size();
-    m_count = std::min(m_count + 1, m_samples.size());
-  }
-
-  std::optional<ImuGravityAccelSample> SelectAtOrBefore(int64_t anchor_stamp_ns,
-                                                        int64_t future_tolerance_ns) const
-  {
-    std::optional<ImuGravityAccelSample> nearestPast;
-    std::optional<ImuGravityAccelSample> nearestFuture;
-
-    for (std::size_t i = 0; i < m_count; ++i)
-    {
-      const ImuGravityAccelSample& sample = m_samples[i];
-      if (!sample.has_sample)
-        continue;
-
-      const int64_t sampleStampNs = sample.stamp.nanoseconds();
-      if (sampleStampNs <= anchor_stamp_ns)
-      {
-        if (!nearestPast.has_value() || sampleStampNs > nearestPast->stamp.nanoseconds())
-          nearestPast = sample;
-      }
-      else if (!nearestFuture.has_value() || sampleStampNs < nearestFuture->stamp.nanoseconds())
-      {
-        nearestFuture = sample;
-      }
-    }
-
-    if (nearestPast.has_value())
-      return nearestPast;
-
-    if (nearestFuture.has_value() &&
-        nearestFuture->stamp.nanoseconds() - anchor_stamp_ns <= future_tolerance_ns)
-    {
-      return nearestFuture;
-    }
-
-    return std::nullopt;
-  }
-
-  void Reset()
-  {
-    m_samples = {};
-    m_next = 0;
-    m_count = 0;
-  }
-
-private:
-  std::array<ImuGravityAccelSample, 1024> m_samples{};
-  std::size_t m_next{0};
-  std::size_t m_count{0};
-};
-
-struct Bno086ImuNode::RateSnapshot
-{
-  std::array<double, 5> decoded_hz{};
-  double imu_gravity_hz{0.0};
-  double imu_hz{0.0};
-};
-
-struct Bno086ImuNode::RateDiagnostics
-{
-  std::array<std::uint64_t, 5> decoded_reports_received{};
-  std::array<std::uint64_t, 5> last_rate_decoded_reports{};
-  std::uint64_t imu_gravity_published{0};
-  std::uint64_t imu_published{0};
-  std::uint64_t last_rate_imu_gravity_published{0};
-  std::uint64_t last_rate_imu_published{0};
-  std::chrono::steady_clock::time_point last_log_at{};
-};
-
-class Bno086ImuNode::Bno086DrainHealth
-{
-public:
-  void Record(const Bno086DrainCounters& counters,
-              Bno086DrainAction exit_action,
-              std::uint32_t drain_duration_us)
-  {
-    ++m_drains;
-    m_physicalPacketsSum += counters.physical_packets_this_drain;
-    m_physicalPacketsMax = std::max(m_physicalPacketsMax, counters.physical_packets_this_drain);
-    m_sensorEventsSum += counters.sensor_events_this_drain;
-    m_sensorEventsMax = std::max(m_sensorEventsMax, counters.sensor_events_this_drain);
-    m_drainDurationSumUs += drain_duration_us;
-    m_drainDurationMaxUs = std::max(m_drainDurationMaxUs, drain_duration_us);
-
-    if (exit_action == Bno086DrainAction::PhysicalPacketCap)
-      ++m_physicalPacketCapHitCount;
-    if (exit_action == Bno086DrainAction::PollIterationCap)
-      ++m_pollIterationCapHitCount;
-    if (exit_action == Bno086DrainAction::AllZeroBudget)
-      ++m_allZeroBudgetHitCount;
-    if (exit_action == Bno086DrainAction::NoProgressBudget)
-      ++m_noProgressDrainCount;
-    if (exit_action == Bno086DrainAction::TransportError)
-      ++m_transportErrorCount;
-  }
-
-  void CountAllZeroBackoff() { ++m_allZeroBackoffCount; }
-
-  bool HasSafetyFailure() const
-  {
-    return m_physicalPacketCapHitCount > 0 || m_pollIterationCapHitCount > 0 ||
-           m_noProgressDrainCount > 0 || m_transportErrorCount > 0 || m_allZeroBudgetHitCount > 0;
-  }
-
-  std::uint64_t Drains() const { return m_drains; }
-  std::uint32_t PhysicalPacketsMax() const { return m_physicalPacketsMax; }
-  std::uint32_t SensorEventsMax() const { return m_sensorEventsMax; }
-  std::uint64_t AllZeroBackoffCount() const { return m_allZeroBackoffCount; }
-  std::uint32_t DrainDurationMaxUs() const { return m_drainDurationMaxUs; }
-  std::uint64_t PhysicalPacketCapHitCount() const { return m_physicalPacketCapHitCount; }
-  std::uint64_t PollIterationCapHitCount() const { return m_pollIterationCapHitCount; }
-  std::uint64_t NoProgressDrainCount() const { return m_noProgressDrainCount; }
-  std::uint64_t TransportErrorCount() const { return m_transportErrorCount; }
-  std::uint64_t AllZeroBudgetHitCount() const { return m_allZeroBudgetHitCount; }
-
-  double PhysicalPacketsMean() const
-  {
-    return m_drains > 0 ? static_cast<double>(m_physicalPacketsSum) / static_cast<double>(m_drains)
-                        : 0.0;
-  }
-
-  double SensorEventsMean() const
-  {
-    return m_drains > 0 ? static_cast<double>(m_sensorEventsSum) / static_cast<double>(m_drains)
-                        : 0.0;
-  }
-
-  double DrainDurationMeanMs() const
-  {
-    return m_drains > 0
-               ? static_cast<double>(m_drainDurationSumUs) / static_cast<double>(m_drains) / 1.0e3
-               : 0.0;
-  }
-
-private:
-  std::uint64_t m_drains{0};
-  std::uint64_t m_physicalPacketsSum{0};
-  std::uint32_t m_physicalPacketsMax{0};
-  std::uint64_t m_sensorEventsSum{0};
-  std::uint32_t m_sensorEventsMax{0};
-  std::uint64_t m_allZeroBackoffCount{0};
-  std::uint64_t m_drainDurationSumUs{0};
-  std::uint32_t m_drainDurationMaxUs{0};
-  std::uint64_t m_physicalPacketCapHitCount{0};
-  std::uint64_t m_pollIterationCapHitCount{0};
-  std::uint64_t m_noProgressDrainCount{0};
-  std::uint64_t m_transportErrorCount{0};
-  std::uint64_t m_allZeroBudgetHitCount{0};
-};
 
 Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
 {
@@ -490,17 +306,12 @@ Bno086ImuNode::~Bno086ImuNode() = default;
 
 bool Bno086ImuNode::Initialize()
 {
-  for (Bno086ReportTimestampTracker& tracker : m_timestampTrackers)
-    tracker.Reset();
-  m_bnoCadenceEpochNs.reset();
-  m_lastEmittedTimestampNs.fill(std::nullopt);
+  m_timestampCadence.Reset();
   m_lastPublishedCoreSignature.reset();
   m_lastPublishedImuGravityAnchorStampNs.reset();
-  if (!m_imuGravityAccelHistory)
-    m_imuGravityAccelHistory = std::make_unique<ImuGravityAccelHistory>();
-  m_imuGravityAccelHistory->Reset();
-  m_drainHealth = std::make_unique<Bno086DrainHealth>();
-  m_rateDiagnostics = std::make_unique<RateDiagnostics>();
+  m_imuGravityAccelHistory.Reset();
+  m_drainHealth = Bno086DrainHealth{};
+  m_rateHealth = Bno086RateHealth{};
 
   m_imuPublisher =
       create_publisher<sensor_msgs::msg::Imu>(IMU_TOPIC, ReliableSensorQos(RAW_IMU_QOS_DEPTH));
@@ -725,7 +536,7 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
         afterPollDecision.action == Bno086DrainAction::Continue &&
         afterPollDecision.hintn_asserted && m_allZeroBackoffUs > 0)
     {
-      m_drainHealth->CountAllZeroBackoff();
+      m_drainHealth.CountAllZeroBackoff();
       std::this_thread::sleep_for(std::chrono::microseconds(m_allZeroBackoffUs));
     }
 
@@ -749,7 +560,7 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
       if (finalizedStampNs.has_value())
       {
         const rclcpp::Time normalizedEventStamp(*finalizedStampNs, RCL_ROS_TIME);
-        CountDecodedReport(*pollResult.event);
+        m_rateHealth.CountDecodedReport(pollResult.event->report_id);
         ApplyEvent(*pollResult.event, normalizedEventStamp);
         MaybePublishOnLinearAcceleration(*pollResult.event);
         MaybePublishImuGravityOnRotationVector(*pollResult.event);
@@ -886,7 +697,7 @@ void Bno086ImuNode::MaybePublishOnLinearAcceleration(const SensorEvent& event)
 
   PublishLatestFrame(LatestCoreStamp());
   m_lastPublishedCoreSignature = signature;
-  ++m_rateDiagnostics->imu_published;
+  m_rateHealth.CountImuPublished();
 }
 
 void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& event)
@@ -915,7 +726,7 @@ void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& ev
   const int64_t orientationStampNs = m_orientationState.stamp.nanoseconds();
   const int64_t maxAccelAgeNs = ImuGravityMaxOrientationAgeNs();
   const int64_t accelFutureToleranceNs = ReportFutureToleranceNs(ReportId::Accelerometer);
-  const std::optional<ImuGravityAccelSample> accelSelection =
+  const std::optional<Bno086ImuGravityAccelSample> accelSelection =
       SelectImuGravityAccelSample(orientationStampNs, accelFutureToleranceNs);
 
   if (!accelSelection.has_value())
@@ -924,8 +735,8 @@ void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& ev
     return;
   }
 
-  const ImuGravityAccelSample& accelSample = *accelSelection;
-  const int64_t accelStampNs = accelSample.stamp.nanoseconds();
+  const Bno086ImuGravityAccelSample& accelSample = *accelSelection;
+  const int64_t accelStampNs = accelSample.stamp_ns;
   const int64_t maxGyroAgeNs = ImuGravityMaxGyroAgeNs();
   const SampleFreshnessResult accelFreshness = EvaluateSampleFreshness(
       orientationStampNs, accelStampNs, maxAccelAgeNs, accelFutureToleranceNs);
@@ -984,7 +795,7 @@ void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& ev
 
   m_imuGravityPublisher->publish(imuGravityMsg);
   m_lastPublishedImuGravityAnchorStampNs = orientationStampNs;
-  ++m_rateDiagnostics->imu_gravity_published;
+  m_rateHealth.CountImuGravityPublished();
   MaybeLogImuGravityDiagnostics();
 }
 
@@ -1064,7 +875,7 @@ sensor_msgs::msg::Imu Bno086ImuNode::BuildPresentImuMessage(const rclcpp::Time& 
 }
 
 sensor_msgs::msg::Imu Bno086ImuNode::BuildImuGravityMessage(
-    const rclcpp::Time& stamp, const ImuGravityAccelSample& accel_sample) const
+    const rclcpp::Time& stamp, const Bno086ImuGravityAccelSample& accel_sample) const
 {
   sensor_msgs::msg::Imu imuGravityMsg;
   imuGravityMsg.header.stamp = stamp;
@@ -1244,62 +1055,19 @@ void Bno086ImuNode::LogFeatureSummary() const
     return;
 
   const std::vector<FeatureConfiguration>& configurations = m_shtp->GetFeatureConfigurations();
-  std::ostringstream oss;
-
-  if (m_latestFeatureResponses.size() >= configurations.size())
-  {
-    oss << "BNO086 feature acceptance summary:";
-  }
-  else
-  {
-    oss << "BNO086 feature acceptance summary incomplete: received="
-        << m_latestFeatureResponses.size() << " expected=" << configurations.size();
-  }
-
-  for (const FeatureConfiguration& configuration : configurations)
-  {
-    oss << "\n  "
-        << BuildFeatureSummaryLine(configuration, LatestFeatureResponse(configuration.report_id));
-  }
-
-  RCLCPP_INFO(get_logger(), "%s", oss.str().c_str());
-}
-
-std::string Bno086ImuNode::BuildFeatureSummaryLine(
-    const FeatureConfiguration& configuration, const std::optional<FeatureResponse>& response) const
-{
-  std::ostringstream oss;
-  oss << ReportName(configuration.report_id)
-      << " requested_interval_us=" << configuration.requested_interval_us
-      << " requested_batch_us=" << configuration.requested_batch_interval_us;
-
-  if (!response.has_value())
-  {
-    oss << " status=missing_response";
-    return oss.str();
-  }
-
-  oss << " actual_interval_us=" << response->report_interval_us
-      << " actual_batch_us=" << response->batch_interval_us
-      << " batching_active=" << (IsFeatureBatchingActive(*response) ? "true" : "false");
-  return oss.str();
+  const std::string summary = BuildFeatureSummary(configurations, m_latestFeatureResponses);
+  RCLCPP_INFO(get_logger(), "%s", summary.c_str());
 }
 
 void Bno086ImuNode::MaybeLogImuGravityDiagnostics()
 {
   const auto now = std::chrono::steady_clock::now();
-  if (m_rateDiagnostics->last_log_at.time_since_epoch().count() != 0)
-  {
-    const auto elapsedMs =
-        std::chrono::duration_cast<std::chrono::milliseconds>(now - m_rateDiagnostics->last_log_at)
-            .count();
-    if (elapsedMs < m_diagnosticsLogPeriodMs)
-      return;
-  }
+  if (!m_rateHealth.ShouldLog(now, m_diagnosticsLogPeriodMs))
+    return;
 
-  const RateSnapshot rates = UpdateImuGravityDiagnosticsRates(now);
+  const Bno086RateSnapshot rates = m_rateHealth.BuildSnapshot(now);
   MaybeEmitImuGravityDiagnosticsLog(rates);
-  m_rateDiagnostics->last_log_at = now;
+  m_rateHealth.MarkSnapshotLogged(now);
 }
 
 void Bno086ImuNode::RecordDrainThroughputDiagnostics(const Bno086DrainCounters& counters,
@@ -1308,48 +1076,10 @@ void Bno086ImuNode::RecordDrainThroughputDiagnostics(const Bno086DrainCounters& 
                                                      std::uint32_t drain_duration_us,
                                                      std::uint32_t /*pending_queue_depth_at_exit*/)
 {
-  if (m_drainHealth)
-    m_drainHealth->Record(counters, exit_action, drain_duration_us);
+  m_drainHealth.Record(counters, exit_action, drain_duration_us);
 }
 
-auto Bno086ImuNode::UpdateImuGravityDiagnosticsRates(
-    const std::chrono::steady_clock::time_point& now) -> RateSnapshot
-{
-  RateSnapshot snapshot;
-  if (m_rateDiagnostics->last_log_at.time_since_epoch().count() != 0)
-  {
-    const auto elapsedMs =
-        std::chrono::duration_cast<std::chrono::milliseconds>(now - m_rateDiagnostics->last_log_at)
-            .count();
-    if (elapsedMs > 0)
-    {
-      const std::uint64_t imuGravityPublishedDelta =
-          m_rateDiagnostics->imu_gravity_published -
-          m_rateDiagnostics->last_rate_imu_gravity_published;
-      const std::uint64_t imuPublishedDelta =
-          m_rateDiagnostics->imu_published - m_rateDiagnostics->last_rate_imu_published;
-      snapshot.imu_gravity_hz =
-          static_cast<double>(imuGravityPublishedDelta) * 1000.0 / static_cast<double>(elapsedMs);
-      snapshot.imu_hz =
-          static_cast<double>(imuPublishedDelta) * 1000.0 / static_cast<double>(elapsedMs);
-
-      for (std::size_t i = 0; i < snapshot.decoded_hz.size(); ++i)
-      {
-        const std::uint64_t decodedDelta = m_rateDiagnostics->decoded_reports_received[i] -
-                                           m_rateDiagnostics->last_rate_decoded_reports[i];
-        snapshot.decoded_hz[i] =
-            static_cast<double>(decodedDelta) * 1000.0 / static_cast<double>(elapsedMs);
-      }
-    }
-  }
-
-  m_rateDiagnostics->last_rate_imu_gravity_published = m_rateDiagnostics->imu_gravity_published;
-  m_rateDiagnostics->last_rate_imu_published = m_rateDiagnostics->imu_published;
-  m_rateDiagnostics->last_rate_decoded_reports = m_rateDiagnostics->decoded_reports_received;
-  return snapshot;
-}
-
-void Bno086ImuNode::MaybeEmitImuGravityDiagnosticsLog(const RateSnapshot& rates)
+void Bno086ImuNode::MaybeEmitImuGravityDiagnosticsLog(const Bno086RateSnapshot& rates)
 {
   const bool unhealthy = IsBno086DiagnosticsUnhealthy(rates);
   const Bno086TransportStats transportStats = m_transport.GetStats();
@@ -1362,17 +1092,17 @@ void Bno086ImuNode::MaybeEmitImuGravityDiagnosticsLog(const RateSnapshot& rates)
   RCLCPP_DEBUG(get_logger(),
                "BNO086 drain: n=%llu pkt=%.1f/%u evt=%.1f/%u zero=%llu "
                "dur=%.0f/%.0f cap=%llu/%llu err=%llu/%llu az=%llu bad=%llu",
-               static_cast<unsigned long long>(m_drainHealth->Drains()),
-               m_drainHealth->PhysicalPacketsMean(), m_drainHealth->PhysicalPacketsMax(),
-               m_drainHealth->SensorEventsMean(), m_drainHealth->SensorEventsMax(),
-               static_cast<unsigned long long>(m_drainHealth->AllZeroBackoffCount()),
-               m_drainHealth->DrainDurationMeanMs(),
-               static_cast<double>(m_drainHealth->DrainDurationMaxUs()) / 1.0e3,
-               static_cast<unsigned long long>(m_drainHealth->PhysicalPacketCapHitCount()),
-               static_cast<unsigned long long>(m_drainHealth->PollIterationCapHitCount()),
-               static_cast<unsigned long long>(m_drainHealth->NoProgressDrainCount()),
-               static_cast<unsigned long long>(m_drainHealth->TransportErrorCount()),
-               static_cast<unsigned long long>(m_drainHealth->AllZeroBudgetHitCount()),
+               static_cast<unsigned long long>(m_drainHealth.Drains()),
+               m_drainHealth.PhysicalPacketsMean(), m_drainHealth.PhysicalPacketsMax(),
+               m_drainHealth.SensorEventsMean(), m_drainHealth.SensorEventsMax(),
+               static_cast<unsigned long long>(m_drainHealth.AllZeroBackoffCount()),
+               m_drainHealth.DrainDurationMeanMs(),
+               static_cast<double>(m_drainHealth.DrainDurationMaxUs()) / 1.0e3,
+               static_cast<unsigned long long>(m_drainHealth.PhysicalPacketCapHitCount()),
+               static_cast<unsigned long long>(m_drainHealth.PollIterationCapHitCount()),
+               static_cast<unsigned long long>(m_drainHealth.NoProgressDrainCount()),
+               static_cast<unsigned long long>(m_drainHealth.TransportErrorCount()),
+               static_cast<unsigned long long>(m_drainHealth.AllZeroBudgetHitCount()),
                static_cast<unsigned long long>(transportStats.invalid_full_packet_count));
 
   if (m_diagnosticsWasUnhealthy && !unhealthy)
@@ -1523,39 +1253,13 @@ std::optional<FeatureResponse> Bno086ImuNode::LatestFeatureResponse(ReportId rep
   return *it;
 }
 
-bool Bno086ImuNode::IsBno086DiagnosticsUnhealthy(const RateSnapshot& rates) const
+bool Bno086ImuNode::IsBno086DiagnosticsUnhealthy(const Bno086RateSnapshot& rates) const
 {
-  if (rates.decoded_hz[0] > 0.0 &&
-      rates.decoded_hz[0] < m_accelerometerRateHz * MIN_HEALTHY_RATE_FRACTION)
-    return true;
-
-  if (rates.decoded_hz[1] > 0.0 && rates.decoded_hz[1] < m_gyroRateHz * MIN_HEALTHY_RATE_FRACTION)
-    return true;
-
-  if (rates.decoded_hz[2] > 0.0 &&
-      rates.decoded_hz[2] < m_rotationVectorRateHz * MIN_HEALTHY_RATE_FRACTION)
-    return true;
-
-  if (rates.decoded_hz[3] > 0.0 &&
-      rates.decoded_hz[3] < m_linearAccelerationRateHz * MIN_HEALTHY_RATE_FRACTION)
-    return true;
-
-  if (rates.decoded_hz[4] > 0.0 &&
-      rates.decoded_hz[4] < m_gravityRateHz * MIN_HEALTHY_RATE_FRACTION)
-    return true;
-
-  if (rates.imu_gravity_hz > 0.0 &&
-      rates.imu_gravity_hz < m_rotationVectorRateHz * MIN_HEALTHY_RATE_FRACTION)
-    return true;
-
-  return m_drainHealth != nullptr && m_drainHealth->HasSafetyFailure();
-}
-
-void Bno086ImuNode::CountDecodedReport(const SensorEvent& event)
-{
-  const std::optional<std::size_t> reportIndex = DiagnosticReportIndex(event.report_id);
-  if (reportIndex.has_value())
-    ++m_rateDiagnostics->decoded_reports_received[*reportIndex];
+  const Bno086ExpectedRates expectedRates{m_accelerometerRateHz, m_gyroRateHz,
+                                          m_rotationVectorRateHz, m_linearAccelerationRateHz,
+                                          m_gravityRateHz};
+  return m_rateHealth.HasRateFailure(rates, expectedRates, MIN_HEALTHY_RATE_FRACTION) ||
+         m_drainHealth.HasSafetyFailure();
 }
 
 std::uint32_t Bno086ImuNode::CoreCoherenceToleranceUs() const
@@ -1604,22 +1308,22 @@ int64_t Bno086ImuNode::ReportFutureToleranceNs(ReportId report_id) const
 
 void Bno086ImuNode::RecordImuGravityAccelSample(const rclcpp::Time& sample_stamp)
 {
-  ImuGravityAccelSample sample;
+  Bno086ImuGravityAccelSample sample;
   sample.has_sample = true;
-  sample.stamp = sample_stamp;
+  sample.stamp_ns = sample_stamp.nanoseconds();
   sample.accel_mps2 = m_latestFrame.accel_mps2;
   sample.covariance_mps2_2 = m_latestFrame.accel_cov_mps2_2;
   sample.has_covariance = m_latestFrame.has_accel_covariance;
   sample.sequence = m_imuGravityState.sequence;
   sample.accuracy = m_imuGravityState.accuracy;
 
-  m_imuGravityAccelHistory->Push(sample);
+  m_imuGravityAccelHistory.Push(sample);
 }
 
-std::optional<Bno086ImuNode::ImuGravityAccelSample> Bno086ImuNode::SelectImuGravityAccelSample(
+std::optional<Bno086ImuGravityAccelSample> Bno086ImuNode::SelectImuGravityAccelSample(
     int64_t anchor_stamp_ns, int64_t future_tolerance_ns) const
 {
-  return m_imuGravityAccelHistory->SelectAtOrBefore(anchor_stamp_ns, future_tolerance_ns);
+  return m_imuGravityAccelHistory.SelectAtOrBefore(anchor_stamp_ns, future_tolerance_ns);
 }
 
 Bno086ImuNode::CoreFrameSignature Bno086ImuNode::LatestCoreSignature() const
@@ -1768,50 +1472,23 @@ std::optional<int64_t> Bno086ImuNode::FinalizeEventStampNs(
     const rclcpp::Time& interrupt_ros_at,
     std::optional<int64_t> expected_interval_ns)
 {
-  const auto timestampIndex = static_cast<std::size_t>(event.report_id);
-  if (!m_bnoCadenceEpochNs.has_value())
-    m_bnoCadenceEpochNs = HostAnchorNs(event, interrupt_ros_at.nanoseconds());
-
-  const ReportTimestampTrackerResult trackedStamp =
-      m_timestampTrackers[timestampIndex].Update(ReportTimestampTrackerInput{
-          event.sequence, expected_interval_ns, interrupt_ros_at.nanoseconds(), event.has_delay,
-          event.delay_us, m_bnoCadenceEpochNs});
-
-  int64_t stampNs = trackedStamp.stamp_ns;
-  bool duplicate = trackedStamp.duplicate_sequence;
-
-  const std::optional<int64_t>& lastStampNs = m_lastEmittedTimestampNs[timestampIndex];
-  if (duplicate && lastStampNs.has_value())
-    return std::nullopt;
-
-  if (lastStampNs.has_value() && stampNs <= *lastStampNs)
+  const Bno086TimestampCadenceResult result =
+      m_timestampCadence.Finalize(event, interrupt_ros_at.nanoseconds(), expected_interval_ns);
+  if (result.monotonic_guard_adjusted && result.stamp_ns.has_value() &&
+      result.last_stamp_ns.has_value())
   {
-    if (trackedStamp.duplicate_sequence)
-    {
-      duplicate = true;
-      stampNs = *lastStampNs;
-    }
-    else if (expected_interval_ns.has_value() && *expected_interval_ns > 0)
-    {
-      stampNs = *lastStampNs + *expected_interval_ns;
-    }
-    else
-    {
-      stampNs = *lastStampNs + 1;
-    }
-
-    RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 2000,
-        "BNO086 cadence timestamp guard adjusted report=%s "
-        "sequence=%u candidate_ns=%lld last_ns=%lld final_ns=%lld "
-        "duplicate_sequence=%s sequence_delta=%u",
-        ReportName(event.report_id), event.sequence, static_cast<long long>(trackedStamp.stamp_ns),
-        static_cast<long long>(*lastStampNs), static_cast<long long>(stampNs),
-        trackedStamp.duplicate_sequence ? "true" : "false", trackedStamp.sequence_delta);
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                         "BNO086 cadence timestamp guard adjusted report=%s "
+                         "sequence=%u candidate_ns=%lld last_ns=%lld final_ns=%lld "
+                         "duplicate_sequence=%s sequence_delta=%u",
+                         ReportName(event.report_id), event.sequence,
+                         static_cast<long long>(result.candidate_stamp_ns),
+                         static_cast<long long>(*result.last_stamp_ns),
+                         static_cast<long long>(*result.stamp_ns),
+                         result.duplicate_sequence ? "true" : "false", result.sequence_delta);
   }
 
-  m_lastEmittedTimestampNs[timestampIndex] = stampNs;
-  return duplicate ? std::nullopt : std::make_optional(stampNs);
+  return result.stamp_ns;
 }
 
 std::array<double, 9> Bno086ImuNode::PredictedCovarianceFromPresent(
