@@ -39,11 +39,11 @@ namespace
 {
 constexpr const char* NODE_NAME = "bno086_imu_driver";
 
+constexpr const char* GRAVITY_TOPIC = "gravity";
 constexpr const char* IMU_TOPIC = "imu";
+constexpr const char* IMU_GRAVITY_TOPIC = "imu_gravity";
 constexpr const char* IMU_PREDICTED_TOPIC = "imu_predicted";
 constexpr const char* IMU_VR_TOPIC = "imu_vr";
-constexpr const char* GRAVITY_TOPIC = "gravity";
-constexpr const char* IMU_GRAVITY_TOPIC = "imu_gravity";
 
 constexpr int INTERRUPT_WAIT_TIMEOUT_MS = 20;
 constexpr std::uint32_t REPEATED_NO_PROGRESS_TIMEOUT_WARN_COUNT = 3;
@@ -187,6 +187,7 @@ Bno086ImuNode::~Bno086ImuNode() = default;
 
 bool Bno086ImuNode::Initialize()
 {
+  // Initialize state
   m_timestampCadence->Reset();
   m_stream.last_published_core_signature.reset();
   m_stream.last_published_imu_gravity_anchor_stamp_ns.reset();
@@ -194,6 +195,7 @@ bool Bno086ImuNode::Initialize()
   m_diag.drain_health = Bno086DrainHealth{};
   m_diag.rate_health = Bno086RateHealth{};
 
+  // Initialize ROS publishers
   m_imuPublisher =
       create_publisher<sensor_msgs::msg::Imu>(IMU_TOPIC, ReliableSensorQos(RAW_IMU_QOS_DEPTH));
   m_imuPredictedPublisher = create_publisher<sensor_msgs::msg::Imu>(
@@ -205,6 +207,7 @@ bool Bno086ImuNode::Initialize()
   m_imuGravityPublisher = create_publisher<sensor_msgs::msg::Imu>(
       IMU_GRAVITY_TOPIC, ReliableSensorQos(RAW_IMU_GRAVITY_QOS_DEPTH));
 
+  // Initialize threading
   m_running.store(true);
   m_interruptThread = std::thread(&Bno086ImuNode::InterruptLoop, this);
 
