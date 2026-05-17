@@ -6,7 +6,7 @@
  *  See the file LICENSE.txt for more information.
  */
 
-#include "imu/bno086/Bno086Gpio.hpp"
+#include "imu/bno086/gpio/Bno086Gpio.hpp"
 
 #include <cerrno>
 #include <cstring>

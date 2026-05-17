@@ -8,12 +8,12 @@
 
 #pragma once
 
-#include "imu/bno086/Bno086Gpio.hpp"
 #include "imu/bno086/core/Bno086DrainPolicy.hpp"
 #include "imu/bno086/core/Bno086GravityUtils.hpp"
 #include "imu/bno086/core/Bno086OrientationCovariancePolicy.hpp"
 #include "imu/bno086/core/Bno086ReportTimestampTracker.hpp"
 #include "imu/bno086/core/Bno086SampleCoherence.hpp"
+#include "imu/bno086/gpio/Bno086Gpio.hpp"
 #include "imu/bno086/sh2/Bno086Reports.hpp"
 #include "imu/bno086/sh2/Bno086Shtp.hpp"
 #include "imu/bno086/shtp/Bno086Transport.hpp"

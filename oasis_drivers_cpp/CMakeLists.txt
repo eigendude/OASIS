@@ -93,7 +93,7 @@ target_link_libraries(bno086_sh2
 
 add_executable(bno086_imu_driver
   src/cli/bno086_imu_driver.cpp
-  src/imu/bno086/Bno086Gpio.cpp
+  src/imu/bno086/gpio/Bno086Gpio.cpp
   src/nodes/Bno086ImuNode.cpp
 )
 
