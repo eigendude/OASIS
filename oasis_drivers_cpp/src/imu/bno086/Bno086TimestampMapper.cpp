@@ -27,10 +27,6 @@ constexpr std::uint32_t kMinResetBackwardJumpUs = 1'000'000;
 // be treated as a true reset instead of local batch timestamp context
 constexpr int64_t kMinResetHostGapNs = 500'000'000;
 
-// Units: ns. Long host-time gap required before implausible mapped drift can
-// safely reanchor without confusing normal batched payload timing for reset
-constexpr int64_t kMinImplausibleDriftReanchorHostGapNs = 500'000'000;
-
 // Units: ns. Maximum accepted age of a mapped sample relative to host time
 constexpr int64_t kMaxMappedPastSkewNs = 1'000'000'000;
 
@@ -81,13 +77,6 @@ TimestampMappingResult Bno086TimestampMapper::Map(const TimestampMappingInput& i
   if (hostDeltaNs > kMaxMappedPastSkewNs || hostDeltaNs < -kMaxMappedFutureSkewNs)
   {
     result.rejected_implausible_mapping = true;
-    const int64_t hostGapNs = input.packet_host_stamp_ns - m_lastPacketHostStampNs;
-    if (hostGapNs >= kMinImplausibleDriftReanchorHostGapNs)
-    {
-      ReanchorOffset(extendedBaseTimestampUs, input, result,
-                     TimestampReanchorReason::ImplausibleDrift, result.stamp_ns);
-      result.stamp_ns = (deviceSampleTimeUs * 1'000) + m_deviceToRosOffsetNs;
-    }
   }
 
   m_lastBaseTimestampUs = input.base_timestamp_us;

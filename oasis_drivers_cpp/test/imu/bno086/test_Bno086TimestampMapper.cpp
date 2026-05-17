@@ -87,6 +87,58 @@ TEST(Bno086TimestampMapper, repeatedLocalBackwardBaseDoesNotReanchorAsReset)
   EXPECT_EQ(third.reanchor_reason, TimestampReanchorReason::None);
 }
 
+TEST(Bno086TimestampMapper, implausibleDriftFromSmallBackwardBaseDoesNotReanchor)
+{
+  Bno086TimestampMapper mapper;
+
+  ASSERT_EQ(mapper.Map(Input(1'000'000, 0, 10'000'000'000, 1)).stamp_ns, 10'000'000'000);
+
+  const TimestampMappingResult drift = mapper.Map(Input(998'000, 0, 12'000'000'000, 2));
+
+  EXPECT_EQ(drift.stamp_ns, 9'998'000'000);
+  EXPECT_TRUE(drift.rejected_implausible_mapping);
+  EXPECT_FALSE(drift.reanchored_offset);
+  EXPECT_FALSE(drift.detected_wrap_or_reset);
+  EXPECT_EQ(drift.reanchor_reason, TimestampReanchorReason::None);
+
+  const TimestampMappingResult afterDrift = mapper.Map(Input(1'010'000, 0, 12'010'000'000, 3));
+
+  EXPECT_EQ(afterDrift.stamp_ns, 10'010'000'000);
+  EXPECT_FALSE(afterDrift.reanchored_offset);
+}
+
+TEST(Bno086TimestampMapper, forwardBaseWithHugeHostDriftDoesNotReanchor)
+{
+  Bno086TimestampMapper mapper;
+
+  ASSERT_EQ(mapper.Map(Input(1'000'000, 0, 10'000'000'000, 1)).stamp_ns, 10'000'000'000);
+
+  const TimestampMappingResult drift = mapper.Map(Input(1'025'400, 0, 12'800'000'000, 2));
+
+  EXPECT_EQ(drift.stamp_ns, 10'025'400'000);
+  EXPECT_TRUE(drift.rejected_implausible_mapping);
+  EXPECT_FALSE(drift.reanchored_offset);
+  EXPECT_FALSE(drift.detected_wrap_or_reset);
+  EXPECT_EQ(drift.reanchor_reason, TimestampReanchorReason::None);
+}
+
+TEST(Bno086TimestampMapper, smallBackwardBaseNeverTriggersReset)
+{
+  Bno086TimestampMapper mapper;
+
+  ASSERT_EQ(mapper.Map(Input(1'000'000, 0, 10'000'000'000, 1)).stamp_ns, 10'000'000'000);
+
+  const TimestampMappingResult twoMillisBack = mapper.Map(Input(998'000, 0, 10'600'000'000, 2));
+  const TimestampMappingResult hundredMillisBack = mapper.Map(Input(898'000, 0, 11'600'000'000, 3));
+
+  EXPECT_FALSE(twoMillisBack.detected_wrap_or_reset);
+  EXPECT_FALSE(hundredMillisBack.detected_wrap_or_reset);
+  EXPECT_FALSE(twoMillisBack.reanchored_offset);
+  EXPECT_FALSE(hundredMillisBack.reanchored_offset);
+  EXPECT_EQ(twoMillisBack.reanchor_reason, TimestampReanchorReason::None);
+  EXPECT_EQ(hundredMillisBack.reanchor_reason, TimestampReanchorReason::None);
+}
+
 TEST(Bno086TimestampMapper, batchedReportsUseDeviceCadence)
 {
   Bno086TimestampMapper mapper;
