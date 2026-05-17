@@ -316,6 +316,57 @@ TEST(Bno086Shtp, parsesFeatureResponseIntervalsAndBatchingState)
   EXPECT_TRUE(IsFeatureBatchingActive(responses[0]));
 }
 
+TEST(Bno086Shtp, parsesContinuationChannelTwoFeatureResponseAsCompletePayload)
+{
+  RecordingTransport transport;
+  Bno086Shtp shtp{transport};
+
+  Bno086ShtpConfig config;
+  ASSERT_TRUE(shtp.Configure(config));
+
+  Bno086ShtpPacket packet;
+  packet.channel = 2;
+  packet.continuation = true;
+  packet.payload = FeatureResponsePayload(ReportId::Accelerometer, 10'000, 20'000);
+  transport.packets.emplace_back(packet);
+
+  const Bno086Shtp::PollResult result = shtp.Poll(5);
+  EXPECT_EQ(result.status, Bno086Shtp::PollStatus::PacketHandled);
+
+  const std::vector<FeatureResponse> responses = shtp.TakeFeatureResponses();
+  ASSERT_EQ(responses.size(), 1U);
+  EXPECT_EQ(responses[0].report_id, ReportId::Accelerometer);
+  EXPECT_EQ(responses[0].report_interval_us, 10'000U);
+  EXPECT_EQ(responses[0].batch_interval_us, 20'000U);
+}
+
+TEST(Bno086Shtp, parsesObservedContinuationAccelerometerFeatureResponse)
+{
+  RecordingTransport transport;
+  Bno086Shtp shtp{transport};
+
+  Bno086ShtpConfig config;
+  ASSERT_TRUE(shtp.Configure(config));
+
+  Bno086ShtpPacket packet;
+  packet.channel = 2;
+  packet.continuation = true;
+  packet.payload = {
+      0xFC, 0x01, 0x00, 0x00, 0x00, 0x40, 0x1F, 0x00, 0x00,
+      0x20, 0x4E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  };
+  transport.packets.emplace_back(packet);
+
+  const Bno086Shtp::PollResult result = shtp.Poll(5);
+  EXPECT_EQ(result.status, Bno086Shtp::PollStatus::PacketHandled);
+
+  const std::vector<FeatureResponse> responses = shtp.TakeFeatureResponses();
+  ASSERT_EQ(responses.size(), 1U);
+  EXPECT_EQ(responses[0].report_id, ReportId::Accelerometer);
+  EXPECT_EQ(responses[0].report_interval_us, 8'000U);
+  EXPECT_EQ(responses[0].batch_interval_us, 20'000U);
+}
+
 TEST(Bno086Shtp, zeroActualBatchIsNotBatchingActive)
 {
   FeatureResponse response;
@@ -404,6 +455,97 @@ TEST(Bno086Shtp, shortFeatureResponseDoesNotCrash)
 
   EXPECT_EQ(shtp.Poll(5).status, Bno086Shtp::PollStatus::PacketHandled);
   EXPECT_TRUE(shtp.TakeFeatureResponses().empty());
+}
+
+TEST(Bno086Shtp, featureResponseDrainCompletesWithContinuationFeatureResponses)
+{
+  RecordingTransport transport;
+  Bno086Shtp shtp{transport};
+
+  Bno086ShtpConfig config;
+  ASSERT_TRUE(shtp.Configure(config));
+
+  for (const FeatureConfiguration& feature : shtp.GetFeatureConfigurations())
+  {
+    Bno086ShtpPacket packet;
+    packet.channel = 2;
+    packet.continuation = true;
+    packet.payload = FeatureResponsePayload(feature.report_id, feature.requested_interval_us,
+                                            feature.requested_batch_interval_us);
+    transport.packets.emplace_back(packet);
+  }
+
+  const Bno086Shtp::FeatureResponseDrainResult result = shtp.DrainFeatureResponses(250, 128, 1);
+
+  EXPECT_TRUE(result.complete);
+  EXPECT_EQ(result.received_responses, 5U);
+  EXPECT_EQ(result.expected_responses, 5U);
+  EXPECT_EQ(result.pre_report_packets, 5U);
+  EXPECT_EQ(result.physical_packets, 5U);
+  EXPECT_EQ(result.sensor_events_seen, 0U);
+}
+
+TEST(Bno086Shtp, featureResponseDrainCountsPreReportPacketsOnly)
+{
+  RecordingTransport transport;
+  Bno086Shtp shtp{transport};
+
+  Bno086ShtpConfig config;
+  ASSERT_TRUE(shtp.Configure(config));
+
+  Bno086ShtpPacket commandPacket;
+  commandPacket.channel = 0;
+  commandPacket.payload = {0x00};
+  transport.packets.emplace_back(commandPacket);
+
+  Bno086ShtpPacket controlPacket;
+  controlPacket.channel = 2;
+  controlPacket.payload = {0x00};
+  transport.packets.emplace_back(controlPacket);
+
+  Bno086ShtpPacket sensorPacket;
+  sensorPacket.channel = 3;
+  sensorPacket.payload = AccelerometerReport(1);
+  transport.packets.emplace_back(sensorPacket);
+
+  const Bno086Shtp::FeatureResponseDrainResult result = shtp.DrainFeatureResponses(250, 128, 0);
+
+  EXPECT_FALSE(result.complete);
+  EXPECT_EQ(result.pre_report_packets, 2U);
+  EXPECT_EQ(result.physical_packets, 3U);
+  EXPECT_EQ(result.sensor_events_seen, 1U);
+}
+
+TEST(Bno086Shtp, continuationChannelThreeSensorPacketStillDecodes)
+{
+  RecordingTransport transport;
+  Bno086Shtp shtp{transport};
+
+  Bno086ShtpConfig config;
+  ASSERT_TRUE(shtp.Configure(config));
+
+  const std::vector<std::uint8_t> report = AccelerometerReport(7);
+
+  Bno086ShtpPacket firstPacket;
+  firstPacket.channel = 3;
+  firstPacket.continuation = true;
+  firstPacket.payload.assign(report.begin(), report.begin() + 4);
+  transport.packets.emplace_back(firstPacket);
+
+  Bno086ShtpPacket secondPacket;
+  secondPacket.channel = 3;
+  secondPacket.payload.assign(report.begin() + 4, report.end());
+  transport.packets.emplace_back(secondPacket);
+
+  const Bno086Shtp::PollResult firstResult = shtp.Poll(5);
+  EXPECT_EQ(firstResult.status, Bno086Shtp::PollStatus::PacketHandled);
+  EXPECT_FALSE(firstResult.event.has_value());
+
+  const Bno086Shtp::PollResult secondResult = shtp.Poll(5);
+  ASSERT_EQ(secondResult.status, Bno086Shtp::PollStatus::SensorEvent);
+  ASSERT_TRUE(secondResult.event.has_value());
+  EXPECT_EQ(secondResult.event->report_id, ReportId::Accelerometer);
+  EXPECT_EQ(secondResult.event->sequence, 7);
 }
 
 TEST(Bno086Shtp, disabledOptionalReportsAreIgnoredIfStalePayloadsArrive)

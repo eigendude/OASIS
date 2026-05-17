@@ -225,6 +225,8 @@ private:
   std::optional<int64_t> m_lastPublishedImuGravityAccelStampNs;
   std::uint32_t m_reportIntervalUs{10'000};
   int m_packetReadTimeoutMs{5};
+  int m_featureResponseStartupDrainMs{250};
+  std::uint32_t m_featureResponseStartupMaxPackets{128};
   std::uint32_t m_maxPacketsPerInterrupt{1024};
   std::uint32_t m_maxPollIterationsPerInterrupt{4096};
   double m_rotationVectorRateHz{100.0};

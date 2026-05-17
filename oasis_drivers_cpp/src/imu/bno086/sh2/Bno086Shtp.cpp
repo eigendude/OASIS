@@ -121,6 +121,54 @@ Bno086Shtp::PollResult Bno086Shtp::Poll(int timeout_ms)
   return result;
 }
 
+Bno086Shtp::FeatureResponseDrainResult Bno086Shtp::DrainFeatureResponses(
+    int timeout_ms, std::uint32_t max_physical_packets, int poll_timeout_ms)
+{
+  FeatureResponseDrainResult result;
+  result.expected_responses = m_featureConfigurations.size();
+  result.received_responses = m_featureResponses.size();
+  result.complete = result.received_responses >= result.expected_responses;
+
+  const auto startedAt = std::chrono::steady_clock::now();
+  const auto timeout = std::chrono::milliseconds(std::max(timeout_ms, 0));
+  const auto deadline = startedAt + timeout;
+
+  while (!result.complete && result.physical_packets < max_physical_packets)
+  {
+    const auto now = std::chrono::steady_clock::now();
+    if (now >= deadline)
+      break;
+
+    const Bno086Shtp::PollResult pollResult = Poll(poll_timeout_ms);
+    if (pollResult.read_physical_packet)
+      ++result.physical_packets;
+
+    if (pollResult.handled_control_packet)
+      ++result.pre_report_packets;
+
+    if (pollResult.status == PollStatus::SensorEvent && pollResult.event.has_value())
+      ++result.sensor_events_seen;
+
+    result.received_responses = m_featureResponses.size();
+    result.complete = result.received_responses >= result.expected_responses;
+
+    if (pollResult.status == PollStatus::TransportError)
+      break;
+
+    const bool madeProgress = pollResult.read_physical_packet || pollResult.dequeued_pending_event;
+    if (!madeProgress && poll_timeout_ms <= 0)
+      break;
+  }
+
+  result.elapsed_ms =
+      static_cast<std::uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                     std::chrono::steady_clock::now() - startedAt)
+                                     .count());
+  result.received_responses = m_featureResponses.size();
+  result.complete = result.received_responses >= result.expected_responses;
+  return result;
+}
+
 const Bno086Shtp::StartupStatus& Bno086Shtp::GetStartupStatus() const
 {
   return m_startupStatus;
@@ -211,6 +259,7 @@ bool Bno086Shtp::DecodePacket(const Bno086ShtpPacket& packet, std::optional<Sens
 
   if (packet.channel < m_continuationPayloads.size())
   {
+    const bool parseCompleteControlContinuation = ShouldParseCompleteControlContinuation(packet);
     const ContinuationValidation validation = ValidateContinuationFragment(packet);
     if (!validation.valid)
     {
@@ -228,6 +277,9 @@ bool Bno086Shtp::DecodePacket(const Bno086ShtpPacket& packet, std::optional<Sens
                                  packet.payload.end());
       return true;
     }
+
+    if (parseCompleteControlContinuation)
+      ClearContinuationState(packet.channel);
 
     if (!IsSensorChannel(packet.channel) && m_continuationActive[packet.channel])
     {
@@ -534,6 +586,12 @@ Bno086Shtp::ContinuationValidation Bno086Shtp::ValidateContinuationFragment(
       return validation;
     }
 
+    if (ShouldParseCompleteControlContinuation(packet))
+    {
+      validation.keep_buffering = false;
+      return validation;
+    }
+
     if (LooksLikeShtpHeaderPrefix(packet.payload))
     {
       validation.valid = false;
@@ -578,6 +636,20 @@ Bno086Shtp::ContinuationValidation Bno086Shtp::ValidateContinuationFragment(
   }
 
   return validation;
+}
+
+bool Bno086Shtp::ShouldParseCompleteControlContinuation(const Bno086ShtpPacket& packet) const
+{
+  if (!packet.continuation || packet.channel != kShtpChannelControl)
+    return false;
+
+  if (packet.payload.size() < kFeatureResponseBytes)
+    return false;
+
+  // Some BNO086 firmware sets the SHTP continuation bit on standalone 17-byte
+  // SH-2 Get Feature Responses. Treat those as complete control payloads so
+  // feature verification can parse them.
+  return packet.payload[0] == kShtpGetFeatureResponse;
 }
 
 void Bno086Shtp::ClearContinuationState(std::uint8_t channel)

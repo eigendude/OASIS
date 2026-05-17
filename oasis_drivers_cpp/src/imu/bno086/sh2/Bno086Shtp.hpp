@@ -157,10 +157,63 @@ public:
     bool set_feature_sent{false};
   };
 
+  struct FeatureResponseDrainResult
+  {
+    /*!
+     * \brief Number of Feature Responses available after the drain
+     *
+     * Units: response count
+     */
+    std::size_t received_responses{0};
+
+    /*!
+     * \brief Number of configured reports expected to answer
+     *
+     * Units: response count
+     */
+    std::size_t expected_responses{0};
+
+    /*!
+     * \brief Physical packets read while draining
+     *
+     * Units: packet count
+     */
+    std::uint32_t physical_packets{0};
+
+    /*!
+     * \brief SHTP packets with channel < reports observed while draining
+     *
+     * Units: packet count
+     */
+    std::uint32_t pre_report_packets{0};
+
+    /*!
+     * \brief Sensor events observed and ignored by the startup drain
+     *
+     * Units: event count
+     */
+    std::uint32_t sensor_events_seen{0};
+
+    /*!
+     * \brief Wall time spent in the drain loop
+     *
+     * Units: milliseconds
+     */
+    std::uint32_t elapsed_ms{0};
+
+    /*!
+     * \brief True when all expected Feature Responses were received
+     */
+    bool complete{false};
+  };
+
   explicit Bno086Shtp(Bno086Transport& transport);
 
   bool Configure(const Bno086ShtpConfig& config);
   PollResult Poll(int timeout_ms);
+  FeatureResponseDrainResult DrainFeatureResponses(int timeout_ms,
+                                                   std::uint32_t max_physical_packets,
+                                                   int poll_timeout_ms);
 
   const StartupStatus& GetStartupStatus() const;
   const std::vector<FeatureConfiguration>& GetFeatureConfigurations() const;
@@ -197,6 +250,7 @@ private:
   void MaybeSendDeferredConfiguration();
   void MarkCommunicationEstablished();
   ContinuationValidation ValidateContinuationFragment(const Bno086ShtpPacket& packet) const;
+  bool ShouldParseCompleteControlContinuation(const Bno086ShtpPacket& packet) const;
   bool IsSensorChannel(std::uint8_t channel) const;
   void ClearContinuationState(std::uint8_t channel);
 

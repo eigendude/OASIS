@@ -43,6 +43,8 @@ constexpr int INTERRUPT_WAIT_TIMEOUT_MS = 20;
 constexpr int DEFAULT_PACKET_READ_TIMEOUT_MS = 5;
 constexpr int MIN_PACKET_READ_TIMEOUT_MS = 1;
 constexpr int MAX_PACKET_READ_TIMEOUT_MS = 100;
+constexpr int DEFAULT_FEATURE_RESPONSE_STARTUP_DRAIN_MS = 250;
+constexpr int DEFAULT_FEATURE_RESPONSE_STARTUP_MAX_PACKETS = 128;
 constexpr int DEFAULT_MAX_PACKETS_PER_INTERRUPT = 1024;
 constexpr int MIN_MAX_PACKETS_PER_INTERRUPT = 1;
 constexpr int MAX_MAX_PACKETS_PER_INTERRUPT = 8192;
@@ -128,6 +130,10 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
                     DEFAULT_ENABLE_LINEAR_ACCELERATION_REPORT);
   declare_parameter("bno086_enable_gravity_report", DEFAULT_ENABLE_GRAVITY_REPORT);
   declare_parameter("bno086_feature_summary_timeout_ms", DEFAULT_FEATURE_SUMMARY_TIMEOUT_MS);
+  declare_parameter("bno086_feature_response_startup_drain_ms",
+                    DEFAULT_FEATURE_RESPONSE_STARTUP_DRAIN_MS);
+  declare_parameter("bno086_feature_response_startup_max_packets",
+                    DEFAULT_FEATURE_RESPONSE_STARTUP_MAX_PACKETS);
   declare_parameter("bno086_packet_read_timeout_ms", DEFAULT_PACKET_READ_TIMEOUT_MS);
   declare_parameter("bno086_max_packets_per_interrupt", DEFAULT_MAX_PACKETS_PER_INTERRUPT);
   declare_parameter("bno086_max_poll_iterations_per_interrupt",
@@ -168,6 +174,10 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   m_enableGravityReport = get_parameter("bno086_enable_gravity_report").as_bool();
   m_featureSummaryTimeoutMs =
       std::max(static_cast<int>(get_parameter("bno086_feature_summary_timeout_ms").as_int()), 0);
+  m_featureResponseStartupDrainMs = std::max(
+      static_cast<int>(get_parameter("bno086_feature_response_startup_drain_ms").as_int()), 0);
+  m_featureResponseStartupMaxPackets = static_cast<std::uint32_t>(std::max(
+      static_cast<int>(get_parameter("bno086_feature_response_startup_max_packets").as_int()), 0));
   m_packetReadTimeoutMs =
       std::clamp(static_cast<int>(get_parameter("bno086_packet_read_timeout_ms").as_int()),
                  MIN_PACKET_READ_TIMEOUT_MS, MAX_PACKET_READ_TIMEOUT_MS);
@@ -242,6 +252,16 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
     throw std::runtime_error("Failed to configure BNO086 reports");
   }
   m_featureConfigurationStartedAt = std::chrono::steady_clock::now();
+  const Bno086Shtp::FeatureResponseDrainResult featureDrainResult = m_shtp->DrainFeatureResponses(
+      m_featureResponseStartupDrainMs, m_featureResponseStartupMaxPackets, m_packetReadTimeoutMs);
+  RCLCPP_INFO(get_logger(),
+              "BNO086 feature response startup drain: received=%zu expected=%zu "
+              "pre_report_packets=%u sensor_events_ignored_or_seen=%u physical_packets=%u "
+              "elapsed_ms=%u",
+              featureDrainResult.received_responses, featureDrainResult.expected_responses,
+              featureDrainResult.pre_report_packets, featureDrainResult.sensor_events_seen,
+              featureDrainResult.physical_packets, featureDrainResult.elapsed_ms);
+  MaybeLogFeatureResponses();
 
   if (intGpio == DEFAULT_INT_GPIO)
   {
