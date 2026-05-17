@@ -8,6 +8,10 @@
 
 #include "Bno086ImuNode.hpp"
 
+#include "imu/bno086/core/Bno086TimestampCadence.hpp"
+#include "imu/bno086/gpio/Bno086Gpio.hpp"
+#include "imu/bno086/sh2/Bno086Shtp.hpp"
+#include "imu/bno086/shtp/Bno086Transport.hpp"
 #include "imu/bno086/utils/Bno086CovarianceUtils.hpp"
 #include "imu/bno086/utils/Bno086FeatureSummary.hpp"
 #include "imu/bno086/utils/Bno086MathUtils.hpp"
@@ -154,7 +158,12 @@ double VectorMagnitude(double x, double y, double z)
 
 } // namespace
 
-Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
+Bno086ImuNode::Bno086ImuNode()
+  : rclcpp::Node(NODE_NAME),
+    m_transport(std::make_unique<Bno086Transport>()),
+    m_shtp(std::make_unique<Bno086Shtp>(*m_transport)),
+    m_interruptGpio(std::make_unique<Bno086Gpio>()),
+    m_timestampCadence(std::make_unique<Bno086TimestampCadence>())
 {
   declare_parameter("i2c_device", std::string(DEFAULT_I2C_DEVICE));
   declare_parameter("i2c_address", static_cast<int>(DEFAULT_I2C_ADDRESS));
@@ -224,7 +233,7 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   transportConfig.i2c_device = i2cDevice;
   transportConfig.i2c_address = i2cAddress;
 
-  if (!m_transport.Open(transportConfig))
+  if (!m_transport->Open(transportConfig))
   {
     RCLCPP_ERROR(get_logger(), "Failed to open BNO086 on %s (0x%02X)", i2cDevice.c_str(),
                  static_cast<unsigned>(i2cAddress));
@@ -234,14 +243,12 @@ Bno086ImuNode::Bno086ImuNode() : rclcpp::Node(NODE_NAME)
   Bno086GpioConfig gpioConfig;
   gpioConfig.line_offset = static_cast<unsigned>(std::max(intGpio, 0));
 
-  if (!m_interruptGpio.Open(gpioConfig))
+  if (!m_interruptGpio->Open(gpioConfig))
   {
     RCLCPP_ERROR(get_logger(), "Failed to open GPIO interrupt line %d on %s", intGpio,
                  gpioConfig.chip_device.c_str());
     throw std::runtime_error("Failed to open BNO086 GPIO interrupt");
   }
-
-  m_shtp = std::make_unique<Bno086Shtp>(m_transport);
 
   Bno086ShtpConfig shtpConfig;
   shtpConfig.rotation_vector_rate_hz = m_reports.rotation_vector_rate_hz;
@@ -317,7 +324,7 @@ Bno086ImuNode::~Bno086ImuNode() = default;
 
 bool Bno086ImuNode::Initialize()
 {
-  m_timestampCadence.Reset();
+  m_timestampCadence->Reset();
   m_stream.last_published_core_signature.reset();
   m_stream.last_published_imu_gravity_anchor_stamp_ns.reset();
   m_stream.imu_gravity_accel_history.Reset();
@@ -348,21 +355,17 @@ void Bno086ImuNode::Deinitialize()
   if (m_interruptThread.joinable())
     m_interruptThread.join();
 
-  m_shtp.reset();
-  m_interruptGpio.Close();
-  m_transport.Close();
+  m_interruptGpio->Close();
+  m_transport->Close();
 }
 
 void Bno086ImuNode::InterruptLoop()
 {
   while (m_running.load() && rclcpp::ok())
   {
-    if (m_shtp == nullptr)
-      return;
-
     std::chrono::steady_clock::time_point interruptSteadyAt;
     const Bno086Gpio::WaitResult waitResult =
-        m_interruptGpio.WaitForAssertedLow(INTERRUPT_WAIT_TIMEOUT_MS, interruptSteadyAt);
+        m_interruptGpio->WaitForAssertedLow(INTERRUPT_WAIT_TIMEOUT_MS, interruptSteadyAt);
 
     if (waitResult == Bno086Gpio::WaitResult::Timeout)
       continue;
@@ -420,7 +423,7 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
 
   while (m_running.load())
   {
-    const bool hintnAssertedBeforePoll = m_interruptGpio.IsAssertedLow();
+    const bool hintnAssertedBeforePoll = m_interruptGpio->IsAssertedLow();
     const std::size_t pendingEventsBeforePoll = m_shtp->PendingEventCount();
     if (pendingEventsBeforePoll == 0 && !hintnAssertedBeforePoll)
     {
@@ -469,7 +472,7 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
     }
 
     const Bno086Shtp::PollResult pollResult = m_shtp->Poll(m_config.packet_read_timeout_ms);
-    const bool hintnAssertedAfterPoll = m_interruptGpio.IsAssertedLow();
+    const bool hintnAssertedAfterPoll = m_interruptGpio->IsAssertedLow();
     const Bno086DrainDecision afterPollDecision =
         Bno086DrainAfterPoll(pollResult, drainLimits, drainCounters, hintnAssertedAfterPoll);
     if (afterPollDecision.action == Bno086DrainAction::Complete)
@@ -656,7 +659,7 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
     }
   }
 
-  const bool hintnAssertedAfterExit = m_interruptGpio.IsAssertedLow();
+  const bool hintnAssertedAfterExit = m_interruptGpio->IsAssertedLow();
   const std::uint32_t pendingQueueDepthAtExit =
       static_cast<std::uint32_t>(std::min<std::size_t>(m_shtp->PendingEventCount(), UINT32_MAX));
   const auto drainDurationUs =
@@ -1028,9 +1031,6 @@ oasis_msgs::msg::ImuVr Bno086ImuNode::BuildPredictedVrMessage(
 
 void Bno086ImuNode::MaybeLogFeatureResponses()
 {
-  if (m_shtp == nullptr)
-    return;
-
   const std::vector<FeatureResponse> featureResponses = m_shtp->TakeFeatureResponses();
   for (const FeatureResponse& featureResponse : featureResponses)
   {
@@ -1049,7 +1049,7 @@ void Bno086ImuNode::MaybeLogFeatureResponses()
 
 void Bno086ImuNode::MaybeLogFeatureSummary()
 {
-  if (m_startup.logged_feature_summary || m_shtp == nullptr)
+  if (m_startup.logged_feature_summary)
     return;
 
   const std::vector<FeatureConfiguration>& configurations = m_shtp->GetFeatureConfigurations();
@@ -1076,9 +1076,6 @@ void Bno086ImuNode::MaybeLogFeatureSummary()
 
 void Bno086ImuNode::LogFeatureSummary() const
 {
-  if (m_shtp == nullptr)
-    return;
-
   const std::vector<FeatureConfiguration>& configurations = m_shtp->GetFeatureConfigurations();
   const std::string summary =
       BuildFeatureSummary(configurations, m_startup.latest_feature_responses);
@@ -1108,7 +1105,7 @@ void Bno086ImuNode::RecordDrainThroughputDiagnostics(const Bno086DrainCounters& 
 void Bno086ImuNode::MaybeEmitImuGravityDiagnosticsLog(const Bno086RateSnapshot& rates)
 {
   const bool unhealthy = IsBno086DiagnosticsUnhealthy(rates);
-  const Bno086TransportStats transportStats = m_transport.GetStats();
+  const Bno086TransportStats transportStats = m_transport->GetStats();
 
   RCLCPP_DEBUG(get_logger(),
                "BNO086 rates: accel=%.0f gyro=%.0f rot=%.0f lin=%.0f grav=%.0f "
@@ -1205,9 +1202,6 @@ bool Bno086ImuNode::IsImuGravitySampleValid(const sensor_msgs::msg::Imu& message
 
 std::optional<std::uint32_t> Bno086ImuNode::RequestedFeatureIntervalUs(ReportId report_id) const
 {
-  if (m_shtp == nullptr)
-    return std::nullopt;
-
   const std::vector<FeatureConfiguration>& featureConfigurations =
       m_shtp->GetFeatureConfigurations();
   const auto it = std::find_if(featureConfigurations.begin(), featureConfigurations.end(),
@@ -1223,9 +1217,6 @@ std::optional<std::uint32_t> Bno086ImuNode::RequestedFeatureIntervalUs(ReportId 
 std::optional<std::uint32_t> Bno086ImuNode::RequestedFeatureBatchIntervalUs(
     ReportId report_id) const
 {
-  if (m_shtp == nullptr)
-    return std::nullopt;
-
   const std::vector<FeatureConfiguration>& featureConfigurations =
       m_shtp->GetFeatureConfigurations();
   const auto it = std::find_if(featureConfigurations.begin(), featureConfigurations.end(),
@@ -1499,7 +1490,7 @@ std::optional<int64_t> Bno086ImuNode::FinalizeEventStampNs(
     std::optional<int64_t> expected_interval_ns)
 {
   const Bno086TimestampCadenceResult result =
-      m_timestampCadence.Finalize(event, interrupt_ros_at.nanoseconds(), expected_interval_ns);
+      m_timestampCadence->Finalize(event, interrupt_ros_at.nanoseconds(), expected_interval_ns);
   if (result.monotonic_guard_adjusted && result.stamp_ns.has_value() &&
       result.last_stamp_ns.has_value())
   {

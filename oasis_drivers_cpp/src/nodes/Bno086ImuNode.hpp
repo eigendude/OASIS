@@ -13,13 +13,9 @@
 #include "imu/bno086/core/Bno086ImuGravityAccelHistory.hpp"
 #include "imu/bno086/core/Bno086OrientationCovariancePolicy.hpp"
 #include "imu/bno086/core/Bno086SampleCoherence.hpp"
-#include "imu/bno086/core/Bno086TimestampCadence.hpp"
 #include "imu/bno086/diagnostics/Bno086DrainHealth.hpp"
 #include "imu/bno086/diagnostics/Bno086RateHealth.hpp"
-#include "imu/bno086/gpio/Bno086Gpio.hpp"
 #include "imu/bno086/sh2/Bno086Reports.hpp"
-#include "imu/bno086/sh2/Bno086Shtp.hpp"
-#include "imu/bno086/shtp/Bno086Transport.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -35,6 +31,15 @@
 #include <rclcpp/node.hpp>
 #include <rclcpp/publisher.hpp>
 #include <sensor_msgs/msg/imu.hpp>
+
+// Forward-declared subsystems
+namespace OASIS::IMU::BNO086
+{
+class Bno086Transport;
+class Bno086Gpio;
+class Bno086Shtp;
+class Bno086TimestampCadence;
+} // namespace OASIS::IMU::BNO086
 
 namespace OASIS::ROS
 {
@@ -219,20 +224,24 @@ private:
   void MaybeLogOrientationCovariancePolicy(
       const OASIS::IMU::BNO086::OrientationCovariancePolicyResult& covariance_policy);
 
+  // ROS publishers
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr m_imuPublisher;
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr m_imuPredictedPublisher;
   rclcpp::Publisher<oasis_msgs::msg::ImuVr>::SharedPtr m_imuVrPublisher;
   rclcpp::Publisher<geometry_msgs::msg::AccelWithCovarianceStamped>::SharedPtr m_gravityPublisher;
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr m_imuGravityPublisher;
 
-  OASIS::IMU::BNO086::Bno086Transport m_transport;
-  OASIS::IMU::BNO086::Bno086Gpio m_interruptGpio;
+  // BNO086 subsystems
+  std::unique_ptr<OASIS::IMU::BNO086::Bno086Transport> m_transport;
   std::unique_ptr<OASIS::IMU::BNO086::Bno086Shtp> m_shtp;
+  std::unique_ptr<OASIS::IMU::BNO086::Bno086Gpio> m_interruptGpio;
+  std::unique_ptr<OASIS::IMU::BNO086::Bno086TimestampCadence> m_timestampCadence;
 
+  // Threading parameters
   std::atomic<bool> m_running{false};
   std::thread m_interruptThread;
 
-  OASIS::IMU::BNO086::Bno086TimestampCadence m_timestampCadence;
+  // BNO086 state
   Bno086DriverConfig m_config;
   Bno086ReportConfig m_reports;
   Bno086DrainConfig m_drain_config;
