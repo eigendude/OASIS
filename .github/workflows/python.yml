@@ -102,5 +102,7 @@ jobs:
 
       # Run the tests!
       - name: Run tox
+        env:
+          ROS2_DISTRO: ${{ matrix.ros2_distro }}
         run: |
           tox
