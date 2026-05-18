@@ -70,8 +70,7 @@ private:
   void RecordReleasedImage(int64_t imageStampNs);
   void RecordImuCallbackDuration(int64_t durationNs);
   void LogPeriodicTrackingDiagnostics(int64_t newestReleasedImageStampNs);
-  void LogImageAheadOfImuDiagnostics(const char* message,
-                                     const SLAM::MonocularInertialSlam::ImuBufferStatus& imuStatus,
+  void LogImageAheadOfImuDiagnostics(const SLAM::MonocularInertialSlam::ImuBufferStatus& imuStatus,
                                      int64_t imageStampNs,
                                      int64_t lagNs,
                                      std::size_t pendingQueueSize) const;
@@ -104,9 +103,7 @@ private:
   int64_t m_imuCallbackMaxNs = 0;
   std::optional<int64_t> m_lastTrackingDiagnosticWallNs;
   std::optional<int64_t> m_lastTrackingDiagnosticImageStampNs;
-  std::optional<int64_t> m_lastTrackingDiagnosticImuStampNs;
   std::size_t m_lastTrackingDiagnosticReleasedImageCount = 0;
-  std::size_t m_lastTrackingDiagnosticReceivedImuCount = 0;
   std::size_t m_lastTrackingDiagnosticAcceptedImuCount = 0;
 };
 } // namespace ROS
