@@ -239,8 +239,10 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
         sudo install -m 0644 "${SYSTEMD_TIMER}" "${SYSTEMD_SERVICE_DIRECTORY}"
       fi
 
-      # Now rewrite User= to the current user
-      sudo sed -i "s|^User=.*|User=$(id -un)|" \
+      # Stamp install-time values into the service
+      sudo sed -i \
+        -e "s|@ROS2_DISTRO@|${ROS2_DISTRO}|g" \
+        -e "s|^User=.*|User=$(id -un)|" \
         "${SYSTEMD_SERVICE_DIRECTORY}/${SERVICE_FILE}"
     done
   done
