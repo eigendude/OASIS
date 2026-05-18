@@ -103,16 +103,13 @@ AprilTagVisualizer::AprilTagVisualizer(const rclcpp::Logger& logger,
 AprilTagVisualizer::~AprilTagVisualizer() = default;
 
 sensor_msgs::msg::Image::SharedPtr AprilTagVisualizer::ProcessImage(
-    const sensor_msgs::msg::Image::ConstSharedPtr& msg)
+    const sensor_msgs::msg::Image& imageMsg)
 {
-  if (msg == nullptr)
-    return nullptr;
-
   cv_bridge::CvImagePtr cvImage;
 
   try
   {
-    cvImage = cv_bridge::toCvCopy(msg);
+    cvImage = cv_bridge::toCvCopy(imageMsg);
   }
   catch (const cv_bridge::Exception& exception)
   {
@@ -121,8 +118,8 @@ sensor_msgs::msg::Image::SharedPtr AprilTagVisualizer::ProcessImage(
   }
 
   m_latestImage = cvImage->image;
-  m_latestHeader = msg->header;
-  m_latestEncoding = msg->encoding;
+  m_latestHeader = imageMsg.header;
+  m_latestEncoding = imageMsg.encoding;
 
   m_mergedImage = m_latestImage.clone();
   if (!m_overlayImage.empty() && !m_overlayMask.empty())

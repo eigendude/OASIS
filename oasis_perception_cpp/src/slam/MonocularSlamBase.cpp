@@ -8,14 +8,14 @@
 
 #include "MonocularSlamBase.h"
 
-#include "ros/RosUtils.h"
-
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include <builtin_interfaces/msg/time.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
 #include <rclcpp/qos.hpp>
@@ -30,6 +30,11 @@ using namespace SLAM;
 namespace
 {
 constexpr char MAP_FRAME_ID[] = "map";
+
+int64_t StampToNanoseconds(const builtin_interfaces::msg::Time& stamp)
+{
+  return static_cast<int64_t>(stamp.sec) * 1'000'000'000LL + static_cast<int64_t>(stamp.nanosec);
+}
 
 bool IsFiniteVec3(const Eigen::Vector3f& vector)
 {
@@ -56,7 +61,7 @@ bool IsFinitePose(const Eigen::Isometry3f& pose)
 MonocularSlamBase::MonocularSlamBase(rclcpp::Node& node,
                                      const std::string& pointCloudTopic,
                                      const std::string& poseTopic)
-  : m_logger(std::make_unique<rclcpp::Logger>(node.get_logger()))
+  : m_logger(std::make_unique<rclcpp::Logger>(node.get_logger())), m_clock(node.get_clock())
 {
   rclcpp::QoS pointCloudQos{rclcpp::SensorDataQoS{}};
   pointCloudQos.reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE);
@@ -88,7 +93,7 @@ bool MonocularSlamBase::InitializeSystem(const std::string& vocabularyFile,
 
   m_slam = std::make_unique<ORB_SLAM3::System>(vocabularyFile, settingsFile, sensorType, false);
 
-  m_lastTimestamp.reset();
+  m_lastTimestampNs.reset();
 
   return true;
 }
@@ -101,7 +106,7 @@ void MonocularSlamBase::DeinitializeSystem()
     m_slam.reset();
   }
 
-  m_lastTimestamp.reset();
+  m_lastTimestampNs.reset();
 
   {
     std::lock_guard<std::mutex> lock(m_renderMutex);
@@ -109,18 +114,18 @@ void MonocularSlamBase::DeinitializeSystem()
   }
 }
 
-void MonocularSlamBase::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg)
+void MonocularSlamBase::ReceiveImage(const sensor_msgs::msg::Image& imageMsg)
 {
   if (!HasSlam())
     return;
 
-  const std_msgs::msg::Header& header = msg->header;
-  const double timestamp = ROS::RosUtils::HeaderStampToSeconds(header);
+  const std_msgs::msg::Header& header = imageMsg.header;
+  const int64_t timestampNs = StampToNanoseconds(header.stamp);
 
   cv_bridge::CvImageConstPtr inputImage;
   try
   {
-    inputImage = cv_bridge::toCvShare(msg, sensor_msgs::image_encodings::BGR8);
+    inputImage = cv_bridge::toCvCopy(imageMsg, sensor_msgs::image_encodings::BGR8);
   }
   catch (cv_bridge::Exception& e)
   {
@@ -130,7 +135,7 @@ void MonocularSlamBase::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedP
 
   ImageProcessTask task;
   task.header = header;
-  task.timestamp = timestamp;
+  task.timestampNs = timestampNs;
   task.inputImage = std::move(inputImage);
 
   {
@@ -142,30 +147,10 @@ void MonocularSlamBase::ReceiveImage(const sensor_msgs::msg::Image::ConstSharedP
   m_renderCv.notify_one();
 }
 
-bool MonocularSlamBase::HasSlam() const
-{
-  return m_slam != nullptr;
-}
-
-ORB_SLAM3::System* MonocularSlamBase::GetSlam()
-{
-  return m_slam.get();
-}
-
 void MonocularSlamBase::ResetActiveMap()
 {
   if (m_slam)
     m_slam->ResetActiveMap();
-}
-
-rclcpp::Logger& MonocularSlamBase::Logger()
-{
-  return *m_logger;
-}
-
-const rclcpp::Logger& MonocularSlamBase::Logger() const
-{
-  return *m_logger;
 }
 
 void MonocularSlamBase::MapPublisherLoop()
@@ -186,12 +171,14 @@ void MonocularSlamBase::MapPublisherLoop()
     }
 
     const std_msgs::msg::Header& header = task.header;
-    const double timestamp = task.timestamp;
+    const int64_t timestampNs = task.timestampNs;
+    const double timestamp = static_cast<double>(timestampNs) / 1'000'000'000.0;
 
-    if (m_lastTimestamp && timestamp <= *m_lastTimestamp)
+    if (m_lastTimestampNs && timestampNs <= *m_lastTimestampNs)
     {
+      const double lastTimestamp = static_cast<double>(*m_lastTimestampNs) / 1'000'000'000.0;
       RCLCPP_WARN(Logger(), "Rejecting frame with non-increasing timestamp %.6f (last %.6f)",
-                  timestamp, *m_lastTimestamp);
+                  timestamp, lastTimestamp);
       continue;
     }
 
@@ -201,13 +188,13 @@ void MonocularSlamBase::MapPublisherLoop()
 
     const cv::Mat& rgbImage = inputImage->image;
 
-    m_lastTimestamp = timestamp;
+    m_lastTimestampNs = timestampNs;
 
     ORB_SLAM3::System* slam = GetSlam();
     if (slam == nullptr)
       continue;
 
-    const std::optional<Eigen::Isometry3f> cameraPose = TrackFrame(rgbImage, timestamp);
+    const std::optional<Eigen::Isometry3f> cameraPose = TrackFrame(rgbImage, timestampNs);
 
     // Get SLAM state
     const int trackingState = slam->GetTrackingState();

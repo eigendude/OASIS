@@ -48,7 +48,7 @@ private:
   void OnPose(const geometry_msgs::msg::PoseStamped::ConstSharedPtr& msg);
   void OnPointCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPtr& msg);
   void OnDetections(const apriltag_msgs::msg::AprilTagDetectionArray::ConstSharedPtr& msg);
-  bool OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& imageMsg);
+  bool OnImage(const sensor_msgs::msg::Image& imageMsg);
   void OnCameraInfo(const sensor_msgs::msg::CameraInfo::ConstSharedPtr& msg);
 
   static Eigen::Isometry3f PoseMsgToIsometry(const geometry_msgs::msg::PoseStamped& poseMsg);

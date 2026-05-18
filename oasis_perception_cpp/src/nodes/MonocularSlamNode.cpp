@@ -40,10 +40,13 @@ constexpr std::string_view POSE_TOPIC = "slam_pose";
 // Parameters
 constexpr std::string_view SYSTEM_ID_PARAMETER = "system_id";
 constexpr std::string_view DEFAULT_SYSTEM_ID = "";
+
 constexpr std::string_view IMAGE_TRANSPORT_PARAMETER = "image_transport";
 constexpr std::string_view DEFAULT_IMAGE_TRANSPORT = "raw";
+
 constexpr std::string_view VOCABULARY_FILE_PARAMETER = "vocabulary_file";
 constexpr std::string_view DEFAULT_VOCABULARY_FILE = "";
+
 constexpr std::string_view SETTINGS_FILE_PARAMETER = "settings_file";
 constexpr std::string_view DEFAULT_SETTINGS_FILE = "";
 } // namespace
@@ -125,8 +128,13 @@ bool MonocularSlamNode::Initialize()
   RCLCPP_INFO(*m_logger, "ORB_SLAM3 settings file: %s", settingsFile.c_str());
 
   *m_imgSubscriber = image_transport::create_subscription(
-      &m_node, imageTopic, [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg)
-      { OnImage(msg); }, imageTransport, rclcpp::QoS{1}.get_rmw_qos_profile());
+      &m_node, imageTopic,
+      [this](const sensor_msgs::msg::Image::ConstSharedPtr& imageMsg)
+      {
+        if (imageMsg)
+          OnImage(*imageMsg);
+      },
+      imageTransport, rclcpp::QoS{1}.get_rmw_qos_profile());
 
   m_monocularSlam = std::make_unique<SLAM::MonocularSlam>(m_node, pointCloudTopic, poseTopic);
   if (!m_monocularSlam->Initialize(vocabularyFile, settingsFile))
@@ -147,8 +155,8 @@ void MonocularSlamNode::Deinitialize()
   m_monocularSlam.reset();
 }
 
-void MonocularSlamNode::OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg)
+void MonocularSlamNode::OnImage(const sensor_msgs::msg::Image& imageMsg)
 {
   if (m_monocularSlam)
-    m_monocularSlam->ReceiveImage(msg);
+    m_monocularSlam->ReceiveImage(imageMsg);
 }

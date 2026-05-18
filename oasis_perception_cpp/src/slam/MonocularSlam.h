@@ -23,11 +23,14 @@ public:
                 const std::string& poseTopic);
   ~MonocularSlam() override;
 
+  // Lifecycle functions
   bool Initialize(const std::string& vocabularyFile, const std::string& settingsFile);
   void Deinitialize();
 
 protected:
-  std::optional<Eigen::Isometry3f> TrackFrame(const cv::Mat& rgbImage, double timestamp) override;
+  // Implementation of MonocularSlamBase
+  std::optional<Eigen::Isometry3f> TrackFrame(const cv::Mat& rgbImage,
+                                              int64_t timestampNs) override;
 };
 
 } // namespace SLAM

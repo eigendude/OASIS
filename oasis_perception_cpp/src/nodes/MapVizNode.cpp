@@ -175,8 +175,12 @@ bool MapVizNode::Initialize()
 
   m_imageSubscriber->subscribe(&m_node, imageTopic, imageTransport,
                                rclcpp::QoS{SYNC_QUEUE_SIZE}.get_rmw_qos_profile());
-  m_imageSubscriber->registerCallback([this](const sensor_msgs::msg::Image::ConstSharedPtr& msg)
-                                      { OnImage(msg); });
+  m_imageSubscriber->registerCallback(
+      [this](const sensor_msgs::msg::Image::ConstSharedPtr& imageMsg)
+      {
+        if (imageMsg)
+          OnImage(*imageMsg);
+      });
 
   m_poseSubscription = m_node.create_subscription<geometry_msgs::msg::PoseStamped>(
       poseTopic, {1},
@@ -338,15 +342,12 @@ void MapVizNode::OnPointCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPt
   m_mapImagePublisher->publish(output.toImageMsg());
 }
 
-bool MapVizNode::OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg)
+bool MapVizNode::OnImage(const sensor_msgs::msg::Image& imageMsg)
 {
-  if (msg == nullptr)
-    return false;
-
   cv_bridge::CvImageConstPtr cvImage;
   try
   {
-    cvImage = cv_bridge::toCvShare(msg, sensor_msgs::image_encodings::BGR8);
+    cvImage = cv_bridge::toCvCopy(imageMsg, sensor_msgs::image_encodings::BGR8);
   }
   catch (const cv_bridge::Exception& exception)
   {
@@ -366,7 +367,7 @@ bool MapVizNode::OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg)
 
   std::scoped_lock lock(m_backgroundMutex);
   m_backgroundImage = darkenedImage;
-  m_backgroundHeader = msg->header;
+  m_backgroundHeader = imageMsg.header;
   return true;
 }
 

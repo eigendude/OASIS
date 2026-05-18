@@ -54,8 +54,10 @@ void MonocularSlam::Deinitialize()
 }
 
 std::optional<Eigen::Isometry3f> MonocularSlam::TrackFrame(const cv::Mat& rgbImage,
-                                                           double timestamp)
+                                                           int64_t timestampNs)
 {
+  const double timestamp = static_cast<double>(timestampNs) / 1'000'000'000.0;
+
   ORB_SLAM3::System* slam = GetSlam();
   if (slam == nullptr)
     return std::nullopt;

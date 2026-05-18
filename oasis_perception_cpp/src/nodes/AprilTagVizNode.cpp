@@ -81,8 +81,13 @@ bool AprilTagVizNode::Initialize()
 
   // Subscribers
   *m_imageSubscription = image_transport::create_subscription(
-      &m_node, imageTopic, [this](const Image::ConstSharedPtr& msg)
-      { AprilTagVizNode::OnImage(msg); }, m_imageTransport, rclcpp::QoS{1}.get_rmw_qos_profile());
+      &m_node, imageTopic,
+      [this](const Image::ConstSharedPtr& imageMsg)
+      {
+        if (imageMsg)
+          AprilTagVizNode::OnImage(*imageMsg);
+      },
+      m_imageTransport, rclcpp::QoS{1}.get_rmw_qos_profile());
   m_detectionSubscription = m_node.create_subscription<AprilTagDetectionArray>(
       detectionsTopic, rclcpp::QoS{1}, [this](const AprilTagDetectionArray::ConstSharedPtr& msg)
       { AprilTagVizNode::OnDetections(msg); });
@@ -97,12 +102,12 @@ void AprilTagVizNode::Deinitialize()
   m_overlayPublisher->shutdown();
 }
 
-void AprilTagVizNode::OnImage(const Image::ConstSharedPtr& msg)
+void AprilTagVizNode::OnImage(const Image& imageMsg)
 {
   if (!m_overlayPublisher)
     return;
 
-  sensor_msgs::msg::Image::SharedPtr output = m_visualizer.ProcessImage(msg);
+  sensor_msgs::msg::Image::SharedPtr output = m_visualizer.ProcessImage(imageMsg);
   if (output == nullptr)
     return;
 

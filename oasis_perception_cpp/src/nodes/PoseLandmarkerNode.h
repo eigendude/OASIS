@@ -33,7 +33,7 @@ public:
 
 private:
   // ROS interface
-  void OnImage(const std::shared_ptr<const sensor_msgs::msg::Image>& msg);
+  void OnImage(const sensor_msgs::msg::Image& imageMsg);
 
   // Construction parameters
   rclcpp::Node& m_node;

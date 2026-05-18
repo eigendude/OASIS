@@ -38,30 +38,24 @@ public:
                         const std::string& poseTopic);
   ~MonocularInertialSlam() override;
 
+  // Lifecycle functions
   bool Initialize(const std::string& vocabularyFile, const std::string& settingsFile);
   void Deinitialize();
 
-  void ReceiveImageWithImuMeasurements(const sensor_msgs::msg::Image::ConstSharedPtr& imageMsg,
+  // Node interface
+  void ReceiveImu(const sensor_msgs::msg::Imu& imuMsg);
+  void ReceiveImageWithImuMeasurements(const sensor_msgs::msg::Image& imageMsg,
                                        const std::vector<sensor_msgs::msg::Imu>& imuMessages);
 
 protected:
-  std::optional<Eigen::Isometry3f> TrackFrame(const cv::Mat& rgbImage, double timestamp) override;
+  // Implementation of MonocularSlamBase
+  std::optional<Eigen::Isometry3f> TrackFrame(const cv::Mat& rgbImage,
+                                              int64_t timestampNs) override;
   void OnPostTrack() override;
 
 private:
-  struct PendingImuBatch
-  {
-    double timestamp = 0.0;
-    std::vector<ORB_SLAM3::IMU::Point> measurements;
-  };
-
+  // Utility functions
   static ORB_SLAM3::IMU::Point ToOrbImuPoint(const sensor_msgs::msg::Imu& imuMsg);
-
-  std::vector<ORB_SLAM3::IMU::Point> TakePendingImuMeasurements(double timestamp);
-
-  std::mutex m_imuMeasurementsMutex;
-  std::vector<PendingImuBatch> m_pendingImuBatches;
-  std::vector<ORB_SLAM3::IMU::Point> m_imuMeasurements;
 };
 
 } // namespace SLAM

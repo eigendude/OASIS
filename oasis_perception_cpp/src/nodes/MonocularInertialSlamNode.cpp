@@ -10,16 +10,10 @@
 
 #include "slam/MonocularInertialSlam.h"
 
-#include <algorithm>
-#include <cinttypes>
-#include <cstdint>
-#include <deque>
 #include <functional>
 #include <memory>
-#include <mutex>
 #include <string>
 #include <string_view>
-#include <vector>
 
 #include <image_transport/image_transport.hpp>
 #include <rclcpp/logging.hpp>
@@ -51,9 +45,6 @@ constexpr std::string_view DEFAULT_VOCABULARY_FILE = "";
 constexpr std::string_view SETTINGS_FILE_PARAMETER = "settings_file";
 constexpr std::string_view DEFAULT_SETTINGS_FILE = "";
 constexpr std::size_t ORB_IMU_SUB_QOS_DEPTH = 512;
-constexpr std::size_t ORB_IMU_BUFFER_MAX_SAMPLES = 1024;
-constexpr std::int64_t IMU_INTERVAL_GAP_WARN_NS = 30'000'000;
-constexpr int IMU_DIAGNOSTIC_THROTTLE_MS = 5'000;
 
 [[maybe_unused]] rclcpp::QoS BestEffortSensorQos(std::size_t depth)
 {
@@ -155,12 +146,21 @@ bool MonocularInertialSlamNode::Initialize()
   RCLCPP_INFO(*m_logger, "ORB_SLAM3 settings file: %s", settingsFile.c_str());
 
   *m_imgSubscriber = image_transport::create_subscription(
-      &m_node, imageTopic, [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg)
-      { OnImage(msg); }, imageTransport, rclcpp::QoS{1}.get_rmw_qos_profile());
+      &m_node, imageTopic,
+      [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg)
+      {
+        if (msg)
+          OnImage(*msg);
+      },
+      imageTransport, rclcpp::QoS{1}.get_rmw_qos_profile());
 
   m_imuSubscriber = m_node.create_subscription<sensor_msgs::msg::Imu>(
       imuTopic, ReliableSensorQos(ORB_IMU_SUB_QOS_DEPTH),
-      std::bind(&MonocularInertialSlamNode::OnImu, this, std::placeholders::_1));
+      [this](const sensor_msgs::msg::Imu::ConstSharedPtr& msg)
+      {
+        if (msg)
+          OnImu(*msg);
+      });
 
   m_monocularInertialSlam =
       std::make_unique<SLAM::MonocularInertialSlam>(m_node, pointCloudTopic, poseTopic);
@@ -189,128 +189,14 @@ void MonocularInertialSlamNode::Deinitialize()
   }
 }
 
-void MonocularInertialSlamNode::OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg)
+void MonocularInertialSlamNode::OnImage(const sensor_msgs::msg::Image& imageMsg)
 {
-  if (!msg)
-    return;
-
   if (m_monocularInertialSlam)
-  {
-    const std::int64_t imageStampNs = StampToNanoseconds(msg->header.stamp);
-    const std::vector<sensor_msgs::msg::Imu> imuSamples = TakeImuSamplesForImage(imageStampNs);
-    m_monocularInertialSlam->ReceiveImageWithImuMeasurements(msg, imuSamples);
-  }
+    m_monocularInertialSlam->ReceiveImage(imageMsg);
 }
 
-void MonocularInertialSlamNode::OnImu(const sensor_msgs::msg::Imu::ConstSharedPtr& msg)
+void MonocularInertialSlamNode::OnImu(const sensor_msgs::msg::Imu& imuMsg)
 {
-  if (!msg)
-    return;
-
-  const std::int64_t stampNs = StampToNanoseconds(msg->header.stamp);
-  std::lock_guard<std::mutex> lock(m_imuBufferMutex);
-  const auto insertAt = std::upper_bound(m_imuBuffer.begin(), m_imuBuffer.end(), stampNs,
-                                         [](std::int64_t lhs, const sensor_msgs::msg::Imu& rhs)
-                                         { return lhs < StampToNanoseconds(rhs.header.stamp); });
-
-  m_imuBuffer.insert(insertAt, *msg);
-
-  while (m_imuBuffer.size() > ORB_IMU_BUFFER_MAX_SAMPLES)
-  {
-    m_imuBuffer.pop_front();
-    ++m_imuBufferDropCount;
-  }
-
-  if (m_imuBufferDropCount > 0)
-  {
-    RCLCPP_WARN_THROTTLE(*m_logger, *m_node.get_clock(), IMU_DIAGNOSTIC_THROTTLE_MS,
-                         "ORB IMU buffer overflow dropped %" PRIu64 " samples",
-                         m_imuBufferDropCount);
-  }
-}
-
-std::vector<sensor_msgs::msg::Imu> MonocularInertialSlamNode::TakeImuSamplesForImage(
-    std::int64_t image_stamp_ns)
-{
-  std::vector<sensor_msgs::msg::Imu> imuSamples;
-  std::lock_guard<std::mutex> lock(m_imuBufferMutex);
-
-  if (m_imuBuffer.empty())
-  {
-    ++m_emptyImuBufferImageCount;
-    RCLCPP_WARN_THROTTLE(*m_logger, *m_node.get_clock(), IMU_DIAGNOSTIC_THROTTLE_MS,
-                         "ORB image arrived with an empty IMU buffer (count=%" PRIu64 ")",
-                         m_emptyImuBufferImageCount);
-  }
-
-  if (m_lastImageStampNs.has_value())
-  {
-    const std::int64_t previousImageStampNs = *m_lastImageStampNs;
-    for (const sensor_msgs::msg::Imu& imuMessage : m_imuBuffer)
-    {
-      const std::int64_t imuStampNs = StampToNanoseconds(imuMessage.header.stamp);
-      if (previousImageStampNs < imuStampNs && imuStampNs <= image_stamp_ns)
-        imuSamples.emplace_back(imuMessage);
-    }
-
-    DiagnoseImuBatch(imuSamples, previousImageStampNs, image_stamp_ns);
-    PruneImuBuffer(previousImageStampNs);
-  }
-
-  m_lastImageStampNs = image_stamp_ns;
-  return imuSamples;
-}
-
-void MonocularInertialSlamNode::PruneImuBuffer(std::int64_t previous_image_stamp_ns)
-{
-  while (!m_imuBuffer.empty() &&
-         StampToNanoseconds(m_imuBuffer.front().header.stamp) < previous_image_stamp_ns)
-  {
-    m_imuBuffer.pop_front();
-  }
-}
-
-void MonocularInertialSlamNode::DiagnoseImuBatch(
-    const std::vector<sensor_msgs::msg::Imu>& imu_samples,
-    std::int64_t previous_image_stamp_ns,
-    std::int64_t image_stamp_ns)
-{
-  if (imu_samples.empty())
-  {
-    ++m_emptyImuIntervalCount;
-    RCLCPP_WARN_THROTTLE(*m_logger, *m_node.get_clock(), IMU_DIAGNOSTIC_THROTTLE_MS,
-                         "ORB image interval has no IMU samples: start_ns=%" PRId64
-                         " end_ns=%" PRId64 " count=%" PRIu64,
-                         previous_image_stamp_ns, image_stamp_ns, m_emptyImuIntervalCount);
-    return;
-  }
-
-  const std::int64_t firstImuStampNs = StampToNanoseconds(imu_samples.front().header.stamp);
-  if (firstImuStampNs - previous_image_stamp_ns > IMU_INTERVAL_GAP_WARN_NS)
-  {
-    RCLCPP_WARN_THROTTLE(*m_logger, *m_node.get_clock(), IMU_DIAGNOSTIC_THROTTLE_MS,
-                         "ORB IMU interval starts late by %.3f ms",
-                         static_cast<double>(firstImuStampNs - previous_image_stamp_ns) / 1.0e6);
-  }
-
-  std::int64_t previousImuStampNs = firstImuStampNs;
-  for (std::size_t i = 1; i < imu_samples.size(); ++i)
-  {
-    const std::int64_t imuStampNs = StampToNanoseconds(imu_samples[i].header.stamp);
-    if (imuStampNs - previousImuStampNs > IMU_INTERVAL_GAP_WARN_NS)
-    {
-      RCLCPP_WARN_THROTTLE(*m_logger, *m_node.get_clock(), IMU_DIAGNOSTIC_THROTTLE_MS,
-                           "ORB IMU interval gap is %.3f ms",
-                           static_cast<double>(imuStampNs - previousImuStampNs) / 1.0e6);
-      break;
-    }
-    previousImuStampNs = imuStampNs;
-  }
-}
-
-std::int64_t MonocularInertialSlamNode::StampToNanoseconds(
-    const builtin_interfaces::msg::Time& stamp)
-{
-  return static_cast<std::int64_t>(stamp.sec) * 1'000'000'000LL +
-         static_cast<std::int64_t>(stamp.nanosec);
+  if (m_monocularInertialSlam)
+    m_monocularInertialSlam->ReceiveImu(imuMsg);
 }

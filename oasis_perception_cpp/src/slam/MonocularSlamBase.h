@@ -12,6 +12,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <cstdint>
 #include <deque>
 #include <memory>
 #include <mutex>
@@ -25,6 +26,7 @@
 #include <cv_bridge/cv_bridge.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <opencv2/core.hpp>
+#include <rclcpp/clock.hpp>
 #include <rclcpp/publisher.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <std_msgs/msg/header.hpp>
@@ -48,29 +50,37 @@ public:
                     const std::string& poseTopic);
   virtual ~MonocularSlamBase();
 
-  void ReceiveImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg);
+  // Node interface
+  void ReceiveImage(const sensor_msgs::msg::Image& imageMsg);
 
 protected:
+  // Lifecycle functions
   bool InitializeSystem(const std::string& vocabularyFile,
                         const std::string& settingsFile,
                         ORB_SLAM3::System::eSensor sensorType);
   void DeinitializeSystem();
 
+  // SLAM virtual interface
   virtual std::optional<Eigen::Isometry3f> TrackFrame(const cv::Mat& rgbImage,
-                                                      double timestamp) = 0;
+                                                      int64_t timestampNs) = 0;
   virtual void OnPostTrack() {}
 
-  bool HasSlam() const;
-  ORB_SLAM3::System* GetSlam();
+  // SLAM accessors
+  bool HasSlam() const { return m_slam != nullptr; }
+  ORB_SLAM3::System* GetSlam() { return m_slam.get(); }
+  rclcpp::Logger& Logger() { return *m_logger; }
+  const rclcpp::Logger& Logger() const { return *m_logger; }
+  rclcpp::Clock& Clock() { return *m_clock; }
+  const rclcpp::Clock& Clock() const { return *m_clock; }
+
+  // SLAM mutators
   void ResetActiveMap();
-  rclcpp::Logger& Logger();
-  const rclcpp::Logger& Logger() const;
 
 private:
   struct ImageProcessTask
   {
     std_msgs::msg::Header header;
-    double timestamp = 0.0;
+    int64_t timestampNs = 0;
     cv_bridge::CvImageConstPtr inputImage;
   };
 
@@ -84,6 +94,7 @@ private:
 
   // ROS parameters
   std::unique_ptr<rclcpp::Logger> m_logger;
+  rclcpp::Clock::SharedPtr m_clock;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr m_pointCloudPublisher;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr m_posePublisher;
 
@@ -94,7 +105,7 @@ private:
   std::unique_ptr<ORB_SLAM3::System> m_slam;
 
   // Time synchronization
-  std::optional<double> m_lastTimestamp;
+  std::optional<int64_t> m_lastTimestampNs;
 
   // Buffers
   std::vector<Eigen::Vector3f> m_worldPointBuffer;

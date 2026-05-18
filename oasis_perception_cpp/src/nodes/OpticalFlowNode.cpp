@@ -129,8 +129,13 @@ bool OpticalFlowNode::Initialize()
         m_node.create_publisher<oasis_msgs::msg::SceneScore>(sceneTopic, rclcpp::QoS{1});
 
   *m_imgSubscriber = image_transport::create_subscription(
-      &m_node, imageTopic, [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg)
-      { OnImage(msg); }, imageTransport, rclcpp::QoS{1}.get_rmw_qos_profile());
+      &m_node, imageTopic,
+      [this](const sensor_msgs::msg::Image::ConstSharedPtr& imageMsg)
+      {
+        if (imageMsg)
+          OnImage(*imageMsg);
+      },
+      imageTransport, rclcpp::QoS{1}.get_rmw_qos_profile());
 
   RCLCPP_INFO(m_node.get_logger(), "Started optical flow");
 
@@ -151,12 +156,12 @@ void OpticalFlowNode::Deinitialize()
   m_imageHeight = 0;
 }
 
-void OpticalFlowNode::OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg)
+void OpticalFlowNode::OnImage(const sensor_msgs::msg::Image& imageMsg)
 {
   cv_bridge::CvImagePtr cv_ptr;
   try
   {
-    cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
+    cv_ptr = cv_bridge::toCvCopy(imageMsg, sensor_msgs::image_encodings::BGR8);
   }
   catch (cv_bridge::Exception& e)
   {
@@ -202,7 +207,7 @@ void OpticalFlowNode::OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg
   if (m_publishSceneScore && m_scenePublisher)
   {
     oasis_msgs::msg::SceneScore sceneMsg;
-    sceneMsg.header = msg->header;
+    sceneMsg.header = imageMsg.header;
     sceneMsg.score = m_opticalFlow->GetSceneScore();
     sceneMsg.mafd = m_opticalFlow->GetSceneMafd();
     sceneMsg.is_valid = m_opticalFlow->HasSceneScore();

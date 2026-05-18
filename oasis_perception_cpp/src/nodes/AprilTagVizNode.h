@@ -38,7 +38,7 @@ public:
   void Deinitialize();
 
 private:
-  void OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& msg);
+  void OnImage(const sensor_msgs::msg::Image& imageMsg);
   void OnDetections(const apriltag_msgs::msg::AprilTagDetectionArray::ConstSharedPtr& msg);
 
   rclcpp::Node& m_node;

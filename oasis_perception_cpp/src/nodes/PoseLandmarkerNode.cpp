@@ -40,13 +40,13 @@ void PoseLandmarkerNode::Stop()
   // TODO
 }
 
-void PoseLandmarkerNode::OnImage(const std::shared_ptr<const sensor_msgs::msg::Image>& msg)
+void PoseLandmarkerNode::OnImage(const sensor_msgs::msg::Image& imageMsg)
 {
   // Convert the incoming image to an OpenCV image
   cv_bridge::CvImageConstPtr imagePtr;
   try
   {
-    imagePtr = cv_bridge::toCvShare(msg, msg->encoding);
+    imagePtr = cv_bridge::toCvCopy(imageMsg, imageMsg.encoding);
   }
   catch (cv_bridge::Exception& e)
   {

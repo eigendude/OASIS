@@ -34,8 +34,7 @@ public:
   void SetOverlayMode(const std::string& overlayMode);
   void SetAlpha(double alpha);
 
-  sensor_msgs::msg::Image::SharedPtr ProcessImage(
-      const sensor_msgs::msg::Image::ConstSharedPtr& msg);
+  sensor_msgs::msg::Image::SharedPtr ProcessImage(const sensor_msgs::msg::Image& imageMsg);
   sensor_msgs::msg::Image::SharedPtr ProcessDetections(
       const apriltag_msgs::msg::AprilTagDetectionArray::ConstSharedPtr& msg);
   bool RenderDetections(cv::Mat& image,
