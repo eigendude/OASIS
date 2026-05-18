@@ -51,6 +51,7 @@ TEST(Bno086TimestampCadence, duplicateSequenceReturnsNoStamp)
 
   EXPECT_FALSE(duplicate.stamp_ns.has_value());
   EXPECT_TRUE(duplicate.duplicate_sequence);
+  EXPECT_FALSE(duplicate.reanchored_to_host);
 }
 
 TEST(Bno086TimestampCadence, sequenceGapAdvancesByInterval)
@@ -66,6 +67,103 @@ TEST(Bno086TimestampCadence, sequenceGapAdvancesByInterval)
   ASSERT_TRUE(result.stamp_ns.has_value());
   EXPECT_EQ(*result.stamp_ns, 3'030'000'000);
   EXPECT_EQ(result.sequence_delta, 3);
+  EXPECT_FALSE(result.reanchored_to_host);
+}
+
+TEST(Bno086TimestampCadence, lateStartingReportStreamStartsNearPacketHostTime)
+{
+  Bno086TimestampCadence cadence;
+  ASSERT_EQ(*cadence.Finalize(Event(ReportId::Accelerometer, 1), 1'000'000'000, 8'000'000).stamp_ns,
+            1'000'000'000);
+
+  const Bno086TimestampCadenceResult gravity =
+      cadence.Finalize(Event(ReportId::Gravity, 1), 69'003'000'000, 40'000'000);
+
+  ASSERT_TRUE(gravity.stamp_ns.has_value());
+  EXPECT_EQ(*gravity.stamp_ns, 69'000'000'000);
+  EXPECT_FALSE(gravity.reanchored_to_host);
+  EXPECT_LE(69'003'000'000 - *gravity.stamp_ns, 40'000'000);
+}
+
+TEST(Bno086TimestampCadence, initializedStreamReanchorsWhenCadenceIsSixtySecondsBehindHost)
+{
+  Bno086TimestampCadence cadence;
+  ASSERT_EQ(
+      *cadence.Finalize(Event(ReportId::LinearAcceleration, 1), 1'000'000'000, 20'000'000).stamp_ns,
+      1'000'000'000);
+
+  const Bno086TimestampCadenceResult result =
+      cadence.Finalize(Event(ReportId::LinearAcceleration, 2), 61'020'000'000, 20'000'000);
+
+  ASSERT_TRUE(result.stamp_ns.has_value());
+  EXPECT_EQ(result.candidate_stamp_ns, 1'020'000'000);
+  EXPECT_EQ(result.host_anchor_stamp_ns, 61'020'000'000);
+  EXPECT_EQ(result.reanchor_delta_ns, -60'000'000'000);
+  EXPECT_EQ(*result.stamp_ns, 61'020'000'000);
+  EXPECT_TRUE(result.reanchored_to_host);
+}
+
+TEST(Bno086TimestampCadence, futureSkewedCadenceCandidateReanchorsToHost)
+{
+  Bno086TimestampCadence cadence;
+  ASSERT_EQ(*cadence.Finalize(Event(ReportId::GyroscopeCalibrated, 1), 10'000'000'000, 10'000'000)
+                 .stamp_ns,
+            10'000'000'000);
+
+  const Bno086TimestampCadenceResult result =
+      cadence.Finalize(Event(ReportId::GyroscopeCalibrated, 201), 10'010'000'000, 10'000'000);
+
+  ASSERT_TRUE(result.stamp_ns.has_value());
+  EXPECT_EQ(result.candidate_stamp_ns, 12'000'000'000);
+  EXPECT_EQ(result.host_anchor_stamp_ns, 10'010'000'000);
+  EXPECT_EQ(result.reanchor_delta_ns, 1'990'000'000);
+  EXPECT_EQ(*result.stamp_ns, 10'010'000'000);
+  EXPECT_TRUE(result.reanchored_to_host);
+}
+
+TEST(Bno086TimestampCadence, reanchoredOutputRemainsMonotonic)
+{
+  Bno086TimestampCadence cadence;
+
+  const Bno086TimestampCadenceResult first =
+      cadence.Finalize(Event(ReportId::RotationVector, 1), 20'000'000'000, 10'000'000);
+  const Bno086TimestampCadenceResult reanchored =
+      cadence.Finalize(Event(ReportId::RotationVector, 2), 80'010'000'000, 10'000'000);
+  const Bno086TimestampCadenceResult next =
+      cadence.Finalize(Event(ReportId::RotationVector, 3), 80'020'000'000, 10'000'000);
+
+  ASSERT_TRUE(first.stamp_ns.has_value());
+  ASSERT_TRUE(reanchored.stamp_ns.has_value());
+  ASSERT_TRUE(next.stamp_ns.has_value());
+  EXPECT_LT(*first.stamp_ns, *reanchored.stamp_ns);
+  EXPECT_LT(*reanchored.stamp_ns, *next.stamp_ns);
+  EXPECT_TRUE(reanchored.reanchored_to_host);
+  EXPECT_EQ(*next.stamp_ns, 80'020'000'000);
+}
+
+TEST(Bno086TimestampCadence, hostReanchorIsNotOverwrittenByOuterMonotonicGuard)
+{
+  Bno086TimestampCadence cadence;
+
+  ASSERT_EQ(*cadence.Finalize(Event(ReportId::Gravity, 1), 100'000'000'000, 40'000'000).stamp_ns,
+            100'000'000'000);
+  ASSERT_EQ(*cadence.Finalize(Event(ReportId::Gravity, 2), 100'040'000'000, 40'000'000).stamp_ns,
+            100'040'000'000);
+
+  const Bno086TimestampCadenceResult reanchored =
+      cadence.Finalize(Event(ReportId::Gravity, 3), 99'500'000'000, 40'000'000);
+  const Bno086TimestampCadenceResult next =
+      cadence.Finalize(Event(ReportId::Gravity, 4), 99'540'000'000, 40'000'000);
+
+  ASSERT_TRUE(reanchored.stamp_ns.has_value());
+  ASSERT_TRUE(next.stamp_ns.has_value());
+  EXPECT_EQ(reanchored.candidate_stamp_ns, 100'080'000'000);
+  EXPECT_EQ(reanchored.host_anchor_stamp_ns, 99'500'000'000);
+  EXPECT_EQ(reanchored.reanchor_delta_ns, 580'000'000);
+  EXPECT_EQ(*reanchored.stamp_ns, 99'500'000'000);
+  EXPECT_TRUE(reanchored.reanchored_to_host);
+  EXPECT_FALSE(reanchored.monotonic_guard_adjusted);
+  EXPECT_EQ(*next.stamp_ns, 99'540'000'000);
 }
 
 TEST(Bno086TimestampCadence, monotonicGuardAdjustsStaleHostTimestampWithoutInterval)

@@ -74,6 +74,27 @@ struct ReportTimestampTrackerResult
   int64_t stamp_ns{0};
 
   /*!
+   * \brief Cadence candidate before any host reanchor guard
+   *
+   * Units: nanoseconds on the caller's monotonic timeline
+   */
+  int64_t candidate_stamp_ns{0};
+
+  /*!
+   * \brief Packet host anchor used to validate the cadence candidate
+   *
+   * Units: nanoseconds on the caller's monotonic timeline
+   */
+  int64_t host_anchor_stamp_ns{0};
+
+  /*!
+   * \brief Candidate minus host anchor when the stream reanchored to host
+   *
+   * Units: nanoseconds
+   */
+  int64_t reanchor_delta_ns{0};
+
+  /*!
    * \brief True when this sample initialized the stream state
    */
   bool initialized{false};
@@ -89,6 +110,11 @@ struct ReportTimestampTrackerResult
    * \brief True when this sample reset the stream timestamp anchor
    */
   bool reanchored{false};
+
+  /*!
+   * \brief True when stale or future cadence reanchored to packet host time
+   */
+  bool reanchored_to_host{false};
 
   /*!
    * \brief True when sequence or cadence implied a stream gap

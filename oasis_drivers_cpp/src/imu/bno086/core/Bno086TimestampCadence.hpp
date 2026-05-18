@@ -37,6 +37,20 @@ struct Bno086TimestampCadenceResult
   int64_t candidate_stamp_ns{0};
 
   /*!
+   * \brief Packet host anchor used to validate cadence timestamp
+   *
+   * Units: ns
+   */
+  int64_t host_anchor_stamp_ns{0};
+
+  /*!
+   * \brief Candidate minus host anchor when reanchored to host
+   *
+   * Units: ns
+   */
+  int64_t reanchor_delta_ns{0};
+
+  /*!
    * \brief Previous emitted timestamp for this report stream
    *
    * Units: ns
@@ -59,6 +73,11 @@ struct Bno086TimestampCadenceResult
    * \brief True when the helper adjusted a non-monotonic candidate
    */
   bool monotonic_guard_adjusted{false};
+
+  /*!
+   * \brief True when the tracker reanchored stale or future cadence to host
+   */
+  bool reanchored_to_host{false};
 };
 
 /*!

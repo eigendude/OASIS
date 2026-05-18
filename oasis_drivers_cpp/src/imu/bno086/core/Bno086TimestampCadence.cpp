@@ -63,9 +63,12 @@ Bno086TimestampCadenceResult Bno086TimestampCadence::Finalize(
       ReportTimestampTrackerInput{event.sequence, expected_interval_ns, packet_host_stamp_ns,
                                   event.has_delay, event.delay_us, m_bnoCadenceEpochNs});
 
-  result.candidate_stamp_ns = trackedStamp.stamp_ns;
+  result.candidate_stamp_ns = trackedStamp.candidate_stamp_ns;
+  result.host_anchor_stamp_ns = trackedStamp.host_anchor_stamp_ns;
+  result.reanchor_delta_ns = trackedStamp.reanchor_delta_ns;
   result.duplicate_sequence = trackedStamp.duplicate_sequence;
   result.sequence_delta = trackedStamp.sequence_delta;
+  result.reanchored_to_host = trackedStamp.reanchored_to_host;
 
   int64_t stampNs = trackedStamp.stamp_ns;
   bool duplicate = trackedStamp.duplicate_sequence;
@@ -74,6 +77,13 @@ Bno086TimestampCadenceResult Bno086TimestampCadence::Finalize(
   result.last_stamp_ns = lastStampNs;
   if (duplicate && lastStampNs.has_value())
     return result;
+
+  if (trackedStamp.reanchored_to_host)
+  {
+    m_lastEmittedTimestampNs[timestampIndex] = trackedStamp.stamp_ns;
+    result.stamp_ns = trackedStamp.stamp_ns;
+    return result;
+  }
 
   if (lastStampNs.has_value() && stampNs <= *lastStampNs)
   {

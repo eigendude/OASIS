@@ -18,6 +18,10 @@ namespace
 // modestly ahead of the host drain anchor
 constexpr int64_t kBatchedTimestampFutureSlopNs = 50'000'000;
 
+// Units: ns. Cadence candidates farther from host time are treated as a
+// stream startup/resume discontinuity and reanchored to the packet anchor
+constexpr int64_t kReanchorToHostThresholdNs = 500'000'000;
+
 std::uint8_t SequenceDelta(std::uint8_t last_sequence, std::uint8_t current_sequence)
 {
   return static_cast<std::uint8_t>(current_sequence - last_sequence);
@@ -28,10 +32,13 @@ ReportTimestampTrackerResult Bno086ReportTimestampTracker::Update(
     const ReportTimestampTrackerInput& input)
 {
   ReportTimestampTrackerResult result;
+  const int64_t hostAnchorNs = HostAnchorNs(input);
+  result.host_anchor_stamp_ns = hostAnchorNs;
 
   if (!m_initialized)
   {
     result.stamp_ns = SharedEpochAnchorNs(input);
+    result.candidate_stamp_ns = result.stamp_ns;
     result.initialized = true;
     result.reanchored = true;
     result.used_shared_epoch_anchor = input.shared_epoch_stamp_ns.has_value() &&
@@ -65,7 +72,19 @@ ReportTimestampTrackerResult Bno086ReportTimestampTracker::Update(
   }
   else
   {
-    result.stamp_ns = HostAnchorNs(input);
+    result.stamp_ns = hostAnchorNs;
+    result.used_host_anchor = true;
+  }
+
+  result.candidate_stamp_ns = result.stamp_ns;
+  const int64_t candidateDeltaNs = result.candidate_stamp_ns - hostAnchorNs;
+  if (!result.duplicate_sequence && (candidateDeltaNs < -kReanchorToHostThresholdNs ||
+                                     candidateDeltaNs > kReanchorToHostThresholdNs))
+  {
+    result.stamp_ns = hostAnchorNs;
+    result.reanchored = true;
+    result.reanchored_to_host = true;
+    result.reanchor_delta_ns = candidateDeltaNs;
     result.used_host_anchor = true;
   }
 

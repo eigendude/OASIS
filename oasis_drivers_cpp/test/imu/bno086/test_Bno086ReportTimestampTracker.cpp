@@ -75,6 +75,20 @@ TEST(Bno086ReportTimestampTracker, sharedEpochKeepsLateInitializingStreamsInPhas
   EXPECT_LE(accelStampNs - gyroStampNs, 10'000'000);
 }
 
+TEST(Bno086ReportTimestampTracker, streamInitializedAfterLongDelayStartsNearPacketHostTime)
+{
+  Bno086ReportTimestampTracker tracker;
+
+  const ReportTimestampTrackerResult result =
+      tracker.Update(Input(1, 40'000'000, 70'003'000'000, 0, 1'000'000'000));
+
+  EXPECT_EQ(result.stamp_ns, 70'000'000'000);
+  EXPECT_TRUE(result.initialized);
+  EXPECT_TRUE(result.used_shared_epoch_anchor);
+  EXPECT_FALSE(result.reanchored_to_host);
+  EXPECT_LE(70'003'000'000 - result.stamp_ns, 40'000'000);
+}
+
 TEST(Bno086ReportTimestampTracker, accelerometerSequenceAdvancesByOne)
 {
   Bno086ReportTimestampTracker tracker;
@@ -204,6 +218,56 @@ TEST(Bno086ReportTimestampTracker, sequenceGapDeltaSixUsesCadenceWithoutReanchor
   EXPECT_TRUE(result.gap_detected);
   EXPECT_TRUE(result.used_interval_cadence);
   EXPECT_FALSE(result.reanchored);
+}
+
+TEST(Bno086ReportTimestampTracker, initializedStreamReanchorsWhenCadenceIsSixtySecondsBehindHost)
+{
+  Bno086ReportTimestampTracker tracker;
+
+  ASSERT_EQ(tracker.Update(Input(1, 8'000'000, 1'000'000'000)).stamp_ns, 1'000'000'000);
+
+  const ReportTimestampTrackerResult result = tracker.Update(Input(2, 8'000'000, 61'008'000'000));
+
+  EXPECT_EQ(result.candidate_stamp_ns, 1'008'000'000);
+  EXPECT_EQ(result.host_anchor_stamp_ns, 61'008'000'000);
+  EXPECT_EQ(result.reanchor_delta_ns, -60'000'000'000);
+  EXPECT_EQ(result.stamp_ns, 61'008'000'000);
+  EXPECT_TRUE(result.reanchored_to_host);
+  EXPECT_TRUE(result.reanchored);
+  EXPECT_TRUE(result.used_host_anchor);
+}
+
+TEST(Bno086ReportTimestampTracker, futureSkewedCadenceReanchorsToHost)
+{
+  Bno086ReportTimestampTracker tracker;
+
+  ASSERT_EQ(tracker.Update(Input(1, 10'000'000, 10'000'000'000)).stamp_ns, 10'000'000'000);
+
+  const ReportTimestampTrackerResult result =
+      tracker.Update(Input(201, 10'000'000, 10'010'000'000));
+
+  EXPECT_EQ(result.candidate_stamp_ns, 12'000'000'000);
+  EXPECT_EQ(result.host_anchor_stamp_ns, 10'010'000'000);
+  EXPECT_EQ(result.reanchor_delta_ns, 1'990'000'000);
+  EXPECT_EQ(result.stamp_ns, 10'010'000'000);
+  EXPECT_TRUE(result.reanchored_to_host);
+  EXPECT_TRUE(result.reanchored);
+}
+
+TEST(Bno086ReportTimestampTracker, reanchoredOutputRemainsMonotonic)
+{
+  Bno086ReportTimestampTracker tracker;
+
+  const ReportTimestampTrackerResult first = tracker.Update(Input(1, 8'000'000, 20'000'000'000));
+  const ReportTimestampTrackerResult reanchored =
+      tracker.Update(Input(2, 8'000'000, 80'008'000'000));
+  const ReportTimestampTrackerResult next = tracker.Update(Input(3, 8'000'000, 80'016'000'000));
+
+  EXPECT_LT(first.stamp_ns, reanchored.stamp_ns);
+  EXPECT_LT(reanchored.stamp_ns, next.stamp_ns);
+  EXPECT_TRUE(reanchored.reanchored_to_host);
+  EXPECT_EQ(next.stamp_ns, 80'016'000'000);
+  EXPECT_FALSE(next.reanchored_to_host);
 }
 
 TEST(Bno086ReportTimestampTracker, mixedCadencesPreserveExpectedDeltas)

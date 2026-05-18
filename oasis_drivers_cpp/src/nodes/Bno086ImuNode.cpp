@@ -1202,6 +1202,19 @@ std::optional<int64_t> Bno086ImuNode::FinalizeEventStampNs(
 {
   const Bno086TimestampCadenceResult result =
       m_timestampCadence->Finalize(event, interrupt_ros_at.nanoseconds(), expected_interval_ns);
+  if (result.reanchored_to_host && result.stamp_ns.has_value())
+  {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                         "BNO086 cadence timestamp reanchored report=%s sequence=%u "
+                         "candidate_ns=%lld host_anchor_ns=%lld reanchor_delta_ns=%lld "
+                         "final_ns=%lld",
+                         ReportName(event.report_id), event.sequence,
+                         static_cast<long long>(result.candidate_stamp_ns),
+                         static_cast<long long>(result.host_anchor_stamp_ns),
+                         static_cast<long long>(result.reanchor_delta_ns),
+                         static_cast<long long>(*result.stamp_ns));
+  }
+
   if (result.monotonic_guard_adjusted && result.stamp_ns.has_value() &&
       result.last_stamp_ns.has_value())
   {
