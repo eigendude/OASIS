@@ -20,6 +20,7 @@ set -o nounset
 
 # Define the ROS distro to use
 ROS2_DISTRO=kilted
+export ROS2_DISTRO
 
 #
 # Environment paths and config
