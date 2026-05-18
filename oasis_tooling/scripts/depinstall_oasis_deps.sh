@@ -38,6 +38,7 @@ ROSDEP_IGNORE_KEYS=" \
   libopencv-imgproc-dev \
   python_cmake_module \
   python3-opencv \
+  python3-numpy \
   ros_testing \
 "
 
@@ -170,6 +171,18 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
   fi
 
   sudo apt install -y --no-install-recommends "${APT_PACKAGES[@]}"
+
+  # Packages to install via pip
+  PYTHON_PACKAGES=(
+    # Needed by cv_bridge's CMake configure step
+    numpy
+  )
+
+  sudo python3 -m pip install \
+    --upgrade \
+    --ignore-installed \
+    --break-system-packages \
+    "${PYTHON_PACKAGES[@]}"
 fi
 
 #
