@@ -7,7 +7,15 @@
  */
 #pragma once
 
+#include "slam/MonocularInertialSlam.h"
+
+#include <condition_variable>
+#include <cstddef>
+#include <deque>
 #include <memory>
+#include <mutex>
+#include <optional>
+#include <thread>
 
 #include <image_transport/subscriber.hpp>
 #include <rclcpp/subscription.hpp>
@@ -25,7 +33,7 @@ namespace OASIS
 namespace SLAM
 {
 class MonocularInertialSlam;
-}
+} // namespace SLAM
 
 namespace ROS
 {
@@ -43,6 +51,30 @@ private:
   // ROS interface
   void OnImage(const sensor_msgs::msg::Image& imageMsg);
   void OnImu(const sensor_msgs::msg::Imu& imuMsg);
+  bool HandleImageDiscontinuity(int64_t imageStampNs);
+  bool HasImuCoverageForImage(const sensor_msgs::msg::Image& imageMsg) const;
+  void EnqueuePendingImageLocked(const sensor_msgs::msg::Image& imageMsg);
+  void HoldImageUntilImuCoverage(const sensor_msgs::msg::Image& imageMsg);
+  void PrunePendingImagesLocked();
+  void NotifyImageWorker();
+  void StartImageWorker();
+  void StopImageWorker();
+  void ImageWorkerLoop();
+  void TryReleasePendingImageFromWorker();
+  void EnterStableInputPause(const SLAM::MonocularInertialSlam::ImuBufferStatus& imuStatus,
+                             int64_t imageStampNs,
+                             int64_t lagNs,
+                             std::size_t pendingQueueSize);
+  void ClearStableInputPause();
+  bool IsStableInputPaused() const;
+  void RecordReleasedImage(int64_t imageStampNs);
+  void RecordImuCallbackDuration(int64_t durationNs);
+  void LogPeriodicTrackingDiagnostics(int64_t newestReleasedImageStampNs);
+  void LogImageAheadOfImuDiagnostics(const char* message,
+                                     const SLAM::MonocularInertialSlam::ImuBufferStatus& imuStatus,
+                                     int64_t imageStampNs,
+                                     int64_t lagNs,
+                                     std::size_t pendingQueueSize) const;
 
   // Construction parameters
   rclcpp::Node& m_node;
@@ -54,6 +86,28 @@ private:
 
   // SLAM parameters
   std::unique_ptr<SLAM::MonocularInertialSlam> m_monocularInertialSlam;
+
+  // Pending monocular-inertial images awaiting IMU stamp coverage
+  mutable std::mutex m_pendingImageMutex;
+  std::condition_variable m_imageWorkerCv;
+  std::deque<sensor_msgs::msg::Image> m_pendingImages;
+  std::optional<int64_t> m_lastImageStampNs;
+  std::thread m_imageWorkerThread;
+  bool m_imageWorkerStop = false;
+  bool m_imageWorkerWake = false;
+  bool m_stableInputPaused = false;
+
+  // Monocular-inertial tracking diagnostics
+  std::size_t m_releasedImageCount = 0;
+  std::size_t m_imuCallbackCount = 0;
+  int64_t m_imuCallbackTotalNs = 0;
+  int64_t m_imuCallbackMaxNs = 0;
+  std::optional<int64_t> m_lastTrackingDiagnosticWallNs;
+  std::optional<int64_t> m_lastTrackingDiagnosticImageStampNs;
+  std::optional<int64_t> m_lastTrackingDiagnosticImuStampNs;
+  std::size_t m_lastTrackingDiagnosticReleasedImageCount = 0;
+  std::size_t m_lastTrackingDiagnosticReceivedImuCount = 0;
+  std::size_t m_lastTrackingDiagnosticAcceptedImuCount = 0;
 };
 } // namespace ROS
 } // namespace OASIS

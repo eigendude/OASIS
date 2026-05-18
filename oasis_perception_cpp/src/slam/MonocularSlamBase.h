@@ -63,6 +63,9 @@ protected:
   // SLAM virtual interface
   virtual std::optional<Eigen::Isometry3f> TrackFrame(const cv::Mat& rgbImage,
                                                       int64_t timestampNs) = 0;
+  virtual void LogTrackingSummary(int trackingState,
+                                  std::size_t trackedPoints,
+                                  std::size_t mapPoints);
   virtual void OnPostTrack() {}
 
   // SLAM accessors
@@ -75,6 +78,7 @@ protected:
 
   // SLAM mutators
   void ResetActiveMap();
+  void ResetImageProcessingState();
 
 private:
   struct ImageProcessTask

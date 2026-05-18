@@ -12,16 +12,58 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <iomanip>
+#include <mutex>
 #include <optional>
 #include <sstream>
 #include <utility>
 
 #include <geometry_msgs/msg/vector3.hpp>
+#include <rclcpp/logging.hpp>
 #include <sophus/se3.hpp>
 
 using namespace OASIS;
 using namespace SLAM;
+
+namespace
+{
+constexpr std::size_t ORB_IMU_BUFFER_MAX_SAMPLES = 1024;
+constexpr std::int64_t IMU_INTERVAL_GAP_WARN_NS = 30'000'000;
+constexpr std::int64_t MAX_IMU_STAMP_GAP_NS = 500'000'000;
+constexpr int IMU_DIAGNOSTIC_THROTTLE_MS = 5'000;
+constexpr int TRACKING_SUMMARY_THROTTLE_MS = 1'000;
+
+bool IsFiniteMatrix4(const Eigen::Matrix4f& matrix)
+{
+  return matrix.allFinite();
+}
+
+bool IsFiniteVector3(const geometry_msgs::msg::Vector3& vector)
+{
+  return std::isfinite(vector.x) && std::isfinite(vector.y) && std::isfinite(vector.z);
+}
+
+std::string SummarizePoseMatrix(const Eigen::Matrix4f& matrix)
+{
+  std::ostringstream stream;
+  stream << std::fixed << std::setprecision(3) << "[r00=" << matrix(0, 0)
+         << ", r11=" << matrix(1, 1) << ", r22=" << matrix(2, 2) << ", tx=" << matrix(0, 3)
+         << ", ty=" << matrix(1, 3) << ", tz=" << matrix(2, 3) << "]";
+  return stream.str();
+}
+
+std::string FormatOptionalTimestamp(std::optional<int64_t> timestampNs)
+{
+  if (!timestampNs)
+    return "none";
+
+  std::ostringstream stream;
+  stream << std::fixed << std::setprecision(6)
+         << static_cast<double>(*timestampNs) / 1'000'000'000.0;
+  return stream.str();
+}
+} // namespace
 
 MonocularInertialSlam::MonocularInertialSlam(rclcpp::Node& node,
                                              const std::string& pointCloudTopic,
@@ -35,24 +77,198 @@ MonocularInertialSlam::~MonocularInertialSlam() = default;
 bool MonocularInertialSlam::Initialize(const std::string& vocabularyFile,
                                        const std::string& settingsFile)
 {
-  return InitializeSystem(vocabularyFile, settingsFile, ORB_SLAM3::System::IMU_MONOCULAR);
+  if (!InitializeSystem(vocabularyFile, settingsFile, ORB_SLAM3::System::IMU_MONOCULAR))
+    return false;
+
+  {
+    std::lock_guard<std::mutex> lock(m_imuMutex);
+    m_imuBuffer.clear();
+    m_previousTrackedImageStampNs.reset();
+    m_lastAcceptedImuStampNs.reset();
+    m_hasReceivedImu = false;
+    m_loggedFirstImu = false;
+    m_receivedImuMessages = 0;
+    m_acceptedImuMessages = 0;
+    m_droppedImuSamples = 0;
+    m_lastInitializationStatus.reset();
+    m_lastLoggedTrackingState.reset();
+    m_hasStableSlamMap = false;
+  }
+
+  return true;
 }
 
 void MonocularInertialSlam::Deinitialize()
 {
   DeinitializeSystem();
+
+  {
+    std::lock_guard<std::mutex> lock(m_imuMutex);
+    m_imuBuffer.clear();
+    m_previousTrackedImageStampNs.reset();
+    m_lastAcceptedImuStampNs.reset();
+    m_hasReceivedImu = false;
+    m_loggedFirstImu = false;
+    m_receivedImuMessages = 0;
+    m_acceptedImuMessages = 0;
+    m_droppedImuSamples = 0;
+    m_lastInitializationStatus.reset();
+    m_lastLoggedTrackingState.reset();
+    m_hasStableSlamMap = false;
+  }
 }
 
 void MonocularInertialSlam::ReceiveImu(const sensor_msgs::msg::Imu& imuMsg)
 {
-  // TODO
-  (void)imuMsg;
+  if (!HasSlam())
+    return;
+
+  const int64_t imuStampNs = StampToNanoseconds(imuMsg.header.stamp);
+  const geometry_msgs::msg::Vector3& angularVelocity = imuMsg.angular_velocity;
+  const geometry_msgs::msg::Vector3& linearAcceleration = imuMsg.linear_acceleration;
+
+  std::unique_lock<std::mutex> lock(m_imuMutex);
+  bool resetSlamAfterUnlock = false;
+
+  ++m_receivedImuMessages;
+
+  if (imuStampNs == 0 || !IsFiniteVector3(linearAcceleration) || !IsFiniteVector3(angularVelocity))
+  {
+    RCLCPP_WARN_THROTTLE(Logger(), Clock(), IMU_DIAGNOSTIC_THROTTLE_MS,
+                         "Rejecting monocular-inertial IMU sample with invalid data "
+                         "(stamp_ns=%lld, frame_id=%s, accel=[%.6f, %.6f, %.6f], "
+                         "gyro=[%.6f, %.6f, %.6f])",
+                         static_cast<long long>(imuStampNs), imuMsg.header.frame_id.c_str(),
+                         linearAcceleration.x, linearAcceleration.y, linearAcceleration.z,
+                         angularVelocity.x, angularVelocity.y, angularVelocity.z);
+    return;
+  }
+
+  if (m_lastAcceptedImuStampNs && imuStampNs - *m_lastAcceptedImuStampNs > MAX_IMU_STAMP_GAP_NS)
+  {
+    const int64_t previousImuStampNs = *m_lastAcceptedImuStampNs;
+    const int64_t gapNs = imuStampNs - previousImuStampNs;
+    RCLCPP_WARN_THROTTLE(Logger(), Clock(), IMU_DIAGNOSTIC_THROTTLE_MS,
+                         "Detected monocular-inertial IMU stream discontinuity "
+                         "(previous_imu=%.6f, current_imu=%.6f, gap_ms=%.3f, "
+                         "received_imu_messages=%zu, accepted_imu_messages=%zu, "
+                         "dropped_imu_messages=%zu)",
+                         static_cast<double>(previousImuStampNs) / 1'000'000'000.0,
+                         static_cast<double>(imuStampNs) / 1'000'000'000.0,
+                         static_cast<double>(gapNs) / 1.0e6, m_receivedImuMessages,
+                         m_acceptedImuMessages, m_droppedImuSamples);
+
+    m_imuBuffer.clear();
+    m_previousTrackedImageStampNs.reset();
+    m_lastAcceptedImuStampNs.reset();
+    m_lastInitializationStatus.reset();
+    m_lastLoggedTrackingState.reset();
+    m_hasStableSlamMap = false;
+    resetSlamAfterUnlock = true;
+  }
+
+  const auto insertIt =
+      std::upper_bound(m_imuBuffer.begin(), m_imuBuffer.end(), imuStampNs,
+                       [](int64_t stampNs, const sensor_msgs::msg::Imu& bufferedMsg)
+                       { return stampNs < StampToNanoseconds(bufferedMsg.header.stamp); });
+  m_imuBuffer.insert(insertIt, imuMsg);
+  m_hasReceivedImu = true;
+  m_lastAcceptedImuStampNs = imuStampNs;
+  ++m_acceptedImuMessages;
+
+  while (m_imuBuffer.size() > ORB_IMU_BUFFER_MAX_SAMPLES)
+  {
+    m_imuBuffer.pop_front();
+    ++m_droppedImuSamples;
+  }
+
+  if (m_droppedImuSamples > 0)
+  {
+    RCLCPP_WARN_THROTTLE(Logger(), Clock(), IMU_DIAGNOSTIC_THROTTLE_MS,
+                         "Dropped %zu IMU samples from monocular-inertial SLAM buffer "
+                         "because the buffer exceeded %zu samples",
+                         m_droppedImuSamples, ORB_IMU_BUFFER_MAX_SAMPLES);
+  }
+
+  if (!m_loggedFirstImu)
+  {
+    const double imuTimestamp = static_cast<double>(imuStampNs) / 1'000'000'000.0;
+    RCLCPP_INFO(Logger(),
+                "Accepted first monocular-inertial IMU sample at %.6f "
+                "(frame_id=%s, accel=[%.6f, %.6f, %.6f], gyro=[%.6f, %.6f, %.6f], "
+                "buffer_size=%zu)",
+                imuTimestamp, imuMsg.header.frame_id.c_str(), linearAcceleration.x,
+                linearAcceleration.y, linearAcceleration.z, angularVelocity.x, angularVelocity.y,
+                angularVelocity.z, m_imuBuffer.size());
+    m_loggedFirstImu = true;
+  }
+
+  RCLCPP_DEBUG_THROTTLE(Logger(), Clock(), IMU_DIAGNOSTIC_THROTTLE_MS,
+                        "Monocular-inertial IMU callbacks: received=%zu, accepted=%zu, "
+                        "buffer_size=%zu",
+                        m_receivedImuMessages, m_acceptedImuMessages, m_imuBuffer.size());
+
+  if (resetSlamAfterUnlock)
+  {
+    lock.unlock();
+    ResetImageProcessingState();
+    ResetActiveMap();
+  }
 }
 
-void MonocularInertialSlam::ReceiveImageWithImuMeasurements(
-    const sensor_msgs::msg::Image& imageMsg, const std::vector<sensor_msgs::msg::Imu>& imuMessages)
+bool MonocularInertialSlam::HasReceivedImu() const
 {
-  // TODO
+  std::lock_guard<std::mutex> lock(m_imuMutex);
+
+  return m_hasReceivedImu;
+}
+
+MonocularInertialSlam::ImuBufferStatus MonocularInertialSlam::GetImuBufferStatus() const
+{
+  std::lock_guard<std::mutex> lock(m_imuMutex);
+
+  return GetImuBufferStatusLocked();
+}
+
+bool MonocularInertialSlam::HasImuCoverageForImageStamp(int64_t imageStampNs) const
+{
+  std::lock_guard<std::mutex> lock(m_imuMutex);
+
+  return HasImuCoverageForImageStampLocked(imageStampNs);
+}
+
+bool MonocularInertialSlam::HasContinuousImuCoverageForImageStamp(int64_t imageStampNs) const
+{
+  std::lock_guard<std::mutex> lock(m_imuMutex);
+
+  return HasContinuousImuCoverageForImageStampLocked(imageStampNs);
+}
+
+void MonocularInertialSlam::NotifySensorStreamDiscontinuity(const std::string& reason,
+                                                            int64_t previousStampNs,
+                                                            int64_t currentStampNs)
+{
+  {
+    std::lock_guard<std::mutex> lock(m_imuMutex);
+    m_imuBuffer.clear();
+    m_previousTrackedImageStampNs.reset();
+    m_lastAcceptedImuStampNs.reset();
+    m_lastInitializationStatus.reset();
+    m_lastLoggedTrackingState.reset();
+    m_hasStableSlamMap = false;
+  }
+
+  const int64_t gapNs = currentStampNs - previousStampNs;
+  RCLCPP_WARN_THROTTLE(Logger(), Clock(), IMU_DIAGNOSTIC_THROTTLE_MS,
+                       "Resetting monocular-inertial SLAM after sensor stream "
+                       "discontinuity (%s, previous_stamp=%.6f, current_stamp=%.6f, "
+                       "gap_ms=%.3f)",
+                       reason.c_str(), static_cast<double>(previousStampNs) / 1'000'000'000.0,
+                       static_cast<double>(currentStampNs) / 1'000'000'000.0,
+                       static_cast<double>(gapNs) / 1.0e6);
+
+  ResetImageProcessingState();
+  ResetActiveMap();
 }
 
 std::optional<Eigen::Isometry3f> MonocularInertialSlam::TrackFrame(const cv::Mat& rgbImage,
@@ -64,13 +280,87 @@ std::optional<Eigen::Isometry3f> MonocularInertialSlam::TrackFrame(const cv::Mat
   if (slam == nullptr)
     return std::nullopt;
 
-  // TODO
-  return std::nullopt;
+  TrackedImageImuBatch imuBatch = TakeImuSamplesForTrackedImage(timestampNs);
+  const std::vector<sensor_msgs::msg::Imu>& imuMessages = imuBatch.imuMessages;
+
+  if (imuBatch.hasPreviousTrackedImage && imuMessages.empty())
+  {
+    RCLCPP_WARN_THROTTLE(
+        Logger(), Clock(), IMU_DIAGNOSTIC_THROTTLE_MS,
+        "Skipping monocular-inertial image before ORB because the selected IMU "
+        "interval is empty (previous_image=%.6f, current_image=%.6f, "
+        "oldest_imu=%s, newest_imu=%s, buffer_size=%zu, "
+        "received_imu_messages=%zu, accepted_imu_messages=%zu, "
+        "dropped_imu_messages=%zu)",
+        static_cast<double>(*imuBatch.previousTrackedImageStampNs) / 1'000'000'000.0, timestamp,
+        FormatOptionalTimestamp(imuBatch.imuStatus.oldest_imu_stamp_ns).c_str(),
+        FormatOptionalTimestamp(imuBatch.imuStatus.newest_imu_stamp_ns).c_str(),
+        imuBatch.imuStatus.buffer_size, imuBatch.imuStatus.received_count,
+        imuBatch.imuStatus.accepted_count, imuBatch.imuStatus.dropped_count);
+    return std::nullopt;
+  }
+
+  std::vector<ORB_SLAM3::IMU::Point> imuMeasurements;
+  imuMeasurements.reserve(imuMessages.size());
+  for (const sensor_msgs::msg::Imu& imuMsg : imuMessages)
+    imuMeasurements.emplace_back(ToOrbImuPoint(imuMsg));
+
+  try
+  {
+    const Sophus::SE3f sophusPose = slam->TrackMonocular(rgbImage, timestamp, imuMeasurements);
+    const Eigen::Matrix4f poseMatrix = sophusPose.matrix();
+    const int trackingState = slam->GetTrackingState();
+    const std::vector<ORB_SLAM3::MapPoint*> trackedMapPoints = slam->GetTrackedMapPoints();
+
+    std::vector<ORB_SLAM3::MapPoint*> mapPoints;
+    ORB_SLAM3::Atlas* atlas = slam->GetAtlas();
+    if (atlas != nullptr)
+      mapPoints = atlas->GetAllMapPoints();
+
+    LogInitializationStatus(*slam, timestampNs, trackingState, trackedMapPoints.size(),
+                            mapPoints.size());
+
+    if (!IsFiniteMatrix4(poseMatrix))
+    {
+      RCLCPP_ERROR(Logger(),
+                   "Rejecting non-finite monocular-inertial SLAM pose in TrackMonocular at "
+                   "%.6f (state=%d, tracked_points=%zu, imu_samples=%zu, pose=%s)",
+                   timestamp, trackingState, trackedMapPoints.size(), imuMeasurements.size(),
+                   SummarizePoseMatrix(poseMatrix).c_str());
+      ResetActiveMap();
+      return std::nullopt;
+    }
+
+    Eigen::Isometry3f pose = Eigen::Isometry3f::Identity();
+    pose.matrix() = poseMatrix;
+
+    CommitTrackedImageStamp(timestampNs);
+
+    return pose;
+  }
+  catch (const std::exception& ex)
+  {
+    RCLCPP_ERROR(Logger(),
+                 "Recoverable monocular-inertial SLAM failure in TrackMonocular at %.6f "
+                 "with %zu IMU samples: %s",
+                 timestamp, imuMeasurements.size(), ex.what());
+    ResetActiveMap();
+    return std::nullopt;
+  }
+  catch (...)
+  {
+    RCLCPP_ERROR(Logger(),
+                 "Recoverable monocular-inertial SLAM failure in TrackMonocular at %.6f "
+                 "with %zu IMU samples: unknown exception",
+                 timestamp, imuMeasurements.size());
+    ResetActiveMap();
+    return std::nullopt;
+  }
 }
 
-void MonocularInertialSlam::OnPostTrack()
+int64_t MonocularInertialSlam::StampToNanoseconds(const builtin_interfaces::msg::Time& stamp)
 {
-  // TODO
+  return static_cast<int64_t>(stamp.sec) * 1'000'000'000LL + static_cast<int64_t>(stamp.nanosec);
 }
 
 ORB_SLAM3::IMU::Point MonocularInertialSlam::ToOrbImuPoint(const sensor_msgs::msg::Imu& imuMsg)
@@ -85,4 +375,322 @@ ORB_SLAM3::IMU::Point MonocularInertialSlam::ToOrbImuPoint(const sensor_msgs::ms
   const cv::Point3f gyr(angularVelocity.x, angularVelocity.y, angularVelocity.z);
 
   return ORB_SLAM3::IMU::Point(acc, gyr, timestamp);
+}
+
+MonocularInertialSlam::ImuBufferStatus MonocularInertialSlam::GetImuBufferStatusLocked() const
+{
+  ImuBufferStatus status;
+  status.has_received_imu = m_hasReceivedImu;
+  status.has_buffered_imu = !m_imuBuffer.empty();
+  status.received_count = m_receivedImuMessages;
+  status.accepted_count = m_acceptedImuMessages;
+  status.dropped_count = m_droppedImuSamples;
+  status.buffer_size = m_imuBuffer.size();
+  status.previous_tracked_image_stamp_ns = m_previousTrackedImageStampNs;
+  status.has_stable_slam_map = m_hasStableSlamMap;
+
+  if (!m_imuBuffer.empty())
+  {
+    status.oldest_imu_stamp_ns = StampToNanoseconds(m_imuBuffer.front().header.stamp);
+    status.newest_imu_stamp_ns = StampToNanoseconds(m_imuBuffer.back().header.stamp);
+  }
+
+  return status;
+}
+
+bool MonocularInertialSlam::HasImuCoverageForImageStampLocked(int64_t imageStampNs) const
+{
+  if (m_imuBuffer.empty())
+    return false;
+
+  const int64_t oldestImuStampNs = StampToNanoseconds(m_imuBuffer.front().header.stamp);
+  const int64_t newestImuStampNs = StampToNanoseconds(m_imuBuffer.back().header.stamp);
+  if (oldestImuStampNs > imageStampNs || newestImuStampNs < imageStampNs)
+    return false;
+
+  if (!m_previousTrackedImageStampNs)
+    return true;
+
+  const auto intervalBegin =
+      std::upper_bound(m_imuBuffer.begin(), m_imuBuffer.end(), *m_previousTrackedImageStampNs,
+                       [](int64_t stampNs, const sensor_msgs::msg::Imu& bufferedMsg)
+                       { return stampNs < StampToNanoseconds(bufferedMsg.header.stamp); });
+  const auto intervalEnd =
+      std::upper_bound(m_imuBuffer.begin(), m_imuBuffer.end(), imageStampNs,
+                       [](int64_t stampNs, const sensor_msgs::msg::Imu& bufferedMsg)
+                       { return stampNs < StampToNanoseconds(bufferedMsg.header.stamp); });
+
+  return intervalBegin != intervalEnd;
+}
+
+bool MonocularInertialSlam::HasContinuousImuCoverageForImageStampLocked(int64_t imageStampNs) const
+{
+  if (!HasImuCoverageForImageStampLocked(imageStampNs))
+    return false;
+
+  if (!m_previousTrackedImageStampNs)
+    return true;
+
+  const auto intervalBegin =
+      std::upper_bound(m_imuBuffer.begin(), m_imuBuffer.end(), *m_previousTrackedImageStampNs,
+                       [](int64_t stampNs, const sensor_msgs::msg::Imu& bufferedMsg)
+                       { return stampNs < StampToNanoseconds(bufferedMsg.header.stamp); });
+  const auto intervalEnd =
+      std::upper_bound(m_imuBuffer.begin(), m_imuBuffer.end(), imageStampNs,
+                       [](int64_t stampNs, const sensor_msgs::msg::Imu& bufferedMsg)
+                       { return stampNs < StampToNanoseconds(bufferedMsg.header.stamp); });
+
+  if (intervalBegin == intervalEnd)
+    return false;
+
+  int64_t previousStampNs = *m_previousTrackedImageStampNs;
+  for (auto it = intervalBegin; it != intervalEnd; ++it)
+  {
+    const int64_t imuStampNs = StampToNanoseconds(it->header.stamp);
+    if (imuStampNs - previousStampNs > IMU_INTERVAL_GAP_WARN_NS)
+      return false;
+
+    previousStampNs = imuStampNs;
+  }
+
+  return imageStampNs - previousStampNs <= IMU_INTERVAL_GAP_WARN_NS;
+}
+
+MonocularInertialSlam::TrackedImageImuBatch MonocularInertialSlam::TakeImuSamplesForTrackedImage(
+    int64_t imageStampNs)
+{
+  const double imageTimestamp = static_cast<double>(imageStampNs) / 1'000'000'000.0;
+
+  TrackedImageImuBatch imuBatch;
+
+  {
+    std::lock_guard<std::mutex> lock(m_imuMutex);
+    imuBatch.imuStatus = GetImuBufferStatusLocked();
+
+    if (m_imuBuffer.empty())
+    {
+      RCLCPP_WARN_THROTTLE(
+          Logger(), Clock(), IMU_DIAGNOSTIC_THROTTLE_MS,
+          "Processed monocular-inertial image at %.6f while IMU buffer "
+          "is empty (has_received_imu=%s, received_imu_messages=%zu, "
+          "accepted_imu_messages=%zu, buffer_size=%zu, "
+          "dropped_imu_messages=%zu, oldest_imu=%s, newest_imu=%s, "
+          "previous_committed_image=%s)",
+          imageTimestamp, imuBatch.imuStatus.has_received_imu ? "true" : "false",
+          imuBatch.imuStatus.received_count, imuBatch.imuStatus.accepted_count,
+          imuBatch.imuStatus.buffer_size, imuBatch.imuStatus.dropped_count,
+          FormatOptionalTimestamp(imuBatch.imuStatus.oldest_imu_stamp_ns).c_str(),
+          FormatOptionalTimestamp(imuBatch.imuStatus.newest_imu_stamp_ns).c_str(),
+          FormatOptionalTimestamp(imuBatch.imuStatus.previous_tracked_image_stamp_ns).c_str());
+    }
+
+    if (!m_previousTrackedImageStampNs)
+      return imuBatch;
+
+    imuBatch.hasPreviousTrackedImage = true;
+    imuBatch.previousTrackedImageStampNs = m_previousTrackedImageStampNs;
+
+    const auto intervalBegin = std::upper_bound(
+        m_imuBuffer.begin(), m_imuBuffer.end(), *imuBatch.previousTrackedImageStampNs,
+        [](int64_t stampNs, const sensor_msgs::msg::Imu& bufferedMsg)
+        { return stampNs < StampToNanoseconds(bufferedMsg.header.stamp); });
+    const auto intervalEnd =
+        std::upper_bound(m_imuBuffer.begin(), m_imuBuffer.end(), imageStampNs,
+                         [](int64_t stampNs, const sensor_msgs::msg::Imu& bufferedMsg)
+                         { return stampNs < StampToNanoseconds(bufferedMsg.header.stamp); });
+
+    imuBatch.imuMessages.reserve(
+        static_cast<std::size_t>(std::distance(intervalBegin, intervalEnd)));
+    for (auto it = intervalBegin; it != intervalEnd; ++it)
+      imuBatch.imuMessages.emplace_back(*it);
+  }
+
+  if (imuBatch.imuMessages.empty())
+  {
+    RCLCPP_WARN_THROTTLE(
+        Logger(), Clock(), IMU_DIAGNOSTIC_THROTTLE_MS,
+        "Processed monocular-inertial image interval %.6f -> %.6f has "
+        "no IMU samples (oldest_imu=%s, newest_imu=%s, "
+        "image_stamp=%.6f, previous_committed_image=%s, "
+        "received_imu_messages=%zu, accepted_imu_messages=%zu, "
+        "dropped_imu_messages=%zu, buffer_size=%zu)",
+        static_cast<double>(*imuBatch.previousTrackedImageStampNs) / 1'000'000'000.0,
+        imageTimestamp, FormatOptionalTimestamp(imuBatch.imuStatus.oldest_imu_stamp_ns).c_str(),
+        FormatOptionalTimestamp(imuBatch.imuStatus.newest_imu_stamp_ns).c_str(), imageTimestamp,
+        FormatOptionalTimestamp(imuBatch.imuStatus.previous_tracked_image_stamp_ns).c_str(),
+        imuBatch.imuStatus.received_count, imuBatch.imuStatus.accepted_count,
+        imuBatch.imuStatus.dropped_count, imuBatch.imuStatus.buffer_size);
+    return imuBatch;
+  }
+
+  const double previousImageTimestamp =
+      static_cast<double>(*imuBatch.previousTrackedImageStampNs) / 1'000'000'000.0;
+  WarnAboutImuIntervalGaps(imuBatch.imuMessages, *imuBatch.previousTrackedImageStampNs,
+                           previousImageTimestamp);
+
+  return imuBatch;
+}
+
+void MonocularInertialSlam::CommitTrackedImageStamp(int64_t imageStampNs)
+{
+  std::lock_guard<std::mutex> lock(m_imuMutex);
+
+  if (m_previousTrackedImageStampNs)
+  {
+    const auto pruneEnd =
+        std::upper_bound(m_imuBuffer.begin(), m_imuBuffer.end(), *m_previousTrackedImageStampNs,
+                         [](int64_t stampNs, const sensor_msgs::msg::Imu& bufferedMsg)
+                         { return stampNs < StampToNanoseconds(bufferedMsg.header.stamp); });
+    m_imuBuffer.erase(m_imuBuffer.begin(), pruneEnd);
+  }
+
+  m_previousTrackedImageStampNs = imageStampNs;
+}
+
+void MonocularInertialSlam::LogTrackingSummary(int trackingState,
+                                               std::size_t trackedPoints,
+                                               std::size_t mapPoints)
+{
+  bool stateChanged = false;
+  {
+    std::lock_guard<std::mutex> lock(m_imuMutex);
+    stateChanged = !m_lastLoggedTrackingState || *m_lastLoggedTrackingState != trackingState;
+    m_lastLoggedTrackingState = trackingState;
+  }
+
+  if (stateChanged)
+  {
+    RCLCPP_INFO(Logger(), "Tracking state: %d, tracked points: %zu, map points: %zu", trackingState,
+                trackedPoints, mapPoints);
+    return;
+  }
+
+  RCLCPP_INFO_THROTTLE(Logger(), Clock(), TRACKING_SUMMARY_THROTTLE_MS,
+                       "Tracking state: %d, tracked points: %zu, map points: %zu", trackingState,
+                       trackedPoints, mapPoints);
+}
+
+void MonocularInertialSlam::LogInitializationStatus(ORB_SLAM3::System& slam,
+                                                    int64_t imageStampNs,
+                                                    int trackingState,
+                                                    std::size_t trackedPoints,
+                                                    std::size_t mapPoints)
+{
+  constexpr int ORB_TRACKING_OK = 2;
+
+  const double imageTimestamp = static_cast<double>(imageStampNs) / 1'000'000'000.0;
+  const bool imuInitialized = slam.IsImuInitialized();
+  const bool badImu = slam.HasBadImu();
+
+  MonoInertialInitializationStatus status = MonoInertialInitializationStatus::UNKNOWN;
+  if (badImu)
+    status = MonoInertialInitializationStatus::BAD_IMU_OR_RESET_PENDING;
+  else if (imuInitialized)
+    status = MonoInertialInitializationStatus::INERTIAL_INITIALIZED;
+  else if (trackingState == ORB_TRACKING_OK)
+    status = MonoInertialInitializationStatus::VISUAL_CANDIDATE;
+
+  bool isTransition = false;
+  {
+    std::lock_guard<std::mutex> lock(m_imuMutex);
+    isTransition = !m_lastInitializationStatus || *m_lastInitializationStatus != status;
+    m_lastInitializationStatus = status;
+    m_hasStableSlamMap = status == MonoInertialInitializationStatus::INERTIAL_INITIALIZED;
+  }
+
+  if (isTransition)
+  {
+    switch (status)
+    {
+      case MonoInertialInitializationStatus::VISUAL_CANDIDATE:
+        RCLCPP_INFO(Logger(),
+                    "Mono-inertial candidate map active; waiting for inertial initialization "
+                    "(stamp=%.6f, state=%d, tracked_points=%zu, map_points=%zu)",
+                    imageTimestamp, trackingState, trackedPoints, mapPoints);
+        break;
+      case MonoInertialInitializationStatus::INERTIAL_INITIALIZED:
+        RCLCPP_INFO(Logger(),
+                    "Mono-inertial initialization accepted "
+                    "(stamp=%.6f, state=%d, tracked_points=%zu, map_points=%zu)",
+                    imageTimestamp, trackingState, trackedPoints, mapPoints);
+        break;
+      case MonoInertialInitializationStatus::BAD_IMU_OR_RESET_PENDING:
+        RCLCPP_WARN(Logger(),
+                    "Mono-inertial candidate rejected; resetting after bad IMU "
+                    "(stamp=%.6f, state=%d, tracked_points=%zu, map_points=%zu)",
+                    imageTimestamp, trackingState, trackedPoints, mapPoints);
+        break;
+      case MonoInertialInitializationStatus::UNKNOWN:
+        RCLCPP_DEBUG(Logger(),
+                     "Mono-inertial initialization status unknown "
+                     "(stamp=%.6f, state=%d, tracked_points=%zu, map_points=%zu, "
+                     "imu_initialized=%s, bad_imu=%s)",
+                     imageTimestamp, trackingState, trackedPoints, mapPoints,
+                     imuInitialized ? "true" : "false", badImu ? "true" : "false");
+        break;
+    }
+    return;
+  }
+
+  const char* statusName = "unknown";
+  switch (status)
+  {
+    case MonoInertialInitializationStatus::VISUAL_CANDIDATE:
+      statusName = "visual_candidate";
+      break;
+    case MonoInertialInitializationStatus::INERTIAL_INITIALIZED:
+      statusName = "inertial_initialized";
+      break;
+    case MonoInertialInitializationStatus::BAD_IMU_OR_RESET_PENDING:
+      statusName = "bad_imu_or_reset_pending";
+      break;
+    case MonoInertialInitializationStatus::UNKNOWN:
+      break;
+  }
+
+  RCLCPP_DEBUG_THROTTLE(Logger(), Clock(), IMU_DIAGNOSTIC_THROTTLE_MS,
+                        "Mono-inertial initialization status: %s "
+                        "(stamp=%.6f, state=%d, tracked_points=%zu, map_points=%zu, "
+                        "imu_initialized=%s, bad_imu=%s)",
+                        statusName, imageTimestamp, trackingState, trackedPoints, mapPoints,
+                        imuInitialized ? "true" : "false", badImu ? "true" : "false");
+}
+
+void MonocularInertialSlam::WarnAboutImuIntervalGaps(
+    const std::vector<sensor_msgs::msg::Imu>& imuMessages,
+    int64_t previousImageStampNs,
+    double previousImageTimestamp)
+{
+  if (imuMessages.empty())
+    return;
+
+  int64_t previousImuStampNs = StampToNanoseconds(imuMessages.front().header.stamp);
+  const int64_t initialGapNs = previousImuStampNs - previousImageStampNs;
+  if (initialGapNs > IMU_INTERVAL_GAP_WARN_NS)
+  {
+    const double firstImuTimestamp = static_cast<double>(previousImuStampNs) / 1'000'000'000.0;
+    RCLCPP_WARN_THROTTLE(Logger(), Clock(), IMU_DIAGNOSTIC_THROTTLE_MS,
+                         "First IMU sample at %.6f starts %.3f ms after previous tracked "
+                         "image at %.6f",
+                         firstImuTimestamp, static_cast<double>(initialGapNs) / 1.0e6,
+                         previousImageTimestamp);
+  }
+
+  for (std::size_t index = 1; index < imuMessages.size(); ++index)
+  {
+    const int64_t imuStampNs = StampToNanoseconds(imuMessages[index].header.stamp);
+    const int64_t gapNs = imuStampNs - previousImuStampNs;
+    if (gapNs > IMU_INTERVAL_GAP_WARN_NS)
+    {
+      const double previousImuTimestamp = static_cast<double>(previousImuStampNs) / 1'000'000'000.0;
+      const double imuTimestamp = static_cast<double>(imuStampNs) / 1'000'000'000.0;
+      RCLCPP_WARN_THROTTLE(Logger(), Clock(), IMU_DIAGNOSTIC_THROTTLE_MS,
+                           "Consecutive IMU samples for monocular-inertial tracking have "
+                           "a %.3f ms gap (%.6f -> %.6f)",
+                           static_cast<double>(gapNs) / 1.0e6, previousImuTimestamp, imuTimestamp);
+      break;
+    }
+
+    previousImuStampNs = imuStampNs;
+  }
 }

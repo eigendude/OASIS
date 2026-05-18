@@ -153,6 +153,24 @@ void MonocularSlamBase::ResetActiveMap()
     m_slam->ResetActiveMap();
 }
 
+void MonocularSlamBase::ResetImageProcessingState()
+{
+  m_lastTimestampNs.reset();
+
+  {
+    std::lock_guard<std::mutex> lock(m_renderMutex);
+    m_renderQueue.clear();
+  }
+}
+
+void MonocularSlamBase::LogTrackingSummary(int trackingState,
+                                           std::size_t trackedPoints,
+                                           std::size_t mapPoints)
+{
+  RCLCPP_INFO(Logger(), "Tracking state: %d, tracked points: %zu, map points: %zu", trackingState,
+              trackedPoints, mapPoints);
+}
+
 void MonocularSlamBase::MapPublisherLoop()
 {
   while (true)
@@ -271,8 +289,7 @@ void MonocularSlamBase::MapPublisherLoop()
       m_posePublisher->publish(poseMsg);
     }
 
-    RCLCPP_INFO(Logger(), "Tracking state: %d, tracked points: %zu, map points: %zu", trackingState,
-                trackedMapPoints.size(), mapPoints.size());
+    LogTrackingSummary(trackingState, trackedMapPoints.size(), mapPoints.size());
 
     if (m_renderThreadRunning.load() && !mapPoints.empty())
     {
