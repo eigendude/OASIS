@@ -47,6 +47,7 @@ ROSDEP_IGNORE_KEYS+=" \
   launch_testing_ros \
   osrf_testing_tools_cpp \
   performance_test_fixture \
+  python3-numpy \
   ros2cli_test_interfaces \
   ros2lifecycle_test_fixtures \
   ros_testing \
