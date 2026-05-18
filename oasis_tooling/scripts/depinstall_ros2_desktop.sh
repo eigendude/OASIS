@@ -47,6 +47,8 @@ ROSDEP_IGNORE_KEYS+=" \
   launch_testing_ros \
   osrf_testing_tools_cpp \
   performance_test_fixture \
+  python3-matplotlib \
+  python3-numpy \
   ros2cli_test_interfaces \
   ros2lifecycle_test_fixtures \
   ros_testing \
@@ -98,6 +100,17 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
   )
 
   sudo apt install -y --no-install-recommends "${APT_PACKAGES[@]}"
+
+  # Packages to install via pip
+  PYTHON_PACKAGES=(
+    numpy
+  )
+
+  sudo python3 -m pip install \
+    --upgrade \
+    --ignore-installed \
+    --break-system-packages \
+    "${PYTHON_PACKAGES[@]}"
 fi
 
 #
