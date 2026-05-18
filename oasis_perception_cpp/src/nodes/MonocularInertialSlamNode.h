@@ -51,6 +51,11 @@ private:
   // ROS interface
   void OnImage(const sensor_msgs::msg::Image& imageMsg);
   void OnImu(const sensor_msgs::msg::Imu& imuMsg);
+  void HandleUnarmedStartupImage(const sensor_msgs::msg::Image& imageMsg);
+  void RecordUnarmedStartupImu(const SLAM::MonocularInertialSlam::ImuBufferStatus& imuStatus);
+  void EnterStartupUnarmed();
+  bool TryArmStartup();
+  bool IsStartupArmed() const;
   bool HandleImageDiscontinuity(int64_t imageStampNs);
   bool HasImuCoverageForImage(const sensor_msgs::msg::Image& imageMsg) const;
   void EnqueuePendingImageLocked(const sensor_msgs::msg::Image& imageMsg);
@@ -74,6 +79,13 @@ private:
                                      int64_t imageStampNs,
                                      int64_t lagNs,
                                      std::size_t pendingQueueSize) const;
+  void LogStartupWaitingStatus(std::optional<int64_t> newestImageStampNs,
+                               const SLAM::MonocularInertialSlam::ImuBufferStatus& imuStatus,
+                               bool imuReady,
+                               bool armingWindowReady,
+                               int64_t lagNs,
+                               const char* reason) const;
+  void ResetStartupArmingCandidateLocked();
 
   // Construction parameters
   rclcpp::Node& m_node;
@@ -91,10 +103,16 @@ private:
   std::condition_variable m_imageWorkerCv;
   std::deque<sensor_msgs::msg::Image> m_pendingImages;
   std::optional<int64_t> m_lastImageStampNs;
+  std::optional<int64_t> m_newestStartupImageStampNs;
+  std::optional<int64_t> m_newestStartupImuStampNs;
+  std::optional<int64_t> m_lastStartupImageStampNs;
+  std::optional<int64_t> m_startupArmingCandidateStartNs;
+  std::optional<int64_t> m_startupArmingBoundaryNs;
   std::thread m_imageWorkerThread;
   bool m_imageWorkerStop = false;
   bool m_imageWorkerWake = false;
   bool m_stableInputPaused = false;
+  bool m_startupArmed = false;
 
   // Monocular-inertial tracking diagnostics
   std::size_t m_releasedImageCount = 0;

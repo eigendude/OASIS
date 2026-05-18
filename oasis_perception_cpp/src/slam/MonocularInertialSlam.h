@@ -51,7 +51,7 @@ public:
     // Total valid IMU callbacks accepted into the buffer
     std::size_t accepted_count = 0;
 
-    // Total accepted IMU samples dropped from buffer capacity pruning
+    // Total accepted IMU samples dropped by armed tracking overflow pruning
     std::size_t dropped_count = 0;
 
     // Current number of accepted IMU samples in the buffer
@@ -80,9 +80,13 @@ public:
   void Deinitialize();
 
   // Node interface
-  void ReceiveImu(const sensor_msgs::msg::Imu& imuMsg);
+  bool ReceiveImu(const sensor_msgs::msg::Imu& imuMsg);
   bool HasReceivedImu() const;
   ImuBufferStatus GetImuBufferStatus() const;
+  std::optional<int64_t> FindContinuousImuWindowStart(int64_t requiredWindowNs,
+                                                      int64_t maxGapNs) const;
+  void ArmStartup(int64_t imuWindowStartNs);
+  void DisarmStartup();
   bool HasImuCoverageForImageStamp(int64_t imageStampNs) const;
   bool HasContinuousImuCoverageForImageStamp(int64_t imageStampNs) const;
   void NotifySensorStreamDiscontinuity(const std::string& reason,
@@ -125,6 +129,10 @@ private:
   static int64_t StampToNanoseconds(const builtin_interfaces::msg::Time& stamp);
   static ORB_SLAM3::IMU::Point ToOrbImuPoint(const sensor_msgs::msg::Imu& imuMsg);
   ImuBufferStatus GetImuBufferStatusLocked() const;
+  std::optional<int64_t> FindContinuousImuWindowStartLocked(int64_t requiredWindowNs,
+                                                            int64_t maxGapNs) const;
+  void PruneUnarmedStartupImuWindowLocked(int64_t newestImuStampNs);
+  std::size_t PruneArmedTrackingImuOverflowLocked();
   bool HasImuCoverageForImageStampLocked(int64_t imageStampNs) const;
   bool HasContinuousImuCoverageForImageStampLocked(int64_t imageStampNs) const;
   TrackedImageImuBatch TakeImuSamplesForTrackedImage(int64_t imageStampNs);
@@ -151,6 +159,8 @@ private:
   std::optional<MonoInertialInitializationStatus> m_lastInitializationStatus;
   std::optional<int> m_lastLoggedTrackingState;
   bool m_hasStableSlamMap = false;
+  bool m_startupArmed = false;
+  bool m_loggedEmptyImuMeasurementsError = false;
 };
 
 } // namespace SLAM
