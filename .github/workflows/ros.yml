@@ -382,18 +382,8 @@ jobs:
           set -euo pipefail
 
           packages=()
-
-          if [ "${{ steps.restore-oasis-drivers-cpp.outputs.cache-hit }}" != 'true' ]; then
-            packages+=(oasis_drivers_cpp)
-          else
-            echo "Skipping oasis_drivers_cpp tests (cache hit detected)"
-          fi
-
-          if [ "${{ steps.restore-oasis-perception-cpp.outputs.cache-hit }}" != 'true' ]; then
-            packages+=(oasis_perception_cpp)
-          else
-            echo "Skipping oasis_perception_cpp tests (cache hit detected)"
-          fi
+          packages+=(oasis_drivers_cpp)
+          packages+=(oasis_perception_cpp)
 
           if [ ${#packages[@]} -eq 0 ]; then
             echo "All C++ test packages were cache-skipped; skipping test run."
