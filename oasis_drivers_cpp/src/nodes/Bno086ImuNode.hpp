@@ -107,11 +107,47 @@ private:
     std::optional<int64_t> last_published_imu_gravity_anchor_stamp_ns;
   };
 
+  enum class ImuGravityGateReason
+  {
+    MissingOrientation,
+    OrientationTooOld,
+    MissingGyro,
+    GyroTooOld,
+    MissingAccel,
+    AccelTooOld,
+    InvalidSample,
+    NonMonotonicStamp,
+    StaleLiveAge,
+    PublisherNotReady,
+    AccelFuture,
+    GyroFuture,
+  };
+
+  struct ImuGravityGateCounters
+  {
+    std::uint64_t missing_orientation{0};
+    std::uint64_t orientation_old{0};
+    std::uint64_t missing_gyro{0};
+    std::uint64_t gyro_old{0};
+    std::uint64_t missing_accel{0};
+    std::uint64_t accel_old{0};
+    std::uint64_t invalid_sample{0};
+    std::uint64_t non_monotonic_stamp{0};
+    std::uint64_t stale_live_age{0};
+    std::uint64_t publisher_not_ready{0};
+    std::uint64_t accel_future{0};
+    std::uint64_t gyro_future{0};
+    std::uint64_t published{0};
+  };
+
   struct Bno086DiagnosticsState
   {
     OASIS::IMU::BNO086::Bno086RateHealth rate_health;
     OASIS::IMU::BNO086::Bno086DrainHealth drain_health;
+    ImuGravityGateCounters imu_gravity_gate_counters;
+    ImuGravityGateCounters last_logged_imu_gravity_gate_counters;
     bool was_unhealthy{false};
+    bool was_imu_gravity_unhealthy{false};
     std::uint32_t repeated_no_progress_timeouts{0};
     bool warned_missing_imu_fields{false};
   };
@@ -164,6 +200,10 @@ private:
                                         std::uint32_t drain_duration_us,
                                         std::uint32_t);
   void MaybeEmitImuGravityDiagnosticsLog(const OASIS::IMU::BNO086::Bno086RateSnapshot& rates);
+  void RecordImuGravityGateSkip(ImuGravityGateReason reason);
+  void RecordImuGravityGatePublished();
+  ImuGravityGateCounters ImuGravityGateDelta() const;
+  const char* DominantImuGravityGateReason(const ImuGravityGateCounters& counters) const;
   bool IsImuGravitySampleValid(const sensor_msgs::msg::Imu& message,
                                std::string& invalid_reason) const;
   std::optional<std::uint32_t> RequestedFeatureIntervalUs(

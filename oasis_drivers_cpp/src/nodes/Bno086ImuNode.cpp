@@ -24,6 +24,7 @@
 #include <array>
 #include <cmath>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -81,6 +82,14 @@ bool IsFiniteArray(const std::array<double, 9>& values)
 double VectorMagnitude(double x, double y, double z)
 {
   return std::sqrt(x * x + y * y + z * z);
+}
+
+void AppendImuGravityCounter(std::ostringstream& stream, const char* label, std::uint64_t count)
+{
+  if (count == 0)
+    return;
+
+  stream << " " << label << "=" << count;
 }
 
 } // namespace
@@ -194,6 +203,9 @@ bool Bno086ImuNode::Initialize()
   m_stream.imu_gravity_accel_history.Reset();
   m_diag.drain_health = Bno086DrainHealth{};
   m_diag.rate_health = Bno086RateHealth{};
+  m_diag.imu_gravity_gate_counters = ImuGravityGateCounters{};
+  m_diag.last_logged_imu_gravity_gate_counters = ImuGravityGateCounters{};
+  m_diag.was_imu_gravity_unhealthy = false;
 
   // Initialize ROS publishers
   m_imuPublisher =
@@ -594,18 +606,21 @@ void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& ev
 
   if (!m_stream.orientation.has_sample || !m_stream.latest_frame.has_orientation)
   {
+    RecordImuGravityGateSkip(ImuGravityGateReason::MissingOrientation);
     MaybeLogImuGravityDiagnostics();
     return;
   }
 
   if (!m_stream.gyro.has_sample || !m_stream.latest_frame.has_gyro)
   {
+    RecordImuGravityGateSkip(ImuGravityGateReason::MissingGyro);
     MaybeLogImuGravityDiagnostics();
     return;
   }
 
   if (!m_stream.imu_gravity.has_sample || !m_stream.latest_frame.has_accel)
   {
+    RecordImuGravityGateSkip(ImuGravityGateReason::MissingAccel);
     MaybeLogImuGravityDiagnostics();
     return;
   }
@@ -618,6 +633,7 @@ void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& ev
 
   if (!accelSelection.has_value())
   {
+    RecordImuGravityGateSkip(ImuGravityGateReason::MissingAccel);
     MaybeLogImuGravityDiagnostics();
     return;
   }
@@ -633,24 +649,28 @@ void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& ev
 
   if (accelFreshness.status == SampleFreshnessStatus::TooOld)
   {
+    RecordImuGravityGateSkip(ImuGravityGateReason::AccelTooOld);
     MaybeLogImuGravityDiagnostics();
     return;
   }
 
   if (accelFreshness.status == SampleFreshnessStatus::TooFuture)
   {
+    RecordImuGravityGateSkip(ImuGravityGateReason::AccelFuture);
     MaybeLogImuGravityDiagnostics();
     return;
   }
 
   if (gyroFreshness.status == SampleFreshnessStatus::TooOld)
   {
+    RecordImuGravityGateSkip(ImuGravityGateReason::GyroTooOld);
     MaybeLogImuGravityDiagnostics();
     return;
   }
 
   if (gyroFreshness.status == SampleFreshnessStatus::TooFuture)
   {
+    RecordImuGravityGateSkip(ImuGravityGateReason::GyroFuture);
     MaybeLogImuGravityDiagnostics();
     return;
   }
@@ -658,6 +678,7 @@ void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& ev
   if (m_stream.last_published_imu_gravity_anchor_stamp_ns.has_value() &&
       orientationStampNs <= *m_stream.last_published_imu_gravity_anchor_stamp_ns)
   {
+    RecordImuGravityGateSkip(ImuGravityGateReason::NonMonotonicStamp);
     MaybeLogImuGravityDiagnostics();
     return;
   }
@@ -676,6 +697,7 @@ void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& ev
   std::string invalidReason;
   if (!IsImuGravitySampleValid(imuGravityMsg, invalidReason))
   {
+    RecordImuGravityGateSkip(ImuGravityGateReason::InvalidSample);
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), IMU_GRAVITY_SAMPLE_WARN_THROTTLE_MS,
                          "Skipping BNO086 imu_gravity sample: %s", invalidReason.c_str());
     MaybeLogImuGravityDiagnostics();
@@ -685,6 +707,7 @@ void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& ev
   m_imuGravityPublisher->publish(imuGravityMsg);
   m_stream.last_published_imu_gravity_anchor_stamp_ns = orientationStampNs;
   m_diag.rate_health.CountImuGravityPublished();
+  RecordImuGravityGatePublished();
   MaybeLogImuGravityDiagnostics();
 }
 
@@ -816,6 +839,9 @@ void Bno086ImuNode::RecordDrainThroughputDiagnostics(const Bno086DrainCounters& 
 void Bno086ImuNode::MaybeEmitImuGravityDiagnosticsLog(const Bno086RateSnapshot& rates)
 {
   const bool unhealthy = IsBno086DiagnosticsUnhealthy(rates);
+  const bool imuGravityRateHealthy = IsImuGravityRateHealthy(rates);
+  const bool imuGravityUnhealthy = rates.has_elapsed_window && !imuGravityRateHealthy;
+  const ImuGravityGateCounters gateDelta = ImuGravityGateDelta();
   const Bno086TransportStats transportStats = m_transport->GetStats();
 
   RCLCPP_DEBUG(get_logger(),
@@ -839,13 +865,144 @@ void Bno086ImuNode::MaybeEmitImuGravityDiagnosticsLog(const Bno086RateSnapshot& 
                static_cast<unsigned long long>(m_diag.drain_health.AllZeroBudgetHitCount()),
                static_cast<unsigned long long>(transportStats.invalid_full_packet_count));
 
-  if (m_diag.was_unhealthy && !unhealthy && IsImuGravityRateHealthy(rates))
+  if (imuGravityUnhealthy)
+  {
+    std::ostringstream stream;
+    stream << "BNO imu_g skips:";
+    AppendImuGravityCounter(stream, "missing_orient", gateDelta.missing_orientation);
+    AppendImuGravityCounter(stream, "orient_old", gateDelta.orientation_old);
+    AppendImuGravityCounter(stream, "missing_gyro", gateDelta.missing_gyro);
+    AppendImuGravityCounter(stream, "gyro_old", gateDelta.gyro_old);
+    AppendImuGravityCounter(stream, "missing_accel", gateDelta.missing_accel);
+    AppendImuGravityCounter(stream, "accel_old", gateDelta.accel_old);
+    AppendImuGravityCounter(stream, "accel_future", gateDelta.accel_future);
+    AppendImuGravityCounter(stream, "gyro_future", gateDelta.gyro_future);
+    AppendImuGravityCounter(stream, "invalid", gateDelta.invalid_sample);
+    AppendImuGravityCounter(stream, "stamp", gateDelta.non_monotonic_stamp);
+    AppendImuGravityCounter(stream, "live", gateDelta.stale_live_age);
+    AppendImuGravityCounter(stream, "pub", gateDelta.publisher_not_ready);
+    stream << " published=" << gateDelta.published;
+    RCLCPP_WARN_STREAM(get_logger(), stream.str());
+  }
+
+  if (!m_diag.was_imu_gravity_unhealthy && imuGravityUnhealthy)
+  {
+    RCLCPP_WARN(get_logger(), "BNO imu_gravity lost: reason=%s rate=%.1fHz",
+                DominantImuGravityGateReason(gateDelta), rates.imu_gravity_hz);
+  }
+
+  if (m_diag.was_imu_gravity_unhealthy && rates.has_elapsed_window && imuGravityRateHealthy)
   {
     RCLCPP_INFO(get_logger(), "BNO086 imu_gravity recovered: rate=%.1fHz", rates.imu_gravity_hz);
   }
 
+  if (rates.has_elapsed_window)
+    m_diag.was_imu_gravity_unhealthy = imuGravityUnhealthy;
+
   if (rates.has_elapsed_window || unhealthy)
     m_diag.was_unhealthy = unhealthy;
+
+  m_diag.last_logged_imu_gravity_gate_counters = m_diag.imu_gravity_gate_counters;
+}
+
+void Bno086ImuNode::RecordImuGravityGateSkip(ImuGravityGateReason reason)
+{
+  switch (reason)
+  {
+    case ImuGravityGateReason::MissingOrientation:
+      ++m_diag.imu_gravity_gate_counters.missing_orientation;
+      break;
+    case ImuGravityGateReason::OrientationTooOld:
+      ++m_diag.imu_gravity_gate_counters.orientation_old;
+      break;
+    case ImuGravityGateReason::MissingGyro:
+      ++m_diag.imu_gravity_gate_counters.missing_gyro;
+      break;
+    case ImuGravityGateReason::GyroTooOld:
+      ++m_diag.imu_gravity_gate_counters.gyro_old;
+      break;
+    case ImuGravityGateReason::MissingAccel:
+      ++m_diag.imu_gravity_gate_counters.missing_accel;
+      break;
+    case ImuGravityGateReason::AccelTooOld:
+      ++m_diag.imu_gravity_gate_counters.accel_old;
+      break;
+    case ImuGravityGateReason::InvalidSample:
+      ++m_diag.imu_gravity_gate_counters.invalid_sample;
+      break;
+    case ImuGravityGateReason::NonMonotonicStamp:
+      ++m_diag.imu_gravity_gate_counters.non_monotonic_stamp;
+      break;
+    case ImuGravityGateReason::StaleLiveAge:
+      ++m_diag.imu_gravity_gate_counters.stale_live_age;
+      break;
+    case ImuGravityGateReason::PublisherNotReady:
+      ++m_diag.imu_gravity_gate_counters.publisher_not_ready;
+      break;
+    case ImuGravityGateReason::AccelFuture:
+      ++m_diag.imu_gravity_gate_counters.accel_future;
+      break;
+    case ImuGravityGateReason::GyroFuture:
+      ++m_diag.imu_gravity_gate_counters.gyro_future;
+      break;
+  }
+}
+
+void Bno086ImuNode::RecordImuGravityGatePublished()
+{
+  ++m_diag.imu_gravity_gate_counters.published;
+}
+
+Bno086ImuNode::ImuGravityGateCounters Bno086ImuNode::ImuGravityGateDelta() const
+{
+  const ImuGravityGateCounters& current = m_diag.imu_gravity_gate_counters;
+  const ImuGravityGateCounters& last = m_diag.last_logged_imu_gravity_gate_counters;
+  ImuGravityGateCounters delta;
+  delta.missing_orientation = current.missing_orientation - last.missing_orientation;
+  delta.orientation_old = current.orientation_old - last.orientation_old;
+  delta.missing_gyro = current.missing_gyro - last.missing_gyro;
+  delta.gyro_old = current.gyro_old - last.gyro_old;
+  delta.missing_accel = current.missing_accel - last.missing_accel;
+  delta.accel_old = current.accel_old - last.accel_old;
+  delta.invalid_sample = current.invalid_sample - last.invalid_sample;
+  delta.non_monotonic_stamp = current.non_monotonic_stamp - last.non_monotonic_stamp;
+  delta.stale_live_age = current.stale_live_age - last.stale_live_age;
+  delta.publisher_not_ready = current.publisher_not_ready - last.publisher_not_ready;
+  delta.accel_future = current.accel_future - last.accel_future;
+  delta.gyro_future = current.gyro_future - last.gyro_future;
+  delta.published = current.published - last.published;
+  return delta;
+}
+
+const char* Bno086ImuNode::DominantImuGravityGateReason(
+    const ImuGravityGateCounters& counters) const
+{
+  const char* reason = "none";
+  std::uint64_t count = 0;
+  const auto consider =
+      [&reason, &count](std::uint64_t candidate_count, const char* candidate_reason)
+  {
+    if (candidate_count > count)
+    {
+      count = candidate_count;
+      reason = candidate_reason;
+    }
+  };
+
+  consider(counters.missing_orientation, "missing_orientation");
+  consider(counters.orientation_old, "orientation_old");
+  consider(counters.missing_gyro, "missing_gyro");
+  consider(counters.gyro_old, "gyro_old");
+  consider(counters.missing_accel, "missing_accel");
+  consider(counters.accel_old, "accel_old");
+  consider(counters.invalid_sample, "invalid_sample");
+  consider(counters.non_monotonic_stamp, "stamp");
+  consider(counters.stale_live_age, "stale_live_age");
+  consider(counters.publisher_not_ready, "publisher_not_ready");
+  consider(counters.accel_future, "accel_future");
+  consider(counters.gyro_future, "gyro_future");
+
+  return reason;
 }
 
 bool Bno086ImuNode::IsImuGravitySampleValid(const sensor_msgs::msg::Imu& message,
