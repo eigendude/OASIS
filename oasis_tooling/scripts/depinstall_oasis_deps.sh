@@ -402,7 +402,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     --os=ubuntu:${CODENAME} \
     --from-paths "${OASIS_DEPENDS_SOURCE_DIRECTORY}" \
     --ignore-src \
-    --rosdistro ${ROS2_DISTRO} \
+    --rosdistro "${ROS2_DISTRO}" \
     --as-root=pip:false \
     --default-yes \
     --skip-keys="${ROSDEP_IGNORE_KEYS}"

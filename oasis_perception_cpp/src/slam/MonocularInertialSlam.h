@@ -96,6 +96,9 @@ public:
   void NotifySensorStreamDiscontinuity(const std::string& reason,
                                        int64_t previousStampNs,
                                        int64_t currentStampNs);
+  void NotifyPreStableMonocularInertialInitRetry(const std::string& reason,
+                                                 int64_t previousStampNs,
+                                                 int64_t currentStampNs);
 
 protected:
   // Implementation of MonocularSlamBase
