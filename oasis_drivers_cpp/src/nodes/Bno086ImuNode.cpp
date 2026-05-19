@@ -1204,29 +1204,19 @@ std::optional<int64_t> Bno086ImuNode::FinalizeEventStampNs(
       m_timestampCadence->Finalize(event, interrupt_ros_at.nanoseconds(), expected_interval_ns);
   if (result.reanchored_to_host && result.stamp_ns.has_value())
   {
+    const double reanchorDeltaMs = static_cast<double>(result.reanchor_delta_ns) / 1.0e6;
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
-                         "BNO086 cadence timestamp reanchored report=%s sequence=%u "
-                         "candidate_ns=%lld host_anchor_ns=%lld reanchor_delta_ns=%lld "
-                         "final_ns=%lld",
-                         ReportName(event.report_id), event.sequence,
-                         static_cast<long long>(result.candidate_stamp_ns),
-                         static_cast<long long>(result.host_anchor_stamp_ns),
-                         static_cast<long long>(result.reanchor_delta_ns),
-                         static_cast<long long>(*result.stamp_ns));
+                         "BNO reanchor: report=%s seq=%u delta=%.1fms", ReportName(event.report_id),
+                         event.sequence, reanchorDeltaMs);
   }
 
   if (result.monotonic_guard_adjusted && result.stamp_ns.has_value() &&
       result.last_stamp_ns.has_value())
   {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
-                         "BNO086 cadence timestamp guard adjusted report=%s "
-                         "sequence=%u candidate_ns=%lld last_ns=%lld final_ns=%lld "
-                         "duplicate_sequence=%s sequence_delta=%u",
-                         ReportName(event.report_id), event.sequence,
-                         static_cast<long long>(result.candidate_stamp_ns),
-                         static_cast<long long>(*result.last_stamp_ns),
-                         static_cast<long long>(*result.stamp_ns),
-                         result.duplicate_sequence ? "true" : "false", result.sequence_delta);
+                         "BNO stamp guard: report=%s seq=%u delta=%u dup=%d",
+                         ReportName(event.report_id), event.sequence, result.sequence_delta,
+                         result.duplicate_sequence ? 1 : 0);
   }
 
   return result.stamp_ns;
