@@ -24,11 +24,13 @@
 #include <geometry_msgs/msg/point.hpp>
 #include <image_transport/image_transport.hpp>
 #include <opencv2/imgproc.hpp>
+#include <rclcpp/callback_group.hpp>
 #include <rclcpp/duration.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
 #include <rclcpp/qos.hpp>
 #include <rclcpp/subscription.hpp>
+#include <rclcpp/subscription_options.hpp>
 #include <rmw/qos_profiles.h>
 #include <sensor_msgs/image_encodings.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
@@ -173,8 +175,32 @@ bool MapVizNode::Initialize()
 
   *m_mapImagePublisher = image_transport::create_publisher(&m_node, mapImageTopic);
 
+  m_imageCallbackGroup = m_node.create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  m_poseCallbackGroup = m_node.create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  m_pointCloudCallbackGroup =
+      m_node.create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  m_detectionsCallbackGroup =
+      m_node.create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  m_cameraInfoCallbackGroup =
+      m_node.create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+
+  rclcpp::SubscriptionOptions imageOptions;
+  imageOptions.callback_group = m_imageCallbackGroup;
+
+  rclcpp::SubscriptionOptions poseOptions;
+  poseOptions.callback_group = m_poseCallbackGroup;
+
+  rclcpp::SubscriptionOptions pointCloudOptions;
+  pointCloudOptions.callback_group = m_pointCloudCallbackGroup;
+
+  rclcpp::SubscriptionOptions detectionsOptions;
+  detectionsOptions.callback_group = m_detectionsCallbackGroup;
+
+  rclcpp::SubscriptionOptions cameraInfoOptions;
+  cameraInfoOptions.callback_group = m_cameraInfoCallbackGroup;
+
   m_imageSubscriber->subscribe(&m_node, imageTopic, imageTransport,
-                               rclcpp::QoS{SYNC_QUEUE_SIZE}.get_rmw_qos_profile());
+                               rclcpp::QoS{SYNC_QUEUE_SIZE}.get_rmw_qos_profile(), imageOptions);
   m_imageSubscriber->registerCallback(
       [this](const sensor_msgs::msg::Image::ConstSharedPtr& imageMsg)
       {
@@ -183,21 +209,24 @@ bool MapVizNode::Initialize()
       });
 
   m_poseSubscription = m_node.create_subscription<geometry_msgs::msg::PoseStamped>(
-      poseTopic, {1},
-      [this](const geometry_msgs::msg::PoseStamped::ConstSharedPtr& msg) { OnPose(msg); });
+      poseTopic, {1}, [this](const geometry_msgs::msg::PoseStamped::ConstSharedPtr& msg)
+      { OnPose(msg); }, poseOptions);
 
   m_pointCloudSubscription = m_node.create_subscription<sensor_msgs::msg::PointCloud2>(
       pointCloudTopic, rclcpp::QoS{SYNC_QUEUE_SIZE},
-      [this](const sensor_msgs::msg::PointCloud2::ConstSharedPtr& msg) { OnPointCloud(msg); });
+      [this](const sensor_msgs::msg::PointCloud2::ConstSharedPtr& msg) { OnPointCloud(msg); },
+      pointCloudOptions);
 
   m_detectionsSubscription = m_node.create_subscription<apriltag_msgs::msg::AprilTagDetectionArray>(
       detectionsTopic, rclcpp::QoS{SYNC_QUEUE_SIZE},
       [this](const apriltag_msgs::msg::AprilTagDetectionArray::ConstSharedPtr& msg)
-      { OnDetections(msg); });
+      { OnDetections(msg); }, detectionsOptions);
 
   m_cameraInfoSubscription = m_node.create_subscription<sensor_msgs::msg::CameraInfo>(
-      cameraInfoTopic, {1},
-      [this](const sensor_msgs::msg::CameraInfo::ConstSharedPtr& msg) { OnCameraInfo(msg); });
+      cameraInfoTopic, {1}, [this](const sensor_msgs::msg::CameraInfo::ConstSharedPtr& msg)
+      { OnCameraInfo(msg); }, cameraInfoOptions);
+
+  RCLCPP_INFO(m_logger, "Callback groups: image, pose, point cloud, detections and camera info");
 
   return true;
 }
@@ -205,20 +234,25 @@ bool MapVizNode::Initialize()
 void MapVizNode::Deinitialize()
 {
   m_cameraInfoSubscription.reset();
+  m_cameraInfoCallbackGroup.reset();
   if (m_detectionsSubscription)
   {
     m_detectionsSubscription.reset();
   }
+  m_detectionsCallbackGroup.reset();
   if (m_pointCloudSubscription)
   {
     m_pointCloudSubscription.reset();
   }
+  m_pointCloudCallbackGroup.reset();
   m_poseSubscription.reset();
+  m_poseCallbackGroup.reset();
   if (m_imageSubscriber)
   {
     m_imageSubscriber->unsubscribe();
     m_imageSubscriber.reset();
   }
+  m_imageCallbackGroup.reset();
   m_mapImagePublisher->shutdown();
 }
 
@@ -227,6 +261,7 @@ void MapVizNode::OnPose(const geometry_msgs::msg::PoseStamped::ConstSharedPtr& m
   if (msg == nullptr)
     return;
 
+  std::scoped_lock lock(m_mapStateMutex);
   m_cameraFromWorldTransform = PoseMsgToIsometry(*msg);
 }
 
@@ -244,11 +279,14 @@ void MapVizNode::OnPointCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPt
   if (!m_mapImagePublisher || m_mapImagePublisher->getNumSubscribers() == 0)
     return;
 
-  if (!m_cameraFromWorldTransform)
   {
-    RCLCPP_WARN_THROTTLE(m_logger, *m_node.get_clock(), 5000,
-                         "Skipping map viz: waiting for slam pose");
-    return;
+    std::scoped_lock lock(m_mapStateMutex);
+    if (!m_cameraFromWorldTransform)
+    {
+      RCLCPP_WARN_THROTTLE(m_logger, *m_node.get_clock(), 5000,
+                           "Skipping map viz: waiting for slam pose");
+      return;
+    }
   }
 
   std::vector<Eigen::Vector3f> worldPoints;
@@ -295,51 +333,61 @@ void MapVizNode::OnPointCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPt
     }
   }
 
-  const bool backgroundReady = !backgroundImage.empty() &&
-                               backgroundImage.cols == static_cast<int>(m_cameraModel.width) &&
-                               backgroundImage.rows == static_cast<int>(m_cameraModel.height);
-
-  if (!m_renderer.Render(*m_cameraFromWorldTransform, worldPoints, m_imageBuffer,
-                         backgroundReady ? &backgroundImage : nullptr))
-    return;
-
-  const cv::Mat* publishImage = &m_imageBuffer;
-
-  if (detectionsMsg != nullptr)
+  sensor_msgs::msg::Image::SharedPtr outputMsg;
   {
-    m_aprilTagVisualizer.RenderDetections(m_imageBuffer, msg->header,
-                                          sensor_msgs::image_encodings::BGR8, detectionsMsg);
+    std::scoped_lock lock(m_mapStateMutex);
+
+    if (!m_cameraFromWorldTransform)
+      return;
+
+    const bool backgroundReady = !backgroundImage.empty() &&
+                                 backgroundImage.cols == static_cast<int>(m_cameraModel.width) &&
+                                 backgroundImage.rows == static_cast<int>(m_cameraModel.height);
+
+    if (!m_renderer.Render(*m_cameraFromWorldTransform, worldPoints, m_imageBuffer,
+                           backgroundReady ? &backgroundImage : nullptr))
+      return;
+
+    const cv::Mat* publishImage = &m_imageBuffer;
+
+    if (detectionsMsg != nullptr)
+    {
+      m_aprilTagVisualizer.RenderDetections(m_imageBuffer, msg->header,
+                                            sensor_msgs::image_encodings::BGR8, detectionsMsg);
+    }
+
+    std::string publishEncoding = sensor_msgs::image_encodings::BGR8;
+
+    if (m_outputEncoding == sensor_msgs::image_encodings::RGB8)
+    {
+      cv::cvtColor(*publishImage, m_outputBuffer, cv::COLOR_BGR2RGB);
+      publishImage = &m_outputBuffer;
+      publishEncoding = m_outputEncoding;
+    }
+    else if (m_outputEncoding == sensor_msgs::image_encodings::BGRA8)
+    {
+      cv::cvtColor(*publishImage, m_outputBuffer, cv::COLOR_BGR2BGRA);
+      publishImage = &m_outputBuffer;
+      publishEncoding = m_outputEncoding;
+    }
+    else if (m_outputEncoding == sensor_msgs::image_encodings::RGBA8)
+    {
+      cv::cvtColor(*publishImage, m_outputBuffer, cv::COLOR_BGR2RGBA);
+      publishImage = &m_outputBuffer;
+      publishEncoding = m_outputEncoding;
+    }
+    else if (m_outputEncoding != sensor_msgs::image_encodings::BGR8 && !m_warnedOutputEncoding)
+    {
+      RCLCPP_WARN(m_logger, "Unsupported output encoding '%s', falling back to BGR8",
+                  m_outputEncoding.c_str());
+      m_warnedOutputEncoding = true;
+    }
+
+    const cv_bridge::CvImage output(msg->header, publishEncoding, *publishImage);
+    outputMsg = output.toImageMsg();
   }
 
-  std::string publishEncoding = sensor_msgs::image_encodings::BGR8;
-
-  if (m_outputEncoding == sensor_msgs::image_encodings::RGB8)
-  {
-    cv::cvtColor(*publishImage, m_outputBuffer, cv::COLOR_BGR2RGB);
-    publishImage = &m_outputBuffer;
-    publishEncoding = m_outputEncoding;
-  }
-  else if (m_outputEncoding == sensor_msgs::image_encodings::BGRA8)
-  {
-    cv::cvtColor(*publishImage, m_outputBuffer, cv::COLOR_BGR2BGRA);
-    publishImage = &m_outputBuffer;
-    publishEncoding = m_outputEncoding;
-  }
-  else if (m_outputEncoding == sensor_msgs::image_encodings::RGBA8)
-  {
-    cv::cvtColor(*publishImage, m_outputBuffer, cv::COLOR_BGR2RGBA);
-    publishImage = &m_outputBuffer;
-    publishEncoding = m_outputEncoding;
-  }
-  else if (m_outputEncoding != sensor_msgs::image_encodings::BGR8 && !m_warnedOutputEncoding)
-  {
-    RCLCPP_WARN(m_logger, "Unsupported output encoding '%s', falling back to BGR8",
-                m_outputEncoding.c_str());
-    m_warnedOutputEncoding = true;
-  }
-
-  cv_bridge::CvImage output(msg->header, publishEncoding, *publishImage);
-  m_mapImagePublisher->publish(output.toImageMsg());
+  m_mapImagePublisher->publish(outputMsg);
 }
 
 bool MapVizNode::OnImage(const sensor_msgs::msg::Image& imageMsg)
@@ -376,6 +424,7 @@ void MapVizNode::OnCameraInfo(const sensor_msgs::msg::CameraInfo::ConstSharedPtr
   if (msg == nullptr)
     return;
 
+  std::scoped_lock lock(m_mapStateMutex);
   SLAM::CameraModel updatedModel = m_cameraModel;
 
   if (msg->k.size() >= 6)

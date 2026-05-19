@@ -11,9 +11,11 @@
 #include "apriltag/AprilTagVisualizer.h"
 
 #include <memory>
+#include <mutex>
 #include <string>
 
 #include <apriltag_msgs/msg/april_tag_detection_array.hpp>
+#include <rclcpp/callback_group.hpp>
 #include <rclcpp/logger.hpp>
 #include <rclcpp/node.hpp>
 #include <rclcpp/subscription.hpp>
@@ -49,10 +51,16 @@ private:
   // Publishers
   std::unique_ptr<image_transport::Publisher> m_overlayPublisher;
 
+  // Callback groups
+  rclcpp::CallbackGroup::SharedPtr m_imageCallbackGroup;
+  rclcpp::CallbackGroup::SharedPtr m_detectionsCallbackGroup;
+
   // Subscribers
   std::unique_ptr<image_transport::Subscriber> m_imageSubscription;
   rclcpp::Subscription<apriltag_msgs::msg::AprilTagDetectionArray>::SharedPtr
       m_detectionSubscription;
+
+  std::mutex m_visualizerMutex;
 
   std::string m_systemId;
   std::string m_imageTransport;

@@ -25,9 +25,11 @@
 
 #include <builtin_interfaces/msg/time.hpp>
 #include <image_transport/image_transport.hpp>
+#include <rclcpp/callback_group.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
 #include <rclcpp/qos.hpp>
+#include <rclcpp/subscription_options.hpp>
 #include <rmw/qos_profiles.h>
 
 using namespace OASIS;
@@ -250,14 +252,21 @@ bool MonocularInertialSlamNode::Initialize()
 
   StartImageWorker();
 
+  m_imuCallbackGroup = m_node.create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  m_imageCallbackGroup = m_node.create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  rclcpp::SubscriptionOptions imuOptions;
+  imuOptions.callback_group = m_imuCallbackGroup;
   m_imuSubscriber = m_node.create_subscription<sensor_msgs::msg::Imu>(
       imuTopic, ReliableSensorQos(ORB_IMU_SUB_QOS_DEPTH),
       [this](const sensor_msgs::msg::Imu::ConstSharedPtr& msg)
       {
         if (msg)
           OnImu(*msg);
-      });
+      },
+      imuOptions);
 
+  rclcpp::SubscriptionOptions imageOptions;
+  imageOptions.callback_group = m_imageCallbackGroup;
   *m_imgSubscriber = image_transport::create_subscription(
       &m_node, imageTopic,
       [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg)
@@ -265,7 +274,7 @@ bool MonocularInertialSlamNode::Initialize()
         if (msg)
           OnImage(*msg);
       },
-      imageTransport, rclcpp::QoS{1}.get_rmw_qos_profile());
+      imageTransport, rclcpp::QoS{1}.get_rmw_qos_profile(), imageOptions);
 
   RCLCPP_INFO(*m_logger, "Started monocular inertial SLAM");
 
@@ -278,6 +287,8 @@ void MonocularInertialSlamNode::Deinitialize()
     m_imgSubscriber->shutdown();
 
   m_imuSubscriber.reset();
+  m_imageCallbackGroup.reset();
+  m_imuCallbackGroup.reset();
   StopImageWorker();
 
   {

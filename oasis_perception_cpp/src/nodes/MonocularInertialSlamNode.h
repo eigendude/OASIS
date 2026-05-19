@@ -18,6 +18,7 @@
 #include <thread>
 
 #include <image_transport/subscriber.hpp>
+#include <rclcpp/callback_group.hpp>
 #include <rclcpp/subscription.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/imu.hpp>
@@ -99,6 +100,8 @@ private:
 
   // ROS parameters
   std::unique_ptr<rclcpp::Logger> m_logger;
+  rclcpp::CallbackGroup::SharedPtr m_imageCallbackGroup;
+  rclcpp::CallbackGroup::SharedPtr m_imuCallbackGroup;
   std::unique_ptr<image_transport::Subscriber> m_imgSubscriber;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr m_imuSubscriber;
 

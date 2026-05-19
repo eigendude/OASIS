@@ -11,8 +11,10 @@
 #include <string>
 
 #include <image_transport/image_transport.hpp>
+#include <rclcpp/callback_group.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp/qos.hpp>
+#include <rclcpp/subscription_options.hpp>
 
 using apriltag_msgs::msg::AprilTagDetectionArray;
 using sensor_msgs::msg::Image;
@@ -79,6 +81,17 @@ bool AprilTagVizNode::Initialize()
   // Publishers
   *m_overlayPublisher = image_transport::create_publisher(&m_node, overlayTopic);
 
+  // Callback groups
+  m_imageCallbackGroup = m_node.create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  m_detectionsCallbackGroup =
+      m_node.create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+
+  rclcpp::SubscriptionOptions imageOptions;
+  imageOptions.callback_group = m_imageCallbackGroup;
+
+  rclcpp::SubscriptionOptions detectionsOptions;
+  detectionsOptions.callback_group = m_detectionsCallbackGroup;
+
   // Subscribers
   *m_imageSubscription = image_transport::create_subscription(
       &m_node, imageTopic,
@@ -87,10 +100,12 @@ bool AprilTagVizNode::Initialize()
         if (imageMsg)
           AprilTagVizNode::OnImage(*imageMsg);
       },
-      m_imageTransport, rclcpp::QoS{1}.get_rmw_qos_profile());
+      m_imageTransport, rclcpp::QoS{1}.get_rmw_qos_profile(), imageOptions);
   m_detectionSubscription = m_node.create_subscription<AprilTagDetectionArray>(
       detectionsTopic, rclcpp::QoS{1}, [this](const AprilTagDetectionArray::ConstSharedPtr& msg)
-      { AprilTagVizNode::OnDetections(msg); });
+      { AprilTagVizNode::OnDetections(msg); }, detectionsOptions);
+
+  RCLCPP_INFO(m_logger, "Callback groups: image and detections");
 
   return true;
 }
@@ -98,7 +113,9 @@ bool AprilTagVizNode::Initialize()
 void AprilTagVizNode::Deinitialize()
 {
   m_detectionSubscription.reset();
+  m_detectionsCallbackGroup.reset();
   m_imageSubscription->shutdown();
+  m_imageCallbackGroup.reset();
   m_overlayPublisher->shutdown();
 }
 
@@ -107,6 +124,7 @@ void AprilTagVizNode::OnImage(const Image& imageMsg)
   if (!m_overlayPublisher)
     return;
 
+  std::scoped_lock lock(m_visualizerMutex);
   sensor_msgs::msg::Image::SharedPtr output = m_visualizer.ProcessImage(imageMsg);
   if (output == nullptr)
     return;
@@ -116,5 +134,6 @@ void AprilTagVizNode::OnImage(const Image& imageMsg)
 
 void AprilTagVizNode::OnDetections(const AprilTagDetectionArray::ConstSharedPtr& msg)
 {
+  std::scoped_lock lock(m_visualizerMutex);
   m_visualizer.ProcessDetections(msg);
 }

@@ -24,6 +24,7 @@
 #include <image_transport/image_transport.hpp>
 #include <image_transport/subscriber_filter.hpp>
 #include <opencv2/core.hpp>
+#include <rclcpp/callback_group.hpp>
 #include <rclcpp/logger.hpp>
 #include <rclcpp/node.hpp>
 #include <rclcpp/subscription.hpp>
@@ -60,6 +61,11 @@ private:
 
   std::unique_ptr<image_transport::Publisher> m_mapImagePublisher;
   std::shared_ptr<image_transport::SubscriberFilter> m_imageSubscriber;
+  rclcpp::CallbackGroup::SharedPtr m_imageCallbackGroup;
+  rclcpp::CallbackGroup::SharedPtr m_poseCallbackGroup;
+  rclcpp::CallbackGroup::SharedPtr m_pointCloudCallbackGroup;
+  rclcpp::CallbackGroup::SharedPtr m_detectionsCallbackGroup;
+  rclcpp::CallbackGroup::SharedPtr m_cameraInfoCallbackGroup;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr m_poseSubscription;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr m_pointCloudSubscription;
   rclcpp::Subscription<apriltag_msgs::msg::AprilTagDetectionArray>::SharedPtr
@@ -70,6 +76,7 @@ private:
   SLAM::MapViewRenderer m_renderer;
   AprilTagVisualizer m_aprilTagVisualizer;
   std::optional<Eigen::Isometry3f> m_cameraFromWorldTransform;
+  std::mutex m_mapStateMutex;
 
   cv::Mat m_imageBuffer;
   cv::Mat m_outputBuffer;
