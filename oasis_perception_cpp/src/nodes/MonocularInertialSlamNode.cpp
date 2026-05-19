@@ -57,6 +57,8 @@ constexpr std::string_view SETTINGS_FILE_PARAMETER = "settings_file";
 constexpr std::string_view DEFAULT_SETTINGS_FILE = "";
 constexpr std::string_view POST_STALL_COOLOFF_MS_PARAMETER = "mono_inertial_post_stall_cooloff_ms";
 constexpr int64_t DEFAULT_POST_STALL_COOLOFF_MS = 750;
+constexpr std::string_view INIT_RETRY_BACKOFF_MS_PARAMETER = "mono_inertial_init_retry_backoff_ms";
+constexpr int64_t DEFAULT_INIT_RETRY_BACKOFF_MS = 1'000;
 constexpr std::size_t ORB_IMU_SUB_QOS_DEPTH = 512;
 constexpr int64_t MAX_IMAGE_STAMP_GAP_NS = 500'000'000;
 constexpr int64_t IMAGE_AHEAD_OF_IMU_WARN_NS = 500'000'000;
@@ -64,6 +66,7 @@ constexpr int64_t IMAGE_AHEAD_OF_IMU_RESET_NS = 2'000'000'000;
 constexpr int64_t MAX_PENDING_IMAGE_WINDOW_NS = 1'000'000'000;
 constexpr std::size_t MAX_PENDING_IMAGE_COUNT = 60;
 constexpr int IMU_READINESS_THROTTLE_MS = 5'000;
+constexpr int INIT_RETRY_LOG_THROTTLE_MS = 1'000;
 
 // Nanoseconds; one second of recent IMU history gates startup arming
 constexpr int64_t STARTUP_IMU_WINDOW_NS = 1'000'000'000;
@@ -138,6 +141,8 @@ MonocularInertialSlamNode::MonocularInertialSlamNode(rclcpp::Node& node)
                                         DEFAULT_SETTINGS_FILE.data());
   m_node.declare_parameter<int64_t>(POST_STALL_COOLOFF_MS_PARAMETER.data(),
                                     DEFAULT_POST_STALL_COOLOFF_MS);
+  m_node.declare_parameter<int64_t>(INIT_RETRY_BACKOFF_MS_PARAMETER.data(),
+                                    DEFAULT_INIT_RETRY_BACKOFF_MS);
 }
 
 MonocularInertialSlamNode::~MonocularInertialSlamNode() = default;
@@ -222,8 +227,25 @@ bool MonocularInertialSlamNode::Initialize()
   m_postStallCooloffNs = postStallCooloffMs * 1'000'000;
   RCLCPP_INFO(*m_logger, "Post-stall cooloff: %lldms", static_cast<long long>(postStallCooloffMs));
 
+  int64_t initRetryBackoffMs = DEFAULT_INIT_RETRY_BACKOFF_MS;
+  if (!m_node.get_parameter(INIT_RETRY_BACKOFF_MS_PARAMETER.data(), initRetryBackoffMs))
+    initRetryBackoffMs = DEFAULT_INIT_RETRY_BACKOFF_MS;
+
+  if (initRetryBackoffMs < 0)
+  {
+    RCLCPP_WARN(*m_logger, "Init retry backoff '%s' was negative, clamping to 0ms",
+                INIT_RETRY_BACKOFF_MS_PARAMETER.data());
+    initRetryBackoffMs = 0;
+  }
+
+  m_initRetryBackoffNs = initRetryBackoffMs * 1'000'000;
+  RCLCPP_INFO(*m_logger, "Init retry backoff: %lldms", static_cast<long long>(initRetryBackoffMs));
+
   m_monocularInertialSlam =
       std::make_unique<SLAM::MonocularInertialSlam>(m_node, pointCloudTopic, poseTopic);
+  m_monocularInertialSlam->SetPreStableInitRejectedCallback(
+      [this](const std::string& reason, int64_t imageStampNs)
+      { EnterInitRetryBackoff(reason, imageStampNs); });
   if (!m_monocularInertialSlam->Initialize(vocabularyFile, settingsFile))
   {
     RCLCPP_ERROR(*m_logger, "Failed to initialize monocular inertial SLAM");
@@ -243,8 +265,12 @@ bool MonocularInertialSlamNode::Initialize()
     m_postStallRecoveryBoundaryNs.reset();
     m_postStallRecoveryBoundaryWallNs.reset();
     m_lastPostStallImuStampNs.reset();
+    m_initRetryBoundaryNs.reset();
+    m_initRetryBoundaryWallNs.reset();
+    m_initRetryReason.clear();
     m_postStallImuSampleCount = 0;
     m_postStallRecoveryPending = false;
+    m_initRetryPending = false;
     m_stableInputPaused = false;
     m_startupArmed = false;
     m_initialTrackingDiagnosticPending = false;
@@ -303,8 +329,12 @@ void MonocularInertialSlamNode::Deinitialize()
     m_postStallRecoveryBoundaryNs.reset();
     m_postStallRecoveryBoundaryWallNs.reset();
     m_lastPostStallImuStampNs.reset();
+    m_initRetryBoundaryNs.reset();
+    m_initRetryBoundaryWallNs.reset();
+    m_initRetryReason.clear();
     m_postStallImuSampleCount = 0;
     m_postStallRecoveryPending = false;
+    m_initRetryPending = false;
     m_imageWorkerWake = false;
     m_stableInputPaused = false;
     m_startupArmed = false;
@@ -321,6 +351,7 @@ void MonocularInertialSlamNode::Deinitialize()
 
   if (m_monocularInertialSlam)
   {
+    m_monocularInertialSlam->SetPreStableInitRejectedCallback({});
     m_monocularInertialSlam->Deinitialize();
     m_monocularInertialSlam.reset();
   }
@@ -350,6 +381,9 @@ void MonocularInertialSlamNode::OnImage(const sensor_msgs::msg::Image& imageMsg)
                            static_cast<double>(*m_postStallRecoveryBoundaryNs) / 1'000'000'000.0);
       return;
     }
+
+    if (IsInitRetryImageTooOldLocked(imageStampNs))
+      return;
   }
 
   if (armingBoundaryNs && imageStampNs <= *armingBoundaryNs)
@@ -432,6 +466,26 @@ void MonocularInertialSlamNode::HandleUnarmedStartupImage(const sensor_msgs::msg
       return;
     }
 
+    if (IsInitRetryImageTooOldLocked(imageStampNs))
+      return;
+
+    if (m_initRetryPending && IsInitRetryBackoffActiveLocked())
+    {
+      m_pendingImages.clear();
+      m_lastImageStampNs.reset();
+      m_newestStartupImageStampNs.reset();
+      m_lastStartupImageStampNs.reset();
+      ResetStartupArmingCandidateLocked();
+
+      const int64_t elapsedNs =
+          m_initRetryBoundaryWallNs ? m_node.now().nanoseconds() - *m_initRetryBoundaryWallNs : 0;
+      const int64_t remainingNs = std::max<int64_t>(0, m_initRetryBackoffNs - elapsedNs);
+      RCLCPP_WARN_THROTTLE(*m_logger, *m_node.get_clock(), INIT_RETRY_LOG_THROTTLE_MS,
+                           "Init backoff: reason=%s wait=%lldms", m_initRetryReason.c_str(),
+                           static_cast<long long>((remainingNs + 999'999) / 1'000'000));
+      return;
+    }
+
     if (m_lastStartupImageStampNs && imageStampNs <= *m_lastStartupImageStampNs)
       ResetStartupArmingCandidateLocked();
     else
@@ -492,8 +546,12 @@ void MonocularInertialSlamNode::EnterStartupUnarmed()
     m_postStallRecoveryBoundaryNs.reset();
     m_postStallRecoveryBoundaryWallNs.reset();
     m_lastPostStallImuStampNs.reset();
+    m_initRetryBoundaryNs.reset();
+    m_initRetryBoundaryWallNs.reset();
+    m_initRetryReason.clear();
     m_postStallImuSampleCount = 0;
     m_postStallRecoveryPending = false;
+    m_initRetryPending = false;
     m_stableInputPaused = false;
     m_startupArmed = false;
     m_initialTrackingDiagnosticPending = false;
@@ -524,8 +582,12 @@ void MonocularInertialSlamNode::StartFreshEpochAfterImuStall(
     m_postStallRecoveryBoundaryNs.reset();
     m_postStallRecoveryBoundaryWallNs.reset();
     m_lastPostStallImuStampNs.reset();
+    m_initRetryBoundaryNs.reset();
+    m_initRetryBoundaryWallNs.reset();
+    m_initRetryReason.clear();
     m_postStallImuSampleCount = 0;
     m_postStallRecoveryPending = true;
+    m_initRetryPending = false;
     m_stableInputPaused = false;
     m_startupArmed = false;
     m_initialTrackingDiagnosticPending = false;
@@ -587,6 +649,53 @@ bool MonocularInertialSlamNode::IsPostStallCooloffActiveLocked() const
          m_node.now().nanoseconds() - *m_postStallRecoveryBoundaryWallNs < m_postStallCooloffNs;
 }
 
+void MonocularInertialSlamNode::EnterInitRetryBackoff(const std::string& reason,
+                                                      int64_t rejectedImageStampNs)
+{
+  if (!m_monocularInertialSlam)
+    return;
+
+  const SLAM::MonocularInertialSlam::ImuBufferStatus imuStatus =
+      m_monocularInertialSlam->GetImuBufferStatus();
+  const int64_t retryBoundaryNs =
+      imuStatus.newest_imu_stamp_ns ? *imuStatus.newest_imu_stamp_ns : rejectedImageStampNs;
+
+  m_monocularInertialSlam->DisarmStartup();
+
+  {
+    std::lock_guard<std::mutex> lock(m_pendingImageMutex);
+    m_pendingImages.clear();
+    m_lastImageStampNs.reset();
+    m_newestStartupImageStampNs.reset();
+    m_newestStartupImuStampNs = imuStatus.newest_imu_stamp_ns;
+    m_lastStartupImageStampNs.reset();
+    ResetStartupArmingCandidateLocked();
+    m_startupArmingBoundaryNs.reset();
+    m_initRetryBoundaryNs = retryBoundaryNs;
+    m_initRetryBoundaryWallNs = m_node.now().nanoseconds();
+    m_initRetryReason = reason;
+    m_initRetryPending = true;
+    m_stableInputPaused = false;
+    m_startupArmed = false;
+    m_initialTrackingDiagnosticPending = false;
+  }
+
+  RCLCPP_WARN_THROTTLE(*m_logger, *m_node.get_clock(), INIT_RETRY_LOG_THROTTLE_MS,
+                       "Init backoff: reason=%s wait=%lldms", reason.c_str(),
+                       static_cast<long long>(m_initRetryBackoffNs / 1'000'000));
+}
+
+bool MonocularInertialSlamNode::IsInitRetryBackoffActiveLocked() const
+{
+  return m_initRetryPending && m_initRetryBoundaryWallNs &&
+         m_node.now().nanoseconds() - *m_initRetryBoundaryWallNs < m_initRetryBackoffNs;
+}
+
+bool MonocularInertialSlamNode::IsInitRetryImageTooOldLocked(int64_t imageStampNs) const
+{
+  return m_initRetryPending && m_initRetryBoundaryNs && imageStampNs <= *m_initRetryBoundaryNs;
+}
+
 bool MonocularInertialSlamNode::TryArmStartup()
 {
   if (!m_monocularInertialSlam)
@@ -594,8 +703,12 @@ bool MonocularInertialSlamNode::TryArmStartup()
 
   std::optional<int64_t> newestImageStampNs;
   std::optional<int64_t> recoveryBoundaryNs;
+  std::optional<int64_t> initRetryBoundaryNs;
+  std::string initRetryReason;
   bool recoveryPending = false;
   bool recoveryCooloffActive = false;
+  bool initRetryPending = false;
+  bool initRetryBackoffActive = false;
   std::size_t recoveryImuSampleCount = 0;
   {
     std::lock_guard<std::mutex> lock(m_pendingImageMutex);
@@ -607,6 +720,10 @@ bool MonocularInertialSlamNode::TryArmStartup()
     recoveryPending = m_postStallRecoveryPending;
     recoveryCooloffActive = IsPostStallCooloffActiveLocked();
     recoveryImuSampleCount = m_postStallImuSampleCount;
+    initRetryBoundaryNs = m_initRetryBoundaryNs;
+    initRetryReason = m_initRetryReason;
+    initRetryPending = m_initRetryPending;
+    initRetryBackoffActive = IsInitRetryBackoffActiveLocked();
   }
 
   const SLAM::MonocularInertialSlam::ImuBufferStatus imuStatus =
@@ -637,8 +754,17 @@ bool MonocularInertialSlamNode::TryArmStartup()
   const bool recoveryReady =
       !freshEpochRecovery || (recoveryBoundaryReady && !recoveryCooloffActive &&
                               recoveryImageReady && recoveryImuSamplesReady && recoveryWindowReady);
+  const bool initRetryImageReady =
+      !initRetryPending ||
+      (newestImageStampNs && initRetryBoundaryNs && *newestImageStampNs > *initRetryBoundaryNs);
+  const bool initRetryWindowReady =
+      !initRetryPending ||
+      (initRetryBoundaryNs && imuWindowStartNs && *imuWindowStartNs >= *initRetryBoundaryNs);
+  const bool initRetryReady =
+      !initRetryPending || (!initRetryBackoffActive && initRetryImageReady && initRetryWindowReady);
 
-  if (!imageReady || !imuStatus.has_received_imu || !imuReady || !lagReady || !recoveryReady)
+  if (!imageReady || !imuStatus.has_received_imu || !imuReady || !lagReady || !recoveryReady ||
+      !initRetryReady)
   {
     {
       std::lock_guard<std::mutex> lock(m_pendingImageMutex);
@@ -646,7 +772,13 @@ bool MonocularInertialSlamNode::TryArmStartup()
     }
 
     const char* reason = "hysteresis";
-    if (!newestImageStampNs)
+    if (initRetryBackoffActive)
+      reason = "init_backoff";
+    else if (initRetryPending && !initRetryImageReady)
+      reason = "init_backoff_image";
+    else if (initRetryPending && !initRetryWindowReady)
+      reason = "init_backoff_window";
+    else if (!newestImageStampNs)
       reason = "image";
     else if (!imuStatus.has_received_imu || !imuStatus.newest_imu_stamp_ns)
       reason = "imu";
@@ -689,6 +821,7 @@ bool MonocularInertialSlamNode::TryArmStartup()
   }
 
   bool armedNow = false;
+  bool initRetryArmed = false;
   const int64_t armingWallNs = m_node.now().nanoseconds();
   {
     std::lock_guard<std::mutex> lock(m_pendingImageMutex);
@@ -703,8 +836,13 @@ bool MonocularInertialSlamNode::TryArmStartup()
       m_postStallRecoveryBoundaryNs.reset();
       m_postStallRecoveryBoundaryWallNs.reset();
       m_lastPostStallImuStampNs.reset();
+      initRetryArmed = m_initRetryPending;
+      m_initRetryBoundaryNs.reset();
+      m_initRetryBoundaryWallNs.reset();
+      m_initRetryReason.clear();
       m_postStallImuSampleCount = 0;
       m_postStallRecoveryPending = false;
+      m_initRetryPending = false;
       m_stableInputPaused = false;
       m_startupArmed = true;
       m_lastTrackingDiagnosticWallNs = armingWallNs;
@@ -718,7 +856,14 @@ bool MonocularInertialSlamNode::TryArmStartup()
 
   if (armedNow)
   {
-    if (freshEpochRecovery)
+    if (initRetryArmed)
+    {
+      RCLCPP_INFO(*m_logger, "SLAM armed: init_retry=1 reason=%s img=%s imu=%s lag=%.0fms",
+                  initRetryReason.c_str(), FormatTimestamp(newestImageStampNs).c_str(),
+                  FormatTimestamp(imuStatus.newest_imu_stamp_ns).c_str(),
+                  static_cast<double>(lagNs) / 1.0e6);
+    }
+    else if (freshEpochRecovery)
     {
       RCLCPP_INFO(*m_logger, "SLAM armed: fresh_epoch=1 img=%s imu=%s lag=%.0fms",
                   FormatTimestamp(newestImageStampNs).c_str(),
@@ -850,6 +995,12 @@ void MonocularInertialSlamNode::PrunePendingImagesLocked()
                          "Drop old image after IMU recovery: img=%.3f boundary=%.3f",
                          static_cast<double>(pendingImageStampNs) / 1'000'000'000.0,
                          static_cast<double>(*m_postStallRecoveryBoundaryNs) / 1'000'000'000.0);
+    m_pendingImages.pop_front();
+  }
+
+  while (m_initRetryBoundaryNs && !m_pendingImages.empty() &&
+         ImageStampNs(m_pendingImages.front()) <= *m_initRetryBoundaryNs)
+  {
     m_pendingImages.pop_front();
   }
 

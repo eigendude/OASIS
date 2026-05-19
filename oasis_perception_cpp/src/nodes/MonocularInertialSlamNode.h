@@ -15,6 +15,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <string>
 #include <thread>
 
 #include <image_transport/subscriber.hpp>
@@ -62,6 +63,9 @@ private:
   void RecordPostStallRecoveryImu(const SLAM::MonocularInertialSlam::ImuBufferStatus& imuStatus);
   bool IsPostStallImageTooOldLocked(int64_t imageStampNs) const;
   bool IsPostStallCooloffActiveLocked() const;
+  void EnterInitRetryBackoff(const std::string& reason, int64_t rejectedImageStampNs);
+  bool IsInitRetryBackoffActiveLocked() const;
+  bool IsInitRetryImageTooOldLocked(int64_t imageStampNs) const;
   bool TryArmStartup();
   bool IsStartupArmed() const;
   bool HandleImageDiscontinuity(int64_t imageStampNs);
@@ -106,6 +110,7 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr m_imuSubscriber;
 
   int64_t m_postStallCooloffNs = 0;
+  int64_t m_initRetryBackoffNs = 0;
 
   // SLAM parameters
   std::unique_ptr<SLAM::MonocularInertialSlam> m_monocularInertialSlam;
@@ -123,8 +128,12 @@ private:
   std::optional<int64_t> m_postStallRecoveryBoundaryNs;
   std::optional<int64_t> m_postStallRecoveryBoundaryWallNs;
   std::optional<int64_t> m_lastPostStallImuStampNs;
+  std::optional<int64_t> m_initRetryBoundaryNs;
+  std::optional<int64_t> m_initRetryBoundaryWallNs;
+  std::string m_initRetryReason;
   std::size_t m_postStallImuSampleCount = 0;
   bool m_postStallRecoveryPending = false;
+  bool m_initRetryPending = false;
   std::thread m_imageWorkerThread;
   bool m_imageWorkerStop = false;
   bool m_imageWorkerWake = false;

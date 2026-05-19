@@ -13,6 +13,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -37,6 +38,8 @@ namespace SLAM
 class MonocularInertialSlam : public MonocularSlamBase
 {
 public:
+  using InitRejectedCallback = std::function<void(const std::string&, int64_t)>;
+
   struct ImuBufferStatus
   {
     // True after at least one valid IMU sample has been accepted
@@ -87,6 +90,7 @@ public:
                                                       int64_t maxGapNs) const;
   void ArmStartup(int64_t imuWindowStartNs);
   void DisarmStartup();
+  void SetPreStableInitRejectedCallback(InitRejectedCallback callback);
   bool HasImuCoverageForImageStamp(int64_t imageStampNs) const;
   bool HasContinuousImuCoverageForImageStamp(int64_t imageStampNs) const;
   void NotifySensorStreamDiscontinuity(const std::string& reason,
@@ -138,7 +142,7 @@ private:
   bool HasContinuousImuCoverageForImageStampLocked(int64_t imageStampNs) const;
   TrackedImageImuBatch TakeImuSamplesForTrackedImage(int64_t imageStampNs);
   void CommitTrackedImageStamp(int64_t imageStampNs);
-  void LogInitializationStatus(ORB_SLAM3::System& slam,
+  bool LogInitializationStatus(ORB_SLAM3::System& slam,
                                int64_t imageStampNs,
                                int trackingState,
                                std::size_t trackedPoints,
@@ -160,6 +164,7 @@ private:
   std::optional<MonoInertialInitializationStatus> m_lastInitializationStatus;
   std::optional<ORB_SLAM3::TrackingFailureReason> m_lastInitializationFailureReason;
   std::optional<int> m_lastLoggedTrackingState;
+  InitRejectedCallback m_preStableInitRejectedCallback;
   bool m_hasStableSlamMap = false;
   bool m_startupArmed = false;
   bool m_loggedEmptyImuMeasurementsError = false;

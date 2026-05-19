@@ -18,6 +18,7 @@
 #include <mutex>
 #include <optional>
 #include <sstream>
+#include <string_view>
 #include <utility>
 
 #include <geometry_msgs/msg/vector3.hpp>
@@ -44,6 +45,12 @@ constexpr int IMU_DIAGNOSTIC_THROTTLE_MS = 5'000;
 bool IsFiniteMatrix4(const Eigen::Matrix4f& matrix)
 {
   return matrix.allFinite();
+}
+
+bool IsPreStableInitRetryReason(std::string_view reason)
+{
+  return reason == "recently_initialized_imu_tracking_lost" || reason == "ref_kf" ||
+         reason == "not_enough_motion" || reason == "timestamp_jump_before_init";
 }
 
 bool IsFiniteVector3(const geometry_msgs::msg::Vector3& vector)
@@ -303,6 +310,13 @@ void MonocularInertialSlam::DisarmStartup()
   ResetImageProcessingState();
 }
 
+void MonocularInertialSlam::SetPreStableInitRejectedCallback(InitRejectedCallback callback)
+{
+  std::lock_guard<std::mutex> lock(m_imuMutex);
+
+  m_preStableInitRejectedCallback = std::move(callback);
+}
+
 bool MonocularInertialSlam::HasImuCoverageForImageStamp(int64_t imageStampNs) const
 {
   std::lock_guard<std::mutex> lock(m_imuMutex);
@@ -411,8 +425,10 @@ std::optional<Eigen::Isometry3f> MonocularInertialSlam::TrackFrame(const cv::Mat
     if (atlas != nullptr)
       mapPoints = atlas->GetAllMapPoints();
 
-    LogInitializationStatus(*slam, timestampNs, trackingState, trackedMapPoints.size(),
-                            mapPoints.size());
+    const bool preStableInitRejected = LogInitializationStatus(
+        *slam, timestampNs, trackingState, trackedMapPoints.size(), mapPoints.size());
+    if (preStableInitRejected)
+      return std::nullopt;
 
     if (!IsFiniteMatrix4(poseMatrix))
     {
@@ -733,7 +749,7 @@ void MonocularInertialSlam::LogTrackingSummary(int trackingState,
               mapPoints);
 }
 
-void MonocularInertialSlam::LogInitializationStatus(ORB_SLAM3::System& slam,
+bool MonocularInertialSlam::LogInitializationStatus(ORB_SLAM3::System& slam,
                                                     int64_t imageStampNs,
                                                     int trackingState,
                                                     std::size_t trackedPoints,
@@ -765,6 +781,10 @@ void MonocularInertialSlam::LogInitializationStatus(ORB_SLAM3::System& slam,
     status = MonoInertialInitializationStatus::VISUAL_CANDIDATE;
 
   bool isTransition = false;
+  const bool preStableInitRejected = !imuInitialized &&
+                                     status == MonoInertialInitializationStatus::REJECTED &&
+                                     IsPreStableInitRetryReason(failureReasonName);
+  InitRejectedCallback preStableInitRejectedCallback;
   {
     std::lock_guard<std::mutex> lock(m_imuMutex);
     isTransition = !m_lastInitializationStatus || *m_lastInitializationStatus != status ||
@@ -772,6 +792,13 @@ void MonocularInertialSlam::LogInitializationStatus(ORB_SLAM3::System& slam,
     m_lastInitializationStatus = status;
     m_lastInitializationFailureReason = failureReason;
     m_hasStableSlamMap = status == MonoInertialInitializationStatus::INERTIAL_INITIALIZED;
+    if (preStableInitRejected)
+      preStableInitRejectedCallback = m_preStableInitRejectedCallback;
+  }
+
+  if (preStableInitRejectedCallback)
+  {
+    preStableInitRejectedCallback(failureReasonName, imageStampNs);
   }
 
   if (isTransition)
@@ -800,7 +827,7 @@ void MonocularInertialSlam::LogInitializationStatus(ORB_SLAM3::System& slam,
                      imuInitialized ? 1 : 0, badImu ? 1 : 0);
         break;
     }
-    return;
+    return preStableInitRejected;
   }
 
   const char* statusName = "unknown";
@@ -826,6 +853,7 @@ void MonocularInertialSlam::LogInitializationStatus(ORB_SLAM3::System& slam,
                         "Init status: %s reason=%s t=%.3f state=%d pts=%zu map=%zu imu=%d bad=%d",
                         statusName, failureReasonName, imageTimestamp, trackingState, trackedPoints,
                         mapPoints, imuInitialized ? 1 : 0, badImu ? 1 : 0);
+  return preStableInitRejected;
 }
 
 void MonocularInertialSlam::WarnAboutImuIntervalGaps(
