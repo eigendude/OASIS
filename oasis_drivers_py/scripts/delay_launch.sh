@@ -49,23 +49,57 @@ fi
 NETWORK_CHECK_INTERVAL="5"
 
 network_ready() {
+  local default_route
   local gateway
+  local route_target
 
-  if [[ -z "$(ip -o addr show scope global up | head -n 1)" ]]; then
+  if ! ip -o addr show scope global up 2>/dev/null | grep -q .; then
+    echo "No global UP address found." >&2
     return 1
   fi
 
-  gateway="$(ip route show default 2>/dev/null | awk '/default/ {print $3; exit}')"
-  if [[ -z "${gateway}" ]]; then
+  default_route="$(ip route show default 2>/dev/null | head -n 1)"
+  if [[ -z "${default_route}" ]]; then
+    echo "No default route found." >&2
     return 1
   fi
 
-  ping -c 1 -W 1 "${gateway}" >/dev/null 2>&1
+  gateway="$(
+    awk '{
+      for (i = 1; i <= NF; i++) {
+        if ($i == "via") {
+          print $(i + 1)
+          exit
+        }
+      }
+    }' <<< "${default_route}"
+  )"
+
+  if [[ -n "${gateway}" ]]; then
+    if ip route get "${gateway}" >/dev/null 2>&1; then
+      return 0
+    fi
+  fi
+
+  route_target="1.1.1.1"
+
+  if ! ip route get "${route_target}" >/dev/null 2>&1; then
+    if [[ -n "${gateway}" ]]; then
+      echo "Route lookup failed for ${gateway} and ${route_target}." >&2
+    else
+      echo "Route lookup failed for ${route_target}." >&2
+    fi
+    return 1
+  fi
 }
 
-echo "Checking for network readiness (required for Zenoh)..."
-until network_ready; do
-  echo "Network not ready yet. Waiting ${NETWORK_CHECK_INTERVAL} seconds..."
-  sleep "${NETWORK_CHECK_INTERVAL}"
-done
-echo "Network ready."
+if [[ "${OASIS_SKIP_NETWORK_READY_CHECK:-0}" == "1" ]]; then
+  echo "Skipping network readiness check."
+else
+  echo "Checking for network readiness (required for Zenoh)..."
+  until network_ready; do
+    echo "Network not ready yet. Waiting ${NETWORK_CHECK_INTERVAL} seconds..."
+    sleep "${NETWORK_CHECK_INTERVAL}"
+  done
+  echo "Network ready."
+fi
