@@ -103,14 +103,16 @@ bool Bno086Gpio::IsAssertedLow() const
 }
 
 Bno086Gpio::WaitResult Bno086Gpio::WaitForAssertedLow(
-    int timeout_ms, std::chrono::steady_clock::time_point& asserted_at) const
+    int timeout_ms, AssertedLowTimestamp& asserted_timestamp) const
 {
   if (!IsOpen())
     return WaitResult::Error;
 
   if (IsAssertedLow())
   {
-    asserted_at = std::chrono::steady_clock::now();
+    asserted_timestamp.asserted_at = std::chrono::steady_clock::now();
+    asserted_timestamp.has_gpio_event_timestamp = false;
+    asserted_timestamp.gpio_event_timestamp_ns = 0;
     return WaitResult::Asserted;
   }
 
@@ -153,12 +155,16 @@ Bno086Gpio::WaitResult Bno086Gpio::WaitForAssertedLow(
   {
     if (latestEventTimestampNs != 0)
     {
-      asserted_at =
+      asserted_timestamp.asserted_at =
           std::chrono::steady_clock::time_point(std::chrono::nanoseconds(latestEventTimestampNs));
+      asserted_timestamp.has_gpio_event_timestamp = true;
+      asserted_timestamp.gpio_event_timestamp_ns = latestEventTimestampNs;
     }
     else
     {
-      asserted_at = std::chrono::steady_clock::now();
+      asserted_timestamp.asserted_at = std::chrono::steady_clock::now();
+      asserted_timestamp.has_gpio_event_timestamp = false;
+      asserted_timestamp.gpio_event_timestamp_ns = 0;
     }
     return WaitResult::Asserted;
   }

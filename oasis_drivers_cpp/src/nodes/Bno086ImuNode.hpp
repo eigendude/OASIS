@@ -16,6 +16,7 @@
 #include "imu/bno086/core/Bno086Sh2Timestamp.hpp"
 #include "imu/bno086/diagnostics/Bno086DrainHealth.hpp"
 #include "imu/bno086/diagnostics/Bno086RateHealth.hpp"
+#include "imu/bno086/gpio/Bno086Gpio.hpp"
 #include "imu/bno086/ros/Bno086NodeParams.hpp"
 #include "imu/bno086/sh2/Bno086Reports.hpp"
 
@@ -38,7 +39,6 @@
 namespace OASIS::IMU::BNO086
 {
 class Bno086Transport;
-class Bno086Gpio;
 class Bno086Shtp;
 } // namespace OASIS::IMU::BNO086
 
@@ -76,12 +76,28 @@ public:
   void Deinitialize();
 
 private:
+  struct SampleTiming
+  {
+    bool has_timebase_reference{false};
+    bool used_missing_timebase_fallback{false};
+    std::int32_t timebase_delta_ticks{0};
+    std::uint16_t delay_ticks{0};
+    int64_t interrupt_stamp_ns{0};
+  };
+
   struct SampleState
   {
     bool has_sample{false};
     rclcpp::Time stamp{0, 0, RCL_ROS_TIME};
     std::uint8_t sequence{0};
     std::uint8_t accuracy{0};
+    SampleTiming timing{};
+  };
+
+  struct EventStamp
+  {
+    rclcpp::Time stamp{0, 0, RCL_ROS_TIME};
+    SampleTiming timing{};
   };
 
   struct CoreFrameSignature
@@ -103,9 +119,9 @@ private:
     SampleState imu_gravity{};
     SampleState gravity{};
     std::optional<CoreFrameSignature> last_published_core_signature;
-    std::optional<int64_t> last_published_imu_stamp_ns;
-    std::optional<int64_t> last_published_imu_gravity_stamp_ns;
-    std::optional<int64_t> last_published_gravity_stamp_ns;
+    OASIS::IMU::BNO086::Bno086OutputStampGate imu_stamp_gate;
+    OASIS::IMU::BNO086::Bno086OutputStampGate imu_gravity_stamp_gate;
+    OASIS::IMU::BNO086::Bno086OutputStampGate gravity_stamp_gate;
   };
 
   enum class ImuGravityGateReason
@@ -129,6 +145,14 @@ private:
     std::uint64_t published{0};
   };
 
+  struct Bno086TimingDiagnosticCounters
+  {
+    std::uint64_t duplicate_stamp{0};
+    std::uint64_t backward_stamp{0};
+    std::uint64_t missing_timebase_fallback{0};
+    std::uint64_t sequence_gap{0};
+  };
+
   struct Bno086DiagnosticsState
   {
     OASIS::IMU::BNO086::Bno086RateHealth rate_health;
@@ -142,6 +166,16 @@ private:
     OASIS::IMU::BNO086::Bno086ReportSequenceDiagnostics sequence_diagnostics;
     std::uint64_t duplicate_sequence_count{0};
     std::uint64_t sequence_gap_count{0};
+    Bno086TimingDiagnosticCounters timing_counters;
+    Bno086TimingDiagnosticCounters last_logged_timing_counters;
+  };
+
+  struct Bno086GpioTimestampLogState
+  {
+    std::uint32_t logged_samples{0};
+    bool warned_bad_basis{false};
+    bool use_gpio_event_timestamps{true};
+    std::optional<double> last_difference_ms;
   };
 
   struct Bno086StartupLogState
@@ -172,11 +206,18 @@ private:
   OASIS::IMU::BNO086::Bno086ImuGravityAccelSample LatestImuGravityAccelSample() const;
   CoreFrameSignature LatestCoreSignature() const;
   rclcpp::Time LatestCoreStamp() const;
-  rclcpp::Time ComputeEventStamp(const OASIS::IMU::BNO086::SensorEvent& event,
-                                 const rclcpp::Time& interrupt_stamp);
+  EventStamp ComputeEventStamp(const OASIS::IMU::BNO086::SensorEvent& event,
+                               const rclcpp::Time& interrupt_stamp);
   void RecordSequenceDiagnostics(const OASIS::IMU::BNO086::SensorEvent& event);
+  void MaybeLogGpioTimestampBasis(
+      const OASIS::IMU::BNO086::Bno086Gpio::AssertedLowTimestamp& asserted_timestamp,
+      const std::chrono::steady_clock::time_point& now_steady);
+  void LogStampDrop(const char* topic,
+                    const OASIS::IMU::BNO086::SensorEvent& event,
+                    const OASIS::IMU::BNO086::Bno086OutputStampGateResult& gate_result,
+                    const SampleTiming& timing);
 
-  void ApplyEvent(const OASIS::IMU::BNO086::SensorEvent& event, const rclcpp::Time& sample_stamp);
+  void ApplyEvent(const OASIS::IMU::BNO086::SensorEvent& event, const EventStamp& event_stamp);
   void MaybeLogFeatureResponses();
   void MaybeLogFeatureSummary();
   void LogFeatureSummary() const;
@@ -190,6 +231,7 @@ private:
   void RecordImuGravityGateSkip(ImuGravityGateReason reason);
   void RecordImuGravityGatePublished();
   ImuGravityGateCounters ImuGravityGateDelta() const;
+  Bno086TimingDiagnosticCounters TimingDiagnosticDelta() const;
   const char* DominantImuGravityGateReason(const ImuGravityGateCounters& counters) const;
   bool IsImuGravitySampleValid(const sensor_msgs::msg::Imu& message,
                                std::string& invalid_reason) const;
@@ -231,5 +273,6 @@ private:
   Bno086DiagnosticsState m_diag;
   Bno086StartupLogState m_startup;
   Bno086CovarianceLogState m_covariance_log;
+  Bno086GpioTimestampLogState m_gpio_timestamp_log;
 };
 } // namespace OASIS::ROS

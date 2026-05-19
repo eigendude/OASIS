@@ -35,16 +35,28 @@ Bno086Sh2TimestampResult ComputeBno086Sh2Timestamp(const Bno086Sh2TimestampInput
   return result;
 }
 
-Bno086OutputStampGateResult Bno086OutputStampGate::Check(int64_t stamp_ns)
+Bno086OutputStampGateResult Bno086OutputStampGate::Preview(int64_t stamp_ns) const
 {
   Bno086OutputStampGateResult result;
+  result.current_stamp_ns = stamp_ns;
 
   if (m_lastStampNs.has_value())
   {
-    result.duplicate_stamp = stamp_ns == *m_lastStampNs;
-    result.nonmonotonic_stamp = stamp_ns < *m_lastStampNs;
-    result.should_publish = stamp_ns > *m_lastStampNs;
+    result.has_previous_stamp = true;
+    result.previous_stamp_ns = *m_lastStampNs;
+    result.delta_ns = stamp_ns - *m_lastStampNs;
+    result.duplicate_stamp = result.delta_ns == 0;
+    result.backward_stamp = result.delta_ns < 0;
+    result.nonmonotonic_stamp = result.backward_stamp;
+    result.should_publish = result.delta_ns > 0;
   }
+
+  return result;
+}
+
+Bno086OutputStampGateResult Bno086OutputStampGate::Check(int64_t stamp_ns)
+{
+  Bno086OutputStampGateResult result = Preview(stamp_ns);
 
   if (result.should_publish)
     m_lastStampNs = stamp_ns;

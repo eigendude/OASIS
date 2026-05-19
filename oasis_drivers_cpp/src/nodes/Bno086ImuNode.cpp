@@ -60,7 +60,12 @@ constexpr double PI_RAD = 3.14159265358979323846;
 constexpr const char* ORIENTATION_REPORT_SOURCE = "rotation_vector";
 constexpr int ORIENTATION_COVARIANCE_LOG_THROTTLE_MS = 5'000;
 constexpr int IMU_GRAVITY_SAMPLE_WARN_THROTTLE_MS = 5'000;
+constexpr int STAMP_DROP_LOG_THROTTLE_MS = 2'000;
 constexpr double MIN_HEALTHY_RATE_FRACTION = 0.5;
+constexpr std::uint32_t GPIO_TIMESTAMP_DEBUG_SAMPLE_COUNT = 5;
+constexpr double GPIO_TIMESTAMP_MIN_DIFF_MS = -1.0;
+constexpr double GPIO_TIMESTAMP_MAX_ABS_DIFF_MS = 1'000.0;
+constexpr double GPIO_TIMESTAMP_MAX_DIFF_STEP_MS = 100.0;
 
 // QoS parameters
 //
@@ -84,6 +89,14 @@ double VectorMagnitude(double x, double y, double z)
 }
 
 void AppendImuGravityCounter(std::ostringstream& stream, const char* label, std::uint64_t count)
+{
+  if (count == 0)
+    return;
+
+  stream << " " << label << "=" << count;
+}
+
+void AppendTimingCounter(std::ostringstream& stream, const char* label, std::uint64_t count)
 {
   if (count == 0)
     return;
@@ -185,9 +198,9 @@ bool Bno086ImuNode::Initialize()
 {
   // Initialize state
   m_stream.last_published_core_signature.reset();
-  m_stream.last_published_imu_stamp_ns.reset();
-  m_stream.last_published_imu_gravity_stamp_ns.reset();
-  m_stream.last_published_gravity_stamp_ns.reset();
+  m_stream.imu_stamp_gate.Reset();
+  m_stream.imu_gravity_stamp_gate.Reset();
+  m_stream.gravity_stamp_gate.Reset();
   m_diag.drain_health = Bno086DrainHealth{};
   m_diag.rate_health = Bno086RateHealth{};
   m_diag.imu_gravity_gate_counters = ImuGravityGateCounters{};
@@ -196,6 +209,9 @@ bool Bno086ImuNode::Initialize()
   m_diag.sequence_diagnostics.Reset();
   m_diag.duplicate_sequence_count = 0;
   m_diag.sequence_gap_count = 0;
+  m_diag.timing_counters = Bno086TimingDiagnosticCounters{};
+  m_diag.last_logged_timing_counters = Bno086TimingDiagnosticCounters{};
+  m_gpio_timestamp_log = Bno086GpioTimestampLogState{};
 
   // Initialize ROS publishers
   m_imuPublisher =
@@ -231,9 +247,9 @@ void Bno086ImuNode::InterruptLoop()
 {
   while (m_running.load() && rclcpp::ok())
   {
-    std::chrono::steady_clock::time_point interruptSteadyAt;
+    Bno086Gpio::AssertedLowTimestamp interruptTimestamp;
     const Bno086Gpio::WaitResult waitResult =
-        m_interruptGpio->WaitForAssertedLow(INTERRUPT_WAIT_TIMEOUT_MS, interruptSteadyAt);
+        m_interruptGpio->WaitForAssertedLow(INTERRUPT_WAIT_TIMEOUT_MS, interruptTimestamp);
 
     if (waitResult == Bno086Gpio::WaitResult::Timeout)
       continue;
@@ -247,6 +263,13 @@ void Bno086ImuNode::InterruptLoop()
 
     const auto nowSteady = std::chrono::steady_clock::now();
     const rclcpp::Time nowRos = get_clock()->now();
+    MaybeLogGpioTimestampBasis(interruptTimestamp, nowSteady);
+    std::chrono::steady_clock::time_point interruptSteadyAt = interruptTimestamp.asserted_at;
+    if (interruptTimestamp.has_gpio_event_timestamp &&
+        !m_gpio_timestamp_log.use_gpio_event_timestamps)
+    {
+      interruptSteadyAt = nowSteady;
+    }
     const auto interruptDeltaNs =
         std::chrono::duration_cast<std::chrono::nanoseconds>(nowSteady - interruptSteadyAt).count();
     const rclcpp::Time interruptRosAt = nowRos - rclcpp::Duration(0, interruptDeltaNs);
@@ -428,8 +451,7 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
 
     if (pollResult.status == Bno086Shtp::PollStatus::SensorEvent && pollResult.event.has_value())
     {
-      const rclcpp::Time normalizedEventStamp =
-          ComputeEventStamp(*pollResult.event, interruptStamp);
+      const EventStamp normalizedEventStamp = ComputeEventStamp(*pollResult.event, interruptStamp);
       RecordSequenceDiagnostics(*pollResult.event);
       m_diag.rate_health.CountDecodedReport(pollResult.event->report_id);
       ApplyEvent(*pollResult.event, normalizedEventStamp);
@@ -578,16 +600,15 @@ void Bno086ImuNode::MaybePublishOnLinearAcceleration(const SensorEvent& event)
 
   const rclcpp::Time publishStamp = LatestCoreStamp();
   const int64_t publishStampNs = publishStamp.nanoseconds();
-  if (m_stream.last_published_imu_stamp_ns.has_value() &&
-      publishStampNs <= *m_stream.last_published_imu_stamp_ns)
+  const Bno086OutputStampGateResult stampGate = m_stream.imu_stamp_gate.Check(publishStampNs);
+  if (!stampGate.should_publish)
   {
-    RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000, "BNO dropped nonmonotonic imu stamp");
+    LogStampDrop(IMU_TOPIC, event, stampGate, m_stream.linear_accel.timing);
     MaybeLogImuGravityDiagnostics();
     return;
   }
 
   PublishLatestFrame(publishStamp);
-  m_stream.last_published_imu_stamp_ns = publishStampNs;
   m_stream.last_published_core_signature = signature;
   m_diag.rate_health.CountImuPublished();
 }
@@ -618,20 +639,20 @@ void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& ev
     return;
   }
 
-  const int64_t orientationStampNs = m_stream.orientation.stamp.nanoseconds();
-  if (m_stream.last_published_imu_gravity_stamp_ns.has_value() &&
-      orientationStampNs <= *m_stream.last_published_imu_gravity_stamp_ns)
+  if (!m_imuGravityPublisher)
   {
-    RecordImuGravityGateSkip(ImuGravityGateReason::NonMonotonicStamp);
-    RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
-                          "BNO dropped nonmonotonic imu_gravity stamp");
+    RecordImuGravityGateSkip(ImuGravityGateReason::PublisherNotReady);
     MaybeLogImuGravityDiagnostics();
     return;
   }
 
-  if (!m_imuGravityPublisher)
+  const int64_t orientationStampNs = m_stream.orientation.stamp.nanoseconds();
+  const Bno086OutputStampGateResult stampGate =
+      m_stream.imu_gravity_stamp_gate.Preview(orientationStampNs);
+  if (!stampGate.should_publish)
   {
-    RecordImuGravityGateSkip(ImuGravityGateReason::PublisherNotReady);
+    RecordImuGravityGateSkip(ImuGravityGateReason::NonMonotonicStamp);
+    LogStampDrop(IMU_GRAVITY_TOPIC, event, stampGate, m_stream.orientation.timing);
     MaybeLogImuGravityDiagnostics();
     return;
   }
@@ -659,7 +680,7 @@ void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& ev
   }
 
   m_imuGravityPublisher->publish(imuGravityMsg);
-  m_stream.last_published_imu_gravity_stamp_ns = orientationStampNs;
+  (void)m_stream.imu_gravity_stamp_gate.Check(orientationStampNs);
   m_diag.rate_health.CountImuGravityPublished();
   RecordImuGravityGatePublished();
   MaybeLogImuGravityDiagnostics();
@@ -677,11 +698,10 @@ void Bno086ImuNode::MaybePublishGravityOnGravityReport(const SensorEvent& event)
     return;
 
   const int64_t gravityStampNs = m_stream.gravity.stamp.nanoseconds();
-  if (m_stream.last_published_gravity_stamp_ns.has_value() &&
-      gravityStampNs <= *m_stream.last_published_gravity_stamp_ns)
+  const Bno086OutputStampGateResult stampGate = m_stream.gravity_stamp_gate.Check(gravityStampNs);
+  if (!stampGate.should_publish)
   {
-    RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
-                          "BNO dropped nonmonotonic gravity stamp");
+    LogStampDrop(GRAVITY_TOPIC, event, stampGate, m_stream.gravity.timing);
     return;
   }
 
@@ -690,7 +710,6 @@ void Bno086ImuNode::MaybePublishGravityOnGravityReport(const SensorEvent& event)
   const geometry_msgs::msg::AccelWithCovarianceStamped gravityMsg =
       BuildBno086GravityMessage(messageConfig, m_stream.latest_frame, m_stream.gravity.stamp);
   m_gravityPublisher->publish(gravityMsg);
-  m_stream.last_published_gravity_stamp_ns = gravityStampNs;
 }
 
 void Bno086ImuNode::PublishLatestFrame(const rclcpp::Time& stamp)
@@ -812,6 +831,7 @@ void Bno086ImuNode::MaybeEmitImuGravityDiagnosticsLog(const Bno086RateSnapshot& 
   const bool imuGravityRateHealthy = IsImuGravityRateHealthy(rates);
   const bool imuGravityUnhealthy = rates.has_elapsed_window && !imuGravityRateHealthy;
   const ImuGravityGateCounters gateDelta = ImuGravityGateDelta();
+  const Bno086TimingDiagnosticCounters timingDelta = TimingDiagnosticDelta();
   const Bno086TransportStats transportStats = m_transport->GetStats();
 
   RCLCPP_DEBUG(get_logger(),
@@ -845,6 +865,10 @@ void Bno086ImuNode::MaybeEmitImuGravityDiagnosticsLog(const Bno086RateSnapshot& 
     AppendImuGravityCounter(stream, "invalid", gateDelta.invalid_sample);
     AppendImuGravityCounter(stream, "stamp", gateDelta.non_monotonic_stamp);
     AppendImuGravityCounter(stream, "pub", gateDelta.publisher_not_ready);
+    AppendTimingCounter(stream, "dup", timingDelta.duplicate_stamp);
+    AppendTimingCounter(stream, "back", timingDelta.backward_stamp);
+    AppendTimingCounter(stream, "fb", timingDelta.missing_timebase_fallback);
+    AppendTimingCounter(stream, "seqgap", timingDelta.sequence_gap);
     stream << " published=" << gateDelta.published;
     RCLCPP_WARN_STREAM(get_logger(), stream.str());
   }
@@ -867,6 +891,7 @@ void Bno086ImuNode::MaybeEmitImuGravityDiagnosticsLog(const Bno086RateSnapshot& 
     m_diag.was_unhealthy = unhealthy;
 
   m_diag.last_logged_imu_gravity_gate_counters = m_diag.imu_gravity_gate_counters;
+  m_diag.last_logged_timing_counters = m_diag.timing_counters;
 }
 
 void Bno086ImuNode::RecordImuGravityGateSkip(ImuGravityGateReason reason)
@@ -911,6 +936,19 @@ Bno086ImuNode::ImuGravityGateCounters Bno086ImuNode::ImuGravityGateDelta() const
   delta.non_monotonic_stamp = current.non_monotonic_stamp - last.non_monotonic_stamp;
   delta.publisher_not_ready = current.publisher_not_ready - last.publisher_not_ready;
   delta.published = current.published - last.published;
+  return delta;
+}
+
+Bno086ImuNode::Bno086TimingDiagnosticCounters Bno086ImuNode::TimingDiagnosticDelta() const
+{
+  const Bno086TimingDiagnosticCounters& current = m_diag.timing_counters;
+  const Bno086TimingDiagnosticCounters& last = m_diag.last_logged_timing_counters;
+  Bno086TimingDiagnosticCounters delta;
+  delta.duplicate_stamp = current.duplicate_stamp - last.duplicate_stamp;
+  delta.backward_stamp = current.backward_stamp - last.backward_stamp;
+  delta.missing_timebase_fallback =
+      current.missing_timebase_fallback - last.missing_timebase_fallback;
+  delta.sequence_gap = current.sequence_gap - last.sequence_gap;
   return delta;
 }
 
@@ -1140,8 +1178,8 @@ rclcpp::Time Bno086ImuNode::LatestCoreStamp() const
   return rclcpp::Time(std::max({orientationNs, gyroNs, linearAccelNs}), RCL_ROS_TIME);
 }
 
-rclcpp::Time Bno086ImuNode::ComputeEventStamp(const SensorEvent& event,
-                                              const rclcpp::Time& interrupt_stamp)
+Bno086ImuNode::EventStamp Bno086ImuNode::ComputeEventStamp(const SensorEvent& event,
+                                                           const rclcpp::Time& interrupt_stamp)
 {
   const Bno086Sh2TimestampInput input{
       interrupt_stamp.nanoseconds(),
@@ -1154,11 +1192,19 @@ rclcpp::Time Bno086ImuNode::ComputeEventStamp(const SensorEvent& event,
 
   if (result.used_missing_timebase_fallback)
   {
+    ++m_diag.timing_counters.missing_timebase_fallback;
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
                          "BNO missing Timebase Reference; using interrupt+delay fallback");
   }
 
-  return rclcpp::Time(result.stamp_ns, RCL_ROS_TIME);
+  EventStamp eventStamp;
+  eventStamp.stamp = rclcpp::Time(result.stamp_ns, RCL_ROS_TIME);
+  eventStamp.timing.has_timebase_reference = event.has_timebase_reference;
+  eventStamp.timing.used_missing_timebase_fallback = result.used_missing_timebase_fallback;
+  eventStamp.timing.timebase_delta_ticks = event.timebase_delta_ticks;
+  eventStamp.timing.delay_ticks = event.delay_ticks;
+  eventStamp.timing.interrupt_stamp_ns = interrupt_stamp.nanoseconds();
+  return eventStamp;
 }
 
 void Bno086ImuNode::RecordSequenceDiagnostics(const SensorEvent& event)
@@ -1176,13 +1222,87 @@ void Bno086ImuNode::RecordSequenceDiagnostics(const SensorEvent& event)
   else if (result.sequence_gap)
   {
     ++m_diag.sequence_gap_count;
+    ++m_diag.timing_counters.sequence_gap;
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
                          "BNO sequence gap: report=%s seq=%u delta=%u", ReportName(event.report_id),
                          event.sequence, result.sequence_delta);
   }
 }
 
-void Bno086ImuNode::ApplyEvent(const SensorEvent& event, const rclcpp::Time& sample_stamp)
+void Bno086ImuNode::MaybeLogGpioTimestampBasis(
+    const Bno086Gpio::AssertedLowTimestamp& asserted_timestamp,
+    const std::chrono::steady_clock::time_point& now_steady)
+{
+  if (!asserted_timestamp.has_gpio_event_timestamp)
+    return;
+
+  const auto differenceNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                now_steady - asserted_timestamp.asserted_at)
+                                .count();
+  const double differenceMs = static_cast<double>(differenceNs) / 1.0e6;
+  const bool noncausalDifference = differenceMs < GPIO_TIMESTAMP_MIN_DIFF_MS;
+  const bool hugeDifference = std::abs(differenceMs) > GPIO_TIMESTAMP_MAX_ABS_DIFF_MS;
+  const bool unstableDifference =
+      m_gpio_timestamp_log.last_difference_ms.has_value() &&
+      std::abs(differenceMs - *m_gpio_timestamp_log.last_difference_ms) >
+          GPIO_TIMESTAMP_MAX_DIFF_STEP_MS;
+
+  if (m_gpio_timestamp_log.logged_samples < GPIO_TIMESTAMP_DEBUG_SAMPLE_COUNT)
+  {
+    const auto nowSteadyNs =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(now_steady.time_since_epoch()).count();
+    RCLCPP_DEBUG(get_logger(),
+                 "BNO GPIO timestamp basis: event_ns=%llu steady_now_ns=%lld "
+                 "difference_ms=%.3f usable=%s",
+                 static_cast<unsigned long long>(asserted_timestamp.gpio_event_timestamp_ns),
+                 static_cast<long long>(nowSteadyNs), differenceMs,
+                 (!noncausalDifference && !hugeDifference && !unstableDifference) ? "true"
+                                                                                  : "false");
+    ++m_gpio_timestamp_log.logged_samples;
+  }
+
+  if ((noncausalDifference || hugeDifference || unstableDifference) &&
+      !m_gpio_timestamp_log.warned_bad_basis)
+  {
+    const auto nowSteadyNs =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(now_steady.time_since_epoch()).count();
+    m_gpio_timestamp_log.use_gpio_event_timestamps = false;
+    m_gpio_timestamp_log.warned_bad_basis = true;
+    RCLCPP_WARN(get_logger(),
+                "BNO GPIO event timestamp basis is not steady_clock-compatible: "
+                "event_ns=%llu steady_now_ns=%lld difference_ms=%.3f; "
+                "using steady_clock now for interrupt stamps",
+                static_cast<unsigned long long>(asserted_timestamp.gpio_event_timestamp_ns),
+                static_cast<long long>(nowSteadyNs), differenceMs);
+  }
+
+  m_gpio_timestamp_log.last_difference_ms = differenceMs;
+}
+
+void Bno086ImuNode::LogStampDrop(const char* topic,
+                                 const SensorEvent& event,
+                                 const Bno086OutputStampGateResult& gate_result,
+                                 const SampleTiming& timing)
+{
+  if (gate_result.duplicate_stamp)
+    ++m_diag.timing_counters.duplicate_stamp;
+  if (gate_result.backward_stamp)
+    ++m_diag.timing_counters.backward_stamp;
+
+  const double deltaMs = static_cast<double>(gate_result.delta_ns) / 1.0e6;
+  RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), STAMP_DROP_LOG_THROTTLE_MS,
+      "BNO stamp drop: topic=%s report=%s seq=%u dt=%.3fms tb_ref=%s tb=%d delay=%u "
+      "irq=%lld fallback=%s duplicate=%s backward=%s",
+      topic, ReportName(event.report_id), event.sequence, deltaMs,
+      timing.has_timebase_reference ? "true" : "false", timing.timebase_delta_ticks,
+      static_cast<unsigned>(timing.delay_ticks), static_cast<long long>(timing.interrupt_stamp_ns),
+      timing.used_missing_timebase_fallback ? "true" : "false",
+      gate_result.duplicate_stamp ? "true" : "false",
+      gate_result.backward_stamp ? "true" : "false");
+}
+
+void Bno086ImuNode::ApplyEvent(const SensorEvent& event, const EventStamp& event_stamp)
 {
   switch (event.report_id)
   {
@@ -1204,9 +1324,10 @@ void Bno086ImuNode::ApplyEvent(const SensorEvent& event, const rclcpp::Time& sam
       NormalizeQuaternion(m_stream.latest_frame.orientation_xyzw);
       m_stream.latest_frame.has_orientation = true;
       m_stream.orientation.has_sample = true;
-      m_stream.orientation.stamp = sample_stamp;
+      m_stream.orientation.stamp = event_stamp.stamp;
       m_stream.orientation.sequence = event.sequence;
       m_stream.orientation.accuracy = event.accuracy;
+      m_stream.orientation.timing = event_stamp.timing;
 
       // The policy module owns the driver-boundary heuristic that turns the
       // SH-2 Rotation Vector report into the published ROS orientation
@@ -1233,9 +1354,10 @@ void Bno086ImuNode::ApplyEvent(const SensorEvent& event, const rclcpp::Time& sam
       m_stream.latest_frame.gyro_rads[2] = QToDouble(event.values[2], 9);
       m_stream.latest_frame.has_gyro = true;
       m_stream.gyro.has_sample = true;
-      m_stream.gyro.stamp = sample_stamp;
+      m_stream.gyro.stamp = event_stamp.stamp;
       m_stream.gyro.sequence = event.sequence;
       m_stream.gyro.accuracy = event.accuracy;
+      m_stream.gyro.timing = event_stamp.timing;
 
       m_stream.latest_frame.gyro_cov_rads2_2 =
           CovarianceFromAccuracyBucket(event.accuracy, 1.2, 0.5, 0.18, 0.06);
@@ -1248,9 +1370,10 @@ void Bno086ImuNode::ApplyEvent(const SensorEvent& event, const rclcpp::Time& sam
       m_stream.latest_frame.linear_accel_mps2[2] = QToDouble(event.values[2], 8);
       m_stream.latest_frame.has_linear_accel = true;
       m_stream.linear_accel.has_sample = true;
-      m_stream.linear_accel.stamp = sample_stamp;
+      m_stream.linear_accel.stamp = event_stamp.stamp;
       m_stream.linear_accel.sequence = event.sequence;
       m_stream.linear_accel.accuracy = event.accuracy;
+      m_stream.linear_accel.timing = event_stamp.timing;
 
       m_stream.latest_frame.linear_accel_cov_mps2_2 =
           CovarianceFromAccuracyBucket(event.accuracy, 4.0, 2.0, 0.8, 0.25);
@@ -1263,9 +1386,10 @@ void Bno086ImuNode::ApplyEvent(const SensorEvent& event, const rclcpp::Time& sam
       m_stream.latest_frame.accel_mps2[2] = QToDouble(event.values[2], 8);
       m_stream.latest_frame.has_accel = true;
       m_stream.imu_gravity.has_sample = true;
-      m_stream.imu_gravity.stamp = sample_stamp;
+      m_stream.imu_gravity.stamp = event_stamp.stamp;
       m_stream.imu_gravity.sequence = event.sequence;
       m_stream.imu_gravity.accuracy = event.accuracy;
+      m_stream.imu_gravity.timing = event_stamp.timing;
 
       m_stream.latest_frame.accel_cov_mps2_2 =
           CovarianceFromAccuracyBucket(event.accuracy, 4.0, 2.0, 0.8, 0.25);
@@ -1291,9 +1415,10 @@ void Bno086ImuNode::ApplyEvent(const SensorEvent& event, const rclcpp::Time& sam
       m_stream.latest_frame.has_gravity = true;
       m_stream.latest_frame.has_gravity_covariance = true;
       m_stream.gravity.has_sample = true;
-      m_stream.gravity.stamp = sample_stamp;
+      m_stream.gravity.stamp = event_stamp.stamp;
       m_stream.gravity.sequence = event.sequence;
       m_stream.gravity.accuracy = event.accuracy;
+      m_stream.gravity.timing = event_stamp.timing;
       break;
     }
 

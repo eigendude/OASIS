@@ -58,12 +58,22 @@ TEST(Bno086OutputStampGate, duplicateAndNonmonotonicStampsAreDropped)
 
   const Bno086OutputStampGateResult duplicate = gate.Check(1'000);
   EXPECT_FALSE(duplicate.should_publish);
+  EXPECT_TRUE(duplicate.has_previous_stamp);
+  EXPECT_EQ(duplicate.previous_stamp_ns, 1'000);
+  EXPECT_EQ(duplicate.current_stamp_ns, 1'000);
+  EXPECT_EQ(duplicate.delta_ns, 0);
   EXPECT_TRUE(duplicate.duplicate_stamp);
+  EXPECT_FALSE(duplicate.backward_stamp);
   EXPECT_FALSE(duplicate.nonmonotonic_stamp);
 
   const Bno086OutputStampGateResult older = gate.Check(999);
   EXPECT_FALSE(older.should_publish);
+  EXPECT_TRUE(older.has_previous_stamp);
+  EXPECT_EQ(older.previous_stamp_ns, 1'000);
+  EXPECT_EQ(older.current_stamp_ns, 999);
+  EXPECT_EQ(older.delta_ns, -1);
   EXPECT_FALSE(older.duplicate_stamp);
+  EXPECT_TRUE(older.backward_stamp);
   EXPECT_TRUE(older.nonmonotonic_stamp);
 
   EXPECT_TRUE(gate.Check(1'001).should_publish);

@@ -101,9 +101,40 @@ struct Bno086OutputStampGateResult
   bool should_publish{true};
 
   /*!
+   * \brief True when a previous published output stamp exists
+   */
+  bool has_previous_stamp{false};
+
+  /*!
+   * \brief Previous published output stamp
+   *
+   * Units: nanoseconds on the ROS time domain
+   */
+  int64_t previous_stamp_ns{0};
+
+  /*!
+   * \brief Candidate output stamp being checked
+   *
+   * Units: nanoseconds on the ROS time domain
+   */
+  int64_t current_stamp_ns{0};
+
+  /*!
+   * \brief Difference from previous published stamp to candidate stamp
+   *
+   * Units: nanoseconds, computed as current - previous
+   */
+  int64_t delta_ns{0};
+
+  /*!
    * \brief True when the sample stamp matched the previous published stamp
    */
   bool duplicate_stamp{false};
+
+  /*!
+   * \brief True when the sample stamp went backward
+   */
+  bool backward_stamp{false};
 
   /*!
    * \brief True when the sample stamp went backward
@@ -117,6 +148,8 @@ struct Bno086OutputStampGateResult
 class Bno086OutputStampGate
 {
 public:
+  Bno086OutputStampGateResult Preview(int64_t stamp_ns) const;
+
   Bno086OutputStampGateResult Check(int64_t stamp_ns);
 
   void Reset();
