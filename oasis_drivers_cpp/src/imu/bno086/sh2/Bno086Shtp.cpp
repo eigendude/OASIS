@@ -398,16 +398,16 @@ Bno086Shtp::SensorDecodeResult Bno086Shtp::DecodeSensorPayload(
   }
 
   std::size_t offset = 0;
-  std::optional<std::uint32_t> baseTimestampUs;
+  std::optional<std::int32_t> timebaseDeltaTicks;
 
   while (offset < payload.size())
   {
     const std::uint8_t reportCode = payload[offset];
 
-    // SH-2 batches may contain a Base Timestamp control report followed by
-    // several sensor reports. The timestamp value is encoded in 100 us ticks
-    // and applies to each following sensor record until a later Base
-    // Timestamp or Timestamp Rebase changes the local payload context.
+    // SH-2 input report packets may contain a Timebase Reference followed by
+    // several sensor reports. The signed delta is encoded in 100 us ticks and
+    // applies to each following sensor record until a later reference changes
+    // the local payload context.
     if (reportCode == kShtpReportBaseTimestamp)
     {
       if (offset + kBaseTimestampHeaderBytes > payload.size())
@@ -416,14 +416,14 @@ Bno086Shtp::SensorDecodeResult Bno086Shtp::DecodeSensorPayload(
         break;
       }
 
-      baseTimestampUs = ReadU32(payload, offset + 1) * 100U;
+      timebaseDeltaTicks = ReadS32(payload, offset + 1);
       offset += kBaseTimestampHeaderBytes;
       continue;
     }
 
     // Timestamp Rebase uses the same 100 us tick scale and increments the
-    // current base timestamp context. If no base timestamp has appeared in
-    // this decoded payload, the rebase has no context to update.
+    // current timebase context. If no Timebase Reference has appeared in this
+    // decoded payload, the rebase has no context to update.
     if (reportCode == kShtpReportTimestampRebase)
     {
       if (offset + kBaseTimestampHeaderBytes > payload.size())
@@ -432,8 +432,8 @@ Bno086Shtp::SensorDecodeResult Bno086Shtp::DecodeSensorPayload(
         break;
       }
 
-      if (baseTimestampUs.has_value())
-        *baseTimestampUs += ReadU32(payload, offset + 1) * 100U;
+      if (timebaseDeltaTicks.has_value())
+        *timebaseDeltaTicks += ReadS32(payload, offset + 1);
 
       offset += kBaseTimestampHeaderBytes;
       continue;
@@ -467,7 +467,7 @@ Bno086Shtp::SensorDecodeResult Bno086Shtp::DecodeSensorPayload(
 
     SensorEvent decodedEvent;
     std::size_t bytesConsumed = 0;
-    if (!DecodeSingleSensorReport(payload, offset, baseTimestampUs, decodedEvent, bytesConsumed))
+    if (!DecodeSingleSensorReport(payload, offset, timebaseDeltaTicks, decodedEvent, bytesConsumed))
     {
       offset += *recordBytes;
       continue;
@@ -487,7 +487,7 @@ Bno086Shtp::SensorDecodeResult Bno086Shtp::DecodeSensorPayload(
 
 bool Bno086Shtp::DecodeSingleSensorReport(const std::vector<std::uint8_t>& payload,
                                           std::size_t report_offset,
-                                          std::optional<std::uint32_t> base_timestamp_us,
+                                          std::optional<std::int32_t> timebase_delta_ticks,
                                           SensorEvent& event,
                                           std::size_t& bytes_consumed) const
 {
@@ -524,17 +524,18 @@ bool Bno086Shtp::DecodeSingleSensorReport(const std::vector<std::uint8_t>& paylo
   const std::uint16_t delayTicks =
       static_cast<std::uint16_t>((payload[report_offset + 2] >> 2) << 8) |
       static_cast<std::uint16_t>(payload[report_offset + 3]);
-  event.delay_us = delayTicks * 100U;
+  event.delay_ticks = delayTicks;
+  event.delay_us = static_cast<std::uint32_t>(delayTicks) * 100U;
   event.has_delay = true;
 
   const std::size_t payloadOffset = report_offset + kSensorCommonHeaderBytes;
   for (std::size_t valueIndex = 0; valueIndex < payloadBytes / 2; ++valueIndex)
     event.values[valueIndex] = ReadS16(payload, payloadOffset + valueIndex * 2);
 
-  if (base_timestamp_us.has_value())
+  if (timebase_delta_ticks.has_value())
   {
-    event.base_timestamp_us = *base_timestamp_us;
-    event.has_base_timestamp = true;
+    event.timebase_delta_ticks = *timebase_delta_ticks;
+    event.has_timebase_reference = true;
   }
 
   bytes_consumed = recordBytes;
@@ -738,6 +739,11 @@ std::uint32_t Bno086Shtp::ReadU32(const std::vector<std::uint8_t>& data, std::si
   const std::uint32_t b2 = static_cast<std::uint32_t>(data[offset + 2]) << 16;
   const std::uint32_t b3 = static_cast<std::uint32_t>(data[offset + 3]) << 24;
   return b0 | b1 | b2 | b3;
+}
+
+std::int32_t Bno086Shtp::ReadS32(const std::vector<std::uint8_t>& data, std::size_t offset)
+{
+  return static_cast<std::int32_t>(ReadU32(data, offset));
 }
 
 void Bno086Shtp::WriteU32(std::vector<std::uint8_t>& data, std::size_t offset, std::uint32_t value)

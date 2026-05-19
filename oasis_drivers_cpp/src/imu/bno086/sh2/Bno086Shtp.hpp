@@ -242,7 +242,7 @@ private:
                                          std::optional<SensorEvent>& event);
   bool DecodeSingleSensorReport(const std::vector<std::uint8_t>& payload,
                                 std::size_t report_offset,
-                                std::optional<std::uint32_t> base_timestamp_us,
+                                std::optional<std::int32_t> timebase_delta_ticks,
                                 SensorEvent& event,
                                 std::size_t& bytes_consumed) const;
 
@@ -259,6 +259,7 @@ private:
   static std::uint32_t RequestedBatchIntervalForReport(ReportId report_id,
                                                        const Bno086ShtpConfig& config);
   static std::uint32_t ReadU32(const std::vector<std::uint8_t>& data, std::size_t offset);
+  static std::int32_t ReadS32(const std::vector<std::uint8_t>& data, std::size_t offset);
   static void WriteU32(std::vector<std::uint8_t>& data, std::size_t offset, std::uint32_t value);
   static std::int16_t ReadS16(const std::vector<std::uint8_t>& data, std::size_t offset);
   static bool IsTrackedReport(std::uint8_t report_id);

@@ -99,15 +99,15 @@ std::size_t ExpectedRecordBytes(ReportId report_id)
   return 0;
 }
 
-std::vector<std::uint8_t> BaseTimestampReport(std::uint32_t base_timestamp_us)
+std::vector<std::uint8_t> BaseTimestampReport(std::int32_t timebase_delta_ticks)
 {
   std::vector<std::uint8_t> payload(5, 0);
-  const std::uint32_t timestampTicks = base_timestamp_us / 100U;
+  const std::uint32_t rawTicks = static_cast<std::uint32_t>(timebase_delta_ticks);
   payload[0] = kShtpReportBaseTimestamp;
-  payload[1] = static_cast<std::uint8_t>(timestampTicks & 0xFF);
-  payload[2] = static_cast<std::uint8_t>((timestampTicks >> 8) & 0xFF);
-  payload[3] = static_cast<std::uint8_t>((timestampTicks >> 16) & 0xFF);
-  payload[4] = static_cast<std::uint8_t>((timestampTicks >> 24) & 0xFF);
+  payload[1] = static_cast<std::uint8_t>(rawTicks & 0xFF);
+  payload[2] = static_cast<std::uint8_t>((rawTicks >> 8) & 0xFF);
+  payload[3] = static_cast<std::uint8_t>((rawTicks >> 16) & 0xFF);
+  payload[4] = static_cast<std::uint8_t>((rawTicks >> 24) & 0xFF);
   return payload;
 }
 
@@ -235,9 +235,9 @@ TEST_P(Bno086ShtpTimingFields, exposesBaseTimestampDelayAndRecordContext)
   const ReportId reportId = std::get<0>(GetParam());
   const std::uint8_t sequence = std::get<1>(GetParam());
   const std::uint16_t delayUs = std::get<2>(GetParam());
-  constexpr std::uint32_t kBaseTimestampUs = 1'234'500;
+  constexpr std::int32_t kTimebaseDeltaTicks = 120;
 
-  std::vector<std::uint8_t> payload = BaseTimestampReport(kBaseTimestampUs);
+  std::vector<std::uint8_t> payload = BaseTimestampReport(kTimebaseDeltaTicks);
   const std::vector<std::uint8_t> report = SensorReport(reportId, sequence, delayUs);
   payload.insert(payload.end(), report.begin(), report.end());
 
@@ -245,9 +245,10 @@ TEST_P(Bno086ShtpTimingFields, exposesBaseTimestampDelayAndRecordContext)
 
   EXPECT_EQ(event.report_id, reportId);
   EXPECT_EQ(event.sequence, sequence);
-  EXPECT_TRUE(event.has_base_timestamp);
-  EXPECT_EQ(event.base_timestamp_us, kBaseTimestampUs);
+  EXPECT_TRUE(event.has_timebase_reference);
+  EXPECT_EQ(event.timebase_delta_ticks, kTimebaseDeltaTicks);
   EXPECT_TRUE(event.has_delay);
+  EXPECT_EQ(event.delay_ticks, delayUs / 100U);
   EXPECT_EQ(event.delay_us, delayUs);
   EXPECT_EQ(event.channel, 3);
   EXPECT_EQ(event.report_offset, 5U);
@@ -264,8 +265,8 @@ INSTANTIATE_TEST_SUITE_P(trackedReports,
 
 TEST(Bno086Shtp, multiReportPayloadCarriesBaseTimestampContext)
 {
-  constexpr std::uint32_t kBaseTimestampUs = 2'000'000;
-  std::vector<std::uint8_t> payload = BaseTimestampReport(kBaseTimestampUs);
+  constexpr std::int32_t kTimebaseDeltaTicks = 200;
+  std::vector<std::uint8_t> payload = BaseTimestampReport(kTimebaseDeltaTicks);
   const std::vector<std::uint8_t> first = SensorReport(ReportId::Accelerometer, 20, 1'200);
   const std::vector<std::uint8_t> second = SensorReport(ReportId::Gravity, 21, 2'400);
   payload.insert(payload.end(), first.begin(), first.end());
@@ -284,8 +285,9 @@ TEST(Bno086Shtp, multiReportPayloadCarriesBaseTimestampContext)
   EXPECT_EQ(firstResult.event->report_id, ReportId::Accelerometer);
   EXPECT_EQ(firstResult.event->sequence, 20);
   EXPECT_EQ(firstResult.event->delay_us, 1'200);
-  EXPECT_TRUE(firstResult.event->has_base_timestamp);
-  EXPECT_EQ(firstResult.event->base_timestamp_us, kBaseTimestampUs);
+  EXPECT_EQ(firstResult.event->delay_ticks, 12U);
+  EXPECT_TRUE(firstResult.event->has_timebase_reference);
+  EXPECT_EQ(firstResult.event->timebase_delta_ticks, kTimebaseDeltaTicks);
   EXPECT_EQ(firstResult.event->report_offset, 5U);
   EXPECT_EQ(firstResult.event->bytes_consumed, 10U);
 
@@ -295,8 +297,9 @@ TEST(Bno086Shtp, multiReportPayloadCarriesBaseTimestampContext)
   EXPECT_EQ(secondResult.event->report_id, ReportId::Gravity);
   EXPECT_EQ(secondResult.event->sequence, 21);
   EXPECT_EQ(secondResult.event->delay_us, 2'400);
-  EXPECT_TRUE(secondResult.event->has_base_timestamp);
-  EXPECT_EQ(secondResult.event->base_timestamp_us, kBaseTimestampUs);
+  EXPECT_EQ(secondResult.event->delay_ticks, 24U);
+  EXPECT_TRUE(secondResult.event->has_timebase_reference);
+  EXPECT_EQ(secondResult.event->timebase_delta_ticks, kTimebaseDeltaTicks);
   EXPECT_EQ(secondResult.event->report_offset, 15U);
   EXPECT_EQ(secondResult.event->bytes_consumed, 10U);
 }
@@ -308,17 +311,33 @@ TEST(Bno086Shtp, payloadWithoutBaseTimestampKeepsTimingContextAbsent)
 
   EXPECT_EQ(event.report_id, ReportId::LinearAcceleration);
   EXPECT_EQ(event.sequence, 30);
-  EXPECT_FALSE(event.has_base_timestamp);
-  EXPECT_EQ(event.base_timestamp_us, 0U);
+  EXPECT_FALSE(event.has_timebase_reference);
+  EXPECT_EQ(event.timebase_delta_ticks, 0);
   EXPECT_TRUE(event.has_delay);
+  EXPECT_EQ(event.delay_ticks, 30U);
   EXPECT_EQ(event.delay_us, 3'000);
   EXPECT_EQ(event.report_offset, 0U);
   EXPECT_EQ(event.bytes_consumed, 10U);
 }
 
+TEST(Bno086Shtp, timebaseReferenceIsSigned)
+{
+  constexpr std::int32_t kTimebaseDeltaTicks = -120;
+  std::vector<std::uint8_t> payload = BaseTimestampReport(kTimebaseDeltaTicks);
+  const std::vector<std::uint8_t> report = SensorReport(ReportId::Accelerometer, 31, 1'700);
+  payload.insert(payload.end(), report.begin(), report.end());
+
+  const SensorEvent event = DecodeSingleEvent(payload);
+
+  EXPECT_TRUE(event.has_timebase_reference);
+  EXPECT_EQ(event.timebase_delta_ticks, kTimebaseDeltaTicks);
+  EXPECT_TRUE(event.has_delay);
+  EXPECT_EQ(event.delay_ticks, 17U);
+}
+
 TEST(Bno086Shtp, repeatedZeroDelayIsDecodedAsPresentDelay)
 {
-  std::vector<std::uint8_t> payload = BaseTimestampReport(3'000'000);
+  std::vector<std::uint8_t> payload = BaseTimestampReport(300);
   const std::vector<std::uint8_t> first = SensorReport(ReportId::Accelerometer, 40, 0);
   const std::vector<std::uint8_t> second = SensorReport(ReportId::Accelerometer, 41, 0);
   payload.insert(payload.end(), first.begin(), first.end());

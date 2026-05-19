@@ -58,11 +58,18 @@ struct SensorEvent
   std::uint8_t accuracy{0};
 
   /*!
-   * \brief Delay from event sample time to base timestamp
+   * \brief Delay from timebase reference to event sample time
    *
-   * Units: microseconds
+   * Units: 100 us ticks, expected range [0, 16383]
    */
-  std::uint16_t delay_us{0};
+  std::uint16_t delay_ticks{0};
+
+  /*!
+   * \brief Delay from timebase reference to event sample time
+   *
+   * Units: microseconds, computed as \ref delay_ticks * 100
+   */
+  std::uint32_t delay_us{0};
 
   /*!
    * \brief True when \ref delay_us was present in the payload
@@ -70,16 +77,16 @@ struct SensorEvent
   bool has_delay{false};
 
   /*!
-   * \brief Base timestamp associated with this event
+   * \brief Timebase Reference delta associated with this event
    *
-   * Units: microseconds on SH-2 timestamp domain
+   * Units: signed 100 us ticks. Host timebase = interrupt - delta.
    */
-  std::uint32_t base_timestamp_us{0};
+  std::int32_t timebase_delta_ticks{0};
 
   /*!
-   * \brief True when \ref base_timestamp_us was present in the payload
+   * \brief True when \ref timebase_delta_ticks was present in the payload
    */
-  bool has_base_timestamp{false};
+  bool has_timebase_reference{false};
 
   /*!
    * \brief SHTP channel that carried this decoded report

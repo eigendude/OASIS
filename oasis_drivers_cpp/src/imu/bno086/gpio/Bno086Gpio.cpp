@@ -9,6 +9,7 @@
 #include "imu/bno086/gpio/Bno086Gpio.hpp"
 
 #include <cerrno>
+#include <cstdint>
 #include <cstring>
 
 #include <fcntl.h>
@@ -131,11 +132,15 @@ Bno086Gpio::WaitResult Bno086Gpio::WaitForAssertedLow(
   }
 
   struct gpio_v2_line_event event;
+  std::uint64_t latestEventTimestampNs = 0;
   while (true)
   {
     const ssize_t bytesRead = ::read(m_lineFd, &event, sizeof(event));
     if (bytesRead == static_cast<ssize_t>(sizeof(event)))
+    {
+      latestEventTimestampNs = event.timestamp_ns;
       continue;
+    }
 
     if (bytesRead < 0 && errno == EAGAIN)
       break;
@@ -146,7 +151,15 @@ Bno086Gpio::WaitResult Bno086Gpio::WaitForAssertedLow(
 
   if (IsAssertedLow())
   {
-    asserted_at = std::chrono::steady_clock::now();
+    if (latestEventTimestampNs != 0)
+    {
+      asserted_at =
+          std::chrono::steady_clock::time_point(std::chrono::nanoseconds(latestEventTimestampNs));
+    }
+    else
+    {
+      asserted_at = std::chrono::steady_clock::now();
+    }
     return WaitResult::Asserted;
   }
 

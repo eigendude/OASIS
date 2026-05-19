@@ -74,6 +74,10 @@ add_library(bno086_sample_coherence
   src/imu/bno086/core/Bno086SampleCoherence.cpp
 )
 
+add_library(bno086_sh2_timestamp
+  src/imu/bno086/core/Bno086Sh2Timestamp.cpp
+)
+
 add_library(bno086_utils
   src/imu/bno086/utils/Bno086CovarianceUtils.cpp
   src/imu/bno086/utils/Bno086FeatureSummary.cpp
@@ -130,6 +134,7 @@ target_link_libraries(bno086_imu_driver
   bno086_orientation_covariance_policy
   bno086_ros_helpers
   bno086_sample_coherence
+  bno086_sh2_timestamp
   bno086_sh2
   bno086_shtp
   bno086_utils
@@ -380,6 +385,13 @@ if(BUILD_TESTING)
   )
   target_link_libraries(test_bno086_sample_coherence
     bno086_sample_coherence
+  )
+
+  ament_add_gtest(test_bno086_sh2_timestamp
+    test/imu/bno086/test_Bno086Sh2Timestamp.cpp
+  )
+  target_link_libraries(test_bno086_sh2_timestamp
+    bno086_sh2_timestamp
   )
 
   ament_add_gtest(test_bno086_utils

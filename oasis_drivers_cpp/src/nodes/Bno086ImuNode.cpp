@@ -193,6 +193,9 @@ bool Bno086ImuNode::Initialize()
   m_diag.imu_gravity_gate_counters = ImuGravityGateCounters{};
   m_diag.last_logged_imu_gravity_gate_counters = ImuGravityGateCounters{};
   m_diag.was_imu_gravity_unhealthy = false;
+  m_diag.sequence_diagnostics.Reset();
+  m_diag.duplicate_sequence_count = 0;
+  m_diag.sequence_gap_count = 0;
 
   // Initialize ROS publishers
   m_imuPublisher =
@@ -282,7 +285,7 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
   drainLimits.max_sensor_events_per_drain = m_drain_config.max_sensor_events_per_drain;
   drainLimits.max_pending_events_flush_per_drain =
       m_drain_config.max_pending_events_flush_per_drain;
-  const rclcpp::Time drainReceiveAnchor = interrupt_ros_at;
+  const rclcpp::Time interruptStamp = interrupt_ros_at;
   const auto drainStartedAt = std::chrono::steady_clock::now();
   Bno086DrainAction drainExitAction = Bno086DrainAction::Complete;
 
@@ -425,9 +428,9 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
 
     if (pollResult.status == Bno086Shtp::PollStatus::SensorEvent && pollResult.event.has_value())
     {
-      // BNO reports are used as live host-stamped sensor data. Every event
-      // drained from one interrupt uses the same host receive anchor.
-      const rclcpp::Time normalizedEventStamp = drainReceiveAnchor;
+      const rclcpp::Time normalizedEventStamp =
+          ComputeEventStamp(*pollResult.event, interruptStamp);
+      RecordSequenceDiagnostics(*pollResult.event);
       m_diag.rate_health.CountDecodedReport(pollResult.event->report_id);
       ApplyEvent(*pollResult.event, normalizedEventStamp);
       MaybePublishOnLinearAcceleration(*pollResult.event);
@@ -1135,6 +1138,48 @@ rclcpp::Time Bno086ImuNode::LatestCoreStamp() const
   const int64_t gyroNs = m_stream.gyro.stamp.nanoseconds();
   const int64_t linearAccelNs = m_stream.linear_accel.stamp.nanoseconds();
   return rclcpp::Time(std::max({orientationNs, gyroNs, linearAccelNs}), RCL_ROS_TIME);
+}
+
+rclcpp::Time Bno086ImuNode::ComputeEventStamp(const SensorEvent& event,
+                                              const rclcpp::Time& interrupt_stamp)
+{
+  const Bno086Sh2TimestampInput input{
+      interrupt_stamp.nanoseconds(),
+      event.has_timebase_reference,
+      event.timebase_delta_ticks,
+      event.has_delay,
+      event.delay_ticks,
+  };
+  const Bno086Sh2TimestampResult result = ComputeBno086Sh2Timestamp(input);
+
+  if (result.used_missing_timebase_fallback)
+  {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                         "BNO missing Timebase Reference; using interrupt+delay fallback");
+  }
+
+  return rclcpp::Time(result.stamp_ns, RCL_ROS_TIME);
+}
+
+void Bno086ImuNode::RecordSequenceDiagnostics(const SensorEvent& event)
+{
+  const Bno086SequenceUpdate result =
+      m_diag.sequence_diagnostics.Update(event.report_id, event.sequence);
+
+  if (result.duplicate_sequence)
+  {
+    ++m_diag.duplicate_sequence_count;
+    RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
+                          "BNO duplicate sequence: report=%s seq=%u", ReportName(event.report_id),
+                          event.sequence);
+  }
+  else if (result.sequence_gap)
+  {
+    ++m_diag.sequence_gap_count;
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                         "BNO sequence gap: report=%s seq=%u delta=%u", ReportName(event.report_id),
+                         event.sequence, result.sequence_delta);
+  }
 }
 
 void Bno086ImuNode::ApplyEvent(const SensorEvent& event, const rclcpp::Time& sample_stamp)

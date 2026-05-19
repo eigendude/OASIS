@@ -13,6 +13,7 @@
 #include "imu/bno086/core/Bno086ImuGravityAccelHistory.hpp"
 #include "imu/bno086/core/Bno086OrientationCovariancePolicy.hpp"
 #include "imu/bno086/core/Bno086SampleCoherence.hpp"
+#include "imu/bno086/core/Bno086Sh2Timestamp.hpp"
 #include "imu/bno086/diagnostics/Bno086DrainHealth.hpp"
 #include "imu/bno086/diagnostics/Bno086RateHealth.hpp"
 #include "imu/bno086/ros/Bno086NodeParams.hpp"
@@ -138,6 +139,9 @@ private:
     bool was_imu_gravity_unhealthy{false};
     std::uint32_t repeated_no_progress_timeouts{0};
     bool warned_missing_imu_fields{false};
+    OASIS::IMU::BNO086::Bno086ReportSequenceDiagnostics sequence_diagnostics;
+    std::uint64_t duplicate_sequence_count{0};
+    std::uint64_t sequence_gap_count{0};
   };
 
   struct Bno086StartupLogState
@@ -168,6 +172,9 @@ private:
   OASIS::IMU::BNO086::Bno086ImuGravityAccelSample LatestImuGravityAccelSample() const;
   CoreFrameSignature LatestCoreSignature() const;
   rclcpp::Time LatestCoreStamp() const;
+  rclcpp::Time ComputeEventStamp(const OASIS::IMU::BNO086::SensorEvent& event,
+                                 const rclcpp::Time& interrupt_stamp);
+  void RecordSequenceDiagnostics(const OASIS::IMU::BNO086::SensorEvent& event);
 
   void ApplyEvent(const OASIS::IMU::BNO086::SensorEvent& event, const rclcpp::Time& sample_stamp);
   void MaybeLogFeatureResponses();
