@@ -50,11 +50,34 @@ TEST(Bno086NodeParams, loadsStableReportDefaultsFromDeclaredRosParameters)
   EXPECT_DOUBLE_EQ(params.reports.linear_acceleration_rate_hz, 100.0);
   EXPECT_DOUBLE_EQ(params.reports.gravity_rate_hz, 25.0);
 
-  EXPECT_EQ(params.reports.rotation_vector_batch_interval_us, 10'000U);
+  EXPECT_EQ(params.reports.rotation_vector_batch_interval_us, 0U);
+  EXPECT_EQ(params.reports.gyro_batch_interval_us, 0U);
+  EXPECT_EQ(params.reports.accelerometer_batch_interval_us, 0U);
+  EXPECT_EQ(params.reports.linear_acceleration_batch_interval_us, 0U);
+  EXPECT_EQ(params.reports.gravity_batch_interval_us, 0U);
+}
+
+TEST(Bno086NodeParams, loadsReportBatchOverridesFromDeclaredRosParameters)
+{
+  const RclcppContext context;
+  const std::shared_ptr<rclcpp::Node> node =
+      std::make_shared<rclcpp::Node>("test_bno086_node_params_batch_overrides");
+
+  OASIS::ROS::DeclareBno086NodeParameters(*node);
+
+  node->set_parameter(rclcpp::Parameter("bno086_rotation_vector_batch_ms", 30.0));
+  node->set_parameter(rclcpp::Parameter("bno086_gyro_batch_ms", 10.0));
+  node->set_parameter(rclcpp::Parameter("bno086_accelerometer_batch_ms", 70.0));
+  node->set_parameter(rclcpp::Parameter("bno086_linear_acceleration_batch_ms", 5.0));
+  node->set_parameter(rclcpp::Parameter("bno086_gravity_batch_ms", 90.0));
+
+  const OASIS::ROS::Bno086NodeParams params = OASIS::ROS::LoadBno086NodeParameters(*node);
+
+  EXPECT_EQ(params.reports.rotation_vector_batch_interval_us, 30'000U);
   EXPECT_EQ(params.reports.gyro_batch_interval_us, 10'000U);
-  EXPECT_EQ(params.reports.accelerometer_batch_interval_us, 10'000U);
-  EXPECT_EQ(params.reports.linear_acceleration_batch_interval_us, 10'000U);
-  EXPECT_EQ(params.reports.gravity_batch_interval_us, 40'000U);
+  EXPECT_EQ(params.reports.accelerometer_batch_interval_us, 70'000U);
+  EXPECT_EQ(params.reports.linear_acceleration_batch_interval_us, 5'000U);
+  EXPECT_EQ(params.reports.gravity_batch_interval_us, 90'000U);
 }
 
 TEST(Bno086NodeParams, loadsTransportOverridesFromDeclaredRosParameters)
