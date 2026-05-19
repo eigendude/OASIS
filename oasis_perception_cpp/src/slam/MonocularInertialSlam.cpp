@@ -50,7 +50,8 @@ bool IsFiniteMatrix4(const Eigen::Matrix4f& matrix)
 bool IsPreStableInitRetryReason(std::string_view reason)
 {
   return reason == "recently_initialized_imu_tracking_lost" || reason == "ref_kf" ||
-         reason == "not_enough_motion" || reason == "timestamp_jump_before_init";
+         reason == "not_enough_motion" || reason == "not_enough_motion_translation" ||
+         reason == "timestamp_jump_before_init";
 }
 
 bool IsFiniteVector3(const geometry_msgs::msg::Vector3& vector)
