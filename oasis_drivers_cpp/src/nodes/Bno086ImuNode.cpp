@@ -61,8 +61,10 @@ constexpr const char* ORIENTATION_REPORT_SOURCE = "rotation_vector";
 constexpr int ORIENTATION_COVARIANCE_LOG_THROTTLE_MS = 5'000;
 constexpr int IMU_GRAVITY_SAMPLE_WARN_THROTTLE_MS = 5'000;
 constexpr int STAMP_DROP_LOG_THROTTLE_MS = 2'000;
+constexpr int STAMP_DROP_DEBUG_LOG_THROTTLE_MS = 10'000;
 constexpr int SEQUENCE_GAP_DEBUG_THROTTLE_MS = 5'000;
 constexpr std::uint8_t LARGE_SEQUENCE_GAP_DELTA = 10;
+constexpr double LARGE_BACKWARD_STAMP_DROP_MS = 1.0;
 constexpr double MIN_HEALTHY_RATE_FRACTION = 0.5;
 constexpr std::uint32_t GPIO_TIMESTAMP_DEBUG_SAMPLE_COUNT = 5;
 constexpr double GPIO_TIMESTAMP_MIN_DIFF_MS = -1.0;
@@ -88,14 +90,6 @@ bool IsFiniteArray(const std::array<double, 9>& values)
 double VectorMagnitude(double x, double y, double z)
 {
   return std::sqrt(x * x + y * y + z * z);
-}
-
-void AppendImuGravityCounter(std::ostringstream& stream, const char* label, std::uint64_t count)
-{
-  if (count == 0)
-    return;
-
-  stream << " " << label << "=" << count;
 }
 
 void AppendTimingCounter(std::ostringstream& stream, const char* label, std::uint64_t count)
@@ -174,7 +168,7 @@ Bno086ImuNode::Bno086ImuNode()
   RCLCPP_INFO(get_logger(), "BNO086 opened on %s (0x%02X), int_gpio=%d active_low",
               i2cDevice.c_str(), static_cast<unsigned>(i2cAddress), intGpio);
   RCLCPP_INFO(get_logger(),
-              "BNO086 live/unbatched report rates:\n"
+              "BNO086 report rates:\n"
               "  rotation_vector=%.1f enabled=true\n"
               "  gyro=%.1f enabled=true\n"
               "  accelerometer=%.1f enabled=true\n"
@@ -183,7 +177,7 @@ Bno086ImuNode::Bno086ImuNode()
               m_reports.rotation_vector_rate_hz, m_reports.gyro_rate_hz,
               m_reports.accelerometer_rate_hz, m_reports.linear_acceleration_rate_hz,
               m_reports.gravity_rate_hz, "true");
-  RCLCPP_INFO(get_logger(), "BNO086 publication cadence: imu=linear_acceleration "
+  RCLCPP_INFO(get_logger(), "BNO086 publication sources: imu=linear_acceleration "
                             "imu_gravity=rotation_vector gravity=gravity_report");
   if (m_config.prediction_horizon_sec > 0.0)
   {
@@ -191,7 +185,7 @@ Bno086ImuNode::Bno086ImuNode()
                 "Predicted orientation output uses %s with prediction_horizon_sec=%.4f",
                 m_config.prediction_source.c_str(), m_config.prediction_horizon_sec);
   }
-  RCLCPP_INFO(get_logger(), "BNO086 imu_gravity uses live host-stamped rotation vector cadence");
+  RCLCPP_INFO(get_logger(), "BNO086 stamps: SH-2 timebase/delay, packet-local host anchors");
 }
 
 Bno086ImuNode::~Bno086ImuNode() = default;
@@ -839,11 +833,6 @@ void Bno086ImuNode::RecordDrainThroughputDiagnostics(const Bno086DrainCounters& 
 
 void Bno086ImuNode::MaybeEmitImuGravityDiagnosticsLog(const Bno086RateSnapshot& rates)
 {
-  const Bno086ExpectedRates expectedRates{
-      m_reports.accelerometer_rate_hz, m_reports.gyro_rate_hz, m_reports.rotation_vector_rate_hz,
-      m_reports.linear_acceleration_rate_hz, m_reports.gravity_rate_hz};
-  const bool rateUnhealthy =
-      m_diag.rate_health.HasRateFailure(rates, expectedRates, MIN_HEALTHY_RATE_FRACTION);
   const bool unhealthy = IsBno086DiagnosticsUnhealthy(rates);
   const bool imuGravityRateHealthy = IsImuGravityRateHealthy(rates);
   const bool imuGravityUnhealthy = rates.has_elapsed_window && !imuGravityRateHealthy;
@@ -883,32 +872,18 @@ void Bno086ImuNode::MaybeEmitImuGravityDiagnosticsLog(const Bno086RateSnapshot& 
     RCLCPP_DEBUG_STREAM(get_logger(), stream.str());
   }
 
-  if (rateUnhealthy || imuGravityUnhealthy)
+  if (unhealthy || imuGravityUnhealthy)
   {
     std::ostringstream stream;
     stream << "BNO unhealthy:" << " imu_g=" << static_cast<int>(std::lround(rates.imu_gravity_hz))
-           << "Hz" << " imu=" << static_cast<int>(std::lround(rates.imu_hz)) << "Hz"
-           << " accel=" << static_cast<int>(std::lround(rates.decoded_hz[0])) << "Hz"
-           << " gyro=" << static_cast<int>(std::lround(rates.decoded_hz[1])) << "Hz"
-           << " rot=" << static_cast<int>(std::lround(rates.decoded_hz[2])) << "Hz"
-           << " lin=" << static_cast<int>(std::lround(rates.decoded_hz[3])) << "Hz"
-           << " grav=" << static_cast<int>(std::lround(rates.decoded_hz[4])) << "Hz";
+           << "Hz" << " imu=" << static_cast<int>(std::lround(rates.imu_hz)) << "Hz";
     AppendTimingCounter(stream, "seqgap", timingDelta.sequence_gap);
     AppendTimingCounter(stream, "large", timingDelta.sequence_gap_delta10plus);
     AppendTimingCounter(stream, "back", timingDelta.backward_stamp);
-    AppendTimingCounter(stream, "dup", timingDelta.duplicate_stamp);
-    AppendTimingCounter(stream, "fb", timingDelta.missing_timebase_fallback);
     stream << " dur="
            << static_cast<int>(
                   std::lround(static_cast<double>(m_diag.max_drain_duration_us_since_log) / 1.0e3))
            << "ms";
-    AppendImuGravityCounter(stream, "missing_orient", gateDelta.missing_orientation);
-    AppendImuGravityCounter(stream, "missing_gyro", gateDelta.missing_gyro);
-    AppendImuGravityCounter(stream, "missing_accel", gateDelta.missing_accel);
-    AppendImuGravityCounter(stream, "invalid", gateDelta.invalid_sample);
-    AppendImuGravityCounter(stream, "stamp", gateDelta.non_monotonic_stamp);
-    AppendImuGravityCounter(stream, "pub", gateDelta.publisher_not_ready);
-    stream << " published=" << gateDelta.published;
     RCLCPP_WARN_STREAM(get_logger(), stream.str());
   }
 
@@ -1347,17 +1322,24 @@ void Bno086ImuNode::LogStampDrop(const char* topic,
     ++m_diag.timing_counters.backward_stamp;
 
   const double deltaMs = static_cast<double>(gate_result.delta_ns) / 1.0e6;
-  RCLCPP_WARN_THROTTLE(
-      get_logger(), *get_clock(), STAMP_DROP_LOG_THROTTLE_MS,
-      "BNO stamp drop: topic=%s report=%s seq=%u dt=%.3fms tb_ref=%s tb=%d delay=%u "
-      "packet_anchor=%lld fallback=%s duplicate=%s backward=%s",
-      topic, ReportName(event.report_id), event.sequence, deltaMs,
-      timing.has_timebase_reference ? "true" : "false", timing.timebase_delta_ticks,
-      static_cast<unsigned>(timing.delay_ticks),
-      static_cast<long long>(timing.packet_host_anchor_ns),
-      timing.used_missing_timebase_fallback ? "true" : "false",
-      gate_result.duplicate_stamp ? "true" : "false",
-      gate_result.backward_stamp ? "true" : "false");
+  const bool unhealthy = m_diag.was_unhealthy || m_diag.was_imu_gravity_unhealthy;
+  const bool largeBackwardDrop =
+      gate_result.backward_stamp && std::abs(deltaMs) >= LARGE_BACKWARD_STAMP_DROP_MS;
+
+  if (unhealthy || largeBackwardDrop)
+  {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), STAMP_DROP_LOG_THROTTLE_MS,
+                         "BNO stamp drop: topic=%s report=%s seq=%u dt=%.3fms "
+                         "tb_ref=%s fallback=%s",
+                         topic, ReportName(event.report_id), event.sequence, deltaMs,
+                         timing.has_timebase_reference ? "true" : "false",
+                         timing.used_missing_timebase_fallback ? "true" : "false");
+    return;
+  }
+
+  RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), STAMP_DROP_DEBUG_LOG_THROTTLE_MS,
+                        "BNO stamp drop: topic=%s report=%s seq=%u dt=%.3fms", topic,
+                        ReportName(event.report_id), event.sequence, deltaMs);
 }
 
 void Bno086ImuNode::ApplyEvent(const SensorEvent& event, const EventStamp& event_stamp)
