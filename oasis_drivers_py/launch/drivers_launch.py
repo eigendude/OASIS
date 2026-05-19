@@ -8,6 +8,7 @@
 #
 ################################################################################
 
+import os
 from typing import Any
 from typing import Optional
 
@@ -115,6 +116,11 @@ MCU_TYPE: Optional[str] = None
 # BNO086 interrupt line on the Falcon's GPIO header
 FALCON_BNO086_INT_GPIO: int = 23
 
+# Optional process prefix for the standalone BNO086 executable. This is useful
+# for deployments that grant scheduler privileges through systemd and want the
+# GPIO/I2C drain loop to outrank camera or perception work.
+BNO086_LAUNCH_PREFIX: Optional[str] = os.getenv("OASIS_BNO086_LAUNCH_PREFIX") or None
+
 
 class MCUType:
     FIRMATA: str = "firmata"
@@ -191,6 +197,7 @@ def generate_launch_description() -> LaunchDescription:
             ld,
             HOST_ID,
             int_gpio=FALCON_BNO086_INT_GPIO,
+            launch_prefix=BNO086_LAUNCH_PREFIX,
         )
         Drivers.add_mmc5983ma_magnetometer(ld, HOST_ID)
     if HOST_ID == "station":

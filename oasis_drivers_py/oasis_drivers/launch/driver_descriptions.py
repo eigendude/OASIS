@@ -101,6 +101,7 @@ class DriverDescriptions:
         ld: LaunchDescription,
         host_id: str,
         int_gpio: int,
+        launch_prefix: Optional[str] = None,
     ) -> None:
         bno_node: Node = Node(
             namespace=ROS_NAMESPACE,
@@ -108,6 +109,7 @@ class DriverDescriptions:
             executable="bno086_imu_driver",
             name=f"bno086_imu_driver_{host_id}",
             output="screen",
+            prefix=launch_prefix,
             arguments=[
                 "--ros-args",
                 "--log-level",

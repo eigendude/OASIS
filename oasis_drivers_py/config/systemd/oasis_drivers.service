@@ -32,6 +32,37 @@ Environment=OASIS_ENV=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/oasis-${RO
 Environment=OPENCV_LIB_DIR=/home/${USER}/Documents/ros-ws/src/oasis/ros-ws/cv/install/lib
 
 #
+# Scheduling configuration
+#
+
+# Favor hardware drivers over CPU-heavy perception services under saturation.
+Nice=-5
+CPUWeight=200
+IOSchedulingClass=best-effort
+IOSchedulingPriority=2
+
+# Allow optional low-priority real-time scheduling for the standalone BNO086
+# process. This grants only CAP_SYS_NICE to the service and caps FIFO/RR
+# priorities at 20 so host-specific drop-ins can test prefixes such as:
+#   Environment="OASIS_BNO086_LAUNCH_PREFIX=chrt -f 10"
+# Keep FIFO priorities low, around 10. Do not use high FIFO priorities here:
+# if the driver ever spins or blocks badly, it could starve other critical work.
+LimitRTPRIO=20
+LimitMEMLOCK=infinity
+AmbientCapabilities=CAP_SYS_NICE
+CapabilityBoundingSet=CAP_SYS_NICE
+
+# Optional per-process prefix for the standalone BNO086 driver only. This does
+# not apply to camera, Telemetrix, magnetometer, or other driver nodes.
+# Default keeps the BNO process ahead of other normal-priority driver work.
+# For real-time testing, override this in a host-specific drop-in with:
+#   Environment="OASIS_BNO086_LAUNCH_PREFIX=chrt -f 10"
+# Verify scheduling with:
+#   ps -eo pid,ni,rtprio,cls,comm,args | grep bno086
+#   chrt -p <bno_pid>
+Environment="OASIS_BNO086_LAUNCH_PREFIX=chrt -f 10"
+
+#
 # Service definition
 #
 
