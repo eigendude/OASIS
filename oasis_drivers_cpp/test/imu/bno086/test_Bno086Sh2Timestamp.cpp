@@ -98,6 +98,30 @@ TEST(Bno086ReportSequenceDiagnostics, gapIsCountedButDoesNotAffectTimestamp)
   EXPECT_EQ(result.stamp_ns, 989'700'000);
 }
 
+TEST(Bno086Sh2Timestamp, staleAnchorCanReproduceBackwardStamp)
+{
+  const Bno086Sh2TimestampResult first =
+      ComputeBno086Sh2Timestamp(Bno086Sh2TimestampInput{1'000'000'000, true, 100, true, 50});
+  const Bno086Sh2TimestampResult staleSecond =
+      ComputeBno086Sh2Timestamp(Bno086Sh2TimestampInput{1'000'000'000, true, 200, true, 0});
+
+  EXPECT_EQ(first.stamp_ns, 995'000'000);
+  EXPECT_EQ(staleSecond.stamp_ns, 980'000'000);
+  EXPECT_LT(staleSecond.stamp_ns, first.stamp_ns);
+}
+
+TEST(Bno086Sh2Timestamp, packetLocalAnchorsKeepIncreasingPacketGroupsMonotonic)
+{
+  const Bno086Sh2TimestampResult first =
+      ComputeBno086Sh2Timestamp(Bno086Sh2TimestampInput{1'000'000'000, true, 100, true, 50});
+  const Bno086Sh2TimestampResult packetLocalSecond =
+      ComputeBno086Sh2Timestamp(Bno086Sh2TimestampInput{1'020'000'000, true, 200, true, 0});
+
+  EXPECT_EQ(first.stamp_ns, 995'000'000);
+  EXPECT_EQ(packetLocalSecond.stamp_ns, 1'000'000'000);
+  EXPECT_GT(packetLocalSecond.stamp_ns, first.stamp_ns);
+}
+
 TEST(Bno086ReportSequenceDiagnostics, duplicateSequenceIsCounted)
 {
   Bno086ReportSequenceDiagnostics diagnostics;

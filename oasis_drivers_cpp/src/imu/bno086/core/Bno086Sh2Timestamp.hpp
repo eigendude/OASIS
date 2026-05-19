@@ -31,11 +31,13 @@ constexpr int64_t SH2_TIMESTAMP_TICK_NS = 100'000;
 struct Bno086Sh2TimestampInput
 {
   /*!
-   * \brief Host timestamp captured when H_INTN was observed asserted
+   * \brief Host timestamp paired with this packet's Timebase Reference
    *
-   * Units: nanoseconds on the ROS time domain
+   * Units: nanoseconds on the ROS time domain. This is ideally the H_INTN
+   * falling-edge timestamp for the packet, or the packet read-start time when
+   * the edge cannot be paired reliably to individual SHTP packets.
    */
-  int64_t interrupt_stamp_ns{0};
+  int64_t packet_host_anchor_ns{0};
 
   /*!
    * \brief True when \ref timebase_delta_ticks came from report 0xFB
@@ -43,9 +45,9 @@ struct Bno086Sh2TimestampInput
   bool has_timebase_reference{false};
 
   /*!
-   * \brief Signed Timebase Reference delta from H_INTN to report base
+   * \brief Signed Timebase Reference delta from packet anchor to report base
    *
-   * Units: 100 us ticks. The base time is interrupt time minus this delta.
+   * Units: 100 us ticks. The base time is packet anchor time minus this delta.
    */
   std::int32_t timebase_delta_ticks{0};
 

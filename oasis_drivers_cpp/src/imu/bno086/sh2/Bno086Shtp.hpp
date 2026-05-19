@@ -147,6 +147,14 @@ public:
      * Units: channel id, unset when no physical packet was read
      */
     std::optional<std::uint8_t> packet_channel;
+
+    /*!
+     * \brief Host timestamp anchor associated with the event's packet
+     *
+     * Units: nanoseconds on the caller's time domain, unset when no anchor was
+     * provided or when no sensor event was returned
+     */
+    std::optional<int64_t> packet_host_anchor_ns;
   };
 
   struct StartupStatus
@@ -208,7 +216,7 @@ public:
   explicit Bno086Shtp(Bno086Transport& transport);
 
   bool Configure(const Bno086ShtpConfig& config);
-  PollResult Poll(int timeout_ms);
+  PollResult Poll(int timeout_ms, std::optional<int64_t> packet_host_anchor_ns = std::nullopt);
   std::size_t PendingEventCount() const;
   FeatureResponseDrainResult DrainFeatureResponses(int timeout_ms,
                                                    std::uint32_t max_physical_packets,
@@ -231,14 +239,23 @@ private:
     std::size_t trailing_bytes{0};
   };
 
+  struct QueuedSensorEvent
+  {
+    SensorEvent event;
+    std::optional<int64_t> packet_host_anchor_ns;
+  };
+
   bool SendSetFeatureCommands();
   bool ConfigureFeature(const FeatureConfiguration& feature_configuration);
   bool RequestFeature(ReportId report_id);
 
-  bool DecodePacket(const Bno086ShtpPacket& packet, std::optional<SensorEvent>& event);
+  bool DecodePacket(const Bno086ShtpPacket& packet,
+                    std::optional<int64_t> packet_host_anchor_ns,
+                    std::optional<SensorEvent>& event);
   void DecodeControlPayload(const std::vector<std::uint8_t>& payload);
   SensorDecodeResult DecodeSensorPayload(const std::vector<std::uint8_t>& payload,
                                          std::uint8_t channel,
+                                         std::optional<int64_t> packet_host_anchor_ns,
                                          std::optional<SensorEvent>& event);
   bool DecodeSingleSensorReport(const std::vector<std::uint8_t>& payload,
                                 std::size_t report_offset,
@@ -278,7 +295,7 @@ private:
   std::vector<FeatureResponse> m_featureResponses;
 
   std::chrono::steady_clock::time_point m_lastConfigAttempt{};
-  std::vector<SensorEvent> m_pendingEvents;
+  std::vector<QueuedSensorEvent> m_pendingEvents;
 
   std::array<bool, 6> m_continuationActive{};
   std::array<std::vector<std::uint8_t>, 6> m_continuationPayloads{};

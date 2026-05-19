@@ -76,14 +76,17 @@ bool Bno086Shtp::Configure(const Bno086ShtpConfig& config)
   return SendSetFeatureCommands();
 }
 
-Bno086Shtp::PollResult Bno086Shtp::Poll(int timeout_ms)
+Bno086Shtp::PollResult Bno086Shtp::Poll(int timeout_ms,
+                                        std::optional<int64_t> packet_host_anchor_ns)
 {
   PollResult result;
 
   if (!m_pendingEvents.empty())
   {
-    result.event = m_pendingEvents.front();
+    const QueuedSensorEvent queuedEvent = m_pendingEvents.front();
     m_pendingEvents.erase(m_pendingEvents.begin());
+    result.event = queuedEvent.event;
+    result.packet_host_anchor_ns = queuedEvent.packet_host_anchor_ns;
     result.status = PollStatus::SensorEvent;
     result.dequeued_pending_event = true;
     return result;
@@ -103,7 +106,7 @@ Bno086Shtp::PollResult Bno086Shtp::Poll(int timeout_ms)
   result.read_physical_packet = true;
   result.packet_channel = packet.channel;
 
-  if (!DecodePacket(packet, result.event))
+  if (!DecodePacket(packet, packet_host_anchor_ns, result.event))
   {
     result.status = PollStatus::TransportError;
     return result;
@@ -113,6 +116,7 @@ Bno086Shtp::PollResult Bno086Shtp::Poll(int timeout_ms)
 
   if (result.event.has_value())
   {
+    result.packet_host_anchor_ns = packet_host_anchor_ns;
     result.status = PollStatus::SensorEvent;
     return result;
   }
@@ -235,7 +239,9 @@ bool Bno086Shtp::RequestFeature(ReportId report_id)
   return m_transport.WritePacket(kShtpChannelControl, payload);
 }
 
-bool Bno086Shtp::DecodePacket(const Bno086ShtpPacket& packet, std::optional<SensorEvent>& event)
+bool Bno086Shtp::DecodePacket(const Bno086ShtpPacket& packet,
+                              std::optional<int64_t> packet_host_anchor_ns,
+                              std::optional<SensorEvent>& event)
 {
   MarkCommunicationEstablished();
 
@@ -308,8 +314,8 @@ bool Bno086Shtp::DecodePacket(const Bno086ShtpPacket& packet, std::optional<Sens
 
   if (IsSensorChannel(normalizedPacket.channel))
   {
-    const SensorDecodeResult decoded =
-        DecodeSensorPayload(normalizedPacket.payload, normalizedPacket.channel, event);
+    const SensorDecodeResult decoded = DecodeSensorPayload(
+        normalizedPacket.payload, normalizedPacket.channel, packet_host_anchor_ns, event);
 
     if (packet.channel < m_continuationPayloads.size())
     {
@@ -381,6 +387,7 @@ void Bno086Shtp::DecodeControlPayload(const std::vector<std::uint8_t>& payload)
 Bno086Shtp::SensorDecodeResult Bno086Shtp::DecodeSensorPayload(
     const std::vector<std::uint8_t>& payload,
     std::uint8_t channel,
+    std::optional<int64_t> packet_host_anchor_ns,
     std::optional<SensorEvent>& event)
 {
   SensorDecodeResult result;
@@ -475,7 +482,7 @@ Bno086Shtp::SensorDecodeResult Bno086Shtp::DecodeSensorPayload(
     decodedEvent.channel = channel;
 
     if (event.has_value())
-      m_pendingEvents.emplace_back(decodedEvent);
+      m_pendingEvents.emplace_back(QueuedSensorEvent{decodedEvent, packet_host_anchor_ns});
     else
       event = decodedEvent;
 

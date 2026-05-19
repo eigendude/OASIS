@@ -279,9 +279,11 @@ TEST(Bno086Shtp, multiReportPayloadCarriesBaseTimestampContext)
   transport.packets.emplace_back(packet);
   Bno086Shtp shtp{transport};
 
-  const Bno086Shtp::PollResult firstResult = shtp.Poll(5);
+  const Bno086Shtp::PollResult firstResult = shtp.Poll(5, 1'000'000'000);
   ASSERT_EQ(firstResult.status, Bno086Shtp::PollStatus::SensorEvent);
   ASSERT_TRUE(firstResult.event.has_value());
+  ASSERT_TRUE(firstResult.packet_host_anchor_ns.has_value());
+  EXPECT_EQ(*firstResult.packet_host_anchor_ns, 1'000'000'000);
   EXPECT_EQ(firstResult.event->report_id, ReportId::Accelerometer);
   EXPECT_EQ(firstResult.event->sequence, 20);
   EXPECT_EQ(firstResult.event->delay_us, 1'200);
@@ -291,9 +293,11 @@ TEST(Bno086Shtp, multiReportPayloadCarriesBaseTimestampContext)
   EXPECT_EQ(firstResult.event->report_offset, 5U);
   EXPECT_EQ(firstResult.event->bytes_consumed, 10U);
 
-  const Bno086Shtp::PollResult secondResult = shtp.Poll(5);
+  const Bno086Shtp::PollResult secondResult = shtp.Poll(5, 2'000'000'000);
   ASSERT_EQ(secondResult.status, Bno086Shtp::PollStatus::SensorEvent);
   ASSERT_TRUE(secondResult.event.has_value());
+  ASSERT_TRUE(secondResult.packet_host_anchor_ns.has_value());
+  EXPECT_EQ(*secondResult.packet_host_anchor_ns, 1'000'000'000);
   EXPECT_EQ(secondResult.event->report_id, ReportId::Gravity);
   EXPECT_EQ(secondResult.event->sequence, 21);
   EXPECT_EQ(secondResult.event->delay_us, 2'400);

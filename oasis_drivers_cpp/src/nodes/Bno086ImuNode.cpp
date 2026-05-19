@@ -308,7 +308,7 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
   drainLimits.max_sensor_events_per_drain = m_drain_config.max_sensor_events_per_drain;
   drainLimits.max_pending_events_flush_per_drain =
       m_drain_config.max_pending_events_flush_per_drain;
-  const rclcpp::Time interruptStamp = interrupt_ros_at;
+  (void)interrupt_ros_at;
   const auto drainStartedAt = std::chrono::steady_clock::now();
   Bno086DrainAction drainExitAction = Bno086DrainAction::Complete;
 
@@ -362,7 +362,12 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
       break;
     }
 
-    const Bno086Shtp::PollResult pollResult = m_shtp->Poll(m_config.packet_read_timeout_ms);
+    // Packet read-start approximates the H_INTN anchor for I2C reads. This is
+    // safer than reusing a stale interrupt anchor across multiple packets in a
+    // long drain loop because SH-2 Timebase Reference reports are packet-local.
+    const rclcpp::Time packetHostAnchor = get_clock()->now();
+    const Bno086Shtp::PollResult pollResult =
+        m_shtp->Poll(m_config.packet_read_timeout_ms, packetHostAnchor.nanoseconds());
     const bool hintnAssertedAfterPoll = m_interruptGpio->IsAssertedLow();
     const Bno086DrainDecision afterPollDecision =
         Bno086DrainAfterPoll(pollResult, drainLimits, drainCounters, hintnAssertedAfterPoll);
@@ -451,7 +456,10 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
 
     if (pollResult.status == Bno086Shtp::PollStatus::SensorEvent && pollResult.event.has_value())
     {
-      const EventStamp normalizedEventStamp = ComputeEventStamp(*pollResult.event, interruptStamp);
+      const rclcpp::Time eventPacketHostAnchor(
+          pollResult.packet_host_anchor_ns.value_or(packetHostAnchor.nanoseconds()), RCL_ROS_TIME);
+      const EventStamp normalizedEventStamp =
+          ComputeEventStamp(*pollResult.event, eventPacketHostAnchor);
       RecordSequenceDiagnostics(*pollResult.event);
       m_diag.rate_health.CountDecodedReport(pollResult.event->report_id);
       ApplyEvent(*pollResult.event, normalizedEventStamp);
@@ -1179,10 +1187,10 @@ rclcpp::Time Bno086ImuNode::LatestCoreStamp() const
 }
 
 Bno086ImuNode::EventStamp Bno086ImuNode::ComputeEventStamp(const SensorEvent& event,
-                                                           const rclcpp::Time& interrupt_stamp)
+                                                           const rclcpp::Time& packet_host_anchor)
 {
   const Bno086Sh2TimestampInput input{
-      interrupt_stamp.nanoseconds(),
+      packet_host_anchor.nanoseconds(),
       event.has_timebase_reference,
       event.timebase_delta_ticks,
       event.has_delay,
@@ -1203,7 +1211,7 @@ Bno086ImuNode::EventStamp Bno086ImuNode::ComputeEventStamp(const SensorEvent& ev
   eventStamp.timing.used_missing_timebase_fallback = result.used_missing_timebase_fallback;
   eventStamp.timing.timebase_delta_ticks = event.timebase_delta_ticks;
   eventStamp.timing.delay_ticks = event.delay_ticks;
-  eventStamp.timing.interrupt_stamp_ns = interrupt_stamp.nanoseconds();
+  eventStamp.timing.packet_host_anchor_ns = packet_host_anchor.nanoseconds();
   return eventStamp;
 }
 
@@ -1293,10 +1301,11 @@ void Bno086ImuNode::LogStampDrop(const char* topic,
   RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), STAMP_DROP_LOG_THROTTLE_MS,
       "BNO stamp drop: topic=%s report=%s seq=%u dt=%.3fms tb_ref=%s tb=%d delay=%u "
-      "irq=%lld fallback=%s duplicate=%s backward=%s",
+      "packet_anchor=%lld fallback=%s duplicate=%s backward=%s",
       topic, ReportName(event.report_id), event.sequence, deltaMs,
       timing.has_timebase_reference ? "true" : "false", timing.timebase_delta_ticks,
-      static_cast<unsigned>(timing.delay_ticks), static_cast<long long>(timing.interrupt_stamp_ns),
+      static_cast<unsigned>(timing.delay_ticks),
+      static_cast<long long>(timing.packet_host_anchor_ns),
       timing.used_missing_timebase_fallback ? "true" : "false",
       gate_result.duplicate_stamp ? "true" : "false",
       gate_result.backward_stamp ? "true" : "false");

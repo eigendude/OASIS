@@ -25,11 +25,11 @@ Bno086Sh2TimestampResult ComputeBno086Sh2Timestamp(const Bno086Sh2TimestampInput
   {
     const int64_t baseDeltaNs =
         static_cast<int64_t>(input.timebase_delta_ticks) * SH2_TIMESTAMP_TICK_NS;
-    result.stamp_ns = input.interrupt_stamp_ns - baseDeltaNs + delayNs;
+    result.stamp_ns = input.packet_host_anchor_ns - baseDeltaNs + delayNs;
   }
   else
   {
-    result.stamp_ns = input.interrupt_stamp_ns + delayNs;
+    result.stamp_ns = input.packet_host_anchor_ns + delayNs;
   }
 
   return result;

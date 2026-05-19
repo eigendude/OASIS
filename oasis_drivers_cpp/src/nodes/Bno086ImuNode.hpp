@@ -82,7 +82,7 @@ private:
     bool used_missing_timebase_fallback{false};
     std::int32_t timebase_delta_ticks{0};
     std::uint16_t delay_ticks{0};
-    int64_t interrupt_stamp_ns{0};
+    int64_t packet_host_anchor_ns{0};
   };
 
   struct SampleState
@@ -207,7 +207,7 @@ private:
   CoreFrameSignature LatestCoreSignature() const;
   rclcpp::Time LatestCoreStamp() const;
   EventStamp ComputeEventStamp(const OASIS::IMU::BNO086::SensorEvent& event,
-                               const rclcpp::Time& interrupt_stamp);
+                               const rclcpp::Time& packet_host_anchor);
   void RecordSequenceDiagnostics(const OASIS::IMU::BNO086::SensorEvent& event);
   void MaybeLogGpioTimestampBasis(
       const OASIS::IMU::BNO086::Bno086Gpio::AssertedLowTimestamp& asserted_timestamp,
