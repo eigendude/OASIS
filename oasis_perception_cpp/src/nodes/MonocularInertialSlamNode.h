@@ -65,6 +65,7 @@ private:
   bool IsPostStallCooloffActiveLocked() const;
   void EnterInitRetryBackoff(const std::string& reason, int64_t rejectedImageStampNs);
   bool IsInitRetryBackoffActiveLocked() const;
+  std::optional<int64_t> GetInitRetryFreshImageBoundaryLocked() const;
   bool IsInitRetryImageTooOldLocked(int64_t imageStampNs) const;
   bool TryArmStartup();
   bool IsStartupArmed() const;
@@ -111,6 +112,7 @@ private:
 
   int64_t m_postStallCooloffNs = 0;
   int64_t m_initRetryBackoffNs = 0;
+  int64_t m_initRetryGuardNs = 0;
 
   // SLAM parameters
   std::unique_ptr<SLAM::MonocularInertialSlam> m_monocularInertialSlam;
