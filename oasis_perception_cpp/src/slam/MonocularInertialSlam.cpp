@@ -358,6 +358,35 @@ void MonocularInertialSlam::NotifySensorStreamDiscontinuity(const std::string& r
   ResetActiveMap();
 }
 
+void MonocularInertialSlam::NotifyPreStableMonocularInertialInitRetry(const std::string& reason,
+                                                                      int64_t previousStampNs,
+                                                                      int64_t currentStampNs)
+{
+  {
+    std::lock_guard<std::mutex> lock(m_imuMutex);
+    m_imuBuffer.clear();
+    m_previousTrackedImageStampNs.reset();
+    m_lastAcceptedImuStampNs.reset();
+    m_lastInitializationStatus.reset();
+    m_lastInitializationFailureReason.reset();
+    m_lastLoggedTrackingState.reset();
+    m_hasStableSlamMap = false;
+    m_startupArmed = false;
+    m_loggedEmptyImuMeasurementsError = false;
+  }
+
+  const int64_t gapNs = currentStampNs - previousStampNs;
+  RCLCPP_WARN_THROTTLE(Logger(), Clock(), IMU_DIAGNOSTIC_THROTTLE_MS,
+                       "SLAM pre-init retry reset: %s prev=%.3f curr=%.3f gap=%.0fms",
+                       reason.c_str(), static_cast<double>(previousStampNs) / 1'000'000'000.0,
+                       static_cast<double>(currentStampNs) / 1'000'000'000.0,
+                       static_cast<double>(gapNs) / 1.0e6);
+
+  ResetImageProcessingState();
+  if (ORB_SLAM3::System* slam = GetSlam())
+    slam->ResetPreStableMonocularInertialInitialization(reason);
+}
+
 std::optional<Eigen::Isometry3f> MonocularInertialSlam::TrackFrame(const cv::Mat& rgbImage,
                                                                    int64_t timestampNs)
 {

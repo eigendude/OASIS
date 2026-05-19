@@ -713,8 +713,8 @@ void MonocularInertialSlamNode::EnterInitRetryBackoff(const std::string& reason,
     }
   }
 
-  m_monocularInertialSlam->NotifySensorStreamDiscontinuity("mono-inertial init retry",
-                                                           rejectedImageStampNs, retryBoundaryNs);
+  m_monocularInertialSlam->NotifyPreStableMonocularInertialInitRetry(reason, rejectedImageStampNs,
+                                                                     retryBoundaryNs);
 
   {
     std::lock_guard<std::mutex> lock(m_pendingImageMutex);
