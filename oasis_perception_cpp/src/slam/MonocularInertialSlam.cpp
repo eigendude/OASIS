@@ -745,22 +745,20 @@ void MonocularInertialSlam::LogInitializationStatus(ORB_SLAM3::System& slam,
   const bool imuInitialized = slam.IsImuInitialized();
   const bool badImu = slam.HasBadImu();
   ORB_SLAM3::TrackingFailureReason failureReason = slam.GetLastTrackingFailureReason();
-  if (failureReason == ORB_SLAM3::TrackingFailureReason::None && badImu)
-    failureReason = ORB_SLAM3::TrackingFailureReason::BadImu;
-
-  const bool hasFailureReason = failureReason != ORB_SLAM3::TrackingFailureReason::None;
   const char* failureReasonName = slam.GetLastTrackingFailureReasonName();
-  if (failureReason == ORB_SLAM3::TrackingFailureReason::BadImu &&
-      std::string(failureReasonName) == "none")
+  if (failureReason == ORB_SLAM3::TrackingFailureReason::None && badImu)
   {
+    failureReason = ORB_SLAM3::TrackingFailureReason::BadImu;
     failureReasonName = "bad_imu";
   }
 
+  const bool hasFailureReason = failureReason != ORB_SLAM3::TrackingFailureReason::None;
+
   MonoInertialInitializationStatus status = MonoInertialInitializationStatus::UNKNOWN;
-  if (badImu)
-    status = MonoInertialInitializationStatus::BAD_IMU_OR_RESET_PENDING;
-  else if (hasFailureReason)
+  if (hasFailureReason)
     status = MonoInertialInitializationStatus::REJECTED;
+  else if (badImu)
+    status = MonoInertialInitializationStatus::BAD_IMU_OR_RESET_PENDING;
   else if (imuInitialized)
     status = MonoInertialInitializationStatus::INERTIAL_INITIALIZED;
   else if (trackingState == ORB_TRACKING_OK)

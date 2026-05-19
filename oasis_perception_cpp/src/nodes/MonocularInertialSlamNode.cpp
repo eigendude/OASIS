@@ -982,7 +982,7 @@ void MonocularInertialSlamNode::LogPeriodicTrackingDiagnostics(int64_t newestRel
 
   if (initialDiagnosticPending)
   {
-    RCLCPP_INFO(*m_logger, "SLAM health: initial img=%.1fHz imu=%.1fHz q=%zu lag=%.1fms",
+    RCLCPP_INFO(*m_logger, "SLAM health: img=%.1fHz imu=%.1fHz q=%zu lag=%.1fms",
                 imageReleaseRateHz, imuRateHz, pendingQueueSize,
                 static_cast<double>(lagNs) / 1.0e6);
   }

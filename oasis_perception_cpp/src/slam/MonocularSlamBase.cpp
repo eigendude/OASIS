@@ -226,10 +226,8 @@ void MonocularSlamBase::MapPublisherLoop()
 
     if (!cameraPose)
     {
-      RCLCPP_WARN(Logger(),
-                  "Skipping rejected SLAM frame at %.6f (state=%d, tracked points=%zu, "
-                  "map points=%zu)",
-                  timestamp, trackingState, trackedMapPoints.size(), mapPoints.size());
+      RCLCPP_WARN(Logger(), "SLAM frame rejected: t=%.3f state=%d pts=%zu map=%zu", timestamp,
+                  trackingState, trackedMapPoints.size(), mapPoints.size());
       OnPostTrack();
       continue;
     }
