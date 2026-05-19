@@ -302,6 +302,9 @@ if(BUILD_TESTING)
   # Copyright and license must be present in all source files
   set(ament_cmake_copyright_FOUND TRUE)
 
+  # Skip clang-format lint tests in colcon test
+  set(ament_cmake_clang_format_FOUND TRUE)
+
   # The following line skips cpplint (only works in a git repo)
   # Uncomment the line when this package is not in a git repo
   #set(ament_cmake_cpplint_FOUND TRUE)
