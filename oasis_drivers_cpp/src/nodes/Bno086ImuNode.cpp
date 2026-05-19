@@ -8,7 +8,6 @@
 
 #include "Bno086ImuNode.hpp"
 
-#include "imu/bno086/core/Bno086TimestampCadence.hpp"
 #include "imu/bno086/gpio/Bno086Gpio.hpp"
 #include "imu/bno086/ros/Bno086MessageBuilder.hpp"
 #include "imu/bno086/ros/Bno086Qos.hpp"
@@ -98,8 +97,7 @@ Bno086ImuNode::Bno086ImuNode()
   : rclcpp::Node(NODE_NAME),
     m_transport(std::make_unique<Bno086Transport>()),
     m_shtp(std::make_unique<Bno086Shtp>(*m_transport)),
-    m_interruptGpio(std::make_unique<Bno086Gpio>()),
-    m_timestampCadence(std::make_unique<Bno086TimestampCadence>())
+    m_interruptGpio(std::make_unique<Bno086Gpio>())
 {
   DeclareBno086NodeParameters(*this);
   const Bno086NodeParams params = LoadBno086NodeParameters(*this);
@@ -140,12 +138,11 @@ Bno086ImuNode::Bno086ImuNode()
   shtpConfig.accelerometer_rate_hz = m_reports.accelerometer_rate_hz;
   shtpConfig.linear_acceleration_rate_hz = m_reports.linear_acceleration_rate_hz;
   shtpConfig.gravity_rate_hz = m_reports.gravity_rate_hz;
-  shtpConfig.rotation_vector_batch_interval_us = m_reports.rotation_vector_batch_interval_us;
-  shtpConfig.gyro_batch_interval_us = m_reports.gyro_batch_interval_us;
-  shtpConfig.accelerometer_batch_interval_us = m_reports.accelerometer_batch_interval_us;
-  shtpConfig.linear_acceleration_batch_interval_us =
-      m_reports.linear_acceleration_batch_interval_us;
-  shtpConfig.gravity_batch_interval_us = m_reports.gravity_batch_interval_us;
+  shtpConfig.rotation_vector_batch_interval_us = 0;
+  shtpConfig.gyro_batch_interval_us = 0;
+  shtpConfig.accelerometer_batch_interval_us = 0;
+  shtpConfig.linear_acceleration_batch_interval_us = 0;
+  shtpConfig.gravity_batch_interval_us = 0;
 
   if (!m_shtp->Configure(shtpConfig))
   {
@@ -162,22 +159,15 @@ Bno086ImuNode::Bno086ImuNode()
   RCLCPP_INFO(get_logger(), "BNO086 opened on %s (0x%02X), int_gpio=%d active_low",
               i2cDevice.c_str(), static_cast<unsigned>(i2cAddress), intGpio);
   RCLCPP_INFO(get_logger(),
-              "BNO086 static report rates:\n"
-              "  rotation_vector=%.1f batch_ms=%.0f enabled=true\n"
-              "  gyro=%.1f batch_ms=%.0f enabled=true\n"
-              "  accelerometer=%.1f batch_ms=%.0f enabled=true\n"
-              "  linear_acceleration=%.1f batch_ms=%.0f enabled=true\n"
-              "  gravity=%.1f batch_ms=%.0f enabled=%s",
-              m_reports.rotation_vector_rate_hz,
-              static_cast<double>(m_reports.rotation_vector_batch_interval_us) / 1000.0,
-              m_reports.gyro_rate_hz,
-              static_cast<double>(m_reports.gyro_batch_interval_us) / 1000.0,
-              m_reports.accelerometer_rate_hz,
-              static_cast<double>(m_reports.accelerometer_batch_interval_us) / 1000.0,
-              m_reports.linear_acceleration_rate_hz,
-              static_cast<double>(m_reports.linear_acceleration_batch_interval_us) / 1000.0,
-              m_reports.gravity_rate_hz,
-              static_cast<double>(m_reports.gravity_batch_interval_us) / 1000.0, "true");
+              "BNO086 live/unbatched report rates:\n"
+              "  rotation_vector=%.1f enabled=true\n"
+              "  gyro=%.1f enabled=true\n"
+              "  accelerometer=%.1f enabled=true\n"
+              "  linear_acceleration=%.1f enabled=true\n"
+              "  gravity=%.1f enabled=%s",
+              m_reports.rotation_vector_rate_hz, m_reports.gyro_rate_hz,
+              m_reports.accelerometer_rate_hz, m_reports.linear_acceleration_rate_hz,
+              m_reports.gravity_rate_hz, "true");
   RCLCPP_INFO(get_logger(), "BNO086 publication cadence: imu=linear_acceleration "
                             "imu_gravity=rotation_vector gravity=gravity_report");
   if (m_config.prediction_horizon_sec > 0.0)
@@ -186,10 +176,7 @@ Bno086ImuNode::Bno086ImuNode()
                 "Predicted orientation output uses %s with prediction_horizon_sec=%.4f",
                 m_config.prediction_source.c_str(), m_config.prediction_horizon_sec);
   }
-  RCLCPP_INFO(get_logger(),
-              "BNO086 imu_gravity uses rotation vector cadence with "
-              "orientation_max_age_ms=%.1f gyro_max_age_ms=%.1f",
-              m_config.imu_gravity_max_orientation_age_ms, m_config.imu_gravity_max_gyro_age_ms);
+  RCLCPP_INFO(get_logger(), "BNO086 imu_gravity uses live host-stamped rotation vector cadence");
 }
 
 Bno086ImuNode::~Bno086ImuNode() = default;
@@ -197,10 +184,10 @@ Bno086ImuNode::~Bno086ImuNode() = default;
 bool Bno086ImuNode::Initialize()
 {
   // Initialize state
-  m_timestampCadence->Reset();
   m_stream.last_published_core_signature.reset();
-  m_stream.last_published_imu_gravity_anchor_stamp_ns.reset();
-  m_stream.imu_gravity_accel_history.Reset();
+  m_stream.last_published_imu_stamp_ns.reset();
+  m_stream.last_published_imu_gravity_stamp_ns.reset();
+  m_stream.last_published_gravity_stamp_ns.reset();
   m_diag.drain_health = Bno086DrainHealth{};
   m_diag.rate_health = Bno086RateHealth{};
   m_diag.imu_gravity_gate_counters = ImuGravityGateCounters{};
@@ -438,28 +425,14 @@ void Bno086ImuNode::DrainPacketsForInterrupt(
 
     if (pollResult.status == Bno086Shtp::PollStatus::SensorEvent && pollResult.event.has_value())
     {
-      // For batched SHTP reports, host drain time is transport latency. Use
-      // one stable receive anchor for the interrupt drain so reports in a
-      // batch are not timestamped later merely because they were read later
-      // over I2C.
-      const std::optional<std::uint32_t> expectedIntervalUs =
-          EffectiveReportIntervalUs(pollResult.event->report_id);
-      const std::optional<int64_t> expectedIntervalNs =
-          expectedIntervalUs.has_value()
-              ? std::make_optional(static_cast<int64_t>(*expectedIntervalUs) * 1'000)
-              : std::nullopt;
-      const std::optional<int64_t> finalizedStampNs =
-          FinalizeEventStampNs(*pollResult.event, drainReceiveAnchor, expectedIntervalNs);
-
-      if (finalizedStampNs.has_value())
-      {
-        const rclcpp::Time normalizedEventStamp(*finalizedStampNs, RCL_ROS_TIME);
-        m_diag.rate_health.CountDecodedReport(pollResult.event->report_id);
-        ApplyEvent(*pollResult.event, normalizedEventStamp);
-        MaybePublishOnLinearAcceleration(*pollResult.event);
-        MaybePublishImuGravityOnRotationVector(*pollResult.event);
-        MaybePublishGravityOnGravityReport(*pollResult.event);
-      }
+      // BNO reports are used as live host-stamped sensor data. Every event
+      // drained from one interrupt uses the same host receive anchor.
+      const rclcpp::Time normalizedEventStamp = drainReceiveAnchor;
+      m_diag.rate_health.CountDecodedReport(pollResult.event->report_id);
+      ApplyEvent(*pollResult.event, normalizedEventStamp);
+      MaybePublishOnLinearAcceleration(*pollResult.event);
+      MaybePublishImuGravityOnRotationVector(*pollResult.event);
+      MaybePublishGravityOnGravityReport(*pollResult.event);
     }
 
     if (afterPollDecision.action == Bno086DrainAction::PhysicalPacketCap)
@@ -564,6 +537,12 @@ void Bno086ImuNode::MaybePublishOnLinearAcceleration(const SensorEvent& event)
     return;
   }
 
+  if (!m_imuPublisher || !m_imuPredictedPublisher || !m_imuVrPublisher)
+  {
+    MaybeLogImuGravityDiagnostics();
+    return;
+  }
+
   const int64_t orientationNs = m_stream.orientation.stamp.nanoseconds();
   const int64_t gyroNs = m_stream.gyro.stamp.nanoseconds();
   const int64_t linearAccelNs = m_stream.linear_accel.stamp.nanoseconds();
@@ -594,7 +573,18 @@ void Bno086ImuNode::MaybePublishOnLinearAcceleration(const SensorEvent& event)
     return;
   }
 
-  PublishLatestFrame(LatestCoreStamp());
+  const rclcpp::Time publishStamp = LatestCoreStamp();
+  const int64_t publishStampNs = publishStamp.nanoseconds();
+  if (m_stream.last_published_imu_stamp_ns.has_value() &&
+      publishStampNs <= *m_stream.last_published_imu_stamp_ns)
+  {
+    RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000, "BNO dropped nonmonotonic imu stamp");
+    MaybeLogImuGravityDiagnostics();
+    return;
+  }
+
+  PublishLatestFrame(publishStamp);
+  m_stream.last_published_imu_stamp_ns = publishStampNs;
   m_stream.last_published_core_signature = signature;
   m_diag.rate_health.CountImuPublished();
 }
@@ -626,59 +616,19 @@ void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& ev
   }
 
   const int64_t orientationStampNs = m_stream.orientation.stamp.nanoseconds();
-  const int64_t maxAccelAgeNs = ImuGravityMaxOrientationAgeNs();
-  const int64_t accelFutureToleranceNs = ReportFutureToleranceNs(ReportId::Accelerometer);
-  const std::optional<Bno086ImuGravityAccelSample> accelSelection =
-      SelectImuGravityAccelSample(orientationStampNs, accelFutureToleranceNs);
-
-  if (!accelSelection.has_value())
-  {
-    RecordImuGravityGateSkip(ImuGravityGateReason::MissingAccel);
-    MaybeLogImuGravityDiagnostics();
-    return;
-  }
-
-  const Bno086ImuGravityAccelSample& accelSample = *accelSelection;
-  const int64_t accelStampNs = accelSample.stamp_ns;
-  const int64_t maxGyroAgeNs = ImuGravityMaxGyroAgeNs();
-  const SampleFreshnessResult accelFreshness = EvaluateSampleFreshness(
-      orientationStampNs, accelStampNs, maxAccelAgeNs, accelFutureToleranceNs);
-  const SampleFreshnessResult gyroFreshness =
-      EvaluateSampleFreshness(orientationStampNs, m_stream.gyro.stamp.nanoseconds(), maxGyroAgeNs,
-                              ReportFutureToleranceNs(ReportId::GyroscopeCalibrated));
-
-  if (accelFreshness.status == SampleFreshnessStatus::TooOld)
-  {
-    RecordImuGravityGateSkip(ImuGravityGateReason::AccelTooOld);
-    MaybeLogImuGravityDiagnostics();
-    return;
-  }
-
-  if (accelFreshness.status == SampleFreshnessStatus::TooFuture)
-  {
-    RecordImuGravityGateSkip(ImuGravityGateReason::AccelFuture);
-    MaybeLogImuGravityDiagnostics();
-    return;
-  }
-
-  if (gyroFreshness.status == SampleFreshnessStatus::TooOld)
-  {
-    RecordImuGravityGateSkip(ImuGravityGateReason::GyroTooOld);
-    MaybeLogImuGravityDiagnostics();
-    return;
-  }
-
-  if (gyroFreshness.status == SampleFreshnessStatus::TooFuture)
-  {
-    RecordImuGravityGateSkip(ImuGravityGateReason::GyroFuture);
-    MaybeLogImuGravityDiagnostics();
-    return;
-  }
-
-  if (m_stream.last_published_imu_gravity_anchor_stamp_ns.has_value() &&
-      orientationStampNs <= *m_stream.last_published_imu_gravity_anchor_stamp_ns)
+  if (m_stream.last_published_imu_gravity_stamp_ns.has_value() &&
+      orientationStampNs <= *m_stream.last_published_imu_gravity_stamp_ns)
   {
     RecordImuGravityGateSkip(ImuGravityGateReason::NonMonotonicStamp);
+    RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
+                          "BNO dropped nonmonotonic imu_gravity stamp");
+    MaybeLogImuGravityDiagnostics();
+    return;
+  }
+
+  if (!m_imuGravityPublisher)
+  {
+    RecordImuGravityGateSkip(ImuGravityGateReason::PublisherNotReady);
     MaybeLogImuGravityDiagnostics();
     return;
   }
@@ -692,6 +642,7 @@ void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& ev
   // acceleration report used by `imu` has gravity removed.
   const Bno086RosMessageConfig messageConfig{m_config.frame_id, m_config.prediction_horizon_sec,
                                              m_config.prediction_source};
+  const Bno086ImuGravityAccelSample accelSample = LatestImuGravityAccelSample();
   const sensor_msgs::msg::Imu imuGravityMsg = BuildBno086ImuGravityMessage(
       messageConfig, m_stream.latest_frame, accelSample, m_stream.orientation.stamp);
   std::string invalidReason;
@@ -705,7 +656,7 @@ void Bno086ImuNode::MaybePublishImuGravityOnRotationVector(const SensorEvent& ev
   }
 
   m_imuGravityPublisher->publish(imuGravityMsg);
-  m_stream.last_published_imu_gravity_anchor_stamp_ns = orientationStampNs;
+  m_stream.last_published_imu_gravity_stamp_ns = orientationStampNs;
   m_diag.rate_health.CountImuGravityPublished();
   RecordImuGravityGatePublished();
   MaybeLogImuGravityDiagnostics();
@@ -719,11 +670,24 @@ void Bno086ImuNode::MaybePublishGravityOnGravityReport(const SensorEvent& event)
   if (!m_stream.latest_frame.has_gravity)
     return;
 
+  if (!m_gravityPublisher)
+    return;
+
+  const int64_t gravityStampNs = m_stream.gravity.stamp.nanoseconds();
+  if (m_stream.last_published_gravity_stamp_ns.has_value() &&
+      gravityStampNs <= *m_stream.last_published_gravity_stamp_ns)
+  {
+    RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
+                          "BNO dropped nonmonotonic gravity stamp");
+    return;
+  }
+
   const Bno086RosMessageConfig messageConfig{m_config.frame_id, m_config.prediction_horizon_sec,
                                              m_config.prediction_source};
   const geometry_msgs::msg::AccelWithCovarianceStamped gravityMsg =
       BuildBno086GravityMessage(messageConfig, m_stream.latest_frame, m_stream.gravity.stamp);
   m_gravityPublisher->publish(gravityMsg);
+  m_stream.last_published_gravity_stamp_ns = gravityStampNs;
 }
 
 void Bno086ImuNode::PublishLatestFrame(const rclcpp::Time& stamp)
@@ -741,6 +705,9 @@ void Bno086ImuNode::PublishLatestFrame(const rclcpp::Time& stamp)
   }
 
   m_diag.warned_missing_imu_fields = false;
+
+  if (!m_imuPublisher || !m_imuPredictedPublisher || !m_imuVrPublisher)
+    return;
 
   // `imu` keeps gravity-removed linear acceleration
   const Bno086RosMessageConfig messageConfig{m_config.frame_id, m_config.prediction_horizon_sec,
@@ -870,16 +837,10 @@ void Bno086ImuNode::MaybeEmitImuGravityDiagnosticsLog(const Bno086RateSnapshot& 
     std::ostringstream stream;
     stream << "BNO imu_g skips:";
     AppendImuGravityCounter(stream, "missing_orient", gateDelta.missing_orientation);
-    AppendImuGravityCounter(stream, "orient_old", gateDelta.orientation_old);
     AppendImuGravityCounter(stream, "missing_gyro", gateDelta.missing_gyro);
-    AppendImuGravityCounter(stream, "gyro_old", gateDelta.gyro_old);
     AppendImuGravityCounter(stream, "missing_accel", gateDelta.missing_accel);
-    AppendImuGravityCounter(stream, "accel_old", gateDelta.accel_old);
-    AppendImuGravityCounter(stream, "accel_future", gateDelta.accel_future);
-    AppendImuGravityCounter(stream, "gyro_future", gateDelta.gyro_future);
     AppendImuGravityCounter(stream, "invalid", gateDelta.invalid_sample);
     AppendImuGravityCounter(stream, "stamp", gateDelta.non_monotonic_stamp);
-    AppendImuGravityCounter(stream, "live", gateDelta.stale_live_age);
     AppendImuGravityCounter(stream, "pub", gateDelta.publisher_not_ready);
     stream << " published=" << gateDelta.published;
     RCLCPP_WARN_STREAM(get_logger(), stream.str());
@@ -912,20 +873,11 @@ void Bno086ImuNode::RecordImuGravityGateSkip(ImuGravityGateReason reason)
     case ImuGravityGateReason::MissingOrientation:
       ++m_diag.imu_gravity_gate_counters.missing_orientation;
       break;
-    case ImuGravityGateReason::OrientationTooOld:
-      ++m_diag.imu_gravity_gate_counters.orientation_old;
-      break;
     case ImuGravityGateReason::MissingGyro:
       ++m_diag.imu_gravity_gate_counters.missing_gyro;
       break;
-    case ImuGravityGateReason::GyroTooOld:
-      ++m_diag.imu_gravity_gate_counters.gyro_old;
-      break;
     case ImuGravityGateReason::MissingAccel:
       ++m_diag.imu_gravity_gate_counters.missing_accel;
-      break;
-    case ImuGravityGateReason::AccelTooOld:
-      ++m_diag.imu_gravity_gate_counters.accel_old;
       break;
     case ImuGravityGateReason::InvalidSample:
       ++m_diag.imu_gravity_gate_counters.invalid_sample;
@@ -933,17 +885,8 @@ void Bno086ImuNode::RecordImuGravityGateSkip(ImuGravityGateReason reason)
     case ImuGravityGateReason::NonMonotonicStamp:
       ++m_diag.imu_gravity_gate_counters.non_monotonic_stamp;
       break;
-    case ImuGravityGateReason::StaleLiveAge:
-      ++m_diag.imu_gravity_gate_counters.stale_live_age;
-      break;
     case ImuGravityGateReason::PublisherNotReady:
       ++m_diag.imu_gravity_gate_counters.publisher_not_ready;
-      break;
-    case ImuGravityGateReason::AccelFuture:
-      ++m_diag.imu_gravity_gate_counters.accel_future;
-      break;
-    case ImuGravityGateReason::GyroFuture:
-      ++m_diag.imu_gravity_gate_counters.gyro_future;
       break;
   }
 }
@@ -959,17 +902,11 @@ Bno086ImuNode::ImuGravityGateCounters Bno086ImuNode::ImuGravityGateDelta() const
   const ImuGravityGateCounters& last = m_diag.last_logged_imu_gravity_gate_counters;
   ImuGravityGateCounters delta;
   delta.missing_orientation = current.missing_orientation - last.missing_orientation;
-  delta.orientation_old = current.orientation_old - last.orientation_old;
   delta.missing_gyro = current.missing_gyro - last.missing_gyro;
-  delta.gyro_old = current.gyro_old - last.gyro_old;
   delta.missing_accel = current.missing_accel - last.missing_accel;
-  delta.accel_old = current.accel_old - last.accel_old;
   delta.invalid_sample = current.invalid_sample - last.invalid_sample;
   delta.non_monotonic_stamp = current.non_monotonic_stamp - last.non_monotonic_stamp;
-  delta.stale_live_age = current.stale_live_age - last.stale_live_age;
   delta.publisher_not_ready = current.publisher_not_ready - last.publisher_not_ready;
-  delta.accel_future = current.accel_future - last.accel_future;
-  delta.gyro_future = current.gyro_future - last.gyro_future;
   delta.published = current.published - last.published;
   return delta;
 }
@@ -990,17 +927,11 @@ const char* Bno086ImuNode::DominantImuGravityGateReason(
   };
 
   consider(counters.missing_orientation, "missing_orientation");
-  consider(counters.orientation_old, "orientation_old");
   consider(counters.missing_gyro, "missing_gyro");
-  consider(counters.gyro_old, "gyro_old");
   consider(counters.missing_accel, "missing_accel");
-  consider(counters.accel_old, "accel_old");
   consider(counters.invalid_sample, "invalid_sample");
   consider(counters.non_monotonic_stamp, "stamp");
-  consider(counters.stale_live_age, "stale_live_age");
   consider(counters.publisher_not_ready, "publisher_not_ready");
-  consider(counters.accel_future, "accel_future");
-  consider(counters.gyro_future, "gyro_future");
 
   return reason;
 }
@@ -1173,51 +1104,17 @@ std::uint32_t Bno086ImuNode::CoreCoherenceToleranceUs() const
   return static_cast<std::uint32_t>(toleranceNs / 1'000);
 }
 
-int64_t Bno086ImuNode::ImuGravityMaxOrientationAgeNs() const
-{
-  const std::optional<std::uint32_t> intervalUs =
-      EffectiveReportIntervalUs(ReportId::RotationVector);
-  return EffectiveMaxPastAgeNs(
-      static_cast<int64_t>(m_config.imu_gravity_max_orientation_age_ms * 1.0e6),
-      static_cast<int64_t>(intervalUs.value_or(DEFAULT_REPORT_INTERVAL_US)) * 1'000, 80'000'000);
-}
-
-int64_t Bno086ImuNode::ImuGravityMaxGyroAgeNs() const
-{
-  const std::optional<std::uint32_t> intervalUs =
-      EffectiveReportIntervalUs(ReportId::GyroscopeCalibrated);
-  return EffectiveMaxPastAgeNs(
-      static_cast<int64_t>(m_config.imu_gravity_max_gyro_age_ms * 1.0e6),
-      static_cast<int64_t>(intervalUs.value_or(DEFAULT_REPORT_INTERVAL_US)) * 1'000, 80'000'000);
-}
-
-int64_t Bno086ImuNode::ReportFutureToleranceNs(ReportId report_id) const
-{
-  const std::optional<std::uint32_t> intervalUs = EffectiveReportIntervalUs(report_id);
-  if (intervalUs.has_value() && *intervalUs > 0)
-    return static_cast<int64_t>(*intervalUs) * 1'000;
-
-  return DurationNsFromUs(CoreCoherenceToleranceUs());
-}
-
-void Bno086ImuNode::RecordImuGravityAccelSample(const rclcpp::Time& sample_stamp)
+Bno086ImuGravityAccelSample Bno086ImuNode::LatestImuGravityAccelSample() const
 {
   Bno086ImuGravityAccelSample sample;
-  sample.has_sample = true;
-  sample.stamp_ns = sample_stamp.nanoseconds();
+  sample.has_sample = m_stream.imu_gravity.has_sample && m_stream.latest_frame.has_accel;
+  sample.stamp_ns = m_stream.imu_gravity.stamp.nanoseconds();
   sample.accel_mps2 = m_stream.latest_frame.accel_mps2;
   sample.covariance_mps2_2 = m_stream.latest_frame.accel_cov_mps2_2;
   sample.has_covariance = m_stream.latest_frame.has_accel_covariance;
   sample.sequence = m_stream.imu_gravity.sequence;
   sample.accuracy = m_stream.imu_gravity.accuracy;
-
-  m_stream.imu_gravity_accel_history.Push(sample);
-}
-
-std::optional<Bno086ImuGravityAccelSample> Bno086ImuNode::SelectImuGravityAccelSample(
-    int64_t anchor_stamp_ns, int64_t future_tolerance_ns) const
-{
-  return m_stream.imu_gravity_accel_history.SelectAtOrBefore(anchor_stamp_ns, future_tolerance_ns);
+  return sample;
 }
 
 Bno086ImuNode::CoreFrameSignature Bno086ImuNode::LatestCoreSignature() const
@@ -1328,7 +1225,6 @@ void Bno086ImuNode::ApplyEvent(const SensorEvent& event, const rclcpp::Time& sam
       m_stream.latest_frame.accel_cov_mps2_2 =
           CovarianceFromAccuracyBucket(event.accuracy, 4.0, 2.0, 0.8, 0.25);
       m_stream.latest_frame.has_accel_covariance = true;
-      RecordImuGravityAccelSample(sample_stamp);
       break;
 
     case ReportId::Gravity:
@@ -1359,33 +1255,6 @@ void Bno086ImuNode::ApplyEvent(const SensorEvent& event, const rclcpp::Time& sam
     default:
       break;
   }
-}
-
-std::optional<int64_t> Bno086ImuNode::FinalizeEventStampNs(
-    const SensorEvent& event,
-    const rclcpp::Time& interrupt_ros_at,
-    std::optional<int64_t> expected_interval_ns)
-{
-  const Bno086TimestampCadenceResult result =
-      m_timestampCadence->Finalize(event, interrupt_ros_at.nanoseconds(), expected_interval_ns);
-  if (result.reanchored_to_host && result.stamp_ns.has_value())
-  {
-    const double reanchorDeltaMs = static_cast<double>(result.reanchor_delta_ns) / 1.0e6;
-    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
-                         "BNO reanchor: report=%s seq=%u delta=%.1fms", ReportName(event.report_id),
-                         event.sequence, reanchorDeltaMs);
-  }
-
-  if (result.monotonic_guard_adjusted && result.stamp_ns.has_value() &&
-      result.last_stamp_ns.has_value())
-  {
-    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
-                         "BNO stamp guard: report=%s seq=%u delta=%u dup=%d",
-                         ReportName(event.report_id), event.sequence, result.sequence_delta,
-                         result.duplicate_sequence ? 1 : 0);
-  }
-
-  return result.stamp_ns;
 }
 
 void Bno086ImuNode::MaybeLogOrientationCovariancePolicy(

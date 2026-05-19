@@ -39,7 +39,6 @@ namespace OASIS::IMU::BNO086
 class Bno086Transport;
 class Bno086Gpio;
 class Bno086Shtp;
-class Bno086TimestampCadence;
 } // namespace OASIS::IMU::BNO086
 
 namespace OASIS::ROS
@@ -102,41 +101,30 @@ private:
     SampleState linear_accel{};
     SampleState imu_gravity{};
     SampleState gravity{};
-    OASIS::IMU::BNO086::Bno086ImuGravityAccelHistory imu_gravity_accel_history;
     std::optional<CoreFrameSignature> last_published_core_signature;
-    std::optional<int64_t> last_published_imu_gravity_anchor_stamp_ns;
+    std::optional<int64_t> last_published_imu_stamp_ns;
+    std::optional<int64_t> last_published_imu_gravity_stamp_ns;
+    std::optional<int64_t> last_published_gravity_stamp_ns;
   };
 
   enum class ImuGravityGateReason
   {
     MissingOrientation,
-    OrientationTooOld,
     MissingGyro,
-    GyroTooOld,
     MissingAccel,
-    AccelTooOld,
     InvalidSample,
     NonMonotonicStamp,
-    StaleLiveAge,
     PublisherNotReady,
-    AccelFuture,
-    GyroFuture,
   };
 
   struct ImuGravityGateCounters
   {
     std::uint64_t missing_orientation{0};
-    std::uint64_t orientation_old{0};
     std::uint64_t missing_gyro{0};
-    std::uint64_t gyro_old{0};
     std::uint64_t missing_accel{0};
-    std::uint64_t accel_old{0};
     std::uint64_t invalid_sample{0};
     std::uint64_t non_monotonic_stamp{0};
-    std::uint64_t stale_live_age{0};
     std::uint64_t publisher_not_ready{0};
-    std::uint64_t accel_future{0};
-    std::uint64_t gyro_future{0};
     std::uint64_t published{0};
   };
 
@@ -177,19 +165,11 @@ private:
   void MaybePublishGravityOnGravityReport(const OASIS::IMU::BNO086::SensorEvent& event);
   void PublishLatestFrame(const rclcpp::Time& stamp);
   std::uint32_t CoreCoherenceToleranceUs() const;
-  int64_t ImuGravityMaxOrientationAgeNs() const;
-  int64_t ImuGravityMaxGyroAgeNs() const;
-  int64_t ReportFutureToleranceNs(OASIS::IMU::BNO086::ReportId report_id) const;
-  void RecordImuGravityAccelSample(const rclcpp::Time& sample_stamp);
-  std::optional<OASIS::IMU::BNO086::Bno086ImuGravityAccelSample> SelectImuGravityAccelSample(
-      int64_t anchor_stamp_ns, int64_t future_tolerance_ns) const;
+  OASIS::IMU::BNO086::Bno086ImuGravityAccelSample LatestImuGravityAccelSample() const;
   CoreFrameSignature LatestCoreSignature() const;
   rclcpp::Time LatestCoreStamp() const;
 
   void ApplyEvent(const OASIS::IMU::BNO086::SensorEvent& event, const rclcpp::Time& sample_stamp);
-  std::optional<int64_t> FinalizeEventStampNs(const OASIS::IMU::BNO086::SensorEvent& event,
-                                              const rclcpp::Time& interrupt_ros_at,
-                                              std::optional<int64_t> expected_interval_ns);
   void MaybeLogFeatureResponses();
   void MaybeLogFeatureSummary();
   void LogFeatureSummary() const;
@@ -231,7 +211,6 @@ private:
   std::unique_ptr<OASIS::IMU::BNO086::Bno086Transport> m_transport;
   std::unique_ptr<OASIS::IMU::BNO086::Bno086Shtp> m_shtp;
   std::unique_ptr<OASIS::IMU::BNO086::Bno086Gpio> m_interruptGpio;
-  std::unique_ptr<OASIS::IMU::BNO086::Bno086TimestampCadence> m_timestampCadence;
 
   // Threading parameters
   std::atomic<bool> m_running{false};

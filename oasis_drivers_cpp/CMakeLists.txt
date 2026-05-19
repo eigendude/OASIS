@@ -70,19 +70,8 @@ add_library(bno086_orientation_covariance_policy
   src/imu/bno086/core/Bno086OrientationCovariancePolicy.cpp
 )
 
-add_library(bno086_report_timestamp_tracker
-  src/imu/bno086/core/Bno086ReportTimestampTracker.cpp
-)
-
 add_library(bno086_sample_coherence
   src/imu/bno086/core/Bno086SampleCoherence.cpp
-)
-
-add_library(bno086_timestamp_cadence
-  src/imu/bno086/core/Bno086TimestampCadence.cpp
-)
-target_link_libraries(bno086_timestamp_cadence
-  bno086_report_timestamp_tracker
 )
 
 add_library(bno086_utils
@@ -138,14 +127,11 @@ target_link_libraries(bno086_imu_driver
   bno086_diagnostics
   bno086_drain_policy
   bno086_gravity_utils
-  bno086_imu_gravity_accel_history
   bno086_orientation_covariance_policy
-  bno086_report_timestamp_tracker
   bno086_ros_helpers
   bno086_sample_coherence
   bno086_sh2
   bno086_shtp
-  bno086_timestamp_cadence
   bno086_utils
   ${geometry_msgs_TARGETS}
   ${oasis_msgs_TARGETS}
@@ -389,26 +375,11 @@ if(BUILD_TESTING)
     bno086_shtp
   )
 
-  ament_add_gtest(test_bno086_report_timestamp_tracker
-    test/imu/bno086/test_Bno086ReportTimestampTracker.cpp
-  )
-  target_link_libraries(test_bno086_report_timestamp_tracker
-    bno086_report_timestamp_tracker
-  )
-
   ament_add_gtest(test_bno086_sample_coherence
     test/imu/bno086/test_Bno086SampleCoherence.cpp
   )
   target_link_libraries(test_bno086_sample_coherence
     bno086_sample_coherence
-  )
-
-  ament_add_gtest(test_bno086_timestamp_cadence
-    test/imu/bno086/test_Bno086TimestampCadence.cpp
-  )
-  target_link_libraries(test_bno086_timestamp_cadence
-    bno086_timestamp_cadence
-    bno086_report_timestamp_tracker
   )
 
   ament_add_gtest(test_bno086_utils
