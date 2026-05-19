@@ -290,6 +290,11 @@ bool MonocularInertialSlamNode::Initialize()
     m_postStallRecoveryPending = false;
     m_initRetryPending = false;
     m_stableInputPaused = false;
+    m_stableInputPauseNewestImuStampNs.reset();
+    m_stableInputPauseWallNs.reset();
+    m_stableInputPauseReceivedImuCount = 0;
+    m_stableInputPauseAcceptedImuCount = 0;
+    m_stableInputPauseDroppedImuCount = 0;
     m_startupArmed = false;
     m_initialTrackingDiagnosticPending = false;
   }
@@ -355,6 +360,11 @@ void MonocularInertialSlamNode::Deinitialize()
     m_initRetryPending = false;
     m_imageWorkerWake = false;
     m_stableInputPaused = false;
+    m_stableInputPauseNewestImuStampNs.reset();
+    m_stableInputPauseWallNs.reset();
+    m_stableInputPauseReceivedImuCount = 0;
+    m_stableInputPauseAcceptedImuCount = 0;
+    m_stableInputPauseDroppedImuCount = 0;
     m_startupArmed = false;
     m_releasedImageCount = 0;
     m_imuCallbackCount = 0;
@@ -588,6 +598,11 @@ void MonocularInertialSlamNode::EnterStartupUnarmed()
     m_postStallRecoveryPending = false;
     m_initRetryPending = false;
     m_stableInputPaused = false;
+    m_stableInputPauseNewestImuStampNs.reset();
+    m_stableInputPauseWallNs.reset();
+    m_stableInputPauseReceivedImuCount = 0;
+    m_stableInputPauseAcceptedImuCount = 0;
+    m_stableInputPauseDroppedImuCount = 0;
     m_startupArmed = false;
     m_initialTrackingDiagnosticPending = false;
   }
@@ -624,6 +639,11 @@ void MonocularInertialSlamNode::StartFreshEpochAfterImuStall(
     m_postStallRecoveryPending = true;
     m_initRetryPending = false;
     m_stableInputPaused = false;
+    m_stableInputPauseNewestImuStampNs.reset();
+    m_stableInputPauseWallNs.reset();
+    m_stableInputPauseReceivedImuCount = 0;
+    m_stableInputPauseAcceptedImuCount = 0;
+    m_stableInputPauseDroppedImuCount = 0;
     m_startupArmed = false;
     m_initialTrackingDiagnosticPending = false;
   }
@@ -1137,7 +1157,9 @@ void MonocularInertialSlamNode::HoldImageUntilImuCoverage(const sensor_msgs::msg
     const bool receptionStall =
         lagNs > IMAGE_AHEAD_OF_IMU_RESET_NS &&
         (imuStatus.previous_tracked_image_stamp_ns || !imuStatus.has_stable_slam_map);
-    if (!receptionStall)
+    if (!receptionStall && imuStatus.has_stable_slam_map)
+      EnterStableInputPause(imuStatus, imageStampNs, lagNs, pendingQueueSize);
+    else if (!receptionStall)
       LogImageAheadOfImuDiagnostics(imuStatus, imageStampNs, lagNs, pendingQueueSize);
 
     if (receptionStall)
@@ -1249,11 +1271,47 @@ void MonocularInertialSlamNode::TryReleasePendingImageFromWorker()
         imuStatus.newest_imu_stamp_ns ? imageStampNs - *imuStatus.newest_imu_stamp_ns : 0;
     if (wasStableInputPaused)
     {
-      RCLCPP_WARN_THROTTLE(*m_logger, *m_node.get_clock(), IMU_READINESS_THROTTLE_MS,
-                           "IMU resume: img=%.3f imu=%s lag=%.0fms q=%zu stable=%d", imageTimestamp,
-                           FormatTimestamp(imuStatus.newest_imu_stamp_ns).c_str(),
-                           static_cast<double>(lagNs) / 1.0e6, pendingQueueSize,
-                           imuStatus.has_stable_slam_map ? 1 : 0);
+      std::optional<int64_t> pauseNewestImuStampNs;
+      std::optional<int64_t> pauseWallNs;
+      std::size_t pauseReceivedImuCount = 0;
+      std::size_t pauseAcceptedImuCount = 0;
+      std::size_t pauseDroppedImuCount = 0;
+      {
+        std::lock_guard<std::mutex> lock(m_pendingImageMutex);
+        pauseNewestImuStampNs = m_stableInputPauseNewestImuStampNs;
+        pauseWallNs = m_stableInputPauseWallNs;
+        pauseReceivedImuCount = m_stableInputPauseReceivedImuCount;
+        pauseAcceptedImuCount = m_stableInputPauseAcceptedImuCount;
+        pauseDroppedImuCount = m_stableInputPauseDroppedImuCount;
+      }
+
+      const std::size_t receivedDelta = imuStatus.received_count >= pauseReceivedImuCount
+                                            ? imuStatus.received_count - pauseReceivedImuCount
+                                            : 0;
+      const std::size_t acceptedDelta = imuStatus.accepted_count >= pauseAcceptedImuCount
+                                            ? imuStatus.accepted_count - pauseAcceptedImuCount
+                                            : 0;
+      const std::size_t droppedDelta = imuStatus.dropped_count >= pauseDroppedImuCount
+                                           ? imuStatus.dropped_count - pauseDroppedImuCount
+                                           : 0;
+      const std::optional<int64_t> imuAdvanceNs =
+          imuStatus.newest_imu_stamp_ns && pauseNewestImuStampNs
+              ? std::make_optional(*imuStatus.newest_imu_stamp_ns - *pauseNewestImuStampNs)
+              : std::nullopt;
+      const std::optional<int64_t> pauseWallElapsedNs =
+          pauseWallNs ? std::make_optional(m_node.now().nanoseconds() - *pauseWallNs)
+                      : std::nullopt;
+
+      RCLCPP_WARN_THROTTLE(
+          *m_logger, *m_node.get_clock(), IMU_READINESS_THROTTLE_MS,
+          "Runtime IMU resumed: img=%.3f imu=%s lag=%.0fms q=%zu stable=%d "
+          "rx_delta=%zu ok_delta=%zu drop_delta=%zu imu_advance=%.0fms "
+          "wall=%.0fms",
+          imageTimestamp, FormatTimestamp(imuStatus.newest_imu_stamp_ns).c_str(),
+          static_cast<double>(lagNs) / 1.0e6, pendingQueueSize,
+          imuStatus.has_stable_slam_map ? 1 : 0, receivedDelta, acceptedDelta, droppedDelta,
+          imuAdvanceNs ? static_cast<double>(*imuAdvanceNs) / 1.0e6 : 0.0,
+          pauseWallElapsedNs ? static_cast<double>(*pauseWallElapsedNs) / 1.0e6 : 0.0);
       ClearStableInputPause();
     }
 
@@ -1276,6 +1334,14 @@ void MonocularInertialSlamNode::EnterStableInputPause(
     std::lock_guard<std::mutex> lock(m_pendingImageMutex);
     wasPaused = m_stableInputPaused;
     m_stableInputPaused = true;
+    if (!wasPaused)
+    {
+      m_stableInputPauseNewestImuStampNs = imuStatus.newest_imu_stamp_ns;
+      m_stableInputPauseWallNs = m_node.now().nanoseconds();
+      m_stableInputPauseReceivedImuCount = imuStatus.received_count;
+      m_stableInputPauseAcceptedImuCount = imuStatus.accepted_count;
+      m_stableInputPauseDroppedImuCount = imuStatus.dropped_count;
+    }
   }
 
   if (wasPaused)
@@ -1283,16 +1349,23 @@ void MonocularInertialSlamNode::EnterStableInputPause(
 
   const double imageTimestamp = static_cast<double>(imageStampNs) / 1'000'000'000.0;
   RCLCPP_WARN_THROTTLE(*m_logger, *m_node.get_clock(), IMU_READINESS_THROTTLE_MS,
-                       "IMU pause: img=%.3f imu=%s lag=%.0fms q=%zu stable=%d", imageTimestamp,
-                       FormatTimestamp(imuStatus.newest_imu_stamp_ns).c_str(),
+                       "Runtime IMU catchup: img=%.3f imu=%s lag=%.0fms q=%zu stable=%d "
+                       "rx=%zu ok=%zu drop=%zu",
+                       imageTimestamp, FormatTimestamp(imuStatus.newest_imu_stamp_ns).c_str(),
                        static_cast<double>(lagNs) / 1.0e6, pendingQueueSize,
-                       imuStatus.has_stable_slam_map ? 1 : 0);
+                       imuStatus.has_stable_slam_map ? 1 : 0, imuStatus.received_count,
+                       imuStatus.accepted_count, imuStatus.dropped_count);
 }
 
 void MonocularInertialSlamNode::ClearStableInputPause()
 {
   std::lock_guard<std::mutex> lock(m_pendingImageMutex);
   m_stableInputPaused = false;
+  m_stableInputPauseNewestImuStampNs.reset();
+  m_stableInputPauseWallNs.reset();
+  m_stableInputPauseReceivedImuCount = 0;
+  m_stableInputPauseAcceptedImuCount = 0;
+  m_stableInputPauseDroppedImuCount = 0;
 }
 
 bool MonocularInertialSlamNode::IsStableInputPaused() const
