@@ -839,13 +839,13 @@ void Bno086ImuNode::MaybeEmitImuGravityDiagnosticsLog(const Bno086RateSnapshot& 
                static_cast<unsigned long long>(m_diag.drain_health.AllZeroBudgetHitCount()),
                static_cast<unsigned long long>(transportStats.invalid_full_packet_count));
 
-  if (m_diag.was_unhealthy && !unhealthy)
+  if (m_diag.was_unhealthy && !unhealthy && IsImuGravityRateHealthy(rates))
   {
-    RCLCPP_INFO(get_logger(), "BNO086 imu_gravity recovered: imu_gravity_rate_hz=%.2f",
-                rates.imu_gravity_hz);
+    RCLCPP_INFO(get_logger(), "BNO086 imu_gravity recovered: rate=%.1fHz", rates.imu_gravity_hz);
   }
 
-  m_diag.was_unhealthy = unhealthy;
+  if (rates.has_elapsed_window || unhealthy)
+    m_diag.was_unhealthy = unhealthy;
 }
 
 bool Bno086ImuNode::IsImuGravitySampleValid(const sensor_msgs::msg::Imu& message,
@@ -988,6 +988,15 @@ bool Bno086ImuNode::IsBno086DiagnosticsUnhealthy(const Bno086RateSnapshot& rates
       m_reports.linear_acceleration_rate_hz, m_reports.gravity_rate_hz};
   return m_diag.rate_health.HasRateFailure(rates, expectedRates, MIN_HEALTHY_RATE_FRACTION) ||
          m_diag.drain_health.HasSafetyFailure();
+}
+
+bool Bno086ImuNode::IsImuGravityRateHealthy(const Bno086RateSnapshot& rates) const
+{
+  const Bno086ExpectedRates expectedRates{
+      m_reports.accelerometer_rate_hz, m_reports.gyro_rate_hz, m_reports.rotation_vector_rate_hz,
+      m_reports.linear_acceleration_rate_hz, m_reports.gravity_rate_hz};
+  return m_diag.rate_health.HasHealthyImuGravityRate(rates, expectedRates,
+                                                     MIN_HEALTHY_RATE_FRACTION);
 }
 
 std::uint32_t Bno086ImuNode::CoreCoherenceToleranceUs() const

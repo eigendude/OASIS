@@ -175,6 +175,7 @@ private:
   std::optional<OASIS::IMU::BNO086::FeatureResponse> LatestFeatureResponse(
       OASIS::IMU::BNO086::ReportId report_id) const;
   bool IsBno086DiagnosticsUnhealthy(const OASIS::IMU::BNO086::Bno086RateSnapshot& rates) const;
+  bool IsImuGravityRateHealthy(const OASIS::IMU::BNO086::Bno086RateSnapshot& rates) const;
 
   void MaybeLogOrientationCovariancePolicy(
       const OASIS::IMU::BNO086::OrientationCovariancePolicyResult& covariance_policy);

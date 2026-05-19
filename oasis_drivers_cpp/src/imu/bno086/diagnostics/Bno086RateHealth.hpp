@@ -22,6 +22,21 @@ namespace OASIS::IMU::BNO086
 struct Bno086RateSnapshot
 {
   /*!
+   * \brief Whether rates were computed from a positive elapsed time window
+   *
+   * True after a previous diagnostics snapshot was logged and the current
+   * timestamp is later than that snapshot timestamp.
+   */
+  bool has_elapsed_window{false};
+
+  /*!
+   * \brief Elapsed diagnostics window duration
+   *
+   * Units: ms. Zero means no rate window was available for this snapshot.
+   */
+  double elapsed_ms{0.0};
+
+  /*!
    * \brief Decoded report rates in diagnostic report order
    *
    * Units: Hz. Order is accel, gyro, rotation, linear acceleration, gravity.
@@ -103,6 +118,9 @@ public:
   bool HasRateFailure(const Bno086RateSnapshot& snapshot,
                       const Bno086ExpectedRates& expected_rates,
                       double min_healthy_rate_fraction) const;
+  bool HasHealthyImuGravityRate(const Bno086RateSnapshot& snapshot,
+                                const Bno086ExpectedRates& expected_rates,
+                                double min_healthy_rate_fraction) const;
 
 private:
   std::array<std::uint64_t, 5> m_decodedReportsReceived{};

@@ -50,6 +50,9 @@ Bno086RateSnapshot Bno086RateHealth::BuildSnapshot(Clock::time_point now)
     const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_lastLogAt);
     if (elapsedMs.count() > 0)
     {
+      snapshot.has_elapsed_window = true;
+      snapshot.elapsed_ms = static_cast<double>(elapsedMs.count());
+
       const std::uint64_t imuGravityPublishedDelta =
           m_imuGravityPublished - m_lastRateImuGravityPublished;
       const std::uint64_t imuPublishedDelta = m_imuPublished - m_lastRateImuPublished;
@@ -83,27 +86,45 @@ bool Bno086RateHealth::HasRateFailure(const Bno086RateSnapshot& snapshot,
                                       const Bno086ExpectedRates& expected_rates,
                                       double min_healthy_rate_fraction) const
 {
-  if (snapshot.decoded_hz[0] > 0.0 &&
-      snapshot.decoded_hz[0] < expected_rates.accelerometer_hz * min_healthy_rate_fraction)
+  if (!snapshot.has_elapsed_window)
+    return false;
+
+  const auto belowMinimum = [min_healthy_rate_fraction](double rate_hz, double expected_hz)
+  {
+    if (expected_hz <= 0.0)
+      return false;
+
+    return rate_hz < expected_hz * min_healthy_rate_fraction;
+  };
+
+  if (belowMinimum(snapshot.decoded_hz[0], expected_rates.accelerometer_hz))
     return true;
 
-  if (snapshot.decoded_hz[1] > 0.0 &&
-      snapshot.decoded_hz[1] < expected_rates.gyro_hz * min_healthy_rate_fraction)
+  if (belowMinimum(snapshot.decoded_hz[1], expected_rates.gyro_hz))
     return true;
 
-  if (snapshot.decoded_hz[2] > 0.0 &&
-      snapshot.decoded_hz[2] < expected_rates.rotation_vector_hz * min_healthy_rate_fraction)
+  if (belowMinimum(snapshot.decoded_hz[2], expected_rates.rotation_vector_hz))
     return true;
 
-  if (snapshot.decoded_hz[3] > 0.0 &&
-      snapshot.decoded_hz[3] < expected_rates.linear_acceleration_hz * min_healthy_rate_fraction)
+  if (belowMinimum(snapshot.decoded_hz[3], expected_rates.linear_acceleration_hz))
     return true;
 
-  if (snapshot.decoded_hz[4] > 0.0 &&
-      snapshot.decoded_hz[4] < expected_rates.gravity_hz * min_healthy_rate_fraction)
+  if (belowMinimum(snapshot.decoded_hz[4], expected_rates.gravity_hz))
     return true;
 
-  return snapshot.imu_gravity_hz > 0.0 &&
-         snapshot.imu_gravity_hz < expected_rates.rotation_vector_hz * min_healthy_rate_fraction;
+  return !HasHealthyImuGravityRate(snapshot, expected_rates, min_healthy_rate_fraction);
+}
+
+bool Bno086RateHealth::HasHealthyImuGravityRate(const Bno086RateSnapshot& snapshot,
+                                                const Bno086ExpectedRates& expected_rates,
+                                                double min_healthy_rate_fraction) const
+{
+  if (!snapshot.has_elapsed_window)
+    return false;
+
+  if (expected_rates.rotation_vector_hz <= 0.0)
+    return true;
+
+  return snapshot.imu_gravity_hz >= expected_rates.rotation_vector_hz * min_healthy_rate_fraction;
 }
 } // namespace OASIS::IMU::BNO086
