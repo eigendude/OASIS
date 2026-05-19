@@ -108,6 +108,7 @@ private:
     VISUAL_CANDIDATE,
     INERTIAL_INITIALIZED,
     BAD_IMU_OR_RESET_PENDING,
+    REJECTED,
   };
 
   struct TrackedImageImuBatch
@@ -157,6 +158,7 @@ private:
   std::size_t m_acceptedImuMessages = 0;
   std::size_t m_droppedImuSamples = 0;
   std::optional<MonoInertialInitializationStatus> m_lastInitializationStatus;
+  std::optional<ORB_SLAM3::TrackingFailureReason> m_lastInitializationFailureReason;
   std::optional<int> m_lastLoggedTrackingState;
   bool m_hasStableSlamMap = false;
   bool m_startupArmed = false;

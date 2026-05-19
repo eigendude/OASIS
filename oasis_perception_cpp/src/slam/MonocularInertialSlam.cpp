@@ -98,6 +98,7 @@ bool MonocularInertialSlam::Initialize(const std::string& vocabularyFile,
     m_acceptedImuMessages = 0;
     m_droppedImuSamples = 0;
     m_lastInitializationStatus.reset();
+    m_lastInitializationFailureReason.reset();
     m_lastLoggedTrackingState.reset();
     m_hasStableSlamMap = false;
     m_startupArmed = false;
@@ -122,6 +123,7 @@ void MonocularInertialSlam::Deinitialize()
     m_acceptedImuMessages = 0;
     m_droppedImuSamples = 0;
     m_lastInitializationStatus.reset();
+    m_lastInitializationFailureReason.reset();
     m_lastLoggedTrackingState.reset();
     m_hasStableSlamMap = false;
     m_startupArmed = false;
@@ -742,10 +744,23 @@ void MonocularInertialSlam::LogInitializationStatus(ORB_SLAM3::System& slam,
   const double imageTimestamp = static_cast<double>(imageStampNs) / 1'000'000'000.0;
   const bool imuInitialized = slam.IsImuInitialized();
   const bool badImu = slam.HasBadImu();
+  ORB_SLAM3::TrackingFailureReason failureReason = slam.GetLastTrackingFailureReason();
+  if (failureReason == ORB_SLAM3::TrackingFailureReason::None && badImu)
+    failureReason = ORB_SLAM3::TrackingFailureReason::BadImu;
+
+  const bool hasFailureReason = failureReason != ORB_SLAM3::TrackingFailureReason::None;
+  const char* failureReasonName = slam.GetLastTrackingFailureReasonName();
+  if (failureReason == ORB_SLAM3::TrackingFailureReason::BadImu &&
+      std::string(failureReasonName) == "none")
+  {
+    failureReasonName = "bad_imu";
+  }
 
   MonoInertialInitializationStatus status = MonoInertialInitializationStatus::UNKNOWN;
   if (badImu)
     status = MonoInertialInitializationStatus::BAD_IMU_OR_RESET_PENDING;
+  else if (hasFailureReason)
+    status = MonoInertialInitializationStatus::REJECTED;
   else if (imuInitialized)
     status = MonoInertialInitializationStatus::INERTIAL_INITIALIZED;
   else if (trackingState == ORB_TRACKING_OK)
@@ -754,8 +769,10 @@ void MonocularInertialSlam::LogInitializationStatus(ORB_SLAM3::System& slam,
   bool isTransition = false;
   {
     std::lock_guard<std::mutex> lock(m_imuMutex);
-    isTransition = !m_lastInitializationStatus || *m_lastInitializationStatus != status;
+    isTransition = !m_lastInitializationStatus || *m_lastInitializationStatus != status ||
+                   m_lastInitializationFailureReason != failureReason;
     m_lastInitializationStatus = status;
+    m_lastInitializationFailureReason = failureReason;
     m_hasStableSlamMap = status == MonoInertialInitializationStatus::INERTIAL_INITIALIZED;
   }
 
@@ -772,8 +789,12 @@ void MonocularInertialSlam::LogInitializationStatus(ORB_SLAM3::System& slam,
                     trackingState, trackedPoints, mapPoints);
         break;
       case MonoInertialInitializationStatus::BAD_IMU_OR_RESET_PENDING:
-        RCLCPP_WARN(Logger(), "Init rejected: t=%.3f state=%d pts=%zu map=%zu", imageTimestamp,
-                    trackingState, trackedPoints, mapPoints);
+        RCLCPP_WARN(Logger(), "Init rejected: reason=%s t=%.3f state=%d pts=%zu map=%zu",
+                    failureReasonName, imageTimestamp, trackingState, trackedPoints, mapPoints);
+        break;
+      case MonoInertialInitializationStatus::REJECTED:
+        RCLCPP_WARN(Logger(), "Init rejected: reason=%s t=%.3f state=%d pts=%zu map=%zu",
+                    failureReasonName, imageTimestamp, trackingState, trackedPoints, mapPoints);
         break;
       case MonoInertialInitializationStatus::UNKNOWN:
         RCLCPP_DEBUG(Logger(), "Init unknown: t=%.3f state=%d pts=%zu map=%zu imu=%d bad=%d",
@@ -796,14 +817,17 @@ void MonocularInertialSlam::LogInitializationStatus(ORB_SLAM3::System& slam,
     case MonoInertialInitializationStatus::BAD_IMU_OR_RESET_PENDING:
       statusName = "bad_imu_or_reset_pending";
       break;
+    case MonoInertialInitializationStatus::REJECTED:
+      statusName = "rejected";
+      break;
     case MonoInertialInitializationStatus::UNKNOWN:
       break;
   }
 
   RCLCPP_DEBUG_THROTTLE(Logger(), Clock(), IMU_DIAGNOSTIC_THROTTLE_MS,
-                        "Init status: %s t=%.3f state=%d pts=%zu map=%zu imu=%d bad=%d", statusName,
-                        imageTimestamp, trackingState, trackedPoints, mapPoints,
-                        imuInitialized ? 1 : 0, badImu ? 1 : 0);
+                        "Init status: %s reason=%s t=%.3f state=%d pts=%zu map=%zu imu=%d bad=%d",
+                        statusName, failureReasonName, imageTimestamp, trackingState, trackedPoints,
+                        mapPoints, imuInitialized ? 1 : 0, badImu ? 1 : 0);
 }
 
 void MonocularInertialSlam::WarnAboutImuIntervalGaps(
