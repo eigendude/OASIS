@@ -165,6 +165,7 @@ private:
     bool was_unhealthy{false};
     bool was_imu_gravity_unhealthy{false};
     std::uint32_t repeated_no_progress_timeouts{0};
+    std::uint32_t max_drain_duration_us_since_log{0};
     bool warned_missing_imu_fields{false};
     OASIS::IMU::BNO086::Bno086ReportSequenceDiagnostics sequence_diagnostics;
     std::uint64_t duplicate_sequence_count{0};

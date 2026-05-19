@@ -62,8 +62,6 @@ constexpr int ORIENTATION_COVARIANCE_LOG_THROTTLE_MS = 5'000;
 constexpr int IMU_GRAVITY_SAMPLE_WARN_THROTTLE_MS = 5'000;
 constexpr int STAMP_DROP_LOG_THROTTLE_MS = 2'000;
 constexpr int SEQUENCE_GAP_DEBUG_THROTTLE_MS = 5'000;
-constexpr int SEQUENCE_GAP_WARN_THROTTLE_MS = 5'000;
-constexpr int LARGE_SEQUENCE_GAP_WARN_THROTTLE_MS = 1'000;
 constexpr std::uint8_t LARGE_SEQUENCE_GAP_DELTA = 10;
 constexpr double MIN_HEALTHY_RATE_FRACTION = 0.5;
 constexpr std::uint32_t GPIO_TIMESTAMP_DEBUG_SAMPLE_COUNT = 5;
@@ -835,10 +833,17 @@ void Bno086ImuNode::RecordDrainThroughputDiagnostics(const Bno086DrainCounters& 
                                                      std::uint32_t /*pending_queue_depth_at_exit*/)
 {
   m_diag.drain_health.Record(counters, exit_action, drain_duration_us);
+  m_diag.max_drain_duration_us_since_log =
+      std::max(m_diag.max_drain_duration_us_since_log, drain_duration_us);
 }
 
 void Bno086ImuNode::MaybeEmitImuGravityDiagnosticsLog(const Bno086RateSnapshot& rates)
 {
+  const Bno086ExpectedRates expectedRates{
+      m_reports.accelerometer_rate_hz, m_reports.gyro_rate_hz, m_reports.rotation_vector_rate_hz,
+      m_reports.linear_acceleration_rate_hz, m_reports.gravity_rate_hz};
+  const bool rateUnhealthy =
+      m_diag.rate_health.HasRateFailure(rates, expectedRates, MIN_HEALTHY_RATE_FRACTION);
   const bool unhealthy = IsBno086DiagnosticsUnhealthy(rates);
   const bool imuGravityRateHealthy = IsImuGravityRateHealthy(rates);
   const bool imuGravityUnhealthy = rates.has_elapsed_window && !imuGravityRateHealthy;
@@ -878,20 +883,31 @@ void Bno086ImuNode::MaybeEmitImuGravityDiagnosticsLog(const Bno086RateSnapshot& 
     RCLCPP_DEBUG_STREAM(get_logger(), stream.str());
   }
 
-  if (imuGravityUnhealthy)
+  if (rateUnhealthy || imuGravityUnhealthy)
   {
     std::ostringstream stream;
-    stream << "BNO imu_g skips:";
+    stream << "BNO unhealthy:" << " imu_g=" << static_cast<int>(std::lround(rates.imu_gravity_hz))
+           << "Hz" << " imu=" << static_cast<int>(std::lround(rates.imu_hz)) << "Hz"
+           << " accel=" << static_cast<int>(std::lround(rates.decoded_hz[0])) << "Hz"
+           << " gyro=" << static_cast<int>(std::lround(rates.decoded_hz[1])) << "Hz"
+           << " rot=" << static_cast<int>(std::lround(rates.decoded_hz[2])) << "Hz"
+           << " lin=" << static_cast<int>(std::lround(rates.decoded_hz[3])) << "Hz"
+           << " grav=" << static_cast<int>(std::lround(rates.decoded_hz[4])) << "Hz";
+    AppendTimingCounter(stream, "seqgap", timingDelta.sequence_gap);
+    AppendTimingCounter(stream, "large", timingDelta.sequence_gap_delta10plus);
+    AppendTimingCounter(stream, "back", timingDelta.backward_stamp);
+    AppendTimingCounter(stream, "dup", timingDelta.duplicate_stamp);
+    AppendTimingCounter(stream, "fb", timingDelta.missing_timebase_fallback);
+    stream << " dur="
+           << static_cast<int>(
+                  std::lround(static_cast<double>(m_diag.max_drain_duration_us_since_log) / 1.0e3))
+           << "ms";
     AppendImuGravityCounter(stream, "missing_orient", gateDelta.missing_orientation);
     AppendImuGravityCounter(stream, "missing_gyro", gateDelta.missing_gyro);
     AppendImuGravityCounter(stream, "missing_accel", gateDelta.missing_accel);
     AppendImuGravityCounter(stream, "invalid", gateDelta.invalid_sample);
     AppendImuGravityCounter(stream, "stamp", gateDelta.non_monotonic_stamp);
     AppendImuGravityCounter(stream, "pub", gateDelta.publisher_not_ready);
-    AppendTimingCounter(stream, "dup", timingDelta.duplicate_stamp);
-    AppendTimingCounter(stream, "back", timingDelta.backward_stamp);
-    AppendTimingCounter(stream, "fb", timingDelta.missing_timebase_fallback);
-    AppendTimingCounter(stream, "seqgap", timingDelta.sequence_gap);
     stream << " published=" << gateDelta.published;
     RCLCPP_WARN_STREAM(get_logger(), stream.str());
   }
@@ -915,6 +931,7 @@ void Bno086ImuNode::MaybeEmitImuGravityDiagnosticsLog(const Bno086RateSnapshot& 
 
   m_diag.last_logged_imu_gravity_gate_counters = m_diag.imu_gravity_gate_counters;
   m_diag.last_logged_timing_counters = m_diag.timing_counters;
+  m_diag.max_drain_duration_us_since_log = 0;
 }
 
 void Bno086ImuNode::RecordImuGravityGateSkip(ImuGravityGateReason reason)
@@ -1260,18 +1277,11 @@ void Bno086ImuNode::RecordSequenceDiagnostics(const SensorEvent& event)
     {
       ++m_diag.timing_counters.sequence_gap_delta3plus;
       if (result.sequence_delta >= LARGE_SEQUENCE_GAP_DELTA)
-      {
         ++m_diag.timing_counters.sequence_gap_delta10plus;
-        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), LARGE_SEQUENCE_GAP_WARN_THROTTLE_MS,
-                             "BNO large sequence gap: report=%s seq=%u delta=%u",
-                             ReportName(event.report_id), event.sequence, result.sequence_delta);
-      }
-      else
-      {
-        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), SEQUENCE_GAP_WARN_THROTTLE_MS,
-                             "BNO sequence gap: report=%s seq=%u delta=%u",
-                             ReportName(event.report_id), event.sequence, result.sequence_delta);
-      }
+
+      RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), SEQUENCE_GAP_DEBUG_THROTTLE_MS,
+                            "BNO sequence gap: report=%s seq=%u delta=%u",
+                            ReportName(event.report_id), event.sequence, result.sequence_delta);
     }
   }
 }
