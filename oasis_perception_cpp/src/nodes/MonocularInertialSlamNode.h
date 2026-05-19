@@ -123,6 +123,7 @@ private:
   std::optional<int64_t> m_lastTrackingDiagnosticImageStampNs;
   std::size_t m_lastTrackingDiagnosticReleasedImageCount = 0;
   std::size_t m_lastTrackingDiagnosticAcceptedImuCount = 0;
+  bool m_initialTrackingDiagnosticPending = false;
 };
 } // namespace ROS
 } // namespace OASIS

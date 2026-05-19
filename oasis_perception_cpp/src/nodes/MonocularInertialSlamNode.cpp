@@ -219,6 +219,7 @@ bool MonocularInertialSlamNode::Initialize()
     m_startupArmingBoundaryNs.reset();
     m_stableInputPaused = false;
     m_startupArmed = false;
+    m_initialTrackingDiagnosticPending = false;
   }
 
   StartImageWorker();
@@ -273,6 +274,7 @@ void MonocularInertialSlamNode::Deinitialize()
     m_lastTrackingDiagnosticImageStampNs.reset();
     m_lastTrackingDiagnosticReleasedImageCount = 0;
     m_lastTrackingDiagnosticAcceptedImuCount = 0;
+    m_initialTrackingDiagnosticPending = false;
   }
 
   if (m_monocularInertialSlam)
@@ -419,6 +421,7 @@ void MonocularInertialSlamNode::EnterStartupUnarmed()
     m_startupArmingBoundaryNs.reset();
     m_stableInputPaused = false;
     m_startupArmed = false;
+    m_initialTrackingDiagnosticPending = false;
   }
 }
 
@@ -493,6 +496,7 @@ bool MonocularInertialSlamNode::TryArmStartup()
   }
 
   bool armedNow = false;
+  const int64_t armingWallNs = m_node.now().nanoseconds();
   {
     std::lock_guard<std::mutex> lock(m_pendingImageMutex);
     if (!m_startupArmed)
@@ -505,6 +509,11 @@ bool MonocularInertialSlamNode::TryArmStartup()
       m_startupArmingBoundaryNs = newestImageStampNs;
       m_stableInputPaused = false;
       m_startupArmed = true;
+      m_lastTrackingDiagnosticWallNs = armingWallNs;
+      m_lastTrackingDiagnosticImageStampNs = newestImageStampNs;
+      m_lastTrackingDiagnosticReleasedImageCount = m_releasedImageCount;
+      m_lastTrackingDiagnosticAcceptedImuCount = imuStatus.accepted_count;
+      m_initialTrackingDiagnosticPending = true;
       armedNow = true;
     }
   }
@@ -915,6 +924,7 @@ void MonocularInertialSlamNode::LogPeriodicTrackingDiagnostics(int64_t newestRel
   std::size_t lastDiagnosticReleasedImageCount = 0;
   std::size_t lastDiagnosticAcceptedImuCount = 0;
   bool initializeDiagnosticBaseline = false;
+  bool initialDiagnosticPending = false;
 
   {
     std::lock_guard<std::mutex> lock(m_pendingImageMutex);
@@ -924,6 +934,7 @@ void MonocularInertialSlamNode::LogPeriodicTrackingDiagnostics(int64_t newestRel
     lastDiagnosticImageStampNs = m_lastTrackingDiagnosticImageStampNs;
     lastDiagnosticReleasedImageCount = m_lastTrackingDiagnosticReleasedImageCount;
     lastDiagnosticAcceptedImuCount = m_lastTrackingDiagnosticAcceptedImuCount;
+    initialDiagnosticPending = m_initialTrackingDiagnosticPending;
 
     if (!lastDiagnosticWallNs || nowNs - *lastDiagnosticWallNs < TRACKING_DIAGNOSTIC_PERIOD_NS)
     {
@@ -931,7 +942,7 @@ void MonocularInertialSlamNode::LogPeriodicTrackingDiagnostics(int64_t newestRel
     }
   }
 
-  if (!initializeDiagnosticBaseline &&
+  if (!initialDiagnosticPending && !initializeDiagnosticBaseline &&
       (!lastDiagnosticWallNs || nowNs - *lastDiagnosticWallNs < TRACKING_DIAGNOSTIC_PERIOD_NS))
     return;
 
@@ -955,6 +966,9 @@ void MonocularInertialSlamNode::LogPeriodicTrackingDiagnostics(int64_t newestRel
   const int64_t imageStampDeltaNs =
       lastDiagnosticImageStampNs ? newestReleasedImageStampNs - *lastDiagnosticImageStampNs : 0;
   const int64_t wallDeltaNs = lastDiagnosticWallNs ? nowNs - *lastDiagnosticWallNs : 0;
+  if (initialDiagnosticPending && (imageStampDeltaNs <= 0 || wallDeltaNs <= 0))
+    return;
+
   const int64_t lagNs = imuStatus.newest_imu_stamp_ns
                             ? newestReleasedImageStampNs - *imuStatus.newest_imu_stamp_ns
                             : 0;
@@ -966,8 +980,18 @@ void MonocularInertialSlamNode::LogPeriodicTrackingDiagnostics(int64_t newestRel
                                                  (static_cast<double>(wallDeltaNs) / 1.0e9)
                                            : 0.0;
 
-  RCLCPP_INFO(*m_logger, "SLAM health: img=%.1fHz imu=%.1fHz q=%zu lag=%.1fms", imageReleaseRateHz,
-              imuRateHz, pendingQueueSize, static_cast<double>(lagNs) / 1.0e6);
+  if (initialDiagnosticPending)
+  {
+    RCLCPP_INFO(*m_logger, "SLAM health: initial img=%.1fHz imu=%.1fHz q=%zu lag=%.1fms",
+                imageReleaseRateHz, imuRateHz, pendingQueueSize,
+                static_cast<double>(lagNs) / 1.0e6);
+  }
+  else
+  {
+    RCLCPP_INFO(*m_logger, "SLAM health: img=%.1fHz imu=%.1fHz q=%zu lag=%.1fms",
+                imageReleaseRateHz, imuRateHz, pendingQueueSize,
+                static_cast<double>(lagNs) / 1.0e6);
+  }
 
   {
     std::lock_guard<std::mutex> lock(m_pendingImageMutex);
@@ -975,6 +999,7 @@ void MonocularInertialSlamNode::LogPeriodicTrackingDiagnostics(int64_t newestRel
     m_lastTrackingDiagnosticImageStampNs = newestReleasedImageStampNs;
     m_lastTrackingDiagnosticReleasedImageCount = releasedImageCount;
     m_lastTrackingDiagnosticAcceptedImuCount = imuStatus.accepted_count;
+    m_initialTrackingDiagnosticPending = false;
   }
 }
 
