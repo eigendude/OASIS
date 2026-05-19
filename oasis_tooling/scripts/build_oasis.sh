@@ -169,3 +169,22 @@ fi
     colcon build \
       ${COLCON_FLAGS}
 )
+
+#
+# Stamp install-time values into installed systemd service templates
+#
+
+if [[ "${OSTYPE}" != "darwin"* ]]; then
+  shopt -s nullglob
+
+  for SYSTEMD_SERVICE in "${OASIS_INSTALL_DIRECTORY}/share"/*/systemd/*.service; do
+    echo "Stamping $(basename -- "${SYSTEMD_SERVICE}")"
+
+    sed -i \
+      -e "s|@ROS2_DISTRO@|${ROS2_DISTRO}|g" \
+      -e "s|^User=.*|User=$(id -un)|" \
+      "${SYSTEMD_SERVICE}"
+  done
+
+  shopt -u nullglob
+fi

@@ -238,12 +238,6 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
         echo "Installing ${TIMER_FILE}"
         sudo install -m 0644 "${SYSTEMD_TIMER}" "${SYSTEMD_SERVICE_DIRECTORY}"
       fi
-
-      # Stamp install-time values into the service
-      sudo sed -i \
-        -e "s|@ROS2_DISTRO@|${ROS2_DISTRO}|g" \
-        -e "s|^User=.*|User=$(id -un)|" \
-        "${SYSTEMD_SERVICE_DIRECTORY}/${SERVICE_FILE}"
     done
   done
 
