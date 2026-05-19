@@ -140,6 +140,11 @@ private:
   bool m_imageWorkerStop = false;
   bool m_imageWorkerWake = false;
   bool m_stableInputPaused = false;
+  std::optional<int64_t> m_stableInputPauseNewestImuStampNs;
+  std::optional<int64_t> m_stableInputPauseWallNs;
+  std::size_t m_stableInputPauseReceivedImuCount = 0;
+  std::size_t m_stableInputPauseAcceptedImuCount = 0;
+  std::size_t m_stableInputPauseDroppedImuCount = 0;
   bool m_startupArmed = false;
 
   // Monocular-inertial tracking diagnostics
