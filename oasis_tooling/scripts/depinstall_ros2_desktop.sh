@@ -60,6 +60,12 @@ ROSDEP_IGNORE_KEYS+=" \
   test_msgs \
 "
 
+# Ignore old releases of Rust and Cargo
+ROSDEP_IGNORE_KEYS+=" \
+  cargo \
+  rustc \
+"
+
 #
 # Setup ROS 2 sources
 #
