@@ -54,6 +54,13 @@ private:
   void HandleUnarmedStartupImage(const sensor_msgs::msg::Image& imageMsg);
   void RecordUnarmedStartupImu(const SLAM::MonocularInertialSlam::ImuBufferStatus& imuStatus);
   void EnterStartupUnarmed();
+  void StartFreshEpochAfterImuStall(const SLAM::MonocularInertialSlam::ImuBufferStatus& imuStatus,
+                                    int64_t imageStampNs,
+                                    int64_t lagNs,
+                                    std::size_t pendingQueueSize);
+  void RecordPostStallRecoveryImu(const SLAM::MonocularInertialSlam::ImuBufferStatus& imuStatus);
+  bool IsPostStallImageTooOldLocked(int64_t imageStampNs) const;
+  bool IsPostStallCooloffActiveLocked() const;
   bool TryArmStartup();
   bool IsStartupArmed() const;
   bool HandleImageDiscontinuity(int64_t imageStampNs);
@@ -95,6 +102,8 @@ private:
   std::unique_ptr<image_transport::Subscriber> m_imgSubscriber;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr m_imuSubscriber;
 
+  int64_t m_postStallCooloffNs = 0;
+
   // SLAM parameters
   std::unique_ptr<SLAM::MonocularInertialSlam> m_monocularInertialSlam;
 
@@ -108,6 +117,11 @@ private:
   std::optional<int64_t> m_lastStartupImageStampNs;
   std::optional<int64_t> m_startupArmingCandidateStartNs;
   std::optional<int64_t> m_startupArmingBoundaryNs;
+  std::optional<int64_t> m_postStallRecoveryBoundaryNs;
+  std::optional<int64_t> m_postStallRecoveryBoundaryWallNs;
+  std::optional<int64_t> m_lastPostStallImuStampNs;
+  std::size_t m_postStallImuSampleCount = 0;
+  bool m_postStallRecoveryPending = false;
   std::thread m_imageWorkerThread;
   bool m_imageWorkerStop = false;
   bool m_imageWorkerWake = false;
