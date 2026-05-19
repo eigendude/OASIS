@@ -61,6 +61,10 @@ constexpr const char* ORIENTATION_REPORT_SOURCE = "rotation_vector";
 constexpr int ORIENTATION_COVARIANCE_LOG_THROTTLE_MS = 5'000;
 constexpr int IMU_GRAVITY_SAMPLE_WARN_THROTTLE_MS = 5'000;
 constexpr int STAMP_DROP_LOG_THROTTLE_MS = 2'000;
+constexpr int SEQUENCE_GAP_DEBUG_THROTTLE_MS = 5'000;
+constexpr int SEQUENCE_GAP_WARN_THROTTLE_MS = 5'000;
+constexpr int LARGE_SEQUENCE_GAP_WARN_THROTTLE_MS = 1'000;
+constexpr std::uint8_t LARGE_SEQUENCE_GAP_DELTA = 10;
 constexpr double MIN_HEALTHY_RATE_FRACTION = 0.5;
 constexpr std::uint32_t GPIO_TIMESTAMP_DEBUG_SAMPLE_COUNT = 5;
 constexpr double GPIO_TIMESTAMP_MIN_DIFF_MS = -1.0;
@@ -863,6 +867,17 @@ void Bno086ImuNode::MaybeEmitImuGravityDiagnosticsLog(const Bno086RateSnapshot& 
                static_cast<unsigned long long>(m_diag.drain_health.AllZeroBudgetHitCount()),
                static_cast<unsigned long long>(transportStats.invalid_full_packet_count));
 
+  if (timingDelta.sequence_gap > 0)
+  {
+    std::ostringstream stream;
+    stream << "BNO086 sequence gaps:";
+    AppendTimingCounter(stream, "seqgap", timingDelta.sequence_gap);
+    AppendTimingCounter(stream, "delta2", timingDelta.sequence_gap_delta2);
+    AppendTimingCounter(stream, "delta3p", timingDelta.sequence_gap_delta3plus);
+    AppendTimingCounter(stream, "delta10p", timingDelta.sequence_gap_delta10plus);
+    RCLCPP_DEBUG_STREAM(get_logger(), stream.str());
+  }
+
   if (imuGravityUnhealthy)
   {
     std::ostringstream stream;
@@ -957,6 +972,9 @@ Bno086ImuNode::Bno086TimingDiagnosticCounters Bno086ImuNode::TimingDiagnosticDel
   delta.missing_timebase_fallback =
       current.missing_timebase_fallback - last.missing_timebase_fallback;
   delta.sequence_gap = current.sequence_gap - last.sequence_gap;
+  delta.sequence_gap_delta2 = current.sequence_gap_delta2 - last.sequence_gap_delta2;
+  delta.sequence_gap_delta3plus = current.sequence_gap_delta3plus - last.sequence_gap_delta3plus;
+  delta.sequence_gap_delta10plus = current.sequence_gap_delta10plus - last.sequence_gap_delta10plus;
   return delta;
 }
 
@@ -1231,9 +1249,30 @@ void Bno086ImuNode::RecordSequenceDiagnostics(const SensorEvent& event)
   {
     ++m_diag.sequence_gap_count;
     ++m_diag.timing_counters.sequence_gap;
-    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
-                         "BNO sequence gap: report=%s seq=%u delta=%u", ReportName(event.report_id),
-                         event.sequence, result.sequence_delta);
+    if (result.sequence_delta == 2)
+    {
+      ++m_diag.timing_counters.sequence_gap_delta2;
+      RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), SEQUENCE_GAP_DEBUG_THROTTLE_MS,
+                            "BNO sequence gap: report=%s seq=%u delta=%u",
+                            ReportName(event.report_id), event.sequence, result.sequence_delta);
+    }
+    else
+    {
+      ++m_diag.timing_counters.sequence_gap_delta3plus;
+      if (result.sequence_delta >= LARGE_SEQUENCE_GAP_DELTA)
+      {
+        ++m_diag.timing_counters.sequence_gap_delta10plus;
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), LARGE_SEQUENCE_GAP_WARN_THROTTLE_MS,
+                             "BNO large sequence gap: report=%s seq=%u delta=%u",
+                             ReportName(event.report_id), event.sequence, result.sequence_delta);
+      }
+      else
+      {
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), SEQUENCE_GAP_WARN_THROTTLE_MS,
+                             "BNO sequence gap: report=%s seq=%u delta=%u",
+                             ReportName(event.report_id), event.sequence, result.sequence_delta);
+      }
+    }
   }
 }
 

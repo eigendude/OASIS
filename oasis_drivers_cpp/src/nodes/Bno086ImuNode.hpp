@@ -151,6 +151,9 @@ private:
     std::uint64_t backward_stamp{0};
     std::uint64_t missing_timebase_fallback{0};
     std::uint64_t sequence_gap{0};
+    std::uint64_t sequence_gap_delta2{0};
+    std::uint64_t sequence_gap_delta3plus{0};
+    std::uint64_t sequence_gap_delta10plus{0};
   };
 
   struct Bno086DiagnosticsState
