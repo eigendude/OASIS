@@ -101,7 +101,11 @@ IMU.AccWalk: 0.03
 IMU.GyroWalk: 0.001
 
 # Gravity magnitude in m/s^2
-IMU.g: 9.80665
+# Ventura beach (latitude 34.3° N, sea level): g ≈ 9.79630442 m/s²
+# WGS84 standard is 9.80665 m/s² (difference ~0.01035 m/s², or 0.106%)
+# WGS84 formula: g = 9.780327 * (1 + 0.0053024*sin²(lat) - 0.0000058*sin²(2*lat))
+# For your location, use https://www.sensorsone.com/local-gravity-calculator/
+IMU.g: 9.79630442
 
 # Transform base_link <- camera_link for ORB-SLAM3 IMU.T_b_c1
 #
