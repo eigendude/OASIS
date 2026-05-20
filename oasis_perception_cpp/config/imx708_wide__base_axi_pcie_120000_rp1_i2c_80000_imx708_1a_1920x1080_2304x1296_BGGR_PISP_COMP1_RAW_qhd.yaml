@@ -104,7 +104,7 @@ IMU.NoiseAcc: 0.08
 IMU.NoiseGyro: 0.006
 
 # Accelerometer bias random walk in m/s^3/sqrt(Hz)
-IMU.AccWalk: 0.03
+IMU.AccWalk: 0.000001
 
 # Gyro bias random walk in rad/s^2/sqrt(Hz)
 IMU.GyroWalk: 0.001
