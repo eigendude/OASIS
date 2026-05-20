@@ -19,6 +19,7 @@
 #include <string>
 #include <vector>
 
+#include <Eigen/Core>
 #include <builtin_interfaces/msg/time.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 
@@ -133,9 +134,127 @@ private:
     ImuBufferStatus imuStatus;
   };
 
+  struct GyroDiagnosticSample
+  {
+    // Message timestamp in nanoseconds
+    int64_t stamp_ns = 0;
+
+    // Gyroscope x-axis angular rate in the message frame, rad/s
+    double x_rads = 0.0;
+
+    // Gyroscope y-axis angular rate in the message frame, rad/s
+    double y_rads = 0.0;
+
+    // Gyroscope z-axis angular rate in the message frame, rad/s
+    double z_rads = 0.0;
+
+    // Euclidean norm of the gyroscope vector, rad/s
+    double norm_rads = 0.0;
+  };
+
+  struct ImuDiagnosticSample
+  {
+    // Message timestamp in nanoseconds
+    int64_t stamp_ns = 0;
+
+    // Gyroscope angular rates in the message frame, rad/s
+    double gyro_x_rads = 0.0;
+    double gyro_y_rads = 0.0;
+    double gyro_z_rads = 0.0;
+
+    // Linear acceleration in the message frame, m/s^2
+    double accel_x_mps2 = 0.0;
+    double accel_y_mps2 = 0.0;
+    double accel_z_mps2 = 0.0;
+  };
+
+  struct ImuWindowDiagnostic
+  {
+    // Number of IMU samples in the window
+    std::size_t sample_count = 0;
+
+    // Window duration covered by the samples, seconds
+    double duration_sec = 0.0;
+
+    // Gyroscope RMS x/y/z in the message frame, rad/s
+    double gyro_rms_x_rads = 0.0;
+    double gyro_rms_y_rads = 0.0;
+    double gyro_rms_z_rads = 0.0;
+
+    // Acceleration RMS x/y/z in the message frame, m/s^2
+    double accel_rms_x_mps2 = 0.0;
+    double accel_rms_y_mps2 = 0.0;
+    double accel_rms_z_mps2 = 0.0;
+
+    // Acceleration mean x/y/z in the message frame, m/s^2
+    double accel_mean_x_mps2 = 0.0;
+    double accel_mean_y_mps2 = 0.0;
+    double accel_mean_z_mps2 = 0.0;
+
+    // Integrated gyroscope x/y/z over the window, radians
+    double gyro_integral_x_rad = 0.0;
+    double gyro_integral_y_rad = 0.0;
+    double gyro_integral_z_rad = 0.0;
+
+    // Maximum gyroscope vector norm in the window, rad/s
+    double max_gyro_norm_rads = 0.0;
+
+    // Maximum absolute acceleration norm deviation from gravity, m/s^2
+    double max_accel_gravity_deviation_mps2 = 0.0;
+
+    // Absolute acceleration mean norm deviation from gravity, m/s^2
+    double mean_accel_gravity_deviation_mps2 = 0.0;
+  };
+
+  struct PoseAttitudeDiagnosticSample
+  {
+    // Pose timestamp in nanoseconds
+    int64_t stamp_ns = 0;
+
+    // Twc camera position x/y/z in the world frame, meters
+    double x_m = 0.0;
+    double y_m = 0.0;
+    double z_m = 0.0;
+
+    // Twc roll angle, radians
+    double roll_rad = 0.0;
+
+    // Twc pitch angle, radians
+    double pitch_rad = 0.0;
+
+    // Twc yaw angle, radians
+    double yaw_rad = 0.0;
+  };
+
   // Utility functions
   static int64_t StampToNanoseconds(const builtin_interfaces::msg::Time& stamp);
   static ORB_SLAM3::IMU::Point ToOrbImuPoint(const sensor_msgs::msg::Imu& imuMsg);
+  void ResetMotionDiagnosticsLocked();
+  void LogCameraImuTransform(const std::string& settingsFile);
+  void LogOrbImuSanityLocked();
+  void LogImuYawDiagnostic(const sensor_msgs::msg::Imu& imuMsg, double gyroNorm);
+  void UpdateImuMotionDiagnostics(const sensor_msgs::msg::Imu& imuMsg);
+  std::optional<ImuWindowDiagnostic> ComputeImuWindowDiagnosticLocked(int64_t newestStampNs,
+                                                                      int64_t windowNs) const;
+  std::optional<PoseAttitudeDiagnosticSample> ComputePoseAttitudeDeltaLocked(
+      int64_t newestStampNs, int64_t windowNs) const;
+  void LogPoseYawDiagnostic(ORB_SLAM3::System& slam,
+                            int64_t timestampNs,
+                            const Eigen::Isometry3f& pose,
+                            int trackingState,
+                            std::size_t trackedPoints,
+                            std::size_t mapPoints);
+  void LogStationaryDiagnostics(ORB_SLAM3::System& slam,
+                                int64_t timestampNs,
+                                const Eigen::Isometry3f& pose,
+                                int trackingState,
+                                std::size_t trackedPoints,
+                                std::size_t mapPoints);
+  void LogTrackingFailureDiagnostics(const char* failureReasonName,
+                                     int64_t imageStampNs,
+                                     int trackingState,
+                                     std::size_t trackedPoints,
+                                     std::size_t mapPoints);
   ImuBufferStatus GetImuBufferStatusLocked() const;
   std::optional<int64_t> FindContinuousImuWindowStartLocked(int64_t requiredWindowNs,
                                                             int64_t maxGapNs) const;
@@ -171,6 +290,22 @@ private:
   bool m_hasStableSlamMap = false;
   bool m_startupArmed = false;
   bool m_loggedEmptyImuMeasurementsError = false;
+  bool m_curveActive = false;
+  std::optional<bool> m_lastLoggedCurveActive;
+  std::optional<double> m_lastPoseYawRad;
+  std::optional<GyroDiagnosticSample> m_latestGyroDiagnostic;
+  std::optional<ImuWindowDiagnostic> m_lastImuWindow05Sec;
+  std::optional<ImuWindowDiagnostic> m_lastImuWindow1Sec;
+  std::optional<PoseAttitudeDiagnosticSample> m_lastPoseDelta05Sec;
+  std::optional<PoseAttitudeDiagnosticSample> m_lastPoseDelta1Sec;
+  bool m_stationaryDiagnosticActive = false;
+  std::optional<PoseAttitudeDiagnosticSample> m_stationaryReferencePose;
+  std::optional<ORB_SLAM3::InertialStateDiagnostic> m_stationaryReferenceState;
+  std::optional<Eigen::Matrix3d> m_tbcRotation;
+  std::optional<Eigen::Matrix3d> m_tcbRotation;
+  std::deque<ImuDiagnosticSample> m_imuDiagnosticWindow;
+  std::deque<PoseAttitudeDiagnosticSample> m_poseAttitudeDiagnosticWindow;
+  bool m_loggedOrbImuSanity = false;
 };
 
 } // namespace SLAM

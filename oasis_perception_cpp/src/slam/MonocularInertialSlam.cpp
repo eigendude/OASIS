@@ -22,6 +22,7 @@
 #include <utility>
 
 #include <geometry_msgs/msg/vector3.hpp>
+#include <opencv2/core/persistence.hpp>
 #include <rclcpp/logging.hpp>
 #include <sophus/se3.hpp>
 
@@ -31,6 +32,7 @@ using namespace SLAM;
 namespace
 {
 constexpr std::size_t ORB_IMU_BUFFER_MAX_SAMPLES = 1024;
+constexpr int ORB_TRACKING_OK = 2;
 
 // Nanoseconds; unarmed startup history kept only for arming health checks
 constexpr std::int64_t STARTUP_IMU_BUFFER_WINDOW_NS = 3'000'000'000;
@@ -41,6 +43,43 @@ constexpr std::size_t STARTUP_IMU_BUFFER_MAX_SAMPLES = 4096;
 constexpr std::int64_t IMU_INTERVAL_GAP_WARN_NS = 30'000'000;
 constexpr std::int64_t MAX_IMU_STAMP_GAP_NS = 500'000'000;
 constexpr int IMU_DIAGNOSTIC_THROTTLE_MS = 5'000;
+constexpr int YAW_DIAGNOSTIC_THROTTLE_MS = 500;
+constexpr std::int64_t IMU_MOTION_HISTORY_NS = 1'500'000'000;
+constexpr std::int64_t IMU_MOTION_WINDOW_05_NS = 500'000'000;
+constexpr std::int64_t IMU_MOTION_WINDOW_1_NS = 1'000'000'000;
+
+// Standard gravity magnitude used for acceleration norm deviation, m/s^2
+constexpr double GRAVITY_MPS2 = 9.80665;
+
+// Diagnostic curve marker threshold for total angular rate, rad/s
+constexpr double CURVE_GYRO_NORM_THRESHOLD_RADS = 0.35;
+
+// Diagnostic curve marker threshold for message-frame z angular rate, rad/s
+constexpr double CURVE_GYRO_Z_THRESHOLD_RADS = 0.25;
+
+// Estimated 1s pitch delta required before plausibility warning, degrees
+constexpr double ATTITUDE_COMPARE_EST_WARN_DEG = 15.0;
+
+// Maximum supporting roll/pitch gyro integral for overreaction warning, degrees
+constexpr double ATTITUDE_COMPARE_GYRO_SUPPORT_DEG = 6.0;
+
+// Maximum gyro norm for stationary classification, rad/s
+constexpr double STATIONARY_GYRO_NORM_THRESHOLD_RADS = 0.04;
+
+// Maximum 1s integrated gyro angle for stationary classification, degrees
+constexpr double STATIONARY_GYRO_INT_THRESHOLD_DEG = 2.0;
+
+// Maximum mean acceleration norm deviation from gravity, m/s^2
+constexpr double STATIONARY_ACCEL_GRAVITY_DEV_MPS2 = 0.35;
+
+// Stationary pose translation drift warning threshold, meters
+constexpr double STATIONARY_DRIFT_TRANSLATION_WARN_M = 0.03;
+
+// Stationary pose rotation drift warning threshold, degrees
+constexpr double STATIONARY_DRIFT_ROTATION_WARN_DEG = 3.0;
+
+constexpr double PI = 3.14159265358979323846;
+constexpr double RAD_TO_DEG = 180.0 / PI;
 
 bool IsFiniteMatrix4(const Eigen::Matrix4f& matrix)
 {
@@ -78,6 +117,116 @@ std::string FormatOptionalTimestamp(std::optional<int64_t> timestampNs)
          << static_cast<double>(*timestampNs) / 1'000'000'000.0;
   return stream.str();
 }
+
+double WrapAngleRadians(double angleRad)
+{
+  while (angleRad > PI)
+    angleRad -= 2.0 * PI;
+
+  while (angleRad < -PI)
+    angleRad += 2.0 * PI;
+
+  return angleRad;
+}
+
+Eigen::Vector3d RotationMatrixToRollPitchYaw(const Eigen::Matrix3d& rotation)
+{
+  const double roll = std::atan2(rotation(2, 1), rotation(2, 2));
+  const double pitch = std::atan2(-rotation(2, 0), std::sqrt(rotation(2, 1) * rotation(2, 1) +
+                                                             rotation(2, 2) * rotation(2, 2)));
+  const double yaw = std::atan2(rotation(1, 0), rotation(0, 0));
+
+  return {roll, pitch, yaw};
+}
+
+const char* DominantGyroAxis(const geometry_msgs::msg::Vector3& gyro)
+{
+  const double absX = std::abs(gyro.x);
+  const double absY = std::abs(gyro.y);
+  const double absZ = std::abs(gyro.z);
+
+  if (absX >= absY && absX >= absZ)
+    return gyro.x >= 0.0 ? "+x" : "-x";
+
+  if (absY >= absX && absY >= absZ)
+    return gyro.y >= 0.0 ? "+y" : "-y";
+
+  return gyro.z >= 0.0 ? "+z" : "-z";
+}
+
+const char* SignedAxisName(const Eigen::Vector3d& vector)
+{
+  int axisIndex = 0;
+  double axisMagnitude = std::abs(vector.x());
+
+  if (std::abs(vector.y()) > axisMagnitude)
+  {
+    axisIndex = 1;
+    axisMagnitude = std::abs(vector.y());
+  }
+
+  if (std::abs(vector.z()) > axisMagnitude)
+    axisIndex = 2;
+
+  const double axisValue = vector(axisIndex);
+  if (axisIndex == 0)
+    return axisValue >= 0.0 ? "+x" : "-x";
+
+  if (axisIndex == 1)
+    return axisValue >= 0.0 ? "+y" : "-y";
+
+  return axisValue >= 0.0 ? "+z" : "-z";
+}
+
+std::string FormatVector3(const Eigen::Vector3d& vector)
+{
+  std::ostringstream stream;
+  stream << std::fixed << std::setprecision(3) << "(" << vector.x() << ", " << vector.y() << ", "
+         << vector.z() << ")";
+  return stream.str();
+}
+
+std::string FormatUnitVector3(const Eigen::Vector3d& vector)
+{
+  std::ostringstream stream;
+  stream << std::fixed << std::setprecision(1) << "(" << vector.x() << ", " << vector.y() << ", "
+         << vector.z() << ")";
+  return stream.str();
+}
+
+double Norm3(double x, double y, double z)
+{
+  return std::sqrt(x * x + y * y + z * z);
+}
+
+std::optional<Eigen::Matrix4d> ReadOpenCvMatrix4(const std::string& settingsFile, const char* key)
+{
+  cv::FileStorage fileStorage(settingsFile, cv::FileStorage::READ);
+  if (!fileStorage.isOpened())
+    return std::nullopt;
+
+  const cv::FileNode matrixNode = fileStorage[key];
+  if (matrixNode.empty())
+    return std::nullopt;
+
+  const cv::Mat cvMatrix = matrixNode.mat();
+  if (cvMatrix.rows != 4 || cvMatrix.cols != 4)
+    return std::nullopt;
+
+  Eigen::Matrix4d matrix = Eigen::Matrix4d::Identity();
+  for (int row = 0; row < 4; ++row)
+  {
+    for (int col = 0; col < 4; ++col)
+    {
+      if (cvMatrix.depth() == CV_64F)
+        matrix(row, col) = cvMatrix.at<double>(row, col);
+      else
+        matrix(row, col) = cvMatrix.at<float>(row, col);
+    }
+  }
+
+  return matrix;
+}
 } // namespace
 
 MonocularInertialSlam::MonocularInertialSlam(rclcpp::Node& node,
@@ -95,6 +244,8 @@ bool MonocularInertialSlam::Initialize(const std::string& vocabularyFile,
   if (!InitializeSystem(vocabularyFile, settingsFile, ORB_SLAM3::System::IMU_MONOCULAR))
     return false;
 
+  LogCameraImuTransform(settingsFile);
+
   {
     std::lock_guard<std::mutex> lock(m_imuMutex);
     m_imuBuffer.clear();
@@ -111,6 +262,8 @@ bool MonocularInertialSlam::Initialize(const std::string& vocabularyFile,
     m_hasStableSlamMap = false;
     m_startupArmed = false;
     m_loggedEmptyImuMeasurementsError = false;
+    m_loggedOrbImuSanity = false;
+    ResetMotionDiagnosticsLocked();
   }
 
   return true;
@@ -136,6 +289,8 @@ void MonocularInertialSlam::Deinitialize()
     m_hasStableSlamMap = false;
     m_startupArmed = false;
     m_loggedEmptyImuMeasurementsError = false;
+    m_loggedOrbImuSanity = false;
+    ResetMotionDiagnosticsLocked();
   }
 }
 
@@ -193,6 +348,8 @@ bool MonocularInertialSlam::ReceiveImu(const sensor_msgs::msg::Imu& imuMsg)
     m_lastLoggedTrackingState.reset();
     m_hasStableSlamMap = false;
     m_loggedEmptyImuMeasurementsError = false;
+    m_loggedOrbImuSanity = false;
+    ResetMotionDiagnosticsLocked();
 
     if (m_startupArmed)
     {
@@ -239,6 +396,13 @@ bool MonocularInertialSlam::ReceiveImu(const sensor_msgs::msg::Imu& imuMsg)
                 imuMsg.header.frame_id.c_str(), linearAcceleration.z, gyroNorm);
     m_loggedFirstImu = true;
   }
+
+  const double gyroNorm =
+      std::sqrt(angularVelocity.x * angularVelocity.x + angularVelocity.y * angularVelocity.y +
+                angularVelocity.z * angularVelocity.z);
+  LogImuYawDiagnostic(imuMsg, gyroNorm);
+  UpdateImuMotionDiagnostics(imuMsg);
+  LogOrbImuSanityLocked();
 
   RCLCPP_DEBUG_THROTTLE(Logger(), Clock(), IMU_DIAGNOSTIC_THROTTLE_MS,
                         "IMU callbacks: rx=%zu ok=%zu buf=%zu", m_receivedImuMessages,
@@ -291,6 +455,8 @@ void MonocularInertialSlam::ArmStartup(int64_t imuWindowStartNs)
     m_hasStableSlamMap = false;
     m_startupArmed = true;
     m_loggedEmptyImuMeasurementsError = false;
+    m_loggedOrbImuSanity = false;
+    ResetMotionDiagnosticsLocked();
   }
 
   ResetImageProcessingState();
@@ -306,6 +472,8 @@ void MonocularInertialSlam::DisarmStartup()
     m_hasStableSlamMap = false;
     m_startupArmed = false;
     m_loggedEmptyImuMeasurementsError = false;
+    m_loggedOrbImuSanity = false;
+    ResetMotionDiagnosticsLocked();
   }
 
   ResetImageProcessingState();
@@ -346,6 +514,8 @@ void MonocularInertialSlam::NotifySensorStreamDiscontinuity(const std::string& r
     m_hasStableSlamMap = false;
     m_startupArmed = false;
     m_loggedEmptyImuMeasurementsError = false;
+    m_loggedOrbImuSanity = false;
+    ResetMotionDiagnosticsLocked();
   }
 
   const int64_t gapNs = currentStampNs - previousStampNs;
@@ -374,6 +544,8 @@ void MonocularInertialSlam::NotifyPreStableMonocularInertialInitRetry(const std:
     m_hasStableSlamMap = false;
     m_startupArmed = false;
     m_loggedEmptyImuMeasurementsError = false;
+    m_loggedOrbImuSanity = false;
+    ResetMotionDiagnosticsLocked();
   }
 
   const int64_t gapNs = currentStampNs - previousStampNs;
@@ -473,6 +645,8 @@ std::optional<Eigen::Isometry3f> MonocularInertialSlam::TrackFrame(const cv::Mat
 
     Eigen::Isometry3f pose = Eigen::Isometry3f::Identity();
     pose.matrix() = poseMatrix;
+    LogPoseYawDiagnostic(*slam, timestampNs, pose, trackingState, trackedMapPoints.size(),
+                         mapPoints.size());
 
     CommitTrackedImageStamp(timestampNs);
 
@@ -515,6 +689,699 @@ ORB_SLAM3::IMU::Point MonocularInertialSlam::ToOrbImuPoint(const sensor_msgs::ms
   const cv::Point3f gyr(angularVelocity.x, angularVelocity.y, angularVelocity.z);
 
   return ORB_SLAM3::IMU::Point(acc, gyr, timestamp);
+}
+
+void MonocularInertialSlam::ResetMotionDiagnosticsLocked()
+{
+  m_lastPoseYawRad.reset();
+  m_latestGyroDiagnostic.reset();
+  m_curveActive = false;
+  m_lastLoggedCurveActive.reset();
+  m_lastImuWindow05Sec.reset();
+  m_lastImuWindow1Sec.reset();
+  m_lastPoseDelta05Sec.reset();
+  m_lastPoseDelta1Sec.reset();
+  m_stationaryDiagnosticActive = false;
+  m_stationaryReferencePose.reset();
+  m_stationaryReferenceState.reset();
+  m_imuDiagnosticWindow.clear();
+  m_poseAttitudeDiagnosticWindow.clear();
+}
+
+void MonocularInertialSlam::LogCameraImuTransform(const std::string& settingsFile)
+{
+  const std::optional<Eigen::Matrix4d> tbcMatrix = ReadOpenCvMatrix4(settingsFile, "IMU.T_b_c1");
+  if (!tbcMatrix)
+  {
+    RCLCPP_WARN(Logger(), "Unable to read IMU.T_b_c1 from %s", settingsFile.c_str());
+    return;
+  }
+
+  const Eigen::Matrix4d tcbMatrix = tbcMatrix->inverse();
+  const Eigen::Matrix3d rbc = tbcMatrix->block<3, 3>(0, 0);
+  const Eigen::Matrix3d rcb = tcbMatrix.block<3, 3>(0, 0);
+  m_tbcRotation = rbc;
+  m_tcbRotation = rcb;
+  const Eigen::Vector3d tbcRpy = RotationMatrixToRollPitchYaw(tbcMatrix->block<3, 3>(0, 0));
+  const Eigen::Vector3d tcbRpy = RotationMatrixToRollPitchYaw(tcbMatrix.block<3, 3>(0, 0));
+  const Eigen::Vector3d cameraXInBody = rbc * Eigen::Vector3d::UnitX();
+  const Eigen::Vector3d cameraYInBody = rbc * Eigen::Vector3d::UnitY();
+  const Eigen::Vector3d cameraZInBody = rbc * Eigen::Vector3d::UnitZ();
+  const Eigen::Vector3d bodyXInCamera = rcb * Eigen::Vector3d::UnitX();
+  const Eigen::Vector3d bodyYInCamera = rcb * Eigen::Vector3d::UnitY();
+  const Eigen::Vector3d bodyZInCamera = rcb * Eigen::Vector3d::UnitZ();
+  const Eigen::Vector3d gravityDownBaseInCamera = rcb * (-Eigen::Vector3d::UnitZ());
+  const Eigen::Vector3d stationarySpecificForceBaseInCamera = rcb * Eigen::Vector3d::UnitZ();
+
+  RCLCPP_INFO(Logger(),
+              "ORB IMU extrinsic: Tbc=body<-camera Tcb=camera<-body "
+              "tbc=(%.4f,%.4f,%.4f)m rpy=(%.1f,%.1f,%.1f)deg "
+              "tcb=(%.4f,%.4f,%.4f)m rpy=(%.1f,%.1f,%.1f)deg",
+              (*tbcMatrix)(0, 3), (*tbcMatrix)(1, 3), (*tbcMatrix)(2, 3), tbcRpy.x() * RAD_TO_DEG,
+              tbcRpy.y() * RAD_TO_DEG, tbcRpy.z() * RAD_TO_DEG, tcbMatrix(0, 3), tcbMatrix(1, 3),
+              tcbMatrix(2, 3), tcbRpy.x() * RAD_TO_DEG, tcbRpy.y() * RAD_TO_DEG,
+              tcbRpy.z() * RAD_TO_DEG);
+  RCLCPP_INFO(Logger(),
+              "ORB axis/gravity self-test: cam_body=(x:%s y:%s z:%s) "
+              "body_cam=(x:%s y:%s z:%s) base+z_cam=%s gravity_cam=%s spec_cam=%s",
+              SignedAxisName(cameraXInBody), SignedAxisName(cameraYInBody),
+              SignedAxisName(cameraZInBody), SignedAxisName(bodyXInCamera),
+              SignedAxisName(bodyYInCamera), SignedAxisName(bodyZInCamera),
+              SignedAxisName(bodyZInCamera), SignedAxisName(gravityDownBaseInCamera),
+              SignedAxisName(stationarySpecificForceBaseInCamera));
+}
+
+void MonocularInertialSlam::LogOrbImuSanityLocked()
+{
+  if (m_loggedOrbImuSanity || !m_lastImuWindow1Sec || !m_tcbRotation)
+    return;
+
+  ORB_SLAM3::System* slam = GetSlam();
+  if (slam != nullptr && slam->IsImuInitialized())
+    return;
+
+  const ImuWindowDiagnostic& window = *m_lastImuWindow1Sec;
+  if (window.duration_sec < 0.8)
+    return;
+
+  const Eigen::Vector3d accelMeanBase(window.accel_mean_x_mps2, window.accel_mean_y_mps2,
+                                      window.accel_mean_z_mps2);
+  const Eigen::Vector3d accelMeanCamera = *m_tcbRotation * accelMeanBase;
+
+  RCLCPP_INFO(Logger(),
+              "ORB IMU sanity: accel_mean_base=%s m/s2 accel_mean_camera=%s m/s2 "
+              "specific_force_expected_camera=-y gravity_expected_camera=+y",
+              FormatVector3(accelMeanBase).c_str(), FormatVector3(accelMeanCamera).c_str());
+  m_loggedOrbImuSanity = true;
+}
+
+void MonocularInertialSlam::LogImuYawDiagnostic(const sensor_msgs::msg::Imu& imuMsg,
+                                                double gyroNorm)
+{
+  const geometry_msgs::msg::Vector3& gyro = imuMsg.angular_velocity;
+  const int64_t imuStampNs = StampToNanoseconds(imuMsg.header.stamp);
+
+  m_latestGyroDiagnostic = GyroDiagnosticSample{
+      imuStampNs, gyro.x, gyro.y, gyro.z, gyroNorm,
+  };
+
+  const double timestamp = static_cast<double>(imuStampNs) / 1'000'000'000.0;
+  RCLCPP_DEBUG_THROTTLE(Logger(), Clock(), YAW_DIAGNOSTIC_THROTTLE_MS,
+                        "Yaw diag IMU: t=%.3f frame=%s gyro=(%.4f, %.4f, %.4f)rad/s norm=%.4f "
+                        "dominant=%s expected_yaw_axis=+z yaw_rate_z=%.4f",
+                        timestamp, imuMsg.header.frame_id.c_str(), gyro.x, gyro.y, gyro.z, gyroNorm,
+                        DominantGyroAxis(gyro), gyro.z);
+}
+
+void MonocularInertialSlam::UpdateImuMotionDiagnostics(const sensor_msgs::msg::Imu& imuMsg)
+{
+  const int64_t imuStampNs = StampToNanoseconds(imuMsg.header.stamp);
+  const geometry_msgs::msg::Vector3& gyro = imuMsg.angular_velocity;
+  const geometry_msgs::msg::Vector3& accel = imuMsg.linear_acceleration;
+
+  const ImuDiagnosticSample sample{
+      imuStampNs, gyro.x, gyro.y, gyro.z, accel.x, accel.y, accel.z,
+  };
+
+  const auto insertIt =
+      std::upper_bound(m_imuDiagnosticWindow.begin(), m_imuDiagnosticWindow.end(), imuStampNs,
+                       [](int64_t stampNs, const ImuDiagnosticSample& bufferedSample)
+                       { return stampNs < bufferedSample.stamp_ns; });
+  m_imuDiagnosticWindow.insert(insertIt, sample);
+
+  const int64_t oldestRetainedStampNs = imuStampNs - IMU_MOTION_HISTORY_NS;
+  while (!m_imuDiagnosticWindow.empty() &&
+         m_imuDiagnosticWindow.front().stamp_ns < oldestRetainedStampNs)
+  {
+    m_imuDiagnosticWindow.pop_front();
+  }
+
+  m_lastImuWindow05Sec = ComputeImuWindowDiagnosticLocked(imuStampNs, IMU_MOTION_WINDOW_05_NS);
+  m_lastImuWindow1Sec = ComputeImuWindowDiagnosticLocked(imuStampNs, IMU_MOTION_WINDOW_1_NS);
+
+  const bool curveActive = (m_lastImuWindow1Sec && m_lastImuWindow1Sec->max_gyro_norm_rads >=
+                                                       CURVE_GYRO_NORM_THRESHOLD_RADS) ||
+                           std::abs(gyro.z) >= CURVE_GYRO_Z_THRESHOLD_RADS;
+  m_curveActive = curveActive;
+
+  if (m_lastImuWindow1Sec)
+  {
+    const ImuWindowDiagnostic& window = *m_lastImuWindow1Sec;
+    const double int05XDeg =
+        m_lastImuWindow05Sec ? m_lastImuWindow05Sec->gyro_integral_x_rad * RAD_TO_DEG : 0.0;
+    const double int05YDeg =
+        m_lastImuWindow05Sec ? m_lastImuWindow05Sec->gyro_integral_y_rad * RAD_TO_DEG : 0.0;
+    const double int05ZDeg =
+        m_lastImuWindow05Sec ? m_lastImuWindow05Sec->gyro_integral_z_rad * RAD_TO_DEG : 0.0;
+    const double timestamp = static_cast<double>(imuStampNs) / 1'000'000'000.0;
+    RCLCPP_DEBUG_THROTTLE(Logger(), Clock(), YAW_DIAGNOSTIC_THROTTLE_MS,
+                          "IMU motion window: t=%.3f w=1.0 n=%zu gx=%.4f gy=%.4f gz=%.4f "
+                          "ax=%.3f ay=%.3f az=%.3f int05=(%+.2f, %+.2f, %+.2f)deg "
+                          "int10=(%+.2f, %+.2f, %+.2f)deg "
+                          "max_g=%.4f accel_dev=%.3f curve_active=%d",
+                          timestamp, window.sample_count, window.gyro_rms_x_rads,
+                          window.gyro_rms_y_rads, window.gyro_rms_z_rads, window.accel_rms_x_mps2,
+                          window.accel_rms_y_mps2, window.accel_rms_z_mps2, int05XDeg, int05YDeg,
+                          int05ZDeg, window.gyro_integral_x_rad * RAD_TO_DEG,
+                          window.gyro_integral_y_rad * RAD_TO_DEG,
+                          window.gyro_integral_z_rad * RAD_TO_DEG, window.max_gyro_norm_rads,
+                          window.max_accel_gravity_deviation_mps2, curveActive ? 1 : 0);
+  }
+}
+
+std::optional<MonocularInertialSlam::ImuWindowDiagnostic> MonocularInertialSlam::
+    ComputeImuWindowDiagnosticLocked(int64_t newestStampNs, int64_t windowNs) const
+{
+  if (m_imuDiagnosticWindow.empty())
+    return std::nullopt;
+
+  const int64_t windowStartNs = newestStampNs - windowNs;
+  auto beginIt = std::lower_bound(
+      m_imuDiagnosticWindow.begin(), m_imuDiagnosticWindow.end(), windowStartNs,
+      [](const ImuDiagnosticSample& sample, int64_t stampNs) { return sample.stamp_ns < stampNs; });
+  const auto endIt = std::upper_bound(
+      m_imuDiagnosticWindow.begin(), m_imuDiagnosticWindow.end(), newestStampNs,
+      [](int64_t stampNs, const ImuDiagnosticSample& sample) { return stampNs < sample.stamp_ns; });
+
+  if (beginIt == endIt)
+    return std::nullopt;
+
+  ImuWindowDiagnostic diagnostic;
+  const ImuDiagnosticSample* previousSample = nullptr;
+  for (auto it = beginIt; it != endIt; ++it)
+  {
+    ++diagnostic.sample_count;
+
+    diagnostic.gyro_rms_x_rads += it->gyro_x_rads * it->gyro_x_rads;
+    diagnostic.gyro_rms_y_rads += it->gyro_y_rads * it->gyro_y_rads;
+    diagnostic.gyro_rms_z_rads += it->gyro_z_rads * it->gyro_z_rads;
+    diagnostic.accel_rms_x_mps2 += it->accel_x_mps2 * it->accel_x_mps2;
+    diagnostic.accel_rms_y_mps2 += it->accel_y_mps2 * it->accel_y_mps2;
+    diagnostic.accel_rms_z_mps2 += it->accel_z_mps2 * it->accel_z_mps2;
+    diagnostic.accel_mean_x_mps2 += it->accel_x_mps2;
+    diagnostic.accel_mean_y_mps2 += it->accel_y_mps2;
+    diagnostic.accel_mean_z_mps2 += it->accel_z_mps2;
+
+    const double gyroNorm =
+        std::sqrt(it->gyro_x_rads * it->gyro_x_rads + it->gyro_y_rads * it->gyro_y_rads +
+                  it->gyro_z_rads * it->gyro_z_rads);
+    diagnostic.max_gyro_norm_rads = std::max(diagnostic.max_gyro_norm_rads, gyroNorm);
+
+    const double accelNorm =
+        std::sqrt(it->accel_x_mps2 * it->accel_x_mps2 + it->accel_y_mps2 * it->accel_y_mps2 +
+                  it->accel_z_mps2 * it->accel_z_mps2);
+    diagnostic.max_accel_gravity_deviation_mps2 =
+        std::max(diagnostic.max_accel_gravity_deviation_mps2, std::abs(accelNorm - GRAVITY_MPS2));
+
+    if (previousSample != nullptr)
+    {
+      const int64_t elapsedNs = it->stamp_ns - previousSample->stamp_ns;
+      if (elapsedNs > 0)
+      {
+        const double dtSec = static_cast<double>(elapsedNs) / 1'000'000'000.0;
+        diagnostic.gyro_integral_x_rad +=
+            0.5 * (previousSample->gyro_x_rads + it->gyro_x_rads) * dtSec;
+        diagnostic.gyro_integral_y_rad +=
+            0.5 * (previousSample->gyro_y_rads + it->gyro_y_rads) * dtSec;
+        diagnostic.gyro_integral_z_rad +=
+            0.5 * (previousSample->gyro_z_rads + it->gyro_z_rads) * dtSec;
+      }
+    }
+
+    previousSample = &(*it);
+  }
+
+  diagnostic.gyro_rms_x_rads =
+      std::sqrt(diagnostic.gyro_rms_x_rads / static_cast<double>(diagnostic.sample_count));
+  diagnostic.gyro_rms_y_rads =
+      std::sqrt(diagnostic.gyro_rms_y_rads / static_cast<double>(diagnostic.sample_count));
+  diagnostic.gyro_rms_z_rads =
+      std::sqrt(diagnostic.gyro_rms_z_rads / static_cast<double>(diagnostic.sample_count));
+  diagnostic.accel_rms_x_mps2 =
+      std::sqrt(diagnostic.accel_rms_x_mps2 / static_cast<double>(diagnostic.sample_count));
+  diagnostic.accel_rms_y_mps2 =
+      std::sqrt(diagnostic.accel_rms_y_mps2 / static_cast<double>(diagnostic.sample_count));
+  diagnostic.accel_rms_z_mps2 =
+      std::sqrt(diagnostic.accel_rms_z_mps2 / static_cast<double>(diagnostic.sample_count));
+  diagnostic.accel_mean_x_mps2 /= static_cast<double>(diagnostic.sample_count);
+  diagnostic.accel_mean_y_mps2 /= static_cast<double>(diagnostic.sample_count);
+  diagnostic.accel_mean_z_mps2 /= static_cast<double>(diagnostic.sample_count);
+  const double accelMeanNorm =
+      std::sqrt(diagnostic.accel_mean_x_mps2 * diagnostic.accel_mean_x_mps2 +
+                diagnostic.accel_mean_y_mps2 * diagnostic.accel_mean_y_mps2 +
+                diagnostic.accel_mean_z_mps2 * diagnostic.accel_mean_z_mps2);
+  diagnostic.mean_accel_gravity_deviation_mps2 = std::abs(accelMeanNorm - GRAVITY_MPS2);
+
+  const auto lastIt = std::prev(endIt);
+  diagnostic.duration_sec =
+      static_cast<double>(lastIt->stamp_ns - beginIt->stamp_ns) / 1'000'000'000.0;
+
+  return diagnostic;
+}
+
+std::optional<MonocularInertialSlam::PoseAttitudeDiagnosticSample> MonocularInertialSlam::
+    ComputePoseAttitudeDeltaLocked(int64_t newestStampNs, int64_t windowNs) const
+{
+  if (m_poseAttitudeDiagnosticWindow.size() < 2)
+    return std::nullopt;
+
+  const int64_t windowStartNs = newestStampNs - windowNs;
+  const auto currentIt = std::prev(m_poseAttitudeDiagnosticWindow.end());
+  auto referenceIt = std::lower_bound(
+      m_poseAttitudeDiagnosticWindow.begin(), m_poseAttitudeDiagnosticWindow.end(), windowStartNs,
+      [](const PoseAttitudeDiagnosticSample& sample, int64_t stampNs)
+      { return sample.stamp_ns < stampNs; });
+
+  if (referenceIt == m_poseAttitudeDiagnosticWindow.end() || referenceIt == currentIt)
+  {
+    if (currentIt == m_poseAttitudeDiagnosticWindow.begin())
+      return std::nullopt;
+
+    referenceIt = std::prev(currentIt);
+  }
+
+  return PoseAttitudeDiagnosticSample{
+      currentIt->stamp_ns,
+      currentIt->x_m - referenceIt->x_m,
+      currentIt->y_m - referenceIt->y_m,
+      currentIt->z_m - referenceIt->z_m,
+      WrapAngleRadians(currentIt->roll_rad - referenceIt->roll_rad),
+      WrapAngleRadians(currentIt->pitch_rad - referenceIt->pitch_rad),
+      WrapAngleRadians(currentIt->yaw_rad - referenceIt->yaw_rad),
+  };
+}
+
+void MonocularInertialSlam::LogPoseYawDiagnostic(ORB_SLAM3::System& slam,
+                                                 int64_t timestampNs,
+                                                 const Eigen::Isometry3f& pose,
+                                                 int trackingState,
+                                                 std::size_t trackedPoints,
+                                                 std::size_t mapPoints)
+{
+  const Eigen::Isometry3f& tcwPose = pose;
+  const Eigen::Isometry3f twcPose = tcwPose.inverse();
+  const Eigen::Vector3d tcwRpy = RotationMatrixToRollPitchYaw(tcwPose.linear().cast<double>());
+  const Eigen::Vector3d twcRpy = RotationMatrixToRollPitchYaw(twcPose.linear().cast<double>());
+  const double tcwRollRad = tcwRpy.x();
+  const double tcwPitchRad = tcwRpy.y();
+  const double tcwYawRad = tcwRpy.z();
+  const double twcRollRad = twcRpy.x();
+  const double twcPitchRad = twcRpy.y();
+  const double twcYawRad = twcRpy.z();
+  const Eigen::Vector3f& twcTranslation = twcPose.translation();
+
+  double deltaYawRad = 0.0;
+  bool hasPreviousYaw = false;
+  std::optional<GyroDiagnosticSample> latestGyroDiagnostic;
+  std::optional<ImuWindowDiagnostic> imuWindow05Sec;
+  std::optional<ImuWindowDiagnostic> imuWindow1Sec;
+  std::optional<PoseAttitudeDiagnosticSample> poseDelta05Sec;
+  std::optional<PoseAttitudeDiagnosticSample> poseDelta1Sec;
+  bool curveActive = false;
+  bool logCurveTransition = false;
+  {
+    std::lock_guard<std::mutex> lock(m_imuMutex);
+    hasPreviousYaw = m_lastPoseYawRad.has_value();
+    if (m_lastPoseYawRad)
+      deltaYawRad = WrapAngleRadians(twcYawRad - *m_lastPoseYawRad);
+    m_lastPoseYawRad = twcYawRad;
+
+    m_poseAttitudeDiagnosticWindow.push_back(
+        PoseAttitudeDiagnosticSample{timestampNs, twcTranslation.x(), twcTranslation.y(),
+                                     twcTranslation.z(), twcRollRad, twcPitchRad, twcYawRad});
+    const int64_t oldestPoseStampNs = timestampNs - IMU_MOTION_HISTORY_NS;
+    while (!m_poseAttitudeDiagnosticWindow.empty() &&
+           m_poseAttitudeDiagnosticWindow.front().stamp_ns < oldestPoseStampNs)
+    {
+      m_poseAttitudeDiagnosticWindow.pop_front();
+    }
+
+    poseDelta05Sec = ComputePoseAttitudeDeltaLocked(timestampNs, IMU_MOTION_WINDOW_05_NS);
+    poseDelta1Sec = ComputePoseAttitudeDeltaLocked(timestampNs, IMU_MOTION_WINDOW_1_NS);
+    m_lastPoseDelta05Sec = poseDelta05Sec;
+    m_lastPoseDelta1Sec = poseDelta1Sec;
+
+    latestGyroDiagnostic = m_latestGyroDiagnostic;
+    imuWindow05Sec = m_lastImuWindow05Sec;
+    imuWindow1Sec = m_lastImuWindow1Sec;
+    curveActive = m_curveActive;
+    logCurveTransition = !m_lastLoggedCurveActive || *m_lastLoggedCurveActive != curveActive;
+    if (logCurveTransition)
+      m_lastLoggedCurveActive = curveActive;
+  }
+
+  const double timestamp = static_cast<double>(timestampNs) / 1'000'000'000.0;
+  const Eigen::Vector3f& tcwTranslation = tcwPose.translation();
+  const bool imuInitialized = slam.IsImuInitialized();
+  const double deltaYawDeg = hasPreviousYaw ? deltaYawRad * RAD_TO_DEG : 0.0;
+  const double gyroZ = latestGyroDiagnostic ? latestGyroDiagnostic->z_rads : 0.0;
+  const ORB_SLAM3::InertialStateDiagnostic inertialState = slam.GetInertialStateDiagnostic();
+
+  RCLCPP_DEBUG_THROTTLE(Logger(), Clock(), YAW_DIAGNOSTIC_THROTTLE_MS,
+                        "Pose convention diag: t=%.3f returned=Tcw(camera<-world) "
+                        "Tcw_xyz=(%.3f, %.3f, %.3f)m Tcw_rpy=(%.2f, %.2f, %.2f)deg "
+                        "Twc_xyz=(%.3f, %.3f, %.3f)m Twc_rpy=(%.2f, %.2f, %.2f)deg",
+                        timestamp, tcwTranslation.x(), tcwTranslation.y(), tcwTranslation.z(),
+                        tcwRollRad * RAD_TO_DEG, tcwPitchRad * RAD_TO_DEG, tcwYawRad * RAD_TO_DEG,
+                        twcTranslation.x(), twcTranslation.y(), twcTranslation.z(),
+                        twcRollRad * RAD_TO_DEG, twcPitchRad * RAD_TO_DEG, twcYawRad * RAD_TO_DEG);
+  RCLCPP_DEBUG_THROTTLE(Logger(), Clock(), YAW_DIAGNOSTIC_THROTTLE_MS,
+                        "Attitude diag: t=%.3f yaw=%.2fdeg pitch=%.2fdeg roll=%.2fdeg "
+                        "dyaw=%+.2fdeg gyro_z=%+.4f state=%d imu_init=%d pts=%zu map=%zu",
+                        timestamp, twcYawRad * RAD_TO_DEG, twcPitchRad * RAD_TO_DEG,
+                        twcRollRad * RAD_TO_DEG, deltaYawDeg, gyroZ, trackingState,
+                        imuInitialized ? 1 : 0, trackedPoints, mapPoints);
+  RCLCPP_DEBUG_THROTTLE(Logger(), Clock(), YAW_DIAGNOSTIC_THROTTLE_MS,
+                        "Yaw diag: t=%.3f state=%d imu_init=%d Twc_xyz=(%.3f, %.3f, %.3f)m "
+                        "pose_yaw=%.2fdeg pose_pitch=%.2fdeg pose_roll=%.2fdeg dyaw=%+.2fdeg "
+                        "gyro=(%.4f, %.4f, %.4f) gyro_norm=%.4f gyro_z=%+.4f pts=%zu map=%zu",
+                        timestamp, trackingState, imuInitialized ? 1 : 0, twcTranslation.x(),
+                        twcTranslation.y(), twcTranslation.z(), twcYawRad * RAD_TO_DEG,
+                        twcPitchRad * RAD_TO_DEG, twcRollRad * RAD_TO_DEG, deltaYawDeg,
+                        latestGyroDiagnostic ? latestGyroDiagnostic->x_rads : 0.0,
+                        latestGyroDiagnostic ? latestGyroDiagnostic->y_rads : 0.0,
+                        latestGyroDiagnostic ? latestGyroDiagnostic->z_rads : 0.0,
+                        latestGyroDiagnostic ? latestGyroDiagnostic->norm_rads : 0.0, gyroZ,
+                        trackedPoints, mapPoints);
+
+  if (imuInitialized && m_tbcRotation)
+  {
+    const Eigen::Vector3d gravityWorld = inertialState.gravity_world;
+    const Eigen::Vector3d gravityCamera = tcwPose.linear().cast<double>() * gravityWorld;
+    const Eigen::Vector3d gravityBody = *m_tbcRotation * gravityCamera;
+    RCLCPP_DEBUG_THROTTLE(
+        Logger(), Clock(), YAW_DIAGNOSTIC_THROTTLE_MS,
+        "MI gravity frames: t=%.3f gravity_world=%s gravity_camera=%s gravity_body=%s "
+        "expected_stationary_accel_body=%s expected_gravity_body=%s "
+        "specific_force_expected_camera=-y gravity_expected_camera=+y",
+        timestamp, FormatVector3(gravityWorld).c_str(), FormatVector3(gravityCamera).c_str(),
+        FormatVector3(gravityBody).c_str(), FormatUnitVector3(Eigen::Vector3d::UnitZ()).c_str(),
+        FormatUnitVector3(-Eigen::Vector3d::UnitZ()).c_str());
+  }
+
+  const bool nearTrackingLoss = trackingState != ORB_TRACKING_OK || trackedPoints < 30;
+  if (logCurveTransition || curveActive || nearTrackingLoss)
+  {
+    const double yawImu1SecDeg =
+        imuWindow1Sec ? imuWindow1Sec->gyro_integral_z_rad * RAD_TO_DEG : 0.0;
+    const double yawEst1SecDeg = poseDelta1Sec ? poseDelta1Sec->yaw_rad * RAD_TO_DEG : 0.0;
+    const double rollErrDeg =
+        (imuWindow1Sec && poseDelta1Sec)
+            ? (poseDelta1Sec->roll_rad - imuWindow1Sec->gyro_integral_x_rad) * RAD_TO_DEG
+            : 0.0;
+    const double pitchErrDeg =
+        (imuWindow1Sec && poseDelta1Sec)
+            ? (poseDelta1Sec->pitch_rad - imuWindow1Sec->gyro_integral_y_rad) * RAD_TO_DEG
+            : 0.0;
+    const double rpErrDeg = Norm3(rollErrDeg, pitchErrDeg, 0.0);
+    const double accelDev = imuWindow1Sec ? imuWindow1Sec->mean_accel_gravity_deviation_mps2 : 0.0;
+    const double lagMs =
+        latestGyroDiagnostic
+            ? static_cast<double>(timestampNs - latestGyroDiagnostic->stamp_ns) / 1'000'000.0
+            : -1.0;
+    RCLCPP_INFO_THROTTLE(Logger(), Clock(), 1000,
+                         "MI motion_health: curve=%d yaw_imu_1s=%+.2f yaw_est_1s=%+.2f rp_err=%.2f "
+                         "accel_dev=%.3f ba=%.4f bg=%.4f pts=%zu/%zu lag_ms=%.1f",
+                         curveActive ? 1 : 0, yawImu1SecDeg, yawEst1SecDeg, rpErrDeg, accelDev,
+                         inertialState.accel_bias.norm(), inertialState.gyro_bias.norm(),
+                         trackedPoints, mapPoints, lagMs);
+  }
+
+  if (imuInitialized && imuWindow05Sec && poseDelta05Sec)
+  {
+    const double errRollDeg =
+        (poseDelta05Sec->roll_rad - imuWindow05Sec->gyro_integral_x_rad) * RAD_TO_DEG;
+    const double errPitchDeg =
+        (poseDelta05Sec->pitch_rad - imuWindow05Sec->gyro_integral_y_rad) * RAD_TO_DEG;
+    const double errYawDeg =
+        (poseDelta05Sec->yaw_rad - imuWindow05Sec->gyro_integral_z_rad) * RAD_TO_DEG;
+    RCLCPP_DEBUG_THROTTLE(
+        Logger(), Clock(), YAW_DIAGNOSTIC_THROTTLE_MS,
+        "Attitude compare: t=%.3f w=0.5 est_drp=(%+.2f, %+.2f, %+.2f)deg "
+        "gyro_int=(%+.2f, %+.2f, %+.2f)deg err=(%+.2f, %+.2f, %+.2f)deg "
+        "curve_active=%d state=%d pts=%zu map=%zu",
+        timestamp, poseDelta05Sec->roll_rad * RAD_TO_DEG, poseDelta05Sec->pitch_rad * RAD_TO_DEG,
+        poseDelta05Sec->yaw_rad * RAD_TO_DEG, imuWindow05Sec->gyro_integral_x_rad * RAD_TO_DEG,
+        imuWindow05Sec->gyro_integral_y_rad * RAD_TO_DEG,
+        imuWindow05Sec->gyro_integral_z_rad * RAD_TO_DEG, errRollDeg, errPitchDeg, errYawDeg,
+        curveActive ? 1 : 0, trackingState, trackedPoints, mapPoints);
+  }
+
+  if (imuInitialized && imuWindow1Sec && poseDelta1Sec)
+  {
+    const double estRollDeg = poseDelta1Sec->roll_rad * RAD_TO_DEG;
+    const double estPitchDeg = poseDelta1Sec->pitch_rad * RAD_TO_DEG;
+    const double estYawDeg = poseDelta1Sec->yaw_rad * RAD_TO_DEG;
+    const double gyroRollDeg = imuWindow1Sec->gyro_integral_x_rad * RAD_TO_DEG;
+    const double gyroPitchDeg = imuWindow1Sec->gyro_integral_y_rad * RAD_TO_DEG;
+    const double gyroYawDeg = imuWindow1Sec->gyro_integral_z_rad * RAD_TO_DEG;
+    const double errRollDeg = estRollDeg - gyroRollDeg;
+    const double errPitchDeg = estPitchDeg - gyroPitchDeg;
+    const double errYawDeg = estYawDeg - gyroYawDeg;
+
+    RCLCPP_DEBUG_THROTTLE(Logger(), Clock(), YAW_DIAGNOSTIC_THROTTLE_MS,
+                          "Attitude compare: t=%.3f w=1.0 est_drp=(%+.2f, %+.2f, %+.2f)deg "
+                          "gyro_int=(%+.2f, %+.2f, %+.2f)deg err=(%+.2f, %+.2f, %+.2f)deg "
+                          "curve_active=%d state=%d pts=%zu map=%zu",
+                          timestamp, estRollDeg, estPitchDeg, estYawDeg, gyroRollDeg, gyroPitchDeg,
+                          gyroYawDeg, errRollDeg, errPitchDeg, errYawDeg, curveActive ? 1 : 0,
+                          trackingState, trackedPoints, mapPoints);
+
+    const double rollPitchGyroSupportDeg = std::max(std::abs(gyroRollDeg), std::abs(gyroPitchDeg));
+    if (trackingState == ORB_TRACKING_OK && std::abs(estPitchDeg) > ATTITUDE_COMPARE_EST_WARN_DEG &&
+        rollPitchGyroSupportDeg < ATTITUDE_COMPARE_GYRO_SUPPORT_DEG)
+    {
+      RCLCPP_WARN(Logger(),
+                  "Attitude overreaction: Twc_delta=(%+.2f, %+.2f, %+.2f)deg "
+                  "gyro_int=(%+.2f, %+.2f, %+.2f)deg accel_dev=%.3f curve_active=%d "
+                  "state=%d pts=%zu map=%zu",
+                  estRollDeg, estPitchDeg, estYawDeg, gyroRollDeg, gyroPitchDeg, gyroYawDeg,
+                  imuWindow1Sec->max_accel_gravity_deviation_mps2, curveActive ? 1 : 0,
+                  trackingState, trackedPoints, mapPoints);
+    }
+  }
+
+  LogStationaryDiagnostics(slam, timestampNs, pose, trackingState, trackedPoints, mapPoints);
+}
+
+void MonocularInertialSlam::LogTrackingFailureDiagnostics(const char* failureReasonName,
+                                                          int64_t imageStampNs,
+                                                          int trackingState,
+                                                          std::size_t trackedPoints,
+                                                          std::size_t mapPoints)
+{
+  std::optional<ImuWindowDiagnostic> imuWindow1Sec;
+  std::optional<PoseAttitudeDiagnosticSample> poseDelta1Sec;
+  std::optional<int64_t> lastAcceptedImuStampNs;
+  bool curveActive = false;
+  {
+    std::lock_guard<std::mutex> lock(m_imuMutex);
+    imuWindow1Sec = m_lastImuWindow1Sec;
+    poseDelta1Sec = m_lastPoseDelta1Sec;
+    lastAcceptedImuStampNs = m_lastAcceptedImuStampNs;
+    curveActive = m_curveActive;
+  }
+
+  const double imageTimestamp = static_cast<double>(imageStampNs) / 1'000'000'000.0;
+  const double imageImuLagMs =
+      lastAcceptedImuStampNs ? static_cast<double>(imageStampNs - *lastAcceptedImuStampNs) / 1.0e6
+                             : 0.0;
+  const double gyroIntXDeg = imuWindow1Sec ? imuWindow1Sec->gyro_integral_x_rad * RAD_TO_DEG : 0.0;
+  const double gyroIntYDeg = imuWindow1Sec ? imuWindow1Sec->gyro_integral_y_rad * RAD_TO_DEG : 0.0;
+  const double gyroIntZDeg = imuWindow1Sec ? imuWindow1Sec->gyro_integral_z_rad * RAD_TO_DEG : 0.0;
+  const double poseDeltaRollDeg = poseDelta1Sec ? poseDelta1Sec->roll_rad * RAD_TO_DEG : 0.0;
+  const double poseDeltaPitchDeg = poseDelta1Sec ? poseDelta1Sec->pitch_rad * RAD_TO_DEG : 0.0;
+  const double poseDeltaYawDeg = poseDelta1Sec ? poseDelta1Sec->yaw_rad * RAD_TO_DEG : 0.0;
+  const double accelDev = imuWindow1Sec ? imuWindow1Sec->max_accel_gravity_deviation_mps2 : 0.0;
+
+  RCLCPP_WARN(Logger(),
+              "Tracking failure diag: reason=%s t=%.3f curve=%d state=%d "
+              "imu_int_1s=(%+.2f, %+.2f, %+.2f)deg "
+              "est_drp_1s=(%+.2f, %+.2f, %+.2f)deg accel_dev=%.3f "
+              "pts=%zu map=%zu ref_kf_matches=unavailable image_imu_lag=%.1fms",
+              failureReasonName, imageTimestamp, curveActive ? 1 : 0, trackingState, gyroIntXDeg,
+              gyroIntYDeg, gyroIntZDeg, poseDeltaRollDeg, poseDeltaPitchDeg, poseDeltaYawDeg,
+              accelDev, trackedPoints, mapPoints, imageImuLagMs);
+}
+
+void MonocularInertialSlam::LogStationaryDiagnostics(ORB_SLAM3::System& slam,
+                                                     int64_t timestampNs,
+                                                     const Eigen::Isometry3f& pose,
+                                                     int trackingState,
+                                                     std::size_t trackedPoints,
+                                                     std::size_t mapPoints)
+{
+  const auto poseSampleFromTcw = [](int64_t sampleTimestampNs, const Eigen::Isometry3f& tcwPose)
+  {
+    const Eigen::Isometry3f twcPose = tcwPose.inverse();
+    const Eigen::Vector3d rpy = RotationMatrixToRollPitchYaw(twcPose.linear().cast<double>());
+    const Eigen::Vector3f& translation = twcPose.translation();
+
+    return PoseAttitudeDiagnosticSample{
+        sampleTimestampNs, translation.x(), translation.y(), translation.z(),
+        rpy.x(),           rpy.y(),         rpy.z()};
+  };
+  const auto poseDelta =
+      [](const PoseAttitudeDiagnosticSample& reference, const PoseAttitudeDiagnosticSample& current)
+  {
+    return PoseAttitudeDiagnosticSample{
+        current.stamp_ns,
+        current.x_m - reference.x_m,
+        current.y_m - reference.y_m,
+        current.z_m - reference.z_m,
+        WrapAngleRadians(current.roll_rad - reference.roll_rad),
+        WrapAngleRadians(current.pitch_rad - reference.pitch_rad),
+        WrapAngleRadians(current.yaw_rad - reference.yaw_rad),
+    };
+  };
+  const auto formatPoseDelta = [](const PoseAttitudeDiagnosticSample& delta)
+  {
+    std::ostringstream stream;
+    stream << std::fixed << std::setprecision(3) << "dxyz=(" << delta.x_m << ", " << delta.y_m
+           << ", " << delta.z_m << ")m drpy=(" << delta.roll_rad * RAD_TO_DEG << ", "
+           << delta.pitch_rad * RAD_TO_DEG << ", " << delta.yaw_rad * RAD_TO_DEG << ")deg";
+    return stream.str();
+  };
+  const auto formatOrbPoseDelta = [&poseSampleFromTcw, &poseDelta, &formatPoseDelta](
+                                      const ORB_SLAM3::InertialStateDiagnostic& state,
+                                      const Sophus::SE3f& candidatePose, bool valid)
+  {
+    if (!valid || !state.valid_last_pose)
+      return std::string("unavailable");
+
+    Eigen::Isometry3f referencePose = Eigen::Isometry3f::Identity();
+    referencePose.matrix() = state.last_pose.matrix();
+    Eigen::Isometry3f currentPose = Eigen::Isometry3f::Identity();
+    currentPose.matrix() = candidatePose.matrix();
+
+    return formatPoseDelta(
+        poseDelta(poseSampleFromTcw(0, referencePose), poseSampleFromTcw(0, currentPose)));
+  };
+
+  const bool imuInitialized = slam.IsImuInitialized();
+  std::optional<ImuWindowDiagnostic> imuWindow1Sec;
+  {
+    std::lock_guard<std::mutex> lock(m_imuMutex);
+    imuWindow1Sec = m_lastImuWindow1Sec;
+  }
+
+  if (!imuInitialized || !imuWindow1Sec || imuWindow1Sec->duration_sec < 0.8)
+  {
+    std::lock_guard<std::mutex> lock(m_imuMutex);
+    m_stationaryDiagnosticActive = false;
+    m_stationaryReferencePose.reset();
+    m_stationaryReferenceState.reset();
+    return;
+  }
+
+  const double gyroIntegralNormDeg =
+      Norm3(imuWindow1Sec->gyro_integral_x_rad, imuWindow1Sec->gyro_integral_y_rad,
+            imuWindow1Sec->gyro_integral_z_rad) *
+      RAD_TO_DEG;
+  const bool likelyStationary =
+      imuWindow1Sec->max_gyro_norm_rads <= STATIONARY_GYRO_NORM_THRESHOLD_RADS &&
+      gyroIntegralNormDeg <= STATIONARY_GYRO_INT_THRESHOLD_DEG &&
+      imuWindow1Sec->mean_accel_gravity_deviation_mps2 <= STATIONARY_ACCEL_GRAVITY_DEV_MPS2;
+
+  if (!likelyStationary)
+  {
+    std::lock_guard<std::mutex> lock(m_imuMutex);
+    m_stationaryDiagnosticActive = false;
+    m_stationaryReferencePose.reset();
+    m_stationaryReferenceState.reset();
+    return;
+  }
+
+  const ORB_SLAM3::InertialStateDiagnostic state = slam.GetInertialStateDiagnostic();
+  const PoseAttitudeDiagnosticSample currentPose = poseSampleFromTcw(timestampNs, pose);
+
+  PoseAttitudeDiagnosticSample referencePose;
+  ORB_SLAM3::InertialStateDiagnostic referenceState;
+  {
+    std::lock_guard<std::mutex> lock(m_imuMutex);
+    if (!m_stationaryDiagnosticActive || !m_stationaryReferencePose || !m_stationaryReferenceState)
+    {
+      m_stationaryDiagnosticActive = true;
+      m_stationaryReferencePose = currentPose;
+      m_stationaryReferenceState = state;
+    }
+    referencePose = *m_stationaryReferencePose;
+    referenceState = *m_stationaryReferenceState;
+  }
+
+  const PoseAttitudeDiagnosticSample stationaryPoseDelta = poseDelta(referencePose, currentPose);
+  const double poseTranslationNorm =
+      Norm3(stationaryPoseDelta.x_m, stationaryPoseDelta.y_m, stationaryPoseDelta.z_m);
+  const double poseRotationNormDeg =
+      Norm3(stationaryPoseDelta.roll_rad, stationaryPoseDelta.pitch_rad,
+            stationaryPoseDelta.yaw_rad) *
+      RAD_TO_DEG;
+
+  const Eigen::Vector3f dVelocity = state.velocity - referenceState.velocity;
+  const Eigen::Vector3f dGyroBias = state.gyro_bias - referenceState.gyro_bias;
+  const Eigen::Vector3f dAccelBias = state.accel_bias - referenceState.accel_bias;
+  const double dScale = state.scale - referenceState.scale;
+  const double dGravityDeg = std::acos(std::clamp(referenceState.gravity_world.normalized().dot(
+                                                      state.gravity_world.normalized()),
+                                                  -1.0, 1.0)) *
+                             RAD_TO_DEG;
+  const Eigen::Vector3d gravityWorld = state.gravity_world;
+  const Eigen::Vector3d gravityCamera = pose.linear().cast<double>() * gravityWorld;
+  Eigen::Vector3d gravityBody = Eigen::Vector3d::Constant(NAN);
+  if (m_tbcRotation)
+    gravityBody = *m_tbcRotation * gravityCamera;
+
+  const double timestamp = static_cast<double>(timestampNs) / 1'000'000'000.0;
+  RCLCPP_INFO_THROTTLE(
+      Logger(), Clock(), IMU_DIAGNOSTIC_THROTTLE_MS,
+      "MI stationary: t=%.3f dt=%.2f %s vel=(%.3f, %.3f, %.3f)m/s "
+      "dvel=(%.3f, %.3f, %.3f)m/s scale=%.6f dscale=%+.6f "
+      "gravity_world=%s gravity_camera=%s gravity_body=%s dgravity_deg=%.3f "
+      "expected_stationary_accel_body=%s expected_gravity_body=%s "
+      "bg=(%.5f, %.5f, %.5f) dbg=(%+.5f, %+.5f, %+.5f) "
+      "ba=(%.5f, %.5f, %.5f) dba=(%+.5f, %+.5f, %+.5f) "
+      "gyro_int_1s=(%+.3f, %+.3f, %+.3f)deg "
+      "accel_mean=(%.3f, %.3f, %.3f)m/s2 accel_dev=%.3f "
+      "visual_pose_delta=%s imu_predicted_delta=%s optimized_pose_delta=%s "
+      "inliers=%d local_matches=%d map=%zu pts=%zu visual_only=%d",
+      timestamp, imuWindow1Sec->duration_sec, formatPoseDelta(stationaryPoseDelta).c_str(),
+      state.velocity.x(), state.velocity.y(), state.velocity.z(), dVelocity.x(), dVelocity.y(),
+      dVelocity.z(), state.scale, dScale, FormatVector3(gravityWorld).c_str(),
+      FormatVector3(gravityCamera).c_str(), FormatVector3(gravityBody).c_str(), dGravityDeg,
+      FormatUnitVector3(Eigen::Vector3d::UnitZ()).c_str(),
+      FormatUnitVector3(-Eigen::Vector3d::UnitZ()).c_str(), state.gyro_bias.x(),
+      state.gyro_bias.y(), state.gyro_bias.z(), dGyroBias.x(), dGyroBias.y(), dGyroBias.z(),
+      state.accel_bias.x(), state.accel_bias.y(), state.accel_bias.z(), dAccelBias.x(),
+      dAccelBias.y(), dAccelBias.z(), imuWindow1Sec->gyro_integral_x_rad * RAD_TO_DEG,
+      imuWindow1Sec->gyro_integral_y_rad * RAD_TO_DEG,
+      imuWindow1Sec->gyro_integral_z_rad * RAD_TO_DEG, imuWindow1Sec->accel_mean_x_mps2,
+      imuWindow1Sec->accel_mean_y_mps2, imuWindow1Sec->accel_mean_z_mps2,
+      imuWindow1Sec->mean_accel_gravity_deviation_mps2,
+      formatOrbPoseDelta(state, state.visual_prediction_pose, state.valid_visual_prediction)
+          .c_str(),
+      formatOrbPoseDelta(state, state.imu_prediction_pose, state.valid_imu_prediction).c_str(),
+      formatOrbPoseDelta(state, state.optimized_pose, state.valid_optimized_pose).c_str(),
+      state.inliers, state.local_matches, mapPoints, trackedPoints,
+      state.visual_only_after_init ? 1 : 0);
+
+  if ((poseTranslationNorm >= STATIONARY_DRIFT_TRANSLATION_WARN_M ||
+       poseRotationNormDeg >= STATIONARY_DRIFT_ROTATION_WARN_DEG) &&
+      gyroIntegralNormDeg <= STATIONARY_GYRO_INT_THRESHOLD_DEG)
+  {
+    RCLCPP_WARN_THROTTLE(Logger(), Clock(), IMU_DIAGNOSTIC_THROTTLE_MS,
+                         "MI stationary drift: %s gyro_int_1s=(%+.3f, %+.3f, %+.3f)deg "
+                         "vel=(%.3f, %.3f, %.3f)m/s scale=%.6f dgravity=%.3fdeg "
+                         "bg=(%.5f, %.5f, %.5f) ba=(%.5f, %.5f, %.5f) inliers=%d "
+                         "state=%d pts=%zu map=%zu",
+                         formatPoseDelta(stationaryPoseDelta).c_str(),
+                         imuWindow1Sec->gyro_integral_x_rad * RAD_TO_DEG,
+                         imuWindow1Sec->gyro_integral_y_rad * RAD_TO_DEG,
+                         imuWindow1Sec->gyro_integral_z_rad * RAD_TO_DEG, state.velocity.x(),
+                         state.velocity.y(), state.velocity.z(), state.scale, dGravityDeg,
+                         state.gyro_bias.x(), state.gyro_bias.y(), state.gyro_bias.z(),
+                         state.accel_bias.x(), state.accel_bias.y(), state.accel_bias.z(),
+                         state.inliers, trackingState, trackedPoints, mapPoints);
+  }
 }
 
 MonocularInertialSlam::ImuBufferStatus MonocularInertialSlam::GetImuBufferStatusLocked() const
@@ -785,8 +1652,6 @@ bool MonocularInertialSlam::LogInitializationStatus(ORB_SLAM3::System& slam,
                                                     std::size_t trackedPoints,
                                                     std::size_t mapPoints)
 {
-  constexpr int ORB_TRACKING_OK = 2;
-
   const double imageTimestamp = static_cast<double>(imageStampNs) / 1'000'000'000.0;
   const bool imuInitialized = slam.IsImuInitialized();
   const bool badImu = slam.HasBadImu();
@@ -829,6 +1694,12 @@ bool MonocularInertialSlam::LogInitializationStatus(ORB_SLAM3::System& slam,
   if (preStableInitRejectedCallback)
   {
     preStableInitRejectedCallback(failureReasonName, imageStampNs);
+  }
+
+  if (isTransition && hasFailureReason)
+  {
+    LogTrackingFailureDiagnostics(failureReasonName, imageStampNs, trackingState, trackedPoints,
+                                  mapPoints);
   }
 
   if (isTransition)
