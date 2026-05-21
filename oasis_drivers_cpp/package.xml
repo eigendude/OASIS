@@ -17,12 +17,14 @@
   <depend>geometry_msgs</depend>
   <depend>libcec</depend>
   <depend>libudev-dev</depend>
+  <depend>nav_msgs</depend>
   <depend>oasis_msgs</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
   <depend>rcutils</depend>
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
+  <depend>tf2_ros</depend>
   <depend>yaml-cpp</depend>
 
   <test_depend>ament_cmake_gtest</test_depend>

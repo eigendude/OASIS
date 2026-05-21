@@ -125,6 +125,48 @@ class DriverDescriptions:
         )
 
     #
+    # AHRS
+    #
+
+    @staticmethod
+    def add_ahrs_node(
+        composable_nodes: list[ComposableNode],
+        host_id: str,
+        mounting_config: Any,
+    ) -> None:
+        composable_nodes.append(
+            ComposableNode(
+                namespace=ROS_NAMESPACE,
+                package=CPP_PACKAGE_NAME,
+                plugin="OASIS::ROS::AhrsNode",
+                name=f"ahrs_{host_id}",
+                parameters=[
+                    {
+                        "base_frame_id": mounting_config.parent_frame_id,
+                        "imu_frame_id": mounting_config.child_frame_id,
+                        "mounting_calibration_duration_sec": (
+                            mounting_config.calibration_duration_sec
+                        ),
+                        "mounting_stationary_angular_speed_threshold_rads": (
+                            mounting_config.stationary_angular_speed_threshold_rads
+                        ),
+                        "mounting_min_sample_count": mounting_config.min_sample_count,
+                    }
+                ],
+                remappings=[
+                    ("ahrs/diag", f"{host_id}/ahrs/diag"),
+                    ("ahrs/gravity", f"{host_id}/ahrs/gravity"),
+                    ("ahrs/imu_gravity", f"{host_id}/ahrs/imu_gravity"),
+                    ("ahrs/imu", f"{host_id}/ahrs/imu"),
+                    ("ahrs/odom", f"{host_id}/ahrs/odom"),
+                    ("gravity", f"{host_id}/gravity"),
+                    ("imu_gravity", f"{host_id}/imu_gravity"),
+                    ("imu", f"{host_id}/imu"),
+                ],
+            )
+        )
+
+    #
     # Display server
     #
 

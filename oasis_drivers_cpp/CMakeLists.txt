@@ -40,18 +40,59 @@ find_package(CEC REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(i2cdevlib REQUIRED)
+find_package(nav_msgs REQUIRED)
 find_package(oasis_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(rcutils REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(tf2_ros REQUIRED)
 find_package(UDEV)
 find_package(yaml-cpp REQUIRED)
 
 ################################################################################
 # C++ nodes
 ################################################################################
+
+#
+# ahrs
+#
+
+add_library(ahrs_core
+  src/ahrs/AhrsMath.cpp
+)
+target_link_libraries(ahrs_core PUBLIC
+  Eigen3::Eigen
+)
+
+add_library(ahrs_component SHARED
+  src/nodes/AhrsNode.cpp
+)
+target_link_libraries(ahrs_component PUBLIC
+  ahrs_core
+  Eigen3::Eigen
+  ${geometry_msgs_TARGETS}
+  ${nav_msgs_TARGETS}
+  ${oasis_msgs_TARGETS}
+  rclcpp_components::component
+  rclcpp::rclcpp
+  ${sensor_msgs_TARGETS}
+  tf2_ros::tf2_ros
+)
+
+rclcpp_components_register_node(
+  ahrs_component
+  PLUGIN "OASIS::ROS::AhrsNode"
+  EXECUTABLE ahrs_component_node
+)
+
+install(
+  TARGETS
+    ahrs_component
+  DESTINATION
+    lib
+)
 
 #
 # bno086_imu_driver
@@ -329,6 +370,14 @@ if(BUILD_TESTING)
   )
   target_link_libraries(test_bno086_gravity_utils
     bno086_gravity_utils
+  )
+
+  ament_add_gtest(test_ahrs_math
+    test/ahrs/test_AhrsMath.cpp
+  )
+  target_link_libraries(test_ahrs_math
+    ahrs_core
+    Eigen3::Eigen
   )
 
   ament_add_gtest(test_bno086_orientation_covariance_policy

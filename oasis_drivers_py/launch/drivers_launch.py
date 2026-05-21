@@ -15,6 +15,7 @@ from typing import Optional
 from launch.launch_description import LaunchDescription
 from launch_ros.descriptions import ComposableNode
 
+from oasis_control.launch.ahrs_mounting import AhrsMountingConfig
 from oasis_drivers.launch.driver_descriptions import DriverDescriptions as Drivers
 from oasis_drivers.launch.mcu_descriptions import MCUDescriptions as MCU
 from oasis_hass.utils.smarthome_config import SmarthomeConfig
@@ -116,6 +117,15 @@ MCU_TYPE: Optional[str] = None
 # BNO086 interrupt line on the Falcon's GPIO header
 FALCON_BNO086_INT_GPIO: int = 23
 
+# Default Falcon boot-time AHRS mounting calibration policy
+FALCON_AHRS_MOUNTING: AhrsMountingConfig = AhrsMountingConfig(
+    parent_frame_id="base_link",
+    child_frame_id="imu_link",
+    calibration_duration_sec=2.0,
+    stationary_angular_speed_threshold_rads=0.35,
+    min_sample_count=10,
+)
+
 # Optional process prefix for the driver component container when BNO086 is
 # loaded. This is useful for deployments that grant scheduler privileges through
 # systemd and want the GPIO/I2C drain loop to outrank perception work.
@@ -195,6 +205,7 @@ def generate_launch_description() -> LaunchDescription:
             libcamera_params=LIBCAMERA_PARAMS,
         )
         Drivers.add_bno086_imu(composable_nodes, HOST_ID, FALCON_BNO086_INT_GPIO)
+        Drivers.add_ahrs_node(composable_nodes, HOST_ID, FALCON_AHRS_MOUNTING)
         driver_launch_prefix = BNO086_LAUNCH_PREFIX
         Drivers.add_mmc5983ma_magnetometer(ld, HOST_ID)
     if HOST_ID == "station":
