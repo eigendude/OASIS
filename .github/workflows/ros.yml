@@ -162,7 +162,7 @@ jobs:
           path: |
             ros-ws/oasis-depends-${{ matrix.ros2_distro }}/install
           key: >
-            restore-oasis-depends-\
+            restore-oasis-depends-v2-\
             ${{ matrix.os }}-\
             ${{ matrix.ros2_distro }}-\
             ${{ env.OASIS_DEPENDS_HASH }}-\

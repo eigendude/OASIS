@@ -67,6 +67,10 @@ protected:
                                   std::size_t trackedPoints,
                                   std::size_t mapPoints);
   virtual void OnPostTrack() {}
+  virtual bool ShouldPublishTrackedFrame(const Eigen::Isometry3f& cameraPose,
+                                         int trackingState,
+                                         std::size_t trackedPoints,
+                                         std::size_t mapPoints);
 
   // SLAM accessors
   bool HasSlam() const { return m_slam != nullptr; }

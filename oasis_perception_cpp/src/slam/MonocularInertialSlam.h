@@ -104,6 +104,10 @@ protected:
   // Implementation of MonocularSlamBase
   std::optional<Eigen::Isometry3f> TrackFrame(const cv::Mat& rgbImage,
                                               int64_t timestampNs) override;
+  bool ShouldPublishTrackedFrame(const Eigen::Isometry3f& cameraPose,
+                                 int trackingState,
+                                 std::size_t trackedPoints,
+                                 std::size_t mapPoints) override;
   void LogTrackingSummary(int trackingState,
                           std::size_t trackedPoints,
                           std::size_t mapPoints) override;
@@ -113,6 +117,7 @@ private:
   {
     UNKNOWN,
     VISUAL_CANDIDATE,
+    INERTIAL_PROVISIONAL,
     INERTIAL_INITIALIZED,
     BAD_IMU_OR_RESET_PENDING,
     REJECTED,
@@ -147,6 +152,7 @@ private:
   void CommitTrackedImageStamp(int64_t imageStampNs);
   bool LogInitializationStatus(ORB_SLAM3::System& slam,
                                int64_t imageStampNs,
+                               std::optional<double> imageImuLagMs,
                                int trackingState,
                                std::size_t trackedPoints,
                                std::size_t mapPoints);
@@ -166,11 +172,13 @@ private:
   std::size_t m_droppedImuSamples = 0;
   std::optional<MonoInertialInitializationStatus> m_lastInitializationStatus;
   std::optional<ORB_SLAM3::TrackingFailureReason> m_lastInitializationFailureReason;
+  std::optional<double> m_lastImageImuLagMs;
   std::optional<int> m_lastLoggedTrackingState;
   InitRejectedCallback m_preStableInitRejectedCallback;
   bool m_hasStableSlamMap = false;
   bool m_startupArmed = false;
   bool m_loggedEmptyImuMeasurementsError = false;
+  bool m_provisionalPublishSuppressed = false;
 };
 
 } // namespace SLAM

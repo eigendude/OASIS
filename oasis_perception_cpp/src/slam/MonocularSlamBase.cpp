@@ -171,6 +171,18 @@ void MonocularSlamBase::LogTrackingSummary(int trackingState,
               trackedPoints, mapPoints);
 }
 
+bool MonocularSlamBase::ShouldPublishTrackedFrame(const Eigen::Isometry3f& cameraPose,
+                                                  int trackingState,
+                                                  std::size_t trackedPoints,
+                                                  std::size_t mapPoints)
+{
+  (void)cameraPose;
+  (void)trackingState;
+  (void)trackedPoints;
+  (void)mapPoints;
+  return true;
+}
+
 void MonocularSlamBase::MapPublisherLoop()
 {
   while (true)
@@ -239,6 +251,13 @@ void MonocularSlamBase::MapPublisherLoop()
                    "(state=%d, tracked points=%zu, map points=%zu)",
                    timestamp, trackingState, trackedMapPoints.size(), mapPoints.size());
       ResetActiveMap();
+      OnPostTrack();
+      continue;
+    }
+
+    if (!ShouldPublishTrackedFrame(*cameraPose, trackingState, trackedMapPoints.size(),
+                                   mapPoints.size()))
+    {
       OnPostTrack();
       continue;
     }
