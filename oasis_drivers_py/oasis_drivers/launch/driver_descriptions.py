@@ -73,6 +73,7 @@ class DriverDescriptions:
         host_id: str,
         composable_nodes: list[ComposableNode],
         log_level: Optional[str] = None,
+        launch_prefix: Optional[str] = None,
     ) -> None:
         if not composable_nodes:
             return
@@ -87,6 +88,7 @@ class DriverDescriptions:
             package="rclcpp_components",
             executable="component_container_mt",
             output="screen",
+            prefix=launch_prefix,
             arguments=container_arguments,
             composable_node_descriptions=composable_nodes,
         )
@@ -98,36 +100,29 @@ class DriverDescriptions:
 
     @staticmethod
     def add_bno086_imu(
-        ld: LaunchDescription,
+        composable_nodes: list[ComposableNode],
         host_id: str,
         int_gpio: int,
-        launch_prefix: Optional[str] = None,
     ) -> None:
-        bno_node: Node = Node(
-            namespace=ROS_NAMESPACE,
-            package=CPP_PACKAGE_NAME,
-            executable="bno086_imu_driver",
-            name=f"bno086_imu_driver_{host_id}",
-            output="screen",
-            prefix=launch_prefix,
-            arguments=[
-                "--ros-args",
-                "--log-level",
-                f"{ROS_NAMESPACE}.bno086_imu_driver_{host_id}:=info",
-            ],
-            parameters=[
-                {"int_gpio": int_gpio},
-            ],
-            remappings=[
-                # Topics
-                ("gravity", f"{host_id}/gravity"),
-                ("imu_gravity", f"{host_id}/imu_gravity"),
-                ("imu_predicted", f"{host_id}/imu_predicted"),
-                ("imu_vr", f"{host_id}/imu_vr"),
-                ("imu", f"{host_id}/imu"),
-            ],
+        composable_nodes.append(
+            ComposableNode(
+                namespace=ROS_NAMESPACE,
+                package=CPP_PACKAGE_NAME,
+                plugin="OASIS::ROS::Bno086ImuNode",
+                name=f"bno086_imu_driver_{host_id}",
+                parameters=[
+                    {"int_gpio": int_gpio},
+                ],
+                remappings=[
+                    # Topics
+                    ("gravity", f"{host_id}/gravity"),
+                    ("imu_gravity", f"{host_id}/imu_gravity"),
+                    ("imu_predicted", f"{host_id}/imu_predicted"),
+                    ("imu_vr", f"{host_id}/imu_vr"),
+                    ("imu", f"{host_id}/imu"),
+                ],
+            )
         )
-        ld.add_action(bno_node)
 
     #
     # Display server

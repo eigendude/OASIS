@@ -19,6 +19,7 @@
   <depend>libudev-dev</depend>
   <depend>oasis_msgs</depend>
   <depend>rclcpp</depend>
+  <depend>rclcpp_components</depend>
   <depend>rcutils</depend>
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>

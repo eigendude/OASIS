@@ -20,6 +20,8 @@ if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 20)
 endif()
 
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 # TODO: -Wpedantic causes warnings due to libcec
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra)
@@ -40,6 +42,7 @@ find_package(geometry_msgs REQUIRED)
 find_package(i2cdevlib REQUIRED)
 find_package(oasis_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_components REQUIRED)
 find_package(rcutils REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
@@ -121,13 +124,12 @@ target_link_libraries(bno086_sh2
   bno086_shtp
 )
 
-add_executable(bno086_imu_driver
-  src/cli/bno086_imu_driver.cpp
+add_library(bno086_imu_driver_component SHARED
   src/imu/bno086/gpio/Bno086Gpio.cpp
   src/nodes/Bno086ImuNode.cpp
 )
 
-target_link_libraries(bno086_imu_driver
+target_link_libraries(bno086_imu_driver_component PUBLIC
   bno086_diagnostics
   bno086_drain_policy
   bno086_gravity_utils
@@ -140,8 +142,30 @@ target_link_libraries(bno086_imu_driver
   bno086_utils
   ${geometry_msgs_TARGETS}
   ${oasis_msgs_TARGETS}
+  rclcpp_components::component
   rclcpp::rclcpp
   ${sensor_msgs_TARGETS}
+)
+
+rclcpp_components_register_node(
+  bno086_imu_driver_component
+  PLUGIN "OASIS::ROS::Bno086ImuNode"
+  EXECUTABLE bno086_imu_driver_component_node
+)
+
+add_executable(bno086_imu_driver
+  src/cli/bno086_imu_driver.cpp
+)
+
+target_link_libraries(bno086_imu_driver
+  bno086_imu_driver_component
+)
+
+install(
+  TARGETS
+    bno086_imu_driver_component
+  DESTINATION
+    lib
 )
 
 install(

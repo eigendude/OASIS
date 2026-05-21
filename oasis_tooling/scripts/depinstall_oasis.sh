@@ -67,6 +67,8 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
      [[ ! -f "${STACK_DIRECTORY}/oasis_drivers_cpp/COLCON_IGNORE" ]]; then
     # Needed for linking rclcpp
     APT_PACKAGES+=(
+      # Needed by class_loader via rclcpp_components
+      libconsole-bridge-dev
       liblttng-ust-dev
       libspdlog-dev
     )

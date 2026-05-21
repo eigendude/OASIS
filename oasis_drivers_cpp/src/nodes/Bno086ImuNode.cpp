@@ -31,6 +31,7 @@
 
 #include <oasis_msgs/msg/imu_vr.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp_components/register_node_macro.hpp>
 
 using namespace OASIS::ROS;
 using namespace OASIS::IMU::BNO086;
@@ -102,8 +103,16 @@ void AppendTimingCounter(std::ostringstream& stream, const char* label, std::uin
 
 } // namespace
 
-Bno086ImuNode::Bno086ImuNode()
-  : rclcpp::Node(NODE_NAME),
+Bno086ImuNode::Bno086ImuNode() : Bno086ImuNode(rclcpp::NodeOptions(), false)
+{
+}
+
+Bno086ImuNode::Bno086ImuNode(const rclcpp::NodeOptions& options) : Bno086ImuNode(options, true)
+{
+}
+
+Bno086ImuNode::Bno086ImuNode(const rclcpp::NodeOptions& options, bool auto_initialize)
+  : rclcpp::Node(NODE_NAME, options),
     m_transport(std::make_unique<Bno086Transport>()),
     m_shtp(std::make_unique<Bno086Shtp>(*m_transport)),
     m_interruptGpio(std::make_unique<Bno086Gpio>())
@@ -186,12 +195,21 @@ Bno086ImuNode::Bno086ImuNode()
                 m_config.prediction_source.c_str(), m_config.prediction_horizon_sec);
   }
   RCLCPP_INFO(get_logger(), "BNO086 stamps: SH-2 timebase/delay, packet-local host anchors");
+
+  if (auto_initialize)
+    Initialize();
 }
 
-Bno086ImuNode::~Bno086ImuNode() = default;
+Bno086ImuNode::~Bno086ImuNode()
+{
+  Deinitialize();
+}
 
 bool Bno086ImuNode::Initialize()
 {
+  if (m_initialized.exchange(true))
+    return true;
+
   // Initialize state
   m_stream.last_published_core_signature.reset();
   m_stream.imu_stamp_gate.Reset();
@@ -230,6 +248,9 @@ bool Bno086ImuNode::Initialize()
 
 void Bno086ImuNode::Deinitialize()
 {
+  if (!m_initialized.exchange(false))
+    return;
+
   m_running.store(false);
 
   if (m_interruptThread.joinable())
@@ -238,6 +259,8 @@ void Bno086ImuNode::Deinitialize()
   m_interruptGpio->Close();
   m_transport->Close();
 }
+
+RCLCPP_COMPONENTS_REGISTER_NODE(OASIS::ROS::Bno086ImuNode)
 
 void Bno086ImuNode::InterruptLoop()
 {

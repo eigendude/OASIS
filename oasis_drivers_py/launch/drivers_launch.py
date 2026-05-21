@@ -116,9 +116,9 @@ MCU_TYPE: Optional[str] = None
 # BNO086 interrupt line on the Falcon's GPIO header
 FALCON_BNO086_INT_GPIO: int = 23
 
-# Optional process prefix for the standalone BNO086 executable. This is useful
-# for deployments that grant scheduler privileges through systemd and want the
-# GPIO/I2C drain loop to outrank camera or perception work.
+# Optional process prefix for the driver component container when BNO086 is
+# loaded. This is useful for deployments that grant scheduler privileges through
+# systemd and want the GPIO/I2C drain loop to outrank perception work.
 BNO086_LAUNCH_PREFIX: Optional[str] = os.getenv("OASIS_BNO086_LAUNCH_PREFIX") or None
 
 
@@ -149,6 +149,7 @@ def generate_launch_description() -> LaunchDescription:
     ld: LaunchDescription = LaunchDescription()
 
     composable_nodes: list[ComposableNode] = []
+    driver_launch_prefix: Optional[str] = None
 
     #
     # General drivers
@@ -193,12 +194,8 @@ def generate_launch_description() -> LaunchDescription:
             camera_frame_id="camera_link",
             libcamera_params=LIBCAMERA_PARAMS,
         )
-        Drivers.add_bno086_imu(
-            ld,
-            HOST_ID,
-            int_gpio=FALCON_BNO086_INT_GPIO,
-            launch_prefix=BNO086_LAUNCH_PREFIX,
-        )
+        Drivers.add_bno086_imu(composable_nodes, HOST_ID, FALCON_BNO086_INT_GPIO)
+        driver_launch_prefix = BNO086_LAUNCH_PREFIX
         Drivers.add_mmc5983ma_magnetometer(ld, HOST_ID)
     if HOST_ID == "station":
         Drivers.add_ros2_camera(
@@ -230,6 +227,12 @@ def generate_launch_description() -> LaunchDescription:
     # Add composable nodes to launch description
     #
 
-    Drivers.add_driver_components(ld, HOST_ID, composable_nodes, log_level="info")
+    Drivers.add_driver_components(
+        ld,
+        HOST_ID,
+        composable_nodes,
+        log_level="info",
+        launch_prefix=driver_launch_prefix,
+    )
 
     return ld

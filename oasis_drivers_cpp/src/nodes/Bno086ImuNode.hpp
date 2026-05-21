@@ -32,6 +32,7 @@
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <oasis_msgs/msg/imu_vr.hpp>
 #include <rclcpp/node.hpp>
+#include <rclcpp/node_options.hpp>
 #include <rclcpp/publisher.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 
@@ -70,12 +71,15 @@ class Bno086ImuNode : public rclcpp::Node
 {
 public:
   Bno086ImuNode();
+  explicit Bno086ImuNode(const rclcpp::NodeOptions& options);
   ~Bno086ImuNode() override;
 
   bool Initialize();
   void Deinitialize();
 
 private:
+  Bno086ImuNode(const rclcpp::NodeOptions& options, bool auto_initialize);
+
   struct SampleTiming
   {
     bool has_timebase_reference{false};
@@ -266,6 +270,7 @@ private:
   std::unique_ptr<OASIS::IMU::BNO086::Bno086Gpio> m_interruptGpio;
 
   // Threading parameters
+  std::atomic<bool> m_initialized{false};
   std::atomic<bool> m_running{false};
   std::thread m_interruptThread;
 
