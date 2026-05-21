@@ -97,6 +97,7 @@ private:
                                bool imuReady,
                                bool armingWindowReady,
                                int64_t lagNs,
+                               std::size_t pendingQueueSize,
                                const char* reason) const;
   void ResetStartupArmingCandidateLocked();
 

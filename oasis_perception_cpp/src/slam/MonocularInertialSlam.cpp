@@ -41,6 +41,7 @@ constexpr std::size_t STARTUP_IMU_BUFFER_MAX_SAMPLES = 4096;
 constexpr std::int64_t IMU_INTERVAL_GAP_WARN_NS = 30'000'000;
 constexpr std::int64_t MAX_IMU_STAMP_GAP_NS = 500'000'000;
 constexpr int IMU_DIAGNOSTIC_THROTTLE_MS = 5'000;
+constexpr double RAD_TO_DEG = 180.0 / M_PI;
 
 bool IsFiniteMatrix4(const Eigen::Matrix4f& matrix)
 {
@@ -96,6 +97,17 @@ std::string FormatOptionalMilliseconds(std::optional<double> milliseconds)
   stream << std::fixed << std::setprecision(1) << *milliseconds;
   return stream.str();
 }
+
+std::string FormatPoseRpyDeg(const Eigen::Isometry3f& cameraPose)
+{
+  const Eigen::Isometry3f worldFromCamera = cameraPose.inverse();
+  const Eigen::Vector3f rpy = worldFromCamera.linear().eulerAngles(0, 1, 2);
+  std::ostringstream stream;
+  stream << std::fixed << std::setprecision(1) << "(" << static_cast<double>(rpy.x()) * RAD_TO_DEG
+         << "," << static_cast<double>(rpy.y()) * RAD_TO_DEG << ","
+         << static_cast<double>(rpy.z()) * RAD_TO_DEG << ")";
+  return stream.str();
+}
 } // namespace
 
 MonocularInertialSlam::MonocularInertialSlam(rclcpp::Node& node,
@@ -125,12 +137,14 @@ bool MonocularInertialSlam::Initialize(const std::string& vocabularyFile,
     m_droppedImuSamples = 0;
     m_lastInitializationStatus.reset();
     m_lastInitializationFailureReason.reset();
+    m_lastTrackedImageStampNs.reset();
     m_lastImageImuLagMs.reset();
     m_lastLoggedTrackingState.reset();
     m_hasStableSlamMap = false;
     m_startupArmed = false;
     m_loggedEmptyImuMeasurementsError = false;
     m_provisionalPublishSuppressed = false;
+    m_publishEpochLogged = false;
   }
 
   return true;
@@ -152,12 +166,14 @@ void MonocularInertialSlam::Deinitialize()
     m_droppedImuSamples = 0;
     m_lastInitializationStatus.reset();
     m_lastInitializationFailureReason.reset();
+    m_lastTrackedImageStampNs.reset();
     m_lastImageImuLagMs.reset();
     m_lastLoggedTrackingState.reset();
     m_hasStableSlamMap = false;
     m_startupArmed = false;
     m_loggedEmptyImuMeasurementsError = false;
     m_provisionalPublishSuppressed = false;
+    m_publishEpochLogged = false;
   }
 }
 
@@ -392,12 +408,14 @@ void MonocularInertialSlam::NotifyPreStableMonocularInertialInitRetry(const std:
     m_lastAcceptedImuStampNs.reset();
     m_lastInitializationStatus.reset();
     m_lastInitializationFailureReason.reset();
+    m_lastTrackedImageStampNs.reset();
     m_lastImageImuLagMs.reset();
     m_lastLoggedTrackingState.reset();
     m_hasStableSlamMap = false;
     m_startupArmed = false;
     m_loggedEmptyImuMeasurementsError = false;
     m_provisionalPublishSuppressed = false;
+    m_publishEpochLogged = false;
   }
 
   const int64_t gapNs = currentStampNs - previousStampNs;
@@ -508,6 +526,7 @@ std::optional<Eigen::Isometry3f> MonocularInertialSlam::TrackFrame(const cv::Mat
 
     {
       std::lock_guard<std::mutex> lock(m_imuMutex);
+      m_lastTrackedImageStampNs = timestampNs;
       m_lastImageImuLagMs = imageImuLagMs;
     }
 
@@ -549,34 +568,60 @@ bool MonocularInertialSlam::ShouldPublishTrackedFrame(const Eigen::Isometry3f& c
   const bool committed = slam->IsInertialInitializationCommitted();
   if (!slam->IsImuInitialized() || (committed && !slam->HasBadImu()))
   {
-    std::lock_guard<std::mutex> lock(m_imuMutex);
-    m_provisionalPublishSuppressed = false;
+    bool shouldLog = false;
+    std::optional<double> imageImuLagMs;
+    std::optional<int64_t> imageStampNs;
+    {
+      std::lock_guard<std::mutex> lock(m_imuMutex);
+      shouldLog = committed && !m_publishEpochLogged;
+      m_publishEpochLogged = m_publishEpochLogged || committed;
+      m_provisionalPublishSuppressed = false;
+      imageImuLagMs = m_lastImageImuLagMs;
+      imageStampNs = m_lastTrackedImageStampNs;
+    }
+    if (shouldLog)
+    {
+      const ORB_SLAM3::InertialStateDiagnostic state = slam->GetInertialStateDiagnostic();
+      RCLCPP_INFO(Logger(),
+                  "MI publish_epoch: stamp=%s tracking_state=%d map_id=%lu "
+                  "inertial_initialized=%d committed=%d provisional=%d reason=accepted "
+                  "pose_rpy=%s pointcloud_size=%zu lag_ms=%s inliers=%d scale=%.6f",
+                  FormatOptionalTimestamp(imageStampNs).c_str(), trackingState, CurrentMapId(*slam),
+                  slam->IsImuInitialized() ? 1 : 0, committed ? 1 : 0,
+                  slam->IsInertialInitializationProvisional() ? 1 : 0,
+                  FormatPoseRpyDeg(cameraPose).c_str(), mapPoints,
+                  FormatOptionalMilliseconds(imageImuLagMs).c_str(), state.inliers, state.scale);
+    }
     return true;
   }
 
   bool shouldLog = false;
   std::optional<double> imageImuLagMs;
+  std::optional<int64_t> imageStampNs;
   {
     std::lock_guard<std::mutex> lock(m_imuMutex);
     shouldLog = !m_provisionalPublishSuppressed;
     m_provisionalPublishSuppressed = true;
     imageImuLagMs = m_lastImageImuLagMs;
+    imageStampNs = m_lastTrackedImageStampNs;
   }
 
   if (shouldLog)
   {
     const ORB_SLAM3::InertialStateDiagnostic state = slam->GetInertialStateDiagnostic();
     const unsigned long mapId = CurrentMapId(*slam);
-    const char* reason =
-        slam->IsInertialInitializationProvisional() ? "provisional_init" : "uncommitted_init";
+    const char* reason = slam->HasBadImu() ? "bad_imu" : "init_pending";
     RCLCPP_INFO(Logger(),
-                "Publish suppressed: reason=%s state=%d map_id=%lu pts=%zu "
-                "map=%zu inliers=%d scale=%.6f provisional=%d committed=%d failure=%s "
-                "imu_lag_ms=%s",
-                reason, trackingState, mapId, trackedPoints, mapPoints, state.inliers, state.scale,
-                slam->IsInertialInitializationProvisional() ? 1 : 0, committed ? 1 : 0,
-                slam->GetLastTrackingFailureReasonName(),
-                FormatOptionalMilliseconds(imageImuLagMs).c_str());
+                "MI publish_epoch: stamp=%s tracking_state=%d map_id=%lu "
+                "inertial_initialized=%d committed=%d provisional=%d reason=%s "
+                "pose_rpy=%s pointcloud_size=%zu lag_ms=%s pts=%zu inliers=%d scale=%.6f "
+                "failure=%s",
+                FormatOptionalTimestamp(imageStampNs).c_str(), trackingState, mapId,
+                slam->IsImuInitialized() ? 1 : 0, committed ? 1 : 0,
+                slam->IsInertialInitializationProvisional() ? 1 : 0, reason,
+                FormatPoseRpyDeg(cameraPose).c_str(), mapPoints,
+                FormatOptionalMilliseconds(imageImuLagMs).c_str(), trackedPoints, state.inliers,
+                state.scale, slam->GetLastTrackingFailureReasonName());
   }
 
   return false;
@@ -932,41 +977,48 @@ bool MonocularInertialSlam::LogInitializationStatus(ORB_SLAM3::System& slam,
     {
       case MonoInertialInitializationStatus::VISUAL_CANDIDATE:
         RCLCPP_INFO(Logger(),
-                    "Init candidate: t=%.3f state=%d map_id=%lu pts=%zu map=%zu inliers=%d "
-                    "scale=%.6f provisional=%d committed=%d imu_lag_ms=%s",
-                    imageTimestamp, trackingState, mapId, trackedPoints, mapPoints,
-                    inertialState.inliers, inertialState.scale, initProvisional ? 1 : 0,
-                    initCommitted ? 1 : 0, imageImuLag.c_str());
+                    "MI publish_epoch: stamp=%.3f tracking_state=%d map_id=%lu "
+                    "inertial_initialized=%d committed=%d provisional=%d reason=init_pending "
+                    "pose_rpy=na pointcloud_size=%zu lag_ms=%s pts=%zu inliers=%d scale=%.6f",
+                    imageTimestamp, trackingState, mapId, imuInitialized ? 1 : 0,
+                    initCommitted ? 1 : 0, initProvisional ? 1 : 0, mapPoints, imageImuLag.c_str(),
+                    trackedPoints, inertialState.inliers, inertialState.scale);
         break;
       case MonoInertialInitializationStatus::INERTIAL_PROVISIONAL:
         RCLCPP_INFO(Logger(),
-                    "Init provisional: t=%.3f state=%d map_id=%lu pts=%zu map=%zu inliers=%d "
-                    "scale=%.6f provisional=1 committed=0 imu_lag_ms=%s",
-                    imageTimestamp, trackingState, mapId, trackedPoints, mapPoints,
-                    inertialState.inliers, inertialState.scale, imageImuLag.c_str());
+                    "MI publish_epoch: stamp=%.3f tracking_state=%d map_id=%lu "
+                    "inertial_initialized=%d committed=0 provisional=1 reason=init_pending "
+                    "pose_rpy=na pointcloud_size=%zu lag_ms=%s pts=%zu inliers=%d scale=%.6f",
+                    imageTimestamp, trackingState, mapId, imuInitialized ? 1 : 0, mapPoints,
+                    imageImuLag.c_str(), trackedPoints, inertialState.inliers, inertialState.scale);
         break;
       case MonoInertialInitializationStatus::INERTIAL_INITIALIZED:
         RCLCPP_INFO(Logger(),
-                    "Init committed: t=%.3f state=%d map_id=%lu pts=%zu map=%zu inliers=%d "
-                    "scale=%.6f provisional=0 committed=1 imu_lag_ms=%s",
-                    imageTimestamp, trackingState, mapId, trackedPoints, mapPoints,
-                    inertialState.inliers, inertialState.scale, imageImuLag.c_str());
+                    "MI publish_epoch: stamp=%.3f tracking_state=%d map_id=%lu "
+                    "inertial_initialized=1 committed=1 provisional=0 reason=accepted "
+                    "pose_rpy=na pointcloud_size=%zu lag_ms=%s pts=%zu inliers=%d scale=%.6f",
+                    imageTimestamp, trackingState, mapId, mapPoints, imageImuLag.c_str(),
+                    trackedPoints, inertialState.inliers, inertialState.scale);
         break;
       case MonoInertialInitializationStatus::BAD_IMU_OR_RESET_PENDING:
         RCLCPP_WARN(Logger(),
-                    "Init rejected: reason=%s t=%.3f state=%d map_id=%lu pts=%zu map=%zu "
-                    "inliers=%d scale=%.6f provisional=%d committed=%d imu_lag_ms=%s",
-                    failureReasonName, imageTimestamp, trackingState, mapId, trackedPoints,
-                    mapPoints, inertialState.inliers, inertialState.scale, initProvisional ? 1 : 0,
-                    initCommitted ? 1 : 0, imageImuLag.c_str());
+                    "MI publish_epoch: stamp=%.3f tracking_state=%d map_id=%lu "
+                    "inertial_initialized=%d committed=%d provisional=%d reason=bad_imu "
+                    "pose_rpy=na pointcloud_size=%zu lag_ms=%s pts=%zu inliers=%d scale=%.6f "
+                    "failure=%s",
+                    imageTimestamp, trackingState, mapId, imuInitialized ? 1 : 0,
+                    initCommitted ? 1 : 0, initProvisional ? 1 : 0, mapPoints, imageImuLag.c_str(),
+                    trackedPoints, inertialState.inliers, inertialState.scale, failureReasonName);
         break;
       case MonoInertialInitializationStatus::REJECTED:
         RCLCPP_WARN(Logger(),
-                    "Init rejected: reason=%s t=%.3f state=%d map_id=%lu pts=%zu map=%zu "
-                    "inliers=%d scale=%.6f provisional=%d committed=%d imu_lag_ms=%s",
-                    failureReasonName, imageTimestamp, trackingState, mapId, trackedPoints,
-                    mapPoints, inertialState.inliers, inertialState.scale, initProvisional ? 1 : 0,
-                    initCommitted ? 1 : 0, imageImuLag.c_str());
+                    "MI publish_epoch: stamp=%.3f tracking_state=%d map_id=%lu "
+                    "inertial_initialized=%d committed=%d provisional=%d reason=rejected "
+                    "pose_rpy=na pointcloud_size=%zu lag_ms=%s pts=%zu inliers=%d scale=%.6f "
+                    "failure=%s",
+                    imageTimestamp, trackingState, mapId, imuInitialized ? 1 : 0,
+                    initCommitted ? 1 : 0, initProvisional ? 1 : 0, mapPoints, imageImuLag.c_str(),
+                    trackedPoints, inertialState.inliers, inertialState.scale, failureReasonName);
         break;
       case MonoInertialInitializationStatus::UNKNOWN:
         RCLCPP_DEBUG(Logger(), "Init unknown: t=%.3f state=%d pts=%zu map=%zu imu=%d bad=%d",

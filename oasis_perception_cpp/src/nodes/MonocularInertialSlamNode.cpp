@@ -123,6 +123,15 @@ std::string FormatTimestamp(std::optional<int64_t> timestampNs)
   return stream.str();
 }
 
+const char* LagSign(int64_t lagNs)
+{
+  if (lagNs > 0)
+    return "image_ahead";
+  if (lagNs < 0)
+    return "imu_ahead";
+  return "aligned";
+}
+
 int64_t ImageStampNs(const sensor_msgs::msg::Image& imageMsg)
 {
   return StampToNanoseconds(imageMsg.header.stamp);
@@ -649,8 +658,13 @@ void MonocularInertialSlamNode::StartFreshEpochAfterImuStall(
   }
 
   RCLCPP_ERROR_THROTTLE(*m_logger, *m_node.get_clock(), IMU_READINESS_THROTTLE_MS,
-                        "IMU stall: lag=%.0fms q=%zu; starting fresh epoch",
-                        static_cast<double>(lagNs) / 1.0e6, pendingQueueSize);
+                        "MI imu_timing: phase=stall img=%.3f newest_imu=%s lag_ms=%.0f "
+                        "sign=%s queue=%zu stable=%d rx=%zu ok=%zu drop=%zu",
+                        static_cast<double>(imageStampNs) / 1'000'000'000.0,
+                        FormatTimestamp(imuStatus.newest_imu_stamp_ns).c_str(),
+                        static_cast<double>(lagNs) / 1.0e6, LagSign(lagNs), pendingQueueSize,
+                        imuStatus.has_stable_slam_map ? 1 : 0, imuStatus.received_count,
+                        imuStatus.accepted_count, imuStatus.dropped_count);
 }
 
 void MonocularInertialSlamNode::RecordPostStallRecoveryImu(
@@ -796,6 +810,7 @@ bool MonocularInertialSlamNode::TryArmStartup()
   bool initRetryPending = false;
   bool initRetryBackoffActive = false;
   std::size_t recoveryImuSampleCount = 0;
+  std::size_t pendingQueueSize = 0;
   {
     std::lock_guard<std::mutex> lock(m_pendingImageMutex);
     if (m_startupArmed)
@@ -811,6 +826,7 @@ bool MonocularInertialSlamNode::TryArmStartup()
     initRetryReason = m_initRetryReason;
     initRetryPending = m_initRetryPending;
     initRetryBackoffActive = IsInitRetryBackoffActiveLocked();
+    pendingQueueSize = m_pendingImages.size();
   }
 
   const SLAM::MonocularInertialSlam::ImuBufferStatus imuStatus =
@@ -886,7 +902,8 @@ bool MonocularInertialSlamNode::TryArmStartup()
     else if (!recoveryWindowReady)
       reason = "fresh_epoch_window";
 
-    LogStartupWaitingStatus(newestImageStampNs, imuStatus, imuReady, false, lagNs, reason);
+    LogStartupWaitingStatus(newestImageStampNs, imuStatus, imuReady, false, lagNs, pendingQueueSize,
+                            reason);
     return false;
   }
 
@@ -903,7 +920,8 @@ bool MonocularInertialSlamNode::TryArmStartup()
 
   if (!armingWindowReady)
   {
-    LogStartupWaitingStatus(newestImageStampNs, imuStatus, imuReady, false, lagNs, "hysteresis");
+    LogStartupWaitingStatus(newestImageStampNs, imuStatus, imuReady, false, lagNs, pendingQueueSize,
+                            "hysteresis");
     return false;
   }
 
@@ -1304,12 +1322,13 @@ void MonocularInertialSlamNode::TryReleasePendingImageFromWorker()
 
       RCLCPP_WARN_THROTTLE(
           *m_logger, *m_node.get_clock(), IMU_READINESS_THROTTLE_MS,
-          "Runtime IMU resumed: img=%.3f imu=%s lag=%.0fms q=%zu stable=%d "
-          "rx_delta=%zu ok_delta=%zu drop_delta=%zu imu_advance=%.0fms "
-          "wall=%.0fms",
+          "MI imu_timing: phase=resume img=%.3f newest_imu=%s lag_ms=%.0f sign=%s "
+          "queue=%zu stable=%d rx=%zu ok=%zu drop=%zu rx_delta=%zu ok_delta=%zu "
+          "drop_delta=%zu imu_advance_ms=%.0f wall_ms=%.0f",
           imageTimestamp, FormatTimestamp(imuStatus.newest_imu_stamp_ns).c_str(),
-          static_cast<double>(lagNs) / 1.0e6, pendingQueueSize,
-          imuStatus.has_stable_slam_map ? 1 : 0, receivedDelta, acceptedDelta, droppedDelta,
+          static_cast<double>(lagNs) / 1.0e6, LagSign(lagNs), pendingQueueSize,
+          imuStatus.has_stable_slam_map ? 1 : 0, imuStatus.received_count, imuStatus.accepted_count,
+          imuStatus.dropped_count, receivedDelta, acceptedDelta, droppedDelta,
           imuAdvanceNs ? static_cast<double>(*imuAdvanceNs) / 1.0e6 : 0.0,
           pauseWallElapsedNs ? static_cast<double>(*pauseWallElapsedNs) / 1.0e6 : 0.0);
       ClearStableInputPause();
@@ -1349,10 +1368,10 @@ void MonocularInertialSlamNode::EnterStableInputPause(
 
   const double imageTimestamp = static_cast<double>(imageStampNs) / 1'000'000'000.0;
   RCLCPP_WARN_THROTTLE(*m_logger, *m_node.get_clock(), IMU_READINESS_THROTTLE_MS,
-                       "Runtime IMU catchup: img=%.3f imu=%s lag=%.0fms q=%zu stable=%d "
-                       "rx=%zu ok=%zu drop=%zu",
+                       "MI imu_timing: phase=runtime img=%.3f newest_imu=%s lag_ms=%.0f "
+                       "sign=%s queue=%zu stable=%d rx=%zu ok=%zu drop=%zu",
                        imageTimestamp, FormatTimestamp(imuStatus.newest_imu_stamp_ns).c_str(),
-                       static_cast<double>(lagNs) / 1.0e6, pendingQueueSize,
+                       static_cast<double>(lagNs) / 1.0e6, LagSign(lagNs), pendingQueueSize,
                        imuStatus.has_stable_slam_map ? 1 : 0, imuStatus.received_count,
                        imuStatus.accepted_count, imuStatus.dropped_count);
 }
@@ -1511,19 +1530,23 @@ void MonocularInertialSlamNode::LogImageAheadOfImuDiagnostics(
 
   if (resetStall)
   {
-    RCLCPP_ERROR_THROTTLE(
-        *m_logger, *m_node.get_clock(), IMU_READINESS_THROTTLE_MS,
-        "IMU stall: img=%.3f imu=%s lag=%.0fms q=%zu stable=%d rx=%zu ok=%zu drop=%zu",
-        imageTimestamp, FormatTimestamp(imuStatus.newest_imu_stamp_ns).c_str(),
-        static_cast<double>(lagNs) / 1.0e6, pendingQueueSize, stableMap, imuStatus.received_count,
-        imuStatus.accepted_count, imuStatus.dropped_count);
+    RCLCPP_ERROR_THROTTLE(*m_logger, *m_node.get_clock(), IMU_READINESS_THROTTLE_MS,
+                          "MI imu_timing: phase=stall img=%.3f newest_imu=%s lag_ms=%.0f sign=%s "
+                          "queue=%zu stable=%d rx=%zu ok=%zu drop=%zu",
+                          imageTimestamp, FormatTimestamp(imuStatus.newest_imu_stamp_ns).c_str(),
+                          static_cast<double>(lagNs) / 1.0e6, LagSign(lagNs), pendingQueueSize,
+                          stableMap, imuStatus.received_count, imuStatus.accepted_count,
+                          imuStatus.dropped_count);
     return;
   }
 
   RCLCPP_WARN_THROTTLE(*m_logger, *m_node.get_clock(), IMU_READINESS_THROTTLE_MS,
-                       "IMU lag: img=%.3f imu=%s lag=%.0fms q=%zu stable=%d", imageTimestamp,
-                       FormatTimestamp(imuStatus.newest_imu_stamp_ns).c_str(),
-                       static_cast<double>(lagNs) / 1.0e6, pendingQueueSize, stableMap);
+                       "MI imu_timing: phase=runtime img=%.3f newest_imu=%s lag_ms=%.0f "
+                       "sign=%s queue=%zu stable=%d rx=%zu ok=%zu drop=%zu",
+                       imageTimestamp, FormatTimestamp(imuStatus.newest_imu_stamp_ns).c_str(),
+                       static_cast<double>(lagNs) / 1.0e6, LagSign(lagNs), pendingQueueSize,
+                       stableMap, imuStatus.received_count, imuStatus.accepted_count,
+                       imuStatus.dropped_count);
 }
 
 void MonocularInertialSlamNode::LogStartupWaitingStatus(
@@ -1532,16 +1555,20 @@ void MonocularInertialSlamNode::LogStartupWaitingStatus(
     bool imuReady,
     bool armingWindowReady,
     int64_t lagNs,
+    std::size_t pendingQueueSize,
     const char* reason) const
 {
   RCLCPP_INFO_THROTTLE(*m_logger, *m_node.get_clock(), IMU_READINESS_THROTTLE_MS,
-                       "Waiting for streams: image=%d imu=%d imu_ready=%d arm_window=%d "
-                       "lag=%.0fms reason=%s img=%s imu=%s",
-                       newestImageStampNs ? 1 : 0, imuStatus.has_received_imu ? 1 : 0,
-                       imuReady ? 1 : 0, armingWindowReady ? 1 : 0,
-                       static_cast<double>(lagNs) / 1.0e6, reason,
+                       "MI imu_timing: phase=startup img=%s newest_imu=%s lag_ms=%.0f "
+                       "sign=%s queue=%zu stable=%d rx=%zu ok=%zu drop=%zu reason=%s "
+                       "image=%d imu=%d imu_ready=%d arm_window=%d",
                        FormatTimestamp(newestImageStampNs).c_str(),
-                       FormatTimestamp(imuStatus.newest_imu_stamp_ns).c_str());
+                       FormatTimestamp(imuStatus.newest_imu_stamp_ns).c_str(),
+                       static_cast<double>(lagNs) / 1.0e6, LagSign(lagNs), pendingQueueSize,
+                       imuStatus.has_stable_slam_map ? 1 : 0, imuStatus.received_count,
+                       imuStatus.accepted_count, imuStatus.dropped_count, reason,
+                       newestImageStampNs ? 1 : 0, imuStatus.has_received_imu ? 1 : 0,
+                       imuReady ? 1 : 0, armingWindowReady ? 1 : 0);
 }
 
 void MonocularInertialSlamNode::ResetStartupArmingCandidateLocked()

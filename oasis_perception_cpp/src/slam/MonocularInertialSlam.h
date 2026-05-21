@@ -172,6 +172,7 @@ private:
   std::size_t m_droppedImuSamples = 0;
   std::optional<MonoInertialInitializationStatus> m_lastInitializationStatus;
   std::optional<ORB_SLAM3::TrackingFailureReason> m_lastInitializationFailureReason;
+  std::optional<int64_t> m_lastTrackedImageStampNs;
   std::optional<double> m_lastImageImuLagMs;
   std::optional<int> m_lastLoggedTrackingState;
   InitRejectedCallback m_preStableInitRejectedCallback;
@@ -179,6 +180,7 @@ private:
   bool m_startupArmed = false;
   bool m_loggedEmptyImuMeasurementsError = false;
   bool m_provisionalPublishSuppressed = false;
+  bool m_publishEpochLogged = false;
 };
 
 } // namespace SLAM
