@@ -117,8 +117,8 @@ def generate_launch_description() -> LaunchDescription:
         )
         """
 
-        # Monocular inertial SLAM
-        PerceptionDescriptions.add_monocular_inertial_slam(
+        # Monocular SLAM
+        PerceptionDescriptions.add_monocular_slam(
             composable_nodes,
             ["falcon"],
             image_transport="raw",
