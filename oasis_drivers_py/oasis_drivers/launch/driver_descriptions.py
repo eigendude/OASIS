@@ -79,15 +79,26 @@ class DriverDescriptions:
         if not composable_nodes:
             return
 
-        container_arguments: list[str] | None = None
-        if log_level is not None:
-            container_arguments = ["--ros-args", "--log-level", log_level]
-
         resolved_container_name: str = (
             container_name
             if container_name is not None
             else f"driver_container_{host_id}"
         )
+
+        effective_log_levels: list[str] = []
+        if log_level is not None:
+            effective_log_levels.append(log_level)
+
+        # Enable debug logging for BNO086 IMU driver
+        effective_log_levels.append(
+            f"{ROS_NAMESPACE}.bno086_imu_driver_{host_id}:=debug"
+        )
+
+        container_arguments: list[str] | None = None
+        if effective_log_levels:
+            container_arguments = ["--ros-args"]
+            for configured_log_level in effective_log_levels:
+                container_arguments.extend(["--log-level", configured_log_level])
 
         driver_container: ComposableNodeContainer = ComposableNodeContainer(
             namespace=ROS_NAMESPACE,
