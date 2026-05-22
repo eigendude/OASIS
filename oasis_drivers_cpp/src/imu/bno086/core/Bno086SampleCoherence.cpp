@@ -30,6 +30,43 @@ SampleFreshnessResult EvaluateSampleFreshness(int64_t reference_stamp_ns,
   return result;
 }
 
+ImuCorePublishDecision EvaluateLinearAccelAnchoredImuPublish(const ImuCoreSampleStamps& stamps,
+                                                             int64_t max_past_age_ns,
+                                                             int64_t future_tolerance_ns)
+{
+  ImuCorePublishDecision decision;
+  decision.publish_stamp_ns = stamps.linear_accel_stamp_ns;
+
+  if (!(stamps.has_orientation && stamps.has_gyro && stamps.has_linear_accel))
+  {
+    decision.status = ImuCorePublishStatus::MissingCoreState;
+    return decision;
+  }
+
+  const SampleFreshnessResult orientationFreshness =
+      EvaluateSampleFreshness(stamps.linear_accel_stamp_ns, stamps.orientation_stamp_ns,
+                              max_past_age_ns, future_tolerance_ns);
+  decision.orientation_age_ns = orientationFreshness.age_ns;
+  if (orientationFreshness.status != SampleFreshnessStatus::Accepted)
+  {
+    decision.status = ImuCorePublishStatus::StaleOrientation;
+    return decision;
+  }
+
+  const SampleFreshnessResult gyroFreshness = EvaluateSampleFreshness(
+      stamps.linear_accel_stamp_ns, stamps.gyro_stamp_ns, max_past_age_ns, future_tolerance_ns);
+  decision.gyro_age_ns = gyroFreshness.age_ns;
+  if (gyroFreshness.status != SampleFreshnessStatus::Accepted)
+  {
+    decision.status = ImuCorePublishStatus::StaleGyro;
+    return decision;
+  }
+
+  decision.status = ImuCorePublishStatus::Accepted;
+  decision.should_publish = true;
+  return decision;
+}
+
 int64_t EffectiveMaxPastAgeNs(int64_t configured_max_age_ns,
                               int64_t report_interval_ns,
                               int64_t minimum_max_age_ns)

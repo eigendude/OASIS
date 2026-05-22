@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstring>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -580,11 +581,34 @@ void Bno086ImuNode::MaybePublishOnLinearAcceleration(const SensorEvent& event)
   if (event.report_id != ReportId::LinearAcceleration)
     return;
 
-  if (!(m_stream.latest_frame.has_orientation && m_stream.latest_frame.has_gyro &&
-        m_stream.latest_frame.has_linear_accel) ||
-      !(m_stream.orientation.has_sample && m_stream.gyro.has_sample &&
-        m_stream.linear_accel.has_sample))
+  const ImuCoreSampleStamps coreStamps{
+      m_stream.latest_frame.has_orientation && m_stream.orientation.has_sample,
+      m_stream.latest_frame.has_gyro && m_stream.gyro.has_sample,
+      m_stream.latest_frame.has_linear_accel && m_stream.linear_accel.has_sample,
+      m_stream.orientation.stamp.nanoseconds(),
+      m_stream.gyro.stamp.nanoseconds(),
+      m_stream.linear_accel.stamp.nanoseconds(),
+  };
+  const int64_t coreThresholdNs = DurationNsFromUs(CoreCoherenceToleranceUs());
+  const ImuCorePublishDecision publishDecision =
+      EvaluateLinearAccelAnchoredImuPublish(coreStamps, coreThresholdNs, coreThresholdNs);
+
+  if (!publishDecision.should_publish)
   {
+    switch (publishDecision.status)
+    {
+      case ImuCorePublishStatus::MissingCoreState:
+        ++m_diag.timing_counters.imu_drop_missing_core_state;
+        break;
+      case ImuCorePublishStatus::StaleOrientation:
+        ++m_diag.timing_counters.imu_drop_stale_orientation;
+        break;
+      case ImuCorePublishStatus::StaleGyro:
+        ++m_diag.timing_counters.imu_drop_stale_gyro;
+        break;
+      case ImuCorePublishStatus::Accepted:
+        break;
+    }
     MaybeLogImuGravityDiagnostics();
     return;
   }
@@ -595,37 +619,8 @@ void Bno086ImuNode::MaybePublishOnLinearAcceleration(const SensorEvent& event)
     return;
   }
 
-  const int64_t orientationNs = m_stream.orientation.stamp.nanoseconds();
-  const int64_t gyroNs = m_stream.gyro.stamp.nanoseconds();
-  const int64_t linearAccelNs = m_stream.linear_accel.stamp.nanoseconds();
-  const int64_t oldestNs = std::min({orientationNs, gyroNs, linearAccelNs});
-  const int64_t newestNs = std::max({orientationNs, gyroNs, linearAccelNs});
-
-  const int64_t coreThresholdNs = DurationNsFromUs(CoreCoherenceToleranceUs());
-  if (!IsTimestampSpanCoherent(oldestNs, newestNs, coreThresholdNs))
-  {
-    MaybeLogImuGravityDiagnostics();
-    return;
-  }
-
   const CoreFrameSignature signature = LatestCoreSignature();
-  if (m_stream.last_published_core_signature.has_value() &&
-      signature.orientation_sequence ==
-          m_stream.last_published_core_signature->orientation_sequence &&
-      signature.gyro_sequence == m_stream.last_published_core_signature->gyro_sequence &&
-      signature.linear_accel_sequence ==
-          m_stream.last_published_core_signature->linear_accel_sequence &&
-      signature.orientation_stamp_ns ==
-          m_stream.last_published_core_signature->orientation_stamp_ns &&
-      signature.gyro_stamp_ns == m_stream.last_published_core_signature->gyro_stamp_ns &&
-      signature.linear_accel_stamp_ns ==
-          m_stream.last_published_core_signature->linear_accel_stamp_ns)
-  {
-    MaybeLogImuGravityDiagnostics();
-    return;
-  }
-
-  const rclcpp::Time publishStamp = LatestCoreStamp();
+  const rclcpp::Time publishStamp(publishDecision.publish_stamp_ns, RCL_ROS_TIME);
   const int64_t publishStampNs = publishStamp.nanoseconds();
   const Bno086OutputStampGateResult stampGate = m_stream.imu_stamp_gate.Check(publishStampNs);
   if (!stampGate.should_publish)
@@ -895,6 +890,27 @@ void Bno086ImuNode::MaybeEmitImuGravityDiagnosticsLog(const Bno086RateSnapshot& 
     RCLCPP_DEBUG_STREAM(get_logger(), stream.str());
   }
 
+  const bool hasImuGateDrops = timingDelta.imu_drop_duplicate_linear_accel_stamp > 0 ||
+                               timingDelta.imu_drop_backward_linear_accel_stamp > 0 ||
+                               timingDelta.imu_drop_stale_orientation > 0 ||
+                               timingDelta.imu_drop_stale_gyro > 0 ||
+                               timingDelta.imu_drop_missing_core_state > 0;
+  if (hasImuGateDrops)
+  {
+    std::ostringstream stream;
+    stream << "BNO086 imu gate:";
+    AppendTimingCounter(stream, "imu_drop_duplicate_linear_accel_stamp",
+                        timingDelta.imu_drop_duplicate_linear_accel_stamp);
+    AppendTimingCounter(stream, "imu_drop_backward_linear_accel_stamp",
+                        timingDelta.imu_drop_backward_linear_accel_stamp);
+    AppendTimingCounter(stream, "imu_drop_stale_orientation",
+                        timingDelta.imu_drop_stale_orientation);
+    AppendTimingCounter(stream, "imu_drop_stale_gyro", timingDelta.imu_drop_stale_gyro);
+    AppendTimingCounter(stream, "imu_drop_missing_core_state",
+                        timingDelta.imu_drop_missing_core_state);
+    RCLCPP_DEBUG_STREAM(get_logger(), stream.str());
+  }
+
   if (unhealthy || imuGravityUnhealthy)
   {
     std::ostringstream stream;
@@ -903,6 +919,15 @@ void Bno086ImuNode::MaybeEmitImuGravityDiagnosticsLog(const Bno086RateSnapshot& 
     AppendTimingCounter(stream, "seqgap", timingDelta.sequence_gap);
     AppendTimingCounter(stream, "large", timingDelta.sequence_gap_delta10plus);
     AppendTimingCounter(stream, "back", timingDelta.backward_stamp);
+    AppendTimingCounter(stream, "imu_drop_duplicate_linear_accel_stamp",
+                        timingDelta.imu_drop_duplicate_linear_accel_stamp);
+    AppendTimingCounter(stream, "imu_drop_backward_linear_accel_stamp",
+                        timingDelta.imu_drop_backward_linear_accel_stamp);
+    AppendTimingCounter(stream, "imu_drop_stale_orientation",
+                        timingDelta.imu_drop_stale_orientation);
+    AppendTimingCounter(stream, "imu_drop_stale_gyro", timingDelta.imu_drop_stale_gyro);
+    AppendTimingCounter(stream, "imu_drop_missing_core_state",
+                        timingDelta.imu_drop_missing_core_state);
     stream << " dur="
            << static_cast<int>(
                   std::lround(static_cast<double>(m_diag.max_drain_duration_us_since_log) / 1.0e3))
@@ -984,6 +1009,15 @@ Bno086ImuNode::Bno086TimingDiagnosticCounters Bno086ImuNode::TimingDiagnosticDel
   Bno086TimingDiagnosticCounters delta;
   delta.duplicate_stamp = current.duplicate_stamp - last.duplicate_stamp;
   delta.backward_stamp = current.backward_stamp - last.backward_stamp;
+  delta.imu_drop_duplicate_linear_accel_stamp =
+      current.imu_drop_duplicate_linear_accel_stamp - last.imu_drop_duplicate_linear_accel_stamp;
+  delta.imu_drop_backward_linear_accel_stamp =
+      current.imu_drop_backward_linear_accel_stamp - last.imu_drop_backward_linear_accel_stamp;
+  delta.imu_drop_stale_orientation =
+      current.imu_drop_stale_orientation - last.imu_drop_stale_orientation;
+  delta.imu_drop_stale_gyro = current.imu_drop_stale_gyro - last.imu_drop_stale_gyro;
+  delta.imu_drop_missing_core_state =
+      current.imu_drop_missing_core_state - last.imu_drop_missing_core_state;
   delta.missing_timebase_fallback =
       current.missing_timebase_fallback - last.missing_timebase_fallback;
   delta.sequence_gap = current.sequence_gap - last.sequence_gap;
@@ -1340,9 +1374,17 @@ void Bno086ImuNode::LogStampDrop(const char* topic,
                                  const SampleTiming& timing)
 {
   if (gate_result.duplicate_stamp)
+  {
     ++m_diag.timing_counters.duplicate_stamp;
+    if (std::strcmp(topic, IMU_TOPIC) == 0)
+      ++m_diag.timing_counters.imu_drop_duplicate_linear_accel_stamp;
+  }
   if (gate_result.backward_stamp)
+  {
     ++m_diag.timing_counters.backward_stamp;
+    if (std::strcmp(topic, IMU_TOPIC) == 0)
+      ++m_diag.timing_counters.imu_drop_backward_linear_accel_stamp;
+  }
 
   const double deltaMs = static_cast<double>(gate_result.delta_ns) / 1.0e6;
   const bool unhealthy = m_diag.was_unhealthy || m_diag.was_imu_gravity_unhealthy;

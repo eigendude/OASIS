@@ -458,6 +458,7 @@ if(BUILD_TESTING)
   )
   target_link_libraries(test_bno086_sample_coherence
     bno086_sample_coherence
+    bno086_sh2_timestamp
   )
 
   ament_add_gtest(test_bno086_sh2_timestamp

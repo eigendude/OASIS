@@ -153,6 +153,11 @@ private:
   {
     std::uint64_t duplicate_stamp{0};
     std::uint64_t backward_stamp{0};
+    std::uint64_t imu_drop_duplicate_linear_accel_stamp{0};
+    std::uint64_t imu_drop_backward_linear_accel_stamp{0};
+    std::uint64_t imu_drop_stale_orientation{0};
+    std::uint64_t imu_drop_stale_gyro{0};
+    std::uint64_t imu_drop_missing_core_state{0};
     std::uint64_t missing_timebase_fallback{0};
     std::uint64_t sequence_gap{0};
     std::uint64_t sequence_gap_delta2{0};

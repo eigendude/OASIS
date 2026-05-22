@@ -7,6 +7,7 @@
  */
 
 #include "imu/bno086/core/Bno086SampleCoherence.hpp"
+#include "imu/bno086/core/Bno086Sh2Timestamp.hpp"
 
 #include <gtest/gtest.h>
 
@@ -81,4 +82,69 @@ TEST(Bno086SampleCoherence, CoreFrameClearlyBeyondPolicyIsRejected)
       EffectiveCoreSpanToleranceNs(20'000'000, 20'000'000, 20'000'000, 80'000'000);
 
   EXPECT_FALSE(IsTimestampSpanCoherent(2'000'000'000, 2'101'000'000, spanToleranceNs));
+}
+
+TEST(Bno086SampleCoherence, ImuPublishStampIsLinearAccelerationStamp)
+{
+  const ImuCoreSampleStamps stamps{
+      true, true, true, 100'000'000, 100'000'000, 90'000'000,
+  };
+  const ImuCorePublishDecision decision =
+      EvaluateLinearAccelAnchoredImuPublish(stamps, 80'000'000, 80'000'000);
+
+  EXPECT_TRUE(decision.should_publish);
+  EXPECT_EQ(decision.status, ImuCorePublishStatus::Accepted);
+  EXPECT_EQ(decision.publish_stamp_ns, 90'000'000);
+}
+
+TEST(Bno086SampleCoherence, LinearAccelerationStampsPublishMonotonically)
+{
+  Bno086OutputStampGate gate;
+  const ImuCoreSampleStamps first{
+      true, true, true, 100'000'000, 100'000'000, 90'000'000,
+  };
+  const ImuCoreSampleStamps second{
+      true, true, true, 100'000'000, 100'000'000, 100'000'000,
+  };
+
+  const ImuCorePublishDecision firstDecision =
+      EvaluateLinearAccelAnchoredImuPublish(first, 80'000'000, 80'000'000);
+  const ImuCorePublishDecision secondDecision =
+      EvaluateLinearAccelAnchoredImuPublish(second, 80'000'000, 80'000'000);
+
+  EXPECT_TRUE(gate.Check(firstDecision.publish_stamp_ns).should_publish);
+  EXPECT_TRUE(gate.Check(secondDecision.publish_stamp_ns).should_publish);
+}
+
+TEST(Bno086SampleCoherence, DuplicateLinearAccelerationStampIsGateDuplicate)
+{
+  Bno086OutputStampGate gate;
+  const ImuCoreSampleStamps stamps{
+      true, true, true, 100'000'000, 100'000'000, 90'000'000,
+  };
+  const ImuCorePublishDecision decision =
+      EvaluateLinearAccelAnchoredImuPublish(stamps, 80'000'000, 80'000'000);
+
+  EXPECT_TRUE(gate.Check(decision.publish_stamp_ns).should_publish);
+  const Bno086OutputStampGateResult duplicate = gate.Check(decision.publish_stamp_ns);
+
+  EXPECT_FALSE(duplicate.should_publish);
+  EXPECT_TRUE(duplicate.duplicate_stamp);
+  EXPECT_FALSE(duplicate.backward_stamp);
+}
+
+TEST(Bno086SampleCoherence, StaleOrientationIsRejectedBeforeStampGate)
+{
+  Bno086OutputStampGate gate;
+  EXPECT_TRUE(gate.Check(90'000'000).should_publish);
+
+  const ImuCoreSampleStamps stamps{
+      true, true, true, 10'000'000, 100'000'000, 100'000'000,
+  };
+  const ImuCorePublishDecision decision =
+      EvaluateLinearAccelAnchoredImuPublish(stamps, 80'000'000, 80'000'000);
+
+  EXPECT_FALSE(decision.should_publish);
+  EXPECT_EQ(decision.status, ImuCorePublishStatus::StaleOrientation);
+  EXPECT_TRUE(gate.Preview(decision.publish_stamp_ns).should_publish);
 }
