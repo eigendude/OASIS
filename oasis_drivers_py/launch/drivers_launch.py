@@ -207,6 +207,7 @@ def generate_launch_description() -> LaunchDescription:
         )
         Drivers.add_bno086_imu(composable_nodes, HOST_ID, FALCON_BNO086_INT_GPIO)
         Drivers.add_ahrs_node(composable_nodes, HOST_ID, FALCON_AHRS_MOUNTING)
+        Drivers.add_zupt_detector(composable_nodes, HOST_ID)
         driver_launch_prefix = BNO086_LAUNCH_PREFIX
         Drivers.add_mmc5983ma_magnetometer(ld, HOST_ID)
     if HOST_ID == "station":

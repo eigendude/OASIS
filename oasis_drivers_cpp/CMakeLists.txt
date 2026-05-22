@@ -330,6 +330,39 @@ install(
     lib/${PROJECT_NAME}
 )
 
+#
+# zupt_detector
+#
+
+add_library(zupt_detector_core
+  src/localization/ZuptDetector.cpp
+)
+
+add_library(zupt_detector_component SHARED
+  src/nodes/ZuptDetectorNode.cpp
+)
+target_link_libraries(zupt_detector_component PUBLIC
+  zupt_detector_core
+  ${geometry_msgs_TARGETS}
+  rclcpp_components::component
+  rclcpp::rclcpp
+  ${sensor_msgs_TARGETS}
+  ${std_msgs_TARGETS}
+)
+
+rclcpp_components_register_node(
+  zupt_detector_component
+  PLUGIN "OASIS::ROS::ZuptDetectorNode"
+  EXECUTABLE zupt_detector_component_node
+)
+
+install(
+  TARGETS
+    zupt_detector_component
+  DESTINATION
+    lib
+)
+
 ################################################################################
 # Configuration files
 ################################################################################
@@ -378,6 +411,13 @@ if(BUILD_TESTING)
   target_link_libraries(test_ahrs_math
     ahrs_core
     Eigen3::Eigen
+  )
+
+  ament_add_gtest(test_zupt_detector
+    test/localization/test_ZuptDetector.cpp
+  )
+  target_link_libraries(test_zupt_detector
+    zupt_detector_core
   )
 
   ament_add_gtest(test_bno086_orientation_covariance_policy

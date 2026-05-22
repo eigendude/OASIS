@@ -515,3 +515,26 @@ class DriverDescriptions:
             ],
         )
         ld.add_action(wol_server_node)  #
+
+    #
+    # ZUPT detector
+    #
+
+    @staticmethod
+    def add_zupt_detector(
+        composable_nodes: list[ComposableNode],
+        host_id: str,
+    ) -> None:
+        composable_nodes.append(
+            ComposableNode(
+                namespace=ROS_NAMESPACE,
+                package=CPP_PACKAGE_NAME,
+                plugin="OASIS::ROS::ZuptDetectorNode",
+                name=f"zupt_detector_{host_id}",
+                remappings=[
+                    ("imu", f"{host_id}/imu"),
+                    ("zupt_flag", f"{host_id}/zupt_flag"),
+                    ("zupt", f"{host_id}/zupt"),
+                ],
+            )
+        )
