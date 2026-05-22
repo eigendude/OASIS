@@ -159,6 +159,7 @@ def generate_launch_description() -> LaunchDescription:
     ld: LaunchDescription = LaunchDescription()
 
     composable_nodes: list[ComposableNode] = []
+    camera_composable_nodes: list[ComposableNode] = []
     driver_launch_prefix: Optional[str] = None
 
     #
@@ -194,7 +195,7 @@ def generate_launch_description() -> LaunchDescription:
     # LEGO models
     if HOST_ID == "falcon":
         Drivers.add_ros2_camera(
-            composable_nodes,
+            camera_composable_nodes,
             ZONE_ID,
             IMAGE_FORMAT,
             IMAGE_SIZE,
@@ -210,7 +211,7 @@ def generate_launch_description() -> LaunchDescription:
         Drivers.add_mmc5983ma_magnetometer(ld, HOST_ID)
     if HOST_ID == "station":
         Drivers.add_ros2_camera(
-            composable_nodes,
+            camera_composable_nodes,
             ZONE_ID,
             IMAGE_FORMAT,
             IMAGE_SIZE,
@@ -244,6 +245,14 @@ def generate_launch_description() -> LaunchDescription:
         composable_nodes,
         log_level="info",
         launch_prefix=driver_launch_prefix,
+    )
+
+    Drivers.add_driver_components(
+        ld,
+        HOST_ID,
+        camera_composable_nodes,
+        log_level="info",
+        container_name=f"camera_container_{HOST_ID}",
     )
 
     return ld

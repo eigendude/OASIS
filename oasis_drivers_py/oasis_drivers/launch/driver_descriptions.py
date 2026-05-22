@@ -74,6 +74,7 @@ class DriverDescriptions:
         composable_nodes: list[ComposableNode],
         log_level: Optional[str] = None,
         launch_prefix: Optional[str] = None,
+        container_name: Optional[str] = None,
     ) -> None:
         if not composable_nodes:
             return
@@ -82,9 +83,15 @@ class DriverDescriptions:
         if log_level is not None:
             container_arguments = ["--ros-args", "--log-level", log_level]
 
+        resolved_container_name: str = (
+            container_name
+            if container_name is not None
+            else f"driver_container_{host_id}"
+        )
+
         driver_container: ComposableNodeContainer = ComposableNodeContainer(
             namespace=ROS_NAMESPACE,
-            name=f"driver_container_{host_id}",
+            name=resolved_container_name,
             package="rclcpp_components",
             executable="component_container_mt",
             output="screen",
