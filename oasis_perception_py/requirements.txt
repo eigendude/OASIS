@@ -9,7 +9,7 @@ jax==0.5.3
 jaxlib==0.5.3
 kiwisolver==1.4.8
 matplotlib==3.10.1
-mediapipe==0.10.18
+mediapipe==0.10.35; platform_machine == "x86_64"
 ml_dtypes==0.5.1
 numpy==1.26.4
 opencv-contrib-python==4.11.0.86

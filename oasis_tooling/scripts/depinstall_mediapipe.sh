@@ -30,14 +30,19 @@ APT_PACKAGES=(
   curl
   libegl-dev
   libgles-dev
+  protobuf-compiler
+  python3-dev
+  python3-venv
+  python3-wheel
 
-  # We patch protobuf to match the system version version, so it must be installed
+  # Protobuf tools are needed by the MediaPipe/Bazel build
   libprotobuf-dev
 
   # We also pull in system glog
   libgoogle-glog-dev
 )
 
+sudo apt update
 sudo apt install -y --no-install-recommends "${APT_PACKAGES[@]}"
 
 # Install NVM
