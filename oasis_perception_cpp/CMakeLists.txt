@@ -51,8 +51,8 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 find_package(ament_cmake REQUIRED)
 find_package(ament_index_cpp REQUIRED)
-find_package(apriltag REQUIRED)
-find_package(apriltag_msgs REQUIRED)
+find_package(apriltag)
+find_package(apriltag_msgs)
 find_package(bgslibrary REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(geometry_msgs REQUIRED)
@@ -104,56 +104,57 @@ set(SLAM_RENDERING_SOURCES
 #
 # apriltag_viz
 #
+if(apriltag_FOUND AND apriltag_msgs_FOUND)
+  set(APRILTAG_VIZ_SOURCES
+    src/apriltag/AprilTagGenerator.cpp
+    src/apriltag/AprilTagVisualizer.cpp
+    src/nodes/AprilTagVizNode.cpp
+  )
+  set(APRILTAG_VIZ_LIBRARIES
+    apriltag::apriltag
+    apriltag_msgs::apriltag_msgs__rosidl_typesupport_cpp
+    cv_bridge::cv_bridge
+    image_transport::image_transport
+    ${OpenCV_LIBS}
+    rclcpp::rclcpp
+    ${sensor_msgs_TARGETS}
+  )
 
-set(APRILTAG_VIZ_SOURCES
-  src/apriltag/AprilTagGenerator.cpp
-  src/apriltag/AprilTagVisualizer.cpp
-  src/nodes/AprilTagVizNode.cpp
-)
-set(APRILTAG_VIZ_LIBRARIES
-  apriltag::apriltag
-  apriltag_msgs::apriltag_msgs__rosidl_typesupport_cpp
-  cv_bridge::cv_bridge
-  image_transport::image_transport
-  ${OpenCV_LIBS}
-  rclcpp::rclcpp
-  ${sensor_msgs_TARGETS}
-)
+  add_executable(apriltag_viz
+    ${APRILTAG_VIZ_SOURCES}
+    src/cli/apriltag_viz_node.cpp
+  )
+  target_link_libraries(apriltag_viz PUBLIC
+    ${APRILTAG_VIZ_LIBRARIES}
+  )
+  install(
+    TARGETS
+      apriltag_viz
+    DESTINATION
+      lib/${PROJECT_NAME}
+  )
 
-add_executable(apriltag_viz
-  ${APRILTAG_VIZ_SOURCES}
-  src/cli/apriltag_viz_node.cpp
-)
-target_link_libraries(apriltag_viz PUBLIC
-  ${APRILTAG_VIZ_LIBRARIES}
-)
-install(
-  TARGETS
-    apriltag_viz
-  DESTINATION
-    lib/${PROJECT_NAME}
-)
-
-add_library(apriltag_viz_component SHARED
-  ${APRILTAG_VIZ_SOURCES}
-  src/components/apriltag_viz_component.cpp
-  src/ros/RosComponent.cpp
-)
-target_link_libraries(apriltag_viz_component PUBLIC
-  ${APRILTAG_VIZ_LIBRARIES}
-  rclcpp_components::component
-)
-install(
-  TARGETS
+  add_library(apriltag_viz_component SHARED
+    ${APRILTAG_VIZ_SOURCES}
+    src/components/apriltag_viz_component.cpp
+    src/ros/RosComponent.cpp
+  )
+  target_link_libraries(apriltag_viz_component PUBLIC
+    ${APRILTAG_VIZ_LIBRARIES}
+    rclcpp_components::component
+  )
+  install(
+    TARGETS
+      apriltag_viz_component
+    DESTINATION
+      lib
+  )
+  rclcpp_components_register_node(
     apriltag_viz_component
-  DESTINATION
-    lib
-)
-rclcpp_components_register_node(
-  apriltag_viz_component
-  PLUGIN "oasis_perception::AprilTagVizComponent"
-  EXECUTABLE apriltag_viz_component_node
-)
+    PLUGIN "oasis_perception::AprilTagVizComponent"
+    EXECUTABLE apriltag_viz_component_node
+  )
+endif()
 
 #
 # background_modeler
