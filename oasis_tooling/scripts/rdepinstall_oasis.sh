@@ -89,17 +89,6 @@ PYTHON_PACKAGES=(
   tox \
 )
 
-# If running on ARM, the latest MediaPipe is v0.10.18
-if [[ ${PLATFORM_ARCH} == arm* ]] || [[ ${PLATFORM_ARCH} == aarch64 ]]; then
-  PYTHON_PACKAGES+=(
-    mediapipe==0.10.18
-  )
-else
-  PYTHON_PACKAGES+=(
-    mediapipe==0.10.21
-  )
-fi
-
 # Install Matplotlib from pip to ensure Mediapipe's 3-D tooling has the newer
 # wheel even when an older apt package is already present on the system.
 PYTHON_PACKAGES+=(

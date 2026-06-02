@@ -26,19 +26,55 @@ NVM_VERSION="0.40.3"
 
 # Packages to install via apt
 APT_PACKAGES=(
-  # curl and MediaPipe dependencies
   curl
+
+  # EGL/GLES for MediaPipe GPU/OpenGL paths
   libegl-dev
   libgles-dev
 
-  # We patch protobuf to match the system version version, so it must be installed
+  # OpenCV transitive deps pulled by the broad MediaPipe pose monolith
+  libavcodec-dev
+  libavdevice-dev
+  libavformat-dev
+  libavif-dev
+  libavutil-dev
+  libceres-dev
+  libgstreamer-plugins-base1.0-dev
+  libgstreamer1.0-dev
+  libhdf5-dev
+  libleptonica-dev
+  libopenblas-dev
+  libopenexr-dev
+  libswscale-dev
+  libtesseract-dev
+
+  # Protobuf tools/runtime used at the OASIS/OpenCV boundary
+  protobuf-compiler
   libprotobuf-dev
 
-  # We also pull in system glog
+  # Python tooling used by MediaPipe/Bazel
+  python3-dev
+  python3-venv
+  python3-wheel
+
+  # System glog
   libgoogle-glog-dev
 )
 
+sudo apt update
 sudo apt install -y --no-install-recommends "${APT_PACKAGES[@]}"
+
+# Packages to install via pip
+PYTHON_PACKAGES=(
+  # Needed by cv_bridge's CMake configure step
+  numpy
+)
+
+sudo python3 -m pip install \
+  --upgrade \
+  --ignore-installed \
+  --break-system-packages \
+  "${PYTHON_PACKAGES[@]}"
 
 # Install NVM
 curl -o- "https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh" | bash

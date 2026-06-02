@@ -80,3 +80,13 @@ if [ -n "${LD_LIBRARY_PATH:-}" ]; then
 else
   export LD_LIBRARY_PATH="${OPENCV_LIBRARY_DIR}"
 fi
+
+# Make OpenCV's source-built Python bindings available at runtime
+OPENCV_PYTHON_INSTALL_DIR="${OPENCV_PYTHON_INSTALL_DIR:-${OPENCV_INSTALL_DIR}/python}"
+export OPENCV_PYTHON_INSTALL_DIR
+
+if [ -n "${PYTHONPATH:-}" ]; then
+  export PYTHONPATH="${OPENCV_PYTHON_INSTALL_DIR}:${PYTHONPATH}"
+else
+  export PYTHONPATH="${OPENCV_PYTHON_INSTALL_DIR}"
+fi

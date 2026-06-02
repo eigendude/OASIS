@@ -77,9 +77,10 @@ setuptools.setup(
             ],
         ),
     ],
-    install_requires=[
-        "mediapipe",
-    ],
+    # MediaPipe is source-built from the same version as C++ by
+    # build_mediapipe.sh. PyPI is intentionally not used because Linux ARM64
+    # lacks wheels and OASIS needs one MediaPipe source of truth.
+    install_requires=[],
     entry_points={
         "console_scripts": [
             "camera_calibrator = oasis_perception.cli.camera_calibrator_cli:main",

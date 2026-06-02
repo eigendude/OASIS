@@ -13,7 +13,6 @@ from typing import Any
 
 import cv2
 import cv_bridge
-import mediapipe
 import numpy as np
 import rclpy.node
 from ament_index_python import get_package_share_directory
@@ -21,11 +20,11 @@ from builtin_interfaces.msg import Time as TimeMsg
 from image_transport_py import ImageTransport
 from mediapipe import Image as MediapipeImage  # type: ignore[attr-defined]
 from mediapipe import ImageFormat as MediapipeImageFormat  # type: ignore[attr-defined]
-from mediapipe.framework.formats import landmark_pb2
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 from numpy.typing import NDArray
 from oasis_perception.utils.bounding_box_smoother import BoundingBoxSmoother
+from oasis_perception.utils.pose_drawing import draw_pose_landmarks
 from rclpy.logging import LoggingSeverity
 from rclpy.qos import qos_profile_default
 from sensor_msgs.msg import CameraInfo as CameraInfoMsg
@@ -142,12 +141,7 @@ class PoseLandmarkerNode(rclpy.node.Node):
         # Initialize MediaPipe pose detector in IMAGE mode for synchronous processing
         self._detector = self.initialize_detector()
 
-        # Setup MediaPipe drawing utilities
-        self._mp_drawing = mediapipe.solutions.drawing_utils
-        self._mp_drawing_styles = mediapipe.solutions.drawing_styles
-        self._mp_pose = mediapipe.solutions.pose
-
-    def initialize_detector(self):
+    def initialize_detector(self) -> vision.PoseLandmarker:
         # Get model_asset_path as needed
         model_path = os.path.join(
             get_package_share_directory(PACKAGE_NAME),
@@ -343,7 +337,7 @@ class PoseLandmarkerNode(rclpy.node.Node):
         scene_msg.header = header
 
         i: int
-        landmarks: list[landmark_pb2.NormalizedLandmarkList]
+        landmarks: Any
         for i, landmarks in enumerate(result.pose_landmarks or []):
             pose_msg: PoseLandmarksMsg = PoseLandmarksMsg()
             for landmark in landmarks:
@@ -399,24 +393,7 @@ class PoseLandmarkerNode(rclpy.node.Node):
         h, w, _ = annotated_image.shape
 
         for i, landmarks in enumerate(result.pose_landmarks or []):
-            # Draw landmarks
-            landmark_list: landmark_pb2.NormalizedLandmarkList = (
-                landmark_pb2.NormalizedLandmarkList()
-            )
-            landmark_list.landmark.extend(
-                [
-                    landmark_pb2.NormalizedLandmark(
-                        x=landmark.x, y=landmark.y, z=landmark.z
-                    )
-                    for landmark in landmarks
-                ]
-            )
-            self._mp_drawing.draw_landmarks(
-                annotated_image,
-                landmark_list,
-                self._mp_pose.POSE_CONNECTIONS,
-                self._mp_drawing_styles.get_default_pose_landmarks_style(),
-            )
+            draw_pose_landmarks(annotated_image, landmarks)
 
             # Get the last smoothed & padded box in normalized coords
             x0_n, y0_n, x1_n, y1_n = self._bbox_smoothers[i].get_smoothed_box()

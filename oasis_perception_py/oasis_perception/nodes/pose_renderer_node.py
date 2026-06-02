@@ -15,10 +15,7 @@ import cv_bridge
 import numpy as np
 import rclpy.node
 from image_transport_py import ImageTransport
-from mediapipe.framework.formats import landmark_pb2
-from mediapipe.solutions import drawing_styles as mp_drawing_styles
-from mediapipe.solutions import drawing_utils as mp_drawing
-from mediapipe.solutions import pose as mp_pose
+from oasis_perception.utils.pose_drawing import draw_pose_landmarks
 from rclpy.qos import QoSPresetProfiles
 
 from oasis_msgs.msg import PoseLandmarksArray as PoseLandmarksArrayMsg
@@ -66,11 +63,8 @@ class PoseRendererNode(rclpy.node.Node):
         width: int = self.get_parameter("width").get_parameter_value().integer_value
         height: int = self.get_parameter("height").get_parameter_value().integer_value
 
-        # Prepare CV bridge & mediapipe drawing
+        # Prepare CV bridge
         self._cv_bridge: cv_bridge.CvBridge = cv_bridge.CvBridge()
-        self._mp_drawing = mp_drawing
-        self._mp_styles = mp_drawing_styles
-        self._mp_pose = mp_pose
 
         # QoS profiles
         sensor_qos = QoSPresetProfiles.SENSOR_DATA.value
@@ -80,7 +74,7 @@ class PoseRendererNode(rclpy.node.Node):
             self.get_name(), image_transport="compressed"
         )
 
-        # Per‑zone publishers and subscriptions
+        # Per-zone publishers and subscriptions
         self._pubs: dict[str, Any] = {}
         for zone_id in zone_ids:
             topic_in: str = f"{zone_id}/{POSE_LANDMARKS_TOPIC}"
@@ -120,26 +114,11 @@ class PoseRendererNode(rclpy.node.Node):
         Callback for each PoseLandmarksArrayMsg per zone. Renders a transparent
         overlay and publishes it.
         """
-        # 1) Draw everything on a 3‑channel BGR overlay (this will be C‑contiguous)
+        # 1) Draw everything on a 3-channel BGR overlay
         overlay: np.ndarray = np.zeros((height, width, 3), dtype=np.uint8)
 
         for pose in msg.poses:
-            # Build a NormalizedLandmarkList
-            landmark_list = landmark_pb2.NormalizedLandmarkList()
-            landmark_list.landmark.extend(
-                [
-                    landmark_pb2.NormalizedLandmark(x=lm.x, y=lm.y, z=lm.z)
-                    for lm in pose.landmarks
-                ]
-            )
-
-            # Draw skeleton on overlay
-            self._mp_drawing.draw_landmarks(
-                overlay,
-                landmark_list,
-                self._mp_pose.POSE_CONNECTIONS,
-                self._mp_styles.get_default_pose_landmarks_style(),
-            )
+            draw_pose_landmarks(overlay, pose.landmarks)
 
             # Compute and draw bounding box
             xs = [lm.x for lm in pose.landmarks]

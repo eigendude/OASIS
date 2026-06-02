@@ -1,1 +1,1 @@
-mediapipe
+mediapipe; platform_machine == "x86_64"
