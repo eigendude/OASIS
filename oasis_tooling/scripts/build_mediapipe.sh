@@ -73,13 +73,7 @@ patch \
   --reject-file="/dev/null" \
   --no-backup-if-mismatch \
   --directory="${MEDIAPIPE_SOURCE_DIR}" \
-  < "${CONFIG_DIRECTORY}/mediapipe/0002-Update-protobuf-to-version-3.21.12.patch"
-patch \
-  -p1 \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${MEDIAPIPE_SOURCE_DIR}" \
-  < "${CONFIG_DIRECTORY}/mediapipe/0003-Enable-monolithic-build.patch"
+  < "${CONFIG_DIRECTORY}/mediapipe/0002-Enable-monolithic-build.patch"
 
 # Configure MediaPipe to use the custom OpenCV build
 OPENCV_BUILD_FILE="${MEDIAPIPE_SOURCE_DIR}/third_party/opencv_linux.BUILD"

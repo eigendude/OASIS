@@ -19,7 +19,7 @@ set -o nounset
 #
 
 # Version
-MEDIAPIPE_VERSION="0.10.26"
+MEDIAPIPE_VERSION="0.10.35"
 
 # URL
 MEDIAPIPE_URL="https://github.com/google-ai-edge/mediapipe/archive/refs/tags/v${MEDIAPIPE_VERSION}.tar.gz"

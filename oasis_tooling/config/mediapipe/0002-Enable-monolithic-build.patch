@@ -1,7 +1,7 @@
-From 9c4063b657fa0da042909bbd6f6ae35acd7e5911 Mon Sep 17 00:00:00 2001
+From ece166e1135548d00143e1d58a6d05a1ad442cb8 Mon Sep 17 00:00:00 2001
 From: Garrett Brown <eigendebugger@gmail.com>
 Date: Mon, 19 May 2025 19:20:30 -0700
-Subject: [PATCH 3/3] Enable monolithic build
+Subject: [PATCH 2/2] Enable monolithic build
 
 ---
  mediapipe/framework/BUILD                   | 98 +++++++++++++++++++++
@@ -12,10 +12,10 @@ Subject: [PATCH 3/3] Enable monolithic build
  create mode 100644 mediapipe/framework/monolithic_mediapipe.cc
 
 diff --git a/mediapipe/framework/BUILD b/mediapipe/framework/BUILD
-index bb64530b..e31a9e14 100644
+index 2416aab5f..02fbae885 100644
 --- a/mediapipe/framework/BUILD
 +++ b/mediapipe/framework/BUILD
-@@ -396,6 +396,7 @@ cc_library(
+@@ -394,6 +394,7 @@ cc_library(
          "@com_google_absl//absl/synchronization",
          "@com_google_absl//absl/time",
      ],
@@ -23,7 +23,7 @@ index bb64530b..e31a9e14 100644
  )
  
  cc_library(
-@@ -1988,3 +1989,100 @@ cc_library(
+@@ -1994,3 +1995,100 @@ cc_library(
          "@com_google_absl//absl/strings:string_view",
      ],
  )
@@ -126,7 +126,7 @@ index bb64530b..e31a9e14 100644
 +)
 diff --git a/mediapipe/framework/monolithic_absl.cc b/mediapipe/framework/monolithic_absl.cc
 new file mode 100644
-index 00000000..ba1bea3b
+index 000000000..ba1bea3b3
 --- /dev/null
 +++ b/mediapipe/framework/monolithic_absl.cc
 @@ -0,0 +1,17 @@
@@ -149,7 +149,7 @@ index 00000000..ba1bea3b
 +namespace absl { void _absl_monolithic_dummy() {} }
 diff --git a/mediapipe/framework/monolithic_mediapipe.cc b/mediapipe/framework/monolithic_mediapipe.cc
 new file mode 100644
-index 00000000..0fd323ea
+index 000000000..0fd323ea8
 --- /dev/null
 +++ b/mediapipe/framework/monolithic_mediapipe.cc
 @@ -0,0 +1,17 @@
@@ -171,5 +171,5 @@ index 00000000..0fd323ea
 +// Anchors at least one TU in the monolithic .so.
 +namespace mediapipe { void _mediapipe_monolithic_dummy() {} }
 -- 
-2.43.0
+2.47.1.windows.1
 
