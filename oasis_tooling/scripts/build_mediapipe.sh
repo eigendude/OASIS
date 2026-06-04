@@ -157,10 +157,12 @@ bazelisk build \
 # Clear old headers
 rm -rf "${MEDIAPIPE_INSTALL_DIR}/include/absl"
 rm -rf "${MEDIAPIPE_INSTALL_DIR}/include/google/protobuf"
+rm -rf "${MEDIAPIPE_INSTALL_DIR}/include/mediapipe_protobuf5"
 rm -rf "${MEDIAPIPE_INSTALL_DIR}/include/mediapipe"
 
 # Create the install layout
 mkdir -p "${MEDIAPIPE_INSTALL_DIR}/include"
+mkdir -p "${MEDIAPIPE_INSTALL_DIR}/include/mediapipe_protobuf5"
 mkdir -p "${MEDIAPIPE_INSTALL_DIR}/lib"
 
 # Copy headers from sources into the install include tree
@@ -197,7 +199,7 @@ PROTOBUF_INCLUDE_ROOT="${PROTOBUF_RUNTIME_HEADER%/google/protobuf/runtime_versio
 (
   cd "${PROTOBUF_INCLUDE_ROOT}"
   find google/protobuf \( -name '*.h' -o -name '*.inc' \) \
-    -exec cp --parents '{}' "${MEDIAPIPE_INSTALL_DIR}/include/" \;
+    -exec cp --parents '{}' "${MEDIAPIPE_INSTALL_DIR}/include/mediapipe_protobuf5/" \;
 )
 
 # Copy Abseil headers into the install include tree
@@ -251,6 +253,7 @@ compile_smoke_test() {
 
   "${CXX:-c++}" "${smoke_source}" \
     -I"${MEDIAPIPE_INSTALL_DIR}/include" \
+    -I"${MEDIAPIPE_INSTALL_DIR}/include/mediapipe_protobuf5" \
     -L"${MEDIAPIPE_INSTALL_DIR}/lib" \
     -L"${OPENCV_INSTALL_DIR}/lib" \
     -Wl,-rpath,"${MEDIAPIPE_INSTALL_DIR}/lib" \
