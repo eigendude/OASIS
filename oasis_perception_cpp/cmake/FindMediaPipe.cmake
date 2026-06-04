@@ -26,7 +26,60 @@ find_package(glog REQUIRED)
 # protobuf dependency
 #
 
+find_path(Protobuf_INCLUDE_DIR
+  NAMES
+    google/protobuf/stubs/common.h
+  PATHS
+    /usr/include
+    /usr/include/${CMAKE_LIBRARY_ARCHITECTURE}
+  NO_DEFAULT_PATH
+)
+
+find_library(Protobuf_LIBRARY
+  NAMES
+    protobuf
+  PATHS
+    /usr/lib/${CMAKE_LIBRARY_ARCHITECTURE}
+    /usr/lib
+    /lib/${CMAKE_LIBRARY_ARCHITECTURE}
+    /lib
+  NO_DEFAULT_PATH
+)
+
+find_program(Protobuf_PROTOC_EXECUTABLE
+  NAMES
+    protoc
+  PATHS
+    /usr/bin
+  NO_DEFAULT_PATH
+)
+
 find_package(Protobuf REQUIRED)
+
+message(STATUS "Protobuf_VERSION=${Protobuf_VERSION}")
+message(STATUS "Protobuf_PROTOC_EXECUTABLE=${Protobuf_PROTOC_EXECUTABLE}")
+message(STATUS "Protobuf_INCLUDE_DIRS=${Protobuf_INCLUDE_DIRS}")
+message(STATUS "Protobuf_LIBRARIES=${Protobuf_LIBRARIES}")
+
+if (NOT Protobuf_VERSION VERSION_EQUAL "3.21.12")
+  message(FATAL_ERROR
+    "OASIS C++ consumers require Ubuntu/system Protobuf 3.21.12, "
+    "but CMake found Protobuf ${Protobuf_VERSION}"
+  )
+endif()
+
+foreach(_protobuf_path
+  ${Protobuf_PROTOC_EXECUTABLE}
+  ${Protobuf_INCLUDE_DIRS}
+  ${Protobuf_LIBRARIES}
+)
+  if (_protobuf_path MATCHES "/mediapipe/")
+    message(FATAL_ERROR
+      "find_package(Protobuf) resolved a MediaPipe-private path: "
+      "${_protobuf_path}"
+    )
+  endif()
+endforeach()
 
 #
 # Find MediaPipe
