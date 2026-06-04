@@ -43,7 +43,9 @@ find_library(MediaPipe_MONOLITHIC_LIBRARY
 )
 
 find_package_handle_standard_args(MediaPipe
-  REQUIRED_VARS MediaPipe_INCLUDE_DIR MediaPipe_MONOLITHIC_LIBRARY
+  REQUIRED_VARS
+    MediaPipe_INCLUDE_DIR
+    MediaPipe_MONOLITHIC_LIBRARY
 )
 
 mark_as_advanced(MediaPipe_INCLUDE_DIR)
@@ -67,17 +69,29 @@ if (MediaPipe_FOUND)
 
   mark_as_advanced(Abseil_MONOLITHIC_LIBRARY)
 
+  set(MediaPipe_PRIVATE_PROTOBUF_INCLUDE_DIR
+    "${MediaPipe_INCLUDE_DIR}/mediapipe_protobuf5"
+  )
+
+  if (NOT EXISTS "${MediaPipe_PRIVATE_PROTOBUF_INCLUDE_DIR}/google/protobuf/runtime_version.h")
+    message(FATAL_ERROR
+      "Found MediaPipe in ${MediaPipe_INCLUDE_DIR} but could not locate "
+      "private protobuf5 headers in ${MediaPipe_PRIVATE_PROTOBUF_INCLUDE_DIR}"
+    )
+  endif()
+
   # Build up the final list of includes
   set(MediaPipe_INCLUDE_DIRS
     ${MediaPipe_INCLUDE_DIR}
+    ${MediaPipe_PRIVATE_PROTOBUF_INCLUDE_DIR}
   )
 
   # Build up the final list of things to link
   set(MediaPipe_LIBRARIES
     glog::glog
-    protobuf::libprotobuf
     ${MediaPipe_MONOLITHIC_LIBRARY}
     ${Abseil_MONOLITHIC_LIBRARY}
+    protobuf::libprotobuf
   )
 
   # Create an INTERFACE target so users can just do:
