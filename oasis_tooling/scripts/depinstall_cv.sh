@@ -100,3 +100,19 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
 
   sudo apt install -y --no-install-recommends "${APT_PACKAGES[@]}"
 fi
+
+#
+# Remove PyPI OpenCV wheels
+#
+
+if [[ "${OSTYPE}" != "darwin"* ]]; then
+  OPENCV_PIP_PACKAGES=(
+    opencv-python
+    opencv-contrib-python
+    opencv-python-headless
+  )
+
+  sudo python3 -m pip uninstall -y \
+    --break-system-packages \
+    "${OPENCV_PIP_PACKAGES[@]}"
+fi
