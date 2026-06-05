@@ -26,6 +26,7 @@ source "${SCRIPT_DIR}/env_oasis.sh"
 
 # rosdep keys to ignore
 ROSDEP_IGNORE_KEYS=" \
+  apriltag \
   libopencv-dev \
   python3-matplotlib \
   python3-numpy \

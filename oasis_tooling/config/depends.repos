@@ -30,10 +30,14 @@ repositories:
     type: git
     url: https://github.com/stevenlovegrove/Pangolin.git
     version: c49c7c3217b32a796e17134ec129aaf576753c05
-  ros/mqtt_client:
+  #ros/mqtt_client:
+  #  type: git
+  #  url: https://github.com/ika-rwth-aachen/mqtt_client.git
+  #  version: v2.3.0
+  ros-perception/apriltag:
     type: git
-    url: https://github.com/ika-rwth-aachen/mqtt_client.git
-    version: v2.3.0
+    url: https://github.com/AprilRobotics/apriltag.git
+    version: master
   ros-perception/apriltag_msgs:
     type: git
     url: https://github.com/eigendude/apriltag_msgs.git
