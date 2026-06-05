@@ -60,6 +60,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     ccache
     cmake
     git
+    libgtest-dev
     ros-dev-tools
   )
 
