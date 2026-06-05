@@ -64,6 +64,20 @@ APT_PACKAGES=(
 sudo apt update
 sudo apt install -y --no-install-recommends "${APT_PACKAGES[@]}"
 
+#
+# Remove PyPI MediaPipe wheel
+#
+
+if [[ "${OSTYPE}" != "darwin"* ]]; then
+  MEDIAPIPE_PIP_PACKAGES=(
+    mediapipe
+  )
+
+  sudo python3 -m pip uninstall -y \
+    --break-system-packages \
+    "${MEDIAPIPE_PIP_PACKAGES[@]}"
+fi
+
 # Packages to install via pip
 PYTHON_PACKAGES=(
   # Needed by cv_bridge's CMake configure step
