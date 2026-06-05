@@ -116,6 +116,23 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
 fi
 
 #
+# Install Python dependencies (everything but macOS)
+#
+
+if [[ "${OSTYPE}" != "darwin"* ]]; then
+  # Packages to install via pip
+  PYTHON_PACKAGES=(
+    numpy
+  )
+
+  sudo python3 -m pip install \
+    --upgrade \
+    --ignore-installed \
+    --break-system-packages \
+    "${PYTHON_PACKAGES[@]}"
+fi
+
+#
 # Install OASIS rosdeps
 #
 
