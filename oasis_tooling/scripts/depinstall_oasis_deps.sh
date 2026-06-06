@@ -252,12 +252,6 @@ patch \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/camera_ros" \
   < "${CONFIG_DIRECTORY}/camera_ros/0001-Handle-array-controls-safely-in-ParameterHandler.patch"
-patch \
-  -p1 \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/camera_ros" \
-  < "${CONFIG_DIRECTORY}/camera_ros/0002-Use-default-publisher-history-depth.patch"
 
 # Disable image_view on systems with <= 4GiB memory
 if (( $(echo "${PHYSICAL_MEMORY_GB} <= 4" | bc -l) )); then

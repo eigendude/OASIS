@@ -316,12 +316,26 @@ class DriverDescriptions:
         camera_frame_id: Optional[str] = None,
         rectify: bool = False,
     ) -> None:
+        camera_topic_prefix: str = f"/{ROS_NAMESPACE}/{zone_id}"
+
+        publisher_qos: dict[str, Any] = {
+            "publisher": {
+                "history": "keep_last",
+                "depth": 5,
+            },
+        }
+
         camera_parameters: dict[str, Any] = {
             "role": "video",
             "format": image_format,
             "width": image_size[0],
             "height": image_size[1],
             "sensor_mode": sensor_mode,
+            "qos_overrides": {
+                f"{camera_topic_prefix}/camera_info": publisher_qos,
+                f"{camera_topic_prefix}/image_raw": publisher_qos,
+                f"{camera_topic_prefix}/image_raw/compressed": publisher_qos,
+            },
         }
 
         if jpeg_quality is not None:
