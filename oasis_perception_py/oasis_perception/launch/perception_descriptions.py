@@ -17,7 +17,7 @@ from launch_ros.actions import Node
 from launch_ros.descriptions import ComposableNode
 from oasis_perception.utils.perception_paths import PerceptionPaths
 
-from oasis_hass.utils.smarthome_config import SmarthomeConfig
+from oasis_home.utils.smarthome_config import SmarthomeConfig
 
 
 ################################################################################

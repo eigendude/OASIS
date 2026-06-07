@@ -11,7 +11,7 @@
 from launch.launch_description import LaunchDescription
 from launch_ros.actions import Node
 
-from oasis_hass.utils.smarthome_config import SmarthomeConfig
+from oasis_home.utils.smarthome_config import SmarthomeConfig
 
 
 ################################################################################
@@ -35,7 +35,7 @@ MQTT_PARAMS_FILE: str = CONFIG.MQTT_PARAMS_FILE
 
 ROS_NAMESPACE: str = "oasis"
 
-HASS_PACKAGE_NAME: str = CONFIG.HASS_PACKAGE_NAME
+HOME_PACKAGE_NAME: str = CONFIG.HOME_PACKAGE_NAME
 
 DRIVERS_PACKAGE_NAME: str = "oasis_drivers_py"
 
@@ -49,7 +49,7 @@ class HomeAssistantDescriptions:
     def add_home_assistant(ld: LaunchDescription) -> None:
         hass_mqtt_bridge_node: Node = Node(
             namespace=ROS_NAMESPACE,
-            package=HASS_PACKAGE_NAME,
+            package=HOME_PACKAGE_NAME,
             executable="hass_mqtt_bridge",
             name="hass_mqtt_bridge",
             output="screen",

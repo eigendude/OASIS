@@ -1,0 +1,143 @@
+commit fbe77aaf131d5d21658571c3af331959ccadca2e
+Author: Garrett Brown <eigendebugger@gmail.com>
+Date:   Thu Jun 4 14:49:35 2026 -0700
+
+    fixup! perception_cpp/py/tooling: Upgrade MediaPipe to v0.10.35
+
+diff --git a/oasis_tooling/scripts/build_mediapipe.sh b/oasis_tooling/scripts/build_mediapipe.sh
+index ab028e07..16837ef3 100755
+--- a/oasis_tooling/scripts/build_mediapipe.sh
++++ b/oasis_tooling/scripts/build_mediapipe.sh
+@@ -167,6 +167,9 @@ if [[ "${MEDIAPIPE_ENABLE_GPU}" != "1" ]]; then
+   MEDIAPIPE_BAZEL_FLAGS+=(--define=MEDIAPIPE_DISABLE_GPU=1)
+ fi
+ 
++printf -v MEDIAPIPE_BAZEL_FLAGS_SHELL '%q ' "${MEDIAPIPE_BAZEL_FLAGS[@]}"
++export MEDIAPIPE_BAZEL_FLAGS_SHELL
++
+ MEDIAPIPE_PREBUILD_TARGETS=(
+   //mediapipe/framework:mediapipe_monolithic
+   //mediapipe/tasks/metadata:image_segmenter_metadata_schema_py
+@@ -179,6 +182,9 @@ MEDIAPIPE_PREBUILD_TARGETS=(
+ echo "MEDIAPIPE_ENABLE_GPU=${MEDIAPIPE_ENABLE_GPU}"
+ printf 'Bazel flags:\n'
+ printf '  %q\n' "${MEDIAPIPE_BAZEL_FLAGS[@]}"
++printf 'Prebuild Bazel command:\n  bazelisk build'
++printf ' %q' "${MEDIAPIPE_BAZEL_FLAGS[@]}" "${MEDIAPIPE_PREBUILD_TARGETS[@]}"
++printf '\n'
+ 
+ # Prebuild the monolithic library and Python wheel native targets together
+ bazelisk build \
+@@ -215,7 +221,7 @@ mkdir -p "${MEDIAPIPE_INSTALL_DIR}/lib"
+     -exec cp --parents '{}' "${MEDIAPIPE_INSTALL_DIR}/include/" \;
+ )
+ 
+-BAZEL_OUT_BASE=$(bazelisk info "${MEDIAPIPE_BAZEL_FLAGS[@]}" output_base)
++BAZEL_OUT_BASE=$(bazelisk info output_base)
+ 
+ # Copy the active Bazel protobuf headers used to generate MediaPipe .pb.h
+ PROTOBUF_RUNTIME_HEADER="$(
+@@ -429,6 +435,7 @@ fi
+ # with the same MediaPipe version used for the C++ monolith.
+ export MEDIAPIPE_PYTHON_VERSION="${MEDIAPIPE_VERSION}"
+ export MEDIAPIPE_ENABLE_GPU="${MEDIAPIPE_ENABLE_GPU}"
++export MEDIAPIPE_SKIP_SETUP_BAZEL_BUILD=1
+ "${MEDIAPIPE_PYTHON_BIN}" <<'PY'
+ import os
+ from pathlib import Path
+@@ -443,16 +450,6 @@ text = text.replace(
+     1,
+ )
+ text = text.replace("self.link_opencv = False", "self.link_opencv = True")
+-text = text.replace(
+-    "GPU_OPTIONS = GPU_OPTIONS_DISABLED if MP_DISABLE_GPU else GPU_OPTIONS_ENABLED\n",
+-    (
+-        "if os.environ.get('MEDIAPIPE_ENABLE_GPU') == '1':\n"
+-        "  GPU_OPTIONS = []\n"
+-        "else:\n"
+-        "  GPU_OPTIONS = ['--define=MEDIAPIPE_DISABLE_GPU=1']\n"
+-    ),
+-    1,
+-)
+ text = text.replace(
+     "def _normalize_path(path):\n"
+     "  return path.replace('\\\\', '/') if IS_WINDOWS else path\n",
+@@ -460,22 +457,9 @@ text = text.replace(
+         "def _normalize_path(path):\n"
+         "  return path.replace('\\\\', '/') if IS_WINDOWS else path\n"
+         "\n"
+-        "BAZEL_CLANG_OPTIONS = []\n"
+-        "if os.environ.get('MEDIAPIPE_USE_CLANG_ACTION_ENV') == '1':\n"
+-        "  BAZEL_CLANG_OPTIONS = [\n"
+-        "      '--action_env=CC=' + os.environ['CC'],\n"
+-        "      '--action_env=CXX=' + os.environ['CXX'],\n"
+-        "  ]\n"
+-        "\n"
+-        "BAZEL_BUILD_OPTIONS = [\n"
+-        "    '--compilation_mode=opt',\n"
+-        "    '--action_env=PYTHON_BIN_PATH=' + "
+-        "_normalize_path(sys.executable),\n"
+-        "    '--copt=-DNDEBUG',\n"
+-        "    '--define=ENABLE_ODML_CONVERTER=0',\n"
+-        "]\n"
+-        "BAZEL_BUILD_OPTIONS = BAZEL_CLANG_OPTIONS + "
+-        "BAZEL_BUILD_OPTIONS + GPU_OPTIONS\n"
++        "BAZEL_BUILD_OPTIONS = shlex.split(\n"
++        "    os.environ['MEDIAPIPE_BAZEL_FLAGS_SHELL']\n"
++        ")\n"
+     ),
+     1,
+ )
+@@ -501,6 +485,7 @@ text = text.replace(
+     "        'build',\n"
+     "        '--compilation_mode=opt',\n"
+     "        '--copt=-DNDEBUG',\n"
++    "        '--keep_going',\n"
+     "        '--define=ENABLE_ODML_CONVERTER=0',\n"
+     "        str(ext.bazel_target),\n"
+     "    ] + GPU_OPTIONS\n",
+@@ -512,6 +497,34 @@ text = text.replace(
+     "    ]\n",
+     1,
+ )
++text = text.replace(
++    "      _invoke_shell_command(bazel_command)\n"
++    "      _copy_to_build_lib_dir(\n",
++    (
++        "      print('Setup.py Bazel command:', shlex.join(bazel_command))\n"
++        "      if os.environ.get('MEDIAPIPE_SKIP_SETUP_BAZEL_BUILD') != '1':\n"
++        "        _invoke_shell_command(bazel_command)\n"
++        "      else:\n"
++        "        print('Skipping setup.py Bazel build; using prebuilt outputs')\n"
++        "      _copy_to_build_lib_dir(\n"
++    ),
++    1,
++)
++text = text.replace(
++    "    _invoke_shell_command(bazel_command)\n"
++    "\n"
++    "    ext_bazel_bin_path = os.path.join(\n",
++    (
++        "    print('Setup.py Bazel command:', shlex.join(bazel_command))\n"
++        "    if os.environ.get('MEDIAPIPE_SKIP_SETUP_BAZEL_BUILD') != '1':\n"
++        "      _invoke_shell_command(bazel_command)\n"
++        "    else:\n"
++        "      print('Skipping setup.py Bazel build; using prebuilt outputs')\n"
++        "\n"
++        "    ext_bazel_bin_path = os.path.join(\n"
++    ),
++    1,
++)
+ setup_py.write_text(text)
+ PY
+ 
+@@ -528,6 +541,9 @@ if ! command -v bazel >/dev/null 2>&1; then
+   export PATH="${BAZEL_WRAPPER_DIR}:${PATH}"
+ fi
+ 
++echo "setup.py Bazel build steps will be skipped; using prebuilt outputs"
++echo "CI cache check: no Bazel option churn is expected after prebuild"
++
+ rm -rf dist
+ "${MEDIAPIPE_PYTHON_BIN}" setup.py bdist_wheel
+ rm -f "${MEDIAPIPE_WHEELHOUSE}"/mediapipe-*.whl

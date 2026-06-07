@@ -10,7 +10,7 @@
 
 import rclpy
 
-from oasis_hass.nodes.hass_mqtt_bridge_node import HassMqttBridgeNode
+from oasis_home.nodes.hass_mqtt_bridge_node import HassMqttBridgeNode
 
 
 ################################################################################

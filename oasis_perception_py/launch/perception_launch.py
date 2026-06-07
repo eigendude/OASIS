@@ -12,7 +12,7 @@ from launch.launch_description import LaunchDescription
 from launch_ros.descriptions import ComposableNode
 from oasis_perception.launch.perception_descriptions import PerceptionDescriptions
 
-from oasis_hass.utils.smarthome_config import SmarthomeConfig
+from oasis_home.utils.smarthome_config import SmarthomeConfig
 
 
 ################################################################################
