@@ -59,7 +59,7 @@ setuptools.setup(
         (
             os.path.join("share", PACKAGE_NAME),
             [
-                "launch/hass_launch.py",
+                "launch/home_launch.py",
             ],
         ),
         # Systemd services
@@ -89,7 +89,7 @@ setuptools.setup(
     ],
     entry_points={
         "console_scripts": [
-            "hass_mqtt_bridge = oasis_hass.cli.hass_mqtt_bridge_cli:main",
+            "hass_mqtt_bridge = oasis_home.cli.hass_mqtt_bridge_cli:main",
         ],
     },
 )

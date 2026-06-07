@@ -18,7 +18,7 @@ from launch_ros.descriptions import ComposableNode
 from oasis_control.launch.ahrs_mounting import AhrsMountingConfig
 from oasis_drivers.launch.driver_descriptions import DriverDescriptions as Drivers
 from oasis_drivers.launch.mcu_descriptions import MCUDescriptions as MCU
-from oasis_hass.utils.smarthome_config import SmarthomeConfig
+from oasis_home.utils.smarthome_config import SmarthomeConfig
 
 
 PerceptionDescriptions: Any

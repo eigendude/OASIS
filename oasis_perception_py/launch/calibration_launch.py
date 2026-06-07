@@ -11,7 +11,7 @@
 from launch.launch_description import LaunchDescription
 from oasis_perception.launch.perception_descriptions import PerceptionDescriptions
 
-from oasis_hass.utils.smarthome_config import SmarthomeConfig
+from oasis_home.utils.smarthome_config import SmarthomeConfig
 
 
 ################################################################################

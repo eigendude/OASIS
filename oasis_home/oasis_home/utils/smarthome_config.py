@@ -27,7 +27,7 @@ class SmarthomeConfig:
     # ROS parameters
     ############################################################################
 
-    HASS_PACKAGE_NAME: str = "oasis_hass"
+    HOME_PACKAGE_NAME: str = "oasis_home"
 
     ############################################################################
     # Smarthome parameters
@@ -39,7 +39,7 @@ class SmarthomeConfig:
     KINECT_V2_ZONE_ID: str = "hallway"
 
     MQTT_PARAMS_FILE: str = os.path.join(
-        get_package_share_directory(HASS_PACKAGE_NAME),
+        get_package_share_directory(HOME_PACKAGE_NAME),
         "mqtt_client",
         "mqtt_client_params.yaml",
     )
@@ -51,7 +51,7 @@ class SmarthomeConfig:
     def __init__(self) -> None:
         # Load the smarthome configuration
         config_path: str = os.path.join(
-            get_package_share_directory(self.HASS_PACKAGE_NAME),
+            get_package_share_directory(self.HOME_PACKAGE_NAME),
             "config",
             "smarthome.yaml",
         )

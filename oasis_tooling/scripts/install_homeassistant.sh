@@ -26,7 +26,7 @@ set -o nounset
 HASS_USERNAME="homeassistant"
 
 # The name of the Home Assistant package
-HASS_PACKAGE="oasis_hass"
+HASS_PACKAGE="oasis_home"
 
 ################################################################################
 # Environment paths

@@ -16,7 +16,7 @@ from launch_ros.actions import ComposableNodeContainer
 from launch_ros.actions import Node
 from launch_ros.descriptions import ComposableNode
 
-from oasis_hass.utils.smarthome_config import SmarthomeConfig
+from oasis_home.utils.smarthome_config import SmarthomeConfig
 
 
 ################################################################################
@@ -54,7 +54,7 @@ ROS_NAMESPACE: str = "oasis"
 
 PYTHON_PACKAGE_NAME: str = "oasis_drivers_py"
 CPP_PACKAGE_NAME: str = "oasis_drivers_cpp"
-HASS_PACKAGE_NAME: str = CONFIG.HASS_PACKAGE_NAME
+HOME_PACKAGE_NAME: str = CONFIG.HOME_PACKAGE_NAME
 
 
 ################################################################################
