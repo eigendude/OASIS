@@ -18,7 +18,13 @@ namespace OASIS
 {
 
 // LED parameters
+#if defined(LED_BUILTIN)
 constexpr unsigned int HEARTBEAT_LED = LED_BUILTIN;
+#elif defined(ARDUINO_ARCH_ESP32)
+constexpr unsigned int HEARTBEAT_LED = 5;
+#else
+#error "No heartbeat LED is defined for this board"
+#endif
 
 // Instance storage
 HeartbeatThread heartbeatInstance;

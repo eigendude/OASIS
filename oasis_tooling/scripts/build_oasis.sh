@@ -14,6 +14,7 @@ usage() {
 Usage: build_oasis.sh [OPTIONS]
 
 Options:
+  --mcu-profile PROFILE   Build oasis_mcu using the named MCU profile.
   --skip-mcu               Skip building the oasis_mcu package. Use this when
                            pre-built libraries have been restored from cache.
   --skip-drivers-cpp       Skip building the oasis_drivers_cpp package. Use
@@ -37,9 +38,19 @@ SKIP_MCU=false
 SKIP_DRIVERS_CPP=false
 SKIP_MESSAGES=false
 SKIP_PERCEPTION_CPP=false
+MCU_PROFILE=
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --mcu-profile)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: --mcu-profile requires a profile name" >&2
+        usage >&2
+        exit 2
+      fi
+      MCU_PROFILE="$2"
+      shift 2
+      ;;
     --skip-mcu)
       SKIP_MCU=true
       shift
@@ -111,6 +122,10 @@ COLCON_FLAGS+=" \
     -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
     -DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH} \
 "
+
+if [[ -n "${MCU_PROFILE}" ]]; then
+  COLCON_FLAGS+=" -DOASIS_MCU_PROFILE=${MCU_PROFILE}"
+fi
 
 # macOS flags
 if [[ "${OSTYPE}" == "darwin"* ]]; then

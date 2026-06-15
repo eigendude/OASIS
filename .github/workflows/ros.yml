@@ -364,11 +364,46 @@ jobs:
 
           if [ ${#args[@]} -eq 0 ]; then
             echo "No packages skipped; performing full build."
-            ./oasis_tooling/scripts/build_oasis.sh
           else
             echo "Running build with skipped packages: ${args[*]}"
-            ./oasis_tooling/scripts/build_oasis.sh "${args[@]}"
           fi
+
+          ./oasis_tooling/scripts/build_oasis.sh --mcu-profile mega "${args[@]}"
+
+      - name: Build ESP32 Thing MCU profile
+        if: steps.restore-oasis-mcu.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+
+          source ./oasis_tooling/scripts/env_cmake.sh
+          source ./oasis_tooling/scripts/env_cv.sh
+          source ./oasis_tooling/scripts/env_mediapipe.sh
+          source ./oasis_tooling/scripts/env_oasis.sh
+
+          set +u
+          source "${OASIS_DEPENDS_INSTALL_DIRECTORY}/setup.bash"
+          set -u
+
+          mkdir -p "${OASIS_DIRECTORY}"
+
+          if [ ! -L "${OASIS_SOURCE_DIRECTORY}" ]; then
+            rm -rf "${OASIS_SOURCE_DIRECTORY}"
+            ln -s "${STACK_DIRECTORY}" "${OASIS_SOURCE_DIRECTORY}"
+          fi
+
+          rm -f "${STACK_DIRECTORY}/oasis_mcu/COLCON_IGNORE"
+
+          cd "${OASIS_DIRECTORY}"
+
+          MAKE_FLAGS="" colcon build \
+            --merge-install \
+            --build-base build-police \
+            --install-base install-police \
+            --packages-select oasis_mcu \
+            --cmake-args \
+              -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+              -DCMAKE_PREFIX_PATH="${CMAKE_PREFIX_PATH}" \
+              -DOASIS_MCU_PROFILE=police
 
       - name: Install OASIS files
         run: ./oasis_tooling/scripts/install_oasis.sh

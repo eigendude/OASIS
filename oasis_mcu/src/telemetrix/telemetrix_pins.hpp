@@ -17,9 +17,11 @@
 
 // Pin mode definitions
 
-// INPUT defined in Arduino.h = 0
-// OUTPUT defined in Arduino.h = 1
-// INPUT_PULLUP defined in Arduino.h = 2
+// Telemetrix pin modes are protocol values, not Arduino core macros
+#define AT_INPUT 0
+#define AT_OUTPUT 1
+#define AT_INPUT_PULLUP 2
+
 // The following are defined for arduino_telemetrix (AT)
 #define AT_ANALOG 3
 #define AT_MODE_NOT_SET 255
