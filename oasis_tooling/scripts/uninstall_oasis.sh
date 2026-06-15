@@ -82,7 +82,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
   shopt -s nullglob
   for DIRECTORY in \
     "${LIBFREENECT2_UDEV_DIRECTORY}" \
-    "${OASIS_DATA_DIRECTORY}/oasis_avr/udev" \
+    "${OASIS_DATA_DIRECTORY}/oasis_mcu/udev" \
     "${OASIS_DATA_DIRECTORY}/oasis_drivers_py/udev" \
   ; do
     # Skip directories that don't exist

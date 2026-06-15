@@ -14,7 +14,7 @@ usage() {
 Usage: build_oasis.sh [OPTIONS]
 
 Options:
-  --skip-avr               Skip building the oasis_avr package. Use this when
+  --skip-mcu               Skip building the oasis_mcu package. Use this when
                            pre-built libraries have been restored from cache.
   --skip-drivers-cpp       Skip building the oasis_drivers_cpp package. Use
                            this when pre-built libraries have been restored
@@ -33,15 +33,15 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
-SKIP_AVR=false
+SKIP_MCU=false
 SKIP_DRIVERS_CPP=false
 SKIP_MESSAGES=false
 SKIP_PERCEPTION_CPP=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --skip-avr)
-      SKIP_AVR=true
+    --skip-mcu)
+      SKIP_MCU=true
       shift
       ;;
     --skip-drivers-cpp)
@@ -121,8 +121,8 @@ fi
 
 PACKAGES_SKIP=()
 
-if [[ "${SKIP_AVR}" == true ]]; then
-  PACKAGES_SKIP+=("oasis_avr")
+if [[ "${SKIP_MCU}" == true ]]; then
+  PACKAGES_SKIP+=("oasis_mcu")
 fi
 
 if [[ "${SKIP_DRIVERS_CPP}" == true ]]; then

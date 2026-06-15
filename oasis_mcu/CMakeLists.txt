@@ -248,7 +248,7 @@ set(CMAKE_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/cmake/Arduino-CMake-Toolch
 #
 ################################################################################
 
-project(oasis_avr)
+project(oasis_mcu)
 
 ################################################################################
 #
@@ -431,11 +431,11 @@ if (ENABLE_STEPPER)
   )
 endif()
 
-add_library(oasis_avr_firmata ${FIRMATA_SOURCES})
+add_library(oasis_mcu_firmata ${FIRMATA_SOURCES})
 
-target_compile_definitions(oasis_avr_firmata PRIVATE ${FIRMATA_DEFINITIONS})
+target_compile_definitions(oasis_mcu_firmata PRIVATE ${FIRMATA_DEFINITIONS})
 
-target_link_arduino_libraries(oasis_avr_firmata PRIVATE ${FIRMATA_LIBRARIES})
+target_link_arduino_libraries(oasis_mcu_firmata PRIVATE ${FIRMATA_LIBRARIES})
 
 #
 # Telemetrix
@@ -615,21 +615,21 @@ if (ENABLE_STEPPER)
   )
 endif()
 
-add_library(oasis_avr_telemetrix ${TELEMETRIX_SOURCES})
+add_library(oasis_mcu_telemetrix ${TELEMETRIX_SOURCES})
 
-target_compile_definitions(oasis_avr_telemetrix PRIVATE ${TELEMETRIX_DEFINITIONS})
+target_compile_definitions(oasis_mcu_telemetrix PRIVATE ${TELEMETRIX_DEFINITIONS})
 
-target_link_arduino_libraries(oasis_avr_telemetrix PRIVATE ${TELEMETRIX_LIBRARIES})
+target_link_arduino_libraries(oasis_mcu_telemetrix PRIVATE ${TELEMETRIX_LIBRARIES})
 
 #
 # Scheduler
 #
 
-add_library(oasis_avr_scheduler
+add_library(oasis_mcu_scheduler
   src/scheduler/task_scheduler.cpp
 )
 
-target_link_arduino_libraries(oasis_avr_scheduler PRIVATE
+target_link_arduino_libraries(oasis_mcu_scheduler PRIVATE
   core
   TaskScheduler
 )
@@ -638,11 +638,11 @@ target_link_arduino_libraries(oasis_avr_scheduler PRIVATE
 # LEDs
 #
 
-add_library(oasis_avr_leds
+add_library(oasis_mcu_leds
   src/leds/heartbeat_thread.cpp
 )
 
-target_link_arduino_libraries(oasis_avr_leds PRIVATE
+target_link_arduino_libraries(oasis_mcu_leds PRIVATE
   core
   TaskScheduler
 )
@@ -651,12 +651,12 @@ target_link_arduino_libraries(oasis_avr_leds PRIVATE
 # Utils
 #
 
-add_library(oasis_avr_utils
+add_library(oasis_mcu_utils
   src/utils/memory_utils.cpp
   src/utils/timer.cpp
 )
 
-target_link_arduino_libraries(oasis_avr_utils PRIVATE
+target_link_arduino_libraries(oasis_mcu_utils PRIVATE
   core
 )
 
@@ -675,10 +675,10 @@ add_executable(firmata_node
 )
 
 target_link_libraries(firmata_node PRIVATE
-  oasis_avr_firmata
-  oasis_avr_leds
-  oasis_avr_scheduler
-  oasis_avr_utils
+  oasis_mcu_firmata
+  oasis_mcu_leds
+  oasis_mcu_scheduler
+  oasis_mcu_utils
 )
 
 target_link_arduino_libraries(firmata_node PRIVATE
@@ -690,7 +690,7 @@ target_link_arduino_libraries(firmata_node PRIVATE
 # Upload with:
 #   make upload TARGET=firmata_node SERIAL_PORT=<serial port, e.g. /dev/ttyACM0>
 # e.g.
-#   make -C "build/oasis_avr" upload TARGET=firmata_node SERIAL_PORT=/dev/ttyACM0
+#   make -C "build/oasis_mcu" upload TARGET=firmata_node SERIAL_PORT=/dev/ttyACM0
 #
 target_enable_arduino_upload(firmata_node)
 
@@ -714,9 +714,9 @@ target_compile_definitions(telemetrix_node PRIVATE
 )
 
 target_link_libraries(telemetrix_node PRIVATE
-  oasis_avr_telemetrix
-  oasis_avr_leds
-  oasis_avr_scheduler
+  oasis_mcu_telemetrix
+  oasis_mcu_leds
+  oasis_mcu_scheduler
 )
 
 target_link_arduino_libraries(telemetrix_node PRIVATE
@@ -728,7 +728,7 @@ target_link_arduino_libraries(telemetrix_node PRIVATE
 # Upload with:
 #   make upload TARGET=telemetrix_node SERIAL_PORT=<serial port, e.g. /dev/ttyACM0>
 # e.g.
-#   make -C "build/oasis_avr" upload TARGET=telemetrix_node SERIAL_PORT=/dev/ttyACM0
+#   make -C "build/oasis_mcu" upload TARGET=telemetrix_node SERIAL_PORT=/dev/ttyACM0
 #
 target_enable_arduino_upload(telemetrix_node)
 

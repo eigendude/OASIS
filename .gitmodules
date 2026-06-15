@@ -1,30 +1,30 @@
-[submodule "oasis_avr/cmake/Arduino-CMake-Toolchain"]
-	path = oasis_avr/cmake/Arduino-CMake-Toolchain
+[submodule "oasis_mcu/cmake/Arduino-CMake-Toolchain"]
+	path = oasis_mcu/cmake/Arduino-CMake-Toolchain
 	url = https://github.com/a9183756-gh/Arduino-CMake-Toolchain.git
-[submodule "oasis_avr/libraries/FirmataExpress"]
-	path = oasis_avr/libraries/FirmataExpress
+[submodule "oasis_mcu/libraries/FirmataExpress"]
+	path = oasis_mcu/libraries/FirmataExpress
 	url = https://github.com/MrYsLab/FirmataExpress.git
-[submodule "oasis_avr/libraries/Ultrasonic"]
-	path = oasis_avr/libraries/Ultrasonic
+[submodule "oasis_mcu/libraries/Ultrasonic"]
+	path = oasis_mcu/libraries/Ultrasonic
 	url = https://github.com/ErickSimoes/Ultrasonic.git
-[submodule "oasis_avr/libraries/DHTStable"]
-	path = oasis_avr/libraries/DHTStable
+[submodule "oasis_mcu/libraries/DHTStable"]
+	path = oasis_mcu/libraries/DHTStable
 	url = https://github.com/RobTillaart/DHTstable.git
-[submodule "oasis_avr/libraries/Adafruit_BluefruitLE_nRF51"]
-	path = oasis_avr/libraries/Adafruit_BluefruitLE_nRF51
+[submodule "oasis_mcu/libraries/Adafruit_BluefruitLE_nRF51"]
+	path = oasis_mcu/libraries/Adafruit_BluefruitLE_nRF51
 	url = https://github.com/adafruit/Adafruit_BluefruitLE_nRF51.git
-[submodule "oasis_avr/libraries/OneWire"]
-	path = oasis_avr/libraries/OneWire
+[submodule "oasis_mcu/libraries/OneWire"]
+	path = oasis_mcu/libraries/OneWire
 	url = https://github.com/PaulStoffregen/OneWire.git
-[submodule "oasis_avr/libraries/AccelStepper"]
-	path = oasis_avr/libraries/AccelStepper
+[submodule "oasis_mcu/libraries/AccelStepper"]
+	path = oasis_mcu/libraries/AccelStepper
 	url = https://github.com/waspinator/AccelStepper.git
-[submodule "oasis_avr/libraries/i2cdevlib"]
-	path = oasis_avr/libraries/i2cdevlib
+[submodule "oasis_mcu/libraries/i2cdevlib"]
+	path = oasis_mcu/libraries/i2cdevlib
 	url = https://github.com/jrowberg/i2cdevlib.git
-[submodule "oasis_avr/libraries/SparkFunCCS811"]
-	path = oasis_avr/libraries/SparkFunCCS811
+[submodule "oasis_mcu/libraries/SparkFunCCS811"]
+	path = oasis_mcu/libraries/SparkFunCCS811
 	url = https://github.com/sparkfun/SparkFun_CCS811_Arduino_Library.git
-[submodule "oasis_avr/libraries/TaskScheduler"]
-	path = oasis_avr/libraries/TaskScheduler
+[submodule "oasis_mcu/libraries/TaskScheduler"]
+	path = oasis_mcu/libraries/TaskScheduler
 	url = https://github.com/arkhipenko/TaskScheduler.git

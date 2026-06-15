@@ -10,7 +10,7 @@
 ################################################################################
 
 #
-# This is a script to bootstrap the Arduino toolchain needed to build the AVR
+# This is a script to bootstrap the Arduino toolchain needed to build the MCU
 # package.
 #
 # Dependencies:

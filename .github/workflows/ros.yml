@@ -93,12 +93,12 @@ jobs:
             ]);
 
             await setHash('ARDUINO_BOOTSTRAP_HASH', [
-              'oasis_avr/bootstrap.sh',
-              'oasis_avr/scripts/get_arduino_platform.sh',
+              'oasis_mcu/bootstrap.sh',
+              'oasis_mcu/scripts/get_arduino_platform.sh',
             ]);
 
-            await setHash('OASIS_AVR_HASH', [
-              'oasis_avr/**',
+            await setHash('OASIS_MCU_HASH', [
+              'oasis_mcu/**',
             ]);
 
             await setHash('OASIS_DRIVERS_CPP_HASH', [
@@ -188,7 +188,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            oasis_avr/arduino-*
+            oasis_mcu/arduino-*
             ros-ws/arduino-*
             ~/.arduino15
           key: >
@@ -196,19 +196,19 @@ jobs:
             ${{ matrix.os }}-\
             ${{ env.ARDUINO_BOOTSTRAP_HASH }}
 
-      - name: Restore OASIS AVR
-        id: restore-oasis-avr
+      - name: Restore OASIS MCU
+        id: restore-oasis-mcu
         uses: actions/cache@v4
         with:
           path: |
-            ros-ws/oasis-${{ matrix.ros2_distro }}/install/share/**/oasis_avr
+            ros-ws/oasis-${{ matrix.ros2_distro }}/install/share/**/oasis_mcu
           key: >
-            restore-oasis-avr-\
+            restore-oasis-mcu-\
             ${{ matrix.os }}-\
             ${{ matrix.ros2_distro }}-\
             ${{ env.CMAKE_HASH }}-\
             ${{ env.ARDUINO_BOOTSTRAP_HASH }}-\
-            ${{ env.OASIS_AVR_HASH }}
+            ${{ env.OASIS_MCU_HASH }}
 
       - name: Restore OASIS drivers_cpp
         id: restore-oasis-drivers-cpp
@@ -318,9 +318,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ "${{ steps.restore-oasis-avr.outputs.cache-hit }}" = 'true' ]; then
-            echo "Marking oasis_avr as ignored (cache hit detected)"
-            touch "oasis_avr/COLCON_IGNORE"
+          if [ "${{ steps.restore-oasis-mcu.outputs.cache-hit }}" = 'true' ]; then
+            echo "Marking oasis_mcu as ignored (cache hit detected)"
+            touch "oasis_mcu/COLCON_IGNORE"
           fi
 
           if [ "${{ steps.restore-oasis-drivers-cpp.outputs.cache-hit }}" = 'true' ]; then
@@ -342,9 +342,9 @@ jobs:
 
           args=()
 
-          if [ "${{ steps.restore-oasis-avr.outputs.cache-hit }}" = 'true' ]; then
-            echo "Skipping oasis_avr build (cache hit detected)"
-            args+=(--skip-avr)
+          if [ "${{ steps.restore-oasis-mcu.outputs.cache-hit }}" = 'true' ]; then
+            echo "Skipping oasis_mcu build (cache hit detected)"
+            args+=(--skip-mcu)
           fi
 
           if [ "${{ steps.restore-oasis-drivers-cpp.outputs.cache-hit }}" = 'true' ]; then
@@ -404,9 +404,9 @@ jobs:
       #- name: Upload Ardino hex to /dev/ttyACM0
       #  if: matrix.os == 'cinder'
       #  run: |
-      #    ./oasis_avr/scripts/reset_leonardo.py /dev/ttyACM0
+      #    ./oasis_mcu/scripts/reset_leonardo.py /dev/ttyACM0
       #    sleep 2
-      #    source oasis_tooling/scripts/env_ros2_desktop.sh && cmake --build "build/oasis_avr" --target upload -- TARGET=firmata_node SERIAL_PORT=/dev/ttyACM0
+      #    source oasis_tooling/scripts/env_ros2_desktop.sh && cmake --build "build/oasis_mcu" --target upload -- TARGET=firmata_node SERIAL_PORT=/dev/ttyACM0
       #    sleep 2
 
       #- name: Test Ardino

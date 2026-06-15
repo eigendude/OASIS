@@ -27,7 +27,7 @@ A Raspberry Pi subscribes to the input, and controls an Arduino connected to a r
 ## Firmata Protocol implementation
 
 To communicate with the Arduino, I added a complete Firmata implementation with additional support for temperature and humidity sensors, I2C, sonar, stepper motors, SPI, servos and CPU fans.
-The Firmata code is at [oasis_avr/src/firmata](oasis_avr/src/firmata).
+The Firmata code is at [oasis_mcu/src/firmata](oasis_mcu/src/firmata).
 
 I built a custom LEGO Train Power Station to house the motor controller, Raspberry Pi, and Arduino:
 
