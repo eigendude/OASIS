@@ -21,10 +21,16 @@ using namespace OASIS;
 namespace
 {
 #if defined(ENABLE_ANALOG) || defined(ENABLE_ANALOG_BATCH)
+#if defined(ARDUINO_ARCH_AVR) || defined(ARDUINO_ARCH_MEGAAVR)
 // To translate a pin number from an integer value to its analog pin number
 // equivalent, this array is used to look up the value to use for the pin.
 static const int analogReadPins[16] = {A0, A1, A2,  A3,  A4,  A5,  A6,  A7,
                                        A8, A9, A10, A11, A12, A13, A14, A15};
+#elif defined(ARDUINO_ARCH_ESP32)
+#error "ESP32 analog pin mapping is not implemented yet"
+#else
+#error "Analog pin mapping is not implemented for this Arduino architecture"
+#endif
 #endif
 } // namespace
 
@@ -37,11 +43,18 @@ TelemetrixPins::TelemetrixPins()
 void TelemetrixPins::SetupAnalogSubsystem()
 {
 #if defined(ENABLE_ANALOG) || defined(ENABLE_ANALOG_BATCH)
+#if defined(ARDUINO_ARCH_AVR) || defined(ARDUINO_ARCH_MEGAAVR)
   // Use the external AREF rail for more stable ADC readings
   analogReference(EXTERNAL);
 
   // Allow the external reference to settle before sampling
   delay(5);
+#elif defined(ARDUINO_ARCH_ESP32)
+  // ESP32 ADC reference handling is different. Leave unconfigured until
+  // ESP32 analog support is implemented
+#else
+#error "Analog reference setup is not implemented for this architecture"
+#endif
 #endif
 }
 

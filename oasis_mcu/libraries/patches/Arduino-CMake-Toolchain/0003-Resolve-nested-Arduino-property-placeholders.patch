@@ -1,0 +1,33 @@
+From b8f6be5319df054996e38b79d2f28bc0a47e5df9 Mon Sep 17 00:00:00 2001
+From: Garrett Brown <eigendebugger@gmail.com>
+Date: Mon, 15 Jun 2026 00:00:00 -0700
+Subject: [PATCH] Resolve nested Arduino property placeholders
+
+ESP32 Arduino core 2.x builds compiler.path from placeholders such as:
+
+  {tools.{build.tarch}-{build.target}-elf-gcc.path}/bin/
+
+The first expansion pass resolves the inner build variables, leaving a newly
+formed tool path placeholder. Run the expander again when a pass changes the
+value so the generated placeholder can resolve to runtime.tools.*.path.
+---
+ Arduino/Utilities/PropertiesReader.cmake | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/Arduino/Utilities/PropertiesReader.cmake b/Arduino/Utilities/PropertiesReader.cmake
+index 4f9c6c5..37a987e 100644
+--- a/Arduino/Utilities/PropertiesReader.cmake
++++ b/Arduino/Utilities/PropertiesReader.cmake
+@@ -239,6 +239,10 @@ function(_properties_expand_value value return_value namespace)
+ 
+ 	endforeach()
+ 
++	if (NOT "${_value}" STREQUAL "${value}")
++		_properties_expand_value("${_value}" _value "${namespace}")
++	endif()
++
+ 	properties_set_parent_scope("/prop_int_resolved")
+ 	properties_set_parent_scope("/prop_int_unresolved")
+ 	set("${return_value}" "${_value}" PARENT_SCOPE)
+-- 
+2.43.0

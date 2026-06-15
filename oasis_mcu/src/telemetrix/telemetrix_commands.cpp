@@ -204,13 +204,13 @@ void TelemetrixCommands::set_pin_mode()
 
   switch (mode)
   {
-    case INPUT:
+    case AT_INPUT:
       pins->set_pin_mode_input(pin, commandBuffer[2]);
       break;
-    case INPUT_PULLUP:
+    case AT_INPUT_PULLUP:
       pins->set_pin_mode_input_pullup(pin, commandBuffer[2]);
       break;
-    case OUTPUT:
+    case AT_OUTPUT:
       pins->set_pin_mode_output(pin);
       break;
     case AT_ANALOG:

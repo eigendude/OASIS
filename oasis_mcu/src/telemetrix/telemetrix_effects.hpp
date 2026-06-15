@@ -27,7 +27,7 @@ public:
 
   enum EffectMode : uint8_t
   {
-    DISABLED = 1,
+    HELIPAD_DISABLED = 1,
     GUIDANCE = 2,
     LANDED = 3,
   };
@@ -60,7 +60,7 @@ private:
   {
     uint8_t irPin{0};
     uint8_t pwmPins[kHelipadPwmPinCount]{};
-    uint8_t mode{DISABLED};
+    uint8_t mode{HELIPAD_DISABLED};
     EFFECTS::HelipadEffect effect{};
     bool attached{false};
   };

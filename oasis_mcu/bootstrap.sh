@@ -37,6 +37,15 @@ ARDUINO_IDE_VERSION="1.8.19"
 # Version of the Arduino CLI to use
 ARDUINO_CLI_VERSION="1.3.1"
 
+# Arduino ESP32 package index URL
+ESP32_PACKAGE_INDEX_URL="https://espressif.github.io/arduino-esp32/package_esp32_index.json"
+
+# Version of the ESP32 Arduino core to use
+ESP32_CORE_VERSION="2.0.17"
+
+# Version of the ESP32 Servo library to use
+ESP32_SERVO_LIBRARY_VERSION="1.2.1"
+
 ################################################################################
 # Environment paths
 ################################################################################
@@ -206,6 +215,13 @@ else
   echo "Using existing Arduino CLI configuration..."
 fi
 
+if ! "${ARDUINO_CLI_BIN}" config dump | grep -qF "${ESP32_PACKAGE_INDEX_URL}"; then
+  echo "Adding ESP32 Arduino core package index..."
+  "${ARDUINO_CLI_BIN}" config add board_manager.additional_urls "${ESP32_PACKAGE_INDEX_URL}"
+else
+  echo "ESP32 Arduino core package index already configured"
+fi
+
 if ! "${ARDUINO_CLI_BIN}" core list | grep -q '^arduino:megaavr[[:space:]]'; then
   echo "Updating Arduino core index..."
   "${ARDUINO_CLI_BIN}" core update-index
@@ -213,6 +229,50 @@ if ! "${ARDUINO_CLI_BIN}" core list | grep -q '^arduino:megaavr[[:space:]]'; the
   "${ARDUINO_CLI_BIN}" core install arduino:megaavr
 else
   echo "Arduino megaAVR core already installed"
+fi
+
+INSTALLED_ESP32_CORE_VERSION="$(
+  "${ARDUINO_CLI_BIN}" core list |
+    awk '$1 == "esp32:esp32" { print $2 }'
+)"
+
+if [ -n "${INSTALLED_ESP32_CORE_VERSION}" ] &&
+   [ "${INSTALLED_ESP32_CORE_VERSION}" != "${ESP32_CORE_VERSION}" ]; then
+  echo "Removing ESP32 Arduino core v${INSTALLED_ESP32_CORE_VERSION}..."
+  "${ARDUINO_CLI_BIN}" core uninstall esp32:esp32
+  INSTALLED_ESP32_CORE_VERSION=""
+fi
+
+if [ -z "${INSTALLED_ESP32_CORE_VERSION}" ]; then
+  echo "Updating Arduino core index..."
+  "${ARDUINO_CLI_BIN}" core update-index
+  echo "Installing ESP32 Arduino core v${ESP32_CORE_VERSION}..."
+  "${ARDUINO_CLI_BIN}" core install "esp32:esp32@${ESP32_CORE_VERSION}"
+else
+  echo "ESP32 Arduino core v${ESP32_CORE_VERSION} already installed"
+fi
+
+################################################################################
+# Arduino library setup
+################################################################################
+
+INSTALLED_ESP32_SERVO_LIBRARY_VERSION="$(
+  "${ARDUINO_CLI_BIN}" lib list |
+    awk '$1 == "ESP32Servo" { print $2 }'
+)"
+
+if [ -n "${INSTALLED_ESP32_SERVO_LIBRARY_VERSION}" ] &&
+   [ "${INSTALLED_ESP32_SERVO_LIBRARY_VERSION}" != "${ESP32_SERVO_LIBRARY_VERSION}" ]; then
+  echo "Removing ESP32Servo library v${INSTALLED_ESP32_SERVO_LIBRARY_VERSION}..."
+  "${ARDUINO_CLI_BIN}" lib uninstall ESP32Servo
+  INSTALLED_ESP32_SERVO_LIBRARY_VERSION=""
+fi
+
+if [ -z "${INSTALLED_ESP32_SERVO_LIBRARY_VERSION}" ]; then
+  echo "Installing ESP32Servo library v${ESP32_SERVO_LIBRARY_VERSION}..."
+  "${ARDUINO_CLI_BIN}" lib install "ESP32Servo@${ESP32_SERVO_LIBRARY_VERSION}"
+else
+  echo "ESP32Servo library v${ESP32_SERVO_LIBRARY_VERSION} already installed"
 fi
 
 ################################################################################
@@ -232,6 +292,12 @@ patch \
   --no-backup-if-mismatch \
   --directory="${TOOLCHAIN_DIR}" \
   < "${PATCH_DIR}/Arduino-CMake-Toolchain/0002-Fix-Arduino-toolchain-compatibility-with-CMake-4.0.patch"
+patch \
+  -p1 \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${TOOLCHAIN_DIR}" \
+  < "${PATCH_DIR}/Arduino-CMake-Toolchain/0003-Resolve-nested-Arduino-property-placeholders.patch"
 
 # Patch Adafruit BluefruitLE_nRF51 library
 patch \

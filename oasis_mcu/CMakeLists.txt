@@ -36,6 +36,7 @@ cmake_minimum_required(VERSION 3.11)
 #   - unowifi (Uno WiFi Rev2)
 #   - leonardo
 #   - mega
+#   - sparkfun_esp32_thing (SparkFun ESP32 Thing)
 #
 
 # TODO: Currently board selection is done by scanning the hostname, but is
@@ -126,8 +127,28 @@ elseif ((HOST_NAME STREQUAL door) OR (HOST_NAME STREQUAL megapegasus))
   set(ENABLE_SONAR OFF)
   set(ENABLE_SPI OFF)
   set(ENABLE_STEPPER OFF)
+elseif (HOST_NAME STREQUAL macbook-vm OR TRUE)
+  # Building LEGO police spaceship wagon
+  set(ARDUINO_VARIANT sparkfun_esp32_thing)
+
+  set(ENABLE_AIR_QUALITY ON)
+  set(ENABLE_ANALOG OFF)
+  set(ENABLE_ANALOG_BATCH OFF)
+  set(ENABLE_BLUEFRUIT ON)
+  set(ENABLE_CPU_FAN OFF)
+  set(ENABLE_DHT ON)
+  set(ENABLE_DIAGNOSTICS ON)
+  set(ENABLE_DIGITAL ON)
+  set(ENABLE_EFFECTS ON)
+  set(ENABLE_I2C OFF)
+  set(ENABLE_IMU ON)
+  set(ENABLE_ONE_WIRE ON)
+  set(ENABLE_SERVO ON)
+  set(ENABLE_SONAR ON)
+  set(ENABLE_SPI ON)
+  set(ENABLE_STEPPER ON)
 else()
-  set(ARDUINO_VARIANT mega)
+  set(ARDUINO_VARIANT sparkfun_esp32_thing)
 
   #
   # With external libraries disabled:
@@ -177,7 +198,7 @@ else()
   #
   set(ENABLE_AIR_QUALITY ON)
   set(ENABLE_ANALOG ON)
-  set(ENABLE_ANALOG_BATCH OFF)
+  set(ENABLE_ANALOG_BATCH ON)
   set(ENABLE_BLUEFRUIT ON)
   set(ENABLE_CPU_FAN ON)
   set(ENABLE_DHT ON)
@@ -202,6 +223,9 @@ message(STATUS "Building for: ${ARDUINO_VARIANT}")
 if (NOT ARDUINO_BOARD_OPTIONS_FILE)
   set(ARDUINO_BOARD_OPTIONS_FILE "${CMAKE_CURRENT_SOURCE_DIR}/config/boards/BoardOptions-${ARDUINO_VARIANT}.cmake")
 endif()
+
+message(STATUS "Arduino variant: ${ARDUINO_VARIANT}")
+message(STATUS "Arduino board options: ${ARDUINO_BOARD_OPTIONS_FILE}")
 
 #
 # Arduino IDE download links
@@ -233,6 +257,12 @@ list(APPEND ARDUINO_LIBRARIES_SEARCH_PATHS_EXTRA
   "${CMAKE_CURRENT_SOURCE_DIR}/libraries"
 )
 
+if (DEFINED ENV{HOME})
+  list(APPEND ARDUINO_LIBRARIES_SEARCH_PATHS_EXTRA
+    "$ENV{HOME}/Arduino"
+  )
+endif()
+
 #
 # Load Arduino toolchain
 #
@@ -249,6 +279,21 @@ set(CMAKE_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/cmake/Arduino-CMake-Toolch
 ################################################################################
 
 project(oasis_mcu)
+
+message(STATUS "Arduino board: ${ARDUINO_BOARD}")
+message(STATUS "Arduino board architecture: ${ARDUINO_BOARD_BUILD_ARCH}")
+message(STATUS "C compiler: ${CMAKE_C_COMPILER}")
+message(STATUS "C++ compiler: ${CMAKE_CXX_COMPILER}")
+
+if (HOST_NAME STREQUAL macbook-vm)
+  if (CMAKE_C_COMPILER MATCHES "\\{.*\\}")
+    message(FATAL_ERROR "Unresolved Arduino compiler path: ${CMAKE_C_COMPILER}")
+  endif()
+
+  if (CMAKE_CXX_COMPILER MATCHES "\\{.*\\}")
+    message(FATAL_ERROR "Unresolved Arduino compiler path: ${CMAKE_CXX_COMPILER}")
+  endif()
+endif()
 
 ################################################################################
 #
@@ -270,7 +315,19 @@ endif()
 #
 # Disabling sized deallocation keeps the compiler using the non-sized delete
 # symbol that is available in the Arduino toolchain.
-add_compile_options(-fno-sized-deallocation)
+string(TOLOWER "${ARDUINO_BOARD_BUILD_ARCH}" ARDUINO_BOARD_BUILD_ARCH_LOWER)
+if ((ARDUINO_BOARD_BUILD_ARCH_LOWER STREQUAL "avr") OR
+    (ARDUINO_BOARD_BUILD_ARCH_LOWER STREQUAL "megaavr"))
+  add_compile_options(-fno-sized-deallocation)
+endif()
+
+if (ARDUINO_BOARD_BUILD_ARCH_LOWER STREQUAL "esp32")
+  set(ARDUINO_SERVO_LIBRARY ESP32Servo)
+  set(ENABLE_FIRMATA OFF)
+else()
+  set(ARDUINO_SERVO_LIBRARY Servo)
+  set(ENABLE_FIRMATA ON)
+endif()
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 
@@ -295,6 +352,8 @@ find_package(ament_cmake REQUIRED)
 #
 # Firmata
 #
+
+if (ENABLE_FIRMATA)
 
 set(FIRMATA_SOURCES
   src/firmata/firmata_callbacks.cpp
@@ -391,7 +450,7 @@ if (ENABLE_SERVO)
     -DENABLE_SERVO
   )
   list(APPEND FIRMATA_LIBRARIES
-    Servo
+    ${ARDUINO_SERVO_LIBRARY}
   )
 endif()
 
@@ -436,6 +495,8 @@ add_library(oasis_mcu_firmata ${FIRMATA_SOURCES})
 target_compile_definitions(oasis_mcu_firmata PRIVATE ${FIRMATA_DEFINITIONS})
 
 target_link_arduino_libraries(oasis_mcu_firmata PRIVATE ${FIRMATA_LIBRARIES})
+
+endif()
 
 #
 # Telemetrix
@@ -574,7 +635,7 @@ if (ENABLE_SERVO)
     -DENABLE_SERVO=1
   )
   list(APPEND TELEMETRIX_LIBRARIES
-    Servo
+    ${ARDUINO_SERVO_LIBRARY}
   )
 endif()
 
@@ -670,6 +731,8 @@ target_link_arduino_libraries(oasis_mcu_utils PRIVATE
 # firmata_node
 #
 
+if (ENABLE_FIRMATA)
+
 add_executable(firmata_node
   src/ros/firmata_node.cpp
 )
@@ -685,7 +748,7 @@ target_link_arduino_libraries(firmata_node PRIVATE
   ${FIRMATA_LIBRARIES}
 )
 
-# This is needed for the generation of HEX binary and uploading it
+# This is needed for generating the board upload image and uploading it
 #
 # Upload with:
 #   make upload TARGET=firmata_node SERIAL_PORT=<serial port, e.g. /dev/ttyACM0>
@@ -700,6 +763,8 @@ install(
   DESTINATION
     share/${PROJECT_NAME}
 )
+
+endif()
 
 #
 # telemetrix_node
@@ -723,7 +788,7 @@ target_link_arduino_libraries(telemetrix_node PRIVATE
   ${TELEMETRIX_LIBRARIES}
 )
 
-# This is needed for the generation of HEX binary and uploading it
+# This is needed for generating the board upload image and uploading it
 #
 # Upload with:
 #   make upload TARGET=telemetrix_node SERIAL_PORT=<serial port, e.g. /dev/ttyACM0>

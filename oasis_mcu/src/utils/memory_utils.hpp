@@ -49,7 +49,7 @@ public:
    * memory
    *
    * When RAM is de-allocted, the memory fragment is added to a list maintained
-   * by avr-libc's memory allocation routines.
+   * by the platform memory allocation routines.
    */
   static size_t GetFreeHeap();
 

@@ -9,7 +9,11 @@
 
 #include <stdint.h>
 
+#if defined(ARDUINO_ARCH_ESP32)
+#include <ESP32Servo.h>
+#else
 #include <Servo.h>
+#endif
 
 namespace OASIS
 {

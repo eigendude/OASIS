@@ -102,7 +102,7 @@ void TelemetrixEffects::ConfigureHelipad(uint8_t instanceId,
   instance.pwmPins[0] = pinData[pwmPinOffset];
   instance.pwmPins[1] = pinData[pwmPinOffset + 1];
   instance.effect.Reset();
-  instance.mode = DISABLED;
+  instance.mode = HELIPAD_DISABLED;
   instance.attached = true;
 
   pinMode(instance.pwmPins[0], OUTPUT);
@@ -145,7 +145,7 @@ void TelemetrixEffects::SetHelipad(uint8_t instanceId,
     return;
   }
 
-  instance.mode = DISABLED;
+  instance.mode = HELIPAD_DISABLED;
   instance.effect.Disable();
   SetOutputsOff(instance.pwmPins, kHelipadPwmPinCount, instance.attached);
 }
@@ -231,7 +231,7 @@ void TelemetrixEffects::ScanHelipad(HelipadInstance& instance, uint32_t nowMs)
 void TelemetrixEffects::ResetHelipad(HelipadInstance& instance)
 {
   SetOutputsOff(instance.pwmPins, kHelipadPwmPinCount, instance.attached);
-  instance.mode = DISABLED;
+  instance.mode = HELIPAD_DISABLED;
   instance.effect.Reset();
   instance.attached = false;
 }

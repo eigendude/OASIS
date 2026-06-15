@@ -110,8 +110,10 @@ void TelemetrixServer::ScanSensors()
   using ScanFunction = void (TelemetrixServer::*)();
 
   static const ScanFunction scanFunctions[] = {
-      &ScanCPUFans, &ScanDHTs, &ScanEffects, &ScanI2C,
-      &ScanMemory,  &ScanPins, &ScanSonars,  &ScanSteppers,
+      &TelemetrixServer::ScanCPUFans, &TelemetrixServer::ScanDHTs,
+      &TelemetrixServer::ScanEffects, &TelemetrixServer::ScanI2C,
+      &TelemetrixServer::ScanMemory,  &TelemetrixServer::ScanPins,
+      &TelemetrixServer::ScanSonars,  &TelemetrixServer::ScanSteppers,
   };
 
   for (auto scanFunction : scanFunctions)
