@@ -20,7 +20,7 @@ constexpr uint8_t SONAR_SCAN_INTERVAL = 33;
 } // namespace
 
 Sonar::Sonar(uint8_t triggerPin, uint8_t echoPin)
-  : m_triggerPin(triggerPin), m_ultrasonic(triggerPin, echoPin, SONAR_TIMEOUT)
+  : m_triggerPin(triggerPin), m_echoPin(echoPin), m_ultrasonic(triggerPin, echoPin, SONAR_TIMEOUT)
 {
 }
 
