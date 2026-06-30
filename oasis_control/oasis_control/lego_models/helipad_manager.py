@@ -333,29 +333,15 @@ class HelipadManager:
 
     def _set_mode_async(self, mode: HelipadMode) -> None:
         if self._mode == mode and self._mode_request_future is None:
-            self._node.get_logger().debug(
-                "HELIPAD mode_skip "
-                f"mode={mode.name} node_t={self._node_time_sec():.6f}"
-            )
             return
 
         if self._mode_request_future is not None:
             self._pending_mode = mode
-            self._node.get_logger().debug(
-                "HELIPAD mode_pending "
-                f"mode={mode.name} current={self._mode.name} "
-                f"node_t={self._node_time_sec():.6f}"
-            )
             return
 
         self._dispatch_mode_request(mode)
 
     def _dispatch_mode_request(self, mode: HelipadMode) -> None:
-        self._node.get_logger().debug(
-            "HELIPAD mode_dispatch "
-            f"mode={mode.name} node_t={self._node_time_sec():.6f}"
-        )
-
         set_effect_req: SetEffectSvc.Request = SetEffectSvc.Request()
         set_effect_req.effect_kind = EffectKindMsg.HELIPAD
         set_effect_req.instance_id = 0
@@ -370,12 +356,6 @@ class HelipadManager:
         self._mode_request_future = None
 
         succeeded: bool = future.result() is not None
-        self._node.get_logger().debug(
-            "HELIPAD mode_done "
-            f"mode={mode.name} success={succeeded} "
-            f"node_t={self._node_time_sec():.6f}"
-        )
-
         if not succeeded:
             self._node.get_logger().error(
                 f"Exception while calling service: {future.exception()}"
@@ -386,12 +366,6 @@ class HelipadManager:
         next_mode: HelipadMode | None = self._pending_mode
         self._pending_mode = None
         will_dispatch: bool = next_mode is not None and next_mode != self._mode
-        next_mode_name: str = next_mode.name if next_mode is not None else "None"
-        self._node.get_logger().debug(
-            "HELIPAD mode_done_pending "
-            f"pending={next_mode_name} will_dispatch={will_dispatch} "
-            f"node_t={self._node_time_sec():.6f}"
-        )
 
         if will_dispatch and next_mode is not None:
             self._dispatch_mode_request(next_mode)
@@ -408,7 +382,6 @@ class HelipadManager:
         if analog_reading_msg.analog_pin != self._ir_pin:
             return
 
-        analog_pin: int = analog_reading_msg.analog_pin
         analog_value: float = analog_reading_msg.analog_value
         if not 0.0 <= analog_value <= 1.0:
             self._node.get_logger().warning(
@@ -418,13 +391,6 @@ class HelipadManager:
 
         normalized_value: float = max(0.0, min(analog_value, 1.0))
         self._sensor_voltage = normalized_value * analog_reading_msg.reference_voltage
-        node_timestamp_sec: float = self._node_time_sec()
-        self._node.get_logger().debug(
-            "HELIPAD analog "
-            f"pin=A{analog_pin} raw_norm={analog_value:.4f} "
-            f"norm={normalized_value:.4f} voltage={self._sensor_voltage:.4f} "
-            f"msg_t={timestamp_sec:.6f} node_t={node_timestamp_sec:.6f}"
-        )
 
         if self._initializing:
             return
@@ -433,15 +399,7 @@ class HelipadManager:
             timestamp_sec,
             self._sensor_voltage,
         )
-        self._node.get_logger().debug(
-            "HELIPAD mode_decision "
-            f"mode={mode.name} voltage={self._sensor_voltage:.4f} "
-            f"landed={self._mode_tracker.landed} node_t={node_timestamp_sec:.6f}"
-        )
         self._set_mode_async(mode)
-
-    def _node_time_sec(self) -> float:
-        return self._node.get_clock().now().nanoseconds / 1e9
 
     @staticmethod
     def _time_msg_to_sec(stamp: TimeMsg) -> float:
