@@ -13,6 +13,7 @@
 #
 
 from typing import Dict
+from typing import Optional
 
 import rclpy.client
 import rclpy.node
@@ -46,6 +47,10 @@ MAX_SAFE_MOTOR_DUTY_CYCLE: float = 0.142
 # Unitless B-button command boost, derived from the legacy 1.176
 # boosted/unboosted command ratio
 B_BUTTON_TRAIN_COMMAND_BOOST: float = 0.176  # 17.6% boost when B is pressed
+
+# Unitless duty-cycle delta required before repeating train command debug logs.
+# This reports meaningful speed changes while ignoring controller jitter.
+TRAIN_COMMAND_DEBUG_DUTY_EPSILON: float = 0.0142
 
 
 ################################################################################
@@ -89,6 +94,7 @@ class StationInput:
         self._hold_speed: bool = (
             False  # True to hold a steady speed, toggled with Y button
         )
+        self._last_logged_motor_duty_command: Optional[float] = None
 
         # Reliable listener QOS profile for subscribers
         qos_profile: rclpy.qos.QoSProfile = (
@@ -214,12 +220,27 @@ class StationInput:
             # Update magnitude
             self._magnitude = motor_duty_command
 
-            self._node.get_logger().debug(
-                "Train command: "
-                f"trigger={trigger_command:.3f} "
-                f"safe={safe_train_command:.3f} "
-                f"duty={motor_duty_command:.3f}"
-            )
+            previous_logged_duty: Optional[float] = self._last_logged_motor_duty_command
+            should_log_train_command: bool = previous_logged_duty is None
+            if previous_logged_duty is not None:
+                stopped_changed: bool = (previous_logged_duty == 0.0) != (
+                    motor_duty_command == 0.0
+                )
+                duty_changed: bool = (
+                    abs(motor_duty_command - previous_logged_duty)
+                    >= TRAIN_COMMAND_DEBUG_DUTY_EPSILON
+                )
+                should_log_train_command = stopped_changed or duty_changed
+
+            if should_log_train_command:
+                self._last_logged_motor_duty_command = motor_duty_command
+
+                self._node.get_logger().debug(
+                    "Train command: "
+                    f"trigger={trigger_command:.3f} "
+                    f"safe={safe_train_command:.3f} "
+                    f"duty={motor_duty_command:.3f}"
+                )
 
             # HUD motor voltage is measured separately from ADC telemetry;
             # this value is only the H-bridge duty command
