@@ -44,13 +44,13 @@ MOTOR_EPSILON: float = 0.02
 # command around the track, in volts
 NOMINAL_MOTOR_VOLTAGE: float = 6.78
 
-# Maximum motor-voltage target allowed while B is pressed, in volts
+# Maximum motor-voltage target allowed while X is pressed, in volts
 MAX_MOTOR_VOLTAGE: float = 7.5
 
 # Unitless duty-cycle cap for the nominal motor-voltage target
 MAX_SAFE_MOTOR_DUTY_CYCLE: float = 0.142
 
-# Unitless command cap while B is pressed, derived from the boosted voltage
+# Unitless command cap while X is pressed, derived from the boosted voltage
 # target divided by the nominal voltage target
 MAX_BOOSTED_TRAIN_COMMAND: float = MAX_MOTOR_VOLTAGE / NOMINAL_MOTOR_VOLTAGE
 
@@ -97,7 +97,7 @@ class StationInput:
         self._magnitude: float = 0.0
         self._reverse: bool = False  # True if magnitude is in reverse (high DIR pin)
         self._last_y_button: bool = False  # Set to the last value of the Y button
-        self._last_b_button: bool = False  # Set to the last value of the B button
+        self._last_x_button: bool = False  # Set to the last value of the X button
         self._hold_speed: bool = (
             False  # True to hold a steady speed, toggled with Y button
         )
@@ -152,6 +152,7 @@ class StationInput:
             # Look for button states
             a_button: bool = False
             b_button: bool = False
+            x_button: bool = False
             y_button: bool = False
             left_trigger: float = 0.0
             right_trigger: float = 0.0
@@ -164,6 +165,8 @@ class StationInput:
                     a_button = pressed
                 if digital_button_name == "b":
                     b_button = pressed
+                if digital_button_name == "x":
+                    x_button = pressed
                 if digital_button_name == "y":
                     y_button = pressed
 
@@ -179,9 +182,9 @@ class StationInput:
             # Raw controller trigger command, normalized to [-1, 1]
             trigger_command: float = right_trigger - left_trigger
 
-            # Zero train command if A or B buttons are not pressed
+            # Zero train command if A or X buttons are not pressed
             train_command: float = trigger_command
-            if not a_button and not b_button:
+            if not a_button and not x_button:
                 train_command = 0.0
 
             # Toggle hold speed when Y button is pressed
@@ -190,8 +193,8 @@ class StationInput:
                 if y_button:
                     self._hold_speed = not self._hold_speed
 
-            # Disable hold speed if A is pressed
-            if a_button:
+            # Disable hold speed if A or B is pressed
+            if a_button or b_button:
                 self._hold_speed = False
 
             # Full forward train command if hold speed is enabled
@@ -200,9 +203,9 @@ class StationInput:
 
             unboosted_safe_train_command: float = max(-1.0, min(train_command, 1.0))
 
-            # B scales the command toward the measured maximum voltage target
+            # X scales the command toward the measured maximum voltage target
             safe_train_command: float = unboosted_safe_train_command
-            if b_button:
+            if x_button:
                 safe_train_command *= MAX_BOOSTED_TRAIN_COMMAND
 
             safe_train_command = max(
@@ -236,12 +239,12 @@ class StationInput:
             # Update magnitude
             self._magnitude = motor_duty_command
 
-            if b_button != self._last_b_button:
-                self._last_b_button = b_button
+            if x_button != self._last_x_button:
+                self._last_x_button = x_button
 
                 self._node.get_logger().debug(
                     "Train boost: "
-                    f"{'enabled' if b_button else 'disabled'} "
+                    f"{'enabled' if x_button else 'disabled'} "
                     f"x={MAX_BOOSTED_TRAIN_COMMAND:.3f} "
                     f"max={MAX_MOTOR_VOLTAGE:.2f}V"
                 )
