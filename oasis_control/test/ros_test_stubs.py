@@ -390,7 +390,29 @@ class _SetDigitalMode:
         pass
 
 
+class _GetMACAddress:
+    class Request:
+        def __init__(self) -> None:
+            self.hostname: str = ""
+
+    class Response:
+        def __init__(self) -> None:
+            self.mac_address: str = ""
+
+
+class _WoLCommand:
+    class Request:
+        def __init__(self) -> None:
+            self.mac_address: str = ""
+
+    class Response:
+        pass
+
+
 class _Future:
+    def done(self) -> bool:
+        return True
+
     def result(self) -> object:
         return object()
 
@@ -755,9 +777,11 @@ def _install_oasis_msgs_stub() -> None:
     _set_module_attr(oasis_msgs_msg_module, "SerialDeviceScan", _SerialDeviceScan)
     _set_module_attr(oasis_msgs_msg_module, "UPSStatus", _UPSStatus)
     _set_module_attr(oasis_msgs_msg_module, "UsbDevice", _UsbDevice)
+    _set_module_attr(oasis_msgs_srv_module, "GetMACAddress", _GetMACAddress)
     _set_module_attr(oasis_msgs_srv_module, "SetAnalogMode", _SetAnalogMode)
     _set_module_attr(oasis_msgs_srv_module, "SetDigitalMode", _SetDigitalMode)
     _set_module_attr(oasis_msgs_srv_module, "UPSCommand", _UPSCommand)
+    _set_module_attr(oasis_msgs_srv_module, "WoLCommand", _WoLCommand)
     _set_module_attr(oasis_msgs_module, "msg", oasis_msgs_msg_module)
     _set_module_attr(oasis_msgs_module, "srv", oasis_msgs_srv_module)
     _register_module("oasis_msgs", oasis_msgs_module)
@@ -818,7 +842,12 @@ def _install_rclpy_stub() -> None:
     def _ok() -> bool:
         return False
 
-    def _spin_until_future_complete(node: object, future: _Future) -> None:
+    def _spin_until_future_complete(
+        node: object,
+        future: _Future,
+        *_: Any,
+        **__: Any,
+    ) -> None:
         del node, future
         return None
 

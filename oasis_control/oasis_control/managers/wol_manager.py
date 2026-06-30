@@ -12,7 +12,9 @@
 # Manager for a computer that supports Wake-On-LAN (WOL)
 #
 
+import re
 from typing import Optional
+from typing import cast
 
 import rclpy.client
 import rclpy.node
@@ -33,6 +35,11 @@ CLIENT_WOL = "wol"
 
 # Timeout for ROS service calls
 TIMEOUT_SECS: float = 5.0
+
+# Colon-separated IEEE 802 MAC address format accepted by the WoL service
+MAC_ADDRESS_PATTERN: re.Pattern[str] = re.compile(
+    r"^(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$"
+)
 
 ################################################################################
 # ROS node
@@ -118,23 +125,35 @@ class WolManager:
                 self._logger.error("MAC address future was not initialized")
                 return False
 
-            rclpy.spin_until_future_complete(
-                self._node, mac_address_future, None, TIMEOUT_SECS
+            mac_address_response_object = self._wait_for_service_response(
+                future=mac_address_future,
+                service_name=CLIENT_GET_MAC_ADDRESS,
+                timeout_context=f"getting MAC address for {self._hostname}",
+                service_context=f"for {self._hostname}",
             )
-
-            mac_address_response = mac_address_future.result()
-            if mac_address_response is None:
-                self._logger.error(
-                    f"Exception while calling service: {mac_address_future.exception()}"
-                )
+            if mac_address_response_object is None:
                 return False
+
+            mac_address_response: GetMACAddressSvc.Response = cast(
+                GetMACAddressSvc.Response,
+                mac_address_response_object,
+            )
 
             # Record MAC address
             self._mac_address = mac_address_response.mac_address
 
             # Log MAC address
-            if self._mac_address == "":
-                self._logger.error(f"Failed to get MAC address for {self._hostname}")
+            if self._mac_address.strip() == "":
+                self._logger.error(
+                    "get_mac_address service returned an empty MAC address "
+                    f"for {self._hostname}"
+                )
+                return False
+            elif not self._is_valid_mac_address(self._mac_address):
+                self._logger.error(
+                    "get_mac_address service returned an invalid MAC address "
+                    f"for {self._hostname}: {self._mac_address}"
+                )
                 return False
             else:
                 self._logger.info(
@@ -156,13 +175,52 @@ class WolManager:
         if wol_future is None:
             self._logger.error("WoL future was not initialized")
             return False
-        rclpy.spin_until_future_complete(self._node, wol_future, None, TIMEOUT_SECS)
-
-        wol_response = wol_future.result()
+        wol_response = self._wait_for_service_response(
+            future=wol_future,
+            service_name=CLIENT_WOL,
+            timeout_context=(
+                f"sending Wake-on-LAN to {self._hostname} ({self._mac_address})"
+            ),
+            service_context=f"for {self._hostname} ({self._mac_address})",
+        )
         if wol_response is None:
-            self._logger.error(
-                f"Exception while calling service: {wol_future.exception()}"
-            )
             return False
 
         return True
+
+    def _wait_for_service_response(
+        self,
+        future: rclpy.task.Future,
+        service_name: str,
+        timeout_context: str,
+        service_context: str,
+    ) -> Optional[object]:
+        # A timeout can return before the future is done. In that case
+        # future.exception() can still be None, so check done() first.
+        rclpy.spin_until_future_complete(
+            node=self._node,
+            future=future,
+            timeout_sec=TIMEOUT_SECS,
+        )
+
+        if not future.done():
+            self._logger.error(f"Timed out after {TIMEOUT_SECS}s {timeout_context}")
+            return None
+
+        try:
+            response: object = future.result()
+        except Exception as ex:
+            self._logger.error(f"{service_name} service failed {service_context}: {ex}")
+            return None
+
+        if response is None:
+            self._logger.error(
+                f"{service_name} service completed with no response {service_context}"
+            )
+            return None
+
+        return response
+
+    @staticmethod
+    def _is_valid_mac_address(mac_address: str) -> bool:
+        return MAC_ADDRESS_PATTERN.fullmatch(mac_address) is not None
