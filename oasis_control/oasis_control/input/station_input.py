@@ -40,13 +40,19 @@ CONTROLLER_PROFILE = "game.controller.default"
 # Motor duty commands below this magnitude are treated as stopped
 MOTOR_EPSILON: float = 0.02
 
-# Unitless duty-cycle cap for a full safe train command, derived from the
-# legacy full-right-trigger, no-B command
+# Nominal motor-voltage target measured from the normal full-speed A-button
+# command around the track, in volts
+NOMINAL_MOTOR_VOLTAGE: float = 6.78
+
+# Maximum motor-voltage target allowed while B is pressed, in volts
+MAX_MOTOR_VOLTAGE: float = 7.5
+
+# Unitless duty-cycle cap for the nominal motor-voltage target
 MAX_SAFE_MOTOR_DUTY_CYCLE: float = 0.142
 
-# Unitless B-button command boost, derived from the legacy 1.176
-# boosted/unboosted command ratio
-B_BUTTON_TRAIN_COMMAND_BOOST: float = 0.176  # 17.6% boost when B is pressed
+# Unitless command cap while B is pressed, derived from the boosted voltage
+# target divided by the nominal voltage target
+MAX_BOOSTED_TRAIN_COMMAND: float = MAX_MOTOR_VOLTAGE / NOMINAL_MOTOR_VOLTAGE
 
 # Unitless duty-cycle delta required before repeating train command debug logs.
 # This reports meaningful speed changes while ignoring controller jitter.
@@ -91,6 +97,7 @@ class StationInput:
         self._magnitude: float = 0.0
         self._reverse: bool = False  # True if magnitude is in reverse (high DIR pin)
         self._last_y_button: bool = False  # Set to the last value of the Y button
+        self._last_b_button: bool = False  # Set to the last value of the B button
         self._hold_speed: bool = (
             False  # True to hold a steady speed, toggled with Y button
         )
@@ -191,12 +198,17 @@ class StationInput:
             if self._hold_speed:
                 train_command = 1.0
 
-            # B retains the legacy boost behavior within the safe duty cap
-            safe_train_command: float = train_command
-            if b_button:
-                safe_train_command *= 1.0 + B_BUTTON_TRAIN_COMMAND_BOOST
+            unboosted_safe_train_command: float = max(-1.0, min(train_command, 1.0))
 
-            safe_train_command = max(-1.0, min(safe_train_command, 1.0))
+            # B scales the command toward the measured maximum voltage target
+            safe_train_command: float = unboosted_safe_train_command
+            if b_button:
+                safe_train_command *= MAX_BOOSTED_TRAIN_COMMAND
+
+            safe_train_command = max(
+                -MAX_BOOSTED_TRAIN_COMMAND,
+                min(safe_train_command, MAX_BOOSTED_TRAIN_COMMAND),
+            )
 
             reverse: bool = safe_train_command < 0.0
             motor_duty_command: float = (
@@ -217,8 +229,22 @@ class StationInput:
             if motor_duty_command < MOTOR_EPSILON:
                 motor_duty_command = 0.0
 
+            target_motor_voltage: float = safe_train_command * NOMINAL_MOTOR_VOLTAGE
+            if motor_duty_command == 0.0:
+                target_motor_voltage = 0.0
+
             # Update magnitude
             self._magnitude = motor_duty_command
+
+            if b_button != self._last_b_button:
+                self._last_b_button = b_button
+
+                self._node.get_logger().debug(
+                    "Train boost: "
+                    f"{'enabled' if b_button else 'disabled'} "
+                    f"x={MAX_BOOSTED_TRAIN_COMMAND:.3f} "
+                    f"max={MAX_MOTOR_VOLTAGE:.2f}V"
+                )
 
             previous_logged_duty: Optional[float] = self._last_logged_motor_duty_command
             should_log_train_command: bool = previous_logged_duty is None
@@ -237,8 +263,8 @@ class StationInput:
 
                 self._node.get_logger().debug(
                     "Train command: "
-                    f"trigger={trigger_command:.3f} "
-                    f"safe={safe_train_command:.3f} "
+                    f"v={target_motor_voltage:.2f}V "
+                    f"cmd={safe_train_command:.3f} "
                     f"duty={motor_duty_command:.3f}"
                 )
 
