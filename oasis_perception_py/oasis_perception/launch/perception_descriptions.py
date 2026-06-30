@@ -41,6 +41,9 @@ ROS_NAMESPACE: str = "oasis"
 CPP_PACKAGE_NAME: str = "oasis_perception_cpp"
 PYTHON_PACKAGE_NAME: str = "oasis_perception_py"
 
+# Component containers need logger names because one process can host many nodes
+COMPONENT_CONSOLE_OUTPUT_FORMAT: str = "[{severity}] [{name}]: {message}"
+
 
 ################################################################################
 # Node descriptions
@@ -65,6 +68,9 @@ class PerceptionDescriptions:
             package="rclcpp_components",
             executable="component_container_mt",
             output="screen",
+            additional_env={
+                "RCUTILS_CONSOLE_OUTPUT_FORMAT": COMPONENT_CONSOLE_OUTPUT_FORMAT,
+            },
             # Reduce noisy INFO logs when loading components while retaining node logs
             arguments=[
                 "--ros-args",
@@ -340,6 +346,9 @@ class PerceptionDescriptions:
             package="rclcpp_components",
             executable="component_container_mt",
             output="screen",
+            additional_env={
+                "RCUTILS_CONSOLE_OUTPUT_FORMAT": COMPONENT_CONSOLE_OUTPUT_FORMAT,
+            },
             composable_node_descriptions=[
                 ComposableNode(
                     namespace=ROS_NAMESPACE,

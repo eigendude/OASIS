@@ -21,8 +21,8 @@ User=ubuntu
 Environment=ROS2_DISTRO=@ROS2_DISTRO@
 Environment=RMW_IMPLEMENTATION=rmw_fastrtps_dynamic_cpp
 
-# Remove ROS 2 log timestamps to keep lines short and readable
-Environment=RCUTILS_CONSOLE_OUTPUT_FORMAT="[{severity}] [{name}]: {message}"
+# Remove ROS 2 log timestamps and logger names to keep lines short and readable
+Environment=RCUTILS_CONSOLE_OUTPUT_FORMAT="[{severity}]: {message}"
 
 #
 # OpenCV configuration

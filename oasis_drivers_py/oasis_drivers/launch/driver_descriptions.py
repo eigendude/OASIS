@@ -56,6 +56,9 @@ PYTHON_PACKAGE_NAME: str = "oasis_drivers_py"
 CPP_PACKAGE_NAME: str = "oasis_drivers_cpp"
 HOME_PACKAGE_NAME: str = CONFIG.HOME_PACKAGE_NAME
 
+# Component containers need logger names because one process can host many nodes
+COMPONENT_CONSOLE_OUTPUT_FORMAT: str = "[{severity}] [{name}]: {message}"
+
 
 ################################################################################
 # Driver nodes
@@ -108,6 +111,9 @@ class DriverDescriptions:
             output="screen",
             prefix=launch_prefix,
             arguments=container_arguments,
+            additional_env={
+                "RCUTILS_CONSOLE_OUTPUT_FORMAT": COMPONENT_CONSOLE_OUTPUT_FORMAT,
+            },
             composable_node_descriptions=composable_nodes,
         )
         ld.add_action(driver_container)
@@ -231,6 +237,9 @@ class DriverDescriptions:
                 package="rclcpp_components",
                 executable="component_container_mt",
                 output="screen",
+                additional_env={
+                    "RCUTILS_CONSOLE_OUTPUT_FORMAT": COMPONENT_CONSOLE_OUTPUT_FORMAT,
+                },
                 composable_node_descriptions=[
                     # TODO: Composable nodes seem to break when not using the modern image_transport API
                     # ComposableNode(
@@ -467,6 +476,9 @@ class DriverDescriptions:
             package="rclcpp_components",
             executable="component_container_mt",
             output="screen",
+            additional_env={
+                "RCUTILS_CONSOLE_OUTPUT_FORMAT": COMPONENT_CONSOLE_OUTPUT_FORMAT,
+            },
             composable_node_descriptions=[
                 ComposableNode(
                     namespace=ROS_NAMESPACE,
