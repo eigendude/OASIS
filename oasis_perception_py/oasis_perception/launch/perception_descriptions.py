@@ -301,7 +301,7 @@ class PerceptionDescriptions:
 
     @staticmethod
     def add_checkerboard_detector(
-        ld: LaunchDescription,
+        composable_nodes: list[ComposableNode],
         system_id: str,
         camera_model: str,
         input_resolution: str = "",
@@ -317,16 +317,16 @@ class PerceptionDescriptions:
                 "camera_model": camera_model,
                 "checkerboard_width": 8,
                 "checkerboard_height": 6,
+                "processing_interval": 3,
             }
             if image_transport:
                 parameters["image_transport"] = image_transport
 
-            checkerboard_detector_node: Node = Node(
+            checkerboard_detector_node: ComposableNode = ComposableNode(
                 namespace=ROS_NAMESPACE,
                 package=CPP_PACKAGE_NAME,
-                executable="checkerboard_detector",
+                plugin="oasis_perception::CheckerboardDetectorComponent",
                 name=f"checkerboard_detector_{system_id}",
-                output="screen",
                 parameters=[parameters],
                 remappings=[
                     # Topics
@@ -341,7 +341,7 @@ class PerceptionDescriptions:
                     ("image", f"{system_id}/{RESOLUTION_PREFIX}image_raw"),
                 ],
             )
-            ld.add_action(checkerboard_detector_node)
+            composable_nodes.append(checkerboard_detector_node)
 
     #
     # Hello World

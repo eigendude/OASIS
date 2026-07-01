@@ -136,7 +136,7 @@ def generate_launch_description() -> LaunchDescription:
 
         # Checkerboard detection
         PerceptionDescriptions.add_checkerboard_detector(
-            ld,
+            composable_nodes,
             system_id="station",
             camera_model="pinhole",
             input_resolution="sd",
