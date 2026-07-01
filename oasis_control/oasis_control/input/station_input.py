@@ -22,6 +22,7 @@ import rclpy.subscription
 import rclpy.task
 
 from oasis_control.input.checkerboard_slowdown import CheckerboardCruiseSlowdown
+from oasis_control.input.park_mode import TrainParkMode
 from oasis_control.lego_models.station_manager import StationManager
 from oasis_msgs.msg import PeripheralConstants as PeripheralConstantsMsg
 from oasis_msgs.msg import PeripheralInfo as PeripheralInfoMsg
@@ -88,6 +89,7 @@ class StationInput:
         node: rclpy.node.Node,
         station_manager: StationManager,
         checkerboard_slowdown: CheckerboardCruiseSlowdown,
+        park_mode: TrainParkMode,
     ) -> None:
         """
         Initialize resources.
@@ -96,6 +98,7 @@ class StationInput:
         self._node = node
         self._station_manager: StationManager = station_manager
         self._checkerboard_slowdown: CheckerboardCruiseSlowdown = checkerboard_slowdown
+        self._park_mode: TrainParkMode = park_mode
 
         # Initialize peripheral state
         self._joysticks: Dict[str, str] = {}
@@ -105,6 +108,7 @@ class StationInput:
         self._reverse: bool = False  # True if magnitude is in reverse (high DIR pin)
         self._last_y_button: bool = False  # Set to the last value of the Y button
         self._last_x_button: bool = False  # Set to the last value of the X button
+        self._last_start_button: bool = False
         self._hold_speed: bool = (
             False  # True to hold a steady speed, toggled with Y button
         )
@@ -160,6 +164,14 @@ class StationInput:
         checkerboard_visible: bool,
         now_sec: float,
     ) -> bool:
+        if self._park_mode.update_checkerboard_status(checkerboard_visible):
+            self._stop_train()
+            self._node.get_logger().info("Park mode complete; train parked")
+            return False
+
+        if self._park_mode.active:
+            return False
+
         interrupted: bool = self._checkerboard_slowdown.update_checkerboard_status(
             checkerboard_visible,
             now_sec,
@@ -215,6 +227,7 @@ class StationInput:
             b_button: bool = False
             x_button: bool = False
             y_button: bool = False
+            start_button: bool = False
             left_trigger: float = 0.0
             right_trigger: float = 0.0
 
@@ -230,6 +243,8 @@ class StationInput:
                     x_button = pressed
                 if digital_button_name == "y":
                     y_button = pressed
+                if digital_button_name == "start":
+                    start_button = pressed
 
             for analog_button in peripheral_input_msg.analog_buttons:
                 analog_button_name: str = analog_button.name
@@ -239,6 +254,13 @@ class StationInput:
                     left_trigger = analog_magnitude
                 elif analog_button_name == "righttrigger":
                     right_trigger = analog_magnitude
+
+            if b_button:
+                self._cancel_park_mode()
+                self._hold_speed = False
+                self.cancel_checkerboard_slowdown()
+                self._stop_train()
+                return
 
             # Raw controller trigger command, normalized to [-1, 1]
             trigger_command: float = right_trigger - left_trigger
@@ -255,8 +277,13 @@ class StationInput:
                 if y_button:
                     self._hold_speed = not self._hold_speed
 
-            # Disable hold speed if A or B is pressed
-            if a_button or b_button:
+            if self._last_start_button != start_button:
+                self._last_start_button = start_button
+                if start_button:
+                    self._activate_park_mode()
+
+            # Disable hold speed if A or park mode is pressed
+            if a_button or self._park_mode.active:
                 self._hold_speed = False
 
             if hold_speed_before_input and not self._hold_speed:
@@ -265,6 +292,9 @@ class StationInput:
                         "Checkerboard slowdown cancelled because cruise ended"
                     )
 
+            if a_button or x_button or y_button:
+                self._cancel_park_mode()
+
             # Full forward train command if hold speed is enabled
             if self._hold_speed:
                 train_command = self._checkerboard_slowdown.scale_command(
@@ -272,6 +302,11 @@ class StationInput:
                     cruise_active=True,
                     now_sec=self._now_sec(),
                 )
+
+            if self._park_mode.active:
+                train_command = -self._park_mode.command
+                self._hold_speed = False
+                self.cancel_checkerboard_slowdown()
 
             unboosted_safe_train_command: float = max(-1.0, min(train_command, 1.0))
 
@@ -365,6 +400,30 @@ class StationInput:
 
         self._station_manager.set_motor_direction(False)
         self._station_manager.set_motor_pwm(motor_duty_command, False)
+
+    def _activate_park_mode(self) -> None:
+        if not self._park_mode.enabled:
+            self._node.get_logger().info("Park mode disabled")
+            return
+
+        self._hold_speed = False
+        self.cancel_checkerboard_slowdown()
+
+        if self._park_mode.activate():
+            self._node.get_logger().info("Park mode active; reversing train")
+
+    def _cancel_park_mode(self) -> None:
+        if self._park_mode.cancel():
+            self._node.get_logger().info("Park mode cancelled")
+
+    def _stop_train(self) -> None:
+        self._hold_speed = False
+        self._magnitude = 0.0
+        self._reverse = False
+        self._last_logged_motor_duty_command = None
+
+        self._station_manager.set_motor_direction(False)
+        self._station_manager.set_motor_pwm(0.0, False)
 
     def _now_sec(self) -> float:
         now = self._node.get_clock().now()

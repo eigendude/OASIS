@@ -26,6 +26,7 @@ from std_msgs.msg import Bool as BoolMsg
 from std_msgs.msg import Header as HeaderMsg
 
 from oasis_control.input.checkerboard_slowdown import CheckerboardCruiseSlowdown
+from oasis_control.input.park_mode import TrainParkMode
 from oasis_control.input.station_input import StationInput
 from oasis_control.lego_models.helipad_manager import HelipadManager
 from oasis_control.lego_models.station_manager import StationManager
@@ -106,6 +107,10 @@ PARAM_CHECKERBOARD_SLOWDOWN_CLEAR_CONFIRM_SEC: str = (
 DEFAULT_CHECKERBOARD_SLOWDOWN_CLEAR_CONFIRM_SEC: float = 2.0
 PARAM_CHECKERBOARD_SLOWDOWN_SCALE: str = "checkerboard_slowdown_scale"
 DEFAULT_CHECKERBOARD_SLOWDOWN_SCALE: float = 0.65
+PARAM_PARK_MODE_ENABLED: str = "park_mode_enabled"
+DEFAULT_PARK_MODE_ENABLED: bool = True
+PARAM_PARK_MODE_COMMAND: str = "park_mode_command"
+DEFAULT_PARK_MODE_COMMAND: float = 0.75
 
 
 ################################################################################
@@ -147,6 +152,14 @@ class ConductorManagerNode(rclpy.node.Node):
             PARAM_CHECKERBOARD_SLOWDOWN_SCALE,
             DEFAULT_CHECKERBOARD_SLOWDOWN_SCALE,
         )
+        self.declare_parameter(
+            PARAM_PARK_MODE_ENABLED,
+            DEFAULT_PARK_MODE_ENABLED,
+        )
+        self.declare_parameter(
+            PARAM_PARK_MODE_COMMAND,
+            DEFAULT_PARK_MODE_COMMAND,
+        )
         motor_voltage_reversed: bool = bool(
             self.get_parameter(PARAM_MOTOR_VOLTAGE_REVERSED).value
         )
@@ -167,6 +180,15 @@ class ConductorManagerNode(rclpy.node.Node):
             PARAM_CHECKERBOARD_SLOWDOWN_SCALE,
             DEFAULT_CHECKERBOARD_SLOWDOWN_SCALE,
         )
+        park_mode_enabled: bool = bool(
+            self.get_parameter(PARAM_PARK_MODE_ENABLED).value
+        )
+
+        # Unitless normalized reverse command before max safe duty-cycle scaling
+        park_mode_command: float = self._get_unit_scale_parameter(
+            PARAM_PARK_MODE_COMMAND,
+            DEFAULT_PARK_MODE_COMMAND,
+        )
         self._checkerboard_slowdown_duration_sec: float = (
             checkerboard_slowdown_duration_sec
         )
@@ -178,6 +200,10 @@ class ConductorManagerNode(rclpy.node.Node):
                 checkerboard_slowdown_clear_confirm_sec,
                 checkerboard_slowdown_scale,
             )
+        )
+        self._park_mode: TrainParkMode = TrainParkMode(
+            park_mode_enabled,
+            park_mode_command,
         )
 
         # Subsystems
@@ -205,6 +231,7 @@ class ConductorManagerNode(rclpy.node.Node):
             self,
             self._station_manager,
             self._checkerboard_slowdown,
+            self._park_mode,
         )
         self._wol_manager_input: Optional[WolManager] = WolManager(self, INPUT_HOSTNAME)
         self._wol_manager_vision: Optional[WolManager] = WolManager(

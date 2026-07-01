@@ -119,6 +119,40 @@ class _DigitalWriteCommand:
         self.digital_value: int = 0
 
 
+class _DigitalButton:
+    def __init__(self) -> None:
+        self.name: str = ""
+        self.pressed: bool = False
+
+
+class _AnalogButton:
+    def __init__(self) -> None:
+        self.name: str = ""
+        self.magnitude: float = 0.0
+
+
+class _PeripheralConstants:
+    TYPE_JOYSTICK: int = 1
+
+
+class _PeripheralInfo:
+    def __init__(self) -> None:
+        self.address: str = ""
+        self.type: int = 0
+
+
+class _PeripheralInput:
+    def __init__(self) -> None:
+        self.address: str = ""
+        self.digital_buttons: list[_DigitalButton] = []
+        self.analog_buttons: list[_AnalogButton] = []
+
+
+class _PeripheralScan:
+    def __init__(self) -> None:
+        self.peripherals: list[_PeripheralInfo] = []
+
+
 class _PWMWriteCommand:
     def __init__(self) -> None:
         self.digital_pin: int = 0
@@ -385,6 +419,17 @@ class _SetDigitalMode:
         def __init__(self) -> None:
             self.digital_pin: int = 0
             self.digital_mode: int = 0
+
+    class Response:
+        pass
+
+
+class _CaptureInput:
+    class Request:
+        def __init__(self) -> None:
+            self.capture: int = 0
+            self.peripheral_address: str = ""
+            self.controller_profile: str = ""
 
     class Response:
         pass
@@ -771,12 +816,19 @@ def _install_oasis_msgs_stub() -> None:
     _set_module_attr(oasis_msgs_msg_module, "AnalogReadings", _AnalogReadings)
     _set_module_attr(oasis_msgs_msg_module, "AVRConstants", _AVRConstants)
     _set_module_attr(oasis_msgs_msg_module, "DigitalReading", _DigitalReading)
+    _set_module_attr(oasis_msgs_msg_module, "AnalogButton", _AnalogButton)
+    _set_module_attr(oasis_msgs_msg_module, "DigitalButton", _DigitalButton)
     _set_module_attr(oasis_msgs_msg_module, "DigitalWriteCommand", _DigitalWriteCommand)
+    _set_module_attr(oasis_msgs_msg_module, "PeripheralConstants", _PeripheralConstants)
+    _set_module_attr(oasis_msgs_msg_module, "PeripheralInfo", _PeripheralInfo)
+    _set_module_attr(oasis_msgs_msg_module, "PeripheralInput", _PeripheralInput)
+    _set_module_attr(oasis_msgs_msg_module, "PeripheralScan", _PeripheralScan)
     _set_module_attr(oasis_msgs_msg_module, "PWMWriteCommand", _PWMWriteCommand)
     _set_module_attr(oasis_msgs_msg_module, "SerialDevice", _SerialDevice)
     _set_module_attr(oasis_msgs_msg_module, "SerialDeviceScan", _SerialDeviceScan)
     _set_module_attr(oasis_msgs_msg_module, "UPSStatus", _UPSStatus)
     _set_module_attr(oasis_msgs_msg_module, "UsbDevice", _UsbDevice)
+    _set_module_attr(oasis_msgs_srv_module, "CaptureInput", _CaptureInput)
     _set_module_attr(oasis_msgs_srv_module, "GetMACAddress", _GetMACAddress)
     _set_module_attr(oasis_msgs_srv_module, "SetAnalogMode", _SetAnalogMode)
     _set_module_attr(oasis_msgs_srv_module, "SetDigitalMode", _SetDigitalMode)
