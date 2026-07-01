@@ -99,3 +99,36 @@ def test_add_ahrs_node_configures_boot_mounting_calibration_params(
     assert ("imu_gravity", "falcon/imu_gravity") in ahrs_action["remappings"]
     assert ("ahrs/imu_gravity", "falcon/ahrs/imu_gravity") in ahrs_action["remappings"]
     assert ("ahrs/gravity", "falcon/ahrs/gravity") in ahrs_action["remappings"]
+
+
+def test_add_conductor_manager_remaps_checkerboard_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import oasis_control.launch.control_descriptions as control_descriptions
+
+    monkeypatch.setattr(control_descriptions, "Node", _FakeNode)
+
+    launch_description = _FakeLaunchDescription()
+
+    control_descriptions.ControlDescriptions.add_conductor_manager(
+        launch_description,
+        host_id="station",
+        mcu_node="conductor",
+        wol_server_id="station",
+        input_provider="station",
+        calibration_resolution="hd",
+    )
+
+    assert len(launch_description.actions) == 1
+
+    conductor_action = launch_description.actions[0].kwargs
+    assert conductor_action["package"] == "oasis_control"
+    assert conductor_action["executable"] == "conductor_manager_telemetrix"
+    assert (
+        "checkerboard_status",
+        "station/checkerboard_status",
+    ) in conductor_action["remappings"]
+    assert (
+        "checkerboard_status",
+        "station/hd/checkerboard_status",
+    ) not in conductor_action["remappings"]

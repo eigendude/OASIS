@@ -21,6 +21,7 @@ import rclpy.qos
 import rclpy.subscription
 import rclpy.task
 
+from oasis_control.input.checkerboard_slowdown import CheckerboardCruiseSlowdown
 from oasis_control.lego_models.station_manager import StationManager
 from oasis_msgs.msg import PeripheralConstants as PeripheralConstantsMsg
 from oasis_msgs.msg import PeripheralInfo as PeripheralInfoMsg
@@ -82,13 +83,19 @@ class StationInput:
     A ROS node that manages input for a model train station.
     """
 
-    def __init__(self, node: rclpy.node.Node, station_manager: StationManager) -> None:
+    def __init__(
+        self,
+        node: rclpy.node.Node,
+        station_manager: StationManager,
+        checkerboard_slowdown: CheckerboardCruiseSlowdown,
+    ) -> None:
         """
         Initialize resources.
         """
         # Construction parameters
         self._node = node
         self._station_manager: StationManager = station_manager
+        self._checkerboard_slowdown: CheckerboardCruiseSlowdown = checkerboard_slowdown
 
         # Initialize peripheral state
         self._joysticks: Dict[str, str] = {}
@@ -144,6 +151,60 @@ class StationInput:
     def initialize(self) -> bool:
         return True
 
+    @property
+    def hold_speed(self) -> bool:
+        return self._hold_speed
+
+    def update_checkerboard_status(
+        self,
+        checkerboard_visible: bool,
+        now_sec: float,
+    ) -> bool:
+        interrupted: bool = self._checkerboard_slowdown.update_checkerboard_status(
+            checkerboard_visible,
+            now_sec,
+        )
+
+        if interrupted and not self._hold_speed:
+            self.cancel_checkerboard_slowdown()
+            return False
+
+        if interrupted:
+            self._apply_hold_speed(now_sec)
+
+        return interrupted
+
+    def update_checkerboard_slowdown(self, now_sec: float) -> bool:
+        expired: bool = self._checkerboard_slowdown.consume_slowdown_expiration(now_sec)
+        if expired:
+            self._apply_hold_speed(now_sec)
+
+        return expired
+
+    def consume_checkerboard_slowdown_activation(
+        self,
+        now_sec: float,
+    ) -> bool:
+        return self._checkerboard_slowdown.consume_slowdown_activation(now_sec)
+
+    def checkerboard_slowdown_remaining_sec(self, now_sec: float) -> float:
+        return self._checkerboard_slowdown.slowdown_remaining_sec(now_sec)
+
+    def consume_checkerboard_waiting_for_clear_activation(
+        self,
+        now_sec: float,
+    ) -> bool:
+        return self._checkerboard_slowdown.consume_waiting_for_clear_activation(now_sec)
+
+    def consume_checkerboard_rearmed(
+        self,
+        now_sec: float,
+    ) -> bool:
+        return self._checkerboard_slowdown.consume_rearmed(now_sec)
+
+    def cancel_checkerboard_slowdown(self) -> bool:
+        return self._checkerboard_slowdown.cancel()
+
     def _on_peripheral_input(self, peripheral_input_msg: PeripheralInputMsg) -> None:
         # Translate parameters
         peripheral_address: str = peripheral_input_msg.address
@@ -188,6 +249,7 @@ class StationInput:
                 train_command = 0.0
 
             # Toggle hold speed when Y button is pressed
+            hold_speed_before_input: bool = self._hold_speed
             if self._last_y_button != y_button:
                 self._last_y_button = y_button
                 if y_button:
@@ -197,9 +259,19 @@ class StationInput:
             if a_button or b_button:
                 self._hold_speed = False
 
+            if hold_speed_before_input and not self._hold_speed:
+                if self.cancel_checkerboard_slowdown():
+                    self._node.get_logger().info(
+                        "Checkerboard slowdown cancelled because cruise ended"
+                    )
+
             # Full forward train command if hold speed is enabled
             if self._hold_speed:
-                train_command = 1.0
+                train_command = self._checkerboard_slowdown.scale_command(
+                    1.0,
+                    cruise_active=True,
+                    now_sec=self._now_sec(),
+                )
 
             unboosted_safe_train_command: float = max(-1.0, min(train_command, 1.0))
 
@@ -274,6 +346,34 @@ class StationInput:
             # HUD motor voltage is measured separately from ADC telemetry;
             # this value is only the H-bridge duty command
             self._station_manager.set_motor_pwm(motor_duty_command, self._reverse)
+
+    def _apply_hold_speed(self, now_sec: float) -> None:
+        if not self._hold_speed:
+            return
+
+        train_command: float = self._checkerboard_slowdown.scale_command(
+            1.0,
+            cruise_active=True,
+            now_sec=now_sec,
+        )
+        motor_duty_command: float = train_command * MAX_SAFE_MOTOR_DUTY_CYCLE
+        if motor_duty_command < MOTOR_EPSILON:
+            motor_duty_command = 0.0
+
+        self._magnitude = motor_duty_command
+        self._reverse = False
+
+        self._station_manager.set_motor_direction(False)
+        self._station_manager.set_motor_pwm(motor_duty_command, False)
+
+    def _now_sec(self) -> float:
+        now = self._node.get_clock().now()
+        nanoseconds: Optional[int] = getattr(now, "nanoseconds", None)
+        if nanoseconds is not None:
+            return float(nanoseconds) * 1.0e-9
+
+        stamp = now.to_msg()
+        return float(stamp.sec) + float(stamp.nanosec) * 1.0e-9
 
     def _on_peripheral_scan(self, peripheral_scan_msg: PeripheralScanMsg) -> None:
         peripheral: PeripheralInfoMsg

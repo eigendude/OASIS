@@ -17,12 +17,15 @@ from typing import Optional
 import rclpy.node
 import rclpy.publisher
 import rclpy.qos
+import rclpy.subscription
 from rclpy.logging import LoggingSeverity
 from rclpy.qos import DurabilityPolicy
 from rclpy.qos import HistoryPolicy
 from rclpy.qos import ReliabilityPolicy
+from std_msgs.msg import Bool as BoolMsg
 from std_msgs.msg import Header as HeaderMsg
 
+from oasis_control.input.checkerboard_slowdown import CheckerboardCruiseSlowdown
 from oasis_control.input.station_input import StationInput
 from oasis_control.lego_models.helipad_manager import HelipadManager
 from oasis_control.lego_models.station_manager import StationManager
@@ -87,9 +90,22 @@ PUBLISH_STATE_PERIOD_SECS = 0.1
 # Publisher
 PUBLISH_CONDUCTOR_STATE = "conductor_state"
 
+# Subscribers
+SUBSCRIBE_CHECKERBOARD_STATUS = "checkerboard_status"
+
 # Parameters
 PARAM_MOTOR_VOLTAGE_REVERSED: str = "motor_voltage_reversed"
 DEFAULT_MOTOR_VOLTAGE_REVERSED: bool = False
+PARAM_CHECKERBOARD_SLOWDOWN_ENABLED: str = "checkerboard_slowdown_enabled"
+DEFAULT_CHECKERBOARD_SLOWDOWN_ENABLED: bool = True
+PARAM_CHECKERBOARD_SLOWDOWN_DURATION_SEC: str = "checkerboard_slowdown_duration_sec"
+DEFAULT_CHECKERBOARD_SLOWDOWN_DURATION_SEC: float = 3.0
+PARAM_CHECKERBOARD_SLOWDOWN_CLEAR_CONFIRM_SEC: str = (
+    "checkerboard_slowdown_clear_confirm_sec"
+)
+DEFAULT_CHECKERBOARD_SLOWDOWN_CLEAR_CONFIRM_SEC: float = 2.0
+PARAM_CHECKERBOARD_SLOWDOWN_SCALE: str = "checkerboard_slowdown_scale"
+DEFAULT_CHECKERBOARD_SLOWDOWN_SCALE: float = 0.65
 
 
 ################################################################################
@@ -115,8 +131,53 @@ class ConductorManagerNode(rclpy.node.Node):
             PARAM_MOTOR_VOLTAGE_REVERSED,
             DEFAULT_MOTOR_VOLTAGE_REVERSED,
         )
+        self.declare_parameter(
+            PARAM_CHECKERBOARD_SLOWDOWN_ENABLED,
+            DEFAULT_CHECKERBOARD_SLOWDOWN_ENABLED,
+        )
+        self.declare_parameter(
+            PARAM_CHECKERBOARD_SLOWDOWN_DURATION_SEC,
+            DEFAULT_CHECKERBOARD_SLOWDOWN_DURATION_SEC,
+        )
+        self.declare_parameter(
+            PARAM_CHECKERBOARD_SLOWDOWN_CLEAR_CONFIRM_SEC,
+            DEFAULT_CHECKERBOARD_SLOWDOWN_CLEAR_CONFIRM_SEC,
+        )
+        self.declare_parameter(
+            PARAM_CHECKERBOARD_SLOWDOWN_SCALE,
+            DEFAULT_CHECKERBOARD_SLOWDOWN_SCALE,
+        )
         motor_voltage_reversed: bool = bool(
             self.get_parameter(PARAM_MOTOR_VOLTAGE_REVERSED).value
+        )
+        checkerboard_slowdown_enabled: bool = bool(
+            self.get_parameter(PARAM_CHECKERBOARD_SLOWDOWN_ENABLED).value
+        )
+        checkerboard_slowdown_duration_sec: float = self._get_nonnegative_parameter(
+            PARAM_CHECKERBOARD_SLOWDOWN_DURATION_SEC,
+            DEFAULT_CHECKERBOARD_SLOWDOWN_DURATION_SEC,
+        )
+        checkerboard_slowdown_clear_confirm_sec: float = (
+            self._get_nonnegative_parameter(
+                PARAM_CHECKERBOARD_SLOWDOWN_CLEAR_CONFIRM_SEC,
+                DEFAULT_CHECKERBOARD_SLOWDOWN_CLEAR_CONFIRM_SEC,
+            )
+        )
+        checkerboard_slowdown_scale: float = self._get_unit_scale_parameter(
+            PARAM_CHECKERBOARD_SLOWDOWN_SCALE,
+            DEFAULT_CHECKERBOARD_SLOWDOWN_SCALE,
+        )
+        self._checkerboard_slowdown_duration_sec: float = (
+            checkerboard_slowdown_duration_sec
+        )
+
+        self._checkerboard_slowdown: CheckerboardCruiseSlowdown = (
+            CheckerboardCruiseSlowdown(
+                checkerboard_slowdown_enabled,
+                checkerboard_slowdown_duration_sec,
+                checkerboard_slowdown_clear_confirm_sec,
+                checkerboard_slowdown_scale,
+            )
         )
 
         # Subsystems
@@ -140,7 +201,11 @@ class ConductorManagerNode(rclpy.node.Node):
             HELIPAD_LED_PAIR_A_PIN,
             HELIPAD_LED_PAIR_B_PIN,
         )
-        self._station_input: StationInput = StationInput(self, self._station_manager)
+        self._station_input: StationInput = StationInput(
+            self,
+            self._station_manager,
+            self._checkerboard_slowdown,
+        )
         self._wol_manager_input: Optional[WolManager] = WolManager(self, INPUT_HOSTNAME)
         self._wol_manager_vision: Optional[WolManager] = WolManager(
             self, VISION_HOSTNAME
@@ -160,6 +225,16 @@ class ConductorManagerNode(rclpy.node.Node):
                 msg_type=ConductorStateMsg,
                 topic=PUBLISH_CONDUCTOR_STATE,
                 qos_profile=state_qos_profile,
+            )
+        )
+
+        # Subscriptions
+        self._checkerboard_status_sub: rclpy.subscription.Subscription[BoolMsg] = (
+            self.create_subscription(
+                msg_type=BoolMsg,
+                topic=SUBSCRIBE_CHECKERBOARD_STATUS,
+                callback=self._on_checkerboard_status,
+                qos_profile=rclpy.qos.QoSPresetProfiles.SENSOR_DATA.value,
             )
         )
 
@@ -220,6 +295,12 @@ class ConductorManagerNode(rclpy.node.Node):
         return True
 
     def _publish_state(self) -> None:
+        now_sec: float = self._now_sec()
+        if self._station_input.update_checkerboard_slowdown(now_sec):
+            self.get_logger().info(
+                "Checkerboard slowdown expired; waiting for train trailing edge"
+            )
+
         header = HeaderMsg()
         header.stamp = self.get_clock().now().to_msg()
         header.frame_id = NODE_NAME  # TODO
@@ -239,3 +320,85 @@ class ConductorManagerNode(rclpy.node.Node):
         msg.ram_utilization = self._mcu_memory_manager.ram_utilization
 
         self._conductor_state_pub.publish(msg)
+
+    def _on_checkerboard_status(self, checkerboard_status_msg: BoolMsg) -> None:
+        now_sec: float = self._now_sec()
+        was_initialized: bool = (
+            self._checkerboard_slowdown.checkerboard_visible is not None
+        )
+        checkerboard_visible: bool = bool(checkerboard_status_msg.data)
+
+        interrupted: bool = self._station_input.update_checkerboard_status(
+            checkerboard_visible,
+            now_sec,
+        )
+
+        if not was_initialized:
+            self.get_logger().info(
+                "Checkerboard status initialized: "
+                f"{'visible' if checkerboard_visible else 'interrupted'}"
+            )
+
+        if interrupted:
+            remaining_sec: float = (
+                self._station_input.checkerboard_slowdown_remaining_sec(now_sec)
+            )
+            self.get_logger().info(
+                "Checkerboard leading edge detected; "
+                f"slowdown started for {remaining_sec:.1f}s"
+            )
+
+        if self._station_input.consume_checkerboard_slowdown_activation(now_sec):
+            self.get_logger().info("Checkerboard slowdown active")
+
+        if (
+            self._station_input.consume_checkerboard_waiting_for_clear_activation(
+                now_sec
+            )
+            and self._checkerboard_slowdown_duration_sec == 0.0
+        ):
+            self.get_logger().info(
+                "Checkerboard slowdown expired; waiting for train trailing edge"
+            )
+
+        if self._station_input.consume_checkerboard_rearmed(now_sec):
+            self.get_logger().info(
+                "Checkerboard trailing edge detected; slowdown re-armed"
+            )
+
+    def _now_sec(self) -> float:
+        now = self.get_clock().now()
+        nanoseconds: Optional[int] = getattr(now, "nanoseconds", None)
+        if nanoseconds is not None:
+            return float(nanoseconds) * 1.0e-9
+
+        stamp = now.to_msg()
+        return float(stamp.sec) + float(stamp.nanosec) * 1.0e-9
+
+    def _get_nonnegative_parameter(
+        self,
+        parameter_name: str,
+        default_value: float,
+    ) -> float:
+        value: float = float(self.get_parameter(parameter_name).value)
+        if value < 0.0:
+            self.get_logger().warning(
+                f"{parameter_name} must be >= 0.0; using {default_value}"
+            )
+            return default_value
+
+        return value
+
+    def _get_unit_scale_parameter(
+        self,
+        parameter_name: str,
+        default_value: float,
+    ) -> float:
+        value: float = float(self.get_parameter(parameter_name).value)
+        if value <= 0.0 or value > 1.0:
+            self.get_logger().warning(
+                f"{parameter_name} must be in (0.0, 1.0]; using {default_value}"
+            )
+            return default_value
+
+        return value
