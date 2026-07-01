@@ -140,7 +140,7 @@ def generate_launch_description() -> LaunchDescription:
             system_id="station",
             camera_model="pinhole",
             input_resolution="sd",
-            image_transport="compressed",
+            image_transport="raw",
         )
 
         """
