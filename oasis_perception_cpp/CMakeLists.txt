@@ -60,7 +60,7 @@ find_package(image_transport REQUIRED)
 find_package(MediaPipe)
 find_package(message_filters REQUIRED)
 find_package(oasis_msgs REQUIRED)
-find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs video)
+find_package(OpenCV REQUIRED COMPONENTS calib3d core imgcodecs imgproc video)
 find_package(ORB_SLAM_OASIS)
 find_package(PCL REQUIRED COMPONENTS common features filters search surface)
 find_package(pcl_conversions REQUIRED)
@@ -266,6 +266,67 @@ rclcpp_components_register_node(
   background_subtractor_component
   PLUGIN "oasis_perception::BackgroundSubtractorComponent"
   EXECUTABLE background_subtractor_component_node
+)
+
+#
+# checkerboard_detector
+#
+
+# Project files
+set(CHECKERBOARD_DETECTOR_SOURCES
+  src/calibration/CheckerboardDetector.cpp
+  src/nodes/CheckerboardDetectorNode.cpp
+)
+set(CHECKERBOARD_DETECTOR_LIBRARIES
+  cv_bridge::cv_bridge
+  image_transport::image_transport
+  ${OpenCV_LIBS}
+  rclcpp::rclcpp
+  ${sensor_msgs_TARGETS}
+  ${std_msgs_TARGETS}
+)
+
+# Node
+add_executable(checkerboard_detector
+  ${CHECKERBOARD_DETECTOR_SOURCES}
+  src/cli/checkerboard_detector.cpp
+)
+target_include_directories(checkerboard_detector PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(checkerboard_detector PUBLIC
+  ${CHECKERBOARD_DETECTOR_LIBRARIES}
+)
+install(
+  TARGETS
+    checkerboard_detector
+  DESTINATION
+    lib/${PROJECT_NAME}
+)
+
+# Component
+add_library(checkerboard_detector_component SHARED
+  ${CHECKERBOARD_DETECTOR_SOURCES}
+  src/components/checkerboard_detector_component.cpp
+  src/ros/RosComponent.cpp
+)
+target_include_directories(checkerboard_detector_component PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(checkerboard_detector_component PUBLIC
+  ${CHECKERBOARD_DETECTOR_LIBRARIES}
+  rclcpp_components::component
+)
+install(
+  TARGETS
+    checkerboard_detector_component
+  DESTINATION
+    lib
+)
+rclcpp_components_register_node(
+  checkerboard_detector_component
+  PLUGIN "oasis_perception::CheckerboardDetectorComponent"
+  EXECUTABLE checkerboard_detector_component_node
 )
 
 #
@@ -885,7 +946,22 @@ install(
 #
 
 if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
   find_package(ament_lint_auto REQUIRED)
+
+  ament_add_gtest(test_CheckerboardDetector
+    test/calibration/test_CheckerboardDetector.cpp
+    src/calibration/CheckerboardDetector.cpp
+  )
+  if(TARGET test_CheckerboardDetector)
+    target_include_directories(test_CheckerboardDetector PRIVATE
+      ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    target_link_libraries(test_CheckerboardDetector
+      ${OpenCV_LIBS}
+    )
+  endif()
+
   # Copyright and license must be present in all source files
   set(ament_cmake_copyright_FOUND TRUE)
 

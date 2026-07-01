@@ -296,6 +296,54 @@ class PerceptionDescriptions:
             ld.add_action(calibrator_node)
 
     #
+    # Checkerboard detector
+    #
+
+    @staticmethod
+    def add_checkerboard_detector(
+        ld: LaunchDescription,
+        system_id: str,
+        camera_model: str,
+        input_resolution: str = "",
+        image_transport: str = "",
+    ) -> None:
+        RESOLUTION_PREFIX = f"{input_resolution}/" if input_resolution else ""
+
+        # Get camera driver from smarthome configuration
+        camera_driver: str = CONFIG.get_camera_driver(system_id)
+
+        if camera_driver:
+            parameters: dict[str, Any] = {
+                "camera_model": camera_model,
+                "checkerboard_width": 8,
+                "checkerboard_height": 6,
+            }
+            if image_transport:
+                parameters["image_transport"] = image_transport
+
+            checkerboard_detector_node: Node = Node(
+                namespace=ROS_NAMESPACE,
+                package=CPP_PACKAGE_NAME,
+                executable="checkerboard_detector",
+                name=f"checkerboard_detector_{system_id}",
+                output="screen",
+                parameters=[parameters],
+                remappings=[
+                    # Topics
+                    (
+                        "checkerboard_image",
+                        f"{system_id}/{RESOLUTION_PREFIX}checkerboard_image",
+                    ),
+                    (
+                        "checkerboard_status",
+                        f"{system_id}/checkerboard_status",
+                    ),
+                    ("image", f"{system_id}/{RESOLUTION_PREFIX}image_raw"),
+                ],
+            )
+            ld.add_action(checkerboard_detector_node)
+
+    #
     # Hello World
     #
 

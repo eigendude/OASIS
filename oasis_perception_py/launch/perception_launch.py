@@ -134,8 +134,17 @@ def generate_launch_description() -> LaunchDescription:
             output_resolution="hd",
         )
 
+        # Checkerboard detection
+        PerceptionDescriptions.add_checkerboard_detector(
+            ld,
+            system_id="station",
+            camera_model="pinhole",
+            input_resolution="sd",
+            image_transport="compressed",
+        )
+
         """
-        # Calibration demo (TODO: separate checkerboard detection)
+        # Calibration demo
         PerceptionDescriptions.add_calibration(
             ld,
             system_id="station",
