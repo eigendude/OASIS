@@ -317,7 +317,6 @@ class PerceptionDescriptions:
                 "camera_model": camera_model,
                 "checkerboard_width": 8,
                 "checkerboard_height": 6,
-                "processing_interval": 3,
             }
             if image_transport:
                 parameters["image_transport"] = image_transport
