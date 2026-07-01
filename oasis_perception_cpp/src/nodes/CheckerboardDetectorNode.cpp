@@ -64,7 +64,9 @@ constexpr std::string_view DEFAULT_IMAGE_TRANSPORT = "raw";
 // ROS parameter: "publish_debug_image"
 // Type: bool
 // Default: true
-// Meaning: Publishes checkerboard_image with OpenCV corner overlays when true.
+// Meaning: Publishes checkerboard_image when true. The debug image uses the
+// grayscale detector input as a BGR visualization base, with OpenCV's colored
+// checkerboard corner overlay drawn on top.
 constexpr std::string_view PUBLISH_DEBUG_IMAGE_PARAMETER = "publish_debug_image";
 constexpr bool DEFAULT_PUBLISH_DEBUG_IMAGE = true;
 
@@ -156,6 +158,37 @@ cv::Mat ConvertToGray(const cv_bridge::CvImageConstPtr& cvImagePtr)
     throw std::invalid_argument("Unsupported image encoding: " + encoding);
 
   return gray;
+}
+
+cv::Mat ConvertGrayToDebugBgr(const cv::Mat& gray)
+{
+  if (gray.channels() == 1)
+  {
+    cv::Mat debugBgr;
+    cv::cvtColor(gray, debugBgr, cv::COLOR_GRAY2BGR);
+    return debugBgr;
+  }
+
+  // This should not normally happen because ConvertToGray() returns grayscale,
+  // but keep the debug path robust
+  cv::Mat gray8;
+  if (gray.depth() == CV_8U)
+    gray8 = gray;
+  else
+    // Scale 16-bit grayscale [0, 65535] to 8-bit display range [0, 255]
+    gray.convertTo(gray8, CV_8U, 255.0 / 65535.0);
+
+  cv::Mat gray8SingleChannel;
+  if (gray8.channels() == 3)
+    cv::cvtColor(gray8, gray8SingleChannel, cv::COLOR_BGR2GRAY);
+  else if (gray8.channels() == 4)
+    cv::cvtColor(gray8, gray8SingleChannel, cv::COLOR_BGRA2GRAY);
+  else
+    gray8SingleChannel = gray8;
+
+  cv::Mat debugBgr;
+  cv::cvtColor(gray8SingleChannel, debugBgr, cv::COLOR_GRAY2BGR);
+  return debugBgr;
 }
 } // namespace
 
@@ -334,17 +367,7 @@ void CheckerboardDetectorNode::OnImage(const sensor_msgs::msg::Image::ConstShare
   cv_bridge::CvImage debugImage;
   debugImage.header = imageMsg->header;
   debugImage.encoding = sensor_msgs::image_encodings::BGR8;
-
-  try
-  {
-    cv_bridge::CvImagePtr colorImage =
-        cv_bridge::toCvCopy(imageMsg, sensor_msgs::image_encodings::BGR8);
-    debugImage.image = colorImage->image;
-  }
-  catch (const cv_bridge::Exception&)
-  {
-    cv::cvtColor(gray, debugImage.image, cv::COLOR_GRAY2BGR);
-  }
+  debugImage.image = ConvertGrayToDebugBgr(gray);
 
   const auto& options = m_detector->Options();
   const cv::Size patternSize{options.checkerboardWidth, options.checkerboardHeight};
