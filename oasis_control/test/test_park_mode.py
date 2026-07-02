@@ -19,6 +19,7 @@ import rclpy.node
 
 from oasis_control.input.checkerboard_slowdown import CheckerboardCruiseSlowdown
 from oasis_control.input.park_mode import TrainParkMode
+from oasis_control.input.station_input import MAX_BOOSTED_TRAIN_COMMAND
 from oasis_control.input.station_input import MAX_SAFE_MOTOR_DUTY_CYCLE
 from oasis_control.input.station_input import StationInput
 from oasis_control.lego_models.station_manager import StationManager
@@ -163,8 +164,8 @@ def test_b_button_cancels_park_mode_and_stops_train() -> None:
     assert station_manager.pwm == 0.0
 
 
-@pytest.mark.parametrize("button_name", ["a", "x", "y"])
-def test_a_x_y_cancel_park_mode(button_name: str) -> None:
+@pytest.mark.parametrize("button_name", ["a", "y"])
+def test_a_and_y_cancel_park_mode(button_name: str) -> None:
     park_mode: TrainParkMode = TrainParkMode(enabled=True, command=0.9)
     station_input, station_manager = _make_station_input(park_mode)
 
@@ -175,10 +176,51 @@ def test_a_x_y_cancel_park_mode(button_name: str) -> None:
 
     assert not park_mode.active
 
-    if button_name in {"a", "x"}:
+    if button_name == "a":
         assert not station_input.reverse
         assert not station_manager.pwm_reverse
         assert station_manager.pwm != pytest.approx(0.9 * MAX_SAFE_MOTOR_DUTY_CYCLE)
+
+
+def test_x_boosts_park_mode_without_cancelling() -> None:
+    park_mode: TrainParkMode = TrainParkMode(enabled=True, command=0.9)
+    station_input, station_manager = _make_station_input(park_mode)
+
+    station_input._on_peripheral_input(_input_message([_button("start", True)]))
+    assert park_mode.active
+
+    station_input._on_peripheral_input(_input_message([_button("x", True)]))
+
+    boosted_pwm: float = 0.9 * MAX_BOOSTED_TRAIN_COMMAND * MAX_SAFE_MOTOR_DUTY_CYCLE
+    assert park_mode.active
+    assert station_input.reverse
+    assert station_manager.pwm_reverse
+    assert station_manager.pwm == pytest.approx(boosted_pwm)
+
+    station_input._on_peripheral_input(_input_message([_button("x", False)]))
+
+    assert park_mode.active
+    assert station_input.reverse
+    assert station_manager.pwm_reverse
+    assert station_manager.pwm == pytest.approx(0.9 * MAX_SAFE_MOTOR_DUTY_CYCLE)
+
+
+def test_periodic_tick_preserves_x_boosted_park_mode() -> None:
+    park_mode: TrainParkMode = TrainParkMode(enabled=True, command=0.9)
+    station_input, station_manager = _make_station_input(park_mode)
+
+    station_input._on_peripheral_input(_input_message([_button("start", True)]))
+    station_input._on_peripheral_input(_input_message([_button("x", True)]))
+    station_manager.pwm = 0.0
+    station_manager.pwm_reverse = False
+
+    assert not station_input.update_autonomous_train_control(1.0)
+
+    boosted_pwm: float = 0.9 * MAX_BOOSTED_TRAIN_COMMAND * MAX_SAFE_MOTOR_DUTY_CYCLE
+    assert park_mode.active
+    assert station_input.reverse
+    assert station_manager.pwm_reverse
+    assert station_manager.pwm == pytest.approx(boosted_pwm)
 
 
 def test_disabled_park_mode_ignores_start() -> None:

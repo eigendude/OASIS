@@ -315,7 +315,7 @@ class StationInput:
                         "Checkerboard slowdown cancelled because cruise ended"
                     )
 
-            if a_button or x_button or y_button:
+            if a_button or y_button:
                 self._cancel_park_mode()
 
             if self._park_mode.active:
@@ -351,7 +351,7 @@ class StationInput:
         self.cancel_checkerboard_slowdown()
         self._apply_train_command(
             -self._park_mode.command,
-            boost_enabled=False,
+            boost_enabled=self._x_button,
         )
 
     def _apply_train_command(self, command: float, boost_enabled: bool) -> None:
