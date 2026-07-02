@@ -47,10 +47,10 @@ MOTOR_EPSILON: float = 0.02
 NOMINAL_MOTOR_VOLTAGE: float = 6.8
 
 # Maximum motor-voltage target allowed while X is pressed, in volts
-MAX_MOTOR_VOLTAGE: float = 7.8
+MAX_MOTOR_VOLTAGE: float = 8.0
 
 # Unitless duty-cycle cap for the nominal motor-voltage target
-MAX_SAFE_MOTOR_DUTY_CYCLE: float = 0.142
+MAX_SAFE_MOTOR_DUTY_CYCLE: float = 0.143
 
 # Unitless command cap while X is pressed, derived from the boosted voltage
 # target divided by the nominal voltage target
@@ -58,7 +58,7 @@ MAX_BOOSTED_TRAIN_COMMAND: float = MAX_MOTOR_VOLTAGE / NOMINAL_MOTOR_VOLTAGE
 
 # Unitless duty-cycle delta required before repeating train command debug logs.
 # This reports meaningful speed changes while ignoring controller jitter.
-TRAIN_COMMAND_DEBUG_DUTY_EPSILON: float = 0.0142
+TRAIN_COMMAND_DEBUG_DUTY_EPSILON: float = MAX_SAFE_MOTOR_DUTY_CYCLE / 10.0
 
 
 ################################################################################
