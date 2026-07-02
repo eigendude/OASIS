@@ -204,6 +204,8 @@ class CheckerboardCruiseSlowdown:
         cruise_active: bool,
         now_sec: float,
     ) -> float:
+        self.update_time(now_sec)
+
         if cruise_active and self.is_slowdown_active(now_sec):
             return command * self._scale
 

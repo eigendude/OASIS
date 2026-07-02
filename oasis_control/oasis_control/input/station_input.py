@@ -187,9 +187,16 @@ class StationInput:
         return interrupted
 
     def update_checkerboard_slowdown(self, now_sec: float) -> bool:
+        hold_speed_was_active: bool = self._hold_speed
+
         expired: bool = self._checkerboard_slowdown.consume_slowdown_expiration(now_sec)
-        if expired:
+        if expired and hold_speed_was_active and self._hold_speed:
             self._apply_hold_speed(now_sec)
+        elif expired:
+            self._node.get_logger().debug(
+                "Checkerboard slowdown expired after cruise ended; "
+                "not reapplying hold speed"
+            )
 
         return expired
 
@@ -264,6 +271,7 @@ class StationInput:
 
             # Raw controller trigger command, normalized to [-1, 1]
             trigger_command: float = right_trigger - left_trigger
+            manual_train_command_active: bool = abs(trigger_command) >= MOTOR_EPSILON
 
             # Zero train command if A or X buttons are not pressed
             train_command: float = trigger_command
@@ -282,8 +290,13 @@ class StationInput:
                 if start_button:
                     self._activate_park_mode()
 
-            # Disable hold speed if A or park mode is pressed
-            if a_button or self._park_mode.active:
+            # Disable hold speed if manual train ownership or park mode is active
+            if (
+                a_button
+                or x_button
+                or manual_train_command_active
+                or self._park_mode.active
+            ):
                 self._hold_speed = False
 
             if hold_speed_before_input and not self._hold_speed:

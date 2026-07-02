@@ -109,6 +109,22 @@ def test_scale_applies_only_during_slowdown_not_waiting_for_clear() -> None:
     assert slowdown.scale_command(1.0, True, 18.0) == pytest.approx(1.0)
 
 
+def test_scale_command_expires_and_restores_full_command() -> None:
+    slowdown: CheckerboardCruiseSlowdown = _make_slowdown()
+
+    assert not slowdown.update_checkerboard_status(True, 9.0)
+    assert slowdown.update_checkerboard_status(False, 10.0)
+
+    scaled_command: float = slowdown.scale_command(1.0, True, 12.0)
+    assert scaled_command == pytest.approx(0.588)
+    assert slowdown.consume_slowdown_activation(12.0)
+
+    restored_command: float = slowdown.scale_command(1.0, True, 15.0)
+    assert restored_command == pytest.approx(1.0)
+    assert slowdown.consume_slowdown_expiration(15.0)
+    assert not slowdown.consume_slowdown_expiration(15.1)
+
+
 @pytest.mark.parametrize(
     ("cruise_active", "expected_command"),
     [
