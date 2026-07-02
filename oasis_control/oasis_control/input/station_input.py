@@ -107,7 +107,8 @@ class StationInput:
         self._magnitude: float = 0.0
         self._reverse: bool = False  # True if magnitude is in reverse (high DIR pin)
         self._last_y_button: bool = False  # Set to the last value of the Y button
-        self._last_x_button: bool = False  # Set to the last value of the X button
+        self._x_button: bool = False
+        self._last_x_button: bool = False  # Set to the last logged X button value
         self._last_start_button: bool = False
         self._hold_speed: bool = (
             False  # True to hold a steady speed, toggled with Y button
@@ -200,6 +201,18 @@ class StationInput:
 
         return expired
 
+    def update_autonomous_train_control(self, now_sec: float) -> bool:
+        expired: bool = self.update_checkerboard_slowdown(now_sec)
+
+        if self._park_mode.active:
+            self._apply_park_mode()
+            return expired
+
+        if self._hold_speed:
+            self._apply_hold_speed(now_sec)
+
+        return expired
+
     def consume_checkerboard_slowdown_activation(
         self,
         now_sec: float,
@@ -262,6 +275,8 @@ class StationInput:
                 elif analog_button_name == "righttrigger":
                     right_trigger = analog_magnitude
 
+            self._x_button = x_button
+
             if b_button:
                 self._cancel_park_mode()
                 self._hold_speed = False
@@ -303,92 +318,19 @@ class StationInput:
             if a_button or x_button or y_button:
                 self._cancel_park_mode()
 
-            # Full forward train command if hold speed is enabled
-            if self._hold_speed:
-                train_command = self._checkerboard_slowdown.scale_command(
-                    1.0,
-                    cruise_active=True,
-                    now_sec=self._now_sec(),
-                )
-
             if self._park_mode.active:
-                train_command = -self._park_mode.command
                 self._hold_speed = False
                 self.cancel_checkerboard_slowdown()
+                self.update_autonomous_train_control(self._now_sec())
+                return
 
-            unboosted_safe_train_command: float = max(-1.0, min(train_command, 1.0))
+            self._log_boost_change(x_button)
 
-            # X scales the command toward the measured maximum voltage target
-            safe_train_command: float = unboosted_safe_train_command
-            if x_button:
-                safe_train_command *= MAX_BOOSTED_TRAIN_COMMAND
+            if self._hold_speed:
+                self.update_autonomous_train_control(self._now_sec())
+                return
 
-            safe_train_command = max(
-                -MAX_BOOSTED_TRAIN_COMMAND,
-                min(safe_train_command, MAX_BOOSTED_TRAIN_COMMAND),
-            )
-
-            reverse: bool = safe_train_command < 0.0
-            motor_duty_command: float = (
-                abs(safe_train_command) * MAX_SAFE_MOTOR_DUTY_CYCLE
-            )
-
-            # Update direction
-            if self._reverse != reverse:
-                self._reverse = reverse
-
-                self._node.get_logger().debug(
-                    f"Direction: {'backward' if reverse else 'forward'}"
-                )
-
-                self._station_manager.set_motor_direction(reverse)
-
-            # Snap magnitude to 0 if nearby
-            if motor_duty_command < MOTOR_EPSILON:
-                motor_duty_command = 0.0
-
-            target_motor_voltage: float = safe_train_command * NOMINAL_MOTOR_VOLTAGE
-            if motor_duty_command == 0.0:
-                target_motor_voltage = 0.0
-
-            # Update magnitude
-            self._magnitude = motor_duty_command
-
-            if x_button != self._last_x_button:
-                self._last_x_button = x_button
-
-                self._node.get_logger().debug(
-                    "Train boost: "
-                    f"{'enabled' if x_button else 'disabled'} "
-                    f"x={MAX_BOOSTED_TRAIN_COMMAND:.3f} "
-                    f"max={MAX_MOTOR_VOLTAGE:.2f}V"
-                )
-
-            previous_logged_duty: Optional[float] = self._last_logged_motor_duty_command
-            should_log_train_command: bool = previous_logged_duty is None
-            if previous_logged_duty is not None:
-                stopped_changed: bool = (previous_logged_duty == 0.0) != (
-                    motor_duty_command == 0.0
-                )
-                duty_changed: bool = (
-                    abs(motor_duty_command - previous_logged_duty)
-                    >= TRAIN_COMMAND_DEBUG_DUTY_EPSILON
-                )
-                should_log_train_command = stopped_changed or duty_changed
-
-            if should_log_train_command:
-                self._last_logged_motor_duty_command = motor_duty_command
-
-                self._node.get_logger().debug(
-                    "Train command: "
-                    f"v={target_motor_voltage:.2f}V "
-                    f"cmd={safe_train_command:.3f} "
-                    f"duty={motor_duty_command:.3f}"
-                )
-
-            # HUD motor voltage is measured separately from ADC telemetry;
-            # this value is only the H-bridge duty command
-            self._station_manager.set_motor_pwm(motor_duty_command, self._reverse)
+            self._apply_train_command(train_command, boost_enabled=x_button)
 
     def _apply_hold_speed(self, now_sec: float) -> None:
         if not self._hold_speed:
@@ -399,15 +341,94 @@ class StationInput:
             cruise_active=True,
             now_sec=now_sec,
         )
-        motor_duty_command: float = train_command * MAX_SAFE_MOTOR_DUTY_CYCLE
+        self._apply_train_command(train_command, boost_enabled=self._x_button)
+
+    def _apply_park_mode(self) -> None:
+        if not self._park_mode.active:
+            return
+
+        self._hold_speed = False
+        self.cancel_checkerboard_slowdown()
+        self._apply_train_command(
+            -self._park_mode.command,
+            boost_enabled=False,
+        )
+
+    def _apply_train_command(self, command: float, boost_enabled: bool) -> None:
+        unboosted_safe_train_command: float = max(-1.0, min(command, 1.0))
+
+        # X scales the command toward the measured maximum voltage target
+        safe_train_command: float = unboosted_safe_train_command
+        if boost_enabled:
+            safe_train_command *= MAX_BOOSTED_TRAIN_COMMAND
+
+        safe_train_command = max(
+            -MAX_BOOSTED_TRAIN_COMMAND,
+            min(safe_train_command, MAX_BOOSTED_TRAIN_COMMAND),
+        )
+
+        reverse: bool = safe_train_command < 0.0
+        motor_duty_command: float = abs(safe_train_command) * MAX_SAFE_MOTOR_DUTY_CYCLE
+
+        # Update direction
+        if self._reverse != reverse:
+            self._reverse = reverse
+
+            self._node.get_logger().debug(
+                f"Direction: {'backward' if reverse else 'forward'}"
+            )
+
+            self._station_manager.set_motor_direction(reverse)
+
+        # Snap magnitude to 0 if nearby
         if motor_duty_command < MOTOR_EPSILON:
             motor_duty_command = 0.0
 
-        self._magnitude = motor_duty_command
-        self._reverse = False
+        target_motor_voltage: float = safe_train_command * NOMINAL_MOTOR_VOLTAGE
+        if motor_duty_command == 0.0:
+            target_motor_voltage = 0.0
 
-        self._station_manager.set_motor_direction(False)
-        self._station_manager.set_motor_pwm(motor_duty_command, False)
+        # Update magnitude
+        self._magnitude = motor_duty_command
+
+        previous_logged_duty: Optional[float] = self._last_logged_motor_duty_command
+        should_log_train_command: bool = previous_logged_duty is None
+        if previous_logged_duty is not None:
+            stopped_changed: bool = (previous_logged_duty == 0.0) != (
+                motor_duty_command == 0.0
+            )
+            duty_changed: bool = (
+                abs(motor_duty_command - previous_logged_duty)
+                >= TRAIN_COMMAND_DEBUG_DUTY_EPSILON
+            )
+            should_log_train_command = stopped_changed or duty_changed
+
+        if should_log_train_command:
+            self._last_logged_motor_duty_command = motor_duty_command
+
+            self._node.get_logger().debug(
+                "Train command: "
+                f"v={target_motor_voltage:.2f}V "
+                f"cmd={safe_train_command:.3f} "
+                f"duty={motor_duty_command:.3f}"
+            )
+
+        # HUD motor voltage is measured separately from ADC telemetry;
+        # this value is only the H-bridge duty command
+        self._station_manager.set_motor_pwm(motor_duty_command, self._reverse)
+
+    def _log_boost_change(self, x_button: bool) -> None:
+        if x_button == self._last_x_button:
+            return
+
+        self._last_x_button = x_button
+
+        self._node.get_logger().debug(
+            "Train boost: "
+            f"{'enabled' if x_button else 'disabled'} "
+            f"x={MAX_BOOSTED_TRAIN_COMMAND:.3f} "
+            f"max={MAX_MOTOR_VOLTAGE:.2f}V"
+        )
 
     def _activate_park_mode(self) -> None:
         if not self._park_mode.enabled:

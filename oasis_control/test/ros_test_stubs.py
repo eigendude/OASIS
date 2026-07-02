@@ -159,6 +159,41 @@ class _PWMWriteCommand:
         self.pwm_value: float = 0.0
 
 
+class _EffectKind:
+    HELIPAD: int = 1
+    LED_THRUSTER: int = 2
+
+
+class _EffectMode:
+    HELIPAD_DISABLED: int = 1
+    HELIPAD_GUIDANCE: int = 2
+    HELIPAD_LANDED: int = 3
+    LED_THRUSTER_IDLE: int = 4
+    LED_THRUSTER_MOVING: int = 5
+
+
+class _ConductorState:
+    def __init__(self) -> None:
+        self.header: _Header = _Header()
+        self.supply_voltage: float = 0.0
+        self.supply_voltage_stddev: float = 0.0
+        self.motor_voltage: float = 0.0
+        self.motor_voltage_stddev: float = 0.0
+        self.duty_cycle: float = 0.0
+        self.motor_current: float = 0.0
+        self.motor_ff1_count: int = 0
+        self.motor_ff2_count: int = 0
+        self.cpu_fan_speed_rpm: float = 0.0
+        self.total_ram: int = 0
+        self.ram_utilization: float = 0.0
+
+
+class _MCUMemory:
+    def __init__(self) -> None:
+        self.total_ram: int = 0
+        self.ram_utilization: float = 0.0
+
+
 class _SerialDevice:
     def __init__(self) -> None:
         self.device: str = ""
@@ -424,6 +459,46 @@ class _SetDigitalMode:
         pass
 
 
+class _ConfigureEffect:
+    class Request:
+        def __init__(self) -> None:
+            self.effect_kind: int = 0
+            self.pin_pair_a: int = 0
+            self.pin_pair_b: int = 0
+
+    class Response:
+        pass
+
+
+class _SetEffect:
+    class Request:
+        def __init__(self) -> None:
+            self.effect_kind: int = 0
+            self.effect_mode: int = 0
+
+    class Response:
+        def __init__(self) -> None:
+            self.success: bool = True
+
+
+class _SetSamplingInterval:
+    class Request:
+        def __init__(self) -> None:
+            self.sampling_interval_ms: int = 0
+
+    class Response:
+        pass
+
+
+class _ReportMCUMemory:
+    class Request:
+        def __init__(self) -> None:
+            self.reporting_period_ms: int = 0
+
+    class Response:
+        pass
+
+
 class _CaptureInput:
     class Request:
         def __init__(self) -> None:
@@ -530,6 +605,10 @@ class _Parameter:
 class _Logger:
     def __init__(self) -> None:
         self.messages: list[tuple[str, str]] = []
+
+    def set_level(self, level: int) -> None:
+        del level
+        return None
 
     def debug(self, message: str) -> None:
         self.messages.append(("debug", message))
@@ -667,6 +746,11 @@ class _QoSHistoryPolicy:
 
 class _QoSDurabilityPolicy:
     VOLATILE: int = 1
+    TRANSIENT_LOCAL: int = 2
+
+
+class _LoggingSeverity:
+    DEBUG: int = 10
 
 
 class _TimeHandle:
@@ -817,8 +901,12 @@ def _install_oasis_msgs_stub() -> None:
     _set_module_attr(oasis_msgs_msg_module, "AVRConstants", _AVRConstants)
     _set_module_attr(oasis_msgs_msg_module, "DigitalReading", _DigitalReading)
     _set_module_attr(oasis_msgs_msg_module, "AnalogButton", _AnalogButton)
+    _set_module_attr(oasis_msgs_msg_module, "ConductorState", _ConductorState)
     _set_module_attr(oasis_msgs_msg_module, "DigitalButton", _DigitalButton)
     _set_module_attr(oasis_msgs_msg_module, "DigitalWriteCommand", _DigitalWriteCommand)
+    _set_module_attr(oasis_msgs_msg_module, "EffectKind", _EffectKind)
+    _set_module_attr(oasis_msgs_msg_module, "EffectMode", _EffectMode)
+    _set_module_attr(oasis_msgs_msg_module, "MCUMemory", _MCUMemory)
     _set_module_attr(oasis_msgs_msg_module, "PeripheralConstants", _PeripheralConstants)
     _set_module_attr(oasis_msgs_msg_module, "PeripheralInfo", _PeripheralInfo)
     _set_module_attr(oasis_msgs_msg_module, "PeripheralInput", _PeripheralInput)
@@ -829,9 +917,13 @@ def _install_oasis_msgs_stub() -> None:
     _set_module_attr(oasis_msgs_msg_module, "UPSStatus", _UPSStatus)
     _set_module_attr(oasis_msgs_msg_module, "UsbDevice", _UsbDevice)
     _set_module_attr(oasis_msgs_srv_module, "CaptureInput", _CaptureInput)
+    _set_module_attr(oasis_msgs_srv_module, "ConfigureEffect", _ConfigureEffect)
     _set_module_attr(oasis_msgs_srv_module, "GetMACAddress", _GetMACAddress)
+    _set_module_attr(oasis_msgs_srv_module, "ReportMCUMemory", _ReportMCUMemory)
     _set_module_attr(oasis_msgs_srv_module, "SetAnalogMode", _SetAnalogMode)
     _set_module_attr(oasis_msgs_srv_module, "SetDigitalMode", _SetDigitalMode)
+    _set_module_attr(oasis_msgs_srv_module, "SetEffect", _SetEffect)
+    _set_module_attr(oasis_msgs_srv_module, "SetSamplingInterval", _SetSamplingInterval)
     _set_module_attr(oasis_msgs_srv_module, "UPSCommand", _UPSCommand)
     _set_module_attr(oasis_msgs_srv_module, "WoLCommand", _WoLCommand)
     _set_module_attr(oasis_msgs_module, "msg", oasis_msgs_msg_module)
@@ -912,13 +1004,17 @@ def _install_rclpy_stub() -> None:
     _set_module_attr(rclpy_module, "shutdown", _shutdown)
     _set_module_attr(rclpy_module, "ok", _ok)
     _set_module_attr(rclpy_client_module, "Client", _Client)
+    _set_module_attr(rclpy_logging_module, "LoggingSeverity", _LoggingSeverity)
     _set_module_attr(rclpy_logging_module, "RcutilsLogger", _Logger)
     _set_module_attr(rclpy_node_module, "Node", _Node)
     _set_module_attr(rclpy_publisher_module, "Publisher", _Publisher)
+    _set_module_attr(rclpy_qos_module, "DurabilityPolicy", _QoSDurabilityPolicy)
+    _set_module_attr(rclpy_qos_module, "HistoryPolicy", _QoSHistoryPolicy)
     _set_module_attr(rclpy_qos_module, "QoSHistoryPolicy", _QoSHistoryPolicy)
     _set_module_attr(rclpy_qos_module, "QoSProfile", _QoSProfile)
     _set_module_attr(rclpy_qos_module, "QoSPresetProfiles", _QoSPresetProfiles)
     _set_module_attr(rclpy_qos_module, "QoSDurabilityPolicy", _QoSDurabilityPolicy)
+    _set_module_attr(rclpy_qos_module, "ReliabilityPolicy", _QoSReliabilityPolicy)
     _set_module_attr(
         rclpy_qos_module,
         "QoSReliabilityPolicy",

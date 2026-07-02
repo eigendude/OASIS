@@ -23,6 +23,7 @@ from oasis_control.input.station_input import MAX_BOOSTED_TRAIN_COMMAND
 from oasis_control.input.station_input import MAX_SAFE_MOTOR_DUTY_CYCLE
 from oasis_control.input.station_input import StationInput
 from oasis_control.lego_models.station_manager import StationManager
+from oasis_control.nodes.conductor_manager_telemetrix_node import ConductorManagerNode
 from oasis_msgs.msg import AnalogButton as AnalogButtonMsg
 from oasis_msgs.msg import DigitalButton as DigitalButtonMsg
 from oasis_msgs.msg import PeripheralInput as PeripheralInputMsg
@@ -44,6 +45,27 @@ class _StationManager:
     def set_motor_pwm(self, pwm: float, reverse: bool) -> None:
         self.pwm = pwm
         self.pwm_reverse = reverse
+
+
+class _Logger:
+    def __init__(self) -> None:
+        self.info_messages: list[str] = []
+
+    def info(self, message: str) -> None:
+        self.info_messages.append(message)
+
+
+class _ConductorNodeProbe:
+    def __init__(self, station_input: StationInput, now_sec: float) -> None:
+        self._station_input: StationInput = station_input
+        self.now_sec: float = now_sec
+        self.logger: _Logger = _Logger()
+
+    def _now_sec(self) -> float:
+        return self.now_sec
+
+    def get_logger(self) -> _Logger:
+        return self.logger
 
 
 def _make_slowdown() -> CheckerboardCruiseSlowdown:
@@ -122,6 +144,106 @@ def test_hold_speed_reapplies_full_command_when_slowdown_expires() -> None:
     assert station_input.hold_speed
     assert station_manager.pwm == pytest.approx(MAX_SAFE_MOTOR_DUTY_CYCLE)
     assert not station_manager.pwm_reverse
+
+
+def test_periodic_tick_maintains_hold_speed_without_controller_input() -> None:
+    station_input: StationInput
+    station_manager: _StationManager
+    station_input, station_manager = _make_station_input()
+
+    _enable_hold_speed(station_input)
+    station_manager.pwm = 0.0
+
+    assert station_input.hold_speed
+    assert not station_input.update_autonomous_train_control(10.0)
+
+    assert station_manager.pwm == pytest.approx(MAX_SAFE_MOTOR_DUTY_CYCLE)
+    assert not station_manager.pwm_reverse
+
+
+def test_periodic_tick_restores_full_cruise_after_slowdown() -> None:
+    station_input: StationInput
+    station_manager: _StationManager
+    station_input, station_manager = _make_station_input()
+
+    _enable_hold_speed(station_input)
+    assert station_input.hold_speed
+
+    assert not station_input.update_checkerboard_status(True, 10.0)
+    assert station_input.update_checkerboard_status(False, 11.0)
+
+    scaled_pwm: float = MAX_SAFE_MOTOR_DUTY_CYCLE * SLOWDOWN_SCALE
+    assert station_manager.pwm == pytest.approx(scaled_pwm)
+    assert station_input.consume_checkerboard_slowdown_activation(11.0)
+
+    node_probe: _ConductorNodeProbe = _ConductorNodeProbe(station_input, 16.0)
+    ConductorManagerNode._update_input_state(cast(ConductorManagerNode, node_probe))
+
+    assert station_input.hold_speed
+    assert station_manager.pwm == pytest.approx(MAX_SAFE_MOTOR_DUTY_CYCLE)
+    assert not station_manager.pwm_reverse
+    assert node_probe.logger.info_messages == [
+        "Checkerboard slowdown expired; waiting for train trailing edge"
+    ]
+
+    ConductorManagerNode._update_input_state(cast(ConductorManagerNode, node_probe))
+
+    assert node_probe.logger.info_messages == [
+        "Checkerboard slowdown expired; waiting for train trailing edge"
+    ]
+
+
+def test_periodic_tick_does_not_reapply_after_manual_cancel() -> None:
+    station_input: StationInput
+    station_manager: _StationManager
+    station_input, station_manager = _make_station_input()
+
+    _enable_hold_speed(station_input)
+    assert not station_input.update_checkerboard_status(True, 10.0)
+    assert station_input.update_checkerboard_status(False, 11.0)
+
+    scaled_pwm: float = MAX_SAFE_MOTOR_DUTY_CYCLE * SLOWDOWN_SCALE
+    assert station_manager.pwm == pytest.approx(scaled_pwm)
+    assert station_input.consume_checkerboard_slowdown_activation(11.0)
+
+    manual_command: float = 0.5
+    station_input._on_peripheral_input(
+        _input_message(
+            [_button("a", True)],
+            [_trigger("righttrigger", manual_command)],
+        )
+    )
+
+    manual_pwm: float = MAX_SAFE_MOTOR_DUTY_CYCLE * manual_command
+    assert not station_input.hold_speed
+    assert station_manager.pwm == pytest.approx(manual_pwm)
+
+    assert not station_input.update_autonomous_train_control(16.0)
+
+    assert not station_input.hold_speed
+    assert station_manager.pwm == pytest.approx(manual_pwm)
+    assert station_manager.pwm != pytest.approx(MAX_SAFE_MOTOR_DUTY_CYCLE)
+
+
+def test_periodic_tick_preserves_x_boosted_cruise() -> None:
+    station_input: StationInput
+    station_manager: _StationManager
+    station_input, station_manager = _make_station_input()
+
+    _enable_hold_speed(station_input)
+    station_input._on_peripheral_input(_input_message([_button("x", True)]))
+
+    assert station_input.hold_speed
+    assert not station_input.update_autonomous_train_control(10.0)
+
+    boosted_pwm: float = MAX_SAFE_MOTOR_DUTY_CYCLE * MAX_BOOSTED_TRAIN_COMMAND
+    assert station_manager.pwm == pytest.approx(boosted_pwm)
+
+    station_input._on_peripheral_input(_input_message([_button("x", False)]))
+
+    assert station_input.hold_speed
+    assert not station_input.update_autonomous_train_control(11.0)
+    assert station_manager.pwm == pytest.approx(MAX_SAFE_MOTOR_DUTY_CYCLE)
 
 
 def test_x_boost_does_not_cancel_hold_speed() -> None:

@@ -110,6 +110,22 @@ def test_start_enables_park_mode() -> None:
     assert station_manager.pwm == pytest.approx(0.9 * MAX_SAFE_MOTOR_DUTY_CYCLE)
 
 
+def test_periodic_tick_maintains_park_mode_output() -> None:
+    park_mode: TrainParkMode = TrainParkMode(enabled=True, command=0.9)
+    station_input, station_manager = _make_station_input(park_mode)
+
+    station_input._on_peripheral_input(_input_message([_button("start", True)]))
+    station_manager.pwm = 0.0
+    station_manager.pwm_reverse = False
+
+    assert not station_input.update_autonomous_train_control(1.0)
+
+    assert park_mode.active
+    assert station_input.reverse
+    assert station_manager.pwm_reverse
+    assert station_manager.pwm == pytest.approx(0.9 * MAX_SAFE_MOTOR_DUTY_CYCLE)
+
+
 def test_park_mode_waits_for_visible_to_interrupted_edge() -> None:
     park_mode: TrainParkMode = TrainParkMode(enabled=True, command=0.9)
     station_input, station_manager = _make_station_input(park_mode)

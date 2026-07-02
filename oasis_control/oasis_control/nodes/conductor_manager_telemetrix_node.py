@@ -87,6 +87,7 @@ ROS_NAMESPACE = "oasis"
 NODE_NAME = "conductor_manager"
 
 PUBLISH_STATE_PERIOD_SECS = 0.1
+INPUT_STATE_PERIOD_SECS = 0.05
 
 # Publisher
 PUBLISH_CONDUCTOR_STATE = "conductor_state"
@@ -267,6 +268,7 @@ class ConductorManagerNode(rclpy.node.Node):
 
         # Timer parameters
         self._publish_timer: Optional[rclpy.node.Timer] = None
+        self._input_state_timer: Optional[rclpy.node.Timer] = None
 
     def initialize(self) -> bool:
         # Initialize WoL managers
@@ -308,6 +310,9 @@ class ConductorManagerNode(rclpy.node.Node):
         self._publish_timer = self.create_timer(
             timer_period_sec=PUBLISH_STATE_PERIOD_SECS, callback=self._publish_state
         )
+        self._input_state_timer = self.create_timer(
+            timer_period_sec=INPUT_STATE_PERIOD_SECS, callback=self._update_input_state
+        )
 
         # Wake the input host
         if self._wol_manager_input is not None:
@@ -322,12 +327,6 @@ class ConductorManagerNode(rclpy.node.Node):
         return True
 
     def _publish_state(self) -> None:
-        now_sec: float = self._now_sec()
-        if self._station_input.update_checkerboard_slowdown(now_sec):
-            self.get_logger().info(
-                "Checkerboard slowdown expired; waiting for train trailing edge"
-            )
-
         header = HeaderMsg()
         header.stamp = self.get_clock().now().to_msg()
         header.frame_id = NODE_NAME  # TODO
@@ -347,6 +346,13 @@ class ConductorManagerNode(rclpy.node.Node):
         msg.ram_utilization = self._mcu_memory_manager.ram_utilization
 
         self._conductor_state_pub.publish(msg)
+
+    def _update_input_state(self) -> None:
+        now_sec: float = self._now_sec()
+        if self._station_input.update_autonomous_train_control(now_sec):
+            self.get_logger().info(
+                "Checkerboard slowdown expired; waiting for train trailing edge"
+            )
 
     def _on_checkerboard_status(self, checkerboard_status_msg: BoolMsg) -> None:
         now_sec: float = self._now_sec()
