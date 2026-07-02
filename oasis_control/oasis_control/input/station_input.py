@@ -40,7 +40,7 @@ from oasis_msgs.srv import CaptureInput as CaptureInputSvc
 CONTROLLER_PROFILE = "game.controller.default"
 
 # Motor duty commands below this magnitude are treated as stopped
-MOTOR_EPSILON: float = 0.02
+MOTOR_EPSILON: float = 0.001
 
 # Nominal motor-voltage target measured from the normal full-speed A-button
 # command around the track, in volts
