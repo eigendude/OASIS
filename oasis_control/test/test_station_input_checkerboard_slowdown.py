@@ -21,10 +21,13 @@ from oasis_control.input.checkerboard_slowdown import CheckerboardCruiseSlowdown
 from oasis_control.input.park_mode import TrainParkMode
 from oasis_control.input.station_input import MAX_BOOSTED_TRAIN_COMMAND
 from oasis_control.input.station_input import MAX_SAFE_MOTOR_DUTY_CYCLE
+from oasis_control.input.station_input import PERSON_CRUISE_LOST_TIMEOUT_SEC
 from oasis_control.input.station_input import StationInput
 from oasis_control.lego_models.station_manager import StationManager
 from oasis_control.nodes.conductor_manager_telemetrix_node import ConductorManagerNode
 from oasis_msgs.msg import AnalogButton as AnalogButtonMsg
+from oasis_msgs.msg import BoundingBox as BoundingBoxMsg
+from oasis_msgs.msg import CameraScene as CameraSceneMsg
 from oasis_msgs.msg import DigitalButton as DigitalButtonMsg
 from oasis_msgs.msg import PeripheralInput as PeripheralInputMsg
 
@@ -49,10 +52,57 @@ class _StationManager:
 
 class _Logger:
     def __init__(self) -> None:
+        self.debug_messages: list[str] = []
         self.info_messages: list[str] = []
+
+    def debug(self, message: str) -> None:
+        self.debug_messages.append(message)
 
     def info(self, message: str) -> None:
         self.info_messages.append(message)
+
+
+class _ClockNow:
+    @property
+    def nanoseconds(self) -> int:
+        return 0
+
+
+class _Clock:
+    def now(self) -> _ClockNow:
+        return _ClockNow()
+
+
+class _Client:
+    def call_async(self, request: object) -> object:
+        return object()
+
+
+class _Node:
+    def __init__(self) -> None:
+        self.logger: _Logger = _Logger()
+
+    def create_subscription(
+        self,
+        msg_type: type[object],
+        topic: str,
+        callback: object,
+        qos_profile: object,
+    ) -> object:
+        return object()
+
+    def create_client(
+        self,
+        srv_type: type[object],
+        srv_name: str,
+    ) -> _Client:
+        return _Client()
+
+    def get_clock(self) -> _Clock:
+        return _Clock()
+
+    def get_logger(self) -> _Logger:
+        return self.logger
 
 
 class _ConductorNodeProbe:
@@ -78,10 +128,10 @@ def _make_slowdown() -> CheckerboardCruiseSlowdown:
 
 
 def _make_station_input() -> tuple[StationInput, _StationManager]:
-    node: rclpy.node.Node = rclpy.node.Node("station_input_slowdown_test")
+    node: _Node = _Node()
     station_manager: _StationManager = _StationManager()
     station_input: StationInput = StationInput(
-        node,
+        cast(rclpy.node.Node, node),
         cast(StationManager, station_manager),
         _make_slowdown(),
         TrainParkMode(enabled=True, command=0.9),
@@ -119,9 +169,86 @@ def _input_message(
     return message
 
 
+def _camera_scene_message(x_centers: list[float]) -> CameraSceneMsg:
+    message: CameraSceneMsg = CameraSceneMsg()
+
+    x_center: float
+    for x_center in x_centers:
+        bounding_box: BoundingBoxMsg = BoundingBoxMsg()
+        bounding_box.x_center = x_center
+        message.bounding_boxes.append(bounding_box)
+
+    return message
+
+
 def _enable_hold_speed(station_input: StationInput) -> None:
     station_input._on_peripheral_input(_input_message([_button("y", True)]))
     station_input._on_peripheral_input(_input_message([_button("y", False)]))
+
+
+def test_person_right_third_enables_hold_speed() -> None:
+    station_input: StationInput
+    station_manager: _StationManager
+    station_input, station_manager = _make_station_input()
+
+    station_input.update_camera_scene(_camera_scene_message([0.8]), 10.0)
+
+    assert station_input.hold_speed
+    assert station_manager.pwm == pytest.approx(MAX_SAFE_MOTOR_DUTY_CYCLE)
+    assert not station_manager.pwm_reverse
+
+
+def test_person_right_third_loss_disables_after_debounce() -> None:
+    station_input: StationInput
+    station_manager: _StationManager
+    station_input, station_manager = _make_station_input()
+
+    station_input.update_camera_scene(_camera_scene_message([0.8]), 10.0)
+    assert station_input.hold_speed
+
+    station_input.update_camera_scene(
+        _camera_scene_message([]),
+        10.0 + PERSON_CRUISE_LOST_TIMEOUT_SEC - 0.1,
+    )
+
+    assert station_input.hold_speed
+    assert station_manager.pwm == pytest.approx(MAX_SAFE_MOTOR_DUTY_CYCLE)
+
+    station_input.update_camera_scene(
+        _camera_scene_message([]),
+        10.0 + PERSON_CRUISE_LOST_TIMEOUT_SEC,
+    )
+
+    assert not station_input.hold_speed
+    assert station_manager.pwm == 0.0
+    assert not station_manager.pwm_reverse
+
+
+def test_park_mode_prevents_person_right_third_hold_speed() -> None:
+    station_input: StationInput
+    station_manager: _StationManager
+    station_input, station_manager = _make_station_input()
+
+    station_input._on_peripheral_input(_input_message([_button("start", True)]))
+    park_pwm: float = station_manager.pwm
+
+    station_input.update_camera_scene(_camera_scene_message([0.8]), 10.0)
+
+    assert not station_input.hold_speed
+    assert station_manager.pwm == pytest.approx(park_pwm)
+    assert station_manager.pwm_reverse
+
+
+def test_y_toggle_still_enables_hold_speed() -> None:
+    station_input: StationInput
+    station_manager: _StationManager
+    station_input, station_manager = _make_station_input()
+
+    _enable_hold_speed(station_input)
+
+    assert station_input.hold_speed
+    assert station_manager.pwm == pytest.approx(MAX_SAFE_MOTOR_DUTY_CYCLE)
+    assert not station_manager.pwm_reverse
 
 
 def test_hold_speed_reapplies_full_command_when_slowdown_expires() -> None:

@@ -132,3 +132,7 @@ def test_add_conductor_manager_remaps_checkerboard_status(
         "checkerboard_status",
         "station/hd/checkerboard_status",
     ) not in conductor_action["remappings"]
+    assert (
+        "camera_scene",
+        "/oasis/hallway/sd/camera_scene",
+    ) in conductor_action["remappings"]

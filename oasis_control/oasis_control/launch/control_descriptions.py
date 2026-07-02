@@ -168,6 +168,7 @@ class ControlDescriptions:
                     f"{mcu_node}/{calibration_resolution}/calibration_status",
                 ),
                 ("capture_input", f"{input_provider}/capture_input"),
+                ("camera_scene", "/oasis/hallway/sd/camera_scene"),
                 ("checkerboard_status", f"{host_id}/checkerboard_status"),
                 ("digital_reading", f"{mcu_node}/digital_reading"),
                 ("digital_write_cmd", f"{mcu_node}/digital_write_cmd"),

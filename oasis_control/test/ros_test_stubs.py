@@ -131,6 +131,19 @@ class _AnalogButton:
         self.magnitude: float = 0.0
 
 
+class _BoundingBox:
+    def __init__(self) -> None:
+        self.x_center: float = 0.0
+        self.y_center: float = 0.0
+        self.width: float = 0.0
+        self.height: float = 0.0
+
+
+class _CameraScene:
+    def __init__(self) -> None:
+        self.bounding_boxes: list[_BoundingBox] = []
+
+
 class _PeripheralConstants:
     TYPE_JOYSTICK: int = 1
 
@@ -899,6 +912,8 @@ def _install_oasis_msgs_stub() -> None:
     _set_module_attr(oasis_msgs_msg_module, "AnalogReading", _AnalogReading)
     _set_module_attr(oasis_msgs_msg_module, "AnalogReadings", _AnalogReadings)
     _set_module_attr(oasis_msgs_msg_module, "AVRConstants", _AVRConstants)
+    _set_module_attr(oasis_msgs_msg_module, "BoundingBox", _BoundingBox)
+    _set_module_attr(oasis_msgs_msg_module, "CameraScene", _CameraScene)
     _set_module_attr(oasis_msgs_msg_module, "DigitalReading", _DigitalReading)
     _set_module_attr(oasis_msgs_msg_module, "AnalogButton", _AnalogButton)
     _set_module_attr(oasis_msgs_msg_module, "ConductorState", _ConductorState)

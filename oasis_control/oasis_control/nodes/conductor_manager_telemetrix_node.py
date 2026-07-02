@@ -33,6 +33,7 @@ from oasis_control.lego_models.station_manager import StationManager
 from oasis_control.managers.sampling_manager import SamplingManager
 from oasis_control.managers.wol_manager import WolManager
 from oasis_control.mcu.mcu_memory_manager import McuMemoryManager
+from oasis_msgs.msg import CameraScene as CameraSceneMsg
 from oasis_msgs.msg import ConductorState as ConductorStateMsg
 
 
@@ -93,6 +94,7 @@ INPUT_STATE_PERIOD_SECS = 0.05
 PUBLISH_CONDUCTOR_STATE = "conductor_state"
 
 # Subscribers
+SUBSCRIBE_CAMERA_SCENE = "camera_scene"
 SUBSCRIBE_CHECKERBOARD_STATUS = "checkerboard_status"
 
 # Parameters
@@ -265,6 +267,14 @@ class ConductorManagerNode(rclpy.node.Node):
                 qos_profile=rclpy.qos.QoSPresetProfiles.SENSOR_DATA.value,
             )
         )
+        self._camera_scene_sub: rclpy.subscription.Subscription[CameraSceneMsg] = (
+            self.create_subscription(
+                msg_type=CameraSceneMsg,
+                topic=SUBSCRIBE_CAMERA_SCENE,
+                callback=self._on_camera_scene,
+                qos_profile=rclpy.qos.QoSPresetProfiles.SENSOR_DATA.value,
+            )
+        )
 
         # Timer parameters
         self._publish_timer: Optional[rclpy.node.Timer] = None
@@ -398,6 +408,9 @@ class ConductorManagerNode(rclpy.node.Node):
             self.get_logger().info(
                 "Checkerboard trailing edge detected; slowdown re-armed"
             )
+
+    def _on_camera_scene(self, camera_scene_msg: CameraSceneMsg) -> None:
+        self._station_input.update_camera_scene(camera_scene_msg, self._now_sec())
 
     def _now_sec(self) -> float:
         now = self.get_clock().now()

@@ -24,6 +24,7 @@ import rclpy.task
 from oasis_control.input.checkerboard_slowdown import CheckerboardCruiseSlowdown
 from oasis_control.input.park_mode import TrainParkMode
 from oasis_control.lego_models.station_manager import StationManager
+from oasis_msgs.msg import CameraScene as CameraSceneMsg
 from oasis_msgs.msg import PeripheralConstants as PeripheralConstantsMsg
 from oasis_msgs.msg import PeripheralInfo as PeripheralInfoMsg
 from oasis_msgs.msg import PeripheralInput as PeripheralInputMsg
@@ -59,6 +60,12 @@ MAX_BOOSTED_TRAIN_COMMAND: float = MAX_MOTOR_VOLTAGE / NOMINAL_MOTOR_VOLTAGE
 # Unitless duty-cycle delta required before repeating train command debug logs.
 # This reports meaningful speed changes while ignoring controller jitter.
 TRAIN_COMMAND_DEBUG_DUTY_EPSILON: float = MAX_SAFE_MOTOR_DUTY_CYCLE / 10.0
+
+# Normalized minimum box center X coordinate considered right-third presence
+PERSON_CRUISE_RIGHT_THIRD_MIN_X: float = 2.0 / 3.0
+
+# Seconds to wait after the last right-third person before ending cruise
+PERSON_CRUISE_LOST_TIMEOUT_SEC: float = 0.5
 
 
 ################################################################################
@@ -113,6 +120,8 @@ class StationInput:
         self._hold_speed: bool = (
             False  # True to hold a steady speed, toggled with Y button
         )
+        self._person_cruise_active: bool = False
+        self._last_person_right_third_sec: Optional[float] = None
         self._last_logged_motor_duty_command: Optional[float] = None
 
         # Reliable listener QOS profile for subscribers
@@ -213,6 +222,37 @@ class StationInput:
 
         return expired
 
+    def update_camera_scene(
+        self,
+        camera_scene_msg: CameraSceneMsg,
+        now_sec: float,
+    ) -> None:
+        person_right_third: bool = any(
+            bounding_box.x_center >= PERSON_CRUISE_RIGHT_THIRD_MIN_X
+            for bounding_box in camera_scene_msg.bounding_boxes
+        )
+
+        if person_right_third:
+            person_entered_right_third: bool = self._last_person_right_third_sec is None
+            if person_entered_right_third and not self._park_mode.active:
+                self._enable_person_cruise(now_sec)
+
+            self._last_person_right_third_sec = now_sec
+            return
+
+        last_seen_sec: Optional[float] = self._last_person_right_third_sec
+        if last_seen_sec is None:
+            return
+
+        lost_duration_sec: float = now_sec - last_seen_sec
+        if lost_duration_sec < PERSON_CRUISE_LOST_TIMEOUT_SEC:
+            return
+
+        self._last_person_right_third_sec = None
+
+        if self._person_cruise_active:
+            self._disable_person_cruise()
+
     def consume_checkerboard_slowdown_activation(
         self,
         now_sec: float,
@@ -279,8 +319,7 @@ class StationInput:
 
             if b_button:
                 self._cancel_park_mode()
-                self._hold_speed = False
-                self.cancel_checkerboard_slowdown()
+                self._end_cruise()
                 self._stop_train()
                 return
 
@@ -307,6 +346,7 @@ class StationInput:
 
             # Disable hold speed if manual train ownership or park mode is active
             if a_button or manual_train_command_active or self._park_mode.active:
+                self._person_cruise_active = False
                 self._hold_speed = False
 
             if hold_speed_before_input and not self._hold_speed:
@@ -319,8 +359,7 @@ class StationInput:
                 self._cancel_park_mode()
 
             if self._park_mode.active:
-                self._hold_speed = False
-                self.cancel_checkerboard_slowdown()
+                self._end_cruise()
                 self.update_autonomous_train_control(self._now_sec())
                 return
 
@@ -347,8 +386,7 @@ class StationInput:
         if not self._park_mode.active:
             return
 
-        self._hold_speed = False
-        self.cancel_checkerboard_slowdown()
+        self._end_cruise()
         self._apply_train_command(
             -self._park_mode.command,
             boost_enabled=self._x_button,
@@ -435,8 +473,7 @@ class StationInput:
             self._node.get_logger().info("Park mode disabled")
             return
 
-        self._hold_speed = False
-        self.cancel_checkerboard_slowdown()
+        self._end_cruise()
 
         if self._park_mode.activate():
             self._node.get_logger().info("Park mode active; reversing train")
@@ -446,7 +483,7 @@ class StationInput:
             self._node.get_logger().info("Park mode cancelled")
 
     def _stop_train(self) -> None:
-        self._hold_speed = False
+        self._end_cruise()
         self._magnitude = 0.0
         self._reverse = False
         self._last_logged_motor_duty_command = None
@@ -462,6 +499,39 @@ class StationInput:
 
         stamp = now.to_msg()
         return float(stamp.sec) + float(stamp.nanosec) * 1.0e-9
+
+    def _enable_person_cruise(self, now_sec: float) -> None:
+        if self._person_cruise_active:
+            return
+
+        self._person_cruise_active = True
+        self._hold_speed = True
+        self._node.get_logger().info(
+            "Person detected in hallway right third; cruise enabled"
+        )
+        self.update_autonomous_train_control(now_sec)
+
+    def _disable_person_cruise(self) -> None:
+        self._person_cruise_active = False
+
+        hold_speed_was_active: bool = self._hold_speed
+        if hold_speed_was_active:
+            self._hold_speed = False
+
+        if hold_speed_was_active and self.cancel_checkerboard_slowdown():
+            self._node.get_logger().info(
+                "Checkerboard slowdown cancelled because cruise ended"
+            )
+
+        self._node.get_logger().info("Person left hallway right third; cruise disabled")
+
+        if not self._park_mode.active:
+            self._apply_train_command(0.0, boost_enabled=self._x_button)
+
+    def _end_cruise(self) -> None:
+        self._person_cruise_active = False
+        self._hold_speed = False
+        self.cancel_checkerboard_slowdown()
 
     def _on_peripheral_scan(self, peripheral_scan_msg: PeripheralScanMsg) -> None:
         peripheral: PeripheralInfoMsg
