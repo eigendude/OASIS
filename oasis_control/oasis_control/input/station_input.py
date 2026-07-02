@@ -291,12 +291,7 @@ class StationInput:
                     self._activate_park_mode()
 
             # Disable hold speed if manual train ownership or park mode is active
-            if (
-                a_button
-                or x_button
-                or manual_train_command_active
-                or self._park_mode.active
-            ):
+            if a_button or manual_train_command_active or self._park_mode.active:
                 self._hold_speed = False
 
             if hold_speed_before_input and not self._hold_speed:

@@ -19,6 +19,7 @@ import rclpy.node
 
 from oasis_control.input.checkerboard_slowdown import CheckerboardCruiseSlowdown
 from oasis_control.input.park_mode import TrainParkMode
+from oasis_control.input.station_input import MAX_BOOSTED_TRAIN_COMMAND
 from oasis_control.input.station_input import MAX_SAFE_MOTOR_DUTY_CYCLE
 from oasis_control.input.station_input import StationInput
 from oasis_control.lego_models.station_manager import StationManager
@@ -115,6 +116,57 @@ def test_hold_speed_reapplies_full_command_when_slowdown_expires() -> None:
     scaled_pwm: float = MAX_SAFE_MOTOR_DUTY_CYCLE * SLOWDOWN_SCALE
     assert station_manager.pwm == pytest.approx(scaled_pwm)
     assert station_input.consume_checkerboard_slowdown_activation(11.0)
+
+    assert station_input.update_checkerboard_slowdown(16.0)
+
+    assert station_input.hold_speed
+    assert station_manager.pwm == pytest.approx(MAX_SAFE_MOTOR_DUTY_CYCLE)
+    assert not station_manager.pwm_reverse
+
+
+def test_x_boost_does_not_cancel_hold_speed() -> None:
+    station_input: StationInput
+    station_manager: _StationManager
+    station_input, station_manager = _make_station_input()
+
+    _enable_hold_speed(station_input)
+    assert station_input.hold_speed
+
+    station_input._on_peripheral_input(_input_message([_button("x", True)]))
+
+    boosted_pwm: float = MAX_SAFE_MOTOR_DUTY_CYCLE * MAX_BOOSTED_TRAIN_COMMAND
+    assert station_input.hold_speed
+    assert station_manager.pwm == pytest.approx(boosted_pwm)
+
+    station_input._on_peripheral_input(_input_message([_button("x", False)]))
+
+    assert station_input.hold_speed
+    assert station_manager.pwm == pytest.approx(MAX_SAFE_MOTOR_DUTY_CYCLE)
+
+
+def test_slowdown_expiration_reapplies_hold_speed_after_x_boost() -> None:
+    station_input: StationInput
+    station_manager: _StationManager
+    station_input, station_manager = _make_station_input()
+
+    _enable_hold_speed(station_input)
+    assert not station_input.update_checkerboard_status(True, 10.0)
+    assert station_input.update_checkerboard_status(False, 11.0)
+
+    scaled_pwm: float = MAX_SAFE_MOTOR_DUTY_CYCLE * SLOWDOWN_SCALE
+    assert station_manager.pwm == pytest.approx(scaled_pwm)
+    assert station_input.consume_checkerboard_slowdown_activation(11.0)
+
+    station_input._on_peripheral_input(_input_message([_button("x", True)]))
+
+    boosted_scaled_pwm: float = scaled_pwm * MAX_BOOSTED_TRAIN_COMMAND
+    assert station_input.hold_speed
+    assert station_manager.pwm == pytest.approx(boosted_scaled_pwm)
+
+    station_input._on_peripheral_input(_input_message([_button("x", False)]))
+
+    assert station_input.hold_speed
+    assert station_manager.pwm == pytest.approx(scaled_pwm)
 
     assert station_input.update_checkerboard_slowdown(16.0)
 
