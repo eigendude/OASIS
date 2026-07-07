@@ -256,6 +256,9 @@ fi
 # Arduino library setup
 ################################################################################
 
+echo "Updating Arduino library index..."
+"${ARDUINO_CLI_BIN}" lib update-index
+
 INSTALLED_ESP32_SERVO_LIBRARY_VERSION="$(
   "${ARDUINO_CLI_BIN}" lib list |
     awk '$1 == "ESP32Servo" { print $2 }'
