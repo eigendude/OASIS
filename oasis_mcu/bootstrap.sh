@@ -35,7 +35,7 @@ set -o nounset
 ARDUINO_IDE_VERSION="1.8.19"
 
 # Version of the Arduino CLI to use
-ARDUINO_CLI_VERSION="1.3.1"
+ARDUINO_CLI_VERSION="1.5.1"
 
 # Arduino ESP32 package index URL
 ESP32_PACKAGE_INDEX_URL="https://espressif.github.io/arduino-esp32/package_esp32_index.json"
