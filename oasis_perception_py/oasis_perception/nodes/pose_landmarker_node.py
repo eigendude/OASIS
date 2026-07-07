@@ -27,7 +27,6 @@ from oasis_perception.utils.bounding_box_smoother import BoundingBoxSmoother
 from oasis_perception.utils.pose_drawing import draw_pose_landmarks
 from rclpy.logging import LoggingSeverity
 from rclpy.qos import qos_profile_default
-from sensor_msgs.msg import CameraInfo as CameraInfoMsg
 from sensor_msgs.msg import Image as ImageMsg
 from std_msgs.msg import Header as HeaderMsg
 
@@ -110,16 +109,19 @@ class PoseLandmarkerNode(rclpy.node.Node):
         self._cv_bridge = cv_bridge.CvBridge()
 
         # Create an ImageTransport object using this node's name and the
-        # configured transport
+        # configured transport. Keep it for publishing the annotated image.
         self._image_transport: ImageTransport = ImageTransport(
             self.get_name(), image_transport=image_transport
         )
 
-        # Subscribers
-        self._camera_subscription = self._image_transport.subscribe_camera(
-            base_topic=self.resolve_topic_name(IMAGE_SUB_TOPIC),
-            queue_size=1,
-            callback=self._camera_callback,
+        # Subscribe directly to the raw image. PoseLandmarker does not use
+        # CameraInfo, and the image_transport camera sync path can fail before
+        # this node's callback is reached.
+        self._image_subscription = self.create_subscription(
+            ImageMsg,
+            self.resolve_topic_name(IMAGE_SUB_TOPIC),
+            self._image_callback,
+            qos_profile_default,
         )
 
         # Publishers
@@ -164,7 +166,7 @@ class PoseLandmarkerNode(rclpy.node.Node):
         self.get_logger().info("Pose landmarker node shutting down")
         self.destroy_node()
 
-    def _camera_callback(self, image_msg: ImageMsg, camera_info: CameraInfoMsg) -> None:
+    def _image_callback(self, image_msg: ImageMsg) -> None:
         if not image_msg.data:
             self.get_logger().error("Received empty image message")
             return
