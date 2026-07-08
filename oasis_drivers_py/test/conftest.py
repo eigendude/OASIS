@@ -19,8 +19,9 @@ from pathlib import Path
 PACKAGE_ROOT: Path = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT: Path = PACKAGE_ROOT.parent
 CONTROL_PACKAGE_ROOT: Path = REPOSITORY_ROOT / "oasis_control"
+HOME_PACKAGE_ROOT: Path = REPOSITORY_ROOT / "oasis_home"
 
-for package_root in (PACKAGE_ROOT, CONTROL_PACKAGE_ROOT):
+for package_root in (PACKAGE_ROOT, CONTROL_PACKAGE_ROOT, HOME_PACKAGE_ROOT):
     package_path: str = str(package_root)
     if package_path not in sys.path:
         sys.path.insert(0, package_path)

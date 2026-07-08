@@ -97,9 +97,9 @@ class DriverDescriptions:
             f"{ROS_NAMESPACE}.bno086_imu_driver_{host_id}:=debug"
         )
 
-        container_arguments: list[str] | None = None
+        container_arguments: list[str] = ["--executor-type", "multi-threaded"]
         if effective_log_levels:
-            container_arguments = ["--ros-args"]
+            container_arguments.append("--ros-args")
             for configured_log_level in effective_log_levels:
                 container_arguments.extend(["--log-level", configured_log_level])
 
@@ -107,7 +107,7 @@ class DriverDescriptions:
             namespace=ROS_NAMESPACE,
             name=resolved_container_name,
             package="rclcpp_components",
-            executable="component_container_mt",
+            executable="component_container",
             output="screen",
             prefix=launch_prefix,
             arguments=container_arguments,
@@ -235,8 +235,9 @@ class DriverDescriptions:
                 namespace=ROS_NAMESPACE,
                 name=f"kinect2_container_{zone_id}",
                 package="rclcpp_components",
-                executable="component_container_mt",
+                executable="component_container",
                 output="screen",
+                arguments=["--executor-type", "multi-threaded"],
                 additional_env={
                     "RCUTILS_CONSOLE_OUTPUT_FORMAT": COMPONENT_CONSOLE_OUTPUT_FORMAT,
                 },
@@ -474,8 +475,9 @@ class DriverDescriptions:
             namespace=ROS_NAMESPACE,
             name=f"video_container_{zone_id}",
             package="rclcpp_components",
-            executable="component_container_mt",
+            executable="component_container",
             output="screen",
+            arguments=["--executor-type", "multi-threaded"],
             additional_env={
                 "RCUTILS_CONSOLE_OUTPUT_FORMAT": COMPONENT_CONSOLE_OUTPUT_FORMAT,
             },

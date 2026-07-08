@@ -66,13 +66,15 @@ class PerceptionDescriptions:
             namespace=ROS_NAMESPACE,
             name=f"perception_container_{host_id}",
             package="rclcpp_components",
-            executable="component_container_mt",
+            executable="component_container",
             output="screen",
             additional_env={
                 "RCUTILS_CONSOLE_OUTPUT_FORMAT": COMPONENT_CONSOLE_OUTPUT_FORMAT,
             },
             # Reduce noisy INFO logs when loading components while retaining node logs
             arguments=[
+                "--executor-type",
+                "multi-threaded",
                 "--ros-args",
                 "--log-level",
                 f"{ROS_NAMESPACE}.perception_container_{host_id}:=warn",
@@ -352,8 +354,8 @@ class PerceptionDescriptions:
         # NOTE:
         #
         # When using Abseil within a ROS 2 `ComposableNode` deployed inside a
-        # `component_container` or `component_container_mt`, the runtime crashes
-        # due to duplicate Abseil symbols.
+        # `component_container`, the runtime crashes due to duplicate Abseil
+        # symbols.
         #
         # This issue arises from Abseil's design: it provides many inline
         # functions and templates in headers, which means every Translation Unit (TU)
@@ -361,15 +363,16 @@ class PerceptionDescriptions:
         # When multiple `.so` plugins (shared libraries) are built independently,
         # each can embed its own versions of Abseil internals.
         #
-        # At runtime, the ROS 2 component manager (`component_container_mt`)
-        # loads all these plugins with `dlopen()`. The loader does not deduplicate
-        # symbols across `.so`s, so this violates the One-Definition Rule (ODR),
-        # leading to undefined behavior, typically manifesting as a segmentation fault.
+        # At runtime, the ROS 2 component manager (`component_container`) loads
+        # all these plugins with `dlopen()`. The loader does not deduplicate
+        # symbols across `.so`s, so this violates the One-Definition Rule
+        # (ODR), leading to undefined behavior, typically manifesting as a
+        # segmentation fault.
         #
         # In our case, the crash occurred when linking the `mediapipe_monolithic`
         # library (built with Bazel) into a ROS-built component. The node ran fine
         # standalone via `ros2 run`, but failed once loaded into the
-        # `component_container_mt` due to Abseil duplication at runtime.
+        # `component_container` due to Abseil duplication at runtime.
         #
         # POTENTIAL SOLUTION:
         #
@@ -391,8 +394,9 @@ class PerceptionDescriptions:
             namespace=ROS_NAMESPACE,
             name="hello_world_container",
             package="rclcpp_components",
-            executable="component_container_mt",
+            executable="component_container",
             output="screen",
+            arguments=["--executor-type", "multi-threaded"],
             additional_env={
                 "RCUTILS_CONSOLE_OUTPUT_FORMAT": COMPONENT_CONSOLE_OUTPUT_FORMAT,
             },

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import importlib
 import sys
+from pathlib import Path
 from types import ModuleType
 from typing import Any
 
@@ -21,6 +22,7 @@ from typing import Any
 def install_test_stubs() -> None:
     """Install test-only stand-ins for ROS packages that may be absent."""
 
+    _install_ament_index_python_stub()
     _install_builtin_interfaces_stub()
     _install_geometry_msgs_stub()
     _install_sensor_msgs_stub()
@@ -808,6 +810,29 @@ class _LaunchNode:
         self.kwargs: dict[str, Any] = kwargs
 
 
+class _ComposableNode:
+    def __init__(self, **kwargs: Any) -> None:
+        self.kwargs: dict[str, Any] = kwargs
+
+
+def _get_package_share_directory(package_name: str) -> str:
+    repository_root: Path = Path(__file__).resolve().parents[2]
+    return str(repository_root / package_name)
+
+
+def _install_ament_index_python_stub() -> None:
+    if _module_exists("ament_index_python"):
+        return
+
+    ament_index_module: ModuleType = ModuleType("ament_index_python")
+    _set_module_attr(
+        ament_index_module,
+        "get_package_share_directory",
+        _get_package_share_directory,
+    )
+    _register_module("ament_index_python", ament_index_module)
+
+
 def _install_builtin_interfaces_stub() -> None:
     if _module_exists("builtin_interfaces.msg"):
         return
@@ -843,15 +868,21 @@ def _install_geometry_msgs_stub() -> None:
 
 
 def _install_sensor_msgs_stub() -> None:
-    if _module_exists("sensor_msgs.msg"):
+    try:
+        sensor_msgs_msg_module: ModuleType = importlib.import_module("sensor_msgs.msg")
+    except ModuleNotFoundError:
+        sensor_msgs_module: ModuleType = _make_package("sensor_msgs")
+        sensor_msgs_msg_module = ModuleType("sensor_msgs.msg")
+        _set_module_attr(sensor_msgs_module, "msg", sensor_msgs_msg_module)
+        _register_module("sensor_msgs", sensor_msgs_module)
+        _register_module("sensor_msgs.msg", sensor_msgs_msg_module)
+    else:
+        _set_module_attr(sensor_msgs_msg_module, "Imu", _Imu)
+        _set_module_attr(sensor_msgs_msg_module, "BatteryState", _BatteryState)
         return
 
-    sensor_msgs_module: ModuleType = _make_package("sensor_msgs")
-    sensor_msgs_msg_module: ModuleType = ModuleType("sensor_msgs.msg")
     _set_module_attr(sensor_msgs_msg_module, "Imu", _Imu)
-    _set_module_attr(sensor_msgs_module, "msg", sensor_msgs_msg_module)
-    _register_module("sensor_msgs", sensor_msgs_module)
-    _register_module("sensor_msgs.msg", sensor_msgs_msg_module)
+    _set_module_attr(sensor_msgs_msg_module, "BatteryState", _BatteryState)
 
 
 def _install_std_msgs_stub() -> None:
@@ -970,10 +1001,27 @@ def _install_launch_ros_stub() -> None:
 
     launch_ros_module: ModuleType = _make_package("launch_ros")
     launch_ros_actions_module: ModuleType = ModuleType("launch_ros.actions")
+    launch_ros_descriptions_module: ModuleType = ModuleType("launch_ros.descriptions")
+    _set_module_attr(
+        launch_ros_actions_module,
+        "ComposableNodeContainer",
+        _LaunchNode,
+    )
     _set_module_attr(launch_ros_actions_module, "Node", _LaunchNode)
+    _set_module_attr(
+        launch_ros_descriptions_module,
+        "ComposableNode",
+        _ComposableNode,
+    )
     _set_module_attr(launch_ros_module, "actions", launch_ros_actions_module)
+    _set_module_attr(
+        launch_ros_module,
+        "descriptions",
+        launch_ros_descriptions_module,
+    )
     _register_module("launch_ros", launch_ros_module)
     _register_module("launch_ros.actions", launch_ros_actions_module)
+    _register_module("launch_ros.descriptions", launch_ros_descriptions_module)
 
 
 def _install_rclpy_stub() -> None:
