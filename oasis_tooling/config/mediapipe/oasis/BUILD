@@ -12,5 +12,6 @@ cc_binary(
         "//mediapipe/framework:calculator_graph",
         "//mediapipe/framework/port:parse_text_proto",
         "//mediapipe/framework/port:status",
+        "//mediapipe/tasks/c/vision/pose_landmarker:pose_landmarker_lib",
     ],
 )

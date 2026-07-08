@@ -888,6 +888,7 @@ set(POSE_LANDMARKER_INCLUDE_DIRS
   ${OpenCV_INCLUDE_DIRS}
 )
 set(POSE_LANDMARKER_LIBRARIES
+  ament_index_cpp::ament_index_cpp
   cv_bridge::cv_bridge
   image_transport::image_transport
   oasis_mediapipe_facade

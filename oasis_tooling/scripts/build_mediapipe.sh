@@ -110,6 +110,11 @@ insertion_lines = []
 lib_flag = f'        "-L{opencv_lib_dir}",\n'
 rpath_flag = f'        "-Wl,-rpath,{opencv_lib_dir}",\n'
 
+# The OASIS C++ facade backend does not use OpenCV video primitives. Linking
+# libopencv_video pulls libopencv_dnn and system protobuf into the component
+# load path, which can collide with MediaPipe's generated protobuf state.
+build_text = build_text.replace('        "-l:libopencv_video.so",\n', "")
+
 if lib_flag not in build_text:
     insertion_lines.append(lib_flag)
 if rpath_flag not in build_text:
@@ -209,8 +214,12 @@ rm -rf "${MEDIAPIPE_INSTALL_DIR}/include/mediapipe"
 mkdir -p "${MEDIAPIPE_INSTALL_DIR}/include"
 mkdir -p "${MEDIAPIPE_INSTALL_DIR}/include/mediapipe_protobuf5"
 mkdir -p "${MEDIAPIPE_INSTALL_DIR}/lib"
+mkdir -p "${MEDIAPIPE_INSTALL_DIR}/share/mediapipe"
 rm -f "${MEDIAPIPE_INSTALL_DIR}/lib/libmediapipe_monolithic.so"
 rm -f "${MEDIAPIPE_INSTALL_DIR}/lib/libabsl_monolithic.so"
+cp -f \
+  "${STACK_DIRECTORY}/oasis_perception_py/mediapipe/pose_landmarker.task" \
+  "${MEDIAPIPE_INSTALL_DIR}/share/mediapipe/pose_landmarker.task"
 
 # Copy headers from sources into the install include tree
 (
@@ -328,6 +337,7 @@ compile_smoke_test() {
 
 run_smoke_test() {
   local smoke_name="$1"
+  shift
   local smoke_binary="${SMOKE_TEST_DIR}/${smoke_name}"
   local smoke_ldd_output
 
@@ -347,45 +357,104 @@ run_smoke_test() {
     return
   fi
 
-  "${smoke_binary}"
+  "${smoke_binary}" "$@"
 }
 
 SMOKE_CONSTRUCT_ONLY_SOURCE="${SMOKE_TEST_DIR}/construct_only.cc"
 SMOKE_COPY_CONSTRUCT_SOURCE="${SMOKE_TEST_DIR}/copy_construct.cc"
 SMOKE_HEAP_LEAK_SOURCE="${SMOKE_TEST_DIR}/heap_leak.cc"
+SMOKE_MODEL_PATH="${MEDIAPIPE_INSTALL_DIR}/share/mediapipe/pose_landmarker.task"
 
 cat > "${SMOKE_CONSTRUCT_ONLY_SOURCE}" <<'CPP'
 #include <cstddef>
 
-extern "C" int oasis_mediapipe_backend_initialize_pose_landmarker(
+extern "C" int oasis_mediapipe_backend_create_pose_landmarker(
     const char*,
+    int,
     char*,
-    std::size_t);
+    std::size_t,
+    void**);
 
-int main() {
+extern "C" int oasis_mediapipe_backend_destroy_pose_landmarker(void*);
+
+int main(int argc, char** argv) {
+  if (argc < 2) {
+    return 1;
+  }
   char status[256] = {};
-  return oasis_mediapipe_backend_initialize_pose_landmarker(
-      "construct_only", status, sizeof(status));
+  void* handle = nullptr;
+  const int result = oasis_mediapipe_backend_create_pose_landmarker(
+      argv[1], 5, status, sizeof(status), &handle);
+  oasis_mediapipe_backend_destroy_pose_landmarker(handle);
+  return result;
 }
 CPP
 
 cat > "${SMOKE_COPY_CONSTRUCT_SOURCE}" <<'CPP'
+#include <cstdint>
 #include <cstddef>
 
-extern "C" int oasis_mediapipe_backend_detect_pose_stub(
+constexpr int OASIS_MEDIAPIPE_MAX_POSES = 5;
+constexpr int OASIS_MEDIAPIPE_POSE_LANDMARK_COUNT = 33;
+
+struct OasisPoseLandmark {
+  float x;
+  float y;
+  float z;
+  float visibility;
+  float presence;
+};
+
+struct OasisPose {
+  int landmarkCount;
+  OasisPoseLandmark landmarks[OASIS_MEDIAPIPE_POSE_LANDMARK_COUNT];
+};
+
+struct OasisPoseLandmarkerOutput {
+  int poseCount;
+  OasisPose poses[OASIS_MEDIAPIPE_MAX_POSES];
+};
+
+extern "C" int oasis_mediapipe_backend_create_pose_landmarker(
+    const char*,
+    int,
+    char*,
+    std::size_t,
+    void**);
+
+extern "C" int oasis_mediapipe_backend_destroy_pose_landmarker(void*);
+
+extern "C" int oasis_mediapipe_backend_detect_pose(
+    void*,
+    const unsigned char*,
+    std::size_t,
     int,
     int,
     int,
     const char*,
-    long long*,
+    long long,
+    OasisPoseLandmarkerOutput*,
     char*,
     std::size_t);
 
-int main() {
+int main(int argc, char** argv) {
+  if (argc < 2) {
+    return 1;
+  }
   char status[256] = {};
-  long long observed_scalar_count = 0;
-  return oasis_mediapipe_backend_detect_pose_stub(
-      2, 3, 4, "rgb8", &observed_scalar_count, status, sizeof(status));
+  void* handle = nullptr;
+  int result = oasis_mediapipe_backend_create_pose_landmarker(
+      argv[1], 5, status, sizeof(status), &handle);
+  if (result != 0) {
+    return result;
+  }
+  const unsigned char image[256 * 256 * 3] = {};
+  OasisPoseLandmarkerOutput output = {};
+  result = oasis_mediapipe_backend_detect_pose(
+      handle, image, sizeof(image), 256, 256, 3, "rgb8", 0, &output,
+      status, sizeof(status));
+  oasis_mediapipe_backend_destroy_pose_landmarker(handle);
+  return result;
 }
 CPP
 
@@ -435,8 +504,8 @@ nm -CD "${MEDIAPIPE_INSTALL_DIR}/lib/liboasis_mediapipe_backend.so" \
   | grep -E "ParseFromString|ShutdownProtobufLibrary" \
   || true
 
-run_smoke_test "construct_only"
-run_smoke_test "copy_construct"
+run_smoke_test "construct_only" "${SMOKE_MODEL_PATH}"
+run_smoke_test "copy_construct" "${SMOKE_MODEL_PATH}"
 run_smoke_test "heap_leak"
 
 #

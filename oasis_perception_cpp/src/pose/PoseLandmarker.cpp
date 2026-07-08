@@ -19,8 +19,8 @@ bool PoseLandmarker::Initialize(const mediapipe_facade::PoseLandmarkerConfig& co
   return m_facade.Initialize(config);
 }
 
-mediapipe_facade::PoseDetectionStubResult PoseLandmarker::DetectStub(
-    const mediapipe_facade::PoseDetectionStubInput& input)
+mediapipe_facade::PoseDetectionResult PoseLandmarker::Detect(
+    const mediapipe_facade::PoseDetectionInput& input)
 {
-  return m_facade.DetectStub(input);
+  return m_facade.Detect(input);
 }

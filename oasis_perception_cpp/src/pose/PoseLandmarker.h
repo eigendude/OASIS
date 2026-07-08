@@ -19,8 +19,7 @@ public:
 
   bool Initialize(const mediapipe_facade::PoseLandmarkerConfig& config);
 
-  mediapipe_facade::PoseDetectionStubResult DetectStub(
-      const mediapipe_facade::PoseDetectionStubInput& input);
+  mediapipe_facade::PoseDetectionResult Detect(const mediapipe_facade::PoseDetectionInput& input);
 
 private:
   mediapipe_facade::PoseLandmarker m_facade;
