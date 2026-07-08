@@ -31,6 +31,7 @@ from rclpy.qos import HistoryPolicy
 from rclpy.qos import QoSProfile
 from rclpy.qos import ReliabilityPolicy
 from rclpy.qos import qos_profile_default
+from rclpy.timer import Timer
 from sensor_msgs.msg import Image as ImageMsg
 from std_msgs.msg import Header as HeaderMsg
 
@@ -55,6 +56,8 @@ NODE_NAME = "pose_landmarker"
 # Parameters
 IMAGE_TRANSPORT_PARAM = "image_transport"
 IMAGE_TRANSPORT_DEFAULT = "compressed"
+PUBLISH_POSE_IMAGE_PARAM = "publish_pose_image"
+PUBLISH_POSE_IMAGE_DEFAULT = True
 
 # Subscribers
 IMAGE_SUB_TOPIC = "image"
@@ -93,6 +96,21 @@ class PreparedFrame:
     mp_image: MediapipeImage
 
 
+@dataclass
+class RenderJob:
+    """
+    Annotated pose image render work queued outside the detector result path.
+
+    result: MediaPipe pose result used for landmark overlay drawing
+    output_image: MediaPipe RGB image returned with the detector result
+    header: Original ROS header used for the annotated image message
+    """
+
+    result: vision.PoseLandmarkerResult
+    output_image: MediapipeImage
+    header: HeaderMsg
+
+
 ################################################################################
 # ROS node
 ################################################################################
@@ -109,11 +127,17 @@ class PoseLandmarkerNode(rclpy.node.Node):
 
         # Declare parameters
         self.declare_parameter(IMAGE_TRANSPORT_PARAM, IMAGE_TRANSPORT_DEFAULT)
+        self.declare_parameter(PUBLISH_POSE_IMAGE_PARAM, PUBLISH_POSE_IMAGE_DEFAULT)
 
         image_transport_param: str = (
             self.get_parameter(IMAGE_TRANSPORT_PARAM).get_parameter_value().string_value
         )
         image_transport: str = image_transport_param or IMAGE_TRANSPORT_DEFAULT
+        self._publish_pose_image_enabled: bool = (
+            self.get_parameter(PUBLISH_POSE_IMAGE_PARAM)
+            .get_parameter_value()
+            .bool_value
+        )
 
         # Pose detection state
         self._pose_count: int = 0
@@ -130,6 +154,12 @@ class PoseLandmarkerNode(rclpy.node.Node):
         self._pending_frame: PreparedFrame | None = None
         self._last_submitted_timestamp_ms: int = 0
         self._dropped_pending_frames: int = 0
+
+        # Annotated image rendering state. Keep only the newest render job so
+        # debug publishing cannot build an unbounded queue.
+        self._render_lock = Lock()
+        self._pending_render_job: RenderJob | None = None
+        self._dropped_render_jobs: int = 0
 
         # Map from timestamp_ms -> original header
         self._stamp_map: dict[int, HeaderMsg] = {}
@@ -173,6 +203,9 @@ class PoseLandmarkerNode(rclpy.node.Node):
             POSE_LANDMARKS_TOPIC,
             qos_profile_default,
         )
+        self._render_timer: Timer | None = None
+        if self._publish_pose_image_enabled:
+            self._render_timer = self.create_timer(0.01, self._render_pending_image)
 
         # Initialize MediaPipe pose detector for live-stream processing
         self._detector = self.initialize_detector()
@@ -198,6 +231,11 @@ class PoseLandmarkerNode(rclpy.node.Node):
 
     def stop(self) -> None:
         self.get_logger().info("Pose landmarker node shutting down")
+        if self._render_timer is not None:
+            self._render_timer.cancel()
+            self._render_timer = None
+        with self._render_lock:
+            self._pending_render_job = None
         self.destroy_node()
 
     def _image_callback(self, image_msg: ImageMsg) -> None:
@@ -407,13 +445,47 @@ class PoseLandmarkerNode(rclpy.node.Node):
             header = self._make_header_from_timestamp(timestamp_ms)
 
         self._publish_pose_messages(result, header)
-
-        # TODO: Make annotated image publishing optional and easy to move
-        # off-thread. It performs RGB-to-BGR conversion, landmark drawing,
-        # cv_bridge conversion, and transport publishing on the result path.
-        self._publish_image(result, output_image, header)
-
         self._submit_pending_frame_or_mark_idle()
+        self._queue_render_job(result, output_image, header)
+
+    def _queue_render_job(
+        self,
+        result: vision.PoseLandmarkerResult,
+        output_image: MediapipeImage,
+        header: HeaderMsg,
+    ) -> None:
+        if not self._publish_pose_image_enabled:
+            return
+
+        render_job: RenderJob = RenderJob(
+            result=result,
+            output_image=output_image,
+            header=header,
+        )
+
+        with self._render_lock:
+            if self._pending_render_job is not None:
+                self._dropped_render_jobs += 1
+                if self._dropped_render_jobs % 100 == 0:
+                    self.get_logger().debug(
+                        "Dropped "
+                        f"{self._dropped_render_jobs} pending pose render jobs"
+                    )
+            self._pending_render_job = render_job
+
+    def _render_pending_image(self) -> None:
+        with self._render_lock:
+            render_job: RenderJob | None = self._pending_render_job
+            self._pending_render_job = None
+
+        if render_job is None:
+            return
+
+        self._publish_image(
+            render_job.result,
+            render_job.output_image,
+            render_job.header,
+        )
 
     def _publish_pose_messages(
         self, result: vision.PoseLandmarkerResult, header: HeaderMsg
