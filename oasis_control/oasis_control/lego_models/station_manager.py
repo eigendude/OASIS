@@ -179,6 +179,7 @@ class StationManager:
         self._motor_ff1_count: int = 0
         self._motor_ff2_state: bool = False
         self._motor_ff2_count: int = 0
+        self._last_motor_pwm_cmd: Optional[tuple[int, float]] = None
 
         # Reliable listener QOS profile for subscribers
         qos_profile: rclpy.qos.QoSProfile = (
@@ -342,17 +343,22 @@ class StationManager:
         dir_cmd.digital_value = reverse
 
         self._motor_dir_cmd_pub.publish(dir_cmd)
+        self._last_motor_pwm_cmd = None
 
     def set_motor_pwm(self, target_magnitude: float, reverse: bool) -> None:
         """Publish command for motor PWM"""
-        pwm_cmd = PWMWriteCommandMsg()
-        pwm_cmd.digital_pin = self._motor_pwm_pin
-        pwm_cmd.duty_cycle = target_magnitude
+        motor_duty_cycle: float = -target_magnitude if reverse else target_magnitude
+        motor_pwm_cmd: tuple[int, float] = (self._motor_pwm_pin, motor_duty_cycle)
+        if motor_pwm_cmd != self._last_motor_pwm_cmd:
+            pwm_cmd = PWMWriteCommandMsg()
+            pwm_cmd.digital_pin = self._motor_pwm_pin
+            pwm_cmd.duty_cycle = target_magnitude
 
-        self._motor_pwm_cmd_pub.publish(pwm_cmd)
+            self._motor_pwm_cmd_pub.publish(pwm_cmd)
+            self._last_motor_pwm_cmd = motor_pwm_cmd
 
         # Update state
-        self._motor_duty_cycle = -target_magnitude if reverse else target_magnitude
+        self._motor_duty_cycle = motor_duty_cycle
 
     def _decode_divider_voltage(
         self,

@@ -13,10 +13,19 @@
 from __future__ import annotations
 
 import math
+from typing import Any
 
 import pytest
 
 from oasis_control.lego_models.station_manager import StationManager
+
+
+class _Publisher:
+    def __init__(self) -> None:
+        self.messages: list[Any] = []
+
+    def publish(self, message: Any) -> None:
+        self.messages.append(message)
 
 
 def _make_station_manager(motor_voltage_reversed: bool = False) -> StationManager:
@@ -38,8 +47,25 @@ def _make_station_manager(motor_voltage_reversed: bool = False) -> StationManage
     manager._motor_voltage_initialized = False
     manager._motor_voltage_stddev = 0.0
     manager._motor_voltage_reversed = motor_voltage_reversed
+    manager._last_motor_pwm_cmd = None
 
     return manager
+
+
+def _make_pwm_station_manager() -> tuple[StationManager, _Publisher, _Publisher]:
+    manager: StationManager = StationManager.__new__(StationManager)
+    pwm_publisher: _Publisher = _Publisher()
+    direction_publisher: _Publisher = _Publisher()
+
+    manager._motor_pwm_pin = 5
+    manager._motor_dir_pin = 6
+    manager._motor_duty_cycle = 0.0
+    manager._last_motor_pwm_cmd = None
+    manager_any: Any = manager
+    manager_any._motor_pwm_cmd_pub = pwm_publisher
+    manager_any._motor_dir_cmd_pub = direction_publisher
+
+    return manager, pwm_publisher, direction_publisher
 
 
 def _update_motor_voltage(
@@ -95,3 +121,39 @@ def test_motor_voltage_stddev_uses_canonical_zero() -> None:
     _update_motor_voltage(manager, -0.001, timestamp_sec=2.0)
 
     assert manager.motor_voltage_stddev == 0.0
+
+
+def test_back_to_back_duplicate_motor_pwm_publishes_once() -> None:
+    manager, pwm_publisher, _ = _make_pwm_station_manager()
+
+    manager.set_motor_pwm(0.5, False)
+    manager.set_motor_pwm(0.5, False)
+
+    assert len(pwm_publisher.messages) == 1
+    assert pwm_publisher.messages[0].digital_pin == 5
+    assert pwm_publisher.messages[0].duty_cycle == pytest.approx(0.5)
+    assert manager.motor_duty_cycle == pytest.approx(0.5)
+
+
+def test_motor_direction_side_effect_resets_duplicate_pwm_cache() -> None:
+    manager, pwm_publisher, direction_publisher = _make_pwm_station_manager()
+
+    manager.set_motor_pwm(0.5, False)
+    manager.set_motor_direction(True)
+    manager.set_motor_pwm(0.5, True)
+
+    assert len(pwm_publisher.messages) == 2
+    assert len(direction_publisher.messages) == 1
+    assert manager.motor_duty_cycle == pytest.approx(-0.5)
+
+
+def test_opposite_reverse_motor_pwm_republishes_same_magnitude() -> None:
+    manager, pwm_publisher, _ = _make_pwm_station_manager()
+
+    manager.set_motor_pwm(0.5, False)
+    manager.set_motor_pwm(0.5, True)
+
+    assert len(pwm_publisher.messages) == 2
+    assert pwm_publisher.messages[0].duty_cycle == pytest.approx(0.5)
+    assert pwm_publisher.messages[1].duty_cycle == pytest.approx(0.5)
+    assert manager.motor_duty_cycle == pytest.approx(-0.5)
