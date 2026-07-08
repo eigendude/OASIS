@@ -13,9 +13,12 @@
 #include <cstddef>
 #include <cstring>
 
+#ifndef OASIS_MEDIAPIPE_BACKEND_AVAILABLE
+#error "OASIS_MEDIAPIPE_BACKEND_AVAILABLE must be defined for MediaPipeFacade.cpp"
+#endif
+
 namespace oasis_perception::mediapipe_facade
 {
-#ifdef OASIS_MEDIAPIPE_BACKEND_AVAILABLE
 extern "C"
 {
   int oasis_mediapipe_backend_run_hello_world(char* statusMessage,
@@ -34,7 +37,6 @@ extern "C"
                                                char* statusMessage,
                                                std::size_t statusMessageSize);
 }
-#endif
 
 namespace
 {
@@ -58,14 +60,8 @@ HelloWorldResult RunHelloWorld()
   std::array<char, STATUS_BUFFER_SIZE> statusMessage{};
   int outputPacketCount = 0;
 
-#ifdef OASIS_MEDIAPIPE_BACKEND_AVAILABLE
   const bool success = oasis_mediapipe_backend_run_hello_world(
                            statusMessage.data(), statusMessage.size(), &outputPacketCount) == 0;
-#else
-  const bool success = true;
-  outputPacketCount = 10;
-  CopyStatus(statusMessage, "MediaPipe backend unavailable; facade stub ran");
-#endif
 
   return {
       success,
@@ -80,15 +76,10 @@ PoseLandmarker::~PoseLandmarker() = default;
 
 bool PoseLandmarker::Initialize(const PoseLandmarkerConfig& config)
 {
-#ifdef OASIS_MEDIAPIPE_BACKEND_AVAILABLE
   std::array<char, STATUS_BUFFER_SIZE> statusMessage{};
 
   m_initialized = oasis_mediapipe_backend_initialize_pose_landmarker(
                       config.loggingName.c_str(), statusMessage.data(), statusMessage.size()) == 0;
-#else
-  (void)config;
-  m_initialized = true;
-#endif
 
   return m_initialized;
 }
@@ -104,16 +95,9 @@ PoseDetectionStubResult PoseLandmarker::DetectStub(const PoseDetectionStubInput&
     return {false, GetMessage(statusMessage), observedScalarCount};
   }
 
-#ifdef OASIS_MEDIAPIPE_BACKEND_AVAILABLE
   const bool success = oasis_mediapipe_backend_detect_pose_stub(
                            input.width, input.height, input.channelCount, input.encoding.c_str(),
                            &observedScalarCount, statusMessage.data(), statusMessage.size()) == 0;
-#else
-  const bool success = input.width >= 0 && input.height >= 0 && input.channelCount >= 0;
-  observedScalarCount = static_cast<long long>(input.width) * static_cast<long long>(input.height) *
-                        static_cast<long long>(input.channelCount);
-  CopyStatus(statusMessage, "MediaPipe backend unavailable; pose stub ran");
-#endif
 
   return {
       success,

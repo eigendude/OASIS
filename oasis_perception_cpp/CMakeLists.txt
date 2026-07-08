@@ -103,14 +103,15 @@ set(SLAM_RENDERING_SOURCES
 add_library(oasis_mediapipe_facade SHARED
   src/pose/MediaPipeFacade.cpp
 )
-if(TARGET MediaPipe::Backend)
-  target_compile_definitions(oasis_mediapipe_facade PRIVATE
-    OASIS_MEDIAPIPE_BACKEND_AVAILABLE
-  )
-  target_link_libraries(oasis_mediapipe_facade PRIVATE
-    MediaPipe::Backend
-  )
+if(NOT TARGET MediaPipe::Backend)
+  message(FATAL_ERROR "MediaPipe::Backend is required for oasis_mediapipe_facade")
 endif()
+target_compile_definitions(oasis_mediapipe_facade PRIVATE
+  OASIS_MEDIAPIPE_BACKEND_AVAILABLE
+)
+target_link_libraries(oasis_mediapipe_facade PRIVATE
+  MediaPipe::Backend
+)
 install(
   TARGETS
     oasis_mediapipe_facade
