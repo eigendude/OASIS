@@ -4,26 +4,12 @@ Date: Mon, 19 May 2025 19:20:30 -0700
 Subject: [PATCH 2/2] Enable monolithic build
 
 ---
- mediapipe/framework/BUILD                   | 103 ++++++++++++++++++++
+ mediapipe/framework/BUILD                   | 102 ++++++++++++++++++++
  mediapipe/framework/monolithic_absl.cc      |  17 ++++
  mediapipe/framework/monolithic_mediapipe.cc |  17 ++++
- mediapipe/util/BUILD                        |   1 +
- 4 files changed, 138 insertions(+)
+ 3 files changed, 136 insertions(+)
  create mode 100644 mediapipe/framework/monolithic_absl.cc
  create mode 100644 mediapipe/framework/monolithic_mediapipe.cc
-
-diff --git a/mediapipe/util/BUILD b/mediapipe/util/BUILD
-index db7e98e6b..d3f298e9c 100644
---- a/mediapipe/util/BUILD
-+++ b/mediapipe/util/BUILD
-@@ -203,6 +203,7 @@ cc_library(
-     name = "pose_util",
-     srcs = ["pose_util.cc"],
-     hdrs = ["pose_util.h"],
-+    alwayslink = 1,
-     visibility = ["//visibility:public"],
-     deps = [
-         "//mediapipe/framework/formats:landmark_cc_proto",
 
 diff --git a/mediapipe/framework/BUILD b/mediapipe/framework/BUILD
 index 2416aab5f..05b224445 100644
@@ -37,7 +23,7 @@ index 2416aab5f..05b224445 100644
  )
  
  cc_library(
-@@ -1994,3 +1995,105 @@ cc_library(
+@@ -1994,3 +1995,104 @@ cc_library(
          "@com_google_absl//absl/strings:string_view",
      ],
  )
@@ -132,7 +118,6 @@ index 2416aab5f..05b224445 100644
 +        "//mediapipe/framework:calculator_graph",
 +        "//mediapipe/framework/port:parse_text_proto",
 +        "//mediapipe/framework/port:status",
-+        "//mediapipe/util:pose_util",
 +
 +        # pose_landmarker_cpu dependencies
 +        "//mediapipe/examples/desktop:demo_run_graph_main",
@@ -191,3 +176,4 @@ index 000000000..0fd323ea8
 +namespace mediapipe { void _mediapipe_monolithic_dummy() {} }
 -- 
 2.43.0
+

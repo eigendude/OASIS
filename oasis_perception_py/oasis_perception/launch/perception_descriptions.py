@@ -806,7 +806,6 @@ class PerceptionDescriptions:
             parameters=[
                 {
                     "image_transport": image_transport,
-                    "publish_pose_image": False,
                 }
             ],
             remappings=[
@@ -818,74 +817,6 @@ class PerceptionDescriptions:
             ],
         )
         ld.add_action(node)
-
-    #
-    # Pose landmark renderer
-    #
-
-    @staticmethod
-    def add_pose_landmark_renderer(
-        ld: LaunchDescription,
-        zone_id: str,
-        host_id: str,
-        input_topic: str,
-        input_resolution: str,
-    ) -> None:
-        RESOLUTION_PREFIX = f"{input_resolution}/" if input_resolution else ""
-
-        pose_landmark_renderer_container: ComposableNodeContainer = (
-            ComposableNodeContainer(
-                namespace=ROS_NAMESPACE,
-                name=f"pose_landmark_renderer_container_{host_id}",
-                package="rclcpp_components",
-                executable="component_container",
-                output="screen",
-                arguments=[
-                    "--executor-type",
-                    "multi-threaded",
-                    "--ros-args",
-                    "--log-level",
-                    (
-                        f"{ROS_NAMESPACE}.pose_landmark_renderer_container_"
-                        f"{host_id}:=debug"
-                    ),
-                ],
-                additional_env={
-                    "RCUTILS_CONSOLE_OUTPUT_FORMAT": COMPONENT_CONSOLE_OUTPUT_FORMAT,
-                },
-                composable_node_descriptions=[
-                    ComposableNode(
-                        package=CPP_PACKAGE_NAME,
-                        plugin="pose_landmark_renderer::PoseLandmarkRendererComponent",
-                        name="pose_landmark_renderer",
-                        parameters=[
-                            {
-                                "image_transport": "raw",
-                            },
-                        ],
-                        remappings=[
-                            (
-                                "image",
-                                f"{zone_id}/{RESOLUTION_PREFIX}{input_topic}",
-                            ),
-                            (
-                                "pose_landmarks",
-                                f"{zone_id}/{RESOLUTION_PREFIX}pose_landmarks",
-                            ),
-                            (
-                                "camera_scene",
-                                f"{zone_id}/{RESOLUTION_PREFIX}camera_scene",
-                            ),
-                            (
-                                "pose_image",
-                                f"{zone_id}/{RESOLUTION_PREFIX}pose_image",
-                            ),
-                        ],
-                    ),
-                ],
-            )
-        )
-        ld.add_action(pose_landmark_renderer_container)
 
     #
     # Pose renderer

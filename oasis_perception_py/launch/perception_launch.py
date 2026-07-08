@@ -174,13 +174,6 @@ def generate_launch_description() -> LaunchDescription:
             input_resolution="sd",
             image_transport="raw",
         )
-        PerceptionDescriptions.add_pose_landmark_renderer(
-            ld,
-            "hallway",
-            host_id=HOST_ID,
-            input_topic="image_color",
-            input_resolution="sd",
-        )
 
     # Rendering pipeline
     if HOST_ID == "vision":
