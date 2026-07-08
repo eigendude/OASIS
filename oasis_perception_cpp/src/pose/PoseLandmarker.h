@@ -9,6 +9,8 @@
 
 #include "MediaPipeFacade.h"
 
+#include <string>
+
 namespace oasis_perception
 {
 class PoseLandmarker
@@ -20,6 +22,8 @@ public:
   bool Initialize(const mediapipe_facade::PoseLandmarkerConfig& config);
 
   mediapipe_facade::PoseDetectionResult Detect(const mediapipe_facade::PoseDetectionInput& input);
+
+  const std::string& LastStatusMessage() const;
 
 private:
   mediapipe_facade::PoseLandmarker m_facade;

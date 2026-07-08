@@ -102,11 +102,13 @@ public:
 
   bool Initialize(const PoseLandmarkerConfig& config);
   PoseDetectionResult Detect(const PoseDetectionInput& input);
+  const std::string& LastStatusMessage() const;
 
   PoseLandmarker(const PoseLandmarker&) = delete;
   PoseLandmarker& operator=(const PoseLandmarker&) = delete;
 
 private:
   void* m_backendHandle = nullptr;
+  std::string m_lastStatusMessage;
 };
 } // namespace oasis_perception::mediapipe_facade

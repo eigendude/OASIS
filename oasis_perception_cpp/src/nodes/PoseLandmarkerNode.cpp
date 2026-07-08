@@ -72,7 +72,8 @@ bool PoseLandmarkerNode::Start()
     return false;
   }
 
-  RCLCPP_INFO(m_node.get_logger(), "PoseLandmarker initialized");
+  RCLCPP_INFO(m_node.get_logger(), "PoseLandmarker initialized: %s",
+              m_poseLandmarker->LastStatusMessage().c_str());
 
   const int startupWidth = 256;
   const int startupHeight = 256;

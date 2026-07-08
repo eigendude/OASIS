@@ -128,9 +128,11 @@ bool PoseLandmarker::Initialize(const PoseLandmarkerConfig& config)
   }
 
   (void)config.loggingName;
-  return oasis_mediapipe_backend_create_pose_landmarker(
-             config.modelAssetPath.c_str(), config.maxPoses, statusMessage.data(),
-             statusMessage.size(), &m_backendHandle) == 0;
+  const bool success = oasis_mediapipe_backend_create_pose_landmarker(
+                           config.modelAssetPath.c_str(), config.maxPoses, statusMessage.data(),
+                           statusMessage.size(), &m_backendHandle) == 0;
+  m_lastStatusMessage = GetMessage(statusMessage);
+  return success;
 }
 
 PoseDetectionResult PoseLandmarker::Detect(const PoseDetectionInput& input)
@@ -148,6 +150,7 @@ PoseDetectionResult PoseLandmarker::Detect(const PoseDetectionInput& input)
                            m_backendHandle, input.data, input.dataSize, input.width, input.height,
                            input.channelCount, input.encoding.c_str(), input.timestampMs,
                            &backendOutput, statusMessage.data(), statusMessage.size()) == 0;
+  m_lastStatusMessage = GetMessage(statusMessage);
 
   std::vector<std::vector<PoseLandmark>> poses;
   if (success)
@@ -184,5 +187,10 @@ PoseDetectionResult PoseLandmarker::Detect(const PoseDetectionInput& input)
       GetMessage(statusMessage),
       std::move(poses),
   };
+}
+
+const std::string& PoseLandmarker::LastStatusMessage() const
+{
+  return m_lastStatusMessage;
 }
 } // namespace oasis_perception::mediapipe_facade

@@ -6,22 +6,31 @@
  *  See the file LICENSE.txt for more information.
  */
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "mediapipe/framework/calculator_graph.h"
+#include "mediapipe/framework/formats/image.h"
+#include "mediapipe/framework/formats/image_frame.h"
 #include "mediapipe/framework/port/parse_text_proto.h"
 #include "mediapipe/framework/port/status.h"
-#include "mediapipe/tasks/c/core/common.h"
-#include "mediapipe/tasks/c/vision/core/image.h"
-#include "mediapipe/tasks/c/vision/pose_landmarker/pose_landmarker.h"
+#include "mediapipe/tasks/cc/core/base_options.h"
+#include "mediapipe/tasks/cc/core/host_environment.h"
+#include "mediapipe/tasks/cc/vision/core/running_mode.h"
+#include "mediapipe/tasks/cc/vision/pose_landmarker/pose_landmarker.h"
 
 #include <algorithm>
 #include <cstddef>
 #include <cstring>
+#include <memory>
 #include <string>
+#include <utility>
 
 namespace
 {
 constexpr int OASIS_MEDIAPIPE_MAX_POSES = 5;
 constexpr int OASIS_MEDIAPIPE_POSE_LANDMARK_COUNT = 33;
+
+namespace pose_landmarker = mediapipe::tasks::vision::pose_landmarker;
 
 struct OasisPoseLandmark
 {
@@ -46,7 +55,7 @@ struct OasisPoseLandmarkerOutput
 
 struct OasisPoseLandmarkerHandle
 {
-  MpPoseLandmarkerPtr landmarker = nullptr;
+  std::unique_ptr<pose_landmarker::PoseLandmarker> landmarker;
   int maxPoses = 1;
 };
 
@@ -60,28 +69,35 @@ void CopyStatus(const std::string& message, char* statusMessage, std::size_t sta
   statusMessage[copySize] = '\0';
 }
 
-std::string ConsumeError(char* errorMessage)
+std::string StatusMessage(const absl::Status& status)
 {
-  if (errorMessage == nullptr)
-    return {};
-
-  std::string message{errorMessage};
-  MpErrorFree(errorMessage);
-  return message;
+  return std::string{status.message()};
 }
 
-MpImageFormat GetImageFormat(int channelCount)
+mediapipe::ImageFormat::Format GetImageFormat(int channelCount)
 {
   if (channelCount == 3)
-    return kMpImageFormatSrgb;
+    return mediapipe::ImageFormat::SRGB;
 
   if (channelCount == 4)
-    return kMpImageFormatSrgba;
+    return mediapipe::ImageFormat::SRGBA;
 
-  return kMpImageFormatUnknown;
+  return mediapipe::ImageFormat::UNKNOWN;
 }
 
-void CopyPoseResult(const PoseLandmarkerResult& result, OasisPoseLandmarkerOutput* output)
+mediapipe::Image CreateImage(const unsigned char* imageData,
+                             int width,
+                             int height,
+                             int channelCount)
+{
+  auto imageFrame = std::make_shared<mediapipe::ImageFrame>();
+  imageFrame->CopyPixelData(GetImageFormat(channelCount), width, height, imageData,
+                            mediapipe::ImageFrame::kDefaultAlignmentBoundary);
+  return mediapipe::Image(std::move(imageFrame));
+}
+
+void CopyPoseResult(const pose_landmarker::PoseLandmarkerResult& result,
+                    OasisPoseLandmarkerOutput* output)
 {
   if (output == nullptr)
     return;
@@ -89,27 +105,26 @@ void CopyPoseResult(const PoseLandmarkerResult& result, OasisPoseLandmarkerOutpu
   *output = {};
 
   const int poseCount =
-      std::min<int>(static_cast<int>(result.pose_landmarks_count), OASIS_MEDIAPIPE_MAX_POSES);
+      std::min<int>(static_cast<int>(result.pose_landmarks.size()), OASIS_MEDIAPIPE_MAX_POSES);
   output->poseCount = poseCount;
 
   for (int poseIndex = 0; poseIndex < poseCount; ++poseIndex)
   {
-    const NormalizedLandmarks& sourcePose = result.pose_landmarks[poseIndex];
+    const auto& sourcePose = result.pose_landmarks[poseIndex];
     OasisPose& destinationPose = output->poses[poseIndex];
-    const int landmarkCount = std::min<int>(static_cast<int>(sourcePose.landmarks_count),
+    const int landmarkCount = std::min<int>(static_cast<int>(sourcePose.landmarks.size()),
                                             OASIS_MEDIAPIPE_POSE_LANDMARK_COUNT);
     destinationPose.landmarkCount = landmarkCount;
 
     for (int landmarkIndex = 0; landmarkIndex < landmarkCount; ++landmarkIndex)
     {
-      const NormalizedLandmark& sourceLandmark = sourcePose.landmarks[landmarkIndex];
+      const auto& sourceLandmark = sourcePose.landmarks[landmarkIndex];
       OasisPoseLandmark& destinationLandmark = destinationPose.landmarks[landmarkIndex];
       destinationLandmark.x = sourceLandmark.x;
       destinationLandmark.y = sourceLandmark.y;
       destinationLandmark.z = sourceLandmark.z;
-      destinationLandmark.visibility =
-          sourceLandmark.has_visibility ? sourceLandmark.visibility : 0.0F;
-      destinationLandmark.presence = sourceLandmark.has_presence ? sourceLandmark.presence : 0.0F;
+      destinationLandmark.visibility = sourceLandmark.visibility.value_or(0.0F);
+      destinationLandmark.presence = sourceLandmark.presence.value_or(0.0F);
     }
   }
 }
@@ -231,31 +246,32 @@ extern "C" int oasis_mediapipe_backend_create_pose_landmarker(const char* modelA
   auto* wrapper = new OasisPoseLandmarkerHandle();
   wrapper->maxPoses = std::clamp(maxPoses, 1, OASIS_MEDIAPIPE_MAX_POSES);
 
-  PoseLandmarkerOptions options = {};
-  options.base_options.model_asset_path = modelAssetPath;
-  options.base_options.delegate = CPU;
-  options.base_options.host_environment = HOST_ENVIRONMENT_UNKNOWN;
-  options.base_options.host_system = HOST_SYSTEM_LINUX;
-  options.running_mode = IMAGE;
-  options.num_poses = wrapper->maxPoses;
-  options.min_pose_detection_confidence = 0.5F;
-  options.min_pose_presence_confidence = 0.5F;
-  options.min_tracking_confidence = 0.5F;
-  options.output_segmentation_masks = false;
+  auto options = std::make_unique<pose_landmarker::PoseLandmarkerOptions>();
+  options->base_options.model_asset_path = modelAssetPath;
+  options->base_options.delegate = mediapipe::tasks::core::BaseOptions::Delegate::CPU;
+  options->base_options.host_environment = mediapipe::tasks::core::HOST_ENVIRONMENT_UNKNOWN;
+  options->base_options.host_system = mediapipe::tasks::core::HOST_SYSTEM_LINUX;
+  options->running_mode = mediapipe::tasks::vision::core::RunningMode::IMAGE;
+  options->num_poses = wrapper->maxPoses;
+  options->min_pose_detection_confidence = 0.5F;
+  options->min_pose_presence_confidence = 0.5F;
+  options->min_tracking_confidence = 0.5F;
+  options->output_segmentation_masks = false;
 
-  char* errorMessage = nullptr;
-  const MpStatus status = MpPoseLandmarkerCreate(&options, &wrapper->landmarker, &errorMessage);
-  if (status != 0 || wrapper->landmarker == nullptr)
+  absl::StatusOr<std::unique_ptr<pose_landmarker::PoseLandmarker>> landmarker =
+      pose_landmarker::PoseLandmarker::Create(std::move(options));
+  if (!landmarker.ok() || landmarker.value() == nullptr)
   {
-    const std::string error = ConsumeError(errorMessage);
+    const std::string error = StatusMessage(landmarker.status());
     delete wrapper;
-    CopyStatus("MediaPipe backend pose landmarker create failed: " + error, statusMessage,
+    CopyStatus("MediaPipe C++ backend pose landmarker create failed: " + error, statusMessage,
                statusMessageSize);
     return 1;
   }
 
+  wrapper->landmarker = std::move(landmarker.value());
   *handle = wrapper;
-  CopyStatus("MediaPipe backend pose landmarker created", statusMessage, statusMessageSize);
+  CopyStatus("MediaPipe C++ backend pose landmarker created", statusMessage, statusMessageSize);
   return 0;
 }
 
@@ -267,10 +283,8 @@ extern "C" int oasis_mediapipe_backend_destroy_pose_landmarker(void* handle)
 
   if (wrapper->landmarker != nullptr)
   {
-    char* errorMessage = nullptr;
-    MpPoseLandmarkerClose(wrapper->landmarker, &errorMessage);
-    ConsumeError(errorMessage);
-    wrapper->landmarker = nullptr;
+    (void)wrapper->landmarker->Close();
+    wrapper->landmarker.reset();
   }
 
   delete wrapper;
@@ -310,8 +324,8 @@ extern "C" int oasis_mediapipe_backend_detect_pose(void* handle,
     return 1;
   }
 
-  const MpImageFormat imageFormat = GetImageFormat(channelCount);
-  if (imageFormat == kMpImageFormatUnknown)
+  const mediapipe::ImageFormat::Format imageFormat = GetImageFormat(channelCount);
+  if (imageFormat == mediapipe::ImageFormat::UNKNOWN)
   {
     const std::string imageEncoding = encoding != nullptr ? encoding : "";
     CopyStatus("Unsupported pose landmarker image encoding: " + imageEncoding, statusMessage,
@@ -319,45 +333,37 @@ extern "C" int oasis_mediapipe_backend_detect_pose(void* handle,
     return 1;
   }
 
-  const std::size_t expectedSize = static_cast<std::size_t>(width) *
-                                   static_cast<std::size_t>(height) *
-                                   static_cast<std::size_t>(channelCount);
-  if (width <= 0 || height <= 0 || imageDataSize < expectedSize)
+  if (width <= 0 || height <= 0)
   {
     CopyStatus("Pose landmarker image dimensions or data size are invalid", statusMessage,
                statusMessageSize);
     return 1;
   }
 
-  MpImagePtr image = nullptr;
-  char* errorMessage = nullptr;
-  MpStatus status =
-      MpImageCreateFromUint8Data(imageFormat, width, height, imageData,
-                                 static_cast<int>(imageDataSize), &image, &errorMessage);
-  if (status != 0 || image == nullptr)
+  const std::size_t expectedSize = static_cast<std::size_t>(width) *
+                                   static_cast<std::size_t>(height) *
+                                   static_cast<std::size_t>(channelCount);
+  if (imageDataSize < expectedSize)
   {
-    const std::string error = ConsumeError(errorMessage);
-    CopyStatus("MediaPipe image creation failed: " + error, statusMessage, statusMessageSize);
-    return 1;
-  }
-
-  PoseLandmarkerResult result = {};
-  status = MpPoseLandmarkerDetectImage(wrapper->landmarker, image, nullptr, &result, &errorMessage);
-  MpImageFree(image);
-
-  if (status != 0)
-  {
-    const std::string error = ConsumeError(errorMessage);
-    MpPoseLandmarkerCloseResult(&result);
-    CopyStatus("MediaPipe backend pose detection failed: " + error, statusMessage,
+    CopyStatus("Pose landmarker image dimensions or data size are invalid", statusMessage,
                statusMessageSize);
     return 1;
   }
 
-  (void)timestampMs;
-  CopyPoseResult(result, output);
-  MpPoseLandmarkerCloseResult(&result);
+  mediapipe::Image image = CreateImage(imageData, width, height, channelCount);
 
-  CopyStatus("MediaPipe backend pose detection completed", statusMessage, statusMessageSize);
+  absl::StatusOr<pose_landmarker::PoseLandmarkerResult> result =
+      wrapper->landmarker->Detect(std::move(image));
+  if (!result.ok())
+  {
+    CopyStatus("MediaPipe C++ backend pose detection failed: " + StatusMessage(result.status()),
+               statusMessage, statusMessageSize);
+    return 1;
+  }
+
+  (void)timestampMs;
+  CopyPoseResult(result.value(), output);
+
+  CopyStatus("MediaPipe C++ backend pose detection completed", statusMessage, statusMessageSize);
   return 0;
 }

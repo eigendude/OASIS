@@ -24,3 +24,8 @@ mediapipe_facade::PoseDetectionResult PoseLandmarker::Detect(
 {
   return m_facade.Detect(input);
 }
+
+const std::string& PoseLandmarker::LastStatusMessage() const
+{
+  return m_facade.LastStatusMessage();
+}
