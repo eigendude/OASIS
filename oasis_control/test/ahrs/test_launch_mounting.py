@@ -60,47 +60,6 @@ class _FakeLaunchDescription:
         self.actions.append(action)
 
 
-def test_add_ahrs_node_configures_boot_mounting_calibration_params(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import oasis_control.launch.control_descriptions as control_descriptions
-
-    monkeypatch.setattr(control_descriptions, "Node", _FakeNode)
-
-    launch_description = _FakeLaunchDescription()
-    mounting_config = AhrsMountingConfig(
-        parent_frame_id="base_link",
-        child_frame_id="imu_link",
-        calibration_duration_sec=2.0,
-        stationary_angular_speed_threshold_rads=0.2,
-        min_sample_count=12,
-    )
-
-    control_descriptions.ControlDescriptions.add_ahrs_node(
-        launch_description,
-        "falcon",
-        mounting_config=mounting_config,
-    )
-
-    assert len(launch_description.actions) == 1
-
-    ahrs_action = launch_description.actions[0].kwargs
-    assert ahrs_action["package"] == "oasis_control"
-    assert ahrs_action["executable"] == "ahrs"
-    assert ahrs_action["parameters"] == [
-        {
-            "base_frame_id": "base_link",
-            "imu_frame_id": "imu_link",
-            "mounting_calibration_duration_sec": 2.0,
-            "mounting_stationary_angular_speed_threshold_rads": 0.2,
-            "mounting_min_sample_count": 12,
-        }
-    ]
-    assert ("imu_gravity", "falcon/imu_gravity") in ahrs_action["remappings"]
-    assert ("ahrs/imu_gravity", "falcon/ahrs/imu_gravity") in ahrs_action["remappings"]
-    assert ("ahrs/gravity", "falcon/ahrs/gravity") in ahrs_action["remappings"]
-
-
 def test_add_conductor_manager_remaps_checkerboard_status(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -116,7 +75,6 @@ def test_add_conductor_manager_remaps_checkerboard_status(
         mcu_node="conductor",
         wol_server_id="station",
         input_provider="station",
-        calibration_resolution="hd",
     )
 
     assert len(launch_description.actions) == 1

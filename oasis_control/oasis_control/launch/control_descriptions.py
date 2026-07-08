@@ -146,7 +146,6 @@ class ControlDescriptions:
         mcu_node: str,
         wol_server_id: str,
         input_provider: str,
-        calibration_resolution: str,
         motor_voltage_reversed: bool = False,
     ) -> None:
         conductor_node: Node = Node(
@@ -163,10 +162,6 @@ class ControlDescriptions:
             remappings=[
                 (f"{mcu_node}_state", f"{host_id}/{mcu_node}_state"),
                 ("analog_readings", f"{mcu_node}/analog_readings"),
-                (
-                    "calibration_status",
-                    f"{mcu_node}/{calibration_resolution}/calibration_status",
-                ),
                 ("capture_input", f"{input_provider}/capture_input"),
                 ("camera_scene", "/oasis/hallway/sd/camera_scene"),
                 ("checkerboard_status", f"{host_id}/checkerboard_status"),

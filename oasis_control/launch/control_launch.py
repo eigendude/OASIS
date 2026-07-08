@@ -82,16 +82,12 @@ def generate_launch_description() -> LaunchDescription:
 
     # Microcontroller nodes
     if HOST_ID == "station":
-        # TODO
-        CALIBRATION_RESOLUTION: str = "sd"
-
         ControlDescriptions.add_conductor_manager(
             ld,
             HOST_ID,
             "conductor",
             HOST_ID,
             INPUT_PROVIDER,
-            CALIBRATION_RESOLUTION,
             motor_voltage_reversed=True,
         )
 
