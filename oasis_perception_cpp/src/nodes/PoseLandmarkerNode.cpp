@@ -10,6 +10,8 @@
 
 #include "pose/PoseLandmarker.h"
 
+#include <cv_bridge/cv_bridge.hpp>
+#include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
 #include <sensor_msgs/msg/image.hpp>
 
@@ -24,13 +26,35 @@ PoseLandmarkerNode::~PoseLandmarkerNode() = default;
 
 bool PoseLandmarkerNode::Start()
 {
-  if (!m_poseLandmarker->Initialize(m_node.get_name()))
+  const mediapipe_facade::PoseLandmarkerConfig config{
+      .loggingName = m_node.get_name(),
+  };
+
+  if (!m_poseLandmarker->Initialize(config))
   {
     RCLCPP_ERROR(m_node.get_logger(), "PoseLandmarker initialization failed");
     return false;
   }
 
   RCLCPP_INFO(m_node.get_logger(), "PoseLandmarker initialized");
+
+  const mediapipe_facade::PoseDetectionStubInput stubInput{
+      .width = 0,
+      .height = 0,
+      .channelCount = 0,
+      .encoding = "startup",
+  };
+  const mediapipe_facade::PoseDetectionStubResult stubResult =
+      m_poseLandmarker->DetectStub(stubInput);
+  if (!stubResult.success)
+  {
+    RCLCPP_ERROR(m_node.get_logger(), "PoseLandmarker facade startup check failed: %s",
+                 stubResult.message.c_str());
+    return false;
+  }
+
+  RCLCPP_INFO(m_node.get_logger(), "PoseLandmarker facade startup check succeeded: %s",
+              stubResult.message.c_str());
 
   return true;
 }
@@ -54,7 +78,22 @@ void PoseLandmarkerNode::OnImage(const sensor_msgs::msg::Image& imageMsg)
     return;
   }
 
-  auto outMsg = m_poseLandmarker->OnImage(imagePtr);
+  const mediapipe_facade::PoseDetectionStubInput stubInput{
+      .width = imagePtr->image.cols,
+      .height = imagePtr->image.rows,
+      .channelCount = imagePtr->image.channels(),
+      .encoding = imageMsg.encoding,
+  };
+  const mediapipe_facade::PoseDetectionStubResult stubResult =
+      m_poseLandmarker->DetectStub(stubInput);
+  if (!stubResult.success)
+  {
+    RCLCPP_ERROR(m_node.get_logger(), "PoseLandmarker facade detection failed: %s",
+                 stubResult.message.c_str());
+    return;
+  }
+
+  sensor_msgs::msg::Image::SharedPtr outMsg = imagePtr->toImageMsg();
 
   // Publish the image
   m_publisher.publish(*outMsg);
