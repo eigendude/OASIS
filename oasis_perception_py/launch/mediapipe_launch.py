@@ -41,6 +41,18 @@ def generate_launch_description() -> LaunchDescription:
                 package=CPP_PACKAGE_NAME,
                 plugin="oasis_perception::PoseLandmarkerComponent",
                 name="pose_landmarker",
+                parameters=[
+                    {
+                        "image_transport": "raw",
+                        "max_poses": 5,
+                        "min_pose_detection_confidence": 0.75,
+                        "min_pose_presence_confidence": 0.4,
+                        "min_tracking_confidence": 0.4,
+                        "output_segmentation_masks": False,
+                        "live_stream_timeout_ms": 1000,
+                        "publish_pose_image": False,
+                    }
+                ],
             ),
         ],
     )

@@ -371,6 +371,10 @@ cat > "${SMOKE_CONSTRUCT_ONLY_SOURCE}" <<'CPP'
 extern "C" int oasis_mediapipe_backend_create_pose_landmarker(
     const char*,
     int,
+    float,
+    float,
+    float,
+    bool,
     char*,
     std::size_t,
     void**);
@@ -384,7 +388,7 @@ int main(int argc, char** argv) {
   char status[256] = {};
   void* handle = nullptr;
   const int result = oasis_mediapipe_backend_create_pose_landmarker(
-      argv[1], 5, status, sizeof(status), &handle);
+      argv[1], 5, 0.75F, 0.4F, 0.4F, false, status, sizeof(status), &handle);
   oasis_mediapipe_backend_destroy_pose_landmarker(handle);
   return result;
 }
@@ -418,6 +422,10 @@ struct OasisPoseLandmarkerOutput {
 extern "C" int oasis_mediapipe_backend_create_pose_landmarker(
     const char*,
     int,
+    float,
+    float,
+    float,
+    bool,
     char*,
     std::size_t,
     void**);
@@ -433,6 +441,7 @@ extern "C" int oasis_mediapipe_backend_detect_pose(
     int,
     const char*,
     long long,
+    long long,
     OasisPoseLandmarkerOutput*,
     char*,
     std::size_t);
@@ -444,14 +453,14 @@ int main(int argc, char** argv) {
   char status[256] = {};
   void* handle = nullptr;
   int result = oasis_mediapipe_backend_create_pose_landmarker(
-      argv[1], 5, status, sizeof(status), &handle);
+      argv[1], 5, 0.75F, 0.4F, 0.4F, false, status, sizeof(status), &handle);
   if (result != 0) {
     return result;
   }
   const unsigned char image[256 * 256 * 3] = {};
   OasisPoseLandmarkerOutput output = {};
   result = oasis_mediapipe_backend_detect_pose(
-      handle, image, sizeof(image), 256, 256, 3, "rgb8", 0, &output,
+      handle, image, sizeof(image), 256, 256, 3, "rgb8", 0, 1000, &output,
       status, sizeof(status));
   oasis_mediapipe_backend_destroy_pose_landmarker(handle);
   return result;

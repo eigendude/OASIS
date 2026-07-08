@@ -19,9 +19,15 @@
 #include "mediapipe/tasks/cc/vision/pose_landmarker/pose_landmarker.h"
 
 #include <algorithm>
+#include <chrono>
+#include <condition_variable>
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
+#include <deque>
+#include <limits>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <utility>
 
@@ -53,9 +59,23 @@ struct OasisPoseLandmarkerOutput
   OasisPose poses[OASIS_MEDIAPIPE_MAX_POSES];
 };
 
+struct OasisPoseLandmarkerCallbackResult
+{
+  long long timestampMs = 0;
+  bool success = false;
+  std::string message;
+  OasisPoseLandmarkerOutput output{};
+};
+
 struct OasisPoseLandmarkerHandle
 {
+  std::mutex mutex;
+  std::condition_variable condition;
+  std::deque<OasisPoseLandmarkerCallbackResult> results;
   std::unique_ptr<pose_landmarker::PoseLandmarker> landmarker;
+  long long pendingTimestampMs = 0;
+  long long lastSubmittedTimestampMs = std::numeric_limits<long long>::min();
+  bool hasPendingTimestamp = false;
   int maxPoses = 1;
 };
 
@@ -127,6 +147,42 @@ void CopyPoseResult(const pose_landmarker::PoseLandmarkerResult& result,
       destinationLandmark.presence = sourceLandmark.presence.value_or(0.0F);
     }
   }
+}
+
+void OnPoseResult(OasisPoseLandmarkerHandle* wrapper,
+                  absl::StatusOr<pose_landmarker::PoseLandmarkerResult> result,
+                  const mediapipe::Image& image,
+                  std::int64_t timestampMs)
+{
+  (void)image;
+
+  OasisPoseLandmarkerCallbackResult callbackResult;
+  callbackResult.timestampMs = timestampMs;
+
+  if (result.ok())
+  {
+    callbackResult.success = true;
+    callbackResult.message = "MediaPipe C++ LIVE_STREAM backend pose detection completed";
+    CopyPoseResult(result.value(), &callbackResult.output);
+  }
+  else
+  {
+    callbackResult.success = false;
+    callbackResult.message = "MediaPipe C++ LIVE_STREAM backend pose detection failed: " +
+                             StatusMessage(result.status());
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(wrapper->mutex);
+    if (callbackResult.timestampMs < 0 && wrapper->hasPendingTimestamp)
+      callbackResult.timestampMs = wrapper->pendingTimestampMs;
+
+    wrapper->results.push_back(std::move(callbackResult));
+    while (wrapper->results.size() > 8)
+      wrapper->results.pop_front();
+  }
+
+  wrapper->condition.notify_all();
 }
 } // namespace
 
@@ -225,6 +281,10 @@ extern "C" int oasis_mediapipe_backend_run_hello_world(char* statusMessage,
 
 extern "C" int oasis_mediapipe_backend_create_pose_landmarker(const char* modelAssetPath,
                                                               int maxPoses,
+                                                              float minPoseDetectionConfidence,
+                                                              float minPosePresenceConfidence,
+                                                              float minTrackingConfidence,
+                                                              bool outputSegmentationMasks,
                                                               char* statusMessage,
                                                               std::size_t statusMessageSize,
                                                               void** handle)
@@ -251,12 +311,15 @@ extern "C" int oasis_mediapipe_backend_create_pose_landmarker(const char* modelA
   options->base_options.delegate = mediapipe::tasks::core::BaseOptions::Delegate::CPU;
   options->base_options.host_environment = mediapipe::tasks::core::HOST_ENVIRONMENT_UNKNOWN;
   options->base_options.host_system = mediapipe::tasks::core::HOST_SYSTEM_LINUX;
-  options->running_mode = mediapipe::tasks::vision::core::RunningMode::IMAGE;
+  options->running_mode = mediapipe::tasks::vision::core::RunningMode::LIVE_STREAM;
   options->num_poses = wrapper->maxPoses;
-  options->min_pose_detection_confidence = 0.5F;
-  options->min_pose_presence_confidence = 0.5F;
-  options->min_tracking_confidence = 0.5F;
-  options->output_segmentation_masks = false;
+  options->min_pose_detection_confidence = minPoseDetectionConfidence;
+  options->min_pose_presence_confidence = minPosePresenceConfidence;
+  options->min_tracking_confidence = minTrackingConfidence;
+  options->output_segmentation_masks = outputSegmentationMasks;
+  options->result_callback = [wrapper](absl::StatusOr<pose_landmarker::PoseLandmarkerResult> result,
+                                       const mediapipe::Image& image, std::int64_t timestampMs)
+  { OnPoseResult(wrapper, std::move(result), image, timestampMs); };
 
   absl::StatusOr<std::unique_ptr<pose_landmarker::PoseLandmarker>> landmarker =
       pose_landmarker::PoseLandmarker::Create(std::move(options));
@@ -264,14 +327,15 @@ extern "C" int oasis_mediapipe_backend_create_pose_landmarker(const char* modelA
   {
     const std::string error = StatusMessage(landmarker.status());
     delete wrapper;
-    CopyStatus("MediaPipe C++ backend pose landmarker create failed: " + error, statusMessage,
-               statusMessageSize);
+    CopyStatus("MediaPipe C++ LIVE_STREAM backend pose landmarker create failed: " + error,
+               statusMessage, statusMessageSize);
     return 1;
   }
 
   wrapper->landmarker = std::move(landmarker.value());
   *handle = wrapper;
-  CopyStatus("MediaPipe C++ backend pose landmarker created", statusMessage, statusMessageSize);
+  CopyStatus("MediaPipe C++ LIVE_STREAM backend pose landmarker created", statusMessage,
+             statusMessageSize);
   return 0;
 }
 
@@ -299,6 +363,7 @@ extern "C" int oasis_mediapipe_backend_detect_pose(void* handle,
                                                    int channelCount,
                                                    const char* encoding,
                                                    long long timestampMs,
+                                                   long long timeoutMs,
                                                    OasisPoseLandmarkerOutput* output,
                                                    char* statusMessage,
                                                    std::size_t statusMessageSize)
@@ -352,18 +417,65 @@ extern "C" int oasis_mediapipe_backend_detect_pose(void* handle,
 
   mediapipe::Image image = CreateImage(imageData, width, height, channelCount);
 
-  absl::StatusOr<pose_landmarker::PoseLandmarkerResult> result =
-      wrapper->landmarker->Detect(std::move(image));
-  if (!result.ok())
+  long long previousTimestampMs = std::numeric_limits<long long>::min();
   {
-    CopyStatus("MediaPipe C++ backend pose detection failed: " + StatusMessage(result.status()),
+    std::lock_guard<std::mutex> lock(wrapper->mutex);
+    if (timestampMs <= wrapper->lastSubmittedTimestampMs)
+    {
+      CopyStatus("Pose landmarker LIVE_STREAM timestamp is not strictly increasing", statusMessage,
+                 statusMessageSize);
+      return 1;
+    }
+    previousTimestampMs = wrapper->lastSubmittedTimestampMs;
+    wrapper->pendingTimestampMs = timestampMs;
+    wrapper->hasPendingTimestamp = true;
+    wrapper->lastSubmittedTimestampMs = timestampMs;
+  }
+
+  const absl::Status status = wrapper->landmarker->DetectAsync(std::move(image), timestampMs);
+  if (!status.ok())
+  {
+    std::lock_guard<std::mutex> lock(wrapper->mutex);
+    wrapper->hasPendingTimestamp = false;
+    wrapper->lastSubmittedTimestampMs = previousTimestampMs;
+    CopyStatus("MediaPipe C++ LIVE_STREAM backend pose detection submit failed: " +
+                   StatusMessage(status),
                statusMessage, statusMessageSize);
     return 1;
   }
 
-  (void)timestampMs;
-  CopyPoseResult(result.value(), output);
+  const long long effectiveTimeoutMs = std::max<long long>(timeoutMs, 1);
+  std::unique_lock<std::mutex> lock(wrapper->mutex);
+  const bool callbackReceived = wrapper->condition.wait_for(
+      lock, std::chrono::milliseconds(effectiveTimeoutMs),
+      [wrapper, timestampMs]()
+      {
+        return std::any_of(wrapper->results.begin(), wrapper->results.end(),
+                           [timestampMs](const OasisPoseLandmarkerCallbackResult& result)
+                           { return result.timestampMs == timestampMs; });
+      });
+  wrapper->hasPendingTimestamp = false;
 
-  CopyStatus("MediaPipe C++ backend pose detection completed", statusMessage, statusMessageSize);
+  if (!callbackReceived)
+  {
+    CopyStatus("MediaPipe C++ LIVE_STREAM backend pose detection timed out", statusMessage,
+               statusMessageSize);
+    return 1;
+  }
+
+  auto resultIt = std::find_if(wrapper->results.begin(), wrapper->results.end(),
+                               [timestampMs](const OasisPoseLandmarkerCallbackResult& result)
+                               { return result.timestampMs == timestampMs; });
+  const OasisPoseLandmarkerCallbackResult result = std::move(*resultIt);
+  wrapper->results.erase(resultIt);
+
+  if (!result.success)
+  {
+    CopyStatus(result.message, statusMessage, statusMessageSize);
+    return 1;
+  }
+
+  *output = result.output;
+  CopyStatus(result.message, statusMessage, statusMessageSize);
   return 0;
 }

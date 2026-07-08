@@ -36,6 +36,21 @@ struct PoseLandmarkerConfig
 
   // Maximum poses to detect; expected range is [1, 5]
   std::int32_t maxPoses = 5;
+
+  // Minimum detection confidence; expected range is [0, 1]
+  float minPoseDetectionConfidence = 0.75F;
+
+  // Minimum landmark presence confidence; expected range is [0, 1]
+  float minPosePresenceConfidence = 0.4F;
+
+  // Minimum tracking confidence; expected range is [0, 1]
+  float minTrackingConfidence = 0.4F;
+
+  // True to ask MediaPipe for segmentation masks; masks are ignored for now
+  bool outputSegmentationMasks = false;
+
+  // Maximum time to wait for a live-stream callback in milliseconds
+  std::int64_t liveStreamTimeoutMs = 1000;
 };
 
 struct PoseLandmark
@@ -110,5 +125,6 @@ public:
 private:
   void* m_backendHandle = nullptr;
   std::string m_lastStatusMessage;
+  std::int64_t m_liveStreamTimeoutMs = 1000;
 };
 } // namespace oasis_perception::mediapipe_facade

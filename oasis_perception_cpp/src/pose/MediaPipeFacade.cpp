@@ -57,6 +57,10 @@ extern "C"
 
   int oasis_mediapipe_backend_create_pose_landmarker(const char* modelAssetPath,
                                                      int maxPoses,
+                                                     float minPoseDetectionConfidence,
+                                                     float minPosePresenceConfidence,
+                                                     float minTrackingConfidence,
+                                                     bool outputSegmentationMasks,
                                                      char* statusMessage,
                                                      std::size_t statusMessageSize,
                                                      void** handle);
@@ -71,6 +75,7 @@ extern "C"
                                           int channelCount,
                                           const char* encoding,
                                           long long timestampMs,
+                                          long long timeoutMs,
                                           OasisPoseLandmarkerOutput* output,
                                           char* statusMessage,
                                           std::size_t statusMessageSize);
@@ -128,9 +133,12 @@ bool PoseLandmarker::Initialize(const PoseLandmarkerConfig& config)
   }
 
   (void)config.loggingName;
+  m_liveStreamTimeoutMs = std::max<std::int64_t>(config.liveStreamTimeoutMs, 1);
   const bool success = oasis_mediapipe_backend_create_pose_landmarker(
-                           config.modelAssetPath.c_str(), config.maxPoses, statusMessage.data(),
-                           statusMessage.size(), &m_backendHandle) == 0;
+                           config.modelAssetPath.c_str(), config.maxPoses,
+                           config.minPoseDetectionConfidence, config.minPosePresenceConfidence,
+                           config.minTrackingConfidence, config.outputSegmentationMasks,
+                           statusMessage.data(), statusMessage.size(), &m_backendHandle) == 0;
   m_lastStatusMessage = GetMessage(statusMessage);
   return success;
 }
@@ -146,10 +154,11 @@ PoseDetectionResult PoseLandmarker::Detect(const PoseDetectionInput& input)
     return {false, GetMessage(statusMessage), {}};
   }
 
-  const bool success = oasis_mediapipe_backend_detect_pose(
-                           m_backendHandle, input.data, input.dataSize, input.width, input.height,
-                           input.channelCount, input.encoding.c_str(), input.timestampMs,
-                           &backendOutput, statusMessage.data(), statusMessage.size()) == 0;
+  const bool success =
+      oasis_mediapipe_backend_detect_pose(m_backendHandle, input.data, input.dataSize, input.width,
+                                          input.height, input.channelCount, input.encoding.c_str(),
+                                          input.timestampMs, m_liveStreamTimeoutMs, &backendOutput,
+                                          statusMessage.data(), statusMessage.size()) == 0;
   m_lastStatusMessage = GetMessage(statusMessage);
 
   std::vector<std::vector<PoseLandmark>> poses;
