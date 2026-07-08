@@ -89,9 +89,11 @@ rclcpp_components_register_node(
 
 install(
   TARGETS
+    ahrs_core
     ahrs_component
-  DESTINATION
-    lib
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
 )
 
 #
@@ -204,9 +206,21 @@ target_link_libraries(bno086_imu_driver
 
 install(
   TARGETS
+    bno086_diagnostics
+    bno086_drain_policy
+    bno086_gravity_utils
+    bno086_imu_gravity_accel_history
+    bno086_orientation_covariance_policy
+    bno086_ros_helpers
+    bno086_sample_coherence
+    bno086_sh2
+    bno086_sh2_timestamp
+    bno086_shtp
+    bno086_utils
     bno086_imu_driver_component
-  DESTINATION
-    lib
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
 )
 
 install(
@@ -358,9 +372,11 @@ rclcpp_components_register_node(
 
 install(
   TARGETS
+    zupt_detector_core
     zupt_detector_component
-  DESTINATION
-    lib
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
 )
 
 ################################################################################
