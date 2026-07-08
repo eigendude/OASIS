@@ -14,7 +14,6 @@ from typing import Sequence
 import cv2
 import numpy as np
 from mediapipe.tasks.python.vision.pose_landmarker import PoseLandmarksConnections
-from numpy.typing import NDArray
 
 
 TASK_POSE_LANDMARK_CONNECTIONS = PoseLandmarksConnections.POSE_LANDMARKS
@@ -25,7 +24,7 @@ CONNECTION_THICKNESS: int = 2
 
 
 def draw_pose_landmarks(
-    image: NDArray[np.uint8],
+    image: np.ndarray,
     landmarks: Sequence[Any],
 ) -> None:
     height: int
