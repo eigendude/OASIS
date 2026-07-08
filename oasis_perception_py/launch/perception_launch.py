@@ -167,7 +167,6 @@ def generate_launch_description() -> LaunchDescription:
             max_height=480,
         )
 
-        """
         PerceptionDescriptions.add_pose_landmarker(
             ld,
             "hallway",
@@ -175,7 +174,6 @@ def generate_launch_description() -> LaunchDescription:
             input_resolution="sd",
             image_transport="raw",
         )
-        """
 
     # Rendering pipeline
     if HOST_ID == "vision":
