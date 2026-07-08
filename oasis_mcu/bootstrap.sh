@@ -113,6 +113,12 @@ ARDUINO_CLI_URL="https://downloads.arduino.cc/arduino-cli/${ARDUINO_CLI_ARCHIVE}
 ARDUINO_CLI_ARCHIVE_PATH="${ARDUINO_CLI_DIR}/${ARDUINO_CLI_ARCHIVE}"
 ARDUINO_CLI_BIN="${ARDUINO_CLI_DIR}/arduino-cli"
 
+# Configure the network inactivity timeout via the documented environment
+# variable. Default to 0 so local/intermittent-network bootstraps can
+# resume when the connection comes back; CI can override this, e.g.
+# ARDUINO_NETWORK_CONNECTION_TIMEOUT=10m.
+export ARDUINO_NETWORK_CONNECTION_TIMEOUT="${ARDUINO_NETWORK_CONNECTION_TIMEOUT:-0}"
+
 ################################################################################
 # Library configuration
 ################################################################################
