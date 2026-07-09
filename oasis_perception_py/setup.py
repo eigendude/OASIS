@@ -61,7 +61,6 @@ setuptools.setup(
             [
                 "launch/calibration_launch.py",
                 "launch/hello_world_launch.py",
-                "launch/mediapipe_launch.py",
                 "launch/perception_launch.py",
             ],
         ),

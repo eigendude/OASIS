@@ -7,9 +7,10 @@
  */
 #pragma once
 
-#include "MediaPipeFacade.h"
+#include <memory>
 
-#include <string>
+#include <cv_bridge/cv_bridge.hpp>
+#include <sensor_msgs/msg/image.hpp>
 
 namespace oasis_perception
 {
@@ -19,13 +20,15 @@ public:
   PoseLandmarker();
   ~PoseLandmarker();
 
-  bool Initialize(const mediapipe_facade::PoseLandmarkerConfig& config);
+  // Lifecycle functions
+  bool Initialize(const std::string& loggingName);
 
-  mediapipe_facade::PoseDetectionResult Detect(const mediapipe_facade::PoseDetectionInput& input);
-
-  const std::string& LastStatusMessage() const;
+  // ROS interface
+  std::shared_ptr<sensor_msgs::msg::Image> OnImage(
+      const std::shared_ptr<cv_bridge::CvImage const>& imagePtr);
 
 private:
-  mediapipe_facade::PoseLandmarker m_facade;
+  // Mediapipe interface
+  bool PrintHelloWorld();
 };
 } // namespace oasis_perception
