@@ -194,6 +194,7 @@ def generate_launch_description() -> LaunchDescription:
 
     # LEGO models
     if HOST_ID == "falcon":
+        """
         Drivers.add_ros2_camera(
             camera_composable_nodes,
             ZONE_ID,
@@ -205,6 +206,7 @@ def generate_launch_description() -> LaunchDescription:
             camera_frame_id="camera_link",
             libcamera_params=LIBCAMERA_PARAMS,
         )
+        """
         Drivers.add_bno086_imu(composable_nodes, HOST_ID, FALCON_BNO086_INT_GPIO)
         Drivers.add_ahrs_node(composable_nodes, HOST_ID, FALCON_AHRS_MOUNTING)
         Drivers.add_zupt_detector(composable_nodes, HOST_ID)
