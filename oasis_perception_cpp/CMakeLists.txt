@@ -79,11 +79,6 @@ if (ORB_SLAM_OASIS_FOUND)
   find_package(Sophus REQUIRED)
 endif()
 
-# Sources needed for MediaPipe
-set(MEDIAPIPE_SOURCES
-  src/utils/AbseilStubs.cpp
-)
-
 # Build definitions and include dirs for monocular SLAM
 set(MONOCULAR_SLAM_DEFINITIONS
   HAVE_EIGEN
@@ -99,6 +94,29 @@ set(SLAM_RENDERING_SOURCES
   src/slam/CameraModel.cpp
   src/slam/MapViewRenderer.cpp
   src/slam/ViridisPaletteSampler.cpp
+)
+
+#
+# oasis_mediapipe_facade
+#
+
+add_library(oasis_mediapipe_facade SHARED
+  src/pose/MediaPipeFacade.cpp
+)
+if(NOT TARGET MediaPipe::Backend)
+  message(FATAL_ERROR "MediaPipe::Backend is required for oasis_mediapipe_facade")
+endif()
+target_compile_definitions(oasis_mediapipe_facade PRIVATE
+  OASIS_MEDIAPIPE_BACKEND_AVAILABLE
+)
+target_link_libraries(oasis_mediapipe_facade PRIVATE
+  MediaPipe::Backend
+)
+install(
+  TARGETS
+    oasis_mediapipe_facade
+  DESTINATION
+    lib
 )
 
 #
@@ -333,57 +351,54 @@ rclcpp_components_register_node(
 # hello_world
 #
 
-if(TARGET MediaPipe::MediaPipe)
-  # Project files
-  set(HELLO_WORLD_SOURCES
-    ${MEDIAPIPE_SOURCES}
-    src/nodes/HelloWorldNode.cpp
-    src/pose/HelloWorld.cpp
-  )
-  set(HELLO_WORLD_LIBRARIES
-    MediaPipe::MediaPipe
-    rclcpp::rclcpp
-  )
+# Project files
+set(HELLO_WORLD_SOURCES
+  src/nodes/HelloWorldNode.cpp
+  src/pose/HelloWorld.cpp
+)
+set(HELLO_WORLD_LIBRARIES
+  oasis_mediapipe_facade
+  rclcpp::rclcpp
+)
 
-  # Node
-  add_executable(hello_world
-    ${HELLO_WORLD_SOURCES}
-    src/cli/hello_world_node.cpp
-  )
-  target_link_libraries(hello_world PUBLIC
-    ${HELLO_WORLD_LIBRARIES}
-  )
-  install(
-    TARGETS
-      hello_world
-    DESTINATION
-      lib/${PROJECT_NAME}
-  )
+# Node
+add_executable(hello_world
+  ${HELLO_WORLD_SOURCES}
+  src/cli/hello_world_node.cpp
+)
+target_link_libraries(hello_world PUBLIC
+  ${HELLO_WORLD_LIBRARIES}
+)
+install(
+  TARGETS
+    hello_world
+  DESTINATION
+    lib/${PROJECT_NAME}
+)
 
-  # Component
-  add_library(hello_world_component SHARED
-    ${HELLO_WORLD_SOURCES}
-    src/components/hello_world_component.cpp
-    src/ros/RosComponent.cpp
-  )
-  target_link_libraries(hello_world_component PUBLIC
-    ${HELLO_WORLD_LIBRARIES}
-    rclcpp_components::component
-  )
-  install(
-    TARGETS
-      hello_world_component
-    DESTINATION
-      lib
-  )
-
-  # Register the component
-  rclcpp_components_register_node(
+# Component
+add_library(hello_world_component SHARED
+  ${HELLO_WORLD_SOURCES}
+  src/components/hello_world_component.cpp
+  src/ros/RosComponent.cpp
+)
+target_link_libraries(hello_world_component PUBLIC
+  ${HELLO_WORLD_LIBRARIES}
+  rclcpp_components::component
+)
+install(
+  TARGETS
     hello_world_component
-    PLUGIN "oasis_perception::HelloWorldComponent"
-    EXECUTABLE hello_world_component_node
-  )
-endif()
+  DESTINATION
+    lib
+)
+
+# Register the component
+rclcpp_components_register_node(
+  hello_world_component
+  PLUGIN "oasis_perception::HelloWorldComponent"
+  EXECUTABLE hello_world_component_node
+)
 
 #
 # image_downscaler
@@ -864,71 +879,68 @@ rclcpp_components_register_node(
 # pose_landmarker
 #
 
-# Check if the target MediaPipe::MediaPipe is available
-if(TARGET MediaPipe::MediaPipe)
-  # Project files
-  set(POSE_LANDMARKER_SOURCES
-    ${MEDIAPIPE_SOURCES}
-    src/nodes/PoseLandmarkerNode.cpp
-    src/pose/PoseLandmarker.cpp
-  )
-  set(POSE_LANDMARKER_INCLUDE_DIRS
-    ${OpenCV_INCLUDE_DIRS}
-  )
-  set(POSE_LANDMARKER_LIBRARIES
-    cv_bridge::cv_bridge
-    image_transport::image_transport
-    MediaPipe::MediaPipe
-    ${oasis_msgs_TARGETS}
-    ${OpenCV_LIBRARIES}
-    rclcpp::rclcpp
-    ${sensor_msgs_TARGETS}
-    ${std_msgs_TARGETS}
-  )
+# Project files
+set(POSE_LANDMARKER_SOURCES
+  src/nodes/PoseLandmarkerNode.cpp
+  src/pose/PoseLandmarker.cpp
+)
+set(POSE_LANDMARKER_INCLUDE_DIRS
+  ${OpenCV_INCLUDE_DIRS}
+)
+set(POSE_LANDMARKER_LIBRARIES
+  ament_index_cpp::ament_index_cpp
+  cv_bridge::cv_bridge
+  image_transport::image_transport
+  oasis_mediapipe_facade
+  ${oasis_msgs_TARGETS}
+  ${OpenCV_LIBRARIES}
+  rclcpp::rclcpp
+  ${sensor_msgs_TARGETS}
+  ${std_msgs_TARGETS}
+)
 
-  # Node
-  add_executable(pose_landmarker
-    ${POSE_LANDMARKER_SOURCES}
-    src/cli/pose_landmarker_node.cpp
-  )
-  target_include_directories(pose_landmarker PUBLIC
-    ${POSE_LANDMARKER_INCLUDE_DIRS}
-  )
-  target_link_libraries(pose_landmarker PUBLIC
-    ${POSE_LANDMARKER_LIBRARIES}
-  )
-  install(
-    TARGETS
-      pose_landmarker
-    DESTINATION
-      lib/${PROJECT_NAME}
-  )
+# Node
+add_executable(pose_landmarker
+  ${POSE_LANDMARKER_SOURCES}
+  src/cli/pose_landmarker_node.cpp
+)
+target_include_directories(pose_landmarker PUBLIC
+  ${POSE_LANDMARKER_INCLUDE_DIRS}
+)
+target_link_libraries(pose_landmarker PUBLIC
+  ${POSE_LANDMARKER_LIBRARIES}
+)
+install(
+  TARGETS
+    pose_landmarker
+  DESTINATION
+    lib/${PROJECT_NAME}
+)
 
-  # Component
-  add_library(pose_landmarker_component SHARED
-    ${POSE_LANDMARKER_SOURCES}
-    src/components/pose_landmarker_component.cpp
-    src/ros/RosComponent.cpp
-  )
-  target_include_directories(pose_landmarker_component PUBLIC
-    ${POSE_LANDMARKER_INCLUDE_DIRS}
-  )
-  target_link_libraries(pose_landmarker_component PUBLIC
-    ${POSE_LANDMARKER_LIBRARIES}
-    rclcpp_components::component
-  )
-  install(
-    TARGETS
-      pose_landmarker_component
-    DESTINATION
-      lib
-  )
-  rclcpp_components_register_node(
+# Component
+add_library(pose_landmarker_component SHARED
+  ${POSE_LANDMARKER_SOURCES}
+  src/components/pose_landmarker_component.cpp
+  src/ros/RosComponent.cpp
+)
+target_include_directories(pose_landmarker_component PUBLIC
+  ${POSE_LANDMARKER_INCLUDE_DIRS}
+)
+target_link_libraries(pose_landmarker_component PUBLIC
+  ${POSE_LANDMARKER_LIBRARIES}
+  rclcpp_components::component
+)
+install(
+  TARGETS
     pose_landmarker_component
-    PLUGIN "pose_landmarker::PoseLandmarkerComponent"
-    EXECUTABLE pose_landmarker_component_node
-  )
-endif()
+  DESTINATION
+    lib
+)
+rclcpp_components_register_node(
+  pose_landmarker_component
+  PLUGIN "oasis_perception::PoseLandmarkerComponent"
+  EXECUTABLE pose_landmarker_component_node
+)
 
 #
 # Configuration files

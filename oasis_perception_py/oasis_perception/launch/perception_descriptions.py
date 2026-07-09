@@ -369,8 +369,8 @@ class PerceptionDescriptions:
         # (ODR), leading to undefined behavior, typically manifesting as a
         # segmentation fault.
         #
-        # In our case, the crash occurred when linking the `mediapipe_monolithic`
-        # library (built with Bazel) into a ROS-built component. The node ran fine
+        # In our case, the crash occurred when linking broad MediaPipe and Abseil
+        # libraries directly into ROS-built components. The node ran fine
         # standalone via `ros2 run`, but failed once loaded into the
         # `component_container` due to Abseil duplication at runtime.
         #
@@ -379,10 +379,10 @@ class PerceptionDescriptions:
         # Patch MediaPipe to provide a stable, isolated interface that avoids
         # leaking Abseil symbols into shared libraries. For example:
         #
-        #   - Create a façade API or DTO-style interface in a single .cc file
+        #   - Create a facade API or DTO-style interface in a single .cc file
         #     (e.g. `mediapipe_safe_api.cc`) that implements a clean C++ API boundary.
         #   - Internally link against Abseil, but return plain-old-data (POD)
-        #     types such as `bool`, enums, or structs — not `absl::Status`.
+        #     types such as `bool`, enums, or structs, not `absl::Status`.
         #   - Avoid any Abseil headers in `.h` files that might be included in
         #     downstream nodes or components.
         #

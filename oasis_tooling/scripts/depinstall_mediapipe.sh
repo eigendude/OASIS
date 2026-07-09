@@ -32,7 +32,7 @@ APT_PACKAGES=(
   libegl-dev
   libgles-dev
 
-  # OpenCV transitive deps pulled by the broad MediaPipe pose monolith
+  # OpenCV transitive deps pulled by MediaPipe pose/task code
   libavcodec-dev
   libavdevice-dev
   libavformat-dev

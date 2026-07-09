@@ -8,36 +8,24 @@
 
 #include "PoseLandmarker.h"
 
-#include <glog/logging.h>
-#include <opencv2/core.hpp>
-
 using namespace oasis_perception;
 
 PoseLandmarker::PoseLandmarker() = default;
 
 PoseLandmarker::~PoseLandmarker() = default;
 
-bool PoseLandmarker::Initialize(const std::string& loggingName)
+bool PoseLandmarker::Initialize(const mediapipe_facade::PoseLandmarkerConfig& config)
 {
-  google::InitGoogleLogging(loggingName.c_str());
-
-  // Route to stderr
-  FLAGS_logtostderr = true;
-  FLAGS_alsologtostderr = true;
-
-  // Full verbosity
-  FLAGS_v = 3;
-
-  return true;
+  return m_facade.Initialize(config);
 }
 
-std::shared_ptr<sensor_msgs::msg::Image> PoseLandmarker::OnImage(
-    const std::shared_ptr<cv_bridge::CvImage const>& imagePtr)
+mediapipe_facade::PoseDetectionResult PoseLandmarker::Detect(
+    const mediapipe_facade::PoseDetectionInput& input)
 {
-  std::shared_ptr<sensor_msgs::msg::Image> outImage;
+  return m_facade.Detect(input);
+}
 
-  // TODO
-  cv::Mat inputImage = imagePtr->image;
-
-  return outImage;
+const std::string& PoseLandmarker::LastStatusMessage() const
+{
+  return m_facade.LastStatusMessage();
 }

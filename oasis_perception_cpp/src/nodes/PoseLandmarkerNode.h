@@ -7,10 +7,14 @@
  */
 #pragma once
 
+#include <cstdint>
 #include <memory>
 
 #include <image_transport/publisher.hpp>
 #include <image_transport/subscriber.hpp>
+#include <oasis_msgs/msg/camera_scene.hpp>
+#include <oasis_msgs/msg/pose_landmarks_array.hpp>
+#include <rclcpp/publisher.hpp>
 #include <sensor_msgs/msg/image.hpp>
 
 namespace rclcpp
@@ -41,8 +45,13 @@ private:
   // ROS parameters
   image_transport::Subscriber m_subscriber;
   image_transport::Publisher m_publisher;
+  rclcpp::Publisher<oasis_msgs::msg::PoseLandmarksArray>::SharedPtr m_landmarksPublisher;
+  rclcpp::Publisher<oasis_msgs::msg::CameraScene>::SharedPtr m_cameraScenePublisher;
 
   // Pose landmarker instance
   std::unique_ptr<PoseLandmarker> m_poseLandmarker;
+  bool m_publishPoseImage = false;
+  std::int64_t m_lastSubmittedTimestampMs = 0;
+  std::int64_t m_adjustedTimestampCount = 0;
 };
 } // namespace oasis_perception

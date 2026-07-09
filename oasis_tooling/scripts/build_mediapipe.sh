@@ -75,12 +75,16 @@ patch \
   --no-backup-if-mismatch \
   --directory="${MEDIAPIPE_SOURCE_DIR}" \
   < "${CONFIG_DIRECTORY}/mediapipe/0001-Enable-OpenCV-4.patch"
-patch \
-  -p1 \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${MEDIAPIPE_SOURCE_DIR}" \
-  < "${CONFIG_DIRECTORY}/mediapipe/0002-Enable-monolithic-build.patch"
+
+# Add a narrow C ABI backend for the OASIS C++ facade. This keeps all
+# MediaPipe, Abseil and private protobuf types out of ROS component DSOs.
+mkdir -p "${MEDIAPIPE_SOURCE_DIR}/mediapipe/oasis"
+cp \
+  "${CONFIG_DIRECTORY}/mediapipe/oasis/BUILD" \
+  "${MEDIAPIPE_SOURCE_DIR}/mediapipe/oasis/BUILD"
+cp \
+  "${CONFIG_DIRECTORY}/mediapipe/oasis/oasis_mediapipe_backend.cc" \
+  "${MEDIAPIPE_SOURCE_DIR}/mediapipe/oasis/oasis_mediapipe_backend.cc"
 
 # Configure MediaPipe to use the custom OpenCV build
 OPENCV_BUILD_FILE="${MEDIAPIPE_SOURCE_DIR}/third_party/opencv_linux.BUILD"
@@ -105,6 +109,11 @@ link_block = '    linkopts = [\n'
 insertion_lines = []
 lib_flag = f'        "-L{opencv_lib_dir}",\n'
 rpath_flag = f'        "-Wl,-rpath,{opencv_lib_dir}",\n'
+
+# The OASIS C++ facade backend does not use OpenCV video primitives. Linking
+# libopencv_video pulls libopencv_dnn and system protobuf into the component
+# load path, which can collide with MediaPipe's generated protobuf state.
+build_text = build_text.replace('        "-l:libopencv_video.so",\n', "")
 
 if lib_flag not in build_text:
     insertion_lines.append(lib_flag)
@@ -171,7 +180,7 @@ printf -v MEDIAPIPE_BAZEL_FLAGS_SHELL '%q ' "${MEDIAPIPE_BAZEL_FLAGS[@]}"
 export MEDIAPIPE_BAZEL_FLAGS_SHELL
 
 MEDIAPIPE_PREBUILD_TARGETS=(
-  //mediapipe/framework:mediapipe_monolithic
+  //mediapipe/oasis:oasis_mediapipe_backend
   //mediapipe/tasks/metadata:image_segmenter_metadata_schema_py
   //mediapipe/tasks/metadata:metadata_schema_py
   //mediapipe/tasks/metadata:object_detector_metadata_schema_py
@@ -186,7 +195,7 @@ printf 'Prebuild Bazel command:\n  bazelisk build'
 printf ' %q' "${MEDIAPIPE_BAZEL_FLAGS[@]}" "${MEDIAPIPE_PREBUILD_TARGETS[@]}"
 printf '\n'
 
-# Prebuild the monolithic library and Python wheel native targets together
+# Prebuild the C++ backend and Python wheel native targets together
 bazelisk build \
   "${MEDIAPIPE_BAZEL_FLAGS[@]}" \
   "${MEDIAPIPE_PREBUILD_TARGETS[@]}"
@@ -205,6 +214,12 @@ rm -rf "${MEDIAPIPE_INSTALL_DIR}/include/mediapipe"
 mkdir -p "${MEDIAPIPE_INSTALL_DIR}/include"
 mkdir -p "${MEDIAPIPE_INSTALL_DIR}/include/mediapipe_protobuf5"
 mkdir -p "${MEDIAPIPE_INSTALL_DIR}/lib"
+mkdir -p "${MEDIAPIPE_INSTALL_DIR}/share/mediapipe"
+rm -f "${MEDIAPIPE_INSTALL_DIR}/lib/libmediapipe_monolithic.so"
+rm -f "${MEDIAPIPE_INSTALL_DIR}/lib/libabsl_monolithic.so"
+cp -f \
+  "${STACK_DIRECTORY}/oasis_perception_py/mediapipe/pose_landmarker.task" \
+  "${MEDIAPIPE_INSTALL_DIR}/share/mediapipe/pose_landmarker.task"
 
 # Copy headers from sources into the install include tree
 (
@@ -243,7 +258,8 @@ PROTOBUF_INCLUDE_ROOT="${PROTOBUF_RUNTIME_HEADER%/google/protobuf/runtime_versio
     -exec cp --parents '{}' "${MEDIAPIPE_INSTALL_DIR}/include/mediapipe_protobuf5/" \;
 )
 
-# Copy Abseil headers into the install include tree
+# Copy Abseil headers into the install include tree. These remain private to
+# the backend/facade boundary and are not exposed through component targets.
 ABSL_SOURCE_DIR="${BAZEL_OUT_BASE}/external/com_google_absl"
 (
   cd "${ABSL_SOURCE_DIR}"
@@ -251,18 +267,14 @@ ABSL_SOURCE_DIR="${BAZEL_OUT_BASE}/external/com_google_absl"
     -exec cp --parents '{}' "${MEDIAPIPE_INSTALL_DIR}/include/" \;
 )
 
-# Install the monolithic libraries
-echo "Installing libmediapipe_monolithic.so"
+# Install the narrow OASIS backend library
+echo "Installing liboasis_mediapipe_backend.so"
 cp -f \
-  "${MEDIAPIPE_BUILD_DIR}/mediapipe/framework/libmediapipe_monolithic.so" \
-  "${MEDIAPIPE_INSTALL_DIR}/lib/"
-echo "Installing libabsl_monolithic.so"
-cp -f \
-  "${MEDIAPIPE_BUILD_DIR}/mediapipe/framework/libabsl_monolithic.so" \
+  "${MEDIAPIPE_BUILD_DIR}/mediapipe/oasis/liboasis_mediapipe_backend.so" \
   "${MEDIAPIPE_INSTALL_DIR}/lib/"
 
 #
-# Verify installed MediaPipe C++ proto linkage
+# Verify installed MediaPipe C++ backend linkage
 #
 
 SMOKE_TEST_DIR="/tmp/mediapipe_smoke_tests"
@@ -316,8 +328,7 @@ compile_smoke_test() {
     -Wl,-rpath,"${OPENCV_INSTALL_DIR}/lib" \
     "${RPATH_LINK_FLAGS[@]}" \
     -Wl,--allow-shlib-undefined \
-    -lmediapipe_monolithic \
-    -labsl_monolithic \
+    -loasis_mediapipe_backend \
     -lpthread \
     -ldl \
     -lm \
@@ -326,6 +337,7 @@ compile_smoke_test() {
 
 run_smoke_test() {
   local smoke_name="$1"
+  shift
   local smoke_binary="${SMOKE_TEST_DIR}/${smoke_name}"
   local smoke_ldd_output
 
@@ -340,48 +352,134 @@ run_smoke_test() {
   fi
 
   if grep -q "libprotobuf\\.so" <<<"${smoke_ldd_output}"; then
-    # The broad monolith can load OpenCV DNN, which loads system
-    # protobuf/absl. Running MediaPipe Protobuf5 object destructors in that
-    # mixed process can corrupt teardown, so the smoke tests stop at
-    # compile/link. The full OASIS build verifies external linkage.
     echo "Smoke test '${smoke_name}' loads system protobuf through OpenCV DNN"
-    echo "Runtime execution skipped to avoid mixed Protobuf5/system teardown"
+    echo "Runtime execution skipped to avoid mixed protobuf teardown"
     return
   fi
 
-  "${smoke_binary}"
+  "${smoke_binary}" "$@"
 }
 
 SMOKE_CONSTRUCT_ONLY_SOURCE="${SMOKE_TEST_DIR}/construct_only.cc"
 SMOKE_COPY_CONSTRUCT_SOURCE="${SMOKE_TEST_DIR}/copy_construct.cc"
 SMOKE_HEAP_LEAK_SOURCE="${SMOKE_TEST_DIR}/heap_leak.cc"
+SMOKE_MODEL_PATH="${MEDIAPIPE_INSTALL_DIR}/share/mediapipe/pose_landmarker.task"
 
 cat > "${SMOKE_CONSTRUCT_ONLY_SOURCE}" <<'CPP'
-#include "mediapipe/framework/calculator.pb.h"
+#include <cstddef>
 
-int main() {
-  mediapipe::CalculatorGraphConfig config;
-  return config.node_size();
+extern "C" int oasis_mediapipe_backend_create_pose_landmarker(
+    const char*,
+    int,
+    float,
+    float,
+    float,
+    bool,
+    char*,
+    std::size_t,
+    void**);
+
+extern "C" int oasis_mediapipe_backend_destroy_pose_landmarker(void*);
+
+int main(int argc, char** argv) {
+  if (argc < 2) {
+    return 1;
+  }
+  char status[256] = {};
+  void* handle = nullptr;
+  const int result = oasis_mediapipe_backend_create_pose_landmarker(
+      argv[1], 5, 0.75F, 0.4F, 0.4F, false, status, sizeof(status), &handle);
+  oasis_mediapipe_backend_destroy_pose_landmarker(handle);
+  return result;
 }
 CPP
 
 cat > "${SMOKE_COPY_CONSTRUCT_SOURCE}" <<'CPP'
-#include "mediapipe/framework/calculator.pb.h"
+#include <cstdint>
+#include <cstddef>
 
-int main() {
-  mediapipe::CalculatorGraphConfig config;
-  mediapipe::CalculatorGraphConfig copy(config);
-  return copy.node_size();
+constexpr int OASIS_MEDIAPIPE_MAX_POSES = 5;
+constexpr int OASIS_MEDIAPIPE_POSE_LANDMARK_COUNT = 33;
+
+struct OasisPoseLandmark {
+  float x;
+  float y;
+  float z;
+  float visibility;
+  float presence;
+};
+
+struct OasisPose {
+  int landmarkCount;
+  OasisPoseLandmark landmarks[OASIS_MEDIAPIPE_POSE_LANDMARK_COUNT];
+};
+
+struct OasisPoseLandmarkerOutput {
+  int poseCount;
+  OasisPose poses[OASIS_MEDIAPIPE_MAX_POSES];
+};
+
+extern "C" int oasis_mediapipe_backend_create_pose_landmarker(
+    const char*,
+    int,
+    float,
+    float,
+    float,
+    bool,
+    char*,
+    std::size_t,
+    void**);
+
+extern "C" int oasis_mediapipe_backend_destroy_pose_landmarker(void*);
+
+extern "C" int oasis_mediapipe_backend_detect_pose(
+    void*,
+    const unsigned char*,
+    std::size_t,
+    int,
+    int,
+    int,
+    const char*,
+    long long,
+    long long,
+    OasisPoseLandmarkerOutput*,
+    char*,
+    std::size_t);
+
+int main(int argc, char** argv) {
+  if (argc < 2) {
+    return 1;
+  }
+  char status[256] = {};
+  void* handle = nullptr;
+  int result = oasis_mediapipe_backend_create_pose_landmarker(
+      argv[1], 5, 0.75F, 0.4F, 0.4F, false, status, sizeof(status), &handle);
+  if (result != 0) {
+    return result;
+  }
+  const unsigned char image[256 * 256 * 3] = {};
+  OasisPoseLandmarkerOutput output = {};
+  result = oasis_mediapipe_backend_detect_pose(
+      handle, image, sizeof(image), 256, 256, 3, "rgb8", 0, 1000, &output,
+      status, sizeof(status));
+  oasis_mediapipe_backend_destroy_pose_landmarker(handle);
+  return result;
 }
 CPP
 
 cat > "${SMOKE_HEAP_LEAK_SOURCE}" <<'CPP'
-#include "mediapipe/framework/calculator.pb.h"
+#include <cstddef>
+
+extern "C" int oasis_mediapipe_backend_run_hello_world(
+    char*,
+    std::size_t,
+    int*);
 
 int main() {
-  auto* config = new mediapipe::CalculatorGraphConfig();
-  auto* copy = new mediapipe::CalculatorGraphConfig(*config);
-  return copy->node_size();
+  char status[256] = {};
+  int output_packet_count = 0;
+  return oasis_mediapipe_backend_run_hello_world(
+      status, sizeof(status), &output_packet_count);
 }
 CPP
 
@@ -390,8 +488,8 @@ compile_smoke_test "copy_construct" "${SMOKE_COPY_CONSTRUCT_SOURCE}"
 compile_smoke_test "heap_leak" "${SMOKE_HEAP_LEAK_SOURCE}"
 
 show_ldd \
-  "MediaPipe monolith deps" \
-  "${MEDIAPIPE_INSTALL_DIR}/lib/libmediapipe_monolithic.so"
+  "OASIS MediaPipe backend deps" \
+  "${MEDIAPIPE_INSTALL_DIR}/lib/liboasis_mediapipe_backend.so"
 
 show_ldd "OpenCV core deps" "${OPENCV_INSTALL_DIR}/lib/libopencv_core.so"*
 
@@ -405,18 +503,18 @@ pkg-config --libs --static opencv4 || true
 
 echo "OpenCV transitive dependency lookup:"
 ldconfig -p \
-  | grep -E "openblas|avif|OpenEXR|gstapp|gstriff|gstpbutils|gstvideo|gstaudio|avcodec|avformat|avutil|swscale" \
+  | grep -E "openblas|avif|OpenEXR|gstapp|gstriff|gstpbutils|gstvideo" \
+  | grep -E "gstaudio|avcodec|avformat|avutil|swscale" \
   || true
 
-show_ldd "Abseil monolith deps" "${MEDIAPIPE_INSTALL_DIR}/lib/libabsl_monolithic.so"
-
-echo "MediaPipe monolith CalculatorGraphConfig/protobuf symbols:"
-nm -CD "${MEDIAPIPE_INSTALL_DIR}/lib/libmediapipe_monolithic.so" \
-  | grep -E "CalculatorGraphConfig::CalculatorGraphConfig|TextFormat::ParseFromString|ShutdownProtobufLibrary" \
+echo "OASIS MediaPipe backend CalculatorGraphConfig/protobuf symbols:"
+nm -CD "${MEDIAPIPE_INSTALL_DIR}/lib/liboasis_mediapipe_backend.so" \
+  | grep -E "CalculatorGraphConfig::CalculatorGraphConfig|TextFormat" \
+  | grep -E "ParseFromString|ShutdownProtobufLibrary" \
   || true
 
-run_smoke_test "construct_only"
-run_smoke_test "copy_construct"
+run_smoke_test "construct_only" "${SMOKE_MODEL_PATH}"
+run_smoke_test "copy_construct" "${SMOKE_MODEL_PATH}"
 run_smoke_test "heap_leak"
 
 #
@@ -432,7 +530,7 @@ if [ ! -f setup.py ]; then
 fi
 
 # The upstream source archive keeps setup.py at version "dev". Stamp the wheel
-# with the same MediaPipe version used for the C++ monolith.
+# with the same MediaPipe version used for the C++ backend.
 export MEDIAPIPE_PYTHON_VERSION="${MEDIAPIPE_VERSION}"
 export MEDIAPIPE_ENABLE_GPU="${MEDIAPIPE_ENABLE_GPU}"
 export MEDIAPIPE_SKIP_SETUP_BAZEL_BUILD=1

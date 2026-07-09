@@ -10,6 +10,7 @@
 
 #include "pose/HelloWorld.h"
 
+#include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
 
 using namespace oasis_perception;
@@ -25,7 +26,15 @@ bool HelloWorldNode::Start()
 {
   m_helloWorld->Initialize();
 
-  m_helloWorld->Run();
+  const mediapipe_facade::HelloWorldResult result = m_helloWorld->Run();
+  if (!result.success)
+  {
+    RCLCPP_ERROR(m_node.get_logger(), "HelloWorld facade failed: %s", result.message.c_str());
+    return false;
+  }
+
+  RCLCPP_INFO(m_node.get_logger(), "HelloWorld facade succeeded with %d packets: %s",
+              result.outputPacketCount, result.message.c_str());
 
   return true;
 }
