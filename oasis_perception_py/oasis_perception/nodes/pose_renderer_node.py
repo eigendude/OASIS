@@ -16,7 +16,8 @@ import numpy as np
 import rclpy.node
 from image_transport_py import ImageTransport
 from oasis_perception.utils.pose_drawing import draw_pose_landmarks
-from rclpy.qos import QoSPresetProfiles
+from rclpy.qos import QoSProfile
+from rclpy.qos import QoSReliabilityPolicy
 
 from oasis_msgs.msg import PoseLandmarksArray as PoseLandmarksArrayMsg
 
@@ -67,7 +68,10 @@ class PoseRendererNode(rclpy.node.Node):
         self._cv_bridge: cv_bridge.CvBridge = cv_bridge.CvBridge()
 
         # QoS profiles
-        sensor_qos = QoSPresetProfiles.SENSOR_DATA.value
+        reliable_qos: QoSProfile = QoSProfile(
+            reliability=QoSReliabilityPolicy.RELIABLE,
+            depth=10,
+        )
 
         # ImageTransport for publishing compressed overlays
         self._it: ImageTransport = ImageTransport(
@@ -87,14 +91,14 @@ class PoseRendererNode(rclpy.node.Node):
                 lambda msg, _, z=zone_id, w=width, h=height: self._on_pose(
                     msg, z, w, h
                 ),
-                sensor_qos,
+                reliable_qos,
             )
 
             # Advertise overlay
             self._pubs[zone_id] = self._it.advertise(
                 self.resolve_topic_name(topic_out),
                 1,
-                qos_profile=sensor_qos,
+                qos_profile=reliable_qos,
             )
 
         self.get_logger().info(f"PoseRendererNode initialized for zones: {zone_ids}")

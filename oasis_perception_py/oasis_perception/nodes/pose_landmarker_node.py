@@ -177,9 +177,9 @@ class PoseLandmarkerNode(rclpy.node.Node):
         # CameraInfo, and the image_transport camera sync path can fail before
         # this node's callback is reached.
         image_qos: QoSProfile = QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,
             history=HistoryPolicy.KEEP_LAST,
-            depth=1,
-            reliability=ReliabilityPolicy.BEST_EFFORT,
+            depth=10,
         )
         self._image_subscription = self.create_subscription(
             ImageMsg,
@@ -196,7 +196,7 @@ class PoseLandmarkerNode(rclpy.node.Node):
         )
         self._pose_image_pub = self._image_transport.advertise(
             base_topic=self.resolve_topic_name(POSE_IMAGE_TOPIC),
-            queue_size=1,
+            queue_size=10,
         )
         self._pose_landmarks_pub = self.create_publisher(
             PoseLandmarksArrayMsg,
