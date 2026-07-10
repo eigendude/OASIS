@@ -7,7 +7,7 @@
  */
 #pragma once
 
-#include "MediaPipeFacade.h"
+#include <memory>
 
 namespace oasis_perception
 {
@@ -18,6 +18,9 @@ public:
   ~HelloWorld();
 
   void Initialize();
-  mediapipe_facade::HelloWorldResult Run();
+  void Run();
+
+private:
+  bool PrintHelloWorld();
 };
 } // namespace oasis_perception
