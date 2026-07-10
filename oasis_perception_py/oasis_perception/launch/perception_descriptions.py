@@ -11,8 +11,10 @@
 from typing import Any
 from typing import List
 
+from launch.actions import TimerAction
 from launch.launch_description import LaunchDescription
 from launch_ros.actions import ComposableNodeContainer
+from launch_ros.actions import LoadComposableNodes
 from launch_ros.actions import Node
 from launch_ros.descriptions import ComposableNode
 from oasis_perception.utils.perception_paths import PerceptionPaths
@@ -79,9 +81,22 @@ class PerceptionDescriptions:
                 "--log-level",
                 f"{ROS_NAMESPACE}.perception_container_{host_id}:=warn",
             ],
-            composable_node_descriptions=composable_nodes,
+            composable_node_descriptions=[],
         )
         ld.add_action(perception_container)
+        ld.add_action(
+            TimerAction(
+                period=0.5,
+                actions=[
+                    LoadComposableNodes(
+                        target_container=(
+                            f"/{ROS_NAMESPACE}/perception_container_{host_id}"
+                        ),
+                        composable_node_descriptions=composable_nodes,
+                    )
+                ],
+            )
+        )
 
     #
     # AprilTag detector
