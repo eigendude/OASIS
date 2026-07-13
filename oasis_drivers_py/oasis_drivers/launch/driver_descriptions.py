@@ -8,9 +8,11 @@
 #
 ################################################################################
 
+import os
 from typing import Any
 from typing import Optional
 
+from ament_index_python.packages import get_package_share_directory
 from launch.launch_description import LaunchDescription
 from launch_ros.actions import ComposableNodeContainer
 from launch_ros.actions import Node
@@ -143,6 +145,29 @@ class DriverDescriptions:
                 ],
             )
         )
+
+    #
+    # ACS37800 DC power meters behind the station Qwiic mux
+    #
+
+    @staticmethod
+    def add_station_power_meters(ld: LaunchDescription) -> None:
+        parameter_file: str = os.path.join(
+            get_package_share_directory(CPP_PACKAGE_NAME),
+            "power_meter",
+            "station.yaml",
+        )
+
+        for instance_id in ("power_meter_0", "power_meter_1"):
+            power_meter_node: Node = Node(
+                namespace=f"{ROS_NAMESPACE}/station/{instance_id}",
+                package=CPP_PACKAGE_NAME,
+                executable="acs37800_power_meter_node",
+                name="power_meter",
+                output="screen",
+                parameters=[parameter_file],
+            )
+            ld.add_action(power_meter_node)
 
     #
     # BNO086 9-DoF IMU driver

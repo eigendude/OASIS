@@ -221,6 +221,7 @@ def generate_launch_description() -> LaunchDescription:
             SENSOR_MODE,
             libcamera_params=LIBCAMERA_PARAMS,
         )
+        Drivers.add_station_power_meters(ld)
 
     # Smarthome cameras
     if HOST_ID == "door":

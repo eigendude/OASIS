@@ -1,0 +1,39 @@
+################################################################################
+#
+#  Copyright (C) 2026 Garrett Brown
+#  This file is part of OASIS - https://github.com/eigendude/OASIS
+#
+#  SPDX-License-Identifier: Apache-2.0
+#  See the file LICENSE.txt for more information.
+#
+################################################################################
+
+/oasis/station/power_meter_0/power_meter:
+  ros__parameters:
+    parent_i2c_bus: 1
+    mux_address: 112
+    mux_channel: 2
+    i2c_address: 96
+    resolve_i2c_adapter: true
+    publish_rate_hz: 10.0
+    frame_id: ""
+    simulated_voltage: 12.0
+    simulated_current: 0.5
+    voltage_variance: 0.01
+    current_variance: 0.01
+    simulated_overcurrent: false
+
+/oasis/station/power_meter_1/power_meter:
+  ros__parameters:
+    parent_i2c_bus: 1
+    mux_address: 112
+    mux_channel: 3
+    i2c_address: 96
+    resolve_i2c_adapter: true
+    publish_rate_hz: 10.0
+    frame_id: ""
+    simulated_voltage: 11.8
+    simulated_current: 0.5
+    voltage_variance: 0.01
+    current_variance: 0.01
+    simulated_overcurrent: false

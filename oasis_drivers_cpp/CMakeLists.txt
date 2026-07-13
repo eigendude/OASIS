@@ -56,6 +56,44 @@ find_package(yaml-cpp REQUIRED)
 ################################################################################
 
 #
+# acs37800_power_meter_node
+#
+
+add_library(power_meter_core
+  src/power_meter/I2cMuxResolver.cpp
+  src/power_meter/PowerMeterCore.cpp
+)
+target_include_directories(power_meter_core
+  PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+add_executable(acs37800_power_meter_node
+  src/cli/acs37800_power_meter_node.cpp
+  src/nodes/Acs37800PowerMeterNode.cpp
+)
+target_link_libraries(acs37800_power_meter_node
+  power_meter_core
+  ${oasis_msgs_TARGETS}
+  rclcpp::rclcpp
+)
+
+install(
+  TARGETS
+    power_meter_core
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
+
+install(
+  TARGETS
+    acs37800_power_meter_node
+  DESTINATION
+    lib/${PROJECT_NAME}
+)
+
+#
 # ens160_bme280_driver
 #
 
@@ -448,6 +486,13 @@ install(
     share/${PROJECT_NAME}/magnetometer_info
 )
 
+install(
+  DIRECTORY
+    config/power_meter
+  DESTINATION
+    share/${PROJECT_NAME}
+)
+
 ################################################################################
 # Testing
 ################################################################################
@@ -471,6 +516,20 @@ if(BUILD_TESTING)
   target_link_libraries(test_environmental_sensors
     environment_core
     environment_devices
+  )
+
+  ament_add_gtest(test_i2c_mux_resolver
+    test/power_meter/test_I2cMuxResolver.cpp
+  )
+  target_link_libraries(test_i2c_mux_resolver
+    power_meter_core
+  )
+
+  ament_add_gtest(test_power_meter_core
+    test/power_meter/test_PowerMeterCore.cpp
+  )
+  target_link_libraries(test_power_meter_core
+    power_meter_core
   )
 
   ament_add_gtest(test_bno086_gravity_utils
