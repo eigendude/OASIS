@@ -80,7 +80,7 @@ class MCUDescriptions:
                 },
             ],
             remappings=[
-                ("air_quality", f"{mcu_name}/air_quality"),
+                ("air_quality_index", f"{mcu_name}/air_quality_index"),
                 ("analog_read", f"{mcu_name}/analog_read"),
                 ("analog_reading", f"{mcu_name}/analog_reading"),
                 ("analog_readings", f"{mcu_name}/analog_readings"),
@@ -91,6 +91,7 @@ class MCUDescriptions:
                 ("digital_reading", f"{mcu_name}/digital_reading"),
                 ("digital_write", f"{mcu_name}/digital_write"),
                 ("digital_write_cmd", f"{mcu_name}/digital_write_cmd"),
+                ("equivalent_co2", f"{mcu_name}/equivalent_co2"),
                 ("configure_effect", f"{mcu_name}/configure_effect"),
                 ("i2c_begin", f"{mcu_name}/i2c_begin"),
                 ("i2c_end", f"{mcu_name}/i2c_end"),
@@ -110,6 +111,7 @@ class MCUDescriptions:
                 ("set_digital_mode", f"{mcu_name}/set_digital_mode"),
                 ("set_effect", f"{mcu_name}/set_effect"),
                 ("set_sampling_interval", f"{mcu_name}/set_sampling_interval"),
+                ("tvoc", f"{mcu_name}/tvoc"),
             ],
         )
         ld.add_action(telemetrix_node)

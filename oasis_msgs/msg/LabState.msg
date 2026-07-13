@@ -30,11 +30,11 @@ float32 shunt_current
 # Output voltage of the IR reflectance sensor (V)
 float32 ir_vout
 
-# CO2 concentration (ppb)
-float32 co2_ppb
+# Equivalent CO2 concentration (ppm)
+float64 equivalent_co2_ppm
 
 # TVOC concentration (ppb)
-float32 tvoc_ppb
+float64 tvoc_ppb
 
 # Acceleration
 geometry_msgs/Vector3 linear_acceleration

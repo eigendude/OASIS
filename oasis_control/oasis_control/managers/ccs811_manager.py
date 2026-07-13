@@ -12,15 +12,12 @@
 # Manager for a mcu that controls a CCS811 air quality sensor over I2C
 #
 
-from typing import List
-
 import rclpy.node
 import rclpy.qos
 import rclpy.subscription
 
 from oasis_control.managers.i2c_device_manager import I2CDeviceManager
-from oasis_msgs.msg import AirQuality as AirQualityMsg
-from oasis_msgs.msg import I2CDevice as I2CDeviceMsg
+from oasis_msgs.msg import GasConcentration as GasConcentrationMsg
 from oasis_msgs.msg import I2CDeviceType as I2CDeviceTypeMsg
 
 
@@ -30,7 +27,12 @@ from oasis_msgs.msg import I2CDeviceType as I2CDeviceTypeMsg
 
 
 # Subscribers
-SUBSCRIBE_AIR_QUALITY = "air_quality"
+SUBSCRIBE_EQUIVALENT_CO2 = "equivalent_co2"
+SUBSCRIBE_TVOC = "tvoc"
+
+
+# Parts per billion per part per million (10^-6 / 10^-9)
+PPB_PER_PPM: float = 1000.0
 
 
 ################################################################################
@@ -54,8 +56,8 @@ class CCS811Manager(I2CDeviceManager):
         self._logger = node.get_logger()
 
         # Initialize hardware state
-        self._co2_ppb: float = 0.0
-        self._tvoc_ppb: float = 0.0
+        self._equivalent_co2_ppm: float = 0.0
+        self._tvoc_ppm: float = 0.0
 
         # Reliable listener QOS profile for subscribers
         qos_profile: rclpy.qos.QoSProfile = (
@@ -63,11 +65,19 @@ class CCS811Manager(I2CDeviceManager):
         )
 
         # Subscribers
-        self._air_quality_sub: rclpy.subscription.Subscription[AirQualityMsg] = (
+        self._equivalent_co2_sub: rclpy.subscription.Subscription[
+            GasConcentrationMsg
+        ] = self._node.create_subscription(
+            msg_type=GasConcentrationMsg,
+            topic=SUBSCRIBE_EQUIVALENT_CO2,
+            callback=self._on_equivalent_co2,
+            qos_profile=qos_profile,
+        )
+        self._tvoc_sub: rclpy.subscription.Subscription[GasConcentrationMsg] = (
             self._node.create_subscription(
-                msg_type=AirQualityMsg,
-                topic=SUBSCRIBE_AIR_QUALITY,
-                callback=self._on_air_quality,
+                msg_type=GasConcentrationMsg,
+                topic=SUBSCRIBE_TVOC,
+                callback=self._on_tvoc,
                 qos_profile=qos_profile,
             )
         )
@@ -92,24 +102,19 @@ class CCS811Manager(I2CDeviceManager):
         return True
 
     @property
-    def co2_ppb(self) -> float:
-        return self._co2_ppb
+    def equivalent_co2_ppm(self) -> float:
+        return self._equivalent_co2_ppm
+
+    @property
+    def tvoc_ppm(self) -> float:
+        return self._tvoc_ppm
 
     @property
     def tvoc_ppb(self) -> float:
-        return self._tvoc_ppb
+        return self._tvoc_ppm * PPB_PER_PPM
 
-    def _on_air_quality(self, air_quality_msg: AirQualityMsg) -> None:
-        # Translate parameters
-        i2c_device: List[I2CDeviceMsg] = air_quality_msg.i2c_device
-        co2_ppb: float = air_quality_msg.co2_ppb
-        tvoc_ppb: float = air_quality_msg.tvoc_ppb
+    def _on_equivalent_co2(self, equivalent_co2_msg: GasConcentrationMsg) -> None:
+        self._equivalent_co2_ppm = equivalent_co2_msg.concentration_ppm
 
-        if (
-            len(i2c_device) > 0
-            and i2c_device[0].i2c_port == self.i2c_port
-            and i2c_device[0].i2c_address == self.i2c_address
-        ):
-            # Record state
-            self._co2_ppb = co2_ppb
-            self._tvoc_ppb = tvoc_ppb
+    def _on_tvoc(self, tvoc_msg: GasConcentrationMsg) -> None:
+        self._tvoc_ppm = tvoc_msg.concentration_ppm

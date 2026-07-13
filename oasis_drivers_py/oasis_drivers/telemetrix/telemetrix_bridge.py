@@ -871,24 +871,35 @@ class TelemetrixBridge:
 
     async def _on_air_quality(self, data: List[int]) -> None:
         """
-        Handle reports of an air quality sensor with CO2 and TVOC modalities.
+        Handle reports of an air quality sensor with AQI and gas modalities.
 
         :param data: The report message
         """
         timestamp: datetime = datetime.now(timezone.utc)
+        air_quality_index: Optional[int] = None
 
         try:
             # Translate parameters
             i2c_port: int = data[0]
             i2c_address: int = data[1]
-            co2_ppb: int = int.from_bytes(data[2:4], byteorder="big", signed=False)
+            equivalent_co2_ppm: int = int.from_bytes(
+                data[2:4], byteorder="big", signed=False
+            )
             tvoc_ppb: int = int.from_bytes(data[4:6], byteorder="big", signed=False)
+
+            if len(data) >= 7:
+                air_quality_index = data[6]
         except IndexError:
             return
 
         # Dispatch callback
         self._callback.on_air_quality(
-            timestamp, i2c_port, i2c_address, co2_ppb, tvoc_ppb
+            timestamp,
+            i2c_port,
+            i2c_address,
+            equivalent_co2_ppm,
+            tvoc_ppb,
+            air_quality_index,
         )
 
     async def _on_imu_6_axis(self, data: List[int]) -> None:

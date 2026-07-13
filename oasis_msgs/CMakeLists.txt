@@ -38,7 +38,7 @@ rosidl_generate_interfaces(
     msg/AprilTagMapEntry.msg
     msg/Accelerometer.msg
     msg/AhrsStatus.msg
-    msg/AirQuality.msg
+    msg/AirQualityIndex.msg
     msg/AnalogButton.msg
     msg/AnalogReading.msg
     msg/AnalogReadings.msg
@@ -57,6 +57,7 @@ rosidl_generate_interfaces(
     msg/EffectMode.msg
     msg/EngineerState.msg
     msg/EngineState.msg
+    msg/GasConcentration.msg
     msg/I2CDevice.msg
     msg/I2CDeviceType.msg
     msg/I2CImu.msg

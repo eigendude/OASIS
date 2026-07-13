@@ -40,7 +40,7 @@ from oasis_drivers.telemetrix.telemetrix_config_cache import TelemetrixConfigCac
 from oasis_drivers.telemetrix.telemetrix_config_store import TelemetrixConfigStore
 from oasis_drivers.telemetrix.telemetrix_types import AnalogMode
 from oasis_drivers.telemetrix.telemetrix_types import DigitalMode
-from oasis_msgs.msg import AirQuality as AirQualityMsg
+from oasis_msgs.msg import AirQualityIndex as AirQualityIndexMsg
 from oasis_msgs.msg import AnalogReading as AnalogReadingMsg
 from oasis_msgs.msg import AnalogReadings as AnalogReadingsMsg
 from oasis_msgs.msg import AVRConstants as AVRConstantsMsg
@@ -49,6 +49,7 @@ from oasis_msgs.msg import DigitalReading as DigitalReadingMsg
 from oasis_msgs.msg import DigitalWriteCommand as DigitalWriteCommandMsg
 from oasis_msgs.msg import EffectKind as EffectKindMsg
 from oasis_msgs.msg import EffectMode as EffectModeMsg
+from oasis_msgs.msg import GasConcentration as GasConcentrationMsg
 from oasis_msgs.msg import I2CDevice as I2CDeviceMsg
 from oasis_msgs.msg import I2CDeviceType as I2CDeviceTypeMsg
 from oasis_msgs.msg import I2CImu as I2CImuMsg
@@ -86,14 +87,16 @@ PARAM_PING_TIMEOUT_S = "ping_timeout_s"
 PARAM_RECONNECT_DELAY_S = "reconnect_delay_s"
 
 # ROS topics
-AIR_QUALITY_TOPIC = "air_quality"
+AIR_QUALITY_INDEX_TOPIC = "air_quality_index"
 ANALOG_READING_TOPIC = "analog_reading"
 ANALOG_READINGS_TOPIC = "analog_readings"
 CPU_FAN_SPEED_TOPIC = "cpu_fan_speed"
 DIGITAL_READING_TOPIC = "digital_reading"
+EQUIVALENT_CO2_TOPIC = "equivalent_co2"
 IMU_TOPIC = "i2c_imu"
 MCU_MEMORY_TOPIC = "mcu_memory"
 MCU_STRING_TOPIC = "mcu_string"
+TVOC_TOPIC = "tvoc"
 
 # New command topics
 DIGITAL_WRITE_COMMAND_TOPIC = "digital_write_cmd"
@@ -148,6 +151,10 @@ def _helipad_mode_name(mode: int) -> str:
 
 def _led_thruster_mode_name(mode: int) -> str:
     return LED_THRUSTER_MODE_NAMES.get(mode, f"unknown({mode})")
+
+
+def _tvoc_ppb_to_ppm(tvoc_ppb: int) -> float:
+    return float(tvoc_ppb) / 1000.0
 
 
 ################################################################################
@@ -208,9 +215,19 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         )
 
         # Publishers
-        self._air_quality_pub: rclpy.publisher.Publisher = self.create_publisher(
-            msg_type=AirQualityMsg,
-            topic=AIR_QUALITY_TOPIC,
+        self._air_quality_index_pub: rclpy.publisher.Publisher = self.create_publisher(
+            msg_type=AirQualityIndexMsg,
+            topic=AIR_QUALITY_INDEX_TOPIC,
+            qos_profile=qos_profile,
+        )
+        self._equivalent_co2_pub: rclpy.publisher.Publisher = self.create_publisher(
+            msg_type=GasConcentrationMsg,
+            topic=EQUIVALENT_CO2_TOPIC,
+            qos_profile=qos_profile,
+        )
+        self._tvoc_pub: rclpy.publisher.Publisher = self.create_publisher(
+            msg_type=GasConcentrationMsg,
+            topic=TVOC_TOPIC,
             qos_profile=qos_profile,
         )
         self._analog_reading_pub: rclpy.publisher.Publisher = self.create_publisher(
@@ -583,31 +600,43 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         timestamp: datetime,
         i2c_port: int,
         i2c_address: int,
-        co2_ppb: int,
+        equivalent_co2_ppm: int,
         tvoc_ppb: int,
+        air_quality_index: Optional[int],
     ) -> None:
         """Implement TelemetrixCallback"""
         if not self._initialized:
             return
 
-        msg: AirQualityMsg = AirQualityMsg()
+        # i2c_port and i2c_address are retained for diagnostics, but semantic
+        # ROS interfaces intentionally do not include transport metadata.
+        _ = i2c_port
+        _ = i2c_address
 
         # Timestamp in ROS header
         header: HeaderMsg = HeaderMsg()
         header.stamp = RosTranslator.convert_timestamp(timestamp)
         header.frame_id = ""  # TODO
 
-        msg.header = header
-        msg.co2_ppb = float(co2_ppb)
-        msg.tvoc_ppb = float(tvoc_ppb)
+        equivalent_co2_msg: GasConcentrationMsg = GasConcentrationMsg()
+        equivalent_co2_msg.header = header
+        equivalent_co2_msg.concentration_ppm = float(equivalent_co2_ppm)
+        equivalent_co2_msg.variance = 0.0
+        self._equivalent_co2_pub.publish(equivalent_co2_msg)
 
-        i2c_device: I2CDeviceMsg = I2CDeviceMsg()
-        i2c_device.i2c_device_type = I2CDeviceTypeMsg.CCS811
-        i2c_device.i2c_port = i2c_port
-        i2c_device.i2c_address = i2c_address
-        msg.i2c_device.append(i2c_device)
+        tvoc_msg: GasConcentrationMsg = GasConcentrationMsg()
+        tvoc_msg.header = header
+        tvoc_msg.concentration_ppm = _tvoc_ppb_to_ppm(tvoc_ppb)
+        tvoc_msg.variance = 0.0
+        self._tvoc_pub.publish(tvoc_msg)
 
-        self._air_quality_pub.publish(msg)
+        if air_quality_index is not None:
+            air_quality_index_msg: AirQualityIndexMsg = AirQualityIndexMsg()
+            air_quality_index_msg.header = header
+            air_quality_index_msg.index = float(air_quality_index)
+            air_quality_index_msg.variance = 0.0
+
+            self._air_quality_index_pub.publish(air_quality_index_msg)
 
     def on_analog_reading(
         self,

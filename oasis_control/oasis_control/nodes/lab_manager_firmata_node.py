@@ -383,7 +383,7 @@ class LabManagerNode(rclpy.node.Node):
         msg.current_vout = self._current_vout
         msg.shunt_current = self._shunt_current
         msg.ir_vout = self._ir_vout
-        msg.co2_ppb = self._ccs811_manager.co2_ppb
+        msg.equivalent_co2_ppm = self._ccs811_manager.equivalent_co2_ppm
         msg.tvoc_ppb = self._ccs811_manager.tvoc_ppb
         msg.linear_acceleration = Vector3Msg()
         msg.linear_acceleration.x = self._mpu6050_manager.ax

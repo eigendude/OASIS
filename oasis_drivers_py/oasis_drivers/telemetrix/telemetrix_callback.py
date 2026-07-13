@@ -11,6 +11,7 @@
 import abc
 from collections.abc import Sequence
 from datetime import datetime
+from typing import Optional
 
 from oasis_drivers.mcu.mcu_readings import AnalogReadingSample
 
@@ -22,11 +23,12 @@ class TelemetrixCallback:
         timestamp: datetime,
         i2c_port: int,
         i2c_address: int,
-        co2_ppb: int,
+        equivalent_co2_ppm: int,
         tvoc_ppb: int,
+        air_quality_index: Optional[int],
     ) -> None:
         """
-        Handle reports of an air quality sensor with CO2 and TVOC modalities.
+        Handle reports of an air quality sensor with AQI and gas modalities.
         """
         pass
 
