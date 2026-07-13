@@ -65,6 +65,9 @@ APT_PACKAGES=(
 
   # I2C debugging tools
   i2c-tools
+
+  # For hwclock to handle RTCs
+  util-linux-extra
 )
 
 # Install display controllers
