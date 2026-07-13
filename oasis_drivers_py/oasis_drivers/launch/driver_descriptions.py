@@ -122,6 +122,50 @@ class DriverDescriptions:
         ld.add_action(driver_container)
 
     #
+    # ACS37800 DC power meters
+    #
+
+    @staticmethod
+    def add_power_meter_node(
+        composable_nodes: list[ComposableNode],
+        system_id: str,
+        parameters: dict[str, object],
+    ) -> None:
+        raw_power_meter_ids: object | None = parameters.get("power_meter_ids")
+        if not isinstance(raw_power_meter_ids, list):
+            raise TypeError("power_meter_ids must be a list of strings")
+
+        power_meter_ids: list[str] = []
+        seen_ids: set[str] = set()
+        for power_meter_id in raw_power_meter_ids:
+            if not isinstance(power_meter_id, str):
+                raise TypeError("power_meter_ids must contain only strings")
+            if not power_meter_id:
+                raise ValueError("power_meter_ids must not contain empty IDs")
+            if power_meter_id in seen_ids:
+                raise ValueError(
+                    f"power_meter_ids contains duplicate ID '{power_meter_id}'"
+                )
+
+            seen_ids.add(power_meter_id)
+            power_meter_ids.append(power_meter_id)
+
+        remappings: list[tuple[str, str]] = [
+            (power_meter_id, f"{system_id}/{power_meter_id}")
+            for power_meter_id in power_meter_ids
+        ]
+        composable_nodes.append(
+            ComposableNode(
+                namespace=ROS_NAMESPACE,
+                package=CPP_PACKAGE_NAME,
+                plugin="OASIS::ROS::Acs37800PowerMeterNode",
+                name=f"power_meter_{system_id}",
+                parameters=[parameters],
+                remappings=remappings,
+            )
+        )
+
+    #
     # AHRS
     #
 

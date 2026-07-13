@@ -56,6 +56,62 @@ find_package(yaml-cpp REQUIRED)
 ################################################################################
 
 #
+# acs37800_power_meter_node
+#
+
+add_library(power_meter_core
+  src/power_meter/Acs37800Device.cpp
+  src/power_meter/LinuxI2cDeviceProbe.cpp
+  src/power_meter/LinuxI2cRegisterDevice.cpp
+  src/power_meter/I2cMuxResolver.cpp
+  src/power_meter/PowerMeterCore.cpp
+  src/power_meter/RaspberryPiI2cConfig.cpp
+)
+target_include_directories(power_meter_core
+  PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+add_library(acs37800_power_meter_component SHARED
+  src/nodes/Acs37800PowerMeterNode.cpp
+)
+target_link_libraries(acs37800_power_meter_component PUBLIC
+  power_meter_core
+  ${oasis_msgs_TARGETS}
+  rclcpp_components::component
+  rclcpp::rclcpp
+)
+
+rclcpp_components_register_nodes(
+  acs37800_power_meter_component
+  "OASIS::ROS::Acs37800PowerMeterNode"
+)
+
+add_executable(acs37800_power_meter_node
+  src/cli/acs37800_power_meter_node.cpp
+)
+target_link_libraries(acs37800_power_meter_node
+  acs37800_power_meter_component
+  rclcpp::rclcpp
+)
+
+install(
+  TARGETS
+    power_meter_core
+    acs37800_power_meter_component
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
+
+install(
+  TARGETS
+    acs37800_power_meter_node
+  DESTINATION
+    lib/${PROJECT_NAME}
+)
+
+#
 # ahrs
 #
 
@@ -413,6 +469,43 @@ if(BUILD_TESTING)
   # The following line skips cpplint (only works in a git repo)
   # Uncomment the line when this package is not in a git repo
   #set(ament_cmake_cpplint_FOUND TRUE)
+
+  ament_add_gtest(test_i2c_mux_resolver
+    test/power_meter/test_I2cMuxResolver.cpp
+  )
+  target_link_libraries(test_i2c_mux_resolver
+    power_meter_core
+  )
+
+  ament_add_gtest(test_linux_i2c_device_probe
+    test/power_meter/test_LinuxI2cDeviceProbe.cpp
+  )
+  target_link_libraries(test_linux_i2c_device_probe
+    power_meter_core
+  )
+
+  ament_add_gtest(test_acs37800_device
+    test/power_meter/test_Acs37800Device.cpp
+  )
+  target_link_libraries(test_acs37800_device
+    power_meter_core
+  )
+
+  ament_add_gtest(test_power_meter_core
+    test/power_meter/test_PowerMeterCore.cpp
+  )
+  target_link_libraries(test_power_meter_core
+    power_meter_core
+  )
+
+  ament_add_gtest(test_acs37800_power_meter_node
+    test/power_meter/test_Acs37800PowerMeterNode.cpp
+  )
+  target_link_libraries(test_acs37800_power_meter_node
+    acs37800_power_meter_component
+    ${oasis_msgs_TARGETS}
+    rclcpp::rclcpp
+  )
 
   ament_add_gtest(test_bno086_gravity_utils
     test/imu/bno086/test_Bno086GravityUtils.cpp

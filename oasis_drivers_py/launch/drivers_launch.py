@@ -149,6 +149,80 @@ elif HOST_ID == "station":
 
 AVR_COM_PORT: str = "/dev/ttyACM0"
 
+#
+# LEGO Air Quality Lab configuration
+#
+
+# The TCA9548A mux address is fixed at 0x70 by the Raspberry Pi
+# device-tree overlay:
+#
+# dtoverlay=i2c-mux,pca9548,addr=0x70
+#
+# Linux exposes each mux channel as a separate child I2C adapter, so the
+# runtime driver only needs the parent bus and channel.
+#
+# Discover the parent I2C bus, mux child adapters, and attached devices:
+#
+#   i2cdetect -l
+#
+# Scan the parent Raspberry Pi I2C bus:
+#
+#   i2cdetect -y 1
+#
+# List mux child adapters and their channel IDs:
+#
+#   for dev in /sys/class/i2c-dev/i2c-*; do
+#     bus="${dev##*-}"
+#     printf "i2c-%-3s " "${bus}"
+#     cat "${dev}/name"
+#   done
+#
+# Scan every TCA9548A mux channel:
+#
+#   for dev in /sys/class/i2c-dev/i2c-*; do
+#     bus="${dev##*-}"
+#     name="$(cat "${dev}/name")"
+#
+#     case "${name}" in
+#       *mux*)
+#         echo "=== i2c-${bus}: ${name} ==="
+#         i2cdetect -y "${bus}"
+#         ;;
+#     esac
+#   done
+#
+# Expected topology on airlab:
+#
+#   /dev/i2c-1
+#     0x3c  SSD1305 OLED
+#     0x68  DS3231 RTC, shown as UU when claimed by the kernel
+#     0x70  TCA9548A mux, shown as UU when claimed by the kernel
+#
+#   mux channel 2
+#     0x60  ACS37800 power meter
+#
+#   mux channel 3
+#     0x60  ACS37800 power meter
+
+AIRLAB_POWER_METER_CONFIG: dict[str, object] = {
+    "publish_rate_hz": 10.0,
+    "mux_address": 0x70,
+    "power_meter_address": 0x60,
+    "power_meter_ids": [
+        "power_meter_0",
+        "power_meter_1",
+    ],
+    # SparkFun Power Meter ACS37800 (SEN-29259):
+    # 2 MΩ series resistance per voltage input leg and 8.2 kΩ RSENSE
+    "current_sense_range_amps": 30.0,
+    "voltage_divider_resistance_ohms": 2_000_000.0,
+    "voltage_sense_resistance_ohms": 8_200.0,
+    # crs_sns is checked against register 0x1B at startup; it does not select
+    # the physical current range used for SI conversion
+    "expected_crs_sns": 4,
+    "disconnect_after_failures": 3,
+}
+
 
 ################################################################################
 # Launch description
@@ -220,6 +294,13 @@ def generate_launch_description() -> LaunchDescription:
             IMAGE_SIZE,
             SENSOR_MODE,
             libcamera_params=LIBCAMERA_PARAMS,
+        )
+    if HOST_ID == "airlab":
+        # Add power meter node
+        Drivers.add_power_meter_node(
+            composable_nodes,
+            HOST_ID,
+            AIRLAB_POWER_METER_CONFIG,
         )
 
     # Smarthome cameras
