@@ -3,6 +3,7 @@ host_id_map:
   cinder: nas
   megapegasus: oceanplatform
   precision: vision
+  abn_007000: airlab
 
 # Remap HOST_ID to zone names
 zone_id_map:
