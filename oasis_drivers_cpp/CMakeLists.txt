@@ -56,6 +56,57 @@ find_package(yaml-cpp REQUIRED)
 ################################################################################
 
 #
+# ens160_bme280_driver
+#
+
+add_library(environment_core
+  src/environment/Bme280Compensation.cpp
+)
+
+add_library(environment_devices
+  src/environment/Bme280Device.cpp
+  src/environment/Ens160Device.cpp
+)
+target_link_libraries(environment_devices PUBLIC
+  environment_core
+  i2cdevlib::i2cdevlib
+)
+# i2cdevlib is supplied as a non-PIC static archive on ARM. Bind its symbols
+# locally so the device library can be included in a composable shared node.
+target_link_options(environment_devices PRIVATE
+  "LINKER:-Bsymbolic"
+)
+
+add_library(ens160_bme280_driver_component SHARED
+  src/nodes/Ens160Bme280Node.cpp
+)
+target_link_libraries(ens160_bme280_driver_component PUBLIC
+  environment_core
+  environment_devices
+  ${oasis_msgs_TARGETS}
+  rclcpp_components::component
+  rclcpp::rclcpp
+  ${sensor_msgs_TARGETS}
+  ${std_msgs_TARGETS}
+)
+
+rclcpp_components_register_node(
+  ens160_bme280_driver_component
+  PLUGIN "OASIS::ROS::Ens160Bme280Node"
+  EXECUTABLE ens160_bme280_driver
+)
+
+install(
+  TARGETS
+    environment_core
+    environment_devices
+    ens160_bme280_driver_component
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
+
+#
 # ahrs
 #
 
@@ -413,6 +464,14 @@ if(BUILD_TESTING)
   # The following line skips cpplint (only works in a git repo)
   # Uncomment the line when this package is not in a git repo
   #set(ament_cmake_cpplint_FOUND TRUE)
+
+  ament_add_gtest(test_environmental_sensors
+    test/environment/test_EnvironmentalSensors.cpp
+  )
+  target_link_libraries(test_environmental_sensors
+    environment_core
+    environment_devices
+  )
 
   ament_add_gtest(test_bno086_gravity_utils
     test/imu/bno086/test_Bno086GravityUtils.cpp

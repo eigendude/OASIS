@@ -119,6 +119,32 @@ class DriverDescriptions:
         ld.add_action(driver_container)
 
     #
+    # ENS160 and BME280 environmental sensor driver
+    #
+
+    @staticmethod
+    def add_ens160_bme280(
+        composable_nodes: list[ComposableNode],
+        zone_id: str,
+    ) -> None:
+        composable_nodes.append(
+            ComposableNode(
+                namespace=ROS_NAMESPACE,
+                package=CPP_PACKAGE_NAME,
+                plugin="OASIS::ROS::Ens160Bme280Node",
+                name="ens160_bme280_driver_airlab",
+                remappings=[
+                    ("air_quality_index", f"{zone_id}/air_quality_index"),
+                    ("equivalent_co2", f"{zone_id}/equivalent_co2"),
+                    ("tvoc", f"{zone_id}/tvoc"),
+                    ("temperature", f"{zone_id}/temperature"),
+                    ("relative_humidity", f"{zone_id}/relative_humidity"),
+                    ("pressure", f"{zone_id}/pressure"),
+                ],
+            )
+        )
+
+    #
     # BNO086 9-DoF IMU driver
     #
 
