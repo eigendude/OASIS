@@ -485,7 +485,7 @@ class CameraCalibratorNode(rclpy.node.Node):
 
         # Skip obviously invalid/empty images
         if msg.height == 0 or msg.width == 0 or not msg.data:
-            self.get_logger().warn(
+            self.get_logger().warning(
                 "camera_calibrator: received empty monocular image, skipping"
             )
             return
@@ -518,7 +518,7 @@ class CameraCalibratorNode(rclpy.node.Node):
         try:
             drawable: ImageDrawable = self.c.handle_msg(msg)
         except cv_bridge.CvBridgeError as e:
-            self.get_logger().warn(
+            self.get_logger().warning(
                 "camera_calibrator: CvBridgeError on monocular frame, skipping. "
                 f"Error={e}; "
                 f"{format_image_metadata(msg)}"
@@ -539,7 +539,7 @@ class CameraCalibratorNode(rclpy.node.Node):
         try:
             lmsg, rmsg = msg
         except Exception:
-            self.get_logger().warn(
+            self.get_logger().warning(
                 "camera_calibrator: stereo callback got malformed message, skipping"
             )
             return
@@ -551,7 +551,7 @@ class CameraCalibratorNode(rclpy.node.Node):
             or rmsg.width == 0
             or not rmsg.data
         ):
-            self.get_logger().warn(
+            self.get_logger().warning(
                 "camera_calibrator: received empty stereo image(s), skipping"
             )
             return
@@ -583,7 +583,7 @@ class CameraCalibratorNode(rclpy.node.Node):
         try:
             drawable = self.c.handle_msg(msg)
         except cv_bridge.CvBridgeError as e:
-            self.get_logger().warn(
+            self.get_logger().warning(
                 f"camera_calibrator: CvBridgeError on stereo frame, skipping: {e}"
             )
             return
@@ -596,7 +596,13 @@ class CameraCalibratorNode(rclpy.node.Node):
         self._target_visible = self.c.last_frame_corners is not None
         self.redraw_stereo(drawable)
 
-    def check_set_camera_info(self, response: SetCameraInfoSrv.Response) -> bool:
+    def check_set_camera_info(self, response: SetCameraInfoSrv.Response | None) -> bool:
+        if response is None:
+            self.get_logger().error(
+                "Unable to set camera info for calibration: no service response"
+            )
+            return False
+
         if response.success:
             return True
 
@@ -624,7 +630,9 @@ class CameraCalibratorNode(rclpy.node.Node):
         rv: bool = True
         if self.c.is_mono:
             req.camera_info = info
-            response: SetCameraInfoSrv.Response = self.set_camera_info_service.call(req)
+            response: SetCameraInfoSrv.Response | None = (
+                self.set_camera_info_service.call(req)
+            )
             rv = self.check_set_camera_info(response)
         else:
             req.camera_info = info[0]
@@ -657,7 +665,7 @@ class CameraCalibratorNode(rclpy.node.Node):
             qos_profile.depth = rclpy.qos.qos_profile_system_default.depth
             return qos_profile
         else:
-            self.get_logger().warn(
+            self.get_logger().warning(
                 f"No publishers available for topic {topic_name}. Using system default QoS for subscriber."
             )
             return rclpy.qos.qos_profile_system_default
