@@ -110,10 +110,32 @@ def test_jetson_has_engine_telemetrix_mcu() -> None:
     assert hardware.mcu.serial_port == "/dev/ttyACM0"
 
 
-@pytest.mark.parametrize("host_id", ["airlab", "door", "unknown"])
+def test_airlab_power_meter_parameters_preserve_driver_values() -> None:
+    hardware: HostHardwareConfig = get_host_hardware_config("airlab", "airlab_zone")
+
+    assert hardware.power_meter is not None
+    assert hardware.power_meter.power_meter_ids == (
+        "power_meter_0",
+        "power_meter_1",
+    )
+    assert hardware.power_meter.as_parameters() == {
+        "publish_rate_hz": 10.0,
+        "mux_address": 0x70,
+        "power_meter_address": 0x60,
+        "power_meter_ids": ["power_meter_0", "power_meter_1"],
+        "current_sense_range_amps": 30.0,
+        "voltage_divider_resistance_ohms": 2_000_000.0,
+        "voltage_sense_resistance_ohms": 8_200.0,
+        "expected_crs_sns": 4,
+        "disconnect_after_failures": 3,
+    }
+
+
+@pytest.mark.parametrize("host_id", ["door", "unknown"])
 def test_hosts_without_driver_hardware_are_empty(host_id: str) -> None:
     hardware: HostHardwareConfig = get_host_hardware_config(host_id, "zone")
 
     assert hardware.cameras == ()
     assert hardware.ahrs is None
     assert hardware.mcu is None
+    assert hardware.power_meter is None

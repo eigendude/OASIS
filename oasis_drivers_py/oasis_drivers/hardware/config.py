@@ -169,6 +169,54 @@ class MCUConfig:
 
 
 @dataclass(frozen=True)
+class PowerMeterConfig:
+    """Configuration for ACS37800 power meters behind an I2C mux"""
+
+    # Measurement publication frequency in hertz
+    publish_rate_hz: float
+
+    # Seven-bit TCA9548A I2C mux address
+    mux_address: int
+
+    # Seven-bit ACS37800 I2C address used on each mux channel
+    power_meter_address: int
+
+    # Stable logical IDs assigned to meters in mux-channel order
+    power_meter_ids: tuple[str, ...]
+
+    # Full-scale current measurement range in amperes
+    current_sense_range_amps: float
+
+    # Series resistance on each voltage input leg in ohms
+    voltage_divider_resistance_ohms: float
+
+    # Voltage-sense resistor value in ohms
+    voltage_sense_resistance_ohms: float
+
+    # Expected crs_sns register value used to validate hardware setup
+    expected_crs_sns: int
+
+    # Consecutive communication failures allowed before disconnection
+    disconnect_after_failures: int
+
+    def as_parameters(self) -> dict[str, object]:
+        """Convert the configuration to ROS parameter names and values"""
+
+        voltage_divider_resistance: float = self.voltage_divider_resistance_ohms
+        return {
+            "publish_rate_hz": self.publish_rate_hz,
+            "mux_address": self.mux_address,
+            "power_meter_address": self.power_meter_address,
+            "power_meter_ids": list(self.power_meter_ids),
+            "current_sense_range_amps": self.current_sense_range_amps,
+            "voltage_divider_resistance_ohms": voltage_divider_resistance,
+            "voltage_sense_resistance_ohms": self.voltage_sense_resistance_ohms,
+            "expected_crs_sns": self.expected_crs_sns,
+            "disconnect_after_failures": self.disconnect_after_failures,
+        }
+
+
+@dataclass(frozen=True)
 class HostHardwareConfig:
     """Complete physical hardware configuration for one OASIS host"""
 
@@ -180,3 +228,6 @@ class HostHardwareConfig:
 
     # Optional serial microcontroller bridge configuration
     mcu: MCUConfig | None = None
+
+    # Optional ACS37800 power meter installation
+    power_meter: PowerMeterConfig | None = None

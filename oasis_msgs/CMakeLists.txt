@@ -81,6 +81,7 @@ rosidl_generate_interfaces(
     msg/PoseLandmarks.msg
     msg/PoseLandmarksArray.msg
     msg/PowerEvent.msg
+    msg/PowerMeter.msg
     msg/PowerMode.msg
     msg/PWMWriteCommand.msg
     msg/RGB.msg

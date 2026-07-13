@@ -53,6 +53,13 @@ def generate_launch_description() -> LaunchDescription:
             hardware.ahrs,
         )
 
+    if hardware.power_meter is not None:
+        Drivers.add_power_meter_node(
+            composable_nodes,
+            config.HOST_ID,
+            hardware.power_meter.as_parameters(),
+        )
+
     if hardware.mcu is not None:
         DriverNodes.add_mcu(ld, config.HOST_ID, hardware.mcu)
 
