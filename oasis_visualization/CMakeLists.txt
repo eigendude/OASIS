@@ -40,6 +40,17 @@ install(
 )
 
 #
+# OLED graphics
+#
+
+install(
+  DIRECTORY
+    oled/
+  DESTINATION
+    share/${PROJECT_NAME}/oled
+)
+
+#
 # Declare an ament Package
 #
 
