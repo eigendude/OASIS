@@ -25,6 +25,9 @@ Options:
   --skip-perception-cpp    Skip building the oasis_perception_cpp package. Use
                            this when pre-built libraries have been restored
                            from cache.
+  --skip-visualization        Skip building the oasis_visualization package. Use
+                           this when pre-built libraries have been restored
+                           from cache.
   -h, --help               Display this help and exit.
 USAGE
 }
@@ -38,6 +41,7 @@ SKIP_MCU=false
 SKIP_DRIVERS_CPP=false
 SKIP_MESSAGES=false
 SKIP_PERCEPTION_CPP=false
+SKIP_VISUALIZATION=false
 MCU_PROFILE=
 
 while [[ $# -gt 0 ]]; do
@@ -65,6 +69,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --skip-perception-cpp)
       SKIP_PERCEPTION_CPP=true
+      shift
+      ;;
+    --skip-visualization)
+      SKIP_VISUALIZATION=true
       shift
       ;;
     -h|--help)
@@ -143,6 +151,10 @@ fi
 
 if [[ "${SKIP_DRIVERS_CPP}" == true ]]; then
   PACKAGES_SKIP+=("oasis_drivers_cpp")
+fi
+
+if [[ "${SKIP_VISUALIZATION}" == true ]]; then
+  PACKAGES_SKIP+=("oasis_visualization")
 fi
 
 if [[ "${SKIP_MESSAGES}" == true ]]; then

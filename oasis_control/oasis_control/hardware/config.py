@@ -54,6 +54,9 @@ class MCUManagerConfig:
 class HostHardwareConfig:
     """Complete control-facing hardware configuration for one OASIS host"""
 
+    # Whether an OLED is installed and should receive visualization output
+    enable_oled_visualizer: bool = False
+
     # Whether the host supplies AHRS data for forward-speed estimation
     enable_ahrs_speedometer: bool = False
 

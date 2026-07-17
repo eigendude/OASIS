@@ -113,6 +113,26 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     )
   fi
 
+  if [[ -d "${STACK_DIRECTORY}/oasis_visualization" ]] && \
+     [[ ! -f "${STACK_DIRECTORY}/oasis_visualization/COLCON_IGNORE" ]]; then
+    # Needed for linking rclcpp
+    APT_PACKAGES+=(
+      # Needed by class_loader via rclcpp_components
+      libconsole-bridge-dev
+
+      # Needed for custom OpenCV build
+      libavcodec-dev
+      libavformat-dev
+      libavif-dev
+      libavutil-dev
+      libgstreamer-plugins-base1.0-dev
+      libgstreamer1.0-dev
+      libopenblas-dev
+      libopenexr-dev
+      libswscale-dev
+    )
+  fi
+
   sudo apt install -y --no-install-recommends "${APT_PACKAGES[@]}"
 fi
 

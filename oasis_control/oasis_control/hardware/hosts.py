@@ -24,6 +24,8 @@ def get_host_hardware_config(
     if not zone_id:
         raise ValueError("zone_id must not be empty")
 
+    if host_id == "airlab":
+        return HostHardwareConfig(enable_oled_visualizer=True)
     if host_id == "falcon":
         return HostHardwareConfig(
             enable_ahrs_speedometer=True,

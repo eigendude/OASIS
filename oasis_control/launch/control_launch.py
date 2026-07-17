@@ -40,7 +40,7 @@ def generate_launch_description() -> LaunchDescription:
             config.HOME_ASSISTANT_ID,
         )
 
-    # Navigation
+    # Navigation nodes
     if hardware.enable_ahrs_speedometer:
         ControlDescriptions.add_ahrs_speedometer(ld, config.HOST_ID)
 
@@ -80,5 +80,9 @@ def generate_launch_description() -> LaunchDescription:
 
     if hardware.enable_wol_server:
         Drivers.add_wol_server(ld, config.HOST_ID)
+
+    # Visualization nodes
+    if hardware.enable_oled_visualizer:
+        ControlDescriptions.add_oled_visualizer(ld, config.HOST_ID)
 
     return ld

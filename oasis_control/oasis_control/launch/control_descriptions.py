@@ -9,7 +9,9 @@
 ################################################################################
 
 from launch.launch_description import LaunchDescription
+from launch.substitutions import PathJoinSubstitution
 from launch_ros.actions import Node
+from launch_ros.substitutions import FindPackageShare
 
 from oasis_control.launch.ahrs_mounting import AhrsMountingConfig
 
@@ -22,6 +24,7 @@ from oasis_control.launch.ahrs_mounting import AhrsMountingConfig
 ROS_NAMESPACE: str = "oasis"
 
 CONTROL_PACKAGE_NAME: str = "oasis_control"
+VISUALIZATION_PACKAGE_NAME: str = "oasis_visualization"
 
 
 ################################################################################
@@ -245,6 +248,40 @@ class ControlDescriptions:
             remappings=remappings,
         )
         ld.add_action(engineer_node)
+
+    #
+    # OLED visualizer
+    #
+
+    @staticmethod
+    def add_oled_visualizer(ld: LaunchDescription, host_id: str) -> None:
+        oled_visualizer_node: Node = Node(
+            namespace=ROS_NAMESPACE,
+            package=VISUALIZATION_PACKAGE_NAME,
+            executable="oled_visualizer",
+            name=f"oled_visualizer_{host_id}",
+            output="screen",
+            parameters=[
+                {
+                    "image_path": PathJoinSubstitution(
+                        [
+                            FindPackageShare(VISUALIZATION_PACKAGE_NAME),
+                            "oled",
+                            "oasis_shadow_128x32.png",
+                        ]
+                    ),
+                    "frame_rate": 30.0,
+                    "revolution_seconds": 8.0,
+                    "focal_length": 95.0,
+                    "camera_distance": 150.0,
+                    "model_scale": 1.35,
+                },
+            ],
+            remappings=[
+                ("image", f"{host_id}/oled/image"),
+            ],
+        )
+        ld.add_action(oled_visualizer_node)
 
     #
     # ZUPT detector

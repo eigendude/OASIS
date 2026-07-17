@@ -43,9 +43,11 @@ set -o nounset
     --merge-install \
     --packages-select \
       oasis_drivers_cpp \
+      oasis_perception_cpp \
+      oasis_visualization \
     --ctest-args \
       -R '^test_'
 
   colcon test-result \
-    --test-result-base build/oasis_drivers_cpp/test_results
+    --test-result-base build
 )

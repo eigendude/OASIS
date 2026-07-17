@@ -14,7 +14,10 @@
 
 from __future__ import annotations
 
+import sys
+from types import ModuleType
 from typing import Any
+from typing import cast
 
 import pytest  # type: ignore[import-not-found]
 
@@ -63,14 +66,57 @@ class _FakeLaunchDescription:
 def test_add_conductor_manager_remaps_checkerboard_status(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import oasis_control.launch.control_descriptions as control_descriptions
+    launch_module: ModuleType = ModuleType("launch")
+    launch_description_module: ModuleType = ModuleType(
+        "launch.launch_description",
+    )
+    launch_substitutions_module: ModuleType = ModuleType(
+        "launch.substitutions",
+    )
+    launch_ros_module: ModuleType = ModuleType("launch_ros")
+    launch_ros_actions_module: ModuleType = ModuleType("launch_ros.actions")
+    launch_ros_substitutions_module: ModuleType = ModuleType(
+        "launch_ros.substitutions",
+    )
 
-    monkeypatch.setattr(control_descriptions, "Node", _FakeNode)
+    setattr(
+        launch_description_module,
+        "LaunchDescription",
+        _FakeLaunchDescription,
+    )
+    setattr(launch_substitutions_module, "PathJoinSubstitution", object)
+    setattr(launch_ros_actions_module, "Node", _FakeNode)
+    setattr(launch_ros_substitutions_module, "FindPackageShare", object)
+
+    monkeypatch.setitem(sys.modules, "launch", launch_module)
+    monkeypatch.setitem(
+        sys.modules,
+        "launch.launch_description",
+        launch_description_module,
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "launch.substitutions",
+        launch_substitutions_module,
+    )
+    monkeypatch.setitem(sys.modules, "launch_ros", launch_ros_module)
+    monkeypatch.setitem(
+        sys.modules,
+        "launch_ros.actions",
+        launch_ros_actions_module,
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "launch_ros.substitutions",
+        launch_ros_substitutions_module,
+    )
+
+    import oasis_control.launch.control_descriptions as control_descriptions
 
     launch_description = _FakeLaunchDescription()
 
     control_descriptions.ControlDescriptions.add_conductor_manager(
-        launch_description,
+        cast(Any, launch_description),
         host_id="station",
         mcu_node="conductor",
         wol_server_id="station",

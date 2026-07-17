@@ -114,6 +114,11 @@ jobs:
               'oasis_perception_cpp/**',
             ]);
 
+            await setHash('OASIS_VISUALIZATION_HASH', [
+              'oasis_msgs/**',
+              'oasis_visualization/**',
+            ]);
+
             await setHash('OASIS_RUNTIME_HASH', [
               'oasis_tooling/scripts/rdepinstall_oasis.sh',
             ]);
@@ -263,6 +268,24 @@ jobs:
             ${{ env.OASIS_DEPENDS_HASH }}-\
             ${{ env.OASIS_PERCEPTION_CPP_HASH }}
 
+      - name: Restore OASIS visualization
+        id: restore-oasis-visualization
+        uses: actions/cache@v4
+        with:
+          path: |
+            ros-ws/oasis-${{ matrix.ros2_distro }}/install/include/oasis_visualization
+            ros-ws/oasis-${{ matrix.ros2_distro }}/install/lib/oasis_visualization
+            ros-ws/oasis-${{ matrix.ros2_distro }}/install/share/**/oasis_visualization
+          key: >
+            restore-oasis-visualization-\
+            ${{ matrix.os }}-\
+            ${{ matrix.ros2_distro }}-\
+            ${{ env.CMAKE_HASH }}-\
+            ${{ env.OPENCV_HASH }}-\
+            ${{ env.ROS2_DESKTOP_HASH }}-\
+            ${{ env.OASIS_DEPENDS_HASH }}-\
+            ${{ env.OASIS_VISUALIZATION_HASH }}
+
       - name: Restore OASIS runtime dependencies
         id: restore-oasis-runtime
         uses: actions/cache@v4
@@ -333,6 +356,11 @@ jobs:
             touch "oasis_perception_cpp/COLCON_IGNORE"
           fi
 
+          if [ "${{ steps.restore-oasis-visualization.outputs.cache-hit }}" = 'true' ]; then
+            echo "Marking oasis_visualization as ignored (cache hit detected)"
+            touch "oasis_visualization/COLCON_IGNORE"
+          fi
+
       - name: Install OASIS rosdeps
         run: ./oasis_tooling/scripts/depinstall_oasis.sh
 
@@ -360,6 +388,11 @@ jobs:
           if [ "${{ steps.restore-oasis-perception-cpp.outputs.cache-hit }}" = 'true' ]; then
             echo "Skipping oasis_perception_cpp build (cache hit detected)"
             args+=(--skip-perception-cpp)
+          fi
+
+          if [ "${{ steps.restore-oasis-visualization.outputs.cache-hit }}" = 'true' ]; then
+            echo "Skipping oasis_visualization build (cache hit detected)"
+            args+=(--skip-visualization)
           fi
 
           if [ ${#args[@]} -eq 0 ]; then
@@ -419,6 +452,7 @@ jobs:
           packages=()
           packages+=(oasis_drivers_cpp)
           packages+=(oasis_perception_cpp)
+          packages+=(oasis_visualization)
 
           if [ ${#packages[@]} -eq 0 ]; then
             echo "All C++ test packages were cache-skipped; skipping test run."

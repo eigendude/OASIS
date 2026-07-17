@@ -17,6 +17,13 @@ from oasis_control.hardware.config import MCUManagerImplementation
 from oasis_control.hardware.hosts import get_host_hardware_config
 
 
+def test_airlab_enables_oled_visualization() -> None:
+    hardware: HostHardwareConfig = get_host_hardware_config("airlab", "airlab_zone")
+
+    assert hardware.enable_oled_visualizer is True
+    assert hardware.mcu_manager is None
+
+
 def test_falcon_enables_speedometer_and_pwm_manager() -> None:
     hardware: HostHardwareConfig = get_host_hardware_config("falcon", "falcon_zone")
 
