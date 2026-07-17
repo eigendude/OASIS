@@ -5,5 +5,7 @@
         "./ros-ws/ros2-desktop-kilted/src/ros2/geometry2/tf2_ros_py",
         "./ros-ws/ros2-desktop-kilted/src/ros2/launch_ros/launch_ros",
         "./ros-ws/ros2-desktop-kilted/src/ros2/rclpy/rclpy"
-    ]
+    ],
+    "python.analysis.autoImportCompletions": true,
+    "git.ignoreLimitWarning": true
 }
