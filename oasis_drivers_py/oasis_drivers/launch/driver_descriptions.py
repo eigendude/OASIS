@@ -65,6 +65,10 @@ COMPONENT_CONSOLE_OUTPUT_FORMAT: str = "[{severity}] [{name}]: {message}"
 
 
 class DriverDescriptions:
+    """
+    Note: Keep sorted alphabetically by node
+    """
+
     #
     # Helper function
     #
@@ -118,36 +122,6 @@ class DriverDescriptions:
         ld.add_action(driver_container)
 
     #
-    # BNO086 9-DoF IMU driver
-    #
-
-    @staticmethod
-    def add_bno086_imu(
-        composable_nodes: list[ComposableNode],
-        host_id: str,
-        int_gpio: int,
-    ) -> None:
-        composable_nodes.append(
-            ComposableNode(
-                namespace=ROS_NAMESPACE,
-                package=CPP_PACKAGE_NAME,
-                plugin="OASIS::ROS::Bno086ImuNode",
-                name=f"bno086_imu_driver_{host_id}",
-                parameters=[
-                    {"int_gpio": int_gpio},
-                ],
-                remappings=[
-                    # Topics
-                    ("gravity", f"{host_id}/gravity"),
-                    ("imu_gravity", f"{host_id}/imu_gravity"),
-                    ("imu_predicted", f"{host_id}/imu_predicted"),
-                    ("imu_vr", f"{host_id}/imu_vr"),
-                    ("imu", f"{host_id}/imu"),
-                ],
-            )
-        )
-
-    #
     # AHRS
     #
 
@@ -184,6 +158,36 @@ class DriverDescriptions:
                     ("ahrs/odom", f"{host_id}/ahrs/odom"),
                     ("gravity", f"{host_id}/gravity"),
                     ("imu_gravity", f"{host_id}/imu_gravity"),
+                    ("imu", f"{host_id}/imu"),
+                ],
+            )
+        )
+
+    #
+    # BNO086 9-DoF IMU driver
+    #
+
+    @staticmethod
+    def add_bno086_imu(
+        composable_nodes: list[ComposableNode],
+        host_id: str,
+        int_gpio: int,
+    ) -> None:
+        composable_nodes.append(
+            ComposableNode(
+                namespace=ROS_NAMESPACE,
+                package=CPP_PACKAGE_NAME,
+                plugin="OASIS::ROS::Bno086ImuNode",
+                name=f"bno086_imu_driver_{host_id}",
+                parameters=[
+                    {"int_gpio": int_gpio},
+                ],
+                remappings=[
+                    # Topics
+                    ("gravity", f"{host_id}/gravity"),
+                    ("imu_gravity", f"{host_id}/imu_gravity"),
+                    ("imu_predicted", f"{host_id}/imu_predicted"),
+                    ("imu_vr", f"{host_id}/imu_vr"),
                     ("imu", f"{host_id}/imu"),
                 ],
             )
