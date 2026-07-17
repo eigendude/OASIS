@@ -17,6 +17,8 @@ from oasis_drivers.hardware.config import CameraImplementation
 from oasis_drivers.hardware.config import HostHardwareConfig
 from oasis_drivers.hardware.config import MCUImplementation
 from oasis_drivers.hardware.hosts import get_host_hardware_config
+from oasis_home.utils.smarthome_config import SmarthomeConfig
+from oasis_home.utils.smarthome_config import normalize_hostname
 
 
 def test_falcon_hardware_preserves_camera_and_ahrs_configuration(
@@ -113,6 +115,26 @@ def test_jetson_has_engine_telemetrix_mcu() -> None:
 def test_airlab_power_meter_parameters_preserve_driver_values() -> None:
     hardware: HostHardwareConfig = get_host_hardware_config("airlab", "airlab_zone")
 
+    assert hardware.ssd1305_display is not None
+    assert hardware.ssd1305_display.as_parameters() == {
+        "i2c_device": "/dev/i2c-1",
+        "i2c_address": 0x3C,
+        "width": 128,
+        "height": 32,
+        "column_offset": 4,
+        "contrast": 0xFF,
+        "threshold": 127,
+        "invert_pixels": False,
+        "rotation": 0,
+        "update_rate_hz": 30.0,
+        "recover_after_failures": 3,
+        "enabled": True,
+        "blank_on_shutdown": True,
+        "reject_wrong_dimensions": True,
+        "clip_wrong_dimensions": False,
+        "enable_partial_updates": True,
+    }
+
     assert hardware.power_meter is not None
     assert hardware.power_meter.power_meter_ids == (
         "power_meter_0",
@@ -129,6 +151,25 @@ def test_airlab_power_meter_parameters_preserve_driver_values() -> None:
         "expected_crs_sns": 4,
         "disconnect_after_failures": 3,
     }
+
+
+def test_raw_abn_hostname_resolves_to_airlab_display(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    normalized_hostname: str = normalize_hostname("abn-007000")
+    assert normalized_hostname == "abn_007000"
+
+    monkeypatch.setattr(SmarthomeConfig, "HOSTNAME", normalized_hostname)
+    config: SmarthomeConfig = SmarthomeConfig()
+    assert config.HOST_ID == "airlab"
+
+    hardware: HostHardwareConfig = get_host_hardware_config(
+        config.HOST_ID,
+        config.ZONE_ID,
+    )
+    assert hardware.ssd1305_display is not None
+    assert hardware.ssd1305_display.i2c_device == "/dev/i2c-1"
+    assert hardware.ssd1305_display.i2c_address == 0x3C
 
 
 @pytest.mark.parametrize("host_id", ["door", "unknown"])

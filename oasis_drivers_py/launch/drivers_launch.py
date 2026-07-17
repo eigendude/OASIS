@@ -60,6 +60,13 @@ def generate_launch_description() -> LaunchDescription:
             hardware.power_meter.as_parameters(),
         )
 
+    if hardware.ssd1305_display is not None:
+        Drivers.add_ssd1305_display_node(
+            composable_nodes,
+            config.HOST_ID,
+            hardware.ssd1305_display.as_parameters(),
+        )
+
     if hardware.mcu is not None:
         DriverNodes.add_mcu(ld, config.HOST_ID, hardware.mcu)
 

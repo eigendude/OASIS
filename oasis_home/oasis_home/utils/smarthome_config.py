@@ -16,12 +16,18 @@ import yaml
 from ament_index_python import get_package_share_directory
 
 
+def normalize_hostname(hostname: str) -> str:
+    """Convert a raw system hostname to the identifier used in OASIS maps"""
+
+    return hostname.replace("-", "_")
+
+
 class SmarthomeConfig:
     ############################################################################
     # System parameters
     ############################################################################
 
-    HOSTNAME: str = socket.gethostname().replace("-", "_")
+    HOSTNAME: str = normalize_hostname(socket.gethostname())
 
     ############################################################################
     # ROS parameters
@@ -105,6 +111,6 @@ class SmarthomeConfig:
     def CAMERA_DRIVER_MAP(self) -> dict[str, str]:
         return self._camera_driver_map
 
-    def get_camera_driver(self, host_id) -> str:
+    def get_camera_driver(self, host_id: str) -> str:
         """Return the configured camera driver for a given host."""
         return self._camera_driver_map.get(host_id, "")

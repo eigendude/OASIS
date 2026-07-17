@@ -22,6 +22,7 @@ from oasis_drivers.hardware.config import LibcameraConfig
 from oasis_drivers.hardware.config import MCUConfig
 from oasis_drivers.hardware.config import MCUImplementation
 from oasis_drivers.hardware.config import PowerMeterConfig
+from oasis_drivers.hardware.config import Ssd1305DisplayConfig
 
 
 DEFAULT_IMAGE_SIZE: tuple[int, int] = (640, 480)
@@ -104,7 +105,25 @@ def get_host_hardware_config(
                 # not select the physical current range used for SI conversion
                 expected_crs_sns=4,
                 disconnect_after_failures=3,
-            )
+            ),
+            ssd1305_display=Ssd1305DisplayConfig(
+                i2c_device="/dev/i2c-1",
+                i2c_address=0x3C,
+                width=128,
+                height=32,
+                column_offset=4,
+                contrast=0xFF,
+                threshold=127,
+                invert_pixels=False,
+                rotation=0,
+                update_rate_hz=30.0,
+                recover_after_failures=3,
+                enabled=True,
+                blank_on_shutdown=True,
+                reject_wrong_dimensions=True,
+                clip_wrong_dimensions=False,
+                enable_partial_updates=True,
+            ),
         )
     if host_id in ("bar", "kitchen"):
         return HostHardwareConfig(

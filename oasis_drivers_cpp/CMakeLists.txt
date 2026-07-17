@@ -47,12 +47,15 @@ find_package(rclcpp_components REQUIRED)
 find_package(rcutils REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(UDEV)
 find_package(yaml-cpp REQUIRED)
 
 ################################################################################
 # C++ nodes
+#
+# Note: Sort alphabetically by node
 ################################################################################
 
 #
@@ -401,6 +404,62 @@ install(
 )
 
 #
+# ssd1305_display
+#
+
+add_library(ssd1305_display_core
+  src/display/ssd1305/Ssd1305Device.cpp
+  src/display/ssd1305/Ssd1305Framebuffer.cpp
+  src/display/ssd1305/Ssd1305Transport.cpp
+)
+target_include_directories(ssd1305_display_core
+  PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+add_library(ssd1305_display_component SHARED
+  src/nodes/Ssd1305DisplayNode.cpp
+)
+target_link_libraries(ssd1305_display_component PUBLIC
+  ssd1305_display_core
+  ${oasis_msgs_TARGETS}
+  rclcpp_components::component
+  rclcpp::rclcpp
+  ${sensor_msgs_TARGETS}
+  ${std_srvs_TARGETS}
+)
+
+rclcpp_components_register_node(
+  ssd1305_display_component
+  PLUGIN "OASIS::ROS::Ssd1305DisplayNode"
+  EXECUTABLE ssd1305_display_component_node
+)
+
+add_executable(ssd1305_display_node
+  src/cli/ssd1305_display_node.cpp
+)
+target_link_libraries(ssd1305_display_node
+  ssd1305_display_component
+  rclcpp::rclcpp
+)
+
+install(
+  TARGETS
+    ssd1305_display_core
+    ssd1305_display_component
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
+
+install(
+  TARGETS
+    ssd1305_display_node
+  DESTINATION
+    lib/${PROJECT_NAME}
+)
+
+#
 # zupt_detector
 #
 
@@ -622,6 +681,27 @@ if(BUILD_TESTING)
   )
   target_link_libraries(test_bno086_utils
     bno086_utils
+  )
+
+  ament_add_gtest(test_ssd1305_framebuffer
+    test/display/ssd1305/test_Ssd1305Framebuffer.cpp
+  )
+  target_link_libraries(test_ssd1305_framebuffer
+    ssd1305_display_core
+  )
+
+  ament_add_gtest(test_ssd1305_device
+    test/display/ssd1305/test_Ssd1305Device.cpp
+  )
+  target_link_libraries(test_ssd1305_device
+    ssd1305_display_core
+  )
+
+  ament_add_gtest(test_ssd1305_display_node
+    test/display/ssd1305/test_Ssd1305DisplayNode.cpp
+  )
+  target_link_libraries(test_ssd1305_display_node
+    ssd1305_display_component
   )
 
   ament_lint_auto_find_test_dependencies()

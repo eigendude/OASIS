@@ -110,6 +110,7 @@ rosidl_generate_interfaces(
     srv/SetAnalogMode.srv
     srv/SetDigitalMode.srv
     srv/SetDisplay.srv
+    srv/SetDisplayContrast.srv
     srv/SetEffect.srv
     srv/SetPlug.srv
     srv/SetRGB.srv

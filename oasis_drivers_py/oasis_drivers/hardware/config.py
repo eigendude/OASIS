@@ -217,6 +217,81 @@ class PowerMeterConfig:
 
 
 @dataclass(frozen=True)
+class Ssd1305DisplayConfig:
+    """Configuration for a directly attached SSD1305 monochrome OLED"""
+
+    # Linux I2C device path connected directly to the OLED
+    i2c_device: str
+
+    # Seven-bit SSD1305 I2C address
+    i2c_address: int
+
+    # Hardware validation width; Product 4567 is fixed at 128 pixels
+    width: int
+
+    # Hardware validation height; Product 4567 is fixed at 32 pixels
+    height: int
+
+    # GDDRAM column offset for a 128-column panel on the 132-column SSD1305
+    column_offset: int
+
+    # Display contrast register value in the inclusive range 0 through 255
+    contrast: int
+
+    # Monochrome conversion threshold in the inclusive range 0 through 255
+    threshold: int
+
+    # Whether thresholded framebuffer pixels are inverted
+    invert_pixels: bool
+
+    # Clockwise rotation in degrees, one of 0, 90, 180, or 270
+    rotation: int
+
+    # Maximum hardware update rate in hertz
+    update_rate_hz: float
+
+    # Consecutive I2C failures before reopening and reinitializing the device
+    recover_after_failures: int
+
+    # Requested display power state at node startup
+    enabled: bool
+
+    # Whether GDDRAM is cleared before DISPLAY_OFF during shutdown
+    blank_on_shutdown: bool
+
+    # Whether images with dimensions incompatible with rotation are rejected
+    reject_wrong_dimensions: bool
+
+    # Whether non-matching source images are clipped instead of rejected
+    clip_wrong_dimensions: bool
+
+    # Whether updates transmit only pages differing from confirmed hardware
+    enable_partial_updates: bool
+
+    def as_parameters(self) -> dict[str, object]:
+        """Convert the configuration to ROS parameter names and values"""
+
+        return {
+            "i2c_device": self.i2c_device,
+            "i2c_address": self.i2c_address,
+            "width": self.width,
+            "height": self.height,
+            "column_offset": self.column_offset,
+            "contrast": self.contrast,
+            "threshold": self.threshold,
+            "invert_pixels": self.invert_pixels,
+            "rotation": self.rotation,
+            "update_rate_hz": self.update_rate_hz,
+            "recover_after_failures": self.recover_after_failures,
+            "enabled": self.enabled,
+            "blank_on_shutdown": self.blank_on_shutdown,
+            "reject_wrong_dimensions": self.reject_wrong_dimensions,
+            "clip_wrong_dimensions": self.clip_wrong_dimensions,
+            "enable_partial_updates": self.enable_partial_updates,
+        }
+
+
+@dataclass(frozen=True)
 class HostHardwareConfig:
     """Complete physical hardware configuration for one OASIS host"""
 
@@ -231,3 +306,6 @@ class HostHardwareConfig:
 
     # Optional ACS37800 power meter installation
     power_meter: PowerMeterConfig | None = None
+
+    # Optional directly attached SSD1305 OLED display
+    ssd1305_display: Ssd1305DisplayConfig | None = None

@@ -166,6 +166,33 @@ class DriverDescriptions:
         )
 
     #
+    # Adafruit 2.23" SSD1305 OLED display
+    #
+
+    @staticmethod
+    def add_ssd1305_display_node(
+        composable_nodes: list[ComposableNode],
+        host_id: str,
+        parameters: dict[str, object],
+    ) -> None:
+        composable_nodes.append(
+            ComposableNode(
+                namespace=ROS_NAMESPACE,
+                package=CPP_PACKAGE_NAME,
+                plugin="OASIS::ROS::Ssd1305DisplayNode",
+                name=f"ssd1305_display_{host_id}",
+                parameters=[parameters],
+                remappings=[
+                    ("display/image", f"{host_id}/display/image"),
+                    ("display/set_enabled", f"{host_id}/display/set_enabled"),
+                    ("display/clear", f"{host_id}/display/clear"),
+                    ("display/set_contrast", f"{host_id}/display/set_contrast"),
+                    ("display/set_invert", f"{host_id}/display/set_invert"),
+                ],
+            )
+        )
+
+    #
     # AHRS
     #
 

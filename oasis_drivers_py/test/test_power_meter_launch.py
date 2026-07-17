@@ -50,6 +50,42 @@ def test_power_meter_node_uses_root_namespace_and_configured_remappings() -> Non
     ]
 
 
+def test_ssd1305_display_node_uses_root_namespace_and_configured_remappings() -> None:
+    composable_nodes: list[ComposableNode] = []
+    parameters: dict[str, object] = {"i2c_device": "/dev/i2c-1"}
+
+    DriverDescriptions.add_ssd1305_display_node(
+        composable_nodes,
+        "abn_007000",
+        parameters,
+    )
+
+    assert len(composable_nodes) == 1
+    node: ComposableNode = composable_nodes[0]
+    context: LaunchContext = LaunchContext()
+    assert node.node_namespace is not None
+    assert perform_substitutions(context, node.node_namespace) == "oasis"
+    assert node.node_name is not None
+    assert (
+        perform_substitutions(context, node.node_name) == "ssd1305_display_abn_007000"
+    )
+    assert node.remappings is not None
+    remappings: list[tuple[str, str]] = [
+        (
+            perform_substitutions(context, list(source)),
+            perform_substitutions(context, list(destination)),
+        )
+        for source, destination in node.remappings
+    ]
+    assert remappings == [
+        ("display/image", "abn_007000/display/image"),
+        ("display/set_enabled", "abn_007000/display/set_enabled"),
+        ("display/clear", "abn_007000/display/clear"),
+        ("display/set_contrast", "abn_007000/display/set_contrast"),
+        ("display/set_invert", "abn_007000/display/set_invert"),
+    ]
+
+
 @pytest.mark.parametrize(
     ("parameters", "expected_exception", "expected_message"),
     [
