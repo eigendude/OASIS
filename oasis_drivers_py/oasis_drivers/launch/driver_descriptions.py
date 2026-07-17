@@ -54,7 +54,6 @@ ROS_NAMESPACE: str = "oasis"
 
 PYTHON_PACKAGE_NAME: str = "oasis_drivers_py"
 CPP_PACKAGE_NAME: str = "oasis_drivers_cpp"
-HOME_PACKAGE_NAME: str = CONFIG.HOME_PACKAGE_NAME
 
 # Component containers need logger names because one process can host many nodes
 COMPONENT_CONSOLE_OUTPUT_FORMAT: str = "[{severity}] [{name}]: {message}"
