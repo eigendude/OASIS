@@ -8,335 +8,78 @@
 #
 ################################################################################
 
-import os
-from typing import Any
-from typing import Optional
-
 from launch.launch_description import LaunchDescription
 from launch_ros.descriptions import ComposableNode
 
-from oasis_control.launch.ahrs_mounting import AhrsMountingConfig
+from oasis_drivers.hardware.config import HostHardwareConfig
+from oasis_drivers.hardware.hosts import get_host_hardware_config
 from oasis_drivers.launch.driver_descriptions import DriverDescriptions as Drivers
-from oasis_drivers.launch.mcu_descriptions import MCUDescriptions as MCU
+from oasis_drivers.launch.driver_nodes import DriverNodes
 from oasis_home.utils.smarthome_config import SmarthomeConfig
 
 
-PerceptionDescriptions: Any
-try:
-    from oasis_perception.launch.perception_descriptions import PerceptionDescriptions
-except ModuleNotFoundError:
-    PerceptionDescriptions = None  # type: ignore[assignment]
-
-
-################################################################################
-# Smarthome parameters
-################################################################################
-
-
-CONFIG: SmarthomeConfig = SmarthomeConfig()
-
-# Get the hostname
-HOSTNAME: str = CONFIG.HOSTNAME
-
-# Host aliases
-HOST_ID: str = CONFIG.HOST_ID
-
-# Zone configuration
-ZONE_ID: str = CONFIG.ZONE_ID
-
-# The zone ID used for the Kinect V2 camera
-KINECT_V2_ZONE_ID: str = CONFIG.KINECT_V2_ZONE_ID
-
-# Zones with a smart display that can be controlled
-SMART_DISPLAY_ZONES: list[str] = CONFIG.SMART_DISPLAY_ZONES
-
-print(f"Launching drivers on {HOSTNAME} in zone {ZONE_ID}")
-
-
-################################################################################
-# ROS parameters
-################################################################################
-
-
-ROS_NAMESPACE: str = "oasis"
-
-PYTHON_PACKAGE_NAME: str = "oasis_drivers_py"
-
-
-################################################################################
-# Hardware/video parameters
-################################################################################
-
-
-#
-# Video configuration
-#
-
-VIDEO_DEVICE: str = "/dev/video0"
-IMAGE_FORMAT: str
-IMAGE_SIZE: list[int]
-SENSOR_MODE: str
-LIBCAMERA_PARAMS: dict[str, object]
-
-# TODO: Hardware configuration
-if HOST_ID == "falcon":
-    IMAGE_FORMAT = "RGB888"  # TODO: This is inverted and produces BGR888 images
-    IMAGE_SIZE = [1920, 1080]
-
-    # Use a binned full-FOV mode that can run fast
-    SENSOR_MODE = "2304:1296"  # 2×2 binned 16:9; full FOV and scales cleanly to 1080p
-
-    # Low-blur, full-FOV binned mode @ ~15 fps (IMX708 2304x1296 min frame time ≈ 17849 µs)
-    LIBCAMERA_PARAMS = {
-        "AeEnable": False,  # Disable auto-exposure
-        "ExposureTime": 8000,  # 8 ms  (~1/125 s)
-        "ExposureTimeMode": 1,  # Manual exposure (>= libcamera 0.5)
-        "FrameDurationLimits": [
-            66667,
-            66667,
-        ],  # Exact 15.000 fps: both elements equal to ~66.667 ms
-    }
-else:
-    IMAGE_FORMAT = "BGR888"
-    IMAGE_SIZE = [640, 480]
-    SENSOR_MODE = "3280:2464"  # V2 camera full sensor resolution
-
-    LIBCAMERA_PARAMS = {
-        "ExposureTime": 8000,  # 8 ms  (~1/125 s)
-        "ExposureTimeMode": 1,  # Manual exposure (>= libcamera 0.5)
-    }
-
-
-#
-# Microcontroller configuration
-#
-
-MCU_NODE: Optional[str] = None
-MCU_TYPE: Optional[str] = None
-
-# BNO086 interrupt line on the Falcon's GPIO header
-FALCON_BNO086_INT_GPIO: int = 23
-
-# Default Falcon boot-time AHRS mounting calibration policy
-FALCON_AHRS_MOUNTING: AhrsMountingConfig = AhrsMountingConfig(
-    parent_frame_id="base_link",
-    child_frame_id="imu_link",
-    calibration_duration_sec=2.0,
-    stationary_angular_speed_threshold_rads=0.35,
-    min_sample_count=10,
-)
-
-# Optional process prefix for the driver component container when BNO086 is
-# loaded. This is useful for deployments that grant scheduler privileges through
-# systemd and want the GPIO/I2C drain loop to outrank perception work.
-BNO086_LAUNCH_PREFIX: Optional[str] = os.getenv("OASIS_BNO086_LAUNCH_PREFIX") or None
-
-
-class MCUType:
-    FIRMATA: str = "firmata"
-    TELEMETRIX: str = "telemetrix"
-
-
-if HOST_ID == "falcon":
-    MCU_NODE = "engineer"
-    MCU_TYPE = MCUType.TELEMETRIX
-elif HOST_ID == "jetson":
-    MCU_NODE = "engine"
-    MCU_TYPE = MCUType.TELEMETRIX
-elif HOST_ID == "station":
-    MCU_NODE = "conductor"
-    MCU_TYPE = MCUType.TELEMETRIX
-
-AVR_COM_PORT: str = "/dev/ttyACM0"
-
-#
-# LEGO Air Quality Lab configuration
-#
-
-# The TCA9548A mux address is fixed at 0x70 by the Raspberry Pi
-# device-tree overlay:
-#
-# dtoverlay=i2c-mux,pca9548,addr=0x70
-#
-# Linux exposes each mux channel as a separate child I2C adapter, so the
-# runtime driver only needs the parent bus and channel.
-#
-# Discover the parent I2C bus, mux child adapters, and attached devices:
-#
-#   i2cdetect -l
-#
-# Scan the parent Raspberry Pi I2C bus:
-#
-#   i2cdetect -y 1
-#
-# List mux child adapters and their channel IDs:
-#
-#   for dev in /sys/class/i2c-dev/i2c-*; do
-#     bus="${dev##*-}"
-#     printf "i2c-%-3s " "${bus}"
-#     cat "${dev}/name"
-#   done
-#
-# Scan every TCA9548A mux channel:
-#
-#   for dev in /sys/class/i2c-dev/i2c-*; do
-#     bus="${dev##*-}"
-#     name="$(cat "${dev}/name")"
-#
-#     case "${name}" in
-#       *mux*)
-#         echo "=== i2c-${bus}: ${name} ==="
-#         i2cdetect -y "${bus}"
-#         ;;
-#     esac
-#   done
-#
-# Expected topology on airlab:
-#
-#   /dev/i2c-1
-#     0x3c  SSD1305 OLED
-#     0x68  DS3231 RTC, shown as UU when claimed by the kernel
-#     0x70  TCA9548A mux, shown as UU when claimed by the kernel
-#
-#   mux channel 2
-#     0x60  ACS37800 power meter
-#
-#   mux channel 3
-#     0x60  ACS37800 power meter
-
-AIRLAB_POWER_METER_CONFIG: dict[str, object] = {
-    "publish_rate_hz": 10.0,
-    "mux_address": 0x70,
-    "power_meter_address": 0x60,
-    "power_meter_ids": [
-        "power_meter_0",
-        "power_meter_1",
-    ],
-    # SparkFun Power Meter ACS37800 (SEN-29259):
-    # 2 MΩ series resistance per voltage input leg and 8.2 kΩ RSENSE
-    "current_sense_range_amps": 30.0,
-    "voltage_divider_resistance_ohms": 2_000_000.0,
-    "voltage_sense_resistance_ohms": 8_200.0,
-    # crs_sns is checked against register 0x1B at startup; it does not select
-    # the physical current range used for SI conversion
-    "expected_crs_sns": 4,
-    "disconnect_after_failures": 3,
-}
-
-
-################################################################################
-# Launch description
-################################################################################
-
-
 def generate_launch_description() -> LaunchDescription:
-    ld: LaunchDescription = LaunchDescription()
+    config: SmarthomeConfig = SmarthomeConfig()
+    hardware: HostHardwareConfig = get_host_hardware_config(
+        config.HOST_ID,
+        config.ZONE_ID,
+    )
 
+    print(f"Launching drivers on {config.HOSTNAME} in zone {config.ZONE_ID}")
+
+    ld: LaunchDescription = LaunchDescription()
     composable_nodes: list[ComposableNode] = []
     camera_composable_nodes: list[ComposableNode] = []
-    driver_launch_prefix: Optional[str] = None
 
-    #
-    # General drivers
-    #
+    Drivers.add_system_monitor(ld, config.HOST_ID)
 
-    Drivers.add_system_monitor(ld, HOST_ID)
+    if config.HOST_ID in config.SMART_DISPLAY_ZONES:
+        Drivers.add_display_server(ld, config.ZONE_ID)
 
-    # Disabled to save resources
-    # Drivers.add_serial_port_scanner(ld, HOST_ID)
-
-    #
-    # Smarthome drivers
-    #
-
-    if HOST_ID in SMART_DISPLAY_ZONES:
-        Drivers.add_display_server(ld, ZONE_ID)
-
-    #
-    # Camera drivers
-    #
-
-    # Laptop cameras
-    if HOST_ID == "bar":
-        Drivers.add_v4l2_camera(ld, ZONE_ID, VIDEO_DEVICE, IMAGE_SIZE)
-    if HOST_ID == "kitchen":
-        Drivers.add_v4l2_camera(ld, ZONE_ID, VIDEO_DEVICE, IMAGE_SIZE)
-
-    # Kinect V2 camera
-    if HOST_ID == "nas":
-        Drivers.add_kinect_v2(ld, KINECT_V2_ZONE_ID)
-
-    # LEGO models
-    if HOST_ID == "falcon":
-        """
-        Drivers.add_ros2_camera(
+    for camera in hardware.cameras:
+        DriverNodes.add_camera(
+            ld,
             camera_composable_nodes,
-            ZONE_ID,
-            IMAGE_FORMAT,
-            IMAGE_SIZE,
-            SENSOR_MODE,
-            # Lower JPEG quality to cap Wi-Fi bandwidth from the Falcon
-            jpeg_quality=60,
-            camera_frame_id="camera_link",
-            libcamera_params=LIBCAMERA_PARAMS,
+            camera,
+            config.ZONE_ID,
+            config.KINECT_V2_ZONE_ID,
         )
-        """
-        Drivers.add_bno086_imu(composable_nodes, HOST_ID, FALCON_BNO086_INT_GPIO)
-        Drivers.add_ahrs_node(composable_nodes, HOST_ID, FALCON_AHRS_MOUNTING)
-        Drivers.add_zupt_detector(composable_nodes, HOST_ID)
-        driver_launch_prefix = BNO086_LAUNCH_PREFIX
-        Drivers.add_mmc5983ma_magnetometer(ld, HOST_ID)
-    if HOST_ID == "station":
-        Drivers.add_ros2_camera(
-            camera_composable_nodes,
-            ZONE_ID,
-            IMAGE_FORMAT,
-            IMAGE_SIZE,
-            SENSOR_MODE,
-            libcamera_params=LIBCAMERA_PARAMS,
+
+    if hardware.ahrs is not None:
+        DriverNodes.add_ahrs(
+            ld,
+            composable_nodes,
+            config.HOST_ID,
+            hardware.ahrs,
         )
-    if HOST_ID == "airlab":
-        # Add power meter node
+
+    if hardware.power_meter is not None:
         Drivers.add_power_meter_node(
             composable_nodes,
-            HOST_ID,
-            AIRLAB_POWER_METER_CONFIG,
+            config.HOST_ID,
+            hardware.power_meter.as_parameters(),
         )
 
-    # Smarthome cameras
-    if HOST_ID == "door":
-        # Drivers.add_ros2_camera(ld, "doorbell", IMAGE_SIZE)
-        # Drivers.add_ros2_camera(ld, "entryway", IMAGE_SIZE)
-        pass
+    if hardware.mcu is not None:
+        DriverNodes.add_mcu(ld, config.HOST_ID, hardware.mcu)
 
-    #
-    # MCU bridges
-    #
-
-    if MCU_NODE is not None:
-        if MCU_TYPE == MCUType.FIRMATA:
-            MCU.add_firmata_bridge(ld, HOST_ID, MCU_NODE, AVR_COM_PORT)
-        elif MCU_TYPE == MCUType.TELEMETRIX:
-            MCU.add_telemetrix_bridge(ld, HOST_ID, MCU_NODE, AVR_COM_PORT)
-
-    #
-    # Add composable nodes to launch description
-    #
+    driver_launch_prefix: str | None = None
+    if hardware.ahrs is not None:
+        driver_launch_prefix = hardware.ahrs.launch_prefix
 
     Drivers.add_driver_components(
         ld,
-        HOST_ID,
+        config.HOST_ID,
         composable_nodes,
         log_level="info",
         launch_prefix=driver_launch_prefix,
     )
-
     Drivers.add_driver_components(
         ld,
-        HOST_ID,
+        config.HOST_ID,
         camera_composable_nodes,
         log_level="info",
-        container_name=f"camera_container_{HOST_ID}",
+        container_name=f"camera_container_{config.HOST_ID}",
     )
 
     return ld
