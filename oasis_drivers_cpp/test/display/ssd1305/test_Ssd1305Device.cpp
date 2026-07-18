@@ -92,13 +92,26 @@ bool ContainsSequence(const std::vector<std::uint8_t>& bytes,
 {
   return std::search(bytes.begin(), bytes.end(), sequence.begin(), sequence.end()) != bytes.end();
 }
+
+std::size_t FindTransaction(const std::vector<std::vector<std::uint8_t>>& transactions,
+                            const std::vector<std::uint8_t>& expected)
+{
+  const auto match = std::find(transactions.begin(), transactions.end(), expected);
+  return static_cast<std::size_t>(std::distance(transactions.begin(), match));
+}
+
+std::size_t CountTransaction(const std::vector<std::vector<std::uint8_t>>& transactions,
+                             const std::vector<std::uint8_t>& expected)
+{
+  return static_cast<std::size_t>(std::count(transactions.begin(), transactions.end(), expected));
+}
 } // namespace
 
 TEST(Ssd1305Device, InitializationStaysOffAndUsesProduct4567Configuration)
 {
   DeviceFixture fixture;
   fixture.device->Initialize();
-  ASSERT_EQ(fixture.fake->transactions.size(), 2U);
+  ASSERT_EQ(fixture.fake->transactions.size(), 4U);
   const auto& config = fixture.fake->transactions[0];
   const auto& bounds = fixture.fake->transactions[1];
   ASSERT_GE(config.size(), 2U);
@@ -116,6 +129,38 @@ TEST(Ssd1305Device, InitializationStaysOffAndUsesProduct4567Configuration)
   EXPECT_TRUE(ContainsSequence(bounds, {0x21, 0x04, 0x83}));
   EXPECT_TRUE(ContainsSequence(bounds, {0x22, 0x00, 0x03}));
   EXPECT_FALSE(ContainsSequence(bounds, {0xB0}));
+  EXPECT_EQ(fixture.fake->transactions[2], (std::vector<std::uint8_t>{0x00, 0xA1}));
+  EXPECT_EQ(fixture.fake->transactions[3], (std::vector<std::uint8_t>{0x00, 0xC8}));
+  EXPECT_EQ(FindTransaction(fixture.fake->transactions, {0x00, 0xAF}),
+            fixture.fake->transactions.size());
+  EXPECT_EQ(FindTransaction(fixture.fake->transactions, {0x00, 0xA0}),
+            fixture.fake->transactions.size());
+  EXPECT_EQ(FindTransaction(fixture.fake->transactions, {0x00, 0xC0}),
+            fixture.fake->transactions.size());
+}
+
+TEST(Ssd1305Device, RepeatedInitializationProgramsOrientationEveryTime)
+{
+  DeviceFixture fixture;
+
+  fixture.device->Initialize();
+  fixture.device->Initialize();
+
+  EXPECT_EQ(CountTransaction(fixture.fake->transactions, {0x00, 0xA1}), 2U);
+  EXPECT_EQ(CountTransaction(fixture.fake->transactions, {0x00, 0xC8}), 2U);
+}
+
+TEST(Ssd1305Device, SuccessfulRetryProgramsOrientationAfterWriteFailure)
+{
+  DeviceFixture fixture;
+  fixture.fake->failures.push_back(
+      std::make_exception_ptr(std::system_error(EIO, std::generic_category())));
+
+  EXPECT_THROW(fixture.device->Initialize(), std::system_error);
+  EXPECT_NO_THROW(fixture.device->Initialize());
+
+  EXPECT_EQ(CountTransaction(fixture.fake->transactions, {0x00, 0xA1}), 1U);
+  EXPECT_EQ(CountTransaction(fixture.fake->transactions, {0x00, 0xC8}), 1U);
 }
 
 TEST(Ssd1305Device, PageDataUsesBoundedTransactionsWithControlBytes)
@@ -199,6 +244,21 @@ TEST(Ssd1305Device, RecoveryReopensRestoresFullFrameThenEnables)
   EXPECT_EQ(data_transaction_count, 16);
   ASSERT_FALSE(fixture.fake->transactions.empty());
   EXPECT_EQ(fixture.fake->transactions.back(), (std::vector<std::uint8_t>{0x00, 0xAF}));
+
+  const std::size_t segment_remap = FindTransaction(fixture.fake->transactions, {0x00, 0xA1});
+  const std::size_t com_scan = FindTransaction(fixture.fake->transactions, {0x00, 0xC8});
+  const std::size_t contrast_index =
+      FindTransaction(fixture.fake->transactions, {0x00, 0x81, 0x40});
+  const std::size_t first_data_index = static_cast<std::size_t>(std::distance(
+      fixture.fake->transactions.begin(),
+      std::find_if(fixture.fake->transactions.begin(), fixture.fake->transactions.end(),
+                   [](const std::vector<std::uint8_t>& transaction)
+                   { return !transaction.empty() && transaction.front() == 0x40; })));
+  const std::size_t display_on = FindTransaction(fixture.fake->transactions, {0x00, 0xAF});
+  EXPECT_LT(segment_remap, com_scan);
+  EXPECT_LT(com_scan, contrast_index);
+  EXPECT_LT(contrast_index, first_data_index);
+  EXPECT_LT(first_data_index, display_on);
 
   const auto first_on =
       std::find(fixture.fake->transactions.begin(), fixture.fake->transactions.end(),

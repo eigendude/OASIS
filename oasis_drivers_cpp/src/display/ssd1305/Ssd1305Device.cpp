@@ -107,9 +107,9 @@ void Ssd1305Device::Initialize()
   // verified Adafruit SSD1305 drivers use a four-column panel offset.
   //
   // The controller is not host-resettable in the Qwiic installation, so this
-  // sequence explicitly sets addressing, COM/SEG mapping, timing, drive, and
-  // charge-pump state instead of relying on power-on defaults.
-  const std::array<std::uint8_t, 29> init{
+  // sequence explicitly sets addressing, timing, drive, and charge-pump state
+  // instead of relying on power-on defaults.
+  const std::array<std::uint8_t, 27> init{
       DISPLAY_OFF,
       SET_MEMORY_ADDRESSING_MODE,
       0x00,
@@ -119,8 +119,6 @@ void Ssd1305Device::Initialize()
       0x00,
       SET_DISPLAY_CLOCK_DIVIDE,
       0x80,
-      SET_SEGMENT_REMAP_REVERSED,
-      SET_COM_SCAN_DEC,
       SET_MULTIPLEX_RATIO,
       static_cast<std::uint8_t>(m_config.height - 1U),
       SET_COM_PINS,
@@ -157,6 +155,15 @@ void Ssd1305Device::Initialize()
       static_cast<std::uint8_t>(SSD1305_PAGE_COUNT - 1U),
   };
   WriteCommands(final_init);
+
+  // Program orientation last using the same individual transactions verified
+  // on hardware so reconnects never depend on the controller's prior state
+  WriteCommands(std::array<std::uint8_t, 1>{
+      SET_SEGMENT_REMAP_REVERSED,
+  });
+  WriteCommands(std::array<std::uint8_t, 1>{
+      SET_COM_SCAN_DEC,
+  });
 }
 
 void Ssd1305Device::SetDisplayEnabled(bool enabled)
