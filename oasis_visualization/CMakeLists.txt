@@ -151,9 +151,9 @@ install(
 
 install(
   DIRECTORY
-    oled/
+    media/oled/
   DESTINATION
-    share/${PROJECT_NAME}/oled
+    share/${PROJECT_NAME}/media/oled
 )
 
 #

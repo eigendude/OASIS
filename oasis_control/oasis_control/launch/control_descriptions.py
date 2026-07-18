@@ -266,8 +266,9 @@ class ControlDescriptions:
                     "image_path": PathJoinSubstitution(
                         [
                             FindPackageShare(VISUALIZATION_PACKAGE_NAME),
+                            "media",
                             "oled",
-                            "oasis_shadow_128x32.png",
+                            "aclima_shadow_128x32.png",
                         ]
                     ),
                     "frame_rate": 30.0,
