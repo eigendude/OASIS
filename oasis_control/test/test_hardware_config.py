@@ -25,7 +25,7 @@ def test_airlab_enables_oled_visualization() -> None:
     assert hardware.mcu_manager is None
 
 
-def test_falcon_enables_speedometer_and_pwm_manager() -> None:
+def test_falcon_enables_speedometer_and_engineer_manager() -> None:
     hardware: HostHardwareConfig = get_host_hardware_config("falcon", "falcon_zone")
 
     assert hardware.enable_ahrs_speedometer is True
@@ -33,16 +33,8 @@ def test_falcon_enables_speedometer_and_pwm_manager() -> None:
     assert hardware.enable_oled_visualizer is False
     assert hardware.mcu_manager is not None
     assert hardware.mcu_manager.node_name == "engineer"
-    assert hardware.mcu_manager.implementation is MCUManagerImplementation.PWM
+    assert hardware.mcu_manager.implementation is MCUManagerImplementation.ENGINEER
     assert hardware.mcu_manager.conductor_host == "station"
-
-
-def test_jetson_uses_standard_engine_manager() -> None:
-    hardware: HostHardwareConfig = get_host_hardware_config("jetson", "jetson_zone")
-
-    assert hardware.mcu_manager is not None
-    assert hardware.mcu_manager.node_name == "engine"
-    assert hardware.mcu_manager.implementation is MCUManagerImplementation.STANDARD
 
 
 def test_station_uses_conductor_manager_and_wol_server() -> None:

@@ -32,16 +32,9 @@ def get_host_hardware_config(
             enable_cockpit_visualizer=True,
             mcu_manager=MCUManagerConfig(
                 node_name="engineer",
-                implementation=MCUManagerImplementation.PWM,
+                implementation=MCUManagerImplementation.ENGINEER,
                 conductor_host="station",
             ),
-        )
-    if host_id == "jetson":
-        return HostHardwareConfig(
-            mcu_manager=MCUManagerConfig(
-                node_name="engine",
-                implementation=MCUManagerImplementation.STANDARD,
-            )
         )
     if host_id == "station":
         return HostHardwareConfig(

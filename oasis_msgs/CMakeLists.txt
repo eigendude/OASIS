@@ -56,7 +56,6 @@ rosidl_generate_interfaces(
     msg/EffectKind.msg
     msg/EffectMode.msg
     msg/EngineerState.msg
-    msg/EngineState.msg
     msg/GasConcentration.msg
     msg/I2CDevice.msg
     msg/I2CDeviceType.msg

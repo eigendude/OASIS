@@ -46,46 +46,28 @@ def generate_launch_description() -> LaunchDescription:
 
     # Microcontroller nodes
     mcu_manager: MCUManagerConfig | None = hardware.mcu_manager
-    if (
-        mcu_manager is not None
-        and mcu_manager.implementation is MCUManagerImplementation.PWM
-    ):
-        ControlDescriptions.add_engineer_manager(
-            ld,
-            config.HOST_ID,
-            mcu_manager.node_name,
-            conductor_host=mcu_manager.conductor_host or "",
-        )
-    elif (
-        mcu_manager is not None
-        and mcu_manager.implementation is MCUManagerImplementation.STANDARD
-    ):
-        ControlDescriptions.add_engine_manager(
-            ld,
-            config.HOST_ID,
-            mcu_manager.node_name,
-        )
-    elif (
-        mcu_manager is not None
-        and mcu_manager.implementation is MCUManagerImplementation.CONDUCTOR
-    ):
-        ControlDescriptions.add_conductor_manager(
-            ld,
-            config.HOST_ID,
-            mcu_manager.node_name,
-            mcu_manager.wol_server_id or config.HOST_ID,
-            mcu_manager.input_provider or "",
-            motor_voltage_reversed=mcu_manager.motor_voltage_reversed,
-        )
+    if mcu_manager is not None:
+        if mcu_manager.implementation is MCUManagerImplementation.CONDUCTOR:
+            ControlDescriptions.add_conductor_manager(
+                ld,
+                config.HOST_ID,
+                mcu_manager.node_name,
+                mcu_manager.wol_server_id or config.HOST_ID,
+                mcu_manager.input_provider or "",
+                motor_voltage_reversed=mcu_manager.motor_voltage_reversed,
+            )
+        if mcu_manager.implementation is MCUManagerImplementation.ENGINEER:
+            ControlDescriptions.add_engineer_manager(
+                ld,
+                config.HOST_ID,
+                mcu_manager.node_name,
+                conductor_host=mcu_manager.conductor_host or "",
+            )
 
     if hardware.enable_wol_server:
         Drivers.add_wol_server(ld, config.HOST_ID)
 
     # Visualization nodes
-    if hardware.enable_cockpit_visualizer and hardware.enable_oled_visualizer:
-        raise RuntimeError(
-            "cockpit and OLED visualizers cannot both be enabled for one host"
-        )
     if hardware.enable_cockpit_visualizer:
         ControlDescriptions.add_cockpit_visualizer(ld, config.HOST_ID)
     if hardware.enable_oled_visualizer:

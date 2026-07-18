@@ -208,14 +208,6 @@ def get_host_hardware_config(
                 enable_partial_updates=True,
             ),
         )
-    if host_id == "jetson":
-        return HostHardwareConfig(
-            mcu=MCUConfig(
-                node_name="engine",
-                implementation=MCUImplementation.TELEMETRIX,
-                serial_port="/dev/ttyACM0",
-            )
-        )
     if host_id == "nas":
         return HostHardwareConfig(
             cameras=(

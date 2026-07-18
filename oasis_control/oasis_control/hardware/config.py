@@ -8,8 +8,6 @@
 #
 ################################################################################
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from enum import Enum
 
@@ -17,14 +15,11 @@ from enum import Enum
 class MCUManagerImplementation(Enum):
     """Control manager used for an installed microcontroller"""
 
-    # General-purpose manager for an MCU without specialized control behavior
-    STANDARD = "standard"
-
-    # Manager for an MCU that exposes pulse-width modulation outputs
-    PWM = "pwm"
-
     # LEGO train conductor manager
     CONDUCTOR = "conductor"
+
+    # LEGO train engineer manager
+    ENGINEER = "engineer"
 
 
 @dataclass(frozen=True)

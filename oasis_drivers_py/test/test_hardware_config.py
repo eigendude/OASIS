@@ -103,15 +103,6 @@ def test_nas_has_kinect_v2_camera_without_storing_deployment_zone() -> None:
     assert hardware.cameras[0].implementation is CameraImplementation.KINECT_V2
 
 
-def test_jetson_has_engine_telemetrix_mcu() -> None:
-    hardware: HostHardwareConfig = get_host_hardware_config("jetson", "jetson_zone")
-
-    assert hardware.mcu is not None
-    assert hardware.mcu.node_name == "engine"
-    assert hardware.mcu.implementation is MCUImplementation.TELEMETRIX
-    assert hardware.mcu.serial_port == "/dev/ttyACM0"
-
-
 def test_falcon_display_parameters_preserve_driver_values() -> None:
     hardware: HostHardwareConfig = get_host_hardware_config("falcon", "falcon_zone")
 

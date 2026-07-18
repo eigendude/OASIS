@@ -196,30 +196,6 @@ class ControlDescriptions:
         ld.add_action(conductor_node)
 
     @staticmethod
-    def add_engine_manager(
-        ld: LaunchDescription,
-        host_id: str,
-        mcu_node: str,
-    ) -> None:
-        engine_node: Node = Node(
-            namespace=ROS_NAMESPACE,
-            package=CONTROL_PACKAGE_NAME,
-            executable=f"{mcu_node}_manager",
-            name=f"{mcu_node}_manager_{host_id}",
-            output="screen",
-            remappings=[
-                (f"{mcu_node}_state", f"{host_id}/{mcu_node}_state"),
-                ("analog_reading", f"{mcu_node}/analog_reading"),
-                ("mcu_memory", f"{mcu_node}/mcu_memory"),
-                ("mcu_string", f"{mcu_node}/mcu_string"),
-                ("report_mcu_memory", f"{mcu_node}/report_mcu_memory"),
-                ("set_analog_mode", f"{mcu_node}/set_analog_mode"),
-                ("set_sampling_interval", f"{mcu_node}/set_sampling_interval"),
-            ],
-        )
-        ld.add_action(engine_node)
-
-    @staticmethod
     def add_engineer_manager(
         ld: LaunchDescription,
         host_id: str,
