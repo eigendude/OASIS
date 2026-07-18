@@ -115,7 +115,6 @@ jobs:
             ]);
 
             await setHash('OASIS_VISUALIZATION_HASH', [
-              'oasis_msgs/**',
               'oasis_visualization/**',
             ]);
 
