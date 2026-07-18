@@ -114,9 +114,10 @@ set -o nounset
 MAKE_FLAGS=
 COLCON_FLAGS="--merge-install"
 
-# Add ccache support
+# Add CMake flags
 COLCON_FLAGS+=" \
   --cmake-args \
+    -DBUILD_TESTING=ON \
     -DCMAKE_C_COMPILER_LAUNCHER=ccache \
     -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
     -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
