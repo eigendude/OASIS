@@ -193,7 +193,7 @@ class ControlDescriptions:
         ld.add_action(conductor_node)
 
     @staticmethod
-    def add_mcu_manager(
+    def add_engine_manager(
         ld: LaunchDescription,
         host_id: str,
         mcu_node: str,
@@ -217,7 +217,7 @@ class ControlDescriptions:
         ld.add_action(engine_node)
 
     @staticmethod
-    def add_mcu_manager_with_pwm(
+    def add_engineer_manager(
         ld: LaunchDescription,
         host_id: str,
         mcu_node: str,
