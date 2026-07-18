@@ -8,6 +8,8 @@
 
 #include "nodes/oled_visualizer_node.hpp"
 
+#include "rotation/rotation_phase_warp.hpp"
+
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -25,6 +27,7 @@ constexpr const char* DEFAULT_NODE_NAME = "oled_visualizer";
 constexpr const char* PARAM_IMAGE_PATH = "image_path";
 constexpr const char* PARAM_FRAME_RATE = "frame_rate";
 constexpr const char* PARAM_REVOLUTION_SECONDS = "revolution_seconds";
+constexpr const char* PARAM_ROTATION_NONLINEARITY = "rotation_nonlinearity";
 constexpr const char* PARAM_FOCAL_LENGTH = "focal_length";
 constexpr const char* PARAM_CAMERA_DISTANCE = "camera_distance";
 constexpr const char* PARAM_MODEL_SCALE = "model_scale";
@@ -39,12 +42,11 @@ constexpr double DEFAULT_FRAME_RATE = 30.0;
 
 // Visualization parameters
 constexpr double DEFAULT_REVOLUTION_SECONDS = 8.0;
+constexpr double DEFAULT_ROTATION_NONLINEARITY = 0.75;
 constexpr double DEFAULT_FOCAL_LENGTH = 95.0;
 constexpr double DEFAULT_CAMERA_DISTANCE = 150.0;
 constexpr double DEFAULT_MODEL_SCALE = 1.4;
 
-// Mathematical constants
-constexpr double TWO_PI = 6.28318530717958647692;
 } // namespace
 
 OledVisualizerNode::OledVisualizerNode(const rclcpp::NodeOptions& options)
@@ -54,6 +56,8 @@ OledVisualizerNode::OledVisualizerNode(const rclcpp::NodeOptions& options)
   const double frameRate = declare_parameter<double>(PARAM_FRAME_RATE, DEFAULT_FRAME_RATE);
   revolution_seconds =
       declare_parameter<double>(PARAM_REVOLUTION_SECONDS, DEFAULT_REVOLUTION_SECONDS);
+  rotation_nonlinearity =
+      declare_parameter<double>(PARAM_ROTATION_NONLINEARITY, DEFAULT_ROTATION_NONLINEARITY);
 
   const OledVisualizerConfig config{
       DISPLAY_WIDTH,
@@ -65,6 +69,11 @@ OledVisualizerNode::OledVisualizerNode(const rclcpp::NodeOptions& options)
 
   ValidatePositive(PARAM_FRAME_RATE, frameRate);
   ValidatePositive(PARAM_REVOLUTION_SECONDS, revolution_seconds);
+  if (!IsValidRotationNonlinearity(rotation_nonlinearity))
+  {
+    throw std::runtime_error(
+        "parameter 'rotation_nonlinearity' must be finite and in the range [0, 1)");
+  }
 
   if (imagePath.empty())
     throw std::runtime_error("parameter 'image_path' must not be empty");
@@ -93,7 +102,9 @@ void OledVisualizerNode::ValidatePositive(const char* name, double value)
 void OledVisualizerNode::PublishFrame()
 {
   const std::chrono::duration<double> elapsed = std::chrono::steady_clock::now() - start_time;
-  const double angle = std::fmod(elapsed.count(), revolution_seconds) * TWO_PI / revolution_seconds;
+  const double elapsedInRevolution = std::fmod(elapsed.count(), revolution_seconds);
+  const double phase = elapsedInRevolution / revolution_seconds;
+  const double angle = CalculateRotationAngle(phase, rotation_nonlinearity);
   const cv::Mat frame = visualizer->Render(angle);
 
   auto message = std::make_unique<sensor_msgs::msg::Image>();

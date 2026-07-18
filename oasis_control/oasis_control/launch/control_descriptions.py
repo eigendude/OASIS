@@ -273,6 +273,7 @@ class ControlDescriptions:
                     ),
                     "frame_rate": 30.0,
                     "revolution_seconds": 8.0,
+                    "rotation_nonlinearity": 0.75,
                     "focal_length": 95.0,
                     "camera_distance": 150.0,
                     "model_scale": 1.35,

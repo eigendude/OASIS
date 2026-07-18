@@ -30,6 +30,7 @@ private:
 
   std::unique_ptr<OledVisualizer> visualizer;
   double revolution_seconds;
+  double rotation_nonlinearity;
   std::chrono::steady_clock::time_point start_time;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr publisher;
   rclcpp::TimerBase::SharedPtr timer_;

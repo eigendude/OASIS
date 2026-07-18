@@ -34,8 +34,17 @@ find_package(sensor_msgs REQUIRED)
 #
 # OLED visualizer targets
 #
-# The dependency layers are renderer -> node -> component/CLI
+# The dependency layers are rotation/renderer -> node -> component/CLI
 #
+
+# rotation_phase_warp shared library
+add_library(rotation_phase_warp SHARED
+  src/rotation/rotation_phase_warp.cpp
+)
+target_include_directories(rotation_phase_warp PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+  $<INSTALL_INTERFACE:include/oasis_visualization>
+)
 
 # oled_renderer shared library
 add_library(oled_renderer SHARED
@@ -61,6 +70,7 @@ target_include_directories(oled_visualizer_node PUBLIC
 target_link_libraries(oled_visualizer_node PUBLIC
   oled_renderer
   rclcpp::rclcpp
+  rotation_phase_warp
   ${sensor_msgs_TARGETS}
 )
 
@@ -88,9 +98,10 @@ target_link_libraries(oled_visualizer PRIVATE
 install(
   TARGETS
     oled_renderer
-    oled_visualizer_node
     oled_visualizer
     oled_visualizer_component
+    oled_visualizer_node
+    rotation_phase_warp
   EXPORT oasis_visualizationTargets
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
@@ -101,6 +112,8 @@ install(FILES src/oled/oled_visualizer.hpp
         DESTINATION include/oasis_visualization/oled)
 install(FILES src/nodes/oled_visualizer_node.hpp
         DESTINATION include/oasis_visualization/nodes)
+install(FILES src/rotation/rotation_phase_warp.hpp
+        DESTINATION include/oasis_visualization/rotation)
 
 # Ament exports
 ament_export_targets(oasis_visualizationTargets HAS_LIBRARY_TARGET)
@@ -121,6 +134,12 @@ if(BUILD_TESTING)
     test/oled/test_oled_visualizer.cpp
   )
   target_link_libraries(test_oled_visualizer oled_renderer)
+
+  ament_add_gtest(
+    test_rotation_phase_warp
+    test/rotation/test_rotation_phase_warp.cpp
+  )
+  target_link_libraries(test_rotation_phase_warp rotation_phase_warp)
 endif()
 
 #
