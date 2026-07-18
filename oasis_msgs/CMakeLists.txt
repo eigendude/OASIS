@@ -68,8 +68,6 @@ rosidl_generate_interfaces(
     msg/MCUMemory.msg
     msg/MCUString.msg
     msg/MediaItem.msg
-    msg/MountingCalibrationResult.msg
-    msg/MountingCalibrationStatus.msg
     msg/NetworkAddress.msg
     msg/NetworkInterface.msg
     msg/PeripheralConstants.msg

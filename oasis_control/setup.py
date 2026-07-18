@@ -68,7 +68,6 @@ setuptools.setup(
     ],
     entry_points={
         "console_scripts": [
-            "ahrs = oasis_control.cli.ahrs_cli:main",
             "ahrs_speedometer = oasis_control.cli.ahrs_speedometer_cli:main",
             "conductor_manager_firmata = oasis_control.cli.conductor_manager_firmata_cli:main",
             "conductor_manager_telemetrix = oasis_control.cli.conductor_manager_telemetrix_cli:main",

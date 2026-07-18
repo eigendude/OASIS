@@ -46,38 +46,6 @@ def normalize_quaternion_xyzw(
     )
 
 
-def quaternion_multiply_xyzw(
-    lhs_quaternion_xyzw: Quaternion,
-    rhs_quaternion_xyzw: Quaternion,
-) -> Quaternion:
-    """
-    Compose two xyzw quaternions using the Hamilton product.
-    """
-
-    lhs_x, lhs_y, lhs_z, lhs_w = lhs_quaternion_xyzw
-    rhs_x, rhs_y, rhs_z, rhs_w = rhs_quaternion_xyzw
-
-    return (
-        lhs_w * rhs_x + lhs_x * rhs_w + lhs_y * rhs_z - lhs_z * rhs_y,
-        lhs_w * rhs_y - lhs_x * rhs_z + lhs_y * rhs_w + lhs_z * rhs_x,
-        lhs_w * rhs_z + lhs_x * rhs_y - lhs_y * rhs_x + lhs_z * rhs_w,
-        lhs_w * rhs_w - lhs_x * rhs_x - lhs_y * rhs_y - lhs_z * rhs_z,
-    )
-
-
-def quaternion_conjugate_xyzw(quaternion_xyzw: Quaternion) -> Quaternion:
-    """
-    Return the quaternion conjugate in ROS xyzw order.
-    """
-
-    return (
-        -quaternion_xyzw[0],
-        -quaternion_xyzw[1],
-        -quaternion_xyzw[2],
-        quaternion_xyzw[3],
-    )
-
-
 def quaternion_to_rotation_matrix(quaternion_xyzw: Quaternion) -> Matrix3:
     """
     Convert an xyzw quaternion into a 3x3 rotation matrix.

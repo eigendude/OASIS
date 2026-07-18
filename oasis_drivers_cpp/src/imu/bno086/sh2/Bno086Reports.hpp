@@ -244,12 +244,15 @@ struct ImuSampleFrame
   bool has_gravity{false};
 
   /*!
-   * \brief Orientation quaternion in IMU frame
+   * \brief Rotation mapping IMU-frame vectors into the world reference frame
+   *
+   * The SH-2 Rotation Vector follows the Android device-to-reference
+   * convention and is published unchanged as sensor_msgs/Imu orientation.
    *
    * Order: x, y, z, w
    * Units: unitless
    */
-  std::array<double, 4> orientation_xyzw{0.0, 0.0, 0.0, 1.0};
+  std::array<double, 4> orientation_world_from_imu_xyzw{0.0, 0.0, 0.0, 1.0};
 
   /*!
    * \brief Calibrated angular velocity from BNO086 gyroscope

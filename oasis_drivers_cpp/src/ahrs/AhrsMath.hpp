@@ -12,7 +12,6 @@
 #include <cstdint>
 #include <limits>
 #include <optional>
-#include <string>
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
@@ -24,20 +23,6 @@ namespace OASIS::AHRS
  */
 struct AhrsMountingConfig
 {
-  /*!
-   * \brief Parent frame for the fixed IMU mounting transform
-   *
-   * Units: ROS frame id
-   */
-  std::string parent_frame_id;
-
-  /*!
-   * \brief Child frame for the fixed IMU mounting transform
-   *
-   * Units: ROS frame id
-   */
-  std::string child_frame_id;
-
   /*!
    * \brief Stationary boot gravity window duration
    *
@@ -80,13 +65,6 @@ struct AhrsMountingSolution
   Eigen::Matrix3d R_BI{Eigen::Matrix3d::Identity()};
 
   /*!
-   * \brief Averaged unit gravity direction used by the boot solve
-   *
-   * Units: unit vector in imu_link
-   */
-  Eigen::Vector3d mean_gravity_unit_imu{0.0, 0.0, -1.0};
-
-  /*!
    * \brief Solved mounting roll
    *
    * Units: radians
@@ -99,13 +77,6 @@ struct AhrsMountingSolution
    * Units: radians
    */
   double pitch_rad{0.0};
-
-  /*!
-   * \brief Solved mounting yaw, fixed to zero by policy
-   *
-   * Units: radians
-   */
-  double yaw_rad{0.0};
 
   /*!
    * \brief Accepted gravity samples used by the solve
@@ -176,8 +147,6 @@ public:
       const Eigen::Vector3d& gravity_imu,
       const std::optional<Eigen::Vector3d>& angular_velocity_rads);
 
-  const std::optional<AhrsMountingSolution>& Solution() const { return m_solution; }
-
 private:
   AhrsMountingConfig m_config;
   std::optional<int64_t> m_start_ns;
@@ -189,10 +158,29 @@ private:
 bool IsFiniteVector3(const Eigen::Vector3d& vector);
 bool IsFiniteQuaternion(const Eigen::Quaterniond& quaternion);
 std::optional<Eigen::Quaterniond> NormalizeQuaternion(const Eigen::Quaterniond& quaternion);
-Eigen::Quaterniond ConjugateQuaternion(const Eigen::Quaterniond& quaternion);
 Eigen::Quaterniond QuaternionFromRollPitchYaw(double roll_rad, double pitch_rad, double yaw_rad);
 Eigen::Quaterniond QuaternionFromYaw(double yaw_rad);
 double YawFromQuaternion(const Eigen::Quaterniond& quaternion);
+
+/*!
+ * \brief Compose IMU-to-world attitude with inverse IMU-to-base mounting
+ *
+ * \param q_WI Rotation mapping IMU-frame vectors into world coordinates
+ * \param q_BI Rotation mapping IMU-frame vectors into base coordinates
+ * \return Unit rotation q_WB mapping base-frame vectors into world coordinates
+ */
+Eigen::Quaterniond ComposeWorldFromBase(const Eigen::Quaterniond& q_WI,
+                                        const Eigen::Quaterniond& q_BI);
+
+/*!
+ * \brief Express a base attitude relative to the odom/session frame
+ *
+ * \param q_OW Rotation mapping world-frame vectors into odom coordinates
+ * \param q_WB Rotation mapping base-frame vectors into world coordinates
+ * \return Unit rotation q_OB mapping base-frame vectors into odom coordinates
+ */
+Eigen::Quaterniond ComposeOdomFromBase(const Eigen::Quaterniond& q_OW,
+                                       const Eigen::Quaterniond& q_WB);
 Eigen::Matrix3d RotateCovariance(const Eigen::Matrix3d& rotation,
                                  const Eigen::Matrix3d& covariance);
 std::array<double, 9> FlattenMatrix3(const Eigen::Matrix3d& matrix);
@@ -200,10 +188,7 @@ std::array<double, 36> EmbedLinearCovariance3(const Eigen::Matrix3d& matrix);
 std::optional<Eigen::Matrix3d> ParseMatrix3(const std::array<double, 9>& values);
 std::optional<Eigen::Matrix3d> ParseLinearCovariance3(const std::array<double, 36>& values);
 std::optional<AhrsMountingSolution> SolveMountingFromGravity(
-    const Eigen::Vector3d& mean_gravity_unit_imu,
-    const AhrsMountingConfig& config,
-    int sample_count,
-    double span_sec);
+    const Eigen::Vector3d& mean_gravity_unit_imu, int sample_count, double span_sec);
 std::optional<AhrsGravityResidual> ComputeGravityResidual(
     const Eigen::Vector3d& measured_gravity_base,
     const std::optional<Eigen::Matrix3d>& measured_gravity_covariance_base,

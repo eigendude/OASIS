@@ -56,7 +56,6 @@ constexpr std::size_t kAhrsOdomQosDepth = 10;
 constexpr double kStatusTimerPeriodSec = 0.1;
 constexpr double kMaxGravityCovarianceAgeSec = 0.2;
 constexpr double kGravityResidualRejectThresholdDefault = 0.35;
-constexpr double kGravityMahalanobisRejectThresholdDefault = 5.0;
 constexpr double kMountingCalibrationDurationSecDefault = 2.0;
 constexpr double kMountingStationaryAngularSpeedThresholdRadsDefault = 0.35;
 constexpr int kMountingMinSampleCountDefault = 10;
@@ -74,7 +73,7 @@ builtin_interfaces::msg::Time NsToStamp(int64_t timestamp_ns)
   return stamp;
 }
 
-Eigen::Quaterniond QuaternionFromMsg(const geometry_msgs::msg::Quaternion& quaternion)
+Eigen::Quaterniond OrientationWorldFromImuFromMsg(const geometry_msgs::msg::Quaternion& quaternion)
 {
   return Eigen::Quaterniond(quaternion.w, quaternion.x, quaternion.y, quaternion.z);
 }
@@ -123,7 +122,6 @@ AhrsNode::AhrsNode(const rclcpp::NodeOptions& options)
     m_odomFrameId(kOdomFrameIdDefault),
     m_worldFrameId(kWorldFrameIdDefault),
     m_gravityResidualRejectThreshold(kGravityResidualRejectThresholdDefault),
-    m_gravityMahalanobisRejectThreshold(kGravityMahalanobisRejectThresholdDefault),
     m_mountingCalibrator(AhrsMountingConfig{})
 {
   declare_parameter("base_frame_id", m_baseFrameId);
@@ -131,8 +129,6 @@ AhrsNode::AhrsNode(const rclcpp::NodeOptions& options)
   declare_parameter("odom_frame_id", m_odomFrameId);
   declare_parameter("world_frame_id", m_worldFrameId);
   declare_parameter("gravity_residual_reject_threshold", kGravityResidualRejectThresholdDefault);
-  declare_parameter("gravity_mahalanobis_reject_threshold",
-                    kGravityMahalanobisRejectThresholdDefault);
   declare_parameter("mounting_calibration_duration_sec", kMountingCalibrationDurationSecDefault);
   declare_parameter("mounting_stationary_angular_speed_threshold_rads",
                     kMountingStationaryAngularSpeedThresholdRadsDefault);
@@ -143,12 +139,7 @@ AhrsNode::AhrsNode(const rclcpp::NodeOptions& options)
   m_odomFrameId = get_parameter("odom_frame_id").as_string();
   m_worldFrameId = get_parameter("world_frame_id").as_string();
   m_gravityResidualRejectThreshold = get_parameter("gravity_residual_reject_threshold").as_double();
-  m_gravityMahalanobisRejectThreshold =
-      get_parameter("gravity_mahalanobis_reject_threshold").as_double();
-
   AhrsMountingConfig mounting_config;
-  mounting_config.parent_frame_id = m_baseFrameId;
-  mounting_config.child_frame_id = m_imuFrameId;
   mounting_config.calibration_duration_sec =
       get_parameter("mounting_calibration_duration_sec").as_double();
   mounting_config.stationary_angular_speed_threshold_rads =
@@ -220,7 +211,6 @@ void AhrsNode::HandleGravity(const geometry_msgs::msg::AccelWithCovarianceStampe
 
   m_latestGravitySample = sample;
   ++m_diag.accepted_gravity_count;
-  m_diag.has_gravity = true;
   m_diag.last_bad_gravity_frame_id.clear();
   m_diag.last_accepted_gravity_timestamp_ns = sample->timestamp_ns;
   UpdateMountingCalibration(*sample);
@@ -255,7 +245,8 @@ void AhrsNode::HandleImuGravity(const sensor_msgs::msg::Imu& message)
     return;
   }
 
-  m_imuGravityPublisher->publish(BuildImuMessage(MountImuSample(*sample)));
+  const MountedImuSample mounted_sample = MountImuSample(*sample);
+  m_imuGravityPublisher->publish(BuildImuMessage(mounted_sample, mounted_sample.q_WB));
   PublishRuntimeOutputs();
 }
 
@@ -303,24 +294,19 @@ void AhrsNode::HandleImu(const sensor_msgs::msg::Imu& message)
         ComputeGravityResidual(mounted_gravity.gravity_mps2,
                                mounted_gravity.gravity_covariance_mps2_2, mounted_sample.q_WB);
     m_diag.last_gravity_residual = residual;
-    m_diag.gravity_gated_in =
-        residual.has_value() && residual->residual_norm <= m_gravityResidualRejectThreshold;
-    m_diag.gravity_rejected = residual.has_value() && !m_diag.gravity_gated_in;
-    m_diag.last_gravity_rejection_reason =
-        m_diag.gravity_rejected ? std::string("residual_norm") : std::string();
+    m_diag.gravity_rejected =
+        residual.has_value() && residual->residual_norm > m_gravityResidualRejectThreshold;
     if (m_diag.gravity_rejected)
       ++m_diag.gravity_rejection_count;
   }
   else
   {
-    m_diag.gravity_gated_in = false;
     m_diag.gravity_rejected = false;
-    m_diag.last_gravity_rejection_reason.clear();
     m_diag.last_gravity_residual.reset();
   }
 
   m_latestOutput = ApplySessionYawZero(mounted_sample, gravity_sample);
-  m_imuPublisher->publish(BuildImuMessage(*m_latestOutput));
+  m_imuPublisher->publish(BuildImuMessage(m_latestOutput->mounted, m_latestOutput->q_OB));
   m_odomPublisher->publish(BuildOdomMessage(*m_latestOutput));
   PublishRuntimeOutputs();
 }
@@ -365,13 +351,8 @@ void AhrsNode::PublishStatus()
     status.gravity_residual_norm = m_diag.last_gravity_residual->residual_norm;
     status.gravity_mahalanobis_distance = m_diag.last_gravity_residual->mahalanobis_distance;
   }
-  status.has_gravity = m_diag.has_gravity;
   status.has_mounting = m_diag.has_mounting;
-  status.gravity_gated_in = m_diag.gravity_gated_in;
   status.gravity_rejected = m_diag.gravity_rejected;
-  status.last_mounting_lookup_error = m_diag.last_mounting_lookup_error;
-  status.last_gravity_rejection_reason = m_diag.last_gravity_rejection_reason;
-  status.status_text = ComputeStatusText();
   m_diagPublisher->publish(status);
 }
 
@@ -385,12 +366,10 @@ void AhrsNode::UpdateMountingCalibration(const GravitySample& gravity_sample)
   if (!m_mounting.has_value())
   {
     m_diag.has_mounting = false;
-    m_diag.last_mounting_lookup_error = "boot mounting calibration in progress";
     return;
   }
 
   m_diag.has_mounting = true;
-  m_diag.last_mounting_lookup_error.clear();
   RCLCPP_INFO(get_logger(), "AHRS mounting solved: roll=%.4f pitch=%.4f yaw=0 samples=%d span=%.3f",
               m_mounting->roll_rad, m_mounting->pitch_rad, m_mounting->sample_count,
               m_mounting->span_sec);
@@ -401,15 +380,10 @@ std::optional<AhrsMountingSolution> AhrsNode::ResolveMounting()
   if (!m_mounting.has_value())
   {
     m_diag.has_mounting = false;
-    if (m_diag.accepted_gravity_count == 0)
-      m_diag.last_mounting_lookup_error = "waiting for boot mounting calibration";
-    else
-      m_diag.last_mounting_lookup_error = "boot mounting calibration in progress";
     return std::nullopt;
   }
 
   m_diag.has_mounting = true;
-  m_diag.last_mounting_lookup_error.clear();
   return m_mounting;
 }
 
@@ -431,7 +405,7 @@ AhrsNode::MountedImuSample AhrsNode::MountImuSample(const ImuSample& sample) con
 {
   MountedImuSample mounted;
   mounted.timestamp_ns = sample.timestamp_ns;
-  mounted.q_WB = m_mounting->q_BI * sample.q_WI;
+  mounted.q_WB = ComposeWorldFromBase(sample.q_WI, m_mounting->q_BI);
   mounted.orientation_covariance_unknown = sample.orientation_covariance_unknown;
   if (sample.orientation_covariance_rad2.has_value() && !sample.orientation_covariance_unknown)
     mounted.orientation_covariance_rad2 =
@@ -456,23 +430,21 @@ AhrsNode::MountedGravitySample AhrsNode::MountGravitySample(const GravitySample&
   return mounted;
 }
 
-AhrsNode::MountedImuSample AhrsNode::ApplySessionYawZero(
+AhrsNode::SessionImuSample AhrsNode::ApplySessionYawZero(
     const MountedImuSample& sample, const std::optional<MountedGravitySample>& gravity_sample)
 {
-  MountedImuSample output = sample;
+  SessionImuSample output;
+  output.mounted = sample;
   const double mounted_yaw_rad = YawFromQuaternion(sample.q_WB);
   if (!m_sessionYawZeroInitialized)
   {
-    m_sessionYawOffset = QuaternionFromYaw(-mounted_yaw_rad);
+    m_q_OW = QuaternionFromYaw(-mounted_yaw_rad);
     m_sessionYawZeroInitialized = true;
     RCLCPP_INFO(get_logger(), "AHRS session yaw initialized: mounted_yaw_rad=%.4f",
                 mounted_yaw_rad);
   }
 
-  const std::optional<Eigen::Quaterniond> normalized =
-      NormalizeQuaternion(m_sessionYawOffset * sample.q_WB);
-  if (normalized.has_value())
-    output.q_WB = *normalized;
+  output.q_OB = ComposeOdomFromBase(m_q_OW, sample.q_WB);
 
   std::optional<Eigen::Matrix3d> gravity_covariance;
   Eigen::Vector3d gravity_base(0.0, 0.0, 0.0);
@@ -482,9 +454,10 @@ AhrsNode::MountedImuSample AhrsNode::ApplySessionYawZero(
     gravity_covariance = gravity_sample->gravity_covariance_mps2_2;
   }
 
-  output.orientation_covariance_rad2 =
+  output.mounted.orientation_covariance_rad2 =
       GravityCovarianceToRollPitchCovariance(gravity_base, gravity_covariance, 0.0);
-  output.orientation_covariance_unknown = !output.orientation_covariance_rad2.has_value();
+  output.mounted.orientation_covariance_unknown =
+      !output.mounted.orientation_covariance_rad2.has_value();
   return output;
 }
 
@@ -498,9 +471,9 @@ std::optional<AhrsNode::ImuSample> AhrsNode::ValidateImuMessage(
     return std::nullopt;
   }
 
-  const std::optional<Eigen::Quaterniond> normalized_driver_quaternion =
-      NormalizeQuaternion(QuaternionFromMsg(message.orientation));
-  if (!normalized_driver_quaternion.has_value())
+  const std::optional<Eigen::Quaterniond> orientation_world_from_imu =
+      NormalizeQuaternion(OrientationWorldFromImuFromMsg(message.orientation));
+  if (!orientation_world_from_imu.has_value())
   {
     rejection_reason = "bad_orientation";
     return std::nullopt;
@@ -508,7 +481,7 @@ std::optional<AhrsNode::ImuSample> AhrsNode::ValidateImuMessage(
 
   ImuSample sample;
   sample.timestamp_ns = StampToNs(message.header.stamp);
-  sample.q_WI = ConjugateQuaternion(*normalized_driver_quaternion);
+  sample.q_WI = *orientation_world_from_imu;
 
   const std::array<double, 9> orientation_covariance =
       Array9FromRos(message.orientation_covariance);
@@ -583,15 +556,16 @@ std::optional<AhrsNode::GravitySample> AhrsNode::ValidateGravityMessage(
   return sample;
 }
 
-sensor_msgs::msg::Imu AhrsNode::BuildImuMessage(const MountedImuSample& sample) const
+sensor_msgs::msg::Imu AhrsNode::BuildImuMessage(
+    const MountedImuSample& sample, const Eigen::Quaterniond& orientation_parent_from_base) const
 {
   sensor_msgs::msg::Imu message;
   message.header.stamp = NsToStamp(sample.timestamp_ns);
   message.header.frame_id = m_baseFrameId;
-  message.orientation.x = sample.q_WB.x();
-  message.orientation.y = sample.q_WB.y();
-  message.orientation.z = sample.q_WB.z();
-  message.orientation.w = sample.q_WB.w();
+  message.orientation.x = orientation_parent_from_base.x();
+  message.orientation.y = orientation_parent_from_base.y();
+  message.orientation.z = orientation_parent_from_base.z();
+  message.orientation.w = orientation_parent_from_base.w();
   if (sample.orientation_covariance_unknown)
   {
     message.orientation_covariance[0] = -1.0;
@@ -627,37 +601,41 @@ geometry_msgs::msg::AccelWithCovarianceStamped AhrsNode::BuildGravityMessage(
         EmbedLinearCovariance3(*sample.gravity_covariance_mps2_2);
     CopyCovariance36ToArray(covariance, message.accel.covariance);
   }
+  else
+  {
+    message.accel.covariance[0] = -1.0;
+  }
   message.accel.covariance[21] = -1.0;
   return message;
 }
 
-nav_msgs::msg::Odometry AhrsNode::BuildOdomMessage(const MountedImuSample& sample) const
+nav_msgs::msg::Odometry AhrsNode::BuildOdomMessage(const SessionImuSample& sample) const
 {
   nav_msgs::msg::Odometry message;
-  message.header.stamp = NsToStamp(sample.timestamp_ns);
+  message.header.stamp = NsToStamp(sample.mounted.timestamp_ns);
   message.header.frame_id = m_odomFrameId;
   message.child_frame_id = m_baseFrameId;
-  message.pose.pose.orientation.x = sample.q_WB.x();
-  message.pose.pose.orientation.y = sample.q_WB.y();
-  message.pose.pose.orientation.z = sample.q_WB.z();
-  message.pose.pose.orientation.w = sample.q_WB.w();
-  if (sample.orientation_covariance_rad2.has_value())
+  message.pose.pose.orientation.x = sample.q_OB.x();
+  message.pose.pose.orientation.y = sample.q_OB.y();
+  message.pose.pose.orientation.z = sample.q_OB.z();
+  message.pose.pose.orientation.w = sample.q_OB.w();
+  if (sample.mounted.orientation_covariance_rad2.has_value())
   {
-    message.pose.covariance[21] = (*sample.orientation_covariance_rad2)(0, 0);
-    message.pose.covariance[22] = (*sample.orientation_covariance_rad2)(0, 1);
-    message.pose.covariance[23] = (*sample.orientation_covariance_rad2)(0, 2);
-    message.pose.covariance[27] = (*sample.orientation_covariance_rad2)(1, 0);
-    message.pose.covariance[28] = (*sample.orientation_covariance_rad2)(1, 1);
-    message.pose.covariance[29] = (*sample.orientation_covariance_rad2)(1, 2);
-    message.pose.covariance[33] = (*sample.orientation_covariance_rad2)(2, 0);
-    message.pose.covariance[34] = (*sample.orientation_covariance_rad2)(2, 1);
-    message.pose.covariance[35] = (*sample.orientation_covariance_rad2)(2, 2);
+    message.pose.covariance[21] = (*sample.mounted.orientation_covariance_rad2)(0, 0);
+    message.pose.covariance[22] = (*sample.mounted.orientation_covariance_rad2)(0, 1);
+    message.pose.covariance[23] = (*sample.mounted.orientation_covariance_rad2)(0, 2);
+    message.pose.covariance[27] = (*sample.mounted.orientation_covariance_rad2)(1, 0);
+    message.pose.covariance[28] = (*sample.mounted.orientation_covariance_rad2)(1, 1);
+    message.pose.covariance[29] = (*sample.mounted.orientation_covariance_rad2)(1, 2);
+    message.pose.covariance[33] = (*sample.mounted.orientation_covariance_rad2)(2, 0);
+    message.pose.covariance[34] = (*sample.mounted.orientation_covariance_rad2)(2, 1);
+    message.pose.covariance[35] = (*sample.mounted.orientation_covariance_rad2)(2, 2);
   }
-  message.twist.twist.angular.x = sample.angular_velocity_rads.x();
-  message.twist.twist.angular.y = sample.angular_velocity_rads.y();
-  message.twist.twist.angular.z = sample.angular_velocity_rads.z();
+  message.twist.twist.angular.x = sample.mounted.angular_velocity_rads.x();
+  message.twist.twist.angular.y = sample.mounted.angular_velocity_rads.y();
+  message.twist.twist.angular.z = sample.mounted.angular_velocity_rads.z();
   const std::array<double, 36> angular_covariance =
-      EmbedLinearCovariance3(sample.angular_velocity_covariance_rads2);
+      EmbedLinearCovariance3(sample.mounted.angular_velocity_covariance_rads2);
   message.twist.covariance[21] = angular_covariance[0];
   message.twist.covariance[22] = angular_covariance[1];
   message.twist.covariance[23] = angular_covariance[2];
@@ -696,13 +674,13 @@ geometry_msgs::msg::TransformStamped AhrsNode::BuildMountingTransform() const
 geometry_msgs::msg::TransformStamped AhrsNode::BuildOdomToBaseTransform() const
 {
   geometry_msgs::msg::TransformStamped transform;
-  transform.header.stamp = NsToStamp(m_latestOutput->timestamp_ns);
+  transform.header.stamp = NsToStamp(m_latestOutput->mounted.timestamp_ns);
   transform.header.frame_id = m_odomFrameId;
   transform.child_frame_id = m_baseFrameId;
-  transform.transform.rotation.x = m_latestOutput->q_WB.x();
-  transform.transform.rotation.y = m_latestOutput->q_WB.y();
-  transform.transform.rotation.z = m_latestOutput->q_WB.z();
-  transform.transform.rotation.w = m_latestOutput->q_WB.w();
+  transform.transform.rotation.x = m_latestOutput->q_OB.x();
+  transform.transform.rotation.y = m_latestOutput->q_OB.y();
+  transform.transform.rotation.z = m_latestOutput->q_OB.z();
+  transform.transform.rotation.w = m_latestOutput->q_OB.w();
   return transform;
 }
 
@@ -719,23 +697,6 @@ std::uint8_t AhrsNode::ComputeStatusCode() const
   if (!m_diag.has_mounting)
     return oasis_msgs::msg::AhrsStatus::STATUS_MOUNTING_UNAVAILABLE;
   return oasis_msgs::msg::AhrsStatus::STATUS_OK;
-}
-
-std::string AhrsNode::ComputeStatusText() const
-{
-  if (!m_diag.last_bad_imu_frame_id.empty())
-    return "Bad IMU frame";
-  if (!m_diag.last_bad_gravity_frame_id.empty())
-    return "Bad gravity frame";
-  if (m_diag.accepted_imu_count == 0)
-    return "Waiting for IMU samples";
-  if (m_diag.accepted_gravity_count == 0)
-    return "Waiting for gravity samples";
-  if (!m_diag.has_mounting)
-    return "Mounting calibration not solved";
-  if (m_diag.gravity_rejected)
-    return "Gravity consistency rejected";
-  return "Mounted attitude output available";
 }
 
 builtin_interfaces::msg::Time AhrsNode::CurrentStamp() const

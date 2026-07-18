@@ -27,7 +27,7 @@ uint8 STATUS_BAD_IMU_FRAME = 3
 # Gravity samples are arriving with an unexpected frame_id
 uint8 STATUS_BAD_GRAVITY_FRAME = 4
 
-# Fixed mounting transform is not available in the current skeleton
+# Fixed mounting transform is not yet available
 uint8 STATUS_MOUNTING_UNAVAILABLE = 5
 
 # Status timestamp and primary AHRS output frame
@@ -83,7 +83,7 @@ uint32 gravity_rejection_count
 
 # Gravity residual summary for the current AHRS state
 #
-# Units: implementation-defined
+# Units: unitless direction-vector difference
 #
 # NaN when no residual has been computed yet
 #
@@ -91,41 +91,14 @@ float64 gravity_residual_norm
 
 # Gravity gating summary for the current AHRS state
 #
-# Units: implementation-defined
+# Units: standard deviations
 #
 # NaN when no gating distance has been computed yet
 #
 float64 gravity_mahalanobis_distance
 
-# True once at least one gravity packet has been accepted
-bool has_gravity
-
 # True once a fixed mounting transform is available to the node
 bool has_mounting
 
-# True when the latest gravity consistency check passed the AHRS gate
-bool gravity_gated_in
-
 # True when the latest gravity consistency check was rejected by policy
 bool gravity_rejected
-
-# Number of TF lookup failures while sourcing the fixed mounting transform
-#
-# Units: packets
-#
-uint32 transform_lookup_failure_count
-
-# Number of invalid fixed mounting transforms returned by TF
-#
-# Units: packets
-#
-uint32 invalid_mounting_transform_count
-
-# Short text from the latest mounting lookup or transform validity problem
-string last_mounting_lookup_error
-
-# Short machine-facing reason from the latest gravity consistency rejection
-string last_gravity_rejection_reason
-
-# Short implementation-facing status text for logs and UIs
-string status_text

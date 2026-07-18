@@ -458,6 +458,9 @@ std::string CecTranslator::TranslateKeyCode(::CEC::cec_user_control_code keycode
 
 std::string CecTranslator::TranslateVendorID(::CEC::cec_vendor_id vendorId)
 {
+  if (static_cast<uint32_t>(vendorId) == CEC_VENDOR_VIZIO2)
+    return "Vizio";
+
   // Values are from CECTypeUtils.h
   switch (vendorId)
   {
@@ -498,7 +501,6 @@ std::string CecTranslator::TranslateVendorID(::CEC::cec_vendor_id vendorId)
     case ::CEC::CEC_VENDOR_SHARP2:
       return "Sharp";
     case ::CEC::CEC_VENDOR_VIZIO:
-    case CEC_VENDOR_VIZIO2:
       return "Vizio";
     case ::CEC::CEC_VENDOR_BROADCOM:
       return "Broadcom";

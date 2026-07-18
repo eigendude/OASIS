@@ -27,8 +27,6 @@ def install_test_stubs() -> None:
     _install_geometry_msgs_stub()
     _install_sensor_msgs_stub()
     _install_std_msgs_stub()
-    _install_nav_msgs_stub()
-    _install_tf2_ros_stub()
     _install_oasis_msgs_stub()
     _install_launch_stub()
     _install_launch_ros_stub()
@@ -249,43 +247,6 @@ class _Quaternion:
         self.w: float = 1.0
 
 
-class _Point:
-    def __init__(self) -> None:
-        self.x: float = 0.0
-        self.y: float = 0.0
-        self.z: float = 0.0
-
-
-class _Transform:
-    def __init__(self) -> None:
-        self.translation: _Vector3 = _Vector3()
-        self.rotation: _Quaternion = _Quaternion()
-
-
-class _TransformStamped:
-    def __init__(self) -> None:
-        self.header: _Header = _Header()
-        self.child_frame_id: str = ""
-        self.transform: _Transform = _Transform()
-
-
-class _Accel:
-    def __init__(self) -> None:
-        self.linear: _Vector3 = _Vector3()
-
-
-class _AccelWithCovariance:
-    def __init__(self) -> None:
-        self.accel: _Accel = _Accel()
-        self.covariance: list[float] = [0.0] * 36
-
-
-class _AccelWithCovarianceStamped:
-    def __init__(self) -> None:
-        self.header: _Header = _Header()
-        self.accel: _AccelWithCovariance = _AccelWithCovariance()
-
-
 class _Imu:
     def __init__(self) -> None:
         self.header: _Header = _Header()
@@ -341,18 +302,6 @@ class _BatteryState:
         self.serial_number: str = ""
 
 
-class _Pose:
-    def __init__(self) -> None:
-        self.position: _Point = _Point()
-        self.orientation: _Quaternion = _Quaternion()
-
-
-class _PoseWithCovariance:
-    def __init__(self) -> None:
-        self.pose: _Pose = _Pose()
-        self.covariance: list[float] = [0.0] * 36
-
-
 class _Twist:
     def __init__(self) -> None:
         self.linear: _Vector3 = _Vector3()
@@ -369,45 +318,6 @@ class _TwistWithCovarianceStamped:
     def __init__(self) -> None:
         self.header: _Header = _Header()
         self.twist: _TwistWithCovariance = _TwistWithCovariance()
-
-
-class _Odometry:
-    def __init__(self) -> None:
-        self.header: _Header = _Header()
-        self.child_frame_id: str = ""
-        self.pose: _PoseWithCovariance = _PoseWithCovariance()
-        self.twist: _TwistWithCovariance = _TwistWithCovariance()
-
-
-class _AhrsStatus:
-    STATUS_OK: int = 0
-    STATUS_WAITING_FOR_IMU: int = 1
-    STATUS_WAITING_FOR_GRAVITY: int = 2
-    STATUS_BAD_IMU_FRAME: int = 3
-    STATUS_BAD_GRAVITY_FRAME: int = 4
-    STATUS_MOUNTING_UNAVAILABLE: int = 5
-
-    def __init__(self) -> None:
-        self.header: _Header = _Header()
-        self.status: int = self.STATUS_WAITING_FOR_IMU
-        self.accepted_imu_count: int = 0
-        self.accepted_gravity_count: int = 0
-        self.rejected_imu_count: int = 0
-        self.rejected_gravity_count: int = 0
-        self.dropped_stale_imu_count: int = 0
-        self.dropped_stale_gravity_count: int = 0
-        self.gravity_rejection_count: int = 0
-        self.gravity_residual_norm: float = 0.0
-        self.gravity_mahalanobis_distance: float = 0.0
-        self.has_gravity: bool = False
-        self.has_mounting: bool = False
-        self.gravity_gated_in: bool = False
-        self.gravity_rejected: bool = False
-        self.transform_lookup_failure_count: int = 0
-        self.invalid_mounting_transform_count: int = 0
-        self.last_mounting_lookup_error: str = ""
-        self.last_gravity_rejection_reason: str = ""
-        self.status_text: str = ""
 
 
 class _UPSStatus:
@@ -772,31 +682,6 @@ class _TimeHandle:
     pass
 
 
-class _TransformException(Exception):
-    pass
-
-
-class _Buffer:
-    def lookup_transform(self, target_frame: str, source_frame: str, time: Any) -> Any:
-        del target_frame, source_frame, time
-        raise _TransformException("transform unavailable")
-
-
-class _TransformListener:
-    def __init__(self, buffer: Any, node: Any) -> None:
-        self.buffer: Any = buffer
-        self.node: Any = node
-
-
-class _TransformBroadcaster:
-    def __init__(self, node: Any) -> None:
-        self.node: Any = node
-        self.transforms: list[Any] = []
-
-    def sendTransform(self, transforms: Any) -> None:
-        self.transforms.append(transforms)
-
-
 class _LaunchDescription:
     def __init__(self) -> None:
         self.actions: list[Any] = []
@@ -853,12 +738,6 @@ def _install_geometry_msgs_stub() -> None:
     geometry_msgs_msg_module: ModuleType = ModuleType("geometry_msgs.msg")
     _set_module_attr(
         geometry_msgs_msg_module,
-        "AccelWithCovarianceStamped",
-        _AccelWithCovarianceStamped,
-    )
-    _set_module_attr(geometry_msgs_msg_module, "TransformStamped", _TransformStamped)
-    _set_module_attr(
-        geometry_msgs_msg_module,
         "TwistWithCovarianceStamped",
         _TwistWithCovarianceStamped,
     )
@@ -901,30 +780,6 @@ def _install_std_msgs_stub() -> None:
     _register_module("std_msgs.msg", std_msgs_msg_module)
 
 
-def _install_nav_msgs_stub() -> None:
-    if _module_exists("nav_msgs.msg"):
-        return
-
-    nav_msgs_module: ModuleType = _make_package("nav_msgs")
-    nav_msgs_msg_module: ModuleType = ModuleType("nav_msgs.msg")
-    _set_module_attr(nav_msgs_msg_module, "Odometry", _Odometry)
-    _set_module_attr(nav_msgs_module, "msg", nav_msgs_msg_module)
-    _register_module("nav_msgs", nav_msgs_module)
-    _register_module("nav_msgs.msg", nav_msgs_msg_module)
-
-
-def _install_tf2_ros_stub() -> None:
-    if _module_exists("tf2_ros"):
-        return
-
-    tf2_ros_module: ModuleType = ModuleType("tf2_ros")
-    _set_module_attr(tf2_ros_module, "Buffer", _Buffer)
-    _set_module_attr(tf2_ros_module, "TransformBroadcaster", _TransformBroadcaster)
-    _set_module_attr(tf2_ros_module, "TransformException", _TransformException)
-    _set_module_attr(tf2_ros_module, "TransformListener", _TransformListener)
-    _register_module("tf2_ros", tf2_ros_module)
-
-
 def _install_oasis_msgs_stub() -> None:
     if (
         _module_exists("oasis_msgs")
@@ -939,7 +794,6 @@ def _install_oasis_msgs_stub() -> None:
         oasis_msgs_msg_module = ModuleType("oasis_msgs.msg")
         oasis_msgs_srv_module = ModuleType("oasis_msgs.srv")
 
-    _set_module_attr(oasis_msgs_msg_module, "AhrsStatus", _AhrsStatus)
     _set_module_attr(oasis_msgs_msg_module, "AnalogReading", _AnalogReading)
     _set_module_attr(oasis_msgs_msg_module, "AnalogReadings", _AnalogReadings)
     _set_module_attr(oasis_msgs_msg_module, "AVRConstants", _AVRConstants)

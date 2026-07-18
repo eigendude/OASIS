@@ -74,6 +74,12 @@ private:
     Eigen::Matrix3d linear_acceleration_covariance_mps2_2{Eigen::Matrix3d::Zero()};
   };
 
+  struct SessionImuSample
+  {
+    MountedImuSample mounted;
+    Eigen::Quaterniond q_OB{Eigen::Quaterniond::Identity()};
+  };
+
   struct MountedGravitySample
   {
     int64_t timestamp_ns{0};
@@ -90,16 +96,12 @@ private:
     std::uint32_t dropped_stale_imu_count{0};
     std::uint32_t dropped_stale_gravity_count{0};
     std::uint32_t gravity_rejection_count{0};
-    bool has_gravity{false};
     bool has_mounting{false};
-    bool gravity_gated_in{false};
     bool gravity_rejected{false};
     std::string last_bad_imu_frame_id;
     std::string last_bad_gravity_frame_id;
     std::optional<int64_t> last_accepted_imu_timestamp_ns;
     std::optional<int64_t> last_accepted_gravity_timestamp_ns;
-    std::string last_mounting_lookup_error;
-    std::string last_gravity_rejection_reason;
     std::optional<OASIS::AHRS::AhrsGravityResidual> last_gravity_residual;
   };
 
@@ -117,22 +119,22 @@ private:
   std::optional<MountedGravitySample> FreshMountedGravitySample(int64_t imu_timestamp_ns) const;
   MountedImuSample MountImuSample(const ImuSample& sample) const;
   MountedGravitySample MountGravitySample(const GravitySample& sample) const;
-  MountedImuSample ApplySessionYawZero(const MountedImuSample& sample,
+  SessionImuSample ApplySessionYawZero(const MountedImuSample& sample,
                                        const std::optional<MountedGravitySample>& gravity_sample);
   std::optional<ImuSample> ValidateImuMessage(const sensor_msgs::msg::Imu& message,
                                               std::string& rejection_reason) const;
   std::optional<GravitySample> ValidateGravityMessage(
       const geometry_msgs::msg::AccelWithCovarianceStamped& message,
       std::string& rejection_reason) const;
-  sensor_msgs::msg::Imu BuildImuMessage(const MountedImuSample& sample) const;
+  sensor_msgs::msg::Imu BuildImuMessage(
+      const MountedImuSample& sample, const Eigen::Quaterniond& orientation_parent_from_base) const;
   geometry_msgs::msg::AccelWithCovarianceStamped BuildGravityMessage(
       const MountedGravitySample& sample) const;
-  nav_msgs::msg::Odometry BuildOdomMessage(const MountedImuSample& sample) const;
+  nav_msgs::msg::Odometry BuildOdomMessage(const SessionImuSample& sample) const;
   geometry_msgs::msg::TransformStamped BuildIdentityTransform() const;
   geometry_msgs::msg::TransformStamped BuildMountingTransform() const;
   geometry_msgs::msg::TransformStamped BuildOdomToBaseTransform() const;
   std::uint8_t ComputeStatusCode() const;
-  std::string ComputeStatusText() const;
   builtin_interfaces::msg::Time CurrentStamp() const;
 
   std::string m_baseFrameId;
@@ -140,16 +142,15 @@ private:
   std::string m_odomFrameId;
   std::string m_worldFrameId;
   double m_gravityResidualRejectThreshold;
-  double m_gravityMahalanobisRejectThreshold;
   OASIS::AHRS::BootMountingCalibrator m_mountingCalibrator;
   std::optional<OASIS::AHRS::AhrsMountingSolution> m_mounting;
   Diagnostics m_diag;
   std::optional<int64_t> m_lastAcceptedImuGravityTimestampNs;
   std::optional<GravitySample> m_latestGravitySample;
-  std::optional<MountedImuSample> m_latestOutput;
+  std::optional<SessionImuSample> m_latestOutput;
   std::optional<Eigen::Vector3d> m_latestImuAngularVelocityRads;
   bool m_sessionYawZeroInitialized{false};
-  Eigen::Quaterniond m_sessionYawOffset{Eigen::Quaterniond::Identity()};
+  Eigen::Quaterniond m_q_OW{Eigen::Quaterniond::Identity()};
 
   // ROS publishers
   rclcpp::Publisher<oasis_msgs::msg::AhrsStatus>::SharedPtr m_diagPublisher;

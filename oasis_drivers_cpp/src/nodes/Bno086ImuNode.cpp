@@ -8,6 +8,7 @@
 
 #include "Bno086ImuNode.hpp"
 
+#include "imu/bno086/core/Bno086RotationVectorDecoder.hpp"
 #include "imu/bno086/gpio/Bno086Gpio.hpp"
 #include "imu/bno086/ros/Bno086MessageBuilder.hpp"
 #include "imu/bno086/ros/Bno086Qos.hpp"
@@ -1413,20 +1414,17 @@ void Bno086ImuNode::ApplyEvent(const SensorEvent& event, const EventStamp& event
   {
     case ReportId::RotationVector:
     {
+      const std::optional<std::array<double, 4>> orientationWorldFromImu =
+          DecodeRotationVectorWorldFromImu(event);
+      if (!orientationWorldFromImu.has_value())
+        break;
+
       const auto accuracyEstimateIndex =
           static_cast<std::size_t>(RotationVectorValueIndex::AccuracyEstimate);
       const OrientationCovariancePolicyResult covariancePolicy =
           ResolveOrientationCovariancePolicy(event.accuracy, event.values[accuracyEstimateIndex]);
 
-      m_stream.latest_frame.orientation_xyzw[0] = QToDouble(
-          event.values[static_cast<std::size_t>(RotationVectorValueIndex::QuaternionI)], 14);
-      m_stream.latest_frame.orientation_xyzw[1] = QToDouble(
-          event.values[static_cast<std::size_t>(RotationVectorValueIndex::QuaternionJ)], 14);
-      m_stream.latest_frame.orientation_xyzw[2] = QToDouble(
-          event.values[static_cast<std::size_t>(RotationVectorValueIndex::QuaternionK)], 14);
-      m_stream.latest_frame.orientation_xyzw[3] = QToDouble(
-          event.values[static_cast<std::size_t>(RotationVectorValueIndex::QuaternionReal)], 14);
-      NormalizeQuaternion(m_stream.latest_frame.orientation_xyzw);
+      m_stream.latest_frame.orientation_world_from_imu_xyzw = *orientationWorldFromImu;
       m_stream.latest_frame.has_orientation = true;
       m_stream.orientation.has_sample = true;
       m_stream.orientation.stamp = event_stamp.stamp;

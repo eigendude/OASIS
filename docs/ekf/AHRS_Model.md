@@ -1,408 +1,263 @@
 # AHRS Model Specification
 
-This document defines the target structure for the current AHRS rewrite.
+This document defines the mathematical and event model of the AHRS. The model
+is independent of any particular implementation.
 
-The current AHRS is a fused-IMU pipeline, not a raw multi-sensor optimizer.
-Core logic should stay ROS-agnostic and operate on normalized `imu`,
-`imu_gravity`, and `gravity` samples plus fixed mounting transforms.
-
-This document is about implementation structure. Runtime behavior, published
-contracts, and standalone TF policy belong in `AHRS.md`. Mounting-calibration
-workflow belongs in `AHRS_Mounting.md`.
+## Frames and rotation conventions
 
----
+Frames are $W$ for world, $O$ for odom, $B$ for base, and $I$ for IMU.
+Their default public names are `world`, `odom`, `base_link`, and
+`imu_link`.
 
-## 1. Directory layout target
+Every quaternion follows one convention: $q_{AB}$ rotates vectors from frame
+$B$ into frame $A$. Therefore
 
-Create the AHRS implementation under `oasis_control/oasis_control` with clear
-separation between shared reusable localization utilities, AHRS-specific core
-logic, and ROS wiring.
+$$
+v_A=R(q_{AB})v_B,
+$$
 
-Suggested structure:
+$$
+q_{AC}=q_{AB}\otimes q_{BC},
+$$
 
-```text
-oasis_control/oasis_control/localization/common/
-  algebra/
-    quat.py
-    linalg.py
-    covariance.py
-
-  frames/
-    mounting.py
-    frame_policy.py
-
-  data/
-    imu_sample.py
-    imu_gravity_sample.py
-    gravity_sample.py
-
-  validation/
-    imu_validation.py
-    gravity_validation.py
-
-  measurements/
-    gravity_direction.py
-
-oasis_control/oasis_control/localization/ahrs/
-  data/
-    ahrs_output.py
-    diagnostics.py
-
-  processing/
-    attitude_mapper.py
-    gravity_consistency.py
-    output_adapter.py
-
-  config/
-    ahrs_config.py
-
-oasis_control/oasis_control/nodes/ahrs/
-  ahrs_node.py
-  ros_messages.py
-  ros_publishers.py
-  ros_params.py
-
-oasis_control/test/ahrs/
-  common/
-  processing/
-```
-
-Rules:
-
-- core modules contain no ROS logging, QoS, or topic wiring
-- node code only adapts ROS messages, parameters, TF, and diagnostics
-- package `__init__.py` files stay empty
-
-Why this split is better:
-
-- `localization/common/` gives AHRS and EKF one shared home for low-level
-  estimator-adjacent code that should not be reimplemented twice
-- `common/data/` owns the canonical IMU, IMU-gravity, and gravity packet types
-  used by both components
-- `common/frames/` owns frame-policy checks and fixed mounting helpers for
-  `T_BI`
-- `common/validation/` owns reusable IMU, IMU-gravity, and gravity acceptance
-  logic tied to the shared sensor contract
-- `common/measurements/` owns gravity-direction residual math that both AHRS
-  and EKF need, while leaving component-specific orchestration outside
-- `localization/ahrs/` stays focused on AHRS outputs, AHRS-specific processing,
-  and AHRS configuration instead of collecting duplicate low-level utilities
-
-What should not move into `common/`:
-
-- AHRS runtime publication policy
-- AHRS standalone `world -> odom` TF ownership
-- AHRS-specific output shaping and diagnostics contracts when they diverge from
-  EKF needs
-
----
-
-## 2. Shared conventions
-
-Frames:
-
-- `{W}` world
-- `{O}` odom
-- `{B}` base
-- `{I}` IMU
-
-Concrete public frame names:
-
-- `world`
-- `odom`
-- `base_link`
-- `imu_link`
-
-Policy:
-
-- `imu` samples are expected from `imu_link`
-- `imu_gravity` samples are expected from `imu_link`
-- `gravity` samples are expected from `imu_link`
-- all three raw streams are interpreted in the same sensor frame before
-  mounting
-- the fixed mounting transform is `T_BI` from `imu_link` to `base_link`
-- mounting is expected to come from the boot-time calibration contract in
-  `AHRS_Mounting.md`
-- the default runtime path solves `T_BI` from boot gravity samples inside
-  `ahrs_node` and publishes `base_link -> imu_link` as the fixed TF
-- frame-policy enforcement belongs in `localization/common/frames/`
-
-Quaternion convention:
-
-- `q_WB` rotates world-frame vectors into `{B}` coordinates
-- composition follows Hamilton product
-- the fixed mounting quaternion is `q_BI`, which rotates vectors from
-  `imu_link` into `base_link`
-- publishing TF as parent=`base_link`, child=`imu_link` carries that same
-  `q_BI`, not its inverse
+and
 
-Covariances:
-
-- preserve full matrices
-- never diagonalize incoming covariance by convenience
-- publish transformed covariance via Jacobians or frame rotation as required
-- rotate IMU, IMU-gravity, and gravity covariance blocks when measurements are
-  mapped through mounting transforms
-- treat upstream IMU orientation covariance as driver-owned policy data; AHRS
-  should preserve and rotate it rather than remapping driver-specific quality
-  metadata
-- treat driver-provided orientation covariance as upstream contract data at the
-  validation boundary
-- allow the AHRS output layer to publish a different orientation covariance
-  contract when that contract is deliberately defined in terms of
-  gravity-observable roll/pitch uncertainty plus separately modeled yaw
+$$
+q_{BA}=q_{AB}^*.
+$$
 
----
+ROS serializes quaternions as `(x, y, z, w)`; products below are Hamilton
+products. Gravity points down, so level gravity in $B$ is approximately
+$(0,0,-9.81)\,\mathrm{m/s^2}$.
+
+## Accepted input samples
 
-## 3. Core data types
+An IMU sample contains a timestamp, upstream ROS orientation, optional
+orientation covariance, angular velocity and covariance, and acceleration and
+covariance. The `imu` acceleration excludes gravity; the `imu_gravity`
+acceleration includes gravity. Both are expressed in $I$.
 
-The package boundary should read as:
+An IMU sample is accepted when its frame is $I$, its quaternion is finite with
+nonzero norm, its vectors are finite, and required covariance matrices are
+finite with nonnegative diagonal entries. An orientation covariance whose
+first entry is $-1$ is accepted as unknown. The BNO08X Rotation Vector follows
+the device-to-reference convention and is copied unchanged into the upstream
+ROS orientation. If $q_{\mathrm{ROS}}$ denotes that field, the canonical
+IMU-to-world rotation is
 
-- `localization/common/data/` holds the canonical IMU, IMU-gravity, and
-  gravity records shared by AHRS and EKF
-- `localization/common/frames/` holds frame and mounting helpers that apply
-  `T_BI`
-- `localization/common/validation/` holds reusable IMU, IMU-gravity, and
-  gravity validation
-- `localization/common/measurements/` holds reusable gravity-direction
-  measurement math
-- `localization/ahrs/data/` holds AHRS-specific outputs and diagnostic payloads
-- `localization/ahrs/processing/` holds deterministic AHRS computation stages
-  built on the shared common layer
+$$
+q_{WI}=\mathrm{normalize}(q_{\mathrm{ROS}}).
+$$
 
-### 3.1 `ImuSample`
+No conjugation occurs at the AHRS input boundary. Its inverse
+$q_{IW}=q_{WI}^*$ maps world-frame vectors into the IMU frame.
 
-Fields:
+A gravity sample contains a timestamp, physical gravity vector $g_I$, and
+optional $3\times3$ covariance $\Sigma_{gI}$. Its vector is accepted when
+the frame is $I$, all components are finite, and
+$\lVert g_I\rVert>10^{-9}$. An invalid covariance becomes unavailable; it
+does not invalidate an otherwise acceptable gravity vector.
 
-- timestamp in integer nanoseconds
-- IMU frame id, expected to be `imu_link`
-- canonicalized quaternion `q_WI`
-- optional orientation covariance
-- angular velocity vector and covariance
-- gravity-removed linear acceleration vector and covariance
+For `imu` and `gravity`, a sample is stale exactly when
+$t<t_{last}$. Equal timestamps are accepted. Each stream has independent
+timestamp history. The gravity-included IMU stream also drops timestamps less
+than its own last accepted timestamp.
 
-Semantics:
+## Mounting and vector transformations
 
-- uses gravity-removed linear acceleration
-- does not represent the gravity-included acceleration stream
+The fixed mounting rotation $R_{BI}$, represented by $q_{BI}$, maps
+IMU-frame quantities into the base frame. Translation is zero. The rotation
+comes from the boot calibration contract in `AHRS_Mounting.md`; no external
+transform source participates.
 
-### 3.2 `ImuGravitySample`
+The inverse mounting rotation $q_{IB}=q_{BI}^*$ maps base-frame vectors into
+the IMU frame. The base-to-world attitude follows the frame chain
+base-to-IMU-to-world:
 
-Fields:
+$$
+q_{WB}=q_{WI}\otimes q_{IB}
+      =q_{WI}\otimes q_{BI}^*.
+$$
 
-- timestamp in integer nanoseconds
-- IMU frame id, expected to be `imu_link`
-- canonicalized quaternion `q_WI`
-- optional orientation covariance
-- angular velocity vector and covariance
-- gravity-included calibrated acceleration vector and covariance
+The corresponding vector and covariance transformations are
 
-Semantics:
+$$
+\omega_B=R_{BI}\omega_I,\qquad
+a_B=R_{BI}a_I,
+$$
 
-- uses calibrated acceleration including gravity
-- does not represent the gravity-removed acceleration stream
-- may publish at a different cadence than `ImuSample`
-- suitable for mounted `ahrs/imu_gravity` output and VIO/SLAM-facing
-  consumers
+$$
+\Sigma_{\omega B}
+=R_{BI}\Sigma_{\omega I}R_{BI}^{T},\qquad
+\Sigma_{aB}
+=R_{BI}\Sigma_{aI}R_{BI}^{T}.
+$$
 
-### 3.3 `GravitySample`
+When upstream orientation covariance is known, the mounted
+gravity-included output uses
 
-Fields:
+$$
+\Sigma_{qB}=R_{BI}\Sigma_{qI}R_{BI}^{T}.
+$$
 
-- timestamp in integer nanoseconds
-- source frame id, expected to be `imu_link`
-- physical gravity vector in `imu_link` that points down and is near
-  `9.81 m/s^2` at rest
-- full `3 x 3` covariance
+Gravity uses the same IMU-to-base mapping:
 
-This type is a first-class gravity measurement packet. It is not an "up"
-vector, not a normalized unit vector, and not an acceleration used for
-propagation.
+$$
+g_B=R_{BI}g_I,\qquad
+\Sigma_{gB}=R_{BI}\Sigma_{gI}R_{BI}^{T}.
+$$
 
-### 3.4 `MountingTransform`
+Full covariance matrices, including cross-axis terms, are retained.
 
-Fields:
+## Gravity residual
 
-- parent frame id
-- child frame id
-- quaternion `q_BI`
+The measured gravity direction in the base frame is
 
-This is the fixed transform from `imu_link` to `base_link`.
+$$
+u_m=\frac{g_B}{\lVert g_B\rVert}.
+$$
 
-### 3.5 `AhrsOutput`
+Since $q_{WB}$ rotates base-frame vectors into the world frame, its inverse
+$q_{BW}=q_{WB}^*$ rotates world-frame vectors into the base frame. The
+predicted base-frame direction of world gravity is
 
-Fields:
+$$
+u_p=R(q_{BW})
+\begin{bmatrix}
+0\\
+0\\
+-1
+\end{bmatrix}.
+$$
 
-- timestamp
-- base-frame quaternion `q_WB`
-- base-frame angular velocity
-- base-frame linear acceleration
-- base-frame gravity-included calibrated acceleration
-- transformed covariance blocks
-- gravity residual summary for diagnostics
+The residual and its Euclidean diagnostic are
 
----
+$$
+r=u_m-u_p,\qquad d_r=\lVert r\rVert.
+$$
 
-## 4. Pipeline model
+`gravity_rejected` is true when a residual exists and $d_r>\tau_r$, where
+$\tau_r$ defaults to $0.35$. Every processed `imu` event whose current
+residual exceeds the threshold increments the rejection counter. Rejection is
+diagnostic-only.
 
-The AHRS remains a small event-driven system, but the implementation should be
-split by responsibility instead of collecting all non-math code under one
-generic `pipeline/` bucket.
+When gravity covariance is available, normalization uses the Jacobian
 
-The intended ownership is:
+$$
+J_u=\frac{I-u_m u_m^T}{\lVert g_B\rVert}.
+$$
+
+The normalized direction covariance is
+
+$$
+\Sigma_u=J_u\Sigma_{gB}J_u^T+10^{-9}I,
+$$
 
-- shared sample validation, frame policy, mounting application helpers, and
-  gravity-direction residual math live under `localization/common/`
-- AHRS-specific attitude mapping, consistency policy, output shaping, and
-  diagnostics remain under `localization/ahrs/`
-
-### 4.1 IMU validation
-
-The shared IMU validator in `localization/common/validation/` rejects samples
-when:
-
-- quaternion is non-finite
-- quaternion norm is zero
-- required covariance contains NaN or Inf
-- IMU frame id does not match the expected `imu_link` policy
-
-### 4.2 Gravity validation
-
-The shared gravity validator in `localization/common/validation/` rejects
-samples when:
-
-- the vector is non-finite
-- the vector norm is zero
-- the covariance contains NaN or Inf
-- the source frame does not match the expected `imu_link` policy
-
-### 4.3 Mounting application
-
-Given `q_WI` and `q_BI`:
-
-- `q_WB = q_BI ⊗ q_WI`
-- `ω_B = R_BI * ω_I`
-- `a_B = R_BI * a_I`
-
-Given `g_I`:
-
-- `g_B = R_BI * g_I`
-
-Covariances rotate the same way and remain full.
-
-For the published AHRS orientation covariance specifically, runtime output
-policy is now:
-
-- derive the roll/pitch block from mounted gravity covariance using Jacobian-
-  based propagation through the OASIS roll/pitch mapping
-- allow distinct roll and pitch variances
-- allow nonzero roll/pitch cross-covariance
-- keep yaw outside the gravity-derived model because gravity does not observe
-  heading
-
-For orientation in particular, AHRS should preserve the upstream covariance as
-validation-boundary sensor metadata, but the published `ahrs/imu`
-`orientation_covariance` may follow the runtime AHRS output contract instead of
-simply forwarding the mounted upstream matrix unchanged.
-
-If the gravity-observable roll/pitch model is unavailable or invalid, the
-runtime should preserve that fact explicitly rather than inventing fake yaw or
-roll/pitch observability.
-
-If a downstream tilt-only product is published, it should derive its own
-roll/pitch covariance from gravity/down-direction observability rather than
-reusing the full rotated AHRS attitude covariance.
-
-This model assumes `T_BI` has already been solved from the boot gravity window
-or provided by an explicit external calibration source before runtime
-processing.
-Boot-time mounting solve behavior belongs in `AHRS_Mounting.md`, not here.
-
-The low-level `T_BI` application helper belongs in
-`localization/common/frames/mounting.py`. AHRS-specific use of the mounted
-result remains in `localization/ahrs/processing/`.
-
-### 4.4 Gravity consistency
-
-The gravity consistency stage compares the mounted attitude estimate against the
-measured gravity direction in `base_link` under the shared convention
-`WORLD_GRAVITY_DIRECTION = (0, 0, -1)`.
-
-Responsibilities:
-
-- evaluate the latest mounted gravity residual against explicit AHRS thresholds
-- classify gravity as gated in or rejected for diagnostics/state reporting
-- keep mounted AHRS outputs publishing when IMU and mounting are available
-- avoid turning gravity consistency into a yaw correction or EKF-like update
-
-- compute the predicted gravity direction from `q_WB`
-- compare measured and predicted direction with full covariance
-- use residual norm as the primary AHRS accept/reject gate
-- keep Mahalanobis distance as a published diagnostic because normalized
-  direction covariance can be overconfident for stationary checks
-- expose a clear correction hook if gravity-based roll/pitch refinement is
-  desired
-- expose mounting consistency metrics for diagnostics or future online
-  refinement
-
-This stage must not invent yaw observability from gravity.
-
-The reusable gravity-direction residual math should live in
-`localization/common/measurements/gravity_direction.py`. AHRS keeps the
-component-specific gating, reporting, and any refinement policy in
-`localization/ahrs/processing/gravity_consistency.py`.
-
-### 4.5 Node-facing integration responsibilities
-
-The ROS/node integration layer is responsible for adapting accepted core AHRS
-results into the standalone AHRS runtime products:
-
-- in standalone AHRS mode, publish TF identity for `world -> odom`
-- publish `odom -> base_link` from `q_WB`
-- publish a mounted `sensor_msgs/Imu` equivalent in `base_link`
-- publish diagnostics for IMU accept/reject counts, gravity accept/reject
-  counts, and gravity residual status
-
-This layer does not require a replay engine or separate measurement scheduler.
-
-Suggested ROS-layer responsibilities:
-
-- `ros_messages.py` maps `sensor_msgs/Imu` (`imu` and `imu_gravity`) and
-  `geometry_msgs/AccelWithCovarianceStamped` (`gravity`) into
-  `localization/common/data/` records and maps `AhrsOutput` from
-  `localization/ahrs/data/` back into ROS messages
-- `ros_publishers.py` owns topic publishers, diagnostics publication, and any
-  optional odometry wrapper publication
-- `ros_params.py` owns parameter declaration, validation, and frame-policy
-  loading for the node
-
----
-
-## 5. Testing targets
-
-Unit tests should cover:
-
-- quaternion normalization and rejection logic
-- gravity vector validation
-- frame rotation of vectors and covariance blocks
-- mounting transform application
-- gravity residual and gating behavior
-- independent cadence for `imu`, `imu_gravity`, and `gravity`
-- preservation of measurement timestamps from all three streams
-- deterministic handling of out-of-order timestamps
-- ROS conversion fidelity for `sensor_msgs/Imu` (`imu` and `imu_gravity`) and
-  `geometry_msgs/AccelWithCovarianceStamped` (`gravity`)
-
----
-
-## 6. Parameters
-
-- input topic name for `imu`
-- input topic name for `imu_gravity`
-- input topic name for `gravity`
-- output topic names
-- frame ids
-- transform lookup policy
-- out-of-order timestamp policy
-- clock-jump reset threshold
-- gravity residual gating policy
+and the Mahalanobis diagnostic is
+
+$$
+d_M=\sqrt{r^T\Sigma_u^{-1}r}.
+$$
+
+It is NaN when covariance inversion is unavailable and is never a gate.
+
+## Attitude covariance
+
+The session-yaw-zeroed attitude output derives roll and pitch uncertainty from
+fresh gravity covariance. Gravity is fresh for an IMU timestamp $t_i$ when
+
+$$
+0\leq t_i-t_g\leq0.2\,\mathrm{s}.
+$$
+
+Let $g_B=(g_x,g_y,g_z)^T$, $h=\sqrt{g_y^2+g_z^2}$, and
+$n^2=g_x^2+g_y^2+g_z^2$. The covariance propagation uses
+
+$$
+J_\phi=
+\begin{bmatrix}
+0 & g_z/h^2 & -g_y/h^2
+\end{bmatrix},
+$$
+
+$$
+J_\theta=
+\begin{bmatrix}
+h/n^2 &
+-g_xg_y/(hn^2) &
+-g_xg_z/(hn^2)
+\end{bmatrix}.
+$$
+
+With
+
+$$
+J=
+\begin{bmatrix}
+J_\phi\\
+J_\theta
+\end{bmatrix},
+$$
+
+the roll/pitch covariance is $J\Sigma_{gB}J^T$. The $3\times3$
+orientation covariance places that block in roll and pitch, sets yaw variance
+to the fixed value $0\,\mathrm{rad^2}$, and sets roll/yaw and pitch/yaw
+covariance to zero. Invalid, unavailable, or stale gravity covariance makes
+orientation covariance unknown. Upstream orientation covariance does not
+replace this policy on the session-yaw-zeroed output.
+
+## Session yaw
+
+For the first mounted `imu` attitude, let
+$\psi_0=\mathrm{yaw}(q_{WB,0})$ and
+$q_{OW}=q_z(-\psi_0)$. The session-relative base attitude is
+
+$$
+q_{OB}=\mathrm{normalize}(q_{OW}\otimes q_{WB}).
+$$
+
+The frame chain is base-to-world-to-odom, so $q_{OB}$ rotates base-frame
+vectors into the odom/session frame. Its inverse is $q_{BO}=q_{OB}^*$. This
+convention applies to the mounted gravity-removed IMU, odometry attitude, and
+the quaternion serialized on `odom -> base_link`. It does not apply to
+mounted gravity, the gravity-included IMU, or mounting TF.
+
+## Event and publication semantics
+
+Input streams are independent and are never paired or replayed. There is no
+fixed-lag buffer and no clock-jump reset.
+
+A gravity event validates and stores gravity, advances mounting calibration,
+and publishes mounted gravity if mounting exists. An `imu_gravity` event
+publishes its mounted sample if mounting exists. An `imu` event stores the
+latest angular velocity for optional mounting stationarity evidence, evaluates
+the current gravity residual when gravity exists, establishes or applies
+session yaw, and publishes the primary IMU and odometry outputs when mounting
+exists.
+
+Measurement publications retain the triggering measurement timestamp.
+Diagnostics and fixed TF refreshes use current time. Diagnostics and all
+currently available TF edges are published after every input event and at
+10 Hz.
+
+The published TF state is:
+
+- `world -> odom` is identity for the process lifetime.
+- `base_link -> imu_link` contains $q_{BI}$ and zero translation. Its
+  coefficients map IMU vectors into base coordinates, matching TF's
+  child-to-parent transform direction for this edge.
+- `odom -> base_link` contains $q_{OB}$ and zero translation after primary
+  attitude is available. Its coefficients map base vectors into odom
+  coordinates, matching TF's child-to-parent transform direction.
+
+## Diagnostic state
+
+Diagnostic state contains accepted, rejected, and stale IMU/gravity counters;
+the gravity-residual rejection count; latest residual norm and Mahalanobis
+distance; mounting availability; current gravity rejection; and bad-frame
+state used to select the status code.
+
+Status precedence is bad IMU frame, bad gravity frame, no accepted IMU, no
+accepted gravity, mounting unavailable, then OK. Residual values are NaN
+before a residual exists. No diagnostic state changes the numerical attitude
+output.

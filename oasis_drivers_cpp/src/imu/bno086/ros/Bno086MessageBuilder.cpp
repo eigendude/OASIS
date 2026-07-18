@@ -60,17 +60,18 @@ std::array<double, 4> MultiplyQuaternion(const std::array<double, 4>& lhs,
   };
 }
 
-std::array<double, 4> PredictQuaternion(const std::array<double, 4>& orientation_xyzw,
-                                        const OASIS::IMU::Vec3& gyro_rads,
-                                        double prediction_horizon_sec)
+std::array<double, 4> PredictQuaternion(
+    const std::array<double, 4>& orientation_world_from_imu_xyzw,
+    const OASIS::IMU::Vec3& gyro_rads,
+    double prediction_horizon_sec)
 {
   if (prediction_horizon_sec <= 0.0)
-    return orientation_xyzw;
+    return orientation_world_from_imu_xyzw;
 
   const double angularSpeed = std::sqrt(gyro_rads[0] * gyro_rads[0] + gyro_rads[1] * gyro_rads[1] +
                                         gyro_rads[2] * gyro_rads[2]);
   if (angularSpeed <= 1e-9)
-    return orientation_xyzw;
+    return orientation_world_from_imu_xyzw;
 
   const double halfAngle = 0.5 * angularSpeed * prediction_horizon_sec;
   const double sinHalfAngle = std::sin(halfAngle);
@@ -83,7 +84,7 @@ std::array<double, 4> PredictQuaternion(const std::array<double, 4>& orientation
   };
 
   std::array<double, 4> predictedOrientation =
-      MultiplyQuaternion(orientation_xyzw, deltaQuaternion);
+      MultiplyQuaternion(orientation_world_from_imu_xyzw, deltaQuaternion);
   NormalizeQuaternion(predictedOrientation);
   return predictedOrientation;
 }
@@ -144,10 +145,10 @@ sensor_msgs::msg::Imu BuildBno086PresentImuMessage(
   imuMsg.header.stamp = stamp;
   imuMsg.header.frame_id = config.frame_id;
 
-  imuMsg.orientation.x = latest_frame.orientation_xyzw[0];
-  imuMsg.orientation.y = latest_frame.orientation_xyzw[1];
-  imuMsg.orientation.z = latest_frame.orientation_xyzw[2];
-  imuMsg.orientation.w = latest_frame.orientation_xyzw[3];
+  imuMsg.orientation.x = latest_frame.orientation_world_from_imu_xyzw[0];
+  imuMsg.orientation.y = latest_frame.orientation_world_from_imu_xyzw[1];
+  imuMsg.orientation.z = latest_frame.orientation_world_from_imu_xyzw[2];
+  imuMsg.orientation.w = latest_frame.orientation_world_from_imu_xyzw[3];
 
   imuMsg.angular_velocity.x = latest_frame.gyro_rads[0];
   imuMsg.angular_velocity.y = latest_frame.gyro_rads[1];
@@ -183,10 +184,10 @@ sensor_msgs::msg::Imu BuildBno086ImuGravityMessage(
   imuGravityMsg.header.stamp = stamp;
   imuGravityMsg.header.frame_id = config.frame_id;
 
-  imuGravityMsg.orientation.x = latest_frame.orientation_xyzw[0];
-  imuGravityMsg.orientation.y = latest_frame.orientation_xyzw[1];
-  imuGravityMsg.orientation.z = latest_frame.orientation_xyzw[2];
-  imuGravityMsg.orientation.w = latest_frame.orientation_xyzw[3];
+  imuGravityMsg.orientation.x = latest_frame.orientation_world_from_imu_xyzw[0];
+  imuGravityMsg.orientation.y = latest_frame.orientation_world_from_imu_xyzw[1];
+  imuGravityMsg.orientation.z = latest_frame.orientation_world_from_imu_xyzw[2];
+  imuGravityMsg.orientation.w = latest_frame.orientation_world_from_imu_xyzw[3];
 
   imuGravityMsg.angular_velocity.x = latest_frame.gyro_rads[0];
   imuGravityMsg.angular_velocity.y = latest_frame.gyro_rads[1];
@@ -255,8 +256,9 @@ sensor_msgs::msg::Imu BuildBno086PredictedImuMessage(
     const sensor_msgs::msg::Imu& present_imu)
 {
   sensor_msgs::msg::Imu predictedImuMsg = present_imu;
-  const std::array<double, 4> predictedOrientation = PredictQuaternion(
-      latest_frame.orientation_xyzw, latest_frame.gyro_rads, config.prediction_horizon_sec);
+  const std::array<double, 4> predictedOrientation =
+      PredictQuaternion(latest_frame.orientation_world_from_imu_xyzw, latest_frame.gyro_rads,
+                        config.prediction_horizon_sec);
 
   predictedImuMsg.orientation.x = predictedOrientation[0];
   predictedImuMsg.orientation.y = predictedOrientation[1];

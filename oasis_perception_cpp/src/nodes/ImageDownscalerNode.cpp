@@ -85,8 +85,8 @@ bool ImageDownscalerNode::Initialize()
     return false;
   }
 
-  const image_transport::TransportHints transportHints{
-      &m_node, std::string{DEFAULT_IMAGE_TRANSPORT}, std::string{IMAGE_TRANSPORT_PARAMETER}};
+  const image_transport::TransportHints transportHints{m_node, std::string{DEFAULT_IMAGE_TRANSPORT},
+                                                       std::string{IMAGE_TRANSPORT_PARAMETER}};
   const std::string imageTransport = transportHints.getTransport();
 
   std::string outputResolution;

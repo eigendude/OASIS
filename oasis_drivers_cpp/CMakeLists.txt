@@ -191,6 +191,13 @@ add_library(bno086_utils
   src/imu/bno086/utils/Bno086TimingUtils.cpp
 )
 
+add_library(bno086_rotation_vector_decoder
+  src/imu/bno086/core/Bno086RotationVectorDecoder.cpp
+)
+target_link_libraries(bno086_rotation_vector_decoder
+  bno086_utils
+)
+
 add_library(bno086_diagnostics
   src/imu/bno086/diagnostics/Bno086DrainHealth.cpp
   src/imu/bno086/diagnostics/Bno086RateHealth.cpp
@@ -236,6 +243,7 @@ target_link_libraries(bno086_imu_driver_component PUBLIC
   bno086_drain_policy
   bno086_gravity_utils
   bno086_orientation_covariance_policy
+  bno086_rotation_vector_decoder
   bno086_ros_helpers
   bno086_sample_coherence
   bno086_sh2_timestamp
@@ -270,6 +278,7 @@ install(
     bno086_gravity_utils
     bno086_imu_gravity_accel_history
     bno086_orientation_covariance_policy
+    bno086_rotation_vector_decoder
     bno086_ros_helpers
     bno086_sample_coherence
     bno086_sh2
@@ -517,6 +526,8 @@ install(
 ################################################################################
 
 if(BUILD_TESTING)
+  find_package(tf2_msgs REQUIRED)
+
   find_package(ament_cmake_gtest REQUIRED)
   find_package(ament_lint_auto REQUIRED)
   # Copyright and license must be present in all source files
@@ -581,6 +592,20 @@ if(BUILD_TESTING)
     Eigen3::Eigen
   )
 
+  ament_add_gtest(test_ahrs_node
+    test/ahrs/test_AhrsNode.cpp
+  )
+  target_link_libraries(test_ahrs_node
+    ahrs_component
+    ahrs_core
+    Eigen3::Eigen
+    ${geometry_msgs_TARGETS}
+    ${nav_msgs_TARGETS}
+    rclcpp::rclcpp
+    ${sensor_msgs_TARGETS}
+    ${tf2_msgs_TARGETS}
+  )
+
   ament_add_gtest(test_zupt_detector
     test/localization/test_ZuptDetector.cpp
   )
@@ -630,8 +655,22 @@ if(BUILD_TESTING)
   ament_add_gtest(test_bno086_message_builder
     test/imu/bno086/test_Bno086MessageBuilder.cpp
   )
+
+  ament_add_gtest(test_bno086_quaternion_path
+    test/imu/bno086/test_Bno086QuaternionPath.cpp
+  )
+  target_link_libraries(test_bno086_quaternion_path
+    bno086_rotation_vector_decoder
+    bno086_ros_helpers
+    bno086_sh2
+    bno086_shtp
+    Eigen3::Eigen
+    rclcpp::rclcpp
+    ${sensor_msgs_TARGETS}
+  )
   target_link_libraries(test_bno086_message_builder
     bno086_ros_helpers
+    Eigen3::Eigen
     ${geometry_msgs_TARGETS}
     ${oasis_msgs_TARGETS}
     rclcpp::rclcpp

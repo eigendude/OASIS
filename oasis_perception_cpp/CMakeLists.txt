@@ -33,6 +33,18 @@ if(POLICY CMP0074)
   cmake_policy(SET CMP0074 NEW)
 endif()
 
+# Policy CMP0144: Allow PCL's FindFLANN module to use FLANN_ROOT
+if(POLICY CMP0144)
+  cmake_policy(SET CMP0144 NEW)
+  set(CMAKE_POLICY_DEFAULT_CMP0144 NEW)
+endif()
+
+# PCL still relies on CMake's FindBoost module, which CMP0167 removes in its
+# NEW behavior. Keep compatibility until PCL switches to Boost's config package
+if(POLICY CMP0167)
+  cmake_policy(SET CMP0167 OLD)
+endif()
+
 # Load OpenCV variables from the environment
 if(DEFINED ENV{OpenCV_DIR})
   set(OpenCV_DIR $ENV{OpenCV_DIR} CACHE PATH "Path to OpenCVConfig.cmake")

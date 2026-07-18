@@ -18,9 +18,9 @@ using namespace OASIS::AHRS;
 namespace
 {
 constexpr double kMinGravityNorm = 1.0e-9;
-constexpr double kMinBootGravityNorm = 1.0e-3;
+constexpr double kMinAttitudeCovarianceGravityNorm = 1.0e-3;
 constexpr double kMinRollPitchObservableNorm = 1.0e-3;
-constexpr double kNormalizedCovarianceFloor = 1.0e-12;
+constexpr double kNormalizedCovarianceFloor = 1.0e-9;
 constexpr double kMinCovarianceDeterminant = 1.0e-30;
 
 bool IsFiniteMatrix3(const Eigen::Matrix3d& matrix)
@@ -77,8 +77,7 @@ std::optional<AhrsMountingSolution> BootMountingCalibrator::AddGravitySample(
     return std::nullopt;
   }
 
-  const std::optional<Eigen::Vector3d> gravity_unit =
-      NormalizeVector(gravity_imu, kMinBootGravityNorm);
+  const std::optional<Eigen::Vector3d> gravity_unit = NormalizeVector(gravity_imu, kMinGravityNorm);
   if (!gravity_unit.has_value())
     return std::nullopt;
 
@@ -96,11 +95,11 @@ std::optional<AhrsMountingSolution> BootMountingCalibrator::AddGravitySample(
     return std::nullopt;
 
   const std::optional<Eigen::Vector3d> mean_gravity =
-      NormalizeVector(m_gravity_sum, kMinBootGravityNorm);
+      NormalizeVector(m_gravity_sum, kMinGravityNorm);
   if (!mean_gravity.has_value())
     return std::nullopt;
 
-  m_solution = SolveMountingFromGravity(*mean_gravity, m_config, m_sample_count, span_sec);
+  m_solution = SolveMountingFromGravity(*mean_gravity, m_sample_count, span_sec);
   return m_solution;
 }
 
@@ -130,11 +129,6 @@ std::optional<Eigen::Quaterniond> OASIS::AHRS::NormalizeQuaternion(
   return normalized;
 }
 
-Eigen::Quaterniond OASIS::AHRS::ConjugateQuaternion(const Eigen::Quaterniond& quaternion)
-{
-  return quaternion.conjugate();
-}
-
 Eigen::Quaterniond OASIS::AHRS::QuaternionFromRollPitchYaw(double roll_rad,
                                                            double pitch_rad,
                                                            double yaw_rad)
@@ -155,6 +149,19 @@ double OASIS::AHRS::YawFromQuaternion(const Eigen::Quaterniond& quaternion)
   return std::atan2(2.0 * (quaternion.w() * quaternion.z() + quaternion.x() * quaternion.y()),
                     1.0 -
                         2.0 * (quaternion.y() * quaternion.y() + quaternion.z() * quaternion.z()));
+}
+
+Eigen::Quaterniond OASIS::AHRS::ComposeWorldFromBase(const Eigen::Quaterniond& q_WI,
+                                                     const Eigen::Quaterniond& q_BI)
+{
+  const Eigen::Quaterniond q_IB = q_BI.conjugate();
+  return (q_WI * q_IB).normalized();
+}
+
+Eigen::Quaterniond OASIS::AHRS::ComposeOdomFromBase(const Eigen::Quaterniond& q_OW,
+                                                    const Eigen::Quaterniond& q_WB)
+{
+  return (q_OW * q_WB).normalized();
 }
 
 Eigen::Matrix3d OASIS::AHRS::RotateCovariance(const Eigen::Matrix3d& rotation,
@@ -194,6 +201,9 @@ std::optional<Eigen::Matrix3d> OASIS::AHRS::ParseMatrix3(const std::array<double
   Eigen::Matrix3d matrix;
   matrix << values[0], values[1], values[2], values[3], values[4], values[5], values[6], values[7],
       values[8];
+  if (matrix(0, 0) < 0.0 || matrix(1, 1) < 0.0 || matrix(2, 2) < 0.0)
+    return std::nullopt;
+
   return matrix;
 }
 
@@ -206,13 +216,10 @@ std::optional<Eigen::Matrix3d> OASIS::AHRS::ParseLinearCovariance3(
 }
 
 std::optional<AhrsMountingSolution> OASIS::AHRS::SolveMountingFromGravity(
-    const Eigen::Vector3d& mean_gravity_unit_imu,
-    const AhrsMountingConfig& config,
-    int sample_count,
-    double span_sec)
+    const Eigen::Vector3d& mean_gravity_unit_imu, int sample_count, double span_sec)
 {
   const std::optional<Eigen::Vector3d> normalized =
-      NormalizeVector(mean_gravity_unit_imu, kMinBootGravityNorm);
+      NormalizeVector(mean_gravity_unit_imu, kMinGravityNorm);
   if (!normalized.has_value())
     return std::nullopt;
 
@@ -236,13 +243,10 @@ std::optional<AhrsMountingSolution> OASIS::AHRS::SolveMountingFromGravity(
   AhrsMountingSolution solution;
   solution.q_BI = *q_BI;
   solution.R_BI = q_BI->toRotationMatrix();
-  solution.mean_gravity_unit_imu = *normalized;
   solution.roll_rad = roll_rad;
   solution.pitch_rad = pitch_rad;
-  solution.yaw_rad = yaw_rad;
   solution.sample_count = sample_count;
   solution.span_sec = span_sec;
-  (void)config;
   return solution;
 }
 
@@ -258,12 +262,10 @@ std::optional<AhrsGravityResidual> OASIS::AHRS::ComputeGravityResidual(
 
   AhrsGravityResidual residual;
   residual.measured_direction = *measured_direction;
-  residual.predicted_direction = q_WB.toRotationMatrix() * Eigen::Vector3d(0.0, 0.0, -1.0);
+  const Eigen::Quaterniond q_BW = q_WB.conjugate();
+  residual.predicted_direction = q_BW.toRotationMatrix() * Eigen::Vector3d(0.0, 0.0, -1.0);
   residual.residual_vector = residual.measured_direction - residual.predicted_direction;
   residual.residual_norm = residual.residual_vector.norm();
-
-  if (residual.residual_norm <= 0.0)
-    residual.mahalanobis_distance = 0.0;
 
   if (measured_gravity_covariance_base.has_value())
   {
@@ -285,7 +287,7 @@ std::optional<AhrsGravityResidual> OASIS::AHRS::ComputeGravityResidual(
     {
       const double quadratic =
           residual.residual_vector.transpose() * (*inverse) * residual.residual_vector;
-      if (quadratic >= 0.0)
+      if (std::isfinite(quadratic) && quadratic >= 0.0)
         residual.mahalanobis_distance = std::sqrt(quadratic);
     }
   }
@@ -308,7 +310,7 @@ std::optional<Eigen::Matrix3d> OASIS::AHRS::GravityCovarianceToRollPitchCovarian
   const double gravity_y = gravity_base.y();
   const double gravity_z = gravity_base.z();
   const double gravity_norm = gravity_base.norm();
-  if (gravity_norm < kMinBootGravityNorm)
+  if (gravity_norm < kMinAttitudeCovarianceGravityNorm)
     return std::nullopt;
 
   const double lateral_norm = std::hypot(gravity_y, gravity_z);

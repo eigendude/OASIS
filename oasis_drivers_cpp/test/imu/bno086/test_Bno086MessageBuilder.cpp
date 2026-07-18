@@ -10,9 +10,11 @@
 #include "imu/bno086/ros/Bno086Qos.hpp"
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <string>
 
+#include <Eigen/Geometry>
 #include <gtest/gtest.h>
 #include <rclcpp/time.hpp>
 #include <rmw/types.h>
@@ -36,7 +38,7 @@ OASIS::IMU::BNO086::ImuSampleFrame MakeFrame()
   frame.has_linear_accel = true;
   frame.has_accel = true;
   frame.has_gravity = true;
-  frame.orientation_xyzw = {0.0, 0.0, 0.0, 1.0};
+  frame.orientation_world_from_imu_xyzw = {0.0, 0.0, 0.0, 1.0};
   frame.gyro_rads = {0.1, 0.2, 0.3};
   frame.linear_accel_mps2 = {1.0, 2.0, 3.0};
   frame.accel_mps2 = {4.0, 5.0, 6.0};
@@ -65,6 +67,23 @@ TEST(Bno086MessageBuilder, PresentImuPreservesStampAndFrameId)
   EXPECT_EQ("imu_link", msg.header.frame_id);
   EXPECT_DOUBLE_EQ(1.0, msg.linear_acceleration.x);
   EXPECT_DOUBLE_EQ(5.0, msg.orientation_covariance[4]);
+}
+
+TEST(Bno086MessageBuilder, RotationVectorPublishesWorldFromImuOrientation)
+{
+  const OASIS::ROS::Bno086RosMessageConfig config = MakeConfig();
+  OASIS::IMU::BNO086::ImuSampleFrame frame = MakeFrame();
+  frame.orientation_world_from_imu_xyzw = {0.0, 0.0, std::sin(M_PI / 4.0), std::cos(M_PI / 4.0)};
+
+  const sensor_msgs::msg::Imu msg =
+      OASIS::ROS::BuildBno086PresentImuMessage(config, frame, rclcpp::Time{});
+  const Eigen::Quaterniond orientation_world_from_imu(msg.orientation.w, msg.orientation.x,
+                                                      msg.orientation.y, msg.orientation.z);
+  const Eigen::Vector3d imu_x_in_world = orientation_world_from_imu * Eigen::Vector3d::UnitX();
+
+  EXPECT_NEAR(imu_x_in_world.x(), 0.0, 1.0e-12);
+  EXPECT_NEAR(imu_x_in_world.y(), 1.0, 1.0e-12);
+  EXPECT_NEAR(imu_x_in_world.z(), 0.0, 1.0e-12);
 }
 
 TEST(Bno086MessageBuilder, ImuGravityUsesSelectedAccelSample)
@@ -133,6 +152,30 @@ TEST(Bno086MessageBuilder, PredictedImuWithZeroGyroPreservesOrientation)
   EXPECT_DOUBLE_EQ(present.orientation.y, predicted.orientation.y);
   EXPECT_DOUBLE_EQ(present.orientation.z, predicted.orientation.z);
   EXPECT_DOUBLE_EQ(present.orientation.w, predicted.orientation.w);
+}
+
+TEST(Bno086MessageBuilder, PredictionAppliesImuFrameDeltaAfterWorldFromImuAttitude)
+{
+  const OASIS::ROS::Bno086RosMessageConfig config = MakeConfig(0.1);
+  OASIS::IMU::BNO086::ImuSampleFrame frame = MakeFrame();
+  frame.orientation_world_from_imu_xyzw = {0.0, 0.0, std::sin(M_PI / 4.0), std::cos(M_PI / 4.0)};
+  frame.gyro_rads = {M_PI, 0.0, 0.0};
+  const sensor_msgs::msg::Imu present =
+      OASIS::ROS::BuildBno086PresentImuMessage(config, frame, rclcpp::Time{});
+
+  const sensor_msgs::msg::Imu predicted =
+      OASIS::ROS::BuildBno086PredictedImuMessage(config, frame, present);
+  const Eigen::Quaterniond actual(predicted.orientation.w, predicted.orientation.x,
+                                  predicted.orientation.y, predicted.orientation.z);
+  const Eigen::Quaterniond q_WI(std::cos(M_PI / 4.0), 0.0, 0.0, std::sin(M_PI / 4.0));
+  const Eigen::Quaterniond delta_I(std::cos(M_PI / 20.0), std::sin(M_PI / 20.0), 0.0, 0.0);
+  const Eigen::Quaterniond expected = q_WI * delta_I;
+  const Eigen::Quaterniond wrong_order = delta_I * q_WI;
+
+  const Eigen::Vector3d actual_imu_y_in_world = actual * Eigen::Vector3d::UnitY();
+  const Eigen::Vector3d expected_imu_y_in_world = expected * Eigen::Vector3d::UnitY();
+  EXPECT_TRUE(actual_imu_y_in_world.isApprox(expected_imu_y_in_world, 1.0e-12));
+  EXPECT_GT((actual_imu_y_in_world - wrong_order * Eigen::Vector3d::UnitY()).norm(), 0.1);
 }
 
 TEST(Bno086MessageBuilder, ImuVrPreservesPredictionMetadata)
