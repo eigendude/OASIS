@@ -27,7 +27,7 @@ struct ZuptDetectorConfig
    * Expected range is positive and below the moving threshold. The detector
    * compares the angular-velocity norm against this value during quiet dwell.
    */
-  double gyro_enter_threshold_rads{0.06};
+  double gyro_enter_threshold_rads;
 
   /*!
    * \brief Gyro norm threshold in rad/s required to exit stationary mode
@@ -35,7 +35,7 @@ struct ZuptDetectorConfig
    * Expected range is positive and above the enter threshold. A threshold
    * breach contributes raw motion evidence for clearing stationary.
    */
-  double gyro_exit_threshold_rads{0.09};
+  double gyro_exit_threshold_rads;
 
   /*!
    * \brief Linear-acceleration norm threshold in m/s^2 for stationary entry
@@ -44,7 +44,7 @@ struct ZuptDetectorConfig
    * compares the linear-acceleration norm against this value during quiet
    * dwell.
    */
-  double accel_enter_threshold_mps2{0.18};
+  double accel_enter_threshold_mps2;
 
   /*!
    * \brief Linear-acceleration norm threshold in m/s^2 for stationary exit
@@ -52,7 +52,7 @@ struct ZuptDetectorConfig
    * Expected range is positive and above the enter threshold. A threshold
    * breach contributes raw motion evidence for clearing stationary.
    */
-  double accel_exit_threshold_mps2{0.28};
+  double accel_exit_threshold_mps2;
 
   /*!
    * \brief Minimum quiet dwell time in seconds before stationary assertion
@@ -60,7 +60,7 @@ struct ZuptDetectorConfig
    * Expected range is non-negative. Computed as the current sample timestamp
    * minus the start time of the current enter candidate.
    */
-  double min_stationary_sec{0.18};
+  double min_stationary_sec;
 
   /*!
    * \brief Minimum moving dwell time in seconds before stationary clearing
@@ -68,7 +68,7 @@ struct ZuptDetectorConfig
    * Expected range is non-negative. Computed as the current sample timestamp
    * minus the start time of the current exit candidate.
    */
-  double min_moving_sec{0.01};
+  double min_moving_sec;
 
   /*!
    * \brief Stationary linear-velocity sigma in m/s
@@ -76,7 +76,7 @@ struct ZuptDetectorConfig
    * Expected range is positive. The square of this value is published on the
    * linear diagonal of the stationary ZUPT covariance.
    */
-  double stationary_linear_velocity_sigma_mps{0.06};
+  double stationary_linear_velocity_sigma_mps;
 
   /*!
    * \brief Stationary angular-velocity sigma in rad/s
@@ -84,7 +84,7 @@ struct ZuptDetectorConfig
    * Expected range is positive. The square of this value is published on the
    * angular diagonal of the stationary ZUPT covariance.
    */
-  double stationary_angular_velocity_sigma_rads{0.06};
+  double stationary_angular_velocity_sigma_rads;
 
   /*!
    * \brief Moving linear-velocity variance in (m/s)^2
@@ -92,7 +92,7 @@ struct ZuptDetectorConfig
    * Expected range is positive. Used while moving and as the sanitization
    * fallback for invalid published linear variances.
    */
-  double moving_linear_variance_mps2{1.0e6};
+  double moving_linear_variance_mps2;
 
   /*!
    * \brief Moving angular-velocity variance in (rad/s)^2
@@ -100,7 +100,7 @@ struct ZuptDetectorConfig
    * Expected range is positive. Used while moving and as the sanitization
    * fallback for invalid published angular variances.
    */
-  double moving_angular_variance_rads2{1.0e6};
+  double moving_angular_variance_rads2;
 };
 
 /*!

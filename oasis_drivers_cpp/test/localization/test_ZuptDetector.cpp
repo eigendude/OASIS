@@ -30,6 +30,10 @@ constexpr Vector3 kLoudAccelMps2{{0.3, 0.0, 0.0}};
 ZuptDetector MakeDetector()
 {
   ZuptDetectorConfig config;
+  config.gyro_enter_threshold_rads = 0.06;
+  config.gyro_exit_threshold_rads = 0.09;
+  config.accel_enter_threshold_mps2 = 0.18;
+  config.accel_exit_threshold_mps2 = 0.28;
   config.min_stationary_sec = 0.18;
   config.min_moving_sec = 0.01;
   config.stationary_linear_velocity_sigma_mps = 0.06;

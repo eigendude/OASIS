@@ -117,19 +117,18 @@ void ZuptDetectorNode::HandleImu(const sensor_msgs::msg::Imu& message)
 
 ZuptDetectorConfig ZuptDetectorNode::ReadDetectorConfig()
 {
-  ZuptDetectorConfig defaults;
-  declare_parameter(kParamGyroEnterThresholdRads, defaults.gyro_enter_threshold_rads);
-  declare_parameter(kParamGyroExitThresholdRads, defaults.gyro_exit_threshold_rads);
-  declare_parameter(kParamAccelEnterThresholdMps2, defaults.accel_enter_threshold_mps2);
-  declare_parameter(kParamAccelExitThresholdMps2, defaults.accel_exit_threshold_mps2);
-  declare_parameter(kParamMinStationarySec, defaults.min_stationary_sec);
-  declare_parameter(kParamMinMovingSec, defaults.min_moving_sec);
+  declare_parameter(kParamGyroEnterThresholdRads, rclcpp::ParameterType::PARAMETER_DOUBLE);
+  declare_parameter(kParamGyroExitThresholdRads, rclcpp::ParameterType::PARAMETER_DOUBLE);
+  declare_parameter(kParamAccelEnterThresholdMps2, rclcpp::ParameterType::PARAMETER_DOUBLE);
+  declare_parameter(kParamAccelExitThresholdMps2, rclcpp::ParameterType::PARAMETER_DOUBLE);
+  declare_parameter(kParamMinStationarySec, rclcpp::ParameterType::PARAMETER_DOUBLE);
+  declare_parameter(kParamMinMovingSec, rclcpp::ParameterType::PARAMETER_DOUBLE);
   declare_parameter(kParamStationaryLinearVelocitySigmaMps,
-                    defaults.stationary_linear_velocity_sigma_mps);
+                    rclcpp::ParameterType::PARAMETER_DOUBLE);
   declare_parameter(kParamStationaryAngularVelocitySigmaRads,
-                    defaults.stationary_angular_velocity_sigma_rads);
-  declare_parameter(kParamMovingLinearVarianceMps2, defaults.moving_linear_variance_mps2);
-  declare_parameter(kParamMovingAngularVarianceRads2, defaults.moving_angular_variance_rads2);
+                    rclcpp::ParameterType::PARAMETER_DOUBLE);
+  declare_parameter(kParamMovingLinearVarianceMps2, rclcpp::ParameterType::PARAMETER_DOUBLE);
+  declare_parameter(kParamMovingAngularVarianceRads2, rclcpp::ParameterType::PARAMETER_DOUBLE);
 
   ZuptDetectorConfig config;
   config.gyro_enter_threshold_rads = get_parameter(kParamGyroEnterThresholdRads).as_double();
@@ -167,11 +166,10 @@ geometry_msgs::msg::TwistWithCovarianceStamped ZuptDetectorNode::BuildZuptMessag
 std::array<double, 36> ZuptDetectorNode::BuildZuptCovariance(double linear_variance_mps2,
                                                              double angular_variance_rads2) const
 {
-  const ZuptDetectorConfig defaults;
   const double published_linear_variance_mps2 =
-      SanitizePositiveVariance(linear_variance_mps2, defaults.moving_linear_variance_mps2);
+      SanitizePositiveVariance(linear_variance_mps2, m_config.moving_linear_variance_mps2);
   const double published_angular_variance_rads2 =
-      SanitizePositiveVariance(angular_variance_rads2, defaults.moving_angular_variance_rads2);
+      SanitizePositiveVariance(angular_variance_rads2, m_config.moving_angular_variance_rads2);
 
   std::array<double, 36> covariance{};
   std::fill(covariance.begin(), covariance.end(), 0.0);

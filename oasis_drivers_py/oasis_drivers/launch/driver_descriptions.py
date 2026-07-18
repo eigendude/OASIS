@@ -635,6 +635,20 @@ class DriverDescriptions:
                 package=CPP_PACKAGE_NAME,
                 plugin="OASIS::ROS::ZuptDetectorNode",
                 name=f"zupt_detector_{host_id}",
+                parameters=[
+                    {
+                        "gyro_enter_threshold_rads": 0.06,
+                        "gyro_exit_threshold_rads": 0.09,
+                        "accel_enter_threshold_mps2": 0.18,
+                        "accel_exit_threshold_mps2": 0.28,
+                        "min_stationary_sec": 0.18,
+                        "min_moving_sec": 0.01,
+                        "stationary_linear_velocity_sigma_mps": 0.06,
+                        "stationary_angular_velocity_sigma_rads": 0.06,
+                        "moving_linear_variance_mps2": 1.0e6,
+                        "moving_angular_variance_rads2": 1.0e6,
+                    }
+                ],
                 remappings=[
                     ("imu", f"{host_id}/imu"),
                     ("zupt_flag", f"{host_id}/zupt_flag"),
