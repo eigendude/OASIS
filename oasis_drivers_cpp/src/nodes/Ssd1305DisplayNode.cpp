@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <stdexcept>
 #include <utility>
 
@@ -45,7 +46,8 @@ constexpr const char* PARAM_THRESHOLD = "threshold";
 constexpr const char* PARAM_INVERT_PIXELS = "invert_pixels";
 constexpr const char* PARAM_ROTATION = "rotation";
 constexpr const char* PARAM_UPDATE_RATE_HZ = "update_rate_hz";
-constexpr const char* PARAM_RECOVER_AFTER_FAILURES = "recover_after_failures";
+constexpr const char* PARAM_RECONNECT_INTERVAL_SEC = "reconnect_interval_sec";
+constexpr const char* PARAM_RECONNECT_SETTLE_SEC = "reconnect_settle_sec";
 constexpr const char* PARAM_ENABLED = "enabled";
 constexpr const char* PARAM_BLANK_ON_SHUTDOWN = "blank_on_shutdown";
 constexpr const char* PARAM_REJECT_WRONG_DIMENSIONS = "reject_wrong_dimensions";
@@ -62,7 +64,8 @@ constexpr int DEFAULT_THRESHOLD = 127;
 constexpr bool DEFAULT_INVERT_PIXELS = false;
 constexpr int DEFAULT_ROTATION = 0;
 constexpr double DEFAULT_UPDATE_RATE_HZ = 30.0;
-constexpr int DEFAULT_RECOVER_AFTER_FAILURES = 3;
+constexpr double DEFAULT_RECONNECT_INTERVAL_SEC = 1.0;
+constexpr double DEFAULT_RECONNECT_SETTLE_SEC = 0.5;
 constexpr bool DEFAULT_ENABLED = true;
 constexpr bool DEFAULT_BLANK_ON_SHUTDOWN = true;
 constexpr bool DEFAULT_REJECT_WRONG_DIMENSIONS = true;
@@ -124,17 +127,22 @@ Ssd1305DisplayNode::Ssd1305DisplayNode(
         .clip_wrong_dimensions = DEFAULT_CLIP_WRONG_DIMENSIONS,
     },
     m_updateRateHz(DEFAULT_UPDATE_RATE_HZ),
-    m_recoverAfterFailures(static_cast<unsigned>(DEFAULT_RECOVER_AFTER_FAILURES)),
+    m_reconnectIntervalSec(DEFAULT_RECONNECT_INTERVAL_SEC),
+    m_reconnectSettleSec(DEFAULT_RECONNECT_SETTLE_SEC),
     m_blankOnShutdown(DEFAULT_BLANK_ON_SHUTDOWN),
     m_enablePartialUpdates(DEFAULT_ENABLE_PARTIAL_UPDATES),
     m_device(std::move(device)),
     m_frontBuffer{},
     m_hasPendingFrame(false),
+    m_desiredGeneration(0),
     m_displayEnabled(DEFAULT_ENABLED),
-    m_consecutiveFailures(0)
+    m_controllerState(ControllerState::Disconnected),
+    m_failedReconnectAttempts(0)
 {
   ReadConfig();
-  InitializeDevice();
+
+  if (!m_device)
+    m_device = std::make_unique<OASIS::Display::Ssd1305Device>(m_deviceConfig);
 
   // ROS topics
   m_imageSubscription = create_subscription<sensor_msgs::msg::Image>(
@@ -163,9 +171,20 @@ Ssd1305DisplayNode::Ssd1305DisplayNode(
   // ROS timers
   m_updateTimer =
       create_wall_timer(TimerPeriod(m_updateRateHz), [this]() { (void)FlushPendingFrame(); });
+  m_reconnectTimer = create_wall_timer(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                           std::chrono::duration<double>(m_reconnectIntervalSec)),
+                                       [this]() { (void)AttemptReconnect(); });
+  const auto settle_period = std::max(std::chrono::nanoseconds(1),
+                                      std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                          std::chrono::duration<double>(m_reconnectSettleSec)));
+  m_stabilizationTimer =
+      create_wall_timer(settle_period, [this]() { (void)CompleteStabilization(); });
+  m_stabilizationTimer->cancel();
+
+  AttemptInitialConnection();
 
   RCLCPP_INFO(get_logger(),
-              "SSD1305 initialized: device=%s address=0x%02X size=%zux%zu "
+              "SSD1305 configured: device=%s address=0x%02X size=%zux%zu "
               "column_offset=%u rotation=%d contrast=%u update_rate_hz=%.3f "
               "enabled=%s partial_updates=%s",
               m_deviceConfig.i2c_device.c_str(), m_deviceConfig.i2c_address, m_deviceConfig.width,
@@ -179,10 +198,17 @@ Ssd1305DisplayNode::~Ssd1305DisplayNode()
 {
   if (m_updateTimer)
     m_updateTimer->cancel();
+  if (m_reconnectTimer)
+    m_reconnectTimer->cancel();
+  if (m_stabilizationTimer)
+    m_stabilizationTimer->cancel();
 
   // m_deviceMutex serializes all controller access, including shutdown
   std::scoped_lock device_lock(m_deviceMutex);
   if (!m_device)
+    return;
+
+  if (m_controllerState != ControllerState::Ready)
     return;
 
   if (m_blankOnShutdown)
@@ -220,7 +246,8 @@ void Ssd1305DisplayNode::ReadConfig()
   declare_parameter(PARAM_INVERT_PIXELS, DEFAULT_INVERT_PIXELS);
   declare_parameter(PARAM_ROTATION, DEFAULT_ROTATION);
   declare_parameter(PARAM_UPDATE_RATE_HZ, DEFAULT_UPDATE_RATE_HZ);
-  declare_parameter(PARAM_RECOVER_AFTER_FAILURES, DEFAULT_RECOVER_AFTER_FAILURES);
+  declare_parameter(PARAM_RECONNECT_INTERVAL_SEC, DEFAULT_RECONNECT_INTERVAL_SEC);
+  declare_parameter(PARAM_RECONNECT_SETTLE_SEC, DEFAULT_RECONNECT_SETTLE_SEC);
   declare_parameter(PARAM_ENABLED, DEFAULT_ENABLED);
   declare_parameter(PARAM_BLANK_ON_SHUTDOWN, DEFAULT_BLANK_ON_SHUTDOWN);
   declare_parameter(PARAM_REJECT_WRONG_DIMENSIONS, DEFAULT_REJECT_WRONG_DIMENSIONS);
@@ -233,8 +260,8 @@ void Ssd1305DisplayNode::ReadConfig()
   const int column_offset = static_cast<int>(get_parameter(PARAM_COLUMN_OFFSET).as_int());
   const int contrast = static_cast<int>(get_parameter(PARAM_CONTRAST).as_int());
   const int threshold = static_cast<int>(get_parameter(PARAM_THRESHOLD).as_int());
-  const int recover_after_failures =
-      static_cast<int>(get_parameter(PARAM_RECOVER_AFTER_FAILURES).as_int());
+  const double reconnect_interval_sec = get_parameter(PARAM_RECONNECT_INTERVAL_SEC).as_double();
+  const double reconnect_settle_sec = get_parameter(PARAM_RECONNECT_SETTLE_SEC).as_double();
 
   if (column_offset < 0 || column_offset > 4)
     throw std::invalid_argument("column_offset must be in [0, 4] for 128 x 32 SSD1305 panels");
@@ -242,8 +269,10 @@ void Ssd1305DisplayNode::ReadConfig()
     throw std::invalid_argument("contrast must be in [0, 255]");
   if (threshold < 0 || threshold > 255)
     throw std::invalid_argument("threshold must be in [0, 255]");
-  if (recover_after_failures <= 0)
-    throw std::invalid_argument("recover_after_failures must be positive");
+  if (!std::isfinite(reconnect_interval_sec) || reconnect_interval_sec <= 0.0)
+    throw std::invalid_argument("reconnect_interval_sec must be finite and positive");
+  if (!std::isfinite(reconnect_settle_sec) || reconnect_settle_sec < 0.0)
+    throw std::invalid_argument("reconnect_settle_sec must be finite and nonnegative");
   if (width != DEFAULT_WIDTH || height != DEFAULT_HEIGHT)
     throw std::invalid_argument("width and height must be exactly 128 and 32 for Product 4567");
 
@@ -261,23 +290,144 @@ void Ssd1305DisplayNode::ReadConfig()
   m_framebufferConfig.rotation =
       ParseRotation(static_cast<int>(get_parameter(PARAM_ROTATION).as_int()));
   m_updateRateHz = get_parameter(PARAM_UPDATE_RATE_HZ).as_double();
-  m_recoverAfterFailures = static_cast<unsigned>(recover_after_failures);
+  m_reconnectIntervalSec = reconnect_interval_sec;
+  m_reconnectSettleSec = reconnect_settle_sec;
   m_displayEnabled = get_parameter(PARAM_ENABLED).as_bool();
   m_blankOnShutdown = get_parameter(PARAM_BLANK_ON_SHUTDOWN).as_bool();
   m_enablePartialUpdates = get_parameter(PARAM_ENABLE_PARTIAL_UPDATES).as_bool();
 }
 
-void Ssd1305DisplayNode::InitializeDevice()
+void Ssd1305DisplayNode::AttemptInitialConnection()
 {
-  if (!m_device)
-    m_device = std::make_unique<OASIS::Display::Ssd1305Device>(m_deviceConfig);
-  m_device->Initialize();
-  m_device->WriteFullFrame(m_pendingBuffer.Data());
-  m_device->SetContrast(m_deviceConfig.contrast);
-  if (m_displayEnabled)
-    m_device->SetDisplayEnabled(true);
-  m_frontBuffer = m_pendingBuffer.Data();
-  m_pendingBuffer.MarkClean();
+  OASIS::Display::Ssd1305Framebuffer::Buffer desired{};
+  std::uint64_t generation = 0;
+  std::scoped_lock device_lock(m_deviceMutex);
+  {
+    std::scoped_lock lock(m_pendingMutex);
+    desired = m_pendingBuffer.Data();
+    generation = m_desiredGeneration;
+  }
+
+  try
+  {
+    m_controllerState = ControllerState::Recovering;
+    // Healthy startup intentionally mirrors Recover(): initialize, restore
+    // contrast, commit a full frame, then restore the requested power state
+    m_device->Initialize();
+    m_device->SetContrast(m_deviceConfig.contrast);
+    m_device->WriteFullFrame(desired);
+    m_device->SetDisplayEnabled(m_displayEnabled);
+    m_frontBuffer = desired;
+    m_controllerState = ControllerState::Ready;
+    std::scoped_lock pending_lock(m_pendingMutex);
+    if (m_desiredGeneration == generation)
+    {
+      m_pendingBuffer.MarkClean();
+      m_hasPendingFrame = false;
+    }
+  }
+  catch (const std::exception& error)
+  {
+    EnterReconnectModeLocked(error.what(), true);
+  }
+}
+
+void Ssd1305DisplayNode::EnterReconnectModeLocked(const std::string& error, bool initial_failure)
+{
+  if (m_stabilizationTimer)
+    m_stabilizationTimer->cancel();
+  m_controllerState = ControllerState::Disconnected;
+  m_failedReconnectAttempts = 0;
+  {
+    std::scoped_lock lock(m_pendingMutex);
+    m_hasPendingFrame = true;
+  }
+  RCLCPP_WARN(get_logger(),
+              initial_failure ? "SSD1305 unavailable at startup; entering reconnect mode: %s"
+                              : "SSD1305 unavailable; entering reconnect mode: %s",
+              error.c_str());
+}
+
+bool Ssd1305DisplayNode::AttemptReconnect()
+{
+  OASIS::Display::Ssd1305Framebuffer::Buffer desired{};
+  std::scoped_lock device_lock(m_deviceMutex);
+  if (m_controllerState != ControllerState::Disconnected)
+    return false;
+
+  {
+    std::scoped_lock lock(m_pendingMutex);
+    desired = m_pendingBuffer.Data();
+  }
+  m_controllerState = ControllerState::Recovering;
+  try
+  {
+    m_device->Recover(desired, m_deviceConfig.contrast, m_displayEnabled);
+    m_controllerState = ControllerState::Stabilizing;
+    m_stabilizationTimer->reset();
+    RCLCPP_DEBUG(get_logger(), "SSD1305 recovery completed; stabilizing for %.3f seconds",
+                 m_reconnectSettleSec);
+    return true;
+  }
+  catch (const std::exception& error)
+  {
+    m_controllerState = ControllerState::Disconnected;
+    ++m_failedReconnectAttempts;
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                         "SSD1305 reconnect attempt %u failed: %s", m_failedReconnectAttempts,
+                         error.what());
+    return false;
+  }
+}
+
+bool Ssd1305DisplayNode::CompleteStabilization()
+{
+  m_stabilizationTimer->cancel();
+  OASIS::Display::Ssd1305Framebuffer::Buffer desired{};
+  std::uint64_t generation = 0;
+  std::scoped_lock device_lock(m_deviceMutex);
+  if (m_controllerState != ControllerState::Stabilizing)
+    return false;
+
+  {
+    std::scoped_lock lock(m_pendingMutex);
+    desired = m_pendingBuffer.Data();
+    generation = m_desiredGeneration;
+  }
+
+  try
+  {
+    m_device->SetContrast(m_deviceConfig.contrast);
+    m_device->WriteFullFrame(desired);
+    m_device->SetDisplayEnabled(m_displayEnabled);
+    m_frontBuffer = desired;
+    m_controllerState = ControllerState::Ready;
+    {
+      std::scoped_lock lock(m_pendingMutex);
+      if (m_desiredGeneration == generation)
+      {
+        m_pendingBuffer.MarkClean();
+        m_hasPendingFrame = false;
+      }
+    }
+    if (m_failedReconnectAttempts == 0)
+      RCLCPP_INFO(get_logger(), "SSD1305 reconnected and restored on first attempt");
+    else
+      RCLCPP_INFO(get_logger(),
+                  "SSD1305 reconnected and restored after %u failed reconnect attempts",
+                  m_failedReconnectAttempts);
+    m_failedReconnectAttempts = 0;
+    return true;
+  }
+  catch (const std::exception& error)
+  {
+    m_controllerState = ControllerState::Disconnected;
+    ++m_failedReconnectAttempts;
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                         "SSD1305 stabilization failed on reconnect attempt %u: %s",
+                         m_failedReconnectAttempts, error.what());
+    return false;
+  }
 }
 
 void Ssd1305DisplayNode::HandleImage(sensor_msgs::msg::Image::ConstSharedPtr image)
@@ -295,6 +445,7 @@ void Ssd1305DisplayNode::HandleImage(sensor_msgs::msg::Image::ConstSharedPtr ima
     std::scoped_lock lock(m_pendingMutex);
     m_pendingBuffer.Update(view, m_framebufferConfig);
     m_hasPendingFrame = true;
+    ++m_desiredGeneration;
   }
   catch (const std::exception& error)
   {
@@ -306,6 +457,7 @@ void Ssd1305DisplayNode::HandleImage(sensor_msgs::msg::Image::ConstSharedPtr ima
 Ssd1305DisplayNode::FlushResult Ssd1305DisplayNode::FlushPendingFrame()
 {
   OASIS::Display::Ssd1305Framebuffer::Buffer desired{};
+  std::uint64_t generation = 0;
   {
     std::scoped_lock lock(m_pendingMutex);
     if (!m_hasPendingFrame)
@@ -318,6 +470,8 @@ Ssd1305DisplayNode::FlushResult Ssd1305DisplayNode::FlushPendingFrame()
   // recheck enabled state while holding it so a successful disable cannot be
   // followed by a stale framebuffer write.
   std::scoped_lock device_lock(m_deviceMutex);
+  if (m_controllerState != ControllerState::Ready)
+    return {FlushStatus::Failed, "SSD1305 frame queued for reconnect"};
   if (!m_displayEnabled)
     return {FlushStatus::QueuedWhileDisabled, "SSD1305 frame queued while display is disabled"};
 
@@ -326,6 +480,7 @@ Ssd1305DisplayNode::FlushResult Ssd1305DisplayNode::FlushPendingFrame()
     if (!m_hasPendingFrame)
       return {FlushStatus::NoChange, "no pending SSD1305 frame"};
     desired = m_pendingBuffer.Data();
+    generation = m_desiredGeneration;
   }
 
   try
@@ -355,52 +510,19 @@ Ssd1305DisplayNode::FlushResult Ssd1305DisplayNode::FlushPendingFrame()
     }
     {
       std::scoped_lock lock(m_pendingMutex);
-      if (m_pendingBuffer.Data() == desired)
+      if (m_desiredGeneration == generation)
       {
         m_pendingBuffer.MarkClean();
         m_hasPendingFrame = false;
       }
     }
-    if (m_consecutiveFailures > 0)
-    {
-      RCLCPP_INFO(get_logger(), "SSD1305 recovered after %u failed writes", m_consecutiveFailures);
-    }
-    m_consecutiveFailures = 0;
     return {wrote_frame ? FlushStatus::Updated : FlushStatus::NoChange,
             wrote_frame ? "SSD1305 frame updated" : "SSD1305 display already synchronized"};
   }
   catch (const std::exception& error)
   {
-    std::string failure_message = error.what();
-    ++m_consecutiveFailures;
-    RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 5000,
-                          "SSD1305 write failed (%u consecutive): %s", m_consecutiveFailures,
-                          error.what());
-    if (m_consecutiveFailures >= m_recoverAfterFailures)
-    {
-      try
-      {
-        m_device->Recover(desired, m_displayEnabled);
-        m_frontBuffer = desired;
-        {
-          std::scoped_lock lock(m_pendingMutex);
-          if (m_pendingBuffer.Data() == desired)
-          {
-            m_pendingBuffer.MarkClean();
-            m_hasPendingFrame = false;
-          }
-        }
-        m_consecutiveFailures = 0;
-        return {FlushStatus::Updated, "SSD1305 frame updated after recovery"};
-      }
-      catch (const std::exception& recover_error)
-      {
-        failure_message = std::string(error.what()) + "; recovery failed: " + recover_error.what();
-        RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 5000, "SSD1305 recovery failed: %s",
-                              recover_error.what());
-      }
-    }
-    return {FlushStatus::Failed, failure_message};
+    EnterReconnectModeLocked(error.what(), false);
+    return {FlushStatus::Failed, error.what()};
   }
 }
 
@@ -408,20 +530,22 @@ void Ssd1305DisplayNode::HandleEnableDisplay(
     const std_srvs::srv::SetBool::Request::SharedPtr request,
     const std_srvs::srv::SetBool::Response::SharedPtr response)
 {
+  const bool requested_enabled = request->data;
+  m_displayEnabled = requested_enabled;
+  std::scoped_lock device_lock(m_deviceMutex);
   try
   {
-    std::scoped_lock device_lock(m_deviceMutex);
-    if (request->data == m_displayEnabled)
+    if (m_controllerState != ControllerState::Ready)
     {
       response->success = true;
-      response->message = m_displayEnabled ? "SSD1305 display enabled" : "SSD1305 display disabled";
+      response->message = requested_enabled ? "SSD1305 enable queued for reconnect"
+                                            : "SSD1305 disable queued for reconnect";
       return;
     }
 
-    if (!request->data)
+    if (!requested_enabled)
     {
       m_device->SetDisplayEnabled(false);
-      m_displayEnabled = false;
     }
     else
     {
@@ -434,8 +558,6 @@ void Ssd1305DisplayNode::HandleEnableDisplay(
       m_device->SetContrast(m_deviceConfig.contrast);
       m_device->SetDisplayEnabled(true);
       m_frontBuffer = desired;
-      m_displayEnabled = true;
-      m_consecutiveFailures = 0;
       std::scoped_lock lock(m_pendingMutex);
       if (m_pendingBuffer.Data() == desired)
       {
@@ -448,8 +570,10 @@ void Ssd1305DisplayNode::HandleEnableDisplay(
   }
   catch (const std::exception& error)
   {
-    response->success = false;
-    response->message = error.what();
+    EnterReconnectModeLocked(error.what(), false);
+    response->success = true;
+    response->message = requested_enabled ? "SSD1305 enable queued after device failure"
+                                          : "SSD1305 disable queued after device failure";
   }
 }
 
@@ -481,6 +605,7 @@ void Ssd1305DisplayNode::HandleClearDisplay(
       std::scoped_lock lock(m_pendingMutex);
       m_pendingBuffer.Clear(false);
       m_hasPendingFrame = true;
+      ++m_desiredGeneration;
     }
     const FlushResult result = FlushPendingFrame();
     switch (result.status)
@@ -498,8 +623,8 @@ void Ssd1305DisplayNode::HandleClearDisplay(
         response->message = "SSD1305 display already clear";
         break;
       case FlushStatus::Failed:
-        response->success = false;
-        response->message = "SSD1305 clear failed: " + result.message;
+        response->success = true;
+        response->message = "SSD1305 clear queued for reconnect";
         break;
     }
   }
@@ -513,6 +638,7 @@ void Ssd1305DisplayNode::HandleClearDisplay(
 void Ssd1305DisplayNode::HandleSetInvert(const std_srvs::srv::SetBool::Request::SharedPtr request,
                                          const std_srvs::srv::SetBool::Response::SharedPtr response)
 {
+  bool invert_pixels = false;
   {
     std::scoped_lock lock(m_pendingMutex);
     if (m_framebufferConfig.invert_pixels != request->data)
@@ -520,29 +646,44 @@ void Ssd1305DisplayNode::HandleSetInvert(const std_srvs::srv::SetBool::Request::
       m_framebufferConfig.invert_pixels = request->data;
       m_pendingBuffer.Invert();
       m_hasPendingFrame = true;
+      ++m_desiredGeneration;
     }
+    invert_pixels = m_framebufferConfig.invert_pixels;
   }
   response->success = true;
-  response->message = m_framebufferConfig.invert_pixels ? "SSD1305 pixel inversion enabled"
-                                                        : "SSD1305 pixel inversion disabled";
+  {
+    std::scoped_lock device_lock(m_deviceMutex);
+    const bool queued = m_controllerState != ControllerState::Ready;
+    response->message = invert_pixels ? (queued ? "SSD1305 pixel inversion queued for reconnect"
+                                                : "SSD1305 pixel inversion enabled")
+                                      : (queued ? "SSD1305 pixel inversion queued for reconnect"
+                                                : "SSD1305 pixel inversion disabled");
+  }
 }
 
 void Ssd1305DisplayNode::HandleSetContrast(
     const oasis_msgs::srv::SetDisplayContrast::Request::SharedPtr request,
     const oasis_msgs::srv::SetDisplayContrast::Response::SharedPtr response)
 {
+  std::scoped_lock device_lock(m_deviceMutex);
   try
   {
-    std::scoped_lock device_lock(m_deviceMutex);
-    m_device->SetContrast(request->contrast);
     m_deviceConfig.contrast = request->contrast;
+    if (m_controllerState != ControllerState::Ready)
+    {
+      response->success = true;
+      response->message = "SSD1305 contrast queued for reconnect";
+      return;
+    }
+    m_device->SetContrast(request->contrast);
     response->success = true;
     response->message = "SSD1305 contrast updated";
   }
   catch (const std::exception& error)
   {
-    response->success = false;
-    response->message = error.what();
+    EnterReconnectModeLocked(error.what(), false);
+    response->success = true;
+    response->message = "SSD1305 contrast queued after device failure";
   }
 }
 

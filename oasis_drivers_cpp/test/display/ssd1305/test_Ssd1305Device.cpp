@@ -187,7 +187,7 @@ TEST(Ssd1305Device, RecoveryReopensRestoresFullFrameThenEnables)
   fixture.fake->events.clear();
   fixture.fake->transactions.clear();
 
-  fixture.device->Recover(framebuffer, true);
+  fixture.device->Recover(framebuffer, 0x40, true);
   ASSERT_GE(fixture.fake->events.size(), 2U);
   EXPECT_EQ(fixture.fake->events[0], "close");
   EXPECT_EQ(fixture.fake->events[1], "open:/dev/i2c-1:60");
@@ -204,4 +204,13 @@ TEST(Ssd1305Device, RecoveryReopensRestoresFullFrameThenEnables)
       std::find(fixture.fake->transactions.begin(), fixture.fake->transactions.end(),
                 std::vector<std::uint8_t>{0x00, 0xAF});
   EXPECT_EQ(first_on, fixture.fake->transactions.end() - 1);
+
+  const auto contrast =
+      std::find(fixture.fake->transactions.begin(), fixture.fake->transactions.end(),
+                std::vector<std::uint8_t>{0x00, 0x81, 0x40});
+  const auto first_data =
+      std::find_if(fixture.fake->transactions.begin(), fixture.fake->transactions.end(),
+                   [](const std::vector<std::uint8_t>& transaction)
+                   { return !transaction.empty() && transaction.front() == 0x40; });
+  EXPECT_LT(contrast, first_data);
 }

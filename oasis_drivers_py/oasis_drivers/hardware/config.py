@@ -250,8 +250,11 @@ class Ssd1305DisplayConfig:
     # Maximum hardware update rate in hertz
     update_rate_hz: float
 
-    # Consecutive I2C failures before reopening and reinitializing the device
-    recover_after_failures: int
+    # Seconds between attempts to reconnect an unavailable controller
+    reconnect_interval_sec: float
+
+    # Seconds to wait before validating a recovered controller
+    reconnect_settle_sec: float
 
     # Requested display power state at node startup
     enabled: bool
@@ -282,7 +285,8 @@ class Ssd1305DisplayConfig:
             "invert_pixels": self.invert_pixels,
             "rotation": self.rotation,
             "update_rate_hz": self.update_rate_hz,
-            "recover_after_failures": self.recover_after_failures,
+            "reconnect_interval_sec": self.reconnect_interval_sec,
+            "reconnect_settle_sec": self.reconnect_settle_sec,
             "enabled": self.enabled,
             "blank_on_shutdown": self.blank_on_shutdown,
             "reject_wrong_dimensions": self.reject_wrong_dimensions,

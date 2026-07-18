@@ -49,6 +49,10 @@ constexpr std::uint8_t SET_COM_PINS = 0xDA;
 constexpr std::uint8_t SET_VCOMH_DESELECT = 0xDB;
 constexpr std::size_t SSD1305_DATA_CHUNK_SIZE = 32;
 
+// Time for the Linux I2C transport and unplugged controller to settle after
+// closing the stale file descriptor
+constexpr auto RECOVERY_TRANSPORT_RESET_DELAY = std::chrono::milliseconds(20);
+
 std::string HexAddress(int address)
 {
   std::ostringstream stream;
@@ -186,15 +190,16 @@ void Ssd1305Device::WritePage(const Ssd1305Framebuffer::Buffer& framebuffer, std
   WriteData(std::span<const std::uint8_t>(begin, m_config.width));
 }
 
-void Ssd1305Device::Recover(const Ssd1305Framebuffer::Buffer& framebuffer, bool enabled)
+void Ssd1305Device::Recover(const Ssd1305Framebuffer::Buffer& framebuffer,
+                            std::uint8_t contrast,
+                            bool enabled)
 {
   Close();
-  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  std::this_thread::sleep_for(RECOVERY_TRANSPORT_RESET_DELAY);
   Initialize();
+  SetContrast(contrast);
   WriteFullFrame(framebuffer);
-  SetContrast(m_config.contrast);
-  if (enabled)
-    SetDisplayEnabled(true);
+  SetDisplayEnabled(enabled);
 }
 
 void Ssd1305Device::ValidateConfig() const

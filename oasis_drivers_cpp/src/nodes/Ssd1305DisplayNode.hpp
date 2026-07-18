@@ -12,6 +12,7 @@
 #include "display/ssd1305/Ssd1305Framebuffer.hpp"
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -55,8 +56,20 @@ private:
     std::string message;
   };
 
+  enum class ControllerState
+  {
+    Disconnected,
+    Recovering,
+    Stabilizing,
+    Ready,
+  };
+
   void ReadConfig();
-  void InitializeDevice();
+  void AttemptInitialConnection();
+  bool AttemptReconnect();
+  bool CompleteStabilization();
+  // m_deviceMutex must be held before calling this method
+  void EnterReconnectModeLocked(const std::string& error, bool initial_failure);
   void HandleImage(sensor_msgs::msg::Image::ConstSharedPtr image);
   FlushResult FlushPendingFrame();
   void HandleEnableDisplay(const std_srvs::srv::SetBool::Request::SharedPtr request,
@@ -71,7 +84,8 @@ private:
   OASIS::Display::Ssd1305DeviceConfig m_deviceConfig;
   OASIS::Display::Ssd1305FramebufferConfig m_framebufferConfig;
   double m_updateRateHz;
-  unsigned m_recoverAfterFailures;
+  double m_reconnectIntervalSec;
+  double m_reconnectSettleSec;
   bool m_blankOnShutdown;
   bool m_enablePartialUpdates;
 
@@ -81,8 +95,12 @@ private:
   std::mutex m_pendingMutex;
   std::mutex m_deviceMutex;
   bool m_hasPendingFrame;
+  std::uint64_t m_desiredGeneration;
   std::atomic_bool m_displayEnabled;
-  unsigned m_consecutiveFailures;
+  // Protected by m_deviceMutex together with m_frontBuffer and the reconnect
+  // attempt counter
+  ControllerState m_controllerState;
+  unsigned m_failedReconnectAttempts;
 
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr m_imageSubscription;
   rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr m_enableDisplayService;
@@ -90,5 +108,7 @@ private:
   rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr m_setInvertService;
   rclcpp::Service<oasis_msgs::srv::SetDisplayContrast>::SharedPtr m_setContrastService;
   rclcpp::TimerBase::SharedPtr m_updateTimer;
+  rclcpp::TimerBase::SharedPtr m_reconnectTimer;
+  rclcpp::TimerBase::SharedPtr m_stabilizationTimer;
 };
 } // namespace OASIS::ROS
