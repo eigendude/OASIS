@@ -31,6 +31,45 @@ find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(sensor_msgs REQUIRED)
 
+# cockpit renderer shared library
+add_library(cockpit_renderer SHARED
+  src/cockpit/cockpit_visualizer.cpp
+)
+target_include_directories(cockpit_renderer PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+  $<INSTALL_INTERFACE:include/oasis_visualization>
+  ${OpenCV_INCLUDE_DIRS}
+)
+target_link_libraries(cockpit_renderer PUBLIC ${OpenCV_LIBRARIES})
+
+# cockpit ROS node shared library
+add_library(cockpit_visualizer_node SHARED
+  src/nodes/cockpit_visualizer_node.cpp
+)
+target_include_directories(cockpit_visualizer_node PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+  $<INSTALL_INTERFACE:include/oasis_visualization>
+)
+target_link_libraries(cockpit_visualizer_node PUBLIC
+  cockpit_renderer
+  rclcpp::rclcpp
+  ${sensor_msgs_TARGETS}
+)
+
+# cockpit component and CLI
+add_library(cockpit_visualizer_component SHARED
+  src/components/cockpit_visualizer_component.cpp
+)
+target_link_libraries(cockpit_visualizer_component PUBLIC
+  cockpit_visualizer_node
+  rclcpp_components::component
+)
+rclcpp_components_register_nodes(cockpit_visualizer_component
+  "OASIS::Visualization::CockpitVisualizerNode"
+)
+add_executable(cockpit_visualizer src/cli/cockpit_visualizer.cpp)
+target_link_libraries(cockpit_visualizer PRIVATE cockpit_visualizer_node)
+
 #
 # OLED visualizer targets
 #
@@ -97,6 +136,10 @@ target_link_libraries(oled_visualizer PRIVATE
 # Installation
 install(
   TARGETS
+    cockpit_renderer
+    cockpit_visualizer
+    cockpit_visualizer_component
+    cockpit_visualizer_node
     oled_renderer
     oled_visualizer
     oled_visualizer_component
@@ -110,6 +153,10 @@ install(
 
 install(FILES src/oled/oled_visualizer.hpp
         DESTINATION include/oasis_visualization/oled)
+install(FILES src/cockpit/cockpit_visualizer.hpp
+        DESTINATION include/oasis_visualization/cockpit)
+install(FILES src/nodes/cockpit_visualizer_node.hpp
+        DESTINATION include/oasis_visualization/nodes)
 install(FILES src/nodes/oled_visualizer_node.hpp
         DESTINATION include/oasis_visualization/nodes)
 install(FILES src/rotation/rotation_phase_warp.hpp
@@ -134,6 +181,12 @@ if(BUILD_TESTING)
     test/oled/test_oled_visualizer.cpp
   )
   target_link_libraries(test_oled_visualizer oled_renderer)
+
+  ament_add_gtest(
+    test_cockpit_visualizer
+    test/cockpit/test_cockpit_visualizer.cpp
+  )
+  target_link_libraries(test_cockpit_visualizer cockpit_renderer)
 
   ament_add_gtest(
     test_rotation_phase_warp

@@ -29,6 +29,7 @@ def get_host_hardware_config(
     if host_id == "falcon":
         return HostHardwareConfig(
             enable_ahrs_speedometer=True,
+            enable_cockpit_visualizer=True,
             mcu_manager=MCUManagerConfig(
                 node_name="engineer",
                 implementation=MCUManagerImplementation.PWM,
@@ -44,6 +45,7 @@ def get_host_hardware_config(
         )
     if host_id == "station":
         return HostHardwareConfig(
+            enable_wol_server=True,
             mcu_manager=MCUManagerConfig(
                 node_name="conductor",
                 implementation=MCUManagerImplementation.CONDUCTOR,
@@ -51,7 +53,6 @@ def get_host_hardware_config(
                 wol_server_id=host_id,
                 motor_voltage_reversed=True,
             ),
-            enable_wol_server=True,
         )
 
     return HostHardwareConfig()

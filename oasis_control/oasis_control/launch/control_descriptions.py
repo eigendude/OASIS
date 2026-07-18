@@ -285,6 +285,29 @@ class ControlDescriptions:
         )
         ld.add_action(oled_visualizer_node)
 
+    @staticmethod
+    def add_cockpit_visualizer(ld: LaunchDescription, host_id: str) -> None:
+        cockpit_visualizer_node: Node = Node(
+            namespace=ROS_NAMESPACE,
+            package=VISUALIZATION_PACKAGE_NAME,
+            executable="cockpit_visualizer",
+            name=f"cockpit_visualizer_{host_id}",
+            output="screen",
+            parameters=[
+                {
+                    "frame_rate": 10.0,
+                    "target_lit_fraction": 0.48,
+                    "minimum_lit_fraction": 0.40,
+                    "maximum_lit_fraction": 0.58,
+                    "random_seed": 0x4F415349,
+                },
+            ],
+            remappings=[
+                ("image", f"{host_id}/oled/image"),
+            ],
+        )
+        ld.add_action(cockpit_visualizer_node)
+
     #
     # ZUPT detector
     #

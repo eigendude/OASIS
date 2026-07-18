@@ -82,6 +82,12 @@ def generate_launch_description() -> LaunchDescription:
         Drivers.add_wol_server(ld, config.HOST_ID)
 
     # Visualization nodes
+    if hardware.enable_cockpit_visualizer and hardware.enable_oled_visualizer:
+        raise RuntimeError(
+            "cockpit and OLED visualizers cannot both be enabled for one host"
+        )
+    if hardware.enable_cockpit_visualizer:
+        ControlDescriptions.add_cockpit_visualizer(ld, config.HOST_ID)
     if hardware.enable_oled_visualizer:
         ControlDescriptions.add_oled_visualizer(ld, config.HOST_ID)
 

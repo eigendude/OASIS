@@ -54,14 +54,17 @@ class MCUManagerConfig:
 class HostHardwareConfig:
     """Complete control-facing hardware configuration for one OASIS host"""
 
-    # Whether an OLED is installed and should receive visualization output
-    enable_oled_visualizer: bool = False
-
     # Whether the host supplies AHRS data for forward-speed estimation
     enable_ahrs_speedometer: bool = False
 
-    # Optional control manager for the host-attached microcontroller
-    mcu_manager: MCUManagerConfig | None = None
+    # Whether an OLED is installed in the Millennium Falcon cockpit
+    enable_cockpit_visualizer: bool = False
+
+    # Whether an OLED is installed and should receive visualization output
+    enable_oled_visualizer: bool = False
 
     # Whether the host should expose Wake-on-LAN control for managed devices
     enable_wol_server: bool = False
+
+    # Optional control manager for the host-attached microcontroller
+    mcu_manager: MCUManagerConfig | None = None

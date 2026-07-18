@@ -112,6 +112,31 @@ def test_jetson_has_engine_telemetrix_mcu() -> None:
     assert hardware.mcu.serial_port == "/dev/ttyACM0"
 
 
+def test_falcon_display_parameters_preserve_driver_values() -> None:
+    hardware: HostHardwareConfig = get_host_hardware_config("falcon", "falcon_zone")
+
+    assert hardware.ssd1305_display is not None
+    assert hardware.ssd1305_display.as_parameters() == {
+        "i2c_device": "/dev/i2c-1",
+        "i2c_address": 0x3C,
+        "width": 128,
+        "height": 32,
+        "column_offset": 4,
+        "contrast": 0xFF,
+        "threshold": 127,
+        "invert_pixels": False,
+        "rotation": 0,
+        "update_rate_hz": 10.0,
+        "reconnect_interval_sec": 1.0,
+        "reconnect_settle_sec": 0.5,
+        "enabled": True,
+        "blank_on_shutdown": True,
+        "reject_wrong_dimensions": True,
+        "clip_wrong_dimensions": False,
+        "enable_partial_updates": True,
+    }
+
+
 def test_airlab_power_meter_parameters_preserve_driver_values() -> None:
     hardware: HostHardwareConfig = get_host_hardware_config("airlab", "airlab_zone")
 

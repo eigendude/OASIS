@@ -188,6 +188,25 @@ def get_host_hardware_config(
                 implementation=MCUImplementation.TELEMETRIX,
                 serial_port="/dev/ttyACM0",
             ),
+            ssd1305_display=Ssd1305DisplayConfig(
+                i2c_device="/dev/i2c-1",
+                i2c_address=0x3C,
+                width=128,
+                height=32,
+                column_offset=4,
+                contrast=0xFF,
+                threshold=127,
+                invert_pixels=False,
+                rotation=0,
+                update_rate_hz=10.0,
+                reconnect_interval_sec=1.0,
+                reconnect_settle_sec=0.5,
+                enabled=True,
+                blank_on_shutdown=True,
+                reject_wrong_dimensions=True,
+                clip_wrong_dimensions=False,
+                enable_partial_updates=True,
+            ),
         )
     if host_id == "jetson":
         return HostHardwareConfig(
