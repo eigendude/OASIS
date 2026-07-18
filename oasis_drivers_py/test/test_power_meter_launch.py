@@ -9,13 +9,31 @@
 ################################################################################
 
 from collections.abc import Callable
+from typing import Any
 
 import pytest
 from launch.launch_context import LaunchContext
+from launch.launch_description import LaunchDescription
 from launch.utilities import perform_substitutions
 from launch_ros.descriptions import ComposableNode
 
 from oasis_drivers.launch.driver_descriptions import DriverDescriptions
+
+
+def test_driver_container_removes_launch_process_prefix() -> None:
+    launch_description: LaunchDescription = LaunchDescription()
+
+    DriverDescriptions.add_driver_components(
+        launch_description,
+        "airlab",
+        [ComposableNode(package="test", plugin="test::Component")],
+    )
+
+    actions: list[Any] = getattr(launch_description, "actions")
+    assert len(actions) == 1
+    container_arguments: dict[str, Any] = getattr(actions[0], "kwargs")
+    assert container_arguments["output"] == "screen"
+    assert container_arguments["output_format"] == "{line}"
 
 
 def test_power_meter_node_uses_root_namespace_and_configured_remappings() -> None:

@@ -70,6 +70,7 @@ class PerceptionDescriptions:
             package="rclcpp_components",
             executable="component_container",
             output="screen",
+            output_format="{line}",
             additional_env={
                 "RCUTILS_CONSOLE_OUTPUT_FORMAT": COMPONENT_CONSOLE_OUTPUT_FORMAT,
             },
@@ -411,6 +412,7 @@ class PerceptionDescriptions:
             package="rclcpp_components",
             executable="component_container",
             output="screen",
+            output_format="{line}",
             arguments=["--executor-type", "multi-threaded"],
             additional_env={
                 "RCUTILS_CONSOLE_OUTPUT_FORMAT": COMPONENT_CONSOLE_OUTPUT_FORMAT,
