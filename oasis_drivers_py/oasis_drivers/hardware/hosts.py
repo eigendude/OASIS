@@ -21,7 +21,6 @@ from oasis_drivers.hardware.config import HostHardwareConfig
 from oasis_drivers.hardware.config import LibcameraConfig
 from oasis_drivers.hardware.config import MCUConfig
 from oasis_drivers.hardware.config import MCUImplementation
-from oasis_drivers.hardware.config import PowerMeterConfig
 from oasis_drivers.hardware.config import Ssd1305DisplayConfig
 
 
@@ -84,28 +83,7 @@ def get_host_hardware_config(
         #     0x68  DS3231 RTC, shown as UU when claimed by the kernel
         #     0x70  TCA9548A mux, shown as UU when claimed by the kernel
         #
-        #   mux channel 2
-        #     0x60  ACS37800 power meter
-        #
-        #   mux channel 3
-        #     0x60  ACS37800 power meter
         return HostHardwareConfig(
-            power_meter=PowerMeterConfig(
-                publish_rate_hz=10.0,
-                mux_address=0x70,
-                power_meter_address=0x60,
-                power_meter_ids=("power_meter_0", "power_meter_1"),
-                # SparkFun Power Meter ACS37800 (SEN-29259):
-                # 2 MΩ series resistance per voltage input leg and 8.2 kΩ
-                # RSENSE
-                current_sense_range_amps=30.0,
-                voltage_divider_resistance_ohms=2_000_000.0,
-                voltage_sense_resistance_ohms=8_200.0,
-                # crs_sns is checked against register 0x1B at startup; it does
-                # not select the physical current range used for SI conversion
-                expected_crs_sns=4,
-                disconnect_after_failures=3,
-            ),
             ssd1305_display=Ssd1305DisplayConfig(
                 i2c_device="/dev/i2c-1",
                 i2c_address=0x3C,
