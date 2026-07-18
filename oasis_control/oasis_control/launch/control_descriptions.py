@@ -30,6 +30,10 @@ CONTROL_PACKAGE_NAME: str = "oasis_control"
 
 
 class ControlDescriptions:
+    """
+    Note: Sort alphabetically
+    """
+
     #
     # AHRS
     #

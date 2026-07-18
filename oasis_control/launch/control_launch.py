@@ -67,6 +67,7 @@ print(f"Launching on {HOSTNAME} in zone {ZONE_ID}")
 def generate_launch_description() -> LaunchDescription:
     ld: LaunchDescription = LaunchDescription()
 
+    # Smarthome nodes
     if HOST_ID == HOME_ASSISTANT_ID:
         ControlDescriptions.add_home_manager(
             ld,
@@ -81,6 +82,14 @@ def generate_launch_description() -> LaunchDescription:
         ControlDescriptions.add_ahrs_speedometer(ld, HOST_ID)
 
     # Microcontroller nodes
+    if HOST_ID == "falcon":
+        ControlDescriptions.add_mcu_manager_with_pwm(
+            ld, HOST_ID, "engineer", conductor_host="station"
+        )
+
+    if HOST_ID == "jetson":
+        ControlDescriptions.add_mcu_manager(ld, HOST_ID, "engine")
+
     if HOST_ID == "station":
         ControlDescriptions.add_conductor_manager(
             ld,
@@ -92,11 +101,5 @@ def generate_launch_description() -> LaunchDescription:
         )
 
         Drivers.add_wol_server(ld, HOST_ID)
-    elif HOST_ID == "jetson":
-        ControlDescriptions.add_mcu_manager(ld, HOST_ID, "engine")
-    elif HOST_ID == "falcon":
-        ControlDescriptions.add_mcu_manager_with_pwm(
-            ld, HOST_ID, "engineer", conductor_host="station"
-        )
 
     return ld
