@@ -183,11 +183,11 @@ class DriverDescriptions:
                 name=f"ssd1305_display_{host_id}",
                 parameters=[parameters],
                 remappings=[
-                    ("display/image", f"{host_id}/display/image"),
-                    ("display/set_enabled", f"{host_id}/display/set_enabled"),
-                    ("display/clear", f"{host_id}/display/clear"),
-                    ("display/set_contrast", f"{host_id}/display/set_contrast"),
-                    ("display/set_invert", f"{host_id}/display/set_invert"),
+                    ("image", f"{host_id}/oled/image"),
+                    ("set_enabled", f"{host_id}/oled/set_enabled"),
+                    ("clear", f"{host_id}/oled/clear"),
+                    ("set_contrast", f"{host_id}/oled/set_contrast"),
+                    ("set_invert", f"{host_id}/oled/set_invert"),
                 ],
             )
         )

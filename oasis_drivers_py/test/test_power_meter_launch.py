@@ -78,11 +78,11 @@ def test_ssd1305_display_node_uses_root_namespace_and_configured_remappings() ->
         for source, destination in node.remappings
     ]
     assert remappings == [
-        ("display/image", "abn_007000/display/image"),
-        ("display/set_enabled", "abn_007000/display/set_enabled"),
-        ("display/clear", "abn_007000/display/clear"),
-        ("display/set_contrast", "abn_007000/display/set_contrast"),
-        ("display/set_invert", "abn_007000/display/set_invert"),
+        ("image", "abn_007000/oled/image"),
+        ("set_enabled", "abn_007000/oled/set_enabled"),
+        ("clear", "abn_007000/oled/clear"),
+        ("set_contrast", "abn_007000/oled/set_contrast"),
+        ("set_invert", "abn_007000/oled/set_invert"),
     ]
 
 

@@ -22,7 +22,19 @@ using OASIS::ROS::Ssd1305DisplayNode;
 
 namespace
 {
+// ROS node name
 constexpr const char* DEFAULT_NODE_NAME = "ssd1305_display";
+
+// ROS topics
+constexpr const char* TOPIC_IMAGE = "image";
+
+// ROS services
+constexpr const char* SERVICE_SET_ENABLED = "set_enabled";
+constexpr const char* SERVICE_CLEAR = "clear";
+constexpr const char* SERVICE_SET_INVERT = "set_invert";
+constexpr const char* SERVICE_SET_CONTRAST = "set_contrast";
+
+// ROS parameters
 constexpr const char* PARAM_I2C_DEVICE = "i2c_device";
 constexpr const char* PARAM_I2C_ADDRESS = "i2c_address";
 constexpr const char* PARAM_WIDTH = "width";
@@ -124,26 +136,31 @@ Ssd1305DisplayNode::Ssd1305DisplayNode(
   ReadConfig();
   InitializeDevice();
 
+  // ROS topics
   m_imageSubscription = create_subscription<sensor_msgs::msg::Image>(
-      "display/image", rclcpp::SensorDataQoS(),
+      TOPIC_IMAGE, rclcpp::SensorDataQoS(),
       [this](sensor_msgs::msg::Image::ConstSharedPtr image) { HandleImage(std::move(image)); });
+
+  // ROS services
   m_enableDisplayService = create_service<std_srvs::srv::SetBool>(
-      "display/set_enabled", [this](const std_srvs::srv::SetBool::Request::SharedPtr request,
-                                    const std_srvs::srv::SetBool::Response::SharedPtr response)
+      SERVICE_SET_ENABLED, [this](const std_srvs::srv::SetBool::Request::SharedPtr request,
+                                  const std_srvs::srv::SetBool::Response::SharedPtr response)
       { HandleEnableDisplay(request, response); });
   m_clearDisplayService = create_service<std_srvs::srv::Trigger>(
-      "display/clear", [this](const std_srvs::srv::Trigger::Request::SharedPtr request,
-                              const std_srvs::srv::Trigger::Response::SharedPtr response)
+      SERVICE_CLEAR, [this](const std_srvs::srv::Trigger::Request::SharedPtr request,
+                            const std_srvs::srv::Trigger::Response::SharedPtr response)
       { HandleClearDisplay(request, response); });
   m_setInvertService = create_service<std_srvs::srv::SetBool>(
-      "display/set_invert", [this](const std_srvs::srv::SetBool::Request::SharedPtr request,
-                                   const std_srvs::srv::SetBool::Response::SharedPtr response)
+      SERVICE_SET_INVERT, [this](const std_srvs::srv::SetBool::Request::SharedPtr request,
+                                 const std_srvs::srv::SetBool::Response::SharedPtr response)
       { HandleSetInvert(request, response); });
   m_setContrastService = create_service<oasis_msgs::srv::SetDisplayContrast>(
-      "display/set_contrast",
+      SERVICE_SET_CONTRAST,
       [this](const oasis_msgs::srv::SetDisplayContrast::Request::SharedPtr request,
              const oasis_msgs::srv::SetDisplayContrast::Response::SharedPtr response)
       { HandleSetContrast(request, response); });
+
+  // ROS timers
   m_updateTimer =
       create_wall_timer(TimerPeriod(m_updateRateHz), [this]() { (void)FlushPendingFrame(); });
 
