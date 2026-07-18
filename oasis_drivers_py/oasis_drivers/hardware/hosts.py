@@ -116,7 +116,7 @@ def get_host_hardware_config(
                 threshold=127,
                 invert_pixels=False,
                 rotation=0,
-                update_rate_hz=30.0,
+                update_rate_hz=45.0,
                 recover_after_failures=3,
                 enabled=True,
                 blank_on_shutdown=True,

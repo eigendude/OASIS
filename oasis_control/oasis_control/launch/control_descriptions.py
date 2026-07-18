@@ -271,9 +271,9 @@ class ControlDescriptions:
                             "aclima_shadow_128x32.png",
                         ]
                     ),
-                    "frame_rate": 30.0,
+                    "frame_rate": 45.0,
                     "revolution_seconds": 8.0,
-                    "rotation_nonlinearity": 0.75,
+                    "rotation_nonlinearity": 0.55,
                     "focal_length": 95.0,
                     "camera_distance": 150.0,
                     "model_scale": 1.35,
