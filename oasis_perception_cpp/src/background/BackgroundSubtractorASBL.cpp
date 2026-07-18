@@ -33,11 +33,13 @@ BackgroundSubtractorASBL::BackgroundSubtractorASBL(rclcpp::Node& node,
     m_bgsPackageASBL(
         std::make_unique<bgslibrary::algorithms::AdaptiveSelectiveBackgroundLearning>())
 {
-  *m_imgPublisherForeground = image_transport::create_publisher(&node, foregroundTopic);
-  *m_imgPublisherSubtracted = image_transport::create_publisher(&node, subtractedTopic);
+  *m_imgPublisherForeground =
+      image_transport::create_publisher(node, foregroundTopic, rclcpp::QoS{1});
+  *m_imgPublisherSubtracted =
+      image_transport::create_publisher(node, subtractedTopic, rclcpp::QoS{1});
   *m_imgSubscriber = image_transport::create_subscription(
-      &node, imageTopic, [this](const auto& msg) { ReceiveImage(msg); }, "compressed",
-      rclcpp::QoS{1}.get_rmw_qos_profile());
+      node, imageTopic, [this](const auto& msg) { ReceiveImage(msg); }, "compressed",
+      rclcpp::QoS{1});
 }
 
 BackgroundSubtractorASBL::~BackgroundSubtractorASBL()

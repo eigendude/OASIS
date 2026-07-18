@@ -326,13 +326,13 @@ bool MonocularInertialSlamNode::Initialize()
   rclcpp::SubscriptionOptions imageOptions;
   imageOptions.callback_group = m_imageCallbackGroup;
   *m_imgSubscriber = image_transport::create_subscription(
-      &m_node, imageTopic,
+      m_node, imageTopic,
       [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg)
       {
         if (msg)
           OnImage(*msg);
       },
-      imageTransport, rclcpp::QoS{1}.get_rmw_qos_profile(), imageOptions);
+      imageTransport, rclcpp::QoS{1}, imageOptions);
 
   RCLCPP_INFO(*m_logger, "Started monocular inertial SLAM");
 

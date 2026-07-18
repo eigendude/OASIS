@@ -55,11 +55,11 @@ MultiModeler::MultiModeler(std::shared_ptr<rclcpp::Node> node,
     m_bgsPackageSigmaDelta(std::make_unique<bgslibrary::algorithms::SigmaDelta>()),
     m_bgsPackageKNN(std::make_unique<bgslibrary::algorithms::KNN>())
 {
-  auto transportHints = image_transport::TransportHints(node.get(), "compressed");
+  auto transportHints = image_transport::TransportHints(*node, "compressed");
 
   *m_imgSubscriber = image_transport::create_subscription(
-      node.get(), imageTopic, [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg)
-      { ReceiveImage(msg); }, transportHints.getTransport(), rclcpp::QoS{1}.get_rmw_qos_profile());
+      *node, imageTopic, [this](const sensor_msgs::msg::Image::ConstSharedPtr& msg)
+      { ReceiveImage(msg); }, transportHints.getTransport(), rclcpp::QoS{1});
 
   for (const char* algorithm : GetAlgorithms())
   {
@@ -74,12 +74,12 @@ MultiModeler::MultiModeler(std::shared_ptr<rclcpp::Node> node,
     RCLCPP_INFO(m_logger, "  Background topic: %s", backgroundAlgorithm.c_str());
     RCLCPP_INFO(m_logger, "  Subtracted topic: %s", subtractedAlgorithm.c_str());
 
-    *publisher.foreground = image_transport::create_publisher(node.get(), foregroundAlgorithm,
-                                                              rclcpp::QoS{1}.get_rmw_qos_profile());
-    *publisher.background = image_transport::create_publisher(node.get(), backgroundAlgorithm,
-                                                              rclcpp::QoS{1}.get_rmw_qos_profile());
-    *publisher.subtracted = image_transport::create_publisher(node.get(), subtractedAlgorithm,
-                                                              rclcpp::QoS{1}.get_rmw_qos_profile());
+    *publisher.foreground =
+        image_transport::create_publisher(*node, foregroundAlgorithm, rclcpp::QoS{1});
+    *publisher.background =
+        image_transport::create_publisher(*node, backgroundAlgorithm, rclcpp::QoS{1});
+    *publisher.subtracted =
+        image_transport::create_publisher(*node, subtractedAlgorithm, rclcpp::QoS{1});
   }
 
   RCLCPP_INFO(m_logger, "Started background modeler");

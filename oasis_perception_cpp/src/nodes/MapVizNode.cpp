@@ -173,7 +173,7 @@ bool MapVizNode::Initialize()
   RCLCPP_INFO(m_logger, "Output encoding: %s", m_outputEncoding.c_str());
   RCLCPP_INFO(m_logger, "Settings file: %s", settingsFile.c_str());
 
-  *m_mapImagePublisher = image_transport::create_publisher(&m_node, mapImageTopic);
+  *m_mapImagePublisher = image_transport::create_publisher(m_node, mapImageTopic, rclcpp::QoS{1});
 
   m_imageCallbackGroup = m_node.create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   m_poseCallbackGroup = m_node.create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
@@ -199,8 +199,8 @@ bool MapVizNode::Initialize()
   rclcpp::SubscriptionOptions cameraInfoOptions;
   cameraInfoOptions.callback_group = m_cameraInfoCallbackGroup;
 
-  m_imageSubscriber->subscribe(&m_node, imageTopic, imageTransport,
-                               rclcpp::QoS{SYNC_QUEUE_SIZE}.get_rmw_qos_profile(), imageOptions);
+  m_imageSubscriber->subscribe(m_node, imageTopic, imageTransport, rclcpp::QoS{SYNC_QUEUE_SIZE},
+                               imageOptions);
   m_imageSubscriber->registerCallback(
       [this](const sensor_msgs::msg::Image::ConstSharedPtr& imageMsg)
       {

@@ -289,16 +289,17 @@ bool CheckerboardDetectorNode::Initialize()
       STATUS_TOPIC.data(), rclcpp::SensorDataQoS().keep_last(1));
 
   if (m_publishDebugImage)
-    *m_debugPublisher = image_transport::create_publisher(&m_node, DEBUG_IMAGE_TOPIC.data());
+    *m_debugPublisher =
+        image_transport::create_publisher(m_node, DEBUG_IMAGE_TOPIC.data(), rclcpp::QoS{1});
 
   *m_imageSubscriber = image_transport::create_subscription(
-      &m_node, IMAGE_TOPIC.data(),
+      m_node, IMAGE_TOPIC.data(),
       [this](const sensor_msgs::msg::Image::ConstSharedPtr& imageMsg)
       {
         if (imageMsg)
           OnImage(imageMsg);
       },
-      imageTransport, rclcpp::SensorDataQoS().keep_last(1).get_rmw_qos_profile());
+      imageTransport, rclcpp::SensorDataQoS().keep_last(1));
 
   RCLCPP_INFO(m_node.get_logger(), "Started checkerboard detector");
 

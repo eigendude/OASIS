@@ -81,15 +81,16 @@ ImageDownscaler::ImageDownscaler(std::shared_ptr<rclcpp::Node> node,
   m_maxHeight = maxHeight;
 
   // Publishers
-  *m_downscaledPublisher = image_transport::create_camera_publisher(m_node.get(), downscaledTopic);
+  *m_downscaledPublisher =
+      image_transport::create_camera_publisher(*m_node, downscaledTopic, rclcpp::QoS{1});
 
   // Subscribers
   *m_cameraSubscriber = image_transport::create_camera_subscription(
-      m_node.get(), imageTopic,
+      *m_node, imageTopic,
       [this](const sensor_msgs::msg::Image::ConstSharedPtr& imageMsg,
              const sensor_msgs::msg::CameraInfo::ConstSharedPtr& cameraInfo)
       { ReceiveImage(imageMsg, cameraInfo); },
-      imageTransport, rclcpp::QoS{1}.get_rmw_qos_profile());
+      imageTransport, rclcpp::QoS{1});
 }
 
 ImageDownscaler::~ImageDownscaler()

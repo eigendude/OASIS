@@ -128,13 +128,13 @@ bool MonocularSlamNode::Initialize()
   RCLCPP_INFO(*m_logger, "ORB_SLAM3 settings file: %s", settingsFile.c_str());
 
   *m_imgSubscriber = image_transport::create_subscription(
-      &m_node, imageTopic,
+      m_node, imageTopic,
       [this](const sensor_msgs::msg::Image::ConstSharedPtr& imageMsg)
       {
         if (imageMsg)
           OnImage(*imageMsg);
       },
-      imageTransport, rclcpp::QoS{1}.get_rmw_qos_profile());
+      imageTransport, rclcpp::QoS{1});
 
   m_monocularSlam = std::make_unique<SLAM::MonocularSlam>(m_node, pointCloudTopic, poseTopic);
   if (!m_monocularSlam->Initialize(vocabularyFile, settingsFile))

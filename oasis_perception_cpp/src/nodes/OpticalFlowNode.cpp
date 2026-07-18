@@ -123,19 +123,19 @@ bool OpticalFlowNode::Initialize()
   rclcpp::QoS sensorQos = rclcpp::SensorDataQoS();
   sensorQos.keep_last(1);
 
-  *m_flowPublisher = image_transport::create_publisher(&m_node, flowTopic);
+  *m_flowPublisher = image_transport::create_publisher(m_node, flowTopic, rclcpp::QoS{1});
   if (m_publishSceneScore)
     m_scenePublisher =
         m_node.create_publisher<oasis_msgs::msg::SceneScore>(sceneTopic, rclcpp::QoS{1});
 
   *m_imgSubscriber = image_transport::create_subscription(
-      &m_node, imageTopic,
+      m_node, imageTopic,
       [this](const sensor_msgs::msg::Image::ConstSharedPtr& imageMsg)
       {
         if (imageMsg)
           OnImage(*imageMsg);
       },
-      imageTransport, rclcpp::QoS{1}.get_rmw_qos_profile());
+      imageTransport, rclcpp::QoS{1});
 
   RCLCPP_INFO(m_node.get_logger(), "Started optical flow");
 

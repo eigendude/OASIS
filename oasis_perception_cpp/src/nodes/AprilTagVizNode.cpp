@@ -79,7 +79,7 @@ bool AprilTagVizNode::Initialize()
   RCLCPP_INFO(m_logger, "Image transport: %s", m_imageTransport.c_str());
 
   // Publishers
-  *m_overlayPublisher = image_transport::create_publisher(&m_node, overlayTopic);
+  *m_overlayPublisher = image_transport::create_publisher(m_node, overlayTopic, rclcpp::QoS{1});
 
   // Callback groups
   m_imageCallbackGroup = m_node.create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
@@ -94,13 +94,13 @@ bool AprilTagVizNode::Initialize()
 
   // Subscribers
   *m_imageSubscription = image_transport::create_subscription(
-      &m_node, imageTopic,
+      m_node, imageTopic,
       [this](const Image::ConstSharedPtr& imageMsg)
       {
         if (imageMsg)
           AprilTagVizNode::OnImage(*imageMsg);
       },
-      m_imageTransport, rclcpp::QoS{1}.get_rmw_qos_profile(), imageOptions);
+      m_imageTransport, rclcpp::QoS{1}, imageOptions);
   m_detectionSubscription = m_node.create_subscription<AprilTagDetectionArray>(
       detectionsTopic, rclcpp::QoS{1}, [this](const AprilTagDetectionArray::ConstSharedPtr& msg)
       { AprilTagVizNode::OnDetections(msg); }, detectionsOptions);

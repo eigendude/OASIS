@@ -109,8 +109,7 @@ bool MeshViewerNode::Initialize()
   rclcpp::QoS sensorQos = rclcpp::SensorDataQoS();
   sensorQos.keep_last(1);
 
-  *m_meshImagePublisher =
-      image_transport::create_publisher(&m_node, meshImageTopic, sensorQos.get_rmw_qos_profile());
+  *m_meshImagePublisher = image_transport::create_publisher(m_node, meshImageTopic, sensorQos);
 
   m_pointCloudSubscription = m_node.create_subscription<PointCloud2>(
       pointCloudTopic, sensorQos,

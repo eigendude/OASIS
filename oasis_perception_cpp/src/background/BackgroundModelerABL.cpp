@@ -30,10 +30,11 @@ BackgroundModelerABL::BackgroundModelerABL(rclcpp::Node& node,
     m_imgSubscriber(std::make_unique<image_transport::Subscriber>()),
     m_bgsPackageABL(std::make_unique<bgslibrary::algorithms::AdaptiveBackgroundLearning>())
 {
-  *m_imgPublisherBackground = image_transport::create_publisher(&node, backgroundTopic);
+  *m_imgPublisherBackground =
+      image_transport::create_publisher(node, backgroundTopic, rclcpp::QoS{1});
   *m_imgSubscriber = image_transport::create_subscription(
-      &node, imageTopic, [this](const auto& msg) { ReceiveImage(msg); }, "compressed",
-      rclcpp::QoS{1}.get_rmw_qos_profile());
+      node, imageTopic, [this](const auto& msg) { ReceiveImage(msg); }, "compressed",
+      rclcpp::QoS{1});
 }
 
 BackgroundModelerABL::~BackgroundModelerABL()
