@@ -78,6 +78,20 @@ class _String:
         self.data: str = ""
 
 
+class _Message:
+    def __init__(self, **kwargs: Any) -> None:
+        for name, value in kwargs.items():
+            setattr(self, name, value)
+
+
+class _ServiceType:
+    class Request(_Message):
+        pass
+
+    class Response(_Message):
+        pass
+
+
 class _AVRConstants:
     ANALOG_DISABLED: int = 0
     ANALOG_INPUT: int = 1
@@ -181,8 +195,9 @@ class _EffectMode:
     HELIPAD_DISABLED: int = 1
     HELIPAD_GUIDANCE: int = 2
     HELIPAD_LANDED: int = 3
-    LED_THRUSTER_IDLE: int = 4
-    LED_THRUSTER_MOVING: int = 5
+    LED_THRUSTER_DISABLED: int = 4
+    LED_THRUSTER_IDLE: int = 5
+    LED_THRUSTER_MOVING: int = 6
 
 
 class _ConductorState:
@@ -690,6 +705,10 @@ class _LaunchDescription:
         self.actions.append(action)
 
 
+class _LaunchContext:
+    pass
+
+
 class _LaunchNode:
     def __init__(self, **kwargs: Any) -> None:
         self.kwargs: dict[str, Any] = kwargs
@@ -698,6 +717,30 @@ class _LaunchNode:
 class _ComposableNode:
     def __init__(self, **kwargs: Any) -> None:
         self.kwargs: dict[str, Any] = kwargs
+        self.node_namespace: list[str] | None = _as_substitutions(
+            kwargs.get("namespace")
+        )
+        self.node_name: list[str] | None = _as_substitutions(kwargs.get("name"))
+        self.remappings: list[tuple[list[str], list[str]]] | None = None
+        raw_remappings: Any = kwargs.get("remappings")
+        if raw_remappings is not None:
+            self.remappings = [
+                (_as_substitutions(source) or [], _as_substitutions(destination) or [])
+                for source, destination in raw_remappings
+            ]
+
+
+def _as_substitutions(value: Any) -> list[str] | None:
+    if value is None:
+        return None
+    if isinstance(value, list):
+        return value
+    return [str(value)]
+
+
+def _perform_substitutions(context: _LaunchContext, substitutions: list[str]) -> str:
+    del context
+    return "".join(str(substitution) for substitution in substitutions)
 
 
 def _get_package_share_directory(package_name: str) -> str:
@@ -736,6 +779,7 @@ def _install_geometry_msgs_stub() -> None:
 
     geometry_msgs_module: ModuleType = _make_package("geometry_msgs")
     geometry_msgs_msg_module: ModuleType = ModuleType("geometry_msgs.msg")
+    _set_module_attr(geometry_msgs_msg_module, "Vector3", _Vector3)
     _set_module_attr(
         geometry_msgs_msg_module,
         "TwistWithCovarianceStamped",
@@ -796,9 +840,11 @@ def _install_oasis_msgs_stub() -> None:
 
     _set_module_attr(oasis_msgs_msg_module, "AnalogReading", _AnalogReading)
     _set_module_attr(oasis_msgs_msg_module, "AnalogReadings", _AnalogReadings)
+    _set_module_attr(oasis_msgs_msg_module, "AirQualityIndex", _Message)
     _set_module_attr(oasis_msgs_msg_module, "AVRConstants", _AVRConstants)
     _set_module_attr(oasis_msgs_msg_module, "BoundingBox", _BoundingBox)
     _set_module_attr(oasis_msgs_msg_module, "CameraScene", _CameraScene)
+    _set_module_attr(oasis_msgs_msg_module, "CPUFanSpeed", _Message)
     _set_module_attr(oasis_msgs_msg_module, "DigitalReading", _DigitalReading)
     _set_module_attr(oasis_msgs_msg_module, "AnalogButton", _AnalogButton)
     _set_module_attr(oasis_msgs_msg_module, "ConductorState", _ConductorState)
@@ -806,20 +852,33 @@ def _install_oasis_msgs_stub() -> None:
     _set_module_attr(oasis_msgs_msg_module, "DigitalWriteCommand", _DigitalWriteCommand)
     _set_module_attr(oasis_msgs_msg_module, "EffectKind", _EffectKind)
     _set_module_attr(oasis_msgs_msg_module, "EffectMode", _EffectMode)
+    _set_module_attr(oasis_msgs_msg_module, "GasConcentration", _Message)
+    _set_module_attr(oasis_msgs_msg_module, "I2CDevice", _Message)
+    _set_module_attr(oasis_msgs_msg_module, "I2CDeviceType", _Message)
+    _set_module_attr(oasis_msgs_msg_module, "I2CImu", _Message)
     _set_module_attr(oasis_msgs_msg_module, "MCUMemory", _MCUMemory)
+    _set_module_attr(oasis_msgs_msg_module, "MCUString", _Message)
     _set_module_attr(oasis_msgs_msg_module, "PeripheralConstants", _PeripheralConstants)
     _set_module_attr(oasis_msgs_msg_module, "PeripheralInfo", _PeripheralInfo)
     _set_module_attr(oasis_msgs_msg_module, "PeripheralInput", _PeripheralInput)
     _set_module_attr(oasis_msgs_msg_module, "PeripheralScan", _PeripheralScan)
     _set_module_attr(oasis_msgs_msg_module, "PWMWriteCommand", _PWMWriteCommand)
+    _set_module_attr(oasis_msgs_msg_module, "ServoWriteCommand", _Message)
     _set_module_attr(oasis_msgs_msg_module, "SerialDevice", _SerialDevice)
     _set_module_attr(oasis_msgs_msg_module, "SerialDeviceScan", _SerialDeviceScan)
     _set_module_attr(oasis_msgs_msg_module, "UPSStatus", _UPSStatus)
     _set_module_attr(oasis_msgs_msg_module, "UsbDevice", _UsbDevice)
     _set_module_attr(oasis_msgs_srv_module, "CaptureInput", _CaptureInput)
+    _set_module_attr(oasis_msgs_srv_module, "AnalogRead", _ServiceType)
     _set_module_attr(oasis_msgs_srv_module, "ConfigureEffect", _ConfigureEffect)
+    _set_module_attr(oasis_msgs_srv_module, "DigitalRead", _ServiceType)
+    _set_module_attr(oasis_msgs_srv_module, "DigitalWrite", _ServiceType)
     _set_module_attr(oasis_msgs_srv_module, "GetMACAddress", _GetMACAddress)
+    _set_module_attr(oasis_msgs_srv_module, "I2CBegin", _ServiceType)
+    _set_module_attr(oasis_msgs_srv_module, "I2CEnd", _ServiceType)
+    _set_module_attr(oasis_msgs_srv_module, "PWMWrite", _ServiceType)
     _set_module_attr(oasis_msgs_srv_module, "ReportMCUMemory", _ReportMCUMemory)
+    _set_module_attr(oasis_msgs_srv_module, "ServoWrite", _ServiceType)
     _set_module_attr(oasis_msgs_srv_module, "SetAnalogMode", _SetAnalogMode)
     _set_module_attr(oasis_msgs_srv_module, "SetDigitalMode", _SetDigitalMode)
     _set_module_attr(oasis_msgs_srv_module, "SetEffect", _SetEffect)
@@ -838,15 +897,25 @@ def _install_launch_stub() -> None:
         return
 
     launch_module: ModuleType = _make_package("launch")
+    launch_context_module: ModuleType = ModuleType("launch.launch_context")
     launch_description_module: ModuleType = ModuleType("launch.launch_description")
+    launch_utilities_module: ModuleType = ModuleType("launch.utilities")
+    _set_module_attr(launch_context_module, "LaunchContext", _LaunchContext)
     _set_module_attr(
         launch_description_module,
         "LaunchDescription",
         _LaunchDescription,
     )
     _set_module_attr(launch_module, "launch_description", launch_description_module)
+    _set_module_attr(launch_module, "launch_context", launch_context_module)
+    _set_module_attr(
+        launch_utilities_module, "perform_substitutions", _perform_substitutions
+    )
+    _set_module_attr(launch_module, "utilities", launch_utilities_module)
     _register_module("launch", launch_module)
+    _register_module("launch.launch_context", launch_context_module)
     _register_module("launch.launch_description", launch_description_module)
+    _register_module("launch.utilities", launch_utilities_module)
 
 
 def _install_launch_ros_stub() -> None:

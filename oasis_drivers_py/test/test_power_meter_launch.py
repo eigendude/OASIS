@@ -63,8 +63,8 @@ def test_power_meter_node_uses_root_namespace_and_configured_remappings() -> Non
         for source, destination in node.remappings
     ]
     assert remappings == [
-        ("input_meter", "airlab/input_meter"),
-        ("load_meter", "airlab/load_meter"),
+        ("input_meter", "airlab/power/input_meter"),
+        ("load_meter", "airlab/power/load_meter"),
     ]
 
 

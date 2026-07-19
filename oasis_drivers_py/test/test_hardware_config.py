@@ -113,7 +113,7 @@ def test_falcon_display_parameters_preserve_driver_values() -> None:
         "width": 128,
         "height": 32,
         "column_offset": 4,
-        "contrast": 0xFF,
+        "contrast": 0xD0,
         "threshold": 127,
         "invert_pixels": False,
         "rotation": 0,
