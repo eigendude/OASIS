@@ -21,6 +21,7 @@ from oasis_drivers.hardware.config import HostHardwareConfig
 from oasis_drivers.hardware.config import LibcameraConfig
 from oasis_drivers.hardware.config import MCUConfig
 from oasis_drivers.hardware.config import MCUImplementation
+from oasis_drivers.hardware.config import PowerMeterConfig
 from oasis_drivers.hardware.config import Ssd1305DisplayConfig
 
 
@@ -195,7 +196,93 @@ def get_host_hardware_config(
             )
         )
     if host_id == "station":
+        # The Adafruit PCA9548A mux address is fixed at 0x70 by the Raspberry
+        # Pi device-tree overlay:
+        #
+        # dtoverlay=i2c-mux,pca9548,addr=0x70
+        #
+        # The PCA9548A is software-compatible with the TCA9548A and uses the
+        # same Raspberry Pi pca9548 overlay.
+        #
+        # The controller-side STEMMA QT / Qwiic connection is wired to the
+        # Raspberry Pi I2C1 header:
+        #
+        #   Qwiic red     -> pin 1, 3.3 V
+        #   Qwiic blue    -> pin 3, GPIO2 / SDA1
+        #   Qwiic yellow  -> pin 5, GPIO3 / SCL1
+        #   Qwiic black   -> pin 9, GND
+        #
+        # Linux exposes each mux channel as a separate child I2C adapter.
+        #
+        # Discover the parent I2C bus, mux child adapters, and attached
+        # devices:
+        #
+        #   i2cdetect -l
+        #
+        # Scan the parent Raspberry Pi I2C bus:
+        #
+        #   i2cdetect -y 1
+        #
+        # List mux child adapters and their channel IDs:
+        #
+        #   for dev in /sys/class/i2c-dev/i2c-*; do
+        #     bus="${dev##*-}"
+        #     printf "i2c-%-3s " "${bus}"
+        #     cat "${dev}/name"
+        #   done
+        #
+        # Scan every PCA9548A mux channel:
+        #
+        #   for dev in /sys/class/i2c-dev/i2c-*; do
+        #     bus="${dev##*-}"
+        #     name="$(cat "${dev}/name")"
+        #
+        #     case "${name}" in
+        #       *mux*)
+        #         echo "=== i2c-${bus}: ${name} ==="
+        #         i2cdetect -y "${bus}"
+        #         ;;
+        #     esac
+        #   done
+        #
+        # Expected topology on station:
+        #
+        #   /dev/i2c-1
+        #     0x70  Adafruit PCA9548A mux, shown as UU when claimed by kernel
+        #
+        #   mux channel 1
+        #     /dev/i2c-24
+        #     0x60  SparkFun ACS37800 power meter
+        #
+        #   mux channel 6
+        #     /dev/i2c-29
+        #     0x60  SparkFun ACS37800 power meter
+        #
+        # The two ACS37800 boards share address 0x60, so they must remain on
+        # separate mux channels.
+        #
+        # Meter IDs are assigned in increasing mux-channel order:
+        #
+        #   channel 1 -> power_meter_0
+        #   channel 6 -> power_meter_1
+        #
         return HostHardwareConfig(
+            power_meter=PowerMeterConfig(
+                publish_rate_hz=10.0,
+                mux_address=0x70,
+                power_meter_address=0x60,
+                power_meter_ids=("power_meter_0", "power_meter_1"),
+                # SparkFun Power Meter ACS37800 (SEN-29259):
+                # 2 MΩ series resistance per voltage input leg and 8.2 kΩ
+                # RSENSE
+                current_sense_range_amps=30.0,
+                voltage_divider_resistance_ohms=2_000_000.0,
+                voltage_sense_resistance_ohms=8_200.0,
+                # crs_sns is checked against register 0x1B at startup; it does
+                # not select the physical current range used for SI conversion
+                expected_crs_sns=4,
+                disconnect_after_failures=3,
+            ),
             cameras=(
                 CameraConfig(
                     implementation=CameraImplementation.LIBCAMERA,
