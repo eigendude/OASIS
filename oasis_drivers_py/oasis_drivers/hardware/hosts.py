@@ -172,7 +172,7 @@ def get_host_hardware_config(
                 width=128,
                 height=32,
                 column_offset=4,
-                contrast=0xFF,
+                contrast=0xD0,  # Brownouts start around 0xE0
                 threshold=127,
                 invert_pixels=False,
                 rotation=0,
