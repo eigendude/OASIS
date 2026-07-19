@@ -1,6 +1,6 @@
 image_width: 640
 image_height: 480
-camera_name: imx219__base_soc_i2c0mux_i2c_1_imx219_10_640x480_3280x2464_SBGGR10_CSI2P
+camera_name: imx219__base_soc_i2c0mux_i2c_1_imx219_10_640x480_3280x2464_SBGGR10_CSI2P_RAW
 camera_matrix:
   rows: 3
   cols: 3
