@@ -119,6 +119,7 @@ class ControlDescriptions:
             output="screen",
             parameters=[
                 {
+                    "checkerboard_slowdown_enabled": False,
                     "motor_voltage_reversed": motor_voltage_reversed,
                 }
             ],
