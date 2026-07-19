@@ -43,18 +43,8 @@ TelemetrixPins::TelemetrixPins()
 void TelemetrixPins::SetupAnalogSubsystem()
 {
 #if defined(ENABLE_ANALOG) || defined(ENABLE_ANALOG_BATCH)
-#if defined(ARDUINO_ARCH_AVR) || defined(ARDUINO_ARCH_MEGAAVR)
-  // Use the external AREF rail for more stable ADC readings
-  analogReference(EXTERNAL);
-
   // Allow the external reference to settle before sampling
   delay(5);
-#elif defined(ARDUINO_ARCH_ESP32)
-  // ESP32 ADC reference handling is different. Leave unconfigured until
-  // ESP32 analog support is implemented
-#else
-#error "Analog reference setup is not implemented for this architecture"
-#endif
 #endif
 }
 
