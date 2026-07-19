@@ -152,7 +152,7 @@ class DriverDescriptions:
             power_meter_ids.append(power_meter_id)
 
         remappings: list[tuple[str, str]] = [
-            (power_meter_id, f"{system_id}/{power_meter_id}")
+            (power_meter_id, f"{system_id}/power/{power_meter_id}")
             for power_meter_id in power_meter_ids
         ]
         composable_nodes.append(
