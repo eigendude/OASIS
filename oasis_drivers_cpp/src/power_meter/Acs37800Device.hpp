@@ -12,13 +12,17 @@
 #include "PowerMeterCore.hpp"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 
 namespace OASIS::PowerMeter
 {
-// ACS37800-DS Rev. 4, Memory Map and Registers 0x1B, 0x2A, 0x2C, 0x2D
+// ACS37800-DS Rev. 4 volatile memory map
 constexpr std::uint8_t ACS37800_SHADOW_CURRENT_CONFIG_REGISTER = 0x1B;
+constexpr std::uint8_t ACS37800_SHADOW_RMS_CONFIG_REGISTER = 0x1F;
+constexpr std::uint8_t ACS37800_RMS_VOLTAGE_CURRENT_REGISTER = 0x20;
+constexpr std::uint8_t ACS37800_ACTIVE_POWER_REGISTER = 0x21;
 constexpr std::uint8_t ACS37800_INSTANTANEOUS_VOLTAGE_CURRENT_REGISTER = 0x2A;
 constexpr std::uint8_t ACS37800_INSTANTANEOUS_POWER_REGISTER = 0x2C;
 constexpr std::uint8_t ACS37800_FAULT_STATUS_REGISTER = 0x2D;
@@ -38,6 +42,25 @@ struct Acs37800Config
   //! Expected crs_sns shadow-register value in [0, 7]
   //! Used only as a startup consistency check
   unsigned expected_crs_sns;
+
+  //! Fixed RMS sample count in [4, 1023] at the 32 kHz metrology rate
+  unsigned rms_sample_count{1023};
+};
+
+/** \brief Cumulative sampling diagnostics for one device instance */
+struct Acs37800Diagnostics
+{
+  //! Total bracketed read attempts, including retries
+  std::uint64_t coherent_read_attempts{0};
+
+  //! Samples accepted on their first bracketed read attempt
+  std::uint64_t successful_first_attempt_reads{0};
+
+  //! Additional bracketed reads after a visible RMS mismatch
+  std::uint64_t coherence_retries{0};
+
+  //! Calls that exhausted all bracketed-read attempts
+  std::uint64_t coherence_retry_exhaustions{0};
 };
 
 /** \brief Read-only device configuration observed during startup */
@@ -51,6 +74,15 @@ struct Acs37800DeviceInfo
 
   //! Line-to-input voltage multiplier derived from RISO and RSENSE
   double voltage_multiplier;
+
+  //! Read-back state of bypass_n_en from register 0x1F bit 24
+  bool bypass_n_en;
+
+  //! Read-back fixed RMS sample count from register 0x1F bits 23:14
+  unsigned rms_sample_count;
+
+  //! Fixed RMS measurement-window duration in milliseconds
+  double rms_window_milliseconds;
 };
 
 /** \brief Interface used by the node to sample one physical meter */
@@ -60,22 +92,31 @@ public:
   virtual ~IAcs37800Device() = default;
   virtual Sample ReadSample() = 0;
   virtual const Acs37800DeviceInfo& GetInfo() const = 0;
+  virtual const Acs37800Diagnostics& GetDiagnostics() const = 0;
 };
 
 /** \brief ROS-independent ACS37800 measurement decoder */
 class Acs37800Device : public IAcs37800Device
 {
 public:
+  //! Injectable startup wait, expressed in seconds
+  using SleepFunction = std::function<void(double)>;
+
   Acs37800Device(std::string device_path, int device_address, const Acs37800Config& config);
   Acs37800Device(std::unique_ptr<II2cRegisterDevice> transport, const Acs37800Config& config);
+  Acs37800Device(std::unique_ptr<II2cRegisterDevice> transport,
+                 const Acs37800Config& config,
+                 SleepFunction sleep);
 
   Sample ReadSample() override;
   const Acs37800DeviceInfo& GetInfo() const override { return m_info; }
+  const Acs37800Diagnostics& GetDiagnostics() const override { return m_diagnostics; }
 
 private:
   std::unique_ptr<II2cRegisterDevice> m_transport;
   Acs37800Config m_config;
   Acs37800DeviceInfo m_info{};
+  Acs37800Diagnostics m_diagnostics{};
 };
 
 /** \brief Sign-extend an unsigned field of width 1 through 32 bits */
@@ -84,14 +125,17 @@ std::int32_t SignExtend(std::uint32_t value, unsigned width);
 /** \brief Validate physical ACS37800 scaling configuration */
 void ValidateAcs37800Config(const Acs37800Config& config);
 
-/** \brief Decode signed instantaneous voltage field vcodes to line volts */
-double DecodeVoltage(std::uint16_t raw, const Acs37800Config& config);
+/** \brief Decode unsigned Q0.16 vrms to RMS line volts */
+double DecodeRmsVoltage(std::uint32_t raw, const Acs37800Config& config);
 
-/** \brief Decode signed instantaneous current field icodes to amperes */
-double DecodeCurrent(std::uint16_t raw, const Acs37800Config& config);
+/** \brief Decode signed Q1.15 irms to feeder amperes */
+double DecodeRmsCurrent(std::uint32_t raw, const Acs37800Config& config);
 
-/** \brief Decode signed instantaneous power field pinstant to line watts */
-double DecodePower(std::uint16_t raw, const Acs37800Config& config);
+/** \brief Decode signed Q1.15 pactive to line watts */
+double DecodeActivePower(std::uint32_t raw, const Acs37800Config& config);
+
+/** \brief Return the explicit voltage-divider multiplier */
+double Acs37800VoltageMultiplier(const Acs37800Config& config);
 
 /** \brief Extract the live overcurrent flag from register 0x2D */
 bool DecodeOvercurrent(std::uint32_t raw);

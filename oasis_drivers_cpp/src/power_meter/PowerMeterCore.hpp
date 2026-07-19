@@ -31,28 +31,28 @@ enum class Status : std::uint8_t
 /** \brief Aggregate DC power-meter measurement and validity state */
 struct Sample
 {
-  //! Raw register 0x2A containing vcodes and icodes
+  //! Raw register 0x20 containing vrms and irms
   std::uint32_t raw_voltage_current_register{0};
 
-  //! Raw register 0x2C containing pinstant
+  //! Raw register 0x21 containing pactive and pimag
   std::uint32_t raw_power_register{0};
 
   //! Raw register 0x2D containing live fault flags
   std::uint32_t raw_fault_register{0};
 
-  //! DC bus voltage in volts
+  //! RMS line voltage in volts
   double voltage{0.0};
 
   //! Voltage variance in squared volts, or zero when unknown
   double voltage_variance{0.0};
 
-  //! Signed DC current in amperes
+  //! RMS feeder current in amperes
   double current{0.0};
 
   //! Current variance in squared amperes, or zero when unknown
   double current_variance{0.0};
 
-  //! Signed DC active power in watts, decoded from register 0x2C
+  //! Signed active power in watts, decoded from register 0x21
   double power{0.0};
 
   //! Power variance in squared watts, or zero when unknown

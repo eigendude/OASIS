@@ -12,6 +12,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -57,6 +58,7 @@ struct FakeDeviceState
   Status status{Status::Ok};
   bool fail{false};
   unsigned reads{0};
+  std::deque<Sample> scripted_samples;
 };
 
 class FakeDevice : public IAcs37800Device
@@ -73,6 +75,12 @@ public:
     ++m_state->reads;
     if (m_state->fail)
       throw std::runtime_error("scripted read failure");
+    if (!m_state->scripted_samples.empty())
+    {
+      const Sample sample = m_state->scripted_samples.front();
+      m_state->scripted_samples.pop_front();
+      return sample;
+    }
     Sample sample;
     sample.voltage = m_state->voltage;
     sample.current = 0.5;
@@ -82,10 +90,15 @@ public:
   }
 
   const OASIS::PowerMeter::Acs37800DeviceInfo& GetInfo() const override { return m_info; }
+  const OASIS::PowerMeter::Acs37800Diagnostics& GetDiagnostics() const override
+  {
+    return m_diagnostics;
+  }
 
 private:
   std::shared_ptr<FakeDeviceState> m_state;
   OASIS::PowerMeter::Acs37800DeviceInfo m_info{};
+  OASIS::PowerMeter::Acs37800Diagnostics m_diagnostics{};
 };
 
 class PowerMeterNodeTest : public testing::Test
@@ -117,7 +130,8 @@ protected:
   }
 
   rclcpp::NodeOptions Options(const std::vector<std::string>& power_meter_ids = {"power_meter_0",
-                                                                                 "power_meter_1"})
+                                                                                 "power_meter_1"},
+                              std::int64_t filter_length = 3)
   {
     return rclcpp::NodeOptions().parameter_overrides({
         rclcpp::Parameter("boot_config_path", m_config.string()),
@@ -131,6 +145,7 @@ protected:
         rclcpp::Parameter("voltage_sense_resistance_ohms", 8200.0),
         rclcpp::Parameter("expected_crs_sns", static_cast<std::int64_t>(4)),
         rclcpp::Parameter("disconnect_after_failures", static_cast<std::int64_t>(2)),
+        rclcpp::Parameter("filter_length", filter_length),
     });
   }
 
@@ -407,4 +422,39 @@ TEST_F(PowerMeterNodeTest, FatalProbeErrorAbortsStartup)
   probe->results["/dev/i2c-22"] = {I2cProbeStatus::Error, "adapter access denied"};
   EXPECT_THROW(std::make_shared<Acs37800PowerMeterNode>(Options(), std::move(probe), Factory({})),
                std::runtime_error);
+}
+
+TEST_F(PowerMeterNodeTest, PublishesFilteredValues)
+{
+  AddChannel(2, 22);
+  auto probe = std::make_unique<FakeI2cDeviceProbe>();
+  probe->results["/dev/i2c-22"] = {I2cProbeStatus::Present, {}};
+  auto state = std::make_shared<FakeDeviceState>();
+  for (double voltage : {1.0, 2.0, 3.0})
+  {
+    Sample sample;
+    sample.voltage = voltage;
+    sample.current = 1.0;
+    sample.power = voltage;
+    sample.status = Status::Ok;
+    state->scripted_samples.push_back(sample);
+  }
+  const auto node = std::make_shared<Acs37800PowerMeterNode>(
+      Options({"filtered_meter"}, 3), std::move(probe), Factory({{"/dev/i2c-22", state}}));
+  const auto observer = std::make_shared<rclcpp::Node>("filter_observer");
+  std::vector<double> voltages;
+  const auto subscription = observer->create_subscription<oasis_msgs::msg::PowerMeter>(
+      "/filtered_meter", rclcpp::SensorDataQoS(),
+      [&](const oasis_msgs::msg::PowerMeter& message) { voltages.push_back(message.voltage); });
+  rclcpp::executors::SingleThreadedExecutor executor;
+  executor.add_node(node);
+  executor.add_node(observer);
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+  while (voltages.size() < 3 && std::chrono::steady_clock::now() < deadline)
+    executor.spin_some();
+  ASSERT_GE(voltages.size(), 3U);
+  EXPECT_DOUBLE_EQ(voltages[0], 1.0);
+  EXPECT_DOUBLE_EQ(voltages[1], 1.5);
+  EXPECT_DOUBLE_EQ(voltages[2], 2.0);
+  (void)subscription;
 }

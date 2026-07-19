@@ -18,6 +18,7 @@ using OASIS::PowerMeter::ACS37800_PROBE_REGISTER;
 using OASIS::PowerMeter::ACS37800_REGISTER_WIDTH;
 using OASIS::PowerMeter::ClassifyI2cTransferError;
 using OASIS::PowerMeter::DecodeAcs37800RegisterBytes;
+using OASIS::PowerMeter::EncodeAcs37800RegisterWrite;
 using OASIS::PowerMeter::I2cProbeStatus;
 using OASIS::PowerMeter::I2cRegisterReadTransfer;
 using OASIS::PowerMeter::ValidateI2cTransferResult;
@@ -42,6 +43,12 @@ TEST(LinuxI2cDeviceProbe, BuildsReadOnlyCombinedMeasurementRegisterRead)
 TEST(LinuxI2cDeviceProbe, DecodesLeastSignificantByteFirst)
 {
   EXPECT_EQ(DecodeAcs37800RegisterBytes({0x78, 0x56, 0x34, 0x12}), 0x12345678U);
+}
+
+TEST(LinuxI2cDeviceProbe, EncodesRegisterWriteLeastSignificantByteFirst)
+{
+  EXPECT_EQ(EncodeAcs37800RegisterWrite(0x1F, 0x12345678U),
+            (std::array<std::uint8_t, 5>{0x1F, 0x78, 0x56, 0x34, 0x12}));
 }
 
 TEST(LinuxI2cDeviceProbe, RejectsShortNackAndTransportFailures)

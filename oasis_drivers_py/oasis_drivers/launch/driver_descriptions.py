@@ -100,6 +100,9 @@ class DriverDescriptions:
             f"{ROS_NAMESPACE}.bno086_imu_driver_{host_id}:=debug"
         )
 
+        # Disable debug logging for ACS37800 power meter driver
+        effective_log_levels.append(f"{ROS_NAMESPACE}.power_meter_{host_id}:=info")
+
         container_arguments: list[str] = ["--executor-type", "multi-threaded"]
         if effective_log_levels:
             container_arguments.append("--ros-args")

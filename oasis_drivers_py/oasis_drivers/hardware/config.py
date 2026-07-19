@@ -199,6 +199,10 @@ class PowerMeterConfig:
     # Consecutive communication failures allowed before disconnection
     disconnect_after_failures: int
 
+    # Number of ROS publication samples averaged; one disables filtering
+    # At 10 Hz, three spans about 200 ms from oldest to newest sample
+    filter_length: int
+
     def as_parameters(self) -> dict[str, object]:
         """Convert the configuration to ROS parameter names and values"""
 
@@ -213,6 +217,7 @@ class PowerMeterConfig:
             "voltage_sense_resistance_ohms": self.voltage_sense_resistance_ohms,
             "expected_crs_sns": self.expected_crs_sns,
             "disconnect_after_failures": self.disconnect_after_failures,
+            "filter_length": self.filter_length,
         }
 
 

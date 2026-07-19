@@ -20,5 +20,8 @@ public:
 
   /** \brief Read one register and return its host-order 32-bit value */
   virtual std::uint32_t ReadRegister(std::uint8_t address) = 0;
+
+  /** \brief Write one host-order 32-bit register value */
+  virtual void WriteRegister(std::uint8_t address, std::uint32_t value) = 0;
 };
 } // namespace OASIS::PowerMeter

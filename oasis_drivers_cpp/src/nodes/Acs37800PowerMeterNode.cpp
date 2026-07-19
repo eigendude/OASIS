@@ -53,6 +53,8 @@ constexpr const char* PARAM_VOLTAGE_DIVIDER_RESISTANCE_OHMS = "voltage_divider_r
 constexpr const char* PARAM_VOLTAGE_SENSE_RESISTANCE_OHMS = "voltage_sense_resistance_ohms";
 constexpr const char* PARAM_EXPECTED_CRS_SNS = "expected_crs_sns";
 constexpr const char* PARAM_DISCONNECT_AFTER_FAILURES = "disconnect_after_failures";
+constexpr const char* PARAM_FILTER_LENGTH = "filter_length";
+constexpr unsigned MAX_FILTER_LENGTH = 16;
 
 std::string HexAddress(int address)
 {
@@ -137,6 +139,7 @@ void Acs37800PowerMeterNode::ReadConfig()
   declare_parameter(PARAM_VOLTAGE_SENSE_RESISTANCE_OHMS, 8200.0);
   declare_parameter(PARAM_EXPECTED_CRS_SNS, 4);
   declare_parameter(PARAM_DISCONNECT_AFTER_FAILURES, 3);
+  declare_parameter(PARAM_FILTER_LENGTH, 3);
 
   m_publishRateHz = get_parameter(PARAM_PUBLISH_RATE_HZ).as_double();
   m_bootConfigPath = get_parameter(PARAM_BOOT_CONFIG_PATH).as_string();
@@ -152,12 +155,16 @@ void Acs37800PowerMeterNode::ReadConfig()
       get_parameter(PARAM_VOLTAGE_SENSE_RESISTANCE_OHMS).as_double();
   const auto expected_crs_sns = get_parameter(PARAM_EXPECTED_CRS_SNS).as_int();
   const auto disconnect_after_failures = get_parameter(PARAM_DISCONNECT_AFTER_FAILURES).as_int();
+  const auto filter_length = get_parameter(PARAM_FILTER_LENGTH).as_int();
   if (expected_crs_sns < 0)
     throw std::invalid_argument("expected_crs_sns must be in [0, 7]");
   if (disconnect_after_failures <= 0)
     throw std::invalid_argument("disconnect_after_failures must be positive");
+  if (filter_length < 1 || filter_length > MAX_FILTER_LENGTH)
+    throw std::invalid_argument("filter_length must be in [1, 16]");
   m_deviceConfig.expected_crs_sns = static_cast<unsigned>(expected_crs_sns);
   m_disconnectAfterFailures = static_cast<unsigned>(disconnect_after_failures);
+  m_filterLength = static_cast<unsigned>(filter_length);
 
   OASIS::PowerMeter::ValidatePublishRate(m_publishRateHz);
   OASIS::PowerMeter::ValidateI2cAddress(m_muxAddress, PARAM_MUX_ADDRESS);
@@ -226,14 +233,28 @@ void Acs37800PowerMeterNode::DiscoverPowerMeters()
     }
 
     const auto& info = device->GetInfo();
-    RCLCPP_INFO(get_logger(),
-                "Power meter '%s': parent bus %d, mux channel %d, adapter %s, "
-                "address %s, current range %.0f A, crs_sns %u, voltage scaling %.9g",
-                id.c_str(), mux.parent_bus, adapters[index].channel,
-                adapters[index].device_path.c_str(), HexAddress(m_powerMeterAddress).c_str(),
-                m_deviceConfig.current_sense_range_amps, info.crs_sns, info.voltage_multiplier);
-    m_powerMeters.push_back({id, mux.parent_bus, adapters[index].channel, m_powerMeterAddress,
-                             adapters[index], std::move(device), nullptr});
+    RCLCPP_INFO(
+        get_logger(),
+        "Power meter '%s': parent bus %d, mux channel %d, adapter %s, "
+        "address %s, current range %.0f A, crs_sns %u, bypass_n_en=%d, n=%u, "
+        "RMS window=%.6g ms, divider=%.9g ohm, sense=%.9g ohm, "
+        "voltage multiplier=%.9g, filter length=%u",
+        id.c_str(), mux.parent_bus, adapters[index].channel, adapters[index].device_path.c_str(),
+        HexAddress(m_powerMeterAddress).c_str(), m_deviceConfig.current_sense_range_amps,
+        info.crs_sns, info.bypass_n_en, info.rms_sample_count, info.rms_window_milliseconds,
+        m_deviceConfig.voltage_divider_resistance_ohms,
+        m_deviceConfig.voltage_sense_resistance_ohms, info.voltage_multiplier, m_filterLength);
+    m_powerMeters.push_back({id,
+                             mux.parent_bus,
+                             adapters[index].channel,
+                             m_powerMeterAddress,
+                             adapters[index],
+                             std::move(device),
+                             nullptr,
+                             0,
+                             false,
+                             OASIS::PowerMeter::SampleMovingAverage(m_filterLength),
+                             {}});
   }
 }
 
@@ -271,8 +292,7 @@ void Acs37800PowerMeterNode::CreatePublishers()
 
 void Acs37800PowerMeterNode::PublishMeasurements()
 {
-  // The ACS37800 has no hardware timestamp, so all meters receive the shared
-  // host acquisition timestamp for this callback
+  // One host timestamp identifies all samples acquired by this timer callback
   const rclcpp::Time timestamp = now();
   for (PowerMeterInstance& meter : m_powerMeters)
   {
@@ -280,6 +300,21 @@ void Acs37800PowerMeterNode::PublishMeasurements()
     try
     {
       sample = meter.device->ReadSample();
+      const Sample raw_sample = sample;
+      const double raw_apparent_power = raw_sample.voltage * raw_sample.current;
+      if (meter.invariant_monitor.Evaluate(raw_sample, 0.1))
+      {
+        RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 5000,
+            "Power meter '%s' raw sample violates |pactive| <= vrms*irms: "
+            "raw pactive=%.9g W, raw apparent=%.9g VA, reg 0x20=0x%08x, "
+            "reg 0x21=0x%08x (count=%llu)",
+            meter.id.c_str(), raw_sample.power, raw_apparent_power,
+            raw_sample.raw_voltage_current_register, raw_sample.raw_power_register,
+            static_cast<unsigned long long>(meter.invariant_monitor.GetViolationCount()));
+      }
+      sample = meter.filter.Update(raw_sample);
+      const auto& diagnostics = meter.device->GetDiagnostics();
       if (meter.consecutive_failures > 0)
       {
         RCLCPP_INFO(get_logger(), "Power meter '%s' recovered after %u failed reads%s",
@@ -290,16 +325,23 @@ void Acs37800PowerMeterNode::PublishMeasurements()
       meter.was_disconnected = false;
       RCLCPP_DEBUG(get_logger(),
                    "Power meter '%s' adapter %s mux channel %d: "
-                   "reg 0x2A=0x%08x voltage=%.9g V current=%.9g A, "
-                   "reg 0x2C=0x%08x power=%.9g W, reg 0x2D=0x%08x fault=%d",
+                   "reg 0x20=0x%08x vrms=%.9g V irms=%.9g A, "
+                   "reg 0x21=0x%08x pactive=%.9g W apparent=%.9g VA, "
+                   "reg 0x2D=0x%08x fault=%d, attempts=%llu first=%llu retries=%llu "
+                   "exhaustions=%llu",
                    meter.id.c_str(), meter.adapter.device_path.c_str(), meter.mux_channel,
-                   sample.raw_voltage_current_register, sample.voltage, sample.current,
-                   sample.raw_power_register, sample.power, sample.raw_fault_register,
-                   sample.overcurrent);
+                   raw_sample.raw_voltage_current_register, raw_sample.voltage, raw_sample.current,
+                   raw_sample.raw_power_register, raw_sample.power, raw_apparent_power,
+                   raw_sample.raw_fault_register, raw_sample.overcurrent,
+                   static_cast<unsigned long long>(diagnostics.coherent_read_attempts),
+                   static_cast<unsigned long long>(diagnostics.successful_first_attempt_reads),
+                   static_cast<unsigned long long>(diagnostics.coherence_retries),
+                   static_cast<unsigned long long>(diagnostics.coherence_retry_exhaustions));
     }
     catch (const std::exception& error)
     {
       ++meter.consecutive_failures;
+      meter.filter.Reset();
       const bool disconnected = meter.consecutive_failures >= m_disconnectAfterFailures;
       if (disconnected && !meter.was_disconnected)
       {

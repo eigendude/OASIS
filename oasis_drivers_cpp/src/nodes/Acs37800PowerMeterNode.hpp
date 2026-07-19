@@ -11,6 +11,7 @@
 #include "power_meter/Acs37800Device.hpp"
 #include "power_meter/I2cDeviceProbe.hpp"
 #include "power_meter/I2cMuxResolver.hpp"
+#include "power_meter/SampleMovingAverage.hpp"
 
 #include <filesystem>
 #include <functional>
@@ -51,6 +52,8 @@ private:
     rclcpp::Publisher<oasis_msgs::msg::PowerMeter>::SharedPtr publisher;
     unsigned consecutive_failures{0};
     bool was_disconnected{false};
+    OASIS::PowerMeter::SampleMovingAverage filter;
+    OASIS::PowerMeter::ActivePowerInvariantMonitor invariant_monitor;
   };
 
   void ReadConfig();
@@ -63,6 +66,7 @@ private:
   int m_muxAddress{0};
   int m_powerMeterAddress{0};
   unsigned m_disconnectAfterFailures{0};
+  unsigned m_filterLength{3};
   std::vector<std::string> m_powerMeterIds;
   std::filesystem::path m_bootConfigPath;
   std::filesystem::path m_i2cSysfsRoot;

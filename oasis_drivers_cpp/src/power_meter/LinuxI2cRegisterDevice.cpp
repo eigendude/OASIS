@@ -44,6 +44,20 @@ std::uint32_t OASIS::PowerMeter::DecodeAcs37800RegisterBytes(
          (static_cast<std::uint32_t>(bytes[3]) << 24U);
 }
 
+std::array<std::uint8_t, OASIS::PowerMeter::ACS37800_REGISTER_WIDTH + 1> OASIS::PowerMeter::
+    EncodeAcs37800RegisterWrite(std::uint8_t address, std::uint32_t value)
+{
+  // ACS37800-DS Rev. 4, Figure 29 sends the selector followed by D[7:0]
+  // through D[31:24]
+  return {
+      address,
+      static_cast<std::uint8_t>(value),
+      static_cast<std::uint8_t>(value >> 8U),
+      static_cast<std::uint8_t>(value >> 16U),
+      static_cast<std::uint8_t>(value >> 24U),
+  };
+}
+
 void OASIS::PowerMeter::ValidateI2cTransferResult(int transferred_messages,
                                                   int error_number,
                                                   const std::string& device_path)
@@ -88,4 +102,26 @@ std::uint32_t LinuxI2cRegisterDevice::ReadRegister(std::uint8_t address)
   ValidateI2cTransferResult(transferred_messages, error_number, m_devicePath);
 
   return DecodeAcs37800RegisterBytes(transfer.read_data);
+}
+
+void LinuxI2cRegisterDevice::WriteRegister(std::uint8_t address, std::uint32_t value)
+{
+  auto bytes = EncodeAcs37800RegisterWrite(address, value);
+  i2c_msg message{
+      .addr = static_cast<__u16>(m_deviceAddress),
+      .flags = 0,
+      .len = static_cast<__u16>(bytes.size()),
+      .buf = bytes.data(),
+  };
+  i2c_rdwr_ioctl_data transaction{.msgs = &message, .nmsgs = 1};
+  const int result = ioctl(m_descriptor, I2C_RDWR, &transaction);
+  if (result < 0)
+    throw std::system_error(errno, std::generic_category(),
+                            "I2C write on " + m_devicePath + " address " +
+                                std::to_string(m_deviceAddress) + " register " +
+                                std::to_string(address));
+  if (result != 1)
+    throw std::runtime_error("I2C write on " + m_devicePath + " address " +
+                             std::to_string(m_deviceAddress) + " register " +
+                             std::to_string(address) + " was incomplete");
 }

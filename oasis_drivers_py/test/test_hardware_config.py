@@ -128,7 +128,7 @@ def test_falcon_display_parameters_preserve_driver_values() -> None:
     }
 
 
-def test_airlab_power_meter_parameters_preserve_driver_values() -> None:
+def test_station_power_meter_parameters_preserve_driver_values() -> None:
     hardware: HostHardwareConfig = get_host_hardware_config("airlab", "airlab_zone")
 
     assert hardware.ssd1305_display is not None
@@ -152,6 +152,7 @@ def test_airlab_power_meter_parameters_preserve_driver_values() -> None:
         "enable_partial_updates": True,
     }
 
+    hardware = get_host_hardware_config("station", "airlab_zone")
     assert hardware.power_meter is not None
     assert hardware.power_meter.power_meter_ids == (
         "power_meter_0",
@@ -167,6 +168,7 @@ def test_airlab_power_meter_parameters_preserve_driver_values() -> None:
         "voltage_sense_resistance_ohms": 8_200.0,
         "expected_crs_sns": 4,
         "disconnect_after_failures": 3,
+        "filter_length": 3,
     }
 
 

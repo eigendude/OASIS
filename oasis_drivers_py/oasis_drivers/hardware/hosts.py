@@ -251,11 +251,9 @@ def get_host_hardware_config(
         #     0x70  Adafruit PCA9548A mux, shown as UU when claimed by kernel
         #
         #   mux channel 1
-        #     /dev/i2c-24
         #     0x60  SparkFun ACS37800 power meter
         #
         #   mux channel 6
-        #     /dev/i2c-29
         #     0x60  SparkFun ACS37800 power meter
         #
         # The two ACS37800 boards share address 0x60, so they must remain on
@@ -273,8 +271,8 @@ def get_host_hardware_config(
                 power_meter_address=0x60,
                 power_meter_ids=("power_meter_0", "power_meter_1"),
                 # SparkFun Power Meter ACS37800 (SEN-29259):
-                # 2 MΩ series resistance per voltage input leg and 8.2 kΩ
-                # RSENSE
+                # 2 MΩ from IP+/HI to VINP and 8.2 kΩ from VINP to grounded
+                # VINN
                 current_sense_range_amps=30.0,
                 voltage_divider_resistance_ohms=2_000_000.0,
                 voltage_sense_resistance_ohms=8_200.0,
@@ -282,6 +280,7 @@ def get_host_hardware_config(
                 # not select the physical current range used for SI conversion
                 expected_crs_sns=4,
                 disconnect_after_failures=3,
+                filter_length=3,
             ),
             cameras=(
                 CameraConfig(

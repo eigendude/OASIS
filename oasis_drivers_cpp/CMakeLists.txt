@@ -564,6 +564,13 @@ if(BUILD_TESTING)
   ament_add_gtest(test_power_meter_core
     test/power_meter/test_PowerMeterCore.cpp
   )
+
+  ament_add_gtest(test_sample_moving_average
+    test/power_meter/test_SampleMovingAverage.cpp
+  )
+  target_link_libraries(test_sample_moving_average
+    power_meter_core
+  )
   target_link_libraries(test_power_meter_core
     power_meter_core
   )

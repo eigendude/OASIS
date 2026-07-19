@@ -50,6 +50,10 @@ struct I2cRegisterReadTransfer
 std::uint32_t DecodeAcs37800RegisterBytes(
     const std::array<std::uint8_t, ACS37800_REGISTER_WIDTH>& bytes);
 
+/** \brief Encode a selector and host-order value for an ACS37800 write */
+std::array<std::uint8_t, ACS37800_REGISTER_WIDTH + 1> EncodeAcs37800RegisterWrite(
+    std::uint8_t address, std::uint32_t value);
+
 /** \brief Throw when I2C_RDWR fails or completes a short transaction */
 void ValidateI2cTransferResult(int transferred_messages,
                                int error_number,
@@ -68,6 +72,7 @@ public:
   LinuxI2cRegisterDevice& operator=(LinuxI2cRegisterDevice&&) = delete;
 
   std::uint32_t ReadRegister(std::uint8_t address) override;
+  void WriteRegister(std::uint8_t address, std::uint32_t value) override;
 
 private:
   std::string m_devicePath;
