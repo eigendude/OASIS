@@ -10,6 +10,7 @@ flake8-quotes
 isort
 mypy
 numpy
+pillow
 pytest
 PyYAML
 types-paho-mqtt

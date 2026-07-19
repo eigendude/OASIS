@@ -20,12 +20,7 @@ BLOCK = 2
 TEXT = "ACLIMA"
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-OUTPUT = (
-    SCRIPT_DIR.parent
-    / "media"
-    / "oled"
-    / "aclima_shadow_128x32.png"
-)
+OUTPUT = SCRIPT_DIR.parent / "media" / "oled" / "aclima_shadow_128x32.png"
 
 # Thick 8x11 source glyphs.
 #
@@ -129,10 +124,7 @@ def build_text_mask(text: str) -> set[tuple[int, int]]:
 def build_visible_shadow(
     letter_cells: set[tuple[int, int]],
 ) -> set[tuple[int, int]]:
-    shadow_cells = {
-        (x + SHADOW_DX, y + SHADOW_DY)
-        for x, y in letter_cells
-    }
+    shadow_cells = {(x + SHADOW_DX, y + SHADOW_DY) for x, y in letter_cells}
 
     # The source letters are treated as opaque black shapes. Only the portion
     # of the shifted white shadow extending beyond those shapes is displayed.
@@ -168,6 +160,8 @@ def render() -> Image.Image:
 
     image = Image.new("1", (WIDTH, HEIGHT), 0)
     pixels = image.load()
+    if pixels is None:
+        raise RuntimeError("Pillow did not provide pixel access for the image")
 
     for logical_x, logical_y in visible_cells:
         start_x = offset_x + logical_x * BLOCK
@@ -195,10 +189,7 @@ def main() -> None:
         compress_level=9,
     )
 
-    print(
-        f"Wrote {OUTPUT} "
-        f"({WIDTH}x{HEIGHT}, {OUTPUT.stat().st_size} bytes)"
-    )
+    print(f"Wrote {OUTPUT} " f"({WIDTH}x{HEIGHT}, {OUTPUT.stat().st_size} bytes)")
 
 
 if __name__ == "__main__":

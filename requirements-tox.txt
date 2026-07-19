@@ -18,6 +18,7 @@ mypy_extensions==1.1.0
 numpy==2.5.1
 packaging==26.2
 pathspec==1.1.1
+pillow==12.3.0
 platformdirs==4.10.1
 pluggy==1.6.0
 pycodestyle==2.14.0
