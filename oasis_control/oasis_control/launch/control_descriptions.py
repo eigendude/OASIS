@@ -155,6 +155,8 @@ class ControlDescriptions:
                 ("set_digital_mode", f"{mcu_node}/set_digital_mode"),
                 ("set_effect", f"{mcu_node}/set_effect"),
                 ("set_sampling_interval", f"{mcu_node}/set_sampling_interval"),
+                ("supply_voltage", f"{host_id}/supply_voltage"),
+                ("traction_voltage", f"{host_id}/traction_voltage"),
                 ("wol", f"{host_id}/wol"),
             ],
         )

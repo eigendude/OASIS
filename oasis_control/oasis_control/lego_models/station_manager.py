@@ -22,6 +22,7 @@ import rclpy.qos
 import rclpy.subscription
 import rclpy.task
 from builtin_interfaces.msg import Time as TimeMsg
+from std_msgs.msg import Float32 as Float32Msg
 
 from oasis_drivers.ros.ros_translator import RosTranslator
 from oasis_drivers.telemetrix.telemetrix_types import AnalogMode
@@ -104,6 +105,10 @@ CLIENT_SET_DIGITAL_MODE = "set_digital_mode"
 # Command publishers
 PUBLISH_MOTOR_DIR_CMD = "digital_write_cmd"
 PUBLISH_MOTOR_PWM_CMD = "pwm_write_cmd"
+
+# Measurement publishers
+PUBLISH_SUPPLY_VOLTAGE = "supply_voltage"
+PUBLISH_TRACTION_VOLTAGE = "traction_voltage"
 
 
 ################################################################################
@@ -204,6 +209,20 @@ class StationManager:
                 msg_type=PWMWriteCommandMsg,
                 topic=PUBLISH_MOTOR_PWM_CMD,
                 qos_profile=cmd_qos,
+            )
+        )
+        self._supply_voltage_pub: rclpy.publisher.Publisher[Float32Msg] = (
+            self._node.create_publisher(
+                msg_type=Float32Msg,
+                topic=PUBLISH_SUPPLY_VOLTAGE,
+                qos_profile=rclpy.qos.QoSPresetProfiles.SENSOR_DATA.value,
+            )
+        )
+        self._traction_voltage_pub: rclpy.publisher.Publisher[Float32Msg] = (
+            self._node.create_publisher(
+                msg_type=Float32Msg,
+                topic=PUBLISH_TRACTION_VOLTAGE,
+                qos_profile=rclpy.qos.QoSPresetProfiles.SENSOR_DATA.value,
             )
         )
 
@@ -469,6 +488,7 @@ class StationManager:
             motor_voltage_var += skew_sigma * skew_sigma
 
         self._motor_voltage_stddev = math.sqrt(max(motor_voltage_var, 0.0))
+        self._traction_voltage_pub.publish(Float32Msg(data=self._motor_voltage))
 
     def _update_motor_voltage_channel_a(
         self,
@@ -562,6 +582,7 @@ class StationManager:
 
             # Record state
             self._supply_voltage = supply_voltage
+            self._supply_voltage_pub.publish(Float32Msg(data=self._supply_voltage))
 
             # Update EWMA statistics
             if not self._supply_voltage_initialized:

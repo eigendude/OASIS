@@ -73,6 +73,11 @@ class _Bool:
         self.data: bool = False
 
 
+class _Float32:
+    def __init__(self, data: float = 0.0) -> None:
+        self.data: float = data
+
+
 class _String:
     def __init__(self) -> None:
         self.data: str = ""
@@ -495,10 +500,12 @@ class _Publisher:
         *_: Any,
         topic: str = "",
         qos_profile: Any = None,
+        msg_type: type[Any] | None = None,
         **__: Any,
     ) -> None:
         self.topic: str = topic
         self.qos_profile: Any = qos_profile
+        self.msg_type: type[Any] | None = msg_type
         self.messages: list[Any] = []
 
     def publish(self, message: Any) -> None:
@@ -595,8 +602,11 @@ class _Node:
         topic: str,
         qos_profile: Any,
     ) -> _Publisher:
-        del msg_type
-        publisher: _Publisher = _Publisher(topic=topic, qos_profile=qos_profile)
+        publisher: _Publisher = _Publisher(
+            topic=topic,
+            qos_profile=qos_profile,
+            msg_type=msg_type,
+        )
         self.publishers.append(publisher)
         return publisher
 
@@ -709,6 +719,11 @@ class _LaunchContext:
     pass
 
 
+class _Substitution:
+    def __init__(self, *values: Any) -> None:
+        self.values: tuple[Any, ...] = values
+
+
 class _LaunchNode:
     def __init__(self, **kwargs: Any) -> None:
         self.kwargs: dict[str, Any] = kwargs
@@ -817,6 +832,7 @@ def _install_std_msgs_stub() -> None:
         std_msgs_msg_module = ModuleType("std_msgs.msg")
 
     _set_module_attr(std_msgs_msg_module, "Bool", _Bool)
+    _set_module_attr(std_msgs_msg_module, "Float32", _Float32)
     _set_module_attr(std_msgs_msg_module, "Header", _Header)
     _set_module_attr(std_msgs_msg_module, "String", _String)
     _set_module_attr(std_msgs_module, "msg", std_msgs_msg_module)
@@ -899,6 +915,7 @@ def _install_launch_stub() -> None:
     launch_module: ModuleType = _make_package("launch")
     launch_context_module: ModuleType = ModuleType("launch.launch_context")
     launch_description_module: ModuleType = ModuleType("launch.launch_description")
+    launch_substitutions_module: ModuleType = ModuleType("launch.substitutions")
     launch_utilities_module: ModuleType = ModuleType("launch.utilities")
     _set_module_attr(launch_context_module, "LaunchContext", _LaunchContext)
     _set_module_attr(
@@ -909,12 +926,19 @@ def _install_launch_stub() -> None:
     _set_module_attr(launch_module, "launch_description", launch_description_module)
     _set_module_attr(launch_module, "launch_context", launch_context_module)
     _set_module_attr(
+        launch_substitutions_module,
+        "PathJoinSubstitution",
+        _Substitution,
+    )
+    _set_module_attr(launch_module, "substitutions", launch_substitutions_module)
+    _set_module_attr(
         launch_utilities_module, "perform_substitutions", _perform_substitutions
     )
     _set_module_attr(launch_module, "utilities", launch_utilities_module)
     _register_module("launch", launch_module)
     _register_module("launch.launch_context", launch_context_module)
     _register_module("launch.launch_description", launch_description_module)
+    _register_module("launch.substitutions", launch_substitutions_module)
     _register_module("launch.utilities", launch_utilities_module)
 
 
@@ -925,6 +949,7 @@ def _install_launch_ros_stub() -> None:
     launch_ros_module: ModuleType = _make_package("launch_ros")
     launch_ros_actions_module: ModuleType = ModuleType("launch_ros.actions")
     launch_ros_descriptions_module: ModuleType = ModuleType("launch_ros.descriptions")
+    launch_ros_substitutions_module: ModuleType = ModuleType("launch_ros.substitutions")
     _set_module_attr(
         launch_ros_actions_module,
         "ComposableNodeContainer",
@@ -938,6 +963,16 @@ def _install_launch_ros_stub() -> None:
     )
     _set_module_attr(launch_ros_module, "actions", launch_ros_actions_module)
     _set_module_attr(
+        launch_ros_substitutions_module,
+        "FindPackageShare",
+        _Substitution,
+    )
+    _set_module_attr(
+        launch_ros_module,
+        "substitutions",
+        launch_ros_substitutions_module,
+    )
+    _set_module_attr(
         launch_ros_module,
         "descriptions",
         launch_ros_descriptions_module,
@@ -945,6 +980,7 @@ def _install_launch_ros_stub() -> None:
     _register_module("launch_ros", launch_ros_module)
     _register_module("launch_ros.actions", launch_ros_actions_module)
     _register_module("launch_ros.descriptions", launch_ros_descriptions_module)
+    _register_module("launch_ros.substitutions", launch_ros_substitutions_module)
 
 
 def _install_rclpy_stub() -> None:
