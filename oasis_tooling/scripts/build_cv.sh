@@ -88,10 +88,11 @@ patch \
 #
 
 echo "Installing OpenCV Python build dependencies..."
-"${OPENCV_PYTHON_BIN}" -m pip install \
-  --upgrade \
-  --break-system-packages \
-  numpy
+
+# Install or validate the shared NumPy installation.
+NUMPY_PYTHON_BIN="${OPENCV_PYTHON_BIN}" \
+  "${SCRIPT_DIR}/install_numpy.sh"
+
 "${OPENCV_PYTHON_BIN}" -m pip uninstall \
   --yes \
   --break-system-packages \

@@ -671,10 +671,11 @@ print(f"Wrote {len(requirements)} requirements to {requirements_path}")
 PY
 
 echo "Installing MediaPipe Python runtime dependencies"
-"${MEDIAPIPE_PYTHON_BIN}" -m pip install \
-  --upgrade \
-  --break-system-packages \
-  numpy
+
+# Install or validate the shared NumPy installation.
+NUMPY_PYTHON_BIN="${MEDIAPIPE_PYTHON_BIN}" \
+  "${SCRIPT_DIR}/install_numpy.sh"
+
 "${MEDIAPIPE_PYTHON_BIN}" -m pip install \
   --upgrade \
   --break-system-packages \

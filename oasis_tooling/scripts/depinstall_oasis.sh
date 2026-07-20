@@ -141,16 +141,9 @@ fi
 #
 
 if [[ "${OSTYPE}" != "darwin"* ]]; then
-  # Packages to install via pip
-  PYTHON_PACKAGES=(
-    numpy
-  )
-
-  sudo python3 -m pip install \
-    --upgrade \
-    --ignore-installed \
-    --break-system-packages \
-    "${PYTHON_PACKAGES[@]}"
+  # Install or validate the shared NumPy installation.
+  NUMPY_PYTHON_BIN="python3" \
+    "${SCRIPT_DIR}/install_numpy.sh"
 fi
 
 #

@@ -14,6 +14,9 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
+# Get the absolute path to this script
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 #
 # Version parameters
 #
@@ -78,17 +81,9 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     "${MEDIAPIPE_PIP_PACKAGES[@]}"
 fi
 
-# Packages to install via pip
-PYTHON_PACKAGES=(
-  # Needed by cv_bridge's CMake configure step
-  numpy
-)
-
-sudo python3 -m pip install \
-  --upgrade \
-  --ignore-installed \
-  --break-system-packages \
-  "${PYTHON_PACKAGES[@]}"
+# Install or validate the shared NumPy installation.
+NUMPY_PYTHON_BIN="python3" \
+  "${SCRIPT_DIR}/install_numpy.sh"
 
 # Install NVM
 curl -o- "https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh" | bash

@@ -173,17 +173,9 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
 
   sudo apt install -y --no-install-recommends "${APT_PACKAGES[@]}"
 
-  # Packages to install via pip
-  PYTHON_PACKAGES=(
-    # Needed by cv_bridge's CMake configure step
-    numpy
-  )
-
-  sudo python3 -m pip install \
-    --upgrade \
-    --ignore-installed \
-    --break-system-packages \
-    "${PYTHON_PACKAGES[@]}"
+  # NumPy is needed by cv_bridge's CMake configure step.
+  NUMPY_PYTHON_BIN="python3" \
+    "${SCRIPT_DIR}/install_numpy.sh"
 fi
 
 #
