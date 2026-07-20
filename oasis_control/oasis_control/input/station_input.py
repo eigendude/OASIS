@@ -45,13 +45,13 @@ MOTOR_EPSILON: float = 0.001
 
 # Nominal motor-voltage target measured from the normal full-speed A-button
 # command around the track, in volts
-NOMINAL_MOTOR_VOLTAGE: float = 6.8
+NOMINAL_MOTOR_VOLTAGE: float = 6.5
 
 # Maximum motor-voltage target allowed while X is pressed, in volts
 MAX_MOTOR_VOLTAGE: float = 8.0
 
-# Unitless duty-cycle cap for the nominal motor-voltage target
-MAX_SAFE_MOTOR_DUTY_CYCLE: float = 0.143
+# Unitless duty-cycle cap calibrated for the 6.5 V nominal target
+MAX_SAFE_MOTOR_DUTY_CYCLE: float = 0.135
 
 # Unitless command cap while X is pressed, derived from the boosted voltage
 # target divided by the nominal voltage target
