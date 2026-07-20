@@ -12,6 +12,7 @@
 #include <chrono>
 #include <cmath>
 #include <stdexcept>
+#include <thread>
 #include <utility>
 
 #include <rclcpp/qos.hpp>
@@ -48,6 +49,7 @@ constexpr const char* PARAM_ROTATION = "rotation";
 constexpr const char* PARAM_UPDATE_RATE_HZ = "update_rate_hz";
 constexpr const char* PARAM_RECONNECT_INTERVAL_SEC = "reconnect_interval_sec";
 constexpr const char* PARAM_RECONNECT_SETTLE_SEC = "reconnect_settle_sec";
+constexpr const char* PARAM_DISPLAY_POWER_SETTLE_SEC = "display_power_settle_sec";
 constexpr const char* PARAM_ENABLED = "enabled";
 constexpr const char* PARAM_BLANK_ON_SHUTDOWN = "blank_on_shutdown";
 constexpr const char* PARAM_REJECT_WRONG_DIMENSIONS = "reject_wrong_dimensions";
@@ -66,6 +68,7 @@ constexpr int DEFAULT_ROTATION = 0;
 constexpr double DEFAULT_UPDATE_RATE_HZ = 30.0;
 constexpr double DEFAULT_RECONNECT_INTERVAL_SEC = 1.0;
 constexpr double DEFAULT_RECONNECT_SETTLE_SEC = 0.5;
+constexpr double DEFAULT_DISPLAY_POWER_SETTLE_SEC = 0.25;
 constexpr bool DEFAULT_ENABLED = true;
 constexpr bool DEFAULT_BLANK_ON_SHUTDOWN = true;
 constexpr bool DEFAULT_REJECT_WRONG_DIMENSIONS = true;
@@ -109,7 +112,8 @@ Ssd1305DisplayNode::Ssd1305DisplayNode(const rclcpp::NodeOptions& options)
 
 Ssd1305DisplayNode::Ssd1305DisplayNode(
     const rclcpp::NodeOptions& options,
-    std::unique_ptr<OASIS::Display::Ssd1305DeviceInterface> device)
+    std::unique_ptr<OASIS::Display::Ssd1305DeviceInterface> device,
+    SleepFunction sleep)
   : rclcpp::Node(DEFAULT_NODE_NAME, options),
     m_deviceConfig{
         .i2c_device = DEFAULT_I2C_DEVICE,
@@ -129,9 +133,11 @@ Ssd1305DisplayNode::Ssd1305DisplayNode(
     m_updateRateHz(DEFAULT_UPDATE_RATE_HZ),
     m_reconnectIntervalSec(DEFAULT_RECONNECT_INTERVAL_SEC),
     m_reconnectSettleSec(DEFAULT_RECONNECT_SETTLE_SEC),
+    m_displayPowerSettleSec(DEFAULT_DISPLAY_POWER_SETTLE_SEC),
     m_blankOnShutdown(DEFAULT_BLANK_ON_SHUTDOWN),
     m_enablePartialUpdates(DEFAULT_ENABLE_PARTIAL_UPDATES),
     m_device(std::move(device)),
+    m_sleep(std::move(sleep)),
     m_frontBuffer{},
     m_hasPendingFrame(false),
     m_desiredGeneration(0),
@@ -140,6 +146,9 @@ Ssd1305DisplayNode::Ssd1305DisplayNode(
     m_failedReconnectAttempts(0)
 {
   ReadConfig();
+
+  if (!m_sleep)
+    m_sleep = [](std::chrono::nanoseconds duration) { std::this_thread::sleep_for(duration); };
 
   if (!m_device)
     m_device = std::make_unique<OASIS::Display::Ssd1305Device>(m_deviceConfig);
@@ -186,11 +195,11 @@ Ssd1305DisplayNode::Ssd1305DisplayNode(
   RCLCPP_INFO(get_logger(),
               "SSD1305 configured: device=%s address=0x%02X size=%zux%zu "
               "column_offset=%u rotation=%d contrast=%u update_rate_hz=%.3f "
-              "enabled=%s partial_updates=%s",
+              "display_power_settle_sec=%.3f enabled=%s partial_updates=%s",
               m_deviceConfig.i2c_device.c_str(), m_deviceConfig.i2c_address, m_deviceConfig.width,
               m_deviceConfig.height, m_deviceConfig.column_offset,
               static_cast<int>(get_parameter(PARAM_ROTATION).as_int()), m_deviceConfig.contrast,
-              m_updateRateHz, m_displayEnabled ? "true" : "false",
+              m_updateRateHz, m_displayPowerSettleSec, m_displayEnabled ? "true" : "false",
               m_enablePartialUpdates ? "true" : "false");
 }
 
@@ -248,6 +257,7 @@ void Ssd1305DisplayNode::ReadConfig()
   declare_parameter(PARAM_UPDATE_RATE_HZ, DEFAULT_UPDATE_RATE_HZ);
   declare_parameter(PARAM_RECONNECT_INTERVAL_SEC, DEFAULT_RECONNECT_INTERVAL_SEC);
   declare_parameter(PARAM_RECONNECT_SETTLE_SEC, DEFAULT_RECONNECT_SETTLE_SEC);
+  declare_parameter(PARAM_DISPLAY_POWER_SETTLE_SEC, DEFAULT_DISPLAY_POWER_SETTLE_SEC);
   declare_parameter(PARAM_ENABLED, DEFAULT_ENABLED);
   declare_parameter(PARAM_BLANK_ON_SHUTDOWN, DEFAULT_BLANK_ON_SHUTDOWN);
   declare_parameter(PARAM_REJECT_WRONG_DIMENSIONS, DEFAULT_REJECT_WRONG_DIMENSIONS);
@@ -262,6 +272,7 @@ void Ssd1305DisplayNode::ReadConfig()
   const int threshold = static_cast<int>(get_parameter(PARAM_THRESHOLD).as_int());
   const double reconnect_interval_sec = get_parameter(PARAM_RECONNECT_INTERVAL_SEC).as_double();
   const double reconnect_settle_sec = get_parameter(PARAM_RECONNECT_SETTLE_SEC).as_double();
+  const double display_power_settle_sec = get_parameter(PARAM_DISPLAY_POWER_SETTLE_SEC).as_double();
 
   if (column_offset < 0 || column_offset > 4)
     throw std::invalid_argument("column_offset must be in [0, 4] for 128 x 32 SSD1305 panels");
@@ -273,6 +284,8 @@ void Ssd1305DisplayNode::ReadConfig()
     throw std::invalid_argument("reconnect_interval_sec must be finite and positive");
   if (!std::isfinite(reconnect_settle_sec) || reconnect_settle_sec < 0.0)
     throw std::invalid_argument("reconnect_settle_sec must be finite and nonnegative");
+  if (!std::isfinite(display_power_settle_sec) || display_power_settle_sec < 0.0)
+    throw std::invalid_argument("display_power_settle_sec must be finite and nonnegative");
   if (width != DEFAULT_WIDTH || height != DEFAULT_HEIGHT)
     throw std::invalid_argument("width and height must be exactly 128 and 32 for Product 4567");
 
@@ -292,6 +305,7 @@ void Ssd1305DisplayNode::ReadConfig()
   m_updateRateHz = get_parameter(PARAM_UPDATE_RATE_HZ).as_double();
   m_reconnectIntervalSec = reconnect_interval_sec;
   m_reconnectSettleSec = reconnect_settle_sec;
+  m_displayPowerSettleSec = display_power_settle_sec;
   m_displayEnabled = get_parameter(PARAM_ENABLED).as_bool();
   m_blankOnShutdown = get_parameter(PARAM_BLANK_ON_SHUTDOWN).as_bool();
   m_enablePartialUpdates = get_parameter(PARAM_ENABLE_PARTIAL_UPDATES).as_bool();
@@ -316,7 +330,7 @@ void Ssd1305DisplayNode::AttemptInitialConnection()
     m_device->Initialize();
     m_device->SetContrast(m_deviceConfig.contrast);
     m_device->WriteFullFrame(desired);
-    m_device->SetDisplayEnabled(m_displayEnabled);
+    SetDisplayEnabledAfterPowerSettle(m_displayEnabled);
     m_frontBuffer = desired;
     m_controllerState = ControllerState::Ready;
     std::scoped_lock pending_lock(m_pendingMutex);
@@ -362,7 +376,9 @@ bool Ssd1305DisplayNode::AttemptReconnect()
   m_controllerState = ControllerState::Recovering;
   try
   {
-    m_device->Recover(desired, m_deviceConfig.contrast, m_displayEnabled);
+    // Keep the panel off until the final synchronization has restored the
+    // latest state and allowed its power circuitry to settle
+    m_device->Recover(desired, m_deviceConfig.contrast, false);
     m_controllerState = ControllerState::Stabilizing;
     m_stabilizationTimer->reset();
     RCLCPP_DEBUG(get_logger(), "SSD1305 recovery completed; stabilizing for %.3f seconds",
@@ -399,7 +415,7 @@ bool Ssd1305DisplayNode::CompleteStabilization()
   {
     m_device->SetContrast(m_deviceConfig.contrast);
     m_device->WriteFullFrame(desired);
-    m_device->SetDisplayEnabled(m_displayEnabled);
+    SetDisplayEnabledAfterPowerSettle(m_displayEnabled);
     m_frontBuffer = desired;
     m_controllerState = ControllerState::Ready;
     {
@@ -428,6 +444,17 @@ bool Ssd1305DisplayNode::CompleteStabilization()
                          m_failedReconnectAttempts, error.what());
     return false;
   }
+}
+
+void Ssd1305DisplayNode::SetDisplayEnabledAfterPowerSettle(bool enabled)
+{
+  if (enabled && m_displayPowerSettleSec > 0.0)
+  {
+    const auto settle_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::duration<double>(m_displayPowerSettleSec));
+    m_sleep(settle_duration);
+  }
+  m_device->SetDisplayEnabled(enabled);
 }
 
 void Ssd1305DisplayNode::HandleImage(sensor_msgs::msg::Image::ConstSharedPtr image)

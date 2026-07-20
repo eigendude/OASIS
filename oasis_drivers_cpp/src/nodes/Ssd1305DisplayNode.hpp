@@ -14,6 +14,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -34,9 +35,12 @@ class Ssd1305DisplayNodeTestAccess;
 class Ssd1305DisplayNode : public rclcpp::Node
 {
 public:
+  using SleepFunction = std::function<void(std::chrono::nanoseconds)>;
+
   explicit Ssd1305DisplayNode(const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
   Ssd1305DisplayNode(const rclcpp::NodeOptions& options,
-                     std::unique_ptr<OASIS::Display::Ssd1305DeviceInterface> device);
+                     std::unique_ptr<OASIS::Display::Ssd1305DeviceInterface> device,
+                     SleepFunction sleep = {});
   ~Ssd1305DisplayNode() override;
 
 private:
@@ -69,6 +73,8 @@ private:
   bool AttemptReconnect();
   bool CompleteStabilization();
   // m_deviceMutex must be held before calling this method
+  void SetDisplayEnabledAfterPowerSettle(bool enabled);
+  // m_deviceMutex must be held before calling this method
   void EnterReconnectModeLocked(const std::string& error, bool initial_failure);
   void HandleImage(sensor_msgs::msg::Image::ConstSharedPtr image);
   FlushResult FlushPendingFrame();
@@ -86,10 +92,12 @@ private:
   double m_updateRateHz;
   double m_reconnectIntervalSec;
   double m_reconnectSettleSec;
+  double m_displayPowerSettleSec;
   bool m_blankOnShutdown;
   bool m_enablePartialUpdates;
 
   std::unique_ptr<OASIS::Display::Ssd1305DeviceInterface> m_device;
+  SleepFunction m_sleep;
   OASIS::Display::Ssd1305Framebuffer::Buffer m_frontBuffer;
   OASIS::Display::Ssd1305Framebuffer m_pendingBuffer;
   std::mutex m_pendingMutex;
