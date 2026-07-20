@@ -38,6 +38,12 @@ class MCUManagerConfig:
     # Host providing peripheral input to a conductor manager
     input_provider: str | None = None
 
+    # Zone providing camera scenes to a conductor manager
+    camera_scene_zone: str | None = None
+
+    # Resolution path segment for conductor camera scenes, or none if omitted
+    camera_scene_resolution: str | None = None
+
     # Host providing Wake-on-LAN services to a conductor manager
     wol_server_id: str | None = None
 

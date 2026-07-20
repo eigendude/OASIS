@@ -109,8 +109,16 @@ class ControlDescriptions:
         mcu_node: str,
         wol_server_id: str,
         input_provider: str,
+        camera_zone: str,
+        camera_resolution: str = "",
         motor_voltage_reversed: bool = False,
     ) -> None:
+        camera_scene_topic: str = (
+            f"{camera_zone}/{camera_resolution}/camera_scene"
+            if camera_resolution
+            else f"{camera_zone}/camera_scene"
+        )
+
         conductor_node: Node = Node(
             namespace=ROS_NAMESPACE,
             package=CONTROL_PACKAGE_NAME,
@@ -127,7 +135,7 @@ class ControlDescriptions:
                 (f"{mcu_node}_state", f"{host_id}/{mcu_node}_state"),
                 ("analog_readings", f"{mcu_node}/analog_readings"),
                 ("capture_input", f"{input_provider}/capture_input"),
-                ("camera_scene", "/oasis/hallway/sd/camera_scene"),
+                ("camera_scene", camera_scene_topic),
                 ("checkerboard_status", f"{host_id}/checkerboard_status"),
                 ("digital_reading", f"{mcu_node}/digital_reading"),
                 ("digital_write_cmd", f"{mcu_node}/digital_write_cmd"),

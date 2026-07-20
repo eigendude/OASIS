@@ -54,6 +54,8 @@ def generate_launch_description() -> LaunchDescription:
                 mcu_manager.node_name,
                 mcu_manager.wol_server_id or config.HOST_ID,
                 mcu_manager.input_provider or "",
+                camera_zone=mcu_manager.camera_scene_zone or "",
+                camera_resolution=mcu_manager.camera_scene_resolution or "",
                 motor_voltage_reversed=mcu_manager.motor_voltage_reversed,
             )
         if mcu_manager.implementation is MCUManagerImplementation.ENGINEER:

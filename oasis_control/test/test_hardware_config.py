@@ -45,6 +45,8 @@ def test_station_uses_conductor_manager_and_wol_server() -> None:
     assert hardware.mcu_manager.node_name == "conductor"
     assert hardware.mcu_manager.implementation is MCUManagerImplementation.CONDUCTOR
     assert hardware.mcu_manager.input_provider == "megapegasus"
+    assert hardware.mcu_manager.camera_scene_zone == "hallway"
+    assert hardware.mcu_manager.camera_scene_resolution == "sd"
     assert hardware.mcu_manager.wol_server_id == "station"
     assert hardware.mcu_manager.motor_voltage_reversed is True
 

@@ -15,6 +15,11 @@ from oasis_control.hardware.config import MCUManagerConfig
 from oasis_control.hardware.config import MCUManagerImplementation
 
 
+# Camera scene source used by the station conductor manager
+STATION_CAMERA_SCENE_ZONE: str = "hallway"
+STATION_CAMERA_SCENE_RESOLUTION: str = "sd"
+
+
 def get_host_hardware_config(
     host_id: str,
     zone_id: str,
@@ -43,6 +48,8 @@ def get_host_hardware_config(
                 node_name="conductor",
                 implementation=MCUManagerImplementation.CONDUCTOR,
                 input_provider="megapegasus",
+                camera_scene_zone=STATION_CAMERA_SCENE_ZONE,
+                camera_scene_resolution=STATION_CAMERA_SCENE_RESOLUTION,
                 wol_server_id=host_id,
                 motor_voltage_reversed=True,
             ),
