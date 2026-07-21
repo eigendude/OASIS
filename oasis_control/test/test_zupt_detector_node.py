@@ -8,7 +8,7 @@
 #
 ################################################################################
 
-# mypy: disable-error-code=import-not-found
+# mypy: disable-error-code=attr-defined
 
 """Tests for the ROS-facing stationary-twist detector node contract."""
 
@@ -51,6 +51,27 @@ def test_each_published_flag_state_has_a_matching_zupt_message() -> None:
         node.stop()
 
 
+def test_zupt_endpoints_use_reliable_bounded_qos() -> None:
+    node: ZuptDetectorNode = ZuptDetectorNode()
+    try:
+        measurement_qos: Any = node._zupt_pub.qos_profile
+        assert measurement_qos.reliability == rclpy.qos.QoSReliabilityPolicy.RELIABLE
+        assert measurement_qos.durability == rclpy.qos.QoSDurabilityPolicy.VOLATILE
+        assert measurement_qos.history == rclpy.qos.QoSHistoryPolicy.KEEP_LAST
+        assert measurement_qos.depth == 50
+        assert node._imu_sub.qos_profile.reliability == (
+            rclpy.qos.QoSReliabilityPolicy.RELIABLE
+        )
+
+        state_qos: Any = node._zupt_flag_pub.qos_profile
+        assert state_qos.reliability == rclpy.qos.QoSReliabilityPolicy.RELIABLE
+        assert state_qos.durability == rclpy.qos.QoSDurabilityPolicy.TRANSIENT_LOCAL
+        assert state_qos.history == rclpy.qos.QoSHistoryPolicy.KEEP_LAST
+        assert state_qos.depth == 1
+    finally:
+        node.stop()
+
+
 def test_stationary_zupt_message_publishes_small_isotropic_covariance() -> None:
     node: ZuptDetectorNode = ZuptDetectorNode()
 
@@ -68,6 +89,7 @@ def test_stationary_zupt_message_publishes_small_isotropic_covariance() -> None:
         )
 
         assert node._zupt_flag_pub.messages[-1].data is True
+        assert zupt_message.header.frame_id == "imu_link"
         assert zupt_message.twist.twist.linear.x == 0.0
         assert zupt_message.twist.twist.linear.y == 0.0
         assert zupt_message.twist.twist.linear.z == 0.0

@@ -26,6 +26,8 @@ from std_msgs.msg import Bool as BoolMsg
 from oasis_control.localization.zupt_detector import ZuptDecision
 from oasis_control.localization.zupt_detector import ZuptDetector
 from oasis_control.localization.zupt_detector import ZuptDetectorConfig
+from oasis_control.ros.qos_profiles import reliable_measurement_qos
+from oasis_control.ros.qos_profiles import reliable_state_qos
 
 
 ################################################################################
@@ -52,6 +54,9 @@ PARAM_STATIONARY_ANGULAR_VELOCITY_SIGMA_RADS: str = (
 )
 PARAM_MOVING_LINEAR_VARIANCE_MPS2: str = "moving_linear_variance_mps2"
 PARAM_MOVING_ANGULAR_VARIANCE_RADS2: str = "moving_angular_variance_rads2"
+PARAM_IMU_FRAME_ID: str = "imu_frame_id"
+
+DEFAULT_IMU_FRAME_ID: str = "imu_link"
 
 LINEAR_COVARIANCE_DIAGONAL_INDICES: tuple[int, int, int] = (0, 7, 14)
 ANGULAR_COVARIANCE_DIAGONAL_INDICES: tuple[int, int, int] = (21, 28, 35)
@@ -72,21 +77,22 @@ class ZuptDetectorNode(rclpy.node.Node):
         self._detector: ZuptDetector = ZuptDetector(detector_config)
 
         # QoS profiles
-        sensor_qos_profile: rclpy.qos.QoSProfile = (
-            rclpy.qos.QoSPresetProfiles.SENSOR_DATA.value
-        )
+        self.declare_parameter(PARAM_IMU_FRAME_ID, DEFAULT_IMU_FRAME_ID)
+        self._imu_frame_id: str = str(self.get_parameter(PARAM_IMU_FRAME_ID).value)
+        measurement_qos_profile: rclpy.qos.QoSProfile = reliable_measurement_qos()
+        state_qos_profile: rclpy.qos.QoSProfile = reliable_state_qos()
 
         # ROS Publishers
         self._zupt_flag_pub: rclpy.publisher.Publisher[BoolMsg] = self.create_publisher(
             msg_type=BoolMsg,
             topic=ZUPT_FLAG_TOPIC,
-            qos_profile=sensor_qos_profile,
+            qos_profile=state_qos_profile,
         )
         self._zupt_pub: rclpy.publisher.Publisher[TwistWithCovarianceStampedMsg] = (
             self.create_publisher(
                 msg_type=TwistWithCovarianceStampedMsg,
                 topic=ZUPT_TOPIC,
-                qos_profile=sensor_qos_profile,
+                qos_profile=measurement_qos_profile,
             )
         )
 
@@ -96,7 +102,7 @@ class ZuptDetectorNode(rclpy.node.Node):
                 msg_type=ImuMsg,
                 topic=IMU_TOPIC,
                 callback=self._handle_imu,
-                qos_profile=sensor_qos_profile,
+                qos_profile=measurement_qos_profile,
             )
         )
 
@@ -227,6 +233,7 @@ class ZuptDetectorNode(rclpy.node.Node):
 
         zupt_message: TwistWithCovarianceStampedMsg = TwistWithCovarianceStampedMsg()
         zupt_message.header = message.header
+        zupt_message.header.frame_id = self._imu_frame_id
         zupt_message.twist.twist.linear.x = 0.0
         zupt_message.twist.twist.linear.y = 0.0
         zupt_message.twist.twist.linear.z = 0.0
