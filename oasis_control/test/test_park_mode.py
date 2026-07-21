@@ -17,7 +17,6 @@ from typing import cast
 import pytest
 import rclpy.node
 
-from oasis_control.input.checkerboard_slowdown import CheckerboardCruiseSlowdown
 from oasis_control.input.park_mode import TrainParkMode
 from oasis_control.input.station_input import MAX_BOOSTED_TRAIN_COMMAND
 from oasis_control.input.station_input import MAX_SAFE_MOTOR_DUTY_CYCLE
@@ -45,15 +44,6 @@ class _StationManager:
         self.pwm_reverse = reverse
 
 
-def _make_slowdown() -> CheckerboardCruiseSlowdown:
-    return CheckerboardCruiseSlowdown(
-        enabled=True,
-        duration_sec=5.0,
-        clear_confirm_sec=2.0,
-        scale=0.65,
-    )
-
-
 def _make_station_input(
     park_mode: TrainParkMode,
 ) -> tuple[StationInput, _StationManager]:
@@ -62,7 +52,6 @@ def _make_station_input(
     station_input: StationInput = StationInput(
         node,
         cast(StationManager, station_manager),
-        _make_slowdown(),
         park_mode,
     )
     station_input._joysticks[JOYSTICK_ADDRESS] = "game.controller.default"
@@ -119,7 +108,7 @@ def test_periodic_tick_maintains_park_mode_output() -> None:
     station_manager.pwm = 0.0
     station_manager.pwm_reverse = False
 
-    assert not station_input.update_autonomous_train_control(1.0)
+    station_input.update_autonomous_train_control()
 
     assert park_mode.active
     assert station_input.reverse
@@ -133,13 +122,13 @@ def test_park_mode_waits_for_visible_to_interrupted_edge() -> None:
 
     station_input._on_peripheral_input(_input_message([_button("start", True)]))
 
-    assert not station_input.update_checkerboard_status(False, 1.0)
+    station_input.update_checkerboard_status(False)
     assert park_mode.active
     assert station_manager.pwm > 0.0
-    assert not station_input.update_checkerboard_status(True, 2.0)
+    station_input.update_checkerboard_status(True)
     assert park_mode.active
 
-    assert not station_input.update_checkerboard_status(False, 3.0)
+    station_input.update_checkerboard_status(False)
     assert not park_mode.active
     assert station_input.magnitude == 0.0
     assert not station_input.reverse
@@ -214,7 +203,7 @@ def test_periodic_tick_preserves_x_boosted_park_mode() -> None:
     station_manager.pwm = 0.0
     station_manager.pwm_reverse = False
 
-    assert not station_input.update_autonomous_train_control(1.0)
+    station_input.update_autonomous_train_control()
 
     boosted_pwm: float = 0.9 * MAX_BOOSTED_TRAIN_COMMAND * MAX_SAFE_MOTOR_DUTY_CYCLE
     assert park_mode.active

@@ -21,7 +21,6 @@ import rclpy.qos
 import rclpy.subscription
 import rclpy.task
 
-from oasis_control.input.checkerboard_slowdown import CheckerboardCruiseSlowdown
 from oasis_control.input.park_mode import TrainParkMode
 from oasis_control.lego_models.station_manager import StationManager
 from oasis_msgs.msg import CameraScene as CameraSceneMsg
@@ -95,7 +94,6 @@ class StationInput:
         self,
         node: rclpy.node.Node,
         station_manager: StationManager,
-        checkerboard_slowdown: CheckerboardCruiseSlowdown,
         park_mode: TrainParkMode,
     ) -> None:
         """
@@ -104,7 +102,6 @@ class StationInput:
         # Construction parameters
         self._node = node
         self._station_manager: StationManager = station_manager
-        self._checkerboard_slowdown: CheckerboardCruiseSlowdown = checkerboard_slowdown
         self._park_mode: TrainParkMode = park_mode
 
         # Initialize peripheral state
@@ -172,55 +169,18 @@ class StationInput:
     def update_checkerboard_status(
         self,
         checkerboard_visible: bool,
-        now_sec: float,
-    ) -> bool:
+    ) -> None:
         if self._park_mode.update_checkerboard_status(checkerboard_visible):
             self._stop_train()
             self._node.get_logger().info("Park mode complete; train parked")
-            return False
 
-        if self._park_mode.active:
-            return False
-
-        interrupted: bool = self._checkerboard_slowdown.update_checkerboard_status(
-            checkerboard_visible,
-            now_sec,
-        )
-
-        if interrupted and not self._hold_speed:
-            self.cancel_checkerboard_slowdown()
-            return False
-
-        if interrupted:
-            self._apply_hold_speed(now_sec)
-
-        return interrupted
-
-    def update_checkerboard_slowdown(self, now_sec: float) -> bool:
-        hold_speed_was_active: bool = self._hold_speed
-
-        expired: bool = self._checkerboard_slowdown.consume_slowdown_expiration(now_sec)
-        if expired and hold_speed_was_active and self._hold_speed:
-            self._apply_hold_speed(now_sec)
-        elif expired:
-            self._node.get_logger().debug(
-                "Checkerboard slowdown expired after cruise ended; "
-                "not reapplying hold speed"
-            )
-
-        return expired
-
-    def update_autonomous_train_control(self, now_sec: float) -> bool:
-        expired: bool = self.update_checkerboard_slowdown(now_sec)
-
+    def update_autonomous_train_control(self) -> None:
         if self._park_mode.active:
             self._apply_park_mode()
-            return expired
+            return
 
         if self._hold_speed:
-            self._apply_hold_speed(now_sec)
-
-        return expired
+            self._apply_hold_speed()
 
     def update_camera_scene(
         self,
@@ -235,7 +195,7 @@ class StationInput:
         if person_right_third:
             person_entered_right_third: bool = self._last_person_right_third_sec is None
             if person_entered_right_third and not self._park_mode.active:
-                self._enable_person_cruise(now_sec)
+                self._enable_person_cruise()
 
             self._last_person_right_third_sec = now_sec
             return
@@ -252,30 +212,6 @@ class StationInput:
 
         if self._person_cruise_active:
             self._disable_person_cruise()
-
-    def consume_checkerboard_slowdown_activation(
-        self,
-        now_sec: float,
-    ) -> bool:
-        return self._checkerboard_slowdown.consume_slowdown_activation(now_sec)
-
-    def checkerboard_slowdown_remaining_sec(self, now_sec: float) -> float:
-        return self._checkerboard_slowdown.slowdown_remaining_sec(now_sec)
-
-    def consume_checkerboard_waiting_for_clear_activation(
-        self,
-        now_sec: float,
-    ) -> bool:
-        return self._checkerboard_slowdown.consume_waiting_for_clear_activation(now_sec)
-
-    def consume_checkerboard_rearmed(
-        self,
-        now_sec: float,
-    ) -> bool:
-        return self._checkerboard_slowdown.consume_rearmed(now_sec)
-
-    def cancel_checkerboard_slowdown(self) -> bool:
-        return self._checkerboard_slowdown.cancel()
 
     def _on_peripheral_input(self, peripheral_input_msg: PeripheralInputMsg) -> None:
         # Translate parameters
@@ -333,7 +269,6 @@ class StationInput:
                 train_command = 0.0
 
             # Toggle hold speed when Y button is pressed
-            hold_speed_before_input: bool = self._hold_speed
             if self._last_y_button != y_button:
                 self._last_y_button = y_button
                 if y_button:
@@ -349,38 +284,27 @@ class StationInput:
                 self._person_cruise_active = False
                 self._hold_speed = False
 
-            if hold_speed_before_input and not self._hold_speed:
-                if self.cancel_checkerboard_slowdown():
-                    self._node.get_logger().info(
-                        "Checkerboard slowdown cancelled because cruise ended"
-                    )
-
             if a_button or y_button:
                 self._cancel_park_mode()
 
             if self._park_mode.active:
                 self._end_cruise()
-                self.update_autonomous_train_control(self._now_sec())
+                self.update_autonomous_train_control()
                 return
 
             self._log_boost_change(x_button)
 
             if self._hold_speed:
-                self.update_autonomous_train_control(self._now_sec())
+                self.update_autonomous_train_control()
                 return
 
             self._apply_train_command(train_command, boost_enabled=x_button)
 
-    def _apply_hold_speed(self, now_sec: float) -> None:
+    def _apply_hold_speed(self) -> None:
         if not self._hold_speed:
             return
 
-        train_command: float = self._checkerboard_slowdown.scale_command(
-            1.0,
-            cruise_active=True,
-            now_sec=now_sec,
-        )
-        self._apply_train_command(train_command, boost_enabled=self._x_button)
+        self._apply_train_command(1.0, boost_enabled=self._x_button)
 
     def _apply_park_mode(self) -> None:
         if not self._park_mode.active:
@@ -491,16 +415,7 @@ class StationInput:
         self._station_manager.set_motor_direction(False)
         self._station_manager.set_motor_pwm(0.0, False)
 
-    def _now_sec(self) -> float:
-        now = self._node.get_clock().now()
-        nanoseconds: Optional[int] = getattr(now, "nanoseconds", None)
-        if nanoseconds is not None:
-            return float(nanoseconds) * 1.0e-9
-
-        stamp = now.to_msg()
-        return float(stamp.sec) + float(stamp.nanosec) * 1.0e-9
-
-    def _enable_person_cruise(self, now_sec: float) -> None:
+    def _enable_person_cruise(self) -> None:
         if self._person_cruise_active:
             return
 
@@ -509,7 +424,7 @@ class StationInput:
         self._node.get_logger().info(
             "Person detected in hallway right third; cruise enabled"
         )
-        self.update_autonomous_train_control(now_sec)
+        self.update_autonomous_train_control()
 
     def _disable_person_cruise(self) -> None:
         self._person_cruise_active = False
@@ -517,11 +432,6 @@ class StationInput:
         hold_speed_was_active: bool = self._hold_speed
         if hold_speed_was_active:
             self._hold_speed = False
-
-        if hold_speed_was_active and self.cancel_checkerboard_slowdown():
-            self._node.get_logger().info(
-                "Checkerboard slowdown cancelled because cruise ended"
-            )
 
         self._node.get_logger().info("Person left hallway right third; cruise disabled")
 
@@ -531,7 +441,6 @@ class StationInput:
     def _end_cruise(self) -> None:
         self._person_cruise_active = False
         self._hold_speed = False
-        self.cancel_checkerboard_slowdown()
 
     def _on_peripheral_scan(self, peripheral_scan_msg: PeripheralScanMsg) -> None:
         peripheral: PeripheralInfoMsg

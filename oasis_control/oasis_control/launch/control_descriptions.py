@@ -125,12 +125,7 @@ class ControlDescriptions:
             executable=f"{mcu_node}_manager_telemetrix",
             name=f"{mcu_node}_manager_telemetrix_{host_id}",
             output="screen",
-            parameters=[
-                {
-                    "checkerboard_slowdown_enabled": False,
-                    "motor_voltage_reversed": motor_voltage_reversed,
-                }
-            ],
+            parameters=[{"motor_voltage_reversed": motor_voltage_reversed}],
             remappings=[
                 (f"{mcu_node}_state", f"{host_id}/{mcu_node}_state"),
                 ("analog_readings", f"{mcu_node}/analog_readings"),
