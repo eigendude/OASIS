@@ -27,6 +27,7 @@ constexpr const char* kNodeName = "zupt_detector";
 constexpr const char* kImuTopic = "imu";
 constexpr const char* kZuptFlagTopic = "zupt_flag";
 constexpr const char* kZuptTopic = "zupt";
+constexpr const char* kImuFrameIdDefault = "imu_link";
 
 constexpr const char* kParamGyroEnterThresholdRads = "gyro_enter_threshold_rads";
 constexpr const char* kParamGyroExitThresholdRads = "gyro_exit_threshold_rads";
@@ -40,6 +41,10 @@ constexpr const char* kParamStationaryAngularVelocitySigmaRads =
     "stationary_angular_velocity_sigma_rads";
 constexpr const char* kParamMovingLinearVarianceMps2 = "moving_linear_variance_mps2";
 constexpr const char* kParamMovingAngularVarianceRads2 = "moving_angular_variance_rads2";
+constexpr const char* kParamImuFrameId = "imu_frame_id";
+
+constexpr std::size_t kMeasurementQosDepth = 50;
+constexpr std::size_t kStateQosDepth = 1;
 
 constexpr std::array<std::size_t, 3> kLinearCovarianceDiagonalIndices{{0, 7, 14}};
 constexpr std::array<std::size_t, 3> kAngularCovarianceDiagonalIndices{{21, 28, 35}};
@@ -61,15 +66,21 @@ double SanitizePositiveVariance(double variance, double default_variance)
 } // namespace
 
 ZuptDetectorNode::ZuptDetectorNode(const rclcpp::NodeOptions& options)
-  : rclcpp::Node(kNodeName, options), m_config(ReadDetectorConfig()), m_detector(m_config)
+  : rclcpp::Node(kNodeName, options),
+    m_config(ReadDetectorConfig()),
+    m_detector(m_config),
+    m_imuFrameId(declare_parameter<std::string>(kParamImuFrameId, kImuFrameIdDefault))
 {
-  const rclcpp::SensorDataQoS sensor_qos;
+  const rclcpp::QoS measurement_qos =
+      rclcpp::QoS(rclcpp::KeepLast(kMeasurementQosDepth)).reliable().durability_volatile();
+  const rclcpp::QoS state_qos =
+      rclcpp::QoS(rclcpp::KeepLast(kStateQosDepth)).reliable().transient_local();
 
-  m_zuptFlagPublisher = create_publisher<std_msgs::msg::Bool>(kZuptFlagTopic, sensor_qos);
+  m_zuptFlagPublisher = create_publisher<std_msgs::msg::Bool>(kZuptFlagTopic, state_qos);
   m_zuptPublisher =
-      create_publisher<geometry_msgs::msg::TwistWithCovarianceStamped>(kZuptTopic, sensor_qos);
+      create_publisher<geometry_msgs::msg::TwistWithCovarianceStamped>(kZuptTopic, measurement_qos);
   m_imuSubscription = create_subscription<sensor_msgs::msg::Imu>(
-      kImuTopic, sensor_qos,
+      kImuTopic, measurement_qos,
       [this](const sensor_msgs::msg::Imu::SharedPtr message) { HandleImu(*message); });
 
   RCLCPP_INFO(get_logger(),
@@ -152,6 +163,7 @@ geometry_msgs::msg::TwistWithCovarianceStamped ZuptDetectorNode::BuildZuptMessag
 {
   geometry_msgs::msg::TwistWithCovarianceStamped zupt_message;
   zupt_message.header = message.header;
+  zupt_message.header.frame_id = m_imuFrameId;
   zupt_message.twist.twist.linear.x = 0.0;
   zupt_message.twist.twist.linear.y = 0.0;
   zupt_message.twist.twist.linear.z = 0.0;

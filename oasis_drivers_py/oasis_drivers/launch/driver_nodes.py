@@ -81,7 +81,9 @@ class DriverNodes:
         )
         Drivers.add_ahrs_node(composable_nodes, host_id, ahrs.mounting)
         if ahrs.enable_zupt:
-            Drivers.add_zupt_detector(composable_nodes, host_id)
+            Drivers.add_zupt_detector(
+                composable_nodes, host_id, ahrs.mounting.child_frame_id
+            )
         if ahrs.enable_magnetometer:
             Drivers.add_mmc5983ma_magnetometer(ld, host_id)
 

@@ -620,6 +620,17 @@ if(BUILD_TESTING)
     zupt_detector_core
   )
 
+  ament_add_gtest(test_zupt_detector_node
+    test/localization/test_ZuptDetectorNode.cpp
+  )
+  target_link_libraries(test_zupt_detector_node
+    zupt_detector_component
+    ${geometry_msgs_TARGETS}
+    rclcpp::rclcpp
+    ${sensor_msgs_TARGETS}
+    ${std_msgs_TARGETS}
+  )
+
   ament_add_gtest(test_bno086_orientation_covariance_policy
     test/imu/bno086/test_Bno086OrientationCovariancePolicy.cpp
   )

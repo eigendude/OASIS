@@ -11,6 +11,7 @@
 #include "localization/ZuptDetector.hpp"
 
 #include <array>
+#include <string>
 
 #include <geometry_msgs/msg/twist_with_covariance_stamped.hpp>
 #include <rclcpp/node.hpp>
@@ -42,6 +43,7 @@ private:
 
   OASIS::Localization::ZuptDetectorConfig m_config;
   OASIS::Localization::ZuptDetector m_detector;
+  std::string m_imuFrameId;
 
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr m_zuptFlagPublisher;
   rclcpp::Publisher<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr m_zuptPublisher;
