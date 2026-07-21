@@ -74,7 +74,7 @@ def generate_launch_description() -> LaunchDescription:
         )
         PerceptionDescriptions.add_image_downscaler(
             composable_nodes,
-            ["falcon", "station"],
+            ["falcon"],
             input_topic="image_raw",
             input_resolution="",
             output_resolution="sd",
@@ -134,15 +134,6 @@ def generate_launch_description() -> LaunchDescription:
             output_resolution="hd",
         )
 
-        # Checkerboard detection
-        PerceptionDescriptions.add_checkerboard_detector(
-            composable_nodes,
-            system_id="station",
-            camera_model="pinhole",
-            input_resolution="sd",
-            image_transport="raw",
-        )
-
         """
         # Calibration demo
         PerceptionDescriptions.add_calibration(
@@ -153,6 +144,28 @@ def generate_launch_description() -> LaunchDescription:
             # TODO: image_transport="compressed",
         )
         """
+
+    if HOST_ID == "oceanplatform":
+        # Ingestion: Single source, fanout to nodes
+        PerceptionDescriptions.add_image_downscaler(
+            composable_nodes,
+            ["station"],
+            input_topic="image_raw",
+            input_resolution="",
+            output_resolution="sd",
+            image_transport="compressed",
+            max_width=640,
+            max_height=480,
+        )
+
+        # Checkerboard detection
+        PerceptionDescriptions.add_checkerboard_detector(
+            composable_nodes,
+            system_id="station",
+            camera_model="pinhole",
+            input_resolution="sd",
+            image_transport="compressed",
+        )
 
     # Hallway pipeline
     if ZONE_ID == "hallway":
