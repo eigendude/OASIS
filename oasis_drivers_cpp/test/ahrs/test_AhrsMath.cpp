@@ -158,7 +158,7 @@ TEST(AhrsMath, FailedNormalizedCovarianceInversionLeavesMahalanobisUnavailable)
 
 TEST(AhrsMath, AcceptedSmallGravityContributesToMounting)
 {
-  AhrsMountingConfig config;
+  AhrsMountingConfig config{};
   config.calibration_duration_sec = 0.0;
   config.min_sample_count = 1;
   BootMountingCalibrator calibrator(config);
@@ -172,7 +172,7 @@ TEST(AhrsMath, AcceptedSmallGravityContributesToMounting)
 
 TEST(AhrsMath, AngularRateMountingRejectionIsUnchanged)
 {
-  AhrsMountingConfig config;
+  AhrsMountingConfig config{};
   config.calibration_duration_sec = 0.0;
   config.stationary_angular_speed_threshold_rads = 0.35;
   config.min_sample_count = 1;
