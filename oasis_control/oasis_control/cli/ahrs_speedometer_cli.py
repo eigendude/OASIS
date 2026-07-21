@@ -16,7 +16,7 @@ from typing import Optional
 
 import rclpy
 
-from oasis_control.nodes.ahrs.ahrs_speedometer_node import AhrsSpeedometerNode
+from oasis_control.nodes.ahrs_speedometer_node import AhrsSpeedometerNode
 
 
 ################################################################################

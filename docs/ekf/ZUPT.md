@@ -125,12 +125,9 @@ This layout is permanent for OASIS ZUPT.
 
 ---
 
-## Relationship to speedometers
+## Stationarity measurement contract
 
-AHRS and HUD speedometers currently consume only the scalar zero-speed
-correction implied by the leading `3 x 3` linear covariance block.
-
-In practice:
+Downstream consumers can interpret the detector output as follows:
 
 - `zupt_flag` remains the Boolean stationarity signal
 - `zupt` remains the paired measurement
