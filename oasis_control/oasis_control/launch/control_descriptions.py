@@ -35,6 +35,10 @@ class ControlDescriptions:
     Note: Sort alphabetically
     """
 
+    #
+    # AHRS speedometer
+    #
+
     @staticmethod
     def add_ahrs_speedometer(ld: LaunchDescription, host_id: str) -> None:
         ahrs_speedometer_node: Node = Node(
@@ -43,12 +47,9 @@ class ControlDescriptions:
             executable="ahrs_speedometer",
             name=f"ahrs_speedometer_{host_id}",
             output="screen",
+            arguments=["--ros-args", "--log-level", "ahrs_speedometer:=debug"],
             remappings=[
                 ("forward_twist", f"{host_id}/ahrs/forward_twist"),
-                (
-                    "forward_twist/diag",
-                    f"{host_id}/ahrs/forward_twist/diag",
-                ),
                 ("imu", f"{host_id}/ahrs/imu"),
                 ("zupt", f"{host_id}/zupt"),
                 ("zupt_flag", f"{host_id}/zupt_flag"),

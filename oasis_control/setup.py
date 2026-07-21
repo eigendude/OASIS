@@ -64,6 +64,7 @@ setuptools.setup(
         ),
     ],
     install_requires=[
+        "numpy",
         "setuptools",
     ],
     entry_points={
