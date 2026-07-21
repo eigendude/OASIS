@@ -26,11 +26,11 @@ from oasis_drivers.telemetrix.telemetrix_types import DigitalMode
 
 
 class TelemetrixLogger(Protocol):
-    def info(self, message: str) -> None:
+    def info(self, message: str) -> object:
         """Log info"""
         ...
 
-    def warning(self, message: str) -> None:
+    def warning(self, message: str) -> object:
         """Log warning"""
         ...
 

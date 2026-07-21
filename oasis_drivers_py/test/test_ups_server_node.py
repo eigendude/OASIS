@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import math
 from typing import Any
+from typing import Protocol
+from typing import cast
 
 import pytest
 import rclpy
@@ -26,6 +28,15 @@ from sensor_msgs.msg import BatteryState as BatteryStateMsg
 
 from oasis_drivers.nodes.ups_server_node import UpsServerNode
 from oasis_msgs.msg import UPSStatus as UPSStatusMsg
+
+
+class _RecordingPublisher(Protocol):
+    messages: list[Any]
+
+
+def _messages(publisher: object) -> list[Any]:
+    """Return messages captured by the test publisher stub"""
+    return cast(_RecordingPublisher, publisher).messages
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -73,9 +84,9 @@ def test_republishes_discharging_ups_status_as_battery_state() -> None:
     try:
         node._publish_status_messages(ups_status)
 
-        assert node._ups_status_publisher.messages[-1] is ups_status
+        assert _messages(node._ups_status_publisher)[-1] is ups_status
 
-        battery_state: BatteryStateMsg = node._battery_state_publisher.messages[-1]
+        battery_state: BatteryStateMsg = _messages(node._battery_state_publisher)[-1]
         assert battery_state.voltage == 24.8
         assert battery_state.current == -2.5
         assert battery_state.temperature == 31.0
@@ -117,7 +128,7 @@ def test_reports_charging_current_and_lithium_ion_technology() -> None:
     try:
         node._publish_status_messages(ups_status)
 
-        battery_state: BatteryStateMsg = node._battery_state_publisher.messages[-1]
+        battery_state: BatteryStateMsg = _messages(node._battery_state_publisher)[-1]
         assert battery_state.current == 1.2
         assert (
             battery_state.power_supply_status
@@ -143,7 +154,7 @@ def test_estimates_discharging_current_from_load_when_current_is_unknown() -> No
     try:
         node._publish_status_messages(ups_status)
 
-        battery_state: BatteryStateMsg = node._battery_state_publisher.messages[-1]
+        battery_state: BatteryStateMsg = _messages(node._battery_state_publisher)[-1]
         assert battery_state.current == -2.0
     finally:
         node.stop()
@@ -161,7 +172,7 @@ def test_online_full_battery_reports_full_status() -> None:
     try:
         node._publish_status_messages(ups_status)
 
-        battery_state: BatteryStateMsg = node._battery_state_publisher.messages[-1]
+        battery_state: BatteryStateMsg = _messages(node._battery_state_publisher)[-1]
         assert math.isnan(battery_state.current)
         assert (
             battery_state.power_supply_status
@@ -181,7 +192,7 @@ def test_replace_battery_status_reports_dead_health() -> None:
     try:
         node._publish_status_messages(ups_status)
 
-        battery_state: BatteryStateMsg = node._battery_state_publisher.messages[-1]
+        battery_state: BatteryStateMsg = _messages(node._battery_state_publisher)[-1]
         assert (
             battery_state.power_supply_health
             == BatteryStateMsg.POWER_SUPPLY_HEALTH_DEAD
