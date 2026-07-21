@@ -41,20 +41,24 @@ from oasis_msgs.srv import SetDigitalMode as SetDigitalModeSvc
 # Hardware configuration
 ################################################################################
 
+#
+# Use the Arduino's internal analog reference for ADC scaling.
+#
+# VIN_GAIN applies an empirical correction for the combined ADC reference,
+# resistor-divider, and component-tolerance error measured against a DMM.
+#
+# Calibrated at a measured supply voltage of 12.18 V.
+#
+VIN_GAIN: float = 0.9781  # Correction of -2.19%
 
-# External AREF is tied to a voltage regulator for stable ADC scaling
 #
-# Observed values:
+# MOTOR_VOLTAGE_GAIN applies an empirical correction for the combined ADC,
+# voltage-divider, and component-tolerance error in the differential motor
+# voltage measurement.
 #
-#   5.02 V on 2025-12-18
-#   4.95 V on 2026-01-03
-#   4.98 V on 2026-01-04
+# Calibrated against DMM measurements with and without the train connected.
 #
-# Let's just use 5 V, which is within 1% of all observed values. The regulator
-# voltage is relatively stable compared to the 12 V train load.
-#
-AREF_VOLTAGE: float = 5.00  # Volts
-VIN_GAIN: float = 0.9887  # Empirical system calibration to match DMM at ~12V
+MOTOR_VOLTAGE_GAIN: float = 0.9825  # Correction of -1.75%
 
 # Voltage dividers
 # R1 is the input-side resistor, R2 is the ground-side resistor
@@ -432,7 +436,9 @@ class StationManager:
 
         # The H-bridge drives the motor from the difference between its two
         # output wires.
-        measured_motor_voltage: float = self._motor_voltage_a - self._motor_voltage_b
+        measured_motor_voltage: float = (
+            self._motor_voltage_a - self._motor_voltage_b
+        ) * MOTOR_VOLTAGE_GAIN
 
         # Report signed voltage in logical train direction by correcting only
         # the voltage sensing polarity
@@ -569,9 +575,10 @@ class StationManager:
     ) -> None:
         analog_pin: int = analog_reading_msg.analog_pin
         analog_value: float = analog_reading_msg.analog_value
+        reference_voltage: float = analog_reading_msg.reference_voltage
 
         # Translate analog value
-        analog_voltage: float = analog_value * AREF_VOLTAGE
+        analog_voltage: float = analog_value * reference_voltage
 
         if analog_pin == self._vss_pin:
             # Apply voltage divider formula

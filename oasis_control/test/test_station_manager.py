@@ -20,10 +20,12 @@ import pytest
 import rclpy.node
 from std_msgs.msg import Float32 as Float32Msg
 
-from oasis_control.lego_models.station_manager import AREF_VOLTAGE
 from oasis_control.lego_models.station_manager import MAX_MOTOR_VOLTAGE_SKEW_SECS
+from oasis_control.lego_models.station_manager import MOTOR_VOLTAGE_GAIN
+from oasis_control.lego_models.station_manager import MOTOR_VOLTAGE_ZERO_EPSILON
 from oasis_control.lego_models.station_manager import PUBLISH_SUPPLY_VOLTAGE
 from oasis_control.lego_models.station_manager import PUBLISH_TRACTION_VOLTAGE
+from oasis_control.lego_models.station_manager import STDDEV_BETA
 from oasis_control.lego_models.station_manager import VIN_GAIN
 from oasis_control.lego_models.station_manager import VSS_R1
 from oasis_control.lego_models.station_manager import VSS_R2
@@ -112,8 +114,8 @@ def _update_motor_voltage(
     [
         (0.001, 0.0),
         (-0.001, 0.0),
-        (0.10, 0.10),
-        (-0.10, -0.10),
+        (0.10, 0.10 * MOTOR_VOLTAGE_GAIN),
+        (-0.10, -0.10 * MOTOR_VOLTAGE_GAIN),
     ],
 )
 def test_motor_voltage_canonicalizes_telemetry_zero(
@@ -142,6 +144,49 @@ def test_reversed_tiny_positive_measured_motor_voltage_reports_positive_zero() -
 
     assert motor_voltage == 0.0
     assert math.copysign(1.0, motor_voltage) == 1.0
+
+
+def test_reversed_voltage_sensing_negates_calibrated_differential() -> None:
+    manager: StationManager = _make_station_manager(motor_voltage_reversed=True)
+    manager._motor_voltage_a = 8.0
+    manager._motor_voltage_b = 2.0
+
+    manager._update_motor_voltage()
+
+    assert manager.motor_voltage == pytest.approx(-6.0 * MOTOR_VOLTAGE_GAIN)
+
+
+def test_motor_voltage_zero_epsilon_is_applied_after_calibration() -> None:
+    manager: StationManager = _make_station_manager()
+    raw_voltage: float = MOTOR_VOLTAGE_ZERO_EPSILON / MOTOR_VOLTAGE_GAIN - 0.0001
+
+    assert raw_voltage > MOTOR_VOLTAGE_ZERO_EPSILON
+    assert _update_motor_voltage(manager, raw_voltage) == 0.0
+
+
+def test_calibrated_motor_voltage_updates_state_publication_and_statistics() -> None:
+    manager: StationManager = _make_station_manager()
+    first_raw_voltage: float = 4.0
+    second_raw_voltage: float = 6.0
+    first_calibrated_voltage: float = first_raw_voltage * MOTOR_VOLTAGE_GAIN
+    second_calibrated_voltage: float = second_raw_voltage * MOTOR_VOLTAGE_GAIN
+
+    _update_motor_voltage(manager, first_raw_voltage, timestamp_sec=1.0)
+    _update_motor_voltage(manager, second_raw_voltage, timestamp_sec=2.0)
+
+    expected_error: float = second_calibrated_voltage - first_calibrated_voltage
+    expected_mean: float = first_calibrated_voltage + STDDEV_BETA * expected_error
+    expected_variance: float = (
+        (1.0 - STDDEV_BETA) * STDDEV_BETA * expected_error * expected_error
+    )
+
+    assert manager.motor_voltage == pytest.approx(second_calibrated_voltage)
+    assert manager._motor_voltage_mu == pytest.approx(expected_mean)
+    assert manager.motor_voltage_stddev == pytest.approx(math.sqrt(expected_variance))
+    traction_publisher: Any = manager._traction_voltage_pub
+    assert traction_publisher.messages[-1].data == pytest.approx(
+        second_calibrated_voltage
+    )
 
 
 def test_motor_voltage_stddev_uses_canonical_zero() -> None:
@@ -209,10 +254,13 @@ def test_supply_adc_update_publishes_only_converted_supply_voltage() -> None:
     reading: AnalogReadingMsg = AnalogReadingMsg()
     reading.analog_pin = 0
     reading.analog_value = 0.5
+    reading.reference_voltage = 5.0
 
     manager._handle_analog_reading(reading, 1.0)
 
-    expected_voltage: float = 0.5 * AREF_VOLTAGE * (VSS_R1 + VSS_R2) / VSS_R2
+    expected_voltage: float = (
+        reading.analog_value * reading.reference_voltage * (VSS_R1 + VSS_R2) / VSS_R2
+    )
     expected_voltage *= VIN_GAIN
     assert len(supply_publisher.messages) == 1
     assert supply_publisher.messages[0].data == pytest.approx(expected_voltage)
@@ -238,7 +286,10 @@ def test_incomplete_and_stale_motor_voltage_pairs_do_not_publish() -> None:
 
 @pytest.mark.parametrize(
     ("motor_voltage_reversed", "expected_voltage"),
-    [(False, 6.0), (True, -6.0)],
+    [
+        (False, 6.0 * MOTOR_VOLTAGE_GAIN),
+        (True, -6.0 * MOTOR_VOLTAGE_GAIN),
+    ],
 )
 def test_completed_motor_voltage_pair_publishes_signed_value(
     motor_voltage_reversed: bool,
