@@ -14,6 +14,9 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from typing import Optional
+from typing import cast
+
+import rclpy.node
 
 from oasis_control.managers.wol_manager import WolManager
 
@@ -92,7 +95,7 @@ class _WoLResponse:
 
 def test_send_wol_logs_mac_lookup_timeout() -> None:
     node: _Node = _make_node(mac_futures=[_Future(done=False)])
-    manager: WolManager = WolManager(node, "megapegasus.local")
+    manager: WolManager = _make_manager(node, "megapegasus.local")
 
     assert manager.initialize()
     assert not manager.send_wol()
@@ -106,7 +109,7 @@ def test_send_wol_logs_mac_lookup_exception() -> None:
     node: _Node = _make_node(
         mac_futures=[_Future(done=True, exception=RuntimeError("boom"))]
     )
-    manager: WolManager = WolManager(node, "megapegasus.local")
+    manager: WolManager = _make_manager(node, "megapegasus.local")
 
     assert manager.initialize()
     assert not manager.send_wol()
@@ -118,7 +121,7 @@ def test_send_wol_logs_mac_lookup_exception() -> None:
 
 def test_send_wol_logs_mac_lookup_no_response() -> None:
     node: _Node = _make_node(mac_futures=[_Future(done=True, result=None)])
-    manager: WolManager = WolManager(node, "megapegasus.local")
+    manager: WolManager = _make_manager(node, "megapegasus.local")
 
     assert manager.initialize()
     assert not manager.send_wol()
@@ -131,7 +134,7 @@ def test_send_wol_logs_mac_lookup_no_response() -> None:
 def test_send_wol_logs_empty_mac_address() -> None:
     response: _MacAddressResponse = _MacAddressResponse("")
     node: _Node = _make_node(mac_futures=[_Future(done=True, result=response)])
-    manager: WolManager = WolManager(node, "megapegasus.local")
+    manager: WolManager = _make_manager(node, "megapegasus.local")
 
     assert manager.initialize()
     assert not manager.send_wol()
@@ -144,7 +147,7 @@ def test_send_wol_logs_empty_mac_address() -> None:
 def test_send_wol_logs_invalid_mac_address() -> None:
     response: _MacAddressResponse = _MacAddressResponse("not-a-mac")
     node: _Node = _make_node(mac_futures=[_Future(done=True, result=response)])
-    manager: WolManager = WolManager(node, "megapegasus.local")
+    manager: WolManager = _make_manager(node, "megapegasus.local")
 
     assert manager.initialize()
     assert not manager.send_wol()
@@ -161,7 +164,7 @@ def test_send_wol_logs_wol_timeout_with_hostname_and_mac() -> None:
         mac_futures=[_Future(done=True, result=mac_response)],
         wol_futures=[_Future(done=False)],
     )
-    manager: WolManager = WolManager(node, "precision.local")
+    manager: WolManager = _make_manager(node, "precision.local")
 
     assert manager.initialize()
     assert not manager.send_wol()
@@ -178,7 +181,7 @@ def test_send_wol_logs_wol_exception_with_hostname_and_mac() -> None:
         mac_futures=[_Future(done=True, result=mac_response)],
         wol_futures=[_Future(done=True, exception=RuntimeError("boom"))],
     )
-    manager: WolManager = WolManager(node, "precision.local")
+    manager: WolManager = _make_manager(node, "precision.local")
 
     assert manager.initialize()
     assert not manager.send_wol()
@@ -194,7 +197,7 @@ def test_send_wol_returns_true_on_success() -> None:
         mac_futures=[_Future(done=True, result=mac_response)],
         wol_futures=[_Future(done=True, result=_WoLResponse())],
     )
-    manager: WolManager = WolManager(node, "precision.local")
+    manager: WolManager = _make_manager(node, "precision.local")
 
     assert manager.initialize()
     assert manager.send_wol()
@@ -209,3 +212,8 @@ def _make_node(
     wol_client: _Client = _Client(wol_futures)
 
     return _Node([get_mac_client, wol_client])
+
+
+def _make_manager(node: _Node, hostname: str) -> WolManager:
+    ros_node: rclpy.node.Node = cast(rclpy.node.Node, node)
+    return WolManager(ros_node, hostname)
