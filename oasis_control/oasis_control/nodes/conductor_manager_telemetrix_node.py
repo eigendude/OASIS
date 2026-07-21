@@ -12,6 +12,7 @@
 # Manager for a model LEGO train station
 #
 
+import math
 from typing import Optional
 
 import rclpy.node
@@ -25,6 +26,7 @@ from rclpy.qos import ReliabilityPolicy
 from std_msgs.msg import Bool as BoolMsg
 from std_msgs.msg import Header as HeaderMsg
 
+from oasis_control.input.park_mode import ParkModeLaunchProfile
 from oasis_control.input.park_mode import TrainParkMode
 from oasis_control.input.station_input import StationInput
 from oasis_control.lego_models.helipad_manager import HelipadManager
@@ -101,8 +103,65 @@ PARAM_MOTOR_VOLTAGE_REVERSED: str = "motor_voltage_reversed"
 DEFAULT_MOTOR_VOLTAGE_REVERSED: bool = False
 PARAM_PARK_MODE_ENABLED: str = "park_mode_enabled"
 DEFAULT_PARK_MODE_ENABLED: bool = True
+PARAM_PARK_MODE_PRELOAD_COMMAND: str = "park_mode_preload_command"
+DEFAULT_PARK_MODE_PRELOAD_COMMAND: float = 0.55
+PARAM_PARK_MODE_PRELOAD_SEC: str = "park_mode_preload_sec"
+DEFAULT_PARK_MODE_PRELOAD_SEC: float = 0.2
+PARAM_PARK_MODE_TAKEUP_COMMAND: str = "park_mode_takeup_command"
+DEFAULT_PARK_MODE_TAKEUP_COMMAND: float = 0.56
+PARAM_PARK_MODE_TAKEUP_SEC: str = "park_mode_takeup_sec"
+DEFAULT_PARK_MODE_TAKEUP_SEC: float = 0.2
+PARAM_PARK_MODE_HOLD_SEC: str = "park_mode_hold_sec"
+DEFAULT_PARK_MODE_HOLD_SEC: float = 0.2
 PARAM_PARK_MODE_COMMAND: str = "park_mode_command"
-DEFAULT_PARK_MODE_COMMAND: float = 0.75
+DEFAULT_PARK_MODE_COMMAND: float = 0.9
+PARAM_PARK_MODE_ACCEL_SEC: str = "park_mode_accel_sec"
+DEFAULT_PARK_MODE_ACCEL_SEC: float = 2.5
+
+DEFAULT_PARK_MODE_PROFILE: ParkModeLaunchProfile = ParkModeLaunchProfile(
+    preload_command=DEFAULT_PARK_MODE_PRELOAD_COMMAND,
+    preload_sec=DEFAULT_PARK_MODE_PRELOAD_SEC,
+    takeup_command=DEFAULT_PARK_MODE_TAKEUP_COMMAND,
+    takeup_sec=DEFAULT_PARK_MODE_TAKEUP_SEC,
+    hold_sec=DEFAULT_PARK_MODE_HOLD_SEC,
+    command=DEFAULT_PARK_MODE_COMMAND,
+    accel_sec=DEFAULT_PARK_MODE_ACCEL_SEC,
+)
+
+
+def _is_valid_park_mode_profile(profile: ParkModeLaunchProfile) -> bool:
+    commands: tuple[float, ...] = (
+        profile.preload_command,
+        profile.takeup_command,
+        profile.command,
+    )
+    durations: tuple[float, ...] = (
+        profile.preload_sec,
+        profile.takeup_sec,
+        profile.accel_sec,
+    )
+
+    commands_valid: bool = all(
+        math.isfinite(command) and 0.0 < command <= 1.0 for command in commands
+    )
+    durations_valid: bool = all(
+        math.isfinite(duration) and duration > 0.0 for duration in durations
+    )
+    hold_valid: bool = math.isfinite(profile.hold_sec) and profile.hold_sec >= 0.0
+    commands_ordered: bool = (
+        profile.preload_command < profile.takeup_command < profile.command
+    )
+
+    return commands_valid and durations_valid and hold_valid and commands_ordered
+
+
+def _validated_park_mode_profile(
+    profile: ParkModeLaunchProfile,
+) -> ParkModeLaunchProfile:
+    if _is_valid_park_mode_profile(profile):
+        return profile
+
+    return DEFAULT_PARK_MODE_PROFILE
 
 
 ################################################################################
@@ -133,8 +192,32 @@ class ConductorManagerNode(rclpy.node.Node):
             DEFAULT_PARK_MODE_ENABLED,
         )
         self.declare_parameter(
+            PARAM_PARK_MODE_PRELOAD_COMMAND,
+            DEFAULT_PARK_MODE_PRELOAD_COMMAND,
+        )
+        self.declare_parameter(
+            PARAM_PARK_MODE_PRELOAD_SEC,
+            DEFAULT_PARK_MODE_PRELOAD_SEC,
+        )
+        self.declare_parameter(
+            PARAM_PARK_MODE_TAKEUP_COMMAND,
+            DEFAULT_PARK_MODE_TAKEUP_COMMAND,
+        )
+        self.declare_parameter(
+            PARAM_PARK_MODE_TAKEUP_SEC,
+            DEFAULT_PARK_MODE_TAKEUP_SEC,
+        )
+        self.declare_parameter(
+            PARAM_PARK_MODE_HOLD_SEC,
+            DEFAULT_PARK_MODE_HOLD_SEC,
+        )
+        self.declare_parameter(
             PARAM_PARK_MODE_COMMAND,
             DEFAULT_PARK_MODE_COMMAND,
+        )
+        self.declare_parameter(
+            PARAM_PARK_MODE_ACCEL_SEC,
+            DEFAULT_PARK_MODE_ACCEL_SEC,
         )
         motor_voltage_reversed: bool = bool(
             self.get_parameter(PARAM_MOTOR_VOLTAGE_REVERSED).value
@@ -143,14 +226,33 @@ class ConductorManagerNode(rclpy.node.Node):
             self.get_parameter(PARAM_PARK_MODE_ENABLED).value
         )
 
-        # Unitless normalized reverse command before max safe duty-cycle scaling
-        park_mode_command: float = self._get_unit_scale_parameter(
-            PARAM_PARK_MODE_COMMAND,
-            DEFAULT_PARK_MODE_COMMAND,
+        park_mode_profile: ParkModeLaunchProfile = ParkModeLaunchProfile(
+            preload_command=float(
+                self.get_parameter(PARAM_PARK_MODE_PRELOAD_COMMAND).value
+            ),
+            preload_sec=float(self.get_parameter(PARAM_PARK_MODE_PRELOAD_SEC).value),
+            takeup_command=float(
+                self.get_parameter(PARAM_PARK_MODE_TAKEUP_COMMAND).value
+            ),
+            takeup_sec=float(self.get_parameter(PARAM_PARK_MODE_TAKEUP_SEC).value),
+            hold_sec=float(self.get_parameter(PARAM_PARK_MODE_HOLD_SEC).value),
+            command=float(self.get_parameter(PARAM_PARK_MODE_COMMAND).value),
+            accel_sec=float(self.get_parameter(PARAM_PARK_MODE_ACCEL_SEC).value),
         )
+        validated_profile: ParkModeLaunchProfile = _validated_park_mode_profile(
+            park_mode_profile
+        )
+        if validated_profile is not park_mode_profile:
+            self.get_logger().warning(
+                "Invalid park-mode profile: commands must be finite and in "
+                "(0.0, 1.0] with preload < take-up < final, and durations "
+                "must be finite and positive except hold, which may be zero; "
+                "using complete default profile"
+            )
+            park_mode_profile = validated_profile
         self._park_mode: TrainParkMode = TrainParkMode(
             park_mode_enabled,
-            park_mode_command,
+            park_mode_profile,
         )
 
         # Subsystems

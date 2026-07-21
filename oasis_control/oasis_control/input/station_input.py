@@ -176,7 +176,7 @@ class StationInput:
 
     def update_autonomous_train_control(self) -> None:
         if self._park_mode.active:
-            self._apply_park_mode()
+            self._apply_park_mode(self._now_sec())
             return
 
         if self._hold_speed:
@@ -306,18 +306,38 @@ class StationInput:
 
         self._apply_train_command(1.0, boost_enabled=self._x_button)
 
-    def _apply_park_mode(self) -> None:
+    def _apply_park_mode(self, now_sec: float) -> None:
         if not self._park_mode.active:
             return
 
         self._end_cruise()
+        effective_command: float = self._park_mode.command
+        if self._x_button:
+            effective_command *= MAX_BOOSTED_TRAIN_COMMAND
+
+        ramped_command: float = self._park_mode.limit_command(
+            effective_command,
+            now_sec,
+        )
         self._apply_train_command(
-            -self._park_mode.command,
-            boost_enabled=self._x_button,
+            -ramped_command,
+            boost_enabled=False,
+            reverse_when_stopped=True,
+            command_is_effective=True,
         )
 
-    def _apply_train_command(self, command: float, boost_enabled: bool) -> None:
-        unboosted_safe_train_command: float = max(-1.0, min(command, 1.0))
+    def _apply_train_command(
+        self,
+        command: float,
+        boost_enabled: bool,
+        reverse_when_stopped: bool = False,
+        command_is_effective: bool = False,
+    ) -> None:
+        input_limit: float = MAX_BOOSTED_TRAIN_COMMAND if command_is_effective else 1.0
+        unboosted_safe_train_command: float = max(
+            -input_limit,
+            min(command, input_limit),
+        )
 
         # X scales the command toward the measured maximum voltage target
         safe_train_command: float = unboosted_safe_train_command
@@ -329,7 +349,9 @@ class StationInput:
             min(safe_train_command, MAX_BOOSTED_TRAIN_COMMAND),
         )
 
-        reverse: bool = safe_train_command < 0.0
+        reverse: bool = safe_train_command < 0.0 or (
+            safe_train_command == 0.0 and reverse_when_stopped
+        )
         motor_duty_command: float = abs(safe_train_command) * MAX_SAFE_MOTOR_DUTY_CYCLE
 
         # Update direction
@@ -399,8 +421,12 @@ class StationInput:
 
         self._end_cruise()
 
-        if self._park_mode.activate():
+        now_sec: float = self._now_sec()
+        if self._park_mode.activate(now_sec):
             self._node.get_logger().info("Park mode active; reversing train")
+
+    def _now_sec(self) -> float:
+        return float(self._node.get_clock().now().nanoseconds) * 1.0e-9
 
     def _cancel_park_mode(self) -> None:
         if self._park_mode.cancel():
