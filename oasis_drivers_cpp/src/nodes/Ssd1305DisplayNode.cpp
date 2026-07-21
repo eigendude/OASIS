@@ -48,7 +48,6 @@ constexpr const char* PARAM_INVERT_PIXELS = "invert_pixels";
 constexpr const char* PARAM_ROTATION = "rotation";
 constexpr const char* PARAM_UPDATE_RATE_HZ = "update_rate_hz";
 constexpr const char* PARAM_RECONNECT_INTERVAL_SEC = "reconnect_interval_sec";
-constexpr const char* PARAM_RECONNECT_SETTLE_SEC = "reconnect_settle_sec";
 constexpr const char* PARAM_DISPLAY_POWER_SETTLE_SEC = "display_power_settle_sec";
 constexpr const char* PARAM_ENABLED = "enabled";
 constexpr const char* PARAM_BLANK_ON_SHUTDOWN = "blank_on_shutdown";
@@ -67,7 +66,6 @@ constexpr bool DEFAULT_INVERT_PIXELS = false;
 constexpr int DEFAULT_ROTATION = 0;
 constexpr double DEFAULT_UPDATE_RATE_HZ = 30.0;
 constexpr double DEFAULT_RECONNECT_INTERVAL_SEC = 1.0;
-constexpr double DEFAULT_RECONNECT_SETTLE_SEC = 0.5;
 constexpr double DEFAULT_DISPLAY_POWER_SETTLE_SEC = 0.25;
 constexpr bool DEFAULT_ENABLED = true;
 constexpr bool DEFAULT_BLANK_ON_SHUTDOWN = true;
@@ -132,7 +130,6 @@ Ssd1305DisplayNode::Ssd1305DisplayNode(
     },
     m_updateRateHz(DEFAULT_UPDATE_RATE_HZ),
     m_reconnectIntervalSec(DEFAULT_RECONNECT_INTERVAL_SEC),
-    m_reconnectSettleSec(DEFAULT_RECONNECT_SETTLE_SEC),
     m_displayPowerSettleSec(DEFAULT_DISPLAY_POWER_SETTLE_SEC),
     m_blankOnShutdown(DEFAULT_BLANK_ON_SHUTDOWN),
     m_enablePartialUpdates(DEFAULT_ENABLE_PARTIAL_UPDATES),
@@ -183,13 +180,6 @@ Ssd1305DisplayNode::Ssd1305DisplayNode(
   m_reconnectTimer = create_wall_timer(std::chrono::duration_cast<std::chrono::nanoseconds>(
                                            std::chrono::duration<double>(m_reconnectIntervalSec)),
                                        [this]() { (void)AttemptReconnect(); });
-  const auto settle_period = std::max(std::chrono::nanoseconds(1),
-                                      std::chrono::duration_cast<std::chrono::nanoseconds>(
-                                          std::chrono::duration<double>(m_reconnectSettleSec)));
-  m_stabilizationTimer =
-      create_wall_timer(settle_period, [this]() { (void)CompleteStabilization(); });
-  m_stabilizationTimer->cancel();
-
   AttemptInitialConnection();
 
   RCLCPP_INFO(get_logger(),
@@ -209,8 +199,6 @@ Ssd1305DisplayNode::~Ssd1305DisplayNode()
     m_updateTimer->cancel();
   if (m_reconnectTimer)
     m_reconnectTimer->cancel();
-  if (m_stabilizationTimer)
-    m_stabilizationTimer->cancel();
 
   // m_deviceMutex serializes all controller access, including shutdown
   std::scoped_lock device_lock(m_deviceMutex);
@@ -256,7 +244,6 @@ void Ssd1305DisplayNode::ReadConfig()
   declare_parameter(PARAM_ROTATION, DEFAULT_ROTATION);
   declare_parameter(PARAM_UPDATE_RATE_HZ, DEFAULT_UPDATE_RATE_HZ);
   declare_parameter(PARAM_RECONNECT_INTERVAL_SEC, DEFAULT_RECONNECT_INTERVAL_SEC);
-  declare_parameter(PARAM_RECONNECT_SETTLE_SEC, DEFAULT_RECONNECT_SETTLE_SEC);
   declare_parameter(PARAM_DISPLAY_POWER_SETTLE_SEC, DEFAULT_DISPLAY_POWER_SETTLE_SEC);
   declare_parameter(PARAM_ENABLED, DEFAULT_ENABLED);
   declare_parameter(PARAM_BLANK_ON_SHUTDOWN, DEFAULT_BLANK_ON_SHUTDOWN);
@@ -271,7 +258,6 @@ void Ssd1305DisplayNode::ReadConfig()
   const int contrast = static_cast<int>(get_parameter(PARAM_CONTRAST).as_int());
   const int threshold = static_cast<int>(get_parameter(PARAM_THRESHOLD).as_int());
   const double reconnect_interval_sec = get_parameter(PARAM_RECONNECT_INTERVAL_SEC).as_double();
-  const double reconnect_settle_sec = get_parameter(PARAM_RECONNECT_SETTLE_SEC).as_double();
   const double display_power_settle_sec = get_parameter(PARAM_DISPLAY_POWER_SETTLE_SEC).as_double();
 
   if (column_offset < 0 || column_offset > 4)
@@ -282,8 +268,6 @@ void Ssd1305DisplayNode::ReadConfig()
     throw std::invalid_argument("threshold must be in [0, 255]");
   if (!std::isfinite(reconnect_interval_sec) || reconnect_interval_sec <= 0.0)
     throw std::invalid_argument("reconnect_interval_sec must be finite and positive");
-  if (!std::isfinite(reconnect_settle_sec) || reconnect_settle_sec < 0.0)
-    throw std::invalid_argument("reconnect_settle_sec must be finite and nonnegative");
   if (!std::isfinite(display_power_settle_sec) || display_power_settle_sec < 0.0)
     throw std::invalid_argument("display_power_settle_sec must be finite and nonnegative");
   if (width != DEFAULT_WIDTH || height != DEFAULT_HEIGHT)
@@ -304,7 +288,6 @@ void Ssd1305DisplayNode::ReadConfig()
       ParseRotation(static_cast<int>(get_parameter(PARAM_ROTATION).as_int()));
   m_updateRateHz = get_parameter(PARAM_UPDATE_RATE_HZ).as_double();
   m_reconnectIntervalSec = reconnect_interval_sec;
-  m_reconnectSettleSec = reconnect_settle_sec;
   m_displayPowerSettleSec = display_power_settle_sec;
   m_displayEnabled = get_parameter(PARAM_ENABLED).as_bool();
   m_blankOnShutdown = get_parameter(PARAM_BLANK_ON_SHUTDOWN).as_bool();
@@ -325,12 +308,8 @@ void Ssd1305DisplayNode::AttemptInitialConnection()
   try
   {
     m_controllerState = ControllerState::Recovering;
-    // Healthy startup intentionally mirrors Recover(): initialize, restore
-    // contrast, commit a full frame, then restore the requested power state
-    m_device->Initialize();
-    m_device->SetContrast(m_deviceConfig.contrast);
-    m_device->WriteFullFrame(desired);
-    SetDisplayEnabledAfterPowerSettle(m_displayEnabled);
+    InitializeAndRestoreController(desired, generation, m_displayEnabled);
+
     m_frontBuffer = desired;
     m_controllerState = ControllerState::Ready;
     std::scoped_lock pending_lock(m_pendingMutex);
@@ -346,10 +325,36 @@ void Ssd1305DisplayNode::AttemptInitialConnection()
   }
 }
 
+void Ssd1305DisplayNode::InitializeAndRestoreController(
+    OASIS::Display::Ssd1305Framebuffer::Buffer& framebuffer,
+    std::uint64_t& generation,
+    bool enabled)
+{
+  m_device->RestoreAfterInitialization(framebuffer, m_deviceConfig.contrast);
+  RCLCPP_DEBUG(get_logger(), "SSD1305 initialized and first framebuffer restored");
+  if (!enabled)
+    return;
+
+  if (m_displayPowerSettleSec > 0.0)
+  {
+    const auto settle_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::duration<double>(m_displayPowerSettleSec));
+    m_sleep(settle_duration);
+    RCLCPP_DEBUG(get_logger(), "SSD1305 power settle complete");
+  }
+
+  {
+    std::scoped_lock lock(m_pendingMutex);
+    framebuffer = m_pendingBuffer.Data();
+    generation = m_desiredGeneration;
+  }
+  m_device->RestoreFramebufferState(framebuffer, true);
+  RCLCPP_DEBUG(get_logger(),
+               "SSD1305 final orientation, addressing, and framebuffer restored; display enabled");
+}
+
 void Ssd1305DisplayNode::EnterReconnectModeLocked(const std::string& error, bool initial_failure)
 {
-  if (m_stabilizationTimer)
-    m_stabilizationTimer->cancel();
   m_controllerState = ControllerState::Disconnected;
   m_failedReconnectAttempts = 0;
   {
@@ -365,6 +370,7 @@ void Ssd1305DisplayNode::EnterReconnectModeLocked(const std::string& error, bool
 bool Ssd1305DisplayNode::AttemptReconnect()
 {
   OASIS::Display::Ssd1305Framebuffer::Buffer desired{};
+  std::uint64_t generation = 0;
   std::scoped_lock device_lock(m_deviceMutex);
   if (m_controllerState != ControllerState::Disconnected)
     return false;
@@ -372,50 +378,13 @@ bool Ssd1305DisplayNode::AttemptReconnect()
   {
     std::scoped_lock lock(m_pendingMutex);
     desired = m_pendingBuffer.Data();
+    generation = m_desiredGeneration;
   }
   m_controllerState = ControllerState::Recovering;
   try
   {
-    // Keep the panel off until the final synchronization has restored the
-    // latest state and allowed its power circuitry to settle
-    m_device->Recover(desired, m_deviceConfig.contrast, false);
-    m_controllerState = ControllerState::Stabilizing;
-    m_stabilizationTimer->reset();
-    RCLCPP_DEBUG(get_logger(), "SSD1305 recovery completed; stabilizing for %.3f seconds",
-                 m_reconnectSettleSec);
-    return true;
-  }
-  catch (const std::exception& error)
-  {
-    m_controllerState = ControllerState::Disconnected;
-    ++m_failedReconnectAttempts;
-    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-                         "SSD1305 reconnect attempt %u failed: %s", m_failedReconnectAttempts,
-                         error.what());
-    return false;
-  }
-}
-
-bool Ssd1305DisplayNode::CompleteStabilization()
-{
-  m_stabilizationTimer->cancel();
-  OASIS::Display::Ssd1305Framebuffer::Buffer desired{};
-  std::uint64_t generation = 0;
-  std::scoped_lock device_lock(m_deviceMutex);
-  if (m_controllerState != ControllerState::Stabilizing)
-    return false;
-
-  {
-    std::scoped_lock lock(m_pendingMutex);
-    desired = m_pendingBuffer.Data();
-    generation = m_desiredGeneration;
-  }
-
-  try
-  {
-    m_device->SetContrast(m_deviceConfig.contrast);
-    m_device->WriteFullFrame(desired);
-    SetDisplayEnabledAfterPowerSettle(m_displayEnabled);
+    m_device->RecoverTransport();
+    InitializeAndRestoreController(desired, generation, m_displayEnabled);
     m_frontBuffer = desired;
     m_controllerState = ControllerState::Ready;
     {
@@ -440,21 +409,10 @@ bool Ssd1305DisplayNode::CompleteStabilization()
     m_controllerState = ControllerState::Disconnected;
     ++m_failedReconnectAttempts;
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-                         "SSD1305 stabilization failed on reconnect attempt %u: %s",
-                         m_failedReconnectAttempts, error.what());
+                         "SSD1305 reconnect attempt %u failed: %s", m_failedReconnectAttempts,
+                         error.what());
     return false;
   }
-}
-
-void Ssd1305DisplayNode::SetDisplayEnabledAfterPowerSettle(bool enabled)
-{
-  if (enabled && m_displayPowerSettleSec > 0.0)
-  {
-    const auto settle_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(
-        std::chrono::duration<double>(m_displayPowerSettleSec));
-    m_sleep(settle_duration);
-  }
-  m_device->SetDisplayEnabled(enabled);
 }
 
 void Ssd1305DisplayNode::HandleImage(sensor_msgs::msg::Image::ConstSharedPtr image)
@@ -577,16 +535,17 @@ void Ssd1305DisplayNode::HandleEnableDisplay(
     else
     {
       OASIS::Display::Ssd1305Framebuffer::Buffer desired{};
+      std::uint64_t generation = 0;
       {
         std::scoped_lock lock(m_pendingMutex);
         desired = m_pendingBuffer.Data();
+        generation = m_desiredGeneration;
       }
-      m_device->WriteFullFrame(desired);
       m_device->SetContrast(m_deviceConfig.contrast);
-      m_device->SetDisplayEnabled(true);
+      m_device->RestoreFramebufferState(desired, true);
       m_frontBuffer = desired;
       std::scoped_lock lock(m_pendingMutex);
-      if (m_pendingBuffer.Data() == desired)
+      if (m_desiredGeneration == generation)
       {
         m_pendingBuffer.MarkClean();
         m_hasPendingFrame = false;

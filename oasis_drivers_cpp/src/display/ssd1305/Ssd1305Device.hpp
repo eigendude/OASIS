@@ -47,15 +47,21 @@ class Ssd1305DeviceInterface
 public:
   virtual ~Ssd1305DeviceInterface() = default;
 
+  virtual void RecoverTransport() = 0;
   virtual void Initialize() = 0;
+  virtual void ConfigureOrientation() = 0;
+  virtual void ConfigureAddressing() = 0;
   virtual void SetDisplayEnabled(bool enabled) = 0;
   virtual void SetContrast(std::uint8_t contrast) = 0;
   virtual void WriteFullFrame(const Ssd1305Framebuffer::Buffer& framebuffer) = 0;
   virtual void WritePage(const Ssd1305Framebuffer::Buffer& framebuffer, std::size_t page) = 0;
-  /** \brief Fully reinitialize and restore a controller with unknown state */
-  virtual void Recover(const Ssd1305Framebuffer::Buffer& framebuffer,
-                       std::uint8_t contrast,
-                       bool enabled) = 0;
+  /** \brief Initialize an unknown controller and restore one framebuffer */
+  virtual void RestoreAfterInitialization(const Ssd1305Framebuffer::Buffer& framebuffer,
+                                          std::uint8_t contrast) = 0;
+
+  /** \brief Reassert state, restore one framebuffer, and optionally enable */
+  virtual void RestoreFramebufferState(const Ssd1305Framebuffer::Buffer& framebuffer,
+                                       bool enabled) = 0;
 };
 
 /** \brief Linux I2C SSD1305 command and framebuffer transport */
@@ -75,14 +81,18 @@ public:
   void Close() noexcept;
   bool IsOpen() const noexcept;
 
+  void RecoverTransport() override;
   void Initialize() override;
+  void ConfigureOrientation() override;
+  void ConfigureAddressing() override;
   void SetDisplayEnabled(bool enabled) override;
   void SetContrast(std::uint8_t contrast) override;
   void WriteFullFrame(const Ssd1305Framebuffer::Buffer& framebuffer) override;
   void WritePage(const Ssd1305Framebuffer::Buffer& framebuffer, std::size_t page) override;
-  void Recover(const Ssd1305Framebuffer::Buffer& framebuffer,
-               std::uint8_t contrast,
-               bool enabled) override;
+  void RestoreAfterInitialization(const Ssd1305Framebuffer::Buffer& framebuffer,
+                                  std::uint8_t contrast) override;
+  void RestoreFramebufferState(const Ssd1305Framebuffer::Buffer& framebuffer,
+                               bool enabled) override;
 
 private:
   void ValidateConfig() const;

@@ -99,6 +99,13 @@ bool Ssd1305Device::IsOpen() const noexcept
   return m_transport->IsOpen();
 }
 
+void Ssd1305Device::RecoverTransport()
+{
+  Close();
+  std::this_thread::sleep_for(RECOVERY_TRANSPORT_RESET_DELAY);
+  Open();
+}
+
 void Ssd1305Device::Initialize()
 {
   Open();
@@ -109,18 +116,20 @@ void Ssd1305Device::Initialize()
   // The controller is not host-resettable in the Qwiic installation, so this
   // sequence explicitly sets addressing, timing, drive, and charge-pump state
   // instead of relying on power-on defaults.
-  const std::array<std::uint8_t, 27> init{
+  const std::array<std::uint8_t, 30> init{
       DISPLAY_OFF,
-      SET_MEMORY_ADDRESSING_MODE,
-      0x00,
-      SET_START_LINE | 0x00,
-      0x2E,
-      SET_DISPLAY_OFFSET,
-      0x00,
       SET_DISPLAY_CLOCK_DIVIDE,
       0x80,
       SET_MULTIPLEX_RATIO,
       static_cast<std::uint8_t>(m_config.height - 1U),
+      SET_DISPLAY_OFFSET,
+      0x00,
+      SET_START_LINE | 0x00,
+      SET_CHARGE_PUMP,
+      0x14,
+      SET_MEMORY_ADDRESSING_MODE,
+      0x00,
+      0x2E,
       SET_COM_PINS,
       0x12,
       SET_MASTER_CONFIGURATION,
@@ -140,13 +149,28 @@ void Ssd1305Device::Initialize()
       SET_VCOMH_DESELECT,
       0x34,
       RESUME_TO_RAM,
+      NORMAL_DISPLAY,
   };
   WriteCommands(init);
+  ConfigureOrientation();
+  ConfigureAddressing();
+}
 
-  const std::array<std::uint8_t, 9> final_init{
-      NORMAL_DISPLAY,
-      SET_CHARGE_PUMP,
-      0x14,
+void Ssd1305Device::ConfigureOrientation()
+{
+  WriteCommands(std::array<std::uint8_t, 1>{
+      SET_SEGMENT_REMAP_REVERSED,
+  });
+  WriteCommands(std::array<std::uint8_t, 1>{
+      SET_COM_SCAN_DEC,
+  });
+}
+
+void Ssd1305Device::ConfigureAddressing()
+{
+  const std::array<std::uint8_t, 8> commands{
+      SET_MEMORY_ADDRESSING_MODE,
+      0x00,
       SET_COLUMN_ADDRESS,
       m_config.column_offset,
       static_cast<std::uint8_t>(m_config.column_offset + m_config.width - 1U),
@@ -154,16 +178,7 @@ void Ssd1305Device::Initialize()
       0x00,
       static_cast<std::uint8_t>(SSD1305_PAGE_COUNT - 1U),
   };
-  WriteCommands(final_init);
-
-  // Program orientation last using the same individual transactions verified
-  // on hardware so reconnects never depend on the controller's prior state
-  WriteCommands(std::array<std::uint8_t, 1>{
-      SET_SEGMENT_REMAP_REVERSED,
-  });
-  WriteCommands(std::array<std::uint8_t, 1>{
-      SET_COM_SCAN_DEC,
-  });
+  WriteCommands(commands);
 }
 
 void Ssd1305Device::SetDisplayEnabled(bool enabled)
@@ -197,16 +212,22 @@ void Ssd1305Device::WritePage(const Ssd1305Framebuffer::Buffer& framebuffer, std
   WriteData(std::span<const std::uint8_t>(begin, m_config.width));
 }
 
-void Ssd1305Device::Recover(const Ssd1305Framebuffer::Buffer& framebuffer,
-                            std::uint8_t contrast,
-                            bool enabled)
+void Ssd1305Device::RestoreAfterInitialization(const Ssd1305Framebuffer::Buffer& framebuffer,
+                                               std::uint8_t contrast)
 {
-  Close();
-  std::this_thread::sleep_for(RECOVERY_TRANSPORT_RESET_DELAY);
   Initialize();
   SetContrast(contrast);
   WriteFullFrame(framebuffer);
-  SetDisplayEnabled(enabled);
+}
+
+void Ssd1305Device::RestoreFramebufferState(const Ssd1305Framebuffer::Buffer& framebuffer,
+                                            bool enabled)
+{
+  ConfigureOrientation();
+  ConfigureAddressing();
+  WriteFullFrame(framebuffer);
+  if (enabled)
+    SetDisplayEnabled(true);
 }
 
 void Ssd1305Device::ValidateConfig() const

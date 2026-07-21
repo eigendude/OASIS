@@ -64,16 +64,16 @@ private:
   {
     Disconnected,
     Recovering,
-    Stabilizing,
     Ready,
   };
 
   void ReadConfig();
   void AttemptInitialConnection();
+  // m_deviceMutex must be held for this method and all device operations
+  void InitializeAndRestoreController(OASIS::Display::Ssd1305Framebuffer::Buffer& framebuffer,
+                                      std::uint64_t& generation,
+                                      bool enabled);
   bool AttemptReconnect();
-  bool CompleteStabilization();
-  // m_deviceMutex must be held before calling this method
-  void SetDisplayEnabledAfterPowerSettle(bool enabled);
   // m_deviceMutex must be held before calling this method
   void EnterReconnectModeLocked(const std::string& error, bool initial_failure);
   void HandleImage(sensor_msgs::msg::Image::ConstSharedPtr image);
@@ -91,7 +91,6 @@ private:
   OASIS::Display::Ssd1305FramebufferConfig m_framebufferConfig;
   double m_updateRateHz;
   double m_reconnectIntervalSec;
-  double m_reconnectSettleSec;
   double m_displayPowerSettleSec;
   bool m_blankOnShutdown;
   bool m_enablePartialUpdates;
@@ -117,6 +116,5 @@ private:
   rclcpp::Service<oasis_msgs::srv::SetDisplayContrast>::SharedPtr m_setContrastService;
   rclcpp::TimerBase::SharedPtr m_updateTimer;
   rclcpp::TimerBase::SharedPtr m_reconnectTimer;
-  rclcpp::TimerBase::SharedPtr m_stabilizationTimer;
 };
 } // namespace OASIS::ROS

@@ -37,6 +37,8 @@ public:
   void Open(const std::string& device, int address) override
   {
     events.push_back("open:" + device + ":" + std::to_string(address));
+    if (fail_open)
+      throw std::runtime_error("open failed");
     open = true;
   }
 
@@ -60,6 +62,7 @@ public:
   }
 
   bool open{false};
+  bool fail_open{false};
   std::vector<std::string> events;
   std::vector<std::vector<std::uint8_t>> transactions;
   std::deque<std::exception_ptr> failures;
@@ -113,30 +116,60 @@ TEST(Ssd1305Device, InitializationStaysOffAndUsesProduct4567Configuration)
   fixture.device->Initialize();
   ASSERT_EQ(fixture.fake->transactions.size(), 4U);
   const auto& config = fixture.fake->transactions[0];
-  const auto& bounds = fixture.fake->transactions[1];
+  const auto& bounds = fixture.fake->transactions[3];
   ASSERT_GE(config.size(), 2U);
   EXPECT_EQ(config[0], 0x00);
   EXPECT_EQ(config[1], 0xAE);
   EXPECT_FALSE(ContainsSequence(config, {0xAF}));
+  EXPECT_TRUE(ContainsSequence(config, {0xD5, 0x80}));
   EXPECT_TRUE(ContainsSequence(config, {0x20, 0x00}));
   EXPECT_TRUE(ContainsSequence(config, {0xA8, 0x1F}));
+  EXPECT_TRUE(ContainsSequence(config, {0xD3, 0x00}));
+  EXPECT_TRUE(ContainsSequence(config, {0x40}));
+  EXPECT_TRUE(ContainsSequence(config, {0xDA, 0x12}));
+  EXPECT_FALSE(ContainsSequence(config, {0x81}));
   EXPECT_TRUE(ContainsSequence(config, {0xD9, 0xD2}));
   EXPECT_TRUE(ContainsSequence(config, {0xAD, 0x8E}));
   EXPECT_TRUE(ContainsSequence(config, {0xD8, 0x05}));
   EXPECT_TRUE(ContainsSequence(config, {0x91, 0x3F, 0x3F, 0x3F, 0x3F}));
   EXPECT_TRUE(ContainsSequence(config, {0xDB, 0x34}));
-  EXPECT_TRUE(ContainsSequence(bounds, {0x8D, 0x14}));
+  EXPECT_TRUE(ContainsSequence(config, {0x8D, 0x14}));
+  EXPECT_TRUE(ContainsSequence(config, {0xA4, 0xA6}));
   EXPECT_TRUE(ContainsSequence(bounds, {0x21, 0x04, 0x83}));
   EXPECT_TRUE(ContainsSequence(bounds, {0x22, 0x00, 0x03}));
   EXPECT_FALSE(ContainsSequence(bounds, {0xB0}));
-  EXPECT_EQ(fixture.fake->transactions[2], (std::vector<std::uint8_t>{0x00, 0xA1}));
-  EXPECT_EQ(fixture.fake->transactions[3], (std::vector<std::uint8_t>{0x00, 0xC8}));
+  EXPECT_EQ(fixture.fake->transactions[1], (std::vector<std::uint8_t>{0x00, 0xA1}));
+  EXPECT_EQ(fixture.fake->transactions[2], (std::vector<std::uint8_t>{0x00, 0xC8}));
   EXPECT_EQ(FindTransaction(fixture.fake->transactions, {0x00, 0xAF}),
             fixture.fake->transactions.size());
   EXPECT_EQ(FindTransaction(fixture.fake->transactions, {0x00, 0xA0}),
             fixture.fake->transactions.size());
   EXPECT_EQ(FindTransaction(fixture.fake->transactions, {0x00, 0xC0}),
             fixture.fake->transactions.size());
+}
+
+TEST(Ssd1305Device, TransportRecoveryClosesWaitsAndReopens)
+{
+  DeviceFixture fixture;
+  fixture.device->Open();
+  fixture.fake->events.clear();
+
+  fixture.device->RecoverTransport();
+
+  EXPECT_EQ(fixture.fake->events, (std::vector<std::string>{"close", "open:/dev/i2c-1:60"}));
+  EXPECT_TRUE(fixture.device->IsOpen());
+}
+
+TEST(Ssd1305Device, TransportRecoveryPropagatesReopenFailure)
+{
+  DeviceFixture fixture;
+  fixture.device->Open();
+  fixture.fake->events.clear();
+  fixture.fake->fail_open = true;
+
+  EXPECT_THROW(fixture.device->RecoverTransport(), std::runtime_error);
+  EXPECT_EQ(fixture.fake->events, (std::vector<std::string>{"close", "open:/dev/i2c-1:60"}));
+  EXPECT_FALSE(fixture.device->IsOpen());
 }
 
 TEST(Ssd1305Device, RepeatedInitializationProgramsOrientationEveryTime)
@@ -223,7 +256,7 @@ TEST(Ssd1305Device, SystemErrorPropagatesWithoutGlobalErrno)
   EXPECT_EQ(fixture.fake->transactions.size(), 1U);
 }
 
-TEST(Ssd1305Device, RecoveryReopensRestoresFullFrameThenEnables)
+TEST(Ssd1305Device, DeterministicRestoreHasExactStateFrameAndDisplayOnPhases)
 {
   DeviceFixture fixture;
   Ssd1305Framebuffer::Buffer framebuffer{};
@@ -232,16 +265,21 @@ TEST(Ssd1305Device, RecoveryReopensRestoresFullFrameThenEnables)
   fixture.fake->events.clear();
   fixture.fake->transactions.clear();
 
-  fixture.device->Recover(framebuffer, 0x40, true);
-  ASSERT_GE(fixture.fake->events.size(), 2U);
-  EXPECT_EQ(fixture.fake->events[0], "close");
-  EXPECT_EQ(fixture.fake->events[1], "open:/dev/i2c-1:60");
+  fixture.device->RestoreAfterInitialization(framebuffer, 0x40);
+  fixture.device->RestoreFramebufferState(framebuffer, true);
+  ASSERT_FALSE(fixture.fake->events.empty());
 
   const auto data_transaction_count =
       std::count_if(fixture.fake->transactions.begin(), fixture.fake->transactions.end(),
                     [](const std::vector<std::uint8_t>& transaction)
                     { return !transaction.empty() && transaction.front() == 0x40; });
-  EXPECT_EQ(data_transaction_count, 16);
+  EXPECT_EQ(data_transaction_count, 32);
+  EXPECT_EQ(CountTransaction(fixture.fake->transactions, {0x00, 0xA1}), 2U);
+  EXPECT_EQ(CountTransaction(fixture.fake->transactions, {0x00, 0xC8}), 2U);
+  EXPECT_EQ(CountTransaction(fixture.fake->transactions,
+                             {0x00, 0x20, 0x00, 0x21, 0x04, 0x83, 0x22, 0x00, 0x03}),
+            2U);
+  EXPECT_EQ(CountTransaction(fixture.fake->transactions, {0x00, 0xAF}), 1U);
   ASSERT_FALSE(fixture.fake->transactions.empty());
   EXPECT_EQ(fixture.fake->transactions.back(), (std::vector<std::uint8_t>{0x00, 0xAF}));
 
@@ -273,4 +311,19 @@ TEST(Ssd1305Device, RecoveryReopensRestoresFullFrameThenEnables)
                    [](const std::vector<std::uint8_t>& transaction)
                    { return !transaction.empty() && transaction.front() == 0x40; });
   EXPECT_LT(contrast, first_data);
+}
+
+TEST(Ssd1305Device, FinalRestoreReassertsOrientationAndAddressingBeforeDisplayOn)
+{
+  DeviceFixture fixture;
+  Ssd1305Framebuffer::Buffer framebuffer{};
+
+  fixture.device->RestoreFramebufferState(framebuffer, true);
+
+  ASSERT_GE(fixture.fake->transactions.size(), 20U);
+  EXPECT_EQ(fixture.fake->transactions[0], (std::vector<std::uint8_t>{0x00, 0xA1}));
+  EXPECT_EQ(fixture.fake->transactions[1], (std::vector<std::uint8_t>{0x00, 0xC8}));
+  EXPECT_EQ(fixture.fake->transactions[2],
+            (std::vector<std::uint8_t>{0x00, 0x20, 0x00, 0x21, 0x04, 0x83, 0x22, 0x00, 0x03}));
+  EXPECT_EQ(fixture.fake->transactions.back(), (std::vector<std::uint8_t>{0x00, 0xAF}));
 }

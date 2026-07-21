@@ -258,8 +258,8 @@ class Ssd1305DisplayConfig:
     # Seconds between attempts to reconnect an unavailable controller
     reconnect_interval_sec: float
 
-    # Seconds to wait before validating a recovered controller
-    reconnect_settle_sec: float
+    # Seconds between the initial and final cold-start framebuffer restores
+    display_power_settle_sec: float
 
     # Requested display power state at node startup
     enabled: bool
@@ -291,7 +291,7 @@ class Ssd1305DisplayConfig:
             "rotation": self.rotation,
             "update_rate_hz": self.update_rate_hz,
             "reconnect_interval_sec": self.reconnect_interval_sec,
-            "reconnect_settle_sec": self.reconnect_settle_sec,
+            "display_power_settle_sec": self.display_power_settle_sec,
             "enabled": self.enabled,
             "blank_on_shutdown": self.blank_on_shutdown,
             "reject_wrong_dimensions": self.reject_wrong_dimensions,
