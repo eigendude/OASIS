@@ -102,11 +102,38 @@ That means:
 
 ## Frame semantics
 
-OASIS intentionally keeps the ZUPT measurement frame-simple.
+The canonical published frame is `imu_link`. Driver launch code supplies the
+configured AHRS mounting child frame as the detector's `imu_frame_id`; a
+standalone detector defaults to `imu_link`. The message retains the timestamp
+of the triggering IMU sample.
 
-Because the mean is always zero, both covariance blocks are always
-isotropic, and all cross terms remain zero, downstream consumers do not
-need frame-rotation logic for ZUPT by contract.
+This ZUPT is a detector-owned assertion that the rigid vehicle is stationary,
+not a general twist estimate at the IMU origin. Its mathematical contract is:
+
+```text
+z = [0, 0, 0, 0, 0, 0]
+
+P =
+[ sigma_linear^2 * I3           0            ]
+[          0           sigma_angular^2 * I3 ]
+```
+
+For any fixed mounting rotation `R`, define:
+
+```text
+A =
+[ R  0 ]
+[ 0  R ]
+
+A * z = z
+A * P * A^T = P
+```
+
+Therefore, consumers may apply this specific ZUPT without knowing the fixed
+`imu_link`-to-`base_link` mounting rotation. They must reject a nonzero,
+anisotropic, or cross-correlated ZUPT when they are not performing a real frame
+transformation. Arbitrary twists and covariance matrices are not
+frame-invariant.
 
 Downstream code may consume the canonical detector `imu_link` ZUPT
 directly.
@@ -134,7 +161,13 @@ Downstream consumers can interpret the detector output as follows:
 - small linear variance means an active zero-speed correction
 - huge linear variance means a negligible zero-speed correction
 
-No downstream frame rotation is required for this path.
+No downstream frame rotation is required for this exact measurement shape.
+
+## QoS
+
+`zupt` uses reliable, volatile, bounded QoS with a keep-last depth of 50. It is
+not latched. `zupt_flag` uses reliable, transient-local QoS with keep-last depth
+1 so a late subscriber receives the current stationarity state.
 
 ---
 
@@ -152,6 +185,7 @@ Current detector parameters are:
 - `stationary_angular_velocity_sigma_rads`
 - `moving_linear_variance_mps2`
 - `moving_angular_variance_rads2`
+- `imu_frame_id` (default `imu_link`)
 
 These fully define the current detector behavior and the stationary vs
 moving covariance model.
