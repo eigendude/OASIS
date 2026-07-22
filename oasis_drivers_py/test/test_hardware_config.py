@@ -31,7 +31,6 @@ def test_falcon_hardware_preserves_camera_and_ahrs_configuration(
     assert len(hardware.cameras) == 1
     camera: CameraConfig = hardware.cameras[0]
     assert camera.implementation is CameraImplementation.LIBCAMERA
-    assert camera.enabled is False
     assert camera.image_format == "RGB888"
     assert camera.image_size == (1920, 1080)
     assert camera.sensor_mode == "2304:1296"

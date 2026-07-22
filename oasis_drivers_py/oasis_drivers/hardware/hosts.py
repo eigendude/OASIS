@@ -120,7 +120,7 @@ def get_host_hardware_config(
             cameras=(
                 CameraConfig(
                     implementation=CameraImplementation.LIBCAMERA,
-                    enabled=False,
+                    enabled=True,
                     # TODO: This is inverted and produces BGR888 images
                     image_format="RGB888",
                     image_size=(1920, 1080),
