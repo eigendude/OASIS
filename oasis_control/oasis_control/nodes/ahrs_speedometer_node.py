@@ -398,7 +398,7 @@ class AhrsSpeedometerNode(rclpy.node.Node):
 def _parse_imu_covariance(
     values: Sequence[float],
 ) -> tuple[bool, FloatArray | None]:
-    covariance: FloatArray = np.asarray(values, dtype=np.float64).reshape((3, 3))
+    covariance: FloatArray = np.reshape(np.asarray(values, dtype=np.float64), (3, 3))
     if covariance[0, 0] == -1.0:
         return True, None
     if not _valid_covariance(covariance):

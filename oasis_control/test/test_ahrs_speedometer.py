@@ -18,6 +18,7 @@ import pytest
 from oasis_control.localization.ahrs_speedometer import AhrsImuSample
 from oasis_control.localization.ahrs_speedometer import AhrsSpeedometer
 from oasis_control.localization.ahrs_speedometer import AhrsSpeedometerConfig
+from oasis_control.localization.ahrs_speedometer import FloatArray
 from oasis_control.localization.ahrs_speedometer import SpeedometerEstimate
 from oasis_control.localization.ahrs_speedometer import StationaryTwistObservation
 from oasis_control.localization.ahrs_speedometer import _symmetrize
@@ -43,7 +44,7 @@ def test_integrates_signed_forward_acceleration_and_variance() -> None:
 
     assert estimate is not None
     np.testing.assert_allclose(estimate.mean[0], -0.2)
-    expected_variance: float = estimate.covariance[0, 0]
+    expected_variance: float = float(estimate.covariance[0, 0])
     assert expected_variance > 0.0
 
 
@@ -115,8 +116,8 @@ def test_rejects_out_of_order_and_excessive_gap_without_integration() -> None:
 def test_full_zupt_update_retains_cross_covariance_and_is_not_reused() -> None:
     config: AhrsSpeedometerConfig = AhrsSpeedometerConfig(zupt_freshness_sec=0.2)
     speedometer: AhrsSpeedometer = AhrsSpeedometer(config)
-    covariance: np.ndarray = np.eye(6, dtype=np.float64) * 0.1
-    covariance[0, 3] = covariance[3, 0] = 0.02
+    covariance: FloatArray = np.multiply(np.eye(6, dtype=np.float64), 0.1)
+    np.put(covariance, [3, 18], 0.02)
     speedometer.store_zupt(
         StationaryTwistObservation(
             timestamp_ns=1_000_000_000,
@@ -212,9 +213,9 @@ def test_low_variance_zupt_corrects_speed_more_strongly() -> None:
 
 
 def test_complete_zupt_covariance_changes_coupled_correction() -> None:
-    diagonal: np.ndarray = np.eye(6, dtype=np.float64) * 0.1
-    correlated: np.ndarray = diagonal.copy()
-    correlated[0, 3] = correlated[3, 0] = 0.08
+    diagonal: FloatArray = np.multiply(np.eye(6, dtype=np.float64), 0.1)
+    correlated: FloatArray = diagonal.copy()
+    np.put(correlated, [3, 18], 0.08)
 
     diagonal_result: SpeedometerEstimate = apply_initial_zupt(diagonal)
     correlated_result: SpeedometerEstimate = apply_initial_zupt(correlated)
@@ -265,7 +266,8 @@ def initialized_speedometer(
     speedometer: AhrsSpeedometer = AhrsSpeedometer(
         AhrsSpeedometerConfig() if config is None else config
     )
-    speedometer.store_zupt(make_zupt(1.0, np.eye(6, dtype=np.float64) * 0.01))
+    covariance: FloatArray = np.multiply(np.eye(6, dtype=np.float64), 0.01)
+    speedometer.store_zupt(make_zupt(1.0, covariance))
     speedometer.set_zupt_active(True)
     estimate: SpeedometerEstimate = require_estimate(speedometer.update(make_imu(1.0)))
     assert estimate.initialized is True
@@ -302,7 +304,7 @@ def make_imu_ns(timestamp_ns: int) -> AhrsImuSample:
 
 
 def make_zupt(
-    timestamp_sec: float, covariance: np.ndarray
+    timestamp_sec: float, covariance: FloatArray
 ) -> StationaryTwistObservation:
     return StationaryTwistObservation(
         timestamp_ns=round(timestamp_sec * 1_000_000_000),
@@ -312,7 +314,7 @@ def make_zupt(
 
 
 def make_zupt_ns(
-    timestamp_ns: int, covariance: np.ndarray
+    timestamp_ns: int, covariance: FloatArray
 ) -> StationaryTwistObservation:
     return StationaryTwistObservation(
         timestamp_ns=timestamp_ns,
@@ -324,12 +326,13 @@ def make_zupt_ns(
 def speed_after_second_zupt(variance: float) -> float:
     speedometer: AhrsSpeedometer = initialized_speedometer()
     speedometer.update(make_imu(1.1, accel_x_mps2=10.0))
-    speedometer.store_zupt(make_zupt(1.2, np.eye(6, dtype=np.float64) * variance))
+    covariance: FloatArray = np.multiply(np.eye(6, dtype=np.float64), variance)
+    speedometer.store_zupt(make_zupt(1.2, covariance))
     estimate: SpeedometerEstimate = require_estimate(speedometer.update(make_imu(1.2)))
     return float(estimate.mean[0])
 
 
-def apply_initial_zupt(covariance: np.ndarray) -> SpeedometerEstimate:
+def apply_initial_zupt(covariance: FloatArray) -> SpeedometerEstimate:
     speedometer: AhrsSpeedometer = AhrsSpeedometer(AhrsSpeedometerConfig())
     speedometer.set_zupt_active(True)
     observation: StationaryTwistObservation = make_zupt(1.0, covariance)

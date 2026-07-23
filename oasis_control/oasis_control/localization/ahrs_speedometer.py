@@ -14,12 +14,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from dataclasses import field
+from typing import TypeAlias
 
 import numpy as np
-from numpy.typing import NDArray
 
 
-FloatArray = NDArray[np.float64]
+FloatArray: TypeAlias = np.ndarray
 
 # Negative eigenvalues at this scale are treated as eigensolver roundoff only
 COVARIANCE_TOLERANCE: float = 1.0e-10
@@ -286,9 +286,9 @@ class AhrsSpeedometer:
         try:
             # Valid ZUPTs must produce a finite, symmetric, positive-definite S
             # Solve S X = H P, then transpose to obtain P H^T S^-1
-            kalman_gain: FloatArray = np.linalg.solve(
-                innovation_covariance, self._G @ prior_covariance
-            ).T
+            kalman_gain: FloatArray = np.transpose(
+                np.linalg.solve(innovation_covariance, self._G @ prior_covariance)
+            )
         except np.linalg.LinAlgError:
             self.last_zupt_status = "singular_innovation"
             return False
