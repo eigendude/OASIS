@@ -19,7 +19,7 @@ from launch.launch_description import LaunchDescription
 from oasis_control.launch.control_descriptions import ControlDescriptions
 
 
-def test_conductor_voltage_remappings_resolve_under_oasis_station() -> None:
+def test_conductor_measurement_remappings_resolve_under_oasis_station() -> None:
     launch_description: LaunchDescription = LaunchDescription()
 
     ControlDescriptions.add_conductor_manager(
@@ -41,4 +41,13 @@ def test_conductor_voltage_remappings_resolve_under_oasis_station() -> None:
     )
     assert f"/{namespace}/{remappings['traction_voltage']}" == (
         "/oasis/station/traction_voltage"
+    )
+    assert f"/{namespace}/{remappings['traction_power']}" == (
+        "/oasis/station/traction_power"
+    )
+    assert f"/{namespace}/{remappings['power_meter_0']}" == (
+        "/oasis/station/power/power_meter_0"
+    )
+    assert f"/{namespace}/{remappings['power_meter_1']}" == (
+        "/oasis/station/power/power_meter_1"
     )

@@ -24,14 +24,18 @@ from oasis_control.lego_models.station_manager import MAX_MOTOR_VOLTAGE_SKEW_SEC
 from oasis_control.lego_models.station_manager import MOTOR_VOLTAGE_GAIN
 from oasis_control.lego_models.station_manager import MOTOR_VOLTAGE_ZERO_EPSILON
 from oasis_control.lego_models.station_manager import PUBLISH_SUPPLY_VOLTAGE
+from oasis_control.lego_models.station_manager import PUBLISH_TRACTION_POWER
 from oasis_control.lego_models.station_manager import PUBLISH_TRACTION_VOLTAGE
 from oasis_control.lego_models.station_manager import STDDEV_BETA
+from oasis_control.lego_models.station_manager import SUBSCRIBE_POWER_METER_0
+from oasis_control.lego_models.station_manager import SUBSCRIBE_POWER_METER_1
 from oasis_control.lego_models.station_manager import VIN_GAIN
 from oasis_control.lego_models.station_manager import VSS_R1
 from oasis_control.lego_models.station_manager import VSS_R2
 from oasis_control.lego_models.station_manager import StationManager
 from oasis_control.nodes.conductor_manager_telemetrix_node import ConductorManagerNode
 from oasis_msgs.msg import AnalogReading as AnalogReadingMsg
+from oasis_msgs.msg import PowerMeter as PowerMeterMsg
 
 
 class _Publisher:
@@ -62,8 +66,11 @@ def _make_station_manager(motor_voltage_reversed: bool = False) -> StationManage
     manager._motor_voltage_stddev = 0.0
     manager._motor_voltage_reversed = motor_voltage_reversed
     manager._last_motor_pwm_cmd = None
+    manager._power_meter_0_current = None
+    manager._power_meter_1_current = None
     manager_any: Any = manager
     manager_any._traction_voltage_pub = _Publisher()
+    manager_any._traction_power_pub = _Publisher()
 
     return manager
 
@@ -76,6 +83,15 @@ def _make_initialized_station_manager() -> tuple[StationManager, rclpy.node.Node
 
 def _publisher(node: rclpy.node.Node, topic: str) -> Any:
     return next(publisher for publisher in node.publishers if publisher.topic == topic)
+
+
+def _power_meter(
+    current: float, status: int = PowerMeterMsg.STATUS_OK
+) -> PowerMeterMsg:
+    message: PowerMeterMsg = PowerMeterMsg()
+    message.current = current
+    message.status = status
+    return message
 
 
 def _make_pwm_station_manager() -> tuple[StationManager, _Publisher, _Publisher]:
@@ -234,18 +250,109 @@ def test_opposite_reverse_motor_pwm_republishes_same_magnitude() -> None:
     assert manager.motor_duty_cycle == pytest.approx(-0.5)
 
 
-def test_voltage_publishers_use_float32_and_sensor_data_qos() -> None:
+def test_measurement_publishers_use_float32_and_sensor_data_qos() -> None:
     _, node = _make_initialized_station_manager()
 
     supply_publisher: Any = _publisher(node, PUBLISH_SUPPLY_VOLTAGE)
     traction_publisher: Any = _publisher(node, PUBLISH_TRACTION_VOLTAGE)
+    power_publisher: Any = _publisher(node, PUBLISH_TRACTION_POWER)
 
     assert supply_publisher.msg_type is Float32Msg
     assert traction_publisher.msg_type is Float32Msg
+    assert power_publisher.msg_type is Float32Msg
     assert supply_publisher.qos_profile is rclpy.qos.QoSPresetProfiles.SENSOR_DATA.value
     assert (
         traction_publisher.qos_profile is rclpy.qos.QoSPresetProfiles.SENSOR_DATA.value
     )
+    assert power_publisher.qos_profile is rclpy.qos.QoSPresetProfiles.SENSOR_DATA.value
+
+
+def test_power_meter_subscribers_use_sensor_data_qos() -> None:
+    _, node = _make_initialized_station_manager()
+    subscriptions: dict[str, Any] = {
+        subscription.topic: subscription for subscription in node.subscriptions
+    }
+
+    for topic in (SUBSCRIBE_POWER_METER_0, SUBSCRIBE_POWER_METER_1):
+        assert (
+            subscriptions[topic].qos_profile
+            is rclpy.qos.QoSPresetProfiles.SENSOR_DATA.value
+        )
+
+
+def test_traction_power_waits_for_both_currents_and_uses_measured_voltage() -> None:
+    manager: StationManager = _make_station_manager()
+    power_publisher: Any = manager._traction_power_pub
+
+    manager._on_power_meter_0(_power_meter(1.25))
+    _update_motor_voltage(manager, 7.0)
+    assert power_publisher.messages == []
+
+    manager._on_power_meter_1(_power_meter(0.75, PowerMeterMsg.STATUS_STALE))
+    _update_motor_voltage(manager, 7.0)
+
+    expected_voltage: float = 7.0 * MOTOR_VOLTAGE_GAIN
+    assert len(power_publisher.messages) == 1
+    assert power_publisher.messages[0].data == pytest.approx(
+        expected_voltage * (1.25 + 0.75)
+    )
+
+
+def test_reverse_traction_voltage_produces_positive_power() -> None:
+    manager: StationManager = _make_station_manager()
+    manager._on_power_meter_0(_power_meter(1.5))
+    manager._on_power_meter_1(_power_meter(0.5))
+
+    _update_motor_voltage(manager, -4.0)
+
+    power_publisher: Any = manager._traction_power_pub
+    assert power_publisher.messages[0].data == pytest.approx(
+        abs(-4.0 * MOTOR_VOLTAGE_GAIN) * (1.5 + 0.5)
+    )
+
+
+def test_zero_traction_power_is_positive_zero() -> None:
+    manager: StationManager = _make_station_manager()
+    manager._on_power_meter_0(_power_meter(1.0))
+    manager._on_power_meter_1(_power_meter(2.0))
+
+    _update_motor_voltage(manager, 0.0)
+
+    power_publisher: Any = manager._traction_power_pub
+    power: float = power_publisher.messages[0].data
+    assert power == 0.0
+    assert math.copysign(1.0, power) == 1.0
+
+
+@pytest.mark.parametrize(
+    ("status", "current"),
+    [
+        (PowerMeterMsg.STATUS_ERROR, 1.0),
+        (PowerMeterMsg.STATUS_DISCONNECTED, 1.0),
+        (PowerMeterMsg.STATUS_OK, math.nan),
+        (PowerMeterMsg.STATUS_STALE, math.inf),
+        (PowerMeterMsg.STATUS_OK, -1.0),
+    ],
+)
+def test_invalid_current_suppresses_power_until_valid_sample(
+    status: int, current: float
+) -> None:
+    manager: StationManager = _make_station_manager()
+    manager._on_power_meter_0(_power_meter(1.0))
+    manager._on_power_meter_1(_power_meter(2.0))
+    _update_motor_voltage(manager, 3.0)
+    power_publisher: Any = manager._traction_power_pub
+    assert len(power_publisher.messages) == 1
+    power_publisher.messages.clear()
+
+    manager._on_power_meter_1(_power_meter(current, status))
+
+    _update_motor_voltage(manager, 3.0)
+    assert power_publisher.messages == []
+
+    manager._on_power_meter_1(_power_meter(2.0))
+    _update_motor_voltage(manager, 3.0)
+    assert len(power_publisher.messages) == 1
 
 
 def test_supply_adc_update_publishes_only_converted_supply_voltage() -> None:
@@ -311,6 +418,7 @@ def test_periodic_state_preserves_fields_without_republishing_scalar_topics() ->
     conductor_publisher: _Publisher = _Publisher()
     supply_publisher: _Publisher = _Publisher()
     traction_publisher: _Publisher = _Publisher()
+    power_publisher: _Publisher = _Publisher()
     node_any: Any = node
     node_any._conductor_state_pub = conductor_publisher
     node_any._station_manager = SimpleNamespace(
@@ -324,6 +432,7 @@ def test_periodic_state_preserves_fields_without_republishing_scalar_topics() ->
         motor_ff2_count=8,
         _supply_voltage_pub=supply_publisher,
         _traction_voltage_pub=traction_publisher,
+        _traction_power_pub=power_publisher,
     )
     node_any._mcu_memory_manager = SimpleNamespace(
         total_ram=4096,
@@ -344,3 +453,4 @@ def test_periodic_state_preserves_fields_without_republishing_scalar_topics() ->
     assert state.motor_ff2_count == 8
     assert supply_publisher.messages == []
     assert traction_publisher.messages == []
+    assert power_publisher.messages == []

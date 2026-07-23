@@ -32,6 +32,7 @@ from oasis_msgs.msg import AnalogReadings as AnalogReadingsMsg
 from oasis_msgs.msg import AVRConstants as AVRConstantsMsg
 from oasis_msgs.msg import DigitalReading as DigitalReadingMsg
 from oasis_msgs.msg import DigitalWriteCommand as DigitalWriteCommandMsg
+from oasis_msgs.msg import PowerMeter as PowerMeterMsg
 from oasis_msgs.msg import PWMWriteCommand as PWMWriteCommandMsg
 from oasis_msgs.srv import SetAnalogMode as SetAnalogModeSvc
 from oasis_msgs.srv import SetDigitalMode as SetDigitalModeSvc
@@ -101,6 +102,8 @@ MOTOR_VOLTAGE_ZERO_EPSILON: float = 0.05
 # Subscribers
 SUBSCRIBE_ANALOG_READINGS = "analog_readings"
 SUBSCRIBE_DIGITAL_READING = "digital_reading"
+SUBSCRIBE_POWER_METER_0 = "power_meter_0"
+SUBSCRIBE_POWER_METER_1 = "power_meter_1"
 
 # Service clients
 CLIENT_SET_ANALOG_MODE = "set_analog_mode"
@@ -113,6 +116,7 @@ PUBLISH_MOTOR_PWM_CMD = "pwm_write_cmd"
 # Measurement publishers
 PUBLISH_SUPPLY_VOLTAGE = "supply_voltage"
 PUBLISH_TRACTION_VOLTAGE = "traction_voltage"
+PUBLISH_TRACTION_POWER = "traction_power"
 
 
 ################################################################################
@@ -189,6 +193,8 @@ class StationManager:
         self._motor_ff2_state: bool = False
         self._motor_ff2_count: int = 0
         self._last_motor_pwm_cmd: Optional[tuple[int, float]] = None
+        self._power_meter_0_current: Optional[float] = None
+        self._power_meter_1_current: Optional[float] = None
 
         # Reliable listener QOS profile for subscribers
         qos_profile: rclpy.qos.QoSProfile = (
@@ -229,6 +235,13 @@ class StationManager:
                 qos_profile=rclpy.qos.QoSPresetProfiles.SENSOR_DATA.value,
             )
         )
+        self._traction_power_pub: rclpy.publisher.Publisher[Float32Msg] = (
+            self._node.create_publisher(
+                msg_type=Float32Msg,
+                topic=PUBLISH_TRACTION_POWER,
+                qos_profile=rclpy.qos.QoSPresetProfiles.SENSOR_DATA.value,
+            )
+        )
 
         # Subscribers
         self._analog_readings_sub: rclpy.subscription.Subscription[
@@ -246,6 +259,22 @@ class StationManager:
             topic=SUBSCRIBE_DIGITAL_READING,
             callback=self._on_digital_reading,
             qos_profile=qos_profile,
+        )
+        self._power_meter_0_sub: rclpy.subscription.Subscription[PowerMeterMsg] = (
+            self._node.create_subscription(
+                msg_type=PowerMeterMsg,
+                topic=SUBSCRIBE_POWER_METER_0,
+                callback=self._on_power_meter_0,
+                qos_profile=rclpy.qos.QoSPresetProfiles.SENSOR_DATA.value,
+            )
+        )
+        self._power_meter_1_sub: rclpy.subscription.Subscription[PowerMeterMsg] = (
+            self._node.create_subscription(
+                msg_type=PowerMeterMsg,
+                topic=SUBSCRIBE_POWER_METER_1,
+                callback=self._on_power_meter_1,
+                qos_profile=rclpy.qos.QoSPresetProfiles.SENSOR_DATA.value,
+            )
         )
 
         # Service clients
@@ -495,6 +524,31 @@ class StationManager:
 
         self._motor_voltage_stddev = math.sqrt(max(motor_voltage_var, 0.0))
         self._traction_voltage_pub.publish(Float32Msg(data=self._motor_voltage))
+
+        if (
+            self._power_meter_0_current is not None
+            and self._power_meter_1_current is not None
+        ):
+            traction_power: float = abs(self._motor_voltage) * (
+                self._power_meter_0_current + self._power_meter_1_current
+            )
+            if traction_power == 0.0:
+                traction_power = 0.0
+            self._traction_power_pub.publish(Float32Msg(data=traction_power))
+
+    @staticmethod
+    def _usable_power_meter_current(msg: PowerMeterMsg) -> Optional[float]:
+        if msg.status not in (PowerMeterMsg.STATUS_OK, PowerMeterMsg.STATUS_STALE):
+            return None
+        if not math.isfinite(msg.current) or msg.current < 0.0:
+            return None
+        return msg.current
+
+    def _on_power_meter_0(self, msg: PowerMeterMsg) -> None:
+        self._power_meter_0_current = self._usable_power_meter_current(msg)
+
+    def _on_power_meter_1(self, msg: PowerMeterMsg) -> None:
+        self._power_meter_1_current = self._usable_power_meter_current(msg)
 
     def _update_motor_voltage_channel_a(
         self,

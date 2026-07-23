@@ -221,6 +221,17 @@ class _ConductorState:
         self.ram_utilization: float = 0.0
 
 
+class _PowerMeter:
+    STATUS_OK: int = 0
+    STATUS_STALE: int = 1
+    STATUS_DISCONNECTED: int = 2
+    STATUS_ERROR: int = 3
+
+    def __init__(self) -> None:
+        self.current: float = 0.0
+        self.status: int = self.STATUS_OK
+
+
 class _MCUMemory:
     def __init__(self) -> None:
         self.total_ram: int = 0
@@ -879,6 +890,7 @@ def _install_oasis_msgs_stub() -> None:
     _set_module_attr(oasis_msgs_msg_module, "PeripheralInput", _PeripheralInput)
     _set_module_attr(oasis_msgs_msg_module, "PeripheralScan", _PeripheralScan)
     _set_module_attr(oasis_msgs_msg_module, "PWMWriteCommand", _PWMWriteCommand)
+    _set_module_attr(oasis_msgs_msg_module, "PowerMeter", _PowerMeter)
     _set_module_attr(oasis_msgs_msg_module, "ServoWriteCommand", _Message)
     _set_module_attr(oasis_msgs_msg_module, "SerialDevice", _SerialDevice)
     _set_module_attr(oasis_msgs_msg_module, "SerialDeviceScan", _SerialDeviceScan)
