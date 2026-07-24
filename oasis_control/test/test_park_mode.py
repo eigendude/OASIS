@@ -18,20 +18,16 @@ from typing import cast
 import pytest
 import rclpy.node
 
+from oasis_control.input.park_mode import DEFAULT_PARK_MODE_PROFILE
 from oasis_control.input.park_mode import ParkModeLaunchProfile
 from oasis_control.input.park_mode import TrainParkMode
+from oasis_control.input.park_mode import validated_park_mode_profile
 from oasis_control.input.station_input import MAX_BOOSTED_TRAIN_COMMAND
 from oasis_control.input.station_input import MAX_MOTOR_VOLTAGE
 from oasis_control.input.station_input import MOTOR_DUTY_CYCLE_PER_VOLT
 from oasis_control.input.station_input import NOMINAL_MOTOR_VOLTAGE
 from oasis_control.input.station_input import StationInput
 from oasis_control.lego_models.station_manager import StationManager
-from oasis_control.nodes.conductor_manager_telemetrix_node import (
-    DEFAULT_PARK_MODE_PROFILE,
-)
-from oasis_control.nodes.conductor_manager_telemetrix_node import (
-    _validated_park_mode_profile,
-)
 from oasis_msgs.msg import AnalogButton as AnalogButtonMsg
 from oasis_msgs.msg import DigitalButton as DigitalButtonMsg
 from oasis_msgs.msg import PeripheralInput as PeripheralInputMsg
@@ -450,11 +446,11 @@ def test_start_from_forward_cruise_runs_complete_reverse_profile() -> None:
 def test_invalid_profile_uses_complete_default(
     invalid_profile: ParkModeLaunchProfile,
 ) -> None:
-    assert _validated_park_mode_profile(invalid_profile) is DEFAULT_PARK_MODE_PROFILE
+    assert validated_park_mode_profile(invalid_profile) is DEFAULT_PARK_MODE_PROFILE
 
 
 def test_zero_hold_duration_is_valid() -> None:
     profile: ParkModeLaunchProfile = ParkModeLaunchProfile(
         0.55, 0.2, 0.62, 0.4, 0.0, 0.9, 0.5
     )
-    assert _validated_park_mode_profile(profile) is profile
+    assert validated_park_mode_profile(profile) is profile

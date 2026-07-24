@@ -12,11 +12,36 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 
 # Seconds of tolerance for floating-point phase-boundary comparisons
 PROFILE_TIME_EPSILON_SEC: float = 1.0e-12
+
+# Default automatic park-mode enable state
+DEFAULT_PARK_MODE_ENABLED: bool = True
+
+# Default unitless fast-preload command
+DEFAULT_PARK_MODE_PRELOAD_COMMAND: float = 0.55
+
+# Default fast-preload duration, in seconds
+DEFAULT_PARK_MODE_PRELOAD_SEC: float = 0.2
+
+# Default unitless magnetic-coupler take-up command
+DEFAULT_PARK_MODE_TAKEUP_COMMAND: float = 0.56
+
+# Default magnetic-coupler take-up duration, in seconds
+DEFAULT_PARK_MODE_TAKEUP_SEC: float = 0.2
+
+# Default take-up hold duration, in seconds
+DEFAULT_PARK_MODE_HOLD_SEC: float = 0.2
+
+# Default unitless final unboosted park command
+DEFAULT_PARK_MODE_COMMAND: float = 0.9
+
+# Default final acceleration duration, in seconds
+DEFAULT_PARK_MODE_ACCEL_SEC: float = 2.5
 
 
 @dataclass(frozen=True)
@@ -47,6 +72,54 @@ class ParkModeLaunchProfile:
     hold_sec: float
     command: float
     accel_sec: float
+
+
+DEFAULT_PARK_MODE_PROFILE: ParkModeLaunchProfile = ParkModeLaunchProfile(
+    preload_command=DEFAULT_PARK_MODE_PRELOAD_COMMAND,
+    preload_sec=DEFAULT_PARK_MODE_PRELOAD_SEC,
+    takeup_command=DEFAULT_PARK_MODE_TAKEUP_COMMAND,
+    takeup_sec=DEFAULT_PARK_MODE_TAKEUP_SEC,
+    hold_sec=DEFAULT_PARK_MODE_HOLD_SEC,
+    command=DEFAULT_PARK_MODE_COMMAND,
+    accel_sec=DEFAULT_PARK_MODE_ACCEL_SEC,
+)
+
+
+def is_valid_park_mode_profile(profile: ParkModeLaunchProfile) -> bool:
+    """Return whether a launch profile is finite, ordered, and in range."""
+    commands: tuple[float, ...] = (
+        profile.preload_command,
+        profile.takeup_command,
+        profile.command,
+    )
+    durations: tuple[float, ...] = (
+        profile.preload_sec,
+        profile.takeup_sec,
+        profile.accel_sec,
+    )
+
+    commands_valid: bool = all(
+        math.isfinite(command) and 0.0 < command <= 1.0 for command in commands
+    )
+    durations_valid: bool = all(
+        math.isfinite(duration) and duration > 0.0 for duration in durations
+    )
+    hold_valid: bool = math.isfinite(profile.hold_sec) and profile.hold_sec >= 0.0
+    commands_ordered: bool = (
+        profile.preload_command < profile.takeup_command < profile.command
+    )
+
+    return commands_valid and durations_valid and hold_valid and commands_ordered
+
+
+def validated_park_mode_profile(
+    profile: ParkModeLaunchProfile,
+) -> ParkModeLaunchProfile:
+    """Return a valid profile, falling back atomically to the default."""
+    if is_valid_park_mode_profile(profile):
+        return profile
+
+    return DEFAULT_PARK_MODE_PROFILE
 
 
 class TrainParkMode:
