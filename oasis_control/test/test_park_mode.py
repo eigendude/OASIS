@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from typing import cast
 
 import pytest
@@ -20,7 +21,9 @@ import rclpy.node
 from oasis_control.input.park_mode import ParkModeLaunchProfile
 from oasis_control.input.park_mode import TrainParkMode
 from oasis_control.input.station_input import MAX_BOOSTED_TRAIN_COMMAND
-from oasis_control.input.station_input import MAX_SAFE_MOTOR_DUTY_CYCLE
+from oasis_control.input.station_input import MAX_MOTOR_VOLTAGE
+from oasis_control.input.station_input import MOTOR_DUTY_CYCLE_PER_VOLT
+from oasis_control.input.station_input import NOMINAL_MOTOR_VOLTAGE
 from oasis_control.input.station_input import StationInput
 from oasis_control.lego_models.station_manager import StationManager
 from oasis_control.nodes.conductor_manager_telemetrix_node import (
@@ -115,6 +118,53 @@ def _input_message(
     return message
 
 
+def _debug_messages(node: rclpy.node.Node) -> list[str]:
+    logger: Any = node.get_logger()
+    return [text for level, text in logger.messages if level == "debug"]
+
+
+def test_full_normal_command_uses_nominal_voltage_calibration() -> None:
+    park_mode: TrainParkMode = TrainParkMode(True, _profile())
+    station_input, station_manager = _make_station_input(park_mode)
+
+    station_input._apply_train_command(1.0, boost_enabled=False)
+
+    expected_duty: float = NOMINAL_MOTOR_VOLTAGE * MOTOR_DUTY_CYCLE_PER_VOLT
+    assert NOMINAL_MOTOR_VOLTAGE == 6.7
+    assert station_manager.pwm == pytest.approx(expected_duty)
+    assert any("v=6.70V" in message for message in _debug_messages(station_input._node))
+
+
+def test_full_boost_command_targets_maximum_motor_voltage() -> None:
+    park_mode: TrainParkMode = TrainParkMode(True, _profile())
+    station_input, station_manager = _make_station_input(park_mode)
+
+    station_input._apply_train_command(1.0, boost_enabled=True)
+
+    assert station_manager.pwm == pytest.approx(
+        MAX_MOTOR_VOLTAGE * MOTOR_DUTY_CYCLE_PER_VOLT
+    )
+    assert station_manager.pwm == pytest.approx(0.16615, abs=0.00001)
+    assert any("v=8.00V" in message for message in _debug_messages(station_input._node))
+
+
+def test_zero_command_preserves_stopped_output_and_logged_voltage() -> None:
+    park_mode: TrainParkMode = TrainParkMode(True, _profile())
+    station_input, station_manager = _make_station_input(park_mode)
+
+    station_input._apply_train_command(
+        0.0,
+        boost_enabled=False,
+        reverse_when_stopped=True,
+    )
+
+    assert station_input.magnitude == 0.0
+    assert station_input.reverse
+    assert station_manager.pwm == 0.0
+    assert station_manager.pwm_reverse
+    assert any("v=0.00V" in message for message in _debug_messages(station_input._node))
+
+
 def test_start_begins_park_mode_at_zero_in_reverse() -> None:
     park_mode: TrainParkMode = TrainParkMode(True, _profile())
     station_input, station_manager = _make_station_input(park_mode)
@@ -136,15 +186,21 @@ def test_piecewise_park_mode_profile() -> None:
     station_input._on_peripheral_input(_input_message([_button("start", True)]))
     station_input.now_sec = 0.2
     station_input.update_autonomous_train_control()
-    assert station_input.magnitude == pytest.approx(0.55 * MAX_SAFE_MOTOR_DUTY_CYCLE)
+    assert station_input.magnitude == pytest.approx(
+        0.55 * NOMINAL_MOTOR_VOLTAGE * MOTOR_DUTY_CYCLE_PER_VOLT
+    )
 
     station_input.now_sec = 0.4
     station_input.update_autonomous_train_control()
-    assert station_input.magnitude == pytest.approx(0.56 * MAX_SAFE_MOTOR_DUTY_CYCLE)
+    assert station_input.magnitude == pytest.approx(
+        0.56 * NOMINAL_MOTOR_VOLTAGE * MOTOR_DUTY_CYCLE_PER_VOLT
+    )
 
     station_input.now_sec = 0.6
     station_input.update_autonomous_train_control()
-    assert station_input.magnitude == pytest.approx(0.56 * MAX_SAFE_MOTOR_DUTY_CYCLE)
+    assert station_input.magnitude == pytest.approx(
+        0.56 * NOMINAL_MOTOR_VOLTAGE * MOTOR_DUTY_CYCLE_PER_VOLT
+    )
 
     acceleration_samples: tuple[tuple[float, float], ...] = (
         (1.1, 0.628),
@@ -157,7 +213,7 @@ def test_piecewise_park_mode_profile() -> None:
         station_input.now_sec = timestamp_sec
         station_input.update_autonomous_train_control()
         assert station_input.magnitude == pytest.approx(
-            expected_command * MAX_SAFE_MOTOR_DUTY_CYCLE
+            expected_command * NOMINAL_MOTOR_VOLTAGE * MOTOR_DUTY_CYCLE_PER_VOLT
         )
 
 
@@ -170,7 +226,9 @@ def test_repeated_callbacks_at_same_time_do_not_advance_ramp() -> None:
     for _ in range(5):
         station_input.update_autonomous_train_control()
 
-    assert station_manager.pwm == pytest.approx(0.56 * MAX_SAFE_MOTOR_DUTY_CYCLE)
+    assert station_manager.pwm == pytest.approx(
+        0.56 * NOMINAL_MOTOR_VOLTAGE * MOTOR_DUTY_CYCLE_PER_VOLT
+    )
 
 
 def test_zero_duration_hold_transitions_directly_to_acceleration() -> None:
@@ -263,7 +321,7 @@ def test_x_boost_is_slew_limited() -> None:
     station_input._on_peripheral_input(_input_message([_button("start", True)]))
     station_input.now_sec = 3.1
     station_input.update_autonomous_train_control()
-    unboosted_pwm: float = 0.9 * MAX_SAFE_MOTOR_DUTY_CYCLE
+    unboosted_pwm: float = 0.9 * NOMINAL_MOTOR_VOLTAGE * MOTOR_DUTY_CYCLE_PER_VOLT
     assert station_manager.pwm == pytest.approx(unboosted_pwm)
 
     station_input._on_peripheral_input(_input_message([_button("x", True)]))
@@ -273,12 +331,17 @@ def test_x_boost_is_slew_limited() -> None:
     station_input.update_autonomous_train_control()
     expected_slew_command: float = 0.9 + 0.3 * (0.9 - 0.56) / 2.5
     assert station_manager.pwm == pytest.approx(
-        expected_slew_command * MAX_SAFE_MOTOR_DUTY_CYCLE
+        expected_slew_command * NOMINAL_MOTOR_VOLTAGE * MOTOR_DUTY_CYCLE_PER_VOLT
     )
 
     station_input.now_sec = 4.8
     station_input.update_autonomous_train_control()
-    boosted_pwm: float = 0.9 * MAX_BOOSTED_TRAIN_COMMAND * MAX_SAFE_MOTOR_DUTY_CYCLE
+    boosted_pwm: float = (
+        0.9
+        * MAX_BOOSTED_TRAIN_COMMAND
+        * NOMINAL_MOTOR_VOLTAGE
+        * MOTOR_DUTY_CYCLE_PER_VOLT
+    )
     assert station_manager.pwm == pytest.approx(boosted_pwm)
 
 
@@ -339,7 +402,9 @@ def test_start_from_forward_cruise_runs_complete_reverse_profile() -> None:
         )
     )
     assert not station_input.reverse
-    assert station_input.magnitude == pytest.approx(MAX_SAFE_MOTOR_DUTY_CYCLE)
+    assert station_input.magnitude == pytest.approx(
+        NOMINAL_MOTOR_VOLTAGE * MOTOR_DUTY_CYCLE_PER_VOLT
+    )
 
     station_input._on_peripheral_input(_input_message([_button("start", True)]))
     assert station_input.reverse
@@ -360,7 +425,7 @@ def test_start_from_forward_cruise_runs_complete_reverse_profile() -> None:
         station_input.now_sec = timestamp_sec
         station_input.update_autonomous_train_control()
         assert station_manager.pwm == pytest.approx(
-            expected_command * MAX_SAFE_MOTOR_DUTY_CYCLE
+            expected_command * NOMINAL_MOTOR_VOLTAGE * MOTOR_DUTY_CYCLE_PER_VOLT
         )
         assert station_manager.pwm_reverse
 

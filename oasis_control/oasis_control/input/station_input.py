@@ -39,26 +39,29 @@ from oasis_msgs.srv import CaptureInput as CaptureInputSvc
 # The Kodi controller profile that peripheral input is translated to
 CONTROLLER_PROFILE = "game.controller.default"
 
-# Motor duty commands below this magnitude are treated as stopped
-MOTOR_EPSILON: float = 0.001
-
 # Nominal motor-voltage target measured from the normal full-speed A-button
 # command around the track, in volts
-NOMINAL_MOTOR_VOLTAGE: float = 6.5
+NOMINAL_MOTOR_VOLTAGE: float = 6.7
 
 # Maximum motor-voltage target allowed while X is pressed, in volts
 MAX_MOTOR_VOLTAGE: float = 8.0
 
-# Unitless duty-cycle cap calibrated for the 6.5 V nominal target
-MAX_SAFE_MOTOR_DUTY_CYCLE: float = 0.135
+# Duty cycle per volt derived from a measured 0.135 duty at 6.5 V. The 6.5 V
+# value is historical calibration data, not the current nominal voltage target.
+MOTOR_DUTY_CYCLE_PER_VOLT: float = 0.135 / 6.5
 
 # Unitless command cap while X is pressed, derived from the boosted voltage
 # target divided by the nominal voltage target
 MAX_BOOSTED_TRAIN_COMMAND: float = MAX_MOTOR_VOLTAGE / NOMINAL_MOTOR_VOLTAGE
 
+# Motor duty commands below this magnitude are treated as stopped
+MOTOR_EPSILON: float = 0.001
+
 # Unitless duty-cycle delta required before repeating train command debug logs.
 # This reports meaningful speed changes while ignoring controller jitter.
-TRAIN_COMMAND_DEBUG_DUTY_EPSILON: float = MAX_SAFE_MOTOR_DUTY_CYCLE / 10.0
+TRAIN_COMMAND_DEBUG_DUTY_EPSILON: float = (
+    NOMINAL_MOTOR_VOLTAGE * MOTOR_DUTY_CYCLE_PER_VOLT / 10.0
+)
 
 # Normalized minimum box center X coordinate considered right-third presence
 PERSON_CRUISE_RIGHT_THIRD_MIN_X: float = 2.0 / 3.0
@@ -352,7 +355,10 @@ class StationInput:
         reverse: bool = safe_train_command < 0.0 or (
             safe_train_command == 0.0 and reverse_when_stopped
         )
-        motor_duty_command: float = abs(safe_train_command) * MAX_SAFE_MOTOR_DUTY_CYCLE
+        target_motor_voltage: float = safe_train_command * NOMINAL_MOTOR_VOLTAGE
+        motor_duty_command: float = (
+            abs(target_motor_voltage) * MOTOR_DUTY_CYCLE_PER_VOLT
+        )
 
         # Update direction
         if self._reverse != reverse:
@@ -368,7 +374,6 @@ class StationInput:
         if motor_duty_command < MOTOR_EPSILON:
             motor_duty_command = 0.0
 
-        target_motor_voltage: float = safe_train_command * NOMINAL_MOTOR_VOLTAGE
         if motor_duty_command == 0.0:
             target_motor_voltage = 0.0
 
