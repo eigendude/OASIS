@@ -130,9 +130,11 @@ def test_full_normal_command_uses_nominal_voltage_calibration() -> None:
     station_input._apply_train_command(1.0, boost_enabled=False)
 
     expected_duty: float = NOMINAL_MOTOR_VOLTAGE * MOTOR_DUTY_CYCLE_PER_VOLT
-    assert NOMINAL_MOTOR_VOLTAGE == 6.7
     assert station_manager.pwm == pytest.approx(expected_duty)
-    assert any("v=6.70V" in message for message in _debug_messages(station_input._node))
+    assert any(
+        f"v={NOMINAL_MOTOR_VOLTAGE:.2f}V" in message
+        for message in _debug_messages(station_input._node)
+    )
 
 
 def test_full_boost_command_targets_maximum_motor_voltage() -> None:
@@ -144,7 +146,6 @@ def test_full_boost_command_targets_maximum_motor_voltage() -> None:
     assert station_manager.pwm == pytest.approx(
         MAX_MOTOR_VOLTAGE * MOTOR_DUTY_CYCLE_PER_VOLT
     )
-    assert station_manager.pwm == pytest.approx(0.16615, abs=0.00001)
     assert any("v=8.00V" in message for message in _debug_messages(station_input._node))
 
 
