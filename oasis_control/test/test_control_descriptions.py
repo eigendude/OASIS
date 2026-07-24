@@ -16,11 +16,20 @@ from typing import Any
 
 from launch.launch_description import LaunchDescription
 
+from oasis_control.hardware.config import HostHardwareConfig
+from oasis_control.hardware.config import MCUManagerConfig
+from oasis_control.hardware.hosts import get_host_hardware_config
 from oasis_control.launch.control_descriptions import ControlDescriptions
 
 
 def test_conductor_measurement_remappings_resolve_under_oasis_station() -> None:
     launch_description: LaunchDescription = LaunchDescription()
+    hardware: HostHardwareConfig = get_host_hardware_config(
+        "station",
+        "station_zone",
+    )
+    mcu_manager: MCUManagerConfig | None = hardware.mcu_manager
+    assert mcu_manager is not None
 
     ControlDescriptions.add_conductor_manager(
         launch_description,
@@ -29,13 +38,16 @@ def test_conductor_measurement_remappings_resolve_under_oasis_station() -> None:
         wol_server_id="station",
         input_provider="station",
         camera_zone="station",
+        motor_voltage_reversed=mcu_manager.motor_voltage_reversed,
     )
 
     launch_description_any: Any = launch_description
     conductor_node: Any = launch_description_any.actions[0]
     remappings: dict[str, str] = dict(conductor_node.kwargs["remappings"])
     namespace: str = conductor_node.kwargs["namespace"]
+    parameters: list[dict[str, bool]] = conductor_node.kwargs["parameters"]
 
+    assert parameters == [{"motor_voltage_reversed": True}]
     assert f"/{namespace}/{remappings['supply_voltage']}" == (
         "/oasis/station/supply_voltage"
     )

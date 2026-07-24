@@ -110,9 +110,9 @@ class ControlDescriptions:
         mcu_node: str,
         wol_server_id: str,
         input_provider: str,
+        motor_voltage_reversed: bool,
         camera_zone: str,
         camera_resolution: str = "",
-        motor_voltage_reversed: bool = False,
     ) -> None:
         camera_scene_topic: str = (
             f"{camera_zone}/{camera_resolution}/camera_scene"
