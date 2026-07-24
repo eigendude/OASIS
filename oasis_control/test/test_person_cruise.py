@@ -30,7 +30,14 @@ def test_right_third_presence_activates_and_loss_deactivates_cruise() -> None:
     )
     assert person_cruise.active
 
-    assert person_cruise.update([], now_sec=1.25, activation_allowed=True) is None
+    assert (
+        person_cruise.update(
+            [],
+            now_sec=1.0 + PERSON_CRUISE_LOST_TIMEOUT_SEC / 2.0,
+            activation_allowed=True,
+        )
+        is None
+    )
     assert person_cruise.active
 
     assert (

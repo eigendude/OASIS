@@ -18,7 +18,7 @@ from typing import Optional
 PERSON_CRUISE_RIGHT_THIRD_MIN_X: float = 2.0 / 3.0
 
 # Seconds to wait after the last right-third person before ending cruise
-PERSON_CRUISE_LOST_TIMEOUT_SEC: float = 0.5
+PERSON_CRUISE_LOST_TIMEOUT_SEC: float = 0.1
 
 
 class PersonCruise:
