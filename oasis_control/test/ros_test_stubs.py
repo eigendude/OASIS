@@ -150,6 +150,13 @@ class _AnalogButton:
         self.magnitude: float = 0.0
 
 
+class _AnalogStick:
+    def __init__(self) -> None:
+        self.name: str = ""
+        self.x: float = 0.0
+        self.y: float = 0.0
+
+
 class _BoundingBox:
     def __init__(self) -> None:
         self.x_center: float = 0.0
@@ -178,6 +185,7 @@ class _PeripheralInput:
         self.address: str = ""
         self.digital_buttons: list[_DigitalButton] = []
         self.analog_buttons: list[_AnalogButton] = []
+        self.analog_sticks: list[_AnalogStick] = []
 
 
 class _PeripheralScan:
@@ -874,6 +882,7 @@ def _install_oasis_msgs_stub() -> None:
     _set_module_attr(oasis_msgs_msg_module, "CPUFanSpeed", _Message)
     _set_module_attr(oasis_msgs_msg_module, "DigitalReading", _DigitalReading)
     _set_module_attr(oasis_msgs_msg_module, "AnalogButton", _AnalogButton)
+    _set_module_attr(oasis_msgs_msg_module, "AnalogStick", _AnalogStick)
     _set_module_attr(oasis_msgs_msg_module, "ConductorState", _ConductorState)
     _set_module_attr(oasis_msgs_msg_module, "DigitalButton", _DigitalButton)
     _set_module_attr(oasis_msgs_msg_module, "DigitalWriteCommand", _DigitalWriteCommand)

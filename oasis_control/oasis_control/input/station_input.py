@@ -21,6 +21,7 @@ import rclpy.qos
 import rclpy.subscription
 import rclpy.task
 
+from oasis_control.input.kid_mode import kid_mode_train_command
 from oasis_control.input.park_mode import TrainParkMode
 from oasis_control.input.person_cruise import PersonCruise
 from oasis_control.lego_models.station_manager import StationManager
@@ -111,6 +112,8 @@ class StationInput:
         self._x_button: bool = False
         self._last_x_button: bool = False  # Set to the last logged X button value
         self._last_start_button: bool = False
+        self._kid_mode: bool = False
+        self._last_select_button: bool = False
         self._hold_speed: bool = (
             False  # True to hold a steady speed, toggled with Y button
         )
@@ -162,6 +165,10 @@ class StationInput:
     def hold_speed(self) -> bool:
         return self._hold_speed
 
+    @property
+    def kid_mode(self) -> bool:
+        return self._kid_mode
+
     def update_checkerboard_status(
         self,
         checkerboard_visible: bool,
@@ -171,6 +178,9 @@ class StationInput:
             self._node.get_logger().info("Park mode complete; train parked")
 
     def update_autonomous_train_control(self) -> None:
+        if self._kid_mode:
+            return
+
         if self._park_mode.active:
             self._apply_park_mode(self._now_sec())
             return
@@ -183,6 +193,10 @@ class StationInput:
         camera_scene_msg: CameraSceneMsg,
         now_sec: float,
     ) -> None:
+        if self._kid_mode:
+            self._person_cruise.cancel()
+            return
+
         cruise_change: Optional[bool] = self._person_cruise.update(
             (bounding_box.x_center for bounding_box in camera_scene_msg.bounding_boxes),
             now_sec,
@@ -204,8 +218,11 @@ class StationInput:
             x_button: bool = False
             y_button: bool = False
             start_button: bool = False
+            select_button: bool = False
             left_trigger: float = 0.0
             right_trigger: float = 0.0
+            left_y: float = 0.0
+            right_y: float = 0.0
 
             for digital_button in peripheral_input_msg.digital_buttons:
                 digital_button_name: str = digital_button.name
@@ -221,6 +238,39 @@ class StationInput:
                     y_button = pressed
                 if digital_button_name == "start":
                     start_button = pressed
+                if digital_button_name == "back":
+                    select_button = pressed
+
+            select_changed: bool = self._last_select_button != select_button
+            self._last_select_button = select_button
+            if select_changed and select_button:
+                self._kid_mode = not self._kid_mode
+                self._cancel_park_mode()
+                self._end_cruise()
+                self._stop_train()
+                self._node.get_logger().info(
+                    f"Kid mode {'enabled' if self._kid_mode else 'disabled'}"
+                )
+                return
+
+            if self._kid_mode:
+                for analog_stick in peripheral_input_msg.analog_sticks:
+                    stick_name: str = analog_stick.name
+
+                    if stick_name == "leftstick":
+                        left_y = analog_stick.y
+                    elif stick_name == "rightstick":
+                        right_y = analog_stick.y
+
+                kid_train_command: float = kid_mode_train_command(
+                    left_y,
+                    right_y,
+                )
+                self._apply_train_command(
+                    kid_train_command,
+                    boost_enabled=False,
+                )
+                return
 
             for analog_button in peripheral_input_msg.analog_buttons:
                 analog_button_name: str = analog_button.name
