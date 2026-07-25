@@ -66,11 +66,14 @@ ROSDEP_IGNORE_KEYS+=" \
   test_msgs \
 "
 
-# Ignore old releases of Rust and Cargo
-ROSDEP_IGNORE_KEYS+=" \
-  cargo \
-  rustc \
-"
+# Ignore old releases of Rust and Cargo on older Ubuntu
+source /etc/os-release
+if dpkg --compare-versions "${VERSION_ID}" lt "26.04"; then
+  ROSDEP_IGNORE_KEYS+=" \
+    cargo \
+    rustc \
+  "
+fi
 
 #
 # Setup ROS 2 sources
