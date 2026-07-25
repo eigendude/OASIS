@@ -49,6 +49,8 @@ constexpr const char* PARAM_ROTATION = "rotation";
 constexpr const char* PARAM_UPDATE_RATE_HZ = "update_rate_hz";
 constexpr const char* PARAM_RECONNECT_INTERVAL_SEC = "reconnect_interval_sec";
 constexpr const char* PARAM_DISPLAY_POWER_SETTLE_SEC = "display_power_settle_sec";
+constexpr const char* PARAM_DISPLAY_STATE_REFRESH_INTERVAL_SEC =
+    "display_state_refresh_interval_sec";
 constexpr const char* PARAM_ENABLED = "enabled";
 constexpr const char* PARAM_BLANK_ON_SHUTDOWN = "blank_on_shutdown";
 constexpr const char* PARAM_REJECT_WRONG_DIMENSIONS = "reject_wrong_dimensions";
@@ -67,6 +69,7 @@ constexpr int DEFAULT_ROTATION = 0;
 constexpr double DEFAULT_UPDATE_RATE_HZ = 30.0;
 constexpr double DEFAULT_RECONNECT_INTERVAL_SEC = 1.0;
 constexpr double DEFAULT_DISPLAY_POWER_SETTLE_SEC = 0.25;
+constexpr double DEFAULT_DISPLAY_STATE_REFRESH_INTERVAL_SEC = 30.0;
 constexpr bool DEFAULT_ENABLED = true;
 constexpr bool DEFAULT_BLANK_ON_SHUTDOWN = true;
 constexpr bool DEFAULT_REJECT_WRONG_DIMENSIONS = true;
@@ -131,6 +134,7 @@ Ssd1305DisplayNode::Ssd1305DisplayNode(
     m_updateRateHz(DEFAULT_UPDATE_RATE_HZ),
     m_reconnectIntervalSec(DEFAULT_RECONNECT_INTERVAL_SEC),
     m_displayPowerSettleSec(DEFAULT_DISPLAY_POWER_SETTLE_SEC),
+    m_displayStateRefreshIntervalSec(DEFAULT_DISPLAY_STATE_REFRESH_INTERVAL_SEC),
     m_blankOnShutdown(DEFAULT_BLANK_ON_SHUTDOWN),
     m_enablePartialUpdates(DEFAULT_ENABLE_PARTIAL_UPDATES),
     m_device(std::move(device)),
@@ -180,17 +184,22 @@ Ssd1305DisplayNode::Ssd1305DisplayNode(
   m_reconnectTimer = create_wall_timer(std::chrono::duration_cast<std::chrono::nanoseconds>(
                                            std::chrono::duration<double>(m_reconnectIntervalSec)),
                                        [this]() { (void)AttemptReconnect(); });
+  m_displayStateRefreshTimer =
+      create_wall_timer(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            std::chrono::duration<double>(m_displayStateRefreshIntervalSec)),
+                        [this]() { RefreshDisplayState(); });
   AttemptInitialConnection();
 
   RCLCPP_INFO(get_logger(),
               "SSD1305 configured: device=%s address=0x%02X size=%zux%zu "
               "column_offset=%u rotation=%d contrast=%u update_rate_hz=%.3f "
-              "display_power_settle_sec=%.3f enabled=%s partial_updates=%s",
+              "display_power_settle_sec=%.3f display_state_refresh_interval_sec=%.3f "
+              "enabled=%s partial_updates=%s",
               m_deviceConfig.i2c_device.c_str(), m_deviceConfig.i2c_address, m_deviceConfig.width,
               m_deviceConfig.height, m_deviceConfig.column_offset,
               static_cast<int>(get_parameter(PARAM_ROTATION).as_int()), m_deviceConfig.contrast,
-              m_updateRateHz, m_displayPowerSettleSec, m_displayEnabled ? "true" : "false",
-              m_enablePartialUpdates ? "true" : "false");
+              m_updateRateHz, m_displayPowerSettleSec, m_displayStateRefreshIntervalSec,
+              m_displayEnabled ? "true" : "false", m_enablePartialUpdates ? "true" : "false");
 }
 
 Ssd1305DisplayNode::~Ssd1305DisplayNode()
@@ -199,6 +208,8 @@ Ssd1305DisplayNode::~Ssd1305DisplayNode()
     m_updateTimer->cancel();
   if (m_reconnectTimer)
     m_reconnectTimer->cancel();
+  if (m_displayStateRefreshTimer)
+    m_displayStateRefreshTimer->cancel();
 
   // m_deviceMutex serializes all controller access, including shutdown
   std::scoped_lock device_lock(m_deviceMutex);
@@ -245,6 +256,8 @@ void Ssd1305DisplayNode::ReadConfig()
   declare_parameter(PARAM_UPDATE_RATE_HZ, DEFAULT_UPDATE_RATE_HZ);
   declare_parameter(PARAM_RECONNECT_INTERVAL_SEC, DEFAULT_RECONNECT_INTERVAL_SEC);
   declare_parameter(PARAM_DISPLAY_POWER_SETTLE_SEC, DEFAULT_DISPLAY_POWER_SETTLE_SEC);
+  declare_parameter(PARAM_DISPLAY_STATE_REFRESH_INTERVAL_SEC,
+                    DEFAULT_DISPLAY_STATE_REFRESH_INTERVAL_SEC);
   declare_parameter(PARAM_ENABLED, DEFAULT_ENABLED);
   declare_parameter(PARAM_BLANK_ON_SHUTDOWN, DEFAULT_BLANK_ON_SHUTDOWN);
   declare_parameter(PARAM_REJECT_WRONG_DIMENSIONS, DEFAULT_REJECT_WRONG_DIMENSIONS);
@@ -259,6 +272,8 @@ void Ssd1305DisplayNode::ReadConfig()
   const int threshold = static_cast<int>(get_parameter(PARAM_THRESHOLD).as_int());
   const double reconnect_interval_sec = get_parameter(PARAM_RECONNECT_INTERVAL_SEC).as_double();
   const double display_power_settle_sec = get_parameter(PARAM_DISPLAY_POWER_SETTLE_SEC).as_double();
+  const double display_state_refresh_interval_sec =
+      get_parameter(PARAM_DISPLAY_STATE_REFRESH_INTERVAL_SEC).as_double();
 
   if (column_offset < 0 || column_offset > 4)
     throw std::invalid_argument("column_offset must be in [0, 4] for 128 x 32 SSD1305 panels");
@@ -270,6 +285,9 @@ void Ssd1305DisplayNode::ReadConfig()
     throw std::invalid_argument("reconnect_interval_sec must be finite and positive");
   if (!std::isfinite(display_power_settle_sec) || display_power_settle_sec < 0.0)
     throw std::invalid_argument("display_power_settle_sec must be finite and nonnegative");
+  if (!std::isfinite(display_state_refresh_interval_sec) ||
+      display_state_refresh_interval_sec <= 0.0)
+    throw std::invalid_argument("display_state_refresh_interval_sec must be finite and positive");
   if (width != DEFAULT_WIDTH || height != DEFAULT_HEIGHT)
     throw std::invalid_argument("width and height must be exactly 128 and 32 for Product 4567");
 
@@ -289,6 +307,7 @@ void Ssd1305DisplayNode::ReadConfig()
   m_updateRateHz = get_parameter(PARAM_UPDATE_RATE_HZ).as_double();
   m_reconnectIntervalSec = reconnect_interval_sec;
   m_displayPowerSettleSec = display_power_settle_sec;
+  m_displayStateRefreshIntervalSec = display_state_refresh_interval_sec;
   m_displayEnabled = get_parameter(PARAM_ENABLED).as_bool();
   m_blankOnShutdown = get_parameter(PARAM_BLANK_ON_SHUTDOWN).as_bool();
   m_enablePartialUpdates = get_parameter(PARAM_ENABLE_PARTIAL_UPDATES).as_bool();
@@ -412,6 +431,23 @@ bool Ssd1305DisplayNode::AttemptReconnect()
                          "SSD1305 reconnect attempt %u failed: %s", m_failedReconnectAttempts,
                          error.what());
     return false;
+  }
+}
+
+void Ssd1305DisplayNode::RefreshDisplayState()
+{
+  std::scoped_lock device_lock(m_deviceMutex);
+  if (m_controllerState != ControllerState::Ready || !m_displayEnabled)
+    return;
+
+  try
+  {
+    m_device->ConfigureDisplayMode();
+    m_device->SetDisplayEnabled(true);
+  }
+  catch (const std::exception& error)
+  {
+    EnterReconnectModeLocked(error.what(), false);
   }
 }
 

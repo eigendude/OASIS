@@ -41,6 +41,7 @@ public:
     bool fail_initialize{false};
     bool fail_recover_transport{false};
     bool fail_contrast{false};
+    bool fail_display_mode{false};
     bool fail_display_on{false};
     bool fail_display_off{false};
     unsigned initialize_calls{0};
@@ -76,8 +77,16 @@ public:
         --m_state->initialize_failures_remaining;
       throw std::runtime_error("initialize failed");
     }
+    ConfigureDisplayMode();
     ConfigureOrientation();
     ConfigureAddressing();
+  }
+
+  void ConfigureDisplayMode() override
+  {
+    m_state->events.emplace_back("display_mode");
+    if (m_state->fail_display_mode)
+      throw std::runtime_error("display mode failed");
   }
 
   void ConfigureOrientation() override { m_state->events.emplace_back("orientation"); }
@@ -130,6 +139,7 @@ public:
 
   void RestoreFramebufferState(const Ssd1305Framebuffer::Buffer& framebuffer, bool enabled) override
   {
+    ConfigureDisplayMode();
     ConfigureOrientation();
     ConfigureAddressing();
     WriteFullFrame(framebuffer);
@@ -153,6 +163,18 @@ public:
   static void CancelUpdateTimer(Ssd1305DisplayNode& node) { node.m_updateTimer->cancel(); }
 
   static void CancelReconnectTimer(Ssd1305DisplayNode& node) { node.m_reconnectTimer->cancel(); }
+
+  static void CancelDisplayStateRefreshTimer(Ssd1305DisplayNode& node)
+  {
+    node.m_displayStateRefreshTimer->cancel();
+  }
+
+  static void RefreshDisplayState(Ssd1305DisplayNode& node) { node.RefreshDisplayState(); }
+
+  static rclcpp::TimerBase::SharedPtr DisplayStateRefreshTimer(Ssd1305DisplayNode& node)
+  {
+    return node.m_displayStateRefreshTimer;
+  }
 
   static bool Reconnect(Ssd1305DisplayNode& node) { return node.AttemptReconnect(); }
 
@@ -206,6 +228,12 @@ public:
   {
     std::scoped_lock lock(node.m_pendingMutex);
     return node.m_hasPendingFrame;
+  }
+
+  static std::uint64_t DesiredGeneration(Ssd1305DisplayNode& node)
+  {
+    std::scoped_lock lock(node.m_pendingMutex);
+    return node.m_desiredGeneration;
   }
 
   static bool DisplayEnabled(const Ssd1305DisplayNode& node) { return node.m_displayEnabled; }
@@ -308,6 +336,7 @@ public:
         Options(enabled), std::make_unique<FakeDevice>(state), std::move(sleep));
     OASIS::ROS::Ssd1305DisplayNodeTestAccess::CancelUpdateTimer(*node);
     OASIS::ROS::Ssd1305DisplayNodeTestAccess::CancelReconnectTimer(*node);
+    OASIS::ROS::Ssd1305DisplayNodeTestAccess::CancelDisplayStateRefreshTimer(*node);
     return node;
   }
 };
@@ -360,8 +389,8 @@ TEST_F(Ssd1305DisplayNodeTest, NormalEnableWritesFullFrameThenTurnsOnWithoutReco
 
   EXPECT_TRUE(response->success);
   EXPECT_TRUE(OASIS::ROS::Ssd1305DisplayNodeTestAccess::DisplayEnabled(*node));
-  EXPECT_EQ(state->events, (std::vector<std::string>{"contrast:255", "orientation", "addressing",
-                                                     "full", "display_on"}));
+  EXPECT_EQ(state->events, (std::vector<std::string>{"contrast:255", "display_mode", "orientation",
+                                                     "addressing", "full", "display_on"}));
   EXPECT_TRUE(std::none_of(state->events.begin(), state->events.end(),
                            [](const auto& event) { return event.starts_with("sleep_ms:"); }));
   EXPECT_EQ(std::find(state->events.begin(), state->events.end(), "initialize"),
@@ -402,6 +431,78 @@ TEST_F(Ssd1305DisplayNodeTest, OrdinaryDisableIsImmediate)
 
   EXPECT_TRUE(response->success);
   EXPECT_EQ(state->events, (std::vector<std::string>{"display_off"}));
+}
+
+TEST_F(Ssd1305DisplayNodeTest, DisplayStateRefreshReassertsModeAndDisplayOn)
+{
+  std::shared_ptr<FakeDevice::State> state;
+  auto node = MakeNode(true, state);
+  state->events.clear();
+
+  OASIS::ROS::Ssd1305DisplayNodeTestAccess::RefreshDisplayState(*node);
+
+  EXPECT_EQ(state->events, (std::vector<std::string>{"display_mode", "display_on"}));
+}
+
+TEST_F(Ssd1305DisplayNodeTest, DisplayStateRefreshDoesNothingWhileDisabled)
+{
+  std::shared_ptr<FakeDevice::State> state;
+  auto node = MakeNode(false, state);
+  state->events.clear();
+
+  OASIS::ROS::Ssd1305DisplayNodeTestAccess::RefreshDisplayState(*node);
+
+  EXPECT_TRUE(state->events.empty());
+}
+
+TEST_F(Ssd1305DisplayNodeTest, DisplayStateRefreshDoesNothingWhileDisconnected)
+{
+  auto state = std::make_shared<FakeDevice::State>();
+  state->fail_initialize = true;
+  auto node = MakeNodeWithState(true, state);
+  state->events.clear();
+
+  OASIS::ROS::Ssd1305DisplayNodeTestAccess::RefreshDisplayState(*node);
+
+  EXPECT_TRUE(state->events.empty());
+}
+
+TEST_F(Ssd1305DisplayNodeTest, DisplayModeRefreshFailurePreservesFramebufferBookkeeping)
+{
+  std::shared_ptr<FakeDevice::State> state;
+  auto node = MakeNode(true, state);
+  OASIS::ROS::Ssd1305DisplayNodeTestAccess::SetPendingPixel(*node, 3, 0, true);
+  const auto front = OASIS::ROS::Ssd1305DisplayNodeTestAccess::FrontBuffer(*node);
+  const auto pending = OASIS::ROS::Ssd1305DisplayNodeTestAccess::PendingBuffer(*node);
+  const auto generation = OASIS::ROS::Ssd1305DisplayNodeTestAccess::DesiredGeneration(*node);
+  state->events.clear();
+  state->fail_display_mode = true;
+
+  OASIS::ROS::Ssd1305DisplayNodeTestAccess::RefreshDisplayState(*node);
+
+  EXPECT_TRUE(OASIS::ROS::Ssd1305DisplayNodeTestAccess::Disconnected(*node));
+  EXPECT_EQ(state->events, (std::vector<std::string>{"display_mode"}));
+  EXPECT_EQ(OASIS::ROS::Ssd1305DisplayNodeTestAccess::FrontBuffer(*node), front);
+  EXPECT_EQ(OASIS::ROS::Ssd1305DisplayNodeTestAccess::PendingBuffer(*node), pending);
+  EXPECT_EQ(OASIS::ROS::Ssd1305DisplayNodeTestAccess::DesiredGeneration(*node), generation);
+  EXPECT_TRUE(OASIS::ROS::Ssd1305DisplayNodeTestAccess::HasPendingFrame(*node));
+}
+
+TEST_F(Ssd1305DisplayNodeTest, DisplayOnRefreshFailurePreservesPendingState)
+{
+  std::shared_ptr<FakeDevice::State> state;
+  auto node = MakeNode(true, state);
+  OASIS::ROS::Ssd1305DisplayNodeTestAccess::SetPendingPixel(*node, 4, 0, true);
+  const auto pending = OASIS::ROS::Ssd1305DisplayNodeTestAccess::PendingBuffer(*node);
+  state->events.clear();
+  state->fail_display_on = true;
+
+  OASIS::ROS::Ssd1305DisplayNodeTestAccess::RefreshDisplayState(*node);
+
+  EXPECT_TRUE(OASIS::ROS::Ssd1305DisplayNodeTestAccess::Disconnected(*node));
+  EXPECT_EQ(state->events, (std::vector<std::string>{"display_mode", "display_on"}));
+  EXPECT_EQ(OASIS::ROS::Ssd1305DisplayNodeTestAccess::PendingBuffer(*node), pending);
+  EXPECT_TRUE(OASIS::ROS::Ssd1305DisplayNodeTestAccess::HasPendingFrame(*node));
 }
 
 TEST_F(Ssd1305DisplayNodeTest, PartialUpdateConfirmsOnlyWrittenPages)
@@ -446,10 +547,12 @@ TEST_F(Ssd1305DisplayNodeTest, ShutdownBlanksThenTurnsOffWithoutRecovery)
 {
   std::shared_ptr<FakeDevice::State> state;
   auto node = MakeNode(true, state);
+  auto refresh_timer = OASIS::ROS::Ssd1305DisplayNodeTestAccess::DisplayStateRefreshTimer(*node);
   state->events.clear();
 
   node.reset();
 
+  EXPECT_TRUE(refresh_timer->is_canceled());
   EXPECT_EQ(state->events, (std::vector<std::string>{"full", "display_off"}));
 }
 
@@ -459,10 +562,10 @@ TEST_F(Ssd1305DisplayNodeTest, HealthyStartupFullySynchronizesController)
   auto node = MakeNode(true, state);
 
   EXPECT_TRUE(OASIS::ROS::Ssd1305DisplayNodeTestAccess::Ready(*node));
-  EXPECT_EQ(state->events,
-            (std::vector<std::string>{"display_off", "initialize", "orientation", "addressing",
-                                      "contrast:255", "full", "sleep_ms:250", "orientation",
-                                      "addressing", "full", "display_on"}));
+  EXPECT_EQ(state->events, (std::vector<std::string>{
+                               "display_off", "initialize", "display_mode", "orientation",
+                               "addressing", "contrast:255", "full", "sleep_ms:250", "display_mode",
+                               "orientation", "addressing", "full", "display_on"}));
   EXPECT_EQ(OASIS::ROS::Ssd1305DisplayNodeTestAccess::FrontBuffer(*node),
             OASIS::ROS::Ssd1305DisplayNodeTestAccess::PendingBuffer(*node));
   EXPECT_FALSE(OASIS::ROS::Ssd1305DisplayNodeTestAccess::HasPendingFrame(*node));
@@ -474,8 +577,9 @@ TEST_F(Ssd1305DisplayNodeTest, DisabledStartupRestoresStateWithoutPowerSettle)
   auto node = MakeNode(false, state);
 
   EXPECT_TRUE(OASIS::ROS::Ssd1305DisplayNodeTestAccess::Ready(*node));
-  EXPECT_EQ(state->events, (std::vector<std::string>{"display_off", "initialize", "orientation",
-                                                     "addressing", "contrast:255", "full"}));
+  EXPECT_EQ(state->events,
+            (std::vector<std::string>{"display_off", "initialize", "display_mode", "orientation",
+                                      "addressing", "contrast:255", "full"}));
 }
 
 TEST_F(Ssd1305DisplayNodeTest, ZeroPowerSettleStillRunsFinalRestoreWithoutSleeping)
@@ -491,9 +595,9 @@ TEST_F(Ssd1305DisplayNodeTest, ZeroPowerSettleStillRunsFinalRestoreWithoutSleepi
       { state->events.emplace_back("sleep_ms:" + std::to_string(duration.count() / 1000000)); });
 
   EXPECT_EQ(state->events,
-            (std::vector<std::string>{"display_off", "initialize", "orientation", "addressing",
-                                      "contrast:255", "full", "orientation", "addressing", "full",
-                                      "display_on"}));
+            (std::vector<std::string>{"display_off", "initialize", "display_mode", "orientation",
+                                      "addressing", "contrast:255", "full", "display_mode",
+                                      "orientation", "addressing", "full", "display_on"}));
 }
 
 TEST_F(Ssd1305DisplayNodeTest, InitialFramebufferFailureLeavesPendingAndDisconnected)
@@ -528,9 +632,9 @@ TEST_F(Ssd1305DisplayNodeTest, ReconnectRecoversTransportBeforeControllerRestore
 
   EXPECT_TRUE(OASIS::ROS::Ssd1305DisplayNodeTestAccess::Reconnect(*node));
   EXPECT_EQ(state->events, (std::vector<std::string>{
-                               "recover_transport", "display_off", "initialize", "orientation",
-                               "addressing", "contrast:255", "full", "sleep_ms:250", "orientation",
-                               "addressing", "full", "display_on"}));
+                               "recover_transport", "display_off", "initialize", "display_mode",
+                               "orientation", "addressing", "contrast:255", "full", "sleep_ms:250",
+                               "display_mode", "orientation", "addressing", "full", "display_on"}));
   EXPECT_TRUE(OASIS::ROS::Ssd1305DisplayNodeTestAccess::Ready(*node));
 }
 
@@ -758,6 +862,19 @@ TEST_F(Ssd1305DisplayNodeTest, RejectsInvalidDisplayPowerSettleValues)
   {
     const auto options = rclcpp::NodeOptions().parameter_overrides(
         {rclcpp::Parameter("display_power_settle_sec", value)});
+    EXPECT_THROW(Ssd1305DisplayNode(
+                     options, std::make_unique<FakeDevice>(std::make_shared<FakeDevice::State>())),
+                 std::invalid_argument);
+  }
+}
+
+TEST_F(Ssd1305DisplayNodeTest, RejectsInvalidDisplayStateRefreshIntervals)
+{
+  for (const double value : {0.0, -1.0, std::numeric_limits<double>::infinity(),
+                             std::numeric_limits<double>::quiet_NaN()})
+  {
+    const auto options = rclcpp::NodeOptions().parameter_overrides(
+        {rclcpp::Parameter("display_state_refresh_interval_sec", value)});
     EXPECT_THROW(Ssd1305DisplayNode(
                      options, std::make_unique<FakeDevice>(std::make_shared<FakeDevice::State>())),
                  std::invalid_argument);

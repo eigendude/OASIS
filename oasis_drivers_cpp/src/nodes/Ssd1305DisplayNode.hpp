@@ -74,6 +74,7 @@ private:
                                       std::uint64_t& generation,
                                       bool enabled);
   bool AttemptReconnect();
+  void RefreshDisplayState();
   // m_deviceMutex must be held before calling this method
   void EnterReconnectModeLocked(const std::string& error, bool initial_failure);
   void HandleImage(sensor_msgs::msg::Image::ConstSharedPtr image);
@@ -92,6 +93,7 @@ private:
   double m_updateRateHz;
   double m_reconnectIntervalSec;
   double m_displayPowerSettleSec;
+  double m_displayStateRefreshIntervalSec;
   bool m_blankOnShutdown;
   bool m_enablePartialUpdates;
 
@@ -116,5 +118,6 @@ private:
   rclcpp::Service<oasis_msgs::srv::SetDisplayContrast>::SharedPtr m_setContrastService;
   rclcpp::TimerBase::SharedPtr m_updateTimer;
   rclcpp::TimerBase::SharedPtr m_reconnectTimer;
+  rclcpp::TimerBase::SharedPtr m_displayStateRefreshTimer;
 };
 } // namespace OASIS::ROS

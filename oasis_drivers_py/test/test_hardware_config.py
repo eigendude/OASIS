@@ -119,6 +119,7 @@ def test_station_power_meter_parameters_preserve_driver_values() -> None:
         "update_rate_hz": 45.0,
         "reconnect_interval_sec": 1.0,
         "display_power_settle_sec": 0.25,
+        "display_state_refresh_interval_sec": 30.0,
         "enabled": True,
         "blank_on_shutdown": True,
         "reject_wrong_dimensions": True,

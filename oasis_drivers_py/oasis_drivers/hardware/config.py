@@ -261,6 +261,9 @@ class Ssd1305DisplayConfig:
     # Seconds between the initial and final cold-start framebuffer restores
     display_power_settle_sec: float
 
+    # Seconds between lightweight display-mode keepalive commands
+    display_state_refresh_interval_sec: float
+
     # Requested display power state at node startup
     enabled: bool
 
@@ -292,6 +295,7 @@ class Ssd1305DisplayConfig:
             "update_rate_hz": self.update_rate_hz,
             "reconnect_interval_sec": self.reconnect_interval_sec,
             "display_power_settle_sec": self.display_power_settle_sec,
+            "display_state_refresh_interval_sec": self.display_state_refresh_interval_sec,
             "enabled": self.enabled,
             "blank_on_shutdown": self.blank_on_shutdown,
             "reject_wrong_dimensions": self.reject_wrong_dimensions,

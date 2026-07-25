@@ -114,9 +114,9 @@ TEST(Ssd1305Device, InitializationStaysOffAndUsesProduct4567Configuration)
 {
   DeviceFixture fixture;
   fixture.device->Initialize();
-  ASSERT_EQ(fixture.fake->transactions.size(), 4U);
+  ASSERT_EQ(fixture.fake->transactions.size(), 5U);
   const auto& config = fixture.fake->transactions[0];
-  const auto& bounds = fixture.fake->transactions[3];
+  const auto& bounds = fixture.fake->transactions[4];
   ASSERT_GE(config.size(), 2U);
   EXPECT_EQ(config[0], 0x00);
   EXPECT_EQ(config[1], 0xAE);
@@ -134,18 +134,29 @@ TEST(Ssd1305Device, InitializationStaysOffAndUsesProduct4567Configuration)
   EXPECT_TRUE(ContainsSequence(config, {0x91, 0x3F, 0x3F, 0x3F, 0x3F}));
   EXPECT_TRUE(ContainsSequence(config, {0xDB, 0x34}));
   EXPECT_TRUE(ContainsSequence(config, {0x8D, 0x14}));
-  EXPECT_TRUE(ContainsSequence(config, {0xA4, 0xA6}));
+  EXPECT_FALSE(ContainsSequence(config, {0xA4, 0xA6}));
   EXPECT_TRUE(ContainsSequence(bounds, {0x21, 0x04, 0x83}));
   EXPECT_TRUE(ContainsSequence(bounds, {0x22, 0x00, 0x03}));
   EXPECT_FALSE(ContainsSequence(bounds, {0xB0}));
-  EXPECT_EQ(fixture.fake->transactions[1], (std::vector<std::uint8_t>{0x00, 0xA1}));
-  EXPECT_EQ(fixture.fake->transactions[2], (std::vector<std::uint8_t>{0x00, 0xC8}));
+  EXPECT_EQ(fixture.fake->transactions[1], (std::vector<std::uint8_t>{0x00, 0xA4, 0xA6}));
+  EXPECT_EQ(fixture.fake->transactions[2], (std::vector<std::uint8_t>{0x00, 0xA1}));
+  EXPECT_EQ(fixture.fake->transactions[3], (std::vector<std::uint8_t>{0x00, 0xC8}));
   EXPECT_EQ(FindTransaction(fixture.fake->transactions, {0x00, 0xAF}),
             fixture.fake->transactions.size());
   EXPECT_EQ(FindTransaction(fixture.fake->transactions, {0x00, 0xA0}),
             fixture.fake->transactions.size());
   EXPECT_EQ(FindTransaction(fixture.fake->transactions, {0x00, 0xC0}),
             fixture.fake->transactions.size());
+}
+
+TEST(Ssd1305Device, ConfigureDisplayModeUsesOneCommandTransaction)
+{
+  DeviceFixture fixture;
+
+  fixture.device->ConfigureDisplayMode();
+
+  EXPECT_EQ(fixture.fake->transactions,
+            (std::vector<std::vector<std::uint8_t>>{{0x00, 0xA4, 0xA6}}));
 }
 
 TEST(Ssd1305Device, TransportRecoveryClosesWaitsAndReopens)
@@ -274,6 +285,7 @@ TEST(Ssd1305Device, DeterministicRestoreHasExactStateFrameAndDisplayOnPhases)
                     [](const std::vector<std::uint8_t>& transaction)
                     { return !transaction.empty() && transaction.front() == 0x40; });
   EXPECT_EQ(data_transaction_count, 32);
+  EXPECT_EQ(CountTransaction(fixture.fake->transactions, {0x00, 0xA4, 0xA6}), 2U);
   EXPECT_EQ(CountTransaction(fixture.fake->transactions, {0x00, 0xA1}), 2U);
   EXPECT_EQ(CountTransaction(fixture.fake->transactions, {0x00, 0xC8}), 2U);
   EXPECT_EQ(CountTransaction(fixture.fake->transactions,
@@ -320,10 +332,22 @@ TEST(Ssd1305Device, FinalRestoreReassertsOrientationAndAddressingBeforeDisplayOn
 
   fixture.device->RestoreFramebufferState(framebuffer, true);
 
-  ASSERT_GE(fixture.fake->transactions.size(), 20U);
-  EXPECT_EQ(fixture.fake->transactions[0], (std::vector<std::uint8_t>{0x00, 0xA1}));
-  EXPECT_EQ(fixture.fake->transactions[1], (std::vector<std::uint8_t>{0x00, 0xC8}));
-  EXPECT_EQ(fixture.fake->transactions[2],
+  ASSERT_GE(fixture.fake->transactions.size(), 21U);
+  EXPECT_EQ(fixture.fake->transactions[0], (std::vector<std::uint8_t>{0x00, 0xA4, 0xA6}));
+  EXPECT_EQ(fixture.fake->transactions[1], (std::vector<std::uint8_t>{0x00, 0xA1}));
+  EXPECT_EQ(fixture.fake->transactions[2], (std::vector<std::uint8_t>{0x00, 0xC8}));
+  EXPECT_EQ(fixture.fake->transactions[3],
             (std::vector<std::uint8_t>{0x00, 0x20, 0x00, 0x21, 0x04, 0x83, 0x22, 0x00, 0x03}));
   EXPECT_EQ(fixture.fake->transactions.back(), (std::vector<std::uint8_t>{0x00, 0xAF}));
+}
+
+TEST(Ssd1305Device, DisabledFinalRestoreDoesNotTurnDisplayOn)
+{
+  DeviceFixture fixture;
+  Ssd1305Framebuffer::Buffer framebuffer{};
+
+  fixture.device->RestoreFramebufferState(framebuffer, false);
+
+  EXPECT_EQ(fixture.fake->transactions[0], (std::vector<std::uint8_t>{0x00, 0xA4, 0xA6}));
+  EXPECT_EQ(CountTransaction(fixture.fake->transactions, {0x00, 0xAF}), 0U);
 }

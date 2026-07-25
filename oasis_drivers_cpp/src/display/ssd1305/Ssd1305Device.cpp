@@ -116,7 +116,7 @@ void Ssd1305Device::Initialize()
   // The controller is not host-resettable in the Qwiic installation, so this
   // sequence explicitly sets addressing, timing, drive, and charge-pump state
   // instead of relying on power-on defaults.
-  const std::array<std::uint8_t, 30> init{
+  const std::array<std::uint8_t, 28> init{
       DISPLAY_OFF,
       SET_DISPLAY_CLOCK_DIVIDE,
       0x80,
@@ -148,12 +148,19 @@ void Ssd1305Device::Initialize()
       0xD2,
       SET_VCOMH_DESELECT,
       0x34,
-      RESUME_TO_RAM,
-      NORMAL_DISPLAY,
   };
   WriteCommands(init);
+  ConfigureDisplayMode();
   ConfigureOrientation();
   ConfigureAddressing();
+}
+
+void Ssd1305Device::ConfigureDisplayMode()
+{
+  WriteCommands(std::array<std::uint8_t, 2>{
+      RESUME_TO_RAM,
+      NORMAL_DISPLAY,
+  });
 }
 
 void Ssd1305Device::ConfigureOrientation()
@@ -223,6 +230,7 @@ void Ssd1305Device::RestoreAfterInitialization(const Ssd1305Framebuffer::Buffer&
 void Ssd1305Device::RestoreFramebufferState(const Ssd1305Framebuffer::Buffer& framebuffer,
                                             bool enabled)
 {
+  ConfigureDisplayMode();
   ConfigureOrientation();
   ConfigureAddressing();
   WriteFullFrame(framebuffer);

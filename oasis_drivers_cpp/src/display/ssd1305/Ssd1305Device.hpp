@@ -49,6 +49,7 @@ public:
 
   virtual void RecoverTransport() = 0;
   virtual void Initialize() = 0;
+  virtual void ConfigureDisplayMode() = 0;
   virtual void ConfigureOrientation() = 0;
   virtual void ConfigureAddressing() = 0;
   virtual void SetDisplayEnabled(bool enabled) = 0;
@@ -83,6 +84,7 @@ public:
 
   void RecoverTransport() override;
   void Initialize() override;
+  void ConfigureDisplayMode() override;
   void ConfigureOrientation() override;
   void ConfigureAddressing() override;
   void SetDisplayEnabled(bool enabled) override;
