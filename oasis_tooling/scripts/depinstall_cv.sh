@@ -22,6 +22,15 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
   # Refresh package metadata
   sudo apt update
 
+  # Select the GStreamer development package for this Ubuntu release
+  source /etc/os-release
+
+  if dpkg --compare-versions "${VERSION_ID}" ge "26.04"; then
+    GSTREAMER_PLUGINS_DEV_PACKAGE=libgstreamer-plugins-extra1.0-dev
+  else
+    GSTREAMER_PLUGINS_DEV_PACKAGE=libgstreamer-plugins-good1.0-dev
+  fi
+
   # Packages to install via apt
   APT_PACKAGES=(
     # Core build tooling and compilers
@@ -51,7 +60,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     libavformat-dev
     libavutil-dev
     libgstreamer-plugins-base1.0-dev
-    libgstreamer-plugins-good1.0-dev
+    "${GSTREAMER_PLUGINS_DEV_PACKAGE}"
     libgstreamer1.0-dev
     libswscale-dev
 
