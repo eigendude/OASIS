@@ -1,18 +1,18 @@
-From 15a7c6aaa14e8b4ebd2debe06361c5aff4a1f6d0 Mon Sep 17 00:00:00 2001
+From e017217686eb20f2d668eec24fd41b5e014571eb Mon Sep 17 00:00:00 2001
 From: Garrett Brown <eigendebugger@gmail.com>
 Date: Mon, 19 May 2025 19:20:30 -0700
-Subject: [PATCH 2/2] Enable monolithic build
+Subject: [PATCH 2/3] Enable monolithic build
 
 ---
- mediapipe/framework/BUILD                   | 102 ++++++++++++++++++++
- mediapipe/framework/monolithic_absl.cc      |  17 ++++
- mediapipe/framework/monolithic_mediapipe.cc |  17 ++++
- 3 files changed, 136 insertions(+)
+ mediapipe/framework/BUILD                   | 99 +++++++++++++++++++++
+ mediapipe/framework/monolithic_absl.cc      | 17 ++++
+ mediapipe/framework/monolithic_mediapipe.cc | 17 ++++
+ 3 files changed, 133 insertions(+)
  create mode 100644 mediapipe/framework/monolithic_absl.cc
  create mode 100644 mediapipe/framework/monolithic_mediapipe.cc
 
 diff --git a/mediapipe/framework/BUILD b/mediapipe/framework/BUILD
-index 2416aab5f..05b224445 100644
+index 2416aab5f..d86e31888 100644
 --- a/mediapipe/framework/BUILD
 +++ b/mediapipe/framework/BUILD
 @@ -394,6 +394,7 @@ cc_library(
@@ -23,7 +23,7 @@ index 2416aab5f..05b224445 100644
  )
  
  cc_library(
-@@ -1994,3 +1995,104 @@ cc_library(
+@@ -1994,3 +1995,101 @@ cc_library(
          "@com_google_absl//absl/strings:string_view",
      ],
  )
@@ -104,9 +104,6 @@ index 2416aab5f..05b224445 100644
 +    ],
 +    linkshared = 1,  # Produce a shared object
 +    linkstatic = 1,  # Include Albseil and all other deps in this .so
-+    linkopts = [
-+        "-Wl,--exclude-libs,ALL",
-+    ],
 +    visibility = ["//visibility:public"],
 +    deps = [
 +        # Has our Abseil symbols

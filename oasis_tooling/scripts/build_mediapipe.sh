@@ -81,6 +81,12 @@ patch \
   --no-backup-if-mismatch \
   --directory="${MEDIAPIPE_SOURCE_DIR}" \
   < "${CONFIG_DIRECTORY}/mediapipe/0002-Enable-monolithic-build.patch"
+patch \
+  -p1 \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${MEDIAPIPE_SOURCE_DIR}" \
+  < "${CONFIG_DIRECTORY}/mediapipe/0003-Fix-zlib-download.patch"
 
 # Configure MediaPipe to use the custom OpenCV build
 OPENCV_BUILD_FILE="${MEDIAPIPE_SOURCE_DIR}/third_party/opencv_linux.BUILD"
@@ -166,6 +172,13 @@ MEDIAPIPE_BAZEL_FLAGS=(
 if [[ "${MEDIAPIPE_ENABLE_GPU}" != "1" ]]; then
   MEDIAPIPE_BAZEL_FLAGS+=(--define=MEDIAPIPE_DISABLE_GPU=1)
 fi
+
+# MediaPipe 0.10.35 only provides dependency lockfiles through Python 3.12.
+# Pin Bazel's hermetic Python so newer host versions are not selected.
+export HERMETIC_PYTHON_VERSION=3.12
+MEDIAPIPE_BAZEL_FLAGS+=(
+  --repo_env=HERMETIC_PYTHON_VERSION="${HERMETIC_PYTHON_VERSION}"
+)
 
 printf -v MEDIAPIPE_BAZEL_FLAGS_SHELL '%q ' "${MEDIAPIPE_BAZEL_FLAGS[@]}"
 export MEDIAPIPE_BAZEL_FLAGS_SHELL

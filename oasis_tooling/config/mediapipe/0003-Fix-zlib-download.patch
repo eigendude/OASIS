@@ -1,0 +1,25 @@
+From f67473bcc938f31775f166f7d5242cd22c2fe5f7 Mon Sep 17 00:00:00 2001
+From: Garrett Brown <eigendebugger@gmail.com>
+Date: Sat, 25 Jul 2026 13:52:02 -0700
+Subject: [PATCH 3/3] Fix zlib download
+
+---
+ WORKSPACE | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/WORKSPACE b/WORKSPACE
+index 1f57dd8c7..01264be3a 100644
+--- a/WORKSPACE
++++ b/WORKSPACE
+@@ -126,7 +126,7 @@ http_archive(
+     ],
+     sha256 = "b3a24de97a8fdbc835b9833169501030b8977031bcb54b3b3ac13740f846ab30",
+     strip_prefix = "zlib-1.2.13",
+-    url = "http://zlib.net/fossils/zlib-1.2.13.tar.gz",
++    url = "https://storage.googleapis.com/mirror.tensorflow.org/zlib.net/zlib-1.2.13.tar.gz",
+ )
+ 
+ # gflags needed by glog
+-- 
+2.43.0
+
