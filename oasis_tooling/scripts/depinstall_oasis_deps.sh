@@ -144,15 +144,6 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     )
   fi
 
-  # Needed for libcec on ARM
-  if [[ "$(uname -m)" == "aarch64" ]] ||
-     [[ "$(uname -m)" == "armv7l" ]] ||
-     [[ "$(uname -m)" == "armv6l" ]]; then
-    APT_PACKAGES+=(
-      libraspberrypi-dev
-    )
-  fi
-
   # Needed for OpenCL support for oasis_kinect2
   APT_PACKAGES+=(
     clinfo
@@ -326,18 +317,6 @@ if (( $(echo "${PHYSICAL_MEMORY_GB} <= 4" | bc -l) )); then
   echo "Disabling ORB_SLAM_OASIS with ${PHYSICAL_MEMORY_GB} GiB of RAM"
   touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/ORB_SLAM_OASIS/COLCON_IGNORE"
 fi
-
-# p8-platform
-echo "Patching p8-platform..."
-cp -v \
-  "${CONFIG_DIRECTORY}/p8-platform/package.xml" \
-  "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/p8-platform"
-patch \
-  -p1 \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/p8-platform" \
-  < "${CONFIG_DIRECTORY}/p8-platform/0001-CMake-Default-to-C-20-to-fix-building-with-newer-cla.patch"
 
 # Pangolin
 echo "Patching Pangolin..."

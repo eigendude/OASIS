@@ -7,7 +7,7 @@ repositories:
   depends/libcec:
     type: git
     url: https://github.com/Pulse-Eight/libcec.git
-    version: libcec-6.0.2
+    version: libcec-8.1.0
   # Requires: libturbojpeg0-dev libusb-1.0-0-dev ocl-icd-opencl-dev
   depends/libfreenect2:
     type: git
@@ -22,10 +22,6 @@ repositories:
     type: git
     url: https://github.com/eigendude/ORB_SLAM_OASIS.git
     version: main
-  depends/p8-platform:
-    type: git
-    url: https://github.com/Pulse-Eight/platform.git
-    version: master
   depends/pangolin:
     type: git
     url: https://github.com/stevenlovegrove/Pangolin.git
