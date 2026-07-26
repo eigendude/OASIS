@@ -38,7 +38,7 @@ CheckerboardDetector::CheckerboardDetector(CheckerboardDetectorOptions options) 
 CheckerboardDetection CheckerboardDetector::Detect(const cv::Mat& grayImage) const
 {
   CheckerboardDetection detection{};
-  if (grayImage.empty())
+  if (grayImage.empty() || grayImage.type() != CV_8UC1)
     return detection;
 
   const cv::Size patternSize{m_options.checkerboardWidth, m_options.checkerboardHeight};

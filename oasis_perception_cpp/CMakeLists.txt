@@ -974,6 +974,19 @@ if(BUILD_TESTING)
     )
   endif()
 
+  ament_add_gtest(test_CheckerboardDetectorNode
+    test/nodes/test_CheckerboardDetectorNode.cpp
+    ${CHECKERBOARD_DETECTOR_SOURCES}
+  )
+  if(TARGET test_CheckerboardDetectorNode)
+    target_include_directories(test_CheckerboardDetectorNode PRIVATE
+      ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    target_link_libraries(test_CheckerboardDetectorNode
+      ${CHECKERBOARD_DETECTOR_LIBRARIES}
+    )
+  endif()
+
   # Copyright and license must be present in all source files
   set(ament_cmake_copyright_FOUND TRUE)
 

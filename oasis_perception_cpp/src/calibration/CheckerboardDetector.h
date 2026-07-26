@@ -106,6 +106,12 @@ class CheckerboardDetector
 public:
   explicit CheckerboardDetector(CheckerboardDetectorOptions options);
 
+  /*!
+   * \brief Detect checkerboard corners in an 8-bit grayscale image
+   *
+   * \param grayImage Nonempty CV_8UC1 image. Empty images and images with any
+   * other type are rejected as no detection.
+   */
   CheckerboardDetection Detect(const cv::Mat& grayImage) const;
 
   const CheckerboardDetectorOptions& Options() const { return m_options; }

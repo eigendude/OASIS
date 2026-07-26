@@ -9,6 +9,7 @@
 #include "calibration/CheckerboardDetector.h"
 
 #include <stdexcept>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include <opencv2/imgproc.hpp>
@@ -98,6 +99,57 @@ TEST(CheckerboardDetector, RejectsBlankImage)
 
   EXPECT_FALSE(detection.found);
   EXPECT_TRUE(detection.corners.empty());
+}
+
+TEST(CheckerboardDetector, RejectsEmptyImageWithoutThrowing)
+{
+  const CheckerboardDetector detector{CreateDefaultOptions()};
+
+  CheckerboardDetection detection{};
+  EXPECT_NO_THROW(detection = detector.Detect(cv::Mat{}));
+  EXPECT_FALSE(detection.found);
+  EXPECT_TRUE(detection.corners.empty());
+}
+
+TEST(CheckerboardDetector, TinyImageDoesNotThrow)
+{
+  const CheckerboardDetector detector{CreateDefaultOptions()};
+  const cv::Mat image{1, 1, CV_8UC1, cv::Scalar{0}};
+
+  CheckerboardDetection detection{};
+  EXPECT_NO_THROW(detection = detector.Detect(image));
+  EXPECT_FALSE(detection.found);
+}
+
+TEST(CheckerboardDetector, RejectsUnsupportedImageTypesWithoutThrowing)
+{
+  const CheckerboardDetector detector{CreateDefaultOptions()};
+  const std::vector<cv::Mat> images{
+      cv::Mat{480, 640, CV_8UC3, cv::Scalar{0, 0, 0}},
+      cv::Mat{480, 640, CV_16UC1, cv::Scalar{0}},
+      cv::Mat{480, 640, CV_32FC1, cv::Scalar{0.0}},
+  };
+
+  for (const cv::Mat& image : images)
+  {
+    CheckerboardDetection detection{};
+    EXPECT_NO_THROW(detection = detector.Detect(image));
+    EXPECT_FALSE(detection.found);
+    EXPECT_TRUE(detection.corners.empty());
+  }
+}
+
+TEST(CheckerboardDetector, InvalidFrameDoesNotPreventLaterDetection)
+{
+  const CheckerboardDetectorOptions options = CreateDefaultOptions();
+  const CheckerboardDetector detector{options};
+
+  const CheckerboardDetection invalidDetection = detector.Detect(cv::Mat{});
+  const CheckerboardDetection validDetection = detector.Detect(
+      CreateCheckerboardImage(options.checkerboardWidth, options.checkerboardHeight));
+
+  EXPECT_FALSE(invalidDetection.found);
+  EXPECT_TRUE(validDetection.found);
 }
 
 TEST(CheckerboardDetector, InvalidDimensionsThrow)

@@ -129,33 +129,62 @@ cv::Mat ConvertToGray(const cv_bridge::CvImageConstPtr& cvImagePtr)
   const cv::Mat& image = cvImagePtr->image;
   const std::string& encoding = cvImagePtr->encoding;
 
+  if (image.empty())
+    throw std::invalid_argument("Image is empty");
+
   if (IsMonoEncoding(encoding))
   {
-    if (image.depth() == CV_8U)
+    if (image.channels() != 1)
+      throw std::invalid_argument("Monochrome encoding requires one channel");
+
+    if (encoding == sensor_msgs::image_encodings::MONO8 ||
+        encoding == sensor_msgs::image_encodings::TYPE_8UC1)
+    {
+      if (image.type() != CV_8UC1)
+        throw std::invalid_argument("8-bit monochrome encoding has an invalid image type");
+
       return image;
+    }
+
+    if (image.type() != CV_16UC1)
+      throw std::invalid_argument("16-bit monochrome encoding has an invalid image type");
 
     cv::Mat gray8;
+    // Scale the full unsigned 16-bit intensity range to unsigned 8-bit
     image.convertTo(gray8, CV_8U, 255.0 / 65535.0);
     return gray8;
   }
 
   cv::Mat gray;
   if (encoding == sensor_msgs::image_encodings::BGR8)
+  {
+    if (image.type() != CV_8UC3)
+      throw std::invalid_argument("BGR8 encoding has an invalid image type");
     cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
+  }
   else if (encoding == sensor_msgs::image_encodings::RGB8)
+  {
+    if (image.type() != CV_8UC3)
+      throw std::invalid_argument("RGB8 encoding has an invalid image type");
     cv::cvtColor(image, gray, cv::COLOR_RGB2GRAY);
+  }
   else if (encoding == sensor_msgs::image_encodings::BGRA8)
+  {
+    if (image.type() != CV_8UC4)
+      throw std::invalid_argument("BGRA8 encoding has an invalid image type");
     cv::cvtColor(image, gray, cv::COLOR_BGRA2GRAY);
+  }
   else if (encoding == sensor_msgs::image_encodings::RGBA8)
+  {
+    if (image.type() != CV_8UC4)
+      throw std::invalid_argument("RGBA8 encoding has an invalid image type");
     cv::cvtColor(image, gray, cv::COLOR_RGBA2GRAY);
-  else if (image.channels() == 1)
-    gray = image;
-  else if (image.channels() == 3)
-    cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
-  else if (image.channels() == 4)
-    cv::cvtColor(image, gray, cv::COLOR_BGRA2GRAY);
+  }
   else
     throw std::invalid_argument("Unsupported image encoding: " + encoding);
+
+  if (gray.type() != CV_8UC1)
+    throw std::invalid_argument("Grayscale conversion did not produce CV_8UC1");
 
   return gray;
 }
@@ -198,7 +227,14 @@ namespace OASIS
 CheckerboardDetectorNode::CheckerboardDetectorNode(rclcpp::Node& node)
   : m_node(node),
     m_debugPublisher(std::make_unique<image_transport::Publisher>()),
-    m_imageSubscriber(std::make_unique<image_transport::Subscriber>())
+    m_imageSubscriber(std::make_unique<image_transport::Subscriber>()),
+    m_detectionCallback([this](const cv::Mat& gray, CALIBRATION::CheckerboardDetection& detection)
+                        { detection = m_detector->Detect(gray); }),
+    m_debugImageCallback([this](const sensor_msgs::msg::Image::ConstSharedPtr& imageMsg,
+                                const cv::Mat& gray,
+                                const CALIBRATION::CheckerboardDetection& detection)
+                         { PublishDebugImage(imageMsg, gray, detection); }),
+    m_statusCallback([this](bool found) { PublishStatus(found); })
 {
   m_node.declare_parameter<std::string>(CAMERA_MODEL_PARAMETER.data(), DEFAULT_CAMERA_MODEL.data());
   m_node.declare_parameter<int64_t>(CHECKERBOARD_WIDTH_PARAMETER.data(),
@@ -321,47 +357,79 @@ void CheckerboardDetectorNode::Deinitialize()
 
 void CheckerboardDetectorNode::OnImage(const sensor_msgs::msg::Image::ConstSharedPtr& imageMsg)
 {
+  try
+  {
+    ProcessImage(imageMsg);
+  }
+  catch (const cv::Exception& e)
+  {
+    RCLCPP_ERROR_THROTTLE(m_node.get_logger(), *m_node.get_clock(), 5000,
+                          "Unexpected OpenCV exception while processing image: %s", e.what());
+    PublishStatusSafely(false);
+  }
+  catch (const std::exception& e)
+  {
+    RCLCPP_ERROR_THROTTLE(m_node.get_logger(), *m_node.get_clock(), 5000,
+                          "Unexpected exception while processing image: %s", e.what());
+    PublishStatusSafely(false);
+  }
+}
+
+void CheckerboardDetectorNode::ProcessImage(const sensor_msgs::msg::Image::ConstSharedPtr& imageMsg)
+{
   ++m_frameCount;
   if ((m_frameCount - 1) % static_cast<uint64_t>(m_processingInterval) != 0)
     return;
 
-  cv_bridge::CvImageConstPtr cvImagePtr;
-  try
-  {
-    cvImagePtr = cv_bridge::toCvShare(*imageMsg, imageMsg, imageMsg->encoding);
-  }
-  catch (const cv_bridge::Exception& e)
-  {
-    RCLCPP_WARN_THROTTLE(m_node.get_logger(), *m_node.get_clock(), 5000, "cv_bridge exception: %s",
-                         e.what());
-    PublishStatus(false);
-    return;
-  }
+  const cv_bridge::CvImageConstPtr cvImagePtr =
+      cv_bridge::toCvShare(*imageMsg, imageMsg, imageMsg->encoding);
 
   if (!cvImagePtr || cvImagePtr->image.empty())
   {
     RCLCPP_WARN_THROTTLE(m_node.get_logger(), *m_node.get_clock(), 5000,
                          "Received empty image frame");
-    PublishStatus(false);
+    PublishStatusSafely(false);
     return;
   }
 
-  cv::Mat gray;
+  const cv::Mat gray = ConvertToGray(cvImagePtr);
+
+  CALIBRATION::CheckerboardDetection detection{};
   try
   {
-    gray = ConvertToGray(cvImagePtr);
+    m_detectionCallback(gray, detection);
+  }
+  catch (const cv::Exception& e)
+  {
+    RCLCPP_ERROR_THROTTLE(m_node.get_logger(), *m_node.get_clock(), 5000,
+                          "OpenCV checkerboard detection exception: %s", e.what());
+    PublishStatusSafely(false);
+    return;
+  }
+
+  PublishStatusSafely(detection.found);
+
+  try
+  {
+    m_debugImageCallback(imageMsg, gray, detection);
+  }
+  catch (const cv::Exception& e)
+  {
+    RCLCPP_WARN_THROTTLE(m_node.get_logger(), *m_node.get_clock(), 5000,
+                         "OpenCV debug image exception: %s", e.what());
   }
   catch (const std::exception& e)
   {
     RCLCPP_WARN_THROTTLE(m_node.get_logger(), *m_node.get_clock(), 5000,
-                         "Failed to convert image to grayscale: %s", e.what());
-    PublishStatus(false);
-    return;
+                         "Unexpected debug image exception: %s", e.what());
   }
+}
 
-  const CALIBRATION::CheckerboardDetection detection = m_detector->Detect(gray);
-  PublishStatus(detection.found);
-
+void CheckerboardDetectorNode::PublishDebugImage(
+    const sensor_msgs::msg::Image::ConstSharedPtr& imageMsg,
+    const cv::Mat& gray,
+    const CALIBRATION::CheckerboardDetection& detection)
+{
   if (!m_publishDebugImage || !m_debugPublisher || m_debugPublisher->getNumSubscribers() == 0)
     return;
 
@@ -384,5 +452,18 @@ void CheckerboardDetectorNode::PublishStatus(bool found)
   std_msgs::msg::Bool statusMsg;
   statusMsg.data = found;
   m_statusPublisher->publish(statusMsg);
+}
+
+void CheckerboardDetectorNode::PublishStatusSafely(bool found)
+{
+  try
+  {
+    m_statusCallback(found);
+  }
+  catch (const std::exception& e)
+  {
+    RCLCPP_ERROR_THROTTLE(m_node.get_logger(), *m_node.get_clock(), 5000,
+                          "Failed to publish checkerboard status: %s", e.what());
+  }
 }
 } // namespace OASIS
