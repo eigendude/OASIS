@@ -10,6 +10,7 @@
 
 #include "calibration/CheckerboardDetector.h"
 
+#include <cstddef>
 #include <exception>
 #include <string>
 #include <string_view>
@@ -28,6 +29,9 @@ namespace
 constexpr std::string_view IMAGE_TOPIC = "image";
 constexpr std::string_view STATUS_TOPIC = "checkerboard_status";
 constexpr std::string_view DEBUG_IMAGE_TOPIC = "checkerboard_image";
+
+// Request reliable delivery while retaining only the newest queued image
+constexpr std::size_t IMAGE_QOS_DEPTH = 1;
 
 // ROS parameter: "camera_model"
 // Type: string
@@ -324,9 +328,12 @@ bool CheckerboardDetectorNode::Initialize()
   m_statusPublisher = m_node.create_publisher<std_msgs::msg::Bool>(
       STATUS_TOPIC.data(), rclcpp::SensorDataQoS().keep_last(1));
 
+  const rclcpp::QoS imageQos =
+      rclcpp::QoS{rclcpp::KeepLast(IMAGE_QOS_DEPTH)}.reliable().durability_volatile();
+
   if (m_publishDebugImage)
     *m_debugPublisher =
-        image_transport::create_publisher(m_node, DEBUG_IMAGE_TOPIC.data(), rclcpp::QoS{1});
+        image_transport::create_publisher(m_node, DEBUG_IMAGE_TOPIC.data(), imageQos);
 
   *m_imageSubscriber = image_transport::create_subscription(
       m_node, IMAGE_TOPIC.data(),
@@ -335,7 +342,7 @@ bool CheckerboardDetectorNode::Initialize()
         if (imageMsg)
           OnImage(imageMsg);
       },
-      imageTransport, rclcpp::SensorDataQoS().keep_last(1));
+      imageTransport, imageQos);
 
   RCLCPP_INFO(m_node.get_logger(), "Started checkerboard detector");
 
