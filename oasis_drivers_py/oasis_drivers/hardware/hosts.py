@@ -296,6 +296,8 @@ def get_host_hardware_config(
                         exposure_time_usec=8000,
                         # Manual exposure mode, available since libcamera 0.5
                         exposure_time_mode=1,
+                        # Equal 66.667 ms limits produce exactly 15.000 fps
+                        frame_duration_limits_usec=(66667, 66667),
                     ),
                 ),
             ),
