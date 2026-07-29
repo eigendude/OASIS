@@ -9,13 +9,15 @@
 ################################################################################
 
 import threading
-import time
+from collections.abc import Callable
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import List
 from typing import Optional
 from typing import Tuple
+from typing import TypeVar
+from typing import cast
 
 import rclpy
 import rclpy.node
@@ -36,6 +38,7 @@ from oasis_drivers.ros.mcu_reading_messages import make_analog_reading_msg
 from oasis_drivers.ros.mcu_reading_messages import make_analog_readings_msg
 from oasis_drivers.ros.mcu_reading_messages import make_digital_reading_msg
 from oasis_drivers.ros.ros_translator import RosTranslator
+from oasis_drivers.telemetrix.command_gate import TelemetrixCommandGate
 from oasis_drivers.telemetrix.telemetrix_bridge import TelemetrixBridge
 from oasis_drivers.telemetrix.telemetrix_callback import TelemetrixCallback
 from oasis_drivers.telemetrix.telemetrix_config_cache import TelemetrixConfigCache
@@ -146,6 +149,8 @@ LED_THRUSTER_MODE_NAMES: dict[int, str] = {
     EffectModeMsg.LED_THRUSTER_MOVING: "moving",
 }
 
+ResponseT = TypeVar("ResponseT")
+
 
 def _helipad_mode_name(mode: int) -> str:
     return HELIPAD_MODE_NAMES.get(mode, f"unknown({mode})")
@@ -196,12 +201,14 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         )
         self._config_cache: TelemetrixConfigCache = TelemetrixConfigCache(cache_store)
         self._config_cache.load(self.get_logger())
+        self._command_gate: TelemetrixCommandGate = TelemetrixCommandGate()
         self._bridge = TelemetrixBridge(self, self._com_port)
-        self._initialized: bool = self._bridge.initialize_with_retries()
+        self._initialized: bool = False
         self._ping_failed: bool = False
-        self._connected: bool = self._initialized
+        self._connected: bool = False
         self._reconnecting: bool = False
         self._reconnect_thread: Optional[threading.Thread] = None
+        self._stopping: threading.Event = threading.Event()
         self._last_uptime_ms: Optional[int] = None
 
         # Reliable listener QOS profile for subscribers
@@ -277,20 +284,6 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
             qos_profile=qos_profile,
             event_callbacks=publisher_event_callbacks(),
         )
-
-        if not self._initialized:
-            self.get_logger().error(
-                "Telemetrix bridge failed to initialize, will retry on ping"
-            )
-        else:
-            try:
-                self.get_logger().info("Replaying persisted Telemetrix config")
-                self._config_cache.replay(self._bridge, self.get_logger())
-            except RuntimeError as exc:
-                self.get_logger().warning(
-                    "Persisted Telemetrix config replay had failures"
-                )
-                self.get_logger().warning(f"Replay failure: {exc!r}")
 
         # Command topic subscriptions
         self._cpu_fan_write_sub = self.create_subscription(
@@ -408,7 +401,10 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
             ping_period_s, self._on_ping_timer
         )
 
-        self.get_logger().info("Telemetrix bridge initialized")
+        self.get_logger().info(
+            "Telemetrix ROS endpoints initialized; starting bridge restoration"
+        )
+        self._start_reconnect_thread(reason="initialization")
 
     def _on_ping_timer(self) -> None:
         if self._reconnecting:
@@ -442,10 +438,12 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
             self._connected = True
 
     def _start_reconnect_thread(self, reason: str) -> None:
-        if self._reconnecting:
+        if self._reconnecting or self._stopping.is_set():
             return
 
         self._reconnecting = True
+        self._command_gate.defer_commands()
+        self.get_logger().info("Beginning persisted Telemetrix config replay")
         self._last_uptime_ms = None
         self._reconnect_thread = threading.Thread(
             target=self._reconnect_worker, args=(reason,), daemon=True
@@ -463,7 +461,7 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
             except Exception:
                 pass
 
-            while rclpy.ok():
+            while rclpy.ok() and not self._stopping.is_set():
                 bridge: Optional[TelemetrixBridge] = None
                 try:
                     bridge = TelemetrixBridge(self, self._com_port)
@@ -476,8 +474,11 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
                             bridge.deinitialize()
                         except Exception:
                             pass
-                        time.sleep(self._reconnect_delay_s)
+                        self._stopping.wait(self._reconnect_delay_s)
                         continue
+                    if self._stopping.is_set():
+                        bridge.deinitialize()
+                        break
 
                     uptime_ms: int = bridge.ping_uptime_ms(
                         timeout_s=self._ping_timeout_s
@@ -491,11 +492,8 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
                             bridge.deinitialize()
                         except Exception:
                             pass
-                        time.sleep(self._reconnect_delay_s)
+                        self._stopping.wait(self._reconnect_delay_s)
                         continue
-                    self.get_logger().info(
-                        "Replaying Telemetrix config after reconnect"
-                    )
                     try:
                         self._config_cache.replay(bridge, self.get_logger())
                     except RuntimeError as exc:
@@ -507,12 +505,26 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
                             bridge.deinitialize()
                         except Exception:
                             pass
-                        time.sleep(self._reconnect_delay_s)
+                        self._stopping.wait(self._reconnect_delay_s)
                         continue
+                    if self._stopping.is_set():
+                        bridge.deinitialize()
+                        break
                     self._bridge = bridge
                     self._initialized = True
                     self._ping_failed = False
                     self._connected = True
+                    applied_count, command_errors = (
+                        self._command_gate.restore_complete()
+                    )
+                    self.get_logger().info(
+                        "Completed persisted Telemetrix config replay; "
+                        f"applied {applied_count} deferred commands"
+                    )
+                    for command_error in command_errors:
+                        self.get_logger().error(
+                            f"Deferred Telemetrix command failed: {command_error!r}"
+                        )
                     self.get_logger().info("Telemetrix reconnected and config restored")
                     return
                 except Exception as exc:
@@ -522,9 +534,26 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
                             bridge.deinitialize()
                         except Exception:
                             pass
-                    time.sleep(self._reconnect_delay_s)
+                    self._stopping.wait(self._reconnect_delay_s)
         finally:
+            if not rclpy.ok() or self._stopping.is_set():
+                failed_count: int = self._command_gate.fail_deferred(
+                    RuntimeError("Telemetrix bridge stopped before becoming ready")
+                )
+                if failed_count > 0:
+                    self.get_logger().warning(
+                        f"Failed {failed_count} deferred commands during shutdown"
+                    )
             self._reconnecting = False
+
+    def _submit_topic_command(self, command: Callable[[], object]) -> None:
+        self._command_gate.submit(command, wait=False)
+
+    def _submit_service_command(self, command: Callable[[], ResponseT]) -> ResponseT:
+        result: object | None = self._command_gate.submit(command, wait=True)
+        if result is None:
+            raise RuntimeError("Telemetrix service command returned no response")
+        return cast(ResponseT, result)
 
     def _uptime_ok(self, uptime_ms: int) -> bool:
         previous_uptime_ms: Optional[int] = self._last_uptime_ms
@@ -538,11 +567,23 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
 
     def stop(self) -> None:
         """Stop the bridge and cleanup ROS resources"""
+        self._stopping.set()
+        failed_count: int = self._command_gate.fail_deferred(
+            RuntimeError("Telemetrix bridge stopped before command execution")
+        )
+        if failed_count > 0:
+            self.get_logger().warning(
+                f"Failed {failed_count} deferred commands during shutdown"
+            )
         self._initialized = False
         self._bridge.deinitialize()
 
-        # Wait for outstanding tasks to complete
-        time.sleep(1)
+        reconnect_thread: Optional[threading.Thread] = self._reconnect_thread
+        if (
+            reconnect_thread is not None
+            and reconnect_thread is not threading.current_thread()
+        ):
+            reconnect_thread.join()
 
         self.get_logger().info("Telemetrix bridge deinitialized")
 
@@ -551,7 +592,18 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         # shut down.
         self.destroy_node()
 
+    def destroy_node(self) -> None:
+        """Destroy the node after preventing further command submissions."""
+        self._stopping.set()
+        self._command_gate.fail_deferred(
+            RuntimeError("Telemetrix bridge destroyed before command execution")
+        )
+        super().destroy_node()
+
     def _on_digital_write_cmd(self, msg: DigitalWriteCommandMsg) -> None:
+        self._submit_topic_command(lambda: self._execute_digital_write_cmd(msg))
+
+    def _execute_digital_write_cmd(self, msg: DigitalWriteCommandMsg) -> None:
         digital_pin: int = msg.digital_pin
         digital_value: bool = msg.digital_value
 
@@ -567,6 +619,9 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         self._bridge.digital_write(digital_pin, digital_value)
 
     def _on_pwm_write_cmd(self, msg: PWMWriteCommandMsg) -> None:
+        self._submit_topic_command(lambda: self._execute_pwm_write_cmd(msg))
+
+    def _execute_pwm_write_cmd(self, msg: PWMWriteCommandMsg) -> None:
         digital_pin: int = msg.digital_pin
         duty_cycle: float = msg.duty_cycle
 
@@ -582,6 +637,9 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         self._bridge.pwm_write_async(digital_pin, duty_cycle)
 
     def _on_servo_write_cmd(self, msg: ServoWriteCommandMsg) -> None:
+        self._submit_topic_command(lambda: self._execute_servo_write_cmd(msg))
+
+    def _execute_servo_write_cmd(self, msg: ServoWriteCommandMsg) -> None:
         digital_pin: int = msg.digital_pin
         position: float = msg.position
 
@@ -597,6 +655,9 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         self._bridge.servo_write(digital_pin, position)
 
     def _on_cpu_fan_write_cmd(self, msg: PWMWriteCommandMsg) -> None:
+        self._submit_topic_command(lambda: self._execute_cpu_fan_write_cmd(msg))
+
+    def _execute_cpu_fan_write_cmd(self, msg: PWMWriteCommandMsg) -> None:
         digital_pin: int = msg.digital_pin
         duty_cycle: float = msg.duty_cycle
 
@@ -818,6 +879,13 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
     def _handle_analog_read(
         self, request: AnalogReadSvc.Request, response: AnalogReadSvc.Response
     ) -> AnalogReadSvc.Response:
+        return self._submit_service_command(
+            lambda: self._execute_analog_read(request, response)
+        )
+
+    def _execute_analog_read(
+        self, request: AnalogReadSvc.Request, response: AnalogReadSvc.Response
+    ) -> AnalogReadSvc.Response:
         """Handle ROS 2 analog pin reads"""
         # Translate parameters
         analog_pin: int = request.analog_pin
@@ -838,6 +906,13 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
     def _handle_cpu_fan_write(
         self, request: PWMWriteSvc.Request, response: PWMWriteSvc.Response
     ) -> PWMWriteSvc.Response:
+        return self._submit_service_command(
+            lambda: self._execute_cpu_fan_write(request, response)
+        )
+
+    def _execute_cpu_fan_write(
+        self, request: PWMWriteSvc.Request, response: PWMWriteSvc.Response
+    ) -> PWMWriteSvc.Response:
         """Handle ROS 2 CPU fan PWM writes"""
         # Translate parameters
         digital_pin: int = request.digital_pin
@@ -856,6 +931,13 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         return response
 
     def _handle_digital_read(
+        self, request: DigitalReadSvc.Request, response: DigitalReadSvc.Response
+    ) -> DigitalReadSvc.Response:
+        return self._submit_service_command(
+            lambda: self._execute_digital_read(request, response)
+        )
+
+    def _execute_digital_read(
         self, request: DigitalReadSvc.Request, response: DigitalReadSvc.Response
     ) -> DigitalReadSvc.Response:
         """Handle ROS 2 digital pin reads"""
@@ -879,6 +961,13 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
     def _handle_digital_write(
         self, request: DigitalWriteSvc.Request, response: DigitalWriteSvc.Response
     ) -> DigitalWriteSvc.Response:
+        return self._submit_service_command(
+            lambda: self._execute_digital_write(request, response)
+        )
+
+    def _execute_digital_write(
+        self, request: DigitalWriteSvc.Request, response: DigitalWriteSvc.Response
+    ) -> DigitalWriteSvc.Response:
         """Handle ROS 2 digital pin writes"""
         # Translate parameters
         digital_pin: int = request.digital_pin
@@ -897,6 +986,13 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         return response
 
     def _handle_i2c_begin(
+        self, request: I2CBeginSvc.Request, response: I2CBeginSvc.Response
+    ) -> I2CBeginSvc.Response:
+        return self._submit_service_command(
+            lambda: self._execute_i2c_begin(request, response)
+        )
+
+    def _execute_i2c_begin(
         self, request: I2CBeginSvc.Request, response: I2CBeginSvc.Response
     ) -> I2CBeginSvc.Response:
         """Begin I2C communication on a port and for devices"""
@@ -918,7 +1014,7 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
             elif record_device_type == I2CDeviceTypeMsg.MPU6050:
                 self._config_cache.record_mpu6050_begin(i2c_port, record_address)
 
-        if not self._initialized or self._reconnecting:
+        if not self._initialized:
             self.get_logger().warning("Skipping I2C begin while disconnected")
             return response
 
@@ -943,6 +1039,13 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
     def _handle_i2c_end(
         self, request: I2CEndSvc.Request, response: I2CEndSvc.Response
     ) -> I2CEndSvc.Response:
+        return self._submit_service_command(
+            lambda: self._execute_i2c_end(request, response)
+        )
+
+    def _execute_i2c_end(
+        self, request: I2CEndSvc.Request, response: I2CEndSvc.Response
+    ) -> I2CEndSvc.Response:
         """End I2C communication on a port and for devices"""
         # Translate parameters
         i2c_port: int = request.i2c_port
@@ -960,7 +1063,7 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
             elif record_device_type == I2CDeviceTypeMsg.MPU6050:
                 self._config_cache.record_mpu6050_end(i2c_port, record_address)
 
-        if not self._initialized or self._reconnecting:
+        if not self._initialized:
             self.get_logger().warning("Skipping I2C end while disconnected")
             return response
 
@@ -982,6 +1085,13 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
     def _handle_pwm_write(
         self, request: PWMWriteSvc.Request, response: PWMWriteSvc.Response
     ) -> PWMWriteSvc.Response:
+        return self._submit_service_command(
+            lambda: self._execute_pwm_write(request, response)
+        )
+
+    def _execute_pwm_write(
+        self, request: PWMWriteSvc.Request, response: PWMWriteSvc.Response
+    ) -> PWMWriteSvc.Response:
         """Handle ROS 2 PWM pin writes"""
         # Translate parameters
         digital_pin: int = request.digital_pin
@@ -1000,6 +1110,15 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         return response
 
     def _handle_configure_effect(
+        self,
+        request: ConfigureEffectSvc.Request,
+        response: ConfigureEffectSvc.Response,
+    ) -> ConfigureEffectSvc.Response:
+        return self._submit_service_command(
+            lambda: self._execute_configure_effect(request, response)
+        )
+
+    def _execute_configure_effect(
         self,
         request: ConfigureEffectSvc.Request,
         response: ConfigureEffectSvc.Response,
@@ -1038,7 +1157,7 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
                 ir_pin, led_pair_a_pin, led_pair_b_pin
             )
 
-            if not self._initialized or self._reconnecting:
+            if not self._initialized:
                 self.get_logger().warning("Skipping helipad attach while disconnected")
                 return response
 
@@ -1066,7 +1185,7 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
 
         self._config_cache.record_led_thruster_attach(request.instance_id, led_pin)
 
-        if not self._initialized or self._reconnecting:
+        if not self._initialized:
             self.get_logger().warning("Skipping LED thruster attach while disconnected")
             return response
 
@@ -1084,6 +1203,13 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
     def _handle_report_mcu_memory(
         self, request: ReportMCUMemorySvc.Request, response: ReportMCUMemorySvc.Response
     ) -> ReportMCUMemorySvc.Response:
+        return self._submit_service_command(
+            lambda: self._execute_report_mcu_memory(request, response)
+        )
+
+    def _execute_report_mcu_memory(
+        self, request: ReportMCUMemorySvc.Request, response: ReportMCUMemorySvc.Response
+    ) -> ReportMCUMemorySvc.Response:
         """Handle request to enable/disable MCU memory reporting"""
         # Translate parameters
         reporting_period_ms: int = request.reporting_period_ms
@@ -1096,7 +1222,7 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
 
         self._config_cache.record_memory_reporting_interval(reporting_period_ms)
 
-        if not self._initialized or self._reconnecting:
+        if not self._initialized:
             self.get_logger().warning(
                 "Skipping MCU memory reporting change while disconnected"
             )
@@ -1108,6 +1234,13 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         return response
 
     def _handle_servo_write(
+        self, request: ServoWriteSvc.Request, response: ServoWriteSvc.Response
+    ) -> ServoWriteSvc.Response:
+        return self._submit_service_command(
+            lambda: self._execute_servo_write(request, response)
+        )
+
+    def _execute_servo_write(
         self, request: ServoWriteSvc.Request, response: ServoWriteSvc.Response
     ) -> ServoWriteSvc.Response:
         """Handle ROS 2 servo pin writes"""
@@ -1130,6 +1263,13 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
     def _handle_set_analog_mode(
         self, request: SetAnalogModeSvc.Request, response: SetAnalogModeSvc.Response
     ) -> SetAnalogModeSvc.Response:
+        return self._submit_service_command(
+            lambda: self._execute_set_analog_mode(request, response)
+        )
+
+    def _execute_set_analog_mode(
+        self, request: SetAnalogModeSvc.Request, response: SetAnalogModeSvc.Response
+    ) -> SetAnalogModeSvc.Response:
         """Handle ROS 2 analog pin mode changes"""
         # Translate parameters
         analog_pin: int = request.analog_pin
@@ -1148,7 +1288,7 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
 
         self._config_cache.record_analog_mode(analog_pin, analog_mode)
 
-        if not self._initialized or self._reconnecting:
+        if not self._initialized:
             self.get_logger().warning("Skipping analog mode change while disconnected")
             return response
 
@@ -1158,6 +1298,15 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         return response
 
     def _handle_set_cpu_fan_sampling_interval(
+        self,
+        request: SetSamplingIntervalSvc.Request,
+        response: SetSamplingIntervalSvc.Response,
+    ) -> SetSamplingIntervalSvc.Response:
+        return self._submit_service_command(
+            lambda: self._execute_set_cpu_fan_sampling_interval(request, response)
+        )
+
+    def _execute_set_cpu_fan_sampling_interval(
         self,
         request: SetSamplingIntervalSvc.Request,
         response: SetSamplingIntervalSvc.Response,
@@ -1173,7 +1322,7 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
 
         self._config_cache.record_cpu_fan_sampling_interval(sampling_interval_ms)
 
-        if not self._initialized or self._reconnecting:
+        if not self._initialized:
             self.get_logger().warning(
                 "Skipping CPU fan sampling interval change while disconnected"
             )
@@ -1185,6 +1334,13 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         return response
 
     def _handle_set_digital_mode(
+        self, request: SetDigitalModeSvc.Request, response: SetDigitalModeSvc.Response
+    ) -> SetDigitalModeSvc.Response:
+        return self._submit_service_command(
+            lambda: self._execute_set_digital_mode(request, response)
+        )
+
+    def _execute_set_digital_mode(
         self, request: SetDigitalModeSvc.Request, response: SetDigitalModeSvc.Response
     ) -> SetDigitalModeSvc.Response:
         """Handle ROS 2 digital pin mode changes"""
@@ -1209,7 +1365,7 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
 
         self._config_cache.record_digital_mode(digital_pin, digital_mode)
 
-        if not self._initialized or self._reconnecting:
+        if not self._initialized:
             self.get_logger().warning("Skipping digital mode change while disconnected")
             return response
 
@@ -1219,6 +1375,15 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         return response
 
     def _handle_set_effect(
+        self,
+        request: SetEffectSvc.Request,
+        response: SetEffectSvc.Response,
+    ) -> SetEffectSvc.Response:
+        return self._submit_service_command(
+            lambda: self._execute_set_effect(request, response)
+        )
+
+    def _execute_set_effect(
         self,
         request: SetEffectSvc.Request,
         response: SetEffectSvc.Response,
@@ -1245,7 +1410,7 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
 
             self._config_cache.record_helipad_mode(mode)
 
-            if not self._initialized or self._reconnecting:
+            if not self._initialized:
                 self.get_logger().warning(
                     "Skipping helipad mode change while disconnected"
                 )
@@ -1279,7 +1444,7 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
 
             self._config_cache.record_led_thruster_state(mode)
 
-            if not self._initialized or self._reconnecting:
+            if not self._initialized:
                 self.get_logger().warning(
                     "Skipping LED thruster mode change while disconnected"
                 )
@@ -1307,6 +1472,15 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
         request: SetSamplingIntervalSvc.Request,
         response: SetSamplingIntervalSvc.Response,
     ) -> SetSamplingIntervalSvc.Response:
+        return self._submit_service_command(
+            lambda: self._execute_set_sampling_interval(request, response)
+        )
+
+    def _execute_set_sampling_interval(
+        self,
+        request: SetSamplingIntervalSvc.Request,
+        response: SetSamplingIntervalSvc.Response,
+    ) -> SetSamplingIntervalSvc.Response:
         """Handle ROS 2 sampling interval changes"""
         # Translate parameters
         sampling_interval_ms: int = request.sampling_interval_ms
@@ -1318,7 +1492,7 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
 
         self._config_cache.record_sampling_interval(sampling_interval_ms)
 
-        if not self._initialized or self._reconnecting:
+        if not self._initialized:
             self.get_logger().warning(
                 "Skipping sampling interval change while disconnected"
             )
