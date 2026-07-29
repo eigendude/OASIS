@@ -30,6 +30,8 @@ from std_msgs.msg import Header as HeaderMsg
 
 from oasis_drivers.mcu.mcu_readings import AnalogReadingSample
 from oasis_drivers.mcu.mcu_readings import DigitalReadingSample
+from oasis_drivers.ros.event_callbacks import publisher_event_callbacks
+from oasis_drivers.ros.event_callbacks import subscription_event_callbacks
 from oasis_drivers.ros.mcu_reading_messages import make_analog_reading_msg
 from oasis_drivers.ros.mcu_reading_messages import make_analog_readings_msg
 from oasis_drivers.ros.mcu_reading_messages import make_digital_reading_msg
@@ -219,51 +221,61 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
             msg_type=AirQualityIndexMsg,
             topic=AIR_QUALITY_INDEX_TOPIC,
             qos_profile=qos_profile,
+            event_callbacks=publisher_event_callbacks(),
         )
         self._equivalent_co2_pub: rclpy.publisher.Publisher = self.create_publisher(
             msg_type=GasConcentrationMsg,
             topic=EQUIVALENT_CO2_TOPIC,
             qos_profile=qos_profile,
+            event_callbacks=publisher_event_callbacks(),
         )
         self._tvoc_pub: rclpy.publisher.Publisher = self.create_publisher(
             msg_type=GasConcentrationMsg,
             topic=TVOC_TOPIC,
             qos_profile=qos_profile,
+            event_callbacks=publisher_event_callbacks(),
         )
         self._analog_reading_pub: rclpy.publisher.Publisher = self.create_publisher(
             msg_type=AnalogReadingMsg,
             topic=ANALOG_READING_TOPIC,
             qos_profile=qos_profile,
+            event_callbacks=publisher_event_callbacks(),
         )
         self._analog_readings_pub: rclpy.publisher.Publisher = self.create_publisher(
             msg_type=AnalogReadingsMsg,
             topic=ANALOG_READINGS_TOPIC,
             qos_profile=qos_profile,
+            event_callbacks=publisher_event_callbacks(),
         )
         self._cpu_fan_speed_pub: rclpy.publisher.Publisher = self.create_publisher(
             msg_type=CPUFanSpeedMsg,
             topic=CPU_FAN_SPEED_TOPIC,
             qos_profile=qos_profile,
+            event_callbacks=publisher_event_callbacks(),
         )
         self._digital_reading_pub: rclpy.publisher.Publisher = self.create_publisher(
             msg_type=DigitalReadingMsg,
             topic=DIGITAL_READING_TOPIC,
             qos_profile=qos_profile,
+            event_callbacks=publisher_event_callbacks(),
         )
         self._i2c_imu_pub: rclpy.publisher.Publisher = self.create_publisher(
             msg_type=I2CImuMsg,
             topic=IMU_TOPIC,
             qos_profile=qos_profile,
+            event_callbacks=publisher_event_callbacks(),
         )
         self._mcu_memory_pub: rclpy.publisher.Publisher = self.create_publisher(
             msg_type=MCUMemoryMsg,
             topic=MCU_MEMORY_TOPIC,
             qos_profile=qos_profile,
+            event_callbacks=publisher_event_callbacks(),
         )
         self._mcu_string_pub: rclpy.publisher.Publisher = self.create_publisher(
             msg_type=MCUStringMsg,
             topic=MCU_STRING_TOPIC,
             qos_profile=qos_profile,
+            event_callbacks=publisher_event_callbacks(),
         )
 
         if not self._initialized:
@@ -286,24 +298,28 @@ class TelemetrixBridgeNode(rclpy.node.Node, TelemetrixCallback):
             topic=CPU_FAN_WRITE_COMMAND_TOPIC,
             callback=self._on_cpu_fan_write_cmd,
             qos_profile=cmd_qos,
+            event_callbacks=subscription_event_callbacks(),
         )
         self._digital_write_sub = self.create_subscription(
             msg_type=DigitalWriteCommandMsg,
             topic=DIGITAL_WRITE_COMMAND_TOPIC,
             callback=self._on_digital_write_cmd,
             qos_profile=cmd_qos,
+            event_callbacks=subscription_event_callbacks(),
         )
         self._pwm_write_sub = self.create_subscription(
             msg_type=PWMWriteCommandMsg,
             topic=PWM_WRITE_COMMAND_TOPIC,
             callback=self._on_pwm_write_cmd,
             qos_profile=cmd_qos,
+            event_callbacks=subscription_event_callbacks(),
         )
         self._servo_write_sub = self.create_subscription(
             msg_type=ServoWriteCommandMsg,
             topic=SERVO_WRITE_COMMAND_TOPIC,
             callback=self._on_servo_write_cmd,
             qos_profile=cmd_qos,
+            event_callbacks=subscription_event_callbacks(),
         )
 
         # Once the bridge is started, advertise the services

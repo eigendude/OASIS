@@ -24,6 +24,8 @@ import rclpy.task
 from builtin_interfaces.msg import Time as TimeMsg
 from std_msgs.msg import Float32 as Float32Msg
 
+from oasis_drivers.ros.event_callbacks import publisher_event_callbacks
+from oasis_drivers.ros.event_callbacks import subscription_event_callbacks
 from oasis_drivers.ros.ros_translator import RosTranslator
 from oasis_drivers.telemetrix.telemetrix_types import AnalogMode
 from oasis_drivers.telemetrix.telemetrix_types import DigitalMode
@@ -212,6 +214,7 @@ class StationManager:
                 msg_type=DigitalWriteCommandMsg,
                 topic=PUBLISH_MOTOR_DIR_CMD,
                 qos_profile=cmd_qos,
+                event_callbacks=publisher_event_callbacks(),
             )
         )
         self._motor_pwm_cmd_pub: rclpy.publisher.Publisher[PWMWriteCommandMsg] = (
@@ -219,6 +222,7 @@ class StationManager:
                 msg_type=PWMWriteCommandMsg,
                 topic=PUBLISH_MOTOR_PWM_CMD,
                 qos_profile=cmd_qos,
+                event_callbacks=publisher_event_callbacks(),
             )
         )
         self._supply_voltage_pub: rclpy.publisher.Publisher[Float32Msg] = (
@@ -226,6 +230,7 @@ class StationManager:
                 msg_type=Float32Msg,
                 topic=PUBLISH_SUPPLY_VOLTAGE,
                 qos_profile=rclpy.qos.QoSPresetProfiles.SENSOR_DATA.value,
+                event_callbacks=publisher_event_callbacks(),
             )
         )
         self._traction_voltage_pub: rclpy.publisher.Publisher[Float32Msg] = (
@@ -233,6 +238,7 @@ class StationManager:
                 msg_type=Float32Msg,
                 topic=PUBLISH_TRACTION_VOLTAGE,
                 qos_profile=rclpy.qos.QoSPresetProfiles.SENSOR_DATA.value,
+                event_callbacks=publisher_event_callbacks(),
             )
         )
         self._traction_power_pub: rclpy.publisher.Publisher[Float32Msg] = (
@@ -240,6 +246,7 @@ class StationManager:
                 msg_type=Float32Msg,
                 topic=PUBLISH_TRACTION_POWER,
                 qos_profile=rclpy.qos.QoSPresetProfiles.SENSOR_DATA.value,
+                event_callbacks=publisher_event_callbacks(),
             )
         )
 
@@ -251,6 +258,7 @@ class StationManager:
             topic=SUBSCRIBE_ANALOG_READINGS,
             callback=self._on_analog_readings,
             qos_profile=qos_profile,
+            event_callbacks=subscription_event_callbacks(),
         )
         self._digital_reading_sub: rclpy.subscription.Subscription[
             DigitalReadingMsg
@@ -259,6 +267,7 @@ class StationManager:
             topic=SUBSCRIBE_DIGITAL_READING,
             callback=self._on_digital_reading,
             qos_profile=qos_profile,
+            event_callbacks=subscription_event_callbacks(),
         )
         self._power_meter_0_sub: rclpy.subscription.Subscription[PowerMeterMsg] = (
             self._node.create_subscription(
@@ -266,6 +275,7 @@ class StationManager:
                 topic=SUBSCRIBE_POWER_METER_0,
                 callback=self._on_power_meter_0,
                 qos_profile=rclpy.qos.QoSPresetProfiles.SENSOR_DATA.value,
+                event_callbacks=subscription_event_callbacks(),
             )
         )
         self._power_meter_1_sub: rclpy.subscription.Subscription[PowerMeterMsg] = (
@@ -274,6 +284,7 @@ class StationManager:
                 topic=SUBSCRIBE_POWER_METER_1,
                 callback=self._on_power_meter_1,
                 qos_profile=rclpy.qos.QoSPresetProfiles.SENSOR_DATA.value,
+                event_callbacks=subscription_event_callbacks(),
             )
         )
 

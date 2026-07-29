@@ -34,6 +34,8 @@ from oasis_control.localization.ahrs_speedometer import SpeedometerEstimate
 from oasis_control.localization.ahrs_speedometer import StationaryTwistObservation
 from oasis_control.ros.qos_profiles import reliable_measurement_qos
 from oasis_control.ros.qos_profiles import reliable_state_qos
+from oasis_drivers.ros.event_callbacks import publisher_event_callbacks
+from oasis_drivers.ros.event_callbacks import subscription_event_callbacks
 
 
 ################################################################################
@@ -148,6 +150,7 @@ class AhrsSpeedometerNode(rclpy.node.Node):
             msg_type=TwistWithCovarianceStampedMsg,
             topic=FORWARD_TWIST_TOPIC,
             qos_profile=measurement_qos_profile,
+            event_callbacks=publisher_event_callbacks(),
         )
 
         # ROS subscribers
@@ -157,6 +160,7 @@ class AhrsSpeedometerNode(rclpy.node.Node):
                 topic=IMU_TOPIC,
                 callback=self._handle_imu,
                 qos_profile=measurement_qos_profile,
+                event_callbacks=subscription_event_callbacks(),
             )
         )
         self._zupt_sub: rclpy.subscription.Subscription[
@@ -166,6 +170,7 @@ class AhrsSpeedometerNode(rclpy.node.Node):
             topic=ZUPT_TOPIC,
             callback=self._handle_zupt,
             qos_profile=measurement_qos_profile,
+            event_callbacks=subscription_event_callbacks(),
         )
         self._zupt_flag_sub: rclpy.subscription.Subscription[BoolMsg] = (
             self.create_subscription(
@@ -173,6 +178,7 @@ class AhrsSpeedometerNode(rclpy.node.Node):
                 topic=ZUPT_FLAG_TOPIC,
                 callback=self._handle_zupt_flag,
                 qos_profile=state_qos_profile,
+                event_callbacks=subscription_event_callbacks(),
             )
         )
         self.get_logger().info("AHRS speedometer initialized; awaiting active ZUPT")

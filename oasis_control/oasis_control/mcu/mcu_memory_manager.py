@@ -18,6 +18,7 @@ import rclpy.qos
 import rclpy.subscription
 import rclpy.task
 
+from oasis_drivers.ros.event_callbacks import subscription_event_callbacks
 from oasis_msgs.msg import MCUMemory as MCUMemoryMsg
 from oasis_msgs.srv import ReportMCUMemory as ReportMCUMemorySvc
 
@@ -67,6 +68,7 @@ class McuMemoryManager:
                 topic=SUBSCRIBE_MCU_MEMORY,
                 callback=self._on_mcu_memory,
                 qos_profile=qos_profile,
+                event_callbacks=subscription_event_callbacks(),
             )
         )
 

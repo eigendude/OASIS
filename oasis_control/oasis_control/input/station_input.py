@@ -25,6 +25,7 @@ from oasis_control.input.kid_mode import kid_mode_train_command
 from oasis_control.input.park_mode import TrainParkMode
 from oasis_control.input.person_cruise import PersonCruise
 from oasis_control.lego_models.station_manager import StationManager
+from oasis_drivers.ros.event_callbacks import subscription_event_callbacks
 from oasis_msgs.msg import CameraScene as CameraSceneMsg
 from oasis_msgs.msg import PeripheralConstants as PeripheralConstantsMsg
 from oasis_msgs.msg import PeripheralInfo as PeripheralInfoMsg
@@ -133,6 +134,7 @@ class StationInput:
             topic=SUBSCRIBE_PERIPHERAL_INPUT,
             callback=self._on_peripheral_input,
             qos_profile=qos_profile,
+            event_callbacks=subscription_event_callbacks(),
         )
         self._peripherals_sub: rclpy.subscription.Subscription[PeripheralScanMsg] = (
             self._node.create_subscription(
@@ -140,6 +142,7 @@ class StationInput:
                 topic=SUBSCRIBE_PERIPHERALS,
                 callback=self._on_peripheral_scan,
                 qos_profile=qos_profile,
+                event_callbacks=subscription_event_callbacks(),
             )
         )
 

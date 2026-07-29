@@ -23,6 +23,7 @@ import rclpy.subscription
 import rclpy.task
 from builtin_interfaces.msg import Time as TimeMsg
 
+from oasis_drivers.ros.event_callbacks import subscription_event_callbacks
 from oasis_drivers.ros.ros_translator import RosTranslator
 from oasis_drivers.telemetrix.telemetrix_types import AnalogMode
 from oasis_drivers.telemetrix.telemetrix_types import DigitalMode
@@ -181,6 +182,7 @@ class HelipadManager:
             topic=SUBSCRIBE_ANALOG_READINGS,
             callback=self._on_analog_readings,
             qos_profile=qos_profile,
+            event_callbacks=subscription_event_callbacks(),
         )
         self._configure_effect_client: rclpy.client.Client[
             ConfigureEffectSvc.Request, ConfigureEffectSvc.Response

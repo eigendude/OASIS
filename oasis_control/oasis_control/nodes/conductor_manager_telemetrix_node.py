@@ -34,6 +34,8 @@ from oasis_control.managers.sampling_manager import SamplingManager
 from oasis_control.managers.wol_manager import WolManager
 from oasis_control.mcu.mcu_memory_manager import McuMemoryManager
 from oasis_control.ros.park_mode_parameters import load_park_mode_parameters
+from oasis_drivers.ros.event_callbacks import publisher_event_callbacks
+from oasis_drivers.ros.event_callbacks import subscription_event_callbacks
 from oasis_msgs.msg import CameraScene as CameraSceneMsg
 from oasis_msgs.msg import ConductorState as ConductorStateMsg
 
@@ -182,6 +184,7 @@ class ConductorManagerNode(rclpy.node.Node):
                 msg_type=ConductorStateMsg,
                 topic=PUBLISH_CONDUCTOR_STATE,
                 qos_profile=state_qos_profile,
+                event_callbacks=publisher_event_callbacks(),
             )
         )
 
@@ -192,6 +195,7 @@ class ConductorManagerNode(rclpy.node.Node):
                 topic=SUBSCRIBE_CHECKERBOARD_STATUS,
                 callback=self._on_checkerboard_status,
                 qos_profile=rclpy.qos.QoSPresetProfiles.SENSOR_DATA.value,
+                event_callbacks=subscription_event_callbacks(),
             )
         )
         self._camera_scene_sub: rclpy.subscription.Subscription[CameraSceneMsg] = (
@@ -200,6 +204,7 @@ class ConductorManagerNode(rclpy.node.Node):
                 topic=SUBSCRIBE_CAMERA_SCENE,
                 callback=self._on_camera_scene,
                 qos_profile=rclpy.qos.QoSPresetProfiles.SENSOR_DATA.value,
+                event_callbacks=subscription_event_callbacks(),
             )
         )
 

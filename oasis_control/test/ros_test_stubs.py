@@ -520,11 +520,13 @@ class _Publisher:
         topic: str = "",
         qos_profile: Any = None,
         msg_type: type[Any] | None = None,
+        event_callbacks: Any = None,
         **__: Any,
     ) -> None:
         self.topic: str = topic
         self.qos_profile: Any = qos_profile
         self.msg_type: type[Any] | None = msg_type
+        self.event_callbacks: Any = event_callbacks
         self.messages: list[Any] = []
 
     def publish(self, message: Any) -> None:
@@ -538,11 +540,20 @@ class _Subscription:
         topic: str = "",
         callback: Any = None,
         qos_profile: Any = None,
+        event_callbacks: Any = None,
         **__: Any,
     ) -> None:
         self.topic: str = topic
         self.callback: Any = callback
         self.qos_profile: Any = qos_profile
+        self.event_callbacks: Any = event_callbacks
+
+
+class _EventCallbacks:
+    def __init__(self, *, use_default_callbacks: bool = True, **callbacks: Any) -> None:
+        self.use_default_callbacks: bool = use_default_callbacks
+        for name, callback in callbacks.items():
+            setattr(self, name, callback)
 
 
 class _Service:
@@ -620,11 +631,14 @@ class _Node:
         msg_type: type[Any],
         topic: str,
         qos_profile: Any,
+        *,
+        event_callbacks: Any = None,
     ) -> _Publisher:
         publisher: _Publisher = _Publisher(
             topic=topic,
             qos_profile=qos_profile,
             msg_type=msg_type,
+            event_callbacks=event_callbacks,
         )
         self.publishers.append(publisher)
         return publisher
@@ -635,12 +649,15 @@ class _Node:
         topic: str,
         callback: Any,
         qos_profile: Any,
+        *,
+        event_callbacks: Any = None,
     ) -> _Subscription:
         del msg_type
         subscription: _Subscription = _Subscription(
             topic=topic,
             callback=callback,
             qos_profile=qos_profile,
+            event_callbacks=event_callbacks,
         )
         self.subscriptions.append(subscription)
         return subscription
@@ -1010,6 +1027,7 @@ def _install_rclpy_stub() -> None:
 
     rclpy_module: ModuleType = _make_package("rclpy")
     rclpy_client_module: ModuleType = ModuleType("rclpy.client")
+    rclpy_event_handler_module: ModuleType = ModuleType("rclpy.event_handler")
     rclpy_logging_module: ModuleType = ModuleType("rclpy.logging")
     rclpy_node_module: ModuleType = ModuleType("rclpy.node")
     rclpy_publisher_module: ModuleType = ModuleType("rclpy.publisher")
@@ -1047,6 +1065,16 @@ def _install_rclpy_stub() -> None:
     _set_module_attr(rclpy_module, "shutdown", _shutdown)
     _set_module_attr(rclpy_module, "ok", _ok)
     _set_module_attr(rclpy_client_module, "Client", _Client)
+    _set_module_attr(
+        rclpy_event_handler_module,
+        "PublisherEventCallbacks",
+        _EventCallbacks,
+    )
+    _set_module_attr(
+        rclpy_event_handler_module,
+        "SubscriptionEventCallbacks",
+        _EventCallbacks,
+    )
     _set_module_attr(rclpy_logging_module, "LoggingSeverity", _LoggingSeverity)
     _set_module_attr(rclpy_logging_module, "RcutilsLogger", _Logger)
     _set_module_attr(rclpy_node_module, "Node", _Node)
@@ -1070,6 +1098,7 @@ def _install_rclpy_stub() -> None:
     _set_module_attr(rclpy_timer_module, "Timer", _Timer)
 
     _set_module_attr(rclpy_module, "client", rclpy_client_module)
+    _set_module_attr(rclpy_module, "event_handler", rclpy_event_handler_module)
     _set_module_attr(rclpy_module, "logging", rclpy_logging_module)
     _set_module_attr(rclpy_module, "node", rclpy_node_module)
     _set_module_attr(rclpy_module, "publisher", rclpy_publisher_module)
@@ -1082,6 +1111,7 @@ def _install_rclpy_stub() -> None:
 
     _register_module("rclpy", rclpy_module)
     _register_module("rclpy.client", rclpy_client_module)
+    _register_module("rclpy.event_handler", rclpy_event_handler_module)
     _register_module("rclpy.logging", rclpy_logging_module)
     _register_module("rclpy.node", rclpy_node_module)
     _register_module("rclpy.publisher", rclpy_publisher_module)

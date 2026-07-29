@@ -27,6 +27,8 @@ from std_msgs.msg import Header as HeaderMsg
 from oasis_control.lego_models.falcon_manager import FalconManager
 from oasis_control.managers.sampling_manager import SamplingManager
 from oasis_control.mcu.mcu_memory_manager import McuMemoryManager
+from oasis_drivers.ros.event_callbacks import publisher_event_callbacks
+from oasis_drivers.ros.event_callbacks import subscription_event_callbacks
 from oasis_msgs.msg import ConductorState as ConductorStateMsg
 from oasis_msgs.msg import EngineerState as EngineerStateMsg
 
@@ -102,6 +104,7 @@ class EngineerManagerNode(rclpy.node.Node):
                 msg_type=EngineerStateMsg,
                 topic=PUBLISH_ENGINEER_STATE,
                 qos_profile=state_qos_profile,
+                event_callbacks=publisher_event_callbacks(),
             )
         )
 
@@ -113,6 +116,7 @@ class EngineerManagerNode(rclpy.node.Node):
             topic=CONDUCTOR_STATE_TOPIC,
             callback=self._handle_conductor_state,
             qos_profile=state_qos_profile,
+            event_callbacks=subscription_event_callbacks(),
         )
 
         # Timer parameters
