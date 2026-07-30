@@ -30,6 +30,10 @@ source "${SCRIPT_DIR}/env_cv.sh"
 # Import Kodi paths and config
 source "${SCRIPT_DIR}/env_kodi.sh"
 
+# Use one persistent cache for all Kodi source and dependency downloads
+KODI_DOWNLOAD_DIR="$(realpath -m "${KODI_DIRECTORY}/downloads")"
+KODI_ARCHIVE_PATH="${KODI_DOWNLOAD_DIR}/kodi-${KODI_VERSION}.tar.gz"
+
 #
 # Load OASIS environment
 #
@@ -53,6 +57,8 @@ mkdir -p "${KODI_DOWNLOAD_DIR}"
 mkdir -p "${KODI_SOURCE_DIR}"
 mkdir -p "${KODI_BUILD_DIR}"
 mkdir -p "${KODI_DEPENDS_DIR}"
+
+echo "Kodi download directory: ${KODI_DOWNLOAD_DIR}"
 
 #
 # Download Kodi
@@ -124,6 +130,7 @@ fi
       -DENABLE_LLD=${ENABLE_LLD} \
       -DENABLE_ROS2=ON \
       -DENABLE_TESTING=OFF \
+      -DTARBALL_DIR="${KODI_DOWNLOAD_DIR}" \
       -DOpenCV_DIR=${OpenCV_DIR} \
       -DOpenCV_ROOT=${OpenCV_ROOT} \
 )
@@ -155,6 +162,7 @@ make \
   ADDONS="^(peripheral.joystick|screensaver.matrixtrails)$" \
   EXTRA_CMAKE_ARGS="-DAPP_RENDER_SYSTEM=gl" \
   PREFIX="${KODI_INSTALL_DIR}" \
+  TARBALLS_LOCATION="${KODI_DOWNLOAD_DIR}" \
 
 #
 # Install additional add-ons
