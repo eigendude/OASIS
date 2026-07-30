@@ -192,6 +192,34 @@ class ControlDescriptions:
         ld.add_action(engineer_node)
 
     #
+    # Train HUD manager
+    #
+
+    @staticmethod
+    def add_train_hud_manager(
+        ld: LaunchDescription,
+        host_id: str,
+        input_provider: str,
+    ) -> None:
+        train_hud_manager_node: Node = Node(
+            namespace=ROS_NAMESPACE,
+            package=CONTROL_PACKAGE_NAME,
+            executable="train_hud_manager",
+            name=f"train_hud_manager_{host_id}",
+            output="screen",
+            arguments=[
+                "--ros-args",
+                "--log-level",
+                f"{ROS_NAMESPACE}.train_hud_manager_{host_id}:=debug",
+            ],
+            remappings=[
+                ("input", f"{input_provider}/input"),
+                ("show_slam", f"{host_id}/show_slam"),
+            ],
+        )
+        ld.add_action(train_hud_manager_node)
+
+    #
     # OLED visualizer
     #
 

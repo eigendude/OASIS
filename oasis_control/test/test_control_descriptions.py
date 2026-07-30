@@ -63,3 +63,29 @@ def test_conductor_measurement_remappings_resolve_under_oasis_station() -> None:
     assert f"/{namespace}/{remappings['power_meter_1']}" == (
         "/oasis/station/power/power_meter_1"
     )
+
+
+def test_train_hud_manager_remappings_resolve_for_ocean_platform() -> None:
+    launch_description: LaunchDescription = LaunchDescription()
+
+    ControlDescriptions.add_train_hud_manager(
+        launch_description,
+        host_id="oceanplatform",
+        input_provider="megapegasus",
+    )
+
+    launch_description_any: Any = launch_description
+    controller_node: Any = launch_description_any.actions[0]
+    remappings: dict[str, str] = dict(controller_node.kwargs["remappings"])
+    namespace: str = controller_node.kwargs["namespace"]
+    arguments: list[str] = controller_node.kwargs["arguments"]
+
+    assert arguments == [
+        "--ros-args",
+        "--log-level",
+        "oasis.train_hud_manager_oceanplatform:=debug",
+    ]
+    assert f"/{namespace}/{remappings['input']}" == ("/oasis/megapegasus/input")
+    assert f"/{namespace}/{remappings['show_slam']}" == (
+        "/oasis/oceanplatform/show_slam"
+    )

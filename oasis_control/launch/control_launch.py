@@ -70,6 +70,12 @@ def generate_launch_description() -> LaunchDescription:
         Drivers.add_wol_server(ld, config.HOST_ID)
 
     # Visualization nodes
+    if config.HOST_ID == "oceanplatform":
+        ControlDescriptions.add_train_hud_manager(
+            ld,
+            config.HOST_ID,
+            config.HOSTNAME,
+        )
     if hardware.enable_cockpit_visualizer:
         ControlDescriptions.add_cockpit_visualizer(ld, config.HOST_ID)
     if hardware.enable_oled_visualizer:
