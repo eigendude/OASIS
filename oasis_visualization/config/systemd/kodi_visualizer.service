@@ -22,6 +22,9 @@ Environment=XDG_RUNTIME_DIR=/run/user/1000
 # ROS 2 configuration
 #
 
+# ROS namespace
+Environment=ROS_NAMESPACE=oasis
+
 # ROS 2 distro and middleware
 Environment=ROS2_DISTRO=@ROS2_DISTRO@
 Environment=RMW_IMPLEMENTATION=rmw_fastrtps_dynamic_cpp

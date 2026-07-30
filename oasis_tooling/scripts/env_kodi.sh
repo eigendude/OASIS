@@ -39,10 +39,10 @@ source "${SCRIPT_DIR}/env_oasis.sh"
 #
 
 # Version
-KODI_VERSION="e25ca7b73e6d8b2675d3a50c2d8f9fcaddf17455"
+KODI_VERSION="aee9e13ca09862c11f39a7ae92e42a60c21aacd7"
 
 # URL
-KODI_URL="https://github.com/eigendude/xbmc/archive/${KODI_VERSION}.tar.gz"
+KODI_URL="https://github.com/garbear/xbmc/archive/${KODI_VERSION}.tar.gz"
 
 # Target architecture and build config
 KODI_DEPENDS_TARGET=${PLATFORM_ARCH}-linux-gnu-release
