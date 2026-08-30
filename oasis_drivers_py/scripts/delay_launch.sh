@@ -47,6 +47,7 @@ else
 fi
 
 NETWORK_CHECK_INTERVAL="5"
+NETWORK_WAIT_TIMEOUT="120"
 
 network_ready() {
   local default_route
@@ -96,10 +97,32 @@ network_ready() {
 if [[ "${OASIS_SKIP_NETWORK_READY_CHECK:-0}" == "1" ]]; then
   echo "Skipping network readiness check."
 else
-  echo "Checking for network readiness (required for Zenoh)..."
-  until network_ready; do
-    echo "Network not ready yet. Waiting ${NETWORK_CHECK_INTERVAL} seconds..."
-    sleep "${NETWORK_CHECK_INTERVAL}"
+  echo "Checking for network readiness for up to ${NETWORK_WAIT_TIMEOUT} seconds..."
+
+  NETWORK_WAIT_START="${SECONDS}"
+  NETWORK_READY="0"
+
+  while (( SECONDS - NETWORK_WAIT_START < NETWORK_WAIT_TIMEOUT )); do
+    if network_ready; then
+      NETWORK_READY="1"
+      break
+    fi
+
+    NETWORK_WAIT_ELAPSED=$(( SECONDS - NETWORK_WAIT_START ))
+    NETWORK_WAIT_REMAINING=$(( NETWORK_WAIT_TIMEOUT - NETWORK_WAIT_ELAPSED ))
+    SLEEP_DURATION="${NETWORK_CHECK_INTERVAL}"
+
+    if (( SLEEP_DURATION > NETWORK_WAIT_REMAINING )); then
+      SLEEP_DURATION="${NETWORK_WAIT_REMAINING}"
+    fi
+
+    echo "Network not ready yet. Waiting ${SLEEP_DURATION} seconds..."
+    sleep "${SLEEP_DURATION}"
   done
-  echo "Network ready."
+
+  if [[ "${NETWORK_READY}" == "1" ]]; then
+    echo "Network ready."
+  else
+    echo "Network was not ready after ${NETWORK_WAIT_TIMEOUT} seconds; continuing startup." >&2
+  fi
 fi
