@@ -23,7 +23,7 @@ jobs:
       matrix:
         include:
           - os: ubuntu-26.04
-            ros2_distro: kilted
+            ros2_distro: lyrical
 
     # Steps represent a sequence of tasks that will be executed as part of the
     # job
@@ -34,27 +34,27 @@ jobs:
       # Check-out the repository under $GITHUB_WORKSPACE, so the job can
       # access it
       - name: Checkout main repo
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Restore oasis_msgs
         id: restore-oasis-msgs
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ros-ws/oasis-${{ matrix.ros2_distro }}/install
           key: oasis-msgs-${{ runner.os }}-${{ matrix.ros2_distro }}-${{ hashFiles('oasis_msgs/msg/**', 'oasis_msgs/srv/**', 'oasis_msgs/CMakeLists.txt', 'oasis_msgs/package.xml') }}
 
       - name: Restore tox environment
         id: restore-tox
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             .tox
           key: tox-env-${{ hashFiles('tox.ini', 'requirements-tox.txt') }}
 
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v6
+      - name: Set up Python 3.15
+        uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
+          python-version: "3.15"
 
       - name: Update pip
         run: python3 -m pip install --upgrade pip
@@ -84,7 +84,8 @@ jobs:
             catkin_pkg \
             empy==3.3.4 \
             lark \
-            numpy
+            numpy \
+            setuptools
 
       - name: Build oasis_msgs
         if: steps.restore-oasis-msgs.outputs.cache-hit != 'true'
