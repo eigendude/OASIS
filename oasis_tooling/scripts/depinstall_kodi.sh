@@ -39,6 +39,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     automake
     autopoint
     autotools-dev
+    bison
     ccache
     cmake
     curl
