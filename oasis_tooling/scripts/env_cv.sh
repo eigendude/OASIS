@@ -19,7 +19,7 @@ set -o nounset
 #
 
 # Version
-OPENCV_VERSION="4.13.0"
+OPENCV_VERSION="4.14.0"
 
 # Extract major version (everything before the first '.')
 OPENCV_MAJOR_VERSION="${OPENCV_VERSION%%.*}"
