@@ -28,6 +28,10 @@ source "${SCRIPT_DIR}/env_cv.sh"
 source "${SCRIPT_DIR}/env_mediapipe.sh"
 
 # Use the workspace Bazelisk for both the native build and Python packaging
+if [[ ! -x "${MEDIAPIPE_BIN_DIR}/bazelisk" || ! -x "${MEDIAPIPE_BIN_DIR}/bazel" ]]; then
+  echo "Run depinstall_mediapipe.sh to install the workspace Bazelisk" >&2
+  exit 1
+fi
 export PATH="${MEDIAPIPE_BIN_DIR}:${PATH}"
 
 MEDIAPIPE_VERBOSE="${MEDIAPIPE_VERBOSE:-0}"
@@ -39,6 +43,14 @@ MEDIAPIPE_ENABLE_GPU="${MEDIAPIPE_ENABLE_GPU:-1}"
 MEDIAPIPE_BAZEL_DISK_CACHE="${MEDIAPIPE_BAZEL_DISK_CACHE-${XDG_CACHE_HOME:-${HOME}/.cache}/oasis/mediapipe}"
 if [[ -n "${MEDIAPIPE_BAZEL_DISK_CACHE}" && "${MEDIAPIPE_BAZEL_DISK_CACHE}" != /* ]]; then
   MEDIAPIPE_BAZEL_DISK_CACHE="${PWD}/${MEDIAPIPE_BAZEL_DISK_CACHE}"
+fi
+MEDIAPIPE_LIBRARY_SUFFIX=so
+if [[ "${OSTYPE}" == "darwin"* ]]; then
+  MEDIAPIPE_LIBRARY_SUFFIX=dylib
+  # The installed SDK can target a newer OS than the running host
+  export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-$(
+    sw_vers -productVersion | cut -d. -f1,2
+  )}"
 fi
 
 #
@@ -81,14 +93,51 @@ patch \
   < "${CONFIG_DIRECTORY}/mediapipe/0003-Fix-zlib-download.patch"
 
 # Configure MediaPipe to use the custom OpenCV build
-OPENCV_BUILD_FILE="${MEDIAPIPE_SOURCE_DIR}/third_party/opencv_linux.BUILD"
-OPENCV_WORKSPACE_FILE="${MEDIAPIPE_SOURCE_DIR}/WORKSPACE"
+if [[ "${OSTYPE}" == "darwin"* ]]; then
+  for patch_name in \
+    0004-Keep-Apple-toolchain-UUIDs.patch \
+    0005-Fix-zlib-Darwin-detection.patch; do
+    patch \
+      -p1 \
+      --reject-file="/dev/null" \
+      --no-backup-if-mismatch \
+      --directory="${MEDIAPIPE_SOURCE_DIR}" \
+      < "${CONFIG_DIRECTORY}/mediapipe/${patch_name}"
+  done
 
-export MEDIAPIPE_OPENCV_BUILD_FILE="${OPENCV_BUILD_FILE}"
-export MEDIAPIPE_OPENCV_WORKSPACE_FILE="${OPENCV_WORKSPACE_FILE}"
-export MEDIAPIPE_OPENCV_INSTALL_DIR="${OPENCV_INSTALL_DIR}"
+  cp "${CONFIG_DIRECTORY}/mediapipe/opencv_macos.BUILD" \
+    "${MEDIAPIPE_SOURCE_DIR}/third_party/opencv_macos.BUILD"
+  sed -i.bak \
+    '/name = "macos_opencv"/,/^)/s|path = .*|path = "'"${OPENCV_INSTALL_DIR}"'",|' \
+    "${MEDIAPIPE_SOURCE_DIR}/WORKSPACE"
+  rm "${MEDIAPIPE_SOURCE_DIR}/WORKSPACE.bak"
 
-python3 <<'PY'
+  # Desktop demo entry points are not part of the reusable library API
+  # The GPU demo is Linux-only; graph calculators support native macOS GPUs
+  sed -i.bak '/"\/\/mediapipe\/examples\/desktop:demo_run_graph_main/d' \
+    "${MEDIAPIPE_SOURCE_DIR}/mediapipe/framework/BUILD"
+  rm "${MEDIAPIPE_SOURCE_DIR}/mediapipe/framework/BUILD.bak"
+
+  # The ctypes loader expects the native macOS library name in the wheel
+  sed -i.bak \
+    's|//mediapipe/tasks/c:libmediapipe.so|//mediapipe/tasks/c:libmediapipe.dylib|' \
+    "${MEDIAPIPE_SOURCE_DIR}/setup.py"
+  rm "${MEDIAPIPE_SOURCE_DIR}/setup.py.bak"
+
+  # OASIS supplies the cv2 module from its own source build
+  # Keep wheel metadata consistent so subsequent pip checks can succeed
+  sed -i.bak '/^opencv-contrib-python$/d' \
+    "${MEDIAPIPE_SOURCE_DIR}/requirements.txt"
+  rm "${MEDIAPIPE_SOURCE_DIR}/requirements.txt.bak"
+else
+  OPENCV_BUILD_FILE="${MEDIAPIPE_SOURCE_DIR}/third_party/opencv_linux.BUILD"
+  OPENCV_WORKSPACE_FILE="${MEDIAPIPE_SOURCE_DIR}/WORKSPACE"
+
+  export MEDIAPIPE_OPENCV_BUILD_FILE="${OPENCV_BUILD_FILE}"
+  export MEDIAPIPE_OPENCV_WORKSPACE_FILE="${OPENCV_WORKSPACE_FILE}"
+  export MEDIAPIPE_OPENCV_INSTALL_DIR="${OPENCV_INSTALL_DIR}"
+
+  python3 <<'PY'
 import os
 from pathlib import Path
 
@@ -131,6 +180,7 @@ for index, line in enumerate(workspace_lines):
 
 workspace_file.write_text("\n".join(workspace_lines) + "\n")
 PY
+fi
 
 #
 # Build with Bazel
@@ -154,7 +204,7 @@ fi
 # wheel setup.py build is patched below to use the same analysis-relevant
 # options so packaging should mostly copy already-built outputs.
 MEDIAPIPE_BAZEL_FLAGS=(
-  "${BAZEL_CLANG_FLAGS[@]}"
+  ${BAZEL_CLANG_FLAGS[@]+"${BAZEL_CLANG_FLAGS[@]}"}
   --compilation_mode=opt
   --action_env=PYTHON_BIN_PATH="${MEDIAPIPE_PYTHON_BIN}"
   --copt=-DNDEBUG
@@ -167,6 +217,20 @@ if [[ -n "${MEDIAPIPE_BAZEL_DISK_CACHE}" ]]; then
     --disk_cache="${MEDIAPIPE_BAZEL_DISK_CACHE}"
     --remote_download_outputs=all
     --experimental_disk_cache_gc_max_size=8G
+  )
+fi
+
+if [[ "${OSTYPE}" == "darwin"* ]]; then
+  # Upstream disables toolchain resolution, so select Objective-C support
+  MEDIAPIPE_BAZEL_FLAGS+=(
+    --apple_crosstool_top=@local_config_apple_cc//:toolchain
+    --crosstool_top=@local_config_apple_cc//:toolchain
+    --host_crosstool_top=@local_config_apple_cc//:toolchain
+    --cpu="darwin_$(uname -m)"
+    --macos_minimum_os="${MACOSX_DEPLOYMENT_TARGET}"
+    --jobs="${MEDIAPIPE_BUILD_JOBS:-$(getconf _NPROCESSORS_ONLN)}"
+    --copt=-DMEDIAPIPE_GPU_BUFFER_USE_CV_PIXEL_BUFFER
+    "--linkopt=-Wl,-rpath,${OPENCV_INSTALL_DIR}/lib"
   )
 fi
 
@@ -190,7 +254,7 @@ MEDIAPIPE_PREBUILD_TARGETS=(
   //mediapipe/tasks/metadata:metadata_schema_py
   //mediapipe/tasks/metadata:object_detector_metadata_schema_py
   //mediapipe/tasks/metadata:schema_py
-  //mediapipe/tasks/c:libmediapipe.so
+  "//mediapipe/tasks/c:libmediapipe.${MEDIAPIPE_LIBRARY_SUFFIX}"
 )
 
 echo "MEDIAPIPE_ENABLE_GPU=${MEDIAPIPE_ENABLE_GPU}"
@@ -223,16 +287,18 @@ mkdir -p "${MEDIAPIPE_INSTALL_DIR}/lib"
 # Copy headers from sources into the install include tree
 (
   cd "${MEDIAPIPE_SOURCE_DIR}"
-  find mediapipe -name '*.h' \
-    -exec cp --parents '{}' "${MEDIAPIPE_INSTALL_DIR}/include/" \;
+  find mediapipe -name '*.h' -print0 |
+    tar --null -T - -cf - |
+    tar -xf - -C "${MEDIAPIPE_INSTALL_DIR}/include"
 )
 
 # Copy all generated .pb.h headers from the build directory into the install
 # include tree
 (
   cd "${MEDIAPIPE_BUILD_DIR}"
-  find mediapipe -name '*.pb.h' \
-    -exec cp --parents '{}' "${MEDIAPIPE_INSTALL_DIR}/include/" \;
+  find mediapipe -name '*.pb.h' -print0 |
+    tar --null -T - -cf - |
+    tar -xf - -C "${MEDIAPIPE_INSTALL_DIR}/include"
 )
 
 BAZEL_OUT_BASE=$(bazelisk info output_base)
@@ -253,27 +319,48 @@ fi
 PROTOBUF_INCLUDE_ROOT="${PROTOBUF_RUNTIME_HEADER%/google/protobuf/runtime_version.h}"
 (
   cd "${PROTOBUF_INCLUDE_ROOT}"
-  find google/protobuf \( -name '*.h' -o -name '*.inc' \) \
-    -exec cp --parents '{}' "${MEDIAPIPE_INSTALL_DIR}/include/mediapipe_protobuf5/" \;
+  find google/protobuf \( -name '*.h' -o -name '*.inc' \) -print0 |
+    tar --null -T - -cf - |
+    tar -xf - -C "${MEDIAPIPE_INSTALL_DIR}/include/mediapipe_protobuf5"
 )
 
 # Copy Abseil headers into the install include tree
 ABSL_SOURCE_DIR="${BAZEL_OUT_BASE}/external/com_google_absl"
 (
   cd "${ABSL_SOURCE_DIR}"
-  find absl \( -name '*.h' -o -name '*.inc' \) \
-    -exec cp --parents '{}' "${MEDIAPIPE_INSTALL_DIR}/include/" \;
+  find absl \( -name '*.h' -o -name '*.inc' \) -print0 |
+    tar --null -T - -cf - |
+    tar -xf - -C "${MEDIAPIPE_INSTALL_DIR}/include"
 )
 
 # Install the monolithic libraries
-echo "Installing libmediapipe_monolithic.so"
+echo "Installing libmediapipe_monolithic.${MEDIAPIPE_LIBRARY_SUFFIX}"
 cp -f \
-  "${MEDIAPIPE_BUILD_DIR}/mediapipe/framework/libmediapipe_monolithic.so" \
+  "${MEDIAPIPE_BUILD_DIR}/mediapipe/framework/libmediapipe_monolithic.${MEDIAPIPE_LIBRARY_SUFFIX}" \
   "${MEDIAPIPE_INSTALL_DIR}/lib/"
-echo "Installing libabsl_monolithic.so"
+echo "Installing libabsl_monolithic.${MEDIAPIPE_LIBRARY_SUFFIX}"
 cp -f \
-  "${MEDIAPIPE_BUILD_DIR}/mediapipe/framework/libabsl_monolithic.so" \
+  "${MEDIAPIPE_BUILD_DIR}/mediapipe/framework/libabsl_monolithic.${MEDIAPIPE_LIBRARY_SUFFIX}" \
   "${MEDIAPIPE_INSTALL_DIR}/lib/"
+
+if [[ "${OSTYPE}" == "darwin"* ]]; then
+  # Installed consumers resolve libraries through their own runtime search path
+  for library in mediapipe absl; do
+    install_name_tool -id "@rpath/lib${library}_monolithic.dylib" \
+      "${MEDIAPIPE_INSTALL_DIR}/lib/lib${library}_monolithic.dylib"
+  done
+  while IFS= read -r dependency; do
+    install_name_tool -change "${dependency}" \
+      "@rpath/libabsl_monolithic.dylib" \
+      "${MEDIAPIPE_INSTALL_DIR}/lib/libmediapipe_monolithic.dylib"
+  done < <(otool -L \
+    "${MEDIAPIPE_INSTALL_DIR}/lib/libmediapipe_monolithic.dylib" |
+    awk '/libabsl_monolithic/ {print $1}')
+  # Updating load commands invalidates the linker-created ad hoc signatures
+  codesign --force --sign - \
+    "${MEDIAPIPE_INSTALL_DIR}/lib/libmediapipe_monolithic.dylib" \
+    "${MEDIAPIPE_INSTALL_DIR}/lib/libabsl_monolithic.dylib"
+fi
 
 #
 # Verify installed MediaPipe C++ proto linkage
@@ -282,24 +369,38 @@ cp -f \
 SMOKE_TEST_DIR="/tmp/mediapipe_smoke_tests"
 mkdir -p "${SMOKE_TEST_DIR}"
 
-MULTIARCH="$(${CXX:-c++} -print-multiarch 2>/dev/null || true)"
-SYSTEM_LIBRARY_DIRS=(
-  "/lib/${MULTIARCH}"
-  "/usr/lib/${MULTIARCH}"
-  "/lib"
-  "/usr/lib"
-)
-
 RPATH_LINK_FLAGS=(
-  "-Wl,-rpath-link,${MEDIAPIPE_INSTALL_DIR}/lib"
-  "-Wl,-rpath-link,${OPENCV_INSTALL_DIR}/lib"
+  "-Wl,-rpath,${MEDIAPIPE_INSTALL_DIR}/lib"
+  "-Wl,-rpath,${OPENCV_INSTALL_DIR}/lib"
 )
 
-for library_dir in "${SYSTEM_LIBRARY_DIRS[@]}"; do
-  if [ -d "${library_dir}" ]; then
-    RPATH_LINK_FLAGS+=("-Wl,-rpath-link,${library_dir}")
+if [[ "${OSTYPE}" != "darwin"* ]]; then
+  MULTIARCH="$(${CXX:-c++} -print-multiarch 2>/dev/null || true)"
+  SYSTEM_LIBRARY_DIRS=(
+    "/lib/${MULTIARCH}"
+    "/usr/lib/${MULTIARCH}"
+    "/lib"
+    "/usr/lib"
+  )
+  RPATH_LINK_FLAGS+=(
+    "-Wl,-rpath-link,${MEDIAPIPE_INSTALL_DIR}/lib"
+    "-Wl,-rpath-link,${OPENCV_INSTALL_DIR}/lib"
+    -Wl,--allow-shlib-undefined
+  )
+  for library_dir in "${SYSTEM_LIBRARY_DIRS[@]}"; do
+    if [ -d "${library_dir}" ]; then
+      RPATH_LINK_FLAGS+=("-Wl,-rpath-link,${library_dir}")
+    fi
+  done
+fi
+
+library_dependencies() {
+  if [[ "${OSTYPE}" == "darwin"* ]]; then
+    otool -L "$@"
+  else
+    ldd "$@"
   fi
-done
+}
 
 show_ldd() {
   local label="$1"
@@ -307,7 +408,7 @@ show_ldd() {
   local ldd_output
 
   echo "${label}:"
-  ldd_output="$(ldd "$@" || true)"
+  ldd_output="$(library_dependencies "$@" || true)"
 
   if [ "${MEDIAPIPE_VERBOSE}" = "1" ]; then
     echo "${ldd_output}"
@@ -321,15 +422,12 @@ compile_smoke_test() {
   local smoke_source="$2"
   local smoke_binary="${SMOKE_TEST_DIR}/${smoke_name}"
 
-  "${CXX:-c++}" "${smoke_source}" \
+  "${CXX:-c++}" -std=c++20 "${smoke_source}" \
     -I"${MEDIAPIPE_INSTALL_DIR}/include" \
     -I"${MEDIAPIPE_INSTALL_DIR}/include/mediapipe_protobuf5" \
     -L"${MEDIAPIPE_INSTALL_DIR}/lib" \
     -L"${OPENCV_INSTALL_DIR}/lib" \
-    -Wl,-rpath,"${MEDIAPIPE_INSTALL_DIR}/lib" \
-    -Wl,-rpath,"${OPENCV_INSTALL_DIR}/lib" \
     "${RPATH_LINK_FLAGS[@]}" \
-    -Wl,--allow-shlib-undefined \
     -lmediapipe_monolithic \
     -labsl_monolithic \
     -lpthread \
@@ -343,7 +441,7 @@ run_smoke_test() {
   local smoke_binary="${SMOKE_TEST_DIR}/${smoke_name}"
   local smoke_ldd_output
 
-  smoke_ldd_output="$(ldd "${smoke_binary}" || true)"
+  smoke_ldd_output="$(library_dependencies "${smoke_binary}" || true)"
 
   echo "Smoke test '${smoke_name}' protobuf/absl deps:"
   echo "${smoke_ldd_output}" | grep -E "protobuf|absl|opencv|mediapipe|not found" || true
@@ -405,11 +503,13 @@ compile_smoke_test "heap_leak" "${SMOKE_HEAP_LEAK_SOURCE}"
 
 show_ldd \
   "MediaPipe monolith deps" \
-  "${MEDIAPIPE_INSTALL_DIR}/lib/libmediapipe_monolithic.so"
+  "${MEDIAPIPE_INSTALL_DIR}/lib/libmediapipe_monolithic.${MEDIAPIPE_LIBRARY_SUFFIX}"
 
-show_ldd "OpenCV core deps" "${OPENCV_INSTALL_DIR}/lib/libopencv_core.so"*
+show_ldd "OpenCV core deps" \
+  "${OPENCV_INSTALL_DIR}/lib/libopencv_core.${MEDIAPIPE_LIBRARY_SUFFIX}"*
 
-show_ldd "OpenCV videoio deps" "${OPENCV_INSTALL_DIR}/lib/libopencv_videoio.so"*
+show_ldd "OpenCV videoio deps" \
+  "${OPENCV_INSTALL_DIR}/lib/libopencv_videoio.${MEDIAPIPE_LIBRARY_SUFFIX}"*
 
 echo "OpenCV pkg-config libs:"
 pkg-config --libs opencv4 || true
@@ -417,15 +517,23 @@ pkg-config --libs opencv4 || true
 echo "OpenCV pkg-config static libs:"
 pkg-config --libs --static opencv4 || true
 
-echo "OpenCV transitive dependency lookup:"
-ldconfig -p \
-  | grep -E "openblas|avif|OpenEXR|gstapp|gstriff|gstpbutils|gstvideo|gstaudio|avcodec|avformat|avutil|swscale" \
-  || true
+if [[ "${OSTYPE}" != "darwin"* ]]; then
+  echo "OpenCV transitive dependency lookup:"
+  ldconfig -p \
+    | grep -E "openblas|avif|OpenEXR|gstapp|gstriff|gstpbutils|gstvideo|gstaudio|avcodec|avformat|avutil|swscale" \
+    || true
+fi
 
-show_ldd "Abseil monolith deps" "${MEDIAPIPE_INSTALL_DIR}/lib/libabsl_monolithic.so"
+show_ldd "Abseil monolith deps" \
+  "${MEDIAPIPE_INSTALL_DIR}/lib/libabsl_monolithic.${MEDIAPIPE_LIBRARY_SUFFIX}"
 
 echo "MediaPipe monolith CalculatorGraphConfig/protobuf symbols:"
-nm -CD "${MEDIAPIPE_INSTALL_DIR}/lib/libmediapipe_monolithic.so" \
+NM_FLAGS=(-CD)
+if [[ "${OSTYPE}" == "darwin"* ]]; then
+  NM_FLAGS=(-gU -C)
+fi
+nm "${NM_FLAGS[@]}" \
+  "${MEDIAPIPE_INSTALL_DIR}/lib/libmediapipe_monolithic.${MEDIAPIPE_LIBRARY_SUFFIX}" \
   | grep -E "CalculatorGraphConfig::CalculatorGraphConfig|TextFormat::ParseFromString|ShutdownProtobufLibrary" \
   || true
 
@@ -541,19 +649,6 @@ text = text.replace(
 )
 setup_py.write_text(text)
 PY
-
-BAZEL_WRAPPER_DIR=""
-if ! command -v bazel >/dev/null 2>&1; then
-  BAZELISK_BIN="$(command -v bazelisk || true)"
-  if [ -z "${BAZELISK_BIN}" ]; then
-    echo "ERROR: bazel is missing and bazelisk is unavailable" >&2
-    exit 1
-  fi
-
-  BAZEL_WRAPPER_DIR="$(mktemp -d)"
-  ln -s "${BAZELISK_BIN}" "${BAZEL_WRAPPER_DIR}/bazel"
-  export PATH="${BAZEL_WRAPPER_DIR}:${PATH}"
-fi
 
 echo "setup.py Bazel build steps will be skipped; using prebuilt outputs"
 echo "CI cache check: no Bazel option churn is expected after prebuild"
@@ -702,7 +797,17 @@ echo "Installing MediaPipe Python wheel ${MEDIAPIPE_WHEEL}"
   --no-deps \
   "${MEDIAPIPE_WHEEL}"
 
+if [[ "${OSTYPE}" == "darwin"* ]]; then
+  "${MEDIAPIPE_PYTHON_BIN}" -m pip check
+fi
+
 cd "${SCRIPT_DIR}"
+
+if [[ "${OSTYPE}" == "darwin"* ]]; then
+  # Importing the Python facade alone does not load its native task library
+  "${MEDIAPIPE_PYTHON_BIN}" -c \
+    'from mediapipe.tasks.python.core.mediapipe_c_bindings import load_raw_library; load_raw_library()'
+fi
 
 "${MEDIAPIPE_PYTHON_BIN}" - <<'PY'
 import mediapipe as mp
@@ -743,9 +848,5 @@ try:
 except Exception as e:
     print("PoseLandmarksConnections import failed:", repr(e))
 PY
-
-if [ -n "${BAZEL_WRAPPER_DIR}" ]; then
-  rm -rf "${BAZEL_WRAPPER_DIR}"
-fi
 
 echo "MediaPipe installed into ${MEDIAPIPE_INSTALL_DIR}"

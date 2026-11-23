@@ -1,0 +1,26 @@
+From: Garrett Brown <eigendebugger@gmail.com>
+Subject: [PATCH] Keep Darwin out of zlib's classic Mac compatibility path
+
+Current Apple SDK headers expose TARGET_OS_MAC while zlib is being included.
+That selects the classic Mac branch, which replaces fdopen with NULL before
+stdio.h declares it. Darwin already has its own POSIX-compatible branch.
+
+diff --git a/third_party/zlib.diff b/third_party/zlib.diff
+--- a/third_party/zlib.diff
++++ b/third_party/zlib.diff
+@@ -60,3 +60,15 @@
+  // In darwin and perhaps other BSD variants off_t is a 64 bit value, hence no need for specific 64 bit functions
+  #define FOPEN_FUNC(filename, mode) fopen(filename, mode)
+  #define FTELLO_FUNC(stream) ftello(stream)
++diff --git a/zutil.h b/zutil.h
++--- a/zutil.h
+++++ b/zutil.h
++@@ -137,7 +137,7 @@
++ #  endif
++ #endif
++ 
++-#if defined(MACOS) || defined(TARGET_OS_MAC)
+++#if (defined(MACOS) || defined(TARGET_OS_MAC)) && !defined(__APPLE__)
++ #  define OS_CODE  7
++ #  ifndef Z_SOLO
++ #    if defined(__MWERKS__) && __dest_os != __be_os && __dest_os != __win32_os

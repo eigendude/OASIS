@@ -1,0 +1,45 @@
+From: Garrett Brown <eigendebugger@gmail.com>
+Subject: [PATCH] Keep Apple toolchain UUIDs for current macOS loaders
+
+Recent dyld refuses to launch compiler helpers without an LC_UUID command.
+Keep TensorFlow's pinned apple_support version and let the linker generate
+UUIDs for its universal helper executables.
+
+diff --git a/WORKSPACE b/WORKSPACE
+--- a/WORKSPACE
++++ b/WORKSPACE
+@@ -2,6 +2,18 @@
+ 
+ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+ 
++# Override TensorFlow's archive so its host tools work with current dyld
++http_archive(
++    name = "build_bazel_apple_support",
++    sha256 = "d71b02d6df0500f43279e22400db6680024c1c439115c57a9a82e9effe199d7b",
++    urls = [
++        "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/apple_support/releases/download/1.18.1/apple_support.1.18.1.tar.gz",
++        "https://github.com/bazelbuild/apple_support/releases/download/1.18.1/apple_support.1.18.1.tar.gz",
++    ],
++    patch_args = ["-p1"],
++    patches = ["@//third_party:apple_support_uuid.patch"],
++)
++
+ # Protobuf expects an //external:python_headers target
+ bind(
+     name = "python_headers",
+diff --git a/third_party/apple_support_uuid.patch b/third_party/apple_support_uuid.patch
+new file mode 100644
+--- /dev/null
++++ b/third_party/apple_support_uuid.patch
+@@ -0,0 +1,11 @@
++diff --git a/crosstool/universal_exec_tool.bzl b/crosstool/universal_exec_tool.bzl
++--- a/crosstool/universal_exec_tool.bzl
+++++ b/crosstool/universal_exec_tool.bzl
++@@ -39,7 +39,6 @@
++     -arch arm64 \
++     -arch x86_64 \
++     -Wl,-no_adhoc_codesign \
++-    -Wl,-no_uuid \
++     -O3 \
++     -o $@ \
++     $(SRCS)
