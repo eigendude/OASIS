@@ -33,8 +33,8 @@ ROS_APT_SOURCE_FALLBACK_CODENAME=noble
 # Get the absolute path to this script
 SCRIPT_DIR="$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd -P)"
 
-# Import common paths and config
-source "${SCRIPT_DIR}/env_common.sh"
+# Import the shared Python environment
+source "${SCRIPT_DIR}/env_python.sh"
 
 #
 # Directory definitions
@@ -79,6 +79,11 @@ done
 export ROS_DISTRO="${ROS2_DISTRO}"
 export ROS_VERSION=2
 
+if [[ "${OSTYPE}" == "darwin"* ]]; then
+  # Use Cyclone DDS for the native macOS build and runtime environment
+  export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}"
+fi
+
 # Ensure runtime-built tools can find freshly-built shared libs during colcon
 # builds (e.g. cyclonedds runs idlc which links against libiceoryx_posh.so).
 ROS_LIBDIR="${ROS2_INSTALL_DIRECTORY}/lib"
@@ -93,8 +98,6 @@ export LD_LIBRARY_PATH="${AMENT_LIBDIR}:${ROS_LIBDIR}${LD_LIBRARY_PATH:+:${LD_LI
 # Ensure ROS Python packages are importable in all CI environments. Some runners
 # end up with PYTHONPATH missing the ROS install site-packages when CMake runs
 # execute_process() during colcon builds.
-PYTHON_VERSION="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
-
 ROS_SITE_PACKAGES="${ROS2_INSTALL_DIRECTORY}/lib/python${PYTHON_VERSION}/site-packages"
 AMENT_SITE_PACKAGES="${AMENT_INSTALL_DIRECTORY}/lib/python${PYTHON_VERSION}/site-packages"
 

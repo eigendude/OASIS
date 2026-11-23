@@ -1,0 +1,41 @@
+# Copyright (C) 2026 Garrett Brown
+# This file is part of OASIS - https://github.com/eigendude/OASIS
+# SPDX-License-Identifier: Apache-2.0
+# See the file LICENSE.txt for more information.
+
+# colcon and ROS still use the setuptools pkg_resources compatibility API
+setuptools<81
+wheel
+argcomplete
+catkin_pkg
+colcon-common-extensions
+coverage
+cryptography
+empy
+flake8
+flake8-blind-except==0.1.1
+flake8-builtins
+flake8-class-newline
+flake8-comprehensions
+flake8-deprecated
+flake8-import-order
+flake8-quotes
+importlib-metadata
+jsonschema
+lark
+lxml
+matplotlib
+mock
+mypy
+netifaces
+numpy
+osrf-pycommon
+psutil
+pybind11>=3
+pydot
+pygraphviz
+pyparsing
+pytest-mock
+rosdep
+rosdistro
+vcstool

@@ -21,6 +21,11 @@ set -o nounset
 # Get the absolute path to this script
 SCRIPT_DIR="$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd -P)"
 
+if [[ "${OSTYPE}" == "darwin"* ]]; then
+  brew update
+  "${SCRIPT_DIR}/install_python.sh"
+fi
+
 # Import ROS 2 paths and config
 source "${SCRIPT_DIR}/env_ros2_desktop.sh"
 
@@ -128,8 +133,6 @@ fi
 #
 
 if [[ "${OSTYPE}" == "darwin"* ]]; then
-  brew update
-
   # Install build utilities
   brew install \
     ccache \
@@ -149,57 +152,25 @@ if [[ "${OSTYPE}" == "darwin"* ]]; then
     eigen \
     freetype \
     graphviz \
+    libyaml \
     openssl \
     orocos-kdl \
     pcre \
     poco \
     pyqt@5 \
-    python \
     qt@5 \
     sip \
     spdlog \
     tinyxml2 \
 
-  # Update Python utilities
-  python3 -m pip install --upgrade \
-    pip \
-    setuptools \
+  # Graphviz headers and libraries are needed when pygraphviz builds from source
+  CFLAGS="-I$(brew --prefix graphviz)/include ${CFLAGS:-}" \
+    LDFLAGS="-L$(brew --prefix graphviz)/lib ${LDFLAGS:-}" \
+    python3 -m pip install --upgrade \
+      --requirement "${CONFIG_DIRECTORY}/ros2/requirements-macos.txt"
 
-  # Install ROS Python dependencies
-  python3 -m pip install --upgrade \
-    --config-settings="--global-option=build_ext" \
-    --config-settings="--global-option=-I$(brew --prefix graphviz)/include/" \
-    --config-settings="--global-option=-L$(brew --prefix graphviz)/lib/" \
-    argcomplete \
-    catkin_pkg \
-    colcon-common-extensions \
-    coverage \
-    cryptography \
-    empy \
-    flake8 \
-    flake8-blind-except==0.1.1 \
-    flake8-builtins \
-    flake8-class-newline \
-    flake8-comprehensions \
-    flake8-deprecated \
-    flake8-import-order \
-    flake8-quotes \
-    importlib-metadata \
-    jsonschema \
-    lark==1.1.1 \
-    lxml \
-    matplotlib \
-    mock \
-    mypy==0.931 \
-    netifaces \
-    psutil \
-    pydot \
-    pygraphviz \
-    pyparsing==2.4.7 \
-    pytest-mock \
-    rosdep \
-    rosdistro \
-    vcstool
+  # Verify that installed Python packages have compatible dependencies
+  python3 -m pip check
 fi
 
 #
@@ -240,6 +211,28 @@ echo "Downloading ROS 2 source code..."
   # Import ROS 2 sources
   vcs import --force "${ROS2_SOURCE_DIRECTORY}" < ros2.repos
 )
+
+# Apply compiler and SDK fixes needed by ROS on macOS
+if [[ "${OSTYPE}" == "darwin"* ]]; then
+  patch \
+    -p1 \
+    --reject-file="/dev/null" \
+    --no-backup-if-mismatch \
+    --directory="${ROS2_SOURCE_DIRECTORY}/ros2/rcl" \
+    < "${CONFIG_DIRECTORY}/rcl/0001-Use-POSIX-locale-initialization-on-macOS.patch"
+  patch \
+    -p1 \
+    --reject-file="/dev/null" \
+    --no-backup-if-mismatch \
+    --directory="${ROS2_SOURCE_DIRECTORY}/ros2/rcutils" \
+    < "${CONFIG_DIRECTORY}/rcutils/0001-Fix-atomic-initializer-with-Clang.patch"
+  patch \
+    -p1 \
+    --reject-file="/dev/null" \
+    --no-backup-if-mismatch \
+    --directory="${ROS2_SOURCE_DIRECTORY}/ros2/rviz" \
+    < "${CONFIG_DIRECTORY}/rviz/0001-Fix-Ogre-SDK-and-architecture-on-macOS.patch"
+fi
 
 #
 # Disable examples, demos, tutorials, benchmarks and tests

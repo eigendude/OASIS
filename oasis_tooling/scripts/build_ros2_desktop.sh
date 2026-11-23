@@ -35,21 +35,35 @@ source "${SCRIPT_DIR}/env_ros2_desktop.sh"
 #
 
 # Default values
-MAKE_FLAGS=
+MAKE_FLAGS="${MAKEFLAGS:-}"
 COLCON_FLAGS="--merge-install"
+
+if [[ -n "${CMAKE_BUILD_PARALLEL_LEVEL:-}" ]]; then
+  MAKE_FLAGS+=" -j${CMAKE_BUILD_PARALLEL_LEVEL}"
+fi
 
 # macOS flags
 if [[ "${OSTYPE}" == "darwin"* ]]; then
+  if [[ ! -x "${PYTHON_VENV_DIRECTORY}/bin/colcon" ]]; then
+    echo "Run depinstall_ros2_desktop.sh to install the macOS build tools" >&2
+    exit 1
+  fi
+
   COLCON_FLAGS+=" \
     --packages-skip-by-dep python_qt_binding \
     --cmake-args \
       -DBUILD_TESTING=OFF \
       -DCMAKE_C_COMPILER_LAUNCHER=ccache \
       -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+      -DCMAKE_INSTALL_RPATH=${ROS2_INSTALL_DIRECTORY}/lib \
+      -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=ON \
+      -DPython3_EXECUTABLE=$(command -v python3) \
+      -DPython_EXECUTABLE=$(command -v python3) \
+      -Dpybind11_DIR=$(python3 -m pybind11 --cmakedir) \
       -DCMAKE_PREFIX_PATH=${ROS2_CMAKE_PREFIX_PATH};$(brew --prefix qt@5)/lib/cmake/Qt5${CMAKE_PREFIX_PATH:+;${CMAKE_PREFIX_PATH}} \
   "
 
-  # macOS packges don't all build, so do a best effort to build as much as
+  # macOS packages don't all build, so do a best effort to build as much as
   # possible
   COLCON_FLAGS+=" --continue-on-error"
 else
@@ -83,7 +97,7 @@ echo "Building ROS 2..."
 (
   cd "${ROS2_DESKTOP_DIRECTORY}"
 
-  MAKE_FLAGS="${MAKE_FLAGS}" \
+  MAKEFLAGS="${MAKE_FLAGS}" \
     colcon build \
       ${COLCON_FLAGS}
 )
