@@ -95,6 +95,13 @@ export LD_LIBRARY_PATH="${AMENT_LIBDIR}:${ROS_LIBDIR}${LD_LIBRARY_PATH:+:${LD_LI
 # Python environment
 #
 
+if [[ "${OSTYPE}" == "darwin"* ]]; then
+  # Refresh CMake's Python discovery and ament's site-packages path on configure
+  ROS2_PYTHON_CMAKE_ARGS="-U_Python* -UPYTHON_INSTALL_DIR \
+    -DPython_EXECUTABLE=${PYTHON_VENV_DIRECTORY}/bin/python3 \
+    -DPython3_EXECUTABLE=${PYTHON_VENV_DIRECTORY}/bin/python3"
+fi
+
 # Ensure ROS Python packages are importable in all CI environments. Some runners
 # end up with PYTHONPATH missing the ROS install site-packages when CMake runs
 # execute_process() during colcon builds.

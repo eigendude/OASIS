@@ -44,12 +44,11 @@ set -o nounset
 #
 
 # Default values
-MAKE_FLAGS=
+MAKE_FLAGS="${MAKEFLAGS:-}"
 COLCON_FLAGS="--merge-install"
 
-# macOS flags
-if [[ "${OSTYPE}" == "darwin"* ]]; then
-  COLCON_FLAGS+=" --packages-skip-by-dep v4l2_camera"
+if [[ -n "${CMAKE_BUILD_PARALLEL_LEVEL:-}" ]]; then
+  MAKE_FLAGS+=" -j${CMAKE_BUILD_PARALLEL_LEVEL}"
 fi
 
 # Convert the POSIX-style colon delimited prefix path that we maintain in the
@@ -77,8 +76,15 @@ COLCON_FLAGS+=" \
 
 # macOS flags
 if [[ "${OSTYPE}" == "darwin"* ]]; then
-  # macOS packges don't all build, so do a best effort to build as much as
-  # possible
+  COLCON_FLAGS+=" \
+    -DCMAKE_INSTALL_RPATH=${OASIS_DEPENDS_INSTALL_DIRECTORY}/lib;${ROS2_INSTALL_DIRECTORY}/lib;${OPENCV_INSTALL_DIR}/lib \
+    -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=ON \
+    -UBoost_DIR -Uboost_*_DIR \
+    ${ROS2_PYTHON_CMAKE_ARGS} \
+    -Dpybind11_DIR=$(python3 -m pybind11 --cmakedir) \
+  "
+
+  # Report independent package failures in the same build pass
   COLCON_FLAGS+=" --continue-on-error"
 fi
 
@@ -93,7 +99,7 @@ fi
 (
   cd "${OASIS_DEPENDS_DIRECTORY}"
 
-  MAKE_FLAGS="${MAKE_FLAGS}" \
+  MAKEFLAGS="${MAKE_FLAGS}" \
     colcon build \
       ${COLCON_FLAGS}
 )

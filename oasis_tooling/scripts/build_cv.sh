@@ -150,6 +150,8 @@ echo "Configuring OpenCV..."
 cmake_args=(
   -S "${OPENCV_SOURCE_DIR}"
   -B "${OPENCV_BUILD_DIR}"
+  # Re-detect the Python ABI when configuring an existing build directory
+  -UPYTHON3INTERP_FOUND
   -DBUILD_DOCS=OFF
   -DBUILD_EXAMPLES=OFF
   -DBUILD_opencv_apps=OFF

@@ -85,18 +85,20 @@ jobs:
             ]);
 
             await setHash('OASIS_DEPENDS_HASH', [
+              'oasis_tooling/config/apriltag_ros/**',
               'oasis_tooling/config/bgslibrary/**',
               'oasis_tooling/config/camera_ros/**',
               'oasis_tooling/config/depends.repos',
+              'oasis_tooling/config/ffmpeg_encoder_decoder/**',
               'oasis_tooling/config/i2cdevlib/**',
-              'oasis_tooling/config/libcamera_cmake/**',
+              'oasis_tooling/config/image_pipeline/**',
+              'oasis_tooling/config/image_transport_plugins/**',
               'oasis_tooling/config/libcec/**',
               'oasis_tooling/config/libfreenect2/**',
-              'oasis_tooling/config/OpenNI/**',
+              'oasis_tooling/config/oasis_kinect2/**',
+              'oasis_tooling/config/OpenNI2/**',
               'oasis_tooling/config/ORB_SLAM_OASIS/**',
-              'oasis_tooling/config/p8-platform/**',
               'oasis_tooling/config/pangolin/**',
-              'oasis_tooling/config/vision_opencv/**',
               'oasis_tooling/scripts/*oasis_deps.sh',
             ]);
 

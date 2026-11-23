@@ -177,9 +177,23 @@ if [[ "${OSTYPE}" == "darwin"* ]]; then
   brew update
 
   brew install \
+    boost \
     boost-python3 \
+    glew \
+    glfw \
+    googletest \
+    jpeg-turbo \
+    libogg \
     libusb \
-    meson
+    meson \
+    opencl-clhpp-headers \
+    openssl@3 \
+    pcl \
+    pkgconf \
+    swig \
+    theora \
+    yaml-cpp \
+    zstd
 fi
 
 #
@@ -229,6 +243,21 @@ patch \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/camera_ros" \
   < "${CONFIG_DIRECTORY}/camera_ros/0001-Handle-array-controls-safely-in-ParameterHandler.patch"
+
+# Portable include paths, codec linkage, and current dependency APIs
+for dependency in \
+  apriltag_ros \
+  ffmpeg_encoder_decoder image_pipeline image_transport_plugins oasis_kinect2
+do
+  for dependency_patch in "${CONFIG_DIRECTORY}/${dependency}"/*.patch; do
+    patch \
+      -p1 \
+      --reject-file="/dev/null" \
+      --no-backup-if-mismatch \
+      --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/${dependency}" \
+      < "${dependency_patch}"
+  done
+done
 
 # Disable image_view on systems with <= 4GiB memory
 if (( $(echo "${PHYSICAL_MEMORY_GB} <= 4" | bc -l) )); then
@@ -286,6 +315,12 @@ patch \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/libfreenect2" \
   < "${CONFIG_DIRECTORY}/libfreenect2/0004-Force-disable-components.patch"
+patch \
+  -p1 \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/libfreenect2" \
+  < "${CONFIG_DIRECTORY}/libfreenect2/0005-Export-static-library-dependencies.patch"
 
 # OpenNI
 echo "Patching OpenNI2..."
@@ -294,14 +329,41 @@ cp -v \
   "${CONFIG_DIRECTORY}/OpenNI2/package.xml" \
   "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/OpenNI2"
 
-# Disable OpenNI on everything but x86_64
-if [[ ${PLATFORM_ARCH} != x86_64 ]]; then
+if [[ "${OSTYPE}" == "darwin"* ]]; then
+  patch \
+    -p1 \
+    --reject-file="/dev/null" \
+    --no-backup-if-mismatch \
+    --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/OpenNI2" \
+    < "${CONFIG_DIRECTORY}/OpenNI2/0001-Build-for-native-macOS-architecture.patch"
+fi
+
+# The existing non-macOS OpenNI configuration targets x86_64
+if [[ "${OSTYPE}" != "darwin"* && ${PLATFORM_ARCH} != x86_64 ]]; then
   echo "Disabling OpenNI on ${PLATFORM_ARCH}"
   touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/OpenNI2/COLCON_IGNORE"
 fi
 
 # ORB_SLAM_OASIS
 echo "Patching ORB_SLAM_OASIS..."
+patch \
+  -p1 \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/ORB_SLAM_OASIS" \
+  < "${CONFIG_DIRECTORY}/ORB_SLAM_OASIS/0001-Use-portable-dependency-targets.patch"
+patch \
+  -p1 \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/ORB_SLAM_OASIS" \
+  < "${CONFIG_DIRECTORY}/ORB_SLAM_OASIS/0002-Use-standard-CXX-containers.patch"
+patch \
+  -p1 \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/ORB_SLAM_OASIS" \
+  < "${CONFIG_DIRECTORY}/ORB_SLAM_OASIS/0003-Use-standard-integer-headers.patch"
 cp -v \
   "${CONFIG_DIRECTORY}/ORB_SLAM_OASIS/package.xml" \
   "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/ORB_SLAM_OASIS"
@@ -311,6 +373,17 @@ if (( $(echo "${PHYSICAL_MEMORY_GB} <= 4" | bc -l) )); then
   echo "Disabling ORB_SLAM_OASIS with ${PHYSICAL_MEMORY_GB} GiB of RAM"
   touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/ORB_SLAM_OASIS/COLCON_IGNORE"
 fi
+
+# Pangolin
+echo "Patching Pangolin..."
+for dependency_patch in "${CONFIG_DIRECTORY}/pangolin"/*.patch; do
+  patch \
+    -p1 \
+    --reject-file="/dev/null" \
+    --no-backup-if-mismatch \
+    --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/pangolin" \
+    < "${dependency_patch}"
+done
 
 # Disable pangolin on systems with <= 4GiB memory
 if (( $(echo "${PHYSICAL_MEMORY_GB} <= 4" | bc -l) )); then
@@ -357,8 +430,14 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     --default-yes \
     --skip-keys="${ROSDEP_IGNORE_KEYS}"
 else
-  echo "Disabling perception dependencies on macOS"
-  touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/OpenNI2/COLCON_IGNORE"
-  touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/oasis_kinect2/COLCON_IGNORE"
-  touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/ros2-v4l2-camera/COLCON_IGNORE"
+  # These backends require Linux I2C, libcamera, or V4L2 kernel interfaces
+  for unsupported_backend in \
+    depends/i2cdevlib \
+    ros-perception/camera_ros \
+    ros-perception/oasis_libcamera_cmake \
+    ros-perception/ros2_v4l2_camera
+  do
+    echo "Disabling ${unsupported_backend} on macOS"
+    touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/${unsupported_backend}/COLCON_IGNORE"
+  done
 fi

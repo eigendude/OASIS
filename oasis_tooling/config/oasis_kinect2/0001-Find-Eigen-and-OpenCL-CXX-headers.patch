@@ -1,0 +1,48 @@
+From: Garrett Brown <eigendebugger@gmail.com>
+Date: Sun, 22 Nov 2026 22:20:00 -0800
+Subject: [PATCH] Find Eigen and OpenCL CXX headers
+
+diff --git a/kinect2_registration/CMakeLists.txt b/kinect2_registration/CMakeLists.txt
+--- a/kinect2_registration/CMakeLists.txt
++++ b/kinect2_registration/CMakeLists.txt
+@@ -25,7 +25,7 @@
+ find_package(ament_cmake REQUIRED)
+ 
+ ## System dependencies are found with CMake's conventions
+-find_package(Eigen3)
++find_package(Eigen3 QUIET NO_MODULE)
+ find_package(OpenCL)
+ find_package(OpenCV REQUIRED)
+ find_package(OpenMP)
+@@ -42,9 +42,8 @@
+ ## Check for modules being build based on found libraries ##
+ ############################################################
+ 
+-if(EIGEN3_FOUND)
++if(TARGET Eigen3::Eigen)
+   message(STATUS "CPU based depth registration enabled")
+-  include_directories(${EIGEN3_INCLUDE_DIR})
+   set(DEPTH_REG_CPU ON)
+   add_definitions(-DDEPTH_REG_CPU)
+ else()
+@@ -63,7 +62,11 @@
+     CL_HPP_ENABLE_PROGRAM_CONSTRUCTION_FROM_ARRAY_COMPATIBILITY
+   )
+ 
+-  include_directories(${OpenCL_INCLUDE_DIRS})
++  find_path(OpenCL_HPP_INCLUDE_DIR CL/opencl.hpp)
++  if(NOT OpenCL_HPP_INCLUDE_DIR)
++    message(FATAL_ERROR "OpenCL C++ headers are required for registration")
++  endif()
++  include_directories(${OpenCL_INCLUDE_DIRS} ${OpenCL_HPP_INCLUDE_DIR})
+ 
+   set(DEPTH_REG_OPENCL ON)
+   add_definitions(-DDEPTH_REG_OPENCL)
+@@ -96,6 +99,7 @@
+ 
+ if(DEPTH_REG_CPU)
+   set(MODULES ${MODULES} src/depth_registration_cpu.cpp)
++  set(MODULE_LIBS ${MODULE_LIBS} Eigen3::Eigen)
+ endif()
+ 
+ if(DEPTH_REG_OPENCL)

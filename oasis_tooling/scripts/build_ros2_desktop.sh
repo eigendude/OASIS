@@ -62,8 +62,7 @@ if [[ "${OSTYPE}" == "darwin"* ]]; then
       -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
       -DCMAKE_INSTALL_RPATH=${ROS2_INSTALL_DIRECTORY}/lib \
       -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=ON \
-      -DPython3_EXECUTABLE=$(command -v python3) \
-      -DPython_EXECUTABLE=$(command -v python3) \
+      ${ROS2_PYTHON_CMAKE_ARGS} \
       -Dpybind11_DIR=$(python3 -m pybind11 --cmakedir) \
       -DCMAKE_PREFIX_PATH=${ROS2_CMAKE_PREFIX_PATH};$(brew --prefix qt@5)/lib/cmake/Qt5${CMAKE_PREFIX_PATH:+;${CMAKE_PREFIX_PATH}} \
   "

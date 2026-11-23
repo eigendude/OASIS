@@ -1,0 +1,13 @@
+diff --git a/freenect2.cmake.in b/freenect2.cmake.in
+index 05df1af..2d6f0c8 100644
+--- a/freenect2.cmake.in
++++ b/freenect2.cmake.in
+@@ -2,7 +2,7 @@ FIND_LIBRARY(freenect2_LIBRARY freenect2
+     PATHS @CMAKE_INSTALL_PREFIX@/lib
+     NO_DEFAULT_PATH
+ )
+-SET(freenect2_LIBRARIES ${freenect2_LIBRARY} @LIBFREENECT2_THREADING_LIBRARIES@)
++SET(freenect2_LIBRARIES ${freenect2_LIBRARY} @LIBRARIES@)
+ FIND_PATH(freenect2_INCLUDE_DIR @PROJECT_NAME@/libfreenect2.hpp
+     PATHS @CMAKE_INSTALL_PREFIX@/include
+     NO_DEFAULT_PATH

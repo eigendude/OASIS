@@ -37,6 +37,11 @@ OASIS_DEPENDS_SOURCE_DIRECTORY="${OASIS_DEPENDS_DIRECTORY}/src"
 # Directory for OASIS dependency installed files
 OASIS_DEPENDS_INSTALL_DIRECTORY="${OASIS_DEPENDS_DIRECTORY}/install"
 
+if [[ "${OSTYPE}" == "darwin"* ]]; then
+  OPENCL_HPP_PREFIX="$(brew --prefix opencl-clhpp-headers)"
+  export CMAKE_PREFIX_PATH="${OPENCL_HPP_PREFIX}${CMAKE_PREFIX_PATH:+:${CMAKE_PREFIX_PATH}}"
+fi
+
 #
 # Package definitions
 #

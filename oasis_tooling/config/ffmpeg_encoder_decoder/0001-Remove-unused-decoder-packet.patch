@@ -1,0 +1,15 @@
+From: Garrett Brown <eigendebugger@gmail.com>
+Date: Sun, 22 Nov 2026 22:20:00 -0800
+Subject: [PATCH] Remove unused decoder packet
+
+diff --git a/include/ffmpeg_encoder_decoder/decoder.hpp b/include/ffmpeg_encoder_decoder/decoder.hpp
+--- a/include/ffmpeg_encoder_decoder/decoder.hpp
++++ b/include/ffmpeg_encoder_decoder/decoder.hpp
+@@ -264,7 +264,6 @@
+   SwsContext * swsContext_{NULL};
+   enum AVPixelFormat hwPixFormat_ { AV_PIX_FMT_NONE };
+   std::string outputMsgEncoding_;
+-  AVPacket packet_;
+   AVBufferRef * hwDeviceContext_{NULL};
+ };
+ }  // namespace ffmpeg_encoder_decoder

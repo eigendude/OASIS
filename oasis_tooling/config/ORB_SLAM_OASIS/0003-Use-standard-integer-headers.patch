@@ -1,0 +1,26 @@
+diff --git a/Thirdparty/DBoW2/DBoW2/FORB.cpp b/Thirdparty/DBoW2/DBoW2/FORB.cpp
+index 1f1990c..80bf473 100644
+--- a/Thirdparty/DBoW2/DBoW2/FORB.cpp
++++ b/Thirdparty/DBoW2/DBoW2/FORB.cpp
+@@ -13,7 +13,7 @@
+ #include <vector>
+ #include <string>
+ #include <sstream>
+-#include <stdint-gcc.h>
++#include <stdint.h>
+ 
+ #include "FORB.h"
+ 
+diff --git a/src/ORBmatcher.cc b/src/ORBmatcher.cc
+index 7f2ef72..190806d 100644
+--- a/src/ORBmatcher.cc
++++ b/src/ORBmatcher.cc
+@@ -25,7 +25,7 @@
+ 
+ #include "DBoW2/FeatureVector.h"
+ 
+-#include<stdint-gcc.h>
++#include<stdint.h>
+ 
+ using namespace std;
+ 
