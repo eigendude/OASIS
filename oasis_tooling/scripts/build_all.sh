@@ -22,6 +22,12 @@ set -o nounset
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 #
+# Install Rust
+#
+
+"${SCRIPT_DIR}/install_rust.sh"
+
+#
 # Build CMake
 #
 

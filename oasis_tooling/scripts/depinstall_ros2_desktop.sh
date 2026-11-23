@@ -67,12 +67,14 @@ ROSDEP_IGNORE_KEYS+=" \
 "
 
 # Ignore old releases of Rust and Cargo on older Ubuntu
-source /etc/os-release
-if dpkg --compare-versions "${VERSION_ID}" lt "26.04"; then
-  ROSDEP_IGNORE_KEYS+=" \
-    cargo \
-    rustc \
-  "
+if [[ "${OSTYPE}" != "darwin"* ]]; then
+  source /etc/os-release
+  if dpkg --compare-versions "${VERSION_ID}" lt "26.04"; then
+    ROSDEP_IGNORE_KEYS+=" \
+      cargo \
+      rustc \
+    "
+  fi
 fi
 
 #
@@ -131,6 +133,7 @@ if [[ "${OSTYPE}" == "darwin"* ]]; then
   # Install build utilities
   brew install \
     ccache \
+    rust \
     wget \
 
   # Install ROS dependencies
