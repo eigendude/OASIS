@@ -63,7 +63,7 @@ constexpr std::string_view BACKGROUND_ALPHA_PARAMETER = "background_alpha";
 constexpr double DEFAULT_BACKGROUND_ALPHA = 0.4;
 
 constexpr std::string_view OUTPUT_ENCODING_PARAMETER = "output_encoding";
-constexpr std::string_view DEFAULT_OUTPUT_ENCODING = sensor_msgs::image_encodings::BGR8;
+const std::string_view DEFAULT_OUTPUT_ENCODING = sensor_msgs::image_encodings::BGR8;
 
 // Synchronization settings
 constexpr int SYNC_QUEUE_SIZE = 10;

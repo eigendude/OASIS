@@ -74,7 +74,7 @@ find_package(message_filters REQUIRED)
 find_package(oasis_msgs REQUIRED)
 find_package(OpenCV REQUIRED COMPONENTS calib3d core imgcodecs imgproc video)
 find_package(ORB_SLAM_OASIS)
-find_package(PCL REQUIRED COMPONENTS common features filters search surface)
+find_package(PCL REQUIRED COMPONENTS common features filters io search surface)
 find_package(pcl_conversions REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
@@ -465,6 +465,7 @@ if (ORB_SLAM_OASIS_FOUND)
     apriltag_msgs::apriltag_msgs__rosidl_typesupport_cpp
     cv_bridge::cv_bridge
     DBoW2::DBoW2
+    Eigen3::Eigen
     g2o::g2o
     image_transport::image_transport
     message_filters::message_filters
@@ -603,6 +604,7 @@ if (ORB_SLAM_OASIS_FOUND)
     ament_index_cpp::ament_index_cpp
     cv_bridge::cv_bridge
     DBoW2::DBoW2
+    Eigen3::Eigen
     g2o::g2o
     image_transport::image_transport
     ${OPENGL_LIBRARIES}
