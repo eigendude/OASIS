@@ -119,8 +119,15 @@ set -o nounset
 #
 
 # Default values
-MAKE_FLAGS=
+MAKE_FLAGS="${MAKEFLAGS:-}"
 COLCON_FLAGS="--merge-install"
+
+if [[ -n "${CMAKE_BUILD_PARALLEL_LEVEL:-}" ]]; then
+  MAKE_FLAGS+=" -j${CMAKE_BUILD_PARALLEL_LEVEL}"
+fi
+
+# CMake command-line lists use semicolons, while environment paths use colons
+cmake_prefix_path_cmake="${CMAKE_PREFIX_PATH//:/;}"
 
 # Add CMake flags
 COLCON_FLAGS+=" \
@@ -129,7 +136,7 @@ COLCON_FLAGS+=" \
     -DCMAKE_C_COMPILER_LAUNCHER=ccache \
     -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
     -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-    -DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH} \
+    -DCMAKE_PREFIX_PATH=${cmake_prefix_path_cmake} \
 "
 
 if [[ -n "${MCU_PROFILE}" ]]; then
@@ -138,6 +145,14 @@ fi
 
 # macOS flags
 if [[ "${OSTYPE}" == "darwin"* ]]; then
+  COLCON_FLAGS+=" \
+    -DCMAKE_INSTALL_RPATH=${OASIS_INSTALL_DIRECTORY}/lib;${OASIS_DEPENDS_INSTALL_DIRECTORY}/lib;${ROS2_INSTALL_DIRECTORY}/lib;${OPENCV_INSTALL_DIR}/lib \
+    -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=ON \
+    -UBoost_DIR -Uboost_*_DIR \
+    ${ROS2_PYTHON_CMAKE_ARGS} \
+    -Dpybind11_DIR=$(python3 -m pybind11 --cmakedir) \
+  "
+
   # macOS packges don't all build, so do a best effort to build as much as
   # possible
   COLCON_FLAGS+=" --continue-on-error"
@@ -193,7 +208,7 @@ fi
 (
   cd "${OASIS_DIRECTORY}"
 
-  MAKE_FLAGS="${MAKE_FLAGS}" \
+  MAKEFLAGS="${MAKE_FLAGS}" \
     colcon build \
       ${COLCON_FLAGS}
 )

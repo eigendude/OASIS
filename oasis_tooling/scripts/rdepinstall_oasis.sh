@@ -36,6 +36,30 @@ set -o nounset
 # Install OASIS runtime dependencies
 #
 
+if [[ "${OSTYPE}" == "darwin"* ]]; then
+  python3 -m pip install --upgrade \
+    black \
+    flake8 \
+    isort \
+    matplotlib \
+    mypy \
+    paho-mqtt \
+    psutil \
+    pyserial \
+    'git+https://github.com/eigendude/pymata-express@master#egg=pymata-express' \
+    telemetrix-aio \
+    tox
+
+  # Check installed OASIS runtime requirements when its packages are available
+  if [[ -f "${OASIS_INSTALL_DIRECTORY}/local_setup.bash" ]]; then
+    set +o nounset
+    source "${OASIS_INSTALL_DIRECTORY}/local_setup.bash"
+    set -o nounset
+  fi
+  python3 -m pip check
+  exit 0
+fi
+
 # Refresh package metadata
 sudo apt update
 

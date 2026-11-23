@@ -54,7 +54,13 @@ fi
 #
 
 if [[ "${OSTYPE}" == "darwin"* ]]; then
-  brew install --formula libepoxy
+  brew install --formula \
+    eigen \
+    glog \
+    googletest \
+    libepoxy \
+    pcl \
+    yaml-cpp
 fi
 
 #
