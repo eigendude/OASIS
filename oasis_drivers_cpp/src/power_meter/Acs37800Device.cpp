@@ -8,8 +8,6 @@
 
 #include "Acs37800Device.hpp"
 
-#include "LinuxI2cRegisterDevice.hpp"
-
 #include <chrono>
 #include <cmath>
 #include <stdexcept>
@@ -127,14 +125,6 @@ double OASIS::PowerMeter::DecodeActivePower(std::uint32_t raw, const Acs37800Con
 bool OASIS::PowerMeter::DecodeOvercurrent(std::uint32_t raw)
 {
   return (raw & FAULTOUT_MASK) != 0U;
-}
-
-Acs37800Device::Acs37800Device(std::string device_path,
-                               int device_address,
-                               const Acs37800Config& config)
-  : Acs37800Device(std::make_unique<LinuxI2cRegisterDevice>(std::move(device_path), device_address),
-                   config)
-{
 }
 
 Acs37800Device::Acs37800Device(std::unique_ptr<II2cRegisterDevice> transport,

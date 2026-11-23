@@ -8,7 +8,10 @@
 
 #include "LinuxI2cRegisterDevice.hpp"
 
+#include "Acs37800Device.hpp"
+
 #include <cerrno>
+#include <memory>
 #include <stdexcept>
 #include <system_error>
 #include <utility>
@@ -20,6 +23,14 @@
 
 using OASIS::PowerMeter::I2cRegisterReadTransfer;
 using OASIS::PowerMeter::LinuxI2cRegisterDevice;
+
+OASIS::PowerMeter::Acs37800Device::Acs37800Device(std::string device_path,
+                                                  int device_address,
+                                                  const Acs37800Config& config)
+  : Acs37800Device(std::make_unique<LinuxI2cRegisterDevice>(std::move(device_path), device_address),
+                   config)
+{
+}
 
 I2cRegisterReadTransfer::I2cRegisterReadTransfer(int device_address, std::uint8_t register_address)
   : register_selector(register_address)

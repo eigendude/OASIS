@@ -36,10 +36,8 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
 find_package(ament_cmake REQUIRED)
-find_package(CEC REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(geometry_msgs REQUIRED)
-find_package(i2cdevlib REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(oasis_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
@@ -49,8 +47,15 @@ find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(tf2_ros REQUIRED)
-find_package(UDEV)
 find_package(yaml-cpp REQUIRED)
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  find_package(CEC REQUIRED)
+  find_package(i2cdevlib REQUIRED)
+  find_package(UDEV)
+else()
+  message(STATUS "Building portable driver cores and AHRS/ZUPT nodes; Linux I2C, GPIO and udev nodes are unavailable")
+endif()
 
 ################################################################################
 # C++ nodes
@@ -64,8 +69,6 @@ find_package(yaml-cpp REQUIRED)
 
 add_library(power_meter_core
   src/power_meter/Acs37800Device.cpp
-  src/power_meter/LinuxI2cDeviceProbe.cpp
-  src/power_meter/LinuxI2cRegisterDevice.cpp
   src/power_meter/I2cMuxResolver.cpp
   src/power_meter/PowerMeterCore.cpp
   src/power_meter/RaspberryPiI2cConfig.cpp
@@ -75,44 +78,56 @@ target_include_directories(power_meter_core
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
-add_library(acs37800_power_meter_component SHARED
-  src/nodes/Acs37800PowerMeterNode.cpp
-)
-target_link_libraries(acs37800_power_meter_component PUBLIC
-  power_meter_core
-  ${oasis_msgs_TARGETS}
-  rclcpp_components::component
-  rclcpp::rclcpp
-)
-
-rclcpp_components_register_nodes(
-  acs37800_power_meter_component
-  "OASIS::ROS::Acs37800PowerMeterNode"
-)
-
-add_executable(acs37800_power_meter_node
-  src/cli/acs37800_power_meter_node.cpp
-)
-target_link_libraries(acs37800_power_meter_node
-  acs37800_power_meter_component
-  rclcpp::rclcpp
-)
-
-install(
-  TARGETS
-    power_meter_core
-    acs37800_power_meter_component
+install(TARGETS power_meter_core
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
 )
 
-install(
-  TARGETS
-    acs37800_power_meter_node
-  DESTINATION
-    lib/${PROJECT_NAME}
-)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_sources(power_meter_core PRIVATE
+    src/power_meter/LinuxI2cDeviceProbe.cpp
+    src/power_meter/LinuxI2cRegisterDevice.cpp
+  )
+
+  add_library(acs37800_power_meter_component SHARED
+    src/nodes/Acs37800PowerMeterNode.cpp
+  )
+  target_link_libraries(acs37800_power_meter_component PUBLIC
+    power_meter_core
+    ${oasis_msgs_TARGETS}
+    rclcpp_components::component
+    rclcpp::rclcpp
+  )
+
+  rclcpp_components_register_nodes(
+    acs37800_power_meter_component
+    "OASIS::ROS::Acs37800PowerMeterNode"
+  )
+
+  add_executable(acs37800_power_meter_node
+    src/cli/acs37800_power_meter_node.cpp
+  )
+  target_link_libraries(acs37800_power_meter_node
+    acs37800_power_meter_component
+    rclcpp::rclcpp
+  )
+
+  install(
+    TARGETS
+      acs37800_power_meter_component
+    ARCHIVE DESTINATION lib
+    LIBRARY DESTINATION lib
+    RUNTIME DESTINATION bin
+  )
+
+  install(
+    TARGETS
+      acs37800_power_meter_node
+    DESTINATION
+      lib/${PROJECT_NAME}
+  )
+endif()
 
 #
 # ahrs
@@ -233,43 +248,52 @@ target_link_libraries(bno086_sh2
   bno086_shtp
 )
 
-add_library(bno086_imu_driver_component SHARED
-  src/imu/bno086/gpio/Bno086Gpio.cpp
-  src/nodes/Bno086ImuNode.cpp
-)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  add_library(bno086_imu_driver_component SHARED
+    src/imu/bno086/gpio/Bno086Gpio.cpp
+    src/nodes/Bno086ImuNode.cpp
+  )
 
-target_link_libraries(bno086_imu_driver_component PUBLIC
-  bno086_diagnostics
-  bno086_drain_policy
-  bno086_gravity_utils
-  bno086_orientation_covariance_policy
-  bno086_rotation_vector_decoder
-  bno086_ros_helpers
-  bno086_sample_coherence
-  bno086_sh2_timestamp
-  bno086_sh2
-  bno086_shtp
-  bno086_utils
-  ${geometry_msgs_TARGETS}
-  ${oasis_msgs_TARGETS}
-  rclcpp_components::component
-  rclcpp::rclcpp
-  ${sensor_msgs_TARGETS}
-)
+  target_link_libraries(bno086_imu_driver_component PUBLIC
+    bno086_diagnostics
+    bno086_drain_policy
+    bno086_gravity_utils
+    bno086_orientation_covariance_policy
+    bno086_rotation_vector_decoder
+    bno086_ros_helpers
+    bno086_sample_coherence
+    bno086_sh2_timestamp
+    bno086_sh2
+    bno086_shtp
+    bno086_utils
+    ${geometry_msgs_TARGETS}
+    ${oasis_msgs_TARGETS}
+    rclcpp_components::component
+    rclcpp::rclcpp
+    ${sensor_msgs_TARGETS}
+  )
 
-rclcpp_components_register_node(
-  bno086_imu_driver_component
-  PLUGIN "OASIS::ROS::Bno086ImuNode"
-  EXECUTABLE bno086_imu_driver_component_node
-)
+  rclcpp_components_register_node(
+    bno086_imu_driver_component
+    PLUGIN "OASIS::ROS::Bno086ImuNode"
+    EXECUTABLE bno086_imu_driver_component_node
+  )
 
-add_executable(bno086_imu_driver
-  src/cli/bno086_imu_driver.cpp
-)
+  add_executable(bno086_imu_driver
+    src/cli/bno086_imu_driver.cpp
+  )
 
-target_link_libraries(bno086_imu_driver
-  bno086_imu_driver_component
-)
+  target_link_libraries(bno086_imu_driver
+    bno086_imu_driver_component
+  )
+
+  install(TARGETS bno086_imu_driver_component
+    ARCHIVE DESTINATION lib
+    LIBRARY DESTINATION lib
+    RUNTIME DESTINATION bin
+  )
+  install(TARGETS bno086_imu_driver DESTINATION lib/${PROJECT_NAME})
+endif()
 
 install(
   TARGETS
@@ -285,24 +309,16 @@ install(
     bno086_sh2_timestamp
     bno086_shtp
     bno086_utils
-    bno086_imu_driver_component
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
-)
-
-install(
-  TARGETS
-    bno086_imu_driver
-  DESTINATION
-    lib/${PROJECT_NAME}
 )
 
 #
 # cec_server
 #
 
-if (UDEV_FOUND)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND UDEV_FOUND)
   add_executable(cec_server
     src/cec/CecAdapter.cpp
     src/cec/CecServer.cpp
@@ -348,69 +364,71 @@ endif()
 # mmc5983ma_magnetometer_driver
 #
 
-add_executable(mmc5983ma_magnetometer_driver
-  src/cli/mmc5983ma_magnetometer_driver.cpp
-  src/magnetometer/CovarianceEstimator3D.cpp
-  src/magnetometer/Mmc5983maDevice.cpp
-  src/magnetometer/IMagnetometerPairSampler.h
-  src/magnetometer/MagnetometerPairProcessor.cpp
-  src/magnetometer/MagnetometerPairProcessor.h
-  src/magnetometer/Mmc5983maPairSampler.cpp
-  src/magnetometer/Mmc5983maPairSampler.h
-  src/magnetometer/io/MagnetometerCalibrationFile.cpp
-  src/nodes/Mmc5983maMagnetometerNode.cpp
-)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  add_executable(mmc5983ma_magnetometer_driver
+    src/cli/mmc5983ma_magnetometer_driver.cpp
+    src/magnetometer/CovarianceEstimator3D.cpp
+    src/magnetometer/Mmc5983maDevice.cpp
+    src/magnetometer/IMagnetometerPairSampler.h
+    src/magnetometer/MagnetometerPairProcessor.cpp
+    src/magnetometer/MagnetometerPairProcessor.h
+    src/magnetometer/Mmc5983maPairSampler.cpp
+    src/magnetometer/Mmc5983maPairSampler.h
+    src/magnetometer/io/MagnetometerCalibrationFile.cpp
+    src/nodes/Mmc5983maMagnetometerNode.cpp
+  )
 
-target_link_libraries(mmc5983ma_magnetometer_driver
-  i2cdevlib::i2cdevlib
-  Eigen3::Eigen
-  rclcpp::rclcpp
-  ${sensor_msgs_TARGETS}
-  ${std_msgs_TARGETS}
-  yaml-cpp
-)
+  target_link_libraries(mmc5983ma_magnetometer_driver
+    i2cdevlib::i2cdevlib
+    Eigen3::Eigen
+    rclcpp::rclcpp
+    ${sensor_msgs_TARGETS}
+    ${std_msgs_TARGETS}
+    yaml-cpp
+  )
 
-install(
-  TARGETS
-    mmc5983ma_magnetometer_driver
-  DESTINATION
-    lib/${PROJECT_NAME}
-)
+  install(
+    TARGETS
+      mmc5983ma_magnetometer_driver
+    DESTINATION
+      lib/${PROJECT_NAME}
+  )
 
-#
-# mpu6050_imu_driver
-#
+  #
+  # mpu6050_imu_driver
+  #
 
-add_executable(mpu6050_imu_driver
-  src/cli/mpu6050_imu_driver.cpp
-  src/imu/mpu6050/cal/AccelCalibrationSolver.cpp
-  src/imu/mpu6050/cal/GyroBiasEstimator.cpp
-  src/imu/mpu6050/io/ImuCalibrationFile.cpp
-  src/imu/mpu6050/Mpu6050ImuProcessor.cpp
-  src/imu/mpu6050/Mpu6050ImuTemperature.cpp
-  src/imu/mpu6050/Mpu6050ImuUtils.cpp
-  src/imu/mpu6050/StationaryDetector.cpp
-  src/nodes/Mpu6050Node.cpp
-)
+  add_executable(mpu6050_imu_driver
+    src/cli/mpu6050_imu_driver.cpp
+    src/imu/mpu6050/cal/AccelCalibrationSolver.cpp
+    src/imu/mpu6050/cal/GyroBiasEstimator.cpp
+    src/imu/mpu6050/io/ImuCalibrationFile.cpp
+    src/imu/mpu6050/Mpu6050ImuProcessor.cpp
+    src/imu/mpu6050/Mpu6050ImuTemperature.cpp
+    src/imu/mpu6050/Mpu6050ImuUtils.cpp
+    src/imu/mpu6050/StationaryDetector.cpp
+    src/nodes/Mpu6050Node.cpp
+  )
 
-target_link_libraries(mpu6050_imu_driver
-  i2cdevlib::i2cdevlib
-  Eigen3::Eigen
-  ${geometry_msgs_TARGETS}
-  ${oasis_msgs_TARGETS}
-  rclcpp::rclcpp
-  rcutils::rcutils
-  ${sensor_msgs_TARGETS}
-  ${std_msgs_TARGETS}
-  yaml-cpp
-)
+  target_link_libraries(mpu6050_imu_driver
+    i2cdevlib::i2cdevlib
+    Eigen3::Eigen
+    ${geometry_msgs_TARGETS}
+    ${oasis_msgs_TARGETS}
+    rclcpp::rclcpp
+    rcutils::rcutils
+    ${sensor_msgs_TARGETS}
+    ${std_msgs_TARGETS}
+    yaml-cpp
+  )
 
-install(
-  TARGETS
-    mpu6050_imu_driver
-  DESTINATION
-    lib/${PROJECT_NAME}
-)
+  install(
+    TARGETS
+      mpu6050_imu_driver
+    DESTINATION
+      lib/${PROJECT_NAME}
+  )
+endif()
 
 #
 # ssd1305_display
@@ -419,54 +437,64 @@ install(
 add_library(ssd1305_display_core
   src/display/ssd1305/Ssd1305Device.cpp
   src/display/ssd1305/Ssd1305Framebuffer.cpp
-  src/display/ssd1305/Ssd1305Transport.cpp
 )
 target_include_directories(ssd1305_display_core
   PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
-add_library(ssd1305_display_component SHARED
-  src/nodes/Ssd1305DisplayNode.cpp
-)
-target_link_libraries(ssd1305_display_component PUBLIC
-  ssd1305_display_core
-  ${oasis_msgs_TARGETS}
-  rclcpp_components::component
-  rclcpp::rclcpp
-  ${sensor_msgs_TARGETS}
-  ${std_srvs_TARGETS}
-)
-
-rclcpp_components_register_node(
-  ssd1305_display_component
-  PLUGIN "OASIS::ROS::Ssd1305DisplayNode"
-  EXECUTABLE ssd1305_display_component_node
-)
-
-add_executable(ssd1305_display_node
-  src/cli/ssd1305_display_node.cpp
-)
-target_link_libraries(ssd1305_display_node
-  ssd1305_display_component
-  rclcpp::rclcpp
-)
-
-install(
-  TARGETS
-    ssd1305_display_core
-    ssd1305_display_component
+install(TARGETS ssd1305_display_core
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
 )
 
-install(
-  TARGETS
-    ssd1305_display_node
-  DESTINATION
-    lib/${PROJECT_NAME}
-)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_sources(ssd1305_display_core PRIVATE
+    src/display/ssd1305/Ssd1305Transport.cpp
+  )
+
+  add_library(ssd1305_display_component SHARED
+    src/nodes/Ssd1305DisplayNode.cpp
+  )
+  target_link_libraries(ssd1305_display_component PUBLIC
+    ssd1305_display_core
+    ${oasis_msgs_TARGETS}
+    rclcpp_components::component
+    rclcpp::rclcpp
+    ${sensor_msgs_TARGETS}
+    ${std_srvs_TARGETS}
+  )
+
+  rclcpp_components_register_node(
+    ssd1305_display_component
+    PLUGIN "OASIS::ROS::Ssd1305DisplayNode"
+    EXECUTABLE ssd1305_display_component_node
+  )
+
+  add_executable(ssd1305_display_node
+    src/cli/ssd1305_display_node.cpp
+  )
+  target_link_libraries(ssd1305_display_node
+    ssd1305_display_component
+    rclcpp::rclcpp
+  )
+
+  install(
+    TARGETS
+      ssd1305_display_component
+    ARCHIVE DESTINATION lib
+    LIBRARY DESTINATION lib
+    RUNTIME DESTINATION bin
+  )
+
+  install(
+    TARGETS
+      ssd1305_display_node
+    DESTINATION
+      lib/${PROJECT_NAME}
+  )
+endif()
 
 #
 # zupt_detector
@@ -547,12 +575,14 @@ if(BUILD_TESTING)
     power_meter_core
   )
 
-  ament_add_gtest(test_linux_i2c_device_probe
-    test/power_meter/test_LinuxI2cDeviceProbe.cpp
-  )
-  target_link_libraries(test_linux_i2c_device_probe
-    power_meter_core
-  )
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    ament_add_gtest(test_linux_i2c_device_probe
+      test/power_meter/test_LinuxI2cDeviceProbe.cpp
+    )
+    target_link_libraries(test_linux_i2c_device_probe
+      power_meter_core
+    )
+  endif()
 
   ament_add_gtest(test_acs37800_device
     test/power_meter/test_Acs37800Device.cpp
@@ -575,14 +605,16 @@ if(BUILD_TESTING)
     power_meter_core
   )
 
-  ament_add_gtest(test_acs37800_power_meter_node
-    test/power_meter/test_Acs37800PowerMeterNode.cpp
-  )
-  target_link_libraries(test_acs37800_power_meter_node
-    acs37800_power_meter_component
-    ${oasis_msgs_TARGETS}
-    rclcpp::rclcpp
-  )
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    ament_add_gtest(test_acs37800_power_meter_node
+      test/power_meter/test_Acs37800PowerMeterNode.cpp
+    )
+    target_link_libraries(test_acs37800_power_meter_node
+      acs37800_power_meter_component
+      ${oasis_msgs_TARGETS}
+      rclcpp::rclcpp
+    )
+  endif()
 
   ament_add_gtest(test_bno086_gravity_utils
     test/imu/bno086/test_Bno086GravityUtils.cpp
@@ -754,12 +786,14 @@ if(BUILD_TESTING)
     ssd1305_display_core
   )
 
-  ament_add_gtest(test_ssd1305_display_node
-    test/display/ssd1305/test_Ssd1305DisplayNode.cpp
-  )
-  target_link_libraries(test_ssd1305_display_node
-    ssd1305_display_component
-  )
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    ament_add_gtest(test_ssd1305_display_node
+      test/display/ssd1305/test_Ssd1305DisplayNode.cpp
+    )
+    target_link_libraries(test_ssd1305_display_node
+      ssd1305_display_component
+    )
+  endif()
 
   ament_lint_auto_find_test_dependencies()
 endif()

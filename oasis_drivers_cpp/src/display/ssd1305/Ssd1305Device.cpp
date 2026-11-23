@@ -62,11 +62,6 @@ std::string HexAddress(int address)
 
 } // namespace
 
-Ssd1305Device::Ssd1305Device(Ssd1305DeviceConfig config)
-  : Ssd1305Device(std::move(config), std::make_unique<OASIS::Display::LinuxI2cTransport>())
-{
-}
-
 Ssd1305Device::Ssd1305Device(Ssd1305DeviceConfig config,
                              std::unique_ptr<OASIS::Display::Ssd1305Transport> transport)
   : m_config(std::move(config)), m_transport(std::move(transport))

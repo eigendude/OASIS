@@ -14,8 +14,10 @@
 #include <thread>
 
 #include <fcntl.h>
+#ifdef __linux__
 #include <linux/i2c-dev.h>
 #include <sys/ioctl.h>
+#endif
 #include <unistd.h>
 
 namespace OASIS::IMU::BNO086
@@ -41,6 +43,7 @@ bool Bno086Transport::Open(const Bno086TransportConfig& config)
 
   m_config = config;
   m_stats = Bno086TransportStats{};
+#ifdef __linux__
   m_fd = ::open(m_config.i2c_device.c_str(), O_RDWR | O_NONBLOCK);
   if (m_fd < 0)
     return false;
@@ -53,6 +56,11 @@ bool Bno086Transport::Open(const Bno086TransportConfig& config)
 
   m_txSequence.fill(0);
   return true;
+#else
+  // Packet processing can use an injected descriptor on other POSIX systems
+  errno = ENOTSUP;
+  return false;
+#endif
 }
 
 void Bno086Transport::Close()

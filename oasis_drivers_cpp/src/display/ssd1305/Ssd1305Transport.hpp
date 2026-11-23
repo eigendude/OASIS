@@ -26,6 +26,7 @@ public:
   virtual void Write(std::span<const std::uint8_t> transaction) = 0;
 };
 
+#ifdef __linux__
 /** \brief Linux i2c-dev transport for one selected seven-bit slave */
 class LinuxI2cTransport final : public Ssd1305Transport
 {
@@ -40,4 +41,5 @@ public:
 private:
   int m_descriptor{-1};
 };
+#endif
 } // namespace OASIS::Display

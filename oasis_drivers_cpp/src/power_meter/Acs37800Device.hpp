@@ -102,7 +102,9 @@ public:
   //! Injectable startup wait, expressed in seconds
   using SleepFunction = std::function<void(double)>;
 
+#ifdef __linux__
   Acs37800Device(std::string device_path, int device_address, const Acs37800Config& config);
+#endif
   Acs37800Device(std::unique_ptr<II2cRegisterDevice> transport, const Acs37800Config& config);
   Acs37800Device(std::unique_ptr<II2cRegisterDevice> transport,
                  const Acs37800Config& config,

@@ -69,7 +69,9 @@ public:
 class Ssd1305Device : public Ssd1305DeviceInterface
 {
 public:
+#ifdef __linux__
   explicit Ssd1305Device(Ssd1305DeviceConfig config);
+#endif
   Ssd1305Device(Ssd1305DeviceConfig config, std::unique_ptr<Ssd1305Transport> transport);
   ~Ssd1305Device() noexcept override;
 

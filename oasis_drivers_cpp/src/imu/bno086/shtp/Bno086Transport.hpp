@@ -80,6 +80,7 @@ public:
   Bno086Transport() = default;
   virtual ~Bno086Transport();
 
+  //! Open a Linux I2C endpoint; other platforms fail with errno set to ENOTSUP
   bool Open(const Bno086TransportConfig& config);
   void Close();
 

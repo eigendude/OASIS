@@ -8,10 +8,14 @@
 
 #include "Ssd1305Transport.hpp"
 
+#include "Ssd1305Device.hpp"
+
 #include <cerrno>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <system_error>
+#include <utility>
 
 #include <fcntl.h>
 #include <linux/i2c-dev.h>
@@ -19,6 +23,11 @@
 #include <unistd.h>
 
 using OASIS::Display::LinuxI2cTransport;
+
+OASIS::Display::Ssd1305Device::Ssd1305Device(Ssd1305DeviceConfig config)
+  : Ssd1305Device(std::move(config), std::make_unique<LinuxI2cTransport>())
+{
+}
 
 LinuxI2cTransport::~LinuxI2cTransport() noexcept
 {
