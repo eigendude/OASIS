@@ -66,6 +66,7 @@ jobs:
             await setHash('OPENCV_HASH', [
               'oasis_tooling/config/opencv/**',
               'oasis_tooling/scripts/*cv.sh',
+              'oasis_tooling/scripts/*python.sh',
             ]);
 
             await setHash('ROS2_DESKTOP_HASH', [

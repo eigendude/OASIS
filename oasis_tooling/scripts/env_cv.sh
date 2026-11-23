@@ -35,8 +35,8 @@ OPENCV_CONTRIB_URL="https://github.com/opencv/opencv_contrib/archive/refs/tags/$
 # Get the absolute path to this script
 SCRIPT_DIR="$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd -P)"
 
-# Import common paths and config
-source "${SCRIPT_DIR}/env_common.sh"
+# Import the shared Python environment
+source "${SCRIPT_DIR}/env_python.sh"
 
 #
 # Build environment

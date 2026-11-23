@@ -16,6 +16,17 @@ set -o nounset
 
 NUMPY_PYTHON_BIN="${NUMPY_PYTHON_BIN:-python3}"
 
+# macOS dependencies belong to the repository's virtual environment
+NUMPY_INSTALL_COMMAND=(sudo env PIP_ROOT_USER_ACTION=ignore)
+if [[ "${OSTYPE}" == "darwin"* ]]; then
+  if ! "${NUMPY_PYTHON_BIN}" -c \
+    'import sys; sys.exit(sys.prefix == sys.base_prefix)'; then
+    echo 'ERROR: load the OASIS Python environment before installing NumPy' >&2
+    exit 1
+  fi
+  NUMPY_INSTALL_COMMAND=(env)
+fi
+
 check_numpy() {
   "${NUMPY_PYTHON_BIN}" -c \
     'import numpy; print(numpy.__version__, numpy.__file__)'
@@ -24,7 +35,7 @@ check_numpy() {
 install_numpy_without_simd() {
   echo "Installing NumPy without CPU SIMD dispatch..."
 
-  sudo env PIP_ROOT_USER_ACTION=ignore \
+  "${NUMPY_INSTALL_COMMAND[@]}" \
     "${NUMPY_PYTHON_BIN}" -m pip install \
     --force-reinstall \
     --break-system-packages \
@@ -52,7 +63,7 @@ then
 else
   echo "Installing NumPy..."
 
-  sudo env PIP_ROOT_USER_ACTION=ignore \
+  "${NUMPY_INSTALL_COMMAND[@]}" \
     "${NUMPY_PYTHON_BIN}" -m pip install \
     --break-system-packages \
     numpy

@@ -1,0 +1,58 @@
+From: Garrett Brown <eigendebugger@gmail.com>
+Date: Sun, 22 Nov 2026 21:50:00 -0800
+Subject: [PATCH] Support FFmpeg 9 codec capability queries
+
+libavcodec 63 removes the deprecated AVCodec capability arrays. Query
+pixel formats and frame rates through avcodec_get_supported_config while
+retaining the existing API for older FFmpeg releases.
+
+diff --git a/modules/videoio/src/cap_ffmpeg_hw.hpp b/modules/videoio/src/cap_ffmpeg_hw.hpp
+--- a/modules/videoio/src/cap_ffmpeg_hw.hpp
++++ b/modules/videoio/src/cap_ffmpeg_hw.hpp
+@@ -757,9 +757,18 @@
+ #endif
+             if (hw_type == AV_HWDEVICE_TYPE_CUDA) // CUDA encoders don't support avcodec_get_hw_config()
+                 hw_native_fmt = AV_PIX_FMT_CUDA;
+-            if (av_codec_is_encoder(c) && hw_native_fmt != AV_PIX_FMT_NONE && c->pix_fmts) {
+-                for (int i = 0; c->pix_fmts[i] != AV_PIX_FMT_NONE; i++) {
+-                    if (c->pix_fmts[i] == hw_native_fmt) {
++            const AVPixelFormat *pix_fmts = NULL;
++#if LIBAVCODEC_VERSION_MAJOR >= 63
++            const void *configs = NULL;
++            if (avcodec_get_supported_config(NULL, c, AV_CODEC_CONFIG_PIX_FORMAT,
++                                             0, &configs, NULL) >= 0)
++                pix_fmts = static_cast<const AVPixelFormat *>(configs);
++#else
++            pix_fmts = c->pix_fmts;
++#endif
++            if (av_codec_is_encoder(c) && hw_native_fmt != AV_PIX_FMT_NONE && pix_fmts) {
++                for (int i = 0; pix_fmts[i] != AV_PIX_FMT_NONE; i++) {
++                    if (pix_fmts[i] == hw_native_fmt) {
+                         *hw_pix_fmt = hw_native_fmt;
+                         if (hw_check_codec(c, hw_type, disabled_codecs))
+                             return c;
+diff --git a/modules/videoio/src/cap_ffmpeg_impl.hpp b/modules/videoio/src/cap_ffmpeg_impl.hpp
+--- a/modules/videoio/src/cap_ffmpeg_impl.hpp
++++ b/modules/videoio/src/cap_ffmpeg_impl.hpp
+@@ -2627,8 +2627,19 @@
+     c->time_base.den = frame_rate;
+     c->time_base.num = frame_rate_base;
+     /* adjust time base for supported framerates */
+-    if(codec && codec->supported_framerates){
+-        const AVRational *p= codec->supported_framerates;
++    const AVRational *supported_framerates = NULL;
++    if (codec) {
++#if LIBAVCODEC_VERSION_MAJOR >= 63
++        const void *configs = NULL;
++        if (avcodec_get_supported_config(NULL, codec, AV_CODEC_CONFIG_FRAME_RATE,
++                                         0, &configs, NULL) >= 0)
++            supported_framerates = static_cast<const AVRational *>(configs);
++#else
++        supported_framerates = codec->supported_framerates;
++#endif
++    }
++    if(supported_framerates){
++        const AVRational *p= supported_framerates;
+         AVRational req = {frame_rate, frame_rate_base};
+         const AVRational *best=NULL;
+         AVRational best_error= {INT_MAX, 1};

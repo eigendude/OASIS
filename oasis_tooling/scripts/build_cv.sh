@@ -82,6 +82,12 @@ patch \
   --no-backup-if-mismatch \
   --directory="${OPENCV_SOURCE_DIR}" \
   < "${CONFIG_DIRECTORY}/opencv/0001-GAPI-Implement-RGBA2Gray-and-GBRA2Gray.patch"
+patch \
+  -p1 \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${OPENCV_SOURCE_DIR}" \
+  < "${CONFIG_DIRECTORY}/opencv/0002-Support-FFmpeg-9-codec-capabilities.patch"
 
 #
 # Configure OpenCV
@@ -102,7 +108,7 @@ NUMPY_PYTHON_BIN="${OPENCV_PYTHON_BIN}" \
   || true
 
 echo "Discovering OpenCV Python configuration..."
-mapfile -t opencv_python_config < <(
+opencv_python_config="$(
   "${OPENCV_PYTHON_BIN}" - <<'PY'
 from __future__ import annotations
 
@@ -131,6 +137,16 @@ if library_name is None or library_dir is None:
     raise SystemExit("Unable to determine Python library path")
 
 library: Path = Path(library_dir) / library_name
+framework_name: str | None = sysconfig.get_config_var("PYTHONFRAMEWORK")
+framework_prefix: str | None = sysconfig.get_config_var("PYTHONFRAMEWORKPREFIX")
+if not library.exists() and framework_name and framework_prefix:
+    library = (
+        Path(framework_prefix)
+        / f"{framework_name}.framework"
+        / "Versions"
+        / sysconfig.get_python_version()
+        / framework_name
+    )
 if not library.exists():
     raise SystemExit(f"Python library not found: {library}")
 
@@ -142,18 +158,17 @@ print(f"platlib={platlib}")
 print(f"numpy_include={numpy_include}")
 print(f"library={library}")
 PY
-)
+)"
 
-declare -A opencv_python_paths=()
-for opencv_python_value in "${opencv_python_config[@]}"; do
-  echo "${opencv_python_value}"
-  opencv_python_paths["${opencv_python_value%%=*}"]="${opencv_python_value#*=}"
-done
-
-OPENCV_PYTHON_EXECUTABLE="${opencv_python_paths[executable]}"
-OPENCV_PYTHON_INCLUDE_DIR="${opencv_python_paths[platinclude]}"
-OPENCV_PYTHON_LIBRARY="${opencv_python_paths[library]}"
-OPENCV_PYTHON_NUMPY_INCLUDE_DIR="${opencv_python_paths[numpy_include]}"
+while IFS='=' read -r opencv_python_key opencv_python_value; do
+  echo "${opencv_python_key}=${opencv_python_value}"
+  case "${opencv_python_key}" in
+    executable) OPENCV_PYTHON_EXECUTABLE="${opencv_python_value}" ;;
+    platinclude) OPENCV_PYTHON_INCLUDE_DIR="${opencv_python_value}" ;;
+    library) OPENCV_PYTHON_LIBRARY="${opencv_python_value}" ;;
+    numpy_include) OPENCV_PYTHON_NUMPY_INCLUDE_DIR="${opencv_python_value}" ;;
+  esac
+done <<< "${opencv_python_config}"
 
 echo "Configuring OpenCV..."
 
@@ -194,6 +209,30 @@ cmake_args=(
   -DWITH_V4L=ON
 )
 
+if [[ "${OSTYPE}" == "darwin"* ]]; then
+  # Stale system-protoc output shadows the bundled compatible headers
+  for protobuf_file in "${OPENCV_BUILD_DIR}/modules/dnn/"*.pb.cc \
+    "${OPENCV_BUILD_DIR}/modules/dnn/"*.pb.h; do
+    if [[ -f "${protobuf_file}" ]]; then
+      mkdir -p "${OPENCV_BUILD_DIR}/modules/dnn/system-protobuf"
+      mv "${protobuf_file}" "${OPENCV_BUILD_DIR}/modules/dnn/system-protobuf/"
+    fi
+  done
+
+  # Keep OpenCV's private protobuf runtime isolated from MediaPipe's version
+  cmake_args+=(
+    -DBUILD_PROTOBUF=ON
+    -DPROTOBUF_UPDATE_FILES=OFF
+    -DCMAKE_CXX_STANDARD=17
+    -DCMAKE_INSTALL_RPATH="${OPENCV_INSTALL_DIR}/lib"
+    -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=ON
+    -DCMAKE_OSX_ARCHITECTURES="$(uname -m)"
+    -DWITH_AVFOUNDATION=ON
+    -DWITH_GSTREAMER=OFF
+    -DWITH_V4L=OFF
+  )
+fi
+
 cmake "${cmake_args[@]}"
 
 #
@@ -201,7 +240,8 @@ cmake "${cmake_args[@]}"
 #
 
 echo "Building OpenCV..."
-cmake --build "${OPENCV_BUILD_DIR}" --parallel "$(getconf _NPROCESSORS_ONLN)"
+cmake --build "${OPENCV_BUILD_DIR}" \
+  --parallel "${CMAKE_BUILD_PARALLEL_LEVEL:-$(getconf _NPROCESSORS_ONLN)}"
 
 #
 # Install OpenCV
@@ -221,6 +261,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from numpy.typing import NDArray
 
 install_path: Path = Path(os.environ["OPENCV_PYTHON_INSTALL_DIR"]).resolve()
 cv2_file: Path = Path(cv2.__file__).resolve()
@@ -230,6 +271,7 @@ opencv_wheel_names: tuple[str, ...] = (
     "opencv-python-headless",
 )
 opencv_wheel_installed: list[str] = []
+opencv_wheel_name: str
 
 for opencv_wheel_name in opencv_wheel_names:
     try:
@@ -253,8 +295,8 @@ if not cv2_file.is_relative_to(install_path):
         f"cv2 was imported from {cv2_file}, expected under {install_path}"
     )
 
-image: np.ndarray = np.zeros((32, 32, 3), dtype=np.uint8)
-gray: np.ndarray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+image: NDArray[np.uint8] = np.zeros((32, 32, 3), dtype=np.uint8)
+gray: NDArray[np.uint8] = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 print("cv2 smoke:", gray.shape, gray.dtype)
 PY
 

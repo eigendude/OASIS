@@ -111,6 +111,42 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
 fi
 
 #
+# Install build dependencies (macOS)
+#
+
+if [[ "${OSTYPE}" == "darwin"* ]]; then
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+  "${SCRIPT_DIR}/install_python.sh"
+
+  brew install --formula \
+    ccache \
+    ceres-solver \
+    eigen \
+    ffmpeg \
+    freetype \
+    gflags \
+    glog \
+    harfbuzz \
+    hdf5 \
+    jpeg-turbo \
+    libavif \
+    libdc1394 \
+    libpng \
+    libtiff \
+    openblas \
+    openexr \
+    openjpeg \
+    pkgconf \
+    protobuf \
+    suite-sparse \
+    tbb \
+    tesseract \
+    webp \
+    wget \
+    zlib
+fi
+
+#
 # Remove PyPI OpenCV wheels
 #
 
