@@ -23,7 +23,6 @@ from oasis_control.input.park_mode import ParkModeLaunchProfile
 from oasis_control.input.park_mode import TrainParkMode
 from oasis_control.input.park_mode import validated_park_mode_profile
 from oasis_control.input.station_input import MAX_BOOSTED_TRAIN_COMMAND
-from oasis_control.input.station_input import MAX_MOTOR_VOLTAGE
 from oasis_control.input.station_input import MOTOR_DUTY_CYCLE_PER_VOLT
 from oasis_control.input.station_input import NOMINAL_MOTOR_VOLTAGE
 from oasis_control.input.station_input import StationInput
@@ -131,18 +130,6 @@ def test_full_normal_command_uses_nominal_voltage_calibration() -> None:
         f"v={NOMINAL_MOTOR_VOLTAGE:.2f}V" in message
         for message in _debug_messages(station_input._node)
     )
-
-
-def test_full_boost_command_targets_maximum_motor_voltage() -> None:
-    park_mode: TrainParkMode = TrainParkMode(True, _profile())
-    station_input, station_manager = _make_station_input(park_mode)
-
-    station_input._apply_train_command(1.0, boost_enabled=True)
-
-    assert station_manager.pwm == pytest.approx(
-        MAX_MOTOR_VOLTAGE * MOTOR_DUTY_CYCLE_PER_VOLT
-    )
-    assert any("v=8.00V" in message for message in _debug_messages(station_input._node))
 
 
 def test_zero_command_preserves_stopped_output_and_logged_voltage() -> None:

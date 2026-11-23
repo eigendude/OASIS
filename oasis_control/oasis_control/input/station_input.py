@@ -44,10 +44,10 @@ CONTROLLER_PROFILE = "game.controller.default"
 
 # Nominal motor-voltage target measured from the normal full-speed A-button
 # command around the track, in volts
-NOMINAL_MOTOR_VOLTAGE: float = 7.0
+NOMINAL_MOTOR_VOLTAGE: float = 7.1
 
 # Maximum motor-voltage target allowed while X is pressed, in volts
-MAX_MOTOR_VOLTAGE: float = 8.0
+MAX_MOTOR_VOLTAGE: float = 8.25
 
 # Duty cycle per volt calibrated from measured 7.00 V. Under load at 7.00 V,
 # in the current train configuration, the voltage sags to around 6.7 V.
