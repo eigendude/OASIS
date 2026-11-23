@@ -214,7 +214,12 @@ fi
 # Arduino core setup
 ################################################################################
 
-if [ ! -f "${HOME}/.arduino15/arduino-cli.yaml" ]; then
+ARDUINO_CONFIG_DIRECTORY="${HOME}/.arduino15"
+if [[ "${OSTYPE}" == "darwin"* ]]; then
+  ARDUINO_CONFIG_DIRECTORY="${HOME}/Library/Arduino15"
+fi
+
+if [ ! -f "${ARDUINO_CONFIG_DIRECTORY}/arduino-cli.yaml" ]; then
   echo "Initializing Arduino CLI configuration..."
   "${ARDUINO_CLI_BIN}" config init
 else
