@@ -35,16 +35,16 @@ set -o nounset
 ARDUINO_IDE_VERSION="1.8.19"
 
 # Version of the Arduino CLI to use
-ARDUINO_CLI_VERSION="1.5.1"
+ARDUINO_CLI_VERSION="1.6.0"
 
 # Arduino ESP32 package index URL
 ESP32_PACKAGE_INDEX_URL="https://espressif.github.io/arduino-esp32/package_esp32_index.json"
 
 # Version of the ESP32 Arduino core to use
-ESP32_CORE_VERSION="2.0.17"
+ESP32_CORE_VERSION="4.0.0"
 
 # Version of the ESP32 Servo library to use
-ESP32_SERVO_LIBRARY_VERSION="1.2.1"
+ESP32_SERVO_LIBRARY_VERSION="3.2.1"
 
 ################################################################################
 # Environment paths
@@ -61,7 +61,7 @@ BUILD_DIR="${STACK_DIR}/ros-ws"
 ARDUINO_IDE_DOWNLOAD_DIR="${BUILD_DIR}/arduino-ide"
 
 # Location of the Arduino CLI archive and binary
-ARDUINO_CLI_DIR="${BUILD_DIR}/arduino-cli"
+ARDUINO_CLI_DIR="${BUILD_DIR}/arduino-cli/${ARDUINO_CLI_VERSION}"
 
 # Location of the Arduino CMake toolchain
 TOOLCHAIN_DIR="${SCRIPT_DIR}/cmake/Arduino-CMake-Toolchain"
