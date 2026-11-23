@@ -2,10 +2,10 @@
     "git.ignoreLimitWarning": true,
     "python.analysis.autoImportCompletions": true,
     "python.analysis.extraPaths": [
-        "./ros-ws/oasis-lyrical/install/lib/python3.12/site-packages",
-        "./ros-ws/ros2-desktop-lyrical/install/lib/python3.12/site-packages",
-        "./ros-ws/ros2-desktop-lyrical/src/ros2/geometry2/tf2_ros_py",
-        "./ros-ws/ros2-desktop-lyrical/src/ros2/launch_ros/launch_ros",
-        "./ros-ws/ros2-desktop-lyrical/src/ros2/rclpy/rclpy"
+        "./ros-ws/oasis-rolling/install/lib/python3.12/site-packages",
+        "./ros-ws/ros2-desktop-rolling/install/lib/python3.12/site-packages",
+        "./ros-ws/ros2-desktop-rolling/src/ros2/geometry2/tf2_ros_py",
+        "./ros-ws/ros2-desktop-rolling/src/ros2/launch_ros/launch_ros",
+        "./ros-ws/ros2-desktop-rolling/src/ros2/rclpy/rclpy"
     ]
 }

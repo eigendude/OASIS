@@ -1,0 +1,52 @@
+Subject: [PATCH] Avoid global message type aliases in Fast RTPS C support
+
+Nested message headers can include identically named types from different
+packages in the same translation unit. Cast to the package-qualified C
+struct in both size functions and drop the unused alias in the source.
+
+diff --git a/rosidl_typesupport_fastrtps_c/resource/msg__type_support_c.cpp.em b/rosidl_typesupport_fastrtps_c/resource/msg__type_support_c.cpp.em
+index dece21a..8fefb4c 100644
+--- a/rosidl_typesupport_fastrtps_c/resource/msg__type_support_c.cpp.em
++++ b/rosidl_typesupport_fastrtps_c/resource/msg__type_support_c.cpp.em
+@@ -223,8 +223,6 @@ bool has_buffer_fields_@('__'.join(key))();
+ 
+ @# // Make callback functions specific to this message type.
+ 
+-using _@(message.structure.namespaced_type.name)__ros_msg_type = @('__'.join(message.structure.namespaced_type.namespaced_name()));
+-
+ ROSIDL_TYPESUPPORT_FASTRTPS_C_PUBLIC_@(package_name)
+ bool cdr_serialize_@('__'.join([package_name] + list(interface_path.parents[0].parts) + [message.structure.namespaced_type.name]))(
+   const @('__'.join(message.structure.namespaced_type.namespaced_name())) * ros_message,
+diff --git a/rosidl_typesupport_fastrtps_c/resource/msg__type_support_c_impl.hpp.em b/rosidl_typesupport_fastrtps_c/resource/msg__type_support_c_impl.hpp.em
+index dd45852..61bf038 100644
+--- a/rosidl_typesupport_fastrtps_c/resource/msg__type_support_c_impl.hpp.em
++++ b/rosidl_typesupport_fastrtps_c/resource/msg__type_support_c_impl.hpp.em
+@@ -158,8 +158,6 @@ extern "C"
+ {
+ #endif
+ 
+-using _@(message.structure.namespaced_type.name)__ros_msg_type = @('__'.join(message.structure.namespaced_type.namespaced_name()));
+-
+ @{
+ 
+ # Generates the definition for the serialization family of methods given a structure member
+@@ -645,7 +643,8 @@ size_t impl_get_serialized_size_@('__'.join([package_name] + list(interface_path
+   const void * untyped_ros_message,
+   size_t current_alignment)
+ {
+-  const _@(message.structure.namespaced_type.name)__ros_msg_type * ros_message = static_cast<const _@(message.structure.namespaced_type.name)__ros_msg_type *>(untyped_ros_message);
++  const auto * ros_message =
++    static_cast<const @('__'.join(message.structure.namespaced_type.namespaced_name())) *>(untyped_ros_message);
+   (void)ros_message;
+   size_t initial_alignment = current_alignment;
+ 
+@@ -826,7 +825,8 @@ size_t impl_get_serialized_size_key_@('__'.join([package_name] + list(interface_
+   const void * untyped_ros_message,
+   size_t current_alignment)
+ {
+-  const _@(message.structure.namespaced_type.name)__ros_msg_type * ros_message = static_cast<const _@(message.structure.namespaced_type.name)__ros_msg_type *>(untyped_ros_message);
++  const auto * ros_message =
++    static_cast<const @('__'.join(message.structure.namespaced_type.namespaced_name())) *>(untyped_ros_message);
+   (void)ros_message;
+ 
+   size_t initial_alignment = current_alignment;

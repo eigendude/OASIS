@@ -231,7 +231,12 @@ done
 apply_dependency_patches() {
   local repository="$1"
   local dependency_patch
-  for dependency_patch in "${CONFIG_DIRECTORY}/${repository##*/}/"*.patch; do
+  local patch_directory="${CONFIG_DIRECTORY}/${repository##*/}"
+  local patches=("${patch_directory}/"*.patch)
+  if [[ $# -eq 2 ]]; then
+    patches=("${patch_directory}/$2")
+  fi
+  for dependency_patch in "${patches[@]}"; do
     patch -p1 --reject-file=/dev/null --no-backup-if-mismatch \
       --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/${repository}" \
       < "${dependency_patch}"
@@ -257,6 +262,10 @@ if [[ "${OSTYPE}" == "darwin"* ]]; then
     apply_dependency_patches "${repository}"
   done
 else
+  # Rolling requires node interfaces for TF broadcasts
+  apply_dependency_patches ros-perception/apriltag_ros \
+    0001-Use-TF-broadcaster-node-interfaces.patch
+
   # libcamera can report array-valued controls on Linux
   apply_dependency_patches ros-perception/camera_ros
 fi
@@ -272,6 +281,24 @@ cp -v \
   "${CONFIG_DIRECTORY}/i2cdevlib/CMakeLists.txt" \
   "${CONFIG_DIRECTORY}/i2cdevlib/package.xml" \
   "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/i2cdevlib"
+
+# imu_pipeline
+echo "Patching imu_pipeline..."
+patch \
+  -p1 \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/imu_pipeline" \
+  < "${CONFIG_DIRECTORY}/imu_pipeline/0001-Use-standard-math-functions-in-imu-integrator.patch"
+
+# libcamera_cmake
+echo "Patching libcamera_cmake..."
+patch \
+  -p1 \
+  --reject-file="/dev/null" \
+  --no-backup-if-mismatch \
+  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/oasis_libcamera_cmake" \
+  < "${CONFIG_DIRECTORY}/libcamera_cmake/0001-Build-with-the-pinned-libpisp-subproject.patch"
 
 # libcec
 cp -v \

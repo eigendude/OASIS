@@ -1,0 +1,14 @@
+Use the libpisp revision from libcamera's Meson wrap. The installed
+libpisp 1.3.0 pkg-config include path disagrees with the PiSP includes
+when libpisp is discovered in a non-system prefix.
+
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -29,6 +29,7 @@
+   GIT_CONFIG          advice.detachedHead=false
+   GIT_SHALLOW         ON
+   CONFIGURE_COMMAND   meson setup build ../libcamera_source --prefix ${CMAKE_INSTALL_PREFIX} --libdir lib --buildtype ${MESON_BUILD_TYPE} --auto-features=disabled
++                       --force-fallback-for=libpisp
+                        -Dpipelines=all -Dipas=rpi/vc4,rpi/pisp -Dv4l2=true -Dgstreamer=enabled -Dtest=false -Dlc-compliance=disabled -Dcam=enabled -Dqcam=disabled -Ddocumentation=disabled -Dpycamera=enabled
+   BUILD_COMMAND       meson compile -C build --jobs ${NJOBS}
+   INSTALL_COMMAND     meson install -C build

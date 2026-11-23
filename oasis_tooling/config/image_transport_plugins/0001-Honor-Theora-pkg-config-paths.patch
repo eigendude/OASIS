@@ -5,8 +5,7 @@ Subject: [PATCH] Honor Theora pkg config paths
 diff --git a/theora_image_transport/CMakeLists.txt b/theora_image_transport/CMakeLists.txt
 --- a/theora_image_transport/CMakeLists.txt
 +++ b/theora_image_transport/CMakeLists.txt
-@@ -55,13 +55,17 @@
- target_include_directories(${LIBRARY_NAME} PRIVATE
+@@ -56,4 +56,8 @@ target_include_directories(${LIBRARY_NAME} PRIVATE
    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
    "$<INSTALL_INTERFACE:include/${PROJECT_NAME}>"
 +  ${PC_OGG_INCLUDE_DIRS}
@@ -15,6 +14,7 @@ diff --git a/theora_image_transport/CMakeLists.txt b/theora_image_transport/CMak
 +  ${PC_THEORADEC_INCLUDE_DIRS}
  )
  target_link_libraries(${LIBRARY_NAME}
+@@ -61,8 +65,8 @@
    opencv_imgproc
 -  ${PC_OGG_LIBRARIES}
 -  ${PC_THEORA_LIBRARIES}
@@ -27,17 +27,16 @@ diff --git a/theora_image_transport/CMakeLists.txt b/theora_image_transport/CMak
    "${cpp_typesupport_target}"
    ${sensor_msgs_TARGETS}
    cv_bridge::cv_bridge
-@@ -77,11 +81,17 @@
-   ${PC_THEORAENC_CFLAGS_OTHER}
-   ${PC_THEORADEC_CFLAGS_OTHER}
- )
+@@ -75,2 +79,8 @@
+ add_executable(ogg_saver src/ogg_saver.cpp)
 +target_include_directories(ogg_saver PRIVATE
 +  ${PC_OGG_INCLUDE_DIRS}
 +  ${PC_THEORA_INCLUDE_DIRS}
 +  ${PC_THEORAENC_INCLUDE_DIRS}
 +  ${PC_THEORADEC_INCLUDE_DIRS}
 +)
- target_link_libraries(ogg_saver
+ target_compile_definitions(ogg_saver PRIVATE
+@@ -84,7 +94,7 @@
 -  ${PC_THEORA_LIBRARY}
 -  ${PC_OGG_LIBRARY}
 -  ${PC_THEORAENC_LIBRARIES}

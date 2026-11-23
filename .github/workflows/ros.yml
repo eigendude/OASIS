@@ -27,9 +27,9 @@ jobs:
       matrix:
         include:
           - os: ubuntu-24.04
-            ros2_distro: lyrical
+            ros2_distro: rolling
           - os: ubuntu-26.04
-            ros2_distro: lyrical
+            ros2_distro: rolling
 
     # Steps represent a sequence of tasks that will be executed as part of the
     # job
@@ -74,6 +74,7 @@ jobs:
             await setHash('ROS2_DESKTOP_HASH', [
               'oasis_tooling/config/python_qt_binding/**',
               'oasis_tooling/config/ros2/**',
+              'oasis_tooling/config/rosidl_typesupport_fastrtps/**',
               'oasis_tooling/config/rviz/**',
               'oasis_tooling/scripts/*python.sh',
               'oasis_tooling/scripts/*ros2_desktop.sh',
@@ -88,6 +89,8 @@ jobs:
               'oasis_tooling/config/i2cdevlib/**',
               'oasis_tooling/config/image_pipeline/**',
               'oasis_tooling/config/image_transport_plugins/**',
+              'oasis_tooling/config/imu_pipeline/**',
+              'oasis_tooling/config/libcamera_cmake/**',
               'oasis_tooling/config/libcec/**',
               'oasis_tooling/config/libfreenect2/**',
               'oasis_tooling/config/OpenNI2/**',
@@ -305,6 +308,7 @@ jobs:
           key: >
             restore-oasis-runtime-\
             ${{ matrix.os }}-\
+            ${{ matrix.ros2_distro }}-\
             ${{ env.OASIS_RUNTIME_HASH }}
 
       - name: Install CMake dependencies

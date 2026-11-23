@@ -1,0 +1,35 @@
+diff --git a/imu_processors/src/imu_integrator.cpp b/imu_processors/src/imu_integrator.cpp
+index 82f8af2..3d792f8 100644
+--- a/imu_processors/src/imu_integrator.cpp
++++ b/imu_processors/src/imu_integrator.cpp
+@@ -31,6 +31,8 @@
+  * Author: Chad Rockey
+  */
+ 
++#include <cmath>
++
+ #include <rclcpp/rclcpp.hpp>
+ #include <sensor_msgs/msg/imu.hpp>
+ 
+@@ -77,17 +79,17 @@ private:
+     imu_.linear_acceleration = msg->linear_acceleration;
+     imu_.linear_acceleration_covariance = msg->linear_acceleration_covariance;
+ 
+-    double diff = pow(imu_.orientation.w, 2.0) - pow(imu_.orientation.z, 2.0);
++    double diff = std::pow(imu_.orientation.w, 2.0) - std::pow(imu_.orientation.z, 2.0);
+     double mult = 2.0 * imu_.orientation.w * imu_.orientation.z;
+-    double theta = atan2(mult, diff);
++    double theta = std::atan2(mult, diff);
+     if (std::abs(imu_.angular_velocity.z) > min_angular_velocity_)
+     {
+       theta = theta + imu_.angular_velocity.z * dt;
+     }
+ 
+     // Fill in quaternion
+-    imu_.orientation.z = sin(theta / 2.0);
+-    imu_.orientation.w = cos(theta / 2.0);
++    imu_.orientation.z = std::sin(theta / 2.0);
++    imu_.orientation.w = std::cos(theta / 2.0);
+ 
+     // Publish transformed message
+     pub_->publish(imu_);

@@ -207,6 +207,17 @@ echo "Downloading ROS 2 source code..."
   vcs import --force "${ROS2_SOURCE_DIRECTORY}" < ros2.repos
 )
 
+# Avoid collisions between nested message types with the same short name
+if [[ "${ROS2_DISTRO}" == "rolling" ]]; then
+  patch \
+    -p1 \
+    --forward \
+    --reject-file="/dev/null" \
+    --no-backup-if-mismatch \
+    --directory="${ROS2_SOURCE_DIRECTORY}/ros2/rosidl_typesupport_fastrtps" \
+    < "${CONFIG_DIRECTORY}/rosidl_typesupport_fastrtps/0001-Avoid-global-message-type-aliases.patch"
+fi
+
 # Use the Homebrew Qt bindings and native Ogre build settings on macOS
 if [[ "${OSTYPE}" == "darwin"* ]]; then
   patch -p1 --directory="${ROS2_SOURCE_DIRECTORY}/ros-visualization/python_qt_binding" \

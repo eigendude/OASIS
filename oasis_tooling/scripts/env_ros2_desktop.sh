@@ -19,7 +19,7 @@ set -o nounset
 #
 
 # Define the ROS distro to use
-ROS2_DISTRO=lyrical
+ROS2_DISTRO=rolling
 export ROS2_DISTRO
 
 # Pinned ros2-apt-source release and fallback Ubuntu codename
