@@ -21,8 +21,8 @@ set -o nounset
 # Get the absolute path to this script
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-# Import common paths and config
-source "${SCRIPT_DIR}/env_common.sh"
+# Import ROS 2 paths and config
+source "${SCRIPT_DIR}/env_ros2_desktop.sh"
 
 ################################################################################
 # Setup ROS 2 sources
@@ -46,26 +46,23 @@ if ! dpkg -s ros2-apt-source >/dev/null 2>&1; then
     curl \
     gnupg2
 
-  ROS_APT_SOURCE_VERSION=$(curl -fs https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest | \
-    grep -F "tag_name" | awk -F"\"" '{print $4}')
-  if [ -z "${ROS_APT_SOURCE_VERSION}" ]; then
-    echo "Failed to determine ros2-apt-source version" >&2
-    exit 1
-  fi
-
-  CODENAME=$(source /etc/os-release && echo "$VERSION_CODENAME")
   TMP_DEB=$(mktemp --suffix .deb)
 
-  # Attempt to download the package for the running distribution.  If that
-  # fails (for example, if we're on a non-LTS release), fall back to the latest
-  # LTS codename.
-  PACKAGE_URL="https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.${CODENAME}_all.deb"
-  if ! curl -fL -o "${TMP_DEB}" "${PACKAGE_URL}"; then
-    FALLBACK_CODENAME="noble"
-    echo "Package for ${CODENAME} not found, trying ${FALLBACK_CODENAME}..." >&2
-    PACKAGE_URL="https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.${FALLBACK_CODENAME}_all.deb"
-    if ! curl -fL -o "${TMP_DEB}" "${PACKAGE_URL}"; then
-      echo "Failed to download ros2-apt-source package" >&2
+  download_package() {
+    local package_url="https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.${1}_all.deb"
+    curl -fsSL --retry 4 --retry-connrefused --connect-timeout 10 --max-time 60 \
+      -o "${TMP_DEB}" "${package_url}"
+  }
+
+  if ! download_package "${CODENAME}"; then
+    if [ "${CODENAME}" = "${ROS_APT_SOURCE_FALLBACK_CODENAME}" ]; then
+      rm -f "${TMP_DEB}"
+      exit 1
+    fi
+
+    echo "Download for ${CODENAME} failed, trying ${ROS_APT_SOURCE_FALLBACK_CODENAME}..." >&2
+    if ! download_package "${ROS_APT_SOURCE_FALLBACK_CODENAME}"; then
+      rm -f "${TMP_DEB}"
       exit 1
     fi
   fi

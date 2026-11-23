@@ -22,6 +22,10 @@ set -o nounset
 ROS2_DISTRO=lyrical
 export ROS2_DISTRO
 
+# Pinned ros2-apt-source release and fallback Ubuntu codename
+ROS_APT_SOURCE_VERSION=1.3.0
+ROS_APT_SOURCE_FALLBACK_CODENAME=noble
+
 #
 # Environment paths and config
 #
