@@ -22,6 +22,9 @@ jobs:
     # The type of runner that the job will run on
     runs-on: ${{ matrix.os }}
 
+    env:
+      MEDIAPIPE_BAZEL_DISK_CACHE: ros-ws/mediapipe/bazel-cache
+
     strategy:
       fail-fast: false
       matrix:
@@ -44,6 +47,7 @@ jobs:
 
       # Compute all cache hashes once
       - name: Compute cache hashes
+        id: cache-hashes
         uses: actions/github-script@v9
         with:
           # Include messages with perception_cpp as keys can't be longer than
@@ -99,6 +103,12 @@ jobs:
               'oasis_tooling/config/mediapipe/**',
               'oasis_tooling/scripts/*mediapipe.sh',
             ]);
+
+            // Bazel uses the runner's native toolchain and the OASIS OpenCV build
+            core.setOutput('bazel-prefix', [
+              'mediapipe-bazel', process.env.ImageOS, process.env.ImageVersion,
+              process.env.RUNNER_ARCH, process.env.OPENCV_HASH,
+            ].join('-'));
 
             await setHash('ARDUINO_BOOTSTRAP_HASH', [
               'oasis_mcu/bootstrap.sh',
@@ -194,6 +204,15 @@ jobs:
             ${{ matrix.os }}-\
             ${{ env.MEDIAPIPE_HASH }}-\
             ${{ env.OPENCV_HASH }}
+
+      # Reuse individual Bazel actions when the MediaPipe install needs rebuilding
+      - name: Restore MediaPipe Bazel actions
+        if: steps.restore-mediapipe.outputs.cache-hit != 'true'
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.MEDIAPIPE_BAZEL_DISK_CACHE }}
+          key: ${{ steps.cache-hashes.outputs.bazel-prefix }}-${{ env.MEDIAPIPE_HASH }}
+          restore-keys: ${{ steps.cache-hashes.outputs.bazel-prefix }}-
 
       - name: Restore Arduino IDE and CLI
         id: restore-arduino-tools

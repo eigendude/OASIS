@@ -35,6 +35,11 @@ MEDIAPIPE_WHEELHOUSE="${MEDIAPIPE_WHEELHOUSE:-${MEDIAPIPE_INSTALL_DIR}/wheels}"
 MEDIAPIPE_PYTHON_BIN="${MEDIAPIPE_PYTHON_BIN:-python3}"
 MEDIAPIPE_PYTHON_BIN="$(command -v "${MEDIAPIPE_PYTHON_BIN}")"
 MEDIAPIPE_ENABLE_GPU="${MEDIAPIPE_ENABLE_GPU:-1}"
+# Keep Bazel action outputs across clean builds. Set an empty path to opt out
+MEDIAPIPE_BAZEL_DISK_CACHE="${MEDIAPIPE_BAZEL_DISK_CACHE-${XDG_CACHE_HOME:-${HOME}/.cache}/oasis/mediapipe}"
+if [[ -n "${MEDIAPIPE_BAZEL_DISK_CACHE}" && "${MEDIAPIPE_BAZEL_DISK_CACHE}" != /* ]]; then
+  MEDIAPIPE_BAZEL_DISK_CACHE="${PWD}/${MEDIAPIPE_BAZEL_DISK_CACHE}"
+fi
 
 #
 # Directory setup
@@ -167,6 +172,15 @@ MEDIAPIPE_BAZEL_FLAGS=(
   --copt=-DNDEBUG
   --define=ENABLE_ODML_CONVERTER=0
 )
+
+if [[ -n "${MEDIAPIPE_BAZEL_DISK_CACHE}" ]]; then
+  # The install step also copies intermediate generated headers from bazel-bin
+  MEDIAPIPE_BAZEL_FLAGS+=(
+    --disk_cache="${MEDIAPIPE_BAZEL_DISK_CACHE}"
+    --remote_download_outputs=all
+    --experimental_disk_cache_gc_max_size=8G
+  )
+fi
 
 if [[ "${MEDIAPIPE_ENABLE_GPU}" != "1" ]]; then
   MEDIAPIPE_BAZEL_FLAGS+=(--define=MEDIAPIPE_DISABLE_GPU=1)
