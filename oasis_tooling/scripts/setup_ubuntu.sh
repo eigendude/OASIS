@@ -41,6 +41,9 @@ sudo groupadd -f gpio
 # Grant the user permission to work with GPIO devices
 sudo usermod -a -G gpio ${USER}
 
+# Add the nut group for UPS devices
+sudo groupadd -f nut
+
 ################################################################################
 # Disable and mask ModemManager to prevent it from grabbing serial interfaces
 # needed by AVR programming tools such as avrdude. Masking ensures it cannot be
