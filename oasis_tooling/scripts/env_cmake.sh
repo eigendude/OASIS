@@ -29,7 +29,7 @@ CMAKE_URL="https://codeload.github.com/Kitware/CMake/tar.gz/refs/tags/v${CMAKE_V
 #
 
 # Get the absolute path to this script
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+SCRIPT_DIR="$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd -P)"
 
 # Import common paths and config
 source "${SCRIPT_DIR}/env_common.sh"

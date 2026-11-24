@@ -33,7 +33,7 @@ HASS_PACKAGE="oasis_home"
 ################################################################################
 
 # Get the absolute path to this script
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+SCRIPT_DIR="$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd -P)"
 
 # Get path to the package directory
 HASS_PACKAGE_DIR="${SCRIPT_DIR}/../../${HASS_PACKAGE}"

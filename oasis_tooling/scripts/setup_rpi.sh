@@ -29,7 +29,7 @@ SWAP_SIZE="16G"
 ################################################################################
 
 # Get the absolute path to this script
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+SCRIPT_DIR="$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd -P)"
 
 ################################################################################
 # Environment setup

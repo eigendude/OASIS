@@ -15,7 +15,7 @@ set -o pipefail
 set -o nounset
 
 # Get the absolute path to this script
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
 #
 # Version parameters

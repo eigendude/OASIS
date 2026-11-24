@@ -33,7 +33,7 @@ fi
 #
 
 # Get the absolute path to this script
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+SCRIPT_DIR="$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd -P)"
 
 # Directory of the ROS 2 package
 PACKAGE_DIRECTORY="${SCRIPT_DIR}/.."

@@ -29,7 +29,7 @@ MEDIAPIPE_URL="https://github.com/google-ai-edge/mediapipe/archive/refs/tags/v${
 #
 
 # Get the absolute path to this script
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+SCRIPT_DIR="$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd -P)"
 
 # Import common paths and config
 source "${SCRIPT_DIR}/env_common.sh"

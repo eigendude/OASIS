@@ -19,7 +19,7 @@ set -o nounset
 #
 
 # Get the absolute path to this script
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+SCRIPT_DIR="$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd -P)"
 
 # Repository root (one level above oasis_tooling)
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"

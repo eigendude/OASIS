@@ -25,7 +25,7 @@ if [[ "${EUID}" -eq 0 ]]; then
 fi
 
 # Get the absolute path to this script
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+SCRIPT_DIR="$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd -P)"
 
 # Import Rust paths and config
 source "${SCRIPT_DIR}/env_rust.sh"

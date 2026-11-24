@@ -51,7 +51,7 @@ ESP32_SERVO_LIBRARY_VERSION="3.2.1"
 ################################################################################
 
 # Get the absolute path to this script
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+SCRIPT_DIR="$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd -P)"
 
 # Location of the ROS workspace build directory
 STACK_DIR="${SCRIPT_DIR}/.."
