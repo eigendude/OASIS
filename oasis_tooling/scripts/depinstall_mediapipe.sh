@@ -30,6 +30,7 @@ BAZELISK_VERSION="1.30.0"
 # Packages to install via apt
 APT_PACKAGES=(
   curl
+  git
 
   # EGL/GLES for MediaPipe GPU/OpenGL paths
   libegl-dev

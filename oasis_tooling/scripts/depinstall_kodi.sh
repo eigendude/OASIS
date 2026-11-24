@@ -50,6 +50,7 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     gcc
     gdc
     gettext
+    git
     gperf
     libasound2-dev
     libass-dev

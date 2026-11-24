@@ -25,8 +25,8 @@ OPENCV_VERSION="4.14.0"
 OPENCV_MAJOR_VERSION="${OPENCV_VERSION%%.*}"
 
 # URLS
-OPENCV_URL="https://github.com/opencv/opencv/archive/refs/tags/${OPENCV_VERSION}.tar.gz"
-OPENCV_CONTRIB_URL="https://github.com/opencv/opencv_contrib/archive/refs/tags/${OPENCV_VERSION}.tar.gz"
+OPENCV_URL="https://github.com/opencv/opencv.git"
+OPENCV_CONTRIB_URL="https://github.com/opencv/opencv_contrib.git"
 
 #
 # Environment paths and config
@@ -50,17 +50,11 @@ source "${SCRIPT_DIR}/env_python.sh"
 OPENCV_DIRECTORY="${BUILD_DIRECTORY}/cv"
 
 # Define top-level directories for OpenCV
-OPENCV_DOWNLOAD_DIR="${OPENCV_DIRECTORY}/downloads"
-OPENCV_EXTRACT_DIR="${OPENCV_DIRECTORY}/src"
 OPENCV_SOURCE_DIR="${OPENCV_DIRECTORY}/src/opencv-${OPENCV_VERSION}"
 OPENCV_CONTRIB_SOURCE_DIR="${OPENCV_DIRECTORY}/src/opencv_contrib-${OPENCV_VERSION}"
 OPENCV_BUILD_DIR="${OPENCV_DIRECTORY}/build/opencv-${OPENCV_VERSION}"
 OPENCV_CONTRIB_BUILD_DIR="${OPENCV_DIRECTORY}/build/opencv_contrib-${OPENCV_VERSION}"
 OPENCV_INSTALL_DIR="${OPENCV_DIRECTORY}/install"
-
-# Define paths
-OPENCV_ARCHIVE_PATH="${OPENCV_DOWNLOAD_DIR}/opencv-${OPENCV_VERSION}.tar.gz"
-OPENCV_CONTRIB_ARCHIVE_PATH="${OPENCV_DOWNLOAD_DIR}/opencv_contrib-${OPENCV_VERSION}.tar.gz"
 
 # Expose the custom OpenCV build to CMake and downstream packages
 export OpenCV_DIR="${OPENCV_INSTALL_DIR}/lib/cmake/opencv${OPENCV_MAJOR_VERSION}"

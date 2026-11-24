@@ -70,6 +70,7 @@ jobs:
             await setHash('OPENCV_HASH', [
               'oasis_tooling/config/opencv/**',
               'oasis_tooling/scripts/*cv.sh',
+              'oasis_tooling/scripts/env_common.sh',
               'oasis_tooling/scripts/*python.sh',
             ]);
 
@@ -102,6 +103,7 @@ jobs:
             await setHash('MEDIAPIPE_HASH', [
               'oasis_tooling/config/mediapipe/**',
               'oasis_tooling/scripts/*mediapipe.sh',
+              'oasis_tooling/scripts/env_common.sh',
             ]);
 
             // Bazel uses the runner's native toolchain and the OASIS OpenCV build

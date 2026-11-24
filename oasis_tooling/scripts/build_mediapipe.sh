@@ -46,27 +46,15 @@ fi
 #
 
 # Create directories
-mkdir -p "${MEDIAPIPE_DOWNLOAD_DIR}"
-mkdir -p "${MEDIAPIPE_EXTRACT_DIR}"
 mkdir -p "${MEDIAPIPE_INSTALL_DIR}"
 mkdir -p "${MEDIAPIPE_WHEELHOUSE}"
 
 #
-# Download MediaPipe
+# Prepare MediaPipe
 #
 
-if [ ! -f "${MEDIAPIPE_ARCHIVE_PATH}" ]; then
-  echo "Downloading MediaPipe..."
-  wget "${MEDIAPIPE_URL}" -O "${MEDIAPIPE_ARCHIVE_PATH}"
-fi
-
-#
-# Extract MediaPipe
-#
-
-echo "Extracting MediaPipe..."
-rm -rf "${MEDIAPIPE_SOURCE_DIR}"
-tar -zxf "${MEDIAPIPE_ARCHIVE_PATH}" --directory="${MEDIAPIPE_EXTRACT_DIR}"
+prepare_git_source "${MEDIAPIPE_SOURCE_DIR}" \
+  "${MEDIAPIPE_URL}" "refs/tags/v${MEDIAPIPE_VERSION}"
 
 #
 # Patch MediaPipe

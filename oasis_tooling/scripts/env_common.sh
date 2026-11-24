@@ -82,3 +82,25 @@ fi
 # Use awk instead of bc so we don’t depend on the bc package
 # 1024 × 1024 = 1 048 576 KiB per GiB
 PHYSICAL_MEMORY_GB=$(awk -v kb="${PHYSICAL_MEMORY_KB}" 'BEGIN {printf "%.4f", kb/1048576}')
+
+# Restore a dependency source directory to a pinned Git tag or commit
+prepare_git_source() (
+  local source_dir="$1" repository="$2" revision="$3"
+  local refspec="${revision}"
+
+  # Initialize in place for both fresh builds and older archive extractions
+  git init --quiet "${source_dir}" || return 1
+  cd "${source_dir}" || return 1
+
+  # Cache the pinned tag or commit so repeat builds can run offline
+  if ! git rev-parse --verify --quiet "${revision}^{commit}" > /dev/null; then
+    if [[ "${revision}" == refs/tags/* ]]; then
+      refspec="${revision}:${revision}"
+    fi
+    git fetch --depth=1 --no-tags "${repository}" "${refspec}" || return 1
+  fi
+
+  # Restore patched files and remove generated files, including nested checkouts
+  git checkout --force --detach "${revision}" || return 1
+  git clean -ffdx
+)

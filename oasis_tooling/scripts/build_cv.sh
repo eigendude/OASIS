@@ -32,44 +32,19 @@ source "${SCRIPT_DIR}/env_cmake.sh"
 #
 
 # Create directories
-mkdir -p "${OPENCV_DOWNLOAD_DIR}"
 mkdir -p "${OPENCV_INSTALL_DIR}"
 mkdir -p "${OPENCV_PYTHON_INSTALL_DIR}"
 
 OPENCV_PYTHON_BIN="${OPENCV_PYTHON_BIN:-python3}"
 
 #
-# Download OpenCV
+# Prepare OpenCV and OpenCV Contrib at the same release tag
 #
 
-if [ ! -f "${OPENCV_ARCHIVE_PATH}" ]; then
-  echo "Downloading OpenCV..."
-  wget "${OPENCV_URL}" -O "${OPENCV_ARCHIVE_PATH}"
-fi
-
-# Download OpenCV Contrib
-if [ ! -f "${OPENCV_CONTRIB_ARCHIVE_PATH}" ]; then
-  echo "Downloading OpenCV Contrib..."
-  wget "${OPENCV_CONTRIB_URL}" -O "${OPENCV_CONTRIB_ARCHIVE_PATH}"
-fi
-
-#
-# Extract OpenCV
-#
-
-echo "Extracting OpenCV..."
-rm -rf "${OPENCV_SOURCE_DIR}"
-mkdir -p "${OPENCV_SOURCE_DIR}"
-tar -zxf "${OPENCV_ARCHIVE_PATH}" --directory="${OPENCV_EXTRACT_DIR}"
-
-#
-# Extract OpenCV Contrib
-#
-
-echo "Extracting OpenCV Contrib..."
-rm -rf "${OPENCV_CONTRIB_SOURCE_DIR}"
-mkdir -p "${OPENCV_CONTRIB_SOURCE_DIR}"
-tar -zxf "${OPENCV_CONTRIB_ARCHIVE_PATH}" --directory="${OPENCV_EXTRACT_DIR}"
+prepare_git_source "${OPENCV_SOURCE_DIR}" \
+  "${OPENCV_URL}" "refs/tags/${OPENCV_VERSION}"
+prepare_git_source "${OPENCV_CONTRIB_SOURCE_DIR}" \
+  "${OPENCV_CONTRIB_URL}" "refs/tags/${OPENCV_VERSION}"
 
 #
 # Patch OpenCV

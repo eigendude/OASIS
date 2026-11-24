@@ -30,9 +30,8 @@ source "${SCRIPT_DIR}/env_cv.sh"
 # Import Kodi paths and config
 source "${SCRIPT_DIR}/env_kodi.sh"
 
-# Use one persistent cache for all Kodi source and dependency downloads
+# Use one persistent cache for Kodi dependency downloads
 KODI_DOWNLOAD_DIR="$(realpath -m "${KODI_DIRECTORY}/downloads")"
-KODI_ARCHIVE_PATH="${KODI_DOWNLOAD_DIR}/kodi-${KODI_VERSION}.tar.gz"
 
 #
 # Load OASIS environment
@@ -46,12 +45,6 @@ set -o nounset
 # Directory setup
 #
 
-# Remove existing src directory if it exists
-if [ -d "${KODI_SOURCE_DIR}" ]; then
-  echo "Removing existing src directory..."
-  rm -rf "${KODI_SOURCE_DIR}"
-fi
-
 # Create directories
 mkdir -p "${KODI_DOWNLOAD_DIR}"
 mkdir -p "${KODI_SOURCE_DIR}"
@@ -60,21 +53,9 @@ mkdir -p "${KODI_DEPENDS_DIR}"
 
 echo "Kodi download directory: ${KODI_DOWNLOAD_DIR}"
 
-#
-# Download Kodi
-#
-
-if [ ! -f "${KODI_ARCHIVE_PATH}" ]; then
-  echo "Downloading Kodi..."
-  wget "${KODI_URL}" -O "${KODI_ARCHIVE_PATH}"
-fi
-
-#
-# Extract Kodi
-#
-
-echo "Extracting Kodi..."
-tar -zxf "${KODI_ARCHIVE_PATH}" --strip-components=1 --directory="${KODI_SOURCE_DIR}"
+# Restore the pinned Kodi source before applying local patches
+prepare_git_source "${KODI_SOURCE_DIR}" \
+  "${KODI_URL}.git" "${KODI_VERSION}"
 
 #
 # Patch Kodi

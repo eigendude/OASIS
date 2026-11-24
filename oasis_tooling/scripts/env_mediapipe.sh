@@ -22,7 +22,7 @@ set -o nounset
 MEDIAPIPE_VERSION="0.10.35"
 
 # URL
-MEDIAPIPE_URL="https://github.com/google-ai-edge/mediapipe/archive/refs/tags/v${MEDIAPIPE_VERSION}.tar.gz"
+MEDIAPIPE_URL="https://github.com/google-ai-edge/mediapipe.git"
 
 #
 # Environment paths and config
@@ -46,14 +46,9 @@ MEDIAPIPE_DIRECTORY="${BUILD_DIRECTORY}/mediapipe"
 
 # Define top-level directories
 MEDIAPIPE_BIN_DIR="${MEDIAPIPE_DIRECTORY}/bin"
-MEDIAPIPE_DOWNLOAD_DIR="${MEDIAPIPE_DIRECTORY}/downloads"
-MEDIAPIPE_EXTRACT_DIR="${MEDIAPIPE_DIRECTORY}/src"
 MEDIAPIPE_SOURCE_DIR="${MEDIAPIPE_DIRECTORY}/src/mediapipe-${MEDIAPIPE_VERSION}"
 MEDIAPIPE_BUILD_DIR="${MEDIAPIPE_SOURCE_DIR}/bazel-bin"
 MEDIAPIPE_INSTALL_DIR="${MEDIAPIPE_DIRECTORY}/install"
-
-# Define archive path
-MEDIAPIPE_ARCHIVE_PATH="${MEDIAPIPE_DOWNLOAD_DIR}/mediapipe-${MEDIAPIPE_VERSION}.tar.gz"
 
 # Expose the MediaPipe install directories to CMake
 if [ -n "${CMAKE_PREFIX_PATH:-}" ]; then
