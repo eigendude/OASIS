@@ -85,7 +85,6 @@ if (ORB_SLAM_OASIS_FOUND)
   find_package(DBoW2 REQUIRED)
   find_package(Eigen3 REQUIRED)
   find_package(g2o REQUIRED)
-  find_package(GLEW REQUIRED)
   find_package(OpenGL REQUIRED)
   find_package(Pangolin REQUIRED)
   find_package(Sophus REQUIRED)
@@ -99,11 +98,9 @@ set(MEDIAPIPE_SOURCES
 # Build definitions and include dirs for monocular SLAM
 set(MONOCULAR_SLAM_DEFINITIONS
   HAVE_EIGEN
-  HAVE_GLEW
 )
 set(MONOCULAR_SLAM_INCLUDE_DIRS
   $<BUILD_INTERFACE:${OPENGL_INCLUDE_DIR}>
-  $<BUILD_INTERFACE:${GLEW_INCLUDE_DIR}>
   ${EIGEN3_INCLUDE_DIRS}
   ${SOPHUS_INCLUDE_DIRS}
 )
@@ -607,7 +604,6 @@ if (ORB_SLAM_OASIS_FOUND)
     cv_bridge::cv_bridge
     DBoW2::DBoW2
     g2o::g2o
-    ${GLEW_LIBRARY}
     image_transport::image_transport
     ${OPENGL_LIBRARIES}
     ORB_SLAM_OASIS::ORB_SLAM_OASIS

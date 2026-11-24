@@ -15,7 +15,6 @@
 
   <build_depend>eigen</build_depend>
   <build_depend>libboost-serialization-dev</build_depend>
-  <build_depend>libglew-dev</build_depend>
   <build_depend>libpcl-all-dev</build_depend>
 
   <build_export_depend>libpcl-all-dev</build_export_depend>
