@@ -27,9 +27,8 @@ source "${SCRIPT_DIR}/env_cv.sh"
 # Import MediaPipe environment and config
 source "${SCRIPT_DIR}/env_mediapipe.sh"
 
-# Add NVM to path for Bazelisk
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" # This loads nvm
+# Use the workspace Bazelisk for both the native build and Python packaging
+export PATH="${MEDIAPIPE_BIN_DIR}:${PATH}"
 
 MEDIAPIPE_VERBOSE="${MEDIAPIPE_VERBOSE:-0}"
 MEDIAPIPE_WHEELHOUSE="${MEDIAPIPE_WHEELHOUSE:-${MEDIAPIPE_INSTALL_DIR}/wheels}"

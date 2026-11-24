@@ -21,7 +21,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # Version parameters
 #
 
-NVM_VERSION="0.40.3"
+BAZELISK_VERSION="1.30.0"
 
 #
 # Install dependencies
@@ -85,18 +85,29 @@ fi
 NUMPY_PYTHON_BIN="python3" \
   "${SCRIPT_DIR}/install_numpy.sh"
 
-# Install NVM
-curl -o- "https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh" | bash
+# Install the native Bazelisk launcher so older CPUs can build without Node
+source "${SCRIPT_DIR}/env_mediapipe.sh"
 
-# Add NVM to path
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" # This loads nvm
+case "${ARCH}" in
+  amd64) BAZELISK_SHA256="a248ae2b2b62b5baebb748f6fba7203bff1a27e5d01b55399a8406744cb539e8" ;;
+  arm64) BAZELISK_SHA256="b2bcc040c213b44586b121bda6d983c35df121b917c3a7a66fb16f2fa0df1a4f" ;;
+  *) echo "No native Bazelisk release for Linux architecture '${ARCH}'" >&2; exit 1 ;;
+esac
 
-# Install Node
-nvm install node # "node" is an alias for the latest version
+mkdir -p "${MEDIAPIPE_BIN_DIR}"
+BAZELISK_BIN="${MEDIAPIPE_BIN_DIR}/bazelisk"
+if [[ ! -x "${BAZELISK_BIN}" ]] ||
+  ! sha256sum --check --status <<<"${BAZELISK_SHA256}  ${BAZELISK_BIN}"; then
+  echo "Installing Bazelisk ${BAZELISK_VERSION} for ${ARCH}..."
+  BAZELISK_TEMP="$(mktemp "${MEDIAPIPE_BIN_DIR}/.bazelisk.XXXXXXXX")"
+  trap 'rm -f -- "${BAZELISK_TEMP}"' EXIT
+  curl -fsSL --retry 3 \
+    "https://github.com/bazelbuild/bazelisk/releases/download/v${BAZELISK_VERSION}/bazelisk-linux-${ARCH}" \
+    -o "${BAZELISK_TEMP}"
+  sha256sum --check <<<"${BAZELISK_SHA256}  ${BAZELISK_TEMP}"
+  chmod 755 "${BAZELISK_TEMP}"
+  mv -f -- "${BAZELISK_TEMP}" "${BAZELISK_BIN}"
+fi
 
-# Update npm
-npm install -g npm
-
-# Install Bazelisk
-npm install -g @bazel/bazelisk
+# MediaPipe's Python build invokes the launcher as bazel
+ln -sfn bazelisk "${MEDIAPIPE_BIN_DIR}/bazel"
