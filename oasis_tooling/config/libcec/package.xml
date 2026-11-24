@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>libcec</name>
-  <version>8.1.0</version>
+  <version>8.1.7</version>
   <description>USB CEC Adapter communication Library</description>
   <maintainer email="opdenkamp@users.noreply.github.com">Lars Op den Kamp</maintainer>
   <license file="COPYING">GPL-2.0-or-later</license>

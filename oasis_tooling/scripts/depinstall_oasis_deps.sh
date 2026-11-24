@@ -220,12 +220,6 @@ patch \
   --no-backup-if-mismatch \
   --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/bgslibrary" \
   < "${CONFIG_DIRECTORY}/bgslibrary/0002-CMake-Fix-locating-libs-via-_ROOT-variables.patch"
-patch \
-  -p1 \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/bgslibrary" \
-  < "${CONFIG_DIRECTORY}/bgslibrary/0003-Implement-OpenCV4-required-apply-overload.patch"
 
 # camera_ros
 echo "Patching camera_ros..."
@@ -317,15 +311,6 @@ if (( $(echo "${PHYSICAL_MEMORY_GB} <= 4" | bc -l) )); then
   echo "Disabling ORB_SLAM_OASIS with ${PHYSICAL_MEMORY_GB} GiB of RAM"
   touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/ORB_SLAM_OASIS/COLCON_IGNORE"
 fi
-
-# Pangolin
-echo "Patching Pangolin..."
-patch \
-  -p1 \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/pangolin" \
-  < "${CONFIG_DIRECTORY}/pangolin/0001-Remove-Eigen3-Eigen-target-from-linked-libraries.patch"
 
 # Disable pangolin on systems with <= 4GiB memory
 if (( $(echo "${PHYSICAL_MEMORY_GB} <= 4" | bc -l) )); then

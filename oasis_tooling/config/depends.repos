@@ -7,7 +7,7 @@ repositories:
   depends/libcec:
     type: git
     url: https://github.com/Pulse-Eight/libcec.git
-    version: libcec-8.1.0
+    version: libcec-8.1.7
   # Requires: libturbojpeg0-dev libusb-1.0-0-dev ocl-icd-opencl-dev
   depends/libfreenect2:
     type: git
@@ -25,11 +25,11 @@ repositories:
   depends/pangolin:
     type: git
     url: https://github.com/stevenlovegrove/Pangolin.git
-    version: c49c7c3217b32a796e17134ec129aaf576753c05
+    version: v0.9.6
   #ros/mqtt_client:
   #  type: git
   #  url: https://github.com/ika-rwth-aachen/mqtt_client.git
-  #  version: v2.3.0
+  #  version: v2.5.2
   ros-perception/apriltag:
     type: git
     url: https://github.com/AprilRobotics/apriltag.git
@@ -45,7 +45,7 @@ repositories:
   ros-perception/bgslibrary:
     type: git
     url: https://github.com/andrewssobral/bgslibrary.git
-    version: 4622bc9cded1c5504cec6db47db07b3e3c782ecc
+    version: v3.3.1
   ros-perception/camera_ros:
     type: git
     url: https://github.com/christianrauch/camera_ros.git
@@ -53,15 +53,15 @@ repositories:
   ros-perception/ffmpeg_encoder_decoder:
     type: git
     url: https://github.com/ros-misc-utilities/ffmpeg_encoder_decoder.git
-    version: master
+    version: release
   ros-perception/ffmpeg_image_transport:
     type: git
     url: https://github.com/ros-misc-utilities/ffmpeg_image_transport.git
-    version: master
+    version: release
   ros-perception/ffmpeg_image_transport_msgs:
     type: git
     url: https://github.com/ros-misc-utilities/ffmpeg_image_transport_msgs.git
-    version: master
+    version: release
   ros-perception/image_pipeline:
     type: git
     url: https://github.com/ros-perception/image_pipeline.git
@@ -93,7 +93,7 @@ repositories:
   ros-perception/ros2_v4l2_camera:
     type: git
     url: https://gitlab.com/boldhearts/ros2_v4l2_camera.git
-    version: 0.8.1
+    version: lyrical
   ros-perception/vision_opencv:
     type: git
     url: https://github.com/ros-perception/vision_opencv.git

@@ -8,12 +8,12 @@ Subject: [PATCH] Ament: Add packaging for ROS 2 compatibility
  1 file changed, 5 insertions(+)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index abd42db..efcf1e5 100644
+index 8554d4c..7bc5ec0 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -44,3 +44,8 @@ if(WIN32)
-   configure_file(${CMAKE_CURRENT_SOURCE_DIR}/src/dotnet/src/CecSharpTester/netfx/Properties/AssemblyInfo.cs.in
-                  ${CMAKE_CURRENT_SOURCE_DIR}/src/dotnet/src/CecSharpTester/netfx/Properties/AssemblyInfo.cs)
+@@ -252,3 +252,8 @@ if(WIN32)
+                  ${CMAKE_CURRENT_SOURCE_DIR}/windows/version.py)
+   endif()
  endif()
 +
 +# Declare an ament package
