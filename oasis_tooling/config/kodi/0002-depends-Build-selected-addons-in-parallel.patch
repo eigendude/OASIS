@@ -1,0 +1,53 @@
+diff --git a/cmake/addons/CMakeLists.txt b/cmake/addons/CMakeLists.txt
+index 61bfe8e..f02dee2 100644
+--- a/cmake/addons/CMakeLists.txt
++++ b/cmake/addons/CMakeLists.txt
+@@ -514,6 +514,8 @@ if(NOT SUPPORTED_ADDON_FOUND)
+                        Addon definitions are loaded from ADDONS_DEFINITION_DIR (${ADDONS_DEFINITION_DIR}).")
+ endif()
+ 
++add_custom_target(build-addons DEPENDS ${ALL_ADDONS_BUILDING})
++
+ # add custom target "supported_addons" that returns all addons that are supported on this platform
+ string(REPLACE ";" " " ALL_ADDONS_BUILDING "${ALL_ADDONS_BUILDING}")
+ add_custom_target(supported_addons COMMAND ${CMAKE_COMMAND} -E echo "ALL_ADDONS_BUILDING: ${ALL_ADDONS_BUILDING}" VERBATIM)
+diff --git a/tools/depends/xbmc-addons.include b/tools/depends/xbmc-addons.include
+index 2950379..e3cf7de 100644
+--- a/tools/depends/xbmc-addons.include
++++ b/tools/depends/xbmc-addons.include
+@@ -58,6 +58,8 @@ ifneq ($(EXTRA_CMAKE_ARGS),)
+   CMAKE_EXTRA += $(EXTRA_CMAKE_ARGS)
+ endif
+ 
++DEPS += ../../xbmc-addons.include
++
+ ifeq ($(PACKAGE),1)
+   MAKE_PACKAGE = package-
+ endif
+@@ -83,16 +85,23 @@ ifeq ($(CROSS_COMPILING),yes)
+ 	mkdir -p $(PLATFORM)/build/depends/share; \
+          cp -f $(abs_top_srcdir)/target/config-binaddons.site $(PLATFORM)/build/depends/share/config.site
+ endif
+-	cd $(PLATFORM); \
++	cd $(PLATFORM) && \
+          $(CMAKE) -DCMAKE_INSTALL_PREFIX=$(INSTALL_PREFIX) $(CMAKE_EXTRA) \
+          $(TOOLCHAIN) \
+-         -DADDONS_TO_BUILD="$(ADDONS)" $(ADDON_PROJECT_DIR) -DBUILD_DIR=$(BUILDDIR)/$(PLATFORM)/build ;\
++         -DADDONS_TO_BUILD="$(ADDONS)" $(ADDON_PROJECT_DIR) -DBUILD_DIR=$(BUILDDIR)/$(PLATFORM)/build
++ifdef ADDON_BUILD_TARGET
++	$(MAKE) -C $(PLATFORM) $(ADDON_BUILD_TARGET)
++else
++	cd $(PLATFORM); \
+          for addon in $$($(MAKE) supported_addons | awk '/^ALL_ADDONS_BUILDING: .*$$/ { first = $$1; $$1 = ""; print $$0 }'); do \
+            $(MAKE) $(MAKE_PACKAGE)$$addon && echo $$addon >> $(ADDON_PROJECT_DIR)/.success || echo $$addon >> $(ADDON_PROJECT_DIR)/.failure ;\
+          done
++endif
+ ifneq ($(CROSS_COMPILING),yes)
++ifndef ADDON_BUILD_TARGET
+ 	@[ -f $(ADDON_PROJECT_DIR)/.failure ] && echo "Following Addons failed to build:" $(shell cat $(ADDON_PROJECT_DIR)/.failure) || :
+-	@cd $(PLATFORM); $(MAKE) need-sudo | grep -q TRUE && $(MAKE) sudo-install || :
++endif
++	@cd $(PLATFORM) && if $(MAKE) need-sudo | grep -q TRUE; then $(MAKE) sudo-install; fi
+ endif
+ 	touch $@
+ 

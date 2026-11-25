@@ -18,11 +18,11 @@ set -o nounset
 # Environment configuration
 #
 
-# Shell-source the key/value pairs defined in /etc/os-release
-source "/etc/os-release"
-
-# Debian/Ubuntu expose the codename as VERSION_CODENAME
-CODENAME="${VERSION_CODENAME}"
+if [[ "${OSTYPE}" != "darwin"* ]]; then
+  # Debian/Ubuntu expose the codename as VERSION_CODENAME
+  source "/etc/os-release"
+  CODENAME="${VERSION_CODENAME}"
+fi
 
 #
 # Environment paths and config
@@ -45,14 +45,25 @@ KODI_VERSION="b844b43478798e219ef0dde08ff936f620f9df8a"
 KODI_URL="https://github.com/garbear/xbmc"
 
 # Target architecture and build config
-KODI_DEPENDS_TARGET=${PLATFORM_ARCH}-linux-gnu-release
+if [[ "${OSTYPE}" == "darwin"* ]]; then
+  case "$(uname -m)" in
+    arm64) KODI_DEPENDS_HOST="aarch64-apple-darwin" ;;
+    x86_64) KODI_DEPENDS_HOST="x86_64-apple-darwin" ;;
+    *)
+      echo "Unsupported macOS architecture: $(uname -m)" >&2
+      return 1
+      ;;
+  esac
+else
+  KODI_DEPENDS_TARGET=${PLATFORM_ARCH}-linux-gnu-release
+fi
 
 #
 # Build environment
 #
 
 # Render system
-if [[ ${PLATFORM_ARCH} == x86_64 ]]; then
+if [[ "${OSTYPE}" == "darwin"* ]] || [[ ${PLATFORM_ARCH} == x86_64 ]]; then
   APP_RENDER_SYSTEM=gl
 else
   APP_RENDER_SYSTEM=gles
@@ -60,6 +71,9 @@ fi
 
 # Enable LLD
 ENABLE_LLD="ON"
+if [[ "${OSTYPE}" == "darwin"* ]]; then
+  ENABLE_LLD="OFF"
+fi
 
 #
 # Directory and path definitions
@@ -81,8 +95,9 @@ KODI_BIN_DIRECTORY="${KODI_INSTALL_DIR}/bin"
 # Kodi depends directory
 KODI_DEPENDS_SRC="${KODI_SOURCE_DIR}/tools/depends"
 
-# Define paths
-KODI_ARCHIVE_PATH="${KODI_DOWNLOAD_DIR}/kodi-${KODI_VERSION}.tar.gz"
-
 # Installed Kodi executable
 KODI_BINARY="${KODI_BIN_DIRECTORY}/kodi"
+if [[ "${OSTYPE}" == "darwin"* ]]; then
+  KODI_BIN_DIRECTORY="${KODI_INSTALL_DIR}/Kodi.app/Contents/MacOS"
+  KODI_BINARY="${KODI_BIN_DIRECTORY}/Kodi"
+fi
