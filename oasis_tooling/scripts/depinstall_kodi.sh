@@ -60,7 +60,6 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     libbluray-dev
     libbz2-dev
     libcdio-dev
-    libcec-dev
     libcrossguid-dev
     libcurl4-openssl-dev
     libcwiid-dev
@@ -150,4 +149,21 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
   fi
 
   sudo apt install -y --no-install-recommends "${APT_PACKAGES[@]}"
+else
+  # Kodi builds its native libraries through tools/depends on Apple platforms
+  brew install \
+    autoconf \
+    automake \
+    ccache \
+    gettext \
+    libtool \
+    m4 \
+    nasm \
+    openjdk \
+    pkgconf \
+    wget
+
+  # The full Xcode SDK is required by the native Apple dependency toolchain
+  xcodebuild -version
+  xcrun --sdk macosx --find clang
 fi
