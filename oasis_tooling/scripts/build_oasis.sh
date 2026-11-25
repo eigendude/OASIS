@@ -208,9 +208,15 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
   for SYSTEMD_SERVICE in "${OASIS_INSTALL_DIRECTORY}/share"/*/systemd/*.service; do
     echo "Stamping $(basename -- "${SYSTEMD_SERVICE}")"
 
+    # Home Assistant Core owns its configuration under the dedicated account
+    SERVICE_USER="$(id -un)"
+    if [[ "${SYSTEMD_SERVICE}" == */oasis_home/systemd/home-assistant.service ]]; then
+      SERVICE_USER=homeassistant
+    fi
+
     sed -i \
       -e "s|@ROS2_DISTRO@|${ROS2_DISTRO}|g" \
-      -e "s|^User=.*|User=$(id -un)|" \
+      -e "s|^User=.*|User=${SERVICE_USER}|" \
       "${SYSTEMD_SERVICE}"
   done
 

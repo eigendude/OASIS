@@ -44,6 +44,33 @@ HASS_VENV_PATH="/srv/homeassistant"
 # Directory where systemd services are installed
 SYSTEMD_SERVICE_DIRECTORY="/etc/systemd/system/"
 
+# Read the configured unit path without exporting ROS paths to Home Assistant
+HASS_SYSTEMD_DIRECTORY="$(
+  source "${SCRIPT_DIR}/env_oasis.sh"
+  printf '%s\n' "${OASIS_DATA_DIRECTORY}/${HASS_PACKAGE}/systemd"
+)"
+
+HASS_SERVICES=(
+  "${HASS_SYSTEMD_DIRECTORY}/home-assistant.service"
+  "${HASS_SYSTEMD_DIRECTORY}/oasis_home.service"
+)
+
+for SYSTEMD_SERVICE in "${HASS_SERVICES[@]}"; do
+  if [[ ! -f "${SYSTEMD_SERVICE}" || ! -r "${SYSTEMD_SERVICE}" ]]; then
+    echo "Missing or unreadable unit: ${SYSTEMD_SERVICE}. Run ${SCRIPT_DIR}/build_oasis.sh first." >&2
+    exit 1
+  fi
+  if grep -Eq '@[A-Z0-9_]+@' "${SYSTEMD_SERVICE}"; then
+    echo "Unresolved placeholder in ${SYSTEMD_SERVICE}. Run ${SCRIPT_DIR}/build_oasis.sh first." >&2
+    exit 1
+  fi
+done
+
+if ! grep -Fxq "User=${HASS_USERNAME}" "${HASS_SYSTEMD_DIRECTORY}/home-assistant.service"; then
+  echo "Home Assistant unit must run as ${HASS_USERNAME}. Run ${SCRIPT_DIR}/build_oasis.sh first." >&2
+  exit 1
+fi
+
 ################################################################################
 # Install dependencies
 ################################################################################
@@ -251,7 +278,7 @@ sudo -u "${HASS_USERNAME}" tee "${HA_AUTOMATIONS}" > /dev/null < "${TEMPLATE_AUT
 ################################################################################
 
 # Process systemd services
-for SYSTEMD_SERVICE in "${HASS_PACKAGE_DIR}/config/systemd/"*.service; do
+for SYSTEMD_SERVICE in "${HASS_SERVICES[@]}"; do
   # Get filename
   FILE_NAME="$(basename -- "${SYSTEMD_SERVICE}")"
 
