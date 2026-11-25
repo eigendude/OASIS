@@ -75,7 +75,11 @@ class ControlDescriptions:
             executable="home_manager",
             name="home_manager",
             output="screen",
-            arguments=["--ros-args", "--log-level", "home_manager:=info"],
+            arguments=[
+                "--ros-args",
+                "--log-level",
+                f"{ROS_NAMESPACE}.home_manager:=debug",
+            ],
             parameters=[
                 {
                     "smart_display_zones": smart_display_zones,
