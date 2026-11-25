@@ -1,0 +1,25 @@
+Subject: [PATCH] Select PyQt for the SIP bindings on macOS
+
+Lyrical builds qt_gui_cpp with SIP. Use its PyQt binding on macOS as well
+so the Python loader can import the installed C++ extension.
+
+diff --git a/src/python_qt_binding/binding_helper.py b/src/python_qt_binding/binding_helper.py
+index cb6b835..cdb8369 100644
+--- a/src/python_qt_binding/binding_helper.py
++++ b/src/python_qt_binding/binding_helper.py
+@@ -33,5 +33,4 @@
+ import builtins
+ import os
+-import platform
+ import sys
+ import traceback
+@@ -49,8 +48,5 @@ def _select_qt_binding(binding_name=None, binding_order=None):
+
+     # order of default bindings can be changed here
+-    if platform.system() == 'Darwin':
+-        DEFAULT_BINDING_ORDER = ['pyside']
+-    else:
+-        DEFAULT_BINDING_ORDER = ['pyqt', 'pyside']
++    DEFAULT_BINDING_ORDER = ['pyqt', 'pyside']
+
+     binding_order = binding_order or DEFAULT_BINDING_ORDER

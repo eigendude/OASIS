@@ -34,6 +34,7 @@ psutil
 pybind11>=3
 pydot
 pygraphviz
+PyQt-builder
 pyparsing
 pytest-mock
 rosdep

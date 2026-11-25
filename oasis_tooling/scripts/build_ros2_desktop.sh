@@ -36,7 +36,17 @@ source "${SCRIPT_DIR}/env_ros2_desktop.sh"
 
 # Default values
 MAKE_FLAGS="${MAKEFLAGS:-}"
-COLCON_FLAGS="--merge-install"
+
+# Re-detect the Qt bindings and qmake in existing Lyrical workspaces
+COLCON_FLAGS="--merge-install \
+  --cmake-args \
+    -Upython_qt_binding_QT_MAJOR_VERSION \
+    -Upython_qt_binding_QMAKE_EXECUTABLE \
+    -DBUILD_TESTING=OFF \
+    -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+    -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+    -DCMAKE_PREFIX_PATH=${ROS2_CMAKE_PREFIX_PATH}${CMAKE_PREFIX_PATH:+;${CMAKE_PREFIX_PATH}} \
+"
 
 if [[ -n "${CMAKE_BUILD_PARALLEL_LEVEL:-}" ]]; then
   MAKE_FLAGS+=" -j${CMAKE_BUILD_PARALLEL_LEVEL}"
@@ -54,38 +64,15 @@ if [[ "${OSTYPE}" == "darwin"* ]]; then
 
   # Refresh FindPkgConfig's cached YAML paths from earlier builds
   COLCON_FLAGS+=" \
-    --packages-skip-by-dep python_qt_binding \
-    --cmake-args \
-      -U*YAML_PKG_CONFIG* \
-      -DBUILD_TESTING=OFF \
-      -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-      -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-      -DCMAKE_INSTALL_RPATH=${ROS2_INSTALL_DIRECTORY}/lib \
-      -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=ON \
-      ${ROS2_PYTHON_CMAKE_ARGS} \
-      -Dpybind11_DIR=$(python3 -m pybind11 --cmakedir) \
-      -DCMAKE_PREFIX_PATH=${ROS2_CMAKE_PREFIX_PATH};$(brew --prefix qt@5)/lib/cmake/Qt5${CMAKE_PREFIX_PATH:+;${CMAKE_PREFIX_PATH}} \
+    -U*YAML_PKG_CONFIG* \
+    -DCMAKE_INSTALL_RPATH=${ROS2_INSTALL_DIRECTORY}/lib \
+    -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=ON \
+    ${ROS2_PYTHON_CMAKE_ARGS} \
+    -Dpybind11_DIR=$(python3 -m pybind11 --cmakedir) \
   "
 
-  # macOS packages don't all build, so do a best effort to build as much as
-  # possible
+  # Report independent package failures in the same build pass
   COLCON_FLAGS+=" --continue-on-error"
-else
-  # Add ccache support and fix locating Python
-  COLCON_FLAGS+=" \
-    --cmake-args \
-      -DBUILD_TESTING=OFF \
-      -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-      -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-      -DCMAKE_PREFIX_PATH=${ROS2_CMAKE_PREFIX_PATH}${CMAKE_PREFIX_PATH:+;${CMAKE_PREFIX_PATH}} \
-  "
-
-  # Skip Qt dependencies, Shiboken is too old on Ubuntu 18.04
-  COLCON_FLAGS+=" \
-    --packages-ignore \
-      qt_gui_cpp \
-      rqt_gui_cpp \
-  "
 fi
 
 # Uncomment these to force building in serial

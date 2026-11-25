@@ -72,9 +72,7 @@ jobs:
             ]);
 
             await setHash('ROS2_DESKTOP_HASH', [
-              'oasis_tooling/config/image_common/**',
-              'oasis_tooling/config/rcl/**',
-              'oasis_tooling/config/rcutils/**',
+              'oasis_tooling/config/python_qt_binding/**',
               'oasis_tooling/config/ros2/**',
               'oasis_tooling/config/rviz/**',
               'oasis_tooling/scripts/*python.sh',

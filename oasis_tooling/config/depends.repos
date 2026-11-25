@@ -25,7 +25,8 @@ repositories:
   depends/pangolin:
     type: git
     url: https://github.com/stevenlovegrove/Pangolin.git
-    version: v0.9.6
+    # Includes the macOS std::future fix after v0.9.6
+    version: 42963caffb354f8e0db127ed90ff5fa4396dd864
   #ros/mqtt_client:
   #  type: git
   #  url: https://github.com/ika-rwth-aachen/mqtt_client.git
@@ -53,7 +54,8 @@ repositories:
   ros-perception/ffmpeg_encoder_decoder:
     type: git
     url: https://github.com/ros-misc-utilities/ffmpeg_encoder_decoder.git
-    version: release
+    # Includes portable bit-rate logging on LP64 platforms
+    version: da09f5d23eb5ab182ba76c399d371b5aaddda9e1
   ros-perception/ffmpeg_image_transport:
     type: git
     url: https://github.com/ros-misc-utilities/ffmpeg_image_transport.git

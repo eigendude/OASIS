@@ -228,44 +228,38 @@ done
 # Patch dependency sources
 #
 
-# bgslibrary
-echo "Patching bgslibrary..."
-patch \
-  -p1 \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/bgslibrary" \
-  < "${CONFIG_DIRECTORY}/bgslibrary/0001-Disable-imshow-calls.patch"
-patch \
-  -p1 \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/bgslibrary" \
-  < "${CONFIG_DIRECTORY}/bgslibrary/0002-CMake-Fix-locating-libs-via-_ROOT-variables.patch"
-
-# camera_ros
-echo "Patching camera_ros..."
-patch \
-  -p1 \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/camera_ros" \
-  < "${CONFIG_DIRECTORY}/camera_ros/0001-Handle-array-controls-safely-in-ParameterHandler.patch"
-
-# Portable include paths, codec linkage, and current dependency APIs
-for dependency in \
-  apriltag_ros \
-  ffmpeg_encoder_decoder image_pipeline image_transport_plugins
-do
-  for dependency_patch in "${CONFIG_DIRECTORY}/${dependency}"/*.patch; do
-    patch \
-      -p1 \
-      --reject-file="/dev/null" \
-      --no-backup-if-mismatch \
-      --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/${dependency}" \
+apply_dependency_patches() {
+  local repository="$1"
+  local dependency_patch
+  for dependency_patch in "${CONFIG_DIRECTORY}/${repository##*/}/"*.patch; do
+    patch -p1 --reject-file=/dev/null --no-backup-if-mismatch \
+      --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/${repository}" \
       < "${dependency_patch}"
   done
-done
+}
+
+# Keep background subtraction headless on both platforms
+apply_dependency_patches ros-perception/bgslibrary
+
+# Register both libraries with ament and export libfreenect2's static link flags
+apply_dependency_patches depends/libcec
+apply_dependency_patches depends/libfreenect2
+
+if [[ "${OSTYPE}" == "darwin"* ]]; then
+  for repository in \
+    depends/OpenNI2 \
+    depends/pangolin \
+    ros-perception/apriltag_ros \
+    ros-perception/ffmpeg_encoder_decoder \
+    ros-perception/image_pipeline \
+    ros-perception/image_transport_plugins
+  do
+    apply_dependency_patches "${repository}"
+  done
+else
+  # libcamera can report array-valued controls on Linux
+  apply_dependency_patches ros-perception/camera_ros
+fi
 
 # Disable image_view on systems with <= 4GiB memory
 if (( $(echo "${PHYSICAL_MEMORY_GB} <= 4" | bc -l) )); then
@@ -273,78 +267,28 @@ if (( $(echo "${PHYSICAL_MEMORY_GB} <= 4" | bc -l) )); then
   touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/image_pipeline/image_view/COLCON_IGNORE"
 fi
 
-# i2cdevlib
-echo "Patching i2cdevlib..."
+# Install the colcon package metadata and build definitions
 cp -v \
   "${CONFIG_DIRECTORY}/i2cdevlib/CMakeLists.txt" \
-  "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/i2cdevlib"
-cp -v \
   "${CONFIG_DIRECTORY}/i2cdevlib/package.xml" \
   "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/i2cdevlib"
 
 # libcec
-echo "Patching libcec..."
 cp -v \
   "${CONFIG_DIRECTORY}/libcec/package.xml" \
   "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/libcec"
-patch \
-  -p1 \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/libcec" \
-  < "${CONFIG_DIRECTORY}/libcec/0001-Ament-Add-packaging-for-ROS-2-compatibility.patch"
 
 # libfreenect2
-echo "Patching libfreenect2..."
 cp -v \
+  "${CONFIG_DIRECTORY}/libfreenect2/colcon.pkg" \
   "${CONFIG_DIRECTORY}/libfreenect2/package.xml" \
   "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/libfreenect2"
-patch \
-  -p1 \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/libfreenect2" \
-  < "${CONFIG_DIRECTORY}/libfreenect2/0001-Add-ament-packaging.patch"
-patch \
-  -p1 \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/libfreenect2" \
-  < "${CONFIG_DIRECTORY}/libfreenect2/0002-Change-CMake-option-defaults.patch"
-patch \
-  -p1 \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/libfreenect2" \
-  < "${CONFIG_DIRECTORY}/libfreenect2/0003-Enable-PIC.patch"
-patch \
-  -p1 \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/libfreenect2" \
-  < "${CONFIG_DIRECTORY}/libfreenect2/0004-Force-disable-components.patch"
-patch \
-  -p1 \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/libfreenect2" \
-  < "${CONFIG_DIRECTORY}/libfreenect2/0005-Export-static-library-dependencies.patch"
 
 # OpenNI
-echo "Patching OpenNI2..."
 cp -v \
   "${CONFIG_DIRECTORY}/OpenNI2/CMakeLists.txt" \
   "${CONFIG_DIRECTORY}/OpenNI2/package.xml" \
   "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/OpenNI2"
-
-if [[ "${OSTYPE}" == "darwin"* ]]; then
-  patch \
-    -p1 \
-    --reject-file="/dev/null" \
-    --no-backup-if-mismatch \
-    --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/OpenNI2" \
-    < "${CONFIG_DIRECTORY}/OpenNI2/0001-Build-for-native-macOS-architecture.patch"
-fi
 
 # The existing non-macOS OpenNI configuration targets x86_64
 if [[ "${OSTYPE}" != "darwin"* && ${PLATFORM_ARCH} != x86_64 ]]; then
@@ -363,32 +307,10 @@ if (( $(echo "${PHYSICAL_MEMORY_GB} <= 4" | bc -l) )); then
   touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/ORB_SLAM_OASIS/COLCON_IGNORE"
 fi
 
-# Pangolin
-echo "Patching Pangolin..."
-for dependency_patch in "${CONFIG_DIRECTORY}/pangolin"/*.patch; do
-  patch \
-    -p1 \
-    --reject-file="/dev/null" \
-    --no-backup-if-mismatch \
-    --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/pangolin" \
-    < "${dependency_patch}"
-done
-
 # Disable pangolin on systems with <= 4GiB memory
 if (( $(echo "${PHYSICAL_MEMORY_GB} <= 4" | bc -l) )); then
   echo "Disabling pangolin with ${PHYSICAL_MEMORY_GB} GiB of RAM"
   touch "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/pangolin/COLCON_IGNORE"
-fi
-
-# ros2_v4l2_camera
-echo "Patching ros2_v4l2_camera..."
-if [ "${ROS2_DISTRO}" = "iron" ]; then
-  patch \
-    -p1 \
-    --reject-file="/dev/null" \
-    --no-backup-if-mismatch \
-    --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/ros-perception/ros2_v4l2_camera" \
-    < "${CONFIG_DIRECTORY}/ros2_v4l2_camera/0001-Fix-include-path.patch"
 fi
 
 # vision_opencv

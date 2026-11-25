@@ -30,25 +30,11 @@ fi
 source "${SCRIPT_DIR}/env_ros2_desktop.sh"
 
 # rosdep keys to ignore
-if [ "${ROS2_DISTRO}" = "iron" ] || [ "${ROS2_DISTRO}" = "jazzy" ]; then
-  ROSDEP_IGNORE_KEYS=" \
-    fastcdr \
-    rti-connext-dds-6.0.1 \
-    urdfdom_headers \
-  "
-elif [ "${ROS2_DISTRO}" = "kilted" ]; then
-  ROSDEP_IGNORE_KEYS=" \
-    fastcdr \
-    rti-connext-dds-7.3.0 \
-    urdfdom_headers \
-  "
-elif [ "${ROS2_DISTRO}" = "lyrical" ]; then
-  ROSDEP_IGNORE_KEYS=" \
-    fastcdr \
-    rti-connext-dds-7.7.0 \
-    urdfdom_headers \
-  "
-fi
+ROSDEP_IGNORE_KEYS=" \
+  fastcdr \
+  rti-connext-dds-7.7.0 \
+  urdfdom_headers \
+"
 
 # Testing/development ignorables
 ROSDEP_IGNORE_KEYS+=" \
@@ -119,6 +105,12 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
     python3-pytest-runner
     python3-pytest-timeout
     ros-dev-tools
+
+    # Qt and SIP development files used by qt_gui_cpp
+    pyqt6-dev
+    python3-pyqt6
+    python3-pyqtbuild
+    qt6-base-dev
   )
 
   sudo apt install -y --no-install-recommends "${APT_PACKAGES[@]}"
@@ -137,10 +129,9 @@ if [[ "${OSTYPE}" == "darwin"* ]]; then
   brew install \
     ccache \
     rust \
-    wget \
+    wget
 
   # Install ROS dependencies
-  # Note: qt@6 causes problems with rviz_rendering, make sure qt@6 isn't installed
   brew install \
     asio \
     assimp \
@@ -157,11 +148,15 @@ if [[ "${OSTYPE}" == "darwin"* ]]; then
     orocos-kdl \
     pcre \
     poco \
-    pyqt@5 \
-    qt@5 \
-    sip \
+    pyqt \
+    qtbase \
     spdlog \
-    tinyxml2 \
+    tinyxml2
+
+  # Let workspace Python load the bindings built against Homebrew's Qt
+  venv_site_packages="$(python3 -c 'import sysconfig; print(sysconfig.get_path("purelib"))')"
+  echo "$(brew --prefix pyqt)/lib/python${PYTHON_VERSION}/site-packages" \
+    > "${venv_site_packages}/homebrew-pyqt.pth"
 
   # Graphviz headers and libraries are needed when pygraphviz builds from source
   CFLAGS="-I$(brew --prefix graphviz)/include ${CFLAGS:-}" \
@@ -212,20 +207,10 @@ echo "Downloading ROS 2 source code..."
   vcs import --force "${ROS2_SOURCE_DIRECTORY}" < ros2.repos
 )
 
-# Apply compiler and SDK fixes needed by ROS on macOS
+# Use the Homebrew Qt bindings and native Ogre build settings on macOS
 if [[ "${OSTYPE}" == "darwin"* ]]; then
-  patch \
-    -p1 \
-    --reject-file="/dev/null" \
-    --no-backup-if-mismatch \
-    --directory="${ROS2_SOURCE_DIRECTORY}/ros2/rcl" \
-    < "${CONFIG_DIRECTORY}/rcl/0001-Use-POSIX-locale-initialization-on-macOS.patch"
-  patch \
-    -p1 \
-    --reject-file="/dev/null" \
-    --no-backup-if-mismatch \
-    --directory="${ROS2_SOURCE_DIRECTORY}/ros2/rcutils" \
-    < "${CONFIG_DIRECTORY}/rcutils/0001-Fix-atomic-initializer-with-Clang.patch"
+  patch -p1 --directory="${ROS2_SOURCE_DIRECTORY}/ros-visualization/python_qt_binding" \
+    < "${CONFIG_DIRECTORY}/python_qt_binding/0001-Select-PyQt-for-the-SIP-bindings-on-macOS.patch"
   patch \
     -p1 \
     --reject-file="/dev/null" \
@@ -278,17 +263,6 @@ touch "${ROS2_SOURCE_DIRECTORY}/ros2/system_tests/COLCON_IGNORE"
 if (( $(echo "${PHYSICAL_MEMORY_GB} <= 4" | bc -l) )); then
   echo "Disabling rviz with ${PHYSICAL_MEMORY_GB} GiB of RAM"
   touch "${ROS2_SOURCE_DIRECTORY}/ros2/rviz/COLCON_IGNORE"
-fi
-
-# Patch image_common
-echo "Patching image_common..."
-if [ "${ROS2_DISTRO}" = "kilted" ]; then
-  patch \
-    -p1 \
-    --reject-file="/dev/null" \
-    --no-backup-if-mismatch \
-    --directory="${ROS2_SOURCE_DIRECTORY}/ros-perception/image_common" \
-    < "${CONFIG_DIRECTORY}/image_common/0001-Fix-CameraSubscriber-to-honor-QoS-reliability.patch"
 fi
 
 #
