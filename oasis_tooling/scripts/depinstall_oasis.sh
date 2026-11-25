@@ -186,4 +186,6 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
 ; fi
 
 # Bootstrap the Arduino toolchain
-"${STACK_DIRECTORY}/oasis_mcu/bootstrap.sh"
+if [[ ! -f "${STACK_DIRECTORY}/oasis_mcu/COLCON_IGNORE" ]]; then
+  "${STACK_DIRECTORY}/oasis_mcu/bootstrap.sh"
+fi

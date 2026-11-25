@@ -218,19 +218,6 @@ jobs:
           key: ${{ steps.cache-hashes.outputs.bazel-prefix }}-${{ env.MEDIAPIPE_HASH }}
           restore-keys: ${{ steps.cache-hashes.outputs.bazel-prefix }}-
 
-      - name: Restore Arduino IDE and CLI
-        id: restore-arduino-tools
-        uses: actions/cache@v6
-        with:
-          path: |
-            oasis_mcu/arduino-*
-            ros-ws/arduino-*
-            ~/.arduino15
-          key: >
-            restore-arduino-tools-\
-            ${{ matrix.os }}-\
-            ${{ env.ARDUINO_BOOTSTRAP_HASH }}
-
       - name: Restore OASIS MCU
         id: restore-oasis-mcu
         uses: actions/cache@v6
@@ -244,6 +231,20 @@ jobs:
             ${{ env.CMAKE_HASH }}-\
             ${{ env.ARDUINO_BOOTSTRAP_HASH }}-\
             ${{ env.OASIS_MCU_HASH }}
+
+      - name: Restore Arduino IDE and CLI
+        id: restore-arduino-tools
+        if: steps.restore-oasis-mcu.outputs.cache-hit != 'true'
+        uses: actions/cache@v6
+        with:
+          path: |
+            oasis_mcu/arduino-*
+            ros-ws/arduino-*
+            ~/.arduino15
+          key: >
+            restore-arduino-tools-\
+            ${{ matrix.os }}-\
+            ${{ env.ARDUINO_BOOTSTRAP_HASH }}
 
       - name: Restore OASIS drivers_cpp
         id: restore-oasis-drivers-cpp
