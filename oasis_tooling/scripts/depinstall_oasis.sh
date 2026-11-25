@@ -50,6 +50,14 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
 fi
 
 #
+# Install build dependencies (macOS)
+#
+
+if [[ "${OSTYPE}" == "darwin"* ]]; then
+  brew install --formula libepoxy
+fi
+
+#
 # Install build dependencies (everything but macOS)
 #
 
@@ -92,6 +100,9 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
       libconsole-bridge-dev
       libspdlog-dev
       libtinyxml2-dev
+
+      # Needed by Pangolin headers when built with libepoxy
+      libepoxy-dev
 
       # Needed to link MediaPipe, as its Bazel build system doesn't export
       # dependencies
