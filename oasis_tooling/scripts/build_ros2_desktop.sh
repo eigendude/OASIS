@@ -49,9 +49,14 @@ if [[ "${OSTYPE}" == "darwin"* ]]; then
     exit 1
   fi
 
+  # Keep yaml-0.1 include and library paths valid across Homebrew upgrades
+  export PKG_CONFIG_YAML_0_1_PREFIX="$(brew --prefix libyaml)"
+
+  # Refresh FindPkgConfig's cached YAML paths from earlier builds
   COLCON_FLAGS+=" \
     --packages-skip-by-dep python_qt_binding \
     --cmake-args \
+      -U*YAML_PKG_CONFIG* \
       -DBUILD_TESTING=OFF \
       -DCMAKE_C_COMPILER_LAUNCHER=ccache \
       -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
