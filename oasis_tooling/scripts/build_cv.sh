@@ -156,6 +156,8 @@ cmake_args=(
   -DBUILD_EXAMPLES=OFF
   -DBUILD_opencv_apps=OFF
   -DBUILD_opencv_java=OFF
+  # RViz's OGRE omits the Bites component required by ovis
+  -DBUILD_opencv_ovis=OFF
   -DBUILD_opencv_python2=OFF
   -DBUILD_opencv_python3=ON
   -DBUILD_opencv_sfm=ON
