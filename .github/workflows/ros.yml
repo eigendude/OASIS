@@ -95,7 +95,6 @@ jobs:
               'oasis_tooling/config/image_transport_plugins/**',
               'oasis_tooling/config/libcec/**',
               'oasis_tooling/config/libfreenect2/**',
-              'oasis_tooling/config/oasis_kinect2/**',
               'oasis_tooling/config/OpenNI2/**',
               'oasis_tooling/config/ORB_SLAM_OASIS/**',
               'oasis_tooling/config/pangolin/**',

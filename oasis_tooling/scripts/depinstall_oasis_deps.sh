@@ -216,6 +216,14 @@ fi
 
 vcs import --force "${OASIS_DEPENDS_SOURCE_DIRECTORY}" < "${PACKAGE_DIRECTORY}/config/depends.repos"
 
+# vcs import fetches branch updates but leaves existing local branches in place
+for dependency in depends/ORB_SLAM_OASIS ros-perception/oasis_kinect2; do
+  repo_dir="${OASIS_DEPENDS_SOURCE_DIRECTORY}/${dependency}"
+  if git -C "${repo_dir}" symbolic-ref --quiet HEAD > /dev/null; then
+    git -C "${repo_dir}" merge --ff-only '@{upstream}'
+  fi
+done
+
 #
 # Patch dependency sources
 #
@@ -247,7 +255,7 @@ patch \
 # Portable include paths, codec linkage, and current dependency APIs
 for dependency in \
   apriltag_ros \
-  ffmpeg_encoder_decoder image_pipeline image_transport_plugins oasis_kinect2
+  ffmpeg_encoder_decoder image_pipeline image_transport_plugins
 do
   for dependency_patch in "${CONFIG_DIRECTORY}/${dependency}"/*.patch; do
     patch \
@@ -345,25 +353,6 @@ if [[ "${OSTYPE}" != "darwin"* && ${PLATFORM_ARCH} != x86_64 ]]; then
 fi
 
 # ORB_SLAM_OASIS
-echo "Patching ORB_SLAM_OASIS..."
-patch \
-  -p1 \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/ORB_SLAM_OASIS" \
-  < "${CONFIG_DIRECTORY}/ORB_SLAM_OASIS/0001-Use-portable-dependency-targets.patch"
-patch \
-  -p1 \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/ORB_SLAM_OASIS" \
-  < "${CONFIG_DIRECTORY}/ORB_SLAM_OASIS/0002-Use-standard-CXX-containers.patch"
-patch \
-  -p1 \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/ORB_SLAM_OASIS" \
-  < "${CONFIG_DIRECTORY}/ORB_SLAM_OASIS/0003-Use-standard-integer-headers.patch"
 cp -v \
   "${CONFIG_DIRECTORY}/ORB_SLAM_OASIS/package.xml" \
   "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/ORB_SLAM_OASIS"
