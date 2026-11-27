@@ -275,6 +275,7 @@ cp -v \
 
 # libcec
 cp -v \
+  "${CONFIG_DIRECTORY}/libcec/colcon.pkg" \
   "${CONFIG_DIRECTORY}/libcec/package.xml" \
   "${OASIS_DEPENDS_SOURCE_DIRECTORY}/depends/libcec"
 

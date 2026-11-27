@@ -1,0 +1,5 @@
+{
+  "cmake-args": [
+    "-DDISABLE_BUILDINFO=ON"
+  ]
+}
