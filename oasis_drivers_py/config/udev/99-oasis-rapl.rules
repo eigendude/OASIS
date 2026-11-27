@@ -1,0 +1,11 @@
+#
+#  Copyright (C) 2026 Garrett Brown
+#  This file is part of OASIS - https://github.com/eigendude/OASIS
+#
+#  SPDX-License-Identifier: Apache-2.0
+#  See the file LICENSE.txt for more information.
+#
+
+# The powercap device exposes energy as a sysfs attribute. Keep root ownership
+# and grant the drivers group read access only to the platform energy counter
+ACTION=="add|change", SUBSYSTEM=="powercap", KERNEL=="intel-rapl*:*", ATTR{name}=="psys", RUN+="/usr/bin/chgrp oasis-rapl /sys%p/energy_uj", RUN+="/usr/bin/chmod 0440 /sys%p/energy_uj"

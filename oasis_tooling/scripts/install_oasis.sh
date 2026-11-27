@@ -311,6 +311,14 @@ if [[ "${OSTYPE}" != "darwin"* ]]; then
 
       echo "Installing ${FILE_NAME}"
 
+      if [[ "${FILE_NAME}" == "99-oasis-rapl.rules" ]]; then
+        # Give only the configured drivers account access to platform energy
+        DRIVERS_USER="$(systemctl show --property=User --value oasis_drivers.service)"
+        sudo groupadd --system --force oasis-rapl
+        test -n "${DRIVERS_USER}"
+        sudo gpasswd --members "${DRIVERS_USER}" oasis-rapl
+      fi
+
       sudo cp "${UDEV_RULE}" "${UDEV_RULE_DIRECTORY}"
     done
   done
