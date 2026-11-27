@@ -1,4 +1,6 @@
-psutil==5.9.6
-git+https://github.com/eigendude/pymata-express@master#egg=pymata-express
+bleak==3.1.0
+dbus-fast==5.2.0
+psutil==7.2.2
+pymata-express @ git+https://github.com/eigendude/pymata-express@c9b9470137ed96ef786e09574f5dcf4e9edd63e1
 pyserial==3.5
-telemetrix-aio==1.22
+telemetrix-aio==1.25
