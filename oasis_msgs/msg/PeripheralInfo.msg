@@ -35,3 +35,17 @@ string controller_profile
 # Set to 0 if the peripheral is available to capture input, or 1 if already
 # capturing input
 uint8 capturing_input
+
+# Peripheral battery states
+uint8 BATTERY_STATE_UNKNOWN=0
+uint8 BATTERY_STATE_NOT_SUPPORTED=1
+uint8 BATTERY_STATE_WIRED=2
+uint8 BATTERY_STATE_DISCHARGING=3
+uint8 BATTERY_STATE_CHARGING=4
+uint8 BATTERY_STATE_FULL=5
+
+# Current battery state of the peripheral
+uint8 battery_state 0
+
+# Battery charge in percent (0-100), or -1 if unavailable
+int32 battery_charge -1
