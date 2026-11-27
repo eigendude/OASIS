@@ -15,6 +15,7 @@ from builtin_interfaces.msg import Time as TimeMsg
 
 from oasis_drivers.system.input_voltage import InputVoltageReader
 from oasis_drivers.system.system_monitor import SystemMonitor
+from oasis_drivers.system.system_power import SystemPowerReader
 from oasis_msgs.msg import SystemTelemetry as SystemTelemetryMsg
 
 
@@ -54,6 +55,7 @@ class SystemMonitorNode(rclpy.node.Node):
             qos_profile=qos_profile,
         )
 
+        self._system_power: SystemPowerReader = SystemPowerReader()
         self._input_voltage: InputVoltageReader = InputVoltageReader()
 
         # Timing parameters
@@ -76,5 +78,9 @@ class SystemMonitorNode(rclpy.node.Node):
         timestamp: TimeMsg = self.get_clock().now().to_msg()
         frame_id: str = NODE_NAME  # TODO
         SystemMonitor.read_psutil(
-            self._telemetry_pub, timestamp, frame_id, self._input_voltage.read()
+            self._telemetry_pub,
+            timestamp,
+            frame_id,
+            system_power=self._system_power.read(),
+            input_voltage=self._input_voltage.read(),
         )

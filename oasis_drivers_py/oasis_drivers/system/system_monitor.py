@@ -57,6 +57,7 @@ class SystemMonitor:
         telemetry_pub: rclpy.publisher.Publisher,
         timestamp: TimeMsg,
         frame_id: str,
+        system_power: float = math.nan,
         input_voltage: float = math.nan,
     ) -> None:
         # Read information from psutil
@@ -98,6 +99,7 @@ class SystemMonitor:
 
         # Populate the message
         telemetry_msg.header = header
+        telemetry_msg.system_power = system_power
         telemetry_msg.input_voltage = input_voltage
         telemetry_msg.bootstrap_time = bootstrap_time
         telemetry_msg.cpu_utilization = cpu_utilization

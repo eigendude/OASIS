@@ -54,5 +54,8 @@ float64 battery_remaining_mins
 # True if the power is plugged, false if operating on battery power
 bool power_plugged
 
+# System platform power (W), or NaN if unavailable
+float32 system_power
+
 # Input supply voltage (V), or NaN if unavailable
 float32 input_voltage
