@@ -8,6 +8,7 @@
 #
 ################################################################################
 
+import math
 from typing import List
 from typing import Optional
 
@@ -52,7 +53,11 @@ class SystemMonitor:
 
     @classmethod
     def read_psutil(
-        cls, telemetry_pub: rclpy.publisher.Publisher, timestamp: TimeMsg, frame_id: str
+        cls,
+        telemetry_pub: rclpy.publisher.Publisher,
+        timestamp: TimeMsg,
+        frame_id: str,
+        input_voltage: float = math.nan,
     ) -> None:
         # Read information from psutil
         bootstrap_time = float(psutil.boot_time())
@@ -93,6 +98,7 @@ class SystemMonitor:
 
         # Populate the message
         telemetry_msg.header = header
+        telemetry_msg.input_voltage = input_voltage
         telemetry_msg.bootstrap_time = bootstrap_time
         telemetry_msg.cpu_utilization = cpu_utilization
         if cpu_temperature is not None:
