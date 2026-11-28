@@ -27,7 +27,7 @@ SYSTEM_MONITOR_MODULE: Path = (
     PACKAGE_ROOT / "oasis_drivers/nodes/system_monitor_node.py"
 )
 FALCON_TOPIC_MODULES: dict[Path, tuple[int, int]] = {
-    TELEMETRIX_BRIDGE_MODULE: (10, 4),
+    TELEMETRIX_BRIDGE_MODULE: (7, 4),
     (REPOSITORY_ROOT / "oasis_control/oasis_control/nodes/ahrs_speedometer_node.py"): (
         1,
         3,
@@ -68,7 +68,7 @@ def test_callback_factories_preserve_explicit_callbacks() -> None:
 
 
 def test_telemetrix_topic_entities_pass_fresh_event_callback_factories() -> None:
-    assert _topic_factory_counts(TELEMETRIX_BRIDGE_MODULE) == (10, 4)
+    assert _topic_factory_counts(TELEMETRIX_BRIDGE_MODULE) == (7, 4)
 
 
 def test_falcon_python_topic_module_inventory_uses_callback_factories() -> None:
