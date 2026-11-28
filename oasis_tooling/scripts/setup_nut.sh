@@ -46,19 +46,18 @@ UPS_CONF="/etc/nut/ups.conf"
 UPSD_CONF="/etc/nut/upsd.conf"
 UPSD_USERS="/etc/nut/upsd.users"
 
-sudo touch \
-  "${NUT_CONF}" \
-  "${UPS_CONF}" \
-  "${UPSD_CONF}" \
-  "${UPSD_USERS}" \
-
 #
 # Install NUT
 #
 
 sudo apt update
-sudo apt install -y --no-install-recommends \
-  nut \
+sudo apt install -y --no-install-recommends nut
+
+sudo touch \
+  "${NUT_CONF}" \
+  "${UPS_CONF}" \
+  "${UPSD_CONF}" \
+  "${UPSD_USERS}"
 
 # Install optional OASIS companion service
 if [[ -f "${UPS_SERVICE_TEMPLATE_SOURCE}" ]]; then
