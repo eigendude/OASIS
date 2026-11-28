@@ -38,7 +38,7 @@ add_library(cockpit_renderer SHARED
 target_include_directories(cockpit_renderer PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
   $<INSTALL_INTERFACE:include/oasis_visualization>
-  ${OpenCV_INCLUDE_DIRS}
+  "$<BUILD_INTERFACE:${OpenCV_INCLUDE_DIRS}>"
 )
 target_link_libraries(cockpit_renderer PUBLIC ${OpenCV_LIBRARIES})
 
@@ -92,7 +92,7 @@ add_library(oled_renderer SHARED
 target_include_directories(oled_renderer PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
     $<INSTALL_INTERFACE:include/oasis_visualization>
-    ${OpenCV_INCLUDE_DIRS}
+    "$<BUILD_INTERFACE:${OpenCV_INCLUDE_DIRS}>"
 )
 target_link_libraries(oled_renderer PUBLIC
   ${OpenCV_LIBRARIES}
