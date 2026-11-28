@@ -19,6 +19,7 @@ from std_msgs.msg import Header as HeaderMsg
 
 from oasis_drivers.network.network_utils import NetworkUtils
 from oasis_drivers.ros.float_field import to_ros_float
+from oasis_drivers.system.system_power import read_battery_discharge_watts
 from oasis_drivers.system.system_types import Battery
 from oasis_drivers.system.system_types import DiskPartition
 from oasis_drivers.system.system_types import NetworkAddress
@@ -89,6 +90,8 @@ class SystemMonitor:
         disk_partitions = cls._get_disk_partitions()
         network_interfaces = cls._get_network_interfaces()
         battery = cls._get_battery()
+        if system_power is None and battery is not None and not battery.power_plugged:
+            system_power = read_battery_discharge_watts()
 
         # Timestamp in ROS header
         header = HeaderMsg()

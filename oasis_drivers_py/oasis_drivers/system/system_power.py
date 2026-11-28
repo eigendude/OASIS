@@ -23,6 +23,30 @@ _PROBE_INTERVAL_S: float = 60.0
 _UJ_PER_J: int = 1_000_000
 
 
+def read_battery_discharge_watts(
+    root: Path = Path("/sys/class/power_supply"),
+) -> float | None:
+    """Return the total watts supplied by discharging Linux laptop batteries."""
+    microwatts: list[int] = []
+    battery: Path
+    try:
+        for battery in root.glob("BAT*"):
+            status: bytes = (battery / "status").read_bytes().strip()
+            if status in (b"Full", b"Not charging"):
+                continue
+            if status != b"Discharging":
+                return None
+            power: int = int((battery / "power_now").read_bytes())
+            if power < 0:
+                return None
+            microwatts.append(power)
+    except (OSError, ValueError):
+        return None
+
+    # Linux power_supply reports power_now in microwatts
+    return sum(microwatts) / 1_000_000 if microwatts else None
+
+
 def _counter(raw: bytes) -> int:
     raw = raw.strip()
     if not raw.isdigit():

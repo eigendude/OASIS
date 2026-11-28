@@ -15,6 +15,7 @@ from unittest.mock import Mock
 import pytest
 
 from oasis_drivers.system.system_power import SystemPowerReader
+from oasis_drivers.system.system_power import read_battery_discharge_watts
 
 
 def domain(root: Path, dirname: str, name: str) -> Path:
@@ -189,3 +190,36 @@ def test_reused_zone_index(tmp_path: Path, clock: Mock, new_name: str) -> None:
         assert reader.read() == 2.0
     else:
         assert reader.read() is None
+
+
+@pytest.mark.parametrize(
+    ("status", "power", "expected"),
+    [
+        ("Discharging", "13819000", 13.819),
+        ("Discharging", "0", 0.0),
+        ("Discharging", None, None),
+        ("Discharging", "invalid", None),
+        ("Charging", "13819000", None),
+        ("Full", "0", None),
+    ],
+)
+def test_battery_discharge_power(
+    tmp_path: Path, status: str, power: str | None, expected: float | None
+) -> None:
+    battery: Path = tmp_path / "BAT0"
+    battery.mkdir()
+    (battery / "status").write_text(status)
+    if power is not None:
+        (battery / "power_now").write_text(power)
+    assert read_battery_discharge_watts(tmp_path) == expected
+
+
+def test_combined_battery_discharge_power(tmp_path: Path) -> None:
+    for name, power in (("BAT0", "1000000"), ("BAT1", "2000000")):
+        battery: Path = tmp_path / name
+        battery.mkdir()
+        (battery / "status").write_text("Discharging")
+        (battery / "power_now").write_text(power)
+    assert read_battery_discharge_watts(tmp_path) == 3.0
+    (tmp_path / "BAT1" / "power_now").unlink()
+    assert read_battery_discharge_watts(tmp_path) is None
