@@ -8,7 +8,6 @@
 #
 ################################################################################
 
-import math
 import subprocess
 import sys
 import time
@@ -52,7 +51,7 @@ def test_macos_skips_command(run: Mock, monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setattr(sys, "platform", "darwin")
     reader: InputVoltageReader = InputVoltageReader()
 
-    assert math.isnan(reader.read())
+    assert reader.read() is None
     run.assert_not_called()
 
 
@@ -71,8 +70,8 @@ def test_unsupported_reader_only_probes_once(
     run.side_effect = [failure]
     reader: InputVoltageReader = InputVoltageReader()
 
-    assert math.isnan(reader.read())
-    assert math.isnan(reader.read())
+    assert reader.read() is None
+    assert reader.read() is None
     run.assert_called_once()
 
 
@@ -96,9 +95,9 @@ def test_inconclusive_probe_backs_off_then_recovers(
     run.side_effect = [failure, reading(b"EXT5V_V volt(24)=4.7V")]
     reader: InputVoltageReader = InputVoltageReader()
 
-    assert math.isnan(reader.read())
+    assert reader.read() is None
     clock.return_value += 0.5
-    assert math.isnan(reader.read())
+    assert reader.read() is None
     run.assert_called_once()
     clock.return_value += 60.0
     assert reader.read() == 4.7
@@ -126,5 +125,5 @@ def test_failed_sample_on_supported_hardware_recovers(
     reader: InputVoltageReader = InputVoltageReader()
 
     assert reader.read() == 4.7
-    assert math.isnan(reader.read())
+    assert reader.read() is None
     assert reader.read() == 4.6

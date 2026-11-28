@@ -92,12 +92,12 @@ class SystemPowerReader:
                 continue
         return None
 
-    def read(self) -> float:
-        """Return average platform watts since the previous sample, or NaN."""
+    def read(self) -> float | None:
+        """Return average platform watts since the previous sample, or None."""
         try:
             sample: tuple[int, int] | None = self._sample()
             if sample is None:
-                return math.nan
+                return None
             energy: int
             maximum: int
             energy, maximum = sample
@@ -108,20 +108,20 @@ class SystemPowerReader:
             self._previous = None
             self._domain = None
             self._probe_after = self._clock() + _PROBE_INTERVAL_S
-            return math.nan
+            return None
         except (OSError, ValueError):
             self._previous = None
-            return math.nan
+            return None
 
         previous: tuple[int, float] | None = self._previous
         self._previous = (energy, timestamp)
         if previous is None:
-            return math.nan
+            return None
 
         elapsed: float = timestamp - previous[1]
         if elapsed <= 0.0 or not math.isfinite(elapsed):
             self._previous = None
-            return math.nan
+            return None
 
         delta_uj: int = energy - previous[0]
         if delta_uj < 0:

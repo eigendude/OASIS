@@ -18,6 +18,7 @@ from builtin_interfaces.msg import Time as TimeMsg
 from std_msgs.msg import Header as HeaderMsg
 
 from oasis_drivers.network.network_utils import NetworkUtils
+from oasis_drivers.ros.float_field import to_ros_float
 from oasis_drivers.system.system_types import Battery
 from oasis_drivers.system.system_types import DiskPartition
 from oasis_drivers.system.system_types import NetworkAddress
@@ -57,8 +58,8 @@ class SystemMonitor:
         telemetry_pub: rclpy.publisher.Publisher,
         timestamp: TimeMsg,
         frame_id: str,
-        system_power: float = math.nan,
-        input_voltage: float = math.nan,
+        system_power: Optional[float] = None,
+        input_voltage: Optional[float] = None,
     ) -> None:
         # Read information from psutil
         bootstrap_time = float(psutil.boot_time())
@@ -99,14 +100,12 @@ class SystemMonitor:
 
         # Populate the message
         telemetry_msg.header = header
-        telemetry_msg.system_power = system_power
-        telemetry_msg.input_voltage = input_voltage
+        telemetry_msg.system_power = to_ros_float(system_power)
+        telemetry_msg.input_voltage = to_ros_float(input_voltage)
         telemetry_msg.bootstrap_time = bootstrap_time
         telemetry_msg.cpu_utilization = cpu_utilization
-        if cpu_temperature is not None:
-            telemetry_msg.cpu_temperature = cpu_temperature
-        if cpu_frequency_ghz is not None:
-            telemetry_msg.cpu_frequency_ghz = cpu_frequency_ghz
+        telemetry_msg.cpu_temperature = to_ros_float(cpu_temperature)
+        telemetry_msg.cpu_frequency_ghz = to_ros_float(cpu_frequency_ghz)
         telemetry_msg.cpu_physical_core_count = cpu_physical_core_count
         telemetry_msg.cpu_logical_core_count = cpu_logical_core_count
         telemetry_msg.memory_utilization = memory_utilization
@@ -137,10 +136,14 @@ class SystemMonitor:
         if battery is not None:
             telemetry_msg.has_battery = True
             telemetry_msg.battery_percent = battery.battery_percent
-            telemetry_msg.battery_remaining_mins = battery.battery_remaining_time
+            telemetry_msg.battery_remaining_mins = to_ros_float(
+                battery.battery_remaining_time
+            )
             telemetry_msg.power_plugged = battery.power_plugged
         else:
             telemetry_msg.has_battery = False
+            telemetry_msg.battery_percent = math.nan
+            telemetry_msg.battery_remaining_mins = math.nan
 
         # Publish the message
         telemetry_pub.publish(telemetry_msg)
@@ -246,7 +249,9 @@ class SystemMonitor:
         if battery:
             return Battery(
                 battery_percent=float(battery.percent),
-                battery_remaining_time=float(battery.secsleft) / 60.0,
+                battery_remaining_time=(
+                    float(battery.secsleft) / 60.0 if battery.secsleft >= 0 else None
+                ),
                 power_plugged=bool(battery.power_plugged),
             )
 

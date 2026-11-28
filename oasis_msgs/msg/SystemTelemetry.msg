@@ -21,10 +21,10 @@ float64 bootstrap_time
 # CPU utilization, as a percent
 float32 cpu_utilization
 
-# CPU temperature (C)
+# CPU temperature (C), or NaN if unavailable
 float64 cpu_temperature
 
-# CPU frequency (GHz)
+# CPU frequency (GHz), or NaN if unavailable
 float64 cpu_frequency_ghz
 
 # CPU core count (physical cores)
@@ -45,10 +45,10 @@ NetworkInterface[] network_interfaces
 # True if a battery is present, false otherwise
 bool has_battery
 
-# Battery percent
+# Battery percent, or NaN if unavailable
 float32 battery_percent
 
-# Time remaining on the battery (minutes)
+# Time remaining on the battery (minutes), or NaN if unavailable
 float64 battery_remaining_mins
 
 # True if the power is plugged, false if operating on battery power

@@ -15,6 +15,7 @@ from typing import Optional
 
 import rclpy.logging
 
+from oasis_drivers.ros.float_field import to_ros_float
 from oasis_msgs.msg import UPSStatus as UPSStatusMsg
 
 
@@ -54,29 +55,37 @@ class UpsServer:
                 if ": " in line
             )
 
-            load_total: int = cls._int_value(values, "ups.realpower.nominal")
-            ups_load_percent: int = cls._int_value(values, "ups.load")
+            load_total: Optional[float] = cls._float_value(
+                values, "ups.realpower.nominal"
+            )
+            ups_load_percent: Optional[float] = cls._float_value(values, "ups.load")
 
             # Convert NUT load percentage to watts using nominal real power
-            load_watts: float = float(ups_load_percent * load_total / 100.0)
+            load_watts: Optional[float] = (
+                ups_load_percent * load_total / 100.0
+                if ups_load_percent is not None and load_total is not None
+                else None
+            )
 
             msg: UPSStatusMsg = UPSStatusMsg(
                 manufacturer=values.get("device.mfr", ""),
                 model=values.get("device.model", ""),
                 serial_number=values.get("device.serial", ""),
-                input_voltage=cls._float_value(values, "input.voltage", 0.0),
-                output_voltage=cls._float_value(values, "output.voltage", 0.0),
-                battery_voltage=cls._float_value(values, "battery.voltage", math.nan),
-                battery_current=cls._float_value(values, "battery.current", math.nan),
-                battery_temperature=cls._float_value(
-                    values,
-                    "battery.temperature",
-                    math.nan,
+                input_voltage=to_ros_float(cls._float_value(values, "input.voltage")),
+                output_voltage=to_ros_float(cls._float_value(values, "output.voltage")),
+                battery_voltage=to_ros_float(
+                    cls._float_value(values, "battery.voltage")
+                ),
+                battery_current=to_ros_float(
+                    cls._float_value(values, "battery.current")
+                ),
+                battery_temperature=to_ros_float(
+                    cls._float_value(values, "battery.temperature")
                 ),
                 battery_charge=cls._int_value(values, "battery.charge"),
                 battery_runtime=cls._int_value(values, "battery.runtime"),
-                load=load_watts,
-                load_total=float(load_total),
+                load=to_ros_float(load_watts),
+                load_total=to_ros_float(load_total),
                 status=values.get("ups.status", ""),
                 battery_type=values.get("battery.type", ""),
             )
@@ -125,20 +134,13 @@ class UpsServer:
         return env
 
     @staticmethod
-    def _float_value(
-        values: dict[str, str],
-        key: str,
-        default: float,
-    ) -> float:
+    def _float_value(values: dict[str, str], key: str) -> Optional[float]:
         try:
             value: float = float(values[key])
         except (KeyError, TypeError, ValueError):
-            return default
+            return None
 
-        if not math.isfinite(value):
-            return default
-
-        return value
+        return value if math.isfinite(value) else None
 
     @staticmethod
     def _int_value(

@@ -15,9 +15,11 @@
 from __future__ import annotations
 
 import math
+import subprocess
 from typing import Any
 from typing import Protocol
 from typing import cast
+from unittest.mock import Mock
 
 import pytest
 import rclpy
@@ -27,6 +29,7 @@ from rclpy.qos import ReliabilityPolicy
 from sensor_msgs.msg import BatteryState as BatteryStateMsg
 
 from oasis_drivers.nodes.ups_server_node import UpsServerNode
+from oasis_drivers.ups.ups_server import UpsServer
 from oasis_msgs.msg import UPSStatus as UPSStatusMsg
 
 
@@ -46,6 +49,37 @@ def rclpy_context() -> Any:
         yield
     finally:
         rclpy.shutdown()
+
+
+@pytest.mark.parametrize(
+    ("nut_values", "expected"),
+    [
+        ("ups.load: 0", (math.nan, math.nan, math.nan, math.nan)),
+        (
+            "input.voltage: 0\noutput.voltage: n/a\nups.realpower.nominal: 1000\nups.load: 0",
+            (0.0, math.nan, 0.0, 1000.0),
+        ),
+    ],
+)
+def test_unavailable_ups_measurements(
+    monkeypatch: pytest.MonkeyPatch,
+    nut_values: str,
+    expected: tuple[float, ...],
+) -> None:
+    result: subprocess.CompletedProcess[str] = subprocess.CompletedProcess(
+        ["upsc", "ups"], 0, stdout=nut_values
+    )
+    monkeypatch.setattr(subprocess, "run", Mock(return_value=result))
+
+    status: UPSStatusMsg | None = UpsServer.read_status(Mock())
+    assert status is not None
+    readings: tuple[float, ...] = (
+        status.input_voltage,
+        status.output_voltage,
+        status.load,
+        status.load_total,
+    )
+    assert readings == pytest.approx(expected, nan_ok=True)
 
 
 def test_publishes_battery_topic_with_state_qos() -> None:

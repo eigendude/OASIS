@@ -35,10 +35,10 @@ class InputVoltageReader:
         # platform or firmware command known to be unavailable.
         self._probe_after: float | None = 0.0 if sys.platform == "linux" else math.inf
 
-    def read(self) -> float:
-        """Return the current input voltage in volts, or NaN if unavailable."""
+    def read(self) -> float | None:
+        """Return the current input voltage in volts, or None if unavailable."""
         if self._probe_after is not None and time.monotonic() < self._probe_after:
-            return math.nan
+            return None
 
         try:
             result: subprocess.CompletedProcess[bytes] = subprocess.run(
@@ -50,7 +50,7 @@ class InputVoltageReader:
             )
         except (FileNotFoundError, PermissionError):
             self._probe_after = math.inf
-            return math.nan
+            return None
         except (OSError, subprocess.SubprocessError):
             pass
         else:
@@ -65,8 +65,8 @@ class InputVoltageReader:
                 b" volt(" in output and b"EXT5V_V" not in output
             ):
                 self._probe_after = math.inf
-                return math.nan
+                return None
 
         if self._probe_after is not None:
             self._probe_after = time.monotonic() + _PROBE_INTERVAL_S
-        return math.nan
+        return None

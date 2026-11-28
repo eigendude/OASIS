@@ -17,10 +17,10 @@ string model
 # The UPS serial number, e.g. CXXNU7006846, or empty if unknown
 string serial_number
 
-# The input voltage, in V
+# The input voltage, in V, or NaN if unavailable
 float32 input_voltage
 
-# The output voltage, in V
+# The output voltage, in V, or NaN if unavailable
 float32 output_voltage
 
 # The battery voltage, in V, or NaN if unavailable
@@ -38,10 +38,10 @@ uint32 battery_charge
 # The battery runtime, in minutes
 uint32 battery_runtime
 
-# The current load, in W
+# The current load, in W, or NaN if unavailable
 float32 load
 
-# The total load supported, in W
+# The total load supported, in W, or NaN if unavailable
 float32 load_total
 
 # The status of the battery, or empty if unknown
