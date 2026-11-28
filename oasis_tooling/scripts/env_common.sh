@@ -83,24 +83,62 @@ fi
 # 1024 × 1024 = 1 048 576 KiB per GiB
 PHYSICAL_MEMORY_GB=$(awk -v kb="${PHYSICAL_MEMORY_KB}" 'BEGIN {printf "%.4f", kb/1048576}')
 
-# Restore a dependency source directory to a pinned Git tag or commit
+# Prepare the pinned checkout and apply the supplied patches in order.
+# Patch paths must be absolute. OASIS_SOURCE_OUTPUTS lists Git exclusions for
+# generated files. OASIS_SOURCE_CONFIGURE can supply additional source edits,
+# with OASIS_SOURCE_KEY identifying the inputs to those edits.
 prepare_git_source() (
   local source_dir="$1" repository="$2" revision="$3"
-  local refspec="${revision}"
+  shift 3
+  local refspec="${revision}" receipt pin key tree extras
+  local previous='' previous_repository='' patch_file
 
-  # Initialize in place for both fresh builds and older archive extractions
-  git init --quiet "${source_dir}" || return 1
+  if [[ ! -e "${source_dir}/.git" ]]; then
+    git init --quiet "${source_dir}" || return 1
+  fi
   cd "${source_dir}" || return 1
-
-  # Cache the pinned tag or commit so repeat builds can run offline
-  if ! git rev-parse --verify --quiet "${revision}^{commit}" > /dev/null; then
+  receipt="$(git rev-parse --git-path oasis-prepared)" || return 1
+  if [[ -f "${receipt}" ]]; then
+    read -r previous tree previous_repository < "${receipt}" || previous=''
+  fi
+  if [[ -n "${previous_repository}" && "${repository}" != "${previous_repository}" ]] ||
+     ! git rev-parse --verify --quiet "${revision}^{commit}" > /dev/null; then
     if [[ "${revision}" == refs/tags/* ]]; then
-      refspec="${revision}:${revision}"
+      refspec="+${revision}:${revision}"
     fi
     git fetch --depth=1 --no-tags "${repository}" "${refspec}" || return 1
   fi
 
-  # Restore patched files and remove generated files, including nested checkouts
-  git checkout --force --detach "${revision}" || return 1
-  git clean -ffdx
+  pin="$(git rev-parse "${revision}^{commit}")" || return 1
+  key="$(
+    {
+      printf '%s\0' "${pin}" "${OASIS_SOURCE_KEY:-}"
+      git hash-object -- "$@"
+    } | git hash-object --stdin
+  )" || return 1
+  if [[ "${previous}" == "${key}" && "${previous_repository}" == "${repository}" &&
+        "$(git rev-parse HEAD)" == "${pin}" ]] && git diff --quiet "${tree}" --; then
+    extras="$(git ls-files --others --directory ${OASIS_SOURCE_OUTPUTS[@]+"${OASIS_SOURCE_OUTPUTS[@]}"})" || return 1
+    if [[ -z "${extras}" ]]; then
+      echo "Reusing ${source_dir} at ${revision}"
+      return
+    fi
+  fi
+
+  rm -f "${receipt}" || return 1
+  git checkout --quiet --force --detach "${pin}" || return 1
+  git clean -qffdx || return 1
+  for patch_file in "$@"; do
+    # Kodi may already include an OASIS patch in its pinned upstream commit
+    if patch -p1 --batch --dry-run --forward < "${patch_file}" > /dev/null 2>&1; then
+      patch -p1 --batch --forward --no-backup-if-mismatch < "${patch_file}" || return 1
+    else
+      patch -p1 --force --dry-run --reverse < "${patch_file}" || return 1
+    fi
+  done
+  "${OASIS_SOURCE_CONFIGURE:-:}"
+  # Include new source files introduced by patches in the expected tree
+  git add -f -A . || return 1
+  tree="$(git write-tree)" || return 1
+  printf '%s %s %s\n' "${key}" "${tree}" "${repository}" > "${receipt}"
 )

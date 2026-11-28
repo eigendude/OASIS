@@ -41,28 +41,11 @@ OPENCV_PYTHON_BIN="${OPENCV_PYTHON_BIN:-python3}"
 # Prepare OpenCV and OpenCV Contrib at the same release tag
 #
 
-prepare_git_source "${OPENCV_SOURCE_DIR}" \
-  "${OPENCV_URL}" "refs/tags/${OPENCV_VERSION}"
-prepare_git_source "${OPENCV_CONTRIB_SOURCE_DIR}" \
-  "${OPENCV_CONTRIB_URL}" "refs/tags/${OPENCV_VERSION}"
-
-#
-# Patch OpenCV
-#
-
-echo "Patching OpenCV..."
-patch \
-  -p1 \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${OPENCV_SOURCE_DIR}" \
-  < "${CONFIG_DIRECTORY}/opencv/0001-GAPI-Implement-RGBA2Gray-and-GBRA2Gray.patch"
-patch \
-  -p1 \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${OPENCV_SOURCE_DIR}" \
-  < "${CONFIG_DIRECTORY}/opencv/0002-Support-FFmpeg-9-codec-capabilities.patch"
+OASIS_SOURCE_OUTPUTS=(--exclude=/.cache/ --exclude=__pycache__/)
+prepare_git_source "${OPENCV_SOURCE_DIR}" "${OPENCV_URL}" "refs/tags/${OPENCV_VERSION}" \
+  "${CONFIG_DIRECTORY}/opencv/0001-GAPI-Implement-RGBA2Gray-and-GBRA2Gray.patch" \
+  "${CONFIG_DIRECTORY}/opencv/0002-Support-FFmpeg-9-codec-capabilities.patch"
+prepare_git_source "${OPENCV_CONTRIB_SOURCE_DIR}" "${OPENCV_CONTRIB_URL}" "refs/tags/${OPENCV_VERSION}"
 
 #
 # Configure OpenCV

@@ -129,9 +129,33 @@ if [[ "${OSTYPE}" == "darwin"* ]]; then
     # Checkout updates only changed files, preserving mtimes and in-tree stamps
     git -C "${KODI_SOURCE_DIR}" checkout --quiet --detach "${KODI_VERSION}"
   fi
+  for patch_name in "${patches[@]}"; do
+    patch_path="${CONFIG_DIRECTORY}/kodi/${patch_name}"
+    if patch -p1 --dry-run --forward --directory="${KODI_SOURCE_DIR}" \
+      < "${patch_path}" > /dev/null 2>&1; then
+      patch -p1 --forward --directory="${KODI_SOURCE_DIR}" < "${patch_path}"
+    elif ! patch -p1 --dry-run --reverse --directory="${KODI_SOURCE_DIR}" \
+      < "${patch_path}" > /dev/null 2>&1; then
+      echo "Kodi patch does not match the pinned source: ${patch_name}" >&2
+      exit 1
+    fi
+  done
 else
-  prepare_git_source "${KODI_SOURCE_DIR}" \
-    "${KODI_URL}.git" "${KODI_VERSION}"
+  patch_paths=()
+  for patch_name in "${patches[@]}"; do
+    patch_paths+=("${CONFIG_DIRECTORY}/kodi/${patch_name}")
+  done
+  OASIS_SOURCE_OUTPUTS=(--exclude=/cmake/addons/addons/ --exclude=/cmake/addons/.success
+    --exclude=/tools/depends/target/binary-addons/native/
+    --exclude=/tools/depends/target/binary-addons/.installed-native)
+  OASIS_SOURCE_KEY="$(
+    {
+      printf '%s\0' "${KODI_INSTALL_DIR}" "${CMAKE_PREFIX_PATH}" "${CC:-}" "${CXX:-}" \
+        "${CFLAGS:-}" "${CXXFLAGS:-}" "${CPPFLAGS:-}" "${LDFLAGS:-}" "${CMAKE_GENERATOR:-}"
+      git hash-object -- "${SCRIPT_DIR}/build_kodi.sh" ${CMAKE_TOOLCHAIN_FILE:+"${CMAKE_TOOLCHAIN_FILE}"}
+    } | git hash-object --stdin
+  )"
+  prepare_git_source "${KODI_SOURCE_DIR}" "${KODI_URL}.git" "${KODI_VERSION}" "${patch_paths[@]}"
 fi
 
 # Use physical paths even when the workspace is reached through a symlink
@@ -141,18 +165,6 @@ KODI_BUILD_DIR="$(cd "${KODI_BUILD_DIR}" && pwd -P)"
 KODI_DEPENDS_DIR="$(cd "${KODI_DEPENDS_DIR}" && pwd -P)"
 KODI_DEPENDS_SRC="${KODI_SOURCE_DIR}/tools/depends"
 cd "${KODI_BUILD_DIR}"
-
-for patch_name in "${patches[@]}"; do
-  patch_path="${CONFIG_DIRECTORY}/kodi/${patch_name}"
-  if patch -p1 --dry-run --forward --directory="${KODI_SOURCE_DIR}" \
-    < "${patch_path}" > /dev/null 2>&1; then
-    patch -p1 --forward --directory="${KODI_SOURCE_DIR}" < "${patch_path}"
-  elif ! patch -p1 --dry-run --reverse --directory="${KODI_SOURCE_DIR}" \
-    < "${patch_path}" > /dev/null 2>&1; then
-    echo "Kodi patch does not match the pinned source: ${patch_name}" >&2
-    exit 1
-  fi
-done
 
 #
 # Configure Kodi
@@ -256,11 +268,21 @@ fi
 echo "Building Kodi add-ons..."
 addons=(peripheral.joystick screensaver.matrixtrails)
 # The launchers also apply to CMake projects configured by ExternalProject
-CMAKE_C_COMPILER_LAUNCHER=ccache CMAKE_CXX_COMPILER_LAUNCHER=ccache \
-  make -C "${KODI_DEPENDS_SRC}/target/binary-addons" -j"${KODI_BUILD_JOBS}" \
-    ADDONS="${addons[*]}" ADDON_BUILD_TARGET=build-addons \
-    "${addon_args[@]}" \
-    TARBALLS_LOCATION="${KODI_DOWNLOAD_DIR}"
+addon_build="${KODI_DEPENDS_SRC}/target/binary-addons/native"
+if [[ "${OSTYPE}" != "darwin"* && -f "${addon_build}/Makefile" &&
+      -f "${addon_build}/CMakeCache.txt" && -f "${addon_build}/../.installed-native" ]]; then
+  # The outer Make stamp cannot detect deleted add-on libraries or resources
+  cmake --build "${addon_build}" --target build-addons --parallel "${KODI_BUILD_JOBS}"
+else
+  if [[ "${OSTYPE}" != "darwin"* ]]; then
+    rm -f "${addon_build%/native}/.installed-native"
+  fi
+  CMAKE_C_COMPILER_LAUNCHER=ccache CMAKE_CXX_COMPILER_LAUNCHER=ccache \
+    make -C "${KODI_DEPENDS_SRC}/target/binary-addons" -j"${KODI_BUILD_JOBS}" \
+      ADDONS="${addons[*]}" ADDON_BUILD_TARGET=build-addons \
+      "${addon_args[@]}" \
+      TARBALLS_LOCATION="${KODI_DOWNLOAD_DIR}"
+fi
 
 for addon in "${addons[@]}"; do
   if [[ ! -f "${addon_dir}/${addon}/addon.xml" ]]; then

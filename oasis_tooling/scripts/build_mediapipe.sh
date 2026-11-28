@@ -65,79 +65,53 @@ mkdir -p "${MEDIAPIPE_WHEELHOUSE}"
 # Prepare MediaPipe
 #
 
-prepare_git_source "${MEDIAPIPE_SOURCE_DIR}" \
-  "${MEDIAPIPE_URL}" "refs/tags/v${MEDIAPIPE_VERSION}"
-
-#
-# Patch MediaPipe
-#
-
-echo "Patching MediaPipe..."
-patch \
-  -p1 \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${MEDIAPIPE_SOURCE_DIR}" \
-  < "${CONFIG_DIRECTORY}/mediapipe/0001-Enable-OpenCV-4.patch"
-patch \
-  -p1 \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${MEDIAPIPE_SOURCE_DIR}" \
-  < "${CONFIG_DIRECTORY}/mediapipe/0002-Enable-monolithic-build.patch"
-patch \
-  -p1 \
-  --reject-file="/dev/null" \
-  --no-backup-if-mismatch \
-  --directory="${MEDIAPIPE_SOURCE_DIR}" \
-  < "${CONFIG_DIRECTORY}/mediapipe/0003-Fix-zlib-download.patch"
-
-# Configure MediaPipe to use the custom OpenCV build
+patches=(
+  "${CONFIG_DIRECTORY}/mediapipe/0001-Enable-OpenCV-4.patch"
+  "${CONFIG_DIRECTORY}/mediapipe/0002-Enable-monolithic-build.patch"
+  "${CONFIG_DIRECTORY}/mediapipe/0003-Fix-zlib-download.patch"
+)
 if [[ "${OSTYPE}" == "darwin"* ]]; then
-  for patch_name in \
-    0004-Keep-Apple-toolchain-UUIDs.patch \
-    0005-Fix-zlib-Darwin-detection.patch; do
-    patch \
-      -p1 \
-      --reject-file="/dev/null" \
-      --no-backup-if-mismatch \
-      --directory="${MEDIAPIPE_SOURCE_DIR}" \
-      < "${CONFIG_DIRECTORY}/mediapipe/${patch_name}"
-  done
+  patches+=(
+    "${CONFIG_DIRECTORY}/mediapipe/0004-Keep-Apple-toolchain-UUIDs.patch"
+    "${CONFIG_DIRECTORY}/mediapipe/0005-Fix-zlib-Darwin-detection.patch"
+  )
+fi
 
-  cp "${CONFIG_DIRECTORY}/mediapipe/opencv_macos.BUILD" \
-    "${MEDIAPIPE_SOURCE_DIR}/third_party/opencv_macos.BUILD"
-  sed -i.bak \
-    '/name = "macos_opencv"/,/^)/s|path = .*|path = "'"${OPENCV_INSTALL_DIR}"'",|' \
-    "${MEDIAPIPE_SOURCE_DIR}/WORKSPACE"
-  rm "${MEDIAPIPE_SOURCE_DIR}/WORKSPACE.bak"
+configure_mediapipe_opencv() {
+  if [[ "${OSTYPE}" == "darwin"* ]]; then
+    cp "${CONFIG_DIRECTORY}/mediapipe/opencv_macos.BUILD" \
+      "${MEDIAPIPE_SOURCE_DIR}/third_party/opencv_macos.BUILD"
+    sed -i.bak \
+      '/name = "macos_opencv"/,/^)/s|path = .*|path = "'"${OPENCV_INSTALL_DIR}"'",|' \
+      "${MEDIAPIPE_SOURCE_DIR}/WORKSPACE"
+    rm "${MEDIAPIPE_SOURCE_DIR}/WORKSPACE.bak"
 
-  # Desktop demo entry points are not part of the reusable library API
-  # The GPU demo is Linux-only; graph calculators support native macOS GPUs
-  sed -i.bak '/"\/\/mediapipe\/examples\/desktop:demo_run_graph_main/d' \
-    "${MEDIAPIPE_SOURCE_DIR}/mediapipe/framework/BUILD"
-  rm "${MEDIAPIPE_SOURCE_DIR}/mediapipe/framework/BUILD.bak"
+    # Desktop demo entry points are not part of the reusable library API
+    # The GPU demo is Linux-only; graph calculators support native macOS GPUs
+    sed -i.bak '/"\/\/mediapipe\/examples\/desktop:demo_run_graph_main/d' \
+      "${MEDIAPIPE_SOURCE_DIR}/mediapipe/framework/BUILD"
+    rm "${MEDIAPIPE_SOURCE_DIR}/mediapipe/framework/BUILD.bak"
 
-  # The ctypes loader expects the native macOS library name in the wheel
-  sed -i.bak \
-    's|//mediapipe/tasks/c:libmediapipe.so|//mediapipe/tasks/c:libmediapipe.dylib|' \
-    "${MEDIAPIPE_SOURCE_DIR}/setup.py"
-  rm "${MEDIAPIPE_SOURCE_DIR}/setup.py.bak"
+    # The ctypes loader expects the native macOS library name in the wheel
+    sed -i.bak \
+      's|//mediapipe/tasks/c:libmediapipe.so|//mediapipe/tasks/c:libmediapipe.dylib|' \
+      "${MEDIAPIPE_SOURCE_DIR}/setup.py"
+    rm "${MEDIAPIPE_SOURCE_DIR}/setup.py.bak"
 
-  # OASIS supplies the cv2 module from its own source build
-  # Keep wheel metadata consistent so subsequent pip checks can succeed
-  sed -i.bak '/^opencv-contrib-python$/d' \
-    "${MEDIAPIPE_SOURCE_DIR}/requirements.txt"
-  rm "${MEDIAPIPE_SOURCE_DIR}/requirements.txt.bak"
-else
-  OPENCV_BUILD_FILE="${MEDIAPIPE_SOURCE_DIR}/third_party/opencv_linux.BUILD"
-  OPENCV_WORKSPACE_FILE="${MEDIAPIPE_SOURCE_DIR}/WORKSPACE"
+    # OASIS supplies the cv2 module from its own source build
+    # Keep wheel metadata consistent so subsequent pip checks can succeed
+    sed -i.bak '/^opencv-contrib-python$/d' \
+      "${MEDIAPIPE_SOURCE_DIR}/requirements.txt"
+    rm "${MEDIAPIPE_SOURCE_DIR}/requirements.txt.bak"
+  else
+    OPENCV_BUILD_FILE="${MEDIAPIPE_SOURCE_DIR}/third_party/opencv_linux.BUILD"
+    OPENCV_WORKSPACE_FILE="${MEDIAPIPE_SOURCE_DIR}/WORKSPACE"
 
-  export MEDIAPIPE_OPENCV_BUILD_FILE="${OPENCV_BUILD_FILE}"
-  export MEDIAPIPE_OPENCV_WORKSPACE_FILE="${OPENCV_WORKSPACE_FILE}"
-  export MEDIAPIPE_OPENCV_INSTALL_DIR="${OPENCV_INSTALL_DIR}"
+    export MEDIAPIPE_OPENCV_BUILD_FILE="${OPENCV_BUILD_FILE}"
+    export MEDIAPIPE_OPENCV_WORKSPACE_FILE="${OPENCV_WORKSPACE_FILE}"
+    export MEDIAPIPE_OPENCV_INSTALL_DIR="${OPENCV_INSTALL_DIR}"
 
-  python3 <<'PY'
+    python3 <<'PY'
 import os
 from pathlib import Path
 
@@ -180,7 +154,20 @@ for index, line in enumerate(workspace_lines):
 
 workspace_file.write_text("\n".join(workspace_lines) + "\n")
 PY
-fi
+  fi
+}
+
+OASIS_SOURCE_OUTPUTS=(--exclude='/bazel-*' --exclude=/build/ --exclude=/dist/
+  --exclude=/mediapipe.egg-info/ --exclude=/setup_oasis.py --exclude=__pycache__/)
+OASIS_SOURCE_KEY="$(
+  {
+    printf '%s\0' "${OSTYPE}" "${OPENCV_INSTALL_DIR}"
+    declare -f configure_mediapipe_opencv
+    git hash-object -- "${CONFIG_DIRECTORY}/mediapipe/opencv_macos.BUILD"
+  } | git hash-object --stdin
+)"
+OASIS_SOURCE_CONFIGURE=configure_mediapipe_opencv prepare_git_source "${MEDIAPIPE_SOURCE_DIR}" \
+  "${MEDIAPIPE_URL}" "refs/tags/v${MEDIAPIPE_VERSION}" "${patches[@]}"
 
 #
 # Build with Bazel
@@ -647,14 +634,14 @@ text = text.replace(
     ),
     1,
 )
-setup_py.write_text(text)
+Path("setup_oasis.py").write_text(text)
 PY
 
 echo "setup.py Bazel build steps will be skipped; using prebuilt outputs"
 echo "CI cache check: no Bazel option churn is expected after prebuild"
 
-rm -rf dist
-"${MEDIAPIPE_PYTHON_BIN}" setup.py bdist_wheel
+rm -rf build dist mediapipe.egg-info
+"${MEDIAPIPE_PYTHON_BIN}" setup_oasis.py bdist_wheel
 rm -f "${MEDIAPIPE_WHEELHOUSE}"/mediapipe-*.whl
 cp -f "${MEDIAPIPE_SOURCE_DIR}"/dist/mediapipe-*.whl "${MEDIAPIPE_WHEELHOUSE}/"
 
