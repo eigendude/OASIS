@@ -37,15 +37,15 @@ string controller_profile
 uint8 capturing_input
 
 # Peripheral battery states
-uint8 BATTERY_STATE_UNKNOWN=0
-uint8 BATTERY_STATE_NOT_SUPPORTED=1
-uint8 BATTERY_STATE_WIRED=2
-uint8 BATTERY_STATE_DISCHARGING=3
-uint8 BATTERY_STATE_CHARGING=4
-uint8 BATTERY_STATE_FULL=5
+string BATTERY_STATE_UNKNOWN=UNKNOWN
+string BATTERY_STATE_NOT_SUPPORTED=NOT_SUPPORTED
+string BATTERY_STATE_WIRED=WIRED
+string BATTERY_STATE_DISCHARGING=DISCHARGING
+string BATTERY_STATE_CHARGING=CHARGING
+string BATTERY_STATE_FULL=FULL
 
 # Current battery state of the peripheral
-uint8 battery_state 0
+string battery_state "UNKNOWN"
 
 # Battery charge in percent (0-100), or -1 if unavailable
 int32 battery_charge -1
