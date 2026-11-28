@@ -69,13 +69,18 @@ class ControlDescriptions:
         camera_zones: list[str],
         home_assistant_id: str,
     ) -> None:
+        node_name: str = f"home_manager_{home_assistant_id}"
         home_manager_node: Node = Node(
             namespace=ROS_NAMESPACE,
             package=CONTROL_PACKAGE_NAME,
             executable="home_manager",
-            name="home_manager",
+            name=node_name,
             output="screen",
-            arguments=["--ros-args", "--log-level", "home_manager:=info"],
+            arguments=[
+                "--ros-args",
+                "--log-level",
+                f"{ROS_NAMESPACE}.{node_name}:=info",
+            ],
             parameters=[
                 {
                     "smart_display_zones": smart_display_zones,

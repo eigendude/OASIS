@@ -51,7 +51,7 @@ class HomeAssistantDescriptions:
             namespace=ROS_NAMESPACE,
             package=HOME_PACKAGE_NAME,
             executable="hass_mqtt_bridge",
-            name="hass_mqtt_bridge",
+            name=f"hass_mqtt_bridge_{HOME_ASSISTANT_ID}",
             output="screen",
             remappings=[
                 # Topics
