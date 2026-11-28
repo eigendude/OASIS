@@ -542,6 +542,23 @@ class DriverDescriptions:
         ld.add_action(ups_server_node)
 
     #
+    # USB controller current limit
+    #
+
+    @staticmethod
+    def add_usbc_detector(ld: LaunchDescription, host_id: str, hostname: str) -> None:
+        ld.add_action(
+            Node(
+                namespace=ROS_NAMESPACE,
+                package=PYTHON_PACKAGE_NAME,
+                executable="usbc_detector",
+                name=f"usbc_detector_{host_id}",
+                output="screen",
+                remappings=[("usbc_current", f"{hostname}/usbc_current")],
+            )
+        )
+
+    #
     # V4L2 camera
     #
 

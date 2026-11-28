@@ -33,6 +33,9 @@ def generate_launch_description() -> LaunchDescription:
 
     Drivers.add_system_monitor(ld, config.HOST_ID)
 
+    if config.HOSTNAME == "megapegasus":
+        Drivers.add_usbc_detector(ld, config.HOST_ID, config.HOSTNAME)
+
     if config.HOST_ID in config.SMART_DISPLAY_ZONES:
         Drivers.add_display_server(ld, config.ZONE_ID)
 

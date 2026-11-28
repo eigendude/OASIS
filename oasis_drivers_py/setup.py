@@ -101,6 +101,7 @@ setuptools.setup(
             "system_monitor = oasis_drivers.cli.system_monitor_cli:main",
             "telemetrix_bridge = oasis_drivers.cli.telemetrix_bridge_cli:main",
             "ups_server = oasis_drivers.cli.ups_server_cli:main",
+            "usbc_detector = oasis_drivers.cli.usbc_detector_cli:main",
             "wol_server = oasis_drivers.cli.wol_server_cli:main",
         ],
     },
