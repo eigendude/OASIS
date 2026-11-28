@@ -21,15 +21,23 @@ set -o nounset
 # Get the absolute path to this script
 SCRIPT_DIR="$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd -P)"
 
-# Repository root (one level above oasis_tooling)
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-
 # Systemd service directory for template installs
 SYSTEMD_SERVICE_DIRECTORY="/etc/systemd/system"
 
-# UPS companion service template paths
-UPS_SERVICE_TEMPLATE_SOURCE="${REPO_ROOT}/oasis_drivers_py/config/systemd/oasis_ups@.service"
-UPS_SERVICE_TEMPLATE="${SYSTEMD_SERVICE_DIRECTORY}/$(basename "${UPS_SERVICE_TEMPLATE_SOURCE}")"
+# Read the path to the UPS unit configured by build_oasis.sh
+UPS_SERVICE="$(
+  source "${SCRIPT_DIR}/env_oasis.sh"
+  printf '%s\n' "${OASIS_DATA_DIRECTORY}/oasis_drivers_py/systemd/oasis_ups@.service"
+)"
+
+if [[ ! -f "${UPS_SERVICE}" || ! -r "${UPS_SERVICE}" ]]; then
+  echo "Missing or unreadable unit: ${UPS_SERVICE}. Run ${SCRIPT_DIR}/build_oasis.sh first." >&2
+  exit 1
+fi
+if grep -Eq '@[A-Z0-9_]+@' "${UPS_SERVICE}"; then
+  echo "Unresolved placeholder in ${UPS_SERVICE}. Run ${SCRIPT_DIR}/build_oasis.sh first." >&2
+  exit 1
+fi
 
 #
 # NUT setup script for Debian-based systems
@@ -59,17 +67,9 @@ sudo touch \
   "${UPSD_CONF}" \
   "${UPSD_USERS}"
 
-# Install optional OASIS companion service
-if [[ -f "${UPS_SERVICE_TEMPLATE_SOURCE}" ]]; then
-  echo "Installing $(basename "${UPS_SERVICE_TEMPLATE_SOURCE}")"
-  sudo install -m 0644 "${UPS_SERVICE_TEMPLATE_SOURCE}" "${UPS_SERVICE_TEMPLATE}"
-else
-  echo "Error: UPS systemd service template not found at ${UPS_SERVICE_TEMPLATE_SOURCE}"
-  exit 1
-fi
-
-# Update the User= in the templated unit (underscore or hyphen)
-sudo sed -i "s|^[[:space:]]*User=.*|User=$(id -un)|" "${UPS_SERVICE_TEMPLATE}"
+# Install the configured OASIS UPS companion service
+echo "Installing $(basename "${UPS_SERVICE}")"
+sudo install -m 0644 "${UPS_SERVICE}" "${SYSTEMD_SERVICE_DIRECTORY}"
 
 # Set mode to standalone (idempotent)
 echo "Configuring NUT for standalone mode"
